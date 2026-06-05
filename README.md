@@ -6,6 +6,18 @@ of stereo tools (MS, mono-maker, channel utilities, monitoring) around a
 high-end diamond vectorscope. Built with **CMake + JUCE** only — it configures
 and builds entirely from the command line on a headless Linux machine, no IDE.
 
+### What's new in 0.3
+- **Bug fixes:** Level-Match **Apply** now *overrides* Output (no more drift on
+  repeated presses); **M/S Solo** moved to the input stage so soloing Side stays
+  correct; no more pops when toggling polarity / Input Channel / the widening
+  algorithm (even during silence); **A/B state persists** across editor close and
+  session recall, and A/B / presets no longer flip Advanced / Bypass / Oversampling.
+- **Drive** is now peak-preserving (driving harder no longer drops the level).
+- **Level meters** (Input/Output L/R, peak + RMS) — toggle in the top bar.
+- Vectorscope L/R mirroring fixed; Haas side now means the *perceived* side.
+- UI polish: rounder controls, subtle glow/glass, single **A / B** indicator,
+  bypass goes red and leaves the toolbar lit, tooltips default **off**, "Adv".
+
 ### What's new in 0.2
 - **Transparent on load**: a fresh instance does nothing to the sound. Widening
   is driven by a single **Amount** control (0% = bypass-clean); **Width 100%**

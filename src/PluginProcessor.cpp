@@ -85,14 +85,15 @@ void AnamorphAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
 // ----------------------------------------------------------------------------
 void AnamorphAudioProcessor::applyAutoGain()
 {
-    // "Apply": lock the measured loudness-match gain into Output Gain as a fixed
-    // value, then disengage Match so exports/playback stay consistent.
+    // "Apply": OVERRIDE Output Gain with the measured loudness compensation as a
+    // fixed value (feedback #18). The match gain is measured pre-output-gain, so
+    // setting Output Gain = matchDb makes the output sit at the dry loudness.
+    // (Override, not add -- otherwise repeated Apply presses keep dropping it.)
     const float matchDb = engine.getMatchGainDb();
 
     if (auto* og = dynamic_cast<juce::AudioParameterFloat*> (apvts.getParameter (pid::outputGain)))
     {
-        const float current = og->get();
-        const float target  = juce::jlimit (-24.0f, 24.0f, current + matchDb);
+        const float target = juce::jlimit (-24.0f, 24.0f, matchDb);
         og->beginChangeGesture();
         og->setValueNotifyingHost (og->convertTo0to1 (target));
         og->endChangeGesture();
@@ -107,6 +108,46 @@ void AnamorphAudioProcessor::applyAutoGain()
 }
 
 // ----------------------------------------------------------------------------
+//  A/B compare
+// ----------------------------------------------------------------------------
+void AnamorphAudioProcessor::abEnsureInit()
+{
+    if (! abSlotA.isValid()) abSlotA = apvts.copyState();
+    if (! abSlotB.isValid()) abSlotB = abSlotA.createCopy();
+}
+
+void AnamorphAudioProcessor::abApplySlot (int slot)
+{
+    // Preserve the global view params (Advanced / Bypass / Oversampling) so an
+    // A/B switch only swaps the sound, never the view (#10).
+    auto snap = [this] (const char* id) { return apvts.getParameter (id)->getValue(); };
+    const float adv = snap (pid::advancedMode), byp = snap (pid::bypass), os = snap (pid::oversample);
+
+    apvts.replaceState ((slot == 1 ? abSlotB : abSlotA).createCopy());
+
+    apvts.getParameter (pid::advancedMode)->setValueNotifyingHost (adv);
+    apvts.getParameter (pid::bypass)->setValueNotifyingHost (byp);
+    apvts.getParameter (pid::oversample)->setValueNotifyingHost (os);
+}
+
+void AnamorphAudioProcessor::abSwitchTo (int slot)
+{
+    abEnsureInit();
+    if (slot == abActive) return;
+    (abActive == 1 ? abSlotB : abSlotA) = apvts.copyState(); // store edits in the old slot
+    abActive = slot;
+    abApplySlot (slot);
+}
+
+void AnamorphAudioProcessor::abCopyToOther()
+{
+    abEnsureInit();
+    (abActive == 1 ? abSlotB : abSlotA) = apvts.copyState();
+    const int other = abActive == 1 ? 0 : 1;
+    (other == 1 ? abSlotB : abSlotA) = apvts.copyState().createCopy();
+}
+
+// ----------------------------------------------------------------------------
 juce::AudioProcessorEditor* AnamorphAudioProcessor::createEditor()
 {
     return new AnamorphAudioProcessorEditor (*this);
@@ -114,15 +155,42 @@ juce::AudioProcessorEditor* AnamorphAudioProcessor::createEditor()
 
 void AnamorphAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
-    if (auto xml = apvts.copyState().createXml())
+    abEnsureInit();
+    juce::ValueTree root ("AnamorphRoot");
+    root.appendChild (apvts.copyState(), nullptr);
+    juce::ValueTree ab ("AB");
+    ab.setProperty ("active", abActive, nullptr);
+    ab.setProperty ("slotA", abSlotA.toXmlString(), nullptr);
+    ab.setProperty ("slotB", abSlotB.toXmlString(), nullptr);
+    root.appendChild (ab, nullptr);
+
+    if (auto xml = root.createXml())
         copyXmlToBinary (*xml, destData);
 }
 
 void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
-    if (auto xml = getXmlFromBinary (data, sizeInBytes))
-        if (xml->hasTagName (apvts.state.getType()))
-            apvts.replaceState (juce::ValueTree::fromXml (*xml));
+    auto xml = getXmlFromBinary (data, sizeInBytes);
+    if (xml == nullptr) return;
+
+    auto root = juce::ValueTree::fromXml (*xml);
+    if (root.hasType ("AnamorphRoot"))
+    {
+        auto params = root.getChildWithName (apvts.state.getType());
+        if (params.isValid()) apvts.replaceState (params.createCopy());
+
+        auto ab = root.getChildWithName ("AB");
+        if (ab.isValid())
+        {
+            abActive = (int) ab.getProperty ("active", 0);
+            if (auto a = juce::parseXML (ab.getProperty ("slotA").toString())) abSlotA = juce::ValueTree::fromXml (*a);
+            if (auto b = juce::parseXML (ab.getProperty ("slotB").toString())) abSlotB = juce::ValueTree::fromXml (*b);
+        }
+    }
+    else if (xml->hasTagName (apvts.state.getType())) // backward-compat (v0.2)
+    {
+        apvts.replaceState (juce::ValueTree::fromXml (*xml));
+    }
 }
 
 // ----------------------------------------------------------------------------

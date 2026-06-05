@@ -49,6 +49,7 @@ public:
                        juce::ComboBox&) override;
 
     juce::Font getLabelFont (juce::Label&) override;
+    juce::Font getTextButtonFont (juce::TextButton&, int buttonHeight) override;
 
     // Styled tooltip to match the design language (no system tooltip, #20).
     void drawTooltip (juce::Graphics&, const juce::String& text, int w, int h) override;

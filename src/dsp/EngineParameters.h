@@ -83,7 +83,6 @@ struct EngineParameters
 
     // --- 9. Oversampling --------------------------------------------------
     OversampleFactor oversample = OversampleFactor::Off;  // default 1x (Off)
-    bool        zeroLatency = false;   // live/tracking: force 0 latency
 
     // --- Bypass -----------------------------------------------------------
     bool        bypass      = false;

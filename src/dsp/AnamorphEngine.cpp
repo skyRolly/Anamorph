@@ -20,6 +20,7 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
     monoMaker.prepare (sr, maxBlock);
     loudness.prepare (sr);
     correlation.prepare (sr);
+    levels.prepare (sr);
 
     // --- oversamplers (2x / 4x / 8x). Minimum-phase polyphase IIR: low latency,
     //     and crucially NO linear-phase pre-ringing / waveform misalignment.
@@ -44,6 +45,13 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
     balanceSmooth   .reset (sr, ramp);
     outBalanceSmooth.reset (sr, ramp);
     driveSmooth     .reset (sr, ramp);
+    polLSmooth      .reset (sr, 0.005);
+    polRSmooth      .reset (sr, 0.005);
+    polLSmooth      .setCurrentAndTargetValue (1.0f);
+    polRSmooth      .setCurrentAndTargetValue (1.0f);
+    structFadeInc = 1.0f / (float) std::max (1.0, 0.012 * sr); // ~12 ms fade
+    structFade = 1.0f;
+    structInit = false;
     widthSmooth     .setCurrentAndTargetValue (1.0f);
     mixSmooth       .setCurrentAndTargetValue (1.0f);
     outGainSmooth   .setCurrentAndTargetValue (1.0f);
@@ -74,6 +82,7 @@ void AnamorphEngine::reset()
     monoMaker.reset();
     loudness.reset();
     correlation.reset();
+    levels.reset();
     if (os2) os2->reset();
     if (os4) os4->reset();
     if (os8) os8->reset();
@@ -93,7 +102,6 @@ static bool isModAlgorithm (Algorithm a) noexcept
 
 juce::dsp::Oversampling<float>* AnamorphEngine::currentOversampler() noexcept
 {
-    if (p.zeroLatency) return nullptr;                    // live/tracking mode (#5)
     if (p.oversample == OversampleFactor::Off) return nullptr;
     if (! (driveActive || isModAlgorithm (p.algorithm))) return nullptr;
 
@@ -108,7 +116,6 @@ juce::dsp::Oversampling<float>* AnamorphEngine::currentOversampler() noexcept
 
 int AnamorphEngine::getLatencySamples() const noexcept
 {
-    if (p.zeroLatency) return 0;
     if (p.oversample == OversampleFactor::Off) return 0;
     if (! (driveActive || isModAlgorithm (p.algorithm))) return 0;
     switch (p.oversample)
@@ -122,7 +129,6 @@ int AnamorphEngine::getLatencySamples() const noexcept
 
 int AnamorphEngine::predictLatency (const EngineParameters& e) const noexcept
 {
-    if (e.zeroLatency) return 0;
     if (e.oversample == OversampleFactor::Off) return 0;
     if (! (e.driveDb > 0.01f || isModAlgorithm (e.algorithm))) return 0;
     switch (e.oversample)
@@ -145,8 +151,13 @@ void AnamorphEngine::updateDerived()
     velvet.setAmount (p.algoAmount);
     chorus.setAmount (p.algoAmount);
     haas.setDelayMs (p.haasDelayMs);
-    haas.setSide (p.haasSide == HaasSide::Right);
+    // Haas side now means the PERCEIVED side (precedence): the sound leans to the
+    // chosen side, so we delay the OPPOSITE channel (feedback #25).
+    haas.setSide (p.haasSide == HaasSide::Left);
     velvet.setDensity (p.velvetDensity);
+
+    polLSmooth.setTargetValue (p.polarityL ? -1.0f : 1.0f);
+    polRSmooth.setTargetValue (p.polarityR ? -1.0f : 1.0f);
 
     if (p.algorithm == Algorithm::Chorus)
     {
@@ -199,8 +210,9 @@ void AnamorphEngine::applyInputConditioning (float* L, float* R, int n) noexcept
         const float gR = (b < 0.0f) ? (1.0f + b) : 1.0f;
         l *= gL; r *= gR;
 
-        if (p.polarityL) l = -l;
-        if (p.polarityR) r = -r;
+        // Smoothed polarity sign (ramps +1 <-> -1) so flipping never clicks (#19).
+        l *= polLSmooth.getNextValue();
+        r *= polRSmooth.getNextValue();
 
         L[i] = l; R[i] = r;
     }
@@ -210,12 +222,14 @@ void AnamorphEngine::processNonlinearRegion (float* L, float* R, int n, double r
 {
     if (driveActive)
     {
-        // Smoothed tanh drive with unity small-signal gain (1/g makeup), so a
-        // moving Drive knob never clicks (#1) and 0 dB is effectively clean.
+        // Smoothed tanh drive with PEAK-preserving makeup (1/tanh(g)): a
+        // full-scale input still maps to full scale, so driving harder adds
+        // saturation/density without dropping the level (feedback #23). Smoothed
+        // so a moving Drive knob never clicks (#1).
         for (int i = 0; i < n; ++i)
         {
             const float g = driveSmooth.getNextValue();
-            const float c = 1.0f / g;
+            const float c = 1.0f / std::tanh (g);
             L[i] = std::tanh (g * L[i]) * c;
             R[i] = std::tanh (g * R[i]) * c;
         }
@@ -242,6 +256,8 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     float* ddL = dryDelayBuffer.getWritePointer (0);
     float* ddR = dryDelayBuffer.getWritePointer (1);
 
+    levels.input.process (L, R, n); // tap the raw plugin input (#10)
+
     // -------- True bypass: latency-aligned passthrough + meter the output ----
     if (p.bypass)
     {
@@ -256,12 +272,40 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
             scope.push (ol, orr);
             dryDelayWrite = (dryDelayWrite + 1) % ddSize;
         }
+        levels.output.process (L, R, n);
         correlation.publish();
+        levels.publish();
         return;
     }
 
+    // Detect structural switches (algorithm / routing). On an algorithm change
+    // we clear stale delay/FIR tails so a leftover tail can't pop when toggling
+    // during silence; either way we briefly fade the output (see stage 8).
+    if (structInit)
+    {
+        const bool changed = (p.algorithm != prevAlgorithm) || (p.msMode != prevMsMode)
+                          || (p.swapLR != prevSwap) || (p.monoSum != prevMonoSum)
+                          || (p.channelMode != prevChannelMode) || (p.oversample != prevOversample);
+        if (changed)
+        {
+            if (p.algorithm != prevAlgorithm) { haas.reset(); velvet.reset(); chorus.reset(); }
+            structFade = 0.0f;
+        }
+    }
+    prevAlgorithm = p.algorithm; prevMsMode = p.msMode; prevSwap = p.swapLR;
+    prevMonoSum = p.monoSum; prevChannelMode = p.channelMode; prevOversample = p.oversample;
+    structInit = true;
+
     // -------- 1. Input conditioning -----------------------------------------
     applyInputConditioning (L, R, n);
+
+    // M/S Solo lives in the INPUT module: it isolates Mid or Side BEFORE the
+    // widening engine (feedback #15), so soloing Side on mono content stays
+    // silent even as Amount is raised, and Output Balance still applies.
+    if (p.solo == SoloMode::Mid)
+        for (int i = 0; i < n; ++i) { const float m = (L[i] + R[i]) * 0.5f; L[i] = m; R[i] = m; }
+    else if (p.solo == SoloMode::Side)
+        for (int i = 0; i < n; ++i) { const float s = (L[i] - R[i]) * 0.5f; L[i] = s; R[i] = -s; }
 
     // Capture conditioned DRY for the mix + loudness reference.
     dryScratch.copyFrom (0, 0, L, n);
@@ -350,14 +394,12 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         const float gL = (b > 0.0f) ? (1.0f - b) : 1.0f;
         const float gR = (b < 0.0f) ? (1.0f + b) : 1.0f;
 
-        L[i] *= g * gL; R[i] *= g * gR;
-    }
+        // Short fade after a structural switch masks any transient (#9 / #19).
+        if (structFade < 1.0f) structFade = juce::jmin (1.0f, structFade + structFadeInc);
+        const float sf = structFade;
 
-    // -------- Solo Mid / Side ----------------------------------------------
-    if (p.solo == SoloMode::Mid)
-        for (int i = 0; i < n; ++i) { const float m = (L[i] + R[i]) * 0.5f; L[i] = m; R[i] = m; }
-    else if (p.solo == SoloMode::Side)
-        for (int i = 0; i < n; ++i) { const float s = (L[i] - R[i]) * 0.5f; L[i] = s; R[i] = s; }
+        L[i] *= g * gL * sf; R[i] *= g * gR * sf;
+    }
 
     // -------- 9. Metering tap (FINAL output) --------------------------------
     for (int i = 0; i < n; ++i)
@@ -365,7 +407,9 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         correlation.process (L[i], R[i]);
         scope.push (L[i], R[i]);
     }
+    levels.output.process (L, R, n);
     correlation.publish();
+    levels.publish();
 }
 
 } // namespace anamorph

@@ -57,7 +57,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
     // --- Effect engine ---
     floatParam (pid::drive, "Drive", { 0.0f, 24.0f, 0.01f }, 0.0f, db);
     layout.add (std::make_unique<AudioParameterChoice> (ParameterID { pid::algorithm, kVersion },
-        "Algorithm", StringArray { "Haas", "Velvet Noise", "Chorus", "Dimension-D" }, 1));
+        "Algorithm", StringArray { "Haas", "Velvet Noise", "Chorus", "Dim D" }, 1));
     // Unified widening intensity. Default 0 == transparent on load (#3).
     floatParam (pid::amount, "Amount", { 0.0f, 1.0f, 0.001f }, 0.0f, pct);
     floatParam (pid::haasDelay, "Haas Delay", { 1.0f, 35.0f, 0.01f }, 12.0f, ms);
@@ -94,10 +94,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
     layout.add (std::make_unique<AudioParameterChoice> (ParameterID { pid::solo, kVersion },
         "M/S Solo", StringArray { "Off", "Mid", "Side" }, 0));
 
-    // --- Oversampling --- (default Off == 1x, #17)
+    // --- Oversampling --- (default Off == 1x, which is itself zero-latency)
     layout.add (std::make_unique<AudioParameterChoice> (ParameterID { pid::oversample, kVersion },
         "Oversampling", StringArray { "Off (1x)", "2x", "4x", "8x" }, 0));
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::zeroLatency, kVersion }, "Zero Latency", false));
 
     // --- Bypass (registered as the host bypass parameter) ---
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::bypass, kVersion }, "Bypass", false));
@@ -142,7 +141,6 @@ void ParamPointers::bind (juce::AudioProcessorValueTreeState& s)
     autoGainMatch = s.getRawParameterValue (pid::autoGainMatch);
     solo          = s.getRawParameterValue (pid::solo);
     oversample    = s.getRawParameterValue (pid::oversample);
-    zeroLatency   = s.getRawParameterValue (pid::zeroLatency);
     bypass        = s.getRawParameterValue (pid::bypass);
     advancedMode  = s.getRawParameterValue (pid::advancedMode);
 }
@@ -192,7 +190,6 @@ anamorph::EngineParameters ParamPointers::toEngine() const
 
     e.solo         = (SoloMode) (int) solo->load();
     e.oversample   = (OversampleFactor) (int) oversample->load();
-    e.zeroLatency  = zeroLatency->load() > 0.5f;
     e.bypass       = bypass->load() > 0.5f;
 
     return e;
