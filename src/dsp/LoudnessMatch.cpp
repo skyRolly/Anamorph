@@ -1,0 +1,89 @@
+#include "LoudnessMatch.h"
+#include <cmath>
+#include <algorithm>
+
+namespace anamorph
+{
+
+static constexpr double kPi = 3.14159265358979323846;
+
+void LoudnessMatch::KWeighting::setSampleRate (double sr)
+{
+    // ----- Stage 1: high-shelf "head" filter (BS.1770) -----
+    {
+        const double f0 = 1681.974450955533;
+        const double G  = 3.999843853973347;
+        const double Q  = 0.7071752369554196;
+        const double K  = std::tan (kPi * f0 / sr);
+        const double Vh = std::pow (10.0, G / 20.0);
+        const double Vb = std::pow (Vh, 0.4996667741545416);
+        const double a0 = 1.0 + K / Q + K * K;
+        shelf.b0 = (Vh + Vb * K / Q + K * K) / a0;
+        shelf.b1 = 2.0 * (K * K - Vh) / a0;
+        shelf.b2 = (Vh - Vb * K / Q + K * K) / a0;
+        shelf.a1 = 2.0 * (K * K - 1.0) / a0;
+        shelf.a2 = (1.0 - K / Q + K * K) / a0;
+    }
+    // ----- Stage 2: RLB high-pass (BS.1770) -----
+    {
+        const double f0 = 38.13547087602444;
+        const double Q  = 0.5003270373238773;
+        const double K  = std::tan (kPi * f0 / sr);
+        const double a0 = 1.0 + K / Q + K * K;
+        hp.b0 = 1.0;
+        hp.b1 = -2.0;
+        hp.b2 = 1.0;
+        hp.a1 = 2.0 * (K * K - 1.0) / a0;
+        hp.a2 = (1.0 - K / Q + K * K) / a0;
+    }
+    reset();
+}
+
+void LoudnessMatch::prepare (double sampleRate)
+{
+    kDryL.setSampleRate (sampleRate);
+    kDryR.setSampleRate (sampleRate);
+    kWetL.setSampleRate (sampleRate);
+    kWetR.setSampleRate (sampleRate);
+
+    // ~400 ms integration (momentary-loudness style) single-pole window.
+    const double tau = 0.4;
+    smoothCoeff = 1.0 - std::exp (-1.0 / (tau * sampleRate));
+    reset();
+}
+
+void LoudnessMatch::reset()
+{
+    kDryL.reset(); kDryR.reset(); kWetL.reset(); kWetR.reset();
+    meanSqDry = meanSqWet = 1.0e-9;
+    matchGainDb.store (0.0f, std::memory_order_relaxed);
+}
+
+void LoudnessMatch::process (const float* dryL, const float* dryR,
+                             const float* wetL, const float* wetR, int numSamples) noexcept
+{
+    for (int n = 0; n < numSamples; ++n)
+    {
+        const double dl = kDryL.process (dryL[n]);
+        const double dr = kDryR.process (dryR[n]);
+        const double wl = kWetL.process (wetL[n]);
+        const double wr = kWetR.process (wetR[n]);
+
+        const double dPow = dl * dl + dr * dr; // BS.1770 channel weights = 1.0 (L,R)
+        const double wPow = wl * wl + wr * wr;
+
+        meanSqDry += smoothCoeff * (dPow - meanSqDry);
+        meanSqWet += smoothCoeff * (wPow - meanSqWet);
+    }
+
+    // Convert to LUFS and take the difference. Guard against silence.
+    const double floorMs = 1.0e-7;
+    const double dLufs = -0.691 + 10.0 * std::log10 (std::max (meanSqDry, floorMs));
+    const double wLufs = -0.691 + 10.0 * std::log10 (std::max (meanSqWet, floorMs));
+
+    float gain = (float) (dLufs - wLufs);
+    gain = std::max (-24.0f, std::min (24.0f, gain)); // sane clamp
+    matchGainDb.store (gain, std::memory_order_relaxed);
+}
+
+} // namespace anamorph
