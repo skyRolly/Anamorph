@@ -37,19 +37,26 @@ void AnamorphLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int
     g.setColour (colours::outline);
     g.strokePath (track, juce::PathStrokeType (thick, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
-    // Value arc with a subtle accent gradient
+    // Value arc with a subtle accent gradient + a soft self-illuminating glow.
     juce::Path value;
     value.addCentredArc (centre.x, centre.y, radius - thick, radius - thick, 0.0f,
                          startAngle, angle, true);
+    g.setColour (colours::accent.withAlpha (0.18f)); // glow halo
+    g.strokePath (value, juce::PathStrokeType (thick * 2.1f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     juce::ColourGradient grad (colours::accent2, centre.x - radius, centre.y,
                                colours::accent,  centre.x + radius, centre.y, false);
     g.setGradientFill (grad);
     g.strokePath (value, juce::PathStrokeType (thick, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
-    // Knob face
+    // Glassy knob face: a top-lit radial gradient over a dark base.
     const float faceR = radius - thick * 1.6f;
-    g.setColour (colours::bgRaised);
+    juce::ColourGradient face (colours::bgRaised.brighter (0.16f), centre.x, centre.y - faceR * 0.7f,
+                               colours::bgPanel.darker (0.25f),    centre.x, centre.y + faceR, true);
+    face.addColour (0.55, colours::bgRaised);
+    g.setGradientFill (face);
     g.fillEllipse (centre.x - faceR, centre.y - faceR, faceR * 2.0f, faceR * 2.0f);
+    g.setColour (juce::Colours::white.withAlpha (0.06f)); // faint top highlight rim
+    g.drawEllipse (centre.x - faceR, centre.y - faceR + 0.6f, faceR * 2.0f, faceR * 2.0f, 1.0f);
     g.setColour (colours::outline);
     g.drawEllipse (centre.x - faceR, centre.y - faceR, faceR * 2.0f, faceR * 2.0f, 1.0f);
 
@@ -101,9 +108,22 @@ void AnamorphLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButto
     auto pill = juce::Rectangle<float> (bounds.getX(), bounds.getCentreY() - h * 0.5f, h * 1.9f, h);
 
     const bool on = b.getToggleState();
-    g.setColour (on ? colours::accent.withAlpha (0.9f) : colours::bgRaised);
+    // Bypass uses a controlled red when engaged so it reads as "off/abnormal"
+    // and stands out without clashing (feedback #8).
+    const juce::Colour onCol = (b.getComponentID() == "bypass") ? juce::Colour (0xffd0584e)
+                                                                : colours::accent;
+    if (on) // soft outer glow
+    {
+        g.setColour (onCol.withAlpha (0.22f));
+        g.fillRoundedRectangle (pill.expanded (2.2f), (h + 4.4f) * 0.5f);
+    }
+    juce::ColourGradient pg (on ? onCol.brighter (0.10f) : colours::bgRaised.brighter (0.06f),
+                             pill.getX(), pill.getY(),
+                             on ? onCol.darker (0.12f)   : colours::bgRaised.darker (0.10f),
+                             pill.getX(), pill.getBottom(), false);
+    g.setGradientFill (pg);
     g.fillRoundedRectangle (pill, h * 0.5f);
-    g.setColour (on ? colours::accent : colours::outline);
+    g.setColour (on ? onCol : colours::outline);
     g.drawRoundedRectangle (pill, h * 0.5f, 1.0f);
 
     const float knob = h - 4.0f;
@@ -125,24 +145,42 @@ void AnamorphLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button&
     if (b.getComponentID() == "ghost") return; // invisible hit-area (e.g. title)
 
     auto bounds = b.getLocalBounds().toFloat().reduced (1.0f);
+    const float radius = juce::jmin (9.0f, bounds.getHeight() * 0.5f); // rounder (#13)
     const bool on = b.getToggleState();
-    auto fill = on ? colours::accent.withAlpha (0.9f)
-                   : (down ? colours::bgRaised.brighter (0.1f)
-                           : (highlighted ? colours::bgRaised.brighter (0.05f) : colours::bgRaised));
-    g.setColour (fill);
-    g.fillRoundedRectangle (bounds, 5.0f);
+    const auto base = down ? colours::bgRaised.brighter (0.12f)
+                           : (highlighted ? colours::bgRaised.brighter (0.06f) : colours::bgRaised);
+    if (on)
+    {
+        g.setColour (colours::accent.withAlpha (0.85f));
+        g.fillRoundedRectangle (bounds, radius);
+    }
+    else
+    {
+        juce::ColourGradient gr (base.brighter (0.05f), bounds.getX(), bounds.getY(),
+                                 base.darker (0.10f), bounds.getX(), bounds.getBottom(), false);
+        g.setGradientFill (gr);
+        g.fillRoundedRectangle (bounds, radius);
+    }
     g.setColour (on ? colours::accent : colours::outline);
-    g.drawRoundedRectangle (bounds, 5.0f, 1.0f);
+    g.drawRoundedRectangle (bounds, radius, 1.0f);
+}
+
+juce::Font AnamorphLookAndFeel::getTextButtonFont (juce::TextButton&, int buttonHeight)
+{
+    return juce::Font (juce::FontOptions ((float) juce::jmin (13, juce::jmax (10, buttonHeight - 12))));
 }
 
 void AnamorphLookAndFeel::drawComboBox (juce::Graphics& g, int w, int h, bool,
                                         int, int, int, int, juce::ComboBox&)
 {
     auto bounds = juce::Rectangle<float> (0, 0, (float) w, (float) h).reduced (1.0f);
-    g.setColour (colours::bgRaised);
-    g.fillRoundedRectangle (bounds, 5.0f);
+    const float radius = juce::jmin (8.0f, bounds.getHeight() * 0.5f);
+    juce::ColourGradient gr (colours::bgRaised.brighter (0.05f), bounds.getX(), bounds.getY(),
+                             colours::bgRaised.darker (0.10f), bounds.getX(), bounds.getBottom(), false);
+    g.setGradientFill (gr);
+    g.fillRoundedRectangle (bounds, radius);
     g.setColour (colours::outline);
-    g.drawRoundedRectangle (bounds, 5.0f, 1.0f);
+    g.drawRoundedRectangle (bounds, radius, 1.0f);
 
     juce::Path arrow;
     const float cx = (float) w - 14.0f, cy = (float) h * 0.5f;

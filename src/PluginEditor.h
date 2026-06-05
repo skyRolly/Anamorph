@@ -6,15 +6,10 @@
 #include "gui/LookAndFeel.h"
 #include "gui/Vectorscope.h"
 #include "gui/CorrelationMeter.h"
+#include "gui/LevelMeter.h"
 
 // ============================================================================
-//  AnamorphAudioProcessorEditor  (v0.2 UI pass)
-//
-//  Clean, premium two-mode UI. Simple Mode shows only the core widening /
-//  output controls around the vectorscope; Advanced Mode reveals the grouped
-//  INPUT module + multiband. Top bar carries A/B (single toggle + Copy),
-//  Settings, Bypass, Advanced and undo/redo. Title opens an in-window About
-//  overlay. An OpenGL context GPU-composites everything.
+//  AnamorphAudioProcessorEditor  (v0.3 UI pass)
 // ============================================================================
 class AnamorphAudioProcessorEditor : public juce::AudioProcessorEditor,
                                      private juce::Timer
@@ -31,19 +26,34 @@ private:
     using ButtonAttachment   = juce::AudioProcessorValueTreeState::ButtonAttachment;
     using ComboBoxAttachment = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
 
-    // A translucent backdrop hosting a centred panel (About / Settings). Clicking
-    // outside the panel dismisses it -- no close button, in-window, modern (#18).
+    // Translucent modal backdrop hosting a centred panel (About / Settings).
     struct Backdrop : public juce::Component
     {
         std::function<void()> onDismiss;
         juce::Rectangle<int>  panel;
-        bool   aboutText = false;       // draw the About copy
+        bool   aboutText = false;
         void paint (juce::Graphics&) override;
         void mouseDown (const juce::MouseEvent& e) override
         {
             if (aboutText || ! panel.contains (e.getPosition()))
                 if (onDismiss) onDismiss();
         }
+    };
+
+    // Bypass dim layer: painted on top, never blocks the mouse (#4 / #8).
+    struct DimLayer : public juce::Component
+    {
+        void paint (juce::Graphics& g) override { g.fillAll (juce::Colour (0x66090b0e)); }
+    };
+
+    // A/B control: shows "A / B" with the active letter bright, the other dim,
+    // a single click toggles (FabFilter-style, #10/#11).
+    struct ABControl : public juce::Component, public juce::SettableTooltipClient
+    {
+        std::function<int()>  getActive;
+        std::function<void()> onToggle;
+        void paint (juce::Graphics&) override;
+        void mouseDown (const juce::MouseEvent&) override { if (onToggle) onToggle(); }
     };
 
     void timerCallback() override;
@@ -57,27 +67,23 @@ private:
     void showSettings (bool);
     void applyTooltipsEnabled();
 
-    // A/B compare (FabFilter-style: one slot button + Copy)
-    void captureTo (int slot);
-    void switchTo (int slot);
-    void copyCurrentToOther();
-
     AnamorphAudioProcessor& processor;
     anamorph::gui::AnamorphLookAndFeel lnf;
     juce::OpenGLContext openGLContext;
     juce::TooltipWindow tooltips { nullptr, 600 };
 
-    // Visual centrepiece
+    // Centrepiece + meters
     std::unique_ptr<anamorph::gui::Vectorscope> scope;
     std::unique_ptr<anamorph::gui::StereoMeter> balanceMeter, corrMeter;
+    std::unique_ptr<anamorph::gui::LevelMeter>  levelMeter;
 
     // Top bar
-    juce::TextButton   titleButton;                 // invisible hit-area over the wordmark
-    juce::TextButton   abButton { "A" }, copyButton { "COPY" };
-    juce::TextButton   settingsButton { "SETTINGS" };
-    juce::TextButton   undoButton { juce::String::charToString ((juce::juce_wchar) 0x21B6) };
-    juce::TextButton   redoButton { juce::String::charToString ((juce::juce_wchar) 0x21B7) };
-    juce::ToggleButton advancedToggle, bypassToggle;
+    juce::TextButton   titleButton;
+    ABControl          abControl;
+    juce::TextButton   copyButton { "Copy" };
+    juce::TextButton   settingsButton { "Settings" };
+    juce::TextButton   undoButton, redoButton;
+    juce::ToggleButton metersToggle, advancedToggle, bypassToggle;
 
     // WIDEN module
     juce::ComboBox algorithmBox, haasSideBox, dimModeBox;
@@ -104,34 +110,29 @@ private:
     juce::ToggleButton monoToggle, swapToggle, msToggle, polLToggle, polRToggle;
     juce::Slider balanceK; juce::Label balanceL;
 
-    // MULTIBAND (advanced)
+    // MULTIBAND module (advanced, its own section -- #16)
+    juce::Label  multibandLabel;
     juce::ToggleButton mbEnableToggle;
     juce::Slider mbFreqLowK, mbFreqHighK, mbWLowK, mbWMidK, mbWHighK;
     juce::Label  mbFreqLowL, mbFreqHighL, mbWLowL, mbWMidL, mbWHighL;
     juce::Slider scopePersistK; juce::Label scopePersistL;
 
-    // Bypass dim (painted on top, but does NOT block mouse -- #4)
-    struct DimLayer : public juce::Component
-    {
-        void paint (juce::Graphics& g) override { g.fillAll (juce::Colour (0x66090b0e)); }
-    };
+    // Overlays
     DimLayer dimOverlay;
     Backdrop aboutBackdrop, settingsBackdrop;
 
-    // Settings controls (live inside the settings panel)
+    // Settings controls
     juce::ComboBox oversampleBox;  juce::Label oversampleLabel;
-    juce::ToggleButton zeroLatencyToggle, tooltipsToggle;
+    juce::ToggleButton tooltipsToggle;
     juce::Label settingsTitle;
 
     juce::OwnedArray<SliderAttachment>   sliderAtts;
     juce::OwnedArray<ButtonAttachment>   buttonAtts;
     juce::OwnedArray<ComboBoxAttachment> comboAtts;
 
-    // A/B state
-    juce::ValueTree stateA, stateB;
-    int  activeSlot = 0;     // 0 = A, 1 = B
     bool advanced = false;
-    bool tooltipsOn = true;
+    bool tooltipsOn = false;   // tooltips default OFF (#4)
+    bool metersOn = false;
 
     static constexpr int kWidth = 920;
     static constexpr int kHeightSimple = 560;

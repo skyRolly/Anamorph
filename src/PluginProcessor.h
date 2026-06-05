@@ -52,9 +52,23 @@ public:
     // Auto-Gain "Apply": locks the measured loudness-match gain into Output Gain.
     void applyAutoGain();
 
+    // A/B compare lives in the processor so it survives editor close / session
+    // recall (#14). Switching A/B (and loading presets) never touches the global
+    // "view" params: Advanced Mode, Bypass, Oversampling (#10).
+    int  abActiveSlot() const noexcept { return abActive; }
+    void abSwitchTo (int slot);
+    void abCopyToOther();
+
 private:
     void parameterChanged (const juce::String& id, float newValue) override;
     void updateLatency();
+
+    // A/B helpers (preserve the global view params across a slot apply)
+    void abEnsureInit();
+    void abApplySlot (int slot);
+
+    juce::ValueTree abSlotA, abSlotB;
+    int abActive = 0;
 
     juce::UndoManager undoManager;
     juce::AudioProcessorValueTreeState apvts;

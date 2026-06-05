@@ -11,6 +11,7 @@
 #include "MultibandWidth.h"
 #include "LoudnessMatch.h"
 #include "Correlation.h"
+#include "LevelMeters.h"
 #include "ScopeBuffer.h"
 
 namespace anamorph
@@ -59,6 +60,7 @@ public:
     // --- shared with the editor (GUI thread reads) -----------------------
     ScopeBuffer&      getScopeBuffer() noexcept   { return scope; }
     CorrelationMeter& getCorrelation() noexcept   { return correlation; }
+    LevelMeters&      getLevels() noexcept         { return levels; }
     float getMatchGainDb() const noexcept         { return loudness.getMatchGainDb(); }
 
 private:
@@ -80,6 +82,7 @@ private:
     MonoMaker      monoMaker;
     LoudnessMatch  loudness;
     CorrelationMeter correlation;
+    LevelMeters    levels;
     ScopeBuffer    scope;
 
     // Oversamplers for 2x / 4x / 8x (orders 1 / 2 / 3). Off = bypass.
@@ -89,6 +92,16 @@ private:
     // Smoothed continuous controls (avoid zipper noise / clicks -- #1).
     juce::SmoothedValue<float> widthSmooth, mixSmooth, outGainSmooth, matchGainSmooth;
     juce::SmoothedValue<float> balanceSmooth, outBalanceSmooth, driveSmooth;
+    juce::SmoothedValue<float> polLSmooth, polRSmooth; // smoothed polarity sign (no click)
+
+    // Structural-change click suppression (#9 / #19): when the algorithm or an
+    // input-routing switch changes, briefly fade the output and clear stale
+    // algorithm tails so toggling never pops -- even during silence.
+    Algorithm        prevAlgorithm  = Algorithm::Velvet;
+    ChannelMode      prevChannelMode = ChannelMode::Stereo;
+    OversampleFactor prevOversample = OversampleFactor::Off;
+    bool  prevMsMode = false, prevSwap = false, prevMonoSum = false, structInit = false;
+    float structFade = 1.0f, structFadeInc = 0.0f;
 
     // Dry-path delay (integer) to align dry with wet latency in the mix.
     juce::AudioBuffer<float> dryDelayBuffer;

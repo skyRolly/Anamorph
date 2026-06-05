@@ -52,7 +52,6 @@ namespace pid
     inline constexpr const char* solo           = "solo";
     // Oversampling
     inline constexpr const char* oversample     = "oversample";
-    inline constexpr const char* zeroLatency    = "zeroLatency";
     // Bypass
     inline constexpr const char* bypass         = "bypass";
     // UI-only (still saved with state)
@@ -99,7 +98,6 @@ struct ParamPointers
     std::atomic<float>* autoGainMatch = nullptr;
     std::atomic<float>* solo = nullptr;
     std::atomic<float>* oversample = nullptr;
-    std::atomic<float>* zeroLatency = nullptr;
     std::atomic<float>* bypass = nullptr;
     std::atomic<float>* advancedMode = nullptr;
 };

@@ -89,10 +89,12 @@ void Vectorscope::paint (juce::Graphics& g)
         clip = juce::jmax (clip, std::abs (L), std::abs (R));
 
         // Rotate 45 deg: vertical = Mid (mono up), horizontal = Side.
+        // L leans LEFT, R leans RIGHT (so dx uses -(L-R) = R-L) -- fixes the
+        // previously mirrored image (feedback #24).
         const float side = (L - R) * kInvSqrt2;
         const float mid  = (L + R) * kInvSqrt2;
 
-        float dx = side * effScale;
+        float dx = -side * effScale;
         float dy = -mid * effScale;
         const float mag = std::sqrt (dx * dx + dy * dy);
         if (mag > radius && mag > 0.0f) { const float k = radius / mag; dx *= k; dy *= k; }
