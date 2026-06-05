@@ -21,6 +21,7 @@ public:
 
     void setDelayMs (float ms) noexcept { targetSamples = ms * 0.001f * (float) sr; }
     void setSide (bool right) noexcept  { delayRight = right; }
+    void setAmount (float a) noexcept   { amount = a; } // 0 = identity (dry)
 
     void processBlock (float* left, float* right, int numSamples) noexcept;
 
@@ -33,6 +34,8 @@ private:
     int   bufMask = 0;
     float targetSamples = 0.0f;
     float currentSamples = 0.0f; // smoothed to avoid zipper/clicks
+    float amount = 0.0f;         // wet blend; smoothed in processBlock
+    float currentAmount = 0.0f;
     bool  delayRight = true;
 };
 

@@ -5,7 +5,7 @@ AnamorphAudioProcessor::AnamorphAudioProcessor()
     : AudioProcessor (BusesProperties()
         .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
         .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
-      apvts (*this, nullptr, "ANAMORPH", createAnamorphLayout())
+      apvts (*this, &undoManager, "ANAMORPH", createAnamorphLayout())
 {
     params.bind (apvts);
     bypassParam = dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter (pid::bypass));

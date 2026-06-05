@@ -59,7 +59,9 @@ private:
     int    bufMask = 0;
     int    writeL = 0, writeR = 0;
 
-    float  phase = 0.0f; // 0..1 LFO phase
+    float  phase = 0.0f;        // 0..1 LFO phase
+    float  currentWet = 0.0f;   // smoothed wet blend (click-free)
+    float  currentDepth = 0.0f; // smoothed modulation depth (samples)
 };
 
 } // namespace anamorph

@@ -39,16 +39,17 @@ void LoudnessMatch::KWeighting::setSampleRate (double sr)
     reset();
 }
 
-void LoudnessMatch::prepare (double sampleRate)
+void LoudnessMatch::prepare (double sr)
 {
-    kDryL.setSampleRate (sampleRate);
-    kDryR.setSampleRate (sampleRate);
-    kWetL.setSampleRate (sampleRate);
-    kWetR.setSampleRate (sampleRate);
+    sampleRate = sr;
+    kDryL.setSampleRate (sr);
+    kDryR.setSampleRate (sr);
+    kWetL.setSampleRate (sr);
+    kWetR.setSampleRate (sr);
 
     // ~400 ms integration (momentary-loudness style) single-pole window.
     const double tau = 0.4;
-    smoothCoeff = 1.0 - std::exp (-1.0 / (tau * sampleRate));
+    smoothCoeff = 1.0 - std::exp (-1.0 / (tau * sr));
     reset();
 }
 
@@ -56,6 +57,7 @@ void LoudnessMatch::reset()
 {
     kDryL.reset(); kDryR.reset(); kWetL.reset(); kWetR.reset();
     meanSqDry = meanSqWet = 1.0e-9;
+    displayedGainDb = 0.0;
     matchGainDb.store (0.0f, std::memory_order_relaxed);
 }
 
@@ -81,9 +83,21 @@ void LoudnessMatch::process (const float* dryL, const float* dryR,
     const double dLufs = -0.691 + 10.0 * std::log10 (std::max (meanSqDry, floorMs));
     const double wLufs = -0.691 + 10.0 * std::log10 (std::max (meanSqWet, floorMs));
 
-    float gain = (float) (dLufs - wLufs);
-    gain = std::max (-24.0f, std::min (24.0f, gain)); // sane clamp
-    matchGainDb.store (gain, std::memory_order_relaxed);
+    double target = dLufs - wLufs;
+    target = std::max (-24.0, std::min (24.0, target));
+
+    // Adaptive smoothing of the PUBLISHED value (spec feedback #19):
+    //  - small fluctuations are averaged over a long window -> a steady readout
+    //    you can actually judge before pressing Apply;
+    //  - a big change (e.g. cranking a knob that drops the level) snaps quickly
+    //    so Match doesn't lag with the level audibly wrong for a second.
+    const double blockDur = (double) numSamples / sampleRate;
+    const double diff = target - displayedGainDb;
+    const double tau  = (std::abs (diff) > 2.0) ? 0.06 : 0.9; // fast vs. slow
+    const double coeff = 1.0 - std::exp (-blockDur / tau);
+    displayedGainDb += coeff * diff;
+
+    matchGainDb.store ((float) displayedGainDb, std::memory_order_relaxed);
 }
 
 } // namespace anamorph

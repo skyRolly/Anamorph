@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vector>
+#include <array>
 #include <random>
 
 namespace anamorph
@@ -10,16 +11,17 @@ namespace anamorph
 //  VelvetNoise decorrelation
 //
 //  Turns mono into stereo (and widens stereo) by synthesising a DECORRELATED
-//  SIDE signal from the Mid via a sparse "velvet noise" FIR (random +/-1 taps
-//  at sparse, pseudo-random positions). The Mid is left untouched and only the
-//  Side gains the diffuse, decorrelated energy:
+//  SIDE signal from the Mid via a sparse "velvet noise" FIR. The Mid is left
+//  untouched, so L + R = 2*Mid always holds -> mono compatible.
 //
 //      S' = S + amount * (velvetFIR * M)
 //      L  = M + S' ,  R = M - S'
 //
-//  Because L + R = 2M regardless of the side content, mono compatibility is
-//  guaranteed (no comb filtering when summed). The FIR is linear => stays
-//  OUTSIDE oversampling. Taps are precomputed in prepare() (no RT allocation).
+//  Click-free design (spec feedback #1): the random tap set is generated ONCE
+//  in prepare(); both `density` (how many taps are active) and `amount` (wet
+//  level) are continuous and smoothed, so dragging a knob fades taps in/out
+//  smoothly instead of regenerating a brand-new random sequence every block
+//  (the old behaviour, which produced crackle). amount 0 == identity.
 // ============================================================================
 class VelvetNoise
 {
@@ -27,26 +29,30 @@ public:
     void prepare (double sampleRate, unsigned seed = 0x1234abcdU);
     void reset();
 
-    void setDensity (float d) noexcept { if (d != density) { density = d; rebuild = true; } }
+    void setDensity (float d) noexcept { targetDensity = d; }
+    void setAmount  (float a) noexcept { targetAmount  = a; } // 0 = identity
 
     void processBlock (float* left, float* right, int numSamples) noexcept;
 
 private:
-    void buildTaps();
+    void updateWeights() noexcept;
 
-    struct Tap { int delay; float sign; };
+    static constexpr int maxTaps = 64;
 
     double sr = 44100.0;
-    float  density = 0.5f;
-    bool   rebuild = true;
 
     std::vector<float> midHist;      // circular history of Mid
     int    histMask = 0;
     int    writePos = 0;
 
-    std::vector<Tap> taps;
+    std::array<int,   maxTaps> pos {};   // tap delay (samples), fixed
+    std::array<float, maxTaps> sign {};  // tap sign +/-1, fixed
+    std::array<float, maxTaps> weight {};// continuous active weight per tap
+    int    activeTaps = 0;
     float  norm = 1.0f;
-    std::mt19937 rng;
+
+    float  targetDensity = 0.5f, currentDensity = 0.5f;
+    float  targetAmount  = 0.0f, currentAmount  = 0.0f;
 };
 
 } // namespace anamorph

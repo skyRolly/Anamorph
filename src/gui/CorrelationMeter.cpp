@@ -4,22 +4,22 @@
 namespace anamorph::gui
 {
 
-CorrelationMeter::CorrelationMeter (anamorph::CorrelationMeter& src, Orientation o)
-    : source (src), orientation (o)
+StereoMeter::StereoMeter (anamorph::CorrelationMeter& src, Orientation o, Type t)
+    : source (src), orientation (o), type (t)
 {
     startTimerHz (30);
 }
 
-CorrelationMeter::~CorrelationMeter() { stopTimer(); }
+StereoMeter::~StereoMeter() { stopTimer(); }
 
-void CorrelationMeter::timerCallback()
+void StereoMeter::timerCallback()
 {
-    const float target = (orientation == Orientation::Horizontal) ? source.getSlow() : source.getFast();
-    value += 0.35f * (target - value); // gentle visual smoothing
+    const float target = (type == Type::Balance) ? source.getBalance() : source.getSlow();
+    value += 0.3f * (target - value); // gentle visual smoothing
     repaint();
 }
 
-void CorrelationMeter::paint (juce::Graphics& g)
+void StereoMeter::paint (juce::Graphics& g)
 {
     auto bounds = getLocalBounds().toFloat();
 
@@ -30,21 +30,21 @@ void CorrelationMeter::paint (juce::Graphics& g)
 
     const bool horizontal = (orientation == Orientation::Horizontal);
     auto track = bounds.reduced (4.0f);
-
-    // Map correlation -1..+1 to position; +1 (mono) at the "good" end.
     const float norm = (value + 1.0f) * 0.5f; // 0..1
 
-    // Colour: red-ish for anti-phase (<0), accent for in-phase.
-    const auto col = (value < 0.0f)
-        ? colours::warn.interpolatedWith (juce::Colour (0xffe0584a), juce::jlimit (0.0f, 1.0f, -value))
-        : colours::accent2.interpolatedWith (colours::accent, value);
-
-    // Centre tick (correlation = 0)
-    g.setColour (colours::outline.brighter (0.2f));
-    if (horizontal)
-        g.drawLine (track.getCentreX(), track.getY(), track.getCentreX(), track.getBottom(), 1.0f);
+    // Colour language: stay on the accent near centre, drift to a warm tone
+    // toward the extremes -- consistent and high-end, no garish red except clip.
+    const float extremity = juce::jlimit (0.0f, 1.0f, std::abs (value));
+    juce::Colour col;
+    if (type == Type::Correlation && value < 0.0f)
+        col = colours::accent2.interpolatedWith (juce::Colour (0xffd8704a), extremity); // anti-phase warning
     else
-        g.drawLine (track.getX(), track.getCentreY(), track.getRight(), track.getCentreY(), 1.0f);
+        col = colours::accent.interpolatedWith (colours::warn, extremity * 0.85f);
+
+    // Centre tick
+    g.setColour (colours::outline.brighter (0.25f));
+    if (horizontal) g.drawLine (track.getCentreX(), track.getY(), track.getCentreX(), track.getBottom(), 1.0f);
+    else            g.drawLine (track.getX(), track.getCentreY(), track.getRight(), track.getCentreY(), 1.0f);
 
     g.setColour (col);
     const float thick = 3.0f;
@@ -55,17 +55,19 @@ void CorrelationMeter::paint (juce::Graphics& g)
     }
     else
     {
-        // +1 at the top
-        const float y = track.getBottom() - norm * track.getHeight();
+        const float y = track.getBottom() - norm * track.getHeight(); // +1 at top
         g.fillRoundedRectangle (track.getX(), y - thick * 0.5f, track.getWidth(), thick, 1.5f);
     }
 
+    // End labels
     g.setColour (colours::textDim);
-    g.setFont (juce::Font (juce::FontOptions (9.5f)));
+    g.setFont (juce::Font (juce::FontOptions (9.0f)));
     if (horizontal)
     {
-        g.drawText ("-1", track.getX(), (int) track.getY(), 16, (int) track.getHeight(), juce::Justification::centredLeft);
-        g.drawText ("+1", (int) track.getRight() - 18, (int) track.getY(), 18, (int) track.getHeight(), juce::Justification::centredRight);
+        g.drawText (type == Type::Balance ? "L" : "-1", (int) track.getX(), (int) track.getY(),
+                    16, (int) track.getHeight(), juce::Justification::centredLeft);
+        g.drawText (type == Type::Balance ? "R" : "+1", (int) track.getRight() - 18, (int) track.getY(),
+                    18, (int) track.getHeight(), juce::Justification::centredRight);
     }
 }
 

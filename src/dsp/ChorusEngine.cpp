@@ -26,6 +26,8 @@ void ChorusEngine::reset()
     std::fill (bufR.begin(), bufR.end(), 0.0f);
     writeL = writeR = 0;
     phase = 0.0f;
+    currentWet = 0.0f;
+    currentDepth = 0.0f;
 }
 
 void ChorusEngine::setDimMode (int mode) noexcept
@@ -54,17 +56,26 @@ void ChorusEngine::processBlock (float* left, float* right, int numSamples) noex
 {
     const bool isDim = (voice == Voice::DimensionD);
 
-    const float baseMs  = isDim ? dimBaseMs  : 14.0f;
+    const float baseMs   = isDim ? dimBaseMs  : 14.0f;
     const float depthMs  = isDim ? dimDepthMs : (1.0f + depth * 5.0f);
     const float rate     = isDim ? dimRateHz  : rateHz;
 
-    const float baseSamps  = baseMs  * 0.001f * (float) workingRate;
-    const float depthSamps = depthMs * 0.001f * (float) workingRate;
-    const float phaseInc   = rate / (float) workingRate;
-    const float wet = isDim ? (0.5f + 0.5f * amount) : amount;
+    const float baseSamps      = baseMs  * 0.001f * (float) workingRate;
+    const float depthSampsTarget = depthMs * 0.001f * (float) workingRate;
+    const float phaseInc       = rate / (float) workingRate;
+    // amount 0 == identity for BOTH voices (spec feedback #3).
+    const float wetTarget = amount;
+
+    // Smooth wet + depth per-sample so changing Amount/Depth/Mode never clicks.
+    const float wSmooth = 1.0f / (float) std::max (1.0, 0.01 * workingRate); // ~10 ms
 
     for (int n = 0; n < numSamples; ++n)
     {
+        currentWet   += wSmooth * (wetTarget        - currentWet);
+        currentDepth += wSmooth * (depthSampsTarget - currentDepth);
+        const float wet = currentWet;
+        const float depthSamps = currentDepth;
+
         bufL[(size_t) writeL] = left[n];
         bufR[(size_t) writeR] = right[n];
 

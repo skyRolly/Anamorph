@@ -13,7 +13,6 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
     maxBlock = juce::jmax (1, maxBlockSize);
 
     // --- sub-modules ---
-    sat.setDriveDb (0.0f);
     haas.prepare (sr, maxBlock);
     velvet.prepare (sr);
     chorus.prepare (sr * 8.0);          // sized for the highest OS rate (8x)
@@ -38,16 +37,20 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
 
     // --- smoothers ---
     const double ramp = 0.02; // 20 ms
-    widthSmooth   .reset (sr, ramp);
-    mixSmooth     .reset (sr, ramp);
-    outGainSmooth .reset (sr, ramp);
-    matchGainSmooth.reset (sr, 0.20); // slower for loudness match
-    balanceSmooth .reset (sr, ramp);
-    widthSmooth   .setCurrentAndTargetValue (1.0f);
-    mixSmooth     .setCurrentAndTargetValue (1.0f);
-    outGainSmooth .setCurrentAndTargetValue (1.0f);
-    matchGainSmooth.setCurrentAndTargetValue (1.0f);
-    balanceSmooth .setCurrentAndTargetValue (0.0f);
+    widthSmooth     .reset (sr, ramp);
+    mixSmooth       .reset (sr, ramp);
+    outGainSmooth   .reset (sr, ramp);
+    matchGainSmooth .reset (sr, 0.05); // adaptive timing lives in LoudnessMatch (#19)
+    balanceSmooth   .reset (sr, ramp);
+    outBalanceSmooth.reset (sr, ramp);
+    driveSmooth     .reset (sr, ramp);
+    widthSmooth     .setCurrentAndTargetValue (1.0f);
+    mixSmooth       .setCurrentAndTargetValue (1.0f);
+    outGainSmooth   .setCurrentAndTargetValue (1.0f);
+    matchGainSmooth .setCurrentAndTargetValue (1.0f);
+    balanceSmooth   .setCurrentAndTargetValue (0.0f);
+    outBalanceSmooth.setCurrentAndTargetValue (0.0f);
+    driveSmooth     .setCurrentAndTargetValue (1.0f);
 
     // --- dry-path delay (aligns dry to the wet OS latency) ---
     const int maxLat = juce::jmax (latency2, latency4, latency8);
@@ -90,6 +93,7 @@ static bool isModAlgorithm (Algorithm a) noexcept
 
 juce::dsp::Oversampling<float>* AnamorphEngine::currentOversampler() noexcept
 {
+    if (p.zeroLatency) return nullptr;                    // live/tracking mode (#5)
     if (p.oversample == OversampleFactor::Off) return nullptr;
     if (! (driveActive || isModAlgorithm (p.algorithm))) return nullptr;
 
@@ -104,6 +108,7 @@ juce::dsp::Oversampling<float>* AnamorphEngine::currentOversampler() noexcept
 
 int AnamorphEngine::getLatencySamples() const noexcept
 {
+    if (p.zeroLatency) return 0;
     if (p.oversample == OversampleFactor::Off) return 0;
     if (! (driveActive || isModAlgorithm (p.algorithm))) return 0;
     switch (p.oversample)
@@ -117,6 +122,7 @@ int AnamorphEngine::getLatencySamples() const noexcept
 
 int AnamorphEngine::predictLatency (const EngineParameters& e) const noexcept
 {
+    if (e.zeroLatency) return 0;
     if (e.oversample == OversampleFactor::Off) return 0;
     if (! (e.driveDb > 0.01f || isModAlgorithm (e.algorithm))) return 0;
     switch (e.oversample)
@@ -130,12 +136,16 @@ int AnamorphEngine::predictLatency (const EngineParameters& e) const noexcept
 
 void AnamorphEngine::updateDerived()
 {
-    sat.setDriveDb (p.driveDb);
     driveActive = p.driveDb > 0.01f;
+    driveSmooth.setTargetValue (juce::Decibels::decibelsToGain (p.driveDb));
 
+    // Unified widening intensity -> every algorithm is identity at amount 0.
+    // Each algorithm smooths the amount internally (click-free, #1).
+    haas.setAmount   (p.algoAmount);
+    velvet.setAmount (p.algoAmount);
+    chorus.setAmount (p.algoAmount);
     haas.setDelayMs (p.haasDelayMs);
     haas.setSide (p.haasSide == HaasSide::Right);
-
     velvet.setDensity (p.velvetDensity);
 
     if (p.algorithm == Algorithm::Chorus)
@@ -143,13 +153,11 @@ void AnamorphEngine::updateDerived()
         chorus.setVoice (ChorusEngine::Voice::Chorus);
         chorus.setRate  (p.chorusRate);
         chorus.setDepth (p.chorusDepth);
-        chorus.setAmount (0.5f);
     }
     else if (p.algorithm == Algorithm::DimensionD)
     {
         chorus.setVoice (ChorusEngine::Voice::DimensionD);
         chorus.setDimMode (p.dimMode);
-        chorus.setAmount (p.dimAmount);
     }
 
     multiband.setCrossovers (p.mbFreqLow, p.mbFreqHigh);
@@ -157,11 +165,12 @@ void AnamorphEngine::updateDerived()
 
     monoMaker.setFrequency (p.monoMakerFreq);
 
-    widthSmooth  .setTargetValue (p.width);
-    mixSmooth    .setTargetValue (p.mix);
-    balanceSmooth.setTargetValue (p.inputBalance);
-    outGainSmooth.setTargetValue (juce::Decibels::decibelsToGain (p.outputGainDb));
-    matchGainSmooth.setTargetValue (p.autoGainMatch
+    widthSmooth     .setTargetValue (p.width);
+    mixSmooth       .setTargetValue (p.mix);
+    balanceSmooth   .setTargetValue (p.inputBalance);
+    outBalanceSmooth.setTargetValue (p.outputBalance);
+    outGainSmooth   .setTargetValue (juce::Decibels::decibelsToGain (p.outputGainDb));
+    matchGainSmooth .setTargetValue (p.autoGainMatch
         ? juce::Decibels::decibelsToGain (loudness.getMatchGainDb())
         : 1.0f);
 }
@@ -175,11 +184,12 @@ void AnamorphEngine::applyInputConditioning (float* L, float* R, int n) noexcept
 
         switch (p.channelMode)
         {
-            case ChannelMode::Mono:      { const float m = (l + r) * 0.5f; l = m; r = m; } break;
             case ChannelMode::LeftOnly:  r = 0.0f; break;   // keep L, kill R
             case ChannelMode::RightOnly: l = 0.0f; break;   // keep R, kill L
             case ChannelMode::Stereo:    default: break;
         }
+
+        if (p.monoSum) { const float m = (l + r) * 0.5f; l = m; r = m; } // dedicated Mono toggle
 
         if (p.swapLR) { const float t = l; l = r; r = t; }
 
@@ -199,11 +209,17 @@ void AnamorphEngine::applyInputConditioning (float* L, float* R, int n) noexcept
 void AnamorphEngine::processNonlinearRegion (float* L, float* R, int n, double rate) noexcept
 {
     if (driveActive)
+    {
+        // Smoothed tanh drive with unity small-signal gain (1/g makeup), so a
+        // moving Drive knob never clicks (#1) and 0 dB is effectively clean.
         for (int i = 0; i < n; ++i)
         {
-            L[i] = sat.processSample (L[i]);
-            R[i] = sat.processSample (R[i]);
+            const float g = driveSmooth.getNextValue();
+            const float c = 1.0f / g;
+            L[i] = std::tanh (g * L[i]) * c;
+            R[i] = std::tanh (g * R[i]) * c;
         }
+    }
 
     if (isModAlgorithm (p.algorithm))
     {
@@ -324,11 +340,17 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     matchGainSmooth.setTargetValue (p.autoGainMatch
         ? juce::Decibels::decibelsToGain (loudness.getMatchGainDb()) : 1.0f);
 
-    // -------- 8. Output Gain / Auto Gain ------------------------------------
+    // -------- 8. Output Gain / Auto Gain / Output Balance -------------------
     for (int i = 0; i < n; ++i)
     {
         const float g = outGainSmooth.getNextValue() * matchGainSmooth.getNextValue();
-        L[i] *= g; R[i] *= g;
+
+        // Whole-plugin output balance (centre = unity, turns down one side).
+        const float b  = outBalanceSmooth.getNextValue();
+        const float gL = (b > 0.0f) ? (1.0f - b) : 1.0f;
+        const float gR = (b < 0.0f) ? (1.0f + b) : 1.0f;
+
+        L[i] *= g * gL; R[i] *= g * gR;
     }
 
     // -------- Solo Mid / Side ----------------------------------------------

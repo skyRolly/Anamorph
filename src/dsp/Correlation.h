@@ -51,10 +51,17 @@ public:
     {
         fast.store (correlation (lrFast, llFast, rrFast), std::memory_order_relaxed);
         slow.store (correlation (lrSlow, llSlow, rrSlow), std::memory_order_relaxed);
+
+        // L/R energy balance in [-1 (L) .. +1 (R)] for the bottom meter (#9).
+        const float sum = llSlow + rrSlow;
+        float bal = sum > 1.0e-12f ? (rrSlow - llSlow) / sum : 0.0f;
+        bal = bal < -1.0f ? -1.0f : (bal > 1.0f ? 1.0f : bal);
+        balance.store (bal, std::memory_order_relaxed);
     }
 
-    float getFast() const noexcept { return fast.load (std::memory_order_relaxed); }
-    float getSlow() const noexcept { return slow.load (std::memory_order_relaxed); }
+    float getFast() const noexcept    { return fast.load (std::memory_order_relaxed); }
+    float getSlow() const noexcept    { return slow.load (std::memory_order_relaxed); }
+    float getBalance() const noexcept { return balance.load (std::memory_order_relaxed); }
 
 private:
     static float coeffFor (double sr, double ms) noexcept
@@ -77,6 +84,7 @@ private:
 
     std::atomic<float> fast { 1.0f };
     std::atomic<float> slow { 1.0f };
+    std::atomic<float> balance { 0.0f };
 };
 
 } // namespace anamorph

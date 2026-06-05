@@ -49,6 +49,11 @@ public:
                        juce::ComboBox&) override;
 
     juce::Font getLabelFont (juce::Label&) override;
+
+    // Styled tooltip to match the design language (no system tooltip, #20).
+    void drawTooltip (juce::Graphics&, const juce::String& text, int w, int h) override;
+    juce::Rectangle<int> getTooltipBounds (const juce::String& tip, juce::Point<int> pos,
+                                           juce::Rectangle<int> parentArea) override;
 };
 
 } // namespace anamorph::gui

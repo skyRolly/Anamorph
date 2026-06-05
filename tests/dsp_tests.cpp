@@ -189,12 +189,45 @@ static void testBypassNullAndLatency()
 }
 
 // ---------------------------------------------------------------------------
+//  A freshly-loaded plug-in (default parameters) must be transparent (#3):
+//  amount 0, width 100%, mix 100%, drive 0 -> output == input (within epsilon).
+static void testTransparentDefault()
+{
+    std::printf ("Test 5: default parameters are transparent\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0;
+    const int block = 256;
+
+    anamorph::AnamorphEngine engine;
+    engine.prepare (sr, block);
+    anamorph::EngineParameters def; // all defaults
+    engine.setParameters (def);
+    engine.reset();
+
+    float maxDiff = 0.0f;
+    for (int n = 0; n < 40; ++n)
+    {
+        juce::AudioBuffer<float> in (2, block), work (2, block);
+        fillNoise (in, (unsigned) (n + 3));
+        work.makeCopyOf (in);
+        engine.setParameters (def);
+        engine.process (work);
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = 0; i < block; ++i)
+                maxDiff = juce::jmax (maxDiff, std::abs (work.getSample (ch, i) - in.getSample (ch, i)));
+    }
+    std::printf ("  default transparency max diff = %.3e\n", maxDiff);
+    check (maxDiff < 1.0e-5f, "default parameters leave the signal unchanged");
+}
+
+// ---------------------------------------------------------------------------
 int main()
 {
     std::printf ("=== Anamorph DSP self-tests ===\n");
     testMidSideRoundTrip();
     testNoBadSamples();
     testBypassNullAndLatency();
+    testTransparentDefault();
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);
     if (failures == 0) { std::printf ("ALL TESTS PASSED\n"); return 0; }
