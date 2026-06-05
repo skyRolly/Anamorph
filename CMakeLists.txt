@@ -74,10 +74,14 @@ target_sources(AnamorphDSP INTERFACE
 # ----------------------------------------------------------------------------
 #  The plugin
 # ----------------------------------------------------------------------------
+# VST3 everywhere; AU additionally on macOS (Logic/GarageBand only load AU).
+# AU can only be built on a Mac, which is why it ships via the macOS CI job.
+set(ANAMORPH_FORMATS VST3)
+if(APPLE)
+    list(APPEND ANAMORPH_FORMATS AU)
+endif()
 if(ANAMORPH_BUILD_STANDALONE)
-    set(ANAMORPH_FORMATS VST3 Standalone)
-else()
-    set(ANAMORPH_FORMATS VST3)
+    list(APPEND ANAMORPH_FORMATS Standalone)
 endif()
 
 juce_add_plugin(Anamorph
