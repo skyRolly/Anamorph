@@ -1,10 +1,23 @@
 # Anamorph — Stereo Tools Audio Plugin (VST3)
 
-**Anamorph** is a stereo-field toolkit: it turns mono into stereo, controls
-stereo width (globally and per band), and provides the full set of stereo tools
-(MS, mono-maker, channel utilities, monitoring) around a high-end diamond
-vectorscope. Built with **CMake + JUCE** only — it configures and builds
-entirely from the command line on a headless Linux machine, with no IDE.
+**Anamorph** (by **Rolly Tech**) is a stereo-field toolkit: it turns mono into
+stereo, controls stereo width (globally and per band), and provides the full set
+of stereo tools (MS, mono-maker, channel utilities, monitoring) around a
+high-end diamond vectorscope. Built with **CMake + JUCE** only — it configures
+and builds entirely from the command line on a headless Linux machine, no IDE.
+
+### What's new in 0.2
+- **Transparent on load**: a fresh instance does nothing to the sound. Widening
+  is driven by a single **Amount** control (0% = bypass-clean); **Width 100%**
+  is also identity. (Verified by a self-test.)
+- **Click-free knobs**: every continuous control is smoothed; Velvet Noise no
+  longer regenerates its random taps while you drag (the old crackle).
+- **Restructured UI**: grouped INPUT / WIDEN / OUTPUT modules, single-button A/B
+  + Copy, in-window About & Settings overlays, styled tooltips (toggle), bypass
+  dimming (controls stay live), undo/redo, balance/correlation meters, clip-red
+  scope rim, Output Balance, a **Zero-Latency (live)** mode, and oversampling
+  (default 1x) in Settings.
+- Versioning: `MAJOR.MINOR.PATCH` (pre-1.0) plus a CI build number (About box).
 
 > Primary build target: **VST3** (+ a Standalone target for convenience).
 > **AU (Audio Unit) is built on macOS** — the `macos` CI job produces a

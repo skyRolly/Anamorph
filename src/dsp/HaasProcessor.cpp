@@ -45,24 +45,26 @@ float HaasProcessor::readDelayed (std::vector<float>& line, int& widx, float del
 void HaasProcessor::processBlock (float* left, float* right, int numSamples) noexcept
 {
     constexpr float smooth = 0.0005f; // glide delay changes to avoid zipper noise
+    constexpr float aSmooth = 0.001f; // glide the wet amount (click-free, #1)
     for (int n = 0; n < numSamples; ++n)
     {
-        currentSamples += smooth * (targetSamples - currentSamples);
+        currentSamples += smooth  * (targetSamples - currentSamples);
+        currentAmount  += aSmooth * (amount        - currentAmount);
 
         // Write current input.
         bufL[(size_t) writeL] = left[n];
         bufR[(size_t) writeR] = right[n];
 
+        // Blend dry with the delayed side by `amount` so amount 0 == identity.
         if (delayRight)
         {
-            // Left passes through; right is delayed.
             const float d = readDelayed (bufR, writeR, currentSamples);
-            right[n] = d;
+            right[n] = right[n] + currentAmount * (d - right[n]);
         }
         else
         {
             const float d = readDelayed (bufL, writeL, currentSamples);
-            left[n] = d;
+            left[n] = left[n] + currentAmount * (d - left[n]);
         }
 
         writeL = (writeL + 1) & bufMask;

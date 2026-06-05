@@ -10,7 +10,6 @@ static int nextPow2 (int n) { int p = 1; while (p < n) p <<= 1; return p; }
 void VelvetNoise::prepare (double sampleRate, unsigned seed)
 {
     sr = sampleRate;
-    rng.seed (seed);
 
     // ~45 ms decorrelation window -> sized history buffer (power of two).
     const int winSamps = (int) std::ceil (0.045 * sr) + 4;
@@ -18,9 +17,26 @@ void VelvetNoise::prepare (double sampleRate, unsigned seed)
     midHist.assign ((size_t) size, 0.0f);
     histMask = size - 1;
     writePos = 0;
-    taps.reserve (80);   // max tap count -> clear()/push_back never reallocates
-    rebuild = true;
-    buildTaps();
+
+    // Generate the fixed velvet tap set ONCE: one impulse per grid cell at a
+    // random position with a random sign. density later decides how many of
+    // these are active (continuously), never regenerating them.
+    std::mt19937 rng (seed);
+    std::uniform_real_distribution<float> uni (0.0f, 1.0f);
+    const int decorrSamps = std::max (8, (int) std::round (0.045 * sr));
+    const float cell = (float) decorrSamps / (float) maxTaps;
+    for (int m = 0; m < maxTaps; ++m)
+    {
+        int p = (int) std::round (m * cell + uni (rng) * (cell - 1.0f));
+        p = std::max (1, std::min (decorrSamps - 1, p)); // skip tap 0 (keep side decorrelated)
+        pos[(size_t) m]  = p;
+        sign[(size_t) m] = (uni (rng) < 0.5f) ? -1.0f : 1.0f;
+    }
+
+    currentDensity = targetDensity;
+    currentAmount  = targetAmount;
+    updateWeights();
+    reset();
 }
 
 void VelvetNoise::reset()
@@ -29,57 +45,55 @@ void VelvetNoise::reset()
     writePos = 0;
 }
 
-void VelvetNoise::buildTaps()
+void VelvetNoise::updateWeights() noexcept
 {
-    // Map density 0..1 to a tap count over the decorrelation window.
-    const float win = 0.045f; // seconds
-    const int minTaps = 12, maxTaps = 80;
-    const int n = minTaps + (int) std::round (density * (maxTaps - minTaps));
-
-    taps.clear();
-    taps.reserve ((size_t) n);
-
-    // Velvet noise: one impulse per grid cell at a random position inside it,
-    // with a random sign. Grid spacing = window / n.
-    const int winSamps = std::max (8, (int) std::round (win * sr));
-    const float cell = (float) winSamps / (float) n;
-    std::uniform_real_distribution<float> uni (0.0f, 1.0f);
-
-    for (int m = 0; m < n; ++m)
+    // Continuous active count: each tap fades in over its own unit interval, so
+    // changing density never causes a step discontinuity.
+    const float f = currentDensity * (float) maxTaps;
+    float sumSq = 0.0f;
+    int   highest = 0;
+    for (int i = 0; i < maxTaps; ++i)
     {
-        int pos = (int) std::round (m * cell + uni (rng) * (cell - 1.0f));
-        pos = std::max (1, std::min (winSamps - 1, pos)); // skip tap 0 (keep side decorrelated)
-        const float sign = (uni (rng) < 0.5f) ? -1.0f : 1.0f;
-        taps.push_back ({ pos, sign });
+        const float w = std::min (1.0f, std::max (0.0f, f - (float) i));
+        weight[(size_t) i] = w;
+        sumSq += w * w;
+        if (w > 0.0f) highest = i + 1;
     }
-
-    norm = 1.0f / std::sqrt ((float) std::max (1, n));
-    rebuild = false;
+    activeTaps = highest;
+    norm = 1.0f / std::sqrt (std::max (1.0f, sumSq));
 }
 
 void VelvetNoise::processBlock (float* left, float* right, int numSamples) noexcept
 {
-    if (rebuild)
-        buildTaps();
+    constexpr float dSmooth = 0.002f; // glide density (re-weights smoothly)
+    constexpr float aSmooth = 0.0015f;// glide wet amount
 
     for (int i = 0; i < numSamples; ++i)
     {
+        // Smooth density occasionally (re-weighting every sample is wasteful;
+        // do it when it has drifted meaningfully).
+        const float dPrev = currentDensity;
+        currentDensity += dSmooth * (targetDensity - currentDensity);
+        if (std::abs (currentDensity - dPrev) > 1.0e-4f || activeTaps == 0)
+            updateWeights();
+
+        currentAmount += aSmooth * (targetAmount - currentAmount);
+
         const float L = left[i], R = right[i];
         const float mid  = (L + R) * 0.5f;
         const float side = (L - R) * 0.5f;
 
         midHist[(size_t) writePos] = mid;
 
-        // Sparse convolution: sum of signed, delayed Mid samples.
         float decorr = 0.0f;
-        for (const auto& t : taps)
+        for (int t = 0; t < activeTaps; ++t)
         {
-            const int idx = (writePos - t.delay) & histMask;
-            decorr += t.sign * midHist[(size_t) idx];
+            const int idx = (writePos - pos[(size_t) t]) & histMask;
+            decorr += weight[(size_t) t] * sign[(size_t) t] * midHist[(size_t) idx];
         }
-        decorr *= norm;
+        decorr *= norm * currentAmount;
 
-        const float newSide = side + decorr; // amount folded into density build
+        const float newSide = side + decorr;
         left[i]  = mid + newSide;
         right[i] = mid - newSide;
 

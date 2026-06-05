@@ -4,7 +4,6 @@
 #include <memory>
 
 #include "EngineParameters.h"
-#include "Saturation.h"
 #include "HaasProcessor.h"
 #include "VelvetNoise.h"
 #include "ChorusEngine.h"
@@ -74,7 +73,6 @@ private:
     EngineParameters p;
 
     // DSP modules
-    Saturation     sat;
     HaasProcessor  haas;
     VelvetNoise    velvet;
     ChorusEngine   chorus;
@@ -88,8 +86,9 @@ private:
     std::unique_ptr<juce::dsp::Oversampling<float>> os2, os4, os8;
     int latency2 = 0, latency4 = 0, latency8 = 0;
 
-    // Smoothed continuous controls (avoid zipper noise).
-    juce::SmoothedValue<float> widthSmooth, mixSmooth, outGainSmooth, matchGainSmooth, balanceSmooth;
+    // Smoothed continuous controls (avoid zipper noise / clicks -- #1).
+    juce::SmoothedValue<float> widthSmooth, mixSmooth, outGainSmooth, matchGainSmooth;
+    juce::SmoothedValue<float> balanceSmooth, outBalanceSmooth, driveSmooth;
 
     // Dry-path delay (integer) to align dry with wet latency in the mix.
     juce::AudioBuffer<float> dryDelayBuffer;

@@ -7,22 +7,23 @@ namespace anamorph::gui
 {
 
 // ============================================================================
-//  CorrelationMeter
+//  StereoMeter
 //
-//  A -1..+1 phase-correlation meter, drawn either horizontally (placed under
-//  the vectorscope) or vertically (placed to its right) per the Insight/Ozone
-//  Imager reference layout. Reads the audio-thread CorrelationMeter via atomics
-//  on a timer; the horizontal meter shows the slow average, the vertical shows
-//  the fast value (so you get both a stable and a responsive read).
+//  A slim -1..+1 readout placed around the vectorscope (Insight / Imager 2
+//  layout, spec feedback #9):
+//    * Balance     (horizontal, under the scope): L .. C .. R energy balance.
+//    * Correlation (vertical, right of the scope): phase correlation -1..+1.
+//  Reads the audio-thread anamorph::CorrelationMeter via atomics on a timer.
 // ============================================================================
-class CorrelationMeter : public juce::Component,
-                         private juce::Timer
+class StereoMeter : public juce::Component,
+                    private juce::Timer
 {
 public:
     enum class Orientation { Horizontal, Vertical };
+    enum class Type        { Balance, Correlation };
 
-    CorrelationMeter (anamorph::CorrelationMeter& src, Orientation o);
-    ~CorrelationMeter() override;
+    StereoMeter (anamorph::CorrelationMeter& src, Orientation, Type);
+    ~StereoMeter() override;
 
     void paint (juce::Graphics&) override;
 
@@ -31,9 +32,10 @@ private:
 
     anamorph::CorrelationMeter& source;
     Orientation orientation;
-    float value = 1.0f;   // smoothed display value
+    Type        type;
+    float value = 0.0f;   // smoothed display value
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (CorrelationMeter)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (StereoMeter)
 };
 
 } // namespace anamorph::gui

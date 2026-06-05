@@ -13,7 +13,7 @@
 namespace anamorph
 {
 
-enum class ChannelMode  { Stereo = 0, Mono, LeftOnly, RightOnly };
+enum class ChannelMode  { Stereo = 0, LeftOnly, RightOnly };   // "kill a channel" (Mono is its own toggle)
 enum class Algorithm    { Haas = 0, Velvet, Chorus, DimensionD };
 enum class HaasSide     { Left = 0, Right };
 enum class SoloMode     { Off = 0, Mid, Side };
@@ -23,6 +23,7 @@ struct EngineParameters
 {
     // --- 1. Input conditioning -------------------------------------------
     ChannelMode channelMode = ChannelMode::Stereo;
+    bool        monoSum     = false;   // sum L+R -> mono (own toggle, near Swap)
     bool        swapLR      = false;
     float       inputBalance = 0.0f;   // -1 (L) .. +1 (R)
     bool        polarityL   = false;
@@ -35,22 +36,26 @@ struct EngineParameters
     float       driveDb     = 0.0f;    // 0 .. 24 dB pre-saturation gain
     Algorithm   algorithm   = Algorithm::Velvet;
 
+    // Unified widening intensity: 0 == identity (the wet path is transparent),
+    // so a freshly-loaded plug-in does NOTHING to the sound (spec feedback #3).
+    // The per-algorithm controls below only shape the character.
+    float       algoAmount  = 0.0f;    // 0 .. 1
+
     // Haas
     float       haasDelayMs = 12.0f;   // 1 .. 35 ms
     HaasSide    haasSide    = HaasSide::Right;
 
     // Velvet noise decorrelation
-    float       velvetDensity = 0.5f;  // 0 .. 1 (diffusion amount)
+    float       velvetDensity = 0.5f;  // 0 .. 1 (diffusion character)
 
     // Chorus
     float       chorusRate  = 0.6f;    // Hz
     float       chorusDepth = 0.5f;    // 0 .. 1
 
     // Dimension-D (anti-phase, no pitch wobble). Mode selects a voicing.
-    int         dimMode     = 1;       // 1 .. 4 classic mode buttons
-    float       dimAmount   = 0.5f;    // 0 .. 1
+    int         dimMode     = 1;       // 1 .. 4 voicings
 
-    // Global width (MS-domain)
+    // Global width (MS-domain). 1.0 (== 100%) is identity (spec feedback #3).
     float       width       = 1.0f;    // 0 = mono, 1 = unchanged, 2 = wide
 
     // --- 4. Multiband width (Advanced) -----------------------------------
@@ -69,15 +74,16 @@ struct EngineParameters
     float       mix         = 1.0f;    // 0 = dry, 1 = wet
 
     // --- 8. Output / Auto gain -------------------------------------------
-    float       outputGainDb = 0.0f;   // manual output trim
+    float       outputGainDb  = 0.0f;  // manual output trim
+    float       outputBalance = 0.0f;  // -1 (L) .. +1 (R) whole-plugin balance
     bool        autoGainMatch = false; // real-time loudness match (A/B aid)
 
     // --- Monitoring -------------------------------------------------------
-    bool        polarityOutL = false;  // unused placeholder for symmetry
     SoloMode    solo        = SoloMode::Off;
 
     // --- 9. Oversampling --------------------------------------------------
-    OversampleFactor oversample = OversampleFactor::Off;
+    OversampleFactor oversample = OversampleFactor::Off;  // default 1x (Off)
+    bool        zeroLatency = false;   // live/tracking: force 0 latency
 
     // --- Bypass -----------------------------------------------------------
     bool        bypass      = false;

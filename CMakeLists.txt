@@ -11,7 +11,7 @@ cmake_minimum_required(VERSION 3.22)
 #     cmake --build build --config Release
 # ============================================================================
 
-project(Anamorph VERSION 1.0.0 LANGUAGES C CXX)
+project(Anamorph VERSION 0.2.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -85,8 +85,8 @@ if(ANAMORPH_BUILD_STANDALONE)
 endif()
 
 juce_add_plugin(Anamorph
-    COMPANY_NAME            "Anamorph Audio"
-    BUNDLE_ID               "com.anamorphaudio.anamorph"
+    COMPANY_NAME            "Rolly Tech"
+    BUNDLE_ID               "com.rollytech.anamorph"
     PLUGIN_MANUFACTURER_CODE Anmf
     PLUGIN_CODE             Anmr
     FORMATS                 ${ANAMORPH_FORMATS}
@@ -112,7 +112,13 @@ target_sources(Anamorph PRIVATE
 
 target_include_directories(Anamorph PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
+# Versioning (spec feedback #32): a human main version (0.x.y, < 1.0.0 pre-release)
+# plus a build/dev number synced with CI (pass -DANAMORPH_BUILD_NUMBER=${github.run_number}).
+set(ANAMORPH_BUILD_NUMBER "0" CACHE STRING "CI build / dev number shown in the About box")
+
 target_compile_definitions(Anamorph PUBLIC
+    ANAMORPH_VERSION_STRING="${PROJECT_VERSION}"
+    ANAMORPH_BUILD_NUMBER="${ANAMORPH_BUILD_NUMBER}"
     JUCE_WEB_BROWSER=0          # no webview needed -> no hard webkit dependency at runtime
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0

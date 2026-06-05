@@ -47,6 +47,7 @@ public:
     // --- editor access ---
     juce::AudioProcessorValueTreeState& getAPVTS() noexcept { return apvts; }
     anamorph::AnamorphEngine& getEngine() noexcept          { return engine; }
+    juce::UndoManager& getUndoManager() noexcept            { return undoManager; }
 
     // Auto-Gain "Apply": locks the measured loudness-match gain into Output Gain.
     void applyAutoGain();
@@ -55,6 +56,7 @@ private:
     void parameterChanged (const juce::String& id, float newValue) override;
     void updateLatency();
 
+    juce::UndoManager undoManager;
     juce::AudioProcessorValueTreeState apvts;
     ParamPointers params;
     anamorph::AnamorphEngine engine;

@@ -122,6 +122,8 @@ void AnamorphLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButto
 void AnamorphLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& b,
                                                 const juce::Colour&, bool highlighted, bool down)
 {
+    if (b.getComponentID() == "ghost") return; // invisible hit-area (e.g. title)
+
     auto bounds = b.getLocalBounds().toFloat().reduced (1.0f);
     const bool on = b.getToggleState();
     auto fill = on ? colours::accent.withAlpha (0.9f)
@@ -154,6 +156,38 @@ void AnamorphLookAndFeel::drawComboBox (juce::Graphics& g, int w, int h, bool,
 juce::Font AnamorphLookAndFeel::getLabelFont (juce::Label&)
 {
     return juce::Font (juce::FontOptions (13.0f));
+}
+
+// ---- Tooltips: rounded dark capsule, accent hairline, soft text (#20) ----
+static juce::TextLayout layoutTooltip (const juce::String& text, float maxWidth)
+{
+    juce::AttributedString s;
+    s.append (text, juce::Font (juce::FontOptions (12.5f)), colours::text);
+    s.setJustification (juce::Justification::centredLeft);
+    juce::TextLayout tl;
+    tl.createLayout (s, maxWidth);
+    return tl;
+}
+
+juce::Rectangle<int> AnamorphLookAndFeel::getTooltipBounds (const juce::String& tip, juce::Point<int> pos,
+                                                            juce::Rectangle<int> parentArea)
+{
+    auto tl = layoutTooltip (tip, 260.0f);
+    const int w = (int) std::ceil (tl.getWidth())  + 20;
+    const int h = (int) std::ceil (tl.getHeight()) + 14;
+    return juce::Rectangle<int> (pos.x > parentArea.getCentreX() ? pos.x - (w + 12) : pos.x + 14,
+                                 pos.y > parentArea.getCentreY() ? pos.y - (h + 8)  : pos.y + 16,
+                                 w, h).constrainedWithin (parentArea);
+}
+
+void AnamorphLookAndFeel::drawTooltip (juce::Graphics& g, const juce::String& text, int w, int h)
+{
+    auto b = juce::Rectangle<float> (0, 0, (float) w, (float) h);
+    g.setColour (colours::bgRaised);
+    g.fillRoundedRectangle (b.reduced (1.0f), 6.0f);
+    g.setColour (colours::accent.withAlpha (0.55f));
+    g.drawRoundedRectangle (b.reduced (1.0f), 6.0f, 1.0f);
+    layoutTooltip (text, (float) w - 20.0f).draw (g, b.reduced (10.0f, 7.0f));
 }
 
 } // namespace anamorph::gui

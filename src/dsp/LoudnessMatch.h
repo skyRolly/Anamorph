@@ -62,7 +62,9 @@ private:
 
     KWeighting kDryL, kDryR, kWetL, kWetR;
     double meanSqDry = 1.0e-9, meanSqWet = 1.0e-9;
-    double smoothCoeff = 0.0; // integration window
+    double smoothCoeff = 0.0; // loudness integration window
+    double sampleRate = 48000.0;
+    double displayedGainDb = 0.0; // adaptively-smoothed published value (#19)
     std::atomic<float> matchGainDb { 0.0f };
 };
 
