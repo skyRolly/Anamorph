@@ -7,9 +7,23 @@ vectorscope. Built with **CMake + JUCE** only — it configures and builds
 entirely from the command line on a headless Linux machine, with no IDE.
 
 > Primary build target: **VST3** (+ a Standalone target for convenience).
-> AU and AAX are intentionally **out of scope for now** (AU needs macOS/Xcode;
-> AAX needs an Avid account + PACE/iLok signing). The DSP core is fully
-> decoupled from the plugin wrapper, so enabling them later is near-zero work.
+> **AU (Audio Unit) is built on macOS** — the `macos` CI job produces a
+> universal VST3 **and** `.component` (AU), so Logic/GarageBand are covered.
+> **AAX** is still out of scope (needs an Avid account + PACE/iLok signing).
+> The DSP core is fully decoupled from the plugin wrapper, so adding AAX later
+> is near-zero work.
+
+## Prebuilt binaries (no toolchain needed)
+
+Every push runs GitHub Actions, which uploads ready-to-use plugins as build
+**artifacts** (Actions run → *Artifacts*):
+- **`Anamorph-macOS`** — universal (Apple Silicon + Intel) **VST3 + AU**, with
+  an `INSTALL.txt`. AU is what **Logic Pro / GarageBand** load.
+- **`Anamorph-VST3-Linux`** — Linux x86-64 VST3.
+
+macOS plugins are ad-hoc signed but not notarized, so after downloading run
+`xattr -dr com.apple.quarantine` on the bundles (see the bundled `INSTALL.txt`).
+Windows is not yet wired into CI — say the word and it's a small addition.
 
 ---
 

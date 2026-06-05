@@ -1,0 +1,52 @@
+Anamorph — macOS install / 安装说明
+====================================
+
+This bundle was built by CI as a UNIVERSAL binary (Apple Silicon + Intel).
+It is ad-hoc code-signed but NOT notarized by Apple, so macOS Gatekeeper will
+quarantine it after download. Follow the steps below or it won't load.
+
+本插件由 CI 编译为通用二进制(Apple 芯片 + Intel 都可用),做了 ad-hoc 签名但
+没有经过 Apple 公证。从网上下载后 macOS 会把它隔离(quarantine),所以必须按下面
+步骤去掉隔离,否则 DAW 里加载不出来。
+
+--------------------------------------------------------------------
+1) Install the formats you need / 安装你需要的格式
+--------------------------------------------------------------------
+  * VST3  (Reaper, Ableton, Cubase, Bitwig, ...):
+        ~/Library/Audio/Plug-Ins/VST3/
+
+  * AU / Audio Unit  (Logic Pro, GarageBand, and also Reaper/Ableton):
+        ~/Library/Audio/Plug-Ins/Components/
+
+  Logic Pro 和 GarageBand 只认 AU(.component),不认 VST3 —— 用 Logic 的话装 AU。
+
+  Copy commands / 复制命令:
+
+      mkdir -p ~/Library/Audio/Plug-Ins/VST3 ~/Library/Audio/Plug-Ins/Components
+      cp -R "Anamorph.vst3"      ~/Library/Audio/Plug-Ins/VST3/
+      cp -R "Anamorph.component" ~/Library/Audio/Plug-Ins/Components/
+
+--------------------------------------------------------------------
+2) Remove the quarantine flag / 去掉隔离标记  (REQUIRED / 必须)
+--------------------------------------------------------------------
+      xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/Anamorph.vst3
+      xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/Components/Anamorph.component
+
+--------------------------------------------------------------------
+3) Rescan in your DAW / 在 DAW 里重新扫描插件
+--------------------------------------------------------------------
+  * Logic Pro: it runs AU validation on launch. To check from Terminal:
+        auval -v aufx Anmr Anmf
+    (type=aufx, subtype=Anmr, manufacturer=Anmf). "PASS" means Logic will see it.
+  * Reaper: Preferences > Plug-ins > VST/AU > Re-scan.
+
+--------------------------------------------------------------------
+Notes / 说明
+--------------------------------------------------------------------
+- Two input layouts: mono->stereo and stereo->stereo. On a MONO track the host
+  picks the mono->stereo version (the "turn mono into stereo" feature).
+- If macOS still complains, right-click the .component/.vst3 in Finder once and
+  choose "Open", or check System Settings > Privacy & Security for an "Open
+  Anyway" button.
+- This is an unsigned developer build for testing. For distribution you'd sign
+  with a Developer ID and notarize.
