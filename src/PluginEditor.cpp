@@ -13,11 +13,16 @@ using namespace anamorph::gui;
 // ============================================================================
 void AnamorphAudioProcessorEditor::Backdrop::paint (juce::Graphics& g)
 {
-    g.fillAll (juce::Colour (0xcc06080b));
+    // While revealing (Persist drag), only partially dim and partially fade the
+    // panel so the live vectorscope shows through -- the bar/controls on top stay
+    // fully opaque (#26).
+    const float dimA   = juce::jmap (reveal, 0.0f, 1.0f, 0.80f, 0.34f);
+    const float panelA = juce::jmap (reveal, 0.0f, 1.0f, 1.0f, 0.30f);
+    g.fillAll (juce::Colour (0x06080b).withAlpha (dimA));
 
-    g.setColour (colours::bgPanel);
+    g.setColour (colours::bgPanel.withAlpha (panelA));
     g.fillRoundedRectangle (panel.toFloat(), 12.0f);
-    g.setColour (colours::outline);
+    g.setColour (colours::outline.withAlpha (juce::jmap (reveal, 0.0f, 1.0f, 1.0f, 0.5f)));
     g.drawRoundedRectangle (panel.toFloat().reduced (0.5f), 12.0f, 1.0f);
 
     if (aboutText)
@@ -116,8 +121,7 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
 
     abControl.getActive = [this] { return processor.abActiveSlot(); };
     abControl.onToggle  = [this] { processor.abSwitchTo (processor.abActiveSlot() == 0 ? 1 : 0); repaint(); };
-    abControl.setTooltip ("A/B compare " + juce::String::charToString ((juce::juce_wchar) 0x2014)
-                          + " click to switch. Copy stores the current sound into the other slot.");
+    abControl.setTooltip ("A/B Compare."); // #31
     addAndMakeVisible (abControl);
     copyButton.onClick = [this] { processor.abCopyToOther(); };
     copyButton.setTooltip ("Copy the current settings into the other A/B slot.");
@@ -137,7 +141,7 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     addAndMakeVisible (undoButton);
     addAndMakeVisible (redoButton);
 
-    setupToggle (metersToggle, pid::metersOn, "", "Show input / output level meters.");
+    setupToggle (metersToggle, pid::metersOn, "", "Show level meters."); // #32
     metersToggle.setComponentID ("metersicon"); // level-meter glyph, not the word (#7)
     metersToggle.onClick = [this] { metersOn = metersToggle.getToggleState(); if (metersOn) levelMeter->setVisible (true); };
 
@@ -148,7 +152,7 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     bypassToggle.setComponentID ("bypass");
 
     // --- WIDEN module (the Simple-mode core) ---
-    setupCombo (algorithmBox, pid::algorithm, "How stereo is created from mono.");
+    setupCombo (algorithmBox, pid::algorithm, "The stereo-widening algorithm."); // #4
     algorithmBox.onChange = [this] { updateAlgoControls(); resized(); };
     algorithmLabel.setText ("WIDEN", juce::dontSendNotification);
     algorithmLabel.setJustificationType (juce::Justification::centredLeft);
@@ -156,8 +160,13 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     algorithmLabel.setFont (juce::Font (juce::FontOptions (11.0f)).withExtraKerningFactor (0.2f));
     addAndMakeVisible (algorithmLabel);
 
+    algoOptLabel.setJustificationType (juce::Justification::centred); // caption over side/voicing combo (#9)
+    algoOptLabel.setColour (juce::Label::textColourId, colours::textDim);
+    algoOptLabel.setFont (juce::Font (juce::FontOptions (10.0f)).withExtraKerningFactor (0.18f));
+    addAndMakeVisible (algoOptLabel);
+
     setupCombo (haasSideBox, pid::haasSide, "Which side the sound leans toward.");
-    setupCombo (dimModeBox,  pid::dimMode,  "Voicing of the Dim D widener.");
+    setupCombo (dimModeBox,  pid::dimMode,  "Voicing of the Dim-D widener."); // #5
 
     setupRotary (driveK,  driveL,  "Drive",  "Adds gentle saturation / density. 0 dB is clean.");
     setupRotary (amountK, amountL, "Amount", "How much widening. 0% is fully transparent.");
@@ -270,7 +279,8 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     aboutLink.setColour (juce::HyperlinkButton::textColourId, colours::accent);
     aboutLink.setFont (juce::Font (juce::FontOptions (13.0f)), false, juce::Justification::centredLeft);
     aboutLink.setJustificationType (juce::Justification::centredLeft);
-    aboutBackdrop.addAndMakeVisible (aboutLink); // clickable www.rolly.tech (#4)
+    aboutLink.setTooltip (juce::String()); // no tooltip on the URL (#2)
+    aboutBackdrop.addAndMakeVisible (aboutLink); // clickable www.rolly.tech
 
     settingsBackdrop.onDismiss = [this] { showSettings (false); };
     addChildComponent (settingsBackdrop);
@@ -356,6 +366,22 @@ void AnamorphAudioProcessorEditor::setupRotary (juce::Slider& s, juce::Label& l,
 void AnamorphAudioProcessorEditor::attachSlider (juce::Slider& s, const char* id)
 {
     sliderAtts.add (new SliderAttachment (processor.getAPVTS(), id, s));
+
+    auto* p = processor.getAPVTS().getParameter (id);
+    if (auto* k = dynamic_cast<Knob*> (&s); k != nullptr && p != nullptr)
+        k->resetValue = p->getNormalisableRange().convertFrom0to1 (p->getDefaultValue()); // #6
+
+    // Tag the unit so the value box can show a bare number while editing (#36).
+    const juce::String sid (id);
+    juce::String unit;
+    if      (sid == pid::drive || sid == pid::outputGain) unit = "db";
+    else if (sid == pid::haasDelay) unit = "ms";
+    else if (sid == pid::amount || sid == pid::velvetDensity || sid == pid::chorusDepth
+          || sid == pid::width || sid == pid::mix || sid == pid::scopePersist
+          || sid == pid::mbWidthLow || sid == pid::mbWidthMid || sid == pid::mbWidthHigh) unit = "pct";
+    else if (sid == pid::monoMakerFreq || sid == pid::mbFreqLow || sid == pid::mbFreqHigh) unit = "hz";
+    else if (sid == pid::inputBalance || sid == pid::outputBalance) unit = "bal";
+    if (unit.isNotEmpty()) s.getProperties().set ("unit", unit);
 }
 
 void AnamorphAudioProcessorEditor::setupCombo (juce::ComboBox& box, const char* id, const juce::String& tip)
@@ -399,6 +425,11 @@ void AnamorphAudioProcessorEditor::updateAlgoControls()
     chorusDepthK.setVisible (algo == 2);chorusDepthL.setVisible (algo == 2);
     haasSideBox.setVisible (algo == 0);
     dimModeBox.setVisible  (algo == 3);
+
+    // Caption over the side/voicing combo (#9): one intuitive word per algorithm.
+    algoOptLabel.setVisible (algo == 0 || algo == 3);
+    algoOptLabel.setText (algo == 0 ? "LEAN" : algo == 3 ? "STYLE" : juce::String(),
+                          juce::dontSendNotification);
 }
 
 void AnamorphAudioProcessorEditor::updateModeVisibility()
@@ -420,7 +451,7 @@ void AnamorphAudioProcessorEditor::updateModeVisibility()
 void AnamorphAudioProcessorEditor::showAbout (bool show)    { aboutBackdrop.setVisible (show);    if (show) { aboutBackdrop.toFront (false); resized(); } }
 void AnamorphAudioProcessorEditor::showSettings (bool show)
 {
-    if (show) { persistDragging = false; settingsDim = 1.0f; settingsBackdrop.setAlpha (1.0f); }
+    if (show) { persistDragging = false; settingsBackdrop.reveal = 0.0f; }
     settingsBackdrop.setVisible (show);
     if (show) { settingsBackdrop.toFront (false); resized(); }
 }
@@ -445,11 +476,12 @@ void AnamorphAudioProcessorEditor::timerCallback()
         applyTooltipsEnabled();
     }
 
-    // Ease the level-meter reveal: vectorscope slides right, meter grows in (#19).
+    // Ease the level-meter reveal: vectorscope slides right, meter grows in.
+    // Shorter, snappier than before (#27).
     const float target = metersOn ? 1.0f : 0.0f;
     if (std::abs (meterAnim - target) > 0.001f)
     {
-        meterAnim += (target - meterAnim) * 0.30f;
+        meterAnim += (target - meterAnim) * 0.55f;
         if (std::abs (meterAnim - target) < 0.01f)
         {
             meterAnim = target;
@@ -458,14 +490,15 @@ void AnamorphAudioProcessorEditor::timerCallback()
         resized();
     }
 
-    // Settings overlay fades down while the Persist bar is dragged (#9).
+    // Settings overlay becomes see-through (panel + dim only; the bar stays
+    // opaque) while the Persist bar is dragged -- shorter, gentler reveal (#26).
     if (settingsBackdrop.isVisible())
     {
-        const float dimTarget = persistDragging ? 0.12f : 1.0f;
-        if (std::abs (settingsDim - dimTarget) > 0.002f)
+        const float revTarget = persistDragging ? 1.0f : 0.0f;
+        if (std::abs (settingsBackdrop.reveal - revTarget) > 0.004f)
         {
-            settingsDim += (dimTarget - settingsDim) * 0.25f; // eased, non-linear
-            settingsBackdrop.setAlpha (settingsDim);
+            settingsBackdrop.reveal += (revTarget - settingsBackdrop.reveal) * 0.45f;
+            settingsBackdrop.repaint();
         }
     }
 
@@ -554,8 +587,8 @@ void AnamorphAudioProcessorEditor::resized()
         auto bar = top.reduced (8, 9);
         titleButton.setBounds (juce::Rectangle<int> (10, 0, 300, 46));
         bypassToggle.setBounds   (bar.removeFromRight (84));
-        advancedToggle.setBounds (bar.removeFromRight (58));
-        bar.removeFromRight (8);
+        advancedToggle.setBounds (bar.removeFromRight (66)); // wider so "Adv" fits (#7)
+        bar.removeFromRight (6);
         settingsButton.setBounds (bar.removeFromRight (74));
         bar.removeFromRight (8);
         metersToggle.setBounds   (bar.removeFromRight (34)); // compact icon (#7)
@@ -564,7 +597,7 @@ void AnamorphAudioProcessorEditor::resized()
         undoButton.setBounds (bar.removeFromRight (30));
         bar.removeFromRight (12);
         copyButton.setBounds (bar.removeFromRight (46));
-        abControl.setBounds (bar.removeFromRight (56).reduced (0, 1)); // shorter oval (#4)
+        abControl.setBounds (bar.removeFromRight (50).reduced (0, 1)); // shorter oval (#8)
     }
 
     auto content = r;
@@ -577,7 +610,7 @@ void AnamorphAudioProcessorEditor::resized()
     // ---- Scope + meters (with the reveal animation) ----
     {
         auto sa = leftArea.reduced (16);
-        const int meterFull = 92;
+        const int meterFull = 138; // wider to fit the 8 per-channel numbers, bars stay thin (#17)
         const int reserve = juce::roundToInt (meterFull * meterAnim);
         if (reserve > 2)
         {
@@ -627,7 +660,7 @@ void AnamorphAudioProcessorEditor::resized()
             auto col = rightPanel.reduced (22, 0);
             col.removeFromTop (juce::jmax (16, (col.getHeight() - blockH) / 2));
 
-            algorithmLabel.setBounds (col.removeFromTop (16));
+            { auto lr = col.removeFromTop (16); algoOptLabel.setBounds (lr.removeFromRight (94)); algorithmLabel.setBounds (lr); }
             col.removeFromTop (8);
             layoutAlgoRow (col.removeFromTop (30));
             col.removeFromTop (26);
@@ -641,7 +674,7 @@ void AnamorphAudioProcessorEditor::resized()
             // instead of being crammed at the top (#10).
             auto col = rightPanel.reduced (20, 18);
 
-            algorithmLabel.setBounds (col.removeFromTop (16));
+            { auto lr = col.removeFromTop (16); algoOptLabel.setBounds (lr.removeFromRight (94)); algorithmLabel.setBounds (lr); }
             col.removeFromTop (8);
             layoutAlgoRow (col.removeFromTop (30));
             col.removeFromTop (20);

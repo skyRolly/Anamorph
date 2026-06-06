@@ -22,12 +22,15 @@ public:
 
     void paint (juce::Graphics&) override;
 
+    // Click any number to reset the held peak / clip colours (#16).
+    void mouseDown (const juce::MouseEvent&) override { source.resetHold(); }
+
 private:
     void timerCallback() override { repaint(); }
     void drawBar (juce::Graphics&, juce::Rectangle<float>,
-                  float fastDb, float rmsDb, float peakDb, const juce::String& lab);
-    void drawReadout (juce::Graphics&, juce::Rectangle<float>,
-                      const juce::String& lab, float valueDb, bool dim);
+                  float dimDb, float briDb, float barDb);
+    void drawNumber (juce::Graphics&, juce::Rectangle<float>, float valueDb,
+                     bool peak, bool clip);
 
     anamorph::LevelMeters& source;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (LevelMeter)

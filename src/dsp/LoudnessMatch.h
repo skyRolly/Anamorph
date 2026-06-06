@@ -42,6 +42,14 @@ public:
 
     float getMatchGainDb() const noexcept { return matchGainDb.load (std::memory_order_relaxed); }
 
+    // Restore a remembered match value (per A/B slot) so a switch doesn't have to
+    // re-converge from scratch and lurch in level (feedback #23).
+    void setDisplayedGainDb (float db) noexcept
+    {
+        displayedGainDb = (double) db;
+        matchGainDb.store (db, std::memory_order_relaxed);
+    }
+
 private:
     struct Biquad
     {

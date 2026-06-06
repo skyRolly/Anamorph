@@ -271,6 +271,43 @@ static void testMonoMaker()
     std::printf ("  side RMS  on=%.4f  off=%.4f\n", sideOn, sideOff);
     check (sideOff > 0.4, "Mono Maker OFF preserves the side tone");
     check (sideOn < 0.1 * sideOff, "Mono Maker ON removes the low-frequency side");
+
+    // A MONO low tone (L = R) must be PRESERVED, not cut (feedback #25). Measure
+    // the Mid energy with Mono Maker on; it should match the input level.
+    auto measureMonoMid = [&] (bool monoMakerOn)
+    {
+        anamorph::AnamorphEngine engine;
+        engine.prepare (sr, block);
+        anamorph::EngineParameters p;
+        p.monoMakerEnable = monoMakerOn;
+        p.monoMakerFreq   = 200.0f;
+        engine.setParameters (p);
+        engine.reset();
+        double phase = 0.0;
+        const double inc = 2.0 * 3.14159265358979 * freq / sr;
+        double midSq = 0.0; int counted = 0;
+        for (int nb = 0; nb < 60; ++nb)
+        {
+            juce::AudioBuffer<float> buf (2, block);
+            for (int i = 0; i < block; ++i)
+            {
+                const float s = (float) std::sin (phase); phase += inc;
+                buf.setSample (0, i, s); buf.setSample (1, i, s); // mono low
+            }
+            engine.setParameters (p);
+            engine.process (buf);
+            if (nb >= 40)
+                for (int i = 0; i < block; ++i)
+                {
+                    const float mid = 0.5f * (buf.getSample (0, i) + buf.getSample (1, i));
+                    midSq += mid * mid; ++counted;
+                }
+        }
+        return std::sqrt (midSq / juce::jmax (1, counted));
+    };
+    const double midOn = measureMonoMid (true);
+    std::printf ("  mono-low Mid RMS on=%.4f (expect ~0.70)\n", midOn);
+    check (midOn > 0.6, "Mono Maker preserves a MONO low tone (not a low-cut)");
 }
 
 // ---------------------------------------------------------------------------

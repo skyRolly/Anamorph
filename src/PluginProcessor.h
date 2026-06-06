@@ -69,6 +69,7 @@ private:
 
     juce::ValueTree abSlotA, abSlotB;
     int abActive = 0;
+    float abMatchGain[2] = { 0.0f, 0.0f }; // remembered Level-Match per A/B slot (#23)
 
     juce::UndoManager undoManager;
     juce::AudioProcessorValueTreeState apvts;
@@ -76,6 +77,7 @@ private:
     anamorph::AnamorphEngine engine;
 
     juce::AudioParameterBool* bypassParam = nullptr;
+    bool prevPlaying = false; // transport edge-detect for meter reset (#15)
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AnamorphAudioProcessor)
 };

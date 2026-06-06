@@ -78,6 +78,15 @@ void AnamorphAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     if (buffer.getNumChannels() < 2)
         return; // safety: engine requires a stereo working buffer
 
+    // Reset the meter peak-hold / clip latches when transport (re)starts (#15).
+    bool playing = false;
+    if (auto* ph = getPlayHead())
+        if (auto pos = ph->getPosition())
+            playing = pos->getIsPlaying();
+    if (playing && ! prevPlaying)
+        engine.getLevels().resetHold();
+    prevPlaying = playing;
+
     engine.setParameters (params.toEngine());
     engine.process (buffer);
 }
@@ -118,11 +127,12 @@ void AnamorphAudioProcessor::abEnsureInit()
 
 void AnamorphAudioProcessor::abApplySlot (int slot)
 {
-    // Preserve the global view params (Advanced / Bypass / Oversampling / Meters /
-    // Tooltips) so an A/B switch only swaps the sound, never the view (#10 / #15).
+    // The "view" + "settings" params live in a SINGLE shared store: they are not
+    // part of A/B and never swap (Advanced / Bypass / Oversampling / Meters /
+    // Tooltips / Scope Persistence) (feedback #13 / #15).
     auto snap = [this] (const char* id) { return apvts.getParameter (id)->getValue(); };
     const float adv = snap (pid::advancedMode), byp = snap (pid::bypass), os = snap (pid::oversample);
-    const float mtr = snap (pid::metersOn), tip = snap (pid::tooltipsOn);
+    const float mtr = snap (pid::metersOn), tip = snap (pid::tooltipsOn), per = snap (pid::scopePersist);
 
     apvts.replaceState ((slot == 1 ? abSlotB : abSlotA).createCopy());
 
@@ -131,6 +141,7 @@ void AnamorphAudioProcessor::abApplySlot (int slot)
     apvts.getParameter (pid::oversample)->setValueNotifyingHost (os);
     apvts.getParameter (pid::metersOn)->setValueNotifyingHost (mtr);
     apvts.getParameter (pid::tooltipsOn)->setValueNotifyingHost (tip);
+    apvts.getParameter (pid::scopePersist)->setValueNotifyingHost (per);
 }
 
 void AnamorphAudioProcessor::abSwitchTo (int slot)
@@ -138,8 +149,10 @@ void AnamorphAudioProcessor::abSwitchTo (int slot)
     abEnsureInit();
     if (slot == abActive) return;
     (abActive == 1 ? abSlotB : abSlotA) = apvts.copyState(); // store edits in the old slot
+    abMatchGain[abActive] = engine.getMatchGainDb();         // remember this slot's match (#23)
     abActive = slot;
     abApplySlot (slot);
+    engine.injectMatchGainDb (abMatchGain[slot]);            // restore the new slot's match (#23)
 }
 
 void AnamorphAudioProcessor::abCopyToOther()
