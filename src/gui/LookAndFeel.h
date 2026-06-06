@@ -74,4 +74,19 @@ public:
                                            juce::Rectangle<int> parentArea) override;
 };
 
+// A variant with a smaller pop-up list, applied only to the compact Input
+// Channel / M/S Solo combos so their lists feel balanced (#12).
+class CompactComboLookAndFeel : public AnamorphLookAndFeel
+{
+public:
+    juce::Font getComboBoxFont (juce::ComboBox&) override { return juce::Font (juce::FontOptions (12.0f)); }
+    juce::Font getPopupMenuFont() override                { return juce::Font (juce::FontOptions (12.0f)); }
+    void getIdealPopupMenuItemSize (const juce::String& text, bool isSeparator,
+                                    int standardHeight, int& w, int& h) override
+    {
+        AnamorphLookAndFeel::getIdealPopupMenuItemSize (text, isSeparator, standardHeight, w, h);
+        if (! isSeparator) h = 19;
+    }
+};
+
 } // namespace anamorph::gui

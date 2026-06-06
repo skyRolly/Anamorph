@@ -6,6 +6,21 @@ of stereo tools (MS, mono-maker, channel utilities, monitoring) around a
 high-end diamond vectorscope. Built with **CMake + JUCE** only — it configures
 and builds entirely from the command line on a headless Linux machine, no IDE.
 
+### What's new in 0.5.1
+- **Undo/Redo reworked**: each **A/B slot keeps its own** undo history; the
+  Undo/Redo buttons only affect the current slot, an A/B switch is never an undo
+  step, and **Bypass / Settings / Meters** are excluded from history. Copy is
+  undoable on the slot it changed. (Replaces JUCE's global undo manager.)
+- **Drive + Mono Maker** no longer sounds like a low cut: the mono low band is
+  now driven together with the highs.
+- **Value box**: dragging the number and the bare-number/`2k` editor now actually
+  work — they were being created with the wrong look-and-feel before.
+- **Meters** tuned to iZotope Insight 2 Levels (300 ms VU body, fast riser that
+  falls with it, 1 s peak hold), richer bar rendering, equal-size Peak/RMS text.
+- UI: Input toggle baseline + Balance layout fixed, "Focus"/"Style" captions
+  left-aligned, compact Input-combo lists, bigger Simple-mode Widen labels,
+  shorter A/B oval, tidied tooltips.
+
 ### What's new in 0.5.0
 - **Mono Maker is a proper band-split now**: the low band is summed to mono and
   routed *around* both the widener **and** the dry/wet Mix, straight to Output —

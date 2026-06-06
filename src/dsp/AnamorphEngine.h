@@ -106,6 +106,7 @@ private:
     // Smoothed continuous controls (avoid zipper noise / clicks -- #1).
     juce::SmoothedValue<float> widthSmooth, mixSmooth, outGainSmooth, matchGainSmooth;
     juce::SmoothedValue<float> balanceSmooth, outBalanceSmooth, driveSmooth, driveBlendSmooth;
+    juce::SmoothedValue<float> monoDriveSmooth, monoDriveBlendSmooth; // Drive applied to the mono low band (#1)
     juce::SmoothedValue<float> polLSmooth, polRSmooth; // smoothed polarity sign (no click)
 
     // Click-free discrete switching (feedback #10 / #11). A change to a discrete

@@ -72,6 +72,7 @@ private:
 
     AnamorphAudioProcessor& processor;
     anamorph::gui::AnamorphLookAndFeel lnf;
+    anamorph::gui::CompactComboLookAndFeel compactCombo; // smaller list for Input combos (#12)
     juce::OpenGLContext openGLContext;
     juce::TooltipWindow tooltips { nullptr, 600 };
 

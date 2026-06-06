@@ -46,6 +46,10 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
     outBalanceSmooth.reset (sr, ramp);
     driveSmooth     .reset (sr, ramp);
     driveBlendSmooth.reset (sr, 0.015);
+    monoDriveSmooth     .reset (sr, ramp);
+    monoDriveBlendSmooth.reset (sr, 0.015);
+    monoDriveSmooth     .setCurrentAndTargetValue (1.0f);
+    monoDriveBlendSmooth.setCurrentAndTargetValue (0.0f);
     polLSmooth      .reset (sr, 0.005);
     polRSmooth      .reset (sr, 0.005);
     polLSmooth      .setCurrentAndTargetValue (1.0f);
@@ -239,6 +243,8 @@ void AnamorphEngine::updateDerived()
     // (feedback #13) -- the peak-preserving makeup is only mixed in gradually.
     driveSmooth.setTargetValue (juce::Decibels::decibelsToGain (juce::jmax (0.0f, p.driveDb)));
     driveBlendSmooth.setTargetValue (juce::jlimit (0.0f, 1.0f, p.driveDb / 2.0f));
+    monoDriveSmooth.setTargetValue (driveSmooth.getTargetValue());
+    monoDriveBlendSmooth.setTargetValue (driveBlendSmooth.getTargetValue());
 
     // Unified widening intensity -> every algorithm is identity at amount 0.
     // Each algorithm smooths the amount internally (click-free, #1).
@@ -436,7 +442,24 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     // Output gain/balance), so the low end is unaffected by widening OR Mix.
     const bool monoMakerActive = p.monoMakerEnable;
     if (monoMakerActive)
+    {
         monoMaker.processSplit (L, R, monoLow.getWritePointer (0), n);
+
+        // Drive the mono low band with the SAME saturation as the high band, so
+        // raising Drive doesn't just boost the highs and make Mono Maker sound
+        // like a low cut (feedback #1). Low-frequency mono -> base rate is fine.
+        if (driveActive || monoDriveBlendSmooth.isSmoothing())
+        {
+            float* ml = monoLow.getWritePointer (0);
+            for (int i = 0; i < n; ++i)
+            {
+                const float g = juce::jmax (1.0f, monoDriveSmooth.getNextValue());
+                const float blend = monoDriveBlendSmooth.getNextValue();
+                const float sat = std::tanh (g * ml[i]) * (1.0f / std::tanh (g));
+                ml[i] += blend * (sat - ml[i]);
+            }
+        }
+    }
 
     // DRY for the dry/wet mix = the band that actually enters the widener
     // (the high band when Mono Maker is on, otherwise the full signal).
