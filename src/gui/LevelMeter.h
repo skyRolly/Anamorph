@@ -24,7 +24,10 @@ public:
 
 private:
     void timerCallback() override { repaint(); }
-    void drawBar (juce::Graphics&, juce::Rectangle<float>, float rmsDb, float peakDb, const juce::String& lab);
+    void drawBar (juce::Graphics&, juce::Rectangle<float>,
+                  float slowDb, float rmsDb, float peakDb, const juce::String& lab);
+    void drawReadout (juce::Graphics&, juce::Rectangle<float>,
+                      const juce::String& lab, float valueDb, bool dim);
 
     anamorph::LevelMeters& source;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (LevelMeter)

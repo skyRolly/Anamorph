@@ -69,6 +69,15 @@ void StereoMeter::paint (juce::Graphics& g)
         g.drawText (type == Type::Balance ? "R" : "+1", (int) track.getRight() - 18, (int) track.getY(),
                     18, (int) track.getHeight(), juce::Justification::centredRight);
     }
+    else
+    {
+        // Vertical phase meter: +1 at the top, -1 at the bottom, matching the
+        // L/R balance meter's labelled ends (feedback #8).
+        g.drawText ("+1", (int) track.getX(), (int) track.getY() + 1,
+                    (int) track.getWidth(), 10, juce::Justification::centred);
+        g.drawText ("-1", (int) track.getX(), (int) track.getBottom() - 11,
+                    (int) track.getWidth(), 10, juce::Justification::centred);
+    }
 }
 
 } // namespace anamorph::gui

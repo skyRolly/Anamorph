@@ -57,6 +57,8 @@ namespace pid
     // UI-only (still saved with state)
     inline constexpr const char* advancedMode   = "advancedMode";
     inline constexpr const char* scopePersist   = "scopePersist";
+    inline constexpr const char* metersOn       = "metersOn";   // persist Meters toggle (#15)
+    inline constexpr const char* tooltipsOn     = "tooltipsOn"; // persist Tooltips toggle (#15)
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout();

@@ -61,8 +61,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
     // Unified widening intensity. Default 0 == transparent on load (#3).
     floatParam (pid::amount, "Amount", { 0.0f, 1.0f, 0.001f }, 0.0f, pct);
     floatParam (pid::haasDelay, "Haas Delay", { 1.0f, 35.0f, 0.01f }, 12.0f, ms);
+    // Default perceived side = Left (#14); list order unchanged.
     layout.add (std::make_unique<AudioParameterChoice> (ParameterID { pid::haasSide, kVersion },
-        "Haas Side", StringArray { "Left", "Right" }, 1));
+        "Haas Side", StringArray { "Left", "Right" }, 0));
     floatParam (pid::velvetDensity, "Velvet Density", { 0.0f, 1.0f, 0.001f }, 0.5f, pct);
     floatParam (pid::chorusRate, "Chorus Rate", NormalisableRange<float> { 0.05f, 5.0f, 0.001f, 0.4f }, 0.6f,
                 [] (float v, int) { return juce::String (v, 2) + " Hz"; });
@@ -101,9 +102,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
     // --- Bypass (registered as the host bypass parameter) ---
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::bypass, kVersion }, "Bypass", false));
 
-    // --- UI ---
+    // --- UI (saved with state, but UI-only) ---
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::advancedMode, kVersion }, "Advanced Mode", false));
-    floatParam (pid::scopePersist, "Scope Persistence", { 0.0f, 1.0f, 0.001f }, 0.6f, pct);
+    // Persist default 0.5; the scope remaps it so 50% reproduces the old 60% feel (#21).
+    floatParam (pid::scopePersist, "Scope Persistence", { 0.0f, 1.0f, 0.001f }, 0.5f, pct);
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::metersOn, kVersion }, "Show Meters", false));
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::tooltipsOn, kVersion }, "Show Tooltips", false));
 
     return layout;
 }
@@ -150,15 +154,9 @@ anamorph::EngineParameters ParamPointers::toEngine() const
     using namespace anamorph;
     EngineParameters e;
 
-    e.channelMode  = (ChannelMode) (int) channelMode->load();
-    e.monoSum      = monoSum->load() > 0.5f;
-    e.swapLR       = swap->load() > 0.5f;
-    e.inputBalance = inputBalance->load();
-    e.polarityL    = polarityL->load() > 0.5f;
-    e.polarityR    = polarityR->load() > 0.5f;
+    const bool advanced = advancedMode->load() > 0.5f;
 
-    e.msMode       = msMode->load() > 0.5f;
-
+    // --- Core widening (always active, both modes) ---
     e.driveDb      = drive->load();
     e.algorithm    = (Algorithm) (int) algorithm->load();
     e.algoAmount   = amount->load();
@@ -170,27 +168,40 @@ anamorph::EngineParameters ParamPointers::toEngine() const
     e.dimMode      = (int) dimMode->load() + 1; // choice 0..3 -> mode 1..4
     e.width        = width->load();
 
-    // Multiband is an Advanced-Mode feature: only active when both Advanced
-    // Mode and the Multiband enable are on.
-    const bool advanced = advancedMode->load() > 0.5f;
-    e.mbEnable     = advanced && (mbEnable->load() > 0.5f);
-    e.mbFreqLow    = mbFreqLow->load();
-    e.mbFreqHigh   = mbFreqHigh->load();
-    e.mbWidthLow   = mbWidthLow->load();
-    e.mbWidthMid   = mbWidthMid->load();
-    e.mbWidthHigh  = mbWidthHigh->load();
-
-    e.monoMakerEnable = monoMakerOn->load() > 0.5f;
-    e.monoMakerFreq   = monoMakerFreq->load();
-
-    e.mix          = mix->load();
-    e.outputGainDb = outputGain->load();
-    e.outputBalance = outputBalance->load();
-    e.autoGainMatch = autoGainMatch->load() > 0.5f;
-
-    e.solo         = (SoloMode) (int) solo->load();
     e.oversample   = (OversampleFactor) (int) oversample->load();
     e.bypass       = bypass->load() > 0.5f;
+
+    if (advanced)
+    {
+        // --- Input module ---
+        e.channelMode  = (ChannelMode) (int) channelMode->load();
+        e.monoSum      = monoSum->load() > 0.5f;
+        e.swapLR       = swap->load() > 0.5f;
+        e.inputBalance = inputBalance->load();
+        e.polarityL    = polarityL->load() > 0.5f;
+        e.polarityR    = polarityR->load() > 0.5f;
+        e.msMode       = msMode->load() > 0.5f;
+        e.solo         = (SoloMode) (int) solo->load();
+
+        // --- Multiband ---
+        e.mbEnable     = mbEnable->load() > 0.5f;
+        e.mbFreqLow    = mbFreqLow->load();
+        e.mbFreqHigh   = mbFreqHigh->load();
+        e.mbWidthLow   = mbWidthLow->load();
+        e.mbWidthMid   = mbWidthMid->load();
+        e.mbWidthHigh  = mbWidthHigh->load();
+
+        // --- Output module ---
+        e.monoMakerEnable = monoMakerOn->load() > 0.5f;
+        e.monoMakerFreq   = monoMakerFreq->load();
+        e.mix             = mix->load();
+        e.outputGainDb    = outputGain->load();
+        e.outputBalance   = outputBalance->load();
+        e.autoGainMatch   = autoGainMatch->load() > 0.5f;
+    }
+    // else: Advanced-only modules behave as defaults (bypassed) while their knob
+    // values stay put in the tree, so re-enabling Advanced restores them (#1).
+    // EngineParameters' member initialisers already hold those neutral defaults.
 
     return e;
 }

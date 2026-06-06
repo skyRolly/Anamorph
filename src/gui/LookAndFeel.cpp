@@ -104,18 +104,23 @@ void AnamorphLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButto
                                             bool highlighted, bool /*down*/)
 {
     auto bounds = b.getLocalBounds().toFloat();
-    const float h = juce::jmin (20.0f, bounds.getHeight());
-    auto pill = juce::Rectangle<float> (bounds.getX(), bounds.getCentreY() - h * 0.5f, h * 1.9f, h);
+
+    // Leave a uniform inset so the outer glow can never be clipped at the left /
+    // top / bottom edges (feedback #16). The pill is a fixed, compact size.
+    const float pad = 3.0f;
+    const float h   = juce::jlimit (12.0f, 18.0f, bounds.getHeight() - pad * 2.0f);
+    const float pw  = h * 1.8f;
+    auto pill = juce::Rectangle<float> (bounds.getX() + pad,
+                                        bounds.getCentreY() - h * 0.5f, pw, h);
 
     const bool on = b.getToggleState();
-    // Bypass uses a controlled red when engaged so it reads as "off/abnormal"
-    // and stands out without clashing (feedback #8).
+    // Bypass uses a controlled red when engaged so it reads as "off/abnormal".
     const juce::Colour onCol = (b.getComponentID() == "bypass") ? juce::Colour (0xffd0584e)
                                                                 : colours::accent;
-    if (on) // soft outer glow
+    if (on) // soft outer glow (fits inside the pad)
     {
         g.setColour (onCol.withAlpha (0.22f));
-        g.fillRoundedRectangle (pill.expanded (2.2f), (h + 4.4f) * 0.5f);
+        g.fillRoundedRectangle (pill.expanded (2.0f), (h + 4.0f) * 0.5f);
     }
     juce::ColourGradient pg (on ? onCol.brighter (0.10f) : colours::bgRaised.brighter (0.06f),
                              pill.getX(), pill.getY(),
@@ -131,12 +136,17 @@ void AnamorphLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButto
     g.setColour (on ? colours::bg : colours::text);
     g.fillEllipse (kx, pill.getCentreY() - knob * 0.5f, knob, knob);
 
-    g.setColour (highlighted ? colours::text : colours::textDim);
-    g.setFont (juce::Font (juce::FontOptions (13.0f)));
-    g.drawText (b.getButtonText(),
-                pill.getRight() + 8, (int) bounds.getY(),
-                (int) (bounds.getWidth() - pill.getWidth() - 8), (int) bounds.getHeight(),
-                juce::Justification::centredLeft);
+    // Label: fit-to-width so nothing is ever truncated to an ellipsis (#9).
+    const float tx = pill.getRight() + 7.0f;
+    const float tw = bounds.getRight() - tx - 1.0f;
+    if (tw > 4.0f)
+    {
+        g.setColour (highlighted ? colours::text : colours::textDim);
+        g.setFont (juce::Font (juce::FontOptions (12.5f)));
+        g.drawFittedText (b.getButtonText(), (int) tx, (int) bounds.getY(),
+                          (int) tw, (int) bounds.getHeight(),
+                          juce::Justification::centredLeft, 1, 0.85f);
+    }
 }
 
 void AnamorphLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& b,
@@ -165,9 +175,39 @@ void AnamorphLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button&
     g.drawRoundedRectangle (bounds, radius, 1.0f);
 }
 
-juce::Font AnamorphLookAndFeel::getTextButtonFont (juce::TextButton&, int buttonHeight)
+juce::Font AnamorphLookAndFeel::getTextButtonFont (juce::TextButton& b, int buttonHeight)
 {
+    if (b.getComponentID() == "apply") return juce::Font (juce::FontOptions (14.5f)); // bigger Apply (#23)
+    if (b.getComponentID() == "icon")  return juce::Font (juce::FontOptions (21.0f)); // bigger glyph (#7)
     return juce::Font (juce::FontOptions ((float) juce::jmin (13, juce::jmax (10, buttonHeight - 12))));
+}
+
+// Undo/Redo glyphs: render them larger AND rotated 180 degrees, which the user
+// found more comfortable (feedback #7). All other buttons use the default text.
+void AnamorphLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& b,
+                                          bool /*highlighted*/, bool /*down*/)
+{
+    if (b.getComponentID() == "icon")
+    {
+        auto area = b.getLocalBounds().toFloat();
+        g.setFont (getTextButtonFont (b, b.getHeight()));
+        g.setColour (colours::text.withMultipliedAlpha (b.isEnabled() ? 1.0f : 0.4f));
+        juce::Graphics::ScopedSaveState save (g);
+        g.addTransform (juce::AffineTransform::rotation (juce::MathConstants<float>::pi,
+                                                         area.getCentreX(), area.getCentreY()));
+        g.drawText (b.getButtonText(), area, juce::Justification::centred, false);
+        return;
+    }
+    juce::LookAndFeel_V4::drawButtonText (g, b, false, false);
+}
+
+void AnamorphLookAndFeel::drawPopupMenuBackground (juce::Graphics& g, int width, int height)
+{
+    auto b = juce::Rectangle<float> (0, 0, (float) width, (float) height);
+    g.setColour (colours::bgPanel);
+    g.fillRoundedRectangle (b.reduced (1.0f), 8.0f);            // match the combo radius (#22)
+    g.setColour (colours::outline);
+    g.drawRoundedRectangle (b.reduced (1.0f), 8.0f, 1.0f);
 }
 
 void AnamorphLookAndFeel::drawComboBox (juce::Graphics& g, int w, int h, bool,

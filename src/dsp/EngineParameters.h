@@ -43,7 +43,7 @@ struct EngineParameters
 
     // Haas
     float       haasDelayMs = 12.0f;   // 1 .. 35 ms
-    HaasSide    haasSide    = HaasSide::Right;
+    HaasSide    haasSide    = HaasSide::Left;
 
     // Velvet noise decorrelation
     float       velvetDensity = 0.5f;  // 0 .. 1 (diffusion character)

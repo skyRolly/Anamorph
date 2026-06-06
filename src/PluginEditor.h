@@ -47,7 +47,8 @@ private:
     };
 
     // A/B control: shows "A / B" with the active letter bright, the other dim,
-    // a single click toggles (FabFilter-style, #10/#11).
+    // a single click toggles (FabFilter-style). Wrapped in a racetrack/stadium
+    // frame with a micro-gradient + edge glow to match the design language (#6).
     struct ABControl : public juce::Component, public juce::SettableTooltipClient
     {
         std::function<int()>  getActive;
@@ -66,6 +67,7 @@ private:
     void showAbout (bool);
     void showSettings (bool);
     void applyTooltipsEnabled();
+    void applyScopePersist();
 
     AnamorphAudioProcessor& processor;
     anamorph::gui::AnamorphLookAndFeel lnf;
@@ -93,14 +95,15 @@ private:
     juce::Slider haasDelayK, velvetK, chorusRateK, chorusDepthK;
     juce::Label  haasDelayL, velvetL, chorusRateL, chorusDepthL;
 
-    // OUTPUT module
+    // OUTPUT module (advanced, #24)
+    juce::Label  outputModuleLabel;
     juce::Slider mixK, outputK, outBalanceK;
     juce::Label  mixL, outputL, outBalanceL;
     juce::ToggleButton autoMatchToggle;
     juce::TextButton   applyGainButton { "Apply" };
     juce::Label        matchReadout;
 
-    // MONO MAKER (slim bar)
+    // MONO MAKER (slim bar, inside the Output module)
     juce::ToggleButton monoMakerToggle;
     juce::Slider monoFreqK;  juce::Label monoFreqL;
 
@@ -120,23 +123,29 @@ private:
     // Overlays
     DimLayer dimOverlay;
     Backdrop aboutBackdrop, settingsBackdrop;
+    juce::HyperlinkButton aboutLink { "www.rolly.tech", juce::URL ("https://www.rolly.tech") }; // #4
 
     // Settings controls
     juce::ComboBox oversampleBox;  juce::Label oversampleLabel;
     juce::ToggleButton tooltipsToggle;
     juce::Label settingsTitle;
+    juce::Label persistLabel;   // Persist moved into Settings as a bar (#21)
 
     juce::OwnedArray<SliderAttachment>   sliderAtts;
     juce::OwnedArray<ButtonAttachment>   buttonAtts;
     juce::OwnedArray<ComboBoxAttachment> comboAtts;
 
-    bool advanced = false;
-    bool tooltipsOn = false;   // tooltips default OFF (#4)
-    bool metersOn = false;
+    bool  advanced = false;
+    bool  tooltipsOn = false;   // tooltips default OFF
+    bool  metersOn = false;
+    float meterAnim = 0.0f;     // 0..1 eased meter reveal (#19)
 
-    static constexpr int kWidth = 920;
-    static constexpr int kHeightSimple = 560;
-    static constexpr int kHeightAdvanced = 770;
+    // Single fixed window for both modes: toggling Advanced relays out the
+    // content in place, so the host never resizes us and nothing flickers (#20).
+    static constexpr int kWidth  = 940;
+    static constexpr int kHeight = 720;
+    static constexpr int kStripHeight     = 200;  // advanced INPUT/MULTIBAND strip
+    static constexpr int kWidenColHeight  = 236;  // WIDEN block height (divider y)
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AnamorphAudioProcessorEditor)
 };
