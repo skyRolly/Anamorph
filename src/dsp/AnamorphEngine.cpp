@@ -41,7 +41,7 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
     widthSmooth     .reset (sr, ramp);
     mixSmooth       .reset (sr, ramp);
     outGainSmooth   .reset (sr, ramp);
-    matchGainSmooth .reset (sr, 0.05); // adaptive timing lives in LoudnessMatch (#19)
+    matchGainSmooth .reset (sr, 0.12); // gentle so an A/B level-match swap glides (#16)
     balanceSmooth   .reset (sr, ramp);
     outBalanceSmooth.reset (sr, ramp);
     driveSmooth     .reset (sr, ramp);
@@ -68,6 +68,10 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
 
     dryScratch.setSize (2, maxBlock);
     wetScratch.setSize (2, maxBlock);
+    monoLow.setSize (1, maxBlock);
+    monoLowDelay.setSize (1, maxLat + maxBlock + 1);
+    monoLowDelay.clear();
+    monoLowWrite = 0;
 
     updateDerived();
     reset();
@@ -88,6 +92,8 @@ void AnamorphEngine::reset()
     if (os8) os8->reset();
     dryDelayBuffer.clear();
     dryDelayWrite = 0;
+    monoLowDelay.clear();
+    monoLowWrite = 0;
 
     // Flush any in-flight switch duck straight to its target so a host reset
     // lands in a clean steady state (bit-exact transparent from sample 0).
@@ -119,6 +125,7 @@ bool AnamorphEngine::discreteDiffers (const EngineParameters& a, const EnginePar
         || a.dimMode          != b.dimMode
         || a.mbEnable         != b.mbEnable
         || a.monoMakerEnable  != b.monoMakerEnable
+        || a.autoGainMatch    != b.autoGainMatch
         || a.oversample       != b.oversample
         || a.bypass           != b.bypass;
 }
@@ -130,12 +137,13 @@ void AnamorphEngine::copyContinuous (EngineParameters& dst, const EngineParamete
     const auto md = dst.msMode;      const auto so = dst.solo;    const auto al = dst.algorithm;
     const auto hs = dst.haasSide;    const auto dm = dst.dimMode; const auto mb = dst.mbEnable;
     const auto mm = dst.monoMakerEnable; const auto ov = dst.oversample; const auto by = dst.bypass;
+    const auto ag = dst.autoGainMatch;
 
     dst = src;
 
     dst.channelMode = cm; dst.monoSum = ms; dst.swapLR = sw; dst.msMode = md; dst.solo = so;
     dst.algorithm = al;   dst.haasSide = hs; dst.dimMode = dm; dst.mbEnable = mb;
-    dst.monoMakerEnable = mm; dst.oversample = ov; dst.bypass = by;
+    dst.monoMakerEnable = mm; dst.oversample = ov; dst.bypass = by; dst.autoGainMatch = ag;
 }
 
 void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
@@ -349,6 +357,8 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     {
         p = pendingP;
         if (pendingAlgoReset) { haas.reset(); velvet.reset(); chorus.reset(); pendingAlgoReset = false; }
+        // Re-arm the loudness match so an A/B swap glides instead of spiking (#16).
+        loudness.softReset();
         updateDerived();
         switchState = SwitchState::FadeIn;
     }
@@ -409,11 +419,13 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     dryScratch.copyFrom (0, 0, L, n);
     dryScratch.copyFrom (1, 0, R, n);
 
-    // -------- Mono Maker (BEFORE the widener, feedback #2) ------------------
-    // Collapsing the lows to mono first stops the decorrelators from spreading
-    // the low band, so a later L+R sum can't comb-cancel the bass.
-    if (p.monoMakerEnable)
-        monoMaker.processBlock (L, R, n);
+    // -------- Mono Maker split (feedback #2 + #20) --------------------------
+    // Peel off a mono low band and route only the HIGH band into the widener;
+    // the mono lows are added back, delay-aligned, after widening. This keeps
+    // the bass mono AND immune to the widener (so Mono Maker actually works).
+    const bool monoMakerActive = p.monoMakerEnable;
+    if (monoMakerActive)
+        monoMaker.processSplit (L, R, monoLow.getWritePointer (0), n);
 
     // -------- 2. MS encode (only the Drive + algorithm run in M/S) ----------
     if (p.msMode)
@@ -460,6 +472,30 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     if (p.mbEnable)
         multiband.processBlock (L, R, n);
 
+    // -------- Mono Maker recombine: add the mono lows back, delay-aligned to
+    //          the wet (oversampling) latency so lows and highs stay phase-locked.
+    if (monoMakerActive)
+    {
+        const float* ml = monoLow.getReadPointer (0);
+        if (lat <= 0)
+        {
+            for (int i = 0; i < n; ++i) { L[i] += ml[i]; R[i] += ml[i]; }
+        }
+        else
+        {
+            float* md = monoLowDelay.getWritePointer (0);
+            const int mdSize = monoLowDelay.getNumSamples();
+            for (int i = 0; i < n; ++i)
+            {
+                md[monoLowWrite] = ml[i];
+                int rp = monoLowWrite - lat; if (rp < 0) rp += mdSize;
+                const float d = md[rp];
+                monoLowWrite = (monoLowWrite + 1) % mdSize;
+                L[i] += d; R[i] += d;
+            }
+        }
+    }
+
     // -------- 7. Mix (dry delay-compensated to the wet latency) -------------
     const float* dL = dryScratch.getReadPointer (0);
     const float* dR = dryScratch.getReadPointer (1);
@@ -487,7 +523,13 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     // -------- 8. Output Gain / Auto Gain / Output Balance -------------------
     for (int i = 0; i < n; ++i)
     {
-        const float g = outGainSmooth.getNextValue() * matchGainSmooth.getNextValue();
+        // When Level Match is engaged the matched gain REPLACES Output Gain, so
+        // the Output knob no longer shifts the matched level (feedback #1). Both
+        // smoothers advance every sample so toggling Match (a ducked switch) is
+        // seamless. Match's smoother is slow, so an A/B swap glides (feedback #16).
+        const float og = outGainSmooth.getNextValue();
+        const float mg = matchGainSmooth.getNextValue();
+        const float g  = p.autoGainMatch ? mg : og;
 
         // Whole-plugin output balance (centre = unity, turns down one side).
         const float b  = outBalanceSmooth.getNextValue();

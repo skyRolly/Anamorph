@@ -31,6 +31,11 @@ public:
     void prepare (double sampleRate);
     void reset();
 
+    // Re-arm the measurement (clear filter state + integrators) WITHOUT zeroing
+    // the published gain, so an A/B switch re-converges smoothly from the current
+    // value instead of snapping (feedback #16).
+    void softReset() noexcept;
+
     // Feeds both signals; updates the published match gain. Audio-thread safe.
     void process (const float* dryL, const float* dryR,
                   const float* wetL, const float* wetR, int numSamples) noexcept;

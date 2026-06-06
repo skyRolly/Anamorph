@@ -12,6 +12,7 @@ void MonoMaker::prepare (double sampleRate, int maxBlock)
     xover.setType (juce::dsp::LinkwitzRileyFilterType::lowpass);
     currentFreq = targetFreq;
     xover.setCutoffFrequency (currentFreq);
+    glideCoeff = 1.0f - std::exp (-1.0f / (float) (0.020 * sr)); // ~20 ms per-sample glide
     reset();
 }
 
@@ -20,38 +21,25 @@ void MonoMaker::reset()
     xover.reset();
 }
 
-void MonoMaker::processBlock (float* left, float* right, int numSamples) noexcept
+void MonoMaker::processSplit (float* left, float* right, float* lowMonoOut, int numSamples) noexcept
 {
-    // Glide the crossover frequency in small chunks so dragging the Freq control
-    // never snaps the LR coefficients (feedback #12). ~8 ms time-constant; the
-    // cutoff is only re-derived once per chunk (cheap, artefact-free).
-    constexpr int kChunk = 16;
-    const float coeff = 1.0f - std::exp (-(float) kChunk / (float) (0.008 * sr));
-
-    int n = 0;
-    while (n < numSamples)
+    for (int i = 0; i < numSamples; ++i)
     {
-        const int len = juce::jmin (kChunk, numSamples - n);
-
-        if (std::abs (currentFreq - targetFreq) > 0.01f)
+        // Per-sample frequency glide: re-deriving the LR coefficients every sample
+        // keeps a dragged Freq sweep smooth (no stepped-coefficient buzz, #19).
+        if (std::abs (currentFreq - targetFreq) > 0.05f)
         {
-            currentFreq += coeff * (targetFreq - currentFreq);
+            currentFreq += glideCoeff * (targetFreq - currentFreq);
             xover.setCutoffFrequency (currentFreq);
         }
 
-        for (int i = n; i < n + len; ++i)
-        {
-            float lowL, highL, lowR, highR;
-            // LinkwitzRileyFilter::processSample gives BOTH band outputs at once.
-            xover.processSample (0, left[i],  lowL, highL);
-            xover.processSample (1, right[i], lowR, highR);
+        float lowL, highL, lowR, highR;
+        xover.processSample (0, left[i],  lowL, highL);
+        xover.processSample (1, right[i], lowR, highR);
 
-            const float lowMono = (lowL + lowR) * 0.5f; // collapse lows to mono
-            left[i]  = lowMono + highL;
-            right[i] = lowMono + highR;
-        }
-
-        n += len;
+        lowMonoOut[i] = (lowL + lowR) * 0.5f; // mono low band, kept out of the widener
+        left[i]  = highL;                     // only the high band continues
+        right[i] = highR;
     }
 }
 

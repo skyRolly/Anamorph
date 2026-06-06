@@ -58,6 +58,13 @@ public:
     juce::Font getLabelFont (juce::Label&) override;
     juce::Font getTextButtonFont (juce::TextButton&, int buttonHeight) override;
 
+    // A value box you can drag (up/down) to change the value, like the knob (#2).
+    juce::Label* createSliderTextBox (juce::Slider&) override;
+
+    // Uniform, compact font for every combo + its pop-up list (#13).
+    juce::Font getComboBoxFont (juce::ComboBox&) override;
+    juce::Font getPopupMenuFont() override;
+
     // Styled tooltip to match the design language (no system tooltip, #20).
     void drawTooltip (juce::Graphics&, const juce::String& text, int w, int h) override;
     juce::Rectangle<int> getTooltipBounds (const juce::String& tip, juce::Point<int> pos,

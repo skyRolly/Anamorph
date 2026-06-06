@@ -61,6 +61,13 @@ void LoudnessMatch::reset()
     matchGainDb.store (0.0f, std::memory_order_relaxed);
 }
 
+void LoudnessMatch::softReset() noexcept
+{
+    kDryL.reset(); kDryR.reset(); kWetL.reset(); kWetR.reset();
+    meanSqDry = meanSqWet = 1.0e-9;
+    // displayedGainDb is intentionally preserved so the published gain glides.
+}
+
 void LoudnessMatch::process (const float* dryL, const float* dryR,
                              const float* wetL, const float* wetR, int numSamples) noexcept
 {

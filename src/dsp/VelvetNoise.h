@@ -53,6 +53,10 @@ private:
 
     float  targetDensity = 0.5f, currentDensity = 0.5f;
     float  targetAmount  = 0.0f, currentAmount  = 0.0f;
+
+    // Input-presence gate: fades the decorrelation tail into silence so pausing
+    // playback doesn't leave a short noise burst (feedback #17).
+    float  env = 0.0f, envAtk = 0.0f, envRel = 0.0f;
 };
 
 } // namespace anamorph
