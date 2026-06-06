@@ -23,12 +23,12 @@ namespace anamorph
 //  The complete, format-agnostic DSP chain (spec section 2.2):
 //
 //    1. Input conditioning (channel kill / swap / balance / polarity)
-//    2. MS encode               (only if MS mode)
-//    3. Effect engine           Drive -> algorithm -> global Width
+//    2. Mono Maker              (lows -> mono, BEFORE widening, feedback #2)
+//    3. MS encode               (only if MS mode)
+//    4. Effect engine           Drive -> algorithm -> global Width
 //         (Drive + Chorus/Dim-D run INSIDE oversampling; Haas/Velvet/Width
 //          are linear and stay OUTSIDE)
-//    4. Multiband Width         (Advanced Mode, optional)
-//    5. Mono Maker              (lows -> mono, AFTER widening)
+//    5. Multiband Width         (Advanced Mode, optional)
 //    6. MS decode               (only if MS mode)
 //    7. Mix (dry/wet)           dry path is delay-compensated to the wet latency
 //    8. Output Gain / Auto Gain
@@ -45,7 +45,11 @@ public:
     void prepare (double sampleRate, int maxBlockSize);
     void reset();
 
-    void setParameters (const EngineParameters& params) noexcept { p = params; updateDerived(); }
+    // Adopts a new parameter snapshot. Continuous controls update immediately
+    // (they are all smoothed); a change to any DISCRETE control (algorithm,
+    // routing, bypass, ...) is deferred behind a short raised-cosine duck so the
+    // switch is click-free (feedback #10 / #11).
+    void setParameters (const EngineParameters& params) noexcept;
 
     // Processes a STEREO buffer in place (the wrapper up-mixes mono -> stereo).
     void process (juce::AudioBuffer<float>& buffer) noexcept;
@@ -69,6 +73,12 @@ private:
     void processNonlinearRegion (float* L, float* R, int n, double rate) noexcept;
     juce::dsp::Oversampling<float>* currentOversampler() noexcept;
 
+    // True when two snapshots differ in a control that would click if applied
+    // instantly (so the switch must be ducked rather than applied live).
+    static bool discreteDiffers (const EngineParameters& a, const EngineParameters& b) noexcept;
+    // Copies only the continuous (smoothed) fields, leaving discrete ones intact.
+    static void copyContinuous (EngineParameters& dst, const EngineParameters& src) noexcept;
+
     double sr = 44100.0;
     int    maxBlock = 512;
 
@@ -91,17 +101,20 @@ private:
 
     // Smoothed continuous controls (avoid zipper noise / clicks -- #1).
     juce::SmoothedValue<float> widthSmooth, mixSmooth, outGainSmooth, matchGainSmooth;
-    juce::SmoothedValue<float> balanceSmooth, outBalanceSmooth, driveSmooth;
+    juce::SmoothedValue<float> balanceSmooth, outBalanceSmooth, driveSmooth, driveBlendSmooth;
     juce::SmoothedValue<float> polLSmooth, polRSmooth; // smoothed polarity sign (no click)
 
-    // Structural-change click suppression (#9 / #19): when the algorithm or an
-    // input-routing switch changes, briefly fade the output and clear stale
-    // algorithm tails so toggling never pops -- even during silence.
-    Algorithm        prevAlgorithm  = Algorithm::Velvet;
-    ChannelMode      prevChannelMode = ChannelMode::Stereo;
-    OversampleFactor prevOversample = OversampleFactor::Off;
-    bool  prevMsMode = false, prevSwap = false, prevMonoSum = false, structInit = false;
-    float structFade = 1.0f, structFadeInc = 0.0f;
+    // Click-free discrete switching (feedback #10 / #11). A change to a discrete
+    // control is applied at the BOTTOM of a short raised-cosine "duck": fade the
+    // output down with the OLD settings, swap in the new settings while silent,
+    // fade back up. The cosine has zero slope at the bottom so the seam is
+    // inaudible even on bypass / algorithm changes during playback.
+    enum class SwitchState { Normal, FadeOut, FadeIn };
+    SwitchState switchState = SwitchState::Normal;
+    float switchPhase = 1.0f;   // 1 = full level, 0 = silent
+    float switchInc   = 0.0f;   // per-sample phase step (~4 ms each direction)
+    EngineParameters pendingP;  // snapshot to adopt once the duck reaches silence
+    bool  pendingAlgoReset = false;
 
     // Dry-path delay (integer) to align dry with wet latency in the mix.
     juce::AudioBuffer<float> dryDelayBuffer;

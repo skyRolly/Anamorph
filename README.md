@@ -1,10 +1,29 @@
 # Anamorph — Stereo Tools Audio Plugin (VST3)
 
-**Anamorph** (by **Rolly Tech**) is a stereo-field toolkit: it turns mono into
+**Anamorph** (by **RollyTech**) is a stereo-field toolkit: it turns mono into
 stereo, controls stereo width (globally and per band), and provides the full set
 of stereo tools (MS, mono-maker, channel utilities, monitoring) around a
 high-end diamond vectorscope. Built with **CMake + JUCE** only — it configures
 and builds entirely from the command line on a headless Linux machine, no IDE.
+
+### What's new in 0.4
+- **Click-free everything:** a short raised-cosine duck swaps *every* discrete
+  control (algorithm, M/S, channel, Mono, Swap, Mono-Maker, Oversampling and
+  **Bypass**) at silence, so switches never pop. Drive now crossfades from clean,
+  so engaging/disengaging it is seamless and 0 dB is truly identity.
+- **Mono Maker is now BEFORE the widener** — collapsing the lows first stops the
+  decorrelators spreading the bass, so an L+R sum can't comb-cancel it.
+- **Mono-Maker frequency glides** (no more "doubled" artefact while dragging).
+- **Fixed-size window** for both modes (no resize flicker when toggling Adv/A-B).
+- **Simple mode is just the Widen core**; an **Output module** (Mix, Output,
+  Balance, Level Match, Mono-Maker) joins Input and Multiband under **Adv** — and
+  Advanced-only modules cleanly default-bypass when Advanced is off.
+- **Level meter** reworked: non-uniform scale, numeric **Peak / RMS** readouts,
+  a slow + fast RMS pair (Ozone-style) and a peak block; it reveals with a small
+  animation. Phase meter gets **-1 / +1** labels. Persisted **Meters / Tooltips**.
+- UI polish: redesigned toggles (no clipped text/edges), A/B racetrack frame,
+  bigger Undo/Redo, rounded pop-ups, **www.rolly.tech** link + fixed copyright,
+  Persist moved into Settings, Haas defaults to the **Left** perceived side.
 
 ### What's new in 0.3
 - **Bug fixes:** Level-Match **Apply** now *overrides* Output (no more drift on
@@ -119,14 +138,18 @@ scripts/                       setup / build / test / pluginval
 
 ### Signal chain (order matters — see `AnamorphEngine::process`)
 1. **Input conditioning** — channel kill (L/R/Mono), Swap, Input Balance, polarity.
-2. **MS encode** *(only if MS mode)* — wraps Drive + the algorithm.
-3. **Effect engine** — **Drive → algorithm (Haas / Velvet / Chorus / Dimension-D) → global Width**.
-4. **Multiband Width** *(Advanced Mode only)*.
-5. **Mono Maker** — lows → mono, deliberately **after** widening.
+2. **Mono Maker** — lows → mono, deliberately **before** widening, so the
+   decorrelators never spread the bass (no L+R comb-cancellation).
+3. **MS encode** *(only if MS mode)* — wraps Drive + the algorithm.
+4. **Effect engine** — **Drive → algorithm (Haas / Velvet / Chorus / Dimension-D) → global Width**.
+5. **Multiband Width** *(Advanced Mode only)*.
 6. **MS decode** *(only if MS mode)*.
 7. **Mix (Dry/Wet)** — the dry path is **delay-compensated** to the wet latency.
 8. **Output Gain / Auto Gain**.
 9. **Metering tap** — always taps the **final** output (scope + correlation).
+
+Every discrete switch (algorithm/routing/bypass) is applied at the silent bottom
+of a ~4 ms raised-cosine duck, so toggling is click-free even during playback.
 
 ### Key engineering decisions
 - **Oversampling wraps only the nonlinear/modulation stages** (Drive, Chorus,
@@ -176,7 +199,10 @@ audio + display to audition. Treat a green build + pluginval pass as
 ---
 
 ## Simple vs. Advanced Mode
-**Simple Mode** (default) shows only the core controls around the vectorscope:
-algorithm, Drive, Width, Mix, Output, Mono-Maker, Auto-Gain. **Advanced Mode**
-(toggle in the top bar) reveals MS mode, multiband width, channel mode, swap,
-input balance, polarity, solo M/S, oversampling and scope persistence.
+**Simple Mode** (default) is just the **Widen** core around the vectorscope:
+algorithm, Drive, Amount, Width. **Advanced Mode** (toggle in the top bar) adds
+the **Output** module (Mix, Output, Balance, Level Match, Mono-Maker), the
+**Input** module (channel mode, swap, mono, input balance, polarity, M/S, M/S
+solo) and the **Multiband** width module. Advanced-only modules default-bypass
+when Advanced is off, while their knob positions are remembered. Oversampling,
+tooltips and scope persistence live in **Settings**.

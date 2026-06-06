@@ -118,16 +118,19 @@ void AnamorphAudioProcessor::abEnsureInit()
 
 void AnamorphAudioProcessor::abApplySlot (int slot)
 {
-    // Preserve the global view params (Advanced / Bypass / Oversampling) so an
-    // A/B switch only swaps the sound, never the view (#10).
+    // Preserve the global view params (Advanced / Bypass / Oversampling / Meters /
+    // Tooltips) so an A/B switch only swaps the sound, never the view (#10 / #15).
     auto snap = [this] (const char* id) { return apvts.getParameter (id)->getValue(); };
     const float adv = snap (pid::advancedMode), byp = snap (pid::bypass), os = snap (pid::oversample);
+    const float mtr = snap (pid::metersOn), tip = snap (pid::tooltipsOn);
 
     apvts.replaceState ((slot == 1 ? abSlotB : abSlotA).createCopy());
 
     apvts.getParameter (pid::advancedMode)->setValueNotifyingHost (adv);
     apvts.getParameter (pid::bypass)->setValueNotifyingHost (byp);
     apvts.getParameter (pid::oversample)->setValueNotifyingHost (os);
+    apvts.getParameter (pid::metersOn)->setValueNotifyingHost (mtr);
+    apvts.getParameter (pid::tooltipsOn)->setValueNotifyingHost (tip);
 }
 
 void AnamorphAudioProcessor::abSwitchTo (int slot)

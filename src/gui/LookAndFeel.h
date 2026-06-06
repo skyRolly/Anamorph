@@ -44,9 +44,16 @@ public:
     void drawButtonBackground (juce::Graphics&, juce::Button&, const juce::Colour&,
                                bool highlighted, bool down) override;
 
+    void drawButtonText (juce::Graphics&, juce::TextButton&,
+                         bool highlighted, bool down) override;
+
     void drawComboBox (juce::Graphics&, int w, int h, bool down,
                        int buttonX, int buttonY, int buttonW, int buttonH,
                        juce::ComboBox&) override;
+
+    // Unify the pop-up list with the rounded flat-design of the combo box (#22).
+    void drawPopupMenuBackground (juce::Graphics&, int width, int height) override;
+    int  getPopupMenuBorderSize() override { return 6; }
 
     juce::Font getLabelFont (juce::Label&) override;
     juce::Font getTextButtonFont (juce::TextButton&, int buttonHeight) override;

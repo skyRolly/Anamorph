@@ -45,13 +45,12 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
     balanceSmooth   .reset (sr, ramp);
     outBalanceSmooth.reset (sr, ramp);
     driveSmooth     .reset (sr, ramp);
+    driveBlendSmooth.reset (sr, 0.015);
     polLSmooth      .reset (sr, 0.005);
     polRSmooth      .reset (sr, 0.005);
     polLSmooth      .setCurrentAndTargetValue (1.0f);
     polRSmooth      .setCurrentAndTargetValue (1.0f);
-    structFadeInc = 1.0f / (float) std::max (1.0, 0.012 * sr); // ~12 ms fade
-    structFade = 1.0f;
-    structInit = false;
+    switchInc = 1.0f / (float) std::max (1.0, 0.004 * sr); // ~4 ms each direction
     widthSmooth     .setCurrentAndTargetValue (1.0f);
     mixSmooth       .setCurrentAndTargetValue (1.0f);
     outGainSmooth   .setCurrentAndTargetValue (1.0f);
@@ -59,6 +58,7 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
     balanceSmooth   .setCurrentAndTargetValue (0.0f);
     outBalanceSmooth.setCurrentAndTargetValue (0.0f);
     driveSmooth     .setCurrentAndTargetValue (1.0f);
+    driveBlendSmooth.setCurrentAndTargetValue (0.0f);
 
     // --- dry-path delay (aligns dry to the wet OS latency) ---
     const int maxLat = juce::jmax (latency2, latency4, latency8);
@@ -88,6 +88,87 @@ void AnamorphEngine::reset()
     if (os8) os8->reset();
     dryDelayBuffer.clear();
     dryDelayWrite = 0;
+
+    // Flush any in-flight switch duck straight to its target so a host reset
+    // lands in a clean steady state (bit-exact transparent from sample 0).
+    if (switchState != SwitchState::Normal)
+    {
+        p = pendingP;
+        updateDerived();
+    }
+    pendingP = p;
+    pendingAlgoReset = false;
+    switchState = SwitchState::Normal;
+    switchPhase = 1.0f;
+}
+
+// ---------------------------------------------------------------------------
+//  Discrete controls: changing any of these mid-stream would step the signal,
+//  so they are swapped in only while the output is ducked to silence. Polarity
+//  is excluded (it already ramps through zero via its own smoother).
+// ---------------------------------------------------------------------------
+bool AnamorphEngine::discreteDiffers (const EngineParameters& a, const EngineParameters& b) noexcept
+{
+    return a.channelMode      != b.channelMode
+        || a.monoSum          != b.monoSum
+        || a.swapLR           != b.swapLR
+        || a.msMode           != b.msMode
+        || a.solo             != b.solo
+        || a.algorithm        != b.algorithm
+        || a.haasSide         != b.haasSide
+        || a.dimMode          != b.dimMode
+        || a.mbEnable         != b.mbEnable
+        || a.monoMakerEnable  != b.monoMakerEnable
+        || a.oversample       != b.oversample
+        || a.bypass           != b.bypass;
+}
+
+void AnamorphEngine::copyContinuous (EngineParameters& dst, const EngineParameters& src) noexcept
+{
+    // Keep dst's discrete fields; pull every smoothed/continuous field from src.
+    const auto cm = dst.channelMode; const auto ms = dst.monoSum; const auto sw = dst.swapLR;
+    const auto md = dst.msMode;      const auto so = dst.solo;    const auto al = dst.algorithm;
+    const auto hs = dst.haasSide;    const auto dm = dst.dimMode; const auto mb = dst.mbEnable;
+    const auto mm = dst.monoMakerEnable; const auto ov = dst.oversample; const auto by = dst.bypass;
+
+    dst = src;
+
+    dst.channelMode = cm; dst.monoSum = ms; dst.swapLR = sw; dst.msMode = md; dst.solo = so;
+    dst.algorithm = al;   dst.haasSide = hs; dst.dimMode = dm; dst.mbEnable = mb;
+    dst.monoMakerEnable = mm; dst.oversample = ov; dst.bypass = by;
+}
+
+void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
+{
+    if (switchState == SwitchState::Normal)
+    {
+        if (discreteDiffers (np, p))
+        {
+            pendingP = np;
+            pendingAlgoReset = (np.algorithm != p.algorithm);
+            copyContinuous (p, np);          // knobs respond immediately
+            switchState = SwitchState::FadeOut;
+            updateDerived();
+        }
+        else
+        {
+            p = np;                          // continuous-only change
+            updateDerived();
+        }
+    }
+    else
+    {
+        // Mid-duck: remember the latest target and keep continuous controls live.
+        pendingP = np;
+        if (switchState == SwitchState::FadeIn && discreteDiffers (np, p))
+        {
+            // A new discrete change arrived as we were fading back in: duck again.
+            pendingAlgoReset = (np.algorithm != p.algorithm);
+            switchState = SwitchState::FadeOut;
+        }
+        copyContinuous (p, np);
+        updateDerived();
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -143,7 +224,12 @@ int AnamorphEngine::predictLatency (const EngineParameters& e) const noexcept
 void AnamorphEngine::updateDerived()
 {
     driveActive = p.driveDb > 0.01f;
-    driveSmooth.setTargetValue (juce::Decibels::decibelsToGain (p.driveDb));
+    // Pre-gain for the waveshaper, plus a separate 0..1 blend that crossfades
+    // from the clean signal over the first ~2 dB. This makes Drive identity at
+    // 0 dB and removes the step that used to click when Drive first engaged
+    // (feedback #13) -- the peak-preserving makeup is only mixed in gradually.
+    driveSmooth.setTargetValue (juce::Decibels::decibelsToGain (juce::jmax (0.0f, p.driveDb)));
+    driveBlendSmooth.setTargetValue (juce::jlimit (0.0f, 1.0f, p.driveDb / 2.0f));
 
     // Unified widening intensity -> every algorithm is identity at amount 0.
     // Each algorithm smooths the amount internally (click-free, #1).
@@ -220,18 +306,23 @@ void AnamorphEngine::applyInputConditioning (float* L, float* R, int n) noexcept
 
 void AnamorphEngine::processNonlinearRegion (float* L, float* R, int n, double rate) noexcept
 {
-    if (driveActive)
+    // Run the drive maths while Drive is engaged OR while the blend is still
+    // gliding back to zero, so disengaging Drive fades out instead of stepping.
+    if (driveActive || driveBlendSmooth.isSmoothing())
     {
         // Smoothed tanh drive with PEAK-preserving makeup (1/tanh(g)): a
         // full-scale input still maps to full scale, so driving harder adds
-        // saturation/density without dropping the level (feedback #23). Smoothed
-        // so a moving Drive knob never clicks (#1).
+        // saturation/density without dropping the level (feedback #23). The blend
+        // crossfades from the clean signal so 0 dB is identity (feedback #13).
         for (int i = 0; i < n; ++i)
         {
-            const float g = driveSmooth.getNextValue();
+            const float g     = juce::jmax (1.0f, driveSmooth.getNextValue());
+            const float blend = driveBlendSmooth.getNextValue();
             const float c = 1.0f / std::tanh (g);
-            L[i] = std::tanh (g * L[i]) * c;
-            R[i] = std::tanh (g * R[i]) * c;
+            const float sl = std::tanh (g * L[i]) * c;
+            const float sr2 = std::tanh (g * R[i]) * c;
+            L[i] += blend * (sl  - L[i]);
+            R[i] += blend * (sr2 - R[i]);
         }
     }
 
@@ -251,6 +342,22 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     float* L = buffer.getWritePointer (0);
     float* R = buffer.getWritePointer (1);
 
+    // ---- Click-free switch machine: once the duck has reached silence, adopt
+    //      the deferred discrete change (clearing stale algorithm tails) and
+    //      fade back in. Pure continuous edits never enter here (#10 / #11). ----
+    if (switchState == SwitchState::FadeOut && switchPhase <= 0.0f)
+    {
+        p = pendingP;
+        if (pendingAlgoReset) { haas.reset(); velvet.reset(); chorus.reset(); pendingAlgoReset = false; }
+        updateDerived();
+        switchState = SwitchState::FadeIn;
+    }
+    else if (switchState == SwitchState::FadeIn && switchPhase >= 1.0f)
+    {
+        switchState = SwitchState::Normal;
+    }
+    const bool fading = (switchState != SwitchState::Normal);
+
     const int lat = getLatencySamples();
     const int ddSize = dryDelayBuffer.getNumSamples();
     float* ddL = dryDelayBuffer.getWritePointer (0);
@@ -266,35 +373,26 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
             ddL[dryDelayWrite] = L[i];
             ddR[dryDelayWrite] = R[i];
             int rp = dryDelayWrite - lat; if (rp < 0) rp += ddSize;
-            const float ol = ddL[rp], orr = ddR[rp];
+            float ol = ddL[rp], orr = ddR[rp];
+            dryDelayWrite = (dryDelayWrite + 1) % ddSize;
+
+            if (fading)
+            {
+                if (switchState == SwitchState::FadeOut) { switchPhase -= switchInc; if (switchPhase < 0.0f) switchPhase = 0.0f; }
+                else                                     { switchPhase += switchInc; if (switchPhase > 1.0f) switchPhase = 1.0f; }
+                const float sg = 0.5f - 0.5f * std::cos (juce::MathConstants<float>::pi * switchPhase);
+                ol *= sg; orr *= sg;
+            }
+
             L[i] = ol; R[i] = orr;
             correlation.process (ol, orr);
             scope.push (ol, orr);
-            dryDelayWrite = (dryDelayWrite + 1) % ddSize;
         }
         levels.output.process (L, R, n);
         correlation.publish();
         levels.publish();
         return;
     }
-
-    // Detect structural switches (algorithm / routing). On an algorithm change
-    // we clear stale delay/FIR tails so a leftover tail can't pop when toggling
-    // during silence; either way we briefly fade the output (see stage 8).
-    if (structInit)
-    {
-        const bool changed = (p.algorithm != prevAlgorithm) || (p.msMode != prevMsMode)
-                          || (p.swapLR != prevSwap) || (p.monoSum != prevMonoSum)
-                          || (p.channelMode != prevChannelMode) || (p.oversample != prevOversample);
-        if (changed)
-        {
-            if (p.algorithm != prevAlgorithm) { haas.reset(); velvet.reset(); chorus.reset(); }
-            structFade = 0.0f;
-        }
-    }
-    prevAlgorithm = p.algorithm; prevMsMode = p.msMode; prevSwap = p.swapLR;
-    prevMonoSum = p.monoSum; prevChannelMode = p.channelMode; prevOversample = p.oversample;
-    structInit = true;
 
     // -------- 1. Input conditioning -----------------------------------------
     applyInputConditioning (L, R, n);
@@ -310,6 +408,12 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     // Capture conditioned DRY for the mix + loudness reference.
     dryScratch.copyFrom (0, 0, L, n);
     dryScratch.copyFrom (1, 0, R, n);
+
+    // -------- Mono Maker (BEFORE the widener, feedback #2) ------------------
+    // Collapsing the lows to mono first stops the decorrelators from spreading
+    // the low band, so a later L+R sum can't comb-cancel the bass.
+    if (p.monoMakerEnable)
+        monoMaker.processBlock (L, R, n);
 
     // -------- 2. MS encode (only the Drive + algorithm run in M/S) ----------
     if (p.msMode)
@@ -356,10 +460,6 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     if (p.mbEnable)
         multiband.processBlock (L, R, n);
 
-    // -------- 5. Mono Maker -------------------------------------------------
-    if (p.monoMakerEnable)
-        monoMaker.processBlock (L, R, n);
-
     // -------- 7. Mix (dry delay-compensated to the wet latency) -------------
     const float* dL = dryScratch.getReadPointer (0);
     const float* dR = dryScratch.getReadPointer (1);
@@ -394,11 +494,16 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         const float gL = (b > 0.0f) ? (1.0f - b) : 1.0f;
         const float gR = (b < 0.0f) ? (1.0f + b) : 1.0f;
 
-        // Short fade after a structural switch masks any transient (#9 / #19).
-        if (structFade < 1.0f) structFade = juce::jmin (1.0f, structFade + structFadeInc);
-        const float sf = structFade;
+        // Click-free switch duck (raised cosine, zero slope at the seam, #10/#11).
+        float sg = 1.0f;
+        if (fading)
+        {
+            if (switchState == SwitchState::FadeOut) { switchPhase -= switchInc; if (switchPhase < 0.0f) switchPhase = 0.0f; }
+            else                                     { switchPhase += switchInc; if (switchPhase > 1.0f) switchPhase = 1.0f; }
+            sg = 0.5f - 0.5f * std::cos (juce::MathConstants<float>::pi * switchPhase);
+        }
 
-        L[i] *= g * gL * sf; R[i] *= g * gR * sf;
+        L[i] *= g * gL * sg; R[i] *= g * gR * sg;
     }
 
     // -------- 9. Metering tap (FINAL output) --------------------------------
