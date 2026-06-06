@@ -121,7 +121,7 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
 
     abControl.getActive = [this] { return processor.abActiveSlot(); };
     abControl.onToggle  = [this] { processor.abSwitchTo (processor.abActiveSlot() == 0 ? 1 : 0); repaint(); };
-    abControl.setTooltip ("A/B Compare."); // #31
+    abControl.setTooltip ("A/B Compare"); // #17 (no period)
     addAndMakeVisible (abControl);
     copyButton.onClick = [this] { processor.abCopyToOther(); };
     copyButton.setTooltip ("Copy the current settings into the other A/B slot.");
@@ -136,8 +136,8 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     redoButton.setComponentID ("icon");
     undoButton.setTooltip ("Undo");
     redoButton.setTooltip ("Redo");
-    undoButton.onClick = [this] { processor.getUndoManager().undo(); };
-    redoButton.onClick = [this] { processor.getUndoManager().redo(); };
+    undoButton.onClick = [this] { processor.undo(); };
+    redoButton.onClick = [this] { processor.redo(); };
     addAndMakeVisible (undoButton);
     addAndMakeVisible (redoButton);
 
@@ -145,7 +145,7 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     metersToggle.setComponentID ("metersicon"); // level-meter glyph, not the word (#7)
     metersToggle.onClick = [this] { metersOn = metersToggle.getToggleState(); if (metersOn) levelMeter->setVisible (true); };
 
-    setupToggle (advancedToggle, pid::advancedMode, "Adv", "Reveal the Input, Output and Multiband modules.");
+    setupToggle (advancedToggle, pid::advancedMode, "Adv", "Advanced mode"); // #17
     advancedToggle.onClick = [this] { advanced = advancedToggle.getToggleState(); updateModeVisibility(); };
 
     setupToggle (bypassToggle, pid::bypass, "Bypass", {});
@@ -160,7 +160,7 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     algorithmLabel.setFont (juce::Font (juce::FontOptions (11.0f)).withExtraKerningFactor (0.2f));
     addAndMakeVisible (algorithmLabel);
 
-    algoOptLabel.setJustificationType (juce::Justification::centred); // caption over side/voicing combo (#9)
+    algoOptLabel.setJustificationType (juce::Justification::centredLeft); // left-aligned with the combo (#13)
     algoOptLabel.setColour (juce::Label::textColourId, colours::textDim);
     algoOptLabel.setFont (juce::Font (juce::FontOptions (10.0f)).withExtraKerningFactor (0.18f));
     addAndMakeVisible (algoOptLabel);
@@ -225,12 +225,14 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     addAndMakeVisible (inputModuleLabel);
 
     setupCombo (channelModeBox, pid::channelMode, "Use the full stereo input, or just one side.");
+    channelModeBox.setLookAndFeel (&compactCombo); // smaller list (#12)
     channelModeLabel.setText ("Input Channel", juce::dontSendNotification);
     channelModeLabel.setColour (juce::Label::textColourId, colours::textDim);
     channelModeLabel.setFont (juce::Font (juce::FontOptions (11.0f)));
     addAndMakeVisible (channelModeLabel);
 
     setupCombo (soloBox, pid::solo, "Listen to just the Mid or just the Side of the input.");
+    soloBox.setLookAndFeel (&compactCombo); // smaller list (#12)
     soloLabel.setText ("M/S Solo", juce::dontSendNotification);
     soloLabel.setColour (juce::Label::textColourId, colours::textDim);
     soloLabel.setFont (juce::Font (juce::FontOptions (11.0f)));
@@ -301,13 +303,13 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     persistLabel.setColour (juce::Label::textColourId, colours::textDim);
     settingsBackdrop.addAndMakeVisible (persistLabel);
     scopePersistK.setSliderStyle (juce::Slider::LinearHorizontal);
-    scopePersistK.setTextBoxStyle (juce::Slider::TextBoxRight, false, 52, 18);
     scopePersistK.setColour (juce::Slider::textBoxTextColourId, colours::textDim);
     scopePersistK.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
     scopePersistK.setTooltip ("Vectorscope afterglow time " // #5
                               + juce::String::charToString ((juce::juce_wchar) 0x2014)
                               + " longer trails fade more slowly.");
     settingsBackdrop.addAndMakeVisible (scopePersistK);
+    scopePersistK.setTextBoxStyle (juce::Slider::TextBoxRight, false, 52, 18); // box built with our LnF
     attachSlider (scopePersistK, pid::scopePersist);
     scopePersistK.onValueChange = [this] { applyScopePersist(); };
     // While dragging Persist, fade the Settings overlay so the live vectorscope
@@ -340,6 +342,8 @@ AnamorphAudioProcessorEditor::~AnamorphAudioProcessorEditor()
 {
     stopTimer();
     openGLContext.detach();
+    channelModeBox.setLookAndFeel (nullptr);
+    soloBox.setLookAndFeel (nullptr);
     tooltips.setLookAndFeel (nullptr);
     setLookAndFeel (nullptr);
 }
@@ -349,12 +353,15 @@ void AnamorphAudioProcessorEditor::setupRotary (juce::Slider& s, juce::Label& l,
                                                 const juce::String& name, const juce::String& tip)
 {
     s.setSliderStyle (juce::Slider::RotaryVerticalDrag);
-    s.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 80, 15);
     s.setColour (juce::Slider::textBoxTextColourId, colours::text);
     s.setColour (juce::Slider::textBoxHighlightColourId, colours::accent.withAlpha (0.30f));
     s.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
     s.setTooltip (tip);
     addAndMakeVisible (s);
+    // Create the value box AFTER parenting, so it's built with our LookAndFeel
+    // (the draggable/raw-editing ValueBox) -- reparenting doesn't recreate it,
+    // which is why drag/edit "didn't take" (feedback #28/#29).
+    s.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 80, 15);
 
     l.setText (name, juce::dontSendNotification);
     l.setJustificationType (juce::Justification::centred);
@@ -428,7 +435,7 @@ void AnamorphAudioProcessorEditor::updateAlgoControls()
 
     // Caption over the side/voicing combo (#9): one intuitive word per algorithm.
     algoOptLabel.setVisible (algo == 0 || algo == 3);
-    algoOptLabel.setText (algo == 0 ? "LEAN" : algo == 3 ? "STYLE" : juce::String(),
+    algoOptLabel.setText (algo == 0 ? "FOCUS" : algo == 3 ? "STYLE" : juce::String(), // #13
                           juce::dontSendNotification);
 }
 
@@ -443,6 +450,13 @@ void AnamorphAudioProcessorEditor::updateModeVisibility()
         &mbWLowK, &mbWLowL, &mbWMidK, &mbWMidL, &mbWHighK, &mbWHighL
     };
     for (auto* c : adv) c->setVisible (advanced);
+
+    // Simple mode features only the Widen core, so make its labels a touch larger
+    // for presence; Advanced packs more in, so they shrink back (#16).
+    const float widenLabelFont = advanced ? 11.5f : 13.5f;
+    for (auto* l : { &driveL, &amountL, &widthL, &haasDelayL, &velvetL, &chorusRateL, &chorusDepthL })
+        l->setFont (juce::Font (juce::FontOptions (widenLabelFont)));
+
     updateAlgoControls();
     resized();
     repaint();
@@ -508,8 +522,9 @@ void AnamorphAudioProcessorEditor::timerCallback()
         if (dimOverlay.isVisible()) dimOverlay.toFront (false);
     }
 
-    undoButton.setEnabled (processor.getUndoManager().canUndo());
-    redoButton.setEnabled (processor.getUndoManager().canRedo());
+    processor.pollUndoCoalesce(); // fold settled sound edits into undo steps (#10-12)
+    undoButton.setEnabled (processor.canUndo());
+    redoButton.setEnabled (processor.canRedo());
     matchReadout.setText (juce::String (processor.getEngine().getMatchGainDb(), 1) + " dB", juce::dontSendNotification);
 }
 
@@ -597,7 +612,7 @@ void AnamorphAudioProcessorEditor::resized()
         undoButton.setBounds (bar.removeFromRight (30));
         bar.removeFromRight (12);
         copyButton.setBounds (bar.removeFromRight (46));
-        abControl.setBounds (bar.removeFromRight (50).reduced (0, 1)); // shorter oval (#8)
+        abControl.setBounds (bar.removeFromRight (46).reduced (0, 1)); // shorter oval (#4)
     }
 
     auto content = r;
@@ -720,10 +735,13 @@ void AnamorphAudioProcessorEditor::resized()
             inputModuleLabel.setBounds (a.removeFromTop (15));
             a.removeFromTop (2);
 
-            // Input Balance: a proper full-height rotary on the right (#25).
+            // Input Balance: a compact knob block (knob + value + name packed
+            // together, vertically centred) so the number/label sit right under
+            // the knob instead of drifting to the bottom (#3).
             auto bal = a.removeFromRight (98);
-            balanceL.setBounds (bal.removeFromBottom (15));
-            balanceK.setBounds (bal.reduced (10, 2));
+            auto blk = bal.withSizeKeepingCentre (bal.getWidth(), juce::jmin (bal.getHeight(), 90));
+            balanceL.setBounds (blk.removeFromBottom (14));
+            balanceK.setBounds (blk.reduced (8, 0));
             a.removeFromRight (6);
 
             auto cmRow = a.removeFromTop (36);

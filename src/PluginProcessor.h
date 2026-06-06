@@ -47,14 +47,23 @@ public:
     // --- editor access ---
     juce::AudioProcessorValueTreeState& getAPVTS() noexcept { return apvts; }
     anamorph::AnamorphEngine& getEngine() noexcept          { return engine; }
-    juce::UndoManager& getUndoManager() noexcept            { return undoManager; }
+
+    // Custom Undo/Redo: each A/B slot keeps its OWN stack of SOUND-param
+    // snapshots; the "view"/Settings params (Bypass, Advanced, Meters, Tooltips,
+    // Oversampling, Persist) and A/B switches themselves are never recorded
+    // (feedback #10 / #11 / #12). The editor calls pollUndoCoalesce() on its timer
+    // to fold a knob gesture into a single step.
+    void undo();
+    void redo();
+    bool canUndo() const noexcept { return ! abUndo[abActive].undo.empty(); }
+    bool canRedo() const noexcept { return ! abUndo[abActive].redo.empty(); }
+    void pollUndoCoalesce();
 
     // Auto-Gain "Apply": locks the measured loudness-match gain into Output Gain.
     void applyAutoGain();
 
     // A/B compare lives in the processor so it survives editor close / session
-    // recall (#14). Switching A/B (and loading presets) never touches the global
-    // "view" params: Advanced Mode, Bypass, Oversampling (#10).
+    // recall. Switching A/B never touches the shared view/Settings params (#13).
     int  abActiveSlot() const noexcept { return abActive; }
     void abSwitchTo (int slot);
     void abCopyToOther();
@@ -63,15 +72,25 @@ private:
     void parameterChanged (const juce::String& id, float newValue) override;
     void updateLatency();
 
-    // A/B helpers (preserve the global view params across a slot apply)
+    // A/B helpers (preserve the shared view/Settings params across a slot apply)
     void abEnsureInit();
     void abApplySlot (int slot);
+
+    // Undo helpers
+    static bool isViewParam (const juce::String& id) noexcept;
+    juce::String soundSignature() const;
+    void applyStatePreservingView (const juce::ValueTree& target);
+    void syncCommitted();
+
+    struct UndoStacks { std::vector<juce::ValueTree> undo, redo; };
+    UndoStacks abUndo[2];
+    juce::ValueTree committedState;
+    juce::String committedSig, lastPolledSig;
 
     juce::ValueTree abSlotA, abSlotB;
     int abActive = 0;
     float abMatchGain[2] = { 0.0f, 0.0f }; // remembered Level-Match per A/B slot (#23)
 
-    juce::UndoManager undoManager;
     juce::AudioProcessorValueTreeState apvts;
     ParamPointers params;
     anamorph::AnamorphEngine engine;

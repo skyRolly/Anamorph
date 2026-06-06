@@ -5,7 +5,7 @@ AnamorphAudioProcessor::AnamorphAudioProcessor()
     : AudioProcessor (BusesProperties()
         .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
         .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
-      apvts (*this, &undoManager, "ANAMORPH", createAnamorphLayout())
+      apvts (*this, nullptr, "ANAMORPH", createAnamorphLayout()) // custom undo, not APVTS's
 {
     params.bind (apvts);
     bypassParam = dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter (pid::bypass));
@@ -14,6 +14,8 @@ AnamorphAudioProcessor::AnamorphAudioProcessor()
     apvts.addParameterListener (pid::oversample, this);
     apvts.addParameterListener (pid::drive,      this);
     apvts.addParameterListener (pid::algorithm,  this);
+
+    syncCommitted(); // establish the undo baseline
 }
 
 AnamorphAudioProcessor::~AnamorphAudioProcessor()
@@ -117,6 +119,85 @@ void AnamorphAudioProcessor::applyAutoGain()
 }
 
 // ----------------------------------------------------------------------------
+//  Custom Undo/Redo (per A/B slot, sound params only) -- #10 / #11 / #12
+// ----------------------------------------------------------------------------
+bool AnamorphAudioProcessor::isViewParam (const juce::String& id) noexcept
+{
+    return id == pid::bypass || id == pid::advancedMode || id == pid::metersOn
+        || id == pid::tooltipsOn || id == pid::oversample || id == pid::scopePersist;
+}
+
+juce::String AnamorphAudioProcessor::soundSignature() const
+{
+    juce::String sig;
+    for (auto* p : getParameters())
+        if (auto* wid = dynamic_cast<const juce::AudioProcessorParameterWithID*> (p))
+            if (! isViewParam (wid->paramID))
+                sig << juce::String (p->getValue(), 5) << ',';
+    return sig;
+}
+
+void AnamorphAudioProcessor::syncCommitted()
+{
+    committedState = apvts.copyState();
+    committedSig = soundSignature();
+    lastPolledSig = committedSig;
+}
+
+void AnamorphAudioProcessor::applyStatePreservingView (const juce::ValueTree& target)
+{
+    // Restore a snapshot but keep the CURRENT shared view/Settings params (#10/#13).
+    auto snap = [this] (const char* id) { return apvts.getParameter (id)->getValue(); };
+    const float adv = snap (pid::advancedMode), byp = snap (pid::bypass), os = snap (pid::oversample);
+    const float mtr = snap (pid::metersOn), tip = snap (pid::tooltipsOn), per = snap (pid::scopePersist);
+
+    apvts.replaceState (target.createCopy());
+
+    apvts.getParameter (pid::advancedMode)->setValueNotifyingHost (adv);
+    apvts.getParameter (pid::bypass)->setValueNotifyingHost (byp);
+    apvts.getParameter (pid::oversample)->setValueNotifyingHost (os);
+    apvts.getParameter (pid::metersOn)->setValueNotifyingHost (mtr);
+    apvts.getParameter (pid::tooltipsOn)->setValueNotifyingHost (tip);
+    apvts.getParameter (pid::scopePersist)->setValueNotifyingHost (per);
+}
+
+void AnamorphAudioProcessor::pollUndoCoalesce()
+{
+    const auto sig = soundSignature();
+    // Commit only once a sound edit has SETTLED (signature stable for a tick),
+    // folding a whole knob gesture into a single undo step.
+    if (sig != committedSig && sig == lastPolledSig)
+    {
+        abUndo[abActive].undo.push_back (committedState);
+        if (abUndo[abActive].undo.size() > 128) abUndo[abActive].undo.erase (abUndo[abActive].undo.begin());
+        abUndo[abActive].redo.clear();
+        committedState = apvts.copyState();
+        committedSig = sig;
+    }
+    lastPolledSig = sig;
+}
+
+void AnamorphAudioProcessor::undo()
+{
+    auto& st = abUndo[abActive];
+    if (st.undo.empty()) return;
+    st.redo.push_back (apvts.copyState());
+    auto target = st.undo.back(); st.undo.pop_back();
+    applyStatePreservingView (target);
+    syncCommitted();
+}
+
+void AnamorphAudioProcessor::redo()
+{
+    auto& st = abUndo[abActive];
+    if (st.redo.empty()) return;
+    st.undo.push_back (apvts.copyState());
+    auto target = st.redo.back(); st.redo.pop_back();
+    applyStatePreservingView (target);
+    syncCommitted();
+}
+
+// ----------------------------------------------------------------------------
 //  A/B compare
 // ----------------------------------------------------------------------------
 void AnamorphAudioProcessor::abEnsureInit()
@@ -153,6 +234,7 @@ void AnamorphAudioProcessor::abSwitchTo (int slot)
     abActive = slot;
     abApplySlot (slot);
     engine.injectMatchGainDb (abMatchGain[slot]);            // restore the new slot's match (#23)
+    syncCommitted();                                         // the switch itself isn't undoable (#11)
 }
 
 void AnamorphAudioProcessor::abCopyToOther()
@@ -160,6 +242,10 @@ void AnamorphAudioProcessor::abCopyToOther()
     abEnsureInit();
     (abActive == 1 ? abSlotB : abSlotA) = apvts.copyState();
     const int other = abActive == 1 ? 0 : 1;
+    // Record the target slot's pre-copy state so undoing on that slot reverts the
+    // Copy without disturbing the active slot's history (#12).
+    abUndo[other].undo.push_back ((other == 1 ? abSlotB : abSlotA).createCopy());
+    abUndo[other].redo.clear();
     (other == 1 ? abSlotB : abSlotA) = apvts.copyState().createCopy();
 }
 
@@ -207,6 +293,10 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
     {
         apvts.replaceState (juce::ValueTree::fromXml (*xml));
     }
+
+    // Fresh session: clear undo history and re-baseline.
+    abUndo[0] = {}; abUndo[1] = {};
+    syncCommitted();
 }
 
 // ----------------------------------------------------------------------------

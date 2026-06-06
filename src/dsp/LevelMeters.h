@@ -27,12 +27,13 @@ public:
     {
         sr = sampleRate;
         auto envC = [sampleRate] (double tau) { return 1.0f - std::exp (-1.0f / (float) (tau * sampleRate)); };
-        // dim RMS: fast rise, slow fall (#18)
-        dimRise  = envC (0.020);  dimFall  = envC (0.650);
-        // bright RMS: moderate rise, faster fall (#19)
-        briRise  = envC (0.060);  briFall  = envC (0.180);
-        // RMS used for the numeric readout (a touch slower for legibility)
-        numRise  = envC (0.090);  numFall  = envC (0.300);
+        // Reference: iZotope Insight 2 Levels -- 300 ms VU integration, 1 s peak
+        // hold. Bright = a smooth 300 ms VU body (#6, less jumpy). Dim = a fast
+        // riser that sits above it (#7) but FALLS at the SAME 300 ms rate (#8).
+        dimRise  = envC (0.030);  dimFall  = envC (0.300);
+        briRise  = envC (0.300);  briFall  = envC (0.300);
+        // Numeric RMS: quicker to rise so it doesn't lag (#5).
+        numRise  = envC (0.120);  numFall  = envC (0.300);
         reset();
     }
 
@@ -150,9 +151,9 @@ private:
         store (rclipL, rmsClipL ? 1 : 0); store (rclipR, rmsClipR ? 1 : 0);
     }
 
-    static constexpr double kBarHold = 1.2;  // s, peak tick hold before falling (#24)
-    static constexpr double kRmsHold = 0.6;  // s, RMS number hold before falling (#21)
-    static constexpr double kRmsRate = 18.0; // dB/s max RMS number change (#20)
+    static constexpr double kBarHold = 1.0;  // s, peak tick hold (Insight 2: 1 s, #9/#24)
+    static constexpr double kRmsHold = 0.5;  // s, RMS number hold before falling (#21)
+    static constexpr double kRmsRate = 30.0; // dB/s max RMS number change (faster, #5/#20)
 
     double sr = 48000.0, blockDur = 0.01;
     float dimRise = 0, dimFall = 0, briRise = 0, briFall = 0, numRise = 0, numFall = 0;

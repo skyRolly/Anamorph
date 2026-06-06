@@ -179,9 +179,11 @@ void AnamorphLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButto
         }
         else
         {
+            // Nudge down ~2 px so Mono/Swap/M/S sit at the same baseline as the
+            // taller "ø L/R" line (whose bigger glyph raised it) (#2).
             g.setColour (tc);
             g.setFont (juce::Font (juce::FontOptions (11.0f)));
-            g.drawFittedText (txt, labelArea, juce::Justification::centredTop, 1, 0.8f);
+            g.drawFittedText (txt, labelArea.translated (0, 2), juce::Justification::centredTop, 1, 0.8f);
         }
         return;
     }
