@@ -32,6 +32,7 @@ private:
         std::function<void()> onDismiss;
         juce::Rectangle<int>  panel;
         bool   aboutText = false;
+        float  reveal = 0.0f;   // 0 = solid, 1 = see-through (Persist drag, #26)
         void paint (juce::Graphics&) override;
         void mouseDown (const juce::MouseEvent& e) override
         {
@@ -87,17 +88,29 @@ private:
     juce::TextButton   undoButton, redoButton;
     juce::ToggleButton metersToggle, advancedToggle, bypassToggle;
 
+    // Knob: a slider that resets to its default on a clean double-click only --
+    // a triple-or-more click no longer resets on every extra click (feedback #6).
+    struct Knob : public juce::Slider
+    {
+        double resetValue = 0.0;
+        void mouseDoubleClick (const juce::MouseEvent& e) override
+        {
+            if (e.getNumberOfClicks() == 2)
+                setValue (resetValue, juce::sendNotificationSync);
+        }
+    };
+
     // WIDEN module
     juce::ComboBox algorithmBox, haasSideBox, dimModeBox;
-    juce::Label    algorithmLabel;
-    juce::Slider driveK, amountK, widthK;
+    juce::Label    algorithmLabel, algoOptLabel; // algoOptLabel captions the side/voicing combo (#9)
+    Knob driveK, amountK, widthK;
     juce::Label  driveL, amountL, widthL;
-    juce::Slider haasDelayK, velvetK, chorusRateK, chorusDepthK;
+    Knob haasDelayK, velvetK, chorusRateK, chorusDepthK;
     juce::Label  haasDelayL, velvetL, chorusRateL, chorusDepthL;
 
     // OUTPUT module (advanced, #24)
     juce::Label  outputModuleLabel;
-    juce::Slider mixK, outputK, outBalanceK;
+    Knob mixK, outputK, outBalanceK;
     juce::Label  mixL, outputL, outBalanceL;
     juce::ToggleButton autoMatchToggle;
     juce::TextButton   applyGainButton { "Apply" };
@@ -105,20 +118,20 @@ private:
 
     // MONO MAKER (slim bar, inside the Output module)
     juce::ToggleButton monoMakerToggle;
-    juce::Slider monoFreqK;  juce::Label monoFreqL;
+    Knob monoFreqK;  juce::Label monoFreqL;
 
     // INPUT module (advanced)
     juce::ComboBox channelModeBox, soloBox;
     juce::Label    channelModeLabel, soloLabel, inputModuleLabel;
     juce::ToggleButton monoToggle, swapToggle, msToggle, polLToggle, polRToggle;
-    juce::Slider balanceK; juce::Label balanceL;
+    Knob balanceK; juce::Label balanceL;
 
     // MULTIBAND module (advanced, its own section -- #16)
     juce::Label  multibandLabel;
     juce::ToggleButton mbEnableToggle;
-    juce::Slider mbFreqLowK, mbFreqHighK, mbWLowK, mbWMidK, mbWHighK;
+    Knob mbFreqLowK, mbFreqHighK, mbWLowK, mbWMidK, mbWHighK;
     juce::Label  mbFreqLowL, mbFreqHighL, mbWLowL, mbWMidL, mbWHighL;
-    juce::Slider scopePersistK; juce::Label scopePersistL;
+    Knob scopePersistK; juce::Label scopePersistL;
 
     // Overlays
     DimLayer dimOverlay;
@@ -139,8 +152,7 @@ private:
     bool  tooltipsOn = false;   // tooltips default OFF
     bool  metersOn = false;
     float meterAnim = 0.0f;     // 0..1 eased meter reveal (#19)
-    bool  persistDragging = false; // dragging the Settings Persist bar (#9)
-    float settingsDim = 1.0f;      // eased Settings overlay opacity (#9)
+    bool  persistDragging = false; // dragging the Settings Persist bar (#26)
 
     // Single fixed window for both modes: toggling Advanced relays out the
     // content in place, so the host never resizes us and nothing flickers (#20).

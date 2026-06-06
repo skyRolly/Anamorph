@@ -68,6 +68,7 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
 
     dryScratch.setSize (2, maxBlock);
     wetScratch.setSize (2, maxBlock);
+    inputScratch.setSize (2, maxBlock);
     monoLow.setSize (1, maxBlock);
     monoLowDelay.setSize (1, maxLat + maxBlock + 1);
     monoLowDelay.clear();
@@ -368,6 +369,15 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     }
     const bool fading = (switchState != SwitchState::Normal);
 
+    // A/B switch restored a remembered Level-Match value: adopt it so the match
+    // doesn't re-converge loudly (feedback #23). The switch duck masks the seam.
+    const float inj = matchInject.exchange (kNoInject, std::memory_order_relaxed);
+    if (inj > kNoInject + 1.0f)
+    {
+        loudness.setDisplayedGainDb (inj);
+        matchGainSmooth.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (inj));
+    }
+
     const int lat = getLatencySamples();
     const int ddSize = dryDelayBuffer.getNumSamples();
     float* ddL = dryDelayBuffer.getWritePointer (0);
@@ -415,17 +425,23 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     else if (p.solo == SoloMode::Side)
         for (int i = 0; i < n; ++i) { const float s = (L[i] - R[i]) * 0.5f; L[i] = s; R[i] = -s; }
 
-    // Capture conditioned DRY for the mix + loudness reference.
-    dryScratch.copyFrom (0, 0, L, n);
-    dryScratch.copyFrom (1, 0, R, n);
+    // Capture the full conditioned INPUT as the loudness-match reference (#25):
+    // Level Match compares the FINAL recombined output against this.
+    inputScratch.copyFrom (0, 0, L, n);
+    inputScratch.copyFrom (1, 0, R, n);
 
-    // -------- Mono Maker split (feedback #2 + #20) --------------------------
-    // Peel off a mono low band and route only the HIGH band into the widener;
-    // the mono lows are added back, delay-aligned, after widening. This keeps
-    // the bass mono AND immune to the widener (so Mono Maker actually works).
+    // -------- Mono Maker split (feedback #25) -------------------------------
+    // Peel off a mono low band; only the HIGH band enters the widener and the
+    // dry/wet mix. The mono lows go straight to the output (added back before
+    // Output gain/balance), so the low end is unaffected by widening OR Mix.
     const bool monoMakerActive = p.monoMakerEnable;
     if (monoMakerActive)
         monoMaker.processSplit (L, R, monoLow.getWritePointer (0), n);
+
+    // DRY for the dry/wet mix = the band that actually enters the widener
+    // (the high band when Mono Maker is on, otherwise the full signal).
+    dryScratch.copyFrom (0, 0, L, n);
+    dryScratch.copyFrom (1, 0, R, n);
 
     // -------- 2. MS encode (only the Drive + algorithm run in M/S) ----------
     if (p.msMode)
@@ -472,8 +488,24 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     if (p.mbEnable)
         multiband.processBlock (L, R, n);
 
-    // -------- Mono Maker recombine: add the mono lows back, delay-aligned to
-    //          the wet (oversampling) latency so lows and highs stay phase-locked.
+    // -------- 7. Mix (dry/wet on the WIDENED band only, delay-compensated) ---
+    const float* dL = dryScratch.getReadPointer (0);
+    const float* dR = dryScratch.getReadPointer (1);
+    for (int i = 0; i < n; ++i)
+    {
+        ddL[dryDelayWrite] = dL[i];
+        ddR[dryDelayWrite] = dR[i];
+        int rp = dryDelayWrite - lat; if (rp < 0) rp += ddSize;
+        const float dryL = ddL[rp], dryR = ddR[rp];
+        dryDelayWrite = (dryDelayWrite + 1) % ddSize;
+
+        const float m = mixSmooth.getNextValue();
+        L[i] = dryL + m * (L[i] - dryL);
+        R[i] = dryR + m * (R[i] - dryR);
+    }
+
+    // -------- Mono Maker recombine: add the mono lows straight in (bypassing the
+    //          Mix), delay-aligned to the wet latency so lows/highs phase-lock.
     if (monoMakerActive)
     {
         const float* ml = monoLow.getReadPointer (0);
@@ -496,26 +528,11 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         }
     }
 
-    // -------- 7. Mix (dry delay-compensated to the wet latency) -------------
-    const float* dL = dryScratch.getReadPointer (0);
-    const float* dR = dryScratch.getReadPointer (1);
-    for (int i = 0; i < n; ++i)
-    {
-        ddL[dryDelayWrite] = dL[i];
-        ddR[dryDelayWrite] = dR[i];
-        int rp = dryDelayWrite - lat; if (rp < 0) rp += ddSize;
-        const float dryL = ddL[rp], dryR = ddR[rp];
-        dryDelayWrite = (dryDelayWrite + 1) % ddSize;
-
-        const float m = mixSmooth.getNextValue();
-        L[i] = dryL + m * (L[i] - dryL);
-        R[i] = dryR + m * (R[i] - dryR);
-    }
-
-    // Capture WET (post-mix, pre-gain) for perceptual loudness matching.
+    // Level Match detects the FULL recombined output (lows + highs) against the
+    // full input, BEFORE Output gain / balance (feedback #25).
     wetScratch.copyFrom (0, 0, L, n);
     wetScratch.copyFrom (1, 0, R, n);
-    loudness.process (dryScratch.getReadPointer (0), dryScratch.getReadPointer (1),
+    loudness.process (inputScratch.getReadPointer (0), inputScratch.getReadPointer (1),
                       wetScratch.getReadPointer (0), wetScratch.getReadPointer (1), n);
     matchGainSmooth.setTargetValue (p.autoGainMatch
         ? juce::Decibels::decibelsToGain (loudness.getMatchGainDb()) : 1.0f);

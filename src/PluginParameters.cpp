@@ -26,12 +26,37 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
 
     auto floatParam = [&] (const char* id, const juce::String& name,
                            NormalisableRange<float> range, float def,
-                           std::function<juce::String(float,int)> toText = {})
+                           std::function<juce::String(float,int)> toText = {},
+                           std::function<float(const juce::String&)> fromText = {})
     {
         auto attr = juce::AudioParameterFloatAttributes();
-        if (toText) attr = attr.withStringFromValueFunction (std::move (toText));
+        if (toText)   attr = attr.withStringFromValueFunction (std::move (toText));
+        if (fromText) attr = attr.withValueFromStringFunction (std::move (fromText));
         layout.add (std::make_unique<AudioParameterFloat> (
             ParameterID { id, kVersion }, name, range, def, attr));
+    };
+
+    // --- Raw-number-friendly parsers (edit boxes show bare numbers, #36) ---
+    // Percent fields: "150" or "150%" -> 1.5 (value is the fraction).
+    auto pctFrom = [] (const juce::String& t) { return t.removeCharacters ("% ").getFloatValue() / 100.0f; };
+    // Frequency fields: "2k" / "2kHz" / "2000" all -> 2000 Hz (#37).
+    auto hzFrom = [] (const juce::String& t)
+    {
+        auto s = t.toLowerCase().trim();
+        const bool k = s.containsChar ('k');
+        const float v = s.removeCharacters ("khz ").getFloatValue();
+        return k ? v * 1000.0f : v;
+    };
+    // Balance: signed (negative = Left), "C"/"0" -> centre, +/-100 -> hard L/R (#29).
+    auto balFrom = [] (const juce::String& t)
+    {
+        auto s = t.toLowerCase().trim();
+        if (s.startsWithChar ('c')) return 0.0f;
+        const bool left = s.containsChar ('l'), right = s.containsChar ('r');
+        float v = s.removeCharacters ("lr%+ ").getFloatValue() / 100.0f;
+        if (left)  v = -std::abs (v);
+        if (right) v =  std::abs (v);
+        return juce::jlimit (-1.0f, 1.0f, v);
     };
 
     // Balance reads as a signed percentage (L .. C .. R), 0.1% resolution (#15).
@@ -47,7 +72,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
         "Input Channel", StringArray { "Stereo", "Left Only", "Right Only" }, 0));
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::monoSum, kVersion }, "Mono", false));
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::swap, kVersion }, "Swap L/R", false));
-    floatParam (pid::inputBalance, "Input Balance", { -1.0f, 1.0f, 0.001f }, 0.0f, balPct);
+    floatParam (pid::inputBalance, "Input Balance", { -1.0f, 1.0f, 0.001f }, 0.0f, balPct, balFrom);
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::polarityL, kVersion }, "Phase Invert L", false));
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::polarityR, kVersion }, "Phase Invert R", false));
 
@@ -57,38 +82,38 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
     // --- Effect engine ---
     floatParam (pid::drive, "Drive", { 0.0f, 24.0f, 0.01f }, 0.0f, db);
     layout.add (std::make_unique<AudioParameterChoice> (ParameterID { pid::algorithm, kVersion },
-        "Algorithm", StringArray { "Haas", "Velvet Noise", "Chorus", "Dim D" }, 1));
+        "Algorithm", StringArray { "Haas", "Velvet Noise", "Chorus", "Dim-D" }, 1));
     // Unified widening intensity. Default 0 == transparent on load (#3).
-    floatParam (pid::amount, "Amount", { 0.0f, 1.0f, 0.001f }, 0.0f, pct);
+    floatParam (pid::amount, "Amount", { 0.0f, 1.0f, 0.001f }, 0.0f, pct, pctFrom);
     floatParam (pid::haasDelay, "Haas Delay", { 1.0f, 35.0f, 0.01f }, 12.0f, ms);
     // Default perceived side = Left (#14); list order unchanged.
     layout.add (std::make_unique<AudioParameterChoice> (ParameterID { pid::haasSide, kVersion },
         "Haas Side", StringArray { "Left", "Right" }, 0));
-    floatParam (pid::velvetDensity, "Velvet Density", { 0.0f, 1.0f, 0.001f }, 0.5f, pct);
-    floatParam (pid::chorusRate, "Chorus Rate", NormalisableRange<float> { 0.05f, 5.0f, 0.001f, 0.4f }, 0.6f,
-                [] (float v, int) { return juce::String (v, 2) + " Hz"; });
-    floatParam (pid::chorusDepth, "Chorus Depth", { 0.0f, 1.0f, 0.001f }, 0.5f, pct);
+    floatParam (pid::velvetDensity, "Velvet Density", { 0.0f, 1.0f, 0.001f }, 0.5f, pct, pctFrom);
+    floatParam (pid::chorusRate, "Chorus Rate", NormalisableRange<float> { 0.05f, 5.0f, 0.001f, 0.4f }, 0.5f,
+                [] (float v, int) { return juce::String (v, 2) + " Hz"; }, hzFrom);
+    floatParam (pid::chorusDepth, "Chorus Depth", { 0.0f, 1.0f, 0.001f }, 0.5f, pct, pctFrom);
     // Friendly Dimension-D voicing names (#14); long descriptions live in tooltips.
     layout.add (std::make_unique<AudioParameterChoice> (ParameterID { pid::dimMode, kVersion },
         "Dimension Mode", StringArray { "Subtle", "Classic", "Wide", "Lush" }, 1));
-    floatParam (pid::width, "Width", { 0.0f, 2.0f, 0.001f }, 1.0f, pct);
+    floatParam (pid::width, "Width", { 0.0f, 2.0f, 0.001f }, 1.0f, pct, pctFrom);
 
     // --- Multiband ---
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::mbEnable, kVersion }, "Multiband Enable", false));
-    floatParam (pid::mbFreqLow,  "MB Low/Mid",  NormalisableRange<float> { 50.0f, 1000.0f, 0.1f, 0.3f }, 250.0f, hz);
-    floatParam (pid::mbFreqHigh, "MB Mid/High", NormalisableRange<float> { 1000.0f, 10000.0f, 0.1f, 0.3f }, 2500.0f, hz);
-    floatParam (pid::mbWidthLow,  "MB Width Low",  { 0.0f, 2.0f, 0.001f }, 1.0f, pct);
-    floatParam (pid::mbWidthMid,  "MB Width Mid",  { 0.0f, 2.0f, 0.001f }, 1.0f, pct);
-    floatParam (pid::mbWidthHigh, "MB Width High", { 0.0f, 2.0f, 0.001f }, 1.0f, pct);
+    floatParam (pid::mbFreqLow,  "MB Low/Mid",  NormalisableRange<float> { 50.0f, 1000.0f, 0.1f, 0.3f }, 250.0f, hz, hzFrom);
+    floatParam (pid::mbFreqHigh, "MB Mid/High", NormalisableRange<float> { 1000.0f, 10000.0f, 0.1f, 0.3f }, 2500.0f, hz, hzFrom);
+    floatParam (pid::mbWidthLow,  "MB Width Low",  { 0.0f, 2.0f, 0.001f }, 1.0f, pct, pctFrom);
+    floatParam (pid::mbWidthMid,  "MB Width Mid",  { 0.0f, 2.0f, 0.001f }, 1.0f, pct, pctFrom);
+    floatParam (pid::mbWidthHigh, "MB Width High", { 0.0f, 2.0f, 0.001f }, 1.0f, pct, pctFrom);
 
     // --- Mono maker ---
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::monoMakerOn, kVersion }, "Mono Maker", false));
-    floatParam (pid::monoMakerFreq, "Mono Maker Freq", NormalisableRange<float> { 20.0f, 500.0f, 0.1f, 0.4f }, 120.0f, hz);
+    floatParam (pid::monoMakerFreq, "Mono Maker Freq", NormalisableRange<float> { 20.0f, 500.0f, 0.1f, 0.4f }, 120.0f, hz, hzFrom);
 
     // --- Mix / gain ---
-    floatParam (pid::mix, "Mix", { 0.0f, 1.0f, 0.001f }, 1.0f, pct);
+    floatParam (pid::mix, "Mix", { 0.0f, 1.0f, 0.001f }, 1.0f, pct, pctFrom);
     floatParam (pid::outputGain, "Output Gain", { -24.0f, 24.0f, 0.01f }, 0.0f, db);
-    floatParam (pid::outputBalance, "Output Balance", { -1.0f, 1.0f, 0.001f }, 0.0f, balPct);
+    floatParam (pid::outputBalance, "Output Balance", { -1.0f, 1.0f, 0.001f }, 0.0f, balPct, balFrom);
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::autoGainMatch, kVersion }, "Auto Gain Match", false));
 
     // --- Monitoring ---
@@ -105,7 +130,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
     // --- UI (saved with state, but UI-only) ---
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::advancedMode, kVersion }, "Advanced Mode", false));
     // Persist default 0.5; the scope remaps it so 50% reproduces the old 60% feel (#21).
-    floatParam (pid::scopePersist, "Scope Persistence", { 0.0f, 1.0f, 0.001f }, 0.5f, pct);
+    floatParam (pid::scopePersist, "Scope Persistence", { 0.0f, 1.0f, 0.001f }, 0.5f, pct, pctFrom);
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::metersOn, kVersion }, "Show Meters", false));
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::tooltipsOn, kVersion }, "Show Tooltips", false));
 

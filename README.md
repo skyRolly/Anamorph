@@ -6,6 +6,25 @@ of stereo tools (MS, mono-maker, channel utilities, monitoring) around a
 high-end diamond vectorscope. Built with **CMake + JUCE** only — it configures
 and builds entirely from the command line on a headless Linux machine, no IDE.
 
+### What's new in 0.5.0
+- **Mono Maker is a proper band-split now**: the low band is summed to mono and
+  routed *around* both the widener **and** the dry/wet Mix, straight to Output —
+  so the lows are never cut and Level Match measures the full recombined signal
+  before Output gain/balance. (Verified: mono bass preserved, side bass removed.)
+- **Level Match**: freezes during silence so a big boost no longer slams loud on
+  the next play; remembers a value per A/B slot so switching glides; stays
+  independent of the Output knob.
+- **Level meter overhaul**: per-channel L/R **Peak + RMS** numbers (8 total) with
+  held max-peak, clip colours (red Peak / amber RMS, click or replay to reset),
+  rate-limited hold-then-fall numbers, fast-rise/slow-fall + faster-falling RMS
+  bars, a hold-then-drop peak block, and a richer look.
+- **Value boxes**: drag the number to change it; double-click types a *bare*
+  number (units hidden) and accepts `2k`/`2kHz`/`2000`; balance edits are signed
+  (− = Left); double-click on a knob resets (triple-click no longer re-resets).
+- Velvet pause/clip-tail gate retuned; Chorus Rate default 0.50 Hz; Settings no
+  longer ride A/B; plus many UI fixes (Adv label fits, A/B oval, Dim-D, Haas
+  "Lean" / Dim-D "Style" captions, bigger ø, uniform pop-up rows, Persist reveal).
+
 ### What's new in 0.4.1
 - **Mono Maker actually works again** and is now a true band-split: the low band
   is summed to mono and bypasses the widener, only the highs are widened (no bass

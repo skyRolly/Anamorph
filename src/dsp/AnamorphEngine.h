@@ -67,6 +67,10 @@ public:
     LevelMeters&      getLevels() noexcept         { return levels; }
     float getMatchGainDb() const noexcept         { return loudness.getMatchGainDb(); }
 
+    // A/B per-slot Level-Match memory (feedback #23): the wrapper restores a
+    // remembered match value on a slot switch; consumed on the audio thread.
+    void injectMatchGainDb (float db) noexcept { matchInject.store (db, std::memory_order_relaxed); }
+
 private:
     void updateDerived();
     void applyInputConditioning (float* L, float* R, int n) noexcept;
@@ -116,13 +120,17 @@ private:
     EngineParameters pendingP;  // snapshot to adopt once the duck reaches silence
     bool  pendingAlgoReset = false;
 
+    static constexpr float kNoInject = -1000.0f;
+    std::atomic<float> matchInject { kNoInject }; // pending per-slot match restore (#23)
+
     // Dry-path delay (integer) to align dry with wet latency in the mix.
     juce::AudioBuffer<float> dryDelayBuffer;
     int dryDelayWrite = 0;
 
     // Scratch
-    juce::AudioBuffer<float> dryScratch;  // conditioned dry (pre-effect)
-    juce::AudioBuffer<float> wetScratch;  // wet pre-output-gain (for loudness)
+    juce::AudioBuffer<float> dryScratch;   // dry for the dry/wet mix (high band when Mono Maker on)
+    juce::AudioBuffer<float> wetScratch;   // wet pre-output-gain (for loudness)
+    juce::AudioBuffer<float> inputScratch; // full conditioned input (loudness reference, #25)
 
     // Mono Maker band-split: the mono low band is held aside while only the high
     // band is widened, then added back (delay-aligned to the wet latency) (#20).

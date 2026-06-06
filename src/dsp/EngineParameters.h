@@ -49,7 +49,7 @@ struct EngineParameters
     float       velvetDensity = 0.5f;  // 0 .. 1 (diffusion character)
 
     // Chorus
-    float       chorusRate  = 0.6f;    // Hz
+    float       chorusRate  = 0.5f;    // Hz
     float       chorusDepth = 0.5f;    // 0 .. 1
 
     // Dimension-D (anti-phase, no pitch wobble). Mode selects a voicing.

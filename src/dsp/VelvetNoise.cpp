@@ -35,8 +35,11 @@ void VelvetNoise::prepare (double sampleRate, unsigned seed)
 
     currentDensity = targetDensity;
     currentAmount  = targetAmount;
-    envAtk = 1.0f - std::exp (-1.0f / (float) (0.001 * sr)); // 1 ms attack
-    envRel = 1.0f - std::exp (-1.0f / (float) (0.060 * sr)); // 60 ms release
+    // Open slowly so the decorrelation FADES IN on play (masking any burst from
+    // stale history), but close fast so the sparse-FIR tail is cut quickly on
+    // pause -- the pause "white noise" was that lingering tail (feedback #34).
+    envAtk = 1.0f - std::exp (-1.0f / (float) (0.010 * sr)); // 10 ms attack (slow open)
+    envRel = 1.0f - std::exp (-1.0f / (float) (0.018 * sr)); // 18 ms release (fast close)
     updateWeights();
     reset();
 }

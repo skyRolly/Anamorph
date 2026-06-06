@@ -5,6 +5,8 @@ namespace anamorph::gui
 {
 
 static constexpr float kMinDb = -60.0f, kMaxDb = 0.0f;
+static const juce::Colour kClipRed { 0xffe0584a };
+static const juce::Colour kRmsOrange { 0xffe0a94a };
 
 LevelMeter::LevelMeter (anamorph::LevelMeters& src) : source (src)
 {
@@ -13,9 +15,7 @@ LevelMeter::LevelMeter (anamorph::LevelMeters& src) : source (src)
 
 LevelMeter::~LevelMeter() { stopTimer(); }
 
-// Non-uniform scale (#17): more pixels-per-dB near 0 dBFS, where mastering work
-// happens, and a compressed tail toward -60. A gentle power curve does this
-// smoothly without piecewise kinks.
+// Non-uniform scale: more pixels-per-dB near 0 dBFS (#17).
 static float dbToNorm (float db)
 {
     const float t = juce::jlimit (0.0f, 1.0f, (db - kMinDb) / (kMaxDb - kMinDb));
@@ -24,72 +24,68 @@ static float dbToNorm (float db)
 
 static juce::String dbText (float db)
 {
-    if (db <= kMinDb + 0.5f) return juce::String ("-") + juce::String (juce::CharPointer_UTF8 ("\xe2\x88\x9e")); // -inf
+    if (db <= kMinDb + 0.5f) return juce::String ("-") + juce::String (juce::CharPointer_UTF8 ("\xe2\x88\x9e"));
     return juce::String (db, 1);
 }
 
-void LevelMeter::drawReadout (juce::Graphics& g, juce::Rectangle<float> r,
-                              const juce::String& lab, float valueDb, bool dim)
+void LevelMeter::drawNumber (juce::Graphics& g, juce::Rectangle<float> r, float valueDb,
+                             bool peak, bool clip)
 {
-    // Label (always dim) + value. RMS uses a dimmer value colour than Peak (#17).
-    g.setColour (colours::textDim.withAlpha (0.8f));
-    g.setFont (juce::Font (juce::FontOptions (9.5f)).withExtraKerningFactor (0.06f));
-    g.drawText (lab, r.removeFromLeft (30.0f), juce::Justification::centredLeft);
-
-    g.setColour (dim ? colours::textDim : colours::text);
-    g.setFont (juce::Font (juce::FontOptions (12.5f)));
-    g.drawText (dbText (valueDb), r, juce::Justification::centredRight);
+    // Peak is bright (red when it has clipped); RMS is dimmer (orange on clip) (#14).
+    juce::Colour col = peak ? (clip ? kClipRed : colours::text)
+                            : (clip ? kRmsOrange : colours::textDim);
+    g.setColour (col);
+    g.setFont (juce::Font (juce::FontOptions (peak ? 11.5f : 10.5f)));
+    g.drawText (dbText (valueDb), r, juce::Justification::centred);
 }
 
 void LevelMeter::drawBar (juce::Graphics& g, juce::Rectangle<float> r,
-                          float fastDb, float rmsDb, float peakDb, const juce::String& lab)
+                          float dimDb, float briDb, float barDb)
 {
-    g.setColour (colours::bg);
-    g.fillRoundedRectangle (r, 2.0f);
+    // Recessed slot with an inner gradient (#22).
+    juce::ColourGradient bgGrad (colours::bg.darker (0.3f), r.getX(), r.getY(),
+                                 colours::bgPanel, r.getX(), r.getBottom(), false);
+    g.setGradientFill (bgGrad);
+    g.fillRoundedRectangle (r, 2.5f);
+    g.setColour (colours::outline.withAlpha (0.6f));
+    g.drawRoundedRectangle (r.reduced (0.5f), 2.5f, 1.0f);
 
-    auto track = r.reduced (1.0f).withTrimmedBottom (12.0f);
+    auto track = r.reduced (1.5f);
 
-    // Faint non-uniform gridlines so the eye reads the scale (#17).
-    g.setColour (colours::outline.withAlpha (0.45f));
-    for (float gl : { 0.0f, -3.0f, -6.0f, -12.0f, -24.0f, -48.0f })
-    {
-        const float y = track.getBottom() - dbToNorm (gl) * track.getHeight();
-        g.fillRect (track.getX(), y, track.getWidth(), 1.0f);
-    }
+    // Faint non-uniform gridlines.
+    g.setColour (colours::outline.withAlpha (0.4f));
+    for (float gl : { 0.0f, -6.0f, -18.0f, -36.0f })
+        g.fillRect (track.getX(), track.getBottom() - dbToNorm (gl) * track.getHeight(), track.getWidth(), 1.0f);
 
-    const float fastN = dbToNorm (fastDb);
-    const float rmsN  = dbToNorm (rmsDb);
-    const float peakN = dbToNorm (peakDb);
+    const float dimN = dbToNorm (dimDb);
+    const float briN = dbToNorm (briDb);
+    const float barN = dbToNorm (barDb);
 
-    // Fast/dim layer: a quicker envelope that rides ABOVE the steady RMS, drawn
-    // FIRST (taller) so it shows over the bright body, not hidden behind it (#15).
-    g.setColour (colours::accent2.withAlpha (0.32f));
-    g.fillRect (track.withTop (track.getBottom() - fastN * track.getHeight()));
+    juce::Graphics::ScopedSaveState save (g);
+    g.reduceClipRegion (track.toNearestInt());
 
-    // Slow/bright RMS: the steady body, warming toward 0 dBFS, with a soft
-    // vertical gradient consistent with the rest of the UI (#18). Drawn on top.
-    const float topWarn = juce::jlimit (0.0f, 1.0f, (peakDb + 6.0f) / 6.0f);
-    auto col = colours::accent.interpolatedWith (juce::Colour (0xffd8584a), topWarn);
-    auto fill = track.withTop (track.getBottom() - rmsN * track.getHeight());
-    juce::ColourGradient grad (col.withAlpha (0.95f), fill.getX(), fill.getBottom(),
-                               col.brighter (0.25f).withAlpha (0.95f), fill.getX(), fill.getY(), false);
-    g.setGradientFill (grad);
-    g.fillRect (fill);
+    // Dim fast-rise/slow-fall envelope rides above the bright body (#15/#18).
+    g.setColour (colours::accent2.withAlpha (0.30f));
+    g.fillRoundedRectangle (track.withTop (track.getBottom() - dimN * track.getHeight()), 1.5f);
 
-    // Peak: a small bright block (not a hairline) sitting on top (#18).
-    const float py = track.getBottom() - peakN * track.getHeight();
-    const bool clip = peakDb > -0.1f;
-    g.setColour (clip ? juce::Colour (0xffe0584a) : colours::text);
-    g.fillRect (track.getX(), juce::jmax (track.getY(), py - 2.0f), track.getWidth(), 3.0f);
-    if (clip) // glow when slamming 0 dBFS
-    {
-        g.setColour (juce::Colour (0xffe0584a).withAlpha (0.35f));
-        g.fillRect (track.getX(), juce::jmax (track.getY(), py - 3.5f), track.getWidth(), 6.0f);
-    }
+    // Bright RMS body: gradient that warms toward 0 dBFS, with a soft top glow.
+    const float warm = juce::jlimit (0.0f, 1.0f, (briDb + 6.0f) / 6.0f);
+    auto col = colours::accent.interpolatedWith (kClipRed, warm);
+    auto fill = track.withTop (track.getBottom() - briN * track.getHeight());
+    juce::ColourGradient fg (col.darker (0.10f), fill.getX(), fill.getBottom(),
+                             col.brighter (0.28f), fill.getX(), fill.getY(), false);
+    g.setGradientFill (fg);
+    g.fillRoundedRectangle (fill, 1.5f);
+    g.setColour (col.brighter (0.4f).withAlpha (0.5f)); // top edge highlight
+    g.fillRect (fill.getX(), fill.getY(), fill.getWidth(), 1.0f);
 
-    g.setColour (colours::textDim);
-    g.setFont (juce::Font (juce::FontOptions (9.0f)));
-    g.drawText (lab, r.withTop (r.getBottom() - 12.0f), juce::Justification::centred);
+    // Peak-hold block (#24): a small bright block with a glow, red past 0 dBFS.
+    const float py = track.getBottom() - barN * track.getHeight();
+    const bool over = barDb > -0.05f;
+    g.setColour ((over ? kClipRed : colours::text).withAlpha (0.30f));
+    g.fillRect (track.getX(), py - 3.0f, track.getWidth(), 6.0f);
+    g.setColour (over ? kClipRed : colours::text);
+    g.fillRoundedRectangle (track.getX(), py - 1.5f, track.getWidth(), 3.0f, 1.0f);
 }
 
 void LevelMeter::paint (juce::Graphics& g)
@@ -101,30 +97,48 @@ void LevelMeter::paint (juce::Graphics& g)
     g.drawRoundedRectangle (bounds.reduced (0.5f), 4.0f, 1.0f);
 
     auto area = bounds.reduced (5.0f);
+    const float colW = area.getWidth() / 4.0f;
+    auto colX = [&] (int i) { return area.withX (area.getX() + i * colW).withWidth (colW); };
 
-    // Fixed-position numeric Peak / RMS readouts for the OUTPUT (#17): Peak is
-    // the louder channel's peak; RMS the louder channel's fast RMS (dimmer).
-    const float outPeak = juce::jmax (source.output.getPeakL(), source.output.getPeakR());
-    const float outRms  = juce::jmax (source.output.getRmsL(),  source.output.getRmsR());
-    drawReadout (g, area.removeFromTop (15.0f), "Peak", outPeak, false);
-    drawReadout (g, area.removeFromTop (15.0f), "RMS",  outRms,  true);
-    area.removeFromTop (3.0f);
-
-    // Header labels IN | OUT
+    // ---- header: IN | OUT ----
     auto header = area.removeFromTop (11.0f);
     g.setColour (colours::textDim);
     g.setFont (juce::Font (juce::FontOptions (9.0f)).withExtraKerningFactor (0.15f));
-    g.drawText ("IN",  header.removeFromLeft (header.getWidth() * 0.5f), juce::Justification::centred);
+    g.drawText ("IN",  header.removeFromLeft (area.getWidth() * 0.5f), juce::Justification::centred);
     g.drawText ("OUT", header, juce::Justification::centred);
 
-    const float gap = 3.0f;
-    const float bw = (area.getWidth() - 3.0f * gap) / 4.0f;
-    auto next = [&] { auto b = area.removeFromLeft (bw); area.removeFromLeft (gap); return b; };
+    // ---- L / R sub-header ----
+    auto sub = area.removeFromTop (10.0f);
+    g.setColour (colours::textDim.withAlpha (0.8f));
+    g.setFont (juce::Font (juce::FontOptions (8.5f)));
+    const char* lr[] = { "L", "R", "L", "R" };
+    for (int i = 0; i < 4; ++i)
+        g.drawText (lr[i], sub.withX (area.getX() + i * colW).withWidth (colW), juce::Justification::centred);
 
-    drawBar (g, next(), source.input.getFastL(),  source.input.getRmsL(),  source.input.getPeakL(),  "L");
-    drawBar (g, next(), source.input.getFastR(),  source.input.getRmsR(),  source.input.getPeakR(),  "R");
-    drawBar (g, next(), source.output.getFastL(), source.output.getRmsL(), source.output.getPeakL(), "L");
-    drawBar (g, area,   source.output.getFastR(), source.output.getRmsR(), source.output.getPeakR(), "R");
+    // ---- Peak row (8 numbers total with the RMS row, #17) ----
+    auto pkRow = area.removeFromTop (14.0f);
+    drawNumber (g, colX (0).withY (pkRow.getY()).withHeight (14.0f), source.input.getPeakHoldL(),  true, source.input.getPeakClipL());
+    drawNumber (g, colX (1).withY (pkRow.getY()).withHeight (14.0f), source.input.getPeakHoldR(),  true, source.input.getPeakClipR());
+    drawNumber (g, colX (2).withY (pkRow.getY()).withHeight (14.0f), source.output.getPeakHoldL(), true, source.output.getPeakClipL());
+    drawNumber (g, colX (3).withY (pkRow.getY()).withHeight (14.0f), source.output.getPeakHoldR(), true, source.output.getPeakClipR());
+
+    // ---- RMS row ----
+    auto rmRow = area.removeFromTop (13.0f);
+    drawNumber (g, colX (0).withY (rmRow.getY()).withHeight (13.0f), source.input.getRmsNumL(),  false, source.input.getRmsClipL());
+    drawNumber (g, colX (1).withY (rmRow.getY()).withHeight (13.0f), source.input.getRmsNumR(),  false, source.input.getRmsClipR());
+    drawNumber (g, colX (2).withY (rmRow.getY()).withHeight (13.0f), source.output.getRmsNumL(), false, source.output.getRmsClipL());
+    drawNumber (g, colX (3).withY (rmRow.getY()).withHeight (13.0f), source.output.getRmsNumR(), false, source.output.getRmsClipR());
+
+    area.removeFromTop (3.0f);
+
+    // ---- four thin bars under the columns ----
+    const float gap = 6.0f;
+    const float bw = juce::jmin (14.0f, colW - gap);
+    auto bar = [&] (int i) { return area.withX (area.getX() + i * colW + (colW - bw) * 0.5f).withWidth (bw); };
+    drawBar (g, bar (0), source.input.getDimL(),  source.input.getBriL(),  source.input.getBarL());
+    drawBar (g, bar (1), source.input.getDimR(),  source.input.getBriR(),  source.input.getBarR());
+    drawBar (g, bar (2), source.output.getDimL(), source.output.getBriL(), source.output.getBarL());
+    drawBar (g, bar (3), source.output.getDimR(), source.output.getBriR(), source.output.getBarR());
 }
 
 } // namespace anamorph::gui

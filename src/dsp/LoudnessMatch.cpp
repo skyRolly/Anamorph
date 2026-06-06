@@ -93,16 +93,23 @@ void LoudnessMatch::process (const float* dryL, const float* dryR,
     double target = dLufs - wLufs;
     target = std::max (-24.0, std::min (24.0, target));
 
-    // Adaptive smoothing of the PUBLISHED value (spec feedback #19):
-    //  - small fluctuations are averaged over a long window -> a steady readout
-    //    you can actually judge before pressing Apply;
-    //  - a big change (e.g. cranking a knob that drops the level) snaps quickly
-    //    so Match doesn't lag with the level audibly wrong for a second.
-    const double blockDur = (double) numSamples / sampleRate;
-    const double diff = target - displayedGainDb;
-    const double tau  = (std::abs (diff) > 2.0) ? 0.06 : 0.9; // fast vs. slow
-    const double coeff = 1.0 - std::exp (-blockDur / tau);
-    displayedGainDb += coeff * diff;
+    // FREEZE on silence (feedback #33): when the input has decayed to silence,
+    // hold the last match value instead of letting it drift toward 0. Otherwise a
+    // big boost (e.g. Drive maxed) would slam loud for an instant on the next
+    // play before the match caught up. ~ -60 dBFS K-weighted mean-square gate.
+    const double kSilence = 1.0e-6;
+    const bool silent = (meanSqDry < kSilence && meanSqWet < kSilence);
+
+    if (! silent)
+    {
+        // Adaptive smoothing of the PUBLISHED value: small fluctuations average
+        // over a long window (a steady readout), a big change snaps quickly.
+        const double blockDur = (double) numSamples / sampleRate;
+        const double diff = target - displayedGainDb;
+        const double tau  = (std::abs (diff) > 2.0) ? 0.06 : 0.9; // fast vs. slow
+        const double coeff = 1.0 - std::exp (-blockDur / tau);
+        displayedGainDb += coeff * diff;
+    }
 
     matchGainDb.store ((float) displayedGainDb, std::memory_order_relaxed);
 }

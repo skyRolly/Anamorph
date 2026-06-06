@@ -166,10 +166,23 @@ void AnamorphLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButto
         g.setColour (on ? colours::bg : colours::text);
         g.fillEllipse (kx, pill.getCentreY() - knob * 0.5f, knob, knob);
 
-        g.setColour (on || highlighted ? colours::text : colours::textDim);
-        g.setFont (juce::Font (juce::FontOptions (11.0f)));
-        g.drawFittedText (b.getButtonText(), bounds.withTop (pill.getBottom() + 1.0f).toNearestInt(),
-                          juce::Justification::centredTop, 1, 0.8f);
+        const auto labelArea = bounds.withTop (pill.getBottom() + 1.0f).toNearestInt();
+        const juce::Colour tc = (on || highlighted ? colours::text : colours::textDim);
+        const auto txt = b.getButtonText();
+        if (txt.isNotEmpty() && txt[0] == (juce::juce_wchar) 0x00F8) // polarity "ø L/R": bigger symbol (#30)
+        {
+            juce::AttributedString as;
+            as.setJustification (juce::Justification::centred);
+            as.append (txt.substring (0, 1), juce::Font (juce::FontOptions (15.0f)), tc);
+            as.append (txt.substring (1),     juce::Font (juce::FontOptions (11.0f)), tc);
+            as.draw (g, labelArea.toFloat());
+        }
+        else
+        {
+            g.setColour (tc);
+            g.setFont (juce::Font (juce::FontOptions (11.0f)));
+            g.drawFittedText (txt, labelArea, juce::Justification::centredTop, 1, 0.8f);
+        }
         return;
     }
 
@@ -252,6 +265,17 @@ juce::Font AnamorphLookAndFeel::getTextButtonFont (juce::TextButton& b, int butt
 juce::Font AnamorphLookAndFeel::getComboBoxFont (juce::ComboBox&)  { return juce::Font (juce::FontOptions (13.5f)); }
 juce::Font AnamorphLookAndFeel::getPopupMenuFont()                 { return juce::Font (juce::FontOptions (13.5f)); }
 
+void AnamorphLookAndFeel::getIdealPopupMenuItemSize (const juce::String& text, bool isSeparator,
+                                                     int, int& idealWidth, int& idealHeight)
+{
+    if (isSeparator) { idealWidth = 60; idealHeight = 8; return; }
+    auto f = getPopupMenuFont();
+    juce::GlyphArrangement ga;
+    ga.addLineOfText (f, text, 0.0f, 0.0f);
+    idealWidth  = (int) std::ceil (ga.getBoundingBox (0, -1, true).getWidth()) + 30;
+    idealHeight = 23; // uniform across every combo regardless of its on-screen height (#3)
+}
+
 // Undo/Redo glyphs: render them larger AND rotated 180 degrees, which the user
 // found more comfortable (feedback #7). All other buttons use the default text.
 void AnamorphLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& b,
@@ -309,54 +333,69 @@ juce::Font AnamorphLookAndFeel::getLabelFont (juce::Label&)
     return juce::Font (juce::FontOptions (13.0f));
 }
 
-// A slider value box that forwards single-click drags to its parent slider, so
-// you can drag the NUMBER up/down to change the value (feedback #2), while a
-// double-click still opens the text editor to type an exact value.
+// A slider value box you can DRAG (up/down) to change the value (#28), while a
+// double-click opens an editor pre-filled with the RAW number (no %, dB, Hz),
+// which still parses unit/k-suffixed input (#36 / #37 / #29).
 namespace
 {
-    struct DragValueLabel : public juce::Label
+    static juce::Slider* rotaryParent (juce::Component* c) noexcept
     {
-        // Only forward to ROTARY sliders: those change by vertical delta, so a
-        // drag on the number works naturally. Linear sliders set value from the
-        // absolute position, so forwarding would jump them to the text box's edge.
-        juce::Slider* dragTarget() noexcept
-        {
-            auto* s = dynamic_cast<juce::Slider*> (getParentComponent());
-            if (s == nullptr || isBeingEdited()) return nullptr;
-            const auto st = s->getSliderStyle();
-            const bool rotary = (st == juce::Slider::Rotary || st == juce::Slider::RotaryHorizontalDrag
-                              || st == juce::Slider::RotaryVerticalDrag || st == juce::Slider::RotaryHorizontalVerticalDrag);
-            return rotary ? s : nullptr;
-        }
+        auto* s = dynamic_cast<juce::Slider*> (c);
+        if (s == nullptr) return nullptr;
+        const auto st = s->getSliderStyle();
+        const bool rotary = (st == juce::Slider::Rotary || st == juce::Slider::RotaryHorizontalDrag
+                          || st == juce::Slider::RotaryVerticalDrag || st == juce::Slider::RotaryHorizontalVerticalDrag);
+        return rotary ? s : nullptr;
+    }
+
+    static juce::String rawEditText (juce::Slider& s)
+    {
+        const double v = s.getValue();
+        const juce::String unit = s.getProperties().getWithDefault ("unit", "").toString();
+        if (unit == "db" || unit == "ms") return juce::String (v, 1);
+        if (unit == "pct") return juce::String (juce::roundToInt (v * 100.0));
+        if (unit == "hz")  return juce::String (juce::roundToInt (v));
+        if (unit == "bal") return std::abs (v) < 0.005 ? juce::String ("0") : juce::String (juce::roundToInt (v * 100.0));
+        return juce::String (v, 2);
+    }
+
+    struct ValueBox : public juce::Label
+    {
+        double downProp = 0.0;
 
         void mouseDown (const juce::MouseEvent& e) override
         {
-            if (auto* s = dragTarget(); s != nullptr && e.getNumberOfClicks() < 2)
-                s->mouseDown (e.getEventRelativeTo (s));
-            else
-                juce::Label::mouseDown (e);
+            if (auto* s = rotaryParent (getParentComponent()); s != nullptr && e.getNumberOfClicks() < 2 && ! isBeingEdited())
+                downProp = s->valueToProportionOfLength (s->getValue());
+            juce::Label::mouseDown (e); // double-click still opens the editor
         }
         void mouseDrag (const juce::MouseEvent& e) override
         {
-            if (auto* s = dragTarget())
-                s->mouseDrag (e.getEventRelativeTo (s));
+            // Directly map vertical drag to the value (respecting any skew). This
+            // is robust regardless of event routing -- the previous forwarding
+            // approach didn't take (feedback #28).
+            if (auto* s = rotaryParent (getParentComponent()); s != nullptr && ! isBeingEdited())
+            {
+                const double prop = juce::jlimit (0.0, 1.0, downProp + (-e.getDistanceFromDragStartY()) / 180.0);
+                s->setValue (s->proportionOfLengthToValue (prop), juce::sendNotificationSync);
+            }
             else
                 juce::Label::mouseDrag (e);
         }
-        void mouseUp (const juce::MouseEvent& e) override
+        void editorShown (juce::TextEditor* ed) override
         {
-            if (auto* s = dragTarget(); s != nullptr && e.getNumberOfClicks() < 2)
-                s->mouseUp (e.getEventRelativeTo (s));
-            else
-                juce::Label::mouseUp (e);
+            if (auto* s = dynamic_cast<juce::Slider*> (getParentComponent()))
+            {
+                ed->setText (rawEditText (*s), false); // raw number only (#36)
+                ed->selectAll();
+            }
         }
-        void mouseDoubleClick (const juce::MouseEvent& e) override { juce::Label::mouseDoubleClick (e); }
     };
 }
 
 juce::Label* AnamorphLookAndFeel::createSliderTextBox (juce::Slider& s)
 {
-    auto* l = new DragValueLabel();
+    auto* l = new ValueBox();
     l->setJustificationType (juce::Justification::centred);
     l->setKeyboardType (juce::TextInputTarget::decimalKeyboard);
     l->setColour (juce::Label::textColourId,            s.findColour (juce::Slider::textBoxTextColourId));
