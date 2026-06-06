@@ -20,17 +20,19 @@ public:
     void prepare (double sampleRate) noexcept
     {
         peakDecay = std::exp (-1.0 / (0.35 * sampleRate));        // ~350 ms peak fall
-        rmsCoeff  = 1.0f - std::exp (-1.0f / (float) (0.30 * sampleRate)); // ~300 ms fast RMS
-        slowCoeff = 1.0f - std::exp (-1.0f / (float) (1.20 * sampleRate)); // ~1.2 s slow RMS (#18)
+        // Two RMS windows (Ozone Peak+RMS, #15/#18): a steady bright body and a
+        // faster dim layer that rides ABOVE it and reacts quicker.
+        rmsCoeff  = 1.0f - std::exp (-1.0f / (float) (0.40 * sampleRate)); // ~400 ms slow/bright
+        fastCoeff = 1.0f - std::exp (-1.0f / (float) (0.10 * sampleRate)); // ~100 ms fast/dim
         reset();
     }
 
     void reset() noexcept
     {
-        peakL = peakR = 0.0f; msL = msR = 0.0f; slowL = slowR = 0.0f;
+        peakL = peakR = 0.0f; msL = msR = 0.0f; fastL = fastR = 0.0f;
         store (peakLdb, -100.0f); store (peakRdb, -100.0f);
         store (rmsLdb, -100.0f);  store (rmsRdb, -100.0f);
-        store (slowLdb, -100.0f); store (slowRdb, -100.0f);
+        store (fastLdb, -100.0f); store (fastRdb, -100.0f);
     }
 
     void process (const float* L, const float* R, int n) noexcept
@@ -42,8 +44,8 @@ public:
             peakR = ar > peakR ? ar : peakR * peakDecayF();
             msL += rmsCoeff * (L[i] * L[i] - msL);
             msR += rmsCoeff * (R[i] * R[i] - msR);
-            slowL += slowCoeff * (L[i] * L[i] - slowL);
-            slowR += slowCoeff * (R[i] * R[i] - slowR);
+            fastL += fastCoeff * (L[i] * L[i] - fastL);
+            fastR += fastCoeff * (R[i] * R[i] - fastR);
         }
     }
 
@@ -51,15 +53,15 @@ public:
     {
         store (peakLdb, db (peakL)); store (peakRdb, db (peakR));
         store (rmsLdb, db (std::sqrt (msL))); store (rmsRdb, db (std::sqrt (msR)));
-        store (slowLdb, db (std::sqrt (slowL))); store (slowRdb, db (std::sqrt (slowR)));
+        store (fastLdb, db (std::sqrt (fastL))); store (fastRdb, db (std::sqrt (fastR)));
     }
 
     float getPeakL() const noexcept { return peakLdb.load (std::memory_order_relaxed); }
     float getPeakR() const noexcept { return peakRdb.load (std::memory_order_relaxed); }
-    float getRmsL()  const noexcept { return rmsLdb.load (std::memory_order_relaxed); }
+    float getRmsL()  const noexcept { return rmsLdb.load (std::memory_order_relaxed); } // slow / bright
     float getRmsR()  const noexcept { return rmsRdb.load (std::memory_order_relaxed); }
-    float getSlowL() const noexcept { return slowLdb.load (std::memory_order_relaxed); }
-    float getSlowR() const noexcept { return slowRdb.load (std::memory_order_relaxed); }
+    float getFastL() const noexcept { return fastLdb.load (std::memory_order_relaxed); } // fast / dim
+    float getFastR() const noexcept { return fastRdb.load (std::memory_order_relaxed); }
 
 private:
     float peakDecayF() const noexcept { return (float) peakDecay; }
@@ -67,10 +69,10 @@ private:
     static void store (std::atomic<float>& a, float v) noexcept { a.store (v, std::memory_order_relaxed); }
 
     double peakDecay = 0.9999;
-    float  rmsCoeff = 0.001f, slowCoeff = 0.0003f;
-    float  peakL = 0, peakR = 0, msL = 0, msR = 0, slowL = 0, slowR = 0;
+    float  rmsCoeff = 0.001f, fastCoeff = 0.003f;
+    float  peakL = 0, peakR = 0, msL = 0, msR = 0, fastL = 0, fastR = 0;
     std::atomic<float> peakLdb { -100.0f }, peakRdb { -100.0f }, rmsLdb { -100.0f }, rmsRdb { -100.0f };
-    std::atomic<float> slowLdb { -100.0f }, slowRdb { -100.0f };
+    std::atomic<float> fastLdb { -100.0f }, fastRdb { -100.0f };
 };
 
 struct LevelMeters

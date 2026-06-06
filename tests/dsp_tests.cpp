@@ -221,6 +221,59 @@ static void testTransparentDefault()
 }
 
 // ---------------------------------------------------------------------------
+//  Mono Maker must collapse low-frequency SIDE content to mono (#20). Feed a
+//  pure-side low tone (L = +tone, R = -tone) and confirm the side energy below
+//  the crossover is removed when Mono Maker is on, and preserved when it's off.
+static void testMonoMaker()
+{
+    std::printf ("Test 6: Mono Maker collapses low-frequency side energy\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0;
+    const int block = 256;
+    const double freq = 60.0; // well below the 200 Hz crossover
+
+    auto measureSide = [&] (bool monoMakerOn)
+    {
+        anamorph::AnamorphEngine engine;
+        engine.prepare (sr, block);
+        anamorph::EngineParameters p;            // transparent defaults
+        p.monoMakerEnable = monoMakerOn;
+        p.monoMakerFreq   = 200.0f;
+        engine.setParameters (p);
+        engine.reset();
+
+        double phase = 0.0;
+        const double inc = 2.0 * 3.14159265358979 * freq / sr;
+        double sideSq = 0.0; int counted = 0;
+        for (int n = 0; n < 60; ++n) // let the crossover settle, then measure
+        {
+            juce::AudioBuffer<float> buf (2, block);
+            for (int i = 0; i < block; ++i)
+            {
+                const float s = (float) std::sin (phase); phase += inc;
+                buf.setSample (0, i,  s);   // pure side: L = +s, R = -s
+                buf.setSample (1, i, -s);
+            }
+            engine.setParameters (p);
+            engine.process (buf);
+            if (n >= 40)
+                for (int i = 0; i < block; ++i)
+                {
+                    const float side = 0.5f * (buf.getSample (0, i) - buf.getSample (1, i));
+                    sideSq += side * side; ++counted;
+                }
+        }
+        return std::sqrt (sideSq / juce::jmax (1, counted));
+    };
+
+    const double sideOn  = measureSide (true);
+    const double sideOff = measureSide (false);
+    std::printf ("  side RMS  on=%.4f  off=%.4f\n", sideOn, sideOff);
+    check (sideOff > 0.4, "Mono Maker OFF preserves the side tone");
+    check (sideOn < 0.1 * sideOff, "Mono Maker ON removes the low-frequency side");
+}
+
+// ---------------------------------------------------------------------------
 int main()
 {
     std::printf ("=== Anamorph DSP self-tests ===\n");
@@ -228,6 +281,7 @@ int main()
     testNoBadSamples();
     testBypassNullAndLatency();
     testTransparentDefault();
+    testMonoMaker();
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);
     if (failures == 0) { std::printf ("ALL TESTS PASSED\n"); return 0; }

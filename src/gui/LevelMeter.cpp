@@ -42,7 +42,7 @@ void LevelMeter::drawReadout (juce::Graphics& g, juce::Rectangle<float> r,
 }
 
 void LevelMeter::drawBar (juce::Graphics& g, juce::Rectangle<float> r,
-                          float slowDb, float rmsDb, float peakDb, const juce::String& lab)
+                          float fastDb, float rmsDb, float peakDb, const juce::String& lab)
 {
     g.setColour (colours::bg);
     g.fillRoundedRectangle (r, 2.0f);
@@ -57,16 +57,17 @@ void LevelMeter::drawBar (juce::Graphics& g, juce::Rectangle<float> r,
         g.fillRect (track.getX(), y, track.getWidth(), 1.0f);
     }
 
-    const float slowN = dbToNorm (slowDb);
+    const float fastN = dbToNorm (fastDb);
     const float rmsN  = dbToNorm (rmsDb);
     const float peakN = dbToNorm (peakDb);
 
-    // Slow RMS: a dim, slow-moving body behind the bright RMS (Ozone Peak+RMS, #18).
-    g.setColour (colours::accent2.withAlpha (0.30f));
-    g.fillRect (track.withTop (track.getBottom() - slowN * track.getHeight()));
+    // Fast/dim layer: a quicker envelope that rides ABOVE the steady RMS, drawn
+    // FIRST (taller) so it shows over the bright body, not hidden behind it (#15).
+    g.setColour (colours::accent2.withAlpha (0.32f));
+    g.fillRect (track.withTop (track.getBottom() - fastN * track.getHeight()));
 
-    // Fast RMS: bright accent that warms toward the top, red near 0 dBFS, with a
-    // soft vertical gradient + glow consistent with the rest of the UI (#18).
+    // Slow/bright RMS: the steady body, warming toward 0 dBFS, with a soft
+    // vertical gradient consistent with the rest of the UI (#18). Drawn on top.
     const float topWarn = juce::jlimit (0.0f, 1.0f, (peakDb + 6.0f) / 6.0f);
     auto col = colours::accent.interpolatedWith (juce::Colour (0xffd8584a), topWarn);
     auto fill = track.withTop (track.getBottom() - rmsN * track.getHeight());
@@ -120,10 +121,10 @@ void LevelMeter::paint (juce::Graphics& g)
     const float bw = (area.getWidth() - 3.0f * gap) / 4.0f;
     auto next = [&] { auto b = area.removeFromLeft (bw); area.removeFromLeft (gap); return b; };
 
-    drawBar (g, next(), source.input.getSlowL(),  source.input.getRmsL(),  source.input.getPeakL(),  "L");
-    drawBar (g, next(), source.input.getSlowR(),  source.input.getRmsR(),  source.input.getPeakR(),  "R");
-    drawBar (g, next(), source.output.getSlowL(), source.output.getRmsL(), source.output.getPeakL(), "L");
-    drawBar (g, area,   source.output.getSlowR(), source.output.getRmsR(), source.output.getPeakR(), "R");
+    drawBar (g, next(), source.input.getFastL(),  source.input.getRmsL(),  source.input.getPeakL(),  "L");
+    drawBar (g, next(), source.input.getFastR(),  source.input.getRmsR(),  source.input.getPeakR(),  "R");
+    drawBar (g, next(), source.output.getFastL(), source.output.getRmsL(), source.output.getPeakL(), "L");
+    drawBar (g, area,   source.output.getFastR(), source.output.getRmsR(), source.output.getPeakR(), "R");
 }
 
 } // namespace anamorph::gui

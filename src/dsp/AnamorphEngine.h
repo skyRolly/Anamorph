@@ -124,6 +124,12 @@ private:
     juce::AudioBuffer<float> dryScratch;  // conditioned dry (pre-effect)
     juce::AudioBuffer<float> wetScratch;  // wet pre-output-gain (for loudness)
 
+    // Mono Maker band-split: the mono low band is held aside while only the high
+    // band is widened, then added back (delay-aligned to the wet latency) (#20).
+    juce::AudioBuffer<float> monoLow;       // mono low band for this block
+    juce::AudioBuffer<float> monoLowDelay;  // delay line to align lows with OS latency
+    int monoLowWrite = 0;
+
     bool driveActive = false;
 };
 

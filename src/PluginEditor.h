@@ -139,13 +139,14 @@ private:
     bool  tooltipsOn = false;   // tooltips default OFF
     bool  metersOn = false;
     float meterAnim = 0.0f;     // 0..1 eased meter reveal (#19)
+    bool  persistDragging = false; // dragging the Settings Persist bar (#9)
+    float settingsDim = 1.0f;      // eased Settings overlay opacity (#9)
 
     // Single fixed window for both modes: toggling Advanced relays out the
     // content in place, so the host never resizes us and nothing flickers (#20).
     static constexpr int kWidth  = 940;
     static constexpr int kHeight = 720;
     static constexpr int kStripHeight     = 200;  // advanced INPUT/MULTIBAND strip
-    static constexpr int kWidenColHeight  = 236;  // WIDEN block height (divider y)
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AnamorphAudioProcessorEditor)
 };

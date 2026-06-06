@@ -78,25 +78,44 @@ void AnamorphLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int
     const bool horizontal = (style == juce::Slider::LinearHorizontal || style == juce::Slider::LinearBar);
     auto bounds = juce::Rectangle<float> ((float) x, (float) y, (float) w, (float) h);
 
-    const float trackThick = 5.0f;
+    // Recessed track with an inner gradient (#12: premium, not a flat line).
+    const float trackThick = 6.0f;
     juce::Rectangle<float> track = horizontal
         ? juce::Rectangle<float> (bounds.getX(), bounds.getCentreY() - trackThick * 0.5f, bounds.getWidth(), trackThick)
         : juce::Rectangle<float> (bounds.getCentreX() - trackThick * 0.5f, bounds.getY(), trackThick, bounds.getHeight());
 
-    g.setColour (colours::outline);
+    juce::ColourGradient tg (colours::bg.darker (0.25f), track.getX(), track.getY(),
+                             colours::bgRaised, track.getX(), track.getBottom(), false);
+    g.setGradientFill (tg);
     g.fillRoundedRectangle (track, trackThick * 0.5f);
+    g.setColour (colours::outline);
+    g.drawRoundedRectangle (track.reduced (0.5f), trackThick * 0.5f, 1.0f);
 
-    g.setColour (colours::accent);
-    if (horizontal)
-        g.fillRoundedRectangle (track.withWidth (pos - bounds.getX()), trackThick * 0.5f);
-    else
-        g.fillRoundedRectangle (track.withTop (pos).withBottom (bounds.getBottom()), trackThick * 0.5f);
+    juce::Rectangle<float> fill = horizontal
+        ? track.withWidth (juce::jmax (0.0f, pos - bounds.getX()))
+        : track.withTop (pos).withBottom (bounds.getBottom());
 
-    const float r = 7.0f;
+    // Self-illuminating accent fill: soft glow halo + a left-to-right gradient.
+    g.setColour (colours::accent.withAlpha (0.22f));
+    g.fillRoundedRectangle (fill.expanded (1.6f), (trackThick + 3.2f) * 0.5f);
+    juce::ColourGradient fg (colours::accent2, fill.getX(), fill.getY(),
+                             colours::accent, horizontal ? fill.getRight() : fill.getX(),
+                             horizontal ? fill.getY() : fill.getBottom(), false);
+    g.setGradientFill (fg);
+    g.fillRoundedRectangle (fill, trackThick * 0.5f);
+
+    // Glassy thumb with a glow and an accent rim.
+    const float r = 8.0f;
     const float cx = horizontal ? pos : bounds.getCentreX();
     const float cy = horizontal ? bounds.getCentreY() : pos;
-    g.setColour (colours::text);
+    g.setColour (colours::accent.withAlpha (0.28f));
+    g.fillEllipse (cx - r - 2.0f, cy - r - 2.0f, (r + 2.0f) * 2.0f, (r + 2.0f) * 2.0f);
+    juce::ColourGradient kg (colours::bgRaised.brighter (0.32f), cx, cy - r,
+                             colours::bgPanel.darker (0.18f),     cx, cy + r, false);
+    g.setGradientFill (kg);
     g.fillEllipse (cx - r, cy - r, r * 2.0f, r * 2.0f);
+    g.setColour (colours::accent);
+    g.drawEllipse (cx - r, cy - r, r * 2.0f, r * 2.0f, 1.4f);
     juce::ignoreUnused (s);
 }
 
@@ -104,6 +123,55 @@ void AnamorphLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButto
                                             bool highlighted, bool /*down*/)
 {
     auto bounds = b.getLocalBounds().toFloat();
+    const bool on = b.getToggleState();
+
+    // --- Level-meter glyph instead of the word "Meters" (#7) ---
+    if (b.getComponentID() == "metersicon")
+    {
+        const auto col = on ? colours::accent : colours::textDim;
+        const float barW = 5.0f, gap = 4.0f;
+        const float totalW = barW * 2.0f + gap;
+        const float barH = juce::jmin (bounds.getHeight() - 6.0f, 16.0f);
+        const float x0 = bounds.getCentreX() - totalW * 0.5f;
+        const float y0 = bounds.getCentreY() - barH * 0.5f;
+        if (on) { g.setColour (col.withAlpha (0.18f)); g.fillRoundedRectangle (bounds.reduced (3.0f), 4.0f); }
+        for (int k = 0; k < 2; ++k)
+        {
+            auto bar = juce::Rectangle<float> (x0 + k * (barW + gap), y0, barW, barH);
+            g.setColour (col.withAlpha (0.55f));
+            g.drawRoundedRectangle (bar, 1.5f, 1.0f);                 // hollow top
+            const float ratio = (k == 0) ? 0.55f : 0.80f;            // unequal fills
+            g.setColour (col);
+            g.fillRoundedRectangle (bar.withTop (bar.getBottom() - barH * ratio).reduced (0.6f), 1.2f);
+        }
+        return;
+    }
+
+    // --- Compact vertical toggle: pill on top, label centred below, for tight
+    //     module rows where a right-side label would clip (#11 / #14) ---
+    if (b.getComponentID() == "vtoggle")
+    {
+        const juce::Colour onCol = colours::accent;
+        const float ph = 15.0f, pw = ph * 1.7f;
+        auto pill = juce::Rectangle<float> (bounds.getCentreX() - pw * 0.5f, bounds.getY() + 2.0f, pw, ph);
+        if (on) { g.setColour (onCol.withAlpha (0.22f)); g.fillRoundedRectangle (pill.expanded (2.0f), (ph + 4.0f) * 0.5f); }
+        juce::ColourGradient pg (on ? onCol.brighter (0.10f) : colours::bgRaised.brighter (0.06f), pill.getX(), pill.getY(),
+                                 on ? onCol.darker (0.12f)   : colours::bgRaised.darker (0.10f),   pill.getX(), pill.getBottom(), false);
+        g.setGradientFill (pg);
+        g.fillRoundedRectangle (pill, ph * 0.5f);
+        g.setColour (on ? onCol : colours::outline);
+        g.drawRoundedRectangle (pill, ph * 0.5f, 1.0f);
+        const float knob = ph - 4.0f;
+        const float kx = on ? pill.getRight() - knob - 2.0f : pill.getX() + 2.0f;
+        g.setColour (on ? colours::bg : colours::text);
+        g.fillEllipse (kx, pill.getCentreY() - knob * 0.5f, knob, knob);
+
+        g.setColour (on || highlighted ? colours::text : colours::textDim);
+        g.setFont (juce::Font (juce::FontOptions (11.0f)));
+        g.drawFittedText (b.getButtonText(), bounds.withTop (pill.getBottom() + 1.0f).toNearestInt(),
+                          juce::Justification::centredTop, 1, 0.8f);
+        return;
+    }
 
     // Leave a uniform inset so the outer glow can never be clipped at the left /
     // top / bottom edges (feedback #16). The pill is a fixed, compact size.
@@ -113,7 +181,6 @@ void AnamorphLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButto
     auto pill = juce::Rectangle<float> (bounds.getX() + pad,
                                         bounds.getCentreY() - h * 0.5f, pw, h);
 
-    const bool on = b.getToggleState();
     // Bypass uses a controlled red when engaged so it reads as "off/abnormal".
     const juce::Colour onCol = (b.getComponentID() == "bypass") ? juce::Colour (0xffd0584e)
                                                                 : colours::accent;
@@ -177,10 +244,13 @@ void AnamorphLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button&
 
 juce::Font AnamorphLookAndFeel::getTextButtonFont (juce::TextButton& b, int buttonHeight)
 {
-    if (b.getComponentID() == "apply") return juce::Font (juce::FontOptions (14.5f)); // bigger Apply (#23)
+    if (b.getComponentID() == "apply") return juce::Font (juce::FontOptions (13.5f)); // Apply (#6)
     if (b.getComponentID() == "icon")  return juce::Font (juce::FontOptions (21.0f)); // bigger glyph (#7)
     return juce::Font (juce::FontOptions ((float) juce::jmin (13, juce::jmax (10, buttonHeight - 12))));
 }
+
+juce::Font AnamorphLookAndFeel::getComboBoxFont (juce::ComboBox&)  { return juce::Font (juce::FontOptions (13.5f)); }
+juce::Font AnamorphLookAndFeel::getPopupMenuFont()                 { return juce::Font (juce::FontOptions (13.5f)); }
 
 // Undo/Redo glyphs: render them larger AND rotated 180 degrees, which the user
 // found more comfortable (feedback #7). All other buttons use the default text.
@@ -195,7 +265,9 @@ void AnamorphLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& b
         juce::Graphics::ScopedSaveState save (g);
         g.addTransform (juce::AffineTransform::rotation (juce::MathConstants<float>::pi,
                                                          area.getCentreX(), area.getCentreY()));
-        g.drawText (b.getButtonText(), area, juce::Justification::centred, false);
+        // Nudge the (rotated) glyph so it reads as optically centred (#8): shifting
+        // the pre-rotation box UP moves the visible glyph DOWN.
+        g.drawText (b.getButtonText(), area.translated (0.0f, -2.0f), juce::Justification::centred, false);
         return;
     }
     juce::LookAndFeel_V4::drawButtonText (g, b, false, false);
@@ -203,11 +275,12 @@ void AnamorphLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& b
 
 void AnamorphLookAndFeel::drawPopupMenuBackground (juce::Graphics& g, int width, int height)
 {
-    auto b = juce::Rectangle<float> (0, 0, (float) width, (float) height);
-    g.setColour (colours::bgPanel);
-    g.fillRoundedRectangle (b.reduced (1.0f), 8.0f);            // match the combo radius (#22)
+    // Square, fully-opaque list: rounded corners on an opaque menu window leave
+    // bright corner/edge artefacts on some hosts, so we keep the popup square and
+    // clean (feedback #3). The flat fill + hairline still reads as premium.
+    g.fillAll (colours::bgPanel);
     g.setColour (colours::outline);
-    g.drawRoundedRectangle (b.reduced (1.0f), 8.0f, 1.0f);
+    g.drawRect (0, 0, width, height, 1);
 }
 
 void AnamorphLookAndFeel::drawComboBox (juce::Graphics& g, int w, int h, bool,
@@ -234,6 +307,67 @@ void AnamorphLookAndFeel::drawComboBox (juce::Graphics& g, int w, int h, bool,
 juce::Font AnamorphLookAndFeel::getLabelFont (juce::Label&)
 {
     return juce::Font (juce::FontOptions (13.0f));
+}
+
+// A slider value box that forwards single-click drags to its parent slider, so
+// you can drag the NUMBER up/down to change the value (feedback #2), while a
+// double-click still opens the text editor to type an exact value.
+namespace
+{
+    struct DragValueLabel : public juce::Label
+    {
+        // Only forward to ROTARY sliders: those change by vertical delta, so a
+        // drag on the number works naturally. Linear sliders set value from the
+        // absolute position, so forwarding would jump them to the text box's edge.
+        juce::Slider* dragTarget() noexcept
+        {
+            auto* s = dynamic_cast<juce::Slider*> (getParentComponent());
+            if (s == nullptr || isBeingEdited()) return nullptr;
+            const auto st = s->getSliderStyle();
+            const bool rotary = (st == juce::Slider::Rotary || st == juce::Slider::RotaryHorizontalDrag
+                              || st == juce::Slider::RotaryVerticalDrag || st == juce::Slider::RotaryHorizontalVerticalDrag);
+            return rotary ? s : nullptr;
+        }
+
+        void mouseDown (const juce::MouseEvent& e) override
+        {
+            if (auto* s = dragTarget(); s != nullptr && e.getNumberOfClicks() < 2)
+                s->mouseDown (e.getEventRelativeTo (s));
+            else
+                juce::Label::mouseDown (e);
+        }
+        void mouseDrag (const juce::MouseEvent& e) override
+        {
+            if (auto* s = dragTarget())
+                s->mouseDrag (e.getEventRelativeTo (s));
+            else
+                juce::Label::mouseDrag (e);
+        }
+        void mouseUp (const juce::MouseEvent& e) override
+        {
+            if (auto* s = dragTarget(); s != nullptr && e.getNumberOfClicks() < 2)
+                s->mouseUp (e.getEventRelativeTo (s));
+            else
+                juce::Label::mouseUp (e);
+        }
+        void mouseDoubleClick (const juce::MouseEvent& e) override { juce::Label::mouseDoubleClick (e); }
+    };
+}
+
+juce::Label* AnamorphLookAndFeel::createSliderTextBox (juce::Slider& s)
+{
+    auto* l = new DragValueLabel();
+    l->setJustificationType (juce::Justification::centred);
+    l->setKeyboardType (juce::TextInputTarget::decimalKeyboard);
+    l->setColour (juce::Label::textColourId,            s.findColour (juce::Slider::textBoxTextColourId));
+    l->setColour (juce::Label::backgroundColourId,      juce::Colours::transparentBlack);
+    l->setColour (juce::Label::outlineColourId,         juce::Colours::transparentBlack);
+    l->setColour (juce::Label::backgroundWhenEditingColourId, colours::bg);
+    l->setColour (juce::Label::textWhenEditingColourId, colours::text);
+    l->setColour (juce::TextEditor::highlightColourId,  colours::accent.withAlpha (0.30f));
+    l->setColour (juce::TextEditor::textColourId,       colours::text);
+    l->setEditable (false, s.isTextBoxEditable(), false); // double-click to type
+    return l;
 }
 
 // ---- Tooltips: rounded dark capsule, accent hairline, soft text (#20) ----

@@ -137,7 +137,8 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     addAndMakeVisible (undoButton);
     addAndMakeVisible (redoButton);
 
-    setupToggle (metersToggle, pid::metersOn, "Meters", "Show input / output level meters.");
+    setupToggle (metersToggle, pid::metersOn, "", "Show input / output level meters.");
+    metersToggle.setComponentID ("metersicon"); // level-meter glyph, not the word (#7)
     metersToggle.onClick = [this] { metersOn = metersToggle.getToggleState(); if (metersOn) levelMeter->setVisible (true); };
 
     setupToggle (advancedToggle, pid::advancedMode, "Adv", "Reveal the Input, Output and Multiband modules.");
@@ -226,13 +227,16 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     soloLabel.setFont (juce::Font (juce::FontOptions (11.0f)));
     addAndMakeVisible (soloLabel);
 
-    // Short, complete labels so nothing truncates (#9).
+    // Compact vertical toggles (pill on top, label centred below) so the Input
+    // row labels always fit and never truncate (#11 / #14).
+    const juce::String ph = juce::String::charToString ((juce::juce_wchar) 0x00F8);
     setupToggle (monoToggle, pid::monoSum, "Mono", "Sum the input to mono.");
     setupToggle (swapToggle, pid::swap,    "Swap", "Swap the left and right channels.");
     setupToggle (msToggle,   pid::msMode,  "M/S",  "Process the effect in Mid/Side.");
-    const juce::String ph = juce::String::charToString ((juce::juce_wchar) 0x00F8);
     setupToggle (polLToggle, pid::polarityL, ph + " L", "Flip the polarity (phase) of the left channel.");
     setupToggle (polRToggle, pid::polarityR, ph + " R", "Flip the polarity (phase) of the right channel.");
+    for (auto* t : { &monoToggle, &swapToggle, &msToggle, &polLToggle, &polRToggle })
+        t->setComponentID ("vtoggle");
 
     setupRotary (balanceK, balanceL, "Balance", "Balance the input between L and R.");
     attachSlider (balanceK, pid::inputBalance);
@@ -290,9 +294,16 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     scopePersistK.setTextBoxStyle (juce::Slider::TextBoxRight, false, 52, 18);
     scopePersistK.setColour (juce::Slider::textBoxTextColourId, colours::textDim);
     scopePersistK.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+    scopePersistK.setTooltip ("Vectorscope afterglow time " // #5
+                              + juce::String::charToString ((juce::juce_wchar) 0x2014)
+                              + " longer trails fade more slowly.");
     settingsBackdrop.addAndMakeVisible (scopePersistK);
     attachSlider (scopePersistK, pid::scopePersist);
     scopePersistK.onValueChange = [this] { applyScopePersist(); };
+    // While dragging Persist, fade the Settings overlay so the live vectorscope
+    // behind it is visible (#9).
+    scopePersistK.onDragStart = [this] { persistDragging = true; };
+    scopePersistK.onDragEnd   = [this] { persistDragging = false; };
 
     tooltipsToggle.setButtonText ("Tooltips");
     tooltipsToggle.setTooltip ("Show these hover hints on every control.");
@@ -407,7 +418,12 @@ void AnamorphAudioProcessorEditor::updateModeVisibility()
 }
 
 void AnamorphAudioProcessorEditor::showAbout (bool show)    { aboutBackdrop.setVisible (show);    if (show) { aboutBackdrop.toFront (false); resized(); } }
-void AnamorphAudioProcessorEditor::showSettings (bool show) { settingsBackdrop.setVisible (show); if (show) { settingsBackdrop.toFront (false); resized(); } }
+void AnamorphAudioProcessorEditor::showSettings (bool show)
+{
+    if (show) { persistDragging = false; settingsDim = 1.0f; settingsBackdrop.setAlpha (1.0f); }
+    settingsBackdrop.setVisible (show);
+    if (show) { settingsBackdrop.toFront (false); resized(); }
+}
 
 // ----------------------------------------------------------------------------
 void AnamorphAudioProcessorEditor::timerCallback()
@@ -440,6 +456,17 @@ void AnamorphAudioProcessorEditor::timerCallback()
             if (! metersOn) levelMeter->setVisible (false);
         }
         resized();
+    }
+
+    // Settings overlay fades down while the Persist bar is dragged (#9).
+    if (settingsBackdrop.isVisible())
+    {
+        const float dimTarget = persistDragging ? 0.12f : 1.0f;
+        if (std::abs (settingsDim - dimTarget) > 0.002f)
+        {
+            settingsDim += (dimTarget - settingsDim) * 0.25f; // eased, non-linear
+            settingsBackdrop.setAlpha (settingsDim);
+        }
     }
 
     if (dimOverlay.isVisible() != bypassToggle.getToggleState())
@@ -478,11 +505,6 @@ void AnamorphAudioProcessorEditor::paint (juce::Graphics& g)
 
     if (advanced)
     {
-        // Divider between WIDEN and OUTPUT inside the right panel.
-        const float dy = 46.0f + 8.0f + kWidenColHeight;
-        g.setColour (colours::outline.withAlpha (0.6f));
-        g.drawLine (right.getX() + 14.0f, dy, right.getRight() - 14.0f, dy, 1.0f);
-
         // Bottom strip (INPUT + MULTIBAND) under the scope.
         auto strip = juce::Rectangle<int> (0, getHeight() - kStripHeight, getWidth() - 300, kStripHeight)
                          .toFloat().reduced (8.0f, 6.0f);
@@ -533,15 +555,16 @@ void AnamorphAudioProcessorEditor::resized()
         titleButton.setBounds (juce::Rectangle<int> (10, 0, 300, 46));
         bypassToggle.setBounds   (bar.removeFromRight (84));
         advancedToggle.setBounds (bar.removeFromRight (58));
-        bar.removeFromRight (6);
+        bar.removeFromRight (8);
         settingsButton.setBounds (bar.removeFromRight (74));
-        metersToggle.setBounds   (bar.removeFromRight (78));
-        bar.removeFromRight (10);
+        bar.removeFromRight (8);
+        metersToggle.setBounds   (bar.removeFromRight (34)); // compact icon (#7)
+        bar.removeFromRight (12);
         redoButton.setBounds (bar.removeFromRight (30));
         undoButton.setBounds (bar.removeFromRight (30));
         bar.removeFromRight (12);
         copyButton.setBounds (bar.removeFromRight (46));
-        abControl.setBounds (bar.removeFromRight (62).reduced (0, 1));
+        abControl.setBounds (bar.removeFromRight (56).reduced (0, 1)); // shorter oval (#4)
     }
 
     auto content = r;
@@ -575,52 +598,76 @@ void AnamorphAudioProcessorEditor::resized()
 
     // ---- Right column: WIDEN (both modes) + OUTPUT (advanced) ----
     {
-        auto col = rightPanel.reduced (18, 14);
-
         auto placeKnob = [] (juce::Rectangle<int> area, juce::Slider& s, juce::Label& l)
         { l.setBounds (area.removeFromBottom (15)); s.setBounds (area.reduced (3, 1)); };
         auto twoKnob = [&] (juce::Rectangle<int> row, juce::Slider& s1, juce::Label& l1,
                             juce::Slider& s2, juce::Label& l2)
         { placeKnob (row.removeFromLeft (row.getWidth() / 2), s1, l1); placeKnob (row, s2, l2); };
-
-        algorithmLabel.setBounds (col.removeFromTop (15));
-        auto algoRow = col.removeFromTop (28);
-        algorithmBox.setBounds (algoRow.removeFromLeft (algoRow.getWidth() - 100).reduced (0, 1));
-        algoRow.removeFromLeft (6);
-        haasSideBox.setBounds (algoRow.reduced (0, 1));
-        dimModeBox.setBounds  (haasSideBox.getBounds());
-        col.removeFromTop (8);
-
-        twoKnob (col.removeFromTop (90), driveK, driveL, amountK, amountL);
+        auto layoutAlgoRow = [&] (juce::Rectangle<int> algoRow)
         {
-            auto row = col.removeFromTop (90);
-            placeKnob (row.removeFromLeft (row.getWidth() / 2), widthK, widthL);
-            placeKnob (row, haasDelayK, haasDelayL);
-            placeKnob (row, velvetK, velvetL);
-            placeKnob (row.withTrimmedRight (row.getWidth() / 2), chorusRateK, chorusRateL);
-            placeKnob (row.withTrimmedLeft  (row.getWidth() / 2), chorusDepthK, chorusDepthL);
+            algorithmBox.setBounds (algoRow.removeFromLeft (algoRow.getWidth() - 100).reduced (0, 1));
+            algoRow.removeFromLeft (6);
+            haasSideBox.setBounds (algoRow.reduced (0, 1));
+            dimModeBox.setBounds  (haasSideBox.getBounds());
+        };
+        auto layoutCharacter = [&] (juce::Rectangle<int> cell, juce::Slider& wK, juce::Label& wL)
+        {
+            placeKnob (cell.removeFromLeft (cell.getWidth() / 2), wK, wL);
+            placeKnob (cell, haasDelayK, haasDelayL);
+            placeKnob (cell, velvetK, velvetL);
+            placeKnob (cell.withTrimmedRight (cell.getWidth() / 2), chorusRateK, chorusRateL);
+            placeKnob (cell.withTrimmedLeft  (cell.getWidth() / 2), chorusDepthK, chorusDepthL);
+        };
+
+        if (! advanced)
+        {
+            // SIMPLE: the Widen core, large and vertically centred so it no longer
+            // hugs the top with an empty void below (#10).
+            const int blockH = 16 + 8 + 30 + 26 + 148 + 18 + 148; // ~394
+            auto col = rightPanel.reduced (22, 0);
+            col.removeFromTop (juce::jmax (16, (col.getHeight() - blockH) / 2));
+
+            algorithmLabel.setBounds (col.removeFromTop (16));
+            col.removeFromTop (8);
+            layoutAlgoRow (col.removeFromTop (30));
+            col.removeFromTop (26);
+            twoKnob (col.removeFromTop (148), driveK, driveL, amountK, amountL);
+            col.removeFromTop (18);
+            layoutCharacter (col.removeFromTop (148), widthK, widthL);
         }
-
-        if (advanced)
+        else
         {
-            col.removeFromTop (10);
-            outputModuleLabel.setBounds (col.removeFromTop (15));
-            col.removeFromTop (2);
+            // ADVANCED: Widen + Output spread to fill the column with even gaps
+            // instead of being crammed at the top (#10).
+            auto col = rightPanel.reduced (20, 18);
+
+            algorithmLabel.setBounds (col.removeFromTop (16));
+            col.removeFromTop (8);
+            layoutAlgoRow (col.removeFromTop (30));
+            col.removeFromTop (20);
+            twoKnob (col.removeFromTop (108), driveK, driveL, amountK, amountL);
+            col.removeFromTop (14);
+            layoutCharacter (col.removeFromTop (108), widthK, widthL);
+
+            col.removeFromTop (24);
+            outputModuleLabel.setBounds (col.removeFromTop (16));
+            col.removeFromTop (8);
             {
-                auto row = col.removeFromTop (88);
+                auto row = col.removeFromTop (100);
                 const int w = row.getWidth() / 3;
                 placeKnob (row.removeFromLeft (w), mixK, mixL);
                 placeKnob (row.removeFromLeft (w), outputK, outputL);
                 placeKnob (row, outBalanceK, outBalanceL);
             }
-            auto lm = col.removeFromTop (28);
-            autoMatchToggle.setBounds (lm.removeFromLeft (124).reduced (2, 2));
-            applyGainButton.setBounds (lm.removeFromLeft (72).reduced (3, 2));
+            col.removeFromTop (12);
+            auto lm = col.removeFromTop (30);
+            autoMatchToggle.setBounds (lm.removeFromLeft (124).reduced (2, 3));
+            applyGainButton.setBounds (lm.removeFromLeft (70).reduced (3, 3));
             matchReadout.setBounds (lm.reduced (2));
-            col.removeFromTop (6);
-            auto mm = col.removeFromTop (30);
-            monoMakerToggle.setBounds (mm.removeFromLeft (118).reduced (2, 4));
-            monoFreqK.setBounds (mm.reduced (2, 4));
+            col.removeFromTop (12);
+            auto mm = col.removeFromTop (32);
+            monoMakerToggle.setBounds (mm.removeFromLeft (122).reduced (2, 5));
+            monoFreqK.setBounds (mm.reduced (2, 5));
         }
     }
 
@@ -646,20 +693,22 @@ void AnamorphAudioProcessorEditor::resized()
             balanceK.setBounds (bal.reduced (10, 2));
             a.removeFromRight (6);
 
-            auto cmRow = a.removeFromTop (38);
+            auto cmRow = a.removeFromTop (36);
             channelModeLabel.setBounds (cmRow.removeFromTop (14));
             channelModeBox.setBounds (cmRow.reduced (0, 1));
             a.removeFromTop (4);
-            auto soRow = a.removeFromTop (38);
+            auto soRow = a.removeFromTop (36);
             soloLabel.setBounds (soRow.removeFromTop (14));
             soloBox.setBounds (soRow.reduced (0, 1));
             a.removeFromTop (6);
-            auto tog = a.removeFromTop (26);
-            monoToggle.setBounds (tog.removeFromLeft (64).reduced (1, 2));
-            swapToggle.setBounds (tog.removeFromLeft (64).reduced (1, 2));
-            msToggle.setBounds   (tog.removeFromLeft (54).reduced (1, 2));
-            polLToggle.setBounds (tog.removeFromLeft (50).reduced (1, 2));
-            polRToggle.setBounds (tog.removeFromLeft (50).reduced (1, 2));
+            // Five compact vertical toggles spread evenly across the row (#11/#14).
+            auto tog = a.removeFromTop (36);
+            const int tw = tog.getWidth() / 5;
+            monoToggle.setBounds (tog.removeFromLeft (tw));
+            swapToggle.setBounds (tog.removeFromLeft (tw));
+            msToggle.setBounds   (tog.removeFromLeft (tw));
+            polLToggle.setBounds (tog.removeFromLeft (tw));
+            polRToggle.setBounds (tog);
         }
 
         // MULTIBAND

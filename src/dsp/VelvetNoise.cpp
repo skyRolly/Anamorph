@@ -35,6 +35,8 @@ void VelvetNoise::prepare (double sampleRate, unsigned seed)
 
     currentDensity = targetDensity;
     currentAmount  = targetAmount;
+    envAtk = 1.0f - std::exp (-1.0f / (float) (0.001 * sr)); // 1 ms attack
+    envRel = 1.0f - std::exp (-1.0f / (float) (0.060 * sr)); // 60 ms release
     updateWeights();
     reset();
 }
@@ -43,6 +45,7 @@ void VelvetNoise::reset()
 {
     std::fill (midHist.begin(), midHist.end(), 0.0f);
     writePos = 0;
+    env = 0.0f;
 }
 
 void VelvetNoise::updateWeights() noexcept
@@ -65,23 +68,28 @@ void VelvetNoise::updateWeights() noexcept
 
 void VelvetNoise::processBlock (float* left, float* right, int numSamples) noexcept
 {
-    constexpr float dSmooth = 0.002f; // glide density (re-weights smoothly)
-    constexpr float aSmooth = 0.0015f;// glide wet amount
+    constexpr float dSmooth = 0.0015f; // glide density
+    constexpr float aSmooth = 0.0015f; // glide wet amount
 
     for (int i = 0; i < numSamples; ++i)
     {
-        // Smooth density occasionally (re-weighting every sample is wasteful;
-        // do it when it has drifted meaningfully).
-        const float dPrev = currentDensity;
+        // Re-weight EVERY sample while the density glides: the normalisation
+        // (1/sqrt(sumSq)) must move continuously or it steps and zippers when the
+        // Density knob is turned quickly (feedback #18).
         currentDensity += dSmooth * (targetDensity - currentDensity);
-        if (std::abs (currentDensity - dPrev) > 1.0e-4f || activeTaps == 0)
-            updateWeights();
+        updateWeights();
 
         currentAmount += aSmooth * (targetAmount - currentAmount);
 
         const float L = left[i], R = right[i];
         const float mid  = (L + R) * 0.5f;
         const float side = (L - R) * 0.5f;
+
+        // Track input presence; gate closes in near-silence so the sparse-FIR
+        // tail fades out instead of leaving a noise burst on pause (#17).
+        const float a = std::abs (mid);
+        env += (a > env ? envAtk : envRel) * (a - env);
+        const float gate = std::min (1.0f, env * 333.0f); // ~ -50 dBFS knee
 
         midHist[(size_t) writePos] = mid;
 
@@ -91,7 +99,7 @@ void VelvetNoise::processBlock (float* left, float* right, int numSamples) noexc
             const int idx = (writePos - pos[(size_t) t]) & histMask;
             decorr += weight[(size_t) t] * sign[(size_t) t] * midHist[(size_t) idx];
         }
-        decorr *= norm * currentAmount;
+        decorr *= norm * currentAmount * gate;
 
         const float newSide = side + decorr;
         left[i]  = mid + newSide;

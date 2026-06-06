@@ -6,6 +6,21 @@ of stereo tools (MS, mono-maker, channel utilities, monitoring) around a
 high-end diamond vectorscope. Built with **CMake + JUCE** only — it configures
 and builds entirely from the command line on a headless Linux machine, no IDE.
 
+### What's new in 0.4.1
+- **Mono Maker actually works again** and is now a true band-split: the low band
+  is summed to mono and bypasses the widener, only the highs are widened (no bass
+  cancellation *and* the lows really go mono). Verified by a self-test.
+- **Level Match** is now independent of the Output knob, and an A/B swap re-arms
+  the measurement so it glides instead of jumping in level.
+- **Velvet**: per-sample re-weighting kills the Density-drag zipper; an
+  input-presence gate fades the decorrelation tail so pausing no longer bursts.
+- **Mono Maker Freq** glides per sample (no pitch-wobble while dragging).
+- UI: drag the value **number** to change a knob; level-meter glyph instead of
+  "Meters"; premium glowing sliders; compact non-clipping Input toggles; square
+  pop-up lists; uniform combo/list font; Persist has a tooltip and dims the
+  Settings panel while dragging so you see the live scope; re-balanced Simple /
+  Advanced layouts; shorter A/B oval; smaller Apply; nudged Undo/Redo glyphs.
+
 ### What's new in 0.4
 - **Click-free everything:** a short raised-cosine duck swaps *every* discrete
   control (algorithm, M/S, channel, Mono, Swap, Mono-Maker, Oversampling and
