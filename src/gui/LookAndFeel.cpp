@@ -30,6 +30,11 @@ void AnamorphLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int
     const auto angle   = startAngle + pos * (endAngle - startAngle);
     const float thick  = juce::jmax (3.0f, radius * 0.16f);
 
+    // Interaction state (#10): hover the KNOB (not its value box) glows a little
+    // more; pressing/holding -- or dragging the value number -- glows strongly.
+    const bool hover  = s.isMouseOver (false);
+    const bool active = s.isMouseButtonDown() || (bool) s.getProperties().getWithDefault ("dragging", false);
+
     // Track
     juce::Path track;
     track.addCentredArc (centre.x, centre.y, radius - thick, radius - thick, 0.0f,
@@ -37,14 +42,17 @@ void AnamorphLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int
     g.setColour (colours::outline);
     g.strokePath (track, juce::PathStrokeType (thick, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
-    // Value arc with a subtle accent gradient + a soft self-illuminating glow.
+    // Value arc with a subtle accent gradient + a self-illuminating glow that
+    // strengthens on hover / press.
     juce::Path value;
     value.addCentredArc (centre.x, centre.y, radius - thick, radius - thick, 0.0f,
                          startAngle, angle, true);
-    g.setColour (colours::accent.withAlpha (0.18f)); // glow halo
-    g.strokePath (value, juce::PathStrokeType (thick * 2.1f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-    juce::ColourGradient grad (colours::accent2, centre.x - radius, centre.y,
-                               colours::accent,  centre.x + radius, centre.y, false);
+    const float glowA = active ? 0.55f : hover ? 0.34f : 0.18f;
+    const float glowW = active ? 3.0f  : hover ? 2.5f  : 2.1f;
+    g.setColour (colours::accent.withAlpha (glowA)); // glow halo
+    g.strokePath (value, juce::PathStrokeType (thick * glowW, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    juce::ColourGradient grad (active ? colours::accent2.brighter (0.25f) : colours::accent2, centre.x - radius, centre.y,
+                               active ? colours::accent.brighter (0.25f)  : colours::accent,  centre.x + radius, centre.y, false);
     g.setGradientFill (grad);
     g.strokePath (value, juce::PathStrokeType (thick, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
@@ -60,15 +68,18 @@ void AnamorphLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int
     g.setColour (colours::outline);
     g.drawEllipse (centre.x - faceR, centre.y - faceR, faceR * 2.0f, faceR * 2.0f, 1.0f);
 
-    // Pointer
+    // Pointer (brighter, with a soft glow, while pressed / dragging).
     juce::Path pointer;
     const float pl = faceR * 0.92f, pr = thick * 0.35f;
     pointer.addRoundedRectangle (-pr, -pl, pr * 2.0f, pl * 0.6f, pr);
     pointer.applyTransform (juce::AffineTransform::rotation (angle).translated (centre.x, centre.y));
-    g.setColour (colours::text);
+    if (active)
+    {
+        g.setColour (juce::Colours::white.withAlpha (0.25f));
+        g.strokePath (pointer, juce::PathStrokeType (3.0f));
+    }
+    g.setColour (active ? juce::Colours::white : colours::text);
     g.fillPath (pointer);
-
-    juce::ignoreUnused (s);
 }
 
 void AnamorphLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int w, int h,
@@ -95,8 +106,9 @@ void AnamorphLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int
         ? track.withWidth (juce::jmax (0.0f, pos - bounds.getX()))
         : track.withTop (pos).withBottom (bounds.getBottom());
 
-    // Self-illuminating accent fill: soft glow halo + a left-to-right gradient.
-    g.setColour (colours::accent.withAlpha (0.22f));
+    // Self-illuminating accent fill: soft glow halo (stronger on hover/drag, #10).
+    const bool act = s.isMouseOverOrDragging() || (bool) s.getProperties().getWithDefault ("dragging", false);
+    g.setColour (colours::accent.withAlpha (act ? 0.40f : 0.22f));
     g.fillRoundedRectangle (fill.expanded (1.6f), (trackThick + 3.2f) * 0.5f);
     juce::ColourGradient fg (colours::accent2, fill.getX(), fill.getY(),
                              colours::accent, horizontal ? fill.getRight() : fill.getX(),
@@ -108,15 +120,14 @@ void AnamorphLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int
     const float r = 8.0f;
     const float cx = horizontal ? pos : bounds.getCentreX();
     const float cy = horizontal ? bounds.getCentreY() : pos;
-    g.setColour (colours::accent.withAlpha (0.28f));
+    g.setColour (colours::accent.withAlpha (act ? 0.45f : 0.28f));
     g.fillEllipse (cx - r - 2.0f, cy - r - 2.0f, (r + 2.0f) * 2.0f, (r + 2.0f) * 2.0f);
-    juce::ColourGradient kg (colours::bgRaised.brighter (0.32f), cx, cy - r,
+    juce::ColourGradient kg (colours::bgRaised.brighter (act ? 0.5f : 0.32f), cx, cy - r,
                              colours::bgPanel.darker (0.18f),     cx, cy + r, false);
     g.setGradientFill (kg);
     g.fillEllipse (cx - r, cy - r, r * 2.0f, r * 2.0f);
-    g.setColour (colours::accent);
+    g.setColour (act ? colours::accent.brighter (0.2f) : colours::accent);
     g.drawEllipse (cx - r, cy - r, r * 2.0f, r * 2.0f, 1.4f);
-    juce::ignoreUnused (s);
 }
 
 void AnamorphLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButton& b,
@@ -124,6 +135,13 @@ void AnamorphLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButto
 {
     auto bounds = b.getLocalBounds().toFloat();
     const bool on = b.getToggleState();
+
+    // Hover feedback for every toggle style (#10): a faint bright wash.
+    if (highlighted)
+    {
+        g.setColour (colours::text.withAlpha (0.07f));
+        g.fillRoundedRectangle (bounds.reduced (1.0f), 5.0f);
+    }
 
     // --- Level-meter glyph instead of the word "Meters" (#7) ---
     if (b.getComponentID() == "metersicon")
@@ -173,17 +191,17 @@ void AnamorphLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButto
         {
             juce::AttributedString as;
             as.setJustification (juce::Justification::centred);
-            as.append (txt.substring (0, 1), juce::Font (juce::FontOptions (15.0f)), tc);
+            as.append (txt.substring (0, 1), juce::Font (juce::FontOptions (13.0f)), tc); // slightly smaller -> less line-height skew
             as.append (txt.substring (1),     juce::Font (juce::FontOptions (11.0f)), tc);
             as.draw (g, labelArea.toFloat());
         }
         else
         {
-            // Nudge down ~2 px so Mono/Swap/M/S sit at the same baseline as the
-            // taller "ø L/R" line (whose bigger glyph raised it) (#2).
+            // Nudge down so Mono/Swap/M/S sit at the same baseline as the taller
+            // "ø L/R" line (whose bigger glyph raises it) (#2/#6).
             g.setColour (tc);
             g.setFont (juce::Font (juce::FontOptions (11.0f)));
-            g.drawFittedText (txt, labelArea.translated (0, 2), juce::Justification::centredTop, 1, 0.8f);
+            g.drawFittedText (txt, labelArea.translated (0, 3), juce::Justification::centred, 1, 0.8f);
         }
         return;
     }
@@ -309,17 +327,21 @@ void AnamorphLookAndFeel::drawPopupMenuBackground (juce::Graphics& g, int width,
     g.drawRect (0, 0, width, height, 1);
 }
 
-void AnamorphLookAndFeel::drawComboBox (juce::Graphics& g, int w, int h, bool,
-                                        int, int, int, int, juce::ComboBox&)
+void AnamorphLookAndFeel::drawComboBox (juce::Graphics& g, int w, int h, bool down,
+                                        int, int, int, int, juce::ComboBox& box)
 {
     auto bounds = juce::Rectangle<float> (0, 0, (float) w, (float) h).reduced (1.0f);
-    const float radius = juce::jmin (8.0f, bounds.getHeight() * 0.5f);
-    juce::ColourGradient gr (colours::bgRaised.brighter (0.05f), bounds.getX(), bounds.getY(),
+    const float radius = juce::jmin (5.0f, bounds.getHeight() * 0.5f); // a touch squarer (#8)
+    // Hover / open feedback (#10): brighten the body, accent the outline.
+    const bool hover = box.isMouseOver (true);
+    const bool open  = down || box.isPopupActive();
+    const float lift = open ? 0.18f : hover ? 0.12f : 0.05f;
+    juce::ColourGradient gr (colours::bgRaised.brighter (lift), bounds.getX(), bounds.getY(),
                              colours::bgRaised.darker (0.10f), bounds.getX(), bounds.getBottom(), false);
     g.setGradientFill (gr);
     g.fillRoundedRectangle (bounds, radius);
-    g.setColour (colours::outline);
-    g.drawRoundedRectangle (bounds, radius, 1.0f);
+    g.setColour (open ? colours::accent.withAlpha (0.8f) : colours::outline);
+    g.drawRoundedRectangle (bounds, radius, open ? 1.4f : 1.0f);
 
     juce::Path arrow;
     const float cx = (float) w - 14.0f, cy = (float) h * 0.5f;
@@ -352,13 +374,24 @@ namespace
 
     static juce::String rawEditText (juce::Slider& s)
     {
-        const double v = s.getValue();
+        // Mirror the displayed value exactly (what's outside is what you edit),
+        // just without the unit (#3/#4/#5). Derive from the display string.
         const juce::String unit = s.getProperties().getWithDefault ("unit", "").toString();
-        if (unit == "db" || unit == "ms") return juce::String (v, 1);
-        if (unit == "pct") return juce::String (juce::roundToInt (v * 100.0));
-        if (unit == "hz")  return juce::String (juce::roundToInt (v));
-        if (unit == "bal") return std::abs (v) < 0.005 ? juce::String ("0") : juce::String (juce::roundToInt (v * 100.0));
-        return juce::String (v, 2);
+        juce::String disp = s.getTextFromValue (s.getValue()).trim();
+
+        if (unit == "bal")
+        {
+            if (disp.startsWithIgnoreCase ("C")) return "0";
+            const bool left = disp.startsWithIgnoreCase ("L");          // Left -> negative
+            const juce::String num = disp.retainCharacters ("0123456789.");
+            return (left ? "-" : "") + num;
+        }
+        if (disp.endsWithIgnoreCase ("kHz"))                            // "5.55 kHz" -> "5.55k"
+            return disp.dropLastCharacters (3).trim() + "k";
+        const int sp = disp.lastIndexOfChar (' ');                      // strip a trailing unit word
+        if (sp > 0 && ! disp.substring (sp + 1).containsAnyOf ("0123456789"))
+            return disp.substring (0, sp).trim();
+        return disp;
     }
 
     struct ValueBox : public juce::Label
@@ -368,8 +401,21 @@ namespace
         void mouseDown (const juce::MouseEvent& e) override
         {
             if (auto* s = rotaryParent (getParentComponent()); s != nullptr && e.getNumberOfClicks() < 2 && ! isBeingEdited())
+            {
                 downProp = s->valueToProportionOfLength (s->getValue());
+                s->getProperties().set ("dragging", true); // knob shows press feedback (#10)
+                s->repaint();
+            }
             juce::Label::mouseDown (e); // double-click still opens the editor
+        }
+        void mouseUp (const juce::MouseEvent& e) override
+        {
+            if (auto* s = dynamic_cast<juce::Slider*> (getParentComponent()))
+            {
+                s->getProperties().set ("dragging", false);
+                s->repaint();
+            }
+            juce::Label::mouseUp (e);
         }
         void mouseDrag (const juce::MouseEvent& e) override
         {

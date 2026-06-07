@@ -71,11 +71,12 @@ void AnamorphAudioProcessorEditor::ABControl::paint (juce::Graphics& g)
     g.setColour (colours::accent.withAlpha (0.10f));
     g.fillRoundedRectangle (b.expanded (1.6f), rad + 1.6f);
 
-    juce::ColourGradient gr (colours::bgRaised.brighter (0.06f), b.getX(), b.getY(),
+    const float lift = hovered ? 0.16f : 0.06f; // hover wash (#10)
+    juce::ColourGradient gr (colours::bgRaised.brighter (lift), b.getX(), b.getY(),
                              colours::bgRaised.darker (0.12f),   b.getX(), b.getBottom(), false);
     g.setGradientFill (gr);
     g.fillRoundedRectangle (b, rad);
-    g.setColour (colours::outline.brighter (0.12f));
+    g.setColour (hovered ? colours::accent.withAlpha (0.6f) : colours::outline.brighter (0.12f));
     g.drawRoundedRectangle (b, rad, 1.0f);
 
     const int active = getActive ? getActive() : 0;
@@ -242,8 +243,8 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     // row labels always fit and never truncate (#11 / #14).
     const juce::String ph = juce::String::charToString ((juce::juce_wchar) 0x00F8);
     setupToggle (monoToggle, pid::monoSum, "Mono", "Sum the input to mono.");
-    setupToggle (swapToggle, pid::swap,    "Swap", "Swap the left and right channels.");
-    setupToggle (msToggle,   pid::msMode,  "M/S",  "Process the effect in Mid/Side.");
+    setupToggle (swapToggle, pid::swap,    "Swap", "Swap L/R \xe2\x80\x94 or Mid/Side when M/S is on."); // #7
+    setupToggle (msToggle,   pid::msMode,  "M/S",  "Encode the input to Mid/Side, so Swap / Balance / Phase act on Mid & Side."); // #7
     setupToggle (polLToggle, pid::polarityL, ph + " L", "Flip the polarity (phase) of the left channel.");
     setupToggle (polRToggle, pid::polarityR, ph + " R", "Flip the polarity (phase) of the right channel.");
     for (auto* t : { &monoToggle, &swapToggle, &msToggle, &polLToggle, &polRToggle })
@@ -308,6 +309,7 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     scopePersistK.setTooltip ("Vectorscope afterglow time " // #5
                               + juce::String::charToString ((juce::juce_wchar) 0x2014)
                               + " longer trails fade more slowly.");
+    scopePersistK.setRepaintsOnMouseActivity (true); // hover glow (#10)
     settingsBackdrop.addAndMakeVisible (scopePersistK);
     scopePersistK.setTextBoxStyle (juce::Slider::TextBoxRight, false, 52, 18); // box built with our LnF
     attachSlider (scopePersistK, pid::scopePersist);
@@ -357,6 +359,7 @@ void AnamorphAudioProcessorEditor::setupRotary (juce::Slider& s, juce::Label& l,
     s.setColour (juce::Slider::textBoxHighlightColourId, colours::accent.withAlpha (0.30f));
     s.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
     s.setTooltip (tip);
+    s.setRepaintsOnMouseActivity (true); // hover glow (#10)
     addAndMakeVisible (s);
     // Create the value box AFTER parenting, so it's built with our LookAndFeel
     // (the draggable/raw-editing ValueBox) -- reparenting doesn't recreate it,
@@ -396,6 +399,7 @@ void AnamorphAudioProcessorEditor::setupCombo (juce::ComboBox& box, const char* 
     if (auto* cp = dynamic_cast<juce::AudioParameterChoice*> (processor.getAPVTS().getParameter (id)))
         box.addItemList (cp->choices, 1);
     box.setTooltip (tip);
+    box.setRepaintsOnMouseActivity (true); // hover feedback (#10)
     addAndMakeVisible (box);
     comboAtts.add (new ComboBoxAttachment (processor.getAPVTS(), id, box));
 }
@@ -451,11 +455,12 @@ void AnamorphAudioProcessorEditor::updateModeVisibility()
     };
     for (auto* c : adv) c->setVisible (advanced);
 
-    // Simple mode features only the Widen core, so make its labels a touch larger
-    // for presence; Advanced packs more in, so they shrink back (#16).
-    const float widenLabelFont = advanced ? 11.5f : 13.5f;
+    // Simple mode is just the Widen core, so its labels are noticeably larger for
+    // presence; Advanced packs more in, so they shrink back (#13/#16).
+    const float widenLabelFont = advanced ? 11.5f : 15.0f;
     for (auto* l : { &driveL, &amountL, &widthL, &haasDelayL, &velvetL, &chorusRateL, &chorusDepthL })
         l->setFont (juce::Font (juce::FontOptions (widenLabelFont)));
+    algorithmLabel.setFont (juce::Font (juce::FontOptions (advanced ? 11.0f : 13.0f)).withExtraKerningFactor (0.2f));
 
     updateAlgoControls();
     resized();
@@ -625,7 +630,7 @@ void AnamorphAudioProcessorEditor::resized()
     // ---- Scope + meters (with the reveal animation) ----
     {
         auto sa = leftArea.reduced (16);
-        const int meterFull = 138; // wider to fit the 8 per-channel numbers, bars stay thin (#17)
+        const int meterFull = 156; // fits 8 numbers + dB ruler; bars stay thin (#11/#17)
         const int reserve = juce::roundToInt (meterFull * meterAnim);
         if (reserve > 2)
         {

@@ -6,6 +6,21 @@ of stereo tools (MS, mono-maker, channel utilities, monitoring) around a
 high-end diamond vectorscope. Built with **CMake + JUCE** only — it configures
 and builds entirely from the command line on a headless Linux machine, no IDE.
 
+### What's new in 0.5.2
+- **M/S is now an input encoder**: it encodes the input to Mid/Side so the Input
+  controls (Swap, Balance, Phase) act on Mid & Side; Swap swaps Mid↔Side.
+- **Enabling Level Match no longer slams loud**: the loudness re-arm only happens
+  on real processing/A-B changes, not on the Match or Bypass toggle.
+- **Hover/press feedback** across knobs (arc glow on hover, pointer + halo on
+  press/number-drag), toggles, A/B, combos (open state) and sliders.
+- **Meters**: a non-uniform dB ruler, more distinct & quicker VU/RMS ballistics,
+  refined bars. Value boxes mirror the displayed value exactly (no rounding;
+  `2k` accepted for the Mid/Hi crossover; Left balance shown negative).
+- Vectorscope clip ring no longer shaved at the edges; squarer combo corners,
+  narrower pop-up dead-zones, larger Simple-mode Widen text.
+- **CI**: the Linux job is paused (macOS prioritised); the source stays
+  cross-platform (Win/Linux) and still builds.
+
 ### What's new in 0.5.1
 - **Undo/Redo reworked**: each **A/B slot keeps its own** undo history; the
   Undo/Redo buttons only affect the current slot, an A/B switch is never an undo

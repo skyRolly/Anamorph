@@ -27,13 +27,13 @@ public:
     {
         sr = sampleRate;
         auto envC = [sampleRate] (double tau) { return 1.0f - std::exp (-1.0f / (float) (tau * sampleRate)); };
-        // Reference: iZotope Insight 2 Levels -- 300 ms VU integration, 1 s peak
-        // hold. Bright = a smooth 300 ms VU body (#6, less jumpy). Dim = a fast
-        // riser that sits above it (#7) but FALLS at the SAME 300 ms rate (#8).
-        dimRise  = envC (0.030);  dimFall  = envC (0.300);
-        briRise  = envC (0.300);  briFall  = envC (0.300);
-        // Numeric RMS: quicker to rise so it doesn't lag (#5).
-        numRise  = envC (0.120);  numFall  = envC (0.300);
+        // Two clearly-different ballistics, both quicker than before (#12):
+        //  * dim "VU" = agile rise + slower fall (a peak-leaning VU that sits
+        //    above the body);  * bright "RMS" = moderate, more symmetric body.
+        dimRise  = envC (0.025);  dimFall  = envC (0.260);
+        briRise  = envC (0.120);  briFall  = envC (0.150);
+        // Numeric RMS: quick to rise so it doesn't lag (#5).
+        numRise  = envC (0.110);  numFall  = envC (0.260);
         reset();
     }
 

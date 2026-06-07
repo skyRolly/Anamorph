@@ -80,6 +80,9 @@ private:
     // True when two snapshots differ in a control that would click if applied
     // instantly (so the switch must be ducked rather than applied live).
     static bool discreteDiffers (const EngineParameters& a, const EngineParameters& b) noexcept;
+    // True when the actual PROCESSING differs (excludes Level-Match / Bypass),
+    // i.e. when the loudness measurement is genuinely stale and must re-arm (#1).
+    static bool processingDiffers (const EngineParameters& a, const EngineParameters& b) noexcept;
     // Copies only the continuous (smoothed) fields, leaving discrete ones intact.
     static void copyContinuous (EngineParameters& dst, const EngineParameters& src) noexcept;
 

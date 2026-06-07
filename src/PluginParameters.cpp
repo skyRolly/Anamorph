@@ -59,12 +59,22 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
         return juce::jlimit (-1.0f, 1.0f, v);
     };
 
-    // Balance reads as a signed percentage (L .. C .. R), 0.1% resolution (#15).
+    // Balance reads as a signed percentage: Left is shown NEGATIVE, Right
+    // positive (feedback #5), 0.1% resolution.
     auto balPct = [] (float v, int)
     {
         if (std::abs (v) < 0.0005f) return juce::String ("C");
-        const juce::String side = v < 0.0f ? "L" : "R";
-        return side + " " + juce::String (std::abs (v) * 100.0f, 1) + "%";
+        if (v < 0.0f) return "L -" + juce::String (-v * 100.0f, 1) + "%";
+        return "R " + juce::String (v * 100.0f, 1) + "%";
+    };
+    // Mid/Hi crossover edits in kHz: bare 1-10 (or "5k") -> 1-10 kHz (#4).
+    auto khzFrom = [] (const juce::String& t)
+    {
+        auto s = t.toLowerCase().trim();
+        const bool k = s.containsChar ('k');
+        const float v = s.removeCharacters ("khz ").getFloatValue();
+        if (k) return v * 1000.0f;
+        return (v <= 20.0f) ? v * 1000.0f : v;
     };
 
     // --- Input conditioning ---
@@ -101,7 +111,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
     // --- Multiband ---
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::mbEnable, kVersion }, "Multiband Enable", false));
     floatParam (pid::mbFreqLow,  "MB Low/Mid",  NormalisableRange<float> { 50.0f, 1000.0f, 0.1f, 0.3f }, 250.0f, hz, hzFrom);
-    floatParam (pid::mbFreqHigh, "MB Mid/High", NormalisableRange<float> { 1000.0f, 10000.0f, 0.1f, 0.3f }, 2500.0f, hz, hzFrom);
+    floatParam (pid::mbFreqHigh, "MB Mid/High", NormalisableRange<float> { 1000.0f, 10000.0f, 0.1f, 0.3f }, 2500.0f, hz, khzFrom);
     floatParam (pid::mbWidthLow,  "MB Width Low",  { 0.0f, 2.0f, 0.001f }, 1.0f, pct, pctFrom);
     floatParam (pid::mbWidthMid,  "MB Width Mid",  { 0.0f, 2.0f, 0.001f }, 1.0f, pct, pctFrom);
     floatParam (pid::mbWidthHigh, "MB Width High", { 0.0f, 2.0f, 0.001f }, 1.0f, pct, pctFrom);

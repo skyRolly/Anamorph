@@ -77,40 +77,44 @@ void Vectorscope::paint (juce::Graphics& g)
     const int maxPoints = 3000;
     const int step = juce::jmax (1, got / maxPoints);
 
-    juce::Graphics::ScopedSaveState save (g);
-    g.reduceClipRegion (plot.toNearestInt());
-
     float clip = 0.0f; // peak magnitude for the clip indicator
 
-    for (int i = 0; i < got; i += step)
     {
-        const float L = bufL[(size_t) i];
-        const float R = bufR[(size_t) i];
-        clip = juce::jmax (clip, std::abs (L), std::abs (R));
+        juce::Graphics::ScopedSaveState save (g);
+        g.reduceClipRegion (plot.toNearestInt());
 
-        // Rotate 45 deg: vertical = Mid (mono up), horizontal = Side.
-        // L leans LEFT, R leans RIGHT (so dx uses -(L-R) = R-L) -- fixes the
-        // previously mirrored image (feedback #24).
-        const float side = (L - R) * kInvSqrt2;
-        const float mid  = (L + R) * kInvSqrt2;
+        for (int i = 0; i < got; i += step)
+        {
+            const float L = bufL[(size_t) i];
+            const float R = bufR[(size_t) i];
+            clip = juce::jmax (clip, std::abs (L), std::abs (R));
 
-        float dx = -side * effScale;
-        float dy = -mid * effScale;
-        const float mag = std::sqrt (dx * dx + dy * dy);
-        if (mag > radius && mag > 0.0f) { const float k = radius / mag; dx *= k; dy *= k; }
+            // Rotate 45 deg: vertical = Mid (mono up), horizontal = Side.
+            // L leans LEFT, R leans RIGHT (so dx uses -(L-R) = R-L) -- fixes the
+            // previously mirrored image (feedback #24).
+            const float side = (L - R) * kInvSqrt2;
+            const float mid  = (L + R) * kInvSqrt2;
 
-        const float px = centre.x + dx;
-        const float py = centre.y + dy;
+            float dx = -side * effScale;
+            float dy = -mid * effScale;
+            const float mag = std::sqrt (dx * dx + dy * dy);
+            if (mag > radius && mag > 0.0f) { const float k = radius / mag; dx *= k; dy *= k; }
 
-        const float age = (float) i / (float) got;        // 0 oldest .. 1 newest
-        const float a = baseAlpha * (0.15f + 0.85f * age);
-        const float spread = juce::jlimit (0.0f, 1.0f, std::abs (side) * 1.6f);
-        const auto col = colours::accent2.interpolatedWith (colours::accent, spread).withAlpha (a);
-        g.setColour (col);
-        g.fillRect (px - 0.8f, py - 0.8f, 1.6f, 1.6f);
+            const float px = centre.x + dx;
+            const float py = centre.y + dy;
+
+            const float age = (float) i / (float) got;        // 0 oldest .. 1 newest
+            const float a = baseAlpha * (0.15f + 0.85f * age);
+            const float spread = juce::jlimit (0.0f, 1.0f, std::abs (side) * 1.6f);
+            const auto col = colours::accent2.interpolatedWith (colours::accent, spread).withAlpha (a);
+            g.setColour (col);
+            g.fillRect (px - 0.8f, py - 0.8f, 1.6f, 1.6f);
+        }
     }
 
-    // Clip indicator: the rim glows red, more as the signal pushes past 0 dBFS.
+    // Clip indicator: drawn OUTSIDE the plot clip region so the ring's stroke
+    // isn't shaved at the top/bottom/left/right (feedback #2). The surrounding
+    // 18 px margin gives the stroke room.
     if (clip > 0.95f)
     {
         const float amt = juce::jlimit (0.0f, 1.0f, (clip - 0.95f) / 0.35f);

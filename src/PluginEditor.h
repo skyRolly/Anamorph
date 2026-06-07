@@ -54,8 +54,11 @@ private:
     {
         std::function<int()>  getActive;
         std::function<void()> onToggle;
+        bool hovered = false;
         void paint (juce::Graphics&) override;
         void mouseDown (const juce::MouseEvent&) override { if (onToggle) onToggle(); }
+        void mouseEnter (const juce::MouseEvent&) override { hovered = true;  repaint(); } // hover (#10)
+        void mouseExit  (const juce::MouseEvent&) override { hovered = false; repaint(); }
     };
 
     void timerCallback() override;

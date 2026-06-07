@@ -118,6 +118,7 @@ void LevelMeter::paint (juce::Graphics& g)
     g.drawRoundedRectangle (bounds.reduced (0.5f), 4.0f, 1.0f);
 
     auto area = bounds.reduced (5.0f);
+    auto ruler = area.removeFromRight (22.0f); // full-height dB scale column (#11)
     const float colW = area.getWidth() / 4.0f;
     auto colX = [&] (int i) { return area.withX (area.getX() + i * colW).withWidth (colW); };
 
@@ -152,7 +153,7 @@ void LevelMeter::paint (juce::Graphics& g)
 
     area.removeFromTop (3.0f);
 
-    // ---- four thin bars under the columns ----
+    // ---- four thin bars (aligned under the number columns) ----
     const float gap = 6.0f;
     const float bw = juce::jmin (14.0f, colW - gap);
     auto bar = [&] (int i) { return area.withX (area.getX() + i * colW + (colW - bw) * 0.5f).withWidth (bw); };
@@ -160,6 +161,21 @@ void LevelMeter::paint (juce::Graphics& g)
     drawBar (g, bar (1), source.input.getDimR(),  source.input.getBriR(),  source.input.getBarR());
     drawBar (g, bar (2), source.output.getDimL(), source.output.getBriL(), source.output.getBarL());
     drawBar (g, bar (3), source.output.getDimR(), source.output.getBriR(), source.output.getBarR());
+
+    // ---- non-uniform dB scale aligned to the bar track (#11) ----
+    const float trackH = area.getHeight() - 3.2f;
+    g.setFont (juce::Font (juce::FontOptions (8.0f)));
+    for (int db : { 0, -6, -12, -24, -48 })
+    {
+        const float y = area.getBottom() - 1.6f - dbToNorm ((float) db) * trackH;
+        g.setColour (colours::outline.brighter (0.1f));
+        g.fillRect (ruler.getX() + 1.0f, y - 0.5f, 3.0f, 1.0f);
+        g.setColour (colours::textDim.withAlpha (0.85f));
+        g.drawText (juce::String (db),
+                    ruler.withX (ruler.getX() + 5.0f).withWidth (ruler.getWidth() - 5.0f)
+                         .withY (y - 6.0f).withHeight (12.0f),
+                    juce::Justification::centredLeft);
+    }
 }
 
 } // namespace anamorph::gui
