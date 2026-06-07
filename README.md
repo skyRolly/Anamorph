@@ -6,6 +6,22 @@ of stereo tools (MS, mono-maker, channel utilities, monitoring) around a
 high-end diamond vectorscope. Built with **CMake + JUCE** only — it configures
 and builds entirely from the command line on a headless Linux machine, no IDE.
 
+### What's new in 0.5.3
+- **M/S is now a decoder** (Ch1 = Mid, Ch2 = Side → L/R); Swap swaps Mid/Side.
+- **Frequency knobs are logarithmic** (no dead chunk at the bottom). Mono-Maker
+  cutoff is octave-rate-limited so a fast drag can't chirp.
+- **Velvet** play/pause burst masked by a fixed-time gate ramp.
+- **Knobs/sliders**: neon blue→cyan glow (less green), gradient glow, hover/press
+  feedback; slider thumb is neutral until you touch it. Combo hover now lights
+  the whole control; toggles brighten only the switch+label; Input toggle labels
+  line up by construction.
+- **Meters**: dim layer is a fast peak that pushes the peak line, bright is the
+  slow RMS; the RMS number snaps up then holds and falls slowly; scale tuned for
+  the −24..0 mixing range; bars darker at the bottom.
+- Vectorscope no longer shaves the image at the rim; Output module dropped lower
+  with a Widen/Output divider; bigger Simple-mode Widen text (names + numbers).
+- **CI**: Linux job stays paused; macOS build is the deliverable.
+
 ### What's new in 0.5.2
 - **M/S is now an input encoder**: it encodes the input to Mid/Side so the Input
   controls (Swap, Balance, Phase) act on Mid & Side; Swap swaps Mid↔Side.

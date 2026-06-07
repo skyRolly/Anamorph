@@ -15,11 +15,12 @@ LevelMeter::LevelMeter (anamorph::LevelMeters& src) : source (src)
 
 LevelMeter::~LevelMeter() { stopTimer(); }
 
-// Non-uniform scale: more pixels-per-dB near 0 dBFS (#17).
+// Non-uniform scale tuned for mixing: the busy -24..0 dBFS range gets most of
+// the bar, the quiet tail is compressed (#17).
 static float dbToNorm (float db)
 {
     const float t = juce::jlimit (0.0f, 1.0f, (db - kMinDb) / (kMaxDb - kMinDb));
-    return std::pow (t, 1.7f);
+    return std::pow (t, 2.0f);
 }
 
 static juce::String dbText (float db)
@@ -43,9 +44,11 @@ void LevelMeter::drawBar (juce::Graphics& g, juce::Rectangle<float> r,
                           float dimDb, float briDb, float barDb)
 {
     const float rad = 3.0f;
-    // Recessed slot: dark inner gradient + a faint top inner-shadow for depth (#10).
-    juce::ColourGradient bgGrad (colours::bg.darker (0.45f), r.getX(), r.getY(),
-                                 colours::bg.brighter (0.04f), r.getX(), r.getBottom(), false);
+    // Recessed slot: lighter at the top, noticeably DARKER toward the bottom for a
+    // richer gradient (#14).
+    juce::ColourGradient bgGrad (colours::bg.brighter (0.06f), r.getX(), r.getY(),
+                                 juce::Colour (0xff04060a),     r.getX(), r.getBottom(), false);
+    bgGrad.addColour (0.45, colours::bg.darker (0.25f));
     g.setGradientFill (bgGrad);
     g.fillRoundedRectangle (r, rad);
 
@@ -165,7 +168,7 @@ void LevelMeter::paint (juce::Graphics& g)
     // ---- non-uniform dB scale aligned to the bar track (#11) ----
     const float trackH = area.getHeight() - 3.2f;
     g.setFont (juce::Font (juce::FontOptions (8.0f)));
-    for (int db : { 0, -6, -12, -24, -48 })
+    for (int db : { 0, -6, -12, -18, -24, -48 })
     {
         const float y = area.getBottom() - 1.6f - dbToNorm ((float) db) * trackH;
         g.setColour (colours::outline.brighter (0.1f));

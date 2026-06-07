@@ -20,6 +20,16 @@ namespace
     auto ms  = [] (float v, int) { return juce::String (v, 1) + " ms"; };
 }
 
+// A true logarithmic (octave-even) range so frequency knobs feel right end to
+// end -- no big dead chunk at the bottom (feedback #3).
+static juce::NormalisableRange<float> logFreqRange (float lo, float hi)
+{
+    return { lo, hi,
+        [] (float s, float e, float v) { return s * std::pow (e / s, v); },                 // 0..1 -> Hz
+        [] (float s, float e, float v) { return std::log (v / s) / std::log (e / s); },      // Hz -> 0..1
+        [] (float s, float e, float v) { return juce::jlimit (s, e, v); } };
+}
+
 juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
 {
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
@@ -110,15 +120,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
 
     // --- Multiband ---
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::mbEnable, kVersion }, "Multiband Enable", false));
-    floatParam (pid::mbFreqLow,  "MB Low/Mid",  NormalisableRange<float> { 50.0f, 1000.0f, 0.1f, 0.3f }, 250.0f, hz, hzFrom);
-    floatParam (pid::mbFreqHigh, "MB Mid/High", NormalisableRange<float> { 1000.0f, 10000.0f, 0.1f, 0.3f }, 2500.0f, hz, khzFrom);
+    floatParam (pid::mbFreqLow,  "MB Low/Mid",  logFreqRange (50.0f, 1000.0f), 250.0f, hz, hzFrom);
+    floatParam (pid::mbFreqHigh, "MB Mid/High", logFreqRange (1000.0f, 10000.0f), 2500.0f, hz, khzFrom);
     floatParam (pid::mbWidthLow,  "MB Width Low",  { 0.0f, 2.0f, 0.001f }, 1.0f, pct, pctFrom);
     floatParam (pid::mbWidthMid,  "MB Width Mid",  { 0.0f, 2.0f, 0.001f }, 1.0f, pct, pctFrom);
     floatParam (pid::mbWidthHigh, "MB Width High", { 0.0f, 2.0f, 0.001f }, 1.0f, pct, pctFrom);
 
     // --- Mono maker ---
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::monoMakerOn, kVersion }, "Mono Maker", false));
-    floatParam (pid::monoMakerFreq, "Mono Maker Freq", NormalisableRange<float> { 20.0f, 500.0f, 0.1f, 0.4f }, 120.0f, hz, hzFrom);
+    floatParam (pid::monoMakerFreq, "Mono Maker Freq", logFreqRange (20.0f, 500.0f), 120.0f, hz, hzFrom);
 
     // --- Mix / gain ---
     floatParam (pid::mix, "Mix", { 0.0f, 1.0f, 0.001f }, 1.0f, pct, pctFrom);

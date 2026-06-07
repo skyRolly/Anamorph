@@ -81,7 +81,9 @@ void Vectorscope::paint (juce::Graphics& g)
 
     {
         juce::Graphics::ScopedSaveState save (g);
-        g.reduceClipRegion (plot.toNearestInt());
+        // Expand the clip a touch so points pinned to the rim aren't shaved at the
+        // top/bottom/left/right (feedback #12).
+        g.reduceClipRegion (plot.expanded (3.0f).toNearestInt());
 
         for (int i = 0; i < got; i += step)
         {

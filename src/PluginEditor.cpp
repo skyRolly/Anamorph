@@ -243,8 +243,8 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     // row labels always fit and never truncate (#11 / #14).
     const juce::String ph = juce::String::charToString ((juce::juce_wchar) 0x00F8);
     setupToggle (monoToggle, pid::monoSum, "Mono", "Sum the input to mono.");
-    setupToggle (swapToggle, pid::swap,    "Swap", "Swap L/R \xe2\x80\x94 or Mid/Side when M/S is on."); // #7
-    setupToggle (msToggle,   pid::msMode,  "M/S",  "Encode the input to Mid/Side, so Swap / Balance / Phase act on Mid & Side."); // #7
+    setupToggle (swapToggle, pid::swap,    "Swap", "Swap the two input channels (swaps Mid/Side when M/S is on)."); // #7
+    setupToggle (msToggle,   pid::msMode,  "M/S",  "M/S decoder: treat the input as Mid (Ch1) / Side (Ch2) and decode to L/R."); // #6/#7
     setupToggle (polLToggle, pid::polarityL, ph + " L", "Flip the polarity (phase) of the left channel.");
     setupToggle (polRToggle, pid::polarityR, ph + " R", "Flip the polarity (phase) of the right channel.");
     for (auto* t : { &monoToggle, &swapToggle, &msToggle, &polLToggle, &polRToggle })
@@ -400,6 +400,12 @@ void AnamorphAudioProcessorEditor::setupCombo (juce::ComboBox& box, const char* 
         box.addItemList (cp->choices, 1);
     box.setTooltip (tip);
     box.setRepaintsOnMouseActivity (true); // hover feedback (#10)
+    // The combo's internal text label otherwise eats hover events over most of
+    // the box, so brightening only showed on the border/arrow (#1). Let events
+    // fall through to the ComboBox so the whole control lights up.
+    for (auto* child : box.getChildren())
+        if (dynamic_cast<juce::Label*> (child) != nullptr)
+            child->setInterceptsMouseClicks (false, false);
     addAndMakeVisible (box);
     comboAtts.add (new ComboBoxAttachment (processor.getAPVTS(), id, box));
 }
@@ -455,12 +461,22 @@ void AnamorphAudioProcessorEditor::updateModeVisibility()
     };
     for (auto* c : adv) c->setVisible (advanced);
 
-    // Simple mode is just the Widen core, so its labels are noticeably larger for
-    // presence; Advanced packs more in, so they shrink back (#13/#16).
-    const float widenLabelFont = advanced ? 11.5f : 15.0f;
+    // Simple mode is just the Widen core, so ALL its text (names AND the value
+    // numbers) is noticeably larger for presence; Advanced packs more in, so it
+    // shrinks back (recurring Simple-font request).
+    const float widenLabelFont = advanced ? 11.5f : 17.0f;
+    const float widenValueFont = advanced ? 12.0f : 15.0f;
+    auto setValueFont = [] (juce::Slider& s, float size)
+    {
+        for (auto* c : s.getChildren())
+            if (auto* l = dynamic_cast<juce::Label*> (c))
+                l->setFont (juce::Font (juce::FontOptions (size)));
+    };
     for (auto* l : { &driveL, &amountL, &widthL, &haasDelayL, &velvetL, &chorusRateL, &chorusDepthL })
         l->setFont (juce::Font (juce::FontOptions (widenLabelFont)));
-    algorithmLabel.setFont (juce::Font (juce::FontOptions (advanced ? 11.0f : 13.0f)).withExtraKerningFactor (0.2f));
+    for (auto* k : { &driveK, &amountK, &widthK, &haasDelayK, &velvetK, &chorusRateK, &chorusDepthK })
+        setValueFont (*k, widenValueFont);
+    algorithmLabel.setFont (juce::Font (juce::FontOptions (advanced ? 11.0f : 13.5f)).withExtraKerningFactor (0.2f));
 
     updateAlgoControls();
     resized();
@@ -558,6 +574,12 @@ void AnamorphAudioProcessorEditor::paint (juce::Graphics& g)
 
     if (advanced)
     {
+        // Divider between the Widen and Output modules in the right panel, to
+        // match the Input/Multiband divider in the bottom strip (#11).
+        const float dy = 46.0f + 18.0f + 304.0f + 20.0f; // just above the Output label
+        g.setColour (colours::outline.withAlpha (0.6f));
+        g.drawLine (right.getX() + 12.0f, dy, right.getRight() - 12.0f, dy, 1.0f);
+
         // Bottom strip (INPUT + MULTIBAND) under the scope.
         auto strip = juce::Rectangle<int> (0, getHeight() - kStripHeight, getWidth() - 300, kStripHeight)
                          .toFloat().reduced (8.0f, 6.0f);
@@ -702,7 +724,7 @@ void AnamorphAudioProcessorEditor::resized()
             col.removeFromTop (14);
             layoutCharacter (col.removeFromTop (108), widthK, widthL);
 
-            col.removeFromTop (24);
+            col.removeFromTop (40); // push the Output module further down (#11)
             outputModuleLabel.setBounds (col.removeFromTop (16));
             col.removeFromTop (8);
             {
@@ -712,15 +734,21 @@ void AnamorphAudioProcessorEditor::resized()
                 placeKnob (row.removeFromLeft (w), outputK, outputL);
                 placeKnob (row, outBalanceK, outBalanceL);
             }
-            col.removeFromTop (12);
+            col.removeFromTop (14);
+            // Level Match + Mono Maker toggles share one X and one size, vertically
+            // aligned (#16). Apply / readout sit to the right of Level Match; the
+            // Freq slider to the right of Mono Maker.
+            const int togW = 118;
             auto lm = col.removeFromTop (30);
-            autoMatchToggle.setBounds (lm.removeFromLeft (124).reduced (2, 3));
-            applyGainButton.setBounds (lm.removeFromLeft (70).reduced (3, 3));
-            matchReadout.setBounds (lm.reduced (2));
-            col.removeFromTop (12);
-            auto mm = col.removeFromTop (32);
-            monoMakerToggle.setBounds (mm.removeFromLeft (122).reduced (2, 5));
-            monoFreqK.setBounds (mm.reduced (2, 5));
+            autoMatchToggle.setBounds (lm.removeFromLeft (togW).reduced (2, 4));
+            lm.removeFromLeft (4);
+            applyGainButton.setBounds (lm.removeFromLeft (66).reduced (2, 4));
+            matchReadout.setBounds (lm.reduced (2, 4));
+            col.removeFromTop (10);
+            auto mm = col.removeFromTop (30);
+            monoMakerToggle.setBounds (mm.removeFromLeft (togW).reduced (2, 4));
+            mm.removeFromLeft (4);
+            monoFreqK.setBounds (mm.reduced (2, 4));
         }
     }
 

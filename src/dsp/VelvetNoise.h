@@ -54,9 +54,12 @@ private:
     float  targetDensity = 0.5f, currentDensity = 0.5f;
     float  targetAmount  = 0.0f, currentAmount  = 0.0f;
 
-    // Input-presence gate: fades the decorrelation tail into silence so pausing
-    // playback doesn't leave a short noise burst (feedback #17).
+    // Presence-driven gate (feedback #10): `env` follows the input level; `gate`
+    // ramps 0<->1 at FIXED times (not level-dependent), so on play it fades the
+    // decorrelation in slowly enough to mask the sparse-FIR burst, and on pause
+    // it fades the tail out. Decoupling the ramp from level is the fix.
     float  env = 0.0f, envAtk = 0.0f, envRel = 0.0f;
+    float  gate = 0.0f, gateAtk = 0.0f, gateRel = 0.0f;
 };
 
 } // namespace anamorph

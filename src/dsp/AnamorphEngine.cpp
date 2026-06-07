@@ -311,12 +311,11 @@ void AnamorphEngine::applyInputConditioning (float* L, float* R, int n) noexcept
 
         if (p.monoSum) { const float m = (l + r) * 0.5f; l = m; r = m; } // dedicated Mono toggle
 
-        // M/S as an INPUT encoder (feedback #7): encode L/R -> M/S so the Input
-        // controls below (Swap, Balance, Phase) operate in Mid/Side, then decode
-        // back to L/R for the widener. Swap now swaps Mid<->Side.
-        if (p.msMode) { const float m = (l + r) * 0.70710678f, s = (l - r) * 0.70710678f; l = m; r = s; }
+        // M/S DECODER (feedback #6): the input IS Mid/Side (Ch1 = Mid, Ch2 = Side).
+        // Swap/Balance/Phase act on Mid & Side first (Swap swaps Mid<->Side), then
+        // we decode to L/R so an M/S source plays back correctly on an L/R system.
 
-        if (p.swapLR) { const float t = l; l = r; r = t; } // L/R, or M/S when M/S is on
+        if (p.swapLR) { const float t = l; l = r; r = t; } // L/R, or Mid<->Side when M/S is on
 
         // Balance: centre is unity, turning attenuates the opposite channel.
         const float b  = balanceSmooth.getNextValue();
@@ -328,7 +327,7 @@ void AnamorphEngine::applyInputConditioning (float* L, float* R, int n) noexcept
         l *= polLSmooth.getNextValue();
         r *= polRSmooth.getNextValue();
 
-        if (p.msMode) { const float le = (l + r) * 0.70710678f, re = (l - r) * 0.70710678f; l = le; r = re; } // decode
+        if (p.msMode) { const float le = (l + r) * 0.70710678f, re = (l - r) * 0.70710678f; l = le; r = re; } // decode M/S -> L/R
 
         L[i] = l; R[i] = r;
     }

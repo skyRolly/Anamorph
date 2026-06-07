@@ -35,11 +35,13 @@ void VelvetNoise::prepare (double sampleRate, unsigned seed)
 
     currentDensity = targetDensity;
     currentAmount  = targetAmount;
-    // Open slowly so the decorrelation FADES IN on play (masking any burst from
-    // stale history), but close fast so the sparse-FIR tail is cut quickly on
-    // pause -- the pause "white noise" was that lingering tail (feedback #34).
-    envAtk = 1.0f - std::exp (-1.0f / (float) (0.010 * sr)); // 10 ms attack (slow open)
-    envRel = 1.0f - std::exp (-1.0f / (float) (0.018 * sr)); // 18 ms release (fast close)
+    // Presence follower (fast attack, slow release) -> drives the gate's on/off.
+    envAtk  = 1.0f - std::exp (-1.0f / (float) (0.002 * sr));
+    envRel  = 1.0f - std::exp (-1.0f / (float) (0.080 * sr));
+    // Gate RAMP times (fixed): fade the decorrelation in over ~22 ms on play so
+    // the FIR burst is masked, and out over ~28 ms on pause (#10).
+    gateAtk = 1.0f - std::exp (-1.0f / (float) (0.022 * sr));
+    gateRel = 1.0f - std::exp (-1.0f / (float) (0.028 * sr));
     updateWeights();
     reset();
 }
@@ -49,6 +51,7 @@ void VelvetNoise::reset()
     std::fill (midHist.begin(), midHist.end(), 0.0f);
     writePos = 0;
     env = 0.0f;
+    gate = 0.0f;
 }
 
 void VelvetNoise::updateWeights() noexcept
@@ -88,11 +91,13 @@ void VelvetNoise::processBlock (float* left, float* right, int numSamples) noexc
         const float mid  = (L + R) * 0.5f;
         const float side = (L - R) * 0.5f;
 
-        // Track input presence; gate closes in near-silence so the sparse-FIR
-        // tail fades out instead of leaving a noise burst on pause (#17).
+        // Presence detect, then ramp the GATE at fixed times (decoupled from the
+        // input level) so the decorrelation always fades in/out over a fixed
+        // window -- masking the FIR burst on play and the tail on pause (#10).
         const float a = std::abs (mid);
         env += (a > env ? envAtk : envRel) * (a - env);
-        const float gate = std::min (1.0f, env * 333.0f); // ~ -50 dBFS knee
+        const float gateTarget = (env > 0.0005f) ? 1.0f : 0.0f; // ~ -66 dBFS presence
+        gate += (gateTarget > gate ? gateAtk : gateRel) * (gateTarget - gate);
 
         midHist[(size_t) writePos] = mid;
 
