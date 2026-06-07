@@ -1,4 +1,4 @@
-# Anamorph — Stereo Tools Audio Plugin (VST3)
+# Anamorph — Stereo Tools Audio Plugin
 
 **Anamorph** (by **RollyTech**) is a stereo-field toolkit: it turns mono into
 stereo, controls stereo width (globally and per band), and provides the full set
