@@ -135,6 +135,14 @@ bool AnamorphEngine::discreteDiffers (const EngineParameters& a, const EnginePar
         || a.bypass           != b.bypass;
 }
 
+bool AnamorphEngine::processingDiffers (const EngineParameters& a, const EngineParameters& b) noexcept
+{
+    return a.channelMode != b.channelMode || a.monoSum  != b.monoSum  || a.swapLR   != b.swapLR
+        || a.msMode      != b.msMode      || a.solo     != b.solo     || a.algorithm != b.algorithm
+        || a.haasSide    != b.haasSide    || a.dimMode  != b.dimMode  || a.mbEnable  != b.mbEnable
+        || a.monoMakerEnable != b.monoMakerEnable || a.oversample != b.oversample;
+}
+
 void AnamorphEngine::copyContinuous (EngineParameters& dst, const EngineParameters& src) noexcept
 {
     // Keep dst's discrete fields; pull every smoothed/continuous field from src.
@@ -303,7 +311,12 @@ void AnamorphEngine::applyInputConditioning (float* L, float* R, int n) noexcept
 
         if (p.monoSum) { const float m = (l + r) * 0.5f; l = m; r = m; } // dedicated Mono toggle
 
-        if (p.swapLR) { const float t = l; l = r; r = t; }
+        // M/S as an INPUT encoder (feedback #7): encode L/R -> M/S so the Input
+        // controls below (Swap, Balance, Phase) operate in Mid/Side, then decode
+        // back to L/R for the widener. Swap now swaps Mid<->Side.
+        if (p.msMode) { const float m = (l + r) * 0.70710678f, s = (l - r) * 0.70710678f; l = m; r = s; }
+
+        if (p.swapLR) { const float t = l; l = r; r = t; } // L/R, or M/S when M/S is on
 
         // Balance: centre is unity, turning attenuates the opposite channel.
         const float b  = balanceSmooth.getNextValue();
@@ -314,6 +327,8 @@ void AnamorphEngine::applyInputConditioning (float* L, float* R, int n) noexcept
         // Smoothed polarity sign (ramps +1 <-> -1) so flipping never clicks (#19).
         l *= polLSmooth.getNextValue();
         r *= polRSmooth.getNextValue();
+
+        if (p.msMode) { const float le = (l + r) * 0.70710678f, re = (l - r) * 0.70710678f; l = le; r = re; } // decode
 
         L[i] = l; R[i] = r;
     }
@@ -362,10 +377,13 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     //      fade back in. Pure continuous edits never enter here (#10 / #11). ----
     if (switchState == SwitchState::FadeOut && switchPhase <= 0.0f)
     {
+        const bool procChanged = processingDiffers (pendingP, p);
         p = pendingP;
         if (pendingAlgoReset) { haas.reset(); velvet.reset(); chorus.reset(); pendingAlgoReset = false; }
-        // Re-arm the loudness match so an A/B swap glides instead of spiking (#16).
-        loudness.softReset();
+        // Re-arm the loudness match ONLY when the processing actually changed (A/B
+        // swap, algorithm, ...). Toggling Level Match / Bypass must NOT re-measure,
+        // or enabling Match with a big boost slams loud for a moment (#1).
+        if (procChanged) loudness.softReset();
         updateDerived();
         switchState = SwitchState::FadeIn;
     }
@@ -466,14 +484,6 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     dryScratch.copyFrom (0, 0, L, n);
     dryScratch.copyFrom (1, 0, R, n);
 
-    // -------- 2. MS encode (only the Drive + algorithm run in M/S) ----------
-    if (p.msMode)
-        for (int i = 0; i < n; ++i)
-        {
-            float m, s; MidSide::encode (L[i], R[i], m, s);
-            L[i] = m; R[i] = s;
-        }
-
     // -------- 3a. Oversampled nonlinear / modulation region -----------------
     if (auto* os = currentOversampler())
     {
@@ -494,14 +504,6 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     // -------- 3b. Linear algorithm at base rate -----------------------------
     if (p.algorithm == Algorithm::Haas)        haas.processBlock (L, R, n);
     else if (p.algorithm == Algorithm::Velvet) velvet.processBlock (L, R, n);
-
-    // -------- 6. MS decode --------------------------------------------------
-    if (p.msMode)
-        for (int i = 0; i < n; ++i)
-        {
-            float l, r; MidSide::decode (L[i], R[i], l, r);
-            L[i] = l; R[i] = r;
-        }
 
     // -------- 3c. Global Width (MS-domain) ----------------------------------
     for (int i = 0; i < n; ++i)

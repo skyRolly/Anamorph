@@ -53,7 +53,7 @@ public:
 
     // Unify the pop-up list with the rounded flat-design of the combo box (#22).
     void drawPopupMenuBackground (juce::Graphics&, int width, int height) override;
-    int  getPopupMenuBorderSize() override { return 6; }
+    int  getPopupMenuBorderSize() override { return 3; } // narrower top/bottom dead-zone (#9)
     // Fixed, uniform row height so a taller combo doesn't get taller rows (#3).
     void getIdealPopupMenuItemSize (const juce::String& text, bool isSeparator,
                                     int standardHeight, int& idealWidth, int& idealHeight) override;
