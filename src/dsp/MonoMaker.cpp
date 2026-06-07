@@ -12,7 +12,9 @@ void MonoMaker::prepare (double sampleRate, int maxBlock)
     xover.setType (juce::dsp::LinkwitzRileyFilterType::lowpass);
     currentFreq = targetFreq;
     xover.setCutoffFrequency (currentFreq);
-    glideCoeff = 1.0f - std::exp (-1.0f / (float) (0.020 * sr)); // ~20 ms per-sample glide
+    // Per-sample multiplicative slew cap (~8 octaves/sec): a fast Freq drag can no
+    // longer sweep the IIR quickly enough to chirp / pitch-shift (feedback #9).
+    glideCoeff = std::exp2 (8.0f / (float) sr);
     reset();
 }
 
@@ -25,11 +27,13 @@ void MonoMaker::processSplit (float* left, float* right, float* lowMonoOut, int 
 {
     for (int i = 0; i < numSamples; ++i)
     {
-        // Per-sample frequency glide: re-deriving the LR coefficients every sample
-        // keeps a dragged Freq sweep smooth (no stepped-coefficient buzz, #19).
+        // Glide the cutoff toward the target, capped at a fixed octaves/second
+        // rate so the time-varying LR filter never modulates fast enough to
+        // pitch-shift on a quick drag (feedback #9).
         if (std::abs (currentFreq - targetFreq) > 0.05f)
         {
-            currentFreq += glideCoeff * (targetFreq - currentFreq);
+            if (targetFreq > currentFreq) currentFreq = juce::jmin (targetFreq, currentFreq * glideCoeff);
+            else                          currentFreq = juce::jmax (targetFreq, currentFreq / glideCoeff);
             xover.setCutoffFrequency (currentFreq);
         }
 

@@ -27,19 +27,20 @@ public:
     {
         sr = sampleRate;
         auto envC = [sampleRate] (double tau) { return 1.0f - std::exp (-1.0f / (float) (tau * sampleRate)); };
-        // Two clearly-different ballistics, both quicker than before (#12):
-        //  * dim "VU" = agile rise + slower fall (a peak-leaning VU that sits
-        //    above the body);  * bright "RMS" = moderate, more symmetric body.
-        dimRise  = envC (0.025);  dimFall  = envC (0.260);
-        briRise  = envC (0.120);  briFall  = envC (0.150);
-        // Numeric RMS: quick to rise so it doesn't lag (#5).
-        numRise  = envC (0.110);  numFall  = envC (0.260);
+        // DIM = a fast PEAK envelope (instant attack, ~130 ms release): it tracks
+        // transients right up to the held peak line and "pushes it up" (#13/#12).
+        dimRel   = std::exp (-1.0f / (float) (0.130 * sampleRate));
+        // BRIGHT = the truly slow RMS body (#13).
+        briRise  = envC (0.300);  briFall  = envC (0.300);
+        // Numeric RMS source: a steady ~150 ms RMS; the display logic adds the
+        // fast-rise / long-hold / slow-fall behaviour (#15).
+        numRise  = envC (0.150);  numFall  = envC (0.150);
         reset();
     }
 
     void reset() noexcept
     {
-        msDimL = msDimR = msBriL = msBriR = msNumL = msNumR = 0.0f;
+        pkDimL = pkDimR = msBriL = msBriR = msNumL = msNumR = 0.0f;
         barPeakL = barPeakR = 0.0f; holdL = holdR = 0.0;
         peakHoldL = peakHoldR = 0.0f;
         rmsNumL = rmsNumR = -100.0f; rmsHoldL = rmsHoldR = 0.0;
@@ -67,8 +68,8 @@ public:
             const float al = std::abs (L[i]), ar = std::abs (R[i]);
             const float l2 = L[i] * L[i], r2 = R[i] * R[i];
 
-            msDimL += (l2 > msDimL ? dimRise : dimFall) * (l2 - msDimL);
-            msDimR += (r2 > msDimR ? dimRise : dimFall) * (r2 - msDimR);
+            pkDimL = al > pkDimL ? al : pkDimL * dimRel; // instant attack, slow release
+            pkDimR = ar > pkDimR ? ar : pkDimR * dimRel;
             msBriL += (l2 > msBriL ? briRise : briFall) * (l2 - msBriL);
             msBriR += (r2 > msBriR ? briRise : briFall) * (r2 - msBriR);
             msNumL += (l2 > msNumL ? numRise : numFall) * (l2 - msNumL);
@@ -127,22 +128,28 @@ private:
 
     void stepRmsNumber (float& num, double& hold, float targetDb, bool& clip) noexcept
     {
-        const float maxStep = (float) (kRmsRate * blockDur); // dB this block (#20)
-        if (targetDb >= num)
+        // Snap UP quickly, then hold and fall SLOWLY; a small dead-band keeps the
+        // reading rock-steady once settled instead of jittering (#15).
+        if (targetDb > num + 0.3f)
         {
-            num = std::min (targetDb, num + maxStep); // rise (rate-limited)
-            hold = kRmsHold;                          // any rise re-arms the hold (#21)
+            num = targetDb;       // fast rise straight to the target
+            hold = kRmsHold;
         }
-        else if ((hold -= blockDur) <= 0.0)
+        else if (targetDb < num - 0.6f)
         {
-            num = std::max (targetDb, num - maxStep); // fall only after the hold
+            if ((hold -= blockDur) <= 0.0)
+                num = std::max (targetDb, num - (float) (kRmsFall * blockDur)); // slow fall after the hold
+        }
+        else
+        {
+            hold = kRmsHold;      // within the dead-band: steady, re-arm the hold
         }
         if (num > 0.0f) clip = true; // latch orange once RMS crosses 0 dBFS (#14)
     }
 
     void publishAll() noexcept
     {
-        store (dimLdb, db (std::sqrt (msDimL))); store (dimRdb, db (std::sqrt (msDimR)));
+        store (dimLdb, db (pkDimL)); store (dimRdb, db (pkDimR));
         store (briLdb, db (std::sqrt (msBriL))); store (briRdb, db (std::sqrt (msBriR)));
         store (barLdb, db (barPeakL)); store (barRdb, db (barPeakR));
         store (peakHoldLdb, db (peakHoldL)); store (peakHoldRdb, db (peakHoldR));
@@ -152,13 +159,13 @@ private:
     }
 
     static constexpr double kBarHold = 1.0;  // s, peak tick hold (Insight 2: 1 s, #9/#24)
-    static constexpr double kRmsHold = 0.5;  // s, RMS number hold before falling (#21)
-    static constexpr double kRmsRate = 30.0; // dB/s max RMS number change (faster, #5/#20)
+    static constexpr double kRmsHold = 1.2;  // s, RMS number hold before falling (#15)
+    static constexpr double kRmsFall = 8.0;  // dB/s slow RMS-number fall (#15)
 
     double sr = 48000.0, blockDur = 0.01;
-    float dimRise = 0, dimFall = 0, briRise = 0, briFall = 0, numRise = 0, numFall = 0;
+    float dimRel = 0, briRise = 0, briFall = 0, numRise = 0, numFall = 0;
 
-    float msDimL = 0, msDimR = 0, msBriL = 0, msBriR = 0, msNumL = 0, msNumR = 0;
+    float pkDimL = 0, pkDimR = 0, msBriL = 0, msBriR = 0, msNumL = 0, msNumR = 0;
     float barPeakL = 0, barPeakR = 0; double holdL = 0, holdR = 0;
     float blockPeakL = 0, blockPeakR = 0;
     float peakHoldL = 0, peakHoldR = 0;
