@@ -25,6 +25,25 @@ namespace colours
     const juce::Colour warn      { 0xffe0a94a };
 }
 
+// ============================================================================
+//  Glass surfaces (feedback #17)
+//
+//  A subtle, reversible "iOS-26 liquid glass" treatment shared by every framed
+//  surface (scope, meters, panels): a diagonal micro-gradient that is brightest
+//  at the TOP-RIGHT and darkest at the BOTTOM-LEFT, plus soft highlight edges on
+//  the top-left and bottom-right so the frame reads like a pane of glass. Kept
+//  deliberately faint so it never overpowers the existing dark aesthetic.
+// ============================================================================
+namespace glass
+{
+    // Highlight edges + base hairline only (the caller fills the interior).
+    void drawEdges (juce::Graphics&, juce::Rectangle<float> bounds, float radius,
+                    float strength = 1.0f);
+    // Diagonal micro-gradient fill (top-right bright -> bottom-left dark) + edges.
+    void fillPanel (juce::Graphics&, juce::Rectangle<float> bounds, float radius,
+                    juce::Colour base, float strength = 1.0f);
+}
+
 class AnamorphLookAndFeel : public juce::LookAndFeel_V4
 {
 public:
@@ -50,6 +69,17 @@ public:
     void drawComboBox (juce::Graphics&, int w, int h, bool down,
                        int buttonX, int buttonY, int buttonW, int buttonH,
                        juce::ComboBox&) override;
+
+    // Honour each Label's explicitly-set font instead of forcing one size, so the
+    // larger Simple-mode Widen text actually renders (recurring font request).
+    void drawLabel (juce::Graphics&, juce::Label&) override;
+
+    // Glassy highlight on the hovered pop-up row (Apple "liquid glass", #6).
+    void drawPopupMenuItem (juce::Graphics&, const juce::Rectangle<int>& area,
+                            bool isSeparator, bool isActive, bool isHighlighted,
+                            bool isTicked, bool hasSubMenu, const juce::String& text,
+                            const juce::String& shortcutKeyText,
+                            const juce::Drawable* icon, const juce::Colour* textColour) override;
 
     // Unify the pop-up list with the rounded flat-design of the combo box (#22).
     void drawPopupMenuBackground (juce::Graphics&, int width, int height) override;

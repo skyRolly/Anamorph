@@ -65,9 +65,11 @@ private:
     void setupRotary (juce::Slider&, juce::Label&, const juce::String& name, const juce::String& tip);
     void attachSlider (juce::Slider&, const char* id);
     void setupCombo (juce::ComboBox&, const char* id, const juce::String& tip);
+    void passComboHoverThrough (juce::ComboBox&); // let hover reach the whole box (recurring)
     void setupToggle (juce::ToggleButton&, const char* id, const juce::String& text, const juce::String& tip);
     void updateAlgoControls();
     void updateModeVisibility();
+    void updateMsLabels(); // swap polarity/balance wording between L/R and M/S (#12/#13)
     void showAbout (bool);
     void showSettings (bool);
     void applyTooltipsEnabled();
@@ -155,8 +157,11 @@ private:
     bool  advanced = false;
     bool  tooltipsOn = false;   // tooltips default OFF
     bool  metersOn = false;
+    bool  msState = false;      // cached M/S decoder state (drives L/R<->M/S labels, #12/#13)
     float meterAnim = 0.0f;     // 0..1 eased meter reveal (#19)
     bool  persistDragging = false; // dragging the Settings Persist bar (#26)
+    int   persistHold = 0;      // frames the Persist bar has been held (anti-flicker, #7)
+    int   widenOutputDividerY = 0; // y of the Widen/Output divider in advanced (#10/#11)
 
     // Single fixed window for both modes: toggling Advanced relays out the
     // content in place, so the host never resizes us and nothing flickers (#20).

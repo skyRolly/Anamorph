@@ -309,25 +309,39 @@ void AnamorphEngine::applyInputConditioning (float* L, float* R, int n) noexcept
             case ChannelMode::Stereo:    default: break;
         }
 
-        if (p.monoSum) { const float m = (l + r) * 0.5f; l = m; r = m; } // dedicated Mono toggle
+        // Swap acts on the raw input channels: L/R, or Mid<->Side when M/S is on.
+        if (p.swapLR) { const float t = l; l = r; r = t; }
 
-        // M/S DECODER (feedback #6): the input IS Mid/Side (Ch1 = Mid, Ch2 = Side).
-        // Swap/Balance/Phase act on Mid & Side first (Swap swaps Mid<->Side), then
-        // we decode to L/R so an M/S source plays back correctly on an L/R system.
-
-        if (p.swapLR) { const float t = l; l = r; r = t; } // L/R, or Mid<->Side when M/S is on
-
-        // Balance: centre is unity, turning attenuates the opposite channel.
-        const float b  = balanceSmooth.getNextValue();
+        // Advance the per-sample smoothers exactly once, whatever the routing.
+        const float b  = balanceSmooth.getNextValue();   // centre = unity, turning attenuates the far side
         const float gL = (b > 0.0f) ? (1.0f - b) : 1.0f;
         const float gR = (b < 0.0f) ? (1.0f + b) : 1.0f;
-        l *= gL; r *= gR;
+        const float pL = polLSmooth.getNextValue();      // smoothed polarity sign, ramps +1<->-1 (no click)
+        const float pR = polRSmooth.getNextValue();
 
-        // Smoothed polarity sign (ramps +1 <-> -1) so flipping never clicks (#19).
-        l *= polLSmooth.getNextValue();
-        r *= polRSmooth.getNextValue();
-
-        if (p.msMode) { const float le = (l + r) * 0.70710678f, re = (l - r) * 0.70710678f; l = le; r = re; } // decode M/S -> L/R
+        if (p.msMode)
+        {
+            // M/S DECODER (feedback #6): the input IS Mid/Side (Ch1 = Mid, Ch2 =
+            // Side). Balance and Polarity act on Mid & Side IN the M/S domain
+            // (#12/#13), then we decode to L/R, and only THEN does Mono sum the
+            // decoded L/R (#14).
+            l *= gL; r *= gR;                  // balance Mid vs Side
+            l *= pL; r *= pR;                  // polarity of Mid / Side
+            // Decode with the standard (MSED) convention L = M+S, R = M-S so the
+            // round-trip against a 0.5x M/S encoder is level-preserving instead of
+            // dropping 3 dB as the orthonormal 1/sqrt2 decode used to (#9).
+            const float le = l + r, re = l - r;
+            l = le; r = re;
+            if (p.monoSum) { const float m = (l + r) * 0.5f; l = m; r = m; }
+        }
+        else
+        {
+            // L/R domain: Mono first so Balance still pans the summed signal (#14),
+            // then Balance and Polarity on L/R.
+            if (p.monoSum) { const float m = (l + r) * 0.5f; l = m; r = m; }
+            l *= gL; r *= gR;                  // balance L vs R
+            l *= pL; r *= pR;                  // polarity of L / R
+        }
 
         L[i] = l; R[i] = r;
     }

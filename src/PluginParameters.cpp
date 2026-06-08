@@ -62,8 +62,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
     {
         auto s = t.toLowerCase().trim();
         if (s.startsWithChar ('c')) return 0.0f;
-        const bool left = s.containsChar ('l'), right = s.containsChar ('r');
-        float v = s.removeCharacters ("lr%+ ").getFloatValue() / 100.0f;
+        // Left (l) / Mid (m) = negative side; Right (r) / Side (s) = positive (#12).
+        const bool left  = s.containsChar ('l') || s.containsChar ('m');
+        const bool right = s.containsChar ('r') || s.containsChar ('s');
+        float v = s.removeCharacters ("lrms%+ ").getFloatValue() / 100.0f;
         if (left)  v = -std::abs (v);
         if (right) v =  std::abs (v);
         return juce::jlimit (-1.0f, 1.0f, v);
