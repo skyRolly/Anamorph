@@ -20,16 +20,34 @@ void AnamorphAudioProcessorEditor::Backdrop::paint (juce::Graphics& g)
     const float panelA = juce::jmap (reveal, 0.0f, 1.0f, 1.0f, 0.30f);
     g.fillAll (juce::Colour (0x06080b).withAlpha (dimA));
 
-    if (panelA >= 0.999f) // solid (normal) state: full iOS-glass panel (#17)
+    const auto pf = panel.toFloat();
+
+    // Soft, feathered outer shadow just outside the panel -- subtle, not too dark
+    // or too long (Settings, #14). Drawn before the panel so it sits behind it.
+    if (dropShadow && panelA >= 0.999f)
     {
-        glass::fillPanel (g, panel.toFloat(), 12.0f, colours::bgPanel);
+        for (int i = 5; i >= 0; --i)
+        {
+            const float t  = (float) i / 5.0f;            // 0 inner .. 1 outer
+            const float ex = 1.5f + t * 13.0f;            // moderate feather range
+            g.setColour (juce::Colours::black.withAlpha (0.13f * (1.0f - t)));
+            g.fillRoundedRectangle (pf.expanded (ex).translated (0.0f, 2.5f), 12.0f + ex);
+        }
+    }
+
+    if (panelA >= 0.999f) // solid (normal) state: full iOS-glass panel (#14/#17)
+    {
+        glass::fillPanel (g, pf, 12.0f, colours::bgPanel);
+        // About: a mouse-following anamorphic lens flare inside the "thick glass".
+        if (lensFlare && mouseInside)
+            paintFlare (g, pf);
     }
     else // mid-reveal (Persist drag): fade the panel so the live scope shows through
     {
         g.setColour (colours::bgPanel.withAlpha (panelA));
-        g.fillRoundedRectangle (panel.toFloat(), 12.0f);
+        g.fillRoundedRectangle (pf, 12.0f);
         g.setColour (colours::outline.withAlpha (juce::jmap (reveal, 0.0f, 1.0f, 1.0f, 0.5f)));
-        g.drawRoundedRectangle (panel.toFloat().reduced (0.5f), 12.0f, 1.0f);
+        g.drawRoundedRectangle (pf.reduced (0.5f), 12.0f, 1.0f);
     }
 
     if (aboutText)
@@ -67,6 +85,68 @@ void AnamorphAudioProcessorEditor::Backdrop::paint (juce::Graphics& g)
         g.drawText (copyright + " 2026 RollyTech. All rights reserved.",
                     panel.reduced (30, 18).removeFromBottom (16), juce::Justification::bottomLeft);
     }
+}
+
+// Anamorphic lens flare for the About panel (#13): the panel is treated as a thick
+// pane of glass; a hard light follows the cursor and throws a horizontal streak
+// with cool chromatic ends, a hot core, glass refraction where it meets the edges,
+// and a wide-angle vignette darkening the corners.
+void AnamorphAudioProcessorEditor::Backdrop::paintFlare (juce::Graphics& g, juce::Rectangle<float> pf)
+{
+    juce::Graphics::ScopedSaveState save (g);
+    juce::Path clip; clip.addRoundedRectangle (pf, 12.0f);
+    g.reduceClipRegion (clip);
+
+    const float mx   = juce::jlimit (pf.getX(), pf.getRight(),  mouse.x);
+    const float my   = juce::jlimit (pf.getY(), pf.getBottom(), mouse.y);
+    const float frac = juce::jlimit (0.05f, 0.95f, (mx - pf.getX()) / pf.getWidth());
+
+    const juce::Colour hot (0xfff4f8ff);
+
+    // Wide-angle corner distortion: two radial vignettes darkening toward the
+    // top-left and bottom-right corners.
+    for (auto corner : { pf.getTopLeft(), pf.getBottomRight() })
+    {
+        juce::ColourGradient vig (juce::Colours::transparentBlack, pf.getCentreX(), pf.getCentreY(),
+                                  juce::Colours::black.withAlpha (0.22f), corner.x, corner.y, true);
+        g.setGradientFill (vig);
+        g.fillRect (pf);
+    }
+
+    // Horizontal anamorphic streak: three stacked layers (wide+faint to thin+hot)
+    // brightest under the cursor, fading to cool blue/teal chromatic ends.
+    for (int layer = 0; layer < 3; ++layer)
+    {
+        const float hh = (float) (3 - layer) * 6.0f + 1.0f;
+        const float a  = (layer == 2) ? 0.55f : (layer == 1 ? 0.20f : 0.09f);
+        const juce::Colour core = (layer == 2) ? hot : juce::Colour (0xffdfeaff);
+        juce::ColourGradient hg (core.withAlpha (0.0f), pf.getX(), my,
+                                 core.withAlpha (0.0f), pf.getRight(), my, false);
+        hg.addColour (juce::jlimit (0.01, 0.99, (double) frac - 0.30), colours::accent2.withAlpha (a * 0.35f));
+        hg.addColour (frac, core.withAlpha (a));
+        hg.addColour (juce::jlimit (0.01, 0.99, (double) frac + 0.30), colours::accent.withAlpha (a * 0.35f));
+        g.setGradientFill (hg);
+        g.fillRect (pf.getX(), my - hh * 0.5f, pf.getWidth(), hh);
+    }
+
+    // Chromatic fringe lines (anamorphic aberration): cool blue above, teal below.
+    g.setColour (colours::accent2.withAlpha (0.16f)); g.fillRect (pf.getX(), my - 3.0f, pf.getWidth(), 1.0f);
+    g.setColour (colours::accent .withAlpha (0.16f)); g.fillRect (pf.getX(), my + 2.0f, pf.getWidth(), 1.0f);
+
+    // Hot radial core at the cursor + a tight white centre.
+    {
+        juce::ColourGradient core (hot.withAlpha (0.60f), mx, my,
+                                   juce::Colours::transparentBlack, mx + 34.0f, my, true);
+        g.setGradientFill (core);
+        g.fillEllipse (mx - 34.0f, my - 34.0f, 68.0f, 68.0f);
+        g.setColour (juce::Colours::white.withAlpha (0.75f));
+        g.fillEllipse (mx - 2.6f, my - 2.6f, 5.2f, 5.2f);
+    }
+
+    // Glass refraction where the streak meets the left / right edges of the pane.
+    g.setColour (hot.withAlpha (0.50f));
+    g.fillEllipse (pf.getX() - 3.0f,     my - 3.0f, 6.0f, 6.0f);
+    g.fillEllipse (pf.getRight() - 3.0f, my - 3.0f, 6.0f, 6.0f);
 }
 
 void AnamorphAudioProcessorEditor::ABControl::paint (juce::Graphics& g)
@@ -255,7 +335,7 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     // Compact vertical toggles (pill on top, label centred below) so the Input
     // row labels always fit and never truncate (#11 / #14).
     const juce::String ph = juce::String::charToString ((juce::juce_wchar) 0x00F8);
-    setupToggle (monoToggle, pid::monoSum, "Mono", "Sum to mono (after M/S decode)."); // #14
+    setupToggle (monoToggle, pid::monoSum, "Mono", "Sum to mono."); // #2
     setupToggle (swapToggle, pid::swap,    "Swap", "Swap the Left / Right channels, or Mid / Side when M/S is on."); // #3
     setupToggle (msToggle,   pid::msMode,  "M/S",  "M/S decoder: treat the input as Mid / Side and decode to Left / Right."); // #4
     msToggle.onClick = [this] { updateMsLabels(); };
@@ -301,6 +381,7 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     addChildComponent (dimOverlay);
 
     aboutBackdrop.aboutText = true;
+    aboutBackdrop.lensFlare = true; // mouse-following anamorphic flare (#13)
     aboutBackdrop.onDismiss = [this] { showAbout (false); };
     addChildComponent (aboutBackdrop);
     aboutLink.setColour (juce::HyperlinkButton::textColourId, colours::accent);
@@ -309,6 +390,7 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     aboutLink.setTooltip (juce::String()); // no tooltip on the URL (#2)
     aboutBackdrop.addAndMakeVisible (aboutLink); // clickable www.rolly.tech
 
+    settingsBackdrop.dropShadow = true; // soft feathered outer shadow (#14)
     settingsBackdrop.onDismiss = [this] { showSettings (false); };
     addChildComponent (settingsBackdrop);
 
@@ -338,7 +420,18 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     settingsBackdrop.addAndMakeVisible (scopePersistK);
     scopePersistK.setTextBoxStyle (juce::Slider::TextBoxRight, false, 52, 18); // box built with our LnF
     attachSlider (scopePersistK, pid::scopePersist);
-    scopePersistK.onValueChange = [this] { applyScopePersist(); };
+    scopePersistK.onValueChange = [this]
+    {
+        applyScopePersist();
+        // A non-drag change (scroll wheel / arrows / typing) reveals the window too,
+        // but only when it is SUSTAINED -- a single nudge shouldn't flash it (#1).
+        if (! persistDragging)
+        {
+            ++persistScrollCount;
+            persistScrollWindow = 0.15;                              // group changes within 150 ms
+            if (persistScrollCount >= 2) persistRevealTimer = 0.5;   // sustained -> reveal + 0.5 s dwell
+        }
+    };
     // While dragging Persist, fade the Settings overlay so the live vectorscope
     // behind it is visible (#9).
     scopePersistK.onDragStart = [this] { persistDragging = true; };
@@ -372,6 +465,8 @@ AnamorphAudioProcessorEditor::~AnamorphAudioProcessorEditor()
     openGLContext.detach();
     channelModeBox.setLookAndFeel (nullptr);
     soloBox.setLookAndFeel (nullptr);
+    for (auto* box : { &algorithmBox, &haasSideBox, &dimModeBox })
+        box->setLookAndFeel (nullptr); // detach simpleCombo before it's destroyed (#17)
     tooltips.setLookAndFeel (nullptr);
     setLookAndFeel (nullptr);
 }
@@ -438,6 +533,7 @@ void AnamorphAudioProcessorEditor::setupCombo (juce::ComboBox& box, const char* 
     box.setTooltip (tip);
     box.setRepaintsOnMouseActivity (true); // hover feedback (#10)
     passComboHoverThrough (box);
+    allCombos.add (&box); // timer drives the hover repaint (#20)
     addAndMakeVisible (box);
     comboAtts.add (new ComboBoxAttachment (processor.getAPVTS(), id, box));
 }
@@ -493,11 +589,11 @@ void AnamorphAudioProcessorEditor::updateModeVisibility()
     };
     for (auto* c : adv) c->setVisible (advanced);
 
-    // Simple mode is just the Widen core, so ALL its text (names AND the value
-    // numbers) is noticeably larger for presence; Advanced packs more in, so it
-    // shrinks back (recurring Simple-font request).
-    const float widenLabelFont = advanced ? 11.5f : 17.0f;
-    const float widenValueFont = advanced ? 12.0f : 15.0f;
+    // Simple mode is just the Widen core, so its text is larger for presence;
+    // Advanced packs more in, so it shrinks back. The knob NAME labels were a touch
+    // too large last round, so the Simple size is eased down a little (#17).
+    const float widenLabelFont = advanced ? 11.5f : 15.0f;
+    const float widenValueFont = advanced ? 12.0f : 14.5f;
     auto setValueFont = [] (juce::Slider& s, float size)
     {
         for (auto* c : s.getChildren())
@@ -508,7 +604,21 @@ void AnamorphAudioProcessorEditor::updateModeVisibility()
         l->setFont (juce::Font (juce::FontOptions (widenLabelFont)));
     for (auto* k : { &driveK, &amountK, &widthK, &haasDelayK, &velvetK, &chorusRateK, &chorusDepthK })
         setValueFont (*k, widenValueFont);
-    algorithmLabel.setFont (juce::Font (juce::FontOptions (advanced ? 11.0f : 13.5f)).withExtraKerningFactor (0.2f));
+
+    // The "WIDEN" caption and the "STYLE / FOCUS" caption share one size so they
+    // read as a matched pair, and both scale up in Simple mode (#6).
+    const auto capFont = juce::Font (juce::FontOptions (advanced ? 11.0f : 13.5f)).withExtraKerningFactor (0.2f);
+    algorithmLabel.setFont (capFont);
+    algoOptLabel.setFont (capFont);
+
+    // The two Simple-mode Widen combos (algorithm + Style/Focus) get a larger-text
+    // LookAndFeel; Advanced reverts to the standard size (#17). Re-let hover through
+    // because swapping the LnF rebuilds the combo's internal label.
+    for (auto* box : { &algorithmBox, &haasSideBox, &dimModeBox })
+    {
+        box->setLookAndFeel (advanced ? nullptr : &simpleCombo);
+        passComboHoverThrough (*box);
+    }
 
     updateAlgoControls();
     resized();
@@ -556,6 +666,20 @@ void AnamorphAudioProcessorEditor::timerCallback()
     if (msToggle.getToggleState() != msState) // external / preset / automation change (#12/#13)
         updateMsLabels();
 
+    // Drive combo hover from the actual cursor position so exactly ONE box is ever
+    // lit and a stale highlight always clears -- the enter/exit events through the
+    // child label were unreliable (sometimes stuck on, sometimes never lit) (#20).
+    for (auto* box : allCombos)
+    {
+        const bool hov = box->isShowing()
+                       && box->getLocalBounds().contains (box->getMouseXYRelative());
+        if ((bool) box->getProperties().getWithDefault ("hov", false) != hov)
+        {
+            box->getProperties().set ("hov", hov);
+            box->repaint();
+        }
+    }
+
     // Ease the level-meter reveal: vectorscope slides right, meter grows in.
     // Shorter, snappier than before (#27).
     const float target = metersOn ? 1.0f : 0.0f;
@@ -576,9 +700,17 @@ void AnamorphAudioProcessorEditor::timerCallback()
     // flashes the window transparent then opaque (#7).
     if (settingsBackdrop.isVisible())
     {
+        constexpr double dt = 1.0 / 24.0;
+        // Drag reveal: immediate (after a short anti-flicker hold), no dwell (#7).
         persistHold = persistDragging ? persistHold + 1 : 0;
-        const bool revealNow = persistDragging && persistHold >= 4; // ~165 ms at 24 Hz
-        const float revTarget = revealNow ? 1.0f : 0.0f;
+        const bool dragReveal = persistDragging && persistHold >= 4; // ~165 ms at 24 Hz
+        // Scroll / type reveal: sustained change, then a ~0.5 s dwell after stopping (#1).
+        if (persistScrollWindow > 0.0) persistScrollWindow -= dt;
+        if (persistScrollWindow <= 0.0) persistScrollCount = 0;
+        if (persistRevealTimer  > 0.0) persistRevealTimer  -= dt;
+        const bool scrollReveal = (persistRevealTimer > 0.0) && ! persistDragging;
+
+        const float revTarget = (dragReveal || scrollReveal) ? 1.0f : 0.0f;
         if (std::abs (settingsBackdrop.reveal - revTarget) > 0.004f)
         {
             settingsBackdrop.reveal += (revTarget - settingsBackdrop.reveal) * 0.45f;
@@ -668,7 +800,8 @@ void AnamorphAudioProcessorEditor::resized()
         persistLabel.setBounds (inner.removeFromTop (16));
         scopePersistK.setBounds (inner.removeFromTop (24));
         inner.removeFromTop (14);
-        tooltipsToggle.setBounds (inner.removeFromTop (26));
+        // Nudge the toggle right so its pill lines up with the labels above (#5).
+        tooltipsToggle.setBounds (inner.removeFromTop (26).withTrimmedLeft (4));
     }
 
     auto r = getLocalBounds();

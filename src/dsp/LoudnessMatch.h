@@ -47,8 +47,14 @@ public:
     void setDisplayedGainDb (float db) noexcept
     {
         displayedGainDb = (double) db;
+        frozenGainDb = (double) db;
         matchGainDb.store (db, std::memory_order_relaxed);
     }
+
+    // Tell the matcher how hard Drive is pushing (dB). While the input is silent
+    // (paused), the match value is pre-lowered to anticipate the loudness boost a
+    // raised Drive will add, so the first played sound isn't huge (feedback #19).
+    void setDriveDb (float db) noexcept { currentDriveDb = (double) db; }
 
 private:
     struct Biquad
@@ -78,6 +84,11 @@ private:
     double smoothCoeff = 0.0; // loudness integration window
     double sampleRate = 48000.0;
     double displayedGainDb = 0.0; // adaptively-smoothed published value (#19)
+    // Drive-anticipation state (feedback #19).
+    double currentDriveDb  = 0.0; // Drive pushed by the engine each block
+    double measuredDriveDb = 0.0; // Drive level at the last real (non-silent) measurement
+    double frozenGainDb    = 0.0; // displayed value captured at the moment of freezing
+    bool   wasSilent       = true;
     std::atomic<float> matchGainDb { 0.0f };
 };
 

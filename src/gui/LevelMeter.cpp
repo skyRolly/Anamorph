@@ -119,17 +119,18 @@ void LevelMeter::paint (juce::Graphics& g)
     glass::fillPanel (g, bounds, 4.0f, colours::bgPanel); // iOS-glass frame (#17)
 
     auto area = bounds.reduced (5.0f);
-    auto ruler = area.removeFromRight (22.0f); // full-height dB scale column (#11)
 
-    // The four columns are arranged as TWO pairs -- the IN pair (L,R) and the OUT
-    // pair (L,R) -- with a wider gap BETWEEN the groups than within each pair, so
-    // they read as two grouped meters (#16). Numbers and bars share the same
-    // grouped column geometry so nothing drifts out of alignment.
-    const float groupGap = 11.0f;
-    const float colW = (area.getWidth() - groupGap) / 4.0f;
+    // Symmetric layout: the dB ruler sits in the MIDDLE, with the IN pair (L,R) to
+    // its left and the OUT pair (L,R) to its right, so the whole module is mirror-
+    // balanced (#18). Numbers and bars share the same column geometry.
+    const float rulerW = 22.0f;
+    const float pairW  = (area.getWidth() - rulerW) * 0.5f;
+    const float colW   = pairW * 0.5f;
+    auto ruler = area.withX (area.getX() + pairW).withWidth (rulerW);
     auto colX = [&] (int i)
     {
-        const float x = area.getX() + i * colW + (i >= 2 ? groupGap : 0.0f);
+        const float x = (i < 2) ? area.getX() + i * colW
+                                : area.getX() + pairW + rulerW + (i - 2) * colW;
         return area.withX (x).withWidth (colW);
     };
 
@@ -175,19 +176,18 @@ void LevelMeter::paint (juce::Graphics& g)
     drawBar (g, bar (2), source.output.getDimL(), source.output.getBriL(), source.output.getBarL());
     drawBar (g, bar (3), source.output.getDimR(), source.output.getBriR(), source.output.getBarR());
 
-    // ---- non-uniform dB scale aligned to the bar track (#11) ----
+    // ---- centred non-uniform dB scale, ticks reaching toward both pairs (#18) ----
     const float trackH = area.getHeight() - 3.2f;
     g.setFont (juce::Font (juce::FontOptions (8.0f)));
     for (int db : { 0, -6, -12, -18, -24, -48 })
     {
         const float y = area.getBottom() - 1.6f - dbToNorm ((float) db) * trackH;
         g.setColour (colours::outline.brighter (0.1f));
-        g.fillRect (ruler.getX() + 1.0f, y - 0.5f, 3.0f, 1.0f);
+        g.fillRect (ruler.getX() - 0.5f,        y - 0.5f, 2.5f, 1.0f); // tick toward IN
+        g.fillRect (ruler.getRight() - 2.0f,    y - 0.5f, 2.5f, 1.0f); // tick toward OUT
         g.setColour (colours::textDim.withAlpha (0.85f));
-        g.drawText (juce::String (db),
-                    ruler.withX (ruler.getX() + 5.0f).withWidth (ruler.getWidth() - 5.0f)
-                         .withY (y - 6.0f).withHeight (12.0f),
-                    juce::Justification::centredLeft);
+        g.drawText (juce::String (db), ruler.withY (y - 6.0f).withHeight (12.0f),
+                    juce::Justification::centred);
     }
 }
 

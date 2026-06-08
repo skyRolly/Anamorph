@@ -43,18 +43,28 @@ void StereoMeter::paint (juce::Graphics& g)
     if (horizontal) g.drawLine (track.getCentreX(), track.getY(), track.getCentreX(), track.getBottom(), 1.0f);
     else            g.drawLine (track.getX(), track.getCentreY(), track.getRight(), track.getCentreY(), 1.0f);
 
-    g.setColour (col);
+    // Pointer with a layered glow + glass gradient core, matching the panels'
+    // refraction/diffraction language (#8).
     const float thick = 3.0f;
-    if (horizontal)
+    juce::Rectangle<float> pr = horizontal
+        ? juce::Rectangle<float> (track.getX() + norm * track.getWidth() - thick * 0.5f, track.getY(), thick, track.getHeight())
+        : juce::Rectangle<float> (track.getX(), track.getBottom() - norm * track.getHeight() - thick * 0.5f, track.getWidth(), thick);
+
+    for (int i = 0; i < 5; ++i) // soft layered glow
     {
-        const float x = track.getX() + norm * track.getWidth();
-        g.fillRoundedRectangle (x - thick * 0.5f, track.getY(), thick, track.getHeight(), 1.5f);
+        const float t  = (float) i / 4.0f;
+        const float ex = (1.0f - t) * 3.5f;
+        auto e = pr.expanded (ex);
+        g.setColour (col.withAlpha (0.26f * t * t));
+        g.fillRoundedRectangle (e, juce::jmin (e.getWidth(), e.getHeight()) * 0.5f);
     }
-    else
-    {
-        const float y = track.getBottom() - norm * track.getHeight(); // +1 at top
-        g.fillRoundedRectangle (track.getX(), y - thick * 0.5f, track.getWidth(), thick, 1.5f);
-    }
+    juce::ColourGradient pg (col.brighter (0.30f), pr.getX(), pr.getY(),
+                             col.darker (0.16f),   pr.getRight(), pr.getBottom(), false);
+    g.setGradientFill (pg);
+    g.fillRoundedRectangle (pr, juce::jmin (pr.getWidth(), pr.getHeight()) * 0.5f);
+    g.setColour (juce::Colours::white.withAlpha (0.45f)); // leading-edge glass highlight
+    if (horizontal) g.fillRoundedRectangle (pr.withWidth (1.2f).translated (0.4f, 0.0f), 0.6f);
+    else            g.fillRoundedRectangle (pr.withHeight (1.2f).translated (0.0f, 0.4f), 0.6f);
 
     // End labels
     g.setColour (colours::textDim);

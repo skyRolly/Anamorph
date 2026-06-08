@@ -35,13 +35,17 @@ void VelvetNoise::prepare (double sampleRate, unsigned seed)
 
     currentDensity = targetDensity;
     currentAmount  = targetAmount;
-    // Presence follower (fast attack, slow release) -> drives the gate's on/off.
+    // Presence follower. The RELEASE must be fast: the decorrelation FIR has up to
+    // ~45 ms of Mid history, so on a hard stop it keeps emitting a SIDE tail for
+    // that long. A slow release left the gate open through the whole tail (the
+    // pause "white-noise" burst, #10). A quick release lets the gate start closing
+    // ~12 ms after the input stops so the tail is ducked as it plays out.
     envAtk  = 1.0f - std::exp (-1.0f / (float) (0.002 * sr));
-    envRel  = 1.0f - std::exp (-1.0f / (float) (0.080 * sr));
-    // Gate RAMP times (fixed): fade the decorrelation in over ~22 ms on play so
-    // the FIR burst is masked, and out over ~28 ms on pause (#10).
+    envRel  = 1.0f - std::exp (-1.0f / (float) (0.012 * sr));
+    // Gate RAMP times (fixed): fade in over ~22 ms on play so the FIR burst is
+    // masked; fade OUT faster (~14 ms) so the pause tail is cut quickly (#10).
     gateAtk = 1.0f - std::exp (-1.0f / (float) (0.022 * sr));
-    gateRel = 1.0f - std::exp (-1.0f / (float) (0.028 * sr));
+    gateRel = 1.0f - std::exp (-1.0f / (float) (0.014 * sr));
     updateWeights();
     reset();
 }

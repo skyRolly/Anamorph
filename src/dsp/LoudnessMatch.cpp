@@ -58,7 +58,23 @@ void LoudnessMatch::reset()
     kDryL.reset(); kDryR.reset(); kWetL.reset(); kWetR.reset();
     meanSqDry = meanSqWet = 1.0e-9;
     displayedGainDb = 0.0;
+    measuredDriveDb = currentDriveDb;
+    frozenGainDb = 0.0;
+    wasSilent = true;
     matchGainDb.store (0.0f, std::memory_order_relaxed);
+}
+
+// Estimated K-weighted loudness boost (dB) the peak-preserving tanh Drive adds.
+// The makeup gain 1/tanh(g) means small-signal content is lifted by ~g/tanh(g),
+// so quiet/average material gets most of that boost; we anticipate a fraction of
+// it (the rest is corrected by the real measurement on play). Feedback #19.
+static double estDriveBoostDb (double driveDb) noexcept
+{
+    if (driveDb <= 0.0) return 0.0;
+    const double g = std::pow (10.0, driveDb / 20.0);
+    const double smallSig = 20.0 * std::log10 (g / std::tanh (g)); // small-signal makeup lift
+    const double blend = std::min (1.0, driveDb / 2.0);            // Drive blend ramps in over 0..2 dB
+    return std::min (14.0, 0.5 * blend * smallSig);
 }
 
 void LoudnessMatch::softReset() noexcept
@@ -99,16 +115,28 @@ void LoudnessMatch::process (const float* dryL, const float* dryR,
     // play before the match caught up. ~ -60 dBFS K-weighted mean-square gate.
     const double kSilence = 1.0e-6;
     const bool silent = (meanSqDry < kSilence && meanSqWet < kSilence);
+    const double blockDur = (double) numSamples / sampleRate;
 
     if (! silent)
     {
         // Adaptive smoothing of the PUBLISHED value: small fluctuations average
         // over a long window (a steady readout), a big change snaps quickly.
-        const double blockDur = (double) numSamples / sampleRate;
         const double diff = target - displayedGainDb;
         const double tau  = (std::abs (diff) > 2.0) ? 0.06 : 0.9; // fast vs. slow
         const double coeff = 1.0 - std::exp (-blockDur / tau);
         displayedGainDb += coeff * diff;
+        measuredDriveDb = currentDriveDb; // remember the Drive we measured against
+        wasSilent = false;
+    }
+    else
+    {
+        // Frozen: anticipate the loudness boost from any Drive RAISED during the
+        // pause and pre-lower the match so the first played sound isn't huge (#19).
+        if (! wasSilent) { frozenGainDb = displayedGainDb; wasSilent = true; }
+        const double extra  = estDriveBoostDb (currentDriveDb) - estDriveBoostDb (measuredDriveDb);
+        const double target2 = std::max (-24.0, std::min (24.0, frozenGainDb - std::max (0.0, extra)));
+        const double coeff   = 1.0 - std::exp (-blockDur / 0.20); // ~200 ms glide as you turn Drive
+        displayedGainDb += coeff * (target2 - displayedGainDb);
     }
 
     matchGainDb.store ((float) displayedGainDb, std::memory_order_relaxed);

@@ -42,23 +42,22 @@ void AnamorphLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int
     g.setColour (colours::outline);
     g.strokePath (track, juce::PathStrokeType (thick, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
-    // Value arc: the softer palette BLUE->TEAL gradient (the previous, nicer blue
-    // -- #1), wrapped in a LAYERED glow: several concentric strokes, widest and
-    // faintest on the outside, narrowing and brightening toward the arc, so the
-    // halo is weak on the rim and bright at its core instead of a flat single
-    // stroke (#2).
+    // Value arc: the softer palette BLUE->TEAL gradient (#1), wrapped in a MANY-
+    // layered glow (faint+wide outside, bright+tight inside). Using many thin
+    // layers makes the brightness falloff smooth instead of stepped/banded (#4).
     const juce::Colour arcLo (0xff5aa6ff); // soft blue (accent2)
     const juce::Colour arcHi (0xff35d0c0); // teal (accent)
     juce::Path value;
     value.addCentredArc (centre.x, centre.y, radius - thick, radius - thick, 0.0f,
                          startAngle, angle, true);
-    const float glowPeak   = active ? 0.42f : hover ? 0.26f : 0.14f;
-    const float glowSpread = active ? 4.4f  : hover ? 3.4f  : 2.6f;
-    for (int i = 0; i < 4; ++i)
+    const float glowPeak   = active ? 0.44f : hover ? 0.28f : 0.15f;
+    const float glowSpread = active ? 4.8f  : hover ? 3.6f  : 2.6f;
+    constexpr int nLayers = 10;
+    for (int i = 0; i < nLayers; ++i)
     {
-        const float t  = (float) i / 3.0f;                 // 0 outer .. 1 inner
-        const float gw = thick + (1.0f - t) * glowSpread;  // widest outside
-        const float a  = glowPeak * (0.22f + 0.78f * t);   // brightest near the arc
+        const float t  = (float) i / (float) (nLayers - 1); // 0 outer .. 1 inner
+        const float gw = thick + (1.0f - t) * glowSpread;   // widest outside
+        const float a  = glowPeak * std::pow (t, 1.5f);     // smooth brighten toward the arc
         juce::ColourGradient gg (arcLo.withAlpha (a * 0.85f), centre.x - radius, centre.y,
                                  arcHi.withAlpha (a),         centre.x + radius, centre.y, false);
         g.setGradientFill (gg);
@@ -71,29 +70,37 @@ void AnamorphLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int
     g.setGradientFill (grad);
     g.strokePath (value, juce::PathStrokeType (thick, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
-    // Glassy knob face: a top-lit radial gradient over a dark base.
-    const float faceR = radius - thick * 1.6f;
-    juce::ColourGradient face (colours::bgRaised.brighter (0.16f), centre.x, centre.y - faceR * 0.7f,
-                               colours::bgPanel.darker (0.25f),    centre.x, centre.y + faceR, true);
-    face.addColour (0.55, colours::bgRaised);
+    // Glassy knob face: a top-lit radial gradient over a dark base. Hover / press
+    // lift the whole face so the knob visibly brightens under the mouse (#11).
+    const float faceR  = radius - thick * 1.6f;
+    const float lift   = active ? 0.26f : hover ? 0.15f : 0.0f;
+    juce::ColourGradient face (colours::bgRaised.brighter (0.16f + lift), centre.x, centre.y - faceR * 0.7f,
+                               colours::bgPanel.darker (0.25f - lift * 0.4f), centre.x, centre.y + faceR, true);
+    face.addColour (0.55, colours::bgRaised.brighter (lift));
     g.setGradientFill (face);
     g.fillEllipse (centre.x - faceR, centre.y - faceR, faceR * 2.0f, faceR * 2.0f);
-    g.setColour (juce::Colours::white.withAlpha (0.06f)); // faint top highlight rim
-    g.drawEllipse (centre.x - faceR, centre.y - faceR + 0.6f, faceR * 2.0f, faceR * 2.0f, 1.0f);
-    g.setColour (colours::outline);
+    // Glass rim: bright top-left arc + faint opposite glow, stronger on hover (#16).
+    glass::drawCircleEdge (g, centre.x, centre.y, faceR, hover || active ? 1.25f : 0.9f);
+    g.setColour (colours::outline.brighter (hover || active ? 0.25f : 0.0f));
     g.drawEllipse (centre.x - faceR, centre.y - faceR, faceR * 2.0f, faceR * 2.0f, 1.0f);
 
-    // Pointer (brighter, with a soft glow, while pressed / dragging).
+    // Pointer with a SMOOTH multi-layer glow (no banded single stroke -- #11).
     juce::Path pointer;
     const float pl = faceR * 0.92f, pr = thick * 0.35f;
     pointer.addRoundedRectangle (-pr, -pl, pr * 2.0f, pl * 0.6f, pr);
     pointer.applyTransform (juce::AffineTransform::rotation (angle).translated (centre.x, centre.y));
-    if (active)
+    if (active || hover)
     {
-        g.setColour (juce::Colours::white.withAlpha (0.25f));
-        g.strokePath (pointer, juce::PathStrokeType (3.0f));
+        const float pGlow = active ? 0.32f : 0.14f;
+        for (int i = 0; i < 5; ++i)
+        {
+            const float t = (float) i / 4.0f;                   // 0 outer .. 1 inner
+            const float wdt = pr * 2.0f + (1.0f - t) * 4.0f;
+            g.setColour (juce::Colours::white.withAlpha (pGlow * t * t));
+            g.strokePath (pointer, juce::PathStrokeType (wdt, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        }
     }
-    g.setColour (active ? juce::Colours::white : colours::text);
+    g.setColour (active ? juce::Colours::white : (hover ? colours::text.brighter (0.3f) : colours::text));
     g.fillPath (pointer);
 }
 
@@ -121,18 +128,19 @@ void AnamorphLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int
         ? track.withWidth (juce::jmax (0.0f, pos - bounds.getX()))
         : track.withTop (pos).withBottom (bounds.getBottom());
 
-    // Filled portion: the softer palette blue->teal gradient (#1) with a LAYERED
-    // glow -- a few rounded rects, widest + faintest outside, tightening and
-    // brightening inward, for an inner-bright / outer-soft halo (#2).
+    // Filled portion: the softer palette blue->teal gradient (#1) with a MANY-
+    // layered glow so the halo's brightness falls off smoothly instead of in
+    // visible steps when zoomed in (#4).
     const juce::Colour fillLo (0xff5aa6ff), fillHi (0xff35d0c0);
     const bool act = s.isMouseOverOrDragging() || (bool) s.getProperties().getWithDefault ("dragging", false);
     const float glowPeak   = act ? 0.34f : 0.16f;
-    const float glowSpread = act ? 4.4f  : 2.6f;
-    for (int i = 0; i < 3; ++i)
+    const float glowSpread = act ? 4.6f  : 2.8f;
+    constexpr int nLayers = 9;
+    for (int i = 0; i < nLayers; ++i)
     {
-        const float t  = (float) i / 2.0f;            // 0 outer .. 1 inner
+        const float t  = (float) i / (float) (nLayers - 1); // 0 outer .. 1 inner
         const float ex = (1.0f - t) * glowSpread;
-        const float a  = glowPeak * (0.30f + 0.70f * t);
+        const float a  = glowPeak * std::pow (t, 1.5f);     // smooth brighten inward
         juce::ColourGradient gg (fillLo.withAlpha (a), fill.getX(), fill.getY(),
                                  fillHi.withAlpha (a),
                                  horizontal ? fill.getRight() : fill.getX(),
@@ -160,6 +168,8 @@ void AnamorphLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int
                              colours::bgPanel.darker (0.18f),     cx, cy + r, false);
     g.setGradientFill (kg);
     g.fillEllipse (cx - r, cy - r, r * 2.0f, r * 2.0f);
+    // Glass rim: bright top-left arc + faint opposite glow, like the knob (#16).
+    glass::drawCircleEdge (g, cx, cy, r, act ? 1.25f : 0.9f);
     g.setColour (act ? fillHi : juce::Colour (0xffb8c2cf)); // gray-white rim, cyan on hover
     g.drawEllipse (cx - r, cy - r, r * 2.0f, r * 2.0f, 1.4f);
 }
@@ -316,7 +326,7 @@ void AnamorphLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button&
 
 juce::Font AnamorphLookAndFeel::getTextButtonFont (juce::TextButton& b, int buttonHeight)
 {
-    if (b.getComponentID() == "apply") return juce::Font (juce::FontOptions (13.5f)); // Apply (#6)
+    if (b.getComponentID() == "apply") return juce::Font (juce::FontOptions (12.0f)); // Apply, a touch smaller (#21)
     if (b.getComponentID() == "icon")  return juce::Font (juce::FontOptions (21.0f)); // bigger glyph (#7)
     return juce::Font (juce::FontOptions ((float) juce::jmin (13, juce::jmax (10, buttonHeight - 12))));
 }
@@ -356,9 +366,9 @@ void AnamorphLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& b
     juce::LookAndFeel_V4::drawButtonText (g, b, false, false);
 }
 
-// Pop-up rows: the HIGHLIGHTED row gets a subtle "liquid glass" treatment -- a
-// vertical micro-gradient wash, a bright sheen along the top edge and a soft
-// accent hairline -- so the selection reads like a pane of glass (#6).
+// Pop-up rows: a clean, FLAT modern list -- the highlighted row is a single
+// solid accent tint with no gradient, sheen or bevel (the previous glassy version
+// read as dated "Vista aero", #3).
 void AnamorphLookAndFeel::drawPopupMenuItem (juce::Graphics& g, const juce::Rectangle<int>& area,
                                              bool isSeparator, bool /*isActive*/, bool isHighlighted,
                                              bool isTicked, bool hasSubMenu, const juce::String& text,
@@ -376,31 +386,25 @@ void AnamorphLookAndFeel::drawPopupMenuItem (juce::Graphics& g, const juce::Rect
     auto r = area.toFloat();
     if (isHighlighted)
     {
-        auto gb = r.reduced (3.0f, 1.0f);
-        const float rad = 4.0f;
-        juce::ColourGradient gr (colours::accent.withAlpha (0.30f), gb.getX(), gb.getY(),
-                                 colours::accent.withAlpha (0.14f), gb.getX(), gb.getBottom(), false);
-        g.setGradientFill (gr);
-        g.fillRoundedRectangle (gb, rad);
-        // glassy top sheen
-        g.setColour (juce::Colours::white.withAlpha (0.10f));
-        g.fillRoundedRectangle (gb.getX(), gb.getY(), gb.getWidth(), gb.getHeight() * 0.5f, rad);
-        g.setColour (colours::accent.withAlpha (0.55f));
-        g.drawRoundedRectangle (gb.reduced (0.5f), rad, 1.0f);
+        // One flat accent tint, lightly rounded -- clean and modern (#3).
+        g.setColour (colours::accent.withAlpha (0.18f));
+        g.fillRoundedRectangle (r.reduced (3.0f, 1.0f), 4.0f);
     }
 
-    g.setColour (colours::text.withMultipliedAlpha (isHighlighted ? 1.0f : 0.92f));
+    g.setColour (isHighlighted ? colours::text : colours::text.withMultipliedAlpha (0.88f));
     g.setFont (getPopupMenuFont());
 
-    auto textArea = r.reduced (10.0f, 0.0f);
+    auto textArea = r.reduced (12.0f, 0.0f);
     if (isTicked)
     {
-        auto tick = textArea.removeFromLeft (16.0f);
-        g.fillEllipse (tick.getCentreX() - 2.5f, tick.getCentreY() - 2.5f, 5.0f, 5.0f);
+        auto tick = textArea.removeFromLeft (14.0f);
+        g.setColour (colours::accent);
+        g.fillEllipse (tick.getCentreX() - 2.0f, tick.getCentreY() - 2.0f, 4.0f, 4.0f);
+        g.setColour (isHighlighted ? colours::text : colours::text.withMultipliedAlpha (0.88f));
     }
     else
     {
-        textArea.removeFromLeft (16.0f);
+        textArea.removeFromLeft (14.0f);
     }
 
     g.drawText (text, textArea, juce::Justification::centredLeft);
@@ -441,9 +445,11 @@ void AnamorphLookAndFeel::drawComboBox (juce::Graphics& g, int w, int h, bool do
     auto bounds = juce::Rectangle<float> (0, 0, (float) w, (float) h).reduced (1.0f);
     const float radius = juce::jmin (5.0f, bounds.getHeight() * 0.5f); // a touch squarer (#8)
     // Hover / open feedback (#10): brighten the WHOLE body, accent the outline.
-    // Detect hover from the actual mouse position rather than isMouseOver(), which
-    // an intercepting child label could starve so only the border lit up (recurring).
-    const bool hover = box.getLocalBounds().contains (box.getMouseXYRelative());
+    // The editor's timer publishes an authoritative single-combo hover flag (#20),
+    // falling back to a live cursor test before the first timer tick.
+    const bool hover = box.getProperties().contains ("hov")
+                     ? (bool) box.getProperties()["hov"]
+                     : box.getLocalBounds().contains (box.getMouseXYRelative());
     const bool open  = down || box.isPopupActive();
     const float lift = open ? 0.18f : hover ? 0.12f : 0.05f;
     juce::ColourGradient gr (colours::bgRaised.brighter (lift), bounds.getX(), bounds.getY(),
@@ -617,54 +623,88 @@ juce::Rectangle<int> AnamorphLookAndFeel::getTooltipBounds (const juce::String& 
 
 void AnamorphLookAndFeel::drawTooltip (juce::Graphics& g, const juce::String& text, int w, int h)
 {
-    auto b = juce::Rectangle<float> (0, 0, (float) w, (float) h);
-    g.setColour (colours::bgRaised);
-    g.fillRoundedRectangle (b.reduced (1.0f), 6.0f);
-    g.setColour (colours::accent.withAlpha (0.55f));
-    g.drawRoundedRectangle (b.reduced (1.0f), 6.0f, 1.0f);
+    auto b = juce::Rectangle<float> (0, 0, (float) w, (float) h).reduced (1.0f);
+    // Glass capsule: diagonal depth gradient + top-left / bottom-right edges (#12).
+    glass::fillPanel (g, b, 6.0f, colours::bgRaised, 0.9f);
+    g.setColour (colours::accent.withAlpha (0.40f)); // soft accent hairline over the glass
+    g.drawRoundedRectangle (b, 6.0f, 1.0f);
     layoutTooltip (text, (float) w - 20.0f).draw (g, b.reduced (10.0f, 7.0f));
 }
 
-// ---- Glass surfaces (#17) --------------------------------------------------
+// ---- Glass surfaces (#7/#17) -----------------------------------------------
 namespace glass
 {
     void drawEdges (juce::Graphics& g, juce::Rectangle<float> bounds, float radius, float strength)
     {
         auto r = bounds.reduced (0.5f);
-        const auto c = r.getCentre();
+        const float W = r.getWidth(), H = r.getHeight();
 
-        // Base hairline.
-        g.setColour (colours::outline);
+        // Dim base hairline all the way round.
+        g.setColour (colours::outline.withAlpha (0.85f));
         g.drawRoundedRectangle (r, radius, 1.0f);
 
-        // Top-left highlight: a soft white stroke that is brightest at the
-        // top-left corner and fades toward the centre.
+        // TOP-LEFT: the brightest, thickest glass highlight, concentrated near the
+        // corner -- the bright run fades out by ~1/3 along each edge so it never
+        // washes the whole frame (#7).
         {
-            juce::ColourGradient gr (juce::Colours::white.withAlpha (0.17f * strength), r.getX(), r.getY(),
-                                     juce::Colours::white.withAlpha (0.0f),             c.x, c.y, false);
+            juce::ColourGradient gr (juce::Colours::white.withAlpha (0.62f * strength), r.getX(), r.getY(),
+                                     juce::Colours::white.withAlpha (0.0f),
+                                     r.getX() + W * 0.34f, r.getY() + H * 0.34f, false);
             g.setGradientFill (gr);
-            g.drawRoundedRectangle (r, radius, 1.2f);
+            g.drawRoundedRectangle (r, radius, 1.9f);
         }
-        // Bottom-right highlight: a slightly cooler, fainter glass edge.
+        // BOTTOM-RIGHT: dimmer and shorter, so the TL/BR diagonal clearly contrasts
+        // with the un-lit TR/BL corners (#7).
         {
-            juce::ColourGradient gr (juce::Colours::white.withAlpha (0.11f * strength), r.getRight(), r.getBottom(),
-                                     juce::Colours::white.withAlpha (0.0f),             c.x, c.y, false);
+            juce::ColourGradient gr (juce::Colours::white.withAlpha (0.32f * strength), r.getRight(), r.getBottom(),
+                                     juce::Colours::white.withAlpha (0.0f),
+                                     r.getRight() - W * 0.24f, r.getBottom() - H * 0.24f, false);
             g.setGradientFill (gr);
-            g.drawRoundedRectangle (r, radius, 1.2f);
+            g.drawRoundedRectangle (r, radius, 1.5f);
+        }
+        // INNER FADE: a soft inset stroke, brightest at the top-left, that blends
+        // the bright edge into the content (an opacity micro-gradient, #7).
+        {
+            auto ri = r.reduced (1.8f);
+            const float rr = juce::jmax (0.5f, radius - 1.6f);
+            juce::ColourGradient gr (juce::Colours::white.withAlpha (0.13f * strength), r.getX(), r.getY(),
+                                     juce::Colours::white.withAlpha (0.0f), ri.getCentreX(), ri.getCentreY(), false);
+            g.setGradientFill (gr);
+            g.drawRoundedRectangle (ri, rr, 1.4f);
         }
     }
 
     void fillPanel (juce::Graphics& g, juce::Rectangle<float> bounds, float radius,
                     juce::Colour base, float strength)
     {
-        // Diagonal micro-gradient: brightest at the TOP-RIGHT, darkest at the
-        // BOTTOM-LEFT (#17).
-        juce::ColourGradient gr (base.brighter (0.06f * strength), bounds.getRight(), bounds.getY(),
-                                 base.darker  (0.11f * strength), bounds.getX(),     bounds.getBottom(), false);
-        gr.addColour (0.5, base);
+        // A real depth gradient (not a flat grey wash): brightest at the TOP-RIGHT,
+        // darkest at the BOTTOM-LEFT, with clear top-bright / bottom-dark contrast
+        // like the pre-#17 background (#7).
+        juce::ColourGradient gr (base.brighter (0.13f * strength), bounds.getRight(), bounds.getY(),
+                                 base.darker  (0.32f * strength), bounds.getX(),     bounds.getBottom(), false);
+        gr.addColour (0.5, base.darker (0.04f * strength));
         g.setGradientFill (gr);
         g.fillRoundedRectangle (bounds, radius);
         drawEdges (g, bounds, radius, strength);
+    }
+
+    void drawCircleEdge (juce::Graphics& g, float cx, float cy, float radius, float strength)
+    {
+        auto box = juce::Rectangle<float> (cx - radius, cy - radius, radius * 2.0f, radius * 2.0f).reduced (0.4f);
+        // Bright top-left rim highlight.
+        {
+            juce::ColourGradient gr (juce::Colours::white.withAlpha (0.55f * strength), box.getX(), box.getY(),
+                                     juce::Colours::white.withAlpha (0.0f), cx, cy, false);
+            g.setGradientFill (gr);
+            g.drawEllipse (box, 1.6f);
+        }
+        // Faint opposite (bottom-right) glow.
+        {
+            juce::ColourGradient gr (juce::Colours::white.withAlpha (0.20f * strength), box.getRight(), box.getBottom(),
+                                     juce::Colours::white.withAlpha (0.0f), cx, cy, false);
+            g.setGradientFill (gr);
+            g.drawEllipse (box, 1.2f);
+        }
     }
 } // namespace glass
 

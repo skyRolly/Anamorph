@@ -327,10 +327,9 @@ void AnamorphEngine::applyInputConditioning (float* L, float* R, int n) noexcept
             // decoded L/R (#14).
             l *= gL; r *= gR;                  // balance Mid vs Side
             l *= pL; r *= pR;                  // polarity of Mid / Side
-            // Decode with the standard (MSED) convention L = M+S, R = M-S so the
-            // round-trip against a 0.5x M/S encoder is level-preserving instead of
-            // dropping 3 dB as the orthonormal 1/sqrt2 decode used to (#9).
-            const float le = l + r, re = l - r;
+            // Decode with the power-preserving 1/sqrt2 convention so the level is
+            // balanced and clip-safe (reverted from the louder M+S form, #9).
+            const float le = (l + r) * 0.70710678f, re = (l - r) * 0.70710678f;
             l = le; r = re;
             if (p.monoSum) { const float m = (l + r) * 0.5f; l = m; r = m; }
         }
@@ -570,6 +569,7 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     // full input, BEFORE Output gain / balance (feedback #25).
     wetScratch.copyFrom (0, 0, L, n);
     wetScratch.copyFrom (1, 0, R, n);
+    loudness.setDriveDb (driveActive ? p.driveDb : 0.0f); // anticipate Drive boost on silence (#19)
     loudness.process (inputScratch.getReadPointer (0), inputScratch.getReadPointer (1),
                       wetScratch.getReadPointer (0), wetScratch.getReadPointer (1), n);
     matchGainSmooth.setTargetValue (p.autoGainMatch
