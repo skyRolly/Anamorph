@@ -58,9 +58,7 @@ void LoudnessMatch::reset()
     kDryL.reset(); kDryR.reset(); kWetL.reset(); kWetR.reset();
     meanSqDry = meanSqWet = 1.0e-9;
     displayedGainDb = 0.0;
-    measuredDriveDb = currentDriveDb;
-    frozenGainDb = 0.0;
-    wasSilent = true;
+    prevDriveDb = currentDriveDb;
     matchGainDb.store (0.0f, std::memory_order_relaxed);
 }
 
@@ -117,26 +115,25 @@ void LoudnessMatch::process (const float* dryL, const float* dryR,
     const bool silent = (meanSqDry < kSilence && meanSqWet < kSilence);
     const double blockDur = (double) numSamples / sampleRate;
 
+    // INSTANT pre-duck: the moment Drive is raised (this is the FIRST block at the
+    // new Drive, whether that happens mid-pause or on the very first played block),
+    // drop the match by the estimated loudness boost the new Drive adds. This works
+    // even when the host doesn't run the plugin while paused, which is why the old
+    // silence-only version sometimes never engaged (#14/#19).
+    const double driveDelta = estDriveBoostDb (currentDriveDb) - estDriveBoostDb (prevDriveDb);
+    if (driveDelta > 0.0)
+        displayedGainDb = std::max (-24.0, displayedGainDb - driveDelta);
+    prevDriveDb = currentDriveDb;
+
+    // While playing, the real measurement is the ground truth and refines the
+    // pre-duck (it sets the absolute target, so it can't double-count). While
+    // silent it stays frozen, holding the pre-ducked value.
     if (! silent)
     {
-        // Adaptive smoothing of the PUBLISHED value: small fluctuations average
-        // over a long window (a steady readout), a big change snaps quickly.
         const double diff = target - displayedGainDb;
         const double tau  = (std::abs (diff) > 2.0) ? 0.06 : 0.9; // fast vs. slow
         const double coeff = 1.0 - std::exp (-blockDur / tau);
         displayedGainDb += coeff * diff;
-        measuredDriveDb = currentDriveDb; // remember the Drive we measured against
-        wasSilent = false;
-    }
-    else
-    {
-        // Frozen: anticipate the loudness boost from any Drive RAISED during the
-        // pause and pre-lower the match so the first played sound isn't huge (#19).
-        if (! wasSilent) { frozenGainDb = displayedGainDb; wasSilent = true; }
-        const double extra  = estDriveBoostDb (currentDriveDb) - estDriveBoostDb (measuredDriveDb);
-        const double target2 = std::max (-24.0, std::min (24.0, frozenGainDb - std::max (0.0, extra)));
-        const double coeff   = 1.0 - std::exp (-blockDur / 0.20); // ~200 ms glide as you turn Drive
-        displayedGainDb += coeff * (target2 - displayedGainDb);
     }
 
     matchGainDb.store ((float) displayedGainDb, std::memory_order_relaxed);

@@ -23,7 +23,7 @@ void StereoMeter::paint (juce::Graphics& g)
 {
     auto bounds = getLocalBounds().toFloat();
 
-    glass::fillPanel (g, bounds, 4.0f, colours::bgPanel); // iOS-glass frame (#17)
+    glass::fillPanel (g, bounds, 4.0f, colours::bgPanel, 0.85f); // gentle 0.5.3-style frame (#1)
 
     const bool horizontal = (orientation == Orientation::Horizontal);
     auto track = bounds.reduced (4.0f);
@@ -50,19 +50,19 @@ void StereoMeter::paint (juce::Graphics& g)
         ? juce::Rectangle<float> (track.getX() + norm * track.getWidth() - thick * 0.5f, track.getY(), thick, track.getHeight())
         : juce::Rectangle<float> (track.getX(), track.getBottom() - norm * track.getHeight() - thick * 0.5f, track.getWidth(), thick);
 
-    for (int i = 0; i < 5; ++i) // soft layered glow
+    for (int i = 0; i < 5; ++i) // soft layered glow (subtle, #1)
     {
         const float t  = (float) i / 4.0f;
-        const float ex = (1.0f - t) * 3.5f;
+        const float ex = (1.0f - t) * 3.0f;
         auto e = pr.expanded (ex);
-        g.setColour (col.withAlpha (0.26f * t * t));
+        g.setColour (col.withAlpha (0.18f * t * t));
         g.fillRoundedRectangle (e, juce::jmin (e.getWidth(), e.getHeight()) * 0.5f);
     }
-    juce::ColourGradient pg (col.brighter (0.30f), pr.getX(), pr.getY(),
-                             col.darker (0.16f),   pr.getRight(), pr.getBottom(), false);
+    juce::ColourGradient pg (col.brighter (0.22f), pr.getX(), pr.getY(),
+                             col.darker (0.14f),   pr.getRight(), pr.getBottom(), false);
     g.setGradientFill (pg);
     g.fillRoundedRectangle (pr, juce::jmin (pr.getWidth(), pr.getHeight()) * 0.5f);
-    g.setColour (juce::Colours::white.withAlpha (0.45f)); // leading-edge glass highlight
+    g.setColour (juce::Colours::white.withAlpha (0.30f)); // leading-edge glass highlight
     if (horizontal) g.fillRoundedRectangle (pr.withWidth (1.2f).translated (0.4f, 0.0f), 0.6f);
     else            g.fillRoundedRectangle (pr.withHeight (1.2f).translated (0.0f, 0.4f), 0.6f);
 
