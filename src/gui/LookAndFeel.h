@@ -64,6 +64,11 @@ public:
                            float sliderPos, float minPos, float maxPos,
                            juce::Slider::SliderStyle, juce::Slider&) override;
 
+    // Inset the interactive track by a thumb-radius so the thumb stays fully on the
+    // track AND tracks the cursor 1:1 (no lag), without a remap that desynced them
+    // (#4/#5).
+    juce::Slider::SliderLayout getSliderLayout (juce::Slider&) override;
+
     void drawToggleButton (juce::Graphics&, juce::ToggleButton&,
                            bool highlighted, bool down) override;
 
