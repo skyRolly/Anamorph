@@ -35,11 +35,11 @@ void AnamorphAudioProcessorEditor::Backdrop::paint (juce::Graphics& g)
         }
     }
 
-    if (panelA >= 0.999f) // solid (normal) state: full iOS-glass panel (#14/#17)
+    if (panelA >= 0.999f) // solid (normal) state: full glass panel (#14)
     {
         glass::fillPanel (g, pf, 12.0f, colours::bgPanel);
-        // About: a mouse-following anamorphic lens flare inside the "thick glass".
-        if (lensFlare && mouseInside)
+        // About: a STATIC anamorphic flare resting on the top edge (#2).
+        if (lensFlare)
             paintFlare (g, pf);
     }
     else // mid-reveal (Persist drag): fade the panel so the live scope shows through
@@ -87,66 +87,60 @@ void AnamorphAudioProcessorEditor::Backdrop::paint (juce::Graphics& g)
     }
 }
 
-// Anamorphic lens flare for the About panel (#13): the panel is treated as a thick
-// pane of glass; a hard light follows the cursor and throws a horizontal streak
-// with cool chromatic ends, a hot core, glass refraction where it meets the edges,
-// and a wide-angle vignette darkening the corners.
+// STATIC anamorphic lens flare for the About panel (#2/#13): a hard light rests on
+// the TOP edge, just above the first "A" of ANAMORPH (the "Interstellar" look), and
+// spills a soft glow down into the thick glass with cool teal chromatic ends.
 void AnamorphAudioProcessorEditor::Backdrop::paintFlare (juce::Graphics& g, juce::Rectangle<float> pf)
 {
     juce::Graphics::ScopedSaveState save (g);
     juce::Path clip; clip.addRoundedRectangle (pf, 12.0f);
     g.reduceClipRegion (clip);
 
-    const float mx   = juce::jlimit (pf.getX(), pf.getRight(),  mouse.x);
-    const float my   = juce::jlimit (pf.getY(), pf.getBottom(), mouse.y);
-    const float frac = juce::jlimit (0.05f, 0.95f, (mx - pf.getX()) / pf.getWidth());
-
+    const float mx = pf.getX() + 48.0f;   // above the first 'A'
+    const float my = pf.getY() + 1.0f;    // resting on the top edge
+    const float frac = juce::jlimit (0.04f, 0.5f, (mx - pf.getX()) / pf.getWidth());
     const juce::Colour hot (0xfff4f8ff);
 
-    // Wide-angle corner distortion: two radial vignettes darkening toward the
-    // top-left and bottom-right corners.
-    for (auto corner : { pf.getTopLeft(), pf.getBottomRight() })
+    // Soft vertical wash spilling down from the top edge (light entering the glass).
     {
-        juce::ColourGradient vig (juce::Colours::transparentBlack, pf.getCentreX(), pf.getCentreY(),
-                                  juce::Colours::black.withAlpha (0.22f), corner.x, corner.y, true);
-        g.setGradientFill (vig);
-        g.fillRect (pf);
+        juce::ColourGradient down (hot.withAlpha (0.09f), pf.getCentreX(), pf.getY(),
+                                   juce::Colours::transparentBlack, pf.getCentreX(), pf.getY() + 95.0f, false);
+        g.setGradientFill (down);
+        g.fillRect (pf.getX(), pf.getY(), pf.getWidth(), 95.0f);
     }
 
-    // Horizontal anamorphic streak: three stacked layers (wide+faint to thin+hot)
-    // brightest under the cursor, fading to cool blue/teal chromatic ends.
-    for (int layer = 0; layer < 3; ++layer)
+    // Horizontal anamorphic streak along the top edge: teal -> hot white (above the
+    // A) -> teal, two layers for softness.
+    for (int layer = 0; layer < 2; ++layer)
     {
-        const float hh = (float) (3 - layer) * 6.0f + 1.0f;
-        const float a  = (layer == 2) ? 0.55f : (layer == 1 ? 0.20f : 0.09f);
-        const juce::Colour core = (layer == 2) ? hot : juce::Colour (0xffdfeaff);
-        juce::ColourGradient hg (core.withAlpha (0.0f), pf.getX(), my,
-                                 core.withAlpha (0.0f), pf.getRight(), my, false);
-        hg.addColour (juce::jlimit (0.01, 0.99, (double) frac - 0.30), colours::accent2.withAlpha (a * 0.35f));
-        hg.addColour (frac, core.withAlpha (a));
-        hg.addColour (juce::jlimit (0.01, 0.99, (double) frac + 0.30), colours::accent.withAlpha (a * 0.35f));
+        const float hh = (layer == 0) ? 7.0f : 2.0f;
+        const float a  = (layer == 0) ? 0.16f : 0.42f;
+        juce::ColourGradient hg (colours::accent2.withAlpha (0.0f), pf.getX(), my,
+                                 colours::accent.withAlpha (0.0f), pf.getRight(), my, false);
+        hg.addColour (juce::jlimit (0.01, 0.98, (double) frac - 0.12), colours::accent2.withAlpha (a * 0.5f));
+        hg.addColour (frac, hot.withAlpha (a));
+        hg.addColour (juce::jmin (0.98, (double) frac + 0.55), colours::accent.withAlpha (a * 0.35f));
         g.setGradientFill (hg);
         g.fillRect (pf.getX(), my - hh * 0.5f, pf.getWidth(), hh);
     }
 
-    // Chromatic fringe lines (anamorphic aberration): cool blue above, teal below.
-    g.setColour (colours::accent2.withAlpha (0.16f)); g.fillRect (pf.getX(), my - 3.0f, pf.getWidth(), 1.0f);
-    g.setColour (colours::accent .withAlpha (0.16f)); g.fillRect (pf.getX(), my + 2.0f, pf.getWidth(), 1.0f);
-
-    // Hot radial core at the cursor + a tight white centre.
+    // Soft radial core glow spilling from the edge, plus a tight bright kernel.
     {
-        juce::ColourGradient core (hot.withAlpha (0.60f), mx, my,
-                                   juce::Colours::transparentBlack, mx + 34.0f, my, true);
+        juce::ColourGradient core (hot.withAlpha (0.40f), mx, my,
+                                   juce::Colours::transparentBlack, mx, my + 52.0f, true);
         g.setGradientFill (core);
-        g.fillEllipse (mx - 34.0f, my - 34.0f, 68.0f, 68.0f);
-        g.setColour (juce::Colours::white.withAlpha (0.75f));
-        g.fillEllipse (mx - 2.6f, my - 2.6f, 5.2f, 5.2f);
+        g.fillEllipse (mx - 52.0f, my - 52.0f, 104.0f, 104.0f);
+    }
+    {
+        juce::ColourGradient k (juce::Colours::white.withAlpha (0.8f), mx, my,
+                                juce::Colours::transparentBlack, mx + 9.0f, my, true);
+        g.setGradientFill (k);
+        g.fillEllipse (mx - 9.0f, my - 9.0f, 18.0f, 18.0f);
     }
 
-    // Glass refraction where the streak meets the left / right edges of the pane.
-    g.setColour (hot.withAlpha (0.50f));
-    g.fillEllipse (pf.getX() - 3.0f,     my - 3.0f, 6.0f, 6.0f);
-    g.fillEllipse (pf.getRight() - 3.0f, my - 3.0f, 6.0f, 6.0f);
+    // Faint chromatic fringe just under the streak.
+    g.setColour (colours::accent.withAlpha (0.11f));
+    g.fillRect (pf.getX(), my + 3.0f, pf.getWidth(), 1.0f);
 }
 
 void AnamorphAudioProcessorEditor::ABControl::paint (juce::Graphics& g)
@@ -303,10 +297,14 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     setupRotary (monoFreqK, monoFreqL, "Freq", "Mono Maker crossover frequency.");
     monoFreqK.setSliderStyle (juce::Slider::LinearHorizontal);
     monoFreqK.setTextBoxStyle (juce::Slider::TextBoxRight, false, 52, 18);
-    // Right-justify the Hz readout so its right edge lines up with the Level Match
-    // dB readout above it (#11).
+    // Right-justify the Hz readout (right edge lines up with the Level Match dB
+    // above) and use a slightly smaller font for it (#11).
     for (auto* c : monoFreqK.getChildren())
-        if (auto* lab = dynamic_cast<juce::Label*> (c)) lab->setJustificationType (juce::Justification::centredRight);
+        if (auto* lab = dynamic_cast<juce::Label*> (c))
+        {
+            lab->setJustificationType (juce::Justification::centredRight);
+            lab->setFont (juce::Font (juce::FontOptions (11.0f)));
+        }
     attachSlider (monoFreqK, pid::monoMakerFreq);
 
     // --- INPUT module (advanced) ---
@@ -424,12 +422,13 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     {
         applyScopePersist();
         // A non-drag change (scroll wheel / arrows / typing) reveals the window too,
-        // but only when it is SUSTAINED -- a single nudge shouldn't flash it (#1).
+        // but only when SUSTAINED: the first change just arms a short window; a
+        // SECOND change inside that window reveals (so a single nudge doesn't flash
+        // it). After the last change, a ~0.5 s dwell holds it before restoring (#1).
         if (! persistDragging)
         {
-            ++persistScrollCount;
-            persistScrollWindow = 0.15;                              // group changes within 150 ms
-            if (persistScrollCount >= 2) persistRevealTimer = 0.5;   // sustained -> reveal + 0.5 s dwell
+            if (persistScrollWindow > 0.0) persistRevealTimer = 0.5; // sustained -> reveal + dwell
+            persistScrollWindow = 0.30;                              // (re)arm the recent-change window
         }
     };
     // While dragging Persist, fade the Settings overlay so the live vectorscope
@@ -639,7 +638,16 @@ void AnamorphAudioProcessorEditor::updateMsLabels()
 void AnamorphAudioProcessorEditor::showAbout (bool show)    { aboutBackdrop.setVisible (show);    if (show) { aboutBackdrop.toFront (false); resized(); } }
 void AnamorphAudioProcessorEditor::showSettings (bool show)
 {
-    if (show) { persistDragging = false; settingsBackdrop.reveal = 0.0f; }
+    if (show)
+    {
+        // Fully reset the see-through state so opening Settings never flashes
+        // transparent from a stale reveal/scroll timer (#8).
+        persistDragging = false;
+        persistHold = 0;
+        persistScrollWindow = 0.0;
+        persistRevealTimer = 0.0;
+        settingsBackdrop.reveal = 0.0f;
+    }
     settingsBackdrop.setVisible (show);
     if (show) { settingsBackdrop.toFront (false); resized(); }
 }
@@ -706,7 +714,6 @@ void AnamorphAudioProcessorEditor::timerCallback()
         const bool dragReveal = persistDragging && persistHold >= 4; // ~165 ms at 24 Hz
         // Scroll / type reveal: sustained change, then a ~0.5 s dwell after stopping (#1).
         if (persistScrollWindow > 0.0) persistScrollWindow -= dt;
-        if (persistScrollWindow <= 0.0) persistScrollCount = 0;
         if (persistRevealTimer  > 0.0) persistRevealTimer  -= dt;
         const bool scrollReveal = (persistRevealTimer > 0.0) && ! persistDragging;
 
@@ -714,6 +721,11 @@ void AnamorphAudioProcessorEditor::timerCallback()
         if (std::abs (settingsBackdrop.reveal - revTarget) > 0.004f)
         {
             settingsBackdrop.reveal += (revTarget - settingsBackdrop.reveal) * 0.45f;
+            // Snap exactly onto the target when close: otherwise reveal settles at
+            // ~0.004 and panelA stays < 1, drawing the FADED panel style instead of
+            // the glass one after the bar restores (#10).
+            if (std::abs (settingsBackdrop.reveal - revTarget) <= 0.004f)
+                settingsBackdrop.reveal = revTarget;
             settingsBackdrop.repaint();
         }
     }

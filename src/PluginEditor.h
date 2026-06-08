@@ -34,20 +34,9 @@ private:
         bool   aboutText = false;
         float  reveal = 0.0f;   // 0 = solid, 1 = see-through (Persist drag, #26)
         bool   dropShadow = false;       // soft feathered outer shadow (Settings, #14)
-        bool   lensFlare  = false;       // mouse-following anamorphic flare (About, #13)
-        juce::Point<float> mouse;        // last cursor position (panel-local repaints)
-        bool   mouseInside = false;
+        bool   lensFlare  = false;       // STATIC anamorphic flare near the top edge (About, #2/#13)
         void paint (juce::Graphics&) override;
         void paintFlare (juce::Graphics&, juce::Rectangle<float> panelF); // #13
-        void trackMouse (const juce::MouseEvent& e)
-        {
-            mouse = e.position; mouseInside = true;
-            if (lensFlare) repaint (panel);
-        }
-        void mouseMove  (const juce::MouseEvent& e) override { trackMouse (e); }
-        void mouseEnter (const juce::MouseEvent& e) override { trackMouse (e); }
-        void mouseDrag  (const juce::MouseEvent& e) override { trackMouse (e); }
-        void mouseExit  (const juce::MouseEvent&) override   { mouseInside = false; if (lensFlare) repaint (panel); }
         void mouseDown (const juce::MouseEvent& e) override
         {
             if (aboutText || ! panel.contains (e.getPosition()))
@@ -177,10 +166,9 @@ private:
     float meterAnim = 0.0f;     // 0..1 eased meter reveal (#19)
     bool  persistDragging = false; // dragging the Settings Persist bar (#26)
     int   persistHold = 0;      // frames the Persist bar has been held (anti-flicker, #7)
-    // Non-drag (scroll / type) reveal: sustained adjustment turns the window
+    // Non-drag (scroll / type) reveal: a sustained adjustment turns the window
     // see-through and holds it ~0.5 s after the last change; a single nudge does
     // not trigger it (#1).
-    int    persistScrollCount  = 0;
     double persistScrollWindow = 0.0;
     double persistRevealTimer  = 0.0;
     int   widenOutputDividerY = 0; // y of the Widen/Output divider in advanced (#10/#11)

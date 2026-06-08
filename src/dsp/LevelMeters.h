@@ -31,9 +31,10 @@ public:
         // transients up to the held peak line and "pushes it up" (#13/#12). Release
         // eased further (190 -> 300 ms) so it no longer drops away too quickly (#15).
         dimRel   = std::exp (-1.0f / (float) (0.300 * sampleRate));
-        // BRIGHT = the RMS body, now clearly more agile: a quick rise to catch the
-        // signal and a gentle fall for a lively-but-smooth VU (#15).
-        briRise  = envC (0.160);  briFall  = envC (0.400);
+        // BRIGHT = the RMS body: a quick rise to catch the signal (unchanged, it
+        // feels right), and a clearly QUICKER fall so it doesn't crawl down after a
+        // pause (#12). Still smooth enough that a steady signal sits stable.
+        briRise  = envC (0.160);  briFall  = envC (0.260);
         // Numeric RMS source: a steady ~150 ms RMS; the display logic adds the
         // fast-rise / long-hold / slow-fall behaviour (#15).
         numRise  = envC (0.150);  numFall  = envC (0.150);

@@ -116,7 +116,7 @@ void LevelMeter::drawBar (juce::Graphics& g, juce::Rectangle<float> r,
 void LevelMeter::paint (juce::Graphics& g)
 {
     auto bounds = getLocalBounds().toFloat();
-    glass::fillPanel (g, bounds, 4.0f, colours::bgPanel); // iOS-glass frame (#17)
+    glass::fillPanel (g, bounds, 4.0f, colours::bgPanel, 0.85f); // gentle 0.5.3-style frame (#1)
 
     auto area = bounds.reduced (5.0f);
 

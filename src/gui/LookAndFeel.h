@@ -76,6 +76,8 @@ public:
     void drawComboBox (juce::Graphics&, int w, int h, bool down,
                        int buttonX, int buttonY, int buttonW, int buttonH,
                        juce::ComboBox&) override;
+    // Indent the selected text a little from the left edge (#13).
+    void positionComboBoxText (juce::ComboBox&, juce::Label&) override;
 
     // Honour each Label's explicitly-set font instead of forcing one size, so the
     // larger Simple-mode Widen text actually renders (recurring font request).
