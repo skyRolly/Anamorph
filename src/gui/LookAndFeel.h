@@ -36,12 +36,19 @@ namespace colours
 // ============================================================================
 namespace glass
 {
-    // Highlight edges + base hairline only (the caller fills the interior).
+    // Highlight edges + base hairline only (the caller fills the interior). The
+    // top-left corner catches the brightest, thickest highlight; the bottom-right
+    // a dimmer one; the other two corners stay un-lit for diagonal contrast, and
+    // a soft inset stroke blends the bright edge into the content.
     void drawEdges (juce::Graphics&, juce::Rectangle<float> bounds, float radius,
                     float strength = 1.0f);
-    // Diagonal micro-gradient fill (top-right bright -> bottom-left dark) + edges.
+    // Diagonal depth gradient (top-right bright -> bottom-left dark) + glass edges.
     void fillPanel (juce::Graphics&, juce::Rectangle<float> bounds, float radius,
                     juce::Colour base, float strength = 1.0f);
+    // Glass rim for round controls: a bright top-left arc with a faint glow on the
+    // opposite edge, matching the panel edges (#16).
+    void drawCircleEdge (juce::Graphics&, float centreX, float centreY, float radius,
+                         float strength = 1.0f);
 }
 
 class AnamorphLookAndFeel : public juce::LookAndFeel_V4
@@ -116,6 +123,22 @@ public:
     {
         AnamorphLookAndFeel::getIdealPopupMenuItemSize (text, isSeparator, standardHeight, w, h);
         if (! isSeparator) h = 19;
+    }
+};
+
+// A larger-text variant for the two Simple-mode Widen combos (algorithm +
+// Style/Focus) so their text scales up with the rest of the enlarged Simple
+// controls; the pop-up list rows grow to match (#17).
+class SimpleComboLookAndFeel : public AnamorphLookAndFeel
+{
+public:
+    juce::Font getComboBoxFont (juce::ComboBox&) override { return juce::Font (juce::FontOptions (15.5f)); }
+    juce::Font getPopupMenuFont() override                { return juce::Font (juce::FontOptions (15.0f)); }
+    void getIdealPopupMenuItemSize (const juce::String& text, bool isSeparator,
+                                    int standardHeight, int& w, int& h) override
+    {
+        AnamorphLookAndFeel::getIdealPopupMenuItemSize (text, isSeparator, standardHeight, w, h);
+        if (! isSeparator) h = 27;
     }
 };
 
