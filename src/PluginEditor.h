@@ -36,7 +36,8 @@ private:
         bool   dropShadow = false;       // soft feathered outer shadow (Settings, #14)
         bool   lensFlare  = false;       // STATIC anamorphic flare near the top edge (About, #2/#13)
         void paint (juce::Graphics&) override;
-        void paintFlare (juce::Graphics&, juce::Rectangle<float> panelF); // #13
+        void paintFlare (juce::Graphics&, juce::Rectangle<float> panelF);       // #13
+        void paintBrightEdges (juce::Graphics&, juce::Rectangle<float>, float radius); // 0.5.5 About edges (#3)
         void mouseDown (const juce::MouseEvent& e) override
         {
             if (aboutText || ! panel.contains (e.getPosition()))
@@ -65,6 +66,7 @@ private:
     };
 
     void timerCallback() override;
+    void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override; // Persist scroll reveal (#1)
     void setupRotary (juce::Slider&, juce::Label&, const juce::String& name, const juce::String& tip);
     void attachSlider (juce::Slider&, const char* id);
     void setupCombo (juce::ComboBox&, const char* id, const juce::String& tip);

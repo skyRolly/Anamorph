@@ -35,19 +35,34 @@ void AnamorphAudioProcessorEditor::Backdrop::paint (juce::Graphics& g)
         }
     }
 
-    if (panelA >= 0.999f) // solid (normal) state: full glass panel (#14)
+    if (panelA >= 0.999f) // solid (normal) state
     {
-        glass::fillPanel (g, pf, 12.0f, colours::bgPanel);
-        // About: a STATIC anamorphic flare resting on the top edge (#2).
         if (lensFlare)
+        {
+            // About panel: the brighter 0.5.5 glass (background + edges) plus the
+            // 0.5.5 anamorphic flare, now STATIC in the top-left corner -- exactly
+            // the look from the reference screenshot (#3).
+            const auto base = colours::bgPanel;
+            juce::ColourGradient gr (base.brighter (0.13f), pf.getRight(), pf.getY(),
+                                     base.darker  (0.32f), pf.getX(),     pf.getBottom(), false);
+            gr.addColour (0.5, base.darker (0.04f));
+            g.setGradientFill (gr);
+            g.fillRoundedRectangle (pf, 12.0f);
+            paintBrightEdges (g, pf, 12.0f);
             paintFlare (g, pf);
+        }
+        else
+        {
+            glass::fillPanel (g, pf, 12.0f, colours::bgPanel); // Settings: subtle glass
+        }
     }
-    else // mid-reveal (Persist drag): fade the panel so the live scope shows through
-    {
-        g.setColour (colours::bgPanel.withAlpha (panelA));
+    else // mid-reveal (Persist drag): the SAME glass, just composited see-through,
+    {    // so it never switches to a different "faded" style when revealed (#1).
+        juce::ColourGradient gr (colours::bgPanel.brighter (0.04f).withAlpha (panelA), pf.getCentreX(), pf.getY(),
+                                 colours::bgPanel.darker (0.20f).withAlpha (panelA), pf.getCentreX(), pf.getBottom(), false);
+        g.setGradientFill (gr);
         g.fillRoundedRectangle (pf, 12.0f);
-        g.setColour (colours::outline.withAlpha (juce::jmap (reveal, 0.0f, 1.0f, 1.0f, 0.5f)));
-        g.drawRoundedRectangle (pf.reduced (0.5f), 12.0f, 1.0f);
+        glass::drawEdges (g, pf, 12.0f, panelA);
     }
 
     if (aboutText)
@@ -87,60 +102,92 @@ void AnamorphAudioProcessorEditor::Backdrop::paint (juce::Graphics& g)
     }
 }
 
-// STATIC anamorphic lens flare for the About panel (#2/#13): a hard light rests on
-// the TOP edge, just above the first "A" of ANAMORPH (the "Interstellar" look), and
-// spills a soft glow down into the thick glass with cool teal chromatic ends.
+// The 0.5.5 bright glass EDGES, kept only for the About panel so it matches the
+// reference screenshot while the rest of the UI uses the calmer glass (#3).
+void AnamorphAudioProcessorEditor::Backdrop::paintBrightEdges (juce::Graphics& g, juce::Rectangle<float> bounds, float radius)
+{
+    auto r = bounds.reduced (0.5f);
+    const float W = r.getWidth(), H = r.getHeight();
+    g.setColour (anamorph::gui::colours::outline.withAlpha (0.85f));
+    g.drawRoundedRectangle (r, radius, 1.0f);
+    {
+        juce::ColourGradient gr (juce::Colours::white.withAlpha (0.62f), r.getX(), r.getY(),
+                                 juce::Colours::white.withAlpha (0.0f), r.getX() + W * 0.34f, r.getY() + H * 0.34f, false);
+        g.setGradientFill (gr); g.drawRoundedRectangle (r, radius, 1.9f);
+    }
+    {
+        juce::ColourGradient gr (juce::Colours::white.withAlpha (0.32f), r.getRight(), r.getBottom(),
+                                 juce::Colours::white.withAlpha (0.0f), r.getRight() - W * 0.24f, r.getBottom() - H * 0.24f, false);
+        g.setGradientFill (gr); g.drawRoundedRectangle (r, radius, 1.5f);
+    }
+    {
+        auto ri = r.reduced (1.8f);
+        const float rr = juce::jmax (0.5f, radius - 1.6f);
+        juce::ColourGradient gr (juce::Colours::white.withAlpha (0.13f), r.getX(), r.getY(),
+                                 juce::Colours::white.withAlpha (0.0f), ri.getCentreX(), ri.getCentreY(), false);
+        g.setGradientFill (gr); g.drawRoundedRectangle (ri, rr, 1.4f);
+    }
+}
+
+// The exact 0.5.5 anamorphic flare, but with the "cursor" pinned STATIC in the
+// top-left corner -- the reference screenshot was that flare with the mouse there
+// (#3). No longer follows the cursor, so the URL-hover restyle is gone too (#9).
 void AnamorphAudioProcessorEditor::Backdrop::paintFlare (juce::Graphics& g, juce::Rectangle<float> pf)
 {
+    using anamorph::gui::colours::accent;
+    using anamorph::gui::colours::accent2;
+
     juce::Graphics::ScopedSaveState save (g);
     juce::Path clip; clip.addRoundedRectangle (pf, 12.0f);
     g.reduceClipRegion (clip);
 
-    const float mx = pf.getX() + 48.0f;   // above the first 'A'
-    const float my = pf.getY() + 1.0f;    // resting on the top edge
-    const float frac = juce::jlimit (0.04f, 0.5f, (mx - pf.getX()) / pf.getWidth());
+    const float mx   = pf.getX() + 58.0f;  // pinned top-left, matching the screenshot
+    const float my   = pf.getY() + 30.0f;
+    const float frac = juce::jlimit (0.05f, 0.95f, (mx - pf.getX()) / pf.getWidth());
     const juce::Colour hot (0xfff4f8ff);
 
-    // Soft vertical wash spilling down from the top edge (light entering the glass).
+    // Wide-angle corner distortion: radial vignettes toward TL and BR corners.
+    for (auto corner : { pf.getTopLeft(), pf.getBottomRight() })
     {
-        juce::ColourGradient down (hot.withAlpha (0.09f), pf.getCentreX(), pf.getY(),
-                                   juce::Colours::transparentBlack, pf.getCentreX(), pf.getY() + 95.0f, false);
-        g.setGradientFill (down);
-        g.fillRect (pf.getX(), pf.getY(), pf.getWidth(), 95.0f);
+        juce::ColourGradient vig (juce::Colours::transparentBlack, pf.getCentreX(), pf.getCentreY(),
+                                  juce::Colours::black.withAlpha (0.22f), corner.x, corner.y, true);
+        g.setGradientFill (vig);
+        g.fillRect (pf);
     }
 
-    // Horizontal anamorphic streak along the top edge: teal -> hot white (above the
-    // A) -> teal, two layers for softness.
-    for (int layer = 0; layer < 2; ++layer)
+    // Horizontal anamorphic streak: three stacked layers, brightest at the flare.
+    for (int layer = 0; layer < 3; ++layer)
     {
-        const float hh = (layer == 0) ? 7.0f : 2.0f;
-        const float a  = (layer == 0) ? 0.16f : 0.42f;
-        juce::ColourGradient hg (colours::accent2.withAlpha (0.0f), pf.getX(), my,
-                                 colours::accent.withAlpha (0.0f), pf.getRight(), my, false);
-        hg.addColour (juce::jlimit (0.01, 0.98, (double) frac - 0.12), colours::accent2.withAlpha (a * 0.5f));
-        hg.addColour (frac, hot.withAlpha (a));
-        hg.addColour (juce::jmin (0.98, (double) frac + 0.55), colours::accent.withAlpha (a * 0.35f));
+        const float hh = (float) (3 - layer) * 6.0f + 1.0f;
+        const float a  = (layer == 2) ? 0.55f : (layer == 1 ? 0.20f : 0.09f);
+        const juce::Colour core = (layer == 2) ? hot : juce::Colour (0xffdfeaff);
+        juce::ColourGradient hg (core.withAlpha (0.0f), pf.getX(), my,
+                                 core.withAlpha (0.0f), pf.getRight(), my, false);
+        hg.addColour (juce::jlimit (0.01, 0.99, (double) frac - 0.30), accent2.withAlpha (a * 0.35f));
+        hg.addColour (frac, core.withAlpha (a));
+        hg.addColour (juce::jlimit (0.01, 0.99, (double) frac + 0.30), accent.withAlpha (a * 0.35f));
         g.setGradientFill (hg);
         g.fillRect (pf.getX(), my - hh * 0.5f, pf.getWidth(), hh);
     }
 
-    // Soft radial core glow spilling from the edge, plus a tight bright kernel.
+    // Chromatic fringe lines: cool blue above, teal below.
+    g.setColour (accent2.withAlpha (0.16f)); g.fillRect (pf.getX(), my - 3.0f, pf.getWidth(), 1.0f);
+    g.setColour (accent .withAlpha (0.16f)); g.fillRect (pf.getX(), my + 2.0f, pf.getWidth(), 1.0f);
+
+    // Hot radial core + a tight white centre.
     {
-        juce::ColourGradient core (hot.withAlpha (0.40f), mx, my,
-                                   juce::Colours::transparentBlack, mx, my + 52.0f, true);
+        juce::ColourGradient core (hot.withAlpha (0.60f), mx, my,
+                                   juce::Colours::transparentBlack, mx + 34.0f, my, true);
         g.setGradientFill (core);
-        g.fillEllipse (mx - 52.0f, my - 52.0f, 104.0f, 104.0f);
-    }
-    {
-        juce::ColourGradient k (juce::Colours::white.withAlpha (0.8f), mx, my,
-                                juce::Colours::transparentBlack, mx + 9.0f, my, true);
-        g.setGradientFill (k);
-        g.fillEllipse (mx - 9.0f, my - 9.0f, 18.0f, 18.0f);
+        g.fillEllipse (mx - 34.0f, my - 34.0f, 68.0f, 68.0f);
+        g.setColour (juce::Colours::white.withAlpha (0.75f));
+        g.fillEllipse (mx - 2.6f, my - 2.6f, 5.2f, 5.2f);
     }
 
-    // Faint chromatic fringe just under the streak.
-    g.setColour (colours::accent.withAlpha (0.11f));
-    g.fillRect (pf.getX(), my + 3.0f, pf.getWidth(), 1.0f);
+    // Glass refraction where the streak meets the left / right edges.
+    g.setColour (hot.withAlpha (0.50f));
+    g.fillEllipse (pf.getX() - 3.0f,     my - 3.0f, 6.0f, 6.0f);
+    g.fillEllipse (pf.getRight() - 3.0f, my - 3.0f, 6.0f, 6.0f);
 }
 
 void AnamorphAudioProcessorEditor::ABControl::paint (juce::Graphics& g)
@@ -418,19 +465,11 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     settingsBackdrop.addAndMakeVisible (scopePersistK);
     scopePersistK.setTextBoxStyle (juce::Slider::TextBoxRight, false, 52, 18); // box built with our LnF
     attachSlider (scopePersistK, pid::scopePersist);
-    scopePersistK.onValueChange = [this]
-    {
-        applyScopePersist();
-        // A non-drag change (scroll wheel / arrows / typing) reveals the window too,
-        // but only when SUSTAINED: the first change just arms a short window; a
-        // SECOND change inside that window reveals (so a single nudge doesn't flash
-        // it). After the last change, a ~0.5 s dwell holds it before restoring (#1).
-        if (! persistDragging)
-        {
-            if (persistScrollWindow > 0.0) persistRevealTimer = 0.5; // sustained -> reveal + dwell
-            persistScrollWindow = 0.30;                              // (re)arm the recent-change window
-        }
-    };
+    scopePersistK.onValueChange = [this] { applyScopePersist(); };
+    // Listen for the mouse wheel ON the Persist bar so a sustained scroll reveals the
+    // window (handled in mouseWheelMove, the single source of truth, so a single
+    // notch never triggers it) (#1).
+    scopePersistK.addMouseListener (this, false);
     // While dragging Persist, fade the Settings overlay so the live vectorscope
     // behind it is visible (#9).
     scopePersistK.onDragStart = [this] { persistDragging = true; };
@@ -636,6 +675,19 @@ void AnamorphAudioProcessorEditor::updateMsLabels()
 }
 
 void AnamorphAudioProcessorEditor::showAbout (bool show)    { aboutBackdrop.setVisible (show);    if (show) { aboutBackdrop.toFront (false); resized(); } }
+void AnamorphAudioProcessorEditor::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails&)
+{
+    // Sustained scroll of the Persist bar reveals the window: the first notch arms a
+    // short window, a SECOND notch inside it reveals (so a single notch doesn't),
+    // and a ~0.5 s dwell holds it after the last notch. Drag is handled separately
+    // and is unchanged (#1).
+    if (e.eventComponent == &scopePersistK && ! persistDragging)
+    {
+        if (persistScrollWindow > 0.0) persistRevealTimer = 0.5; // sustained -> reveal + dwell
+        persistScrollWindow = 0.30;                              // (re)arm the recent-change window
+    }
+}
+
 void AnamorphAudioProcessorEditor::showSettings (bool show)
 {
     if (show)
@@ -807,11 +859,13 @@ void AnamorphAudioProcessorEditor::resized()
         settingsTitle.setBounds (inner.removeFromTop (20));
         inner.removeFromTop (12);
         oversampleLabel.setBounds (inner.removeFromTop (16));
-        oversampleBox.setBounds (inner.removeFromTop (24).reduced (0, 1));
-        inner.removeFromTop (14);
+        inner.removeFromTop (4); // a little more air below the label (#7)
+        oversampleBox.setBounds (inner.removeFromTop (25).reduced (0, 1));
+        inner.removeFromTop (12);
         persistLabel.setBounds (inner.removeFromTop (16));
+        inner.removeFromTop (4);
         scopePersistK.setBounds (inner.removeFromTop (24));
-        inner.removeFromTop (14);
+        inner.removeFromTop (12);
         // Nudge the toggle right so its pill lines up with the labels above (#5).
         tooltipsToggle.setBounds (inner.removeFromTop (26).withTrimmedLeft (4));
     }
@@ -968,19 +1022,23 @@ void AnamorphAudioProcessorEditor::resized()
             // Input Balance: a compact knob block (knob + value + name packed
             // together, vertically centred) so the number/label sit right under
             // the knob instead of drifting to the bottom (#3).
-            auto bal = a.removeFromRight (98);
+            auto bal = a.removeFromRight (88); // a touch narrower so the combos can be wider (#7)
             auto blk = bal.withSizeKeepingCentre (bal.getWidth(), juce::jmin (bal.getHeight(), 90));
             balanceL.setBounds (blk.removeFromBottom (14));
-            balanceK.setBounds (blk.reduced (8, 0));
-            a.removeFromRight (6);
+            balanceK.setBounds (blk.reduced (6, 0));
+            a.removeFromRight (8);
 
-            auto cmRow = a.removeFromTop (36);
+            // The two Input combos: wider, with a little more air below each label
+            // and the toggles pushed down to fit (#7).
+            auto cmRow = a.removeFromTop (39);
             channelModeLabel.setBounds (cmRow.removeFromTop (14));
-            channelModeBox.setBounds (cmRow.reduced (0, 1));
+            cmRow.removeFromTop (3);
+            channelModeBox.setBounds (cmRow);
             a.removeFromTop (4);
-            auto soRow = a.removeFromTop (36);
+            auto soRow = a.removeFromTop (39);
             soloLabel.setBounds (soRow.removeFromTop (14));
-            soloBox.setBounds (soRow.reduced (0, 1));
+            soRow.removeFromTop (3);
+            soloBox.setBounds (soRow);
             a.removeFromTop (6);
             // Five compact vertical toggles spread evenly across the row (#11/#14).
             auto tog = a.removeFromTop (36);

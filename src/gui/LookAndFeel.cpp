@@ -50,11 +50,10 @@ void AnamorphLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int
     juce::Path value;
     value.addCentredArc (centre.x, centre.y, radius - thick, radius - thick, 0.0f,
                          startAngle, angle, true);
-    // The arc glow keeps its blue->teal gradient but now spreads noticeably WIDER
-    // around the arc (the old halo was too tight to read), with many thin layers so
-    // it stays smooth (#3).
+    // The arc glow keeps its blue->teal gradient but spreads even WIDER around the
+    // arc on hover / press, with many thin layers so it stays smooth (#4).
     const float glowPeak   = active ? 0.40f : hover ? 0.24f : 0.13f;
-    const float glowSpread = active ? 7.5f  : hover ? 5.5f  : 3.2f;
+    const float glowSpread = active ? 11.0f : hover ? 8.0f  : 3.4f;
     constexpr int nLayers = 12;
     for (int i = 0; i < nLayers; ++i)
     {
@@ -86,23 +85,18 @@ void AnamorphLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int
     g.setColour (colours::outline.brighter (hover || active ? 0.12f : 0.0f));
     g.drawEllipse (centre.x - faceR, centre.y - faceR, faceR * 2.0f, faceR * 2.0f, 1.0f);
 
-    // Pointer: a SMOOTH multi-layer glow (same many-thin-layer recipe as the
-    // slider, which reads well), so there's no single hard bright edge (#6).
+    // Pointer: the glow is a REAL feathered halo AROUND the pointer (a blurred
+    // drop-shadow of the pointer shape), not a thick white stroke band on top of it
+    // (#2/#8). The solid pointer sits on the glow.
     juce::Path pointer;
     const float pl = faceR * 0.92f, pr = thick * 0.35f;
     pointer.addRoundedRectangle (-pr, -pl, pr * 2.0f, pl * 0.6f, pr);
     pointer.applyTransform (juce::AffineTransform::rotation (angle).translated (centre.x, centre.y));
     if (active || hover)
     {
-        const float pGlow = active ? 0.30f : 0.13f;
-        constexpr int pLayers = 9;
-        for (int i = 0; i < pLayers; ++i)
-        {
-            const float t = (float) i / (float) (pLayers - 1); // 0 outer .. 1 inner
-            const float wdt = pr * 2.0f + (1.0f - t) * 6.0f;
-            g.setColour (juce::Colours::white.withAlpha (pGlow * std::pow (t, 1.5f)));
-            g.strokePath (pointer, juce::PathStrokeType (wdt, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-        }
+        const float a = active ? 0.55f : 0.28f;
+        juce::DropShadow (juce::Colours::white.withAlpha (a),        7, {}).drawForPath (g, pointer);
+        juce::DropShadow (juce::Colours::white.withAlpha (a * 0.6f), 3, {}).drawForPath (g, pointer);
     }
     g.setColour (active ? juce::Colours::white : (hover ? colours::text.brighter (0.2f) : colours::text));
     g.fillPath (pointer);
@@ -128,23 +122,13 @@ void AnamorphLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int
     g.setColour (colours::outline);
     g.drawRoundedRectangle (track.reduced (0.5f), trackThick * 0.5f, 1.0f);
 
-    // Inset the thumb travel by a thumb-radius so the thumb never hangs off the
-    // ends: value 0% sits a radius in from the edge (which feels like the real 0%)
-    // and 100% likewise -- the old behaviour put the thumb CENTRE on the very edge,
-    // so it looked "pulled off the track" (#4). The fill runs to the thumb, hidden
-    // under it at the extremes.
+    // The thumb travels on `pos` directly (1:1 with the cursor); the inset that
+    // keeps it on the track is done in getSliderLayout, so cursor / value / thumb
+    // all stay in sync (#5).
     const float r = 8.0f;
-    auto remap = [&] (float p, float lo, float hi)
-    {
-        const float frac = juce::jlimit (0.0f, 1.0f, (p - lo) / juce::jmax (1.0f, hi - lo));
-        return lo + r + frac * juce::jmax (0.0f, (hi - lo - 2.0f * r));
-    };
-    const float tp = horizontal ? remap (pos, bounds.getX(), bounds.getRight())
-                                : remap (pos, bounds.getY(), bounds.getBottom());
-
     juce::Rectangle<float> fill = horizontal
-        ? track.withWidth (juce::jmax (0.0f, tp - bounds.getX()))
-        : track.withTop (tp).withBottom (bounds.getBottom());
+        ? track.withWidth (juce::jmax (0.0f, pos - bounds.getX()))
+        : track.withTop (pos).withBottom (bounds.getBottom());
 
     // Filled portion: the softer palette blue->teal gradient (#1) with a MANY-
     // layered glow so the halo's brightness falls off smoothly instead of in
@@ -172,14 +156,16 @@ void AnamorphLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int
     g.setGradientFill (fg);
     g.fillRoundedRectangle (fill, trackThick * 0.5f);
 
-    // Glassy thumb: a neutral gray-white rim normally; it lights up cyan only on
-    // hover/drag.
-    const float cx = horizontal ? tp : bounds.getCentreX();
-    const float cy = horizontal ? bounds.getCentreY() : tp;
-    if (act) // cyan glow only while interacting
+    // Glassy thumb: a neutral gray-white rim normally; on hover/drag it gets a
+    // REAL feathered cyan glow (a blurred drop-shadow halo around the circle, not a
+    // hard flat ring) (#8).
+    const float cx = horizontal ? pos : bounds.getCentreX();
+    const float cy = horizontal ? bounds.getCentreY() : pos;
+    juce::Path thumbPath; thumbPath.addEllipse (cx - r, cy - r, r * 2.0f, r * 2.0f);
+    if (act)
     {
-        g.setColour (fillHi.withAlpha (0.40f));
-        g.fillEllipse (cx - r - 2.5f, cy - r - 2.5f, (r + 2.5f) * 2.0f, (r + 2.5f) * 2.0f);
+        juce::DropShadow (fillHi.withAlpha (0.65f), 9, {}).drawForPath (g, thumbPath);
+        juce::DropShadow (fillHi.withAlpha (0.40f), 4, {}).drawForPath (g, thumbPath);
     }
     juce::ColourGradient kg (colours::bgRaised.brighter (act ? 0.45f : 0.30f), cx, cy - r,
                              colours::bgPanel.darker (0.18f),     cx, cy + r, false);
@@ -187,9 +173,20 @@ void AnamorphLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int
     g.fillEllipse (cx - r, cy - r, r * 2.0f, r * 2.0f);
     g.setColour (act ? fillHi : juce::Colour (0xffb8c2cf)); // gray-white rim, cyan on hover
     g.drawEllipse (cx - r, cy - r, r * 2.0f, r * 2.0f, 1.4f);
-    // Glass rim ON TOP of the rim stroke so it's actually visible (it was hidden
-    // under the gray rim before, which is why it "didn't work") (#16).
-    glass::drawCircleEdge (g, cx, cy, r, act ? 1.1f : 0.9f);
+    // Glass rim ON TOP, clearly visible: bright top-left arc + faint opposite (#16).
+    glass::drawCircleEdge (g, cx, cy, r, 1.5f);
+}
+
+juce::Slider::SliderLayout AnamorphLookAndFeel::getSliderLayout (juce::Slider& s)
+{
+    auto layout = juce::LookAndFeel_V4::getSliderLayout (s);
+    // Inset the interactive track by the thumb radius: the thumb then maps 1:1 to
+    // the cursor within the track and clamps a radius in from each end, so it never
+    // hangs off the edge (#4) and never lags the cursor (#5).
+    const int rad = 8;
+    if (s.isHorizontal())    layout.sliderBounds = layout.sliderBounds.reduced (rad, 0);
+    else if (s.isVertical()) layout.sliderBounds = layout.sliderBounds.reduced (0, rad);
+    return layout;
 }
 
 void AnamorphLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButton& b,

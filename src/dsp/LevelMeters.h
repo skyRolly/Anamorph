@@ -32,9 +32,10 @@ public:
         // eased further (190 -> 300 ms) so it no longer drops away too quickly (#15).
         dimRel   = std::exp (-1.0f / (float) (0.300 * sampleRate));
         // BRIGHT = the RMS body: a quick rise to catch the signal (unchanged, it
-        // feels right), and a clearly QUICKER fall so it doesn't crawl down after a
-        // pause (#12). Still smooth enough that a steady signal sits stable.
-        briRise  = envC (0.160);  briFall  = envC (0.260);
+        // feels right). The fall is now much quicker so the body doesn't crawl the
+        // last stretch down to the floor after the sound stops -- a constant-rate
+        // exponential, so there's no jerk or sudden acceleration (#6).
+        briRise  = envC (0.160);  briFall  = envC (0.130);
         // Numeric RMS source: a steady ~150 ms RMS; the display logic adds the
         // fast-rise / long-hold / slow-fall behaviour (#15).
         numRise  = envC (0.150);  numFall  = envC (0.150);
