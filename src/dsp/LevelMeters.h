@@ -27,11 +27,13 @@ public:
     {
         sr = sampleRate;
         auto envC = [sampleRate] (double tau) { return 1.0f - std::exp (-1.0f / (float) (tau * sampleRate)); };
-        // DIM = a fast PEAK envelope (instant attack, ~130 ms release): it tracks
-        // transients right up to the held peak line and "pushes it up" (#13/#12).
-        dimRel   = std::exp (-1.0f / (float) (0.130 * sampleRate));
-        // BRIGHT = the truly slow RMS body (#13).
-        briRise  = envC (0.300);  briFall  = envC (0.300);
+        // DIM = a fast PEAK envelope (instant attack, ~190 ms release): it tracks
+        // transients up to the held peak line and "pushes it up" (#13/#12). Release
+        // eased from 130 -> 190 ms so it no longer drops away too quickly (#8).
+        dimRel   = std::exp (-1.0f / (float) (0.190 * sampleRate));
+        // BRIGHT = the RMS body. A slightly quicker rise than fall makes it read a
+        // touch livelier without losing the smooth VU feel (#8/#13).
+        briRise  = envC (0.230);  briFall  = envC (0.320);
         // Numeric RMS source: a steady ~150 ms RMS; the display logic adds the
         // fast-rise / long-hold / slow-fall behaviour (#15).
         numRise  = envC (0.150);  numFall  = envC (0.150);

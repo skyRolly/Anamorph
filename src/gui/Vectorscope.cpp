@@ -47,13 +47,9 @@ void Vectorscope::paint (juce::Graphics& g)
 {
     auto area = getLocalBounds().toFloat();
 
-    // Background: subtle vertical gradient inside a rounded panel.
-    juce::ColourGradient bgGrad (colours::bgPanel, area.getCentreX(), area.getY(),
-                                 colours::bg, area.getCentreX(), area.getBottom(), false);
-    g.setGradientFill (bgGrad);
-    g.fillRoundedRectangle (area, 8.0f);
-    g.setColour (colours::outline);
-    g.drawRoundedRectangle (area.reduced (0.5f), 8.0f, 1.0f);
+    // Background: a diagonal glass micro-gradient (brightest top-right, darkest
+    // bottom-left) with top-left / bottom-right highlight edges (#17).
+    glass::fillPanel (g, area, 8.0f, colours::bgPanel);
 
     const auto plot = area.reduced (18.0f);
     const float radius = juce::jmin (plot.getWidth(), plot.getHeight()) * 0.5f;

@@ -42,19 +42,28 @@ void AnamorphLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int
     g.setColour (colours::outline);
     g.strokePath (track, juce::PathStrokeType (thick, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
-    // Value arc: a neon BLUE->CYAN gradient (no grass-green) with a gradient glow
-    // that strengthens on hover / press (#2).
-    const juce::Colour arcLo (0xff4f7bff); // vivid blue
-    const juce::Colour arcHi (0xff32e0ec); // cyan
+    // Value arc: the softer palette BLUE->TEAL gradient (the previous, nicer blue
+    // -- #1), wrapped in a LAYERED glow: several concentric strokes, widest and
+    // faintest on the outside, narrowing and brightening toward the arc, so the
+    // halo is weak on the rim and bright at its core instead of a flat single
+    // stroke (#2).
+    const juce::Colour arcLo (0xff5aa6ff); // soft blue (accent2)
+    const juce::Colour arcHi (0xff35d0c0); // teal (accent)
     juce::Path value;
     value.addCentredArc (centre.x, centre.y, radius - thick, radius - thick, 0.0f,
                          startAngle, angle, true);
-    const float glowA = active ? 0.55f : hover ? 0.34f : 0.16f;
-    const float glowW = active ? 3.2f  : hover ? 2.6f  : 2.1f;
-    juce::ColourGradient glow (arcLo.withAlpha (glowA * 0.7f), centre.x - radius, centre.y,
-                               arcHi.withAlpha (glowA),        centre.x + radius, centre.y, false);
-    g.setGradientFill (glow);
-    g.strokePath (value, juce::PathStrokeType (thick * glowW, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    const float glowPeak   = active ? 0.42f : hover ? 0.26f : 0.14f;
+    const float glowSpread = active ? 4.4f  : hover ? 3.4f  : 2.6f;
+    for (int i = 0; i < 4; ++i)
+    {
+        const float t  = (float) i / 3.0f;                 // 0 outer .. 1 inner
+        const float gw = thick + (1.0f - t) * glowSpread;  // widest outside
+        const float a  = glowPeak * (0.22f + 0.78f * t);   // brightest near the arc
+        juce::ColourGradient gg (arcLo.withAlpha (a * 0.85f), centre.x - radius, centre.y,
+                                 arcHi.withAlpha (a),         centre.x + radius, centre.y, false);
+        g.setGradientFill (gg);
+        g.strokePath (value, juce::PathStrokeType (gw, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    }
     juce::ColourGradient grad (active ? arcLo.brighter (0.20f) : arcLo, centre.x - radius, centre.y,
                                active ? arcHi.brighter (0.20f) : arcHi, centre.x + radius, centre.y, false);
     grad.addColour (0.5, (active ? arcLo.interpolatedWith (arcHi, 0.5f).brighter (0.2f)
@@ -112,16 +121,25 @@ void AnamorphLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int
         ? track.withWidth (juce::jmax (0.0f, pos - bounds.getX()))
         : track.withTop (pos).withBottom (bounds.getBottom());
 
-    // Filled portion: a blue->cyan gradient with a gradient glow halo that grows
-    // on hover/drag (#5/#10).
-    const juce::Colour fillLo (0xff4f7bff), fillHi (0xff32e0ec);
+    // Filled portion: the softer palette blue->teal gradient (#1) with a LAYERED
+    // glow -- a few rounded rects, widest + faintest outside, tightening and
+    // brightening inward, for an inner-bright / outer-soft halo (#2).
+    const juce::Colour fillLo (0xff5aa6ff), fillHi (0xff35d0c0);
     const bool act = s.isMouseOverOrDragging() || (bool) s.getProperties().getWithDefault ("dragging", false);
-    juce::ColourGradient glow (fillLo.withAlpha (act ? 0.30f : 0.16f), fill.getX(), fill.getY(),
-                               fillHi.withAlpha (act ? 0.42f : 0.20f),
-                               horizontal ? fill.getRight() : fill.getX(),
-                               horizontal ? fill.getY() : fill.getBottom(), false);
-    g.setGradientFill (glow);
-    g.fillRoundedRectangle (fill.expanded (act ? 2.2f : 1.4f), (trackThick + (act ? 4.4f : 2.8f)) * 0.5f);
+    const float glowPeak   = act ? 0.34f : 0.16f;
+    const float glowSpread = act ? 4.4f  : 2.6f;
+    for (int i = 0; i < 3; ++i)
+    {
+        const float t  = (float) i / 2.0f;            // 0 outer .. 1 inner
+        const float ex = (1.0f - t) * glowSpread;
+        const float a  = glowPeak * (0.30f + 0.70f * t);
+        juce::ColourGradient gg (fillLo.withAlpha (a), fill.getX(), fill.getY(),
+                                 fillHi.withAlpha (a),
+                                 horizontal ? fill.getRight() : fill.getX(),
+                                 horizontal ? fill.getY() : fill.getBottom(), false);
+        g.setGradientFill (gg);
+        g.fillRoundedRectangle (fill.expanded (ex), (trackThick + ex * 2.0f) * 0.5f);
+    }
     juce::ColourGradient fg (fillLo, fill.getX(), fill.getY(),
                              fillHi, horizontal ? fill.getRight() : fill.getX(),
                              horizontal ? fill.getY() : fill.getBottom(), false);
@@ -196,13 +214,35 @@ void AnamorphLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButto
         g.setColour (on ? colours::bg : colours::text);
         g.fillEllipse (kx, pill.getCentreY() - knob * 0.5f, knob, knob);
 
-        // All five labels rendered identically (same font, area, justification) so
-        // Mono/Swap/M/S and the "ø L/R" pair line up by construction (#8).
+        // Labels render with a shared 11 px baseline so Mono/Swap/M/S all line up
+        // (#8). The polarity toggles are the exception: their "ø" is drawn LARGER
+        // than the trailing letter but on the SAME baseline, so it reads bold
+        // without dragging the letter's baseline around (#5).
         const juce::Colour tc = (on || highlighted ? colours::text : colours::textDim);
         g.setColour (tc);
-        g.setFont (juce::Font (juce::FontOptions (11.0f)));
-        g.drawFittedText (b.getButtonText(), bounds.withTop (pill.getBottom() + 1.0f).toNearestInt(),
-                          juce::Justification::centred, 1, 0.85f);
+        const auto labelArea = bounds.withTop (pill.getBottom() + 1.0f);
+        const juce::juce_wchar phi = (juce::juce_wchar) 0x00F8;
+        const juce::String txt = b.getButtonText();
+        if (txt.startsWithChar (phi))
+        {
+            const juce::Font fBig (juce::FontOptions (15.0f));
+            const juce::Font fSm  (juce::FontOptions (11.0f));
+            juce::GlyphArrangement ga;
+            ga.addLineOfText (fBig, juce::String::charToString (phi), 0.0f, 0.0f);
+            const float headW = ga.getBoundingBox (0, -1, true).getRight();
+            ga.addLineOfText (fSm, txt.substring (1), headW, 0.0f); // shared baseline at y = 0
+            const auto bb = ga.getBoundingBox (0, -1, true);
+            // Centre the group horizontally; place the shared baseline so the small
+            // letter is vertically centred just like the other toggles' labels.
+            const float tx = labelArea.getCentreX() - bb.getCentreX();
+            const float by = labelArea.getCentreY() + (fSm.getAscent() - fSm.getDescent()) * 0.5f;
+            ga.draw (g, juce::AffineTransform::translation (tx, by));
+        }
+        else
+        {
+            g.setFont (juce::Font (juce::FontOptions (11.0f)));
+            g.drawFittedText (txt, labelArea.toNearestInt(), juce::Justification::centred, 1, 0.85f);
+        }
         return;
     }
 
@@ -316,6 +356,75 @@ void AnamorphLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& b
     juce::LookAndFeel_V4::drawButtonText (g, b, false, false);
 }
 
+// Pop-up rows: the HIGHLIGHTED row gets a subtle "liquid glass" treatment -- a
+// vertical micro-gradient wash, a bright sheen along the top edge and a soft
+// accent hairline -- so the selection reads like a pane of glass (#6).
+void AnamorphLookAndFeel::drawPopupMenuItem (juce::Graphics& g, const juce::Rectangle<int>& area,
+                                             bool isSeparator, bool /*isActive*/, bool isHighlighted,
+                                             bool isTicked, bool hasSubMenu, const juce::String& text,
+                                             const juce::String& shortcutKeyText,
+                                             const juce::Drawable* /*icon*/, const juce::Colour* /*textColour*/)
+{
+    if (isSeparator)
+    {
+        auto r = area.toFloat().reduced (8.0f, 0.0f);
+        g.setColour (colours::outline.withAlpha (0.7f));
+        g.fillRect (r.withHeight (1.0f).withY (r.getCentreY()));
+        return;
+    }
+
+    auto r = area.toFloat();
+    if (isHighlighted)
+    {
+        auto gb = r.reduced (3.0f, 1.0f);
+        const float rad = 4.0f;
+        juce::ColourGradient gr (colours::accent.withAlpha (0.30f), gb.getX(), gb.getY(),
+                                 colours::accent.withAlpha (0.14f), gb.getX(), gb.getBottom(), false);
+        g.setGradientFill (gr);
+        g.fillRoundedRectangle (gb, rad);
+        // glassy top sheen
+        g.setColour (juce::Colours::white.withAlpha (0.10f));
+        g.fillRoundedRectangle (gb.getX(), gb.getY(), gb.getWidth(), gb.getHeight() * 0.5f, rad);
+        g.setColour (colours::accent.withAlpha (0.55f));
+        g.drawRoundedRectangle (gb.reduced (0.5f), rad, 1.0f);
+    }
+
+    g.setColour (colours::text.withMultipliedAlpha (isHighlighted ? 1.0f : 0.92f));
+    g.setFont (getPopupMenuFont());
+
+    auto textArea = r.reduced (10.0f, 0.0f);
+    if (isTicked)
+    {
+        auto tick = textArea.removeFromLeft (16.0f);
+        g.fillEllipse (tick.getCentreX() - 2.5f, tick.getCentreY() - 2.5f, 5.0f, 5.0f);
+    }
+    else
+    {
+        textArea.removeFromLeft (16.0f);
+    }
+
+    g.drawText (text, textArea, juce::Justification::centredLeft);
+
+    if (shortcutKeyText.isNotEmpty())
+    {
+        g.setColour (colours::textDim);
+        g.setFont (getPopupMenuFont().withHeight (11.0f));
+        g.drawText (shortcutKeyText, textArea, juce::Justification::centredRight);
+    }
+
+    if (hasSubMenu)
+    {
+        const float h = (float) area.getHeight();
+        juce::Path p;
+        const float x = r.getRight() - 12.0f, cy = r.getCentreY();
+        p.startNewSubPath (x, cy - h * 0.12f);
+        p.lineTo (x + h * 0.12f, cy);
+        p.lineTo (x, cy + h * 0.12f);
+        g.setColour (colours::textDim);
+        g.strokePath (p, juce::PathStrokeType (1.4f));
+    }
+}
+
 void AnamorphLookAndFeel::drawPopupMenuBackground (juce::Graphics& g, int width, int height)
 {
     // Square, fully-opaque list: rounded corners on an opaque menu window leave
@@ -331,8 +440,10 @@ void AnamorphLookAndFeel::drawComboBox (juce::Graphics& g, int w, int h, bool do
 {
     auto bounds = juce::Rectangle<float> (0, 0, (float) w, (float) h).reduced (1.0f);
     const float radius = juce::jmin (5.0f, bounds.getHeight() * 0.5f); // a touch squarer (#8)
-    // Hover / open feedback (#10): brighten the body, accent the outline.
-    const bool hover = box.isMouseOver (true);
+    // Hover / open feedback (#10): brighten the WHOLE body, accent the outline.
+    // Detect hover from the actual mouse position rather than isMouseOver(), which
+    // an intercepting child label could starve so only the border lit up (recurring).
+    const bool hover = box.getLocalBounds().contains (box.getMouseXYRelative());
     const bool open  = down || box.isPopupActive();
     const float lift = open ? 0.18f : hover ? 0.12f : 0.05f;
     juce::ColourGradient gr (colours::bgRaised.brighter (lift), bounds.getX(), bounds.getY(),
@@ -354,6 +465,30 @@ void AnamorphLookAndFeel::drawComboBox (juce::Graphics& g, int w, int h, bool do
 juce::Font AnamorphLookAndFeel::getLabelFont (juce::Label&)
 {
     return juce::Font (juce::FontOptions (13.0f));
+}
+
+// Default LookAndFeel::drawLabel routes through getLabelFont(), which forced a
+// single size and silently overrode every per-label setFont() -- which is why the
+// larger Simple-mode Widen text never appeared. Honour the label's own font here.
+void AnamorphLookAndFeel::drawLabel (juce::Graphics& g, juce::Label& label)
+{
+    g.fillAll (label.findColour (juce::Label::backgroundColourId));
+
+    if (! label.isBeingEdited())
+    {
+        const float alpha = label.isEnabled() ? 1.0f : 0.5f;
+        const juce::Font font (label.getFont()); // <- explicit per-label font wins
+        g.setColour (label.findColour (juce::Label::textColourId).withMultipliedAlpha (alpha));
+        g.setFont (font);
+
+        auto area = label.getBorderSize().subtractedFrom (label.getLocalBounds());
+        g.drawFittedText (label.getText(), area, label.getJustificationType(),
+                          juce::jmax (1, (int) ((float) area.getHeight() / font.getHeight())),
+                          label.getMinimumHorizontalScale());
+    }
+
+    g.setColour (label.findColour (juce::Label::outlineColourId));
+    g.drawRect (label.getLocalBounds());
 }
 
 // A slider value box you can DRAG (up/down) to change the value (#28), while a
@@ -381,7 +516,8 @@ namespace
         if (unit == "bal")
         {
             if (disp.startsWithIgnoreCase ("C")) return "0";
-            const bool left = disp.startsWithIgnoreCase ("L");          // Left -> negative
+            // Left (L) or Mid (M) read as the negative side; Right (R) / Side (S) positive.
+            const bool left = disp.startsWithIgnoreCase ("L") || disp.startsWithIgnoreCase ("M");
             const juce::String num = disp.retainCharacters ("0123456789.");
             return (left ? "-" : "") + num;
         }
@@ -444,6 +580,7 @@ juce::Label* AnamorphLookAndFeel::createSliderTextBox (juce::Slider& s)
 {
     auto* l = new ValueBox();
     l->setJustificationType (juce::Justification::centred);
+    l->setFont (juce::Font (juce::FontOptions (13.0f))); // explicit default; Simple mode enlarges it (#A)
     l->setKeyboardType (juce::TextInputTarget::decimalKeyboard);
     l->setColour (juce::Label::textColourId,            s.findColour (juce::Slider::textBoxTextColourId));
     l->setColour (juce::Label::backgroundColourId,      juce::Colours::transparentBlack);
@@ -487,5 +624,48 @@ void AnamorphLookAndFeel::drawTooltip (juce::Graphics& g, const juce::String& te
     g.drawRoundedRectangle (b.reduced (1.0f), 6.0f, 1.0f);
     layoutTooltip (text, (float) w - 20.0f).draw (g, b.reduced (10.0f, 7.0f));
 }
+
+// ---- Glass surfaces (#17) --------------------------------------------------
+namespace glass
+{
+    void drawEdges (juce::Graphics& g, juce::Rectangle<float> bounds, float radius, float strength)
+    {
+        auto r = bounds.reduced (0.5f);
+        const auto c = r.getCentre();
+
+        // Base hairline.
+        g.setColour (colours::outline);
+        g.drawRoundedRectangle (r, radius, 1.0f);
+
+        // Top-left highlight: a soft white stroke that is brightest at the
+        // top-left corner and fades toward the centre.
+        {
+            juce::ColourGradient gr (juce::Colours::white.withAlpha (0.17f * strength), r.getX(), r.getY(),
+                                     juce::Colours::white.withAlpha (0.0f),             c.x, c.y, false);
+            g.setGradientFill (gr);
+            g.drawRoundedRectangle (r, radius, 1.2f);
+        }
+        // Bottom-right highlight: a slightly cooler, fainter glass edge.
+        {
+            juce::ColourGradient gr (juce::Colours::white.withAlpha (0.11f * strength), r.getRight(), r.getBottom(),
+                                     juce::Colours::white.withAlpha (0.0f),             c.x, c.y, false);
+            g.setGradientFill (gr);
+            g.drawRoundedRectangle (r, radius, 1.2f);
+        }
+    }
+
+    void fillPanel (juce::Graphics& g, juce::Rectangle<float> bounds, float radius,
+                    juce::Colour base, float strength)
+    {
+        // Diagonal micro-gradient: brightest at the TOP-RIGHT, darkest at the
+        // BOTTOM-LEFT (#17).
+        juce::ColourGradient gr (base.brighter (0.06f * strength), bounds.getRight(), bounds.getY(),
+                                 base.darker  (0.11f * strength), bounds.getX(),     bounds.getBottom(), false);
+        gr.addColour (0.5, base);
+        g.setGradientFill (gr);
+        g.fillRoundedRectangle (bounds, radius);
+        drawEdges (g, bounds, radius, strength);
+    }
+} // namespace glass
 
 } // namespace anamorph::gui

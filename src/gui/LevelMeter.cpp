@@ -68,10 +68,11 @@ void LevelMeter::drawBar (juce::Graphics& g, juce::Rectangle<float> r,
         for (float gl : { 0.0f, -6.0f, -18.0f })
             g.fillRect (track.getX(), track.getBottom() - dbToNorm (gl) * track.getHeight(), track.getWidth(), 1.0f);
 
-        // Dim fast-riser, sitting above the body (translucent, soft).
+        // Dim fast-riser, sitting above the body (translucent, soft). A touch
+        // brighter so it reads clearly against the body (#15).
         auto dimFill = track.withTop (track.getBottom() - dimN * track.getHeight());
-        juce::ColourGradient dg (colours::accent2.withAlpha (0.10f), dimFill.getX(), dimFill.getBottom(),
-                                 colours::accent2.withAlpha (0.34f), dimFill.getX(), dimFill.getY(), false);
+        juce::ColourGradient dg (colours::accent2.withAlpha (0.16f), dimFill.getX(), dimFill.getBottom(),
+                                 colours::accent2.withAlpha (0.46f), dimFill.getX(), dimFill.getY(), false);
         g.setGradientFill (dg);
         g.fillRect (dimFill);
 
@@ -107,30 +108,39 @@ void LevelMeter::drawBar (juce::Graphics& g, juce::Rectangle<float> r,
         g.fillRoundedRectangle (track.getX(), py - 1.6f, track.getWidth(), 3.2f, 1.4f);
     }
 
-    // Crisp outer frame on top (after the clipped fills).
-    g.setColour (colours::outline.brighter (0.1f));
-    g.drawRoundedRectangle (r.reduced (0.5f), rad, 1.0f);
+    // Crisp glass frame on top (after the clipped fills) -- top-left / bottom-right
+    // highlight edges to match the panels (#17).
+    glass::drawEdges (g, r, rad, 0.8f);
 }
 
 void LevelMeter::paint (juce::Graphics& g)
 {
     auto bounds = getLocalBounds().toFloat();
-    g.setColour (colours::bgPanel);
-    g.fillRoundedRectangle (bounds, 4.0f);
-    g.setColour (colours::outline);
-    g.drawRoundedRectangle (bounds.reduced (0.5f), 4.0f, 1.0f);
+    glass::fillPanel (g, bounds, 4.0f, colours::bgPanel); // iOS-glass frame (#17)
 
     auto area = bounds.reduced (5.0f);
     auto ruler = area.removeFromRight (22.0f); // full-height dB scale column (#11)
-    const float colW = area.getWidth() / 4.0f;
-    auto colX = [&] (int i) { return area.withX (area.getX() + i * colW).withWidth (colW); };
 
-    // ---- header: IN | OUT ----
+    // The four columns are arranged as TWO pairs -- the IN pair (L,R) and the OUT
+    // pair (L,R) -- with a wider gap BETWEEN the groups than within each pair, so
+    // they read as two grouped meters (#16). Numbers and bars share the same
+    // grouped column geometry so nothing drifts out of alignment.
+    const float groupGap = 11.0f;
+    const float colW = (area.getWidth() - groupGap) / 4.0f;
+    auto colX = [&] (int i)
+    {
+        const float x = area.getX() + i * colW + (i >= 2 ? groupGap : 0.0f);
+        return area.withX (x).withWidth (colW);
+    };
+
+    // ---- header: IN | OUT (each centred over its pair) ----
     auto header = area.removeFromTop (11.0f);
     g.setColour (colours::textDim);
     g.setFont (juce::Font (juce::FontOptions (9.0f)).withExtraKerningFactor (0.15f));
-    g.drawText ("IN",  header.removeFromLeft (area.getWidth() * 0.5f), juce::Justification::centred);
-    g.drawText ("OUT", header, juce::Justification::centred);
+    g.drawText ("IN",  header.withX (colX (0).getX()).withWidth (colX (1).getRight() - colX (0).getX()),
+                juce::Justification::centred);
+    g.drawText ("OUT", header.withX (colX (2).getX()).withWidth (colX (3).getRight() - colX (2).getX()),
+                juce::Justification::centred);
 
     // ---- L / R sub-header ----
     auto sub = area.removeFromTop (10.0f);
@@ -138,7 +148,7 @@ void LevelMeter::paint (juce::Graphics& g)
     g.setFont (juce::Font (juce::FontOptions (8.5f)));
     const char* lr[] = { "L", "R", "L", "R" };
     for (int i = 0; i < 4; ++i)
-        g.drawText (lr[i], sub.withX (area.getX() + i * colW).withWidth (colW), juce::Justification::centred);
+        g.drawText (lr[i], sub.withX (colX (i).getX()).withWidth (colW), juce::Justification::centred);
 
     // ---- Peak row (8 numbers total with the RMS row, #17) ----
     auto pkRow = area.removeFromTop (14.0f);
@@ -156,10 +166,10 @@ void LevelMeter::paint (juce::Graphics& g)
 
     area.removeFromTop (3.0f);
 
-    // ---- four thin bars (aligned under the number columns) ----
+    // ---- four thin bars, in the same two grouped pairs as the numbers (#16) ----
     const float gap = 6.0f;
     const float bw = juce::jmin (14.0f, colW - gap);
-    auto bar = [&] (int i) { return area.withX (area.getX() + i * colW + (colW - bw) * 0.5f).withWidth (bw); };
+    auto bar = [&] (int i) { return colX (i).withX (colX (i).getX() + (colW - bw) * 0.5f).withWidth (bw); };
     drawBar (g, bar (0), source.input.getDimL(),  source.input.getBriL(),  source.input.getBarL());
     drawBar (g, bar (1), source.input.getDimR(),  source.input.getBriR(),  source.input.getBarR());
     drawBar (g, bar (2), source.output.getDimL(), source.output.getBriL(), source.output.getBarL());

@@ -23,10 +23,7 @@ void StereoMeter::paint (juce::Graphics& g)
 {
     auto bounds = getLocalBounds().toFloat();
 
-    g.setColour (colours::bgPanel);
-    g.fillRoundedRectangle (bounds, 4.0f);
-    g.setColour (colours::outline);
-    g.drawRoundedRectangle (bounds.reduced (0.5f), 4.0f, 1.0f);
+    glass::fillPanel (g, bounds, 4.0f, colours::bgPanel); // iOS-glass frame (#17)
 
     const bool horizontal = (orientation == Orientation::Horizontal);
     auto track = bounds.reduced (4.0f);

@@ -20,10 +20,17 @@ void AnamorphAudioProcessorEditor::Backdrop::paint (juce::Graphics& g)
     const float panelA = juce::jmap (reveal, 0.0f, 1.0f, 1.0f, 0.30f);
     g.fillAll (juce::Colour (0x06080b).withAlpha (dimA));
 
-    g.setColour (colours::bgPanel.withAlpha (panelA));
-    g.fillRoundedRectangle (panel.toFloat(), 12.0f);
-    g.setColour (colours::outline.withAlpha (juce::jmap (reveal, 0.0f, 1.0f, 1.0f, 0.5f)));
-    g.drawRoundedRectangle (panel.toFloat().reduced (0.5f), 12.0f, 1.0f);
+    if (panelA >= 0.999f) // solid (normal) state: full iOS-glass panel (#17)
+    {
+        glass::fillPanel (g, panel.toFloat(), 12.0f, colours::bgPanel);
+    }
+    else // mid-reveal (Persist drag): fade the panel so the live scope shows through
+    {
+        g.setColour (colours::bgPanel.withAlpha (panelA));
+        g.fillRoundedRectangle (panel.toFloat(), 12.0f);
+        g.setColour (colours::outline.withAlpha (juce::jmap (reveal, 0.0f, 1.0f, 1.0f, 0.5f)));
+        g.drawRoundedRectangle (panel.toFloat().reduced (0.5f), 12.0f, 1.0f);
+    }
 
     if (aboutText)
     {
@@ -205,7 +212,7 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     applyGainButton.setTooltip ("Bake the measured match into Output as a fixed value.");
     applyGainButton.onClick = [this] { processor.applyAutoGain(); };
     addAndMakeVisible (applyGainButton);
-    matchReadout.setJustificationType (juce::Justification::centred);
+    matchReadout.setJustificationType (juce::Justification::centredRight); // align with the Hz readout below (#11)
     matchReadout.setColour (juce::Label::textColourId, colours::textDim);
     matchReadout.setFont (juce::Font (juce::FontOptions (11.0f)));
     addAndMakeVisible (matchReadout);
@@ -215,7 +222,11 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
                  "Collapse everything below the frequency to mono (before widening).");
     setupRotary (monoFreqK, monoFreqL, "Freq", "Mono Maker crossover frequency.");
     monoFreqK.setSliderStyle (juce::Slider::LinearHorizontal);
-    monoFreqK.setTextBoxStyle (juce::Slider::TextBoxRight, false, 58, 18);
+    monoFreqK.setTextBoxStyle (juce::Slider::TextBoxRight, false, 52, 18);
+    // Right-justify the Hz readout so its right edge lines up with the Level Match
+    // dB readout above it (#11).
+    for (auto* c : monoFreqK.getChildren())
+        if (auto* lab = dynamic_cast<juce::Label*> (c)) lab->setJustificationType (juce::Justification::centredRight);
     attachSlider (monoFreqK, pid::monoMakerFreq);
 
     // --- INPUT module (advanced) ---
@@ -227,6 +238,7 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
 
     setupCombo (channelModeBox, pid::channelMode, "Use the full stereo input, or just one side.");
     channelModeBox.setLookAndFeel (&compactCombo); // smaller list (#12)
+    passComboHoverThrough (channelModeBox); // setLookAndFeel rebuilt the label -> re-let hover through (recurring)
     channelModeLabel.setText ("Input Channel", juce::dontSendNotification);
     channelModeLabel.setColour (juce::Label::textColourId, colours::textDim);
     channelModeLabel.setFont (juce::Font (juce::FontOptions (11.0f)));
@@ -234,6 +246,7 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
 
     setupCombo (soloBox, pid::solo, "Listen to just the Mid or just the Side of the input.");
     soloBox.setLookAndFeel (&compactCombo); // smaller list (#12)
+    passComboHoverThrough (soloBox);
     soloLabel.setText ("M/S Solo", juce::dontSendNotification);
     soloLabel.setColour (juce::Label::textColourId, colours::textDim);
     soloLabel.setFont (juce::Font (juce::FontOptions (11.0f)));
@@ -242,16 +255,27 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     // Compact vertical toggles (pill on top, label centred below) so the Input
     // row labels always fit and never truncate (#11 / #14).
     const juce::String ph = juce::String::charToString ((juce::juce_wchar) 0x00F8);
-    setupToggle (monoToggle, pid::monoSum, "Mono", "Sum the input to mono.");
-    setupToggle (swapToggle, pid::swap,    "Swap", "Swap the two input channels (swaps Mid/Side when M/S is on)."); // #7
-    setupToggle (msToggle,   pid::msMode,  "M/S",  "M/S decoder: treat the input as Mid (Ch1) / Side (Ch2) and decode to L/R."); // #6/#7
-    setupToggle (polLToggle, pid::polarityL, ph + " L", "Flip the polarity (phase) of the left channel.");
-    setupToggle (polRToggle, pid::polarityR, ph + " R", "Flip the polarity (phase) of the right channel.");
+    setupToggle (monoToggle, pid::monoSum, "Mono", "Sum to mono (after M/S decode)."); // #14
+    setupToggle (swapToggle, pid::swap,    "Swap", "Swap the Left / Right channels, or Mid / Side when M/S is on."); // #3
+    setupToggle (msToggle,   pid::msMode,  "M/S",  "M/S decoder: treat the input as Mid / Side and decode to Left / Right."); // #4
+    msToggle.onClick = [this] { updateMsLabels(); };
+    setupToggle (polLToggle, pid::polarityL, ph + " L", "Flip the polarity of the Left channel.");   // M/S-aware (#13)
+    setupToggle (polRToggle, pid::polarityR, ph + " R", "Flip the polarity of the Right channel.");
     for (auto* t : { &monoToggle, &swapToggle, &msToggle, &polLToggle, &polRToggle })
         t->setComponentID ("vtoggle");
 
-    setupRotary (balanceK, balanceL, "Balance", "Balance the input between L and R.");
+    setupRotary (balanceK, balanceL, "Balance", "Input balance: Left / Right (Mid / Side in M/S mode)."); // #12
     attachSlider (balanceK, pid::inputBalance);
+    // M/S-aware value readout: shows L/R normally, M/S when the decoder is on (#12).
+    balanceK.textFromValueFunction = [this] (double v) -> juce::String
+    {
+        const bool ms = msToggle.getToggleState();
+        const float val = (float) v;
+        if (std::abs (val) < 0.0005f) return "C";
+        if (val < 0.0f) return juce::String (ms ? "M -" : "L -") + juce::String (-val * 100.0f, 1) + "%";
+        return juce::String (ms ? "S " : "R ") + juce::String (val * 100.0f, 1) + "%";
+    };
+    balanceK.updateText();
 
     // --- MULTIBAND module (advanced) ---
     multibandLabel.setText ("MULTIBAND", juce::dontSendNotification);
@@ -304,6 +328,7 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     persistLabel.setColour (juce::Label::textColourId, colours::textDim);
     settingsBackdrop.addAndMakeVisible (persistLabel);
     scopePersistK.setSliderStyle (juce::Slider::LinearHorizontal);
+    scopePersistK.setDoubleClickReturnValue (true, 0.5); // double-click resets to default (#7)
     scopePersistK.setColour (juce::Slider::textBoxTextColourId, colours::textDim);
     scopePersistK.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
     scopePersistK.setTooltip ("Vectorscope afterglow time " // #5
@@ -334,6 +359,7 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     applyTooltipsEnabled();
     applyScopePersist();
     updateAlgoControls();
+    updateMsLabels();
     updateModeVisibility();
     setSize (kWidth, kHeight);    // single fixed size for both modes (#20)
     setResizable (false, false);
@@ -394,18 +420,24 @@ void AnamorphAudioProcessorEditor::attachSlider (juce::Slider& s, const char* id
     if (unit.isNotEmpty()) s.getProperties().set ("unit", unit);
 }
 
+// The combo's internal text label otherwise eats hover events over most of the
+// box, so brightening only showed on the border/arrow. Let events fall through to
+// the ComboBox so the whole control lights up. Must be re-applied after any
+// setLookAndFeel(), which rebuilds the label fresh (recurring hover request).
+void AnamorphAudioProcessorEditor::passComboHoverThrough (juce::ComboBox& box)
+{
+    for (auto* child : box.getChildren())
+        if (dynamic_cast<juce::Label*> (child) != nullptr)
+            child->setInterceptsMouseClicks (false, false);
+}
+
 void AnamorphAudioProcessorEditor::setupCombo (juce::ComboBox& box, const char* id, const juce::String& tip)
 {
     if (auto* cp = dynamic_cast<juce::AudioParameterChoice*> (processor.getAPVTS().getParameter (id)))
         box.addItemList (cp->choices, 1);
     box.setTooltip (tip);
     box.setRepaintsOnMouseActivity (true); // hover feedback (#10)
-    // The combo's internal text label otherwise eats hover events over most of
-    // the box, so brightening only showed on the border/arrow (#1). Let events
-    // fall through to the ComboBox so the whole control lights up.
-    for (auto* child : box.getChildren())
-        if (dynamic_cast<juce::Label*> (child) != nullptr)
-            child->setInterceptsMouseClicks (false, false);
+    passComboHoverThrough (box);
     addAndMakeVisible (box);
     comboAtts.add (new ComboBoxAttachment (processor.getAPVTS(), id, box));
 }
@@ -483,6 +515,17 @@ void AnamorphAudioProcessorEditor::updateModeVisibility()
     repaint();
 }
 
+void AnamorphAudioProcessorEditor::updateMsLabels()
+{
+    msState = msToggle.getToggleState();
+    const juce::String ph = juce::String::charToString ((juce::juce_wchar) 0x00F8);
+    polLToggle.setButtonText (ph + (msState ? " M" : " L")); // ø M / ø L  (#13)
+    polRToggle.setButtonText (ph + (msState ? " S" : " R")); // ø S / ø R
+    polLToggle.setTooltip (msState ? "Flip the polarity of the Mid channel."  : "Flip the polarity of the Left channel.");
+    polRToggle.setTooltip (msState ? "Flip the polarity of the Side channel." : "Flip the polarity of the Right channel.");
+    balanceK.updateText(); // re-derive the L/R vs M/S balance readout (#12)
+}
+
 void AnamorphAudioProcessorEditor::showAbout (bool show)    { aboutBackdrop.setVisible (show);    if (show) { aboutBackdrop.toFront (false); resized(); } }
 void AnamorphAudioProcessorEditor::showSettings (bool show)
 {
@@ -510,6 +553,8 @@ void AnamorphAudioProcessorEditor::timerCallback()
         tooltipsOn = tooltipsToggle.getToggleState();
         applyTooltipsEnabled();
     }
+    if (msToggle.getToggleState() != msState) // external / preset / automation change (#12/#13)
+        updateMsLabels();
 
     // Ease the level-meter reveal: vectorscope slides right, meter grows in.
     // Shorter, snappier than before (#27).
@@ -527,9 +572,13 @@ void AnamorphAudioProcessorEditor::timerCallback()
 
     // Settings overlay becomes see-through (panel + dim only; the bar stays
     // opaque) while the Persist bar is dragged -- shorter, gentler reveal (#26).
+    // A short hold delay before revealing means a double-click-to-reset no longer
+    // flashes the window transparent then opaque (#7).
     if (settingsBackdrop.isVisible())
     {
-        const float revTarget = persistDragging ? 1.0f : 0.0f;
+        persistHold = persistDragging ? persistHold + 1 : 0;
+        const bool revealNow = persistDragging && persistHold >= 4; // ~165 ms at 24 Hz
+        const float revTarget = revealNow ? 1.0f : 0.0f;
         if (std::abs (settingsBackdrop.reveal - revTarget) > 0.004f)
         {
             settingsBackdrop.reveal += (revTarget - settingsBackdrop.reveal) * 0.45f;
@@ -575,8 +624,9 @@ void AnamorphAudioProcessorEditor::paint (juce::Graphics& g)
     if (advanced)
     {
         // Divider between the Widen and Output modules in the right panel, to
-        // match the Input/Multiband divider in the bottom strip (#11).
-        const float dy = 46.0f + 18.0f + 304.0f + 20.0f; // just above the Output label
+        // match the Input/Multiband divider in the bottom strip (#11). Y is set by
+        // resized() so it always tracks the (now looser) Output module position.
+        const float dy = (float) widenOutputDividerY;
         g.setColour (colours::outline.withAlpha (0.6f));
         g.drawLine (right.getX() + 12.0f, dy, right.getRight() - 12.0f, dy, 1.0f);
 
@@ -712,43 +762,45 @@ void AnamorphAudioProcessorEditor::resized()
         }
         else
         {
-            // ADVANCED: Widen + Output spread to fill the column with even gaps
-            // instead of being crammed at the top (#10).
+            // ADVANCED: Widen + Output spread to fill the WHOLE column with even,
+            // generous gaps instead of leaving a void at the bottom (#10).
             auto col = rightPanel.reduced (20, 18);
 
             { auto lr = col.removeFromTop (16); algoOptLabel.setBounds (lr.removeFromRight (94)); algorithmLabel.setBounds (lr); }
-            col.removeFromTop (8);
+            col.removeFromTop (10);
             layoutAlgoRow (col.removeFromTop (30));
-            col.removeFromTop (20);
-            twoKnob (col.removeFromTop (108), driveK, driveL, amountK, amountL);
-            col.removeFromTop (14);
-            layoutCharacter (col.removeFromTop (108), widthK, widthL);
+            col.removeFromTop (30);
+            twoKnob (col.removeFromTop (120), driveK, driveL, amountK, amountL);
+            col.removeFromTop (24);
+            layoutCharacter (col.removeFromTop (120), widthK, widthL);
 
-            col.removeFromTop (40); // push the Output module further down (#11)
+            const int gapTop = col.getY();
+            col.removeFromTop (46);                  // breathing room before the Output module
+            widenOutputDividerY = gapTop + 22;        // divider sits in the middle of that gap (#11)
             outputModuleLabel.setBounds (col.removeFromTop (16));
-            col.removeFromTop (8);
+            col.removeFromTop (10);
             {
-                auto row = col.removeFromTop (100);
+                auto row = col.removeFromTop (118);
                 const int w = row.getWidth() / 3;
                 placeKnob (row.removeFromLeft (w), mixK, mixL);
                 placeKnob (row.removeFromLeft (w), outputK, outputL);
                 placeKnob (row, outBalanceK, outBalanceL);
             }
-            col.removeFromTop (14);
-            // Level Match + Mono Maker toggles share one X and one size, vertically
-            // aligned (#16). Apply / readout sit to the right of Level Match; the
-            // Freq slider to the right of Mono Maker.
-            const int togW = 118;
+            col.removeFromTop (22);
+            // Level Match + Mono Maker share one X and one toggle size, vertically
+            // aligned (#16). Their right-hand NUMBERS (dB readout / Hz) right-align
+            // to the same edge; the Mono Maker bar starts at Apply's left edge (#11).
+            const int togW = 118, numW = 56;
             auto lm = col.removeFromTop (30);
             autoMatchToggle.setBounds (lm.removeFromLeft (togW).reduced (2, 4));
             lm.removeFromLeft (4);
-            applyGainButton.setBounds (lm.removeFromLeft (66).reduced (2, 4));
-            matchReadout.setBounds (lm.reduced (2, 4));
-            col.removeFromTop (10);
+            matchReadout.setBounds (lm.removeFromRight (numW).reduced (2, 4)); // right-aligned dB readout
+            applyGainButton.setBounds (lm.reduced (2, 4));                     // Apply fills the gap between
+            col.removeFromTop (12);
             auto mm = col.removeFromTop (30);
             monoMakerToggle.setBounds (mm.removeFromLeft (togW).reduced (2, 4));
             mm.removeFromLeft (4);
-            monoFreqK.setBounds (mm.reduced (2, 4));
+            monoFreqK.setBounds (mm.reduced (2, 4)); // bar aligns under Apply, Hz box right-aligned under the dB
         }
     }
 
