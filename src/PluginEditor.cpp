@@ -141,8 +141,11 @@ void AnamorphAudioProcessorEditor::Backdrop::paintFlare (juce::Graphics& g, juce
     juce::Path clip; clip.addRoundedRectangle (pf, 12.0f);
     g.reduceClipRegion (clip);
 
-    const float mx   = pf.getX() + 58.0f;  // pinned top-left, matching the screenshot
-    const float my   = pf.getY() + 30.0f;
+    // Pinned to the EXACT top-left corner -- where the 0.5.5 cursor flare clamped
+    // (jlimit) when the mouse went to/beyond the corner. That is the look the
+    // reference screenshot captured (#6).
+    const float mx   = pf.getX();
+    const float my   = pf.getY();
     const float frac = juce::jlimit (0.05f, 0.95f, (mx - pf.getX()) / pf.getWidth());
     const juce::Colour hot (0xfff4f8ff);
 
@@ -343,7 +346,7 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
                  "Collapse everything below the frequency to mono (before widening).");
     setupRotary (monoFreqK, monoFreqL, "Freq", "Mono Maker crossover frequency.");
     monoFreqK.setSliderStyle (juce::Slider::LinearHorizontal);
-    monoFreqK.setTextBoxStyle (juce::Slider::TextBoxRight, false, 52, 18);
+    monoFreqK.setTextBoxStyle (juce::Slider::TextBoxRight, false, 50, 18);
     // Right-justify the Hz readout (right edge lines up with the Level Match dB
     // above) and use a slightly smaller font for it (#11).
     for (auto* c : monoFreqK.getChildren())
@@ -761,9 +764,13 @@ void AnamorphAudioProcessorEditor::timerCallback()
     if (settingsBackdrop.isVisible())
     {
         constexpr double dt = 1.0 / 24.0;
-        // Drag reveal: immediate (after a short anti-flicker hold), no dwell (#7).
+        // Drag reveal: normally waits a short anti-flicker hold (so a double-click
+        // reset doesn't flash). BUT if the window is ALREADY see-through (e.g. from a
+        // recent scroll), grabbing the bar keeps it transparent IMMEDIATELY and holds
+        // it there until release -- no recover-then-retransparent flicker (#3).
+        const bool alreadyRevealed = settingsBackdrop.reveal > 0.5f;
         persistHold = persistDragging ? persistHold + 1 : 0;
-        const bool dragReveal = persistDragging && persistHold >= 4; // ~165 ms at 24 Hz
+        const bool dragReveal = persistDragging && (persistHold >= 4 || alreadyRevealed);
         // Scroll / type reveal: sustained change, then a ~0.5 s dwell after stopping (#1).
         if (persistScrollWindow > 0.0) persistScrollWindow -= dt;
         if (persistRevealTimer  > 0.0) persistRevealTimer  -= dt;
@@ -864,7 +871,9 @@ void AnamorphAudioProcessorEditor::resized()
         inner.removeFromTop (12);
         persistLabel.setBounds (inner.removeFromTop (16));
         inner.removeFromTop (4);
-        scopePersistK.setBounds (inner.removeFromTop (24));
+        // Extend 8 px left so the 8 px track inset lands the bar's left edge on the
+        // same line as the labels / Oversampling combo above (#4).
+        { auto pb = inner.removeFromTop (24); scopePersistK.setBounds (pb.withLeft (pb.getX() - 8)); }
         inner.removeFromTop (12);
         // Nudge the toggle right so its pill lines up with the labels above (#5).
         tooltipsToggle.setBounds (inner.removeFromTop (26).withTrimmedLeft (4));
@@ -998,8 +1007,10 @@ void AnamorphAudioProcessorEditor::resized()
             col.removeFromTop (12);
             auto mm = col.removeFromTop (30);
             monoMakerToggle.setBounds (mm.removeFromLeft (togW).reduced (2, 4));
-            mm.removeFromLeft (4);
-            monoFreqK.setBounds (mm.reduced (2, 4)); // bar aligns under Apply, Hz box right-aligned under the dB
+            // The slider spans straight from the toggle to the column edge; with the
+            // 8 px track inset its bar lines up under (and reads as long as) the
+            // Apply button above, with the Hz box right-aligned to the dB (#2).
+            monoFreqK.setBounds (mm.reduced (0, 4));
         }
     }
 
@@ -1039,7 +1050,7 @@ void AnamorphAudioProcessorEditor::resized()
             soloLabel.setBounds (soRow.removeFromTop (14));
             soRow.removeFromTop (3);
             soloBox.setBounds (soRow);
-            a.removeFromTop (6);
+            a.removeFromTop (14); // drop the five toggles + their labels down a bit (#1)
             // Five compact vertical toggles spread evenly across the row (#11/#14).
             auto tog = a.removeFromTop (36);
             const int tw = tog.getWidth() / 5;

@@ -94,9 +94,12 @@ void AnamorphLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int
     pointer.applyTransform (juce::AffineTransform::rotation (angle).translated (centre.x, centre.y));
     if (active || hover)
     {
-        const float a = active ? 0.55f : 0.28f;
-        juce::DropShadow (juce::Colours::white.withAlpha (a),        7, {}).drawForPath (g, pointer);
-        juce::DropShadow (juce::Colours::white.withAlpha (a * 0.6f), 3, {}).drawForPath (g, pointer);
+        // A WIDE, soft feather (a big-radius blurred halo) rather than a tight bright
+        // band -- so it reads like the blue/teal arc glow, not a hard white outline
+        // (#5). Two radii: a broad soft wash + a closer one.
+        const float a = active ? 0.42f : 0.22f;
+        juce::DropShadow (juce::Colours::white.withAlpha (a),        active ? 13 : 9, {}).drawForPath (g, pointer);
+        juce::DropShadow (juce::Colours::white.withAlpha (a * 0.7f), active ? 6  : 4, {}).drawForPath (g, pointer);
     }
     g.setColour (active ? juce::Colours::white : (hover ? colours::text.brighter (0.2f) : colours::text));
     g.fillPath (pointer);
