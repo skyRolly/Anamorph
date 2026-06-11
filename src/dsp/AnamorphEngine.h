@@ -51,6 +51,10 @@ public:
     // switch is click-free (feedback #10 / #11).
     void setParameters (const EngineParameters& params) noexcept;
 
+    // Host transport state, once per block from the wrapper (audio thread).
+    // A play->stop edge triggers Velvet's noise-tail kill (#4).
+    void setTransportPlaying (bool isPlaying) noexcept { velvet.setTransportPlaying (isPlaying); }
+
     // Processes a STEREO buffer in place (the wrapper up-mixes mono -> stereo).
     void process (juce::AudioBuffer<float>& buffer) noexcept;
 
@@ -143,6 +147,13 @@ private:
     int monoLowWrite = 0;
 
     bool driveActive = false;
+
+    // Whether the oversampling wrap is ENGAGED, latched only at safe points
+    // (reset / the silent duck bottom). Engaging the oversampler inserts its
+    // group delay, so doing it live -- e.g. Drive crossing 0 with OS selected --
+    // jump-cuts the timeline; latching routes every OS-path change through the
+    // duck instead (#3).
+    bool osEngaged = false;
 };
 
 } // namespace anamorph

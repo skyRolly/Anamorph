@@ -13,24 +13,24 @@ quarantine it after download. Follow the steps below or it won't load.
 1) Install the formats you need / 安装你需要的格式
 --------------------------------------------------------------------
   * VST3  (Reaper, Ableton, Cubase, Bitwig, ...):
-        ~/Library/Audio/Plug-Ins/VST3/
+        /Library/Audio/Plug-Ins/VST3/
 
   * AU / Audio Unit  (Logic Pro, GarageBand, and also Reaper/Ableton):
-        ~/Library/Audio/Plug-Ins/Components/
+        /Library/Audio/Plug-Ins/Components/
 
   Logic Pro 和 GarageBand 只认 AU(.component),不认 VST3 —— 用 Logic 的话装 AU。
 
-  Copy commands / 复制命令:
+  Copy commands (system folders need sudo) / 复制命令(系统目录需要 sudo):
 
-      mkdir -p ~/Library/Audio/Plug-Ins/VST3 ~/Library/Audio/Plug-Ins/Components
-      cp -R "Anamorph.vst3"      ~/Library/Audio/Plug-Ins/VST3/
-      cp -R "Anamorph.component" ~/Library/Audio/Plug-Ins/Components/
+      sudo mkdir -p /Library/Audio/Plug-Ins/VST3 /Library/Audio/Plug-Ins/Components
+      sudo cp -R "Anamorph.vst3"      /Library/Audio/Plug-Ins/VST3/
+      sudo cp -R "Anamorph.component" /Library/Audio/Plug-Ins/Components/
 
 --------------------------------------------------------------------
 2) Remove the quarantine flag / 去掉隔离标记  (REQUIRED / 必须)
 --------------------------------------------------------------------
-      xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/Anamorph.vst3
-      xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/Components/Anamorph.component
+      sudo xattr -dr com.apple.quarantine /Library/Audio/Plug-Ins/VST3/Anamorph.vst3
+      sudo xattr -dr com.apple.quarantine /Library/Audio/Plug-Ins/Components/Anamorph.component
 
 --------------------------------------------------------------------
 3) Rescan in your DAW / 在 DAW 里重新扫描插件

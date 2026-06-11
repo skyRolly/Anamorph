@@ -474,8 +474,27 @@ void AnamorphLookAndFeel::drawComboBox (juce::Graphics& g, int w, int h, bool do
                              colours::bgRaised.darker (0.10f), bounds.getX(), bounds.getBottom(), false);
     g.setGradientFill (gr);
     g.fillRoundedRectangle (bounds, radius);
-    g.setColour (open ? colours::accent.withAlpha (0.8f) : colours::outline);
-    g.drawRoundedRectangle (bounds, radius, open ? 1.4f : 1.0f);
+    if (open)
+    {
+        // Open state: a faint accent bloom just inside the rim plus a thin
+        // gradient border -- the box reads as lit by its list, instead of the
+        // previous flat thick ring, which looked dated (#2).
+        for (int i = 3; i >= 1; --i)
+        {
+            g.setColour (colours::accent.withAlpha (0.05f * (float) i));
+            g.drawRoundedRectangle (bounds.reduced ((float) (4 - i)),
+                                    juce::jmax (1.5f, radius - (float) (4 - i)), 1.8f);
+        }
+        juce::ColourGradient og (colours::accent.brighter (0.22f), bounds.getX(), bounds.getY(),
+                                 colours::accent.withAlpha (0.55f), bounds.getX(), bounds.getBottom(), false);
+        g.setGradientFill (og);
+        g.drawRoundedRectangle (bounds, radius, 1.0f);
+    }
+    else
+    {
+        g.setColour (colours::outline);
+        g.drawRoundedRectangle (bounds, radius, 1.0f);
+    }
 
     juce::Path arrow;
     const float cx = (float) w - 14.0f, cy = (float) h * 0.5f;

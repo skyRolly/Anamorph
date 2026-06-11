@@ -66,6 +66,8 @@ private:
     };
 
     void timerCallback() override;
+    void layoutScopeArea();              // scope + meter block; re-run per frame during the reveal (#6)
+    void stepMeterReveal (double frameTimeSec); // vsync-driven meter reveal animation (#6)
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override; // Persist scroll reveal (#1)
     void setupRotary (juce::Slider&, juce::Label&, const juce::String& name, const juce::String& tip);
     void attachSlider (juce::Slider&, const char* id);
@@ -174,6 +176,12 @@ private:
     double persistScrollWindow = 0.0;
     double persistRevealTimer  = 0.0;
     int   widenOutputDividerY = 0; // y of the Widen/Output divider in advanced (#10/#11)
+
+    // Meter reveal runs on the display's vblank (not the 24 Hz timer) and lays
+    // out ONLY the scope/meter block per frame -- the full-window relayout per
+    // coarse timer tick is what stuttered (#6). Same ease curve, time-based.
+    juce::VBlankAttachment meterVBlank;
+    double lastFrameTime = 0.0;
 
     // Single fixed window for both modes: toggling Advanced relays out the
     // content in place, so the host never resizes us and nothing flickers (#20).

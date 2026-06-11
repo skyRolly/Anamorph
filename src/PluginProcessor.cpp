@@ -89,6 +89,7 @@ void AnamorphAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         engine.getLevels().resetHold();
     prevPlaying = playing;
 
+    engine.setTransportPlaying (playing); // a pause edge kills Velvet's noise tail (#4)
     engine.setParameters (params.toEngine());
     engine.process (buffer);
 }
