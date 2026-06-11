@@ -155,6 +155,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
     floatParam (pid::scopePersist, "Scope Persistence", { 0.0f, 1.0f, 0.001f }, 0.5f, pct, pctFrom);
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::metersOn, kVersion }, "Show Meters", false));
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::tooltipsOn, kVersion }, "Show Tooltips", false));
+    // Micro-animations on by default; Settings can switch them off (F3).
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::uiAnimations, kVersion }, "UI Animations", true));
+    // Whole-window scale, M = the original 940x720 (F4).
+    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { pid::uiScale, kVersion },
+        "UI Scale", StringArray { "XS", "S", "M", "L", "XL" }, 2));
 
     return layout;
 }

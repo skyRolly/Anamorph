@@ -7,7 +7,7 @@ namespace anamorph::gui
 StereoMeter::StereoMeter (anamorph::CorrelationMeter& src, Orientation o, Type t)
     : source (src), orientation (o), type (t)
 {
-    startTimerHz (30);
+    startTimerHz (60); // match the vectorscope's frame rate -- 30 Hz juddered (#2)
 }
 
 StereoMeter::~StereoMeter() { stopTimer(); }
@@ -15,7 +15,7 @@ StereoMeter::~StereoMeter() { stopTimer(); }
 void StereoMeter::timerCallback()
 {
     const float target = (type == Type::Balance) ? source.getBalance() : source.getSlow();
-    value += 0.3f * (target - value); // gentle visual smoothing
+    value += 0.165f * (target - value); // same ballistics as 0.3 @ 30 Hz, time-corrected
     repaint();
 }
 

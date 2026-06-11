@@ -30,10 +30,14 @@ void AnamorphLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int
     const auto angle   = startAngle + pos * (endAngle - startAngle);
     const float thick  = juce::jmax (3.0f, radius * 0.16f);
 
-    // Interaction state (#10): hover the KNOB (not its value box) glows a little
-    // more; pressing/holding -- or dragging the value number -- glows strongly.
+    // Interaction state (#10), now as EASED 0..1 levels from the micro-anim
+    // driver (F3): hA ramps with hover, aA with press / value-number drag; hi is
+    // "interacting at all". Falls back to the old binary feel when not animated.
     const bool hover  = s.isMouseOver (false);
     const bool active = s.isMouseButtonDown() || (bool) s.getProperties().getWithDefault ("dragging", false);
+    const float hA = animOr (s, "hovA", hover);
+    const float aA = animOr (s, "actA", active);
+    const float hi = juce::jmax (hA, aA);
 
     // Track
     juce::Path track;
@@ -51,9 +55,10 @@ void AnamorphLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int
     value.addCentredArc (centre.x, centre.y, radius - thick, radius - thick, 0.0f,
                          startAngle, angle, true);
     // The arc glow keeps its blue->teal gradient but spreads even WIDER around the
-    // arc on hover / press, with many thin layers so it stays smooth (#4).
-    const float glowPeak   = active ? 0.40f : hover ? 0.24f : 0.13f;
-    const float glowSpread = active ? 11.0f : hover ? 8.0f  : 3.4f;
+    // arc on hover / press, with many thin layers so it stays smooth (#4). The
+    // eased levels make the spread glide instead of stepping (F3).
+    const float glowPeak   = 0.13f + 0.11f * hi + 0.16f * aA; // idle .13 / hover .24 / press .40
+    const float glowSpread = 3.4f  + 4.6f  * hi + 3.0f  * aA; // idle 3.4 / hover 8 / press 11
     constexpr int nLayers = 12;
     for (int i = 0; i < nLayers; ++i)
     {
@@ -65,8 +70,8 @@ void AnamorphLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int
         g.setGradientFill (gg);
         g.strokePath (value, juce::PathStrokeType (gw, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     }
-    juce::ColourGradient grad (active ? arcLo.brighter (0.12f) : arcLo, centre.x - radius, centre.y,
-                               active ? arcHi.brighter (0.12f) : arcHi, centre.x + radius, centre.y, false);
+    juce::ColourGradient grad (arcLo.brighter (0.12f * aA), centre.x - radius, centre.y,
+                               arcHi.brighter (0.12f * aA), centre.x + radius, centre.y, false);
     grad.addColour (0.5, arcLo.interpolatedWith (arcHi, 0.5f));
     g.setGradientFill (grad);
     g.strokePath (value, juce::PathStrokeType (thick, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
@@ -74,15 +79,15 @@ void AnamorphLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int
     // Glassy knob face: a top-lit radial gradient over a dark base. Hover / press
     // lift the face only SLIGHTLY now -- the previous lift was too bright (#3).
     const float faceR  = radius - thick * 1.6f;
-    const float lift   = active ? 0.12f : hover ? 0.06f : 0.0f;
+    const float lift   = 0.06f * hi + 0.06f * aA;
     juce::ColourGradient face (colours::bgRaised.brighter (0.16f + lift), centre.x, centre.y - faceR * 0.7f,
                                colours::bgPanel.darker (0.25f), centre.x, centre.y + faceR, true);
     face.addColour (0.55, colours::bgRaised.brighter (lift));
     g.setGradientFill (face);
     g.fillEllipse (centre.x - faceR, centre.y - faceR, faceR * 2.0f, faceR * 2.0f);
     // Subtle glass rim: bright top-left arc + faint opposite glow (#16).
-    glass::drawCircleEdge (g, centre.x, centre.y, faceR, hover || active ? 1.0f : 0.85f);
-    g.setColour (colours::outline.brighter (hover || active ? 0.12f : 0.0f));
+    glass::drawCircleEdge (g, centre.x, centre.y, faceR, 0.85f + 0.15f * hi);
+    g.setColour (colours::outline.brighter (0.12f * hi));
     g.drawEllipse (centre.x - faceR, centre.y - faceR, faceR * 2.0f, faceR * 2.0f, 1.0f);
 
     // Pointer: the glow is a REAL feathered halo AROUND the pointer (a blurred
@@ -92,16 +97,18 @@ void AnamorphLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int
     const float pl = faceR * 0.92f, pr = thick * 0.35f;
     pointer.addRoundedRectangle (-pr, -pl, pr * 2.0f, pl * 0.6f, pr);
     pointer.applyTransform (juce::AffineTransform::rotation (angle).translated (centre.x, centre.y));
-    if (active || hover)
+    // A WIDE, soft feather (a big-radius blurred halo) rather than a tight bright
+    // band -- so it reads like the blue/teal arc glow, not a hard white outline
+    // (#5). Two radii: a broad soft wash + a closer one. The eased levels fade it
+    // in/out and widen it smoothly (F3).
+    const float pa = (0.22f + 0.20f * aA) * hi; // hover .22 / press .42, faded by hi
+    if (pa > 0.02f)
     {
-        // A WIDE, soft feather (a big-radius blurred halo) rather than a tight bright
-        // band -- so it reads like the blue/teal arc glow, not a hard white outline
-        // (#5). Two radii: a broad soft wash + a closer one.
-        const float a = active ? 0.42f : 0.22f;
-        juce::DropShadow (juce::Colours::white.withAlpha (a),        active ? 13 : 9, {}).drawForPath (g, pointer);
-        juce::DropShadow (juce::Colours::white.withAlpha (a * 0.7f), active ? 6  : 4, {}).drawForPath (g, pointer);
+        const int r1 = 9 + juce::roundToInt (4.0f * aA); // hover 9 / press 13
+        juce::DropShadow (juce::Colours::white.withAlpha (pa),        r1,     {}).drawForPath (g, pointer);
+        juce::DropShadow (juce::Colours::white.withAlpha (pa * 0.7f), r1 / 2, {}).drawForPath (g, pointer);
     }
-    g.setColour (active ? juce::Colours::white : (hover ? colours::text.brighter (0.2f) : colours::text));
+    g.setColour (colours::text.brighter (0.2f * hi).interpolatedWith (juce::Colours::white, aA));
     g.fillPath (pointer);
 }
 
@@ -137,9 +144,11 @@ void AnamorphLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int
     // layered glow so the halo's brightness falls off smoothly instead of in
     // visible steps when zoomed in (#4).
     const juce::Colour fillLo (0xff5aa6ff), fillHi (0xff35d0c0);
-    const bool act = s.isMouseOverOrDragging() || (bool) s.getProperties().getWithDefault ("dragging", false);
-    const float glowPeak   = act ? 0.34f : 0.16f;
-    const float glowSpread = act ? 4.6f  : 2.8f;
+    const bool actB = s.isMouseOverOrDragging() || (bool) s.getProperties().getWithDefault ("dragging", false);
+    // Eased interaction level (F3): hover or drag, whichever is brighter.
+    const float act = juce::jmax (animOr (s, "hovA", actB), animOr (s, "actA", actB));
+    const float glowPeak   = 0.16f + 0.18f * act;
+    const float glowSpread = 2.8f  + 1.8f  * act;
     constexpr int nLayers = 9;
     for (int i = 0; i < nLayers; ++i)
     {
@@ -165,16 +174,16 @@ void AnamorphLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int
     const float cx = horizontal ? pos : bounds.getCentreX();
     const float cy = horizontal ? bounds.getCentreY() : pos;
     juce::Path thumbPath; thumbPath.addEllipse (cx - r, cy - r, r * 2.0f, r * 2.0f);
-    if (act)
+    if (act > 0.03f)
     {
-        juce::DropShadow (fillHi.withAlpha (0.65f), 9, {}).drawForPath (g, thumbPath);
-        juce::DropShadow (fillHi.withAlpha (0.40f), 4, {}).drawForPath (g, thumbPath);
+        juce::DropShadow (fillHi.withAlpha (0.65f * act), 9, {}).drawForPath (g, thumbPath);
+        juce::DropShadow (fillHi.withAlpha (0.40f * act), 4, {}).drawForPath (g, thumbPath);
     }
-    juce::ColourGradient kg (colours::bgRaised.brighter (act ? 0.45f : 0.30f), cx, cy - r,
+    juce::ColourGradient kg (colours::bgRaised.brighter (0.30f + 0.15f * act), cx, cy - r,
                              colours::bgPanel.darker (0.18f),     cx, cy + r, false);
     g.setGradientFill (kg);
     g.fillEllipse (cx - r, cy - r, r * 2.0f, r * 2.0f);
-    g.setColour (act ? fillHi : juce::Colour (0xffb8c2cf)); // gray-white rim, cyan on hover
+    g.setColour (juce::Colour (0xffb8c2cf).interpolatedWith (fillHi, act)); // gray rim -> cyan on touch
     g.drawEllipse (cx - r, cy - r, r * 2.0f, r * 2.0f, 1.4f);
     // Glass rim ON TOP, clearly visible: bright top-left arc + faint opposite (#16).
     glass::drawCircleEdge (g, cx, cy, r, 1.5f);
@@ -197,19 +206,23 @@ void AnamorphLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButto
 {
     auto bounds = b.getLocalBounds().toFloat();
     const bool on = b.getToggleState();
-    // Hover brightens only the switch + text, never the whole block (#4).
-    const float hi = highlighted ? 0.18f : 0.0f;
+    // Hover brightens only the switch + text, never the whole block (#4). Both
+    // levels are EASED by the micro-anim driver, so the knob slides and the
+    // glow fades instead of stepping (F3).
+    const float hovA = animOr (b, "hovA", highlighted);
+    const float onAv = animOr (b, "onA",  on);
+    const float hi = 0.18f * hovA;
 
     // --- Level-meter glyph instead of the word "Meters" (#7) ---
     if (b.getComponentID() == "metersicon")
     {
-        const auto col = (on ? colours::accent : colours::textDim).brighter (hi);
+        const auto col = colours::textDim.interpolatedWith (colours::accent, onAv).brighter (hi);
         const float barW = 5.0f, gap = 4.0f;
         const float totalW = barW * 2.0f + gap;
         const float barH = juce::jmin (bounds.getHeight() - 6.0f, 16.0f);
         const float x0 = bounds.getCentreX() - totalW * 0.5f;
         const float y0 = bounds.getCentreY() - barH * 0.5f;
-        if (on) { g.setColour (col.withAlpha (0.18f)); g.fillRoundedRectangle (bounds.reduced (3.0f), 4.0f); }
+        if (onAv > 0.02f) { g.setColour (col.withAlpha (0.18f * onAv)); g.fillRoundedRectangle (bounds.reduced (3.0f), 4.0f); }
         for (int k = 0; k < 2; ++k)
         {
             auto bar = juce::Rectangle<float> (x0 + k * (barW + gap), y0, barW, barH);
@@ -229,24 +242,24 @@ void AnamorphLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButto
         const juce::Colour onCol = colours::accent.brighter (hi);
         const float ph = 15.0f, pw = ph * 1.7f;
         auto pill = juce::Rectangle<float> (bounds.getCentreX() - pw * 0.5f, bounds.getY() + 2.0f, pw, ph);
-        if (on) { g.setColour (onCol.withAlpha (0.22f)); g.fillRoundedRectangle (pill.expanded (2.0f), (ph + 4.0f) * 0.5f); }
-        const auto pillBase = on ? onCol : colours::bgRaised.brighter (hi);
-        juce::ColourGradient pg (pillBase.brighter (on ? 0.10f : 0.06f), pill.getX(), pill.getY(),
-                                 pillBase.darker (on ? 0.12f : 0.10f),   pill.getX(), pill.getBottom(), false);
+        if (onAv > 0.02f) { g.setColour (onCol.withAlpha (0.22f * onAv)); g.fillRoundedRectangle (pill.expanded (2.0f), (ph + 4.0f) * 0.5f); }
+        const auto pillBase = colours::bgRaised.brighter (hi).interpolatedWith (onCol, onAv);
+        juce::ColourGradient pg (pillBase.brighter (0.06f + 0.04f * onAv), pill.getX(), pill.getY(),
+                                 pillBase.darker (0.10f + 0.02f * onAv),   pill.getX(), pill.getBottom(), false);
         g.setGradientFill (pg);
         g.fillRoundedRectangle (pill, ph * 0.5f);
-        g.setColour (on ? onCol : colours::outline.brighter (hi));
+        g.setColour (colours::outline.brighter (hi).interpolatedWith (onCol, onAv));
         g.drawRoundedRectangle (pill, ph * 0.5f, 1.0f);
         const float knob = ph - 4.0f;
-        const float kx = on ? pill.getRight() - knob - 2.0f : pill.getX() + 2.0f;
-        g.setColour (on ? colours::bg : colours::text);
+        const float kx = pill.getX() + 2.0f + (pill.getWidth() - knob - 4.0f) * onAv; // slides (F3)
+        g.setColour (colours::text.interpolatedWith (colours::bg, onAv));
         g.fillEllipse (kx, pill.getCentreY() - knob * 0.5f, knob, knob);
 
         // Labels render with a shared 11 px baseline so Mono/Swap/M/S all line up
         // (#8). The polarity toggles are the exception: their "ø" is drawn LARGER
         // than the trailing letter but on the SAME baseline, so it reads bold
         // without dragging the letter's baseline around (#5).
-        const juce::Colour tc = (on || highlighted ? colours::text : colours::textDim);
+        const juce::Colour tc = colours::textDim.interpolatedWith (colours::text, juce::jmax (onAv, hovA));
         g.setColour (tc);
         const auto labelArea = bounds.withTop (pill.getBottom() + 1.0f);
         const juce::juce_wchar phi = (juce::juce_wchar) 0x00F8;
@@ -285,22 +298,22 @@ void AnamorphLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButto
     // Bypass uses a controlled red when engaged so it reads as "off/abnormal".
     const juce::Colour onCol = ((b.getComponentID() == "bypass") ? juce::Colour (0xffd0584e)
                                                                   : colours::accent).brighter (hi);
-    if (on) // soft outer glow (fits inside the pad)
+    if (onAv > 0.02f) // soft outer glow (fits inside the pad)
     {
-        g.setColour (onCol.withAlpha (0.22f));
+        g.setColour (onCol.withAlpha (0.22f * onAv));
         g.fillRoundedRectangle (pill.expanded (2.0f), (h + 4.0f) * 0.5f);
     }
-    const auto pillBase = on ? onCol : colours::bgRaised.brighter (hi);
-    juce::ColourGradient pg (pillBase.brighter (on ? 0.10f : 0.06f), pill.getX(), pill.getY(),
-                             pillBase.darker (on ? 0.12f : 0.10f),   pill.getX(), pill.getBottom(), false);
+    const auto pillBase = colours::bgRaised.brighter (hi).interpolatedWith (onCol, onAv);
+    juce::ColourGradient pg (pillBase.brighter (0.06f + 0.04f * onAv), pill.getX(), pill.getY(),
+                             pillBase.darker (0.10f + 0.02f * onAv),   pill.getX(), pill.getBottom(), false);
     g.setGradientFill (pg);
     g.fillRoundedRectangle (pill, h * 0.5f);
-    g.setColour (on ? onCol : colours::outline.brighter (hi));
+    g.setColour (colours::outline.brighter (hi).interpolatedWith (onCol, onAv));
     g.drawRoundedRectangle (pill, h * 0.5f, 1.0f);
 
     const float knob = h - 4.0f;
-    const float kx = on ? pill.getRight() - knob - 2.0f : pill.getX() + 2.0f;
-    g.setColour (on ? colours::bg : colours::text);
+    const float kx = pill.getX() + 2.0f + (pill.getWidth() - knob - 4.0f) * onAv; // slides (F3)
+    g.setColour (colours::text.interpolatedWith (colours::bg, onAv));
     g.fillEllipse (kx, pill.getCentreY() - knob * 0.5f, knob, knob);
 
     // Label: fit-to-width so nothing is ever truncated to an ellipsis (#9).
@@ -308,7 +321,7 @@ void AnamorphLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButto
     const float tw = bounds.getRight() - tx - 1.0f;
     if (tw > 4.0f)
     {
-        g.setColour (highlighted ? colours::text : colours::textDim);
+        g.setColour (colours::textDim.interpolatedWith (colours::text, hovA));
         g.setFont (juce::Font (juce::FontOptions (12.5f)));
         g.drawFittedText (b.getButtonText(), (int) tx, (int) bounds.getY(),
                           (int) tw, (int) bounds.getHeight(),
@@ -323,9 +336,26 @@ void AnamorphLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button&
 
     auto bounds = b.getLocalBounds().toFloat().reduced (1.0f);
     const float radius = juce::jmin (9.0f, bounds.getHeight() * 0.5f); // rounder (#13)
+    const float hovA = animOr (b, "hovA", highlighted); // eased hover wash (F3)
+
+    // Preset bar (F2): the name + nav chevrons sit flat on the top bar and only
+    // get a quiet rounded wash on hover/press -- FabFilter-style.
+    if (b.getComponentID() == "presetname" || b.getComponentID() == "presetnav")
+    {
+        const float a = 0.55f * hovA + (down ? 0.25f : 0.0f);
+        if (a > 0.02f)
+        {
+            g.setColour (colours::bgRaised.brighter (0.18f).withAlpha (a));
+            g.fillRoundedRectangle (bounds, radius);
+            g.setColour (colours::outline.withAlpha (a * 0.8f));
+            g.drawRoundedRectangle (bounds, radius, 1.0f);
+        }
+        return;
+    }
+
     const bool on = b.getToggleState();
     const auto base = down ? colours::bgRaised.brighter (0.12f)
-                           : (highlighted ? colours::bgRaised.brighter (0.06f) : colours::bgRaised);
+                           : colours::bgRaised.brighter (0.06f * hovA);
     if (on)
     {
         g.setColour (colours::accent.withAlpha (0.85f));
@@ -344,8 +374,10 @@ void AnamorphLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button&
 
 juce::Font AnamorphLookAndFeel::getTextButtonFont (juce::TextButton& b, int buttonHeight)
 {
-    if (b.getComponentID() == "apply") return juce::Font (juce::FontOptions (12.0f)); // Apply, a touch smaller (#21)
-    if (b.getComponentID() == "icon")  return juce::Font (juce::FontOptions (21.0f)); // bigger glyph (#7)
+    if (b.getComponentID() == "apply")      return juce::Font (juce::FontOptions (12.0f)); // Apply, a touch smaller (#21)
+    if (b.getComponentID() == "icon")       return juce::Font (juce::FontOptions (21.0f)); // bigger glyph (#7)
+    if (b.getComponentID() == "presetname") return juce::Font (juce::FontOptions (13.0f)); // preset display (F2)
+    if (b.getComponentID() == "presetnav")  return juce::Font (juce::FontOptions (19.0f)); // chevrons (F2)
     return juce::Font (juce::FontOptions ((float) juce::jmin (13, juce::jmax (10, buttonHeight - 12))));
 }
 
@@ -379,6 +411,22 @@ void AnamorphLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& b
         // Nudge the (rotated) glyph so it reads as optically centred (#8): shifting
         // the pre-rotation box UP moves the visible glyph DOWN.
         g.drawText (b.getButtonText(), area.translated (0.0f, -2.0f), juce::Justification::centred, false);
+        return;
+    }
+    if (b.getComponentID() == "presetname") // preset display (F2)
+    {
+        g.setFont (getTextButtonFont (b, b.getHeight()));
+        g.setColour (colours::text);
+        g.drawText (b.getButtonText(), b.getLocalBounds().reduced (6, 0),
+                    juce::Justification::centred, true);
+        return;
+    }
+    if (b.getComponentID() == "presetnav") // ‹ › chevrons brighten on hover (F2/F3)
+    {
+        g.setFont (getTextButtonFont (b, b.getHeight()));
+        g.setColour (colours::textDim.interpolatedWith (colours::text, animOr (b, "hovA", b.isOver())));
+        g.drawText (b.getButtonText(), b.getLocalBounds().translated (0, -1),
+                    juce::Justification::centred, false);
         return;
     }
     juce::LookAndFeel_V4::drawButtonText (g, b, false, false);
@@ -447,6 +495,15 @@ void AnamorphLookAndFeel::drawPopupMenuItem (juce::Graphics& g, const juce::Rect
     }
 }
 
+// FACTORY / USER section headers in the preset menu: small dim caps (F2).
+void AnamorphLookAndFeel::drawPopupMenuSectionHeader (juce::Graphics& g, const juce::Rectangle<int>& area,
+                                                      const juce::String& sectionName)
+{
+    g.setColour (colours::textDim.withAlpha (0.85f));
+    g.setFont (juce::Font (juce::FontOptions (10.5f)).withExtraKerningFactor (0.18f));
+    g.drawText (sectionName, area.reduced (12, 0), juce::Justification::centredLeft);
+}
+
 void AnamorphLookAndFeel::drawPopupMenuBackground (juce::Graphics& g, int width, int height)
 {
     // Square, fully-opaque list: rounded corners on an opaque menu window leave
@@ -469,7 +526,9 @@ void AnamorphLookAndFeel::drawComboBox (juce::Graphics& g, int w, int h, bool do
                      ? (bool) box.getProperties()["hov"]
                      : box.getLocalBounds().contains (box.getMouseXYRelative());
     const bool open  = down || box.isPopupActive();
-    const float lift = open ? 0.18f : hover ? 0.12f : 0.05f;
+    // Hover lift is EASED by the micro-anim driver; the open lift stays instant
+    // so the box visibly anchors its list (F3).
+    const float lift = 0.05f + 0.07f * animOr (box, "hovA", hover) + (open ? 0.06f : 0.0f);
     juce::ColourGradient gr (colours::bgRaised.brighter (lift), bounds.getX(), bounds.getY(),
                              colours::bgRaised.darker (0.10f), bounds.getX(), bounds.getBottom(), false);
     g.setGradientFill (gr);

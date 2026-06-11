@@ -124,8 +124,7 @@ void AnamorphAudioProcessor::applyAutoGain()
 // ----------------------------------------------------------------------------
 bool AnamorphAudioProcessor::isViewParam (const juce::String& id) noexcept
 {
-    return id == pid::bypass || id == pid::advancedMode || id == pid::metersOn
-        || id == pid::tooltipsOn || id == pid::oversample || id == pid::scopePersist;
+    return pid::isViewParam (id); // single shared list (presets/A-B/undo agree)
 }
 
 juce::String AnamorphAudioProcessor::soundSignature() const
@@ -148,18 +147,14 @@ void AnamorphAudioProcessor::syncCommitted()
 void AnamorphAudioProcessor::applyStatePreservingView (const juce::ValueTree& target)
 {
     // Restore a snapshot but keep the CURRENT shared view/Settings params (#10/#13).
-    auto snap = [this] (const char* id) { return apvts.getParameter (id)->getValue(); };
-    const float adv = snap (pid::advancedMode), byp = snap (pid::bypass), os = snap (pid::oversample);
-    const float mtr = snap (pid::metersOn), tip = snap (pid::tooltipsOn), per = snap (pid::scopePersist);
+    float saved[std::size (pid::viewParams)];
+    for (size_t i = 0; i < std::size (pid::viewParams); ++i)
+        saved[i] = apvts.getParameter (pid::viewParams[i])->getValue();
 
     apvts.replaceState (target.createCopy());
 
-    apvts.getParameter (pid::advancedMode)->setValueNotifyingHost (adv);
-    apvts.getParameter (pid::bypass)->setValueNotifyingHost (byp);
-    apvts.getParameter (pid::oversample)->setValueNotifyingHost (os);
-    apvts.getParameter (pid::metersOn)->setValueNotifyingHost (mtr);
-    apvts.getParameter (pid::tooltipsOn)->setValueNotifyingHost (tip);
-    apvts.getParameter (pid::scopePersist)->setValueNotifyingHost (per);
+    for (size_t i = 0; i < std::size (pid::viewParams); ++i)
+        apvts.getParameter (pid::viewParams[i])->setValueNotifyingHost (saved[i]);
 }
 
 void AnamorphAudioProcessor::pollUndoCoalesce()
@@ -210,20 +205,8 @@ void AnamorphAudioProcessor::abEnsureInit()
 void AnamorphAudioProcessor::abApplySlot (int slot)
 {
     // The "view" + "settings" params live in a SINGLE shared store: they are not
-    // part of A/B and never swap (Advanced / Bypass / Oversampling / Meters /
-    // Tooltips / Scope Persistence) (feedback #13 / #15).
-    auto snap = [this] (const char* id) { return apvts.getParameter (id)->getValue(); };
-    const float adv = snap (pid::advancedMode), byp = snap (pid::bypass), os = snap (pid::oversample);
-    const float mtr = snap (pid::metersOn), tip = snap (pid::tooltipsOn), per = snap (pid::scopePersist);
-
-    apvts.replaceState ((slot == 1 ? abSlotB : abSlotA).createCopy());
-
-    apvts.getParameter (pid::advancedMode)->setValueNotifyingHost (adv);
-    apvts.getParameter (pid::bypass)->setValueNotifyingHost (byp);
-    apvts.getParameter (pid::oversample)->setValueNotifyingHost (os);
-    apvts.getParameter (pid::metersOn)->setValueNotifyingHost (mtr);
-    apvts.getParameter (pid::tooltipsOn)->setValueNotifyingHost (tip);
-    apvts.getParameter (pid::scopePersist)->setValueNotifyingHost (per);
+    // part of A/B and never swap (feedback #13 / #15). Same list as undo/presets.
+    applyStatePreservingView (slot == 1 ? abSlotB : abSlotA);
 }
 
 void AnamorphAudioProcessor::abSwitchTo (int slot)
@@ -260,6 +243,7 @@ void AnamorphAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
     abEnsureInit();
     juce::ValueTree root ("AnamorphRoot");
+    root.setProperty ("presetName", presets.currentName(), nullptr); // remembered across sessions (F2)
     root.appendChild (apvts.copyState(), nullptr);
     juce::ValueTree ab ("AB");
     ab.setProperty ("active", abActive, nullptr);
@@ -298,6 +282,10 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
     // Fresh session: clear undo history and re-baseline.
     abUndo[0] = {}; abUndo[1] = {};
     syncCommitted();
+
+    // Adopt the remembered preset name (clean baseline = the restored state).
+    presets.adoptRestoredState (root.hasType ("AnamorphRoot")
+                                    ? root.getProperty ("presetName").toString() : juce::String());
 }
 
 // ----------------------------------------------------------------------------

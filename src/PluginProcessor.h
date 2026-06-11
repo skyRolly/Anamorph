@@ -2,6 +2,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "PluginParameters.h"
+#include "PresetManager.h"
 #include "dsp/AnamorphEngine.h"
 
 // ============================================================================
@@ -47,6 +48,7 @@ public:
     // --- editor access ---
     juce::AudioProcessorValueTreeState& getAPVTS() noexcept { return apvts; }
     anamorph::AnamorphEngine& getEngine() noexcept          { return engine; }
+    anamorph::PresetManager&  getPresets() noexcept         { return presets; }
 
     // Custom Undo/Redo: each A/B slot keeps its OWN stack of SOUND-param
     // snapshots; the "view"/Settings params (Bypass, Advanced, Meters, Tooltips,
@@ -93,6 +95,7 @@ private:
 
     juce::AudioProcessorValueTreeState apvts;
     ParamPointers params;
+    anamorph::PresetManager presets { apvts }; // top-bar preset browser backing (F2)
     anamorph::AnamorphEngine engine;
 
     juce::AudioParameterBool* bypassParam = nullptr;

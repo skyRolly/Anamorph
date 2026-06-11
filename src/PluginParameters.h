@@ -59,6 +59,22 @@ namespace pid
     inline constexpr const char* scopePersist   = "scopePersist";
     inline constexpr const char* metersOn       = "metersOn";   // persist Meters toggle (#15)
     inline constexpr const char* tooltipsOn     = "tooltipsOn"; // persist Tooltips toggle (#15)
+    inline constexpr const char* uiAnimations   = "uiAnimations"; // micro-animation toggle (F3)
+    inline constexpr const char* uiScale        = "uiScale";      // window scale XS..XL (F4)
+
+    // The shared "view" / Settings parameters: never part of A/B, undo history
+    // or presets -- one list so every consumer stays in sync.
+    inline constexpr const char* const viewParams[] = {
+        bypass, advancedMode, oversample, metersOn, tooltipsOn, scopePersist,
+        uiAnimations, uiScale
+    };
+
+    inline bool isViewParam (const juce::String& id) noexcept
+    {
+        for (auto* v : viewParams)
+            if (id == v) return true;
+        return false;
+    }
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout();
