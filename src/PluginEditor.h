@@ -72,9 +72,10 @@ private:
     void registerAnimated (juce::Component&);
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override; // Persist scroll reveal (#1)
     void applyUiScale();                 // whole-window XS..XL transform scale (F4)
-    void refreshPresetDisplay();         // preset name + dirty dot (F2)
+    void refreshPresetDisplay();         // preset name + dirty mark (F2)
     void showPresetMenu();
     void showSavePreset (bool);
+    void showLoadPreset();               // OS file chooser (#3)
     void setupRotary (juce::Slider&, juce::Label&, const juce::String& name, const juce::String& tip);
     void attachSlider (juce::Slider&, const char* id);
     void setupCombo (juce::ComboBox&, const char* id, const juce::String& tip);
@@ -169,11 +170,12 @@ private:
     juce::Label settingsTitle;
     juce::Label persistLabel;   // Persist moved into Settings as a bar (#21)
 
-    // Save-preset overlay (F2)
+    // Save-preset overlay (F2) + the OS Load chooser (#3)
     Backdrop savePresetBackdrop;
     juce::Label      saveTitle;
     juce::TextEditor saveNameEditor;
     juce::TextButton saveOkButton { "Save" }, saveCancelButton { "Cancel" };
+    std::unique_ptr<juce::FileChooser> fileChooser;
 
     juce::OwnedArray<SliderAttachment>   sliderAtts;
     juce::OwnedArray<ButtonAttachment>   buttonAtts;
@@ -199,8 +201,6 @@ private:
     // coarse timer tick is what stuttered (#6). Same ease curve, time-based.
     juce::VBlankAttachment meterVBlank;
     double lastFrameTime = 0.0;
-    float  meterAnimFrom = 0.0f, meterAnimTarget = -1.0f; // ease-out reveal state (#3)
-    double meterAnimT    = 1.0;
 
     // Micro-animation driver (F3): per-frame eased "hovA"/"actA"/"onA" component
     // properties the LookAndFeel blends with; repaints fire only while moving.
