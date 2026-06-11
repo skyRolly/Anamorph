@@ -498,6 +498,9 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     setSize (kWidth, kHeight);    // single fixed size for both modes (#20)
     setResizable (false, false);
     startTimerHz (24);
+    // The meter reveal animates on the display's vblank for a full-frame-rate,
+    // judder-free slide; the callback early-outs when nothing is animating (#6).
+    meterVBlank = juce::VBlankAttachment (this, [this] (double t) { stepMeterReveal (t); });
 }
 
 AnamorphAudioProcessorEditor::~AnamorphAudioProcessorEditor()
@@ -743,19 +746,8 @@ void AnamorphAudioProcessorEditor::timerCallback()
         }
     }
 
-    // Ease the level-meter reveal: vectorscope slides right, meter grows in.
-    // Shorter, snappier than before (#27).
-    const float target = metersOn ? 1.0f : 0.0f;
-    if (std::abs (meterAnim - target) > 0.001f)
-    {
-        meterAnim += (target - meterAnim) * 0.55f;
-        if (std::abs (meterAnim - target) < 0.01f)
-        {
-            meterAnim = target;
-            if (! metersOn) levelMeter->setVisible (false);
-        }
-        resized();
-    }
+    // (The level-meter reveal animation itself runs per display frame in
+    //  stepMeterReveal, driven by the vblank attachment -- #6.)
 
     // Settings overlay becomes see-through (panel + dim only; the bar stays
     // opaque) while the Persist bar is dragged -- shorter, gentler reveal (#26).
@@ -799,6 +791,27 @@ void AnamorphAudioProcessorEditor::timerCallback()
     undoButton.setEnabled (processor.canUndo());
     redoButton.setEnabled (processor.canRedo());
     matchReadout.setText (juce::String (processor.getEngine().getMatchGainDb(), 1) + " dB", juce::dontSendNotification);
+}
+
+// Vsync-stepped meter reveal (#6): the same exponential ease the 24 Hz timer
+// used (factor 0.55 per 1/24 s, now time-based), but advanced every display
+// frame and relaying out ONLY the scope/meter block, so the slide is smooth and
+// cheap instead of stuttering through full-window relayouts.
+void AnamorphAudioProcessorEditor::stepMeterReveal (double frameTimeSec)
+{
+    const double dt = juce::jlimit (0.0, 0.05, frameTimeSec - lastFrameTime);
+    lastFrameTime = frameTimeSec;
+
+    const float target = metersOn ? 1.0f : 0.0f;
+    if (std::abs (meterAnim - target) < 1.0e-6f) return; // idle: one compare per frame
+
+    meterAnim += (target - meterAnim) * (1.0f - (float) std::pow (0.45, dt * 24.0));
+    if (std::abs (meterAnim - target) < 0.01f)
+    {
+        meterAnim = target;
+        if (! metersOn) levelMeter->setVisible (false);
+    }
+    layoutScopeArea();
 }
 
 // ----------------------------------------------------------------------------
@@ -845,6 +858,36 @@ void AnamorphAudioProcessorEditor::paint (juce::Graphics& g)
 }
 
 // ----------------------------------------------------------------------------
+// The scope/meter block, separated out so the meter-reveal animation can re-run
+// just this part per frame instead of the whole resized() (#6).
+void AnamorphAudioProcessorEditor::layoutScopeArea()
+{
+    auto leftArea = getLocalBounds().withTrimmedTop (46).withTrimmedRight (300);
+    if (advanced) leftArea.removeFromBottom (kStripHeight);
+
+    auto sa = leftArea.reduced (16);
+    // 154, not 156: at 156 the meters-open scope was WIDTH-limited at 406 px
+    // while the height cap is 408 px, so toggling Meters shaved 2 px off the
+    // scope's (and the correlation meter's) top/bottom edges (#1).
+    const int meterFull = 154; // fits 8 numbers + dB ruler; bars stay thin (#11/#17)
+    const int reserve = juce::roundToInt (meterFull * meterAnim);
+    if (reserve > 2)
+    {
+        levelMeter->setBounds (sa.removeFromLeft (reserve));
+        sa.removeFromLeft (juce::roundToInt (12.0f * meterAnim));
+    }
+
+    auto vCol = sa.removeFromRight (26);
+    sa.removeFromRight (8);
+    auto hRow = sa.removeFromBottom (26);
+    sa.removeFromBottom (8);
+    const int side = juce::jmin (sa.getWidth(), sa.getHeight());
+    auto sq = sa.withSizeKeepingCentre (side, side);
+    scope->setBounds (sq);
+    corrMeter->setBounds (vCol.withHeight (side).withY (sq.getY()));
+    balanceMeter->setBounds (hRow.withWidth (side).withX (sq.getX()));
+}
+
 void AnamorphAudioProcessorEditor::resized()
 {
     dimOverlay.setBounds (getLocalBounds().withTrimmedTop (46));
@@ -902,32 +945,12 @@ void AnamorphAudioProcessorEditor::resized()
 
     auto content = r;
     auto rightPanel = content.removeFromRight (300);
-    auto leftArea = content;
 
     juce::Rectangle<int> stripArea;
-    if (advanced) stripArea = leftArea.removeFromBottom (kStripHeight);
+    if (advanced) stripArea = content.removeFromBottom (kStripHeight);
 
     // ---- Scope + meters (with the reveal animation) ----
-    {
-        auto sa = leftArea.reduced (16);
-        const int meterFull = 156; // fits 8 numbers + dB ruler; bars stay thin (#11/#17)
-        const int reserve = juce::roundToInt (meterFull * meterAnim);
-        if (reserve > 2)
-        {
-            levelMeter->setBounds (sa.removeFromLeft (reserve));
-            sa.removeFromLeft (juce::roundToInt (12.0f * meterAnim));
-        }
-
-        auto vCol = sa.removeFromRight (26);
-        sa.removeFromRight (8);
-        auto hRow = sa.removeFromBottom (26);
-        sa.removeFromBottom (8);
-        const int side = juce::jmin (sa.getWidth(), sa.getHeight());
-        auto sq = sa.withSizeKeepingCentre (side, side);
-        scope->setBounds (sq);
-        corrMeter->setBounds (vCol.withHeight (side).withY (sq.getY()));
-        balanceMeter->setBounds (hRow.withWidth (side).withX (sq.getX()));
-    }
+    layoutScopeArea();
 
     // ---- Right column: WIDEN (both modes) + OUTPUT (advanced) ----
     {

@@ -32,6 +32,21 @@ public:
     void setDensity (float d) noexcept { targetDensity = d; }
     void setAmount  (float a) noexcept { targetAmount  = a; } // 0 = identity
 
+    // Host transport state, fed once per block by the wrapper. The pause burst
+    // (#4) is the sparse FIR replaying its last ~45 ms of Mid history at program
+    // level the instant the dry signal stops masking it -- and a LEVEL detector
+    // fundamentally cannot catch that in time: the presence envelope needs
+    // hundreds of ms to fall below its threshold, while making it faster
+    // flutters on ordinary musical decays (tried, made it worse). The transport
+    // edge is the one signal that distinguishes "paused" from "quiet passage",
+    // so a play->stop transition triggers a fast tail fade instead.
+    void setTransportPlaying (bool isPlaying) noexcept
+    {
+        if (transportPlaying && ! isPlaying)
+            stopping = true; // pause: fade the ringing tail out, then flush
+        transportPlaying = isPlaying;
+    }
+
     void processBlock (float* left, float* right, int numSamples) noexcept;
 
 private:
@@ -60,6 +75,12 @@ private:
     // it fades the tail out. Decoupling the ramp from level is the fix.
     float  env = 0.0f, envAtk = 0.0f, envRel = 0.0f;
     float  gate = 0.0f, gateAtk = 0.0f, gateRel = 0.0f;
+
+    // Transport-stop tail kill (#4): a ~4 ms smoothstep fade on the wet tap sum,
+    // after which the history is flushed and the presence gate re-armed -- so
+    // live input through a STOPPED transport still fades back in normally.
+    bool   transportPlaying = false, stopping = false;
+    float  stopGain = 1.0f, stopStep = 0.0f;
 };
 
 } // namespace anamorph

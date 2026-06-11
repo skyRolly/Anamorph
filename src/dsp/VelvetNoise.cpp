@@ -44,6 +44,8 @@ void VelvetNoise::prepare (double sampleRate, unsigned seed)
     // the FIR burst is masked, and out over ~28 ms on pause.
     gateAtk = 1.0f - std::exp (-1.0f / (float) (0.022 * sr));
     gateRel = 1.0f - std::exp (-1.0f / (float) (0.028 * sr));
+    // Transport-stop tail fade: ~4 ms, matching the engine's switch duck (#4).
+    stopStep = 1.0f / (float) std::max (1.0, 0.004 * sr);
     updateWeights();
     reset();
 }
@@ -54,6 +56,8 @@ void VelvetNoise::reset()
     writePos = 0;
     env = 0.0f;
     gate = 0.0f;
+    stopping = false;
+    stopGain = 1.0f;
 }
 
 void VelvetNoise::updateWeights() noexcept
@@ -101,6 +105,25 @@ void VelvetNoise::processBlock (float* left, float* right, int numSamples) noexc
         const float gateTarget = (env > 0.0005f) ? 1.0f : 0.0f; // ~ -66 dBFS presence
         gate += (gateTarget > gate ? gateAtk : gateRel) * (gateTarget - gate);
 
+        // Transport-stop tail kill (#4): the host paused, so the dry signal that
+        // masked the FIR tail is gone -- fade the wet sum out over ~4 ms (zero-
+        // slope smoothstep), then flush the history and re-arm the presence gate.
+        float stopG = 1.0f;
+        if (stopping)
+        {
+            stopGain -= stopStep;
+            if (stopGain <= 0.0f)
+            {
+                std::fill (midHist.begin(), midHist.end(), 0.0f);
+                env = 0.0f;
+                gate = 0.0f;
+                stopGain = 1.0f;
+                stopping = false;
+            }
+            else
+                stopG = stopGain * stopGain * (3.0f - 2.0f * stopGain);
+        }
+
         midHist[(size_t) writePos] = mid;
 
         float decorr = 0.0f;
@@ -109,7 +132,7 @@ void VelvetNoise::processBlock (float* left, float* right, int numSamples) noexc
             const int idx = (writePos - pos[(size_t) t]) & histMask;
             decorr += weight[(size_t) t] * sign[(size_t) t] * midHist[(size_t) idx];
         }
-        decorr *= norm * currentAmount * gate;
+        decorr *= norm * currentAmount * gate * stopG;
 
         const float newSide = side + decorr;
         left[i]  = mid + newSide;

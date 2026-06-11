@@ -7,6 +7,22 @@ namespace anamorph
 using juce::dsp::Oversampling;
 
 // ---------------------------------------------------------------------------
+//  Is oversampling actually doing work? Only when wrapping a nonlinear /
+//  modulation stage (Drive, or Chorus / Dimension-D). Linear-only chains skip
+//  oversampling entirely so they add ZERO latency (spec section 2.2 / 9).
+// ---------------------------------------------------------------------------
+static bool isModAlgorithm (Algorithm a) noexcept
+{
+    return a == Algorithm::Chorus || a == Algorithm::DimensionD;
+}
+
+static bool osActiveFor (const EngineParameters& e) noexcept
+{
+    return e.oversample != OversampleFactor::Off
+        && (e.driveDb > 0.01f || isModAlgorithm (e.algorithm));
+}
+
+// ---------------------------------------------------------------------------
 void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
 {
     sr = sampleRate;
@@ -111,6 +127,7 @@ void AnamorphEngine::reset()
     pendingAlgoReset = false;
     switchState = SwitchState::Normal;
     switchPhase = 1.0f;
+    osEngaged = osActiveFor (p); // re-latch the OS wrap for the settled state (#3)
 }
 
 // ---------------------------------------------------------------------------
@@ -132,7 +149,10 @@ bool AnamorphEngine::discreteDiffers (const EngineParameters& a, const EnginePar
         || a.monoMakerEnable  != b.monoMakerEnable
         || a.autoGainMatch    != b.autoGainMatch
         || a.oversample       != b.oversample
-        || a.bypass           != b.bypass;
+        || a.bypass           != b.bypass
+        // Engaging / disengaging the OS wrap (Drive crossing 0 with OS selected)
+        // inserts/removes its group delay -- a discrete, duck-worthy change (#3).
+        || osActiveFor (a)    != osActiveFor (b);
 }
 
 bool AnamorphEngine::processingDiffers (const EngineParameters& a, const EngineParameters& b) noexcept
@@ -192,20 +212,11 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
     }
 }
 
-// ---------------------------------------------------------------------------
-//  Is oversampling actually doing work? Only when wrapping a nonlinear /
-//  modulation stage (Drive, or Chorus / Dimension-D). Linear-only chains skip
-//  oversampling entirely so they add ZERO latency (spec section 2.2 / 9).
-// ---------------------------------------------------------------------------
-static bool isModAlgorithm (Algorithm a) noexcept
-{
-    return a == Algorithm::Chorus || a == Algorithm::DimensionD;
-}
-
+// The OS wrap follows the LATCHED engagement, not the live driveDb: both the
+// path and its latency may only change at the silent duck bottom (#3).
 juce::dsp::Oversampling<float>* AnamorphEngine::currentOversampler() noexcept
 {
-    if (p.oversample == OversampleFactor::Off) return nullptr;
-    if (! (driveActive || isModAlgorithm (p.algorithm))) return nullptr;
+    if (! osEngaged) return nullptr;
 
     switch (p.oversample)
     {
@@ -218,8 +229,7 @@ juce::dsp::Oversampling<float>* AnamorphEngine::currentOversampler() noexcept
 
 int AnamorphEngine::getLatencySamples() const noexcept
 {
-    if (p.oversample == OversampleFactor::Off) return 0;
-    if (! (driveActive || isModAlgorithm (p.algorithm))) return 0;
+    if (! osEngaged) return 0;
     switch (p.oversample)
     {
         case OversampleFactor::x2: return latency2;
@@ -390,8 +400,24 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     if (switchState == SwitchState::FadeOut && switchPhase <= 0.0f)
     {
         const bool procChanged = processingDiffers (pendingP, p);
+        // Compare the incoming OS path against what was actually RUNNING (the
+        // latch) -- p's driveDb was already overwritten by copyContinuous.
+        const bool osPathChanged = pendingP.oversample != p.oversample
+                                || osActiveFor (pendingP) != osEngaged;
         p = pendingP;
+        osEngaged = osActiveFor (p);
         if (pendingAlgoReset) { haas.reset(); velvet.reset(); chorus.reset(); pendingAlgoReset = false; }
+        if (osPathChanged)
+        {
+            // The incoming oversampler -- and the chorus, which runs at the OS
+            // rate -- still hold audio from the last time that path ran. Left
+            // alone it replays as a garbled burst right as the duck fades back
+            // in, which is the "weird sound" on an Oversampling switch (#3).
+            if (os2) os2->reset();
+            if (os4) os4->reset();
+            if (os8) os8->reset();
+            chorus.reset();
+        }
         // Re-arm the loudness match ONLY when the processing actually changed (A/B
         // swap, algorithm, ...). Toggling Level Match / Bypass must NOT re-measure,
         // or enabling Match with a big boost slams loud for a moment (#1).
