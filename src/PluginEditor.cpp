@@ -233,6 +233,7 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     setLookAndFeel (&lnf);
     tooltips.setLookAndFeel (&lnf);
 
+    setOpaque (true); // fill our bounds every paint -> no see-through flash on a scale resize (#13)
     openGLContext.setContinuousRepainting (false);
     openGLContext.attachTo (*this);
 
@@ -271,7 +272,7 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     presetName.setComponentID ("presetname");
     presetPrev.setTooltip ("Previous preset");
     presetNext.setTooltip ("Next preset");
-    presetName.setTooltip ("Presets: click to browse, save and load.");
+    presetName.setTooltip ("Presets"); // short, no period (#12)
     presetPrev.onClick = [this] { processor.getPresets().step (-1); refreshPresetDisplay(); };
     presetNext.onClick = [this] { processor.getPresets().step (+1); refreshPresetDisplay(); };
     presetName.onClick = [this] { showPresetMenu(); };
@@ -293,6 +294,7 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     saveNameEditor.setColour (juce::TextEditor::outlineColourId, colours::outline);
     saveNameEditor.setColour (juce::TextEditor::focusedOutlineColourId, colours::accent.withAlpha (0.6f));
     saveNameEditor.setColour (juce::TextEditor::highlightColourId, colours::accent.withAlpha (0.3f));
+    saveNameEditor.getProperties().set ("glow", true); // accent micro-glow border (#11)
     saveNameEditor.setSelectAllWhenFocused (true);
     saveNameEditor.onReturnKey = [this] { saveOkButton.triggerClick(); };
     saveNameEditor.onEscapeKey = [this] { showSavePreset (false); };
@@ -322,7 +324,7 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
 
     setupToggle (metersToggle, pid::metersOn, "", "Show level meters."); // #32
     metersToggle.setComponentID ("metersicon"); // level-meter glyph, not the word (#7)
-    metersToggle.onClick = [this] { metersOn = metersToggle.getToggleState(); if (metersOn) levelMeter->setVisible (true); };
+    metersToggle.onClick = [this] { metersOn = metersToggle.getToggleState(); }; // visibility via layoutScopeArea (#2)
 
     setupToggle (advancedToggle, pid::advancedMode, "Adv", "Advanced mode"); // #17
     advancedToggle.onClick = [this] { advanced = advancedToggle.getToggleState(); updateModeVisibility(); };
@@ -538,7 +540,7 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     buttonAtts.add (new ButtonAttachment (processor.getAPVTS(), pid::tooltipsOn, tooltipsToggle));
 
     animToggle.setButtonText ("UI Animations");
-    animToggle.setTooltip ("Smooth micro-animations on hovers, presses and switches (F3).");
+    animToggle.setTooltip ("Smooth micro-animations on hovers, presses and switches."); // no F3 ref (#4)
     settingsBackdrop.addAndMakeVisible (animToggle);
     buttonAtts.add (new ButtonAttachment (processor.getAPVTS(), pid::uiAnimations, animToggle));
 
@@ -798,10 +800,7 @@ void AnamorphAudioProcessorEditor::timerCallback()
         updateModeVisibility();
     }
     if (metersToggle.getToggleState() != metersOn)
-    {
-        metersOn = metersToggle.getToggleState();
-        if (metersOn) levelMeter->setVisible (true);
-    }
+        metersOn = metersToggle.getToggleState(); // layoutScopeArea owns visibility (#2)
     if (tooltipsToggle.getToggleState() != tooltipsOn)
     {
         tooltipsOn = tooltipsToggle.getToggleState();
@@ -879,28 +878,27 @@ void AnamorphAudioProcessorEditor::timerCallback()
     matchReadout.setText (juce::String (processor.getEngine().getMatchGainDb(), 1) + " dB", juce::dontSendNotification);
 }
 
-// Vsync-stepped meter reveal (#6): a fixed 240 ms ease-out sextic --
-// 1 - (1-t)^6 -- which launches faster than the old exponential and settles
-// into a much gentler landing, without lengthening the overall move (#3).
+// Vsync-stepped meter reveal: the v0.5.9 exponential ease (factor 0.55 per
+// 1/24 s, time-corrected to whatever the display rate is) -- the prettier curve
+// the user preferred (#1). Stateless, so it always converges and can never stall
+// part-open (#2). Follows the UI-animation switch: off = snap instantly (#9).
 void AnamorphAudioProcessorEditor::stepMeterReveal (double dt)
 {
     const float target = metersOn ? 1.0f : 0.0f;
-    if (std::abs (meterAnim - target) < 1.0e-6f) return; // idle: one compare per frame
+    const float diff = std::abs (meterAnim - target);
+    if (diff < 1.0e-4f)
+    {
+        if (diff > 0.0f) { meterAnim = target; layoutScopeArea(); } // one final snap
+        return; // idle otherwise
+    }
 
-    if (std::abs (meterAnimTarget - target) > 0.5f) // (re)arm, also on mid-flight reversal
-    {
-        meterAnimTarget = target;
-        meterAnimFrom   = meterAnim;
-        meterAnimT      = 0.0;
-    }
-    meterAnimT = juce::jmin (1.0, meterAnimT + dt / 0.24);
-    const float e = 1.0f - (float) std::pow (1.0 - meterAnimT, 6.0);
-    meterAnim = meterAnimFrom + (target - meterAnimFrom) * e;
-    if (meterAnimT >= 1.0)
-    {
+    if (uiAnimOn)
+        meterAnim += (target - meterAnim) * (1.0f - (float) std::pow (0.45, dt * 24.0));
+    else
         meterAnim = target;
-        if (! metersOn) levelMeter->setVisible (false);
-    }
+
+    if (std::abs (meterAnim - target) < 0.01f)
+        meterAnim = target;
     layoutScopeArea();
 }
 
@@ -910,51 +908,73 @@ void AnamorphAudioProcessorEditor::registerAnimated (juce::Component& c)
 }
 
 // Micro-animation driver (F3): eases per-component "hovA" (hover), "actA"
-// (press) and "onA" (toggle position) properties every display frame; the
-// LookAndFeel blends its glows/lifts/knob travel with them. Fast in, gentler
-// out -- the Apple-feel non-linearity -- and when the Settings switch is off
-// the rates snap to 1 so everything behaves exactly as before. Idle cost is a
-// handful of compares per control; repaints only fire while a value moves.
+// (press), "onA" (toggle position) and "vpos" (knob value travel) properties
+// every display frame; the LookAndFeel blends its glows/lifts/knob angle with
+// them. Fast in, gentler out -- the Apple-feel non-linearity -- and when the
+// Settings switch is off the rates snap to 1 so everything behaves exactly as
+// before. Idle cost is a handful of compares per control; repaints only fire
+// while a value is actually moving.
 void AnamorphAudioProcessorEditor::stepMicroAnims (double dt)
 {
-    static const juce::Identifier hovA ("hovA"), actA ("actA"), onA ("onA");
+    static const juce::Identifier hovA ("hovA"), actA ("actA"), onA ("onA"), vpos ("vpos");
 
     const float rIn  = uiAnimOn ? 1.0f - std::exp (-(float) dt / 0.045f) : 1.0f;
     const float rOut = uiAnimOn ? 1.0f - std::exp (-(float) dt / 0.120f) : 1.0f;
     const float rAct = uiAnimOn ? 1.0f - std::exp (-(float) dt / 0.025f) : 1.0f;
     const float rOn  = uiAnimOn ? 1.0f - std::exp (-(float) dt / 0.055f) : 1.0f;
+    const float rPos = uiAnimOn ? 1.0f - std::exp (-(float) dt / 0.090f) : 1.0f;
 
     for (auto* c : animated)
     {
-        float hovT = 0.0f, actT = -1.0f, onT = -1.0f;
-
-        if (auto* s = dynamic_cast<juce::Slider*> (c))
-        {
-            hovT = s->isMouseOver (false) ? 1.0f : 0.0f;
-            actT = (s->isMouseButtonDown()
-                    || (bool) s->getProperties().getWithDefault ("dragging", false)) ? 1.0f : 0.0f;
-        }
-        else if (auto* b = dynamic_cast<juce::Button*> (c))
-        {
-            hovT = b->isOver() ? 1.0f : 0.0f;
-            if (auto* t = dynamic_cast<juce::ToggleButton*> (c))
-                onT = t->getToggleState() ? 1.0f : 0.0f;
-        }
-        else if (auto* box = dynamic_cast<juce::ComboBox*> (c))
-            hovT = (bool) box->getProperties().getWithDefault ("hov", false) ? 1.0f : 0.0f;
-        else
-            hovT = c->isMouseOver (true) ? 1.0f : 0.0f; // A/B control
-
         auto& props = c->getProperties();
+
+        // Hover is hit-tested against the live cursor rather than read from
+        // enter/exit events: those fire unreliably across clicks, relayouts and
+        // pop-ups, which is what made a click occasionally flicker (#10).
+        const bool over = c->isShowing()
+                        && c->getLocalBounds().contains (c->getMouseXYRelative());
+        float hovT = over ? 1.0f : 0.0f;
+        float actT = -1.0f, onT = -1.0f;
+
         auto stepVal = [&props] (const juce::Identifier& key, float target, float up, float down) -> bool
         {
-            const float curr = (float) (double) props.getWithDefault (key, 0.0);
+            const float curr = (float) (double) props.getWithDefault (key, (double) target);
             float next = curr + (target - curr) * (target > curr ? up : down);
             if (std::abs (next - target) < 0.004f) next = target;
             if (std::abs (next - curr) < 0.0015f) return false;
-            props.set (key, next);
+            props.set (key, juce::jlimit (0.0f, 1.0f, next));
             return true;
         };
+
+        if (auto* s = dynamic_cast<juce::Slider*> (c))
+        {
+            const bool interacting = s->isMouseButtonDown()
+                                  || (bool) props.getWithDefault ("dragging", false);
+            actT = interacting ? 1.0f : 0.0f;
+
+            // Rotary knobs ease their pointer/arc toward the live value, so a
+            // preset or A/B switch SWEEPS the knob instead of teleporting it (#5).
+            // While the user turns it, snap so the knob stays 1:1 (no lag). vpos is
+            // ALWAYS kept current (even at rest) so there's a real "from" position
+            // to ease out of the instant the value jumps.
+            const auto st = s->getSliderStyle();
+            const bool rotary = st == juce::Slider::RotaryVerticalDrag
+                             || st == juce::Slider::RotaryHorizontalDrag
+                             || st == juce::Slider::RotaryHorizontalVerticalDrag
+                             || st == juce::Slider::Rotary;
+            if (rotary)
+            {
+                const float realPos = (float) s->valueToProportionOfLength (s->getValue());
+                const float curr = (float) (double) props.getWithDefault (vpos, (double) realPos);
+                float vp = (interacting || ! uiAnimOn) ? realPos
+                                                       : curr + (realPos - curr) * rPos;
+                if (std::abs (vp - realPos) < 0.0015f) vp = realPos;
+                if (std::abs (vp - curr) > 0.0004f) c->repaint();
+                props.set (vpos, vp);
+            }
+        }
+        else if (auto* t = dynamic_cast<juce::ToggleButton*> (c))
+            onT = t->getToggleState() ? 1.0f : 0.0f;
 
         bool changed = stepVal (hovA, hovT, rIn, rOut);
         if (actT >= 0.0f) changed = stepVal (actA, actT, rAct, rOut) || changed;
@@ -971,18 +991,70 @@ void AnamorphAudioProcessorEditor::applyUiScale()
 {
     static constexpr float scales[] = { 0.75f, 0.85f, 1.0f, 1.25f, 1.5f };
     const int idx = juce::jlimit (0, 4, uiScaleBox.getSelectedItemIndex());
-    lastScaleIdx = uiScaleBox.getSelectedItemIndex();
+    if (idx == lastScaleIdx) return; // no redundant resizes (#13)
+    lastScaleIdx = idx;
+
+    // Apply width AND height in a single transform change so the wrapper issues
+    // one resize, not a width-then-height pair that flashes an L-shape (#13). The
+    // editor is opaque and repaints synchronously at the new size, so no stale or
+    // see-through frame is shown mid-resize.
     setTransform (juce::AffineTransform::scale (scales[idx]));
+    if (openGLContext.isAttached())
+        openGLContext.triggerRepaint();
 }
 
 // ----------------------------------------------------------------------------
 //  Preset browser (F2)
 // ----------------------------------------------------------------------------
+namespace
+{
+    // Pixel width of a string in a font, via GlyphArrangement (no deprecated API).
+    static float textWidth (const juce::Font& f, const juce::String& s)
+    {
+        if (s.isEmpty()) return 0.0f;
+        juce::GlyphArrangement ga;
+        ga.addLineOfText (f, s, 0.0f, 0.0f);
+        return ga.getBoundingBox (0, -1, true).getWidth();
+    }
+
+    // Pro Tools-style track-name abbreviation: keep each word's first letter, drop
+    // the vowels from the rest ("Drum" -> "Drm", "Stereo" -> "Stro"), so a long
+    // preset name still reads when the slot is narrow (#7).
+    static juce::String abbreviate (const juce::String& name)
+    {
+        auto words = juce::StringArray::fromTokens (name, " ", "");
+        juce::String out;
+        for (const auto& word : words)
+        {
+            if (word.isEmpty()) continue;
+            if (out.isNotEmpty()) out << ' ';
+            out << word[0];
+            for (int i = 1; i < word.length(); ++i)
+                if (! juce::String ("aeiouAEIOU").containsChar (word[i]))
+                    out << word[i];
+        }
+        return out;
+    }
+}
+
 void AnamorphAudioProcessorEditor::refreshPresetDisplay()
 {
     auto& pm = processor.getPresets();
-    const juce::String shown = pm.currentName()
-        + (pm.isDirty() ? juce::String (" ") + juce::String::charToString ((juce::juce_wchar) 0x2022) : juce::String());
+    // A small asterisk marks an edited preset -- lighter than the old bullet (#6).
+    const juce::String marker = pm.isDirty() ? " *" : juce::String();
+
+    const juce::Font font (juce::FontOptions (13.0f)); // matches the presetname button font
+    const float avail = (float) presetName.getWidth() - 12.0f - textWidth (font, marker);
+
+    juce::String name = pm.currentName();
+    if (textWidth (font, name) > avail)
+    {
+        name = abbreviate (pm.currentName());          // consonant skeleton (#7)
+        while (name.isNotEmpty() && textWidth (font, name) > avail)
+            name = name.dropLastCharacters (1);        // hard-clip if still too wide
+    }
+
+    const juce::String shown = name + marker;
     if (presetName.getButtonText() != shown)
         presetName.setButtonText (shown);
 }
@@ -1003,18 +1075,39 @@ void AnamorphAudioProcessorEditor::showPresetMenu()
         if (! e.isFactory && ! userHeader) { m.addSectionHeader ("USER"); userHeader = true; }
         m.addItem (i + 1, e.name, true, i == cur);
     }
+    const juce::String ellip = juce::String::charToString ((juce::juce_wchar) 0x2026);
     m.addSeparator();
-    m.addItem (10001, juce::String ("Save Preset") + juce::String::charToString ((juce::juce_wchar) 0x2026));
+    m.addItem (10001, "Save Preset" + ellip);
+    m.addItem (10002, "Load Preset" + ellip); // OS file chooser (#3)
 
+    // Widen the list so the longest factory name ("Synth Dimension") shows in
+    // full -- the slot itself is narrow (#8).
     m.showMenuAsync (juce::PopupMenu::Options()
                          .withTargetComponent (presetName)
-                         .withMinimumWidth (presetName.getWidth()),
+                         .withMinimumWidth (228),
         [this] (int r)
         {
             if (r == 0) return;
             if (r == 10001) { showSavePreset (true); return; }
+            if (r == 10002) { showLoadPreset(); return; }
             processor.getPresets().load (r - 1);
             refreshPresetDisplay();
+        });
+}
+
+void AnamorphAudioProcessorEditor::showLoadPreset()
+{
+    auto dir = anamorph::PresetManager::presetDirectory();
+    dir.createDirectory(); // so the chooser opens somewhere sensible even when empty
+    fileChooser = std::make_unique<juce::FileChooser> (
+        "Load Anamorph Preset", dir, "*" + anamorph::PresetManager::fileSuffix());
+
+    fileChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+        [this] (const juce::FileChooser& fc)
+        {
+            const auto file = fc.getResult();
+            if (file.existsAsFile() && processor.getPresets().loadFile (file))
+                refreshPresetDisplay();
         });
 }
 
@@ -1087,7 +1180,13 @@ void AnamorphAudioProcessorEditor::layoutScopeArea()
     // scope's (and the correlation meter's) top/bottom edges (#1).
     const int meterFull = 154; // fits 8 numbers + dB ruler; bars stay thin (#11/#17)
     const int reserve = juce::roundToInt (meterFull * meterAnim);
-    if (reserve > 2)
+    const bool showMeter = reserve > 2;
+    // Visibility is decided HERE, every animation frame: the moment the reserve
+    // collapses past a couple of px the meter is hidden, so it can never be left
+    // as a 1-2 px sliver on the left (the stuck strip, #2).
+    if (levelMeter->isVisible() != showMeter)
+        levelMeter->setVisible (showMeter);
+    if (showMeter)
     {
         levelMeter->setBounds (sa.removeFromLeft (reserve));
         sa.removeFromLeft (juce::roundToInt (12.0f * meterAnim));

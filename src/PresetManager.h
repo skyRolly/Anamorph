@@ -35,6 +35,7 @@ public:
     //   Win    %APPDATA%/RollyTech/Anamorph/Presets
     //   Linux  ~/.config/RollyTech/Anamorph/Presets
     static juce::File presetDirectory();
+    static juce::String fileSuffix() { return ".anamorph"; } // shared with the OS chooser filter (#3)
 
     void refresh();                                  // rescan the user folder
     const juce::Array<Entry>& entries() const noexcept { return list; }
@@ -44,6 +45,7 @@ public:
     bool isDirty() const;                            // sound edited since load/save
 
     void load (int index);                           // message thread only
+    bool loadFile (const juce::File&);               // load an arbitrary .anamorph file (OS chooser, #3)
     void step (int delta);                           // prev/next with wrap-around
     bool saveUser (const juce::String& name);        // write + select; false on IO error
 

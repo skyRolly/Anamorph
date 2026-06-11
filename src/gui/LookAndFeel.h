@@ -122,6 +122,11 @@ public:
     // A value box you can drag (up/down) to change the value, like the knob (#2).
     juce::Label* createSliderTextBox (juce::Slider&) override;
 
+    // Focused text fields tagged with a "glow" property get the combo's subtle
+    // accent micro-glow instead of a plain hard outline (#11).
+    void drawTextEditorOutline (juce::Graphics&, int width, int height, juce::TextEditor&) override;
+    void fillTextEditorBackground (juce::Graphics&, int width, int height, juce::TextEditor&) override;
+
     // Uniform, compact font for every combo + its pop-up list (#13).
     juce::Font getComboBoxFont (juce::ComboBox&) override;
     juce::Font getPopupMenuFont() override;

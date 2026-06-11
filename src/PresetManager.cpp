@@ -39,7 +39,7 @@ namespace
         return presets;
     }
 
-    constexpr const char* kPresetExt = ".anamorph";
+    const juce::String kPresetExt = PresetManager::fileSuffix();
 }
 
 // ----------------------------------------------------------------------------
@@ -145,6 +145,16 @@ void PresetManager::load (int index)
 
     current = e.name;
     sigAtLoad = soundSig();
+}
+
+bool PresetManager::loadFile (const juce::File& f)
+{
+    auto xml = juce::parseXML (f);
+    if (xml == nullptr) return false;
+    applySoundTree (juce::ValueTree::fromXml (*xml));
+    current = f.getFileNameWithoutExtension();
+    sigAtLoad = soundSig();
+    return true;
 }
 
 void PresetManager::step (int delta)

@@ -27,6 +27,10 @@ void AnamorphLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int
     const auto bounds = juce::Rectangle<float> ((float) x, (float) y, (float) w, (float) h).reduced (4.0f);
     const auto radius  = juce::jmin (bounds.getWidth(), bounds.getHeight()) * 0.5f;
     const auto centre  = bounds.getCentre();
+    // Draw at the EASED visual position when the micro-anim driver is publishing
+    // one (preset / A-B sweep, #5); falls back to the live position otherwise.
+    if (const auto* v = s.getProperties().getVarPointer ("vpos"))
+        pos = juce::jlimit (0.0f, 1.0f, (float) (double) *v);
     const auto angle   = startAngle + pos * (endAngle - startAngle);
     const float thick  = juce::jmax (3.0f, radius * 0.16f);
 
@@ -570,6 +574,55 @@ void AnamorphLookAndFeel::positionComboBoxText (juce::ComboBox& box, juce::Label
     // against the border (#13).
     label.setBounds (9, 1, box.getWidth() - 9 - 20, box.getHeight() - 2);
     label.setFont (getComboBoxFont (box));
+}
+
+// Text fields carrying a "glow" property (the Save-Preset name box) get a
+// rounded, faintly accent-lit border when focused -- the same micro-glow as an
+// open combo, so it reads premium rather than a thin default rectangle (#11).
+void AnamorphLookAndFeel::fillTextEditorBackground (juce::Graphics& g, int width, int height,
+                                                    juce::TextEditor& ed)
+{
+    if (! (bool) ed.getProperties().getWithDefault ("glow", false))
+    {
+        juce::LookAndFeel_V4::fillTextEditorBackground (g, width, height, ed);
+        return;
+    }
+    auto b = juce::Rectangle<float> (0.0f, 0.0f, (float) width, (float) height).reduced (0.5f);
+    g.setColour (ed.findColour (juce::TextEditor::backgroundColourId));
+    g.fillRoundedRectangle (b, 5.0f);
+}
+
+void AnamorphLookAndFeel::drawTextEditorOutline (juce::Graphics& g, int width, int height,
+                                                 juce::TextEditor& ed)
+{
+    if (! (bool) ed.getProperties().getWithDefault ("glow", false))
+    {
+        juce::LookAndFeel_V4::drawTextEditorOutline (g, width, height, ed); // value boxes unchanged
+        return;
+    }
+
+    auto b = juce::Rectangle<float> (0.0f, 0.0f, (float) width, (float) height).reduced (0.5f);
+    const float radius = 5.0f;
+
+    if (ed.hasKeyboardFocus (true))
+    {
+        // Faint accent bloom just inside the rim + a thin vertical-gradient border.
+        for (int i = 3; i >= 1; --i)
+        {
+            g.setColour (colours::accent.withAlpha (0.045f * (float) i));
+            g.drawRoundedRectangle (b.reduced ((float) (4 - i)),
+                                    juce::jmax (1.5f, radius - (float) (4 - i)), 1.8f);
+        }
+        juce::ColourGradient og (colours::accent.brighter (0.20f), b.getX(), b.getY(),
+                                 colours::accent.withAlpha (0.55f), b.getX(), b.getBottom(), false);
+        g.setGradientFill (og);
+        g.drawRoundedRectangle (b, radius, 1.2f);
+    }
+    else
+    {
+        g.setColour (colours::outline);
+        g.drawRoundedRectangle (b, radius, 1.0f);
+    }
 }
 
 juce::Font AnamorphLookAndFeel::getLabelFont (juce::Label&)
