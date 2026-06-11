@@ -10,7 +10,7 @@ static const juce::Colour kRmsOrange { 0xffe0a94a };
 
 LevelMeter::LevelMeter (anamorph::LevelMeters& src) : source (src)
 {
-    startTimerHz (30);
+    startTimerHz (60); // match the vectorscope's frame rate -- 30 Hz juddered (#2)
 }
 
 LevelMeter::~LevelMeter() { stopTimer(); }

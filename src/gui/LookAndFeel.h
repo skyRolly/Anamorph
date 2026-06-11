@@ -51,6 +51,17 @@ namespace glass
                          float strength = 1.0f);
 }
 
+// Eased 0..1 animation property ("hovA"/"actA"/"onA") published by the editor's
+// micro-anim driver (F3). Falls back to the binary state for components that
+// aren't registered (or before the first animated frame), so every drawing path
+// works with or without the driver.
+inline float animOr (const juce::Component& c, const char* key, bool fallback)
+{
+    if (const auto* v = c.getProperties().getVarPointer (key))
+        return (float) (double) *v;
+    return fallback ? 1.0f : 0.0f;
+}
+
 class AnamorphLookAndFeel : public juce::LookAndFeel_V4
 {
 public:
@@ -97,6 +108,9 @@ public:
 
     // Unify the pop-up list with the rounded flat-design of the combo box (#22).
     void drawPopupMenuBackground (juce::Graphics&, int width, int height) override;
+    // Small dim caps header for the preset menu's FACTORY / USER sections (F2).
+    void drawPopupMenuSectionHeader (juce::Graphics&, const juce::Rectangle<int>& area,
+                                     const juce::String& sectionName) override;
     int  getPopupMenuBorderSize() override { return 3; } // narrower top/bottom dead-zone (#9)
     // Fixed, uniform row height so a taller combo doesn't get taller rows (#3).
     void getIdealPopupMenuItemSize (const juce::String& text, bool isSeparator,

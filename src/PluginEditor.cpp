@@ -202,12 +202,13 @@ void AnamorphAudioProcessorEditor::ABControl::paint (juce::Graphics& g)
     g.setColour (colours::accent.withAlpha (0.10f));
     g.fillRoundedRectangle (b.expanded (1.6f), rad + 1.6f);
 
-    const float lift = hovered ? 0.16f : 0.06f; // hover wash (#10)
+    const float hovA = animOr (*this, "hovA", hovered); // eased hover wash (#10/F3)
+    const float lift = 0.06f + 0.10f * hovA;
     juce::ColourGradient gr (colours::bgRaised.brighter (lift), b.getX(), b.getY(),
                              colours::bgRaised.darker (0.12f),   b.getX(), b.getBottom(), false);
     g.setGradientFill (gr);
     g.fillRoundedRectangle (b, rad);
-    g.setColour (hovered ? colours::accent.withAlpha (0.6f) : colours::outline.brighter (0.12f));
+    g.setColour (colours::outline.brighter (0.12f).interpolatedWith (colours::accent.withAlpha (0.6f), hovA));
     g.drawRoundedRectangle (b, rad, 1.0f);
 
     const int active = getActive ? getActive() : 0;
@@ -261,6 +262,52 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
 
     settingsButton.onClick = [this] { showSettings (true); };
     addAndMakeVisible (settingsButton);
+
+    // --- Preset browser (F2): ‹ name › -------------------------------------
+    presetPrev.setButtonText (juce::String::charToString ((juce::juce_wchar) 0x2039)); // ‹
+    presetNext.setButtonText (juce::String::charToString ((juce::juce_wchar) 0x203A)); // ›
+    presetPrev.setComponentID ("presetnav");
+    presetNext.setComponentID ("presetnav");
+    presetName.setComponentID ("presetname");
+    presetPrev.setTooltip ("Previous preset");
+    presetNext.setTooltip ("Next preset");
+    presetName.setTooltip ("Presets: click to browse, save and load.");
+    presetPrev.onClick = [this] { processor.getPresets().step (-1); refreshPresetDisplay(); };
+    presetNext.onClick = [this] { processor.getPresets().step (+1); refreshPresetDisplay(); };
+    presetName.onClick = [this] { showPresetMenu(); };
+    addAndMakeVisible (presetPrev);
+    addAndMakeVisible (presetNext);
+    addAndMakeVisible (presetName);
+
+    // Save-preset overlay (F2): a small glass panel with a name field.
+    savePresetBackdrop.dropShadow = true;
+    savePresetBackdrop.onDismiss = [this] { showSavePreset (false); };
+    addChildComponent (savePresetBackdrop);
+    saveTitle.setText ("SAVE PRESET", juce::dontSendNotification);
+    saveTitle.setColour (juce::Label::textColourId, colours::textDim);
+    saveTitle.setFont (juce::Font (juce::FontOptions (12.0f)).withExtraKerningFactor (0.2f));
+    savePresetBackdrop.addAndMakeVisible (saveTitle);
+    saveNameEditor.setFont (juce::Font (juce::FontOptions (14.0f)));
+    saveNameEditor.setColour (juce::TextEditor::backgroundColourId, colours::bg);
+    saveNameEditor.setColour (juce::TextEditor::textColourId, colours::text);
+    saveNameEditor.setColour (juce::TextEditor::outlineColourId, colours::outline);
+    saveNameEditor.setColour (juce::TextEditor::focusedOutlineColourId, colours::accent.withAlpha (0.6f));
+    saveNameEditor.setColour (juce::TextEditor::highlightColourId, colours::accent.withAlpha (0.3f));
+    saveNameEditor.setSelectAllWhenFocused (true);
+    saveNameEditor.onReturnKey = [this] { saveOkButton.triggerClick(); };
+    saveNameEditor.onEscapeKey = [this] { showSavePreset (false); };
+    savePresetBackdrop.addAndMakeVisible (saveNameEditor);
+    saveOkButton.onClick = [this]
+    {
+        if (processor.getPresets().saveUser (saveNameEditor.getText()))
+        {
+            showSavePreset (false);
+            refreshPresetDisplay();
+        }
+    };
+    saveCancelButton.onClick = [this] { showSavePreset (false); };
+    savePresetBackdrop.addAndMakeVisible (saveOkButton);
+    savePresetBackdrop.addAndMakeVisible (saveCancelButton);
 
     undoButton.setButtonText (juce::String::charToString ((juce::juce_wchar) 0x21BA));
     redoButton.setButtonText (juce::String::charToString ((juce::juce_wchar) 0x21BB));
@@ -453,6 +500,13 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     settingsBackdrop.addAndMakeVisible (oversampleLabel);
     settingsBackdrop.addAndMakeVisible (oversampleBox);
 
+    // Whole-window scale (F4): vectors redraw at the new size, stays crisp.
+    setupCombo (uiScaleBox, pid::uiScale, "Window size. M is the original size; everything scales in proportion.");
+    uiScaleLabel.setText ("Window Size", juce::dontSendNotification);
+    uiScaleLabel.setColour (juce::Label::textColourId, colours::textDim);
+    settingsBackdrop.addAndMakeVisible (uiScaleLabel);
+    settingsBackdrop.addAndMakeVisible (uiScaleBox);
+
     // Scope Persistence is now a Settings bar (#21).
     persistLabel.setText ("Vectorscope Persist", juce::dontSendNotification);
     persistLabel.setColour (juce::Label::textColourId, colours::textDim);
@@ -483,6 +537,11 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     settingsBackdrop.addAndMakeVisible (tooltipsToggle);
     buttonAtts.add (new ButtonAttachment (processor.getAPVTS(), pid::tooltipsOn, tooltipsToggle));
 
+    animToggle.setButtonText ("UI Animations");
+    animToggle.setTooltip ("Smooth micro-animations on hovers, presses and switches (F3).");
+    settingsBackdrop.addAndMakeVisible (animToggle);
+    buttonAtts.add (new ButtonAttachment (processor.getAPVTS(), pid::uiAnimations, animToggle));
+
     // Initial cached view-state from the (recalled) parameters.
     advanced   = advancedToggle.getToggleState();
     metersOn   = metersToggle.getToggleState();
@@ -490,17 +549,33 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     meterAnim  = metersOn ? 1.0f : 0.0f;
     levelMeter->setVisible (metersOn);
 
+    // Components not built through the setup helpers still get micro-anims (F3).
+    for (auto* c : std::initializer_list<juce::Component*> {
+             &copyButton, &settingsButton, &undoButton, &redoButton, &applyGainButton,
+             &presetPrev, &presetNext, &presetName, &saveOkButton, &saveCancelButton,
+             &scopePersistK, &tooltipsToggle, &animToggle, &abControl })
+        registerAnimated (*c);
+
     applyTooltipsEnabled();
     applyScopePersist();
     updateAlgoControls();
     updateMsLabels();
     updateModeVisibility();
+    uiAnimOn = animToggle.getToggleState();
+    refreshPresetDisplay();
     setSize (kWidth, kHeight);    // single fixed size for both modes (#20)
     setResizable (false, false);
+    applyUiScale();               // recalled XS..XL window scale (F4)
     startTimerHz (24);
-    // The meter reveal animates on the display's vblank for a full-frame-rate,
-    // judder-free slide; the callback early-outs when nothing is animating (#6).
-    meterVBlank = juce::VBlankAttachment (this, [this] (double t) { stepMeterReveal (t); });
+    // One vblank drives every per-frame animation: the meter reveal (#6) and the
+    // micro-animations (F3); both early-out to a few compares when idle.
+    meterVBlank = juce::VBlankAttachment (this, [this] (double t)
+    {
+        const double dt = juce::jlimit (0.0, 0.05, t - lastFrameTime);
+        lastFrameTime = t;
+        stepMeterReveal (dt);
+        stepMicroAnims (dt);
+    });
 }
 
 AnamorphAudioProcessorEditor::~AnamorphAudioProcessorEditor()
@@ -536,6 +611,7 @@ void AnamorphAudioProcessorEditor::setupRotary (juce::Slider& s, juce::Label& l,
     l.setColour (juce::Label::textColourId, colours::textDim);
     l.setFont (juce::Font (juce::FontOptions (11.5f)));
     addAndMakeVisible (l);
+    registerAnimated (s); // eased hover/press glow (F3)
 }
 
 void AnamorphAudioProcessorEditor::attachSlider (juce::Slider& s, const char* id)
@@ -580,6 +656,7 @@ void AnamorphAudioProcessorEditor::setupCombo (juce::ComboBox& box, const char* 
     allCombos.add (&box); // timer drives the hover repaint (#20)
     addAndMakeVisible (box);
     comboAtts.add (new ComboBoxAttachment (processor.getAPVTS(), id, box));
+    registerAnimated (box); // eased hover lift (F3)
 }
 
 void AnamorphAudioProcessorEditor::setupToggle (juce::ToggleButton& t, const char* id,
@@ -589,6 +666,7 @@ void AnamorphAudioProcessorEditor::setupToggle (juce::ToggleButton& t, const cha
     if (tip.isNotEmpty()) t.setTooltip (tip);
     addAndMakeVisible (t);
     buttonAtts.add (new ButtonAttachment (processor.getAPVTS(), id, t));
+    registerAnimated (t); // eased switch slide + hover (F3)
 }
 
 void AnamorphAudioProcessorEditor::applyTooltipsEnabled()
@@ -732,6 +810,14 @@ void AnamorphAudioProcessorEditor::timerCallback()
     if (msToggle.getToggleState() != msState) // external / preset / automation change (#12/#13)
         updateMsLabels();
 
+    uiAnimOn = animToggle.getToggleState(); // micro-anims follow the Settings switch (F3)
+
+    // Whole-window scale: follow the parameter (Settings combo, state recall, F4).
+    if (uiScaleBox.getSelectedItemIndex() != lastScaleIdx)
+        applyUiScale();
+
+    refreshPresetDisplay(); // preset name + dirty dot track outside edits (F2)
+
     // Drive combo hover from the actual cursor position so exactly ONE box is ever
     // lit and a stale highlight always clears -- the enter/exit events through the
     // child label were unreliable (sometimes stuck on, sometimes never lit) (#20).
@@ -793,25 +879,155 @@ void AnamorphAudioProcessorEditor::timerCallback()
     matchReadout.setText (juce::String (processor.getEngine().getMatchGainDb(), 1) + " dB", juce::dontSendNotification);
 }
 
-// Vsync-stepped meter reveal (#6): the same exponential ease the 24 Hz timer
-// used (factor 0.55 per 1/24 s, now time-based), but advanced every display
-// frame and relaying out ONLY the scope/meter block, so the slide is smooth and
-// cheap instead of stuttering through full-window relayouts.
-void AnamorphAudioProcessorEditor::stepMeterReveal (double frameTimeSec)
+// Vsync-stepped meter reveal (#6): a fixed 240 ms ease-out sextic --
+// 1 - (1-t)^6 -- which launches faster than the old exponential and settles
+// into a much gentler landing, without lengthening the overall move (#3).
+void AnamorphAudioProcessorEditor::stepMeterReveal (double dt)
 {
-    const double dt = juce::jlimit (0.0, 0.05, frameTimeSec - lastFrameTime);
-    lastFrameTime = frameTimeSec;
-
     const float target = metersOn ? 1.0f : 0.0f;
     if (std::abs (meterAnim - target) < 1.0e-6f) return; // idle: one compare per frame
 
-    meterAnim += (target - meterAnim) * (1.0f - (float) std::pow (0.45, dt * 24.0));
-    if (std::abs (meterAnim - target) < 0.01f)
+    if (std::abs (meterAnimTarget - target) > 0.5f) // (re)arm, also on mid-flight reversal
+    {
+        meterAnimTarget = target;
+        meterAnimFrom   = meterAnim;
+        meterAnimT      = 0.0;
+    }
+    meterAnimT = juce::jmin (1.0, meterAnimT + dt / 0.24);
+    const float e = 1.0f - (float) std::pow (1.0 - meterAnimT, 6.0);
+    meterAnim = meterAnimFrom + (target - meterAnimFrom) * e;
+    if (meterAnimT >= 1.0)
     {
         meterAnim = target;
         if (! metersOn) levelMeter->setVisible (false);
     }
     layoutScopeArea();
+}
+
+void AnamorphAudioProcessorEditor::registerAnimated (juce::Component& c)
+{
+    animated.addIfNotAlreadyThere (&c);
+}
+
+// Micro-animation driver (F3): eases per-component "hovA" (hover), "actA"
+// (press) and "onA" (toggle position) properties every display frame; the
+// LookAndFeel blends its glows/lifts/knob travel with them. Fast in, gentler
+// out -- the Apple-feel non-linearity -- and when the Settings switch is off
+// the rates snap to 1 so everything behaves exactly as before. Idle cost is a
+// handful of compares per control; repaints only fire while a value moves.
+void AnamorphAudioProcessorEditor::stepMicroAnims (double dt)
+{
+    static const juce::Identifier hovA ("hovA"), actA ("actA"), onA ("onA");
+
+    const float rIn  = uiAnimOn ? 1.0f - std::exp (-(float) dt / 0.045f) : 1.0f;
+    const float rOut = uiAnimOn ? 1.0f - std::exp (-(float) dt / 0.120f) : 1.0f;
+    const float rAct = uiAnimOn ? 1.0f - std::exp (-(float) dt / 0.025f) : 1.0f;
+    const float rOn  = uiAnimOn ? 1.0f - std::exp (-(float) dt / 0.055f) : 1.0f;
+
+    for (auto* c : animated)
+    {
+        float hovT = 0.0f, actT = -1.0f, onT = -1.0f;
+
+        if (auto* s = dynamic_cast<juce::Slider*> (c))
+        {
+            hovT = s->isMouseOver (false) ? 1.0f : 0.0f;
+            actT = (s->isMouseButtonDown()
+                    || (bool) s->getProperties().getWithDefault ("dragging", false)) ? 1.0f : 0.0f;
+        }
+        else if (auto* b = dynamic_cast<juce::Button*> (c))
+        {
+            hovT = b->isOver() ? 1.0f : 0.0f;
+            if (auto* t = dynamic_cast<juce::ToggleButton*> (c))
+                onT = t->getToggleState() ? 1.0f : 0.0f;
+        }
+        else if (auto* box = dynamic_cast<juce::ComboBox*> (c))
+            hovT = (bool) box->getProperties().getWithDefault ("hov", false) ? 1.0f : 0.0f;
+        else
+            hovT = c->isMouseOver (true) ? 1.0f : 0.0f; // A/B control
+
+        auto& props = c->getProperties();
+        auto stepVal = [&props] (const juce::Identifier& key, float target, float up, float down) -> bool
+        {
+            const float curr = (float) (double) props.getWithDefault (key, 0.0);
+            float next = curr + (target - curr) * (target > curr ? up : down);
+            if (std::abs (next - target) < 0.004f) next = target;
+            if (std::abs (next - curr) < 0.0015f) return false;
+            props.set (key, next);
+            return true;
+        };
+
+        bool changed = stepVal (hovA, hovT, rIn, rOut);
+        if (actT >= 0.0f) changed = stepVal (actA, actT, rAct, rOut) || changed;
+        if (onT  >= 0.0f) changed = stepVal (onA,  onT,  rOn,  rOn)  || changed;
+        if (changed) c->repaint();
+    }
+}
+
+// Whole-window scale (F4): the layout stays at its logical 940x720 and a plain
+// transform scales the editor; every control is vector-drawn, so the result is
+// crisp at any step and the composition cannot drift. The wrapper resizes the
+// host window from the transformed bounds automatically.
+void AnamorphAudioProcessorEditor::applyUiScale()
+{
+    static constexpr float scales[] = { 0.75f, 0.85f, 1.0f, 1.25f, 1.5f };
+    const int idx = juce::jlimit (0, 4, uiScaleBox.getSelectedItemIndex());
+    lastScaleIdx = uiScaleBox.getSelectedItemIndex();
+    setTransform (juce::AffineTransform::scale (scales[idx]));
+}
+
+// ----------------------------------------------------------------------------
+//  Preset browser (F2)
+// ----------------------------------------------------------------------------
+void AnamorphAudioProcessorEditor::refreshPresetDisplay()
+{
+    auto& pm = processor.getPresets();
+    const juce::String shown = pm.currentName()
+        + (pm.isDirty() ? juce::String (" ") + juce::String::charToString ((juce::juce_wchar) 0x2022) : juce::String());
+    if (presetName.getButtonText() != shown)
+        presetName.setButtonText (shown);
+}
+
+void AnamorphAudioProcessorEditor::showPresetMenu()
+{
+    auto& pm = processor.getPresets();
+    pm.refresh();
+
+    juce::PopupMenu m;
+    m.setLookAndFeel (&lnf);
+    const int cur = pm.currentIndex();
+    m.addSectionHeader ("FACTORY");
+    bool userHeader = false;
+    for (int i = 0; i < pm.entries().size(); ++i)
+    {
+        const auto& e = pm.entries().getReference (i);
+        if (! e.isFactory && ! userHeader) { m.addSectionHeader ("USER"); userHeader = true; }
+        m.addItem (i + 1, e.name, true, i == cur);
+    }
+    m.addSeparator();
+    m.addItem (10001, juce::String ("Save Preset") + juce::String::charToString ((juce::juce_wchar) 0x2026));
+
+    m.showMenuAsync (juce::PopupMenu::Options()
+                         .withTargetComponent (presetName)
+                         .withMinimumWidth (presetName.getWidth()),
+        [this] (int r)
+        {
+            if (r == 0) return;
+            if (r == 10001) { showSavePreset (true); return; }
+            processor.getPresets().load (r - 1);
+            refreshPresetDisplay();
+        });
+}
+
+void AnamorphAudioProcessorEditor::showSavePreset (bool show)
+{
+    savePresetBackdrop.setVisible (show);
+    if (show)
+    {
+        savePresetBackdrop.toFront (false);
+        resized();
+        saveNameEditor.setText (processor.getPresets().currentName(), false);
+        saveNameEditor.grabKeyboardFocus();
+    }
 }
 
 // ----------------------------------------------------------------------------
@@ -903,7 +1119,7 @@ void AnamorphAudioProcessorEditor::resized()
 
     // Settings panel
     {
-        auto s = getLocalBounds().withSizeKeepingCentre (360, 250);
+        auto s = getLocalBounds().withSizeKeepingCentre (360, 318);
         settingsBackdrop.panel = s;
         auto inner = s.reduced (24, 20);
         settingsTitle.setBounds (inner.removeFromTop (20));
@@ -912,14 +1128,36 @@ void AnamorphAudioProcessorEditor::resized()
         inner.removeFromTop (4); // a little more air below the label (#7)
         oversampleBox.setBounds (inner.removeFromTop (25).reduced (0, 1));
         inner.removeFromTop (12);
+        uiScaleLabel.setBounds (inner.removeFromTop (16)); // window scale (F4)
+        inner.removeFromTop (4);
+        uiScaleBox.setBounds (inner.removeFromTop (25).reduced (0, 1));
+        inner.removeFromTop (12);
         persistLabel.setBounds (inner.removeFromTop (16));
         inner.removeFromTop (4);
         // Extend 8 px left so the 8 px track inset lands the bar's left edge on the
         // same line as the labels / Oversampling combo above (#4).
         { auto pb = inner.removeFromTop (24); scopePersistK.setBounds (pb.withLeft (pb.getX() - 8)); }
         inner.removeFromTop (12);
-        // Nudge the toggle right so its pill lines up with the labels above (#5).
+        // Nudge the toggles right so their pills line up with the labels above (#5).
         tooltipsToggle.setBounds (inner.removeFromTop (26).withTrimmedLeft (4));
+        inner.removeFromTop (6);
+        animToggle.setBounds (inner.removeFromTop (26).withTrimmedLeft (4)); // (F3)
+    }
+
+    // Save-preset overlay (F2)
+    {
+        savePresetBackdrop.setBounds (getLocalBounds());
+        auto sp = getLocalBounds().withSizeKeepingCentre (340, 148);
+        savePresetBackdrop.panel = sp;
+        auto in = sp.reduced (24, 18);
+        saveTitle.setBounds (in.removeFromTop (20));
+        in.removeFromTop (10);
+        saveNameEditor.setBounds (in.removeFromTop (28));
+        in.removeFromTop (14);
+        auto btns = in.removeFromTop (26);
+        saveCancelButton.setBounds (btns.removeFromRight (72));
+        btns.removeFromRight (8);
+        saveOkButton.setBounds (btns.removeFromRight (72));
     }
 
     auto r = getLocalBounds();
@@ -941,6 +1179,12 @@ void AnamorphAudioProcessorEditor::resized()
         bar.removeFromRight (12);
         copyButton.setBounds (bar.removeFromRight (46));
         abControl.setBounds (bar.removeFromRight (46).reduced (0, 1)); // shorter oval (#4)
+
+        // Preset browser between the title and the A/B group (F2): ‹ name ›.
+        auto pr = juce::Rectangle<int> (318, 9, bar.getRight() - 12 - 318, 28);
+        presetPrev.setBounds (pr.removeFromLeft (22));
+        presetNext.setBounds (pr.removeFromRight (22));
+        presetName.setBounds (pr.reduced (2, 0));
     }
 
     auto content = r;

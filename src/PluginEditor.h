@@ -67,8 +67,14 @@ private:
 
     void timerCallback() override;
     void layoutScopeArea();              // scope + meter block; re-run per frame during the reveal (#6)
-    void stepMeterReveal (double frameTimeSec); // vsync-driven meter reveal animation (#6)
+    void stepMeterReveal (double dt);    // vsync-driven meter reveal animation (#6/#3)
+    void stepMicroAnims (double dt);     // eased hover/press/toggle micro-animations (F3)
+    void registerAnimated (juce::Component&);
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override; // Persist scroll reveal (#1)
+    void applyUiScale();                 // whole-window XS..XL transform scale (F4)
+    void refreshPresetDisplay();         // preset name + dirty dot (F2)
+    void showPresetMenu();
+    void showSavePreset (bool);
     void setupRotary (juce::Slider&, juce::Label&, const juce::String& name, const juce::String& tip);
     void attachSlider (juce::Slider&, const char* id);
     void setupCombo (juce::ComboBox&, const char* id, const juce::String& tip);
@@ -101,6 +107,9 @@ private:
     juce::TextButton   settingsButton { "Settings" };
     juce::TextButton   undoButton, redoButton;
     juce::ToggleButton metersToggle, advancedToggle, bypassToggle;
+
+    // Preset browser (F2): ‹ name ›, the name opens the preset menu.
+    juce::TextButton   presetPrev, presetNext, presetName;
 
     // Knob: a slider that resets to its default on a clean double-click only --
     // a triple-or-more click no longer resets on every extra click (feedback #6).
@@ -154,9 +163,17 @@ private:
 
     // Settings controls
     juce::ComboBox oversampleBox;  juce::Label oversampleLabel;
+    juce::ComboBox uiScaleBox;     juce::Label uiScaleLabel; // XS..XL window scale (F4)
     juce::ToggleButton tooltipsToggle;
+    juce::ToggleButton animToggle;  // micro-animation switch (F3)
     juce::Label settingsTitle;
     juce::Label persistLabel;   // Persist moved into Settings as a bar (#21)
+
+    // Save-preset overlay (F2)
+    Backdrop savePresetBackdrop;
+    juce::Label      saveTitle;
+    juce::TextEditor saveNameEditor;
+    juce::TextButton saveOkButton { "Save" }, saveCancelButton { "Cancel" };
 
     juce::OwnedArray<SliderAttachment>   sliderAtts;
     juce::OwnedArray<ButtonAttachment>   buttonAtts;
@@ -182,6 +199,14 @@ private:
     // coarse timer tick is what stuttered (#6). Same ease curve, time-based.
     juce::VBlankAttachment meterVBlank;
     double lastFrameTime = 0.0;
+    float  meterAnimFrom = 0.0f, meterAnimTarget = -1.0f; // ease-out reveal state (#3)
+    double meterAnimT    = 1.0;
+
+    // Micro-animation driver (F3): per-frame eased "hovA"/"actA"/"onA" component
+    // properties the LookAndFeel blends with; repaints fire only while moving.
+    juce::Array<juce::Component*> animated;
+    bool uiAnimOn = true;
+    int  lastScaleIdx = -1; // applied UI-scale step (F4)
 
     // Single fixed window for both modes: toggling Advanced relays out the
     // content in place, so the host never resizes us and nothing flickers (#20).

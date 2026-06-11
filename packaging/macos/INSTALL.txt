@@ -20,7 +20,7 @@ quarantine it after download. Follow the steps below or it won't load.
 
   Logic Pro 和 GarageBand 只认 AU(.component),不认 VST3 —— 用 Logic 的话装 AU。
 
-  Copy commands (system folders need sudo) / 复制命令(系统目录需要 sudo):
+  Copy commands / 复制命令:
 
       sudo mkdir -p /Library/Audio/Plug-Ins/VST3 /Library/Audio/Plug-Ins/Components
       sudo cp -R "Anamorph.vst3"      /Library/Audio/Plug-Ins/VST3/
@@ -48,5 +48,4 @@ Notes / 说明
 - If macOS still complains, right-click the .component/.vst3 in Finder once and
   choose "Open", or check System Settings > Privacy & Security for an "Open
   Anyway" button.
-- This is an unsigned developer build for testing. For distribution you'd sign
-  with a Developer ID and notarize.
+- This is an unsigned developer build for testing.
