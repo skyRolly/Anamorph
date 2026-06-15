@@ -14,8 +14,16 @@ StereoMeter::~StereoMeter() { stopTimer(); }
 
 void StereoMeter::timerCallback()
 {
-    const float target = (type == Type::Balance) ? source.getBalance() : source.getSlow();
-    value += 0.165f * (target - value); // same ballistics as 0.3 @ 30 Hz, time-corrected
+    // When the input goes silent (or before any audio at all), both the phase
+    // correlation and the L/R balance lose all meaning, so the pointer glides
+    // gently back to centre (0) rather than holding at an extreme or jumping to
+    // +1 on open (#1/#2). Active motion stays snappy; the return-to-centre is a
+    // slow ~700 ms damped release so it reads as relaxing, never a snap.
+    const bool silent = source.getEnergy() < 6.0e-9f; // ~ -82 dBFS (sum of L^2 + R^2)
+    const float target = silent ? 0.0f
+                                : (type == Type::Balance ? source.getBalance() : source.getSlow());
+    const float rate = silent ? 0.030f : 0.165f;
+    value += rate * (target - value);
     repaint();
 }
 

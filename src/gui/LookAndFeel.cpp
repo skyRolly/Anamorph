@@ -28,9 +28,13 @@ void AnamorphLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int
     const auto radius  = juce::jmin (bounds.getWidth(), bounds.getHeight()) * 0.5f;
     const auto centre  = bounds.getCentre();
     // Draw at the EASED visual position when the micro-anim driver is publishing
-    // one (preset / A-B sweep, #5); falls back to the live position otherwise.
-    if (const auto* v = s.getProperties().getVarPointer ("vpos"))
-        pos = juce::jlimit (0.0f, 1.0f, (float) (double) *v);
+    // one (preset / A-B sweep, #5); during a hand drag use the live position so
+    // the pointer tracks 1:1 with no lag.
+    const bool dragging = s.isMouseButtonDown()
+                       || (bool) s.getProperties().getWithDefault ("dragging", false);
+    if (! dragging)
+        if (const auto* v = s.getProperties().getVarPointer ("vpos"))
+            pos = juce::jlimit (0.0f, 1.0f, (float) (double) *v);
     const auto angle   = startAngle + pos * (endAngle - startAngle);
     const float thick  = juce::jmax (3.0f, radius * 0.16f);
 
@@ -123,36 +127,52 @@ void AnamorphLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int
     const bool horizontal = (style == juce::Slider::LinearHorizontal || style == juce::Slider::LinearBar);
     auto bounds = juce::Rectangle<float> ((float) x, (float) y, (float) w, (float) h);
 
-    // Recessed track with an inner gradient (#12: premium, not a flat line).
+    // Hover and press are DISTINCT eased levels, like the knob arc: hover glows,
+    // press glows MORE (#5). hi = "lit at all", aA = the extra press amount.
+    const bool hovB = s.isMouseOver (false);
+    const bool interacting = s.isMouseButtonDown()
+                          || (bool) s.getProperties().getWithDefault ("dragging", false);
+    const float hA = animOr (s, "hovA", hovB);
+    const float aA = animOr (s, "actA", interacting);
+    const float hi = juce::jmax (hA, aA);
+
+    // Recessed track. The un-filled (dark) portion lifts a touch on hover, more on
+    // press -- the same two-level brightening the knob face has (#6).
     const float trackThick = 6.0f;
+    const float trackLift = 0.05f * hi + 0.07f * aA;
     juce::Rectangle<float> track = horizontal
         ? juce::Rectangle<float> (bounds.getX(), bounds.getCentreY() - trackThick * 0.5f, bounds.getWidth(), trackThick)
         : juce::Rectangle<float> (bounds.getCentreX() - trackThick * 0.5f, bounds.getY(), trackThick, bounds.getHeight());
 
-    juce::ColourGradient tg (colours::bg.darker (0.25f), track.getX(), track.getY(),
-                             colours::bgRaised, track.getX(), track.getBottom(), false);
+    juce::ColourGradient tg (colours::bg.darker (0.25f).brighter (trackLift), track.getX(), track.getY(),
+                             colours::bgRaised.brighter (trackLift), track.getX(), track.getBottom(), false);
     g.setGradientFill (tg);
     g.fillRoundedRectangle (track, trackThick * 0.5f);
-    g.setColour (colours::outline);
+    g.setColour (colours::outline.brighter (0.10f * hi));
     g.drawRoundedRectangle (track.reduced (0.5f), trackThick * 0.5f, 1.0f);
 
-    // The thumb travels on `pos` directly (1:1 with the cursor); the inset that
-    // keeps it on the track is done in getSliderLayout, so cursor / value / thumb
-    // all stay in sync (#5).
+    // Eased visual position (#7): a preset / A-B switch sweeps the fill + thumb
+    // instead of teleporting. During a hand drag we keep the real `pos` so the
+    // thumb tracks the cursor exactly 1:1 (the inset lives in getSliderLayout).
+    if (! interacting)
+        if (const auto* v = s.getProperties().getVarPointer ("vpos"))
+        {
+            const float vp = juce::jlimit (0.0f, 1.0f, (float) (double) *v);
+            pos = horizontal ? bounds.getX() + vp * bounds.getWidth()
+                             : bounds.getBottom() - vp * bounds.getHeight();
+        }
+
     const float r = 8.0f;
     juce::Rectangle<float> fill = horizontal
         ? track.withWidth (juce::jmax (0.0f, pos - bounds.getX()))
         : track.withTop (pos).withBottom (bounds.getBottom());
 
-    // Filled portion: the softer palette blue->teal gradient (#1) with a MANY-
-    // layered glow so the halo's brightness falls off smoothly instead of in
-    // visible steps when zoomed in (#4).
+    // Filled portion: blue->teal gradient with a MANY-layered gradient-opacity
+    // halo (NOT a hard widened stroke). The halo is brighter + wider on hover and
+    // brighter + wider STILL on press, so the two levels clearly differ (#5).
     const juce::Colour fillLo (0xff5aa6ff), fillHi (0xff35d0c0);
-    const bool actB = s.isMouseOverOrDragging() || (bool) s.getProperties().getWithDefault ("dragging", false);
-    // Eased interaction level (F3): hover or drag, whichever is brighter.
-    const float act = juce::jmax (animOr (s, "hovA", actB), animOr (s, "actA", actB));
-    const float glowPeak   = 0.16f + 0.18f * act;
-    const float glowSpread = 2.8f  + 1.8f  * act;
+    const float glowPeak   = 0.14f + 0.10f * hi + 0.16f * aA; // idle .14 / hover .24 / press .40
+    const float glowSpread = 2.6f  + 1.8f  * hi + 2.0f  * aA; // idle 2.6 / hover 4.4 / press 6.4
     constexpr int nLayers = 9;
     for (int i = 0; i < nLayers; ++i)
     {
@@ -172,25 +192,27 @@ void AnamorphLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int
     g.setGradientFill (fg);
     g.fillRoundedRectangle (fill, trackThick * 0.5f);
 
-    // Glassy thumb: a neutral gray-white rim normally; on hover/drag it gets a
-    // REAL feathered cyan glow (a blurred drop-shadow halo around the circle, not a
-    // hard flat ring) (#8).
+    // Glassy thumb: a neutral gray-white rim at rest; on hover a feathered cyan
+    // halo, on press a stronger one -- a blurred drop-shadow (gradient opacity),
+    // never a hard ring (#5). Two clearly-different levels.
     const float cx = horizontal ? pos : bounds.getCentreX();
     const float cy = horizontal ? bounds.getCentreY() : pos;
     juce::Path thumbPath; thumbPath.addEllipse (cx - r, cy - r, r * 2.0f, r * 2.0f);
-    if (act > 0.03f)
+    const float thumbGlow = 0.30f * hi + 0.35f * aA; // hover .30 / press .65
+    if (thumbGlow > 0.02f)
     {
-        juce::DropShadow (fillHi.withAlpha (0.65f * act), 9, {}).drawForPath (g, thumbPath);
-        juce::DropShadow (fillHi.withAlpha (0.40f * act), 4, {}).drawForPath (g, thumbPath);
+        juce::DropShadow (fillHi.withAlpha (thumbGlow),        9, {}).drawForPath (g, thumbPath);
+        juce::DropShadow (fillHi.withAlpha (thumbGlow * 0.6f), 4, {}).drawForPath (g, thumbPath);
     }
-    juce::ColourGradient kg (colours::bgRaised.brighter (0.30f + 0.15f * act), cx, cy - r,
+    juce::ColourGradient kg (colours::bgRaised.brighter (0.30f + 0.15f * hi), cx, cy - r,
                              colours::bgPanel.darker (0.18f),     cx, cy + r, false);
     g.setGradientFill (kg);
     g.fillEllipse (cx - r, cy - r, r * 2.0f, r * 2.0f);
-    g.setColour (juce::Colour (0xffb8c2cf).interpolatedWith (fillHi, act)); // gray rim -> cyan on touch
+    g.setColour (juce::Colour (0xffb8c2cf).interpolatedWith (fillHi, hi)); // gray rim -> cyan on touch
     g.drawEllipse (cx - r, cy - r, r * 2.0f, r * 2.0f, 1.4f);
-    // Glass rim ON TOP, clearly visible: bright top-left arc + faint opposite (#16).
-    glass::drawCircleEdge (g, cx, cy, r, 1.5f);
+    // Glass rim micro-glow on the thumb ring, always faintly present and a touch
+    // brighter on interaction (#5).
+    glass::drawCircleEdge (g, cx, cy, r, 1.2f + 0.5f * hi);
 }
 
 juce::Slider::SliderLayout AnamorphLookAndFeel::getSliderLayout (juce::Slider& s)
