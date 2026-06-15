@@ -69,6 +69,7 @@ private:
     void layoutScopeArea();              // scope + meter block; re-run per frame during the reveal (#6)
     void stepMeterReveal (double dt);    // vsync-driven meter reveal animation (#6/#3)
     void stepMicroAnims (double dt);     // eased hover/press/toggle micro-animations (F3)
+    void stepScaleAnim (double dt);      // smooth window-scale grow/shrink (#13/#2)
     void registerAnimated (juce::Component&);
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override; // Persist scroll reveal (#1)
     void applyUiScale();                 // whole-window XS..XL transform scale (F4)
@@ -206,7 +207,9 @@ private:
     // properties the LookAndFeel blends with; repaints fire only while moving.
     juce::Array<juce::Component*> animated;
     bool uiAnimOn = true;
-    int  lastScaleIdx = -1; // applied UI-scale step (F4)
+    int  lastScaleIdx = -1;             // selected UI-scale step (F4)
+    float uiScaleCurrent = 1.0f;        // displayed scale, eased toward the target (#2)
+    float uiScaleTarget  = 1.0f;
 
     // Single fixed window for both modes: toggling Advanced relays out the
     // content in place, so the host never resizes us and nothing flickers (#20).

@@ -3,6 +3,15 @@
 
 using namespace anamorph::gui;
 
+// Tooltips read terser without a trailing full stop (#3). Applied centrally so
+// every control set up through the helpers is covered.
+static juce::String tidyTip (const juce::String& tip)
+{
+    auto t = tip.trim();
+    while (t.endsWithChar ('.')) t = t.dropLastCharacters (1).trimEnd();
+    return t;
+}
+
 #ifndef ANAMORPH_VERSION_STRING
  #define ANAMORPH_VERSION_STRING "0.4.0"
 #endif
@@ -258,7 +267,7 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     abControl.setTooltip ("A/B Compare"); // #17 (no period)
     addAndMakeVisible (abControl);
     copyButton.onClick = [this] { processor.abCopyToOther(); };
-    copyButton.setTooltip ("Copy the current settings into the other A/B slot.");
+    copyButton.setTooltip (tidyTip ("Copy the current settings into the other A/B slot."));
     addAndMakeVisible (copyButton);
 
     settingsButton.onClick = [this] { showSettings (true); };
@@ -349,9 +358,9 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     setupCombo (haasSideBox, pid::haasSide, "Which side the sound leans toward.");
     setupCombo (dimModeBox,  pid::dimMode,  "Voicing of the Dim-D widener."); // #5
 
-    setupRotary (driveK,  driveL,  "Drive",  "Adds gentle saturation / density. 0 dB is clean.");
-    setupRotary (amountK, amountL, "Amount", "How much widening. 0% is fully transparent.");
-    setupRotary (widthK,  widthL,  "Width",  "Stereo width. 100% leaves the image unchanged.");
+    setupRotary (driveK,  driveL,  "Drive",  "Adds gentle saturation / density - 0 dB is clean");
+    setupRotary (amountK, amountL, "Amount", "How much widening - 0% is fully transparent");
+    setupRotary (widthK,  widthL,  "Width",  "Stereo width - 100% leaves the image unchanged");
     attachSlider (driveK, pid::drive);
     attachSlider (amountK, pid::amount);
     attachSlider (widthK, pid::width);
@@ -382,7 +391,7 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     setupToggle (autoMatchToggle, pid::autoGainMatch, "Level Match",
                  "Match the processed loudness to the input so louder doesn't fool you.");
     applyGainButton.setComponentID ("apply"); // bigger Apply text (#23)
-    applyGainButton.setTooltip ("Bake the measured match into Output as a fixed value.");
+    applyGainButton.setTooltip (tidyTip ("Bake the measured match into Output as a fixed value."));
     applyGainButton.onClick = [this] { processor.applyAutoGain(); };
     addAndMakeVisible (applyGainButton);
     matchReadout.setJustificationType (juce::Justification::centredRight); // align with the Hz readout below (#11)
@@ -496,14 +505,14 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     settingsTitle.setFont (juce::Font (juce::FontOptions (12.0f)).withExtraKerningFactor (0.2f));
     settingsBackdrop.addAndMakeVisible (settingsTitle);
 
-    setupCombo (oversampleBox, pid::oversample, "Oversampling for the nonlinear stages. Off (1x) = no latency.");
+    setupCombo (oversampleBox, pid::oversample, "Oversampling for the nonlinear stages - Off (1x) = no latency");
     oversampleLabel.setText ("Oversampling", juce::dontSendNotification);
     oversampleLabel.setColour (juce::Label::textColourId, colours::textDim);
     settingsBackdrop.addAndMakeVisible (oversampleLabel);
     settingsBackdrop.addAndMakeVisible (oversampleBox);
 
     // Whole-window scale (F4): vectors redraw at the new size, stays crisp.
-    setupCombo (uiScaleBox, pid::uiScale, "Window size. M is the original size; everything scales in proportion.");
+    setupCombo (uiScaleBox, pid::uiScale, "Window size - M is the original; everything scales in proportion");
     uiScaleLabel.setText ("Window Size", juce::dontSendNotification);
     uiScaleLabel.setColour (juce::Label::textColourId, colours::textDim);
     settingsBackdrop.addAndMakeVisible (uiScaleLabel);
@@ -517,9 +526,9 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     scopePersistK.setDoubleClickReturnValue (true, 0.5); // double-click resets to default (#7)
     scopePersistK.setColour (juce::Slider::textBoxTextColourId, colours::textDim);
     scopePersistK.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
-    scopePersistK.setTooltip ("Vectorscope afterglow time " // #5
+    scopePersistK.setTooltip (tidyTip ("Vectorscope afterglow time " // #5
                               + juce::String::charToString ((juce::juce_wchar) 0x2014)
-                              + " longer trails fade more slowly.");
+                              + " longer trails fade more slowly."));
     scopePersistK.setRepaintsOnMouseActivity (true); // hover glow (#10)
     settingsBackdrop.addAndMakeVisible (scopePersistK);
     scopePersistK.setTextBoxStyle (juce::Slider::TextBoxRight, false, 52, 18); // box built with our LnF
@@ -535,12 +544,12 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     scopePersistK.onDragEnd   = [this] { persistDragging = false; };
 
     tooltipsToggle.setButtonText ("Tooltips");
-    tooltipsToggle.setTooltip ("Show these hover hints on every control.");
+    tooltipsToggle.setTooltip (tidyTip ("Show these hover hints on every control."));
     settingsBackdrop.addAndMakeVisible (tooltipsToggle);
     buttonAtts.add (new ButtonAttachment (processor.getAPVTS(), pid::tooltipsOn, tooltipsToggle));
 
     animToggle.setButtonText ("UI Animations");
-    animToggle.setTooltip ("Smooth micro-animations on hovers, presses and switches."); // no F3 ref (#4)
+    animToggle.setTooltip (tidyTip ("Smooth micro-animations on hovers, presses and switches")); // no F3 ref (#4)
     settingsBackdrop.addAndMakeVisible (animToggle);
     buttonAtts.add (new ButtonAttachment (processor.getAPVTS(), pid::uiAnimations, animToggle));
 
@@ -577,6 +586,7 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
         lastFrameTime = t;
         stepMeterReveal (dt);
         stepMicroAnims (dt);
+        stepScaleAnim (dt);
     });
 }
 
@@ -600,7 +610,7 @@ void AnamorphAudioProcessorEditor::setupRotary (juce::Slider& s, juce::Label& l,
     s.setColour (juce::Slider::textBoxTextColourId, colours::text);
     s.setColour (juce::Slider::textBoxHighlightColourId, colours::accent.withAlpha (0.30f));
     s.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
-    s.setTooltip (tip);
+    s.setTooltip (tidyTip (tip));
     s.setRepaintsOnMouseActivity (true); // hover glow (#10)
     addAndMakeVisible (s);
     // Create the value box AFTER parenting, so it's built with our LookAndFeel
@@ -652,7 +662,7 @@ void AnamorphAudioProcessorEditor::setupCombo (juce::ComboBox& box, const char* 
 {
     if (auto* cp = dynamic_cast<juce::AudioParameterChoice*> (processor.getAPVTS().getParameter (id)))
         box.addItemList (cp->choices, 1);
-    box.setTooltip (tip);
+    box.setTooltip (tidyTip (tip));
     box.setRepaintsOnMouseActivity (true); // hover feedback (#10)
     passComboHoverThrough (box);
     allCombos.add (&box); // timer drives the hover repaint (#20)
@@ -665,7 +675,7 @@ void AnamorphAudioProcessorEditor::setupToggle (juce::ToggleButton& t, const cha
                                                 const juce::String& text, const juce::String& tip)
 {
     t.setButtonText (text);
-    if (tip.isNotEmpty()) t.setTooltip (tip);
+    if (tip.isNotEmpty()) t.setTooltip (tidyTip (tip));
     addAndMakeVisible (t);
     buttonAtts.add (new ButtonAttachment (processor.getAPVTS(), id, t));
     registerAnimated (t); // eased switch slide + hover (F3)
@@ -755,8 +765,8 @@ void AnamorphAudioProcessorEditor::updateMsLabels()
     const juce::String ph = juce::String::charToString ((juce::juce_wchar) 0x00F8);
     polLToggle.setButtonText (ph + (msState ? " M" : " L")); // ø M / ø L  (#13)
     polRToggle.setButtonText (ph + (msState ? " S" : " R")); // ø S / ø R
-    polLToggle.setTooltip (msState ? "Flip the polarity of the Mid channel."  : "Flip the polarity of the Left channel.");
-    polRToggle.setTooltip (msState ? "Flip the polarity of the Side channel." : "Flip the polarity of the Right channel.");
+    polLToggle.setTooltip (msState ? "Flip the polarity of the Mid channel"  : "Flip the polarity of the Left channel");
+    polRToggle.setTooltip (msState ? "Flip the polarity of the Side channel" : "Flip the polarity of the Right channel");
     balanceK.updateText(); // re-derive the L/R vs M/S balance readout (#12)
 }
 
@@ -905,6 +915,16 @@ void AnamorphAudioProcessorEditor::stepMeterReveal (double dt)
 void AnamorphAudioProcessorEditor::registerAnimated (juce::Component& c)
 {
     animated.addIfNotAlreadyThere (&c);
+    // Seed the eased properties so they ALWAYS exist: the LookAndFeel then reads a
+    // real eased value rather than ever falling back to the binary state (the
+    // fallback/property swap is what let a click flicker), and a toggle that loads
+    // in the ON state eases correctly from its real position on the first click
+    // instead of snapping (#1).
+    auto& p = c.getProperties();
+    p.set ("hovA", 0.0);
+    p.set ("actA", 0.0);
+    if (auto* t = dynamic_cast<juce::ToggleButton*> (&c))
+        p.set ("onA", t->getToggleState() ? 1.0 : 0.0);
 }
 
 // Micro-animation driver (F3): eases per-component "hovA" (hover), "actA"
@@ -918,9 +938,13 @@ void AnamorphAudioProcessorEditor::stepMicroAnims (double dt)
 {
     static const juce::Identifier hovA ("hovA"), actA ("actA"), onA ("onA"), vpos ("vpos");
 
-    const float rIn  = uiAnimOn ? 1.0f - std::exp (-(float) dt / 0.045f) : 1.0f;
-    const float rOut = uiAnimOn ? 1.0f - std::exp (-(float) dt / 0.120f) : 1.0f;
-    const float rAct = uiAnimOn ? 1.0f - std::exp (-(float) dt / 0.025f) : 1.0f;
+    // Exponential ease-out follows (non-linear, the curve the toggle slide used
+    // and the user liked). Hover/press eased a touch more deliberately so the
+    // highlight transition clearly reads as an animation, not a snap (#4); the
+    // toggle slide keeps its liked timing (#1).
+    const float rIn  = uiAnimOn ? 1.0f - std::exp (-(float) dt / 0.075f) : 1.0f;
+    const float rOut = uiAnimOn ? 1.0f - std::exp (-(float) dt / 0.150f) : 1.0f;
+    const float rAct = uiAnimOn ? 1.0f - std::exp (-(float) dt / 0.045f) : 1.0f;
     const float rOn  = uiAnimOn ? 1.0f - std::exp (-(float) dt / 0.055f) : 1.0f;
     const float rPos = uiAnimOn ? 1.0f - std::exp (-(float) dt / 0.090f) : 1.0f;
 
@@ -936,9 +960,13 @@ void AnamorphAudioProcessorEditor::stepMicroAnims (double dt)
         float hovT = over ? 1.0f : 0.0f;
         float actT = -1.0f, onT = -1.0f;
 
+        // The animated properties are SEEDED at registration (registerAnimated),
+        // so the default here is only a fallback; it must NOT be the target, or
+        // the very first transition starts already-arrived and never plays -- the
+        // bug that made the switch animation vanish last version (#1).
         auto stepVal = [&props] (const juce::Identifier& key, float target, float up, float down) -> bool
         {
-            const float curr = (float) (double) props.getWithDefault (key, (double) target);
+            const float curr = (float) (double) props.getWithDefault (key, 0.0);
             float next = curr + (target - curr) * (target > curr ? up : down);
             if (std::abs (next - target) < 0.004f) next = target;
             if (std::abs (next - curr) < 0.0015f) return false;
@@ -991,14 +1019,31 @@ void AnamorphAudioProcessorEditor::applyUiScale()
 {
     static constexpr float scales[] = { 0.75f, 0.85f, 1.0f, 1.25f, 1.5f };
     const int idx = juce::jlimit (0, 4, uiScaleBox.getSelectedItemIndex());
-    if (idx == lastScaleIdx) return; // no redundant resizes (#13)
+    if (idx == lastScaleIdx) return;
     lastScaleIdx = idx;
+    uiScaleTarget = scales[idx];
 
-    // Apply width AND height in a single transform change so the wrapper issues
-    // one resize, not a width-then-height pair that flashes an L-shape (#13). The
-    // editor is opaque and repaints synchronously at the new size, so no stale or
-    // see-through frame is shown mid-resize.
-    setTransform (juce::AffineTransform::scale (scales[idx]));
+    // With animations off, snap. Otherwise stepScaleAnim eases the transform over
+    // a few frames so the window GROWS/SHRINKS smoothly in BOTH axes at once,
+    // which masks the host's two-step width-then-height resize -- the L-shape
+    // flash the single jump produced (#2).
+    if (! uiAnimOn || lastFrameTime <= 0.0) // also snap at construction (no vblank yet)
+    {
+        uiScaleCurrent = uiScaleTarget;
+        setTransform (juce::AffineTransform::scale (uiScaleCurrent));
+        if (openGLContext.isAttached()) openGLContext.triggerRepaint();
+    }
+}
+
+void AnamorphAudioProcessorEditor::stepScaleAnim (double dt)
+{
+    if (std::abs (uiScaleCurrent - uiScaleTarget) < 0.0005f) return; // idle
+
+    uiScaleCurrent += (uiScaleTarget - uiScaleCurrent) * (1.0f - (float) std::pow (0.30, dt * 24.0));
+    if (std::abs (uiScaleCurrent - uiScaleTarget) < 0.003f)
+        uiScaleCurrent = uiScaleTarget;
+
+    setTransform (juce::AffineTransform::scale (uiScaleCurrent));
     if (openGLContext.isAttached())
         openGLContext.triggerRepaint();
 }
