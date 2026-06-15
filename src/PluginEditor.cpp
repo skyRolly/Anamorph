@@ -586,12 +586,13 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
         lastFrameTime = t;
         stepMeterReveal (dt);
         stepMicroAnims (dt);
-        stepScaleAnim (dt);
+        tooltips.step ((float) dt); // tooltip fade-out (#4)
     });
 }
 
 AnamorphAudioProcessorEditor::~AnamorphAudioProcessorEditor()
 {
+    tooltips.animOn = false; // no fade stepping during teardown (#4)
     stopTimer();
     openGLContext.detach();
     channelModeBox.setLookAndFeel (nullptr);
@@ -698,12 +699,38 @@ void AnamorphAudioProcessorEditor::applyScopePersist()
 void AnamorphAudioProcessorEditor::updateAlgoControls()
 {
     const int algo = algorithmBox.getSelectedItemIndex();
+
+    // The bottom-right Widen slot hosts a DIFFERENT knob per algorithm (Haas
+    // Delay <-> Velvet Density). When the algorithm swaps which knob lives there,
+    // hand the OUTGOING knob's visual position to the INCOMING one so the slot's
+    // knob sweeps continuously to its new value instead of teleporting (#8). The
+    // Chorus layout has two knobs in that area and is deliberately left to their
+    // own separate vpos registers (#8).
+    auto getVp = [] (juce::Slider& s)
+    {
+        return (float) (double) s.getProperties().getWithDefault (
+                   "vpos", (double) s.valueToProportionOfLength (s.getValue()));
+    };
+    float oldBR = -1.0f;
+    if (algo != brPrevAlgo && brPrevAlgo >= 0)
+    {
+        if (haasDelayK.isVisible())    oldBR = getVp (haasDelayK);   // leaving Haas
+        else if (velvetK.isVisible())  oldBR = getVp (velvetK);      // leaving Velvet
+    }
+
     haasDelayK.setVisible (algo == 0);  haasDelayL.setVisible (algo == 0);
     velvetK.setVisible    (algo == 1);  velvetL.setVisible    (algo == 1);
     chorusRateK.setVisible (algo == 2); chorusRateL.setVisible (algo == 2);
     chorusDepthK.setVisible (algo == 2);chorusDepthL.setVisible (algo == 2);
     haasSideBox.setVisible (algo == 0);
     dimModeBox.setVisible  (algo == 3);
+
+    if (oldBR >= 0.0f)
+    {
+        if (algo == 0)      haasDelayK.getProperties().set ("vpos", (double) oldBR); // -> Haas Delay
+        else if (algo == 1) velvetK.getProperties().set ("vpos", (double) oldBR);    // -> Velvet Density
+    }
+    brPrevAlgo = algo;
 
     // Caption over the side/voicing combo (#9): one intuitive word per algorithm.
     algoOptLabel.setVisible (algo == 0 || algo == 3);
@@ -820,6 +847,7 @@ void AnamorphAudioProcessorEditor::timerCallback()
         updateMsLabels();
 
     uiAnimOn = animToggle.getToggleState(); // micro-anims follow the Settings switch (F3)
+    tooltips.animOn = uiAnimOn;              // tooltip fade follows the same switch (#4)
 
     // Whole-window scale: follow the parameter (Settings combo, state recall, F4).
     if (uiScaleBox.getSelectedItemIndex() != lastScaleIdx)
@@ -980,26 +1008,18 @@ void AnamorphAudioProcessorEditor::stepMicroAnims (double dt)
                                   || (bool) props.getWithDefault ("dragging", false);
             actT = interacting ? 1.0f : 0.0f;
 
-            // Rotary knobs ease their pointer/arc toward the live value, so a
-            // preset or A/B switch SWEEPS the knob instead of teleporting it (#5).
-            // While the user turns it, snap so the knob stays 1:1 (no lag). vpos is
-            // ALWAYS kept current (even at rest) so there's a real "from" position
-            // to ease out of the instant the value jumps.
-            const auto st = s->getSliderStyle();
-            const bool rotary = st == juce::Slider::RotaryVerticalDrag
-                             || st == juce::Slider::RotaryHorizontalDrag
-                             || st == juce::Slider::RotaryHorizontalVerticalDrag
-                             || st == juce::Slider::Rotary;
-            if (rotary)
-            {
-                const float realPos = (float) s->valueToProportionOfLength (s->getValue());
-                const float curr = (float) (double) props.getWithDefault (vpos, (double) realPos);
-                float vp = (interacting || ! uiAnimOn) ? realPos
-                                                       : curr + (realPos - curr) * rPos;
-                if (std::abs (vp - realPos) < 0.0015f) vp = realPos;
-                if (std::abs (vp - curr) > 0.0004f) c->repaint();
-                props.set (vpos, vp);
-            }
+            // ROTARY knobs AND LINEAR sliders ease their drawn position toward the
+            // live value, so a preset / A-B switch SWEEPS them instead of teleporting
+            // (#5/#7). While the user turns the control, snap so it stays 1:1 (no
+            // lag). vpos is kept current at rest so there's a real "from" position to
+            // ease out of the instant the value jumps.
+            const float realPos = (float) s->valueToProportionOfLength (s->getValue());
+            const float curr = (float) (double) props.getWithDefault (vpos, (double) realPos);
+            float vp = (interacting || ! uiAnimOn) ? realPos
+                                                   : curr + (realPos - curr) * rPos;
+            if (std::abs (vp - realPos) < 0.0015f) vp = realPos;
+            if (std::abs (vp - curr) > 0.0004f) c->repaint();
+            props.set (vpos, vp);
         }
         else if (auto* t = dynamic_cast<juce::ToggleButton*> (c))
             onT = t->getToggleState() ? 1.0f : 0.0f;
@@ -1014,36 +1034,16 @@ void AnamorphAudioProcessorEditor::stepMicroAnims (double dt)
 // Whole-window scale (F4): the layout stays at its logical 940x720 and a plain
 // transform scales the editor; every control is vector-drawn, so the result is
 // crisp at any step and the composition cannot drift. The wrapper resizes the
-// host window from the transformed bounds automatically.
+// host window from the transformed bounds automatically. Applied as a single
+// instant step -- a resize doesn't want an animation (#3).
 void AnamorphAudioProcessorEditor::applyUiScale()
 {
     static constexpr float scales[] = { 0.75f, 0.85f, 1.0f, 1.25f, 1.5f };
     const int idx = juce::jlimit (0, 4, uiScaleBox.getSelectedItemIndex());
     if (idx == lastScaleIdx) return;
     lastScaleIdx = idx;
-    uiScaleTarget = scales[idx];
 
-    // With animations off, snap. Otherwise stepScaleAnim eases the transform over
-    // a few frames so the window GROWS/SHRINKS smoothly in BOTH axes at once,
-    // which masks the host's two-step width-then-height resize -- the L-shape
-    // flash the single jump produced (#2).
-    if (! uiAnimOn || lastFrameTime <= 0.0) // also snap at construction (no vblank yet)
-    {
-        uiScaleCurrent = uiScaleTarget;
-        setTransform (juce::AffineTransform::scale (uiScaleCurrent));
-        if (openGLContext.isAttached()) openGLContext.triggerRepaint();
-    }
-}
-
-void AnamorphAudioProcessorEditor::stepScaleAnim (double dt)
-{
-    if (std::abs (uiScaleCurrent - uiScaleTarget) < 0.0005f) return; // idle
-
-    uiScaleCurrent += (uiScaleTarget - uiScaleCurrent) * (1.0f - (float) std::pow (0.30, dt * 24.0));
-    if (std::abs (uiScaleCurrent - uiScaleTarget) < 0.003f)
-        uiScaleCurrent = uiScaleTarget;
-
-    setTransform (juce::AffineTransform::scale (uiScaleCurrent));
+    setTransform (juce::AffineTransform::scale (scales[idx]));
     if (openGLContext.isAttached())
         openGLContext.triggerRepaint();
 }

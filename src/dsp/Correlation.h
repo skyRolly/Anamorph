@@ -57,11 +57,16 @@ public:
         float bal = sum > 1.0e-12f ? (rrSlow - llSlow) / sum : 0.0f;
         bal = bal < -1.0f ? -1.0f : (bal > 1.0f ? 1.0f : bal);
         balance.store (bal, std::memory_order_relaxed);
+
+        // Fast mean-square energy so the GUI can tell "playing" from "silent" and
+        // glide the pointers back to centre when the input stops (#1/#2).
+        energy.store (llFast + rrFast, std::memory_order_relaxed);
     }
 
     float getFast() const noexcept    { return fast.load (std::memory_order_relaxed); }
     float getSlow() const noexcept    { return slow.load (std::memory_order_relaxed); }
     float getBalance() const noexcept { return balance.load (std::memory_order_relaxed); }
+    float getEnergy() const noexcept  { return energy.load (std::memory_order_relaxed); }
 
 private:
     static float coeffFor (double sr, double ms) noexcept
@@ -82,9 +87,12 @@ private:
     float lrFast = 0, llFast = 0, rrFast = 0;
     float lrSlow = 0, llSlow = 0, rrSlow = 0;
 
-    std::atomic<float> fast { 1.0f };
-    std::atomic<float> slow { 1.0f };
+    // Correlation has no meaning without signal: idle / silent reads as 0
+    // (decorrelated), not +1, so the meter sits centred at rest (#1).
+    std::atomic<float> fast { 0.0f };
+    std::atomic<float> slow { 0.0f };
     std::atomic<float> balance { 0.0f };
+    std::atomic<float> energy { 0.0f };
 };
 
 } // namespace anamorph
