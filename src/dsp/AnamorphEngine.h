@@ -142,8 +142,13 @@ private:
 
     // Mono Maker band-split: the mono low band is held aside while only the high
     // band is widened, then added back (delay-aligned to the wet latency) (#20).
-    juce::AudioBuffer<float> monoLow;       // mono low band for this block
-    juce::AudioBuffer<float> monoLowDelay;  // delay line to align lows with OS latency
+    // Both a DRIVEN (wet) and an UN-driven (dry) copy are kept so the recombine
+    // can dry/wet-blend the lows with Mix, instead of letting the driven lows
+    // bypass Mix and roar through at Mix=0 (#5).
+    juce::AudioBuffer<float> monoLow;          // driven (wet) mono low band for this block
+    juce::AudioBuffer<float> monoLowDry;       // un-driven (dry) mono low band for this block
+    juce::AudioBuffer<float> monoLowDelay;     // delay line: wet lows aligned to OS latency
+    juce::AudioBuffer<float> monoLowDryDelay;  // delay line: dry lows aligned to OS latency
     int monoLowWrite = 0;
 
     bool driveActive = false;

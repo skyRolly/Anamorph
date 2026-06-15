@@ -44,6 +44,17 @@ public:
     int  currentIndex() const noexcept;              // -1 when name not in list
     bool isDirty() const;                            // sound edited since load/save
 
+    // The preset "metadata" that must travel WITH a state set through undo / A-B /
+    // copy (#6): the base preset name and the clean-signature it was loaded at.
+    // isDirty() = (current sound != baseline), so restoring both reproduces the
+    // exact name + dirty-star the state had.
+    juce::String baseline() const noexcept { return sigAtLoad; }
+    void setMeta (const juce::String& name, const juce::String& baselineSig) noexcept
+    {
+        current = name;
+        sigAtLoad = baselineSig;
+    }
+
     void load (int index);                           // message thread only
     bool loadFile (const juce::File&);               // load an arbitrary .anamorph file (OS chooser, #3)
     void step (int delta);                           // prev/next with wrap-around

@@ -263,7 +263,7 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     addAndMakeVisible (titleButton);
 
     abControl.getActive = [this] { return processor.abActiveSlot(); };
-    abControl.onToggle  = [this] { processor.abSwitchTo (processor.abActiveSlot() == 0 ? 1 : 0); repaint(); };
+    abControl.onToggle  = [this] { processor.abSwitchTo (processor.abActiveSlot() == 0 ? 1 : 0); knobSweepTime = 0.45; refreshPresetDisplay(); repaint(); };
     abControl.setTooltip ("A/B Compare"); // #17 (no period)
     addAndMakeVisible (abControl);
     copyButton.onClick = [this] { processor.abCopyToOther(); };
@@ -282,8 +282,8 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     presetPrev.setTooltip ("Previous preset");
     presetNext.setTooltip ("Next preset");
     presetName.setTooltip ("Presets"); // short, no period (#12)
-    presetPrev.onClick = [this] { processor.getPresets().step (-1); refreshPresetDisplay(); };
-    presetNext.onClick = [this] { processor.getPresets().step (+1); refreshPresetDisplay(); };
+    presetPrev.onClick = [this] { processor.getPresets().step (-1); knobSweepTime = 0.45; refreshPresetDisplay(); };
+    presetNext.onClick = [this] { processor.getPresets().step (+1); knobSweepTime = 0.45; refreshPresetDisplay(); };
     presetName.onClick = [this] { showPresetMenu(); };
     addAndMakeVisible (presetPrev);
     addAndMakeVisible (presetNext);
@@ -326,8 +326,8 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     redoButton.setComponentID ("icon");
     undoButton.setTooltip ("Undo");
     redoButton.setTooltip ("Redo");
-    undoButton.onClick = [this] { processor.undo(); };
-    redoButton.onClick = [this] { processor.redo(); };
+    undoButton.onClick = [this] { processor.undo(); knobSweepTime = 0.45; refreshPresetDisplay(); };
+    redoButton.onClick = [this] { processor.redo(); knobSweepTime = 0.45; refreshPresetDisplay(); };
     addAndMakeVisible (undoButton);
     addAndMakeVisible (redoButton);
 
@@ -343,7 +343,7 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
 
     // --- WIDEN module (the Simple-mode core) ---
     setupCombo (algorithmBox, pid::algorithm, "The stereo-widening algorithm."); // #4
-    algorithmBox.onChange = [this] { updateAlgoControls(); resized(); };
+    algorithmBox.onChange = [this] { knobSweepTime = 0.45; updateAlgoControls(); resized(); };
     algorithmLabel.setText ("WIDEN", juce::dontSendNotification);
     algorithmLabel.setJustificationType (juce::Justification::centredLeft);
     algorithmLabel.setColour (juce::Label::textColourId, colours::textDim);
@@ -552,6 +552,11 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     animToggle.setTooltip (tidyTip ("Smooth micro-animations on hovers, presses and switches")); // no F3 ref (#4)
     settingsBackdrop.addAndMakeVisible (animToggle);
     buttonAtts.add (new ButtonAttachment (processor.getAPVTS(), pid::uiAnimations, animToggle));
+    // Adopt the new state IMMEDIATELY on click (not on the next 24 Hz tick): so
+    // turning it ON makes uiAnimOn true before the next frame and the toggle's own
+    // slide plays, while turning it OFF makes it false first so the toggle snaps --
+    // the user feels the on/off difference on the switch itself (#1).
+    animToggle.onClick = [this] { uiAnimOn = animToggle.getToggleState(); };
 
     // Initial cached view-state from the (recalled) parameters.
     advanced   = advancedToggle.getToggleState();
@@ -586,13 +591,11 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
         lastFrameTime = t;
         stepMeterReveal (dt);
         stepMicroAnims (dt);
-        tooltips.step ((float) dt); // tooltip fade-out (#4)
     });
 }
 
 AnamorphAudioProcessorEditor::~AnamorphAudioProcessorEditor()
 {
-    tooltips.animOn = false; // no fade stepping during teardown (#4)
     stopTimer();
     openGLContext.detach();
     channelModeBox.setLookAndFeel (nullptr);
@@ -847,7 +850,6 @@ void AnamorphAudioProcessorEditor::timerCallback()
         updateMsLabels();
 
     uiAnimOn = animToggle.getToggleState(); // micro-anims follow the Settings switch (F3)
-    tooltips.animOn = uiAnimOn;              // tooltip fade follows the same switch (#4)
 
     // Whole-window scale: follow the parameter (Settings combo, state recall, F4).
     if (uiScaleBox.getSelectedItemIndex() != lastScaleIdx)
@@ -976,6 +978,12 @@ void AnamorphAudioProcessorEditor::stepMicroAnims (double dt)
     const float rOn  = uiAnimOn ? 1.0f - std::exp (-(float) dt / 0.055f) : 1.0f;
     const float rPos = uiAnimOn ? 1.0f - std::exp (-(float) dt / 0.090f) : 1.0f;
 
+    // Knob/slider position only EASES while a sweep window is open (preset / A-B /
+    // undo / algorithm change); outside it, a value jump from the scroll wheel or
+    // host automation snaps instantly so it never lags or misleads (#3).
+    if (knobSweepTime > 0.0) knobSweepTime -= dt;
+    const bool sweeping = uiAnimOn && knobSweepTime > 0.0;
+
     for (auto* c : animated)
     {
         auto& props = c->getProperties();
@@ -1015,7 +1023,7 @@ void AnamorphAudioProcessorEditor::stepMicroAnims (double dt)
             // ease out of the instant the value jumps.
             const float realPos = (float) s->valueToProportionOfLength (s->getValue());
             const float curr = (float) (double) props.getWithDefault (vpos, (double) realPos);
-            float vp = (interacting || ! uiAnimOn) ? realPos
+            float vp = (interacting || ! sweeping) ? realPos
                                                    : curr + (realPos - curr) * rPos;
             if (std::abs (vp - realPos) < 0.0015f) vp = realPos;
             if (std::abs (vp - curr) > 0.0004f) c->repaint();
@@ -1136,6 +1144,7 @@ void AnamorphAudioProcessorEditor::showPresetMenu()
             if (r == 10001) { showSavePreset (true); return; }
             if (r == 10002) { showLoadPreset(); return; }
             processor.getPresets().load (r - 1);
+            knobSweepTime = 0.45; // sweep the knobs to the preset (#3)
             refreshPresetDisplay();
         });
 }
@@ -1152,7 +1161,10 @@ void AnamorphAudioProcessorEditor::showLoadPreset()
         {
             const auto file = fc.getResult();
             if (file.existsAsFile() && processor.getPresets().loadFile (file))
+            {
+                knobSweepTime = 0.45; // sweep the knobs to the preset (#3)
                 refreshPresetDisplay();
+            }
         });
 }
 

@@ -204,7 +204,9 @@ void AnamorphLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int
         juce::DropShadow (fillHi.withAlpha (thumbGlow),        9, {}).drawForPath (g, thumbPath);
         juce::DropShadow (fillHi.withAlpha (thumbGlow * 0.6f), 4, {}).drawForPath (g, thumbPath);
     }
-    juce::ColourGradient kg (colours::bgRaised.brighter (0.30f + 0.15f * hi), cx, cy - r,
+    // Thumb body fill brightens in TWO distinct levels like the knob face: a
+    // little on hover, more on press (#2).
+    juce::ColourGradient kg (colours::bgRaised.brighter (0.30f + 0.10f * hi + 0.14f * aA), cx, cy - r,
                              colours::bgPanel.darker (0.18f),     cx, cy + r, false);
     g.setGradientFill (kg);
     g.fillEllipse (cx - r, cy - r, r * 2.0f, r * 2.0f);
