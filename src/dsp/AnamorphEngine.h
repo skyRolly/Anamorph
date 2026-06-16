@@ -131,7 +131,13 @@ private:
     enum class SwitchState { Normal, FadeOut, FadeIn };
     SwitchState switchState = SwitchState::Normal;
     float switchPhase = 1.0f;   // 1 = full level, 0 = silent
-    float switchInc   = 0.0f;   // per-sample phase step (~4 ms each direction)
+    // Asymmetric duck: a quick fade-OUT pulls the old state to silence, then a
+    // noticeably longer, gentle fade-IN eases the new state up. A short symmetric
+    // duck removed the click but a big A/B / preset level jump still "swelled" on
+    // the way back in (0.6.6 feedback #1); stretching only the fade-in turns that
+    // jump into an inaudible ramp without adding any perceptible delay.
+    float switchIncOut = 0.0f;  // per-sample phase step on the way down (~6 ms)
+    float switchIncIn  = 0.0f;  // per-sample phase step on the way up   (~28 ms)
     EngineParameters pendingP;  // snapshot to adopt once the duck reaches silence
     bool  pendingAlgoReset = false;
     // A FORCED duck (A/B / preset / undo) keeps the OLD state live through the

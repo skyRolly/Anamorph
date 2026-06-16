@@ -218,7 +218,11 @@ private:
     // content in place, so the host never resizes us and nothing flickers (#20).
     static constexpr int kWidth  = 940;
     static constexpr int kHeight = 720;
-    static constexpr int kStripHeight     = 200;  // advanced INPUT/MULTIBAND strip
+    // Advanced bottom rows under the scope (left column): a compact INPUT bar
+    // above a long, full-width MULTIBAND spectrum bar (0.6.6 #3/#9).
+    static constexpr int kInputHeight = 150;
+    static constexpr int kMultiHeight = 176;
+    static constexpr int kStripHeight = kInputHeight + kMultiHeight; // total reserved
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AnamorphAudioProcessorEditor)
 };
