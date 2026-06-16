@@ -11,7 +11,7 @@ cmake_minimum_required(VERSION 3.22)
 #     cmake --build build --config Release
 # ============================================================================
 
-project(Anamorph VERSION 0.6.4 LANGUAGES C CXX)
+project(Anamorph VERSION 0.6.5 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

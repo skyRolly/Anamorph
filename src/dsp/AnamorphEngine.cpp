@@ -185,9 +185,13 @@ void AnamorphEngine::copyContinuous (EngineParameters& dst, const EngineParamete
 
 void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
 {
+    // A bulk swap (A/B, preset, undo) asks for a masking duck even when only
+    // continuous controls move, so a big level jump can't pop (#1, 0.6.4).
+    const bool forceDuck = duckRequest.exchange (0, std::memory_order_relaxed) != 0;
+
     if (switchState == SwitchState::Normal)
     {
-        if (discreteDiffers (np, p))
+        if (forceDuck || discreteDiffers (np, p))
         {
             pendingP = np;
             pendingAlgoReset = (np.algorithm != p.algorithm);
@@ -205,9 +209,10 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
     {
         // Mid-duck: remember the latest target and keep continuous controls live.
         pendingP = np;
-        if (switchState == SwitchState::FadeIn && discreteDiffers (np, p))
+        if (switchState == SwitchState::FadeIn && (forceDuck || discreteDiffers (np, p)))
         {
-            // A new discrete change arrived as we were fading back in: duck again.
+            // A new discrete change (or a forced bulk swap) arrived as we were
+            // fading back in: duck again.
             pendingAlgoReset = (np.algorithm != p.algorithm);
             switchState = SwitchState::FadeOut;
         }

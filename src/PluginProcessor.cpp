@@ -192,6 +192,7 @@ void AnamorphAudioProcessor::undo()
 {
     auto& st = abUndo[abActive];
     if (st.undo.empty()) return;
+    engine.requestDuck(); // mask the level jump (#1, 0.6.4)
     st.redo.push_back (currentStateSet());
     committed = st.undo.back(); st.undo.pop_back();
     applyStateSet (committed);
@@ -203,6 +204,7 @@ void AnamorphAudioProcessor::redo()
 {
     auto& st = abUndo[abActive];
     if (st.redo.empty()) return;
+    engine.requestDuck(); // mask the level jump (#1, 0.6.4)
     st.undo.push_back (currentStateSet());
     committed = st.redo.back(); st.redo.pop_back();
     applyStateSet (committed);
@@ -235,6 +237,7 @@ void AnamorphAudioProcessor::abSwitchTo (int slot)
 {
     abEnsureInit();
     if (slot == abActive) return;
+    engine.requestDuck();                              // mask the level jump (#1, 0.6.4)
     abSlot[abActive] = currentStateSet();              // store the whole state set in the old slot
     abMatchGain[abActive] = engine.getMatchGainDb();   // remember this slot's match (#23)
     abActive = slot;

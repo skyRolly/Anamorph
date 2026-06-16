@@ -75,6 +75,13 @@ public:
     // remembered match value on a slot switch; consumed on the audio thread.
     void injectMatchGainDb (float db) noexcept { matchInject.store (db, std::memory_order_relaxed); }
 
+    // Request a short raised-cosine output duck around the NEXT parameter swap,
+    // even if it's continuous-only (#1, 0.6.4 feedback): an A/B or preset jump can
+    // move many params at once and pop, so the wrapper asks for the same masking
+    // duck the engine already uses for discrete switches. Call BEFORE changing the
+    // parameters so the duck is already running when the new values arrive.
+    void requestDuck() noexcept { duckRequest.store (1, std::memory_order_relaxed); }
+
 private:
     void updateDerived();
     void applyInputConditioning (float* L, float* R, int n) noexcept;
@@ -130,6 +137,7 @@ private:
 
     static constexpr float kNoInject = -1000.0f;
     std::atomic<float> matchInject { kNoInject }; // pending per-slot match restore (#23)
+    std::atomic<int>   duckRequest { 0 };         // force a duck around a bulk param swap (#1, 0.6.4)
 
     // Dry-path delay (integer) to align dry with wet latency in the mix.
     juce::AudioBuffer<float> dryDelayBuffer;

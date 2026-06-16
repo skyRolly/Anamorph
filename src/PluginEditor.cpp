@@ -282,8 +282,8 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     presetPrev.setTooltip ("Previous preset");
     presetNext.setTooltip ("Next preset");
     presetName.setTooltip ("Presets"); // short, no period (#12)
-    presetPrev.onClick = [this] { processor.getPresets().step (-1); knobSweepTime = 0.45; refreshPresetDisplay(); };
-    presetNext.onClick = [this] { processor.getPresets().step (+1); knobSweepTime = 0.45; refreshPresetDisplay(); };
+    presetPrev.onClick = [this] { processor.getEngine().requestDuck(); processor.getPresets().step (-1); knobSweepTime = 0.45; refreshPresetDisplay(); };
+    presetNext.onClick = [this] { processor.getEngine().requestDuck(); processor.getPresets().step (+1); knobSweepTime = 0.45; refreshPresetDisplay(); };
     presetName.onClick = [this] { showPresetMenu(); };
     addAndMakeVisible (presetPrev);
     addAndMakeVisible (presetNext);
@@ -1143,6 +1143,7 @@ void AnamorphAudioProcessorEditor::showPresetMenu()
             if (r == 0) return;
             if (r == 10001) { showSavePreset (true); return; }
             if (r == 10002) { showLoadPreset(); return; }
+            processor.getEngine().requestDuck();   // mask the level jump (#1, 0.6.4)
             processor.getPresets().load (r - 1);
             knobSweepTime = 0.45; // sweep the knobs to the preset (#3)
             refreshPresetDisplay();
@@ -1160,10 +1161,14 @@ void AnamorphAudioProcessorEditor::showLoadPreset()
         [this] (const juce::FileChooser& fc)
         {
             const auto file = fc.getResult();
-            if (file.existsAsFile() && processor.getPresets().loadFile (file))
+            if (file.existsAsFile())
             {
-                knobSweepTime = 0.45; // sweep the knobs to the preset (#3)
-                refreshPresetDisplay();
+                processor.getEngine().requestDuck(); // mask the level jump (#1, 0.6.4)
+                if (processor.getPresets().loadFile (file))
+                {
+                    knobSweepTime = 0.45; // sweep the knobs to the preset (#3)
+                    refreshPresetDisplay();
+                }
             }
         });
 }
