@@ -5,6 +5,7 @@
 #include "PluginProcessor.h"
 #include "gui/LookAndFeel.h"
 #include "gui/Vectorscope.h"
+#include "gui/SpectrumImager.h"
 #include "gui/CorrelationMeter.h"
 #include "gui/LevelMeter.h"
 
@@ -150,11 +151,11 @@ private:
     juce::ToggleButton monoToggle, swapToggle, msToggle, polLToggle, polRToggle;
     Knob balanceK; juce::Label balanceL;
 
-    // MULTIBAND module (advanced, its own section -- #16)
+    // IMAGER module (advanced): drag-to-split spectral band editor replaces the
+    // rotary multiband (4 bands, FFT spectrum, draggable crossovers + widths).
     juce::Label  multibandLabel;
     juce::ToggleButton mbEnableToggle;
-    Knob mbFreqLowK, mbFreqHighK, mbWLowK, mbWMidK, mbWHighK;
-    juce::Label  mbFreqLowL, mbFreqHighL, mbWLowL, mbWMidL, mbWHighL;
+    std::unique_ptr<anamorph::gui::SpectrumImager> imager;
     Knob scopePersistK; juce::Label scopePersistL;
 
     // Overlays

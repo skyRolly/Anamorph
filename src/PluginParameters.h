@@ -33,13 +33,15 @@ namespace pid
     inline constexpr const char* chorusDepth    = "chorusDepth";
     inline constexpr const char* dimMode        = "dimMode";
     inline constexpr const char* width          = "width";
-    // Multiband
+    // Multiband / spectral Imager (4 bands, 3 crossovers)
     inline constexpr const char* mbEnable       = "mbEnable";
-    inline constexpr const char* mbFreqLow      = "mbFreqLow";
-    inline constexpr const char* mbFreqHigh     = "mbFreqHigh";
-    inline constexpr const char* mbWidthLow     = "mbWidthLow";
-    inline constexpr const char* mbWidthMid     = "mbWidthMid";
-    inline constexpr const char* mbWidthHigh    = "mbWidthHigh";
+    inline constexpr const char* mbFreqLow      = "mbFreqLow";   // band 1|2
+    inline constexpr const char* mbFreqMid      = "mbFreqMid";   // band 2|3
+    inline constexpr const char* mbFreqHigh     = "mbFreqHigh";  // band 3|4
+    inline constexpr const char* mbWidthLow     = "mbWidthLow";  // band 1
+    inline constexpr const char* mbWidthMid     = "mbWidthMid";  // band 2
+    inline constexpr const char* mbWidthHiMid   = "mbWidthHiMid";// band 3
+    inline constexpr const char* mbWidthHigh    = "mbWidthHigh"; // band 4
     // Mono maker
     inline constexpr const char* monoMakerOn    = "monoMakerOn";
     inline constexpr const char* monoMakerFreq  = "monoMakerFreq";
@@ -104,9 +106,11 @@ struct ParamPointers
     std::atomic<float>* width = nullptr;
     std::atomic<float>* mbEnable = nullptr;
     std::atomic<float>* mbFreqLow = nullptr;
+    std::atomic<float>* mbFreqMid = nullptr;
     std::atomic<float>* mbFreqHigh = nullptr;
     std::atomic<float>* mbWidthLow = nullptr;
     std::atomic<float>* mbWidthMid = nullptr;
+    std::atomic<float>* mbWidthHiMid = nullptr;
     std::atomic<float>* mbWidthHigh = nullptr;
     std::atomic<float>* monoMakerOn = nullptr;
     std::atomic<float>* monoMakerFreq = nullptr;

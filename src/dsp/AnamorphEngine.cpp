@@ -186,12 +186,23 @@ void AnamorphEngine::copyContinuous (EngineParameters& dst, const EngineParamete
 void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
 {
     // A bulk swap (A/B, preset, undo) asks for a masking duck even when only
-    // continuous controls move, so a big level jump can't pop (#1, 0.6.4).
+    // continuous controls move, and -- crucially -- is applied ENTIRELY at the
+    // silent bottom (continuous included, smoothers snapped) so NOTHING can pop
+    // mid-fade, not even an un-smoothed control or the Level-Match re-injection
+    // (#1, 0.6.4/0.6.5 feedback).
     const bool forceDuck = duckRequest.exchange (0, std::memory_order_relaxed) != 0;
 
     if (switchState == SwitchState::Normal)
     {
-        if (forceDuck || discreteDiffers (np, p))
+        if (forceDuck)
+        {
+            // Keep the OLD state live through the fade-out; swap it all at silence.
+            pendingP = np;
+            pendingForced = true;
+            pendingAlgoReset = (np.algorithm != p.algorithm);
+            switchState = SwitchState::FadeOut;
+        }
+        else if (discreteDiffers (np, p))
         {
             pendingP = np;
             pendingAlgoReset = (np.algorithm != p.algorithm);
@@ -207,18 +218,37 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
     }
     else
     {
-        // Mid-duck: remember the latest target and keep continuous controls live.
+        // Mid-duck: remember the latest target.
         pendingP = np;
         if (switchState == SwitchState::FadeIn && (forceDuck || discreteDiffers (np, p)))
         {
             // A new discrete change (or a forced bulk swap) arrived as we were
             // fading back in: duck again.
+            pendingForced = pendingForced || forceDuck;
             pendingAlgoReset = (np.algorithm != p.algorithm);
             switchState = SwitchState::FadeOut;
         }
-        copyContinuous (p, np);
-        updateDerived();
+        // A forced swap defers everything to the silent bottom; otherwise keep
+        // continuous controls live during the duck.
+        if (! pendingForced)
+        {
+            copyContinuous (p, np);
+            updateDerived();
+        }
     }
+}
+
+// Snap every continuous smoother straight to its (new) target. Only called at the
+// silent bottom of a forced duck, where it's inaudible -- so the post-fade-in
+// state is already settled and a big level change never swells (#1).
+void AnamorphEngine::snapSmoothers() noexcept
+{
+    auto snap = [] (juce::SmoothedValue<float>& s) { s.setCurrentAndTargetValue (s.getTargetValue()); };
+    snap (widthSmooth);   snap (mixSmooth);        snap (outGainSmooth);
+    snap (balanceSmooth); snap (outBalanceSmooth); snap (driveSmooth); snap (driveBlendSmooth);
+    snap (monoDriveSmooth); snap (monoDriveBlendSmooth);
+    snap (polLSmooth);    snap (polRSmooth);
+    // matchGainSmooth is left to the injection / loudness re-measure (its own glide).
 }
 
 // The OS wrap follows the LATCHED engagement, not the live driveDb: both the
@@ -299,8 +329,8 @@ void AnamorphEngine::updateDerived()
         chorus.setDimMode (p.dimMode);
     }
 
-    multiband.setCrossovers (p.mbFreqLow, p.mbFreqHigh);
-    multiband.setWidths (p.mbWidthLow, p.mbWidthMid, p.mbWidthHigh);
+    multiband.setCrossovers (p.mbFreqLow, p.mbFreqMid, p.mbFreqHigh);
+    multiband.setWidths (p.mbWidthLow, p.mbWidthMid, p.mbWidthHiMid, p.mbWidthHigh);
 
     monoMaker.setFrequency (p.monoMakerFreq);
 
@@ -432,6 +462,22 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         // or enabling Match with a big boost slams loud for a moment (#1).
         if (procChanged) loudness.softReset();
         updateDerived();
+
+        // A forced bulk swap (A/B / preset / undo) finishes HERE, while silent: snap
+        // the continuous smoothers to their new targets so the fade-in plays the
+        // settled new state with no swell, and adopt any remembered Level-Match gain
+        // now (masked) instead of jumping it at full level -- the A/B pop (#1).
+        if (pendingForced)
+        {
+            snapSmoothers();
+            const float inj = matchInject.exchange (kNoInject, std::memory_order_relaxed);
+            if (inj > kNoInject + 1.0f)
+            {
+                loudness.setDisplayedGainDb (inj);
+                matchGainSmooth.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (inj));
+            }
+            pendingForced = false;
+        }
         switchState = SwitchState::FadeIn;
     }
     else if (switchState == SwitchState::FadeIn && switchPhase >= 1.0f)
@@ -440,13 +486,17 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     }
     const bool fading = (switchState != SwitchState::Normal);
 
-    // A/B switch restored a remembered Level-Match value: adopt it so the match
-    // doesn't re-converge loudly (feedback #23). The switch duck masks the seam.
-    const float inj = matchInject.exchange (kNoInject, std::memory_order_relaxed);
-    if (inj > kNoInject + 1.0f)
+    // A Level-Match injection that arrived WITHOUT a forced duck (defensive: every
+    // A/B switch forces one, so normally this is consumed at the silent bottom
+    // above) still gets applied so it isn't lost.
+    if (! pendingForced)
     {
-        loudness.setDisplayedGainDb (inj);
-        matchGainSmooth.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (inj));
+        const float inj = matchInject.exchange (kNoInject, std::memory_order_relaxed);
+        if (inj > kNoInject + 1.0f)
+        {
+            loudness.setDisplayedGainDb (inj);
+            matchGainSmooth.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (inj));
+        }
     }
 
     const int lat = getLatencySamples();
