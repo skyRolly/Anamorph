@@ -33,8 +33,9 @@ namespace pid
     inline constexpr const char* chorusDepth    = "chorusDepth";
     inline constexpr const char* dimMode        = "dimMode";
     inline constexpr const char* width          = "width";
-    // Multiband / spectral Imager (4 bands, 3 crossovers)
+    // Multiband (1..4 bands, up to 3 crossovers)
     inline constexpr const char* mbEnable       = "mbEnable";
+    inline constexpr const char* mbBands        = "mbBands";     // active band count 1..4
     inline constexpr const char* mbFreqLow      = "mbFreqLow";   // band 1|2
     inline constexpr const char* mbFreqMid      = "mbFreqMid";   // band 2|3
     inline constexpr const char* mbFreqHigh     = "mbFreqHigh";  // band 3|4
@@ -105,6 +106,7 @@ struct ParamPointers
     std::atomic<float>* dimMode = nullptr;
     std::atomic<float>* width = nullptr;
     std::atomic<float>* mbEnable = nullptr;
+    std::atomic<float>* mbBands = nullptr;
     std::atomic<float>* mbFreqLow = nullptr;
     std::atomic<float>* mbFreqMid = nullptr;
     std::atomic<float>* mbFreqHigh = nullptr;

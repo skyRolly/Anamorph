@@ -6,12 +6,12 @@ namespace anamorph
 {
 
 // ============================================================================
-//  MultibandWidth  (Advanced Mode -- spectral Imager backend)
+//  MultibandWidth  (Advanced Mode -- Multiband display backend)
 //
-//  Splits the spectrum into 4 phase-coherent bands using three cascaded
+//  Splits the spectrum into 1..4 phase-coherent bands using up to three cascaded
 //  Linkwitz-Riley crossovers, applies an independent MS width to each band, and
 //  recombines. Typical use: narrow the lows, widen the highs -- now per drag in
-//  the spectral Imager.
+//  the Multiband display.
 //
 //      b1   = LP(f1)
 //      r1   = HP(f1)
@@ -21,9 +21,10 @@ namespace anamorph
 //      b4   = HP(f3, r2)
 //      sum  = b1 + b2 + b3 + b4         (allpass reconstruction -> flat)
 //
-//  Each band is widened in the MS domain (L+R = 2*Mid is preserved per band),
-//  so the recombined output stays mono-compatible. Linear -> OUTSIDE
-//  oversampling.
+//  With N < 4 active bands only the first N-1 crossovers run, so the trailing
+//  remainder becomes the last band. Each band is widened in the MS domain
+//  (L+R = 2*Mid is preserved per band), so the recombined output stays
+//  mono-compatible. Linear -> OUTSIDE oversampling.
 // ============================================================================
 class MultibandWidth
 {
@@ -31,10 +32,15 @@ public:
     void prepare (double sampleRate, int maxBlock);
     void reset();
 
+    // Active band count (1..4). Only (bandCount - 1) crossovers and bandCount
+    // widths are used; changing it is a structural change and is routed through
+    // the engine's silent switch-duck (with a reset) so it never clicks.
+    void setBandCount (int n) noexcept { bands = juce::jlimit (1, 4, n); }
+
     void setCrossovers (float f1, float f2, float f3) noexcept;
     void setWidths (float b1, float b2, float b3, float b4) noexcept
     {
-        w1 = b1; w2 = b2; w3 = b3; w4 = b4;
+        w[0] = b1; w[1] = b2; w[2] = b3; w[3] = b4;
     }
 
     void processBlock (float* left, float* right, int numSamples) noexcept;
@@ -44,7 +50,8 @@ private:
     juce::dsp::LinkwitzRileyFilter<float> x2; // f2: band2 vs rest
     juce::dsp::LinkwitzRileyFilter<float> x3; // f3: band3 vs band4
 
-    float w1 = 1.0f, w2 = 1.0f, w3 = 1.0f, w4 = 1.0f;
+    int   bands = 4;
+    float w[4] { 1.0f, 1.0f, 1.0f, 1.0f };
 };
 
 } // namespace anamorph

@@ -120,15 +120,16 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
         "Dimension Mode", StringArray { "Subtle", "Classic", "Wide", "Lush" }, 1));
     floatParam (pid::width, "Width", { 0.0f, 2.0f, 0.001f }, 1.0f, pct, pctFrom);
 
-    // --- Multiband / spectral Imager (4 bands, 3 crossovers) ---
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::mbEnable, kVersion }, "Imager Enable", false));
-    floatParam (pid::mbFreqLow,  "Imager Split 1", logFreqRange (30.0f, 600.0f),    180.0f,  hz, hzFrom);
-    floatParam (pid::mbFreqMid,  "Imager Split 2", logFreqRange (150.0f, 3000.0f),  800.0f,  hz, hzFrom);
-    floatParam (pid::mbFreqHigh, "Imager Split 3", logFreqRange (800.0f, 16000.0f), 3000.0f, hz, khzFrom);
-    floatParam (pid::mbWidthLow,   "Imager Width 1", { 0.0f, 2.0f, 0.001f }, 1.0f, pct, pctFrom);
-    floatParam (pid::mbWidthMid,   "Imager Width 2", { 0.0f, 2.0f, 0.001f }, 1.0f, pct, pctFrom);
-    floatParam (pid::mbWidthHiMid, "Imager Width 3", { 0.0f, 2.0f, 0.001f }, 1.0f, pct, pctFrom);
-    floatParam (pid::mbWidthHigh,  "Imager Width 4", { 0.0f, 2.0f, 0.001f }, 1.0f, pct, pctFrom);
+    // --- Multiband (1..4 bands, up to 3 crossovers) ---
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::mbEnable, kVersion }, "Multiband Enable", false));
+    layout.add (std::make_unique<juce::AudioParameterInt> (ParameterID { pid::mbBands, kVersion }, "Multiband Bands", 1, 4, 4));
+    floatParam (pid::mbFreqLow,  "Multiband Split 1", logFreqRange (30.0f, 600.0f),    180.0f,  hz, hzFrom);
+    floatParam (pid::mbFreqMid,  "Multiband Split 2", logFreqRange (150.0f, 3000.0f),  800.0f,  hz, hzFrom);
+    floatParam (pid::mbFreqHigh, "Multiband Split 3", logFreqRange (800.0f, 16000.0f), 3000.0f, hz, khzFrom);
+    floatParam (pid::mbWidthLow,   "Multiband Width 1", { 0.0f, 2.0f, 0.001f }, 1.0f, pct, pctFrom);
+    floatParam (pid::mbWidthMid,   "Multiband Width 2", { 0.0f, 2.0f, 0.001f }, 1.0f, pct, pctFrom);
+    floatParam (pid::mbWidthHiMid, "Multiband Width 3", { 0.0f, 2.0f, 0.001f }, 1.0f, pct, pctFrom);
+    floatParam (pid::mbWidthHigh,  "Multiband Width 4", { 0.0f, 2.0f, 0.001f }, 1.0f, pct, pctFrom);
 
     // --- Mono maker ---
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::monoMakerOn, kVersion }, "Mono Maker", false));
@@ -186,6 +187,7 @@ void ParamPointers::bind (juce::AudioProcessorValueTreeState& s)
     dimMode       = s.getRawParameterValue (pid::dimMode);
     width         = s.getRawParameterValue (pid::width);
     mbEnable      = s.getRawParameterValue (pid::mbEnable);
+    mbBands       = s.getRawParameterValue (pid::mbBands);
     mbFreqLow     = s.getRawParameterValue (pid::mbFreqLow);
     mbFreqMid     = s.getRawParameterValue (pid::mbFreqMid);
     mbFreqHigh    = s.getRawParameterValue (pid::mbFreqHigh);
@@ -239,8 +241,9 @@ anamorph::EngineParameters ParamPointers::toEngine() const
         e.msMode       = msMode->load() > 0.5f;
         e.solo         = (SoloMode) (int) solo->load();
 
-        // --- Multiband / spectral Imager ---
+        // --- Multiband ---
         e.mbEnable     = mbEnable->load() > 0.5f;
+        e.mbBands      = (int) (mbBands->load() + 0.5f);
         e.mbFreqLow    = mbFreqLow->load();
         e.mbFreqMid    = mbFreqMid->load();
         e.mbFreqHigh   = mbFreqHigh->load();

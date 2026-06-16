@@ -70,7 +70,8 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
     polRSmooth      .reset (sr, 0.005);
     polLSmooth      .setCurrentAndTargetValue (1.0f);
     polRSmooth      .setCurrentAndTargetValue (1.0f);
-    switchInc = 1.0f / (float) std::max (1.0, 0.004 * sr); // ~4 ms each direction
+    switchIncOut = 1.0f / (float) std::max (1.0, 0.006 * sr); // ~6 ms fade-out
+    switchIncIn  = 1.0f / (float) std::max (1.0, 0.028 * sr); // ~28 ms fade-in
     widthSmooth     .setCurrentAndTargetValue (1.0f);
     mixSmooth       .setCurrentAndTargetValue (1.0f);
     outGainSmooth   .setCurrentAndTargetValue (1.0f);
@@ -150,6 +151,7 @@ bool AnamorphEngine::discreteDiffers (const EngineParameters& a, const EnginePar
         || a.haasSide         != b.haasSide
         || a.dimMode          != b.dimMode
         || a.mbEnable         != b.mbEnable
+        || a.mbBands          != b.mbBands
         || a.monoMakerEnable  != b.monoMakerEnable
         || a.autoGainMatch    != b.autoGainMatch
         || a.oversample       != b.oversample
@@ -164,6 +166,7 @@ bool AnamorphEngine::processingDiffers (const EngineParameters& a, const EngineP
     return a.channelMode != b.channelMode || a.monoSum  != b.monoSum  || a.swapLR   != b.swapLR
         || a.msMode      != b.msMode      || a.solo     != b.solo     || a.algorithm != b.algorithm
         || a.haasSide    != b.haasSide    || a.dimMode  != b.dimMode  || a.mbEnable  != b.mbEnable
+        || a.mbBands     != b.mbBands
         || a.monoMakerEnable != b.monoMakerEnable || a.oversample != b.oversample;
 }
 
@@ -329,6 +332,7 @@ void AnamorphEngine::updateDerived()
         chorus.setDimMode (p.dimMode);
     }
 
+    multiband.setBandCount (p.mbBands);
     multiband.setCrossovers (p.mbFreqLow, p.mbFreqMid, p.mbFreqHigh);
     multiband.setWidths (p.mbWidthLow, p.mbWidthMid, p.mbWidthHiMid, p.mbWidthHigh);
 
@@ -439,6 +443,10 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     if (switchState == SwitchState::FadeOut && switchPhase <= 0.0f)
     {
         const bool procChanged = processingDiffers (pendingP, p);
+        // A change to the Multiband topology (band added/removed, or the module
+        // toggled) needs its crossover filters cleared, captured before p is moved.
+        const bool mbStructuralChange = (pendingP.mbBands != p.mbBands)
+                                     || (pendingP.mbEnable != p.mbEnable);
         // Compare the incoming OS path against what was actually RUNNING (the
         // latch) -- p's driveDb was already overwritten by copyContinuous.
         const bool osPathChanged = pendingP.oversample != p.oversample
@@ -470,6 +478,11 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         if (pendingForced)
         {
             snapSmoothers();
+            // Clear the band/mono crossover state too: their IIR filters still hold
+            // the OLD signal, and a big crossover/width jump would otherwise ring as
+            // the duck fades back in -- audible as the residual "burst" (0.6.6 #1).
+            multiband.reset();
+            monoMaker.reset();
             const float inj = matchInject.exchange (kNoInject, std::memory_order_relaxed);
             if (inj > kNoInject + 1.0f)
             {
@@ -477,6 +490,12 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
                 matchGainSmooth.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (inj));
             }
             pendingForced = false;
+        }
+        else if (mbStructuralChange)
+        {
+            // A non-forced structural Multiband edit (band added/removed) reached the
+            // silent bottom: clear the crossover state so the new topology starts clean.
+            multiband.reset();
         }
         switchState = SwitchState::FadeIn;
     }
@@ -519,8 +538,8 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
 
             if (fading)
             {
-                if (switchState == SwitchState::FadeOut) { switchPhase -= switchInc; if (switchPhase < 0.0f) switchPhase = 0.0f; }
-                else                                     { switchPhase += switchInc; if (switchPhase > 1.0f) switchPhase = 1.0f; }
+                if (switchState == SwitchState::FadeOut) { switchPhase -= switchIncOut; if (switchPhase < 0.0f) switchPhase = 0.0f; }
+                else                                     { switchPhase += switchIncIn;  if (switchPhase > 1.0f) switchPhase = 1.0f; }
                 const float sg = 0.5f - 0.5f * std::cos (juce::MathConstants<float>::pi * switchPhase);
                 ol *= sg; orr *= sg;
             }
@@ -683,8 +702,8 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         float sg = 1.0f;
         if (fading)
         {
-            if (switchState == SwitchState::FadeOut) { switchPhase -= switchInc; if (switchPhase < 0.0f) switchPhase = 0.0f; }
-            else                                     { switchPhase += switchInc; if (switchPhase > 1.0f) switchPhase = 1.0f; }
+            if (switchState == SwitchState::FadeOut) { switchPhase -= switchIncOut; if (switchPhase < 0.0f) switchPhase = 0.0f; }
+            else                                     { switchPhase += switchIncIn;  if (switchPhase > 1.0f) switchPhase = 1.0f; }
             sg = 0.5f - 0.5f * std::cos (juce::MathConstants<float>::pi * switchPhase);
         }
 

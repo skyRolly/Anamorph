@@ -463,17 +463,19 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     };
     balanceK.updateText();
 
-    // --- IMAGER module (advanced): drag-to-split spectral band editor ---
-    multibandLabel.setText ("IMAGER", juce::dontSendNotification);
+    // --- MULTIBAND module (advanced): drag-to-split spectral band editor ---
+    multibandLabel.setText ("MULTIBAND", juce::dontSendNotification);
     multibandLabel.setJustificationType (juce::Justification::centredLeft);
     multibandLabel.setColour (juce::Label::textColourId, colours::textDim);
     multibandLabel.setFont (juce::Font (juce::FontOptions (11.0f)).withExtraKerningFactor (0.2f));
     addAndMakeVisible (multibandLabel);
 
-    setupToggle (mbEnableToggle, pid::mbEnable, "On", "Per-band stereo width across the spectrum");
+    setupToggle (mbEnableToggle, pid::mbEnable, "On", "Apply the per-band stereo widths to the sound");
     imager = std::make_unique<anamorph::gui::SpectrumImager> (processor.getEngine().getScopeBuffer(),
                                                               processor.getAPVTS());
-    imager->setTooltip ("Drag the split handles to set the 4 bands; drag up / down inside a band for its width");
+    imager->setTooltip ("Drag a split to move it. Drag up / down in a band to set its width. "
+                        "Click the top strip to add a split, the x to remove one. "
+                        "Scroll to fine-tune; double-click or Alt-click to reset.");
     addAndMakeVisible (*imager);
 
     // --- Overlays ---
@@ -1211,14 +1213,16 @@ void AnamorphAudioProcessorEditor::paint (juce::Graphics& g)
         g.setColour (colours::outline.withAlpha (0.6f));
         g.drawLine (right.getX() + 12.0f, dy, right.getRight() - 12.0f, dy, 1.0f);
 
-        // Bottom strip (INPUT + MULTIBAND) under the scope.
-        auto strip = juce::Rectangle<int> (0, getHeight() - kStripHeight, getWidth() - 300, kStripHeight)
-                         .toFloat().reduced (8.0f, 6.0f);
+        // Left column under the scope: a compact INPUT bar above a long,
+        // full-width MULTIBAND spectrum bar (0.6.6 #3/#9).
+        const int leftW = getWidth() - 300;
+        auto inputPanel = juce::Rectangle<int> (0, getHeight() - kStripHeight, leftW, kInputHeight)
+                              .toFloat().reduced (8.0f, 6.0f);
+        auto multiPanel = juce::Rectangle<int> (0, getHeight() - kMultiHeight, leftW, kMultiHeight)
+                              .toFloat().reduced (8.0f, 6.0f);
         g.setColour (colours::bgPanel.withAlpha (0.5f));
-        g.fillRoundedRectangle (strip, 10.0f);
-        g.setColour (colours::outline.withAlpha (0.6f));
-        g.drawLine (strip.getX() + strip.getWidth() * 0.55f, strip.getY() + 10.0f,
-                    strip.getX() + strip.getWidth() * 0.55f, strip.getBottom() - 10.0f, 1.0f);
+        g.fillRoundedRectangle (inputPanel, 10.0f);
+        g.fillRoundedRectangle (multiPanel, 10.0f);
     }
 }
 
@@ -1436,42 +1440,45 @@ void AnamorphAudioProcessorEditor::resized()
         }
     }
 
-    // ---- Advanced bottom strip: INPUT (left) + MULTIBAND (right) ----
+    // ---- Advanced bottom rows: a wide INPUT bar over a long MULTIBAND bar ----
     if (advanced)
     {
-        auto strip = stripArea.reduced (8, 6);
-        auto input = strip.removeFromLeft (juce::roundToInt (strip.getWidth() * 0.55f));
-        auto multi = strip;
+        auto inputArea = stripArea.removeFromTop (kInputHeight);
+        auto multiArea = stripArea; // remaining kMultiHeight
 
-        // INPUT
+        // INPUT: a wide, short bar -- combos on the left, the five toggles in the
+        // middle, the Balance knob on the right (0.6.6 #3 layout change).
         {
-            auto a = input.reduced (12, 8);
+            auto a = inputArea.reduced (8, 6).reduced (12, 8);
             inputModuleLabel.setBounds (a.removeFromTop (15));
-            a.removeFromTop (2);
-
-            // Input Balance: a compact knob block (knob + value + name packed
-            // together, vertically centred) so the number/label sit right under
-            // the knob instead of drifting to the bottom (#3).
-            auto bal = a.removeFromRight (88); // a touch narrower so the combos can be wider (#7)
-            auto blk = bal.withSizeKeepingCentre (bal.getWidth(), juce::jmin (bal.getHeight(), 90));
-            balanceL.setBounds (blk.removeFromBottom (14));
-            balanceK.setBounds (blk.reduced (6, 0));
-            a.removeFromRight (8);
-
-            // The two Input combos: wider, with a little more air below each label
-            // and the toggles pushed down to fit (#7).
-            auto cmRow = a.removeFromTop (39);
-            channelModeLabel.setBounds (cmRow.removeFromTop (14));
-            cmRow.removeFromTop (3);
-            channelModeBox.setBounds (cmRow);
             a.removeFromTop (4);
-            auto soRow = a.removeFromTop (39);
-            soloLabel.setBounds (soRow.removeFromTop (14));
-            soRow.removeFromTop (3);
-            soloBox.setBounds (soRow);
-            a.removeFromTop (14); // drop the five toggles + their labels down a bit (#1)
-            // Five compact vertical toggles spread evenly across the row (#11/#14).
-            auto tog = a.removeFromTop (36);
+
+            // Balance knob block on the far right.
+            auto bal = a.removeFromRight (96);
+            auto blk = bal.withSizeKeepingCentre (bal.getWidth(), juce::jmin (bal.getHeight(), 92));
+            balanceL.setBounds (blk.removeFromBottom (14));
+            balanceK.setBounds (blk.reduced (8, 0));
+            a.removeFromRight (14);
+
+            // Two combos (Channel + Solo) side by side on the left.
+            auto combos = a.removeFromLeft (310);
+            {
+                auto cm = combos.removeFromLeft (150);
+                auto cmBlk = cm.withSizeKeepingCentre (cm.getWidth(), 43);
+                channelModeLabel.setBounds (cmBlk.removeFromTop (14));
+                cmBlk.removeFromTop (3);
+                channelModeBox.setBounds (cmBlk.removeFromTop (26));
+                combos.removeFromLeft (10);
+                auto soBlk = combos.withSizeKeepingCentre (combos.getWidth(), 43);
+                soloLabel.setBounds (soBlk.removeFromTop (14));
+                soBlk.removeFromTop (3);
+                soloBox.setBounds (soBlk.removeFromTop (26));
+            }
+            a.removeFromLeft (14);
+
+            // Five compact toggles spread across the remaining middle, vertically
+            // centred so they line up with the combos.
+            auto tog = a.withSizeKeepingCentre (a.getWidth(), 42);
             const int tw = tog.getWidth() / 5;
             monoToggle.setBounds (tog.removeFromLeft (tw));
             swapToggle.setBounds (tog.removeFromLeft (tw));
@@ -1480,14 +1487,15 @@ void AnamorphAudioProcessorEditor::resized()
             polRToggle.setBounds (tog);
         }
 
-        // IMAGER: the spectral band editor fills the module under its header.
+        // MULTIBAND: the long spectral band editor fills the full-width bar under
+        // its header (label + On toggle).
         {
-            auto a = multi.reduced (12, 8);
-            auto head = a.removeFromTop (18);
+            auto m = multiArea.reduced (8, 6);
+            auto head = m.removeFromTop (18).reduced (6, 0);
             multibandLabel.setBounds (head.removeFromLeft (head.getWidth() - 56));
-            mbEnableToggle.setBounds (head.reduced (0, 0));
-            a.removeFromTop (4);
-            if (imager) imager->setBounds (a);
+            mbEnableToggle.setBounds (head.removeFromRight (52));
+            m.removeFromTop (2);
+            if (imager) imager->setBounds (m.reduced (2, 0));
         }
     }
 }

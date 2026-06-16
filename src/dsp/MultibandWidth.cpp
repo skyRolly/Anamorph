@@ -35,27 +35,39 @@ void MultibandWidth::setCrossovers (float f1, float f2, float f3) noexcept
 
 void MultibandWidth::processBlock (float* left, float* right, int numSamples) noexcept
 {
+    // One band: a plain MS width on the whole signal, no crossovers.
+    if (bands <= 1)
+    {
+        for (int n = 0; n < numSamples; ++n)
+            applyWidth (left[n], right[n], w[0]);
+        return;
+    }
+
+    juce::dsp::LinkwitzRileyFilter<float>* xs[3] = { &x1, &x2, &x3 };
+    const int crossovers = bands - 1; // 1..3
+
     for (int n = 0; n < numSamples; ++n)
     {
-        float b1L, r1L, b1R, r1R;
-        x1.processSample (0, left[n],  b1L, r1L);
-        x1.processSample (1, right[n], b1R, r1R);
+        float curL = left[n], curR = right[n];
+        float accL = 0.0f, accR = 0.0f;
 
-        float b2L, r2L, b2R, r2R;
-        x2.processSample (0, r1L, b2L, r2L);
-        x2.processSample (1, r1R, b2R, r2R);
+        // Peel off one low band per crossover; the running remainder feeds the next.
+        for (int i = 0; i < crossovers; ++i)
+        {
+            float loL, hiL, loR, hiR;
+            xs[i]->processSample (0, curL, loL, hiL);
+            xs[i]->processSample (1, curR, loR, hiR);
+            applyWidth (loL, loR, w[i]);
+            accL += loL; accR += loR;
+            curL = hiL; curR = hiR;
+        }
 
-        float b3L, b4L, b3R, b4R;
-        x3.processSample (0, r2L, b3L, b4L);
-        x3.processSample (1, r2R, b3R, b4R);
+        // The final remainder is the top band.
+        applyWidth (curL, curR, w[crossovers]);
+        accL += curL; accR += curR;
 
-        applyWidth (b1L, b1R, w1);
-        applyWidth (b2L, b2R, w2);
-        applyWidth (b3L, b3R, w3);
-        applyWidth (b4L, b4R, w4);
-
-        left[n]  = b1L + b2L + b3L + b4L;
-        right[n] = b1R + b2R + b3R + b4R;
+        left[n]  = accL;
+        right[n] = accR;
     }
 }
 
