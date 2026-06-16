@@ -120,13 +120,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
         "Dimension Mode", StringArray { "Subtle", "Classic", "Wide", "Lush" }, 1));
     floatParam (pid::width, "Width", { 0.0f, 2.0f, 0.001f }, 1.0f, pct, pctFrom);
 
-    // --- Multiband ---
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::mbEnable, kVersion }, "Multiband Enable", false));
-    floatParam (pid::mbFreqLow,  "MB Low/Mid",  logFreqRange (50.0f, 1000.0f), 250.0f, hz, hzFrom);
-    floatParam (pid::mbFreqHigh, "MB Mid/High", logFreqRange (1000.0f, 10000.0f), 2500.0f, hz, khzFrom);
-    floatParam (pid::mbWidthLow,  "MB Width Low",  { 0.0f, 2.0f, 0.001f }, 1.0f, pct, pctFrom);
-    floatParam (pid::mbWidthMid,  "MB Width Mid",  { 0.0f, 2.0f, 0.001f }, 1.0f, pct, pctFrom);
-    floatParam (pid::mbWidthHigh, "MB Width High", { 0.0f, 2.0f, 0.001f }, 1.0f, pct, pctFrom);
+    // --- Multiband / spectral Imager (4 bands, 3 crossovers) ---
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::mbEnable, kVersion }, "Imager Enable", false));
+    floatParam (pid::mbFreqLow,  "Imager Split 1", logFreqRange (30.0f, 600.0f),    180.0f,  hz, hzFrom);
+    floatParam (pid::mbFreqMid,  "Imager Split 2", logFreqRange (150.0f, 3000.0f),  800.0f,  hz, hzFrom);
+    floatParam (pid::mbFreqHigh, "Imager Split 3", logFreqRange (800.0f, 16000.0f), 3000.0f, hz, khzFrom);
+    floatParam (pid::mbWidthLow,   "Imager Width 1", { 0.0f, 2.0f, 0.001f }, 1.0f, pct, pctFrom);
+    floatParam (pid::mbWidthMid,   "Imager Width 2", { 0.0f, 2.0f, 0.001f }, 1.0f, pct, pctFrom);
+    floatParam (pid::mbWidthHiMid, "Imager Width 3", { 0.0f, 2.0f, 0.001f }, 1.0f, pct, pctFrom);
+    floatParam (pid::mbWidthHigh,  "Imager Width 4", { 0.0f, 2.0f, 0.001f }, 1.0f, pct, pctFrom);
 
     // --- Mono maker ---
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::monoMakerOn, kVersion }, "Mono Maker", false));
@@ -185,9 +187,11 @@ void ParamPointers::bind (juce::AudioProcessorValueTreeState& s)
     width         = s.getRawParameterValue (pid::width);
     mbEnable      = s.getRawParameterValue (pid::mbEnable);
     mbFreqLow     = s.getRawParameterValue (pid::mbFreqLow);
+    mbFreqMid     = s.getRawParameterValue (pid::mbFreqMid);
     mbFreqHigh    = s.getRawParameterValue (pid::mbFreqHigh);
     mbWidthLow    = s.getRawParameterValue (pid::mbWidthLow);
     mbWidthMid    = s.getRawParameterValue (pid::mbWidthMid);
+    mbWidthHiMid  = s.getRawParameterValue (pid::mbWidthHiMid);
     mbWidthHigh   = s.getRawParameterValue (pid::mbWidthHigh);
     monoMakerOn   = s.getRawParameterValue (pid::monoMakerOn);
     monoMakerFreq = s.getRawParameterValue (pid::monoMakerFreq);
@@ -235,12 +239,14 @@ anamorph::EngineParameters ParamPointers::toEngine() const
         e.msMode       = msMode->load() > 0.5f;
         e.solo         = (SoloMode) (int) solo->load();
 
-        // --- Multiband ---
+        // --- Multiband / spectral Imager ---
         e.mbEnable     = mbEnable->load() > 0.5f;
         e.mbFreqLow    = mbFreqLow->load();
+        e.mbFreqMid    = mbFreqMid->load();
         e.mbFreqHigh   = mbFreqHigh->load();
         e.mbWidthLow   = mbWidthLow->load();
         e.mbWidthMid   = mbWidthMid->load();
+        e.mbWidthHiMid = mbWidthHiMid->load();
         e.mbWidthHigh  = mbWidthHigh->load();
 
         // --- Output module ---

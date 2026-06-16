@@ -463,24 +463,18 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     };
     balanceK.updateText();
 
-    // --- MULTIBAND module (advanced) ---
-    multibandLabel.setText ("MULTIBAND", juce::dontSendNotification);
+    // --- IMAGER module (advanced): drag-to-split spectral band editor ---
+    multibandLabel.setText ("IMAGER", juce::dontSendNotification);
     multibandLabel.setJustificationType (juce::Justification::centredLeft);
     multibandLabel.setColour (juce::Label::textColourId, colours::textDim);
     multibandLabel.setFont (juce::Font (juce::FontOptions (11.0f)).withExtraKerningFactor (0.2f));
     addAndMakeVisible (multibandLabel);
 
-    setupToggle (mbEnableToggle, pid::mbEnable, "On", "Independent width per low / mid / high band.");
-    setupRotary (mbFreqLowK,  mbFreqLowL,  "Lo/Mid", "Low / Mid crossover.");
-    setupRotary (mbFreqHighK, mbFreqHighL, "Mid/Hi", "Mid / High crossover.");
-    setupRotary (mbWLowK,  mbWLowL,  "W Low",  "Low band width.");
-    setupRotary (mbWMidK,  mbWMidL,  "W Mid",  "Mid band width.");
-    setupRotary (mbWHighK, mbWHighL, "W High", "High band width.");
-    attachSlider (mbFreqLowK,  pid::mbFreqLow);
-    attachSlider (mbFreqHighK, pid::mbFreqHigh);
-    attachSlider (mbWLowK,  pid::mbWidthLow);
-    attachSlider (mbWMidK,  pid::mbWidthMid);
-    attachSlider (mbWHighK, pid::mbWidthHigh);
+    setupToggle (mbEnableToggle, pid::mbEnable, "On", "Per-band stereo width across the spectrum");
+    imager = std::make_unique<anamorph::gui::SpectrumImager> (processor.getEngine().getScopeBuffer(),
+                                                              processor.getAPVTS());
+    imager->setTooltip ("Drag the split handles to set the 4 bands; drag up / down inside a band for its width");
+    addAndMakeVisible (*imager);
 
     // --- Overlays ---
     dimOverlay.setInterceptsMouseClicks (false, false);
@@ -748,10 +742,10 @@ void AnamorphAudioProcessorEditor::updateModeVisibility()
         &autoMatchToggle, &applyGainButton, &matchReadout, &monoMakerToggle, &monoFreqK, &monoFreqL,
         &inputModuleLabel, &channelModeBox, &channelModeLabel, &soloBox, &soloLabel,
         &monoToggle, &swapToggle, &msToggle, &polLToggle, &polRToggle, &balanceK, &balanceL,
-        &multibandLabel, &mbEnableToggle, &mbFreqLowK, &mbFreqLowL, &mbFreqHighK, &mbFreqHighL,
-        &mbWLowK, &mbWLowL, &mbWMidK, &mbWMidL, &mbWHighK, &mbWHighL
+        &multibandLabel, &mbEnableToggle
     };
     for (auto* c : adv) c->setVisible (advanced);
+    if (imager) imager->setVisible (advanced);
 
     // Simple mode is just the Widen core, so its text is larger for presence;
     // Advanced packs more in, so it shrinks back. The knob NAME labels were a touch
@@ -1449,9 +1443,6 @@ void AnamorphAudioProcessorEditor::resized()
         auto input = strip.removeFromLeft (juce::roundToInt (strip.getWidth() * 0.55f));
         auto multi = strip;
 
-        auto placeKnob = [] (juce::Rectangle<int> area, juce::Slider& s, juce::Label& l)
-        { l.setBounds (area.removeFromBottom (15)); s.setBounds (area.reduced (4, 1)); };
-
         // INPUT
         {
             auto a = input.reduced (12, 8);
@@ -1489,25 +1480,14 @@ void AnamorphAudioProcessorEditor::resized()
             polRToggle.setBounds (tog);
         }
 
-        // MULTIBAND
+        // IMAGER: the spectral band editor fills the module under its header.
         {
             auto a = multi.reduced (12, 8);
             auto head = a.removeFromTop (18);
             multibandLabel.setBounds (head.removeFromLeft (head.getWidth() - 56));
             mbEnableToggle.setBounds (head.reduced (0, 0));
-            a.removeFromTop (2);
-            {
-                auto row = a.removeFromTop (76);
-                placeKnob (row.removeFromLeft (row.getWidth() / 2), mbFreqLowK, mbFreqLowL);
-                placeKnob (row, mbFreqHighK, mbFreqHighL);
-            }
-            {
-                auto row = a.removeFromTop (76);
-                const int w = row.getWidth() / 3;
-                placeKnob (row.removeFromLeft (w), mbWLowK, mbWLowL);
-                placeKnob (row.removeFromLeft (w), mbWMidK, mbWMidL);
-                placeKnob (row, mbWHighK, mbWHighL);
-            }
+            a.removeFromTop (4);
+            if (imager) imager->setBounds (a);
         }
     }
 }

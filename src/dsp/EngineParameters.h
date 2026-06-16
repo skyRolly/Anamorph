@@ -58,13 +58,17 @@ struct EngineParameters
     // Global width (MS-domain). 1.0 (== 100%) is identity (spec feedback #3).
     float       width       = 1.0f;    // 0 = mono, 1 = unchanged, 2 = wide
 
-    // --- 4. Multiband width (Advanced) -----------------------------------
-    bool        mbEnable    = false;
-    float       mbFreqLow   = 250.0f;  // low/mid crossover
-    float       mbFreqHigh  = 2500.0f; // mid/high crossover
-    float       mbWidthLow  = 1.0f;
-    float       mbWidthMid  = 1.0f;
-    float       mbWidthHigh = 1.0f;
+    // --- 4. Multiband width / spectral Imager (Advanced) -----------------
+    // Four phase-coherent bands split by three crossovers (low < mid < high),
+    // each with its own MS width. Driven by the drag-to-split spectral Imager.
+    bool        mbEnable     = false;
+    float       mbFreqLow    = 180.0f;  // band 1 | 2 crossover
+    float       mbFreqMid    = 800.0f;  // band 2 | 3 crossover
+    float       mbFreqHigh   = 3000.0f; // band 3 | 4 crossover
+    float       mbWidthLow   = 1.0f;    // band 1 (lows)
+    float       mbWidthMid   = 1.0f;    // band 2 (low-mids)
+    float       mbWidthHiMid = 1.0f;    // band 3 (high-mids)
+    float       mbWidthHigh  = 1.0f;    // band 4 (highs)
 
     // --- 5. Mono Maker ----------------------------------------------------
     bool        monoMakerEnable = false;

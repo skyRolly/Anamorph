@@ -134,6 +134,12 @@ private:
     float switchInc   = 0.0f;   // per-sample phase step (~4 ms each direction)
     EngineParameters pendingP;  // snapshot to adopt once the duck reaches silence
     bool  pendingAlgoReset = false;
+    // A FORCED duck (A/B / preset / undo) keeps the OLD state live through the
+    // fade-out and swaps EVERYTHING -- continuous included -- at the silent bottom,
+    // snapping the smoothers there, so no parameter (smoothed or not) can pop
+    // mid-fade. A normal discrete duck still applies continuous immediately (#1).
+    bool  pendingForced = false;
+    void  snapSmoothers() noexcept;
 
     static constexpr float kNoInject = -1000.0f;
     std::atomic<float> matchInject { kNoInject }; // pending per-slot match restore (#23)
