@@ -78,18 +78,31 @@ private:
     void abEnsureInit();
     void abApplySlot (int slot);
 
+    // A complete "state set" (#6): the sound parameters PLUS the preset metadata
+    // (base name + clean baseline signature) that determines the displayed name
+    // and dirty-star. Every undo entry and every A/B slot stores one of these, so
+    // undo / A-B / Copy carry the name + dirty state, not just the parameters.
+    struct StateSet
+    {
+        juce::ValueTree params;
+        juce::String     name, baseline;
+        bool isValid() const noexcept { return params.isValid(); }
+    };
+    StateSet currentStateSet();                  // current params + live preset meta
+    void applyStateSet (const StateSet&);        // restore params (keeping view) + meta
+
     // Undo helpers
     static bool isViewParam (const juce::String& id) noexcept;
     juce::String soundSignature() const;
     void applyStatePreservingView (const juce::ValueTree& target);
     void syncCommitted();
 
-    struct UndoStacks { std::vector<juce::ValueTree> undo, redo; };
+    struct UndoStacks { std::vector<StateSet> undo, redo; };
     UndoStacks abUndo[2];
-    juce::ValueTree committedState;
+    StateSet committed;
     juce::String committedSig, lastPolledSig;
 
-    juce::ValueTree abSlotA, abSlotB;
+    StateSet abSlot[2]; // A = [0], B = [1]
     int abActive = 0;
     float abMatchGain[2] = { 0.0f, 0.0f }; // remembered Level-Match per A/B slot (#23)
 

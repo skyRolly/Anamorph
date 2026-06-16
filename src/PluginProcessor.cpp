@@ -139,9 +139,23 @@ juce::String AnamorphAudioProcessor::soundSignature() const
 
 void AnamorphAudioProcessor::syncCommitted()
 {
-    committedState = apvts.copyState();
+    committed = currentStateSet();
     committedSig = soundSignature();
     lastPolledSig = committedSig;
+}
+
+// A full snapshot: parameters PLUS the live preset name + clean baseline (#6).
+AnamorphAudioProcessor::StateSet AnamorphAudioProcessor::currentStateSet()
+{
+    return { apvts.copyState(), presets.currentName(), presets.baseline() };
+}
+
+// Restore a state set: parameters (keeping the shared view params) AND the
+// preset metadata, so the name + dirty-star reappear exactly as stored (#6).
+void AnamorphAudioProcessor::applyStateSet (const StateSet& s)
+{
+    applyStatePreservingView (s.params);
+    presets.setMeta (s.name, s.baseline);
 }
 
 void AnamorphAudioProcessor::applyStatePreservingView (const juce::ValueTree& target)
@@ -161,13 +175,14 @@ void AnamorphAudioProcessor::pollUndoCoalesce()
 {
     const auto sig = soundSignature();
     // Commit only once a sound edit has SETTLED (signature stable for a tick),
-    // folding a whole knob gesture into a single undo step.
+    // folding a whole knob gesture into a single undo step. The pushed entry is
+    // the PREVIOUS state set (its own name + baseline), so undo restores them (#6).
     if (sig != committedSig && sig == lastPolledSig)
     {
-        abUndo[abActive].undo.push_back (committedState);
+        abUndo[abActive].undo.push_back (committed);
         if (abUndo[abActive].undo.size() > 128) abUndo[abActive].undo.erase (abUndo[abActive].undo.begin());
         abUndo[abActive].redo.clear();
-        committedState = apvts.copyState();
+        committed = currentStateSet(); // captures the NOW-current preset name/baseline
         committedSig = sig;
     }
     lastPolledSig = sig;
@@ -177,20 +192,22 @@ void AnamorphAudioProcessor::undo()
 {
     auto& st = abUndo[abActive];
     if (st.undo.empty()) return;
-    st.redo.push_back (apvts.copyState());
-    auto target = st.undo.back(); st.undo.pop_back();
-    applyStatePreservingView (target);
-    syncCommitted();
+    st.redo.push_back (currentStateSet());
+    committed = st.undo.back(); st.undo.pop_back();
+    applyStateSet (committed);
+    committedSig = soundSignature();
+    lastPolledSig = committedSig;
 }
 
 void AnamorphAudioProcessor::redo()
 {
     auto& st = abUndo[abActive];
     if (st.redo.empty()) return;
-    st.undo.push_back (apvts.copyState());
-    auto target = st.redo.back(); st.redo.pop_back();
-    applyStatePreservingView (target);
-    syncCommitted();
+    st.undo.push_back (currentStateSet());
+    committed = st.redo.back(); st.redo.pop_back();
+    applyStateSet (committed);
+    committedSig = soundSignature();
+    lastPolledSig = committedSig;
 }
 
 // ----------------------------------------------------------------------------
@@ -198,39 +215,44 @@ void AnamorphAudioProcessor::redo()
 // ----------------------------------------------------------------------------
 void AnamorphAudioProcessor::abEnsureInit()
 {
-    if (! abSlotA.isValid()) abSlotA = apvts.copyState();
-    if (! abSlotB.isValid()) abSlotB = abSlotA.createCopy();
+    if (! abSlot[0].isValid()) abSlot[0] = currentStateSet();
+    if (! abSlot[1].isValid())
+    {
+        abSlot[1] = abSlot[0];
+        abSlot[1].params = abSlot[0].params.createCopy(); // independent tree
+    }
 }
 
 void AnamorphAudioProcessor::abApplySlot (int slot)
 {
-    // The "view" + "settings" params live in a SINGLE shared store: they are not
-    // part of A/B and never swap (feedback #13 / #15). Same list as undo/presets.
-    applyStatePreservingView (slot == 1 ? abSlotB : abSlotA);
+    // Read the WHOLE target state set: params (keeping the shared view params) AND
+    // its preset name + dirty baseline, so switching shows that slot's own name,
+    // never the previous slot's (#6). View/Settings params never swap (#13/#15).
+    applyStateSet (abSlot[slot]);
 }
 
 void AnamorphAudioProcessor::abSwitchTo (int slot)
 {
     abEnsureInit();
     if (slot == abActive) return;
-    (abActive == 1 ? abSlotB : abSlotA) = apvts.copyState(); // store edits in the old slot
-    abMatchGain[abActive] = engine.getMatchGainDb();         // remember this slot's match (#23)
+    abSlot[abActive] = currentStateSet();              // store the whole state set in the old slot
+    abMatchGain[abActive] = engine.getMatchGainDb();   // remember this slot's match (#23)
     abActive = slot;
     abApplySlot (slot);
-    engine.injectMatchGainDb (abMatchGain[slot]);            // restore the new slot's match (#23)
-    syncCommitted();                                         // the switch itself isn't undoable (#11)
+    engine.injectMatchGainDb (abMatchGain[slot]);      // restore the new slot's match (#23)
+    syncCommitted();                                   // the switch itself isn't undoable (#11)
 }
 
 void AnamorphAudioProcessor::abCopyToOther()
 {
     abEnsureInit();
-    (abActive == 1 ? abSlotB : abSlotA) = apvts.copyState();
+    abSlot[abActive] = currentStateSet();
     const int other = abActive == 1 ? 0 : 1;
     // Record the target slot's pre-copy state so undoing on that slot reverts the
     // Copy without disturbing the active slot's history (#12).
-    abUndo[other].undo.push_back ((other == 1 ? abSlotB : abSlotA).createCopy());
+    abUndo[other].undo.push_back (abSlot[other]);
     abUndo[other].redo.clear();
-    (other == 1 ? abSlotB : abSlotA) = apvts.copyState().createCopy();
+    abSlot[other] = currentStateSet(); // overwrite the other slot with the FULL state set (#6)
 }
 
 // ----------------------------------------------------------------------------
@@ -243,12 +265,18 @@ void AnamorphAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
     abEnsureInit();
     juce::ValueTree root ("AnamorphRoot");
-    root.setProperty ("presetName", presets.currentName(), nullptr); // remembered across sessions (F2)
+    root.setProperty ("presetName", presets.currentName(), nullptr);     // remembered across sessions (F2)
+    root.setProperty ("presetBaseline", presets.baseline(), nullptr);    // so the dirty-star survives reload (#6)
     root.appendChild (apvts.copyState(), nullptr);
     juce::ValueTree ab ("AB");
     ab.setProperty ("active", abActive, nullptr);
-    ab.setProperty ("slotA", abSlotA.toXmlString(), nullptr);
-    ab.setProperty ("slotB", abSlotB.toXmlString(), nullptr);
+    // Each slot carries its params AND its preset name + baseline (#6).
+    ab.setProperty ("slotAParams", abSlot[0].params.toXmlString(), nullptr);
+    ab.setProperty ("slotAName",   abSlot[0].name, nullptr);
+    ab.setProperty ("slotABase",   abSlot[0].baseline, nullptr);
+    ab.setProperty ("slotBParams", abSlot[1].params.toXmlString(), nullptr);
+    ab.setProperty ("slotBName",   abSlot[1].name, nullptr);
+    ab.setProperty ("slotBBase",   abSlot[1].baseline, nullptr);
     root.appendChild (ab, nullptr);
 
     if (auto xml = root.createXml())
@@ -261,17 +289,42 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
     if (xml == nullptr) return;
 
     auto root = juce::ValueTree::fromXml (*xml);
+    juce::String restoredName, restoredBaseline;
+    bool haveBaseline = false;
     if (root.hasType ("AnamorphRoot"))
     {
         auto params = root.getChildWithName (apvts.state.getType());
         if (params.isValid()) apvts.replaceState (params.createCopy());
 
+        restoredName = root.getProperty ("presetName").toString();
+        if (root.hasProperty ("presetBaseline"))
+        {
+            restoredBaseline = root.getProperty ("presetBaseline").toString();
+            haveBaseline = true;
+        }
+
         auto ab = root.getChildWithName ("AB");
         if (ab.isValid())
         {
             abActive = (int) ab.getProperty ("active", 0);
-            if (auto a = juce::parseXML (ab.getProperty ("slotA").toString())) abSlotA = juce::ValueTree::fromXml (*a);
-            if (auto b = juce::parseXML (ab.getProperty ("slotB").toString())) abSlotB = juce::ValueTree::fromXml (*b);
+            auto readSlot = [&ab] (StateSet& dst, const char* pk, const char* nk, const char* bk,
+                                   const char* legacyKey)
+            {
+                if (ab.hasProperty (pk))
+                {
+                    if (auto x = juce::parseXML (ab.getProperty (pk).toString()))
+                        dst.params = juce::ValueTree::fromXml (*x);
+                    dst.name     = ab.getProperty (nk).toString();
+                    dst.baseline = ab.getProperty (bk).toString();
+                }
+                else if (ab.hasProperty (legacyKey)) // pre-0.6.4 slots: params only
+                {
+                    if (auto x = juce::parseXML (ab.getProperty (legacyKey).toString()))
+                        dst.params = juce::ValueTree::fromXml (*x);
+                }
+            };
+            readSlot (abSlot[0], "slotAParams", "slotAName", "slotABase", "slotA");
+            readSlot (abSlot[1], "slotBParams", "slotBName", "slotBBase", "slotB");
         }
     }
     else if (xml->hasTagName (apvts.state.getType())) // backward-compat (v0.2)
@@ -279,13 +332,16 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
         apvts.replaceState (juce::ValueTree::fromXml (*xml));
     }
 
-    // Fresh session: clear undo history and re-baseline.
+    // Fresh session: clear undo history.
     abUndo[0] = {}; abUndo[1] = {};
-    syncCommitted();
 
-    // Adopt the remembered preset name (clean baseline = the restored state).
-    presets.adoptRestoredState (root.hasType ("AnamorphRoot")
-                                    ? root.getProperty ("presetName").toString() : juce::String());
+    // Adopt the remembered preset name + baseline so the dirty-star is reproduced
+    // (#6); fall back to a clean baseline at the restored state when absent.
+    if (haveBaseline) presets.setMeta (restoredName.isNotEmpty() ? restoredName : presets.currentName(),
+                                       restoredBaseline);
+    else              presets.adoptRestoredState (restoredName);
+
+    syncCommitted();
 }
 
 // ----------------------------------------------------------------------------

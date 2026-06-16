@@ -90,8 +90,11 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
     wetScratch.setSize (2, maxBlock);
     inputScratch.setSize (2, maxBlock);
     monoLow.setSize (1, maxBlock);
+    monoLowDry.setSize (1, maxBlock);
     monoLowDelay.setSize (1, maxLat + maxBlock + 1);
+    monoLowDryDelay.setSize (1, maxLat + maxBlock + 1);
     monoLowDelay.clear();
+    monoLowDryDelay.clear();
     monoLowWrite = 0;
 
     updateDerived();
@@ -114,6 +117,7 @@ void AnamorphEngine::reset()
     dryDelayBuffer.clear();
     dryDelayWrite = 0;
     monoLowDelay.clear();
+    monoLowDryDelay.clear();
     monoLowWrite = 0;
 
     // Flush any in-flight switch duck straight to its target so a host reset
@@ -501,6 +505,10 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     {
         monoMaker.processSplit (L, R, monoLow.getWritePointer (0), n);
 
+        // Keep the un-driven mono low aside as the DRY low: Mix=0 must yield this,
+        // not the driven low (#5).
+        monoLowDry.copyFrom (0, 0, monoLow, 0, 0, n);
+
         // Drive the mono low band with the SAME saturation as the high band, so
         // raising Drive doesn't just boost the highs and make Mono Maker sound
         // like a low cut (feedback #1). Low-frequency mono -> base rate is fine.
@@ -551,9 +559,19 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     if (p.mbEnable)
         multiband.processBlock (L, R, n);
 
-    // -------- 7. Mix (dry/wet on the WIDENED band only, delay-compensated) ---
-    const float* dL = dryScratch.getReadPointer (0);
-    const float* dR = dryScratch.getReadPointer (1);
+    // -------- 7. Mix (dry/wet), delay-compensated. The Mono Maker low band is
+    //          folded INTO the same per-sample Mix so its DRIVE obeys Mix too:
+    //          Mix=0 -> the un-driven mono low; Mix=1 -> the driven mono low. The
+    //          low band's mono-ing itself stays present at all Mix values, but it
+    //          no longer roars through driven when Mix=0 (#5). -------------------
+    const float* dL  = dryScratch.getReadPointer (0);
+    const float* dR  = dryScratch.getReadPointer (1);
+    const float* ml  = monoMakerActive ? monoLow.getReadPointer (0)    : nullptr; // wet (driven) low
+    const float* mld = monoMakerActive ? monoLowDry.getReadPointer (0) : nullptr; // dry (un-driven) low
+    float* md  = monoLowDelay.getWritePointer (0);
+    float* mdd = monoLowDryDelay.getWritePointer (0);
+    const int mdSize = monoLowDelay.getNumSamples();
+
     for (int i = 0; i < n; ++i)
     {
         ddL[dryDelayWrite] = dL[i];
@@ -563,32 +581,21 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         dryDelayWrite = (dryDelayWrite + 1) % ddSize;
 
         const float m = mixSmooth.getNextValue();
-        L[i] = dryL + m * (L[i] - dryL);
-        R[i] = dryR + m * (R[i] - dryR);
-    }
+        float outL = dryL + m * (L[i] - dryL);
+        float outR = dryR + m * (R[i] - dryR);
 
-    // -------- Mono Maker recombine: add the mono lows straight in (bypassing the
-    //          Mix), delay-aligned to the wet latency so lows/highs phase-lock.
-    if (monoMakerActive)
-    {
-        const float* ml = monoLow.getReadPointer (0);
-        if (lat <= 0)
+        if (monoMakerActive)
         {
-            for (int i = 0; i < n; ++i) { L[i] += ml[i]; R[i] += ml[i]; }
+            md[monoLowWrite]  = ml[i];
+            mdd[monoLowWrite] = mld[i];
+            int mp = monoLowWrite - lat; if (mp < 0) mp += mdSize;
+            const float wetLow = md[mp], dryLow = mdd[mp];
+            monoLowWrite = (monoLowWrite + 1) % mdSize;
+            const float lowOut = dryLow + m * (wetLow - dryLow); // lows obey Mix (#5)
+            outL += lowOut; outR += lowOut;
         }
-        else
-        {
-            float* md = monoLowDelay.getWritePointer (0);
-            const int mdSize = monoLowDelay.getNumSamples();
-            for (int i = 0; i < n; ++i)
-            {
-                md[monoLowWrite] = ml[i];
-                int rp = monoLowWrite - lat; if (rp < 0) rp += mdSize;
-                const float d = md[rp];
-                monoLowWrite = (monoLowWrite + 1) % mdSize;
-                L[i] += d; R[i] += d;
-            }
-        }
+
+        L[i] = outL; R[i] = outR;
     }
 
     // Level Match detects the FULL recombined output (lows + highs) against the

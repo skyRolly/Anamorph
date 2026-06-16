@@ -51,32 +51,6 @@ private:
         void paint (juce::Graphics& g) override { g.fillAll (juce::Colour (0x66090b0e)); }
     };
 
-    // Tooltip window with a weak, fast non-linear fade-out so hints don't blink
-    // out abruptly (#4). JUCE hides a tooltip by calling setVisible(false); we
-    // intercept that and ramp the window alpha down over ~90 ms instead, stepped
-    // from the editor's vblank. Off (instant hide) when UI Animations is off.
-    struct FadingTooltip : public juce::TooltipWindow
-    {
-        FadingTooltip() : juce::TooltipWindow (nullptr, 600) {}
-        bool  animOn = true;
-        bool  fading = false;
-        float a = 1.0f;
-        void setVisible (bool shouldShow) override
-        {
-            if (shouldShow)            { fading = false; a = 1.0f; setAlpha (1.0f); juce::TooltipWindow::setVisible (true); }
-            else if (! animOn)         { juce::TooltipWindow::setVisible (false); }
-            else if (isVisible() && ! fading) { fading = true; a = 1.0f; } // begin fade, stay up
-            // (already fading: ignore; step() will hide it)
-        }
-        void step (float dt)
-        {
-            if (! fading) return;
-            a -= dt / 0.09f;                       // ~90 ms
-            if (a <= 0.0f) { fading = false; a = 1.0f; setAlpha (1.0f); juce::TooltipWindow::setVisible (false); }
-            else           setAlpha (a * a);       // ease-out (non-linear) tail
-        }
-    };
-
     // A/B control: shows "A / B" with the active letter bright, the other dim,
     // a single click toggles (FabFilter-style). Wrapped in a racetrack/stadium
     // frame with a micro-gradient + edge glow to match the design language (#6).
@@ -120,7 +94,7 @@ private:
     anamorph::gui::CompactComboLookAndFeel compactCombo; // smaller list for Input combos (#12)
     anamorph::gui::SimpleComboLookAndFeel  simpleCombo;  // bigger text for Simple-mode Widen combos (#17)
     juce::OpenGLContext openGLContext;
-    FadingTooltip tooltips; // fade-out tooltip window (#4)
+    juce::TooltipWindow tooltips { nullptr, 600 };
 
     // Centrepiece + meters
     std::unique_ptr<anamorph::gui::Vectorscope> scope;
@@ -234,6 +208,10 @@ private:
     bool uiAnimOn = true;
     int  lastScaleIdx = -1;             // applied UI-scale step (F4)
     int  brPrevAlgo = -1;              // last Widen algorithm seen, for the bottom-right knob sweep (#8)
+    // Knobs/sliders only EASE to a new value during this short window, which is
+    // opened by a preset / A-B / undo / algorithm change; a scroll-wheel or host
+    // automation edit leaves it closed, so those snap and never mislead (#3).
+    double knobSweepTime = 0.0;
 
     // Single fixed window for both modes: toggling Advanced relays out the
     // content in place, so the host never resizes us and nothing flickers (#20).
