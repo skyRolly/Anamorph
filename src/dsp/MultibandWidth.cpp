@@ -1,17 +1,26 @@
 #include "MultibandWidth.h"
 #include "MidSide.h"
+#include <cmath>
 
 namespace anamorph
 {
 
 void MultibandWidth::prepare (double sampleRate, int maxBlock)
 {
+    sr = sampleRate;
     juce::dsp::ProcessSpec spec { sampleRate, (juce::uint32) juce::jmax (1, maxBlock), 2 };
     for (auto* x : { &x1, &x2, &x3 })
     {
         x->prepare (spec);
         x->setType (juce::dsp::LinkwitzRileyFilterType::lowpass);
     }
+    // ~8 octaves/sec slew cap (matches Mono Maker), so a quick split drag never
+    // modulates the LR cutoff fast enough to pitch-shift (0.6.7 #1).
+    glideCoeff = std::exp2 (8.0f / (float) sr);
+    for (int i = 0; i < 3; ++i) { currentF[i] = targetF[i]; }
+    x1.setCutoffFrequency (currentF[0]);
+    x2.setCutoffFrequency (currentF[1]);
+    x3.setCutoffFrequency (currentF[2]);
     reset();
 }
 
@@ -25,12 +34,13 @@ void MultibandWidth::reset()
 void MultibandWidth::setCrossovers (float f1, float f2, float f3) noexcept
 {
     // Keep the three crossovers strictly ordered with a little separation, so a
-    // drag can't cross them over.
+    // drag can't cross them over. These are TARGETS; the cutoffs glide toward them
+    // per sample in processBlock (0.6.7 #1).
     f2 = juce::jmax (f2, f1 * 1.1f);
     f3 = juce::jmax (f3, f2 * 1.1f);
-    x1.setCutoffFrequency (f1);
-    x2.setCutoffFrequency (f2);
-    x3.setCutoffFrequency (f3);
+    targetF[0] = f1;
+    targetF[1] = f2;
+    targetF[2] = f3;
 }
 
 void MultibandWidth::processBlock (float* left, float* right, int numSamples) noexcept
@@ -48,6 +58,19 @@ void MultibandWidth::processBlock (float* left, float* right, int numSamples) no
 
     for (int n = 0; n < numSamples; ++n)
     {
+        // Glide each active cutoff toward its target, capped at a fixed
+        // octaves/second rate so a quick split drag never chirps (0.6.7 #1).
+        for (int i = 0; i < crossovers; ++i)
+        {
+            if (std::abs (currentF[i] - targetF[i]) > 0.05f)
+            {
+                currentF[i] = targetF[i] > currentF[i]
+                                ? juce::jmin (targetF[i], currentF[i] * glideCoeff)
+                                : juce::jmax (targetF[i], currentF[i] / glideCoeff);
+                xs[i]->setCutoffFrequency (currentF[i]);
+            }
+        }
+
         float curL = left[n], curR = right[n];
         float accL = 0.0f, accR = 0.0f;
 
