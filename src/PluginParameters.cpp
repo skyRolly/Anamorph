@@ -123,6 +123,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
     // --- Multiband (1..4 bands, up to 3 crossovers) ---
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::mbEnable, kVersion }, "Multiband Enable", true));
     layout.add (std::make_unique<juce::AudioParameterInt> (ParameterID { pid::mbBands, kVersion }, "Multiband Bands", 1, 4, 4));
+    layout.add (std::make_unique<juce::AudioParameterInt> (ParameterID { pid::mbSolo, kVersion }, "Multiband Solo", 0, 4, 0));
     floatParam (pid::mbFreqLow,  "Multiband Split 1", logFreqRange (30.0f, 600.0f),    180.0f,  hz, hzFrom);
     floatParam (pid::mbFreqMid,  "Multiband Split 2", logFreqRange (150.0f, 3000.0f),  800.0f,  hz, hzFrom);
     floatParam (pid::mbFreqHigh, "Multiband Split 3", logFreqRange (800.0f, 16000.0f), 3000.0f, hz, khzFrom);
@@ -188,6 +189,7 @@ void ParamPointers::bind (juce::AudioProcessorValueTreeState& s)
     width         = s.getRawParameterValue (pid::width);
     mbEnable      = s.getRawParameterValue (pid::mbEnable);
     mbBands       = s.getRawParameterValue (pid::mbBands);
+    mbSolo        = s.getRawParameterValue (pid::mbSolo);
     mbFreqLow     = s.getRawParameterValue (pid::mbFreqLow);
     mbFreqMid     = s.getRawParameterValue (pid::mbFreqMid);
     mbFreqHigh    = s.getRawParameterValue (pid::mbFreqHigh);
@@ -244,6 +246,7 @@ anamorph::EngineParameters ParamPointers::toEngine() const
         // --- Multiband ---
         e.mbEnable     = mbEnable->load() > 0.5f;
         e.mbBands      = (int) (mbBands->load() + 0.5f);
+        e.mbSolo       = (int) (mbSolo->load() + 0.5f);
         e.mbFreqLow    = mbFreqLow->load();
         e.mbFreqMid    = mbFreqMid->load();
         e.mbFreqHigh   = mbFreqHigh->load();

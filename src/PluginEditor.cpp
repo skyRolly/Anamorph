@@ -473,7 +473,8 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     setupToggle (mbEnableToggle, pid::mbEnable, "On", "Apply the per-band stereo widths to the sound");
     imager = std::make_unique<anamorph::gui::SpectrumImager> (processor.getEngine().getScopeBuffer(),
                                                               processor.getAPVTS());
-    imager->setTooltip ("Drag a band for its width; drag a split to move it. Click to add, x to remove.");
+    imager->setTooltip ("Per-band stereo width across the spectrum. Drag a band up/down to widen or "
+                        "narrow it, drag a split to move it. Headphone = solo a band.");
     addAndMakeVisible (*imager);
 
     // --- Overlays ---
@@ -1060,7 +1061,7 @@ void AnamorphAudioProcessorEditor::applyUiScale()
     // Advanced extends the window downward for the full-width Multiband bar instead
     // of compressing the scope (0.6.7 #2). The base (unscaled) size depends on the
     // mode; the XS..XL transform scales it.
-    setSize (kWidth, kHeight + (advanced ? kMultiBarH : 0));
+    setSize (kWidth, advanced ? kAdvHeight : kHeight);
     setTransform (juce::AffineTransform::scale (scales[idx]));
     if (openGLContext.isAttached())
         openGLContext.triggerRepaint();
@@ -1213,34 +1214,27 @@ void AnamorphAudioProcessorEditor::paint (juce::Graphics& g)
     g.setFont (juce::Font (juce::FontOptions (10.0f)).withExtraKerningFactor (0.25f));
     g.drawText ("STEREO TOOLS", 168, 0, 140, 46, juce::Justification::centredLeft);
 
-    // Right control panel (spans the upper region only; the Multiband bar sits below)
-    auto right = juce::Rectangle<int> (getWidth() - 300, 46, 300, kHeight - 46).toFloat().reduced (8.0f);
+    // Right control panel (WIDEN) -- spans the scope row only.
+    const int rowH = advanced ? kScopeRowH : (kHeight - 46);
+    auto right = juce::Rectangle<int> (getWidth() - 300, 46, 300, rowH).toFloat().reduced (8.0f);
     g.setColour (colours::bgPanel.withAlpha (0.55f));
     g.fillRoundedRectangle (right, 10.0f);
 
     if (advanced)
     {
-        // Divider between the Widen and Output modules in the right panel, to
-        // match the Input/Multiband divider in the bottom strip (#11). Y is set by
-        // resized() so it always tracks the (now looser) Output module position.
-        const float dy = (float) widenOutputDividerY;
-        g.setColour (colours::outline.withAlpha (0.6f));
-        g.drawLine (right.getX() + 12.0f, dy, right.getRight() - 12.0f, dy, 1.0f);
-
-        // INPUT strip at the bottom of the left column (inside the upper region),
-        // and a long, FULL-WIDTH MULTIBAND bar below the whole upper region (0.6.7 #2).
-        const int leftW = getWidth() - 300;
-        auto inputPanel = juce::Rectangle<int> (0, kHeight - kStripHeight, leftW, kStripHeight)
-                              .toFloat().reduced (8.0f, 6.0f);
+        // Full-width MULTIBAND bar, then a full-width INPUT|OUTPUT block with a
+        // central vertical divider in the Widen/Output style (0.6.8 #7).
+        const int multiTop = 46 + kScopeRowH;
+        const int ioTop     = multiTop + kMultiBarH;
+        auto multiPanel = juce::Rectangle<int> (0, multiTop, getWidth(), kMultiBarH).toFloat().reduced (16.0f, 6.0f);
+        auto ioPanel    = juce::Rectangle<int> (0, ioTop,     getWidth(), kIoH).toFloat().reduced (8.0f, 6.0f);
         g.setColour (colours::bgPanel.withAlpha (0.5f));
-        g.fillRoundedRectangle (inputPanel, 10.0f);
+        g.fillRoundedRectangle (multiPanel, 10.0f);
+        g.fillRoundedRectangle (ioPanel, 10.0f);
 
-        if (getHeight() > kHeight)
-        {
-            auto multiPanel = juce::Rectangle<int> (0, kHeight, getWidth(), getHeight() - kHeight)
-                                  .toFloat().reduced (8.0f, 6.0f);
-            g.fillRoundedRectangle (multiPanel, 10.0f);
-        }
+        g.setColour (colours::outline.withAlpha (0.6f));
+        const float cx = ioPanel.getCentreX();
+        g.drawLine (cx, ioPanel.getY() + 12.0f, cx, ioPanel.getBottom() - 12.0f, 1.0f);
     }
 }
 
@@ -1249,10 +1243,9 @@ void AnamorphAudioProcessorEditor::paint (juce::Graphics& g)
 // just this part per frame instead of the whole resized() (#6).
 void AnamorphAudioProcessorEditor::layoutScopeArea()
 {
-    // The scope/meter block lives in the upper region only (height kHeight), so the
-    // Multiband bar below never compresses it (0.6.7 #2).
-    auto leftArea = juce::Rectangle<int> (0, 46, getWidth() - 300, kHeight - 46);
-    if (advanced) leftArea.removeFromBottom (kStripHeight);
+    // The scope/meter block fills the scope+Widen row; INPUT/OUTPUT and the
+    // Multiband bar are full-width tiers BELOW it (0.6.8 #7).
+    auto leftArea = juce::Rectangle<int> (0, 46, getWidth() - 300, (advanced ? kScopeRowH : kHeight - 46));
 
     auto sa = leftArea.reduced (16);
     // 154, not 156: at 156 the meters-open scope was WIDTH-limited at 406 px
@@ -1342,11 +1335,14 @@ void AnamorphAudioProcessorEditor::resized()
 
     auto r = getLocalBounds();
 
-    // Reserve the full-width MULTIBAND bar at the very bottom (advanced only); the
-    // upper region above it keeps its original 940x720 layout (0.6.7 #2).
-    juce::Rectangle<int> multiBar;
-    if (advanced && r.getHeight() > kHeight)
-        multiBar = r.removeFromBottom (r.getHeight() - kHeight);
+    // Reserve the two full-width bottom tiers (advanced): the INPUT|OUTPUT block at
+    // the very bottom, the MULTIBAND bar above it (0.6.8 #7).
+    juce::Rectangle<int> ioBlock, multiBar;
+    if (advanced)
+    {
+        ioBlock  = r.removeFromBottom (kIoH);
+        multiBar = r.removeFromBottom (kMultiBarH);
+    }
 
     // ---- Top bar ----
     auto top = r.removeFromTop (46);
@@ -1376,16 +1372,14 @@ void AnamorphAudioProcessorEditor::resized()
     auto content = r;
     auto rightPanel = content.removeFromRight (300);
 
-    juce::Rectangle<int> stripArea;
-    if (advanced) stripArea = content.removeFromBottom (kStripHeight);
-
     // ---- Scope + meters (with the reveal animation) ----
     layoutScopeArea();
 
-    // ---- Right column: WIDEN (both modes) + OUTPUT (advanced) ----
+    auto placeKnob = [] (juce::Rectangle<int> area, juce::Slider& s, juce::Label& l)
+    { l.setBounds (area.removeFromBottom (15)); s.setBounds (area.reduced (3, 1)); };
+
+    // ---- Right column: WIDEN (both modes) ----
     {
-        auto placeKnob = [] (juce::Rectangle<int> area, juce::Slider& s, juce::Label& l)
-        { l.setBounds (area.removeFromBottom (15)); s.setBounds (area.reduced (3, 1)); };
         auto twoKnob = [&] (juce::Rectangle<int> row, juce::Slider& s1, juce::Label& l1,
                             juce::Slider& s2, juce::Label& l2)
         { placeKnob (row.removeFromLeft (row.getWidth() / 2), s1, l1); placeKnob (row, s2, l2); };
@@ -1407,8 +1401,6 @@ void AnamorphAudioProcessorEditor::resized()
 
         if (! advanced)
         {
-            // SIMPLE: the Widen core, large and vertically centred so it no longer
-            // hugs the top with an empty void below (#10).
             const int blockH = 16 + 8 + 30 + 26 + 148 + 18 + 148; // ~394
             auto col = rightPanel.reduced (22, 0);
             col.removeFromTop (juce::jmax (16, (col.getHeight() - blockH) / 2));
@@ -1423,98 +1415,93 @@ void AnamorphAudioProcessorEditor::resized()
         }
         else
         {
-            // ADVANCED: Widen + Output spread to fill the WHOLE column with even,
-            // generous gaps instead of leaving a void at the bottom (#10).
+            // ADVANCED: WIDEN alone now fills the right column; OUTPUT moved to the
+            // bottom block. Spread to fill so the bottom edge lines up with the LR
+            // meter / scope-frame bottom (0.6.8 #7).
             auto col = rightPanel.reduced (20, 18);
-
             { auto lr = col.removeFromTop (16); algoOptLabel.setBounds (lr.removeFromRight (94)); algorithmLabel.setBounds (lr); }
             col.removeFromTop (10);
             layoutAlgoRow (col.removeFromTop (30));
-            col.removeFromTop (30);
-            twoKnob (col.removeFromTop (120), driveK, driveL, amountK, amountL);
-            col.removeFromTop (24);
-            layoutCharacter (col.removeFromTop (120), widthK, widthL);
-
-            const int gapTop = col.getY();
-            col.removeFromTop (46);                  // breathing room before the Output module
-            widenOutputDividerY = gapTop + 22;        // divider sits in the middle of that gap (#11)
-            outputModuleLabel.setBounds (col.removeFromTop (16));
-            col.removeFromTop (10);
-            {
-                auto row = col.removeFromTop (118);
-                const int w = row.getWidth() / 3;
-                placeKnob (row.removeFromLeft (w), mixK, mixL);
-                placeKnob (row.removeFromLeft (w), outputK, outputL);
-                placeKnob (row, outBalanceK, outBalanceL);
-            }
-            col.removeFromTop (22);
-            // Level Match + Mono Maker share one X and one toggle size, vertically
-            // aligned (#16). Their right-hand NUMBERS (dB readout / Hz) right-align
-            // to the same edge; the Mono Maker bar starts at Apply's left edge (#11).
-            const int togW = 118, numW = 56;
-            auto lm = col.removeFromTop (30);
-            autoMatchToggle.setBounds (lm.removeFromLeft (togW).reduced (2, 4));
-            lm.removeFromLeft (4);
-            matchReadout.setBounds (lm.removeFromRight (numW).reduced (2, 4)); // right-aligned dB readout
-            applyGainButton.setBounds (lm.reduced (2, 4));                     // Apply fills the gap between
-            col.removeFromTop (12);
-            auto mm = col.removeFromTop (30);
-            monoMakerToggle.setBounds (mm.removeFromLeft (togW).reduced (2, 4));
-            // The slider spans straight from the toggle to the column edge; with the
-            // 8 px track inset its bar lines up under (and reads as long as) the
-            // Apply button above, with the Hz box right-aligned to the dB (#2).
-            monoFreqK.setBounds (mm.reduced (0, 4));
+            col.removeFromTop (50);
+            twoKnob (col.removeFromTop (140), driveK, driveL, amountK, amountL);
+            col.removeFromTop (50);
+            layoutCharacter (col.removeFromTop (140), widthK, widthL);
         }
     }
 
-    // ---- INPUT strip (full left width) ----
-    if (advanced)
-    {
-        auto a = stripArea.reduced (8, 6).reduced (12, 8);
-        inputModuleLabel.setBounds (a.removeFromTop (15));
-        a.removeFromTop (6);
-
-        // Centre a single horizontal row: combos | five toggles | Balance knob.
-        auto row = a.withSizeKeepingCentre (a.getWidth(), juce::jmin (a.getHeight(), 96));
-
-        auto bal = row.removeFromRight (100);
-        auto blk = bal.withSizeKeepingCentre (bal.getWidth(), juce::jmin (bal.getHeight(), 92));
-        balanceL.setBounds (blk.removeFromBottom (14));
-        balanceK.setBounds (blk.reduced (10, 0));
-        row.removeFromRight (16);
-
-        auto combos = row.removeFromLeft (320);
-        {
-            auto cm = combos.removeFromLeft (152);
-            auto cmBlk = cm.withSizeKeepingCentre (cm.getWidth(), 43);
-            channelModeLabel.setBounds (cmBlk.removeFromTop (14));
-            cmBlk.removeFromTop (3);
-            channelModeBox.setBounds (cmBlk.removeFromTop (26));
-            combos.removeFromLeft (12);
-            auto soBlk = combos.withSizeKeepingCentre (combos.getWidth(), 43);
-            soloLabel.setBounds (soBlk.removeFromTop (14));
-            soBlk.removeFromTop (3);
-            soloBox.setBounds (soBlk.removeFromTop (26));
-        }
-        row.removeFromLeft (16);
-
-        auto tog = row.withSizeKeepingCentre (row.getWidth(), 44);
-        const int tw = tog.getWidth() / 5;
-        monoToggle.setBounds (tog.removeFromLeft (tw));
-        swapToggle.setBounds (tog.removeFromLeft (tw));
-        msToggle.setBounds   (tog.removeFromLeft (tw));
-        polLToggle.setBounds (tog.removeFromLeft (tw));
-        polRToggle.setBounds (tog);
-    }
-
-    // ---- MULTIBAND: the long, full-width spectral band editor ----
+    // ---- MULTIBAND: full-width spectral band editor (slightly inset) ----
     if (advanced && ! multiBar.isEmpty())
     {
-        auto m = multiBar.reduced (8, 6);
+        auto m = multiBar.reduced (16, 6);
         auto head = m.removeFromTop (18).reduced (8, 0);
         multibandLabel.setBounds (head.removeFromLeft (head.getWidth() - 56));
         mbEnableToggle.setBounds (head.removeFromRight (52));
         m.removeFromTop (2);
         if (imager) imager->setBounds (m.reduced (2, 0));
+    }
+
+    // ---- INPUT | OUTPUT horizontal block (full width, vertical divider) ----
+    if (advanced && ! ioBlock.isEmpty())
+    {
+        auto block = ioBlock.reduced (8, 6);
+        const int half = block.getWidth() / 2;
+        auto inputHalf  = block.removeFromLeft (half);
+        auto outputHalf = block; // right half (divider drawn in paint)
+
+        // INPUT (left): combos + five toggles on the left, Balance on the right.
+        {
+            auto a = inputHalf.reduced (14, 8);
+            inputModuleLabel.setBounds (a.removeFromTop (15));
+            a.removeFromTop (6);
+
+            auto bal = a.removeFromRight (94);
+            auto blk = bal.withSizeKeepingCentre (bal.getWidth(), juce::jmin (bal.getHeight(), 98));
+            balanceL.setBounds (blk.removeFromBottom (14));
+            balanceK.setBounds (blk.reduced (8, 0));
+            a.removeFromRight (14);
+
+            auto combos = a.removeFromTop (43);
+            {
+                auto cm = combos.removeFromLeft (combos.getWidth() / 2 - 6);
+                channelModeLabel.setBounds (cm.removeFromTop (14)); cm.removeFromTop (3);
+                channelModeBox.setBounds (cm.removeFromTop (26));
+                combos.removeFromLeft (12);
+                soloLabel.setBounds (combos.removeFromTop (14)); combos.removeFromTop (3);
+                soloBox.setBounds (combos.removeFromTop (26));
+            }
+            a.removeFromTop (12);
+            auto tog = a.removeFromTop (40);
+            const int tw = tog.getWidth() / 5;
+            monoToggle.setBounds (tog.removeFromLeft (tw));
+            swapToggle.setBounds (tog.removeFromLeft (tw));
+            msToggle.setBounds   (tog.removeFromLeft (tw));
+            polLToggle.setBounds (tog.removeFromLeft (tw));
+            polRToggle.setBounds (tog);
+        }
+
+        // OUTPUT (right): Mix/Output/Balance knobs, then Level Match + Mono Maker.
+        {
+            auto a = outputHalf.reduced (14, 8);
+            outputModuleLabel.setBounds (a.removeFromTop (15));
+            a.removeFromTop (4);
+
+            auto knobs = a.removeFromTop (100);
+            const int w = knobs.getWidth() / 3;
+            placeKnob (knobs.removeFromLeft (w), mixK, mixL);
+            placeKnob (knobs.removeFromLeft (w), outputK, outputL);
+            placeKnob (knobs, outBalanceK, outBalanceL);
+            a.removeFromTop (6);
+
+            const int togW = 120, numW = 56;
+            auto lm = a.removeFromTop (28);
+            autoMatchToggle.setBounds (lm.removeFromLeft (togW).reduced (2, 3));
+            lm.removeFromLeft (4);
+            matchReadout.setBounds (lm.removeFromRight (numW).reduced (2, 3));
+            applyGainButton.setBounds (lm.reduced (2, 3));
+            a.removeFromTop (6);
+            auto mm = a.removeFromTop (28);
+            monoMakerToggle.setBounds (mm.removeFromLeft (togW).reduced (2, 3));
+            monoFreqK.setBounds (mm.reduced (0, 3));
+        }
     }
 }

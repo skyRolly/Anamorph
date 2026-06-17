@@ -152,6 +152,7 @@ bool AnamorphEngine::discreteDiffers (const EngineParameters& a, const EnginePar
         || a.dimMode          != b.dimMode
         || a.mbEnable         != b.mbEnable
         || a.mbBands          != b.mbBands
+        || a.mbSolo           != b.mbSolo
         || a.monoMakerEnable  != b.monoMakerEnable
         || a.autoGainMatch    != b.autoGainMatch
         || a.oversample       != b.oversample
@@ -333,6 +334,7 @@ void AnamorphEngine::updateDerived()
     }
 
     multiband.setBandCount (p.mbBands);
+    multiband.setSolo (p.mbSolo);
     multiband.setCrossovers (p.mbFreqLow, p.mbFreqMid, p.mbFreqHigh);
     multiband.setWidths (p.mbWidthLow, p.mbWidthMid, p.mbWidthHiMid, p.mbWidthHigh);
 
