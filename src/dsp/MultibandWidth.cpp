@@ -45,12 +45,15 @@ void MultibandWidth::setCrossovers (float f1, float f2, float f3) noexcept
 
 void MultibandWidth::processBlock (float* left, float* right, int numSamples) noexcept
 {
+    // A solo only counts if it points at an active band; otherwise full mix.
+    const int solo = (soloBand >= 0 && soloBand < bands) ? soloBand : -1;
+
     // One band: a plain MS width on the whole signal, no crossovers.
     if (bands <= 1)
     {
         for (int n = 0; n < numSamples; ++n)
             applyWidth (left[n], right[n], w[0]);
-        return;
+        return; // a single band soloed is just itself
     }
 
     juce::dsp::LinkwitzRileyFilter<float>* xs[3] = { &x1, &x2, &x3 };
@@ -81,13 +84,13 @@ void MultibandWidth::processBlock (float* left, float* right, int numSamples) no
             xs[i]->processSample (0, curL, loL, hiL);
             xs[i]->processSample (1, curR, loR, hiR);
             applyWidth (loL, loR, w[i]);
-            accL += loL; accR += loR;
+            if (solo < 0 || solo == i) { accL += loL; accR += loR; }
             curL = hiL; curR = hiR;
         }
 
         // The final remainder is the top band.
         applyWidth (curL, curR, w[crossovers]);
-        accL += curL; accR += curR;
+        if (solo < 0 || solo == crossovers) { accL += curL; accR += curR; }
 
         left[n]  = accL;
         right[n] = accR;

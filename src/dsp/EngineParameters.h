@@ -65,6 +65,7 @@ struct EngineParameters
     // the first (mbBands - 1) crossovers and the first mbBands widths are used.
     bool        mbEnable     = false;
     int         mbBands      = 4;       // active band count (1..4)
+    int         mbSolo       = 0;       // 0 = none, 1..4 = monitor that band alone
     float       mbFreqLow    = 180.0f;  // band 1 | 2 crossover
     float       mbFreqMid    = 800.0f;  // band 2 | 3 crossover
     float       mbFreqHigh   = 3000.0f; // band 3 | 4 crossover

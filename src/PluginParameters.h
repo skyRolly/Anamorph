@@ -36,6 +36,7 @@ namespace pid
     // Multiband (1..4 bands, up to 3 crossovers)
     inline constexpr const char* mbEnable       = "mbEnable";
     inline constexpr const char* mbBands        = "mbBands";     // active band count 1..4
+    inline constexpr const char* mbSolo         = "mbSolo";      // 0 none, 1..4 solo band
     inline constexpr const char* mbFreqLow      = "mbFreqLow";   // band 1|2
     inline constexpr const char* mbFreqMid      = "mbFreqMid";   // band 2|3
     inline constexpr const char* mbFreqHigh     = "mbFreqHigh";  // band 3|4
@@ -69,7 +70,7 @@ namespace pid
     // or presets -- one list so every consumer stays in sync.
     inline constexpr const char* const viewParams[] = {
         bypass, advancedMode, oversample, metersOn, tooltipsOn, scopePersist,
-        uiAnimations, uiScale
+        uiAnimations, uiScale, mbSolo
     };
 
     inline bool isViewParam (const juce::String& id) noexcept
@@ -107,6 +108,7 @@ struct ParamPointers
     std::atomic<float>* width = nullptr;
     std::atomic<float>* mbEnable = nullptr;
     std::atomic<float>* mbBands = nullptr;
+    std::atomic<float>* mbSolo = nullptr;
     std::atomic<float>* mbFreqLow = nullptr;
     std::atomic<float>* mbFreqMid = nullptr;
     std::atomic<float>* mbFreqHigh = nullptr;

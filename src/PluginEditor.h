@@ -207,7 +207,6 @@ private:
     // not trigger it (#1).
     double persistScrollWindow = 0.0;
     double persistRevealTimer  = 0.0;
-    int   widenOutputDividerY = 0; // y of the Widen/Output divider in advanced (#10/#11)
 
     // Meter reveal runs on the display's vblank (not the 24 Hz timer) and lays
     // out ONLY the scope/meter block per frame -- the full-window relayout per
@@ -226,13 +225,14 @@ private:
     // automation edit leaves it closed, so those snap and never mislead (#3).
     double knobSweepTime = 0.0;
 
-    // The upper region is the same 940x720 in both modes, with the scope/meter
-    // block at its original size (0.6.7 #2). Advanced GROWS the window downward by
-    // kMultiBarH for a full-width MULTIBAND bar, instead of squeezing the scope.
+    // SIMPLE is 940x720. ADVANCED stacks four full-width tiers (0.6.8 #7):
+    //   top bar | scope+Widen row | full-width MULTIBAND | INPUT|OUTPUT block.
     static constexpr int kWidth     = 940;
-    static constexpr int kHeight    = 720;  // top bar + scope/INPUT + right panel
-    static constexpr int kStripHeight = 200; // INPUT strip at the bottom of the left column
-    static constexpr int kMultiBarH   = 196; // full-width Multiband bar, advanced only
+    static constexpr int kHeight    = 720;  // SIMPLE window height (scope + Widen)
+    static constexpr int kScopeRowH = 474;  // scope/meters + Widen row (advanced)
+    static constexpr int kMultiBarH = 176;  // full-width Multiband bar (advanced)
+    static constexpr int kIoH       = 204;  // INPUT | OUTPUT horizontal block (advanced)
+    static constexpr int kAdvHeight = 46 + kScopeRowH + kMultiBarH + kIoH; // 900
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AnamorphAudioProcessorEditor)
 };
