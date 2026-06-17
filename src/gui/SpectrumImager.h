@@ -12,14 +12,18 @@ namespace anamorph::gui
 //
 //  An Ozone-Imager / FabFilter Pro-Q style band editor: a live FFT spectrum on a
 //  long horizontal panel, split by up to THREE draggable crossover handles into
-//  1..4 bands, each carrying its own stereo width (drag UP = wider / DOWN =
-//  narrower inside the band). Bands are added by clicking the top "add" strip and
-//  removed via the per-band x; scrolling fine-tunes a split (on a line) or a
-//  band's width (off a line). Reads the lock-free ScopeBuffer for the analyser
-//  and drives the parameters directly, so automation, undo and A/B all track.
+//  1..4 bands, each carrying its own stereo width.
 //
-//  Hover / press states ease in and out (the same non-linear fade as the rest of
-//  the UI) when UI Animations are on, and snap when they are off.
+//  Interaction (0.6.7):
+//    * Drag a split to move it; click-drag in empty band space ADDS a split and
+//      keeps dragging it.
+//    * Hover a band (away from its width line) -> a "+" add hint; hover the width
+//      line -> drag it up/down for the band width.
+//    * Hover a split -> a x appears to its right to remove it.
+//    * Scroll a split = frequency; scroll a band = width (1 %/notch); the wheel
+//      latches its target until the pointer really moves.
+//    * Double-click a split's number to TYPE a frequency; double-click / Alt-click
+//      elsewhere resets.
 // ============================================================================
 class SpectrumImager : public juce::Component,
                        public juce::SettableTooltipClient,
@@ -44,15 +48,14 @@ private:
     void pushFFT();
 
     // --- geometry helpers (component-local) ------------------------------
-    juce::Rectangle<float> plot() const noexcept; // graph area inside the frame
+    juce::Rectangle<float> plot() const noexcept;
     float freqToX (float hz) const noexcept;
     float xToFreq (float x)  const noexcept;
     float widthToY (float w) const noexcept;
     float yToWidth (float y) const noexcept;
-    float yThird()  const noexcept;   // the "add band" line, 1/3 down
-    float rulerY()  const noexcept;   // baseline for the frequency numbers
-    float laneTop() const noexcept;   // width = 2.0 maps here
-    float laneBot() const noexcept;   // width = 0.0 maps here
+    float rulerY()  const noexcept;
+    float laneTop() const noexcept;
+    float laneBot() const noexcept;
 
     // current plain values pulled from the parameters
     int   bandCount()       const noexcept; // 1..4
@@ -60,18 +63,23 @@ private:
     float bandWidth (int i) const noexcept; // 0..3
     float bandLeftX (int b) const noexcept;
     float bandRightX (int b) const noexcept;
-    juce::Rectangle<float> deleteRect (int b) const noexcept;
+    bool  enabled() const noexcept;
 
-    int   bandAtX (float x) const noexcept;     // which of the active bands a column is in
-    int   handleNearX (float x) const noexcept; // active crossover under the cursor, or -1
-    int   deleteHit (juce::Point<float>) const noexcept; // band whose x is under the cursor, or -1
+    int   bandAtX (float x) const noexcept;
+    int   handleNearX (float x) const noexcept;
+    bool  nearWidthLine (juce::Point<float> p, int b) const noexcept;
+    juce::Rectangle<float> deleteBox (int i) const noexcept;   // the x to a split's right
+    juce::Rectangle<float> numberChip (int i) const noexcept;  // the freq readout / edit box
+    int   deleteHit (juce::Point<float>) const noexcept;
 
-    // spectrum magnitude (dB) for the pixel column [xa, xb], averaging / interpolating bins
+    // spectrum magnitude (dB) for the pixel column [xa, xb]
     float magForColumn (float xa, float xb) const noexcept;
+    float magCubic (float bin) const noexcept;
 
-    // structural edits (write the parameters, engine ducks the swap)
-    void addBandAt (float hz);
-    void deleteBand (int b);
+    // structural / value edits (engine ducks the swap)
+    int   addBandAt (float hz);     // returns the NEW crossover index, or -1
+    void  removeCrossover (int i);
+    void  resetCrossover (int i);
 
     void beginGesture (juce::RangedAudioParameter*);
     void setParam (juce::RangedAudioParameter*, float plain);
@@ -81,43 +89,51 @@ private:
 
     void updateHover (juce::Point<float>);
 
+    void openFreqEditor (int i);
+    void commitFreqEditor();
+    void closeFreqEditor();
+    static float parseFreq (const juce::String&);
+
     anamorph::ScopeBuffer& scope;
     juce::AudioProcessorValueTreeState& apvts;
 
     juce::RangedAudioParameter* bandsP  { nullptr };
     juce::RangedAudioParameter* freqP[3]  { nullptr, nullptr, nullptr };
     juce::RangedAudioParameter* widthP[4] { nullptr, nullptr, nullptr, nullptr };
-    std::atomic<float>* animOnP { nullptr };
+    std::atomic<float>* animOnP  { nullptr };
+    std::atomic<float>* enableP  { nullptr };
 
-    // FFT analyser (GUI thread). A large window keeps the LOW end resolved so the
-    // bottom octaves stop looking blocky / stair-stepped (0.6.6 #8).
+    std::unique_ptr<juce::TextEditor> freqEditor;
+    int editingHandle = -1;
+
+    // FFT analyser (GUI thread). A large window + cubic interpolation keeps the LOW
+    // end smooth (0.6.7 #11).
     static constexpr int fftOrder = 13;
     static constexpr int fftSize  = 1 << fftOrder; // 8192
     juce::dsp::FFT  fft { fftOrder };
     juce::dsp::WindowingFunction<float> window { (size_t) fftSize, juce::dsp::WindowingFunction<float>::hann };
-    std::vector<float> fifoL, fifoR, fftData, mags; // mags: 0..fftSize/2 smoothed dB
+    std::vector<float> fifoL, fifoR, fftData, mags;
     double sampleRate = 48000.0;
 
-    int   dragHandle = -1;   // crossover 0..2 being dragged, else -1
-    int   dragBand   = -1;   // band 0..3 being width-dragged, else -1
+    int   dragHandle = -1;
+    int   dragBand   = -1;
     int   hoverHandle = -1;
-    int   hoverBand   = -1;
-    int   hoverDelete = -1;  // band whose x affordance is showing
-    bool  hoverAdd    = false; // cursor is in the top "add" strip (and bands < 4)
-    float addX        = 0.0f;  // cursor x for the add hint
+    int   hoverWidth  = -1;  // band whose width line is hovered
+    int   hoverAdd    = -1;  // band showing the add hint
+    int   hoverDelete = -1;  // crossover showing its delete x
+    float addX        = 0.0f;
 
-    // Scroll latches a target (the split or band under the cursor) and KEEPS it
-    // until the pointer next moves, so a split scrolled out from under the cursor
-    // still responds to the wheel (0.6.6 #5).
+    // Scroll latches its target and holds it until the pointer really moves (#4).
     int   scrollHandle = -1;
     int   scrollBand   = -1;
+    juce::Point<float> scrollAnchor;
 
-    // Eased hover/press activity (0.6.6 #11): one per crossover, per band, plus the
-    // add strip and each band's delete affordance.
+    // Eased hover/press activity (#11 / 0.6.6 #11).
     float handleA[3] { 0, 0, 0 };
-    float bandA[4]   { 0, 0, 0, 0 };
-    float delA[4]    { 0, 0, 0, 0 };
+    float widthA[4]  { 0, 0, 0, 0 };
+    float delA[3]    { 0, 0, 0 };
     float addA       = 0.0f;
+    float enaA       = 1.0f; // eased enabled (1) / disabled (0) wash (#20)
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SpectrumImager)
 };

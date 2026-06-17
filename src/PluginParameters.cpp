@@ -121,7 +121,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
     floatParam (pid::width, "Width", { 0.0f, 2.0f, 0.001f }, 1.0f, pct, pctFrom);
 
     // --- Multiband (1..4 bands, up to 3 crossovers) ---
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::mbEnable, kVersion }, "Multiband Enable", false));
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::mbEnable, kVersion }, "Multiband Enable", true));
     layout.add (std::make_unique<juce::AudioParameterInt> (ParameterID { pid::mbBands, kVersion }, "Multiband Bands", 1, 4, 4));
     floatParam (pid::mbFreqLow,  "Multiband Split 1", logFreqRange (30.0f, 600.0f),    180.0f,  hz, hzFrom);
     floatParam (pid::mbFreqMid,  "Multiband Split 2", logFreqRange (150.0f, 3000.0f),  800.0f,  hz, hzFrom);

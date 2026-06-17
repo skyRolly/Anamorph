@@ -478,11 +478,21 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         if (pendingForced)
         {
             snapSmoothers();
-            // Clear the band/mono crossover state too: their IIR filters still hold
-            // the OLD signal, and a big crossover/width jump would otherwise ring as
-            // the duck fades back in -- audible as the residual "burst" (0.6.6 #1).
+            // Clear EVERY stateful node so the fade-in plays the new state from a
+            // clean slate. Even a SAME-algorithm A/B can move Haas delay / Chorus
+            // rate / Drive far enough that the old delay-line + filter + oversampler
+            // contents replay as a short glitch right as the duck lifts -- the
+            // intermittent A/B "weird sound" (0.6.7 #22). At the silent bottom these
+            // resets are inaudible.
             multiband.reset();
             monoMaker.reset();
+            haas.reset();
+            velvet.reset();
+            chorus.reset();
+            if (os2) os2->reset();
+            if (os4) os4->reset();
+            if (os8) os8->reset();
+            pendingAlgoReset = false; // already handled by the wholesale reset above
             const float inj = matchInject.exchange (kNoInject, std::memory_order_relaxed);
             if (inj > kNoInject + 1.0f)
             {

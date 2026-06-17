@@ -336,7 +336,7 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     metersToggle.onClick = [this] { metersOn = metersToggle.getToggleState(); }; // visibility via layoutScopeArea (#2)
 
     setupToggle (advancedToggle, pid::advancedMode, "Adv", "Advanced mode"); // #17
-    advancedToggle.onClick = [this] { advanced = advancedToggle.getToggleState(); updateModeVisibility(); };
+    advancedToggle.onClick = [this] { advanced = advancedToggle.getToggleState(); applyUiScale(); updateModeVisibility(); };
 
     setupToggle (bypassToggle, pid::bypass, "Bypass", {});
     bypassToggle.setComponentID ("bypass");
@@ -473,9 +473,7 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     setupToggle (mbEnableToggle, pid::mbEnable, "On", "Apply the per-band stereo widths to the sound");
     imager = std::make_unique<anamorph::gui::SpectrumImager> (processor.getEngine().getScopeBuffer(),
                                                               processor.getAPVTS());
-    imager->setTooltip ("Drag a split to move it. Drag up / down in a band to set its width. "
-                        "Click the top strip to add a split, the x to remove one. "
-                        "Scroll to fine-tune; double-click or Alt-click to reset.");
+    imager->setTooltip ("Drag a band for its width; drag a split to move it. Click to add, x to remove.");
     addAndMakeVisible (*imager);
 
     // --- Overlays ---
@@ -575,9 +573,8 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     updateModeVisibility();
     uiAnimOn = animToggle.getToggleState();
     refreshPresetDisplay();
-    setSize (kWidth, kHeight);    // single fixed size for both modes (#20)
     setResizable (false, false);
-    applyUiScale();               // recalled XS..XL window scale (F4)
+    applyUiScale();               // sets the base size (mode-dependent height) + XS..XL scale
     startTimerHz (24);
     // One vblank drives every per-frame animation: the meter reveal (#6) and the
     // micro-animations (F3); both early-out to a few compares when idle.
@@ -632,7 +629,20 @@ void AnamorphAudioProcessorEditor::attachSlider (juce::Slider& s, const char* id
 
     auto* p = processor.getAPVTS().getParameter (id);
     if (auto* k = dynamic_cast<Knob*> (&s); k != nullptr && p != nullptr)
+    {
         k->resetValue = p->getNormalisableRange().convertFrom0to1 (p->getDefaultValue()); // #6
+        // A RESET (double-click / Option-click) sweeps the eased position (0.6.7 #21).
+        k->onSweep = [this] { if (uiAnimOn) knobSweepTime = 0.45; };
+    }
+
+    // A TEXT-box value entry should also sweep, but a drag, the scroll wheel, and
+    // host AUTOMATION must NOT: text entry is the only one of those that changes the
+    // value while the control holds keyboard focus and the mouse is up (0.6.7 #21).
+    if (! s.onValueChange)
+        s.onValueChange = [this, &s] {
+            if (uiAnimOn && ! s.isMouseButtonDown() && s.hasKeyboardFocus (true))
+                knobSweepTime = 0.45;
+        };
 
     // Tag the unit so the value box can show a bare number while editing (#36).
     const juce::String sid (id);
@@ -833,6 +843,7 @@ void AnamorphAudioProcessorEditor::timerCallback()
     if (advancedToggle.getToggleState() != advanced)
     {
         advanced = advancedToggle.getToggleState();
+        applyUiScale();              // resize for / against the Multiband bar (#2)
         updateModeVisibility();
     }
     if (metersToggle.getToggleState() != metersOn)
@@ -1044,9 +1055,12 @@ void AnamorphAudioProcessorEditor::applyUiScale()
 {
     static constexpr float scales[] = { 0.75f, 0.85f, 1.0f, 1.25f, 1.5f };
     const int idx = juce::jlimit (0, 4, uiScaleBox.getSelectedItemIndex());
-    if (idx == lastScaleIdx) return;
     lastScaleIdx = idx;
 
+    // Advanced extends the window downward for the full-width Multiband bar instead
+    // of compressing the scope (0.6.7 #2). The base (unscaled) size depends on the
+    // mode; the XS..XL transform scales it.
+    setSize (kWidth, kHeight + (advanced ? kMultiBarH : 0));
     setTransform (juce::AffineTransform::scale (scales[idx]));
     if (openGLContext.isAttached())
         openGLContext.triggerRepaint();
@@ -1199,8 +1213,8 @@ void AnamorphAudioProcessorEditor::paint (juce::Graphics& g)
     g.setFont (juce::Font (juce::FontOptions (10.0f)).withExtraKerningFactor (0.25f));
     g.drawText ("STEREO TOOLS", 168, 0, 140, 46, juce::Justification::centredLeft);
 
-    // Right control panel
-    auto right = juce::Rectangle<int> (getWidth() - 300, 46, 300, getHeight() - 46).toFloat().reduced (8.0f);
+    // Right control panel (spans the upper region only; the Multiband bar sits below)
+    auto right = juce::Rectangle<int> (getWidth() - 300, 46, 300, kHeight - 46).toFloat().reduced (8.0f);
     g.setColour (colours::bgPanel.withAlpha (0.55f));
     g.fillRoundedRectangle (right, 10.0f);
 
@@ -1213,16 +1227,20 @@ void AnamorphAudioProcessorEditor::paint (juce::Graphics& g)
         g.setColour (colours::outline.withAlpha (0.6f));
         g.drawLine (right.getX() + 12.0f, dy, right.getRight() - 12.0f, dy, 1.0f);
 
-        // Left column under the scope: a compact INPUT bar above a long,
-        // full-width MULTIBAND spectrum bar (0.6.6 #3/#9).
+        // INPUT strip at the bottom of the left column (inside the upper region),
+        // and a long, FULL-WIDTH MULTIBAND bar below the whole upper region (0.6.7 #2).
         const int leftW = getWidth() - 300;
-        auto inputPanel = juce::Rectangle<int> (0, getHeight() - kStripHeight, leftW, kInputHeight)
-                              .toFloat().reduced (8.0f, 6.0f);
-        auto multiPanel = juce::Rectangle<int> (0, getHeight() - kMultiHeight, leftW, kMultiHeight)
+        auto inputPanel = juce::Rectangle<int> (0, kHeight - kStripHeight, leftW, kStripHeight)
                               .toFloat().reduced (8.0f, 6.0f);
         g.setColour (colours::bgPanel.withAlpha (0.5f));
         g.fillRoundedRectangle (inputPanel, 10.0f);
-        g.fillRoundedRectangle (multiPanel, 10.0f);
+
+        if (getHeight() > kHeight)
+        {
+            auto multiPanel = juce::Rectangle<int> (0, kHeight, getWidth(), getHeight() - kHeight)
+                                  .toFloat().reduced (8.0f, 6.0f);
+            g.fillRoundedRectangle (multiPanel, 10.0f);
+        }
     }
 }
 
@@ -1231,7 +1249,9 @@ void AnamorphAudioProcessorEditor::paint (juce::Graphics& g)
 // just this part per frame instead of the whole resized() (#6).
 void AnamorphAudioProcessorEditor::layoutScopeArea()
 {
-    auto leftArea = getLocalBounds().withTrimmedTop (46).withTrimmedRight (300);
+    // The scope/meter block lives in the upper region only (height kHeight), so the
+    // Multiband bar below never compresses it (0.6.7 #2).
+    auto leftArea = juce::Rectangle<int> (0, 46, getWidth() - 300, kHeight - 46);
     if (advanced) leftArea.removeFromBottom (kStripHeight);
 
     auto sa = leftArea.reduced (16);
@@ -1252,15 +1272,16 @@ void AnamorphAudioProcessorEditor::layoutScopeArea()
         sa.removeFromLeft (juce::roundToInt (12.0f * meterAnim));
     }
 
-    auto vCol = sa.removeFromRight (26);
-    sa.removeFromRight (8);
-    auto hRow = sa.removeFromBottom (26);
-    sa.removeFromBottom (8);
-    const int side = juce::jmin (sa.getWidth(), sa.getHeight());
-    auto sq = sa.withSizeKeepingCentre (side, side);
+    // Phase meter (right) + balance meter (bottom) hug the scope with an EQUAL gap,
+    // and the whole scope+meter cluster is centred in the area -- so the
+    // scope-to-phase and scope-to-balance gaps always match (0.6.7 #3).
+    const int gap = 8, barW = 26;
+    const int side = juce::jmin (sa.getWidth() - barW - gap, sa.getHeight() - barW - gap);
+    auto cluster = sa.withSizeKeepingCentre (side + gap + barW, side + gap + barW);
+    auto sq = juce::Rectangle<int> (cluster.getX(), cluster.getY(), side, side);
     scope->setBounds (sq);
-    corrMeter->setBounds (vCol.withHeight (side).withY (sq.getY()));
-    balanceMeter->setBounds (hRow.withWidth (side).withX (sq.getX()));
+    corrMeter->setBounds (sq.getRight() + gap, sq.getY(), barW, side);
+    balanceMeter->setBounds (sq.getX(), sq.getBottom() + gap, side, barW);
 }
 
 void AnamorphAudioProcessorEditor::resized()
@@ -1320,6 +1341,12 @@ void AnamorphAudioProcessorEditor::resized()
     }
 
     auto r = getLocalBounds();
+
+    // Reserve the full-width MULTIBAND bar at the very bottom (advanced only); the
+    // upper region above it keeps its original 940x720 layout (0.6.7 #2).
+    juce::Rectangle<int> multiBar;
+    if (advanced && r.getHeight() > kHeight)
+        multiBar = r.removeFromBottom (r.getHeight() - kHeight);
 
     // ---- Top bar ----
     auto top = r.removeFromTop (46);
@@ -1440,62 +1467,54 @@ void AnamorphAudioProcessorEditor::resized()
         }
     }
 
-    // ---- Advanced bottom rows: a wide INPUT bar over a long MULTIBAND bar ----
+    // ---- INPUT strip (full left width) ----
     if (advanced)
     {
-        auto inputArea = stripArea.removeFromTop (kInputHeight);
-        auto multiArea = stripArea; // remaining kMultiHeight
+        auto a = stripArea.reduced (8, 6).reduced (12, 8);
+        inputModuleLabel.setBounds (a.removeFromTop (15));
+        a.removeFromTop (6);
 
-        // INPUT: a wide, short bar -- combos on the left, the five toggles in the
-        // middle, the Balance knob on the right (0.6.6 #3 layout change).
+        // Centre a single horizontal row: combos | five toggles | Balance knob.
+        auto row = a.withSizeKeepingCentre (a.getWidth(), juce::jmin (a.getHeight(), 96));
+
+        auto bal = row.removeFromRight (100);
+        auto blk = bal.withSizeKeepingCentre (bal.getWidth(), juce::jmin (bal.getHeight(), 92));
+        balanceL.setBounds (blk.removeFromBottom (14));
+        balanceK.setBounds (blk.reduced (10, 0));
+        row.removeFromRight (16);
+
+        auto combos = row.removeFromLeft (320);
         {
-            auto a = inputArea.reduced (8, 6).reduced (12, 8);
-            inputModuleLabel.setBounds (a.removeFromTop (15));
-            a.removeFromTop (4);
-
-            // Balance knob block on the far right.
-            auto bal = a.removeFromRight (96);
-            auto blk = bal.withSizeKeepingCentre (bal.getWidth(), juce::jmin (bal.getHeight(), 92));
-            balanceL.setBounds (blk.removeFromBottom (14));
-            balanceK.setBounds (blk.reduced (8, 0));
-            a.removeFromRight (14);
-
-            // Two combos (Channel + Solo) side by side on the left.
-            auto combos = a.removeFromLeft (310);
-            {
-                auto cm = combos.removeFromLeft (150);
-                auto cmBlk = cm.withSizeKeepingCentre (cm.getWidth(), 43);
-                channelModeLabel.setBounds (cmBlk.removeFromTop (14));
-                cmBlk.removeFromTop (3);
-                channelModeBox.setBounds (cmBlk.removeFromTop (26));
-                combos.removeFromLeft (10);
-                auto soBlk = combos.withSizeKeepingCentre (combos.getWidth(), 43);
-                soloLabel.setBounds (soBlk.removeFromTop (14));
-                soBlk.removeFromTop (3);
-                soloBox.setBounds (soBlk.removeFromTop (26));
-            }
-            a.removeFromLeft (14);
-
-            // Five compact toggles spread across the remaining middle, vertically
-            // centred so they line up with the combos.
-            auto tog = a.withSizeKeepingCentre (a.getWidth(), 42);
-            const int tw = tog.getWidth() / 5;
-            monoToggle.setBounds (tog.removeFromLeft (tw));
-            swapToggle.setBounds (tog.removeFromLeft (tw));
-            msToggle.setBounds   (tog.removeFromLeft (tw));
-            polLToggle.setBounds (tog.removeFromLeft (tw));
-            polRToggle.setBounds (tog);
+            auto cm = combos.removeFromLeft (152);
+            auto cmBlk = cm.withSizeKeepingCentre (cm.getWidth(), 43);
+            channelModeLabel.setBounds (cmBlk.removeFromTop (14));
+            cmBlk.removeFromTop (3);
+            channelModeBox.setBounds (cmBlk.removeFromTop (26));
+            combos.removeFromLeft (12);
+            auto soBlk = combos.withSizeKeepingCentre (combos.getWidth(), 43);
+            soloLabel.setBounds (soBlk.removeFromTop (14));
+            soBlk.removeFromTop (3);
+            soloBox.setBounds (soBlk.removeFromTop (26));
         }
+        row.removeFromLeft (16);
 
-        // MULTIBAND: the long spectral band editor fills the full-width bar under
-        // its header (label + On toggle).
-        {
-            auto m = multiArea.reduced (8, 6);
-            auto head = m.removeFromTop (18).reduced (6, 0);
-            multibandLabel.setBounds (head.removeFromLeft (head.getWidth() - 56));
-            mbEnableToggle.setBounds (head.removeFromRight (52));
-            m.removeFromTop (2);
-            if (imager) imager->setBounds (m.reduced (2, 0));
-        }
+        auto tog = row.withSizeKeepingCentre (row.getWidth(), 44);
+        const int tw = tog.getWidth() / 5;
+        monoToggle.setBounds (tog.removeFromLeft (tw));
+        swapToggle.setBounds (tog.removeFromLeft (tw));
+        msToggle.setBounds   (tog.removeFromLeft (tw));
+        polLToggle.setBounds (tog.removeFromLeft (tw));
+        polRToggle.setBounds (tog);
+    }
+
+    // ---- MULTIBAND: the long, full-width spectral band editor ----
+    if (advanced && ! multiBar.isEmpty())
+    {
+        auto m = multiBar.reduced (8, 6);
+        auto head = m.removeFromTop (18).reduced (8, 0);
+        multibandLabel.setBounds (head.removeFromLeft (head.getWidth() - 56));
+        mbEnableToggle.setBounds (head.removeFromRight (52));
+        m.removeFromTop (2);
+        if (imager) imager->setBounds (m.reduced (2, 0));
     }
 }

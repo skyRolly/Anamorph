@@ -50,6 +50,14 @@ private:
     juce::dsp::LinkwitzRileyFilter<float> x2; // f2: band2 vs rest
     juce::dsp::LinkwitzRileyFilter<float> x3; // f3: band3 vs band4
 
+    // Per-sample multiplicative slew on each crossover, exactly like Mono Maker:
+    // a fast drag of a split can no longer sweep the IIR quickly enough to chirp /
+    // pitch-shift (0.6.7 #1).
+    double sr = 44100.0;
+    float  glideCoeff = 0.0f;
+    float  targetF[3]  { 180.0f, 800.0f, 3000.0f };
+    float  currentF[3] { 180.0f, 800.0f, 3000.0f };
+
     int   bands = 4;
     float w[4] { 1.0f, 1.0f, 1.0f, 1.0f };
 };

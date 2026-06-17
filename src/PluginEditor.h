@@ -113,15 +113,27 @@ private:
     // Preset browser (F2): ‹ name ›, the name opens the preset menu.
     juce::TextButton   presetPrev, presetNext, presetName;
 
-    // Knob: a slider that resets to its default on a clean double-click only --
-    // a triple-or-more click no longer resets on every extra click (feedback #6).
+    // Knob: a slider that resets to its default on a clean double-click OR an
+    // Option/Alt-click (#6 / 0.6.7 #21). onSweep lets the editor play the eased
+    // position travel when a RESET happens (but not on a drag).
     struct Knob : public juce::Slider
     {
         double resetValue = 0.0;
+        std::function<void()> onSweep;
+
+        void doReset()
+        {
+            setValue (resetValue, juce::sendNotificationSync);
+            if (onSweep) onSweep();
+        }
+        void mouseDown (const juce::MouseEvent& e) override
+        {
+            if (e.mods.isAltDown()) { doReset(); return; } // Option/Alt-click reset
+            juce::Slider::mouseDown (e);
+        }
         void mouseDoubleClick (const juce::MouseEvent& e) override
         {
-            if (e.getNumberOfClicks() == 2)
-                setValue (resetValue, juce::sendNotificationSync);
+            if (e.getNumberOfClicks() == 2) doReset();
         }
     };
 
@@ -214,15 +226,13 @@ private:
     // automation edit leaves it closed, so those snap and never mislead (#3).
     double knobSweepTime = 0.0;
 
-    // Single fixed window for both modes: toggling Advanced relays out the
-    // content in place, so the host never resizes us and nothing flickers (#20).
-    static constexpr int kWidth  = 940;
-    static constexpr int kHeight = 720;
-    // Advanced bottom rows under the scope (left column): a compact INPUT bar
-    // above a long, full-width MULTIBAND spectrum bar (0.6.6 #3/#9).
-    static constexpr int kInputHeight = 150;
-    static constexpr int kMultiHeight = 176;
-    static constexpr int kStripHeight = kInputHeight + kMultiHeight; // total reserved
+    // The upper region is the same 940x720 in both modes, with the scope/meter
+    // block at its original size (0.6.7 #2). Advanced GROWS the window downward by
+    // kMultiBarH for a full-width MULTIBAND bar, instead of squeezing the scope.
+    static constexpr int kWidth     = 940;
+    static constexpr int kHeight    = 720;  // top bar + scope/INPUT + right panel
+    static constexpr int kStripHeight = 200; // INPUT strip at the bottom of the left column
+    static constexpr int kMultiBarH   = 196; // full-width Multiband bar, advanced only
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AnamorphAudioProcessorEditor)
 };
