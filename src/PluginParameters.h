@@ -36,7 +36,7 @@ namespace pid
     // Multiband (1..4 bands, up to 3 crossovers)
     inline constexpr const char* mbEnable       = "mbEnable";
     inline constexpr const char* mbBands        = "mbBands";     // active band count 1..4
-    inline constexpr const char* mbSolo         = "mbSolo";      // 0 none, 1..4 solo band
+    inline constexpr const char* mbSolo         = "mbSolo";      // 4-bit solo mask (bit b = band b)
     inline constexpr const char* mbFreqLow      = "mbFreqLow";   // band 1|2
     inline constexpr const char* mbFreqMid      = "mbFreqMid";   // band 2|3
     inline constexpr const char* mbFreqHigh     = "mbFreqHigh";  // band 3|4

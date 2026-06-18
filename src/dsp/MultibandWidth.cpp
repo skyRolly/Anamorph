@@ -45,8 +45,10 @@ void MultibandWidth::setCrossovers (float f1, float f2, float f3) noexcept
 
 void MultibandWidth::processBlock (float* left, float* right, int numSamples) noexcept
 {
-    // A solo only counts if it points at an active band; otherwise full mix.
-    const int solo = (soloBand >= 0 && soloBand < bands) ? soloBand : -1;
+    // A solo mask only counts where it points at active bands; if it selects none
+    // of the active bands, fall back to the full mix.
+    const int active = soloMask & ((1 << bands) - 1);
+    auto heard = [active] (int b) noexcept { return active == 0 || (active & (1 << b)) != 0; };
 
     // One band: a plain MS width on the whole signal, no crossovers.
     if (bands <= 1)
@@ -84,13 +86,13 @@ void MultibandWidth::processBlock (float* left, float* right, int numSamples) no
             xs[i]->processSample (0, curL, loL, hiL);
             xs[i]->processSample (1, curR, loR, hiR);
             applyWidth (loL, loR, w[i]);
-            if (solo < 0 || solo == i) { accL += loL; accR += loR; }
+            if (heard (i)) { accL += loL; accR += loR; }
             curL = hiL; curR = hiR;
         }
 
         // The final remainder is the top band.
         applyWidth (curL, curR, w[crossovers]);
-        if (solo < 0 || solo == crossovers) { accL += curL; accR += curR; }
+        if (heard (crossovers)) { accL += curL; accR += curR; }
 
         left[n]  = accL;
         right[n] = accR;

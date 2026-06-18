@@ -123,7 +123,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
     // --- Multiband (1..4 bands, up to 3 crossovers) ---
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::mbEnable, kVersion }, "Multiband Enable", true));
     layout.add (std::make_unique<juce::AudioParameterInt> (ParameterID { pid::mbBands, kVersion }, "Multiband Bands", 1, 4, 4));
-    layout.add (std::make_unique<juce::AudioParameterInt> (ParameterID { pid::mbSolo, kVersion }, "Multiband Solo", 0, 4, 0));
+    // Solo is a 4-bit mask (any combination of bands), not a single index (0.6.9 #7).
+    layout.add (std::make_unique<juce::AudioParameterInt> (ParameterID { pid::mbSolo, kVersion }, "Multiband Solo", 0, 15, 0));
     floatParam (pid::mbFreqLow,  "Multiband Split 1", logFreqRange (30.0f, 600.0f),    180.0f,  hz, hzFrom);
     floatParam (pid::mbFreqMid,  "Multiband Split 2", logFreqRange (150.0f, 3000.0f),  800.0f,  hz, hzFrom);
     floatParam (pid::mbFreqHigh, "Multiband Split 3", logFreqRange (800.0f, 16000.0f), 3000.0f, hz, khzFrom);

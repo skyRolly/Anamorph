@@ -13,7 +13,8 @@ namespace anamorph::gui
 //  An Ozone-Imager / FabFilter Pro-Q style band editor: a live FFT spectrum split
 //  by up to three draggable crossover handles into 1..4 bands, each with its own
 //  stereo width and a per-band solo. Drives the parameters directly so automation,
-//  undo and A/B all track.
+//  undo and A/B all track. Solo is a mask, so any combination of bands can be
+//  auditioned at once (0.6.9 #7).
 // ============================================================================
 class SpectrumImager : public juce::Component,
                        public juce::SettableTooltipClient,
@@ -53,7 +54,8 @@ private:
     float bandLeftX (int b) const noexcept;
     float bandRightX (int b) const noexcept;
     bool  enabled() const noexcept;
-    int   soloBand() const noexcept;        // 0-based soloed band, or -1
+    int   soloMask() const noexcept;           // 4-bit solo mask
+    bool  bandSoloed (int b) const noexcept;
 
     int   bandAtX (float x) const noexcept;
     int   handleNearX (float x) const noexcept;
@@ -67,10 +69,22 @@ private:
     float magForColumn (float xa, float xb) const noexcept;
     float magCubic (float bin) const noexcept;
 
+    // Minimum band spacing in pixels, so the splits never crowd to the point the
+    // width handle / solo / delete affordances stop working (0.6.9 #1).
+    float clampHandleX    (int i, float x)  const noexcept;
+    float clampHandleFreq (int i, float hz) const noexcept;
+    bool  bandAddTarget   (int b, float x, float& outX) const noexcept; // room to add inside band b?
+
     int   addBandAt (float hz);
     void  removeBand (int b);
     void  resetCrossover (int i);
-    void  toggleSolo (int b);
+
+    // Solo (mask) ---------------------------------------------------------
+    void  setSoloMask (int mask);
+    void  toggleSoloBit (int b);
+    void  beginBandMove (int b);            // drag a solo handle sideways to move the band (0.6.9 #9)
+    void  moveBand (float fromX, float toX);
+    void  endBandMove();
 
     void beginGesture (juce::RangedAudioParameter*);
     void setParam (juce::RangedAudioParameter*, float plain);
@@ -79,6 +93,7 @@ private:
     void setBands (int n);
 
     void updateHover (juce::Point<float>);
+    void setContextTooltip();               // per-control tooltip (0.6.9 #18)
 
     void openFreqEditor (int i);
     void commitFreqEditor();
@@ -118,12 +133,28 @@ private:
     int   scrollBand   = -1;
     juce::Point<float> scrollAnchor;
 
+    // Solo press machine (0.6.9 #8/#9): a quick click latches the band's solo
+    // bit; a press-and-hold auditions THIS band alone and restores the previous
+    // mask on release; a hold-and-drag moves the band sideways.
+    int   soloPressBand   = -1;
+    juce::uint32 soloPressMs = 0;
+    int   soloMaskSaved   = 0;
+    bool  soloHoldActive  = false;   // momentary audition engaged
+    bool  soloMovedBand   = false;   // turned into a sideways band move
+    bool  soloMoveGesture = false;
+    int   soloMoveLeft    = -1;      // crossover index on the band's left edge (or -1)
+    int   soloMoveRight   = -1;      // crossover index on the band's right edge (or -1)
+    float soloDragPrevX   = 0.0f;
+    float soloDownX       = 0.0f;
+
     // Eased hover / press / state.
     float handleA[3] { 0, 0, 0 };
-    float pressA[3]  { 0, 0, 0 };   // extra feedback while actually dragging a split (#5)
+    float pressA[3]  { 0, 0, 0 };   // crossover actively dragged (curve + handle feedback)
     float widthA[4]  { 0, 0, 0, 0 };
+    float pressW[4]  { 0, 0, 0, 0 }; // width line actively dragged (stronger than hover, #14)
     float delA[4]    { 0, 0, 0, 0 };
     float soloA[4]   { 0, 0, 0, 0 };
+    float labelFlipA[4] { 0, 0, 0, 0 }; // 0 = % above the bar, 1 = below (top-collision flip, #3)
     float addA       = 0.0f;
     float enaA       = 1.0f;
 
