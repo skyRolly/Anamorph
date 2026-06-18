@@ -37,9 +37,10 @@ public:
     // the engine's silent switch-duck (with a reset) so it never clicks.
     void setBandCount (int n) noexcept { bands = juce::jlimit (1, 4, n); }
 
-    // Solo a single band for monitoring: 0 = off, 1..4 = hear that band alone.
-    // All filters keep running (state preserved); only the SUM changes.
-    void setSolo (int oneBased) noexcept { soloBand = juce::jlimit (0, 4, oneBased) - 1; }
+    // Solo any combination of bands for monitoring, as a 4-bit mask (bit b = band
+    // b heard alone). 0 = no solo (full mix). All filters keep running (state
+    // preserved); only the SUM changes, so soloing never clicks.
+    void setSolo (int mask) noexcept { soloMask = mask & 0x0F; }
 
     void setCrossovers (float f1, float f2, float f3) noexcept;
     void setWidths (float b1, float b2, float b3, float b4) noexcept
@@ -63,7 +64,7 @@ private:
     float  currentF[3] { 180.0f, 800.0f, 3000.0f };
 
     int   bands = 4;
-    int   soloBand = -1; // -1 = no solo
+    int   soloMask = 0; // bit b set = band b soloed; 0 = full mix
     float w[4] { 1.0f, 1.0f, 1.0f, 1.0f };
 };
 

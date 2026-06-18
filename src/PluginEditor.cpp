@@ -1416,15 +1416,15 @@ void AnamorphAudioProcessorEditor::resized()
         else
         {
             // ADVANCED: WIDEN alone now fills the right column; OUTPUT moved to the
-            // bottom block. Spread to fill so the bottom edge lines up with the LR
-            // meter / scope-frame bottom (0.6.8 #7).
-            auto col = rightPanel.reduced (20, 18);
+            // bottom block. The four knobs sit a touch higher for a more balanced
+            // column (0.6.9 #17).
+            auto col = rightPanel.reduced (20, 14);
             { auto lr = col.removeFromTop (16); algoOptLabel.setBounds (lr.removeFromRight (94)); algorithmLabel.setBounds (lr); }
-            col.removeFromTop (10);
+            col.removeFromTop (8);
             layoutAlgoRow (col.removeFromTop (30));
-            col.removeFromTop (50);
+            col.removeFromTop (40);
             twoKnob (col.removeFromTop (140), driveK, driveL, amountK, amountL);
-            col.removeFromTop (50);
+            col.removeFromTop (44);
             layoutCharacter (col.removeFromTop (140), widthK, widthL);
         }
     }
@@ -1448,19 +1448,28 @@ void AnamorphAudioProcessorEditor::resized()
         auto inputHalf  = block.removeFromLeft (half);
         auto outputHalf = block; // right half (divider drawn in paint)
 
-        // INPUT (left): combos + five toggles on the left, Balance on the right.
+        // INPUT (left): combos + five toggles, vertically centred so the lower half
+        // no longer sits empty; Balance knob centred on the right (0.6.9 #19/#21).
         {
             auto a = inputHalf.reduced (14, 8);
             inputModuleLabel.setBounds (a.removeFromTop (15));
-            a.removeFromTop (6);
+            a.removeFromTop (4);
 
-            auto bal = a.removeFromRight (94);
-            auto blk = bal.withSizeKeepingCentre (bal.getWidth(), juce::jmin (bal.getHeight(), 98));
-            balanceL.setBounds (blk.removeFromBottom (14));
-            balanceK.setBounds (blk.reduced (8, 0));
-            a.removeFromRight (14);
+            auto bal = a.removeFromRight (96);
+            {
+                auto blk = bal.withSizeKeepingCentre (bal.getWidth(), 112);
+                balanceL.setBounds (blk.removeFromBottom (15));
+                balanceK.setBounds (blk.reduced (12, 2));
+            }
+            a.removeFromRight (12);
 
-            auto combos = a.removeFromTop (43);
+            const int comboH  = 14 + 3 + 26;
+            const int togH     = 50;
+            const int gapCT    = 18;
+            const int contentH = comboH + gapCT + togH;
+            a.removeFromTop (juce::jmax (0, (a.getHeight() - contentH) / 2));
+
+            auto combos = a.removeFromTop (comboH);
             {
                 auto cm = combos.removeFromLeft (combos.getWidth() / 2 - 6);
                 channelModeLabel.setBounds (cm.removeFromTop (14)); cm.removeFromTop (3);
@@ -1469,8 +1478,8 @@ void AnamorphAudioProcessorEditor::resized()
                 soloLabel.setBounds (combos.removeFromTop (14)); combos.removeFromTop (3);
                 soloBox.setBounds (combos.removeFromTop (26));
             }
-            a.removeFromTop (12);
-            auto tog = a.removeFromTop (40);
+            a.removeFromTop (gapCT);
+            auto tog = a.removeFromTop (togH);
             const int tw = tog.getWidth() / 5;
             monoToggle.setBounds (tog.removeFromLeft (tw));
             swapToggle.setBounds (tog.removeFromLeft (tw));
@@ -1479,29 +1488,36 @@ void AnamorphAudioProcessorEditor::resized()
             polRToggle.setBounds (tog);
         }
 
-        // OUTPUT (right): Mix/Output/Balance knobs, then Level Match + Mono Maker.
+        // OUTPUT (right): 3 knobs, then Level Match and Mono Maker rows with matched
+        // toggle width / row height; Apply is a compact button, not a bar (0.6.9 #20/#21).
         {
             auto a = outputHalf.reduced (14, 8);
             outputModuleLabel.setBounds (a.removeFromTop (15));
             a.removeFromTop (4);
 
-            auto knobs = a.removeFromTop (100);
+            auto knobs = a.removeFromTop (88);
             const int w = knobs.getWidth() / 3;
             placeKnob (knobs.removeFromLeft (w), mixK, mixL);
             placeKnob (knobs.removeFromLeft (w), outputK, outputL);
             placeKnob (knobs, outBalanceK, outBalanceL);
-            a.removeFromTop (6);
+            a.removeFromTop (8);
 
-            const int togW = 120, numW = 56;
-            auto lm = a.removeFromTop (28);
-            autoMatchToggle.setBounds (lm.removeFromLeft (togW).reduced (2, 3));
-            lm.removeFromLeft (4);
-            matchReadout.setBounds (lm.removeFromRight (numW).reduced (2, 3));
-            applyGainButton.setBounds (lm.reduced (2, 3));
-            a.removeFromTop (6);
-            auto mm = a.removeFromTop (28);
-            monoMakerToggle.setBounds (mm.removeFromLeft (togW).reduced (2, 3));
-            monoFreqK.setBounds (mm.reduced (0, 3));
+            const int togW = 116, rowH = 26, applyW = 52;
+            {
+                auto lm = a.removeFromTop (rowH);
+                autoMatchToggle.setBounds (lm.removeFromLeft (togW).reduced (2, 3));
+                lm.removeFromLeft (6);
+                applyGainButton.setBounds (lm.removeFromLeft (applyW).reduced (2, 3));
+                lm.removeFromLeft (6);
+                matchReadout.setBounds (lm.reduced (2, 3));
+            }
+            a.removeFromTop (8);
+            {
+                auto mm = a.removeFromTop (rowH);
+                monoMakerToggle.setBounds (mm.removeFromLeft (togW).reduced (2, 3));
+                mm.removeFromLeft (6);
+                monoFreqK.setBounds (mm.reduced (0, 2));
+            }
         }
     }
 }
