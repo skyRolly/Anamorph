@@ -473,8 +473,14 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     setupToggle (mbEnableToggle, pid::mbEnable, "On", "Apply the per-band stereo widths to the sound");
     imager = std::make_unique<anamorph::gui::SpectrumImager> (processor.getEngine().getScopeBuffer(),
                                                               processor.getAPVTS());
-    imager->setTooltip ("Per-band stereo width across the spectrum. Drag a band up/down to widen or "
-                        "narrow it, drag a split to move it. Headphone = solo a band.");
+    // Per-control tooltips live in the imager; idle areas show none (0.6.10 #13).
+    imager->setTooltip ({});
+    // Momentary solo audition is a non-undoable engine override (#8); the split / width
+    // lines travel on a reset / preset / A-B / undo via the shared sweep window (#1).
+    imager->onSoloPreview      = [this] (int mask) { processor.setSoloPreview (mask); };
+    imager->onClearSoloPreview = [this] { processor.clearSoloPreview(); };
+    imager->onSweep            = [this] { if (uiAnimOn) knobSweepTime = 0.45; };
+    imager->isSweeping         = [this] { return uiAnimOn && knobSweepTime > 0.0; };
     addAndMakeVisible (*imager);
 
     // --- Overlays ---
@@ -1488,36 +1494,37 @@ void AnamorphAudioProcessorEditor::resized()
             polRToggle.setBounds (tog);
         }
 
-        // OUTPUT (right): 3 knobs, then Level Match and Mono Maker rows with matched
-        // toggle width / row height; Apply is a compact button, not a bar (0.6.9 #20/#21).
+        // OUTPUT (right): Mix / Balance / Output knobs (Balance and Output swapped) with
+        // a Level-Match column to the right of Output -- toggle on top, Apply + readout
+        // below; Mono Maker stays as the bottom row. The knobs grow a little (0.6.10 #16).
         {
             auto a = outputHalf.reduced (14, 8);
             outputModuleLabel.setBounds (a.removeFromTop (15));
             a.removeFromTop (4);
 
-            auto knobs = a.removeFromTop (88);
-            const int w = knobs.getWidth() / 3;
-            placeKnob (knobs.removeFromLeft (w), mixK, mixL);
-            placeKnob (knobs.removeFromLeft (w), outputK, outputL);
-            placeKnob (knobs, outBalanceK, outBalanceL);
-            a.removeFromTop (8);
+            auto mono = a.removeFromBottom (26);
+            a.removeFromBottom (8);
 
-            const int togW = 116, rowH = 26, applyW = 52;
+            auto knobRow = a.removeFromTop (juce::jmin (a.getHeight(), 98));
+            auto lmCol = knobRow.removeFromRight (92);
+            const int w = knobRow.getWidth() / 3;
+            placeKnob (knobRow.removeFromLeft (w), mixK, mixL);
+            placeKnob (knobRow.removeFromLeft (w), outBalanceK, outBalanceL);
+            placeKnob (knobRow, outputK, outputL);
+
             {
-                auto lm = a.removeFromTop (rowH);
-                autoMatchToggle.setBounds (lm.removeFromLeft (togW).reduced (2, 3));
-                lm.removeFromLeft (6);
-                applyGainButton.setBounds (lm.removeFromLeft (applyW).reduced (2, 3));
-                lm.removeFromLeft (6);
-                matchReadout.setBounds (lm.reduced (2, 3));
+                auto c = lmCol.reduced (4, 6);
+                c.removeFromTop (juce::jmax (0, (c.getHeight() - 76) / 2));
+                autoMatchToggle.setBounds (c.removeFromTop (24));
+                c.removeFromTop (8);
+                applyGainButton.setBounds (c.removeFromTop (24).removeFromLeft (58).reduced (0, 1));
+                c.removeFromTop (4);
+                matchReadout.setBounds (c.removeFromTop (16));
             }
-            a.removeFromTop (8);
-            {
-                auto mm = a.removeFromTop (rowH);
-                monoMakerToggle.setBounds (mm.removeFromLeft (togW).reduced (2, 3));
-                mm.removeFromLeft (6);
-                monoFreqK.setBounds (mm.reduced (0, 2));
-            }
+
+            monoMakerToggle.setBounds (mono.removeFromLeft (116).reduced (2, 3));
+            mono.removeFromLeft (6);
+            monoFreqK.setBounds (mono.reduced (0, 2));
         }
     }
 }

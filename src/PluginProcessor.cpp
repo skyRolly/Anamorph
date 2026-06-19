@@ -90,7 +90,10 @@ void AnamorphAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     prevPlaying = playing;
 
     engine.setTransportPlaying (playing); // a pause edge kills Velvet's noise tail (#4)
-    engine.setParameters (params.toEngine());
+    auto e = params.toEngine();
+    if (const int sp = soloPreviewMask.load (std::memory_order_relaxed); sp >= 0)
+        e.mbSolo = sp; // momentary hold audition overrides the latched solo (#8)
+    engine.setParameters (e);
     engine.process (buffer);
 }
 

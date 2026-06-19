@@ -125,9 +125,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
     layout.add (std::make_unique<juce::AudioParameterInt> (ParameterID { pid::mbBands, kVersion }, "Multiband Bands", 1, 4, 4));
     // Solo is a 4-bit mask (any combination of bands), not a single index (0.6.9 #7).
     layout.add (std::make_unique<juce::AudioParameterInt> (ParameterID { pid::mbSolo, kVersion }, "Multiband Solo", 0, 15, 0));
-    floatParam (pid::mbFreqLow,  "Multiband Split 1", logFreqRange (30.0f, 600.0f),    180.0f,  hz, hzFrom);
-    floatParam (pid::mbFreqMid,  "Multiband Split 2", logFreqRange (150.0f, 3000.0f),  800.0f,  hz, hzFrom);
-    floatParam (pid::mbFreqHigh, "Multiband Split 3", logFreqRange (800.0f, 16000.0f), 3000.0f, hz, khzFrom);
+    // Full-range splits: the display enforces a minimum on-screen gap and the DSP
+    // re-orders them, so a split may be dragged anywhere (0.6.10 #5/#26).
+    floatParam (pid::mbFreqLow,  "Multiband Split 1", logFreqRange (20.0f, 20000.0f), 180.0f,  hz, hzFrom);
+    floatParam (pid::mbFreqMid,  "Multiband Split 2", logFreqRange (20.0f, 20000.0f), 800.0f,  hz, hzFrom);
+    floatParam (pid::mbFreqHigh, "Multiband Split 3", logFreqRange (20.0f, 20000.0f), 3000.0f, hz, khzFrom);
     floatParam (pid::mbWidthLow,   "Multiband Width 1", { 0.0f, 2.0f, 0.001f }, 1.0f, pct, pctFrom);
     floatParam (pid::mbWidthMid,   "Multiband Width 2", { 0.0f, 2.0f, 0.001f }, 1.0f, pct, pctFrom);
     floatParam (pid::mbWidthHiMid, "Multiband Width 3", { 0.0f, 2.0f, 0.001f }, 1.0f, pct, pctFrom);
