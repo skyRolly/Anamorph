@@ -658,6 +658,12 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     float* mdd = monoLowDryDelay.getWritePointer (0);
     const int mdSize = monoLowDelay.getNumSamples();
 
+    // A Multiband solo monitors AFTER the dry/wet Mix: the soloed band must be heard
+    // alone at full level even at Mix < 100%, so solo forces the wet blend to 1 and
+    // drops the Mono-Maker low re-add (0.6.11 #14). Engaging/clearing it rides the
+    // switch duck, so it never clicks.
+    const bool mbSoloMonitor = p.mbEnable && ((p.mbSolo & ((1 << p.mbBands) - 1)) != 0);
+
     for (int i = 0; i < n; ++i)
     {
         ddL[dryDelayWrite] = dL[i];
@@ -666,7 +672,8 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         const float dryL = ddL[rp], dryR = ddR[rp];
         dryDelayWrite = (dryDelayWrite + 1) % ddSize;
 
-        const float m = mixSmooth.getNextValue();
+        const float m = mbSoloMonitor ? 1.0f : mixSmooth.getNextValue();
+        if (mbSoloMonitor) mixSmooth.getNextValue(); // keep the smoother advancing in lock-step
         float outL = dryL + m * (L[i] - dryL);
         float outR = dryR + m * (R[i] - dryR);
 
@@ -677,8 +684,11 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
             int mp = monoLowWrite - lat; if (mp < 0) mp += mdSize;
             const float wetLow = md[mp], dryLow = mdd[mp];
             monoLowWrite = (monoLowWrite + 1) % mdSize;
-            const float lowOut = dryLow + m * (wetLow - dryLow); // lows obey Mix (#5)
-            outL += lowOut; outR += lowOut;
+            if (! mbSoloMonitor)
+            {
+                const float lowOut = dryLow + m * (wetLow - dryLow); // lows obey Mix (#5)
+                outL += lowOut; outR += lowOut;
+            }
         }
 
         L[i] = outL; R[i] = outR;

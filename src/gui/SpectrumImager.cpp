@@ -14,44 +14,63 @@ static constexpr float kMinGapPx  = 46.0f; // constant on-screen split spacing (
 namespace
 {
     // The frequency axis is a hand-tuned warp: a table of (Hz -> 0..1 fraction)
-    // anchors, log-interpolated between, so 300/1k/3k land on the 1/3, 1/2, 2/3
-    // marks and the rest space evenly by the described rules (0.6.10 #20).
+    // anchors with 50 Hz the visual midpoint of 20-100 (0.6.11 #1). It is interpolated
+    // with a monotone (Fritsch-Carlson) cubic so the axis is C1-smooth -- no slope
+    // kink at an anchor, which is what made the band-pass curve look creased (#7).
     struct AnchorPt { float f; float x; };
     const AnchorPt kAxis[] = {
-        {    20.0f, 0.000000f }, {    60.0f, 0.083333f }, {   100.0f, 0.166667f },
+        {    20.0f, 0.000000f }, {    50.0f, 0.083333f }, {   100.0f, 0.166667f },
         {   300.0f, 0.333333f }, {   600.0f, 0.416667f }, {  1000.0f, 0.500000f },
         {  3000.0f, 0.666667f }, {  6000.0f, 0.791667f }, { 10000.0f, 0.875000f },
         { 20000.0f, 1.000000f }
     };
     constexpr int kAxisN = (int) (sizeof (kAxis) / sizeof (kAxis[0]));
 
-    float fracForFreq (float hz) noexcept
+    struct AxisMap
     {
-        hz = juce::jlimit (kFreqLo, kFreqHi, hz);
-        for (int i = 0; i < kAxisN - 1; ++i)
-            if (hz <= kAxis[i + 1].f)
+        float s[kAxisN], u[kAxisN], m[kAxisN];
+        AxisMap()
+        {
+            for (int i = 0; i < kAxisN; ++i) { s[i] = std::log (kAxis[i].f); u[i] = kAxis[i].x; }
+            float d[kAxisN - 1];
+            for (int i = 0; i < kAxisN - 1; ++i) d[i] = (u[i + 1] - u[i]) / (s[i + 1] - s[i]);
+            m[0] = d[0]; m[kAxisN - 1] = d[kAxisN - 2];
+            for (int i = 1; i < kAxisN - 1; ++i) m[i] = 0.5f * (d[i - 1] + d[i]);
+            for (int i = 0; i < kAxisN - 1; ++i)            // Fritsch-Carlson monotonicity
             {
-                const auto& a = kAxis[i]; const auto& b = kAxis[i + 1];
-                const float t = std::log (hz / a.f) / std::log (b.f / a.f);
-                return a.x + t * (b.x - a.x);
+                if (! (d[i] > 0.0f)) { m[i] = 0.0f; m[i + 1] = 0.0f; } // anchors strictly increase, so this is the guard branch
+                else
+                {
+                    const float a = m[i] / d[i], b = m[i + 1] / d[i];
+                    const float t = a * a + b * b;
+                    if (t > 9.0f) { const float k = 3.0f / std::sqrt (t); m[i] = k * a * d[i]; m[i + 1] = k * b * d[i]; }
+                }
             }
-        return 1.0f;
-    }
-    float freqForFrac (float frac) noexcept
-    {
-        frac = juce::jlimit (0.0f, 1.0f, frac);
-        for (int i = 0; i < kAxisN - 1; ++i)
-            if (frac <= kAxis[i + 1].x)
-            {
-                const auto& a = kAxis[i]; const auto& b = kAxis[i + 1];
-                const float t = (b.x > a.x) ? (frac - a.x) / (b.x - a.x) : 0.0f;
-                return a.f * std::pow (b.f / a.f, t);
-            }
-        return kFreqHi;
-    }
+        }
+        float fracS (float ss) const noexcept
+        {
+            int i = 0; while (i < kAxisN - 2 && ss > s[i + 1]) ++i;
+            const float h = s[i + 1] - s[i], t = (ss - s[i]) / h;
+            const float t2 = t * t, t3 = t2 * t;
+            return (2 * t3 - 3 * t2 + 1) * u[i] + (t3 - 2 * t2 + t) * h * m[i]
+                 + (-2 * t3 + 3 * t2) * u[i + 1] + (t3 - t2) * h * m[i + 1];
+        }
+        float frac (float hz) const noexcept { return fracS (std::log (juce::jlimit (20.0f, 20000.0f, hz))); }
+        float freq (float fr) const noexcept
+        {
+            fr = juce::jlimit (0.0f, 1.0f, fr);
+            float lo = s[0], hi = s[kAxisN - 1];
+            for (int it = 0; it < 30; ++it) { const float mid = 0.5f * (lo + hi); if (fracS (mid) < fr) lo = mid; else hi = mid; }
+            return std::exp (0.5f * (lo + hi));
+        }
+    };
+    const AxisMap kAxisMap;
+    float fracForFreq (float hz) noexcept { return kAxisMap.frac (hz); }
+    float freqForFrac (float fr) noexcept { return kAxisMap.freq (fr); }
 
-    // Ruler ticks: which frequencies get a labelled, drawn number, and which of
-    // those are the bright "major" anchors (0.6.10 #21). 20 / 20k are edges, unshown.
+    // Ruler ticks: which frequencies get a labelled number, and which are bright
+    // anchors (0.6.10 #21). 20 / 20k are edges, unshown; 60 sits just right of the
+    // 50 midpoint (0.6.11 #1).
     struct Tick { float f; const char* label; bool major; };
     const Tick kTicks[] = {
         { 60.0f, "60", false }, { 100.0f, "100", true }, { 300.0f, "300", false },
@@ -171,12 +190,13 @@ float SpectrumImager::bandRightX (int b) const noexcept { return b >= bandCount(
 
 juce::Rectangle<float> SpectrumImager::deleteBox (int b) const noexcept
 {
-    return { bandLeftX (b) + 5.0f, rulerY() - 19.0f, 15.0f, 15.0f }; // bigger, like the add "+" (#19)
+    // Sized close to the add "+", nudged up so it clears the freq chip below (#4).
+    return { bandLeftX (b) + 5.0f, rulerY() - 22.0f, 14.0f, 14.0f };
 }
 juce::Rectangle<float> SpectrumImager::soloBox (int b) const noexcept
 {
     const float cx = 0.5f * (bandLeftX (b) + bandRightX (b));
-    return { cx - 9.0f, plot().getY() + 3.0f, 18.0f, 16.0f };
+    return { cx - 9.5f, plot().getY() + 2.0f, 19.0f, 18.0f };
 }
 juce::Rectangle<float> SpectrumImager::numberChip (int i) const noexcept
 {
@@ -323,10 +343,16 @@ void SpectrumImager::moveBand (float fromX, float toX)
     const float dx = toX - fromX;
     const int M = bandCount() - 1;
     if (M <= 0) return;
+    // The grabbed headphone sits at the band CENTRE, so the centre must track the
+    // cursor 1:1. With two movable edges each shifts by dx; with one (an edge band)
+    // the single split shifts by 2*dx so the centre still keeps pace (0.6.11 #3).
+    const int nMovable = (soloMoveLeft >= 0 ? 1 : 0) + (soloMoveRight >= 0 ? 1 : 0);
+    if (nMovable == 0) return;
+    const float step = dx * (2.0f / (float) nMovable);
     float xs[3];
     for (int k = 0; k < M; ++k) xs[k] = freqToX (crossover (k));
-    if (soloMoveLeft  >= 0) xs[soloMoveLeft]  += dx;
-    if (soloMoveRight >= 0) xs[soloMoveRight] += dx;
+    if (soloMoveLeft  >= 0) xs[soloMoveLeft]  += step;
+    if (soloMoveRight >= 0) xs[soloMoveRight] += step;
     const int pin = (dx < 0.0f) ? (soloMoveLeft  >= 0 ? soloMoveLeft  : soloMoveRight)
                                 : (soloMoveRight >= 0 ? soloMoveRight : soloMoveLeft);
     projectGaps (xs, M, pin);
@@ -608,6 +634,16 @@ void SpectrumImager::timerCallback()
 // ----------------------------------------------------------------------------
 void SpectrumImager::paint (juce::Graphics& g)
 {
+    // A band add/remove or an A/B / preset / undo that changes the band count snaps the
+    // eased positions to the new layout BEFORE the first paint, so a split never flashes
+    // from a stale spot to its target (0.6.11 #6/#15).
+    if (bandCount() != lastBandCount)
+    {
+        for (int i = 0; i < 3; ++i) drawnF[i] = crossover (i);
+        for (int b = 0; b < 4; ++b) drawnW[b] = bandWidth (b);
+        lastBandCount = bandCount();
+    }
+
     auto r = plot();
     // Idle the panel sits darker so the ruler lines read through; hover lifts it (#23).
     glass::fillPanel (g, getLocalBounds().toFloat(), 6.0f,
@@ -653,26 +689,11 @@ void SpectrumImager::paint (juce::Graphics& g)
         };
         juce::Path spec;
         bool started = false;
-        juce::Path redSeg; bool rseg = false;
-        auto flushRed = [&]
-        {
-            if (rseg) { g.setColour (clipCol.withAlpha (0.9f)); g.strokePath (redSeg, juce::PathStrokeType (1.8f)); redSeg.clear(); rseg = false; }
-        };
         for (float x = r.getX(); x <= r.getRight(); x += 1.0f)
         {
-            const float db = magForColumn (x - 0.5f, x + 0.5f);
-            const float y = dbToY (db);
+            const float y = dbToY (magForColumn (x - 0.5f, x + 0.5f));
             if (! started) { spec.startNewSubPath (x, y); started = true; }
             else            spec.lineTo (x, y);
-
-            if (db > -2.5f) // only the bins genuinely near 0 dBFS go red, and only there
-            {
-                const float ca = juce::jlimit (0.0f, 1.0f, (db + 2.5f) / 2.5f);
-                if (! rseg) { redSeg.startNewSubPath (x, y); rseg = true; } else redSeg.lineTo (x, y);
-                g.setColour (clipCol.withAlpha (0.5f * ca));
-                g.fillEllipse (x - 2.5f, y - 2.5f, 5.0f, 5.0f);
-            }
-            else flushRed();
         }
         juce::Path fillPath (spec);
         fillPath.lineTo (r.getRight(), r.getBottom() + 2.0f);
@@ -683,7 +704,21 @@ void SpectrumImager::paint (juce::Graphics& g)
         g.fillPath (fillPath);
         g.setColour (xoverCol.withAlpha (0.55f));
         g.strokePath (spec, juce::PathStrokeType (1.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-        flushRed();
+
+        // Clip: at the frequencies that reach ~0 dBFS, the WHOLE green column (curve
+        // down to the floor) goes red, localized to that frequency and fading at its
+        // edges so the surrounding green is untouched (0.6.11 #12).
+        for (float x = r.getX(); x <= r.getRight(); x += 1.0f)
+        {
+            const float db = magForColumn (x - 0.5f, x + 0.5f);
+            if (db > -3.0f)
+            {
+                const float ca = juce::jlimit (0.0f, 1.0f, (db + 3.0f) / 3.0f);
+                const float y = dbToY (db);
+                g.setColour (clipCol.withAlpha (0.8f * ca));
+                g.fillRect (x, y, 1.0f, r.getBottom() - y);
+            }
+        }
     }
 
     // --- width lane guides: faint floor (0%) + ceiling (max), unity dashed ---
@@ -751,10 +786,10 @@ void SpectrumImager::paint (juce::Graphics& g)
         if (b < 0 || b >= N) return;
         const float Lf = (b > 0)     ? dispCrossover (b - 1) : -1.0f;
         const float Rf = (b < N - 1) ? dispCrossover (b)     : -1.0f;
-        const float slope = 4.0f;                 // ~24 dB/oct
-        const float yPass  = r.getCentreY() + 8.0f;
-        const float yFloor = r.getBottom() - 2.0f;
-        const float range  = 30.0f;
+        const float slope = 6.0f;                              // ~36 dB/oct (#13)
+        const float yPass  = r.getY() + r.getHeight() * 0.66f; // plateau in the lower third (#13)
+        const float yFloor = r.getBottom();
+        const float range  = 22.0f;
         auto yAt = [&] (float x)
         {
             const float f = xToFreq (x);
@@ -764,21 +799,30 @@ void SpectrumImager::paint (juce::Graphics& g)
             const float db = 20.0f * std::log10 (juce::jmax (1.0e-4f, amp));
             return yPass + juce::jlimit (0.0f, 1.0f, -db / range) * (yFloor - yPass);
         };
+        // Draw only the contiguous above-floor hump: the slopes fall to the very
+        // bottom and simply stop -- no horizontal tail running along the edge (#13).
         juce::Path p;
         bool started = false;
+        float firstX = r.getX(), lastX = r.getX();
         for (float x = r.getX(); x <= r.getRight(); x += 2.0f)
         {
             const float y = yAt (x);
-            if (! started) { p.startNewSubPath (x, y); started = true; } else p.lineTo (x, y);
+            if (y < yFloor - 1.0f)
+            {
+                if (! started) { p.startNewSubPath (x, y); started = true; firstX = x; }
+                else            p.lineTo (x, y);
+                lastX = x;
+            }
         }
+        if (! started) return;
         juce::Path f (p);
-        f.lineTo (r.getRight(), yFloor + 2.0f);
-        f.lineTo (r.getX(), yFloor + 2.0f);
+        f.lineTo (lastX, yFloor);
+        f.lineTo (firstX, yFloor);
         f.closeSubPath();
-        g.setGradientFill (juce::ColourGradient (col.withAlpha (0.13f * alpha), 0.0f, yPass,
+        g.setGradientFill (juce::ColourGradient (col.withAlpha (0.14f * alpha), 0.0f, yPass,
                                                  col.withAlpha (0.0f), 0.0f, yFloor, false));
         g.fillPath (f);
-        g.setColour (col.withAlpha (0.18f * alpha)); g.strokePath (p, juce::PathStrokeType (2.6f));
+        g.setColour (col.withAlpha (0.18f * alpha)); g.strokePath (p, juce::PathStrokeType (2.4f));
         g.setColour (col.withAlpha (0.90f * alpha)); g.strokePath (p, juce::PathStrokeType (1.3f));
     };
     for (int i = 0; i < N - 1; ++i)
@@ -791,22 +835,26 @@ void SpectrumImager::paint (juce::Graphics& g)
         bandCurve (soloCurveBand, bandCol (soloCurveBand).brighter (0.2f), soloCurveA);
 
     // --- per-band solo headphones + delete x ----------------------------
-    auto paintHeadphone = [&] (juce::Rectangle<float> bx, juce::Colour c)
+    // Drawn inside a transparency layer at the wanted opacity so the headband and
+    // earcups never double up into a bright seam where they meet (0.6.11 #2).
+    auto paintHeadphone = [&] (juce::Rectangle<float> bx, juce::Colour solid, float alpha)
     {
+        g.beginTransparencyLayer (alpha);
         auto cup = bx.reduced (1.5f, 1.0f);
         const float cx = cup.getCentreX();
         const float rx = cup.getWidth() * 0.5f;
-        const float ry = cup.getHeight() * 0.52f;
+        const float ry = cup.getHeight() * 0.62f;          // deeper arc -> less flat (#2)
         const float cy = cup.getY() + ry + 0.5f;
         juce::Path headband;
-        headband.addCentredArc (cx, cy, rx, ry, 0.0f, -1.45f, 1.45f, true); // deep top headband (#3)
-        g.setColour (c);
-        g.strokePath (headband, juce::PathStrokeType (1.7f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-        const float ex = rx * std::sin (1.45f);
-        const float ey = cy - ry * std::cos (1.45f);
-        const float cupW = 4.0f, cupH = 7.0f;                              // tall over-ear cups
-        g.fillRoundedRectangle (cx - ex - cupW * 0.5f, ey - 1.0f, cupW, cupH, 1.6f);
-        g.fillRoundedRectangle (cx + ex - cupW * 0.5f, ey - 1.0f, cupW, cupH, 1.6f);
+        headband.addCentredArc (cx, cy, rx, ry, 0.0f, -1.5f, 1.5f, true);
+        g.setColour (solid);
+        g.strokePath (headband, juce::PathStrokeType (1.8f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        const float ex = rx * std::sin (1.5f);
+        const float ey = cy - ry * std::cos (1.5f);
+        const float cupW = 4.2f, cupH = 8.0f;              // tall over-ear cups
+        g.fillRoundedRectangle (cx - ex - cupW * 0.5f, ey - 0.5f, cupW, cupH, 1.8f);
+        g.fillRoundedRectangle (cx + ex - cupW * 0.5f, ey - 0.5f, cupW, cupH, 1.8f);
+        g.endTransparencyLayer();
     };
     for (int b = 0; b < N; ++b)
     {
@@ -814,16 +862,17 @@ void SpectrumImager::paint (juce::Graphics& g)
         {
             const bool on = (amask & (1 << b)) != 0;
             const float sa = soloA[b];
-            const auto c = on ? xoverCol : colours::textDim.withAlpha (0.4f + 0.5f * sa);
-            paintHeadphone (soloBox (b), c);
+            paintHeadphone (soloBox (b), on ? xoverCol : colours::textDim, on ? 1.0f : 0.4f + 0.5f * sa);
         }
         if (delA[b] > 0.02f)
         {
             auto db = deleteBox (b);
             const float pad = 2.5f, a = delA[b];
-            g.setColour (colours::textDim.brighter (0.2f * a).withAlpha (0.55f + 0.4f * a));
-            g.drawLine (db.getX() + pad, db.getY() + pad, db.getRight() - pad, db.getBottom() - pad, 1.7f);
-            g.drawLine (db.getRight() - pad, db.getY() + pad, db.getX() + pad, db.getBottom() - pad, 1.7f);
+            // Alpha tracks the ease all the way to zero so it fades out fully instead of
+            // dropping to a floor and then vanishing (#9).
+            g.setColour (colours::textDim.brighter (0.2f * a).withAlpha (0.95f * a));
+            g.drawLine (db.getX() + pad, db.getY() + pad, db.getRight() - pad, db.getBottom() - pad, 1.6f);
+            g.drawLine (db.getRight() - pad, db.getY() + pad, db.getX() + pad, db.getBottom() - pad, 1.6f);
         }
     }
 
@@ -835,24 +884,21 @@ void SpectrumImager::paint (juce::Graphics& g)
         const float act = handleA[i] * removeFade, press = pressA[i] * removeFade;
         const bool  editing = (editingHandle == i);
         const float lineTop = r.getY() + 18.0f;
-        const float breakY = rulerY() - 9.0f;
+        const float lineBot = r.getBottom() - 2.0f;
 
         const float glowA = juce::jlimit (0.0f, 0.85f, (0.42f * handleA[i] + 0.5f * pressA[i]) * removeFade);
         if (glowA > 0.01f)
         {
-            juce::Path ls; ls.addRoundedRectangle (x - 0.9f, lineTop, 1.8f, breakY - lineTop, 0.9f);
+            juce::Path ls; ls.addRoundedRectangle (x - 0.9f, lineTop, 1.8f, lineBot - lineTop, 0.9f);
             juce::DropShadow (xoverCol.withAlpha (glowA), (int) (6.0f + 4.0f * press), {}).drawForPath (g, ls);
         }
 
+        // One continuous line; the freq chip's floating background occludes the middle,
+        // so no manual break is needed when hovering (0.6.11 #5).
         const auto lineCol = colours::text.withAlpha (0.45f * removeFade)
                                  .interpolatedWith (xoverCol, juce::jlimit (0.0f, 1.0f, act));
         g.setColour (lineCol);
-        g.drawLine (x, lineTop, x, breakY, 1.2f + 0.9f * act);
-        if (act < 0.99f && ! editing)
-        {
-            g.setColour (lineCol.withMultipliedAlpha (1.0f - act));
-            g.drawLine (x, breakY, x, r.getBottom() - 2.0f, 1.2f);
-        }
+        g.drawLine (x, lineTop, x, lineBot, 1.2f + 0.9f * act);
 
         {
             const float hw = 5.0f + 1.1f * act + 0.8f * press;
