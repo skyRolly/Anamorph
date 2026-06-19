@@ -66,6 +66,7 @@ public:
 private:
     void applyDefaults();
     void applySoundTree (const juce::ValueTree& state);
+    void resetSolo();                                // force the per-band solo off (#9)
     juce::String soundSig() const;
 
     juce::AudioProcessorValueTreeState& apvts;

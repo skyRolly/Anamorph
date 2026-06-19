@@ -34,6 +34,14 @@ public:
     void mouseDoubleClick (const juce::MouseEvent&) override;
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
+    // Wired up by the editor. The momentary solo audition is a non-undoable engine
+    // override (#8); onSweep / isSweeping share the editor's eased-position window so
+    // a reset / preset / A-B / undo travels the split & width lines (#1).
+    std::function<void(int)> onSoloPreview;
+    std::function<void()>    onClearSoloPreview;
+    std::function<void()>    onSweep;
+    std::function<bool()>    isSweeping;
+
 private:
     void timerCallback() override;
     void pushFFT();
@@ -69,19 +77,30 @@ private:
     float magForColumn (float xa, float xb) const noexcept;
     float magCubic (float bin) const noexcept;
 
-    // Minimum band spacing in pixels, so the splits never crowd to the point the
-    // width handle / solo / delete affordances stop working (0.6.9 #1).
-    float clampHandleX    (int i, float x)  const noexcept;
-    float clampHandleFreq (int i, float hz) const noexcept;
-    bool  bandAddTarget   (int b, float x, float& outX) const noexcept; // room to add inside band b?
+    // Minimum band spacing in pixels: a constant on-screen gap (the same width at
+    // every point of the warped ruler). The only limit on a split is this gap; a
+    // split may otherwise be dragged anywhere, pushing its neighbours aside, and a
+    // crowded insert spreads the neighbours apart (0.6.10 #1/#25/#26).
+    void  projectGaps (float* xs, int count, int pin) const noexcept;
+    void  writeCrossovers (const float* xs, int count);
+    void  dragCrossoverTo (int handle, float x);
+    bool  bandAddTarget (int b, float x, float& outX) const noexcept;
 
     int   addBandAt (float hz);
     void  removeBand (int b);
     void  resetCrossover (int i);
 
+    // Display-eased positions (#1): split frequencies and band widths the PAINT uses,
+    // which travel to a new value on a reset / preset / A-B / undo and otherwise snap.
+    float dispCrossover (int i) const noexcept;
+    float dispWidth (int b) const noexcept;
+    float dispLeftX (int b) const noexcept;
+    float dispRightX (int b) const noexcept;
+
     // Solo (mask) ---------------------------------------------------------
     void  setSoloMask (int mask);
     void  toggleSoloBit (int b);
+    int   effectiveSoloMask() const noexcept; // includes the momentary hold preview
     void  beginBandMove (int b);            // drag a solo handle sideways to move the band (0.6.9 #9)
     void  moveBand (float fromX, float toX);
     void  endBandMove();
@@ -134,18 +153,18 @@ private:
     juce::Point<float> scrollAnchor;
 
     // Solo press machine (0.6.9 #8/#9): a quick click latches the band's solo
-    // bit; a press-and-hold auditions THIS band alone and restores the previous
-    // mask on release; a hold-and-drag moves the band sideways.
+    // bit; a press-and-hold auditions THIS band alone (engine override, restored on
+    // release); a hold-and-drag moves the band sideways.
     int   soloPressBand   = -1;
     juce::uint32 soloPressMs = 0;
-    int   soloMaskSaved   = 0;
     bool  soloHoldActive  = false;   // momentary audition engaged
     bool  soloMovedBand   = false;   // turned into a sideways band move
-    bool  soloMoveGesture = false;
     int   soloMoveLeft    = -1;      // crossover index on the band's left edge (or -1)
     int   soloMoveRight   = -1;      // crossover index on the band's right edge (or -1)
     float soloDragPrevX   = 0.0f;
     float soloDownX       = 0.0f;
+
+    bool  dragRemovePending = false; // dragged a split far outside -> drop it on release (#18)
 
     // Eased hover / press / state.
     float handleA[3] { 0, 0, 0 };
@@ -157,6 +176,14 @@ private:
     float labelFlipA[4] { 0, 0, 0, 0 }; // 0 = % above the bar, 1 = below (top-collision flip, #3)
     float addA       = 0.0f;
     float enaA       = 1.0f;
+    float soloCurveA = 0.0f;          // band-pass overlay while a solo is held/dragged (#15)
+    int   soloCurveBand = -1;
+    float panelHoverA = 0.0f;         // idle dims the panel; hover lifts it slightly (#23)
+
+    // Display-eased split / width positions (#1).
+    float drawnF[3] { 180.0f, 800.0f, 3000.0f };
+    float drawnW[4] { 1.0f, 1.0f, 1.0f, 1.0f };
+    int   lastBandCount = 4;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SpectrumImager)
 };

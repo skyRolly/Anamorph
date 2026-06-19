@@ -67,10 +67,12 @@ namespace pid
     inline constexpr const char* uiScale        = "uiScale";      // window scale XS..XL (F4)
 
     // The shared "view" / Settings parameters: never part of A/B, undo history
-    // or presets -- one list so every consumer stays in sync.
+    // or presets -- one list so every consumer stays in sync. mbSolo is NOT here:
+    // it now travels with A/B and undo (so a per-band solo survives an A/B swap and
+    // can be undone), but presets reset it to off via isPresetExcluded (0.6.10 #7-9).
     inline constexpr const char* const viewParams[] = {
         bypass, advancedMode, oversample, metersOn, tooltipsOn, scopePersist,
-        uiAnimations, uiScale, mbSolo
+        uiAnimations, uiScale
     };
 
     inline bool isViewParam (const juce::String& id) noexcept
@@ -78,6 +80,13 @@ namespace pid
         for (auto* v : viewParams)
             if (id == v) return true;
         return false;
+    }
+
+    // Presets additionally never store or recall the solo mask: loading a preset
+    // leaves the live solo to be reset to off explicitly (0.6.10 #9).
+    inline bool isPresetExcluded (const juce::String& id) noexcept
+    {
+        return isViewParam (id) || id == mbSolo;
     }
 }
 

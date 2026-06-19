@@ -64,6 +64,12 @@ public:
     // Auto-Gain "Apply": locks the measured loudness-match gain into Output Gain.
     void applyAutoGain();
 
+    // Momentary solo audition (press-and-hold a Multiband headphone): overrides the
+    // engine's solo mask WITHOUT touching the mbSolo parameter, so a hold never lands
+    // in undo / A-B history and the previous latched solo returns on release (#8).
+    void setSoloPreview (int mask) noexcept   { soloPreviewMask.store (mask & 0x0F, std::memory_order_relaxed); }
+    void clearSoloPreview() noexcept          { soloPreviewMask.store (-1, std::memory_order_relaxed); }
+
     // A/B compare lives in the processor so it survives editor close / session
     // recall. Switching A/B never touches the shared view/Settings params (#13).
     int  abActiveSlot() const noexcept { return abActive; }
@@ -113,6 +119,7 @@ private:
 
     juce::AudioParameterBool* bypassParam = nullptr;
     bool prevPlaying = false; // transport edge-detect for meter reset (#15)
+    std::atomic<int> soloPreviewMask { -1 }; // -1 = use the mbSolo param (momentary audition, #8)
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AnamorphAudioProcessor)
 };

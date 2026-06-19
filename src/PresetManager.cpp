@@ -94,17 +94,26 @@ juce::String PresetManager::soundSig() const
     juce::String sig;
     for (auto* p : apvts.processor.getParameters())
         if (auto* wid = dynamic_cast<const juce::AudioProcessorParameterWithID*> (p))
-            if (! pid::isViewParam (wid->paramID))
+            if (! pid::isPresetExcluded (wid->paramID))
                 sig << juce::String (p->getValue(), 5) << ',';
     return sig;
+}
+
+// Presets always start with the per-band solo off (0.6.10 #9); undo still restores
+// the pre-load solo because mbSolo is part of the undo signature.
+void PresetManager::resetSolo()
+{
+    if (auto* sp = apvts.getParameter (pid::mbSolo))
+        sp->setValueNotifyingHost (sp->getDefaultValue());
 }
 
 void PresetManager::applyDefaults()
 {
     for (auto* p : apvts.processor.getParameters())
         if (auto* wid = dynamic_cast<juce::AudioProcessorParameterWithID*> (p))
-            if (! pid::isViewParam (wid->paramID))
+            if (! pid::isPresetExcluded (wid->paramID))
                 p->setValueNotifyingHost (p->getDefaultValue());
+    resetSolo();
 }
 
 // Apply the sound params stored in an APVTS-style tree (missing ones fall back
@@ -113,7 +122,7 @@ void PresetManager::applySoundTree (const juce::ValueTree& state)
 {
     for (auto* p : apvts.processor.getParameters())
         if (auto* wid = dynamic_cast<juce::AudioProcessorParameterWithID*> (p))
-            if (! pid::isViewParam (wid->paramID))
+            if (! pid::isPresetExcluded (wid->paramID))
             {
                 auto child = state.getChildWithProperty ("id", wid->paramID);
                 if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p))
@@ -121,6 +130,7 @@ void PresetManager::applySoundTree (const juce::ValueTree& state)
                         ? rp->convertTo0to1 ((float) (double) child.getProperty ("value"))
                         : rp->getDefaultValue());
             }
+    resetSolo();
 }
 
 void PresetManager::load (int index)
