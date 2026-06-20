@@ -82,6 +82,11 @@ private:
     // split may otherwise be dragged anywhere, pushing its neighbours aside, and a
     // crowded insert spreads the neighbours apart (0.6.10 #1/#25/#26).
     void  projectGaps (float* xs, int count, int pin) const noexcept;
+    // Reversible projection: pin one or two splits at target x, keep every OTHER split
+    // as close to its drag-start position (orig) as the min gap allows, so a pushed
+    // neighbour springs back when the pin moves away again (0.6.13 #8/#9/#10/#11).
+    void  projectFromOrig (float* out, const float* orig, int count,
+                           int pinA, float xA, int pinB, float xB) const noexcept;
     void  writeCrossovers (const float* xs, int count);
     void  dragCrossoverTo (int handle, float x);
     bool  bandAddTarget (int b, float x, float& outX) const noexcept;
@@ -149,8 +154,8 @@ private:
     int   hoverDeleteExact = -1; // band whose delete x is directly under the cursor (bright)
     int   hoverSolo   = -1;  // band whose headphone is hovered
     float addX        = 0.0f;
-    float dragGrabDX  = 0.0f; // cursor-to-line offset while dragging a split (#11)
-    bool  dragWasOut  = false; // split was out of bounds last frame -> re-grab on return (#11)
+    float dragGrabDX  = 0.0f;     // cursor-to-line offset while dragging a split (#10/#11)
+    float dragOrigX[3] { 0, 0, 0 }; // split x positions at drag start, for the reversible projection
 
     int   scrollHandle = -1;
     int   scrollBand   = -1;

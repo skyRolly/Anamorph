@@ -197,7 +197,7 @@ juce::Rectangle<float> SpectrumImager::deleteBox (int b) const noexcept
 juce::Rectangle<float> SpectrumImager::soloBox (int b) const noexcept
 {
     const float cx = 0.5f * (bandLeftX (b) + bandRightX (b));
-    return { cx - 8.0f, plot().getY() + 3.0f, 16.0f, 16.0f }; // slightly smaller, same shape (#1)
+    return { cx - 9.0f, plot().getY() + 4.0f, 18.0f, 13.0f }; // wider + flatter, not so thin (#1)
 }
 juce::Rectangle<float> SpectrumImager::numberChip (int i) const noexcept
 {
@@ -273,15 +273,38 @@ void SpectrumImager::writeCrossovers (const float* xs, int count)
         if (std::abs (freqToX (crossover (k)) - xs[k]) > 0.5f)
             setParam (freqP[k], juce::jlimit (kFreqLo, kFreqHi, xToFreq (xs[k])));
 }
+// Pin pinA (and optional pinB) at their target x; every other split is pulled toward
+// its drag-start position `orig`, only pushed aside as far as the min gap demands -- so a
+// neighbour springs straight back to where it began the moment the pin clears it (#8-#11).
+void SpectrumImager::projectFromOrig (float* out, const float* orig, int count,
+                                      int pinA, float xA, int pinB, float xB) const noexcept
+{
+    auto r = plot();
+    const float lo = r.getX() + kMinGapPx, hi = r.getRight() - kMinGapPx;
+    for (int k = 0; k < count; ++k) out[k] = orig[k];
+    if (pinA >= 0 && pinA < count) out[pinA] = juce::jlimit (lo, hi, xA);
+    if (pinB >= 0 && pinB < count) out[pinB] = juce::jlimit (lo, hi, xB);
+
+    const int leftPin  = (pinA >= 0 && pinB >= 0) ? juce::jmin (pinA, pinB) : juce::jmax (pinA, pinB);
+    const int rightPin = juce::jmax (pinA, pinB);
+    if (leftPin < 0) return;
+
+    for (int k = leftPin - 1;  k >= 0;    --k) out[k] = juce::jmin (orig[k], out[k + 1] - kMinGapPx);
+    for (int k = rightPin + 1; k < count; ++k) out[k] = juce::jmax (orig[k], out[k - 1] + kMinGapPx);
+
+    // Safety: keep everything ordered and inside the edges (a no-op when the pins fit).
+    out[0] = juce::jmax (out[0], lo);
+    for (int k = 1; k < count; ++k)         out[k] = juce::jmax (out[k], out[k - 1] + kMinGapPx);
+    out[count - 1] = juce::jmin (out[count - 1], hi);
+    for (int k = count - 2; k >= 0; --k)    out[k] = juce::jmin (out[k], out[k + 1] - kMinGapPx);
+}
 void SpectrumImager::dragCrossoverTo (int handle, float x)
 {
     const int M = bandCount() - 1;
     if (handle < 0 || handle >= M) return;
-    float xs[3];
-    for (int k = 0; k < M; ++k) xs[k] = freqToX (crossover (k));
-    xs[handle] = x;
-    projectGaps (xs, M, handle);
-    writeCrossovers (xs, M);
+    float out[3];
+    projectFromOrig (out, dragOrigX, M, handle, x, -1, 0.0f);
+    writeCrossovers (out, M);
 }
 bool SpectrumImager::bandAddTarget (int b, float x, float& outX) const noexcept
 {
@@ -334,33 +357,31 @@ void SpectrumImager::toggleSoloBit (int b) { setSoloMask (soloMask() ^ (1 << b))
 void SpectrumImager::beginBandMove (int b)
 {
     const int N = bandCount();
+    const int M = N - 1;
     auto r = plot();
     soloMoveLeft  = (b > 0)     ? b - 1 : -1;
     soloMoveRight = (b < N - 1) ? b     : -1;
 
-    // Anchor the move: the band translates RIGIDLY by T = clamp(cursor - anchor) so the
-    // split tracks the cursor 1:1, a limited band keeps its width, and dragging back out
-    // of a limit only resumes once the cursor returns to the limit point (0.6.12 #3/#9/#10).
-    bandAnchorX     = soloDownX;
-    bandStartLeftX  = (soloMoveLeft  >= 0) ? freqToX (crossover (soloMoveLeft))  : r.getX();
-    bandStartRightX = (soloMoveRight >= 0) ? freqToX (crossover (soloMoveRight)) : r.getRight();
+    // Anchor the move: the band translates RIGIDLY by T = clamp(cursor - anchor) so each
+    // split tracks the cursor 1:1, the band keeps its width while it pushes neighbours
+    // aside, and a pushed neighbour springs back on the way out (0.6.13 #3/#8/#9/#10).
+    bandAnchorX = soloDownX;
+    for (int k = 0; k < M; ++k) dragOrigX[k] = freqToX (crossover (k));
+    bandStartLeftX  = (soloMoveLeft  >= 0) ? dragOrigX[soloMoveLeft]  : r.getX();
+    bandStartRightX = (soloMoveRight >= 0) ? dragOrigX[soloMoveRight] : r.getRight();
 
+    // T range: the band may slide until its edge split (after packing every neighbour on
+    // that side at the min gap) reaches the frame edge.
     bandTmin = -1.0e9f; bandTmax = 1.0e9f;
     if (soloMoveLeft >= 0)
-    {
-        const float lo = (soloMoveLeft > 0 ? freqToX (crossover (soloMoveLeft - 1)) : r.getX()) + kMinGapPx;
-        bandTmin = juce::jmax (bandTmin, lo - bandStartLeftX);
-    }
-    else // leftmost band: its right split must stay a gap clear of the fixed left edge
+        bandTmin = juce::jmax (bandTmin, (r.getX() + (float) (soloMoveLeft + 1) * kMinGapPx) - bandStartLeftX);
+    else
         bandTmin = juce::jmax (bandTmin, (r.getX() + kMinGapPx) - bandStartRightX);
-
     if (soloMoveRight >= 0)
-    {
-        const float hi = (soloMoveRight < N - 1 ? freqToX (crossover (soloMoveRight + 1)) : r.getRight()) - kMinGapPx;
-        bandTmax = juce::jmin (bandTmax, hi - bandStartRightX);
-    }
-    else // rightmost band: its left split must stay a gap clear of the fixed right edge
+        bandTmax = juce::jmin (bandTmax, (r.getRight() - (float) (M - soloMoveRight) * kMinGapPx) - bandStartRightX);
+    else
         bandTmax = juce::jmin (bandTmax, (r.getRight() - kMinGapPx) - bandStartLeftX);
+    if (bandTmin > bandTmax) bandTmin = bandTmax = 0.0f;
 
     if (soloMoveLeft  >= 0) beginGesture (freqP[soloMoveLeft]);
     if (soloMoveRight >= 0) beginGesture (freqP[soloMoveRight]);
@@ -370,11 +391,9 @@ void SpectrumImager::moveBand (float mouseX)
     const int M = bandCount() - 1;
     if (M <= 0) return;
     const float T = juce::jlimit (bandTmin, bandTmax, mouseX - bandAnchorX);
-    float xs[3];
-    for (int k = 0; k < M; ++k) xs[k] = freqToX (crossover (k));
-    if (soloMoveLeft  >= 0) xs[soloMoveLeft]  = bandStartLeftX  + T;
-    if (soloMoveRight >= 0) xs[soloMoveRight] = bandStartRightX + T;
-    writeCrossovers (xs, M);
+    float out[3];
+    projectFromOrig (out, dragOrigX, M, soloMoveLeft, bandStartLeftX + T, soloMoveRight, bandStartRightX + T);
+    writeCrossovers (out, M);
 }
 void SpectrumImager::endBandMove()
 {
@@ -739,37 +758,56 @@ void SpectrumImager::paint (juce::Graphics& g)
         g.setColour (xoverCol.withAlpha (0.55f));
         g.strokePath (spec, juce::PathStrokeType (1.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
-        // Clip: a soft feathered NEON-red glow blooms over the frequencies near 0 dBFS --
-        // brightest at the peak, bleeding a little upward and washing downward, spread wider
-        // than the exact bin and fading at the edges. Driven by the temporally smoothed
-        // redLevel so it eases in fast and out gently on its own (0.6.12 #4/#12).
+        // Clip: a smooth NEON-red bloom over the frequencies near 0 dBFS -- a layered soft
+        // glow on the curve (wide faint to tight bright = a real bloom, no banding) plus a
+        // downward wash, brightest at the peak and feathered at the edges. Driven by the
+        // temporally smoothed redLevel (fast in, gentle out), independent of the UI
+        // animation switch (0.6.13 #4/#12).
         {
             const float binHz = (float) sampleRate / (float) fftSize;
             auto redAt = [&] (float x)
             {
                 float m = 0.0f;
-                for (float dxs = -5.0f; dxs <= 5.0f; dxs += 2.5f)
+                for (float dxs = -8.0f; dxs <= 8.0f; dxs += 2.0f)
                 {
                     const int k = juce::jlimit (0, fftSize / 2, (int) std::lround (xToFreq (x + dxs) / binHz));
                     m = juce::jmax (m, redLevel[(size_t) k]);
                 }
                 return m;
             };
-            for (float x = r.getX(); x <= r.getRight(); x += 1.0f)
+            juce::Path run; bool inRun = false;
+            float peak = 0.0f, minY = r.getBottom(), xa = r.getX(), xb = r.getX();
+            auto drawRun = [&]
+            {
+                if (inRun && peak >= 0.03f)
+                {
+                    juce::Path fill (run);
+                    fill.lineTo (xb, r.getBottom() + 2.0f);
+                    fill.lineTo (xa, r.getBottom() + 2.0f);
+                    fill.closeSubPath();
+                    g.setGradientFill (juce::ColourGradient (clipCol.withAlpha (0.42f * peak), 0.0f, minY,
+                                                             clipCol.withAlpha (0.0f), 0.0f, r.getBottom(), false));
+                    g.fillPath (fill);
+                    const juce::PathStrokeType::JointStyle js = juce::PathStrokeType::curved;
+                    const juce::PathStrokeType::EndCapStyle  cs = juce::PathStrokeType::rounded;
+                    g.setColour (clipCol.withAlpha (0.10f * peak));               g.strokePath (run, juce::PathStrokeType (9.0f, js, cs));
+                    g.setColour (clipCol.withAlpha (0.16f * peak));               g.strokePath (run, juce::PathStrokeType (5.0f, js, cs));
+                    g.setColour (clipCol.brighter (0.45f).withAlpha (0.85f * peak)); g.strokePath (run, juce::PathStrokeType (1.6f, js, cs));
+                }
+                inRun = false; run.clear(); peak = 0.0f; minY = r.getBottom();
+            };
+            for (float x = r.getX(); x <= r.getRight(); x += 1.5f)
             {
                 const float rl = redAt (x);
-                if (rl < 0.02f) continue;
-                const float y = dbToY (magForColumn (x - 0.5f, x + 0.5f));
-                const float topBleed = y - 16.0f;
-                const float span = r.getBottom() - topBleed;
-                if (span <= 1.0f) continue;
-                juce::ColourGradient gr (clipCol.withAlpha (0.0f), 0.0f, topBleed,
-                                         clipCol.withAlpha (0.12f * rl), 0.0f, r.getBottom(), false);
-                gr.addColour (juce::jlimit (0.02, 0.98, (double) (16.0f / span)),
-                              clipCol.brighter (0.25f).withAlpha (0.85f * rl));
-                g.setGradientFill (gr);
-                g.fillRect (x - 0.5f, topBleed, 1.5f, span);
+                if (rl > 0.03f)
+                {
+                    const float y = dbToY (magForColumn (x - 0.5f, x + 0.5f));
+                    if (! inRun) { inRun = true; xa = x; run.startNewSubPath (x, y); } else run.lineTo (x, y);
+                    xb = x; peak = juce::jmax (peak, rl); minY = juce::jmin (minY, y);
+                }
+                else drawRun();
             }
+            drawRun();
         }
     }
 
@@ -892,10 +930,10 @@ void SpectrumImager::paint (juce::Graphics& g)
     auto paintHeadphone = [&] (juce::Rectangle<float> bx, juce::Colour solid, float alpha)
     {
         g.beginTransparencyLayer (alpha);
-        auto cup = bx.reduced (1.5f, 1.0f);
+        auto cup = bx.reduced (1.0f, 0.5f);
         const float cx = cup.getCentreX();
         const float rx = cup.getWidth() * 0.5f;
-        const float ry = cup.getHeight() * 0.62f;          // deeper arc -> less flat (#2)
+        const float ry = cup.getHeight() * 0.6f;
         const float cy = cup.getY() + ry + 0.5f;
         juce::Path headband;
         headband.addCentredArc (cx, cy, rx, ry, 0.0f, -1.5f, 1.5f, true);
@@ -903,7 +941,7 @@ void SpectrumImager::paint (juce::Graphics& g)
         g.strokePath (headband, juce::PathStrokeType (1.8f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
         const float ex = rx * std::sin (1.5f);
         const float ey = cy - ry * std::cos (1.5f);
-        const float cupW = 4.2f, cupH = 8.0f;              // tall over-ear cups
+        const float cupW = 4.4f, cupH = 5.6f;              // squat over-ear cups (#1)
         g.fillRoundedRectangle (cx - ex - cupW * 0.5f, ey - 0.5f, cupW, cupH, 1.8f);
         g.fillRoundedRectangle (cx + ex - cupW * 0.5f, ey - 0.5f, cupW, cupH, 1.8f);
         g.endTransparencyLayer();
@@ -938,15 +976,21 @@ void SpectrumImager::paint (juce::Graphics& g)
         const float lineTop = r.getY() + 18.0f;
         const float lineBot = r.getBottom() - 2.0f;
 
-        // Restored neon glow: a wide soft halo + a tight bright core, blooming in all
-        // directions (the pin, drawn after, occludes the top so it can't bleed over it)
-        // (0.6.12 #5).
-        const float glowA = juce::jlimit (0.0f, 1.0f, (0.55f * handleA[i] + 0.55f * pressA[i]) * removeFade);
+        // Restored 0.6.9 neon glow: a feathered horizontal strip centred on the line for the
+        // left/right spread, PLUS a soft all-directions bloom so the top/bottom glow too. The
+        // pin (drawn after) occludes the top so the glow can't bleed over it (0.6.13 #5/#6).
+        const float glowA = juce::jlimit (0.0f, 1.0f, (0.6f * handleA[i] + 0.55f * pressA[i]) * removeFade);
         if (glowA > 0.01f)
         {
-            juce::Path ls; ls.addRoundedRectangle (x - 1.2f, lineTop, 2.4f, lineBot - lineTop, 1.2f);
-            juce::DropShadow (xoverCol.withAlpha (0.9f * glowA),               (int) (9.0f + 5.0f * press), {}).drawForPath (g, ls);
-            juce::DropShadow (xoverCol.brighter (0.3f).withAlpha (0.7f * glowA), (int) (4.0f + 2.0f * press), {}).drawForPath (g, ls);
+            const float gw = 9.0f;
+            juce::ColourGradient hg (xoverCol.withAlpha (0.0f), x - gw, 0.0f,
+                                     xoverCol.withAlpha (0.0f), x + gw, 0.0f, false);
+            hg.addColour (0.5, xoverCol.withAlpha (0.5f * glowA));
+            g.setGradientFill (hg);
+            g.fillRect (x - gw, lineTop, 2.0f * gw, lineBot - lineTop);
+            juce::Path ls; ls.addRoundedRectangle (x - 1.0f, lineTop, 2.0f, lineBot - lineTop, 1.0f);
+            juce::DropShadow (xoverCol.withAlpha (0.8f * glowA),                (int) (8.0f + 4.0f * press), {}).drawForPath (g, ls);
+            juce::DropShadow (xoverCol.brighter (0.4f).withAlpha (0.55f * glowA), (int) (3.0f + 2.0f * press), {}).drawForPath (g, ls);
         }
 
         // One continuous line; the freq chip's floating background occludes the middle,
@@ -1104,8 +1148,10 @@ void SpectrumImager::mouseDown (const juce::MouseEvent& e)
     }
     if (h >= 0)
     {
-        dragHandle = h; dragBand = -1; dragRemovePending = dragWasOut = false;
-        dragGrabDX = p.x - freqToX (crossover (h));   // keep the line under the cursor with this offset (#11)
+        dragHandle = h; dragBand = -1; dragRemovePending = false;
+        const int M = bandCount() - 1;
+        for (int k = 0; k < M; ++k) dragOrigX[k] = freqToX (crossover (k));
+        dragGrabDX = p.x - freqToX (crossover (h)); // keep the line under the cursor with this offset (#10)
         beginGesture (freqP[h]); repaint(); return;
     }
 
@@ -1124,7 +1170,9 @@ void SpectrumImager::mouseDown (const juce::MouseEvent& e)
         const int idx = addBandAt (xToFreq (ax));
         if (idx >= 0)
         {
-            dragHandle = idx; dragBand = -1; dragRemovePending = dragWasOut = false;
+            dragHandle = idx; dragBand = -1; dragRemovePending = false;
+            const int M = bandCount() - 1;
+            for (int k = 0; k < M; ++k) dragOrigX[k] = freqToX (crossover (k));
             dragGrabDX = p.x - freqToX (crossover (idx));
             beginGesture (freqP[idx]);
         }
@@ -1146,19 +1194,15 @@ void SpectrumImager::mouseDrag (const juce::MouseEvent& e)
     }
     if (dragHandle >= 0)
     {
-        // Dragged far outside the box -> mark for removal on release (merge), restored if
-        // the cursor comes back (#18). While out, the split is FROZEN and re-grabbed on
-        // return so a far re-entry can't yank a neighbour to the edge (#11).
+        // Dragged far outside the box -> mark for removal on release (merge) and FREEZE.
+        // When the cursor returns, the split is recomputed purely from the cursor against
+        // the drag-start positions, so it jumps straight to the cursor and any pushed
+        // neighbour springs back -- no creep, no stuck split (#10/#11/#18).
         const bool out = bandCount() > 1
                       && (e.position.y < -50.0f || e.position.y > (float) getHeight() + 50.0f
                        || e.position.x < -70.0f || e.position.x > (float) getWidth() + 70.0f);
         dragRemovePending = out;
-        if (out) dragWasOut = true;
-        else
-        {
-            if (dragWasOut) { dragWasOut = false; dragGrabDX = (float) e.position.x - freqToX (crossover (dragHandle)); }
-            dragCrossoverTo (dragHandle, (float) e.position.x - dragGrabDX);
-        }
+        if (! out) dragCrossoverTo (dragHandle, (float) e.position.x - dragGrabDX);
     }
     else if (dragBand >= 0)
     {
@@ -1214,7 +1258,11 @@ void SpectrumImager::mouseWheelMove (const juce::MouseEvent& e, const juce::Mous
     const float sgn = dy > 0.0f ? 1.0f : -1.0f;
 
     if (scrollHandle >= 0 && scrollHandle < N - 1)
-        dragCrossoverTo (scrollHandle, freqToX (crossover (scrollHandle)) + dy * 28.0f); // px-paced, min-gap aware
+    {
+        const int M = N - 1;
+        for (int k = 0; k < M; ++k) dragOrigX[k] = freqToX (crossover (k)); // seed the projection from the live spots
+        dragCrossoverTo (scrollHandle, freqToX (crossover (scrollHandle)) + dy * 28.0f);
+    }
     else if (scrollBand >= 0 && scrollBand < N)
     {
         const float step = sgn * juce::jmax (0.01f, std::abs (dy) * 0.30f); // velocity-aware (#15 prior)
