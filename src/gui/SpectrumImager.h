@@ -118,6 +118,10 @@ private:
 
     void updateHover (juce::Point<float>);
     void setContextTooltip();               // per-control tooltip (0.6.9 #18)
+    // A smooth, symmetric glow along a path: many overlapping rounded strokes with a
+    // Gaussian-ish falloff -- centred on the path (no offset), continuous (no hard band)
+    // (0.6.15 #2/#3).
+    void softGlow (juce::Graphics&, const juce::Path&, juce::Colour, float intensity, float maxWidth) const;
 
     void openFreqEditor (int i);
     void commitFreqEditor();
@@ -197,6 +201,7 @@ private:
     float drawnF[3] { 180.0f, 800.0f, 3000.0f };
     float drawnW[4] { 1.0f, 1.0f, 1.0f, 1.0f };
     int   lastBandCount = 4;
+    bool  dispEasing = false; // a sweep is still gliding to its target -> keep easing, don't snap (#5)
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SpectrumImager)
 };
