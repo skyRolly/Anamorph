@@ -102,6 +102,7 @@ SpectrumImager::SpectrumImager (anamorph::ScopeBuffer& s, juce::AudioProcessorVa
     fifoR.assign ((size_t) fftSize, 0.0f);
     fftData.assign ((size_t) fftSize * 2, 0.0f);
     mags.assign ((size_t) fftSize / 2 + 1, kMinDb);
+    redLevel.assign ((size_t) fftSize / 2 + 1, 0.0f);
 
     enaA = enabled() ? 1.0f : 0.0f;
     lastBandCount = bandCount();
@@ -196,7 +197,7 @@ juce::Rectangle<float> SpectrumImager::deleteBox (int b) const noexcept
 juce::Rectangle<float> SpectrumImager::soloBox (int b) const noexcept
 {
     const float cx = 0.5f * (bandLeftX (b) + bandRightX (b));
-    return { cx - 9.5f, plot().getY() + 2.0f, 19.0f, 18.0f };
+    return { cx - 8.0f, plot().getY() + 3.0f, 16.0f, 16.0f }; // slightly smaller, same shape (#1)
 }
 juce::Rectangle<float> SpectrumImager::numberChip (int i) const noexcept
 {
@@ -333,29 +334,46 @@ void SpectrumImager::toggleSoloBit (int b) { setSoloMask (soloMask() ^ (1 << b))
 void SpectrumImager::beginBandMove (int b)
 {
     const int N = bandCount();
+    auto r = plot();
     soloMoveLeft  = (b > 0)     ? b - 1 : -1;
     soloMoveRight = (b < N - 1) ? b     : -1;
+
+    // Anchor the move: the band translates RIGIDLY by T = clamp(cursor - anchor) so the
+    // split tracks the cursor 1:1, a limited band keeps its width, and dragging back out
+    // of a limit only resumes once the cursor returns to the limit point (0.6.12 #3/#9/#10).
+    bandAnchorX     = soloDownX;
+    bandStartLeftX  = (soloMoveLeft  >= 0) ? freqToX (crossover (soloMoveLeft))  : r.getX();
+    bandStartRightX = (soloMoveRight >= 0) ? freqToX (crossover (soloMoveRight)) : r.getRight();
+
+    bandTmin = -1.0e9f; bandTmax = 1.0e9f;
+    if (soloMoveLeft >= 0)
+    {
+        const float lo = (soloMoveLeft > 0 ? freqToX (crossover (soloMoveLeft - 1)) : r.getX()) + kMinGapPx;
+        bandTmin = juce::jmax (bandTmin, lo - bandStartLeftX);
+    }
+    else // leftmost band: its right split must stay a gap clear of the fixed left edge
+        bandTmin = juce::jmax (bandTmin, (r.getX() + kMinGapPx) - bandStartRightX);
+
+    if (soloMoveRight >= 0)
+    {
+        const float hi = (soloMoveRight < N - 1 ? freqToX (crossover (soloMoveRight + 1)) : r.getRight()) - kMinGapPx;
+        bandTmax = juce::jmin (bandTmax, hi - bandStartRightX);
+    }
+    else // rightmost band: its left split must stay a gap clear of the fixed right edge
+        bandTmax = juce::jmin (bandTmax, (r.getRight() - kMinGapPx) - bandStartLeftX);
+
     if (soloMoveLeft  >= 0) beginGesture (freqP[soloMoveLeft]);
     if (soloMoveRight >= 0) beginGesture (freqP[soloMoveRight]);
 }
-void SpectrumImager::moveBand (float fromX, float toX)
+void SpectrumImager::moveBand (float mouseX)
 {
-    const float dx = toX - fromX;
     const int M = bandCount() - 1;
     if (M <= 0) return;
-    // The grabbed headphone sits at the band CENTRE, so the centre must track the
-    // cursor 1:1. With two movable edges each shifts by dx; with one (an edge band)
-    // the single split shifts by 2*dx so the centre still keeps pace (0.6.11 #3).
-    const int nMovable = (soloMoveLeft >= 0 ? 1 : 0) + (soloMoveRight >= 0 ? 1 : 0);
-    if (nMovable == 0) return;
-    const float step = dx * (2.0f / (float) nMovable);
+    const float T = juce::jlimit (bandTmin, bandTmax, mouseX - bandAnchorX);
     float xs[3];
     for (int k = 0; k < M; ++k) xs[k] = freqToX (crossover (k));
-    if (soloMoveLeft  >= 0) xs[soloMoveLeft]  += step;
-    if (soloMoveRight >= 0) xs[soloMoveRight] += step;
-    const int pin = (dx < 0.0f) ? (soloMoveLeft  >= 0 ? soloMoveLeft  : soloMoveRight)
-                                : (soloMoveRight >= 0 ? soloMoveRight : soloMoveLeft);
-    projectGaps (xs, M, pin);
+    if (soloMoveLeft  >= 0) xs[soloMoveLeft]  = bandStartLeftX  + T;
+    if (soloMoveRight >= 0) xs[soloMoveRight] = bandStartRightX + T;
     writeCrossovers (xs, M);
 }
 void SpectrumImager::endBandMove()
@@ -565,6 +583,14 @@ void SpectrumImager::timerCallback()
     sampleRate = apvts.processor.getSampleRate() > 0.0 ? apvts.processor.getSampleRate() : 48000.0;
     pushFFT();
 
+    // Clip glow level per bin: rises fast toward the over-0 dBFS amount, falls back
+    // gently. Always animated (independent of the UI-animation switch) (0.6.12 #4).
+    for (size_t k = 0; k < redLevel.size(); ++k)
+    {
+        const float t = mags[k] > -3.0f ? juce::jlimit (0.0f, 1.0f, (mags[k] + 3.0f) / 3.0f) : 0.0f;
+        redLevel[k] += (t - redLevel[k]) * (t > redLevel[k] ? 0.5f : 0.10f);
+    }
+
     // Press-and-hold a headphone -> momentary audition of that band (engine override).
     if (soloPressBand >= 0 && ! soloHoldActive && ! soloMovedBand
         && juce::Time::getMillisecondCounter() - soloPressMs > 200u)
@@ -584,7 +610,8 @@ void SpectrumImager::timerCallback()
     for (int i = 0; i < 3; ++i) ease (pressA[i],  (i == dragHandle) ? 1.0f : 0.0f);
     for (int i = 0; i < 4; ++i) ease (widthA[i],  (i == dragBand   || i == hoverWidth)  ? 1.0f : 0.0f);
     for (int i = 0; i < 4; ++i) ease (pressW[i],  (i == dragBand) ? 1.0f : 0.0f);
-    for (int i = 0; i < 4; ++i) ease (delA[i],    (i == hoverDelete) ? 1.0f : 0.0f);
+    // Over the x itself = brightest; merely over the band = dimmer; eased either way (#2).
+    for (int i = 0; i < 4; ++i) ease (delA[i], (i == hoverDeleteExact) ? 1.0f : (i == hoverDelete ? 0.5f : 0.0f));
     for (int i = 0; i < 4; ++i) ease (soloA[i],   (em & (1 << i)) ? 1.0f : (i == hoverSolo ? 0.55f : 0.0f));
     for (int i = 0; i < 4; ++i) ease (labelFlipA[i], (widthToY (bandWidth (i)) < laneTop() + 20.0f) ? 1.0f : 0.0f);
     ease (addA, hoverAdd >= 0 ? 1.0f : 0.0f);
@@ -634,14 +661,21 @@ void SpectrumImager::timerCallback()
 // ----------------------------------------------------------------------------
 void SpectrumImager::paint (juce::Graphics& g)
 {
-    // A band add/remove or an A/B / preset / undo that changes the band count snaps the
-    // eased positions to the new layout BEFORE the first paint, so a split never flashes
-    // from a stale spot to its target (0.6.11 #6/#15).
-    if (bandCount() != lastBandCount)
+    // Eased split / width positions only lag during a sweep window (reset / preset / A-B /
+    // undo); a band-count change or any direct interaction snaps them to the live values
+    // BEFORE the first paint, so a split never flashes from a stale spot and every follower
+    // (pin, width dot, headphones) stays in step while dragging (0.6.11 #6/#15, 0.6.12 #8).
     {
-        for (int i = 0; i < 3; ++i) drawnF[i] = crossover (i);
-        for (int b = 0; b < 4; ++b) drawnW[b] = bandWidth (b);
-        lastBandCount = bandCount();
+        const bool animOn = animOnP == nullptr || animOnP->load() > 0.5f;
+        const bool busy = (dragHandle >= 0 || dragBand >= 0 || soloMovedBand);
+        const bool sweepingNow = animOn && ! busy && isSweeping && isSweeping();
+        const int Nb = bandCount();
+        if (! sweepingNow || Nb != lastBandCount)
+        {
+            for (int i = 0; i < 3; ++i) drawnF[i] = crossover (i);
+            for (int b = 0; b < 4; ++b) drawnW[b] = bandWidth (b);
+        }
+        lastBandCount = Nb;
     }
 
     auto r = plot();
@@ -705,18 +739,36 @@ void SpectrumImager::paint (juce::Graphics& g)
         g.setColour (xoverCol.withAlpha (0.55f));
         g.strokePath (spec, juce::PathStrokeType (1.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
-        // Clip: at the frequencies that reach ~0 dBFS, the WHOLE green column (curve
-        // down to the floor) goes red, localized to that frequency and fading at its
-        // edges so the surrounding green is untouched (0.6.11 #12).
-        for (float x = r.getX(); x <= r.getRight(); x += 1.0f)
+        // Clip: a soft feathered NEON-red glow blooms over the frequencies near 0 dBFS --
+        // brightest at the peak, bleeding a little upward and washing downward, spread wider
+        // than the exact bin and fading at the edges. Driven by the temporally smoothed
+        // redLevel so it eases in fast and out gently on its own (0.6.12 #4/#12).
         {
-            const float db = magForColumn (x - 0.5f, x + 0.5f);
-            if (db > -3.0f)
+            const float binHz = (float) sampleRate / (float) fftSize;
+            auto redAt = [&] (float x)
             {
-                const float ca = juce::jlimit (0.0f, 1.0f, (db + 3.0f) / 3.0f);
-                const float y = dbToY (db);
-                g.setColour (clipCol.withAlpha (0.8f * ca));
-                g.fillRect (x, y, 1.0f, r.getBottom() - y);
+                float m = 0.0f;
+                for (float dxs = -5.0f; dxs <= 5.0f; dxs += 2.5f)
+                {
+                    const int k = juce::jlimit (0, fftSize / 2, (int) std::lround (xToFreq (x + dxs) / binHz));
+                    m = juce::jmax (m, redLevel[(size_t) k]);
+                }
+                return m;
+            };
+            for (float x = r.getX(); x <= r.getRight(); x += 1.0f)
+            {
+                const float rl = redAt (x);
+                if (rl < 0.02f) continue;
+                const float y = dbToY (magForColumn (x - 0.5f, x + 0.5f));
+                const float topBleed = y - 16.0f;
+                const float span = r.getBottom() - topBleed;
+                if (span <= 1.0f) continue;
+                juce::ColourGradient gr (clipCol.withAlpha (0.0f), 0.0f, topBleed,
+                                         clipCol.withAlpha (0.12f * rl), 0.0f, r.getBottom(), false);
+                gr.addColour (juce::jlimit (0.02, 0.98, (double) (16.0f / span)),
+                              clipCol.brighter (0.25f).withAlpha (0.85f * rl));
+                g.setGradientFill (gr);
+                g.fillRect (x - 0.5f, topBleed, 1.5f, span);
             }
         }
     }
@@ -886,11 +938,15 @@ void SpectrumImager::paint (juce::Graphics& g)
         const float lineTop = r.getY() + 18.0f;
         const float lineBot = r.getBottom() - 2.0f;
 
-        const float glowA = juce::jlimit (0.0f, 0.85f, (0.42f * handleA[i] + 0.5f * pressA[i]) * removeFade);
+        // Restored neon glow: a wide soft halo + a tight bright core, blooming in all
+        // directions (the pin, drawn after, occludes the top so it can't bleed over it)
+        // (0.6.12 #5).
+        const float glowA = juce::jlimit (0.0f, 1.0f, (0.55f * handleA[i] + 0.55f * pressA[i]) * removeFade);
         if (glowA > 0.01f)
         {
-            juce::Path ls; ls.addRoundedRectangle (x - 0.9f, lineTop, 1.8f, lineBot - lineTop, 0.9f);
-            juce::DropShadow (xoverCol.withAlpha (glowA), (int) (6.0f + 4.0f * press), {}).drawForPath (g, ls);
+            juce::Path ls; ls.addRoundedRectangle (x - 1.2f, lineTop, 2.4f, lineBot - lineTop, 1.2f);
+            juce::DropShadow (xoverCol.withAlpha (0.9f * glowA),               (int) (9.0f + 5.0f * press), {}).drawForPath (g, ls);
+            juce::DropShadow (xoverCol.brighter (0.3f).withAlpha (0.7f * glowA), (int) (4.0f + 2.0f * press), {}).drawForPath (g, ls);
         }
 
         // One continuous line; the freq chip's floating background occludes the middle,
@@ -983,7 +1039,7 @@ void SpectrumImager::setContextTooltip()
 void SpectrumImager::updateHover (juce::Point<float> p)
 {
     const int N = bandCount();
-    hoverHandle = hoverWidth = hoverAdd = hoverDelete = hoverSolo = -1;
+    hoverHandle = hoverWidth = hoverAdd = hoverDelete = hoverDeleteExact = hoverSolo = -1;
 
     const int h = handleNearX (p.x);
     const int b = bandAtX (p.x);
@@ -999,12 +1055,13 @@ void SpectrumImager::updateHover (juce::Point<float> p)
         else                              setMouseCursor (juce::MouseCursor::NormalCursor);
     }
 
-    // The delete x shows whenever the cursor is anywhere over the band or its split
-    // line (#2); over the x itself the cursor becomes a pointing hand.
+    // The delete x shows DIMLY whenever the cursor is anywhere over the band or its split
+    // line, and BRIGHT (with a pointing hand) once it is directly over the x (#2).
     if (N > 1)
     {
         hoverDelete = b;
-        if (deleteHit (p) >= 0) setMouseCursor (juce::MouseCursor::PointingHandCursor);
+        hoverDeleteExact = deleteHit (p);
+        if (hoverDeleteExact >= 0) setMouseCursor (juce::MouseCursor::PointingHandCursor);
     }
 
     setContextTooltip();
@@ -1018,7 +1075,7 @@ void SpectrumImager::mouseMove (const juce::MouseEvent& e)
 }
 void SpectrumImager::mouseExit (const juce::MouseEvent&)
 {
-    hoverHandle = hoverWidth = hoverAdd = hoverDelete = hoverSolo = -1;
+    hoverHandle = hoverWidth = hoverAdd = hoverDelete = hoverDeleteExact = hoverSolo = -1;
     scrollHandle = scrollBand = -1;
 }
 void SpectrumImager::mouseDown (const juce::MouseEvent& e)
@@ -1030,7 +1087,7 @@ void SpectrumImager::mouseDown (const juce::MouseEvent& e)
     if (const int sh = soloHit (p); sh >= 0)
     {
         soloPressBand = sh;
-        soloDownX = soloDragPrevX = p.x;
+        soloDownX = p.x;
         soloPressMs = juce::Time::getMillisecondCounter();
         soloHoldActive = soloMovedBand = false;
         return;
@@ -1045,7 +1102,12 @@ void SpectrumImager::mouseDown (const juce::MouseEvent& e)
         else { const int b = bandAtX (p.x); if (nearWidthLine (p, b)) resetParam (widthP[b]); }
         return;
     }
-    if (h >= 0) { dragHandle = h; dragBand = -1; dragRemovePending = false; beginGesture (freqP[h]); repaint(); return; }
+    if (h >= 0)
+    {
+        dragHandle = h; dragBand = -1; dragRemovePending = dragWasOut = false;
+        dragGrabDX = p.x - freqToX (crossover (h));   // keep the line under the cursor with this offset (#11)
+        beginGesture (freqP[h]); repaint(); return;
+    }
 
     const int b = bandAtX (p.x);
     if (nearWidthLine (p, b))
@@ -1060,7 +1122,12 @@ void SpectrumImager::mouseDown (const juce::MouseEvent& e)
     if (bandAddTarget (b, p.x, ax))
     {
         const int idx = addBandAt (xToFreq (ax));
-        if (idx >= 0) { dragHandle = idx; dragBand = -1; dragRemovePending = false; beginGesture (freqP[idx]); }
+        if (idx >= 0)
+        {
+            dragHandle = idx; dragBand = -1; dragRemovePending = dragWasOut = false;
+            dragGrabDX = p.x - freqToX (crossover (idx));
+            beginGesture (freqP[idx]);
+        }
         hoverAdd = -1; addA = 0.0f; // snap away the preview so nothing lingers (#5)
         repaint();
     }
@@ -1069,24 +1136,29 @@ void SpectrumImager::mouseDrag (const juce::MouseEvent& e)
 {
     if (soloPressBand >= 0)
     {
-        if (std::abs (e.position.x - soloDownX) > 4.0f)
+        if (soloMovedBand || std::abs (e.position.x - soloDownX) > 4.0f)
         {
             if (! soloMovedBand)  { soloMovedBand = true; beginBandMove (soloPressBand); }
             if (! soloHoldActive) { soloHoldActive = true; if (onSoloPreview) onSoloPreview (1 << soloPressBand); }
-            moveBand (soloDragPrevX, (float) e.position.x);
-            soloDragPrevX = (float) e.position.x;
+            moveBand ((float) e.position.x);
         }
         return;
     }
     if (dragHandle >= 0)
     {
-        // Dragged far outside the box -> mark for removal on release (merge), restored
-        // if the cursor comes back before mouse-up (#18).
+        // Dragged far outside the box -> mark for removal on release (merge), restored if
+        // the cursor comes back (#18). While out, the split is FROZEN and re-grabbed on
+        // return so a far re-entry can't yank a neighbour to the edge (#11).
         const bool out = bandCount() > 1
                       && (e.position.y < -50.0f || e.position.y > (float) getHeight() + 50.0f
                        || e.position.x < -70.0f || e.position.x > (float) getWidth() + 70.0f);
         dragRemovePending = out;
-        if (! out) dragCrossoverTo (dragHandle, (float) e.position.x);
+        if (out) dragWasOut = true;
+        else
+        {
+            if (dragWasOut) { dragWasOut = false; dragGrabDX = (float) e.position.x - freqToX (crossover (dragHandle)); }
+            dragCrossoverTo (dragHandle, (float) e.position.x - dragGrabDX);
+        }
     }
     else if (dragBand >= 0)
     {

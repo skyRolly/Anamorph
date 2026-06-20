@@ -390,8 +390,9 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
 
     setupToggle (autoMatchToggle, pid::autoGainMatch, "Level Match",
                  "Match the processed loudness to the input so louder doesn't fool you.");
-    applyGainButton.setComponentID ("apply"); // bigger Apply text (#23)
-    applyGainButton.setTooltip (tidyTip ("Bake the measured match into Output as a fixed value."));
+    applyGainButton.setButtonText ("Apply Gain");  // clearer label (0.6.12 #7)
+    applyGainButton.setComponentID ("apply");
+    applyGainButton.setTooltip (tidyTip ("Apply the matched gain to Output Gain"));
     applyGainButton.onClick = [this] { processor.applyAutoGain(); };
     addAndMakeVisible (applyGainButton);
     matchReadout.setJustificationType (juce::Justification::centredRight); // align with the Hz readout below (#11)
@@ -1503,32 +1504,37 @@ void AnamorphAudioProcessorEditor::resized()
             outputModuleLabel.setBounds (a.removeFromTop (15));
             a.removeFromTop (2);
 
-            const int knobH = 86, gap = 12, monoH = 24;
+            const int knobH = 86, gap = 12, monoH = 22;
             a.removeFromTop (juce::jmax (0, (a.getHeight() - (knobH + gap + monoH)) / 2));
 
             auto knobRow = a.removeFromTop (knobH);
-            auto lmCol = knobRow.removeFromRight (128);
-            const int kw = 74;
+            // Centre [3 knobs | gap | Level-Match column] so the empty band between the
+            // knobs and Level Match shrinks while the spacing stays balanced (#7).
+            const int kw = 74, kg = 6, gapLM = 22, lmW = 134;
+            const int clusterW = 3 * kw + 2 * kg + gapLM + lmW;
+            knobRow.removeFromLeft (juce::jmax (0, (knobRow.getWidth() - clusterW) / 2));
             placeKnob (knobRow.removeFromLeft (kw), mixK, mixL);
-            knobRow.removeFromLeft (6);
+            knobRow.removeFromLeft (kg);
             placeKnob (knobRow.removeFromLeft (kw), outBalanceK, outBalanceL);
-            knobRow.removeFromLeft (6);
+            knobRow.removeFromLeft (kg);
             placeKnob (knobRow.removeFromLeft (kw), outputK, outputL);
+            knobRow.removeFromLeft (gapLM);
+            auto lmCol = knobRow.removeFromLeft (lmW);
 
             {
-                auto c = lmCol.reduced (2, 0);
-                c.removeFromTop (juce::jmax (0, (c.getHeight() - 50) / 2));
-                autoMatchToggle.setBounds (c.removeFromTop (24));
-                c.removeFromTop (6);
-                auto ar = c.removeFromTop (20);
-                applyGainButton.setBounds (ar.removeFromLeft (56).reduced (0, 1));
+                auto c = lmCol;
+                c.removeFromTop (juce::jmax (0, (c.getHeight() - 52) / 2));
+                autoMatchToggle.setBounds (c.removeFromTop (22).reduced (0, 1)); // same height as Mono Maker (#7)
+                c.removeFromTop (8);
+                auto ar = c.removeFromTop (22);
+                applyGainButton.setBounds (ar.removeFromLeft (76).reduced (0, 1)); // bigger Apply Gain (#7)
                 ar.removeFromLeft (6);
                 matchReadout.setBounds (ar);
             }
 
             a.removeFromTop (gap);
             auto mono = a.removeFromTop (monoH);
-            monoMakerToggle.setBounds (mono.removeFromLeft (98).reduced (2, 2));
+            monoMakerToggle.setBounds (mono.removeFromLeft (98).reduced (0, 1));
             mono.removeFromLeft (4);
             monoFreqK.setBounds (mono.reduced (0, 1));
         }

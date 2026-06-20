@@ -102,7 +102,7 @@ private:
     void  toggleSoloBit (int b);
     int   effectiveSoloMask() const noexcept; // includes the momentary hold preview
     void  beginBandMove (int b);            // drag a solo handle sideways to move the band (0.6.9 #9)
-    void  moveBand (float fromX, float toX);
+    void  moveBand (float mouseX);
     void  endBandMove();
 
     void beginGesture (juce::RangedAudioParameter*);
@@ -137,6 +137,7 @@ private:
     juce::dsp::FFT  fft { fftOrder };
     juce::dsp::WindowingFunction<float> window { (size_t) fftSize, juce::dsp::WindowingFunction<float>::hann };
     std::vector<float> fifoL, fifoR, fftData, mags;
+    std::vector<float> redLevel; // per-bin clip-glow level, temporally smoothed (#4)
     double sampleRate = 48000.0;
 
     int   dragHandle = -1;
@@ -144,9 +145,12 @@ private:
     int   hoverHandle = -1;
     int   hoverWidth  = -1;
     int   hoverAdd    = -1;
-    int   hoverDelete = -1;  // band whose delete x is showing
+    int   hoverDelete = -1;  // band the cursor is over (its delete x is dimly shown)
+    int   hoverDeleteExact = -1; // band whose delete x is directly under the cursor (bright)
     int   hoverSolo   = -1;  // band whose headphone is hovered
     float addX        = 0.0f;
+    float dragGrabDX  = 0.0f; // cursor-to-line offset while dragging a split (#11)
+    bool  dragWasOut  = false; // split was out of bounds last frame -> re-grab on return (#11)
 
     int   scrollHandle = -1;
     int   scrollBand   = -1;
@@ -154,15 +158,19 @@ private:
 
     // Solo press machine (0.6.9 #8/#9): a quick click latches the band's solo
     // bit; a press-and-hold auditions THIS band alone (engine override, restored on
-    // release); a hold-and-drag moves the band sideways.
+    // release); a hold-and-drag moves the band with rigid, anchor-based translation
+    // so the split tracks the cursor 1:1 and a limited band keeps its width (0.6.12).
     int   soloPressBand   = -1;
     juce::uint32 soloPressMs = 0;
     bool  soloHoldActive  = false;   // momentary audition engaged
     bool  soloMovedBand   = false;   // turned into a sideways band move
     int   soloMoveLeft    = -1;      // crossover index on the band's left edge (or -1)
     int   soloMoveRight   = -1;      // crossover index on the band's right edge (or -1)
-    float soloDragPrevX   = 0.0f;
     float soloDownX       = 0.0f;
+    float bandAnchorX     = 0.0f;    // cursor x when the move began
+    float bandStartLeftX  = 0.0f;    // band edge x positions at move start
+    float bandStartRightX = 0.0f;
+    float bandTmin = 0.0f, bandTmax = 0.0f; // clamped translation range
 
     bool  dragRemovePending = false; // dragged a split far outside -> drop it on release (#18)
 
