@@ -1523,11 +1523,11 @@ void AnamorphAudioProcessorEditor::resized()
 
             {
                 auto c = lmCol;
-                c.removeFromTop (juce::jmax (0, (c.getHeight() - 52) / 2));
-                autoMatchToggle.setBounds (c.removeFromTop (22).reduced (0, 1)); // same height as Mono Maker (#7)
-                c.removeFromTop (8);
+                c.removeFromTop (juce::jmax (0, (c.getHeight() - 58) / 2));
+                autoMatchToggle.setBounds (c.removeFromTop (22).reduced (0, 1)); // same height as Mono Maker
+                c.removeFromTop (14); // a touch more air: Level Match up, Apply Gain + readout down (0.6.14 #7)
                 auto ar = c.removeFromTop (22);
-                applyGainButton.setBounds (ar.removeFromLeft (76).reduced (0, 1)); // bigger Apply Gain (#7)
+                applyGainButton.setBounds (ar.removeFromLeft (76).reduced (0, 1));
                 ar.removeFromLeft (6);
                 matchReadout.setBounds (ar);
             }
