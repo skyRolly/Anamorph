@@ -137,7 +137,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
 
     // --- Mono maker ---
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::monoMakerOn, kVersion }, "Mono Maker", false));
-    floatParam (pid::monoMakerFreq, "Mono Maker Freq", logFreqRange (20.0f, 500.0f), 120.0f, hz, hzFrom);
+    // 20..720 so the 120 Hz default lands on the bar's centre (sqrt(20*720)=120), the
+    // log density elsewhere unchanged (0.6.12 #6).
+    floatParam (pid::monoMakerFreq, "Mono Maker Freq", logFreqRange (20.0f, 720.0f), 120.0f, hz, hzFrom);
 
     // --- Mix / gain ---
     floatParam (pid::mix, "Mix", { 0.0f, 1.0f, 0.001f }, 1.0f, pct, pctFrom);
