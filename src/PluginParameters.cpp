@@ -137,9 +137,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
 
     // --- Mono maker ---
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::monoMakerOn, kVersion }, "Mono Maker", false));
-    // 20..720 so the 120 Hz default lands on the bar's centre (sqrt(20*720)=120), the
-    // log density elsewhere unchanged (0.6.12 #6).
-    floatParam (pid::monoMakerFreq, "Mono Maker Freq", logFreqRange (20.0f, 720.0f), 120.0f, hz, hzFrom);
+    // Endpoints stay 20..500; a centre-skew (not a wider range) puts the 120 Hz default on
+    // the bar's middle with a smooth, even density either side (0.6.15 #6).
+    {
+        juce::NormalisableRange<float> mmRange (20.0f, 500.0f);
+        mmRange.setSkewForCentre (120.0f);
+        floatParam (pid::monoMakerFreq, "Mono Maker Freq", mmRange, 120.0f, hz, hzFrom);
+    }
 
     // --- Mix / gain ---
     floatParam (pid::mix, "Mix", { 0.0f, 1.0f, 0.001f }, 1.0f, pct, pctFrom);
