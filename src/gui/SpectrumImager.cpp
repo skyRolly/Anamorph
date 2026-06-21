@@ -602,12 +602,16 @@ void SpectrumImager::timerCallback()
     sampleRate = apvts.processor.getSampleRate() > 0.0 ? apvts.processor.getSampleRate() : 48000.0;
     pushFFT();
 
-    // Clip glow level per bin: rises fast toward the over-0 dBFS amount, falls back
-    // gently. Always animated (independent of the UI-animation switch) (0.6.12 #4).
+    // Clip glow level per bin. The Hann window costs ~6 dB of coherent gain, so a 0 dBFS
+    // tone only reads ~-6 dB on the analyser -- compensate for that, so reaching full scale
+    // actually lights the red (0.6.16 #1). Rises FAST and falls back SLOWLY with an
+    // exponential (non-linear) curve so a region lingers as it fades, even while other bands
+    // light up (0.6.16 #2). Always animated, independent of the UI-animation switch.
     for (size_t k = 0; k < redLevel.size(); ++k)
     {
-        const float t = mags[k] > -3.0f ? juce::jlimit (0.0f, 1.0f, (mags[k] + 3.0f) / 3.0f) : 0.0f;
-        redLevel[k] += (t - redLevel[k]) * (t > redLevel[k] ? 0.5f : 0.10f);
+        const float eff = mags[k] + 6.0f;                                   // window-gain compensated dBFS
+        const float t = juce::jlimit (0.0f, 1.0f, (eff + 4.0f) / 4.0f);     // onset -4 dBFS, full at 0 dBFS
+        redLevel[k] += (t - redLevel[k]) * (t > redLevel[k] ? 0.6f : 0.035f);
     }
 
     // Press-and-hold a headphone -> momentary audition of that band (engine override).
@@ -633,7 +637,9 @@ void SpectrumImager::timerCallback()
     for (int i = 0; i < 4; ++i) ease (delA[i], (i == hoverDeleteExact) ? 1.0f : (i == hoverDelete ? 0.5f : 0.0f));
     for (int i = 0; i < 4; ++i) ease (soloA[i],   (em & (1 << i)) ? 1.0f : (i == hoverSolo ? 0.55f : 0.0f));
     for (int i = 0; i < 4; ++i) ease (labelFlipA[i], (widthToY (bandWidth (i)) < laneTop() + 20.0f) ? 1.0f : 0.0f);
-    ease (addA, hoverAdd >= 0 ? 1.0f : 0.0f);
+    // No add affordance while the cursor is on a delete x or holding one -- a click there
+    // deletes, it does not add (0.6.16 #1/#2).
+    ease (addA, (hoverAdd >= 0 && hoverDeleteExact < 0 && pressDeleteBand < 0) ? 1.0f : 0.0f);
     ease (enaA, enabled() ? 1.0f : 0.0f);
     ease (panelHoverA, isMouseOverOrDragging (true) ? 1.0f : 0.0f);
     if (soloHoldActive) soloCurveBand = soloPressBand;
@@ -693,12 +699,12 @@ void SpectrumImager::softGlow (juce::Graphics& g, const juce::Path& p, juce::Col
     if (intensity <= 0.01f) return;
     const auto js = juce::PathStrokeType::curved;
     const auto cs = juce::PathStrokeType::rounded;
-    constexpr int N = 7;
+    constexpr int N = 9;
     for (int s = N - 1; s >= 0; --s) // widest + faintest first, narrowest + brightest last
     {
         const float t = (float) s / (float) (N - 1);          // 1 .. 0
         const float w = 1.4f + t * (maxWidth - 1.4f);
-        const float a = intensity * std::exp (-2.8f * t * t) * 0.42f;
+        const float a = intensity * std::exp (-1.9f * t * t) * 0.40f; // broader falloff -> a real, far glow
         g.setColour (c.withAlpha (juce::jlimit (0.0f, 1.0f, a)));
         g.strokePath (p, juce::PathStrokeType (w, js, cs));
     }
@@ -772,13 +778,13 @@ void SpectrumImager::paint (juce::Graphics& g)
             const float t = (juce::jlimit (kMinDb, kMaxDb, db) - kMinDb) / (kMaxDb - kMinDb);
             return (r.getBottom() + 8.0f) - t * (r.getHeight() + 8.0f);
         };
-        juce::Path spec, redClipTop;
+        juce::Path spec;
         bool started = false;
         for (float x = r.getX(); x <= r.getRight(); x += 1.0f)
         {
             const float y = dbToY (magForColumn (x - 0.5f, x + 0.5f));
-            if (! started) { spec.startNewSubPath (x, y); redClipTop.startNewSubPath (x, y - 2.5f); started = true; }
-            else            { spec.lineTo (x, y);          redClipTop.lineTo (x, y - 2.5f); }
+            if (! started) { spec.startNewSubPath (x, y); started = true; }
+            else            spec.lineTo (x, y);
         }
         juce::Path fillPath (spec);
         fillPath.lineTo (r.getRight(), r.getBottom() + 2.0f);
@@ -790,68 +796,48 @@ void SpectrumImager::paint (juce::Graphics& g)
         g.setColour (xoverCol.withAlpha (0.55f));
         g.strokePath (spec, juce::PathStrokeType (1.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
-        // Clip: the red is CONFINED to the spectrum (the line + everything below it) by clipping
-        // to the curve, and a wide radial bloom centred on each overload peak cross-fades it
-        // smoothly into the surrounding green -- no red above the curve, no hard seam (0.6.15 #1).
+        // Clip: a VERTICAL red gradient band rises at each over-0 dBFS frequency -- brightest
+        // on the line and washing down the column (not a circle), confined to the spectrum
+        // (line + below). The per-column level is horizontally feathered so it cross-fades
+        // smoothly and widely into the surrounding green with no seam or banding (0.6.16 #B3).
         {
+            const int W = (int) r.getWidth() + 1;
+            if ((int) redColX.size() != W) redColX.assign ((size_t) W, 0.0f);
+            const float binHz = (float) sampleRate / (float) fftSize;
             float maxRed = 0.0f;
-            for (size_t k = 0; k < redLevel.size(); ++k) maxRed = juce::jmax (maxRed, redLevel[k]);
-            if (maxRed > 0.02f)
+            for (int xi = 0; xi < W; ++xi)
             {
-                juce::Path redClip (redClipTop);
-                redClip.lineTo (r.getRight(), r.getBottom() + 2.0f);
-                redClip.lineTo (r.getX(), r.getBottom() + 2.0f);
-                redClip.closeSubPath();
-
-                juce::Graphics::ScopedSaveState ss (g);
-                g.reduceClipRegion (redClip);
-
-                const float binHz = (float) sampleRate / (float) fftSize;
-                auto redAt = [&] (float x)
+                const int k = juce::jlimit (0, fftSize / 2, (int) std::lround (xToFreq (r.getX() + (float) xi) / binHz));
+                redColX[(size_t) xi] = redLevel[(size_t) k];
+                maxRed = juce::jmax (maxRed, redColX[(size_t) xi]);
+            }
+            if (maxRed > 0.012f)
+            {
+                // Wide triangular blur -> a soft, far-reaching horizontal feather.
+                std::vector<float> sm ((size_t) W, 0.0f);
+                const int RB = 22;
+                float norm = 0.0f; for (int d = -RB; d <= RB; ++d) norm += (float) (RB + 1 - std::abs (d));
+                for (int xi = 0; xi < W; ++xi)
                 {
-                    float m = 0.0f;
-                    for (float dxs = -6.0f; dxs <= 6.0f; dxs += 2.0f)
+                    float acc = 0.0f;
+                    for (int d = -RB; d <= RB; ++d)
                     {
-                        const int k = juce::jlimit (0, fftSize / 2, (int) std::lround (xToFreq (x + dxs) / binHz));
-                        m = juce::jmax (m, redLevel[(size_t) k]);
+                        const int j = juce::jlimit (0, W - 1, xi + d);
+                        acc += redColX[(size_t) j] * (float) (RB + 1 - std::abs (d));
                     }
-                    return m;
-                };
-                bool inRun = false;
-                float peak = 0.0f, minY = r.getBottom(), xa = r.getX(), xb = r.getX(), peakX = r.getX();
-                auto drawRun = [&]
-                {
-                    if (inRun && peak >= 0.03f)
-                    {
-                        const float cyp = minY + 3.0f;
-                        const float r1 = juce::jmax (40.0f, (xb - xa) * 0.5f + 30.0f);
-                        const float radL[2] = { r1, r1 * 2.0f };
-                        const float alL[2]  = { 0.60f, 0.26f };
-                        for (int q = 0; q < 2; ++q) // bright core + wide soft feather
-                        {
-                            const float rad = radL[q], al = alL[q] * peak;
-                            juce::ColourGradient rg (clipCol.withAlpha (al), peakX, cyp,
-                                                     clipCol.withAlpha (0.0f), peakX + rad, cyp, true);
-                            g.setGradientFill (rg);
-                            g.fillRect (peakX - rad, cyp - rad, 2.0f * rad, r.getBottom() - (cyp - rad));
-                        }
-                    }
-                    inRun = false; peak = 0.0f; minY = r.getBottom();
-                };
-                for (float x = r.getX(); x <= r.getRight(); x += 1.5f)
-                {
-                    const float rl = redAt (x);
-                    if (rl > 0.03f)
-                    {
-                        const float y = dbToY (magForColumn (x - 0.5f, x + 0.5f));
-                        if (! inRun) { inRun = true; xa = x; }
-                        xb = x;
-                        if (rl > peak) { peak = rl; peakX = x; } // centre the bloom on the hottest column
-                        minY = juce::jmin (minY, y);
-                    }
-                    else drawRun();
+                    sm[(size_t) xi] = acc / norm;
                 }
-                drawRun();
+                for (int xi = 0; xi < W; xi += 2)
+                {
+                    const float rl = sm[(size_t) xi];
+                    if (rl < 0.012f) continue;
+                    const float x = r.getX() + (float) xi;
+                    const float y = dbToY (magForColumn (x - 0.5f, x + 0.5f)) - 2.0f; // start on the line
+                    juce::ColourGradient vg (clipCol.withAlpha (0.78f * rl), x, y,
+                                             clipCol.withAlpha (0.14f * rl), x, r.getBottom(), false);
+                    g.setGradientFill (vg);
+                    g.fillRect (x, y, 2.0f, r.getBottom() - y);
+                }
             }
         }
     }
@@ -934,32 +920,32 @@ void SpectrumImager::paint (juce::Graphics& g)
             const float db = 20.0f * std::log10 (juce::jmax (1.0e-4f, amp));
             return yPass + juce::jlimit (0.0f, 1.0f, -db / range) * (yFloor - yPass);
         };
-        // Draw only the contiguous above-floor hump: the slopes fall to the very
-        // bottom and simply stop -- no horizontal tail running along the edge (#13).
+        // Find the contiguous above-floor hump (1 px steps for low jitter), then draw the
+        // slopes all the way DOWN to the floor with an explicit floor point at each foot, so
+        // the join to the bottom is rock-solid instead of shimmering on/off as the band moves
+        // (0.6.16). A slope that ends at the view edge (the lowest / highest band) stays flat.
+        float fx = -1.0f, lx = -1.0f;
+        for (float x = r.getX(); x <= r.getRight(); x += 1.0f)
+            if (yAt (x) < yFloor - 0.5f) { if (fx < 0.0f) fx = x; lx = x; }
+        if (fx < 0.0f) return;
+        const bool leftEdge  = (fx <= r.getX() + 1.0f);
+        const bool rightEdge = (lx >= r.getRight() - 1.0f);
         juce::Path p;
-        bool started = false;
-        float firstX = r.getX(), lastX = r.getX();
-        for (float x = r.getX(); x <= r.getRight(); x += 2.0f)
-        {
-            const float y = yAt (x);
-            if (y < yFloor - 1.0f)
-            {
-                if (! started) { p.startNewSubPath (x, y); started = true; firstX = x; }
-                else            p.lineTo (x, y);
-                lastX = x;
-            }
-        }
-        if (! started) return;
+        if (leftEdge) p.startNewSubPath (fx, yAt (fx));
+        else        { p.startNewSubPath (fx, yFloor); p.lineTo (fx, yAt (fx)); }
+        for (float x = fx + 1.0f; x <= lx; x += 1.0f) p.lineTo (x, yAt (x));
+        if (! rightEdge) p.lineTo (lx, yFloor);
+
         juce::Path f (p);
-        f.lineTo (lastX, yFloor);
-        f.lineTo (firstX, yFloor);
+        f.lineTo (lx, yFloor + 2.0f);
+        f.lineTo (fx, yFloor + 2.0f);
         f.closeSubPath();
         g.setGradientFill (juce::ColourGradient (col.withAlpha (0.14f * alpha), 0.0f, yPass,
                                                  col.withAlpha (0.0f), 0.0f, yFloor, false));
         g.fillPath (f);
-        // Smooth colour-matched glow that diffuses continuously along the line, then a crisp
-        // core -- a real bloom rather than a thick hard edge (0.6.15 #3).
-        softGlow (g, p, col, 0.9f * alpha, 7.0f);
+        // A wide, well-feathered colour-matched bloom (matched to the split line's glow), then
+        // a crisp core -- a real glow, not just a blurred line (0.6.16 #C).
+        softGlow (g, p, col, 0.95f * alpha, 14.0f);
         g.setColour (col.withAlpha (0.90f * alpha));
         g.strokePath (p, juce::PathStrokeType (1.3f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     };
@@ -1038,7 +1024,7 @@ void SpectrumImager::paint (juce::Graphics& g)
         if (glowA > 0.01f)
         {
             juce::Path lp; lp.startNewSubPath (x, tip); lp.lineTo (x, lineBot);
-            softGlow (g, lp, xoverCol, glowA, 12.0f + 4.0f * press);
+            softGlow (g, lp, xoverCol, glowA, 15.0f + 5.0f * press);
         }
 
         // The line starts exactly at the pin's flat bottom -- no stub above, no overlap (0.6.15 #4).
@@ -1086,12 +1072,14 @@ void SpectrumImager::paint (juce::Graphics& g)
 
         if (act > 0.05f && ! editing && ! (i == dragHandle && dragRemovePending))
         {
-            auto nb = numberChip (i);
+            // Chip position AND value follow the eased split, so the freq readout travels
+            // with the line on a reset / preset / A-B sweep instead of jumping (0.6.16 #D).
+            juce::Rectangle<float> nb { x - 22.0f, rulerY() - 6.0f, 44.0f, 13.0f };
             g.setColour (colours::bgPanel.withAlpha (0.9f * act));
             g.fillRoundedRectangle (nb.expanded (1.0f, 1.0f), 3.0f);
             g.setFont (juce::Font (juce::FontOptions (9.5f)));
             g.setColour (colours::text.brighter (0.35f).withAlpha (act));
-            g.drawText (freqText (crossover (i)), nb, juce::Justification::centred);
+            g.drawText (freqText (dispCrossover (i)), nb, juce::Justification::centred);
         }
     }
 
@@ -1196,7 +1184,9 @@ void SpectrumImager::mouseDown (const juce::MouseEvent& e)
         return;
     }
 
-    if (! alt) if (const int dB = deleteHit (p); dB >= 0) { removeBand (dB); updateHover (p); return; }
+    // Press the delete x to ARM it; the band is removed on RELEASE (over the same x) -- while
+    // held, the add affordance stays hidden (0.6.16 #2).
+    if (! alt) if (const int dB = deleteHit (p); dB >= 0) { pressDeleteBand = dB; hoverAdd = -1; addA = 0.0f; repaint(); return; }
 
     const int h = handleNearX (p.x);
     if (alt)
@@ -1271,6 +1261,15 @@ void SpectrumImager::mouseDrag (const juce::MouseEvent& e)
 }
 void SpectrumImager::mouseUp (const juce::MouseEvent& e)
 {
+    if (pressDeleteBand >= 0)
+    {
+        const int dB = pressDeleteBand;
+        pressDeleteBand = -1;
+        if (deleteHit (e.position) == dB) removeBand (dB); // released over the same x -> delete
+        updateHover (e.position);
+        repaint();
+        return;
+    }
     if (soloPressBand >= 0)
     {
         if (soloHoldActive) { if (onClearSoloPreview) onClearSoloPreview(); if (soloMovedBand) endBandMove(); }
