@@ -220,6 +220,7 @@ private:
     juce::Array<juce::Component*> animated;
     bool uiAnimOn = true;
     int  lastScaleIdx = -1;             // applied UI-scale step (F4)
+    int  comboFontMode = -1;            // Widen combo LnF mode last applied (sync font with resize, 0.6.17 #4)
     int  brPrevAlgo = -1;              // last Widen algorithm seen, for the bottom-right knob sweep (#8)
     // Knobs/sliders only EASE to a new value during this short window, which is
     // opened by a preset / A-B / undo / algorithm change; a scroll-wheel or host

@@ -767,17 +767,8 @@ void AnamorphAudioProcessorEditor::updateModeVisibility()
     for (auto* c : adv) c->setVisible (advanced);
     if (imager) imager->setVisible (advanced);
 
-    // The Widen fonts are applied inside resized() (see applyWidenFonts) so they change in the
-    // SAME layout pass as the resize, with no visible lag (#F).
-
-    // The two Simple-mode Widen combos (algorithm + Style/Focus) get a larger-text
-    // LookAndFeel; Advanced reverts to the standard size (#17). Re-let hover through
-    // because swapping the LnF rebuilds the combo's internal label.
-    for (auto* box : { &algorithmBox, &haasSideBox, &dimModeBox })
-    {
-        box->setLookAndFeel (advanced ? nullptr : &simpleCombo);
-        passComboHoverThrough (*box);
-    }
+    // The Widen fonts AND the Simple-mode combo LookAndFeel are applied inside resized() (see
+    // applyWidenFonts), so they change in the SAME layout pass as the resize with no lag (#F/#4).
 
     updateAlgoControls();
     resized();
@@ -803,6 +794,21 @@ void AnamorphAudioProcessorEditor::applyWidenFonts()
     const auto capFont = juce::Font (juce::FontOptions (advanced ? 11.0f : 13.5f)).withExtraKerningFactor (0.2f);
     algorithmLabel.setFont (capFont);
     algoOptLabel.setFont (capFont);
+
+    // The Widen combos (Algorithm + Style/Focus) get a larger-text LookAndFeel in Simple mode.
+    // Swapping it here -- inside the resize pass -- keeps their text size changing in step with
+    // the layout, not a frame later (0.6.17 #4). Only swap on a real mode change (the swap
+    // rebuilds the combo's label, so it must not run every resized()).
+    const int mode = advanced ? 1 : 0;
+    if (comboFontMode != mode)
+    {
+        comboFontMode = mode;
+        for (auto* box : { &algorithmBox, &haasSideBox, &dimModeBox })
+        {
+            box->setLookAndFeel (advanced ? nullptr : &simpleCombo);
+            passComboHoverThrough (*box);
+        }
+    }
 }
 
 void AnamorphAudioProcessorEditor::updateMsLabels()
