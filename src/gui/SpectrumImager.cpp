@@ -874,9 +874,13 @@ void SpectrumImager::paint (juce::Graphics& g)
         const float pr  = pressW[b];
         const auto col = bandCol (b);
 
+        // Float-precise glow (drawn on the line's own path) so it tracks the bar sub-pixel,
+        // with no integer-snapped lag behind the line at high zoom (0.6.18 #1).
         if (act > 0.01f || pr > 0.01f)
-            juce::DropShadow (col.withAlpha (0.4f * act + 0.45f * pr), 8, {})
-                .drawForRectangle (g, juce::Rectangle<int> ((int) x0, (int) (y - 2.0f), (int) (x1 - x0), 4));
+        {
+            juce::Path wl; wl.startNewSubPath (x0 + 3.0f, y); wl.lineTo (x1 - 3.0f, y);
+            softGlow (g, wl, col, 0.62f * act + 0.68f * pr, 14.0f);
+        }
         g.setColour (col.withAlpha (0.55f + 0.4f * juce::jmax (act, pr)).brighter (0.2f * pr));
         g.drawLine (x0 + 3.0f, y, x1 - 3.0f, y, 1.6f + 0.8f * act + 0.7f * pr);
 
@@ -1030,7 +1034,7 @@ void SpectrumImager::paint (juce::Graphics& g)
 
         // Smooth, perfectly centred glow along the line (no sideways offset) -- the pin, drawn
         // after, occludes the top so it can't bleed over it (0.6.15 #2).
-        const float glowA = juce::jlimit (0.0f, 1.0f, (0.6f * handleA[i] + 0.55f * pressA[i]) * removeFade);
+        const float glowA = juce::jlimit (0.0f, 1.0f, (0.55f * handleA[i] + 0.3f * pressA[i]) * removeFade); // press a touch lighter (0.6.18 #2)
         if (glowA > 0.01f)
         {
             juce::Path lp; lp.startNewSubPath (x, tip); lp.lineTo (x, lineBot);
