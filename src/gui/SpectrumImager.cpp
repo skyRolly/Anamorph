@@ -827,16 +827,26 @@ void SpectrumImager::paint (juce::Graphics& g)
                     }
                     sm[(size_t) xi] = acc / norm;
                 }
-                for (int xi = 0; xi < W; xi += 2)
+                // Quads whose TOP edge slants along the spectrum curve (not a flat-topped
+                // rectangle), so the red follows the green edge smoothly with no staircase (#2).
+                const float bot = r.getBottom();
+                auto topY = [&] (float x) { return dbToY (magForColumn (x - 0.5f, x + 0.5f)) - 2.0f; };
+                for (int xi = 0; xi < W - 2; xi += 2)
                 {
                     const float rl = sm[(size_t) xi];
                     if (rl < 0.012f) continue;
-                    const float x = r.getX() + (float) xi;
-                    const float y = dbToY (magForColumn (x - 0.5f, x + 0.5f)) - 2.0f; // start on the line
-                    juce::ColourGradient vg (clipCol.withAlpha (0.78f * rl), x, y,
-                                             clipCol.withAlpha (0.14f * rl), x, r.getBottom(), false);
+                    const float x0 = r.getX() + (float) xi, x1 = x0 + 2.0f;
+                    const float y0 = topY (x0), y1 = topY (x1);
+                    juce::Path q;
+                    q.startNewSubPath (x0, y0);
+                    q.lineTo (x1, y1);
+                    q.lineTo (x1, bot);
+                    q.lineTo (x0, bot);
+                    q.closeSubPath();
+                    juce::ColourGradient vg (clipCol.withAlpha (0.78f * rl), x0, juce::jmin (y0, y1),
+                                             clipCol.withAlpha (0.14f * rl), x0, bot, false);
                     g.setGradientFill (vg);
-                    g.fillRect (x, y, 2.0f, r.getBottom() - y);
+                    g.fillPath (q);
                 }
             }
         }
@@ -943,11 +953,11 @@ void SpectrumImager::paint (juce::Graphics& g)
         g.setGradientFill (juce::ColourGradient (col.withAlpha (0.14f * alpha), 0.0f, yPass,
                                                  col.withAlpha (0.0f), 0.0f, yFloor, false));
         g.fillPath (f);
-        // A wide, well-feathered colour-matched bloom (matched to the split line's glow), then
-        // a crisp core -- a real glow, not just a blurred line (0.6.16 #C).
-        softGlow (g, p, col, 0.95f * alpha, 14.0f);
-        g.setColour (col.withAlpha (0.90f * alpha));
-        g.strokePath (p, juce::PathStrokeType (1.3f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        // Plain two-stroke line (no glow) -- the 0.6.14 look the user preferred (0.6.17 #1).
+        const auto js = juce::PathStrokeType::curved;
+        const auto cs = juce::PathStrokeType::rounded;
+        g.setColour (col.withAlpha (0.18f * alpha)); g.strokePath (p, juce::PathStrokeType (2.6f, js, cs));
+        g.setColour (col.withAlpha (0.90f * alpha)); g.strokePath (p, juce::PathStrokeType (1.3f, js, cs));
     };
     for (int i = 0; i < N - 1; ++i)
         if (pressA[i] > 0.01f)
@@ -1074,7 +1084,8 @@ void SpectrumImager::paint (juce::Graphics& g)
         {
             // Chip position AND value follow the eased split, so the freq readout travels
             // with the line on a reset / preset / A-B sweep instead of jumping (0.6.16 #D).
-            juce::Rectangle<float> nb { x - 22.0f, rulerY() - 6.0f, 44.0f, 13.0f };
+            // A slightly shorter background box (0.6.17 #3).
+            juce::Rectangle<float> nb { x - 18.0f, rulerY() - 6.0f, 36.0f, 13.0f };
             g.setColour (colours::bgPanel.withAlpha (0.9f * act));
             g.fillRoundedRectangle (nb.expanded (1.0f, 1.0f), 3.0f);
             g.setFont (juce::Font (juce::FontOptions (9.5f)));
