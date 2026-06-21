@@ -84,6 +84,7 @@ private:
     void setupToggle (juce::ToggleButton&, const char* id, const juce::String& text, const juce::String& tip);
     void updateAlgoControls();
     void updateModeVisibility();
+    void applyWidenFonts();   // mode-dependent Widen fonts, applied inside resized() so they change in step with the resize (0.6.16 #F)
     void updateMsLabels(); // swap polarity/balance wording between L/R and M/S (#12/#13)
     void showAbout (bool);
     void showSettings (bool);

@@ -30,6 +30,26 @@ static juce::NormalisableRange<float> logFreqRange (float lo, float hi)
         [] (float s, float e, float v) { return juce::jlimit (s, e, v); } };
 }
 
+// A LOG range (so the low end keeps a sensible density -- no huge dead zone near the bottom)
+// but warped with a smooth quadratic so `centre` lands on the slider's middle. Keeps the
+// endpoints and the even log feel, just shifts the midpoint (0.6.16 #E).
+static juce::NormalisableRange<float> logFreqRangeCentred (float lo, float hi, float centre)
+{
+    const float lr = std::log (hi / lo);
+    const float tc = std::log (centre / lo) / lr;     // log-proportion of the centre value
+    const float a  = 4.0f * (tc - 0.5f);              // g(p)=p+a*p*(1-p) maps 0.5 -> tc
+    return { lo, hi,
+        [lr, a] (float s, float, float p) { const float g = p + a * p * (1.0f - p); return s * std::exp (lr * g); },
+        [lr, a] (float s, float, float v)
+        {
+            const float g = std::log (v / s) / lr;
+            if (std::abs (a) < 1.0e-6f) return juce::jlimit (0.0f, 1.0f, g);
+            const float disc = std::sqrt (juce::jmax (0.0f, (1.0f + a) * (1.0f + a) - 4.0f * a * g));
+            return juce::jlimit (0.0f, 1.0f, ((1.0f + a) - disc) / (2.0f * a)); // root in [0,1]
+        },
+        [] (float s, float e, float v) { return juce::jlimit (s, e, v); } };
+}
+
 juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
 {
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
@@ -137,13 +157,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
 
     // --- Mono maker ---
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::monoMakerOn, kVersion }, "Mono Maker", false));
-    // Endpoints stay 20..500; a centre-skew (not a wider range) puts the 120 Hz default on
-    // the bar's middle with a smooth, even density either side (0.6.15 #6).
-    {
-        juce::NormalisableRange<float> mmRange (20.0f, 500.0f);
-        mmRange.setSkewForCentre (120.0f);
-        floatParam (pid::monoMakerFreq, "Mono Maker Freq", mmRange, 120.0f, hz, hzFrom);
-    }
+    // 20..500 with 120 on the bar's middle, via a centred LOG warp -- the low end keeps a
+    // healthy density (not the very sparse tail a linear centre-skew gave) (0.6.16 #E).
+    floatParam (pid::monoMakerFreq, "Mono Maker Freq", logFreqRangeCentred (20.0f, 500.0f, 120.0f), 120.0f, hz, hzFrom);
 
     // --- Mix / gain ---
     floatParam (pid::mix, "Mix", { 0.0f, 1.0f, 0.001f }, 1.0f, pct, pctFrom);

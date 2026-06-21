@@ -147,6 +147,7 @@ private:
     juce::dsp::WindowingFunction<float> window { (size_t) fftSize, juce::dsp::WindowingFunction<float>::hann };
     std::vector<float> fifoL, fifoR, fftData, mags;
     std::vector<float> redLevel; // per-bin clip-glow level, temporally smoothed (#4)
+    std::vector<float> redColX;  // per-pixel clip level, horizontally feathered (0.6.16)
     double sampleRate = 48000.0;
 
     int   dragHandle = -1;
@@ -157,6 +158,7 @@ private:
     int   hoverDelete = -1;  // band the cursor is over (its delete x is dimly shown)
     int   hoverDeleteExact = -1; // band whose delete x is directly under the cursor (bright)
     int   hoverSolo   = -1;  // band whose headphone is hovered
+    int   pressDeleteBand = -1; // band whose delete x is being held (delete fires on release) (0.6.16 #1/#2)
     float addX        = 0.0f;
     float dragGrabDX  = 0.0f;     // cursor-to-line offset while dragging a split (#10/#11)
     float dragOrigX[3] { 0, 0, 0 }; // split x positions at drag start, for the reversible projection

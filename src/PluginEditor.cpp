@@ -767,27 +767,8 @@ void AnamorphAudioProcessorEditor::updateModeVisibility()
     for (auto* c : adv) c->setVisible (advanced);
     if (imager) imager->setVisible (advanced);
 
-    // Simple mode is just the Widen core, so its text is larger for presence;
-    // Advanced packs more in, so it shrinks back. The knob NAME labels were a touch
-    // too large last round, so the Simple size is eased down a little (#17).
-    const float widenLabelFont = advanced ? 11.5f : 15.0f;
-    const float widenValueFont = advanced ? 12.0f : 14.5f;
-    auto setValueFont = [] (juce::Slider& s, float size)
-    {
-        for (auto* c : s.getChildren())
-            if (auto* l = dynamic_cast<juce::Label*> (c))
-                l->setFont (juce::Font (juce::FontOptions (size)));
-    };
-    for (auto* l : { &driveL, &amountL, &widthL, &haasDelayL, &velvetL, &chorusRateL, &chorusDepthL })
-        l->setFont (juce::Font (juce::FontOptions (widenLabelFont)));
-    for (auto* k : { &driveK, &amountK, &widthK, &haasDelayK, &velvetK, &chorusRateK, &chorusDepthK })
-        setValueFont (*k, widenValueFont);
-
-    // The "WIDEN" caption and the "STYLE / FOCUS" caption share one size so they
-    // read as a matched pair, and both scale up in Simple mode (#6).
-    const auto capFont = juce::Font (juce::FontOptions (advanced ? 11.0f : 13.5f)).withExtraKerningFactor (0.2f);
-    algorithmLabel.setFont (capFont);
-    algoOptLabel.setFont (capFont);
+    // The Widen fonts are applied inside resized() (see applyWidenFonts) so they change in the
+    // SAME layout pass as the resize, with no visible lag (#F).
 
     // The two Simple-mode Widen combos (algorithm + Style/Focus) get a larger-text
     // LookAndFeel; Advanced reverts to the standard size (#17). Re-let hover through
@@ -801,6 +782,27 @@ void AnamorphAudioProcessorEditor::updateModeVisibility()
     updateAlgoControls();
     resized();
     repaint();
+}
+
+// Mode-dependent Widen fonts. Called at the START of resized() so that when the ADV toggle
+// resizes the window the font sizes update in the very same layout pass -- no lag (#F).
+void AnamorphAudioProcessorEditor::applyWidenFonts()
+{
+    const float widenLabelFont = advanced ? 11.5f : 15.0f;
+    const float widenValueFont = advanced ? 12.0f : 14.5f;
+    auto setValueFont = [] (juce::Slider& s, float size)
+    {
+        for (auto* c : s.getChildren())
+            if (auto* l = dynamic_cast<juce::Label*> (c))
+                l->setFont (juce::Font (juce::FontOptions (size)));
+    };
+    for (auto* l : { &driveL, &amountL, &widthL, &haasDelayL, &velvetL, &chorusRateL, &chorusDepthL })
+        l->setFont (juce::Font (juce::FontOptions (widenLabelFont)));
+    for (auto* k : { &driveK, &amountK, &widthK, &haasDelayK, &velvetK, &chorusRateK, &chorusDepthK })
+        setValueFont (*k, widenValueFont);
+    const auto capFont = juce::Font (juce::FontOptions (advanced ? 11.0f : 13.5f)).withExtraKerningFactor (0.2f);
+    algorithmLabel.setFont (capFont);
+    algoOptLabel.setFont (capFont);
 }
 
 void AnamorphAudioProcessorEditor::updateMsLabels()
@@ -1286,6 +1288,7 @@ void AnamorphAudioProcessorEditor::layoutScopeArea()
 
 void AnamorphAudioProcessorEditor::resized()
 {
+    applyWidenFonts(); // keep the Widen font sizes in lockstep with the (mode-dependent) layout (#F)
     dimOverlay.setBounds (getLocalBounds().withTrimmedTop (46));
     aboutBackdrop.setBounds (getLocalBounds());
     settingsBackdrop.setBounds (getLocalBounds());
