@@ -874,13 +874,11 @@ void SpectrumImager::paint (juce::Graphics& g)
         const float pr  = pressW[b];
         const auto col = bandCol (b);
 
-        // Float-precise glow (drawn on the line's own path) so it tracks the bar sub-pixel,
-        // with no integer-snapped lag behind the line at high zoom (0.6.18 #1).
+        // The soft drop-shadow glow (the look the user preferred) -- reverted from the
+        // multi-stroke variant, which changed its appearance too much (0.6.19 #1).
         if (act > 0.01f || pr > 0.01f)
-        {
-            juce::Path wl; wl.startNewSubPath (x0 + 3.0f, y); wl.lineTo (x1 - 3.0f, y);
-            softGlow (g, wl, col, 0.62f * act + 0.68f * pr, 14.0f);
-        }
+            juce::DropShadow (col.withAlpha (0.4f * act + 0.45f * pr), 8, {})
+                .drawForRectangle (g, juce::Rectangle<int> ((int) x0, (int) (y - 2.0f), (int) (x1 - x0), 4));
         g.setColour (col.withAlpha (0.55f + 0.4f * juce::jmax (act, pr)).brighter (0.2f * pr));
         g.drawLine (x0 + 3.0f, y, x1 - 3.0f, y, 1.6f + 0.8f * act + 0.7f * pr);
 

@@ -6,6 +6,33 @@ of stereo tools (MS, mono-maker, channel utilities, monitoring) around a
 high-end diamond vectorscope. Built with **CMake + JUCE** only — it configures
 and builds entirely from the command line on a headless Linux machine, no IDE.
 
+### What's new in 0.7.0
+This release is built around a ground-up **Multiband (spectral) editor** — the old
+rotary multiband is replaced by an Ozone-Imager / Pro-Q-style display:
+
+- **1–4 bands, drawn directly on a live FFT analyser.** Drag a band up/down to set
+  its stereo width, drag a split to move it, double-click a split to type a Hz value.
+  Click empty space to add a split (neighbours spread to make room); drag a split far
+  off the box, or click its **✕**, to remove it (the two regions merge).
+- **Per-band Solo** with a headphone icon: click to latch any combination of bands,
+  press-and-hold to audition one momentarily, hold-and-drag to slide a whole band.
+  Solo monitors **after** the output Mix, so a soloed band is heard alone at full
+  level even at Mix < 100%. Solo travels with A/B and undo, but a preset load resets it.
+- **Phase-coherent crossovers** (Linkwitz-Riley) with a per-sample octave-rate slew,
+  so a fast split drag can never chirp; the bands recombine mono-compatibly.
+- A **custom non-linear frequency ruler** (monotone-cubic warp), a cubic-smoothed
+  analyser, a band-pass response overlay while dragging a split, and a soft neon
+  clip band that lights the exact over-0 dBFS frequencies.
+- The split / width / Solo elements **animate** on a reset / preset / A-B / undo, and
+  every split drag resolves through a reversible projection so neighbours push aside
+  and spring back cleanly. Click-free "duck" switching throughout.
+- Reworked **Advanced layout**: four full-width tiers (top bar · scope + Widen ·
+  Multiband · Input | Output).
+
+The **0.6.x** line that led here added the variable-band Multiband DSP + GUI, the
+4-bit per-band Solo, the band-move / push drag model, the asymmetric click-free
+switch duck, and a long tail of GUI polish.
+
 ### What's new in 0.5.3
 - **M/S is now a decoder** (Ch1 = Mid, Ch2 = Side → L/R); Swap swaps Mid/Side.
 - **Frequency knobs are logarithmic** (no dead chunk at the bottom). Mono-Maker
@@ -165,8 +192,8 @@ cmake --build build --config Release
 # 3. Run the DSP self-tests
 scripts/run-tests.sh
 
-# 4. Validate the VST3 with pluginval (strictness 8 = the standard gate)
-scripts/run-pluginval.sh 8
+# 4. Validate the VST3 with pluginval (strictness 10 = the release gate)
+scripts/run-pluginval.sh 10
 ```
 
 The build prints the path to the produced `Anamorph.vst3`. It is typically at:
@@ -201,7 +228,7 @@ src/
     VelvetNoise.{h,cpp}        Sparse velvet-noise decorrelation (mono->stereo)
     ChorusEngine.{h,cpp}       Chorus + Dimension-D (anti-phase = no pitch wobble)
     MonoMaker.{h,cpp}          Linkwitz-Riley low-freq mono
-    MultibandWidth.{h,cpp}     3-band phase-coherent per-band width (Advanced)
+    MultibandWidth.{h,cpp}     1–4 band phase-coherent per-band width + solo (Advanced)
     LoudnessMatch.{h,cpp}      BS.1770 K-weighted Auto-Gain (Match/Apply)
     Correlation.h              -1..+1 phase-correlation meter (fast + slow)
     ScopeBuffer.h              Lock-free stereo ring buffer for the vectorscope
@@ -212,6 +239,8 @@ src/
     LookAndFeel.{h,cpp}        Premium dark "digital" look (no skeuomorphism)
     Vectorscope.{h,cpp}        Diamond/Lissajous goniometer (GPU-composited)
     CorrelationMeter.{h,cpp}   Horizontal + vertical correlation meters
+    LevelMeter.{h,cpp}         Per-channel L/R Peak + RMS level meters
+    SpectrumImager.{h,cpp}     Multiband spectral editor (FFT + drag-to-split bands)
 tests/dsp_tests.cpp            Headless acceptance self-tests
 scripts/                       setup / build / test / pluginval
 ```
@@ -222,9 +251,11 @@ scripts/                       setup / build / test / pluginval
    decorrelators never spread the bass (no L+R comb-cancellation).
 3. **MS encode** *(only if MS mode)* — wraps Drive + the algorithm.
 4. **Effect engine** — **Drive → algorithm (Haas / Velvet / Chorus / Dimension-D) → global Width**.
-5. **Multiband Width** *(Advanced Mode only)*.
+5. **Multiband Width** *(Advanced Mode only)* — 1–4 phase-coherent bands, each with
+   its own MS width; a per-band Solo isolates any combination of bands.
 6. **MS decode** *(only if MS mode)*.
-7. **Mix (Dry/Wet)** — the dry path is **delay-compensated** to the wet latency.
+7. **Mix (Dry/Wet)** — the dry path is **delay-compensated** to the wet latency. A
+   Multiband Solo monitors **here, post-Mix**, so a soloed band stays full-level at any Mix.
 8. **Output Gain / Auto Gain**.
 9. **Metering tap** — always taps the **final** output (scope + correlation).
 
@@ -266,8 +297,8 @@ of a ~4 ms raised-cosine duck, so toggling is click-free even during playback.
 - **DSP self-tests** (`tests/dsp_tests.cpp`): MS round-trip is bit-exact; no
   NaN/Inf/denormals across every algorithm × oversampling × feature combination;
   reported latency matches the actual chain delay; true bypass is a null.
-- **pluginval**: target **strictness 8** as the standard gate; aim for **10**
-  before release. Editor open/close tests run under `xvfb-run` on headless Linux.
+- **pluginval**: every build is gated at **strictness 10** (the release gold
+  standard). Editor open/close tests run under `xvfb-run` on headless Linux.
 
 ### What cannot be verified headlessly
 The **audio sound quality** (how the widening / Dimension-D / chorus actually
