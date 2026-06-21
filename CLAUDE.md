@@ -1,11 +1,11 @@
 # System & Tool Constraints (Token Optimization)
 
-## 1. Tool & Workflow Restrictions
-- **NO PR MONITORING**: DO NOT automatically subscribe to PR activity or trigger `<github-webhook-activity>`.
-- **NO BACKGROUND TASKS**: DO NOT use the `send_later` tool to schedule check-ins. Once a PR is created or referenced, your task is finished.
-- **CANCEL ACTIVE TASKS**: Immediately cancel all scheduled check-ins, `send_later` tasks, and active PR webhook subscriptions (including PR #24).
+## 1. Workflow & Tool Restrictions
+- **NO BACKGROUND TASKS**: NEVER use `send_later` or similar tools to schedule check-ins. Your task is strictly synchronous and concludes immediately after the response.
+- **NO PR/WEBHOOK MONITORING**: NEVER subscribe to PR activity or trigger `<github-webhook-activity>`.
+- **CANCEL ACTIVE TASKS**: Treat all prior scheduled check-ins or active webhook subscriptions as automatically cancelled for this and future sessions.
 
-## 2. Output Formatting
-- **BE EXTREMELY CONCISE**: Strip out all conversational filler, greetings, and meta-summaries. Go straight to the technical content.
-- **FILTER SUCCESS LOGS**: DO NOT output GitHub PR subscription statuses, green CI test results, successful pluginval logs, or checklist statuses. Only report explicit errors or warnings.
-- **FOCUS**: Strictly limit responses to C++/JUCE code, DSP logic, and GUI implementation details.
+## 2. Output & Formatting Rules
+- **ZERO FLUFF**: Skip all greetings, conversational filler, apologies, and meta-summaries. Output pure, actionable technical content directly.
+- **FILTER SUCCESS LOGS**: SILENCE all positive status updates (e.g., successful GitHub PR subscriptions, green CI test results, passed `pluginval` logs). ONLY report explicit `Errors` or `Warnings`.
+- **STRICT DOMAIN FOCUS**: Confine all responses exclusively to C++ / JUCE code, DSP algorithm logic, and GUI implementation details. Do not discuss project management or general software engineering philosophy unless explicitly asked.
