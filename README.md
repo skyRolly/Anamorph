@@ -6,6 +6,16 @@ of stereo tools (MS, mono-maker, channel utilities, monitoring) around a
 high-end diamond vectorscope. Built with **CMake + JUCE** only — it configures
 and builds entirely from the command line on a headless Linux machine, no IDE.
 
+### What's new in 0.7.5
+- **Multiband Solo + Mono Maker, made correct.** Solo is a post-everything *band*
+  monitor — you hear exactly the spectral region the soloed band covers. The Mono
+  Maker mono lows live in **band 0's region** (the bottom of the spectrum), so they are
+  output when **band 0** is soloed and stay out when only higher bands are. This fixes
+  both earlier mistakes: 0.7.3 dropped the lows under any solo (band‑0 solo became a
+  low‑cut), and 0.7.4 over‑corrected by re‑adding them under *any* solo (a high‑band
+  solo leaked the lows). Self‑test checks band‑0 solo plays them and a high‑band solo
+  doesn't.
+
 ### What's new in 0.7.4
 - **Multiband Solo no longer turns Mono Maker into a low-cut.** The mono low band is
   a parallel utility path (it bypasses the widener), not a Multiband band, so it is
