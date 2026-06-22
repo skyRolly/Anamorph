@@ -34,6 +34,7 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
     chorus.prepare (sr * 8.0);          // sized for the highest OS rate (8x)
     multiband.prepare (sr, maxBlock);
     monoMaker.prepare (sr, maxBlock);
+    soloMonitor.prepare (sr, maxBlock);
     loudness.prepare (sr);
     correlation.prepare (sr);
     levels.prepare (sr);
@@ -62,10 +63,6 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
     outBalanceSmooth.reset (sr, ramp);
     driveSmooth     .reset (sr, ramp);
     driveBlendSmooth.reset (sr, 0.015);
-    monoDriveSmooth     .reset (sr, ramp);
-    monoDriveBlendSmooth.reset (sr, 0.015);
-    monoDriveSmooth     .setCurrentAndTargetValue (1.0f);
-    monoDriveBlendSmooth.setCurrentAndTargetValue (0.0f);
     polLSmooth      .reset (sr, 0.005);
     polRSmooth      .reset (sr, 0.005);
     polLSmooth      .setCurrentAndTargetValue (1.0f);
@@ -95,13 +92,6 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
     dryScratch.setSize (2, maxBlock);
     wetScratch.setSize (2, maxBlock);
     inputScratch.setSize (2, maxBlock);
-    monoLow.setSize (1, maxBlock);
-    monoLowDry.setSize (1, maxBlock);
-    monoLowDelay.setSize (1, maxLat + maxBlock + 1);
-    monoLowDryDelay.setSize (1, maxLat + maxBlock + 1);
-    monoLowDelay.clear();
-    monoLowDryDelay.clear();
-    monoLowWrite = 0;
 
     updateDerived();
     reset();
@@ -114,6 +104,7 @@ void AnamorphEngine::reset()
     chorus.reset();
     multiband.reset();
     monoMaker.reset();
+    soloMonitor.reset();
     loudness.reset();
     correlation.reset();
     levels.reset();
@@ -123,9 +114,6 @@ void AnamorphEngine::reset()
     dryDelayBuffer.clear();
     dryAlignDelayBuffer.clear();
     dryDelayWrite = 0;
-    monoLowDelay.clear();
-    monoLowDryDelay.clear();
-    monoLowWrite = 0;
 
     // Flush any in-flight switch duck straight to its target so a host reset
     // lands in a clean steady state (bit-exact transparent from sample 0).
@@ -256,7 +244,6 @@ void AnamorphEngine::snapSmoothers() noexcept
     auto snap = [] (juce::SmoothedValue<float>& s) { s.setCurrentAndTargetValue (s.getTargetValue()); };
     snap (widthSmooth);   snap (mixSmooth);        snap (outGainSmooth);
     snap (balanceSmooth); snap (outBalanceSmooth); snap (driveSmooth); snap (driveBlendSmooth);
-    snap (monoDriveSmooth); snap (monoDriveBlendSmooth);
     snap (polLSmooth);    snap (polRSmooth);
     // matchGainSmooth is left to the injection / loudness re-measure (its own glide).
 }
@@ -310,8 +297,6 @@ void AnamorphEngine::updateDerived()
     // (feedback #13) -- the peak-preserving makeup is only mixed in gradually.
     driveSmooth.setTargetValue (juce::Decibels::decibelsToGain (juce::jmax (0.0f, p.driveDb)));
     driveBlendSmooth.setTargetValue (juce::jlimit (0.0f, 1.0f, p.driveDb / 2.0f));
-    monoDriveSmooth.setTargetValue (driveSmooth.getTargetValue());
-    monoDriveBlendSmooth.setTargetValue (driveBlendSmooth.getTargetValue());
 
     // Unified widening intensity -> every algorithm is identity at amount 0.
     // Each algorithm smooths the amount internally (click-free, #1).
@@ -340,9 +325,14 @@ void AnamorphEngine::updateDerived()
     }
 
     multiband.setBandCount (p.mbBands);
-    multiband.setSolo (p.mbSolo);
     multiband.setCrossovers (p.mbFreqLow, p.mbFreqMid, p.mbFreqHigh);
     multiband.setWidths (p.mbWidthLow, p.mbWidthMid, p.mbWidthHiMid, p.mbWidthHigh);
+
+    // Band Solo is a post-everything MONITOR: the SoloMonitor mirrors the Multiband's
+    // band split (same count + crossovers) so soloing band b auditions exactly band b
+    // of the FINAL output. The solo mask itself is read per block in process().
+    soloMonitor.setBandCount (p.mbBands);
+    soloMonitor.setCrossovers (p.mbFreqLow, p.mbFreqMid, p.mbFreqHigh);
 
     monoMaker.setFrequency (p.monoMakerFreq);
 
@@ -455,6 +445,10 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         // toggled) needs its crossover filters cleared, captured before p is moved.
         const bool mbStructuralChange = (pendingP.mbBands != p.mbBands)
                                      || (pendingP.mbEnable != p.mbEnable);
+        // A change to the Band Solo set engages/repoints the post-everything monitor
+        // band-pass; clear its filter state at the silent bottom so it starts clean
+        // (band count also moves the band edges, so include the structural change).
+        const bool mbSoloChanged = (pendingP.mbSolo != p.mbSolo) || mbStructuralChange;
         // Compare the incoming OS path against what was actually RUNNING (the
         // latch) -- p's driveDb was already overwritten by copyContinuous.
         const bool osPathChanged = pendingP.oversample != p.oversample
@@ -494,6 +488,7 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
             // resets are inaudible.
             multiband.reset();
             monoMaker.reset();
+            soloMonitor.reset();
             haas.reset();
             velvet.reset();
             chorus.reset();
@@ -509,11 +504,14 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
             }
             pendingForced = false;
         }
-        else if (mbStructuralChange)
+        else
         {
             // A non-forced structural Multiband edit (band added/removed) reached the
             // silent bottom: clear the crossover state so the new topology starts clean.
-            multiband.reset();
+            if (mbStructuralChange) multiband.reset();
+            // Engaging / repointing the Band Solo monitor: clear its band-pass state so
+            // the auditioned band fades in clean (the solo change rides this duck).
+            if (mbSoloChanged) soloMonitor.reset();
         }
         switchState = SwitchState::FadeIn;
     }
@@ -588,37 +586,9 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     inputScratch.copyFrom (0, 0, L, n);
     inputScratch.copyFrom (1, 0, R, n);
 
-    // -------- Mono Maker split (feedback #25) -------------------------------
-    // Peel off a mono low band; only the HIGH band enters the widener and the
-    // dry/wet mix. The mono lows go straight to the output (added back before
-    // Output gain/balance), so the low end is unaffected by widening OR Mix.
-    const bool monoMakerActive = p.monoMakerEnable;
-    if (monoMakerActive)
-    {
-        monoMaker.processSplit (L, R, monoLow.getWritePointer (0), n);
-
-        // Keep the un-driven mono low aside as the DRY low: Mix=0 must yield this,
-        // not the driven low (#5).
-        monoLowDry.copyFrom (0, 0, monoLow, 0, 0, n);
-
-        // Drive the mono low band with the SAME saturation as the high band, so
-        // raising Drive doesn't just boost the highs and make Mono Maker sound
-        // like a low cut (feedback #1). Low-frequency mono -> base rate is fine.
-        if (driveActive || monoDriveBlendSmooth.isSmoothing())
-        {
-            float* ml = monoLow.getWritePointer (0);
-            for (int i = 0; i < n; ++i)
-            {
-                const float g = juce::jmax (1.0f, monoDriveSmooth.getNextValue());
-                const float blend = monoDriveBlendSmooth.getNextValue();
-                const float sat = std::tanh (g * ml[i]) * (1.0f / std::tanh (g));
-                ml[i] += blend * (sat - ml[i]);
-            }
-        }
-    }
-
-    // DRY for the dry/wet mix = the band that actually enters the widener
-    // (the high band when Mono Maker is on, otherwise the full signal).
+    // DRY for the dry/wet Mix = the full conditioned input (same content as the
+    // Level-Match reference). Mono Maker now runs POST-Mix, so nothing is peeled off
+    // here; the widener and Multiband see the whole signal.
     dryScratch.copyFrom (0, 0, L, n);
     dryScratch.copyFrom (1, 0, R, n);
 
@@ -647,17 +617,10 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     for (int i = 0; i < n; ++i)
         applyWidth (L[i], R[i], widthSmooth.getNextValue());
 
-    // -------- 4. Multiband Width (Advanced) ---------------------------------
-    // Reconstruct the dry through the SAME gliding crossovers as the wet, with the
-    // SAME solo masking, so (a) a partial Mix never combs the mono sum (KI #1) and
-    // (b) a soloed band OBEYS Mix -- at Mix=0 you hear that band's DRY (un-widened)
-    // version, at Mix=1 the wet. (Previously solo forced full wet and ignored Mix.)
-    const bool mbSoloMonitor = p.mbEnable && ((p.mbSolo & ((1 << p.mbBands) - 1)) != 0);
-    // Solo is a post-everything band monitor. The Mono Maker mono lows sit at the
-    // BOTTOM of the spectrum -- band 0's region -- so they are heard only when band 0
-    // is soloed (or when not soloing at all). Soloing a HIGH band must not leak them,
-    // and soloing band 0 must not low-cut them (0.7.5 #1, reconciling 0.7.3/0.7.4).
-    const bool monoLowsHeard = (! mbSoloMonitor) || ((p.mbSolo & 0x1) != 0);
+    // -------- Multiband Width (Advanced) ------------------------------------
+    // Reconstruct the dry through the SAME gliding crossovers as the wet, at unit
+    // width -- a phase-matched A(dry) -- so a partial Mix never combs the mono sum
+    // (Known Issue #1). Solo-agnostic: the wet always sums every band.
     bool dryAligned = false;
     if (p.mbEnable)
     {
@@ -667,30 +630,17 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         dryAligned = true;
     }
 
-    // -------- 7. Mix (dry/wet), delay-compensated. The Mono Maker low band is
-    //          folded INTO the same per-sample Mix so its DRIVE obeys Mix too:
-    //          Mix=0 -> the un-driven mono low; Mix=1 -> the driven mono low. The
-    //          low band's mono-ing itself stays present at all Mix values, but it
-    //          no longer roars through driven when Mix=0 (#5). -------------------
-    const float* dL  = dryScratch.getReadPointer (0);
-    const float* dR  = dryScratch.getReadPointer (1);
-    // Phase-matched dry source (A(dry)); falls back to the clean dry when the
-    // Multiband isn't aligning, so the delay line stays coherent either way.
-    const float* aL  = dryAligned ? dryAlignScratch.getReadPointer (0) : dL;
-    const float* aR  = dryAligned ? dryAlignScratch.getReadPointer (1) : dR;
+    // ======================== 2. DRY / WET MIX ==============================
+    // Delay-compensated dry. The dry source crossfades from the CLEAN dry (bit-exact
+    // at Mix=0 -> an exact null) to the phase-ALIGNED A(dry) as Mix leaves 0, so
+    // 0<Mix<1 never combs yet Mix=0 stays sample-exact; the fade completes by
+    // kAlignMix and smoothstep (zero slope at 0) keeps the departure click-free (KI #1).
+    const float* dL = dryScratch.getReadPointer (0);
+    const float* dR = dryScratch.getReadPointer (1);
+    const float* aL = dryAligned ? dryAlignScratch.getReadPointer (0) : dL;
+    const float* aR = dryAligned ? dryAlignScratch.getReadPointer (1) : dR;
     float* adL = dryAlignDelayBuffer.getWritePointer (0);
     float* adR = dryAlignDelayBuffer.getWritePointer (1);
-    const float* ml  = monoMakerActive ? monoLow.getReadPointer (0)    : nullptr; // wet (driven) low
-    const float* mld = monoMakerActive ? monoLowDry.getReadPointer (0) : nullptr; // dry (un-driven) low
-    float* md  = monoLowDelay.getWritePointer (0);
-    float* mdd = monoLowDryDelay.getWritePointer (0);
-    const int mdSize = monoLowDelay.getNumSamples();
-
-    // The dry source crossfades from the CLEAN dry (bit-exact at Mix=0 -> an exact
-    // null) to the phase-ALIGNED A(dry) as Mix leaves 0, so 0<Mix<1 never combs yet
-    // Mix=0 stays sample-exact. The fade completes by kAlignMix; below it the wet is
-    // barely present, so the brief blend's residual comb is negligible. Smoothstep
-    // (zero slope at 0) keeps the departure click-free (Known Issue #1).
     constexpr float kAlignMix = 0.05f;
 
     for (int i = 0; i < n; ++i)
@@ -705,56 +655,28 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         dryDelayWrite = (dryDelayWrite + 1) % ddSize;
 
         const float m = mixSmooth.getNextValue();
-
-        // Pick the dry that feeds the Mix:
-        //   * soloing      -> the aligned dry is already masked to the soloed band(s);
-        //     use it at all Mix so Mix=0 plays the band's DRY (un-widened) version and
-        //     Mix=1 the wet. A monitoring solo isn't a transparent path, so it does NOT
-        //     crossfade back to the full clean dry -- the soloed band obeys Mix.
-        //   * not soloing  -> crossfade clean -> A(dry) so Mix=0 nulls exactly yet
-        //     0<Mix<1 doesn't comb (KI #1).
-        float dryL, dryR;
-        if (! dryAligned)
-        {
-            dryL = cleanL; dryR = cleanR;
-        }
-        else if (mbSoloMonitor)
-        {
-            dryL = alignL; dryR = alignR;
-        }
-        else
+        float dryL = cleanL, dryR = cleanR;
+        if (dryAligned)
         {
             const float t  = juce::jlimit (0.0f, 1.0f, m * (1.0f / kAlignMix));
             const float ts = t * t * (3.0f - 2.0f * t); // smoothstep: clean -> A(dry)
             dryL = cleanL + ts * (alignL - cleanL);
             dryR = cleanR + ts * (alignR - cleanR);
         }
-        float outL = dryL + m * (L[i] - dryL);
-        float outR = dryR + m * (R[i] - dryR);
-
-        if (monoMakerActive)
-        {
-            md[monoLowWrite]  = ml[i];
-            mdd[monoLowWrite] = mld[i];
-            int mp = monoLowWrite - lat; if (mp < 0) mp += mdSize;
-            const float wetLow = md[mp], dryLow = mdd[mp];
-            monoLowWrite = (monoLowWrite + 1) % mdSize;
-            // The mono lows are re-added only when they belong to what's being heard:
-            // when not soloing, or when band 0 (their spectral region) is soloed. So a
-            // band-0 solo plays them (no low-cut) while a high-band solo doesn't leak
-            // them (0.7.5). The drive on the lows obeys Mix; the mono-ing always applies.
-            if (monoLowsHeard)
-            {
-                const float lowOut = dryLow + m * (wetLow - dryLow);
-                outL += lowOut; outR += lowOut;
-            }
-        }
-
-        L[i] = outL; R[i] = outR;
+        L[i] = dryL + m * (L[i] - dryL);
+        R[i] = dryR + m * (R[i] - dryR);
     }
 
-    // Level Match detects the FULL recombined output (lows + highs) against the
-    // full input, BEFORE Output gain / balance (feedback #25).
+    // ======================== 3. MONO MAKER (post-Mix) ======================
+    // Collapse the low band of the MIXED signal to mono in place, so the final low
+    // end is mono whatever the Mix amount. The Mid stays allpass-flat (LP + HP), so
+    // the mono sum has no low-frequency cancellation.
+    if (p.monoMakerEnable)
+        monoMaker.process (L, R, n);
+
+    // ======================== 4. OUTPUT STAGE ===============================
+    // Level Match measures the post-Mono-Maker signal (the real processed output)
+    // against the conditioned input, BEFORE Output gain / balance (feedback #25).
     wetScratch.copyFrom (0, 0, L, n);
     wetScratch.copyFrom (1, 0, R, n);
     loudness.setDriveDb (driveActive ? p.driveDb : 0.0f); // anticipate Drive boost on silence (#19)
@@ -791,7 +713,14 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         L[i] *= g * gL * sg; R[i] *= g * gR * sg;
     }
 
-    // -------- 9. Metering tap (FINAL output) --------------------------------
+    // ======================== 5. BAND SOLO MONITOR ==========================
+    // POST-EVERYTHING audition: band-pass the already-produced output to the soloed
+    // band(s). No effect stage changed its behaviour for solo -- this only filters
+    // what is heard. mask == 0 (or Multiband off) -> the true output passes through.
+    if (p.mbEnable)
+        soloMonitor.process (L, R, p.mbSolo, n);
+
+    // -------- Metering tap (the monitored output) ---------------------------
     for (int i = 0; i < n; ++i)
     {
         correlation.process (L[i], R[i]);

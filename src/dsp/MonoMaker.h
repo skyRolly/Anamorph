@@ -8,16 +8,17 @@ namespace anamorph
 // ============================================================================
 //  MonoMaker
 //
-//  Phase-coherent low-frequency mono via a Linkwitz-Riley crossover. Rather than
-//  collapsing the lows in place, it SPLITS the signal: the low band is summed to
-//  mono and returned separately, while L/R are replaced with the HIGH band only.
-//  The engine then routes only the high band through the widener and adds the
-//  mono lows back at the end (feedback #2 + #20):
+//  Phase-coherent low-frequency mono via a Linkwitz-Riley crossover, applied
+//  IN PLACE at the very end of the processing chain (after the dry/wet Mix):
 //
-//    * the decorrelators never widen the low band  -> no external mono-sum
-//      comb-cancellation of the bass;
-//    * the mono lows survive the widener untouched  -> Mono Maker actually
-//      controls the final low end (it "works").
+//      low_L, high_L = LR(L);   low_R, high_R = LR(R)
+//      monoLow       = (low_L + low_R) * 0.5
+//      L = high_L + monoLow;    R = high_R + monoLow
+//
+//  Below the cutoff the Side is collapsed to mono; the Mid is allpass-reconstructed
+//  (LP + HP = allpass), so |Mid| is flat -- no low-frequency cancellation in the
+//  mono sum. Running it post-Mix means it acts on whatever the dry/wet blend
+//  produced, so the final low end is always mono regardless of the Mix amount.
 //
 //  The crossover frequency is glided PER SAMPLE (feedback #19): updating the LR
 //  coefficients only every N samples stepped them at an audible rate and sounded
@@ -31,9 +32,8 @@ public:
 
     void setFrequency (float hz) noexcept { targetFreq = hz; }
 
-    // Splits the band: writes the mono low band to lowMonoOut and replaces L/R
-    // with the high band. (Recombine downstream: out = highL/R + lowMono.)
-    void processSplit (float* left, float* right, float* lowMonoOut, int numSamples) noexcept;
+    // Collapses the low band to mono in place (highs untouched, lows summed to mono).
+    void process (float* left, float* right, int numSamples) noexcept;
 
 private:
     juce::dsp::LinkwitzRileyFilter<float> xover;
