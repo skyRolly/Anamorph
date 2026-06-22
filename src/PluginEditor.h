@@ -21,6 +21,12 @@ public:
 
     void paint (juce::Graphics&) override;
     void resized() override;
+    // The host reports its display/DPI scale here (Windows hosts call this). We
+    // COMPOSE it with the user UI-scale rather than let JUCE's default overwrite our
+    // transform -- that overwrite is what made the window open at the wrong size and
+    // ignore the Window-Size combo on some Windows hosts (Mac uses backing scale, so
+    // it never hit this).
+    void setScaleFactor (float newScale) override;
 
 private:
     using SliderAttachment   = juce::AudioProcessorValueTreeState::SliderAttachment;
@@ -219,6 +225,7 @@ private:
     // properties the LookAndFeel blends with; repaints fire only while moving.
     juce::Array<juce::Component*> animated;
     bool uiAnimOn = true;
+    float hostScale = 1.0f;             // host display/DPI scale (Windows), composed with the UI scale
     int  lastScaleIdx = -1;             // applied UI-scale step (F4)
     int  comboFontMode = -1;            // Widen combo LnF mode last applied (sync font with resize, 0.6.17 #4)
     int  brPrevAlgo = -1;              // last Widen algorithm seen, for the bottom-right knob sweep (#8)

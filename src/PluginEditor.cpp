@@ -1075,11 +1075,23 @@ void AnamorphAudioProcessorEditor::applyUiScale()
 
     // Advanced extends the window downward for the full-width Multiband bar instead
     // of compressing the scope (0.6.7 #2). The base (unscaled) size depends on the
-    // mode; the XS..XL transform scales it.
+    // mode; the XS..XL transform scales it, COMPOSED with the host's display/DPI
+    // scale so the user scale and the host DPI cooperate instead of overwriting each
+    // other (the Windows window-size bug). hostScale is 1.0 unless the host set it.
     setSize (kWidth, advanced ? kAdvHeight : kHeight);
-    setTransform (juce::AffineTransform::scale (scales[idx]));
+    setTransform (juce::AffineTransform::scale (hostScale * scales[idx]));
     if (openGLContext.isAttached())
         openGLContext.triggerRepaint();
+}
+
+// The host calls this with its display/DPI scale (notably Windows hosts on a
+// scaled display). JUCE's default would overwrite our transform with scale(newScale)
+// and so wipe out the user's Window-Size choice; instead we remember it and re-apply
+// the COMPOSED transform, so DPI and the UI scale multiply correctly (#window-size).
+void AnamorphAudioProcessorEditor::setScaleFactor (float newScale)
+{
+    hostScale = (newScale > 0.0f) ? newScale : 1.0f;
+    applyUiScale();
 }
 
 // ----------------------------------------------------------------------------

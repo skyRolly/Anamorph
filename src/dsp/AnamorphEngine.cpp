@@ -648,25 +648,18 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         applyWidth (L[i], R[i], widthSmooth.getNextValue());
 
     // -------- 4. Multiband Width (Advanced) ---------------------------------
-    // A Multiband solo monitors AFTER the dry/wet Mix and forces full wet, so the
-    // phase-matched dry is only needed when NOT soloing. When mixing in dry, we ask
-    // MultibandWidth to also reconstruct A(dry) in lockstep with the wet's gliding
-    // crossovers, so a partial Mix recombines without combing the mono sum (#1-KI).
+    // Reconstruct the dry through the SAME gliding crossovers as the wet, with the
+    // SAME solo masking, so (a) a partial Mix never combs the mono sum (KI #1) and
+    // (b) a soloed band OBEYS Mix -- at Mix=0 you hear that band's DRY (un-widened)
+    // version, at Mix=1 the wet. (Previously solo forced full wet and ignored Mix.)
     const bool mbSoloMonitor = p.mbEnable && ((p.mbSolo & ((1 << p.mbBands) - 1)) != 0);
     bool dryAligned = false;
     if (p.mbEnable)
     {
-        if (mbSoloMonitor)
-        {
-            multiband.processBlock (L, R, n);
-        }
-        else
-        {
-            multiband.processBlock (L, R, n,
-                dryScratch.getReadPointer (0), dryScratch.getReadPointer (1),
-                dryAlignScratch.getWritePointer (0), dryAlignScratch.getWritePointer (1));
-            dryAligned = true;
-        }
+        multiband.processBlock (L, R, n,
+            dryScratch.getReadPointer (0), dryScratch.getReadPointer (1),
+            dryAlignScratch.getWritePointer (0), dryAlignScratch.getWritePointer (1));
+        dryAligned = true;
     }
 
     // -------- 7. Mix (dry/wet), delay-compensated. The Mono Maker low band is
@@ -706,11 +699,25 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         const float alignL = adL[rp], alignR = adR[rp];
         dryDelayWrite = (dryDelayWrite + 1) % ddSize;
 
-        const float m = mbSoloMonitor ? 1.0f : mixSmooth.getNextValue();
-        if (mbSoloMonitor) mixSmooth.getNextValue(); // keep the smoother advancing in lock-step
+        const float m = mixSmooth.getNextValue();
 
-        float dryL = cleanL, dryR = cleanR;
-        if (dryAligned)
+        // Pick the dry that feeds the Mix:
+        //   * soloing      -> the aligned dry is already masked to the soloed band(s);
+        //     use it at all Mix so Mix=0 plays the band's DRY (un-widened) version and
+        //     Mix=1 the wet. A monitoring solo isn't a transparent path, so it does NOT
+        //     crossfade back to the full clean dry -- the soloed band obeys Mix.
+        //   * not soloing  -> crossfade clean -> A(dry) so Mix=0 nulls exactly yet
+        //     0<Mix<1 doesn't comb (KI #1).
+        float dryL, dryR;
+        if (! dryAligned)
+        {
+            dryL = cleanL; dryR = cleanR;
+        }
+        else if (mbSoloMonitor)
+        {
+            dryL = alignL; dryR = alignR;
+        }
+        else
         {
             const float t  = juce::jlimit (0.0f, 1.0f, m * (1.0f / kAlignMix));
             const float ts = t * t * (3.0f - 2.0f * t); // smoothstep: clean -> A(dry)
