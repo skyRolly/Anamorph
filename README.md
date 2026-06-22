@@ -6,6 +6,17 @@ of stereo tools (MS, mono-maker, channel utilities, monitoring) around a
 high-end diamond vectorscope. Built with **CMake + JUCE** only — it configures
 and builds entirely from the command line on a headless Linux machine, no IDE.
 
+### What's new in 0.7.4
+- **Multiband Solo no longer turns Mono Maker into a low-cut.** The mono low band is
+  a parallel utility path (it bypasses the widener), not a Multiband band, so it is
+  now re-added even while a band is soloed — previously soloing dropped it and the
+  whole low end below the Mono Maker frequency disappeared. The lows stay present and
+  mono'd at any Mix; the drive on them follows Mix. A self-test covers it.
+- **Crossover phase note:** the band-split stages (Mono Maker, Multiband) are
+  Linkwitz-Riley applied identically to L and R, so the Mid is always allpass-
+  reconstructed (flat magnitude) — no low-frequency cancellation in the mono sum, no
+  combing within a path. The only cross-path comb (dry vs. wet) was fixed in 0.7.2.
+
 ### What's new in 0.7.3
 - **Multiband Solo now obeys the Mix knob.** A soloed band used to be hard-wired to
   full wet, so the Mix control did nothing while soloing. It now follows Mix like the

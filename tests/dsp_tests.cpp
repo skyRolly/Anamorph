@@ -420,6 +420,64 @@ static void testSoloRespectsMix()
 }
 
 // ---------------------------------------------------------------------------
+//  A Multiband solo must NOT turn Mono Maker into a low-cut: the mono lows are a
+//  parallel utility path, not a Multiband band, so they stay present (mono'd) even
+//  while a band is soloed -- at any Mix. Solo a HIGH band, feed a mono LOW tone, and
+//  confirm the low Mid survives (it would vanish if solo dropped the mono lows).
+static void testSoloKeepsMonoLows()
+{
+    std::printf ("Test 9: Multiband Solo keeps the Mono Maker lows (no low-cut)\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0;
+    const int block = 256;
+    const double freq = 60.0; // well below the 200 Hz Mono Maker crossover
+
+    auto midRms = [&] (float mix) -> double
+    {
+        anamorph::AnamorphEngine engine;
+        engine.prepare (sr, block);
+        anamorph::EngineParameters p;
+        p.mbEnable        = true;
+        p.mbBands         = 4;
+        p.mbSolo          = 0x2;     // solo band 1 (a HIGH band, not where the 60 Hz lives)
+        p.monoMakerEnable = true;
+        p.monoMakerFreq   = 200.0f;
+        p.mix             = mix;
+        engine.setParameters (p);
+        engine.reset();
+
+        double phase = 0.0;
+        const double inc = 2.0 * 3.14159265358979 * freq / sr;
+        double sq = 0.0; int cnt = 0;
+        for (int nb = 0; nb < 70; ++nb)
+        {
+            juce::AudioBuffer<float> buf (2, block);
+            for (int i = 0; i < block; ++i)
+            {
+                const float s = (float) std::sin (phase); phase += inc;
+                buf.setSample (0, i, s); buf.setSample (1, i, s); // mono low tone
+            }
+            engine.setParameters (p);
+            engine.process (buf);
+            if (nb >= 45)
+                for (int i = 0; i < block; ++i)
+                {
+                    const float mid = 0.5f * (buf.getSample (0, i) + buf.getSample (1, i));
+                    sq += mid * mid; ++cnt;
+                }
+        }
+        return std::sqrt (sq / juce::jmax (1, cnt));
+    };
+
+    const double midWet = midRms (1.0f);
+    const double midDry = midRms (0.0f);
+    std::printf ("  soloed low Mid RMS  Mix=1 %.4f  Mix=0 %.4f (expect ~0.70; a low-cut would be ~0)\n",
+                 midWet, midDry);
+    check (midWet > 0.5, "Solo keeps the Mono Maker mono lows at Mix=1 (not a low-cut)");
+    check (midDry > 0.5, "Solo keeps the Mono Maker mono lows at Mix=0 (not a low-cut)");
+}
+
+// ---------------------------------------------------------------------------
 int main()
 {
     std::printf ("=== Anamorph DSP self-tests ===\n");
@@ -430,6 +488,7 @@ int main()
     testMonoMaker();
     testMultibandMonoCompat();
     testSoloRespectsMix();
+    testSoloKeepsMonoLows();
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);
     if (failures == 0) { std::printf ("ALL TESTS PASSED\n"); return 0; }

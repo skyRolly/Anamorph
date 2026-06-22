@@ -734,11 +734,12 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
             int mp = monoLowWrite - lat; if (mp < 0) mp += mdSize;
             const float wetLow = md[mp], dryLow = mdd[mp];
             monoLowWrite = (monoLowWrite + 1) % mdSize;
-            if (! mbSoloMonitor)
-            {
-                const float lowOut = dryLow + m * (wetLow - dryLow); // lows obey Mix (#5)
-                outL += lowOut; outR += lowOut;
-            }
+            // The mono lows are a parallel utility path, NOT a Multiband band, so they
+            // are re-added even while a band is soloed -- otherwise solo silently turns
+            // Mono Maker into a low-cut (0.7.4 #1/#2). The drive on the lows obeys Mix
+            // (dry = un-driven, wet = driven); the mono-ing itself always applies.
+            const float lowOut = dryLow + m * (wetLow - dryLow);
+            outL += lowOut; outR += lowOut;
         }
 
         L[i] = outL; R[i] = outR;
