@@ -311,6 +311,57 @@ static void testMonoMaker()
 }
 
 // ---------------------------------------------------------------------------
+//  The Multiband must not comb the dry/wet recombination at partial Mix
+//  (Known Issue #1). With every band width = 1 the wet is a pure allpass A(input),
+//  so a PHASE-MATCHED dry keeps the mono sum (L+R) energy-preserving at any Mix;
+//  an unaligned (clean) dry would notch it to ~ -3 dB. Feed decorrelated stereo
+//  noise at Mix = 0.5 and confirm the output mono-sum RMS tracks the input's.
+static void testMultibandMonoCompat()
+{
+    std::printf ("Test 7: Multiband preserves the mono sum at partial Mix\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0;
+    const int block = 256;
+
+    anamorph::AnamorphEngine engine;
+    engine.prepare (sr, block);
+    anamorph::EngineParameters p;       // transparent defaults (amount 0, width 1, drive 0)
+    p.mbEnable   = true;
+    p.mbBands    = 4;
+    p.mbWidthLow = p.mbWidthMid = p.mbWidthHiMid = p.mbWidthHigh = 1.0f; // pure allpass wet
+    p.mix        = 0.5f;                 // worst-case comb depth if the dry is unaligned
+    engine.setParameters (p);
+    engine.reset();
+
+    double inSq = 0.0, outSq = 0.0;
+    for (int nb = 0; nb < 80; ++nb)
+    {
+        juce::AudioBuffer<float> buf (2, block);
+        fillNoise (buf, (unsigned) (nb * 13 + 5));
+        double blkIn = 0.0;
+        for (int i = 0; i < block; ++i)
+        {
+            const float mono = buf.getSample (0, i) + buf.getSample (1, i);
+            blkIn += mono * mono;
+        }
+        engine.setParameters (p);
+        engine.process (buf);
+        if (nb >= 40) // let the crossovers settle before measuring
+        {
+            for (int i = 0; i < block; ++i)
+            {
+                const float mono = buf.getSample (0, i) + buf.getSample (1, i);
+                outSq += mono * mono;
+            }
+            inSq += blkIn;
+        }
+    }
+    const double ratio = std::sqrt (outSq / juce::jmax (1.0e-12, inSq));
+    std::printf ("  mono-sum RMS out/in = %.3f (expect ~1.0; an unaligned dry combs to ~0.71)\n", ratio);
+    check (ratio > 0.95, "Multiband keeps the mono sum intact at Mix=50% (dry/wet phase-aligned)");
+}
+
+// ---------------------------------------------------------------------------
 int main()
 {
     std::printf ("=== Anamorph DSP self-tests ===\n");
@@ -319,6 +370,7 @@ int main()
     testBypassNullAndLatency();
     testTransparentDefault();
     testMonoMaker();
+    testMultibandMonoCompat();
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);
     if (failures == 0) { std::printf ("ALL TESTS PASSED\n"); return 0; }

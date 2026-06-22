@@ -54,12 +54,28 @@ public:
         targetW[0] = b1; targetW[1] = b2; targetW[2] = b3; targetW[3] = b4;
     }
 
-    void processBlock (float* left, float* right, int numSamples) noexcept;
+    // Processes the wet signal in place. If the dryOut pointers are supplied, the
+    // dry input is ALSO reconstructed through the SAME (gliding) crossovers at unit
+    // width -- a phase-matched A(dry) for the dry/wet Mix. Because the dry shares
+    // the wet's exact crossover allpass phase, a partial-Mix recombination no longer
+    // combs (notably the mono sum L+R = 2*Mid stays intact at any Mix). When the
+    // dryOut pointers are null the dry bank is skipped and behaviour is unchanged
+    // (e.g. full wet, or a band solo which forces full wet) (Known Issue #1).
+    void processBlock (float* left, float* right, int numSamples,
+                       const float* dryInL = nullptr, const float* dryInR = nullptr,
+                       float* dryOutL = nullptr, float* dryOutR = nullptr) noexcept;
 
 private:
     juce::dsp::LinkwitzRileyFilter<float> x1; // f1: band1 vs rest
     juce::dsp::LinkwitzRileyFilter<float> x2; // f2: band2 vs rest
     juce::dsp::LinkwitzRileyFilter<float> x3; // f3: band3 vs band4
+
+    // A SECOND, parallel crossover bank that reconstructs the DRY signal at unit
+    // width -- A(dry) -- so the dry/wet Mix's dry path carries the exact same
+    // crossover allpass phase as the wet and the recombination never combs. Driven
+    // by the SAME gliding cutoffs as x1..x3, in lockstep, so a fast split drag stays
+    // phase-matched (a separate bank that lagged the glide would comb) (KI #1).
+    juce::dsp::LinkwitzRileyFilter<float> dx1, dx2, dx3;
 
     // Per-sample multiplicative slew on each crossover, exactly like Mono Maker:
     // a fast drag of a split can no longer sweep the IIR quickly enough to chirp /

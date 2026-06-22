@@ -87,6 +87,11 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
     dryDelayBuffer.clear();
     dryDelayWrite = 0;
 
+    // Phase-matched dry: same-size delay line + per-block scratch (Known Issue #1).
+    dryAlignDelayBuffer.setSize (2, maxLat + maxBlock + 1);
+    dryAlignDelayBuffer.clear();
+    dryAlignScratch.setSize (2, maxBlock);
+
     dryScratch.setSize (2, maxBlock);
     wetScratch.setSize (2, maxBlock);
     inputScratch.setSize (2, maxBlock);
@@ -116,6 +121,7 @@ void AnamorphEngine::reset()
     if (os4) os4->reset();
     if (os8) os8->reset();
     dryDelayBuffer.clear();
+    dryAlignDelayBuffer.clear();
     dryDelayWrite = 0;
     monoLowDelay.clear();
     monoLowDryDelay.clear();
@@ -642,8 +648,26 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         applyWidth (L[i], R[i], widthSmooth.getNextValue());
 
     // -------- 4. Multiband Width (Advanced) ---------------------------------
+    // A Multiband solo monitors AFTER the dry/wet Mix and forces full wet, so the
+    // phase-matched dry is only needed when NOT soloing. When mixing in dry, we ask
+    // MultibandWidth to also reconstruct A(dry) in lockstep with the wet's gliding
+    // crossovers, so a partial Mix recombines without combing the mono sum (#1-KI).
+    const bool mbSoloMonitor = p.mbEnable && ((p.mbSolo & ((1 << p.mbBands) - 1)) != 0);
+    bool dryAligned = false;
     if (p.mbEnable)
-        multiband.processBlock (L, R, n);
+    {
+        if (mbSoloMonitor)
+        {
+            multiband.processBlock (L, R, n);
+        }
+        else
+        {
+            multiband.processBlock (L, R, n,
+                dryScratch.getReadPointer (0), dryScratch.getReadPointer (1),
+                dryAlignScratch.getWritePointer (0), dryAlignScratch.getWritePointer (1));
+            dryAligned = true;
+        }
+    }
 
     // -------- 7. Mix (dry/wet), delay-compensated. The Mono Maker low band is
     //          folded INTO the same per-sample Mix so its DRIVE obeys Mix too:
@@ -652,28 +676,47 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     //          no longer roars through driven when Mix=0 (#5). -------------------
     const float* dL  = dryScratch.getReadPointer (0);
     const float* dR  = dryScratch.getReadPointer (1);
+    // Phase-matched dry source (A(dry)); falls back to the clean dry when the
+    // Multiband isn't aligning, so the delay line stays coherent either way.
+    const float* aL  = dryAligned ? dryAlignScratch.getReadPointer (0) : dL;
+    const float* aR  = dryAligned ? dryAlignScratch.getReadPointer (1) : dR;
+    float* adL = dryAlignDelayBuffer.getWritePointer (0);
+    float* adR = dryAlignDelayBuffer.getWritePointer (1);
     const float* ml  = monoMakerActive ? monoLow.getReadPointer (0)    : nullptr; // wet (driven) low
     const float* mld = monoMakerActive ? monoLowDry.getReadPointer (0) : nullptr; // dry (un-driven) low
     float* md  = monoLowDelay.getWritePointer (0);
     float* mdd = monoLowDryDelay.getWritePointer (0);
     const int mdSize = monoLowDelay.getNumSamples();
 
-    // A Multiband solo monitors AFTER the dry/wet Mix: the soloed band must be heard
-    // alone at full level even at Mix < 100%, so solo forces the wet blend to 1 and
-    // drops the Mono-Maker low re-add (0.6.11 #14). Engaging/clearing it rides the
-    // switch duck, so it never clicks.
-    const bool mbSoloMonitor = p.mbEnable && ((p.mbSolo & ((1 << p.mbBands) - 1)) != 0);
+    // The dry source crossfades from the CLEAN dry (bit-exact at Mix=0 -> an exact
+    // null) to the phase-ALIGNED A(dry) as Mix leaves 0, so 0<Mix<1 never combs yet
+    // Mix=0 stays sample-exact. The fade completes by kAlignMix; below it the wet is
+    // barely present, so the brief blend's residual comb is negligible. Smoothstep
+    // (zero slope at 0) keeps the departure click-free (Known Issue #1).
+    constexpr float kAlignMix = 0.05f;
 
     for (int i = 0; i < n; ++i)
     {
         ddL[dryDelayWrite] = dL[i];
         ddR[dryDelayWrite] = dR[i];
+        adL[dryDelayWrite] = aL[i];
+        adR[dryDelayWrite] = aR[i];
         int rp = dryDelayWrite - lat; if (rp < 0) rp += ddSize;
-        const float dryL = ddL[rp], dryR = ddR[rp];
+        const float cleanL = ddL[rp], cleanR = ddR[rp];
+        const float alignL = adL[rp], alignR = adR[rp];
         dryDelayWrite = (dryDelayWrite + 1) % ddSize;
 
         const float m = mbSoloMonitor ? 1.0f : mixSmooth.getNextValue();
         if (mbSoloMonitor) mixSmooth.getNextValue(); // keep the smoother advancing in lock-step
+
+        float dryL = cleanL, dryR = cleanR;
+        if (dryAligned)
+        {
+            const float t  = juce::jlimit (0.0f, 1.0f, m * (1.0f / kAlignMix));
+            const float ts = t * t * (3.0f - 2.0f * t); // smoothstep: clean -> A(dry)
+            dryL = cleanL + ts * (alignL - cleanL);
+            dryR = cleanR + ts * (alignR - cleanR);
+        }
         float outL = dryL + m * (L[i] - dryL);
         float outR = dryR + m * (R[i] - dryR);
 
