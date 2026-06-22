@@ -43,9 +43,15 @@ public:
     void setSolo (int mask) noexcept { soloMask = mask & 0x0F; }
 
     void setCrossovers (float f1, float f2, float f3) noexcept;
+
+    // Per-band MS width TARGETS. The widths are not applied raw: each glides
+    // toward its target per sample in processBlock (one-pole, ~20 ms, matching
+    // the global Width smoother), so a fast band-width drag can no longer step
+    // the side-gain at every block boundary and crackle. A width is a pure
+    // side-gain, so smoothing it never pitch-shifts or combs (0.7.0 #1).
     void setWidths (float b1, float b2, float b3, float b4) noexcept
     {
-        w[0] = b1; w[1] = b2; w[2] = b3; w[3] = b4;
+        targetW[0] = b1; targetW[1] = b2; targetW[2] = b3; targetW[3] = b4;
     }
 
     void processBlock (float* left, float* right, int numSamples) noexcept;
@@ -63,9 +69,13 @@ private:
     float  targetF[3]  { 180.0f, 800.0f, 3000.0f };
     float  currentF[3] { 180.0f, 800.0f, 3000.0f };
 
+    // Per-sample one-pole smoothing of the band widths (0.7.0 #1).
+    float wCoeff     = 0.0f;
+    float targetW[4]  { 1.0f, 1.0f, 1.0f, 1.0f };
+    float currentW[4] { 1.0f, 1.0f, 1.0f, 1.0f };
+
     int   bands = 4;
     int   soloMask = 0; // bit b set = band b soloed; 0 = full mix
-    float w[4] { 1.0f, 1.0f, 1.0f, 1.0f };
 };
 
 } // namespace anamorph

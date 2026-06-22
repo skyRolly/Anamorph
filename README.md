@@ -166,15 +166,16 @@ switch duck, and a long tail of GUI polish.
 
 ## Prebuilt binaries (no toolchain needed)
 
-Every push runs GitHub Actions, which uploads ready-to-use plugins as build
-**artifacts** (Actions run → *Artifacts*):
-- **`Anamorph-macOS`** — universal (Apple Silicon + Intel) **VST3 + AU**, with
-  an `INSTALL.txt`. AU is what **Logic Pro / GarageBand** load.
-- **`Anamorph-VST3-Linux`** — Linux x86-64 VST3.
+Every push runs GitHub Actions, which builds the **full set of formats on all
+three desktop OSes** and uploads them as ready-to-use build **artifacts**
+(Actions run → *Artifacts*):
+- **`Anamorph-macOS`** — universal (Apple Silicon + Intel) **VST3 + AU +
+  Standalone**, with an `INSTALL.txt`. AU is what **Logic Pro / GarageBand** load.
+- **`Anamorph-Windows`** — x86-64 **VST3 + Standalone** (`.exe`).
+- **`Anamorph-Linux`** — x86-64 **VST3 + Standalone**.
 
 macOS plugins are ad-hoc signed but not notarized, so after downloading run
 `xattr -dr com.apple.quarantine` on the bundles (see the bundled `INSTALL.txt`).
-Windows is not yet wired into CI — say the word and it's a small addition.
 
 ---
 
