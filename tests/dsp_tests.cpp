@@ -408,7 +408,7 @@ static void testMonoMakerPostMix()
                 const float s = (float) std::sin (phase); phase += inc;
                 buf.setSample (0, i,  s); // pure side: L = +s, R = -s
                 buf.setSample (1, i, -s);
-                inSq += s * s; // input side magnitude == |s|
+                inSq += static_cast<double> (s) * static_cast<double> (s); // input side magnitude == |s|
             }
             engine.setParameters (p);
             engine.process (buf);
