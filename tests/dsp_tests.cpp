@@ -420,29 +420,29 @@ static void testSoloRespectsMix()
 }
 
 // ---------------------------------------------------------------------------
-//  A Multiband solo must NOT turn Mono Maker into a low-cut: the mono lows are a
-//  parallel utility path, not a Multiband band, so they stay present (mono'd) even
-//  while a band is soloed -- at any Mix. Solo a HIGH band, feed a mono LOW tone, and
-//  confirm the low Mid survives (it would vanish if solo dropped the mono lows).
-static void testSoloKeepsMonoLows()
+//  Solo is a post-everything band monitor, and the Mono Maker mono lows live in
+//  band 0's region (the bottom of the spectrum). So soloing band 0 must OUTPUT the
+//  mono lows (no low-cut), while soloing a HIGH band must NOT leak them. Feed a mono
+//  LOW tone and check the low Mid follows band 0's solo (0.7.5, reconciling 0.7.3/0.7.4).
+static void testSoloLowsFollowBand0()
 {
-    std::printf ("Test 9: Multiband Solo keeps the Mono Maker lows (no low-cut)\n");
+    std::printf ("Test 9: Mono Maker lows follow band 0's solo (post-everything monitor)\n");
     juce::ScopedNoDenormals noDenormals;
     const double sr = 48000.0;
     const int block = 256;
     const double freq = 60.0; // well below the 200 Hz Mono Maker crossover
 
-    auto midRms = [&] (float mix) -> double
+    auto midRms = [&] (int soloMask) -> double
     {
         anamorph::AnamorphEngine engine;
         engine.prepare (sr, block);
         anamorph::EngineParameters p;
         p.mbEnable        = true;
         p.mbBands         = 4;
-        p.mbSolo          = 0x2;     // solo band 1 (a HIGH band, not where the 60 Hz lives)
+        p.mbSolo          = soloMask;
         p.monoMakerEnable = true;
         p.monoMakerFreq   = 200.0f;
-        p.mix             = mix;
+        p.mix             = 1.0f;
         engine.setParameters (p);
         engine.reset();
 
@@ -469,12 +469,11 @@ static void testSoloKeepsMonoLows()
         return std::sqrt (sq / juce::jmax (1, cnt));
     };
 
-    const double midWet = midRms (1.0f);
-    const double midDry = midRms (0.0f);
-    std::printf ("  soloed low Mid RMS  Mix=1 %.4f  Mix=0 %.4f (expect ~0.70; a low-cut would be ~0)\n",
-                 midWet, midDry);
-    check (midWet > 0.5, "Solo keeps the Mono Maker mono lows at Mix=1 (not a low-cut)");
-    check (midDry > 0.5, "Solo keeps the Mono Maker mono lows at Mix=0 (not a low-cut)");
+    const double low0 = midRms (0x1); // solo band 0  -> lows in its region -> present
+    const double low1 = midRms (0x2); // solo band 1 (high) -> lows NOT in its region -> absent
+    std::printf ("  low Mid RMS  solo band0 %.4f  solo band1 %.4f (expect ~0.70 vs ~0)\n", low0, low1);
+    check (low0 > 0.5,  "Solo band 0 outputs the Mono Maker mono lows (no low-cut)");
+    check (low1 < 0.05, "Solo a HIGH band does NOT leak the Mono Maker lows");
 }
 
 // ---------------------------------------------------------------------------
@@ -488,7 +487,7 @@ int main()
     testMonoMaker();
     testMultibandMonoCompat();
     testSoloRespectsMix();
-    testSoloKeepsMonoLows();
+    testSoloLowsFollowBand0();
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);
     if (failures == 0) { std::printf ("ALL TESTS PASSED\n"); return 0; }

@@ -653,6 +653,11 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     // (b) a soloed band OBEYS Mix -- at Mix=0 you hear that band's DRY (un-widened)
     // version, at Mix=1 the wet. (Previously solo forced full wet and ignored Mix.)
     const bool mbSoloMonitor = p.mbEnable && ((p.mbSolo & ((1 << p.mbBands) - 1)) != 0);
+    // Solo is a post-everything band monitor. The Mono Maker mono lows sit at the
+    // BOTTOM of the spectrum -- band 0's region -- so they are heard only when band 0
+    // is soloed (or when not soloing at all). Soloing a HIGH band must not leak them,
+    // and soloing band 0 must not low-cut them (0.7.5 #1, reconciling 0.7.3/0.7.4).
+    const bool monoLowsHeard = (! mbSoloMonitor) || ((p.mbSolo & 0x1) != 0);
     bool dryAligned = false;
     if (p.mbEnable)
     {
@@ -734,12 +739,15 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
             int mp = monoLowWrite - lat; if (mp < 0) mp += mdSize;
             const float wetLow = md[mp], dryLow = mdd[mp];
             monoLowWrite = (monoLowWrite + 1) % mdSize;
-            // The mono lows are a parallel utility path, NOT a Multiband band, so they
-            // are re-added even while a band is soloed -- otherwise solo silently turns
-            // Mono Maker into a low-cut (0.7.4 #1/#2). The drive on the lows obeys Mix
-            // (dry = un-driven, wet = driven); the mono-ing itself always applies.
-            const float lowOut = dryLow + m * (wetLow - dryLow);
-            outL += lowOut; outR += lowOut;
+            // The mono lows are re-added only when they belong to what's being heard:
+            // when not soloing, or when band 0 (their spectral region) is soloed. So a
+            // band-0 solo plays them (no low-cut) while a high-band solo doesn't leak
+            // them (0.7.5). The drive on the lows obeys Mix; the mono-ing always applies.
+            if (monoLowsHeard)
+            {
+                const float lowOut = dryLow + m * (wetLow - dryLow);
+                outL += lowOut; outR += lowOut;
+            }
         }
 
         L[i] = outL; R[i] = outR;
