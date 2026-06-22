@@ -6,6 +6,23 @@ of stereo tools (MS, mono-maker, channel utilities, monitoring) around a
 high-end diamond vectorscope. Built with **CMake + JUCE** only — it configures
 and builds entirely from the command line on a headless Linux machine, no IDE.
 
+### What's new in 0.7.2
+- **Multiband is now phase-aligned with the dry/wet Mix.** Previously, at Mix < 100%
+  with the Multiband engaged, the wet path carried the crossovers' allpass phase while
+  the dry path didn't, so the recombination comb-filtered — and because that phase
+  sat on the Mid too, it broke the mono sum (L+R). The dry is now reconstructed
+  through the **same gliding crossovers** in lockstep (a phase-matched `A(dry)`), so a
+  partial Mix no longer combs and **mono compatibility holds at any Mix**. Mix = 0
+  stays a bit-exact null (a smoothstep crossfade clean→aligned over the first ~5% of
+  Mix keeps the departure click-free). A self-test guards the mono sum at Mix = 50%.
+
+### What's new in 0.7.1
+- **No more crackle when dragging a band's width fast.** Each band's MS width now
+  glides per sample (one-pole, ~20 ms, matching the global Width smoother) instead of
+  stepping at block boundaries. A width is a pure side-gain, so smoothing it can't
+  pitch-shift or comb.
+- **CI builds the full set of formats on all three desktop OSes** every push (see below).
+
 ### What's new in 0.7.0
 This release is built around a ground-up **Multiband (spectral) editor** — the old
 rotary multiband is replaced by an Ozone-Imager / Pro-Q-style display:

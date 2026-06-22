@@ -9,7 +9,7 @@ void MultibandWidth::prepare (double sampleRate, int maxBlock)
 {
     sr = sampleRate;
     juce::dsp::ProcessSpec spec { sampleRate, (juce::uint32) juce::jmax (1, maxBlock), 2 };
-    for (auto* x : { &x1, &x2, &x3 })
+    for (auto* x : { &x1, &x2, &x3, &dx1, &dx2, &dx3 })
     {
         x->prepare (spec);
         x->setType (juce::dsp::LinkwitzRileyFilterType::lowpass);
@@ -21,6 +21,10 @@ void MultibandWidth::prepare (double sampleRate, int maxBlock)
     x1.setCutoffFrequency (currentF[0]);
     x2.setCutoffFrequency (currentF[1]);
     x3.setCutoffFrequency (currentF[2]);
+    // The dry-align bank tracks the same cutoffs in lockstep (Known Issue #1).
+    dx1.setCutoffFrequency (currentF[0]);
+    dx2.setCutoffFrequency (currentF[1]);
+    dx3.setCutoffFrequency (currentF[2]);
     // One-pole on the band widths at ~20 ms (the global Width smoother's ramp),
     // so a fast band-width drag glides instead of stepping per block (0.7.0 #1).
     wCoeff = std::exp (-1.0f / (0.02f * (float) sr));
@@ -33,6 +37,9 @@ void MultibandWidth::reset()
     x1.reset();
     x2.reset();
     x3.reset();
+    dx1.reset();
+    dx2.reset();
+    dx3.reset();
     // Settle the width glide to its target. reset() only runs while the engine is
     // ducked to silence (or in prepare), so snapping here can never click and the
     // band starts at its true width when audio resumes.
@@ -51,14 +58,21 @@ void MultibandWidth::setCrossovers (float f1, float f2, float f3) noexcept
     targetF[2] = f3;
 }
 
-void MultibandWidth::processBlock (float* left, float* right, int numSamples) noexcept
+void MultibandWidth::processBlock (float* left, float* right, int numSamples,
+                                   const float* dryInL, const float* dryInR,
+                                   float* dryOutL, float* dryOutR) noexcept
 {
+    const bool align = (dryOutL != nullptr && dryOutR != nullptr
+                        && dryInL != nullptr && dryInR != nullptr);
+
     // A solo mask only counts where it points at active bands; if it selects none
     // of the active bands, fall back to the full mix.
     const int active = soloMask & ((1 << bands) - 1);
     auto heard = [active] (int b) noexcept { return active == 0 || (active & (1 << b)) != 0; };
 
-    // One band: a plain MS width on the whole signal, no crossovers.
+    // One band: a plain MS width on the whole signal, no crossovers. With no
+    // crossover the reconstruction is identity (A == 1), so the dry is already
+    // phase-identical -- just pass it through unchanged.
     if (bands <= 1)
     {
         for (int n = 0; n < numSamples; ++n)
@@ -66,11 +80,21 @@ void MultibandWidth::processBlock (float* left, float* right, int numSamples) no
             currentW[0] = targetW[0] + (currentW[0] - targetW[0]) * wCoeff;
             applyWidth (left[n], right[n], currentW[0]);
         }
+        if (align)
+            for (int n = 0; n < numSamples; ++n) { dryOutL[n] = dryInL[n]; dryOutR[n] = dryInR[n]; }
         return; // a single band soloed is just itself
     }
 
-    juce::dsp::LinkwitzRileyFilter<float>* xs[3] = { &x1, &x2, &x3 };
+    juce::dsp::LinkwitzRileyFilter<float>* xs[3]  = { &x1, &x2, &x3 };
+    juce::dsp::LinkwitzRileyFilter<float>* dxs[3] = { &dx1, &dx2, &dx3 };
     const int crossovers = bands - 1; // 1..3
+
+    // Re-sync the dry bank's cutoffs to the live values at block start, so a block
+    // that resumes aligning (e.g. right after a soloed stretch, during which the
+    // dry bank received no glide updates) starts phase-matched (Known Issue #1).
+    if (align)
+        for (int i = 0; i < crossovers; ++i)
+            dxs[i]->setCutoffFrequency (currentF[i]);
 
     for (int n = 0; n < numSamples; ++n)
     {
@@ -84,6 +108,7 @@ void MultibandWidth::processBlock (float* left, float* right, int numSamples) no
                                 ? juce::jmin (targetF[i], currentF[i] * glideCoeff)
                                 : juce::jmax (targetF[i], currentF[i] / glideCoeff);
                 xs[i]->setCutoffFrequency (currentF[i]);
+                if (align) dxs[i]->setCutoffFrequency (currentF[i]); // keep the dry bank locked to the wet
             }
         }
 
@@ -112,6 +137,26 @@ void MultibandWidth::processBlock (float* left, float* right, int numSamples) no
 
         left[n]  = accL;
         right[n] = accR;
+
+        // Phase-matched dry: reconstruct the dry through the SAME crossovers at unit
+        // width -- the full A(dry), with NO solo masking (the Mix's dry is always the
+        // whole signal). Shares the wet's exact per-sample cutoffs above, so it can
+        // never lag the glide and re-introduce comb during a split drag (KI #1).
+        if (align)
+        {
+            float dcurL = dryInL[n], dcurR = dryInR[n];
+            float daccL = 0.0f, daccR = 0.0f;
+            for (int i = 0; i < crossovers; ++i)
+            {
+                float loL, hiL, loR, hiR;
+                dxs[i]->processSample (0, dcurL, loL, hiL);
+                dxs[i]->processSample (1, dcurR, loR, hiR);
+                daccL += loL; daccR += loR;   // unit width -> just the band itself
+                dcurL = hiL; dcurR = hiR;
+            }
+            daccL += dcurL; daccR += dcurR;
+            dryOutL[n] = daccL; dryOutR[n] = daccR;
+        }
     }
 }
 

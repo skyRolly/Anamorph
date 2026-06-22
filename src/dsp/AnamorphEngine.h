@@ -155,6 +155,12 @@ private:
     juce::AudioBuffer<float> dryDelayBuffer;
     int dryDelayWrite = 0;
 
+    // Phase-matched dry for the Multiband dry/wet Mix (Known Issue #1): A(dry),
+    // reconstructed through the same crossovers as the wet so a partial Mix never
+    // combs (esp. the mono sum). Delayed alongside the clean dry to the OS latency.
+    juce::AudioBuffer<float> dryAlignScratch;      // A(dry) for this block (from MultibandWidth)
+    juce::AudioBuffer<float> dryAlignDelayBuffer;   // delay line, shares dryDelayWrite/size
+
     // Scratch
     juce::AudioBuffer<float> dryScratch;   // dry for the dry/wet mix (high band when Mono Maker on)
     juce::AudioBuffer<float> wetScratch;   // wet pre-output-gain (for loudness)
