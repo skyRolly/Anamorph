@@ -23,7 +23,7 @@ void MonoMaker::reset()
     xover.reset();
 }
 
-void MonoMaker::processSplit (float* left, float* right, float* lowMonoOut, int numSamples) noexcept
+void MonoMaker::process (float* left, float* right, int numSamples) noexcept
 {
     for (int i = 0; i < numSamples; ++i)
     {
@@ -41,9 +41,9 @@ void MonoMaker::processSplit (float* left, float* right, float* lowMonoOut, int 
         xover.processSample (0, left[i],  lowL, highL);
         xover.processSample (1, right[i], lowR, highR);
 
-        lowMonoOut[i] = (lowL + lowR) * 0.5f; // mono low band, kept out of the widener
-        left[i]  = highL;                     // only the high band continues
-        right[i] = highR;
+        const float monoLow = (lowL + lowR) * 0.5f; // collapse the low band to mono
+        left[i]  = highL + monoLow;                 // highs untouched + mono lows
+        right[i] = highR + monoLow;
     }
 }
 

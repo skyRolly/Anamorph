@@ -318,162 +318,235 @@ static void testMonoMaker()
 //  noise at Mix = 0.5 and confirm the output mono-sum RMS tracks the input's.
 static void testMultibandMonoCompat()
 {
-    std::printf ("Test 7: Multiband preserves the mono sum at partial Mix\n");
+    std::printf ("Test 7: Multiband preserves the mono sum across Mix (phase fix)\n");
     juce::ScopedNoDenormals noDenormals;
     const double sr = 48000.0;
     const int block = 256;
 
-    anamorph::AnamorphEngine engine;
-    engine.prepare (sr, block);
-    anamorph::EngineParameters p;       // transparent defaults (amount 0, width 1, drive 0)
-    p.mbEnable   = true;
-    p.mbBands    = 4;
-    p.mbWidthLow = p.mbWidthMid = p.mbWidthHiMid = p.mbWidthHigh = 1.0f; // pure allpass wet
-    p.mix        = 0.5f;                 // worst-case comb depth if the dry is unaligned
-    engine.setParameters (p);
-    engine.reset();
-
-    double inSq = 0.0, outSq = 0.0;
-    for (int nb = 0; nb < 80; ++nb)
-    {
-        juce::AudioBuffer<float> buf (2, block);
-        fillNoise (buf, (unsigned) (nb * 13 + 5));
-        double blkIn = 0.0;
-        for (int i = 0; i < block; ++i)
-        {
-            const float mono = buf.getSample (0, i) + buf.getSample (1, i);
-            blkIn += mono * mono;
-        }
-        engine.setParameters (p);
-        engine.process (buf);
-        if (nb >= 40) // let the crossovers settle before measuring
-        {
-            for (int i = 0; i < block; ++i)
-            {
-                const float mono = buf.getSample (0, i) + buf.getSample (1, i);
-                outSq += mono * mono;
-            }
-            inSq += blkIn;
-        }
-    }
-    const double ratio = std::sqrt (outSq / juce::jmax (1.0e-12, inSq));
-    std::printf ("  mono-sum RMS out/in = %.3f (expect ~1.0; an unaligned dry combs to ~0.71)\n", ratio);
-    check (ratio > 0.95, "Multiband keeps the mono sum intact at Mix=50% (dry/wet phase-aligned)");
-}
-
-// ---------------------------------------------------------------------------
-//  A Multiband solo must OBEY the dry/wet Mix: at Mix=0 a soloed band is its DRY
-//  (un-widened) self, at Mix=1 the wet (width applied). Solo band 0 (lows) and vary
-//  its width: at Mix=0 the width must NOT affect the output (it's dry); at Mix=1 it
-//  must (it's wet). Regression for solo bypassing Mix.
-static void testSoloRespectsMix()
-{
-    std::printf ("Test 8: Multiband Solo obeys the dry/wet Mix\n");
-    juce::ScopedNoDenormals noDenormals;
-    const double sr = 48000.0;
-    const int block = 256;
-
-    auto sideRms = [&] (float w0, float mix) -> double
+    auto monoRatio = [&] (float mix) -> double
     {
         anamorph::AnamorphEngine engine;
         engine.prepare (sr, block);
-        anamorph::EngineParameters p;
+        anamorph::EngineParameters p;   // transparent defaults (amount 0, width 1, drive 0)
         p.mbEnable   = true;
         p.mbBands    = 4;
-        p.mbSolo     = 0x1;        // solo band 0 (the lows)
-        p.mbWidthLow = w0;         // band 0 width
+        p.mbWidthLow = p.mbWidthMid = p.mbWidthHiMid = p.mbWidthHigh = 1.0f; // pure allpass wet
         p.mix        = mix;
         engine.setParameters (p);
         engine.reset();
 
-        double sq = 0.0; int cnt = 0;
+        double inSq = 0.0, outSq = 0.0;
         for (int nb = 0; nb < 80; ++nb)
         {
             juce::AudioBuffer<float> buf (2, block);
-            fillNoise (buf, (unsigned) (nb * 9 + 1));
+            fillNoise (buf, (unsigned) (nb * 13 + 5));
+            double blkIn = 0.0;
+            for (int i = 0; i < block; ++i)
+            {
+                const float mono = buf.getSample (0, i) + buf.getSample (1, i);
+                blkIn += mono * mono;
+            }
             engine.setParameters (p);
             engine.process (buf);
-            if (nb >= 40)
+            if (nb >= 40) // let the crossovers settle before measuring
+            {
                 for (int i = 0; i < block; ++i)
                 {
-                    const float s = 0.5f * (buf.getSample (0, i) - buf.getSample (1, i));
-                    sq += s * s; ++cnt;
+                    const float mono = buf.getSample (0, i) + buf.getSample (1, i);
+                    outSq += mono * mono;
                 }
+                inSq += blkIn;
+            }
         }
-        return std::sqrt (sq / juce::jmax (1, cnt));
+        return std::sqrt (outSq / juce::jmax (1.0e-12, inSq));
     };
 
-    const double dryNarrow = sideRms (0.0f, 0.0f); // width 0, Mix 0
-    const double dryWide   = sideRms (2.0f, 0.0f); // width 2, Mix 0  -> must match (dry, un-widened)
-    const double wetNarrow = sideRms (0.0f, 1.0f); // width 0, Mix 1  -> wet, side collapsed
-    const double wetWide   = sideRms (2.0f, 1.0f); // width 2, Mix 1  -> wet, side widened
-    const double ref = juce::jmax (1.0e-6, dryNarrow);
-
-    std::printf ("  Mix0 side RMS: w0=%.4f w2=%.4f ; Mix1 side RMS: w0=%.4f w2=%.4f\n",
-                 dryNarrow, dryWide, wetNarrow, wetWide);
-    check (std::abs (dryWide - dryNarrow) < 0.05 * ref,
-           "Solo at Mix=0 plays the DRY band (width has no effect)");
-    check (wetNarrow < 0.3 * ref,
-           "Solo at Mix=1 plays the WET band (width 0 collapses the side)");
-    check (wetWide > 1.5 * ref,
-           "Solo at Mix=1 plays the WET band (width 2 widens the side)");
+    for (float mix : { 0.25f, 0.5f, 0.75f })
+    {
+        const double ratio = monoRatio (mix);
+        std::printf ("  Mix=%.2f mono-sum RMS out/in = %.3f (expect ~1.0; unaligned dry combs to <0.8)\n",
+                     mix, ratio);
+        check (ratio > 0.95, "Multiband keeps the mono sum intact (dry/wet phase-aligned)");
+    }
 }
 
 // ---------------------------------------------------------------------------
-//  Solo is a post-everything band monitor, and the Mono Maker mono lows live in
-//  band 0's region (the bottom of the spectrum). So soloing band 0 must OUTPUT the
-//  mono lows (no low-cut), while soloing a HIGH band must NOT leak them. Feed a mono
-//  LOW tone and check the low Mid follows band 0's solo (0.7.5, reconciling 0.7.3/0.7.4).
-static void testSoloLowsFollowBand0()
+//  Mono Maker now runs POST-Mix on the recombined signal, so it collapses the low
+//  Side regardless of the Mix amount. Feed a pure-SIDE low tone (L=+s, R=-s) with
+//  the Multiband widening the lows, and confirm the output low Side is removed at
+//  every Mix (and the mono sum stays sane).
+static void testMonoMakerPostMix()
 {
-    std::printf ("Test 9: Mono Maker lows follow band 0's solo (post-everything monitor)\n");
+    std::printf ("Test 8: Mono Maker (post-Mix) collapses the low Side at any Mix\n");
     juce::ScopedNoDenormals noDenormals;
     const double sr = 48000.0;
     const int block = 256;
-    const double freq = 60.0; // well below the 200 Hz Mono Maker crossover
+    const double freq = 60.0; // below the 200 Hz Mono Maker cutoff
 
-    auto midRms = [&] (int soloMask) -> double
+    auto sideRatio = [&] (float mix) -> double
     {
         anamorph::AnamorphEngine engine;
         engine.prepare (sr, block);
         anamorph::EngineParameters p;
         p.mbEnable        = true;
         p.mbBands         = 4;
-        p.mbSolo          = soloMask;
+        p.mbWidthLow      = 1.5f;   // the widener spreads the lows -> Mono Maker must still collapse them
         p.monoMakerEnable = true;
         p.monoMakerFreq   = 200.0f;
-        p.mix             = 1.0f;
+        p.mix             = mix;
         engine.setParameters (p);
         engine.reset();
 
         double phase = 0.0;
         const double inc = 2.0 * 3.14159265358979 * freq / sr;
-        double sq = 0.0; int cnt = 0;
+        double inSq = 0.0, outSq = 0.0; int cnt = 0;
         for (int nb = 0; nb < 70; ++nb)
         {
             juce::AudioBuffer<float> buf (2, block);
             for (int i = 0; i < block; ++i)
             {
                 const float s = (float) std::sin (phase); phase += inc;
-                buf.setSample (0, i, s); buf.setSample (1, i, s); // mono low tone
+                buf.setSample (0, i,  s); // pure side: L = +s, R = -s
+                buf.setSample (1, i, -s);
+                inSq += s * s; // input side magnitude == |s|
             }
             engine.setParameters (p);
             engine.process (buf);
             if (nb >= 45)
                 for (int i = 0; i < block; ++i)
                 {
-                    const float mid = 0.5f * (buf.getSample (0, i) + buf.getSample (1, i));
-                    sq += mid * mid; ++cnt;
+                    const float side = 0.5f * (buf.getSample (0, i) - buf.getSample (1, i));
+                    outSq += side * side; ++cnt;
                 }
+        }
+        // input side RMS == sin RMS ~ 0.707; compare the measured tail to it.
+        const double inRms  = std::sqrt (0.5);
+        const double outRms = std::sqrt (outSq / juce::jmax (1, cnt));
+        return outRms / inRms;
+    };
+
+    for (float mix : { 0.25f, 0.5f, 0.75f })
+    {
+        const double r = sideRatio (mix);
+        std::printf ("  Mix=%.2f  output low-Side / input = %.3f (expect << 1)\n", mix, r);
+        check (r < 0.15, "Mono Maker collapses the low Side at this Mix");
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  Band Solo is a POST-EVERYTHING monitoring band-pass: it never changes the DSP,
+//  it only filters the final output to the soloed band(s). Verify (a) selectivity --
+//  soloing the low band passes a low tone and rejects a high one (and vice-versa);
+//  (b) soloing ALL bands is energy-transparent (the monitor sums to an allpass).
+static void testSoloMonitor()
+{
+    std::printf ("Test 9: Band Solo is a post-everything band-pass monitor\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0;
+    const int block = 256;
+
+    auto toneRms = [&] (double freq, int soloMask) -> double
+    {
+        anamorph::AnamorphEngine engine;
+        engine.prepare (sr, block);
+        anamorph::EngineParameters p;
+        p.mbEnable = true; p.mbBands = 4; p.mbSolo = soloMask; p.mix = 1.0f;
+        engine.setParameters (p);
+        engine.reset();
+        double phase = 0.0; const double inc = 2.0 * 3.14159265358979 * freq / sr;
+        double sq = 0.0; int cnt = 0;
+        for (int nb = 0; nb < 70; ++nb)
+        {
+            juce::AudioBuffer<float> buf (2, block);
+            for (int i = 0; i < block; ++i)
+            { const float s = (float) std::sin (phase); phase += inc; buf.setSample (0, i, s); buf.setSample (1, i, s); }
+            engine.setParameters (p);
+            engine.process (buf);
+            if (nb >= 45)
+                for (int i = 0; i < block; ++i) { const float v = buf.getSample (0, i); sq += v * v; ++cnt; }
         }
         return std::sqrt (sq / juce::jmax (1, cnt));
     };
 
-    const double low0 = midRms (0x1); // solo band 0  -> lows in its region -> present
-    const double low1 = midRms (0x2); // solo band 1 (high) -> lows NOT in its region -> absent
-    std::printf ("  low Mid RMS  solo band0 %.4f  solo band1 %.4f (expect ~0.70 vs ~0)\n", low0, low1);
-    check (low0 > 0.5,  "Solo band 0 outputs the Mono Maker mono lows (no low-cut)");
-    check (low1 < 0.05, "Solo a HIGH band does NOT leak the Mono Maker lows");
+    // Crossovers default 180 / 800 / 3000 Hz: band 0 = <180, band 3 = >3000.
+    const double lowInBand0  = toneRms (100.0,  0x1);
+    const double lowInBand3  = toneRms (100.0,  0x8);
+    const double highInBand3 = toneRms (6000.0, 0x8);
+    const double highInBand0 = toneRms (6000.0, 0x1);
+    std::printf ("  100Hz: band0 %.3f band3 %.3f ; 6kHz: band3 %.3f band0 %.3f\n",
+                 lowInBand0, lowInBand3, highInBand3, highInBand0);
+    check (lowInBand0  > 0.3,  "Solo band 0 passes a low tone");
+    check (lowInBand3  < 0.05, "Solo band 3 rejects a low tone");
+    check (highInBand3 > 0.3,  "Solo band 3 passes a high tone");
+    check (highInBand0 < 0.05, "Solo band 0 rejects a high tone");
+
+    // Energy transparency: soloing every band sums to an allpass of the output.
+    auto noiseEnergy = [&] (int soloMask) -> double
+    {
+        anamorph::AnamorphEngine engine;
+        engine.prepare (sr, block);
+        anamorph::EngineParameters p;
+        p.mbEnable = true; p.mbBands = 4; p.mbSolo = soloMask; p.mix = 1.0f;
+        engine.setParameters (p);
+        engine.reset();
+        double sq = 0.0;
+        for (int nb = 0; nb < 80; ++nb)
+        {
+            juce::AudioBuffer<float> buf (2, block);
+            fillNoise (buf, (unsigned) (nb * 17 + 2));
+            engine.setParameters (p);
+            engine.process (buf);
+            if (nb >= 40)
+                for (int ch = 0; ch < 2; ++ch)
+                    for (int i = 0; i < block; ++i) { const float v = buf.getSample (ch, i); sq += v * v; }
+        }
+        return sq;
+    };
+    const double eNone = noiseEnergy (0x0);
+    const double eAll  = noiseEnergy (0xF);
+    std::printf ("  energy  no-solo %.1f  all-bands-solo %.1f (ratio %.3f, expect ~1)\n",
+                 eNone, eAll, eAll / juce::jmax (1.0e-9, eNone));
+    check (std::abs (eAll - eNone) < 0.05 * eNone, "Soloing all bands is energy-transparent");
+}
+
+// ---------------------------------------------------------------------------
+//  Level Match measures the post-Mono-Maker output (the real processed signal) and
+//  is independent of Band Solo (which is post-everything). With Drive boosting, the
+//  match gain must go negative to compensate; and it must be the SAME with solo off
+//  vs on (proving solo never changes the DSP / the measurement).
+static void testLevelMatchAndSolo()
+{
+    std::printf ("Test 10: Level Match works and is solo-independent\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0;
+    const int block = 256;
+
+    auto matchDb = [&] (int soloMask) -> float
+    {
+        anamorph::AnamorphEngine engine;
+        engine.prepare (sr, block);
+        anamorph::EngineParameters p;
+        p.mbEnable      = true; p.mbBands = 4; p.mbSolo = soloMask;
+        p.driveDb       = 6.0f;     // a real loudness boost to compensate
+        p.autoGainMatch = true;
+        p.mix           = 1.0f;
+        engine.setParameters (p);
+        engine.reset();
+        for (int nb = 0; nb < 200; ++nb) // ~1 s for the 400 ms integrator to settle
+        {
+            juce::AudioBuffer<float> buf (2, block);
+            fillNoise (buf, (unsigned) (nb * 11 + 4));
+            engine.setParameters (p);
+            engine.process (buf);
+        }
+        return engine.getMatchGainDb();
+    };
+
+    const float off = matchDb (0x0);
+    const float on  = matchDb (0x1);
+    std::printf ("  match gain  solo off %.2f dB  solo band0 %.2f dB\n", off, on);
+    check (off < -0.3f, "Level Match compensates the Drive loudness boost (gain < 0)");
+    check (std::abs (on - off) < 0.05f, "Level Match is identical with solo on/off (solo doesn't change DSP)");
 }
 
 // ---------------------------------------------------------------------------
@@ -486,8 +559,9 @@ int main()
     testTransparentDefault();
     testMonoMaker();
     testMultibandMonoCompat();
-    testSoloRespectsMix();
-    testSoloLowsFollowBand0();
+    testMonoMakerPostMix();
+    testSoloMonitor();
+    testLevelMatchAndSolo();
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);
     if (failures == 0) { std::printf ("ALL TESTS PASSED\n"); return 0; }

@@ -6,6 +6,25 @@ of stereo tools (MS, mono-maker, channel utilities, monitoring) around a
 high-end diamond vectorscope. Built with **CMake + JUCE** only — it configures
 and builds entirely from the command line on a headless Linux machine, no IDE.
 
+### What's new in 0.8.0
+- **Signal flow rebuilt as a clean serial chain.** Previously Mono Maker sat *before*
+  the widener and Band Solo was woven into the Multiband DSP, which made the two fight
+  with the Dry/Wet Mix (the 0.7.3–0.7.5 round of solo/low-cut bugs). The chain is now
+  strictly: **Processing → Dry/Wet Mix → Mono Maker → Output (Balance/Gain/Level Match)
+  → Band Solo monitor**.
+  - **Mono Maker is now post-Mix**: it collapses the lows of the *mixed* signal, so it
+    always acts on whatever the Mix produced, at any Mix amount. Level Match measures
+    the post-Mono-Maker output.
+  - **Band Solo is now POST-EVERYTHING and monitoring-only**: it band-passes the final
+    output to audition the soloed band(s) and never changes any DSP stage. No
+    solo-dependent routing, no special low-frequency handling — soloing a high band
+    simply doesn't pass the lows, and the Mix is "baked into" the signal before the
+    solo filter, so there's no "Solo leaks lows" or "Mix=0 breaks Solo" failure mode.
+  - The **Mix dry/wet phase fix (0.7.2)** is preserved and verified across Mix = 25/50/75%.
+- New self-tests cover the matrix (Mix × Mono Maker × Solo): mono-sum phase integrity,
+  post-Mix Mono Maker, solo band-pass selectivity + transparency, and Level Match
+  working and solo-independent.
+
 ### What's new in 0.7.5
 - **Multiband Solo + Mono Maker, made correct.** Solo is a post-everything *band*
   monitor — you hear exactly the spectral region the soloed band covers. The Mono
@@ -277,8 +296,9 @@ src/
     HaasProcessor.{h,cpp}      Haas precedence delay (1..35 ms, L/R side)
     VelvetNoise.{h,cpp}        Sparse velvet-noise decorrelation (mono->stereo)
     ChorusEngine.{h,cpp}       Chorus + Dimension-D (anti-phase = no pitch wobble)
-    MonoMaker.{h,cpp}          Linkwitz-Riley low-freq mono
-    MultibandWidth.{h,cpp}     1–4 band phase-coherent per-band width + solo (Advanced)
+    MonoMaker.{h,cpp}          Linkwitz-Riley low-freq mono (in place, post-Mix)
+    MultibandWidth.{h,cpp}     1–4 band phase-coherent per-band width (Advanced, solo-agnostic)
+    SoloMonitor.{h,cpp}        Post-everything Band-Solo audition band-pass (never touches DSP)
     LoudnessMatch.{h,cpp}      BS.1770 K-weighted Auto-Gain (Match/Apply)
     Correlation.h              -1..+1 phase-correlation meter (fast + slow)
     ScopeBuffer.h              Lock-free stereo ring buffer for the vectorscope
@@ -296,20 +316,27 @@ scripts/                       setup / build / test / pluginval
 ```
 
 ### Signal chain (order matters — see `AnamorphEngine::process`)
-1. **Input conditioning** — channel kill (L/R/Mono), Swap, Input Balance, polarity.
-2. **Mono Maker** — lows → mono, deliberately **before** widening, so the
-   decorrelators never spread the bass (no L+R comb-cancellation).
-3. **MS encode** *(only if MS mode)* — wraps Drive + the algorithm.
-4. **Effect engine** — **Drive → algorithm (Haas / Velvet / Chorus / Dimension-D) → global Width**.
-5. **Multiband Width** *(Advanced Mode only)* — 1–4 phase-coherent bands, each with
-   its own MS width; a per-band Solo isolates any combination of bands.
-6. **MS decode** *(only if MS mode)*.
-7. **Mix (Dry/Wet)** — the dry path is **delay-compensated** to the wet latency. A
-   Multiband Solo monitors **here, post-Mix**, so a soloed band stays full-level at any Mix.
-8. **Output Gain / Auto Gain**.
-9. **Metering tap** — always taps the **final** output (scope + correlation).
+A strictly serial chain: every stage processes the full signal and hands it to the
+next. Band Solo is the very last stage and is monitoring-only.
+1. **Input conditioning** — channel kill (L/R/Mono), Swap, Input Balance, polarity,
+   M/S decode + M/S solo.
+2. **Effect engine** — **Drive (in oversampling) → algorithm (Haas / Velvet / Chorus /
+   Dimension-D) → global Width → Multiband Width** (1–4 phase-coherent bands, each with
+   its own MS width). This stage is *solo-agnostic* — it always sums every band.
+3. **Mix (Dry/Wet)** — blends the conditioned input against the processed signal; the
+   dry path is **delay-compensated** to the wet latency and **phase-matched** to the
+   Multiband crossovers so a partial Mix never combs the mono sum (KI #1).
+4. **Mono Maker** — collapses the lows of the **mixed** signal to mono in place, so the
+   final low end is mono whatever the Mix amount (Mid stays allpass-flat → no
+   low-frequency cancellation).
+5. **Output stage** — **Output Balance / Output Gain / Level Match** (Level Match
+   measures the post-Mono-Maker signal), plus the click-free switch duck.
+6. **Band Solo monitor** *(post-everything)* — band-passes the already-produced output
+   to the soloed band(s) for auditioning. It **never** changes any DSP stage; with
+   nothing soloed the true output passes through untouched.
+7. **Metering tap** — taps the monitored output (scope + correlation + levels).
 
-Every discrete switch (algorithm/routing/bypass) is applied at the silent bottom
+Every discrete switch (algorithm/routing/bypass/solo) is applied at the silent bottom
 of a ~4 ms raised-cosine duck, so toggling is click-free even during playback.
 
 ### Key engineering decisions

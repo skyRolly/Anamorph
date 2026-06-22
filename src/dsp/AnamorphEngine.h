@@ -9,6 +9,7 @@
 #include "ChorusEngine.h"
 #include "MonoMaker.h"
 #include "MultibandWidth.h"
+#include "SoloMonitor.h"
 #include "LoudnessMatch.h"
 #include "Correlation.h"
 #include "LevelMeters.h"
@@ -107,7 +108,8 @@ private:
     VelvetNoise    velvet;
     ChorusEngine   chorus;
     MultibandWidth multiband;
-    MonoMaker      monoMaker;
+    MonoMaker      monoMaker;     // post-Mix low-frequency mono (in place)
+    SoloMonitor    soloMonitor;   // POST-EVERYTHING Band Solo audition filter
     LoudnessMatch  loudness;
     CorrelationMeter correlation;
     LevelMeters    levels;
@@ -120,7 +122,6 @@ private:
     // Smoothed continuous controls (avoid zipper noise / clicks -- #1).
     juce::SmoothedValue<float> widthSmooth, mixSmooth, outGainSmooth, matchGainSmooth;
     juce::SmoothedValue<float> balanceSmooth, outBalanceSmooth, driveSmooth, driveBlendSmooth;
-    juce::SmoothedValue<float> monoDriveSmooth, monoDriveBlendSmooth; // Drive applied to the mono low band (#1)
     juce::SmoothedValue<float> polLSmooth, polRSmooth; // smoothed polarity sign (no click)
 
     // Click-free discrete switching (feedback #10 / #11). A change to a discrete
@@ -162,20 +163,9 @@ private:
     juce::AudioBuffer<float> dryAlignDelayBuffer;   // delay line, shares dryDelayWrite/size
 
     // Scratch
-    juce::AudioBuffer<float> dryScratch;   // dry for the dry/wet mix (high band when Mono Maker on)
-    juce::AudioBuffer<float> wetScratch;   // wet pre-output-gain (for loudness)
+    juce::AudioBuffer<float> dryScratch;   // dry for the dry/wet mix (the full conditioned input)
+    juce::AudioBuffer<float> wetScratch;   // post-Mono-Maker, pre-output-gain (loudness measurement)
     juce::AudioBuffer<float> inputScratch; // full conditioned input (loudness reference, #25)
-
-    // Mono Maker band-split: the mono low band is held aside while only the high
-    // band is widened, then added back (delay-aligned to the wet latency) (#20).
-    // Both a DRIVEN (wet) and an UN-driven (dry) copy are kept so the recombine
-    // can dry/wet-blend the lows with Mix, instead of letting the driven lows
-    // bypass Mix and roar through at Mix=0 (#5).
-    juce::AudioBuffer<float> monoLow;          // driven (wet) mono low band for this block
-    juce::AudioBuffer<float> monoLowDry;       // un-driven (dry) mono low band for this block
-    juce::AudioBuffer<float> monoLowDelay;     // delay line: wet lows aligned to OS latency
-    juce::AudioBuffer<float> monoLowDryDelay;  // delay line: dry lows aligned to OS latency
-    int monoLowWrite = 0;
 
     bool driveActive = false;
 

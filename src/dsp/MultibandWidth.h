@@ -25,6 +25,10 @@ namespace anamorph
 //  remainder becomes the last band. Each band is widened in the MS domain
 //  (L+R = 2*Mid is preserved per band), so the recombined output stays
 //  mono-compatible. Linear -> OUTSIDE oversampling.
+//
+//  This stage is SOLO-AGNOSTIC: it always processes and sums every active band.
+//  Band Solo is a post-everything MONITORING filter (see SoloMonitor), so no DSP
+//  stage changes its behaviour based on the solo state.
 // ============================================================================
 class MultibandWidth
 {
@@ -36,11 +40,6 @@ public:
     // widths are used; changing it is a structural change and is routed through
     // the engine's silent switch-duck (with a reset) so it never clicks.
     void setBandCount (int n) noexcept { bands = juce::jlimit (1, 4, n); }
-
-    // Solo any combination of bands for monitoring, as a 4-bit mask (bit b = band
-    // b heard alone). 0 = no solo (full mix). All filters keep running (state
-    // preserved); only the SUM changes, so soloing never clicks.
-    void setSolo (int mask) noexcept { soloMask = mask & 0x0F; }
 
     void setCrossovers (float f1, float f2, float f3) noexcept;
 
@@ -59,8 +58,7 @@ public:
     // width -- a phase-matched A(dry) for the dry/wet Mix. Because the dry shares
     // the wet's exact crossover allpass phase, a partial-Mix recombination no longer
     // combs (notably the mono sum L+R = 2*Mid stays intact at any Mix). When the
-    // dryOut pointers are null the dry bank is skipped and behaviour is unchanged
-    // (e.g. full wet, or a band solo which forces full wet) (Known Issue #1).
+    // dryOut pointers are null the dry bank is skipped (Known Issue #1).
     void processBlock (float* left, float* right, int numSamples,
                        const float* dryInL = nullptr, const float* dryInR = nullptr,
                        float* dryOutL = nullptr, float* dryOutR = nullptr) noexcept;
@@ -91,7 +89,6 @@ private:
     float currentW[4] { 1.0f, 1.0f, 1.0f, 1.0f };
 
     int   bands = 4;
-    int   soloMask = 0; // bit b set = band b soloed; 0 = full mix
 };
 
 } // namespace anamorph
