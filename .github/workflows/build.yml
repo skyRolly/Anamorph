@@ -6,11 +6,17 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Every push builds the FULL set of formats on all three desktop OSes so beta
+# testers can install on any platform:
+#   * Linux   -> VST3 + Standalone
+#   * Windows -> VST3 + Standalone
+#   * macOS   -> VST3 + AU + Standalone  (universal arm64 + x86_64)
+# Linux is the authoritative validation gate (headless pluginval at strictness
+# 10 under xvfb). Windows/macOS run pluginval too, but only informationally, so
+# a flaky GUI test on those runners never blocks the tester artifacts.
+
 jobs:
   linux:
-    # Paused by request: prioritise the macOS build/validation. The source stays
-    # cross-platform (Win/Linux); flip this back to true to re-enable Linux CI.
-    if: false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,21 +29,76 @@ jobs:
       - name: Configure
         run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DANAMORPH_BUILD_NUMBER=${{ github.run_number }}
 
-      - name: Build
+      - name: Build (VST3 + Standalone + tests)
         run: cmake --build build --config Release
 
       - name: DSP self-tests
         run: ./scripts/run-tests.sh
 
-      - name: pluginval (strictness 8)
-        run: ./scripts/run-pluginval.sh 8
+      - name: pluginval (strictness 10 -- release gate)
+        run: ./scripts/run-pluginval.sh 10
 
-      - name: Upload VST3 (Linux)
+      - name: Stage Linux artifacts (VST3 + Standalone)
+        if: always()
+        run: |
+          DIST="dist/Anamorph-Linux"
+          mkdir -p "$DIST"
+          cp -R build/Anamorph_artefacts/Release/VST3/Anamorph.vst3 "$DIST/"
+          cp    build/Anamorph_artefacts/Release/Standalone/Anamorph "$DIST/Anamorph" || true
+
+      - name: Upload Linux artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Anamorph-VST3-Linux
-          path: build/Anamorph_artefacts/Release/VST3/Anamorph.vst3
+          name: Anamorph-Linux
+          path: dist/Anamorph-Linux
+          if-no-files-found: warn
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Default Visual Studio generator (multi-config); MSVC is auto-detected.
+      - name: Configure
+        run: cmake -B build -DANAMORPH_BUILD_NUMBER=${{ github.run_number }}
+
+      - name: Build (VST3 + Standalone + tests)
+        run: cmake --build build --config Release
+
+      - name: DSP self-tests
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Recurse -Path build -Filter AnamorphTests.exe | Select-Object -First 1
+          if (-not $exe) { Write-Error 'AnamorphTests.exe not found'; exit 1 }
+          & $exe.FullName
+
+      - name: pluginval (strictness 10, informational)
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_Windows.zip -OutFile pluginval.zip
+          Expand-Archive -Force pluginval.zip -DestinationPath pluginval
+          $vst3 = Get-ChildItem -Recurse -Path build -Filter Anamorph.vst3 -Directory | Select-Object -First 1
+          & ".\pluginval\pluginval.exe" --strictness-level 10 --validate $vst3.FullName --timeout-ms 600000
+
+      - name: Stage Windows artifacts (VST3 + Standalone)
+        if: always()
+        shell: pwsh
+        run: |
+          $dist = 'dist/Anamorph-Windows'
+          New-Item -ItemType Directory -Force -Path $dist | Out-Null
+          $vst3 = Get-ChildItem -Recurse -Path build -Filter Anamorph.vst3 -Directory | Select-Object -First 1
+          if ($vst3) { Copy-Item -Recurse -Force $vst3.FullName $dist }
+          $exe = Get-ChildItem -Recurse -Path build -Filter Anamorph.exe | Where-Object { $_.FullName -match 'Standalone' } | Select-Object -First 1
+          if ($exe) { Copy-Item -Force $exe.FullName $dist }
+
+      - name: Upload Windows artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Anamorph-Windows
+          path: dist/Anamorph-Windows
           if-no-files-found: warn
 
   macos:
@@ -56,7 +117,7 @@ jobs:
           -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13
           -DANAMORPH_BUILD_NUMBER=${{ github.run_number }}
 
-      - name: Build
+      - name: Build (VST3 + AU + Standalone + tests)
         run: cmake --build build --config Release
 
       - name: DSP self-tests
@@ -64,32 +125,38 @@ jobs:
           chmod +x scripts/*.sh
           ./scripts/run-tests.sh
 
-      - name: pluginval (informational, strictness 5)
+      - name: pluginval (strictness 10, informational)
         continue-on-error: true   # editor/window tests can be flaky on headless CI
         run: |
           curl -L https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_macOS.zip -o pluginval.zip
           unzip -o pluginval.zip >/dev/null
-          ./pluginval.app/Contents/MacOS/pluginval --strictness-level 5 --validate \
+          ./pluginval.app/Contents/MacOS/pluginval --strictness-level 10 --validate \
             build/Anamorph_artefacts/Release/VST3/Anamorph.vst3
 
-      - name: Package macOS plugins (VST3 + AU)
+      - name: Package macOS plugins (VST3 + AU + Standalone)
+        if: always()
         run: |
           set -e
           DIST="dist/Anamorph-macOS"
           mkdir -p "$DIST"
           VST3="build/Anamorph_artefacts/Release/VST3/Anamorph.vst3"
           AU="build/Anamorph_artefacts/Release/AU/Anamorph.component"
+          APP="build/Anamorph_artefacts/Release/Standalone/Anamorph.app"
           # Ad-hoc codesign so macOS will load the bundles after quarantine removal.
           codesign --force --deep --sign - "$VST3" || true
-          codesign --force --deep --sign - "$AU" || true
+          codesign --force --deep --sign - "$AU"   || true
+          codesign --force --deep --sign - "$APP"  || true
           cp -R "$VST3" "$DIST/"
           cp -R "$AU"   "$DIST/"
+          cp -R "$APP"  "$DIST/"
           cp packaging/macos/INSTALL.txt "$DIST/INSTALL.txt"
           # Verify both slices are present in the universal binary.
           echo "== VST3 arches =="; lipo -archs "$DIST/Anamorph.vst3/Contents/MacOS/Anamorph" || true
           echo "== AU arches ==";   lipo -archs "$DIST/Anamorph.component/Contents/MacOS/Anamorph" || true
+          echo "== App arches ==";  lipo -archs "$DIST/Anamorph.app/Contents/MacOS/Anamorph" || true
 
-      - name: Upload macOS plugins (VST3 + AU)
+      - name: Upload macOS plugins (VST3 + AU + Standalone)
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: Anamorph-macOS

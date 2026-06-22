@@ -21,6 +21,10 @@ void MultibandWidth::prepare (double sampleRate, int maxBlock)
     x1.setCutoffFrequency (currentF[0]);
     x2.setCutoffFrequency (currentF[1]);
     x3.setCutoffFrequency (currentF[2]);
+    // One-pole on the band widths at ~20 ms (the global Width smoother's ramp),
+    // so a fast band-width drag glides instead of stepping per block (0.7.0 #1).
+    wCoeff = std::exp (-1.0f / (0.02f * (float) sr));
+    for (int i = 0; i < 4; ++i) { currentW[i] = targetW[i]; }
     reset();
 }
 
@@ -29,6 +33,10 @@ void MultibandWidth::reset()
     x1.reset();
     x2.reset();
     x3.reset();
+    // Settle the width glide to its target. reset() only runs while the engine is
+    // ducked to silence (or in prepare), so snapping here can never click and the
+    // band starts at its true width when audio resumes.
+    for (int i = 0; i < 4; ++i) { currentW[i] = targetW[i]; }
 }
 
 void MultibandWidth::setCrossovers (float f1, float f2, float f3) noexcept
@@ -54,7 +62,10 @@ void MultibandWidth::processBlock (float* left, float* right, int numSamples) no
     if (bands <= 1)
     {
         for (int n = 0; n < numSamples; ++n)
-            applyWidth (left[n], right[n], w[0]);
+        {
+            currentW[0] = targetW[0] + (currentW[0] - targetW[0]) * wCoeff;
+            applyWidth (left[n], right[n], currentW[0]);
+        }
         return; // a single band soloed is just itself
     }
 
@@ -76,6 +87,11 @@ void MultibandWidth::processBlock (float* left, float* right, int numSamples) no
             }
         }
 
+        // Glide each active band width toward its target (one-pole), so a fast
+        // band-width drag never steps the side-gain between blocks (0.7.0 #1).
+        for (int i = 0; i <= crossovers; ++i)
+            currentW[i] = targetW[i] + (currentW[i] - targetW[i]) * wCoeff;
+
         float curL = left[n], curR = right[n];
         float accL = 0.0f, accR = 0.0f;
 
@@ -85,13 +101,13 @@ void MultibandWidth::processBlock (float* left, float* right, int numSamples) no
             float loL, hiL, loR, hiR;
             xs[i]->processSample (0, curL, loL, hiL);
             xs[i]->processSample (1, curR, loR, hiR);
-            applyWidth (loL, loR, w[i]);
+            applyWidth (loL, loR, currentW[i]);
             if (heard (i)) { accL += loL; accR += loR; }
             curL = hiL; curR = hiR;
         }
 
         // The final remainder is the top band.
-        applyWidth (curL, curR, w[crossovers]);
+        applyWidth (curL, curR, currentW[crossovers]);
         if (heard (crossovers)) { accL += curL; accR += curR; }
 
         left[n]  = accL;
