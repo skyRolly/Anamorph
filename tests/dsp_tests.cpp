@@ -362,6 +362,64 @@ static void testMultibandMonoCompat()
 }
 
 // ---------------------------------------------------------------------------
+//  A Multiband solo must OBEY the dry/wet Mix: at Mix=0 a soloed band is its DRY
+//  (un-widened) self, at Mix=1 the wet (width applied). Solo band 0 (lows) and vary
+//  its width: at Mix=0 the width must NOT affect the output (it's dry); at Mix=1 it
+//  must (it's wet). Regression for solo bypassing Mix.
+static void testSoloRespectsMix()
+{
+    std::printf ("Test 8: Multiband Solo obeys the dry/wet Mix\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0;
+    const int block = 256;
+
+    auto sideRms = [&] (float w0, float mix) -> double
+    {
+        anamorph::AnamorphEngine engine;
+        engine.prepare (sr, block);
+        anamorph::EngineParameters p;
+        p.mbEnable   = true;
+        p.mbBands    = 4;
+        p.mbSolo     = 0x1;        // solo band 0 (the lows)
+        p.mbWidthLow = w0;         // band 0 width
+        p.mix        = mix;
+        engine.setParameters (p);
+        engine.reset();
+
+        double sq = 0.0; int cnt = 0;
+        for (int nb = 0; nb < 80; ++nb)
+        {
+            juce::AudioBuffer<float> buf (2, block);
+            fillNoise (buf, (unsigned) (nb * 9 + 1));
+            engine.setParameters (p);
+            engine.process (buf);
+            if (nb >= 40)
+                for (int i = 0; i < block; ++i)
+                {
+                    const float s = 0.5f * (buf.getSample (0, i) - buf.getSample (1, i));
+                    sq += s * s; ++cnt;
+                }
+        }
+        return std::sqrt (sq / juce::jmax (1, cnt));
+    };
+
+    const double dryNarrow = sideRms (0.0f, 0.0f); // width 0, Mix 0
+    const double dryWide   = sideRms (2.0f, 0.0f); // width 2, Mix 0  -> must match (dry, un-widened)
+    const double wetNarrow = sideRms (0.0f, 1.0f); // width 0, Mix 1  -> wet, side collapsed
+    const double wetWide   = sideRms (2.0f, 1.0f); // width 2, Mix 1  -> wet, side widened
+    const double ref = juce::jmax (1.0e-6, dryNarrow);
+
+    std::printf ("  Mix0 side RMS: w0=%.4f w2=%.4f ; Mix1 side RMS: w0=%.4f w2=%.4f\n",
+                 dryNarrow, dryWide, wetNarrow, wetWide);
+    check (std::abs (dryWide - dryNarrow) < 0.05 * ref,
+           "Solo at Mix=0 plays the DRY band (width has no effect)");
+    check (wetNarrow < 0.3 * ref,
+           "Solo at Mix=1 plays the WET band (width 0 collapses the side)");
+    check (wetWide > 1.5 * ref,
+           "Solo at Mix=1 plays the WET band (width 2 widens the side)");
+}
+
+// ---------------------------------------------------------------------------
 int main()
 {
     std::printf ("=== Anamorph DSP self-tests ===\n");
@@ -371,6 +429,7 @@ int main()
     testTransparentDefault();
     testMonoMaker();
     testMultibandMonoCompat();
+    testSoloRespectsMix();
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);
     if (failures == 0) { std::printf ("ALL TESTS PASSED\n"); return 0; }

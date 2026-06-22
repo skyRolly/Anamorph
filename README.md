@@ -6,6 +6,17 @@ of stereo tools (MS, mono-maker, channel utilities, monitoring) around a
 high-end diamond vectorscope. Built with **CMake + JUCE** only — it configures
 and builds entirely from the command line on a headless Linux machine, no IDE.
 
+### What's new in 0.7.3
+- **Multiband Solo now obeys the Mix knob.** A soloed band used to be hard-wired to
+  full wet, so the Mix control did nothing while soloing. It now follows Mix like the
+  rest of the signal: at Mix = 0% you hear the band's **dry** (un-widened) self, at
+  100% the wet — using the same phase-matched dry reconstruction as the 0.7.2 fix,
+  masked to the soloed band(s). A self-test covers it.
+- **Window opens at the right size on Windows.** The user Window-Size (XS…XL) is now
+  **composed** with the host's display/DPI scale instead of overwriting it, so the
+  window no longer opens too large (and then shrink on the first Adv click / ignore the
+  Window-Size combo) on scaled Windows displays. macOS was unaffected.
+
 ### What's new in 0.7.2
 - **Multiband is now phase-aligned with the dry/wet Mix.** Previously, at Mix < 100%
   with the Multiband engaged, the wet path carried the crossovers' allpass phase while
@@ -33,8 +44,8 @@ rotary multiband is replaced by an Ozone-Imager / Pro-Q-style display:
   off the box, or click its **✕**, to remove it (the two regions merge).
 - **Per-band Solo** with a headphone icon: click to latch any combination of bands,
   press-and-hold to audition one momentarily, hold-and-drag to slide a whole band.
-  Solo monitors **after** the output Mix, so a soloed band is heard alone at full
-  level even at Mix < 100%. Solo travels with A/B and undo, but a preset load resets it.
+  Solo monitors **after** the output Mix and obeys the Mix knob (dry band at Mix 0%,
+  wet at 100% — see 0.7.3). Solo travels with A/B and undo, but a preset load resets it.
 - **Phase-coherent crossovers** (Linkwitz-Riley) with a per-sample octave-rate slew,
   so a fast split drag can never chirp; the bands recombine mono-compatibly.
 - A **custom non-linear frequency ruler** (monotone-cubic warp), a cubic-smoothed
