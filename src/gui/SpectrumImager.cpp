@@ -628,9 +628,16 @@ void SpectrumImager::timerCallback()
     const float rOut = animOn ? 1.0f - std::exp (-dt / 0.150f) : 1.0f;
     auto ease = [&] (float& v, float t) { v += (t - v) * (t > v ? rIn : rOut); };
 
+    // The band-pass preview curve is a press-and-HOLD affordance: light it only once the
+    // grab has been held past the threshold or has become a drag, never on a bare click /
+    // double-click / repeated clicks (0.8.1). Hover/handle glow stays click-responsive.
+    if (dragHandle >= 0 && ! handleHoldActive
+        && juce::Time::getMillisecondCounter() - handlePressMs > 200u)
+        handleHoldActive = true;
+
     const int em = effectiveSoloMask();
     for (int i = 0; i < 3; ++i) ease (handleA[i], (i == dragHandle || i == hoverHandle) ? 1.0f : 0.0f);
-    for (int i = 0; i < 3; ++i) ease (pressA[i],  (i == dragHandle) ? 1.0f : 0.0f);
+    for (int i = 0; i < 3; ++i) ease (pressA[i],  (i == dragHandle && handleHoldActive) ? 1.0f : 0.0f);
     for (int i = 0; i < 4; ++i) ease (widthA[i],  (i == dragBand   || i == hoverWidth)  ? 1.0f : 0.0f);
     for (int i = 0; i < 4; ++i) ease (pressW[i],  (i == dragBand) ? 1.0f : 0.0f);
     // Over the x itself = brightest; merely over the band = dimmer; eased either way (#2).
@@ -1211,6 +1218,7 @@ void SpectrumImager::mouseDown (const juce::MouseEvent& e)
     if (h >= 0)
     {
         dragHandle = h; dragBand = -1; dragRemovePending = false;
+        handlePressMs = juce::Time::getMillisecondCounter(); handlePressX = p.x; handleHoldActive = false;
         const int M = bandCount() - 1;
         for (int k = 0; k < M; ++k) dragOrigX[k] = freqToX (crossover (k));
         dragGrabDX = p.x - freqToX (crossover (h)); // keep the line under the cursor with this offset (#10)
@@ -1233,6 +1241,7 @@ void SpectrumImager::mouseDown (const juce::MouseEvent& e)
         if (idx >= 0)
         {
             dragHandle = idx; dragBand = -1; dragRemovePending = false;
+            handlePressMs = juce::Time::getMillisecondCounter(); handlePressX = p.x; handleHoldActive = false;
             const int M = bandCount() - 1;
             for (int k = 0; k < M; ++k) dragOrigX[k] = freqToX (crossover (k));
             dragGrabDX = p.x - freqToX (crossover (idx));
@@ -1264,6 +1273,9 @@ void SpectrumImager::mouseDrag (const juce::MouseEvent& e)
                       && (e.position.y < -50.0f || e.position.y > (float) getHeight() + 50.0f
                        || e.position.x < -70.0f || e.position.x > (float) getWidth() + 70.0f);
         dragRemovePending = out;
+        // A real drag IS a sustained hold -> show the band-pass preview (but a tiny jitter
+        // between the two clicks of a double-click must not, hence the small threshold).
+        if (! handleHoldActive && std::abs (e.position.x - handlePressX) > 3.0f) handleHoldActive = true;
         if (! out) dragCrossoverTo (dragHandle, (float) e.position.x - dragGrabDX);
     }
     else if (dragBand >= 0)
@@ -1301,6 +1313,7 @@ void SpectrumImager::mouseUp (const juce::MouseEvent& e)
     if (dragBand >= 0) endGesture (widthP[dragBand]);
     dragHandle = dragBand = -1;
     dragRemovePending = false;
+    handleHoldActive = false; // a click that never became a hold leaves the preview dark
     updateHover (e.position);
     repaint();
 }

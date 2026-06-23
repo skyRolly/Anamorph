@@ -169,6 +169,11 @@ private:
 
     bool driveActive = false;
 
+    // Silence->audio edge latch: on the first audible block after silence the applied
+    // Level-Match gain is snapped to its pre-ducked target so it can't slam, even if the
+    // host never ran the plugin while paused (click-free -- the prior block was silent).
+    bool prevInputSilent = true;
+
     // Whether the oversampling wrap is ENGAGED, latched only at safe points
     // (reset / the silent duck bottom). Engaging the oversampler inserts its
     // group delay, so doing it live -- e.g. Drive crossing 0 with OS selected --

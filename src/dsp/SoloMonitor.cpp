@@ -18,6 +18,12 @@ void SoloMonitor::prepare (double sampleRate, int maxBlock)
     x1.setCutoffFrequency (currentF[0]);
     x2.setCutoffFrequency (currentF[1]);
     x3.setCutoffFrequency (currentF[2]);
+
+    // ~12 ms crossfade: long enough to be click-free, short enough to feel instant.
+    const double xfade = 0.012;
+    passGain.reset (sampleRate, xfade);
+    for (auto& g : bandGain) g.reset (sampleRate, xfade);
+
     reset();
 }
 
@@ -26,6 +32,8 @@ void SoloMonitor::reset()
     x1.reset();
     x2.reset();
     x3.reset();
+    passGain.setCurrentAndTargetValue (1.0f);     // settle to the true passthrough
+    for (auto& g : bandGain) g.setCurrentAndTargetValue (0.0f);
 }
 
 void SoloMonitor::setCrossovers (float f1, float f2, float f3) noexcept
@@ -40,12 +48,18 @@ void SoloMonitor::setCrossovers (float f1, float f2, float f3) noexcept
 void SoloMonitor::process (float* left, float* right, int mask, int numSamples) noexcept
 {
     const int active = mask & ((1 << bands) - 1);
-    if (active == 0)
-        return; // nothing soloed -> the output passes through untouched
+    const bool anySolo = active != 0;
 
     juce::dsp::LinkwitzRileyFilter<float>* xs[3] = { &x1, &x2, &x3 };
-    const int crossovers = bands - 1; // 1..3
+    const int crossovers = bands - 1; // 0..3
     auto heard = [active] (int b) noexcept { return (active & (1 << b)) != 0; };
+
+    // Targets for the click-free crossfade. The passthrough is heard when nothing is
+    // soloed; each active band's gain is 1 only while that band is soloed. The bands
+    // ABOVE the active count stay at 0 so a band-count change settles cleanly.
+    passGain.setTargetValue (anySolo ? 0.0f : 1.0f);
+    for (int b = 0; b < 4; ++b)
+        bandGain[b].setTargetValue ((b <= crossovers && heard (b)) ? 1.0f : 0.0f);
 
     for (int n = 0; n < numSamples; ++n)
     {
@@ -61,19 +75,27 @@ void SoloMonitor::process (float* left, float* right, int mask, int numSamples) 
             }
         }
 
-        float curL = left[n], curR = right[n];
-        float accL = 0.0f, accR = 0.0f;
+        const float inL = left[n], inR = right[n];
+        // The filters run unconditionally (kept warm), so an engage has no charge-up
+        // transient; gains are summed in, so nothing soloed -> passGain 1 -> true output.
+        const float pg = passGain.getNextValue();
+        float accL = pg * inL, accR = pg * inR;
 
-        // Peel off one low band per crossover; sum only the soloed bands.
+        float curL = inL, curR = inR;
         for (int i = 0; i < crossovers; ++i)
         {
             float loL, hiL, loR, hiR;
             xs[i]->processSample (0, curL, loL, hiL);
             xs[i]->processSample (1, curR, loR, hiR);
-            if (heard (i)) { accL += loL; accR += loR; }
+            const float g = bandGain[i].getNextValue();
+            accL += g * loL; accR += g * loR;
             curL = hiL; curR = hiR;
         }
-        if (heard (crossovers)) { accL += curL; accR += curR; }
+        const float gTop = bandGain[crossovers].getNextValue(); // highest band = the remaining high
+        accL += gTop * curL; accR += gTop * curR;
+
+        // Advance the unused band smoothers so they keep tracking 0 in lock-step.
+        for (int b = crossovers + 1; b < 4; ++b) bandGain[b].getNextValue();
 
         left[n]  = accL;
         right[n] = accR;

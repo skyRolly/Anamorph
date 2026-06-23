@@ -402,7 +402,7 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
 
     // Mono Maker now lives inside the Output module (#24).
     setupToggle (monoMakerToggle, pid::monoMakerOn, "Mono Maker",
-                 "Collapse everything below the frequency to mono (before widening).");
+                 "Collapse everything below the frequency to mono.");
     setupRotary (monoFreqK, monoFreqL, "Freq", "Mono Maker crossover frequency.");
     monoFreqK.setSliderStyle (juce::Slider::LinearHorizontal);
     monoFreqK.setTextBoxStyle (juce::Slider::TextBoxRight, false, 50, 18);

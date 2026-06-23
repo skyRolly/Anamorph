@@ -15,6 +15,7 @@
 #include "dsp/AnamorphEngine.h"
 #include "dsp/MidSide.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <random>
@@ -550,6 +551,311 @@ static void testLevelMatchAndSolo()
 }
 
 // ---------------------------------------------------------------------------
+//  Click-free transition matrix (0.8.1). A steady low sine is fed continuously while
+//  the full set of state changes the user listed is applied at block boundaries:
+//  Band Solo on/off (and changing the set), Mix 0<->1, Output gain / Balance jumps, a
+//  forced bulk swap (A/B-style duck), and a Parameter Reset. The output must never step
+//  (no sample-to-sample discontinuity beyond a small bound) and never go bad. A clean
+//  220 Hz sine slews < 0.008 / sample, so a real click (a routing/level step) shows up
+//  as a far larger jump; the bound catches it without flagging the smooth morphs.
+static void testNoClicksAcrossTransitions()
+{
+    std::printf ("Test 11: no clicks across Solo / Mix / Gain / Balance / A-B / Reset\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0;
+    const int block = 128;
+    const double freq = 220.0;
+    const float amp = 0.25f;
+
+    anamorph::AnamorphEngine engine;
+    engine.prepare (sr, block);
+
+    anamorph::EngineParameters p; // transparent defaults
+    p.mbEnable = true; p.mbBands = 4; // Multiband on so the post-everything Solo monitor runs
+    engine.setParameters (p);
+    engine.reset();
+
+    double phase = 0.0; const double inc = 2.0 * 3.14159265358979 * freq / sr;
+    float prev = 0.0f; bool havePrev = false;
+    double maxDelta = 0.0, maxAbs = 0.0; bool bad = false;
+    const int warmup = 24;
+    const int nBlocks = 360;
+
+    for (int nb = 0; nb < nBlocks; ++nb)
+    {
+        // --- schedule the transitions (one mutation per milestone block) ---
+        bool forced = false;
+        switch (nb)
+        {
+            case 30:  p.mbSolo = 0x2;  break;                 // solo band 1 (contains 220 Hz)
+            case 60:  p.mbSolo = 0xA;  break;                 // change the set: bands 1 + 3
+            case 90:  p.mbSolo = 0x8;  break;                 // solo band 3 (rejects 220 Hz)
+            case 120: p.mbSolo = 0x0;  break;                 // clear solo
+            case 150: p.mix = 0.0f;    break;                 // Mix -> dry
+            case 180: p.mix = 1.0f;    break;                 // Mix -> wet
+            case 210: p.outputGainDb = -18.0f; break;         // big output-gain drop
+            case 240: p.outputGainDb = 0.0f;   break;
+            case 270: p.outputBalance = -1.0f; break;         // hard balance jump
+            case 300: p.outputBalance = 0.0f;  break;
+            case 320: forced = true; p.width = 1.8f; p.mbWidthLow = 1.6f; break; // A/B-style bulk swap
+            case 340: p = anamorph::EngineParameters(); p.mbEnable = true; p.mbBands = 4; break; // Reset
+            default: break;
+        }
+        if (forced) engine.requestDuck();
+        engine.setParameters (p);
+
+        juce::AudioBuffer<float> buf (2, block);
+        for (int i = 0; i < block; ++i)
+        {
+            const float s = amp * (float) std::sin (phase); phase += inc;
+            buf.setSample (0, i, s); buf.setSample (1, i, s);
+        }
+        engine.process (buf);
+
+        for (int i = 0; i < block; ++i)
+        {
+            const float v = buf.getSample (0, i);
+            if (isBad (v)) bad = true;
+            maxAbs = std::max (maxAbs, (double) std::abs (v));
+            if (nb >= warmup && havePrev) maxDelta = std::max (maxDelta, (double) std::abs (v - prev));
+            prev = v; havePrev = true;
+        }
+    }
+
+    std::printf ("  max sample-to-sample delta = %.4f (clean-sine slew ~0.008) ; max |out| = %.3f\n",
+                 maxDelta, maxAbs);
+    check (! bad, "transition stream is free of NaN/Inf/denormals");
+    check (maxDelta < 0.04, "no click: output stays continuous across every transition");
+    check (maxAbs < 1.5, "no slam: output never blows up during a transition");
+}
+
+// ---------------------------------------------------------------------------
+//  Ghost-signal guard (0.8.1): toggling Band Solo while the input is silent (DAW
+//  paused / stopped / zero buffer) must not emit any signal. With the warm, crossfaded
+//  monitor, silence in -> silence out whatever the solo set does.
+static void testSoloNoGhostInSilence()
+{
+    std::printf ("Test 12: toggling Band Solo in silence emits no ghost signal\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0;
+    const int block = 128;
+
+    anamorph::AnamorphEngine engine;
+    engine.prepare (sr, block);
+    anamorph::EngineParameters p;
+    p.mbEnable = true; p.mbBands = 4;
+    engine.setParameters (p);
+    engine.reset();
+    engine.setTransportPlaying (false);
+
+    double maxAbs = 0.0; bool bad = false;
+    const int masks[] = { 0x1, 0x0, 0x8, 0x4, 0xF, 0x0, 0x2 };
+    int mi = 0;
+    for (int nb = 0; nb < 140; ++nb)
+    {
+        if (nb % 18 == 0) { p.mbSolo = masks[mi % 7]; ++mi; engine.setParameters (p); }
+        juce::AudioBuffer<float> buf (2, block);
+        buf.clear(); // zero input buffer (paused / silent)
+        engine.process (buf);
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = 0; i < block; ++i)
+            {
+                const float v = buf.getSample (ch, i);
+                if (isBad (v)) bad = true;
+                maxAbs = std::max (maxAbs, (double) std::abs (v));
+            }
+    }
+    std::printf ("  max |out| over silent solo toggles = %.2e\n", maxAbs);
+    check (! bad, "silent solo-toggle stream is clean");
+    check (maxAbs < 1.0e-5, "no ghost: Band Solo toggled in silence stays silent");
+}
+
+// ---------------------------------------------------------------------------
+//  Level Match must read ~0 at true unity (output == input): no measurement bias.
+static void testLevelMatchUnity()
+{
+    std::printf ("Test 13: Level Match reads ~0 at unity (no bias)\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0;
+    const int block = 256;
+
+    anamorph::AnamorphEngine engine;
+    engine.prepare (sr, block);
+    anamorph::EngineParameters p; // transparent defaults: width 1, mix 1, drive 0, no modules
+    p.autoGainMatch = true;
+    engine.setParameters (p);
+    engine.reset();
+
+    for (int nb = 0; nb < 240; ++nb)
+    {
+        juce::AudioBuffer<float> buf (2, block);
+        fillNoise (buf, (unsigned) (nb * 13 + 7));
+        engine.setParameters (p);
+        engine.process (buf);
+    }
+    const float db = engine.getMatchGainDb();
+    std::printf ("  unity match gain = %.3f dB (expect ~0)\n", db);
+    check (std::abs (db) < 0.1f, "Level Match is unbiased at unity (output == input)");
+}
+
+// ---------------------------------------------------------------------------
+//  The Drive predict must be ABSOLUTE: repeatedly cranking Drive up/down while PAUSED
+//  (silent) must not ratchet the predicted gain toward the -24 dB floor. The published
+//  gain must stay bounded near the single-cycle predict, however many cycles are run.
+static void testLevelMatchNoRatchet()
+{
+    std::printf ("Test 14: Level Match predict doesn't ratchet on repeated Drive up/down (paused)\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0;
+    const int block = 256;
+
+    anamorph::AnamorphEngine engine;
+    engine.prepare (sr, block);
+    anamorph::EngineParameters p;
+    p.autoGainMatch = true; p.mix = 1.0f;
+    engine.setParameters (p);
+    engine.reset();
+    engine.setTransportPlaying (false);
+
+    auto silentBlocks = [&] (int count)
+    {
+        for (int i = 0; i < count; ++i)
+        {
+            juce::AudioBuffer<float> buf (2, block); buf.clear();
+            engine.setParameters (p);
+            engine.process (buf);
+        }
+    };
+
+    float worst = 0.0f; // most negative published gain seen across all cycles
+    for (int cycle = 0; cycle < 6; ++cycle)
+    {
+        p.driveDb = 24.0f; silentBlocks (8);
+        worst = std::min (worst, engine.getMatchGainDb());
+        p.driveDb = 0.0f;  silentBlocks (8);
+        worst = std::min (worst, engine.getMatchGainDb());
+    }
+    p.driveDb = 24.0f; silentBlocks (8);
+    const float finalGain = engine.getMatchGainDb();
+    std::printf ("  most-negative paused predict = %.2f dB ; final (drive 24) = %.2f dB\n", worst, finalGain);
+    check (worst > -15.0f, "predict never ratchets toward the -24 dB floor");
+    check (finalGain > -15.0f && finalGain < -6.0f, "predict stays at the single-cycle value, not accumulating");
+}
+
+// ---------------------------------------------------------------------------
+//  Mix must feed the predict too, and the pause->play edge must not slam. Drive maxed +
+//  Mix 0 -> match ~0 (output is dry). Then PAUSE, raise Mix to 100%, PLAY: the first
+//  audible block must already be pre-ducked, so its peak is near the level-matched
+//  steady state -- not ~4x louder (the old slam).
+static void testLevelMatchMixCouplingNoSlam()
+{
+    std::printf ("Test 15: Mix feeds the predict; pause->Mix-up->play doesn't slam\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0;
+    const int block = 256;
+
+    anamorph::AnamorphEngine engine;
+    engine.prepare (sr, block);
+    anamorph::EngineParameters p;
+    p.autoGainMatch = true; p.driveDb = 24.0f; p.mix = 0.0f; // full drive, but fully dry
+    engine.setParameters (p);
+    engine.reset();
+    engine.setTransportPlaying (true);
+
+    // Play dry: output == input, so the match settles near 0 dB.
+    for (int nb = 0; nb < 200; ++nb)
+    {
+        juce::AudioBuffer<float> buf (2, block);
+        fillNoise (buf, (unsigned) (nb * 9 + 1));
+        engine.setParameters (p);
+        engine.process (buf);
+    }
+    const float dryMatch = engine.getMatchGainDb();
+
+    // Establish the level-matched steady-state output peak at Mix = 100%.
+    auto steadyPeak = [&] () -> double
+    {
+        p.mix = 1.0f;
+        double pk = 0.0;
+        for (int nb = 0; nb < 200; ++nb)
+        {
+            juce::AudioBuffer<float> buf (2, block);
+            fillNoise (buf, (unsigned) (nb * 9 + 1));
+            engine.setParameters (p);
+            engine.process (buf);
+            if (nb >= 150)
+                for (int i = 0; i < block; ++i) pk = std::max (pk, (double) std::abs (buf.getSample (0, i)));
+        }
+        return pk;
+    };
+    const double steady = steadyPeak();
+
+    // Now reproduce the user's gesture: back to dry + converged, PAUSE (silence) while
+    // raising Mix to 100%, then PLAY -- measure the very first audible block's peak.
+    p.mix = 0.0f;
+    for (int nb = 0; nb < 200; ++nb)
+    {
+        juce::AudioBuffer<float> buf (2, block);
+        fillNoise (buf, (unsigned) (nb * 9 + 1));
+        engine.setParameters (p);
+        engine.process (buf);
+    }
+    engine.setTransportPlaying (false);
+    p.mix = 1.0f;                         // raise Mix while paused
+    for (int nb = 0; nb < 12; ++nb) { juce::AudioBuffer<float> b (2, block); b.clear(); engine.setParameters (p); engine.process (b); }
+    engine.setTransportPlaying (true);
+    juce::AudioBuffer<float> first (2, block);
+    fillNoise (first, 9999);
+    engine.setParameters (p);
+    engine.process (first);
+    double firstPeak = 0.0;
+    for (int i = 0; i < block; ++i) firstPeak = std::max (firstPeak, (double) std::abs (first.getSample (0, i)));
+
+    std::printf ("  dry match=%.2f dB ; Mix100 steady peak=%.3f ; first played peak=%.3f (ratio %.2f)\n",
+                 dryMatch, steady, firstPeak, firstPeak / juce::jmax (1.0e-6, steady));
+    check (std::abs (dryMatch) < 0.6f, "Drive maxed + Mix 0 -> match ~0 (output is dry)");
+    check (firstPeak < steady * 1.7, "pause -> Mix-up -> play does not slam (pre-ducked first block)");
+}
+
+// ---------------------------------------------------------------------------
+//  On silence the MEASURE must wait: hold the last trusted value, never drift to 0.
+static void testLevelMatchSilenceFreeze()
+{
+    std::printf ("Test 16: Level Match holds its value on silence (measure waits)\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0;
+    const int block = 256;
+
+    anamorph::AnamorphEngine engine;
+    engine.prepare (sr, block);
+    anamorph::EngineParameters p;
+    p.autoGainMatch = true; p.driveDb = 8.0f; p.mix = 1.0f;
+    engine.setParameters (p);
+    engine.reset();
+    engine.setTransportPlaying (true);
+
+    for (int nb = 0; nb < 220; ++nb) // converge on audio
+    {
+        juce::AudioBuffer<float> buf (2, block);
+        fillNoise (buf, (unsigned) (nb * 5 + 3));
+        engine.setParameters (p);
+        engine.process (buf);
+    }
+    const float converged = engine.getMatchGainDb();
+
+    for (int nb = 0; nb < 200; ++nb) // ~1 s of silence
+    {
+        juce::AudioBuffer<float> buf (2, block); buf.clear();
+        engine.setParameters (p);
+        engine.process (buf);
+    }
+    const float held = engine.getMatchGainDb();
+    std::printf ("  converged=%.2f dB ; after 1 s silence=%.2f dB\n", converged, held);
+    check (converged < -1.0f, "Level Match compensates the Drive boost on audio");
+    check (std::abs (held - converged) < 0.4f, "Level Match holds on silence (no drift toward 0)");
+}
+
+// ---------------------------------------------------------------------------
 int main()
 {
     std::printf ("=== Anamorph DSP self-tests ===\n");
@@ -562,6 +868,12 @@ int main()
     testMonoMakerPostMix();
     testSoloMonitor();
     testLevelMatchAndSolo();
+    testNoClicksAcrossTransitions();
+    testSoloNoGhostInSilence();
+    testLevelMatchUnity();
+    testLevelMatchNoRatchet();
+    testLevelMatchMixCouplingNoSlam();
+    testLevelMatchSilenceFreeze();
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);
     if (failures == 0) { std::printf ("ALL TESTS PASSED\n"); return 0; }

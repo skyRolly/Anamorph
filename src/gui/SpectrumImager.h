@@ -185,6 +185,14 @@ private:
 
     bool  dragRemovePending = false; // dragged a split far outside -> drop it on release (#18)
 
+    // Crossover band-pass preview gate (0.8.1): the blue/green band-pass curve is a
+    // PRESS-AND-HOLD affordance, exactly like the solo audition. A bare click, double-
+    // click (reset), repeated clicks, programmatic/preset/A-B change must NOT flash it.
+    // It lights only once a press is HELD past the threshold or turns into a drag.
+    juce::uint32 handlePressMs   = 0;
+    float        handlePressX    = 0.0f;
+    bool         handleHoldActive = false;
+
     // Eased hover / press / state.
     float handleA[3] { 0, 0, 0 };
     float pressA[3]  { 0, 0, 0 };   // crossover actively dragged (curve + handle feedback)
