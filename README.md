@@ -6,6 +6,36 @@ of stereo tools (MS, mono-maker, channel utilities, monitoring) around a
 high-end diamond vectorscope. Built with **CMake + JUCE** only — it configures
 and builds entirely from the command line on a headless Linux machine, no IDE.
 
+### What's new in 0.8.1
+- **One transition layer, no per-control click patches.** The plugin already smooths
+  every continuous level control (`juce::SmoothedValue`) and ducks every discrete switch
+  with a raised-cosine fade; this round folds the two outliers into that layer instead of
+  patching each knob:
+  - **Band Solo is now click-free and ghost-free.** The post-everything monitor keeps its
+    band-pass filters *warm* (always running) and crossfades passthrough ↔ soloed bands
+    with smoothed per-band gains, so engaging / clearing / changing the solo set is a short
+    morph, never a hard switch. It no longer needs an output duck, so toggling Solo while
+    the DAW is **stopped / paused / fed a zero buffer** can't emit a transient (the old
+    "ghost signal"). Nothing soloed still yields the bit-exact true output.
+  - **Drive / Mix gain jumps no longer pop via Level Match** (see below).
+- **Level Match reworked into Measure + absolute Predict.**
+  - **Measure** is the BS.1770 ground truth; on silence it *waits* (holds the last trusted
+    value) instead of drifting.
+  - **Predict** is an *absolute* feed-forward estimate of the wet's loudness boost, a pure
+    function of **Drive and Mix** — not an accumulator. Cranking Drive up/down/up while
+    paused can no longer ratchet the gain toward −24 dB, and raising **Mix** with Drive
+    cranked now pre-ducks too (the "Mix=100% slam" is gone). It reads **~0 at unity** (no
+    bias), and a **silence→audio edge snap** makes the first audible block compensated even
+    if the host never ran the plugin while paused, so Transport-Stop→Play doesn't slam.
+- **Band-pass preview is press-and-hold only.** The blue/green band-pass curve under a
+  crossover line now lights only when the handle is *held* or *dragged* — never on a click,
+  double-click (reset), or repeated clicks, and never on a programmatic / preset / A-B
+  change.
+- **Mono Maker tooltip** no longer says "(before widening)" — it runs post-Mix.
+- New regression tests cover the full matrix: Drive 0→24→0→24, Mix 0→100→0→100, Solo
+  on/off, A-B-style bulk swap, Parameter Reset, Transport Stop→Play and Silence→Audio→
+  Silence — asserting no clicks, no ghost, no slam, no Level-Match drift/ratchet.
+
 ### What's new in 0.8.0
 - **Signal flow rebuilt as a clean serial chain.** Previously Mono Maker sat *before*
   the widener and Band Solo was woven into the Multiband DSP, which made the two fight

@@ -16,6 +16,23 @@ namespace anamorph
 //
 //      matchGainDb = LUFS(dry) - LUFS(wet)
 //
+//  Two cooperating parts (0.8.1 rework):
+//    * MEASURE -- the real K-weighted LUFS difference. This is the GROUND TRUTH
+//      and the only thing that governs while there is valid audio. When the input
+//      decays to silence the measurement WAITS (holds the last trusted value); it
+//      never drifts toward 0 or wanders on its own (no state drift).
+//    * PREDICT -- an ABSOLUTE feed-forward estimate of the loudness the wet adds,
+//      computed as a pure function of Drive and Mix (the two controls that move the
+//      internal gain a lot). The moment that estimate RISES (Drive/Mix cranked) the
+//      published gain is pre-ducked so the first sound out -- even straight out of a
+//      pause -- can't slam. Because it is absolute, not an accumulator, reversing the
+//      controls reverses the predict exactly: it can never ratchet or path-depend.
+//
+//  The predict only ever LOWERS the gain to forestall a slam; it never raises it
+//  (that is left to the measurement, so removing Drive eases back smoothly instead of
+//  surging). It therefore can't pollute the measurement -- on play, MEASURE converges
+//  fast and is the final authority.
+//
 //  Workflow (see spec 6.2):
 //    * Match : while engaged, the engine applies this gain (smoothed) so A/B
 //              listening is level-matched in real time -- "louder != better".
@@ -42,6 +59,10 @@ public:
 
     float getMatchGainDb() const noexcept { return matchGainDb.load (std::memory_order_relaxed); }
 
+    // True when the LAST processed block's INPUT (dry) was below the silence gate, so
+    // the wrapper can snap the applied match gain on the silence->audio edge (#).
+    bool inputWasSilent() const noexcept { return lastInputSilent; }
+
     // Restore a remembered match value (per A/B slot) so a switch doesn't have to
     // re-converge from scratch and lurch in level (feedback #23).
     void setDisplayedGainDb (float db) noexcept
@@ -50,10 +71,12 @@ public:
         matchGainDb.store (db, std::memory_order_relaxed);
     }
 
-    // Tell the matcher how hard Drive is pushing (dB). The INSTANT Drive is raised,
-    // the match is pre-lowered by the estimated loudness boost -- whether paused or
-    // playing -- so the first sound after cranking Drive isn't huge (feedback #19/#14).
+    // Tell the matcher the current state of the two big-gain controls. estBoostDb()
+    // turns these into an ABSOLUTE predicted boost (no internal accumulation), so the
+    // pre-duck reacts the instant Drive OR Mix is raised -- paused or playing -- and
+    // can never ratchet (feedback #14/#19, and the Mix-coupling case).
     void setDriveDb (float db) noexcept { currentDriveDb = (double) db; }
+    void setMix     (float m)  noexcept { currentMix     = (double) m; }
 
 private:
     struct Biquad
@@ -83,9 +106,15 @@ private:
     double smoothCoeff = 0.0; // loudness integration window
     double sampleRate = 48000.0;
     double displayedGainDb = 0.0; // adaptively-smoothed published value (#19)
-    // Drive-anticipation state (feedback #19/#14).
-    double currentDriveDb = 0.0; // Drive pushed by the engine this block
-    double prevDriveDb    = 0.0; // Drive last block -> a positive delta pre-ducks instantly
+
+    // Predict (feed-forward) state. ABSOLUTE -- a pure function of Drive + Mix, never
+    // an accumulator -> no ratcheting, no history path dependence.
+    double currentDriveDb     = 0.0;
+    double currentMix         = 1.0;
+    double prevPredictedGainDb = 0.0; // last block's absolute predict (to spot a rise)
+
+    bool lastInputSilent = true;
+
     std::atomic<float> matchGainDb { 0.0f };
 };
 

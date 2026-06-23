@@ -7,6 +7,11 @@ namespace anamorph
 
 static constexpr double kPi = 3.14159265358979323846;
 
+static inline double clampd (double x, double lo, double hi) noexcept
+{
+    return x < lo ? lo : (x > hi ? hi : x);
+}
+
 void LoudnessMatch::KWeighting::setSampleRate (double sr)
 {
     // ----- Stage 1: high-shelf "head" filter (BS.1770) -----
@@ -58,7 +63,8 @@ void LoudnessMatch::reset()
     kDryL.reset(); kDryR.reset(); kWetL.reset(); kWetR.reset();
     meanSqDry = meanSqWet = 1.0e-9;
     displayedGainDb = 0.0;
-    prevDriveDb = currentDriveDb;
+    prevPredictedGainDb = 0.0; // default state = no boost
+    lastInputSilent = true;
     matchGainDb.store (0.0f, std::memory_order_relaxed);
 }
 
@@ -75,11 +81,27 @@ static double estDriveBoostDb (double driveDb) noexcept
     return std::min (14.0, 0.5 * blend * smallSig);
 }
 
+// ABSOLUTE predicted boost (dB) the wet adds over the dry, as a pure function of Drive
+// and Mix. The dry/wet blend scales the Drive boost: at Mix=0 the wet is muted so the
+// boost is 0; at Mix=1 it is the full Drive boost; in between it follows the linear
+// blend. No internal state -> reversing Drive/Mix reverses this exactly (no ratchet).
+static double estBoostDb (double driveDb, double mix) noexcept
+{
+    const double driveBoost = estDriveBoostDb (driveDb);
+    if (driveBoost <= 0.0) return 0.0;
+    const double m = clampd (mix, 0.0, 1.0);
+    const double B = std::pow (10.0, driveBoost / 20.0);  // wet/dry linear loudness ratio
+    const double ratio = (1.0 - m) + m * B;               // >= 1 (Drive only boosts)
+    return 20.0 * std::log10 (ratio > 1.0e-6 ? ratio : 1.0e-6);
+}
+
 void LoudnessMatch::softReset() noexcept
 {
     kDryL.reset(); kDryR.reset(); kWetL.reset(); kWetR.reset();
     meanSqDry = meanSqWet = 1.0e-9;
-    // displayedGainDb is intentionally preserved so the published gain glides.
+    lastInputSilent = true;
+    // displayedGainDb / prevPredictedGainDb are intentionally preserved so the published
+    // gain glides and a re-arm doesn't spuriously pre-duck.
 }
 
 void LoudnessMatch::process (const float* dryL, const float* dryR,
@@ -104,30 +126,27 @@ void LoudnessMatch::process (const float* dryL, const float* dryR,
     const double dLufs = -0.691 + 10.0 * std::log10 (std::max (meanSqDry, floorMs));
     const double wLufs = -0.691 + 10.0 * std::log10 (std::max (meanSqWet, floorMs));
 
-    double target = dLufs - wLufs;
-    target = std::max (-24.0, std::min (24.0, target));
+    double target = clampd (dLufs - wLufs, -24.0, 24.0);
 
-    // FREEZE on silence (feedback #33): when the input has decayed to silence,
-    // hold the last match value instead of letting it drift toward 0. Otherwise a
-    // big boost (e.g. Drive maxed) would slam loud for an instant on the next
-    // play before the match caught up. ~ -60 dBFS K-weighted mean-square gate.
+    // No valid measurement data while the input is silent: MEASURE waits (holds the
+    // last trusted value) rather than deriving from near-zero energy. ~ -60 dBFS gate.
     const double kSilence = 1.0e-6;
     const bool silent = (meanSqDry < kSilence && meanSqWet < kSilence);
+    lastInputSilent = (meanSqDry < kSilence);
     const double blockDur = (double) numSamples / sampleRate;
 
-    // INSTANT pre-duck: the moment Drive is raised (this is the FIRST block at the
-    // new Drive, whether that happens mid-pause or on the very first played block),
-    // drop the match by the estimated loudness boost the new Drive adds. This works
-    // even when the host doesn't run the plugin while paused, which is why the old
-    // silence-only version sometimes never engaged (#14/#19).
-    const double driveDelta = estDriveBoostDb (currentDriveDb) - estDriveBoostDb (prevDriveDb);
-    if (driveDelta > 0.0)
-        displayedGainDb = std::max (-24.0, displayedGainDb - driveDelta);
-    prevDriveDb = currentDriveDb;
+    // ---- PREDICT: absolute, pure function of Drive + Mix (no accumulation) --------
+    const double predictedGainDb = clampd (-estBoostDb (currentDriveDb, currentMix), -24.0, 0.0);
+    const double predictDelta = predictedGainDb - prevPredictedGainDb;
+    prevPredictedGainDb = predictedGainDb;
+    // The instant the expected boost RISES (Drive/Mix cranked) pre-duck so neither the
+    // first played block nor a live crank can slam. A FALLING estimate never jumps the
+    // gain up here -- the measurement eases it back on play, so there is no surge. This
+    // floor-only, absolute rule is what kills the old ratchet-to-(-24) behaviour.
+    if (predictDelta < 0.0)
+        displayedGainDb = std::min (displayedGainDb, predictedGainDb);
 
-    // While playing, the real measurement is the ground truth and refines the
-    // pre-duck (it sets the absolute target, so it can't double-count). While
-    // silent it stays frozen, holding the pre-ducked value.
+    // ---- MEASURE: ground truth while there is audio; frozen on silence ------------
     if (! silent)
     {
         const double diff = target - displayedGainDb;
@@ -135,7 +154,9 @@ void LoudnessMatch::process (const float* dryL, const float* dryR,
         const double coeff = 1.0 - std::exp (-blockDur / tau);
         displayedGainDb += coeff * diff;
     }
+    // silent -> hold displayedGainDb (no drift); the predict floor above still guards.
 
+    displayedGainDb = clampd (displayedGainDb, -24.0, 24.0);
     matchGainDb.store ((float) displayedGainDb, std::memory_order_relaxed);
 }
 

@@ -114,6 +114,7 @@ void AnamorphEngine::reset()
     dryDelayBuffer.clear();
     dryAlignDelayBuffer.clear();
     dryDelayWrite = 0;
+    prevInputSilent = true;
 
     // Flush any in-flight switch duck straight to its target so a host reset
     // lands in a clean steady state (bit-exact transparent from sample 0).
@@ -146,7 +147,9 @@ bool AnamorphEngine::discreteDiffers (const EngineParameters& a, const EnginePar
         || a.dimMode          != b.dimMode
         || a.mbEnable         != b.mbEnable
         || a.mbBands          != b.mbBands
-        || a.mbSolo           != b.mbSolo
+        // Band Solo is NOT listed: it is a post-everything monitor with its own
+        // click-free crossfade (SoloMonitor), so a solo change needs no output duck
+        // -- ducking it was the source of the engage tick / pause-time ghost (0.8.1).
         || a.monoMakerEnable  != b.monoMakerEnable
         || a.autoGainMatch    != b.autoGainMatch
         || a.oversample       != b.oversample
@@ -445,10 +448,6 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         // toggled) needs its crossover filters cleared, captured before p is moved.
         const bool mbStructuralChange = (pendingP.mbBands != p.mbBands)
                                      || (pendingP.mbEnable != p.mbEnable);
-        // A change to the Band Solo set engages/repoints the post-everything monitor
-        // band-pass; clear its filter state at the silent bottom so it starts clean
-        // (band count also moves the band edges, so include the structural change).
-        const bool mbSoloChanged = (pendingP.mbSolo != p.mbSolo) || mbStructuralChange;
         // Compare the incoming OS path against what was actually RUNNING (the
         // latch) -- p's driveDb was already overwritten by copyContinuous.
         const bool osPathChanged = pendingP.oversample != p.oversample
@@ -506,12 +505,12 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         }
         else
         {
-            // A non-forced structural Multiband edit (band added/removed) reached the
-            // silent bottom: clear the crossover state so the new topology starts clean.
-            if (mbStructuralChange) multiband.reset();
-            // Engaging / repointing the Band Solo monitor: clear its band-pass state so
-            // the auditioned band fades in clean (the solo change rides this duck).
-            if (mbSoloChanged) soloMonitor.reset();
+            // A non-forced structural Multiband edit (band added/removed, or the module
+            // toggled) reached the silent bottom: clear the crossover state so the new
+            // topology starts clean. The post-everything Band Solo monitor mirrors the
+            // band split, so re-point + clear it on the same structural change. A pure
+            // solo change is NOT ducked -- the SoloMonitor crossfades it click-free.
+            if (mbStructuralChange) { multiband.reset(); soloMonitor.reset(); }
         }
         switchState = SwitchState::FadeIn;
     }
@@ -679,11 +678,31 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     // against the conditioned input, BEFORE Output gain / balance (feedback #25).
     wetScratch.copyFrom (0, 0, L, n);
     wetScratch.copyFrom (1, 0, R, n);
-    loudness.setDriveDb (driveActive ? p.driveDb : 0.0f); // anticipate Drive boost on silence (#19)
+    // Feed the predict BOTH big-gain controls so it pre-ducks the instant Drive OR Mix
+    // is raised (Drive maxed + Mix 0 -> no boost; Mix to 100% -> pre-duck) (#14/#19).
+    loudness.setDriveDb (p.driveDb);
+    loudness.setMix     (p.mix);
     loudness.process (inputScratch.getReadPointer (0), inputScratch.getReadPointer (1),
                       wetScratch.getReadPointer (0), wetScratch.getReadPointer (1), n);
-    matchGainSmooth.setTargetValue (p.autoGainMatch
-        ? juce::Decibels::decibelsToGain (loudness.getMatchGainDb()) : 1.0f);
+    const float matchTarget = p.autoGainMatch
+        ? juce::Decibels::decibelsToGain (loudness.getMatchGainDb()) : 1.0f;
+    matchGainSmooth.setTargetValue (matchTarget);
+
+    // Silence -> audio edge: SNAP the applied match gain to its (already pre-ducked)
+    // target so the first audible block is compensated even if the host never ran the
+    // plugin while paused. Click-free: the previous block's output was silent. This is
+    // the safety net that makes the predict effective across Transport Stop->Play and
+    // Silence->Audio, not just when the host keeps processing during a pause.
+    double inSq = 0.0;
+    {
+        const float* il = inputScratch.getReadPointer (0);
+        const float* ir = inputScratch.getReadPointer (1);
+        for (int i = 0; i < n; ++i) inSq += (double) il[i] * il[i] + (double) ir[i] * ir[i];
+    }
+    const bool inSilentNow = inSq < 1.0e-6 * (double) juce::jmax (1, n); // ~ -60 dBFS mean-square
+    if (prevInputSilent && ! inSilentNow && p.autoGainMatch)
+        matchGainSmooth.setCurrentAndTargetValue (matchTarget);
+    prevInputSilent = inSilentNow;
 
     // -------- 8. Output Gain / Auto Gain / Output Balance -------------------
     for (int i = 0; i < n; ++i)
