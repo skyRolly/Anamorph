@@ -174,6 +174,7 @@ void AnamorphEngine::copyContinuous (EngineParameters& dst, const EngineParamete
     const auto cm = dst.channelMode; const auto ms = dst.monoSum; const auto sw = dst.swapLR;
     const auto md = dst.msMode;      const auto so = dst.solo;    const auto al = dst.algorithm;
     const auto hs = dst.haasSide;    const auto dm = dst.dimMode; const auto mb = dst.mbEnable;
+    const auto nb = dst.mbBands;
     const auto mm = dst.monoMakerEnable; const auto ov = dst.oversample; const auto by = dst.bypass;
     const auto ag = dst.autoGainMatch;
 
@@ -181,6 +182,7 @@ void AnamorphEngine::copyContinuous (EngineParameters& dst, const EngineParamete
 
     dst.channelMode = cm; dst.monoSum = ms; dst.swapLR = sw; dst.msMode = md; dst.solo = so;
     dst.algorithm = al;   dst.haasSide = hs; dst.dimMode = dm; dst.mbEnable = mb;
+    dst.mbBands = nb;
     dst.monoMakerEnable = mm; dst.oversample = ov; dst.bypass = by; dst.autoGainMatch = ag;
 }
 

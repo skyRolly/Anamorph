@@ -64,7 +64,6 @@ void LoudnessMatch::reset()
     meanSqDry = meanSqWet = 1.0e-9;
     displayedGainDb = 0.0;
     prevPredictedGainDb = 0.0; // default state = no boost
-    lastInputSilent = true;
     matchGainDb.store (0.0f, std::memory_order_relaxed);
 }
 
@@ -99,7 +98,6 @@ void LoudnessMatch::softReset() noexcept
 {
     kDryL.reset(); kDryR.reset(); kWetL.reset(); kWetR.reset();
     meanSqDry = meanSqWet = 1.0e-9;
-    lastInputSilent = true;
     // displayedGainDb / prevPredictedGainDb are intentionally preserved so the published
     // gain glides and a re-arm doesn't spuriously pre-duck.
 }
@@ -132,7 +130,6 @@ void LoudnessMatch::process (const float* dryL, const float* dryR,
     // last trusted value) rather than deriving from near-zero energy. ~ -60 dBFS gate.
     const double kSilence = 1.0e-6;
     const bool silent = (meanSqDry < kSilence && meanSqWet < kSilence);
-    lastInputSilent = (meanSqDry < kSilence);
     const double blockDur = (double) numSamples / sampleRate;
 
     // ---- PREDICT: absolute, pure function of Drive + Mix (no accumulation) --------
