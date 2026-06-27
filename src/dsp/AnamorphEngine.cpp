@@ -795,6 +795,9 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         if (os2) os2->reset(); if (os4) os4->reset(); if (os8) os8->reset();
         loudness.reset();
         dryDelayBuffer.clear(); dryAlignDelayBuffer.clear(); bypassDelayBuffer.clear();
+        // Also flush this block's delay-aligned dry scratch, so the Bypass crossfade
+        // below can't re-introduce a non-finite sample from pathological host input.
+        bypassDryScratch.clear();
     }
 
     // ======================== 6. BYPASS CROSSFADE ===========================
