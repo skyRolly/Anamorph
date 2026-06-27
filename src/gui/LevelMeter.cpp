@@ -19,6 +19,7 @@ LevelMeter::~LevelMeter() { stopTimer(); }
 // the bar, the quiet tail is compressed (#17).
 static float dbToNorm (float db)
 {
+    if (! std::isfinite (db)) db = kMinDb; // never propagate a NaN into the bar geometry (Issue 8)
     const float t = juce::jlimit (0.0f, 1.0f, (db - kMinDb) / (kMaxDb - kMinDb));
     return std::pow (t, 2.0f);
 }

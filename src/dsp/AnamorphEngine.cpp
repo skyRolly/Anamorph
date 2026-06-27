@@ -92,6 +92,7 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
     dryScratch.setSize (2, maxBlock);
     wetScratch.setSize (2, maxBlock);
     inputScratch.setSize (2, maxBlock);
+    loudnessRefScratch.setSize (2, maxBlock);
 
     updateDerived();
     reset();
@@ -448,6 +449,11 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         // toggled) needs its crossover filters cleared, captured before p is moved.
         const bool mbStructuralChange = (pendingP.mbBands != p.mbBands)
                                      || (pendingP.mbEnable != p.mbEnable);
+        // Entering / leaving Bypass flips whether the whole processing chain runs, so the
+        // stateful nodes + dry delay lines hold audio the other side never produced.
+        // Cleared at the silent bottom (below) so neither a pre-pause fragment leaks (1A)
+        // nor a re-engage burst clicks as the duck lifts (1B).
+        const bool bypassChanged = (pendingP.bypass != p.bypass);
         // Compare the incoming OS path against what was actually RUNNING (the
         // latch) -- p's driveDb was already overwritten by copyContinuous.
         const bool osPathChanged = pendingP.oversample != p.oversample
@@ -511,6 +517,16 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
             // band split, so re-point + clear it on the same structural change. A pure
             // solo change is NOT ducked -- the SoloMonitor crossfades it click-free.
             if (mbStructuralChange) { multiband.reset(); soloMonitor.reset(); }
+            // A Bypass toggle: clear EVERY stateful node + the dry delay lines while
+            // silent, so the side that re-engages starts from a clean slate -- no stale
+            // pre-pause fragment (1A), no filter/oversampler re-engage burst (1B).
+            if (bypassChanged)
+            {
+                multiband.reset(); monoMaker.reset(); soloMonitor.reset();
+                haas.reset(); velvet.reset(); chorus.reset();
+                if (os2) os2->reset(); if (os4) os4->reset(); if (os8) os8->reset();
+                dryDelayBuffer.clear(); dryAlignDelayBuffer.clear();
+            }
         }
         switchState = SwitchState::FadeIn;
     }
@@ -640,6 +656,8 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     const float* aR = dryAligned ? dryAlignScratch.getReadPointer (1) : dR;
     float* adL = dryAlignDelayBuffer.getWritePointer (0);
     float* adR = dryAlignDelayBuffer.getWritePointer (1);
+    float* lrL = loudnessRefScratch.getWritePointer (0);
+    float* lrR = loudnessRefScratch.getWritePointer (1);
     constexpr float kAlignMix = 0.05f;
 
     for (int i = 0; i < n; ++i)
@@ -652,6 +670,15 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         const float cleanL = ddL[rp], cleanR = ddR[rp];
         const float alignL = adL[rp], alignR = adR[rp];
         dryDelayWrite = (dryDelayWrite + 1) % ddSize;
+
+        // Level-Match reference (#Issue2): the delay-aligned reconstruction A(dry) --
+        // the dry pushed through the SAME crossovers at unit width. It carries the
+        // Multiband's allpass-reconstruction magnitude ripple, so comparing the wet
+        // against IT (not the raw input) cancels that ripple: Measure reads ~0 at unit
+        // width whether Multiband is on or off, and still measures the real loudness
+        // change once a band's width moves. When Multiband is off this is just the
+        // delay-aligned input, which also fixes the old OS-latency misalignment.
+        lrL[i] = alignL; lrR[i] = alignR;
 
         const float m = mixSmooth.getNextValue();
         float dryL = cleanL, dryR = cleanR;
@@ -682,7 +709,11 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     // is raised (Drive maxed + Mix 0 -> no boost; Mix to 100% -> pre-duck) (#14/#19).
     loudness.setDriveDb (p.driveDb);
     loudness.setMix     (p.mix);
-    loudness.process (inputScratch.getReadPointer (0), inputScratch.getReadPointer (1),
+    // Dry reference = the delay-aligned reconstruction (loudnessRefScratch), NOT the raw
+    // input, so the Multiband allpass-reconstruction ripple cancels -> Measure ~0 at
+    // unit width with Multiband on (Issue 2). Falls back to the delay-aligned input when
+    // Multiband is off.
+    loudness.process (loudnessRefScratch.getReadPointer (0), loudnessRefScratch.getReadPointer (1),
                       wetScratch.getReadPointer (0), wetScratch.getReadPointer (1), n);
     const float matchTarget = p.autoGainMatch
         ? juce::Decibels::decibelsToGain (loudness.getMatchGainDb()) : 1.0f;
@@ -738,6 +769,27 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     // what is heard. mask == 0 (or Multiband off) -> the true output passes through.
     if (p.mbEnable)
         soloMonitor.process (L, R, p.mbSolo, n);
+
+    // -------- Defensive NaN / Inf self-heal (0.8.2) -------------------------
+    // The crossover Nyquist clamp now prevents the multiband blow-up at the source,
+    // but ANY future stage (or a pathological host buffer) that produced a non-finite
+    // sample would otherwise latch a dead/stuck channel and poison the meters forever.
+    // If this block is non-finite, flush it to silence and reset every stateful node so
+    // the NEXT block is clean -- the engine recovers on its own, no Multiband off/on.
+    bool nonFinite = false;
+    for (int i = 0; i < n; ++i)
+        if (! std::isfinite (L[i]) || ! std::isfinite (R[i])) { nonFinite = true; break; }
+    if (nonFinite)
+    {
+        buffer.clear();
+        L = buffer.getWritePointer (0);
+        R = buffer.getWritePointer (1);
+        multiband.reset(); monoMaker.reset(); soloMonitor.reset();
+        haas.reset(); velvet.reset(); chorus.reset();
+        if (os2) os2->reset(); if (os4) os4->reset(); if (os8) os8->reset();
+        loudness.reset();
+        dryDelayBuffer.clear(); dryAlignDelayBuffer.clear();
+    }
 
     // -------- Metering tap (the monitored output) ---------------------------
     for (int i = 0; i < n; ++i)

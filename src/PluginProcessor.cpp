@@ -80,12 +80,46 @@ void AnamorphAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     if (buffer.getNumChannels() < 2)
         return; // safety: engine requires a stereo working buffer
 
-    // Reset the meter peak-hold / clip latches when transport (re)starts (#15).
+    // Reset the meter peak-hold / clip latches when transport (re)starts (#15) OR when
+    // the playback position is repositioned mid-flight -- a seek / timeline click / loop
+    // wrap -- so the held numbers track the new location, matching a play restart (Issue 3).
     bool playing = false;
+    bool seeked  = false;
     if (auto* ph = getPlayHead())
         if (auto pos = ph->getPosition())
+        {
             playing = pos->getIsPlaying();
-    if (playing && ! prevPlaying)
+
+            // Position in samples: prefer the host's sample clock, else derive it from
+            // the musical (ppq) position so seek detection works on either kind of host.
+            std::optional<juce::int64> nowOpt;
+            if (auto t = pos->getTimeInSamples())
+                nowOpt = *t;
+            else if (auto ppq = pos->getPpqPosition())
+            {
+                const double bpm = pos->getBpm().orFallback (120.0);
+                nowOpt = (juce::int64) (*ppq * 60.0 / juce::jmax (1.0, bpm) * getSampleRate());
+            }
+
+            if (nowOpt)
+            {
+                const juce::int64 now = *nowOpt;
+                if (prevPosValid)
+                {
+                    // Playing continuously, the transport advances by exactly one block;
+                    // anything else (forward jump, rewind, loop wrap) is a reposition.
+                    const juce::int64 expected = prevPosSamples + (prevPlaying ? (juce::int64) prevPosBlock : 0);
+                    if (std::abs (now - expected) > (juce::int64) buffer.getNumSamples())
+                        seeked = true;
+                }
+                prevPosSamples = now;
+                prevPosBlock   = buffer.getNumSamples();
+                prevPosValid   = true;
+            }
+            else prevPosValid = false;
+        }
+
+    if ((playing && ! prevPlaying) || (playing && seeked))
         engine.getLevels().resetHold();
     prevPlaying = playing;
 

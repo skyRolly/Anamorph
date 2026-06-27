@@ -57,11 +57,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
     auto floatParam = [&] (const char* id, const juce::String& name,
                            NormalisableRange<float> range, float def,
                            std::function<juce::String(float,int)> toText = {},
-                           std::function<float(const juce::String&)> fromText = {})
+                           std::function<float(const juce::String&)> fromText = {},
+                           bool automatable = true)
     {
         auto attr = juce::AudioParameterFloatAttributes();
         if (toText)   attr = attr.withStringFromValueFunction (std::move (toText));
         if (fromText) attr = attr.withValueFromStringFunction (std::move (fromText));
+        if (! automatable) attr = attr.withAutomatable (false);
         layout.add (std::make_unique<AudioParameterFloat> (
             ParameterID { id, kVersion }, name, range, def, attr));
     };
@@ -113,10 +115,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
     layout.add (std::make_unique<AudioParameterChoice> (ParameterID { pid::channelMode, kVersion },
         "Input Channel", StringArray { "Stereo", "Left Only", "Right Only" }, 0));
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::monoSum, kVersion }, "Mono", false));
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::swap, kVersion }, "Swap L/R", false));
+    // Names reflect BOTH operating modes: in M/S mode L/R become Mid/Side (Issue 6).
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::swap, kVersion }, "Swap L/R (M/S)", false));
     floatParam (pid::inputBalance, "Input Balance", { -1.0f, 1.0f, 0.001f }, 0.0f, balPct, balFrom);
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::polarityL, kVersion }, "Phase Invert L", false));
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::polarityR, kVersion }, "Phase Invert R", false));
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::polarityL, kVersion }, "Phase Invert L/M", false));
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::polarityR, kVersion }, "Phase Invert R/S", false));
 
     // --- MS ---
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::msMode, kVersion }, "M/S Mode", false));
@@ -142,9 +145,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
 
     // --- Multiband (1..4 bands, up to 3 crossovers) ---
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::mbEnable, kVersion }, "Multiband Enable", true));
-    layout.add (std::make_unique<juce::AudioParameterInt> (ParameterID { pid::mbBands, kVersion }, "Multiband Bands", 1, 4, 4));
+    // Multiband Bands / Solo are HIDDEN from host automation (Issue 5): they are driven
+    // by the drag-to-split display, make no sense on an automation lane, and Solo is a
+    // monitoring aid. The parameters remain (state save/recall, GUI, A/B) -- only the
+    // automatable flag is off. Restore by removing `.withAutomatable (false)`.
+    layout.add (std::make_unique<juce::AudioParameterInt> (ParameterID { pid::mbBands, kVersion }, "Multiband Bands", 1, 4, 4,
+        juce::AudioParameterIntAttributes().withAutomatable (false)));
     // Solo is a 4-bit mask (any combination of bands), not a single index (0.6.9 #7).
-    layout.add (std::make_unique<juce::AudioParameterInt> (ParameterID { pid::mbSolo, kVersion }, "Multiband Solo", 0, 15, 0));
+    layout.add (std::make_unique<juce::AudioParameterInt> (ParameterID { pid::mbSolo, kVersion }, "Multiband Solo", 0, 15, 0,
+        juce::AudioParameterIntAttributes().withAutomatable (false)));
     // Full-range splits: the display enforces a minimum on-screen gap and the DSP
     // re-orders them, so a split may be dragged anywhere (0.6.10 #5/#26).
     floatParam (pid::mbFreqLow,  "Multiband Split 1", logFreqRange (20.0f, 20000.0f), 180.0f,  hz, hzFrom);
@@ -165,30 +174,44 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
     floatParam (pid::mix, "Mix", { 0.0f, 1.0f, 0.001f }, 1.0f, pct, pctFrom);
     floatParam (pid::outputGain, "Output Gain", { -24.0f, 24.0f, 0.01f }, 0.0f, db);
     floatParam (pid::outputBalance, "Output Balance", { -1.0f, 1.0f, 0.001f }, 0.0f, balPct, balFrom);
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::autoGainMatch, kVersion }, "Auto Gain Match", false));
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::autoGainMatch, kVersion }, "Level Match", false));
 
     // --- Monitoring ---
     layout.add (std::make_unique<AudioParameterChoice> (ParameterID { pid::solo, kVersion },
         "M/S Solo", StringArray { "Off", "Mid", "Side" }, 0));
 
     // --- Oversampling --- (default Off == 1x, which is itself zero-latency)
+    // A Settings-panel control, hidden from host automation alongside the other Settings
+    // params (Issue 5): it is a set-once quality/CPU choice, not a musical automation
+    // target. Still fully functional via the Settings combo + state recall. Restore to
+    // automation by removing `.withAutomatable (false)`.
     layout.add (std::make_unique<AudioParameterChoice> (ParameterID { pid::oversample, kVersion },
-        "Oversampling", StringArray { "Off (1x)", "2x", "4x", "8x" }, 0));
+        "Oversampling", StringArray { "Off (1x)", "2x", "4x", "8x" }, 0,
+        juce::AudioParameterChoiceAttributes().withAutomatable (false)));
 
     // --- Bypass (registered as the host bypass parameter) ---
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::bypass, kVersion }, "Bypass", false));
 
     // --- UI (saved with state, but UI-only) ---
+    // The Settings parameters + Show Meters are HIDDEN from host automation (Issue 5):
+    // they are view/preference state, meaningless on an automation lane. They stay in the
+    // tree (saved/recalled, GUI, settings menu); only the automatable flag is off.
+    // Restore by removing the `.withAutomatable (false)` / passing automatable = true.
+    // (Advanced Mode is intentionally NOT hidden -- it now travels with A/B, Issue 4.)
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::advancedMode, kVersion }, "Advanced Mode", false));
     // Persist default 0.5; the scope remaps it so 50% reproduces the old 60% feel (#21).
-    floatParam (pid::scopePersist, "Scope Persistence", { 0.0f, 1.0f, 0.001f }, 0.5f, pct, pctFrom);
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::metersOn, kVersion }, "Show Meters", false));
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::tooltipsOn, kVersion }, "Show Tooltips", false));
+    floatParam (pid::scopePersist, "Scope Persistence", { 0.0f, 1.0f, 0.001f }, 0.5f, pct, pctFrom, false);
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::metersOn, kVersion }, "Show Meters", false,
+        juce::AudioParameterBoolAttributes().withAutomatable (false)));
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::tooltipsOn, kVersion }, "Show Tooltips", false,
+        juce::AudioParameterBoolAttributes().withAutomatable (false)));
     // Micro-animations on by default; Settings can switch them off (F3).
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::uiAnimations, kVersion }, "UI Animations", true));
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::uiAnimations, kVersion }, "UI Animations", true,
+        juce::AudioParameterBoolAttributes().withAutomatable (false)));
     // Whole-window scale, M = the original 940x720 (F4).
     layout.add (std::make_unique<AudioParameterChoice> (ParameterID { pid::uiScale, kVersion },
-        "UI Scale", StringArray { "XS", "S", "M", "L", "XL" }, 2));
+        "UI Scale", StringArray { "XS", "S", "M", "L", "XL" }, 2,
+        juce::AudioParameterChoiceAttributes().withAutomatable (false)));
 
     return layout;
 }

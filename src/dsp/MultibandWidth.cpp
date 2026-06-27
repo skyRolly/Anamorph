@@ -51,8 +51,24 @@ void MultibandWidth::setCrossovers (float f1, float f2, float f3) noexcept
     // Keep the three crossovers strictly ordered with a little separation, so a
     // drag can't cross them over. These are TARGETS; the cutoffs glide toward them
     // per sample in processBlock (0.6.7 #1).
+    //
+    // CRITICAL (0.8.2): clamp every crossover to a Nyquist-safe band [20 Hz, 0.45*sr]
+    // BEFORE ordering. Automating a split toward 20 kHz used to push the ordered
+    // separation (f3 >= f2*1.1 >= f1*1.21) above Nyquist, where the Linkwitz-Riley
+    // coefficients blow up to NaN/Inf -- the "+600 dB" burst that left one channel
+    // stuck and the other dead. The ceiling is enforced from the TOP down so the
+    // 1.1x separation can never lift a cutoff past it, whatever the automation does.
+    const float fMax = juce::jmax (1000.0f, 0.45f * (float) sr); // safe below Nyquist
+    const float fMin = 20.0f;
+    f1 = juce::jlimit (fMin, fMax, f1);
+    f2 = juce::jlimit (fMin, fMax, f2);
+    f3 = juce::jlimit (fMin, fMax, f3);
     f2 = juce::jmax (f2, f1 * 1.1f);
     f3 = juce::jmax (f3, f2 * 1.1f);
+    // Re-clamp downward so the separation never pushes a cutoff above the ceiling.
+    f3 = juce::jmin (f3, fMax);
+    f2 = juce::jmin (f2, f3 / 1.1f);
+    f1 = juce::jmin (f1, f2 / 1.1f);
     targetF[0] = f1;
     targetF[1] = f2;
     targetF[2] = f3;

@@ -38,8 +38,19 @@ void SoloMonitor::reset()
 
 void SoloMonitor::setCrossovers (float f1, float f2, float f3) noexcept
 {
+    // Nyquist-safe clamp + ordering, identical to MultibandWidth (0.8.2): the monitor
+    // mirrors the same band split, so it must reject the same out-of-range automation
+    // that would otherwise blow up the Linkwitz-Riley coefficients.
+    const float fMax = juce::jmax (1000.0f, 0.45f * (float) sr);
+    const float fMin = 20.0f;
+    f1 = juce::jlimit (fMin, fMax, f1);
+    f2 = juce::jlimit (fMin, fMax, f2);
+    f3 = juce::jlimit (fMin, fMax, f3);
     f2 = juce::jmax (f2, f1 * 1.1f);
     f3 = juce::jmax (f3, f2 * 1.1f);
+    f3 = juce::jmin (f3, fMax);
+    f2 = juce::jmin (f2, f3 / 1.1f);
+    f1 = juce::jmin (f1, f2 / 1.1f);
     targetF[0] = f1;
     targetF[1] = f2;
     targetF[2] = f3;

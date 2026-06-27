@@ -6,6 +6,36 @@ of stereo tools (MS, mono-maker, channel utilities, monitoring) around a
 high-end diamond vectorscope. Built with **CMake + JUCE** only — it configures
 and builds entirely from the command line on a headless Linux machine, no IDE.
 
+### What's new in 0.8.2
+- **Multiband crossover automation is now crash-proof.** Automating a split toward Nyquist
+  (4 bands, all splits crowded high) used to push the ordered separation above Nyquist,
+  where the Linkwitz-Riley coefficients blow up — the "+600 dB" burst that stuck one
+  channel and killed the other. Every crossover (Multiband, the dry-align bank, the Solo
+  monitor, Mono Maker) now clamps Nyquist-safe (`[20 Hz, 0.45·sr]`) with the ordering
+  enforced *top-down* so the separation can never lift a cutoff past the ceiling. A
+  defensive engine-wide NaN/Inf guard flushes and resets the DSP if any value ever goes
+  non-finite, so the plugin self-heals instead of needing a Multiband off/on.
+- **Meters survive a DSP blow-up.** A single NaN/Inf used to latch a meter envelope at NaN
+  forever (the bright bar vanished permanently). The meters now clamp every sample finite
+  and flush any non-finite envelope back to its floor, so they always recover.
+- **Level Match reads 0 dB at unity with Multiband on.** The dry reference is now the
+  delay-aligned reconstruction `A(dry)` (the dry through the same crossovers at unit
+  width), so the allpass-reconstruction ripple cancels: Measure ≈ 0 when no band is
+  actually widened, whether Multiband is on or off (it also fixes the old OS-latency
+  misalignment).
+- **Bypass transitions are clean.** Entering/leaving Bypass now clears every stateful node
+  and the dry delay lines at the silent duck bottom, so no pre-pause fragment leaks and no
+  filter/oversampler re-engage burst clicks as the duck lifts.
+- **Meter holds reset on a transport reposition.** RMS/Peak now also reset on a seek /
+  timeline jump / loop wrap while playing, matching a stop→play restart.
+- **ADV travels with A/B.** Each A/B slot remembers its own Advanced state; Copy carries
+  it; Undo/Redo restore it. Presets still leave it alone.
+- **Automation list de-cluttered.** The Settings parameters (Oversampling, Window Size,
+  Scope Persistence, Tooltips, UI Animations), Show Meters, Multiband Bands and Multiband
+  Solo are hidden from host automation (implementation kept, just non-automatable).
+- **Automation names** updated for M/S clarity: *Phase Invert L/M*, *Phase Invert R/S*,
+  *Swap L/R (M/S)*, and *Level Match* (was *Auto Gain Match*).
+
 ### What's new in 0.8.1
 - **One transition layer, no per-control click patches.** The plugin already smooths
   every continuous level control (`juce::SmoothedValue`) and ducks every discrete switch

@@ -68,10 +68,12 @@ namespace pid
 
     // The shared "view" / Settings parameters: never part of A/B, undo history
     // or presets -- one list so every consumer stays in sync. mbSolo is NOT here:
-    // it now travels with A/B and undo (so a per-band solo survives an A/B swap and
-    // can be undone), but presets reset it to off via isPresetExcluded (0.6.10 #7-9).
+    // it travels with A/B and undo. advancedMode (ADV) is NOT here either anymore
+    // (Issue 4): each A/B slot now remembers its own ADV state, Copy carries it, and
+    // Undo/Redo restore it -- it behaves like any other A/B-stored parameter. Presets
+    // still leave ADV (and the solo mask) alone via isPresetExcluded below.
     inline constexpr const char* const viewParams[] = {
-        bypass, advancedMode, oversample, metersOn, tooltipsOn, scopePersist,
+        bypass, oversample, metersOn, tooltipsOn, scopePersist,
         uiAnimations, uiScale
     };
 
@@ -82,11 +84,12 @@ namespace pid
         return false;
     }
 
-    // Presets additionally never store or recall the solo mask: loading a preset
-    // leaves the live solo to be reset to off explicitly (0.6.10 #9).
+    // Presets additionally never store or recall the solo mask OR the ADV toggle:
+    // loading a preset leaves the live solo reset to off and ADV untouched, so the
+    // sound presets don't fight the view state (0.6.10 #9, Issue 4).
     inline bool isPresetExcluded (const juce::String& id) noexcept
     {
-        return isViewParam (id) || id == mbSolo;
+        return isViewParam (id) || id == mbSolo || id == advancedMode;
     }
 }
 
