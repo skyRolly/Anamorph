@@ -54,6 +54,8 @@ public:
         syncAtomics();
     }
 
+    ~InternalState() override { tree.removeListener (this); }
+
     // --- GUI two-way binding (message thread) ----------------------------
     juce::Value oversampleValue()   { return tree.getPropertyAsValue (iid::oversample,   nullptr); }
     juce::Value uiScaleValue()      { return tree.getPropertyAsValue (iid::uiScale,      nullptr); }
@@ -88,6 +90,35 @@ public:
                          iid::metersOn, iid::tooltipsOn, iid::uiAnimations })
             if (src.hasProperty (id)) tree.setProperty (id, src.getProperty (id), nullptr);
         // (syncAtomics + onOversampleChanged run via the property-change callbacks above.)
+    }
+
+    // One-time migration from a pre-0.8.4 session, where these were ordinary APVTS
+    // parameters. Old sessions have no ANAMORPH_INTERNAL child, so without this their
+    // saved Oversampling / Window Size / Persistence / Tooltips / Animations / Show Meters
+    // would silently revert to defaults. Reads the legacy PARAM nodes (id/value) out of the
+    // saved APVTS state and maps them onto the host-hidden InternalState.
+    void migrateFromLegacyApvts (const juce::ValueTree& apvtsState)
+    {
+        if (! apvtsState.isValid()) return;
+
+        auto legacy = [&apvtsState] (juce::StringRef id, double fallback) -> double
+        {
+            for (int i = 0; i < apvtsState.getNumChildren(); ++i)
+            {
+                auto c = apvtsState.getChild (i);
+                if (c.hasType ("PARAM") && c.getProperty ("id").toString() == id)
+                    return (double) c.getProperty ("value", fallback);
+            }
+            return fallback;
+        };
+
+        // Choice params stored a 0-based index; the ComboBox IDs here are 1-based.
+        tree.setProperty (iid::oversample,   (int) legacy ("oversample", 0.0) + 1, nullptr);
+        tree.setProperty (iid::uiScale,      (int) legacy ("uiScale",    2.0) + 1, nullptr);
+        tree.setProperty (iid::scopePersist, legacy ("scopePersist", 0.5),         nullptr);
+        tree.setProperty (iid::metersOn,     legacy ("metersOn",   0.0) > 0.5,     nullptr);
+        tree.setProperty (iid::tooltipsOn,   legacy ("tooltipsOn", 0.0) > 0.5,     nullptr);
+        tree.setProperty (iid::uiAnimations, legacy ("uiAnimations", 1.0) > 0.5,   nullptr);
     }
 
 private:

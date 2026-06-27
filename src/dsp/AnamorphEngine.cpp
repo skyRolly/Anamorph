@@ -269,6 +269,9 @@ void AnamorphEngine::snapSmoothers() noexcept
     snap (widthSmooth);   snap (mixSmooth);        snap (outGainSmooth);
     snap (balanceSmooth); snap (outBalanceSmooth); snap (driveSmooth); snap (driveBlendSmooth);
     snap (polLSmooth);    snap (polRSmooth);
+    // Snap the Bypass crossfade too, so a forced swap that also flips Bypass lands bit-exact
+    // (1 -> true bypass, 0 -> processed) at the silent duck bottom rather than ramping (#8).
+    snap (bypassBlend);
     // matchGainSmooth is left to the injection / loudness re-measure (its own glide).
 }
 

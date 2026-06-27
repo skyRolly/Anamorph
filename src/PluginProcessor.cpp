@@ -340,7 +340,12 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
         // Restore the host-hidden Settings / view state (Oversampling, Window Size,
         // Persistence, Tooltips, Animations, Show Meters). A changed Oversampling fires
         // InternalState's callback -> updateLatency(); prepareToPlay re-asserts it anyway.
-        internal.restoreState (root.getChildWithName ("ANAMORPH_INTERNAL"));
+        // Pre-0.8.4 sessions have no ANAMORPH_INTERNAL child (these were APVTS params back
+        // then) -- migrate from the saved APVTS state so the user's choices survive upgrade.
+        if (auto internalState = root.getChildWithName ("ANAMORPH_INTERNAL"); internalState.isValid())
+            internal.restoreState (internalState);
+        else
+            internal.migrateFromLegacyApvts (params);
 
         restoredName = root.getProperty ("presetName").toString();
         if (root.hasProperty ("presetBaseline"))

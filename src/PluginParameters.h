@@ -54,17 +54,14 @@ namespace pid
     inline constexpr const char* autoGainMatch  = "autoGainMatch";
     // Monitoring
     inline constexpr const char* solo           = "solo";
-    // Oversampling
-    inline constexpr const char* oversample     = "oversample";
     // Bypass
     inline constexpr const char* bypass         = "bypass";
     // UI-only (still saved with state)
     inline constexpr const char* advancedMode   = "advancedMode";
-    inline constexpr const char* scopePersist   = "scopePersist";
-    inline constexpr const char* metersOn       = "metersOn";   // persist Meters toggle (#15)
-    inline constexpr const char* tooltipsOn     = "tooltipsOn"; // persist Tooltips toggle (#15)
-    inline constexpr const char* uiAnimations   = "uiAnimations"; // micro-animation toggle (F3)
-    inline constexpr const char* uiScale        = "uiScale";      // window scale XS..XL (F4)
+    // Oversampling, Scope Persistence, Show Meters, Tooltips, UI Animations and Window Size
+    // are NO LONGER APVTS parameters -- they live in anamorph::InternalState (host-hidden) so
+    // the host can't list them. Their legacy string ids are referenced only by the one-time
+    // migration in InternalState::migrateFromLegacyApvts (read directly as literals).
 
     // The shared "view" parameters that, although still APVTS parameters, must never be
     // part of A/B, undo history or presets. Only Bypass remains here now: the Settings

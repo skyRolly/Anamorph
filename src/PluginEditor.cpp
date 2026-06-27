@@ -542,8 +542,15 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     // Host-hidden: bind to InternalState (juce::Value), not the APVTS. Set the range first
     // so the bound value lands in [0,1]; tag the unit for the bare-number value box (#36).
     scopePersistK.setRange (0.0, 1.0, 0.0);
+    // The SliderAttachment used to supply the parameter's percentage formatter; restore
+    // it here so the value box shows "50%" (not a raw decimal) and parses bare numbers (#36).
+    scopePersistK.textFromValueFunction = [] (double v) { return juce::String (juce::roundToInt (v * 100.0)) + "%"; };
+    scopePersistK.valueFromTextFunction = [] (const juce::String& t) { return t.removeCharacters ("% ").getDoubleValue() / 100.0; };
     scopePersistK.getValueObject().referTo (processor.getInternal().scopePersistValue());
     scopePersistK.getProperties().set ("unit", "pct");
+    // attachSlider (which used to seed Knob::resetValue from the parameter default) is no
+    // longer called, so set the double-click / Alt-click reset target explicitly (#7).
+    scopePersistK.resetValue = 0.5;
     scopePersistK.onValueChange = [this] { applyScopePersist(); };
     // Listen for the mouse wheel ON the Persist bar so a sustained scroll reveals the
     // window (handled in mouseWheelMove, the single source of truth, so a single
@@ -667,7 +674,7 @@ void AnamorphAudioProcessorEditor::attachSlider (juce::Slider& s, const char* id
     if      (sid == pid::drive || sid == pid::outputGain) unit = "db";
     else if (sid == pid::haasDelay) unit = "ms";
     else if (sid == pid::amount || sid == pid::velvetDensity || sid == pid::chorusDepth
-          || sid == pid::width || sid == pid::mix || sid == pid::scopePersist
+          || sid == pid::width || sid == pid::mix
           || sid == pid::mbWidthLow || sid == pid::mbWidthMid || sid == pid::mbWidthHigh) unit = "pct";
     else if (sid == pid::monoMakerFreq || sid == pid::mbFreqLow || sid == pid::mbFreqHigh) unit = "hz";
     else if (sid == pid::inputBalance || sid == pid::outputBalance) unit = "bal";
