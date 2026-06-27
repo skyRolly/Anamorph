@@ -180,38 +180,20 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
     layout.add (std::make_unique<AudioParameterChoice> (ParameterID { pid::solo, kVersion },
         "M/S Solo", StringArray { "Off", "Mid", "Side" }, 0));
 
-    // --- Oversampling --- (default Off == 1x, which is itself zero-latency)
-    // A Settings-panel control, hidden from host automation alongside the other Settings
-    // params (Issue 5): it is a set-once quality/CPU choice, not a musical automation
-    // target. Still fully functional via the Settings combo + state recall. Restore to
-    // automation by removing `.withAutomatable (false)`.
-    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { pid::oversample, kVersion },
-        "Oversampling", StringArray { "Off (1x)", "2x", "4x", "8x" }, 0,
-        juce::AudioParameterChoiceAttributes().withAutomatable (false)));
+    // --- Oversampling / Settings / Show Meters are NOT here anymore ---------------
+    // These are Settings-panel + view controls. JUCE's `withAutomatable(false)` does NOT
+    // hide a parameter in REAPER (it lists every VST3 parameter regardless), so the only
+    // reliable way to keep them off the host's parameter list is to keep them OUT of the
+    // APVTS / VST3 tree entirely. They now live in anamorph::InternalState (session state,
+    // GUI-bound, Oversampling drives the DSP), and never touch A/B / Undo / presets.
+    // Moved out: Oversampling, Scope Persistence, Show Meters, Show Tooltips, UI
+    // Animations, UI Scale. (Advanced Mode stays an APVTS param -- it travels with A/B.)
 
     // --- Bypass (registered as the host bypass parameter) ---
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::bypass, kVersion }, "Bypass", false));
 
     // --- UI (saved with state, but UI-only) ---
-    // The Settings parameters + Show Meters are HIDDEN from host automation (Issue 5):
-    // they are view/preference state, meaningless on an automation lane. They stay in the
-    // tree (saved/recalled, GUI, settings menu); only the automatable flag is off.
-    // Restore by removing the `.withAutomatable (false)` / passing automatable = true.
-    // (Advanced Mode is intentionally NOT hidden -- it now travels with A/B, Issue 4.)
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::advancedMode, kVersion }, "Advanced Mode", false));
-    // Persist default 0.5; the scope remaps it so 50% reproduces the old 60% feel (#21).
-    floatParam (pid::scopePersist, "Scope Persistence", { 0.0f, 1.0f, 0.001f }, 0.5f, pct, pctFrom, false);
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::metersOn, kVersion }, "Show Meters", false,
-        juce::AudioParameterBoolAttributes().withAutomatable (false)));
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::tooltipsOn, kVersion }, "Show Tooltips", false,
-        juce::AudioParameterBoolAttributes().withAutomatable (false)));
-    // Micro-animations on by default; Settings can switch them off (F3).
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::uiAnimations, kVersion }, "UI Animations", true,
-        juce::AudioParameterBoolAttributes().withAutomatable (false)));
-    // Whole-window scale, M = the original 940x720 (F4).
-    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { pid::uiScale, kVersion },
-        "UI Scale", StringArray { "XS", "S", "M", "L", "XL" }, 2,
-        juce::AudioParameterChoiceAttributes().withAutomatable (false)));
 
     return layout;
 }
@@ -252,12 +234,11 @@ void ParamPointers::bind (juce::AudioProcessorValueTreeState& s)
     outputBalance = s.getRawParameterValue (pid::outputBalance);
     autoGainMatch = s.getRawParameterValue (pid::autoGainMatch);
     solo          = s.getRawParameterValue (pid::solo);
-    oversample    = s.getRawParameterValue (pid::oversample);
     bypass        = s.getRawParameterValue (pid::bypass);
     advancedMode  = s.getRawParameterValue (pid::advancedMode);
 }
 
-anamorph::EngineParameters ParamPointers::toEngine() const
+anamorph::EngineParameters ParamPointers::toEngine (int oversampleIndex) const
 {
     using namespace anamorph;
     EngineParameters e;
@@ -276,7 +257,7 @@ anamorph::EngineParameters ParamPointers::toEngine() const
     e.dimMode      = (int) dimMode->load() + 1; // choice 0..3 -> mode 1..4
     e.width        = width->load();
 
-    e.oversample   = (OversampleFactor) (int) oversample->load();
+    e.oversample   = (OversampleFactor) juce::jlimit (0, 3, oversampleIndex); // from InternalState
     e.bypass       = bypass->load() > 0.5f;
 
     if (advanced)

@@ -95,7 +95,8 @@ SpectrumImager::SpectrumImager (anamorph::ScopeBuffer& s, juce::AudioProcessorVa
     widthP[1] = dynamic_cast<juce::RangedAudioParameter*> (apvts.getParameter (pid::mbWidthMid));
     widthP[2] = dynamic_cast<juce::RangedAudioParameter*> (apvts.getParameter (pid::mbWidthHiMid));
     widthP[3] = dynamic_cast<juce::RangedAudioParameter*> (apvts.getParameter (pid::mbWidthHigh));
-    animOnP   = apvts.getRawParameterValue (pid::uiAnimations);
+    // UI-animation flag is injected via setAnimationSource() (it lives in InternalState,
+    // not the APVTS, so the host can't see it). animOnP == nullptr -> animations on.
     enableP   = apvts.getRawParameterValue (pid::mbEnable);
 
     fifoL.assign ((size_t) fftSize, 0.0f);

@@ -10,17 +10,17 @@ AnamorphAudioProcessor::AnamorphAudioProcessor()
     params.bind (apvts);
     bypassParam = dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter (pid::bypass));
 
-    // Parameters that change the reported PDC latency.
-    apvts.addParameterListener (pid::oversample, this);
+    // Parameters that change the reported PDC latency. Oversampling is no longer an APVTS
+    // parameter (it lives in InternalState), so its PDC update is driven by a callback.
     apvts.addParameterListener (pid::drive,      this);
     apvts.addParameterListener (pid::algorithm,  this);
+    internal.onOversampleChanged = [this] { updateLatency(); };
 
     syncCommitted(); // establish the undo baseline
 }
 
 AnamorphAudioProcessor::~AnamorphAudioProcessor()
 {
-    apvts.removeParameterListener (pid::oversample, this);
     apvts.removeParameterListener (pid::drive,      this);
     apvts.removeParameterListener (pid::algorithm,  this);
 }
@@ -45,13 +45,13 @@ bool AnamorphAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts)
 void AnamorphAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     engine.prepare (sampleRate, samplesPerBlock);
-    engine.setParameters (params.toEngine());
+    engine.setParameters (params.toEngine (internal.oversampleIndex()));
     updateLatency();
 }
 
 void AnamorphAudioProcessor::updateLatency()
 {
-    setLatencySamples (engine.predictLatency (params.toEngine()));
+    setLatencySamples (engine.predictLatency (params.toEngine (internal.oversampleIndex())));
 }
 
 void AnamorphAudioProcessor::parameterChanged (const juce::String&, float)
@@ -124,7 +124,7 @@ void AnamorphAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     prevPlaying = playing;
 
     engine.setTransportPlaying (playing); // a pause edge kills Velvet's noise tail (#4)
-    auto e = params.toEngine();
+    auto e = params.toEngine (internal.oversampleIndex());
     if (const int sp = soloPreviewMask.load (std::memory_order_relaxed); sp >= 0)
         e.mbSolo = sp; // momentary hold audition overrides the latched solo (#8)
     engine.setParameters (e);
@@ -308,6 +308,7 @@ void AnamorphAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
     root.setProperty ("presetName", presets.currentName(), nullptr);     // remembered across sessions (F2)
     root.setProperty ("presetBaseline", presets.baseline(), nullptr);    // so the dirty-star survives reload (#6)
     root.appendChild (apvts.copyState(), nullptr);
+    root.appendChild (internal.copyState(), nullptr); // host-hidden Settings / view state
     juce::ValueTree ab ("AB");
     ab.setProperty ("active", abActive, nullptr);
     // Each slot carries its params AND its preset name + baseline (#6).
@@ -335,6 +336,11 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
     {
         auto params = root.getChildWithName (apvts.state.getType());
         if (params.isValid()) apvts.replaceState (params.createCopy());
+
+        // Restore the host-hidden Settings / view state (Oversampling, Window Size,
+        // Persistence, Tooltips, Animations, Show Meters). A changed Oversampling fires
+        // InternalState's callback -> updateLatency(); prepareToPlay re-asserts it anyway.
+        internal.restoreState (root.getChildWithName ("ANAMORPH_INTERNAL"));
 
         restoredName = root.getProperty ("presetName").toString();
         if (root.hasProperty ("presetBaseline"))
