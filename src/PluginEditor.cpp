@@ -551,6 +551,9 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     // attachSlider (which used to seed Knob::resetValue from the parameter default) is no
     // longer called, so set the double-click / Alt-click reset target explicitly (#7).
     scopePersistK.resetValue = 0.5;
+    // ...and the eased reset sweep attachSlider also wired, so a double-click / Alt-click
+    // reset animates like every other Knob (#7).
+    scopePersistK.onSweep = [this] { if (uiAnimOn) knobSweepTime = 0.45; };
     scopePersistK.onValueChange = [this] { applyScopePersist(); };
     // Listen for the mouse wheel ON the Persist bar so a sustained scroll reveals the
     // window (handled in mouseWheelMove, the single source of truth, so a single
