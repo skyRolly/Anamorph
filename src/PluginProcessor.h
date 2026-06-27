@@ -119,6 +119,11 @@ private:
 
     juce::AudioParameterBool* bypassParam = nullptr;
     bool prevPlaying = false; // transport edge-detect for meter reset (#15)
+    // Transport reposition (seek) detection so the meter holds also reset on a timeline
+    // jump while playing, not only on a stop->play restart (Issue 3).
+    juce::int64 prevPosSamples = 0;
+    int         prevPosBlock   = 0;
+    bool        prevPosValid   = false;
     std::atomic<int> soloPreviewMask { -1 }; // -1 = use the mbSolo param (momentary audition, #8)
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AnamorphAudioProcessor)

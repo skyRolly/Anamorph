@@ -30,7 +30,13 @@ public:
     void prepare (double sampleRate, int maxBlock);
     void reset();
 
-    void setFrequency (float hz) noexcept { targetFreq = hz; }
+    // Clamp Nyquist-safe (defensive, consistent with the multiband crossovers): the
+    // param range already tops out at 500 Hz, but never feed the LR filter a cutoff
+    // that could approach Nyquist and destabilise its coefficients (0.8.2).
+    void setFrequency (float hz) noexcept
+    {
+        targetFreq = juce::jlimit (20.0f, juce::jmax (1000.0f, 0.45f * (float) sr), hz);
+    }
 
     // Collapses the low band to mono in place (highs untouched, lows summed to mono).
     void process (float* left, float* right, int numSamples) noexcept;

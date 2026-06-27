@@ -66,11 +66,25 @@ public:
             rmsHoldL = rmsHoldR = 0.0;
         }
 
+        // Self-heal (Issue 8): a single NaN/Inf sample used to latch an envelope at NaN
+        // forever (NaN compares false, so the env never updated again -- the bright bar
+        // vanished permanently after a DSP blow-up). Flush any non-finite envelope back
+        // to its floor so the meter ALWAYS recovers once finite audio returns.
+        sanitize (pkDimL);  sanitize (pkDimR);
+        sanitize (msBriL);  sanitize (msBriR);
+        sanitize (msNumL);  sanitize (msNumR);
+        sanitize (peakHoldL); sanitize (peakHoldR);
+        sanitize (barPeakL);  sanitize (barPeakR);
+
         float bpL = 0.0f, bpR = 0.0f, phL = peakHoldL, phR = peakHoldR;
         for (int i = 0; i < n; ++i)
         {
-            const float al = std::abs (L[i]), ar = std::abs (R[i]);
-            const float l2 = L[i] * L[i], r2 = R[i] * R[i];
+            // Clamp each sample finite BEFORE it enters any envelope, so abnormal DSP
+            // values can never poison the meter state in the first place.
+            const float sL = std::isfinite (L[i]) ? L[i] : 0.0f;
+            const float sR = std::isfinite (R[i]) ? R[i] : 0.0f;
+            const float al = std::abs (sL), ar = std::abs (sR);
+            const float l2 = sL * sL, r2 = sR * sR;
 
             pkDimL = al > pkDimL ? al : pkDimL * dimRel; // instant attack, slow release
             pkDimR = ar > pkDimR ? ar : pkDimR * dimRel;
@@ -125,6 +139,7 @@ public:
 
 private:
     float barFall() const noexcept { return std::exp (-(float) blockDur / 0.10f); } // fast fall after hold
+    static void  sanitize (float& v) noexcept { if (! std::isfinite (v)) v = 0.0f; } // recover a NaN-latched envelope
     static float db (float lin) noexcept { return lin > 1.0e-6f ? 20.0f * std::log10 (lin) : -100.0f; }
     static void  store (std::atomic<float>& a, float v) noexcept { a.store (v, std::memory_order_relaxed); }
     static void  store (std::atomic<int>& a, int v) noexcept { a.store (v, std::memory_order_relaxed); }

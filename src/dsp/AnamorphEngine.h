@@ -165,7 +165,8 @@ private:
     // Scratch
     juce::AudioBuffer<float> dryScratch;   // dry for the dry/wet mix (the full conditioned input)
     juce::AudioBuffer<float> wetScratch;   // post-Mono-Maker, pre-output-gain (loudness measurement)
-    juce::AudioBuffer<float> inputScratch; // full conditioned input (loudness reference, #25)
+    juce::AudioBuffer<float> inputScratch; // full conditioned input (silence-edge detection, #25)
+    juce::AudioBuffer<float> loudnessRefScratch; // delay-aligned reconstruction A(dry): Level-Match dry ref (Issue 2)
 
     bool driveActive = false;
 

@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <limits>
 #include <random>
 
 namespace
@@ -856,6 +857,165 @@ static void testLevelMatchSilenceFreeze()
 }
 
 // ---------------------------------------------------------------------------
+//  Issue 7: automating a crossover toward Nyquist (4 bands, all splits pushed high)
+//  must NOT blow up the Linkwitz-Riley coefficients. Sweep mbFreqLow up past 20 kHz at
+//  several sample rates, with Mix < 1 so the dry-align bank runs too, and confirm the
+//  output stays finite and bounded (no +600 dB burst, no dead channel).
+static void testCrossoverAutomationSafe()
+{
+    std::printf ("Test 17: Multiband crossover automation is Nyquist-safe (no explosion)\n");
+    juce::ScopedNoDenormals noDenormals;
+    bool anyBad = false; double worstAbs = 0.0;
+
+    for (double sr : { 44100.0, 48000.0, 96000.0 })
+    {
+        const int block = 128;
+        anamorph::AnamorphEngine engine;
+        engine.prepare (sr, block);
+        anamorph::EngineParameters p;
+        p.mbEnable = true; p.mbBands = 4; p.mix = 0.7f; // Mix<1 exercises the dry-align bank too
+
+        const int N = 500;
+        double maxAbs = 0.0; bool bad = false;
+        for (int nb = 0; nb < N; ++nb)
+        {
+            const float t = (float) nb / (float) (N - 1);
+            const float f = 180.0f + t * (20000.0f - 180.0f); // drive split 1 toward 20 kHz
+            p.mbFreqLow  = f;
+            p.mbFreqMid  = juce::jmin (20000.0f, f * 1.4f);   // crowd them all up near Nyquist
+            p.mbFreqHigh = 20000.0f;
+            juce::AudioBuffer<float> buf (2, block);
+            fillNoise (buf, (unsigned) (nb * 7 + 1));
+            engine.setParameters (p);
+            engine.process (buf);
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = 0; i < block; ++i)
+                {
+                    const float v = buf.getSample (ch, i);
+                    if (isBad (v)) bad = true;
+                    maxAbs = std::max (maxAbs, (double) std::abs (v));
+                }
+        }
+        std::printf ("  sr=%.0f  max|out|=%.3f%s\n", sr, maxAbs, bad ? "  [BAD SAMPLES]" : "");
+        anyBad = anyBad || bad;
+        worstAbs = std::max (worstAbs, maxAbs);
+    }
+    check (! anyBad, "no NaN/Inf during extreme crossover automation");
+    check (worstAbs < 4.0, "output stays bounded under extreme crossover automation");
+}
+
+// ---------------------------------------------------------------------------
+//  Issue 2: with Multiband ON but all band widths at unity (no audible processing),
+//  Level Match must read ~0 dB -- the allpass-reconstruction ripple cancels because the
+//  loudness reference is the matched A(dry) reconstruction, not the raw input.
+static void testMultibandUnityMatch()
+{
+    std::printf ("Test 18: Level Match reads ~0 at unity with Multiband ON\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0; const int block = 256;
+
+    anamorph::AnamorphEngine engine;
+    engine.prepare (sr, block);
+    anamorph::EngineParameters p;
+    p.mbEnable = true; p.mbBands = 4; p.autoGainMatch = true; // widths all default 1.0
+    engine.setParameters (p);
+    engine.reset();
+    for (int nb = 0; nb < 240; ++nb)
+    {
+        juce::AudioBuffer<float> buf (2, block);
+        fillNoise (buf, (unsigned) (nb * 13 + 7));
+        engine.setParameters (p);
+        engine.process (buf);
+    }
+    const float db = engine.getMatchGainDb();
+    std::printf ("  multiband-on unity match = %.3f dB (expect ~0)\n", db);
+    check (std::abs (db) < 0.1f, "Level Match unbiased at unity with Multiband on (Issue 2)");
+}
+
+// ---------------------------------------------------------------------------
+//  Issue 8: a NaN/Inf burst used to latch the meter envelopes at NaN forever (the bright
+//  bar vanished). Poison the meter, then feed real audio and confirm the bright reading
+//  recovers to a sane finite level.
+static void testMeterRecoversFromNaN()
+{
+    std::printf ("Test 19: meters self-heal after a NaN/Inf burst\n");
+    const double sr = 48000.0; const int block = 256;
+
+    anamorph::StereoLevel meter;
+    meter.prepare (sr);
+
+    juce::AudioBuffer<float> bad (2, block);
+    for (int i = 0; i < block; ++i)
+    {
+        bad.setSample (0, i, std::numeric_limits<float>::quiet_NaN());
+        bad.setSample (1, i, std::numeric_limits<float>::infinity());
+    }
+    meter.process (bad.getReadPointer (0), bad.getReadPointer (1), block);
+    meter.publish();
+
+    float bri = -100.0f;
+    for (int nb = 0; nb < 40; ++nb)
+    {
+        juce::AudioBuffer<float> buf (2, block);
+        for (int i = 0; i < block; ++i) { buf.setSample (0, i, 0.5f); buf.setSample (1, i, 0.5f); }
+        meter.process (buf.getReadPointer (0), buf.getReadPointer (1), block);
+        meter.publish();
+        bri = meter.getBriL();
+    }
+    std::printf ("  bright reading after recovery = %.2f dB (expect ~ -6)\n", bri);
+    check (std::isfinite (bri) && bri > -20.0f, "bright meter recovers after a NaN burst (Issue 8)");
+}
+
+// ---------------------------------------------------------------------------
+//  Issue 1: toggling Bypass must never burst or leave stale state. Toggle it during
+//  playback (no NaN, bounded) and confirm that once settled into bypass on a silent
+//  input the output is exactly silent (no leaked fragment, buffers cleared at the duck).
+static void testBypassToggleRobust()
+{
+    std::printf ("Test 20: bypass toggling is clean (no burst; silent-in -> silent-out)\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0; const int block = 128;
+
+    anamorph::AnamorphEngine engine;
+    engine.prepare (sr, block);
+    anamorph::EngineParameters p;
+    p.mbEnable = true; p.mbBands = 4; p.monoMakerEnable = true;
+    p.oversample = anamorph::OversampleFactor::x4; p.driveDb = 6.0f; // OS latency in play
+    engine.setParameters (p);
+    engine.reset();
+    engine.setTransportPlaying (true);
+
+    double maxAbs = 0.0; bool bad = false;
+    for (int nb = 0; nb < 200; ++nb)
+    {
+        if (nb % 11 == 0) { p.bypass = ! p.bypass; engine.setParameters (p); }
+        juce::AudioBuffer<float> buf (2, block);
+        fillNoise (buf, (unsigned) (nb * 7 + 1));
+        engine.setParameters (p);
+        engine.process (buf);
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = 0; i < block; ++i)
+            { const float v = buf.getSample (ch, i); if (isBad (v)) bad = true; maxAbs = std::max (maxAbs, (double) std::abs (v)); }
+    }
+    check (! bad, "bypass toggling during playback never produces NaN/Inf");
+    check (maxAbs < 2.0, "bypass toggling during playback never bursts");
+
+    // Settle into bypass with a silent input, then assert the output is exactly silent.
+    p.bypass = true; engine.setParameters (p);
+    for (int nb = 0; nb < 80; ++nb) { juce::AudioBuffer<float> b (2, block); b.clear(); engine.process (b); }
+    double tail = 0.0;
+    for (int nb = 0; nb < 20; ++nb)
+    {
+        juce::AudioBuffer<float> b (2, block); b.clear();
+        engine.process (b);
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = 0; i < block; ++i) tail = std::max (tail, (double) std::abs (b.getSample (ch, i)));
+    }
+    std::printf ("  settled bypass silent-in tail = %.2e ; play-toggle max|out| = %.3f\n", tail, maxAbs);
+    check (tail == 0.0, "settled bypass passes silence through as exact silence (no stale leak)");
+}
+
+// ---------------------------------------------------------------------------
 int main()
 {
     std::printf ("=== Anamorph DSP self-tests ===\n");
@@ -874,6 +1034,10 @@ int main()
     testLevelMatchNoRatchet();
     testLevelMatchMixCouplingNoSlam();
     testLevelMatchSilenceFreeze();
+    testCrossoverAutomationSafe();
+    testMultibandUnityMatch();
+    testMeterRecoversFromNaN();
+    testBypassToggleRobust();
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);
     if (failures == 0) { std::printf ("ALL TESTS PASSED\n"); return 0; }
