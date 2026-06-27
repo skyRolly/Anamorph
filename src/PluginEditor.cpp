@@ -541,7 +541,7 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     scopePersistK.setTextBoxStyle (juce::Slider::TextBoxRight, false, 52, 18); // box built with our LnF
     // Host-hidden: bind to InternalState (juce::Value), not the APVTS. Set the range first
     // so the bound value lands in [0,1]; tag the unit for the bare-number value box (#36).
-    scopePersistK.setRange (0.0, 1.0, 0.0);
+    scopePersistK.setRange (0.0, 1.0, 0.001); // match the old parameter's step (#36)
     // The SliderAttachment used to supply the parameter's percentage formatter; restore
     // it here so the value box shows "50%" (not a raw decimal) and parses bare numbers (#36).
     scopePersistK.textFromValueFunction = [] (double v) { return juce::String (juce::roundToInt (v * 100.0)) + "%"; };
