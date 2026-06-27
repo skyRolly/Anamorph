@@ -6,6 +6,18 @@ of stereo tools (MS, mono-maker, channel utilities, monitoring) around a
 high-end diamond vectorscope. Built with **CMake + JUCE** only — it configures
 and builds entirely from the command line on a headless Linux machine, no IDE.
 
+### What's new in 0.8.3
+- **Bypass is a true click-free crossfade, and analysis never stops.** The full chain and
+  the Level-Match analysis now run regardless of Bypass — Bypass only changes the *audio*
+  path, crossfading (≈10 ms, sample-safe) between the processed output and the delay-
+  aligned RAW input. So Level Match keeps Measuring + Predicting while bypassed (same value
+  as when active), there is no mute / dropout, and toggling is imperceptible. Settling to
+  full bypass is bit-exact (true unprocessed signal); no duck, no stale-state burst.
+- **No output clipper.** Confirmed there is no 0 dBFS clipper anywhere — the explosion fix
+  is a crossover-*frequency* clamp, not amplitude limiting, so dynamics and headroom are
+  fully preserved. The NaN/Inf safety net was made per-sample so it can only ever touch a
+  non-finite sample (replaced with 0) and never alters valid audio.
+
 ### What's new in 0.8.2
 - **Multiband crossover automation is now crash-proof.** Automating a split toward Nyquist
   (4 bands, all splits crowded high) used to push the ordered separation above Nyquist,

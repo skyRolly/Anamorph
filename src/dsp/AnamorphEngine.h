@@ -162,6 +162,14 @@ private:
     juce::AudioBuffer<float> dryAlignScratch;      // A(dry) for this block (from MultibandWidth)
     juce::AudioBuffer<float> dryAlignDelayBuffer;   // delay line, shares dryDelayWrite/size
 
+    // True-bypass crossfade (Issue 2/3): the chain + analysis ALWAYS run; Bypass only
+    // crossfades the OUTPUT between the processed signal and the delay-aligned RAW input.
+    // bypassBlend = 0 -> processed, 1 -> bypassed; a short, sample-safe ramp (no mute).
+    juce::AudioBuffer<float> bypassDelayBuffer; // raw-input delay line (latency align)
+    juce::AudioBuffer<float> bypassDryScratch;  // delay-aligned raw input for this block
+    int bypassDelayWrite = 0;
+    juce::SmoothedValue<float> bypassBlend;
+
     // Scratch
     juce::AudioBuffer<float> dryScratch;   // dry for the dry/wet mix (the full conditioned input)
     juce::AudioBuffer<float> wetScratch;   // post-Mono-Maker, pre-output-gain (loudness measurement)

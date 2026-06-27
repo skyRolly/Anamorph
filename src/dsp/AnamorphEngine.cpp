@@ -89,6 +89,14 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
     dryAlignDelayBuffer.clear();
     dryAlignScratch.setSize (2, maxBlock);
 
+    // True-bypass raw-input delay line + per-block scratch, same size as the dry delay.
+    bypassDelayBuffer.setSize (2, maxLat + maxBlock + 1);
+    bypassDelayBuffer.clear();
+    bypassDryScratch.setSize (2, maxBlock);
+    bypassDelayWrite = 0;
+    bypassBlend.reset (sr, 0.010); // ~10 ms sample-safe crossfade
+    bypassBlend.setCurrentAndTargetValue (p.bypass ? 1.0f : 0.0f);
+
     dryScratch.setSize (2, maxBlock);
     wetScratch.setSize (2, maxBlock);
     inputScratch.setSize (2, maxBlock);
@@ -115,6 +123,8 @@ void AnamorphEngine::reset()
     dryDelayBuffer.clear();
     dryAlignDelayBuffer.clear();
     dryDelayWrite = 0;
+    bypassDelayBuffer.clear();
+    bypassDelayWrite = 0;
     prevInputSilent = true;
 
     // Flush any in-flight switch duck straight to its target so a host reset
@@ -128,6 +138,7 @@ void AnamorphEngine::reset()
     pendingAlgoReset = false;
     switchState = SwitchState::Normal;
     switchPhase = 1.0f;
+    bypassBlend.setCurrentAndTargetValue (p.bypass ? 1.0f : 0.0f); // settle the crossfade
     osEngaged = osActiveFor (p); // re-latch the OS wrap for the settled state (#3)
 }
 
@@ -154,7 +165,9 @@ bool AnamorphEngine::discreteDiffers (const EngineParameters& a, const EnginePar
         || a.monoMakerEnable  != b.monoMakerEnable
         || a.autoGainMatch    != b.autoGainMatch
         || a.oversample       != b.oversample
-        || a.bypass           != b.bypass
+        // Bypass is NOT listed: it is now a click-free OUTPUT crossfade (bypassBlend),
+        // not a ducked switch -- the chain + analysis run regardless, so toggling it
+        // never stops Level Match and never needs a duck (Issues 2/3).
         // Engaging / disengaging the OS wrap (Drive crossing 0 with OS selected)
         // inserts/removes its group delay -- a discrete, duck-worthy change (#3).
         || osActiveFor (a)    != osActiveFor (b);
@@ -172,17 +185,19 @@ bool AnamorphEngine::processingDiffers (const EngineParameters& a, const EngineP
 void AnamorphEngine::copyContinuous (EngineParameters& dst, const EngineParameters& src) noexcept
 {
     // Keep dst's discrete fields; pull every smoothed/continuous field from src.
+    // bypass is NOT preserved here: it is a continuous crossfade now, applied immediately
+    // (its bypassBlend smoother does the click-free transition), not deferred to a duck.
     const auto cm = dst.channelMode; const auto ms = dst.monoSum; const auto sw = dst.swapLR;
     const auto md = dst.msMode;      const auto so = dst.solo;    const auto al = dst.algorithm;
     const auto hs = dst.haasSide;    const auto dm = dst.dimMode; const auto mb = dst.mbEnable;
-    const auto mm = dst.monoMakerEnable; const auto ov = dst.oversample; const auto by = dst.bypass;
+    const auto mm = dst.monoMakerEnable; const auto ov = dst.oversample;
     const auto ag = dst.autoGainMatch;
 
     dst = src;
 
     dst.channelMode = cm; dst.monoSum = ms; dst.swapLR = sw; dst.msMode = md; dst.solo = so;
     dst.algorithm = al;   dst.haasSide = hs; dst.dimMode = dm; dst.mbEnable = mb;
-    dst.monoMakerEnable = mm; dst.oversample = ov; dst.bypass = by; dst.autoGainMatch = ag;
+    dst.monoMakerEnable = mm; dst.oversample = ov; dst.autoGainMatch = ag;
 }
 
 void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
@@ -348,6 +363,7 @@ void AnamorphEngine::updateDerived()
     matchGainSmooth .setTargetValue (p.autoGainMatch
         ? juce::Decibels::decibelsToGain (loudness.getMatchGainDb())
         : 1.0f);
+    bypassBlend     .setTargetValue (p.bypass ? 1.0f : 0.0f); // click-free Bypass crossfade
 }
 
 // ---------------------------------------------------------------------------
@@ -449,11 +465,8 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         // toggled) needs its crossover filters cleared, captured before p is moved.
         const bool mbStructuralChange = (pendingP.mbBands != p.mbBands)
                                      || (pendingP.mbEnable != p.mbEnable);
-        // Entering / leaving Bypass flips whether the whole processing chain runs, so the
-        // stateful nodes + dry delay lines hold audio the other side never produced.
-        // Cleared at the silent bottom (below) so neither a pre-pause fragment leaks (1A)
-        // nor a re-engage burst clicks as the duck lifts (1B).
-        const bool bypassChanged = (pendingP.bypass != p.bypass);
+        // (Bypass is no longer handled here -- it is a continuous output crossfade with
+        //  the chain always running, so there is never any stale bypass state to clear.)
         // Compare the incoming OS path against what was actually RUNNING (the
         // latch) -- p's driveDb was already overwritten by copyContinuous.
         const bool osPathChanged = pendingP.oversample != p.oversample
@@ -517,16 +530,6 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
             // band split, so re-point + clear it on the same structural change. A pure
             // solo change is NOT ducked -- the SoloMonitor crossfades it click-free.
             if (mbStructuralChange) { multiband.reset(); soloMonitor.reset(); }
-            // A Bypass toggle: clear EVERY stateful node + the dry delay lines while
-            // silent, so the side that re-engages starts from a clean slate -- no stale
-            // pre-pause fragment (1A), no filter/oversampler re-engage burst (1B).
-            if (bypassChanged)
-            {
-                multiband.reset(); monoMaker.reset(); soloMonitor.reset();
-                haas.reset(); velvet.reset(); chorus.reset();
-                if (os2) os2->reset(); if (os4) os4->reset(); if (os8) os8->reset();
-                dryDelayBuffer.clear(); dryAlignDelayBuffer.clear();
-            }
         }
         switchState = SwitchState::FadeIn;
     }
@@ -556,33 +559,27 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
 
     levels.input.process (L, R, n); // tap the raw plugin input (#10)
 
-    // -------- True bypass: latency-aligned passthrough + meter the output ----
-    if (p.bypass)
+    // ---- True-bypass dry source: the RAW input, delay-aligned to the wet latency.
+    //      Captured HERE, before any conditioning, so Bypass can crossfade to the exact
+    //      unprocessed signal at the very END of the chain (Issue 3). The processing AND
+    //      the Level-Match analysis ALWAYS run below -- Bypass only changes the audio
+    //      output path, never the analysis path, so Measure + Predict keep running while
+    //      bypassed (Issue 2). Bypass is therefore a click-free crossfade, not a mute,
+    //      and needs no duck (it is no longer a discrete switch).
     {
+        float* bdL = bypassDelayBuffer.getWritePointer (0);
+        float* bdR = bypassDelayBuffer.getWritePointer (1);
+        const int bdSize = bypassDelayBuffer.getNumSamples();
+        float* bxL = bypassDryScratch.getWritePointer (0);
+        float* bxR = bypassDryScratch.getWritePointer (1);
         for (int i = 0; i < n; ++i)
         {
-            ddL[dryDelayWrite] = L[i];
-            ddR[dryDelayWrite] = R[i];
-            int rp = dryDelayWrite - lat; if (rp < 0) rp += ddSize;
-            float ol = ddL[rp], orr = ddR[rp];
-            dryDelayWrite = (dryDelayWrite + 1) % ddSize;
-
-            if (fading)
-            {
-                if (switchState == SwitchState::FadeOut) { switchPhase -= switchIncOut; if (switchPhase < 0.0f) switchPhase = 0.0f; }
-                else                                     { switchPhase += switchIncIn;  if (switchPhase > 1.0f) switchPhase = 1.0f; }
-                const float sg = 0.5f - 0.5f * std::cos (juce::MathConstants<float>::pi * switchPhase);
-                ol *= sg; orr *= sg;
-            }
-
-            L[i] = ol; R[i] = orr;
-            correlation.process (ol, orr);
-            scope.push (ol, orr);
+            bdL[bypassDelayWrite] = L[i];
+            bdR[bypassDelayWrite] = R[i];
+            int rp = bypassDelayWrite - lat; if (rp < 0) rp += bdSize;
+            bxL[i] = bdL[rp]; bxR[i] = bdR[rp];
+            bypassDelayWrite = (bypassDelayWrite + 1) % bdSize;
         }
-        levels.output.process (L, R, n);
-        correlation.publish();
-        levels.publish();
-        return;
     }
 
     // -------- 1. Input conditioning -----------------------------------------
@@ -770,25 +767,44 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     if (p.mbEnable)
         soloMonitor.process (L, R, p.mbSolo, n);
 
-    // -------- Defensive NaN / Inf self-heal (0.8.2) -------------------------
-    // The crossover Nyquist clamp now prevents the multiband blow-up at the source,
-    // but ANY future stage (or a pathological host buffer) that produced a non-finite
-    // sample would otherwise latch a dead/stuck channel and poison the meters forever.
-    // If this block is non-finite, flush it to silence and reset every stateful node so
-    // the NEXT block is clean -- the engine recovers on its own, no Multiband off/on.
+    // -------- Defensive NaN / Inf self-heal --------------------------------
+    // This is NOT a level limiter: it touches ONLY non-finite samples, so valid audio
+    // (however loud) is passed through untouched -- no 0 dBFS clipper, dynamics and
+    // headroom fully preserved (Issue 1). The crossover Nyquist clamp already prevents
+    // the multiband blow-up at the source; if anything ever still went non-finite it
+    // would latch a dead channel / poison the meters, so any non-finite sample is
+    // replaced with 0 and the stateful nodes are reset to stop the source (self-heal).
     bool nonFinite = false;
     for (int i = 0; i < n; ++i)
-        if (! std::isfinite (L[i]) || ! std::isfinite (R[i])) { nonFinite = true; break; }
+    {
+        if (! std::isfinite (L[i])) { L[i] = 0.0f; nonFinite = true; }
+        if (! std::isfinite (R[i])) { R[i] = 0.0f; nonFinite = true; }
+    }
     if (nonFinite)
     {
-        buffer.clear();
-        L = buffer.getWritePointer (0);
-        R = buffer.getWritePointer (1);
         multiband.reset(); monoMaker.reset(); soloMonitor.reset();
         haas.reset(); velvet.reset(); chorus.reset();
         if (os2) os2->reset(); if (os4) os4->reset(); if (os8) os8->reset();
         loudness.reset();
-        dryDelayBuffer.clear(); dryAlignDelayBuffer.clear();
+        dryDelayBuffer.clear(); dryAlignDelayBuffer.clear(); bypassDelayBuffer.clear();
+    }
+
+    // ======================== 6. BYPASS CROSSFADE ===========================
+    // Click-free, sample-safe Bypass: a short crossfade between the fully processed
+    // output and the delay-aligned RAW input -- no mute, no dropout, imperceptible
+    // switch (Issue 3). bypassBlend settles to exactly 1 -> bit-exact true bypass; to
+    // exactly 0 -> the untouched processed output. Because the chain + analysis already
+    // ran above, toggling Bypass never stops Level Match and never re-engages stale DSP.
+    if (bypassBlend.isSmoothing() || bypassBlend.getTargetValue() > 0.0f)
+    {
+        const float* bxL = bypassDryScratch.getReadPointer (0);
+        const float* bxR = bypassDryScratch.getReadPointer (1);
+        for (int i = 0; i < n; ++i)
+        {
+            const float bb = bypassBlend.getNextValue();
+            L[i] += bb * (bxL[i] - L[i]);
+            R[i] += bb * (bxR[i] - R[i]);
+        }
     }
 
     // -------- Metering tap (the monitored output) ---------------------------

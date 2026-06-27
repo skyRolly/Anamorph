@@ -172,14 +172,22 @@ static void testBypassNullAndLatency()
         const int lat = engine.getLatencySamples();
         check (lat > 0, "latency > 0 when oversampling active");
 
-        // Feed an impulse; the bypassed output must be the input delayed by lat.
+        // Feed an impulse; the bypassed output must be the input delayed by lat. Process
+        // in <= maxBlock chunks (the engine runs the full chain even while bypassed now,
+        // so its scratch is sized for maxBlock -- a host never exceeds samplesPerBlock).
         const int N = 4096;
         juce::AudioBuffer<float> buf (2, N);
         buf.clear();
         buf.setSample (0, 0, 1.0f);
         buf.setSample (1, 0, 1.0f);
         engine.setParameters (p);
-        engine.process (buf);
+        for (int off = 0; off < N; off += block)
+        {
+            const int len = juce::jmin (block, N - off);
+            float* chans[2] = { buf.getWritePointer (0) + off, buf.getWritePointer (1) + off };
+            juce::AudioBuffer<float> sub (chans, 2, len);
+            engine.process (sub);
+        }
 
         int peakPos = -1; float peak = 0.0f;
         for (int i = 0; i < N; ++i)
@@ -1016,6 +1024,90 @@ static void testBypassToggleRobust()
 }
 
 // ---------------------------------------------------------------------------
+//  Issue 2: Bypass must NOT stop the analysis. Level Match still has to Measure (and
+//  Predict) while bypassed, and arrive at the same value as when active -- Bypass only
+//  changes the audio path, never the analysis path.
+static void testLevelMatchRunsInBypass()
+{
+    std::printf ("Test 21: Level Match keeps measuring while bypassed\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0; const int block = 256;
+
+    auto matchAfter = [&] (bool bypass) -> float
+    {
+        anamorph::AnamorphEngine engine;
+        engine.prepare (sr, block);
+        anamorph::EngineParameters p;
+        p.driveDb = 12.0f; p.autoGainMatch = true; p.mix = 1.0f; p.bypass = bypass;
+        engine.setParameters (p);
+        engine.reset();
+        engine.setTransportPlaying (true);
+        for (int nb = 0; nb < 200; ++nb)
+        {
+            juce::AudioBuffer<float> buf (2, block);
+            fillNoise (buf, (unsigned) (nb * 11 + 3));
+            engine.setParameters (p);
+            engine.process (buf);
+        }
+        return engine.getMatchGainDb();
+    };
+
+    const float active   = matchAfter (false);
+    const float bypassed = matchAfter (true);
+    std::printf ("  match: active %.2f dB  bypassed %.2f dB\n", active, bypassed);
+    check (bypassed < -1.0f, "Level Match measures the boost even while bypassed (Issue 2)");
+    check (std::abs (bypassed - active) < 0.3f, "Bypass doesn't change the analysis result");
+}
+
+// ---------------------------------------------------------------------------
+//  Issue 3: Bypass is a click-free crossfade -- no click, and crucially NO mute /
+//  dropout. Toggle it repeatedly on a steady tone with an audible level offset between
+//  processed (Output Gain -6 dB) and bypassed (0 dB) and confirm the output never steps
+//  and never collapses toward silence during the transition.
+static void testBypassCrossfadeClickFree()
+{
+    std::printf ("Test 22: bypass crossfade is click-free and never mutes\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0; const int block = 128;
+    const double freq = 220.0; const float amp = 0.25f;
+
+    anamorph::AnamorphEngine engine;
+    engine.prepare (sr, block);
+    anamorph::EngineParameters p;
+    p.outputGainDb = -6.0f; // processed is clearly quieter than bypass -> a real transition
+    engine.setParameters (p);
+    engine.reset();
+
+    double phase = 0.0; const double inc = 2.0 * 3.14159265358979 * freq / sr;
+    float prev = 0.0f; bool havePrev = false;
+    double maxDelta = 0.0, minBlockPeak = 1.0e9; bool bad = false;
+    const int warmup = 24;
+    for (int nb = 0; nb < 300; ++nb)
+    {
+        if (nb % 30 == 0) { p.bypass = ! p.bypass; engine.setParameters (p); }
+        juce::AudioBuffer<float> buf (2, block);
+        for (int i = 0; i < block; ++i)
+        { const float s = amp * (float) std::sin (phase); phase += inc; buf.setSample (0, i, s); buf.setSample (1, i, s); }
+        engine.process (buf);
+
+        double blockPeak = 0.0;
+        for (int i = 0; i < block; ++i)
+        {
+            const float v = buf.getSample (0, i);
+            if (isBad (v)) bad = true;
+            if (nb >= warmup && havePrev) maxDelta = std::max (maxDelta, (double) std::abs (v - prev));
+            prev = v; havePrev = true;
+            blockPeak = std::max (blockPeak, (double) std::abs (v));
+        }
+        if (nb >= warmup) minBlockPeak = std::min (minBlockPeak, blockPeak);
+    }
+    std::printf ("  max delta=%.4f ; min block peak=%.3f (processed 0.125 .. bypass 0.25)\n", maxDelta, minBlockPeak);
+    check (! bad, "bypass crossfade stream is clean");
+    check (maxDelta < 0.04, "bypass crossfade is click-free (no step)");
+    check (minBlockPeak > 0.1, "bypass crossfade never mutes (no dropout)");
+}
+
+// ---------------------------------------------------------------------------
 int main()
 {
     std::printf ("=== Anamorph DSP self-tests ===\n");
@@ -1038,6 +1130,8 @@ int main()
     testMultibandUnityMatch();
     testMeterRecoversFromNaN();
     testBypassToggleRobust();
+    testLevelMatchRunsInBypass();
+    testBypassCrossfadeClickFree();
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);
     if (failures == 0) { std::printf ("ALL TESTS PASSED\n"); return 0; }
