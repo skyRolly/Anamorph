@@ -530,7 +530,6 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     persistLabel.setColour (juce::Label::textColourId, colours::textDim);
     settingsBackdrop.addAndMakeVisible (persistLabel);
     scopePersistK.setSliderStyle (juce::Slider::LinearHorizontal);
-    scopePersistK.setDoubleClickReturnValue (true, 0.5); // double-click resets to default (#7)
     scopePersistK.setColour (juce::Slider::textBoxTextColourId, colours::textDim);
     scopePersistK.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
     scopePersistK.setTooltip (tidyTip ("Vectorscope afterglow time " // #5
