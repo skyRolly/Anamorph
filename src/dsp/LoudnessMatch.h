@@ -59,10 +59,6 @@ public:
 
     float getMatchGainDb() const noexcept { return matchGainDb.load (std::memory_order_relaxed); }
 
-    // True when the LAST processed block's INPUT (dry) was below the silence gate, so
-    // the wrapper can snap the applied match gain on the silence->audio edge (#).
-    bool inputWasSilent() const noexcept { return lastInputSilent; }
-
     // Restore a remembered match value (per A/B slot) so a switch doesn't have to
     // re-converge from scratch and lurch in level (feedback #23).
     void setDisplayedGainDb (float db) noexcept
@@ -112,8 +108,6 @@ private:
     double currentDriveDb     = 0.0;
     double currentMix         = 1.0;
     double prevPredictedGainDb = 0.0; // last block's absolute predict (to spot a rise)
-
-    bool lastInputSilent = true;
 
     std::atomic<float> matchGainDb { 0.0f };
 };

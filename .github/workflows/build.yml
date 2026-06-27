@@ -6,6 +6,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 # Every push builds the FULL set of formats on all three desktop OSes so beta
 # testers can install on any platform:
 #   * Linux   -> VST3 + Standalone

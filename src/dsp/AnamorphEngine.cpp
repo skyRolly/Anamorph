@@ -184,20 +184,25 @@ bool AnamorphEngine::processingDiffers (const EngineParameters& a, const EngineP
 
 void AnamorphEngine::copyContinuous (EngineParameters& dst, const EngineParameters& src) noexcept
 {
-    // Keep dst's discrete fields; pull every smoothed/continuous field from src.
-    // bypass is NOT preserved here: it is a continuous crossfade now, applied immediately
-    // (its bypassBlend smoother does the click-free transition), not deferred to a duck.
+    // Keep dst's discrete fields; pull every smoothed/continuous field from src. Every
+    // state field is preserved here (merge consistency): mbBands so a deferred band-count
+    // change is still detected at the silent duck bottom (structural-change fix), and
+    // bypass for state consistency -- its click-free transition is the bypassBlend
+    // crossfade in process(), so preserving it here is neutral (a bypass-only change goes
+    // through the continuous path and never reaches copyContinuous).
     const auto cm = dst.channelMode; const auto ms = dst.monoSum; const auto sw = dst.swapLR;
     const auto md = dst.msMode;      const auto so = dst.solo;    const auto al = dst.algorithm;
     const auto hs = dst.haasSide;    const auto dm = dst.dimMode; const auto mb = dst.mbEnable;
-    const auto mm = dst.monoMakerEnable; const auto ov = dst.oversample;
+    const auto nb = dst.mbBands;
+    const auto mm = dst.monoMakerEnable; const auto ov = dst.oversample; const auto by = dst.bypass;
     const auto ag = dst.autoGainMatch;
 
     dst = src;
 
     dst.channelMode = cm; dst.monoSum = ms; dst.swapLR = sw; dst.msMode = md; dst.solo = so;
     dst.algorithm = al;   dst.haasSide = hs; dst.dimMode = dm; dst.mbEnable = mb;
-    dst.monoMakerEnable = mm; dst.oversample = ov; dst.autoGainMatch = ag;
+    dst.mbBands = nb;
+    dst.monoMakerEnable = mm; dst.oversample = ov; dst.bypass = by; dst.autoGainMatch = ag;
 }
 
 void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
