@@ -41,7 +41,7 @@ does, regardless of the automatable flag — see note ‡). "Auto Safe" = `withA
 | `chorusDepth` | Chorus Depth | F | 0.5 | 0..1 | yes | yes | yes |
 | `dimMode` | Dimension Mode | C | Classic (1) | Subtle/Classic/Wide/Lush | yes | yes | yes |
 | `width` | Width | F | 1.0 | 0..2 | yes | yes | yes |
-| `mbEnable` | Multiband Enable | B | **true** | — | yes | yes | yes |
+| `mbEnable` | Multiband Enable | B | **true** ¶ | — | yes | yes | yes |
 | `mbBands` | Multiband Bands | I | 4 | 1..4 | yes ‡ | **no** | yes |
 | `mbSolo` | Multiband Solo | I | 0 | 0..15 (4-bit mask) | yes ‡ | **no** | yes † |
 | `mbFreqLow` | Multiband Split 1 | F | 180.0 | 20..20000 Hz (log) | yes | yes | yes |
@@ -76,6 +76,12 @@ Footnotes:
 - **‖** Display name renamed `Haas Side` → `Haas Focus` in 0.8.6; the **ID `haasSide` is
   unchanged** (the immutability invariant in action). Evidence [Partially Verified]: README:37;
   src/PluginParameters.cpp:135-136.
+- **¶** The APVTS default is `true` (the user-facing default when Advanced Mode is on). The
+  `EngineParameters` POD default is **`false`** (src/dsp/EngineParameters.h:66): when Advanced
+  Mode is off, `toEngine` skips the multiband section, so the engine sees the neutral POD default
+  and the multiband stage is inactive in Simple mode. The two differing defaults are intentional
+  and serve different roles — host-facing default vs. Simple-mode neutral state.
+  Evidence [Verified]: src/PluginParameters.cpp:147,263-294; src/dsp/EngineParameters.h:66.
 
 ## Host-hidden parameters (InternalState — NOT APVTS)
 

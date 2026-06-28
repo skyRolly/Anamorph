@@ -30,7 +30,7 @@ sample must not poison the output or meters. Adding a 0 dBFS clipper would harm 
 - The plugin self-heals instead of needing a Multiband off/on.
 
 ## Related code
-- `src/dsp/MultibandWidth.cpp:55-71` (clamp+order); `SoloMonitor.cpp:41-57`; `MonoMaker.cpp` clamp
+- `src/dsp/MultibandWidth.cpp:55-71` (clamp+order); `SoloMonitor.cpp:41-57`; `MonoMaker.h:36-39` (setFrequency clamp)
 - `src/dsp/AnamorphEngine.cpp:847-870` (NaN/Inf self-heal)
 - `src/dsp/LevelMeters.h:73-77,142` (`sanitize`)
 
@@ -38,4 +38,3 @@ Evidence [Verified]:
 - Source: src/dsp/MultibandWidth.cpp:55-71; src/dsp/AnamorphEngine.cpp:847-870; src/dsp/LevelMeters.h
 - Tests: testCrossoverAutomationSafe, testMeterRecoversFromNaN, testNoBadSamples
 - History [Partially Verified]: README:60-91 (0.8.2/0.8.3)
-- See `POSTMORTEMS.md` (crossover explosion; meter NaN-latch).

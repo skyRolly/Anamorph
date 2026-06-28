@@ -48,4 +48,3 @@ Evidence [Verified]:
 - Tests: testNoClicksAcrossTransitions, testSoloNoGhostInSilence, testBypassCrossfadeClickFree,
   testMultibandEnableCrossfadeClickFree, testSoloMultibandEnableClickFree
 - History [Partially Verified]: README:102-130 (0.8.1), :30-36 (0.8.6), :9-20 (0.8.7)
-- See `POSTMORTEMS.md` (Solo ghost; Multiband Enable click).

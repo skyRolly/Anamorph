@@ -21,7 +21,9 @@ Subset of `COMPATIBILITY_POLICY.md`. Governs state serialization
 
 - `[ ] Session reload verified` (save in vN−1, load in vN — sound identical).
 - `[ ] Presets migrated` (factory + a user `.anamorph` still load).
-- Both are line items in `procedures/RELEASE_COMPATIBILITY_CHECKLIST.md`.
+
+These same checks are enforced at release time via the release compatibility checklist
+(`docs/procedures/RELEASE_COMPATIBILITY_CHECKLIST.md`).
 
 Evidence [Verified]: src/PluginProcessor.cpp:198-209,304-396; src/InternalState.h:86-122.
 
