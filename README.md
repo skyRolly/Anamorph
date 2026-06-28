@@ -6,6 +6,36 @@ of stereo tools (MS, mono-maker, channel utilities, monitoring) around a
 high-end diamond vectorscope. Built with **CMake + JUCE** only — it configures
 and builds entirely from the command line on a headless Linux machine, no IDE.
 
+### What's new in 0.8.7
+- **Fixed an audible click when toggling Multiband Enable while a Band Solo is active.** The
+  0.8.6 click-free Multiband Enable crossfade was correct, but the post-everything Band Solo
+  monitor was still hard-gated `if (p.mbEnable) soloMonitor.process(...)`. That monitor is
+  click-free *only* because its `passGain`/`bandGain` crossfade advances every block; gating
+  the call on the instantaneous `mbEnable` (which now flips with no duck) bypassed the
+  crossfade and inserted/removed the whole Linkwitz-Riley band-pass in a single sample — an
+  amplitude **and** phase step on both edges. The monitor now runs every block with its mask
+  driven from `mbEnable` (`p.mbEnable ? p.mbSolo : 0`), so it *morphs* solo↔passthrough over
+  its own ~12 ms ramp. At mask 0 the settled monitor is a bit-exact passthrough, so nothing
+  else changes. Regression test: the toggle's worst single-sample step drops from 0.31 to
+  0.015 (and never mutes). The `mbSolo` parameter and all other behavior are untouched.
+
+### What's new in 0.8.6
+- **Alt/Option-click reset animates like double-click again.** A reset is itself a
+  mouse-down event, so the button stays physically held for a frame or two afterward; the
+  position-easing was snapping the knob straight to the target whenever a button was down,
+  which double-click only escaped by releasing within a single vblank. A reset now opts out
+  of that button-down snap (a short `resetSweep` flag, only while animations are on) so the
+  eased travel plays for Alt/Option-click identically to double-click. With animations off
+  the knob snaps exactly as before.
+- **Multiband Enable now transitions like Bypass — a short click-free crossfade, no
+  mute/dropout.** Toggling it used to route through the duck-to-silence switch machine (it
+  was in the discrete-change set), which briefly muted the output. It is now a ~12 ms output
+  crossfade between the multiband result and the pre-multiband signal, with the crossover
+  bank kept *warm* across the toggle (the bank is reset only while the blend is ~0, so an
+  enable never cold-starts audibly). A settled toggle is bit-exact either way. A band-count
+  change still ducks — that is a true structural rewire of the bank.
+- **Renamed the `Haas Side` automation parameter to `Haas Focus`** to match the GUI wording.
+
 ### What's new in 0.8.5
 - **Fixed a Linux editor crash under rapid open/close (pluginval "Editor Automation").**
   Attaching an OpenGL context on Linux/X11 adds an embedded child window whose

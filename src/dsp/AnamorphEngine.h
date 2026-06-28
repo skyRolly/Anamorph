@@ -170,6 +170,16 @@ private:
     int bypassDelayWrite = 0;
     juce::SmoothedValue<float> bypassBlend;
 
+    // Multiband Enable crossfade: toggling the multiband module is a short click-free
+    // OUTPUT crossfade, NOT a duck-to-silence. The crossover bank stays WARM across the
+    // toggle (it keeps running while the blend is non-zero, so there is no cold-start
+    // settle) and its output is faded against the pre-multiband signal -- exactly the
+    // bypassBlend model, localised to the multiband stage. 0 -> multiband NOT applied,
+    // 1 -> fully applied; a settled toggle is bit-exact either way.
+    juce::SmoothedValue<float> mbEnableBlend;
+    juce::AudioBuffer<float>   preMbScratch; // pre-multiband signal: the dry side of the blend
+    bool mbRunning = false;                  // is the crossover bank currently running (warm)?
+
     // Scratch
     juce::AudioBuffer<float> dryScratch;   // dry for the dry/wet mix (the full conditioned input)
     juce::AudioBuffer<float> wetScratch;   // post-Mono-Maker, pre-output-gain (loudness measurement)

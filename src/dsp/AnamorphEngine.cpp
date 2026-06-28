@@ -97,6 +97,12 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
     bypassBlend.reset (sr, 0.010); // ~10 ms sample-safe crossfade
     bypassBlend.setCurrentAndTargetValue (p.bypass ? 1.0f : 0.0f);
 
+    // Multiband Enable crossfade: same short, click-free ramp as Bypass.
+    preMbScratch.setSize (2, maxBlock);
+    mbEnableBlend.reset (sr, 0.012); // ~12 ms sample-safe crossfade
+    mbEnableBlend.setCurrentAndTargetValue (p.mbEnable ? 1.0f : 0.0f);
+    mbRunning = p.mbEnable; // prepare() just reset the bank, so it is clean + warm if on
+
     dryScratch.setSize (2, maxBlock);
     wetScratch.setSize (2, maxBlock);
     inputScratch.setSize (2, maxBlock);
@@ -139,6 +145,8 @@ void AnamorphEngine::reset()
     switchState = SwitchState::Normal;
     switchPhase = 1.0f;
     bypassBlend.setCurrentAndTargetValue (p.bypass ? 1.0f : 0.0f); // settle the crossfade
+    mbEnableBlend.setCurrentAndTargetValue (p.mbEnable ? 1.0f : 0.0f); // settle the multiband crossfade
+    mbRunning = p.mbEnable; // reset() above cleaned the bank: warm iff multiband is on
     osEngaged = osActiveFor (p); // re-latch the OS wrap for the settled state (#3)
 }
 
@@ -157,8 +165,11 @@ bool AnamorphEngine::discreteDiffers (const EngineParameters& a, const EnginePar
         || a.algorithm        != b.algorithm
         || a.haasSide         != b.haasSide
         || a.dimMode          != b.dimMode
-        || a.mbEnable         != b.mbEnable
         || a.mbBands          != b.mbBands
+        // Multiband Enable is NOT listed: like Bypass it is now a click-free OUTPUT
+        // crossfade (mbEnableBlend) with the crossover bank kept warm, NOT a duck-to-
+        // silence -- so toggling it no longer mutes/drops the output. A BAND-COUNT
+        // change (mbBands) still ducks: that is a true structural rewire of the bank.
         // Band Solo is NOT listed: it is a post-everything monitor with its own
         // click-free crossfade (SoloMonitor), so a solo change needs no output duck
         // -- ducking it was the source of the engage tick / pause-time ghost (0.8.1).
@@ -272,6 +283,8 @@ void AnamorphEngine::snapSmoothers() noexcept
     // Snap the Bypass crossfade too, so a forced swap that also flips Bypass lands bit-exact
     // (1 -> true bypass, 0 -> processed) at the silent duck bottom rather than ramping (#8).
     snap (bypassBlend);
+    // Same for the Multiband Enable crossfade: a forced swap that flips it lands settled.
+    snap (mbEnableBlend);
     // matchGainSmooth is left to the injection / loudness re-measure (its own glide).
 }
 
@@ -372,6 +385,7 @@ void AnamorphEngine::updateDerived()
         ? juce::Decibels::decibelsToGain (loudness.getMatchGainDb())
         : 1.0f);
     bypassBlend     .setTargetValue (p.bypass ? 1.0f : 0.0f); // click-free Bypass crossfade
+    mbEnableBlend   .setTargetValue (p.mbEnable ? 1.0f : 0.0f); // click-free Multiband Enable crossfade
 }
 
 // ---------------------------------------------------------------------------
@@ -513,6 +527,7 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
             // intermittent A/B "weird sound" (0.6.7 #22). At the silent bottom these
             // resets are inaudible.
             multiband.reset();
+            mbRunning = p.mbEnable; // bank just cleaned; warm iff multiband is on
             monoMaker.reset();
             soloMonitor.reset();
             haas.reset();
@@ -537,7 +552,7 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
             // topology starts clean. The post-everything Band Solo monitor mirrors the
             // band split, so re-point + clear it on the same structural change. A pure
             // solo change is NOT ducked -- the SoloMonitor crossfades it click-free.
-            if (mbStructuralChange) { multiband.reset(); soloMonitor.reset(); }
+            if (mbStructuralChange) { multiband.reset(); mbRunning = p.mbEnable; soloMonitor.reset(); }
         }
         switchState = SwitchState::FadeIn;
     }
@@ -641,13 +656,58 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     // Reconstruct the dry through the SAME gliding crossovers as the wet, at unit
     // width -- a phase-matched A(dry) -- so a partial Mix never combs the mono sum
     // (Known Issue #1). Solo-agnostic: the wet always sums every band.
+    // Multiband Enable is a short click-free OUTPUT crossfade (the bypassBlend model),
+    // NOT a duck: the crossover bank stays WARM across the toggle and its output is
+    // faded against the pre-multiband signal, so enabling/disabling never mutes or
+    // settles audibly. mbActive keeps the bank running while the blend is non-zero, so
+    // a disable fades the multiband OUT over ~12 ms before the bank goes cold.
     bool dryAligned = false;
-    if (p.mbEnable)
+    const bool mbActive = p.mbEnable || mbEnableBlend.isSmoothing()
+                       || mbEnableBlend.getCurrentValue() > 0.0f;
+    if (mbActive)
     {
+        // The instant the bank begins running again (after being fully disabled) it is
+        // cold; clear it now, while the blend is still ~0, so its settle is masked and
+        // an enable can never click (the old reset-at-silent-duck-bottom, made local).
+        if (! mbRunning) { multiband.reset(); mbRunning = true; }
+
+        // Only crossfade while the blend is actually mid-transition. Settled at 1 the
+        // output IS the multiband result, so we skip the mix and stay BIT-EXACT with the
+        // plain processed path (the common, fully-enabled case + every existing test).
+        const bool blending = mbEnableBlend.isSmoothing()
+                           || mbEnableBlend.getCurrentValue() < 1.0f;
+
+        // Keep the pre-multiband signal -- the "off" side of the enable crossfade (the
+        // chain output with the multiband NOT applied) -- before processBlock overwrites it.
+        if (blending)
+        {
+            juce::FloatVectorOperations::copy (preMbScratch.getWritePointer (0), L, n);
+            juce::FloatVectorOperations::copy (preMbScratch.getWritePointer (1), R, n);
+        }
+
         multiband.processBlock (L, R, n,
             dryScratch.getReadPointer (0), dryScratch.getReadPointer (1),
             dryAlignScratch.getWritePointer (0), dryAlignScratch.getWritePointer (1));
         dryAligned = true;
+
+        // Fade the multiband contribution in/out. At blend 1 the output is exactly the
+        // multiband result; at 0 it is exactly the pre-multiband signal -- so a settled
+        // toggle is bit-exact either way and the transition is imperceptible.
+        if (blending)
+        {
+            const float* pmL = preMbScratch.getReadPointer (0);
+            const float* pmR = preMbScratch.getReadPointer (1);
+            for (int i = 0; i < n; ++i)
+            {
+                const float b = mbEnableBlend.getNextValue();
+                L[i] = pmL[i] + b * (L[i] - pmL[i]);
+                R[i] = pmR[i] + b * (R[i] - pmR[i]);
+            }
+        }
+    }
+    else
+    {
+        mbRunning = false; // fully disabled: the bank is idle and may go cold
     }
 
     // ======================== 2. DRY / WET MIX ==============================
@@ -770,10 +830,19 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
 
     // ======================== 5. BAND SOLO MONITOR ==========================
     // POST-EVERYTHING audition: band-pass the already-produced output to the soloed
-    // band(s). No effect stage changed its behaviour for solo -- this only filters
-    // what is heard. mask == 0 (or Multiband off) -> the true output passes through.
-    if (p.mbEnable)
-        soloMonitor.process (L, R, p.mbSolo, n);
+    // band(s). No effect stage changed its behaviour for solo -- this only filters what
+    // is heard. mask == 0 -> the monitor settles to passGain 1 == BIT-EXACT true output.
+    //
+    // It MUST run EVERY block: the monitor is click-free only because its passGain/bandGain
+    // crossfade advances each block (SoloMonitor's design invariant). Hard-gating the call
+    // on the instantaneous p.mbEnable -- which flips with NO duck on the continuous path --
+    // bypassed that crossfade and inserted/removed the whole band-pass in a single sample
+    // whenever Multiband Enable was toggled with a band soloed (an amplitude + phase step =
+    // the click, on both edges). Driving the MASK from p.mbEnable instead (the solo applies
+    // only while Multiband is on) lets the monitor MORPH solo<->passthrough over its own
+    // ~12 ms ramp, so the toggle is click-free. The mbSolo parameter is untouched; only its
+    // application is gated, and at mask 0 the settled monitor is a bit-exact passthrough.
+    soloMonitor.process (L, R, p.mbEnable ? p.mbSolo : 0, n);
 
     // -------- Defensive NaN / Inf self-heal --------------------------------
     // This is NOT a level limiter: it touches ONLY non-finite samples, so valid audio
@@ -790,7 +859,7 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     }
     if (nonFinite)
     {
-        multiband.reset(); monoMaker.reset(); soloMonitor.reset();
+        multiband.reset(); mbRunning = p.mbEnable; monoMaker.reset(); soloMonitor.reset();
         haas.reset(); velvet.reset(); chorus.reset();
         if (os2) os2->reset(); if (os4) os4->reset(); if (os8) os8->reset();
         loudness.reset();

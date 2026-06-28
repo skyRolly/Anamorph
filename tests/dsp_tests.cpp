@@ -1108,6 +1108,117 @@ static void testBypassCrossfadeClickFree()
 }
 
 // ---------------------------------------------------------------------------
+//  Multiband Enable is now a click-free OUTPUT crossfade (the Bypass model), NOT a
+//  duck-to-silence: toggling it must not click and, crucially, must NOT mute/drop the
+//  output. Toggle it on a steady stereo tone with band widths != 1 so multiband-on is
+//  audibly different from off (a real transition), and confirm the output never steps
+//  and never collapses toward silence while the crossover bank fades in/out.
+static void testMultibandEnableCrossfadeClickFree()
+{
+    std::printf ("Test 23: Multiband Enable crossfade is click-free and never mutes\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0; const int block = 128;
+    const double freq = 220.0; const float amp = 0.25f;
+
+    anamorph::AnamorphEngine engine;
+    engine.prepare (sr, block);
+    anamorph::EngineParameters p;
+    p.mbEnable = true; p.mbBands = 4;
+    // Widen every band so multiband-on clearly differs from off (a real transition),
+    // while a quadrature (decorrelated) stereo input never collapses toward silence.
+    p.mbWidthLow = p.mbWidthMid = p.mbWidthHiMid = p.mbWidthHigh = 1.6f;
+    engine.setParameters (p);
+    engine.reset();
+
+    double phase = 0.0; const double inc = 2.0 * 3.14159265358979 * freq / sr;
+    float prev = 0.0f; bool havePrev = false;
+    double maxDelta = 0.0, minBlockPeak = 1.0e9; bool bad = false;
+    const int warmup = 24;
+    for (int nb = 0; nb < 300; ++nb)
+    {
+        if (nb % 30 == 0) { p.mbEnable = ! p.mbEnable; engine.setParameters (p); }
+        juce::AudioBuffer<float> buf (2, block);
+        for (int i = 0; i < block; ++i)
+        {
+            const float sL = amp * (float) std::sin (phase);
+            const float sR = amp * (float) std::cos (phase); // quadrature -> real Side energy
+            phase += inc;
+            buf.setSample (0, i, sL); buf.setSample (1, i, sR);
+        }
+        engine.process (buf);
+
+        double blockPeak = 0.0;
+        for (int i = 0; i < block; ++i)
+        {
+            const float v = buf.getSample (0, i);
+            if (isBad (v)) bad = true;
+            if (nb >= warmup && havePrev) maxDelta = std::max (maxDelta, (double) std::abs (v - prev));
+            prev = v; havePrev = true;
+            blockPeak = std::max (blockPeak, (double) std::abs (v));
+        }
+        if (nb >= warmup) minBlockPeak = std::min (minBlockPeak, blockPeak);
+    }
+    std::printf ("  max delta=%.4f ; min block peak=%.3f\n", maxDelta, minBlockPeak);
+    check (! bad, "Multiband Enable crossfade stream is clean");
+    check (maxDelta < 0.05, "Multiband Enable crossfade is click-free (no step)");
+    check (minBlockPeak > 0.1, "Multiband Enable crossfade never mutes (no dropout)");
+}
+
+// ---------------------------------------------------------------------------
+//  Regression (0.8.6): with a Band Solo active, toggling Multiband Enable must stay
+//  click-free. The Band Solo monitor is click-free ONLY if process() runs EVERY block so
+//  its passGain/bandGain crossfade can morph; the old `if (p.mbEnable)` gate hard-switched
+//  the whole band-pass in/out on the toggle (an amplitude + phase step = the click), on
+//  both edges. DEFAULT band widths make the multiband itself identity, so this isolates the
+//  monitor: solo one band that contains the tone, toggle Multiband Enable on a steady tone,
+//  and confirm no step (click-free) and no dropout (never mutes).
+static void testSoloMultibandEnableClickFree()
+{
+    std::printf ("Test 24: Band Solo + Multiband Enable toggle is click-free\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0; const int block = 128;
+    const double freq = 280.0; const float amp = 0.4f; // inside band 1 (180..800 Hz)
+
+    anamorph::AnamorphEngine engine;
+    engine.prepare (sr, block);
+    anamorph::EngineParameters p;
+    p.mbEnable = true; p.mbBands = 4; p.mix = 1.0f;
+    p.mbSolo = 0x2; // solo band 1 -- it contains the tone, so the soloed output is NOT silent
+    engine.setParameters (p);
+    engine.reset();
+
+    double phase = 0.0; const double inc = 2.0 * 3.14159265358979 * freq / sr;
+    float prev = 0.0f; bool havePrev = false;
+    double maxDelta = 0.0, minBlockPeak = 1.0e9; bool bad = false;
+    // Settle the soloed state across the first window, THEN toggle Multiband Enable (the
+    // solo stays set the whole time) so every toggle crosses a real soloed<->passthrough edge.
+    const int firstToggle = 30, measureFrom = 28;
+    for (int nb = 0; nb < 300; ++nb)
+    {
+        if (nb >= firstToggle && (nb - firstToggle) % 30 == 0) { p.mbEnable = ! p.mbEnable; engine.setParameters (p); }
+        juce::AudioBuffer<float> buf (2, block);
+        for (int i = 0; i < block; ++i)
+        { const float s = amp * (float) std::sin (phase); phase += inc; buf.setSample (0, i, s); buf.setSample (1, i, s); }
+        engine.process (buf);
+
+        double blockPeak = 0.0;
+        for (int i = 0; i < block; ++i)
+        {
+            const float v = buf.getSample (0, i);
+            if (isBad (v)) bad = true;
+            if (nb >= measureFrom && havePrev) maxDelta = std::max (maxDelta, (double) std::abs (v - prev));
+            prev = v; havePrev = true;
+            blockPeak = std::max (blockPeak, (double) std::abs (v));
+        }
+        if (nb >= measureFrom) minBlockPeak = std::min (minBlockPeak, blockPeak);
+    }
+    std::printf ("  max delta=%.4f ; min block peak=%.3f\n", maxDelta, minBlockPeak);
+    check (! bad, "Solo + Multiband Enable toggle stream is clean");
+    check (maxDelta < 0.05, "Solo + Multiband Enable toggle is click-free (no step)");
+    check (minBlockPeak > 0.1, "Solo + Multiband Enable toggle never mutes (no dropout)");
+}
+
+// ---------------------------------------------------------------------------
 int main()
 {
     std::printf ("=== Anamorph DSP self-tests ===\n");
@@ -1132,6 +1243,8 @@ int main()
     testBypassToggleRobust();
     testLevelMatchRunsInBypass();
     testBypassCrossfadeClickFree();
+    testMultibandEnableCrossfadeClickFree();
+    testSoloMultibandEnableClickFree();
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);
     if (failures == 0) { std::printf ("ALL TESTS PASSED\n"); return 0; }
