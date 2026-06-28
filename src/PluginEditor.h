@@ -133,6 +133,14 @@ private:
 
         void doReset()
         {
+            // Seed the sweep from the CURRENT position so the eased travel has a real
+            // "from" to leave. onSweep (below) then flags the reset sweep -- but only
+            // when animations are on -- so the value-travel easing plays even though the
+            // mouse button is still physically held (an alt-click and a double-click's
+            // 2nd press are both mouse-down events). Without that flag the held button
+            // snaps the knob straight to the target, which is why alt-click stopped
+            // animating; with animations off the knob just snaps, exactly as before.
+            getProperties().set ("vpos", (double) valueToProportionOfLength (getValue()));
             setValue (resetValue, juce::sendNotificationSync);
             if (onSweep) onSweep();
         }

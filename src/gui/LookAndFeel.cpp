@@ -30,8 +30,12 @@ void AnamorphLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int
     // Draw at the EASED visual position when the micro-anim driver is publishing
     // one (preset / A-B sweep, #5); during a hand drag use the live position so
     // the pointer tracks 1:1 with no lag.
-    const bool dragging = s.isMouseButtonDown()
-                       || (bool) s.getProperties().getWithDefault ("dragging", false);
+    // A reset sweep (double-click / alt-click) draws at the eased vpos even while the
+    // button is still held; a hand drag draws at the live pos so it tracks 1:1.
+    const bool resetSweep = (bool) s.getProperties().getWithDefault ("resetSweep", false);
+    const bool dragging = ! resetSweep
+                       && (s.isMouseButtonDown()
+                           || (bool) s.getProperties().getWithDefault ("dragging", false));
     if (! dragging)
         if (const auto* v = s.getProperties().getVarPointer ("vpos"))
             pos = juce::jlimit (0.0f, 1.0f, (float) (double) *v);
@@ -154,7 +158,9 @@ void AnamorphLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int
     // Eased visual position (#7): a preset / A-B switch sweeps the fill + thumb
     // instead of teleporting. During a hand drag we keep the real `pos` so the
     // thumb tracks the cursor exactly 1:1 (the inset lives in getSliderLayout).
-    if (! interacting)
+    // A reset sweep draws at the eased vpos even while the button is held (see the
+    // rotary path); a live hand drag keeps the real pos so the thumb tracks 1:1.
+    if (! interacting || (bool) s.getProperties().getWithDefault ("resetSweep", false))
         if (const auto* v = s.getProperties().getVarPointer ("vpos"))
         {
             const float vp = juce::jlimit (0.0f, 1.0f, (float) (double) *v);

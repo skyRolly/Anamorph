@@ -1108,6 +1108,63 @@ static void testBypassCrossfadeClickFree()
 }
 
 // ---------------------------------------------------------------------------
+//  Multiband Enable is now a click-free OUTPUT crossfade (the Bypass model), NOT a
+//  duck-to-silence: toggling it must not click and, crucially, must NOT mute/drop the
+//  output. Toggle it on a steady stereo tone with band widths != 1 so multiband-on is
+//  audibly different from off (a real transition), and confirm the output never steps
+//  and never collapses toward silence while the crossover bank fades in/out.
+static void testMultibandEnableCrossfadeClickFree()
+{
+    std::printf ("Test 23: Multiband Enable crossfade is click-free and never mutes\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0; const int block = 128;
+    const double freq = 220.0; const float amp = 0.25f;
+
+    anamorph::AnamorphEngine engine;
+    engine.prepare (sr, block);
+    anamorph::EngineParameters p;
+    p.mbEnable = true; p.mbBands = 4;
+    // Widen every band so multiband-on clearly differs from off (a real transition),
+    // while a quadrature (decorrelated) stereo input never collapses toward silence.
+    p.mbWidthLow = p.mbWidthMid = p.mbWidthHiMid = p.mbWidthHigh = 1.6f;
+    engine.setParameters (p);
+    engine.reset();
+
+    double phase = 0.0; const double inc = 2.0 * 3.14159265358979 * freq / sr;
+    float prev = 0.0f; bool havePrev = false;
+    double maxDelta = 0.0, minBlockPeak = 1.0e9; bool bad = false;
+    const int warmup = 24;
+    for (int nb = 0; nb < 300; ++nb)
+    {
+        if (nb % 30 == 0) { p.mbEnable = ! p.mbEnable; engine.setParameters (p); }
+        juce::AudioBuffer<float> buf (2, block);
+        for (int i = 0; i < block; ++i)
+        {
+            const float sL = amp * (float) std::sin (phase);
+            const float sR = amp * (float) std::cos (phase); // quadrature -> real Side energy
+            phase += inc;
+            buf.setSample (0, i, sL); buf.setSample (1, i, sR);
+        }
+        engine.process (buf);
+
+        double blockPeak = 0.0;
+        for (int i = 0; i < block; ++i)
+        {
+            const float v = buf.getSample (0, i);
+            if (isBad (v)) bad = true;
+            if (nb >= warmup && havePrev) maxDelta = std::max (maxDelta, (double) std::abs (v - prev));
+            prev = v; havePrev = true;
+            blockPeak = std::max (blockPeak, (double) std::abs (v));
+        }
+        if (nb >= warmup) minBlockPeak = std::min (minBlockPeak, blockPeak);
+    }
+    std::printf ("  max delta=%.4f ; min block peak=%.3f\n", maxDelta, minBlockPeak);
+    check (! bad, "Multiband Enable crossfade stream is clean");
+    check (maxDelta < 0.05, "Multiband Enable crossfade is click-free (no step)");
+    check (minBlockPeak > 0.1, "Multiband Enable crossfade never mutes (no dropout)");
+}
+
+// ---------------------------------------------------------------------------
 int main()
 {
     std::printf ("=== Anamorph DSP self-tests ===\n");
@@ -1132,6 +1189,7 @@ int main()
     testBypassToggleRobust();
     testLevelMatchRunsInBypass();
     testBypassCrossfadeClickFree();
+    testMultibandEnableCrossfadeClickFree();
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);
     if (failures == 0) { std::printf ("ALL TESTS PASSED\n"); return 0; }

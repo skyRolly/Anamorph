@@ -133,7 +133,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
     floatParam (pid::haasDelay, "Haas Delay", { 1.0f, 35.0f, 0.01f }, 12.0f, ms);
     // Default perceived side = Left (#14); list order unchanged.
     layout.add (std::make_unique<AudioParameterChoice> (ParameterID { pid::haasSide, kVersion },
-        "Haas Side", StringArray { "Left", "Right" }, 0));
+        "Haas Focus", StringArray { "Left", "Right" }, 0));
     floatParam (pid::velvetDensity, "Velvet Density", { 0.0f, 1.0f, 0.001f }, 0.5f, pct, pctFrom);
     floatParam (pid::chorusRate, "Chorus Rate", NormalisableRange<float> { 0.05f, 5.0f, 0.001f, 0.4f }, 0.5f,
                 [] (float v, int) { return juce::String (v, 2) + " Hz"; }, hzFrom);

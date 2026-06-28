@@ -561,7 +561,7 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     scopePersistK.resetValue = 0.5;
     // ...and the eased reset sweep attachSlider also wired, so a double-click / Alt-click
     // reset animates like every other Knob (#7).
-    scopePersistK.onSweep = [this] { if (uiAnimOn) knobSweepTime = 0.45; };
+    scopePersistK.onSweep = [this] { if (uiAnimOn) { knobSweepTime = 0.45; scopePersistK.getProperties().set ("resetSweep", true); } };
     scopePersistK.onValueChange = [this] { applyScopePersist(); };
     // Listen for the mouse wheel ON the Persist bar so a sustained scroll reveals the
     // window (handled in mouseWheelMove, the single source of truth, so a single
@@ -671,7 +671,10 @@ void AnamorphAudioProcessorEditor::attachSlider (juce::Slider& s, const char* id
     {
         k->resetValue = p->getNormalisableRange().convertFrom0to1 (p->getDefaultValue()); // #6
         // A RESET (double-click / Option-click) sweeps the eased position (0.6.7 #21).
-        k->onSweep = [this] { if (uiAnimOn) knobSweepTime = 0.45; };
+        // resetSweep lets that travel play even while the reset's mouse button is still
+        // held (alt-click / a double-click's 2nd press); only flagged when animations
+        // are on, so with them off the knob snaps exactly as before.
+        k->onSweep = [this, k] { if (uiAnimOn) { knobSweepTime = 0.45; k->getProperties().set ("resetSweep", true); } };
     }
 
     // A TEXT-box value entry should also sweep, but a drag, the scroll wheel, and
@@ -1093,20 +1096,27 @@ void AnamorphAudioProcessorEditor::stepMicroAnims (double dt)
 
         if (auto* s = dynamic_cast<juce::Slider*> (c))
         {
-            const bool interacting = s->isMouseButtonDown()
+            const bool buttonHeld = s->isMouseButtonDown()
                                   || (bool) props.getWithDefault ("dragging", false);
-            actT = interacting ? 1.0f : 0.0f;
+            actT = buttonHeld ? 1.0f : 0.0f;
 
             // ROTARY knobs AND LINEAR sliders ease their drawn position toward the
             // live value, so a preset / A-B switch SWEEPS them instead of teleporting
             // (#5/#7). While the user turns the control, snap so it stays 1:1 (no
             // lag). vpos is kept current at rest so there's a real "from" position to
-            // ease out of the instant the value jumps.
+            // ease out of the instant the value jumps. A RESET (double-click /
+            // alt-click) must sweep even while the button is still physically held,
+            // so it opts out of the button-down snap until its travel converges.
+            const bool resetSweep = (bool) props.getWithDefault ("resetSweep", false);
             const float realPos = (float) s->valueToProportionOfLength (s->getValue());
             const float curr = (float) (double) props.getWithDefault (vpos, (double) realPos);
-            float vp = (interacting || ! sweeping) ? realPos
-                                                   : curr + (realPos - curr) * rPos;
-            if (std::abs (vp - realPos) < 0.0015f) vp = realPos;
+            const bool snapPos = (buttonHeld && ! resetSweep) || ! sweeping;
+            float vp = snapPos ? realPos : curr + (realPos - curr) * rPos;
+            if (std::abs (vp - realPos) < 0.0015f)
+            {
+                vp = realPos;
+                if (resetSweep) props.set ("resetSweep", false); // travel finished
+            }
             if (std::abs (vp - curr) > 0.0004f) c->repaint();
             props.set (vpos, vp);
         }
