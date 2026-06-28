@@ -1,0 +1,30 @@
+# ADR Index
+
+Mandatory registry of all Architecture Decision Records. An ADR not listed here is invalid.
+ADRs are created **only** when supported by repository evidence (constraint C1); the set below
+is the evidence-confirmed result, not a predefined quota. New decisions append the next number.
+
+Status values: Proposed · Accepted · Deprecated · Superseded.
+
+| ID | Title | Status | Evidence confidence |
+|---|---|---|---|
+| [ADR-0001](ADR-0001-format-agnostic-dsp-core.md) | Format-agnostic DSP core via `EngineParameters` POD | Accepted | Verified |
+| [ADR-0002](ADR-0002-parameter-id-versioning.md) | Parameter ID versioning & immutability (`kVersion`) | Accepted | Verified |
+| [ADR-0003](ADR-0003-oversampling-strategy.md) | Oversampling wraps nonlinear stages only; minimum-phase IIR; exact PDC | Accepted | Verified |
+| [ADR-0004](ADR-0004-clickfree-transition-strategy.md) | Click-free transition strategy (duck / crossfade / warm monitor) | Accepted | Verified |
+| [ADR-0005](ADR-0005-phase-matched-dry-reconstruction.md) | Phase-matched dry reconstruction `A(dry)` for the Multiband Mix | Accepted | Verified |
+| [ADR-0006](ADR-0006-strict-serial-signal-chain.md) | Strict serial chain: Mono Maker post-Mix, Band Solo post-everything | Accepted | Verified (code) / Partially Verified (history) |
+| [ADR-0007](ADR-0007-levelmatch-measure-predict.md) | Level Match = BS.1770 Measure + absolute Predict | Accepted | Verified |
+| [ADR-0008](ADR-0008-custom-per-ab-undo.md) | Custom per-A/B-slot Undo/Redo (replaces JUCE UndoManager) | Accepted | Verified |
+| [ADR-0009](ADR-0009-nan-selfheal-nyquist-clamp.md) | Crossover Nyquist clamp + engine-wide NaN/Inf self-heal; no output clipper | Accepted | Verified |
+| [ADR-0010](ADR-0010-host-hidden-internalstate.md) | Host-hidden `InternalState` for non-musical parameters | Accepted | Verified (code) / Partially Verified (history) |
+| [ADR-0011](ADR-0011-linux-x11-cpu-render.md) | Linux/X11 CPU rendering — no OpenGL attach | Accepted | Verified (code) / Partially Verified (history) |
+
+## How to add an ADR
+
+1. Confirm the decision is backed by code/test/commit/PR/README evidence.
+2. Copy the field structure of an existing ADR (Status, Context, Problem, Options, Decision,
+   Consequences, Related code, Evidence + confidence).
+3. Assign the next sequential number; add a row here.
+4. If the ADR changes a Policy or another ADR, mark the superseded record `Superseded`/`Deprecated`
+   and cross-link. See `docs/policies/ADR_POLICY.md`.
