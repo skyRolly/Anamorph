@@ -244,7 +244,16 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
 
     setOpaque (true); // fill our bounds every paint -> no see-through flash on a scale resize (#13)
     openGLContext.setContinuousRepainting (false);
+   #if ! (JUCE_LINUX || JUCE_BSD)
+    // GPU-composite the vectorscope on macOS / Windows. NOT on Linux/X11: attaching an
+    // OpenGL context adds an extra embedded child X11 window, which multiplies the
+    // ConfigureNotify events the host's XEmbedComponent turns into async lambdas that
+    // capture a raw `this`; under a host that rapidly opens/closes the editor (pluginval
+    // "Editor Automation", and real Linux DAWs), one of those lambdas can fire after the
+    // editor window is gone -> use-after-free segfault inside JUCE's X11 embedding. The
+    // CPU paint path is identical visually, so Linux simply renders without GL.
     openGLContext.attachTo (*this);
+   #endif
 
     scope = std::make_unique<Vectorscope> (processor.getEngine().getScopeBuffer());
     balanceMeter = std::make_unique<StereoMeter> (processor.getEngine().getCorrelation(),
@@ -615,6 +624,10 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
 
 AnamorphAudioProcessorEditor::~AnamorphAudioProcessorEditor()
 {
+    // Release the per-frame callbacks FIRST, before anything they touch is torn down:
+    // the VBlank lambda captures `this` and can trigger a repaint, so it must be stopped
+    // before the timer / GL / look-and-feels go away (defensive editor-lifecycle hygiene).
+    meterVBlank = {};
     stopTimer();
     openGLContext.detach();
     channelModeBox.setLookAndFeel (nullptr);

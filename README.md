@@ -6,6 +6,16 @@ of stereo tools (MS, mono-maker, channel utilities, monitoring) around a
 high-end diamond vectorscope. Built with **CMake + JUCE** only — it configures
 and builds entirely from the command line on a headless Linux machine, no IDE.
 
+### What's new in 0.8.5
+- **Fixed a Linux editor crash under rapid open/close (pluginval "Editor Automation").**
+  Attaching an OpenGL context on Linux/X11 adds an embedded child window whose
+  `ConfigureNotify` events make the host's `XEmbedComponent` post async lambdas that
+  capture a raw `this`; when a host tears the editor window down between the event and the
+  async (pluginval's stress test, and real Linux DAWs), that lambda use-after-frees inside
+  JUCE's X11 embedding. The vectorscope now renders on the CPU on Linux/BSD (visually
+  identical) and keeps GPU compositing on macOS/Windows. Also releases the per-frame VBlank
+  callback first in the editor destructor. No DSP / parameter / architecture changes.
+
 ### What's new in 0.8.4
 - **Settings & view controls are hidden from the host's parameter list.** JUCE's
   `withAutomatable(false)` doesn't actually hide a parameter in REAPER (it lists every VST3
