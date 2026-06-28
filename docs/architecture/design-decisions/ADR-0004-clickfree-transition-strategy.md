@@ -48,3 +48,5 @@ Evidence [Verified]:
 - Tests: testNoClicksAcrossTransitions, testSoloNoGhostInSilence, testBypassCrossfadeClickFree,
   testMultibandEnableCrossfadeClickFree, testSoloMultibandEnableClickFree
 - History [Partially Verified]: README:102-130 (0.8.1), :30-36 (0.8.6), :9-20 (0.8.7)
+- Related incidents: `../../POSTMORTEMS.md` INC-001 (Solo ghost), INC-005 (Bypass click),
+  INC-007 (Multiband Enable mute), INC-009 (Solo + Multiband Enable click)
