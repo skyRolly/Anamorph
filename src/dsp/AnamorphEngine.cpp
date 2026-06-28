@@ -830,10 +830,19 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
 
     // ======================== 5. BAND SOLO MONITOR ==========================
     // POST-EVERYTHING audition: band-pass the already-produced output to the soloed
-    // band(s). No effect stage changed its behaviour for solo -- this only filters
-    // what is heard. mask == 0 (or Multiband off) -> the true output passes through.
-    if (p.mbEnable)
-        soloMonitor.process (L, R, p.mbSolo, n);
+    // band(s). No effect stage changed its behaviour for solo -- this only filters what
+    // is heard. mask == 0 -> the monitor settles to passGain 1 == BIT-EXACT true output.
+    //
+    // It MUST run EVERY block: the monitor is click-free only because its passGain/bandGain
+    // crossfade advances each block (SoloMonitor's design invariant). Hard-gating the call
+    // on the instantaneous p.mbEnable -- which flips with NO duck on the continuous path --
+    // bypassed that crossfade and inserted/removed the whole band-pass in a single sample
+    // whenever Multiband Enable was toggled with a band soloed (an amplitude + phase step =
+    // the click, on both edges). Driving the MASK from p.mbEnable instead (the solo applies
+    // only while Multiband is on) lets the monitor MORPH solo<->passthrough over its own
+    // ~12 ms ramp, so the toggle is click-free. The mbSolo parameter is untouched; only its
+    // application is gated, and at mask 0 the settled monitor is a bit-exact passthrough.
+    soloMonitor.process (L, R, p.mbEnable ? p.mbSolo : 0, n);
 
     // -------- Defensive NaN / Inf self-heal --------------------------------
     // This is NOT a level limiter: it touches ONLY non-finite samples, so valid audio
