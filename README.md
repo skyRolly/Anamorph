@@ -6,6 +6,39 @@ of stereo tools (MS, mono-maker, channel utilities, monitoring) around a
 high-end diamond vectorscope. Built with **CMake + JUCE** only — it configures
 and builds entirely from the command line on a headless Linux machine, no IDE.
 
+### What's new in 0.8.5
+- **Fixed a Linux editor crash under rapid open/close (pluginval "Editor Automation").**
+  Attaching an OpenGL context on Linux/X11 adds an embedded child window whose
+  `ConfigureNotify` events make the host's `XEmbedComponent` post async lambdas that
+  capture a raw `this`; when a host tears the editor window down between the event and the
+  async (pluginval's stress test, and real Linux DAWs), that lambda use-after-frees inside
+  JUCE's X11 embedding. The vectorscope now renders on the CPU on Linux/BSD (visually
+  identical) and keeps GPU compositing on macOS/Windows. Also releases the per-frame VBlank
+  callback first in the editor destructor. No DSP / parameter / architecture changes.
+
+### What's new in 0.8.4
+- **Settings & view controls are hidden from the host's parameter list.** JUCE's
+  `withAutomatable(false)` doesn't actually hide a parameter in REAPER (it lists every VST3
+  parameter regardless), so the only reliable fix is to keep them out of the parameter tree
+  entirely. Oversampling, Window Size, Scope Persistence, Tooltips, UI Animations and Show
+  Meters now live in a dedicated host-hidden `InternalState` (session state, two-way bound
+  to the GUI via `juce::Value`); Oversampling still drives the DSP + PDC latency but, like
+  the others, is a global engine/view config that never participates in A/B, Undo or preset
+  recall. The Multiband parameters are intentionally left exactly as they were — full APVTS
+  parameters with unchanged A/B / Undo / preset behavior.
+
+### What's new in 0.8.3
+- **Bypass is a true click-free crossfade, and analysis never stops.** The full chain and
+  the Level-Match analysis now run regardless of Bypass — Bypass only changes the *audio*
+  path, crossfading (≈10 ms, sample-safe) between the processed output and the delay-
+  aligned RAW input. So Level Match keeps Measuring + Predicting while bypassed (same value
+  as when active), there is no mute / dropout, and toggling is imperceptible. Settling to
+  full bypass is bit-exact (true unprocessed signal); no duck, no stale-state burst.
+- **No output clipper.** Confirmed there is no 0 dBFS clipper anywhere — the explosion fix
+  is a crossover-*frequency* clamp, not amplitude limiting, so dynamics and headroom are
+  fully preserved. The NaN/Inf safety net was made per-sample so it can only ever touch a
+  non-finite sample (replaced with 0) and never alters valid audio.
+
 ### What's new in 0.8.2
 - **Multiband crossover automation is now crash-proof.** Automating a split toward Nyquist
   (4 bands, all splits crowded high) used to push the ordered separation above Nyquist,

@@ -88,6 +88,9 @@ private:
     void setupCombo (juce::ComboBox&, const char* id, const juce::String& tip);
     void passComboHoverThrough (juce::ComboBox&); // let hover reach the whole box (recurring)
     void setupToggle (juce::ToggleButton&, const char* id, const juce::String& text, const juce::String& tip);
+    // Host-hidden (InternalState) variants: bound via juce::Value, not the APVTS.
+    void setupComboInternal (juce::ComboBox&, const juce::StringArray& items, const juce::String& tip, juce::Value);
+    void setupToggleInternal (juce::ToggleButton&, const juce::String& text, const juce::String& tip, juce::Value);
     void updateAlgoControls();
     void updateModeVisibility();
     void applyWidenFonts();   // mode-dependent Widen fonts, applied inside resized() so they change in step with the resize (0.6.16 #F)

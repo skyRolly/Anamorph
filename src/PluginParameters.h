@@ -54,27 +54,21 @@ namespace pid
     inline constexpr const char* autoGainMatch  = "autoGainMatch";
     // Monitoring
     inline constexpr const char* solo           = "solo";
-    // Oversampling
-    inline constexpr const char* oversample     = "oversample";
     // Bypass
     inline constexpr const char* bypass         = "bypass";
     // UI-only (still saved with state)
     inline constexpr const char* advancedMode   = "advancedMode";
-    inline constexpr const char* scopePersist   = "scopePersist";
-    inline constexpr const char* metersOn       = "metersOn";   // persist Meters toggle (#15)
-    inline constexpr const char* tooltipsOn     = "tooltipsOn"; // persist Tooltips toggle (#15)
-    inline constexpr const char* uiAnimations   = "uiAnimations"; // micro-animation toggle (F3)
-    inline constexpr const char* uiScale        = "uiScale";      // window scale XS..XL (F4)
+    // Oversampling, Scope Persistence, Show Meters, Tooltips, UI Animations and Window Size
+    // are NO LONGER APVTS parameters -- they live in anamorph::InternalState (host-hidden) so
+    // the host can't list them. Their legacy string ids are referenced only by the one-time
+    // migration in InternalState::migrateFromLegacyApvts (read directly as literals).
 
-    // The shared "view" / Settings parameters: never part of A/B, undo history
-    // or presets -- one list so every consumer stays in sync. mbSolo is NOT here:
-    // it travels with A/B and undo. advancedMode (ADV) is NOT here either anymore
-    // (Issue 4): each A/B slot now remembers its own ADV state, Copy carries it, and
-    // Undo/Redo restore it -- it behaves like any other A/B-stored parameter. Presets
-    // still leave ADV (and the solo mask) alone via isPresetExcluded below.
+    // The shared "view" parameters that, although still APVTS parameters, must never be
+    // part of A/B, undo history or presets. Only Bypass remains here now: the Settings
+    // controls + Show Meters were moved OUT of the APVTS entirely (anamorph::InternalState)
+    // so the host can't list them, and advancedMode (ADV) travels with A/B (Issue 4).
     inline constexpr const char* const viewParams[] = {
-        bypass, oversample, metersOn, tooltipsOn, scopePersist,
-        uiAnimations, uiScale
+        bypass
     };
 
     inline bool isViewParam (const juce::String& id) noexcept
@@ -99,7 +93,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout();
 struct ParamPointers
 {
     void bind (juce::AudioProcessorValueTreeState& s);
-    anamorph::EngineParameters toEngine() const;
+    // oversampleIndex (0..3) comes from anamorph::InternalState, not the APVTS, because
+    // Oversampling is no longer a host parameter (it is hidden from the host's list).
+    anamorph::EngineParameters toEngine (int oversampleIndex) const;
 
     std::atomic<float>* channelMode = nullptr;
     std::atomic<float>* monoSum = nullptr;
@@ -135,7 +131,6 @@ struct ParamPointers
     std::atomic<float>* outputBalance = nullptr;
     std::atomic<float>* autoGainMatch = nullptr;
     std::atomic<float>* solo = nullptr;
-    std::atomic<float>* oversample = nullptr;
     std::atomic<float>* bypass = nullptr;
     std::atomic<float>* advancedMode = nullptr;
 };

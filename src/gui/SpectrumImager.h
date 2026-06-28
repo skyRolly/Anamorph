@@ -42,6 +42,9 @@ public:
     std::function<void()>    onSweep;
     std::function<bool()>    isSweeping;
 
+    // UI-animation flag now lives in InternalState (host-hidden), injected by the editor.
+    void setAnimationSource (const std::atomic<float>* p) noexcept { animOnP = p; }
+
 private:
     void timerCallback() override;
     void pushFFT();
@@ -135,7 +138,7 @@ private:
     juce::RangedAudioParameter* soloP   { nullptr };
     juce::RangedAudioParameter* freqP[3]  { nullptr, nullptr, nullptr };
     juce::RangedAudioParameter* widthP[4] { nullptr, nullptr, nullptr, nullptr };
-    std::atomic<float>* animOnP  { nullptr };
+    const std::atomic<float>* animOnP  { nullptr }; // UI-animation flag (InternalState, host-hidden)
     std::atomic<float>* enableP  { nullptr };
 
     std::unique_ptr<juce::TextEditor> freqEditor;

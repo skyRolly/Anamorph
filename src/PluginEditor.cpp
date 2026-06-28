@@ -244,7 +244,16 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
 
     setOpaque (true); // fill our bounds every paint -> no see-through flash on a scale resize (#13)
     openGLContext.setContinuousRepainting (false);
+   #if ! (JUCE_LINUX || JUCE_BSD)
+    // GPU-composite the vectorscope on macOS / Windows. NOT on Linux/X11: attaching an
+    // OpenGL context adds an extra embedded child X11 window, which multiplies the
+    // ConfigureNotify events the host's XEmbedComponent turns into async lambdas that
+    // capture a raw `this`; under a host that rapidly opens/closes the editor (pluginval
+    // "Editor Automation", and real Linux DAWs), one of those lambdas can fire after the
+    // editor window is gone -> use-after-free segfault inside JUCE's X11 embedding. The
+    // CPU paint path is identical visually, so Linux simply renders without GL.
     openGLContext.attachTo (*this);
+   #endif
 
     scope = std::make_unique<Vectorscope> (processor.getEngine().getScopeBuffer());
     balanceMeter = std::make_unique<StereoMeter> (processor.getEngine().getCorrelation(),
@@ -331,7 +340,7 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     addAndMakeVisible (undoButton);
     addAndMakeVisible (redoButton);
 
-    setupToggle (metersToggle, pid::metersOn, "", "Show level meters."); // #32
+    setupToggleInternal (metersToggle, "", "Show level meters.", processor.getInternal().metersValue()); // #32, host-hidden
     metersToggle.setComponentID ("metersicon"); // level-meter glyph, not the word (#7)
     metersToggle.onClick = [this] { metersOn = metersToggle.getToggleState(); }; // visibility via layoutScopeArea (#2)
 
@@ -474,6 +483,7 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     setupToggle (mbEnableToggle, pid::mbEnable, "On", "Apply the per-band stereo widths to the sound");
     imager = std::make_unique<anamorph::gui::SpectrumImager> (processor.getEngine().getScopeBuffer(),
                                                               processor.getAPVTS());
+    imager->setAnimationSource (processor.getInternal().animationsFloatPtr()); // host-hidden UI-anim flag
     // Per-control tooltips live in the imager; idle areas show none (0.6.10 #13).
     imager->setTooltip ({});
     // Momentary solo audition is a non-undoable engine override (#8); the split / width
@@ -507,14 +517,18 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     settingsTitle.setFont (juce::Font (juce::FontOptions (12.0f)).withExtraKerningFactor (0.2f));
     settingsBackdrop.addAndMakeVisible (settingsTitle);
 
-    setupCombo (oversampleBox, pid::oversample, "Oversampling for the nonlinear stages - Off (1x) = no latency");
+    setupComboInternal (oversampleBox, { "Off (1x)", "2x", "4x", "8x" },
+                        "Oversampling for the nonlinear stages - Off (1x) = no latency",
+                        processor.getInternal().oversampleValue()); // host-hidden engine config
     oversampleLabel.setText ("Oversampling", juce::dontSendNotification);
     oversampleLabel.setColour (juce::Label::textColourId, colours::textDim);
     settingsBackdrop.addAndMakeVisible (oversampleLabel);
     settingsBackdrop.addAndMakeVisible (oversampleBox);
 
     // Whole-window scale (F4): vectors redraw at the new size, stays crisp.
-    setupCombo (uiScaleBox, pid::uiScale, "Window size - M is the original; everything scales in proportion");
+    setupComboInternal (uiScaleBox, { "XS", "S", "M", "L", "XL" },
+                        "Window size - M is the original; everything scales in proportion",
+                        processor.getInternal().uiScaleValue());
     uiScaleLabel.setText ("Window Size", juce::dontSendNotification);
     uiScaleLabel.setColour (juce::Label::textColourId, colours::textDim);
     settingsBackdrop.addAndMakeVisible (uiScaleLabel);
@@ -525,7 +539,6 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     persistLabel.setColour (juce::Label::textColourId, colours::textDim);
     settingsBackdrop.addAndMakeVisible (persistLabel);
     scopePersistK.setSliderStyle (juce::Slider::LinearHorizontal);
-    scopePersistK.setDoubleClickReturnValue (true, 0.5); // double-click resets to default (#7)
     scopePersistK.setColour (juce::Slider::textBoxTextColourId, colours::textDim);
     scopePersistK.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
     scopePersistK.setTooltip (tidyTip ("Vectorscope afterglow time " // #5
@@ -534,7 +547,21 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     scopePersistK.setRepaintsOnMouseActivity (true); // hover glow (#10)
     settingsBackdrop.addAndMakeVisible (scopePersistK);
     scopePersistK.setTextBoxStyle (juce::Slider::TextBoxRight, false, 52, 18); // box built with our LnF
-    attachSlider (scopePersistK, pid::scopePersist);
+    // Host-hidden: bind to InternalState (juce::Value), not the APVTS. Set the range first
+    // so the bound value lands in [0,1]; tag the unit for the bare-number value box (#36).
+    scopePersistK.setRange (0.0, 1.0, 0.001); // match the old parameter's step (#36)
+    // The SliderAttachment used to supply the parameter's percentage formatter; restore
+    // it here so the value box shows "50%" (not a raw decimal) and parses bare numbers (#36).
+    scopePersistK.textFromValueFunction = [] (double v) { return juce::String (juce::roundToInt (v * 100.0)) + "%"; };
+    scopePersistK.valueFromTextFunction = [] (const juce::String& t) { return t.removeCharacters ("% ").getDoubleValue() / 100.0; };
+    scopePersistK.getValueObject().referTo (processor.getInternal().scopePersistValue());
+    scopePersistK.getProperties().set ("unit", "pct");
+    // attachSlider (which used to seed Knob::resetValue from the parameter default) is no
+    // longer called, so set the double-click / Alt-click reset target explicitly (#7).
+    scopePersistK.resetValue = 0.5;
+    // ...and the eased reset sweep attachSlider also wired, so a double-click / Alt-click
+    // reset animates like every other Knob (#7).
+    scopePersistK.onSweep = [this] { if (uiAnimOn) knobSweepTime = 0.45; };
     scopePersistK.onValueChange = [this] { applyScopePersist(); };
     // Listen for the mouse wheel ON the Persist bar so a sustained scroll reveals the
     // window (handled in mouseWheelMove, the single source of truth, so a single
@@ -548,12 +575,12 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     tooltipsToggle.setButtonText ("Tooltips");
     tooltipsToggle.setTooltip (tidyTip ("Show these hover hints on every control."));
     settingsBackdrop.addAndMakeVisible (tooltipsToggle);
-    buttonAtts.add (new ButtonAttachment (processor.getAPVTS(), pid::tooltipsOn, tooltipsToggle));
+    tooltipsToggle.getToggleStateValue().referTo (processor.getInternal().tooltipsValue()); // host-hidden
 
     animToggle.setButtonText ("UI Animations");
     animToggle.setTooltip (tidyTip ("Smooth micro-animations on hovers, presses and switches")); // no F3 ref (#4)
     settingsBackdrop.addAndMakeVisible (animToggle);
-    buttonAtts.add (new ButtonAttachment (processor.getAPVTS(), pid::uiAnimations, animToggle));
+    animToggle.getToggleStateValue().referTo (processor.getInternal().animationsValue()); // host-hidden
     // Adopt the new state IMMEDIATELY on click (not on the next 24 Hz tick): so
     // turning it ON makes uiAnimOn true before the next frame and the toggle's own
     // slide plays, while turning it OFF makes it false first so the toggle snaps --
@@ -597,6 +624,10 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
 
 AnamorphAudioProcessorEditor::~AnamorphAudioProcessorEditor()
 {
+    // Release the per-frame callbacks FIRST, before anything they touch is torn down:
+    // the VBlank lambda captures `this` and can trigger a repaint, so it must be stopped
+    // before the timer / GL / look-and-feels go away (defensive editor-lifecycle hygiene).
+    meterVBlank = {};
     stopTimer();
     openGLContext.detach();
     channelModeBox.setLookAndFeel (nullptr);
@@ -658,7 +689,7 @@ void AnamorphAudioProcessorEditor::attachSlider (juce::Slider& s, const char* id
     if      (sid == pid::drive || sid == pid::outputGain) unit = "db";
     else if (sid == pid::haasDelay) unit = "ms";
     else if (sid == pid::amount || sid == pid::velvetDensity || sid == pid::chorusDepth
-          || sid == pid::width || sid == pid::mix || sid == pid::scopePersist
+          || sid == pid::width || sid == pid::mix
           || sid == pid::mbWidthLow || sid == pid::mbWidthMid || sid == pid::mbWidthHigh) unit = "pct";
     else if (sid == pid::monoMakerFreq || sid == pid::mbFreqLow || sid == pid::mbFreqHigh) unit = "hz";
     else if (sid == pid::inputBalance || sid == pid::outputBalance) unit = "bal";
@@ -697,6 +728,33 @@ void AnamorphAudioProcessorEditor::setupToggle (juce::ToggleButton& t, const cha
     addAndMakeVisible (t);
     buttonAtts.add (new ButtonAttachment (processor.getAPVTS(), id, t));
     registerAnimated (t); // eased switch slide + hover (F3)
+}
+
+// Same as setupCombo/setupToggle, but bound to a host-HIDDEN InternalState value via
+// juce::Value (two-way) instead of an APVTS parameter -- for the Settings / view controls
+// that must not appear in the host's parameter list. ComboBox IDs are 1-based, matching
+// the InternalState convention (index + 1).
+void AnamorphAudioProcessorEditor::setupComboInternal (juce::ComboBox& box, const juce::StringArray& items,
+                                                       const juce::String& tip, juce::Value value)
+{
+    box.addItemList (items, 1);
+    box.setTooltip (tidyTip (tip));
+    box.setRepaintsOnMouseActivity (true);
+    passComboHoverThrough (box);
+    allCombos.add (&box);
+    addAndMakeVisible (box);
+    box.getSelectedIdAsValue().referTo (value);
+    registerAnimated (box);
+}
+
+void AnamorphAudioProcessorEditor::setupToggleInternal (juce::ToggleButton& t, const juce::String& text,
+                                                        const juce::String& tip, juce::Value value)
+{
+    t.setButtonText (text);
+    if (tip.isNotEmpty()) t.setTooltip (tidyTip (tip));
+    addAndMakeVisible (t);
+    t.getToggleStateValue().referTo (value);
+    registerAnimated (t);
 }
 
 void AnamorphAudioProcessorEditor::applyTooltipsEnabled()
