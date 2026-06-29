@@ -4,7 +4,7 @@
 in `POSTMORTEMS.md`, not here. Each entry is evidence-backed (constraint C7). When an item is
 fixed, remove it here and (if notable) add a `POSTMORTEMS.md` entry.
 
-Verified against repository HEAD `1914c52` (version 0.8.7).
+Verified against repository HEAD `41acaa7` (version 0.8.7; JUCE 8.0.14).
 
 | ID | Issue | Severity | Status |
 |---|---|---|---|
@@ -48,7 +48,7 @@ repository.
 ## KI-004 — No automated DAW/host-compatibility testing
 There is no in-repo test matrix across real DAWs; pluginval is the only conformance proxy. Host
 behaviour (Ableton/Logic/Cubase/Reaper/Pro Tools/...) is therefore **Unverified**.
-- **Evidence [Verified]:** docs/architecture/COMPATIBILITY_MATRIX.md (hosts Unverified); README:503-508.
+- **Evidence [Verified]:** docs/architecture/COMPATIBILITY_MATRIX.md (hosts Unverified); docs/procedures/TESTING.md ("What cannot be verified headlessly").
   Enforced as a manual line item in `docs/procedures/RELEASE_COMPATIBILITY_CHECKLIST.md`.
 
 ## KI-005 — No graphical installer

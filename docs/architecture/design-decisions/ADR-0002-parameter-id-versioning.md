@@ -34,4 +34,4 @@ or changing serialization semantics, requires an ADR + migration support.
 
 Evidence [Verified]:
 - Source: src/PluginParameters.cpp:13,135-136; src/PluginParameters.h:14-88
-- History (rename) [Partially Verified]: README:37
+- History (rename) [Partially Verified]: CHANGELOG.md [0.8.6]

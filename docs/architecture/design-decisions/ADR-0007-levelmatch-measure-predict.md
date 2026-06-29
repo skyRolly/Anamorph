@@ -40,5 +40,5 @@ Evidence [Verified]:
 - Source: src/dsp/LoudnessMatch.cpp:15-156
 - Tests: testLevelMatchUnity, testLevelMatchNoRatchet, testLevelMatchMixCouplingNoSlam,
   testLevelMatchSilenceFreeze, testMultibandUnityMatch
-- History [Partially Verified]: README:114-122 (0.8.1)
+- History [Partially Verified]: CHANGELOG.md [0.8.1]
 - Related incident: `../../POSTMORTEMS.md` INC-002 (Level Match ratchet / Mix=100% slam)

@@ -3,7 +3,7 @@
 Potential technical risks. Each is evidence-based (constraint C7) — no invented risks. ADRs and
 postmortems may reference these IDs to close the loop. Severity: Low / Medium / High / Critical.
 
-Verified against repository HEAD `1914c52` (version 0.8.7).
+Verified against repository HEAD `41acaa7` (version 0.8.7; JUCE 8.0.14).
 
 | ID | Risk | Severity | Likelihood |
 |---|---|---|---|
@@ -65,7 +65,7 @@ Verified against repository HEAD `1914c52` (version 0.8.7).
   headlessly; a green build + pluginval pass is "ready to audition," not final.
 - **Impact:** A sound/visual or host-specific regression can pass CI and reach testers.
 - **Likelihood (evidence-based):** Medium — depends on diligence of the manual Level-5 sign-off.
-- **Evidence [Verified]:** README:503-508; `docs/policies/TESTING_POLICY.md` (Level 5);
+- **Evidence [Verified]:** docs/procedures/TESTING.md ("What cannot be verified headlessly"); `docs/policies/TESTING_POLICY.md` (Level 5);
   `docs/procedures/RELEASE_COMPATIBILITY_CHECKLIST.md` (host-matrix item).
 - **Mitigation:** Enforce the manual audition + host-matrix line items at release; expand the
   documented host coverage as it is performed.

@@ -19,6 +19,7 @@ Status values: Proposed · Accepted · Deprecated · Superseded.
 | [ADR-0009](ADR-0009-nan-selfheal-nyquist-clamp.md) | Crossover Nyquist clamp + engine-wide NaN/Inf self-heal; no output clipper | Accepted | Verified |
 | [ADR-0010](ADR-0010-host-hidden-internalstate.md) | Host-hidden `InternalState` for non-musical parameters | Accepted | Verified (code) / Partially Verified (history) |
 | [ADR-0011](ADR-0011-linux-x11-cpu-render.md) | Linux/X11 CPU rendering — no OpenGL attach | Accepted | Verified (code) / Partially Verified (history) |
+| [ADR-0012](ADR-0012-juce-8.0.14-upgrade.md) | JUCE dependency upgrade 8.0.8 → 8.0.14 | Accepted | Verified (CI build + 23 tests + pluginval) |
 
 ## How to add an ADR
 

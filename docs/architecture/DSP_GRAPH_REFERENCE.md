@@ -32,10 +32,10 @@ factor) but the stage's position in the chain is fixed.
 ## Hard reorder prohibitions (regression-defining)
 
 - **Mono Maker must stay post-Mix.** Pre-Mix Mono Maker was the 0.7.3–0.7.5 solo/low-cut bug
-  class; 0.8.0 rebuilt the chain to fix it. (Partially Verified: README:132-149; commit
+  class; 0.8.0 rebuilt the chain to fix it. (Partially Verified: CHANGELOG.md [0.8.0]; commit
   `018dcdd` "rebuild the signal flow as a strict serial chain".)
 - **Band Solo must stay post-everything and monitoring-only.** Weaving solo into the
-  Multiband DSP caused the same bug class. (Partially Verified: README:140-145; commit `018dcdd`.)
+  Multiband DSP caused the same bug class. (Partially Verified: CHANGELOG.md [0.8.0]; commit `018dcdd`.)
 - **Oversampling must wrap only Drive + Chorus/Dim-D.** Wrapping linear stages adds needless
   latency/CPU and changes PDC. (Verified: src/dsp/AnamorphEngine.cpp:19-23.)
 - **Global Width before Multiband.** Width is a full-band MS side-gain; the Multiband then

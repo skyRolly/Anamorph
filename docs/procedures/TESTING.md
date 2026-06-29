@@ -67,4 +67,4 @@ Windows/macOS are informational. See `CI_CD.md`. Evidence [Verified]: build.yml:
 Audio **sound quality** and GUI/vectorscope **visual appearance** cannot be judged in a headless
 sandbox. Load the built `.vst3` in a DAW (e.g. Reaper) on a machine with audio + display. A green
 build + pluginval pass is "ready to audition," not final sign-off
-(`docs/policies/TESTING_POLICY.md` Level 5). Evidence [Verified]: README:503-508.
+(`docs/policies/TESTING_POLICY.md` Level 5).

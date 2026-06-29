@@ -34,4 +34,4 @@ jump on undo/redo. Undo stacks are cleared on session restore.
 
 Evidence [Verified]:
 - Source: src/PluginProcessor.cpp:162-296
-- History [Partially Verified]: README:258-262 (0.5.1, "Replaces JUCE's global undo manager")
+- History [Partially Verified]: CHANGELOG.md [0.6.x and earlier] (0.5.1, "Replaces JUCE's global undo manager")

@@ -47,6 +47,6 @@ Evidence [Verified]:
 - Source: src/dsp/AnamorphEngine.cpp:158-185,819-888; src/dsp/SoloMonitor.cpp:59-109
 - Tests: testNoClicksAcrossTransitions, testSoloNoGhostInSilence, testBypassCrossfadeClickFree,
   testMultibandEnableCrossfadeClickFree, testSoloMultibandEnableClickFree
-- History [Partially Verified]: README:102-130 (0.8.1), :30-36 (0.8.6), :9-20 (0.8.7)
+- History [Partially Verified]: CHANGELOG.md [0.8.1], [0.8.6], [0.8.7]
 - Related incidents: `../../POSTMORTEMS.md` INC-001 (Solo ghost), INC-005 (Bypass click),
   INC-007 (Multiband Enable mute), INC-009 (Solo + Multiband Enable click)

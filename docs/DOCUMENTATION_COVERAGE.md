@@ -6,7 +6,7 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: against repository HEAD `1914c52` (version 0.8.7).
+Last updated: against repository HEAD `41acaa7` (version 0.8.7; JUCE 8.0.14).
 
 ## Code-module coverage
 
@@ -42,7 +42,7 @@ Last updated: against repository HEAD `1914c52` (version 0.8.7).
 | Tier | Files | Status |
 |---|---|---|
 | docs root | SOURCE_OF_TRUTH, HANDOVER, REPOSITORY_MAP, DOCUMENTATION_COVERAGE, POSTMORTEMS, KNOWN_ISSUES, FUTURE_RISKS | Present |
-| architecture | 14 docs + ADR_INDEX + 11 ADRs | Present |
+| architecture | 14 docs + ADR_INDEX + 12 ADRs | Present |
 | procedures | 8 docs | Present |
 | policies | 15 docs | Present |
 | root | README, CHANGELOG, CLAUDE | Present |

@@ -36,7 +36,7 @@ path — visually identical. macOS/Windows keep GPU compositing.
 Evidence [Verified]:
 - Source: src/PluginEditor.cpp:246-256 (gate + rationale comment)
 - Source: src/PluginEditor.cpp:1151-1152 (`triggerRepaint` guarded by `isAttached()`)
-- Partially Verified (history): README:39-47 (0.8.5); commit c924ff8
+- Partially Verified (history): CHANGELOG.md [0.8.5]; commit c924ff8
 - See `design-decisions/ADR-0011-linux-x11-cpu-render.md` for the decision record.
 
 ## Timers / animation cadence

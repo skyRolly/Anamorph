@@ -35,4 +35,4 @@ through. The effect engine is **solo-agnostic** (always sums every band).
 Evidence [Verified]:
 - Source: src/dsp/AnamorphEngine.cpp:761-845
 - Tests: testMonoMakerPostMix, testSoloMonitor, testLevelMatchAndSolo
-- History [Partially Verified]: README:132-149 (0.8.0); commit 018dcdd
+- History [Partially Verified]: CHANGELOG.md [0.8.0]; commit 018dcdd

@@ -72,9 +72,9 @@ Footnotes:
 - **◊** `bypass` is a **view param** (`pid::viewParams`): excluded from A/B, Undo, and presets,
   but still serialized in the main session state. Source: src/PluginParameters.h:70-72.
 - **◊◊** `advancedMode` is excluded from **presets** but travels with A/B + Undo (0.8.2 "ADV
-  travels with A/B"). Source: src/PluginParameters.h:84-87; README:94-95.
+  travels with A/B"). Source: src/PluginParameters.h:84-87; CHANGELOG.md [0.8.2].
 - **‖** Display name renamed `Haas Side` → `Haas Focus` in 0.8.6; the **ID `haasSide` is
-  unchanged** (the immutability invariant in action). Evidence [Partially Verified]: README:37;
+  unchanged** (the immutability invariant in action). Evidence [Partially Verified]: CHANGELOG.md [0.8.6];
   src/PluginParameters.cpp:135-136.
 - **¶** The APVTS default is `true` (the user-facing default when Advanced Mode is on). The
   `EngineParameters` POD default is **`false`** (src/dsp/EngineParameters.h:72): when Advanced
@@ -106,7 +106,7 @@ Evidence [Verified]: src/InternalState.h:31-55.
 | `oversample`, `uiScale`, `scopePersist`, `metersOn`, `tooltipsOn`, `uiAnimations` | **Removed from APVTS**, moved to `InternalState` | 0.8.4 | `InternalState::migrateFromLegacyApvts` reads the legacy PARAM nodes from old saved state. |
 
 This is the one precedent for a parameter-surface change. It was done **with a migration path**
-(the model the compatibility policy requires). Evidence [Partially Verified]: README:49-58;
+(the model the compatibility policy requires). Evidence [Partially Verified]: CHANGELOG.md [0.8.4];
 src/InternalState.h:95-122; src/PluginProcessor.cpp:345-348.
 
 ## Introduced / Deprecated columns

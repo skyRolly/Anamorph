@@ -36,4 +36,4 @@ parameters.
 
 Evidence [Verified]:
 - Source: src/InternalState.h:10-138; src/PluginProcessor.cpp:304-348
-- History [Partially Verified]: README:49-58 (0.8.4); commit 6bd158b
+- History [Partially Verified]: CHANGELOG.md [0.8.4]; commit 6bd158b

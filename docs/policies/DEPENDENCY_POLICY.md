@@ -31,3 +31,10 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
 4. Prefer the offline path (`-DANAMORPH_JUCE_PATH`) for reproducibility in restricted CI.
 5. `JUCE_*` compile flags in `CMakeLists.txt:123-132` (no webview, no curl, no splash, strict
    ref-counted pointer) are part of the dependency contract; changing them is a build change.
+
+## Compliance log
+
+- **JUCE 8.0.8 → 8.0.14** — recorded in **ADR-0012** (the first dependency bump enforced under rule 1
+  above; the bootstrap use of this rule). Verified green by CI (build + 23 DSP self-tests + pluginval
+  strictness 10 on the Linux gate); commit `41acaa7`. The manual audition (rule 2, Level 5) is not
+  headlessly verifiable and remains a noted follow-up (`CHANGELOG.md [Unreleased]`, RISK-001).

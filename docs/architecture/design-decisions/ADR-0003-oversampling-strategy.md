@@ -37,4 +37,4 @@ latency never changes mid-block; an OS-path change is routed through the duck.
 Evidence [Verified]:
 - Source: src/dsp/AnamorphEngine.cpp:14-23,42-54,293-329
 - Test: tests/dsp_tests.cpp :: testBypassNullAndLatency
-- History [Partially Verified]: README:466-474
+- History [Partially Verified]: docs/architecture/LATENCY_MODEL.md

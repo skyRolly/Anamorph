@@ -35,4 +35,4 @@ code reference "Known Issue #1" — a *closed* design constraint, not an open bu
 Evidence [Verified]:
 - Source: src/dsp/MultibandWidth.cpp:154-168; src/dsp/AnamorphEngine.cpp:726-759
 - Tests: testMultibandMonoCompat, testMultibandUnityMatch
-- History [Partially Verified]: README:183-191 (0.7.2)
+- History [Partially Verified]: CHANGELOG.md [0.7.5]-[0.7.0] (0.7.2)

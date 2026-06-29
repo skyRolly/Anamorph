@@ -33,7 +33,7 @@ cmake --build build --config Release
 scripts/build.sh            # scripts/build.sh [Release|Debug]
 ```
 
-Evidence [Verified]: scripts/build.sh:14-15; README:375-389.
+Evidence [Verified]: scripts/build.sh:14-15.
 
 ## Build options (CMakeLists.txt)
 
@@ -64,7 +64,7 @@ build/Anamorph_artefacts/Release/Standalone/Anamorph[.app|.exe]
 build/.../AnamorphTests                                       # the DSP self-test app
 ```
 
-Evidence [Verified]: README:391-395; scripts/build.sh:19-30; .github/workflows/build.yml:49-50.
+Evidence [Verified]: scripts/build.sh:19-30; .github/workflows/build.yml:49-50.
 
 ## Network domains the build needs (restricted sandboxes)
 
@@ -72,7 +72,7 @@ Evidence [Verified]: README:391-395; scripts/build.sh:19-30; .github/workflows/b
 - `github.com` — JUCE source (pinned tag via FetchContent).
 - `github.com` — pluginval release (only for `scripts/run-pluginval.sh`).
 
-Evidence [Verified]: README:397-403; scripts/setup-linux.sh:8-13.
+Evidence [Verified]: scripts/setup-linux.sh:8-13.
 
 ## Compile definitions (part of the build contract)
 

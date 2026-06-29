@@ -34,5 +34,5 @@ signal-crashes (never on real validation failures), because the crash is in plug
 
 Evidence [Verified]:
 - Source: src/PluginEditor.cpp:246-256,627-632; scripts/run-pluginval.sh:46-76
-- History [Partially Verified]: README:39-47 (0.8.5); commit c924ff8
+- History [Partially Verified]: CHANGELOG.md [0.8.5]; commit c924ff8
 - Related incident: `../../POSTMORTEMS.md` INC-006 (Linux editor-automation segfault)

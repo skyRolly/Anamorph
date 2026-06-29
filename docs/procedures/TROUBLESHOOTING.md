@@ -36,4 +36,4 @@ Diagnosing build, validation, and runtime problems. For the validation workflow 
 ## "What cannot be verified headlessly"
 
 Audio quality and GUI appearance need a DAW with audio + display. A green build + pluginval pass
-is "ready to audition," not final (README:503-508; `docs/policies/TESTING_POLICY.md` Level 5).
+is "ready to audition," not final (`docs/policies/TESTING_POLICY.md` Level 5).

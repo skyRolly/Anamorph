@@ -1,9 +1,9 @@
 # POSTMORTEMS.md
 
 Incident review library. Every incident is reconstructed from **repository evidence only**
-(commits, README history, tests, current code) — no invented events. Dates are the **fix commit**
-dates (Verified from git); affected versions are from the README history (Partially Verified, as
-the repository has **no git tags**).
+(commits, the CHANGELOG, tests, current code) — no invented events. Dates are the **fix commit**
+dates (Verified from git); affected versions are from the CHANGELOG / commit history (Partially
+Verified, as the repository has **no git tags**).
 
 Template per incident: Problem · Symptom · Root cause · Defect-formation mechanism (evidence
 required) · Fix · Why this fix · Prevention.
@@ -12,7 +12,7 @@ required) · Fix · Why this fix · Prevention.
 
 ## INC-001 — Band Solo "ghost" / engage tick
 - **Date:** 2026-06-23 (fix commit `6d2023b`) · **Affected version:** ≤0.8.0, fixed 0.8.1 · **Severity:** Medium
-- **Evidence [Partially Verified]:** README:102-113; commit 6d2023b. **[Verified]:** test `testSoloNoGhostInSilence`; ADR-0004; src/dsp/SoloMonitor.cpp.
+- **Evidence [Partially Verified]:** CHANGELOG.md [0.8.1]; commit 6d2023b. **[Verified]:** test `testSoloNoGhostInSilence`; ADR-0004; src/dsp/SoloMonitor.cpp.
 
 - **Problem:** Toggling Band Solo emitted a transient even when the DAW was stopped/paused/fed a zero buffer.
 - **Symptom:** An audible tick on solo engage; a "ghost signal" when toggling solo during silence.
@@ -24,7 +24,7 @@ required) · Fix · Why this fix · Prevention.
 
 ## INC-002 — Level Match ratchet / Mix=100% slam
 - **Date:** 2026-06-23 (`6d2023b`) · **Affected version:** ≤0.8.0, fixed 0.8.1 · **Severity:** Medium
-- **Evidence [Partially Verified]:** README:114-122. **[Verified]:** tests `testLevelMatchNoRatchet`, `testLevelMatchMixCouplingNoSlam`; ADR-0007; src/dsp/LoudnessMatch.cpp.
+- **Evidence [Partially Verified]:** CHANGELOG.md [0.8.1]. **[Verified]:** tests `testLevelMatchNoRatchet`, `testLevelMatchMixCouplingNoSlam`; ADR-0007; src/dsp/LoudnessMatch.cpp.
 
 - **Problem:** The loudness-match gain drifted/ratcheted toward the −24 dB floor, and raising Mix with Drive cranked slammed loud.
 - **Symptom:** Cranking Drive up/down/up while paused ratcheted the gain down; Mix→100% produced a loudness slam; bias away from unity.
@@ -36,7 +36,7 @@ required) · Fix · Why this fix · Prevention.
 
 ## INC-003 — Multiband crossover automation explosion ("+600 dB")
 - **Date:** 2026-06-27 (`f259a80`) · **Affected version:** ≤0.8.1, fixed 0.8.2 · **Severity:** Critical
-- **Evidence [Partially Verified]:** README:72-80. **[Verified]:** test `testCrossoverAutomationSafe`; ADR-0009; src/dsp/MultibandWidth.cpp:55-71.
+- **Evidence [Partially Verified]:** CHANGELOG.md [0.8.2]. **[Verified]:** test `testCrossoverAutomationSafe`; ADR-0009; src/dsp/MultibandWidth.cpp:55-71.
 
 - **Problem:** Automating a split toward Nyquist (4 bands crowded high) made the DSP blow up.
 - **Symptom:** A "+600 dB" burst that stuck one channel and killed the other.
@@ -48,7 +48,7 @@ required) · Fix · Why this fix · Prevention.
 
 ## INC-004 — Meter NaN-latch (bright bar vanished)
 - **Date:** 2026-06-27 (`f259a80`) · **Affected version:** ≤0.8.1, fixed 0.8.2 · **Severity:** Medium
-- **Evidence [Partially Verified]:** README:81-83. **[Verified]:** test `testMeterRecoversFromNaN`; src/dsp/LevelMeters.h:73-77.
+- **Evidence [Partially Verified]:** CHANGELOG.md [0.8.2]. **[Verified]:** test `testMeterRecoversFromNaN`; src/dsp/LevelMeters.h:73-77.
 
 - **Problem:** A single non-finite sample permanently latched a meter envelope at NaN.
 - **Symptom:** The bright (RMS) meter bar vanished and never returned.
@@ -60,7 +60,7 @@ required) · Fix · Why this fix · Prevention.
 
 ## INC-005 — Bypass click + stale-audio burst
 - **Date:** 2026-06-27 (`3686d12`) · **Affected version:** ≤0.8.2, fixed 0.8.3 · **Severity:** Medium
-- **Evidence [Partially Verified]:** README:60-71,89-91. **[Verified]:** tests `testBypassCrossfadeClickFree`, `testBypassToggleRobust`, `testLevelMatchRunsInBypass`; ADR-0004.
+- **Evidence [Partially Verified]:** CHANGELOG.md [0.8.3]. **[Verified]:** tests `testBypassCrossfadeClickFree`, `testBypassToggleRobust`, `testLevelMatchRunsInBypass`; ADR-0004.
 
 - **Problem:** Toggling Bypass clicked, stopped Level Match, and could replay a stale fragment.
 - **Symptom:** A click on bypass toggle; Level Match froze while bypassed; a filter/oversampler burst as the duck lifted.
@@ -72,7 +72,7 @@ required) · Fix · Why this fix · Prevention.
 
 ## INC-006 — Linux editor-automation segfault (OpenGL/X11 UAF)
 - **Date:** 2026-06-28 (`c924ff8`) · **Affected version:** ≤0.8.4, fixed 0.8.5 · **Severity:** High (crash)
-- **Evidence [Partially Verified]:** README:39-47. **[Verified]:** commit c924ff8; ADR-0011; src/PluginEditor.cpp:246-256; scripts/run-pluginval.sh:46-76.
+- **Evidence [Partially Verified]:** CHANGELOG.md [0.8.5]. **[Verified]:** commit c924ff8; ADR-0011; src/PluginEditor.cpp:246-256; scripts/run-pluginval.sh:46-76.
 
 - **Problem:** Rapid editor open/close on Linux crashed (pluginval "Editor Automation" and real Linux DAWs).
 - **Symptom:** A use-after-free segfault during editor teardown.
@@ -84,7 +84,7 @@ required) · Fix · Why this fix · Prevention.
 
 ## INC-007 — Multiband Enable mute/dropout
 - **Date:** 2026-06-28 (`10fbfa0`) · **Affected version:** ≤0.8.5, fixed 0.8.6 · **Severity:** Medium
-- **Evidence [Partially Verified]:** README:30-36. **[Verified]:** test `testMultibandEnableCrossfadeClickFree`; ADR-0004; src/dsp/AnamorphEngine.cpp:655-707.
+- **Evidence [Partially Verified]:** CHANGELOG.md [0.8.6]. **[Verified]:** test `testMultibandEnableCrossfadeClickFree`; ADR-0004; src/dsp/AnamorphEngine.cpp:655-707.
 
 - **Problem:** Toggling Multiband Enable briefly muted/dropped the output.
 - **Symptom:** A momentary dropout on enable/disable.
@@ -96,7 +96,7 @@ required) · Fix · Why this fix · Prevention.
 
 ## INC-008 — Alt/Option-click reset animation regression
 - **Date:** 2026-06-28 (`10fbfa0`) · **Affected version:** ≤0.8.5, fixed 0.8.6 · **Severity:** Low (GUI)
-- **Evidence [Partially Verified]:** README:22-29; commit 10fbfa0. **[Verified]:** src/PluginEditor.cpp / src/gui/LookAndFeel.cpp `resetSweep` handling.
+- **Evidence [Partially Verified]:** CHANGELOG.md [0.8.6]; commit 10fbfa0. **[Verified]:** src/PluginEditor.cpp / src/gui/LookAndFeel.cpp `resetSweep` handling.
 
 - **Problem:** Alt/Option-click knob reset snapped instead of animating (double-click still animated).
 - **Symptom:** No eased travel on Alt/Option-click reset.
@@ -108,7 +108,7 @@ required) · Fix · Why this fix · Prevention.
 
 ## INC-009 — Band Solo + Multiband Enable click
 - **Date:** 2026-06-28 (`6a24b82`) · **Affected version:** 0.8.6, fixed 0.8.7 · **Severity:** Medium
-- **Evidence [Verified]:** README:9-20; commit 6a24b82; test `testSoloMultibandEnableClickFree`; src/dsp/AnamorphEngine.cpp:831-845; ADR-0004.
+- **Evidence [Verified]:** CHANGELOG.md [0.8.7]; commit 6a24b82; test `testSoloMultibandEnableClickFree`; src/dsp/AnamorphEngine.cpp:831-845; ADR-0004.
 
 - **Problem:** With a Band Solo active, toggling Multiband Enable clicked on both edges (a regression introduced by INC-007's 0.8.6 change).
 - **Symptom:** An audible click (amplitude + phase step) on both enable and disable edges, only when a band was soloed.

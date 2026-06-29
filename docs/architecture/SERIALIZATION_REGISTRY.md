@@ -47,7 +47,7 @@ Source: src/PluginProcessor.cpp:310, :337-338.
 **‡** Sessions saved **before** 0.8.4 have no `ANAMORPH_INTERNAL` child; these values are
 recovered from the legacy APVTS PARAM nodes by `migrateFromLegacyApvts` (choice indices are
 0-based legacy → 1-based ComboBox). Evidence [Verified]: src/InternalState.h:100-122;
-[Partially Verified] introduced-0.8.4: README:49-58.
+[Partially Verified] introduced-0.8.4: CHANGELOG.md [0.8.4].
 
 ## `AB` child
 

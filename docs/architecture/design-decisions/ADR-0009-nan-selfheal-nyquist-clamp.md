@@ -37,5 +37,5 @@ sample must not poison the output or meters. Adding a 0 dBFS clipper would harm 
 Evidence [Verified]:
 - Source: src/dsp/MultibandWidth.cpp:55-71; src/dsp/AnamorphEngine.cpp:847-870; src/dsp/LevelMeters.h
 - Tests: testCrossoverAutomationSafe, testMeterRecoversFromNaN, testNoBadSamples
-- History [Partially Verified]: README:60-91 (0.8.2/0.8.3)
+- History [Partially Verified]: CHANGELOG.md [0.8.2], [0.8.3]
 - Related incidents: `../../POSTMORTEMS.md` INC-003 (crossover explosion), INC-004 (meter NaN-latch)
