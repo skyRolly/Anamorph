@@ -27,6 +27,15 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   randomised test order + fuzzing a fixed-seed run can miss. Evidence: `scripts/run-pluginval.sh`,
   `.github/workflows/build.yml`. [Verified]
 ### Fixed
+- **State restoration is now fully synchronous and idempotent.** `setStateInformation` re-asserts
+  every parameter from the just-restored tree after `apvts.replaceState`, because a wholesale
+  `replaceState` did not reliably propagate to every parameter's cached value — under pluginval's
+  `--randomise` *Plugin state restoration* an occasional parameter (e.g. **M/S Mode**, **Advanced
+  Mode**) intermittently kept its pre-restore value. The re-assertion is idempotent (parameters
+  already correct are left untouched) and changes no serialization schema. Evidence:
+  `src/PluginProcessor.cpp` (`reassertParameters`, called from `setStateInformation`);
+  CI run `28356634850` (the `--randomise` gate that surfaced it). [Partially Verified] — mechanism
+  traced from the CI log (pre-restore value retained); `--randomise` gate re-confirmation pending.
 - **Linux:** tooltips no longer render opaque **black corners** outside the rounded capsule on X11
   without a compositor — `drawTooltip` now fills the corner area with the capsule colour when
   per-pixel window alpha is unavailable; macOS/Windows transparent corners are unchanged (KI-006).

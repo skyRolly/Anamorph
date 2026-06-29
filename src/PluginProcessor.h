@@ -103,6 +103,9 @@ private:
     static bool isViewParam (const juce::String& id) noexcept;
     juce::String soundSignature() const;
     void applyStatePreservingView (const juce::ValueTree& target);
+    // Force every APVTS parameter to its value in a just-restored tree (see the .cpp): a wholesale
+    // replaceState does not reliably propagate to every parameter's cached value synchronously.
+    void reassertParameters (const juce::ValueTree& restoredApvtsTree);
     void syncCommitted();
 
     struct UndoStacks { std::vector<StateSet> undo, redo; };

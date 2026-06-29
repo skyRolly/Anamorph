@@ -209,6 +209,29 @@ void AnamorphAudioProcessor::applyStatePreservingView (const juce::ValueTree& ta
         apvts.getParameter (pid::viewParams[i])->setValueNotifyingHost (saved[i]);
 }
 
+// A wholesale apvts.replaceState() does NOT reliably push every parameter's restored value
+// through to its cached/atomic value synchronously: under pluginval's --randomise "Plugin state
+// restoration" the round-trip intermittently left an occasional parameter (observed: M/S Mode,
+// Advanced Mode) sitting at its PRE-restore value instead of the saved one. Re-apply each
+// parameter directly from the just-restored tree so getValue() / the raw atomics deterministically
+// and idempotently match the saved state, independent of editor attachments or message-thread
+// timing. Idempotent: parameters already at the restored value are left untouched (no spurious
+// host-change notifications), so a clean replaceState is a no-op here.
+void AnamorphAudioProcessor::reassertParameters (const juce::ValueTree& restoredApvtsTree)
+{
+    if (! restoredApvtsTree.isValid()) return;
+
+    for (auto* p : getParameters())
+        if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p))
+            if (auto node = restoredApvtsTree.getChildWithProperty ("id", rp->paramID); node.isValid())
+            {
+                const float denorm = (float) node.getProperty ("value", rp->convertFrom0to1 (rp->getValue()));
+                const float norm   = juce::jlimit (0.0f, 1.0f, rp->convertTo0to1 (denorm));
+                if (std::abs (norm - rp->getValue()) > 1.0e-6f)
+                    rp->setValueNotifyingHost (norm);
+            }
+}
+
 void AnamorphAudioProcessor::pollUndoCoalesce()
 {
     const auto sig = soundSignature();
@@ -336,7 +359,11 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
     if (root.hasType ("AnamorphRoot"))
     {
         auto params = root.getChildWithName (apvts.state.getType());
-        if (params.isValid()) apvts.replaceState (params.createCopy());
+        if (params.isValid())
+        {
+            apvts.replaceState (params.createCopy());
+            reassertParameters (params); // force every parameter through synchronously (see below)
+        }
 
         // Restore the host-hidden Settings / view state (Oversampling, Window Size,
         // Persistence, Tooltips, Animations, Show Meters). A changed Oversampling fires
@@ -384,7 +411,9 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
     }
     else if (xml->hasTagName (apvts.state.getType())) // backward-compat (v0.2)
     {
-        apvts.replaceState (juce::ValueTree::fromXml (*xml));
+        auto legacy = juce::ValueTree::fromXml (*xml);
+        apvts.replaceState (legacy);
+        reassertParameters (legacy);
     }
 
     // Fresh session: clear undo history.
