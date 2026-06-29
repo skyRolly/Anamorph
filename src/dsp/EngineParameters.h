@@ -8,6 +8,12 @@
 //  and fills this struct, then hands it to AnamorphEngine. This keeps the DSP
 //  core fully decoupled from JUCE's AudioProcessorValueTreeState / plugin
 //  format wrapper -- the engine knows nothing about parameter IDs or hosts.
+//
+//  Section numbering below is CONCEPTUAL: it follows the processing-chain STAGE order
+//  (see AnamorphEngine.h), NOT the physical field order in this struct. Fields are
+//  grouped by module for readability, so the stage numbers are intentionally not
+//  monotonic in the source -- e.g. Mono Maker is stage 4 but is declared before Mix
+//  (stage 3). The numbers describe signal flow, not memory layout.
 // ============================================================================
 
 namespace anamorph
@@ -74,7 +80,7 @@ struct EngineParameters
     float       mbWidthHiMid = 1.0f;    // band 3 (high-mids)
     float       mbWidthHigh  = 1.0f;    // band 4 (highs)
 
-    // --- 4. Mono Maker (post-Mix; numbered by chain stage, not field order)
+    // --- 4. Mono Maker (post-Mix) ----------------------------------------
     bool        monoMakerEnable = false;
     float       monoMakerFreq   = 120.0f; // below this -> mono
 

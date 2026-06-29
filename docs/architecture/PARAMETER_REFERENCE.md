@@ -55,7 +55,7 @@ Driven primarily by the drag-to-split `SpectrumImager` display.
 | `mbFreqLow/Mid/High` | The three crossover splits (band 1\|2, 2\|3, 3\|4). Log range 20..20 kHz; DSP re-orders + Nyquist-clamps. |
 | `mbWidthLow/Mid/HiMid/High` | Per-band MS width 0..2 (bands 1..4). |
 
-Evidence [Verified]: src/dsp/EngineParameters.h:61-75; src/dsp/AnamorphEngine.cpp:367-376.
+Evidence [Verified]: src/dsp/EngineParameters.h:67-81; src/dsp/AnamorphEngine.cpp:367-376.
 
 ## Mono Maker / Mix / Output (Advanced)
 

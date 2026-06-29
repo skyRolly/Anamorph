@@ -26,9 +26,9 @@ the plugin wrapper. The engine "knows nothing about parameter IDs or hosts."
 - Cost: every parameter must be marshalled through `EngineParameters` and `toEngine`.
 
 ## Related code
-- `src/dsp/EngineParameters.h:3-11`, `src/dsp/AnamorphEngine.h:38-39`
+- `src/dsp/EngineParameters.h:3-17`, `src/dsp/AnamorphEngine.h:38-39`
 - `src/PluginParameters.cpp:241-300` (`toEngine`)
 - `CMakeLists.txt:62-73` (INTERFACE lib), `:149-166` (tests link the core)
 
 Evidence [Verified]:
-- Source: src/dsp/AnamorphEngine.h:38-39; src/dsp/EngineParameters.h:3-11; CMakeLists.txt:62-73
+- Source: src/dsp/AnamorphEngine.h:38-39; src/dsp/EngineParameters.h:3-17; CMakeLists.txt:62-73

@@ -77,11 +77,11 @@ Footnotes:
   unchanged** (the immutability invariant in action). Evidence [Partially Verified]: README:37;
   src/PluginParameters.cpp:135-136.
 - **¶** The APVTS default is `true` (the user-facing default when Advanced Mode is on). The
-  `EngineParameters` POD default is **`false`** (src/dsp/EngineParameters.h:66): when Advanced
+  `EngineParameters` POD default is **`false`** (src/dsp/EngineParameters.h:72): when Advanced
   Mode is off, `toEngine` skips the multiband section, so the engine sees the neutral POD default
   and the multiband stage is inactive in Simple mode. The two differing defaults are intentional
   and serve different roles — host-facing default vs. Simple-mode neutral state.
-  Evidence [Verified]: src/PluginParameters.cpp:147,263-294; src/dsp/EngineParameters.h:66.
+  Evidence [Verified]: src/PluginParameters.cpp:147,263-294; src/dsp/EngineParameters.h:72.
 
 ## Host-hidden parameters (InternalState — NOT APVTS)
 
