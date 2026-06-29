@@ -605,7 +605,7 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         }
     }
 
-    // -------- 1. Input conditioning -----------------------------------------
+    // -------- Input conditioning --------------------------------------------
     applyInputConditioning (L, R, n);
 
     // M/S Solo lives in the INPUT module: it isolates Mid or Side BEFORE the
@@ -627,7 +627,7 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     dryScratch.copyFrom (0, 0, L, n);
     dryScratch.copyFrom (1, 0, R, n);
 
-    // -------- 3a. Oversampled nonlinear / modulation region -----------------
+    // -------- Oversampled nonlinear / modulation region ---------------------
     if (auto* os = currentOversampler())
     {
         const double factor = (p.oversample == OversampleFactor::x2) ? 2.0
@@ -644,11 +644,11 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         processNonlinearRegion (L, R, n, sr);
     }
 
-    // -------- 3b. Linear algorithm at base rate -----------------------------
+    // -------- Linear algorithm at base rate ---------------------------------
     if (p.algorithm == Algorithm::Haas)        haas.processBlock (L, R, n);
     else if (p.algorithm == Algorithm::Velvet) velvet.processBlock (L, R, n);
 
-    // -------- 3c. Global Width (MS-domain) ----------------------------------
+    // -------- Global Width (MS-domain) --------------------------------------
     for (int i = 0; i < n; ++i)
         applyWidth (L[i], R[i], widthSmooth.getNextValue());
 
@@ -710,7 +710,7 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         mbRunning = false; // fully disabled: the bank is idle and may go cold
     }
 
-    // ======================== 2. DRY / WET MIX ==============================
+    // ======================== DRY / WET MIX =================================
     // Delay-compensated dry. The dry source crossfades from the CLEAN dry (bit-exact
     // at Mix=0 -> an exact null) to the phase-ALIGNED A(dry) as Mix leaves 0, so
     // 0<Mix<1 never combs yet Mix=0 stays sample-exact; the fade completes by
@@ -758,14 +758,14 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         R[i] = dryR + m * (R[i] - dryR);
     }
 
-    // ======================== 3. MONO MAKER (post-Mix) ======================
+    // ======================== MONO MAKER (post-Mix) =========================
     // Collapse the low band of the MIXED signal to mono in place, so the final low
     // end is mono whatever the Mix amount. The Mid stays allpass-flat (LP + HP), so
     // the mono sum has no low-frequency cancellation.
     if (p.monoMakerEnable)
         monoMaker.process (L, R, n);
 
-    // ======================== 4. OUTPUT STAGE ===============================
+    // ======================== OUTPUT STAGE ==================================
     // Level Match measures the post-Mono-Maker signal (the real processed output)
     // against the conditioned input, BEFORE Output gain / balance (feedback #25).
     wetScratch.copyFrom (0, 0, L, n);
@@ -800,7 +800,7 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         matchGainSmooth.setCurrentAndTargetValue (matchTarget);
     prevInputSilent = inSilentNow;
 
-    // -------- 8. Output Gain / Auto Gain / Output Balance -------------------
+    // -------- Output Gain / Auto Gain / Output Balance ----------------------
     for (int i = 0; i < n; ++i)
     {
         // When Level Match is engaged the matched gain REPLACES Output Gain, so
@@ -828,7 +828,7 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         L[i] *= g * gL * sg; R[i] *= g * gR * sg;
     }
 
-    // ======================== 5. BAND SOLO MONITOR ==========================
+    // ======================== BAND SOLO MONITOR =============================
     // POST-EVERYTHING audition: band-pass the already-produced output to the soloed
     // band(s). No effect stage changed its behaviour for solo -- this only filters what
     // is heard. mask == 0 -> the monitor settles to passGain 1 == BIT-EXACT true output.
@@ -869,7 +869,7 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         bypassDryScratch.clear();
     }
 
-    // ======================== 6. BYPASS CROSSFADE ===========================
+    // ======================== BYPASS CROSSFADE ==============================
     // Click-free, sample-safe Bypass: a short crossfade between the fully processed
     // output and the delay-aligned RAW input -- no mute, no dropout, imperceptible
     // switch (Issue 3). bypassBlend settles to exactly 1 -> bit-exact true bypass; to

@@ -1,0 +1,114 @@
+# DSP_ALGORITHMS.md
+
+Mathematical/implementation reference for each DSP module. Interfaces are in
+`API_REFERENCE.md`; chain order in `SIGNAL_FLOW.md`; invariants enforced in
+`docs/policies/DSP_POLICY.md`. All entries Verified against the cited source.
+
+## MidSide — `src/dsp/MidSide.h`
+
+Power-preserving MS matrix, `k = 1/√2 ≈ 0.70710678` in both directions.
+- `encode`: `M = (L+R)·k`, `S = (L−R)·k` (`:23`).
+- `decode`: `L = (M+S)·k`, `R = (M−S)·k` (`:29`).
+- `applyWidth(L,R,width)`: `mid=(L+R)/2`, `side=(L−R)/2·width`, `L=mid+side`, `R=mid−side` (`:42`).
+
+Invariant: encode→decode is gain/phase exact; mono compatibility by construction
+(`L+R = 2·Mid`, independent of side gain). width 1 = identity, 0 = mono, >1 = wide.
+
+## HaasProcessor — `src/dsp/HaasProcessor.{h,cpp}`
+
+Precedence (Haas) widening: a single fractional delay line per channel (power-of-two circular
+buffer, linear-interpolated read, `.cpp:34-43`). The delayed side is dry/wet blended:
+`right[n] += amount·(delayed − right[n])` (`.cpp:62`). Both delay length and wet amount are
+one-pole smoothed (`smooth=0.0005`, `aSmooth=0.001`). Linear → stays **outside** oversampling.
+Invariant: `amount 0 = identity`. Buffer sized for ~40 ms (covers the 35 ms max).
+
+## VelvetNoise — `src/dsp/VelvetNoise.{h,cpp}`
+
+Mono→stereo / widening by synthesising a decorrelated **Side** from the **Mid** via a sparse
+velvet-noise FIR (≤64 taps). Tap positions/signs are generated **once** in `prepare` with
+`std::mt19937` over a grid (`cell = decorrSamps/maxTaps`, skip tap 0, random ±1 sign,
+`.cpp:24-34`). `density` sets a continuous active-tap count with per-tap fade-in, normalised by
+`1/√(Σweight²)`. Per sample: `decorr = Σ w·sign·midHist[...]`, then `Side' = Side + decorr`
+(`.cpp:129-139`). A presence follower + fixed-time gate fades the tail; a play→stop edge applies
+a ~4 ms zero-slope smoothstep tail-kill then flushes history. Mid is untouched → `L+R = 2·Mid`.
+Invariant: `amount 0 = identity`.
+
+## ChorusEngine — `src/dsp/ChorusEngine.{h,cpp}`
+
+Modulated delay line, sine LFO, R phase offset +0.25 (90°) for width.
+- **Chorus**: one modulated tap/channel, anti-phase L/R, equal-power crossfade
+  `out = in·(1−wet) + tap·wet` (`.cpp:106-112`).
+- **Dimension-D**: two anti-phase taps/channel (`d1 = base+depth·sin`, `d2 = base−depth·sin`),
+  averaged `0.5·(tap1+tap2)` so Doppler pitch shifts cancel to first order (no vibrato)
+  (`.cpp:91-102`). 4 voicings via `setDimMode`.
+
+`currentWet`/`currentDepth` one-pole smoothed (~10 ms). Buffers sized for the **max** OS rate
+so an OS-factor change never reallocates. Modulation stage → runs **inside** oversampling.
+Invariant: `amount 0 = identity` for both voices.
+
+## MonoMaker — `src/dsp/MonoMaker.{h,cpp}`
+
+Phase-coherent low-frequency mono via a 4th-order Linkwitz-Riley crossover
+(`juce::dsp::LinkwitzRileyFilter`, lowpass type → LP/HP split, LP+HP = allpass). Sums the low
+bands to mono (`monoLow = (lowL+lowR)/2`), recombines `L = highL + monoLow` (`.cpp:40-46`).
+Cutoff glided per sample (`glideCoeff = exp2(8/sr)`, ~8 oct/s) to avoid pitch wobble.
+Nyquist-safe clamp `[20, max(1000, 0.45·sr)]`. Applied **post-Mix, in place** (0.8.0).
+
+## MultibandWidth — `src/dsp/MultibandWidth.{h,cpp}`
+
+1–4 phase-coherent bands from a cascade of LR lowpass crossovers (`x1,x2,x3`): peel one low
+band per crossover, the remainder feeds the next, final remainder = top band (`.cpp:134-146`).
+Each band widened via `applyWidth` (MS side-gain), summed → allpass-flat reconstruction. A
+**parallel dry bank** (`dx1,dx2,dx3`) reconstructs the dry at unit width sharing the wet's exact
+gliding cutoffs → phase-matched `A(dry)` for the dry/wet Mix (`.cpp:154-168`). 1-band fast path
+skips crossovers. Cutoffs glide per sample; widths one-pole smoothed (~20 ms).
+- **Crossover safety**: Nyquist clamp `[20, 0.45·sr]` applied **before** ordering, then the
+  1.1× separation ordering re-clamped **top-down** so separation can never push a cutoff past
+  Nyquist (the 0.8.2 "+600 dB" fix). `.cpp:55-71`.
+- Invariants: per-band `L+R = 2·Mid` (mono compatible); **solo-agnostic** (always sums every
+  active band).
+
+## SoloMonitor — `src/dsp/SoloMonitor.{h,cpp}`
+
+POST-EVERYTHING audition: mirrors the Multiband split (same LR crossovers, same glide) and runs
+**every block** (filters kept warm). Output is a per-band smoothed crossfade: `passGain` (→1
+when nothing soloed) sums the true output; each `bandGain[b]` (`SmoothedValue`, ~12 ms) sums in
+band *b* only while soloed (`.cpp:71-106`). Never changes any effect stage.
+Invariant: `mask == 0` → settled `passGain = 1` → **bit-exact** true output. Same Nyquist clamp +
+1.1× ordering as MultibandWidth. Click-free by smoothed crossfade — **no output duck** (the
+design property the 0.8.7 fix depends on: the call must run every block).
+
+## LoudnessMatch — `src/dsp/LoudnessMatch.{h,cpp}`
+
+Perceptual Auto-Gain (Kraftur-style Match/Apply). Publishes `matchGainDb = LUFS(dry) − LUFS(wet)`.
+- **K-weighting (ITU-R BS.1770)**: stage-1 high-shelf (f0≈1681.97 Hz, ~+4 dB, Q≈0.707) +
+  stage-2 RLB high-pass (f0≈38.135 Hz, Q≈0.5), TDF-II biquads (`.cpp:15-43`). Mean-square loudness
+  integrated with a ~400 ms one-pole; LUFS `= −0.691 + 10·log10(meanSq)`.
+- **MEASURE**: one-pole toward `clamp(dLufs − wLufs, ±24)` with adaptive tau (0.06 s if |Δ|>2 dB
+  else 0.9 s); on silence it **holds** (no drift) (`.cpp:131-154`).
+- **PREDICT**: absolute feed-forward `estBoost(drive, mix)` from the tanh-Drive makeup
+  `20·log10(g/tanh g)` blended 0..2 dB and Mix-scaled; floor-only pre-duck
+  `displayed = min(displayed, predicted)` only when the estimate **rises** (`.cpp:74-95,136-144`).
+- Invariants: predict only ever lowers gain; absolute (non-accumulating) → cannot ratchet;
+  measure freezes on silence; both clamped ±24 dB; IIR → essentially zero latency.
+
+## CorrelationMeter — `src/dsp/Correlation.h`
+
+Two parallel one-pole smoothers (fast 120 ms / slow 600 ms) of `l·r`, `l·l`, `r·r`. Pearson
+correlation `c = lr/√(ll·rr)` clamped ±1; also publishes L/R balance and fast energy. Silent/idle
+reads 0 (decorrelated), not +1. Audio writes `publish()`, GUI reads via relaxed atomics.
+
+## LevelMeters — `src/dsp/LevelMeters.h`
+
+Per channel: dim **peak** envelope (instant attack, ~300 ms release), bright **RMS** body
+(~160/130 ms), rate-limited RMS number (fast rise, 1.2 s hold, 8 dB/s fall), peak-hold bar tick
+(1 s hold then ~100 ms fall), clip latches at 0 dBFS. **NaN self-heal**: per-sample finite clamp
++ `sanitize()` flush so a non-finite burst can never latch an envelope at NaN (0.8.2 Issue 8).
+Held peak never falls until clicked/replay.
+
+## ScopeBuffer — `src/dsp/ScopeBuffer.h`
+
+Lock-free SPSC stereo ring, fixed `capacity = 1<<14` (16384) frames, power-of-two mask wrap.
+`push` (audio) writes then `write.store(release)`; `readLatest` (GUI) `write.load(acquire)` then
+copies the most-recent N oldest-first. No reader index — a fast producer may overwrite mid-read
+(acceptable tearing for a decimated scope view).

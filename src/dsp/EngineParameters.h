@@ -8,6 +8,12 @@
 //  and fills this struct, then hands it to AnamorphEngine. This keeps the DSP
 //  core fully decoupled from JUCE's AudioProcessorValueTreeState / plugin
 //  format wrapper -- the engine knows nothing about parameter IDs or hosts.
+//
+//  Section numbering below is CONCEPTUAL: it follows the processing-chain STAGE order
+//  (see AnamorphEngine.h), NOT the physical field order in this struct. Fields are
+//  grouped by module for readability, so the stage numbers are intentionally not
+//  monotonic in the source -- e.g. Mono Maker is stage 4 but is declared before Mix
+//  (stage 3). The numbers describe signal flow, not memory layout.
 // ============================================================================
 
 namespace anamorph
@@ -29,10 +35,10 @@ struct EngineParameters
     bool        polarityL   = false;
     bool        polarityR   = false;
 
-    // --- 2/6. Mid-Side mode ----------------------------------------------
+    // --- Mid-Side mode (part of Input conditioning, stage 1) -------------
     bool        msMode      = false;   // process the effect chain in M/S
 
-    // --- 3. Effect / widening engine -------------------------------------
+    // --- 2. Effect / widening engine -------------------------------------
     float       driveDb     = 0.0f;    // 0 .. 24 dB pre-saturation gain
     Algorithm   algorithm   = Algorithm::Velvet;
 
@@ -58,7 +64,7 @@ struct EngineParameters
     // Global width (MS-domain). 1.0 (== 100%) is identity (spec feedback #3).
     float       width       = 1.0f;    // 0 = mono, 1 = unchanged, 2 = wide
 
-    // --- 4. Multiband width (Advanced) -----------------------------------
+    // --- 2d. Multiband width (Advanced -- end of the effect engine) ------
     // Up to four phase-coherent bands split by up to three crossovers
     // (low < mid < high), each with its own MS width. Driven by the drag-to-split
     // Multiband display. mbBands selects how many bands are active (1..4): only
@@ -74,25 +80,25 @@ struct EngineParameters
     float       mbWidthHiMid = 1.0f;    // band 3 (high-mids)
     float       mbWidthHigh  = 1.0f;    // band 4 (highs)
 
-    // --- 5. Mono Maker ----------------------------------------------------
+    // --- 4. Mono Maker (post-Mix) ----------------------------------------
     bool        monoMakerEnable = false;
     float       monoMakerFreq   = 120.0f; // below this -> mono
 
-    // --- 7. Mix -----------------------------------------------------------
+    // --- 3. Mix -----------------------------------------------------------
     float       mix         = 1.0f;    // 0 = dry, 1 = wet
 
-    // --- 8. Output / Auto gain -------------------------------------------
+    // --- 5. Output / Auto gain -------------------------------------------
     float       outputGainDb  = 0.0f;  // manual output trim
     float       outputBalance = 0.0f;  // -1 (L) .. +1 (R) whole-plugin balance
     bool        autoGainMatch = false; // real-time loudness match (A/B aid)
 
-    // --- Monitoring -------------------------------------------------------
+    // --- Monitoring (M/S Solo; Band Solo monitor = chain stage 6) --------
     SoloMode    solo        = SoloMode::Off;
 
-    // --- 9. Oversampling --------------------------------------------------
+    // --- Oversampling (global; wraps the nonlinear part of stage 2) ------
     OversampleFactor oversample = OversampleFactor::Off;  // default 1x (Off)
 
-    // --- Bypass -----------------------------------------------------------
+    // --- Bypass (chain stage 7 -- click-free output crossfade) -----------
     bool        bypass      = false;
 };
 

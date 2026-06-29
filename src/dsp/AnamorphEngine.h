@@ -21,19 +21,19 @@ namespace anamorph
 // ============================================================================
 //  AnamorphEngine
 //
-//  The complete, format-agnostic DSP chain (spec section 2.2):
+//  The complete, format-agnostic DSP chain (see AnamorphEngine::process). Rebuilt
+//  in 0.8.0 as a strictly serial chain; Band Solo is the last stage (monitor-only):
 //
-//    1. Input conditioning (channel kill / swap / balance / polarity)
-//    2. Mono Maker              (lows -> mono, BEFORE widening, feedback #2)
-//    3. MS encode               (only if MS mode)
-//    4. Effect engine           Drive -> algorithm -> global Width
-//         (Drive + Chorus/Dim-D run INSIDE oversampling; Haas/Velvet/Width
-//          are linear and stay OUTSIDE)
-//    5. Multiband Width         (Advanced Mode, optional)
-//    6. MS decode               (only if MS mode)
-//    7. Mix (dry/wet)           dry path is delay-compensated to the wet latency
-//    8. Output Gain / Auto Gain
-//    9. Metering tap            taps the FINAL output (scope + correlation)
+//    1. Input conditioning   channel kill / Swap / Balance / polarity; plus M/S
+//                            decode + M/S solo when M/S mode is on
+//    2. Effect engine        Drive -> algorithm (Haas / Velvet / Chorus / Dim-D)
+//                            -> global Width -> Multiband Width. Drive + Chorus/
+//                            Dim-D run INSIDE oversampling; the rest are linear.
+//    3. Mix (dry/wet)        dry is delay-compensated AND phase-matched (A(dry))
+//    4. Mono Maker           lows -> mono, POST-Mix, in place
+//    5. Output stage         Output Balance / Gain / Level Match + switch duck
+//    6. Band Solo monitor    POST-EVERYTHING audition band-pass (monitor-only)
+//    + Bypass crossfade (processed <-> raw) and the metering tap close the chain
 //
 //  Knows nothing about JUCE's plugin wrapper / APVTS -- it is driven purely by
 //  an EngineParameters snapshot, so AU/AAX wrappers could reuse it unchanged.
