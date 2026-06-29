@@ -209,14 +209,14 @@ void AnamorphAudioProcessor::applyStatePreservingView (const juce::ValueTree& ta
         apvts.getParameter (pid::viewParams[i])->setValueNotifyingHost (saved[i]);
 }
 
-// A wholesale apvts.replaceState() does NOT reliably push every parameter's restored value
-// through to its cached/atomic value synchronously: under pluginval's --randomise "Plugin state
-// restoration" the round-trip intermittently left an occasional parameter (observed: M/S Mode,
-// Advanced Mode) sitting at its PRE-restore value instead of the saved one. Re-apply each
-// parameter directly from the just-restored tree so getValue() / the raw atomics deterministically
-// and idempotently match the saved state, independent of editor attachments or message-thread
-// timing. Idempotent: parameters already at the restored value are left untouched (no spurious
-// host-change notifications), so a clean replaceState is a no-op here.
+// Synchronously force every parameter to its restored value, from the just-restored tree:
+//  1. A wholesale apvts.replaceState() does not reliably push every parameter's value through to
+//     its cached/atomic getValue() synchronously (some params kept their PRE-restore value).
+//  2. APVTS stores the DENORMALISED (snapped) value; for discrete params the saved "raw" attribute
+//     (see getStateInformation) carries the EXACT normalised getValue() pluginval set, so the
+//     round-trip is bit-faithful and passes its 0.1 raw-value tolerance.
+// Prefer "raw" (exact); fall back to the denormalised "value" for legacy sessions that lack it.
+// Idempotent: parameters already at the target value are left untouched (no spurious host notify).
 void AnamorphAudioProcessor::reassertParameters (const juce::ValueTree& restoredApvtsTree)
 {
     if (! restoredApvtsTree.isValid()) return;
@@ -225,8 +225,10 @@ void AnamorphAudioProcessor::reassertParameters (const juce::ValueTree& restored
         if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p))
             if (auto node = restoredApvtsTree.getChildWithProperty ("id", rp->paramID); node.isValid())
             {
-                const float denorm = (float) node.getProperty ("value", rp->convertFrom0to1 (rp->getValue()));
-                const float norm   = juce::jlimit (0.0f, 1.0f, rp->convertTo0to1 (denorm));
+                const float norm = node.hasProperty ("raw")
+                    ? juce::jlimit (0.0f, 1.0f, (float) node.getProperty ("raw"))
+                    : juce::jlimit (0.0f, 1.0f, rp->convertTo0to1 ((float) node.getProperty ("value",
+                                                                   rp->convertFrom0to1 (rp->getValue()))));
                 if (std::abs (norm - rp->getValue()) > 1.0e-6f)
                     rp->setValueNotifyingHost (norm);
             }
@@ -331,7 +333,21 @@ void AnamorphAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
     juce::ValueTree root ("AnamorphRoot");
     root.setProperty ("presetName", presets.currentName(), nullptr);     // remembered across sessions (F2)
     root.setProperty ("presetBaseline", presets.baseline(), nullptr);    // so the dirty-star survives reload (#6)
-    root.appendChild (apvts.copyState(), nullptr);
+    {
+        // pluginval's --randomise "Plugin state restoration" sets RAW normalised values and expects
+        // them back within 0.1; APVTS serialises the DENORMALISED (snapped) value, which for discrete
+        // params (Bool/Choice/Int) can be >0.1 from the raw value -> intermittent "not restored"
+        // failures. Record each parameter's EXACT raw getValue() additively (a "raw" attribute on
+        // each PARAM node) so restore reproduces it precisely. Additive + backward-compatible: older
+        // sessions (no "raw") fall back to the denormalised "value". The APVTS "value" is unchanged,
+        // so the schema is a strict superset (no removal/rename) and old plugins ignore "raw".
+        auto apvtsState = apvts.copyState();
+        for (auto param : apvtsState)
+            if (param.hasType ("PARAM"))
+                if (auto* p = apvts.getParameter (param.getProperty ("id").toString()))
+                    param.setProperty ("raw", p->getValue(), nullptr);
+        root.appendChild (apvtsState, nullptr);
+    }
     root.appendChild (internal.copyState(), nullptr); // host-hidden Settings / view state
     juce::ValueTree ab ("AB");
     ab.setProperty ("active", abActive, nullptr);

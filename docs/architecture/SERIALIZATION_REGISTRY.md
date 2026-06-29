@@ -24,14 +24,26 @@ Source: src/PluginProcessor.cpp:308-309, :350-393.
 ## `ANAMORPH` child (APVTS)
 
 The full APVTS tree — all 36 parameters from `PARAMETER_REGISTRY.md`. Serialized via
-`apvts.copyState()`; restored via `apvts.replaceState`. Each parameter is one `PARAM` node
-(`id`, `value`). Field stability is governed by the **Parameter ID immutability** invariant.
+`apvts.copyState()`; restored via `apvts.replaceState` **then** `reassertParameters`. Each
+parameter is one `PARAM` node (`id`, `value`, **`raw`**). Field stability is governed by the
+**Parameter ID immutability** invariant.
 
-| Field | Type | Migration Required | Required | Default |
-|---|---|---|---|---|
-| `<ANAMORPH>` (36 PARAM nodes) | ValueTree | No (additive only) | Yes | per-parameter defaults |
+| Field | Type | Introduced | Migration Required | Required | Default |
+|---|---|---|---|---|---|
+| `<ANAMORPH>` (36 PARAM nodes) | ValueTree | ≥0.2 | No (additive only) | Yes | per-parameter defaults |
+| `PARAM/@value` | denormalised (real) value | ≥0.2 | No | Yes | per-parameter default |
+| `PARAM/@raw` | float — exact normalised `getValue()` | **post-0.8.7** | No ◊ | No | falls back to `@value` |
 
-Source: src/PluginProcessor.cpp:310, :337-338.
+**◊** `@raw` is **additive and backward-compatible**: APVTS serialises the *denormalised/snapped*
+value, which for **discrete** params (Bool/Choice/Int) can differ from the raw `getValue()` by more
+than pluginval's `0.1` state-restoration tolerance. `getStateInformation` stamps each `PARAM` with
+its exact normalised `getValue()` as `@raw`; `reassertParameters` restores from `@raw` when present,
+else from `@value`. Older sessions (no `@raw`) load unchanged; older plugins ignore the unknown
+attribute. No field is removed or renamed — the schema is a strict superset.
+Evidence [Verified]: src/PluginProcessor.cpp (`getStateInformation` stamps `raw`;
+`reassertParameters` prefers it).
+
+Source: src/PluginProcessor.cpp `getStateInformation` / `setStateInformation` / `reassertParameters`.
 
 ## `ANAMORPH_INTERNAL` child (InternalState)
 

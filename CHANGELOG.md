@@ -22,20 +22,29 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   (policy entry-point); corrected documentation citations and aligned/clarified the signal-chain
   section comments in `EngineParameters.h` / `AnamorphEngine.cpp` (comment-only, no behaviour
   change). Evidence: commits `e83370d`, `2fe5e05`, `1914c52`, `655b6e4`. [Verified]
-- CI now gates pluginval at strictness 10 in **both modes** — deterministic (fixed seed) **and**
-  `--randomise` (3 consecutive passes) — on the Linux gate, to exercise state restoration under
-  randomised test order + fuzzing a fixed-seed run can miss. Evidence: `scripts/run-pluginval.sh`,
-  `.github/workflows/build.yml`. [Verified]
+- CI pluginval gate **unified and hardened across all three platforms**: each of Linux, Windows and
+  macOS now runs pluginval at strictness 10 in **two explicit, blocking steps** — deterministic
+  (`--random-seed 0`) **and** `--randomise` — **each repeated 3 consecutive times**. The previous
+  Windows/macOS `continue-on-error` (which swallowed `exit 1` and reported a false green) is removed;
+  a non-zero pluginval exit now fails the job on every platform. Linux/macOS use
+  `scripts/run-pluginval.sh`, Windows uses the new `scripts/run-pluginval.ps1` (same structure).
+  `actions/checkout` and `actions/upload-artifact` bumped `v4 → v5` (clears the Node 20 deprecation
+  warning). Evidence: `.github/workflows/build.yml`, `scripts/run-pluginval.sh`,
+  `scripts/run-pluginval.ps1`.
 ### Fixed
-- **State restoration is now fully synchronous and idempotent.** `setStateInformation` re-asserts
-  every parameter from the just-restored tree after `apvts.replaceState`, because a wholesale
-  `replaceState` did not reliably propagate to every parameter's cached value — under pluginval's
-  `--randomise` *Plugin state restoration* an occasional parameter (e.g. **M/S Mode**, **Advanced
-  Mode**) intermittently kept its pre-restore value. The re-assertion is idempotent (parameters
-  already correct are left untouched) and changes no serialization schema. Evidence:
-  `src/PluginProcessor.cpp` (`reassertParameters`, called from `setStateInformation`);
-  CI run `28356634850` (the `--randomise` gate that surfaced it). [Partially Verified] — mechanism
-  traced from the CI log (pre-restore value retained); `--randomise` gate re-confirmation pending.
+- **State restoration now round-trips every parameter exactly.** Two issues, both surfaced by the
+  `--randomise` *Plugin state restoration* gate: (1) a wholesale `apvts.replaceState` did not
+  reliably propagate to every parameter's cached value (an occasional param kept its pre-restore
+  value); (2) APVTS serialises the **denormalised/snapped** value, so a **discrete** param
+  (Bool/Choice/Int) given a raw normalised value mid-step (e.g. `Input Channel` at `0.177521` on a
+  3-choice) round-tripped to the nearest legal value — `>0.1` away — and pluginval flagged it "not
+  restored". Fix: `getStateInformation` additively records each parameter's **exact raw
+  `getValue()`** as a `raw` attribute on its `PARAM` node, and `setStateInformation` →
+  `reassertParameters` restores from `raw` (falling back to the denormalised `value` for legacy
+  sessions). Additive + backward-compatible (old sessions ignore `raw`; the APVTS `value` is
+  unchanged — no field removed/renamed). Evidence: `src/PluginProcessor.cpp`
+  (`getStateInformation` / `reassertParameters`); CI runs `28356632727`, `28388176607` (the
+  `--randomise` failures: discrete params "not restored"). See `SERIALIZATION_REGISTRY.md`.
 - **Linux:** tooltips no longer render opaque **black corners** outside the rounded capsule on X11
   without a compositor — `drawTooltip` now fills the corner area with the capsule colour when
   per-pixel window alpha is unavailable; macOS/Windows transparent corners are unchanged (KI-006).
