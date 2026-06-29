@@ -4,7 +4,7 @@ Operational status snapshot for technical handover. Update on every release
 (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.md`). Facts are Verified from the repository;
 fields with no repository evidence are marked `TODO` rather than invented (constraint C7).
 
-Snapshot taken at HEAD `41acaa7` (JUCE 8.0.14 upgrade).
+Snapshot taken at HEAD `c605fbe` (state-restoration + CI-gate hardening; JUCE 8.0.14).
 
 ## Operational status
 
