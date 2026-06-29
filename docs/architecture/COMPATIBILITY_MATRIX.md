@@ -9,7 +9,7 @@ Status taxonomy: **Verified** (provable from build/CI/code) · **Partially Verif
 | Format | Status | Evidence |
 |---|---|---|
 | **VST3** | **Verified** | Built on Linux/Windows/macOS; primary target; pluginval gate. CMakeLists.txt:80; build.yml all jobs |
-| **AU (Audio Unit)** | **Verified (build)** / **Unverified (host)** | Built on macOS as `.component` (universal); real Logic/GarageBand loading not tested in repo. CMakeLists.txt:81-83; build.yml:139-159 |
+| **AU (Audio Unit)** | **Verified (build)** / **Unverified (host)** | Built on macOS as `.component` (universal); real Logic/GarageBand loading not tested in repo. CMakeLists.txt:81-83; build.yml:150-170 |
 | **Standalone** | **Verified** | Built on all three OSes. CMakeLists.txt:84-86 |
 | **AAX** | **Not Supported** | Out of scope: needs an Avid account + PACE/iLok signing. docs/policies/COMPATIBILITY_POLICY.md. (DSP core is wrapper-agnostic, so a future AAX wrapper is low-cost, but it is explicitly not built today.) |
 
@@ -17,9 +17,9 @@ Status taxonomy: **Verified** (provable from build/CI/code) · **Partially Verif
 
 | Platform | Status | Evidence |
 |---|---|---|
-| **Linux x86-64** | **Verified (authoritative gate)** | CI builds VST3+Standalone; headless pluginval **strictness 10** under xvfb is the release gate. build.yml:22-58 |
-| **Windows x86-64** | **Verified (build)** / pluginval informational | MSVC build; pluginval `continue-on-error`. build.yml:60-105 |
-| **macOS universal (arm64 + x86_64)** | **Verified (build)** / pluginval informational | `CMAKE_OSX_ARCHITECTURES="arm64;x86_64"`, `lipo` verifies both slices; deployment target 10.13. build.yml:107-159 |
+| **Linux x86-64** | **Verified (authoritative gate)** | CI builds VST3+Standalone; headless pluginval **strictness 10** (deterministic + randomise×3) under xvfb is the release gate. build.yml:22-61 |
+| **Windows x86-64** | **Verified (build)** / pluginval informational | MSVC build; pluginval `continue-on-error`. build.yml:63-114 |
+| **macOS universal (arm64 + x86_64)** | **Verified (build)** / pluginval informational | `CMAKE_OSX_ARCHITECTURES="arm64;x86_64"`, `lipo` verifies both slices; deployment target 10.13. build.yml:116-178 |
 
 ## I/O layouts
 

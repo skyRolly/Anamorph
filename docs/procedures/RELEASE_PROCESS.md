@@ -8,8 +8,8 @@ the hard compatibility gate is `RELEASE_COMPATIBILITY_CHECKLIST.md`.
 1. **Version bump** — update `project(Anamorph VERSION x.y.z ...)` in `CMakeLists.txt:14`.
 2. **CHANGELOG** — add a dated, evidence-cited entry per `docs/policies/CHANGELOG_POLICY.md`
    (commit/PR reference; mark reconstructions).
-3. **Tests green** — `scripts/run-tests.sh` passes; `scripts/run-pluginval.sh 10` passes on Linux
-   (`TESTING.md`).
+3. **Tests green** — `scripts/run-tests.sh` passes; `scripts/run-pluginval.sh 10` passes on Linux in
+   **both modes** (`deterministic` and `randomise` ×3) (`TESTING.md`).
 4. **Compatibility gate** — complete every item in `RELEASE_COMPATIBILITY_CHECKLIST.md`.
 5. **Architecture Review** — if the release contains any
    `docs/policies/ARCHITECTURE_REVIEW_GATE.md` change, confirm human sign-off + an ADR.

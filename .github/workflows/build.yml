@@ -38,8 +38,11 @@ jobs:
       - name: DSP self-tests
         run: ./scripts/run-tests.sh
 
-      - name: pluginval (strictness 10 -- release gate)
-        run: ./scripts/run-pluginval.sh 10
+      - name: pluginval (strictness 10, deterministic -- release gate)
+        run: ./scripts/run-pluginval.sh 10 deterministic
+
+      - name: pluginval (strictness 10, randomise x3 -- release gate)
+        run: ./scripts/run-pluginval.sh 10 randomise
 
       - name: Stage Linux artifacts (VST3 + Standalone)
         if: always()
@@ -76,14 +79,20 @@ jobs:
           if (-not $exe) { Write-Error 'AnamorphTests.exe not found'; exit 1 }
           & $exe.FullName
 
-      - name: pluginval (strictness 10, informational)
+      - name: pluginval (strictness 10, deterministic + randomise x3, informational)
         continue-on-error: true
         shell: pwsh
         run: |
           Invoke-WebRequest -Uri https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_Windows.zip -OutFile pluginval.zip
           Expand-Archive -Force pluginval.zip -DestinationPath pluginval
-          $vst3 = Get-ChildItem -Recurse -Path build -Filter Anamorph.vst3 -Directory | Select-Object -First 1
-          & ".\pluginval\pluginval.exe" --strictness-level 10 --validate $vst3.FullName --timeout-ms 600000
+          $vst3 = (Get-ChildItem -Recurse -Path build -Filter Anamorph.vst3 -Directory | Select-Object -First 1).FullName
+          $pv = ".\pluginval\pluginval.exe"
+          & $pv --strictness-level 10 --random-seed 0 --validate $vst3 --timeout-ms 600000
+          if ($LASTEXITCODE -ne 0) { throw "pluginval deterministic FAILED ($LASTEXITCODE)" }
+          1..3 | ForEach-Object {
+            & $pv --strictness-level 10 --randomise --validate $vst3 --timeout-ms 600000
+            if ($LASTEXITCODE -ne 0) { throw "pluginval randomise pass $_ FAILED ($LASTEXITCODE)" }
+          }
 
       - name: Stage Windows artifacts (VST3 + Standalone)
         if: always()
@@ -128,13 +137,15 @@ jobs:
           chmod +x scripts/*.sh
           ./scripts/run-tests.sh
 
-      - name: pluginval (strictness 10, informational)
+      - name: pluginval (strictness 10, deterministic + randomise x3, informational)
         continue-on-error: true   # editor/window tests can be flaky on headless CI
         run: |
           curl -L https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_macOS.zip -o pluginval.zip
           unzip -o pluginval.zip >/dev/null
-          ./pluginval.app/Contents/MacOS/pluginval --strictness-level 10 --validate \
-            build/Anamorph_artefacts/Release/VST3/Anamorph.vst3
+          PV=./pluginval.app/Contents/MacOS/pluginval
+          VST3=build/Anamorph_artefacts/Release/VST3/Anamorph.vst3
+          "$PV" --strictness-level 10 --random-seed 0 --validate "$VST3"
+          for i in 1 2 3; do "$PV" --strictness-level 10 --randomise --validate "$VST3"; done
 
       - name: Package macOS plugins (VST3 + AU + Standalone)
         if: always()

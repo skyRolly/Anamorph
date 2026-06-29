@@ -22,6 +22,19 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   (policy entry-point); corrected documentation citations and aligned/clarified the signal-chain
   section comments in `EngineParameters.h` / `AnamorphEngine.cpp` (comment-only, no behaviour
   change). Evidence: commits `e83370d`, `2fe5e05`, `1914c52`, `655b6e4`. [Verified]
+- CI now gates pluginval at strictness 10 in **both modes** — deterministic (fixed seed) **and**
+  `--randomise` (3 consecutive passes) — on the Linux gate, to exercise state restoration under
+  randomised test order + fuzzing a fixed-seed run can miss. Evidence: `scripts/run-pluginval.sh`,
+  `.github/workflows/build.yml`. [Verified]
+### Fixed
+- **Linux:** tooltips no longer render opaque **black corners** outside the rounded capsule on X11
+  without a compositor — `drawTooltip` now fills the corner area with the capsule colour when
+  per-pixel window alpha is unavailable; macOS/Windows transparent corners are unchanged (KI-006).
+  Evidence: `src/gui/LookAndFeel.cpp` (`drawTooltip`). [Partially Verified] (Linux visual re-test pending)
+- Session restore now **clamps a corrupted / out-of-range A/B "active" index** so it can never index
+  the A/B slot arrays out of bounds; valid sessions are unaffected. Evidence:
+  `src/PluginProcessor.cpp` (`setStateInformation`), `src/AbSlotIndex.h`; regression test
+  `testAbActiveClampOnCorruptState`. [Verified]
 
 ## [0.8.7] — 2026-06-28
 ### Fixed

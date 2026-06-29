@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "AbSlotIndex.h"
 
 AnamorphAudioProcessor::AnamorphAudioProcessor()
     : AudioProcessor (BusesProperties()
@@ -357,7 +358,10 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
         auto ab = root.getChildWithName ("AB");
         if (ab.isValid())
         {
-            abActive = (int) ab.getProperty ("active", 0);
+            // Clamp on restore: a hand-edited / corrupted / forward-version blob can carry an
+            // out-of-range "active"; abSlot[]/abUndo[] are size-2, so an unclamped index would be
+            // an out-of-bounds access (anamorph::kNumAbSlots). Valid states (0/1) are unchanged.
+            abActive = anamorph::clampAbSlotIndex ((int) ab.getProperty ("active", 0));
             auto readSlot = [&ab] (StateSet& dst, const char* pk, const char* nk, const char* bk,
                                    const char* legacyKey)
             {

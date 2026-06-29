@@ -24,9 +24,9 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
 ## Upgrade rules
 
 1. A JUCE version bump is a **Build System change** → `ARCHITECTURE_REVIEW_GATE.md` + an ADR.
-2. After any bump: full DSP self-tests + pluginval strictness 10 on all three OSes, **and** a
-   manual audition (Level 5) — a JUCE change can move DSP/latency/editor behaviour invisibly to
-   the headless gate.
+2. After any bump: full DSP self-tests + pluginval strictness 10 in **both modes** (deterministic
+   and `--randomise` ×3) on all three OSes, **and** a manual audition (Level 5) — a JUCE change can
+   move DSP/latency/editor behaviour invisibly to the headless gate.
 3. Re-verify the `RELEASE_COMPATIBILITY_CHECKLIST.md` (latency reporting, session reload) after a bump.
 4. Prefer the offline path (`-DANAMORPH_JUCE_PATH`) for reproducibility in restricted CI.
 5. `JUCE_*` compile flags in `CMakeLists.txt:123-132` (no webview, no curl, no splash, strict

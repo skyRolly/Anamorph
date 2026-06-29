@@ -810,7 +810,19 @@ juce::Rectangle<int> AnamorphLookAndFeel::getTooltipBounds (const juce::String& 
 
 void AnamorphLookAndFeel::drawTooltip (juce::Graphics& g, const juce::String& text, int w, int h)
 {
-    auto b = juce::Rectangle<float> (0, 0, (float) w, (float) h).reduced (1.0f);
+    const auto full = juce::Rectangle<float> (0, 0, (float) w, (float) h);
+    auto b = full.reduced (1.0f);
+    // On platforms WITHOUT per-pixel window alpha (notably Linux/X11 with no compositor),
+    // juce::TooltipWindow cannot be semi-transparent, so the area OUTSIDE the rounded capsule
+    // renders the window's opaque fill -> black corners (KI-006). Pre-fill the whole bounds with
+    // the capsule colour so the corners match the capsule instead of rendering black. Where
+    // transparent windows ARE available (macOS / Windows / compositing Linux) the corners stay
+    // genuinely transparent -- no visual change there.
+    if (! juce::Desktop::getInstance().canUseSemiTransparentWindows())
+    {
+        g.setColour (colours::bgRaised);
+        g.fillRect (full);
+    }
     // Subtle glass capsule -- the previous version was too white / contrasty (#7).
     glass::fillPanel (g, b, 6.0f, colours::bgRaised, 0.7f);
     g.setColour (colours::accent.withAlpha (0.28f)); // faint accent hairline
