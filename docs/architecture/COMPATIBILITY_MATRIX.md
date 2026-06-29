@@ -47,7 +47,7 @@ without test evidence.`
 
 | Dependency | Pin | Status | Evidence |
 |---|---|---|---|
-| JUCE | tag **8.0.8** (FetchContent, `GIT_SHALLOW`) | **Verified** | CMakeLists.txt:33,44-50 |
+| JUCE | tag **8.0.14** (FetchContent, `GIT_SHALLOW`) | **Verified** | CMakeLists.txt:33,44-50 |
 | C++ standard | C++17 (`CMAKE_CXX_STANDARD 17`) | **Verified** | CMakeLists.txt:16-18 |
 | pluginval | latest release (downloaded by script) | **Verified** | scripts/run-pluginval.sh:34 |
 

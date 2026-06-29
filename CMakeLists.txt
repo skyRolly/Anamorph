@@ -30,7 +30,7 @@ option(ANAMORPH_BUILD_STANDALONE "Build the Standalone target for convenience" O
 # Allow pointing at a local JUCE checkout to avoid network in restricted CI.
 #   -DANAMORPH_JUCE_PATH=/path/to/JUCE
 set(ANAMORPH_JUCE_PATH "" CACHE STRING "Path to a local JUCE checkout (optional)")
-set(ANAMORPH_JUCE_TAG  "8.0.8" CACHE STRING "JUCE git tag to fetch when no local path is given")
+set(ANAMORPH_JUCE_TAG  "8.0.14" CACHE STRING "JUCE git tag to fetch when no local path is given")
 
 # ----------------------------------------------------------------------------
 #  Bring in JUCE

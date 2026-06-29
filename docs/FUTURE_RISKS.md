@@ -16,7 +16,7 @@ Verified against repository HEAD `1914c52` (version 0.8.7).
 ---
 
 ## RISK-001 — JUCE version bump
-- **Risk:** JUCE is pinned to exactly `8.0.8`. A future bump can silently change DSP behaviour
+- **Risk:** JUCE is pinned to exactly `8.0.14`. A future bump can silently change DSP behaviour
   (oversampling, Linkwitz-Riley filters, `dsp::AudioBlock`), reported latency, the parameter/state
   ABI, and the X11 editor-embedding path (the INC-006 crash lives in JUCE's host code).
 - **Impact:** Audible DSP/latency drift, session/automation incompatibility, or a returning editor

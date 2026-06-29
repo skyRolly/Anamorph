@@ -26,7 +26,7 @@ only — it configures and builds entirely from the command line on a headless L
 - Full matrix + status: `docs/architecture/COMPATIBILITY_MATRIX.md`.
 
 ## Requirements
-- **CMake ≥ 3.22**, a **C++17** compiler, **Ninja** (recommended). **JUCE 8.0.8** is fetched
+- **CMake ≥ 3.22**, a **C++17** compiler, **Ninja** (recommended). **JUCE 8.0.14** is fetched
   automatically (pinned via CMake `FetchContent`) or pointed at a local checkout.
 - Linux build deps install via `scripts/setup-linux.sh`. See `docs/procedures/BUILD.md`.
 

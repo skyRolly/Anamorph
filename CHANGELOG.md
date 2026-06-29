@@ -12,6 +12,11 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   `CHANGELOG.md`. Aligned stale signal-chain numbering comments in `EngineParameters.h` /
   `AnamorphEngine.cpp` to the actual chain (comment-only). Evidence: commits on
   `claude/beautiful-sagan-JAUFI` (`c9b7fdf`, `e83370d`, `a9e915e`, `2fe5e05`, `1914c52`). [Verified]
+### Changed
+- Upgraded the pinned **JUCE** dependency **8.0.8 → 8.0.14** (`CMakeLists.txt` `ANAMORPH_JUCE_TAG`).
+  Build/dependency change only — no DSP, signal-chain, parameter, or serialization changes. The
+  build + 23 DSP self-tests + pluginval (strictness 10) are re-validated by CI. Evidence:
+  `CMakeLists.txt:33`. [Verified]
 
 ## [0.8.7] — 2026-06-28
 ### Fixed

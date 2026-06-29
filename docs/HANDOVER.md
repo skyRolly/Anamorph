@@ -12,7 +12,7 @@ Snapshot taken at HEAD `1914c52`.
 |---|---|
 | **Current Version** | 0.8.7 (`CMakeLists.txt:14`; latest version commit `6a24b82`). |
 | **Branch Strategy** | Feature branch `claude/beautiful-sagan-JAUFI` → PRs into `main`. CI builds every branch; `main` carries shipped versions. (No git tags — see RISK-003.) |
-| **Build Status** | Green at v0.8.7 (`6a24b82`). Changes since are documentation + source **comment-only** (no behavior change), so the build is unaffected; re-run CI to confirm live. Build = CMake + JUCE 8.0.8, VST3 [+AU macOS] [+Standalone]. |
+| **Build Status** | Green at v0.8.7 (`6a24b82`) on JUCE 8.0.14. The **JUCE dependency was bumped 8.0.14 → 8.0.14** — re-verified by CI on push (the local sandbox cannot fetch JUCE under the egress policy). No DSP/source logic changed. Build = CMake + JUCE 8.0.14, VST3 [+AU macOS] [+Standalone]. |
 | **Test Status** | 23 DSP self-tests + pluginval strictness 10 (Linux gate). Last verified green at v0.8.7; comment/doc-only changes since cannot affect them. `docs/procedures/TESTING.md`. |
 | **Release Status** | Pre-1.0 (0.8.x line). Distribution = CI artifacts (Linux/Windows/macOS); macOS ad-hoc signed, **not notarized** (KI-002). No formal release tags. |
 | **Known Blockers** | None blocking a build/ship. Open items are KI-001…KI-005 (`KNOWN_ISSUES.md`) — none release-blocking. |
@@ -24,7 +24,7 @@ Snapshot taken at HEAD `1914c52`.
 
 | Dependency | Pin | Version-lock reason |
 |---|---|---|
-| **JUCE** | `8.0.8` (FetchContent, `CMakeLists.txt:33`) | Framework for all DSP, parameters/state, GUI, and plugin wrappers. An unpinned bump can silently change DSP/latency/state-ABI and the X11 editor path (INC-006 lives in JUCE). Pin = reproducible, audited behaviour. A bump is a Build System change (ADR + Review). See `docs/policies/DEPENDENCY_POLICY.md`, RISK-001. |
+| **JUCE** | `8.0.14` (FetchContent, `CMakeLists.txt:33`) | Framework for all DSP, parameters/state, GUI, and plugin wrappers. An unpinned bump can silently change DSP/latency/state-ABI and the X11 editor path (INC-006 lives in JUCE). Pin = reproducible, audited behaviour. A bump is a Build System change (ADR + Review). See `docs/policies/DEPENDENCY_POLICY.md`, RISK-001. |
 | **C++ standard** | C++17 (`CMakeLists.txt:16-18`) | The codebase targets C++17; raising it is a build-contract change. |
 | **pluginval** | latest release (downloaded) | The conformance gate (strictness 10). Not vendored; fetched by `scripts/run-pluginval.sh`. |
 | Linux system libs | distro (`scripts/setup-linux.sh`) | ALSA/JACK/X11/FreeType/GTK/WebKit/mesa/xvfb for headless build + validation. |

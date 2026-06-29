@@ -10,7 +10,7 @@ Diagnosing build, validation, and runtime problems. For the validation workflow 
 | Missing X11/ALSA/GTK headers on Linux | Build deps not installed | Run `scripts/setup-linux.sh`. |
 | `libwebkit2gtk-4.1-dev` not found | Newer/older Ubuntu | Try `libwebkit2gtk-4.0-dev` (setup-linux.sh:33). |
 | `AnamorphTests not found` when testing | Not built, or tests disabled | `scripts/build.sh`; ensure `ANAMORPH_BUILD_TESTS=ON`. |
-| Wrong/old JUCE behaviour | Stale fetched JUCE | Confirm the pinned tag `8.0.8` (CMakeLists.txt:33); a JUCE bump is a Build System change (ARCHITECTURE_REVIEW_GATE). |
+| Wrong/old JUCE behaviour | Stale fetched JUCE | Confirm the pinned tag `8.0.14` (CMakeLists.txt:33); a JUCE bump is a Build System change (ARCHITECTURE_REVIEW_GATE). |
 | Linker errors mixing JUCE modules | DSP compiled as a STATIC lib | The DSP core is an **INTERFACE** lib by design (CMakeLists.txt:54-73) — keep it INTERFACE; do not pre-compile JUCE modules into a static lib. |
 
 ## Validation (pluginval)

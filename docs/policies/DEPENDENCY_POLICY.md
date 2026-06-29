@@ -6,14 +6,14 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
 
 | Dependency | Pin | Mechanism | Evidence |
 |---|---|---|---|
-| **JUCE** | tag **8.0.8** | CMake `FetchContent` (`GIT_SHALLOW`), overridable via `-DANAMORPH_JUCE_PATH` | CMakeLists.txt:33,38-51 |
+| **JUCE** | tag **8.0.14** | CMake `FetchContent` (`GIT_SHALLOW`), overridable via `-DANAMORPH_JUCE_PATH` | CMakeLists.txt:33,38-51 |
 | **pluginval** | latest release (download) | `scripts/run-pluginval.sh` | run-pluginval.sh:34 |
 | **C++ standard** | C++17 | `CMAKE_CXX_STANDARD 17`, extensions off | CMakeLists.txt:16-18 |
 | Linux system libs | distro packages | `scripts/setup-linux.sh` (ALSA, JACK, X11, FreeType, GTK/WebKit, mesa, xvfb) | setup-linux.sh:21-29 |
 
 ## Version-lock reasoning
 
-- **JUCE is pinned to an exact tag (8.0.8)**, not a branch or `latest`. JUCE is the framework for
+- **JUCE is pinned to an exact tag (8.0.14)**, not a branch or `latest`. JUCE is the framework for
   the entire DSP (oversampling, Linkwitz-Riley filters, `dsp::AudioBlock`), parameter system
   (APVTS), GUI, and plugin-format wrappers — an unpinned bump can silently change DSP behaviour,
   latency, the editor/X11 embedding path (the 0.8.5 incident lives in JUCE's X11 host code), and
