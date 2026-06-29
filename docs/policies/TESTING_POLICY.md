@@ -16,18 +16,17 @@ Repository Governance Policy. Test acceptance levels and the release gate.
 
 - **Level 2/3 self-tests must pass** (the headless gate, `scripts/run-tests.sh`): the 23 DSP
   self-tests **and** the A/B state-restoration clamp guard.
-- **pluginval must pass at strictness 10 in BOTH modes** on the **Linux** authoritative gate:
-  **deterministic** (`run-pluginval.sh 10 deterministic`, fixed `--random-seed 0`) **and**
-  **randomised** (`run-pluginval.sh 10 randomise` — `--randomise`, run **3 consecutive** times, all
-  passing). The randomised gate exercises state restoration under randomised test order + fuzzing
-  that a fixed-seed run can miss; both modes are blocking. Windows/macOS run both modes too but
-  informational (`continue-on-error`) so a flaky GUI test on those runners never blocks tester
-  artifacts.
+- **pluginval must pass at strictness 10 in BOTH modes on ALL THREE platforms** (Linux, Windows,
+  macOS), each mode run as **3 consecutive passes**: **deterministic** (`run-pluginval.sh 10
+  deterministic`, fixed `--random-seed 0`) **and** **randomise** (`run-pluginval.sh 10 randomise` —
+  `--randomise`). The randomise mode exercises state restoration under randomised test order +
+  fuzzing that a fixed-seed run can miss. **All are blocking** — there is no `continue-on-error`; a
+  non-zero pluginval exit fails the job on every platform (Windows uses `run-pluginval.ps1`).
 - Level 5 is **required for final sign-off** but cannot gate CI; a green build + pluginval pass is
   "ready to audition," not "shipped."
 
-Evidence [Verified]: scripts/run-tests.sh; scripts/run-pluginval.sh (mode handling + signal-only
-retry); .github/workflows/build.yml (linux deterministic + randomise×3 gate; win/macOS informational).
+Evidence [Verified]: scripts/run-tests.sh; scripts/run-pluginval.sh / scripts/run-pluginval.ps1
+(mode handling + 3-pass loop + signal-only retry); .github/workflows/build.yml (uniform blocking gate).
 
 ## Rules
 

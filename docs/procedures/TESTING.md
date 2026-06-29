@@ -42,26 +42,28 @@ scripts/run-pluginval.sh                     # default strictness 8 (the working
 ```
 
 Strictness targets (spec 11.3): `5` development, `8` standard gate, `10` pre-release gold standard.
-`mode` is `deterministic` (default; fixed `--random-seed 0`) or `randomise` (`--randomise`, run **3
-consecutive** times — randomised test order + time-seeded fuzzing). **Both modes must pass at
-strictness 10** on the Linux gate: the randomised mode exercises state restoration under randomised
-conditions a fixed-seed run can miss. The script downloads pluginval if absent, finds the built
-`Anamorph.vst3`, and runs under `xvfb-run` when available (editor open/close tests need a display).
-Evidence [Verified]: scripts/run-pluginval.sh (usage header + mode handling).
+Each `mode` — `deterministic` (fixed `--random-seed 0`) and `randomise` (`--randomise`, randomised
+order + time-seeded fuzzing) — runs **3 consecutive** passes. **Both modes must pass at strictness 10
+on all three platforms** (Windows uses `run-pluginval.ps1`): the randomise mode exercises state
+restoration under randomised conditions a fixed-seed run can miss. The script downloads pluginval if
+absent, finds the built `Anamorph.vst3`, and runs under `xvfb-run` when available (Linux editor tests
+need a display). Evidence [Verified]: scripts/run-pluginval.sh / scripts/run-pluginval.ps1.
 
 ### Signal-only retry (known X11 host flake)
 
-`run-pluginval.sh` retries up to 3 times **only on a signal-crash** (exit ≥ 128), never on a real
-validation failure (exit < 128 fails immediately). The crash being worked around lives in
-**pluginval's own JUCE** X11 `XEmbedComponent` (a `ConfigureNotify`→`callAsync` use-after-free on
-rapid editor open/close), not in the plugin — the plugin already drops its OpenGL child window on
-Linux to cut that traffic (ADR-0011). Evidence [Verified]: scripts/run-pluginval.sh:46-76.
+`run-pluginval.sh` (and `run-pluginval.ps1` on Windows, without the X11-specific retry) treats a real
+validation failure (exit < 128) as a failure immediately. On Linux it retries up to 3 times **only on
+a signal-crash** (exit ≥ 128) to absorb a use-after-free in **pluginval's own JUCE** X11
+`XEmbedComponent` (a `ConfigureNotify`→`callAsync` on rapid editor open/close), not a plugin defect —
+the plugin already drops its OpenGL child window on Linux (ADR-0011). Evidence [Verified]:
+scripts/run-pluginval.sh (`run_one_pass` retry).
 
 ## CI integration
 
-All three CI jobs run the self-tests + pluginval in **both** modes (deterministic + randomise×3);
-**Linux strictness-10 is the blocking gate for both modes**, Windows/macOS are informational. See
-`CI_CD.md`. Evidence [Verified]: build.yml (linux deterministic + randomise×3 steps; win/macOS informational).
+All three CI jobs run the self-tests + pluginval in **both** modes (deterministic ×3 + randomise ×3),
+and **all three are blocking** — Windows/macOS no longer use `continue-on-error`, so a non-zero
+pluginval exit fails the job on every platform. Linux/macOS use `run-pluginval.sh`; Windows uses
+`run-pluginval.ps1`. See `CI_CD.md`. Evidence [Verified]: `.github/workflows/build.yml`.
 
 ## Failure analysis
 
