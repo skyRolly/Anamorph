@@ -13,6 +13,7 @@ Verified against repository HEAD `41acaa7` (version 0.8.7; JUCE 8.0.14).
 | KI-003 | pluginval Linux editor tests crash (external host-side JUCE) | Low | Confirmed, mitigated/external |
 | KI-004 | No automated DAW/host-compatibility testing | Medium | Confirmed (coverage gap) |
 | KI-005 | No graphical installer (manual copy install) | Low | Confirmed (packaging) |
+| KI-006 | Linux: tooltip rounded corners render an opaque black background instead of transparent | Low | Confirmed (Linux); UI/platform rendering only |
 
 ---
 
@@ -55,3 +56,24 @@ behaviour (Ableton/Logic/Cubase/Reaper/Pro Tools/...) is therefore **Unverified*
 Installation is a manual file copy to the platform plug-in folders (plus de-quarantine on macOS);
 the repository contains no `.pkg`/`.msi`/installer build.
 - **Evidence [Verified]:** no installer in the repository; packaging/macos/INSTALL.txt; `docs/procedures/PACKAGING.md` (TODO).
+
+## KI-006 — Linux tooltip corners render black instead of transparent
+On **Linux**, the rounded-capsule tooltip shows an **opaque black** fill in the corners (outside the
+rounded shape) rather than the transparent background, so the rounding reads as a black box. This is
+a **UI / platform rendering** observation only — it does **not** touch DSP, parameters, serialization,
+or session state, and is fully isolated from the pluginval state-restoration work.
+- **Platform matrix:** Linux — **Confirmed** (0.8.7 testing). Windows — **Unverified** (not yet
+  checked). macOS — **Not observed**.
+- **Root cause:** **not determined** (not assumed). The tooltip is painted as a 6 px rounded capsule
+  in `AnamorphLookAndFeel::drawTooltip` (src/gui/LookAndFeel.cpp:811-819). A *related, already-known*
+  precedent is documented for the popup menu — "rounded corners on an opaque … window leave bright
+  corner/edge artefacts on some hosts," which is why the menu is kept square (src/gui/LookAndFeel.cpp:543-545).
+  Whether the **same mechanism** applies to the tooltip window on Linux is **unconfirmed** and needs
+  platform diagnosis (e.g. the `TooltipWindow` backing surface / alpha handling); do not treat the
+  precedent as the proven cause.
+- **Evidence [Partially Verified]:** Anamorph 0.8.7 platform feedback (Linux); rendering path
+  src/gui/LookAndFeel.cpp:811-819. Cosmetic and low-impact: tooltips are **off by default**
+  (src/InternalState.h:51, `int_tooltipsOn = false`).
+- **Scope rule:** may be addressed independently as a LookAndFeel / `TooltipWindow` rendering change
+  **only if** it stays unrelated to DSP / state; it must **not** block or influence the
+  state/pluginval workflow.

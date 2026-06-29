@@ -36,5 +36,8 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
 
 - **JUCE 8.0.8 → 8.0.14** — recorded in **ADR-0012** (the first dependency bump enforced under rule 1
   above; the bootstrap use of this rule). Verified green by CI (build + 23 DSP self-tests + pluginval
-  strictness 10 on the Linux gate); commit `41acaa7`. The manual audition (rule 2, Level 5) is not
-  headlessly verifiable and remains a noted follow-up (`CHANGELOG.md [Unreleased]`, RISK-001).
+  strictness 10 on the Linux gate); commit `41acaa7`. The manual audition (rule 2, Level 5) **was
+  performed** post-CI by the maintainer — a DAW audition of 8.0.14 against the 8.0.8 baseline with no
+  perceptual regressions (2026-06-29) — and is recorded in **ADR-0012** (*Manual Audition (Level 5)*).
+  It is a human sign-off, not headlessly reproducible. The forward-looking risk for *future* bumps
+  stays tracked by RISK-001.
