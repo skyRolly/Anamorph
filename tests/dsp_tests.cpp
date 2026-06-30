@@ -12,8 +12,10 @@
 // ============================================================================
 
 #include <juce_dsp/juce_dsp.h>
+#include <juce_data_structures/juce_data_structures.h>
 #include "dsp/AnamorphEngine.h"
 #include "dsp/MidSide.h"
+#include "AbSlotIndex.h"
 
 #include <algorithm>
 #include <cmath>
@@ -1219,6 +1221,42 @@ static void testSoloMultibandEnableClickFree()
 }
 
 // ---------------------------------------------------------------------------
+//  State-restoration robustness (NOT a DSP test): a corrupted / hand-edited /
+//  forward-version session can carry an out-of-range A/B "active" index. The
+//  restore path (PluginProcessor.cpp setStateInformation) must clamp it so it
+//  can never index the size-2 abSlot[]/abUndo[] arrays out of bounds. We can't
+//  link the full AudioProcessor headlessly (no juce_audio_processors here), so we
+//  drive the SAME corrupted "AB" ValueTree through the SAME read+clamp expression
+//  the processor uses (anamorph::clampAbSlotIndex). This fails on the pre-fix code
+//  (unclamped (int)getProperty would yield 2/3/-1) and passes on the fix.
+static void testAbActiveClampOnCorruptState()
+{
+    std::printf ("State test: A/B active-slot clamp on corrupted state\n");
+
+    // A real corrupted blob: the "AB" child carries an out-of-range active index.
+    for (int corrupt : { -100, -1, 2, 3, 99 })
+    {
+        auto xml = juce::parseXML ("<AB active=\"" + juce::String (corrupt) + "\"/>");
+        check (xml != nullptr, "corrupted AB XML parses");
+        auto ab = juce::ValueTree::fromXml (*xml);
+
+        // EXACTLY mirrors PluginProcessor.cpp setStateInformation.
+        const int slot = anamorph::clampAbSlotIndex ((int) ab.getProperty ("active", 0));
+        check (slot >= 0 && slot < anamorph::kNumAbSlots,
+               "corrupted active index clamps to a valid in-bounds A/B slot");
+    }
+
+    // Valid states (0 = A, 1 = B) must round-trip UNCHANGED (no behaviour change).
+    for (int valid : { 0, 1 })
+    {
+        auto xml = juce::parseXML ("<AB active=\"" + juce::String (valid) + "\"/>");
+        auto ab  = juce::ValueTree::fromXml (*xml);
+        const int slot = anamorph::clampAbSlotIndex ((int) ab.getProperty ("active", 0));
+        check (slot == valid, "valid active index is preserved exactly");
+    }
+}
+
+// ---------------------------------------------------------------------------
 int main()
 {
     std::printf ("=== Anamorph DSP self-tests ===\n");
@@ -1245,6 +1283,7 @@ int main()
     testBypassCrossfadeClickFree();
     testMultibandEnableCrossfadeClickFree();
     testSoloMultibandEnableClickFree();
+    testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);
     if (failures == 0) { std::printf ("ALL TESTS PASSED\n"); return 0; }

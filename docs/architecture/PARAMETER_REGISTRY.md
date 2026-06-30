@@ -18,8 +18,8 @@ Evidence [Verified]: src/PluginParameters.cpp:13 (`kVersion = 1`), :67-68; src/P
 ## APVTS parameters (host-visible)
 
 Type: F=AudioParameterFloat, C=AudioParameterChoice, B=AudioParameterBool, I=AudioParameterInt.
-"Host Visible" = appears in the host's parameter/automation list (every VST3 APVTS parameter
-does, regardless of the automatable flag — see note ‡). "Auto Safe" = `withAutomatable(true)`.
+"Host Visible" = appears in the host's parameter/automation list (every VST3 APVTS parameter does).
+"Auto Safe" = `withAutomatable(true)` (now true for **all** APVTS params).
 "Serialized" = saved in `apvts.copyState()`. Exclusions (A/B, Undo, Preset) in footnotes.
 
 | ID | Display name | Type | Default | Range | Host Visible | Auto Safe | Serialized |
@@ -32,18 +32,18 @@ does, regardless of the automatable flag — see note ‡). "Auto Safe" = `withA
 | `polarityR` | Phase Invert R/S | B | false | — | yes | yes | yes |
 | `msMode` | M/S Mode | B | false | — | yes | yes | yes |
 | `drive` | Drive | F | 0.0 | 0..24 dB | yes | yes | yes |
-| `algorithm` | Algorithm | C | Velvet Noise (1) | Haas/Velvet Noise/Chorus/Dim-D | yes | yes | yes |
+| `algorithm` | Widen Algorithm | C | Velvet Noise (1) | Haas/Velvet Noise/Chorus/Dim-D | yes | yes | yes |
 | `amount` | Amount | F | 0.0 | 0..1 | yes | yes | yes |
 | `haasDelay` | Haas Delay | F | 12.0 | 1..35 ms | yes | yes | yes |
 | `haasSide` | Haas Focus ‖ | C | Left (0) | Left/Right | yes | yes | yes |
 | `velvetDensity` | Velvet Density | F | 0.5 | 0..1 | yes | yes | yes |
 | `chorusRate` | Chorus Rate | F | 0.5 | 0.05..5 Hz (skew 0.4) | yes | yes | yes |
 | `chorusDepth` | Chorus Depth | F | 0.5 | 0..1 | yes | yes | yes |
-| `dimMode` | Dimension Mode | C | Classic (1) | Subtle/Classic/Wide/Lush | yes | yes | yes |
+| `dimMode` | Dim-D Style | C | Classic (1) | Subtle/Classic/Wide/Lush | yes | yes | yes |
 | `width` | Width | F | 1.0 | 0..2 | yes | yes | yes |
 | `mbEnable` | Multiband Enable | B | **true** ¶ | — | yes | yes | yes |
-| `mbBands` | Multiband Bands | I | 4 | 1..4 | yes ‡ | **no** | yes |
-| `mbSolo` | Multiband Solo | I | 0 | 0..15 (4-bit mask) | yes ‡ | **no** | yes † |
+| `mbBands` | Multiband Bands | I | 4 | 1..4 | yes | yes | yes |
+| `mbSolo` | Multiband Solo | I | 0 | 0..15 (4-bit mask) | yes | yes | yes † |
 | `mbFreqLow` | Multiband Split 1 | F | 180.0 | 20..20000 Hz (log) | yes | yes | yes |
 | `mbFreqMid` | Multiband Split 2 | F | 800.0 | 20..20000 Hz (log) | yes | yes | yes |
 | `mbFreqHigh` | Multiband Split 3 | F | 3000.0 | 20..20000 Hz (log) | yes | yes | yes |
@@ -64,9 +64,9 @@ does, regardless of the automatable flag — see note ‡). "Auto Safe" = `withA
 36 APVTS parameters. Evidence [Verified]: src/PluginParameters.cpp:114-198.
 
 Footnotes:
-- **‡** `withAutomatable(false)` is set on `mbBands`/`mbSolo`, but it does **not** hide them in
-  all hosts (REAPER lists every VST3 parameter). They remain host-visible; only the automatable
-  flag is off. Source: src/PluginParameters.cpp:148-156, :183-190.
+- **‡** `mbBands`/`mbSolo` are now **fully automatable and visible** in the host's automation list
+  (the previous `withAutomatable(false)` was removed); they are still primarily driven by the
+  drag-to-split display. Source: src/PluginParameters.cpp (`mbBands`/`mbSolo`, no `withAutomatable`).
 - **†** `mbSolo` is **excluded from presets** (`isPresetExcluded`): a preset load resets solo to
   off. It still travels with A/B + Undo. Source: src/PluginParameters.h:84-87.
 - **◊** `bypass` is a **view param** (`pid::viewParams`): excluded from A/B, Undo, and presets,

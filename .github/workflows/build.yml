@@ -14,15 +14,18 @@ permissions:
 #   * Linux   -> VST3 + Standalone
 #   * Windows -> VST3 + Standalone
 #   * macOS   -> VST3 + AU + Standalone  (universal arm64 + x86_64)
-# Linux is the authoritative validation gate (headless pluginval at strictness
-# 10 under xvfb). Windows/macOS run pluginval too, but only informationally, so
-# a flaky GUI test on those runners never blocks the tester artifacts.
+#
+# Validation is UNIFORM across all three platforms and BLOCKING on each:
+# pluginval at strictness 10, run in two explicit modes -- deterministic and
+# randomise -- each repeated 3 consecutive times (scripts/run-pluginval.sh on
+# Linux/macOS, scripts/run-pluginval.ps1 on Windows). A non-zero pluginval exit
+# fails the job on every platform (no continue-on-error / swallowed exit codes).
 
 jobs:
   linux:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install build dependencies
         run: |
@@ -38,8 +41,11 @@ jobs:
       - name: DSP self-tests
         run: ./scripts/run-tests.sh
 
-      - name: pluginval (strictness 10 -- release gate)
-        run: ./scripts/run-pluginval.sh 10
+      - name: pluginval (strictness 10, deterministic x3 -- release gate)
+        run: ./scripts/run-pluginval.sh 10 deterministic
+
+      - name: pluginval (strictness 10, randomise x3 -- release gate)
+        run: ./scripts/run-pluginval.sh 10 randomise
 
       - name: Stage Linux artifacts (VST3 + Standalone)
         if: always()
@@ -51,7 +57,7 @@ jobs:
 
       - name: Upload Linux artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: Anamorph-Linux
           path: dist/Anamorph-Linux
@@ -60,7 +66,7 @@ jobs:
   windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # Default Visual Studio generator (multi-config); MSVC is auto-detected.
       - name: Configure
@@ -76,14 +82,13 @@ jobs:
           if (-not $exe) { Write-Error 'AnamorphTests.exe not found'; exit 1 }
           & $exe.FullName
 
-      - name: pluginval (strictness 10, informational)
-        continue-on-error: true
+      - name: pluginval (strictness 10, deterministic x3 -- release gate)
         shell: pwsh
-        run: |
-          Invoke-WebRequest -Uri https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_Windows.zip -OutFile pluginval.zip
-          Expand-Archive -Force pluginval.zip -DestinationPath pluginval
-          $vst3 = Get-ChildItem -Recurse -Path build -Filter Anamorph.vst3 -Directory | Select-Object -First 1
-          & ".\pluginval\pluginval.exe" --strictness-level 10 --validate $vst3.FullName --timeout-ms 600000
+        run: ./scripts/run-pluginval.ps1 -Strictness 10 -Mode deterministic
+
+      - name: pluginval (strictness 10, randomise x3 -- release gate)
+        shell: pwsh
+        run: ./scripts/run-pluginval.ps1 -Strictness 10 -Mode randomise
 
       - name: Stage Windows artifacts (VST3 + Standalone)
         if: always()
@@ -98,7 +103,7 @@ jobs:
 
       - name: Upload Windows artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: Anamorph-Windows
           path: dist/Anamorph-Windows
@@ -107,7 +112,7 @@ jobs:
   macos:
     runs-on: macos-14   # Apple Silicon runner; we build a universal binary
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install build tools
         run: brew install ninja || true
@@ -128,13 +133,11 @@ jobs:
           chmod +x scripts/*.sh
           ./scripts/run-tests.sh
 
-      - name: pluginval (strictness 10, informational)
-        continue-on-error: true   # editor/window tests can be flaky on headless CI
-        run: |
-          curl -L https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_macOS.zip -o pluginval.zip
-          unzip -o pluginval.zip >/dev/null
-          ./pluginval.app/Contents/MacOS/pluginval --strictness-level 10 --validate \
-            build/Anamorph_artefacts/Release/VST3/Anamorph.vst3
+      - name: pluginval (strictness 10, deterministic x3 -- release gate)
+        run: ./scripts/run-pluginval.sh 10 deterministic
+
+      - name: pluginval (strictness 10, randomise x3 -- release gate)
+        run: ./scripts/run-pluginval.sh 10 randomise
 
       - name: Package macOS plugins (VST3 + AU + Standalone)
         if: always()
@@ -160,7 +163,7 @@ jobs:
 
       - name: Upload macOS plugins (VST3 + AU + Standalone)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: Anamorph-macOS
           path: dist/Anamorph-macOS

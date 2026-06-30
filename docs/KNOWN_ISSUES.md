@@ -4,7 +4,7 @@
 in `POSTMORTEMS.md`, not here. Each entry is evidence-backed (constraint C7). When an item is
 fixed, remove it here and (if notable) add a `POSTMORTEMS.md` entry.
 
-Verified against repository HEAD `41acaa7` (version 0.8.7; JUCE 8.0.14).
+Verified against repository HEAD `c605fbe` (version 0.8.7; JUCE 8.0.14).
 
 | ID | Issue | Severity | Status |
 |---|---|---|---|
@@ -13,6 +13,7 @@ Verified against repository HEAD `41acaa7` (version 0.8.7; JUCE 8.0.14).
 | KI-003 | pluginval Linux editor tests crash (external host-side JUCE) | Low | Confirmed, mitigated/external |
 | KI-004 | No automated DAW/host-compatibility testing | Medium | Confirmed (coverage gap) |
 | KI-005 | No graphical installer (manual copy install) | Low | Confirmed (packaging) |
+| KI-006 | Linux: tooltip rounded corners render an opaque black background instead of transparent | Low | Fix applied (LookAndFeel); Linux visual re-test pending |
 
 ---
 
@@ -34,7 +35,7 @@ a stand-alone `mbEnable` toggle (the common case) is unaffected and stays warm.
 CI ad-hoc codesigns the macOS bundles but does **not** notarize them, so Gatekeeper quarantines
 them after download and the user must run `xattr -dr com.apple.quarantine` before the DAW will load
 them.
-- **Evidence [Verified]:** .github/workflows/build.yml:148-151 (`codesign --sign -`, no notarization);
+- **Evidence [Verified]:** .github/workflows/build.yml:159-162 (`codesign --sign -`, no notarization);
   packaging/macos/INSTALL.txt:4-10,30-33. See `docs/procedures/PACKAGING.md`.
 
 ## KI-003 — pluginval Linux editor tests crash (external)
@@ -55,3 +56,23 @@ behaviour (Ableton/Logic/Cubase/Reaper/Pro Tools/...) is therefore **Unverified*
 Installation is a manual file copy to the platform plug-in folders (plus de-quarantine on macOS);
 the repository contains no `.pkg`/`.msi`/installer build.
 - **Evidence [Verified]:** no installer in the repository; packaging/macos/INSTALL.txt; `docs/procedures/PACKAGING.md` (TODO).
+
+## KI-006 — Linux tooltip corners render black instead of transparent
+On **Linux**, the rounded-capsule tooltip showed an **opaque black** fill in the corners (outside the
+rounded shape) rather than the transparent background, so the rounding read as a black box. This is a
+**UI / platform rendering** issue only — it does **not** touch DSP, parameters, serialization, or
+session state, and is fully isolated from the pluginval state-restoration work.
+- **Platform matrix:** Linux — Confirmed (0.8.7 testing). Windows — Unverified. macOS — Not observed.
+- **Mechanism:** on platforms **without per-pixel window alpha** (Linux/X11 with no compositor),
+  `juce::TooltipWindow` cannot be semi-transparent, so the area **outside** the rounded capsule
+  renders the window's opaque (black) fill. This is the same class of artefact already documented for
+  the popup menu, which is kept square for exactly this reason (src/gui/LookAndFeel.cpp:543-545).
+- **Fix [code Verified; Linux visual re-test pending]:** `AnamorphLookAndFeel::drawTooltip`
+  (src/gui/LookAndFeel.cpp) now pre-fills the full tooltip bounds with the capsule colour when
+  `juce::Desktop::canUseSemiTransparentWindows()` is `false`, so the corners match the capsule rather
+  than rendering black. Where transparent windows ARE available (macOS / Windows / compositing Linux)
+  the corners stay genuinely transparent — **no macOS/Windows visual change**. The headless gate
+  cannot judge GUI appearance (TESTING_POLICY Level 5), so a **Linux visual re-test by the maintainer**
+  is needed to fully close this; until then it stays listed here rather than moved to POSTMORTEMS.
+- **Evidence:** src/gui/LookAndFeel.cpp `drawTooltip` (the alpha-gated corner fill); 0.8.7 Linux
+  feedback. Cosmetic, low-impact: tooltips are **off by default** (src/InternalState.h:51).

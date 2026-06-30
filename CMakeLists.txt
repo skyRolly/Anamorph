@@ -160,6 +160,7 @@ if(ANAMORPH_BUILD_TESTS)
             AnamorphDSP
             juce::juce_dsp
             juce::juce_audio_basics
+            juce::juce_data_structures   # ValueTree for the state-restoration clamp test
         PUBLIC
             juce::juce_recommended_config_flags
             juce::juce_recommended_warning_flags)

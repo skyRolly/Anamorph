@@ -15,12 +15,16 @@ scripts/run-tests.sh             # runs the AnamorphTests console app
 
 ### What the tests cover
 
-`tests/dsp_tests.cpp` has **23** tests using a `check(cond, "what")` harness, covering: MS
+`tests/dsp_tests.cpp` has **23 DSP tests** using a `check(cond, "what")` harness, covering: MS
 round-trip (bit-exact), transparent default, true-bypass null + latency match, Mono Maker
 (post-Mix), Multiband mono-compat, Solo band selectivity + transparency, Level Match
 (unity/no-ratchet/silence-freeze/mix-coupling/multiband-unity), crossover automation safety,
 NaN recovery, and four click-free crossfade tests (transitions, bypass, multiband enable,
-solo+multiband-enable). Evidence [Verified]: tests/dsp_tests.cpp (test functions :53-1218, `main` :1222).
+solo+multiband-enable). It additionally carries **one state-restoration robustness guard**,
+`testAbActiveClampOnCorruptState` — it drives a corrupted `<AB active="…">` blob through the same
+read+clamp the processor uses (`anamorph::clampAbSlotIndex`, `src/AbSlotIndex.h`) and asserts an
+out-of-range A/B index can never index `abSlot[]`/`abUndo[]` out of bounds, while valid 0/1 are
+preserved. Evidence [Verified]: tests/dsp_tests.cpp (`main` registers all tests).
 
 ### Adding a test
 
@@ -31,27 +35,35 @@ project's established practice; `docs/policies/TESTING_POLICY.md`). Use the exis
 ## pluginval (VST3 conformance)
 
 ```bash
-scripts/run-pluginval.sh 10      # strictness 10 = the release gate
-scripts/run-pluginval.sh         # default strictness 8 (the working bar)
+scripts/run-pluginval.sh 10 deterministic   # strictness 10, fixed seed (release gate, mode A)
+scripts/run-pluginval.sh 10 randomise        # strictness 10, --randomise x3 (release gate, mode B)
+scripts/run-pluginval.sh 10                  # strictness 10, deterministic (default mode)
+scripts/run-pluginval.sh                     # default strictness 8 (the working bar)
 ```
 
 Strictness targets (spec 11.3): `5` development, `8` standard gate, `10` pre-release gold standard.
-The script downloads pluginval if absent, finds the built `Anamorph.vst3`, and runs under
-`xvfb-run` when available (editor open/close tests need a display).
-Evidence [Verified]: scripts/run-pluginval.sh:8-44.
+Each `mode` — `deterministic` (fixed `--random-seed 0`) and `randomise` (`--randomise`, randomised
+order + time-seeded fuzzing) — runs **3 consecutive** passes. **Both modes must pass at strictness 10
+on all three platforms** (Windows uses `run-pluginval.ps1`): the randomise mode exercises state
+restoration under randomised conditions a fixed-seed run can miss. The script downloads pluginval if
+absent, finds the built `Anamorph.vst3`, and runs under `xvfb-run` when available (Linux editor tests
+need a display). Evidence [Verified]: scripts/run-pluginval.sh / scripts/run-pluginval.ps1.
 
 ### Signal-only retry (known X11 host flake)
 
-`run-pluginval.sh` retries up to 3 times **only on a signal-crash** (exit ≥ 128), never on a real
-validation failure (exit < 128 fails immediately). The crash being worked around lives in
-**pluginval's own JUCE** X11 `XEmbedComponent` (a `ConfigureNotify`→`callAsync` use-after-free on
-rapid editor open/close), not in the plugin — the plugin already drops its OpenGL child window on
-Linux to cut that traffic (ADR-0011). Evidence [Verified]: scripts/run-pluginval.sh:46-76.
+`run-pluginval.sh` (and `run-pluginval.ps1` on Windows, without the X11-specific retry) treats a real
+validation failure (exit < 128) as a failure immediately. On Linux it retries up to 3 times **only on
+a signal-crash** (exit ≥ 128) to absorb a use-after-free in **pluginval's own JUCE** X11
+`XEmbedComponent` (a `ConfigureNotify`→`callAsync` on rapid editor open/close), not a plugin defect —
+the plugin already drops its OpenGL child window on Linux (ADR-0011). Evidence [Verified]:
+scripts/run-pluginval.sh (`run_one_pass` retry).
 
 ## CI integration
 
-All three CI jobs run the self-tests + pluginval; **Linux strictness-10 is the blocking gate**,
-Windows/macOS are informational. See `CI_CD.md`. Evidence [Verified]: build.yml:38-42,72-86,126-137.
+All three CI jobs run the self-tests + pluginval in **both** modes (deterministic ×3 + randomise ×3),
+and **all three are blocking** — Windows/macOS no longer use `continue-on-error`, so a non-zero
+pluginval exit fails the job on every platform. Linux/macOS use `run-pluginval.sh`; Windows uses
+`run-pluginval.ps1`. See `CI_CD.md`. Evidence [Verified]: `.github/workflows/build.yml`.
 
 ## Failure analysis
 

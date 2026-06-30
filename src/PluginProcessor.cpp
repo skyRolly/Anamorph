@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "AbSlotIndex.h"
 
 AnamorphAudioProcessor::AnamorphAudioProcessor()
     : AudioProcessor (BusesProperties()
@@ -181,10 +182,11 @@ void AnamorphAudioProcessor::syncCommitted()
     lastPolledSig = committedSig;
 }
 
-// A full snapshot: parameters PLUS the live preset name + clean baseline (#6).
+// A full snapshot: parameters PLUS the live preset name + clean baseline (#6). The params carry the
+// additive `raw` attribute so A/B slots + undo round-trip discrete params exactly (no snap drift).
 AnamorphAudioProcessor::StateSet AnamorphAudioProcessor::currentStateSet()
 {
-    return { apvts.copyState(), presets.currentName(), presets.baseline() };
+    return { copyStateWithRawValues(), presets.currentName(), presets.baseline() };
 }
 
 // Restore a state set: parameters (keeping the shared view params) AND the
@@ -203,9 +205,53 @@ void AnamorphAudioProcessor::applyStatePreservingView (const juce::ValueTree& ta
         saved[i] = apvts.getParameter (pid::viewParams[i])->getValue();
 
     apvts.replaceState (target.createCopy());
+    // Synchronously force every parameter to its exact (raw) value from the snapshot, so undo /
+    // redo / A-B apply propagate exactly like host state restore -- replaceState alone can leave a
+    // param at a stale/snapped value (see reassertParameters). View params are re-overridden below.
+    reassertParameters (target);
 
     for (size_t i = 0; i < std::size (pid::viewParams); ++i)
         apvts.getParameter (pid::viewParams[i])->setValueNotifyingHost (saved[i]);
+}
+
+// apvts.copyState() with each PARAM node additively stamped with its exact raw getValue(): pluginval
+// sets RAW normalised values and expects them back within 0.1, but APVTS serialises the DENORMALISED
+// (snapped) value, which for discrete params (Bool/Choice/Int) can be >0.1 from the raw value. The
+// `raw` attribute carries the exact value so the round-trip is bit-faithful. Additive + backward-
+// compatible: the APVTS `value` is unchanged, old sessions/plugins ignore `raw` (no removal/rename).
+juce::ValueTree AnamorphAudioProcessor::copyStateWithRawValues()
+{
+    auto tree = apvts.copyState();
+    for (auto param : tree)
+        if (param.hasType ("PARAM"))
+            if (auto* p = apvts.getParameter (param.getProperty ("id").toString()))
+                param.setProperty ("raw", p->getValue(), nullptr);
+    return tree;
+}
+
+// Synchronously force every parameter to its restored value, from the just-restored tree:
+//  1. A wholesale apvts.replaceState() does not reliably push every parameter's value through to
+//     its cached/atomic getValue() synchronously (some params kept their PRE-restore value).
+//  2. APVTS stores the DENORMALISED (snapped) value; for discrete params the saved "raw" attribute
+//     (see getStateInformation) carries the EXACT normalised getValue() pluginval set, so the
+//     round-trip is bit-faithful and passes its 0.1 raw-value tolerance.
+// Prefer "raw" (exact); fall back to the denormalised "value" for legacy sessions that lack it.
+// Idempotent: parameters already at the target value are left untouched (no spurious host notify).
+void AnamorphAudioProcessor::reassertParameters (const juce::ValueTree& restoredApvtsTree)
+{
+    if (! restoredApvtsTree.isValid()) return;
+
+    for (auto* p : getParameters())
+        if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p))
+            if (auto node = restoredApvtsTree.getChildWithProperty ("id", rp->paramID); node.isValid())
+            {
+                const float norm = node.hasProperty ("raw")
+                    ? juce::jlimit (0.0f, 1.0f, (float) node.getProperty ("raw"))
+                    : juce::jlimit (0.0f, 1.0f, rp->convertTo0to1 ((float) node.getProperty ("value",
+                                                                   rp->convertFrom0to1 (rp->getValue()))));
+                if (std::abs (norm - rp->getValue()) > 1.0e-6f)
+                    rp->setValueNotifyingHost (norm);
+            }
 }
 
 void AnamorphAudioProcessor::pollUndoCoalesce()
@@ -272,6 +318,7 @@ void AnamorphAudioProcessor::abApplySlot (int slot)
 
 void AnamorphAudioProcessor::abSwitchTo (int slot)
 {
+    slot = juce::jlimit (0, anamorph::kNumAbSlots - 1, slot); // defensive: never index out of bounds
     abEnsureInit();
     if (slot == abActive) return;
     engine.requestDuck();                              // mask the level jump (#1, 0.6.4)
@@ -307,7 +354,7 @@ void AnamorphAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
     juce::ValueTree root ("AnamorphRoot");
     root.setProperty ("presetName", presets.currentName(), nullptr);     // remembered across sessions (F2)
     root.setProperty ("presetBaseline", presets.baseline(), nullptr);    // so the dirty-star survives reload (#6)
-    root.appendChild (apvts.copyState(), nullptr);
+    root.appendChild (copyStateWithRawValues(), nullptr); // APVTS state + exact "raw" values per PARAM
     root.appendChild (internal.copyState(), nullptr); // host-hidden Settings / view state
     juce::ValueTree ab ("AB");
     ab.setProperty ("active", abActive, nullptr);
@@ -335,7 +382,11 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
     if (root.hasType ("AnamorphRoot"))
     {
         auto params = root.getChildWithName (apvts.state.getType());
-        if (params.isValid()) apvts.replaceState (params.createCopy());
+        if (params.isValid())
+        {
+            apvts.replaceState (params.createCopy());
+            reassertParameters (params); // force every parameter through synchronously (see below)
+        }
 
         // Restore the host-hidden Settings / view state (Oversampling, Window Size,
         // Persistence, Tooltips, Animations, Show Meters). A changed Oversampling fires
@@ -357,7 +408,10 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
         auto ab = root.getChildWithName ("AB");
         if (ab.isValid())
         {
-            abActive = (int) ab.getProperty ("active", 0);
+            // Clamp on restore: a hand-edited / corrupted / forward-version blob can carry an
+            // out-of-range "active"; abSlot[]/abUndo[] are size-2, so an unclamped index would be
+            // an out-of-bounds access (anamorph::kNumAbSlots). Valid states (0/1) are unchanged.
+            abActive = anamorph::clampAbSlotIndex ((int) ab.getProperty ("active", 0));
             auto readSlot = [&ab] (StateSet& dst, const char* pk, const char* nk, const char* bk,
                                    const char* legacyKey)
             {
@@ -380,7 +434,9 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
     }
     else if (xml->hasTagName (apvts.state.getType())) // backward-compat (v0.2)
     {
-        apvts.replaceState (juce::ValueTree::fromXml (*xml));
+        auto legacy = juce::ValueTree::fromXml (*xml);
+        apvts.replaceState (legacy);
+        reassertParameters (legacy);
     }
 
     // Fresh session: clear undo history.

@@ -66,7 +66,7 @@ Anamorph/
 | `scripts/setup-linux.sh` | Ubuntu build dependencies (+ xvfb). |
 | `scripts/build.sh` | CMake + Ninja build; prints artifact paths. |
 | `scripts/run-tests.sh` | Runs `AnamorphTests`. |
-| `scripts/run-pluginval.sh` | pluginval (strictness arg; signal-only retry for the X11 host flake). |
+| `scripts/run-pluginval.sh` | pluginval (strictness + mode args — `deterministic` \| `randomise`×3; signal-only retry for the X11 host flake). |
 | `packaging/macos/INSTALL.txt` | macOS install + de-quarantine instructions (ad-hoc signed, not notarized). |
 | `.github/workflows/build.yml` | 3-OS build + DSP tests + pluginval; Linux strictness-10 is the blocking gate. |
 

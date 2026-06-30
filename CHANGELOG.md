@@ -16,11 +16,61 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 - Upgraded the pinned **JUCE** dependency **8.0.8 → 8.0.14** (`CMakeLists.txt` `ANAMORPH_JUCE_TAG`;
   see ADR-0012). Build/dependency change only — no DSP, signal-chain, parameter, or serialization
   changes; CI re-validates the build + 23 DSP self-tests + pluginval (strictness 10), green on the
-  Linux gate. Evidence: `CMakeLists.txt:33`; commit `41acaa7`. [Verified]
+  Linux gate. The post-upgrade manual audition (Level 5) against the 8.0.8 baseline found no
+  perceptual regressions (ADR-0012). Evidence: `CMakeLists.txt:33`; commit `41acaa7`. [Verified]
 - Refactored the root `README.md` (slimmed; version history moved into this file) and `CLAUDE.md`
   (policy entry-point); corrected documentation citations and aligned/clarified the signal-chain
   section comments in `EngineParameters.h` / `AnamorphEngine.cpp` (comment-only, no behaviour
   change). Evidence: commits `e83370d`, `2fe5e05`, `1914c52`, `655b6e4`. [Verified]
+- CI pluginval gate **unified and hardened across all three platforms**: each of Linux, Windows and
+  macOS now runs pluginval at strictness 10 in **two explicit, blocking steps** — deterministic
+  (`--random-seed 0`) **and** `--randomise` — **each repeated 3 consecutive times**. The previous
+  Windows/macOS `continue-on-error` (which swallowed `exit 1` and reported a false green) is removed;
+  a non-zero pluginval exit now fails the job on every platform. Linux/macOS use
+  `scripts/run-pluginval.sh`, Windows uses the new `scripts/run-pluginval.ps1` (same structure).
+  `actions/checkout` and `actions/upload-artifact` bumped `v4 → v5` (clears the Node 20 deprecation
+  warning). Evidence: `.github/workflows/build.yml`, `scripts/run-pluginval.sh`,
+  `scripts/run-pluginval.ps1`.
+- **Parameter display-name renames** (parameter **IDs unchanged**, so automation/state survive):
+  "Algorithm" → **"Widen Algorithm"** and "Dimension Mode" → **"Dim-D Style"**, matching the GUI.
+  `Multiband Bands` and `Multiband Solo` are now **exposed and automatable** in the host automation
+  list (the previous `withAutomatable(false)` was removed). Evidence: `src/PluginParameters.cpp`;
+  `docs/architecture/PARAMETER_REGISTRY.md`.
+### Fixed
+- **State restoration now round-trips every parameter exactly.** Two issues, both surfaced by the
+  `--randomise` *Plugin state restoration* gate: (1) a wholesale `apvts.replaceState` did not
+  reliably propagate to every parameter's cached value (an occasional param kept its pre-restore
+  value); (2) APVTS serialises the **denormalised/snapped** value, so a **discrete** param
+  (Bool/Choice/Int) given a raw normalised value mid-step (e.g. `Input Channel` at `0.177521` on a
+  3-choice) round-tripped to the nearest legal value — `>0.1` away — and pluginval flagged it "not
+  restored". Fix: `getStateInformation` additively records each parameter's **exact raw
+  `getValue()`** as a `raw` attribute on its `PARAM` node, and `setStateInformation` →
+  `reassertParameters` restores from `raw` (falling back to the denormalised `value` for legacy
+  sessions). Additive + backward-compatible (old sessions ignore `raw`; the APVTS `value` is
+  unchanged — no field removed/renamed). Evidence: `src/PluginProcessor.cpp`
+  (`getStateInformation` / `reassertParameters`); CI runs `28356632727`, `28388176607` (the
+  `--randomise` failures: discrete params "not restored"). See `SERIALIZATION_REGISTRY.md`.
+- **The exact-value restore is extended to user actions** — undo / redo / A-B apply now re-assert
+  every parameter from the snapshot (`reassertParameters` after `replaceState` in
+  `applyStatePreservingView`), and A/B-slot snapshots carry the `raw` attribute
+  (`copyStateWithRawValues`, used by `currentStateSet`), so discrete params no longer snap-drift on
+  slot switching or undo. Evidence: `src/PluginProcessor.cpp`.
+- **Windows CI no longer skips the randomise pluginval pass.** `run-pluginval.ps1` now makes the
+  pluginval **exit code the sole** pass/fail signal (`$ErrorActionPreference = Continue` +
+  `$PSNativeCommandUseErrorActionPreference = $false`), so pluginval's stderr progress can no longer
+  throw a terminating error that fails the *deterministic* step and makes GitHub **skip** the
+  randomise step. Evidence: `scripts/run-pluginval.ps1`.
+- **Defensive A/B bounds.** `abSwitchTo` clamps its slot index (`juce::jlimit(0, kNumAbSlots-1, …)`),
+  and `abUndo` / `abSlot` / `abMatchGain` are sized from `anamorph::kNumAbSlots` (single source of
+  truth) instead of a hardcoded `2`. Evidence: `src/PluginProcessor.{h,cpp}`; `src/AbSlotIndex.h`.
+- **Linux:** tooltips no longer render opaque **black corners** outside the rounded capsule on X11
+  without a compositor — `drawTooltip` now fills the corner area with the capsule colour when
+  per-pixel window alpha is unavailable; macOS/Windows transparent corners are unchanged (KI-006).
+  Evidence: `src/gui/LookAndFeel.cpp` (`drawTooltip`). [Partially Verified] (Linux visual re-test pending)
+- Session restore now **clamps a corrupted / out-of-range A/B "active" index** so it can never index
+  the A/B slot arrays out of bounds; valid sessions are unaffected. Evidence:
+  `src/PluginProcessor.cpp` (`setStateInformation`), `src/AbSlotIndex.h`; regression test
+  `testAbActiveClampOnCorruptState`. [Verified]
 
 ## [0.8.7] — 2026-06-28
 ### Fixed

@@ -64,7 +64,7 @@ build/Anamorph_artefacts/Release/Standalone/Anamorph[.app|.exe]
 build/.../AnamorphTests                                       # the DSP self-test app
 ```
 
-Evidence [Verified]: scripts/build.sh:19-30; .github/workflows/build.yml:49-50.
+Evidence [Verified]: scripts/build.sh:19-30; .github/workflows/build.yml:52-53.
 
 ## Network domains the build needs (restricted sandboxes)
 
