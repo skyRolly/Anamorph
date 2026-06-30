@@ -4,6 +4,7 @@
 #include "PluginParameters.h"
 #include "PresetManager.h"
 #include "InternalState.h"
+#include "AbSlotIndex.h"          // anamorph::kNumAbSlots (single source of truth for A/B sizing)
 #include "dsp/AnamorphEngine.h"
 
 // ============================================================================
@@ -106,16 +107,19 @@ private:
     // Force every APVTS parameter to its value in a just-restored tree (see the .cpp): a wholesale
     // replaceState does not reliably propagate to every parameter's cached value synchronously.
     void reassertParameters (const juce::ValueTree& restoredApvtsTree);
+    // apvts.copyState() with each PARAM node additively stamped with its exact raw getValue()
+    // ("raw" attribute), so every saved snapshot (host state, A/B slots, undo) round-trips exactly.
+    juce::ValueTree copyStateWithRawValues();
     void syncCommitted();
 
     struct UndoStacks { std::vector<StateSet> undo, redo; };
-    UndoStacks abUndo[2];
+    UndoStacks abUndo[anamorph::kNumAbSlots];
     StateSet committed;
     juce::String committedSig, lastPolledSig;
 
-    StateSet abSlot[2]; // A = [0], B = [1]
+    StateSet abSlot[anamorph::kNumAbSlots]; // A = [0], B = [1]
     int abActive = 0;
-    float abMatchGain[2] = { 0.0f, 0.0f }; // remembered Level-Match per A/B slot (#23)
+    float abMatchGain[anamorph::kNumAbSlots] = { 0.0f, 0.0f }; // remembered Level-Match per A/B slot (#23)
 
     juce::AudioProcessorValueTreeState apvts;
     ParamPointers params;

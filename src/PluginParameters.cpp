@@ -127,7 +127,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
     // --- Effect engine ---
     floatParam (pid::drive, "Drive", { 0.0f, 24.0f, 0.01f }, 0.0f, db);
     layout.add (std::make_unique<AudioParameterChoice> (ParameterID { pid::algorithm, kVersion },
-        "Algorithm", StringArray { "Haas", "Velvet Noise", "Chorus", "Dim-D" }, 1));
+        "Widen Algorithm", StringArray { "Haas", "Velvet Noise", "Chorus", "Dim-D" }, 1));
     // Unified widening intensity. Default 0 == transparent on load (#3).
     floatParam (pid::amount, "Amount", { 0.0f, 1.0f, 0.001f }, 0.0f, pct, pctFrom);
     floatParam (pid::haasDelay, "Haas Delay", { 1.0f, 35.0f, 0.01f }, 12.0f, ms);
@@ -140,20 +140,17 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
     floatParam (pid::chorusDepth, "Chorus Depth", { 0.0f, 1.0f, 0.001f }, 0.5f, pct, pctFrom);
     // Friendly Dimension-D voicing names (#14); long descriptions live in tooltips.
     layout.add (std::make_unique<AudioParameterChoice> (ParameterID { pid::dimMode, kVersion },
-        "Dimension Mode", StringArray { "Subtle", "Classic", "Wide", "Lush" }, 1));
+        "Dim-D Style", StringArray { "Subtle", "Classic", "Wide", "Lush" }, 1));
     floatParam (pid::width, "Width", { 0.0f, 2.0f, 0.001f }, 1.0f, pct, pctFrom);
 
     // --- Multiband (1..4 bands, up to 3 crossovers) ---
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::mbEnable, kVersion }, "Multiband Enable", true));
-    // Multiband Bands / Solo are HIDDEN from host automation (Issue 5): they are driven
-    // by the drag-to-split display, make no sense on an automation lane, and Solo is a
-    // monitoring aid. The parameters remain (state save/recall, GUI, A/B) -- only the
-    // automatable flag is off. Restore by removing `.withAutomatable (false)`.
-    layout.add (std::make_unique<juce::AudioParameterInt> (ParameterID { pid::mbBands, kVersion }, "Multiband Bands", 1, 4, 4,
-        juce::AudioParameterIntAttributes().withAutomatable (false)));
+    // Multiband Bands / Solo are now EXPOSED to host automation (they appear in the DAW's
+    // automation list alongside every other parameter). They are still primarily driven by the
+    // drag-to-split display and remain in state save/recall, GUI and A/B; Solo is a 4-bit mask.
+    layout.add (std::make_unique<juce::AudioParameterInt> (ParameterID { pid::mbBands, kVersion }, "Multiband Bands", 1, 4, 4));
     // Solo is a 4-bit mask (any combination of bands), not a single index (0.6.9 #7).
-    layout.add (std::make_unique<juce::AudioParameterInt> (ParameterID { pid::mbSolo, kVersion }, "Multiband Solo", 0, 15, 0,
-        juce::AudioParameterIntAttributes().withAutomatable (false)));
+    layout.add (std::make_unique<juce::AudioParameterInt> (ParameterID { pid::mbSolo, kVersion }, "Multiband Solo", 0, 15, 0));
     // Full-range splits: the display enforces a minimum on-screen gap and the DSP
     // re-orders them, so a split may be dragged anywhere (0.6.10 #5/#26).
     floatParam (pid::mbFreqLow,  "Multiband Split 1", logFreqRange (20.0f, 20000.0f), 180.0f,  hz, hzFrom);

@@ -17,9 +17,9 @@ Status taxonomy: **Verified** (provable from build/CI/code) · **Partially Verif
 
 | Platform | Status | Evidence |
 |---|---|---|
-| **Linux x86-64** | **Verified (authoritative gate)** | CI builds VST3+Standalone; headless pluginval **strictness 10** (deterministic + randomise×3) under xvfb is the release gate. build.yml:22-61 |
-| **Windows x86-64** | **Verified (build)** / pluginval informational | MSVC build; pluginval `continue-on-error`. build.yml:63-114 |
-| **macOS universal (arm64 + x86_64)** | **Verified (build)** / pluginval informational | `CMAKE_OSX_ARCHITECTURES="arm64;x86_64"`, `lipo` verifies both slices; deployment target 10.13. build.yml:116-178 |
+| **Linux x86-64** | **Verified (blocking gate)** | CI builds VST3+Standalone; headless pluginval **strictness 10** (deterministic ×3 + randomise ×3) under xvfb — **blocking**. `.github/workflows/build.yml` |
+| **Windows x86-64** | **Verified (blocking gate)** | MSVC build; pluginval **strictness 10**, deterministic ×3 + randomise ×3 — **blocking** (`run-pluginval.ps1`, no `continue-on-error`). `.github/workflows/build.yml` |
+| **macOS universal (arm64 + x86_64)** | **Verified (blocking gate)** | `CMAKE_OSX_ARCHITECTURES="arm64;x86_64"`, `lipo` verifies both slices; pluginval **strictness 10**, both modes ×3 — **blocking**. `.github/workflows/build.yml` |
 
 ## I/O layouts
 
@@ -31,8 +31,8 @@ Status taxonomy: **Verified** (provable from build/CI/code) · **Partially Verif
 
 ## DAW hosts
 
-No DAW compatibility matrix exists in the repository; pluginval (strictness 10 on Linux) is the
-**proxy** for host conformance, not a substitute for real-DAW testing.
+No DAW compatibility matrix exists in the repository; pluginval (strictness 10, blocking on all three
+platforms) is the **proxy** for host conformance, not a substitute for real-DAW testing.
 
 | Host | Status | Note |
 |---|---|---|

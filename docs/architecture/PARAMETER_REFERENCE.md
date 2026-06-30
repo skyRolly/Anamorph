@@ -38,7 +38,7 @@ Evidence [Verified]: src/dsp/AnamorphEngine.cpp:392-440, :614-617.
 | `haasSide` (Haas Focus) | The *perceived* side (precedence): the opposite channel is delayed. |
 | `velvetDensity` | Velvet-noise diffusion character (active-tap count). |
 | `chorusRate` / `chorusDepth` | Chorus LFO rate (Hz) / depth. |
-| `dimMode` (Dimension Mode) | Dimension-D voicing: Subtle/Classic/Wide/Lush → engine modes 1..4. |
+| `dimMode` (Dim-D Style) | Dimension-D voicing: Subtle/Classic/Wide/Lush → engine modes 1..4. |
 | `width` | Global MS width: 0 = mono, 1.0 = identity, 2 = wide. |
 
 Evidence [Verified]: src/dsp/AnamorphEngine.cpp:331-389, :442-469, :648-653; src/PluginParameters.cpp:257.
