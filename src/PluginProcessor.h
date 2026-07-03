@@ -16,7 +16,8 @@
 //  (the "turn Mono into Stereo" headline feature). Output is always stereo.
 // ============================================================================
 class AnamorphAudioProcessor : public juce::AudioProcessor,
-                               private juce::AudioProcessorValueTreeState::Listener
+                               private juce::AudioProcessorValueTreeState::Listener,
+                               private juce::AudioProcessorParameter::Listener // sound-param gestures (undo)
 {
 public:
     AnamorphAudioProcessor();
@@ -81,6 +82,10 @@ public:
 
 private:
     void parameterChanged (const juce::String& id, float newValue) override;
+    // AudioProcessorParameter::Listener: coalesce a whole user GESTURE into one undo step, and
+    // exclude host automation (which never opens a gesture) from undo entirely.
+    void parameterValueChanged (int, float) override {}                 // required; value handled by the poll
+    void parameterGestureChanged (int parameterIndex, bool gestureIsStarting) override;
     void updateLatency();
 
     // A/B helpers (preserve the shared view/Settings params across a slot apply)
@@ -116,6 +121,11 @@ private:
     UndoStacks abUndo[anamorph::kNumAbSlots];
     StateSet committed;
     juce::String committedSig, lastPolledSig;
+    // Undo coalescing is GESTURE-gated (message thread only, matches the editor-timer poll): count
+    // open user gestures; commit exactly one undo step after the LAST gesture-end. Host automation
+    // never opens a gesture, so it is never recorded.
+    int  openGestures = 0;
+    bool pendingGestureCommit = false;
 
     StateSet abSlot[anamorph::kNumAbSlots]; // A = [0], B = [1]
     int abActive = 0;

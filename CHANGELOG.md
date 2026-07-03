@@ -37,6 +37,23 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   list (the previous `withAutomatable(false)` was removed). Evidence: `src/PluginParameters.cpp`;
   `docs/architecture/PARAMETER_REGISTRY.md`.
 ### Fixed
+- **Undo/Redo: one step per gesture, and host automation is never recorded.** Undo coalescing was
+  time/signature-settle based, so a slow drag that dwelt mid-gesture (esp. Multiband Split / Band
+  Width) recorded multiple intermediate steps, and any host-automation move could create undo steps.
+  It is now **gesture-gated**: the processor listens to parameter begin/end gestures and commits
+  exactly **one** undo step after the last gesture closes; automation (which never opens a gesture)
+  folds into the baseline without an undo entry. A/B switch/copy reset the gesture state. Evidence:
+  `src/PluginProcessor.cpp` (`parameterGestureChanged` / `pollUndoCoalesce`).
+- **Combo-box pop-ups drop BELOW the box again** instead of covering it with the selected item under
+  the cursor. Added `AnamorphLookAndFeel::getOptionsForComboBoxPopupMenu` targeting the box's screen
+  bounds (omitting the JUCE default `withItemThatMustBeVisible`/`withInitiallySelectedItem`). Evidence:
+  `src/gui/LookAndFeel.cpp` (`getOptionsForComboBoxPopupMenu`).
+- **Discrete parameters now round-trip their exact value under pluginval `--randomise`.** Stock
+  `AudioParameterBool`/`Choice`/`Int` snap `getValue()` to the nearest legal step, which for few-step
+  params can be `>0.1` from the raw value pluginval sets (seed-dependent "not restored" failures). The
+  new `RawValued<>` subclasses keep the exact raw normalised value in `getValue()` (restored via the
+  `raw` attribute + `reassertParameters`); the DSP still reads the snapped value via
+  `getRawParameterValue()`. See ADR-0013. Evidence: `src/PluginParameters.cpp` (`RawValued<>`).
 - **State restoration now round-trips every parameter exactly.** Two issues, both surfaced by the
   `--randomise` *Plugin state restoration* gate: (1) a wholesale `apvts.replaceState` did not
   reliably propagate to every parameter's cached value (an occasional param kept its pre-restore

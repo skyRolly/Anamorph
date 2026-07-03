@@ -1,4 +1,5 @@
 #include "PluginParameters.h"
+#include <atomic>
 
 using juce::AudioParameterFloat;
 using juce::AudioParameterChoice;
@@ -6,6 +7,26 @@ using juce::AudioParameterBool;
 using juce::NormalisableRange;
 using juce::StringArray;
 using juce::ParameterID;
+
+// pluginval's "Plugin state restoration" sets a RAW normalised value on each parameter and checks
+// getValue() back within 0.1. Stock AudioParameterBool/Choice/Int SNAP getValue() to the nearest
+// legal step, which for few-step discrete params can be >0.1 from the raw value -> intermittent,
+// seed-dependent "not restored" failures under --randomise (e.g. a 3-choice given 0.807 snaps to 1.0,
+// 0.193 away). These subclasses keep the EXACT raw normalised value in getValue() (restored
+// bit-exactly via the "raw" state attribute + reassertParameters), while the DSP still reads the
+// SNAPPED value through getRawParameterValue()/getIndex()/get(). No parameter ID, range, default,
+// choice-ordering, or serialization change -- only what getValue() reports for a mid-step value.
+template <typename Base>
+struct RawValued : Base
+{
+    using Base::Base;
+    std::atomic<float> rawNorm { Base::getValue() };
+    void  setValue (float v) override { rawNorm.store (v); Base::setValue (v); }
+    float getValue() const   override { return rawNorm.load(); }
+};
+using RawBool   = RawValued<juce::AudioParameterBool>;
+using RawChoice = RawValued<juce::AudioParameterChoice>;
+using RawInt    = RawValued<juce::AudioParameterInt>;
 
 namespace
 {
@@ -112,45 +133,45 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
     };
 
     // --- Input conditioning ---
-    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { pid::channelMode, kVersion },
+    layout.add (std::make_unique<RawChoice> (ParameterID { pid::channelMode, kVersion },
         "Input Channel", StringArray { "Stereo", "Left Only", "Right Only" }, 0));
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::monoSum, kVersion }, "Mono", false));
+    layout.add (std::make_unique<RawBool> (ParameterID { pid::monoSum, kVersion }, "Mono", false));
     // Names reflect BOTH operating modes: in M/S mode L/R become Mid/Side (Issue 6).
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::swap, kVersion }, "Swap L/R (M/S)", false));
+    layout.add (std::make_unique<RawBool> (ParameterID { pid::swap, kVersion }, "Swap L/R (M/S)", false));
     floatParam (pid::inputBalance, "Input Balance", { -1.0f, 1.0f, 0.001f }, 0.0f, balPct, balFrom);
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::polarityL, kVersion }, "Phase Invert L/M", false));
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::polarityR, kVersion }, "Phase Invert R/S", false));
+    layout.add (std::make_unique<RawBool> (ParameterID { pid::polarityL, kVersion }, "Phase Invert L/M", false));
+    layout.add (std::make_unique<RawBool> (ParameterID { pid::polarityR, kVersion }, "Phase Invert R/S", false));
 
     // --- MS ---
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::msMode, kVersion }, "M/S Mode", false));
+    layout.add (std::make_unique<RawBool> (ParameterID { pid::msMode, kVersion }, "M/S Mode", false));
 
     // --- Effect engine ---
     floatParam (pid::drive, "Drive", { 0.0f, 24.0f, 0.01f }, 0.0f, db);
-    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { pid::algorithm, kVersion },
+    layout.add (std::make_unique<RawChoice> (ParameterID { pid::algorithm, kVersion },
         "Widen Algorithm", StringArray { "Haas", "Velvet Noise", "Chorus", "Dim-D" }, 1));
     // Unified widening intensity. Default 0 == transparent on load (#3).
     floatParam (pid::amount, "Amount", { 0.0f, 1.0f, 0.001f }, 0.0f, pct, pctFrom);
     floatParam (pid::haasDelay, "Haas Delay", { 1.0f, 35.0f, 0.01f }, 12.0f, ms);
     // Default perceived side = Left (#14); list order unchanged.
-    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { pid::haasSide, kVersion },
+    layout.add (std::make_unique<RawChoice> (ParameterID { pid::haasSide, kVersion },
         "Haas Focus", StringArray { "Left", "Right" }, 0));
     floatParam (pid::velvetDensity, "Velvet Density", { 0.0f, 1.0f, 0.001f }, 0.5f, pct, pctFrom);
     floatParam (pid::chorusRate, "Chorus Rate", NormalisableRange<float> { 0.05f, 5.0f, 0.001f, 0.4f }, 0.5f,
                 [] (float v, int) { return juce::String (v, 2) + " Hz"; }, hzFrom);
     floatParam (pid::chorusDepth, "Chorus Depth", { 0.0f, 1.0f, 0.001f }, 0.5f, pct, pctFrom);
     // Friendly Dimension-D voicing names (#14); long descriptions live in tooltips.
-    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { pid::dimMode, kVersion },
+    layout.add (std::make_unique<RawChoice> (ParameterID { pid::dimMode, kVersion },
         "Dim-D Style", StringArray { "Subtle", "Classic", "Wide", "Lush" }, 1));
     floatParam (pid::width, "Width", { 0.0f, 2.0f, 0.001f }, 1.0f, pct, pctFrom);
 
     // --- Multiband (1..4 bands, up to 3 crossovers) ---
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::mbEnable, kVersion }, "Multiband Enable", true));
+    layout.add (std::make_unique<RawBool> (ParameterID { pid::mbEnable, kVersion }, "Multiband Enable", true));
     // Multiband Bands / Solo are now EXPOSED to host automation (they appear in the DAW's
     // automation list alongside every other parameter). They are still primarily driven by the
     // drag-to-split display and remain in state save/recall, GUI and A/B; Solo is a 4-bit mask.
-    layout.add (std::make_unique<juce::AudioParameterInt> (ParameterID { pid::mbBands, kVersion }, "Multiband Bands", 1, 4, 4));
+    layout.add (std::make_unique<RawInt> (ParameterID { pid::mbBands, kVersion }, "Multiband Bands", 1, 4, 4));
     // Solo is a 4-bit mask (any combination of bands), not a single index (0.6.9 #7).
-    layout.add (std::make_unique<juce::AudioParameterInt> (ParameterID { pid::mbSolo, kVersion }, "Multiband Solo", 0, 15, 0));
+    layout.add (std::make_unique<RawInt> (ParameterID { pid::mbSolo, kVersion }, "Multiband Solo", 0, 15, 0));
     // Full-range splits: the display enforces a minimum on-screen gap and the DSP
     // re-orders them, so a split may be dragged anywhere (0.6.10 #5/#26).
     floatParam (pid::mbFreqLow,  "Multiband Split 1", logFreqRange (20.0f, 20000.0f), 180.0f,  hz, hzFrom);
@@ -162,7 +183,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
     floatParam (pid::mbWidthHigh,  "Multiband Width 4", { 0.0f, 2.0f, 0.001f }, 1.0f, pct, pctFrom);
 
     // --- Mono maker ---
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::monoMakerOn, kVersion }, "Mono Maker", false));
+    layout.add (std::make_unique<RawBool> (ParameterID { pid::monoMakerOn, kVersion }, "Mono Maker", false));
     // 20..500 with 120 on the bar's middle, via a centred LOG warp -- the low end keeps a
     // healthy density (not the very sparse tail a linear centre-skew gave) (0.6.16 #E).
     floatParam (pid::monoMakerFreq, "Mono Maker Freq", logFreqRangeCentred (20.0f, 500.0f, 120.0f), 120.0f, hz, hzFrom);
@@ -171,10 +192,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
     floatParam (pid::mix, "Mix", { 0.0f, 1.0f, 0.001f }, 1.0f, pct, pctFrom);
     floatParam (pid::outputGain, "Output Gain", { -24.0f, 24.0f, 0.01f }, 0.0f, db);
     floatParam (pid::outputBalance, "Output Balance", { -1.0f, 1.0f, 0.001f }, 0.0f, balPct, balFrom);
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::autoGainMatch, kVersion }, "Level Match", false));
+    layout.add (std::make_unique<RawBool> (ParameterID { pid::autoGainMatch, kVersion }, "Level Match", false));
 
     // --- Monitoring ---
-    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { pid::solo, kVersion },
+    layout.add (std::make_unique<RawChoice> (ParameterID { pid::solo, kVersion },
         "M/S Solo", StringArray { "Off", "Mid", "Side" }, 0));
 
     // --- Oversampling / Settings / Show Meters are NOT here anymore ---------------
@@ -187,10 +208,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
     // Animations, UI Scale. (Advanced Mode stays an APVTS param -- it travels with A/B.)
 
     // --- Bypass (registered as the host bypass parameter) ---
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::bypass, kVersion }, "Bypass", false));
+    layout.add (std::make_unique<RawBool> (ParameterID { pid::bypass, kVersion }, "Bypass", false));
 
     // --- UI (saved with state, but UI-only) ---
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::advancedMode, kVersion }, "Advanced Mode", false));
+    layout.add (std::make_unique<RawBool> (ParameterID { pid::advancedMode, kVersion }, "Advanced Mode", false));
 
     return layout;
 }

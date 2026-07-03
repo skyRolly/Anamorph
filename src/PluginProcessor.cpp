@@ -17,6 +17,13 @@ AnamorphAudioProcessor::AnamorphAudioProcessor()
     apvts.addParameterListener (pid::algorithm,  this);
     internal.onOversampleChanged = [this] { updateLatency(); };
 
+    // Observe begin/end GESTURES on the SOUND params so a whole drag folds into ONE undo step and
+    // host automation (which never opens a gesture) is excluded from undo. View params are skipped.
+    for (auto* p : getParameters())
+        if (auto* wid = dynamic_cast<juce::AudioProcessorParameterWithID*> (p))
+            if (! pid::isViewParam (wid->paramID))
+                p->addListener (this);
+
     syncCommitted(); // establish the undo baseline
 }
 
@@ -24,6 +31,8 @@ AnamorphAudioProcessor::~AnamorphAudioProcessor()
 {
     apvts.removeParameterListener (pid::drive,      this);
     apvts.removeParameterListener (pid::algorithm,  this);
+    for (auto* p : getParameters())
+        p->removeListener (this);
 }
 
 // ----------------------------------------------------------------------------
@@ -180,6 +189,8 @@ void AnamorphAudioProcessor::syncCommitted()
     committed = currentStateSet();
     committedSig = soundSignature();
     lastPolledSig = committedSig;
+    openGestures = 0;             // A/B switch / preset / session load is not a user gesture
+    pendingGestureCommit = false;
 }
 
 // A full snapshot: parameters PLUS the live preset name + clean baseline (#6). The params carry the
@@ -254,20 +265,42 @@ void AnamorphAudioProcessor::reassertParameters (const juce::ValueTree& restored
             }
 }
 
+// Message thread. Count nested / overlapping gestures (e.g. the two-parameter Multiband band move
+// opens gestures on both split params); request a single undo commit only after the LAST closes.
+void AnamorphAudioProcessor::parameterGestureChanged (int, bool gestureIsStarting)
+{
+    if (gestureIsStarting)                       ++openGestures;
+    else if (openGestures > 0 && --openGestures == 0) pendingGestureCommit = true;
+}
+
 void AnamorphAudioProcessor::pollUndoCoalesce()
 {
     const auto sig = soundSignature();
-    // Commit only once a sound edit has SETTLED (signature stable for a tick),
-    // folding a whole knob gesture into a single undo step. The pushed entry is
-    // the PREVIOUS state set (its own name + baseline), so undo restores them (#6).
-    if (sig != committedSig && sig == lastPolledSig)
+
+    if (openGestures > 0)          // a user gesture is in progress -> never commit mid-gesture
     {
-        abUndo[abActive].undo.push_back (committed);
-        if (abUndo[abActive].undo.size() > 128) abUndo[abActive].undo.erase (abUndo[abActive].undo.begin());
-        abUndo[abActive].redo.clear();
-        committed = currentStateSet(); // captures the NOW-current preset name/baseline
+        lastPolledSig = sig;
+        return;
+    }
+
+    if (pendingGestureCommit)      // exactly ONE undo step per finished gesture (knob or band move)
+    {
+        pendingGestureCommit = false;
+        if (sig != committedSig)
+        {
+            abUndo[abActive].undo.push_back (committed);   // the PREVIOUS state set (name + baseline, #6)
+            if (abUndo[abActive].undo.size() > 128) abUndo[abActive].undo.erase (abUndo[abActive].undo.begin());
+            abUndo[abActive].redo.clear();
+            committed = currentStateSet();
+            committedSig = sig;
+        }
+    }
+    else if (sig != committedSig)  // NON-gesture change (host automation / programmatic): fold into
+    {                              // the baseline WITHOUT creating an undo step (automation is not undoable)
+        committed = currentStateSet();
         committedSig = sig;
     }
+
     lastPolledSig = sig;
 }
 

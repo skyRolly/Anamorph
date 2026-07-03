@@ -418,6 +418,21 @@ juce::Font AnamorphLookAndFeel::getTextButtonFont (juce::TextButton& b, int butt
 juce::Font AnamorphLookAndFeel::getComboBoxFont (juce::ComboBox&)  { return juce::Font (juce::FontOptions (13.5f)); }
 juce::Font AnamorphLookAndFeel::getPopupMenuFont()                 { return juce::Font (juce::FontOptions (13.5f)); }
 
+// Position the combo pop-up BELOW the box. The JUCE default adds withItemThatMustBeVisible +
+// withInitiallySelectedItem, which centre the popup on the selected row so it COVERS the box (the
+// native-macOS look). Targeting the box's screen bounds -- and omitting those two options -- makes
+// the menu open flush below the box (or above if there's no room), restoring the drop-down.
+juce::PopupMenu::Options AnamorphLookAndFeel::getOptionsForComboBoxPopupMenu (juce::ComboBox& box,
+                                                                             juce::Label& label)
+{
+    return juce::PopupMenu::Options()
+             .withTargetComponent (&box)
+             .withTargetScreenArea (box.getScreenBounds())
+             .withMinimumWidth (box.getWidth())
+             .withMaximumNumColumns (1)
+             .withStandardItemHeight (label.getHeight());
+}
+
 void AnamorphLookAndFeel::getIdealPopupMenuItemSize (const juce::String& text, bool isSeparator,
                                                      int, int& idealWidth, int& idealHeight)
 {

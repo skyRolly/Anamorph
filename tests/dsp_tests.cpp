@@ -1238,6 +1238,8 @@ static void testAbActiveClampOnCorruptState()
     {
         auto xml = juce::parseXML ("<AB active=\"" + juce::String (corrupt) + "\"/>");
         check (xml != nullptr, "corrupted AB XML parses");
+        if (xml == nullptr) continue; // check() does not abort -- guard the deref below
+
         auto ab = juce::ValueTree::fromXml (*xml);
 
         // EXACTLY mirrors PluginProcessor.cpp setStateInformation.
@@ -1250,6 +1252,9 @@ static void testAbActiveClampOnCorruptState()
     for (int valid : { 0, 1 })
     {
         auto xml = juce::parseXML ("<AB active=\"" + juce::String (valid) + "\"/>");
+        check (xml != nullptr, "valid AB XML parses");
+        if (xml == nullptr) continue; // guard the deref (check() does not abort)
+
         auto ab  = juce::ValueTree::fromXml (*xml);
         const int slot = anamorph::clampAbSlotIndex ((int) ab.getProperty ("active", 0));
         check (slot == valid, "valid active index is preserved exactly");
