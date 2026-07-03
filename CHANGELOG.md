@@ -37,6 +37,23 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   list (the previous `withAutomatable(false)` was removed). Evidence: `src/PluginParameters.cpp`;
   `docs/architecture/PARAMETER_REGISTRY.md`.
 ### Fixed
+- **Preset switching is undoable again (regression from the gesture-gated undo).** A preset load
+  arrives as gesture-less `setValueNotifyingHost` calls, so the new gesture-gated coalescer folded it
+  into the baseline **without** an undo step — after switching presets you could not Undo back to the
+  previous preset. Each load is now explicitly bracketed (`PresetManager::onAboutToLoad` / `onLoaded`):
+  a settled edit is flushed first, then the switch is recorded as exactly **one** undo step in the
+  **active A/B slot's** history. A/B slots keep their independent histories (by design, ADR-0008);
+  only preset switches *within* a slot are chained, and the switch itself is now an undo/redo step.
+  Evidence: `src/PluginProcessor.cpp` (`commitPresetSwitchUndoStep`, constructor hooks),
+  `src/PresetManager.cpp` (`load` / `loadFile`).
+- **Windows pluginval no longer reports a false green when it crashes.** `scripts/run-pluginval.ps1`
+  ran `exit $LASTEXITCODE`, but an abnormal pluginval termination (e.g. a crash in the editor tests)
+  leaves `$LASTEXITCODE` `$null`, and `exit $null` exits **0** — so a crashed run *passed* the gate
+  (observed: the Windows step ran in ~6–7 s vs Linux ~40 s / macOS ~185 s, ending at
+  `pluginval: FAILED … (exit )` with an empty code yet still green). The script now treats a
+  null/negative/large exit code as a crash (never success) and, like `run-pluginval.sh`, retries a
+  crash and still fails after the retries — only a clean `exit 0` passes. This surfaces a pre-existing
+  Windows "Editor Automation" crash (now tracked as **KI-007**). Evidence: `scripts/run-pluginval.ps1`.
 - **Undo/Redo: one step per gesture, and host automation is never recorded.** Undo coalescing was
   time/signature-settle based, so a slow drag that dwelt mid-gesture (esp. Multiband Split / Band
   Width) recorded multiple intermediate steps, and any host-automation move could create undo steps.

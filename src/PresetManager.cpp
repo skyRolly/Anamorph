@@ -138,6 +138,8 @@ void PresetManager::load (int index)
     if (index < 0 || index >= list.size()) return;
     const auto& e = list.getReference (index);
 
+    if (onAboutToLoad) onAboutToLoad(); // flush any settled edit so the pre-load state is the undo baseline
+
     if (e.isFactory)
     {
         applyDefaults();
@@ -155,15 +157,18 @@ void PresetManager::load (int index)
 
     current = e.name;
     sigAtLoad = soundSig();
+    if (onLoaded) onLoaded(); // record the switch as ONE undo step (name/baseline now reflect the new preset)
 }
 
 bool PresetManager::loadFile (const juce::File& f)
 {
     auto xml = juce::parseXML (f);
     if (xml == nullptr) return false;
+    if (onAboutToLoad) onAboutToLoad(); // flush any settled edit so the pre-load state is the undo baseline
     applySoundTree (juce::ValueTree::fromXml (*xml));
     current = f.getFileNameWithoutExtension();
     sigAtLoad = soundSig();
+    if (onLoaded) onLoaded(); // record the switch as ONE undo step (name/baseline now reflect the new preset)
     return true;
 }
 

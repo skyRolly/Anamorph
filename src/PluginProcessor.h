@@ -107,6 +107,9 @@ private:
 
     // Undo helpers
     static bool isViewParam (const juce::String& id) noexcept;
+    // Record ONE undo step spanning a preset load (a gesture-less setValueNotifyingHost burst the
+    // coalescer would otherwise fold silently into the baseline). Bracketed by the PresetManager hooks.
+    void commitPresetSwitchUndoStep();
     juce::String soundSignature() const;
     void applyStatePreservingView (const juce::ValueTree& target);
     // Force every APVTS parameter to its value in a just-restored tree (see the .cpp): a wholesale

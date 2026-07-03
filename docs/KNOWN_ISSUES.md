@@ -14,6 +14,7 @@ Verified against repository HEAD `c605fbe` (version 0.8.7; JUCE 8.0.14).
 | KI-004 | No automated DAW/host-compatibility testing | Medium | Confirmed (coverage gap) |
 | KI-005 | No graphical installer (manual copy install) | Low | Confirmed (packaging) |
 | KI-006 | Linux: tooltip rounded corners render an opaque black background instead of transparent | Low | Fix applied (LookAndFeel); Linux visual re-test pending |
+| KI-007 | Windows: pluginval "Editor Automation" abnormally terminates (was hidden by a run-pluginval.ps1 false green) | Medium | Confirmed; false green closed, root cause pending |
 
 ---
 
@@ -76,3 +77,28 @@ session state, and is fully isolated from the pluginval state-restoration work.
   is needed to fully close this; until then it stays listed here rather than moved to POSTMORTEMS.
 - **Evidence:** src/gui/LookAndFeel.cpp `drawTooltip` (the alpha-gated corner fill); 0.8.7 Linux
   feedback. Cosmetic, low-impact: tooltips are **off by default** (src/InternalState.h:51).
+
+## KI-007 — Windows pluginval "Editor Automation" abnormally terminates
+On **Windows**, pluginval consistently ends at `Starting tests in: pluginval / Editor Automation...`
+without completing that test — the process dies with no clean exit code. This was **masked by a
+false green**: `scripts/run-pluginval.ps1` ran `exit $LASTEXITCODE`, but an abnormal termination
+leaves `$LASTEXITCODE` `$null` and `exit $null` exits **0**, so the crashed run passed the gate. The
+false green is now closed (the script treats a null/large/negative code as a crash, retries, and
+still fails after the retries — never `exit 0` on a non-pass), which **surfaces** this crash instead
+of hiding it.
+- **Platform matrix:** Windows — Confirmed (blocking gate on this branch). Linux/macOS — Not
+  observed (both complete Editor Automation and pass genuinely: Linux ~40 s, macOS ~185 s per
+  mode; the crashed Windows step ran in ~6–7 s).
+- **Scope:** pre-existing and **platform-specific** — the base commit's Windows pluginval (then an
+  "informational" step) also finished in ~7 s, and the parameter-layer changes on this branch are
+  platform-agnostic (Linux/macOS unaffected). It is therefore **not** attributable to the discrete-
+  parameter or undo work; it points at the Windows editor open/close path (a plugin-side editor
+  teardown defect, or a Windows analogue of KI-003's pluginval-host-harness editor flake).
+- **Next step:** capture a Windows crash stack (local `pluginval --validate` under a debugger, or a
+  CI crash-dump upload) to localise it. A fix that touches the audio/UI thread boundary would be a
+  **Thread Model change** → Architecture Review + ADR (`docs/policies/ARCHITECTURE_REVIEW_GATE.md`);
+  not attempted blind here.
+- **Evidence [Verified]:** run 28678842525 Windows job log (`... / Editor Automation...` is the last
+  line before both the deterministic and randomise passes end; `pluginval: FAILED ... (exit )` with
+  an empty code yet a green step); scripts/run-pluginval.ps1 (the closed false green). Related: KI-003
+  (the Linux editor-harness crash), scripts/run-pluginval.sh:70-91 (the crash-retry this PS1 now mirrors).

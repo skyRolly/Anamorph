@@ -1,6 +1,7 @@
 #pragma once
 
 #include <juce_audio_processors/juce_audio_processors.h>
+#include <functional>
 #include "PluginParameters.h"
 
 namespace anamorph
@@ -15,8 +16,11 @@ namespace anamorph
 //  ever touch the SOUND parameters -- the shared view/Settings params
 //  (pid::viewParams) are never part of a preset, exactly like A/B and undo.
 //
-//  Loading goes through plain setValueNotifyingHost calls, so the processor's
-//  undo coalescing records a preset switch as a single undoable step for free.
+//  A preset load arrives as plain setValueNotifyingHost calls that open NO
+//  gesture, so the processor's gesture-gated undo coalescer (ADR-0008) would
+//  otherwise fold it into the baseline WITHOUT an undo step. The onAboutToLoad /
+//  onLoaded hooks let the processor bracket each load and record the switch as a
+//  single undoable step -- a preset change is a discrete, undoable user action.
 // ============================================================================
 class PresetManager
 {
@@ -62,6 +66,12 @@ public:
 
     // Host state restore: adopt the remembered name WITHOUT applying anything.
     void adoptRestoredState (const juce::String& name);
+
+    // Undo bracketing (set by the processor). onAboutToLoad fires BEFORE any parameter changes
+    // (flush a settled edit into its own step); onLoaded fires AFTER the new name/baseline are set
+    // (record ONE undo step for the switch). Only load()/loadFile() fire them -- never session
+    // restore, saveUser, or construction. Empty when no processor is bracketing (safe to skip).
+    std::function<void()> onAboutToLoad, onLoaded;
 
 private:
     void applyDefaults();

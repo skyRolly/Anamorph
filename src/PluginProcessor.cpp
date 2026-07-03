@@ -26,6 +26,12 @@ AnamorphAudioProcessor::AnamorphAudioProcessor()
             if (! pid::isViewParam (wid->paramID))
                 p->addListener (this);
 
+    // A preset load opens NO gesture, so the gesture-gated coalescer would fold it into the baseline
+    // without an undo step (host-automation path). Bracket every load: flush any settled edit first,
+    // then record exactly ONE undo step for the switch, so a preset change is undoable (ADR-0008).
+    presets.onAboutToLoad = [this] { pollUndoCoalesce(); };
+    presets.onLoaded      = [this] { commitPresetSwitchUndoStep(); };
+
     syncCommitted(); // establish the undo baseline
 }
 
@@ -306,6 +312,27 @@ void AnamorphAudioProcessor::pollUndoCoalesce()
     }
 
     lastPolledSig = sig;
+}
+
+// Record ONE undo step for a preset load. Called by the PresetManager::onLoaded hook AFTER the new
+// preset's params + name/baseline are in place; onAboutToLoad has already flushed any settled edit,
+// so `committed` holds the exact pre-load state set (previous preset name + params). Push it and adopt
+// the freshly-loaded state as the new committed baseline. Distinct from the non-gesture fold in
+// pollUndoCoalesce: a preset switch IS a discrete, undoable user action (unlike host automation).
+void AnamorphAudioProcessor::commitPresetSwitchUndoStep()
+{
+    const auto sig = soundSignature();
+    if (sig != committedSig)
+    {
+        abUndo[abActive].undo.push_back (committed);   // the PREVIOUS state set (name + baseline, #6)
+        if (abUndo[abActive].undo.size() > 128) abUndo[abActive].undo.erase (abUndo[abActive].undo.begin());
+        abUndo[abActive].redo.clear();                 // a new user action invalidates the redo stack
+        committed = currentStateSet();                 // now carries the NEW preset name + clean baseline
+        committedSig = sig;
+    }
+    lastPolledSig = sig;
+    openGestures = 0;             // a preset load is a program state jump, not a user gesture -- drop any
+    pendingGestureCommit = false; // in-flight gesture bookkeeping so nothing re-commits afterwards
 }
 
 void AnamorphAudioProcessor::undo()
