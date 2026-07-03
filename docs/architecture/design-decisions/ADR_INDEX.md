@@ -21,6 +21,7 @@ Status values: Proposed · Accepted · Deprecated · Superseded.
 | [ADR-0011](ADR-0011-linux-x11-cpu-render.md) | Linux/X11 CPU rendering — no OpenGL attach | Accepted | Verified (code) / Partially Verified (history) |
 | [ADR-0012](ADR-0012-juce-8.0.14-upgrade.md) | JUCE dependency upgrade 8.0.8 → 8.0.14 | Accepted | Verified (CI build + 23 tests + pluginval) |
 | [ADR-0013](ADR-0013-raw-normalised-serialization-attribute.md) | Additive `raw` normalised value attribute (exact discrete-param state round-trip) | Accepted | Verified (CI `--randomise` state restoration) |
+| [ADR-0014](ADR-0014-multiband-bands-solo-automatable.md) | Expose `mbBands`/`mbSolo` to host automation (remove `withAutomatable(false)`) | Accepted | Verified (code) |
 
 ## How to add an ADR
 

@@ -712,8 +712,11 @@ void AnamorphAudioProcessorEditor::passComboHoverThrough (juce::ComboBox& box)
 
 void AnamorphAudioProcessorEditor::setupCombo (juce::ComboBox& box, const char* id, const juce::String& tip)
 {
-    if (auto* cp = dynamic_cast<juce::AudioParameterChoice*> (processor.getAPVTS().getParameter (id)))
-        box.addItemList (cp->choices, 1);
+    // Choice params are custom RangedAudioParameter subclasses now, so read the item list
+    // generically via getAllValueStrings() (works for any discrete parameter) instead of a
+    // concrete AudioParameterChoice cast.
+    if (auto* cp = processor.getAPVTS().getParameter (id))
+        box.addItemList (cp->getAllValueStrings(), 1);
     box.setTooltip (tidyTip (tip));
     box.setRepaintsOnMouseActivity (true); // hover feedback (#10)
     passComboHoverThrough (box);

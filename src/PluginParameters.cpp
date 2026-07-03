@@ -10,23 +10,82 @@ using juce::ParameterID;
 
 // pluginval's "Plugin state restoration" sets a RAW normalised value on each parameter and checks
 // getValue() back within 0.1. Stock AudioParameterBool/Choice/Int SNAP getValue() to the nearest
-// legal step, which for few-step discrete params can be >0.1 from the raw value -> intermittent,
-// seed-dependent "not restored" failures under --randomise (e.g. a 3-choice given 0.807 snaps to 1.0,
-// 0.193 away). These subclasses keep the EXACT raw normalised value in getValue() (restored
-// bit-exactly via the "raw" state attribute + reassertParameters), while the DSP still reads the
-// SNAPPED value through getRawParameterValue()/getIndex()/get(). No parameter ID, range, default,
-// choice-ordering, or serialization change -- only what getValue() reports for a mid-step value.
-template <typename Base>
-struct RawValued : Base
+// legal step -- and make getValue()/setValue() PRIVATE, so they cannot be subclassed for this -- so
+// a few-step discrete param given a mid-step raw value (e.g. a 3-choice at 0.807 -> 1.0, 0.193 away)
+// is intermittently reported "not restored" under --randomise. These minimal RangedAudioParameter
+// subclasses (getValue/setValue are PUBLIC pure-virtuals here) keep the EXACT raw normalised value in
+// getValue() -- restored bit-exactly via the "raw" state attribute + reassertParameters -- while the
+// host text AND the DSP (getRawParameterValue() = convertFrom0to1(getValue())) still see the snapped
+// value. No parameter ID, range, default, or choice ordering changes.
+namespace
 {
-    using Base::Base;
-    std::atomic<float> rawNorm { Base::getValue() };
-    void  setValue (float v) override { rawNorm.store (v); Base::setValue (v); }
-    float getValue() const   override { return rawNorm.load(); }
+struct RawChoice : juce::RangedAudioParameter
+{
+    RawChoice (const juce::ParameterID& pid, const juce::String& nm, juce::StringArray c, int defIndex)
+        : juce::RangedAudioParameter (pid, nm), choices (std::move (c)),
+          range (0.0f, (float) juce::jmax (1, choices.size() - 1), 1.0f),
+          normValue (toNorm (defIndex)), defaultNorm (toNorm (defIndex)) {}
+
+    float getValue() const override        { return normValue.load(); }
+    void  setValue (float v) override      { normValue.store (v); }
+    float getDefaultValue() const override { return defaultNorm; }
+    int   getNumSteps() const override     { return choices.size(); }
+    bool  isDiscrete() const override      { return true; }
+    juce::String getText (float v, int) const override { return choices[indexFor (v)]; }
+    float getValueForText (const juce::String& t) const override { const int i = choices.indexOf (t); return toNorm (i < 0 ? 0 : i); }
+    const juce::NormalisableRange<float>& getNormalisableRange() const override { return range; }
+
+    int   indexFor (float v) const { return juce::jlimit (0, choices.size() - 1, juce::roundToInt (v * (float) juce::jmax (1, choices.size() - 1))); }
+    float toNorm (int i) const     { return choices.size() > 1 ? (float) juce::jlimit (0, choices.size() - 1, i) / (float) (choices.size() - 1) : 0.0f; }
+
+    juce::StringArray choices;
+    juce::NormalisableRange<float> range;
+    std::atomic<float> normValue;
+    float defaultNorm;
 };
-using RawBool   = RawValued<juce::AudioParameterBool>;
-using RawChoice = RawValued<juce::AudioParameterChoice>;
-using RawInt    = RawValued<juce::AudioParameterInt>;
+
+struct RawBool : juce::RangedAudioParameter
+{
+    RawBool (const juce::ParameterID& pid, const juce::String& nm, bool def)
+        : juce::RangedAudioParameter (pid, nm), range (0.0f, 1.0f, 1.0f),
+          normValue (def ? 1.0f : 0.0f), defaultNorm (def ? 1.0f : 0.0f) {}
+
+    float getValue() const override        { return normValue.load(); }
+    void  setValue (float v) override      { normValue.store (v); }
+    float getDefaultValue() const override { return defaultNorm; }
+    int   getNumSteps() const override     { return 2; }
+    bool  isDiscrete() const override      { return true; }
+    bool  isBoolean() const override       { return true; }
+    juce::String getText (float v, int) const override { return v >= 0.5f ? "On" : "Off"; }
+    float getValueForText (const juce::String& t) const override
+    { return (t.equalsIgnoreCase ("on") || t.equalsIgnoreCase ("true") || t.getIntValue() != 0) ? 1.0f : 0.0f; }
+    const juce::NormalisableRange<float>& getNormalisableRange() const override { return range; }
+
+    juce::NormalisableRange<float> range;
+    std::atomic<float> normValue;
+    float defaultNorm;
+};
+
+struct RawInt : juce::RangedAudioParameter
+{
+    RawInt (const juce::ParameterID& pid, const juce::String& nm, int mn, int mx, int def)
+        : juce::RangedAudioParameter (pid, nm), range ((float) mn, (float) mx, 1.0f),
+          normValue (range.convertTo0to1 ((float) def)), defaultNorm (range.convertTo0to1 ((float) def)) {}
+
+    float getValue() const override        { return normValue.load(); }
+    void  setValue (float v) override      { normValue.store (v); }
+    float getDefaultValue() const override { return defaultNorm; }
+    int   getNumSteps() const override     { return juce::roundToInt (range.end - range.start) + 1; }
+    bool  isDiscrete() const override      { return true; }
+    juce::String getText (float v, int) const override { return juce::String (juce::roundToInt (range.convertFrom0to1 (v))); }
+    float getValueForText (const juce::String& t) const override { return range.convertTo0to1 ((float) t.getIntValue()); }
+    const juce::NormalisableRange<float>& getNormalisableRange() const override { return range; }
+
+    juce::NormalisableRange<float> range;
+    std::atomic<float> normValue;
+    float defaultNorm;
+};
+} // namespace
 
 namespace
 {
@@ -264,15 +323,19 @@ anamorph::EngineParameters ParamPointers::toEngine (int oversampleIndex) const
     const bool advanced = advancedMode->load() > 0.5f;
 
     // --- Core widening (always active, both modes) ---
+    // Discrete choice indices are read with roundToInt (not a truncating cast): the raw parameter
+    // value is range.convertFrom0to1(getValue()), and with the exact-raw getValue() a legal choice
+    // can denormalise a hair below its integer (e.g. Chorus 2/3 -> 1.9999), which (int) would floor
+    // to the wrong choice. roundToInt snaps to the intended index for every legal selection.
     e.driveDb      = drive->load();
-    e.algorithm    = (Algorithm) (int) algorithm->load();
+    e.algorithm    = (Algorithm) juce::roundToInt (algorithm->load());
     e.algoAmount   = amount->load();
     e.haasDelayMs  = haasDelay->load();
-    e.haasSide     = (HaasSide) (int) haasSide->load();
+    e.haasSide     = (HaasSide) juce::roundToInt (haasSide->load());
     e.velvetDensity = velvetDensity->load();
     e.chorusRate   = chorusRate->load();
     e.chorusDepth  = chorusDepth->load();
-    e.dimMode      = (int) dimMode->load() + 1; // choice 0..3 -> mode 1..4
+    e.dimMode      = juce::roundToInt (dimMode->load()) + 1; // choice 0..3 -> mode 1..4
     e.width        = width->load();
 
     e.oversample   = (OversampleFactor) juce::jlimit (0, 3, oversampleIndex); // from InternalState
@@ -281,14 +344,14 @@ anamorph::EngineParameters ParamPointers::toEngine (int oversampleIndex) const
     if (advanced)
     {
         // --- Input module ---
-        e.channelMode  = (ChannelMode) (int) channelMode->load();
+        e.channelMode  = (ChannelMode) juce::roundToInt (channelMode->load());
         e.monoSum      = monoSum->load() > 0.5f;
         e.swapLR       = swap->load() > 0.5f;
         e.inputBalance = inputBalance->load();
         e.polarityL    = polarityL->load() > 0.5f;
         e.polarityR    = polarityR->load() > 0.5f;
         e.msMode       = msMode->load() > 0.5f;
-        e.solo         = (SoloMode) (int) solo->load();
+        e.solo         = (SoloMode) juce::roundToInt (solo->load());
 
         // --- Multiband ---
         e.mbEnable     = mbEnable->load() > 0.5f;

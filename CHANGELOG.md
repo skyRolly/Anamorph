@@ -42,18 +42,24 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Width) recorded multiple intermediate steps, and any host-automation move could create undo steps.
   It is now **gesture-gated**: the processor listens to parameter begin/end gestures and commits
   exactly **one** undo step after the last gesture closes; automation (which never opens a gesture)
-  folds into the baseline without an undo entry. A/B switch/copy reset the gesture state. Evidence:
-  `src/PluginProcessor.cpp` (`parameterGestureChanged` / `pollUndoCoalesce`).
+  folds into the baseline without an undo entry. A/B switch/copy **and undo/redo** reset the gesture
+  state (a state jump is never a user gesture, so nothing re-commits after it). Evidence:
+  `src/PluginProcessor.cpp` (`parameterGestureChanged` / `pollUndoCoalesce` / `undo` / `redo`).
 - **Combo-box pop-ups drop BELOW the box again** instead of covering it with the selected item under
   the cursor. Added `AnamorphLookAndFeel::getOptionsForComboBoxPopupMenu` targeting the box's screen
   bounds (omitting the JUCE default `withItemThatMustBeVisible`/`withInitiallySelectedItem`). Evidence:
   `src/gui/LookAndFeel.cpp` (`getOptionsForComboBoxPopupMenu`).
 - **Discrete parameters now round-trip their exact value under pluginval `--randomise`.** Stock
   `AudioParameterBool`/`Choice`/`Int` snap `getValue()` to the nearest legal step, which for few-step
-  params can be `>0.1` from the raw value pluginval sets (seed-dependent "not restored" failures). The
-  new `RawValued<>` subclasses keep the exact raw normalised value in `getValue()` (restored via the
-  `raw` attribute + `reassertParameters`); the DSP still reads the snapped value via
-  `getRawParameterValue()`. See ADR-0013. Evidence: `src/PluginParameters.cpp` (`RawValued<>`).
+  params can be `>0.1` from the raw value pluginval sets (seed-dependent "not restored" failures) — and
+  they cannot be subclassed to fix it (JUCE declares their `getValue()`/`setValue()` **private**). The
+  discrete params are reimplemented as minimal from-scratch `juce::RangedAudioParameter` subclasses
+  (`RawChoice`/`RawBool`/`RawInt`) whose `getValue()` keeps the exact raw normalised value (restored via
+  the `raw` attribute + `reassertParameters`); the DSP still reads the snapped value via
+  `getRawParameterValue()` and host text via `getAllValueStrings()`. Because these are no longer the
+  stock concrete types, `getBypassParameter()` now holds an `AudioProcessorParameter*` (no
+  `dynamic_cast`) and the ComboBox item list is read from `getAllValueStrings()` — no behaviour change.
+  See ADR-0013. Evidence: `src/PluginParameters.cpp` (`RawChoice`/`RawBool`/`RawInt`).
 - **State restoration now round-trips every parameter exactly.** Two issues, both surfaced by the
   `--randomise` *Plugin state restoration* gate: (1) a wholesale `apvts.replaceState` did not
   reliably propagate to every parameter's cached value (an occasional param kept its pre-restore

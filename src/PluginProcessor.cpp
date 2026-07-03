@@ -9,7 +9,9 @@ AnamorphAudioProcessor::AnamorphAudioProcessor()
       apvts (*this, nullptr, "ANAMORPH", createAnamorphLayout()) // custom undo, not APVTS's
 {
     params.bind (apvts);
-    bypassParam = dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter (pid::bypass));
+    // Bypass is a custom RangedAudioParameter subclass (raw-value round-trip), so it is no longer
+    // an AudioParameterBool -- take the base pointer directly for getBypassParameter().
+    bypassParam = apvts.getParameter (pid::bypass);
 
     // Parameters that change the reported PDC latency. Oversampling is no longer an APVTS
     // parameter (it lives in InternalState), so its PDC update is driven by a callback.
@@ -158,7 +160,9 @@ void AnamorphAudioProcessor::applyAutoGain()
         og->endChangeGesture();
     }
 
-    if (auto* match = dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter (pid::autoGainMatch)))
+    // Level Match is a custom RangedAudioParameter subclass now; the gesture/notify calls below are
+    // AudioProcessorParameter methods, so take the base pointer instead of a concrete-type cast.
+    if (auto* match = apvts.getParameter (pid::autoGainMatch))
     {
         match->beginChangeGesture();
         match->setValueNotifyingHost (0.0f);
@@ -314,6 +318,8 @@ void AnamorphAudioProcessor::undo()
     applyStateSet (committed);
     committedSig = soundSignature();
     lastPolledSig = committedSig;
+    openGestures = 0;             // undo is a program state jump, not a user gesture -- drop any
+    pendingGestureCommit = false; // in-flight gesture bookkeeping so nothing re-commits afterwards
 }
 
 void AnamorphAudioProcessor::redo()
@@ -326,6 +332,8 @@ void AnamorphAudioProcessor::redo()
     applyStateSet (committed);
     committedSig = soundSignature();
     lastPolledSig = committedSig;
+    openGestures = 0;             // redo is a program state jump, not a user gesture -- drop any
+    pendingGestureCommit = false; // in-flight gesture bookkeeping so nothing re-commits afterwards
 }
 
 // ----------------------------------------------------------------------------

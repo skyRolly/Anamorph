@@ -137,7 +137,7 @@ private:
     anamorph::InternalState internal;          // Settings + Show Meters: host-hidden state
     anamorph::AnamorphEngine engine;
 
-    juce::AudioParameterBool* bypassParam = nullptr;
+    juce::AudioProcessorParameter* bypassParam = nullptr;
     bool prevPlaying = false; // transport edge-detect for meter reset (#15)
     // Transport reposition (seek) detection so the meter holds also reset on a timeline
     // jump while playing, not only on a stop->play restart (Issue 3).

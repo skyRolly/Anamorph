@@ -17,7 +17,10 @@ Evidence [Verified]: src/PluginParameters.cpp:13 (`kVersion = 1`), :67-68; src/P
 
 ## APVTS parameters (host-visible)
 
-Type: F=AudioParameterFloat, C=AudioParameterChoice, B=AudioParameterBool, I=AudioParameterInt.
+Type: F=AudioParameterFloat, C=Choice, B=Bool, I=Int. F is `juce::AudioParameterFloat`; the discrete
+kinds (C/B/I) are minimal from-scratch `juce::RangedAudioParameter` subclasses (`RawChoice`/`RawBool`/
+`RawInt`) with identical range/default/step semantics — `getValue()` returns the exact raw normalised
+value for exact state round-trip (ADR-0013); the DSP/host text still see the snapped choice/bool/int.
 "Host Visible" = appears in the host's parameter/automation list (every VST3 APVTS parameter does).
 "Auto Safe" = `withAutomatable(true)` (now true for **all** APVTS params).
 "Serialized" = saved in `apvts.copyState()`. Exclusions (A/B, Undo, Preset) in footnotes.
