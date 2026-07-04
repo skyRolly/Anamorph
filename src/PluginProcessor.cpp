@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "AbSlotIndex.h"
 
 AnamorphAudioProcessor::AnamorphAudioProcessor()
     : AudioProcessor (BusesProperties()
@@ -8,7 +9,9 @@ AnamorphAudioProcessor::AnamorphAudioProcessor()
       apvts (*this, nullptr, "ANAMORPH", createAnamorphLayout()) // custom undo, not APVTS's
 {
     params.bind (apvts);
-    bypassParam = dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter (pid::bypass));
+    // Bypass is a custom RangedAudioParameter subclass (raw-value round-trip), so it is no longer
+    // an AudioParameterBool -- take the base pointer directly for getBypassParameter().
+    bypassParam = apvts.getParameter (pid::bypass);
 
     // Parameters that change the reported PDC latency. Oversampling is no longer an APVTS
     // parameter (it lives in InternalState), so its PDC update is driven by a callback.
@@ -16,13 +19,36 @@ AnamorphAudioProcessor::AnamorphAudioProcessor()
     apvts.addParameterListener (pid::algorithm,  this);
     internal.onOversampleChanged = [this] { updateLatency(); };
 
+    // Observe begin/end GESTURES on the SOUND params so a whole drag folds into ONE undo step and
+    // host automation (which never opens a gesture) is excluded from undo. View params are skipped.
+    for (auto* p : getParameters())
+        if (auto* wid = dynamic_cast<juce::AudioProcessorParameterWithID*> (p))
+            if (! pid::isViewParam (wid->paramID))
+                p->addListener (this);
+
+    // A preset load opens NO gesture, so the gesture-gated coalescer would fold it into the baseline
+    // without an undo step (host-automation path). Bracket every load: flush any settled edit first,
+    // then record exactly ONE undo step for the switch, so a preset change is undoable (ADR-0008).
+    presets.onAboutToLoad = [this] { pollUndoCoalesce(); };
+    presets.onLoaded      = [this] { commitPresetSwitchUndoStep(); };
+
     syncCommitted(); // establish the undo baseline
+
+    // Snapshot BOTH A/B slots to the open (Default) state up front. The slots are otherwise filled
+    // LAZILY on the first A/B switch (abEnsureInit): editing A before ever visiting B would then make
+    // B born as a copy of A's ALREADY-edited state -- the edit leaks into B, so B never shows the
+    // open state. Eager init makes the two slots independent from open, deterministically (the lazy
+    // path made "B == open state" depend on whether the host called getStateInformation early). The
+    // switch/apply logic is unchanged; this only fixes WHEN the initial snapshot is taken.
+    abEnsureInit();
 }
 
 AnamorphAudioProcessor::~AnamorphAudioProcessor()
 {
     apvts.removeParameterListener (pid::drive,      this);
     apvts.removeParameterListener (pid::algorithm,  this);
+    for (auto* p : getParameters())
+        p->removeListener (this);
 }
 
 // ----------------------------------------------------------------------------
@@ -148,7 +174,9 @@ void AnamorphAudioProcessor::applyAutoGain()
         og->endChangeGesture();
     }
 
-    if (auto* match = dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter (pid::autoGainMatch)))
+    // Level Match is a custom RangedAudioParameter subclass now; the gesture/notify calls below are
+    // AudioProcessorParameter methods, so take the base pointer instead of a concrete-type cast.
+    if (auto* match = apvts.getParameter (pid::autoGainMatch))
     {
         match->beginChangeGesture();
         match->setValueNotifyingHost (0.0f);
@@ -179,12 +207,15 @@ void AnamorphAudioProcessor::syncCommitted()
     committed = currentStateSet();
     committedSig = soundSignature();
     lastPolledSig = committedSig;
+    openGestures = 0;             // A/B switch / preset / session load is not a user gesture
+    pendingGestureCommit = false;
 }
 
-// A full snapshot: parameters PLUS the live preset name + clean baseline (#6).
+// A full snapshot: parameters PLUS the live preset name + clean baseline (#6). The params carry the
+// additive `raw` attribute so A/B slots + undo round-trip discrete params exactly (no snap drift).
 AnamorphAudioProcessor::StateSet AnamorphAudioProcessor::currentStateSet()
 {
-    return { apvts.copyState(), presets.currentName(), presets.baseline() };
+    return { copyStateWithRawValues(), presets.currentName(), presets.baseline() };
 }
 
 // Restore a state set: parameters (keeping the shared view params) AND the
@@ -203,26 +234,133 @@ void AnamorphAudioProcessor::applyStatePreservingView (const juce::ValueTree& ta
         saved[i] = apvts.getParameter (pid::viewParams[i])->getValue();
 
     apvts.replaceState (target.createCopy());
+    // Synchronously force every parameter to its exact (raw) value from the snapshot, so undo /
+    // redo / A-B apply propagate exactly like host state restore -- replaceState alone can leave a
+    // param at a stale/snapped value (see reassertParameters). View params are re-overridden below.
+    reassertParameters (target, /*notifyHost*/ true); // undo/redo/A-B is editor-initiated: notify host+editor
 
     for (size_t i = 0; i < std::size (pid::viewParams); ++i)
         apvts.getParameter (pid::viewParams[i])->setValueNotifyingHost (saved[i]);
 }
 
+// apvts.copyState() with each PARAM node additively stamped with its exact raw getValue(): pluginval
+// sets RAW normalised values and expects them back within 0.1, but APVTS serialises the DENORMALISED
+// (snapped) value, which for discrete params (Bool/Choice/Int) can be >0.1 from the raw value. The
+// `raw` attribute carries the exact value so the round-trip is bit-faithful. Additive + backward-
+// compatible: the APVTS `value` is unchanged, old sessions/plugins ignore `raw` (no removal/rename).
+juce::ValueTree AnamorphAudioProcessor::copyStateWithRawValues()
+{
+    auto tree = apvts.copyState();
+    for (auto param : tree)
+        if (param.hasType ("PARAM"))
+            if (auto* p = apvts.getParameter (param.getProperty ("id").toString()))
+                param.setProperty ("raw", p->getValue(), nullptr);
+    return tree;
+}
+
+// Synchronously force every parameter to its restored value, from the just-restored tree:
+//  1. A wholesale apvts.replaceState() does not reliably push every parameter's value through to
+//     its cached/atomic getValue() synchronously (some params kept their PRE-restore value).
+//  2. APVTS stores the DENORMALISED (snapped) value; for discrete params the saved "raw" attribute
+//     (see getStateInformation) carries the EXACT normalised getValue() pluginval set, so the
+//     round-trip is bit-faithful and passes its 0.1 raw-value tolerance.
+// Prefer "raw" (exact); fall back to the denormalised "value" for legacy sessions that lack it.
+// Idempotent: parameters already at the target value are left untouched.
+//
+// notifyHost: TRUE for editor-initiated restores (undo / redo / A-B via applyStatePreservingView) --
+// setValueNotifyingHost updates value + DSP atomic + editor + host. FALSE for host state restore
+// (setStateInformation): a parameter-change callback during the HOST's own state load can be treated
+// by some DAWs as an automation write, so we must NOT notify the host. setValueNotifyingHost is
+// setValue + sendValueChangedMessageToListeners, and the latter reaches the host via the parameter's
+// owner-listener, so it can't be used. Instead update getValue() with setValue() and write the raw
+// atomic the audio thread reads (getRawParameterValue) DIRECTLY -- replaceState swaps only the tree,
+// it does not propagate to parameters/atomics. Trade-off: an editor open DURING a host restore does
+// not live-update its sliders (rare -- this plugin exposes no host programs; the audio + getValue()
+// are correct and the sliders sync on editor open); undo/redo/A-B keep the full notifyHost=true path.
+void AnamorphAudioProcessor::reassertParameters (const juce::ValueTree& restoredApvtsTree, bool notifyHost)
+{
+    if (! restoredApvtsTree.isValid()) return;
+
+    for (auto* p : getParameters())
+        if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p))
+            if (auto node = restoredApvtsTree.getChildWithProperty ("id", rp->paramID); node.isValid())
+            {
+                const float norm = node.hasProperty ("raw")
+                    ? juce::jlimit (0.0f, 1.0f, (float) node.getProperty ("raw"))
+                    : juce::jlimit (0.0f, 1.0f, rp->convertTo0to1 ((float) node.getProperty ("value",
+                                                                   rp->convertFrom0to1 (rp->getValue()))));
+                if (std::abs (norm - rp->getValue()) > 1.0e-6f)
+                {
+                    if (notifyHost)
+                        rp->setValueNotifyingHost (norm);
+                    else
+                    {
+                        rp->setValue (norm); // getValue() only -- no host / listener notification
+                        if (auto* atom = apvts.getRawParameterValue (rp->paramID))
+                            atom->store (rp->convertFrom0to1 (norm)); // DSP value (snapped denormalised)
+                    }
+                }
+            }
+}
+
+// Message thread. Count nested / overlapping gestures (e.g. the two-parameter Multiband band move
+// opens gestures on both split params); request a single undo commit only after the LAST closes.
+void AnamorphAudioProcessor::parameterGestureChanged (int, bool gestureIsStarting)
+{
+    if (gestureIsStarting)                       ++openGestures;
+    else if (openGestures > 0 && --openGestures == 0) pendingGestureCommit = true;
+}
+
 void AnamorphAudioProcessor::pollUndoCoalesce()
 {
     const auto sig = soundSignature();
-    // Commit only once a sound edit has SETTLED (signature stable for a tick),
-    // folding a whole knob gesture into a single undo step. The pushed entry is
-    // the PREVIOUS state set (its own name + baseline), so undo restores them (#6).
-    if (sig != committedSig && sig == lastPolledSig)
+
+    if (openGestures > 0)          // a user gesture is in progress -> never commit mid-gesture
     {
-        abUndo[abActive].undo.push_back (committed);
+        lastPolledSig = sig;
+        return;
+    }
+
+    if (pendingGestureCommit)      // exactly ONE undo step per finished gesture (knob or band move)
+    {
+        pendingGestureCommit = false;
+        if (sig != committedSig)
+        {
+            abUndo[abActive].undo.push_back (committed);   // the PREVIOUS state set (name + baseline, #6)
+            if (abUndo[abActive].undo.size() > 128) abUndo[abActive].undo.erase (abUndo[abActive].undo.begin());
+            abUndo[abActive].redo.clear();
+            committed = currentStateSet();
+            committedSig = sig;
+        }
+    }
+    else if (sig != committedSig)  // NON-gesture change (host automation / programmatic): fold into
+    {                              // the baseline WITHOUT creating an undo step (automation is not undoable)
+        committed = currentStateSet();
+        committedSig = sig;
+    }
+
+    lastPolledSig = sig;
+}
+
+// Record ONE undo step for a preset load. Called by the PresetManager::onLoaded hook AFTER the new
+// preset's params + name/baseline are in place; onAboutToLoad has already flushed any settled edit,
+// so `committed` holds the exact pre-load state set (previous preset name + params). Push it and adopt
+// the freshly-loaded state as the new committed baseline. Distinct from the non-gesture fold in
+// pollUndoCoalesce: a preset switch IS a discrete, undoable user action (unlike host automation).
+void AnamorphAudioProcessor::commitPresetSwitchUndoStep()
+{
+    const auto sig = soundSignature();
+    if (sig != committedSig)
+    {
+        abUndo[abActive].undo.push_back (committed);   // the PREVIOUS state set (name + baseline, #6)
         if (abUndo[abActive].undo.size() > 128) abUndo[abActive].undo.erase (abUndo[abActive].undo.begin());
-        abUndo[abActive].redo.clear();
-        committed = currentStateSet(); // captures the NOW-current preset name/baseline
+        abUndo[abActive].redo.clear();                 // a new user action invalidates the redo stack
+        committed = currentStateSet();                 // now carries the NEW preset name + clean baseline
         committedSig = sig;
     }
     lastPolledSig = sig;
+    openGestures = 0;             // a preset load is a program state jump, not a user gesture -- drop any
+    pendingGestureCommit = false; // in-flight gesture bookkeeping so nothing re-commits afterwards
 }
 
 void AnamorphAudioProcessor::undo()
@@ -235,6 +373,8 @@ void AnamorphAudioProcessor::undo()
     applyStateSet (committed);
     committedSig = soundSignature();
     lastPolledSig = committedSig;
+    openGestures = 0;             // undo is a program state jump, not a user gesture -- drop any
+    pendingGestureCommit = false; // in-flight gesture bookkeeping so nothing re-commits afterwards
 }
 
 void AnamorphAudioProcessor::redo()
@@ -247,6 +387,8 @@ void AnamorphAudioProcessor::redo()
     applyStateSet (committed);
     committedSig = soundSignature();
     lastPolledSig = committedSig;
+    openGestures = 0;             // redo is a program state jump, not a user gesture -- drop any
+    pendingGestureCommit = false; // in-flight gesture bookkeeping so nothing re-commits afterwards
 }
 
 // ----------------------------------------------------------------------------
@@ -272,6 +414,7 @@ void AnamorphAudioProcessor::abApplySlot (int slot)
 
 void AnamorphAudioProcessor::abSwitchTo (int slot)
 {
+    slot = juce::jlimit (0, anamorph::kNumAbSlots - 1, slot); // defensive: never index out of bounds
     abEnsureInit();
     if (slot == abActive) return;
     engine.requestDuck();                              // mask the level jump (#1, 0.6.4)
@@ -307,7 +450,7 @@ void AnamorphAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
     juce::ValueTree root ("AnamorphRoot");
     root.setProperty ("presetName", presets.currentName(), nullptr);     // remembered across sessions (F2)
     root.setProperty ("presetBaseline", presets.baseline(), nullptr);    // so the dirty-star survives reload (#6)
-    root.appendChild (apvts.copyState(), nullptr);
+    root.appendChild (copyStateWithRawValues(), nullptr); // APVTS state + exact "raw" values per PARAM
     root.appendChild (internal.copyState(), nullptr); // host-hidden Settings / view state
     juce::ValueTree ab ("AB");
     ab.setProperty ("active", abActive, nullptr);
@@ -335,7 +478,11 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
     if (root.hasType ("AnamorphRoot"))
     {
         auto params = root.getChildWithName (apvts.state.getType());
-        if (params.isValid()) apvts.replaceState (params.createCopy());
+        if (params.isValid())
+        {
+            apvts.replaceState (params.createCopy());
+            reassertParameters (params, /*notifyHost*/ false); // host restore: no host-notify (see below)
+        }
 
         // Restore the host-hidden Settings / view state (Oversampling, Window Size,
         // Persistence, Tooltips, Animations, Show Meters). A changed Oversampling fires
@@ -357,7 +504,10 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
         auto ab = root.getChildWithName ("AB");
         if (ab.isValid())
         {
-            abActive = (int) ab.getProperty ("active", 0);
+            // Clamp on restore: a hand-edited / corrupted / forward-version blob can carry an
+            // out-of-range "active"; abSlot[]/abUndo[] are size-2, so an unclamped index would be
+            // an out-of-bounds access (anamorph::kNumAbSlots). Valid states (0/1) are unchanged.
+            abActive = anamorph::clampAbSlotIndex ((int) ab.getProperty ("active", 0));
             auto readSlot = [&ab] (StateSet& dst, const char* pk, const char* nk, const char* bk,
                                    const char* legacyKey)
             {
@@ -380,7 +530,9 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
     }
     else if (xml->hasTagName (apvts.state.getType())) // backward-compat (v0.2)
     {
-        apvts.replaceState (juce::ValueTree::fromXml (*xml));
+        auto legacy = juce::ValueTree::fromXml (*xml);
+        apvts.replaceState (legacy);
+        reassertParameters (legacy, /*notifyHost*/ false); // legacy host restore: no host-notify
     }
 
     // Fresh session: clear undo history.

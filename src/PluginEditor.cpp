@@ -245,13 +245,18 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     setOpaque (true); // fill our bounds every paint -> no see-through flash on a scale resize (#13)
     openGLContext.setContinuousRepainting (false);
    #if ! (JUCE_LINUX || JUCE_BSD)
-    // GPU-composite the vectorscope on macOS / Windows. NOT on Linux/X11: attaching an
-    // OpenGL context adds an extra embedded child X11 window, which multiplies the
-    // ConfigureNotify events the host's XEmbedComponent turns into async lambdas that
-    // capture a raw `this`; under a host that rapidly opens/closes the editor (pluginval
-    // "Editor Automation", and real Linux DAWs), one of those lambdas can fire after the
-    // editor window is gone -> use-after-free segfault inside JUCE's X11 embedding. The
-    // CPU paint path is identical visually, so Linux simply renders without GL.
+    // GPU-composite the editor on macOS and Windows (real GPUs). NOT on Linux/X11: attaching a GL
+    // context there adds an embedded child X11 window whose ConfigureNotify events the host's
+    // XEmbedComponent turns into async lambdas capturing a raw `this`; under a host that rapidly
+    // opens/closes the editor (pluginval "Editor Automation", and real Linux DAWs) one of those
+    // lambdas fires after the editor window is gone -> use-after-free inside JUCE's X11 embedding.
+    // This is HOST-side (JUCE's XEmbedComponent), not a plugin defect: a core dump of the reproduced
+    // crash lands in juce::XEmbedComponent::Pimpl::handleX11Event's lambda under runDispatchLoop
+    // (ADR-0011 / INC-006 / KI-003). The CPU paint path is visually identical, so Linux renders
+    // without GL. macOS runs GL + the same editor automation green, confirming the plugin's GL code
+    // is sound. On the GPU-less Windows CI runner the editor GUI tests can't be hosted at all (both
+    // GL and CPU mode fail there), so they are skipped on that runner only (--skip-gui-tests, KI-007);
+    // real Windows machines have a GPU and render on GL as designed.
     openGLContext.attachTo (*this);
    #endif
 
@@ -712,8 +717,11 @@ void AnamorphAudioProcessorEditor::passComboHoverThrough (juce::ComboBox& box)
 
 void AnamorphAudioProcessorEditor::setupCombo (juce::ComboBox& box, const char* id, const juce::String& tip)
 {
-    if (auto* cp = dynamic_cast<juce::AudioParameterChoice*> (processor.getAPVTS().getParameter (id)))
-        box.addItemList (cp->choices, 1);
+    // Choice params are custom RangedAudioParameter subclasses now, so read the item list
+    // generically via getAllValueStrings() (works for any discrete parameter) instead of a
+    // concrete AudioParameterChoice cast.
+    if (auto* cp = processor.getAPVTS().getParameter (id))
+        box.addItemList (cp->getAllValueStrings(), 1);
     box.setTooltip (tidyTip (tip));
     box.setRepaintsOnMouseActivity (true); // hover feedback (#10)
     passComboHoverThrough (box);

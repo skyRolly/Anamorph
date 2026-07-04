@@ -4,6 +4,7 @@
 #include "PluginParameters.h"
 #include "PresetManager.h"
 #include "InternalState.h"
+#include "AbSlotIndex.h"          // anamorph::kNumAbSlots (single source of truth for A/B sizing)
 #include "dsp/AnamorphEngine.h"
 
 // ============================================================================
@@ -15,7 +16,8 @@
 //  (the "turn Mono into Stereo" headline feature). Output is always stereo.
 // ============================================================================
 class AnamorphAudioProcessor : public juce::AudioProcessor,
-                               private juce::AudioProcessorValueTreeState::Listener
+                               private juce::AudioProcessorValueTreeState::Listener,
+                               private juce::AudioProcessorParameter::Listener // sound-param gestures (undo)
 {
 public:
     AnamorphAudioProcessor();
@@ -80,6 +82,10 @@ public:
 
 private:
     void parameterChanged (const juce::String& id, float newValue) override;
+    // AudioProcessorParameter::Listener: coalesce a whole user GESTURE into one undo step, and
+    // exclude host automation (which never opens a gesture) from undo entirely.
+    void parameterValueChanged (int, float) override {}                 // required; value handled by the poll
+    void parameterGestureChanged (int parameterIndex, bool gestureIsStarting) override;
     void updateLatency();
 
     // A/B helpers (preserve the shared view/Settings params across a slot apply)
@@ -101,18 +107,34 @@ private:
 
     // Undo helpers
     static bool isViewParam (const juce::String& id) noexcept;
+    // Record ONE undo step spanning a preset load (a gesture-less setValueNotifyingHost burst the
+    // coalescer would otherwise fold silently into the baseline). Bracketed by the PresetManager hooks.
+    void commitPresetSwitchUndoStep();
     juce::String soundSignature() const;
     void applyStatePreservingView (const juce::ValueTree& target);
+    // Force every APVTS parameter to its value in a just-restored tree (see the .cpp): a wholesale
+    // replaceState does not reliably propagate to every parameter's cached value synchronously.
+    // notifyHost=false (host state restore) updates value + DSP atomic WITHOUT notifying the host;
+    // notifyHost=true (editor-initiated undo/redo/A-B) notifies host + editor as before.
+    void reassertParameters (const juce::ValueTree& restoredApvtsTree, bool notifyHost);
+    // apvts.copyState() with each PARAM node additively stamped with its exact raw getValue()
+    // ("raw" attribute), so every saved snapshot (host state, A/B slots, undo) round-trips exactly.
+    juce::ValueTree copyStateWithRawValues();
     void syncCommitted();
 
     struct UndoStacks { std::vector<StateSet> undo, redo; };
-    UndoStacks abUndo[2];
+    UndoStacks abUndo[anamorph::kNumAbSlots];
     StateSet committed;
     juce::String committedSig, lastPolledSig;
+    // Undo coalescing is GESTURE-gated (message thread only, matches the editor-timer poll): count
+    // open user gestures; commit exactly one undo step after the LAST gesture-end. Host automation
+    // never opens a gesture, so it is never recorded.
+    int  openGestures = 0;
+    bool pendingGestureCommit = false;
 
-    StateSet abSlot[2]; // A = [0], B = [1]
+    StateSet abSlot[anamorph::kNumAbSlots]; // A = [0], B = [1]
     int abActive = 0;
-    float abMatchGain[2] = { 0.0f, 0.0f }; // remembered Level-Match per A/B slot (#23)
+    float abMatchGain[anamorph::kNumAbSlots] = { 0.0f, 0.0f }; // remembered Level-Match per A/B slot (#23)
 
     juce::AudioProcessorValueTreeState apvts;
     ParamPointers params;
@@ -120,7 +142,7 @@ private:
     anamorph::InternalState internal;          // Settings + Show Meters: host-hidden state
     anamorph::AnamorphEngine engine;
 
-    juce::AudioParameterBool* bypassParam = nullptr;
+    juce::AudioProcessorParameter* bypassParam = nullptr;
     bool prevPlaying = false; // transport edge-detect for meter reset (#15)
     // Transport reposition (seek) detection so the meter holds also reset on a timeline
     // jump while playing, not only on a stop->play restart (Issue 3).

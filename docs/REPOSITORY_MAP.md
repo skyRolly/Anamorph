@@ -62,13 +62,15 @@ Anamorph/
 
 | Path | Responsibility |
 |---|---|
-| `tests/dsp_tests.cpp` | 23 headless DSP acceptance tests (`check(cond, "...")` harness; `main` runs all). |
+| `tests/dsp_tests.cpp` | 23 headless DSP acceptance tests + 1 A/B state-restoration clamp guard (`check(cond, "...")` harness; `main` runs all). |
 | `scripts/setup-linux.sh` | Ubuntu build dependencies (+ xvfb). |
 | `scripts/build.sh` | CMake + Ninja build; prints artifact paths. |
 | `scripts/run-tests.sh` | Runs `AnamorphTests`. |
-| `scripts/run-pluginval.sh` | pluginval (strictness arg; signal-only retry for the X11 host flake). |
+| `scripts/run-pluginval.sh` | pluginval on Linux/macOS (strictness + mode args — `deterministic` \| `randomise`, each ×3; signal-only retry for the X11 host flake). |
+| `scripts/run-pluginval.ps1` | pluginval on Windows (same strictness/mode/×3 structure; exit code is the sole signal). |
+| `src/AbSlotIndex.h` | `anamorph::kNumAbSlots` + `clampAbSlotIndex` — single source of truth for A/B slot sizing/clamping. |
 | `packaging/macos/INSTALL.txt` | macOS install + de-quarantine instructions (ad-hoc signed, not notarized). |
-| `.github/workflows/build.yml` | 3-OS build + DSP tests + pluginval; Linux strictness-10 is the blocking gate. |
+| `.github/workflows/build.yml` | 3-OS build + DSP tests + pluginval; strictness-10, both modes ×3, **blocking on all three platforms**. |
 
 ## `docs/` — documentation library
 

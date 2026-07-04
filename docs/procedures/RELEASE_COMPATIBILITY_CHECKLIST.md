@@ -14,7 +14,8 @@ Hard compatibility gate. **Every box must be checked before a release ships.** T
       Ref: `docs/architecture/SERIALIZATION_REGISTRY.md`, `docs/policies/SESSION_COMPATIBILITY_POLICY.md`.
 - [ ] **Presets migrated** — factory presets and a representative user `.anamorph` still load and
       sound identical. Ref: `src/PresetManager.cpp`.
-- [ ] **Pluginval passed** — `scripts/run-pluginval.sh 10` passes on the Linux gate (strictness 10).
+- [ ] **Pluginval passed (both modes)** — `scripts/run-pluginval.sh 10 deterministic` **and**
+      `scripts/run-pluginval.sh 10 randomise` (`--randomise` ×3) pass on the Linux gate (strictness 10).
       Ref: `docs/procedures/TESTING.md`.
 - [ ] **Host matrix verified** — load in the target hosts and confirm load + automation + state.
       (Currently Unverified in-repo; this requires manual DAW testing —

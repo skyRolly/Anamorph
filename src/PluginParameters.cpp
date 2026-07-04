@@ -1,4 +1,5 @@
 #include "PluginParameters.h"
+#include <atomic>
 
 using juce::AudioParameterFloat;
 using juce::AudioParameterChoice;
@@ -6,6 +7,87 @@ using juce::AudioParameterBool;
 using juce::NormalisableRange;
 using juce::StringArray;
 using juce::ParameterID;
+
+// pluginval's "Plugin state restoration" sets a RAW normalised value on each parameter and checks
+// getValue() back within 0.1. Stock AudioParameterBool/Choice/Int SNAP getValue() to the nearest
+// legal step -- and make getValue()/setValue() PRIVATE, so they cannot be subclassed for this -- so
+// a few-step discrete param given a mid-step raw value (e.g. a 3-choice at 0.807 -> 1.0, 0.193 away)
+// is intermittently reported "not restored" under --randomise. These minimal RangedAudioParameter
+// subclasses (getValue/setValue are PUBLIC pure-virtuals here) keep the EXACT raw normalised value in
+// getValue() -- restored bit-exactly via the "raw" state attribute + reassertParameters -- while the
+// host text AND the DSP (getRawParameterValue() = convertFrom0to1(getValue())) still see the snapped
+// value. No parameter ID, range, default, or choice ordering changes.
+namespace
+{
+struct RawChoice : juce::RangedAudioParameter
+{
+    RawChoice (const juce::ParameterID& pid, const juce::String& nm, juce::StringArray c, int defIndex)
+        : juce::RangedAudioParameter (pid, nm), choices (std::move (c)),
+          range (0.0f, (float) juce::jmax (1, choices.size() - 1), 1.0f),
+          normValue (toNorm (defIndex)), defaultNorm (toNorm (defIndex)) {}
+
+    float getValue() const override        { return normValue.load(); }
+    void  setValue (float v) override      { normValue.store (v); }
+    float getDefaultValue() const override { return defaultNorm; }
+    int   getNumSteps() const override     { return choices.size(); }
+    bool  isDiscrete() const override      { return true; }
+    juce::String getText (float v, int) const override { return choices[indexFor (v)]; }
+    float getValueForText (const juce::String& t) const override { const int i = choices.indexOf (t); return toNorm (i < 0 ? 0 : i); }
+    const juce::NormalisableRange<float>& getNormalisableRange() const override { return range; }
+
+    int   indexFor (float v) const { return juce::jlimit (0, choices.size() - 1, juce::roundToInt (v * (float) juce::jmax (1, choices.size() - 1))); }
+    float toNorm (int i) const     { return choices.size() > 1 ? (float) juce::jlimit (0, choices.size() - 1, i) / (float) (choices.size() - 1) : 0.0f; }
+
+    juce::StringArray choices;
+    juce::NormalisableRange<float> range;
+    std::atomic<float> normValue;
+    float defaultNorm;
+};
+
+struct RawBool : juce::RangedAudioParameter
+{
+    RawBool (const juce::ParameterID& pid, const juce::String& nm, bool def, bool automatable = true)
+        : juce::RangedAudioParameter (pid, nm), range (0.0f, 1.0f, 1.0f),
+          normValue (def ? 1.0f : 0.0f), defaultNorm (def ? 1.0f : 0.0f), autom (automatable) {}
+
+    float getValue() const override        { return normValue.load(); }
+    void  setValue (float v) override      { normValue.store (v); }
+    float getDefaultValue() const override { return defaultNorm; }
+    int   getNumSteps() const override     { return 2; }
+    bool  isDiscrete() const override      { return true; }
+    bool  isBoolean() const override       { return true; }
+    bool  isAutomatable() const override   { return autom; }
+    juce::String getText (float v, int) const override { return v >= 0.5f ? "On" : "Off"; }
+    float getValueForText (const juce::String& t) const override
+    { return (t.equalsIgnoreCase ("on") || t.equalsIgnoreCase ("true") || t.getIntValue() != 0) ? 1.0f : 0.0f; }
+    const juce::NormalisableRange<float>& getNormalisableRange() const override { return range; }
+
+    juce::NormalisableRange<float> range;
+    std::atomic<float> normValue;
+    float defaultNorm;
+    bool  autom;
+};
+
+struct RawInt : juce::RangedAudioParameter
+{
+    RawInt (const juce::ParameterID& pid, const juce::String& nm, int mn, int mx, int def)
+        : juce::RangedAudioParameter (pid, nm), range ((float) mn, (float) mx, 1.0f),
+          normValue (range.convertTo0to1 ((float) def)), defaultNorm (range.convertTo0to1 ((float) def)) {}
+
+    float getValue() const override        { return normValue.load(); }
+    void  setValue (float v) override      { normValue.store (v); }
+    float getDefaultValue() const override { return defaultNorm; }
+    int   getNumSteps() const override     { return juce::roundToInt (range.end - range.start) + 1; }
+    bool  isDiscrete() const override      { return true; }
+    juce::String getText (float v, int) const override { return juce::String (juce::roundToInt (range.convertFrom0to1 (v))); }
+    float getValueForText (const juce::String& t) const override { return range.convertTo0to1 ((float) t.getIntValue()); }
+    const juce::NormalisableRange<float>& getNormalisableRange() const override { return range; }
+
+    juce::NormalisableRange<float> range;
+    std::atomic<float> normValue;
+    float defaultNorm;
+};
+} // namespace
 
 namespace
 {
@@ -112,48 +194,45 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
     };
 
     // --- Input conditioning ---
-    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { pid::channelMode, kVersion },
+    layout.add (std::make_unique<RawChoice> (ParameterID { pid::channelMode, kVersion },
         "Input Channel", StringArray { "Stereo", "Left Only", "Right Only" }, 0));
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::monoSum, kVersion }, "Mono", false));
+    layout.add (std::make_unique<RawBool> (ParameterID { pid::monoSum, kVersion }, "Mono", false));
     // Names reflect BOTH operating modes: in M/S mode L/R become Mid/Side (Issue 6).
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::swap, kVersion }, "Swap L/R (M/S)", false));
+    layout.add (std::make_unique<RawBool> (ParameterID { pid::swap, kVersion }, "Swap L/R (M/S)", false));
     floatParam (pid::inputBalance, "Input Balance", { -1.0f, 1.0f, 0.001f }, 0.0f, balPct, balFrom);
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::polarityL, kVersion }, "Phase Invert L/M", false));
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::polarityR, kVersion }, "Phase Invert R/S", false));
+    layout.add (std::make_unique<RawBool> (ParameterID { pid::polarityL, kVersion }, "Phase Invert L/M", false));
+    layout.add (std::make_unique<RawBool> (ParameterID { pid::polarityR, kVersion }, "Phase Invert R/S", false));
 
     // --- MS ---
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::msMode, kVersion }, "M/S Mode", false));
+    layout.add (std::make_unique<RawBool> (ParameterID { pid::msMode, kVersion }, "M/S Mode", false));
 
     // --- Effect engine ---
     floatParam (pid::drive, "Drive", { 0.0f, 24.0f, 0.01f }, 0.0f, db);
-    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { pid::algorithm, kVersion },
-        "Algorithm", StringArray { "Haas", "Velvet Noise", "Chorus", "Dim-D" }, 1));
+    layout.add (std::make_unique<RawChoice> (ParameterID { pid::algorithm, kVersion },
+        "Widen Algorithm", StringArray { "Haas", "Velvet Noise", "Chorus", "Dim-D" }, 1));
     // Unified widening intensity. Default 0 == transparent on load (#3).
     floatParam (pid::amount, "Amount", { 0.0f, 1.0f, 0.001f }, 0.0f, pct, pctFrom);
     floatParam (pid::haasDelay, "Haas Delay", { 1.0f, 35.0f, 0.01f }, 12.0f, ms);
     // Default perceived side = Left (#14); list order unchanged.
-    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { pid::haasSide, kVersion },
+    layout.add (std::make_unique<RawChoice> (ParameterID { pid::haasSide, kVersion },
         "Haas Focus", StringArray { "Left", "Right" }, 0));
     floatParam (pid::velvetDensity, "Velvet Density", { 0.0f, 1.0f, 0.001f }, 0.5f, pct, pctFrom);
     floatParam (pid::chorusRate, "Chorus Rate", NormalisableRange<float> { 0.05f, 5.0f, 0.001f, 0.4f }, 0.5f,
                 [] (float v, int) { return juce::String (v, 2) + " Hz"; }, hzFrom);
     floatParam (pid::chorusDepth, "Chorus Depth", { 0.0f, 1.0f, 0.001f }, 0.5f, pct, pctFrom);
     // Friendly Dimension-D voicing names (#14); long descriptions live in tooltips.
-    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { pid::dimMode, kVersion },
-        "Dimension Mode", StringArray { "Subtle", "Classic", "Wide", "Lush" }, 1));
+    layout.add (std::make_unique<RawChoice> (ParameterID { pid::dimMode, kVersion },
+        "Dim-D Style", StringArray { "Subtle", "Classic", "Wide", "Lush" }, 1));
     floatParam (pid::width, "Width", { 0.0f, 2.0f, 0.001f }, 1.0f, pct, pctFrom);
 
     // --- Multiband (1..4 bands, up to 3 crossovers) ---
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::mbEnable, kVersion }, "Multiband Enable", true));
-    // Multiband Bands / Solo are HIDDEN from host automation (Issue 5): they are driven
-    // by the drag-to-split display, make no sense on an automation lane, and Solo is a
-    // monitoring aid. The parameters remain (state save/recall, GUI, A/B) -- only the
-    // automatable flag is off. Restore by removing `.withAutomatable (false)`.
-    layout.add (std::make_unique<juce::AudioParameterInt> (ParameterID { pid::mbBands, kVersion }, "Multiband Bands", 1, 4, 4,
-        juce::AudioParameterIntAttributes().withAutomatable (false)));
+    layout.add (std::make_unique<RawBool> (ParameterID { pid::mbEnable, kVersion }, "Multiband Enable", true));
+    // Multiband Bands / Solo are now EXPOSED to host automation (they appear in the DAW's
+    // automation list alongside every other parameter). They are still primarily driven by the
+    // drag-to-split display and remain in state save/recall, GUI and A/B; Solo is a 4-bit mask.
+    layout.add (std::make_unique<RawInt> (ParameterID { pid::mbBands, kVersion }, "Multiband Bands", 1, 4, 4));
     // Solo is a 4-bit mask (any combination of bands), not a single index (0.6.9 #7).
-    layout.add (std::make_unique<juce::AudioParameterInt> (ParameterID { pid::mbSolo, kVersion }, "Multiband Solo", 0, 15, 0,
-        juce::AudioParameterIntAttributes().withAutomatable (false)));
+    layout.add (std::make_unique<RawInt> (ParameterID { pid::mbSolo, kVersion }, "Multiband Solo", 0, 15, 0));
     // Full-range splits: the display enforces a minimum on-screen gap and the DSP
     // re-orders them, so a split may be dragged anywhere (0.6.10 #5/#26).
     floatParam (pid::mbFreqLow,  "Multiband Split 1", logFreqRange (20.0f, 20000.0f), 180.0f,  hz, hzFrom);
@@ -165,7 +244,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
     floatParam (pid::mbWidthHigh,  "Multiband Width 4", { 0.0f, 2.0f, 0.001f }, 1.0f, pct, pctFrom);
 
     // --- Mono maker ---
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::monoMakerOn, kVersion }, "Mono Maker", false));
+    layout.add (std::make_unique<RawBool> (ParameterID { pid::monoMakerOn, kVersion }, "Mono Maker", false));
     // 20..500 with 120 on the bar's middle, via a centred LOG warp -- the low end keeps a
     // healthy density (not the very sparse tail a linear centre-skew gave) (0.6.16 #E).
     floatParam (pid::monoMakerFreq, "Mono Maker Freq", logFreqRangeCentred (20.0f, 500.0f, 120.0f), 120.0f, hz, hzFrom);
@@ -174,10 +253,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
     floatParam (pid::mix, "Mix", { 0.0f, 1.0f, 0.001f }, 1.0f, pct, pctFrom);
     floatParam (pid::outputGain, "Output Gain", { -24.0f, 24.0f, 0.01f }, 0.0f, db);
     floatParam (pid::outputBalance, "Output Balance", { -1.0f, 1.0f, 0.001f }, 0.0f, balPct, balFrom);
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::autoGainMatch, kVersion }, "Level Match", false));
+    layout.add (std::make_unique<RawBool> (ParameterID { pid::autoGainMatch, kVersion }, "Level Match", false));
 
     // --- Monitoring ---
-    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { pid::solo, kVersion },
+    layout.add (std::make_unique<RawChoice> (ParameterID { pid::solo, kVersion },
         "M/S Solo", StringArray { "Off", "Mid", "Side" }, 0));
 
     // --- Oversampling / Settings / Show Meters are NOT here anymore ---------------
@@ -190,10 +269,16 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
     // Animations, UI Scale. (Advanced Mode stays an APVTS param -- it travels with A/B.)
 
     // --- Bypass (registered as the host bypass parameter) ---
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::bypass, kVersion }, "Bypass", false));
+    layout.add (std::make_unique<RawBool> (ParameterID { pid::bypass, kVersion }, "Bypass", false));
 
     // --- UI (saved with state, but UI-only) ---
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { pid::advancedMode, kVersion }, "Advanced Mode", false));
+    // advancedMode is a UI-layout toggle (show/hide the advanced panel), a VIEW concern that travels
+    // with A/B -- it is deliberately NOT host-automatable. Host-automating it drives editor RESIZES
+    // (applyUiScale), and on Linux/X11 the resize ConfigureNotify storm hits a use-after-free in the
+    // HOST's JUCE XEmbedComponent during rapid open/close (reproduced locally; core dump lands in
+    // XEmbedComponent -- KI-003 / KI-007). A layout toggle has no place in an automation lane anyway;
+    // isAutomatable() is false. The on-screen toggle and A/B/undo travel are unchanged.
+    layout.add (std::make_unique<RawBool> (ParameterID { pid::advancedMode, kVersion }, "Advanced Mode", false, /*automatable*/ false));
 
     return layout;
 }
@@ -246,15 +331,19 @@ anamorph::EngineParameters ParamPointers::toEngine (int oversampleIndex) const
     const bool advanced = advancedMode->load() > 0.5f;
 
     // --- Core widening (always active, both modes) ---
+    // Discrete choice indices are read with roundToInt (not a truncating cast): the raw parameter
+    // value is range.convertFrom0to1(getValue()), and with the exact-raw getValue() a legal choice
+    // can denormalise a hair below its integer (e.g. Chorus 2/3 -> 1.9999), which (int) would floor
+    // to the wrong choice. roundToInt snaps to the intended index for every legal selection.
     e.driveDb      = drive->load();
-    e.algorithm    = (Algorithm) (int) algorithm->load();
+    e.algorithm    = (Algorithm) juce::roundToInt (algorithm->load());
     e.algoAmount   = amount->load();
     e.haasDelayMs  = haasDelay->load();
-    e.haasSide     = (HaasSide) (int) haasSide->load();
+    e.haasSide     = (HaasSide) juce::roundToInt (haasSide->load());
     e.velvetDensity = velvetDensity->load();
     e.chorusRate   = chorusRate->load();
     e.chorusDepth  = chorusDepth->load();
-    e.dimMode      = (int) dimMode->load() + 1; // choice 0..3 -> mode 1..4
+    e.dimMode      = juce::roundToInt (dimMode->load()) + 1; // choice 0..3 -> mode 1..4
     e.width        = width->load();
 
     e.oversample   = (OversampleFactor) juce::jlimit (0, 3, oversampleIndex); // from InternalState
@@ -263,19 +352,19 @@ anamorph::EngineParameters ParamPointers::toEngine (int oversampleIndex) const
     if (advanced)
     {
         // --- Input module ---
-        e.channelMode  = (ChannelMode) (int) channelMode->load();
+        e.channelMode  = (ChannelMode) juce::roundToInt (channelMode->load());
         e.monoSum      = monoSum->load() > 0.5f;
         e.swapLR       = swap->load() > 0.5f;
         e.inputBalance = inputBalance->load();
         e.polarityL    = polarityL->load() > 0.5f;
         e.polarityR    = polarityR->load() > 0.5f;
         e.msMode       = msMode->load() > 0.5f;
-        e.solo         = (SoloMode) (int) solo->load();
+        e.solo         = (SoloMode) juce::roundToInt (solo->load());
 
         // --- Multiband ---
         e.mbEnable     = mbEnable->load() > 0.5f;
-        e.mbBands      = (int) (mbBands->load() + 0.5f);
-        e.mbSolo       = (int) (mbSolo->load() + 0.5f);
+        e.mbBands      = juce::roundToInt (mbBands->load()); // roundToInt like the other discrete reads above
+        e.mbSolo       = juce::roundToInt (mbSolo->load());  // (was (int)(x+0.5f) -- equivalent, now uniform)
         e.mbFreqLow    = mbFreqLow->load();
         e.mbFreqMid    = mbFreqMid->load();
         e.mbFreqHigh   = mbFreqHigh->load();

@@ -11,7 +11,7 @@ and `packaging/macos/INSTALL.txt`.
 | Windows | `Anamorph-Windows` | `Anamorph.vst3`, `Anamorph.exe` (Standalone) |
 | macOS | `Anamorph-macOS` | universal `Anamorph.vst3`, `Anamorph.component` (AU), `Anamorph.app`, `INSTALL.txt` |
 
-Evidence [Verified]: build.yml:44-58,88-105,139-167.
+Evidence [Verified]: build.yml:47-61,97-114,150-178.
 
 ## Plugin identifiers (for host validation)
 
@@ -31,7 +31,7 @@ Evidence [Verified]: packaging/macos/INSTALL.txt:38-40.
 
 CI **ad-hoc** codesigns the bundles (`codesign --force --deep --sign -`) — they are **NOT
 notarized**. Gatekeeper quarantines them after download, so the user must remove the quarantine
-flag. Evidence [Verified]: build.yml:148-151; INSTALL.txt:4-10.
+flag. Evidence [Verified]: build.yml:159-162; INSTALL.txt:4-10.
 
 Install (from `INSTALL.txt`):
 ```bash
@@ -50,7 +50,7 @@ The macOS job verifies both slices are present:
 ```bash
 lipo -archs Anamorph.vst3/Contents/MacOS/Anamorph        # expect: x86_64 arm64
 ```
-Evidence [Verified]: build.yml:157-159.
+Evidence [Verified]: build.yml:168-170.
 
 ## Standard plug-in install locations
 

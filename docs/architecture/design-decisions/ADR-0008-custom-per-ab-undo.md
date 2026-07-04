@@ -16,15 +16,26 @@ or exclude view params, and would treat an A/B switch as undoable.
 
 ## Decision
 Each A/B slot owns its own undo/redo stacks of `StateSet` snapshots (sound parameters + preset
-name + dirty baseline). The editor's 24 Hz timer calls `pollUndoCoalesce()`, which commits one
-step only once a sound edit has **settled** (signature stable for a tick), folding a whole
-gesture into a single entry. **View params** (`pid::viewParams` = Bypass; plus Settings, which
-are host-hidden) and A/B switches themselves are never recorded. `requestDuck()` masks the level
-jump on undo/redo. Undo stacks are cleared on session restore.
+name + dirty baseline). The editor's timer calls `pollUndoCoalesce()`, which is **gesture-gated**:
+the processor listens to parameter begin/end gestures and commits exactly one step after the last
+gesture closes, folding a whole drag into a single entry; **host automation** (which opens no
+gesture) folds into the baseline **without** a step. A **preset load** also opens no gesture, so it
+is bracketed explicitly (`PresetManager::onAboutToLoad` flushes a settled edit, `onLoaded` records
+one step via `commitPresetSwitchUndoStep`) — a preset switch is a discrete, undoable action.
+**View params** (`pid::viewParams` = Bypass; plus Settings, which are host-hidden) and A/B switches
+themselves are never recorded. `requestDuck()` masks the level jump on undo/redo. Undo stacks are
+cleared on session restore.
 
 ## Consequences
+- Both A/B slots are snapshotted to the **open (Default) state in the constructor** (`abEnsureInit`),
+  not lazily on the first switch — so editing A before ever visiting B does not leak into B; the slots
+  are independent from open, deterministically (the lazy path made "B == open state" depend on host
+  `getStateInformation` timing). The switch/apply/serialization logic is unchanged; only *when* the
+  first snapshot is taken.
 - Per-slot histories survive editor close (the A/B model lives in the processor).
 - A `soundSignature()` over non-view params drives coalescing.
+- A **preset switch is one undo step** in the *active* A/B slot's history (via the bracket hooks);
+  consecutive switches within a slot chain, while the two slots keep independent histories.
 - Cost: a hand-rolled history with a 128-entry cap per slot.
 
 ## Related code

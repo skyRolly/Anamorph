@@ -17,9 +17,13 @@ Evidence [Verified]: src/PluginParameters.cpp:13 (`kVersion = 1`), :67-68; src/P
 
 ## APVTS parameters (host-visible)
 
-Type: F=AudioParameterFloat, C=AudioParameterChoice, B=AudioParameterBool, I=AudioParameterInt.
-"Host Visible" = appears in the host's parameter/automation list (every VST3 APVTS parameter
-does, regardless of the automatable flag — see note ‡). "Auto Safe" = `withAutomatable(true)`.
+Type: F=AudioParameterFloat, C=Choice, B=Bool, I=Int. F is `juce::AudioParameterFloat`; the discrete
+kinds (C/B/I) are minimal from-scratch `juce::RangedAudioParameter` subclasses (`RawChoice`/`RawBool`/
+`RawInt`) with identical range/default/step semantics — `getValue()` returns the exact raw normalised
+value for exact state round-trip (ADR-0013); the DSP/host text still see the snapped choice/bool/int.
+"Host Visible" = appears in the host's parameter/automation list (every VST3 APVTS parameter does).
+"Auto Safe" = host-automatable (`isAutomatable()`), true for all APVTS params **except `advancedMode`**
+(a UI-layout toggle deliberately non-automatable — see ◊◊).
 "Serialized" = saved in `apvts.copyState()`. Exclusions (A/B, Undo, Preset) in footnotes.
 
 | ID | Display name | Type | Default | Range | Host Visible | Auto Safe | Serialized |
@@ -32,18 +36,18 @@ does, regardless of the automatable flag — see note ‡). "Auto Safe" = `withA
 | `polarityR` | Phase Invert R/S | B | false | — | yes | yes | yes |
 | `msMode` | M/S Mode | B | false | — | yes | yes | yes |
 | `drive` | Drive | F | 0.0 | 0..24 dB | yes | yes | yes |
-| `algorithm` | Algorithm | C | Velvet Noise (1) | Haas/Velvet Noise/Chorus/Dim-D | yes | yes | yes |
+| `algorithm` | Widen Algorithm | C | Velvet Noise (1) | Haas/Velvet Noise/Chorus/Dim-D | yes | yes | yes |
 | `amount` | Amount | F | 0.0 | 0..1 | yes | yes | yes |
 | `haasDelay` | Haas Delay | F | 12.0 | 1..35 ms | yes | yes | yes |
 | `haasSide` | Haas Focus ‖ | C | Left (0) | Left/Right | yes | yes | yes |
 | `velvetDensity` | Velvet Density | F | 0.5 | 0..1 | yes | yes | yes |
 | `chorusRate` | Chorus Rate | F | 0.5 | 0.05..5 Hz (skew 0.4) | yes | yes | yes |
 | `chorusDepth` | Chorus Depth | F | 0.5 | 0..1 | yes | yes | yes |
-| `dimMode` | Dimension Mode | C | Classic (1) | Subtle/Classic/Wide/Lush | yes | yes | yes |
+| `dimMode` | Dim-D Style | C | Classic (1) | Subtle/Classic/Wide/Lush | yes | yes | yes |
 | `width` | Width | F | 1.0 | 0..2 | yes | yes | yes |
 | `mbEnable` | Multiband Enable | B | **true** ¶ | — | yes | yes | yes |
-| `mbBands` | Multiband Bands | I | 4 | 1..4 | yes ‡ | **no** | yes |
-| `mbSolo` | Multiband Solo | I | 0 | 0..15 (4-bit mask) | yes ‡ | **no** | yes † |
+| `mbBands` | Multiband Bands | I | 4 | 1..4 | yes | yes | yes |
+| `mbSolo` | Multiband Solo | I | 0 | 0..15 (4-bit mask) | yes | yes | yes † |
 | `mbFreqLow` | Multiband Split 1 | F | 180.0 | 20..20000 Hz (log) | yes | yes | yes |
 | `mbFreqMid` | Multiband Split 2 | F | 800.0 | 20..20000 Hz (log) | yes | yes | yes |
 | `mbFreqHigh` | Multiband Split 3 | F | 3000.0 | 20..20000 Hz (log) | yes | yes | yes |
@@ -59,20 +63,27 @@ does, regardless of the automatable flag — see note ‡). "Auto Safe" = `withA
 | `autoGainMatch` | Level Match | B | false | — | yes | yes | yes |
 | `solo` | M/S Solo | C | Off (0) | Off/Mid/Side | yes | yes | yes |
 | `bypass` | Bypass | B | false | — | yes (host bypass) | yes | yes ◊ |
-| `advancedMode` | Advanced Mode | B | false | — | yes | yes | yes ◊◊ |
+| `advancedMode` | Advanced Mode | B | false | — | yes | **no** ◊◊ | yes |
 
 36 APVTS parameters. Evidence [Verified]: src/PluginParameters.cpp:114-198.
 
 Footnotes:
-- **‡** `withAutomatable(false)` is set on `mbBands`/`mbSolo`, but it does **not** hide them in
-  all hosts (REAPER lists every VST3 parameter). They remain host-visible; only the automatable
-  flag is off. Source: src/PluginParameters.cpp:148-156, :183-190.
+- **‡** `mbBands`/`mbSolo` are now **fully automatable and visible** in the host's automation list
+  (the previous `withAutomatable(false)` was removed); they are still primarily driven by the
+  drag-to-split display. Source: src/PluginParameters.cpp (`mbBands`/`mbSolo`, no `withAutomatable`).
 - **†** `mbSolo` is **excluded from presets** (`isPresetExcluded`): a preset load resets solo to
   off. It still travels with A/B + Undo. Source: src/PluginParameters.h:84-87.
 - **◊** `bypass` is a **view param** (`pid::viewParams`): excluded from A/B, Undo, and presets,
   but still serialized in the main session state. Source: src/PluginParameters.h:70-72.
-- **◊◊** `advancedMode` is excluded from **presets** but travels with A/B + Undo (0.8.2 "ADV
-  travels with A/B"). Source: src/PluginParameters.h:84-87; CHANGELOG.md [0.8.2].
+- **◊◊** `advancedMode` is a UI-layout toggle: **not host-automatable** (`isAutomatable()` returns
+  `false`). A layout toggle has no place in an automation lane, and automating it flips the editor
+  layout — driving editor **resizes** (`applyUiScale`) whose `ConfigureNotify` storm hits a
+  use-after-free in the **host's** JUCE `XEmbedComponent` on Linux/X11 during rapid open/close
+  (reproduced locally; core dump lands in `XEmbedComponent` — KI-003/KI-007). It is still host-**visible**
+  and serialized, excluded from **presets**, and travels with A/B + Undo (0.8.2 "ADV travels with A/B").
+  This is a recorded automation-flag change (`PARAMETER_COMPATIBILITY_POLICY` rule 5) — the
+  ID/range/default are unchanged, so sessions and existing state are unaffected. Source:
+  src/PluginParameters.cpp (`RawBool(..., /*automatable*/ false)`); src/PluginParameters.h:84-87.
 - **‖** Display name renamed `Haas Side` → `Haas Focus` in 0.8.6; the **ID `haasSide` is
   unchanged** (the immutability invariant in action). Evidence [Partially Verified]: CHANGELOG.md [0.8.6];
   src/PluginParameters.cpp:135-136.

@@ -16,11 +16,143 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 - Upgraded the pinned **JUCE** dependency **8.0.8 → 8.0.14** (`CMakeLists.txt` `ANAMORPH_JUCE_TAG`;
   see ADR-0012). Build/dependency change only — no DSP, signal-chain, parameter, or serialization
   changes; CI re-validates the build + 23 DSP self-tests + pluginval (strictness 10), green on the
-  Linux gate. Evidence: `CMakeLists.txt:33`; commit `41acaa7`. [Verified]
+  Linux gate. The post-upgrade manual audition (Level 5) against the 8.0.8 baseline found no
+  perceptual regressions (ADR-0012). Evidence: `CMakeLists.txt:33`; commit `41acaa7`. [Verified]
 - Refactored the root `README.md` (slimmed; version history moved into this file) and `CLAUDE.md`
   (policy entry-point); corrected documentation citations and aligned/clarified the signal-chain
   section comments in `EngineParameters.h` / `AnamorphEngine.cpp` (comment-only, no behaviour
   change). Evidence: commits `e83370d`, `2fe5e05`, `1914c52`, `655b6e4`. [Verified]
+- CI pluginval gate **unified and hardened across all three platforms**: each of Linux, Windows and
+  macOS now runs pluginval at strictness 10 in **two explicit, blocking steps** — deterministic
+  (`--random-seed 0`) **and** `--randomise` — **each repeated 3 consecutive times**. The previous
+  Windows/macOS `continue-on-error` (which swallowed `exit 1` and reported a false green) is removed;
+  a non-zero pluginval exit now fails the job on every platform. Linux/macOS use
+  `scripts/run-pluginval.sh`, Windows uses the new `scripts/run-pluginval.ps1` (same structure).
+  `actions/checkout` and `actions/upload-artifact` bumped `v4 → v5` (clears the Node 20 deprecation
+  warning). Evidence: `.github/workflows/build.yml`, `scripts/run-pluginval.sh`,
+  `scripts/run-pluginval.ps1`.
+- **Parameter display-name renames** (parameter **IDs unchanged**, so automation/state survive):
+  "Algorithm" → **"Widen Algorithm"** and "Dimension Mode" → **"Dim-D Style"**, matching the GUI.
+  `Multiband Bands` and `Multiband Solo` are now **exposed and automatable** in the host automation
+  list (the previous `withAutomatable(false)` was removed). Conversely, **`Advanced Mode` is now
+  non-automatable** (`isAutomatable()` = false): it is a UI-layout toggle, not a sound parameter.
+  Host-automating it drives editor resizes (`applyUiScale`), and on **Linux/X11** the resize
+  `ConfigureNotify` storm hits a use-after-free in the **host's** JUCE `XEmbedComponent` during rapid
+  open/close (reproduced locally; the core dump lands in `XEmbedComponent` — KI-003/KI-007). A layout
+  toggle has no place in an automation lane anyway. IDs, ranges and defaults are unchanged (a recorded
+  automation-flag change, `PARAMETER_COMPATIBILITY_POLICY` rule 5). Evidence: `src/PluginParameters.cpp`;
+  `docs/architecture/PARAMETER_REGISTRY.md`.
+- **CI: the randomise pluginval gate is never skipped.** The randomise step (all three platforms) is
+  guarded with `if: ${{ !cancelled() }}`, so a deterministic-mode failure no longer skips the randomise
+  run — both modes report independently every CI run. The job still fails if either mode fails.
+  Evidence: `.github/workflows/build.yml`; `docs/procedures/CI_CD.md`.
+### Fixed
+- **A/B compare slots are independent from plugin open again.** The two A/B slots were snapshotted
+  **lazily** on the *first* A/B switch (`abEnsureInit`), so editing A *before* ever visiting B made B
+  born as a copy of A's **already-edited** state — switching to B showed A's parameters, not the open
+  (Default) state. Whether B ever looked "clean" depended on when the host happened to call
+  `getStateInformation` (which also runs `abEnsureInit`) — a host-timing accident. Both slots are now
+  initialized to the open state in the constructor, so an edit to A never leaks into B. The A/B
+  switch/apply/serialization logic is unchanged (ADR-0008); only *when* the initial snapshot is taken
+  changed. Evidence: `src/PluginProcessor.cpp` (constructor `abEnsureInit()`).
+- **A corrupt user preset no longer leaves the undo bracket half-open.** In `PresetManager::load`,
+  `onAboutToLoad` (which flushes undo coalescing) fired *before* the preset XML was parsed, so a file
+  that failed to parse returned early and never fired the matching `onLoaded`, silently flushing a
+  settled edit without recording its undo step. The XML is now parsed **before** the bracket is opened
+  (matching `loadFile`), so a parse failure is a clean no-op. Evidence: `src/PresetManager.cpp` (`load`).
+- **Windows pluginval: the script now WAITS for pluginval — fixes garbled output and false pass/fail
+  (KI-007).** `pluginval.exe` is a **GUI-subsystem** app, so PowerShell's call operator (`& $pv`)
+  returned immediately with a `$null` exit code *without waiting*. The original `exit $LASTEXITCODE`
+  false-greened (null → `exit 0`); after the crash-retry loop was added, that null was misread as a
+  crash and **each retry launched another pluginval that kept validating in the background** — three
+  concurrent validators writing one console (the "garbled" interleaving) and a false failure, while the
+  plugin actually validated fine. `scripts/run-pluginval.ps1` now launches pluginval via
+  `System.Diagnostics.Process` (`UseShellExecute=$false`) + `WaitForExit()` and reads the **real**
+  `.ExitCode`; exactly one runs at a time (no interleaving). OpenGL GPU rendering stays **ON** for
+  Windows/macOS (`#if ! (JUCE_LINUX || JUCE_BSD)`); Windows CI keeps `--skip-gui-tests` conservatively
+  (the GPU-less runner's GDI-generic OpenGL 1.1 very likely can't render the JUCE GL editor — never
+  observed because the wait bug masked all Windows editor results; the editor is validated on Linux +
+  macOS). Evidence: `scripts/run-pluginval.ps1`; KI-007.
+- **Host state restore no longer notifies the host of parameter changes (Devin review).** During
+  `setStateInformation`, `reassertParameters` called `setValueNotifyingHost` for each restored
+  parameter, notifying the host mid-restore (some DAWs treat that as an automation write). It now takes
+  a `notifyHost` flag: the host-restore path updates `getValue()` (`setValue`) and writes the DSP raw
+  atomic directly — **no host notification** — while undo/redo/A-B (editor-initiated) keep the full
+  notifying path. Evidence: `src/PluginProcessor.cpp` (`reassertParameters`).
+- **Preset switching is undoable again (regression from the gesture-gated undo).** A preset load
+  arrives as gesture-less `setValueNotifyingHost` calls, so the new gesture-gated coalescer folded it
+  into the baseline **without** an undo step — after switching presets you could not Undo back to the
+  previous preset. Each load is now explicitly bracketed (`PresetManager::onAboutToLoad` / `onLoaded`):
+  a settled edit is flushed first, then the switch is recorded as exactly **one** undo step in the
+  **active A/B slot's** history. A/B slots keep their independent histories (by design, ADR-0008);
+  only preset switches *within* a slot are chained, and the switch itself is now an undo/redo step.
+  Evidence: `src/PluginProcessor.cpp` (`commitPresetSwitchUndoStep`, constructor hooks),
+  `src/PresetManager.cpp` (`load` / `loadFile`).
+- **Windows pluginval no longer reports a false green when it crashes.** `scripts/run-pluginval.ps1`
+  ran `exit $LASTEXITCODE`, but an abnormal pluginval termination (e.g. a crash in the editor tests)
+  leaves `$LASTEXITCODE` `$null`, and `exit $null` exits **0** — so a crashed run *passed* the gate
+  (observed: the Windows step ran in ~6–7 s vs Linux ~40 s / macOS ~185 s, ending at
+  `pluginval: FAILED … (exit )` with an empty code yet still green). The script now treats a
+  null/negative/large exit code as a crash (never success) and, like `run-pluginval.sh`, retries a
+  crash and still fails after the retries — only a clean `exit 0` passes. This surfaces a pre-existing
+  Windows "Editor Automation" crash (now tracked as **KI-007**). Evidence: `scripts/run-pluginval.ps1`.
+- **Undo/Redo: one step per gesture, and host automation is never recorded.** Undo coalescing was
+  time/signature-settle based, so a slow drag that dwelt mid-gesture (esp. Multiband Split / Band
+  Width) recorded multiple intermediate steps, and any host-automation move could create undo steps.
+  It is now **gesture-gated**: the processor listens to parameter begin/end gestures and commits
+  exactly **one** undo step after the last gesture closes; automation (which never opens a gesture)
+  folds into the baseline without an undo entry. A/B switch/copy **and undo/redo** reset the gesture
+  state (a state jump is never a user gesture, so nothing re-commits after it). Evidence:
+  `src/PluginProcessor.cpp` (`parameterGestureChanged` / `pollUndoCoalesce` / `undo` / `redo`).
+- **Combo-box pop-ups drop BELOW the box again** instead of covering it with the selected item under
+  the cursor. Added `AnamorphLookAndFeel::getOptionsForComboBoxPopupMenu` targeting the box's screen
+  bounds (omitting the JUCE default `withItemThatMustBeVisible`/`withInitiallySelectedItem`). Evidence:
+  `src/gui/LookAndFeel.cpp` (`getOptionsForComboBoxPopupMenu`).
+- **Discrete parameters now round-trip their exact value under pluginval `--randomise`.** Stock
+  `AudioParameterBool`/`Choice`/`Int` snap `getValue()` to the nearest legal step, which for few-step
+  params can be `>0.1` from the raw value pluginval sets (seed-dependent "not restored" failures) — and
+  they cannot be subclassed to fix it (JUCE declares their `getValue()`/`setValue()` **private**). The
+  discrete params are reimplemented as minimal from-scratch `juce::RangedAudioParameter` subclasses
+  (`RawChoice`/`RawBool`/`RawInt`) whose `getValue()` keeps the exact raw normalised value (restored via
+  the `raw` attribute + `reassertParameters`); the DSP still reads the snapped value via
+  `getRawParameterValue()` and host text via `getAllValueStrings()`. Because these are no longer the
+  stock concrete types, `getBypassParameter()` now holds an `AudioProcessorParameter*` (no
+  `dynamic_cast`) and the ComboBox item list is read from `getAllValueStrings()` — no behaviour change.
+  See ADR-0013. Evidence: `src/PluginParameters.cpp` (`RawChoice`/`RawBool`/`RawInt`).
+- **State restoration now round-trips every parameter exactly.** Two issues, both surfaced by the
+  `--randomise` *Plugin state restoration* gate: (1) a wholesale `apvts.replaceState` did not
+  reliably propagate to every parameter's cached value (an occasional param kept its pre-restore
+  value); (2) APVTS serialises the **denormalised/snapped** value, so a **discrete** param
+  (Bool/Choice/Int) given a raw normalised value mid-step (e.g. `Input Channel` at `0.177521` on a
+  3-choice) round-tripped to the nearest legal value — `>0.1` away — and pluginval flagged it "not
+  restored". Fix: `getStateInformation` additively records each parameter's **exact raw
+  `getValue()`** as a `raw` attribute on its `PARAM` node, and `setStateInformation` →
+  `reassertParameters` restores from `raw` (falling back to the denormalised `value` for legacy
+  sessions). Additive + backward-compatible (old sessions ignore `raw`; the APVTS `value` is
+  unchanged — no field removed/renamed). Evidence: `src/PluginProcessor.cpp`
+  (`getStateInformation` / `reassertParameters`); CI runs `28356632727`, `28388176607` (the
+  `--randomise` failures: discrete params "not restored"). See `SERIALIZATION_REGISTRY.md`.
+- **The exact-value restore is extended to user actions** — undo / redo / A-B apply now re-assert
+  every parameter from the snapshot (`reassertParameters` after `replaceState` in
+  `applyStatePreservingView`), and A/B-slot snapshots carry the `raw` attribute
+  (`copyStateWithRawValues`, used by `currentStateSet`), so discrete params no longer snap-drift on
+  slot switching or undo. Evidence: `src/PluginProcessor.cpp`.
+- **Windows CI no longer skips the randomise pluginval pass.** `run-pluginval.ps1` now makes the
+  pluginval **exit code the sole** pass/fail signal (`$ErrorActionPreference = Continue` +
+  `$PSNativeCommandUseErrorActionPreference = $false`), so pluginval's stderr progress can no longer
+  throw a terminating error that fails the *deterministic* step and makes GitHub **skip** the
+  randomise step. Evidence: `scripts/run-pluginval.ps1`.
+- **Defensive A/B bounds.** `abSwitchTo` clamps its slot index (`juce::jlimit(0, kNumAbSlots-1, …)`),
+  and `abUndo` / `abSlot` / `abMatchGain` are sized from `anamorph::kNumAbSlots` (single source of
+  truth) instead of a hardcoded `2`. Evidence: `src/PluginProcessor.{h,cpp}`; `src/AbSlotIndex.h`.
+- **Linux:** tooltips no longer render opaque **black corners** outside the rounded capsule on X11
+  without a compositor — `drawTooltip` now fills the corner area with the capsule colour when
+  per-pixel window alpha is unavailable; macOS/Windows transparent corners are unchanged (KI-006).
+  Evidence: `src/gui/LookAndFeel.cpp` (`drawTooltip`). [Partially Verified] (Linux visual re-test pending)
+- Session restore now **clamps a corrupted / out-of-range A/B "active" index** so it can never index
+  the A/B slot arrays out of bounds; valid sessions are unaffected. Evidence:
+  `src/PluginProcessor.cpp` (`setStateInformation`), `src/AbSlotIndex.h`; regression test
+  `testAbActiveClampOnCorruptState`. [Verified]
 
 ## [0.8.7] — 2026-06-28
 ### Fixed

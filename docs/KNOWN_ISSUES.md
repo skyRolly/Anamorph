@@ -4,7 +4,7 @@
 in `POSTMORTEMS.md`, not here. Each entry is evidence-backed (constraint C7). When an item is
 fixed, remove it here and (if notable) add a `POSTMORTEMS.md` entry.
 
-Verified against repository HEAD `41acaa7` (version 0.8.7; JUCE 8.0.14).
+Verified against repository HEAD `c605fbe` (version 0.8.7; JUCE 8.0.14).
 
 | ID | Issue | Severity | Status |
 |---|---|---|---|
@@ -13,6 +13,8 @@ Verified against repository HEAD `41acaa7` (version 0.8.7; JUCE 8.0.14).
 | KI-003 | pluginval Linux editor tests crash (external host-side JUCE) | Low | Confirmed, mitigated/external |
 | KI-004 | No automated DAW/host-compatibility testing | Medium | Confirmed (coverage gap) |
 | KI-005 | No graphical installer (manual copy install) | Low | Confirmed (packaging) |
+| KI-006 | Linux: tooltip rounded corners render an opaque black background instead of transparent | Low | Fix applied (LookAndFeel); Linux visual re-test pending |
+| KI-007 | Windows: pluginval "Editor Automation" abnormally terminates (was hidden by a run-pluginval.ps1 false green) | Medium | False green closed; GL-drop cleared the crash (CI-confirmed); advancedMode-automation fix pending CI |
 
 ---
 
@@ -34,7 +36,7 @@ a stand-alone `mbEnable` toggle (the common case) is unaffected and stays warm.
 CI ad-hoc codesigns the macOS bundles but does **not** notarize them, so Gatekeeper quarantines
 them after download and the user must run `xattr -dr com.apple.quarantine` before the DAW will load
 them.
-- **Evidence [Verified]:** .github/workflows/build.yml:148-151 (`codesign --sign -`, no notarization);
+- **Evidence [Verified]:** .github/workflows/build.yml:159-162 (`codesign --sign -`, no notarization);
   packaging/macos/INSTALL.txt:4-10,30-33. See `docs/procedures/PACKAGING.md`.
 
 ## KI-003 — pluginval Linux editor tests crash (external)
@@ -55,3 +57,65 @@ behaviour (Ableton/Logic/Cubase/Reaper/Pro Tools/...) is therefore **Unverified*
 Installation is a manual file copy to the platform plug-in folders (plus de-quarantine on macOS);
 the repository contains no `.pkg`/`.msi`/installer build.
 - **Evidence [Verified]:** no installer in the repository; packaging/macos/INSTALL.txt; `docs/procedures/PACKAGING.md` (TODO).
+
+## KI-006 — Linux tooltip corners render black instead of transparent
+On **Linux**, the rounded-capsule tooltip showed an **opaque black** fill in the corners (outside the
+rounded shape) rather than the transparent background, so the rounding read as a black box. This is a
+**UI / platform rendering** issue only — it does **not** touch DSP, parameters, serialization, or
+session state, and is fully isolated from the pluginval state-restoration work.
+- **Platform matrix:** Linux — Confirmed (0.8.7 testing). Windows — Unverified. macOS — Not observed.
+- **Mechanism:** on platforms **without per-pixel window alpha** (Linux/X11 with no compositor),
+  `juce::TooltipWindow` cannot be semi-transparent, so the area **outside** the rounded capsule
+  renders the window's opaque (black) fill. This is the same class of artefact already documented for
+  the popup menu, which is kept square for exactly this reason (src/gui/LookAndFeel.cpp:543-545).
+- **Fix [code Verified; Linux visual re-test pending]:** `AnamorphLookAndFeel::drawTooltip`
+  (src/gui/LookAndFeel.cpp) now pre-fills the full tooltip bounds with the capsule colour when
+  `juce::Desktop::canUseSemiTransparentWindows()` is `false`, so the corners match the capsule rather
+  than rendering black. Where transparent windows ARE available (macOS / Windows / compositing Linux)
+  the corners stay genuinely transparent — **no macOS/Windows visual change**. The headless gate
+  cannot judge GUI appearance (TESTING_POLICY Level 5), so a **Linux visual re-test by the maintainer**
+  is needed to fully close this; until then it stays listed here rather than moved to POSTMORTEMS.
+- **Evidence:** src/gui/LookAndFeel.cpp `drawTooltip` (the alpha-gated corner fill); 0.8.7 Linux
+  feedback. Cosmetic, low-impact: tooltips are **off by default** (src/InternalState.h:51).
+
+## KI-007 — Windows CI: pluginval script did not wait for pluginval (garbled output + false pass/fail)
+The Windows pluginval step produced **interleaved/garbled console output** and reported both false
+GREENS (originally) and, once a crash-retry loop was added, false REDS — while the plugin actually
+validated fine.
+- **Root cause — CONFIRMED (a script bug, not a plugin defect):** `pluginval.exe` is a **GUI-subsystem**
+  app, so PowerShell's call operator (`& $pv`) does **not wait** for it — it returns immediately with a
+  `$null $LASTEXITCODE`. The original `exit $LASTEXITCODE` therefore did `exit 0` (false green). After
+  the crash-retry loop was added, that `$null` was misread as a *crash*, so the loop retried, and **each
+  retry launched another pluginval that kept validating in the background** → three concurrent validators
+  writing to one console (the "garbled" interleaving) and a false failure. The CI log shows it directly:
+  three `Started validating: …` lines appear *after* the script already "gave up". **Fix:** launch
+  pluginval via `System.Diagnostics.Process` with `UseShellExecute=$false` (inherits the console so
+  output still streams) and `WaitForExit()`, then read the **real** `.ExitCode`. Exactly one pluginval
+  runs at a time — no interleaving — and the exit code is now trustworthy (`scripts/run-pluginval.ps1`).
+- **`--skip-gui-tests` on Windows (retained, conservative):** the GPU-less/headless `windows-latest`
+  runner almost certainly cannot render the JUCE OpenGL editor — it exposes only the GDI-generic
+  **OpenGL 1.1** renderer, which lacks the GL2 shaders JUCE needs (a well-documented JUCE-on-headless-CI
+  limit). Because the wait bug above masked **every** real editor result on Windows, this was never
+  actually observed, so skipping the editor GUI tests there is a **precaution**, not a proven necessity.
+  All non-GUI tests (audio/state/parameters/buses/automation) still run and still **block**; the editor
+  is fully validated on **Linux (xvfb) + macOS**. Distinct from the mode-level "never skip" rule
+  (CI_CD.md): the two validation *modes* always run; this skips one *test category* on one runner.
+- **OpenGL is unchanged for users:** the attach guard is restored to `#if ! (JUCE_LINUX || JUCE_BSD)`,
+  so **Windows and macOS keep GPU/GL rendering** (real machines have a GPU); only Linux/X11 stays CPU
+  (the host-side XEmbed UAF above, ADR-0011). No plugin *editor* code changed.
+- **Related hardening — `advancedMode` is non-automatable:** host-automating that UI-layout toggle
+  drives editor resizes (`applyUiScale`), whose `ConfigureNotify` storm hits the **same** host-side
+  XEmbed UAF on Linux/X11 even with GL off — reproduced here (GL-off Linux + `advancedMode` automatable
+  crashed under `--randomise`; core dump = `XEmbedComponent`). `isAutomatable()` is now false, removing
+  that trigger and stabilising the Linux gate; a layout toggle has no place in an automation lane
+  anyway. See `PARAMETER_REGISTRY.md` and KI-003.
+- **Coverage note:** the editor is not exercised by pluginval on Windows CI (a coverage gap like
+  KI-004), but its code is platform-agnostic and validated on two platforms; a GPU-equipped Windows
+  runner would let the GUI tests run there too.
+- **Evidence [Verified]:** run 28702902413 Windows job log (`c496c8b`) shows the confirmed root cause —
+  after the script "gives up" (`pluginval: still crashing ... after 3 attempts`), **three** `Started
+  validating: …` lines appear and their output interleaves (the garbling), i.e. `& $pv` never waited
+  and the retries spawned concurrent validators; the detached runs actually print `SUCCESS`. The
+  original false green (run 28678842525: empty exit code yet a green step) is the same non-waiting bug
+  (`exit $null` → 0). Fix: `scripts/run-pluginval.ps1` (`System.Diagnostics.Process` + `WaitForExit`).
+  Related: KI-003 (Linux GL editor host-side crash), scripts/run-pluginval.sh (crash-retry).

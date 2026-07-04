@@ -131,6 +131,11 @@ public:
     juce::Font getComboBoxFont (juce::ComboBox&) override;
     juce::Font getPopupMenuFont() override;
 
+    // Drop the combo pop-up BELOW the box (target its screen bounds) instead of the JUCE default,
+    // which covers the box with the currently-selected item under the cursor. Restores the expected
+    // drop-down position. (#combo)
+    juce::PopupMenu::Options getOptionsForComboBoxPopupMenu (juce::ComboBox&, juce::Label&) override;
+
     // Styled tooltip to match the design language (no system tooltip, #20).
     void drawTooltip (juce::Graphics&, const juce::String& text, int w, int h) override;
     juce::Rectangle<int> getTooltipBounds (const juce::String& tip, juce::Point<int> pos,
