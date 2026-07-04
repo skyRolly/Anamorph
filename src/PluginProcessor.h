@@ -114,7 +114,9 @@ private:
     void applyStatePreservingView (const juce::ValueTree& target);
     // Force every APVTS parameter to its value in a just-restored tree (see the .cpp): a wholesale
     // replaceState does not reliably propagate to every parameter's cached value synchronously.
-    void reassertParameters (const juce::ValueTree& restoredApvtsTree);
+    // notifyHost=false (host state restore) updates value + DSP atomic WITHOUT notifying the host;
+    // notifyHost=true (editor-initiated undo/redo/A-B) notifies host + editor as before.
+    void reassertParameters (const juce::ValueTree& restoredApvtsTree, bool notifyHost);
     // apvts.copyState() with each PARAM node additively stamped with its exact raw getValue()
     // ("raw" attribute), so every saved snapshot (host state, A/B slots, undo) round-trips exactly.
     juce::ValueTree copyStateWithRawValues();

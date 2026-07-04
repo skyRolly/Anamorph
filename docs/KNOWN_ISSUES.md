@@ -78,30 +78,28 @@ session state, and is fully isolated from the pluginval state-restoration work.
 - **Evidence:** src/gui/LookAndFeel.cpp `drawTooltip` (the alpha-gated corner fill); 0.8.7 Linux
   feedback. Cosmetic, low-impact: tooltips are **off by default** (src/InternalState.h:51).
 
-## KI-007 — Windows CI runner cannot host the editor GUI tests
-On the GitHub **`windows-latest`** runner, pluginval's editor **"Editor Automation"** test fails
-(originally a hard crash at the first Editor-Automation line; in CPU mode a contained `exit 1`). This
-was first **masked by a false green** — `scripts/run-pluginval.ps1` ran `exit $LASTEXITCODE`, and an
-abnormal termination leaves `$LASTEXITCODE` `$null` so `exit $null` exited **0**. The false green is
-closed (null/large/negative codes are treated as a crash and fail the gate), which surfaced the
-failure.
-- **Root cause — environmental, confirmed:** the GPU-less/headless `windows-latest` runner cannot
-  host this editor's intensive GUI test. It fails there in **both** rendering modes — GL mode (the
-  runner's GDI-generic **OpenGL 1.1** renderer lacks the GL2 shader/VBO entry points JUCE needs) and
-  CPU mode (`#if JUCE_MAC` build). The **plugin editor is not at fault**: it validates cleanly under
-  pluginval strictness 10 on **Linux** (xvfb, CPU) and **macOS** (GPU/GL, incl. the same editor
-  automation). When GL is re-enabled on **Linux** the analogous crash reproduces (~1 in 3 runs) and a
-  **core dump's crashing frame is `juce::XEmbedComponent::Pimpl::handleX11Event(...)::{lambda}` under
-  `juce::MessageManager::runDispatchLoop`** — i.e. inside JUCE's own X11 embedding on the host side,
-  never in plugin code (the KI-003 class). gdb/ASan hide it (timing-sensitive race), confirming a
-  host-side teardown race, not a plugin use-after-free.
-- **Resolution:** Windows CI runs pluginval with **`--skip-gui-tests`** (`scripts/run-pluginval.ps1`).
-  All non-GUI tests (audio / state / parameters / buses / automation) still run and still **block** on
-  every platform; the editor GUI tests remain fully exercised on **Linux + macOS**. This is the Windows
-  analogue of the KI-003 handling and uses pluginval's designed flag for GUI-hostile environments.
-  **`--skip-gui-tests` is not the same as the randomise-mode "never skip" rule** (CI_CD.md): the two
-  validation *modes* always run on every platform; this skips one *test category* on the one runner
-  that provably cannot host it.
+## KI-007 — Windows CI: pluginval script did not wait for pluginval (garbled output + false pass/fail)
+The Windows pluginval step produced **interleaved/garbled console output** and reported both false
+GREENS (originally) and, once a crash-retry loop was added, false REDS — while the plugin actually
+validated fine.
+- **Root cause — CONFIRMED (a script bug, not a plugin defect):** `pluginval.exe` is a **GUI-subsystem**
+  app, so PowerShell's call operator (`& $pv`) does **not wait** for it — it returns immediately with a
+  `$null $LASTEXITCODE`. The original `exit $LASTEXITCODE` therefore did `exit 0` (false green). After
+  the crash-retry loop was added, that `$null` was misread as a *crash*, so the loop retried, and **each
+  retry launched another pluginval that kept validating in the background** → three concurrent validators
+  writing to one console (the "garbled" interleaving) and a false failure. The CI log shows it directly:
+  three `Started validating: …` lines appear *after* the script already "gave up". **Fix:** launch
+  pluginval via `System.Diagnostics.Process` with `UseShellExecute=$false` (inherits the console so
+  output still streams) and `WaitForExit()`, then read the **real** `.ExitCode`. Exactly one pluginval
+  runs at a time — no interleaving — and the exit code is now trustworthy (`scripts/run-pluginval.ps1`).
+- **`--skip-gui-tests` on Windows (retained, conservative):** the GPU-less/headless `windows-latest`
+  runner almost certainly cannot render the JUCE OpenGL editor — it exposes only the GDI-generic
+  **OpenGL 1.1** renderer, which lacks the GL2 shaders JUCE needs (a well-documented JUCE-on-headless-CI
+  limit). Because the wait bug above masked **every** real editor result on Windows, this was never
+  actually observed, so skipping the editor GUI tests there is a **precaution**, not a proven necessity.
+  All non-GUI tests (audio/state/parameters/buses/automation) still run and still **block**; the editor
+  is fully validated on **Linux (xvfb) + macOS**. Distinct from the mode-level "never skip" rule
+  (CI_CD.md): the two validation *modes* always run; this skips one *test category* on one runner.
 - **OpenGL is unchanged for users:** the attach guard is restored to `#if ! (JUCE_LINUX || JUCE_BSD)`,
   so **Windows and macOS keep GPU/GL rendering** (real machines have a GPU); only Linux/X11 stays CPU
   (the host-side XEmbed UAF above, ADR-0011). No plugin *editor* code changed.
@@ -114,8 +112,10 @@ failure.
 - **Coverage note:** the editor is not exercised by pluginval on Windows CI (a coverage gap like
   KI-004), but its code is platform-agnostic and validated on two platforms; a GPU-equipped Windows
   runner would let the GUI tests run there too.
-- **Evidence [Verified]:** run 28678842525 Windows job log (original: `... / Editor Automation...` last
-  line, empty exit code, yet a green step — the false green); run 28695538067 Windows job on `b70f0b2`
-  (post-GL-drop: full suite completes incl. Plugin state restoration, then `exit 1` inside Editor
-  Automation — hard crash gone, contained failure remains); scripts/run-pluginval.ps1 (the closed false
-  green). Related: KI-003 (the Linux editor-harness crash), scripts/run-pluginval.sh:70-91 (crash-retry).
+- **Evidence [Verified]:** run 28702902413 Windows job log (`c496c8b`) shows the confirmed root cause —
+  after the script "gives up" (`pluginval: still crashing ... after 3 attempts`), **three** `Started
+  validating: …` lines appear and their output interleaves (the garbling), i.e. `& $pv` never waited
+  and the retries spawned concurrent validators; the detached runs actually print `SUCCESS`. The
+  original false green (run 28678842525: empty exit code yet a green step) is the same non-waiting bug
+  (`exit $null` → 0). Fix: `scripts/run-pluginval.ps1` (`System.Diagnostics.Process` + `WaitForExit`).
+  Related: KI-003 (Linux GL editor host-side crash), scripts/run-pluginval.sh (crash-retry).

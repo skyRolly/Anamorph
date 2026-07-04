@@ -237,7 +237,7 @@ void AnamorphAudioProcessor::applyStatePreservingView (const juce::ValueTree& ta
     // Synchronously force every parameter to its exact (raw) value from the snapshot, so undo /
     // redo / A-B apply propagate exactly like host state restore -- replaceState alone can leave a
     // param at a stale/snapped value (see reassertParameters). View params are re-overridden below.
-    reassertParameters (target);
+    reassertParameters (target, /*notifyHost*/ true); // undo/redo/A-B is editor-initiated: notify host+editor
 
     for (size_t i = 0; i < std::size (pid::viewParams); ++i)
         apvts.getParameter (pid::viewParams[i])->setValueNotifyingHost (saved[i]);
@@ -265,8 +265,19 @@ juce::ValueTree AnamorphAudioProcessor::copyStateWithRawValues()
 //     (see getStateInformation) carries the EXACT normalised getValue() pluginval set, so the
 //     round-trip is bit-faithful and passes its 0.1 raw-value tolerance.
 // Prefer "raw" (exact); fall back to the denormalised "value" for legacy sessions that lack it.
-// Idempotent: parameters already at the target value are left untouched (no spurious host notify).
-void AnamorphAudioProcessor::reassertParameters (const juce::ValueTree& restoredApvtsTree)
+// Idempotent: parameters already at the target value are left untouched.
+//
+// notifyHost: TRUE for editor-initiated restores (undo / redo / A-B via applyStatePreservingView) --
+// setValueNotifyingHost updates value + DSP atomic + editor + host. FALSE for host state restore
+// (setStateInformation): a parameter-change callback during the HOST's own state load can be treated
+// by some DAWs as an automation write, so we must NOT notify the host. setValueNotifyingHost is
+// setValue + sendValueChangedMessageToListeners, and the latter reaches the host via the parameter's
+// owner-listener, so it can't be used. Instead update getValue() with setValue() and write the raw
+// atomic the audio thread reads (getRawParameterValue) DIRECTLY -- replaceState swaps only the tree,
+// it does not propagate to parameters/atomics. Trade-off: an editor open DURING a host restore does
+// not live-update its sliders (rare -- this plugin exposes no host programs; the audio + getValue()
+// are correct and the sliders sync on editor open); undo/redo/A-B keep the full notifyHost=true path.
+void AnamorphAudioProcessor::reassertParameters (const juce::ValueTree& restoredApvtsTree, bool notifyHost)
 {
     if (! restoredApvtsTree.isValid()) return;
 
@@ -279,7 +290,16 @@ void AnamorphAudioProcessor::reassertParameters (const juce::ValueTree& restored
                     : juce::jlimit (0.0f, 1.0f, rp->convertTo0to1 ((float) node.getProperty ("value",
                                                                    rp->convertFrom0to1 (rp->getValue()))));
                 if (std::abs (norm - rp->getValue()) > 1.0e-6f)
-                    rp->setValueNotifyingHost (norm);
+                {
+                    if (notifyHost)
+                        rp->setValueNotifyingHost (norm);
+                    else
+                    {
+                        rp->setValue (norm); // getValue() only -- no host / listener notification
+                        if (auto* atom = apvts.getRawParameterValue (rp->paramID))
+                            atom->store (rp->convertFrom0to1 (norm)); // DSP value (snapped denormalised)
+                    }
+                }
             }
 }
 
@@ -461,7 +481,7 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
         if (params.isValid())
         {
             apvts.replaceState (params.createCopy());
-            reassertParameters (params); // force every parameter through synchronously (see below)
+            reassertParameters (params, /*notifyHost*/ false); // host restore: no host-notify (see below)
         }
 
         // Restore the host-hidden Settings / view state (Oversampling, Window Size,
@@ -512,7 +532,7 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
     {
         auto legacy = juce::ValueTree::fromXml (*xml);
         apvts.replaceState (legacy);
-        reassertParameters (legacy);
+        reassertParameters (legacy, /*notifyHost*/ false); // legacy host restore: no host-notify
     }
 
     // Fresh session: clear undo history.

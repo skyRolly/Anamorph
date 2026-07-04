@@ -60,19 +60,25 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   that failed to parse returned early and never fired the matching `onLoaded`, silently flushing a
   settled edit without recording its undo step. The XML is now parsed **before** the bracket is opened
   (matching `loadFile`), so a parse failure is a clean no-op. Evidence: `src/PresetManager.cpp` (`load`).
-- **Windows pluginval "Editor Automation" — root-caused as an environmental CI-runner limit; OpenGL
-  GPU rendering kept on Windows (KI-007).** The failure is **not** a plugin defect: the GPU-less/
-  headless `windows-latest` runner cannot host the intensive editor GUI test (it fails there in both
-  GL mode — GDI-generic OpenGL 1.1 — and CPU mode), while the editor validates cleanly on Linux (xvfb,
-  CPU) and macOS (GPU/GL). Confirmed by reproducing the analogous crash locally with GL re-enabled on
-  Linux: a **core dump's crashing frame is `juce::XEmbedComponent::Pimpl::handleX11Event`'s lambda
-  under `MessageManager::runDispatchLoop`** — inside JUCE's own X11 embedding (host-side), not plugin
-  code. Resolution: Windows CI runs pluginval with **`--skip-gui-tests`** (all non-GUI tests still run
-  and still block; the editor is validated on Linux + macOS). The OpenGL attach guard is **restored to
-  `#if ! (JUCE_LINUX || JUCE_BSD)`**, so **Windows and macOS keep GPU/GL rendering** as designed (real
-  machines have a GPU); only Linux/X11 stays CPU (host-side XEmbed UAF, ADR-0011). No plugin editor
-  code changed. Evidence: `scripts/run-pluginval.ps1` (`--skip-gui-tests`); `src/PluginEditor.cpp`
-  (attach gate); ADR-0011; KI-007.
+- **Windows pluginval: the script now WAITS for pluginval — fixes garbled output and false pass/fail
+  (KI-007).** `pluginval.exe` is a **GUI-subsystem** app, so PowerShell's call operator (`& $pv`)
+  returned immediately with a `$null` exit code *without waiting*. The original `exit $LASTEXITCODE`
+  false-greened (null → `exit 0`); after the crash-retry loop was added, that null was misread as a
+  crash and **each retry launched another pluginval that kept validating in the background** — three
+  concurrent validators writing one console (the "garbled" interleaving) and a false failure, while the
+  plugin actually validated fine. `scripts/run-pluginval.ps1` now launches pluginval via
+  `System.Diagnostics.Process` (`UseShellExecute=$false`) + `WaitForExit()` and reads the **real**
+  `.ExitCode`; exactly one runs at a time (no interleaving). OpenGL GPU rendering stays **ON** for
+  Windows/macOS (`#if ! (JUCE_LINUX || JUCE_BSD)`); Windows CI keeps `--skip-gui-tests` conservatively
+  (the GPU-less runner's GDI-generic OpenGL 1.1 very likely can't render the JUCE GL editor — never
+  observed because the wait bug masked all Windows editor results; the editor is validated on Linux +
+  macOS). Evidence: `scripts/run-pluginval.ps1`; KI-007.
+- **Host state restore no longer notifies the host of parameter changes (Devin review).** During
+  `setStateInformation`, `reassertParameters` called `setValueNotifyingHost` for each restored
+  parameter, notifying the host mid-restore (some DAWs treat that as an automation write). It now takes
+  a `notifyHost` flag: the host-restore path updates `getValue()` (`setValue`) and writes the DSP raw
+  atomic directly — **no host notification** — while undo/redo/A-B (editor-initiated) keep the full
+  notifying path. Evidence: `src/PluginProcessor.cpp` (`reassertParameters`).
 - **Preset switching is undoable again (regression from the gesture-gated undo).** A preset load
   arrives as gesture-less `setValueNotifyingHost` calls, so the new gesture-gated coalescer folded it
   into the baseline **without** an undo step — after switching presets you could not Undo back to the

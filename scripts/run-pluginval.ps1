@@ -8,10 +8,13 @@
 #  Both modes run 3 CONSECUTIVE passes; ALL must pass. Mirrors run-pluginval.sh's
 #  crash-retry policy: a REAL validation assertion (a small, clean exit code) fails
 #  the step IMMEDIATELY; an abnormal termination / crash (a large Win32 exception
-#  code, a negative code, or NO code at all) is retried, and STILL fails after the
-#  retries. Crucially, a crash can leave $LASTEXITCODE $null, and `exit $null` would
-#  exit 0 -- a FALSE GREEN. A null/empty code is therefore treated as a crash and
-#  NEVER as success. Network domain needed: github.com (pluginval release download).
+#  code, a negative code, or no code) is retried, and STILL fails after the retries.
+#  KEY: pluginval.exe is a GUI-subsystem app, so it must be launched via
+#  System.Diagnostics.Process and explicitly WAITED on (Invoke-Pluginval below) to
+#  obtain a trustworthy exit code -- the call operator (`& $pv`) returns immediately
+#  with a $null $LASTEXITCODE, which both false-greened the original script and, once
+#  the retry loop was added, false-RED-ed it (and spawned concurrent background
+#  validators -> garbled output). Network domain needed: github.com (pluginval download).
 # ============================================================================
 param(
     [int]    $Strictness = 8,
@@ -43,14 +46,27 @@ switch ($Mode) {
 }
 
 # --- pluginval invocation: the EXIT CODE is the only signal. -----------------
-# pluginval streams test progress to stderr; under PowerShell 7 `Stop` +
-# $PSNativeCommandUseErrorActionPreference that native stderr (or a non-zero exit)
-# can throw a terminating error BEFORE our explicit check, which previously failed
-# the deterministic step spuriously and made GitHub SKIP the randomise step. Switch
-# to Continue and disable native-command error mapping so a clean run (exit 0) is a
-# pass and only a real non-zero exit fails the step.
+# CRITICAL: pluginval.exe is a GUI-SUBSYSTEM app. PowerShell's call operator (`& $pv`) does NOT wait
+# for a GUI-subsystem process -- it returns immediately, leaving $LASTEXITCODE $null. The old loop
+# then misread that null as a "crash", retried, and each retry launched ANOTHER pluginval that kept
+# validating in the background -> interleaved "garbled" console output AND a false failure (the
+# validation actually succeeds in the detached processes). It is also why the original `exit
+# $LASTEXITCODE` false-greened (null -> exit 0). Fix: launch pluginval via System.Diagnostics.Process
+# with UseShellExecute=$false (inherits THIS console, so output still streams to the CI log), then
+# WaitForExit() and read the REAL .ExitCode. Only then is the exit code a trustworthy signal.
 $ErrorActionPreference = "Continue"
 $PSNativeCommandUseErrorActionPreference = $false
+
+function Invoke-Pluginval {
+    param([string] $Exe, [string[]] $PvArgs)
+    $psi = [System.Diagnostics.ProcessStartInfo]::new()
+    $psi.FileName = $Exe
+    foreach ($a in $PvArgs) { [void] $psi.ArgumentList.Add($a) }
+    $psi.UseShellExecute = $false   # inherit console (stream output) AND enable a real .ExitCode
+    $proc = [System.Diagnostics.Process]::Start($psi)
+    $proc.WaitForExit()             # actually WAIT for the validation to finish (the missing piece)
+    return $proc.ExitCode
+}
 
 # WINDOWS-ONLY: skip the editor GUI tests. The GitHub `windows-latest` runner is GPU-less/headless
 # and cannot host this plugin's editor "Editor Automation" test -- it fails there in BOTH GL mode
@@ -62,30 +78,33 @@ $PSNativeCommandUseErrorActionPreference = $false
 # (audio/state/parameter/bus/automation) still run and still block. pluginval flag: --skip-gui-tests.
 $guiArgs = @("--skip-gui-tests")
 
-# The loop is INLINE (not a function) so pluginval's stdout streams straight to the console
-# instead of being captured into $rc. Each pass gets up to $attempts tries; a real validation
-# failure exits immediately, a crash is retried, and an exhausted pass fails the whole step.
+# Each pass gets up to $attempts tries against the REAL exit code (from WaitForExit above): exit 0 is
+# a pass; a small non-zero (1..255) is a real validation failure and fails the step immediately; a
+# null / negative / >=256 code is an abnormal termination (Win32 exception) and is retried, then still
+# fails after the retries. Because Invoke-Pluginval now WAITS, exactly one pluginval runs at a time --
+# no concurrent background instances, so the console output is no longer interleaved.
+$pvArgs = @('--strictness-level', "$Strictness") + $modeArgs + $guiArgs + @('--validate', $vst3.FullName, '--timeout-ms', '600000')
 Write-Host "Validating $($vst3.FullName) at strictness $Strictness -- mode=$Mode ($passes consecutive pass(es) required); GUI tests skipped (see KI-007)"
 $attempts = 3
 for ($p = 1; $p -le $passes; $p++) {
     $passed = $false
     for ($a = 1; $a -le $attempts; $a++) {
-        & $pv --strictness-level $Strictness @modeArgs @guiArgs --validate $vst3.FullName --timeout-ms 600000
-        $rc = $LASTEXITCODE
+        $rc = Invoke-Pluginval -Exe $pv -PvArgs $pvArgs
         if ($rc -eq 0) {
             Write-Host "pluginval: PASSED ($Mode pass $p/$passes) at strictness $Strictness (attempt $a/$attempts)"
             $passed = $true
             break
         }
         # $null MUST be tested first: `$null -lt 0` and `$null -ge 256` are both $false, so without
-        # this a null code would fall through to the "real failure" branch and `exit $null` -> exit 0.
+        # this a null code would fall through to the "real failure" branch and exit non-zero anyway,
+        # but treating null as a crash keeps the retry semantics symmetric with an abnormal exit.
         $crashed = ($null -eq $rc) -or ($rc -lt 0) -or ($rc -ge 256)
         if (-not $crashed) {
             Write-Host "pluginval: FAILED ($Mode pass $p/$passes) at strictness $Strictness (exit $rc) -- real validation failure, not a crash."
             exit $rc
         }
-        $shown = if ($null -eq $rc) { 'none (crash/abnormal termination)' } else { $rc }
-        Write-Host "pluginval: crashed ($Mode pass $p/$passes, exit $shown -- abnormal termination during the editor tests). Retry $a/$attempts."
+        $shown = if ($null -eq $rc) { 'none (abnormal termination)' } else { $rc }
+        Write-Host "pluginval: crashed ($Mode pass $p/$passes, exit $shown -- abnormal termination). Retry $a/$attempts."
     }
     if (-not $passed) {
         Write-Host "pluginval: still crashing ($Mode pass $p/$passes) after $attempts attempts -- treating as a failure."
