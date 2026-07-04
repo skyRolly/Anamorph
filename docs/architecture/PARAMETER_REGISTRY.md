@@ -22,7 +22,8 @@ kinds (C/B/I) are minimal from-scratch `juce::RangedAudioParameter` subclasses (
 `RawInt`) with identical range/default/step semantics — `getValue()` returns the exact raw normalised
 value for exact state round-trip (ADR-0013); the DSP/host text still see the snapped choice/bool/int.
 "Host Visible" = appears in the host's parameter/automation list (every VST3 APVTS parameter does).
-"Auto Safe" = `withAutomatable(true)` (now true for **all** APVTS params).
+"Auto Safe" = host-automatable (`isAutomatable()`), true for all APVTS params **except `advancedMode`**
+(a UI-layout toggle deliberately non-automatable — see ◊◊).
 "Serialized" = saved in `apvts.copyState()`. Exclusions (A/B, Undo, Preset) in footnotes.
 
 | ID | Display name | Type | Default | Range | Host Visible | Auto Safe | Serialized |
@@ -62,7 +63,7 @@ value for exact state round-trip (ADR-0013); the DSP/host text still see the sna
 | `autoGainMatch` | Level Match | B | false | — | yes | yes | yes |
 | `solo` | M/S Solo | C | Off (0) | Off/Mid/Side | yes | yes | yes |
 | `bypass` | Bypass | B | false | — | yes (host bypass) | yes | yes ◊ |
-| `advancedMode` | Advanced Mode | B | false | — | yes | yes | yes ◊◊ |
+| `advancedMode` | Advanced Mode | B | false | — | yes | **no** ◊◊ | yes |
 
 36 APVTS parameters. Evidence [Verified]: src/PluginParameters.cpp:114-198.
 
@@ -74,8 +75,14 @@ Footnotes:
   off. It still travels with A/B + Undo. Source: src/PluginParameters.h:84-87.
 - **◊** `bypass` is a **view param** (`pid::viewParams`): excluded from A/B, Undo, and presets,
   but still serialized in the main session state. Source: src/PluginParameters.h:70-72.
-- **◊◊** `advancedMode` is excluded from **presets** but travels with A/B + Undo (0.8.2 "ADV
-  travels with A/B"). Source: src/PluginParameters.h:84-87; CHANGELOG.md [0.8.2].
+- **◊◊** `advancedMode` is a UI-layout toggle: **not host-automatable** (`isAutomatable()` returns
+  `false`). A layout toggle has no place in an automation lane, and automating it flips the editor
+  layout — resizing the window under host automation, which crashed Windows pluginval's "Editor
+  Automation" test (KI-007). It is still host-**visible** and serialized, excluded from **presets**,
+  and travels with A/B + Undo (0.8.2 "ADV travels with A/B"). This is a recorded automation-flag
+  change (`PARAMETER_COMPATIBILITY_POLICY` rule 5) — the ID/range/default are unchanged, so sessions
+  and existing state are unaffected. Source: src/PluginParameters.cpp (`RawBool(..., /*automatable*/
+  false)`); src/PluginParameters.h:84-87; CHANGELOG.md [0.8.2].
 - **‖** Display name renamed `Haas Side` → `Haas Focus` in 0.8.6; the **ID `haasSide` is
   unchanged** (the immutability invariant in action). Evidence [Partially Verified]: CHANGELOG.md [0.8.6];
   src/PluginParameters.cpp:135-136.

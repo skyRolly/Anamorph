@@ -20,6 +20,9 @@ permissions:
 # randomise -- each repeated 3 consecutive times (scripts/run-pluginval.sh on
 # Linux/macOS, scripts/run-pluginval.ps1 on Windows). A non-zero pluginval exit
 # fails the job on every platform (no continue-on-error / swallowed exit codes).
+# Both mode steps ALWAYS run: the randomise step is guarded with `if: !cancelled()`
+# so a deterministic failure never SKIPS randomise -- both modes always report
+# independently. The job still fails if either mode fails.
 
 jobs:
   linux:
@@ -45,6 +48,10 @@ jobs:
         run: ./scripts/run-pluginval.sh 10 deterministic
 
       - name: pluginval (strictness 10, randomise x3 -- release gate)
+        # NEVER skipped: run the randomise gate even if the deterministic gate above failed, so both
+        # modes always report independently (a deterministic failure must not hide the randomise result).
+        # The job still fails if either gate fails; !cancelled() only skips on an actual run cancellation.
+        if: ${{ !cancelled() }}
         run: ./scripts/run-pluginval.sh 10 randomise
 
       - name: Stage Linux artifacts (VST3 + Standalone)
@@ -87,6 +94,10 @@ jobs:
         run: ./scripts/run-pluginval.ps1 -Strictness 10 -Mode deterministic
 
       - name: pluginval (strictness 10, randomise x3 -- release gate)
+        # NEVER skipped: run the randomise gate even if the deterministic gate above failed, so both
+        # modes always report independently (a deterministic failure must not hide the randomise result).
+        # The job still fails if either gate fails; !cancelled() only skips on an actual run cancellation.
+        if: ${{ !cancelled() }}
         shell: pwsh
         run: ./scripts/run-pluginval.ps1 -Strictness 10 -Mode randomise
 
@@ -137,6 +148,10 @@ jobs:
         run: ./scripts/run-pluginval.sh 10 deterministic
 
       - name: pluginval (strictness 10, randomise x3 -- release gate)
+        # NEVER skipped: run the randomise gate even if the deterministic gate above failed, so both
+        # modes always report independently (a deterministic failure must not hide the randomise result).
+        # The job still fails if either gate fails; !cancelled() only skips on an actual run cancellation.
+        if: ${{ !cancelled() }}
         run: ./scripts/run-pluginval.sh 10 randomise
 
       - name: Package macOS plugins (VST3 + AU + Standalone)

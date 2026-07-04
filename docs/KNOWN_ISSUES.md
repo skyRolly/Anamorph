@@ -14,7 +14,7 @@ Verified against repository HEAD `c605fbe` (version 0.8.7; JUCE 8.0.14).
 | KI-004 | No automated DAW/host-compatibility testing | Medium | Confirmed (coverage gap) |
 | KI-005 | No graphical installer (manual copy install) | Low | Confirmed (packaging) |
 | KI-006 | Linux: tooltip rounded corners render an opaque black background instead of transparent | Low | Fix applied (LookAndFeel); Linux visual re-test pending |
-| KI-007 | Windows: pluginval "Editor Automation" abnormally terminates (was hidden by a run-pluginval.ps1 false green) | Medium | False green closed; GL-drop fix applied (CI confirmation pending) |
+| KI-007 | Windows: pluginval "Editor Automation" abnormally terminates (was hidden by a run-pluginval.ps1 false green) | Medium | False green closed; GL-drop cleared the crash (CI-confirmed); advancedMode-automation fix pending CI |
 
 ---
 
@@ -99,17 +99,27 @@ of hiding it.
   the first Editor-Automation paint faults on the GL render thread. This is the same *class* of
   GL-under-editor-automation crash that made Linux drop its GL attach (KI-003 / ADR-0011); macOS CI
   has a real GL and is unaffected. A multi-lens investigation converged on GL as the cause.
-- **Fix applied (CI confirmation pending):** the OpenGL attach is now guarded `#if JUCE_MAC` — GL is
-  attached on macOS only; Windows (like Linux) renders via the CPU `paint()` path, which is **visually
-  identical** (ADR-0011). This removes the Windows GL render thread and the fault with it. It adds no
-  thread / cross-thread path / atomic ordering (it *removes* a render thread) and reuses the accepted
-  0.8.5 Linux configuration, so it is an editor/platform decision, not a gated Thread-Model change.
-  **If the Windows job is still red after this**, the crash is NOT the GL attach — revert the guard and
-  capture a Windows crash stack (local `pluginval --validate` under a debugger, or a CI crash-dump
-  upload) before trying again. Do **not** stack further blind guesses on top.
+- **Fix stage 1 — GL drop (CI-confirmed to clear the hard crash):** the OpenGL attach is now guarded
+  `#if JUCE_MAC` — GL on macOS only; Windows (like Linux) renders via the CPU `paint()` path, **visually
+  identical** (ADR-0011). CI on commit `b70f0b2` **confirmed** this cleared the abnormal termination:
+  Windows pluginval no longer dies with an empty exit code at the first Editor-Automation line — it now
+  runs the **full** suite (Open/Editor/Audio/**Plugin state restoration**/Automation all complete) and
+  fails only inside Editor Automation with a clean `exit 1`. Removing the render thread reuses the
+  accepted 0.8.5 Linux config (editor/platform decision, not a gated Thread-Model change).
+- **Fix stage 2 — `advancedMode` non-automatable (CI confirmation pending):** the remaining `exit 1`
+  is a contained Editor-Automation failure, not a crash. Differential from the CI log: plain
+  "Automation" (fuzz params, **no** editor) passes and "Editor" (open/close) passes, but the two
+  together fail — i.e. the editor's *reaction* to automation. Automating `advancedMode` flips the
+  layout, so `applyUiScale()` resizes the window mid-automation (the historically fragile Windows
+  sizing path). `advancedMode` is now `isAutomatable()`=false (it is a UI-layout toggle, not a sound
+  param), so pluginval no longer drives it and the mid-automation resize is gone. **If Windows is still
+  red after this**, the failure is a *different* editor reaction to automation (or a pluginval-Windows
+  host-harness issue analogous to KI-003) — capture a Windows crash stack / the pluginval failure line
+  before the next change. Do **not** stack further blind guesses on top.
 - **Deferred:** a GPU-capability probe (throwaway WGL context → confirm GL2 → attach) would restore GL
   on capable Windows machines, but needs a real Windows test bed; not attempted from this Linux sandbox.
-- **Evidence [Verified]:** run 28678842525 Windows job log (`... / Editor Automation...` is the last
-  line before both the deterministic and randomise passes end; `pluginval: FAILED ... (exit )` with
-  an empty code yet a green step); scripts/run-pluginval.ps1 (the closed false green). Related: KI-003
-  (the Linux editor-harness crash), scripts/run-pluginval.sh:70-91 (the crash-retry this PS1 now mirrors).
+- **Evidence [Verified]:** run 28678842525 Windows job log (original: `... / Editor Automation...` last
+  line, empty exit code, yet a green step — the false green); run 28695538067 Windows job on `b70f0b2`
+  (post-GL-drop: full suite completes incl. Plugin state restoration, then `exit 1` inside Editor
+  Automation — hard crash gone, contained failure remains); scripts/run-pluginval.ps1 (the closed false
+  green). Related: KI-003 (the Linux editor-harness crash), scripts/run-pluginval.sh:70-91 (crash-retry).

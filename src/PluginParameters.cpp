@@ -46,9 +46,9 @@ struct RawChoice : juce::RangedAudioParameter
 
 struct RawBool : juce::RangedAudioParameter
 {
-    RawBool (const juce::ParameterID& pid, const juce::String& nm, bool def)
+    RawBool (const juce::ParameterID& pid, const juce::String& nm, bool def, bool automatable = true)
         : juce::RangedAudioParameter (pid, nm), range (0.0f, 1.0f, 1.0f),
-          normValue (def ? 1.0f : 0.0f), defaultNorm (def ? 1.0f : 0.0f) {}
+          normValue (def ? 1.0f : 0.0f), defaultNorm (def ? 1.0f : 0.0f), autom (automatable) {}
 
     float getValue() const override        { return normValue.load(); }
     void  setValue (float v) override      { normValue.store (v); }
@@ -56,6 +56,7 @@ struct RawBool : juce::RangedAudioParameter
     int   getNumSteps() const override     { return 2; }
     bool  isDiscrete() const override      { return true; }
     bool  isBoolean() const override       { return true; }
+    bool  isAutomatable() const override   { return autom; }
     juce::String getText (float v, int) const override { return v >= 0.5f ? "On" : "Off"; }
     float getValueForText (const juce::String& t) const override
     { return (t.equalsIgnoreCase ("on") || t.equalsIgnoreCase ("true") || t.getIntValue() != 0) ? 1.0f : 0.0f; }
@@ -64,6 +65,7 @@ struct RawBool : juce::RangedAudioParameter
     juce::NormalisableRange<float> range;
     std::atomic<float> normValue;
     float defaultNorm;
+    bool  autom;
 };
 
 struct RawInt : juce::RangedAudioParameter
@@ -270,7 +272,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
     layout.add (std::make_unique<RawBool> (ParameterID { pid::bypass, kVersion }, "Bypass", false));
 
     // --- UI (saved with state, but UI-only) ---
-    layout.add (std::make_unique<RawBool> (ParameterID { pid::advancedMode, kVersion }, "Advanced Mode", false));
+    // advancedMode is a UI-layout toggle (show/hide the advanced panel) that travels with A/B but is a
+    // VIEW concern -- it is deliberately NOT host-automatable. Automating it would flip the editor
+    // layout under host automation, resizing the window mid-automation; pluginval's "Editor Automation"
+    // test does exactly that and it crashed the editor on Windows (KI-007). A layout toggle has no place
+    // in a host automation lane, so isAutomatable() is false; the on-screen toggle still works normally.
+    layout.add (std::make_unique<RawBool> (ParameterID { pid::advancedMode, kVersion }, "Advanced Mode", false, /*automatable*/ false));
 
     return layout;
 }
@@ -355,8 +362,8 @@ anamorph::EngineParameters ParamPointers::toEngine (int oversampleIndex) const
 
         // --- Multiband ---
         e.mbEnable     = mbEnable->load() > 0.5f;
-        e.mbBands      = (int) (mbBands->load() + 0.5f);
-        e.mbSolo       = (int) (mbSolo->load() + 0.5f);
+        e.mbBands      = juce::roundToInt (mbBands->load()); // roundToInt like the other discrete reads above
+        e.mbSolo       = juce::roundToInt (mbSolo->load());  // (was (int)(x+0.5f) -- equivalent, now uniform)
         e.mbFreqLow    = mbFreqLow->load();
         e.mbFreqMid    = mbFreqMid->load();
         e.mbFreqHigh   = mbFreqHigh->load();

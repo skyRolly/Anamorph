@@ -35,7 +35,10 @@ failures as green and has been removed). Evidence [Verified]: `.github/workflows
    **deterministic** (`--random-seed 0`) **and** **randomise** (`--randomise`), each repeated **3
    consecutive passes**. Linux/macOS use `scripts/run-pluginval.sh <strictness> <mode>`; Windows uses
    `scripts/run-pluginval.ps1 -Strictness <n> -Mode <mode>` (same structure). A non-zero pluginval
-   exit fails the job immediately — no swallowed exit codes.
+   exit fails the job — no swallowed exit codes. **Both mode steps ALWAYS run**: the randomise step is
+   guarded with `if: ${{ !cancelled() }}`, so a deterministic failure **never skips** randomise — both
+   modes report independently every run (a deterministic failure must not hide the randomise result).
+   The job still fails if either mode fails.
 6. **Stage + upload artifacts** (`actions/upload-artifact@v5`).
 
 Evidence [Verified]: `.github/workflows/build.yml`; `scripts/run-pluginval.sh`; `scripts/run-pluginval.ps1`.

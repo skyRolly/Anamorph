@@ -34,8 +34,15 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 - **Parameter display-name renames** (parameter **IDs unchanged**, so automation/state survive):
   "Algorithm" → **"Widen Algorithm"** and "Dimension Mode" → **"Dim-D Style"**, matching the GUI.
   `Multiband Bands` and `Multiband Solo` are now **exposed and automatable** in the host automation
-  list (the previous `withAutomatable(false)` was removed). Evidence: `src/PluginParameters.cpp`;
-  `docs/architecture/PARAMETER_REGISTRY.md`.
+  list (the previous `withAutomatable(false)` was removed). Conversely, **`Advanced Mode` is now
+  non-automatable** (`isAutomatable()` = false): it is a UI-layout toggle, not a sound parameter, and
+  automating it resized the editor under host automation (the Windows pluginval crash, KI-007). IDs,
+  ranges and defaults are unchanged (a recorded automation-flag change, `PARAMETER_COMPATIBILITY_POLICY`
+  rule 5). Evidence: `src/PluginParameters.cpp`; `docs/architecture/PARAMETER_REGISTRY.md`.
+- **CI: the randomise pluginval gate is never skipped.** The randomise step (all three platforms) is
+  guarded with `if: ${{ !cancelled() }}`, so a deterministic-mode failure no longer skips the randomise
+  run — both modes report independently every CI run. The job still fails if either mode fails.
+  Evidence: `.github/workflows/build.yml`; `docs/procedures/CI_CD.md`.
 ### Fixed
 - **A/B compare slots are independent from plugin open again.** The two A/B slots were snapshotted
   **lazily** on the *first* A/B switch (`abEnsureInit`), so editing A *before* ever visiting B made B
@@ -59,6 +66,15 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   editor/platform decision — no DSP/parameter/serialization change. Real Windows GPU users lose only
   GPU compositing of the scope (imperceptible); a future WGL capability probe could restore it.
   Evidence: `src/PluginEditor.cpp` (attach gate); ADR-0011; KI-007.
+- **Windows: `Advanced Mode` made non-automatable to clear the remaining Editor-Automation failure
+  (KI-007).** With GL dropped, the hard crash was gone but pluginval still failed "Editor Automation"
+  with a clean `exit 1` — the differential was decisive: the plain "Automation" test (fuzz params, no
+  editor) passed, and "Editor" (open/close) passed, but the two together failed, i.e. the editor's
+  *reaction* to automation. Automating `advancedMode` flips the layout → `applyUiScale()` resizes the
+  window mid-automation (the historically fragile Windows sizing path). Making the layout toggle
+  non-automatable stops pluginval from driving it, removing the mid-automation resize. Evidence:
+  `src/PluginParameters.cpp` (`advancedMode` `isAutomatable()`=false); `src/PluginEditor.cpp`
+  (`timerCallback`/`applyUiScale`); KI-007.
 - **Preset switching is undoable again (regression from the gesture-gated undo).** A preset load
   arrives as gesture-less `setValueNotifyingHost` calls, so the new gesture-gated coalescer folded it
   into the baseline **without** an undo step — after switching presets you could not Undo back to the
