@@ -14,7 +14,7 @@ Verified against repository HEAD `c605fbe` (version 0.8.7; JUCE 8.0.14).
 | KI-004 | No automated DAW/host-compatibility testing | Medium | Confirmed (coverage gap) |
 | KI-005 | No graphical installer (manual copy install) | Low | Confirmed (packaging) |
 | KI-006 | Linux: tooltip rounded corners render an opaque black background instead of transparent | Low | Fix applied (LookAndFeel); Linux visual re-test pending |
-| KI-007 | Windows: pluginval "Editor Automation" abnormally terminates (was hidden by a run-pluginval.ps1 false green) | Medium | Confirmed; false green closed, root cause pending |
+| KI-007 | Windows: pluginval "Editor Automation" abnormally terminates (was hidden by a run-pluginval.ps1 false green) | Medium | False green closed; GL-drop fix applied (CI confirmation pending) |
 
 ---
 
@@ -92,12 +92,23 @@ of hiding it.
 - **Scope:** pre-existing and **platform-specific** — the base commit's Windows pluginval (then an
   "informational" step) also finished in ~7 s, and the parameter-layer changes on this branch are
   platform-agnostic (Linux/macOS unaffected). It is therefore **not** attributable to the discrete-
-  parameter or undo work; it points at the Windows editor open/close path (a plugin-side editor
-  teardown defect, or a Windows analogue of KI-003's pluginval-host-harness editor flake).
-- **Next step:** capture a Windows crash stack (local `pluginval --validate` under a debugger, or a
-  CI crash-dump upload) to localise it. A fix that touches the audio/UI thread boundary would be a
-  **Thread Model change** → Architecture Review + ADR (`docs/policies/ARCHITECTURE_REVIEW_GATE.md`);
-  not attempted blind here.
+  parameter or undo work; it points at the Windows editor open path.
+- **Root-cause hypothesis (strong, not stack-confirmed):** the crash is in the editor's **OpenGL**
+  attach. GitHub's `windows-latest` runner is GPU-less and exposes only the **GDI-generic OpenGL 1.1**
+  renderer, which lacks the GL2 shader/VBO entry points JUCE's GL `LowLevelGraphicsContext` calls, so
+  the first Editor-Automation paint faults on the GL render thread. This is the same *class* of
+  GL-under-editor-automation crash that made Linux drop its GL attach (KI-003 / ADR-0011); macOS CI
+  has a real GL and is unaffected. A multi-lens investigation converged on GL as the cause.
+- **Fix applied (CI confirmation pending):** the OpenGL attach is now guarded `#if JUCE_MAC` — GL is
+  attached on macOS only; Windows (like Linux) renders via the CPU `paint()` path, which is **visually
+  identical** (ADR-0011). This removes the Windows GL render thread and the fault with it. It adds no
+  thread / cross-thread path / atomic ordering (it *removes* a render thread) and reuses the accepted
+  0.8.5 Linux configuration, so it is an editor/platform decision, not a gated Thread-Model change.
+  **If the Windows job is still red after this**, the crash is NOT the GL attach — revert the guard and
+  capture a Windows crash stack (local `pluginval --validate` under a debugger, or a CI crash-dump
+  upload) before trying again. Do **not** stack further blind guesses on top.
+- **Deferred:** a GPU-capability probe (throwaway WGL context → confirm GL2 → attach) would restore GL
+  on capable Windows machines, but needs a real Windows test bed; not attempted from this Linux sandbox.
 - **Evidence [Verified]:** run 28678842525 Windows job log (`... / Editor Automation...` is the last
   line before both the deterministic and randomise passes end; `pluginval: FAILED ... (exit )` with
   an empty code yet a green step); scripts/run-pluginval.ps1 (the closed false green). Related: KI-003

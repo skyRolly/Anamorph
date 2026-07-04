@@ -50,6 +50,15 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   that failed to parse returned early and never fired the matching `onLoaded`, silently flushing a
   settled edit without recording its undo step. The XML is now parsed **before** the bracket is opened
   (matching `loadFile`), so a parse failure is a clean no-op. Evidence: `src/PresetManager.cpp` (`load`).
+- **Windows: OpenGL attach dropped to fix the pluginval "Editor Automation" crash (KI-007).** The
+  GL attach is now guarded `#if JUCE_MAC` — GPU compositing on macOS only; Windows (like Linux since
+  0.8.5) renders via the CPU `paint()` path, **visually identical**. GitHub's GPU-less `windows-latest`
+  runner exposes only the GDI-generic OpenGL 1.1 renderer, which lacks the GL2 shader/VBO entry points
+  JUCE's GL context needs, so the first Editor-Automation paint faulted on the GL render thread. This
+  extends the proven ADR-0011 Linux remedy to Windows; it removes a render thread (adds none) and is an
+  editor/platform decision — no DSP/parameter/serialization change. Real Windows GPU users lose only
+  GPU compositing of the scope (imperceptible); a future WGL capability probe could restore it.
+  Evidence: `src/PluginEditor.cpp` (attach gate); ADR-0011; KI-007.
 - **Preset switching is undoable again (regression from the gesture-gated undo).** A preset load
   arrives as gesture-less `setValueNotifyingHost` calls, so the new gesture-gated coalescer folded it
   into the baseline **without** an undo step — after switching presets you could not Undo back to the

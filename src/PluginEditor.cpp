@@ -244,14 +244,19 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
 
     setOpaque (true); // fill our bounds every paint -> no see-through flash on a scale resize (#13)
     openGLContext.setContinuousRepainting (false);
-   #if ! (JUCE_LINUX || JUCE_BSD)
-    // GPU-composite the vectorscope on macOS / Windows. NOT on Linux/X11: attaching an
-    // OpenGL context adds an extra embedded child X11 window, which multiplies the
-    // ConfigureNotify events the host's XEmbedComponent turns into async lambdas that
-    // capture a raw `this`; under a host that rapidly opens/closes the editor (pluginval
-    // "Editor Automation", and real Linux DAWs), one of those lambdas can fire after the
-    // editor window is gone -> use-after-free segfault inside JUCE's X11 embedding. The
-    // CPU paint path is identical visually, so Linux simply renders without GL.
+   #if JUCE_MAC
+    // GPU-composite the editor on macOS ONLY. The CPU paint path is visually identical (ADR-0011),
+    // so the two platforms whose GL context crashes pluginval's "Editor Automation" stress test
+    // simply render without GL -- dropping the attach removes the platform-specific GL failure mode:
+    //   - Linux/X11: attaching GL adds an embedded child X11 window whose ConfigureNotify events the
+    //     host's XEmbedComponent turns into async lambdas capturing a raw `this`; when the host tears
+    //     the editor down between the event and the async, one fires after the window is gone ->
+    //     use-after-free inside JUCE's X11 embedding (host-side crash). (ADR-0011 / INC-006.)
+    //   - Windows: the CI runner -- and any GPU-less machine -- exposes only the GDI-generic OpenGL
+    //     1.1 renderer, which lacks the GL2 shader/VBO entry points JUCE's GL LowLevelGraphicsContext
+    //     calls, so the first Editor-Automation paint faults on the GL render thread (KI-007).
+    // A future GPU-capability probe could re-enable GL on capable Windows machines, but that needs a
+    // real Windows test bed; dropping the attach is the proven Linux remedy and costs nothing visually.
     openGLContext.attachTo (*this);
    #endif
 
