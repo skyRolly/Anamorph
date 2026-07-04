@@ -37,6 +37,19 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   list (the previous `withAutomatable(false)` was removed). Evidence: `src/PluginParameters.cpp`;
   `docs/architecture/PARAMETER_REGISTRY.md`.
 ### Fixed
+- **A/B compare slots are independent from plugin open again.** The two A/B slots were snapshotted
+  **lazily** on the *first* A/B switch (`abEnsureInit`), so editing A *before* ever visiting B made B
+  born as a copy of A's **already-edited** state — switching to B showed A's parameters, not the open
+  (Default) state. Whether B ever looked "clean" depended on when the host happened to call
+  `getStateInformation` (which also runs `abEnsureInit`) — a host-timing accident. Both slots are now
+  initialized to the open state in the constructor, so an edit to A never leaks into B. The A/B
+  switch/apply/serialization logic is unchanged (ADR-0008); only *when* the initial snapshot is taken
+  changed. Evidence: `src/PluginProcessor.cpp` (constructor `abEnsureInit()`).
+- **A corrupt user preset no longer leaves the undo bracket half-open.** In `PresetManager::load`,
+  `onAboutToLoad` (which flushes undo coalescing) fired *before* the preset XML was parsed, so a file
+  that failed to parse returned early and never fired the matching `onLoaded`, silently flushing a
+  settled edit without recording its undo step. The XML is now parsed **before** the bracket is opened
+  (matching `loadFile`), so a parse failure is a clean no-op. Evidence: `src/PresetManager.cpp` (`load`).
 - **Preset switching is undoable again (regression from the gesture-gated undo).** A preset load
   arrives as gesture-less `setValueNotifyingHost` calls, so the new gesture-gated coalescer folded it
   into the baseline **without** an undo step — after switching presets you could not Undo back to the

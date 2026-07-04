@@ -138,6 +138,16 @@ void PresetManager::load (int index)
     if (index < 0 || index >= list.size()) return;
     const auto& e = list.getReference (index);
 
+    // Parse a user preset BEFORE opening the undo bracket: a corrupt file must fail cleanly, without
+    // an onAboutToLoad() with no matching onLoaded() (which would flush undo coalescing yet record no
+    // step, leaving the undo timeline half-open). Factory presets can't fail. Mirrors loadFile().
+    std::unique_ptr<juce::XmlElement> userXml;
+    if (! e.isFactory)
+    {
+        userXml = juce::parseXML (e.file);
+        if (userXml == nullptr) return;
+    }
+
     if (onAboutToLoad) onAboutToLoad(); // flush any settled edit so the pre-load state is the undo baseline
 
     if (e.isFactory)
@@ -150,9 +160,7 @@ void PresetManager::load (int index)
     }
     else
     {
-        auto xml = juce::parseXML (e.file);
-        if (xml == nullptr) return;
-        applySoundTree (juce::ValueTree::fromXml (*xml));
+        applySoundTree (juce::ValueTree::fromXml (*userXml));
     }
 
     current = e.name;

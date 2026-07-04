@@ -33,6 +33,14 @@ AnamorphAudioProcessor::AnamorphAudioProcessor()
     presets.onLoaded      = [this] { commitPresetSwitchUndoStep(); };
 
     syncCommitted(); // establish the undo baseline
+
+    // Snapshot BOTH A/B slots to the open (Default) state up front. The slots are otherwise filled
+    // LAZILY on the first A/B switch (abEnsureInit): editing A before ever visiting B would then make
+    // B born as a copy of A's ALREADY-edited state -- the edit leaks into B, so B never shows the
+    // open state. Eager init makes the two slots independent from open, deterministically (the lazy
+    // path made "B == open state" depend on whether the host called getStateInformation early). The
+    // switch/apply logic is unchanged; this only fixes WHEN the initial snapshot is taken.
+    abEnsureInit();
 }
 
 AnamorphAudioProcessor::~AnamorphAudioProcessor()

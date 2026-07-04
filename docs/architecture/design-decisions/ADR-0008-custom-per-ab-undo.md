@@ -27,6 +27,11 @@ themselves are never recorded. `requestDuck()` masks the level jump on undo/redo
 cleared on session restore.
 
 ## Consequences
+- Both A/B slots are snapshotted to the **open (Default) state in the constructor** (`abEnsureInit`),
+  not lazily on the first switch — so editing A before ever visiting B does not leak into B; the slots
+  are independent from open, deterministically (the lazy path made "B == open state" depend on host
+  `getStateInformation` timing). The switch/apply/serialization logic is unchanged; only *when* the
+  first snapshot is taken.
 - Per-slot histories survive editor close (the A/B model lives in the processor).
 - A `soundSignature()` over non-view params drives coalescing.
 - A **preset switch is one undo step** in the *active* A/B slot's history (via the bracket hooks);
