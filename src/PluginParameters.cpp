@@ -272,11 +272,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout()
     layout.add (std::make_unique<RawBool> (ParameterID { pid::bypass, kVersion }, "Bypass", false));
 
     // --- UI (saved with state, but UI-only) ---
-    // advancedMode is a UI-layout toggle (show/hide the advanced panel) that travels with A/B but is a
-    // VIEW concern -- it is deliberately NOT host-automatable. Automating it would flip the editor
-    // layout under host automation, resizing the window mid-automation; pluginval's "Editor Automation"
-    // test does exactly that and it crashed the editor on Windows (KI-007). A layout toggle has no place
-    // in a host automation lane, so isAutomatable() is false; the on-screen toggle still works normally.
+    // advancedMode is a UI-layout toggle (show/hide the advanced panel), a VIEW concern that travels
+    // with A/B -- it is deliberately NOT host-automatable. Host-automating it drives editor RESIZES
+    // (applyUiScale), and on Linux/X11 the resize ConfigureNotify storm hits a use-after-free in the
+    // HOST's JUCE XEmbedComponent during rapid open/close (reproduced locally; core dump lands in
+    // XEmbedComponent -- KI-003 / KI-007). A layout toggle has no place in an automation lane anyway;
+    // isAutomatable() is false. The on-screen toggle and A/B/undo travel are unchanged.
     layout.add (std::make_unique<RawBool> (ParameterID { pid::advancedMode, kVersion }, "Advanced Mode", false, /*automatable*/ false));
 
     return layout;

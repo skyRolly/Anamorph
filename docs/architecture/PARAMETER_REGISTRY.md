@@ -77,12 +77,13 @@ Footnotes:
   but still serialized in the main session state. Source: src/PluginParameters.h:70-72.
 - **◊◊** `advancedMode` is a UI-layout toggle: **not host-automatable** (`isAutomatable()` returns
   `false`). A layout toggle has no place in an automation lane, and automating it flips the editor
-  layout — resizing the window under host automation, which crashed Windows pluginval's "Editor
-  Automation" test (KI-007). It is still host-**visible** and serialized, excluded from **presets**,
-  and travels with A/B + Undo (0.8.2 "ADV travels with A/B"). This is a recorded automation-flag
-  change (`PARAMETER_COMPATIBILITY_POLICY` rule 5) — the ID/range/default are unchanged, so sessions
-  and existing state are unaffected. Source: src/PluginParameters.cpp (`RawBool(..., /*automatable*/
-  false)`); src/PluginParameters.h:84-87; CHANGELOG.md [0.8.2].
+  layout — driving editor **resizes** (`applyUiScale`) whose `ConfigureNotify` storm hits a
+  use-after-free in the **host's** JUCE `XEmbedComponent` on Linux/X11 during rapid open/close
+  (reproduced locally; core dump lands in `XEmbedComponent` — KI-003/KI-007). It is still host-**visible**
+  and serialized, excluded from **presets**, and travels with A/B + Undo (0.8.2 "ADV travels with A/B").
+  This is a recorded automation-flag change (`PARAMETER_COMPATIBILITY_POLICY` rule 5) — the
+  ID/range/default are unchanged, so sessions and existing state are unaffected. Source:
+  src/PluginParameters.cpp (`RawBool(..., /*automatable*/ false)`); src/PluginParameters.h:84-87.
 - **‖** Display name renamed `Haas Side` → `Haas Focus` in 0.8.6; the **ID `haasSide` is
   unchanged** (the immutability invariant in action). Evidence [Partially Verified]: CHANGELOG.md [0.8.6];
   src/PluginParameters.cpp:135-136.

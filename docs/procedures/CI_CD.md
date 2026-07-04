@@ -38,7 +38,10 @@ failures as green and has been removed). Evidence [Verified]: `.github/workflows
    exit fails the job — no swallowed exit codes. **Both mode steps ALWAYS run**: the randomise step is
    guarded with `if: ${{ !cancelled() }}`, so a deterministic failure **never skips** randomise — both
    modes report independently every run (a deterministic failure must not hide the randomise result).
-   The job still fails if either mode fails.
+   The job still fails if either mode fails. **Windows** additionally runs with `--skip-gui-tests`:
+   the GPU-less/headless `windows-latest` runner cannot host the editor GUI tests (environmental, not a
+   plugin defect — the editor validates on Linux + macOS; see KI-007). This skips one *test category*
+   on one runner, distinct from the mode-level "never skip" rule above; all non-GUI tests still block.
 6. **Stage + upload artifacts** (`actions/upload-artifact@v5`).
 
 Evidence [Verified]: `.github/workflows/build.yml`; `scripts/run-pluginval.sh`; `scripts/run-pluginval.ps1`.

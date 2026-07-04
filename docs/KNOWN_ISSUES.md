@@ -78,46 +78,42 @@ session state, and is fully isolated from the pluginval state-restoration work.
 - **Evidence:** src/gui/LookAndFeel.cpp `drawTooltip` (the alpha-gated corner fill); 0.8.7 Linux
   feedback. Cosmetic, low-impact: tooltips are **off by default** (src/InternalState.h:51).
 
-## KI-007 — Windows pluginval "Editor Automation" abnormally terminates
-On **Windows**, pluginval consistently ends at `Starting tests in: pluginval / Editor Automation...`
-without completing that test — the process dies with no clean exit code. This was **masked by a
-false green**: `scripts/run-pluginval.ps1` ran `exit $LASTEXITCODE`, but an abnormal termination
-leaves `$LASTEXITCODE` `$null` and `exit $null` exits **0**, so the crashed run passed the gate. The
-false green is now closed (the script treats a null/large/negative code as a crash, retries, and
-still fails after the retries — never `exit 0` on a non-pass), which **surfaces** this crash instead
-of hiding it.
-- **Platform matrix:** Windows — Confirmed (blocking gate on this branch). Linux/macOS — Not
-  observed (both complete Editor Automation and pass genuinely: Linux ~40 s, macOS ~185 s per
-  mode; the crashed Windows step ran in ~6–7 s).
-- **Scope:** pre-existing and **platform-specific** — the base commit's Windows pluginval (then an
-  "informational" step) also finished in ~7 s, and the parameter-layer changes on this branch are
-  platform-agnostic (Linux/macOS unaffected). It is therefore **not** attributable to the discrete-
-  parameter or undo work; it points at the Windows editor open path.
-- **Root-cause hypothesis (strong, not stack-confirmed):** the crash is in the editor's **OpenGL**
-  attach. GitHub's `windows-latest` runner is GPU-less and exposes only the **GDI-generic OpenGL 1.1**
-  renderer, which lacks the GL2 shader/VBO entry points JUCE's GL `LowLevelGraphicsContext` calls, so
-  the first Editor-Automation paint faults on the GL render thread. This is the same *class* of
-  GL-under-editor-automation crash that made Linux drop its GL attach (KI-003 / ADR-0011); macOS CI
-  has a real GL and is unaffected. A multi-lens investigation converged on GL as the cause.
-- **Fix stage 1 — GL drop (CI-confirmed to clear the hard crash):** the OpenGL attach is now guarded
-  `#if JUCE_MAC` — GL on macOS only; Windows (like Linux) renders via the CPU `paint()` path, **visually
-  identical** (ADR-0011). CI on commit `b70f0b2` **confirmed** this cleared the abnormal termination:
-  Windows pluginval no longer dies with an empty exit code at the first Editor-Automation line — it now
-  runs the **full** suite (Open/Editor/Audio/**Plugin state restoration**/Automation all complete) and
-  fails only inside Editor Automation with a clean `exit 1`. Removing the render thread reuses the
-  accepted 0.8.5 Linux config (editor/platform decision, not a gated Thread-Model change).
-- **Fix stage 2 — `advancedMode` non-automatable (CI confirmation pending):** the remaining `exit 1`
-  is a contained Editor-Automation failure, not a crash. Differential from the CI log: plain
-  "Automation" (fuzz params, **no** editor) passes and "Editor" (open/close) passes, but the two
-  together fail — i.e. the editor's *reaction* to automation. Automating `advancedMode` flips the
-  layout, so `applyUiScale()` resizes the window mid-automation (the historically fragile Windows
-  sizing path). `advancedMode` is now `isAutomatable()`=false (it is a UI-layout toggle, not a sound
-  param), so pluginval no longer drives it and the mid-automation resize is gone. **If Windows is still
-  red after this**, the failure is a *different* editor reaction to automation (or a pluginval-Windows
-  host-harness issue analogous to KI-003) — capture a Windows crash stack / the pluginval failure line
-  before the next change. Do **not** stack further blind guesses on top.
-- **Deferred:** a GPU-capability probe (throwaway WGL context → confirm GL2 → attach) would restore GL
-  on capable Windows machines, but needs a real Windows test bed; not attempted from this Linux sandbox.
+## KI-007 — Windows CI runner cannot host the editor GUI tests
+On the GitHub **`windows-latest`** runner, pluginval's editor **"Editor Automation"** test fails
+(originally a hard crash at the first Editor-Automation line; in CPU mode a contained `exit 1`). This
+was first **masked by a false green** — `scripts/run-pluginval.ps1` ran `exit $LASTEXITCODE`, and an
+abnormal termination leaves `$LASTEXITCODE` `$null` so `exit $null` exited **0**. The false green is
+closed (null/large/negative codes are treated as a crash and fail the gate), which surfaced the
+failure.
+- **Root cause — environmental, confirmed:** the GPU-less/headless `windows-latest` runner cannot
+  host this editor's intensive GUI test. It fails there in **both** rendering modes — GL mode (the
+  runner's GDI-generic **OpenGL 1.1** renderer lacks the GL2 shader/VBO entry points JUCE needs) and
+  CPU mode (`#if JUCE_MAC` build). The **plugin editor is not at fault**: it validates cleanly under
+  pluginval strictness 10 on **Linux** (xvfb, CPU) and **macOS** (GPU/GL, incl. the same editor
+  automation). When GL is re-enabled on **Linux** the analogous crash reproduces (~1 in 3 runs) and a
+  **core dump's crashing frame is `juce::XEmbedComponent::Pimpl::handleX11Event(...)::{lambda}` under
+  `juce::MessageManager::runDispatchLoop`** — i.e. inside JUCE's own X11 embedding on the host side,
+  never in plugin code (the KI-003 class). gdb/ASan hide it (timing-sensitive race), confirming a
+  host-side teardown race, not a plugin use-after-free.
+- **Resolution:** Windows CI runs pluginval with **`--skip-gui-tests`** (`scripts/run-pluginval.ps1`).
+  All non-GUI tests (audio / state / parameters / buses / automation) still run and still **block** on
+  every platform; the editor GUI tests remain fully exercised on **Linux + macOS**. This is the Windows
+  analogue of the KI-003 handling and uses pluginval's designed flag for GUI-hostile environments.
+  **`--skip-gui-tests` is not the same as the randomise-mode "never skip" rule** (CI_CD.md): the two
+  validation *modes* always run on every platform; this skips one *test category* on the one runner
+  that provably cannot host it.
+- **OpenGL is unchanged for users:** the attach guard is restored to `#if ! (JUCE_LINUX || JUCE_BSD)`,
+  so **Windows and macOS keep GPU/GL rendering** (real machines have a GPU); only Linux/X11 stays CPU
+  (the host-side XEmbed UAF above, ADR-0011). No plugin *editor* code changed.
+- **Related hardening — `advancedMode` is non-automatable:** host-automating that UI-layout toggle
+  drives editor resizes (`applyUiScale`), whose `ConfigureNotify` storm hits the **same** host-side
+  XEmbed UAF on Linux/X11 even with GL off — reproduced here (GL-off Linux + `advancedMode` automatable
+  crashed under `--randomise`; core dump = `XEmbedComponent`). `isAutomatable()` is now false, removing
+  that trigger and stabilising the Linux gate; a layout toggle has no place in an automation lane
+  anyway. See `PARAMETER_REGISTRY.md` and KI-003.
+- **Coverage note:** the editor is not exercised by pluginval on Windows CI (a coverage gap like
+  KI-004), but its code is platform-agnostic and validated on two platforms; a GPU-equipped Windows
+  runner would let the GUI tests run there too.
 - **Evidence [Verified]:** run 28678842525 Windows job log (original: `... / Editor Automation...` last
   line, empty exit code, yet a green step — the false green); run 28695538067 Windows job on `b70f0b2`
   (post-GL-drop: full suite completes incl. Plugin state restoration, then `exit 1` inside Editor

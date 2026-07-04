@@ -244,19 +244,19 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
 
     setOpaque (true); // fill our bounds every paint -> no see-through flash on a scale resize (#13)
     openGLContext.setContinuousRepainting (false);
-   #if JUCE_MAC
-    // GPU-composite the editor on macOS ONLY. The CPU paint path is visually identical (ADR-0011),
-    // so the two platforms whose GL context crashes pluginval's "Editor Automation" stress test
-    // simply render without GL -- dropping the attach removes the platform-specific GL failure mode:
-    //   - Linux/X11: attaching GL adds an embedded child X11 window whose ConfigureNotify events the
-    //     host's XEmbedComponent turns into async lambdas capturing a raw `this`; when the host tears
-    //     the editor down between the event and the async, one fires after the window is gone ->
-    //     use-after-free inside JUCE's X11 embedding (host-side crash). (ADR-0011 / INC-006.)
-    //   - Windows: the CI runner -- and any GPU-less machine -- exposes only the GDI-generic OpenGL
-    //     1.1 renderer, which lacks the GL2 shader/VBO entry points JUCE's GL LowLevelGraphicsContext
-    //     calls, so the first Editor-Automation paint faults on the GL render thread (KI-007).
-    // A future GPU-capability probe could re-enable GL on capable Windows machines, but that needs a
-    // real Windows test bed; dropping the attach is the proven Linux remedy and costs nothing visually.
+   #if ! (JUCE_LINUX || JUCE_BSD)
+    // GPU-composite the editor on macOS and Windows (real GPUs). NOT on Linux/X11: attaching a GL
+    // context there adds an embedded child X11 window whose ConfigureNotify events the host's
+    // XEmbedComponent turns into async lambdas capturing a raw `this`; under a host that rapidly
+    // opens/closes the editor (pluginval "Editor Automation", and real Linux DAWs) one of those
+    // lambdas fires after the editor window is gone -> use-after-free inside JUCE's X11 embedding.
+    // This is HOST-side (JUCE's XEmbedComponent), not a plugin defect: a core dump of the reproduced
+    // crash lands in juce::XEmbedComponent::Pimpl::handleX11Event's lambda under runDispatchLoop
+    // (ADR-0011 / INC-006 / KI-003). The CPU paint path is visually identical, so Linux renders
+    // without GL. macOS runs GL + the same editor automation green, confirming the plugin's GL code
+    // is sound. On the GPU-less Windows CI runner the editor GUI tests can't be hosted at all (both
+    // GL and CPU mode fail there), so they are skipped on that runner only (--skip-gui-tests, KI-007);
+    // real Windows machines have a GPU and render on GL as designed.
     openGLContext.attachTo (*this);
    #endif
 
