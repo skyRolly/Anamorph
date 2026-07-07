@@ -65,6 +65,11 @@ private:
     std::array<float, maxTaps> weight {};// continuous active weight per tap
     int    activeTaps = 0;
     float  norm = 1.0f;
+    // Density the current weight[]/activeTaps/norm were computed from, recorded
+    // by updateWeights(). updateWeights is a pure function of currentDensity, so
+    // a bit-identical density makes a rebuild a provable no-op (S4). Sentinel
+    // init: no valid density (0..1) matches before the first build.
+    float  weightsDensity = -1.0f;
 
     float  targetDensity = 0.5f, currentDensity = 0.5f;
     float  targetAmount  = 0.0f, currentAmount  = 0.0f;

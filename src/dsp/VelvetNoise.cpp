@@ -62,6 +62,8 @@ void VelvetNoise::reset()
 
 void VelvetNoise::updateWeights() noexcept
 {
+    weightsDensity = currentDensity; // record the input this build is valid for (S4)
+
     // Continuous active count: each tap fades in over its own unit interval, so
     // changing density never causes a step discontinuity.
     const float f = currentDensity * (float) maxTaps;
@@ -87,9 +89,14 @@ void VelvetNoise::processBlock (float* left, float* right, int numSamples) noexc
     {
         // Re-weight EVERY sample while the density glides: the normalisation
         // (1/sqrt(sumSq)) must move continuously or it steps and zippers when the
-        // Density knob is turned quickly (feedback #18).
+        // Density knob is turned quickly (feedback #18). Once the glide reaches
+        // its float fixpoint the density stops changing AT ALL, and updateWeights
+        // -- a pure function of currentDensity -- would rebuild identical
+        // weights/norm, so it is skipped on an EXACT compare only (S4). Never an
+        // epsilon threshold here: the pre-0.4.1 drift gate was the #18 zipper.
         currentDensity += dSmooth * (targetDensity - currentDensity);
-        updateWeights();
+        if (std::abs (currentDensity - weightsDensity) > 0.0f)
+            updateWeights();
 
         currentAmount += aSmooth * (targetAmount - currentAmount);
 

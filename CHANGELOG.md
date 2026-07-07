@@ -13,6 +13,14 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   DOCUMENTATION_COVERAGE), plus this `CHANGELOG.md`. No plugin/behaviour change.
   Evidence: commits `c9b7fdf`, `a9e915e`, `97060b2`. [Verified]
 ### Changed
+- **Velvet decorrelator CPU**: the per-sample tap re-weighting (64-tap rebuild + square-root
+  normalisation) now runs only while the Density glide is actually moving; once the glide reaches
+  its float fixpoint the rebuild is skipped on an exact bit-compare (never a threshold -- the
+  pre-0.4.1 drift gate was the #18 zipper and stays dead). Output is bit-identical in every
+  scenario, moving or settled (validated sample-exact across 9 scenarios / ~3.9 M samples incl.
+  fast Density drags, transport stop and the default preset). Engine cost with Velvet selected
+  drops ~36-38 µs per 512-sample block at 48 kHz (default idle state −40 %); zipper-free Density
+  behaviour is unchanged. Evidence: PR #53. [Verified]
 - **Meters idle CPU/GPU** (Balance / Correlation pointers, Levels panel): each meter now repaints
   only when what it draws actually changed, and the default-hidden Levels panel stops its 60 Hz
   timer entirely while hidden (it restarts on Show Meters). The correlation/balance pointers'
