@@ -2,6 +2,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "../dsp/LevelMeters.h"
+#include <array>
 
 namespace anamorph::gui
 {
@@ -26,13 +27,20 @@ public:
     void mouseDown (const juce::MouseEvent&) override { source.resetHold(); }
 
 private:
-    void timerCallback() override { repaint(); }
+    void timerCallback() override;
+    void visibilityChanged() override;
     void drawBar (juce::Graphics&, juce::Rectangle<float>,
                   float dimDb, float briDb, float barDb);
     void drawNumber (juce::Graphics&, juce::Rectangle<float>, float valueDb,
                      bool peak, bool clip);
 
     anamorph::LevelMeters& source;
+
+    // S3 repaint gate: everything paint() reads from the audio-side meters, as
+    // last drawn. The component holds no other dynamic state, so a tick whose
+    // snapshot matches the last one cannot change the frame.
+    std::array<float, 28> shown {};
+    bool shownValid = false;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (LevelMeter)
 };
 

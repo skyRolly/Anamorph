@@ -13,6 +13,15 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   DOCUMENTATION_COVERAGE), plus this `CHANGELOG.md`. No plugin/behaviour change.
   Evidence: commits `c9b7fdf`, `a9e915e`, `97060b2`. [Verified]
 ### Changed
+- **Meters idle CPU/GPU** (Balance / Correlation pointers, Levels panel): each meter now repaints
+  only when what it draws actually changed, and the default-hidden Levels panel stops its 60 Hz
+  timer entirely while hidden (it restarts on Show Meters). The correlation/balance pointers'
+  return-to-centre relax completes in full, then lands exactly on target (final step under 0.2 px
+  and a quarter of a colour quantum -- invisible); the Levels panel compares every published value
+  bitwise, so no decay, hold, clip colour or number update can ever be skipped. Ballistics, attack/
+  release and all animations are unchanged while values move (measured: full-rate repaints while
+  anything moves incl. the whole silence decay; 0 repaints once settled; hidden-meter timer
+  wakeups 60/s → 0). Evidence: PR #53. [Verified]
 - **Spectrum (Multiband) idle CPU/GPU**: the analyser now runs its 8192-point FFT only when the
   analysis window actually changed, and repaints only while something on screen still moves
   (spectrum decay, clip-red fade, animations, drags). Digital silence stops the FFT as soon as
