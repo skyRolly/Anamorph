@@ -13,6 +13,12 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   DOCUMENTATION_COVERAGE), plus this `CHANGELOG.md`. No plugin/behaviour change.
   Evidence: commits `c9b7fdf`, `a9e915e`, `97060b2`. [Verified]
 ### Changed
+- **Vectorscope idle CPU/GPU**: the 60 Hz timer now repaints only while the displayed picture can
+  actually change; after the trail fully scrolls out on digital silence (or when the host stops
+  processing), the view paints one final frame and goes idle. Rendering while audio flows is
+  unchanged (measured: full frame rate active; 0 repaints/s once quiescent; idle-editor CPU
+  −40 % on the Linux Standalone under Xvfb). Trail look, decay timing, and persistence behaviour
+  are pixel-identical. Evidence: PR #53. [Verified]
 - Upgraded the pinned **JUCE** dependency **8.0.8 → 8.0.14** (`CMakeLists.txt` `ANAMORPH_JUCE_TAG`;
   see ADR-0012). Build/dependency change only — no DSP, signal-chain, parameter, or serialization
   changes; CI re-validates the build + 23 DSP self-tests + pluginval (strictness 10), green on the

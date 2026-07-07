@@ -58,7 +58,7 @@ Editor destructor order (matters): release VBlank → `stopTimer()` → `openGLC
 ### Audio → GUI (production → consumption)
 | Data | Mechanism | Writer | Reader | Source |
 |---|---|---|---|---|
-| Scope samples | `ScopeBuffer` SPSC ring (release/acquire on one `atomic<uint64_t> write`) | audio `push()` | GUI `readLatest()` | ScopeBuffer.h:28-57 |
+| Scope samples | `ScopeBuffer` SPSC ring (release/acquire on one `atomic<uint64_t> write`) | audio `push()` | GUI `readLatest()` / `writeCount()` | ScopeBuffer.h:28-64 |
 | Level meters | `std::atomic<float/int>` (relaxed), published per block | audio `publish()` | GUI getters | LevelMeters.h:125-198 |
 | Correlation / balance / energy | `std::atomic<float>` (relaxed) | audio `publish()` | GUI getters | Correlation.h:50-95 |
 | Level-Match gain (dB) | `std::atomic<float>` (relaxed) | audio `process()` | GUI `getMatchGainDb()` | LoudnessMatch.h:112 |

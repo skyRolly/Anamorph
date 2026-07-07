@@ -29,16 +29,33 @@ public:
     void paint (juce::Graphics&) override;
 
     // 0..1: longer trails + slower fade.
-    void setPersistence (float p) noexcept { persistence = juce::jlimit (0.0f, 1.0f, p); }
+    void setPersistence (float p) noexcept
+    {
+        persistence = juce::jlimit (0.0f, 1.0f, p);
+        frameDirty = true; // window length + point alpha depend on persistence
+    }
 
 private:
-    void timerCallback() override { repaint(); }
+    void timerCallback() override;
     void drawGrid (juce::Graphics&, juce::Rectangle<float> area, float radius);
+
+    // Frames the current persistence makes visible. Shared by paint() and the
+    // timer's idle gate so the two can never disagree about the window.
+    int windowFrames() const noexcept
+    {
+        return (int) juce::jmap (persistence, 0.0f, 1.0f, 1200.0f, 8000.0f);
+    }
 
     anamorph::ScopeBuffer& scope;
     float persistence = 0.6f;
 
     std::vector<float> bufL, bufR; // scratch read from the ring buffer
+
+    // Idle repaint gate state (message thread only -- see timerCallback):
+    std::uint64_t lastSeenCount = 0; // ring write count at the previous tick
+    std::uint64_t lastNonZero   = 0; // newest bound on non-zero ring content
+    bool frameDirty      = true;     // displayed frame is stale -> repaint
+    bool lastFrameSilent = false;    // last painted frame was the all-zero image
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Vectorscope)
 };
