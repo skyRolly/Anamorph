@@ -13,6 +13,15 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   DOCUMENTATION_COVERAGE), plus this `CHANGELOG.md`. No plugin/behaviour change.
   Evidence: commits `c9b7fdf`, `a9e915e`, `97060b2`. [Verified]
 ### Changed
+- **Spectrum (Multiband) idle CPU/GPU**: the analyser now runs its 8192-point FFT only when the
+  analysis window actually changed, and repaints only while something on screen still moves
+  (spectrum decay, clip-red fade, animations, drags). Digital silence stops the FFT as soon as
+  the window has drained (~170 ms) while the displayed decays complete in full; a frozen
+  transport or a hidden imager (Simple mode / hidden editor) costs nothing. Re-showing resumes
+  live analysis on the first frame. Analysis maths, FFT size/window, decay rates and rendering
+  are unchanged (measured: 60/60 FFTs+paints per second while active, before and after; silence:
+  FFT stops after ~11 ticks, paints end once decays land; hidden: 60 FFTs/s → 0).
+  Evidence: PR #53. [Verified]
 - **Vectorscope idle CPU/GPU**: the 60 Hz timer now repaints only while the displayed picture can
   actually change; after the trail fully scrolls out on digital silence (or when the host stops
   processing), the view paints one final frame and goes idle. Rendering while audio flows is

@@ -47,7 +47,8 @@ public:
 
 private:
     void timerCallback() override;
-    void pushFFT();
+    bool pushFFT();        // runs the FFT only when the window changed; true = new magnitudes
+    void runTransform();   // the unchanged mix + Hann + transform body
 
     // --- geometry helpers (component-local) ------------------------------
     juce::Rectangle<float> plot() const noexcept;
@@ -152,6 +153,17 @@ private:
     std::vector<float> redLevel; // per-bin clip-glow level, temporally smoothed (#4)
     std::vector<float> redColX;  // per-pixel clip level, horizontally feathered (0.6.16)
     double sampleRate = 48000.0;
+
+    // S2 idle gate state (message thread only -- see timerCallback/pushFFT).
+    // Same freshness pattern as the Vectorscope's S1 gate, with the fixed
+    // fftSize analysis window as the content window.
+    std::uint64_t lastSeenCount = 0; // ring write count at the previous tick
+    std::uint64_t lastNonZero   = 0; // newest bound on non-zero ring content
+    bool lastWindowSilent = false;   // the FFT window was all-zero last tick
+    bool magsSettled = false;        // mags smoothing reached its fixpoint
+    bool redSettled  = false;        // redLevel decay fully drained
+    bool frameDirty  = true;         // force one repaint (re-show, SR change)
+    bool wasShowing  = false;        // visibility edge detection
 
     int   dragHandle = -1;
     int   dragBand   = -1;
