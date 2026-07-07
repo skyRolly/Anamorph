@@ -10,9 +10,10 @@ namespace anamorph
 // ============================================================================
 //  ScopeBuffer
 //
-//  Lock-free single-producer / single-consumer ring buffer of stereo samples.
-//  The audio thread (producer) only writes; the GUI thread (consumer) reads a
-//  decimated view for the vectorscope. No locks, no allocation on either side.
+//  Lock-free single-producer ring buffer of stereo samples. The audio thread
+//  (producer) only writes; all reads happen on the GUI (message) thread as
+//  stateless peeks (vectorscope + spectrum imager). No locks, no allocation
+//  on either side.
 //
 //  Capacity is a power of two so wrap is a cheap mask.
 // ============================================================================
@@ -34,6 +35,12 @@ public:
     }
 
     // --- gui thread ------------------------------------------------------
+    // Monotonic total of frames ever written (uint64 -- never wraps in
+    // practice). The same acquire load readLatest performs; lets a reader
+    // detect "no new frames since last check" without copying any data.
+    // Read-only: never mutates the ring and consumes nothing.
+    uint64_t writeCount() const noexcept { return write.load (std::memory_order_acquire); }
+
     // Copies up to `count` most-recent frames (oldest first) into the caller's
     // buffers. Returns the number of frames actually copied.
     int readLatest (float* dstL, float* dstR, int count) const noexcept

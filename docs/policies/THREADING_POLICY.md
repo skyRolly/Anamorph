@@ -15,7 +15,7 @@ Audio · Message/GUI · OpenGL render (macOS/Windows only) · (no worker threads
 | GUI → Audio (host-hidden) | `InternalState` ValueTree + atomic mirror | Only Oversampling crosses to audio (via `osAtomic`). |
 | GUI → Audio (momentary solo) | `std::atomic<int> soloPreviewMask` | −1 = use the param; relaxed. |
 | GUI → Audio (meter reset) | `std::atomic<int> resetReq` | `exchange` consumed on the audio thread. |
-| Audio → GUI (scope) | `ScopeBuffer` SPSC ring | Exactly one producer + one consumer; release/acquire on the write index. |
+| Audio → GUI (scope) | `ScopeBuffer` SPSC ring | Exactly one producer + one reader **thread** (message thread; stateless read sites: Vectorscope, SpectrumImager, read-only `writeCount`); release/acquire on the write index. |
 | Audio → GUI (meters/correlation/match) | published `std::atomic<float>` (relaxed) | Audio writes in `publish()`; GUI reads via getters. |
 
 ## Forbidden cross-thread access
@@ -23,7 +23,9 @@ Audio · Message/GUI · OpenGL render (macOS/Windows only) · (no worker threads
 - No painting, allocation, locking, or IO on the audio thread.
 - No direct access to non-atomic shared state across threads (the only synchronisers are the
   listed atomics + the SPSC ring).
-- No second producer or second consumer on `ScopeBuffer` (it is SPSC by construction).
+- No second producer on `ScopeBuffer`, and no reads off the message thread (one writer + one
+  reader thread by construction; reads are stateless `const` peeks — `readLatest` / `writeCount`
+  never mutate, so multiple message-thread read sites are safe).
 - PDC/latency must be recomputed on the **message thread** via the `const`, race-free
   `predictLatency` — never by mutating audio-thread state from the message thread.
 

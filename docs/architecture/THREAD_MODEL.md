@@ -77,6 +77,8 @@ Editor destructor order (matters): release VBlank → `stopTimer()` → `openGLC
 - No painting, allocation, locking, or file IO on the audio thread.
 - No direct cross-thread access to non-atomic shared state. The only synchronisers are the
   `ScopeBuffer` release/acquire index and relaxed published atomics.
-- `ScopeBuffer` is single-producer/single-consumer: exactly one audio writer, one GUI reader.
+- `ScopeBuffer` is single-producer / single-reader-thread: exactly one audio writer; all reads
+  happen on the message thread as stateless peeks (`readLatest` copies, `writeCount` staleness
+  probe) — the Vectorscope and the SpectrumImager are two such read sites, never concurrent.
 
 Evidence [Verified]: src/dsp/ScopeBuffer.h:8-18; src/dsp/LevelMeters.h; src/dsp/Correlation.h.
