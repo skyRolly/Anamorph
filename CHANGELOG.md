@@ -23,6 +23,14 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   with an engage-vs-audio-edge alignment sweep: byte-equal; reported latency unchanged). Measured:
   drive engaged −19/−38/−73 µs per 512-sample block at OS ×2/×4/×8, ~−6 µs/block across the board
   from the ring wrap, ~−1.6 µs/block with Match off. Evidence: PR #53. [Verified]
+- **Spectrum analyser paint cost**: the analyser's per-paint work is cheaper without changing a
+  single pixel -- the inverse frequency-axis mapping (a 30-iteration bisection previously run
+  ~3× per pixel column) and the clip-red column→FFT-bin mapping are now served from lookup tables
+  rebuilt only on resize / sample-rate change, and the clip feather buffer is reused across paints
+  instead of reallocated. Every value comes from the exact same math as before, so output is
+  bit-identical (verified byte-for-byte across five widths, clip off and clip on). Measured:
+  ~9.5 → ~7.5 ms per full analyser paint at 900 px (worst case, clip lit) on the software
+  renderer. Evidence: PR #53. [Verified]
 - **Micro-animation idle cost**: the per-frame widget poll (hover/press/toggle/knob easing)
   resolves each widget's type once at registration instead of two dynamic_casts per widget per
   frame, replaces ~70 per-widget mouse queries with one editor-level test while the cursor is

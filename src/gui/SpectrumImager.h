@@ -80,6 +80,12 @@ private:
 
     float magForColumn (float xa, float xb) const noexcept;
     float magCubic (float bin) const noexcept;
+    // S12 paint LUTs: xToFreqCached returns the exact xToFreq(x) -- from the LUT
+    // when x lands on the cached half-pixel grid at the built geometry, else the
+    // live bisection -- so callers are byte-identical. ensurePaintLUTs (re)builds
+    // both LUTs when the plot geometry or sample rate changes.
+    float xToFreqCached (float x) const noexcept;
+    void  ensurePaintLUTs();
 
     // Minimum band spacing in pixels: a constant on-screen gap (the same width at
     // every point of the warped ruler). The only limit on a split is this gap; a
@@ -153,6 +159,14 @@ private:
     std::vector<float> redLevel; // per-bin clip-glow level, temporally smoothed (#4)
     std::vector<float> redColX;  // per-pixel clip level, horizontally feathered (0.6.16)
     double sampleRate = 48000.0;
+
+    // S12 per-paint cost caches (never change rendered pixels -- see xToFreqCached).
+    std::vector<float> xToFreqLUT;      // half-pixel grid: [i] = xToFreq(lutX0 + i*0.5)
+    int    lutW = -1;                   // component getWidth() the LUT was built at
+    float  lutX0 = 0.0f;                // r.getX() - 0.5, the LUT's first grid position
+    std::vector<int>   redColBin;       // clip mapping: [xi] = FFT bin drawn at column xi
+    double redBinSR = 0.0;              // sample rate redColBin was built for
+    std::vector<float> clipBlurScratch; // reused triangular-blur buffer (was a per-paint vector)
 
     // S2 idle gate state (message thread only -- see timerCallback/pushFFT).
     // Same freshness pattern as the Vectorscope's S1 gate, with the fixed

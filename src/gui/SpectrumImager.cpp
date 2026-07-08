@@ -648,8 +648,8 @@ float SpectrumImager::magForColumn (float xa, float xb) const noexcept
 {
     const float binHz = (float) sampleRate / (float) fftSize;
     const int   kmax  = fftSize / 2;
-    const float fa = xToFreq (juce::jmin (xa, xb));
-    const float fb = xToFreq (juce::jmax (xa, xb));
+    const float fa = xToFreqCached (juce::jmin (xa, xb));
+    const float fb = xToFreqCached (juce::jmax (xa, xb));
     const float span = (fb - fa) / binHz;
     if (span < 1.5f)
         return magCubic (0.5f * (fa + fb) / binHz);
@@ -658,6 +658,66 @@ float SpectrumImager::magForColumn (float xa, float xb) const noexcept
     float sum = 0.0f;
     for (int k = ka; k <= kb; ++k) sum += mags[(size_t) k];
     return sum / (float) (kb - ka + 1);
+}
+
+// S12: the exact xToFreq(x), served from the half-pixel LUT only when x lands
+// EXACTLY on the cached grid at the geometry the LUT was built for -- otherwise
+// the live bisection. LUT[i] was produced by xToFreq(lutX0 + i*0.5), and an
+// on-grid x equals lutX0 + i*0.5 bit-for-bit (integers/half-integers < 2^23),
+// so the returned float is identical to calling xToFreq(x) directly. Any miss
+// (off-grid, out of range, geometry changed) falls through to the exact path.
+float SpectrumImager::xToFreqCached (float x) const noexcept
+{
+    // Geometry is keyed on the INTEGER component width -- plot() is a pure
+    // function of getLocalBounds(), so an unchanged width means an unchanged
+    // grid. The only exact float test left is the on-grid integrality of the
+    // reconstructed index, which is the correctness guard itself.
+    if (getWidth() == lutW)
+    {
+        const float fi = (x - lutX0) * 2.0f;
+        const int   i  = (int) fi;
+        JUCE_BEGIN_IGNORE_WARNINGS_GCC_LIKE ("-Wfloat-equal")
+        const bool onGrid = (fi == (float) i);
+        JUCE_END_IGNORE_WARNINGS_GCC_LIKE
+        if (onGrid && i >= 0 && i < (int) xToFreqLUT.size())
+            return xToFreqLUT[(size_t) i];
+    }
+    return xToFreq (x);
+}
+
+void SpectrumImager::ensurePaintLUTs()
+{
+    const auto r = plot();
+
+    // Inverse-axis LUT on the half-pixel grid the spectrum + clip loops query.
+    // Keyed on the integer width (plot X and WIDTH are fixed by getLocalBounds).
+    if (getWidth() != lutW)
+    {
+        lutW  = getWidth();
+        lutX0 = r.getX() - 0.5f;      // the lowest query is xToFreq(getX() - 0.5)
+        const int n = juce::jmax (2, (int) std::lround ((r.getRight() + 0.5f - lutX0) * 2.0f) + 1);
+        xToFreqLUT.resize ((size_t) n);
+        for (int i = 0; i < n; ++i)
+            xToFreqLUT[(size_t) i] = xToFreq (lutX0 + (float) i * 0.5f);
+        redBinSR = 0.0;              // geometry moved -> the clip bin LUT is stale too
+    }
+
+    // Clip bin-index LUT: which FFT bin each pixel column samples (depends on
+    // geometry via xToFreq and on sampleRate via binHz). The per-frame clip loop
+    // then just gathers redLevel[bin], with no per-pixel bisection.
+    const int W = (int) r.getWidth() + 1;
+    JUCE_BEGIN_IGNORE_WARNINGS_GCC_LIKE ("-Wfloat-equal")
+    const bool srChanged = (redBinSR != sampleRate);
+    JUCE_END_IGNORE_WARNINGS_GCC_LIKE
+    if ((int) redColBin.size() != W || srChanged)
+    {
+        redBinSR = sampleRate;
+        redColBin.resize ((size_t) W);
+        const float binHz = (float) sampleRate / (float) fftSize;
+        for (int xi = 0; xi < W; ++xi)
+            redColBin[(size_t) xi] = juce::jlimit (0, fftSize / 2,
+                (int) std::lround (xToFreq (r.getX() + (float) xi) / binHz));
+    }
 }
 
 void SpectrumImager::timerCallback()
@@ -934,6 +994,7 @@ void SpectrumImager::paint (juce::Graphics& g)
 
     // --- spectrum (cubic-smoothed) + localized clip-red overlay (#14) ---
     {
+        ensurePaintLUTs(); // S12: refresh the paint LUTs on geometry / SR change
         auto dbToY = [&] (float db)
         {
             const float t = (juce::jlimit (kMinDb, kMaxDb, db) - kMinDb) / (kMaxDb - kMinDb);
@@ -964,18 +1025,21 @@ void SpectrumImager::paint (juce::Graphics& g)
         {
             const int W = (int) r.getWidth() + 1;
             if ((int) redColX.size() != W) redColX.assign ((size_t) W, 0.0f);
-            const float binHz = (float) sampleRate / (float) fftSize;
             float maxRed = 0.0f;
             for (int xi = 0; xi < W; ++xi)
             {
-                const int k = juce::jlimit (0, fftSize / 2, (int) std::lround (xToFreq (r.getX() + (float) xi) / binHz));
-                redColX[(size_t) xi] = redLevel[(size_t) k];
+                // S12: redColBin[xi] is the same jlimit(lround(xToFreq/binHz)) index
+                // computed per-pixel before, now precomputed in ensurePaintLUTs.
+                redColX[(size_t) xi] = redLevel[(size_t) redColBin[(size_t) xi]];
                 maxRed = juce::jmax (maxRed, redColX[(size_t) xi]);
             }
             if (maxRed > 0.012f)
             {
                 // Wide triangular blur -> a soft, far-reaching horizontal feather.
-                std::vector<float> sm ((size_t) W, 0.0f);
+                // S12: reuse a persistent scratch buffer instead of allocating one
+                // per paint; every element is written below before it is read.
+                if ((int) clipBlurScratch.size() != W) clipBlurScratch.resize ((size_t) W);
+                auto& sm = clipBlurScratch;
                 const int RB = 22;
                 float norm = 0.0f; for (int d = -RB; d <= RB; ++d) norm += (float) (RB + 1 - std::abs (d));
                 for (int xi = 0; xi < W; ++xi)
