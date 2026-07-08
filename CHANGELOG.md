@@ -23,6 +23,15 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   with an engage-vs-audio-edge alignment sweep: byte-equal; reported latency unchanged). Measured:
   drive engaged −19/−38/−73 µs per 512-sample block at OS ×2/×4/×8, ~−6 µs/block across the board
   from the ring wrap, ~−1.6 µs/block with Match off. Evidence: PR #53. [Verified]
+- **Micro-animation idle cost**: the per-frame widget poll (hover/press/toggle/knob easing)
+  resolves each widget's type once at registration instead of two dynamic_casts per widget per
+  frame, replaces ~70 per-widget mouse queries with one editor-level test while the cursor is
+  outside, and skips the walk entirely only when everything is provably static (cursor outside,
+  no button held, no sweep, previous pass moved nothing, and a fingerprint of every tracked
+  slider value / toggle state unchanged -- so host automation and session restores re-arm it the
+  same frame). Hover/stuck-hover behaviour and all animation timing unchanged (measured: ~4,300
+  widget evaluations/s idle → 0, with instant full-rate resume on cursor entry). Evidence:
+  PR #53. [Verified]
 - **Editor idle polling**: the 24 Hz undo-coalescing and preset-dirty polls now rebuild their
   parameter-signature strings only when a sound parameter actually changed (a generation counter
   bumped by the existing per-parameter listener); polling cadence, undo coalescing and the

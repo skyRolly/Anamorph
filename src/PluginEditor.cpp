@@ -1036,7 +1036,16 @@ void AnamorphAudioProcessorEditor::stepMeterReveal (double dt)
 
 void AnamorphAudioProcessorEditor::registerAnimated (juce::Component& c)
 {
-    animated.addIfNotAlreadyThere (&c);
+    for (const auto& w : animated)
+        if (w.comp == &c)
+            return;
+
+    AnimatedWidget w;
+    w.comp   = &c;
+    w.slider = dynamic_cast<juce::Slider*> (&c);        // resolve the type ONCE here
+    w.toggle = dynamic_cast<juce::ToggleButton*> (&c);  // (S11), not per display frame
+    animated.add (w);
+
     // Seed the eased properties so they ALWAYS exist: the LookAndFeel then reads a
     // real eased value rather than ever falling back to the binary state (the
     // fallback/property swap is what let a click flicker), and a toggle that loads
@@ -1045,8 +1054,8 @@ void AnamorphAudioProcessorEditor::registerAnimated (juce::Component& c)
     auto& p = c.getProperties();
     p.set ("hovA", 0.0);
     p.set ("actA", 0.0);
-    if (auto* t = dynamic_cast<juce::ToggleButton*> (&c))
-        p.set ("onA", t->getToggleState() ? 1.0 : 0.0);
+    if (w.toggle != nullptr)
+        p.set ("onA", w.toggle->getToggleState() ? 1.0 : 0.0);
 }
 
 // Micro-animation driver (F3): eases per-component "hovA" (hover), "actA"
@@ -1059,6 +1068,43 @@ void AnamorphAudioProcessorEditor::registerAnimated (juce::Component& c)
 void AnamorphAudioProcessorEditor::stepMicroAnims (double dt)
 {
     static const juce::Identifier hovA ("hovA"), actA ("actA"), onA ("onA"), vpos ("vpos");
+
+    // --- S11 idle gate -------------------------------------------------------
+    // The per-widget poll exists because enter/exit events were unreliable (the
+    // v0.6.1 stuck-hover fix), so it must keep evaluating whenever the mouse
+    // could interact or anything can still move. It is skipped ONLY when every
+    // input is provably static: cursor outside the editor (all hover targets 0),
+    // no mouse button held anywhere (no press/drag state), no sweep window open,
+    // the previous pass moved nothing, and no tracked slider value or toggle
+    // state changed since that pass -- the fingerprint below hashes them all
+    // through the registration-cached pointers, so host automation, undo/redo
+    // and session restores re-arm the full poll on the very same frame. Any
+    // uncertainty fails open into polling.
+    const bool mouseInside = isShowing()
+                          && getLocalBounds().contains (getMouseXYRelative());
+    juce::uint64 probe = 1469598103934665603ULL;               // FNV-1a over the tracked inputs
+    for (const auto& w : animated)
+    {
+        juce::uint64 v;
+        if (w.slider != nullptr)
+        {
+            const double d = w.slider->getValue();
+            std::memcpy (&v, &d, sizeof (v));
+        }
+        else if (w.toggle != nullptr)
+            v = w.toggle->getToggleState() ? 2u : 3u;
+        else
+            continue;
+        probe = (probe ^ v) * 1099511628211ULL;
+    }
+    if (! mouseInside
+        && ! juce::Component::isMouseButtonDownAnywhere()
+        && knobSweepTime <= 0.0
+        && microSettled
+        && probe == microProbe)
+        return;
+    microProbe = probe;
+    bool anyMotion = false;
 
     // Exponential ease-out follows (non-linear, the curve the toggle slide used
     // and the user liked). Hover/press eased a touch more deliberately so the
@@ -1076,14 +1122,19 @@ void AnamorphAudioProcessorEditor::stepMicroAnims (double dt)
     if (knobSweepTime > 0.0) knobSweepTime -= dt;
     const bool sweeping = uiAnimOn && knobSweepTime > 0.0;
 
-    for (auto* c : animated)
+    for (const auto& w : animated)
     {
+        juce::Component* const c = w.comp;
         auto& props = c->getProperties();
 
         // Hover is hit-tested against the live cursor rather than read from
         // enter/exit events: those fire unreliably across clicks, relayouts and
-        // pop-ups, which is what made a click occasionally flicker (#10).
-        const bool over = c->isShowing()
+        // pop-ups, which is what made a click occasionally flicker (#10). With
+        // the cursor outside the editor no descendant can contain it, so the
+        // editor-level test above stands in for the per-widget query (S11) --
+        // the same result, 1 desktop mouse query per frame instead of 44.
+        const bool over = mouseInside
+                        && c->isShowing()
                         && c->getLocalBounds().contains (c->getMouseXYRelative());
         float hovT = over ? 1.0f : 0.0f;
         float actT = -1.0f, onT = -1.0f;
@@ -1102,7 +1153,7 @@ void AnamorphAudioProcessorEditor::stepMicroAnims (double dt)
             return true;
         };
 
-        if (auto* s = dynamic_cast<juce::Slider*> (c))
+        if (auto* s = w.slider)
         {
             const bool buttonHeld = s->isMouseButtonDown()
                                   || (bool) props.getWithDefault ("dragging", false);
@@ -1126,16 +1177,20 @@ void AnamorphAudioProcessorEditor::stepMicroAnims (double dt)
                 if (resetSweep) props.set ("resetSweep", false); // travel finished
             }
             if (std::abs (vp - curr) > 0.0004f) c->repaint();
+            anyMotion |= std::abs (vp - curr) > 0.0f; // still travelling (sub-repaint drift included)
             props.set (vpos, vp);
         }
-        else if (auto* t = dynamic_cast<juce::ToggleButton*> (c))
+        else if (auto* t = w.toggle)
             onT = t->getToggleState() ? 1.0f : 0.0f;
 
         bool changed = stepVal (hovA, hovT, rIn, rOut);
         if (actT >= 0.0f) changed = stepVal (actA, actT, rAct, rOut) || changed;
         if (onT  >= 0.0f) changed = stepVal (onA,  onT,  rOn,  rOn)  || changed;
         if (changed) c->repaint();
+        anyMotion |= changed;
     }
+
+    microSettled = ! anyMotion;
 }
 
 // Whole-window scale (F4): the layout stays at its logical 940x720 and a plain
