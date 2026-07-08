@@ -14,6 +14,9 @@ StereoMeter::~StereoMeter() { stopTimer(); }
 
 void StereoMeter::timerCallback()
 {
+    if (! isShowing())
+        return; // whole-editor hidden: the glide resumes live on re-show (S3)
+
     // When the input goes silent (or before any audio at all), both the phase
     // correlation and the L/R balance lose all meaning, so the pointer glides
     // gently back to centre (0) rather than holding at an extreme or jumping to
@@ -24,7 +27,35 @@ void StereoMeter::timerCallback()
                                 : (type == Type::Balance ? source.getBalance() : source.getSlow());
     const float rate = silent ? 0.030f : 0.165f;
     value += rate * (target - value);
-    repaint();
+
+    // Land exactly on the target once within 1e-3 of it: that final step moves
+    // the pointer < 0.2 px and shifts the colour blend by under a quarter of a
+    // display quantum (1/255), so the snap itself is invisible -- it just ends
+    // the asymptotic float tail so a settled meter can go idle (S3). The
+    // ~700 ms relax animation above runs to visual completion first.
+    if (std::abs (target - value) < 1.0e-3f)
+        value = target;
+
+    // The frame is a pure function of `value` (+ bounds): repaint only when the
+    // drawn value actually changed. Resize/expose repaints bypass the timer.
+    if (std::abs (value - shownValue) > 0.0f)
+    {
+        shownValue = value;
+        repaint();
+    }
+}
+
+void StereoMeter::visibilityChanged()
+{
+    // Own-visibility lifecycle (S3): no timer wakeups at all while explicitly
+    // hidden; re-showing restarts the tick and forces one repaint.
+    if (isVisible())
+    {
+        shownValue = 1.0e9f;
+        startTimerHz (60);
+    }
+    else
+        stopTimer();
 }
 
 void StereoMeter::paint (juce::Graphics& g)

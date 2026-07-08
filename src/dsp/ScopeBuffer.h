@@ -26,12 +26,28 @@ public:
     ScopeBuffer() { write.store (0, std::memory_order_relaxed); }
 
     // --- audio thread ----------------------------------------------------
-    inline void push (float l, float r) noexcept
+    // Writes a whole block and publishes it with ONE release-store on the
+    // write index (S9). Readers acquire the index and only copy frames
+    // strictly below it, so a block becomes visible atomically -- partially
+    // committed frames can never be observed. The synchronisation contract is
+    // unchanged: the same single writer, the same single release/acquire pair
+    // on the same atomic, just at block cadence instead of per sample.
+    inline void pushBlock (const float* l, const float* r, int n) noexcept
     {
-        const auto w = write.load (std::memory_order_relaxed);
-        left [w & mask] = l;
-        right[w & mask] = r;
-        write.store (w + 1, std::memory_order_release);
+        auto w = write.load (std::memory_order_relaxed);
+        const auto end = w + (uint64_t) n;
+        if (n > capacity) // pathological block: only the newest frames can fit
+        {
+            l += n - capacity;
+            r += n - capacity;
+            w = end - (uint64_t) capacity;
+        }
+        for (; w != end; ++w)
+        {
+            left [w & mask] = *l++;
+            right[w & mask] = *r++;
+        }
+        write.store (end, std::memory_order_release);
     }
 
     // --- gui thread ------------------------------------------------------

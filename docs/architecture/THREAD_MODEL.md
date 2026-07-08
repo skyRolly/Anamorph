@@ -58,10 +58,11 @@ Editor destructor order (matters): release VBlank → `stopTimer()` → `openGLC
 ### Audio → GUI (production → consumption)
 | Data | Mechanism | Writer | Reader | Source |
 |---|---|---|---|---|
-| Scope samples | `ScopeBuffer` SPSC ring (release/acquire on one `atomic<uint64_t> write`) | audio `push()` | GUI `readLatest()` | ScopeBuffer.h:28-57 |
+| Scope samples | `ScopeBuffer` SPSC ring (release/acquire on one `atomic<uint64_t> write`; the index is published once per block, so readers see whole blocks atomically) | audio `pushBlock()` | GUI `readLatest()` / `writeCount()` | ScopeBuffer.h:28-80 |
 | Level meters | `std::atomic<float/int>` (relaxed), published per block | audio `publish()` | GUI getters | LevelMeters.h:125-198 |
 | Correlation / balance / energy | `std::atomic<float>` (relaxed) | audio `publish()` | GUI getters | Correlation.h:50-95 |
 | Level-Match gain (dB) | `std::atomic<float>` (relaxed) | audio `process()` | GUI `getMatchGainDb()` | LoudnessMatch.h:112 |
+| Sound-param change generation | `std::atomic<uint32> soundParamGen` (relaxed) — a monotonic **generation / staleness hint, NOT payload sync**: it only tells the GUI "a sound-parameter value has changed since you last looked" so the 24 Hz signature caches rebuild; the parameter *values* themselves travel via the APVTS-atomics path in the GUI→Audio table. Relaxed is sufficient (nothing is published *through* it). | `parameterValueChanged` (whichever thread changes a value — audio/host under automation, or the message thread) + `reassertParameters` on host restore | GUI `pollUndoCoalesce()` / `PresetManager::isDirty()` | PluginProcessor.h `soundParamGen`; .cpp `parameterValueChanged` / `reassertParameters` |
 
 ### GUI → Audio
 | Data | Mechanism | Writer | Reader | Source |

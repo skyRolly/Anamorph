@@ -73,6 +73,13 @@ public:
     // restore, saveUser, or construction. Empty when no processor is bracketing (safe to skip).
     std::function<void()> onAboutToLoad, onLoaded;
 
+    // S10: set by the processor -- generation counter of the sound-parameter
+    // values, bumped on every value change. Lets isDirty() reuse its last
+    // BUILT signature while provably nothing changed (the comparison against
+    // sigAtLoad stays live, so load/save/undo need no invalidation hooks).
+    // Empty when no processor wires it up -> isDirty always rebuilds (safe).
+    std::function<juce::uint32 ()> soundParamGeneration;
+
 private:
     void applyDefaults();
     void applySoundTree (const juce::ValueTree& state);
@@ -83,6 +90,8 @@ private:
     juce::Array<Entry> list;
     juce::String current { "Default" };
     juce::String sigAtLoad;
+    mutable juce::String cachedSig;     // last signature built by isDirty() (S10)
+    mutable juce::uint32 cachedSigGen = 0; // generation it was built at; 0 = never
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PresetManager)
 };

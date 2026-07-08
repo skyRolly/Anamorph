@@ -29,11 +29,13 @@ public:
 
 private:
     void timerCallback() override;
+    void visibilityChanged() override;
 
     anamorph::CorrelationMeter& source;
     Orientation orientation;
     Type        type;
-    float value = 0.0f;   // smoothed display value
+    float value = 0.0f;          // smoothed display value
+    float shownValue = 1.0e9f;   // value at the last repaint request (S3 gate)
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (StereoMeter)
 };

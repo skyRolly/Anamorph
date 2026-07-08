@@ -4,7 +4,7 @@
 in `POSTMORTEMS.md`, not here. Each entry is evidence-backed (constraint C7). When an item is
 fixed, remove it here and (if notable) add a `POSTMORTEMS.md` entry.
 
-Verified against repository HEAD `c605fbe` (version 0.8.7; JUCE 8.0.14).
+Verified against repository HEAD `c605fbe` (0.8.7 content audit); version-synced to 0.8.8 for the idle-performance PR #54 (JUCE 8.0.14).
 
 | ID | Issue | Severity | Status |
 |---|---|---|---|

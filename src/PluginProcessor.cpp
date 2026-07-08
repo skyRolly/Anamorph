@@ -31,6 +31,7 @@ AnamorphAudioProcessor::AnamorphAudioProcessor()
     // then record exactly ONE undo step for the switch, so a preset change is undoable (ADR-0008).
     presets.onAboutToLoad = [this] { pollUndoCoalesce(); };
     presets.onLoaded      = [this] { commitPresetSwitchUndoStep(); };
+    presets.soundParamGeneration = [this] { return soundParamGen.load (std::memory_order_relaxed); }; // S10
 
     syncCommitted(); // establish the undo baseline
 
@@ -281,6 +282,7 @@ void AnamorphAudioProcessor::reassertParameters (const juce::ValueTree& restored
 {
     if (! restoredApvtsTree.isValid()) return;
 
+    bool silentSoundChange = false;
     for (auto* p : getParameters())
         if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p))
             if (auto node = restoredApvtsTree.getChildWithProperty ("id", rp->paramID); node.isValid())
@@ -298,9 +300,23 @@ void AnamorphAudioProcessor::reassertParameters (const juce::ValueTree& restored
                         rp->setValue (norm); // getValue() only -- no host / listener notification
                         if (auto* atom = apvts.getRawParameterValue (rp->paramID))
                             atom->store (rp->convertFrom0to1 (norm)); // DSP value (snapped denormalised)
+                        if (! pid::isViewParam (rp->paramID))
+                            silentSoundChange = true;
                     }
                 }
             }
+
+    // The notifyHost=false path (host session restore) applies values via
+    // setValue(), which does NOT fire parameterValueChanged -- so the listener
+    // never bumps soundParamGen. The notify path bumps it per changed sound
+    // param via the listener; mirror that here with a single bump when a
+    // listener-tracked (non-view) sound param actually changed silently, so the
+    // S10 signature caches (pollUndoCoalesce and PresetManager::isDirty) rebuild
+    // against the restored values instead of reusing a signature cached from the
+    // pre-restore state (which left a false dirty-star until the next real edit).
+    // Bumped only on an actual sound change, so no needless cache invalidation.
+    if (silentSoundChange)
+        soundParamGen.fetch_add (1, std::memory_order_relaxed);
 }
 
 // Message thread. Count nested / overlapping gestures (e.g. the two-parameter Multiband band move
@@ -313,6 +329,31 @@ void AnamorphAudioProcessor::parameterGestureChanged (int, bool gestureIsStartin
 
 void AnamorphAudioProcessor::pollUndoCoalesce()
 {
+    // S10: the signature is a pure function of the listened sound parameters,
+    // so an unchanged generation means it is character-identical to the one
+    // built on the previous poll -- and with no gesture commit pending, every
+    // branch below is then provably a no-op (sig == committedSig holds as an
+    // invariant after each full run). Skip the ~36 String formats. Polling
+    // cadence and all coalescing semantics are untouched; the generation is
+    // sampled BEFORE building, so a concurrent change simply rebuilds next tick.
+    //
+    // Why skipping is behavior-preserving -- the post-run invariant
+    // sig == committedSig:
+    //  * The non-gesture branch sets committed = current, committedSig = sig.
+    //  * The gesture-commit branch, when it changes anything, also sets
+    //    committedSig = sig; when sig == committedSig it is already a no-op.
+    //  * syncCommitted() (ctor / A-B / preset / session load) rebuilds
+    //    committedSig from the live params, re-establishing it there too.
+    // So whenever this early-return fires, gen is unchanged since the last full
+    // run => sig is byte-identical to that run's sig => sig == committedSig, and
+    // with pendingGestureCommit false the skipped body would do nothing. A
+    // parameter change bumps gen before the next tick, so an edit is still
+    // reflected on the very next poll -- the cadence and outcome are identical.
+    const auto gen = soundParamGen.load (std::memory_order_relaxed);
+    if (gen == polledGen && ! pendingGestureCommit)
+        return;
+    polledGen = gen;
+
     const auto sig = soundSignature();
 
     if (openGestures > 0)          // a user gesture is in progress -> never commit mid-gesture

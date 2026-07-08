@@ -1,5 +1,6 @@
 #include "LevelMeter.h"
 #include "LookAndFeel.h"
+#include <cstring>
 
 namespace anamorph::gui
 {
@@ -14,6 +15,52 @@ LevelMeter::LevelMeter (anamorph::LevelMeters& src) : source (src)
 }
 
 LevelMeter::~LevelMeter() { stopTimer(); }
+
+void LevelMeter::timerCallback()
+{
+    if (! isShowing())
+        return; // whole-editor hidden: snapshots resume live on re-show (S3)
+
+    // S3 repaint gate: snapshot every published value paint() draws (held
+    // peaks, clip colours, RMS numbers, the three bar levels per bar). The
+    // audio side settles all of them exactly during silence (envelopes flush
+    // to their floors, holds are latched), so a settled meter stops
+    // repainting; any change -- audio, decay in flight, or a click's
+    // resetHold -- repaints at the full 60 Hz exactly as before. Bitwise
+    // comparison: no thresholds, no visual change can ever be skipped.
+    const auto& i = source.input;
+    const auto& o = source.output;
+    const std::array<float, 28> now {
+        i.getPeakHoldL(), i.getPeakHoldR(), o.getPeakHoldL(), o.getPeakHoldR(),
+        i.getPeakClipL() ? 1.0f : 0.0f, i.getPeakClipR() ? 1.0f : 0.0f,
+        o.getPeakClipL() ? 1.0f : 0.0f, o.getPeakClipR() ? 1.0f : 0.0f,
+        i.getRmsNumL(), i.getRmsNumR(), o.getRmsNumL(), o.getRmsNumR(),
+        i.getRmsClipL() ? 1.0f : 0.0f, i.getRmsClipR() ? 1.0f : 0.0f,
+        o.getRmsClipL() ? 1.0f : 0.0f, o.getRmsClipR() ? 1.0f : 0.0f,
+        i.getDimL(), i.getDimR(), o.getDimL(), o.getDimR(),
+        i.getBriL(), i.getBriR(), o.getBriL(), o.getBriR(),
+        i.getBarL(), i.getBarR(), o.getBarL(), o.getBarR() };
+
+    if (! shownValid || std::memcmp (now.data(), shown.data(), sizeof (now)) != 0)
+    {
+        shown = now;
+        shownValid = true;
+        repaint();
+    }
+}
+
+void LevelMeter::visibilityChanged()
+{
+    // Own-visibility lifecycle (S3): the meter is default-hidden (Show Meters
+    // toggle), so its 60 Hz timer now runs only while it is actually shown.
+    if (isVisible())
+    {
+        shownValid = false;
+        startTimerHz (60);
+    }
+    else
+        stopTimer();
+}
 
 // Non-uniform scale tuned for mixing: the busy -24..0 dBFS range gets most of
 // the bar, the quiet tail is compressed (#17).

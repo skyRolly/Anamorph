@@ -234,7 +234,17 @@ private:
 
     // Micro-animation driver (F3): per-frame eased "hovA"/"actA"/"onA" component
     // properties the LookAndFeel blends with; repaints fire only while moving.
-    juce::Array<juce::Component*> animated;
+    // The widget type is resolved ONCE at registration (S11) -- previously two
+    // dynamic_casts per widget per display frame.
+    struct AnimatedWidget
+    {
+        juce::Component*    comp   = nullptr;
+        juce::Slider*       slider = nullptr; // set when comp is a Slider
+        juce::ToggleButton* toggle = nullptr; // set when comp is a ToggleButton
+    };
+    juce::Array<AnimatedWidget> animated;
+    juce::uint64 microProbe = 0;   // slider-value/toggle-state fingerprint of the last pass (S11)
+    bool microSettled = false;     // the last pass moved nothing (S11)
     bool uiAnimOn = true;
     float hostScale = 1.0f;             // host display/DPI scale (Windows), composed with the UI scale
     int  lastScaleIdx = -1;             // applied UI-scale step (F4)

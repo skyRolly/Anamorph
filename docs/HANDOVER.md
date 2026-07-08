@@ -10,9 +10,9 @@ Snapshot taken at HEAD `c605fbe` (state-restoration + CI-gate hardening; JUCE 8.
 
 | Field | Value |
 |---|---|
-| **Current Version** | 0.8.7 (`CMakeLists.txt:14`; latest version commit `6a24b82`). |
+| **Current Version** | 0.8.8 (`CMakeLists.txt:14`; version bumped for the idle-performance PR #54). |
 | **Branch Strategy** | Feature branch `claude/beautiful-sagan-JAUFI` → PRs into `main`. CI builds every branch; `main` carries shipped versions. (No git tags — see RISK-003.) |
-| **Build Status** | Green at v0.8.7 (`6a24b82`), originally on JUCE 8.0.8. The **JUCE dependency was bumped 8.0.8 → 8.0.14** (`41acaa7`, ADR-0012) and **verified green by CI** — build + 23 DSP self-tests + `pluginval PASSED at strictness 10` on the Linux gate (the local sandbox cannot fetch JUCE under the egress policy). No DSP/source logic changed. Build = CMake + JUCE 8.0.14, VST3 [+AU macOS] [+Standalone]. |
+| **Build Status** | Green at v0.8.8 (idle-performance PR #54; CI green). Earlier: the **JUCE dependency was bumped 8.0.8 → 8.0.14** (`41acaa7`, ADR-0012) and **verified green by CI** — build + DSP self-tests + `pluginval PASSED at strictness 10` on the Linux gate (the local sandbox cannot fetch JUCE under the egress policy). The 0.8.8 idle-performance work is behaviour-preserving (bit-/pixel-identical outputs; DSP self-tests still green). Build = CMake + JUCE 8.0.14, VST3 [+AU macOS] [+Standalone]. |
 | **Test Status** | 23 DSP self-tests **+ an A/B state-restoration clamp guard**, and pluginval strictness 10 on the Linux gate in **both modes** (deterministic + `--randomise` ×3, blocking). The JUCE 8.0.14 bump was green on CI (`41acaa7`); the randomise gate + clamp guard were added afterwards. `docs/procedures/TESTING.md`. |
 | **Release Status** | Pre-1.0 (0.8.x line). Distribution = CI artifacts (Linux/Windows/macOS); macOS ad-hoc signed, **not notarized** (KI-002). No formal release tags. |
 | **Known Blockers** | None blocking a build/ship. Open items are KI-001…KI-005 (`KNOWN_ISSUES.md`) — none release-blocking. |

@@ -11,11 +11,58 @@ Vectorscope::Vectorscope (anamorph::ScopeBuffer& buffer) : scope (buffer)
 {
     bufL.resize (anamorph::ScopeBuffer::capacity);
     bufR.resize (anamorph::ScopeBuffer::capacity);
+    // Gate init: treat whatever the ring already holds as non-silent, so the
+    // first windowFrames() of observed frames always paint (conservative --
+    // an editor reopened mid-playback shows the live picture immediately).
+    lastSeenCount = lastNonZero = buffer.writeCount();
     setOpaque (false);
     startTimerHz (60);
 }
 
 Vectorscope::~Vectorscope() { stopTimer(); }
+
+void Vectorscope::timerCallback()
+{
+    // Idle repaint gate. paint() is a pure function of (window content,
+    // persistence, size) -- the trail's age-alpha is positional, not clocked --
+    // so a frame only needs re-rendering when that content can have changed.
+    // Two static cases are skipped: the ring is FROZEN (the host stopped
+    // calling processBlock), or every frame in the visible window is exactly
+    // zero and the previously painted frame was that same all-zero image
+    // (digital silence: the engine keeps pushing zeros, so the write counter
+    // advances while the picture stays put). While ANY non-zero frame remains
+    // in the window the tick repaints as before, so the trail scrolls out and
+    // fades exactly as it always did; the final all-zero frame paints once,
+    // then the view goes idle. A persistence change re-arms via setPersistence
+    // (frameDirty); resize/expose repaints bypass the timer entirely.
+    const auto count = scope.writeCount();
+    if (const auto fresh = count - lastSeenCount; fresh > 0)
+    {
+        // Scan only the newly arrived frames (order-of-800 samples per tick,
+        // far cheaper than one paint). Frames older than the scratch size can
+        // never re-enter any window (max window < capacity), so capping is safe.
+        const int n   = (int) juce::jmin (fresh, (std::uint64_t) bufL.size());
+        const int got = scope.readLatest (bufL.data(), bufR.data(), n);
+        for (int i = 0; i < got; ++i)
+            if (std::abs (bufL[(size_t) i]) > 0.0f || std::abs (bufR[(size_t) i]) > 0.0f)
+            {
+                lastNonZero = count;
+                break;
+            }
+        lastSeenCount = count;
+
+        const bool windowSilent = count - lastNonZero >= (std::uint64_t) windowFrames();
+        if (! (windowSilent && lastFrameSilent))
+            frameDirty = true;
+        lastFrameSilent = windowSilent;
+    }
+
+    if (frameDirty)
+    {
+        frameDirty = false;
+        repaint();
+    }
+}
 
 void Vectorscope::drawGrid (juce::Graphics& g, juce::Rectangle<float> area, float radius)
 {
@@ -63,7 +110,7 @@ void Vectorscope::paint (juce::Graphics& g)
     drawGrid (g, plot, radius);
 
     // --- read a decimated window from the lock-free ring buffer ---
-    const int wantFrames = (int) juce::jmap (persistence, 0.0f, 1.0f, 1200.0f, 8000.0f);
+    const int wantFrames = windowFrames();
     const int got = scope.readLatest (bufL.data(), bufR.data(),
                                       juce::jmin (wantFrames, (int) bufL.size()));
     if (got <= 0)

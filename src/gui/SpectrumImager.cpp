@@ -105,6 +105,11 @@ SpectrumImager::SpectrumImager (anamorph::ScopeBuffer& s, juce::AudioProcessorVa
     mags.assign ((size_t) fftSize / 2 + 1, kMinDb);
     redLevel.assign ((size_t) fftSize / 2 + 1, 0.0f);
 
+    // S2 gate init: treat whatever the ring already holds as non-silent, so
+    // the first fftSize observed frames always analyse (conservative -- an
+    // editor opened mid-playback shows the live spectrum immediately).
+    lastSeenCount = lastNonZero = s.writeCount();
+
     enaA = enabled() ? 1.0f : 0.0f;
     lastBandCount = bandCount();
     for (int i = 0; i < 3; ++i) drawnF[i] = crossover (i);
@@ -554,22 +559,79 @@ void SpectrumImager::closeFreqEditor()
 // ----------------------------------------------------------------------------
 //  Analyser
 // ----------------------------------------------------------------------------
-void SpectrumImager::pushFFT()
+// The unchanged 0.6.x analysis body: mono mix, Hann window, transform. Leaves
+// the magnitude spectrum in fftData[0 .. fftSize/2] (retained between ticks).
+void SpectrumImager::runTransform()
 {
-    const int got = scope.readLatest (fifoL.data(), fifoR.data(), fftSize);
-    if (got < fftSize) return;
     for (int i = 0; i < fftSize; ++i)
         fftData[(size_t) i] = 0.5f * (fifoL[(size_t) i] + fifoR[(size_t) i]);
     std::fill (fftData.begin() + fftSize, fftData.end(), 0.0f);
     window.multiplyWithWindowingTable (fftData.data(), (size_t) fftSize);
     fft.performFrequencyOnlyForwardTransform (fftData.data());
-    const float norm = 2.0f / (float) fftSize;
-    for (int k = 0; k <= fftSize / 2; ++k)
+}
+
+// S2 idle gate around the FFT. The maths, sizes, window and read are exactly
+// the old pushFFT -- only WHEN they execute changes. Freshness follows the
+// Vectorscope's S1 pattern (ScopeBuffer::writeCount + scan only the newly
+// arrived frames), with the fixed fftSize window as the content window:
+//  - ring frozen (host stopped processing)  -> window identical, no work;
+//  - window all-zero and was all-zero       -> more zeros change nothing;
+//  - window just became all-zero            -> the FFT of zeros is exactly
+//    zero, so that result is written analytically, without the transform.
+// Returns true when fftData holds new magnitudes (the mags smoothing in
+// timerCallback has fresh input).
+bool SpectrumImager::pushFFT()
+{
+    const auto count = scope.writeCount();
+    const auto fresh = count - lastSeenCount;
+    if (fresh == 0)
+        return false; // frozen ring: the analysis window is bit-identical
+
+    lastSeenCount = count;
+
+    if (! lastWindowSilent)
     {
-        const float db = juce::Decibels::gainToDecibels (fftData[(size_t) k] * norm, kMinDb);
-        float& m = mags[(size_t) k];
-        m = db > m ? db : m + (db - m) * 0.25f;
+        // Window has (or may have) content: read it in full, exactly as
+        // before, scanning just the freshly arrived tail for the silence
+        // tracker (frames older than the window can never re-enter it).
+        const int got    = scope.readLatest (fifoL.data(), fifoR.data(), fftSize);
+        const int freshN = (int) juce::jmin ((std::uint64_t) got, fresh);
+        for (int i = got - freshN; i < got; ++i)
+            if (std::abs (fifoL[(size_t) i]) > 0.0f || std::abs (fifoR[(size_t) i]) > 0.0f)
+            {
+                lastNonZero = count;
+                break;
+            }
+
+        if (count - lastNonZero >= (std::uint64_t) fftSize)
+        {
+            std::fill (fftData.begin(), fftData.begin() + fftSize / 2 + 1, 0.0f);
+            lastWindowSilent = true;
+            return true;
+        }
+
+        if (got < fftSize)
+            return false; // ring not filled once yet (the old early-return)
+
+        runTransform();
+        return true;
     }
+
+    // Window was all-zero: peek only at the freshly arrived frames; further
+    // zeros keep the window -- and therefore fftData -- unchanged.
+    const int n   = (int) juce::jmin (fresh, (std::uint64_t) fftSize);
+    const int got = scope.readLatest (fifoL.data(), fifoR.data(), n);
+    for (int i = 0; i < got; ++i)
+        if (std::abs (fifoL[(size_t) i]) > 0.0f || std::abs (fifoR[(size_t) i]) > 0.0f)
+        {
+            lastNonZero      = count;
+            lastWindowSilent = false;
+            if (scope.readLatest (fifoL.data(), fifoR.data(), fftSize) < fftSize)
+                return false;
+            runTransform(); // audio is back: analyse it this very tick
+            return true;
+        }
+    return false;
 }
 float SpectrumImager::magCubic (float binPos) const noexcept
 {
@@ -586,8 +648,8 @@ float SpectrumImager::magForColumn (float xa, float xb) const noexcept
 {
     const float binHz = (float) sampleRate / (float) fftSize;
     const int   kmax  = fftSize / 2;
-    const float fa = xToFreq (juce::jmin (xa, xb));
-    const float fb = xToFreq (juce::jmax (xa, xb));
+    const float fa = xToFreqCached (juce::jmin (xa, xb));
+    const float fb = xToFreqCached (juce::jmax (xa, xb));
     const float span = (fb - fa) / binHz;
     if (span < 1.5f)
         return magCubic (0.5f * (fa + fb) / binHz);
@@ -598,21 +660,140 @@ float SpectrumImager::magForColumn (float xa, float xb) const noexcept
     return sum / (float) (kb - ka + 1);
 }
 
+// S12: the exact xToFreq(x), served from the half-pixel LUT only when x lands
+// EXACTLY on the cached grid at the geometry the LUT was built for -- otherwise
+// the live bisection. LUT[i] was produced by xToFreq(lutX0 + i*0.5), and an
+// on-grid x equals lutX0 + i*0.5 bit-for-bit (integers/half-integers < 2^23),
+// so the returned float is identical to calling xToFreq(x) directly. Any miss
+// (off-grid, out of range, geometry changed) falls through to the exact path.
+float SpectrumImager::xToFreqCached (float x) const noexcept
+{
+    // Geometry is keyed on the INTEGER component width -- plot() is a pure
+    // function of getLocalBounds(), so an unchanged width means an unchanged
+    // grid. The only exact float test left is the on-grid integrality of the
+    // reconstructed index, which is the correctness guard itself.
+    if (getWidth() == lutW)
+    {
+        const float fi = (x - lutX0) * 2.0f;
+        const int   i  = (int) fi;
+        JUCE_BEGIN_IGNORE_WARNINGS_GCC_LIKE ("-Wfloat-equal")
+        const bool onGrid = (fi == (float) i);
+        JUCE_END_IGNORE_WARNINGS_GCC_LIKE
+        if (onGrid && i >= 0 && i < (int) xToFreqLUT.size())
+            return xToFreqLUT[(size_t) i];
+    }
+    return xToFreq (x);
+}
+
+void SpectrumImager::ensurePaintLUTs()
+{
+    const auto r = plot();
+
+    // Inverse-axis LUT on the half-pixel grid the spectrum + clip loops query.
+    // Keyed on the integer width (plot X and WIDTH are fixed by getLocalBounds).
+    if (getWidth() != lutW)
+    {
+        lutW  = getWidth();
+        lutX0 = r.getX() - 0.5f;      // the lowest query is xToFreq(getX() - 0.5)
+        const int n = juce::jmax (2, (int) std::lround ((r.getRight() + 0.5f - lutX0) * 2.0f) + 1);
+        xToFreqLUT.resize ((size_t) n);
+        for (int i = 0; i < n; ++i)
+            xToFreqLUT[(size_t) i] = xToFreq (lutX0 + (float) i * 0.5f);
+        redBinSR = 0.0;              // geometry moved -> the clip bin LUT is stale too
+    }
+
+    // Clip bin-index LUT: which FFT bin each pixel column samples (depends on
+    // geometry via xToFreq and on sampleRate via binHz). The per-frame clip loop
+    // then just gathers redLevel[bin], with no per-pixel bisection.
+    const int W = (int) r.getWidth() + 1;
+    JUCE_BEGIN_IGNORE_WARNINGS_GCC_LIKE ("-Wfloat-equal")
+    const bool srChanged = (redBinSR != sampleRate);
+    JUCE_END_IGNORE_WARNINGS_GCC_LIKE
+    if ((int) redColBin.size() != W || srChanged)
+    {
+        redBinSR = sampleRate;
+        redColBin.resize ((size_t) W);
+        const float binHz = (float) sampleRate / (float) fftSize;
+        for (int xi = 0; xi < W; ++xi)
+            redColBin[(size_t) xi] = juce::jlimit (0, fftSize / 2,
+                (int) std::lround (xToFreq (r.getX() + (float) xi) / binHz));
+    }
+}
+
 void SpectrumImager::timerCallback()
 {
-    sampleRate = apvts.processor.getSampleRate() > 0.0 ? apvts.processor.getSampleRate() : 48000.0;
-    pushFFT();
+    // S2 idle gate: suspend all analysis and animation while not showing
+    // (Simple mode hides the imager; hosts can hide the whole editor). On
+    // re-show the stale spectrum drops to the floor: live audio rebuilds it
+    // on this same tick (the mags attack is instantaneous) and silence shows
+    // the floor -- exactly what the always-running decay converged to before.
+    if (! isShowing())
+    {
+        wasShowing = false;
+        return;
+    }
+    if (! wasShowing)
+    {
+        wasShowing = true;
+        std::fill (mags.begin(), mags.end(), kMinDb);
+        std::fill (redLevel.begin(), redLevel.end(), 0.0f);
+        magsSettled = false;
+        redSettled  = false;
+        frameDirty  = true;
+    }
+
+    const double sr = apvts.processor.getSampleRate() > 0.0 ? apvts.processor.getSampleRate() : 48000.0;
+    if (std::abs (sr - sampleRate) > 0.0)
+        frameDirty = true; // the frequency mapping shifts with the sample rate
+    sampleRate = sr;
+
+    // Analysis runs only while something can still change: the FFT when the
+    // window changed (pushFFT), the two smoothing passes until they settle.
+    // Their maths and per-tick rates are the unchanged 0.6.x code -- they run
+    // every tick while anything still moves, so attack/decay timing is
+    // identical; they just stop being evaluated once provably static.
+    bool dataMoved = false;
+    if (pushFFT())
+        magsSettled = false;
+
+    if (! magsSettled)
+    {
+        const float norm = 2.0f / (float) fftSize;
+        bool any = false;
+        for (int k = 0; k <= fftSize / 2; ++k)
+        {
+            const float db = juce::Decibels::gainToDecibels (fftData[(size_t) k] * norm, kMinDb);
+            float& m = mags[(size_t) k];
+            const float next = db > m ? db : m + (db - m) * 0.25f;
+            if (std::abs (next - m) > 0.0f) { m = next; any = true; }
+        }
+        magsSettled = ! any;
+        dataMoved |= any;
+    }
 
     // Clip glow level per bin. The Hann window costs ~6 dB of coherent gain, so a 0 dBFS
     // tone only reads ~-6 dB on the analyser -- compensate for that, so reaching full scale
     // actually lights the red (0.6.16 #1). Rises FAST and falls back SLOWLY with an
     // exponential (non-linear) curve so a region lingers as it fades, even while other bands
     // light up (0.6.16 #2). Always animated, independent of the UI-animation switch.
-    for (size_t k = 0; k < redLevel.size(); ++k)
+    if (dataMoved || ! redSettled)
     {
-        const float eff = mags[k] + 6.0f;                                   // window-gain compensated dBFS
-        const float t = juce::jlimit (0.0f, 1.0f, (eff + 4.0f) / 4.0f);     // onset -4 dBFS, full at 0 dBFS
-        redLevel[k] += (t - redLevel[k]) * (t > redLevel[k] ? 0.6f : 0.035f);
+        bool any = false;
+        for (size_t k = 0; k < redLevel.size(); ++k)
+        {
+            const float eff = mags[k] + 6.0f;                                   // window-gain compensated dBFS
+            const float t = juce::jlimit (0.0f, 1.0f, (eff + 4.0f) / 4.0f);     // onset -4 dBFS, full at 0 dBFS
+            float& rl = redLevel[k];
+            float next = rl + (t - rl) * (t > rl ? 0.6f : 0.035f);
+            // paint() cannot draw levels below 0.012 (the maxRed gate and the
+            // per-quad cull), so snapping the tail to zero from 1e-3 -- 12x
+            // below the smallest drawable value -- is pixel-identical and ends
+            // an otherwise ~half-minute sub-visible float decay.
+            if (t <= 0.0f && next < 1.0e-3f) next = 0.0f;
+            if (std::abs (next - rl) > 0.0f) { rl = next; any = true; }
+        }
+        redSettled = ! any;
+        dataMoved |= any;
     }
 
     // Press-and-hold a headphone -> momentary audition of that band (engine override).
@@ -627,7 +808,17 @@ void SpectrumImager::timerCallback()
     const float dt   = 1.0f / 60.0f;
     const float rIn  = animOn ? 1.0f - std::exp (-dt / 0.075f) : 1.0f;
     const float rOut = animOn ? 1.0f - std::exp (-dt / 0.150f) : 1.0f;
-    auto ease = [&] (float& v, float t) { v += (t - v) * (t > v ? rIn : rOut); };
+    bool uiMoved = false;
+    auto ease = [&] (float& v, float t)
+    {
+        float next = v + (t - v) * (t > v ? rIn : rOut);
+        // Converge onto the target inside the display quantum (< 1/255) --
+        // the same snap the editor's micro-anims use (stepVal, 0.004) -- so
+        // an eased value actually arrives instead of decaying sub-visibly
+        // forever; report any movement to the S2 repaint gate.
+        if (std::abs (next - t) < 0.004f) next = t;
+        if (std::abs (next - v) > 0.0f) { v = next; uiMoved = true; }
+    };
 
     // The band-pass preview curve is a press-and-HOLD affordance: light it only once the
     // grab has been held past the threshold or has become a drag, never on a bare click /
@@ -657,6 +848,11 @@ void SpectrumImager::timerCallback()
     // them to the new spots; a drag / scroll / automation snaps 1:1. Once a sweep is armed
     // the glide keeps running until it CONVERGES, so it never stops by snapping the last few
     // pixels when the editor's sweep window closes (0.6.15 #5).
+    float prevF[3], prevW[4];
+    for (int i = 0; i < 3; ++i) prevF[i] = drawnF[i];
+    for (int b = 0; b < 4; ++b) prevW[b] = drawnW[b];
+    const int prevBands = lastBandCount;
+
     const int N = bandCount();
     if (N != lastBandCount)
     {
@@ -695,7 +891,24 @@ void SpectrumImager::timerCallback()
         for (int b = 0; b < 4; ++b) drawnW[b] = bandWidth (b);
     }
 
-    repaint();
+    // Drawn split/width positions and the band count feed paint() directly:
+    // any change (glide step, snap to a moved parameter, band add/remove)
+    // must render, however it was produced above.
+    for (int i = 0; i < 3; ++i) uiMoved |= std::abs (drawnF[i] - prevF[i]) > 0.0f;
+    for (int b = 0; b < 4; ++b) uiMoved |= std::abs (drawnW[b] - prevW[b]) > 0.0f;
+    uiMoved |= lastBandCount != prevBands;
+
+    // S2 repaint gate: the frame is a pure function of the state advanced
+    // above (mags/redLevel, eased alphas, drawn positions) plus mouse-driven
+    // fields whose handlers already repaint explicitly -- so when nothing
+    // moved this tick, the previous frame is bit-identical and painting it
+    // again is pure waste. Interaction, decays and animations repaint at the
+    // full 60 Hz exactly as before; the view idles only once truly settled.
+    if (dataMoved || uiMoved || frameDirty)
+    {
+        frameDirty = false;
+        repaint();
+    }
 }
 
 // A smooth, centred glow: several overlapping rounded strokes whose alpha falls off in a
@@ -781,6 +994,7 @@ void SpectrumImager::paint (juce::Graphics& g)
 
     // --- spectrum (cubic-smoothed) + localized clip-red overlay (#14) ---
     {
+        ensurePaintLUTs(); // S12: refresh the paint LUTs on geometry / SR change
         auto dbToY = [&] (float db)
         {
             const float t = (juce::jlimit (kMinDb, kMaxDb, db) - kMinDb) / (kMaxDb - kMinDb);
@@ -811,18 +1025,21 @@ void SpectrumImager::paint (juce::Graphics& g)
         {
             const int W = (int) r.getWidth() + 1;
             if ((int) redColX.size() != W) redColX.assign ((size_t) W, 0.0f);
-            const float binHz = (float) sampleRate / (float) fftSize;
             float maxRed = 0.0f;
             for (int xi = 0; xi < W; ++xi)
             {
-                const int k = juce::jlimit (0, fftSize / 2, (int) std::lround (xToFreq (r.getX() + (float) xi) / binHz));
-                redColX[(size_t) xi] = redLevel[(size_t) k];
+                // S12: redColBin[xi] is the same jlimit(lround(xToFreq/binHz)) index
+                // computed per-pixel before, now precomputed in ensurePaintLUTs.
+                redColX[(size_t) xi] = redLevel[(size_t) redColBin[(size_t) xi]];
                 maxRed = juce::jmax (maxRed, redColX[(size_t) xi]);
             }
             if (maxRed > 0.012f)
             {
                 // Wide triangular blur -> a soft, far-reaching horizontal feather.
-                std::vector<float> sm ((size_t) W, 0.0f);
+                // S12: reuse a persistent scratch buffer instead of allocating one
+                // per paint; every element is written below before it is read.
+                if ((int) clipBlurScratch.size() != W) clipBlurScratch.resize ((size_t) W);
+                auto& sm = clipBlurScratch;
                 const int RB = 22;
                 float norm = 0.0f; for (int d = -RB; d <= RB; ++d) norm += (float) (RB + 1 - std::abs (d));
                 for (int xi = 0; xi < W; ++xi)

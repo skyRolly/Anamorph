@@ -449,15 +449,36 @@ void AnamorphEngine::processNonlinearRegion (float* L, float* R, int n, double r
         // full-scale input still maps to full scale, so driving harder adds
         // saturation/density without dropping the level (feedback #23). The blend
         // crossfades from the clean signal so 0 dB is identity (feedback #13).
-        for (int i = 0; i < n; ++i)
+        if (! driveSmooth.isSmoothing() && ! driveBlendSmooth.isSmoothing())
         {
+            // Settled: g and blend are constants for the whole block (a settled
+            // SmoothedValue returns its target without mutating), so the makeup
+            // 1/tanh(g) is too -- computed once instead of per sample (S6a). The
+            // per-sample arithmetic is unchanged, so the output is bit-exact;
+            // any glide takes the original per-sample path below untouched.
             const float g     = juce::jmax (1.0f, driveSmooth.getNextValue());
             const float blend = driveBlendSmooth.getNextValue();
             const float c = 1.0f / std::tanh (g);
-            const float sl = std::tanh (g * L[i]) * c;
-            const float sr2 = std::tanh (g * R[i]) * c;
-            L[i] += blend * (sl  - L[i]);
-            R[i] += blend * (sr2 - R[i]);
+            for (int i = 0; i < n; ++i)
+            {
+                const float sl = std::tanh (g * L[i]) * c;
+                const float sr2 = std::tanh (g * R[i]) * c;
+                L[i] += blend * (sl  - L[i]);
+                R[i] += blend * (sr2 - R[i]);
+            }
+        }
+        else
+        {
+            for (int i = 0; i < n; ++i)
+            {
+                const float g     = juce::jmax (1.0f, driveSmooth.getNextValue());
+                const float blend = driveBlendSmooth.getNextValue();
+                const float c = 1.0f / std::tanh (g);
+                const float sl = std::tanh (g * L[i]) * c;
+                const float sr2 = std::tanh (g * R[i]) * c;
+                L[i] += blend * (sl  - L[i]);
+                R[i] += blend * (sr2 - R[i]);
+            }
         }
     }
 
@@ -601,7 +622,10 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
             bdR[bypassDelayWrite] = R[i];
             int rp = bypassDelayWrite - lat; if (rp < 0) rp += bdSize;
             bxL[i] = bdL[rp]; bxR[i] = bdR[rp];
-            bypassDelayWrite = (bypassDelayWrite + 1) % bdSize;
+            // Wrap by branch, not %: the index advances by exactly 1 from
+            // within [0, size), so this is integer-identical and avoids a
+            // hardware division per sample (S6b; matches the read wrap above).
+            if (++bypassDelayWrite >= bdSize) bypassDelayWrite = 0;
         }
     }
 
@@ -734,7 +758,10 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         int rp = dryDelayWrite - lat; if (rp < 0) rp += ddSize;
         const float cleanL = ddL[rp], cleanR = ddR[rp];
         const float alignL = adL[rp], alignR = adR[rp];
-        dryDelayWrite = (dryDelayWrite + 1) % ddSize;
+        // Wrap by branch, not % (S6b, see the bypass ring): integer-identical
+        // for an index in [0, size) advancing by 1. dryDelayBuffer and
+        // dryAlignDelayBuffer keep sharing this ONE index, staying in lockstep.
+        if (++dryDelayWrite >= ddSize) dryDelayWrite = 0;
 
         // Level-Match reference (#Issue2): the delay-aligned reconstruction A(dry) --
         // the dry pushed through the SAME crossovers at unit width. It carries the
@@ -789,16 +816,36 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     // plugin while paused. Click-free: the previous block's output was silent. This is
     // the safety net that makes the predict effective across Transport Stop->Play and
     // Silence->Audio, not just when the host keeps processing during a pause.
-    double inSq = 0.0;
+    // The energy scan below only feeds the Level-Match snap, so it is skipped
+    // while Match is off (S7) -- EXCEPT while a duck that will turn Match ON is
+    // in flight (Match is a discrete, always-ducked switch): running the scan
+    // through the engage fade refreshes prevInputSilent one block before the
+    // swapped-in p.autoGainMatch can first read it, so the snap decision sees
+    // exactly the state the always-computed original would have seen -- the
+    // silence->audio edge landing on the engage block included.
+    //
+    // INVARIANT this gate depends on: enabling Match is a discrete change that
+    // ALWAYS routes through the switch-duck state machine (autoGainMatch is in
+    // discreteDiffers(), so pendingP holds the new value while switchState !=
+    // Normal). That is what lets `matchEngaging` warm prevInputSilent before the
+    // swap. If Match is ever made to engage WITHOUT a duck (removed from
+    // discreteDiffers, or applied live), this gate must be revisited -- the
+    // scan would then miss the pre-engage block and the silence->audio snap
+    // could be wrong on the first engaged block.
+    const bool matchEngaging = switchState != SwitchState::Normal && pendingP.autoGainMatch;
+    if (p.autoGainMatch || matchEngaging)
     {
-        const float* il = inputScratch.getReadPointer (0);
-        const float* ir = inputScratch.getReadPointer (1);
-        for (int i = 0; i < n; ++i) inSq += (double) il[i] * il[i] + (double) ir[i] * ir[i];
+        double inSq = 0.0;
+        {
+            const float* il = inputScratch.getReadPointer (0);
+            const float* ir = inputScratch.getReadPointer (1);
+            for (int i = 0; i < n; ++i) inSq += (double) il[i] * il[i] + (double) ir[i] * ir[i];
+        }
+        const bool inSilentNow = inSq < 1.0e-6 * (double) juce::jmax (1, n); // ~ -60 dBFS mean-square
+        if (prevInputSilent && ! inSilentNow && p.autoGainMatch)
+            matchGainSmooth.setCurrentAndTargetValue (matchTarget);
+        prevInputSilent = inSilentNow;
     }
-    const bool inSilentNow = inSq < 1.0e-6 * (double) juce::jmax (1, n); // ~ -60 dBFS mean-square
-    if (prevInputSilent && ! inSilentNow && p.autoGainMatch)
-        matchGainSmooth.setCurrentAndTargetValue (matchTarget);
-    prevInputSilent = inSilentNow;
 
     // -------- Output Gain / Auto Gain / Output Balance ----------------------
     for (int i = 0; i < n; ++i)
@@ -888,11 +935,12 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     }
 
     // -------- Metering tap (the monitored output) ---------------------------
+    // Correlation keeps its per-sample integration (ballistics unchanged); the
+    // scope ring is filled in one pass and published with a single release-
+    // store per block instead of one per sample (S9, ScopeBuffer::pushBlock).
     for (int i = 0; i < n; ++i)
-    {
         correlation.process (L[i], R[i]);
-        scope.push (L[i], R[i]);
-    }
+    scope.pushBlock (L, R, n);
     levels.output.process (L, R, n);
     correlation.publish();
     levels.publish();

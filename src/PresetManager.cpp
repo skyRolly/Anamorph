@@ -84,6 +84,23 @@ int PresetManager::currentIndex() const noexcept
 
 bool PresetManager::isDirty() const
 {
+    // S10: soundSig() is a pure function of the sound parameters, and the
+    // processor bumps a generation counter on every sound-param change -- an
+    // unchanged generation means the last built signature is still exact, so
+    // the ~34 per-call String formats/allocations are skipped. The comparison
+    // below stays live, which is why sigAtLoad updates (load/save/undo/A-B)
+    // need no cache invalidation. Generation is sampled before building, so a
+    // concurrent change just rebuilds on the next call.
+    if (soundParamGeneration != nullptr)
+    {
+        const auto gen = soundParamGeneration();
+        if (gen != cachedSigGen)
+        {
+            cachedSig    = soundSig();
+            cachedSigGen = gen;
+        }
+        return cachedSig != sigAtLoad;
+    }
     return soundSig() != sigAtLoad;
 }
 

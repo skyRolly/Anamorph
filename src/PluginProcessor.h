@@ -84,7 +84,15 @@ private:
     void parameterChanged (const juce::String& id, float newValue) override;
     // AudioProcessorParameter::Listener: coalesce a whole user GESTURE into one undo step, and
     // exclude host automation (which never opens a gesture) from undo entirely.
-    void parameterValueChanged (int, float) override {}                 // required; value handled by the poll
+    // The value callback bumps the sound-param generation (S10): the 24 Hz polls
+    // rebuild their signature strings only when this counter moved, since the
+    // signature is a pure function of the listened (sound) parameter values.
+    // Atomic: value changes can arrive from the audio thread (host automation) --
+    // the same relaxed published-counter pattern as the meter atomics.
+    void parameterValueChanged (int, float) override
+    {
+        soundParamGen.fetch_add (1, std::memory_order_relaxed);
+    }
     void parameterGestureChanged (int parameterIndex, bool gestureIsStarting) override;
     void updateLatency();
 
@@ -126,6 +134,8 @@ private:
     UndoStacks abUndo[anamorph::kNumAbSlots];
     StateSet committed;
     juce::String committedSig, lastPolledSig;
+    std::atomic<juce::uint32> soundParamGen { 1 }; // bumped by parameterValueChanged (S10)
+    juce::uint32 polledGen = 0;                    // generation the poll last built a signature for
     // Undo coalescing is GESTURE-gated (message thread only, matches the editor-timer poll): count
     // open user gestures; commit exactly one undo step after the LAST gesture-end. Host automation
     // never opens a gesture, so it is never recorded.
