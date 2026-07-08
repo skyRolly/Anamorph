@@ -823,6 +823,15 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     // swapped-in p.autoGainMatch can first read it, so the snap decision sees
     // exactly the state the always-computed original would have seen -- the
     // silence->audio edge landing on the engage block included.
+    //
+    // INVARIANT this gate depends on: enabling Match is a discrete change that
+    // ALWAYS routes through the switch-duck state machine (autoGainMatch is in
+    // discreteDiffers(), so pendingP holds the new value while switchState !=
+    // Normal). That is what lets `matchEngaging` warm prevInputSilent before the
+    // swap. If Match is ever made to engage WITHOUT a duck (removed from
+    // discreteDiffers, or applied live), this gate must be revisited -- the
+    // scan would then miss the pre-engage block and the silence->audio snap
+    // could be wrong on the first engaged block.
     const bool matchEngaging = switchState != SwitchState::Normal && pendingP.autoGainMatch;
     if (p.autoGainMatch || matchEngaging)
     {

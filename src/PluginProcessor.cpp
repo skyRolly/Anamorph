@@ -321,6 +321,19 @@ void AnamorphAudioProcessor::pollUndoCoalesce()
     // invariant after each full run). Skip the ~36 String formats. Polling
     // cadence and all coalescing semantics are untouched; the generation is
     // sampled BEFORE building, so a concurrent change simply rebuilds next tick.
+    //
+    // Why skipping is behavior-preserving -- the post-run invariant
+    // sig == committedSig:
+    //  * The non-gesture branch sets committed = current, committedSig = sig.
+    //  * The gesture-commit branch, when it changes anything, also sets
+    //    committedSig = sig; when sig == committedSig it is already a no-op.
+    //  * syncCommitted() (ctor / A-B / preset / session load) rebuilds
+    //    committedSig from the live params, re-establishing it there too.
+    // So whenever this early-return fires, gen is unchanged since the last full
+    // run => sig is byte-identical to that run's sig => sig == committedSig, and
+    // with pendingGestureCommit false the skipped body would do nothing. A
+    // parameter change bumps gen before the next tick, so an edit is still
+    // reflected on the very next poll -- the cadence and outcome are identical.
     const auto gen = soundParamGen.load (std::memory_order_relaxed);
     if (gen == polledGen && ! pendingGestureCommit)
         return;
