@@ -1082,7 +1082,7 @@ void AnamorphAudioProcessorEditor::stepMicroAnims (double dt)
     // uncertainty fails open into polling.
     const bool mouseInside = isShowing()
                           && getLocalBounds().contains (getMouseXYRelative());
-    juce::uint64 probe = 1469598103934665603ULL;               // FNV-1a over the tracked inputs
+    juce::uint64 probe = 14695981039346656037ULL;              // FNV-1a over the tracked inputs
     for (const auto& w : animated)
     {
         juce::uint64 v;
