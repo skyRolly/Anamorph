@@ -816,16 +816,27 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     // plugin while paused. Click-free: the previous block's output was silent. This is
     // the safety net that makes the predict effective across Transport Stop->Play and
     // Silence->Audio, not just when the host keeps processing during a pause.
-    double inSq = 0.0;
+    // The energy scan below only feeds the Level-Match snap, so it is skipped
+    // while Match is off (S7) -- EXCEPT while a duck that will turn Match ON is
+    // in flight (Match is a discrete, always-ducked switch): running the scan
+    // through the engage fade refreshes prevInputSilent one block before the
+    // swapped-in p.autoGainMatch can first read it, so the snap decision sees
+    // exactly the state the always-computed original would have seen -- the
+    // silence->audio edge landing on the engage block included.
+    const bool matchEngaging = switchState != SwitchState::Normal && pendingP.autoGainMatch;
+    if (p.autoGainMatch || matchEngaging)
     {
-        const float* il = inputScratch.getReadPointer (0);
-        const float* ir = inputScratch.getReadPointer (1);
-        for (int i = 0; i < n; ++i) inSq += (double) il[i] * il[i] + (double) ir[i] * ir[i];
+        double inSq = 0.0;
+        {
+            const float* il = inputScratch.getReadPointer (0);
+            const float* ir = inputScratch.getReadPointer (1);
+            for (int i = 0; i < n; ++i) inSq += (double) il[i] * il[i] + (double) ir[i] * ir[i];
+        }
+        const bool inSilentNow = inSq < 1.0e-6 * (double) juce::jmax (1, n); // ~ -60 dBFS mean-square
+        if (prevInputSilent && ! inSilentNow && p.autoGainMatch)
+            matchGainSmooth.setCurrentAndTargetValue (matchTarget);
+        prevInputSilent = inSilentNow;
     }
-    const bool inSilentNow = inSq < 1.0e-6 * (double) juce::jmax (1, n); // ~ -60 dBFS mean-square
-    if (prevInputSilent && ! inSilentNow && p.autoGainMatch)
-        matchGainSmooth.setCurrentAndTargetValue (matchTarget);
-    prevInputSilent = inSilentNow;
 
     // -------- Output Gain / Auto Gain / Output Balance ----------------------
     for (int i = 0; i < n; ++i)

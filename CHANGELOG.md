@@ -15,12 +15,14 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 ### Changed
 - **Engine CPU micro-optimisations**: the drive waveshaper's peak-preserving makeup (1/tanh) and
   its gain/blend reads are hoisted out of the per-sample loop once both smoothers have settled
-  (any glide keeps the exact per-sample path), and the two always-on delay rings wrap their write
-  index by branch instead of an integer division per sample. Output is bit-identical (full-engine
-  dump across 12 scenarios incl. drive automation, all oversampling modes, impulse/delay-alignment
-  and bypass: byte-equal; reported latency unchanged). Measured: drive engaged −19/−38/−73 µs per
-  512-sample block at OS ×2/×4/×8, plus a further ~−6 µs/block across the board from the ring
-  wrap. Evidence: PR #53. [Verified]
+  (any glide keeps the exact per-sample path), the two always-on delay rings wrap their write
+  index by branch instead of an integer division per sample, and the Level-Match silence-energy
+  scan runs only while Match is on or its engage duck is in flight (which keeps the silence-edge
+  snap decision exactly as before). Output is bit-identical (full-engine dump across 20 scenarios
+  incl. drive automation, all oversampling modes, impulse/delay-alignment, bypass, Match toggling
+  with an engage-vs-audio-edge alignment sweep: byte-equal; reported latency unchanged). Measured:
+  drive engaged −19/−38/−73 µs per 512-sample block at OS ×2/×4/×8, ~−6 µs/block across the board
+  from the ring wrap, ~−1.6 µs/block with Match off. Evidence: PR #53. [Verified]
 - **Velvet decorrelator CPU (2)**: the sparse-FIR tap accumulation is now skipped when its
   contribution is exactly zero -- Amount exactly 0 (the default state) or the presence gate
   exactly closed (silence from start, or after the transport-stop flush) -- outside any stop
