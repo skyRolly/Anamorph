@@ -282,6 +282,7 @@ void AnamorphAudioProcessor::reassertParameters (const juce::ValueTree& restored
 {
     if (! restoredApvtsTree.isValid()) return;
 
+    bool silentSoundChange = false;
     for (auto* p : getParameters())
         if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p))
             if (auto node = restoredApvtsTree.getChildWithProperty ("id", rp->paramID); node.isValid())
@@ -299,9 +300,23 @@ void AnamorphAudioProcessor::reassertParameters (const juce::ValueTree& restored
                         rp->setValue (norm); // getValue() only -- no host / listener notification
                         if (auto* atom = apvts.getRawParameterValue (rp->paramID))
                             atom->store (rp->convertFrom0to1 (norm)); // DSP value (snapped denormalised)
+                        if (! pid::isViewParam (rp->paramID))
+                            silentSoundChange = true;
                     }
                 }
             }
+
+    // The notifyHost=false path (host session restore) applies values via
+    // setValue(), which does NOT fire parameterValueChanged -- so the listener
+    // never bumps soundParamGen. The notify path bumps it per changed sound
+    // param via the listener; mirror that here with a single bump when a
+    // listener-tracked (non-view) sound param actually changed silently, so the
+    // S10 signature caches (pollUndoCoalesce and PresetManager::isDirty) rebuild
+    // against the restored values instead of reusing a signature cached from the
+    // pre-restore state (which left a false dirty-star until the next real edit).
+    // Bumped only on an actual sound change, so no needless cache invalidation.
+    if (silentSoundChange)
+        soundParamGen.fetch_add (1, std::memory_order_relaxed);
 }
 
 // Message thread. Count nested / overlapping gestures (e.g. the two-parameter Multiband band move
