@@ -926,11 +926,12 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     }
 
     // -------- Metering tap (the monitored output) ---------------------------
+    // Correlation keeps its per-sample integration (ballistics unchanged); the
+    // scope ring is filled in one pass and published with a single release-
+    // store per block instead of one per sample (S9, ScopeBuffer::pushBlock).
     for (int i = 0; i < n; ++i)
-    {
         correlation.process (L[i], R[i]);
-        scope.push (L[i], R[i]);
-    }
+    scope.pushBlock (L, R, n);
     levels.output.process (L, R, n);
     correlation.publish();
     levels.publish();

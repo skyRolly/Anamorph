@@ -23,6 +23,13 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   with an engage-vs-audio-edge alignment sweep: byte-equal; reported latency unchanged). Measured:
   drive engaged −19/−38/−73 µs per 512-sample block at OS ×2/×4/×8, ~−6 µs/block across the board
   from the ring wrap, ~−1.6 µs/block with Match off. Evidence: PR #53. [Verified]
+- **Scope ring publish batched**: the audio thread now publishes the vectorscope/analyser ring's
+  write index once per block (one release-store) instead of once per sample, on the same atomic
+  with the same release/acquire contract -- readers see whole blocks atomically and can never
+  observe partially committed frames. Audio output, ring contents and read counters are
+  byte-identical (deterministic dump), and a two-thread stress (10⁹-frame scale) shows no
+  publication tears in either the old or new design. Measured: ~−2 µs per 512-sample block
+  median across the matrix. Evidence: PR #53. [Verified]
 - **Velvet decorrelator CPU (2)**: the sparse-FIR tap accumulation is now skipped when its
   contribution is exactly zero -- Amount exactly 0 (the default state) or the presence gate
   exactly closed (silence from start, or after the transport-stop flush) -- outside any stop

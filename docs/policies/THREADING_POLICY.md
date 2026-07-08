@@ -37,7 +37,7 @@ Audio · Message/GUI · OpenGL render (macOS/Windows only) · (no worker threads
   message thread (`docs/architecture/design-decisions/ADR-0011`).
 
 Evidence [Verified]:
-- Source: src/dsp/ScopeBuffer.h:28-64; src/dsp/LevelMeters.h:125-198; src/dsp/Correlation.h:50-95;
+- Source: src/dsp/ScopeBuffer.h:28-80; src/dsp/LevelMeters.h:125-198; src/dsp/Correlation.h:50-95;
   src/PluginProcessor.cpp:52-62,128; src/InternalState.h:67-72,125-134
 
 ## Enforcement
