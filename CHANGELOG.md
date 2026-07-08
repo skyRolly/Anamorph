@@ -13,6 +13,14 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   DOCUMENTATION_COVERAGE), plus this `CHANGELOG.md`. No plugin/behaviour change.
   Evidence: commits `c9b7fdf`, `a9e915e`, `97060b2`. [Verified]
 ### Changed
+- **Velvet decorrelator CPU (2)**: the sparse-FIR tap accumulation is now skipped when its
+  contribution is exactly zero -- Amount exactly 0 (the default state) or the presence gate
+  exactly closed (silence from start, or after the transport-stop flush) -- outside any stop
+  fade, which keeps running the full path. No thresholds: only provably-exact zeros are skipped,
+  history writes and every envelope/glide keep running, and output is bit-identical (validated
+  sample-exact across 12 scenarios / ~5.6 M samples incl. a signed-zero adversarial case).
+  Engine cost with Velvet at Amount 0 drops a further ~15-19 µs per 512-sample block at 48 kHz.
+  Evidence: PR #53. [Verified]
 - **Velvet decorrelator CPU**: the per-sample tap re-weighting (64-tap rebuild + square-root
   normalisation) now runs only while the Density glide is actually moving; once the glide reaches
   its float fixpoint the rebuild is skipped on an exact bit-compare (never a threshold -- the
