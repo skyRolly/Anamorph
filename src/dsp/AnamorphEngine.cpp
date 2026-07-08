@@ -449,15 +449,36 @@ void AnamorphEngine::processNonlinearRegion (float* L, float* R, int n, double r
         // full-scale input still maps to full scale, so driving harder adds
         // saturation/density without dropping the level (feedback #23). The blend
         // crossfades from the clean signal so 0 dB is identity (feedback #13).
-        for (int i = 0; i < n; ++i)
+        if (! driveSmooth.isSmoothing() && ! driveBlendSmooth.isSmoothing())
         {
+            // Settled: g and blend are constants for the whole block (a settled
+            // SmoothedValue returns its target without mutating), so the makeup
+            // 1/tanh(g) is too -- computed once instead of per sample (S6a). The
+            // per-sample arithmetic is unchanged, so the output is bit-exact;
+            // any glide takes the original per-sample path below untouched.
             const float g     = juce::jmax (1.0f, driveSmooth.getNextValue());
             const float blend = driveBlendSmooth.getNextValue();
             const float c = 1.0f / std::tanh (g);
-            const float sl = std::tanh (g * L[i]) * c;
-            const float sr2 = std::tanh (g * R[i]) * c;
-            L[i] += blend * (sl  - L[i]);
-            R[i] += blend * (sr2 - R[i]);
+            for (int i = 0; i < n; ++i)
+            {
+                const float sl = std::tanh (g * L[i]) * c;
+                const float sr2 = std::tanh (g * R[i]) * c;
+                L[i] += blend * (sl  - L[i]);
+                R[i] += blend * (sr2 - R[i]);
+            }
+        }
+        else
+        {
+            for (int i = 0; i < n; ++i)
+            {
+                const float g     = juce::jmax (1.0f, driveSmooth.getNextValue());
+                const float blend = driveBlendSmooth.getNextValue();
+                const float c = 1.0f / std::tanh (g);
+                const float sl = std::tanh (g * L[i]) * c;
+                const float sr2 = std::tanh (g * R[i]) * c;
+                L[i] += blend * (sl  - L[i]);
+                R[i] += blend * (sr2 - R[i]);
+            }
         }
     }
 
