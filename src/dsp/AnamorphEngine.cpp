@@ -622,7 +622,10 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
             bdR[bypassDelayWrite] = R[i];
             int rp = bypassDelayWrite - lat; if (rp < 0) rp += bdSize;
             bxL[i] = bdL[rp]; bxR[i] = bdR[rp];
-            bypassDelayWrite = (bypassDelayWrite + 1) % bdSize;
+            // Wrap by branch, not %: the index advances by exactly 1 from
+            // within [0, size), so this is integer-identical and avoids a
+            // hardware division per sample (S6b; matches the read wrap above).
+            if (++bypassDelayWrite >= bdSize) bypassDelayWrite = 0;
         }
     }
 
@@ -755,7 +758,10 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         int rp = dryDelayWrite - lat; if (rp < 0) rp += ddSize;
         const float cleanL = ddL[rp], cleanR = ddR[rp];
         const float alignL = adL[rp], alignR = adR[rp];
-        dryDelayWrite = (dryDelayWrite + 1) % ddSize;
+        // Wrap by branch, not % (S6b, see the bypass ring): integer-identical
+        // for an index in [0, size) advancing by 1. dryDelayBuffer and
+        // dryAlignDelayBuffer keep sharing this ONE index, staying in lockstep.
+        if (++dryDelayWrite >= ddSize) dryDelayWrite = 0;
 
         // Level-Match reference (#Issue2): the delay-aligned reconstruction A(dry) --
         // the dry pushed through the SAME crossovers at unit width. It carries the
