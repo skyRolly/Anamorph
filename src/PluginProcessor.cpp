@@ -31,6 +31,7 @@ AnamorphAudioProcessor::AnamorphAudioProcessor()
     // then record exactly ONE undo step for the switch, so a preset change is undoable (ADR-0008).
     presets.onAboutToLoad = [this] { pollUndoCoalesce(); };
     presets.onLoaded      = [this] { commitPresetSwitchUndoStep(); };
+    presets.soundParamGeneration = [this] { return soundParamGen.load (std::memory_order_relaxed); }; // S10
 
     syncCommitted(); // establish the undo baseline
 
@@ -313,6 +314,18 @@ void AnamorphAudioProcessor::parameterGestureChanged (int, bool gestureIsStartin
 
 void AnamorphAudioProcessor::pollUndoCoalesce()
 {
+    // S10: the signature is a pure function of the listened sound parameters,
+    // so an unchanged generation means it is character-identical to the one
+    // built on the previous poll -- and with no gesture commit pending, every
+    // branch below is then provably a no-op (sig == committedSig holds as an
+    // invariant after each full run). Skip the ~36 String formats. Polling
+    // cadence and all coalescing semantics are untouched; the generation is
+    // sampled BEFORE building, so a concurrent change simply rebuilds next tick.
+    const auto gen = soundParamGen.load (std::memory_order_relaxed);
+    if (gen == polledGen && ! pendingGestureCommit)
+        return;
+    polledGen = gen;
+
     const auto sig = soundSignature();
 
     if (openGestures > 0)          // a user gesture is in progress -> never commit mid-gesture

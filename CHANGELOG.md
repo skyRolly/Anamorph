@@ -23,6 +23,11 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   with an engage-vs-audio-edge alignment sweep: byte-equal; reported latency unchanged). Measured:
   drive engaged −19/−38/−73 µs per 512-sample block at OS ×2/×4/×8, ~−6 µs/block across the board
   from the ring wrap, ~−1.6 µs/block with Match off. Evidence: PR #53. [Verified]
+- **Editor idle polling**: the 24 Hz undo-coalescing and preset-dirty polls now rebuild their
+  parameter-signature strings only when a sound parameter actually changed (a generation counter
+  bumped by the existing per-parameter listener); polling cadence, undo coalescing and the
+  dirty-star semantics are unchanged. Measured: 48 signature builds/s (~1 700 String formats/s)
+  while idle → 0. Evidence: PR #53. [Verified]
 - **Scope ring publish batched**: the audio thread now publishes the vectorscope/analyser ring's
   write index once per block (one release-store) instead of once per sample, on the same atomic
   with the same release/acquire contract -- readers see whole blocks atomically and can never
