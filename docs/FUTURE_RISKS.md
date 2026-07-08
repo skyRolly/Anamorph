@@ -3,7 +3,7 @@
 Potential technical risks. Each is evidence-based (constraint C7) — no invented risks. ADRs and
 postmortems may reference these IDs to close the loop. Severity: Low / Medium / High / Critical.
 
-Verified against repository HEAD `c605fbe` (version 0.8.7; JUCE 8.0.14).
+Verified against repository HEAD `c605fbe` (0.8.7 content audit); version-synced to 0.8.8 for the idle-performance PR #54 (JUCE 8.0.14).
 
 | ID | Risk | Severity | Likelihood |
 |---|---|---|---|

@@ -7,6 +7,8 @@ SHA + date** as the Evidence Source (per `docs/policies/CHANGELOG_POLICY.md`). E
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
 ## [Unreleased]
+
+## [0.8.8] — 2026-07-08
 ### Added
 - Documentation library under `docs/`: architecture reference + 12 ADRs, binding policies,
   procedures, and tracking docs (HANDOVER, POSTMORTEMS, KNOWN_ISSUES, FUTURE_RISKS, REPOSITORY_MAP,
@@ -22,7 +24,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   incl. drive automation, all oversampling modes, impulse/delay-alignment, bypass, Match toggling
   with an engage-vs-audio-edge alignment sweep: byte-equal; reported latency unchanged). Measured:
   drive engaged −19/−38/−73 µs per 512-sample block at OS ×2/×4/×8, ~−6 µs/block across the board
-  from the ring wrap, ~−1.6 µs/block with Match off. Evidence: PR #53. [Verified]
+  from the ring wrap, ~−1.6 µs/block with Match off. Evidence: PR #54. [Verified]
 - **Spectrum analyser paint cost**: the analyser's per-paint work is cheaper without changing a
   single pixel -- the inverse frequency-axis mapping (a 30-iteration bisection previously run
   ~3× per pixel column) and the clip-red column→FFT-bin mapping are now served from lookup tables
@@ -30,7 +32,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   instead of reallocated. Every value comes from the exact same math as before, so output is
   bit-identical (verified byte-for-byte across five widths, clip off and clip on). Measured:
   ~9.5 → ~7.5 ms per full analyser paint at 900 px (worst case, clip lit) on the software
-  renderer. Evidence: PR #53. [Verified]
+  renderer. Evidence: PR #54. [Verified]
 - **Micro-animation idle cost**: the per-frame widget poll (hover/press/toggle/knob easing)
   resolves each widget's type once at registration instead of two dynamic_casts per widget per
   frame, replaces ~70 per-widget mouse queries with one editor-level test while the cursor is
@@ -39,19 +41,20 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   slider value / toggle state unchanged -- so host automation and session restores re-arm it the
   same frame). Hover/stuck-hover behaviour and all animation timing unchanged (measured: ~4,300
   widget evaluations/s idle → 0, with instant full-rate resume on cursor entry). Evidence:
-  PR #53. [Verified]
+  PR #54. [Verified]
 - **Editor idle polling**: the 24 Hz undo-coalescing and preset-dirty polls now rebuild their
-  parameter-signature strings only when a sound parameter actually changed (a generation counter
-  bumped by the existing per-parameter listener); polling cadence, undo coalescing and the
+  parameter-signature strings only when a sound parameter actually changed (a relaxed-atomic
+  generation counter, `soundParamGen`, bumped by the existing per-parameter listener and on host
+  state restore so the preset dirty-star stays correct); polling cadence, undo coalescing and the
   dirty-star semantics are unchanged. Measured: 48 signature builds/s (~1 700 String formats/s)
-  while idle → 0. Evidence: PR #53. [Verified]
+  while idle → 0. Evidence: PR #54. [Verified]
 - **Scope ring publish batched**: the audio thread now publishes the vectorscope/analyser ring's
   write index once per block (one release-store) instead of once per sample, on the same atomic
   with the same release/acquire contract -- readers see whole blocks atomically and can never
   observe partially committed frames. Audio output, ring contents and read counters are
   byte-identical (deterministic dump), and a two-thread stress (10⁹-frame scale) shows no
   publication tears in either the old or new design. Measured: ~−2 µs per 512-sample block
-  median across the matrix. Evidence: PR #53. [Verified]
+  median across the matrix. Evidence: PR #54. [Verified]
 - **Velvet decorrelator CPU (2)**: the sparse-FIR tap accumulation is now skipped when its
   contribution is exactly zero -- Amount exactly 0 (the default state) or the presence gate
   exactly closed (silence from start, or after the transport-stop flush) -- outside any stop
@@ -59,7 +62,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   history writes and every envelope/glide keep running, and output is bit-identical (validated
   sample-exact across 12 scenarios / ~5.6 M samples incl. a signed-zero adversarial case).
   Engine cost with Velvet at Amount 0 drops a further ~15-19 µs per 512-sample block at 48 kHz.
-  Evidence: PR #53. [Verified]
+  Evidence: PR #54. [Verified]
 - **Velvet decorrelator CPU**: the per-sample tap re-weighting (64-tap rebuild + square-root
   normalisation) now runs only while the Density glide is actually moving; once the glide reaches
   its float fixpoint the rebuild is skipped on an exact bit-compare (never a threshold -- the
@@ -67,7 +70,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   scenario, moving or settled (validated sample-exact across 9 scenarios / ~3.9 M samples incl.
   fast Density drags, transport stop and the default preset). Engine cost with Velvet selected
   drops ~36-38 µs per 512-sample block at 48 kHz (default idle state −40 %); zipper-free Density
-  behaviour is unchanged. Evidence: PR #53. [Verified]
+  behaviour is unchanged. Evidence: PR #54. [Verified]
 - **Meters idle CPU/GPU** (Balance / Correlation pointers, Levels panel): each meter now repaints
   only when what it draws actually changed, and the default-hidden Levels panel stops its 60 Hz
   timer entirely while hidden (it restarts on Show Meters). The correlation/balance pointers'
@@ -76,7 +79,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   bitwise, so no decay, hold, clip colour or number update can ever be skipped. Ballistics, attack/
   release and all animations are unchanged while values move (measured: full-rate repaints while
   anything moves incl. the whole silence decay; 0 repaints once settled; hidden-meter timer
-  wakeups 60/s → 0). Evidence: PR #53. [Verified]
+  wakeups 60/s → 0). Evidence: PR #54. [Verified]
 - **Spectrum (Multiband) idle CPU/GPU**: the analyser now runs its 8192-point FFT only when the
   analysis window actually changed, and repaints only while something on screen still moves
   (spectrum decay, clip-red fade, animations, drags). Digital silence stops the FFT as soon as
@@ -85,13 +88,13 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   live analysis on the first frame. Analysis maths, FFT size/window, decay rates and rendering
   are unchanged (measured: 60/60 FFTs+paints per second while active, before and after; silence:
   FFT stops after ~11 ticks, paints end once decays land; hidden: 60 FFTs/s → 0).
-  Evidence: PR #53. [Verified]
+  Evidence: PR #54. [Verified]
 - **Vectorscope idle CPU/GPU**: the 60 Hz timer now repaints only while the displayed picture can
   actually change; after the trail fully scrolls out on digital silence (or when the host stops
   processing), the view paints one final frame and goes idle. Rendering while audio flows is
   unchanged (measured: full frame rate active; 0 repaints/s once quiescent; idle-editor CPU
   −40 % on the Linux Standalone under Xvfb). Trail look, decay timing, and persistence behaviour
-  are pixel-identical. Evidence: PR #53. [Verified]
+  are pixel-identical. Evidence: PR #54. [Verified]
 - Upgraded the pinned **JUCE** dependency **8.0.8 → 8.0.14** (`CMakeLists.txt` `ANAMORPH_JUCE_TAG`;
   see ADR-0012). Build/dependency change only — no DSP, signal-chain, parameter, or serialization
   changes; CI re-validates the build + 23 DSP self-tests + pluginval (strictness 10), green on the

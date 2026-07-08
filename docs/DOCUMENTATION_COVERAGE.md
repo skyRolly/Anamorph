@@ -6,7 +6,8 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: against repository HEAD `c605fbe` (version 0.8.7; JUCE 8.0.14).
+Last updated: for the 0.8.8 idle-performance PR (#54) — threading paths (`soundParamGen`) and the
+ScopeBuffer per-block publication model documented; prior full audit at HEAD `c605fbe` (JUCE 8.0.14).
 
 ## Code-module coverage
 

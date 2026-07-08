@@ -17,6 +17,7 @@ Audio · Message/GUI · OpenGL render (macOS/Windows only) · (no worker threads
 | GUI → Audio (meter reset) | `std::atomic<int> resetReq` | `exchange` consumed on the audio thread. |
 | Audio → GUI (scope) | `ScopeBuffer` SPSC ring | Exactly one producer + one reader **thread** (message thread; stateless read sites: Vectorscope, SpectrumImager, read-only `writeCount`); release/acquire on the write index. |
 | Audio → GUI (meters/correlation/match) | published `std::atomic<float>` (relaxed) | Audio writes in `publish()`; GUI reads via getters. |
+| Audio → GUI (sound-param change generation) | `std::atomic<uint32> soundParamGen` (relaxed) | A monotonic staleness hint, **not** payload sync: bumped on any sound-param value change (the per-parameter listener, on whichever thread changes the value) and on host restore; the GUI compares it to skip rebuilding its 24 Hz signature caches. Carries no payload — the values themselves cross via the APVTS atomics above — so relaxed is sufficient (no ordering/publication role). |
 
 ## Forbidden cross-thread access
 
@@ -32,7 +33,12 @@ Audio · Message/GUI · OpenGL render (macOS/Windows only) · (no worker threads
 ## Atomic usage rules
 
 - Published meter/correlation/match values: `memory_order_relaxed` (monotonic display data).
-- Scope ring index: `release` on write, `acquire` on read (the one ordering-critical pair).
+- `soundParamGen`: `memory_order_relaxed` — a generation / staleness counter only. It gates a
+  message-thread cache rebuild and transfers no payload, so it is deliberately **not** an
+  ordering/publication primitive (unlike the scope index below).
+- Scope ring index: `release` on write, `acquire` on read (the one ordering-critical pair). The
+  index is published **once per block** (`pushBlock`), so a reader that acquires it sees a whole
+  committed block — never a partially written one.
 - The OpenGL context is attached only on macOS/Windows; all Linux/BSD rendering is on the
   message thread (`docs/architecture/design-decisions/ADR-0011`).
 

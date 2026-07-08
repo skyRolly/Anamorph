@@ -12,8 +12,8 @@ no benchmark/profiling data exists in the repository, and inventing numbers is p
 | **No locks / mutexes / file IO on the audio thread.** | `REALTIME_SAFETY_AUDIT.md`; no `mutex`/`lock`/IO in `src/dsp/**` audio paths |
 | **`ScopedNoDenormals` is active for the whole block.** | src/PluginProcessor.cpp:66 |
 | **Oversampling only runs when nonlinear work exists** (Drive>0 or Chorus/Dim-D); linear chains skip it → no needless CPU. | src/dsp/AnamorphEngine.cpp:19-23 |
-| **GUI redraw is bounded** (24 Hz editor timer; 60 Hz component timers; per-frame VBlank). | src/PluginEditor.cpp:613; gui/*.cpp |
-| **Scope transfer is O(1) amortised** (lock-free SPSC ring, fixed 16384 capacity, no alloc). | src/dsp/ScopeBuffer.h:55-57 |
+| **GUI redraw is bounded AND idle-gated (0.8.8)**. The timer cadence is unchanged (24 Hz editor timer; 60 Hz component timers; per-frame VBlank), but the *work* inside each tick now runs only while something visible can change: the Vectorscope, Spectrum analyser and meters repaint only on real content change, the analyser's FFT runs only on a changed/non-silent window (and not at all while hidden), the micro-animation poll skips when provably static, and the 24 Hz signature strings rebuild only on a parameter change. Idle GUI cost drops to ~0. | src/gui/Vectorscope.cpp, SpectrumImager.cpp, LevelMeter.cpp, CorrelationMeter.cpp; src/PluginEditor.cpp `stepMicroAnims`; CHANGELOG [0.8.8] |
+| **Scope transfer is O(1) amortised** (lock-free SPSC ring, fixed 16384 capacity, no alloc); the write index is published **once per block** (`pushBlock`, 0.8.8), so readers observe whole committed blocks. | src/dsp/ScopeBuffer.h:28-80 |
 
 ## Known per-sample costs (Verified, qualitative)
 
@@ -22,9 +22,14 @@ no benchmark/profiling data exists in the repository, and inventing numbers is p
   glide (recomputes coefficients in place, no allocation). This is the dominant variable cost
   when crossovers are moving. Evidence [Verified]: src/dsp/MultibandWidth.cpp:113-123;
   MonoMaker.cpp:33-37; SoloMonitor.cpp.
-- **VelvetNoise** runs an O(maxTaps=64) inner loop per sample while active, plus a full-buffer
-  `std::fill` on the transport-stop completion (no alloc). Evidence [Verified]:
-  src/dsp/VelvetNoise.cpp:92,117,129-139.
+- **VelvetNoise** has an O(maxTaps=64) sparse-FIR inner loop per sample, plus a full-buffer
+  `std::fill` on the transport-stop completion (no alloc). As of 0.8.8 the surrounding per-sample
+  work is gated without changing output: the 64-tap weight rebuild + `sqrt` normalisation runs only
+  while the Density glide is actually moving (skipped on an exact bit-compare once settled), and the
+  tap accumulation is skipped when its contribution is provably exactly zero (Amount 0 — the default
+  — or the presence gate fully closed, outside any stop fade). Bit-identical; the history writes and
+  all envelopes/glides still run every sample. Evidence [Verified]: src/dsp/VelvetNoise.cpp
+  (`updateWeights` gate; the tap-loop zero-skip); CHANGELOG [0.8.8].
 
 ## Target sample rates / buffer sizes
 
