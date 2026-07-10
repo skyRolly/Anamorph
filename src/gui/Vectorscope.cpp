@@ -90,24 +90,61 @@ void Vectorscope::drawGrid (juce::Graphics& g, juce::Rectangle<float> area, floa
     g.drawText ("R", (int) (c.x + d), (int) (c.y - d - 14), 16, 14, juce::Justification::centred);
 }
 
-void Vectorscope::paint (juce::Graphics& g)
+// Render the static layer (H2): everything that is a pure function of (size,
+// physical scale, look). The drawing code is IDENTICAL to what paint() ran
+// directly before the cache -- only the destination changed. The image is
+// rendered at the destination's PHYSICAL resolution so the blit in paint() is
+// a 1:1 device-pixel copy of the exact rasterization the direct draw produced.
+void Vectorscope::ensureStaticLayer (juce::Graphics& g, juce::Rectangle<float> area)
 {
-    auto area = getLocalBounds().toFloat();
+    const float scale = g.getInternalContext().getPhysicalPixelScaleFactor();
+    if (! staticLayer.isNull()
+        && staticW == getWidth() && staticH == getHeight()
+        && ! (std::abs (staticScale - scale) > 0.0f)) // exact: same idiom as the S4 gate
+        return;
+
+    staticW = getWidth();
+    staticH = getHeight();
+    staticScale = scale;
+    staticLayer = juce::Image (juce::Image::ARGB,
+                               juce::jmax (1, juce::roundToInt ((float) staticW * scale)),
+                               juce::jmax (1, juce::roundToInt ((float) staticH * scale)),
+                               true);
+    juce::Graphics ig (staticLayer);
+    ig.addTransform (juce::AffineTransform::scale (scale));
 
     // Background: the 0.5.3 look -- a little brighter at the top, clearly dark
     // toward the bottom (down-dark / up-bright), with just a subtle glass edge so
     // it no longer reads grey and washed out (#1).
     juce::ColourGradient bgGrad (colours::bgPanel.brighter (0.03f), area.getCentreX(), area.getY(),
                                  colours::bg, area.getCentreX(), area.getBottom(), false);
-    g.setGradientFill (bgGrad);
-    g.fillRoundedRectangle (area, 8.0f);
-    glass::drawEdges (g, area, 8.0f, 0.9f);
+    ig.setGradientFill (bgGrad);
+    ig.fillRoundedRectangle (area, 8.0f);
+    glass::drawEdges (ig, area, 8.0f, 0.9f);
+
+    const auto plot = area.reduced (18.0f);
+    drawGrid (ig, plot, juce::jmin (plot.getWidth(), plot.getHeight()) * 0.5f);
+}
+
+void Vectorscope::paint (juce::Graphics& g)
+{
+    auto area = getLocalBounds().toFloat();
+
+    // Static layer (H2): blit the cached background/panel/edges/grid/labels
+    // instead of re-rasterizing them at 60 Hz (measured 0.8.8+H1: ~70 % of this
+    // component's paint cost, ~2/3 of the active default-view GUI profile).
+    // The inverse transform makes the total device mapping identity, so the
+    // software renderer performs a straight 1:1 blit -- no resampling.
+    ensureStaticLayer (g, area);
+    {
+        juce::Graphics::ScopedSaveState save (g);
+        g.addTransform (juce::AffineTransform::scale (1.0f / staticScale));
+        g.drawImageAt (staticLayer, 0, 0);
+    }
 
     const auto plot = area.reduced (18.0f);
     const float radius = juce::jmin (plot.getWidth(), plot.getHeight()) * 0.5f;
     const auto centre = plot.getCentre();
-
-    drawGrid (g, plot, radius);
 
     // --- read a decimated window from the lock-free ring buffer ---
     const int wantFrames = windowFrames();

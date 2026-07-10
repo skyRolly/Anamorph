@@ -8,6 +8,17 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 
 ## [Unreleased]
 ### Changed
+- **Vectorscope paint cost (H2)**: the scope's static layer — background gradient, rounded panel,
+  glass edges, grid and axis labels, all a pure function of (size, physical scale, look) — is now
+  rendered once into a cached ARGB image at physical resolution and blitted per frame; only the
+  signal-dependent point cloud and clip ring are rasterized live. The cache rebuilds only on
+  resize, DPI/scale change or a LookAndFeel change; a normal repaint never re-rasterizes it, and
+  the repaint *scheduling* (60 Hz timer + 0.8.8 idle gate) is untouched. Rendering is verified
+  pixel-identical: a 10-scenario before/after snapshot harness (signal, clip ring, silence,
+  resize, continuous-resize storm, 1.25× scale, LookAndFeel refresh, component reopen,
+  persistence change) produced byte-identical images in every case. Measured before the change
+  (0.8.8+H1 profile): `Vectorscope::paint` was 66 % of the active default-view GUI profile, ~70 %
+  of it this static layer. Evidence: this PR. [Verified]
 - **Band Solo monitor settled fast path (H1)**: with nothing soloed, every crossfade gain fully
   settled (`passGain` at exactly 1, all band gains at exactly 0) and no crossover glide pending,
   `SoloMonitor::process` now skips its per-sample work (6 Linkwitz-Riley `processSample` calls +
