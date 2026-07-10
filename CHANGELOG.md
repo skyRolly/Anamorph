@@ -8,6 +8,17 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 
 ## [Unreleased]
 ### Changed
+- **Correlation/Balance meter static-layer cache (H13)**: each `StereoMeter` now renders its
+  glass panel and centre tick once into a cached physical-resolution image (rebuilt only on
+  resize, DPI/UI-scale change or LookAndFeel change) and blits it per frame; the live pointer
+  (glow, gradient core, highlight) and the end labels keep their exact draw order on top.
+  Measured (Wave 1.2 profiling): the panel fill was 14.6 % of the active default-view GUI
+  profile. Validated byte-identical against the uncached renderer across all four
+  orientation/type combos, pointer at centre/extremes (including over the end labels), resize,
+  continuous resize, 1.25× scale, LookAndFeel refresh and reopen — at every integral physical
+  size; at fractional physical sizes (e.g. 125 % DPI on an odd height) the blit takes JUCE's
+  interpolating path (the `setBufferedToImage` behaviour) with sub-perceptual AA-border wobble.
+  Evidence: this PR. [Verified]
 - **Vectorscope paint cost (H2)**: the scope's static layer — background gradient, rounded panel,
   glass edges, grid and axis labels, all a pure function of (size, physical scale, look) — is now
   rendered once into a cached ARGB image at physical resolution and blitted per frame; only the

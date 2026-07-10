@@ -95,6 +95,9 @@ void Vectorscope::drawGrid (juce::Graphics& g, juce::Rectangle<float> area, floa
 // directly before the cache -- only the destination changed. The image is
 // rendered at the destination's PHYSICAL resolution so the blit in paint() is
 // a 1:1 device-pixel copy of the exact rasterization the direct draw produced.
+// (Exactly 1:1 whenever size x scale is integral -- measured byte-identical;
+// at fractional physical sizes the blit takes JUCE's interpolating path and
+// AA border pixels can wobble slightly, the setBufferedToImage behaviour.)
 void Vectorscope::ensureStaticLayer (juce::Graphics& g, juce::Rectangle<float> area)
 {
     const float scale = g.getInternalContext().getPhysicalPixelScaleFactor();

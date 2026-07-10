@@ -58,11 +58,61 @@ void StereoMeter::visibilityChanged()
         stopTimer();
 }
 
+// Render the static layer (H13, the H2 recipe): the glass panel and the centre
+// tick -- everything drawn BENEATH the pointer that is a pure function of
+// (size, physical scale, look). The drawing code is IDENTICAL to what paint()
+// ran directly before the cache; the image is rendered at the destination's
+// PHYSICAL resolution so the blit in paint() is a 1:1 device-pixel copy. The
+// end labels are deliberately NOT here: the original z-order paints them on
+// top of the pointer, so they stay live in paint() to preserve stacking.
+//
+// Exactness: byte-identical whenever size x scale is integral (measured). At
+// FRACTIONAL physical sizes (e.g. 18 px at 125 % DPI = 22.5) the blit takes
+// JUCE's interpolating path, wobbling AA border pixels by <= ~25 % of a
+// channel and interior transitions by <= ~5 % -- the exact behaviour of
+// juce::Component::setBufferedToImage, whose construction this mirrors.
+void StereoMeter::ensureStaticLayer (juce::Graphics& g, juce::Rectangle<float> bounds)
+{
+    const float scale = g.getInternalContext().getPhysicalPixelScaleFactor();
+    if (! staticLayer.isNull()
+        && staticW == getWidth() && staticH == getHeight()
+        && ! (std::abs (staticScale - scale) > 0.0f)) // exact: same idiom as the S4 gate
+        return;
+
+    staticW = getWidth();
+    staticH = getHeight();
+    staticScale = scale;
+    staticLayer = juce::Image (juce::Image::ARGB,
+                               juce::jmax (1, juce::roundToInt ((float) staticW * scale)),
+                               juce::jmax (1, juce::roundToInt ((float) staticH * scale)),
+                               true);
+    juce::Graphics ig (staticLayer);
+    ig.addTransform (juce::AffineTransform::scale (scale));
+
+    glass::fillPanel (ig, bounds, 4.0f, colours::bgPanel, 0.85f); // gentle 0.5.3-style frame (#1)
+
+    const bool horizontal = (orientation == Orientation::Horizontal);
+    auto track = bounds.reduced (4.0f);
+
+    // Centre tick
+    ig.setColour (colours::outline.brighter (0.25f));
+    if (horizontal) ig.drawLine (track.getCentreX(), track.getY(), track.getCentreX(), track.getBottom(), 1.0f);
+    else            ig.drawLine (track.getX(), track.getCentreY(), track.getRight(), track.getCentreY(), 1.0f);
+}
+
 void StereoMeter::paint (juce::Graphics& g)
 {
     auto bounds = getLocalBounds().toFloat();
 
-    glass::fillPanel (g, bounds, 4.0f, colours::bgPanel, 0.85f); // gentle 0.5.3-style frame (#1)
+    // Static layer (H13): blit the cached panel + centre tick instead of
+    // re-rasterizing them at 60 Hz (measured Wave 1.2: glass::fillPanel from
+    // this component = 14.6 % of the active default-view GUI profile).
+    ensureStaticLayer (g, bounds);
+    {
+        juce::Graphics::ScopedSaveState save (g);
+        g.addTransform (juce::AffineTransform::scale (1.0f / staticScale));
+        g.drawImageAt (staticLayer, 0, 0);
+    }
 
     const bool horizontal = (orientation == Orientation::Horizontal);
     auto track = bounds.reduced (4.0f);
@@ -76,11 +126,6 @@ void StereoMeter::paint (juce::Graphics& g)
         col = colours::accent2.interpolatedWith (juce::Colour (0xffd8704a), extremity); // anti-phase warning
     else
         col = colours::accent.interpolatedWith (colours::warn, extremity * 0.85f);
-
-    // Centre tick
-    g.setColour (colours::outline.brighter (0.25f));
-    if (horizontal) g.drawLine (track.getCentreX(), track.getY(), track.getCentreX(), track.getBottom(), 1.0f);
-    else            g.drawLine (track.getX(), track.getCentreY(), track.getRight(), track.getCentreY(), 1.0f);
 
     // Pointer with a layered glow + glass gradient core, matching the panels'
     // refraction/diffraction language (#8).
