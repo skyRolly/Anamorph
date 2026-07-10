@@ -880,8 +880,10 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     // band(s). No effect stage changed its behaviour for solo -- this only filters what
     // is heard. mask == 0 -> the monitor settles to passGain 1 == BIT-EXACT true output.
     //
-    // It MUST run EVERY block: the monitor is click-free only because its passGain/bandGain
-    // crossfade advances each block (SoloMonitor's design invariant). Hard-gating the call
+    // It MUST be CALLED every block: the monitor is click-free only because its passGain/
+    // bandGain crossfade advances on every block in which any gain is unsettled (SoloMonitor's
+    // design invariant -- its internal H1 fast path may skip work ONLY in the fully-settled
+    // passthrough state, where the output is provably the input). Hard-gating the CALL
     // on the instantaneous p.mbEnable -- which flips with NO duck on the continuous path --
     // bypassed that crossfade and inserted/removed the whole band-pass in a single sample
     // whenever Multiband Enable was toggled with a band soloed (an amplitude + phase step =

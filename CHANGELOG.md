@@ -7,6 +7,21 @@ SHA + date** as the Evidence Source (per `docs/policies/CHANGELOG_POLICY.md`). E
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
 ## [Unreleased]
+### Changed
+- **Band Solo monitor settled fast path (H1)**: with nothing soloed, every crossfade gain fully
+  settled (`passGain` at exactly 1, all band gains at exactly 0) and no crossover glide pending,
+  `SoloMonitor::process` now skips its per-sample work (6 Linkwitz-Riley `processSample` calls +
+  5 smoother ticks per sample) — the settled output is provably the input — and the filter bank
+  goes cold. Re-entry (solo engage) resets the filters and snaps the cutoff glide while every
+  band gain is still ~0, so the charge-up is masked by the existing ~12 ms crossfade; engaging,
+  changing and clearing solo stay click-free (measured: identical max sample-to-sample step at
+  every boundary, steady-state solo output converges to 0 difference). Parked output is
+  bit-identical except the sign of exact zeros (a `-0.0` input is now passed through instead of
+  being rewritten to `+0.0` by the settled `1·x + 0·band` arithmetic; 6,723 signed-zero flips and
+  0 numeric differences across a 22.5 M-sample 15-scenario full-engine dump). Measured on the
+  profiling reference (Xeon 2.1 GHz, 48 kHz/512): transparent engine floor 42.0 → 25.4 µs/block
+  (−39 %), active default 45.4 → 30.4 µs/block (−33 %); every no-solo scenario drops ~15-20 µs.
+  Evidence: this PR. [Verified]
 
 ## [0.8.8] — 2026-07-08
 ### Added

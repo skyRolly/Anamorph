@@ -22,6 +22,12 @@ no benchmark/profiling data exists in the repository, and inventing numbers is p
   glide (recomputes coefficients in place, no allocation). This is the dominant variable cost
   when crossovers are moving. Evidence [Verified]: src/dsp/MultibandWidth.cpp:113-123;
   MonoMaker.cpp:33-37; SoloMonitor.cpp.
+- **SoloMonitor runs only while it can be heard (0.8.9 / H1).** With nothing soloed and every
+  crossfade gain fully settled, the monitor's per-sample work (6 LR4 `processSample` + 5 smoother
+  ticks) is skipped entirely — previously ~half of the transparent engine floor (callgrind 0.8.8:
+  ~49 % of instructions in the default state). The bank goes cold and is reset + snapped on
+  re-engage under the ~12 ms crossfade (the engine's `mbRunning` warm/cold pattern). Evidence
+  [Verified]: src/dsp/SoloMonitor.cpp (settled fast path); CHANGELOG [Unreleased].
 - **VelvetNoise** has an O(maxTaps=64) sparse-FIR inner loop per sample, plus a full-buffer
   `std::fill` on the transport-stop completion (no alloc). As of 0.8.8 the surrounding per-sample
   work is gated without changing output: the 64-tap weight rebuild + `sqrt` normalisation runs only

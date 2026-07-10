@@ -19,13 +19,22 @@ namespace anamorph
 //  final output. The cutoffs glide per sample (like the Multiband / Mono Maker) so
 //  dragging a split while soloing can't chirp.
 //
-//  Click-free by construction (0.8.1): the crossover filters run EVERY block (kept
-//  warm even when nothing is soloed) and the output is a per-band SMOOTHED crossfade
-//  between the true passthrough and the soloed band-sum. Engaging, clearing or
-//  changing the solo set is therefore a short morph, never a hard switch -- so it
-//  needs no output duck and can't tick on a transport edge, into silence, or on a
-//  zero/restarted buffer (no stale-filter charge-up, no revealed tail). When nothing
-//  is soloed the passthrough gain settles to exactly 1 -> bit-exact true output.
+//  Click-free by construction (0.8.1): the crossover filters run every block that
+//  can be heard and the output is a per-band SMOOTHED crossfade between the true
+//  passthrough and the soloed band-sum. Engaging, clearing or changing the solo set
+//  is therefore a short morph, never a hard switch -- so it needs no output duck and
+//  can't tick on a transport edge, into silence, or on a zero/restarted buffer (no
+//  stale-filter charge-up, no revealed tail). When nothing is soloed the passthrough
+//  gain settles to exactly 1 -> bit-exact true output.
+//
+//  Settled fast path (0.8.9 / H1): once nothing is soloed AND every gain smoother
+//  has fully settled (passGain == 1, all bandGains == 0) AND no crossover glide is
+//  pending, process() is a provable passthrough (out = 1*in + 0*bands), so the
+//  filter/smoother work is skipped and the bank goes cold. Re-entry resets the
+//  filters and snaps the cutoff glide while the band gains are still ~0, so the
+//  charge-up is masked by the same ~12 ms crossfade that always covered an engage
+//  (the engine's mbRunning warm/cold pattern). The crossfade still advances on
+//  every block in which ANY gain is unsettled -- the click-free invariant holds.
 // ============================================================================
 class SoloMonitor
 {
@@ -47,6 +56,7 @@ private:
     float  targetF[3]  { 180.0f, 800.0f, 3000.0f };
     float  currentF[3] { 180.0f, 800.0f, 3000.0f };
     int    bands = 4;
+    bool   running = true; // false = settled-passthrough fast path active, filters cold (H1)
 
     // Click-free monitor crossfade: passGain blends in the true output (1 when nothing
     // is soloed), each bandGain blends in that band's sum (1 only while soloed). All
