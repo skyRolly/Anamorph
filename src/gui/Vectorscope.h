@@ -56,12 +56,13 @@ private:
 
     std::vector<float> bufL, bufR; // scratch read from the ring buffer
 
-    // Cached static layer (H2): background gradient + rounded panel + glass edges
-    // + grid + axis labels -- everything that is a pure function of (size,
-    // physical scale, look) -- rendered ONCE into an ARGB image at physical
-    // resolution and blitted 1:1 by paint(). Rebuilt only when size, scale or
-    // look changes; a normal repaint never re-rasterizes it. Signal-dependent
-    // drawing (point cloud, clip ring) is never cached.
+    // Cached static layer (H2, opaque since N2): background gradient + rounded
+    // panel + glass edges + grid + axis labels -- everything that is a pure
+    // function of (size, physical scale, look) -- rendered ONCE into an opaque
+    // RGB image at physical resolution (corners pre-filled with the editor's
+    // flat colours::bg backdrop) and copy-blitted 1:1 by paint(). Rebuilt only
+    // when size, scale or look changes; a normal repaint never re-rasterizes
+    // it. Signal-dependent drawing (point cloud, clip ring) is never cached.
     juce::Image staticLayer;
     int   staticW = 0, staticH = 0;
     float staticScale = 0.0f;
