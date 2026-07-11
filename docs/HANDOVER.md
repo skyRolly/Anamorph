@@ -10,9 +10,9 @@ Snapshot taken at HEAD `c605fbe` (state-restoration + CI-gate hardening; JUCE 8.
 
 | Field | Value |
 |---|---|
-| **Current Version** | 0.8.8 (`CMakeLists.txt:14`; version bumped for the idle-performance PR #54). |
+| **Current Version** | 0.8.9 (`CMakeLists.txt:14`; version bumped for the functional/UX-fix PR #56, which ships the Wave-1 performance work merged in PR #55). |
 | **Branch Strategy** | Feature branch `claude/beautiful-sagan-JAUFI` → PRs into `main`. CI builds every branch; `main` carries shipped versions. (No git tags — see RISK-003.) |
-| **Build Status** | Green at v0.8.8 (idle-performance PR #54; CI green). Earlier: the **JUCE dependency was bumped 8.0.8 → 8.0.14** (`41acaa7`, ADR-0012) and **verified green by CI** — build + DSP self-tests + `pluginval PASSED at strictness 10` on the Linux gate (the local sandbox cannot fetch JUCE under the egress policy). The 0.8.8 idle-performance work is behaviour-preserving (bit-/pixel-identical outputs; DSP self-tests still green). Build = CMake + JUCE 8.0.14, VST3 [+AU macOS] [+Standalone]. |
+| **Build Status** | Green at v0.8.9 (Wave-1 performance PR #55 + functional/UX PR #56; local build + 71-check DSP self-tests green; pluginval runs on the CI Linux gate — the local sandbox cannot fetch the pluginval release under the egress policy, the same constraint recorded for the JUCE bump). Earlier: the **JUCE dependency was bumped 8.0.8 → 8.0.14** (`41acaa7`, ADR-0012) and **verified green by CI** — build + DSP self-tests + `pluginval PASSED at strictness 10` on the Linux gate. The 0.8.8/0.8.9 performance work is behaviour-preserving (bit-/pixel-identical outputs; DSP self-tests still green). Build = CMake + JUCE 8.0.14, VST3 [+AU macOS] [+Standalone]. |
 | **Test Status** | 23 DSP self-tests **+ an A/B state-restoration clamp guard**, and pluginval strictness 10 on the Linux gate in **both modes** (deterministic + `--randomise` ×3, blocking). The JUCE 8.0.14 bump was green on CI (`41acaa7`); the randomise gate + clamp guard were added afterwards. `docs/procedures/TESTING.md`. |
 | **Release Status** | Pre-1.0 (0.8.x line). Distribution = CI artifacts (Linux/Windows/macOS); macOS ad-hoc signed, **not notarized** (KI-002). No formal release tags. |
 | **Known Blockers** | None blocking a build/ship. Open items are KI-001…KI-005 (`KNOWN_ISSUES.md`) — none release-blocking. |

@@ -6,7 +6,37 @@ SHA + date** as the Evidence Source (per `docs/policies/CHANGELOG_POLICY.md`). E
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
-## [Unreleased]
+## [0.8.9] — 2026-07-11
+### Added
+- **Alt/Option-click on a Band Solo button acts on every band at once**: alt-clicking a soloed
+  band's headphone icon clears the whole solo mask; alt-clicking an unsoloed band's icon solos
+  all active bands. A plain click still latches just that band, and the press-and-hold momentary
+  audition / hold-drag band move are unchanged. Implemented as one write of the existing `mbSolo`
+  mask parameter under the usual change gesture, so host automation records one move, undo/redo
+  treats it as one step, and preset recall (which clears the live solo) is unaffected. Validated
+  headless across 1/2/3/4-band layouts × soloed/unsoloed/mixed masks, host-automation interplay,
+  undo/redo and preset load (18/18 assertions). Evidence: PR #56. [Verified]
+### Fixed
+- **Toggling Advanced mode no longer flashes a torn frame** (most controls appearing to jump or
+  shake for one frame). Both toggle paths resized the window before updating the mode's control
+  visibility; `setSize` notifies the host synchronously mid-handler, so a host that paints inside
+  that callback rendered the new layout with the old mode's visible-control set (entering
+  Advanced: grown window with empty Multiband/Input/Output tiers; leaving: Advanced controls
+  stacked over the Simple layout). The calls now run visibility-first (the order the constructor
+  always used); the tree is mode-consistent at every instant a host can observe it, with no added
+  layout work and no change to the resize/DPI/reopen paths. Reproduced and verified fixed under a
+  host-wrapper shim that paints at the `childBoundsChanged` instant (all three toggle paths);
+  post-toggle layout proven motionless across 30/30 sampled frames. Evidence: PR #56. [Verified]
+- **The Save Preset name field reliably receives typing — Space included — instead of the host**
+  (Space previously triggered host transport). The focus grab ran synchronously from inside the
+  preset-menu callback, while the menu's desktop window still owned the OS focus; JUCE abandons a
+  focus move when the peer is unfocused, so the grab was a silent no-op on hosts whose window
+  keeps focus, and every keystroke fell through to the host. The grab is now verified and
+  re-tried across the next message-loop passes (SafePointer-guarded, stops when the overlay
+  closes), by which time the menu window is gone and the peer can genuinely take OS focus. While
+  the field edits, it consumes its keys (Space inserts a space); with the overlay closed,
+  key routing to the host is exactly as before. Validated headless end-to-end through the real
+  preset menu with keys dispatched through the peer. Evidence: PR #56. [Verified]
 ### Changed
 - **Final Wave-1 DSP micro-optimisations (H9 + H10 + H12, one bundle)**: (H9) two per-block
   buffer copies that were byte-identical dead weight are gone — the silence-edge scan now reads
@@ -25,7 +55,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   and 4× oversampled rates, all eight conditioning routings, and bypass toggles under OS
   latency; reported latency unchanged. Expected effect (from the Wave-1.4 measurements):
   ~−7-10 % of the transparent floor (conditioning ~5 %, dead copies ~3-5 %) and the parked
-  chorus/Dim-D rows drop ~8-14 µs/block to just above the floor. Evidence: this PR. [Verified]
+  chorus/Dim-D rows drop ~8-14 µs/block to just above the floor. Evidence: PR #55. [Verified]
 - **Branchless level-meter envelopes (H8)**: the per-sample rise-or-fall coefficient picks and
   the peak attack-or-decay picks in `StereoLevel::process` (and the NaN/Inf input clamp) now go
   through a branchless bit-select instead of data-dependent ternaries. Those branches flipped
@@ -38,7 +68,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   22.5 M-sample full-engine dump are both byte-equal to the pre-change build. Measured wall
   (interleaved): active default −10.3 % (42.2 → 37.9 µs/block), other active rows −2…−7 %;
   the all-silence row pays ~+1.5 µs (perfectly-predicted branches were free; the mask ops are
-  not) — a disclosed trade in favour of the active case. Evidence: this PR. [Verified]
+  not) — a disclosed trade in favour of the active case. Evidence: PR #55. [Verified]
 - **Spectrum analyser bottom-layer cache (H17)**: the analyser's glass panel, band tints and
   frequency-grid verticals — everything painted below the live spectrum — are now rendered once
   into a cached physical-resolution image and composited per frame instead of being re-rasterized
@@ -69,7 +99,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   pointer at extremes): every difference bounded at ±1 channel LSB (±2 at fractional DPI scales),
   confined to the rounded-corner anti-aliasing arcs (one compositing-quantization step moved from
   blit time to cache-build time). The corner pre-fill couples these components to the editor's
-  flat `colours::bg` backdrop — documented at both call sites. Evidence: this PR. [Verified]
+  flat `colours::bg` backdrop — documented at both call sites. Evidence: PR #55. [Verified]
 - **Correlation/Balance meter static-layer cache (H13)**: each `StereoMeter` now renders its
   glass panel and centre tick once into a cached physical-resolution image (rebuilt only on
   resize, DPI/UI-scale change or LookAndFeel change) and blits it per frame; the live pointer
@@ -80,7 +110,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   continuous resize, 1.25× scale, LookAndFeel refresh and reopen — at every integral physical
   size; at fractional physical sizes (e.g. 125 % DPI on an odd height) the blit takes JUCE's
   interpolating path (the `setBufferedToImage` behaviour) with sub-perceptual AA-border wobble.
-  Evidence: this PR. [Verified]
+  Evidence: PR #55. [Verified]
 - **Vectorscope paint cost (H2)**: the scope's static layer — background gradient, rounded panel,
   glass edges, grid and axis labels, all a pure function of (size, physical scale, look) — is now
   rendered once into a cached ARGB image at physical resolution and blitted per frame; only the
@@ -91,7 +121,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   resize, continuous-resize storm, 1.25× scale, LookAndFeel refresh, component reopen,
   persistence change) produced byte-identical images in every case. Measured before the change
   (0.8.8+H1 profile): `Vectorscope::paint` was 66 % of the active default-view GUI profile, ~70 %
-  of it this static layer. Evidence: this PR. [Verified]
+  of it this static layer. Evidence: PR #55. [Verified]
 - **Band Solo monitor settled fast path (H1)**: with nothing soloed, every crossfade gain fully
   settled (`passGain` at exactly 1, all band gains at exactly 0) and no crossover glide pending,
   `SoloMonitor::process` now skips its per-sample work (6 Linkwitz-Riley `processSample` calls +
@@ -105,7 +135,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   0 numeric differences across a 22.5 M-sample 15-scenario full-engine dump). Measured on the
   profiling reference (Xeon 2.1 GHz, 48 kHz/512): transparent engine floor 42.0 → 25.4 µs/block
   (−39 %), active default 45.4 → 30.4 µs/block (−33 %); every no-solo scenario drops ~15-20 µs.
-  Evidence: this PR. [Verified]
+  Evidence: PR #55. [Verified]
 
 ## [0.8.8] — 2026-07-08
 ### Added
