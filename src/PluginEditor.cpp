@@ -350,7 +350,12 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     metersToggle.onClick = [this] { metersOn = metersToggle.getToggleState(); }; // visibility via layoutScopeArea (#2)
 
     setupToggle (advancedToggle, pid::advancedMode, "Adv", "Advanced mode"); // #17
-    advancedToggle.onClick = [this] { advanced = advancedToggle.getToggleState(); applyUiScale(); updateModeVisibility(); };
+    // Visibility BEFORE the resize (matching the constructor's order): setSize
+    // notifies the host synchronously (childBoundsChanged -> resizeView), and a
+    // host that paints inside that call must see a mode-consistent tree. The old
+    // resize-first order exposed one torn frame per toggle: the new layout with
+    // the OLD mode's visible-control set (the "controls jump/shake" glitch).
+    advancedToggle.onClick = [this] { advanced = advancedToggle.getToggleState(); updateModeVisibility(); applyUiScale(); };
 
     setupToggle (bypassToggle, pid::bypass, "Bypass", {});
     bypassToggle.setComponentID ("bypass");
@@ -928,8 +933,8 @@ void AnamorphAudioProcessorEditor::timerCallback()
     if (advancedToggle.getToggleState() != advanced)
     {
         advanced = advancedToggle.getToggleState();
-        applyUiScale();              // resize for / against the Multiband bar (#2)
-        updateModeVisibility();
+        updateModeVisibility();      // visibility first -- see advancedToggle.onClick
+        applyUiScale();              // then resize for / against the Multiband bar (#2)
     }
     if (metersToggle.getToggleState() != metersOn)
         metersOn = metersToggle.getToggleState(); // layoutScopeArea owns visibility (#2)
