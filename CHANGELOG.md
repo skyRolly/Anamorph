@@ -8,6 +8,24 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 
 ## [Unreleased]
 ### Changed
+- **Final Wave-1 DSP micro-optimisations (H9 + H10 + H12, one bundle)**: (H9) two per-block
+  buffer copies that were byte-identical dead weight are gone — the silence-edge scan now reads
+  the dry/Mix buffer it always duplicated (`inputScratch` removed), the loudness matcher is fed
+  the live output pointers it always copied (`wetScratch` removed) — and the bypass ring's
+  delay-aligned read-back is skipped while the Bypass crossfade is settled off (the ring writes
+  always continue, so a later engage still reads valid history). (H10) input conditioning
+  returns before its per-sample loop when the routing is at the default identity and the
+  balance/polarity smoothers are fully settled at exactly 0 / +1 — every sample would compute
+  `x·1·1`, and a settled smoother tick is mutation-free, so the skip is state-identical. (H12)
+  Chorus and Dimension-D skip their LFO sines and 2/4 interpolated delay reads per sample while
+  the wet glide sits at exactly 0 (it flushes to true zero under the block's FTZ) — the delay
+  writes, write indices, iterated phase accumulation and depth glide all still advance, so a
+  re-engage is bit-identical (the VelvetNoise S5 pattern). Output proven byte-identical on a
+  114 MB, 25-scenario full-engine dump including chorus/Dim-D idle→engage→idle cycles at base
+  and 4× oversampled rates, all eight conditioning routings, and bypass toggles under OS
+  latency; reported latency unchanged. Expected effect (from the Wave-1.4 measurements):
+  ~−7-10 % of the transparent floor (conditioning ~5 %, dead copies ~3-5 %) and the parked
+  chorus/Dim-D rows drop ~8-14 µs/block to just above the floor. Evidence: this PR. [Verified]
 - **Branchless level-meter envelopes (H8)**: the per-sample rise-or-fall coefficient picks and
   the peak attack-or-decay picks in `StereoLevel::process` (and the NaN/Inf input clamp) now go
   through a branchless bit-select instead of data-dependent ternaries. Those branches flipped

@@ -104,8 +104,6 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
     mbRunning = p.mbEnable; // prepare() just reset the bank, so it is clean + warm if on
 
     dryScratch.setSize (2, maxBlock);
-    wetScratch.setSize (2, maxBlock);
-    inputScratch.setSize (2, maxBlock);
     loudnessRefScratch.setSize (2, maxBlock);
 
     updateDerived();
@@ -391,6 +389,20 @@ void AnamorphEngine::updateDerived()
 // ---------------------------------------------------------------------------
 void AnamorphEngine::applyInputConditioning (float* L, float* R, int n) noexcept
 {
+    // Settled identity fast path (H10, 0.8.9): in the default routing (Stereo,
+    // no swap, no M/S, no mono-sum) with the balance smoother settled at
+    // exactly 0 (-> gL = gR = 1) and both polarity smoothers settled at
+    // exactly +1, every sample computes l = L[i] * 1 * 1 -- a bitwise
+    // identity -- and a settled SmoothedValue::getNextValue() is
+    // mutation-free, so skipping the loop is state-identical. Exact
+    // compares, no epsilon (the S4 idiom); any smoothing or non-default
+    // routing keeps the exact per-sample path.
+    if (p.channelMode == ChannelMode::Stereo && ! p.swapLR && ! p.msMode && ! p.monoSum
+        && ! balanceSmooth.isSmoothing() && ! (std::abs (balanceSmooth.getCurrentValue()) > 0.0f)
+        && ! polLSmooth.isSmoothing() && ! (std::abs (polLSmooth.getCurrentValue() - 1.0f) > 0.0f)
+        && ! polRSmooth.isSmoothing() && ! (std::abs (polRSmooth.getCurrentValue() - 1.0f) > 0.0f))
+        return;
+
     for (int i = 0; i < n; ++i)
     {
         float l = L[i], r = R[i];
@@ -614,18 +626,42 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         float* bdL = bypassDelayBuffer.getWritePointer (0);
         float* bdR = bypassDelayBuffer.getWritePointer (1);
         const int bdSize = bypassDelayBuffer.getNumSamples();
+        // H9 (0.8.9): the delay-aligned read-back feeds ONLY the Bypass
+        // crossfade at the end of the chain, and that crossfade runs under
+        // exactly this condition (see its gate below) -- so with Bypass fully
+        // off and settled (the normal state) nothing ever reads
+        // bypassDryScratch this block. The ring WRITES always happen (history
+        // must stay warm so a later Bypass engage reads valid delay-aligned
+        // input); only the dead read-back is skipped. The condition cannot
+        // change between here and the crossfade: the target is set once per
+        // block in setParameters, and isSmoothing() only advances inside the
+        // crossfade's own getNextValue calls.
+        const bool bypassAudible = bypassBlend.isSmoothing()
+                                || bypassBlend.getTargetValue() > 0.0f;
         float* bxL = bypassDryScratch.getWritePointer (0);
         float* bxR = bypassDryScratch.getWritePointer (1);
-        for (int i = 0; i < n; ++i)
+        if (bypassAudible)
         {
-            bdL[bypassDelayWrite] = L[i];
-            bdR[bypassDelayWrite] = R[i];
-            int rp = bypassDelayWrite - lat; if (rp < 0) rp += bdSize;
-            bxL[i] = bdL[rp]; bxR[i] = bdR[rp];
-            // Wrap by branch, not %: the index advances by exactly 1 from
-            // within [0, size), so this is integer-identical and avoids a
-            // hardware division per sample (S6b; matches the read wrap above).
-            if (++bypassDelayWrite >= bdSize) bypassDelayWrite = 0;
+            for (int i = 0; i < n; ++i)
+            {
+                bdL[bypassDelayWrite] = L[i];
+                bdR[bypassDelayWrite] = R[i];
+                int rp = bypassDelayWrite - lat; if (rp < 0) rp += bdSize;
+                bxL[i] = bdL[rp]; bxR[i] = bdR[rp];
+                // Wrap by branch, not %: the index advances by exactly 1 from
+                // within [0, size), so this is integer-identical and avoids a
+                // hardware division per sample (S6b; matches the read wrap above).
+                if (++bypassDelayWrite >= bdSize) bypassDelayWrite = 0;
+            }
+        }
+        else
+        {
+            for (int i = 0; i < n; ++i)
+            {
+                bdL[bypassDelayWrite] = L[i];
+                bdR[bypassDelayWrite] = R[i];
+                if (++bypassDelayWrite >= bdSize) bypassDelayWrite = 0;
+            }
         }
     }
 
@@ -640,14 +676,12 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     else if (p.solo == SoloMode::Side)
         for (int i = 0; i < n; ++i) { const float s = (L[i] - R[i]) * 0.5f; L[i] = s; R[i] = -s; }
 
-    // Capture the full conditioned INPUT as the loudness-match reference (#25):
-    // Level Match compares the FINAL recombined output against this.
-    inputScratch.copyFrom (0, 0, L, n);
-    inputScratch.copyFrom (1, 0, R, n);
-
-    // DRY for the dry/wet Mix = the full conditioned input (same content as the
-    // Level-Match reference). Mono Maker now runs POST-Mix, so nothing is peeled off
-    // here; the widener and Multiband see the whole signal.
+    // DRY for the dry/wet Mix = the full conditioned input. Mono Maker now runs
+    // POST-Mix, so nothing is peeled off here; the widener and Multiband see the
+    // whole signal. This same buffer doubles as the silence-edge scan's view of
+    // the conditioned input (#25): it is written once here and only READ
+    // afterwards (the Mix loop and the scan), so the former separate
+    // inputScratch copy was byte-identical dead weight (H9, 0.8.9).
     dryScratch.copyFrom (0, 0, L, n);
     dryScratch.copyFrom (1, 0, R, n);
 
@@ -795,8 +829,9 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     // ======================== OUTPUT STAGE ==================================
     // Level Match measures the post-Mono-Maker signal (the real processed output)
     // against the conditioned input, BEFORE Output gain / balance (feedback #25).
-    wetScratch.copyFrom (0, 0, L, n);
-    wetScratch.copyFrom (1, 0, R, n);
+    // L/R are passed to the matcher directly: nothing modifies them between here
+    // and the loudness call, so the former wetScratch copy-then-read-once was
+    // byte-identical dead weight (H9, 0.8.9).
     // Feed the predict BOTH big-gain controls so it pre-ducks the instant Drive OR Mix
     // is raised (Drive maxed + Mix 0 -> no boost; Mix to 100% -> pre-duck) (#14/#19).
     loudness.setDriveDb (p.driveDb);
@@ -806,7 +841,7 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     // unit width with Multiband on (Issue 2). Falls back to the delay-aligned input when
     // Multiband is off.
     loudness.process (loudnessRefScratch.getReadPointer (0), loudnessRefScratch.getReadPointer (1),
-                      wetScratch.getReadPointer (0), wetScratch.getReadPointer (1), n);
+                      L, R, n);
     const float matchTarget = p.autoGainMatch
         ? juce::Decibels::decibelsToGain (loudness.getMatchGainDb()) : 1.0f;
     matchGainSmooth.setTargetValue (matchTarget);
@@ -837,8 +872,8 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     {
         double inSq = 0.0;
         {
-            const float* il = inputScratch.getReadPointer (0);
-            const float* ir = inputScratch.getReadPointer (1);
+            const float* il = dryScratch.getReadPointer (0); // == the conditioned input (H9)
+            const float* ir = dryScratch.getReadPointer (1);
             for (int i = 0; i < n; ++i) inSq += (double) il[i] * il[i] + (double) ir[i] * ir[i];
         }
         const bool inSilentNow = inSq < 1.0e-6 * (double) juce::jmax (1, n); // ~ -60 dBFS mean-square
