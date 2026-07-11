@@ -82,6 +82,7 @@ private:
     void refreshPresetDisplay();         // preset name + dirty mark (F2)
     void showPresetMenu();
     void showSavePreset (bool);
+    void focusSaveNameField (int attemptsLeft); // deferred, verified grab (Space-vs-host fix)
     void showLoadPreset();               // OS file chooser (#3)
     void setupRotary (juce::Slider&, juce::Label&, const juce::String& name, const juce::String& tip);
     void attachSlider (juce::Slider&, const char* id);

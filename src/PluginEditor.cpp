@@ -1355,8 +1355,29 @@ void AnamorphAudioProcessorEditor::showSavePreset (bool show)
         savePresetBackdrop.toFront (false);
         resized();
         saveNameEditor.setText (processor.getPresets().currentName(), false);
-        saveNameEditor.grabKeyboardFocus();
+        focusSaveNameField (4);
     }
+}
+
+// Focus the save-name field so typing (Space included) goes into the text and not
+// to the host. A plain grabKeyboardFocus() here silently did NOTHING when invoked
+// from the preset-menu callback: the menu's own desktop window still owns the OS
+// focus at that moment (its teardown + focus restoration run AFTER the user
+// callback -- juce_PopupMenu.cpp, PopupMenuCompletionCallback), and JUCE aborts
+// the whole internal focus move while the peer isn't focused (juce_Component.cpp,
+// takeKeyboardFocus: "if (! peer->isFocused()) return"). With no JUCE component
+// focused, every keystroke stays with the host, which reads Space as transport.
+// So: try now (covers the standalone / already-focused case), then re-try on later
+// message-loop passes until the grab actually STICKS -- by then the menu window is
+// gone and peer->grabFocus() can take the OS focus for real.
+void AnamorphAudioProcessorEditor::focusSaveNameField (int attemptsLeft)
+{
+    if (! savePresetBackdrop.isVisible()) return; // dismissed meanwhile -- stop retrying
+    saveNameEditor.grabKeyboardFocus();
+    if (attemptsLeft > 0 && ! saveNameEditor.hasKeyboardFocus (true))
+        juce::Timer::callAfterDelay (50,
+            [safe = juce::Component::SafePointer<AnamorphAudioProcessorEditor> (this), attemptsLeft]
+            { if (safe != nullptr) safe->focusSaveNameField (attemptsLeft - 1); });
 }
 
 // ----------------------------------------------------------------------------
