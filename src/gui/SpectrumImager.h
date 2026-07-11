@@ -26,6 +26,10 @@ public:
 
     void paint (juce::Graphics&) override;
 
+    // The cached bottom layer bakes look-dependent drawing, so any look change
+    // must drop it; the next paint() rebuilds at the current size/scale (H17).
+    void lookAndFeelChanged() override { bottomLayer = {}; blW = 0; }
+
     void mouseMove      (const juce::MouseEvent&) override;
     void mouseExit      (const juce::MouseEvent&) override;
     void mouseDown      (const juce::MouseEvent&) override;
@@ -167,6 +171,28 @@ private:
     std::vector<int>   redColBin;       // clip mapping: [xi] = FFT bin drawn at column xi
     double redBinSR = 0.0;              // sample rate redColBin was built for
     std::vector<float> clipBlurScratch; // reused triangular-blur buffer (was a per-paint vector)
+
+    // Cached bottom layer (H17, the H2 recipe): the glass panel + band tints +
+    // frequency-grid verticals -- everything painted BELOW the spectrum. Unlike
+    // the scope/meter caches this layer is keyed on eased-but-snapping inputs
+    // (panel hover wash, drawn splits/widths, width-hover washes, solo mask)
+    // as well as size/scale/look: every one of those eases converges EXACTLY
+    // onto its target (the 0.004 ease snap / the sub-pixel drawnF-drawnW snap),
+    // so the key settles and steady-state paints are pure blits with ZERO
+    // rebuilds; while something animates it rebuilds per frame, which costs
+    // what the direct drawing always cost. Kept ARGB/translucent: the imager
+    // sits on the editor's semi-transparent Multiband panel (NOT flat bg), so
+    // opacity would need fragile parent replication -- proven unsafe, N2 does
+    // not apply here. The image buffer is reused across same-size rebuilds.
+    void ensureBottomLayer (juce::Graphics& g, juce::Rectangle<float> r);
+    juce::Image bottomLayer;
+    int    blW = 0, blH = 0;            // component size the layer was built at
+    float  blScale = 0.0f;              // physical pixel scale it was built at
+    float  blHover = -1.0f;             // panelHoverA baked into the panel colour
+    int    blBands = -1, blMask = -1;   // band count + effective solo mask
+    float  blF[3] { -1, -1, -1 };       // drawnF baked into tint edges / grid
+    float  blDW[4] { -1, -1, -1, -1 };  // drawnW baked into tint colour/alpha
+    float  blWA[4] { -1, -1, -1, -1 };  // widthA hover washes baked into tints
 
     // S2 idle gate state (message thread only -- see timerCallback/pushFFT).
     // Same freshness pattern as the Vectorscope's S1 gate, with the fixed

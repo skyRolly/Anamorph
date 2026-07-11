@@ -28,6 +28,10 @@ public:
 
     void paint (juce::Graphics&) override;
 
+    // The cached static layer bakes look-dependent drawing, so any look change
+    // must drop it; the next paint() rebuilds at the current size/scale (H2).
+    void lookAndFeelChanged() override { staticLayer = {}; }
+
     // 0..1: longer trails + slower fade.
     void setPersistence (float p) noexcept
     {
@@ -38,6 +42,7 @@ public:
 private:
     void timerCallback() override;
     void drawGrid (juce::Graphics&, juce::Rectangle<float> area, float radius);
+    void ensureStaticLayer (juce::Graphics&, juce::Rectangle<float> area);
 
     // Frames the current persistence makes visible. Shared by paint() and the
     // timer's idle gate so the two can never disagree about the window.
@@ -50,6 +55,17 @@ private:
     float persistence = 0.6f;
 
     std::vector<float> bufL, bufR; // scratch read from the ring buffer
+
+    // Cached static layer (H2, opaque since N2): background gradient + rounded
+    // panel + glass edges + grid + axis labels -- everything that is a pure
+    // function of (size, physical scale, look) -- rendered ONCE into an opaque
+    // RGB image at physical resolution (corners pre-filled with the editor's
+    // flat colours::bg backdrop) and copy-blitted 1:1 by paint(). Rebuilt only
+    // when size, scale or look changes; a normal repaint never re-rasterizes
+    // it. Signal-dependent drawing (point cloud, clip ring) is never cached.
+    juce::Image staticLayer;
+    int   staticW = 0, staticH = 0;
+    float staticScale = 0.0f;
 
     // Idle repaint gate state (message thread only -- see timerCallback):
     std::uint64_t lastSeenCount = 0; // ring write count at the previous tick

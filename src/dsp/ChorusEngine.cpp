@@ -69,6 +69,32 @@ void ChorusEngine::processBlock (float* left, float* right, int numSamples) noex
     // Smooth wet + depth per-sample so changing Amount/Depth/Mode never clicks.
     const float wSmooth = 1.0f / (float) std::max (1.0, 0.01 * workingRate); // ~10 ms
 
+    // Amount-0 idle fast path (H12, 0.8.9; the VelvetNoise S5 pattern): with the
+    // wet glide settled at exactly 0 (it flushes to true 0 under the block's
+    // ScopedNoDenormals) and the target still 0, both voices are an exact
+    // identity -- out = in * 1 + wet * 0 -- so the LFO sins and the 2 (chorus)
+    // / 4 (Dimension-D) interpolated reads are pure waste. The reduced loop
+    // keeps every piece of state bit-identical for a later re-engage: the
+    // delay-line writes and write indices, the per-sample iterated phase
+    // accumulation (NOT closed-form, so the wrap sequence matches exactly)
+    // and the depth glide all advance exactly as before; currentWet stays an
+    // exact 0 either way (0 + w*(0-0) == 0). Only zero-contribution work is
+    // skipped. Exact compares, no epsilon.
+    if (! (std::abs (currentWet) > 0.0f) && ! (std::abs (wetTarget) > 0.0f))
+    {
+        for (int n = 0; n < numSamples; ++n)
+        {
+            currentDepth += wSmooth * (depthSampsTarget - currentDepth);
+            bufL[(size_t) writeL] = left[n];
+            bufR[(size_t) writeR] = right[n];
+            writeL = (writeL + 1) & bufMask;
+            writeR = (writeR + 1) & bufMask;
+            phase += phaseInc;
+            if (phase >= 1.0f) phase -= 1.0f;
+        }
+        return;
+    }
+
     for (int n = 0; n < numSamples; ++n)
     {
         currentWet   += wSmooth * (wetTarget        - currentWet);

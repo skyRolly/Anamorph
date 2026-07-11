@@ -3,6 +3,8 @@
 #include <atomic>
 #include <cmath>
 #include <algorithm>
+#include <cstring>
+#include <cstdint>
 
 namespace anamorph
 {
@@ -57,6 +59,27 @@ public:
     // which the audio thread consumes (#14/#15/#16).
     void resetHold() noexcept { resetReq.store (1, std::memory_order_relaxed); }
 
+    // Branchless bit-select (H8): returns exactly `c ? a : b`, but through an
+    // integer mask instead of a data-dependent branch. The envelope conditions
+    // below flip with the audio itself, so the hardware predictor can't learn
+    // them -- measured 0.8.9: these ternaries owned ~87 % of ALL branch
+    // mispredicts in the transparent engine profile (the two msBri picks alone
+    // ~76 %). `c ? ~0u : 0u` compiles to neg/sbb (x86) or csetm (ARM), never a
+    // branch, and the memcpys fold to register moves -- bit-exact for every
+    // input including NaN/Inf/-0.0 because the chosen value's bits pass
+    // through untouched.
+    static inline float sel (bool c, float a, float b) noexcept
+    {
+        std::uint32_t ua, ub;
+        std::memcpy (&ua, &a, sizeof (ua));
+        std::memcpy (&ub, &b, sizeof (ub));
+        const std::uint32_t m = c ? ~std::uint32_t (0) : 0u;
+        const std::uint32_t r = (ua & m) | (ub & ~m);
+        float out;
+        std::memcpy (&out, &r, sizeof (out));
+        return out;
+    }
+
     void process (const float* L, const float* R, int n) noexcept
     {
         if (resetReq.exchange (0, std::memory_order_relaxed) != 0)
@@ -81,17 +104,20 @@ public:
         {
             // Clamp each sample finite BEFORE it enters any envelope, so abnormal DSP
             // values can never poison the meter state in the first place.
-            const float sL = std::isfinite (L[i]) ? L[i] : 0.0f;
-            const float sR = std::isfinite (R[i]) ? R[i] : 0.0f;
+            // All data-dependent picks below go through the branchless sel()
+            // (H8) -- identical values, no mispredict cost. The pure max lines
+            // further down already compile to maxss/fmax and stay as they are.
+            const float sL = sel (std::isfinite (L[i]), L[i], 0.0f);
+            const float sR = sel (std::isfinite (R[i]), R[i], 0.0f);
             const float al = std::abs (sL), ar = std::abs (sR);
             const float l2 = sL * sL, r2 = sR * sR;
 
-            pkDimL = al > pkDimL ? al : pkDimL * dimRel; // instant attack, slow release
-            pkDimR = ar > pkDimR ? ar : pkDimR * dimRel;
-            msBriL += (l2 > msBriL ? briRise : briFall) * (l2 - msBriL);
-            msBriR += (r2 > msBriR ? briRise : briFall) * (r2 - msBriR);
-            msNumL += (l2 > msNumL ? numRise : numFall) * (l2 - msNumL);
-            msNumR += (r2 > msNumR ? numRise : numFall) * (r2 - msNumR);
+            pkDimL = sel (al > pkDimL, al, pkDimL * dimRel); // instant attack, slow release
+            pkDimR = sel (ar > pkDimR, ar, pkDimR * dimRel);
+            msBriL += sel (l2 > msBriL, briRise, briFall) * (l2 - msBriL);
+            msBriR += sel (r2 > msBriR, briRise, briFall) * (r2 - msBriR);
+            msNumL += sel (l2 > msNumL, numRise, numFall) * (l2 - msNumL);
+            msNumR += sel (r2 > msNumR, numRise, numFall) * (r2 - msNumR);
 
             bpL = al > bpL ? al : bpL;
             bpR = ar > bpR ? ar : bpR;

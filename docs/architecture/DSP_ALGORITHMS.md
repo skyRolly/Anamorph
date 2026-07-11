@@ -70,13 +70,21 @@ skips crossovers. Cutoffs glide per sample; widths one-pole smoothed (~20 ms).
 
 ## SoloMonitor — `src/dsp/SoloMonitor.{h,cpp}`
 
-POST-EVERYTHING audition: mirrors the Multiband split (same LR crossovers, same glide) and runs
-**every block** (filters kept warm). Output is a per-band smoothed crossfade: `passGain` (→1
+POST-EVERYTHING audition: mirrors the Multiband split (same LR crossovers, same glide) and is
+**called every block**. Output is a per-band smoothed crossfade: `passGain` (→1
 when nothing soloed) sums the true output; each `bandGain[b]` (`SmoothedValue`, ~12 ms) sums in
-band *b* only while soloed (`.cpp:71-106`). Never changes any effect stage.
+band *b* only while soloed. Never changes any effect stage.
 Invariant: `mask == 0` → settled `passGain = 1` → **bit-exact** true output. Same Nyquist clamp +
 1.1× ordering as MultibandWidth. Click-free by smoothed crossfade — **no output duck** (the
-design property the 0.8.7 fix depends on: the call must run every block).
+design property the 0.8.7 fix depends on: the call must run every block so the crossfade can
+advance whenever any gain is unsettled).
+**Settled fast path (0.8.9 / H1):** once nothing is soloed, every gain smoother is fully settled
+(`passGain == 1`, all `bandGain == 0`) and no crossover glide is pending, the per-sample work
+(6 LR4 `processSample` + 5 smoother ticks) is skipped — the output is provably the input — and
+the filter bank goes **cold** (the engine's `mbRunning` warm/cold pattern). Re-entry resets the
+filters and snaps the cutoff glide while every band gain is still ~0, so the charge-up is masked
+by the same ~12 ms crossfade that always covered an engage. Measured: ~half of the transparent
+engine floor.
 
 ## LoudnessMatch — `src/dsp/LoudnessMatch.{h,cpp}`
 

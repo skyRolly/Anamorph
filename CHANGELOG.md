@@ -7,6 +7,105 @@ SHA + date** as the Evidence Source (per `docs/policies/CHANGELOG_POLICY.md`). E
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
 ## [Unreleased]
+### Changed
+- **Final Wave-1 DSP micro-optimisations (H9 + H10 + H12, one bundle)**: (H9) two per-block
+  buffer copies that were byte-identical dead weight are gone — the silence-edge scan now reads
+  the dry/Mix buffer it always duplicated (`inputScratch` removed), the loudness matcher is fed
+  the live output pointers it always copied (`wetScratch` removed) — and the bypass ring's
+  delay-aligned read-back is skipped while the Bypass crossfade is settled off (the ring writes
+  always continue, so a later engage still reads valid history). (H10) input conditioning
+  returns before its per-sample loop when the routing is at the default identity and the
+  balance/polarity smoothers are fully settled at exactly 0 / +1 — every sample would compute
+  `x·1·1`, and a settled smoother tick is mutation-free, so the skip is state-identical. (H12)
+  Chorus and Dimension-D skip their LFO sines and 2/4 interpolated delay reads per sample while
+  the wet glide sits at exactly 0 (it flushes to true zero under the block's FTZ) — the delay
+  writes, write indices, iterated phase accumulation and depth glide all still advance, so a
+  re-engage is bit-identical (the VelvetNoise S5 pattern). Output proven byte-identical on a
+  114 MB, 25-scenario full-engine dump including chorus/Dim-D idle→engage→idle cycles at base
+  and 4× oversampled rates, all eight conditioning routings, and bypass toggles under OS
+  latency; reported latency unchanged. Expected effect (from the Wave-1.4 measurements):
+  ~−7-10 % of the transparent floor (conditioning ~5 %, dead copies ~3-5 %) and the parked
+  chorus/Dim-D rows drop ~8-14 µs/block to just above the floor. Evidence: this PR. [Verified]
+- **Branchless level-meter envelopes (H8)**: the per-sample rise-or-fall coefficient picks and
+  the peak attack-or-decay picks in `StereoLevel::process` (and the NaN/Inf input clamp) now go
+  through a branchless bit-select instead of data-dependent ternaries. Those branches flipped
+  with the audio itself, so the predictor could not learn them — measured: they owned 87 % of
+  ALL branch mispredicts in the transparent engine profile (the two RMS-body picks alone 76 %).
+  After the change the meters' mispredicts drop from 239k to 911 per 4 s window (−99.6 %) and
+  total engine mispredicts fall 87 %. Values are bit-identical for every input including
+  NaN/Inf/−0.0 (the chosen value's bits pass through untouched): a 3,000-block meter-value dump
+  across music/clip/silence/denormal/NaN-injection/alternating-polarity regimes and the
+  22.5 M-sample full-engine dump are both byte-equal to the pre-change build. Measured wall
+  (interleaved): active default −10.3 % (42.2 → 37.9 µs/block), other active rows −2…−7 %;
+  the all-silence row pays ~+1.5 µs (perfectly-predicted branches were free; the mask ops are
+  not) — a disclosed trade in favour of the active case. Evidence: this PR. [Verified]
+- **Spectrum analyser bottom-layer cache (H17)**: the analyser's glass panel, band tints and
+  frequency-grid verticals — everything painted below the live spectrum — are now rendered once
+  into a cached physical-resolution image and composited per frame instead of being re-rasterized
+  at 60 Hz. Unlike the scope/meter caches the key includes eased inputs (panel hover wash, drawn
+  split/width positions, width-hover washes, solo mask); every one of those eases converges
+  exactly onto a snap, so the key settles and steady-state paints never rebuild (measured: zero
+  rebuilds, ~430-instruction guard), while an animating value rebuilds per frame at the old
+  drawing cost. The layer stays translucent (ARGB): the analyser sits on the editor's
+  semi-transparent Multiband panel, so the N2 opacity pattern is deliberately not applied.
+  Validated byte-identical against the uncached renderer across 26 scenarios (quiet and
+  clip-red runs × widths incl. odd, 1.25× scale and back, LookAndFeel refresh, split/width
+  parameter changes, solo mask, resize storm, destroy/recreate, silence decay). Measured:
+  analyser paint −20 % at component level; Advanced-view active editor −3.7 % of a core
+  (interleaved) — the remaining analyser cost is the live spectrum path itself plus the
+  layer composite. Default view, idle, and editor-closed cost unchanged. Evidence: this PR.
+  [Verified]
+- **Opaque cached scope/meter rendering (N2)**: the Vectorscope and both Correlation/Balance
+  meters are now `setOpaque(true)`; their cached static layers are RGB images whose rounded-panel
+  corners pre-fill the editor's flat backdrop colour (`colours::bg`) — exactly what the parent
+  used to show through. The per-frame layer blit therefore becomes an opaque copy instead of a
+  per-pixel alpha composite (previously the single largest item of the active default-view GUI
+  profile), and the editor no longer re-renders its background beneath these components on every
+  repaint. Measured (interleaved, same session): active default-view editor CPU −11.6 %; the blit
+  cost share more than halved; parent background overdraw halved (the remainder belongs to other,
+  still-translucent children); idle and editor-closed cost unchanged; zero steady-state cache
+  rebuilds. Composited pixel validation across 42 scenarios (signal, clip ring, silence, resize,
+  resize storm, 1.25× scale, LookAndFeel refresh, reopen, persistence, all four meter combos,
+  pointer at extremes): every difference bounded at ±1 channel LSB (±2 at fractional DPI scales),
+  confined to the rounded-corner anti-aliasing arcs (one compositing-quantization step moved from
+  blit time to cache-build time). The corner pre-fill couples these components to the editor's
+  flat `colours::bg` backdrop — documented at both call sites. Evidence: this PR. [Verified]
+- **Correlation/Balance meter static-layer cache (H13)**: each `StereoMeter` now renders its
+  glass panel and centre tick once into a cached physical-resolution image (rebuilt only on
+  resize, DPI/UI-scale change or LookAndFeel change) and blits it per frame; the live pointer
+  (glow, gradient core, highlight) and the end labels keep their exact draw order on top.
+  Measured (Wave 1.2 profiling): the panel fill was 14.6 % of the active default-view GUI
+  profile. Validated byte-identical against the uncached renderer across all four
+  orientation/type combos, pointer at centre/extremes (including over the end labels), resize,
+  continuous resize, 1.25× scale, LookAndFeel refresh and reopen — at every integral physical
+  size; at fractional physical sizes (e.g. 125 % DPI on an odd height) the blit takes JUCE's
+  interpolating path (the `setBufferedToImage` behaviour) with sub-perceptual AA-border wobble.
+  Evidence: this PR. [Verified]
+- **Vectorscope paint cost (H2)**: the scope's static layer — background gradient, rounded panel,
+  glass edges, grid and axis labels, all a pure function of (size, physical scale, look) — is now
+  rendered once into a cached ARGB image at physical resolution and blitted per frame; only the
+  signal-dependent point cloud and clip ring are rasterized live. The cache rebuilds only on
+  resize, DPI/scale change or a LookAndFeel change; a normal repaint never re-rasterizes it, and
+  the repaint *scheduling* (60 Hz timer + 0.8.8 idle gate) is untouched. Rendering is verified
+  pixel-identical: a 10-scenario before/after snapshot harness (signal, clip ring, silence,
+  resize, continuous-resize storm, 1.25× scale, LookAndFeel refresh, component reopen,
+  persistence change) produced byte-identical images in every case. Measured before the change
+  (0.8.8+H1 profile): `Vectorscope::paint` was 66 % of the active default-view GUI profile, ~70 %
+  of it this static layer. Evidence: this PR. [Verified]
+- **Band Solo monitor settled fast path (H1)**: with nothing soloed, every crossfade gain fully
+  settled (`passGain` at exactly 1, all band gains at exactly 0) and no crossover glide pending,
+  `SoloMonitor::process` now skips its per-sample work (6 Linkwitz-Riley `processSample` calls +
+  5 smoother ticks per sample) — the settled output is provably the input — and the filter bank
+  goes cold. Re-entry (solo engage) resets the filters and snaps the cutoff glide while every
+  band gain is still ~0, so the charge-up is masked by the existing ~12 ms crossfade; engaging,
+  changing and clearing solo stay click-free (measured: identical max sample-to-sample step at
+  every boundary, steady-state solo output converges to 0 difference). Parked output is
+  bit-identical except the sign of exact zeros (a `-0.0` input is now passed through instead of
+  being rewritten to `+0.0` by the settled `1·x + 0·band` arithmetic; 6,723 signed-zero flips and
+  0 numeric differences across a 22.5 M-sample 15-scenario full-engine dump). Measured on the
+  profiling reference (Xeon 2.1 GHz, 48 kHz/512): transparent engine floor 42.0 → 25.4 µs/block
+  (−39 %), active default 45.4 → 30.4 µs/block (−33 %); every no-solo scenario drops ~15-20 µs.
+  Evidence: this PR. [Verified]
 
 ## [0.8.8] — 2026-07-08
 ### Added
