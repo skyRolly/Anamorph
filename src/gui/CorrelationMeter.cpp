@@ -7,6 +7,11 @@ namespace anamorph::gui
 StereoMeter::StereoMeter (anamorph::CorrelationMeter& src, Orientation o, Type t)
     : source (src), orientation (o), type (t)
 {
+    // Opaque (N2): the cached static layer pre-fills the rounded-panel corners
+    // with the editor backdrop colour (flat colours::bg), so paint() covers
+    // every pixel -- the parent never re-renders beneath this component and the
+    // layer blits as an opaque copy (see Vectorscope for the same pattern).
+    setOpaque (true);
     startTimerHz (60); // match the vectorscope's frame rate -- 30 Hz juddered (#2)
 }
 
@@ -82,12 +87,17 @@ void StereoMeter::ensureStaticLayer (juce::Graphics& g, juce::Rectangle<float> b
     staticW = getWidth();
     staticH = getHeight();
     staticScale = scale;
-    staticLayer = juce::Image (juce::Image::ARGB,
+    // RGB + corner pre-fill (N2): same pattern and same editor-backdrop
+    // coupling as the Vectorscope's static layer -- the panel corners bake in
+    // the flat colours::bg the parent used to show through, so the component is
+    // opaque and the per-frame blit is a copy, not an alpha composite.
+    staticLayer = juce::Image (juce::Image::RGB,
                                juce::jmax (1, juce::roundToInt ((float) staticW * scale)),
                                juce::jmax (1, juce::roundToInt ((float) staticH * scale)),
                                true);
     juce::Graphics ig (staticLayer);
     ig.addTransform (juce::AffineTransform::scale (scale));
+    ig.fillAll (colours::bg);
 
     glass::fillPanel (ig, bounds, 4.0f, colours::bgPanel, 0.85f); // gentle 0.5.3-style frame (#1)
 

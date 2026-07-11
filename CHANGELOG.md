@@ -8,6 +8,21 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 
 ## [Unreleased]
 ### Changed
+- **Opaque cached scope/meter rendering (N2)**: the Vectorscope and both Correlation/Balance
+  meters are now `setOpaque(true)`; their cached static layers are RGB images whose rounded-panel
+  corners pre-fill the editor's flat backdrop colour (`colours::bg`) — exactly what the parent
+  used to show through. The per-frame layer blit therefore becomes an opaque copy instead of a
+  per-pixel alpha composite (previously the single largest item of the active default-view GUI
+  profile), and the editor no longer re-renders its background beneath these components on every
+  repaint. Measured (interleaved, same session): active default-view editor CPU −11.6 %; the blit
+  cost share more than halved; parent background overdraw halved (the remainder belongs to other,
+  still-translucent children); idle and editor-closed cost unchanged; zero steady-state cache
+  rebuilds. Composited pixel validation across 42 scenarios (signal, clip ring, silence, resize,
+  resize storm, 1.25× scale, LookAndFeel refresh, reopen, persistence, all four meter combos,
+  pointer at extremes): every difference bounded at ±1 channel LSB (±2 at fractional DPI scales),
+  confined to the rounded-corner anti-aliasing arcs (one compositing-quantization step moved from
+  blit time to cache-build time). The corner pre-fill couples these components to the editor's
+  flat `colours::bg` backdrop — documented at both call sites. Evidence: this PR. [Verified]
 - **Correlation/Balance meter static-layer cache (H13)**: each `StereoMeter` now renders its
   glass panel and centre tick once into a cached physical-resolution image (rebuilt only on
   resize, DPI/UI-scale change or LookAndFeel change) and blits it per frame; the live pointer

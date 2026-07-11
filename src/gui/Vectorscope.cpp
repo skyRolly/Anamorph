@@ -15,7 +15,12 @@ Vectorscope::Vectorscope (anamorph::ScopeBuffer& buffer) : scope (buffer)
     // first windowFrames() of observed frames always paint (conservative --
     // an editor reopened mid-playback shows the live picture immediately).
     lastSeenCount = lastNonZero = buffer.writeCount();
-    setOpaque (false);
+    // Opaque (N2): paint() covers every pixel of the bounds -- the cached static
+    // layer pre-fills the rounded-rect corners with the editor backdrop colour
+    // (colours::bg, the flat fillAll behind the whole scope/meter row), so the
+    // parent never needs to re-render beneath this component and the cached
+    // layer can blit as an opaque copy instead of a per-pixel alpha composite.
+    setOpaque (true);
     startTimerHz (60);
 }
 
@@ -109,12 +114,23 @@ void Vectorscope::ensureStaticLayer (juce::Graphics& g, juce::Rectangle<float> a
     staticW = getWidth();
     staticH = getHeight();
     staticScale = scale;
-    staticLayer = juce::Image (juce::Image::ARGB,
+    // RGB, not ARGB (N2): the layer is fully covered below (corner pre-fill +
+    // panel), so it carries no alpha and the per-frame blit is an opaque COPY
+    // instead of a per-pixel source-over blend (measured 0.8.9: the ARGB blend
+    // was the largest single item of the active default-view GUI profile).
+    staticLayer = juce::Image (juce::Image::RGB,
                                juce::jmax (1, juce::roundToInt ((float) staticW * scale)),
                                juce::jmax (1, juce::roundToInt ((float) staticH * scale)),
                                true);
     juce::Graphics ig (staticLayer);
     ig.addTransform (juce::AffineTransform::scale (scale));
+
+    // Corner pre-fill (N2): exactly what the editor's flat fillAll backdrop
+    // showed through the rounded corners while this component was translucent.
+    // MUST stay in lockstep with the editor's backdrop colour -- if the editor
+    // ever paints anything but flat colours::bg beneath the scope/meter row,
+    // this component can no longer be opaque.
+    ig.fillAll (colours::bg);
 
     // Background: the 0.5.3 look -- a little brighter at the top, clearly dark
     // toward the bottom (down-dark / up-bright), with just a subtle glass edge so
