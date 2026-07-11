@@ -4,7 +4,7 @@ Node dependency topology of the serial DSP chain. Purpose: prevent unsafe reorde
 node may only be moved if **Can Reorder? = Yes** and the move preserves every invariant in
 `SIGNAL_FLOW.md`. Any "No" reorder requires an ADR + Architecture Review.
 
-Evidence [Verified]: src/dsp/AnamorphEngine.cpp:472-899 (`process`).
+Evidence [Verified]: src/dsp/AnamorphEngine.cpp:493-949 (`process`).
 
 ## Topology table
 
@@ -49,4 +49,4 @@ factor) but the stage's position in the chain is fixed.
 Nyquist-safe clamp `[20, max(1000, 0.45·sr)]` + 1.1× top-down ordering.
 
 Evidence [Verified]: src/dsp/MonoMaker.cpp:17,33-37; MultibandWidth.cpp:55-71,113-123;
-SoloMonitor.cpp:41-57.
+SoloMonitor.cpp:44-58.

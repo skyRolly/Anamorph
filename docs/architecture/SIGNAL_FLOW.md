@@ -5,7 +5,7 @@ order guarantees. Reorder constraints are formalised in `DSP_GRAPH_REFERENCE.md`
 order itself is a binding invariant (`docs/policies/DSP_POLICY.md`).
 
 Evidence [Verified] for the entire chain:
-- Source: src/dsp/AnamorphEngine.cpp:472-899 (`process`)
+- Source: src/dsp/AnamorphEngine.cpp:493-949 (`process`)
 - Source: src/dsp/AnamorphEngine.h:21-40 (chain header comment)
 - Tests: tests/dsp_tests.cpp :: testMonoMakerPostMix, testSoloMonitor, testMultibandMonoCompat,
   testLevelMatchAndSolo, testNoClicksAcrossTransitions
@@ -60,14 +60,14 @@ Raw stereo input (mono upmixed to stereo by the wrapper)
 | Invariant | Where enforced | Test |
 |---|---|---|
 | **Mono Maker runs POST-Mix**, on the mixed signal, in place. | :761-766 | testMonoMakerPostMix |
-| **Band Solo is the very last audio stage and is monitoring-only** — it never changes any effect stage; `mask==0` → bit-exact true output. | :831-845; SoloMonitor.h:24-29 | testSoloMonitor, testSoloNoGhostInSilence |
+| **Band Solo is the very last audio stage and is monitoring-only** — it never changes any effect stage; `mask==0` → bit-exact true output. | :878-894; SoloMonitor.h:11-28 | testSoloMonitor, testSoloNoGhostInSilence |
 | **Effect engine is solo-agnostic** — the Multiband always sums every band; solo is a downstream monitor. | MultibandWidth.h:29-32 | testSoloMonitor (energy-transparent) |
 | **Dry path is delay-compensated** to the wet (oversampling) latency. | :728-737, getLatencySamples | testBypassNullAndLatency |
 | **Dry path is phase-matched** through the same crossovers as the wet (A(dry)) so a partial Mix never combs the mono sum. | :655-690, :739-759 | testMultibandMonoCompat |
 | **Mix = 0 is a bit-exact null** (smoothstep clean→aligned crossfade over first ~5% of Mix). | :726, :748-758 | testBypassNullAndLatency / testTransparentDefault |
 | **Oversampling wraps only Drive + Chorus/Dim-D**; linear stages stay outside; OS off ⇒ 0 latency. | :19-23, :631-645 | testBypassNullAndLatency |
 | **Bypass is a click-free crossfade to the delay-aligned RAW input**, not a mute; chain + analysis always run. | :585-606, :872-888 | testBypassCrossfadeClickFree, testLevelMatchRunsInBypass |
-| **Level Match measures the post-Mono-Maker output vs the delay-aligned reconstruction A(dry).** | :768-785 | testLevelMatchUnity, testMultibandUnityMatch |
+| **Level Match measures the post-Mono-Maker output vs the delay-aligned reconstruction A(dry).** | :795-812 | testLevelMatchUnity, testMultibandUnityMatch |
 
 ## Notes
 
@@ -77,7 +77,8 @@ Raw stereo input (mono upmixed to stereo by the wrapper)
 - **Discrete switches** (algorithm/routing/band-count/oversampling-path) are applied at the
   silent bottom of a raised-cosine duck (fade-out ~6 ms, fade-in ~28 ms). Bypass, Multiband
   Enable, and Band Solo are **not** ducked — they use their own click-free crossfades.
-  Source: src/dsp/AnamorphEngine.cpp:158-185 (`discreteDiffers`), :70-71, :819-829.
+  Source: src/dsp/AnamorphEngine.cpp:158-185 (`discreteDiffers`), :70-71, :686-731 (Multiband
+  Enable crossfade), :878-894 (Band Solo), :920-940 (Bypass crossfade).
 
 Any change to this order or these invariants requires an ADR and Architecture Review
 (`docs/policies/ADR_POLICY.md`, `docs/policies/ARCHITECTURE_REVIEW_GATE.md`).
