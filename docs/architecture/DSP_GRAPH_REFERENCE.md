@@ -21,7 +21,7 @@ Evidence [Verified]: src/dsp/AnamorphEngine.cpp:493-949 (`process`).
 | 3 | Dry/Wet Mix | dry (delay+phase aligned) + wet | Mono Maker | No | Must follow the full effect engine; consumes A(dry). :728-759 |
 | 4 | Mono Maker | mixed signal | Output stage | No | Must be POST-Mix so lows are mono at any Mix amount (0.8.0). :765-766 |
 | 5 | Output stage (Gain/Match/Balance + duck) | post-Mono-Maker | Band Solo | No | Level Match measures here; gain/balance are final trims. :771-829 |
-| 6 | Band Solo monitor | produced output | NaN heal / Bypass | No | POST-EVERYTHING audition; mask 0 = identity. :845 |
+| 6 | Band Solo monitor | produced output | NaN heal / Bypass | No | POST-EVERYTHING audition; mask 0 = identity. :894 |
 | 6b | NaN/Inf self-heal | produced output | Bypass | No | Last-line finite guard; only touches non-finite samples. :854-870 |
 | 7 | Bypass crossfade | produced output + raw dry (0b) | meters | No | Final processed↔raw crossfade. :878-888 |
 | 8 | Metering tap | final output | GUI | No | Taps the monitored (post-everything) output. :891-898 |

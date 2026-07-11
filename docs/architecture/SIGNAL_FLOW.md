@@ -45,7 +45,7 @@ Raw stereo input (mono upmixed to stereo by the wrapper)
        Level Match measure (post-Mono-Maker) -> Output Gain / Auto Gain / Output Balance
        + click-free switch duck (raised cosine)
   │
-  6. Band Solo monitor (POST-EVERYTHING)       soloMonitor.process             (:845)
+  6. Band Solo monitor (POST-EVERYTHING)       soloMonitor.process             (:894)
        band-passes the produced output to the soloed band(s); monitoring only
   │
   6b. NaN/Inf self-heal (per-sample)           (:854-870)
