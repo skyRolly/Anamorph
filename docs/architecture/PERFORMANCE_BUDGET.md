@@ -28,6 +28,12 @@ no benchmark/profiling data exists in the repository, and inventing numbers is p
   ~49 % of instructions in the default state). The bank goes cold and is reset + snapped on
   re-engage under the ~12 ms crossfade (the engine's `mbRunning` warm/cold pattern). Evidence
   [Verified]: src/dsp/SoloMonitor.cpp (settled fast path); CHANGELOG [Unreleased].
+- **Level-meter envelopes are branchless (0.8.9 / H8).** The per-sample envelope coefficient
+  picks in `StereoLevel::process` use a bit-select instead of data-dependent branches (which
+  owned ~87 % of all engine branch mispredicts on real audio). Bit-identical values for every
+  input incl. NaN/Inf; slight fixed ALU cost on perfectly-predictable (all-silence) input in
+  exchange for the active-signal win. Evidence [Verified]: src/dsp/LevelMeters.h (`sel`);
+  CHANGELOG [Unreleased].
 - **VelvetNoise** has an O(maxTaps=64) sparse-FIR inner loop per sample, plus a full-buffer
   `std::fill` on the transport-stop completion (no alloc). As of 0.8.8 the surrounding per-sample
   work is gated without changing output: the 64-tap weight rebuild + `sqrt` normalisation runs only

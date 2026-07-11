@@ -8,6 +8,19 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 
 ## [Unreleased]
 ### Changed
+- **Branchless level-meter envelopes (H8)**: the per-sample rise-or-fall coefficient picks and
+  the peak attack-or-decay picks in `StereoLevel::process` (and the NaN/Inf input clamp) now go
+  through a branchless bit-select instead of data-dependent ternaries. Those branches flipped
+  with the audio itself, so the predictor could not learn them — measured: they owned 87 % of
+  ALL branch mispredicts in the transparent engine profile (the two RMS-body picks alone 76 %).
+  After the change the meters' mispredicts drop from 239k to 911 per 4 s window (−99.6 %) and
+  total engine mispredicts fall 87 %. Values are bit-identical for every input including
+  NaN/Inf/−0.0 (the chosen value's bits pass through untouched): a 3,000-block meter-value dump
+  across music/clip/silence/denormal/NaN-injection/alternating-polarity regimes and the
+  22.5 M-sample full-engine dump are both byte-equal to the pre-change build. Measured wall
+  (interleaved): active default −10.3 % (42.2 → 37.9 µs/block), other active rows −2…−7 %;
+  the all-silence row pays ~+1.5 µs (perfectly-predicted branches were free; the mask ops are
+  not) — a disclosed trade in favour of the active case. Evidence: this PR. [Verified]
 - **Spectrum analyser bottom-layer cache (H17)**: the analyser's glass panel, band tints and
   frequency-grid verticals — everything painted below the live spectrum — are now rendered once
   into a cached physical-resolution image and composited per frame instead of being re-rasterized
