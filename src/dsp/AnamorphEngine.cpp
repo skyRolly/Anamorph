@@ -959,6 +959,14 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     // switch (Issue 3). bypassBlend settles to exactly 1 -> bit-exact true bypass; to
     // exactly 0 -> the untouched processed output. Because the chain + analysis already
     // ran above, toggling Bypass never stops Level Match and never re-engages stale DSP.
+    //
+    // INVARIANT (H9, 0.8.9): this gate must stay identical to `bypassAudible` at the
+    // ring fill above -- that is the only writer of bypassDryScratch, and it skips the
+    // write whenever this gate is false, so the scratch holds STALE samples outside
+    // the gate. Widening either condition without the other reads garbage into the
+    // output (here) or burns a dead per-sample read-back (there). The ring WRITES
+    // themselves are unconditional in both branches, so history is always valid the
+    // moment Bypass re-engages.
     if (bypassBlend.isSmoothing() || bypassBlend.getTargetValue() > 0.0f)
     {
         const float* bxL = bypassDryScratch.getReadPointer (0);
