@@ -8,6 +8,22 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 
 ## [Unreleased]
 ### Changed
+- **Spectrum analyser bottom-layer cache (H17)**: the analyser's glass panel, band tints and
+  frequency-grid verticals — everything painted below the live spectrum — are now rendered once
+  into a cached physical-resolution image and composited per frame instead of being re-rasterized
+  at 60 Hz. Unlike the scope/meter caches the key includes eased inputs (panel hover wash, drawn
+  split/width positions, width-hover washes, solo mask); every one of those eases converges
+  exactly onto a snap, so the key settles and steady-state paints never rebuild (measured: zero
+  rebuilds, ~430-instruction guard), while an animating value rebuilds per frame at the old
+  drawing cost. The layer stays translucent (ARGB): the analyser sits on the editor's
+  semi-transparent Multiband panel, so the N2 opacity pattern is deliberately not applied.
+  Validated byte-identical against the uncached renderer across 26 scenarios (quiet and
+  clip-red runs × widths incl. odd, 1.25× scale and back, LookAndFeel refresh, split/width
+  parameter changes, solo mask, resize storm, destroy/recreate, silence decay). Measured:
+  analyser paint −20 % at component level; Advanced-view active editor −3.7 % of a core
+  (interleaved) — the remaining analyser cost is the live spectrum path itself plus the
+  layer composite. Default view, idle, and editor-closed cost unchanged. Evidence: this PR.
+  [Verified]
 - **Opaque cached scope/meter rendering (N2)**: the Vectorscope and both Correlation/Balance
   meters are now `setOpaque(true)`; their cached static layers are RGB images whose rounded-panel
   corners pre-fill the editor's flat backdrop colour (`colours::bg`) — exactly what the parent

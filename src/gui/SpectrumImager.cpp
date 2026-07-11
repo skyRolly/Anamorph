@@ -934,6 +934,86 @@ void SpectrumImager::softGlow (juce::Graphics& g, const juce::Path& p, juce::Col
 // ----------------------------------------------------------------------------
 //  Paint
 // ----------------------------------------------------------------------------
+
+// Render the bottom layer (H17): the glass panel, the band tints and the
+// frequency-grid verticals -- everything painted BELOW the spectrum. The
+// drawing code is IDENTICAL to what paint() ran directly before the cache;
+// the image is rendered at the destination's PHYSICAL resolution so the blit
+// is a 1:1 device-pixel composite of the exact rasterization the direct draw
+// produced. ARGB, not RGB: the imager sits on the editor's semi-transparent
+// Multiband panel (not flat bg), so transparency must be preserved (the
+// rounded corners keep showing the parent) -- the N2 opacity pattern is
+// deliberately NOT applied here.
+//
+// Every key input converges EXACTLY (the 0.004 ease snap for panelHoverA /
+// widthA, the sub-pixel drawnF/drawnW snap), so the key settles after any
+// interaction and steady-state paints never rebuild. While something is
+// easing, the rebuild costs what the direct drawing always cost; the image
+// buffer is reused across same-size rebuilds (no per-frame allocation).
+void SpectrumImager::ensureBottomLayer (juce::Graphics& g, juce::Rectangle<float> r)
+{
+    const float scale = g.getInternalContext().getPhysicalPixelScaleFactor();
+    const int   N     = bandCount();
+    const int   amask = effectiveSoloMask() & ((1 << N) - 1);
+
+    auto same = [] (float a, float b) noexcept { return ! (std::abs (a - b) > 0.0f); }; // exact, S4 idiom
+    bool ok = ! bottomLayer.isNull()
+           && blW == getWidth() && blH == getHeight()
+           && same (blScale, scale) && same (blHover, panelHoverA)
+           && blBands == N && blMask == amask;
+    for (int i = 0; i < 3 && ok; ++i) ok = same (blF[i],  drawnF[i]);
+    for (int b = 0; b < 4 && ok; ++b) ok = same (blDW[b], drawnW[b]) && same (blWA[b], widthA[b]);
+    if (ok)
+        return;
+
+    const bool sameSize = blW == getWidth() && blH == getHeight() && same (blScale, scale)
+                       && ! bottomLayer.isNull();
+    blW = getWidth(); blH = getHeight(); blScale = scale;
+    blHover = panelHoverA; blBands = N; blMask = amask;
+    for (int i = 0; i < 3; ++i) blF[i]  = drawnF[i];
+    for (int b = 0; b < 4; ++b) { blDW[b] = drawnW[b]; blWA[b] = widthA[b]; }
+
+    if (sameSize)
+        bottomLayer.clear (bottomLayer.getBounds()); // reuse the buffer (unshared -> in place)
+    else
+        bottomLayer = juce::Image (juce::Image::ARGB,
+                                   juce::jmax (1, juce::roundToInt ((float) blW * scale)),
+                                   juce::jmax (1, juce::roundToInt ((float) blH * scale)),
+                                   true);
+    juce::Graphics ig (bottomLayer);
+    ig.addTransform (juce::AffineTransform::scale (scale));
+
+    // Idle the panel sits darker so the ruler lines read through; hover lifts it (#23).
+    glass::fillPanel (ig, getLocalBounds().toFloat(), 6.0f,
+                      colours::bgPanel.darker (0.58f - 0.14f * panelHoverA), 1.0f);
+
+    juce::Graphics::ScopedSaveState save (ig);
+    juce::Path clip; clip.addRoundedRectangle (r, 5.0f);
+    ig.reduceClipRegion (clip);
+
+    const bool anySolo = amask != 0;
+    const juce::Colour bandLo (0xff5aa6ff), bandHi (0xff35d0c0);
+    auto bandCol = [&] (int b) { return bandLo.interpolatedWith (bandHi, juce::jlimit (0.0f, 1.0f, dispWidth (b) * 0.5f)); };
+
+    // --- band tints -----------------------------------------------------
+    for (int b = 0; b < N; ++b)
+    {
+        const float x0 = dispLeftX (b), x1 = dispRightX (b);
+        float a = 0.04f + 0.05f * juce::jlimit (0.0f, 2.0f, dispWidth (b)) * 0.5f + 0.06f * widthA[b];
+        if (anySolo) a = (amask & (1 << b)) ? a + 0.10f : a * 0.4f;
+        ig.setColour (bandCol (b).withAlpha (a));
+        ig.fillRect (juce::Rectangle<float> (x0, r.getY(), juce::jmax (0.0f, x1 - x0), r.getHeight()));
+    }
+
+    // --- frequency grid (brighter when the panel is dark, #21/#23) ------
+    for (auto& t : kTicks)
+    {
+        const float x = freqToX (t.f);
+        ig.setColour (colours::outline.withAlpha (t.major ? 0.42f : 0.20f));
+        ig.drawVerticalLine (juce::roundToInt (x), r.getY(), rulerY() + 2.0f);
+    }
+}
+
 void SpectrumImager::paint (juce::Graphics& g)
 {
     // Eased split / width positions only lag during a sweep window (reset / preset / A-B /
@@ -957,9 +1037,16 @@ void SpectrumImager::paint (juce::Graphics& g)
     }
 
     auto r = plot();
-    // Idle the panel sits darker so the ruler lines read through; hover lifts it (#23).
-    glass::fillPanel (g, getLocalBounds().toFloat(), 6.0f,
-                      colours::bgPanel.darker (0.58f - 0.14f * panelHoverA), 1.0f);
+
+    // Bottom layer (H17): panel + band tints + frequency grid, blitted from the
+    // cache and re-rasterized only when one of its (exactly-converging) inputs
+    // changed -- see ensureBottomLayer.
+    ensureBottomLayer (g, r);
+    {
+        juce::Graphics::ScopedSaveState blitState (g);
+        g.addTransform (juce::AffineTransform::scale (1.0f / blScale));
+        g.drawImageAt (bottomLayer, 0, 0);
+    }
 
     juce::Graphics::ScopedSaveState save (g);
     juce::Path clip; clip.addRoundedRectangle (r, 5.0f);
@@ -967,30 +1054,11 @@ void SpectrumImager::paint (juce::Graphics& g)
 
     const int N = bandCount();
     const int amask = effectiveSoloMask() & ((1 << N) - 1);
-    const bool anySolo = amask != 0;
     const juce::Colour bandLo (0xff5aa6ff), bandHi (0xff35d0c0);
     const juce::Colour xoverCol = colours::accent;
     const juce::Colour clipCol (0xffff5b4b);
 
     auto bandCol = [&] (int b) { return bandLo.interpolatedWith (bandHi, juce::jlimit (0.0f, 1.0f, dispWidth (b) * 0.5f)); };
-
-    // --- band tints -----------------------------------------------------
-    for (int b = 0; b < N; ++b)
-    {
-        const float x0 = dispLeftX (b), x1 = dispRightX (b);
-        float a = 0.04f + 0.05f * juce::jlimit (0.0f, 2.0f, dispWidth (b)) * 0.5f + 0.06f * widthA[b];
-        if (anySolo) a = (amask & (1 << b)) ? a + 0.10f : a * 0.4f;
-        g.setColour (bandCol (b).withAlpha (a));
-        g.fillRect (juce::Rectangle<float> (x0, r.getY(), juce::jmax (0.0f, x1 - x0), r.getHeight()));
-    }
-
-    // --- frequency grid (brighter when the panel is dark, #21/#23) ------
-    for (auto& t : kTicks)
-    {
-        const float x = freqToX (t.f);
-        g.setColour (colours::outline.withAlpha (t.major ? 0.42f : 0.20f));
-        g.drawVerticalLine (juce::roundToInt (x), r.getY(), rulerY() + 2.0f);
-    }
 
     // --- spectrum (cubic-smoothed) + localized clip-red overlay (#14) ---
     {
