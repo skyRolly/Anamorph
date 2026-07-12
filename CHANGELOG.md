@@ -6,6 +6,20 @@ SHA + date** as the Evidence Source (per `docs/policies/CHANGELOG_POLICY.md`). E
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
+## [Unreleased]
+### Changed
+- **Chorus/Dimension-D LFO generation is a quadrature recurrence (Wave 2 / H11)**: the two
+  per-sample `std::sin` calls are one double-precision `(sin, cos)` pair advanced by a fixed
+  per-sample rotation and re-seeded from the LFO phase at every block start (the right channel's
+  90° offset is exactly the `cos` component). Modulation rate, depth, stereo phase offset and
+  the reported latency are unchanged; the LFO phase state itself still accumulates exactly as
+  before, so block-to-block continuity and re-engage from the parked amount-0 fast path are
+  bit-identical. Audible output is numerically class B: differences are confined to
+  chorus-active blocks and bounded by a sub-0.1-sample delay wobble (measured ≤8.2e-4 peak
+  sample delta across the 25-scenario full-engine dump; all other scenarios byte-identical).
+  Expected effect (from the existing Round-2 measurements, no new profiling): chorus/Dim-D rows
+  −~5 µs; everything-on-os4 −15-20 µs. Evidence: PR #58. [Verified]
+
 ## [0.8.9] — 2026-07-11
 ### Added
 - **Alt/Option-click on a Band Solo button acts on every band at once**: alt-clicking a soloed

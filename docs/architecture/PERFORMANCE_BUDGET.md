@@ -34,6 +34,14 @@ no benchmark/profiling data exists in the repository, and inventing numbers is p
   input incl. NaN/Inf; slight fixed ALU cost on perfectly-predictable (all-silence) input in
   exchange for the active-signal win. Evidence [Verified]: src/dsp/LevelMeters.h (`sel`);
   CHANGELOG [0.8.9].
+- **Chorus/Dimension-D LFO is a quadrature recurrence (Wave 2 / H11).** The two per-sample libm
+  sines (≈9 % of the active chorus rows; ~15-20 µs inside everything-on-os4 in the Round-2
+  attribution) are replaced by one double-precision `(sin, cos)` rotation, re-seeded from the
+  iterated `phase` each block. Class B numerics: sub-0.1-sample delay wobble at the depth
+  extremes (measured ≤8.2e-4 output delta on the 25-scenario dump, chorus-active blocks only);
+  the float `phase` state and the amount-0 idle path (H12) are bit-identical, so nothing drifts
+  across blocks or re-engages. Evidence [Verified]: src/dsp/ChorusEngine.cpp (recurrence +
+  invariant comment); CHANGELOG [Unreleased].
 - **VelvetNoise** has an O(maxTaps=64) sparse-FIR inner loop per sample, plus a full-buffer
   `std::fill` on the transport-stop completion (no alloc). As of 0.8.8 the surrounding per-sample
   work is gated without changing output: the 64-tap weight rebuild + `sqrt` normalisation runs only
