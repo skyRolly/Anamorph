@@ -22,6 +22,17 @@ no benchmark/profiling data exists in the repository, and inventing numbers is p
   glide (recomputes coefficients in place, no allocation). This is the dominant variable cost
   when crossovers are moving. Evidence [Verified]: src/dsp/MultibandWidth.cpp:110-120;
   MonoMaker.cpp:32-36; SoloMonitor.cpp.
+- **The multiband dry-align bank is gated in the settled-full-wet state (Wave 2 / H4).** With the
+  Mix glide parked at exactly 1, Match off (and not mid-engage), and no enable/bypass crossfade in
+  flight, the A(dry) reconstruction (6 LR4 calls/sample — half the multiband cost, ~20 µs on the
+  shipped default in the Round-2 attribution) and the m=1 blend pass are skipped. Class B: the
+  gated output is the exact wet instead of its m=1 float re-blend (measured ≤2.4e-10); the live
+  Measure readout follows the delay-aligned clean dry while gated, so a Match engage right after a
+  gated stretch starts from a reference without the multiband reconstruction ripple (measured
+  0.53 dB worst-case level offset on a near-crossover synthetic, converging over the loudness
+  window; always duck+glide smoothed). Both dry delay rings stay warm; re-engage is comb-free
+  (`testDryAlignGateRecomb`). Evidence [Verified]: src/dsp/AnamorphEngine.cpp (gate + invariant
+  comment); CHANGELOG [Unreleased].
 - **The LR4 crossovers are a local flat-state clone (Wave 2 / H6).** All ten
   `juce::dsp::LinkwitzRileyFilter<float>` instances (MultibandWidth wet + dry-align banks,
   SoloMonitor, MonoMaker) are replaced by `LR4Xover` — the same coefficient derivation and TPT

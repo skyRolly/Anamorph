@@ -720,6 +720,11 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     // settles audibly. mbActive keeps the bank running while the blend is non-zero, so
     // a disable fades the multiband OUT over ~12 ms before the bank goes cold.
     bool dryAligned = false;
+    // Hoisted from the Level-Match snap gate below (same expression, one value per
+    // block): the H4 dry-align gate must also see "Match is about to engage" so the
+    // dry bank re-warms THROUGH the engage duck, exactly like the S7 energy scan.
+    const bool matchEngaging = switchState != SwitchState::Normal && pendingP.autoGainMatch;
+    bool fullWetIdle = false;
     const bool mbActive = p.mbEnable || mbEnableBlend.isSmoothing()
                        || mbEnableBlend.getCurrentValue() > 0.0f;
     if (mbActive)
@@ -735,6 +740,25 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         const bool blending = mbEnableBlend.isSmoothing()
                            || mbEnableBlend.getCurrentValue() < 1.0f;
 
+        // Settled-full-wet dry-align gate (H4, Wave 2). A(dry) has exactly two
+        // consumers: the dry/wet blend and the Level-Match reference. With the Mix
+        // glide parked at exactly 1 the blend is one LSB-level rounding pass of the
+        // wet (out = dry + 1*(wet-dry)); with Match off AND not mid-engage the match
+        // target is never read. So when no enable/bypass crossfade is in flight
+        // either, the dry bank (6 LR4/sample -- half the multiband cost) and the
+        // blend loop are skipped. Class B by design: the gated output is the EXACT
+        // wet instead of its m=1 float re-blend, and the live Measure readout
+        // follows the delay-aligned CLEAN dry while gated. Both dry delay rings
+        // keep being written below, so a Mix dip re-engages against warm lock-step
+        // history and the bank re-syncs its cutoffs the block it resumes
+        // (MultibandWidth's align re-sync, KI #1). Exact compares, no epsilon.
+        fullWetIdle = ! blending
+                   && ! mixSmooth.isSmoothing()
+                   && ! (std::abs (mixSmooth.getCurrentValue() - 1.0f) > 0.0f)
+                   && ! p.autoGainMatch && ! matchEngaging
+                   && ! bypassBlend.isSmoothing()
+                   && ! (bypassBlend.getCurrentValue() > 0.0f);
+
         // Keep the pre-multiband signal -- the "off" side of the enable crossfade (the
         // chain output with the multiband NOT applied) -- before processBlock overwrites it.
         if (blending)
@@ -743,10 +767,15 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
             juce::FloatVectorOperations::copy (preMbScratch.getWritePointer (1), R, n);
         }
 
-        multiband.processBlock (L, R, n,
-            dryScratch.getReadPointer (0), dryScratch.getReadPointer (1),
-            dryAlignScratch.getWritePointer (0), dryAlignScratch.getWritePointer (1));
-        dryAligned = true;
+        if (fullWetIdle)
+            multiband.processBlock (L, R, n); // dry bank skipped (null dry pointers)
+        else
+        {
+            multiband.processBlock (L, R, n,
+                dryScratch.getReadPointer (0), dryScratch.getReadPointer (1),
+                dryAlignScratch.getWritePointer (0), dryAlignScratch.getWritePointer (1));
+            dryAligned = true;
+        }
 
         // Fade the multiband contribution in/out. At blend 1 the output is exactly the
         // multiband result; at 0 it is exactly the pre-multiband signal -- so a settled
@@ -783,6 +812,28 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     float* lrR = loudnessRefScratch.getWritePointer (1);
     constexpr float kAlignMix = 0.05f;
 
+    if (fullWetIdle)
+    {
+        // H4 gated state: Mix parked at exactly 1, Match off, no crossfade in
+        // flight. The output already IS the wet, so the m=1 blend below (one
+        // LSB-level rounding pass) is skipped along with the smoothstep -- and a
+        // settled mixSmooth tick is mutation-free, so not calling getNextValue()
+        // is state-identical (the H1/H10 argument). Everything stateful still
+        // runs: both dry delay rings advance in lockstep (warm re-engage) and the
+        // Level-Match reference is filled with the delay-aligned dry so the
+        // Measure readout keeps tracking while gated.
+        for (int i = 0; i < n; ++i)
+        {
+            ddL[dryDelayWrite] = dL[i];
+            ddR[dryDelayWrite] = dR[i];
+            adL[dryDelayWrite] = aL[i];
+            adR[dryDelayWrite] = aR[i];
+            int rp = dryDelayWrite - lat; if (rp < 0) rp += ddSize;
+            lrL[i] = adL[rp]; lrR[i] = adR[rp];
+            if (++dryDelayWrite >= ddSize) dryDelayWrite = 0;
+        }
+    }
+    else
     for (int i = 0; i < n; ++i)
     {
         ddL[dryDelayWrite] = dL[i];
@@ -867,8 +918,7 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     // discreteDiffers, or applied live), this gate must be revisited -- the
     // scan would then miss the pre-engage block and the silence->audio snap
     // could be wrong on the first engaged block.
-    const bool matchEngaging = switchState != SwitchState::Normal && pendingP.autoGainMatch;
-    if (p.autoGainMatch || matchEngaging)
+    if (p.autoGainMatch || matchEngaging) // matchEngaging hoisted above the multiband stage (H4)
     {
         double inSq = 0.0;
         {

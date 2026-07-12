@@ -50,6 +50,19 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   dump, including new 4-band solo engage/change/clear cycles (cold re-entry) and per-sample
   crossover/mono-freq glide scenarios; reported latency unchanged. No dependency change (JUCE
   itself is untouched). Evidence: PR #58. [Verified]
+- **The multiband dry-align reconstruction pauses while nothing can consume it (Wave 2 / H4)**:
+  with the Mix glide parked at exactly 1, Level Match off (and not mid-engage), and no
+  enable/bypass crossfade in flight, the phase-matched A(dry) bank (six crossover filters per
+  sample — half the multiband cost) and the Mix blend pass are skipped; both dry delay lines keep
+  running, so lowering Mix re-engages the reconstruction phase-matched (new regression test
+  `testDryAlignGateRecomb` asserts the KI-#1 mono-sum metric through the gate/re-engage cycle).
+  Class B by design: in the gated state the output is the exact processed signal instead of its
+  Mix=1 float re-blend (measured ≤2.4e-10 difference), and the Measure readout follows the
+  delay-aligned clean input while gated — so engaging Match immediately after a long gated
+  stretch starts from a measurement without the multiband reconstruction ripple (worst measured
+  0.53 dB initial level offset on a near-crossover synthetic, converging as the loudness window
+  refills; the engage is always duck- and glide-smoothed, never a click). Expected effect
+  (existing Round-2 measurements): multiband rows −~20 %. Evidence: PR #58. [Verified]
 
 ## [0.8.9] — 2026-07-11
 ### Added
