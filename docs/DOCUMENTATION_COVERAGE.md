@@ -6,7 +6,11 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for Wave-2 Step-1 (PR #58) — no module-coverage change; the H11/ALG-4 DSP work is
+Last updated: for Wave-2 Step-2 (PR #58) — one new module row (`LR4Xover`, the flat-state LR4
+crossover); H3/H4/H5/H6/H15 documented across DSP_ALGORITHMS, DSP_GRAPH_REFERENCE, SIGNAL_FLOW,
+PERFORMANCE_BUDGET, REALTIME_SAFETY_AUDIT, THREAD_MODEL/THREADING_POLICY (two new generation
+counters, same staleness-hint pattern), TESTING (new `testDryAlignGateRecomb`), CHANGELOG
+[Unreleased]. Prior: Wave-2 Step-1 (PR #58) — no module-coverage change; the H11/ALG-4 DSP work
 documented in DSP_ALGORITHMS + PERFORMANCE_BUDGET + CHANGELOG, and `AI_AGENT_POLICY.md` gained
 constraint C8 (UI text requires explicit instruction). Retro-covers PR #57 (KNOWN_ISSUES KI-008
 added; no coverage change — this header was missed in that PR). Prior: the 0.8.9 release (PR #56)
@@ -30,6 +34,7 @@ the ScopeBuffer per-block publication model documented; prior full audit at HEAD
 | `ChorusEngine` | DSP_ALGORITHMS | Full | Verified |
 | `MonoMaker` | DSP_ALGORITHMS, SIGNAL_FLOW, ADR-0006 | Full | Verified |
 | `MultibandWidth` | DSP_ALGORITHMS, ADR-0005/0009 | Full | Verified |
+| `LR4Xover` (flat-state LR4 crossover, Wave 2 / H6) | DSP_GRAPH_REFERENCE, DSP_ALGORITHMS, PERFORMANCE_BUDGET, REALTIME_SAFETY_AUDIT + its own bit-exactness contract comment | Full | Verified |
 | `SoloMonitor` | DSP_ALGORITHMS, ADR-0004/0006 | Full | Verified |
 | `LoudnessMatch` | DSP_ALGORITHMS, ADR-0007 | Full | Verified |
 | `Correlation` / `LevelMeters` / `ScopeBuffer` | DSP_ALGORITHMS, THREAD_MODEL | Full | Verified |
