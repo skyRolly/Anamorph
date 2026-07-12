@@ -1423,7 +1423,7 @@ void SpectrumImager::setContextTooltip()
 {
     const auto p = getMouseXYRelative().toFloat();
     juce::String t;
-    if (hoverSolo >= 0)            t = "Solo this band - Alt-click solos / clears all bands";
+    if (hoverSolo >= 0)            t = "Solo this band";
     else if (hoverHandle >= 0)     t = "Drag to change the split frequency";
     else if (hoverWidth >= 0)      t = "Band width";
     else if (deleteHit (p) >= 0)   t = "Remove this band";

@@ -19,6 +19,12 @@ humans). Read this **before** modifying any code.
   seems necessary, **stop and ask**.
 - **Re-scan the workspace before each phase / on resume (C4).** The filesystem is the authoritative
   execution state, not chat history. Continue incrementally; never regenerate existing work.
+- **User-visible text is specified, never invented (C8).** Tooltips, control labels, menu items,
+  dialog strings and every other piece of UI copy are product wording owned by the maintainer.
+  Do not add, extend, reword, or translate UI text unless the task explicitly requests that
+  text. Implementing a behaviour change does not license announcing it in the UI — new
+  behaviour is documented in `CHANGELOG.md`/docs, not in unrequested interface strings.
+  (Added after PR #56 extended the Band Solo tooltip without instruction; reverted in PR #58.)
 
 ## After changing code
 

@@ -7,6 +7,12 @@ SHA + date** as the Evidence Source (per `docs/policies/CHANGELOG_POLICY.md`). E
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
 ## [Unreleased]
+### Fixed
+- **The Band Solo tooltip reads `Solo this band` again.** The `- Alt-click solos / clears all
+  bands` suffix shipped in 0.8.9 alongside the alt-click feature was never requested wording and
+  has been removed; the alt-click behaviour itself is unchanged. UI copy is now covered by an
+  explicit rule in `AI_AGENT_POLICY.md` (user-visible text requires explicit instruction).
+  Evidence: PR #58. [Verified]
 ### Changed
 - **Chorus/Dimension-D LFO generation is a quadrature recurrence (Wave 2 / H11)**: the two
   per-sample `std::sin` calls are one double-precision `(sin, cos)` pair advanced by a fixed
