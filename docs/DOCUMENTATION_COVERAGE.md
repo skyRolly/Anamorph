@@ -6,10 +6,13 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the 0.8.9 release (PR #56) — no coverage change; the GUI fixes and the Wave-1
-performance work are documented in CHANGELOG + PERFORMANCE_BUDGET. Prior: the 0.8.8
-idle-performance PR (#54) — threading paths (`soundParamGen`) and the
-ScopeBuffer per-block publication model documented; prior full audit at HEAD `c605fbe` (JUCE 8.0.14).
+Last updated: for Wave-2 Step-1 (PR #58) — no module-coverage change; the H11/ALG-4 DSP work is
+documented in DSP_ALGORITHMS + PERFORMANCE_BUDGET + CHANGELOG, and `AI_AGENT_POLICY.md` gained
+constraint C8 (UI text requires explicit instruction). Retro-covers PR #57 (KNOWN_ISSUES KI-008
+added; no coverage change — this header was missed in that PR). Prior: the 0.8.9 release (PR #56)
+— no coverage change; the 0.8.8 idle-performance PR (#54) — threading paths (`soundParamGen`) and
+the ScopeBuffer per-block publication model documented; prior full audit at HEAD `c605fbe`
+(JUCE 8.0.14).
 
 ## Code-module coverage
 
