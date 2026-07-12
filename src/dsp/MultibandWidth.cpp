@@ -8,12 +8,9 @@ namespace anamorph
 void MultibandWidth::prepare (double sampleRate, int maxBlock)
 {
     sr = sampleRate;
-    juce::dsp::ProcessSpec spec { sampleRate, (juce::uint32) juce::jmax (1, maxBlock), 2 };
+    juce::ignoreUnused (maxBlock); // LR4Xover state is flat, not block-sized
     for (auto* x : { &x1, &x2, &x3, &dx1, &dx2, &dx3 })
-    {
-        x->prepare (spec);
-        x->setType (juce::dsp::LinkwitzRileyFilterType::lowpass);
-    }
+        x->prepare (sampleRate);
     // ~8 octaves/sec slew cap (matches Mono Maker), so a quick split drag never
     // modulates the LR cutoff fast enough to pitch-shift (0.6.7 #1).
     glideCoeff = std::exp2 (8.0f / (float) sr);
@@ -96,8 +93,8 @@ void MultibandWidth::processBlock (float* left, float* right, int numSamples,
         return;
     }
 
-    juce::dsp::LinkwitzRileyFilter<float>* xs[3]  = { &x1, &x2, &x3 };
-    juce::dsp::LinkwitzRileyFilter<float>* dxs[3] = { &dx1, &dx2, &dx3 };
+    LR4Xover* xs[3]  = { &x1, &x2, &x3 };
+    LR4Xover* dxs[3] = { &dx1, &dx2, &dx3 };
     const int crossovers = bands - 1; // 1..3
 
     // Re-sync the dry bank's cutoffs to the live values at block start, so a block

@@ -18,10 +18,18 @@ no benchmark/profiling data exists in the repository, and inventing numbers is p
 ## Known per-sample costs (Verified, qualitative)
 
 - **Per-sample IIR coefficient recompute while gliding.** `MonoMaker`, `MultibandWidth`, and
-  `SoloMonitor` call `LinkwitzRileyFilter::setCutoffFrequency` per sample during a crossover
+  `SoloMonitor` call `LR4Xover::setCutoffFrequency` per sample during a crossover
   glide (recomputes coefficients in place, no allocation). This is the dominant variable cost
-  when crossovers are moving. Evidence [Verified]: src/dsp/MultibandWidth.cpp:113-123;
-  MonoMaker.cpp:33-37; SoloMonitor.cpp.
+  when crossovers are moving. Evidence [Verified]: src/dsp/MultibandWidth.cpp:110-120;
+  MonoMaker.cpp:32-36; SoloMonitor.cpp.
+- **The LR4 crossovers are a local flat-state clone (Wave 2 / H6).** All ten
+  `juce::dsp::LinkwitzRileyFilter<float>` instances (MultibandWidth wet + dry-align banks,
+  SoloMonitor, MonoMaker) are replaced by `LR4Xover` — the same coefficient derivation and TPT
+  ladder expression-for-expression, with four flat per-channel floats instead of four heap
+  `std::vector`s (whose per-sample indexing was 4.5-7 % of every multiband/solo row in the
+  Round-2 attribution). Bit-identical: proven byte-exact on the 33-scenario full-engine dump,
+  including 4-band solo engage/clear cycles (cold re-entry) and per-sample split/mono-freq
+  glides. Evidence [Verified]: src/dsp/LR4Xover.h (invariant comment); CHANGELOG [Unreleased].
 - **SoloMonitor runs only while it can be heard (0.8.9 / H1).** With nothing soloed and every
   crossfade gain fully settled, the monitor's per-sample work (6 LR4 `processSample` + 5 smoother
   ticks) is skipped entirely — previously ~half of the transparent engine floor (callgrind 0.8.8:

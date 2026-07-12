@@ -1,6 +1,7 @@
 #pragma once
 
 #include <juce_dsp/juce_dsp.h>
+#include "LR4Xover.h"
 
 namespace anamorph
 {
@@ -64,16 +65,19 @@ public:
                        float* dryOutL = nullptr, float* dryOutR = nullptr) noexcept;
 
 private:
-    juce::dsp::LinkwitzRileyFilter<float> x1; // f1: band1 vs rest
-    juce::dsp::LinkwitzRileyFilter<float> x2; // f2: band2 vs rest
-    juce::dsp::LinkwitzRileyFilter<float> x3; // f3: band3 vs band4
+    // Flat-state LR4 crossovers (H6, Wave 2): bit-identical arithmetic to the
+    // juce::dsp::LinkwitzRileyFilter<float> they replaced, without its
+    // per-sample heap-vector state indexing (see LR4Xover.h).
+    LR4Xover x1; // f1: band1 vs rest
+    LR4Xover x2; // f2: band2 vs rest
+    LR4Xover x3; // f3: band3 vs band4
 
     // A SECOND, parallel crossover bank that reconstructs the DRY signal at unit
     // width -- A(dry) -- so the dry/wet Mix's dry path carries the exact same
     // crossover allpass phase as the wet and the recombination never combs. Driven
     // by the SAME gliding cutoffs as x1..x3, in lockstep, so a fast split drag stays
     // phase-matched (a separate bank that lagged the glide would comb) (KI #1).
-    juce::dsp::LinkwitzRileyFilter<float> dx1, dx2, dx3;
+    LR4Xover dx1, dx2, dx3;
 
     // Per-sample multiplicative slew on each crossover, exactly like Mono Maker:
     // a fast drag of a split can no longer sweep the IIR quickly enough to chirp /

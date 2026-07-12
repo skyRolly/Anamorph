@@ -16,9 +16,9 @@ Audit basis: full read of `src/dsp/**` and `src/PluginProcessor.cpp` (two indepe
 | `HaasProcessor` | **Verified** — `process`/`reset` use pre-sized vectors (`std::fill`, no resize) | prepare(): `bufL/bufR.assign` | HaasProcessor.cpp:14-21,45-62 |
 | `VelvetNoise` | **Verified** — no alloc/lock/IO; note O(64) per-sample loop + transport-stop `std::fill` (no alloc) | prepare(): `midHist.assign`, RNG construct | VelvetNoise.cpp:10-17,81-139 |
 | `ChorusEngine` | **Verified** — `std::sin` per sample, pre-sized buffers | prepare(): `bufL/bufR.assign` (sized to 8× rate) | ChorusEngine.cpp:11-19,55-112 |
-| `MonoMaker` | **Verified** — per-sample `setCutoffFrequency` (in-place coeff recompute, no alloc) | prepare(): `xover.prepare` | MonoMaker.cpp:7-12,26-46 |
-| `MultibandWidth` | **Verified** — per-sample coeff recompute, no alloc/lock/IO | prepare(): 6× `LinkwitzRileyFilter.prepare` | MultibandWidth.cpp:8-16,77-168 |
-| `SoloMonitor` | **Verified** — per-sample coeff recompute + `SmoothedValue`, no alloc | prepare(): 3× filter + smoother reset | SoloMonitor.cpp:7-25,59-109 |
+| `MonoMaker` | **Verified** — per-sample `setCutoffFrequency` (in-place coeff recompute, no alloc) | prepare(): scalar only (`LR4Xover` state is flat — no heap since Wave 2 / H6) | MonoMaker.cpp:7-18,25-47 |
+| `MultibandWidth` | **Verified** — per-sample coeff recompute, no alloc/lock/IO | prepare(): scalar only (6× `LR4Xover.prepare`, flat state — no heap since Wave 2 / H6) | MultibandWidth.cpp:8-30,74-167 |
+| `SoloMonitor` | **Verified** — per-sample coeff recompute + `SmoothedValue`, no alloc | prepare(): 3× flat-state filter + smoother reset | SoloMonitor.cpp:7-25,57-158 |
 | `LoudnessMatch` | **Verified** — fixed nested biquad structs; `pow/log10/tanh`; no alloc | prepare(): coeff compute only | LoudnessMatch.cpp:47-156 |
 | `CorrelationMeter` | **Verified** — scalar one-poles only | none | Correlation.h:36-95 |
 | `LevelMeters` | **Verified** — scalar envelopes; NaN self-heal per sample | none | LevelMeters.h:60-167 |

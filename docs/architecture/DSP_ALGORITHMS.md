@@ -60,8 +60,10 @@ Invariant: `amount 0 = identity` for both voices.
 ## MonoMaker — `src/dsp/MonoMaker.{h,cpp}`
 
 Phase-coherent low-frequency mono via a 4th-order Linkwitz-Riley crossover
-(`juce::dsp::LinkwitzRileyFilter`, lowpass type → LP/HP split, LP+HP = allpass). Sums the low
-bands to mono (`monoLow = (lowL+lowR)/2`), recombines `L = highL + monoLow` (`.cpp:40-46`).
+(`LR4Xover` — the local flat-state clone with bit-identical arithmetic to the
+`juce::dsp::LinkwitzRileyFilter` it replaced, Wave 2 / H6; LP/HP split, LP+HP = allpass).
+Sums the low bands to mono (`monoLow = (lowL+lowR)/2`), recombines `L = highL + monoLow`
+(`.cpp:39-45`).
 Cutoff glided per sample (`glideCoeff = exp2(8/sr)`, ~8 oct/s) to avoid pitch wobble.
 Nyquist-safe clamp `[20, max(1000, 0.45·sr)]`. Applied **post-Mix, in place** (0.8.0).
 

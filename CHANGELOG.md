@@ -41,6 +41,15 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   the original per-sample loop verbatim. Expected effect (existing Round-2 measurements): −25-30 %
   on the velvet-1.0 row (the gather owned 41.7 % of it and 45.6 % of its D1 read misses).
   Evidence: PR #58. [Verified]
+- **The multiband/solo/mono-maker crossovers run on a local flat-state LR4 (Wave 2 / H6)**: all
+  ten `juce::dsp::LinkwitzRileyFilter<float>` instances are replaced by `LR4Xover`, which
+  reproduces the JUCE filter's coefficient derivation and TPT ladder expression-for-expression
+  (including which products round in float and which sums run in double) while storing its state
+  in flat per-channel floats instead of heap `std::vector`s — the vector indexing was 4.5-7 % of
+  every multiband/solo row. **Bit-identical**: proven byte-exact on the 33-scenario full-engine
+  dump, including new 4-band solo engage/change/clear cycles (cold re-entry) and per-sample
+  crossover/mono-freq glide scenarios; reported latency unchanged. No dependency change (JUCE
+  itself is untouched). Evidence: PR #58. [Verified]
 
 ## [0.8.9] — 2026-07-11
 ### Added

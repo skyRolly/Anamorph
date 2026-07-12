@@ -43,8 +43,9 @@ factor) but the stage's position in the chain is fixed.
 
 ## Shared crossover sub-bank
 
-`MonoMaker`, `MultibandWidth`, and `SoloMonitor` all use `juce::dsp::LinkwitzRileyFilter`
-(LR4, lowpass type → LP/HP split) with an identical per-sample multiplicative glide
+`MonoMaker`, `MultibandWidth`, and `SoloMonitor` all use the local flat-state `LR4Xover`
+(src/dsp/LR4Xover.h, Wave 2 / H6 — bit-identical arithmetic to the
+`juce::dsp::LinkwitzRileyFilter` it replaced, LP/HP dual output) with an identical per-sample multiplicative glide
 (`glideCoeff = exp2(8/sr)`, ~8 oct/s). `MultibandWidth` and `SoloMonitor` share the identical
 Nyquist-safe clamp `[20, max(1000, 0.45·sr)]` + 1.1× top-down ordering.
 

@@ -7,9 +7,8 @@ namespace anamorph
 void MonoMaker::prepare (double sampleRate, int maxBlock)
 {
     sr = sampleRate;
-    juce::dsp::ProcessSpec spec { sampleRate, (juce::uint32) juce::jmax (1, maxBlock), 2 };
-    xover.prepare (spec);
-    xover.setType (juce::dsp::LinkwitzRileyFilterType::lowpass);
+    juce::ignoreUnused (maxBlock); // LR4Xover state is flat, not block-sized
+    xover.prepare (sampleRate);
     currentFreq = targetFreq;
     xover.setCutoffFrequency (currentFreq);
     // Per-sample multiplicative slew cap (~8 octaves/sec): a fast Freq drag can no
