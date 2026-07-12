@@ -1423,7 +1423,7 @@ void SpectrumImager::setContextTooltip()
 {
     const auto p = getMouseXYRelative().toFloat();
     juce::String t;
-    if (hoverSolo >= 0)            t = "Solo this band";
+    if (hoverSolo >= 0)            t = "Solo this band - Alt-click solos / clears all bands";
     else if (hoverHandle >= 0)     t = "Drag to change the split frequency";
     else if (hoverWidth >= 0)      t = "Band width";
     else if (deleteHit (p) >= 0)   t = "Remove this band";
@@ -1486,6 +1486,7 @@ void SpectrumImager::mouseDown (const juce::MouseEvent& e)
         soloPressBand = sh;
         soloDownX = p.x;
         soloPressMs = juce::Time::getMillisecondCounter();
+        soloPressAlt = alt; // modifier read at press, like every other alt-click here
         soloHoldActive = soloMovedBand = false;
         return;
     }
@@ -1584,6 +1585,8 @@ void SpectrumImager::mouseUp (const juce::MouseEvent& e)
     if (soloPressBand >= 0)
     {
         if (soloHoldActive) { if (onClearSoloPreview) onClearSoloPreview(); if (soloMovedBand) endBandMove(); }
+        else if (soloPressAlt) // Alt/Option quick click: act on ALL bands (0.8.9)
+            setSoloMask (bandSoloed (soloPressBand) ? 0 : (1 << bandCount()) - 1);
         else                  toggleSoloBit (soloPressBand);
         soloPressBand = -1;
         soloHoldActive = soloMovedBand = false;

@@ -67,4 +67,4 @@ Evidence:
   8.0.14 build against the 8.0.8 baseline, no perceptual regressions (2026-06-29). See **Manual
   Audition (Level 5)** above.
 - Policy basis: `docs/policies/DEPENDENCY_POLICY.md` (Upgrade rules), `docs/policies/ARCHITECTURE_REVIEW_GATE.md`.
-- History: `CHANGELOG.md [Unreleased]` (the 8.0.8 → 8.0.14 entry); commit `41acaa7`.
+- History: `CHANGELOG.md [0.8.8]` (the 8.0.8 → 8.0.14 entry; it shipped with 0.8.8); commit `41acaa7`.

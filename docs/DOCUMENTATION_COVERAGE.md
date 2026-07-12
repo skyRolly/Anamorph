@@ -6,7 +6,9 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the 0.8.8 idle-performance PR (#54) — threading paths (`soundParamGen`) and the
+Last updated: for the 0.8.9 release (PR #56) — no coverage change; the GUI fixes and the Wave-1
+performance work are documented in CHANGELOG + PERFORMANCE_BUDGET. Prior: the 0.8.8
+idle-performance PR (#54) — threading paths (`soundParamGen`) and the
 ScopeBuffer per-block publication model documented; prior full audit at HEAD `c605fbe` (JUCE 8.0.14).
 
 ## Code-module coverage

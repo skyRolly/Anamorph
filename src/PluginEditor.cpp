@@ -350,7 +350,12 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     metersToggle.onClick = [this] { metersOn = metersToggle.getToggleState(); }; // visibility via layoutScopeArea (#2)
 
     setupToggle (advancedToggle, pid::advancedMode, "Adv", "Advanced mode"); // #17
-    advancedToggle.onClick = [this] { advanced = advancedToggle.getToggleState(); applyUiScale(); updateModeVisibility(); };
+    // Visibility BEFORE the resize (matching the constructor's order): setSize
+    // notifies the host synchronously (childBoundsChanged -> resizeView), and a
+    // host that paints inside that call must see a mode-consistent tree. The old
+    // resize-first order exposed one torn frame per toggle: the new layout with
+    // the OLD mode's visible-control set (the "controls jump/shake" glitch).
+    advancedToggle.onClick = [this] { advanced = advancedToggle.getToggleState(); updateModeVisibility(); applyUiScale(); };
 
     setupToggle (bypassToggle, pid::bypass, "Bypass", {});
     bypassToggle.setComponentID ("bypass");
@@ -928,8 +933,8 @@ void AnamorphAudioProcessorEditor::timerCallback()
     if (advancedToggle.getToggleState() != advanced)
     {
         advanced = advancedToggle.getToggleState();
-        applyUiScale();              // resize for / against the Multiband bar (#2)
-        updateModeVisibility();
+        updateModeVisibility();      // visibility first -- see advancedToggle.onClick
+        applyUiScale();              // then resize for / against the Multiband bar (#2)
     }
     if (metersToggle.getToggleState() != metersOn)
         metersOn = metersToggle.getToggleState(); // layoutScopeArea owns visibility (#2)
@@ -1350,8 +1355,29 @@ void AnamorphAudioProcessorEditor::showSavePreset (bool show)
         savePresetBackdrop.toFront (false);
         resized();
         saveNameEditor.setText (processor.getPresets().currentName(), false);
-        saveNameEditor.grabKeyboardFocus();
+        focusSaveNameField (4);
     }
+}
+
+// Focus the save-name field so typing (Space included) goes into the text and not
+// to the host. A plain grabKeyboardFocus() here silently did NOTHING when invoked
+// from the preset-menu callback: the menu's own desktop window still owns the OS
+// focus at that moment (its teardown + focus restoration run AFTER the user
+// callback -- juce_PopupMenu.cpp, PopupMenuCompletionCallback), and JUCE aborts
+// the whole internal focus move while the peer isn't focused (juce_Component.cpp,
+// takeKeyboardFocus: "if (! peer->isFocused()) return"). With no JUCE component
+// focused, every keystroke stays with the host, which reads Space as transport.
+// So: try now (covers the standalone / already-focused case), then re-try on later
+// message-loop passes until the grab actually STICKS -- by then the menu window is
+// gone and peer->grabFocus() can take the OS focus for real.
+void AnamorphAudioProcessorEditor::focusSaveNameField (int attemptsLeft)
+{
+    if (! savePresetBackdrop.isVisible()) return; // dismissed meanwhile -- stop retrying
+    saveNameEditor.grabKeyboardFocus();
+    if (attemptsLeft > 0 && ! saveNameEditor.hasKeyboardFocus (true))
+        juce::Timer::callAfterDelay (50,
+            [safe = juce::Component::SafePointer<AnamorphAudioProcessorEditor> (this), attemptsLeft]
+            { if (safe != nullptr) safe->focusSaveNameField (attemptsLeft - 1); });
 }
 
 // ----------------------------------------------------------------------------
