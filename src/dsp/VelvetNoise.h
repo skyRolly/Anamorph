@@ -62,7 +62,7 @@ private:
 
     std::array<int,   maxTaps> pos {};   // tap delay (samples), fixed
     std::array<float, maxTaps> sign {};  // tap sign +/-1, fixed
-    std::array<float, maxTaps> weight {};// continuous active weight per tap
+    std::array<float, maxTaps> weight {};// continuous active weight per tap, tap sign pre-folded (ALG-4)
     int    activeTaps = 0;
     float  norm = 1.0f;
     // Density the current weight[]/activeTaps/norm were computed from, recorded

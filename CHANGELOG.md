@@ -19,6 +19,13 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   sample delta across the 25-scenario full-engine dump; all other scenarios byte-identical).
   Expected effect (from the existing Round-2 measurements, no new profiling): chorus/Dim-D rows
   −~5 µs; everything-on-os4 −15-20 µs. Evidence: PR #58. [Verified]
+- **VelvetNoise folds the fixed ±1 tap sign into the stored tap weight (Wave 2 / ALG-4)**: the
+  sparse-FIR gather does one multiply per tap instead of two and no longer reads the sign array.
+  Bit-identical output — `w·(±1)` is an exact sign flip and the gather's evaluation order is
+  unchanged; proven byte-identical across the 25-scenario full-engine dump (audio and scope-ring
+  publications). Only the already-approved low-risk fold; the larger tap-order restructure (H5)
+  is not part of this change. Expected effect (existing Round-2 measurements): −2-3 µs on the
+  velvet-1.0 row. Evidence: PR #58. [Verified]
 
 ## [0.8.9] — 2026-07-11
 ### Added

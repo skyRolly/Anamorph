@@ -48,8 +48,11 @@ no benchmark/profiling data exists in the repository, and inventing numbers is p
   while the Density glide is actually moving (skipped on an exact bit-compare once settled), and the
   tap accumulation is skipped when its contribution is provably exactly zero (Amount 0 — the default
   — or the presence gate fully closed, outside any stop fade). Bit-identical; the history writes and
-  all envelopes/glides still run every sample. Evidence [Verified]: src/dsp/VelvetNoise.cpp
-  (`updateWeights` gate; the tap-loop zero-skip); CHANGELOG [0.8.8].
+  all envelopes/glides still run every sample. As of Wave 2 (ALG-4) the fixed ±1 tap sign is folded
+  into the stored weight at rebuild time, so the gather does one multiply per tap instead of two and
+  reads one array less — bit-identical (`w·(±1)` is an exact sign flip; evaluation order unchanged;
+  Round-2 estimate −2-3 µs on the velvet-1.0 row). Evidence [Verified]: src/dsp/VelvetNoise.cpp
+  (`updateWeights` gate + sign fold; the tap-loop zero-skip); CHANGELOG [0.8.8], [Unreleased].
 
 ## Target sample rates / buffer sizes
 

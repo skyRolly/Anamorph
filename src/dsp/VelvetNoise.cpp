@@ -65,14 +65,18 @@ void VelvetNoise::updateWeights() noexcept
     weightsDensity = currentDensity; // record the input this build is valid for (S4)
 
     // Continuous active count: each tap fades in over its own unit interval, so
-    // changing density never causes a step discontinuity.
+    // changing density never causes a step discontinuity. The fixed +/-1 tap
+    // sign is folded into the stored weight here (ALG-4, Wave 2) so the gather
+    // loop below does one multiply per tap instead of two -- bit-identical,
+    // because w * (+/-1) is an exact sign flip and the gather's evaluation
+    // order (weight*sign)*sample is unchanged.
     const float f = currentDensity * (float) maxTaps;
     float sumSq = 0.0f;
     int   highest = 0;
     for (int i = 0; i < maxTaps; ++i)
     {
         const float w = std::min (1.0f, std::max (0.0f, f - (float) i));
-        weight[(size_t) i] = w;
+        weight[(size_t) i] = w * sign[(size_t) i];
         sumSq += w * w;
         if (w > 0.0f) highest = i + 1;
     }
@@ -149,7 +153,7 @@ void VelvetNoise::processBlock (float* left, float* right, int numSamples) noexc
             for (int t = 0; t < activeTaps; ++t)
             {
                 const int idx = (writePos - pos[(size_t) t]) & histMask;
-                decorr += weight[(size_t) t] * sign[(size_t) t] * midHist[(size_t) idx];
+                decorr += weight[(size_t) t] * midHist[(size_t) idx];
             }
         decorr *= norm * currentAmount * gate * stopG;
 

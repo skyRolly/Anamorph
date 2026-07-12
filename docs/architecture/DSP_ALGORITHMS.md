@@ -28,8 +28,9 @@ Mono→stereo / widening by synthesising a decorrelated **Side** from the **Mid*
 velvet-noise FIR (≤64 taps). Tap positions/signs are generated **once** in `prepare` with
 `std::mt19937` over a grid (`cell = decorrSamps/maxTaps`, skip tap 0, random ±1 sign,
 `.cpp:24-34`). `density` sets a continuous active-tap count with per-tap fade-in, normalised by
-`1/√(Σweight²)`. Per sample: `decorr = Σ w·sign·midHist[...]`, then `Side' = Side + decorr`
-(`.cpp:129-139`). A presence follower + fixed-time gate fades the tail; a play→stop edge applies
+`1/√(Σweight²)`. Per sample: `decorr = Σ w·sign·midHist[...]` (the fixed ±1 sign is pre-folded
+into the stored weight — ALG-4, Wave 2, bit-identical), then `Side' = Side + decorr`
+(`.cpp:154-162`). A presence follower + fixed-time gate fades the tail; a play→stop edge applies
 a ~4 ms zero-slope smoothstep tail-kill then flushes history. Mid is untouched → `L+R = 2·Mid`.
 Invariant: `amount 0 = identity`.
 
