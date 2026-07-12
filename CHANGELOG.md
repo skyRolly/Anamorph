@@ -6,90 +6,7 @@ SHA + date** as the Evidence Source (per `docs/policies/CHANGELOG_POLICY.md`). E
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
-## [Unreleased]
-### Fixed
-- **The Band Solo tooltip reads `Solo this band` again.** The `- Alt-click solos / clears all
-  bands` suffix shipped in 0.8.9 alongside the alt-click feature was never requested wording and
-  has been removed; the alt-click behaviour itself is unchanged. UI copy is now covered by an
-  explicit rule in `AI_AGENT_POLICY.md` (user-visible text requires explicit instruction).
-  Evidence: PR #58. [Verified]
-### Changed
-- **Chorus/Dimension-D LFO generation is a quadrature recurrence (Wave 2 / H11)**: the two
-  per-sample `std::sin` calls are one double-precision `(sin, cos)` pair advanced by a fixed
-  per-sample rotation and re-seeded from the LFO phase at every block start (the right channel's
-  90° offset is exactly the `cos` component). Modulation rate, depth, stereo phase offset and
-  the reported latency are unchanged; the LFO phase state itself still accumulates exactly as
-  before, so block-to-block continuity and re-engage from the parked amount-0 fast path are
-  bit-identical. Audible output is numerically class B: differences are confined to
-  chorus-active blocks and bounded by a sub-0.1-sample delay wobble (measured ≤8.2e-4 peak
-  sample delta across the 25-scenario full-engine dump; all other scenarios byte-identical).
-  Expected effect (from the existing Round-2 measurements, no new profiling): chorus/Dim-D rows
-  −~5 µs; everything-on-os4 −15-20 µs. Evidence: PR #58. [Verified]
-- **VelvetNoise folds the fixed ±1 tap sign into the stored tap weight (Wave 2 / ALG-4)**: the
-  sparse-FIR gather does one multiply per tap instead of two and no longer reads the sign array.
-  Bit-identical output — `w·(±1)` is an exact sign flip and the gather's evaluation order is
-  unchanged; proven byte-identical across the 25-scenario full-engine dump (audio and scope-ring
-  publications). Only the already-approved low-risk fold; the larger tap-order restructure (H5)
-  is not part of this change. Expected effect (existing Round-2 measurements): −2-3 µs on the
-  velvet-1.0 row. Evidence: PR #58. [Verified]
-- **VelvetNoise sparse-FIR gather is restructured tap-outer (Wave 2 / H5)**: while the density
-  glide is settled and no transport-stop fade is in flight, the 64 random-index history reads per
-  sample become one contiguous streaming run per tap over a linear image of the history, with the
-  per-sample accumulation kept in the original ascending-tap order — **bit-identical output**,
-  proven byte-identical across a 31-scenario full-engine dump including new density-glide,
-  transport-stop-flush and engage/park-cycle scenarios; the glide, stop-fade and parked paths keep
-  the original per-sample loop verbatim. Expected effect (existing Round-2 measurements): −25-30 %
-  on the velvet-1.0 row (the gather owned 41.7 % of it and 45.6 % of its D1 read misses).
-  Evidence: PR #58. [Verified]
-- **The multiband/solo/mono-maker crossovers run on a local flat-state LR4 (Wave 2 / H6)**: all
-  ten `juce::dsp::LinkwitzRileyFilter<float>` instances are replaced by `LR4Xover`, which
-  reproduces the JUCE filter's coefficient derivation and TPT ladder expression-for-expression
-  (including which products round in float and which sums run in double) while storing its state
-  in flat per-channel floats instead of heap `std::vector`s — the vector indexing was 4.5-7 % of
-  every multiband/solo row. **Bit-identical**: proven byte-exact on the 33-scenario full-engine
-  dump, including new 4-band solo engage/change/clear cycles (cold re-entry) and per-sample
-  crossover/mono-freq glide scenarios; reported latency unchanged. No dependency change (JUCE
-  itself is untouched). Evidence: PR #58. [Verified]
-- **The multiband dry-align reconstruction pauses while nothing can consume it (Wave 2 / H4)**:
-  with the Mix glide parked at exactly 1, Level Match off (and not mid-engage), and no
-  enable/bypass crossfade in flight, the phase-matched A(dry) bank (six crossover filters per
-  sample — half the multiband cost) and the Mix blend pass are skipped; both dry delay lines keep
-  running, so lowering Mix re-engages the reconstruction phase-matched (new regression test
-  `testDryAlignGateRecomb` asserts the KI-#1 mono-sum metric through the gate/re-engage cycle).
-  Class B by design: in the gated state the output is the exact processed signal instead of its
-  Mix=1 float re-blend (measured ≤2.4e-10 difference), and the Measure readout follows the
-  delay-aligned clean input while gated — so engaging Match immediately after a long gated
-  stretch starts from a measurement without the multiband reconstruction ripple (worst measured
-  0.53 dB initial level offset on a near-crossover synthetic, converging as the loudness window
-  refills; the engage is always duck- and glide-smoothed, never a click). Expected effect
-  (existing Round-2 measurements): multiband rows −~20 %. Evidence: PR #58. [Verified]
-- **The Drive waveshaper computes its tanh with a minimax rational kernel (Wave 2 / H3)**: the
-  two per-sample libm `tanh` calls become an odd degree-9/8 rational (input clamped at ±9.2,
-  result clamped to ±1), call-free and branch-predictable — measured 15.2 → 3.9 ns/sample (3.9×)
-  at the kernel level; the same kernel computes the peak-preserving makeup, so full-scale
-  mapping stays exact by construction. Class B numerics: max relative error 3.5e-7 (~3 ulp)
-  against double `std::tanh` on a 4M-point sweep; exact 0 at 0; hard ±1 saturation. On the
-  33-scenario dump, drive-engaged rows differ by ≤4.8e-7 per sample, every non-drive scenario is
-  byte-identical, and the Mix=0 null stays sample-exact once the Mix glide lands (DSP_POLICY
-  invariant 7 re-verified); Match-toggle stress rows show bounded −63 dBFS-level transients where
-  the loudness gate's thresholds amplify ulp-level input differences (readout deltas ~1e-6 dB).
-  Expected effect (existing Round-2 measurements): drive rows −25-30 %; everything-on-os4 loses
-  most of its ~55 % tanh share. Evidence: PR #58. [Verified]
-- **The editor's micro-animation poll re-arms on change-generation counters (Wave 2 / H15)**:
-  with the cursor outside the editor, no button held and the previous pass settled, the 60 Hz
-  poll no longer hashes every animated widget's value each frame (68-87 % of the remaining idle
-  editor instructions in the Round-2 attribution) — it now compares three relaxed generation
-  counters that together cover every path able to move a widget while the mouse is away: the
-  existing sound-param generation (host automation, undo/redo, preset and A/B applies, session
-  restore), a new view-param generation (host-automated Bypass, via a dedicated listener that
-  stays out of the undo/gesture machinery), and a new InternalState generation (the two-way-bound
-  Settings values, including their session restore). Same repaints, same animation behaviour —
-  only provably-static polling is skipped. Verified live in a headless host: 13/13 eased slider
-  positions correct after mouse-outside host automation in every phase, and a host-automated
-  Bypass still animates its toggle (the new watcher path). Expected effect (existing Round-2
-  measurements): idle editor CPU −~40 %. Evidence: PR #58. [Verified]
-
-## [0.8.9] — 2026-07-11
+## [0.8.9] — 2026-07-12
 ### Added
 - **Alt/Option-click on a Band Solo button acts on every band at once**: alt-clicking a soloed
   band's headphone icon clears the whole solo mask; alt-clicking an unsoloed band's icon solos
@@ -100,6 +17,21 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   headless across 1/2/3/4-band layouts × soloed/unsoloed/mixed masks, host-automation interplay,
   undo/redo and preset load (18/18 assertions). Evidence: PR #56. [Verified]
 ### Fixed
+- **A destroyed plugin instance no longer leaves a dangling parameter listener registered.**
+  The Wave-2 micro-animation re-arm listener (`viewGenWatcher`, added for the Bypass view
+  parameter) was registered in the constructor but — unlike every other parameter listener in
+  the processor — was never unregistered in the destructor; the view parameter (owned by the
+  `AudioProcessor` base subobject, torn down after derived members) could then outlive the
+  watcher holding a dangling listener pointer. Registration and unregistration are now fully
+  symmetric across all three listener mechanisms. Internal-only: no DSP, latency, parameter,
+  automation, preset or serialization effect under normal operation. Validated with
+  `valgrind --tool=memcheck` across the self-test suite's ~20 processor construct/destruct
+  cycles (0 errors from 0 contexts). Evidence: PR #58 (commit f6a5d49). [Verified]
+- **The Band Solo tooltip reads `Solo this band` again.** The `- Alt-click solos / clears all
+  bands` suffix shipped alongside the alt-click feature was never requested wording and has been
+  removed; the alt-click behaviour itself is unchanged. UI copy is now covered by an explicit
+  rule in `AI_AGENT_POLICY.md` (user-visible text requires explicit instruction).
+  Evidence: PR #58. [Verified]
 - **Toggling Advanced mode no longer flashes a torn frame** (most controls appearing to jump or
   shake for one frame). Both toggle paths resized the window before updating the mode's control
   visibility; `setSize` notifies the host synchronously mid-handler, so a host that paints inside
@@ -121,6 +53,80 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   key routing to the host is exactly as before. Validated headless end-to-end through the real
   preset menu with keys dispatched through the peer. Evidence: PR #56. [Verified]
 ### Changed
+- **The editor's micro-animation poll re-arms on change-generation counters (Wave 2 / H15)**:
+  with the cursor outside the editor, no button held and the previous pass settled, the 60 Hz
+  poll no longer hashes every animated widget's value each frame (68-87 % of the remaining idle
+  editor instructions in the Round-2 attribution) — it now compares three relaxed generation
+  counters that together cover every path able to move a widget while the mouse is away: the
+  existing sound-param generation (host automation, undo/redo, preset and A/B applies, session
+  restore), a new view-param generation (host-automated Bypass, via a dedicated listener that
+  stays out of the undo/gesture machinery), and a new InternalState generation (the two-way-bound
+  Settings values, including their session restore). Same repaints, same animation behaviour —
+  only provably-static polling is skipped. Verified live in a headless host: 13/13 eased slider
+  positions correct after mouse-outside host automation in every phase, and a host-automated
+  Bypass still animates its toggle (the new watcher path). Expected effect (existing Round-2
+  measurements): idle editor CPU −~40 %. Evidence: PR #58. [Verified]
+- **The Drive waveshaper computes its tanh with a minimax rational kernel (Wave 2 / H3)**: the
+  two per-sample libm `tanh` calls become an odd degree-9/8 rational (input clamped at ±9.2,
+  result clamped to ±1), call-free and branch-predictable — measured 15.2 → 3.9 ns/sample (3.9×)
+  at the kernel level; the same kernel computes the peak-preserving makeup, so full-scale
+  mapping stays exact by construction. Class B numerics: max relative error 3.5e-7 (~3 ulp)
+  against double `std::tanh` on a 4M-point sweep; exact 0 at 0; hard ±1 saturation. On the
+  33-scenario dump, drive-engaged rows differ by ≤4.8e-7 per sample, every non-drive scenario is
+  byte-identical, and the Mix=0 null stays sample-exact once the Mix glide lands (DSP_POLICY
+  invariant 7 re-verified); Match-toggle stress rows show bounded −63 dBFS-level transients where
+  the loudness gate's thresholds amplify ulp-level input differences (readout deltas ~1e-6 dB).
+  Expected effect (existing Round-2 measurements): drive rows −25-30 %; everything-on-os4 loses
+  most of its ~55 % tanh share. Evidence: PR #58. [Verified]
+- **The multiband dry-align reconstruction pauses while nothing can consume it (Wave 2 / H4)**:
+  with the Mix glide parked at exactly 1, Level Match off (and not mid-engage), and no
+  enable/bypass crossfade in flight, the phase-matched A(dry) bank (six crossover filters per
+  sample — half the multiband cost) and the Mix blend pass are skipped; both dry delay lines keep
+  running, so lowering Mix re-engages the reconstruction phase-matched (new regression test
+  `testDryAlignGateRecomb` asserts the KI-#1 mono-sum metric through the gate/re-engage cycle).
+  Class B by design: in the gated state the output is the exact processed signal instead of its
+  Mix=1 float re-blend (measured ≤2.4e-10 difference), and the Measure readout follows the
+  delay-aligned clean input while gated — so engaging Match immediately after a long gated
+  stretch starts from a measurement without the multiband reconstruction ripple (worst measured
+  0.53 dB initial level offset on a near-crossover synthetic, converging as the loudness window
+  refills; the engage is always duck- and glide-smoothed, never a click). Expected effect
+  (existing Round-2 measurements): multiband rows −~20 %. Evidence: PR #58. [Verified]
+- **The multiband/solo/mono-maker crossovers run on a local flat-state LR4 (Wave 2 / H6)**: all
+  ten `juce::dsp::LinkwitzRileyFilter<float>` instances are replaced by `LR4Xover`, which
+  reproduces the JUCE filter's coefficient derivation and TPT ladder expression-for-expression
+  (including which products round in float and which sums run in double) while storing its state
+  in flat per-channel floats instead of heap `std::vector`s — the vector indexing was 4.5-7 % of
+  every multiband/solo row. **Bit-identical**: proven byte-exact on the 33-scenario full-engine
+  dump, including new 4-band solo engage/change/clear cycles (cold re-entry) and per-sample
+  crossover/mono-freq glide scenarios; reported latency unchanged. No dependency change (JUCE
+  itself is untouched). Evidence: PR #58. [Verified]
+- **VelvetNoise sparse-FIR gather is restructured tap-outer (Wave 2 / H5)**: while the density
+  glide is settled and no transport-stop fade is in flight, the 64 random-index history reads per
+  sample become one contiguous streaming run per tap over a linear image of the history, with the
+  per-sample accumulation kept in the original ascending-tap order — **bit-identical output**,
+  proven byte-identical across a 31-scenario full-engine dump including new density-glide,
+  transport-stop-flush and engage/park-cycle scenarios; the glide, stop-fade and parked paths keep
+  the original per-sample loop verbatim. Expected effect (existing Round-2 measurements): −25-30 %
+  on the velvet-1.0 row (the gather owned 41.7 % of it and 45.6 % of its D1 read misses).
+  Evidence: PR #58. [Verified]
+- **VelvetNoise folds the fixed ±1 tap sign into the stored tap weight (Wave 2 / ALG-4)**: the
+  sparse-FIR gather does one multiply per tap instead of two and no longer reads the sign array.
+  Bit-identical output — `w·(±1)` is an exact sign flip and the gather's evaluation order is
+  unchanged; proven byte-identical across the 25-scenario full-engine dump (audio and scope-ring
+  publications). Only the already-approved low-risk fold; the larger tap-order restructure (H5)
+  is not part of this change. Expected effect (existing Round-2 measurements): −2-3 µs on the
+  velvet-1.0 row. Evidence: PR #58. [Verified]
+- **Chorus/Dimension-D LFO generation is a quadrature recurrence (Wave 2 / H11)**: the two
+  per-sample `std::sin` calls are one double-precision `(sin, cos)` pair advanced by a fixed
+  per-sample rotation and re-seeded from the LFO phase at every block start (the right channel's
+  90° offset is exactly the `cos` component). Modulation rate, depth, stereo phase offset and
+  the reported latency are unchanged; the LFO phase state itself still accumulates exactly as
+  before, so block-to-block continuity and re-engage from the parked amount-0 fast path are
+  bit-identical. Audible output is numerically class B: differences are confined to
+  chorus-active blocks and bounded by a sub-0.1-sample delay wobble (measured ≤8.2e-4 peak
+  sample delta across the 25-scenario full-engine dump; all other scenarios byte-identical).
+  Expected effect (from the existing Round-2 measurements, no new profiling): chorus/Dim-D rows
+  −~5 µs; everything-on-os4 −15-20 µs. Evidence: PR #58. [Verified]
 - **Final Wave-1 DSP micro-optimisations (H9 + H10 + H12, one bundle)**: (H9) two per-block
   buffer copies that were byte-identical dead weight are gone — the silence-edge scan now reads
   the dry/Mix buffer it always duplicated (`inputScratch` removed), the loudness matcher is fed

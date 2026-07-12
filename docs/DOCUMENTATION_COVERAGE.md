@@ -6,17 +6,21 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for Wave-2 Step-2 (PR #58) — one new module row (`LR4Xover`, the flat-state LR4
+Last updated: for the **v0.8.9 release** (finalized 2026-07-12, PR #58) — the `[Unreleased]`
+CHANGELOG entries from Wave-2 Step-1 and Step-2 (H3/H4/H5/H6/H11/H15/ALG-4, the tooltip revert,
+and the `viewGenWatcher` destructor lifecycle fix) are now folded into the `[0.8.9]` section;
+every `CHANGELOG [Unreleased]` evidence citation across the docs set (PERFORMANCE_BUDGET) is
+updated to `CHANGELOG [0.8.9]` accordingly. One new module row (`LR4Xover`, the flat-state LR4
 crossover); H3/H4/H5/H6/H15 documented across DSP_ALGORITHMS, DSP_GRAPH_REFERENCE, SIGNAL_FLOW,
 PERFORMANCE_BUDGET, REALTIME_SAFETY_AUDIT, THREAD_MODEL/THREADING_POLICY (two new generation
-counters, same staleness-hint pattern), TESTING (new `testDryAlignGateRecomb`), CHANGELOG
-[Unreleased]. Prior: Wave-2 Step-1 (PR #58) — no module-coverage change; the H11/ALG-4 DSP work
-documented in DSP_ALGORITHMS + PERFORMANCE_BUDGET + CHANGELOG, and `AI_AGENT_POLICY.md` gained
-constraint C8 (UI text requires explicit instruction). Retro-covers PR #57 (KNOWN_ISSUES KI-008
-added; no coverage change — this header was missed in that PR). Prior: the 0.8.9 release (PR #56)
-— no coverage change; the 0.8.8 idle-performance PR (#54) — threading paths (`soundParamGen`) and
-the ScopeBuffer per-block publication model documented; prior full audit at HEAD `c605fbe`
-(JUCE 8.0.14).
+counters, same staleness-hint pattern), TESTING (new `testDryAlignGateRecomb`, test count 23→24).
+Prior: Wave-2 Step-1 (PR #58) — no module-coverage change; the H11/ALG-4 DSP work documented in
+DSP_ALGORITHMS + PERFORMANCE_BUDGET + CHANGELOG, and `AI_AGENT_POLICY.md` gained constraint C8
+(UI text requires explicit instruction). Retro-covers PR #57 (KNOWN_ISSUES KI-008 added; no
+coverage change — this header was missed in that PR). Prior: the initial 0.8.9 version bump
+(PR #56) — no coverage change; the 0.8.8 idle-performance PR (#54) — threading paths
+(`soundParamGen`) and the ScopeBuffer per-block publication model documented; prior full audit at
+HEAD `c605fbe` (JUCE 8.0.14).
 
 ## Code-module coverage
 

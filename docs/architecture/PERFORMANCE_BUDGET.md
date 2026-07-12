@@ -30,7 +30,7 @@ no benchmark/profiling data exists in the repository, and inventing numbers is p
   sweep; exact 0 at 0; saturates to exactly ±1; the same-kernel makeup keeps full-scale peak
   mapping exact by construction. The Mix=0 bit-exact null (DSP_POLICY inv. 7) re-verified on the
   twin dump. Evidence [Verified]: src/dsp/AnamorphEngine.cpp (`driveTanh` + invariant comment);
-  CHANGELOG [Unreleased].
+  CHANGELOG [0.8.9].
 - **The multiband dry-align bank is gated in the settled-full-wet state (Wave 2 / H4).** With the
   Mix glide parked at exactly 1, Match off (and not mid-engage), and no enable/bypass crossfade in
   flight, the A(dry) reconstruction (6 LR4 calls/sample — half the multiband cost, ~20 µs on the
@@ -41,7 +41,7 @@ no benchmark/profiling data exists in the repository, and inventing numbers is p
   0.53 dB worst-case level offset on a near-crossover synthetic, converging over the loudness
   window; always duck+glide smoothed). Both dry delay rings stay warm; re-engage is comb-free
   (`testDryAlignGateRecomb`). Evidence [Verified]: src/dsp/AnamorphEngine.cpp (gate + invariant
-  comment); CHANGELOG [Unreleased].
+  comment); CHANGELOG [0.8.9].
 - **The LR4 crossovers are a local flat-state clone (Wave 2 / H6).** All ten
   `juce::dsp::LinkwitzRileyFilter<float>` instances (MultibandWidth wet + dry-align banks,
   SoloMonitor, MonoMaker) are replaced by `LR4Xover` — the same coefficient derivation and TPT
@@ -49,7 +49,7 @@ no benchmark/profiling data exists in the repository, and inventing numbers is p
   `std::vector`s (whose per-sample indexing was 4.5-7 % of every multiband/solo row in the
   Round-2 attribution). Bit-identical: proven byte-exact on the 33-scenario full-engine dump,
   including 4-band solo engage/clear cycles (cold re-entry) and per-sample split/mono-freq
-  glides. Evidence [Verified]: src/dsp/LR4Xover.h (invariant comment); CHANGELOG [Unreleased].
+  glides. Evidence [Verified]: src/dsp/LR4Xover.h (invariant comment); CHANGELOG [0.8.9].
 - **SoloMonitor runs only while it can be heard (0.8.9 / H1).** With nothing soloed and every
   crossfade gain fully settled, the monitor's per-sample work (6 LR4 `processSample` + 5 smoother
   ticks) is skipped entirely — previously ~half of the transparent engine floor (callgrind 0.8.8:
@@ -69,7 +69,7 @@ no benchmark/profiling data exists in the repository, and inventing numbers is p
   extremes (measured ≤8.2e-4 output delta on the 25-scenario dump, chorus-active blocks only);
   the float `phase` state and the amount-0 idle path (H12) are bit-identical, so nothing drifts
   across blocks or re-engages. Evidence [Verified]: src/dsp/ChorusEngine.cpp (recurrence +
-  invariant comment); CHANGELOG [Unreleased].
+  invariant comment); CHANGELOG [0.8.9].
 - **VelvetNoise** has an O(maxTaps=64) sparse-FIR inner loop per sample, plus a full-buffer
   `std::fill` on the transport-stop completion (no alloc). As of 0.8.8 the surrounding per-sample
   work is gated without changing output: the 64-tap weight rebuild + `sqrt` normalisation runs only
@@ -86,7 +86,7 @@ no benchmark/profiling data exists in the repository, and inventing numbers is p
   velvet-1.0 row), accumulating in the original ascending-tap order — bit-identical; the glide,
   stop-fade and parked paths keep the original loop. Evidence [Verified]: src/dsp/VelvetNoise.cpp
   (`updateWeights` gate + sign fold; the H5 fast path + eligibility comment; the tap-loop
-  zero-skip); CHANGELOG [0.8.8], [Unreleased].
+  zero-skip); CHANGELOG [0.8.8], [0.8.9].
 
 ## Target sample rates / buffer sizes
 
