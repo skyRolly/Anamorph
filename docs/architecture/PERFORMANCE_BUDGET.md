@@ -22,6 +22,15 @@ no benchmark/profiling data exists in the repository, and inventing numbers is p
   glide (recomputes coefficients in place, no allocation). This is the dominant variable cost
   when crossovers are moving. Evidence [Verified]: src/dsp/MultibandWidth.cpp:110-120;
   MonoMaker.cpp:32-36; SoloMonitor.cpp.
+- **The Drive waveshaper's tanh is a minimax rational kernel (Wave 2 / H3).** The two per-sample
+  libm `tanh` calls (~55 % of every oversampling delta in the Round-2 attribution; their range
+  reduction owned 35.8 % of engine branch mispredicts) are an odd degree-9/8 rational with
+  clamped input/result — call-free, predictable, measured 15.2 → 3.9 ns/sample (3.9×) on the
+  kernel bench. Class B: max relative error 3.5e-7 (~3 ulp) vs double `std::tanh` on a 4M-point
+  sweep; exact 0 at 0; saturates to exactly ±1; the same-kernel makeup keeps full-scale peak
+  mapping exact by construction. The Mix=0 bit-exact null (DSP_POLICY inv. 7) re-verified on the
+  twin dump. Evidence [Verified]: src/dsp/AnamorphEngine.cpp (`driveTanh` + invariant comment);
+  CHANGELOG [Unreleased].
 - **The multiband dry-align bank is gated in the settled-full-wet state (Wave 2 / H4).** With the
   Mix glide parked at exactly 1, Match off (and not mid-engage), and no enable/bypass crossfade in
   flight, the A(dry) reconstruction (6 LR4 calls/sample — half the multiband cost, ~20 µs on the

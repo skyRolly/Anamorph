@@ -63,6 +63,18 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   0.53 dB initial level offset on a near-crossover synthetic, converging as the loudness window
   refills; the engage is always duck- and glide-smoothed, never a click). Expected effect
   (existing Round-2 measurements): multiband rows −~20 %. Evidence: PR #58. [Verified]
+- **The Drive waveshaper computes its tanh with a minimax rational kernel (Wave 2 / H3)**: the
+  two per-sample libm `tanh` calls become an odd degree-9/8 rational (input clamped at ±9.2,
+  result clamped to ±1), call-free and branch-predictable — measured 15.2 → 3.9 ns/sample (3.9×)
+  at the kernel level; the same kernel computes the peak-preserving makeup, so full-scale
+  mapping stays exact by construction. Class B numerics: max relative error 3.5e-7 (~3 ulp)
+  against double `std::tanh` on a 4M-point sweep; exact 0 at 0; hard ±1 saturation. On the
+  33-scenario dump, drive-engaged rows differ by ≤4.8e-7 per sample, every non-drive scenario is
+  byte-identical, and the Mix=0 null stays sample-exact once the Mix glide lands (DSP_POLICY
+  invariant 7 re-verified); Match-toggle stress rows show bounded −63 dBFS-level transients where
+  the loudness gate's thresholds amplify ulp-level input differences (readout deltas ~1e-6 dB).
+  Expected effect (existing Round-2 measurements): drive rows −25-30 %; everything-on-os4 loses
+  most of its ~55 % tanh share. Evidence: PR #58. [Verified]
 
 ## [0.8.9] — 2026-07-11
 ### Added

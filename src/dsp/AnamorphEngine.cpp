@@ -451,6 +451,33 @@ void AnamorphEngine::applyInputConditioning (float* L, float* R, int n) noexcept
     }
 }
 
+// Rational tanh for the drive waveshaper (H3, Wave 2). Odd minimax rational
+// x*P(x^2)/Q(x^2) (degree 9/8, coefficients fitted for RELATIVE error over
+// [0, 9.2]) replacing the two per-sample libm tanh calls (~55 % of every
+// oversampling delta; their internal range reduction owned 35.8 % of engine
+// branch mispredicts). Call-free straight-line arithmetic; the two clamps
+// compare against fixed thresholds that real audio essentially never crosses,
+// so their branches stay predicted (GCC keeps the loop scalar without
+// fast-math -- measured 15.2 -> 3.9 ns/sample, 3.9x, on the kernel bench;
+// packed 4/8-wide would need intrinsics and is left for a future round).
+// Properties the drive stage relies on, all verified against double std::tanh
+// on a 4M-point sweep: exact 0 at 0 (identity-at-silence), hard saturation to
+// exactly +/-1 beyond the clamp (never overshoots full scale), odd symmetry,
+// max relative error 3.5e-7 (~3 ulp; class B per the Round-2 report), and
+// peak preservation within 1 ulp when paired with the same-kernel makeup
+// 1/driveTanh(g). Using the SAME kernel for the makeup keeps full-scale
+// mapping exact by construction: driveTanh(g*1) * (1/driveTanh(g)) == 1.
+static inline float driveTanh (float x) noexcept
+{
+    x = juce::jlimit (-9.2f, 9.2f, x);
+    const float t = x * x;
+    const float num = (((1.30678566e-08f * t + 2.04071515e-05f) * t
+                        + 3.48355893e-03f) * t + 1.33709871e-01f) * t + 1.0f;
+    const float den = (((7.66062875e-07f * t + 3.26578727e-04f) * t
+                        + 2.58314903e-02f) * t + 4.67043060e-01f) * t + 1.0f;
+    return juce::jlimit (-1.0f, 1.0f, x * (num / den));
+}
+
 void AnamorphEngine::processNonlinearRegion (float* L, float* R, int n, double rate) noexcept
 {
     // Run the drive maths while Drive is engaged OR while the blend is still
@@ -465,19 +492,20 @@ void AnamorphEngine::processNonlinearRegion (float* L, float* R, int n, double r
         {
             // Settled: g and blend are constants for the whole block (a settled
             // SmoothedValue returns its target without mutating), so the makeup
-            // 1/tanh(g) is too -- computed once instead of per sample (S6a). The
-            // per-sample arithmetic is unchanged, so the output is bit-exact;
+            // 1/tanh(g) is too -- computed once instead of per sample (S6a);
             // any glide takes the original per-sample path below untouched.
             const float g     = juce::jmax (1.0f, driveSmooth.getNextValue());
             const float blend = driveBlendSmooth.getNextValue();
-            const float c = 1.0f / std::tanh (g);
-            for (int i = 0; i < n; ++i)
-            {
-                const float sl = std::tanh (g * L[i]) * c;
-                const float sr2 = std::tanh (g * R[i]) * c;
-                L[i] += blend * (sl  - L[i]);
-                R[i] += blend * (sr2 - R[i]);
-            }
+            const float c = 1.0f / driveTanh (g);
+            // One channel per pass: every sample is independent, so splitting
+            // the interleaved loop is bit-identical -- and it removes the L/R
+            // aliasing question that blocked auto-vectorizing the kernel.
+            for (float* ch : { L, R })
+                for (int i = 0; i < n; ++i)
+                {
+                    const float s = driveTanh (g * ch[i]) * c;
+                    ch[i] += blend * (s - ch[i]);
+                }
         }
         else
         {
@@ -485,9 +513,9 @@ void AnamorphEngine::processNonlinearRegion (float* L, float* R, int n, double r
             {
                 const float g     = juce::jmax (1.0f, driveSmooth.getNextValue());
                 const float blend = driveBlendSmooth.getNextValue();
-                const float c = 1.0f / std::tanh (g);
-                const float sl = std::tanh (g * L[i]) * c;
-                const float sr2 = std::tanh (g * R[i]) * c;
+                const float c = 1.0f / driveTanh (g);
+                const float sl = driveTanh (g * L[i]) * c;
+                const float sr2 = driveTanh (g * R[i]) * c;
                 L[i] += blend * (sl  - L[i]);
                 R[i] += blend * (sr2 - R[i]);
             }
