@@ -1,6 +1,7 @@
 #pragma once
 
 #include <juce_dsp/juce_dsp.h>
+#include "LR4Xover.h"
 
 namespace anamorph
 {
@@ -42,7 +43,9 @@ public:
     void process (float* left, float* right, int numSamples) noexcept;
 
 private:
-    juce::dsp::LinkwitzRileyFilter<float> xover;
+    // Flat-state LR4 (H6, Wave 2): bit-identical arithmetic to the JUCE filter
+    // it replaced, minus its heap-vector state (see LR4Xover.h).
+    LR4Xover xover;
     double sr = 44100.0;
     float  targetFreq  = 120.0f;
     float  currentFreq = 120.0f;

@@ -20,7 +20,7 @@ blocking waits · filesystem IO · network IO · `sleep` · C++ exceptions throw
 
 - Reads/writes of pre-allocated buffers and scalar state.
 - Atomic loads/stores (relaxed for published meters; release/acquire for the scope ring).
-- In-place IIR coefficient recompute (`LinkwitzRileyFilter::setCutoffFrequency`) — bounded.
+- In-place IIR coefficient recompute (`LR4Xover::setCutoffFrequency`) — bounded.
 - `std::fill` over a pre-sized buffer (no resize) — e.g. `reset()` and Velvet's transport-stop flush.
 - Transcendental functions (`tanh`, `sin`, `log10`, `pow`) — bounded, no allocation.
 - `juce::ScopedNoDenormals` (required; active for the whole block).

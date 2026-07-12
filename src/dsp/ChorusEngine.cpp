@@ -6,7 +6,7 @@ namespace anamorph
 {
 
 static int nextPow2 (int n) { int p = 1; while (p < n) p <<= 1; return p; }
-static constexpr float kTwoPi = 6.28318530717958647692f;
+static constexpr double kTwoPi = 6.283185307179586476925286766559;
 
 void ChorusEngine::prepare (double maxWorkingRate)
 {
@@ -95,6 +95,21 @@ void ChorusEngine::processBlock (float* left, float* right, int numSamples) noex
         return;
     }
 
+    // Quadrature LFO recurrence (H11, Wave 2): the two per-sample libm sines
+    // are one rotated (sin, cos) pair -- the right channel's +0.25-turn offset
+    // is exactly the quadrature identity sin(2pi(p + 0.25)) == cos(2pi p).
+    // The pair is seeded from `phase` at every block start and advanced by the
+    // fixed per-sample rotation R(2pi*phaseInc); state and coefficients are
+    // double, so in-block drift is ~1e-13 and nothing carries across blocks.
+    // `phase` itself keeps its iterated float accumulation below (identical
+    // wrap sequence), so LFO continuity across blocks -- and re-engage from
+    // the amount-0 fast path above, which advances the same `phase` -- are
+    // bit-identical to the per-sample-sin version.
+    double lfoS = std::sin (kTwoPi * (double) phase);
+    double lfoC = std::cos (kTwoPi * (double) phase);
+    const double rotC = std::cos (kTwoPi * (double) phaseInc);
+    const double rotS = std::sin (kTwoPi * (double) phaseInc);
+
     for (int n = 0; n < numSamples; ++n)
     {
         currentWet   += wSmooth * (wetTarget        - currentWet);
@@ -105,11 +120,8 @@ void ChorusEngine::processBlock (float* left, float* right, int numSamples) noex
         bufL[(size_t) writeL] = left[n];
         bufR[(size_t) writeR] = right[n];
 
-        const float pL = phase;            // left LFO phase
-        const float pR = phase + 0.25f;    // right offset by 90 degrees for width
-
-        const float sinL = std::sin (kTwoPi * pL);
-        const float sinR = std::sin (kTwoPi * pR);
+        const float sinL = (float) lfoS;   // sin at the left LFO phase
+        const float sinR = (float) lfoC;   // == sin at phase + 0.25 (right, 90 degrees for width)
 
         float outL, outR;
 
@@ -143,6 +155,10 @@ void ChorusEngine::processBlock (float* left, float* right, int numSamples) noex
 
         writeL = (writeL + 1) & bufMask;
         writeR = (writeR + 1) & bufMask;
+
+        const double lfoNext = lfoS * rotC + lfoC * rotS;
+        lfoC = lfoC * rotC - lfoS * rotS;
+        lfoS = lfoNext;
 
         phase += phaseInc;
         if (phase >= 1.0f) phase -= 1.0f;

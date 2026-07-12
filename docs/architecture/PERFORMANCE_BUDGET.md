@@ -12,16 +12,44 @@ no benchmark/profiling data exists in the repository, and inventing numbers is p
 | **No locks / mutexes / file IO on the audio thread.** | `REALTIME_SAFETY_AUDIT.md`; no `mutex`/`lock`/IO in `src/dsp/**` audio paths |
 | **`ScopedNoDenormals` is active for the whole block.** | src/PluginProcessor.cpp:66 |
 | **Oversampling only runs when nonlinear work exists** (Drive>0 or Chorus/Dim-D); linear chains skip it → no needless CPU. | src/dsp/AnamorphEngine.cpp:19-23 |
-| **GUI redraw is bounded AND idle-gated (0.8.8)**. The timer cadence is unchanged (24 Hz editor timer; 60 Hz component timers; per-frame VBlank), but the *work* inside each tick now runs only while something visible can change: the Vectorscope, Spectrum analyser and meters repaint only on real content change, the analyser's FFT runs only on a changed/non-silent window (and not at all while hidden), the micro-animation poll skips when provably static, and the 24 Hz signature strings rebuild only on a parameter change. Idle GUI cost drops to ~0. Active repaint cost is also bounded (0.8.9 / H2 + H13 + N2): the Vectorscope's static layer (background gradient, rounded panel, glass edges, grid, labels) and each StereoMeter's static layer (glass panel, centre tick) — pure functions of size/scale/look — are rendered once into cached physical-resolution images and blitted per frame; only signal-dependent drawing (point cloud, clip ring, meter pointer, meter end labels for z-order) is rasterized live. These components are opaque (N2): the cached layers are RGB with the editor's flat `colours::bg` backdrop baked into the rounded corners, so the blit is an opaque copy (not an alpha composite) and the parent never re-renders beneath them. The Spectrum analyser caches its bottom layer the same way (H17: panel + band tints + grid, keyed on its exactly-converging eased inputs) but stays translucent — it sits on the editor's semi-transparent Multiband panel, so the N2 opacity pattern does not apply there. | src/gui/Vectorscope.cpp, SpectrumImager.cpp, LevelMeter.cpp, CorrelationMeter.cpp; src/PluginEditor.cpp `stepMicroAnims`; CHANGELOG [0.8.8], [0.8.9] |
+| **GUI redraw is bounded AND idle-gated (0.8.8)**. The timer cadence is unchanged (24 Hz editor timer; 60 Hz component timers; per-frame VBlank), but the *work* inside each tick now runs only while something visible can change: the Vectorscope, Spectrum analyser and meters repaint only on real content change, the analyser's FFT runs only on a changed/non-silent window (and not at all while hidden), the micro-animation poll skips when provably static — and since Wave 2 (H15) it decides "provably static" from three relaxed change-generation counters (sound params, view params, InternalState) instead of hashing every tracked widget's value at 60 Hz, which was 68-87 % of the remaining idle editor instructions in the Round-2 attribution — and the 24 Hz signature strings rebuild only on a parameter change. Idle GUI cost drops to ~0. Active repaint cost is also bounded (0.8.9 / H2 + H13 + N2): the Vectorscope's static layer (background gradient, rounded panel, glass edges, grid, labels) and each StereoMeter's static layer (glass panel, centre tick) — pure functions of size/scale/look — are rendered once into cached physical-resolution images and blitted per frame; only signal-dependent drawing (point cloud, clip ring, meter pointer, meter end labels for z-order) is rasterized live. These components are opaque (N2): the cached layers are RGB with the editor's flat `colours::bg` backdrop baked into the rounded corners, so the blit is an opaque copy (not an alpha composite) and the parent never re-renders beneath them. The Spectrum analyser caches its bottom layer the same way (H17: panel + band tints + grid, keyed on its exactly-converging eased inputs) but stays translucent — it sits on the editor's semi-transparent Multiband panel, so the N2 opacity pattern does not apply there. | src/gui/Vectorscope.cpp, SpectrumImager.cpp, LevelMeter.cpp, CorrelationMeter.cpp; src/PluginEditor.cpp `stepMicroAnims`; CHANGELOG [0.8.8], [0.8.9] |
 | **Scope transfer is O(1) amortised** (lock-free SPSC ring, fixed 16384 capacity, no alloc); the write index is published **once per block** (`pushBlock`, 0.8.8), so readers observe whole committed blocks. | src/dsp/ScopeBuffer.h:28-80 |
 
 ## Known per-sample costs (Verified, qualitative)
 
 - **Per-sample IIR coefficient recompute while gliding.** `MonoMaker`, `MultibandWidth`, and
-  `SoloMonitor` call `LinkwitzRileyFilter::setCutoffFrequency` per sample during a crossover
+  `SoloMonitor` call `LR4Xover::setCutoffFrequency` per sample during a crossover
   glide (recomputes coefficients in place, no allocation). This is the dominant variable cost
-  when crossovers are moving. Evidence [Verified]: src/dsp/MultibandWidth.cpp:113-123;
-  MonoMaker.cpp:33-37; SoloMonitor.cpp.
+  when crossovers are moving. Evidence [Verified]: src/dsp/MultibandWidth.cpp:110-120;
+  MonoMaker.cpp:32-36; SoloMonitor.cpp.
+- **The Drive waveshaper's tanh is a minimax rational kernel (Wave 2 / H3).** The two per-sample
+  libm `tanh` calls (~55 % of every oversampling delta in the Round-2 attribution; their range
+  reduction owned 35.8 % of engine branch mispredicts) are an odd degree-9/8 rational with
+  clamped input/result — call-free, predictable, measured 15.2 → 3.9 ns/sample (3.9×) on the
+  kernel bench. Class B: max relative error 3.5e-7 (~3 ulp) vs double `std::tanh` on a 4M-point
+  sweep; exact 0 at 0; saturates to exactly ±1; the same-kernel makeup keeps full-scale peak
+  mapping exact by construction. The Mix=0 bit-exact null (DSP_POLICY inv. 7) re-verified on the
+  twin dump. Evidence [Verified]: src/dsp/AnamorphEngine.cpp (`driveTanh` + invariant comment);
+  CHANGELOG [0.8.9].
+- **The multiband dry-align bank is gated in the settled-full-wet state (Wave 2 / H4).** With the
+  Mix glide parked at exactly 1, Match off (and not mid-engage), and no enable/bypass crossfade in
+  flight, the A(dry) reconstruction (6 LR4 calls/sample — half the multiband cost, ~20 µs on the
+  shipped default in the Round-2 attribution) and the m=1 blend pass are skipped. Class B: the
+  gated output is the exact wet instead of its m=1 float re-blend (measured ≤2.4e-10); the live
+  Measure readout follows the delay-aligned clean dry while gated, so a Match engage right after a
+  gated stretch starts from a reference without the multiband reconstruction ripple (measured
+  0.53 dB worst-case level offset on a near-crossover synthetic, converging over the loudness
+  window; always duck+glide smoothed). Both dry delay rings stay warm; re-engage is comb-free
+  (`testDryAlignGateRecomb`). Evidence [Verified]: src/dsp/AnamorphEngine.cpp (gate + invariant
+  comment); CHANGELOG [0.8.9].
+- **The LR4 crossovers are a local flat-state clone (Wave 2 / H6).** All ten
+  `juce::dsp::LinkwitzRileyFilter<float>` instances (MultibandWidth wet + dry-align banks,
+  SoloMonitor, MonoMaker) are replaced by `LR4Xover` — the same coefficient derivation and TPT
+  ladder expression-for-expression, with four flat per-channel floats instead of four heap
+  `std::vector`s (whose per-sample indexing was 4.5-7 % of every multiband/solo row in the
+  Round-2 attribution). Bit-identical: proven byte-exact on the 33-scenario full-engine dump,
+  including 4-band solo engage/clear cycles (cold re-entry) and per-sample split/mono-freq
+  glides. Evidence [Verified]: src/dsp/LR4Xover.h (invariant comment); CHANGELOG [0.8.9].
 - **SoloMonitor runs only while it can be heard (0.8.9 / H1).** With nothing soloed and every
   crossfade gain fully settled, the monitor's per-sample work (6 LR4 `processSample` + 5 smoother
   ticks) is skipped entirely — previously ~half of the transparent engine floor (callgrind 0.8.8:
@@ -34,14 +62,31 @@ no benchmark/profiling data exists in the repository, and inventing numbers is p
   input incl. NaN/Inf; slight fixed ALU cost on perfectly-predictable (all-silence) input in
   exchange for the active-signal win. Evidence [Verified]: src/dsp/LevelMeters.h (`sel`);
   CHANGELOG [0.8.9].
+- **Chorus/Dimension-D LFO is a quadrature recurrence (Wave 2 / H11).** The two per-sample libm
+  sines (≈9 % of the active chorus rows; ~15-20 µs inside everything-on-os4 in the Round-2
+  attribution) are replaced by one double-precision `(sin, cos)` rotation, re-seeded from the
+  iterated `phase` each block. Class B numerics: sub-0.1-sample delay wobble at the depth
+  extremes (measured ≤8.2e-4 output delta on the 25-scenario dump, chorus-active blocks only);
+  the float `phase` state and the amount-0 idle path (H12) are bit-identical, so nothing drifts
+  across blocks or re-engages. Evidence [Verified]: src/dsp/ChorusEngine.cpp (recurrence +
+  invariant comment); CHANGELOG [0.8.9].
 - **VelvetNoise** has an O(maxTaps=64) sparse-FIR inner loop per sample, plus a full-buffer
   `std::fill` on the transport-stop completion (no alloc). As of 0.8.8 the surrounding per-sample
   work is gated without changing output: the 64-tap weight rebuild + `sqrt` normalisation runs only
   while the Density glide is actually moving (skipped on an exact bit-compare once settled), and the
   tap accumulation is skipped when its contribution is provably exactly zero (Amount 0 — the default
   — or the presence gate fully closed, outside any stop fade). Bit-identical; the history writes and
-  all envelopes/glides still run every sample. Evidence [Verified]: src/dsp/VelvetNoise.cpp
-  (`updateWeights` gate; the tap-loop zero-skip); CHANGELOG [0.8.8].
+  all envelopes/glides still run every sample. As of Wave 2 (ALG-4) the fixed ±1 tap sign is folded
+  into the stored weight at rebuild time, so the gather does one multiply per tap instead of two and
+  reads one array less — bit-identical (`w·(±1)` is an exact sign flip; evaluation order unchanged;
+  Round-2 estimate −2-3 µs on the velvet-1.0 row). With the density glide settled and no stop fade
+  in flight, the gather itself runs tap-outer over a linear history image (Wave 2 / H5): one
+  contiguous unit-stride streaming run per tap instead of 64 random-index ring reads per sample
+  (45.6 % of the row's D1 read misses in the Round-2 attribution; estimate −25-30 % on the
+  velvet-1.0 row), accumulating in the original ascending-tap order — bit-identical; the glide,
+  stop-fade and parked paths keep the original loop. Evidence [Verified]: src/dsp/VelvetNoise.cpp
+  (`updateWeights` gate + sign fold; the H5 fast path + eligibility comment; the tap-loop
+  zero-skip); CHANGELOG [0.8.8], [0.8.9].
 
 ## Target sample rates / buffer sizes
 

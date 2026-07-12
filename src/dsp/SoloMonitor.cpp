@@ -7,12 +7,9 @@ namespace anamorph
 void SoloMonitor::prepare (double sampleRate, int maxBlock)
 {
     sr = sampleRate;
-    juce::dsp::ProcessSpec spec { sampleRate, (juce::uint32) juce::jmax (1, maxBlock), 2 };
+    juce::ignoreUnused (maxBlock); // LR4Xover state is flat, not block-sized
     for (auto* x : { &x1, &x2, &x3 })
-    {
-        x->prepare (spec);
-        x->setType (juce::dsp::LinkwitzRileyFilterType::lowpass);
-    }
+        x->prepare (sampleRate);
     glideCoeff = std::exp2 (8.0f / (float) sr); // ~8 octaves/sec, matches the Multiband
     for (int i = 0; i < 3; ++i) { currentF[i] = targetF[i]; }
     x1.setCutoffFrequency (currentF[0]);
@@ -62,7 +59,7 @@ void SoloMonitor::process (float* left, float* right, int mask, int numSamples) 
     const int active = mask & ((1 << bands) - 1);
     const bool anySolo = active != 0;
 
-    juce::dsp::LinkwitzRileyFilter<float>* xs[3] = { &x1, &x2, &x3 };
+    LR4Xover* xs[3] = { &x1, &x2, &x3 };
     const int crossovers = bands - 1; // 0..3
     auto heard = [active] (int b) noexcept { return (active & (1 << b)) != 0; };
 

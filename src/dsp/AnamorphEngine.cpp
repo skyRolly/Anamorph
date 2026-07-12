@@ -30,7 +30,7 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
 
     // --- sub-modules ---
     haas.prepare (sr, maxBlock);
-    velvet.prepare (sr);
+    velvet.prepare (sr, maxBlock);
     chorus.prepare (sr * 8.0);          // sized for the highest OS rate (8x)
     multiband.prepare (sr, maxBlock);
     monoMaker.prepare (sr, maxBlock);
@@ -451,6 +451,33 @@ void AnamorphEngine::applyInputConditioning (float* L, float* R, int n) noexcept
     }
 }
 
+// Rational tanh for the drive waveshaper (H3, Wave 2). Odd minimax rational
+// x*P(x^2)/Q(x^2) (degree 9/8, coefficients fitted for RELATIVE error over
+// [0, 9.2]) replacing the two per-sample libm tanh calls (~55 % of every
+// oversampling delta; their internal range reduction owned 35.8 % of engine
+// branch mispredicts). Call-free straight-line arithmetic; the two clamps
+// compare against fixed thresholds that real audio essentially never crosses,
+// so their branches stay predicted (GCC keeps the loop scalar without
+// fast-math -- measured 15.2 -> 3.9 ns/sample, 3.9x, on the kernel bench;
+// packed 4/8-wide would need intrinsics and is left for a future round).
+// Properties the drive stage relies on, all verified against double std::tanh
+// on a 4M-point sweep: exact 0 at 0 (identity-at-silence), hard saturation to
+// exactly +/-1 beyond the clamp (never overshoots full scale), odd symmetry,
+// max relative error 3.5e-7 (~3 ulp; class B per the Round-2 report), and
+// peak preservation within 1 ulp when paired with the same-kernel makeup
+// 1/driveTanh(g). Using the SAME kernel for the makeup keeps full-scale
+// mapping exact by construction: driveTanh(g*1) * (1/driveTanh(g)) == 1.
+static inline float driveTanh (float x) noexcept
+{
+    x = juce::jlimit (-9.2f, 9.2f, x);
+    const float t = x * x;
+    const float num = (((1.30678566e-08f * t + 2.04071515e-05f) * t
+                        + 3.48355893e-03f) * t + 1.33709871e-01f) * t + 1.0f;
+    const float den = (((7.66062875e-07f * t + 3.26578727e-04f) * t
+                        + 2.58314903e-02f) * t + 4.67043060e-01f) * t + 1.0f;
+    return juce::jlimit (-1.0f, 1.0f, x * (num / den));
+}
+
 void AnamorphEngine::processNonlinearRegion (float* L, float* R, int n, double rate) noexcept
 {
     // Run the drive maths while Drive is engaged OR while the blend is still
@@ -465,19 +492,20 @@ void AnamorphEngine::processNonlinearRegion (float* L, float* R, int n, double r
         {
             // Settled: g and blend are constants for the whole block (a settled
             // SmoothedValue returns its target without mutating), so the makeup
-            // 1/tanh(g) is too -- computed once instead of per sample (S6a). The
-            // per-sample arithmetic is unchanged, so the output is bit-exact;
+            // 1/tanh(g) is too -- computed once instead of per sample (S6a);
             // any glide takes the original per-sample path below untouched.
             const float g     = juce::jmax (1.0f, driveSmooth.getNextValue());
             const float blend = driveBlendSmooth.getNextValue();
-            const float c = 1.0f / std::tanh (g);
-            for (int i = 0; i < n; ++i)
-            {
-                const float sl = std::tanh (g * L[i]) * c;
-                const float sr2 = std::tanh (g * R[i]) * c;
-                L[i] += blend * (sl  - L[i]);
-                R[i] += blend * (sr2 - R[i]);
-            }
+            const float c = 1.0f / driveTanh (g);
+            // One channel per pass: every sample is independent, so splitting
+            // the interleaved loop is bit-identical -- and it removes the L/R
+            // aliasing question that blocked auto-vectorizing the kernel.
+            for (float* ch : { L, R })
+                for (int i = 0; i < n; ++i)
+                {
+                    const float s = driveTanh (g * ch[i]) * c;
+                    ch[i] += blend * (s - ch[i]);
+                }
         }
         else
         {
@@ -485,9 +513,9 @@ void AnamorphEngine::processNonlinearRegion (float* L, float* R, int n, double r
             {
                 const float g     = juce::jmax (1.0f, driveSmooth.getNextValue());
                 const float blend = driveBlendSmooth.getNextValue();
-                const float c = 1.0f / std::tanh (g);
-                const float sl = std::tanh (g * L[i]) * c;
-                const float sr2 = std::tanh (g * R[i]) * c;
+                const float c = 1.0f / driveTanh (g);
+                const float sl = driveTanh (g * L[i]) * c;
+                const float sr2 = driveTanh (g * R[i]) * c;
                 L[i] += blend * (sl  - L[i]);
                 R[i] += blend * (sr2 - R[i]);
             }
@@ -720,6 +748,11 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     // settles audibly. mbActive keeps the bank running while the blend is non-zero, so
     // a disable fades the multiband OUT over ~12 ms before the bank goes cold.
     bool dryAligned = false;
+    // Hoisted from the Level-Match snap gate below (same expression, one value per
+    // block): the H4 dry-align gate must also see "Match is about to engage" so the
+    // dry bank re-warms THROUGH the engage duck, exactly like the S7 energy scan.
+    const bool matchEngaging = switchState != SwitchState::Normal && pendingP.autoGainMatch;
+    bool fullWetIdle = false;
     const bool mbActive = p.mbEnable || mbEnableBlend.isSmoothing()
                        || mbEnableBlend.getCurrentValue() > 0.0f;
     if (mbActive)
@@ -735,6 +768,25 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         const bool blending = mbEnableBlend.isSmoothing()
                            || mbEnableBlend.getCurrentValue() < 1.0f;
 
+        // Settled-full-wet dry-align gate (H4, Wave 2). A(dry) has exactly two
+        // consumers: the dry/wet blend and the Level-Match reference. With the Mix
+        // glide parked at exactly 1 the blend is one LSB-level rounding pass of the
+        // wet (out = dry + 1*(wet-dry)); with Match off AND not mid-engage the match
+        // target is never read. So when no enable/bypass crossfade is in flight
+        // either, the dry bank (6 LR4/sample -- half the multiband cost) and the
+        // blend loop are skipped. Class B by design: the gated output is the EXACT
+        // wet instead of its m=1 float re-blend, and the live Measure readout
+        // follows the delay-aligned CLEAN dry while gated. Both dry delay rings
+        // keep being written below, so a Mix dip re-engages against warm lock-step
+        // history and the bank re-syncs its cutoffs the block it resumes
+        // (MultibandWidth's align re-sync, KI #1). Exact compares, no epsilon.
+        fullWetIdle = ! blending
+                   && ! mixSmooth.isSmoothing()
+                   && ! (std::abs (mixSmooth.getCurrentValue() - 1.0f) > 0.0f)
+                   && ! p.autoGainMatch && ! matchEngaging
+                   && ! bypassBlend.isSmoothing()
+                   && ! (bypassBlend.getCurrentValue() > 0.0f);
+
         // Keep the pre-multiband signal -- the "off" side of the enable crossfade (the
         // chain output with the multiband NOT applied) -- before processBlock overwrites it.
         if (blending)
@@ -743,10 +795,15 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
             juce::FloatVectorOperations::copy (preMbScratch.getWritePointer (1), R, n);
         }
 
-        multiband.processBlock (L, R, n,
-            dryScratch.getReadPointer (0), dryScratch.getReadPointer (1),
-            dryAlignScratch.getWritePointer (0), dryAlignScratch.getWritePointer (1));
-        dryAligned = true;
+        if (fullWetIdle)
+            multiband.processBlock (L, R, n); // dry bank skipped (null dry pointers)
+        else
+        {
+            multiband.processBlock (L, R, n,
+                dryScratch.getReadPointer (0), dryScratch.getReadPointer (1),
+                dryAlignScratch.getWritePointer (0), dryAlignScratch.getWritePointer (1));
+            dryAligned = true;
+        }
 
         // Fade the multiband contribution in/out. At blend 1 the output is exactly the
         // multiband result; at 0 it is exactly the pre-multiband signal -- so a settled
@@ -783,6 +840,28 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     float* lrR = loudnessRefScratch.getWritePointer (1);
     constexpr float kAlignMix = 0.05f;
 
+    if (fullWetIdle)
+    {
+        // H4 gated state: Mix parked at exactly 1, Match off, no crossfade in
+        // flight. The output already IS the wet, so the m=1 blend below (one
+        // LSB-level rounding pass) is skipped along with the smoothstep -- and a
+        // settled mixSmooth tick is mutation-free, so not calling getNextValue()
+        // is state-identical (the H1/H10 argument). Everything stateful still
+        // runs: both dry delay rings advance in lockstep (warm re-engage) and the
+        // Level-Match reference is filled with the delay-aligned dry so the
+        // Measure readout keeps tracking while gated.
+        for (int i = 0; i < n; ++i)
+        {
+            ddL[dryDelayWrite] = dL[i];
+            ddR[dryDelayWrite] = dR[i];
+            adL[dryDelayWrite] = aL[i];
+            adR[dryDelayWrite] = aR[i];
+            int rp = dryDelayWrite - lat; if (rp < 0) rp += ddSize;
+            lrL[i] = adL[rp]; lrR[i] = adR[rp];
+            if (++dryDelayWrite >= ddSize) dryDelayWrite = 0;
+        }
+    }
+    else
     for (int i = 0; i < n; ++i)
     {
         ddL[dryDelayWrite] = dL[i];
@@ -867,8 +946,7 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     // discreteDiffers, or applied live), this gate must be revisited -- the
     // scan would then miss the pre-engage block and the silence->audio snap
     // could be wrong on the first engaged block.
-    const bool matchEngaging = switchState != SwitchState::Normal && pendingP.autoGainMatch;
-    if (p.autoGainMatch || matchEngaging)
+    if (p.autoGainMatch || matchEngaging) // matchEngaging hoisted above the multiband stage (H4)
     {
         double inSq = 0.0;
         {

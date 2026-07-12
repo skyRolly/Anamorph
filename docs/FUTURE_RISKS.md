@@ -3,7 +3,12 @@
 Potential technical risks. Each is evidence-based (constraint C7) — no invented risks. ADRs and
 postmortems may reference these IDs to close the loop. Severity: Low / Medium / High / Critical.
 
-Verified against repository HEAD `c605fbe` (0.8.7 content audit); version-synced to 0.8.9 for the functional/UX PR #56 (JUCE 8.0.14; previously synced to 0.8.8 for PR #54).
+Verified against repository HEAD `c605fbe` (0.8.7 content audit); version-synced to the
+**v0.8.9 release** (finalized 2026-07-12, PR #58 — Wave-2 performance work introduces no new
+risk: H6 replaces the crossover filter with a bit-exact local clone, H15 adds two generation
+counters following the existing sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B
+changes documented in CHANGELOG/PERFORMANCE_BUDGET, not open risks); previously synced for the
+functional/UX PR #56 (JUCE 8.0.14; before that 0.8.8 for PR #54).
 
 | ID | Risk | Severity | Likelihood |
 |---|---|---|---|

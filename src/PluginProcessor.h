@@ -80,6 +80,12 @@ public:
     void abSwitchTo (int slot);
     void abCopyToOther();
 
+    // H15 (Wave 2): change generations for the editor's micro-anim re-arm gate.
+    // Together with InternalState::generation() they cover every path that can
+    // move an animated widget's value while the cursor is outside the editor.
+    juce::uint32 soundGeneration() const noexcept { return soundParamGen.load (std::memory_order_relaxed); }
+    juce::uint32 viewGeneration()  const noexcept { return viewParamGen.load (std::memory_order_relaxed); }
+
 private:
     void parameterChanged (const juce::String& id, float newValue) override;
     // AudioProcessorParameter::Listener: coalesce a whole user GESTURE into one undo step, and
@@ -136,6 +142,21 @@ private:
     juce::String committedSig, lastPolledSig;
     std::atomic<juce::uint32> soundParamGen { 1 }; // bumped by parameterValueChanged (S10)
     juce::uint32 polledGen = 0;                    // generation the poll last built a signature for
+
+    // H15: the view params (only Bypass now) are deliberately NOT listened to by
+    // the processor itself -- their gestures must stay out of the undo coalescer --
+    // but the editor still needs a re-arm signal when the host automates Bypass
+    // with the cursor outside (the bypass toggle is an animated widget). A tiny
+    // separate listener bumps a separate generation; gestures are a no-op.
+    struct ViewGenWatcher final : juce::AudioProcessorParameter::Listener
+    {
+        explicit ViewGenWatcher (std::atomic<juce::uint32>& g) noexcept : gen (g) {}
+        void parameterValueChanged (int, float) override { gen.fetch_add (1, std::memory_order_relaxed); }
+        void parameterGestureChanged (int, bool) override {}
+        std::atomic<juce::uint32>& gen;
+    };
+    std::atomic<juce::uint32> viewParamGen { 1 };
+    ViewGenWatcher viewGenWatcher { viewParamGen };
     // Undo coalescing is GESTURE-gated (message thread only, matches the editor-timer poll): count
     // open user gestures; commit exactly one undo step after the LAST gesture-end. Host automation
     // never opens a gesture, so it is never recorded.

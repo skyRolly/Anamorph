@@ -7,7 +7,7 @@ namespace anamorph
 
 static int nextPow2 (int n) { int p = 1; while (p < n) p <<= 1; return p; }
 
-void VelvetNoise::prepare (double sampleRate, unsigned seed)
+void VelvetNoise::prepare (double sampleRate, int maxBlockSize, unsigned seed)
 {
     sr = sampleRate;
 
@@ -23,7 +23,7 @@ void VelvetNoise::prepare (double sampleRate, unsigned seed)
     // these are active (continuously), never regenerating them.
     std::mt19937 rng (seed);
     std::uniform_real_distribution<float> uni (0.0f, 1.0f);
-    const int decorrSamps = std::max (8, (int) std::round (0.045 * sr));
+    decorrSamps = std::max (8, (int) std::round (0.045 * sr));
     const float cell = (float) decorrSamps / (float) maxTaps;
     for (int m = 0; m < maxTaps; ++m)
     {
@@ -46,6 +46,13 @@ void VelvetNoise::prepare (double sampleRate, unsigned seed)
     gateRel = 1.0f - std::exp (-1.0f / (float) (0.028 * sr));
     // Transport-stop tail fade: ~4 ms, matching the engine's switch duck (#4).
     stopStep = 1.0f / (float) std::max (1.0, 0.004 * sr);
+
+    // H5 gather scratch (see processBlock): linear history + per-sample tap sums.
+    const int maxN = std::max (1, maxBlockSize);
+    linHist.assign ((size_t) (decorrSamps + maxN), 0.0f);
+    accum.assign ((size_t) maxN, 0.0f);
+    midBlk.assign ((size_t) maxN, 0.0f);
+
     updateWeights();
     reset();
 }
@@ -65,14 +72,18 @@ void VelvetNoise::updateWeights() noexcept
     weightsDensity = currentDensity; // record the input this build is valid for (S4)
 
     // Continuous active count: each tap fades in over its own unit interval, so
-    // changing density never causes a step discontinuity.
+    // changing density never causes a step discontinuity. The fixed +/-1 tap
+    // sign is folded into the stored weight here (ALG-4, Wave 2) so the gather
+    // loop below does one multiply per tap instead of two -- bit-identical,
+    // because w * (+/-1) is an exact sign flip and the gather's evaluation
+    // order (weight*sign)*sample is unchanged.
     const float f = currentDensity * (float) maxTaps;
     float sumSq = 0.0f;
     int   highest = 0;
     for (int i = 0; i < maxTaps; ++i)
     {
         const float w = std::min (1.0f, std::max (0.0f, f - (float) i));
-        weight[(size_t) i] = w;
+        weight[(size_t) i] = w * sign[(size_t) i];
         sumSq += w * w;
         if (w > 0.0f) highest = i + 1;
     }
@@ -84,6 +95,88 @@ void VelvetNoise::processBlock (float* left, float* right, int numSamples) noexc
 {
     constexpr float dSmooth = 0.0015f; // glide density
     constexpr float aSmooth = 0.0015f; // glide wet amount
+
+    // Tap-outer gather fast path (H5, Wave 2). The 64 random-index history
+    // reads per sample (45.6 % of the row's D1 read misses) become one
+    // contiguous unit-stride run per tap over a LINEAR image of the history:
+    // linHist = [last decorrSamps ring samples | this block's mids]. Sample i,
+    // tap t reads linHist[decorrSamps + i - pos[t]] -- exactly the value the
+    // ring read (writePos_i - pos[t]) & histMask sees in the loop below, for
+    // any block length (the ring's own writes this block only ever alias reads
+    // of this block's earlier mids, which the linear image also provides).
+    // Bit-exactness: accum[i] adds w*hist in the SAME ascending-t order the
+    // per-sample loop uses, starting from the same +0 (zero-fill first -- an
+    // assign-first form could flip the signed zero the S5 algebra relies on);
+    // the per-sample pass below then runs the identical envelope/glide/output
+    // arithmetic, only substituting the precomputed sum.
+    // Eligibility (block-wise, per the Wave-2 design):
+    //  * not stopping -- the stop fade flushes the ring mid-block; that path
+    //    keeps the original loop verbatim (it can only assert between blocks);
+    //  * density glide at its float fixpoint (one tick provably changes
+    //    nothing -- the fixpoint is absorbing within a block since the target
+    //    only moves between blocks) and weights already built for it, so the
+    //    weights are constant across the block (a glide re-weights per sample
+    //    and MUST keep the original loop -- feedback #18);
+    //  * amount engaged or engaging (else the original loop's per-sample
+    //    zero-skip is already the cheaper path -- the parked default);
+    //  * the block fits the prepare()-sized scratch (always true from the
+    //    engine; belt-and-braces for direct callers).
+    const float dNext = currentDensity + dSmooth * (targetDensity - currentDensity);
+    if (! stopping
+        && dNext == currentDensity
+        && currentDensity == weightsDensity
+        && (currentAmount > 0.0f || targetAmount > 0.0f)
+        && numSamples <= (int) accum.size())
+    {
+        for (int i = 0; i < numSamples; ++i)
+            midBlk[(size_t) i] = (left[i] + right[i]) * 0.5f;
+
+        for (int j = 0; j < decorrSamps; ++j)
+            linHist[(size_t) j] = midHist[(size_t) ((writePos - decorrSamps + j) & histMask)];
+        std::copy (midBlk.begin(), midBlk.begin() + numSamples,
+                   linHist.begin() + decorrSamps);
+
+        std::fill (accum.begin(), accum.begin() + numSamples, 0.0f);
+        for (int t = 0; t < activeTaps; ++t)
+        {
+            const float  w   = weight[(size_t) t];
+            const float* src = linHist.data() + (decorrSamps - pos[(size_t) t]);
+            float*       acc = accum.data();
+            for (int i = 0; i < numSamples; ++i)
+                acc[i] += w * src[i];
+        }
+
+        for (int i = 0; i < numSamples; ++i)
+        {
+            currentDensity += dSmooth * (targetDensity - currentDensity); // no-op at the fixpoint
+            currentAmount  += aSmooth * (targetAmount  - currentAmount);
+
+            const float mid  = midBlk[(size_t) i];
+            const float side = (left[i] - right[i]) * 0.5f;
+
+            const float a = std::abs (mid);
+            env += (a > env ? envAtk : envRel) * (a - env);
+            const float gateTarget = (env > 0.0005f) ? 1.0f : 0.0f; // ~ -66 dBFS presence
+            gate += (gateTarget > gate ? gateAtk : gateRel) * (gateTarget - gate);
+
+            midHist[(size_t) writePos] = mid;
+
+            // Where the loop below would SKIP the sum (amount or gate exactly 0)
+            // the multiplier is exactly +0 and the S5 signed-zero algebra makes
+            // a multiplied-in finite sum produce the same output bits, so using
+            // the precomputed sum unconditionally is output-identical. stopG is
+            // omitted: it is exactly 1 whenever this path is eligible.
+            float decorr = accum[(size_t) i];
+            decorr *= norm * currentAmount * gate;
+
+            const float newSide = side + decorr;
+            left[i]  = mid + newSide;
+            right[i] = mid - newSide;
+
+            writePos = (writePos + 1) & histMask;
+        }
+        return;
+    }
 
     for (int i = 0; i < numSamples; ++i)
     {
@@ -149,7 +242,7 @@ void VelvetNoise::processBlock (float* left, float* right, int numSamples) noexc
             for (int t = 0; t < activeTaps; ++t)
             {
                 const int idx = (writePos - pos[(size_t) t]) & histMask;
-                decorr += weight[(size_t) t] * sign[(size_t) t] * midHist[(size_t) idx];
+                decorr += weight[(size_t) t] * midHist[(size_t) idx];
             }
         decorr *= norm * currentAmount * gate * stopG;
 

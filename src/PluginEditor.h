@@ -246,6 +246,10 @@ private:
     juce::Array<AnimatedWidget> animated;
     juce::uint64 microProbe = 0;   // slider-value/toggle-state fingerprint of the last pass (S11)
     bool microSettled = false;     // the last pass moved nothing (S11)
+    // Generations the micro-anim poll last re-armed on (H15): sound params, view
+    // params (Bypass) and the host-hidden InternalState. Init 0 vs the counters'
+    // initial 1 -> the first frame always runs a full pass.
+    juce::uint32 microSoundGen = 0, microViewGen = 0, microInternalGen = 0;
     bool uiAnimOn = true;
     float hostScale = 1.0f;             // host display/DPI scale (Windows), composed with the UI scale
     int  lastScaleIdx = -1;             // applied UI-scale step (F4)

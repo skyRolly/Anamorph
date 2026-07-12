@@ -1262,6 +1262,61 @@ static void testAbActiveClampOnCorruptState()
 }
 
 // ---------------------------------------------------------------------------
+//  H4 (Wave 2) comb regression: with Multiband on and Mix parked at exactly 1
+//  (Match off, no crossfade in flight) the dry-align bank is gated off. A Mix
+//  dip must re-engage it phase-matched -- a dry bank that came back stale or
+//  unsynced would comb the mono sum exactly like pre-KI-#1. Same metric as
+//  Test 7: mono-sum RMS out/in (unaligned dry combs to <0.8).
+static void testDryAlignGateRecomb()
+{
+    std::printf ("Test 25: dry-align gate (H4) -- Mix re-engage after a gated stretch stays comb-free\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0;
+    const int block = 256;
+
+    anamorph::AnamorphEngine engine;
+    engine.prepare (sr, block);
+    anamorph::EngineParameters p;
+    p.mbEnable   = true;
+    p.mbBands    = 4;
+    p.mbWidthLow = p.mbWidthMid = p.mbWidthHiMid = p.mbWidthHigh = 1.0f; // pure allpass wet
+    p.mix        = 1.0f; // gate active: dry bank cold
+    engine.setParameters (p);
+    engine.reset();
+
+    double inSq = 0.0, outSq = 0.0;
+    double inSqTr = 0.0, outSqTr = 0.0;
+    for (int nb = 0; nb < 160; ++nb)
+    {
+        if (nb == 80) p.mix = 0.5f; // dip: the gated bank must re-engage aligned
+        juce::AudioBuffer<float> buf (2, block);
+        fillNoise (buf, (unsigned) (nb * 13 + 5));
+        double blkIn = 0.0;
+        for (int i = 0; i < block; ++i)
+        {
+            const float mono = buf.getSample (0, i) + buf.getSample (1, i);
+            blkIn += mono * mono;
+        }
+        engine.setParameters (p);
+        engine.process (buf);
+        double blkOut = 0.0;
+        for (int i = 0; i < block; ++i)
+        {
+            const float mono = buf.getSample (0, i) + buf.getSample (1, i);
+            blkOut += mono * mono;
+        }
+        if (nb >= 80 && nb < 90)  { inSqTr += blkIn; outSqTr += blkOut; } // transition window
+        if (nb >= 100)            { inSq   += blkIn; outSq   += blkOut; } // settled at mix 0.5
+    }
+    const double trRatio = std::sqrt (outSqTr / juce::jmax (1.0e-12, inSqTr));
+    const double ratio   = std::sqrt (outSq   / juce::jmax (1.0e-12, inSq));
+    std::printf ("  transition mono-sum RMS out/in = %.3f, settled = %.3f (unaligned combs to <0.8)\n",
+                 trRatio, ratio);
+    check (trRatio > 0.90, "mono sum survives the re-engage transition (bank re-warms masked)");
+    check (ratio   > 0.95, "mono sum intact once re-engaged (dry/wet phase-aligned again)");
+}
+
+// ---------------------------------------------------------------------------
 int main()
 {
     std::printf ("=== Anamorph DSP self-tests ===\n");
@@ -1288,6 +1343,7 @@ int main()
     testBypassCrossfadeClickFree();
     testMultibandEnableCrossfadeClickFree();
     testSoloMultibandEnableClickFree();
+    testDryAlignGateRecomb();
     testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);

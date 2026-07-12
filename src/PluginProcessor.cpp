@@ -23,8 +23,12 @@ AnamorphAudioProcessor::AnamorphAudioProcessor()
     // host automation (which never opens a gesture) is excluded from undo. View params are skipped.
     for (auto* p : getParameters())
         if (auto* wid = dynamic_cast<juce::AudioProcessorParameterWithID*> (p))
+        {
             if (! pid::isViewParam (wid->paramID))
                 p->addListener (this);
+            else
+                p->addListener (&viewGenWatcher); // H15 re-arm only; no gesture/undo effect
+        }
 
     // A preset load opens NO gesture, so the gesture-gated coalescer would fold it into the baseline
     // without an undo step (host-automation path). Bracket every load: flush any settled edit first,
@@ -48,8 +52,20 @@ AnamorphAudioProcessor::~AnamorphAudioProcessor()
 {
     apvts.removeParameterListener (pid::drive,      this);
     apvts.removeParameterListener (pid::algorithm,  this);
+    // Symmetric with the constructor: every parameter that got a listener there loses
+    // it here, on the SAME view/non-view split. viewGenWatcher (H15) is a member, so
+    // the parameters -- owned by the AudioProcessor base subobject, destroyed AFTER
+    // this derived object's members -- would otherwise outlive it holding a dangling
+    // listener pointer. Removing here, in the destructor BODY (before any member/base
+    // teardown), makes that impossible regardless of member declaration order.
     for (auto* p : getParameters())
-        p->removeListener (this);
+        if (auto* wid = dynamic_cast<juce::AudioProcessorParameterWithID*> (p))
+        {
+            if (! pid::isViewParam (wid->paramID))
+                p->removeListener (this);
+            else
+                p->removeListener (&viewGenWatcher);
+        }
 }
 
 // ----------------------------------------------------------------------------
