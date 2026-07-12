@@ -15,6 +15,7 @@ Verified against repository HEAD `c605fbe` (0.8.7 content audit); version-synced
 | KI-005 | No graphical installer (manual copy install) | Low | Confirmed (packaging) |
 | KI-006 | Linux: tooltip rounded corners render an opaque black background instead of transparent | Low | Fix applied (LookAndFeel); Linux visual re-test pending |
 | KI-007 | Windows: pluginval "Editor Automation" abnormally terminates (was hidden by a run-pluginval.ps1 false green) | Medium | False green closed; GL-drop cleared the crash (CI-confirmed); advancedMode-automation fix pending CI |
+| KI-008 | Advanced-toggle one-frame tear in async-resize hosts (JUCE VST3 wrapper window-grant gap) | Low | Confirmed, external (JUCE wrapper + host); not fixable plugin-side without a JUCE change |
 
 ---
 
@@ -119,3 +120,37 @@ validated fine.
   original false green (run 28678842525: empty exit code yet a green step) is the same non-waiting bug
   (`exit $null` → 0). Fix: `scripts/run-pluginval.ps1` (`System.Diagnostics.Process` + `WaitForExit`).
   Related: KI-003 (Linux GL editor host-side crash), scripts/run-pluginval.sh (crash-retry).
+
+## KI-008 — Advanced-toggle one-frame tear in async-resize hosts (JUCE VST3 wrapper window-grant gap)
+Toggling Advanced mode can show **one to a few frames** of the new layout **clipped to the old
+window size** (entering Advanced: the Multiband/Input/Output tiers cut off; leaving: the Simple
+layout with a black band below it) before the plugin window snaps to its new size — the visible
+"controls jump/shake for a frame". This is **not** an editor defect: the editor's own mode switch
+is a single atomic relayout (0.8.9 verified: zero component-bounds churn across 30/30 sampled
+frames after the toggle; visibility/layout consistent at every host-observable instant).
+- **Mechanism — CONFIRMED (PR #57 investigation):** JUCE's VST3 `ContentWrapperComponent` never
+  resizes itself when the editor resizes; it calls `plugFrame->resizeView()` and waits for the
+  host's `onSize()` to resize the OS child window (juce_audio_plugin_client_VST3.cpp: the
+  `childBoundsChanged` → `resizeHostWindow` path). A host that grants the resize **asynchronously**
+  (on a later message-loop pass — FL/Live/Bitwig-class behaviour) leaves a gap in which the editor
+  content is the NEW mode while the OS window is still the OLD size; anything painted in that gap
+  is the torn frame. JUCE itself acknowledges this host class: the wrapper hard-codes an allowlist
+  (Wavelab/Ableton Live/Bitwig, + Reaper on macOS) that self-resizes immediately to close the gap.
+- **Evidence [Verified]:** PR #57 harness (instrumented JUCE hosting glue emulating a deferred
+  grant against the real Anamorph.vst3): with a synchronous grant the wrapper/editor size mismatch
+  window is ~0.5 ms inside one message pass and never paints (zero mismatch paints); with a
+  50–120 ms deferred grant the wrapper **paints the torn window** ("wrapper=940x900
+  editorWants=940x720") and screen capture shows the clipped Advanced layout in the Simple-size
+  window until the grant lands. Linux Standalone (X11/CPU): does **not** reproduce (window and
+  content change together). Externally corroborated by JUCE forum reports of the same artifact
+  class (VST3 resize glitches in FL Studio/Bitwig/Live; "UI shifted with swaths left uncovered"
+  on FL/macOS).
+- **Scope:** host-dependent (async-granting DAWs); severity Low (cosmetic, one-to-few frames,
+  only on the mode toggle / window-size change). The OpenGL attachment on Windows/macOS may add a
+  same-length stale-stretch during the same gap (not representatively testable headless).
+- **Possible resolution (not done here):** upstream JUCE issue and/or extending the wrapper's
+  self-resize allowlist to the affected host(s) via a patched JUCE — a dependency change requiring
+  an ADR + Architecture Review (`DEPENDENCY_POLICY.md`); needs the affected host/OS identified
+  first, and manual DAW validation. Any editor-side workaround (resizing the wrapper parent from
+  plugin code) would gamble on per-host behaviour JUCE itself allowlists, and is deliberately not
+  attempted.
