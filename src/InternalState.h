@@ -81,6 +81,12 @@ public:
     // Fired (message thread) when Oversampling changes, so the wrapper can re-report PDC.
     std::function<void()> onOversampleChanged;
 
+    // Change generation (H15, Wave 2): bumped on every property change, including a
+    // session restore. The Settings widgets bind these values two-way (juce::Value),
+    // so they can move with the cursor OUTSIDE the editor -- the editor's micro-anim
+    // poll re-arms on this counter instead of hashing widget values every frame.
+    juce::uint32 generation() const noexcept { return gen.load (std::memory_order_relaxed); }
+
     // --- state persistence ----------------------------------------------
     juce::ValueTree copyState() const { return tree.createCopy(); }
     void restoreState (const juce::ValueTree& src)
@@ -124,6 +130,7 @@ public:
 private:
     void valueTreePropertyChanged (juce::ValueTree&, const juce::Identifier& id) override
     {
+        gen.fetch_add (1, std::memory_order_relaxed); // H15 re-arm signal
         syncAtomics();
         if (id == iid::oversample && onOversampleChanged) onOversampleChanged();
     }
@@ -136,6 +143,7 @@ private:
     juce::ValueTree tree;
     std::atomic<int>   osAtomic  { 0 };
     std::atomic<float> animFloat { 1.0f };
+    std::atomic<juce::uint32> gen { 1 };
 };
 
 } // namespace anamorph

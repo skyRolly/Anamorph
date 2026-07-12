@@ -1087,6 +1087,31 @@ void AnamorphAudioProcessorEditor::stepMicroAnims (double dt)
     // uncertainty fails open into polling.
     const bool mouseInside = isShowing()
                           && getLocalBounds().contains (getMouseXYRelative());
+
+    // Generation pre-gate (H15, Wave 2): with the cursor outside, no button held,
+    // no sweep and the previous pass settled, the ONLY thing that can still move a
+    // tracked widget is a value change -- and every path that can deliver one with
+    // the mouse outside bumps a generation: host automation / undo / redo / preset
+    // / A-B apply notify the sound-param listener (soundParamGen); host-automated
+    // Bypass notifies the view watcher (viewParamGen); the two-way-bound Settings
+    // values (incl. a session restore of them) bump InternalState's generation. A
+    // silent host session restore moves NO widget by design (attachments are not
+    // notified; controls resync on editor open), so it needs no signal. Only when
+    // a generation moved does the FNV fingerprint below re-run -- previously it
+    // hashed every tracked widget's virtual getValue() at 60 Hz forever, which was
+    // 68-87 % of the idle editor profile. Behaviourally class A: the same frames
+    // repaint, the same passes run, only provably-static polling is skipped.
+    const juce::uint32 sGen = processor.soundGeneration();
+    const juce::uint32 vGen = processor.viewGeneration();
+    const juce::uint32 iGen = processor.getInternal().generation();
+    if (! mouseInside
+        && ! juce::Component::isMouseButtonDownAnywhere()
+        && knobSweepTime <= 0.0
+        && microSettled
+        && sGen == microSoundGen && vGen == microViewGen && iGen == microInternalGen)
+        return;
+    microSoundGen = sGen; microViewGen = vGen; microInternalGen = iGen;
+
     juce::uint64 probe = 14695981039346656037ULL;              // FNV-1a over the tracked inputs
     for (const auto& w : animated)
     {

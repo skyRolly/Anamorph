@@ -23,8 +23,12 @@ AnamorphAudioProcessor::AnamorphAudioProcessor()
     // host automation (which never opens a gesture) is excluded from undo. View params are skipped.
     for (auto* p : getParameters())
         if (auto* wid = dynamic_cast<juce::AudioProcessorParameterWithID*> (p))
+        {
             if (! pid::isViewParam (wid->paramID))
                 p->addListener (this);
+            else
+                p->addListener (&viewGenWatcher); // H15 re-arm only; no gesture/undo effect
+        }
 
     // A preset load opens NO gesture, so the gesture-gated coalescer would fold it into the baseline
     // without an undo step (host-automation path). Bracket every load: flush any settled edit first,

@@ -75,6 +75,19 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   the loudness gate's thresholds amplify ulp-level input differences (readout deltas ~1e-6 dB).
   Expected effect (existing Round-2 measurements): drive rows −25-30 %; everything-on-os4 loses
   most of its ~55 % tanh share. Evidence: PR #58. [Verified]
+- **The editor's micro-animation poll re-arms on change-generation counters (Wave 2 / H15)**:
+  with the cursor outside the editor, no button held and the previous pass settled, the 60 Hz
+  poll no longer hashes every animated widget's value each frame (68-87 % of the remaining idle
+  editor instructions in the Round-2 attribution) — it now compares three relaxed generation
+  counters that together cover every path able to move a widget while the mouse is away: the
+  existing sound-param generation (host automation, undo/redo, preset and A/B applies, session
+  restore), a new view-param generation (host-automated Bypass, via a dedicated listener that
+  stays out of the undo/gesture machinery), and a new InternalState generation (the two-way-bound
+  Settings values, including their session restore). Same repaints, same animation behaviour —
+  only provably-static polling is skipped. Verified live in a headless host: 13/13 eased slider
+  positions correct after mouse-outside host automation in every phase, and a host-automated
+  Bypass still animates its toggle (the new watcher path). Expected effect (existing Round-2
+  measurements): idle editor CPU −~40 %. Evidence: PR #58. [Verified]
 
 ## [0.8.9] — 2026-07-11
 ### Added
