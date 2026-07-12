@@ -30,7 +30,11 @@ velvet-noise FIR (≤64 taps). Tap positions/signs are generated **once** in `pr
 `.cpp:24-34`). `density` sets a continuous active-tap count with per-tap fade-in, normalised by
 `1/√(Σweight²)`. Per sample: `decorr = Σ w·sign·midHist[...]` (the fixed ±1 sign is pre-folded
 into the stored weight — ALG-4, Wave 2, bit-identical), then `Side' = Side + decorr`
-(`.cpp:154-162`). A presence follower + fixed-time gate fades the tail; a play→stop edge applies
+(`.cpp:243-251`). With the density glide settled and no stop fade in flight, the gather runs
+tap-outer over a linear image of the history (H5, Wave 2): one contiguous unit-stride run per
+tap into a per-sample accumulator that keeps the original ascending-tap summation order —
+bit-identical output, streaming instead of 64 random-index reads per sample (`.cpp:99-180`).
+The density-glide, stop-fade and parked paths keep the original per-sample loop verbatim. A presence follower + fixed-time gate fades the tail; a play→stop edge applies
 a ~4 ms zero-slope smoothstep tail-kill then flushes history. Mid is untouched → `L+R = 2·Mid`.
 Invariant: `amount 0 = identity`.
 

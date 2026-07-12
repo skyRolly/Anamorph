@@ -26,7 +26,7 @@ namespace anamorph
 class VelvetNoise
 {
 public:
-    void prepare (double sampleRate, unsigned seed = 0x1234abcdU);
+    void prepare (double sampleRate, int maxBlockSize, unsigned seed = 0x1234abcdU);
     void reset();
 
     void setDensity (float d) noexcept { targetDensity = d; }
@@ -59,6 +59,13 @@ private:
     std::vector<float> midHist;      // circular history of Mid
     int    histMask = 0;
     int    writePos = 0;
+    int    decorrSamps = 0;          // tap window length (samples), fixed at prepare
+
+    // H5 (Wave 2) tap-outer gather scratch, sized once in prepare (no RT alloc):
+    // linHist = [last decorrSamps of midHist | this block's mids] laid out linearly,
+    // so each tap reads one contiguous unit-stride run; accum holds the per-sample
+    // tap sums in the ORIGINAL t-ascending accumulation order (bit-exact).
+    std::vector<float> linHist, accum, midBlk;
 
     std::array<int,   maxTaps> pos {};   // tap delay (samples), fixed
     std::array<float, maxTaps> sign {};  // tap sign +/-1, fixed

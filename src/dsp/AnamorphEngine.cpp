@@ -30,7 +30,7 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
 
     // --- sub-modules ---
     haas.prepare (sr, maxBlock);
-    velvet.prepare (sr);
+    velvet.prepare (sr, maxBlock);
     chorus.prepare (sr * 8.0);          // sized for the highest OS rate (8x)
     multiband.prepare (sr, maxBlock);
     monoMaker.prepare (sr, maxBlock);

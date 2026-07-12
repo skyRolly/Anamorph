@@ -51,8 +51,14 @@ no benchmark/profiling data exists in the repository, and inventing numbers is p
   all envelopes/glides still run every sample. As of Wave 2 (ALG-4) the fixed ±1 tap sign is folded
   into the stored weight at rebuild time, so the gather does one multiply per tap instead of two and
   reads one array less — bit-identical (`w·(±1)` is an exact sign flip; evaluation order unchanged;
-  Round-2 estimate −2-3 µs on the velvet-1.0 row). Evidence [Verified]: src/dsp/VelvetNoise.cpp
-  (`updateWeights` gate + sign fold; the tap-loop zero-skip); CHANGELOG [0.8.8], [Unreleased].
+  Round-2 estimate −2-3 µs on the velvet-1.0 row). With the density glide settled and no stop fade
+  in flight, the gather itself runs tap-outer over a linear history image (Wave 2 / H5): one
+  contiguous unit-stride streaming run per tap instead of 64 random-index ring reads per sample
+  (45.6 % of the row's D1 read misses in the Round-2 attribution; estimate −25-30 % on the
+  velvet-1.0 row), accumulating in the original ascending-tap order — bit-identical; the glide,
+  stop-fade and parked paths keep the original loop. Evidence [Verified]: src/dsp/VelvetNoise.cpp
+  (`updateWeights` gate + sign fold; the H5 fast path + eligibility comment; the tap-loop
+  zero-skip); CHANGELOG [0.8.8], [Unreleased].
 
 ## Target sample rates / buffer sizes
 

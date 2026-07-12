@@ -32,6 +32,15 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   publications). Only the already-approved low-risk fold; the larger tap-order restructure (H5)
   is not part of this change. Expected effect (existing Round-2 measurements): −2-3 µs on the
   velvet-1.0 row. Evidence: PR #58. [Verified]
+- **VelvetNoise sparse-FIR gather is restructured tap-outer (Wave 2 / H5)**: while the density
+  glide is settled and no transport-stop fade is in flight, the 64 random-index history reads per
+  sample become one contiguous streaming run per tap over a linear image of the history, with the
+  per-sample accumulation kept in the original ascending-tap order — **bit-identical output**,
+  proven byte-identical across a 31-scenario full-engine dump including new density-glide,
+  transport-stop-flush and engage/park-cycle scenarios; the glide, stop-fade and parked paths keep
+  the original per-sample loop verbatim. Expected effect (existing Round-2 measurements): −25-30 %
+  on the velvet-1.0 row (the gather owned 41.7 % of it and 45.6 % of its D1 read misses).
+  Evidence: PR #58. [Verified]
 
 ## [0.8.9] — 2026-07-11
 ### Added
