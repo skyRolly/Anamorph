@@ -52,8 +52,20 @@ AnamorphAudioProcessor::~AnamorphAudioProcessor()
 {
     apvts.removeParameterListener (pid::drive,      this);
     apvts.removeParameterListener (pid::algorithm,  this);
+    // Symmetric with the constructor: every parameter that got a listener there loses
+    // it here, on the SAME view/non-view split. viewGenWatcher (H15) is a member, so
+    // the parameters -- owned by the AudioProcessor base subobject, destroyed AFTER
+    // this derived object's members -- would otherwise outlive it holding a dangling
+    // listener pointer. Removing here, in the destructor BODY (before any member/base
+    // teardown), makes that impossible regardless of member declaration order.
     for (auto* p : getParameters())
-        p->removeListener (this);
+        if (auto* wid = dynamic_cast<juce::AudioProcessorParameterWithID*> (p))
+        {
+            if (! pid::isViewParam (wid->paramID))
+                p->removeListener (this);
+            else
+                p->removeListener (&viewGenWatcher);
+        }
 }
 
 // ----------------------------------------------------------------------------
