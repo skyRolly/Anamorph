@@ -5,9 +5,11 @@ in `POSTMORTEMS.md`, not here. Each entry is evidence-backed (constraint C7). Wh
 fixed, remove it here and (if notable) add a `POSTMORTEMS.md` entry.
 
 Verified against repository HEAD `c605fbe` (0.8.7 content audit); version-synced to the
-**v0.8.9 release** (finalized 2026-07-12, PR #58 — Wave-2 performance work; no new/removed
-issues), including the KI-008 addition from the PR #57 investigation (previously synced for the
-functional/UX PR #56; JUCE 8.0.14; before that 0.8.8 for PR #54).
+post-**v0.8.9** work (the undo/redo dropout fix + adaptive GUI refresh; **KI-009 added** — the
+REAPER Save Preset focus report, host-specific, pending manual investigation). Prior: the v0.8.9
+release (finalized 2026-07-12, PR #58 — Wave-2 performance work; no new/removed issues), including
+the KI-008 addition from the PR #57 investigation (previously synced for the functional/UX PR #56;
+JUCE 8.0.14; before that 0.8.8 for PR #54).
 
 | ID | Issue | Severity | Status |
 |---|---|---|---|
@@ -19,6 +21,7 @@ functional/UX PR #56; JUCE 8.0.14; before that 0.8.8 for PR #54).
 | KI-006 | Linux: tooltip rounded corners render an opaque black background instead of transparent | Low | Fix applied (LookAndFeel); Linux visual re-test pending |
 | KI-007 | Windows: pluginval "Editor Automation" abnormally terminates (was hidden by a run-pluginval.ps1 false green) | Medium | False green closed; GL-drop cleared the crash (CI-confirmed); advancedMode-automation fix pending CI |
 | KI-008 | Advanced-toggle one-frame tear in async-resize hosts (JUCE VST3 wrapper window-grant gap) | Low | Confirmed, external (JUCE wrapper + host); not fixable plugin-side without a JUCE change |
+| KI-009 | REAPER: Save Preset text editor loses keyboard focus (Space hits transport; a click does not re-focus until the dialog is reopened) | Low | Reported, host-specific (REAPER); pending manual investigation |
 
 ---
 
@@ -157,3 +160,55 @@ frames after the toggle; visibility/layout consistent at every host-observable i
   first, and manual DAW validation. Any editor-side workaround (resizing the wrapper parent from
   plugin code) would gamble on per-host behaviour JUCE itself allowlists, and is deliberately not
   attempted.
+
+## KI-009 — REAPER: Save Preset text editor keyboard focus is lost after the field loses focus
+In **REAPER** the Save Preset name field does not hold keyboard focus reliably:
+- With the field focused, pressing **Space types nothing into the field and instead triggers the
+  DAW transport** (Play/Pause).
+- After the field **loses focus once** (e.g. clicking elsewhere in the plugin window, or the host
+  reclaiming focus), **clicking the text again does not reactivate editing** and does not restore
+  the text-selection highlight — the caret does not return.
+- Editing only becomes possible again after **closing and reopening** the Save Preset dialog (which
+  re-runs the deferred focus-grab retry, see below).
+- **Other tested DAWs behave correctly** — the field takes focus on open, Space types a space, and
+  a later click re-focuses the field normally.
+
+This is a **host-specific interaction**, not a general editor defect: the same code path works in
+the other hosts exercised so far. It is filed for **manual investigation** on REAPER specifically;
+no fix is attempted here (a fix would need the reproducing host in front of a developer to confirm
+the JUCE focus/peer path REAPER takes).
+
+- **Affected host(s) [Reported]:** REAPER (version / OS not yet pinned in the report). Not observed
+  in the other DAWs tested. REAPER's overall compatibility is already **Unverified** in the matrix
+  (`docs/architecture/COMPATIBILITY_MATRIX.md`; KI-004 — no automated host testing), so this is a
+  concrete, reproducible instance of that coverage gap rather than a regression from a known-good
+  state.
+- **Observed behaviour / reproduction (REAPER):** (1) load Anamorph (VST3) in REAPER; (2) open the
+  preset menu → **Save Preset**; (3) with the name field showing, press **Space** → the transport
+  toggles instead of a space being typed; (4) click outside the field, then click back on the text
+  → the field does **not** regain the caret/selection and typing does not go to it; (5) close and
+  reopen the Save Preset dialog → editing works again (until focus is next lost).
+- **Current evidence [Partially Verified]:** The plugin already carries a **one-time** focus
+  workaround for the *open* path: `focusSaveNameField()` grabs keyboard focus and, if the grab does
+  not stick (the preset-menu's desktop window still owns OS focus at the callback instant, and JUCE
+  aborts an internal focus move while `! peer->isFocused()`), it retries on later message-loop
+  passes up to four times (src/PluginEditor.cpp:1387-1406; declared PluginEditor.h). This shipped in
+  the v0.8.9 CHANGELOG "Fixed" entry ("The Save Preset name field reliably receives typing — Space
+  included") and was **validated headless end-to-end**, i.e. against the JUCE wrapper, not against
+  REAPER. The retry loop runs **only on dialog open** (`showSavePreset(true)` → `focusSaveNameField(4)`);
+  there is **no focus re-acquisition after a later focus loss** — no `focusLost` handler,
+  `mouseDown`-grab, or `setMouseClickGrabsKeyboardFocus` override on `saveNameEditor` (repo-wide:
+  the only focus calls are PluginEditor.cpp:1401-1402 and the unrelated SpectrumImager freq editor).
+  A click on the field then relies on JUCE's default click-to-focus, which is subject to the same
+  `peer->isFocused()` abort if REAPER holds OS focus on the plugin's parent window — consistent with
+  "clicking the text does not reactivate editing until the dialog is reopened". This is a strong
+  hypothesis, **not yet confirmed on REAPER hardware**; the exact focus/peer sequence REAPER follows
+  is the open question the manual investigation must answer.
+- **Scope:** host-dependent (REAPER); severity **Low** (Save Preset only; the workaround on reopen
+  restores editing; no audio, parameter, automation, preset-data or serialization impact). No other
+  workflow is affected. The general "type in a text field" path works in the other tested hosts.
+- **Status:** **Reported, host-specific, pending manual investigation.** Not fixed in this change by
+  decision — a correct fix needs REAPER in front of a developer to (a) confirm which JUCE focus/peer
+  branch aborts and (b) verify any re-focus handler (e.g. a `focusLost`/`mouseDown` re-grab mirroring
+  the open-path retry) actually sticks in REAPER without regressing the hosts that already work. Track
+  under the KI-004 host-matrix gap; revisit when a REAPER audition slot is available.
