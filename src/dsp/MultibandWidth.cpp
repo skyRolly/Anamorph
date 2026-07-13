@@ -9,7 +9,8 @@ void MultibandWidth::prepare (double sampleRate, int maxBlock)
 {
     sr = sampleRate;
     juce::ignoreUnused (maxBlock); // LR4Xover state is flat, not block-sized
-    for (auto* x : { &x1, &x2, &x3, &dx1, &dx2, &dx3 })
+    for (auto* x : { &x1, &x2, &x3, &dx1, &dx2, &dx3,
+                     &ax[0], &ax[1], &ax[2], &dax[0], &dax[1], &dax[2] })
         x->prepare (sampleRate);
     // ~8 octaves/sec slew cap (matches Mono Maker), so a quick split drag never
     // modulates the LR cutoff fast enough to pitch-shift (0.6.7 #1).
@@ -22,6 +23,8 @@ void MultibandWidth::prepare (double sampleRate, int maxBlock)
     dx1.setCutoffFrequency (currentF[0]);
     dx2.setCutoffFrequency (currentF[1]);
     dx3.setCutoffFrequency (currentF[2]);
+    // The compensation allpasses share each split's cutoff (ax[i]/dax[i] at f[i]).
+    for (int i = 0; i < 3; ++i) { ax[i].setCutoffFrequency (currentF[i]); dax[i].setCutoffFrequency (currentF[i]); }
     // One-pole on the band widths at ~20 ms (the global Width smoother's ramp),
     // so a fast band-width drag glides instead of stepping per block (0.7.0 #1).
     wCoeff = std::exp (-1.0f / (0.02f * (float) sr));
@@ -37,6 +40,7 @@ void MultibandWidth::reset()
     dx1.reset();
     dx2.reset();
     dx3.reset();
+    for (int i = 0; i < 3; ++i) { ax[i].reset(); dax[i].reset(); }
     // Settle the width glide to its target. reset() only runs while the engine is
     // ducked to silence (or in prepare), so snapping here can never click and the
     // band starts at its true width when audio resumes.
@@ -98,10 +102,14 @@ void MultibandWidth::processBlock (float* left, float* right, int numSamples,
     const int crossovers = bands - 1; // 1..3
 
     // Re-sync the dry bank's cutoffs to the live values at block start, so a block
-    // that resumes aligning starts phase-matched (Known Issue #1).
+    // that resumes aligning starts phase-matched (Known Issue #1). The dry
+    // compensation allpasses re-sync with it.
     if (align)
         for (int i = 0; i < crossovers; ++i)
+        {
             dxs[i]->setCutoffFrequency (currentF[i]);
+            dax[i].setCutoffFrequency (currentF[i]);
+        }
 
     for (int n = 0; n < numSamples; ++n)
     {
@@ -115,7 +123,8 @@ void MultibandWidth::processBlock (float* left, float* right, int numSamples,
                                 ? juce::jmin (targetF[i], currentF[i] * glideCoeff)
                                 : juce::jmax (targetF[i], currentF[i] / glideCoeff);
                 xs[i]->setCutoffFrequency (currentF[i]);
-                if (align) dxs[i]->setCutoffFrequency (currentF[i]); // keep the dry bank locked to the wet
+                ax[i].setCutoffFrequency (currentF[i]); // compensation allpass glides with its split
+                if (align) { dxs[i]->setCutoffFrequency (currentF[i]); dax[i].setCutoffFrequency (currentF[i]); } // dry bank locked to the wet
             }
         }
 
@@ -125,12 +134,25 @@ void MultibandWidth::processBlock (float* left, float* right, int numSamples,
             currentW[i] = targetW[i] + (currentW[i] - targetW[i]) * wCoeff;
 
         float curL = left[n], curR = right[n];
-        float accL = 0.0f, accR = 0.0f;
+        float loL, hiL, loR, hiR;
 
-        // Peel off one low band per crossover; the running remainder feeds the next.
-        for (int i = 0; i < crossovers; ++i)
+        // Band 0 (lowest): peel it off, it seeds the running low-sum.
+        xs[0]->processSample (0, curL, loL, hiL);
+        xs[0]->processSample (1, curR, loR, hiR);
+        applyWidth (loL, loR, currentW[0]);
+        float accL = loL, accR = loR;
+        curL = hiL; curR = hiR;
+
+        // Each higher split: phase-align the running low-sum through THIS split's
+        // allpass (LR4 lo+hi) so it stays coherent with the bands above it, THEN
+        // peel + add the next band. This telescopes the sum to an allpass (flat)
+        // instead of dipping around close crossovers (naive sum was b0+b1+b2+b3).
+        for (int i = 1; i < crossovers; ++i)
         {
-            float loL, hiL, loR, hiR;
+            float aL0, aL1, aR0, aR1;
+            ax[i].processSample (0, accL, aL0, aL1); accL = aL0 + aL1;
+            ax[i].processSample (1, accR, aR0, aR1); accR = aR0 + aR1;
+
             xs[i]->processSample (0, curL, loL, hiL);
             xs[i]->processSample (1, curR, loR, hiR);
             applyWidth (loL, loR, currentW[i]);
@@ -138,7 +160,8 @@ void MultibandWidth::processBlock (float* left, float* right, int numSamples,
             curL = hiL; curR = hiR;
         }
 
-        // The final remainder is the top band.
+        // The final remainder is the top band (no further allpass -- it already
+        // carries every split's high-side phase).
         applyWidth (curL, curR, currentW[crossovers]);
         accL += curL; accR += curR;
 
@@ -151,14 +174,25 @@ void MultibandWidth::processBlock (float* left, float* right, int numSamples,
         if (align)
         {
             float dcurL = dryInL[n], dcurR = dryInR[n];
-            float daccL = 0.0f, daccR = 0.0f;
-            for (int i = 0; i < crossovers; ++i)
+            float dloL, dhiL, dloR, dhiR;
+            dxs[0]->processSample (0, dcurL, dloL, dhiL);
+            dxs[0]->processSample (1, dcurR, dloR, dhiR);
+            float daccL = dloL, daccR = dloR;   // unit width -> just the band itself
+            dcurL = dhiL; dcurR = dhiR;
+
+            // Same allpass phase-compensation as the wet, so A(dry) telescopes to
+            // the identical A1.A2.A3 allpass -- the dry/wet Mix stays comb-free AND
+            // the dry reference is itself flat (Known Issue #1 + flat recombination).
+            for (int i = 1; i < crossovers; ++i)
             {
-                float loL, hiL, loR, hiR;
-                dxs[i]->processSample (0, dcurL, loL, hiL);
-                dxs[i]->processSample (1, dcurR, loR, hiR);
-                daccL += loL; daccR += loR;   // unit width -> just the band itself
-                dcurL = hiL; dcurR = hiR;
+                float aL0, aL1, aR0, aR1;
+                dax[i].processSample (0, daccL, aL0, aL1); daccL = aL0 + aL1;
+                dax[i].processSample (1, daccR, aR0, aR1); daccR = aR0 + aR1;
+
+                dxs[i]->processSample (0, dcurL, dloL, dhiL);
+                dxs[i]->processSample (1, dcurR, dloR, dhiR);
+                daccL += dloL; daccR += dloR;
+                dcurL = dhiL; dcurR = dhiR;
             }
             daccL += dcurL; daccR += dcurR;
             dryOutL[n] = daccL; dryOutR[n] = daccR;

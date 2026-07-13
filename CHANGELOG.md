@@ -24,6 +24,19 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   (still message-thread). Evidence: this PR. [Verified]
 
 ### Fixed
+- **Multiband: closely-spaced crossovers no longer cut the level around the crossover
+  frequencies.** With three splits concentrated together the band around the crossovers behaved
+  like an EQ dip (measured −17.75 dB at 800/1000/1250 Hz), even at unit width and without moving a
+  band. Root cause: the reconstruction summed the serially-split bands directly, which is only
+  flat for a single crossover — an LR4 low+high is an allpass, so with more crossovers the lower
+  bands were missing the allpass phase of the splits above them and partially cancelled around the
+  (shared, when close) crossover region. The reconstruction now phase-compensates each lower band
+  by running the running low-sum through each higher split's allpass before adding the next band,
+  so it telescopes to a true allpass (flat). Recombination is now flat to ±0.0 dB at every split
+  spacing (regression test `testMultibandFlatRecombination`); mono compatibility, solo, automation,
+  presets/serialization and the reported latency are unchanged (the compensation is an equal-on-
+  L/R, zero-integer-latency IIR allpass). Only `bands−2` extra allpass sections run (none for 1–2
+  bands). Evidence: this PR. [Verified]
 - **Rapid consecutive Undo/Redo (or discrete changes) during the crossfade no longer reuse stale
   dry-fill state.** A second forced swap arriving while a previous forced duck was still fading in
   kept the first swap's dry-fill decision and delay offset; if the two swaps differed in reported

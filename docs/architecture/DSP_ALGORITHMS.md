@@ -70,11 +70,18 @@ Nyquist-safe clamp `[20, max(1000, 0.45·sr)]`. Applied **post-Mix, in place** (
 ## MultibandWidth — `src/dsp/MultibandWidth.{h,cpp}`
 
 1–4 phase-coherent bands from a cascade of LR lowpass crossovers (`x1,x2,x3`): peel one low
-band per crossover, the remainder feeds the next, final remainder = top band (`.cpp:134-146`).
-Each band widened via `applyWidth` (MS side-gain), summed → allpass-flat reconstruction. A
-**parallel dry bank** (`dx1,dx2,dx3`) reconstructs the dry at unit width sharing the wet's exact
-gliding cutoffs → phase-matched `A(dry)` for the dry/wet Mix (`.cpp:154-168`). 1-band fast path
-skips crossovers. Cutoffs glide per sample; widths one-pole smoothed (~20 ms).
+band per crossover, the remainder feeds the next, final remainder = top band. Each band widened
+via `applyWidth` (MS side-gain), summed with **inter-band allpass phase compensation** →
+allpass-flat reconstruction. A naive serial split-and-sum is flat only for a single crossover
+(LR4 LP+HP = allpass `A`); with more crossovers the lower bands lack the allpass phase of the
+crossovers above them and partially cancel around the crossover region — a magnitude dip that
+deepens as splits approach each other (measured −17.75 dB at three close splits). The fix runs
+the running low-sum through each higher split's allpass (`ax[i]` = LR4 lo+hi) before adding the
+next band, so the sum telescopes to `A1·A2·A3` (flat); only `bands−2` extra allpasses are needed
+(0 for 1–2 bands, 1 for 3, 2 for 4) and they add **zero integer latency**. A **parallel dry bank**
+(`dx1,dx2,dx3` + `dax[]`) reconstructs the dry at unit width with the identical compensation,
+sharing the wet's exact gliding cutoffs → phase-matched `A(dry)` for the dry/wet Mix. 1-band fast
+path skips crossovers. Cutoffs glide per sample; widths one-pole smoothed (~20 ms).
 - **Crossover safety**: Nyquist clamp `[20, 0.45·sr]` applied **before** ordering, then the
   1.1× separation ordering re-clamped **top-down** so separation can never push a cutoff past
   Nyquist (the 0.8.2 "+600 dB" fix). `.cpp:55-71`.
