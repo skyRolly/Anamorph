@@ -6,7 +6,18 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **post-v0.8.9 PR** (three items + a fresh profiling baseline). (1) Undo/Redo
+Last updated: for the **PR #59 pre-merge review round** (three correctness fixes). (a) Multiband
+flat recombination — the crossover reconstruction now phase-compensates each lower band by the
+splits above it (allpass telescoping), removing the −17.75 dB dip at close crossovers; documented
+in DSP_ALGORITHMS (MultibandWidth) + CHANGELOG, guarded by `testMultibandFlatRecombination`
+(Test 28). (b) Rapid forced-swap dry-fill robustness — every forced swap re-evaluates dry-fill,
+never reusing a prior swap's stale offset; CHANGELOG + `testRapidForcedSwapDryFill` (Test 27).
+(c) FrameClock review — the Advanced-only SpectrumImager now stops its display-rate clock while
+hidden (Simple mode), mirroring the meters (no unnecessary vblank ticks). DSP test count
+25→**27**, checks 77→**86** (README, TESTING_POLICY, TESTING, HANDOVER). No parameter/automation/
+preset/serialization/latency change; the multiband fix changes only the multiband audio output
+(the intended fix — twin dump confirms latency unchanged, non-multiband scenarios identical).
+Prior: for the **post-v0.8.9 PR** (three items + a fresh profiling baseline). (1) Undo/Redo
 audible-dropout fix — the forced switch duck is now dry-filled from the true-bypass ring;
 documented in SIGNAL_FLOW (forced-swap note) + CHANGELOG `[Unreleased]`, guarded by the new
 `testForcedSwapNoDropout` (Test 26, count 24→**25** DSP tests, 73→**77** checks). (2) Adaptive
