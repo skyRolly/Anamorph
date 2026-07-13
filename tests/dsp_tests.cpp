@@ -1317,6 +1317,119 @@ static void testDryAlignGateRecomb()
 }
 
 // ---------------------------------------------------------------------------
+//  Undo/redo dropout guard: a FORCED bulk swap (undo / redo / A/B / preset --
+//  requestDuck() + setParameters(), exactly what the wrapper's undo() does) must
+//  no longer pass through silence. The forced duck is dry-filled with the delay-
+//  aligned raw input (the true-bypass ring), so short-window RMS across the swap
+//  must stay near the steady level. The pre-fix engine multiplied the output by a
+//  raised cosine that reached exactly 0 and dwelt there (~6 ms out + up to one
+//  block of zeros + a slow 28 ms in): its minimum window RMS is ~0, which this
+//  test rejects. (A latency-crossing forced swap deliberately keeps the original
+//  duck-to-silence -- the ring read offset would jump at full dry weight -- and
+//  is not asserted here.)
+static void testForcedSwapNoDropout()
+{
+    std::printf ("Test 26: a forced bulk swap (undo / A-B / preset) never dips to silence\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0;
+    const int block = 128;
+    const double freq = 220.0;
+    const float amp = 0.25f;
+
+    struct Scenario { const char* name; anamorph::EngineParameters from, to; double minRatio; };
+    Scenario scenarios[2];
+    // 1) Continuous-only bulk swap on a near-transparent chain: raw and processed
+    //    carry the same sine, so any dip below ~85 % of steady is the duck itself.
+    scenarios[0].name = "continuous bulk swap (width/mix)";
+    scenarios[0].from.width = 1.3f;
+    scenarios[0].to.width = 0.8f; scenarios[0].to.mix = 0.9f;
+    scenarios[0].minRatio = 0.85;
+    // 2) Algorithm-carrying swap under real processing (Velvet 0.5 -> Haas 0.4,
+    //    OS off so the swap is latency-neutral): the dry fill crossfades toward
+    //    decorrelated wet, so allow interference dips but never a dropout. The
+    //    pre-fix duck still bottoms at ~0 here (fails any positive floor).
+    scenarios[1].name = "algorithm bulk swap (velvet -> haas)";
+    scenarios[1].from.algorithm = anamorph::Algorithm::Velvet;
+    scenarios[1].from.algoAmount = 0.5f;
+    scenarios[1].to.algorithm = anamorph::Algorithm::Haas;
+    scenarios[1].to.algoAmount = 0.4f;
+    scenarios[1].minRatio = 0.35;
+
+    for (const auto& sc : scenarios)
+    {
+        anamorph::AnamorphEngine engine;
+        engine.prepare (sr, block);
+        engine.setParameters (sc.from);
+        engine.reset();
+
+        double phase = 0.0; const double inc = 2.0 * 3.14159265358979 * freq / sr;
+        const int settleBlocks = 375;              // 1 s to settle every glide
+        const int steadyBlocks = 38;               // ~100 ms steady reference
+        const int swapBlocks   = 38;               // ~100 ms covering the whole duck (~34 ms)
+        const int win = 96;                        // 2 ms RMS windows (bottom dwell is >= a block)
+
+        auto runBlock = [&] (juce::AudioBuffer<float>& buf)
+        {
+            for (int i = 0; i < block; ++i)
+            {
+                const float s = amp * (float) std::sin (phase); phase += inc;
+                buf.setSample (0, i, s); buf.setSample (1, i, s);
+            }
+            engine.process (buf);
+        };
+
+        juce::AudioBuffer<float> buf (2, block);
+        auto p = sc.from;
+        for (int nb = 0; nb < settleBlocks; ++nb) { engine.setParameters (p); runBlock (buf); }
+
+        // Windowed RMS (mono sum of both channels) over a span of blocks.
+        double winSq = 0.0; int winN = 0; double minWin = 1.0e9;
+        auto scanWindows = [&] (const juce::AudioBuffer<float>& b)
+        {
+            for (int i = 0; i < block; ++i)
+            {
+                const float v = 0.5f * (b.getSample (0, i) + b.getSample (1, i));
+                winSq += (double) v * v;
+                if (++winN == win)
+                {
+                    minWin = std::min (minWin, std::sqrt (winSq / win));
+                    winSq = 0.0; winN = 0;
+                }
+            }
+        };
+
+        double steadySq = 0.0; long steadyN = 0;
+        for (int nb = 0; nb < steadyBlocks; ++nb)
+        {
+            engine.setParameters (p); runBlock (buf);
+            for (int i = 0; i < block; ++i)
+            {
+                const float v = 0.5f * (buf.getSample (0, i) + buf.getSample (1, i));
+                steadySq += (double) v * v; ++steadyN;
+            }
+        }
+        const double steadyRms = std::sqrt (steadySq / (double) steadyN);
+
+        engine.requestDuck();                      // the wrapper's undo()/redo() shape
+        p = sc.to;
+        bool bad = false;
+        for (int nb = 0; nb < swapBlocks; ++nb)
+        {
+            engine.setParameters (p); runBlock (buf);
+            scanWindows (buf);
+            for (int i = 0; i < block; ++i)
+                if (isBad (buf.getSample (0, i)) || isBad (buf.getSample (1, i))) bad = true;
+        }
+
+        const double ratio = minWin / juce::jmax (1.0e-12, steadyRms);
+        std::printf ("  %s: min 2 ms window RMS across the swap = %.3f of steady (pre-fix ~0)\n",
+                     sc.name, ratio);
+        check (! bad, "forced-swap stream is free of NaN/Inf/denormals");
+        check (ratio > sc.minRatio, "forced bulk swap keeps audio present (no silent gap)");
+    }
+}
+
+// ---------------------------------------------------------------------------
 int main()
 {
     std::printf ("=== Anamorph DSP self-tests ===\n");
@@ -1344,6 +1457,7 @@ int main()
     testMultibandEnableCrossfadeClickFree();
     testSoloMultibandEnableClickFree();
     testDryAlignGateRecomb();
+    testForcedSwapNoDropout();
     testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);

@@ -146,6 +146,19 @@ private:
     // snapping the smoothers there, so no parameter (smoothed or not) can pop
     // mid-fade. A normal discrete duck still applies continuous immediately (#1).
     bool  pendingForced = false;
+    // Dry-fill for the FORCED duck: while a forced duck is in flight the output is
+    // crossfaded against the delay-aligned RAW input (the true-bypass ring, whose
+    // writes are always warm -- H9) instead of dipping to silence, so an undo /
+    // redo / A/B / preset jump is heard as a short dip to the dry signal rather
+    // than a brief dropout. The swap still happens at PROCESSED weight 0, so every
+    // silent-bottom masking property (smoother snap, wholesale reset, OS latch) is
+    // unchanged. Engaged only when the swap keeps the reported latency (otherwise
+    // the ring read offset would jump at full dry weight -- those rare swaps keep
+    // the original duck-to-silence); the read offset is latched for the duck's
+    // lifetime so a mid-duck retarget can never step the dry stream. Ordinary
+    // discrete ducks are untouched (bit-exact).
+    bool  dryDuck    = false;
+    int   dryDuckLat = 0;       // ring read offset latched at the duck start
     void  snapSmoothers() noexcept;
 
     static constexpr float kNoInject = -1000.0f;

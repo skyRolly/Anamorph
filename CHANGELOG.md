@@ -6,6 +6,27 @@ SHA + date** as the Evidence Source (per `docs/policies/CHANGELOG_POLICY.md`). E
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
+## [Unreleased]
+### Fixed
+- **Undo / Redo (and A/B switch / preset load) no longer produce a brief audible dropout.**
+  Root cause: those actions route through the engine's *forced* switch duck, whose raised-cosine
+  output gain reaches exactly 0 and dwells there until the next block boundary (~6 ms fade-out
+  + up to one host block of hard zeros + the slow ~28 ms fade-in) — 15–25 ms of effective
+  silence by design. The forced duck is now **dry-filled**: while it is in flight the output is
+  crossfaded toward the delay-aligned raw input already maintained for the true-bypass
+  crossfade (the ring's writes were always warm; only its dead read-back was gated — H9), so
+  the swap is heard as a short dip to the dry signal instead of a gap. The processed weight
+  still reaches 0 at the bottom, so every masking property of the silent-bottom swap (smoother
+  snap, wholesale node reset, oversampler-latency latch) is unchanged, as is the reported
+  latency. A forced swap that crosses a latency boundary deliberately keeps the original
+  duck-to-silence (its ring read offset would jump at full dry weight). Ordinary discrete
+  switches (algorithm dropdown, routing toggles) are untouched. Validated: the 33-scenario
+  full-engine twin dump is **byte-identical** pre/post on every existing path (md5
+  `c35ed5e3…`, latencies identical), and the new regression test `testForcedSwapNoDropout`
+  (Test 26) holds the minimum 2 ms-window RMS across a forced swap at ≥ 0.93× (continuous
+  bulk swap) / ≥ 0.65× (algorithm swap) of steady level — the pre-fix engine measures 0.000
+  on both and fails. Evidence: this PR. [Verified]
+
 ## [0.8.9] — 2026-07-12
 ### Added
 - **Alt/Option-click on a Band Solo button acts on every band at once**: alt-clicking a soloed
