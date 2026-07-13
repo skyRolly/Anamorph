@@ -1430,6 +1430,122 @@ static void testForcedSwapNoDropout()
 }
 
 // ---------------------------------------------------------------------------
+//  Rapid consecutive forced swaps: a SECOND forced swap arrives while the first
+//  forced duck is still fading in. The second must RE-EVALUATE its dry-fill
+//  against the state being heard now -- it must never reuse the first swap's
+//  stale dryDuck / dryDuckLat. The discriminating case: the first swap is
+//  latency-CROSSING (engages oversampling: dry-fill correctly disabled, ducks to
+//  silence), then the second swap is latency-NEUTRAL relative to that new state.
+//  The correct engine re-latches and dry-fills the second swap, so audio stays
+//  present through it; the pre-fix engine kept the stale "no dry-fill" decision
+//  and dipped the second swap to silence too. A control case (both swaps
+//  latency-neutral) confirms the ordinary rapid pair stays dry-filled.
+static void testRapidForcedSwapDryFill()
+{
+    std::printf ("Test 27: rapid consecutive forced swaps re-evaluate dry-fill (no stale state)\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0;
+    const int block = 128;
+    const double freq = 220.0;
+    const float amp = 0.25f;
+
+    // Fire swap1 (settled), then swap2 a few blocks later -- during swap1's ~28 ms
+    // fade-in (fade-out ~6 ms ends ~block 3; fade-in spans ~blocks 3..13 @128/48k).
+    const int settle    = 375;   // 1 s to settle `from`
+    const int swap1At    = 6;     // blocks after settle
+    const int swap2At    = 12;    // during swap1's fade-in
+    const int tail       = 40;    // run past swap2's fade-in
+    const int win        = 96;    // 2 ms RMS window
+
+    struct Case { const char* name; anamorph::EngineParameters from, swap1, swap2; bool assertSwap2Present; };
+    Case cases[2];
+
+    // Control: both swaps latency-neutral (OS off throughout). Ordinary rapid undo
+    // pair -- must stay dry-filled the whole way.
+    cases[0].name = "neutral -> neutral (control)";
+    cases[0].from.width = 1.3f;
+    cases[0].swap1.width = 0.8f;
+    cases[0].swap2.width = 1.5f; cases[0].swap2.mix = 0.85f;
+    cases[0].assertSwap2Present = true;
+
+    // Discriminating: swap1 engages oversampling (latency-crossing: correctly ducks
+    // to silence), swap2 keeps OS on (latency-neutral vs swap1) and only moves a
+    // continuous control -- the correct engine dry-fills it; the stale engine does not.
+    cases[1].name = "latency-cross -> neutral (discriminating)";
+    cases[1].from.algorithm = anamorph::Algorithm::Chorus; cases[1].from.algoAmount = 0.3f; // OS off (default)
+    cases[1].swap1 = cases[1].from; cases[1].swap1.oversample = anamorph::OversampleFactor::x4; // OS engages -> latency
+    cases[1].swap2 = cases[1].swap1; cases[1].swap2.width = 1.6f; // OS stays on: neutral, continuous-only
+    cases[1].assertSwap2Present = true;
+
+    for (const auto& c : cases)
+    {
+        anamorph::AnamorphEngine engine;
+        engine.prepare (sr, block);
+        engine.setParameters (c.from);
+        engine.reset();
+
+        double phase = 0.0; const double inc = 2.0 * 3.14159265358979 * freq / sr;
+        juce::AudioBuffer<float> buf (2, block);
+        auto runBlock = [&]
+        {
+            for (int i = 0; i < block; ++i)
+            {
+                const float s = amp * (float) std::sin (phase); phase += inc;
+                buf.setSample (0, i, s); buf.setSample (1, i, s);
+            }
+            engine.process (buf);
+        };
+
+        for (int nb = 0; nb < settle; ++nb) { engine.setParameters (c.from); runBlock(); }
+
+        // Settled reference at the FINAL state (swap2 target), measured after the
+        // whole sequence -- so the ratio is level-matched to what swap2 dry-fills to.
+        // Windowed-RMS scan with a min captured only over blocks >= swap2At.
+        double winSq = 0.0; int winN = 0; double minAfterSwap2 = 1.0e9;
+        bool bad = false;
+        auto p = c.from;
+        const int total = swap2At + tail;
+        for (int nb = 0; nb < total; ++nb)
+        {
+            if (nb == swap1At) { engine.requestDuck(); p = c.swap1; }
+            if (nb == swap2At) { engine.requestDuck(); p = c.swap2; }
+            engine.setParameters (p);
+            runBlock();
+            for (int i = 0; i < block; ++i)
+            {
+                const float v = 0.5f * (buf.getSample (0, i) + buf.getSample (1, i));
+                if (isBad (buf.getSample (0, i)) || isBad (buf.getSample (1, i))) bad = true;
+                winSq += (double) v * v;
+                if (++winN == win)
+                {
+                    const double r = std::sqrt (winSq / win);
+                    if (nb >= swap2At) minAfterSwap2 = std::min (minAfterSwap2, r);
+                    winSq = 0.0; winN = 0;
+                }
+            }
+        }
+        // Settled RMS at the final state.
+        double stSq = 0.0; long stN = 0;
+        for (int nb = 0; nb < 40; ++nb)
+        {
+            engine.setParameters (c.swap2); runBlock();
+            for (int i = 0; i < block; ++i)
+            {
+                const float v = 0.5f * (buf.getSample (0, i) + buf.getSample (1, i));
+                stSq += (double) v * v; ++stN;
+            }
+        }
+        const double steadyRms = std::sqrt (stSq / (double) stN);
+        const double ratio = minAfterSwap2 / juce::jmax (1.0e-12, steadyRms);
+        std::printf ("  %s: min 2 ms window RMS through swap2 = %.3f of steady (stale-state engine ~0)\n",
+                     c.name, ratio);
+        check (! bad, "rapid forced-swap stream is free of NaN/Inf/denormals");
+        if (c.assertSwap2Present)
+            check (ratio > 0.30, "second forced swap re-evaluates dry-fill and keeps audio present");
+    }
+}
+
+// ---------------------------------------------------------------------------
 int main()
 {
     std::printf ("=== Anamorph DSP self-tests ===\n");
@@ -1458,6 +1574,7 @@ int main()
     testSoloMultibandEnableClickFree();
     testDryAlignGateRecomb();
     testForcedSwapNoDropout();
+    testRapidForcedSwapDryFill();
     testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);

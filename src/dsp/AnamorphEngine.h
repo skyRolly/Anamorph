@@ -154,11 +154,23 @@ private:
     // silent-bottom masking property (smoother snap, wholesale reset, OS latch) is
     // unchanged. Engaged only when the swap keeps the reported latency (otherwise
     // the ring read offset would jump at full dry weight -- those rare swaps keep
-    // the original duck-to-silence); the read offset is latched for the duck's
-    // lifetime so a mid-duck retarget can never step the dry stream. Ordinary
-    // discrete ducks are untouched (bit-exact).
+    // the original duck-to-silence).
+    //
+    // Rapid consecutive swaps (a second undo/redo/discrete change arriving while a
+    // prior forced duck is still fading) are handled by two latch rules, applied in
+    // setParameters (see beginForcedDuck):
+    //   * dryDuckLat is (re)latched to the currently-heard latency ONLY at a fresh
+    //     fade-out entry (the state heard through this duck's fade-out == its
+    //     fade-in, so one offset is valid); it never moves mid-fade, so the dry
+    //     read position can never jump.
+    //   * dryDuck is recomputed at each fresh forced duck and only ANDed-down by a
+    //     same-duck retarget (a later target that turns the swap latency-crossing
+    //     disables dry-fill); it is never re-enabled mid-fade. So a second swap
+    //     never reuses the first swap's stale decision or offset, and a
+    //     latency-changing swap never reads from an incorrect delay position.
+    // Ordinary discrete ducks set dryDuck=false (duck-to-silence, unchanged).
     bool  dryDuck    = false;
-    int   dryDuckLat = 0;       // ring read offset latched at the duck start
+    int   dryDuckLat = 0;       // ring read offset, latched at fade-out entry (never moves mid-fade)
     void  snapSmoothers() noexcept;
 
     static constexpr float kNoInject = -1000.0f;

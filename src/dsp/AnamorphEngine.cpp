@@ -225,21 +225,30 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
     // (#1, 0.6.4/0.6.5 feedback).
     const bool forceDuck = duckRequest.exchange (0, std::memory_order_relaxed) != 0;
 
+    // Begin (or re-begin) a forced duck: mark it forced and latch the dry-fill
+    // decision against the state being heard RIGHT NOW (getLatencySamples() tracks
+    // the latched osEngaged). dryDuckLat is fixed for this duck -- the state heard
+    // through its fade-out equals the one heard through its fade-in, so a single
+    // read offset is valid and can never jump mid-fade. Dry-fill is engaged only
+    // when the swap keeps the reported latency (else the offset would step by the
+    // latency delta at full dry weight; the host is re-aligning its PDC anyway).
+    // Called at every FRESH fade-out entry, so a second swap never inherits the
+    // previous swap's stale dryDuck/dryDuckLat.
+    auto beginForcedDuck = [this] (const EngineParameters& target)
+    {
+        pendingForced = true;
+        dryDuckLat    = getLatencySamples();
+        dryDuck       = (predictLatency (target) == dryDuckLat);
+    };
+
     if (switchState == SwitchState::Normal)
     {
         if (forceDuck)
         {
             // Keep the OLD state live through the fade-out; swap it all at the bottom.
             pendingP = np;
-            pendingForced = true;
             pendingAlgoReset = (np.algorithm != p.algorithm);
-            // Fill the duck with the delay-aligned raw input (no audible dropout)
-            // when the swap keeps the reported latency -- see dryDuck in the header.
-            // A latency-crossing swap keeps the original duck-to-silence: its ring
-            // read offset would jump by the latency delta exactly at full dry
-            // weight (and the host is re-aligning its PDC around us anyway).
-            dryDuck    = (predictLatency (np) == getLatencySamples());
-            dryDuckLat = getLatencySamples();
+            beginForcedDuck (np);
             switchState = SwitchState::FadeOut;
         }
         else if (discreteDiffers (np, p))
@@ -247,6 +256,7 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
             pendingP = np;
             pendingAlgoReset = (np.algorithm != p.algorithm);
             copyContinuous (p, np);          // knobs respond immediately
+            dryDuck = false;                 // ordinary discrete duck: duck-to-silence (unchanged)
             switchState = SwitchState::FadeOut;
             updateDerived();
         }
@@ -263,11 +273,23 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
         if (switchState == SwitchState::FadeIn && (forceDuck || discreteDiffers (np, p)))
         {
             // A new discrete change (or a forced bulk swap) arrived as we were
-            // fading back in: duck again.
-            pendingForced = pendingForced || forceDuck;
+            // fading back in: duck again. pendingForced was cleared at the previous
+            // bottom, so this duck's forced-ness is exactly the new forceDuck.
             pendingAlgoReset = (np.algorithm != p.algorithm);
+            if (forceDuck) beginForcedDuck (np);      // re-latch against the state heard now
+            else         { pendingForced = false; dryDuck = false; } // ordinary discrete re-duck
             switchState = SwitchState::FadeOut;
         }
+        else if (pendingForced)
+        {
+            // Still fading on a forced duck and the target moved (a retarget during
+            // fade-out, or a forced swap during fade-out). Only TIGHTEN dry-fill: a
+            // new target that turns the swap latency-crossing disables it; never
+            // re-enable mid-fade (that would jump the offset) and never move
+            // dryDuckLat (its L_out is fixed for the duck).
+            dryDuck = dryDuck && (predictLatency (pendingP) == dryDuckLat);
+        }
+
         // A forced swap defers everything to the silent bottom; otherwise keep
         // continuous controls live during the duck.
         if (! pendingForced)

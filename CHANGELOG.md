@@ -24,6 +24,15 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   (still message-thread). Evidence: this PR. [Verified]
 
 ### Fixed
+- **Rapid consecutive Undo/Redo (or discrete changes) during the crossfade no longer reuse stale
+  dry-fill state.** A second forced swap arriving while a previous forced duck was still fading in
+  kept the first swap's dry-fill decision and delay offset; if the two swaps differed in reported
+  latency the second could read the raw-input ring at the wrong offset or stay silent when it
+  should have dry-filled. Every forced swap now re-evaluates dry-fill against the state heard at
+  that moment, latching the read offset for the duck's lifetime and only tightening (never
+  re-enabling) it mid-fade. Follow-up to the undo/redo dropout fix below; ordinary single swaps are
+  byte-identical (twin-dump verified). Regression test `testRapidForcedSwapDryFill`. Evidence: this
+  PR. [Verified]
 - **Undo / Redo (and A/B switch / preset load) no longer produce a brief audible dropout.**
   Root cause: those actions route through the engine's *forced* switch duck, whose raised-cosine
   output gain reaches exactly 0 and dwells there until the next block boundary (~6 ms fade-out
