@@ -116,10 +116,28 @@ SpectrumImager::SpectrumImager (anamorph::ScopeBuffer& s, juce::AudioProcessorVa
     for (int b = 0; b < 4; ++b) drawnW[b] = bandWidth (b);
 
     setInterceptsMouseClicks (true, false);
-    // Adaptive refresh: ride the display's vblank (capped ~120 Hz). The in-tick
-    // S2 isShowing() gate fully suspends analysis + animation while hidden, so
-    // (like the old 60 Hz timer) the clock stays armed for the editor's life.
+    // Adaptive refresh: ride the display's vblank (capped ~120 Hz). Armed here and
+    // then gated by visibility: the imager is Advanced-only, so its clock is
+    // stopped whenever it is hidden (Simple mode -- the default) rather than
+    // firing a per-vblank isShowing()-and-return. visibilityChanged() flips it as
+    // the mode toggles; the in-tick S2 isShowing() gate still covers a whole-editor
+    // hide (own-visibility unchanged). This is strictly less idle work than the old
+    // fixed 60 Hz timer, which ran even while hidden.
     frameClock.start (*this, [this] (double dt) { tick (dt); });
+}
+
+void SpectrumImager::visibilityChanged()
+{
+    if (isVisible())
+        frameClock.start (*this, [this] (double dt) { tick (dt); });
+    else
+    {
+        frameClock.stop();
+        // Force the S2 stale-spectrum reset (mags/redLevel -> floor) to run on the
+        // first tick after the next show, exactly as the always-running tick did
+        // when it early-returned on !isShowing().
+        wasShowing = false;
+    }
 }
 
 SpectrumImager::~SpectrumImager()

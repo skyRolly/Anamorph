@@ -79,7 +79,18 @@ private:
             const double d = t - lastStamp;
             if (d > 0.0005 && d < 0.05)
             {
-                emaDelta  = haveEma ? emaDelta + 0.125 * (d - emaDelta) : d;
+                // Fast-attack on a rate INCREASE, smooth otherwise. An upward
+                // refresh-rate transition (e.g. the editor dragged onto a faster
+                // monitor -- no stop()/start(), the attachment just follows the
+                // component) would otherwise run at the full new rate for the
+                // whole EMA settle window (~10-30 frames), briefly exceeding the
+                // ~125 Hz cap. Snapping emaDelta down the moment a much-shorter
+                // delta arrives (>33 % faster) re-caps within a frame. Small
+                // fluctuations and rate DECREASES ease via the 0.125 EMA; snapping
+                // down over-eagerly only ever runs FEWER frames, never more, so it
+                // is CPU-safe (a stray short delta cannot spike the rate).
+                if (! haveEma || d < 0.75 * emaDelta) emaDelta = d;
+                else                                  emaDelta += 0.125 * (d - emaDelta);
                 haveEma   = true;
                 plausible = true;
             }

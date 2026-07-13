@@ -51,6 +51,7 @@ public:
 
 private:
     void tick (double dt); // FrameClock callback (display-rate; dt-corrected eases/decays)
+    void visibilityChanged() override; // Advanced-only: no vblank ticks while hidden (Simple mode)
     bool pushFFT();        // runs the FFT only when the window changed; true = new magnitudes
     void runTransform();   // the unchanged mix + Hann + transform body
 
