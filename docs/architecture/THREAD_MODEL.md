@@ -8,7 +8,7 @@ are in `docs/policies/THREADING_POLICY.md` and `docs/policies/REALTIME_AUDIO_POL
 | Thread | Established | Responsibilities |
 |---|---|---|
 | **Audio** | host → `AnamorphAudioProcessor::processBlock` | DSP, parameter snapshot read, meter/scope/correlation *production*. Real-time: no allocation, lock, or IO. |
-| **Message / GUI** | JUCE message loop; editor `juce::Timer` (24 Hz) + per-component 60 Hz timers | Painting, parameter writes (APVTS + InternalState), Undo coalesce, FFT, meter/scope *consumption*. |
+| **Message / GUI** | JUCE message loop; editor `juce::Timer` (24 Hz) + editor `meterVBlank` + per-visualizer `FrameClock` (display-rate vblank, capped ~120 Hz) | Painting, parameter writes (APVTS + InternalState), Undo coalesce, FFT, meter/scope *consumption*. |
 | **OpenGL render** | `openGLContext.attachTo(*this)` — **macOS/Windows only** | GPU compositing of the editor's paint. Absent on Linux/BSD. |
 | **Worker / background** | none | No `std::thread`/`Thread`/`ThreadPool`. FFT runs on the GUI thread. |
 
@@ -45,10 +45,19 @@ Evidence [Verified]:
 |---|---|---|---|
 | `VBlankAttachment meterVBlank` | per display frame (dt clamped ≤ 0.05 s) | meter-reveal + micro-anims easing | PluginEditor.cpp:616-622 |
 | Editor `juce::Timer` | 24 Hz | view-state sync, preset display, `pollUndoCoalesce()`, undo/redo enable, match-gain readout | PluginEditor.cpp:613,917-1003 |
-| `Vectorscope` timer | 60 Hz | `repaint()` | Vectorscope.cpp:15 |
-| `LevelMeter` timer | 60 Hz | `repaint()` | LevelMeter.cpp:13 |
-| `StereoMeter` timer | 60 Hz | smooth + `repaint()` | CorrelationMeter.cpp:10 |
-| `SpectrumImager` timer | 60 Hz | FFT, eased positions, `repaint()` | SpectrumImager.cpp:114,601-699 |
+| `Vectorscope` `FrameClock` | display-rate, capped ~120 Hz | `repaint()` | Vectorscope.cpp; FrameClock.h |
+| `LevelMeter` `FrameClock` | display-rate, capped ~120 Hz (shown only) | `repaint()` | LevelMeter.cpp; FrameClock.h |
+| `StereoMeter` `FrameClock` | display-rate, capped ~120 Hz (shown only) | dt-corrected smooth + `repaint()` | CorrelationMeter.cpp; FrameClock.h |
+| `SpectrumImager` `FrameClock` | display-rate, capped ~120 Hz | FFT, dt-corrected eased positions, `repaint()` | SpectrumImager.cpp; FrameClock.h |
+
+The four visualizers were fixed 60 Hz `juce::Timer`s; since the adaptive-refresh
+change they ride the display's vertical blank via `gui::FrameClock` (a
+`juce::VBlankAttachment` wrapper), executing at every `ceil(rate/126)`-th vblank
+so the rate tracks the panel but is capped near 120 Hz (60→60, 120→120, 144→72,
+240→120), with a 60 Hz wall-clock fallback when the cadence can't be measured.
+All still run on the **message thread**, and every temporal ease/decay was
+re-expressed in `dt` form so its time constant is display-independent. The idle
+gates (S1/S2/S3, H15) and the once-per-block audio-side ballistics are unchanged.
 
 Editor destructor order (matters): release VBlank → `stopTimer()` → `openGLContext.detach()`
 (the VBlank lambda captures `this`). Source: src/PluginEditor.cpp:627-632.

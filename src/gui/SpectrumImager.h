@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_dsp/juce_dsp.h>
 #include "../dsp/ScopeBuffer.h"
+#include "FrameClock.h"
 
 namespace anamorph::gui
 {
@@ -17,8 +18,7 @@ namespace anamorph::gui
 //  auditioned at once (0.6.9 #7).
 // ============================================================================
 class SpectrumImager : public juce::Component,
-                       public juce::SettableTooltipClient,
-                       private juce::Timer
+                       public juce::SettableTooltipClient
 {
 public:
     SpectrumImager (anamorph::ScopeBuffer& scope, juce::AudioProcessorValueTreeState& apvts);
@@ -50,7 +50,7 @@ public:
     void setAnimationSource (const std::atomic<float>* p) noexcept { animOnP = p; }
 
 private:
-    void timerCallback() override;
+    void tick (double dt); // FrameClock callback (display-rate; dt-corrected eases/decays)
     bool pushFFT();        // runs the FFT only when the window changed; true = new magnitudes
     void runTransform();   // the unchanged mix + Hann + transform body
 
@@ -194,7 +194,7 @@ private:
     float  blDW[4] { -1, -1, -1, -1 };  // drawnW baked into tint colour/alpha
     float  blWA[4] { -1, -1, -1, -1 };  // widthA hover washes baked into tints
 
-    // S2 idle gate state (message thread only -- see timerCallback/pushFFT).
+    // S2 idle gate state (message thread only -- see tick()/pushFFT).
     // Same freshness pattern as the Vectorscope's S1 gate, with the fixed
     // fftSize analysis window as the content window.
     std::uint64_t lastSeenCount = 0; // ring write count at the previous tick
@@ -270,6 +270,15 @@ private:
     float drawnW[4] { 1.0f, 1.0f, 1.0f, 1.0f };
     int   lastBandCount = 4;
     bool  dispEasing = false; // a sweep is still gliding to its target -> keep easing, don't snap (#5)
+
+    // Adaptive refresh (display-rate, capped ~120 Hz). Every temporal decay/ease
+    // here (spectrum release, clip-glow rise/fall, hover/press/solo eases,
+    // split/width glides) is dt-corrected so its time constant is identical on a
+    // 60 or 120 Hz panel and matches the old 60 Hz curves to within the display
+    // quantum (Class B) -- the H17 cache key still settles on the same distance-
+    // based snaps. Runs while visible via the in-tick isShowing() gate (S2), so
+    // no visibility stop/start is needed.
+    FrameClock frameClock;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SpectrumImager)
 };

@@ -21,12 +21,14 @@ Vectorscope::Vectorscope (anamorph::ScopeBuffer& buffer) : scope (buffer)
     // parent never needs to re-render beneath this component and the cached
     // layer can blit as an opaque copy instead of a per-pixel alpha composite.
     setOpaque (true);
-    startTimerHz (60);
+    // Adaptive refresh: ride the display's vblank (capped ~120 Hz) instead of a
+    // fixed 60 Hz timer. The idle gate below keeps a quiescent tick near-free.
+    frameClock.start (*this, [this] (double) { tick(); });
 }
 
-Vectorscope::~Vectorscope() { stopTimer(); }
+Vectorscope::~Vectorscope() { frameClock.stop(); }
 
-void Vectorscope::timerCallback()
+void Vectorscope::tick()
 {
     // Idle repaint gate. paint() is a pure function of (window content,
     // persistence, size) -- the trail's age-alpha is positional, not clocked --

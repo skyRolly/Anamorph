@@ -7,6 +7,22 @@ SHA + date** as the Evidence Source (per `docs/policies/CHANGELOG_POLICY.md`). E
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
 ## [Unreleased]
+### Changed
+- **The Vectorscope, Level Meter, Stereo Meter and Spectrum Imager now refresh at the display's
+  rate (adaptive, capped near 120 Hz) instead of a fixed 60 Hz.** On a 120 Hz (or higher) panel
+  the visualizers animate visibly smoother; on a 60 Hz panel they behave exactly as before. A new
+  `gui::FrameClock` rides each component's display vertical blank (`juce::VBlankAttachment`) and
+  executes every `ceil(refresh/126)`-th frame, so the rate tracks the monitor but is bounded to
+  keep paint CPU in check (60→60, 120→120, 144→72, 240→120 Hz); when the refresh rate cannot be
+  measured it falls back to 60 Hz by wall clock. Every rate-dependent animation (spectrum
+  release, clip-glow rise/fall, the correlation/balance pointer glide, the analyser's hover/press/
+  solo eases and split/width glides) was rewritten in elapsed-time (`dt`) form so its speed is
+  identical on any display and matches the old 60 Hz curves to within the on-screen colour
+  quantum. All Wave-1/Wave-2 GUI optimisations are preserved: the S1/S2/S3 repaint gates, the
+  H2/H13/H17 cached static layers, the N2 opaque blits and the H15 idle pre-gate are unchanged, so
+  idle CPU stays ~0 and a settled view still stops repainting. Internal/threading model unchanged
+  (still message-thread). Evidence: this PR. [Verified]
+
 ### Fixed
 - **Undo / Redo (and A/B switch / preset load) no longer produce a brief audible dropout.**
   Root cause: those actions route through the engine's *forced* switch duck, whose raised-cosine

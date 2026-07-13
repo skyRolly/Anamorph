@@ -12,12 +12,14 @@ StereoMeter::StereoMeter (anamorph::CorrelationMeter& src, Orientation o, Type t
     // every pixel -- the parent never re-renders beneath this component and the
     // layer blits as an opaque copy (see Vectorscope for the same pattern).
     setOpaque (true);
-    startTimerHz (60); // match the vectorscope's frame rate -- 30 Hz juddered (#2)
+    // Adaptive refresh: ride the display's vblank (capped ~120 Hz). Armed on
+    // first show; the glide below is dt-corrected so it is display-independent.
+    frameClock.start (*this, [this] (double dt) { tick (dt); });
 }
 
-StereoMeter::~StereoMeter() { stopTimer(); }
+StereoMeter::~StereoMeter() { frameClock.stop(); }
 
-void StereoMeter::timerCallback()
+void StereoMeter::tick (double dt)
 {
     if (! isShowing())
         return; // whole-editor hidden: the glide resumes live on re-show (S3)
@@ -30,7 +32,10 @@ void StereoMeter::timerCallback()
     const bool silent = source.getEnergy() < 6.0e-9f; // ~ -82 dBFS (sum of L^2 + R^2)
     const float target = silent ? 0.0f
                                 : (type == Type::Balance ? source.getBalance() : source.getSlow());
-    const float rate = silent ? 0.030f : 0.165f;
+    // The per-tick glide rate (0.030 relaxed / 0.165 active at the old fixed
+    // 60 Hz) is re-expressed for the real frame dt so the time constant is the
+    // same on any display -- the old 60 Hz value to within the display quantum.
+    const float rate = frameCoeff (silent ? 0.030f : 0.165f, dt);
     value += rate * (target - value);
 
     // Land exactly on the target once within 1e-3 of it: that final step moves
@@ -52,15 +57,15 @@ void StereoMeter::timerCallback()
 
 void StereoMeter::visibilityChanged()
 {
-    // Own-visibility lifecycle (S3): no timer wakeups at all while explicitly
+    // Own-visibility lifecycle (S3): no vblank wakeups at all while explicitly
     // hidden; re-showing restarts the tick and forces one repaint.
     if (isVisible())
     {
         shownValue = 1.0e9f;
-        startTimerHz (60);
+        frameClock.start (*this, [this] (double dt) { tick (dt); });
     }
     else
-        stopTimer();
+        frameClock.stop();
 }
 
 // Render the static layer (H13, the H2 recipe): the glass panel and the centre
