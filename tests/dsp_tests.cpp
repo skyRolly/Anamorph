@@ -1658,15 +1658,22 @@ static void testMultibandFlatRecombination()
 }
 
 // ---------------------------------------------------------------------------
-//  Fast split drags must not pitch-shift (0.8.10). The old per-sample cutoff
-//  glide (~8 oct/s cap) swept the LR4 allpass phase, and a swept allpass shifts
-//  every frequency by dphi/dt: a fast multi-octave drag detuned the audio by
-//  several Hz (~20-35 cents on low content) and, because the cap banked the
-//  sweep, KEPT detuning for hundreds of ms after the drag stopped. With the
-//  fixed-coefficient bank crossfade the audio must return to the exact input
-//  pitch within a few ms of the last target change -- and the drag itself must
-//  stay click-free. Covers both crossover consumers: the Multiband
-//  reconstruction and the Band Solo monitor (the band-solo whole-band drag).
+//  Split movement must not audibly modulate the audio (0.8.10, three design
+//  rounds). A swept IIR crossover shifts every frequency by dphi/dt (0.312*R Hz
+//  at sweep rate R oct/s), so the shipped design caps the cutoff sweep at
+//  ~1 oct/s (~0.31 Hz -- below the pure-tone JND at any drag speed) and uses a
+//  single ~12 ms bank crossfade only for DISCRETE multi-octave target steps.
+//  This test rejects all three failed designs with two measurements on both
+//  crossover consumers (Multiband reconstruction + Band Solo monitor):
+//   * the pitch check tracks a 150 Hz tone through the ENTIRE post-drag crawl,
+//     including the moment the crossover crosses the tone: the ~8 oct/s
+//     rate-capped glide (pre-0.8.10) and the one-pole tracker (second design)
+//     measure ~24+ cents there and fail; the shipped cap measures ~3.6 cents.
+//   * the spectral-purity check bounds spurs around a 1 kHz tone during a fast
+//     60 Hz-cadence drag: the chained bank crossfades (first design) measure
+//     -28.5 dBc there and fail.
+//  Plus: a discrete 4-octave jump must land fast (bank fade, not a crawl) and
+//  every stream must stay click-free.
 static void testMultibandSplitDragNoPitchShift()
 {
     std::printf ("Test 29: fast split drags do not pitch-shift (multiband + solo monitor)\n");
@@ -1703,11 +1710,10 @@ static void testMultibandSplitDragNoPitchShift()
     };
 
     // Drive `step` with a fast 6-octave DOWNWARD split drag (6400 -> 100 Hz over
-    // 0.25 s, ~24 oct/s -- a quick mouse flick), then hold the target. The split
-    // sweeps right past the 150 Hz tone; under the old 8 oct/s glide cap the
-    // cutoff was still ~2 octaves behind at drag end and crossed the tone during
-    // the banked CATCH-UP, several hundred ms after the "mouse" stopped. Returns
-    // the captured left-channel stream.
+    // 0.25 s, ~24 oct/s -- a quick mouse flick), then hold the target while the
+    // ~1 oct/s crawl brings the audible crossover down past the 150 Hz tone
+    // (~5.2 s later). The measurement below spans the whole crawl, so it grades
+    // the crossing itself. Returns the captured left-channel stream.
     auto runDrag = [&] (auto&& setSplit, auto&& step, int totalBlocks) -> std::vector<float>
     {
         std::vector<float> outStream;
@@ -1733,12 +1739,15 @@ static void testMultibandSplitDragNoPitchShift()
 
     auto validate = [&] (const char* name, const std::vector<float>& s)
     {
-        // The drag ends at 0.25 s; the last ~12 ms fade must be done well before
-        // +50 ms. Under the old glide the banked catch-up swept the crossover
-        // through the tone inside this window (measured >25 cents on the
-        // multiband path, ~+2.5 Hz per moving split).
-        const int measureStart = (int) (0.30 * sr);
-        const int measureEnd   = (int) juce::jmin ((double) s.size(), 0.95 * sr);
+        // Spans the drag itself AND the whole ~1 oct/s crawl, INCLUDING the
+        // crossover's crossing of the tone (~5.4 s in): the worst 100 ms chunk
+        // must stay below 5 cents at every moment. The rejected designs sweep
+        // the crossing at full drag/catch-up speed -- the one-pole tracker
+        // crosses DURING the 0.25 s drag, the 8 oct/s cap right after it --
+        // and measure 24+ cents (a whole extra cycle lands in the crossing
+        // chunk) where the shipped ~1 oct/s cap measures ~3.6.
+        const int measureStart = (int) (0.05 * sr);
+        const int measureEnd   = (int) juce::jmin ((double) s.size(), 6.9 * sr);
         const double cents = worstCents (s, measureStart, measureEnd);
 
         double maxDelta = 0.0;
@@ -1749,10 +1758,10 @@ static void testMultibandSplitDragNoPitchShift()
             if (i > (size_t) (0.02 * sr)) // skip the initial filter charge-up
                 maxDelta = std::max (maxDelta, (double) std::abs (s[i] - s[i - 1]));
         }
-        std::printf ("  %-13s worst post-drag deviation = %.2f cents (old glide swept the tone here); max delta = %.4f\n",
+        std::printf ("  %-13s worst deviation across the whole crawl = %.2f cents (rejected designs: 24+); max delta = %.4f\n",
                      name, cents, maxDelta);
         check (! bad, "split-drag stream is free of NaN/Inf");
-        check (cents < 5.0, "no pitch shift after the split drag stops");
+        check (cents < 5.0, "no audible pitch modulation at any point of the split move");
         check (maxDelta < 0.04, "no click during / after the split drag");
     };
 
@@ -1771,7 +1780,7 @@ static void testMultibandSplitDragNoPitchShift()
         }
         auto s = runDrag ([&] (float f) { mb.setCrossovers (f, 8000.0f, 16000.0f); },
                           [&] (float* L, float* R, int n) { mb.processBlock (L, R, n); },
-                          (int) (1.0 * sr) / block);
+                          (int) (7.0 * sr) / block);
         validate ("multiband:", s);
     }
 
@@ -1859,10 +1868,10 @@ static void testMultibandSplitDragNoPitchShift()
 
     {
         // The band-solo whole-band drag: band 0 stays soloed while its upper
-        // split sweeps down past the tone. The tone ends up outside the soloed
+        // split crawls down past the tone. The tone ends up outside the soloed
         // band (LP4 at 100 Hz leaves ~-14 dB of the 150 Hz sine), but it stays a
-        // clean measurable sine throughout -- and under the old glide its pitch
-        // kept shifting long after the drag stopped.
+        // clean measurable sine throughout -- the crossing itself must not bend
+        // its pitch beyond the JND bound.
         anamorph::SoloMonitor mon;
         mon.prepare (sr, block);
         mon.setBandCount (2);
@@ -1882,9 +1891,122 @@ static void testMultibandSplitDragNoPitchShift()
         }
         auto s = runDrag ([&] (float f) { mon.setCrossovers (f, 8000.0f, 16000.0f); },
                           [&] (float* L, float* R, int n) { mon.process (L, R, 0x1, n); },
-                          (int) (1.0 * sr) / block);
+                          (int) (7.0 * sr) / block);
         validate ("solo monitor:", s);
     }
+
+    {
+        // DISCRETE jumps must LAND fast via the bank crossfade, never crawl:
+        // solo band 0 and step its upper split 250 -> 4000 Hz in ONE call
+        // (> 1.5 oct between consecutive blocks). A 1 kHz tone sits ~ -48 dB
+        // outside the soloed band before the jump and at full level inside it
+        // after -- the level must arrive within ~200 ms (the ~1 oct/s crawl
+        // would need ~4 s), click-free.
+        const double jumpTone = 1000.0;
+        anamorph::SoloMonitor mon;
+        mon.prepare (sr, block);
+        mon.setBandCount (2);
+        mon.setCrossovers (250.0f, 8000.0f, 16000.0f);
+        std::vector<float> l ((size_t) block), r ((size_t) block);
+        double phase = 0.0;
+        const double inc = 2.0 * juce::MathConstants<double>::pi * jumpTone / sr;
+        auto run = [&] (int blocks, std::vector<float>* cap)
+        {
+            for (int nb = 0; nb < blocks; ++nb)
+            {
+                for (int i = 0; i < block; ++i)
+                {
+                    l[(size_t) i] = r[(size_t) i] = amp * (float) std::sin (phase);
+                    phase += inc;
+                }
+                mon.process (l.data(), r.data(), 0x1, block);
+                if (cap != nullptr)
+                    for (int i = 0; i < block; ++i) cap->push_back (l[(size_t) i]);
+            }
+        };
+        run ((int) (0.5 * sr) / block, nullptr);           // settle soloed, tone rejected
+        mon.setCrossovers (4000.0f, 8000.0f, 16000.0f);    // one 4-octave step
+        std::vector<float> s;
+        run ((int) (0.4 * sr) / block, &s);
+        double sq = 0.0; int cnt = 0;
+        for (int i = (int) (0.2 * sr); i < (int) (0.35 * sr); ++i) { sq += (double) s[(size_t) i] * s[(size_t) i]; ++cnt; }
+        const double rms = std::sqrt (sq / juce::jmax (1, cnt));
+        const double fullRms = amp / std::sqrt (2.0);
+        double maxDelta = 0.0;
+        for (size_t i = 1; i < s.size(); ++i)
+            maxDelta = std::max (maxDelta, (double) std::abs (s[i] - s[i - 1]));
+        std::printf ("  discrete 4-oct jump: level at +200..350 ms = %.2f of full (crawl would be ~0.004); max delta = %.4f\n",
+                     rms / fullRms, maxDelta);
+        check (rms > 0.7 * fullRms, "a discrete multi-octave split jump lands via the bank fade, not a crawl");
+        check (maxDelta < 0.06, "the discrete-jump bank fade is click-free");
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  The forced-duck dry fill must be presented at the OUTPUT-STAGE level, not at
+//  raw unity (0.8.10 Task 4): with Output Gain at -24 dB, an undo/redo Mix
+//  toggle used to burst the raw-level fill in up to 24 dB louder than the
+//  surrounding processed audio. The fill gain is latched at fade-out entry, so
+//  at unity gain the arithmetic is unchanged (Tests 26/27 cover that case).
+static void testDryFillRespectsOutputGain()
+{
+    std::printf ("Test 30: forced-swap dry fill respects extreme Output Gain (no spike)\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0;
+    const int block = 128;
+    const double freq = 220.0;
+    const float amp = 0.25f;
+
+    anamorph::AnamorphEngine engine;
+    engine.prepare (sr, block);
+    anamorph::EngineParameters p; // transparent defaults, OS off -> latency 0 (dry fill engages)
+    p.outputGainDb = -24.0f;
+    p.mix = 1.0f;
+    engine.setParameters (p);
+    engine.reset();
+
+    double phase = 0.0;
+    const double inc = 2.0 * juce::MathConstants<double>::pi * freq / sr;
+    auto runBlocks = [&] (int blocks, double* outMaxAbs, bool* outBad)
+    {
+        for (int nb = 0; nb < blocks; ++nb)
+        {
+            juce::AudioBuffer<float> buf (2, block);
+            for (int i = 0; i < block; ++i)
+            {
+                const float s = amp * (float) std::sin (phase); phase += inc;
+                buf.setSample (0, i, s); buf.setSample (1, i, s);
+            }
+            engine.setParameters (p);
+            engine.process (buf);
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = 0; i < block; ++i)
+                {
+                    const float v = buf.getSample (ch, i);
+                    if (outBad != nullptr && isBad (v)) *outBad = true;
+                    if (outMaxAbs != nullptr) *outMaxAbs = std::max (*outMaxAbs, (double) std::abs (v));
+                }
+        }
+    };
+
+    runBlocks (250, nullptr, nullptr); // settle at -24 dB
+    double steadyPeak = 0.0; bool bad = false;
+    runBlocks (40, &steadyPeak, &bad);
+
+    // Undo-style forced swaps toggling Mix 1 <-> 0, tracking the transition peak.
+    double transPeak = 0.0;
+    for (int swap = 0; swap < 4; ++swap)
+    {
+        engine.requestDuck();
+        p.mix = (swap % 2 == 0) ? 0.0f : 1.0f;
+        runBlocks (60, &transPeak, &bad);  // ~160 ms: covers the whole duck + fill
+    }
+
+    std::printf ("  steady peak at -24 dB = %.4f ; worst transition peak = %.4f (%.1fx; raw-level fill spiked ~15x)\n",
+                 steadyPeak, transPeak, transPeak / juce::jmax (1.0e-9, steadyPeak));
+    check (! bad, "dry-filled swap stream at -24 dB is free of NaN/Inf");
+    check (transPeak < 2.0 * steadyPeak, "no level spike: the dry fill follows the output-stage gain");
+    check (transPeak > 0.25 * steadyPeak, "the dry fill still fills: the swap does not dip toward silence");
 }
 
 // ---------------------------------------------------------------------------
@@ -1919,6 +2041,7 @@ int main()
     testRapidForcedSwapDryFill();
     testMultibandFlatRecombination();
     testMultibandSplitDragNoPitchShift();
+    testDryFillRespectsOutputGain();
     testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);

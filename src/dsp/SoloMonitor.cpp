@@ -11,12 +11,12 @@ void SoloMonitor::prepare (double sampleRate, int maxBlock)
     for (auto* b : { &bank[0], &bank[1] })
         for (int i = 0; i < 3; ++i)
             b->x[i].prepare (sampleRate);
-    // ~12 ms cutoff crossfade for LARGE jumps only, matching the Multiband
-    // (0.8.10) and the gain crossfade below.
+    // ~12 ms cutoff crossfade for DISCRETE target jumps only, matching the
+    // Multiband (0.8.10) and the gain crossfade below.
     fadeLen = juce::jmax (1, (int) std::lround (0.012 * sampleRate));
-    // One-pole cutoff glide for continuous movement, tau ~15 ms (bounded settle,
-    // smooth trajectory, flat magnitude at every instant -- see MultibandWidth.h).
-    glideK = 1.0f - std::exp (-1.0f / (0.015f * (float) sr));
+    // Hard ~1 oct/s cutoff rate cap: bounds the swept-allpass frequency shift
+    // at ~0.31 Hz, below the pure-tone JND (see MultibandWidth.h).
+    glideStep = std::exp2 (1.0f / (float) sr);
 
     // ~12 ms crossfade: long enough to be click-free, short enough to feel instant.
     const double xfade = 0.012;
@@ -35,9 +35,11 @@ void SoloMonitor::reset()
     // runs under the engine duck / at prepare, so the jump is inaudible).
     setBankCutoffs (bank[0]);
     setBankCutoffs (bank[1]);
-    active  = 0;
-    fading  = false;
-    fadePos = 0;
+    for (int i = 0; i < 3; ++i) prevTargetF[i] = targetF[i];
+    active      = 0;
+    fading      = false;
+    fadePos     = 0;
+    pendingJump = false;
     passGain.setCurrentAndTargetValue (1.0f);     // settle to the true passthrough
     for (auto& g : bandGain) g.setCurrentAndTargetValue (0.0f);
     running = true; // bank just cleaned: warm by definition (no stale state to flush)
@@ -132,26 +134,35 @@ void SoloMonitor::process (float* left, float* right, int mask, int numSamples) 
         running = true;
     }
 
-    // LARGE-JUMP bank crossfade (0.8.10, mirrors MultibandWidth): only a delta
-    // beyond kFadeThresholdOct hands the LATEST cutoffs to the idle bank (which
-    // adopts the active bank's ladder state) and fades the band outputs over to
-    // it -- the endpoint phase difference wraps mod 2pi where a glide would
-    // chirp. Continuous movement (every real drag) glides per sample below,
-    // keeping the soloed band a true flat-magnitude filter at every instant, so
-    // it neither pitch-shifts nor sprays modulation sidebands.
-    if (! fading)
+    // DISCRETE-JUMP bank crossfade (0.8.10, mirrors MultibandWidth): only a
+    // TARGET that stepped > kFadeThresholdOct since the previous block fades to
+    // the state-copied idle bank -- one bounded event. Continuous movement of
+    // any speed glides per sample below under the ~1 oct/s inaudibility cap.
     {
-        bool jump = false;
-        for (int i = 0; i < crossovers && ! jump; ++i)
-            jump = std::abs (std::log2 (bank[active].f[i] / targetF[i])) > kFadeThresholdOct;
-        if (jump)
+        bool step = pendingJump;
+        for (int i = 0; i < crossovers && ! step; ++i)
+            step = std::abs (std::log2 (targetF[i] / prevTargetF[i])) > kFadeThresholdOct;
+        for (int i = 0; i < 3; ++i) prevTargetF[i] = targetF[i];
+        if (step)
         {
-            auto& to = bank[1 - active];
-            for (int i = 0; i < 3; ++i)
-                to.x[i].copyStateFrom (bank[active].x[i]);
-            setBankCutoffs (to);
-            fading  = true;
-            fadePos = 0;
+            if (fading)
+                pendingJump = true;             // remember; fire when this fade lands
+            else
+            {
+                bool worthIt = false;           // skip if the target came back meanwhile
+                for (int i = 0; i < crossovers && ! worthIt; ++i)
+                    worthIt = std::abs (std::log2 (bank[active].f[i] / targetF[i])) > 0.1f;
+                pendingJump = false;
+                if (worthIt)
+                {
+                    auto& to = bank[1 - active];
+                    for (int i = 0; i < 3; ++i)
+                        to.x[i].copyStateFrom (bank[active].x[i]);
+                    setBankCutoffs (to);
+                    fading  = true;
+                    fadePos = 0;
+                }
+            }
         }
     }
 
@@ -178,15 +189,18 @@ void SoloMonitor::process (float* left, float* right, int mask, int numSamples) 
 
     for (int n = 0; n < numSamples; ++n)
     {
-        // ONE-POLE cutoff glide (0.8.10): ease each active split toward its
-        // target per sample; paused while a large-jump fade is in flight.
+        // RATE-CAPPED cutoff glide (0.8.10): ease each active split toward its
+        // target per sample at <= ~1 oct/s (the swept-allpass shift stays below
+        // the pure-tone JND); paused while a discrete-jump fade is in flight.
         if (! fading)
         {
             auto& bk = bank[active];
             for (int i = 0; i < crossovers; ++i)
                 if (std::abs (bk.f[i] - targetF[i]) > 0.05f)
                 {
-                    bk.f[i] += (targetF[i] - bk.f[i]) * glideK;
+                    bk.f[i] = targetF[i] > bk.f[i]
+                                ? juce::jmin (targetF[i], bk.f[i] * glideStep)
+                                : juce::jmax (targetF[i], bk.f[i] / glideStep);
                     bk.x[i].setCutoffFrequency (bk.f[i]);
                 }
         }

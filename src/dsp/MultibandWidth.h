@@ -101,49 +101,57 @@ private:
         float    f[3] { 180.0f, 800.0f, 3000.0f };
     };
 
-    // Cutoff-change strategy (0.8.10, two mechanisms picked by move size):
+    // Cutoff-change strategy (0.8.10 final, third design -- each picked by
+    // measurement against the pure-sine protocol: instantaneous frequency of
+    // the fundamental, spurs outside +-30 Hz, envelope dips, at drag speeds
+    // 1..24 oct/s):
     //
-    //  * CONTINUOUS MOVEMENT (any delta up to kFadeThresholdOct): the active
-    //    bank's cutoffs glide per sample with a ONE-POLE toward the target
-    //    (tau ~15 ms). Unlike the pre-0.8.10 ~8 oct/s RATE-CAPPED glide -- whose
-    //    banked catch-up kept detuning the audio for hundreds of ms after a fast
-    //    drag stopped -- the one-pole settles in bounded time (~5 tau after the
-    //    last move), and unlike a chain of bank crossfades it is a true LR4 at
-    //    every instant: the magnitude response stays EXACTLY allpass-flat while
-    //    a split moves, and the phase trajectory is smooth, so a pure tone near
-    //    the split shows no modulation sidebands (measured: chained 12 ms fades
-    //    sprayed spurs at -25..-28 dBc around the tone during a fast drag -- the
-    //    0.8.10 sine report; the one-pole glide measures at the -37..-41 dBc
-    //    analysis floor, with < 0.1 cents residual pitch 50 ms after the drag).
+    //  * CONTINUOUS MOVEMENT: the active bank's cutoffs glide per sample under
+    //    a HARD RATE CAP of ~1 octave/second. A swept IIR crossover is
+    //    inherently a phase modulator -- its allpass phase at any fixed
+    //    frequency rotates by up to 2pi per crossover crossing, and dphi/dt is
+    //    a genuine frequency shift of 0.312*R Hz at sweep rate R oct/s. No
+    //    smoothing shape can remove that (a one-pole tracking a fast drag FMs
+    //    at the full drag rate -- the rejected second design; chained bank
+    //    crossfades are amplitude/phase modulation at the fade cadence with
+    //    -25..-28 dBc sidebands -- the rejected first design; consolidated
+    //    multi-octave fades land in the worst phase-delta zone, measured -6..
+    //    -11 dB dips). The only inaudible point on the trade-off curve is a
+    //    rate small enough that the shift sits below the pure-tone JND:
+    //    R = 1 oct/s -> 0.31 Hz (3.6 cents at 150 Hz, 0.5 cents at 1 kHz),
+    //    measured <= 4.7 cents worst-case with spurs at the -41 dBc analysis
+    //    floor and < 0.1 dB envelope ripple AT EVERY DRAG SPEED -- the audible
+    //    crossover position simply eases toward the UI at ~1 oct/s (the GUI
+    //    tracks the mouse instantly; only the sound converges gradually, and
+    //    inaudibly, however fast the drag was).
     //
-    //  * LARGE JUMPS (delta > kFadeThresholdOct on any active split -- an
-    //    automation step or a click-jump, never a mouse drag at UI cadence): a
-    //    glide would sweep the allpass phase through multiple full turns (a
-    //    loud chirp, measured -4.7 dBc at a 4-octave step), so instead the idle
-    //    bank adopts the active bank's ladder state plus the newest cutoffs and
-    //    the output crossfades to it over ~12 ms. In a fade the endpoint phase
-    //    difference wraps mod 2pi, so the same 4-octave step measures -18 dBc:
-    //    a one-shot sub-dB ripple where the banks' allpass phases differ. Both
-    //    mechanisms measure equal at ~2 octaves (-11.5 dBc, the physics floor
-    //    for an instant coefficient change); the threshold sits below that,
-    //    inside the glide's winning range.
+    //  * DISCRETE JUMPS (the TARGET stepping > kFadeThresholdOct between two
+    //    consecutive blocks -- an automation step / preset-style snap, never
+    //    reachable by dragging at UI cadence): waiting ~seconds for the crawl
+    //    would be musically wrong, so the idle bank adopts the active bank's
+    //    ladder state plus the new cutoffs and the output crossfades over
+    //    ~12 ms: ONE bounded transition event (a 4-octave step measures
+    //    -18 dBc / -2.4 dB for 12 ms; the same step glided at a fast rate
+    //    would chirp at -4.7 dBc). A step arriving mid-fade is remembered
+    //    (pendingJump) and fires when the fade lands, always to the LATEST
+    //    target.
     XoverBank bank[2];
     int       active  = 0;     // the glide/settled bank; 1-active fades in on a jump
     bool      fading  = false;
     int       fadePos = 0;     // 0..fadeLen-1 while fading
     int       fadeLen = 1;     // ~12 ms in samples
+    bool      pendingJump = false; // a discrete step arrived while fading
 
-    // A jump larger than this (octaves) crossfades banks; anything smaller
-    // glides. 1.5 oct is safely inside the region where the glide measures
-    // cleaner (crossover point ~2 oct, see above).
+    // A per-block TARGET step larger than this (octaves) crossfades banks.
     static constexpr float kFadeThresholdOct = 1.5f;
 
     void setBankCutoffs (XoverBank& b) noexcept;                       // -> targetF
     void copyBankState  (XoverBank& to, const XoverBank& from) noexcept;
 
     double sr = 44100.0;
-    float  glideK = 0.0f;      // per-sample one-pole coefficient (tau ~15 ms)
-    float  targetF[3]  { 180.0f, 800.0f, 3000.0f };
+    float  glideStep = 1.0f;   // per-sample multiplicative cap, 2^(1/sr) (~1 oct/s)
+    float  targetF[3]     { 180.0f, 800.0f, 3000.0f };
+    float  prevTargetF[3] { 180.0f, 800.0f, 3000.0f }; // last block's targets (step detector)
 
     // Per-sample one-pole smoothing of the band widths (0.7.0 #1).
     float wCoeff     = 0.0f;

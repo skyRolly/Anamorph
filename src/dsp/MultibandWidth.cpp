@@ -13,13 +13,13 @@ void MultibandWidth::prepare (double sampleRate, int maxBlock)
         for (auto* x : { &b->x[0], &b->x[1], &b->x[2], &b->dx[0], &b->dx[1], &b->dx[2],
                          &b->ax[0], &b->ax[1], &b->ax[2], &b->dax[0], &b->dax[1], &b->dax[2] })
             x->prepare (sampleRate);
-    // ~12 ms cutoff crossfade for LARGE jumps only: the house click-free fade
-    // length (SoloMonitor / Multiband Enable use the same).
+    // ~12 ms cutoff crossfade for DISCRETE target jumps only: the house
+    // click-free fade length (SoloMonitor / Multiband Enable use the same).
     fadeLen = juce::jmax (1, (int) std::lround (0.012 * sampleRate));
-    // One-pole cutoff glide, tau ~15 ms: settles ~75 ms after the last target
-    // move (bounded time -- no rate-capped catch-up tail), smooth trajectory
-    // (no modulation sidebands), true LR4 at every instant (flat magnitude).
-    glideK = 1.0f - std::exp (-1.0f / (0.015f * (float) sr));
+    // Hard ~1 oct/s cutoff rate cap: a swept LR4 shifts every frequency by
+    // 0.312*R Hz at sweep rate R, so this bounds the shift at ~0.31 Hz --
+    // below the pure-tone JND at any drag speed (see MultibandWidth.h).
+    glideStep = std::exp2 (1.0f / (float) sr);
     // One-pole on the band widths at ~20 ms (the global Width smoother's ramp),
     // so a fast band-width drag glides instead of stepping per block (0.7.0 #1).
     wCoeff = std::exp (-1.0f / (0.02f * (float) sr));
@@ -39,9 +39,11 @@ void MultibandWidth::reset()
     // starts at its true crossovers when audio resumes.
     setBankCutoffs (bank[0]);
     setBankCutoffs (bank[1]);
-    active  = 0;
-    fading  = false;
-    fadePos = 0;
+    for (int i = 0; i < 3; ++i) prevTargetF[i] = targetF[i];
+    active      = 0;
+    fading      = false;
+    fadePos     = 0;
+    pendingJump = false;
     // Settle the width glide to its target (same silent-reset argument).
     for (int i = 0; i < 4; ++i) { currentW[i] = targetW[i]; }
 }
@@ -73,8 +75,8 @@ void MultibandWidth::setCrossovers (float f1, float f2, float f3) noexcept
 {
     // Keep the three crossovers strictly ordered with a little separation, so a
     // drag can't cross them over. These are TARGETS; processBlock eases the live
-    // cutoffs toward them with a bounded-time one-pole (or a single bank
-    // crossfade for a multi-octave jump -- 0.8.10, see MultibandWidth.h).
+    // cutoffs toward them under a ~1 oct/s inaudibility cap (or a single bank
+    // crossfade for a discrete multi-octave step -- 0.8.10, see MultibandWidth.h).
     //
     // CRITICAL (0.8.2): clamp every crossover to a Nyquist-safe band [20 Hz, 0.45*sr]
     // BEFORE ordering. Automating a split toward 20 kHz used to push the ordered
@@ -122,26 +124,40 @@ void MultibandWidth::processBlock (float* left, float* right, int numSamples,
 
     const int crossovers = bands - 1; // 1..3
 
-    // LARGE-JUMP bank crossfade (0.8.10): only a delta beyond kFadeThresholdOct
-    // (an automation step / click-jump -- a mouse drag at UI cadence never gets
-    // near it) hands the LATEST cutoffs to the idle bank -- which adopts the
+    // DISCRETE-JUMP bank crossfade (0.8.10): only a TARGET that stepped more
+    // than kFadeThresholdOct since the previous block (an automation step or
+    // preset-style snap -- a mouse drag at UI cadence never steps that far in
+    // one block) hands the newest cutoffs to the idle bank -- which adopts the
     // active bank's ladder state, so it starts transient-free -- and fades the
-    // output over to it (the endpoint phase difference wraps mod 2pi, where a
-    // glide would chirp through every intermediate turn). Anything smaller
-    // glides per sample below. Checked at block rate: targets only change
-    // between blocks (setCrossovers).
-    if (! fading)
+    // output over to it: one bounded transition event instead of a multi-second
+    // crawl. Continuous movement of ANY speed never fades; it glides per sample
+    // under the ~1 oct/s cap below (inaudible by construction). A step arriving
+    // mid-fade latches pendingJump and re-fires at the next block after the
+    // fade lands, straight to the LATEST target.
     {
-        bool jump = false;
-        for (int i = 0; i < crossovers && ! jump; ++i)
-            jump = std::abs (std::log2 (bank[active].f[i] / targetF[i])) > kFadeThresholdOct;
-        if (jump)
+        bool step = pendingJump;
+        for (int i = 0; i < crossovers && ! step; ++i)
+            step = std::abs (std::log2 (targetF[i] / prevTargetF[i])) > kFadeThresholdOct;
+        for (int i = 0; i < 3; ++i) prevTargetF[i] = targetF[i];
+        if (step)
         {
-            auto& to = bank[1 - active];
-            copyBankState (to, bank[active]);
-            setBankCutoffs (to);
-            fading  = true;
-            fadePos = 0;
+            if (fading)
+                pendingJump = true;             // remember; fire when this fade lands
+            else
+            {
+                bool worthIt = false;           // skip if the target came back meanwhile
+                for (int i = 0; i < crossovers && ! worthIt; ++i)
+                    worthIt = std::abs (std::log2 (bank[active].f[i] / targetF[i])) > 0.1f;
+                pendingJump = false;
+                if (worthIt)
+                {
+                    auto& to = bank[1 - active];
+                    copyBankState (to, bank[active]);
+                    setBankCutoffs (to);
+                    fading  = true;
+                    fadePos = 0;
+                }
+            }
         }
     }
 
@@ -231,12 +247,13 @@ void MultibandWidth::processBlock (float* left, float* right, int numSamples,
 
     for (int n = 0; n < numSamples; ++n)
     {
-        // ONE-POLE cutoff glide (0.8.10): each active split eases toward its
-        // target per sample (tau ~15 ms, bounded settle -- no rate-capped
-        // catch-up tail), keeping the reconstruction a true flat-magnitude LR4
-        // allpass at every instant. Paused while a large-jump fade is in flight
-        // (the fade's banks hold fixed coefficients); it resumes on the merged
-        // residue the block after the fade lands.
+        // RATE-CAPPED cutoff glide (0.8.10): each active split eases toward its
+        // target per sample at <= ~1 oct/s, so the swept-allpass frequency
+        // shift stays at ~0.31 Hz -- below the pure-tone JND at any drag speed
+        // (see MultibandWidth.h) -- while the reconstruction stays a true
+        // flat-magnitude LR4 allpass at every instant. Paused while a
+        // discrete-jump fade is in flight (its banks hold fixed coefficients);
+        // small residues keep gliding the block after the fade lands.
         if (! fading)
         {
             auto& bk = bank[active];
@@ -244,7 +261,9 @@ void MultibandWidth::processBlock (float* left, float* right, int numSamples,
             {
                 if (std::abs (bk.f[i] - targetF[i]) > 0.05f)
                 {
-                    bk.f[i] += (targetF[i] - bk.f[i]) * glideK;
+                    bk.f[i] = targetF[i] > bk.f[i]
+                                ? juce::jmin (targetF[i], bk.f[i] * glideStep)
+                                : juce::jmax (targetF[i], bk.f[i] / glideStep);
                     bk.x[i] .setCutoffFrequency (bk.f[i]);
                     bk.ax[i].setCutoffFrequency (bk.f[i]); // compensation allpass glides with its split
                     if (align) { bk.dx[i].setCutoffFrequency (bk.f[i]); bk.dax[i].setCutoffFrequency (bk.f[i]); } // dry bank locked to the wet
