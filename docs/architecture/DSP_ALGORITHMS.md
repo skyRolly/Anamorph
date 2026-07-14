@@ -81,22 +81,25 @@ next band, so the sum telescopes to `A1·A2·A3` (flat); only `bands−2` extra 
 (0 for 1–2 bands, 1 for 3, 2 for 4) and they add **zero integer latency**. A **parallel dry bank**
 (`dx[]` + `dax[]`) reconstructs the dry at unit width with the identical compensation, sharing the
 wet's exact per-bank cutoffs → phase-matched `A(dry)` for the dry/wet Mix. 1-band fast path skips
-crossovers. **Cutoff changes are a hybrid picked by move size (0.8.10)**. *Continuous movement*
-glides the active bank per sample with a bounded-time **one-pole (τ ≈ 15 ms)** — a true LR4 at
-every instant, so the magnitude response stays exactly allpass-flat while a split moves, the
-phase trajectory is smooth (no modulation sidebands around a pure tone), and it settles ~75 ms
-after the last move. This replaces both rejected alternatives: the pre-0.8.10 **~8 oct/s
-rate-capped glide** (a swept allpass shifts every frequency by `dφ/dt/2π` — ~2.5 Hz per moving
-split, 20–35 cents on low content — and the cap banked a catch-up that kept detuning for
-hundreds of ms after a fast drag stopped) and the interim **chained ~12 ms bank crossfades**
-(amplitude/phase modulation at the fade cadence — measured spurs of −25…−28 dBc around a pure
-tone during a fast drag, the "frequencies that should not exist" report). *Multi-octave jumps*
-(> 1.5 oct on any split — an automation step, never a mouse drag at UI cadence) crossfade to the
-second, state-copied bank over ~12 ms instead: there the endpoint phase difference wraps mod 2π
-(a 4-octave step measures −18 dBc via the fade vs −4.7 dBc chirp via a glide); both mechanisms
-measure equal at ~2 oct, and the threshold sits inside the glide's winning range. Regression:
-Test 29 (post-drag pitch < 5 cents AND max spur < −31 dBc while a split crosses a 1 kHz tone).
-Widths one-pole smoothed (~20 ms), shared by both banks.
+crossovers. **Cutoff changes (0.8.10 final, third design — each round measured against the
+pure-sine protocol: instantaneous frequency of the fundamental, spurs, envelope, at drag speeds
+1–24 oct/s).** A swept IIR crossover is inherently a phase modulator: its allpass phase at any
+fixed frequency rotates up to 2π per crossover crossing, i.e. a frequency shift of `0.312·R` Hz
+at sweep rate `R` oct/s — no smoothing shape removes that. The rejected designs redistributed
+the artifact: the pre-0.8.10 **~8 oct/s rate cap** detuned ~2.5 Hz with a banked multi-hundred-ms
+catch-up tail; **chained ~12 ms bank crossfades** were AM/PM at the fade cadence (spurs −25…−28
+dBc around a pure tone); a **one-pole tracker (τ≈15 ms)** FM'd at the full drag rate (~50 cents
+measured at the crossing of a fast drag). Final: *continuous movement* glides per sample under a
+**hard ~1 oct/s rate cap** — the shift is bounded at ~0.31 Hz, **below the pure-tone JND at any
+drag speed** (measured 3.6 cents worst-case at a 150 Hz crossing, spurs at the −41 dBc analysis
+floor, <0.1 dB envelope ripple); the audible crossover position simply eases toward the UI at
+~1 oct/s while the GUI tracks the mouse instantly. *Discrete jumps* (the TARGET stepping
+> 1.5 oct between consecutive blocks — automation steps/snaps, unreachable by dragging)
+crossfade to the second, state-copied bank over ~12 ms: one bounded event (−18 dBc at a
+4-octave step) instead of a multi-second crawl; a step arriving mid-fade re-fires to the latest
+target when the fade lands. Regression: Test 29 (worst 100 ms chunk < 5 cents across the drag
+AND the entire crawl including the tone crossing; max spur < −31 dBc; discrete jumps land
+< 200 ms, click-free). Widths one-pole smoothed (~20 ms), shared by both banks.
 - **Crossover safety**: Nyquist clamp `[20, 0.45·sr]` applied **before** ordering, then the
   1.1× separation ordering re-clamped **top-down** so separation can never push a cutoff past
   Nyquist (the 0.8.2 "+600 dB" fix). `.cpp:55-71`.
@@ -105,8 +108,9 @@ Widths one-pole smoothed (~20 ms), shared by both banks.
 
 ## SoloMonitor — `src/dsp/SoloMonitor.{h,cpp}`
 
-POST-EVERYTHING audition: mirrors the Multiband split (same LR crossovers, same hybrid
-one-pole-glide/jump-crossfade for cutoff changes, 0.8.10) and is **called every block**. Output is a per-band
+POST-EVERYTHING audition: mirrors the Multiband split (same LR crossovers, same ~1 oct/s
+rate-capped glide + discrete-jump crossfade for cutoff changes, 0.8.10) and is **called every
+block**. Output is a per-band
 smoothed crossfade: `passGain` (→1
 when nothing soloed) sums the true output; each `bandGain[b]` (`SmoothedValue`, ~12 ms) sums in
 band *b* only while soloed. Never changes any effect stage.

@@ -40,10 +40,11 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 - **Risk:** `SoloMonitor` runs every block even with multiband off and no solo (INC-009 invariant;
   since 0.8.9/H1 the settled passthrough goes cold, shrinking this), and `MonoMaker`,
   `MultibandWidth` and `SoloMonitor` recompute Linkwitz-Riley coefficients **per sample** while a
-  cutoff glides (since 0.8.10 the multiband/solo glide is a bounded-time one-pole — it stops
-  ~75 ms after the last move instead of the old multi-second rate-capped catch-up; a multi-octave
-  jump instead runs **two banks for one ~12 ms crossfade**, 2× the stage's filter ticks). Under
-  heavy multiband automation or on low-power hosts this could be a hot path. It is unprofiled.
+  cutoff glides (since 0.8.10 the multiband/solo cutoffs ease at a hard ~1 oct/s cap — a
+  multi-octave move keeps the per-sample recompute running for several seconds of inaudible
+  crawl; a discrete target step instead runs **two banks for one ~12 ms crossfade**, 2× the
+  stage's filter ticks). Under heavy multiband automation or on low-power hosts this could be a
+  hot path. It is unprofiled.
 - **Impact:** Higher-than-necessary CPU in Simple mode and CPU spikes during fast split automation.
 - **Likelihood (evidence-based):** Medium — the cost is real and constant; whether it matters
   depends on host/SR/buffer, which are unmeasured.

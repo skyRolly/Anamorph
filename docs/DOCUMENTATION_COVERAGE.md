@@ -6,7 +6,24 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **second v0.8.10 pre-merge correctness round** (2026-07-14, PR #59), two
+Last updated: for the **third v0.8.10 pre-merge correctness round** (2026-07-14, PR #59), two
+items. (1) **Split-movement final design** — pure-sine testing rejected the second round's
+one-pole tracker too (it FMs at the full drag rate: ~50 cents measured at a fast crossing). A
+candidate matrix (rate caps, one-pole, chained/consolidated fades) was measured against the
+sine protocol; shipped: a **hard ~1 oct/s cutoff rate cap** (swept-allpass shift bounded at
+~0.31 Hz, below the pure-tone JND at any drag speed — worst measured chunk 3.6 cents at a
+150 Hz crossing, spurs at the −41 dBc floor) plus a **discrete-jump bank crossfade** (target
+steps > 1.5 oct between consecutive blocks land in ~12 ms). The audible-position-eases-at-
+~1 oct/s trade is recorded as **KI-012** (with the linear-phase escape hatch gated behind an
+Architecture Review). Docs: DSP_ALGORITHMS, DSP_GRAPH_REFERENCE, PERFORMANCE_BUDGET,
+REALTIME_SAFETY_AUDIT, DSP_POLICY inv. 3, FUTURE_RISKS RISK-002, CHANGELOG; Test 29 reworked to
+grade the whole movement (drag + entire ease incl. the tone crossing + discrete-jump landing).
+(2) **Forced-duck dry-fill output-gain latch** — the fill played the raw ring at unity while
+the processed path around it was scaled by Output Gain × Balance; at −24 dB an undo/redo Mix
+toggle spiked 15.8×. The fill gain is now latched at fade-out entry like `dryDuckLat`
+(SIGNAL_FLOW forced-swap note, CHANGELOG); new `testDryFillRespectsOutputGain` (Test 30). DSP
+test count 28→**29**, checks 97→**102** (README, TESTING_POLICY, TESTING, HANDOVER). Prior: the
+**second v0.8.10 pre-merge correctness round** (2026-07-14, PR #59), two
 fixes. (1) **Split-drag transition rework** — pure-sine testing of the first round's chained bank
 crossfades showed modulation sidebands around the tone (−25…−28 dBc during a fast drag: a chain
 of ~12 ms fades is amplitude/phase modulation and cannot preserve the magnitude response

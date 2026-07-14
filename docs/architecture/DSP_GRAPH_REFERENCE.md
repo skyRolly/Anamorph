@@ -47,11 +47,12 @@ factor) but the stage's position in the chain is fixed.
 (src/dsp/LR4Xover.h, Wave 2 / H6 — bit-identical arithmetic to the
 `juce::dsp::LinkwitzRileyFilter` it replaced, LP/HP dual output). Cutoff-change smoothing
 differs by stage (0.8.10): `MonoMaker` keeps the per-sample multiplicative glide
-(`glideCoeff = exp2(8/sr)`, ~8 oct/s); `MultibandWidth` and `SoloMonitor` use a hybrid — a
-bounded-time per-sample **one-pole glide (τ ≈ 15 ms)** for continuous movement (flat magnitude
-at every instant, no rate-capped catch-up tail, no modulation sidebands) plus a single ~12 ms
-crossfade to a state-copied second bank for **multi-octave jumps** (> 1.5 oct), where the
-endpoint phase wraps mod 2π instead of chirping (CHANGELOG [0.8.10], Test 29).
+(`glideCoeff = exp2(8/sr)`, ~8 oct/s); `MultibandWidth` and `SoloMonitor` glide at a **hard
+~1 oct/s cap** (`glideStep = exp2(1/sr)`) — a swept LR4 shifts every frequency by `0.312·R` Hz,
+so the cap bounds the shift below the pure-tone JND at any drag speed — plus a single ~12 ms
+crossfade to a state-copied second bank for **discrete target steps** (> 1.5 oct between
+consecutive blocks; unreachable by dragging) so snaps stay responsive (CHANGELOG [0.8.10],
+Test 29).
 `MultibandWidth` and `SoloMonitor` share the identical
 Nyquist-safe clamp `[20, max(1000, 0.45·sr)]` + 1.1× top-down ordering.
 

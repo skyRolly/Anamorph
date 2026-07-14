@@ -15,20 +15,24 @@ scripts/run-tests.sh             # runs the AnamorphTests console app
 
 ### What the tests cover
 
-`tests/dsp_tests.cpp` has **28 DSP tests** using a `check(cond, "what")` harness, covering: MS
+`tests/dsp_tests.cpp` has **29 DSP tests** using a `check(cond, "what")` harness, covering: MS
 round-trip (bit-exact), transparent default, true-bypass null + latency match, Mono Maker
 (post-Mix), Multiband mono-compat, Solo band selectivity + transparency, Level Match
 (unity/no-ratchet/silence-freeze/mix-coupling/multiband-unity), crossover automation safety,
 NaN recovery, four click-free crossfade tests (transitions, bypass, multiband enable,
 solo+multiband-enable), the dry-align gate comb regression (`testDryAlignGateRecomb`,
 Wave 2 / H4: a Mix dip after a gated full-wet stretch must re-engage the dry bank
-phase-matched — the KI-#1 metric), and the split-drag transition regression
-(`testMultibandSplitDragNoPitchShift`, Test 29): after a fast multi-octave split drag the
-post-drag pitch deviation must stay < 5 cents on both the Multiband and Solo-monitor paths —
-the pre-0.8.10 rate-capped glide measures ~24 cents and fails — AND the max spectral spur
-around a pure 1 kHz tone while the split crosses it (60 Hz UI drag cadence) must stay below
-−31 dBc — the interim chained bank crossfades measure −28.5 dBc and fail; click checks
-included. It additionally carries **one state-restoration robustness guard**,
+phase-matched — the KI-#1 metric), the split-movement regression
+(`testMultibandSplitDragNoPitchShift`, Test 29): the worst 100 ms pitch chunk of a 150 Hz tone
+must stay < 5 cents across the drag AND the entire ~1 oct/s post-drag ease *including the
+moment the crossover crosses the tone* (the pre-0.8.10 8 oct/s cap and the interim one-pole
+tracker measure 24–50 cents there and fail), the max spectral spur around a 1 kHz tone during a
+60 Hz-cadence drag must stay below −31 dBc (the interim chained bank crossfades measure
+−28.5 dBc and fail), and a discrete 4-octave target step must land within ~200 ms via the bank
+crossfade (an ease would need ~4 s), all click-free — on both the Multiband and Solo-monitor
+paths; and the forced-duck dry-fill gain regression (`testDryFillRespectsOutputGain`, Test 30):
+with Output Gain at −24 dB an undo/redo-style Mix toggle must not spike beyond 2× the steady
+output (the unscaled raw-level fill measures 15.8× and fails) while still filling the dip. It additionally carries **one state-restoration robustness guard**,
 `testAbActiveClampOnCorruptState` — it drives a corrupted `<AB active="…">` blob through the same
 read+clamp the processor uses (`anamorph::clampAbSlotIndex`, `src/AbSlotIndex.h`) and asserts an
 out-of-range A/B index can never index `abSlot[]`/`abUndo[]` out of bounds, while valid 0/1 are

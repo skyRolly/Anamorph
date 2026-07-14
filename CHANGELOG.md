@@ -33,35 +33,38 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   (still message-thread). Evidence: this PR. [Verified]
 
 ### Fixed
-- **Dragging a Multiband split (or a whole band via its Solo handle) no longer pitch-shifts the
-  audio — and no longer creates spurious frequencies around a pure tone — while it moves.** Two
-  root causes, found in two review rounds. (1) The crossover cutoffs chased their targets with a
-  per-sample glide capped at ~8 octaves/s (the 0.6.7 anti-zipper fix), and a *swept* LR4
-  crossover rotates its allpass phase — a genuine frequency shift of `dφ/dt/2π` (~+2.5 Hz per
-  moving split, 20–35 cents on low-frequency content; doubled on a whole-band drag, and since
-  the 0.8.10 flat-recombination compensation carried by *every* band). Because the cap banked
-  the sweep, a fast multi-octave drag kept detuning for hundreds of ms *after* the mouse
-  stopped. (2) The first replacement — chaining ~12 ms fixed-coefficient bank crossfades — is
-  amplitude/phase *modulation* at the fade cadence: during a fast drag it sprayed sidebands at
-  −25…−28 dBc around a pure tone ("frequencies that should not exist appear around the original
-  tone"), because a crossfade between two phase-different allpasses also cannot preserve the
-  magnitude response mid-fade. Final design in `MultibandWidth` and `SoloMonitor`, picked by
-  measurement: **continuous movement glides each cutoff per sample with a bounded-time one-pole
-  (τ ≈ 15 ms)** — a true LR4 at every instant, so the magnitude stays exactly allpass-flat, the
-  smooth phase trajectory adds no sidebands (measured at the −33…−41 dBc analysis floor), and
-  the audio returns to exact pitch within ~75 ms of the last movement (< 0.5 cents residual
-  50 ms after a violent 24 oct/s drag) — while **multi-octave jumps (> 1.5 oct, i.e. automation
-  steps, never mouse drags) use a single ~12 ms crossfade to a state-copied second bank**, where
-  the endpoint phase wraps mod 2π (measured −18 dBc vs a −4.7 dBc glide chirp at a 4-octave
-  step; the two mechanisms measure equal at ~2 oct and the threshold sits inside the glide's
-  winning range). Settled behaviour is bit-identical; flat recombination, mono compatibility,
-  dry/wet phase alignment, Nyquist clamps, latency and serialization are unchanged. Validated by
-  the existing flatness/mono/automation tests plus the regression
-  `testMultibandSplitDragNoPitchShift` (Test 29: post-drag deviation < 5 cents on both the
-  multiband and solo-monitor paths — the rate-capped glide measures ~24 cents and fails — AND
-  max spur < −31 dBc while the split crosses a 1 kHz tone at a 60 Hz UI drag cadence — the
-  chained fades measure −28.5 dBc and fail; click checks included). Evidence: this PR.
-  [Verified]
+- **Multiband split movement no longer modulates the audio: no pitch movement, no spurious
+  frequencies around a pure tone, no clicks — at any drag speed.** Three design rounds, each
+  graded against a pure-sine protocol (instantaneous frequency of the fundamental, spurs
+  outside ±30 Hz, envelope, at drag speeds 1–24 oct/s). The physics: a swept IIR crossover is
+  inherently a phase modulator — its allpass phase at any fixed frequency rotates up to 2π per
+  crossover crossing, a genuine frequency shift of `0.312·R` Hz at sweep rate `R` oct/s, and no
+  smoothing shape removes it, only redistributes it. Rejected: the pre-0.8.10 ~8 oct/s
+  rate-capped glide (≈2.5 Hz shift, 20–35 cents on low content, with a banked catch-up tail
+  lasting hundreds of ms after the drag stopped); chained ~12 ms fixed-bank crossfades
+  (amplitude/phase modulation at the fade cadence — sidebands at −25…−28 dBc around the tone,
+  and a crossfade between two phase-different allpasses cannot preserve the magnitude response
+  mid-fade); a one-pole tracker τ≈15 ms (FM at the full drag rate — ~50 cents measured at the
+  crossing of a fast drag). Shipped design in `MultibandWidth` and `SoloMonitor`:
+  **continuous movement eases each cutoff per sample under a hard ~1 octave/second rate cap**,
+  bounding the shift at ~0.31 Hz — below the pure-tone JND everywhere (measured: worst 100 ms
+  chunk 3.6 cents at a 150 Hz crossing, spurs at the −41 dBc analysis floor, < 0.1 dB envelope
+  ripple, at every drag speed tested). The trade, stated plainly: the *audible* crossover
+  position converges toward the UI at ~1 oct/s (the GUI tracks the mouse instantly), so a fast
+  multi-octave drag is heard as a slow, inaudible-by-design approach rather than an immediate
+  jump (KI-012 documents the limitation; artifact-free *fast* tracking is impossible with
+  zero-latency IIR crossovers and would require linear-phase splits — a reported-latency change
+  gated behind an Architecture Review). **Discrete jumps** (the target stepping > 1.5 oct
+  between consecutive blocks — automation steps/snaps, unreachable by dragging) stay responsive
+  via a single ~12 ms crossfade to a state-copied second filter bank: one bounded transition
+  event (−18 dBc at a 4-octave step) instead of a multi-second ease. Settled behaviour is
+  bit-identical; flat recombination, mono compatibility, dry/wet phase alignment, Nyquist
+  clamps, latency and serialization unchanged. Regression `testMultibandSplitDragNoPitchShift`
+  (Test 29) now grades the entire movement: worst 100 ms chunk < 5 cents across the drag AND
+  the full post-drag ease including the tone crossing (the 8 oct/s cap and the one-pole measure
+  24–50 cents and fail), max spur < −31 dBc during a 60 Hz-cadence drag (the chained fades
+  measure −28.5 dBc and fail), discrete 4-octave jumps must land < 200 ms (an ease would need
+  ~4 s), all click-free. Evidence: this PR. [Verified]
 - **macOS (Apple Silicon native): tooltips no longer show an opaque white rectangle around the
   rounded capsule.** Root cause: `juce::TooltipWindow` declares itself *opaque* (its constructor
   calls `setOpaque(true)`) while the custom tooltip drawing deliberately leaves the pixels
@@ -77,6 +80,20 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   verified by inspection of the JUCE 8.0.14 peer (`drawRectWithContext` clears non-opaque
   windows); on-hardware confirmation on Apple Silicon is pending (KI-011). Evidence: this PR.
   [Verified — code path; hardware re-test pending]
+- **Undo/Redo with an extreme Output Gain no longer produces a loud transient (forced-duck dry
+  fill now follows the output stage).** The forced-swap dry fill (introduced below) crossfades
+  the ducked output toward the delay-aligned raw input ring — which carries the *unity-level*
+  input, while the processed path around it is scaled by Output Gain (or the Level-Match gain)
+  × Output Balance. At extreme settings (e.g. Output Gain −24 dB) an undo/redo Mix toggle
+  burst the fill in up to 24 dB louder than the surrounding audio. The fill is now presented at
+  the **output-stage gain heard when the duck began**, latched at fade-out entry exactly like
+  the fill's delay offset (`dryDuckLat`) — latched, not live, because the gain smoothers snap
+  to the new state at the silent bottom where the fill carries full weight, and a live gain
+  would step audibly there. At unity gain/balance the arithmetic is bit-identical to the
+  previous fill (Tests 26/27 unchanged); true bypass still presents the raw ring at unity by
+  design. Regression `testDryFillRespectsOutputGain` (Test 30): at −24 dB the transition peak
+  must stay within 2× the steady output — the unscaled fill measures 15.8× and fails — while
+  still filling (no dip toward silence). Evidence: this PR. [Verified]
 - **Option/Alt-click (and double-click) reset of a knob/slider now creates a normal Undo step.**
   Root cause: the reset wrote the slider value programmatically, which reaches the parameter
   *without* a host change gesture; the processor's undo coalescer deliberately treats
