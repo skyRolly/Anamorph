@@ -6,7 +6,12 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **PR #59 pre-merge review round** (three correctness fixes). (a) Multiband
+Last updated: for the **v0.8.10 release** (finalized 2026-07-14, PR #59). The `[Unreleased]`
+CHANGELOG entries (undo/redo forced-duck dry-fill + rapid-swap robustness, multiband flat
+recombination, adaptive `FrameClock` GUI refresh) are folded into the `[0.8.10]` section; the
+version is bumped to 0.8.10 across CMakeLists / README / HANDOVER / KNOWN_ISSUES / FUTURE_RISKS;
+KI-009 (REAPER Save Preset) is carried forward as an open, host-specific issue (not fixed).
+Includes the pre-merge review round: (a) Multiband
 flat recombination — the crossover reconstruction now phase-compensates each lower band by the
 splits above it (allpass telescoping), removing the −17.75 dB dip at close crossovers; documented
 in DSP_ALGORITHMS (MultibandWidth) + CHANGELOG, guarded by `testMultibandFlatRecombination`
@@ -14,7 +19,9 @@ in DSP_ALGORITHMS (MultibandWidth) + CHANGELOG, guarded by `testMultibandFlatRec
 never reusing a prior swap's stale offset; CHANGELOG + `testRapidForcedSwapDryFill` (Test 27).
 (c) FrameClock review — the Advanced-only SpectrumImager now stops its display-rate clock while
 hidden (Simple mode), mirroring the meters (no unnecessary vblank ticks). DSP test count
-25→**27**, checks 77→**86** (README, TESTING_POLICY, TESTING, HANDOVER). No parameter/automation/
+25→**27**, checks 77→**90** (README, TESTING_POLICY, TESTING, HANDOVER; `testRapidForcedSwapDryFill`
+gained fade-in and fade-out latency-crossing retarget cases during the pre-merge verification pass).
+No parameter/automation/
 preset/serialization/latency change; the multiband fix changes only the multiband audio output
 (the intended fix — twin dump confirms latency unchanged, non-multiband scenarios identical).
 Prior: for the **post-v0.8.9 PR** (three items + a fresh profiling baseline). (1) Undo/Redo

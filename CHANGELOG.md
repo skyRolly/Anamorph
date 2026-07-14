@@ -6,7 +6,7 @@ SHA + date** as the Evidence Source (per `docs/policies/CHANGELOG_POLICY.md`). E
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
-## [Unreleased]
+## [0.8.10] — 2026-07-14
 ### Changed
 - **The Vectorscope, Level Meter, Stereo Meter and Spectrum Imager now refresh at the display's
   rate (adaptive, capped near 120 Hz) instead of a fixed 60 Hz.** On a 120 Hz (or higher) panel
@@ -67,6 +67,14 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   (Test 26) holds the minimum 2 ms-window RMS across a forced swap at ≥ 0.93× (continuous
   bulk swap) / ≥ 0.65× (algorithm swap) of steady level — the pre-fix engine measures 0.000
   on both and fails. Evidence: this PR. [Verified]
+
+### Known issues
+- **KI-009 (documented, not fixed):** in **REAPER on Linux/macOS**, the Save Preset text field
+  loses keyboard focus — pressing Space while it is active can trigger the DAW transport, and after
+  the field loses focus a click cannot restore editing until the Save Preset window is closed and
+  reopened. Other tested DAWs do not reproduce it; the root cause is not yet confirmed. Recorded as
+  a **host-specific issue pending manual investigation** (`docs/KNOWN_ISSUES.md` KI-009). No fix in
+  this release.
 
 ## [0.8.9] — 2026-07-12
 ### Added

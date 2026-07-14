@@ -5,10 +5,12 @@ in `POSTMORTEMS.md`, not here. Each entry is evidence-backed (constraint C7). Wh
 fixed, remove it here and (if notable) add a `POSTMORTEMS.md` entry.
 
 Verified against repository HEAD `c605fbe` (0.8.7 content audit); version-synced to the
-post-**v0.8.9** work (the undo/redo dropout fix + adaptive GUI refresh; **KI-009 added** — the
-REAPER Save Preset focus report, host-specific, pending manual investigation). Prior: the v0.8.9
-release (finalized 2026-07-12, PR #58 — Wave-2 performance work; no new/removed issues), including
-the KI-008 addition from the PR #57 investigation (previously synced for the functional/UX PR #56;
+**v0.8.10 release** (finalized 2026-07-14, PR #59 — undo/redo forced-duck dry-fill + rapid-swap
+robustness, multiband flat recombination, adaptive `FrameClock` GUI refresh; **KI-009 carried
+forward** — the REAPER Save Preset focus report, host-specific, pending manual investigation, not
+fixed). Prior: the v0.8.9 release (finalized 2026-07-12, PR #58 — Wave-2 performance work; no
+new/removed issues), including the KI-008 addition from the PR #57 investigation (previously synced
+for the functional/UX PR #56;
 JUCE 8.0.14; before that 0.8.8 for PR #54).
 
 | ID | Issue | Severity | Status |
