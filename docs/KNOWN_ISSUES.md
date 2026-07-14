@@ -9,7 +9,10 @@ Verified against repository HEAD `c605fbe` (0.8.7 content audit); version-synced
 robustness, multiband flat recombination, adaptive `FrameClock` GUI refresh, plus the pre-merge
 correctness round: split-drag pitch-shift fix, Band Solo alt-click exclusive solo, Option-reset
 undo fix — the last of which surfaced **KI-010** (typed value-box entry still bypasses undo, same
-mechanism, reported not fixed); **KI-009 carried
+mechanism, reported not fixed) — and the second correctness round: the split-drag transition
+rework (one-pole glide + jump crossfade, replacing the interim chained bank fades that sprayed
+sidebands around a pure tone) and **KI-011** (Apple-Silicon-native tooltip white corners — fix
+applied, hardware re-test pending); **KI-009 carried
 forward** — the REAPER Save Preset focus report, host-specific, pending manual investigation, not
 fixed). Prior: the v0.8.9 release (finalized 2026-07-12, PR #58 — Wave-2 performance work; no
 new/removed issues), including the KI-008 addition from the PR #57 investigation (previously synced
@@ -28,6 +31,7 @@ JUCE 8.0.14; before that 0.8.8 for PR #54).
 | KI-008 | Advanced-toggle one-frame tear in async-resize hosts (JUCE VST3 wrapper window-grant gap) | Low | Confirmed, external (JUCE wrapper + host); not fixable plugin-side without a JUCE change |
 | KI-009 | REAPER: Save Preset text editor loses keyboard focus (Space hits transport; a click does not re-focus until the dialog is reopened) | Low | Reported, host-specific (REAPER); pending manual investigation |
 | KI-010 | Typing a value into a knob/slider text box creates no Undo step (gesture-less edit path) | Low | Confirmed (code path); reported during the 0.8.10 Option-reset fix, not yet fixed |
+| KI-011 | macOS Apple-Silicon-native: tooltip corners rendered an opaque white frame (TooltipWindow opacity contract) | Low | Fix applied (editor marks the TooltipWindow non-opaque on macOS); Apple Silicon visual re-test pending |
 
 ---
 
@@ -250,3 +254,33 @@ with the focus-driven `knobSweepTime` easing).
 - **Fix direction (when scheduled):** wrap the text-commit path in a gesture the same way the
   reset now is — e.g. detect a text-box-driven `onValueChange` (focus held, mouse up — the same
   predicate the reset-sweep easing already uses) and issue a complete gesture around it.
+
+## KI-011 — macOS Apple-Silicon-native: tooltip corners rendered an opaque white frame
+
+Reported on **macOS running the ARM-native build** (Intel and the same machine under Rosetta
+render correctly): the area outside the tooltip's rounded capsule showed an **opaque white
+rectangle** instead of transparent rounded corners.
+
+- **Mechanism [Verified, code path]:** `juce::TooltipWindow` declares itself **opaque**
+  (`setOpaque (true)` in its constructor, JUCE 8.0.14 juce_TooltipWindow.cpp:42) while
+  `AnamorphLookAndFeel::drawTooltip` deliberately leaves the pixels outside the rounded capsule
+  unpainted on platforms with per-pixel window alpha. That is an opacity-contract violation: the
+  corner pixels are **undefined**, and what appears there depends on the compositing pipeline.
+  Intel/Rosetta happened to show the stale (transparent) backing; Apple-Silicon-native AppKit
+  initialises the opaque layer-backed `NSWindow` with its background colour (white — JUCE pins
+  tooltips to the light Aqua appearance) before the component paints → the white frame. This is
+  the same undefined-pixels class as KI-006's black corners on uncomposited Linux/X11.
+- **Fix [code Verified; Apple Silicon visual re-test pending]:** the editor marks its
+  `TooltipWindow` **non-opaque on macOS** (src/PluginEditor.cpp, constructor). The JUCE peer then
+  creates a transparent `NSWindow` (`setOpaque:NO` + `clearColor` background) and **clears the
+  backing to alpha 0 on every paint** (`NSViewComponentPeer::drawRectWithContext` →
+  `CGContextClearRect` for non-opaque components), so the corners are genuinely transparent by
+  contract on every pipeline — Intel, Rosetta, and ARM native. macOS-gated (`JUCE_MAC`): Windows
+  and Linux keep their existing (working) behaviour; uncomposited Linux keeps the KI-006 corner
+  pre-fill, which covers the same class there.
+- **Scope:** cosmetic, tooltips only (off by default); no audio/parameter/state impact. Severity
+  **Low**. A side effect on macOS is that the native drop shadow now follows the capsule's alpha
+  outline instead of the rectangular window bounds — the correct shape.
+- **Status:** **Fix applied; pending an Apple-Silicon-native visual re-test by the maintainer**
+  (the headless gate cannot judge GUI appearance — TESTING_POLICY Level 5). Remove this entry and
+  move it to POSTMORTEMS once confirmed on hardware.

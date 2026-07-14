@@ -6,7 +6,23 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **v0.8.10 pre-merge correctness round** (2026-07-14, PR #59), three fixes:
+Last updated: for the **second v0.8.10 pre-merge correctness round** (2026-07-14, PR #59), two
+fixes. (1) **Split-drag transition rework** — pure-sine testing of the first round's chained bank
+crossfades showed modulation sidebands around the tone (−25…−28 dBc during a fast drag: a chain
+of ~12 ms fades is amplitude/phase modulation and cannot preserve the magnitude response
+mid-fade). Final hybrid, picked by measurement: a bounded-time per-sample one-pole cutoff glide
+(τ ≈ 15 ms — flat magnitude at every instant, smooth phase, settles ~75 ms after the last move)
+for continuous movement, plus a single bank crossfade only for multi-octave jumps (> 1.5 oct,
+where the fade's mod-2π phase wrap beats a glide's chirp). Documented across DSP_ALGORITHMS,
+DSP_GRAPH_REFERENCE, PERFORMANCE_BUDGET, REALTIME_SAFETY_AUDIT, DSP_POLICY inv. 3, FUTURE_RISKS
+RISK-002, CHANGELOG; Test 29 gained a spectral-purity check (max spur < −31 dBc while a split
+crosses a 1 kHz tone at 60 Hz UI cadence; the chained fades measure −28.5 and fail), checks
+96→**97** (TESTING, HANDOVER). (2) **KI-011, Apple-Silicon-native tooltip white corners** —
+juce::TooltipWindow declares itself opaque while drawTooltip leaves the capsule corners
+unpainted; the undefined pixels render white on ARM-native AppKit (Intel/Rosetta showed the
+stale transparent backing). The editor now marks the TooltipWindow non-opaque on macOS
+(KNOWN_ISSUES KI-011, CHANGELOG; hardware re-test pending, KI-006 pattern). Prior: the first
+**v0.8.10 pre-merge correctness round** (2026-07-14, PR #59), three fixes:
 (a) **Split-drag pitch shift** — `MultibandWidth` and `SoloMonitor` no longer glide their
 crossover cutoffs per sample (a swept LR4's allpass phase rotation audibly detuned the audio
 during and after a fast split/band drag); cutoff changes are now ~12 ms fixed-coefficient bank

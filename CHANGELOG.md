@@ -34,25 +34,49 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 
 ### Fixed
 - **Dragging a Multiband split (or a whole band via its Solo handle) no longer pitch-shifts the
-  audio while it moves.** Root cause: the crossover cutoffs chased their targets with a
+  audio — and no longer creates spurious frequencies around a pure tone — while it moves.** Two
+  root causes, found in two review rounds. (1) The crossover cutoffs chased their targets with a
   per-sample glide capped at ~8 octaves/s (the 0.6.7 anti-zipper fix), and a *swept* LR4
   crossover rotates its allpass phase — a genuine frequency shift of `dφ/dt/2π` (~+2.5 Hz per
   moving split, 20–35 cents on low-frequency content; doubled on a whole-band drag, and since
   the 0.8.10 flat-recombination compensation carried by *every* band). Because the cap banked
   the sweep, a fast multi-octave drag kept detuning for hundreds of ms *after* the mouse
-  stopped. Cutoff changes in `MultibandWidth` and `SoloMonitor` are now **fixed-coefficient bank
-  crossfades**: the idle crossover bank adopts the active bank's filter state plus the newest
-  target cutoffs and the output crossfades to it over ~12 ms — no coefficient ever sweeps, so
-  the fade carries no frequency modulation, and the audio returns to exact pitch within ~15 ms
-  of the last movement (a fade retriggers straight to the latest target, so a long drag chains
-  short fades instead of banking a sweep). A large jump costs only a brief sub-dB amplitude
-  ripple where the two banks' allpass phases differ. Settled behaviour is bit-identical (same
-  arithmetic, one bank); flat recombination, mono compatibility, dry/wet phase alignment,
-  Nyquist clamps, latency and serialization are unchanged. Slow drags, extreme/close crossover
-  positions and multi-split moves validated by the existing flatness/mono/automation tests plus
-  the new regression `testMultibandSplitDragNoPitchShift` (Test 29: post-drag deviation < 5
-  cents on both the multiband and solo-monitor paths — the glide engine measures ~24 cents and
-  fails; click check included). Evidence: this PR. [Verified]
+  stopped. (2) The first replacement — chaining ~12 ms fixed-coefficient bank crossfades — is
+  amplitude/phase *modulation* at the fade cadence: during a fast drag it sprayed sidebands at
+  −25…−28 dBc around a pure tone ("frequencies that should not exist appear around the original
+  tone"), because a crossfade between two phase-different allpasses also cannot preserve the
+  magnitude response mid-fade. Final design in `MultibandWidth` and `SoloMonitor`, picked by
+  measurement: **continuous movement glides each cutoff per sample with a bounded-time one-pole
+  (τ ≈ 15 ms)** — a true LR4 at every instant, so the magnitude stays exactly allpass-flat, the
+  smooth phase trajectory adds no sidebands (measured at the −33…−41 dBc analysis floor), and
+  the audio returns to exact pitch within ~75 ms of the last movement (< 0.5 cents residual
+  50 ms after a violent 24 oct/s drag) — while **multi-octave jumps (> 1.5 oct, i.e. automation
+  steps, never mouse drags) use a single ~12 ms crossfade to a state-copied second bank**, where
+  the endpoint phase wraps mod 2π (measured −18 dBc vs a −4.7 dBc glide chirp at a 4-octave
+  step; the two mechanisms measure equal at ~2 oct and the threshold sits inside the glide's
+  winning range). Settled behaviour is bit-identical; flat recombination, mono compatibility,
+  dry/wet phase alignment, Nyquist clamps, latency and serialization are unchanged. Validated by
+  the existing flatness/mono/automation tests plus the regression
+  `testMultibandSplitDragNoPitchShift` (Test 29: post-drag deviation < 5 cents on both the
+  multiband and solo-monitor paths — the rate-capped glide measures ~24 cents and fails — AND
+  max spur < −31 dBc while the split crosses a 1 kHz tone at a 60 Hz UI drag cadence — the
+  chained fades measure −28.5 dBc and fail; click checks included). Evidence: this PR.
+  [Verified]
+- **macOS (Apple Silicon native): tooltips no longer show an opaque white rectangle around the
+  rounded capsule.** Root cause: `juce::TooltipWindow` declares itself *opaque* (its constructor
+  calls `setOpaque(true)`) while the custom tooltip drawing deliberately leaves the pixels
+  outside the rounded capsule unpainted — undefined pixels in a window that promised to fill its
+  bounds. What renders there depends on the compositing pipeline: Intel and Rosetta happened to
+  show the stale (transparent) layer backing, but Apple-Silicon-native AppKit initialises the
+  opaque layer-backed window with its background colour first, producing the white corner frame
+  (the same undefined-pixels class as KI-006's black corners on uncomposited Linux/X11). The
+  editor now declares its `TooltipWindow` **non-opaque on macOS**, so the JUCE peer creates a
+  transparent `NSWindow` (clear background) and clears the backing to real alpha on every paint —
+  transparent rounded corners by contract on every pipeline. macOS-gated: Windows and Linux keep
+  their existing behaviour (uncomposited Linux keeps the KI-006 corner pre-fill). Code-path fix
+  verified by inspection of the JUCE 8.0.14 peer (`drawRectWithContext` clears non-opaque
+  windows); on-hardware confirmation on Apple Silicon is pending (KI-011). Evidence: this PR.
+  [Verified — code path; hardware re-test pending]
 - **Option/Alt-click (and double-click) reset of a knob/slider now creates a normal Undo step.**
   Root cause: the reset wrote the slider value programmatically, which reaches the parameter
   *without* a host change gesture; the processor's undo coalescer deliberately treats
