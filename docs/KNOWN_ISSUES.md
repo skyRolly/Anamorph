@@ -6,7 +6,10 @@ fixed, remove it here and (if notable) add a `POSTMORTEMS.md` entry.
 
 Verified against repository HEAD `c605fbe` (0.8.7 content audit); version-synced to the
 **v0.8.10 release** (finalized 2026-07-14, PR #59 — undo/redo forced-duck dry-fill + rapid-swap
-robustness, multiband flat recombination, adaptive `FrameClock` GUI refresh; **KI-009 carried
+robustness, multiband flat recombination, adaptive `FrameClock` GUI refresh, plus the pre-merge
+correctness round: split-drag pitch-shift fix, Band Solo alt-click exclusive solo, Option-reset
+undo fix — the last of which surfaced **KI-010** (typed value-box entry still bypasses undo, same
+mechanism, reported not fixed); **KI-009 carried
 forward** — the REAPER Save Preset focus report, host-specific, pending manual investigation, not
 fixed). Prior: the v0.8.9 release (finalized 2026-07-12, PR #58 — Wave-2 performance work; no
 new/removed issues), including the KI-008 addition from the PR #57 investigation (previously synced
@@ -24,6 +27,7 @@ JUCE 8.0.14; before that 0.8.8 for PR #54).
 | KI-007 | Windows: pluginval "Editor Automation" abnormally terminates (was hidden by a run-pluginval.ps1 false green) | Medium | False green closed; GL-drop cleared the crash (CI-confirmed); advancedMode-automation fix pending CI |
 | KI-008 | Advanced-toggle one-frame tear in async-resize hosts (JUCE VST3 wrapper window-grant gap) | Low | Confirmed, external (JUCE wrapper + host); not fixable plugin-side without a JUCE change |
 | KI-009 | REAPER: Save Preset text editor loses keyboard focus (Space hits transport; a click does not re-focus until the dialog is reopened) | Low | Reported, host-specific (REAPER); pending manual investigation |
+| KI-010 | Typing a value into a knob/slider text box creates no Undo step (gesture-less edit path) | Low | Confirmed (code path); reported during the 0.8.10 Option-reset fix, not yet fixed |
 
 ---
 
@@ -214,3 +218,35 @@ the JUCE focus/peer path REAPER takes).
   branch aborts and (b) verify any re-focus handler (e.g. a `focusLost`/`mouseDown` re-grab mirroring
   the open-path retry) actually sticks in REAPER without regressing the hosts that already work. Track
   under the KI-004 host-matrix gap; revisit when a REAPER audition slot is available.
+
+## KI-010 — Typed value-box entry creates no Undo step (gesture-less edit path)
+
+Found while fixing the 0.8.10 Option/Alt-click reset undo bug (CHANGELOG [0.8.10]). Typing a
+value into a knob/slider's text box commits via `juce::Slider::setValue`, which reaches the
+parameter through the `SliderAttachment` **without** a host change gesture — the same mechanism
+that made resets un-undoable. The processor's undo coalescer deliberately folds gesture-less
+changes into the committed baseline (that is how host automation is excluded from undo,
+ADR-0008), so a typed edit produces **no Undo entry and does not invalidate Redo**. The reset
+path is fixed (wrapped in `beginChangeGesture`/`endChangeGesture`, `Knob::doReset`); the typed
+path is **left unchanged in 0.8.10 by scope decision** — it was not part of the reported issue,
+and a correct fix has UX questions of its own (a gesture per keystroke vs per commit; interaction
+with the focus-driven `knobSweepTime` easing).
+
+- **Repro:** adjust any knob by typing into its value box and pressing Enter → press Undo: the
+  previous action is reverted instead of the typed edit; Redo (if it was available) survives.
+- **Also affected (same class):** the Multiband display's **mouse-wheel** nudges of a split
+  frequency or band width (`SpectrumImager::mouseWheelMove` → gesture-less `setParam`). A wheel
+  scroll on a regular knob IS undoable (JUCE's `Slider::mouseWheelMove` wraps the change in a drag
+  notification, which the attachment turns into a gesture); every click/drag/reset edit inside the
+  imager is undoable too (verified: they run through `beginGesture`/`endGesture` or ride a
+  concurrent gesture's coalesced snapshot). Only the imager's wheel path and the text-box path
+  are gesture-less.
+- **Scope:** editor-only; automation/preset/serialization unaffected (the value itself lands
+  correctly and marks the preset dirty). Severity **Low**.
+- **Evidence [Verified, code path]:** src/PluginEditor.h (`Knob::doReset` gesture wrap + comment);
+  src/PluginProcessor.cpp `pollUndoCoalesce` (the non-gesture fold branch); JUCE
+  `SliderParameterAttachment::sliderValueChanged` → `setValueAsPartOfGesture` (no begin/end for
+  programmatic value changes).
+- **Fix direction (when scheduled):** wrap the text-commit path in a gesture the same way the
+  reset now is — e.g. detect a text-box-driven `onValueChange` (focus held, mouse up — the same
+  predicate the reset-sweep easing already uses) and issue a complete gesture around it.

@@ -6,7 +6,24 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **v0.8.10 release** (finalized 2026-07-14, PR #59). The `[Unreleased]`
+Last updated: for the **v0.8.10 pre-merge correctness round** (2026-07-14, PR #59), three fixes:
+(a) **Split-drag pitch shift** — `MultibandWidth` and `SoloMonitor` no longer glide their
+crossover cutoffs per sample (a swept LR4's allpass phase rotation audibly detuned the audio
+during and after a fast split/band drag); cutoff changes are now ~12 ms fixed-coefficient bank
+crossfades (state-copied idle bank at the newest targets). Documented in DSP_ALGORITHMS
+(MultibandWidth + SoloMonitor), DSP_GRAPH_REFERENCE (shared crossover sub-bank), PERFORMANCE_BUDGET
+(crossover-move cost + the allpass-compensation candidate's obsolete sub-item), DSP_POLICY
+invariant 3 wording, CHANGELOG; guarded by `testMultibandSplitDragNoPitchShift` (Test 29 — fails
+at ~24 cents on the pre-fix glide). DSP test count 27→**28**, checks 90→**96** (README,
+TESTING, HANDOVER). (b) **Band Solo alt-click redesign** — alt-clicking an UNSOLOED band's icon
+now solos only that band (exclusive) instead of all bands; soloed-band alt-click (clear all) and
+plain click unchanged; CHANGELOG (GUI-only, same `mbSolo` single-gesture write). (c) **Option/
+double-click reset undo fix** — `Knob::doReset` now wraps the value write in a host change
+gesture (the imager's split/width resets already did), so a reset is one undoable step that
+clears redo; `undo()`/`redo()` flush a settled-but-unpolled gesture first. Conforms to ADR-0008's
+gesture-coalesced design (no ADR change); CHANGELOG. No parameter/serialization/latency/threading
+change; the split-drag fix changes only the transition behaviour of moving crossovers (settled
+output bit-identical). Prior: the **v0.8.10 release finalization** (2026-07-14, PR #59). The `[Unreleased]`
 CHANGELOG entries (undo/redo forced-duck dry-fill + rapid-swap robustness, multiband flat
 recombination, adaptive `FrameClock` GUI refresh) are folded into the `[0.8.10]` section; the
 version is bumped to 0.8.10 across CMakeLists / README / HANDOVER / KNOWN_ISSUES / FUTURE_RISKS;

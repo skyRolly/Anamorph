@@ -8,6 +8,12 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 
 ## [0.8.10] — 2026-07-14
 ### Changed
+- **Alt/Option-click on an unsoloed Band Solo button now solos ONLY that band (exclusive
+  solo)** — every other band's solo turns off — instead of soloing all bands at once (the 0.8.9
+  behaviour). Alt/Option-clicking an already-soloed band still clears the whole solo mask, and a
+  plain click still latches just that band; the press-and-hold momentary audition / hold-drag
+  band move are unchanged. Still one write of the `mbSolo` mask under one change gesture, so
+  automation, undo/redo and preset recall behave as before. Evidence: this PR. [Verified]
 - **The Vectorscope, Level Meter, Stereo Meter and Spectrum Imager now refresh at the display's
   rate (adaptive, capped near 120 Hz) instead of a fixed 60 Hz.** On a 120 Hz (or higher) panel
   the visualizers animate visibly smoother; on a 60 Hz panel they behave exactly as before. A new
@@ -27,6 +33,41 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   (still message-thread). Evidence: this PR. [Verified]
 
 ### Fixed
+- **Dragging a Multiband split (or a whole band via its Solo handle) no longer pitch-shifts the
+  audio while it moves.** Root cause: the crossover cutoffs chased their targets with a
+  per-sample glide capped at ~8 octaves/s (the 0.6.7 anti-zipper fix), and a *swept* LR4
+  crossover rotates its allpass phase — a genuine frequency shift of `dφ/dt/2π` (~+2.5 Hz per
+  moving split, 20–35 cents on low-frequency content; doubled on a whole-band drag, and since
+  the 0.8.10 flat-recombination compensation carried by *every* band). Because the cap banked
+  the sweep, a fast multi-octave drag kept detuning for hundreds of ms *after* the mouse
+  stopped. Cutoff changes in `MultibandWidth` and `SoloMonitor` are now **fixed-coefficient bank
+  crossfades**: the idle crossover bank adopts the active bank's filter state plus the newest
+  target cutoffs and the output crossfades to it over ~12 ms — no coefficient ever sweeps, so
+  the fade carries no frequency modulation, and the audio returns to exact pitch within ~15 ms
+  of the last movement (a fade retriggers straight to the latest target, so a long drag chains
+  short fades instead of banking a sweep). A large jump costs only a brief sub-dB amplitude
+  ripple where the two banks' allpass phases differ. Settled behaviour is bit-identical (same
+  arithmetic, one bank); flat recombination, mono compatibility, dry/wet phase alignment,
+  Nyquist clamps, latency and serialization are unchanged. Slow drags, extreme/close crossover
+  positions and multi-split moves validated by the existing flatness/mono/automation tests plus
+  the new regression `testMultibandSplitDragNoPitchShift` (Test 29: post-drag deviation < 5
+  cents on both the multiband and solo-monitor paths — the glide engine measures ~24 cents and
+  fails; click check included). Evidence: this PR. [Verified]
+- **Option/Alt-click (and double-click) reset of a knob/slider now creates a normal Undo step.**
+  Root cause: the reset wrote the slider value programmatically, which reaches the parameter
+  *without* a host change gesture; the processor's undo coalescer deliberately treats
+  gesture-less changes as host automation and folds them into the committed baseline — no undo
+  entry, and the redo stack survived when it should have been invalidated (so Undo skipped the
+  reset and reverted the previous edit, and Redo stayed available after a reset). The `Knob`
+  reset is now wrapped in `beginChangeGesture`/`endChangeGesture` around the value write —
+  exactly how the Multiband display's split/width resets already did it (those, and every other
+  Imager edit, were verified to share the same gesture-based undo path and needed no change) —
+  so a reset lands as one undoable step, clears redo, and records one automation move in the
+  host. `undo()`/`redo()` additionally flush a settled-but-unpolled gesture first (the editor
+  polls the coalescer at 24 Hz), so an edit finished immediately before the click can no longer
+  be silently skipped over. Automation, presets and serialization unchanged; the host-hidden
+  Settings knob (Vectorscope Persist) intentionally stays outside undo as before. Evidence:
+  this PR. [Verified]
 - **Multiband: closely-spaced crossovers no longer cut the level around the crossover
   frequencies.** With three splits concentrated together the band around the crossovers behaved
   like an EQ dip (measured −17.75 dB at 800/1000/1250 Hz), even at unit width and without moving a
