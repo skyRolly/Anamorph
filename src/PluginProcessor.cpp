@@ -422,6 +422,13 @@ void AnamorphAudioProcessor::commitPresetSwitchUndoStep()
 
 void AnamorphAudioProcessor::undo()
 {
+    // Flush any settled-but-unpolled gesture into its own undo step first (the
+    // editor timer polls at 24 Hz, so a commit can be pending for up to ~42 ms),
+    // exactly like PresetManager::onAboutToLoad does before a preset switch.
+    // Otherwise an edit finished just before the click would be silently folded
+    // by the openGestures/pendingGestureCommit reset below and this undo would
+    // jump PAST it.
+    pollUndoCoalesce();
     auto& st = abUndo[abActive];
     if (st.undo.empty()) return;
     engine.requestDuck(); // mask the level jump (#1, 0.6.4)
@@ -436,6 +443,7 @@ void AnamorphAudioProcessor::undo()
 
 void AnamorphAudioProcessor::redo()
 {
+    pollUndoCoalesce(); // same settled-gesture flush as undo()
     auto& st = abUndo[abActive];
     if (st.redo.empty()) return;
     engine.requestDuck(); // mask the level jump (#1, 0.6.4)

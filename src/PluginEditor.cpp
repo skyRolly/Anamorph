@@ -680,6 +680,7 @@ void AnamorphAudioProcessorEditor::attachSlider (juce::Slider& s, const char* id
     if (auto* k = dynamic_cast<Knob*> (&s); k != nullptr && p != nullptr)
     {
         k->resetValue = p->getNormalisableRange().convertFrom0to1 (p->getDefaultValue()); // #6
+        k->resetParam = p; // gesture-wrap resets so they land in undo/automation as ONE user edit
         // A RESET (double-click / Option-click) sweeps the eased position (0.6.7 #21).
         // resetSweep lets that travel play even while the reset's mouse button is still
         // held (alt-click / a double-click's 2nd press); only flagged when animations
