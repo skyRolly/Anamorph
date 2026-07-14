@@ -21,8 +21,9 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   quantum. All Wave-1/Wave-2 GUI optimisations are preserved: the S1/S2/S3 repaint gates, the
   H2/H13/H17 cached static layers, the N2 opaque blits and the H15 idle pre-gate are unchanged, so
   idle CPU stays ~0 and a settled view still stops repainting. The Advanced-only Spectrum Imager
-  stops its clock entirely while hidden (Simple mode), and the rate cap re-applies within one
-  frame when the editor is dragged onto a faster monitor. Internal/threading model unchanged
+  stops its clock entirely while hidden (Simple mode), and the rate cap re-applies within ~2
+  frames when the editor is dragged onto a faster monitor while a single early vblank (scheduler
+  jitter) near the 120 Hz cap no longer perturbs the rate. Internal/threading model unchanged
   (still message-thread). Evidence: this PR. [Verified]
 
 ### Fixed

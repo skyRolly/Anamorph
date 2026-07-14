@@ -52,6 +52,7 @@ public:
                            // pin the plausible branch, never reaching the wall-clock
                            // fallback if only implausible deltas arrive after restart.
         countdown = 1;
+        shortRun  = false;
         attachment = juce::VBlankAttachment (&c, [this] (double t) { onVBlank (t); });
     }
 
@@ -79,18 +80,34 @@ private:
             const double d = t - lastStamp;
             if (d > 0.0005 && d < 0.05)
             {
-                // Fast-attack on a rate INCREASE, smooth otherwise. An upward
-                // refresh-rate transition (e.g. the editor dragged onto a faster
-                // monitor -- no stop()/start(), the attachment just follows the
-                // component) would otherwise run at the full new rate for the
+                // Fast-attack on a SUSTAINED rate increase, smooth otherwise. An
+                // upward refresh-rate transition (e.g. the editor dragged onto a
+                // faster monitor -- no stop()/start(), the attachment just follows
+                // the component) would otherwise run at the full new rate for the
                 // whole EMA settle window (~10-30 frames), briefly exceeding the
-                // ~125 Hz cap. Snapping emaDelta down the moment a much-shorter
-                // delta arrives (>33 % faster) re-caps within a frame. Small
-                // fluctuations and rate DECREASES ease via the 0.125 EMA; snapping
-                // down over-eagerly only ever runs FEWER frames, never more, so it
-                // is CPU-safe (a stray short delta cannot spike the rate).
-                if (! haveEma || d < 0.75 * emaDelta) emaDelta = d;
-                else                                  emaDelta += 0.125 * (d - emaDelta);
+                // ~125 Hz cap. A much-shorter delta (>33 % faster) triggers a snap,
+                // but ONLY when confirmed by a second consecutive short delta:
+                // otherwise a single early vblank (scheduler jitter) would snap the
+                // estimate to the outlier and, near the 120 Hz cap knee, drop the
+                // executed rate for several frames (measured 120->97 Hz). A genuine
+                // transition produces sustained short deltas, so it still re-caps
+                // within ~2 frames. Rate DECREASES / small fluctuations ease via the
+                // 0.125 EMA. Snapping down only ever runs FEWER frames (CPU-safe).
+                if (! haveEma)
+                {
+                    emaDelta = d;
+                }
+                else if (d < 0.75 * emaDelta)
+                {
+                    if (shortRun) emaDelta = d;                    // confirmed increase: snap
+                    else          emaDelta += 0.125 * (d - emaDelta); // first short: treat as jitter
+                    shortRun = true;
+                }
+                else
+                {
+                    emaDelta += 0.125 * (d - emaDelta);
+                    shortRun = false;
+                }
                 haveEma   = true;
                 plausible = true;
             }
@@ -126,6 +143,7 @@ private:
     std::function<void (double)> callback;
     double lastStamp = 0.0, lastRun = 0.0, emaDelta = kNominalDt;
     bool   haveEma   = false;
+    bool   shortRun  = false; // previous delta was much-shorter (debounces the fast-attack snap)
     int    countdown = 1;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FrameClock)
