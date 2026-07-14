@@ -1455,16 +1455,17 @@ static void testRapidForcedSwapDryFill()
     const double freq = 220.0;
     const float amp = 0.25f;
 
-    // Fire swap1 (settled), then swap2 a few blocks later -- during swap1's ~28 ms
-    // fade-in (fade-out ~6 ms ends ~block 3; fade-in spans ~blocks 3..13 @128/48k).
+    // Fire swap1 (settled), then swap2 a few blocks later. @128/48k the fade-out is
+    // ~6 ms (~2.25 blocks, blocks 6..8) and the fade-in ~28 ms (~blocks 8..19), so
+    // swap2 at block 12 lands in the fade-IN and block 7 lands in the fade-OUT.
     const int settle    = 375;   // 1 s to settle `from`
     const int swap1At    = 6;     // blocks after settle
-    const int swap2At    = 12;    // during swap1's fade-in
     const int tail       = 40;    // run past swap2's fade-in
     const int win        = 96;    // 2 ms RMS window
 
-    struct Case { const char* name; anamorph::EngineParameters from, swap1, swap2; bool assertSwap2Present; };
-    Case cases[2];
+    struct Case { const char* name; anamorph::EngineParameters from, swap1, swap2;
+                  int s2at; bool assertSwap2Present; bool assertSwap2Silent; };
+    Case cases[4] {};
 
     // Control: both swaps latency-neutral (OS off throughout). Ordinary rapid undo
     // pair -- must stay dry-filled the whole way.
@@ -1472,16 +1473,42 @@ static void testRapidForcedSwapDryFill()
     cases[0].from.width = 1.3f;
     cases[0].swap1.width = 0.8f;
     cases[0].swap2.width = 1.5f; cases[0].swap2.mix = 0.85f;
-    cases[0].assertSwap2Present = true;
+    cases[0].s2at = 12; cases[0].assertSwap2Present = true;
 
-    // Discriminating: swap1 engages oversampling (latency-crossing: correctly ducks
+    // Discriminating A: swap1 engages oversampling (latency-crossing: correctly ducks
     // to silence), swap2 keeps OS on (latency-neutral vs swap1) and only moves a
-    // continuous control -- the correct engine dry-fills it; the stale engine does not.
-    cases[1].name = "latency-cross -> neutral (discriminating)";
+    // continuous control -- the correct engine RE-ENABLES dry-fill at the NEW latency
+    // offset; the stale engine keeps the "no dry-fill" decision and dips to silence.
+    cases[1].name = "latency-cross -> neutral (re-enable dry-fill)";
     cases[1].from.algorithm = anamorph::Algorithm::Chorus; cases[1].from.algoAmount = 0.3f; // OS off (default)
     cases[1].swap1 = cases[1].from; cases[1].swap1.oversample = anamorph::OversampleFactor::x4; // OS engages -> latency
     cases[1].swap2 = cases[1].swap1; cases[1].swap2.width = 1.6f; // OS stays on: neutral, continuous-only
-    cases[1].assertSwap2Present = true;
+    cases[1].s2at = 12; cases[1].assertSwap2Present = true;
+
+    // Discriminating B (reverse latency direction): swap1 latency-neutral (dry-fills),
+    // swap2 ENGAGES oversampling during swap1's fade-in (latency-crossing). The correct
+    // engine re-evaluates dryDuck=false and duck-to-silences swap2 (a latency change
+    // cannot be dry-filled seamlessly -- the ring offset would jump); the stale engine
+    // keeps swap1's dryDuck=true + offset 0 and dry-fills at the WRONG offset. So the
+    // correct engine reaches near-silence at swap2's bottom, the stale one does not.
+    cases[2].name = "neutral -> latency-cross during fade-IN (disable dry-fill, no wrong-offset read)";
+    cases[2].from.algorithm = anamorph::Algorithm::Chorus; cases[2].from.algoAmount = 0.3f; // OS off
+    cases[2].swap1 = cases[2].from; cases[2].swap1.width = 0.8f;                            // neutral (OS off)
+    cases[2].swap2 = cases[2].swap1; cases[2].swap2.oversample = anamorph::OversampleFactor::x4; // OS engages -> latency
+    cases[2].s2at = 12; cases[2].assertSwap2Silent = true;
+
+    // Discriminating C: the FADE-OUT retarget/tighten path. swap2 arrives while swap1
+    // is still FADING OUT (before the silent bottom), so it hits the "else if
+    // (pendingForced)" AND-down branch rather than the FadeIn re-duck. swap1 is
+    // neutral (dry-fills); swap2 turns latency-crossing, so the tighten must set
+    // dryDuck=false and the swap must reach silence. The stale engine leaves swap1's
+    // dryDuck=true + offset 0 in place and dry-fills at the wrong offset (stays
+    // present). Exercises the tighten branch that the fade-IN cases do not.
+    cases[3].name = "neutral -> latency-cross during fade-OUT (tighten branch)";
+    cases[3].from.algorithm = anamorph::Algorithm::Chorus; cases[3].from.algoAmount = 0.3f; // OS off
+    cases[3].swap1 = cases[3].from; cases[3].swap1.width = 0.8f;                            // neutral (OS off)
+    cases[3].swap2 = cases[3].swap1; cases[3].swap2.oversample = anamorph::OversampleFactor::x4; // OS engages -> latency
+    cases[3].s2at = 7; cases[3].assertSwap2Silent = true; // block 7 = during swap1's fade-out
 
     for (const auto& c : cases)
     {
@@ -1510,11 +1537,11 @@ static void testRapidForcedSwapDryFill()
         double winSq = 0.0; int winN = 0; double minAfterSwap2 = 1.0e9;
         bool bad = false;
         auto p = c.from;
-        const int total = swap2At + tail;
+        const int total = c.s2at + tail;
         for (int nb = 0; nb < total; ++nb)
         {
             if (nb == swap1At) { engine.requestDuck(); p = c.swap1; }
-            if (nb == swap2At) { engine.requestDuck(); p = c.swap2; }
+            if (nb == c.s2at)  { engine.requestDuck(); p = c.swap2; }
             engine.setParameters (p);
             runBlock();
             for (int i = 0; i < block; ++i)
@@ -1525,7 +1552,7 @@ static void testRapidForcedSwapDryFill()
                 if (++winN == win)
                 {
                     const double r = std::sqrt (winSq / win);
-                    if (nb >= swap2At) minAfterSwap2 = std::min (minAfterSwap2, r);
+                    if (nb >= c.s2at) minAfterSwap2 = std::min (minAfterSwap2, r);
                     winSq = 0.0; winN = 0;
                 }
             }
@@ -1548,6 +1575,8 @@ static void testRapidForcedSwapDryFill()
         check (! bad, "rapid forced-swap stream is free of NaN/Inf/denormals");
         if (c.assertSwap2Present)
             check (ratio > 0.30, "second forced swap re-evaluates dry-fill and keeps audio present");
+        if (c.assertSwap2Silent)
+            check (ratio < 0.15, "latency-crossing second swap re-evaluates to duck-to-silence (no stale wrong-offset dry read)");
     }
 }
 

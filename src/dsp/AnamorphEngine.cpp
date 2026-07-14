@@ -701,15 +701,16 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         // target is set once per block in setParameters, isSmoothing() only
         // advances inside the crossfade's own getNextValue calls, and duckDry is
         // latched above for the whole block.
-        // Read offset: a dry-filled duck reads at the offset latched when the
-        // duck began (dryDuckLat == lat by construction at the start; a latency-
-        // crossing mid-duck retarget moves lat at its bottom, and re-aligning the
-        // read there would step the dry stream at full weight). Outside a dry
-        // duck the Bypass crossfade reads at the live latency as before. If both
-        // consumers are active in the same block they share the duck's offset --
-        // only reachable when Bypass is toggled during the ~28 ms fade-in after
-        // a latency-crossing retarget of a dry duck, where the sub-ms alignment
-        // slip is far below the transition already in progress.
+        // Read offset: a dry-filled duck reads at the offset latched when the duck
+        // began (dryDuckLat). Dry-fill is engaged ONLY when the swap keeps the
+        // reported latency (setParameters gates dryDuck on predictLatency(target)
+        // == getLatencySamples(), and a same-duck retarget that turns the swap
+        // latency-crossing ANDs dryDuck back to false -- it is never re-enabled
+        // mid-fade). So whenever duckDry is true here, the heard latency has not
+        // changed across the duck and dryDuckLat == lat: the dry read is always
+        // aligned, and the shared-offset case with the Bypass crossfade (both
+        // reading at the same offset) can never carry a latency mismatch. Outside a
+        // dry duck the Bypass crossfade reads at the live latency as before.
         const bool bypassAudible = bypassBlend.isSmoothing()
                                 || bypassBlend.getTargetValue() > 0.0f;
         float* bxL = bypassDryScratch.getWritePointer (0);
