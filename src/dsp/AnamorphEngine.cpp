@@ -787,7 +787,7 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         applyWidth (L[i], R[i], widthSmooth.getNextValue());
 
     // -------- Multiband Width (Advanced) ------------------------------------
-    // Reconstruct the dry through the SAME gliding crossovers as the wet, at unit
+    // Reconstruct the dry through the SAME crossover banks as the wet, at unit
     // width -- a phase-matched A(dry) -- so a partial Mix never combs the mono sum
     // (Known Issue #1). Solo-agnostic: the wet always sums every band.
     // Multiband Enable is a short click-free OUTPUT crossfade (the bypassBlend model),
@@ -826,8 +826,9 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         // wet instead of its m=1 float re-blend, and the live Measure readout
         // follows the delay-aligned CLEAN dry while gated. Both dry delay rings
         // keep being written below, so a Mix dip re-engages against warm lock-step
-        // history and the bank re-syncs its cutoffs the block it resumes
-        // (MultibandWidth's align re-sync, KI #1). Exact compares, no epsilon.
+        // history; the dry bank's cutoffs can never drift while gated -- they are
+        // fixed per crossover bank and always assigned with the wet's at a fade
+        // start (0.8.10, KI #1). Exact compares, no epsilon.
         fullWetIdle = ! blending
                    && ! mixSmooth.isSmoothing()
                    && ! (std::abs (mixSmooth.getCurrentValue() - 1.0f) > 0.0f)

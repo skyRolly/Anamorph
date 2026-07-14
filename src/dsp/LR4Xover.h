@@ -47,6 +47,21 @@ public:
         update();
     }
 
+    // Adopt another crossover's ladder state (coefficients untouched). Used by
+    // the fixed-cutoff bank crossfade: the incoming bank continues the outgoing
+    // bank's integrator history, so its first samples carry no charge-up
+    // transient and the ~12 ms fade only has the coefficient difference to mask.
+    void copyStateFrom (const LR4Xover& other) noexcept
+    {
+        for (int c = 0; c < 2; ++c)
+        {
+            s1[c] = other.s1[c];
+            s2[c] = other.s2[c];
+            s3[c] = other.s3[c];
+            s4[c] = other.s4[c];
+        }
+    }
+
     // Low/high split, one channel (0 or 1). Identical arithmetic to
     // juce::dsp::LinkwitzRileyFilter<float>::processSample (in, low, high).
     void processSample (int channel, float inputValue, float& outputLow, float& outputHigh) noexcept

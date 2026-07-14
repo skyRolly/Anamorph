@@ -9,22 +9,14 @@ void MultibandWidth::prepare (double sampleRate, int maxBlock)
 {
     sr = sampleRate;
     juce::ignoreUnused (maxBlock); // LR4Xover state is flat, not block-sized
-    for (auto* x : { &x1, &x2, &x3, &dx1, &dx2, &dx3,
-                     &ax[0], &ax[1], &ax[2], &dax[0], &dax[1], &dax[2] })
-        x->prepare (sampleRate);
-    // ~8 octaves/sec slew cap (matches Mono Maker), so a quick split drag never
-    // modulates the LR cutoff fast enough to pitch-shift (0.6.7 #1).
-    glideCoeff = std::exp2 (8.0f / (float) sr);
-    for (int i = 0; i < 3; ++i) { currentF[i] = targetF[i]; }
-    x1.setCutoffFrequency (currentF[0]);
-    x2.setCutoffFrequency (currentF[1]);
-    x3.setCutoffFrequency (currentF[2]);
-    // The dry-align bank tracks the same cutoffs in lockstep (Known Issue #1).
-    dx1.setCutoffFrequency (currentF[0]);
-    dx2.setCutoffFrequency (currentF[1]);
-    dx3.setCutoffFrequency (currentF[2]);
-    // The compensation allpasses share each split's cutoff (ax[i]/dax[i] at f[i]).
-    for (int i = 0; i < 3; ++i) { ax[i].setCutoffFrequency (currentF[i]); dax[i].setCutoffFrequency (currentF[i]); }
+    for (auto* b : { &bank[0], &bank[1] })
+        for (auto* x : { &b->x[0], &b->x[1], &b->x[2], &b->dx[0], &b->dx[1], &b->dx[2],
+                         &b->ax[0], &b->ax[1], &b->ax[2], &b->dax[0], &b->dax[1], &b->dax[2] })
+            x->prepare (sampleRate);
+    // ~12 ms cutoff crossfade: the house click-free fade length (SoloMonitor /
+    // Multiband Enable use the same), long enough to mask a coefficient step,
+    // short enough that a split drag tracks the mouse without perceptible lag.
+    fadeLen = juce::jmax (1, (int) std::lround (0.012 * sampleRate));
     // One-pole on the band widths at ~20 ms (the global Width smoother's ramp),
     // so a fast band-width drag glides instead of stepping per block (0.7.0 #1).
     wCoeff = std::exp (-1.0f / (0.02f * (float) sr));
@@ -34,24 +26,52 @@ void MultibandWidth::prepare (double sampleRate, int maxBlock)
 
 void MultibandWidth::reset()
 {
-    x1.reset();
-    x2.reset();
-    x3.reset();
-    dx1.reset();
-    dx2.reset();
-    dx3.reset();
-    for (int i = 0; i < 3; ++i) { ax[i].reset(); dax[i].reset(); }
-    // Settle the width glide to its target. reset() only runs while the engine is
-    // ducked to silence (or in prepare), so snapping here can never click and the
-    // band starts at its true width when audio resumes.
+    for (auto* b : { &bank[0], &bank[1] })
+        for (auto* x : { &b->x[0], &b->x[1], &b->x[2], &b->dx[0], &b->dx[1], &b->dx[2],
+                         &b->ax[0], &b->ax[1], &b->ax[2], &b->dax[0], &b->dax[1], &b->dax[2] })
+            x->reset();
+    // Snap both banks to the target cutoffs and drop any fade in flight. reset()
+    // only runs while the engine is ducked to silence (or in prepare / while the
+    // enable blend is ~0), so the coefficient jump can never click and the bank
+    // starts at its true crossovers when audio resumes.
+    setBankCutoffs (bank[0]);
+    setBankCutoffs (bank[1]);
+    active  = 0;
+    fading  = false;
+    fadePos = 0;
+    // Settle the width glide to its target (same silent-reset argument).
     for (int i = 0; i < 4; ++i) { currentW[i] = targetW[i]; }
+}
+
+void MultibandWidth::setBankCutoffs (XoverBank& b) noexcept
+{
+    for (int i = 0; i < 3; ++i)
+    {
+        b.f[i] = targetF[i];
+        b.x[i] .setCutoffFrequency (targetF[i]);
+        b.dx[i].setCutoffFrequency (targetF[i]);  // dry twins stay phase-locked (KI #1)
+        b.ax[i].setCutoffFrequency (targetF[i]);  // compensation allpasses share the split cutoff
+        b.dax[i].setCutoffFrequency (targetF[i]);
+    }
+}
+
+void MultibandWidth::copyBankState (XoverBank& to, const XoverBank& from) noexcept
+{
+    for (int i = 0; i < 3; ++i)
+    {
+        to.x[i]  .copyStateFrom (from.x[i]);
+        to.dx[i] .copyStateFrom (from.dx[i]);
+        to.ax[i] .copyStateFrom (from.ax[i]);
+        to.dax[i].copyStateFrom (from.dax[i]);
+    }
 }
 
 void MultibandWidth::setCrossovers (float f1, float f2, float f3) noexcept
 {
     // Keep the three crossovers strictly ordered with a little separation, so a
-    // drag can't cross them over. These are TARGETS; the cutoffs glide toward them
-    // per sample in processBlock (0.6.7 #1).
+    // drag can't cross them over. These are TARGETS; a change crossfades the
+    // output to a bank at the new cutoffs in processBlock (0.8.10 -- the old
+    // per-sample glide swept the allpass phase and audibly pitch-shifted).
     //
     // CRITICAL (0.8.2): clamp every crossover to a Nyquist-safe band [20 Hz, 0.45*sr]
     // BEFORE ordering. Automating a split toward 20 kHz used to push the ordered
@@ -97,105 +117,140 @@ void MultibandWidth::processBlock (float* left, float* right, int numSamples,
         return;
     }
 
-    LR4Xover* xs[3]  = { &x1, &x2, &x3 };
-    LR4Xover* dxs[3] = { &dx1, &dx2, &dx3 };
     const int crossovers = bands - 1; // 1..3
 
-    // Re-sync the dry bank's cutoffs to the live values at block start, so a block
-    // that resumes aligning starts phase-matched (Known Issue #1). The dry
-    // compensation allpasses re-sync with it.
-    if (align)
-        for (int i = 0; i < crossovers; ++i)
-        {
-            dxs[i]->setCutoffFrequency (currentF[i]);
-            dax[i].setCutoffFrequency (currentF[i]);
-        }
-
-    for (int n = 0; n < numSamples; ++n)
+    // Fixed-coefficient cutoff crossfade (0.8.10): if a target moved and no fade
+    // is in flight, hand the LATEST cutoffs to the idle bank -- which adopts the
+    // active bank's ladder state, so it starts transient-free -- and fade the
+    // output over to it. No coefficient ever sweeps, so a moving split carries no
+    // frequency modulation (the old glide detuned the audio for the whole
+    // catch-up); a fade always retargets to the newest cutoffs, so a fast drag
+    // chains short fades instead of banking a long sweep. Checked at block rate:
+    // targets only change between blocks (setCrossovers).
+    if (! fading)
     {
-        // Glide each active cutoff toward its target, capped at a fixed
-        // octaves/second rate so a quick split drag never chirps (0.6.7 #1).
-        for (int i = 0; i < crossovers; ++i)
+        bool moved = false;
+        for (int i = 0; i < crossovers && ! moved; ++i)
+            moved = std::abs (bank[active].f[i] - targetF[i]) > 0.05f;
+        if (moved)
         {
-            if (std::abs (currentF[i] - targetF[i]) > 0.05f)
-            {
-                currentF[i] = targetF[i] > currentF[i]
-                                ? juce::jmin (targetF[i], currentF[i] * glideCoeff)
-                                : juce::jmax (targetF[i], currentF[i] / glideCoeff);
-                xs[i]->setCutoffFrequency (currentF[i]);
-                ax[i].setCutoffFrequency (currentF[i]); // compensation allpass glides with its split
-                if (align) { dxs[i]->setCutoffFrequency (currentF[i]); dax[i].setCutoffFrequency (currentF[i]); } // dry bank locked to the wet
-            }
+            auto& to = bank[1 - active];
+            copyBankState (to, bank[active]);
+            setBankCutoffs (to);
+            fading  = true;
+            fadePos = 0;
         }
+    }
 
-        // Glide each active band width toward its target (one-pole), so a fast
-        // band-width drag never steps the side-gain between blocks (0.7.0 #1).
-        for (int i = 0; i <= crossovers; ++i)
-            currentW[i] = targetW[i] + (currentW[i] - targetW[i]) * wCoeff;
-
-        float curL = left[n], curR = right[n];
+    // Full reconstruction of one sample through one bank. Identical arithmetic
+    // (expression for expression) to the pre-0.8.10 single-bank loop, so the
+    // settled output is bit-exact with it:
+    //   band 0 peels off and seeds the running low-sum; each higher split first
+    //   phase-aligns the low-sum through THAT split's allpass (LR4 lo+hi), then
+    //   peels + adds the next band, telescoping the sum to A1.A2.A3 (flat); the
+    //   final remainder is the top band (it already carries every split's
+    //   high-side phase).
+    auto runWet = [this, crossovers] (XoverBank& bk, float inL, float inR,
+                                      float& outL, float& outR) noexcept
+    {
+        float curL = inL, curR = inR;
         float loL, hiL, loR, hiR;
 
-        // Band 0 (lowest): peel it off, it seeds the running low-sum.
-        xs[0]->processSample (0, curL, loL, hiL);
-        xs[0]->processSample (1, curR, loR, hiR);
+        bk.x[0].processSample (0, curL, loL, hiL);
+        bk.x[0].processSample (1, curR, loR, hiR);
         applyWidth (loL, loR, currentW[0]);
         float accL = loL, accR = loR;
         curL = hiL; curR = hiR;
 
-        // Each higher split: phase-align the running low-sum through THIS split's
-        // allpass (LR4 lo+hi) so it stays coherent with the bands above it, THEN
-        // peel + add the next band. This telescopes the sum to an allpass (flat)
-        // instead of dipping around close crossovers (naive sum was b0+b1+b2+b3).
         for (int i = 1; i < crossovers; ++i)
         {
             float aL0, aL1, aR0, aR1;
-            ax[i].processSample (0, accL, aL0, aL1); accL = aL0 + aL1;
-            ax[i].processSample (1, accR, aR0, aR1); accR = aR0 + aR1;
+            bk.ax[i].processSample (0, accL, aL0, aL1); accL = aL0 + aL1;
+            bk.ax[i].processSample (1, accR, aR0, aR1); accR = aR0 + aR1;
 
-            xs[i]->processSample (0, curL, loL, hiL);
-            xs[i]->processSample (1, curR, loR, hiR);
+            bk.x[i].processSample (0, curL, loL, hiL);
+            bk.x[i].processSample (1, curR, loR, hiR);
             applyWidth (loL, loR, currentW[i]);
             accL += loL; accR += loR;
             curL = hiL; curR = hiR;
         }
 
-        // The final remainder is the top band (no further allpass -- it already
-        // carries every split's high-side phase).
         applyWidth (curL, curR, currentW[crossovers]);
-        accL += curL; accR += curR;
+        outL = accL + curL;
+        outR = accR + curR;
+    };
 
-        left[n]  = accL;
-        right[n] = accR;
+    // The dry twin: reconstruct the dry through the SAME fixed crossovers at unit
+    // width -- the full A(dry) -- so it is phase-identical to the wet at every
+    // instant, including mid-fade (both sides of the fade are blended with the
+    // same weights), and the dry/wet Mix never combs (KI #1 + flat recombination).
+    auto runDry = [crossovers] (XoverBank& bk, float inL, float inR,
+                                float& outL, float& outR) noexcept
+    {
+        float curL = inL, curR = inR;
+        float loL, hiL, loR, hiR;
 
-        // Phase-matched dry: reconstruct the dry through the SAME crossovers at unit
-        // width -- the full A(dry) -- sharing the wet's exact per-sample cutoffs above,
-        // so it can never lag the glide and re-introduce comb during a split drag (KI #1).
-        if (align)
+        bk.dx[0].processSample (0, curL, loL, hiL);
+        bk.dx[0].processSample (1, curR, loR, hiR);
+        float accL = loL, accR = loR;   // unit width -> just the band itself
+        curL = hiL; curR = hiR;
+
+        for (int i = 1; i < crossovers; ++i)
         {
-            float dcurL = dryInL[n], dcurR = dryInR[n];
-            float dloL, dhiL, dloR, dhiR;
-            dxs[0]->processSample (0, dcurL, dloL, dhiL);
-            dxs[0]->processSample (1, dcurR, dloR, dhiR);
-            float daccL = dloL, daccR = dloR;   // unit width -> just the band itself
-            dcurL = dhiL; dcurR = dhiR;
+            float aL0, aL1, aR0, aR1;
+            bk.dax[i].processSample (0, accL, aL0, aL1); accL = aL0 + aL1;
+            bk.dax[i].processSample (1, accR, aR0, aR1); accR = aR0 + aR1;
 
-            // Same allpass phase-compensation as the wet, so A(dry) telescopes to
-            // the identical A1.A2.A3 allpass -- the dry/wet Mix stays comb-free AND
-            // the dry reference is itself flat (Known Issue #1 + flat recombination).
-            for (int i = 1; i < crossovers; ++i)
+            bk.dx[i].processSample (0, curL, loL, hiL);
+            bk.dx[i].processSample (1, curR, loR, hiR);
+            accL += loL; accR += loR;
+            curL = hiL; curR = hiR;
+        }
+        outL = accL + curL;
+        outR = accR + curR;
+    };
+
+    for (int n = 0; n < numSamples; ++n)
+    {
+        // Glide each active band width toward its target (one-pole), so a fast
+        // band-width drag never steps the side-gain between blocks (0.7.0 #1).
+        // Shared by both banks: a fade never changes a band's width.
+        for (int i = 0; i <= crossovers; ++i)
+            currentW[i] = targetW[i] + (currentW[i] - targetW[i]) * wCoeff;
+
+        if (fading)
+        {
+            auto& from = bank[active];
+            auto& to   = bank[1 - active];
+
+            float aL, aR, bL, bR;
+            runWet (from, left[n], right[n], aL, aR);
+            runWet (to,   left[n], right[n], bL, bR);
+            ++fadePos;
+            const float w = (float) fadePos / (float) fadeLen; // ends at exactly 1
+            left[n]  = aL + w * (bL - aL);
+            right[n] = aR + w * (bR - aR);
+
+            if (align)
             {
-                float aL0, aL1, aR0, aR1;
-                dax[i].processSample (0, daccL, aL0, aL1); daccL = aL0 + aL1;
-                dax[i].processSample (1, daccR, aR0, aR1); daccR = aR0 + aR1;
-
-                dxs[i]->processSample (0, dcurL, dloL, dhiL);
-                dxs[i]->processSample (1, dcurR, dloR, dhiR);
-                daccL += dloL; daccR += dloR;
-                dcurL = dhiL; dcurR = dhiR;
+                float daL, daR, dbL, dbR;
+                runDry (from, dryInL[n], dryInR[n], daL, daR);
+                runDry (to,   dryInL[n], dryInR[n], dbL, dbR);
+                dryOutL[n] = daL + w * (dbL - daL);
+                dryOutR[n] = daR + w * (dbR - daR);
             }
-            daccL += dcurL; daccR += dcurR;
-            dryOutL[n] = daccL; dryOutR[n] = daccR;
+
+            if (fadePos >= fadeLen)
+            {
+                active = 1 - active; // the new-cutoff bank takes over
+                fading = false;      // a further move retriggers next block
+            }
+        }
+        else
+        {
+            runWet (bank[active], left[n], right[n], left[n], right[n]);
+            if (align)
+                runDry (bank[active], dryInL[n], dryInR[n], dryOutL[n], dryOutR[n]);
         }
     }
 }

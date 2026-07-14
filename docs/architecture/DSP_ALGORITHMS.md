@@ -79,9 +79,18 @@ deepens as splits approach each other (measured −17.75 dB at three close split
 the running low-sum through each higher split's allpass (`ax[i]` = LR4 lo+hi) before adding the
 next band, so the sum telescopes to `A1·A2·A3` (flat); only `bands−2` extra allpasses are needed
 (0 for 1–2 bands, 1 for 3, 2 for 4) and they add **zero integer latency**. A **parallel dry bank**
-(`dx1,dx2,dx3` + `dax[]`) reconstructs the dry at unit width with the identical compensation,
-sharing the wet's exact gliding cutoffs → phase-matched `A(dry)` for the dry/wet Mix. 1-band fast
-path skips crossovers. Cutoffs glide per sample; widths one-pole smoothed (~20 ms).
+(`dx[]` + `dax[]`) reconstructs the dry at unit width with the identical compensation, sharing the
+wet's exact per-bank cutoffs → phase-matched `A(dry)` for the dry/wet Mix. 1-band fast path skips
+crossovers. **Cutoff changes are fixed-coefficient bank crossfades (0.8.10)**: two complete
+crossover banks (wet + dry + compensation each) at FIXED cutoffs; a target change hands the
+latest cutoffs to the idle bank (state-copied from the active one, so no charge-up) and the
+output crossfades over ~12 ms, always retargeting to the newest values. The previous per-sample
+glide (~8 oct/s cap) swept the LR4 allpass phase — a swept allpass shifts every frequency by
+`dφ/dt/2π`, which audibly detuned the audio (~2.5 Hz per moving split, 20–35 cents on low
+content) for the whole catch-up of a fast drag, continuing after the drag stopped. A fade between
+two fixed filters carries no frequency modulation; a large jump costs only a brief sub-dB
+amplitude ripple where the banks' allpass phases differ (regression: Test 29). Widths one-pole
+smoothed (~20 ms), shared by both banks.
 - **Crossover safety**: Nyquist clamp `[20, 0.45·sr]` applied **before** ordering, then the
   1.1× separation ordering re-clamped **top-down** so separation can never push a cutoff past
   Nyquist (the 0.8.2 "+600 dB" fix). `.cpp:55-71`.
@@ -90,8 +99,9 @@ path skips crossovers. Cutoffs glide per sample; widths one-pole smoothed (~20 m
 
 ## SoloMonitor — `src/dsp/SoloMonitor.{h,cpp}`
 
-POST-EVERYTHING audition: mirrors the Multiband split (same LR crossovers, same glide) and is
-**called every block**. Output is a per-band smoothed crossfade: `passGain` (→1
+POST-EVERYTHING audition: mirrors the Multiband split (same LR crossovers, same fixed-coefficient
+bank crossfade for cutoff changes, 0.8.10) and is **called every block**. Output is a per-band
+smoothed crossfade: `passGain` (→1
 when nothing soloed) sums the true output; each `bandGain[b]` (`SmoothedValue`, ~12 ms) sums in
 band *b* only while soloed. Never changes any effect stage.
 Invariant: `mask == 0` → settled `passGain = 1` → **bit-exact** true output. Same Nyquist clamp +
@@ -99,12 +109,12 @@ Invariant: `mask == 0` → settled `passGain = 1` → **bit-exact** true output.
 design property the 0.8.7 fix depends on: the call must run every block so the crossfade can
 advance whenever any gain is unsettled).
 **Settled fast path (0.8.9 / H1):** once nothing is soloed, every gain smoother is fully settled
-(`passGain == 1`, all `bandGain == 0`) and no crossover glide is pending, the per-sample work
+(`passGain == 1`, all `bandGain == 0`) and no cutoff change is pending, the per-sample work
 (6 LR4 `processSample` + 5 smoother ticks) is skipped — the output is provably the input — and
 the filter bank goes **cold** (the engine's `mbRunning` warm/cold pattern). Re-entry resets the
-filters and snaps the cutoff glide while every band gain is still ~0, so the charge-up is masked
-by the same ~12 ms crossfade that always covered an engage. Measured: ~half of the transparent
-engine floor.
+filters and snaps the cutoffs to their targets while every band gain is still ~0, so the
+charge-up is masked by the same ~12 ms crossfade that always covered an engage. Measured: ~half
+of the transparent engine floor.
 
 ## LoudnessMatch — `src/dsp/LoudnessMatch.{h,cpp}`
 

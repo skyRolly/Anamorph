@@ -45,9 +45,13 @@ factor) but the stage's position in the chain is fixed.
 
 `MonoMaker`, `MultibandWidth`, and `SoloMonitor` all use the local flat-state `LR4Xover`
 (src/dsp/LR4Xover.h, Wave 2 / H6 — bit-identical arithmetic to the
-`juce::dsp::LinkwitzRileyFilter` it replaced, LP/HP dual output) with an identical per-sample multiplicative glide
-(`glideCoeff = exp2(8/sr)`, ~8 oct/s). `MultibandWidth` and `SoloMonitor` share the identical
+`juce::dsp::LinkwitzRileyFilter` it replaced, LP/HP dual output). Cutoff-change smoothing
+differs by stage (0.8.10): `MonoMaker` keeps the per-sample multiplicative glide
+(`glideCoeff = exp2(8/sr)`, ~8 oct/s); `MultibandWidth` and `SoloMonitor` instead crossfade
+(~12 ms) between two complete state-copied banks at FIXED cutoffs — a swept LR4's allpass
+phase rotation is an audible pitch shift, which the fixed-coefficient fade eliminates
+(CHANGELOG [0.8.10], Test 29). `MultibandWidth` and `SoloMonitor` share the identical
 Nyquist-safe clamp `[20, max(1000, 0.45·sr)]` + 1.1× top-down ordering.
 
-Evidence [Verified]: src/dsp/MonoMaker.cpp:17,33-37; MultibandWidth.cpp:55-71,113-123;
-SoloMonitor.cpp:44-58.
+Evidence [Verified]: src/dsp/MonoMaker.cpp:17,33-37; MultibandWidth.cpp (fade trigger +
+`setBankCutoffs`); SoloMonitor.cpp (same pattern).

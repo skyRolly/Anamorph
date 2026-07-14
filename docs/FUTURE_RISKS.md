@@ -36,15 +36,18 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 - **Mitigation:** Treat any bump as a Build System change → ADR + Architecture Review; run full DSP
   tests + pluginval (3 OSes) + a manual audition + the RELEASE_COMPATIBILITY_CHECKLIST after.
 
-## RISK-002 — Always-on banks / per-sample coefficient recompute (CPU)
-- **Risk:** `SoloMonitor` runs every block even with multiband off and no solo (INC-009 invariant),
-  and `MonoMaker`/`MultibandWidth`/`SoloMonitor` recompute Linkwitz-Riley coefficients **per sample**
-  while crossovers glide. Under heavy multiband automation or on low-power hosts this could be a hot
-  path. It is unprofiled.
+## RISK-002 — Always-on banks / crossover-move cost (CPU)
+- **Risk:** `SoloMonitor` runs every block even with multiband off and no solo (INC-009 invariant;
+  since 0.8.9/H1 the settled passthrough goes cold, shrinking this), and `MonoMaker` still
+  recomputes Linkwitz-Riley coefficients **per sample** while its cutoff glides. Since 0.8.10,
+  `MultibandWidth`/`SoloMonitor` crossover moves instead run **two fixed-coefficient banks for the
+  ~12 ms crossfade** (2× the stage's filter ticks while fading, chained during a sustained
+  split-frequency automation ramp) with coefficients recomputed once per fade. Under heavy
+  multiband automation or on low-power hosts this could be a hot path. It is unprofiled.
 - **Impact:** Higher-than-necessary CPU in Simple mode and CPU spikes during fast split automation.
 - **Likelihood (evidence-based):** Medium — the cost is real and constant; whether it matters
   depends on host/SR/buffer, which are unmeasured.
-- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:845; src/dsp/MultibandWidth.cpp:113-123;
+- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:845; src/dsp/MultibandWidth.cpp (fade path);
   Devin PR #50 review (efficiency note); `docs/architecture/PERFORMANCE_BUDGET.md` (TODOs).
 - **Mitigation:** Profile (PERFORMANCE_BUDGET TODO); consider skipping the SoloMonitor filters when
   settled at `passGain==1` (a DSP change → ADR + Review). Correctness is unaffected either way.

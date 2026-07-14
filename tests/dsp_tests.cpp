@@ -1658,6 +1658,154 @@ static void testMultibandFlatRecombination()
 }
 
 // ---------------------------------------------------------------------------
+//  Fast split drags must not pitch-shift (0.8.10). The old per-sample cutoff
+//  glide (~8 oct/s cap) swept the LR4 allpass phase, and a swept allpass shifts
+//  every frequency by dphi/dt: a fast multi-octave drag detuned the audio by
+//  several Hz (~20-35 cents on low content) and, because the cap banked the
+//  sweep, KEPT detuning for hundreds of ms after the drag stopped. With the
+//  fixed-coefficient bank crossfade the audio must return to the exact input
+//  pitch within a few ms of the last target change -- and the drag itself must
+//  stay click-free. Covers both crossover consumers: the Multiband
+//  reconstruction and the Band Solo monitor (the band-solo whole-band drag).
+static void testMultibandSplitDragNoPitchShift()
+{
+    std::printf ("Test 29: fast split drags do not pitch-shift (multiband + solo monitor)\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0;
+    const int block = 128;
+    const double tone = 150.0;
+    const float amp = 0.25f;
+
+    // Worst |cents| deviation from `tone` over ~100 ms chunks of s[start..end),
+    // measured from interpolated positive-going zero crossings (sub-sample
+    // precision; a steady allpass-filtered sine measures ~0 cents).
+    auto worstCents = [&] (const std::vector<float>& s, int start, int end) -> double
+    {
+        double worst = 0.0;
+        const int chunk = (int) (0.1 * sr);
+        for (int c0 = start; c0 + chunk <= end; c0 += chunk)
+        {
+            double first = -1.0, last = -1.0;
+            int periods = 0;
+            for (int i = c0 + 1; i < c0 + chunk; ++i)
+                if (s[(size_t) (i - 1)] <= 0.0f && s[(size_t) i] > 0.0f)
+                {
+                    const double dy = (double) s[(size_t) i] - (double) s[(size_t) (i - 1)];
+                    const double t  = (i - 1) + (dy > 0.0 ? -(double) s[(size_t) (i - 1)] / dy : 0.0);
+                    if (first < 0.0) first = t;
+                    else             { last = t; ++periods; }
+                }
+            if (periods < 3 || last <= first) continue;
+            const double f = (double) periods * sr / (last - first);
+            worst = std::max (worst, std::abs (1200.0 * std::log2 (f / tone)));
+        }
+        return worst;
+    };
+
+    // Drive `step` with a fast 6-octave DOWNWARD split drag (6400 -> 100 Hz over
+    // 0.25 s, ~24 oct/s -- a quick mouse flick), then hold the target. The split
+    // sweeps right past the 150 Hz tone; under the old 8 oct/s glide cap the
+    // cutoff was still ~2 octaves behind at drag end and crossed the tone during
+    // the banked CATCH-UP, several hundred ms after the "mouse" stopped. Returns
+    // the captured left-channel stream.
+    auto runDrag = [&] (auto&& setSplit, auto&& step, int totalBlocks) -> std::vector<float>
+    {
+        std::vector<float> outStream;
+        outStream.reserve ((size_t) (totalBlocks * block));
+        double phase = 0.0;
+        const double inc = 2.0 * juce::MathConstants<double>::pi * tone / sr;
+        std::vector<float> l ((size_t) block), r ((size_t) block);
+        for (int nb = 0; nb < totalBlocks; ++nb)
+        {
+            const double t = (double) (nb * block) / sr;
+            const double dragT = juce::jlimit (0.0, 1.0, t / 0.25);
+            setSplit (6400.0f * (float) std::exp2 (-6.0 * dragT)); // block cadence ~ a UI drag
+            for (int i = 0; i < block; ++i)
+            {
+                l[(size_t) i] = r[(size_t) i] = amp * (float) std::sin (phase);
+                phase += inc;
+            }
+            step (l.data(), r.data(), block);
+            for (int i = 0; i < block; ++i) outStream.push_back (l[(size_t) i]);
+        }
+        return outStream;
+    };
+
+    auto validate = [&] (const char* name, const std::vector<float>& s)
+    {
+        // The drag ends at 0.25 s; the last ~12 ms fade must be done well before
+        // +50 ms. Under the old glide the banked catch-up swept the crossover
+        // through the tone inside this window (measured >25 cents on the
+        // multiband path, ~+2.5 Hz per moving split).
+        const int measureStart = (int) (0.30 * sr);
+        const int measureEnd   = (int) juce::jmin ((double) s.size(), 0.95 * sr);
+        const double cents = worstCents (s, measureStart, measureEnd);
+
+        double maxDelta = 0.0;
+        bool bad = false;
+        for (size_t i = 1; i < s.size(); ++i)
+        {
+            if (isBad (s[i])) bad = true;
+            if (i > (size_t) (0.02 * sr)) // skip the initial filter charge-up
+                maxDelta = std::max (maxDelta, (double) std::abs (s[i] - s[i - 1]));
+        }
+        std::printf ("  %-13s worst post-drag deviation = %.2f cents (old glide swept the tone here); max delta = %.4f\n",
+                     name, cents, maxDelta);
+        check (! bad, "split-drag stream is free of NaN/Inf");
+        check (cents < 5.0, "no pitch shift after the split drag stops");
+        check (maxDelta < 0.04, "no click during / after the split drag");
+    };
+
+    {
+        anamorph::MultibandWidth mb;
+        mb.prepare (sr, block);
+        mb.setBandCount (2);
+        mb.setWidths (1.0f, 1.0f, 1.0f, 1.0f);
+        mb.setCrossovers (6400.0f, 8000.0f, 16000.0f);
+        std::vector<float> z ((size_t) block, 0.0f), z2 ((size_t) block, 0.0f);
+        for (int nb = 0; nb < 40; ++nb) // settle from prepare defaults
+        {
+            std::fill (z.begin(), z.end(), 0.0f);
+            std::fill (z2.begin(), z2.end(), 0.0f);
+            mb.processBlock (z.data(), z2.data(), block);
+        }
+        auto s = runDrag ([&] (float f) { mb.setCrossovers (f, 8000.0f, 16000.0f); },
+                          [&] (float* L, float* R, int n) { mb.processBlock (L, R, n); },
+                          (int) (1.0 * sr) / block);
+        validate ("multiband:", s);
+    }
+
+    {
+        // The band-solo whole-band drag: band 0 stays soloed while its upper
+        // split sweeps down past the tone. The tone ends up outside the soloed
+        // band (LP4 at 100 Hz leaves ~-14 dB of the 150 Hz sine), but it stays a
+        // clean measurable sine throughout -- and under the old glide its pitch
+        // kept shifting long after the drag stopped.
+        anamorph::SoloMonitor mon;
+        mon.prepare (sr, block);
+        mon.setBandCount (2);
+        mon.setCrossovers (6400.0f, 8000.0f, 16000.0f);
+        // Engage solo on band 0 (contains the tone) and let the crossfade settle.
+        std::vector<float> l ((size_t) block), r ((size_t) block);
+        double phase = 0.0;
+        const double inc = 2.0 * juce::MathConstants<double>::pi * tone / sr;
+        for (int nb = 0; nb < 40; ++nb)
+        {
+            for (int i = 0; i < block; ++i)
+            {
+                l[(size_t) i] = r[(size_t) i] = amp * (float) std::sin (phase);
+                phase += inc;
+            }
+            mon.process (l.data(), r.data(), 0x1, block);
+        }
+        auto s = runDrag ([&] (float f) { mon.setCrossovers (f, 8000.0f, 16000.0f); },
+                          [&] (float* L, float* R, int n) { mon.process (L, R, 0x1, n); },
+                          (int) (1.0 * sr) / block);
+        validate ("solo monitor:", s);
+    }
+}
+
+// ---------------------------------------------------------------------------
 int main()
 {
     std::printf ("=== Anamorph DSP self-tests ===\n");
@@ -1688,6 +1836,7 @@ int main()
     testForcedSwapNoDropout();
     testRapidForcedSwapDryFill();
     testMultibandFlatRecombination();
+    testMultibandSplitDragNoPitchShift();
     testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);

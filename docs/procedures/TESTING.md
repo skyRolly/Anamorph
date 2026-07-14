@@ -15,14 +15,17 @@ scripts/run-tests.sh             # runs the AnamorphTests console app
 
 ### What the tests cover
 
-`tests/dsp_tests.cpp` has **27 DSP tests** using a `check(cond, "what")` harness, covering: MS
+`tests/dsp_tests.cpp` has **28 DSP tests** using a `check(cond, "what")` harness, covering: MS
 round-trip (bit-exact), transparent default, true-bypass null + latency match, Mono Maker
 (post-Mix), Multiband mono-compat, Solo band selectivity + transparency, Level Match
 (unity/no-ratchet/silence-freeze/mix-coupling/multiband-unity), crossover automation safety,
 NaN recovery, four click-free crossfade tests (transitions, bypass, multiband enable,
-solo+multiband-enable), and the dry-align gate comb regression (`testDryAlignGateRecomb`,
+solo+multiband-enable), the dry-align gate comb regression (`testDryAlignGateRecomb`,
 Wave 2 / H4: a Mix dip after a gated full-wet stretch must re-engage the dry bank
-phase-matched — the KI-#1 metric). It additionally carries **one state-restoration robustness guard**,
+phase-matched — the KI-#1 metric), and the split-drag pitch regression
+(`testMultibandSplitDragNoPitchShift`, Test 29: after a fast multi-octave split drag the
+post-drag pitch deviation must stay < 5 cents on both the Multiband and Solo-monitor paths —
+the pre-0.8.10 glide engine measures ~24 cents and fails; click check included). It additionally carries **one state-restoration robustness guard**,
 `testAbActiveClampOnCorruptState` — it drives a corrupted `<AB active="…">` blob through the same
 read+clamp the processor uses (`anamorph::clampAbSlotIndex`, `src/AbSlotIndex.h`) and asserts an
 out-of-range A/B index can never index `abSlot[]`/`abUndo[]` out of bounds, while valid 0/1 are

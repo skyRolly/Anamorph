@@ -78,36 +78,54 @@ public:
                        float* dryOutL = nullptr, float* dryOutR = nullptr) noexcept;
 
 private:
-    // Flat-state LR4 crossovers (H6, Wave 2): bit-identical arithmetic to the
-    // juce::dsp::LinkwitzRileyFilter<float> they replaced, without its
-    // per-sample heap-vector state indexing (see LR4Xover.h).
-    LR4Xover x1; // f1: band1 vs rest
-    LR4Xover x2; // f2: band2 vs rest
-    LR4Xover x3; // f3: band3 vs band4
+    // One complete crossover bank at ONE FIXED set of cutoffs (flat-state
+    // LR4Xover units, H6):
+    //   x[]   -- the wet crossovers (x[0]: band1 vs rest, x[1]: band2 vs rest,
+    //            x[2]: band3 vs band4);
+    //   dx[]  -- a parallel bank that reconstructs the DRY signal at unit width,
+    //            A(dry), so the dry/wet Mix's dry path carries the exact same
+    //            crossover allpass phase as the wet and never combs (KI #1);
+    //   ax[]  -- the reconstruction phase-compensation allpasses (flat
+    //            recombination): the running low-sum passes through each higher
+    //            split's allpass (LR4 lo+hi) before the next band is added, so
+    //            close crossovers no longer dip (only i = 1..bands-2 are used);
+    //   dax[] -- the dry twins of ax[], keeping A(dry) phase-identical to the wet.
+    // All 12 filters of a bank share f[], so wet, dry, and compensation stay
+    // phase-locked by construction.
+    struct XoverBank
+    {
+        LR4Xover x[3];
+        LR4Xover dx[3];
+        LR4Xover ax[3];
+        LR4Xover dax[3];
+        float    f[3] { 180.0f, 800.0f, 3000.0f };
+    };
 
-    // A SECOND, parallel crossover bank that reconstructs the DRY signal at unit
-    // width -- A(dry) -- so the dry/wet Mix's dry path carries the exact same
-    // crossover allpass phase as the wet and the recombination never combs. Driven
-    // by the SAME gliding cutoffs as x1..x3, in lockstep, so a fast split drag stays
-    // phase-matched (a separate bank that lagged the glide would comb) (KI #1).
-    LR4Xover dx1, dx2, dx3;
+    // Cutoff changes are FIXED-COEFFICIENT CROSSFADES, not sweeps (0.8.10). The
+    // old per-sample glide (~8 oct/s cap, 0.6.7 #1) swept the LR4 allpass phase,
+    // and a swept allpass IS a frequency shifter (f_out = f_in + dphi/dt / 2pi):
+    // a fast multi-octave split drag detuned the audio by several Hz -- ~20-35
+    // cents on low content -- for the whole catch-up, which at the 8 oct/s cap
+    // kept sweeping for hundreds of ms AFTER the drag stopped. Instead, a target
+    // change hands the LATEST cutoffs to the idle bank (which adopts the active
+    // bank's ladder state, so no charge-up), and the output crossfades to it over
+    // ~12 ms (the house click-free fade). Neither bank's coefficients ever move,
+    // so the fade carries NO frequency modulation; a big jump only costs a brief
+    // sub-dB amplitude ripple where the two banks' allpass phases differ (phase
+    // deltas wrap mod 2pi in a fade -- a 6-octave jump measures < 4 cents and
+    // < 0.1 dB). A drag becomes a chain of short fades, each to the latest
+    // target, and the audio settles within ~15 ms of the last movement.
+    XoverBank bank[2];
+    int       active  = 0;     // the settled bank; 1-active fades in when moving
+    bool      fading  = false;
+    int       fadePos = 0;     // 0..fadeLen-1 while fading
+    int       fadeLen = 1;     // ~12 ms in samples
 
-    // Reconstruction phase-compensation allpasses (flat-recombination fix): the
-    // running low-sum is passed through each higher split's allpass (LR4 lo+hi)
-    // before the next band is added, so the bands stay phase-coherent and no
-    // longer dip around close crossovers. ax[i] is the allpass at crossover i
-    // (only i = 1..bands-2 are used); dax[] mirrors it for the dry bank so A(dry)
-    // stays phase-identical to the wet. Same gliding cutoffs as x1..x3 / dx1..dx3.
-    LR4Xover ax[3];
-    LR4Xover dax[3];
+    void setBankCutoffs (XoverBank& b) noexcept;                       // -> targetF
+    void copyBankState  (XoverBank& to, const XoverBank& from) noexcept;
 
-    // Per-sample multiplicative slew on each crossover, exactly like Mono Maker:
-    // a fast drag of a split can no longer sweep the IIR quickly enough to chirp /
-    // pitch-shift (0.6.7 #1).
     double sr = 44100.0;
-    float  glideCoeff = 0.0f;
     float  targetF[3]  { 180.0f, 800.0f, 3000.0f };
-    float  currentF[3] { 180.0f, 800.0f, 3000.0f };
 
     // Per-sample one-pole smoothing of the band widths (0.7.0 #1).
     float wCoeff     = 0.0f;

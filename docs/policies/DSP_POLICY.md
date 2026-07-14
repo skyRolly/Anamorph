@@ -18,10 +18,12 @@ architecture docs, and the ADRs. These must hold across releases.
    `mask==0` → bit-exact true output; it is **called every block**, and its click-free
    crossfade advances on every block in which any gain is unsettled. Once fully settled at
    passthrough, the per-sample work is skipped and the filter bank goes cold; re-entry resets
-   the filters and snaps the cutoff glide under the ~12 ms crossfade (settled fast path,
-   0.8.9 / H1). (ADR-0004/0006) Evidence: AnamorphEngine.cpp:878-894 (call site + invariant
+   the filters and snaps the cutoffs to their targets under the ~12 ms crossfade (settled fast
+   path, 0.8.9 / H1; since 0.8.10 cutoff changes are fixed-coefficient bank crossfades, not
+   glides). (ADR-0004/0006) Evidence: AnamorphEngine.cpp:878-894 (call site + invariant
    comment); SoloMonitor.h:22-38 (crossfade + settled fast path); SoloMonitor.cpp (gate +
-   cold re-entry); tests `testSoloMonitor`, `testSoloNoGhostInSilence`.
+   cold re-entry); tests `testSoloMonitor`, `testSoloNoGhostInSilence`,
+   `testMultibandSplitDragNoPitchShift`.
 
 4. **The effect engine is solo-agnostic** — the Multiband always sums every active band.
    Evidence: MultibandWidth.h:29-32.
