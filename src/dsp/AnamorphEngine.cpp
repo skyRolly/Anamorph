@@ -239,6 +239,18 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
         pendingForced = true;
         dryDuckLat    = getLatencySamples();
         dryDuck       = (predictLatency (target) == dryDuckLat);
+        // Present the fill at the output-stage level being heard RIGHT NOW
+        // (Output Gain -- or the Match gain that replaces it -- and Output
+        // Balance), latched for the duck's lifetime like dryDuckLat: the
+        // smoothers snap at the silent bottom where the fill carries full
+        // weight, so a live gain would step there. Without this the fill
+        // played the raw ring at unity and burst in up to |Output Gain| dB
+        // louder than the surrounding audio (undo/redo Mix toggle at -24 dB).
+        const float fg = p.autoGainMatch ? matchGainSmooth.getCurrentValue()
+                                         : outGainSmooth.getCurrentValue();
+        const float fb = outBalanceSmooth.getCurrentValue();
+        dryDuckGainL = fg * ((fb > 0.0f) ? (1.0f - fb) : 1.0f);
+        dryDuckGainR = fg * ((fb < 0.0f) ? (1.0f + fb) : 1.0f);
     };
 
     if (switchState == SwitchState::Normal)
@@ -1046,8 +1058,12 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         L[i] *= g * gL * sg; R[i] *= g * gR * sg;
         if (duckDry)
         {
+            // Fill at the latched output-stage presentation gain (see the
+            // dryDuckGain comment in the header): unity-latched this is the
+            // original arithmetic; at extreme Output Gain it stops the fill
+            // bursting in louder than the surrounding processed audio.
             const float dw = 1.0f - sg;
-            L[i] += dw * bxL[i]; R[i] += dw * bxR[i];
+            L[i] += dw * dryDuckGainL * bxL[i]; R[i] += dw * dryDuckGainR * bxR[i];
         }
     }
     }

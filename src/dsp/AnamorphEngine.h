@@ -169,8 +169,24 @@ private:
     //     never reuses the first swap's stale decision or offset, and a
     //     latency-changing swap never reads from an incorrect delay position.
     // Ordinary discrete ducks set dryDuck=false (duck-to-silence, unchanged).
+    //
+    // The fill is presented at the OUTPUT-STAGE level heard when the duck began
+    // (dryDuckGainL/R, latched at fade-out entry exactly like dryDuckLat): the
+    // raw ring carries the unity-level input, but the processed path around the
+    // swap is scaled by Output Gain (or the Match gain) x Output Balance -- at
+    // an extreme setting (e.g. -24 dB) an unscaled fill would burst in up to
+    // 24 dB louder than the surrounding audio (the 0.8.10 undo/redo Mix-toggle
+    // spike). Latched, not live: the smoothers SNAP to the new state at the
+    // silent bottom, where the fill is at FULL weight -- a live gain would step
+    // audibly there, while the latched old-state gain keeps the fill continuous
+    // and the new level simply fades in over it (the same masked level jump a
+    // forced swap always had). At unity gain/balance the fill is bit-identical
+    // to the pre-fix arithmetic. True bypass is unaffected (it presents the raw
+    // ring at unity by design).
     bool  dryDuck    = false;
     int   dryDuckLat = 0;       // ring read offset, latched at fade-out entry (never moves mid-fade)
+    float dryDuckGainL = 1.0f;  // fill presentation gain, latched with dryDuckLat
+    float dryDuckGainR = 1.0f;
     void  snapSmoothers() noexcept;
 
     static constexpr float kNoInject = -1000.0f;
