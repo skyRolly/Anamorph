@@ -17,10 +17,10 @@ namespace anamorph
 //
 //  It mirrors the Multiband's band split: the same crossover frequencies and band
 //  count, so soloing "band b" auditions exactly band b's spectral region of the
-//  final output. Cutoff changes are fixed-coefficient bank crossfades (like the
-//  Multiband, 0.8.10) so dragging a split while soloing neither chirps nor
-//  pitch-shifts -- the old per-sample glide swept the crossover phase and detuned
-//  the soloed band for the whole catch-up of a fast drag.
+//  final output. Cutoff changes use the Multiband's hybrid (0.8.10): a bounded-
+//  time one-pole glide for continuous movement (flat magnitude at every instant,
+//  no rate-capped catch-up tail, no modulation sidebands) and a single ~12 ms
+//  bank crossfade for a multi-octave jump -- see MultibandWidth.h.
 //
 //  Click-free by construction (0.8.1): the crossover filters run every block that
 //  can be heard and the output is a per-band SMOOTHED crossfade between the true
@@ -54,12 +54,13 @@ public:
     void process (float* left, float* right, int mask, int numSamples) noexcept;
 
 private:
-    // One crossover bank at ONE FIXED set of cutoffs (flat-state LR4Xover, H6).
-    // Cutoff changes crossfade the output to the idle bank at the new cutoffs
-    // (state-copied, so no charge-up) over ~12 ms instead of sweeping the
-    // coefficients -- a swept LR4 rotates its phase and audibly pitch-shifts the
-    // soloed band during a fast split/band drag (0.8.10; same fix as the
-    // Multiband, see MultibandWidth.h).
+    // One crossover bank (flat-state LR4Xover, H6). Cutoff changes use the same
+    // hybrid as the Multiband (0.8.10, full rationale in MultibandWidth.h):
+    // continuous movement glides the active bank per sample with a bounded-time
+    // one-pole (tau ~15 ms -- flat magnitude and a smooth phase trajectory at
+    // every instant, so no pitch shift and no modulation sidebands); only a
+    // multi-octave JUMP crossfades to the state-copied idle bank over ~12 ms
+    // (the endpoint phase wraps mod 2pi where a glide would chirp).
     struct XoverBank
     {
         LR4Xover x[3];
@@ -71,9 +72,12 @@ private:
     int       fadePos = 0;
     int       fadeLen = 1;   // ~12 ms in samples
 
+    static constexpr float kFadeThresholdOct = 1.5f; // matches MultibandWidth
+
     void setBankCutoffs (XoverBank& b) noexcept;
 
     double sr = 44100.0;
+    float  glideK = 0.0f;    // per-sample one-pole coefficient (tau ~15 ms)
     float  targetF[3]  { 180.0f, 800.0f, 3000.0f };
     int    bands = 4;
     bool   running = true; // false = settled-passthrough fast path active, filters cold (H1)

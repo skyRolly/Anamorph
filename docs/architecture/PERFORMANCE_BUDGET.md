@@ -17,13 +17,13 @@ no benchmark/profiling data exists in the repository, and inventing numbers is p
 
 ## Known per-sample costs (Verified, qualitative)
 
-- **Crossover-move cost (0.8.10).** `MonoMaker` still calls `LR4Xover::setCutoffFrequency` per
-  sample during its cutoff glide (recomputes coefficients in place, no allocation).
-  `MultibandWidth` and `SoloMonitor` no longer glide: a cutoff change runs BOTH fixed-coefficient
-  banks for the ~12 ms crossfade (2× the stage's filter ticks while fading, chained while a split
-  keeps moving) but recomputes coefficients only once per fade — replacing the per-sample
-  `tan` recomputes of the old glide, which ran for the entire (possibly multi-second) catch-up.
-  Evidence [Verified]: src/dsp/MultibandWidth.cpp (fade trigger + `setBankCutoffs`);
+- **Crossover-move cost (0.8.10).** `MonoMaker` calls `LR4Xover::setCutoffFrequency` per sample
+  during its cutoff glide (recomputes coefficients in place, no allocation). `MultibandWidth`
+  and `SoloMonitor` do the same for continuous movement (the bounded-time one-pole glide,
+  τ ≈ 15 ms — per-sample `tan` recomputes on the moving splits, but only until ~75 ms after the
+  last target move, never the old rate-cap's multi-second catch-up), and additionally run BOTH
+  banks for one ~12 ms crossfade on a multi-octave jump (2× the stage's filter ticks for that
+  fade only). Evidence [Verified]: src/dsp/MultibandWidth.cpp (glide + jump-fade trigger);
   MonoMaker.cpp:32-36; SoloMonitor.cpp.
 - **The Drive waveshaper's tanh is a minimax rational kernel (Wave 2 / H3).** The two per-sample
   libm `tanh` calls (~55 % of every oversampling delta in the Round-2 attribution; their range
@@ -65,11 +65,12 @@ no benchmark/profiling data exists in the repository, and inventing numbers is p
   only while a cutoff fade is in flight, 0.8.10), expected to recover about half the added cost.
   It keeps the recombination bit-for-audible-purposes identical and is validated by the existing
   `testMultibandFlatRecombination` + `testMultibandMonoCompat` + the full-engine twin dump. (The
-  former follow-up (b) — skipping the never-processed `ax[0]`/`dax[0]` glide coefficient updates —
-  is obsolete: the 0.8.10 bank crossfade removed per-sample coefficient updates entirely; the
-  remaining never-read `ax[0]`/`dax[0]` assignments cost a few `tan` calls per fade start.)
-  Evidence [Verified]: src/dsp/MultibandWidth.cpp (allpass banks in `runWet`/`runDry`;
-  `setBankCutoffs`); CHANGELOG [0.8.10].
+  former follow-up (b) — skipping the never-processed `ax[0]`/`dax[0]` coefficient updates — is
+  now a micro-item: the 0.8.10 glide updates `ax[i≥1]` only inside the per-sample loop, but the
+  never-read `ax[0]`/`dax[0]` are still assigned in `setBankCutoffs` (jump fades / resets) and
+  `ax[0]` glides per sample while split 0 moves; a couple of `tan` calls, revisit only with the
+  allpass-biquad rework.) Evidence [Verified]: src/dsp/MultibandWidth.cpp (allpass banks in
+  `runWet`/`runDry`; glide loop; `setBankCutoffs`); CHANGELOG [0.8.10].
 - **SoloMonitor runs only while it can be heard (0.8.9 / H1).** With nothing soloed and every
   crossfade gain fully settled, the monitor's per-sample work (6 LR4 `processSample` + 5 smoother
   ticks) is skipped entirely — previously ~half of the transparent engine floor (callgrind 0.8.8:

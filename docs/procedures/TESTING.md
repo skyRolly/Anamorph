@@ -22,10 +22,13 @@ round-trip (bit-exact), transparent default, true-bypass null + latency match, M
 NaN recovery, four click-free crossfade tests (transitions, bypass, multiband enable,
 solo+multiband-enable), the dry-align gate comb regression (`testDryAlignGateRecomb`,
 Wave 2 / H4: a Mix dip after a gated full-wet stretch must re-engage the dry bank
-phase-matched — the KI-#1 metric), and the split-drag pitch regression
-(`testMultibandSplitDragNoPitchShift`, Test 29: after a fast multi-octave split drag the
+phase-matched — the KI-#1 metric), and the split-drag transition regression
+(`testMultibandSplitDragNoPitchShift`, Test 29): after a fast multi-octave split drag the
 post-drag pitch deviation must stay < 5 cents on both the Multiband and Solo-monitor paths —
-the pre-0.8.10 glide engine measures ~24 cents and fails; click check included). It additionally carries **one state-restoration robustness guard**,
+the pre-0.8.10 rate-capped glide measures ~24 cents and fails — AND the max spectral spur
+around a pure 1 kHz tone while the split crosses it (60 Hz UI drag cadence) must stay below
+−31 dBc — the interim chained bank crossfades measure −28.5 dBc and fail; click checks
+included. It additionally carries **one state-restoration robustness guard**,
 `testAbActiveClampOnCorruptState` — it drives a corrupted `<AB active="…">` blob through the same
 read+clamp the processor uses (`anamorph::clampAbSlotIndex`, `src/AbSlotIndex.h`) and asserts an
 out-of-range A/B index can never index `abSlot[]`/`abUndo[]` out of bounds, while valid 0/1 are

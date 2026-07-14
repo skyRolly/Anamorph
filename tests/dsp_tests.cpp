@@ -1775,6 +1775,88 @@ static void testMultibandSplitDragNoPitchShift()
         validate ("multiband:", s);
     }
 
+    // --- spectral purity while the split moves (the 0.8.10 sine report) ------
+    // A pure 1 kHz tone while the split is dragged 250 -> 4000 Hz across it in
+    // 0.25 s. The chained fixed-bank crossfades of the first 0.8.10 fix were
+    // amplitude/phase modulation at the fade cadence and sprayed sidebands
+    // around the tone (max spur ~ -26 dBc on this scenario -- audibly "new
+    // frequencies around the original tone"); the one-pole glide is a true
+    // allpass at every instant and measures at the ~ -37 dBc analysis floor
+    // (the pre-0.8.10 rate-capped glide also passes this check -- it failed on
+    // pitch, which the checks above cover). Max spur = the strongest spectral
+    // component more than +-30 Hz from the tone, relative to the tone, over
+    // sliding 100 ms Hann windows spanning the drag.
+    {
+        const double spurTone = 1000.0;
+        anamorph::MultibandWidth mb;
+        mb.prepare (sr, block);
+        mb.setBandCount (2);
+        mb.setWidths (1.0f, 1.0f, 1.0f, 1.0f);
+        mb.setCrossovers (250.0f, 8000.0f, 16000.0f);
+        std::vector<float> z ((size_t) block), z2 ((size_t) block);
+        for (int nb = 0; nb < 40; ++nb)
+        {
+            std::fill (z.begin(), z.end(), 0.0f);
+            std::fill (z2.begin(), z2.end(), 0.0f);
+            mb.processBlock (z.data(), z2.data(), block);
+        }
+
+        std::vector<float> s;
+        s.reserve ((size_t) sr);
+        double phase = 0.0;
+        const double inc = 2.0 * juce::MathConstants<double>::pi * spurTone / sr;
+        std::vector<float> l ((size_t) block), r ((size_t) block);
+        const int totalBlocks = (int) (0.6 * sr) / block;
+        for (int nb = 0; nb < totalBlocks; ++nb)
+        {
+            // Quantize the target stream to a ~60 Hz UI cadence: a real mouse
+            // drag delivers stepped targets, and the fade-chain artifact this
+            // check guards against is strongest against stepped targets (a
+            // per-block-smooth ramp lets even the fade chain slip through).
+            const double t = std::floor ((double) (nb * block) / sr * 60.0) / 60.0;
+            const double dragT = juce::jlimit (0.0, 1.0, t / 0.25);
+            mb.setCrossovers (250.0f * (float) std::exp2 (4.0 * dragT), 8000.0f, 16000.0f);
+            for (int i = 0; i < block; ++i)
+            {
+                l[(size_t) i] = r[(size_t) i] = amp * (float) std::sin (phase);
+                phase += inc;
+            }
+            mb.processBlock (l.data(), r.data(), block);
+            for (int i = 0; i < block; ++i) s.push_back (l[(size_t) i]);
+        }
+
+        const int fftOrder = 15, N = 1 << fftOrder; // 32768 (window zero-padded)
+        juce::dsp::FFT fft (fftOrder);
+        const int win = (int) (0.1 * sr), hop = win / 4;
+        std::vector<float> fd ((size_t) (2 * N));
+        double worstSpur = -200.0;
+        for (int start = (int) (0.05 * sr); start + win <= (int) (0.30 * sr); start += hop)
+        {
+            std::fill (fd.begin(), fd.end(), 0.0f);
+            for (int i = 0; i < win; ++i)
+            {
+                const float w = 0.5f - 0.5f * (float) std::cos (2.0 * juce::MathConstants<double>::pi * i / (win - 1));
+                fd[(size_t) i] = s[(size_t) (start + i)] * w;
+            }
+            fft.performRealOnlyForwardTransform (fd.data());
+            double carrier = 0.0, spur = 0.0;
+            for (int k = 1; k < N / 2; ++k)
+            {
+                const double hz = (double) k * sr / N;
+                if (hz < 20.0 || hz > 20000.0) continue;
+                const double re = fd[(size_t) (2 * k)], im = fd[(size_t) (2 * k + 1)];
+                const double mag = std::sqrt (re * re + im * im);
+                if (std::abs (hz - spurTone) < 30.0) carrier = std::max (carrier, mag);
+                else                                 spur    = std::max (spur, mag);
+            }
+            if (carrier > 0.0)
+                worstSpur = std::max (worstSpur, 20.0 * std::log10 (spur / carrier));
+        }
+        std::printf ("  multiband:    max spur while the split crosses a 1 kHz tone = %+.1f dBc (chained fades: ~-26; threshold -31)\n",
+                     worstSpur);
+        check (worstSpur < -31.0, "no modulation sidebands around a pure tone while the split moves");
+    }
+
     {
         // The band-solo whole-band drag: band 0 stays soloed while its upper
         // split sweeps down past the tone. The tone ends up outside the soloed

@@ -11,9 +11,12 @@ void SoloMonitor::prepare (double sampleRate, int maxBlock)
     for (auto* b : { &bank[0], &bank[1] })
         for (int i = 0; i < 3; ++i)
             b->x[i].prepare (sampleRate);
-    // ~12 ms cutoff crossfade, matching the Multiband's fixed-coefficient bank
-    // fade (0.8.10) and the gain crossfade below.
+    // ~12 ms cutoff crossfade for LARGE jumps only, matching the Multiband
+    // (0.8.10) and the gain crossfade below.
     fadeLen = juce::jmax (1, (int) std::lround (0.012 * sampleRate));
+    // One-pole cutoff glide for continuous movement, tau ~15 ms (bounded settle,
+    // smooth trajectory, flat magnitude at every instant -- see MultibandWidth.h).
+    glideK = 1.0f - std::exp (-1.0f / (0.015f * (float) sr));
 
     // ~12 ms crossfade: long enough to be click-free, short enough to feel instant.
     const double xfade = 0.012;
@@ -129,17 +132,19 @@ void SoloMonitor::process (float* left, float* right, int mask, int numSamples) 
         running = true;
     }
 
-    // Fixed-coefficient cutoff crossfade (0.8.10, mirrors MultibandWidth): if a
-    // split target moved and no fade is in flight, the idle bank adopts the
-    // active bank's ladder state plus the LATEST cutoffs, and the band outputs
-    // fade over to it. The coefficients never sweep, so dragging a split (or a
-    // whole band via its solo handle) no longer pitch-shifts the soloed audio.
+    // LARGE-JUMP bank crossfade (0.8.10, mirrors MultibandWidth): only a delta
+    // beyond kFadeThresholdOct hands the LATEST cutoffs to the idle bank (which
+    // adopts the active bank's ladder state) and fades the band outputs over to
+    // it -- the endpoint phase difference wraps mod 2pi where a glide would
+    // chirp. Continuous movement (every real drag) glides per sample below,
+    // keeping the soloed band a true flat-magnitude filter at every instant, so
+    // it neither pitch-shifts nor sprays modulation sidebands.
     if (! fading)
     {
-        bool moved = false;
-        for (int i = 0; i < crossovers && ! moved; ++i)
-            moved = std::abs (bank[active].f[i] - targetF[i]) > 0.05f;
-        if (moved)
+        bool jump = false;
+        for (int i = 0; i < crossovers && ! jump; ++i)
+            jump = std::abs (std::log2 (bank[active].f[i] / targetF[i])) > kFadeThresholdOct;
+        if (jump)
         {
             auto& to = bank[1 - active];
             for (int i = 0; i < 3; ++i)
@@ -173,6 +178,19 @@ void SoloMonitor::process (float* left, float* right, int mask, int numSamples) 
 
     for (int n = 0; n < numSamples; ++n)
     {
+        // ONE-POLE cutoff glide (0.8.10): ease each active split toward its
+        // target per sample; paused while a large-jump fade is in flight.
+        if (! fading)
+        {
+            auto& bk = bank[active];
+            for (int i = 0; i < crossovers; ++i)
+                if (std::abs (bk.f[i] - targetF[i]) > 0.05f)
+                {
+                    bk.f[i] += (targetF[i] - bk.f[i]) * glideK;
+                    bk.x[i].setCutoffFrequency (bk.f[i]);
+                }
+        }
+
         // Advance every smoother exactly once per sample (bank-independent).
         const float pg = passGain.getNextValue();
         float g[4];

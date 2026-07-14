@@ -13,10 +13,13 @@ void MultibandWidth::prepare (double sampleRate, int maxBlock)
         for (auto* x : { &b->x[0], &b->x[1], &b->x[2], &b->dx[0], &b->dx[1], &b->dx[2],
                          &b->ax[0], &b->ax[1], &b->ax[2], &b->dax[0], &b->dax[1], &b->dax[2] })
             x->prepare (sampleRate);
-    // ~12 ms cutoff crossfade: the house click-free fade length (SoloMonitor /
-    // Multiband Enable use the same), long enough to mask a coefficient step,
-    // short enough that a split drag tracks the mouse without perceptible lag.
+    // ~12 ms cutoff crossfade for LARGE jumps only: the house click-free fade
+    // length (SoloMonitor / Multiband Enable use the same).
     fadeLen = juce::jmax (1, (int) std::lround (0.012 * sampleRate));
+    // One-pole cutoff glide, tau ~15 ms: settles ~75 ms after the last target
+    // move (bounded time -- no rate-capped catch-up tail), smooth trajectory
+    // (no modulation sidebands), true LR4 at every instant (flat magnitude).
+    glideK = 1.0f - std::exp (-1.0f / (0.015f * (float) sr));
     // One-pole on the band widths at ~20 ms (the global Width smoother's ramp),
     // so a fast band-width drag glides instead of stepping per block (0.7.0 #1).
     wCoeff = std::exp (-1.0f / (0.02f * (float) sr));
@@ -69,9 +72,9 @@ void MultibandWidth::copyBankState (XoverBank& to, const XoverBank& from) noexce
 void MultibandWidth::setCrossovers (float f1, float f2, float f3) noexcept
 {
     // Keep the three crossovers strictly ordered with a little separation, so a
-    // drag can't cross them over. These are TARGETS; a change crossfades the
-    // output to a bank at the new cutoffs in processBlock (0.8.10 -- the old
-    // per-sample glide swept the allpass phase and audibly pitch-shifted).
+    // drag can't cross them over. These are TARGETS; processBlock eases the live
+    // cutoffs toward them with a bounded-time one-pole (or a single bank
+    // crossfade for a multi-octave jump -- 0.8.10, see MultibandWidth.h).
     //
     // CRITICAL (0.8.2): clamp every crossover to a Nyquist-safe band [20 Hz, 0.45*sr]
     // BEFORE ordering. Automating a split toward 20 kHz used to push the ordered
@@ -119,26 +122,42 @@ void MultibandWidth::processBlock (float* left, float* right, int numSamples,
 
     const int crossovers = bands - 1; // 1..3
 
-    // Fixed-coefficient cutoff crossfade (0.8.10): if a target moved and no fade
-    // is in flight, hand the LATEST cutoffs to the idle bank -- which adopts the
-    // active bank's ladder state, so it starts transient-free -- and fade the
-    // output over to it. No coefficient ever sweeps, so a moving split carries no
-    // frequency modulation (the old glide detuned the audio for the whole
-    // catch-up); a fade always retargets to the newest cutoffs, so a fast drag
-    // chains short fades instead of banking a long sweep. Checked at block rate:
-    // targets only change between blocks (setCrossovers).
+    // LARGE-JUMP bank crossfade (0.8.10): only a delta beyond kFadeThresholdOct
+    // (an automation step / click-jump -- a mouse drag at UI cadence never gets
+    // near it) hands the LATEST cutoffs to the idle bank -- which adopts the
+    // active bank's ladder state, so it starts transient-free -- and fades the
+    // output over to it (the endpoint phase difference wraps mod 2pi, where a
+    // glide would chirp through every intermediate turn). Anything smaller
+    // glides per sample below. Checked at block rate: targets only change
+    // between blocks (setCrossovers).
     if (! fading)
     {
-        bool moved = false;
-        for (int i = 0; i < crossovers && ! moved; ++i)
-            moved = std::abs (bank[active].f[i] - targetF[i]) > 0.05f;
-        if (moved)
+        bool jump = false;
+        for (int i = 0; i < crossovers && ! jump; ++i)
+            jump = std::abs (std::log2 (bank[active].f[i] / targetF[i])) > kFadeThresholdOct;
+        if (jump)
         {
             auto& to = bank[1 - active];
             copyBankState (to, bank[active]);
             setBankCutoffs (to);
             fading  = true;
             fadePos = 0;
+        }
+    }
+
+    // Re-sync the dry bank's cutoffs to the live (possibly gliding) values at
+    // block start, so a block that resumes aligning starts phase-matched -- the
+    // per-sample glide below only updates dx/dax while align is on, exactly like
+    // the pre-0.8.10 glide (Known Issue #1). The dry compensation allpasses
+    // re-sync with it. (A fade needs none of this: setBankCutoffs assigns all
+    // twelve filters of the incoming bank.)
+    if (align && ! fading)
+    {
+        auto& bk = bank[active];
+        for (int i = 0; i < crossovers; ++i)
+        {
+            bk.dx[i] .setCutoffFrequency (bk.f[i]);
+            bk.dax[i].setCutoffFrequency (bk.f[i]);
         }
     }
 
@@ -212,6 +231,27 @@ void MultibandWidth::processBlock (float* left, float* right, int numSamples,
 
     for (int n = 0; n < numSamples; ++n)
     {
+        // ONE-POLE cutoff glide (0.8.10): each active split eases toward its
+        // target per sample (tau ~15 ms, bounded settle -- no rate-capped
+        // catch-up tail), keeping the reconstruction a true flat-magnitude LR4
+        // allpass at every instant. Paused while a large-jump fade is in flight
+        // (the fade's banks hold fixed coefficients); it resumes on the merged
+        // residue the block after the fade lands.
+        if (! fading)
+        {
+            auto& bk = bank[active];
+            for (int i = 0; i < crossovers; ++i)
+            {
+                if (std::abs (bk.f[i] - targetF[i]) > 0.05f)
+                {
+                    bk.f[i] += (targetF[i] - bk.f[i]) * glideK;
+                    bk.x[i] .setCutoffFrequency (bk.f[i]);
+                    bk.ax[i].setCutoffFrequency (bk.f[i]); // compensation allpass glides with its split
+                    if (align) { bk.dx[i].setCutoffFrequency (bk.f[i]); bk.dax[i].setCutoffFrequency (bk.f[i]); } // dry bank locked to the wet
+                }
+            }
+        }
+
         // Glide each active band width toward its target (one-pole), so a fast
         // band-width drag never steps the side-gain between blocks (0.7.0 #1).
         // Shared by both banks: a fade never changes a band's width.
