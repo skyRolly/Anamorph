@@ -1619,8 +1619,9 @@ void SpectrumImager::mouseUp (const juce::MouseEvent& e)
     if (soloPressBand >= 0)
     {
         if (soloHoldActive) { if (onClearSoloPreview) onClearSoloPreview(); if (soloMovedBand) endBandMove(); }
-        else if (soloPressAlt) // Alt/Option quick click: act on ALL bands (0.8.9)
-            setSoloMask (bandSoloed (soloPressBand) ? 0 : (1 << bandCount()) - 1);
+        else if (soloPressAlt) // Alt/Option quick click: inactive band -> EXCLUSIVE solo
+            setSoloMask (bandSoloed (soloPressBand) ? 0 // active: all solos off, as before (0.8.9)
+                                                    : (1 << soloPressBand)); // 0.8.10: only this band
         else                  toggleSoloBit (soloPressBand);
         soloPressBand = -1;
         soloHoldActive = soloMovedBand = false;
