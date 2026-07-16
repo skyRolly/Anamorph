@@ -50,11 +50,11 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   bounding the shift at ~0.31 Hz — below the pure-tone JND everywhere (measured: worst 100 ms
   chunk 3.6 cents at a 150 Hz crossing, spurs at the −41 dBc analysis floor, < 0.1 dB envelope
   ripple, at every drag speed tested). The trade, stated plainly: the *audible* crossover
-  position converges toward the UI at ~1 oct/s (the GUI tracks the mouse instantly), so a fast
-  multi-octave drag is heard as a slow, inaudible-by-design approach rather than an immediate
-  jump (KI-012 documents the limitation; artifact-free *fast* tracking is impossible with
-  zero-latency IIR crossovers and would require linear-phase splits — a reported-latency change
-  gated behind an Architecture Review). **Discrete jumps** (the target stepping > 1.5 oct
+  position eases toward the UI at ~1.25 oct/s (the GUI tracks the mouse instantly), with
+  convergence bounded by the follower refinement above (KI-012 documents the limitation;
+  artifact-free *fast* tracking is impossible with zero-latency IIR crossovers and would
+  require linear-phase splits — a reported-latency change gated behind an Architecture Review,
+  recorded as the roadmap direction in ADR-0015). **Discrete jumps** (the target stepping > 1.5 oct
   between consecutive blocks — automation steps/snaps, unreachable by dragging) stay responsive
   via a single ~12 ms crossfade to a state-copied second filter bank: one bounded transition
   event (−18 dBc at a 4-octave step) instead of a multi-second ease. Settled behaviour is
@@ -65,6 +65,25 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   24–50 cents and fail), max spur < −31 dBc during a 60 Hz-cadence drag (the chained fades
   measure −28.5 dBc and fail), discrete 4-octave jumps must land < 200 ms (an ease would need
   ~4 s), all click-free. Evidence: this PR. [Verified]
+- **The DSP crossover follower now converges in bounded time and no longer freezes behind a
+  slow drag (split-movement follower refinement, ADR-0015).** Two follower defects survived the
+  transition redesign: (1) a pure rate limiter's catch-up is unbounded in distance — a 6-octave
+  flick left the audible crossover crawling for ~5.7 s after release; (2) with the cap set at
+  1.0 oct/s, a drag near that speed left **zero closing margin**, freezing an earlier gap for
+  the whole gesture (measured: a 1.5-oct flick followed by a 0.9 oct/s drag held ~1 oct of lag
+  for 4 s — the "stuck follower"). Fixes, both measured: the cap rises to **~1.25 oct/s** —
+  still under the pure-tone JND and the 5-cent regression bound (4.5 cents worst at a 150 Hz
+  crossing) — restoring closing margin over typical slow drags; and **release consolidation**
+  lands any residue still > 1.5 oct once the targets have been quiet ≥ 0.25 s, via the same
+  single ~12 ms state-copied bank crossfade already used for discrete jumps. Convergence after
+  any gesture is now bounded: ≤ ~0.26 s consolidated, ≤ 1.2 s crawled (6-oct flick: 5.7 s →
+  0.26 s). Direction-symmetric (measured identical up/down); manual drags and automation share
+  the identical path; exactly one smoothing stage exists (verified — no double smoothing).
+  Artifact safety unchanged: the sine protocol still measures < 5 cents / < −31 dBc everywhere
+  outside the one bounded landing event. The full A–H3 architecture investigation history is
+  now a permanent record in ADR-0015. Regressions: Test 29 gains a bounded-convergence check
+  (fails at 1.00× full level on the crawl-only follower) and an unbroken crawl-crossing check
+  at the new rate (4.49 cents measured). Evidence: this PR. [Verified]
 - **macOS (Apple Silicon native): tooltips no longer show an opaque white rectangle around the
   rounded capsule.** Root cause: `juce::TooltipWindow` declares itself *opaque* (its constructor
   calls `setOpaque(true)`) while the custom tooltip drawing deliberately leaves the pixels

@@ -10,7 +10,7 @@ robustness, multiband flat recombination, adaptive `FrameClock` GUI refresh, plu
 correctness round: split-drag pitch-shift fix, Band Solo alt-click exclusive solo, Option-reset
 undo fix — the last of which surfaced **KI-010** (typed value-box entry still bypasses undo, same
 mechanism, reported not fixed) — and the second correctness round: the split-drag transition
-rework — final design after three measured rounds: a ~1 oct/s inaudibility-capped cutoff glide
+rework — final design after three measured rounds: an inaudibility-capped cutoff glide (~1.25 oct/s since the ADR-0015 follower refinement)
 plus a discrete-jump bank crossfade, recorded as the **KI-012** limitation (the audible split
 position converges at ~1 oct/s; artifact-free fast IIR tracking is physically impossible) — the
 forced-duck dry-fill output-gain latch (Test 30), and **KI-011** (Apple-Silicon-native tooltip
@@ -34,7 +34,7 @@ JUCE 8.0.14; before that 0.8.8 for PR #54).
 | KI-009 | REAPER: Save Preset text editor loses keyboard focus (Space hits transport; a click does not re-focus until the dialog is reopened) | Low | Reported, host-specific (REAPER); pending manual investigation |
 | KI-010 | Typing a value into a knob/slider text box creates no Undo step (gesture-less edit path) | Low | Confirmed (code path); reported during the 0.8.10 Option-reset fix, not yet fixed |
 | KI-011 | macOS Apple-Silicon-native: tooltip corners rendered an opaque white frame (TooltipWindow opacity contract) | Low | Fix applied (editor marks the TooltipWindow non-opaque on macOS); Apple Silicon visual re-test pending |
-| KI-012 | Audible Multiband split position converges at ~1 oct/s during drags (inaudibility-bounded by design; fast artifact-free tracking needs linear-phase splits = latency change) | Low | Documented limitation (0.8.10 design decision); revisit only via Architecture Review |
+| KI-012 | Audible Multiband split position trails a fast drag (inaudibility-bounded ~1.25 oct/s ease; bounded landing ≤ ~1.2 s worst / ≤ ~0.5 s typical via release consolidation; fast artifact-free tracking needs linear-phase splits = latency change) | Low | Documented limitation (ADR-0015); revisit only via Architecture Review |
 
 ---
 
@@ -297,16 +297,19 @@ which is a genuine frequency shift of `0.312·R` Hz at sweep rate `R` oct/s. No 
 removes this — three implementations were measured against a pure-sine protocol (8 oct/s rate
 cap: 20–35 cent detune + catch-up tail; chained 12 ms bank crossfades: −25…−28 dBc modulation
 sidebands; τ=15 ms one-pole tracking: ~50 cent FM at a fast crossing) and all were audible and
-rejected in testing. The shipped design caps the sweep at **~1 oct/s**, bounding the shift at
-~0.31 Hz — below the pure-tone JND (worst measured 100 ms chunk: 3.6 cents at a 150 Hz
+rejected in testing. The shipped design caps the sweep at **~1.25 oct/s**, bounding the shift at
+~0.39 Hz — below the pure-tone JND (worst measured 100 ms chunk: 4.5 cents at a 150 Hz
 crossing; spurs at the analysis floor; < 0.1 dB envelope ripple).
 
-- **Consequence:** during a fast multi-octave drag the *audible* crossover position trails the
-  UI and converges at ~1 oct/s (a 4-octave flick completes acoustically ~4 s after release,
-  inaudibly — no pitch movement, no sidebands, no clicks at any point). The GUI split line
-  tracks the mouse instantly. Discrete jumps (> 1.5 oct target steps: automation snaps,
-  preset-style changes) are exempt — they land within ~12 ms via a state-copied bank crossfade,
-  as one bounded transition event.
+- **Consequence (bounded since the ADR-0015 follower refinement):** during a fast multi-octave
+  drag the *audible* crossover position trails the UI, but convergence is **bounded**: once the
+  drag ends, a residue > 1.5 oct lands ~0.26 s later via one state-copied bank crossfade
+  (release consolidation — the same event class as a discrete automation jump); smaller
+  residues finish the artifact-free ease within ≤ 1.2 s. The 1.25 oct/s cap also leaves
+  closing margin over typical slow manual drags, so a gap formed by an earlier flick drains
+  while the user keeps dragging (previously it froze — the "stuck follower" report). The GUI
+  split line tracks the mouse instantly. Discrete jumps (> 1.5 oct target steps: automation
+  snaps, preset-style changes) land within ~12 ms + fade as before.
 - **The only artifact-free fast alternative is linear-phase crossovers** (a moving linear-phase
   split at unit width is a pure delay — zero phase modulation by construction), which adds
   reported latency: a **Hard Stop** item (`ARCHITECTURE_REVIEW_GATE.md`) requiring an ADR, PDC/

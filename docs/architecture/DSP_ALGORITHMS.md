@@ -89,17 +89,21 @@ at sweep rate `R` oct/s — no smoothing shape removes that. The rejected design
 the artifact: the pre-0.8.10 **~8 oct/s rate cap** detuned ~2.5 Hz with a banked multi-hundred-ms
 catch-up tail; **chained ~12 ms bank crossfades** were AM/PM at the fade cadence (spurs −25…−28
 dBc around a pure tone); a **one-pole tracker (τ≈15 ms)** FM'd at the full drag rate (~50 cents
-measured at the crossing of a fast drag). Final: *continuous movement* glides per sample under a
-**hard ~1 oct/s rate cap** — the shift is bounded at ~0.31 Hz, **below the pure-tone JND at any
-drag speed** (measured 3.6 cents worst-case at a 150 Hz crossing, spurs at the −41 dBc analysis
-floor, <0.1 dB envelope ripple); the audible crossover position simply eases toward the UI at
-~1 oct/s while the GUI tracks the mouse instantly. *Discrete jumps* (the TARGET stepping
-> 1.5 oct between consecutive blocks — automation steps/snaps, unreachable by dragging)
-crossfade to the second, state-copied bank over ~12 ms: one bounded event (−18 dBc at a
-4-octave step) instead of a multi-second crawl; a step arriving mid-fade re-fires to the latest
-target when the fade lands. Regression: Test 29 (worst 100 ms chunk < 5 cents across the drag
-AND the entire crawl including the tone crossing; max spur < −31 dBc; discrete jumps land
-< 200 ms, click-free). Widths one-pole smoothed (~20 ms), shared by both banks.
+measured at the crossing of a fast drag). Final (ADR-0015): *continuous movement* glides per sample under a
+**hard ~1.25 oct/s rate cap** — the shift is bounded at ~0.39 Hz, **below the pure-tone JND at
+any drag speed** (measured 4.5 cents worst-case at a 150 Hz crossing, spurs at the −41 dBc
+analysis floor, <0.1 dB envelope ripple), and the cap leaves closing margin over typical slow
+manual drags so an earlier flick's gap drains during continued dragging instead of freezing.
+*Discrete jumps* (the TARGET stepping > 1.5 oct between consecutive blocks — automation
+steps/snaps, unreachable by dragging) crossfade to the second, state-copied bank over ~12 ms:
+one bounded event (−18 dBc at a 4-octave step); a step arriving mid-fade re-fires to the latest
+target when the fade lands. *Release consolidation* (0.8.10 follower refinement): once the
+targets have been quiet ≥ 0.25 s with a residual lag still > 1.5 oct, the residue lands via the
+same single fade — convergence after any gesture is **bounded** (≤ ~0.26 s consolidated,
+≤ 1.2 s crawled) instead of distance-proportional (a 6-octave flick previously crawled ~5.7 s).
+Regression: Test 29 (worst 100 ms chunk < 5 cents through drags, crawls and the tone crossing;
+max spur < −31 dBc; discrete jumps AND released drags land fast, click-free). Widths one-pole
+smoothed (~20 ms), shared by both banks.
 - **Crossover safety**: Nyquist clamp `[20, 0.45·sr]` applied **before** ordering, then the
   1.1× separation ordering re-clamped **top-down** so separation can never push a cutoff past
   Nyquist (the 0.8.2 "+600 dB" fix). `.cpp:55-71`.

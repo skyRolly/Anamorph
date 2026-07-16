@@ -48,11 +48,12 @@ factor) but the stage's position in the chain is fixed.
 `juce::dsp::LinkwitzRileyFilter` it replaced, LP/HP dual output). Cutoff-change smoothing
 differs by stage (0.8.10): `MonoMaker` keeps the per-sample multiplicative glide
 (`glideCoeff = exp2(8/sr)`, ~8 oct/s); `MultibandWidth` and `SoloMonitor` glide at a **hard
-~1 oct/s cap** (`glideStep = exp2(1/sr)`) — a swept LR4 shifts every frequency by `0.312·R` Hz,
-so the cap bounds the shift below the pure-tone JND at any drag speed — plus a single ~12 ms
-crossfade to a state-copied second bank for **discrete target steps** (> 1.5 oct between
-consecutive blocks; unreachable by dragging) so snaps stay responsive (CHANGELOG [0.8.10],
-Test 29).
+~1.25 oct/s cap** (`glideStep = exp2(1.25/sr)`) — a swept LR4 shifts every frequency by
+`0.312·R` Hz, so the cap bounds the shift below the pure-tone JND at any drag speed — plus a
+single ~12 ms crossfade to a state-copied second bank for **discrete target steps** (> 1.5 oct
+between consecutive blocks) and for **released-drag residues** (targets quiet ≥ 0.25 s with
+> 1.5 oct of stale lag), so snaps and released fast drags land in bounded time (ADR-0015,
+CHANGELOG [0.8.10], Test 29).
 `MultibandWidth` and `SoloMonitor` share the identical
 Nyquist-safe clamp `[20, max(1000, 0.45·sr)]` + 1.1× top-down ordering.
 

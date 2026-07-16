@@ -1709,12 +1709,14 @@ static void testMultibandSplitDragNoPitchShift()
         return worst;
     };
 
-    // Drive `step` with a fast 6-octave DOWNWARD split drag (6400 -> 100 Hz over
-    // 0.25 s, ~24 oct/s -- a quick mouse flick), then hold the target while the
-    // ~1 oct/s crawl brings the audible crossover down past the 150 Hz tone
-    // (~5.2 s later). The measurement below spans the whole crawl, so it grades
-    // the crossing itself. Returns the captured left-channel stream.
-    auto runDrag = [&] (auto&& setSplit, auto&& step, int totalBlocks) -> std::vector<float>
+    // Drive `step` with a DOWNWARD split drag (start -> start*2^-octs over
+    // 0.25 s at block cadence ~ a UI drag), then hold the target. Depending on
+    // the residual lag at release, the follower either crawls at the ~1.25
+    // oct/s cap (residues <= 1.5 oct) or lands via the release-consolidation
+    // bank fade ~0.25 s after the target goes quiet (larger residues --
+    // bounded convergence, the 0.8.10 follower refinement).
+    auto runDrag = [&] (float startHz, float octsDown, auto&& setSplit, auto&& step,
+                        int totalBlocks) -> std::vector<float>
     {
         std::vector<float> outStream;
         outStream.reserve ((size_t) (totalBlocks * block));
@@ -1725,7 +1727,7 @@ static void testMultibandSplitDragNoPitchShift()
         {
             const double t = (double) (nb * block) / sr;
             const double dragT = juce::jlimit (0.0, 1.0, t / 0.25);
-            setSplit (6400.0f * (float) std::exp2 (-6.0 * dragT)); // block cadence ~ a UI drag
+            setSplit (startHz * (float) std::exp2 (-octsDown * dragT));
             for (int i = 0; i < block; ++i)
             {
                 l[(size_t) i] = r[(size_t) i] = amp * (float) std::sin (phase);
@@ -1737,19 +1739,19 @@ static void testMultibandSplitDragNoPitchShift()
         return outStream;
     };
 
-    auto validate = [&] (const char* name, const std::vector<float>& s)
+    // Worst 100 ms pitch chunk inside the given windows must stay below 5
+    // cents (at the ~1.25 oct/s cap the crossing measures ~4.5 cents at
+    // 150 Hz; the rejected designs measure 24-50 cents). Windows EXCLUDE any
+    // release-consolidation fade instant -- that one bounded event is graded
+    // by the click check (whole stream) and the convergence check below, not
+    // as "pitch" (a 12 ms phase-wrap event is not sustained pitch movement).
+    auto validate = [&] (const char* name, const std::vector<float>& s,
+                         std::initializer_list<std::pair<double, double>> windows)
     {
-        // Spans the drag itself AND the whole ~1 oct/s crawl, INCLUDING the
-        // crossover's crossing of the tone (~5.4 s in): the worst 100 ms chunk
-        // must stay below 5 cents at every moment. The rejected designs sweep
-        // the crossing at full drag/catch-up speed -- the one-pole tracker
-        // crosses DURING the 0.25 s drag, the 8 oct/s cap right after it --
-        // and measure 24+ cents (a whole extra cycle lands in the crossing
-        // chunk) where the shipped ~1 oct/s cap measures ~3.6.
-        const int measureStart = (int) (0.05 * sr);
-        const int measureEnd   = (int) juce::jmin ((double) s.size(), 6.9 * sr);
-        const double cents = worstCents (s, measureStart, measureEnd);
-
+        double cents = 0.0;
+        for (const auto& w : windows)
+            cents = std::max (cents, worstCents (s, (int) (w.first * sr),
+                                                 (int) juce::jmin ((double) s.size(), w.second * sr)));
         double maxDelta = 0.0;
         bool bad = false;
         for (size_t i = 1; i < s.size(); ++i)
@@ -1758,7 +1760,7 @@ static void testMultibandSplitDragNoPitchShift()
             if (i > (size_t) (0.02 * sr)) // skip the initial filter charge-up
                 maxDelta = std::max (maxDelta, (double) std::abs (s[i] - s[i - 1]));
         }
-        std::printf ("  %-13s worst deviation across the whole crawl = %.2f cents (rejected designs: 24+); max delta = %.4f\n",
+        std::printf ("  %-13s worst pitch deviation = %.2f cents (rejected designs: 24+); max delta = %.4f\n",
                      name, cents, maxDelta);
         check (! bad, "split-drag stream is free of NaN/Inf");
         check (cents < 5.0, "no audible pitch modulation at any point of the split move");
@@ -1778,10 +1780,39 @@ static void testMultibandSplitDragNoPitchShift()
             std::fill (z2.begin(), z2.end(), 0.0f);
             mb.processBlock (z.data(), z2.data(), block);
         }
-        auto s = runDrag ([&] (float f) { mb.setCrossovers (f, 8000.0f, 16000.0f); },
+        // 6-octave flick: release-consolidation fires ~0.5 s in (0.25 s drag +
+        // 0.25 s quiet; residual lag ~5.7 oct > 1.5), landing the bank in one
+        // ~12 ms fade. Pitch windows bracket that instant.
+        auto s = runDrag (6400.0f, 6.0f,
+                          [&] (float f) { mb.setCrossovers (f, 8000.0f, 16000.0f); },
                           [&] (float* L, float* R, int n) { mb.processBlock (L, R, n); },
-                          (int) (7.0 * sr) / block);
-        validate ("multiband:", s);
+                          (int) (2.5 * sr) / block);
+        validate ("multiband:", s, { { 0.05, 0.45 }, { 0.80, 2.40 } });
+    }
+
+    {
+        // Small-residual drag (300 -> 110 Hz, 1.45 oct): the release residue
+        // (~1.1 oct) is BELOW the consolidation threshold, so the crawl itself
+        // carries the crossover down PAST the 150 Hz tone (~0.8 s in) at the
+        // ~1.25 oct/s cap -- the sustained-FM regression proper: the crossing
+        // must measure < 5 cents in an unbroken window (no fade fires).
+        anamorph::MultibandWidth mb;
+        mb.prepare (sr, block);
+        mb.setBandCount (2);
+        mb.setWidths (1.0f, 1.0f, 1.0f, 1.0f);
+        mb.setCrossovers (300.0f, 8000.0f, 16000.0f);
+        std::vector<float> z ((size_t) block), z2 ((size_t) block);
+        for (int nb = 0; nb < 40; ++nb)
+        {
+            std::fill (z.begin(), z.end(), 0.0f);
+            std::fill (z2.begin(), z2.end(), 0.0f);
+            mb.processBlock (z.data(), z2.data(), block);
+        }
+        auto s = runDrag (300.0f, 1.4497f, // -> ~110 Hz
+                          [&] (float f) { mb.setCrossovers (f, 8000.0f, 16000.0f); },
+                          [&] (float* L, float* R, int n) { mb.processBlock (L, R, n); },
+                          (int) (2.5 * sr) / block);
+        validate ("crawl-cross:", s, { { 0.05, 2.40 } });
     }
 
     // --- spectral purity while the split moves (the 0.8.10 sine report) ------
@@ -1889,10 +1920,27 @@ static void testMultibandSplitDragNoPitchShift()
             }
             mon.process (l.data(), r.data(), 0x1, block);
         }
-        auto s = runDrag ([&] (float f) { mon.setCrossovers (f, 8000.0f, 16000.0f); },
+        auto s = runDrag (6400.0f, 6.0f,
+                          [&] (float f) { mon.setCrossovers (f, 8000.0f, 16000.0f); },
                           [&] (float* L, float* R, int n) { mon.process (L, R, 0x1, n); },
-                          (int) (7.0 * sr) / block);
-        validate ("solo monitor:", s);
+                          (int) (2.5 * sr) / block);
+        validate ("solo monitor:", s, { { 0.05, 0.45 }, { 0.80, 2.40 } });
+
+        // BOUNDED CONVERGENCE (the 0.8.10 follower refinement): the soloed
+        // band is LP(f1); once the release consolidation lands f1 at ~100 Hz,
+        // the 150 Hz tone must be attenuated (~-14 dB). Pre-refinement the
+        // ~1 oct/s crawl needed ~5.7 s to arrive -- at 1.2..1.7 s the tone was
+        // still at FULL level and this check fails.
+        double sq = 0.0; int cnt = 0;
+        for (int i = (int) (1.2 * sr); i < (int) (1.7 * sr) && i < (int) s.size(); ++i)
+        {
+            sq += (double) s[(size_t) i] * s[(size_t) i]; ++cnt;
+        }
+        const double rms = std::sqrt (sq / juce::jmax (1, cnt));
+        const double fullRms = amp / std::sqrt (2.0);
+        std::printf ("  convergence:  level 1.2-1.7 s after a 6-oct flick = %.2f of full (crawl-only follower: ~1.0)\n",
+                     rms / fullRms);
+        check (rms < 0.45 * fullRms, "a released drag lands within ~0.5 s (bounded convergence), not seconds");
     }
 
     {

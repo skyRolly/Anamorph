@@ -24,13 +24,14 @@ solo+multiband-enable), the dry-align gate comb regression (`testDryAlignGateRec
 Wave 2 / H4: a Mix dip after a gated full-wet stretch must re-engage the dry bank
 phase-matched — the KI-#1 metric), the split-movement regression
 (`testMultibandSplitDragNoPitchShift`, Test 29): the worst 100 ms pitch chunk of a 150 Hz tone
-must stay < 5 cents across the drag AND the entire ~1 oct/s post-drag ease *including the
-moment the crossover crosses the tone* (the pre-0.8.10 8 oct/s cap and the interim one-pole
-tracker measure 24–50 cents there and fail), the max spectral spur around a 1 kHz tone during a
-60 Hz-cadence drag must stay below −31 dBc (the interim chained bank crossfades measure
-−28.5 dBc and fail), and a discrete 4-octave target step must land within ~200 ms via the bank
-crossfade (an ease would need ~4 s), all click-free — on both the Multiband and Solo-monitor
-paths; and the forced-duck dry-fill gain regression (`testDryFillRespectsOutputGain`, Test 30):
+must stay < 5 cents through drags and the ~1.25 oct/s ease — including an unbroken
+crawl-crossing scenario where the crossover passes the tone (4.49 cents measured; the
+pre-0.8.10 8 oct/s cap and the interim one-pole tracker measure 24–50 cents and fail) — the max
+spectral spur around a 1 kHz tone during a 60 Hz-cadence drag must stay below −31 dBc (the
+interim chained bank crossfades measure −28.5 dBc and fail), a discrete 4-octave target step
+must land within ~200 ms via the bank crossfade, and a RELEASED 6-octave flick must land within
+~0.5 s via release consolidation (ADR-0015 — the crawl-only follower measures full level 1.2 s
+after release and fails), all click-free — on both the Multiband and Solo-monitor paths; and the forced-duck dry-fill gain regression (`testDryFillRespectsOutputGain`, Test 30):
 with Output Gain at −24 dB an undo/redo-style Mix toggle must not spike beyond 2× the steady
 output (the unscaled raw-level fill measures 15.8× and fails) while still filling the dip. It additionally carries **one state-restoration robustness guard**,
 `testAbActiveClampOnCorruptState` — it drives a corrupted `<AB active="…">` blob through the same

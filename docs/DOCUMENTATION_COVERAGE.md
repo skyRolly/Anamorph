@@ -6,7 +6,17 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **third v0.8.10 pre-merge correctness round** (2026-07-14, PR #59), two
+Last updated: for the **v0.8.10 follower refinement + investigation record** (2026-07-14,
+PR #59). The split-movement follower gained bounded convergence (rate cap 1.0 → 1.25 oct/s —
+still under the JND/5-cent bound — plus release consolidation: targets quiet ≥ 0.25 s with
+> 1.5 oct of stale lag land via the existing single bank fade; a 6-oct flick now settles in
+0.26 s instead of 5.7 s, and slow drags no longer freeze an earlier gap). The complete A–H3
+architecture investigation history (including the H3 hostile-review failure on width purity and
+the linear-phase roadmap direction) is now permanent as **ADR-0015** (+ ADR_INDEX row); synced:
+DSP_ALGORITHMS, DSP_GRAPH_REFERENCE, PERFORMANCE_BUDGET, FUTURE_RISKS RISK-002, KI-012,
+CHANGELOG, TESTING; Test 29 gains a bounded-convergence regression and an unbroken
+crawl-crossing scenario (checks 102→**106**). Prior: the **third v0.8.10 pre-merge correctness
+round** (2026-07-14, PR #59), two
 items. (1) **Split-movement final design** — pure-sine testing rejected the second round's
 one-pole tracker too (it FMs at the full drag rate: ~50 cents measured at a fast crossing). A
 candidate matrix (rate caps, one-pole, chained/consolidated fades) was measured against the
