@@ -10,9 +10,11 @@ robustness, multiband flat recombination, adaptive `FrameClock` GUI refresh, plu
 correctness round: split-drag pitch-shift fix, Band Solo alt-click exclusive solo, Option-reset
 undo fix — the last of which surfaced **KI-010** (typed value-box entry still bypasses undo, same
 mechanism, reported not fixed) — and the second correctness round: the split-drag transition
-rework — final design after three measured rounds: an inaudibility-capped cutoff glide (~1.25 oct/s since the ADR-0015 follower refinement)
-plus a discrete-jump bank crossfade, recorded as the **KI-012** limitation (the audible split
-position converges at ~1 oct/s; artifact-free fast IIR tracking is physically impossible) — the
+rework — final design after four measured rounds: a hard ~4 oct/s rate-capped cutoff glide
+(ADR-0015 final: direct tracking for any drag ≤ 4 oct/s, a small controlled FM above it —
+the 1.25 oct/s "inaudibility" follower + release consolidation was rejected for interaction
+latency) plus a discrete-jump bank crossfade, recorded as the **KI-012** limitation
+(artifact-free fast IIR tracking is physically impossible) — the
 forced-duck dry-fill output-gain latch (Test 30), and **KI-011** (Apple-Silicon-native tooltip
 white corners — fix applied, hardware re-test pending); **KI-009 carried
 forward** — the REAPER Save Preset focus report, host-specific, pending manual investigation, not
@@ -34,7 +36,7 @@ JUCE 8.0.14; before that 0.8.8 for PR #54).
 | KI-009 | REAPER: Save Preset text editor loses keyboard focus (Space hits transport; a click does not re-focus until the dialog is reopened) | Low | Reported, host-specific (REAPER); pending manual investigation |
 | KI-010 | Typing a value into a knob/slider text box creates no Undo step (gesture-less edit path) | Low | Confirmed (code path); reported during the 0.8.10 Option-reset fix, not yet fixed |
 | KI-011 | macOS Apple-Silicon-native: tooltip corners rendered an opaque white frame (TooltipWindow opacity contract) | Low | Fix applied (editor marks the TooltipWindow non-opaque on macOS); Apple Silicon visual re-test pending |
-| KI-012 | Audible Multiband split position trails a fast drag (inaudibility-bounded ~1.25 oct/s ease; bounded landing ≤ ~1.2 s worst / ≤ ~0.5 s typical via release consolidation; fast artifact-free tracking needs linear-phase splits = latency change) | Low | Documented limitation (ADR-0015); revisit only via Architecture Review |
+| KI-012 | Fast Multiband split drags carry a small controlled FM (~15 cents at a 150 Hz crossing under the ~4 oct/s cap; drags ≤ 4 oct/s track exactly; a violent flick catches up in ≤ ~1.5 s of continuous motion; fast artifact-free tracking needs linear-phase splits = latency change) | Low | Documented limitation (ADR-0015 final); revisit only via Architecture Review |
 
 ---
 
@@ -288,32 +290,34 @@ rectangle** instead of transparent rounded corners.
   (the headless gate cannot judge GUI appearance — TESTING_POLICY Level 5). Remove this entry and
   move it to POSTMORTEMS once confirmed on hardware.
 
-## KI-012 — Audible Multiband split position converges at ~1 oct/s during drags (design limitation)
+## KI-012 — Fast Multiband split drags carry a small controlled FM (design limitation)
 
 A **deliberate, measured limitation** shipped with the 0.8.10 split-movement fix, documented so
 it is not mistaken for a defect. A swept zero-latency IIR crossover is inherently a phase
 modulator: its allpass phase at any fixed frequency rotates by up to 2π per crossover crossing,
 which is a genuine frequency shift of `0.312·R` Hz at sweep rate `R` oct/s. No transition scheme
-removes this — three implementations were measured against a pure-sine protocol (8 oct/s rate
-cap: 20–35 cent detune + catch-up tail; chained 12 ms bank crossfades: −25…−28 dBc modulation
-sidebands; τ=15 ms one-pole tracking: ~50 cent FM at a fast crossing) and all were audible and
-rejected in testing. The shipped design caps the sweep at **~1.25 oct/s**, bounding the shift at
-~0.39 Hz — below the pure-tone JND (worst measured 100 ms chunk: 4.5 cents at a 150 Hz
-crossing; spurs at the analysis floor; < 0.1 dB envelope ripple).
+removes this — four implementations were measured against a pure-sine protocol (uncapped ~8 oct/s
+glide: +31 cents at a 150 Hz crossing; chained 12 ms bank crossfades: −25…−28 dBc modulation
+sidebands; τ=15 ms one-pole tracking: ~50 cent FM at a fast crossing; a 1.25 oct/s
+"inaudibility" cap + 0.25 s release consolidation: measurably clean but rejected in interactive
+testing for **interaction latency** — the audio lagged the GUI on ordinary fast drags and jumped
+after release). The shipped design (ADR-0015 final) caps the sweep at **~4 oct/s** under the
+restated product trade: *a small amount of controlled FM is preferable to obvious interaction
+latency.*
 
-- **Consequence (bounded since the ADR-0015 follower refinement):** during a fast multi-octave
-  drag the *audible* crossover position trails the UI, but convergence is **bounded**: once the
-  drag ends, a residue > 1.5 oct lands ~0.26 s later via one state-copied bank crossfade
-  (release consolidation — the same event class as a discrete automation jump); smaller
-  residues finish the artifact-free ease within ≤ 1.2 s. The 1.25 oct/s cap also leaves
-  closing margin over typical slow manual drags, so a gap formed by an earlier flick drains
-  while the user keeps dragging (previously it froze — the "stuck follower" report). The GUI
-  split line tracks the mouse instantly. Discrete jumps (> 1.5 oct target steps: automation
-  snaps, preset-style changes) land within ~12 ms + fade as before.
+- **Consequence:** any drag up to 4 oct/s tracks **exactly** (zero GUI/DSP gap — the crossover
+  feels attached to the mouse). Movement faster than the cap carries a bounded shift of
+  ~1.25 Hz: worst measured 100 ms chunk **~15 cents at a 150 Hz crossing, ~2 cents at 1 kHz**
+  (spurs at the −41 dBc analysis floor, < 0.1 dB envelope ripple) — roughly half the original
+  pre-fix implementation — and a violent 6-octave flick catches up in ~1.25 s of *continuous*
+  motion after release (no timers, no delayed jump). Discrete jumps (> 1.5 oct target steps:
+  automation snaps, preset-style changes) land within ~12 ms via the state-copied bank
+  crossfade as before.
 - **The only artifact-free fast alternative is linear-phase crossovers** (a moving linear-phase
   split at unit width is a pure delay — zero phase modulation by construction), which adds
   reported latency: a **Hard Stop** item (`ARCHITECTURE_REVIEW_GATE.md`) requiring an ADR, PDC/
   dry-alignment rework, and a project-owner decision. Not attempted here by policy.
 - **Evidence [Verified]:** src/dsp/MultibandWidth.h (design rationale + measurements);
   tests/dsp_tests.cpp `testMultibandSplitDragNoPitchShift` (Test 29, grades the whole movement);
-  CHANGELOG [0.8.10]. Severity **Low** (no audible artifact; behavioural trade only).
+  ADR-0015 "v0.8.10 final decision"; CHANGELOG [0.8.10]. Severity **Low** (small bounded
+  artifact, accepted product trade).

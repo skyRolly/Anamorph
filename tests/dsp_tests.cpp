@@ -1658,22 +1658,28 @@ static void testMultibandFlatRecombination()
 }
 
 // ---------------------------------------------------------------------------
-//  Split movement must not audibly modulate the audio (0.8.10, three design
-//  rounds). A swept IIR crossover shifts every frequency by dphi/dt (0.312*R Hz
-//  at sweep rate R oct/s), so the shipped design caps the cutoff sweep at
-//  ~1 oct/s (~0.31 Hz -- below the pure-tone JND at any drag speed) and uses a
-//  single ~12 ms bank crossfade only for DISCRETE multi-octave target steps.
-//  This test rejects all three failed designs with two measurements on both
-//  crossover consumers (Multiband reconstruction + Band Solo monitor):
-//   * the pitch check tracks a 150 Hz tone through the ENTIRE post-drag crawl,
-//     including the moment the crossover crosses the tone: the ~8 oct/s
-//     rate-capped glide (pre-0.8.10) and the one-pole tracker (second design)
-//     measure ~24+ cents there and fail; the shipped cap measures ~3.6 cents.
+//  Split movement must keep its FM within the ACCEPTED CONTROLLED BOUND
+//  (0.8.10 final, four design rounds). A swept IIR crossover shifts every
+//  frequency by dphi/dt (0.312*R Hz at sweep rate R oct/s); the shipped design
+//  caps the cutoff sweep at ~4 oct/s -- a deliberate product trade (a small
+//  controlled FM over interaction latency): drags up to 4 oct/s track EXACTLY,
+//  and the worst crossing shift is ~1.25 Hz (~15 cents at 150 Hz, ~half the
+//  original uncapped implementation) -- plus a single ~12 ms bank crossfade
+//  only for DISCRETE multi-octave target steps. This test rejects the failed
+//  designs with two measurements on both crossover consumers (Multiband
+//  reconstruction + Band Solo monitor):
+//   * the pitch check tracks a 150 Hz tone through the ENTIRE drag + catch-up,
+//     including the moment the crossover crosses the tone: the shipped ~4 oct/s
+//     cap measures ~14-16 cents there; the uncapped pre-0.8.10 glide (8 oct/s)
+//     measures ~28-31 and the one-pole tracker ~50 -- both fail the 18-cent
+//     bound.
 //   * the spectral-purity check bounds spurs around a 1 kHz tone during a fast
 //     60 Hz-cadence drag: the chained bank crossfades (first design) measure
 //     -28.5 dBc there and fail.
-//  Plus: a discrete 4-octave jump must land fast (bank fade, not a crawl) and
-//  every stream must stay click-free.
+//  Plus: a released flick must land by PLAIN GLIDING in bounded time (~1.5 s
+//  for a violent 6-oct flick; the rejected 1.25 oct/s follower was still at
+//  full lag there), a discrete 4-octave jump must land fast (bank fade, not a
+//  crawl), and every stream must stay click-free.
 static void testMultibandSplitDragNoPitchShift()
 {
     std::printf ("Test 29: fast split drags do not pitch-shift (multiband + solo monitor)\n");
@@ -1710,11 +1716,10 @@ static void testMultibandSplitDragNoPitchShift()
     };
 
     // Drive `step` with a DOWNWARD split drag (start -> start*2^-octs over
-    // 0.25 s at block cadence ~ a UI drag), then hold the target. Depending on
-    // the residual lag at release, the follower either crawls at the ~1.25
-    // oct/s cap (residues <= 1.5 oct) or lands via the release-consolidation
-    // bank fade ~0.25 s after the target goes quiet (larger residues --
-    // bounded convergence, the 0.8.10 follower refinement).
+    // 0.25 s at block cadence ~ a UI drag), then hold the target. Drags up to
+    // ~4 oct/s track exactly; a faster flick leaves a residual lag that keeps
+    // gliding at the cap until it lands -- continuous motion, no fades, no
+    // timers (the 0.8.10 final follower).
     auto runDrag = [&] (float startHz, float octsDown, auto&& setSplit, auto&& step,
                         int totalBlocks) -> std::vector<float>
     {
@@ -1739,12 +1744,12 @@ static void testMultibandSplitDragNoPitchShift()
         return outStream;
     };
 
-    // Worst 100 ms pitch chunk inside the given windows must stay below 5
-    // cents (at the ~1.25 oct/s cap the crossing measures ~4.5 cents at
-    // 150 Hz; the rejected designs measure 24-50 cents). Windows EXCLUDE any
-    // release-consolidation fade instant -- that one bounded event is graded
-    // by the click check (whole stream) and the convergence check below, not
-    // as "pitch" (a 12 ms phase-wrap event is not sustained pitch movement).
+    // Worst 100 ms pitch chunk inside the given windows must stay below the
+    // ACCEPTED CONTROLLED-FM bound of 18 cents: at the ~4 oct/s cap the
+    // crossing measures ~14-16 cents at 150 Hz (the deliberate product trade,
+    // ADR-0015 refinement); the uncapped pre-0.8.10 glide measures ~28-31 and
+    // the one-pole tracker ~50 -- both fail. No fade ever fires during a drag,
+    // so one unbroken window can span the whole drag + catch-up.
     auto validate = [&] (const char* name, const std::vector<float>& s,
                          std::initializer_list<std::pair<double, double>> windows)
     {
@@ -1760,10 +1765,10 @@ static void testMultibandSplitDragNoPitchShift()
             if (i > (size_t) (0.02 * sr)) // skip the initial filter charge-up
                 maxDelta = std::max (maxDelta, (double) std::abs (s[i] - s[i - 1]));
         }
-        std::printf ("  %-13s worst pitch deviation = %.2f cents (rejected designs: 24+); max delta = %.4f\n",
+        std::printf ("  %-13s worst pitch deviation = %.2f cents (uncapped: 28+, one-pole: ~50); max delta = %.4f\n",
                      name, cents, maxDelta);
         check (! bad, "split-drag stream is free of NaN/Inf");
-        check (cents < 5.0, "no audible pitch modulation at any point of the split move");
+        check (cents < 18.0, "split-move FM stays within the accepted controlled bound");
         check (maxDelta < 0.04, "no click during / after the split drag");
     };
 
@@ -1780,22 +1785,21 @@ static void testMultibandSplitDragNoPitchShift()
             std::fill (z2.begin(), z2.end(), 0.0f);
             mb.processBlock (z.data(), z2.data(), block);
         }
-        // 6-octave flick: release-consolidation fires ~0.5 s in (0.25 s drag +
-        // 0.25 s quiet; residual lag ~5.7 oct > 1.5), landing the bank in one
-        // ~12 ms fade. Pitch windows bracket that instant.
+        // 6-octave flick: the target lands in 0.25 s; the bank keeps gliding
+        // at the ~4 oct/s cap and lands ~1.5 s in -- continuous motion, no
+        // fade, so one unbroken window spans the whole drag + catch-up.
         auto s = runDrag (6400.0f, 6.0f,
                           [&] (float f) { mb.setCrossovers (f, 8000.0f, 16000.0f); },
                           [&] (float* L, float* R, int n) { mb.processBlock (L, R, n); },
                           (int) (2.5 * sr) / block);
-        validate ("multiband:", s, { { 0.05, 0.45 }, { 0.80, 2.40 } });
+        validate ("multiband:", s, { { 0.05, 2.40 } });
     }
 
     {
-        // Small-residual drag (300 -> 110 Hz, 1.45 oct): the release residue
-        // (~1.1 oct) is BELOW the consolidation threshold, so the crawl itself
-        // carries the crossover down PAST the 150 Hz tone (~0.8 s in) at the
-        // ~1.25 oct/s cap -- the sustained-FM regression proper: the crossing
-        // must measure < 5 cents in an unbroken window (no fade fires).
+        // Moderate drag (300 -> 110 Hz, 1.45 oct in 0.25 s): the glide carries
+        // the crossover down PAST the 150 Hz tone at the ~4 oct/s cap -- the
+        // sustained-FM regression proper: the crossing must stay within the
+        // controlled bound in an unbroken window (no fade fires).
         anamorph::MultibandWidth mb;
         mb.prepare (sr, block);
         mb.setBandCount (2);
@@ -1820,9 +1824,9 @@ static void testMultibandSplitDragNoPitchShift()
     // 0.25 s. The chained fixed-bank crossfades of the first 0.8.10 fix were
     // amplitude/phase modulation at the fade cadence and sprayed sidebands
     // around the tone (max spur ~ -26 dBc on this scenario -- audibly "new
-    // frequencies around the original tone"); the one-pole glide is a true
+    // frequencies around the original tone"); the rate-capped glide is a true
     // allpass at every instant and measures at the ~ -37 dBc analysis floor
-    // (the pre-0.8.10 rate-capped glide also passes this check -- it failed on
+    // (the pre-0.8.10 uncapped glide also passes this check -- it failed on
     // pitch, which the checks above cover). Max spur = the strongest spectral
     // component more than +-30 Hz from the tone, relative to the tone, over
     // sliding 100 ms Hann windows spanning the drag.
@@ -1924,23 +1928,23 @@ static void testMultibandSplitDragNoPitchShift()
                           [&] (float f) { mon.setCrossovers (f, 8000.0f, 16000.0f); },
                           [&] (float* L, float* R, int n) { mon.process (L, R, 0x1, n); },
                           (int) (2.5 * sr) / block);
-        validate ("solo monitor:", s, { { 0.05, 0.45 }, { 0.80, 2.40 } });
+        validate ("solo monitor:", s, { { 0.05, 2.40 } });
 
-        // BOUNDED CONVERGENCE (the 0.8.10 follower refinement): the soloed
-        // band is LP(f1); once the release consolidation lands f1 at ~100 Hz,
-        // the 150 Hz tone must be attenuated (~-14 dB). Pre-refinement the
-        // ~1 oct/s crawl needed ~5.7 s to arrive -- at 1.2..1.7 s the tone was
-        // still at FULL level and this check fails.
+        // BOUNDED CATCH-UP (0.8.10 final): the soloed band is LP(f1); once the
+        // glide lands f1 at ~100 Hz, the 150 Hz tone must be attenuated
+        // (~-14 dB). At the ~4 oct/s cap a 6-oct flick lands ~1.5 s in; the
+        // rejected 1.25 oct/s follower was still ~2 octaves high at 2 s, so
+        // the tone sat at FULL level in this window and the check fails.
         double sq = 0.0; int cnt = 0;
-        for (int i = (int) (1.2 * sr); i < (int) (1.7 * sr) && i < (int) s.size(); ++i)
+        for (int i = (int) (1.7 * sr); i < (int) (2.2 * sr) && i < (int) s.size(); ++i)
         {
             sq += (double) s[(size_t) i] * s[(size_t) i]; ++cnt;
         }
         const double rms = std::sqrt (sq / juce::jmax (1, cnt));
         const double fullRms = amp / std::sqrt (2.0);
-        std::printf ("  convergence:  level 1.2-1.7 s after a 6-oct flick = %.2f of full (crawl-only follower: ~1.0)\n",
+        std::printf ("  convergence:  level 1.7-2.2 s after a 6-oct flick = %.2f of full (1.25 oct/s follower: ~1.0)\n",
                      rms / fullRms);
-        check (rms < 0.45 * fullRms, "a released drag lands within ~0.5 s (bounded convergence), not seconds");
+        check (rms < 0.45 * fullRms, "a released flick lands in bounded time (~1.5 s for 6 oct), not seconds");
     }
 
     {
@@ -1948,8 +1952,8 @@ static void testMultibandSplitDragNoPitchShift()
         // solo band 0 and step its upper split 250 -> 4000 Hz in ONE call
         // (> 1.5 oct between consecutive blocks). A 1 kHz tone sits ~ -48 dB
         // outside the soloed band before the jump and at full level inside it
-        // after -- the level must arrive within ~200 ms (the ~1 oct/s crawl
-        // would need ~4 s), click-free.
+        // after -- the level must arrive within ~200 ms (even the ~4 oct/s
+        // glide would need ~1 s), click-free.
         const double jumpTone = 1000.0;
         anamorph::SoloMonitor mon;
         mon.prepare (sr, block);

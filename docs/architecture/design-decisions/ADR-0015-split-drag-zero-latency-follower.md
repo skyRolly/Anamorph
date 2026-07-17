@@ -1,4 +1,4 @@
-# ADR-0015 — Split-movement transitions: zero-latency LR4 retained, bounded rate-capped follower
+# ADR-0015 — Split-movement transitions: zero-latency LR4 retained, rate-capped follower
 
 **Status:** Accepted
 
@@ -67,7 +67,7 @@ pure-side-gain width semantics preserved (widths must stay phase-free gain ramps
   alignment rework. Recorded as the future roadmap direction (an opt-in "linear phase" mode, the
   documented industry pattern).
 
-## Decision (v0.8.10)
+## Decision (v0.8.10, third design — evaluated and refined; see "v0.8.10 final decision" below)
 
 Keep the zero-latency LR4 architecture and transition via a **bounded rate-capped follower**:
 
@@ -92,13 +92,53 @@ identical path (parameter → per-block target → follower); block size does no
 per-sample follower; exactly one smoothing stage exists (verified: no GUI/parameter smoothing
 upstream).
 
+## v0.8.10 final decision (refinement — direct interaction over inaudibility)
+
+The bounded follower above was evaluated in interactive testing and its **latency was rejected**
+as a UX regression: at 1.25 oct/s the audible crossover lagged every ordinary fast drag (a
+500 Hz → 2 kHz / 0.5 s drag released with 1.37 oct of lag and glided on for another second), and
+the release consolidation — a 0.25 s "wait until the user stopped" heuristic — read as a sudden
+delayed jump after the hand had already stopped. The original product intent was never "make split
+movement inaudible on a pure sine"; it was "slightly reduce the FM of direct manipulation". The
+governing trade is therefore restated: **a small amount of controlled FM is preferable to obvious
+interaction latency.**
+
+All architecture-investigation results above remain valid (the physics, the A–H matrix, the H3
+hostile review, linear-phase as the future roadmap); the zero-latency LR4 architecture is
+retained. Only the follower's operating point changes, and the mechanism gets *simpler*:
+
+1. **Continuous movement**: the same per-sample multiplicative glide, cap raised to a hard
+   **~4 oct/s**. Every human drag up to 4 oct/s tracks **exactly** — zero GUI/DSP gap (Case A
+   500 Hz → 2 kHz / 5 s and Case B 500 Hz → 2 kHz / 0.5 s both measure 0.00 oct lag, 0.00 s
+   settle) — and the crossover feels attached to the mouse. Faster movement bounds the shift at
+   `0.312·4 ≈ 1.25` Hz: **~15 cents at a 150 Hz crossing, ~2 cents at 1 kHz** (measured 15.9c /
+   2.4c), spurs still at the −41 dBc analysis floor, < 0.1 dB envelope ripple — roughly **half**
+   the original uncapped implementation's worst case (+31c / +4.7c at its ~8 oct/s), which is the
+   "slight artifact reduction" originally asked for. Even a violent 6-octave flick (Case C) drains
+   in ~1.25 s of *continuous* motion after release — no several-second catch-up.
+2. **Discrete jumps** (target steps > 1.5 oct between consecutive blocks — automation steps and
+   preset snaps, Case D; unreachable by dragging at UI cadence): unchanged, one ~12 ms crossfade
+   to the state-copied idle bank. This is the only special handling that is actually needed.
+3. **Release consolidation: removed entirely** (quiet detector, 0.25 s timeout, residue fade).
+   With the 4 oct/s cap the residue a drag can accumulate is small and short-lived, so the
+   consolidation's one job is gone — and its cost (the delayed post-release jump) was the worst
+   part of the UX regression. No timers, no intent prediction, no deferred commits remain.
+
+Follower trajectories stay deterministic and closed-form: lag grows at `(v − 4)` oct/s only while
+a drag outruns the cap, drains at 4 oct/s otherwise, and resolves in `lag/4` s after release.
+Manual drags and host automation share the identical path; exactly one smoothing stage exists.
+
 ## Consequences
 
-- The audible crossover position can trail a fast drag by design (KI-012), but always lands within
-  ~1.2 s worst-case (typically ≤ 0.5 s), with at most one bounded ~12 ms fade event per gesture.
-- The pure-sine protocol is enforced by regression (`testMultibandSplitDragNoPitchShift`, Test 29):
-  < 5 cents worst 100 ms chunk through drags, crawls, and the tone crossing; spur < −31 dBc at a
-  60 Hz drag cadence; discrete jumps and released drags land fast and click-free.
+- Fast drags carry a small **controlled, bounded FM** (~15 cents at a 150 Hz crossing, less
+  everywhere above) instead of interaction latency — the accepted product trade (KI-012). Drags
+  ≤ 4 oct/s are artifact-bounded *and* exact-tracking.
+- The pure-sine protocol is enforced by regression (`testMultibandSplitDragNoPitchShift`, Test 29)
+  at the refined operating point: < 18 cents worst 100 ms chunk through drags, crawls, and the
+  tone crossing (the shipped cap measures ~14; the uncapped original ~28 and the one-pole ~50
+  fail); spur < −31 dBc at a 60 Hz drag cadence; a released 6-oct flick lands by plain gliding
+  in ~1.5 s (the 1.25 oct/s follower measures full lag there and fails); discrete jumps land via
+  the bank fade; every stream click-free.
 - Any future attempt to make fast tracking artifact-free must change the crossover class
   (linear-phase, H2) — a reported-latency change requiring a new ADR + Architecture Review.
 

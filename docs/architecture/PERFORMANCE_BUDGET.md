@@ -19,12 +19,12 @@ no benchmark/profiling data exists in the repository, and inventing numbers is p
 
 - **Crossover-move cost (0.8.10).** `MonoMaker` calls `LR4Xover::setCutoffFrequency` per sample
   during its cutoff glide (recomputes coefficients in place, no allocation). `MultibandWidth`
-  and `SoloMonitor` do the same while a split eases under the ~1.25 oct/s inaudibility cap —
-  per-sample `tan` recomputes on the moving splits, bounded to ≤ ~1.2 s per gesture since the
-  ADR-0015 release consolidation (larger residues land via one fade ~0.26 s after the drag
-  ends) — and additionally run BOTH banks for one ~12 ms crossfade per jump/consolidation (2×
-  the stage's filter ticks for that fade only). Evidence [Verified]: src/dsp/MultibandWidth.cpp
-  (glide + jump-fade trigger); MonoMaker.cpp:32-36; SoloMonitor.cpp.
+  and `SoloMonitor` do the same while a split tracks under the ~4 oct/s cap (ADR-0015 final) —
+  per-sample `tan` recomputes on the moving splits for the duration of the drag plus ≤ ~1.5 s
+  of worst-case catch-up after a violent flick — and additionally run BOTH banks for one ~12 ms
+  crossfade per discrete jump (2× the stage's filter ticks for that fade only).
+  Evidence [Verified]: src/dsp/MultibandWidth.cpp (glide + jump-fade trigger);
+  MonoMaker.cpp:32-36; SoloMonitor.cpp.
 - **The Drive waveshaper's tanh is a minimax rational kernel (Wave 2 / H3).** The two per-sample
   libm `tanh` calls (~55 % of every oversampling delta in the Round-2 attribution; their range
   reduction owned 35.8 % of engine branch mispredicts) are an odd degree-9/8 rational with

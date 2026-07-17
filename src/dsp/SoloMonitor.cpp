@@ -14,12 +14,11 @@ void SoloMonitor::prepare (double sampleRate, int maxBlock)
     // ~12 ms cutoff crossfade for DISCRETE target jumps only, matching the
     // Multiband (0.8.10) and the gain crossfade below.
     fadeLen = juce::jmax (1, (int) std::lround (0.012 * sampleRate));
-    // Hard ~1.25 oct/s cutoff rate cap: bounds the swept-allpass frequency
-    // shift at ~0.39 Hz (4.5 cents at 150 Hz), below the pure-tone JND and the
-    // Test 29 bound, with closing margin over slow manual drags (see
+    // Hard ~4 oct/s cutoff rate cap: drags up to that rate track EXACTLY (zero
+    // GUI/DSP gap); faster ones bound the swept-allpass frequency shift at
+    // ~1.25 Hz -- a small controlled FM chosen over interaction latency (see
     // MultibandWidth.h).
-    glideStep = std::exp2 (1.25f / (float) sr);
-    quietFadeLen = juce::jmax (1, (int) std::lround (kQuietFadeSeconds * sampleRate));
+    glideStep = std::exp2 (4.0f / (float) sr);
 
     // ~12 ms crossfade: long enough to be click-free, short enough to feel instant.
     const double xfade = 0.012;
@@ -43,7 +42,6 @@ void SoloMonitor::reset()
     fading      = false;
     fadePos     = 0;
     pendingJump = false;
-    quietSamples = 0;
     passGain.setCurrentAndTargetValue (1.0f);     // settle to the true passthrough
     for (auto& g : bandGain) g.setCurrentAndTargetValue (0.0f);
     running = true; // bank just cleaned: warm by definition (no stale state to flush)
@@ -141,22 +139,12 @@ void SoloMonitor::process (float* left, float* right, int mask, int numSamples) 
     // DISCRETE-JUMP bank crossfade (0.8.10, mirrors MultibandWidth): only a
     // TARGET that stepped > kFadeThresholdOct since the previous block fades to
     // the state-copied idle bank -- one bounded event. Continuous movement of
-    // any speed glides per sample below under the ~1.25 oct/s inaudibility cap.
+    // any speed glides per sample below under the ~4 oct/s rate cap.
     {
-        bool moved = false;
-        for (int i = 0; i < crossovers && ! moved; ++i)
-            moved = std::abs (targetF[i] - prevTargetF[i]) > 0.0f;
-        quietSamples = moved ? 0 : juce::jmin (quietSamples + numSamples, quietFadeLen);
-
         bool step = pendingJump;
         for (int i = 0; i < crossovers && ! step; ++i)
             step = std::abs (std::log2 (targetF[i] / prevTargetF[i])) > kFadeThresholdOct;
         for (int i = 0; i < 3; ++i) prevTargetF[i] = targetF[i];
-
-        // Release consolidation, mirroring MultibandWidth (bounded convergence).
-        if (! step && ! fading && quietSamples >= quietFadeLen)
-            for (int i = 0; i < crossovers && ! step; ++i)
-                step = std::abs (std::log2 (bank[active].f[i] / targetF[i])) > kFadeThresholdOct;
 
         if (step)
         {
@@ -204,9 +192,10 @@ void SoloMonitor::process (float* left, float* right, int mask, int numSamples) 
 
     for (int n = 0; n < numSamples; ++n)
     {
-        // RATE-CAPPED cutoff glide (0.8.10): ease each active split toward its
-        // target per sample at <= ~1.25 oct/s (the swept-allpass shift stays below
-        // the pure-tone JND); paused while a discrete-jump fade is in flight.
+        // RATE-CAPPED cutoff glide (0.8.10): each active split tracks its
+        // target per sample, capped at ~4 oct/s (drags up to that rate track
+        // exactly; faster ones bound the swept-allpass shift at ~1.25 Hz);
+        // paused while a discrete-jump fade is in flight.
         if (! fading)
         {
             auto& bk = bank[active];

@@ -16,15 +16,14 @@ void MultibandWidth::prepare (double sampleRate, int maxBlock)
     // ~12 ms cutoff crossfade for DISCRETE target jumps only: the house
     // click-free fade length (SoloMonitor / Multiband Enable use the same).
     fadeLen = juce::jmax (1, (int) std::lround (0.012 * sampleRate));
-    // Hard ~1.25 oct/s cutoff rate cap: a swept LR4 shifts every frequency by
-    // 0.312*R Hz at sweep rate R, so this bounds the shift at ~0.39 Hz = 4.5
-    // cents at 150 Hz -- still below the pure-tone JND and the 5-cent Test 29
-    // bound at any drag speed (see MultibandWidth.h). 1.25 rather than 1.0
-    // also leaves closing margin over typical slow manual drags (<= 1 oct/s),
-    // so a gap formed by an earlier flick DRAINS while the user keeps dragging
-    // slowly instead of freezing (the "stuck follower" report).
-    glideStep = std::exp2 (1.25f / (float) sr);
-    quietFadeLen = juce::jmax (1, (int) std::lround (kQuietFadeSeconds * sampleRate));
+    // Hard ~4 oct/s cutoff rate cap: a swept LR4 shifts every frequency by
+    // 0.312*R Hz at sweep rate R, so this bounds the shift at ~1.25 Hz (~15
+    // cents at a 150 Hz crossing, ~2 at 1 kHz) -- a small CONTROLLED FM,
+    // roughly half the original uncapped implementation's worst case, chosen
+    // over interaction latency: any drag up to 4 oct/s tracks EXACTLY (zero
+    // GUI/DSP gap) and even a 6-octave flick drains in ~1.25 s of continuous
+    // motion, with no timers or deferred catch-up (see MultibandWidth.h).
+    glideStep = std::exp2 (4.0f / (float) sr);
     // One-pole on the band widths at ~20 ms (the global Width smoother's ramp),
     // so a fast band-width drag glides instead of stepping per block (0.7.0 #1).
     wCoeff = std::exp (-1.0f / (0.02f * (float) sr));
@@ -49,7 +48,6 @@ void MultibandWidth::reset()
     fading      = false;
     fadePos     = 0;
     pendingJump = false;
-    quietSamples = 0;
     // Settle the width glide to its target (same silent-reset argument).
     for (int i = 0; i < 4; ++i) { currentW[i] = targetW[i]; }
 }
@@ -81,8 +79,8 @@ void MultibandWidth::setCrossovers (float f1, float f2, float f3) noexcept
 {
     // Keep the three crossovers strictly ordered with a little separation, so a
     // drag can't cross them over. These are TARGETS; processBlock eases the live
-    // cutoffs toward them under a ~1.25 oct/s inaudibility cap (or a single bank
-    // crossfade for a discrete step / released-drag residue -- ADR-0015).
+    // cutoffs toward them under a ~4 oct/s rate cap (or a single bank crossfade
+    // for a discrete multi-octave step -- ADR-0015).
     //
     // CRITICAL (0.8.2): clamp every crossover to a Nyquist-safe band [20 Hz, 0.45*sr]
     // BEFORE ordering. Automating a split toward 20 kHz used to push the ordered
@@ -137,29 +135,14 @@ void MultibandWidth::processBlock (float* left, float* right, int numSamples,
     // active bank's ladder state, so it starts transient-free -- and fades the
     // output over to it: one bounded transition event instead of a multi-second
     // crawl. Continuous movement of ANY speed never fades; it glides per sample
-    // under the ~1.25 oct/s cap below (inaudible by construction). A step arriving
-    // mid-fade latches pendingJump and re-fires at the next block after the
-    // fade lands, straight to the LATEST target.
+    // under the ~4 oct/s cap below. A step arriving mid-fade latches
+    // pendingJump and re-fires at the next block after the fade lands,
+    // straight to the LATEST target.
     {
-        // Quiet detector for the release consolidation: exact compares (the
-        // engine recomputes bit-identical clamped targets while the parameter
-        // is untouched, so "unchanged" is exact).
-        bool moved = false;
-        for (int i = 0; i < crossovers && ! moved; ++i)
-            moved = std::abs (targetF[i] - prevTargetF[i]) > 0.0f;
-        quietSamples = moved ? 0 : juce::jmin (quietSamples + numSamples, quietFadeLen);
-
         bool step = pendingJump;
         for (int i = 0; i < crossovers && ! step; ++i)
             step = std::abs (std::log2 (targetF[i] / prevTargetF[i])) > kFadeThresholdOct;
         for (int i = 0; i < 3; ++i) prevTargetF[i] = targetF[i];
-
-        // Release consolidation: the drag has ended (targets quiet) but a
-        // multi-octave residue is still crawling -- land it as ONE discrete
-        // jump instead of seconds of catch-up (bounded convergence, 0.8.10).
-        if (! step && ! fading && quietSamples >= quietFadeLen)
-            for (int i = 0; i < crossovers && ! step; ++i)
-                step = std::abs (std::log2 (bank[active].f[i] / targetF[i])) > kFadeThresholdOct;
 
         if (step)
         {
@@ -269,13 +252,13 @@ void MultibandWidth::processBlock (float* left, float* right, int numSamples,
 
     for (int n = 0; n < numSamples; ++n)
     {
-        // RATE-CAPPED cutoff glide (0.8.10): each active split eases toward its
-        // target per sample at <= ~1.25 oct/s, so the swept-allpass frequency
-        // shift stays at ~0.31 Hz -- below the pure-tone JND at any drag speed
-        // (see MultibandWidth.h) -- while the reconstruction stays a true
+        // RATE-CAPPED cutoff glide (0.8.10): each active split tracks its
+        // target per sample, capped at ~4 oct/s -- drags up to that rate track
+        // EXACTLY, faster ones bound the swept-allpass shift at ~1.25 Hz (see
+        // MultibandWidth.h) -- while the reconstruction stays a true
         // flat-magnitude LR4 allpass at every instant. Paused while a
         // discrete-jump fade is in flight (its banks hold fixed coefficients);
-        // small residues keep gliding the block after the fade lands.
+        // residues keep gliding the block after the fade lands.
         if (! fading)
         {
             auto& bk = bank[active];

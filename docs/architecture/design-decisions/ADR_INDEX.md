@@ -22,7 +22,7 @@ Status values: Proposed · Accepted · Deprecated · Superseded.
 | [ADR-0012](ADR-0012-juce-8.0.14-upgrade.md) | JUCE dependency upgrade 8.0.8 → 8.0.14 | Accepted | Verified (CI build + 23 tests + pluginval) |
 | [ADR-0013](ADR-0013-raw-normalised-serialization-attribute.md) | Additive `raw` normalised value attribute (exact discrete-param state round-trip) | Accepted | Verified (CI `--randomise` state restoration) |
 | [ADR-0014](ADR-0014-multiband-bands-solo-automatable.md) | Expose `mbBands`/`mbSolo` to host automation (remove `withAutomatable(false)`) | Accepted | Verified (code) |
-| [ADR-0015](ADR-0015-split-drag-zero-latency-follower.md) | Split-movement transitions: zero-latency LR4 retained, bounded rate-capped follower (full A–H3 investigation history) | Accepted | Verified (measurements + code + Test 29) |
+| [ADR-0015](ADR-0015-split-drag-zero-latency-follower.md) | Split-movement transitions: zero-latency LR4 retained, rate-capped follower — v0.8.10 final: ~4 oct/s direct tracking, controlled FM over latency (full A–H3 investigation history) | Accepted | Verified (measurements + code + Test 29) |
 
 ## How to add an ADR
 

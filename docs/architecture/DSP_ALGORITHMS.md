@@ -81,29 +81,29 @@ next band, so the sum telescopes to `A1·A2·A3` (flat); only `bands−2` extra 
 (0 for 1–2 bands, 1 for 3, 2 for 4) and they add **zero integer latency**. A **parallel dry bank**
 (`dx[]` + `dax[]`) reconstructs the dry at unit width with the identical compensation, sharing the
 wet's exact per-bank cutoffs → phase-matched `A(dry)` for the dry/wet Mix. 1-band fast path skips
-crossovers. **Cutoff changes (0.8.10 final, third design — each round measured against the
+crossovers. **Cutoff changes (0.8.10 final — each round measured against the
 pure-sine protocol: instantaneous frequency of the fundamental, spurs, envelope, at drag speeds
 1–24 oct/s).** A swept IIR crossover is inherently a phase modulator: its allpass phase at any
 fixed frequency rotates up to 2π per crossover crossing, i.e. a frequency shift of `0.312·R` Hz
 at sweep rate `R` oct/s — no smoothing shape removes that. The rejected designs redistributed
-the artifact: the pre-0.8.10 **~8 oct/s rate cap** detuned ~2.5 Hz with a banked multi-hundred-ms
-catch-up tail; **chained ~12 ms bank crossfades** were AM/PM at the fade cadence (spurs −25…−28
+the artifact: the pre-0.8.10 **~8 oct/s rate cap** detuned ~2.5 Hz (+31 cents at a 150 Hz
+crossing); **chained ~12 ms bank crossfades** were AM/PM at the fade cadence (spurs −25…−28
 dBc around a pure tone); a **one-pole tracker (τ≈15 ms)** FM'd at the full drag rate (~50 cents
-measured at the crossing of a fast drag). Final (ADR-0015): *continuous movement* glides per sample under a
-**hard ~1.25 oct/s rate cap** — the shift is bounded at ~0.39 Hz, **below the pure-tone JND at
-any drag speed** (measured 4.5 cents worst-case at a 150 Hz crossing, spurs at the −41 dBc
-analysis floor, <0.1 dB envelope ripple), and the cap leaves closing margin over typical slow
-manual drags so an earlier flick's gap drains during continued dragging instead of freezing.
-*Discrete jumps* (the TARGET stepping > 1.5 oct between consecutive blocks — automation
-steps/snaps, unreachable by dragging) crossfade to the second, state-copied bank over ~12 ms:
-one bounded event (−18 dBc at a 4-octave step); a step arriving mid-fade re-fires to the latest
-target when the fade lands. *Release consolidation* (0.8.10 follower refinement): once the
-targets have been quiet ≥ 0.25 s with a residual lag still > 1.5 oct, the residue lands via the
-same single fade — convergence after any gesture is **bounded** (≤ ~0.26 s consolidated,
-≤ 1.2 s crawled) instead of distance-proportional (a 6-octave flick previously crawled ~5.7 s).
-Regression: Test 29 (worst 100 ms chunk < 5 cents through drags, crawls and the tone crossing;
-max spur < −31 dBc; discrete jumps AND released drags land fast, click-free). Widths one-pole
-smoothed (~20 ms), shared by both banks.
+measured at the crossing of a fast drag); a **~1.25 oct/s "inaudibility" cap + 0.25 s release
+consolidation** converged in bounded time but lagged every fast drag audibly and jumped after
+release — rejected as a UX regression (interaction latency). Final (ADR-0015 refinement):
+*continuous movement* glides per sample under a **hard ~4 oct/s rate cap** — a deliberate
+product trade (small controlled FM over interaction latency): drags up to 4 oct/s track
+**exactly** (zero GUI/DSP gap), faster ones bound the shift at ~1.25 Hz (**~15 cents measured at
+a 150 Hz crossing, ~2 at 1 kHz**, spurs at the −41 dBc analysis floor, <0.1 dB envelope ripple
+— about half the pre-0.8.10 worst case), and even a 6-octave flick drains in ~1.25 s of
+continuous motion; no timers, no deferred catch-up. *Discrete jumps* (the TARGET stepping
+> 1.5 oct between consecutive blocks — automation steps/snaps, unreachable by dragging)
+crossfade to the second, state-copied bank over ~12 ms: one bounded event (−18 dBc at a
+4-octave step); a step arriving mid-fade re-fires to the latest target when the fade lands.
+Regression: Test 29 (worst 100 ms chunk < 18 cents through drags, crawls and the tone crossing;
+max spur < −31 dBc; released flicks land by plain gliding in ~1.5 s; discrete jumps land via the
+fade, click-free). Widths one-pole smoothed (~20 ms), shared by both banks.
 - **Crossover safety**: Nyquist clamp `[20, 0.45·sr]` applied **before** ordering, then the
   1.1× separation ordering re-clamped **top-down** so separation can never push a cutoff past
   Nyquist (the 0.8.2 "+600 dB" fix). `.cpp:55-71`.

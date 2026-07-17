@@ -33,57 +33,64 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   (still message-thread). Evidence: this PR. [Verified]
 
 ### Fixed
-- **Multiband split movement no longer modulates the audio: no pitch movement, no spurious
-  frequencies around a pure tone, no clicks — at any drag speed.** Three design rounds, each
-  graded against a pure-sine protocol (instantaneous frequency of the fundamental, spurs
-  outside ±30 Hz, envelope, at drag speeds 1–24 oct/s). The physics: a swept IIR crossover is
-  inherently a phase modulator — its allpass phase at any fixed frequency rotates up to 2π per
-  crossover crossing, a genuine frequency shift of `0.312·R` Hz at sweep rate `R` oct/s, and no
-  smoothing shape removes it, only redistributes it. Rejected: the pre-0.8.10 ~8 oct/s
-  rate-capped glide (≈2.5 Hz shift, 20–35 cents on low content, with a banked catch-up tail
-  lasting hundreds of ms after the drag stopped); chained ~12 ms fixed-bank crossfades
-  (amplitude/phase modulation at the fade cadence — sidebands at −25…−28 dBc around the tone,
-  and a crossfade between two phase-different allpasses cannot preserve the magnitude response
-  mid-fade); a one-pole tracker τ≈15 ms (FM at the full drag rate — ~50 cents measured at the
-  crossing of a fast drag). Shipped design in `MultibandWidth` and `SoloMonitor`:
-  **continuous movement eases each cutoff per sample under a hard ~1 octave/second rate cap**,
-  bounding the shift at ~0.31 Hz — below the pure-tone JND everywhere (measured: worst 100 ms
-  chunk 3.6 cents at a 150 Hz crossing, spurs at the −41 dBc analysis floor, < 0.1 dB envelope
-  ripple, at every drag speed tested). The trade, stated plainly: the *audible* crossover
-  position eases toward the UI at ~1.25 oct/s (the GUI tracks the mouse instantly), with
-  convergence bounded by the follower refinement above (KI-012 documents the limitation;
+- **Multiband split movement reworked: no spurious frequencies around a pure tone, no clicks,
+  and fast-drag pitch modulation cut to a small controlled bound — while the audible crossover
+  stays attached to the mouse.** Four design rounds, each graded against a pure-sine protocol
+  (instantaneous frequency of the fundamental, spurs outside ±30 Hz, envelope, at drag speeds
+  1–24 oct/s). The physics: a swept IIR crossover is inherently a phase modulator — its allpass
+  phase at any fixed frequency rotates up to 2π per crossover crossing, a genuine frequency
+  shift of `0.312·R` Hz at sweep rate `R` oct/s, and no smoothing shape removes it, only
+  redistributes it. Rejected: the pre-0.8.10 uncapped ~8 oct/s glide (≈2.5 Hz shift — +31 cents
+  measured at a 150 Hz crossing); chained ~12 ms fixed-bank crossfades (amplitude/phase
+  modulation at the fade cadence — sidebands at −25…−28 dBc around the tone, and a crossfade
+  between two phase-different allpasses cannot preserve the magnitude response mid-fade); a
+  one-pole tracker τ≈15 ms (FM at the full drag rate — ~50 cents measured at the crossing of a
+  fast drag); and a **~1.25 oct/s "inaudibility" cap with 0.25 s release consolidation**
+  (measurably clean, but rejected in interactive testing as a UX regression: the audio lagged
+  the GUI on ordinary fast drags and jumped after release — interaction latency is the worse
+  artifact). Shipped design (ADR-0015 "v0.8.10 final decision") in `MultibandWidth` and
+  `SoloMonitor`: **continuous movement tracks each cutoff per sample under a hard ~4 oct/s rate
+  cap** — every drag up to 4 oct/s tracks *exactly* (zero GUI/DSP gap), faster movement bounds
+  the shift at ~1.25 Hz (measured: worst 100 ms chunk ~15 cents at a 150 Hz crossing, ~2 cents
+  at 1 kHz, spurs at the −41 dBc analysis floor, < 0.1 dB envelope ripple — roughly half the
+  pre-fix worst case), and even a violent 6-octave flick catches up in ~1.25 s of *continuous*
+  motion after release — no timers, no intent prediction, no delayed jump. KI-012 documents the
+  accepted trade (a small amount of controlled FM is preferable to obvious interaction latency;
   artifact-free *fast* tracking is impossible with zero-latency IIR crossovers and would
   require linear-phase splits — a reported-latency change gated behind an Architecture Review,
-  recorded as the roadmap direction in ADR-0015). **Discrete jumps** (the target stepping > 1.5 oct
-  between consecutive blocks — automation steps/snaps, unreachable by dragging) stay responsive
-  via a single ~12 ms crossfade to a state-copied second filter bank: one bounded transition
-  event (−18 dBc at a 4-octave step) instead of a multi-second ease. Settled behaviour is
-  bit-identical; flat recombination, mono compatibility, dry/wet phase alignment, Nyquist
-  clamps, latency and serialization unchanged. Regression `testMultibandSplitDragNoPitchShift`
-  (Test 29) now grades the entire movement: worst 100 ms chunk < 5 cents across the drag AND
-  the full post-drag ease including the tone crossing (the 8 oct/s cap and the one-pole measure
-  24–50 cents and fail), max spur < −31 dBc during a 60 Hz-cadence drag (the chained fades
-  measure −28.5 dBc and fail), discrete 4-octave jumps must land < 200 ms (an ease would need
-  ~4 s), all click-free. Evidence: this PR. [Verified]
-- **The DSP crossover follower now converges in bounded time and no longer freezes behind a
-  slow drag (split-movement follower refinement, ADR-0015).** Two follower defects survived the
-  transition redesign: (1) a pure rate limiter's catch-up is unbounded in distance — a 6-octave
-  flick left the audible crossover crawling for ~5.7 s after release; (2) with the cap set at
-  1.0 oct/s, a drag near that speed left **zero closing margin**, freezing an earlier gap for
-  the whole gesture (measured: a 1.5-oct flick followed by a 0.9 oct/s drag held ~1 oct of lag
-  for 4 s — the "stuck follower"). Fixes, both measured: the cap rises to **~1.25 oct/s** —
-  still under the pure-tone JND and the 5-cent regression bound (4.5 cents worst at a 150 Hz
-  crossing) — restoring closing margin over typical slow drags; and **release consolidation**
-  lands any residue still > 1.5 oct once the targets have been quiet ≥ 0.25 s, via the same
-  single ~12 ms state-copied bank crossfade already used for discrete jumps. Convergence after
-  any gesture is now bounded: ≤ ~0.26 s consolidated, ≤ 1.2 s crawled (6-oct flick: 5.7 s →
-  0.26 s). Direction-symmetric (measured identical up/down); manual drags and automation share
-  the identical path; exactly one smoothing stage exists (verified — no double smoothing).
-  Artifact safety unchanged: the sine protocol still measures < 5 cents / < −31 dBc everywhere
-  outside the one bounded landing event. The full A–H3 architecture investigation history is
-  now a permanent record in ADR-0015. Regressions: Test 29 gains a bounded-convergence check
-  (fails at 1.00× full level on the crawl-only follower) and an unbroken crawl-crossing check
-  at the new rate (4.49 cents measured). Evidence: this PR. [Verified]
+  recorded as the roadmap direction in ADR-0015). **Discrete jumps** (the target stepping
+  > 1.5 oct between consecutive blocks — automation steps/snaps, unreachable by dragging) stay
+  responsive via a single ~12 ms crossfade to a state-copied second filter bank: one bounded
+  transition event (−18 dBc at a 4-octave step) instead of a multi-second ease. Settled
+  behaviour is bit-identical; flat recombination, mono compatibility, dry/wet phase alignment,
+  Nyquist clamps, latency and serialization unchanged. Regression
+  `testMultibandSplitDragNoPitchShift` (Test 29) grades the entire movement at the final
+  operating point: worst 100 ms chunk < 18 cents across the drag AND the full catch-up
+  including the tone crossing (the shipped cap measures ~14; the uncapped glide ~28 and the
+  one-pole ~50 fail), max spur < −31 dBc during a 60 Hz-cadence drag (the chained fades measure
+  −28.5 dBc and fail), a released 6-octave flick must land by plain gliding within ~1.5 s (the
+  1.25 oct/s follower measures full lag there and fails), discrete 4-octave jumps must land
+  < 200 ms, all click-free. Evidence: this PR. [Verified]
+- **The intermediate "bounded convergence" follower was evaluated and simplified away
+  (ADR-0015 "v0.8.10 final decision").** The 1.25 oct/s cap + release-consolidation follower
+  solved the earlier unbounded-catch-up and "stuck follower" defects, but interactive testing
+  rejected its interaction latency: a 500 Hz → 2 kHz / 0.5 s drag released with 1.37 oct of
+  audible lag and glided on for another second, and the 0.25 s quiet-timeout consolidation — a
+  "wait until the user stopped" heuristic — read as a sudden delayed jump after the hand had
+  stopped. Final refinement, per the restated product intent (slightly reduce artifact
+  severity while preserving direct manipulation): the cap rises to **~4 oct/s** (Cases A and B
+  — 500 Hz → 2 kHz in 5 s and in 0.5 s — both track with 0.00 oct lag and 0.00 s settle;
+  Case C, a 6-oct/0.25 s flick, settles in ~1.25 s vs 2.75 s), and the **release consolidation
+  is removed entirely** (quiet detector, 0.25 s timeout, residue fade — the mechanism, its
+  state and its members are gone from `MultibandWidth` and `SoloMonitor`). The discrete-jump
+  bank fade remains the only special event (Case D: automation snaps, unreachable by dragging).
+  Follower trajectories stay deterministic and closed-form; manual drags and automation share
+  the identical path; exactly one smoothing stage exists. The full A–H3 architecture
+  investigation history, the earlier follower iterations and their measurements remain a
+  permanent record in ADR-0015. Regressions: Test 29 re-thresholded to the final operating
+  point (18-cent controlled bound — the uncapped glide fails at ~28; convergence window moved
+  to 1.7–2.2 s — the 1.25 oct/s follower fails at 1.00× full level; both directions verified by
+  temporarily re-pinning the cap). Evidence: this PR. [Verified]
 - **macOS (Apple Silicon native): tooltips no longer show an opaque white rectangle around the
   rounded capsule.** Root cause: `juce::TooltipWindow` declares itself *opaque* (its constructor
   calls `setOpaque(true)`) while the custom tooltip drawing deliberately leaves the pixels

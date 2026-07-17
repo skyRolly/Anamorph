@@ -101,30 +101,32 @@ private:
         float    f[3] { 180.0f, 800.0f, 3000.0f };
     };
 
-    // Cutoff-change strategy (0.8.10 final, third design -- each picked by
+    // Cutoff-change strategy (0.8.10 final -- each element picked by
     // measurement against the pure-sine protocol: instantaneous frequency of
     // the fundamental, spurs outside +-30 Hz, envelope dips, at drag speeds
     // 1..24 oct/s):
     //
     //  * CONTINUOUS MOVEMENT: the active bank's cutoffs glide per sample under
-    //    a HARD RATE CAP of ~1 octave/second. A swept IIR crossover is
+    //    a HARD RATE CAP of ~4 octaves/second. A swept IIR crossover is
     //    inherently a phase modulator -- its allpass phase at any fixed
     //    frequency rotates by up to 2pi per crossover crossing, and dphi/dt is
     //    a genuine frequency shift of 0.312*R Hz at sweep rate R oct/s. No
     //    smoothing shape can remove that (a one-pole tracking a fast drag FMs
-    //    at the full drag rate -- the rejected second design; chained bank
-    //    crossfades are amplitude/phase modulation at the fade cadence with
-    //    -25..-28 dBc sidebands -- the rejected first design; consolidated
-    //    multi-octave fades land in the worst phase-delta zone, measured -6..
-    //    -11 dB dips). The only inaudible point on the trade-off curve is a
-    //    rate small enough that the shift sits below the pure-tone JND:
-    //    R = 1.25 oct/s -> 0.39 Hz (4.5 cents at 150 Hz, 0.7 at 1 kHz; the
-    //    5-cent Test 29 bound), measured with spurs at the -41 dBc analysis
-    //    floor and < 0.1 dB envelope ripple AT EVERY DRAG SPEED -- the audible
-    //    crossover position eases toward the UI (which tracks the mouse
-    //    instantly), and 1.25 leaves closing margin over typical slow manual
-    //    drags so an earlier flick's gap drains during continued dragging
-    //    (ADR-0015).
+    //    at the full drag rate -- rejected; chained bank crossfades are
+    //    amplitude/phase modulation at the fade cadence, -25..-28 dBc
+    //    sidebands -- rejected; a 1.25 oct/s "inaudibility" cap with a
+    //    quiet-timeout release consolidation converged, but lagged every fast
+    //    drag audibly and read as a delayed jump after release -- rejected as
+    //    a UX regression). The cap is therefore a PRODUCT trade, not an
+    //    inaudibility bound: a small controlled FM is preferable to obvious
+    //    interaction latency. R = 4 oct/s tracks any drag up to 4 oct/s
+    //    EXACTLY -- zero GUI/DSP gap, the crossover feels attached to the
+    //    mouse -- and bounds the shift at ~1.25 Hz: ~15 cents at a 150 Hz
+    //    crossing, ~2 cents at 1 kHz (spurs at the -41 dBc analysis floor,
+    //    < 0.1 dB envelope ripple), roughly HALF the original uncapped
+    //    implementation's worst case (+31c at 150 Hz). Even a violent 6-octave
+    //    flick drains in ~1.25 s of continuous motion -- no timers, no
+    //    deferred catch-up, no post-release jump (ADR-0015 refinement).
     //
     //  * DISCRETE JUMPS (the TARGET stepping > kFadeThresholdOct between two
     //    consecutive blocks -- an automation step / preset-style snap, never
@@ -135,9 +137,7 @@ private:
     //    -18 dBc / -2.4 dB for 12 ms; the same step glided at a fast rate
     //    would chirp at -4.7 dBc). A step arriving mid-fade is remembered
     //    (pendingJump) and fires when the fade lands, always to the LATEST
-    //    target. The same fade also lands a STALE multi-octave residue once
-    //    the targets go quiet (release consolidation, below), so convergence
-    //    after any gesture is bounded instead of distance-proportional.
+    //    target.
     XoverBank bank[2];
     int       active  = 0;     // the glide/settled bank; 1-active fades in on a jump
     bool      fading  = false;
@@ -145,30 +145,16 @@ private:
     int       fadeLen = 1;     // ~12 ms in samples
     bool      pendingJump = false; // a discrete step arrived while fading
 
-    // A delta larger than this (octaves) crossfades banks -- either a
-    // per-block TARGET step (a discrete jump), or a STALE LAG left behind by a
-    // fast drag once the target has gone quiet (release consolidation, below).
+    // A per-block TARGET delta larger than this (octaves) crossfades banks: a
+    // discrete jump. Dragging at UI cadence never reaches it, so drags always
+    // take the glide path.
     static constexpr float kFadeThresholdOct = 1.5f;
-
-    // Release consolidation (0.8.10 follower refinement): a pure rate cap
-    // leaves the catch-up time unbounded in distance (a 6-octave flick took
-    // ~5.7 s to land) and cannot close a gap while the target keeps moving
-    // near the cap rate (the "stuck follower" report). Once the TARGETS have
-    // been unchanged for kQuietFadeSeconds and the residual lag still exceeds
-    // kFadeThresholdOct, the drag is over by definition -- the residue is
-    // resolved like any other discrete jump: ONE bank crossfade to the target.
-    // Convergence after any gesture is therefore BOUNDED: <= 0.25 s + 12 ms
-    // when the residue is large, <= 1.5 oct / 1.25 oct/s = 1.2 s when it
-    // crawls. Sub-threshold residues keep the artifact-free crawl.
-    static constexpr float kQuietFadeSeconds = 0.25f;
-    int  quietSamples = 0;   // samples since the targets last moved (saturating)
-    int  quietFadeLen = 1;   // kQuietFadeSeconds in samples
 
     void setBankCutoffs (XoverBank& b) noexcept;                       // -> targetF
     void copyBankState  (XoverBank& to, const XoverBank& from) noexcept;
 
     double sr = 44100.0;
-    float  glideStep = 1.0f;   // per-sample multiplicative cap, 2^(1.25/sr) (~1.25 oct/s)
+    float  glideStep = 1.0f;   // per-sample multiplicative cap, 2^(4/sr) (~4 oct/s)
     float  targetF[3]     { 180.0f, 800.0f, 3000.0f };
     float  prevTargetF[3] { 180.0f, 800.0f, 3000.0f }; // last block's targets (step detector)
 
