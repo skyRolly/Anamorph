@@ -142,6 +142,8 @@ void AnamorphEngine::reset()
     pendingAlgoReset = false;
     switchState = SwitchState::Normal;
     switchPhase = 1.0f;
+    dryDuck = false;
+    dryDuckLat = 0;
     bypassBlend.setCurrentAndTargetValue (p.bypass ? 1.0f : 0.0f); // settle the crossfade
     mbEnableBlend.setCurrentAndTargetValue (p.mbEnable ? 1.0f : 0.0f); // settle the multiband crossfade
     mbRunning = p.mbEnable; // reset() above cleaned the bank: warm iff multiband is on
@@ -223,14 +225,42 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
     // (#1, 0.6.4/0.6.5 feedback).
     const bool forceDuck = duckRequest.exchange (0, std::memory_order_relaxed) != 0;
 
+    // Begin (or re-begin) a forced duck: mark it forced and latch the dry-fill
+    // decision against the state being heard RIGHT NOW (getLatencySamples() tracks
+    // the latched osEngaged). dryDuckLat is fixed for this duck -- the state heard
+    // through its fade-out equals the one heard through its fade-in, so a single
+    // read offset is valid and can never jump mid-fade. Dry-fill is engaged only
+    // when the swap keeps the reported latency (else the offset would step by the
+    // latency delta at full dry weight; the host is re-aligning its PDC anyway).
+    // Called at every FRESH fade-out entry, so a second swap never inherits the
+    // previous swap's stale dryDuck/dryDuckLat.
+    auto beginForcedDuck = [this] (const EngineParameters& target)
+    {
+        pendingForced = true;
+        dryDuckLat    = getLatencySamples();
+        dryDuck       = (predictLatency (target) == dryDuckLat);
+        // Present the fill at the output-stage level being heard RIGHT NOW
+        // (Output Gain -- or the Match gain that replaces it -- and Output
+        // Balance), latched for the duck's lifetime like dryDuckLat: the
+        // smoothers snap at the silent bottom where the fill carries full
+        // weight, so a live gain would step there. Without this the fill
+        // played the raw ring at unity and burst in up to |Output Gain| dB
+        // louder than the surrounding audio (undo/redo Mix toggle at -24 dB).
+        const float fg = p.autoGainMatch ? matchGainSmooth.getCurrentValue()
+                                         : outGainSmooth.getCurrentValue();
+        const float fb = outBalanceSmooth.getCurrentValue();
+        dryDuckGainL = fg * ((fb > 0.0f) ? (1.0f - fb) : 1.0f);
+        dryDuckGainR = fg * ((fb < 0.0f) ? (1.0f + fb) : 1.0f);
+    };
+
     if (switchState == SwitchState::Normal)
     {
         if (forceDuck)
         {
-            // Keep the OLD state live through the fade-out; swap it all at silence.
+            // Keep the OLD state live through the fade-out; swap it all at the bottom.
             pendingP = np;
-            pendingForced = true;
             pendingAlgoReset = (np.algorithm != p.algorithm);
+            beginForcedDuck (np);
             switchState = SwitchState::FadeOut;
         }
         else if (discreteDiffers (np, p))
@@ -238,6 +268,7 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
             pendingP = np;
             pendingAlgoReset = (np.algorithm != p.algorithm);
             copyContinuous (p, np);          // knobs respond immediately
+            dryDuck = false;                 // ordinary discrete duck: duck-to-silence (unchanged)
             switchState = SwitchState::FadeOut;
             updateDerived();
         }
@@ -254,11 +285,40 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
         if (switchState == SwitchState::FadeIn && (forceDuck || discreteDiffers (np, p)))
         {
             // A new discrete change (or a forced bulk swap) arrived as we were
-            // fading back in: duck again.
-            pendingForced = pendingForced || forceDuck;
+            // fading back in: duck again. pendingForced was cleared at the previous
+            // bottom, so this duck's forced-ness is exactly the new forceDuck.
             pendingAlgoReset = (np.algorithm != p.algorithm);
+            if (forceDuck) beginForcedDuck (np);      // re-latch against the state heard now
+            else         { pendingForced = false; dryDuck = false; } // ordinary discrete re-duck
             switchState = SwitchState::FadeOut;
         }
+        else if (pendingForced)
+        {
+            // Still fading on a forced duck and the target moved (a retarget during
+            // fade-out, or a forced swap during fade-out). Only TIGHTEN dry-fill: a
+            // new target that turns the swap latency-crossing disables it; never
+            // re-enable mid-fade (that would jump the offset) and never move
+            // dryDuckLat (its L_out is fixed for the duck).
+            dryDuck = dryDuck && (predictLatency (pendingP) == dryDuckLat);
+        }
+        else if (forceDuck)
+        {
+            // A forced bulk swap arrived while an ORDINARY duck is still fading
+            // OUT (the FadeIn case re-ducks above; a forced fade-out is the tighten
+            // branch). The request was already consumed from duckRequest, so it
+            // must be captured here or the swap would finish with normal-duck
+            // semantics: no wholesale swap at the bottom, no smoother snap, no
+            // clean-slate reset -- stale delay-line/oversampler contents would
+            // replay as the fade lifts (the A/B "weird sound" this path exists to
+            // prevent). Upgrade the in-flight duck in place: same fade, forced
+            // bottom. Dry-fill stays OFF -- it was never on for this duck (ordinary
+            // entries set dryDuck = false) and engaging it mid-fade would step the
+            // fill in at the current dry weight, the same no-mid-fade-enable rule
+            // as the tighten above; this narrow window keeps plain duck-to-silence.
+            pendingForced = true;
+            dryDuck       = false;
+        }
+
         // A forced swap defers everything to the silent bottom; otherwise keep
         // continuous controls live during the duck.
         if (! pendingForced)
@@ -620,8 +680,12 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     else if (switchState == SwitchState::FadeIn && switchPhase >= 1.0f)
     {
         switchState = SwitchState::Normal;
+        dryDuck = false; // the dry fill ends with the duck (weight already 0 at phase 1)
     }
     const bool fading = (switchState != SwitchState::Normal);
+    // Dry-filled forced duck: while fading, stage 5 blends the output toward the
+    // delay-aligned raw input (bypassDryScratch) instead of toward silence.
+    const bool duckDry = fading && dryDuck;
 
     // A Level-Match injection that arrived WITHOUT a forced duck (defensive: every
     // A/B switch forces one, so normally this is consumed at the silent bottom
@@ -654,27 +718,40 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         float* bdL = bypassDelayBuffer.getWritePointer (0);
         float* bdR = bypassDelayBuffer.getWritePointer (1);
         const int bdSize = bypassDelayBuffer.getNumSamples();
-        // H9 (0.8.9): the delay-aligned read-back feeds ONLY the Bypass
-        // crossfade at the end of the chain, and that crossfade runs under
-        // exactly this condition (see its gate below) -- so with Bypass fully
-        // off and settled (the normal state) nothing ever reads
-        // bypassDryScratch this block. The ring WRITES always happen (history
-        // must stay warm so a later Bypass engage reads valid delay-aligned
-        // input); only the dead read-back is skipped. The condition cannot
-        // change between here and the crossfade: the target is set once per
-        // block in setParameters, and isSmoothing() only advances inside the
-        // crossfade's own getNextValue calls.
+        // H9 (0.8.9): the delay-aligned read-back feeds exactly TWO consumers --
+        // the Bypass crossfade at the end of the chain (its own gate below) and
+        // the dry-filled forced duck in stage 5 (gate: duckDry) -- so the fill
+        // runs under the UNION of those two gates, and with Bypass fully off and
+        // settled and no forced duck in flight (the normal state) nothing ever
+        // reads bypassDryScratch this block. The ring WRITES always happen
+        // (history must stay warm so a later Bypass engage / forced duck reads
+        // valid delay-aligned input); only the dead read-back is skipped. The
+        // conditions cannot change between here and the consumers: the blend
+        // target is set once per block in setParameters, isSmoothing() only
+        // advances inside the crossfade's own getNextValue calls, and duckDry is
+        // latched above for the whole block.
+        // Read offset: a dry-filled duck reads at the offset latched when the duck
+        // began (dryDuckLat). Dry-fill is engaged ONLY when the swap keeps the
+        // reported latency (setParameters gates dryDuck on predictLatency(target)
+        // == getLatencySamples(), and a same-duck retarget that turns the swap
+        // latency-crossing ANDs dryDuck back to false -- it is never re-enabled
+        // mid-fade). So whenever duckDry is true here, the heard latency has not
+        // changed across the duck and dryDuckLat == lat: the dry read is always
+        // aligned, and the shared-offset case with the Bypass crossfade (both
+        // reading at the same offset) can never carry a latency mismatch. Outside a
+        // dry duck the Bypass crossfade reads at the live latency as before.
         const bool bypassAudible = bypassBlend.isSmoothing()
                                 || bypassBlend.getTargetValue() > 0.0f;
         float* bxL = bypassDryScratch.getWritePointer (0);
         float* bxR = bypassDryScratch.getWritePointer (1);
-        if (bypassAudible)
+        if (bypassAudible || duckDry)
         {
+            const int readLat = duckDry ? dryDuckLat : lat;
             for (int i = 0; i < n; ++i)
             {
                 bdL[bypassDelayWrite] = L[i];
                 bdR[bypassDelayWrite] = R[i];
-                int rp = bypassDelayWrite - lat; if (rp < 0) rp += bdSize;
+                int rp = bypassDelayWrite - readLat; if (rp < 0) rp += bdSize;
                 bxL[i] = bdL[rp]; bxR[i] = bdR[rp];
                 // Wrap by branch, not %: the index advances by exactly 1 from
                 // within [0, size), so this is integer-identical and avoids a
@@ -739,7 +816,7 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         applyWidth (L[i], R[i], widthSmooth.getNextValue());
 
     // -------- Multiband Width (Advanced) ------------------------------------
-    // Reconstruct the dry through the SAME gliding crossovers as the wet, at unit
+    // Reconstruct the dry through the SAME crossover banks as the wet, at unit
     // width -- a phase-matched A(dry) -- so a partial Mix never combs the mono sum
     // (Known Issue #1). Solo-agnostic: the wet always sums every band.
     // Multiband Enable is a short click-free OUTPUT crossfade (the bypassBlend model),
@@ -778,8 +855,9 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         // wet instead of its m=1 float re-blend, and the live Measure readout
         // follows the delay-aligned CLEAN dry while gated. Both dry delay rings
         // keep being written below, so a Mix dip re-engages against warm lock-step
-        // history and the bank re-syncs its cutoffs the block it resumes
-        // (MultibandWidth's align re-sync, KI #1). Exact compares, no epsilon.
+        // history; the dry bank's cutoffs can never drift while gated -- they are
+        // fixed per crossover bank and always assigned with the wet's at a fade
+        // start (0.8.10, KI #1). Exact compares, no epsilon.
         fullWetIdle = ! blending
                    && ! mixSmooth.isSmoothing()
                    && ! (std::abs (mixSmooth.getCurrentValue() - 1.0f) > 0.0f)
@@ -961,6 +1039,15 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     }
 
     // -------- Output Gain / Auto Gain / Output Balance ----------------------
+    {
+    // Dry fill for a FORCED duck: blend the ducked output toward the delay-
+    // aligned raw input (same source and unity presentation as the true-bypass
+    // crossfade) so an undo / redo / A/B / preset swap dips to the DRY signal,
+    // never to silence. The processed weight still reaches exactly 0 at the
+    // bottom, so the silent-bottom swap semantics above are untouched; with
+    // duckDry false this adds exactly nothing (bit-exact original arithmetic).
+    const float* bxL = bypassDryScratch.getReadPointer (0);
+    const float* bxR = bypassDryScratch.getReadPointer (1);
     for (int i = 0; i < n; ++i)
     {
         // When Level Match is engaged the matched gain REPLACES Output Gain, so
@@ -986,6 +1073,16 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         }
 
         L[i] *= g * gL * sg; R[i] *= g * gR * sg;
+        if (duckDry)
+        {
+            // Fill at the latched output-stage presentation gain (see the
+            // dryDuckGain comment in the header): unity-latched this is the
+            // original arithmetic; at extreme Output Gain it stops the fill
+            // bursting in louder than the surrounding processed audio.
+            const float dw = 1.0f - sg;
+            L[i] += dw * dryDuckGainL * bxL[i]; R[i] += dw * dryDuckGainR * bxR[i];
+        }
+    }
     }
 
     // ======================== BAND SOLO MONITOR =============================
@@ -1038,13 +1135,14 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     // exactly 0 -> the untouched processed output. Because the chain + analysis already
     // ran above, toggling Bypass never stops Level Match and never re-engages stale DSP.
     //
-    // INVARIANT (H9, 0.8.9): this gate must stay identical to `bypassAudible` at the
-    // ring fill above -- that is the only writer of bypassDryScratch, and it skips the
-    // write whenever this gate is false, so the scratch holds STALE samples outside
-    // the gate. Widening either condition without the other reads garbage into the
-    // output (here) or burns a dead per-sample read-back (there). The ring WRITES
-    // themselves are unconditional in both branches, so history is always valid the
-    // moment Bypass re-engages.
+    // INVARIANT (H9, 0.8.9): the ring fill above -- the only writer of
+    // bypassDryScratch -- runs under the UNION of this gate and the dry-duck gate
+    // (`bypassAudible || duckDry`), so every consumer's gate must stay a subset of
+    // that union: outside it the scratch holds STALE samples. Widening a consumer
+    // without the fill reads garbage into the output; widening the fill without a
+    // consumer burns a dead per-sample read-back. The ring WRITES themselves are
+    // unconditional in both branches, so history is always valid the moment Bypass
+    // -- or a dry-filled forced duck -- engages.
     if (bypassBlend.isSmoothing() || bypassBlend.getTargetValue() > 0.0f)
     {
         const float* bxL = bypassDryScratch.getReadPointer (0);

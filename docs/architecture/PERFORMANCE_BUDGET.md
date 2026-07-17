@@ -12,15 +12,18 @@ no benchmark/profiling data exists in the repository, and inventing numbers is p
 | **No locks / mutexes / file IO on the audio thread.** | `REALTIME_SAFETY_AUDIT.md`; no `mutex`/`lock`/IO in `src/dsp/**` audio paths |
 | **`ScopedNoDenormals` is active for the whole block.** | src/PluginProcessor.cpp:66 |
 | **Oversampling only runs when nonlinear work exists** (Drive>0 or Chorus/Dim-D); linear chains skip it → no needless CPU. | src/dsp/AnamorphEngine.cpp:19-23 |
-| **GUI redraw is bounded AND idle-gated (0.8.8)**. The timer cadence is unchanged (24 Hz editor timer; 60 Hz component timers; per-frame VBlank), but the *work* inside each tick now runs only while something visible can change: the Vectorscope, Spectrum analyser and meters repaint only on real content change, the analyser's FFT runs only on a changed/non-silent window (and not at all while hidden), the micro-animation poll skips when provably static — and since Wave 2 (H15) it decides "provably static" from three relaxed change-generation counters (sound params, view params, InternalState) instead of hashing every tracked widget's value at 60 Hz, which was 68-87 % of the remaining idle editor instructions in the Round-2 attribution — and the 24 Hz signature strings rebuild only on a parameter change. Idle GUI cost drops to ~0. Active repaint cost is also bounded (0.8.9 / H2 + H13 + N2): the Vectorscope's static layer (background gradient, rounded panel, glass edges, grid, labels) and each StereoMeter's static layer (glass panel, centre tick) — pure functions of size/scale/look — are rendered once into cached physical-resolution images and blitted per frame; only signal-dependent drawing (point cloud, clip ring, meter pointer, meter end labels for z-order) is rasterized live. These components are opaque (N2): the cached layers are RGB with the editor's flat `colours::bg` backdrop baked into the rounded corners, so the blit is an opaque copy (not an alpha composite) and the parent never re-renders beneath them. The Spectrum analyser caches its bottom layer the same way (H17: panel + band tints + grid, keyed on its exactly-converging eased inputs) but stays translucent — it sits on the editor's semi-transparent Multiband panel, so the N2 opacity pattern does not apply there. | src/gui/Vectorscope.cpp, SpectrumImager.cpp, LevelMeter.cpp, CorrelationMeter.cpp; src/PluginEditor.cpp `stepMicroAnims`; CHANGELOG [0.8.8], [0.8.9] |
+| **GUI redraw is bounded, idle-gated (0.8.8) AND display-rate-adaptive (0.8.10)**. The editor timer stays 24 Hz and the editor's meter/micro-anim VBlank stays per-frame; the four visualizers (Vectorscope, LevelMeter, StereoMeter, SpectrumImager), formerly fixed 60 Hz `juce::Timer`s, now refresh from `gui::FrameClock` — a `VBlankAttachment` paced to the display and capped near 120 Hz (executes every `ceil(rate/126)`-th vblank: 60→60, 120→120, 144→72, 240→120; 60 Hz wall-clock fallback when the cadence is unmeasurable). Every temporal ease/decay was re-expressed in `dt` form (matching the old 60 Hz curves to within the display quantum), so smoothness scales to the panel while the S1/S2/S3/H15 idle gates and once-per-block audio ballistics are unchanged. The *work* inside each tick still runs only while something visible can change: the Vectorscope, Spectrum analyser and meters repaint only on real content change, the analyser's FFT runs only on a changed/non-silent window (and not at all while hidden), the micro-animation poll skips when provably static — and since Wave 2 (H15) it decides "provably static" from three relaxed change-generation counters (sound params, view params, InternalState) instead of hashing every tracked widget's value at 60 Hz, which was 68-87 % of the remaining idle editor instructions in the Round-2 attribution — and the 24 Hz signature strings rebuild only on a parameter change. Idle GUI cost drops to ~0. Active repaint cost is also bounded (0.8.9 / H2 + H13 + N2): the Vectorscope's static layer (background gradient, rounded panel, glass edges, grid, labels) and each StereoMeter's static layer (glass panel, centre tick) — pure functions of size/scale/look — are rendered once into cached physical-resolution images and blitted per frame; only signal-dependent drawing (point cloud, clip ring, meter pointer, meter end labels for z-order) is rasterized live. These components are opaque (N2): the cached layers are RGB with the editor's flat `colours::bg` backdrop baked into the rounded corners, so the blit is an opaque copy (not an alpha composite) and the parent never re-renders beneath them. The Spectrum analyser caches its bottom layer the same way (H17: panel + band tints + grid, keyed on its exactly-converging eased inputs) but stays translucent — it sits on the editor's semi-transparent Multiband panel, so the N2 opacity pattern does not apply there. The `FrameClock` refresh (0.8.10) stops the Advanced-only Imager while hidden and debounces its rate cap against single-vblank jitter, so idle stays ~0 on any display. | src/gui/Vectorscope.cpp, SpectrumImager.cpp, LevelMeter.cpp, CorrelationMeter.cpp, FrameClock.h; src/PluginEditor.cpp `stepMicroAnims`; CHANGELOG [0.8.8], [0.8.9], [0.8.10] |
 | **Scope transfer is O(1) amortised** (lock-free SPSC ring, fixed 16384 capacity, no alloc); the write index is published **once per block** (`pushBlock`, 0.8.8), so readers observe whole committed blocks. | src/dsp/ScopeBuffer.h:28-80 |
 
 ## Known per-sample costs (Verified, qualitative)
 
-- **Per-sample IIR coefficient recompute while gliding.** `MonoMaker`, `MultibandWidth`, and
-  `SoloMonitor` call `LR4Xover::setCutoffFrequency` per sample during a crossover
-  glide (recomputes coefficients in place, no allocation). This is the dominant variable cost
-  when crossovers are moving. Evidence [Verified]: src/dsp/MultibandWidth.cpp:110-120;
+- **Crossover-move cost (0.8.10).** `MonoMaker` calls `LR4Xover::setCutoffFrequency` per sample
+  during its cutoff glide (recomputes coefficients in place, no allocation). `MultibandWidth`
+  and `SoloMonitor` do the same while a split tracks under the ~4 oct/s cap (ADR-0015 final) —
+  per-sample `tan` recomputes on the moving splits for the duration of the drag plus ≤ ~1.5 s
+  of worst-case catch-up after a violent flick — and additionally run BOTH banks for one ~12 ms
+  crossfade per discrete jump (2× the stage's filter ticks for that fade only).
+  Evidence [Verified]: src/dsp/MultibandWidth.cpp (glide + jump-fade trigger);
   MonoMaker.cpp:32-36; SoloMonitor.cpp.
 - **The Drive waveshaper's tanh is a minimax rational kernel (Wave 2 / H3).** The two per-sample
   libm `tanh` calls (~55 % of every oversampling delta in the Round-2 attribution; their range
@@ -50,6 +53,24 @@ no benchmark/profiling data exists in the repository, and inventing numbers is p
   Round-2 attribution). Bit-identical: proven byte-exact on the 33-scenario full-engine dump,
   including 4-band solo engage/clear cycles (cold re-entry) and per-sample split/mono-freq
   glides. Evidence [Verified]: src/dsp/LR4Xover.h (invariant comment); CHANGELOG [0.8.9].
+- **Multiband allpass phase compensation (0.8.10) — the top remaining DSP optimisation candidate.**
+  The flat-recombination fix runs the multiband low-sum through `bands−2` extra `LR4Xover`
+  allpass sections per bank (wet, and dry when Mix is partial), correctly removing the
+  close-crossover magnitude dip but adding roughly **half again** to the multiband stage's
+  per-block cost (isolated-harness measurement, session-local) — and multiband is the #2 DSP
+  hotspot in the shipped 4-band default, so this is now the most prominent single cost there.
+  The main non-Category-C follow-up (deferred — no DSP-behaviour change): replace the full
+  `LR4Xover` dual-output (a 4th-order TPT ladder computing both LP and HP) used purely as an
+  allpass with a dedicated **2nd-order allpass** biquad — `bands−2` sections × 2 banks (×2 again
+  only while a cutoff fade is in flight, 0.8.10), expected to recover about half the added cost.
+  It keeps the recombination bit-for-audible-purposes identical and is validated by the existing
+  `testMultibandFlatRecombination` + `testMultibandMonoCompat` + the full-engine twin dump. (The
+  former follow-up (b) — skipping the never-processed `ax[0]`/`dax[0]` coefficient updates — is
+  now a micro-item: the 0.8.10 glide updates `ax[i≥1]` only inside the per-sample loop, but the
+  never-read `ax[0]`/`dax[0]` are still assigned in `setBankCutoffs` (jump fades / resets) and
+  `ax[0]` glides per sample while split 0 moves; a couple of `tan` calls, revisit only with the
+  allpass-biquad rework.) Evidence [Verified]: src/dsp/MultibandWidth.cpp (allpass banks in
+  `runWet`/`runDry`; glide loop; `setBankCutoffs`); CHANGELOG [0.8.10].
 - **SoloMonitor runs only while it can be heard (0.8.9 / H1).** With nothing soloed and every
   crossfade gain fully settled, the monitor's per-sample work (6 LR4 `processSample` + 5 smoother
   ticks) is skipped entirely — previously ~half of the transparent engine floor (callgrind 0.8.8:

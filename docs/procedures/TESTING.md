@@ -15,14 +15,32 @@ scripts/run-tests.sh             # runs the AnamorphTests console app
 
 ### What the tests cover
 
-`tests/dsp_tests.cpp` has **24 DSP tests** using a `check(cond, "what")` harness, covering: MS
+`tests/dsp_tests.cpp` has **30 DSP tests** using a `check(cond, "what")` harness, covering: MS
 round-trip (bit-exact), transparent default, true-bypass null + latency match, Mono Maker
 (post-Mix), Multiband mono-compat, Solo band selectivity + transparency, Level Match
 (unity/no-ratchet/silence-freeze/mix-coupling/multiband-unity), crossover automation safety,
 NaN recovery, four click-free crossfade tests (transitions, bypass, multiband enable,
-solo+multiband-enable), and the dry-align gate comb regression (`testDryAlignGateRecomb`,
+solo+multiband-enable), the dry-align gate comb regression (`testDryAlignGateRecomb`,
 Wave 2 / H4: a Mix dip after a gated full-wet stretch must re-engage the dry bank
-phase-matched — the KI-#1 metric). It additionally carries **one state-restoration robustness guard**,
+phase-matched — the KI-#1 metric), the split-movement regression
+(`testMultibandSplitDragNoPitchShift`, Test 29): the worst 100 ms pitch chunk of a 150 Hz tone
+must stay < 18 cents (the accepted controlled-FM bound of the ~4 oct/s cap, ADR-0015 final)
+through drags and the whole catch-up — including an unbroken crawl-crossing scenario where the
+crossover passes the tone (~14 cents measured; the pre-0.8.10 uncapped ~8 oct/s glide measures
+~28 and the interim one-pole tracker ~50, both fail) — the max spectral spur around a 1 kHz tone
+during a 60 Hz-cadence drag must stay below −31 dBc (the interim chained bank crossfades measure
+−28.5 dBc and fail), a discrete 4-octave target step must land within ~200 ms via the bank
+crossfade, and a RELEASED 6-octave flick must land by plain gliding within ~1.5 s (the rejected
+1.25 oct/s follower measures full level at 1.7–2.2 s and fails), all click-free — on both the
+Multiband and Solo-monitor paths; and the forced-duck dry-fill gain regression (`testDryFillRespectsOutputGain`, Test 30):
+with Output Gain at −24 dB an undo/redo-style Mix toggle must not spike beyond 2× the steady
+output (the unscaled raw-level fill measures 15.8× and fails) while still filling the dip; and
+the forced-swap-during-fade-out regression (`testForcedSwapDuringOrdinaryFadeOut`, Test 31): a
+forced bulk swap landing while an ordinary discrete duck is still fading OUT must keep forced
+semantics — stale delay-line audio must not replay after the silent bottom (the pre-fix engine,
+which dropped the consumed forced request in that window, measures a 0.494-peak Haas-tail replay
+against silent input and fails) — while the upgrade stays click-free and the duck still bottoms
+at silence. It additionally carries **one state-restoration robustness guard**,
 `testAbActiveClampOnCorruptState` — it drives a corrupted `<AB active="…">` blob through the same
 read+clamp the processor uses (`anamorph::clampAbSlotIndex`, `src/AbSlotIndex.h`) and asserts an
 out-of-range A/B index can never index `abSlot[]`/`abUndo[]` out of bounds, while valid 0/1 are

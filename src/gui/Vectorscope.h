@@ -2,6 +2,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "../dsp/ScopeBuffer.h"
+#include "FrameClock.h"
 
 namespace anamorph::gui
 {
@@ -19,8 +20,7 @@ namespace anamorph::gui
 //  attaches an OpenGL context, all of this painting is GPU-composited, keeping
 //  CPU usage low. Nothing is ever drawn on the audio thread.
 // ============================================================================
-class Vectorscope : public juce::Component,
-                    private juce::Timer
+class Vectorscope : public juce::Component
 {
 public:
     explicit Vectorscope (anamorph::ScopeBuffer& buffer);
@@ -40,7 +40,7 @@ public:
     }
 
 private:
-    void timerCallback() override;
+    void tick(); // FrameClock callback (display-rate; no dt-dependent state here)
     void drawGrid (juce::Graphics&, juce::Rectangle<float> area, float radius);
     void ensureStaticLayer (juce::Graphics&, juce::Rectangle<float> area);
 
@@ -67,11 +67,16 @@ private:
     int   staticW = 0, staticH = 0;
     float staticScale = 0.0f;
 
-    // Idle repaint gate state (message thread only -- see timerCallback):
+    // Idle repaint gate state (message thread only -- see tick()):
     std::uint64_t lastSeenCount = 0; // ring write count at the previous tick
     std::uint64_t lastNonZero   = 0; // newest bound on non-zero ring content
     bool frameDirty      = true;     // displayed frame is stale -> repaint
     bool lastFrameSilent = false;    // last painted frame was the all-zero image
+
+    // Adaptive refresh (display-rate, capped ~120 Hz): the freshness scan + idle
+    // gate below are delta-based (writeCount) and the trail age is positional, so
+    // nothing here depends on the tick rate -- the FrameClock's dt is ignored.
+    FrameClock frameClock;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Vectorscope)
 };

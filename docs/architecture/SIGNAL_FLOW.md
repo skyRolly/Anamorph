@@ -79,6 +79,20 @@ Raw stereo input (mono upmixed to stereo by the wrapper)
   Enable, and Band Solo are **not** ducked — they use their own click-free crossfades.
   Source: src/dsp/AnamorphEngine.cpp:158-185 (`discreteDiffers`), :70-71, :686-731 (Multiband
   Enable crossfade), :878-894 (Band Solo), :920-940 (Bypass crossfade).
+- **Forced bulk swaps** (undo / redo / A/B / preset — `requestDuck()`) run the same duck, but
+  its output is **dry-filled**: stage 5 crossfades toward the delay-aligned raw input (the
+  true-bypass ring) instead of dipping to silence, so the swap is heard as a short dip to the
+  dry signal, never a dropout. The fill is presented at the **output-stage gain heard when the
+  duck began** (`dryDuckGainL/R`, latched at fade-out entry like `dryDuckLat`): the ring holds
+  the unity-level input, and at an extreme Output Gain (e.g. −24 dB) an unscaled fill burst in
+  up to 24 dB louder than the surrounding audio (fixed 0.8.10; unity gain/balance is
+  bit-identical to the original arithmetic — `testDryFillRespectsOutputGain`, Test 30). The
+  swap still lands at processed weight 0 (smoother snap + wholesale node reset unchanged). A
+  latency-crossing forced swap keeps the original duck-to-silence (the ring read offset would
+  jump at full dry weight). Ordinary discrete ducks are unchanged (bit-exact). True bypass
+  still presents the ring at unity — bypass semantics untouched. Source:
+  src/dsp/AnamorphEngine.cpp (`dryDuck`/`dryDuckGain`; gate at the ring fill, blend in the
+  stage-5 output loop); guarded by `testForcedSwapNoDropout` (Test 26) and Test 30.
 
 Any change to this order or these invariants requires an ADR and Architecture Review
 (`docs/policies/ADR_POLICY.md`, `docs/policies/ARCHITECTURE_REVIEW_GATE.md`).

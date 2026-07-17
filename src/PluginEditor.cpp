@@ -241,6 +241,23 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
 {
     setLookAndFeel (&lnf);
     tooltips.setLookAndFeel (&lnf);
+   #if JUCE_MAC
+    // juce::TooltipWindow declares itself OPAQUE (its constructor calls
+    // setOpaque(true)) while our LookAndFeel's drawTooltip deliberately leaves
+    // the pixels OUTSIDE the rounded capsule unpainted -- undefined pixels in a
+    // window that promised to fill its bounds. What renders there depends on the
+    // compositing pipeline: Intel and Rosetta happened to show the stale
+    // (transparent) layer backing, but Apple-Silicon-NATIVE AppKit initialises
+    // the opaque layer-backed window with its background colour first -- the
+    // opaque white corner rectangle around the tooltip (0.8.10 report; same
+    // undefined-pixels class as KI-006's black corners on uncomposited X11).
+    // Declaring the window non-opaque makes the peer create a transparent
+    // NSWindow (clear background) and CLEAR the backing to alpha-0 on every
+    // paint, so the corners are genuinely transparent by contract on every
+    // pipeline. macOS-gated: other platforms keep their current (working)
+    // behaviour -- uncomposited Linux keeps the KI-006 corner pre-fill.
+    tooltips.setOpaque (false);
+   #endif
 
     setOpaque (true); // fill our bounds every paint -> no see-through flash on a scale resize (#13)
     openGLContext.setContinuousRepainting (false);
@@ -680,6 +697,7 @@ void AnamorphAudioProcessorEditor::attachSlider (juce::Slider& s, const char* id
     if (auto* k = dynamic_cast<Knob*> (&s); k != nullptr && p != nullptr)
     {
         k->resetValue = p->getNormalisableRange().convertFrom0to1 (p->getDefaultValue()); // #6
+        k->resetParam = p; // gesture-wrap resets so they land in undo/automation as ONE user edit
         // A RESET (double-click / Option-click) sweeps the eased position (0.6.7 #21).
         // resetSweep lets that travel play even while the reset's mouse button is still
         // held (alt-click / a double-click's 2nd press); only flagged when animations

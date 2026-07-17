@@ -4,11 +4,15 @@ Potential technical risks. Each is evidence-based (constraint C7) — no invente
 postmortems may reference these IDs to close the loop. Severity: Low / Medium / High / Critical.
 
 Verified against repository HEAD `c605fbe` (0.8.7 content audit); version-synced to the
-**v0.8.9 release** (finalized 2026-07-12, PR #58 — Wave-2 performance work introduces no new
-risk: H6 replaces the crossover filter with a bit-exact local clone, H15 adds two generation
-counters following the existing sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B
-changes documented in CHANGELOG/PERFORMANCE_BUDGET, not open risks); previously synced for the
-functional/UX PR #56 (JUCE 8.0.14; before that 0.8.8 for PR #54).
+**v0.8.10 release** (finalized 2026-07-14, PR #59 — undo/redo forced-duck dry-fill, multiband
+flat recombination, adaptive `FrameClock` GUI refresh — introduces no new risk: the engine fixes
+are behaviour-preserving (single swaps byte-identical) or a documented magnitude correction
+(multiband), `FrameClock` is a message-thread GUI change, and the multiband allpass adds a known
+CPU cost tracked in PERFORMANCE_BUDGET, not an open risk). Prior: the v0.8.9 release (finalized
+2026-07-12, PR #58 — Wave-2 performance work introduces no new risk: H6 replaces the crossover
+filter with a bit-exact local clone, H15 adds two generation counters following the existing
+sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); before that PR #56
+(JUCE 8.0.14) and 0.8.8 (PR #54).
 
 | ID | Risk | Severity | Likelihood |
 |---|---|---|---|
@@ -32,15 +36,19 @@ functional/UX PR #56 (JUCE 8.0.14; before that 0.8.8 for PR #54).
 - **Mitigation:** Treat any bump as a Build System change → ADR + Architecture Review; run full DSP
   tests + pluginval (3 OSes) + a manual audition + the RELEASE_COMPATIBILITY_CHECKLIST after.
 
-## RISK-002 — Always-on banks / per-sample coefficient recompute (CPU)
-- **Risk:** `SoloMonitor` runs every block even with multiband off and no solo (INC-009 invariant),
-  and `MonoMaker`/`MultibandWidth`/`SoloMonitor` recompute Linkwitz-Riley coefficients **per sample**
-  while crossovers glide. Under heavy multiband automation or on low-power hosts this could be a hot
-  path. It is unprofiled.
+## RISK-002 — Always-on banks / crossover-move cost (CPU)
+- **Risk:** `SoloMonitor` runs every block even with multiband off and no solo (INC-009 invariant;
+  since 0.8.9/H1 the settled passthrough goes cold, shrinking this), and `MonoMaker`,
+  `MultibandWidth` and `SoloMonitor` recompute Linkwitz-Riley coefficients **per sample** while a
+  cutoff glides (since 0.8.10 the multiband/solo cutoffs track under a hard ~4 oct/s cap —
+  ADR-0015 final — so the per-sample recompute lasts as long as the drag plus ≤ ~1.5 s of
+  worst-case catch-up; a discrete step instead runs **two banks for one ~12 ms crossfade**, 2×
+  the stage's filter ticks). Under heavy multiband automation or on low-power hosts this could be a
+  hot path. It is unprofiled.
 - **Impact:** Higher-than-necessary CPU in Simple mode and CPU spikes during fast split automation.
 - **Likelihood (evidence-based):** Medium — the cost is real and constant; whether it matters
   depends on host/SR/buffer, which are unmeasured.
-- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:845; src/dsp/MultibandWidth.cpp:113-123;
+- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:845; src/dsp/MultibandWidth.cpp (glide + fade paths);
   Devin PR #50 review (efficiency note); `docs/architecture/PERFORMANCE_BUDGET.md` (TODOs).
 - **Mitigation:** Profile (PERFORMANCE_BUDGET TODO); consider skipping the SoloMonitor filters when
   settled at `passGain==1` (a DSP change → ADR + Review). Correctness is unaffected either way.

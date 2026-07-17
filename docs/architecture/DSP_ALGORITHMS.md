@@ -70,11 +70,40 @@ Nyquist-safe clamp `[20, max(1000, 0.45·sr)]`. Applied **post-Mix, in place** (
 ## MultibandWidth — `src/dsp/MultibandWidth.{h,cpp}`
 
 1–4 phase-coherent bands from a cascade of LR lowpass crossovers (`x1,x2,x3`): peel one low
-band per crossover, the remainder feeds the next, final remainder = top band (`.cpp:134-146`).
-Each band widened via `applyWidth` (MS side-gain), summed → allpass-flat reconstruction. A
-**parallel dry bank** (`dx1,dx2,dx3`) reconstructs the dry at unit width sharing the wet's exact
-gliding cutoffs → phase-matched `A(dry)` for the dry/wet Mix (`.cpp:154-168`). 1-band fast path
-skips crossovers. Cutoffs glide per sample; widths one-pole smoothed (~20 ms).
+band per crossover, the remainder feeds the next, final remainder = top band. Each band widened
+via `applyWidth` (MS side-gain), summed with **inter-band allpass phase compensation** →
+allpass-flat reconstruction. A naive serial split-and-sum is flat only for a single crossover
+(LR4 LP+HP = allpass `A`); with more crossovers the lower bands lack the allpass phase of the
+crossovers above them and partially cancel around the crossover region — a magnitude dip that
+deepens as splits approach each other (measured −17.75 dB at three close splits). The fix runs
+the running low-sum through each higher split's allpass (`ax[i]` = LR4 lo+hi) before adding the
+next band, so the sum telescopes to `A1·A2·A3` (flat); only `bands−2` extra allpasses are needed
+(0 for 1–2 bands, 1 for 3, 2 for 4) and they add **zero integer latency**. A **parallel dry bank**
+(`dx[]` + `dax[]`) reconstructs the dry at unit width with the identical compensation, sharing the
+wet's exact per-bank cutoffs → phase-matched `A(dry)` for the dry/wet Mix. 1-band fast path skips
+crossovers. **Cutoff changes (0.8.10 final — each round measured against the
+pure-sine protocol: instantaneous frequency of the fundamental, spurs, envelope, at drag speeds
+1–24 oct/s).** A swept IIR crossover is inherently a phase modulator: its allpass phase at any
+fixed frequency rotates up to 2π per crossover crossing, i.e. a frequency shift of `0.312·R` Hz
+at sweep rate `R` oct/s — no smoothing shape removes that. The rejected designs redistributed
+the artifact: the pre-0.8.10 **~8 oct/s rate cap** detuned ~2.5 Hz (+31 cents at a 150 Hz
+crossing); **chained ~12 ms bank crossfades** were AM/PM at the fade cadence (spurs −25…−28
+dBc around a pure tone); a **one-pole tracker (τ≈15 ms)** FM'd at the full drag rate (~50 cents
+measured at the crossing of a fast drag); a **~1.25 oct/s "inaudibility" cap + 0.25 s release
+consolidation** converged in bounded time but lagged every fast drag audibly and jumped after
+release — rejected as a UX regression (interaction latency). Final (ADR-0015 refinement):
+*continuous movement* glides per sample under a **hard ~4 oct/s rate cap** — a deliberate
+product trade (small controlled FM over interaction latency): drags up to 4 oct/s track
+**exactly** (zero GUI/DSP gap), faster ones bound the shift at ~1.25 Hz (**~15 cents measured at
+a 150 Hz crossing, ~2 at 1 kHz**, spurs at the −41 dBc analysis floor, <0.1 dB envelope ripple
+— about half the pre-0.8.10 worst case), and even a 6-octave flick drains in ~1.25 s of
+continuous motion; no timers, no deferred catch-up. *Discrete jumps* (the TARGET stepping
+> 1.5 oct between consecutive blocks — automation steps/snaps, unreachable by dragging)
+crossfade to the second, state-copied bank over ~12 ms: one bounded event (−18 dBc at a
+4-octave step); a step arriving mid-fade re-fires to the latest target when the fade lands.
+Regression: Test 29 (worst 100 ms chunk < 18 cents through drags, crawls and the tone crossing;
+max spur < −31 dBc; released flicks land by plain gliding in ~1.5 s; discrete jumps land via the
+fade, click-free). Widths one-pole smoothed (~20 ms), shared by both banks.
 - **Crossover safety**: Nyquist clamp `[20, 0.45·sr]` applied **before** ordering, then the
   1.1× separation ordering re-clamped **top-down** so separation can never push a cutoff past
   Nyquist (the 0.8.2 "+600 dB" fix). `.cpp:55-71`.
@@ -83,8 +112,10 @@ skips crossovers. Cutoffs glide per sample; widths one-pole smoothed (~20 ms).
 
 ## SoloMonitor — `src/dsp/SoloMonitor.{h,cpp}`
 
-POST-EVERYTHING audition: mirrors the Multiband split (same LR crossovers, same glide) and is
-**called every block**. Output is a per-band smoothed crossfade: `passGain` (→1
+POST-EVERYTHING audition: mirrors the Multiband split (same LR crossovers, same ~1 oct/s
+rate-capped glide + discrete-jump crossfade for cutoff changes, 0.8.10) and is **called every
+block**. Output is a per-band
+smoothed crossfade: `passGain` (→1
 when nothing soloed) sums the true output; each `bandGain[b]` (`SmoothedValue`, ~12 ms) sums in
 band *b* only while soloed. Never changes any effect stage.
 Invariant: `mask == 0` → settled `passGain = 1` → **bit-exact** true output. Same Nyquist clamp +
@@ -92,12 +123,12 @@ Invariant: `mask == 0` → settled `passGain = 1` → **bit-exact** true output.
 design property the 0.8.7 fix depends on: the call must run every block so the crossfade can
 advance whenever any gain is unsettled).
 **Settled fast path (0.8.9 / H1):** once nothing is soloed, every gain smoother is fully settled
-(`passGain == 1`, all `bandGain == 0`) and no crossover glide is pending, the per-sample work
+(`passGain == 1`, all `bandGain == 0`) and no cutoff change is pending, the per-sample work
 (6 LR4 `processSample` + 5 smoother ticks) is skipped — the output is provably the input — and
 the filter bank goes **cold** (the engine's `mbRunning` warm/cold pattern). Re-entry resets the
-filters and snaps the cutoff glide while every band gain is still ~0, so the charge-up is masked
-by the same ~12 ms crossfade that always covered an engage. Measured: ~half of the transparent
-engine floor.
+filters and snaps the cutoffs to their targets while every band gain is still ~0, so the
+charge-up is masked by the same ~12 ms crossfade that always covered an engage. Measured: ~half
+of the transparent engine floor.
 
 ## LoudnessMatch — `src/dsp/LoudnessMatch.{h,cpp}`
 

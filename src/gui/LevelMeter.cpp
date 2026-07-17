@@ -11,12 +11,12 @@ static const juce::Colour kRmsOrange { 0xffe0a94a };
 
 LevelMeter::LevelMeter (anamorph::LevelMeters& src) : source (src)
 {
-    startTimerHz (60); // match the vectorscope's frame rate -- 30 Hz juddered (#2)
+    // Default-hidden: the FrameClock is armed on first show (visibilityChanged).
 }
 
-LevelMeter::~LevelMeter() { stopTimer(); }
+LevelMeter::~LevelMeter() { frameClock.stop(); }
 
-void LevelMeter::timerCallback()
+void LevelMeter::tick()
 {
     if (! isShowing())
         return; // whole-editor hidden: snapshots resume live on re-show (S3)
@@ -52,14 +52,15 @@ void LevelMeter::timerCallback()
 void LevelMeter::visibilityChanged()
 {
     // Own-visibility lifecycle (S3): the meter is default-hidden (Show Meters
-    // toggle), so its 60 Hz timer now runs only while it is actually shown.
+    // toggle), so its display-rate FrameClock runs only while it is shown --
+    // no vblank wakeups at all while hidden, exactly like the old stopTimer().
     if (isVisible())
     {
         shownValid = false;
-        startTimerHz (60);
+        frameClock.start (*this, [this] (double) { tick(); });
     }
     else
-        stopTimer();
+        frameClock.stop();
 }
 
 // Non-uniform scale tuned for mixing: the busy -24..0 dBFS range gets most of

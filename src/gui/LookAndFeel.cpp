@@ -832,7 +832,10 @@ void AnamorphLookAndFeel::drawTooltip (juce::Graphics& g, const juce::String& te
     // renders the window's opaque fill -> black corners (KI-006). Pre-fill the whole bounds with
     // the capsule colour so the corners match the capsule instead of rendering black. Where
     // transparent windows ARE available (macOS / Windows / compositing Linux) the corners stay
-    // genuinely transparent -- no visual change there.
+    // genuinely transparent -- no visual change there. NOTE: juce::TooltipWindow declares itself
+    // opaque by default, which makes these unpainted corners UNDEFINED pixels; on macOS the
+    // editor marks its TooltipWindow non-opaque so the peer clears them to real alpha every
+    // paint (the Apple-Silicon-native white-corner fix, 0.8.10 -- see PluginEditor.cpp).
     if (! juce::Desktop::getInstance().canUseSemiTransparentWindows())
     {
         g.setColour (colours::bgRaised);

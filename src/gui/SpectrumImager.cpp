@@ -116,12 +116,33 @@ SpectrumImager::SpectrumImager (anamorph::ScopeBuffer& s, juce::AudioProcessorVa
     for (int b = 0; b < 4; ++b) drawnW[b] = bandWidth (b);
 
     setInterceptsMouseClicks (true, false);
-    startTimerHz (60);
+    // Adaptive refresh: ride the display's vblank (capped ~120 Hz). Armed here and
+    // then gated by visibility: the imager is Advanced-only, so its clock is
+    // stopped whenever it is hidden (Simple mode -- the default) rather than
+    // firing a per-vblank isShowing()-and-return. visibilityChanged() flips it as
+    // the mode toggles; the in-tick S2 isShowing() gate still covers a whole-editor
+    // hide (own-visibility unchanged). This is strictly less idle work than the old
+    // fixed 60 Hz timer, which ran even while hidden.
+    frameClock.start (*this, [this] (double dt) { tick (dt); });
+}
+
+void SpectrumImager::visibilityChanged()
+{
+    if (isVisible())
+        frameClock.start (*this, [this] (double dt) { tick (dt); });
+    else
+    {
+        frameClock.stop();
+        // Force the S2 stale-spectrum reset (mags/redLevel -> floor) to run on the
+        // first tick after the next show, exactly as the always-running tick did
+        // when it early-returned on !isShowing().
+        wasShowing = false;
+    }
 }
 
 SpectrumImager::~SpectrumImager()
 {
-    stopTimer();
+    frameClock.stop();
     if (onClearSoloPreview) onClearSoloPreview();
 }
 
@@ -720,7 +741,7 @@ void SpectrumImager::ensurePaintLUTs()
     }
 }
 
-void SpectrumImager::timerCallback()
+void SpectrumImager::tick (double dt)
 {
     // S2 idle gate: suspend all analysis and animation while not showing
     // (Simple mode hides the imager; hosts can hide the whole editor). On
@@ -759,12 +780,17 @@ void SpectrumImager::timerCallback()
     if (! magsSettled)
     {
         const float norm = 2.0f / (float) fftSize;
+        // Release decay per tick, dt-corrected (0.25 at the old fixed 60 Hz):
+        // same decay time on any display, matching 60 Hz to within the display
+        // quantum. Attack stays instantaneous (db > m). Computed once per tick,
+        // shared across all bins (never a per-bin pow).
+        const float rRel = frameCoeff (0.25f, dt);
         bool any = false;
         for (int k = 0; k <= fftSize / 2; ++k)
         {
             const float db = juce::Decibels::gainToDecibels (fftData[(size_t) k] * norm, kMinDb);
             float& m = mags[(size_t) k];
-            const float next = db > m ? db : m + (db - m) * 0.25f;
+            const float next = db > m ? db : m + (db - m) * rRel;
             if (std::abs (next - m) > 0.0f) { m = next; any = true; }
         }
         magsSettled = ! any;
@@ -778,13 +804,18 @@ void SpectrumImager::timerCallback()
     // light up (0.6.16 #2). Always animated, independent of the UI-animation switch.
     if (dataMoved || ! redSettled)
     {
+        // Rise-fast / fall-slow rates per tick, dt-corrected (0.6 / 0.035 at the
+        // old fixed 60 Hz): same rise/fall times on any display, matching 60 Hz
+        // to within the display quantum. Both computed once, selected per bin.
+        const float rRedRise = frameCoeff (0.6f,   dt);
+        const float rRedFall = frameCoeff (0.035f, dt);
         bool any = false;
         for (size_t k = 0; k < redLevel.size(); ++k)
         {
             const float eff = mags[k] + 6.0f;                                   // window-gain compensated dBFS
             const float t = juce::jlimit (0.0f, 1.0f, (eff + 4.0f) / 4.0f);     // onset -4 dBFS, full at 0 dBFS
             float& rl = redLevel[k];
-            float next = rl + (t - rl) * (t > rl ? 0.6f : 0.035f);
+            float next = rl + (t - rl) * (t > rl ? rRedRise : rRedFall);
             // paint() cannot draw levels below 0.012 (the maxRed gate and the
             // per-quad cull), so snapping the tail to zero from 1e-3 -- 12x
             // below the smallest drawable value -- is pixel-identical and ends
@@ -805,9 +836,12 @@ void SpectrumImager::timerCallback()
     }
 
     const bool animOn = animOnP == nullptr || animOnP->load() > 0.5f;
-    const float dt   = 1.0f / 60.0f;
-    const float rIn  = animOn ? 1.0f - std::exp (-dt / 0.075f) : 1.0f;
-    const float rOut = animOn ? 1.0f - std::exp (-dt / 0.150f) : 1.0f;
+    // Real frame dt (was hardcoded 1/60): these UI eases are already in the
+    // time-constant form 1 - exp(-dt/tau), so feeding the true dt keeps every
+    // tau identical on any display and reproduces the 60 Hz curves exactly.
+    const float dtf  = (float) dt;
+    const float rIn  = animOn ? 1.0f - std::exp (-dtf / 0.075f) : 1.0f;
+    const float rOut = animOn ? 1.0f - std::exp (-dtf / 0.150f) : 1.0f;
     bool uiMoved = false;
     auto ease = [&] (float& v, float t)
     {
@@ -865,7 +899,7 @@ void SpectrumImager::timerCallback()
     if (animOn && ! busy && isSweeping && isSweeping()) dispEasing = true; // (re)arm on a sweep event
     if (busy || ! animOn) dispEasing = false;
 
-    const float rPos = 1.0f - std::exp (-dt / 0.105f); // gentle, slow-stopping tail (#5)
+    const float rPos = 1.0f - std::exp (-dtf / 0.105f); // gentle, slow-stopping tail (#5)
     if (dispEasing)
     {
         bool anyDiff = false;
@@ -1585,8 +1619,9 @@ void SpectrumImager::mouseUp (const juce::MouseEvent& e)
     if (soloPressBand >= 0)
     {
         if (soloHoldActive) { if (onClearSoloPreview) onClearSoloPreview(); if (soloMovedBand) endBandMove(); }
-        else if (soloPressAlt) // Alt/Option quick click: act on ALL bands (0.8.9)
-            setSoloMask (bandSoloed (soloPressBand) ? 0 : (1 << bandCount()) - 1);
+        else if (soloPressAlt) // Alt/Option quick click: inactive band -> EXCLUSIVE solo
+            setSoloMask (bandSoloed (soloPressBand) ? 0 // active: all solos off, as before (0.8.9)
+                                                    : (1 << soloPressBand)); // 0.8.10: only this band
         else                  toggleSoloBit (soloPressBand);
         soloPressBand = -1;
         soloHoldActive = soloMovedBand = false;

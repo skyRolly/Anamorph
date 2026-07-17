@@ -8,13 +8,17 @@ void SoloMonitor::prepare (double sampleRate, int maxBlock)
 {
     sr = sampleRate;
     juce::ignoreUnused (maxBlock); // LR4Xover state is flat, not block-sized
-    for (auto* x : { &x1, &x2, &x3 })
-        x->prepare (sampleRate);
-    glideCoeff = std::exp2 (8.0f / (float) sr); // ~8 octaves/sec, matches the Multiband
-    for (int i = 0; i < 3; ++i) { currentF[i] = targetF[i]; }
-    x1.setCutoffFrequency (currentF[0]);
-    x2.setCutoffFrequency (currentF[1]);
-    x3.setCutoffFrequency (currentF[2]);
+    for (auto* b : { &bank[0], &bank[1] })
+        for (int i = 0; i < 3; ++i)
+            b->x[i].prepare (sampleRate);
+    // ~12 ms cutoff crossfade for DISCRETE target jumps only, matching the
+    // Multiband (0.8.10) and the gain crossfade below.
+    fadeLen = juce::jmax (1, (int) std::lround (0.012 * sampleRate));
+    // Hard ~4 oct/s cutoff rate cap: drags up to that rate track EXACTLY (zero
+    // GUI/DSP gap); faster ones bound the swept-allpass frequency shift at
+    // ~1.25 Hz -- a small controlled FM chosen over interaction latency (see
+    // MultibandWidth.h).
+    glideStep = std::exp2 (4.0f / (float) sr);
 
     // ~12 ms crossfade: long enough to be click-free, short enough to feel instant.
     const double xfade = 0.012;
@@ -26,12 +30,30 @@ void SoloMonitor::prepare (double sampleRate, int maxBlock)
 
 void SoloMonitor::reset()
 {
-    x1.reset();
-    x2.reset();
-    x3.reset();
+    for (auto* b : { &bank[0], &bank[1] })
+        for (int i = 0; i < 3; ++i)
+            b->x[i].reset();
+    // Snap both banks to the target cutoffs and drop any fade in flight (reset
+    // runs under the engine duck / at prepare, so the jump is inaudible).
+    setBankCutoffs (bank[0]);
+    setBankCutoffs (bank[1]);
+    for (int i = 0; i < 3; ++i) prevTargetF[i] = targetF[i];
+    active      = 0;
+    fading      = false;
+    fadePos     = 0;
+    pendingJump = false;
     passGain.setCurrentAndTargetValue (1.0f);     // settle to the true passthrough
     for (auto& g : bandGain) g.setCurrentAndTargetValue (0.0f);
     running = true; // bank just cleaned: warm by definition (no stale state to flush)
+}
+
+void SoloMonitor::setBankCutoffs (XoverBank& b) noexcept
+{
+    for (int i = 0; i < 3; ++i)
+    {
+        b.f[i] = targetF[i];
+        b.x[i].setCutoffFrequency (targetF[i]);
+    }
 }
 
 void SoloMonitor::setCrossovers (float f1, float f2, float f3) noexcept
@@ -56,12 +78,11 @@ void SoloMonitor::setCrossovers (float f1, float f2, float f3) noexcept
 
 void SoloMonitor::process (float* left, float* right, int mask, int numSamples) noexcept
 {
-    const int active = mask & ((1 << bands) - 1);
-    const bool anySolo = active != 0;
+    const int active_ = mask & ((1 << bands) - 1);
+    const bool anySolo = active_ != 0;
 
-    LR4Xover* xs[3] = { &x1, &x2, &x3 };
     const int crossovers = bands - 1; // 0..3
-    auto heard = [active] (int b) noexcept { return (active & (1 << b)) != 0; };
+    auto heard = [active_] (int b) noexcept { return (active_ & (1 << b)) != 0; };
 
     // Targets for the click-free crossfade. The passthrough is heard when nothing is
     // soloed; each active band's gain is 1 only while that band is soloed. The bands
@@ -80,8 +101,8 @@ void SoloMonitor::process (float* left, float* right, int mask, int numSamples) 
     // a settled smoother is mutation-free, so skipping it is state-identical.
     // The gate sits AFTER the setTargetValue calls above: any target change this
     // block arms the ramp -> isSmoothing() -> the crossfade advances as always.
-    // The crossover-glide check mirrors the loop's own 0.05 Hz idle criterion.
-    if (! anySolo && ! passGain.isSmoothing()
+    // The cutoff check mirrors the fade trigger's 0.05 Hz criterion below.
+    if (! anySolo && ! fading && ! passGain.isSmoothing()
         && ! (std::abs (passGain.getCurrentValue() - 1.0f) > 0.0f))
     {
         bool settled = true;
@@ -89,7 +110,7 @@ void SoloMonitor::process (float* left, float* right, int mask, int numSamples) 
             settled = ! bandGain[b].isSmoothing()
                    && ! (std::abs (bandGain[b].getCurrentValue()) > 0.0f);
         for (int i = 0; i < crossovers && settled; ++i)
-            settled = ! (std::abs (currentF[i] - targetF[i]) > 0.05f);
+            settled = ! (std::abs (bank[active].f[i] - targetF[i]) > 0.05f);
         if (settled)
         {
             running = false; // filters go cold; the re-entry below re-warms them
@@ -99,61 +120,126 @@ void SoloMonitor::process (float* left, float* right, int mask, int numSamples) 
 
     // Cold re-entry (the engine's mbRunning warm/cold pattern): the filters were
     // skipped while the monitor sat at settled passthrough, so their state is
-    // stale. Clear them and snap the cutoff glide to its target NOW, while every
+    // stale. Clear them and snap the cutoffs to their targets NOW, while every
     // band gain is still ~0 and the passthrough still carries the output -- the
     // ~12 ms crossfade below masks the fresh filters' charge-up exactly as it
     // masks a Multiband cold enable. The gain smoothers are NOT touched: their
     // just-set targets ARE the click-free crossfade.
     if (! running)
     {
-        x1.reset();
-        x2.reset();
-        x3.reset();
-        for (int i = 0; i < 3; ++i) currentF[i] = targetF[i];
-        x1.setCutoffFrequency (currentF[0]);
-        x2.setCutoffFrequency (currentF[1]);
-        x3.setCutoffFrequency (currentF[2]);
+        for (auto* b : { &bank[0], &bank[1] })
+            for (int i = 0; i < 3; ++i)
+                b->x[i].reset();
+        setBankCutoffs (bank[active]);
+        fading  = false;
+        fadePos = 0;
         running = true;
     }
 
-    for (int n = 0; n < numSamples; ++n)
+    // DISCRETE-JUMP bank crossfade (0.8.10, mirrors MultibandWidth): only a
+    // TARGET that stepped > kFadeThresholdOct since the previous block fades to
+    // the state-copied idle bank -- one bounded event, its destination LATCHED
+    // at fade start (movement during the fade waits; the glide below is paused).
+    // Continuous movement of any speed glides per sample below under the
+    // ~4 oct/s rate cap. A step mid-fade only sets pendingJump: after the fade
+    // lands the trigger re-runs against the then-current targets, and a NEW
+    // fade starts only if they are still > 0.1 oct away.
     {
-        // Glide cutoffs so dragging a split while soloing can't chirp (0.6.7 #1).
-        for (int i = 0; i < crossovers; ++i)
+        bool step = pendingJump;
+        for (int i = 0; i < crossovers && ! step; ++i)
+            step = std::abs (std::log2 (targetF[i] / prevTargetF[i])) > kFadeThresholdOct;
+        for (int i = 0; i < 3; ++i) prevTargetF[i] = targetF[i];
+
+        if (step)
         {
-            if (std::abs (currentF[i] - targetF[i]) > 0.05f)
+            if (fading)
+                pendingJump = true;             // remember; re-check once this fade lands
+            else
             {
-                currentF[i] = targetF[i] > currentF[i]
-                                ? juce::jmin (targetF[i], currentF[i] * glideCoeff)
-                                : juce::jmax (targetF[i], currentF[i] / glideCoeff);
-                xs[i]->setCutoffFrequency (currentF[i]);
+                bool worthIt = false;           // skip if the target came back meanwhile
+                for (int i = 0; i < crossovers && ! worthIt; ++i)
+                    worthIt = std::abs (std::log2 (bank[active].f[i] / targetF[i])) > 0.1f;
+                pendingJump = false;
+                if (worthIt)
+                {
+                    auto& to = bank[1 - active];
+                    for (int i = 0; i < 3; ++i)
+                        to.x[i].copyStateFrom (bank[active].x[i]);
+                    setBankCutoffs (to);
+                    fading  = true;
+                    fadePos = 0;
+                }
             }
         }
+    }
 
-        const float inL = left[n], inR = right[n];
-        // The filters run unconditionally (kept warm), so an engage has no charge-up
-        // transient; gains are summed in, so nothing soloed -> passGain 1 -> true output.
-        const float pg = passGain.getNextValue();
+    // One bank, one sample: the passthrough plus every band's gain-blended sum.
+    // Identical arithmetic to the pre-0.8.10 single-bank loop (the gains are
+    // hoisted -- each smoother still advances exactly once per sample).
+    auto runBank = [crossovers] (XoverBank& bk, float inL, float inR,
+                                 float pg, const float* g,
+                                 float& outL, float& outR) noexcept
+    {
         float accL = pg * inL, accR = pg * inR;
-
         float curL = inL, curR = inR;
         for (int i = 0; i < crossovers; ++i)
         {
             float loL, hiL, loR, hiR;
-            xs[i]->processSample (0, curL, loL, hiL);
-            xs[i]->processSample (1, curR, loR, hiR);
-            const float g = bandGain[i].getNextValue();
-            accL += g * loL; accR += g * loR;
+            bk.x[i].processSample (0, curL, loL, hiL);
+            bk.x[i].processSample (1, curR, loR, hiR);
+            accL += g[i] * loL; accR += g[i] * loR;
             curL = hiL; curR = hiR;
         }
-        const float gTop = bandGain[crossovers].getNextValue(); // highest band = the remaining high
-        accL += gTop * curL; accR += gTop * curR;
+        accL += g[crossovers] * curL; accR += g[crossovers] * curR;
+        outL = accL; outR = accR;
+    };
 
-        // Advance the unused band smoothers so they keep tracking 0 in lock-step.
-        for (int b = crossovers + 1; b < 4; ++b) bandGain[b].getNextValue();
+    for (int n = 0; n < numSamples; ++n)
+    {
+        // RATE-CAPPED cutoff glide (0.8.10): each active split tracks its
+        // target per sample, capped at ~4 oct/s (drags up to that rate track
+        // exactly; faster ones bound the swept-allpass shift at ~1.25 Hz);
+        // paused while a discrete-jump fade is in flight.
+        if (! fading)
+        {
+            auto& bk = bank[active];
+            for (int i = 0; i < crossovers; ++i)
+                if (std::abs (bk.f[i] - targetF[i]) > 0.05f)
+                {
+                    bk.f[i] = targetF[i] > bk.f[i]
+                                ? juce::jmin (targetF[i], bk.f[i] * glideStep)
+                                : juce::jmax (targetF[i], bk.f[i] / glideStep);
+                    bk.x[i].setCutoffFrequency (bk.f[i]);
+                }
+        }
 
-        left[n]  = accL;
-        right[n] = accR;
+        // Advance every smoother exactly once per sample (bank-independent).
+        const float pg = passGain.getNextValue();
+        float g[4];
+        for (int b = 0; b <= crossovers; ++b) g[b] = bandGain[b].getNextValue();
+        for (int b = crossovers + 1; b < 4; ++b) { g[b] = 0.0f; bandGain[b].getNextValue(); }
+
+        const float inL = left[n], inR = right[n];
+
+        if (fading)
+        {
+            float aL, aR, bL, bR;
+            runBank (bank[active],     inL, inR, pg, g, aL, aR);
+            runBank (bank[1 - active], inL, inR, pg, g, bL, bR);
+            ++fadePos;
+            const float w = (float) fadePos / (float) fadeLen; // ends at exactly 1
+            left[n]  = aL + w * (bL - aL);
+            right[n] = aR + w * (bR - aR);
+            if (fadePos >= fadeLen)
+            {
+                active = 1 - active; // the new-cutoff bank takes over
+                fading = false;      // a further move retriggers next block
+            }
+        }
+        else
+        {
+            runBank (bank[active], inL, inR, pg, g, left[n], right[n]);
+        }
     }
 }
 

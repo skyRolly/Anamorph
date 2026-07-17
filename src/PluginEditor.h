@@ -130,6 +130,18 @@ private:
     struct Knob : public juce::Slider
     {
         double resetValue = 0.0;
+        // The attached parameter (null for host-hidden InternalState knobs): the
+        // ALT-CLICK reset must open its own host change gesture. Our mouseDown
+        // intercepts the event BEFORE juce::Slider can start a drag, so the
+        // SliderAttachment never opens one, and the programmatic setValue reached
+        // the processor's undo coalescer gesture-less -- which is the automation
+        // path, folded into the baseline with NO undo step and NO redo clear.
+        // That is why Option/Alt-click reset was un-undoable (and left Redo
+        // alive). The DOUBLE-CLICK reset needs no wrap: its second press runs
+        // Slider::mouseDown first, whose ScopedDragNotification has already
+        // opened the drag gesture that mouseUp will close -- wrapping there
+        // would nest begin/endChangeGesture on the same parameter.
+        juce::RangedAudioParameter* resetParam = nullptr;
         std::function<void()> onSweep;
 
         void doReset()
@@ -147,7 +159,13 @@ private:
         }
         void mouseDown (const juce::MouseEvent& e) override
         {
-            if (e.mods.isAltDown()) { doReset(); return; } // Option/Alt-click reset
+            if (e.mods.isAltDown()) // Option/Alt-click reset, as ONE undoable user gesture
+            {
+                if (resetParam != nullptr) resetParam->beginChangeGesture();
+                doReset();
+                if (resetParam != nullptr) resetParam->endChangeGesture();
+                return;
+            }
             juce::Slider::mouseDown (e);
         }
         void mouseDoubleClick (const juce::MouseEvent& e) override

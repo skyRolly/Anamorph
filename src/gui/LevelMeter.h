@@ -2,6 +2,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "../dsp/LevelMeters.h"
+#include "FrameClock.h"
 #include <array>
 
 namespace anamorph::gui
@@ -14,8 +15,7 @@ namespace anamorph::gui
 //  RMS (filled) with a held PEAK tick, on a dBFS scale. Reads the audio-thread
 //  anamorph::LevelMeters via atomics on a timer.
 // ============================================================================
-class LevelMeter : public juce::Component,
-                   private juce::Timer
+class LevelMeter : public juce::Component
 {
 public:
     explicit LevelMeter (anamorph::LevelMeters& src);
@@ -27,7 +27,7 @@ public:
     void mouseDown (const juce::MouseEvent&) override { source.resetHold(); }
 
 private:
-    void timerCallback() override;
+    void tick(); // FrameClock callback (display-rate; ballistics are all audio-side)
     void visibilityChanged() override;
     void drawBar (juce::Graphics&, juce::Rectangle<float>,
                   float dimDb, float briDb, float barDb);
@@ -41,6 +41,12 @@ private:
     // snapshot matches the last one cannot change the frame.
     std::array<float, 28> shown {};
     bool shownValid = false;
+
+    // Adaptive refresh (display-rate, capped ~120 Hz): started only while shown
+    // (default-hidden meter), exactly like the 60 Hz timer it replaces. The
+    // bitwise snapshot gate is rate-independent, so no dt correction is needed.
+    FrameClock frameClock;
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (LevelMeter)
 };
 

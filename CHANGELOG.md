@@ -6,6 +6,197 @@ SHA + date** as the Evidence Source (per `docs/policies/CHANGELOG_POLICY.md`). E
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
+## [0.8.10] — 2026-07-14
+### Changed
+- **Alt/Option-click on an unsoloed Band Solo button now solos ONLY that band (exclusive
+  solo)** — every other band's solo turns off — instead of soloing all bands at once (the 0.8.9
+  behaviour). Alt/Option-clicking an already-soloed band still clears the whole solo mask, and a
+  plain click still latches just that band; the press-and-hold momentary audition / hold-drag
+  band move are unchanged. Still one write of the `mbSolo` mask under one change gesture, so
+  automation, undo/redo and preset recall behave as before. Evidence: this PR. [Verified]
+- **The Vectorscope, Level Meter, Stereo Meter and Spectrum Imager now refresh at the display's
+  rate (adaptive, capped near 120 Hz) instead of a fixed 60 Hz.** On a 120 Hz (or higher) panel
+  the visualizers animate visibly smoother; on a 60 Hz panel they behave exactly as before. A new
+  `gui::FrameClock` rides each component's display vertical blank (`juce::VBlankAttachment`) and
+  executes every `ceil(refresh/126)`-th frame, so the rate tracks the monitor but is bounded to
+  keep paint CPU in check (60→60, 120→120, 144→72, 240→120 Hz); when the refresh rate cannot be
+  measured it falls back to 60 Hz by wall clock. Every rate-dependent animation (spectrum
+  release, clip-glow rise/fall, the correlation/balance pointer glide, the analyser's hover/press/
+  solo eases and split/width glides) was rewritten in elapsed-time (`dt`) form so its speed is
+  identical on any display and matches the old 60 Hz curves to within the on-screen colour
+  quantum. All Wave-1/Wave-2 GUI optimisations are preserved: the S1/S2/S3 repaint gates, the
+  H2/H13/H17 cached static layers, the N2 opaque blits and the H15 idle pre-gate are unchanged, so
+  idle CPU stays ~0 and a settled view still stops repainting. The Advanced-only Spectrum Imager
+  stops its clock entirely while hidden (Simple mode), and the rate cap re-applies within ~2
+  frames when the editor is dragged onto a faster monitor while a single early vblank (scheduler
+  jitter) near the 120 Hz cap no longer perturbs the rate. Internal/threading model unchanged
+  (still message-thread). Evidence: this PR. [Verified]
+
+### Fixed
+- **A forced bulk swap (undo/redo/A-B/preset) landing while an ordinary discrete duck was still
+  fading out no longer loses its forced semantics.** The forced request is consumed on entry to
+  the engine's parameter-swap state machine; in the narrow (~6 ms) fade-out window of a
+  non-forced discrete duck it used to be silently dropped — the swap then finished as a normal
+  duck: no wholesale swap at the silent bottom, no smoother snap, and no clean-slate reset, so
+  stale delay-line/oversampler audio could replay as the fade lifted (a 0.494-peak Haas-tail
+  replay measured against silent input) and a big undo level jump could swell instead of
+  snapping while silent. The in-flight duck is now upgraded in place to a forced one (same fade,
+  forced bottom); it deliberately keeps duck-to-silence — the dry fill is never engaged mid-fade
+  (engaging it would step the fill in at the current dry weight), matching the existing
+  no-mid-fade-re-enable latch rule. Fresh forced swaps (Tests 26/27/30) are unchanged. Guarded
+  by `testForcedSwapDuringOrdinaryFadeOut` (Test 31; DSP tests 29→30, checks 106→112).
+  Evidence: this PR. [Verified]
+- **Multiband split movement reworked: no spurious frequencies around a pure tone, no clicks,
+  and fast-drag pitch modulation cut to a small controlled bound — while the audible crossover
+  stays attached to the mouse.** Four design rounds, each graded against a pure-sine protocol
+  (instantaneous frequency of the fundamental, spurs outside ±30 Hz, envelope, at drag speeds
+  1–24 oct/s). The physics: a swept IIR crossover is inherently a phase modulator — its allpass
+  phase at any fixed frequency rotates up to 2π per crossover crossing, a genuine frequency
+  shift of `0.312·R` Hz at sweep rate `R` oct/s, and no smoothing shape removes it, only
+  redistributes it. Rejected: the pre-0.8.10 uncapped ~8 oct/s glide (≈2.5 Hz shift — +31 cents
+  measured at a 150 Hz crossing); chained ~12 ms fixed-bank crossfades (amplitude/phase
+  modulation at the fade cadence — sidebands at −25…−28 dBc around the tone, and a crossfade
+  between two phase-different allpasses cannot preserve the magnitude response mid-fade); a
+  one-pole tracker τ≈15 ms (FM at the full drag rate — ~50 cents measured at the crossing of a
+  fast drag); and a **~1.25 oct/s "inaudibility" cap with 0.25 s release consolidation**
+  (measurably clean, but rejected in interactive testing as a UX regression: the audio lagged
+  the GUI on ordinary fast drags and jumped after release — interaction latency is the worse
+  artifact). Shipped design (ADR-0015 "v0.8.10 final decision") in `MultibandWidth` and
+  `SoloMonitor`: **continuous movement tracks each cutoff per sample under a hard ~4 oct/s rate
+  cap** — every drag up to 4 oct/s tracks *exactly* (zero GUI/DSP gap), faster movement bounds
+  the shift at ~1.25 Hz (measured: worst 100 ms chunk ~15 cents at a 150 Hz crossing, ~2 cents
+  at 1 kHz, spurs at the −41 dBc analysis floor, < 0.1 dB envelope ripple — roughly half the
+  pre-fix worst case), and even a violent 6-octave flick catches up in ~1.25 s of *continuous*
+  motion after release — no timers, no intent prediction, no delayed jump. KI-012 documents the
+  accepted trade (a small amount of controlled FM is preferable to obvious interaction latency;
+  artifact-free *fast* tracking is impossible with zero-latency IIR crossovers and would
+  require linear-phase splits — a reported-latency change gated behind an Architecture Review,
+  recorded as the roadmap direction in ADR-0015). **Discrete jumps** (the target stepping
+  > 1.5 oct between consecutive blocks — automation steps/snaps, unreachable by dragging) stay
+  responsive via a single ~12 ms crossfade to a state-copied second filter bank: one bounded
+  transition event (−18 dBc at a 4-octave step) instead of a multi-second ease. Settled
+  behaviour is bit-identical; flat recombination, mono compatibility, dry/wet phase alignment,
+  Nyquist clamps, latency and serialization unchanged. Regression
+  `testMultibandSplitDragNoPitchShift` (Test 29) grades the entire movement at the final
+  operating point: worst 100 ms chunk < 18 cents across the drag AND the full catch-up
+  including the tone crossing (the shipped cap measures ~14; the uncapped glide ~28 and the
+  one-pole ~50 fail), max spur < −31 dBc during a 60 Hz-cadence drag (the chained fades measure
+  −28.5 dBc and fail), a released 6-octave flick must land by plain gliding within ~1.5 s (the
+  1.25 oct/s follower measures full lag there and fails), discrete 4-octave jumps must land
+  < 200 ms, all click-free. Evidence: this PR. [Verified]
+- **The intermediate "bounded convergence" follower was evaluated and simplified away
+  (ADR-0015 "v0.8.10 final decision").** The 1.25 oct/s cap + release-consolidation follower
+  solved the earlier unbounded-catch-up and "stuck follower" defects, but interactive testing
+  rejected its interaction latency: a 500 Hz → 2 kHz / 0.5 s drag released with 1.37 oct of
+  audible lag and glided on for another second, and the 0.25 s quiet-timeout consolidation — a
+  "wait until the user stopped" heuristic — read as a sudden delayed jump after the hand had
+  stopped. Final refinement, per the restated product intent (slightly reduce artifact
+  severity while preserving direct manipulation): the cap rises to **~4 oct/s** (Cases A and B
+  — 500 Hz → 2 kHz in 5 s and in 0.5 s — both track with 0.00 oct lag and 0.00 s settle;
+  Case C, a 6-oct/0.25 s flick, settles in ~1.25 s vs 2.75 s), and the **release consolidation
+  is removed entirely** (quiet detector, 0.25 s timeout, residue fade — the mechanism, its
+  state and its members are gone from `MultibandWidth` and `SoloMonitor`). The discrete-jump
+  bank fade remains the only special event (Case D: automation snaps, unreachable by dragging).
+  Follower trajectories stay deterministic and closed-form; manual drags and automation share
+  the identical path; exactly one smoothing stage exists. The full A–H3 architecture
+  investigation history, the earlier follower iterations and their measurements remain a
+  permanent record in ADR-0015. Regressions: Test 29 re-thresholded to the final operating
+  point (18-cent controlled bound — the uncapped glide fails at ~28; convergence window moved
+  to 1.7–2.2 s — the 1.25 oct/s follower fails at 1.00× full level; both directions verified by
+  temporarily re-pinning the cap). Evidence: this PR. [Verified]
+- **macOS (Apple Silicon native): tooltips no longer show an opaque white rectangle around the
+  rounded capsule.** Root cause: `juce::TooltipWindow` declares itself *opaque* (its constructor
+  calls `setOpaque(true)`) while the custom tooltip drawing deliberately leaves the pixels
+  outside the rounded capsule unpainted — undefined pixels in a window that promised to fill its
+  bounds. What renders there depends on the compositing pipeline: Intel and Rosetta happened to
+  show the stale (transparent) layer backing, but Apple-Silicon-native AppKit initialises the
+  opaque layer-backed window with its background colour first, producing the white corner frame
+  (the same undefined-pixels class as KI-006's black corners on uncomposited Linux/X11). The
+  editor now declares its `TooltipWindow` **non-opaque on macOS**, so the JUCE peer creates a
+  transparent `NSWindow` (clear background) and clears the backing to real alpha on every paint —
+  transparent rounded corners by contract on every pipeline. macOS-gated: Windows and Linux keep
+  their existing behaviour (uncomposited Linux keeps the KI-006 corner pre-fill). Code-path fix
+  verified by inspection of the JUCE 8.0.14 peer (`drawRectWithContext` clears non-opaque
+  windows); on-hardware confirmation on Apple Silicon is pending (KI-011). Evidence: this PR.
+  [Verified — code path; hardware re-test pending]
+- **Undo/Redo with an extreme Output Gain no longer produces a loud transient (forced-duck dry
+  fill now follows the output stage).** The forced-swap dry fill (introduced below) crossfades
+  the ducked output toward the delay-aligned raw input ring — which carries the *unity-level*
+  input, while the processed path around it is scaled by Output Gain (or the Level-Match gain)
+  × Output Balance. At extreme settings (e.g. Output Gain −24 dB) an undo/redo Mix toggle
+  burst the fill in up to 24 dB louder than the surrounding audio. The fill is now presented at
+  the **output-stage gain heard when the duck began**, latched at fade-out entry exactly like
+  the fill's delay offset (`dryDuckLat`) — latched, not live, because the gain smoothers snap
+  to the new state at the silent bottom where the fill carries full weight, and a live gain
+  would step audibly there. At unity gain/balance the arithmetic is bit-identical to the
+  previous fill (Tests 26/27 unchanged); true bypass still presents the raw ring at unity by
+  design. Regression `testDryFillRespectsOutputGain` (Test 30): at −24 dB the transition peak
+  must stay within 2× the steady output — the unscaled fill measures 15.8× and fails — while
+  still filling (no dip toward silence). Evidence: this PR. [Verified]
+- **Option/Alt-click (and double-click) reset of a knob/slider now creates a normal Undo step.**
+  Root cause: the reset wrote the slider value programmatically, which reaches the parameter
+  *without* a host change gesture; the processor's undo coalescer deliberately treats
+  gesture-less changes as host automation and folds them into the committed baseline — no undo
+  entry, and the redo stack survived when it should have been invalidated (so Undo skipped the
+  reset and reverted the previous edit, and Redo stayed available after a reset). The `Knob`
+  reset is now wrapped in `beginChangeGesture`/`endChangeGesture` around the value write —
+  exactly how the Multiband display's split/width resets already did it (those, and every other
+  Imager edit, were verified to share the same gesture-based undo path and needed no change) —
+  so a reset lands as one undoable step, clears redo, and records one automation move in the
+  host. `undo()`/`redo()` additionally flush a settled-but-unpolled gesture first (the editor
+  polls the coalescer at 24 Hz), so an edit finished immediately before the click can no longer
+  be silently skipped over. Automation, presets and serialization unchanged; the host-hidden
+  Settings knob (Vectorscope Persist) intentionally stays outside undo as before. Evidence:
+  this PR. [Verified]
+- **Multiband: closely-spaced crossovers no longer cut the level around the crossover
+  frequencies.** With three splits concentrated together the band around the crossovers behaved
+  like an EQ dip (measured −17.75 dB at 800/1000/1250 Hz), even at unit width and without moving a
+  band. Root cause: the reconstruction summed the serially-split bands directly, which is only
+  flat for a single crossover — an LR4 low+high is an allpass, so with more crossovers the lower
+  bands were missing the allpass phase of the splits above them and partially cancelled around the
+  (shared, when close) crossover region. The reconstruction now phase-compensates each lower band
+  by running the running low-sum through each higher split's allpass before adding the next band,
+  so it telescopes to a true allpass (flat). Recombination is now flat to ±0.0 dB at every split
+  spacing (regression test `testMultibandFlatRecombination`); mono compatibility, solo, automation,
+  presets/serialization and the reported latency are unchanged (the compensation is an equal-on-
+  L/R, zero-integer-latency IIR allpass). Only `bands−2` extra allpass sections run (none for 1–2
+  bands). Evidence: this PR. [Verified]
+- **Rapid consecutive Undo/Redo (or discrete changes) during the crossfade no longer reuse stale
+  dry-fill state.** A second forced swap arriving while a previous forced duck was still fading in
+  kept the first swap's dry-fill decision and delay offset; if the two swaps differed in reported
+  latency the second could read the raw-input ring at the wrong offset or stay silent when it
+  should have dry-filled. Every forced swap now re-evaluates dry-fill against the state heard at
+  that moment, latching the read offset for the duck's lifetime and only tightening (never
+  re-enabling) it mid-fade. Follow-up to the undo/redo dropout fix below; ordinary single swaps are
+  byte-identical (twin-dump verified). Regression test `testRapidForcedSwapDryFill`. Evidence: this
+  PR. [Verified]
+- **Undo / Redo (and A/B switch / preset load) no longer produce a brief audible dropout.**
+  Root cause: those actions route through the engine's *forced* switch duck, whose raised-cosine
+  output gain reaches exactly 0 and dwells there until the next block boundary (~6 ms fade-out
+  + up to one host block of hard zeros + the slow ~28 ms fade-in) — 15–25 ms of effective
+  silence by design. The forced duck is now **dry-filled**: while it is in flight the output is
+  crossfaded toward the delay-aligned raw input already maintained for the true-bypass
+  crossfade (the ring's writes were always warm; only its dead read-back was gated — H9), so
+  the swap is heard as a short dip to the dry signal instead of a gap. The processed weight
+  still reaches 0 at the bottom, so every masking property of the silent-bottom swap (smoother
+  snap, wholesale node reset, oversampler-latency latch) is unchanged, as is the reported
+  latency. A forced swap that crosses a latency boundary deliberately keeps the original
+  duck-to-silence (its ring read offset would jump at full dry weight). Ordinary discrete
+  switches (algorithm dropdown, routing toggles) are untouched. Validated: the 33-scenario
+  full-engine twin dump is **byte-identical** pre/post on every existing path (md5
+  `c35ed5e3…`, latencies identical), and the new regression test `testForcedSwapNoDropout`
+  (Test 26) holds the minimum 2 ms-window RMS across a forced swap at ≥ 0.93× (continuous
+  bulk swap) / ≥ 0.65× (algorithm swap) of steady level — the pre-fix engine measures 0.000
+  on both and fails. Evidence: this PR. [Verified]
+
+### Known issues
+- **KI-009 (documented, not fixed):** in **REAPER on Linux/macOS**, the Save Preset text field
+  loses keyboard focus — pressing Space while it is active can trigger the DAW transport, and after
+  the field loses focus a click cannot restore editing until the Save Preset window is closed and
+  reopened. Other tested DAWs do not reproduce it; the root cause is not yet confirmed. Recorded as
+  a **host-specific issue pending manual investigation** (`docs/KNOWN_ISSUES.md` KI-009). No fix in
+  this release.
+
 ## [0.8.9] — 2026-07-12
 ### Added
 - **Alt/Option-click on a Band Solo button acts on every band at once**: alt-clicking a soloed

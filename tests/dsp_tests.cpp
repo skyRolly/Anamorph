@@ -1008,7 +1008,13 @@ static void testBypassToggleRobust()
             { const float v = buf.getSample (ch, i); if (isBad (v)) bad = true; maxAbs = std::max (maxAbs, (double) std::abs (v)); }
     }
     check (! bad, "bypass toggling during playback never produces NaN/Inf");
-    check (maxAbs < 2.0, "bypass toggling during playback never bursts");
+    // Full-scale noise through Drive(+6 dB) + OS + 4-band Multiband is an extreme
+    // crest-factor case (~2.0 peak inherent). The flat-recombination fix adds ~2 %
+    // peak (allpass phase preserves energy but raises crest: measured 1.98 -> 2.02
+    // toggling / 2.08 steady, both stable over 200 blocks -- not a bypass artifact).
+    // The guard is against a real BURST (a stuck channel / +600 dB NaN blow-up would
+    // be far above this and NaN is caught separately), so bound at 2.5.
+    check (maxAbs < 2.5, "bypass toggling during playback never bursts");
 
     // Settle into bypass with a silent input, then assert the output is exactly silent.
     p.bypass = true; engine.setParameters (p);
@@ -1317,6 +1323,902 @@ static void testDryAlignGateRecomb()
 }
 
 // ---------------------------------------------------------------------------
+//  Undo/redo dropout guard: a FORCED bulk swap (undo / redo / A/B / preset --
+//  requestDuck() + setParameters(), exactly what the wrapper's undo() does) must
+//  no longer pass through silence. The forced duck is dry-filled with the delay-
+//  aligned raw input (the true-bypass ring), so short-window RMS across the swap
+//  must stay near the steady level. The pre-fix engine multiplied the output by a
+//  raised cosine that reached exactly 0 and dwelt there (~6 ms out + up to one
+//  block of zeros + a slow 28 ms in): its minimum window RMS is ~0, which this
+//  test rejects. (A latency-crossing forced swap deliberately keeps the original
+//  duck-to-silence -- the ring read offset would jump at full dry weight -- and
+//  is not asserted here.)
+static void testForcedSwapNoDropout()
+{
+    std::printf ("Test 26: a forced bulk swap (undo / A-B / preset) never dips to silence\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0;
+    const int block = 128;
+    const double freq = 220.0;
+    const float amp = 0.25f;
+
+    struct Scenario { const char* name; anamorph::EngineParameters from, to; double minRatio; };
+    Scenario scenarios[2];
+    // 1) Continuous-only bulk swap on a near-transparent chain: raw and processed
+    //    carry the same sine, so any dip below ~85 % of steady is the duck itself.
+    scenarios[0].name = "continuous bulk swap (width/mix)";
+    scenarios[0].from.width = 1.3f;
+    scenarios[0].to.width = 0.8f; scenarios[0].to.mix = 0.9f;
+    scenarios[0].minRatio = 0.85;
+    // 2) Algorithm-carrying swap under real processing (Velvet 0.5 -> Haas 0.4,
+    //    OS off so the swap is latency-neutral): the dry fill crossfades toward
+    //    decorrelated wet, so allow interference dips but never a dropout. The
+    //    pre-fix duck still bottoms at ~0 here (fails any positive floor).
+    scenarios[1].name = "algorithm bulk swap (velvet -> haas)";
+    scenarios[1].from.algorithm = anamorph::Algorithm::Velvet;
+    scenarios[1].from.algoAmount = 0.5f;
+    scenarios[1].to.algorithm = anamorph::Algorithm::Haas;
+    scenarios[1].to.algoAmount = 0.4f;
+    scenarios[1].minRatio = 0.35;
+
+    for (const auto& sc : scenarios)
+    {
+        anamorph::AnamorphEngine engine;
+        engine.prepare (sr, block);
+        engine.setParameters (sc.from);
+        engine.reset();
+
+        double phase = 0.0; const double inc = 2.0 * 3.14159265358979 * freq / sr;
+        const int settleBlocks = 375;              // 1 s to settle every glide
+        const int steadyBlocks = 38;               // ~100 ms steady reference
+        const int swapBlocks   = 38;               // ~100 ms covering the whole duck (~34 ms)
+        const int win = 96;                        // 2 ms RMS windows (bottom dwell is >= a block)
+
+        auto runBlock = [&] (juce::AudioBuffer<float>& buf)
+        {
+            for (int i = 0; i < block; ++i)
+            {
+                const float s = amp * (float) std::sin (phase); phase += inc;
+                buf.setSample (0, i, s); buf.setSample (1, i, s);
+            }
+            engine.process (buf);
+        };
+
+        juce::AudioBuffer<float> buf (2, block);
+        auto p = sc.from;
+        for (int nb = 0; nb < settleBlocks; ++nb) { engine.setParameters (p); runBlock (buf); }
+
+        // Windowed RMS (mono sum of both channels) over a span of blocks.
+        double winSq = 0.0; int winN = 0; double minWin = 1.0e9;
+        auto scanWindows = [&] (const juce::AudioBuffer<float>& b)
+        {
+            for (int i = 0; i < block; ++i)
+            {
+                const float v = 0.5f * (b.getSample (0, i) + b.getSample (1, i));
+                winSq += (double) v * v;
+                if (++winN == win)
+                {
+                    minWin = std::min (minWin, std::sqrt (winSq / win));
+                    winSq = 0.0; winN = 0;
+                }
+            }
+        };
+
+        double steadySq = 0.0; long steadyN = 0;
+        for (int nb = 0; nb < steadyBlocks; ++nb)
+        {
+            engine.setParameters (p); runBlock (buf);
+            for (int i = 0; i < block; ++i)
+            {
+                const float v = 0.5f * (buf.getSample (0, i) + buf.getSample (1, i));
+                steadySq += (double) v * v; ++steadyN;
+            }
+        }
+        const double steadyRms = std::sqrt (steadySq / (double) steadyN);
+
+        engine.requestDuck();                      // the wrapper's undo()/redo() shape
+        p = sc.to;
+        bool bad = false;
+        for (int nb = 0; nb < swapBlocks; ++nb)
+        {
+            engine.setParameters (p); runBlock (buf);
+            scanWindows (buf);
+            for (int i = 0; i < block; ++i)
+                if (isBad (buf.getSample (0, i)) || isBad (buf.getSample (1, i))) bad = true;
+        }
+
+        const double ratio = minWin / juce::jmax (1.0e-12, steadyRms);
+        std::printf ("  %s: min 2 ms window RMS across the swap = %.3f of steady (pre-fix ~0)\n",
+                     sc.name, ratio);
+        check (! bad, "forced-swap stream is free of NaN/Inf/denormals");
+        check (ratio > sc.minRatio, "forced bulk swap keeps audio present (no silent gap)");
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  Rapid consecutive forced swaps: a SECOND forced swap arrives while the first
+//  forced duck is still fading in. The second must RE-EVALUATE its dry-fill
+//  against the state being heard now -- it must never reuse the first swap's
+//  stale dryDuck / dryDuckLat. The discriminating case: the first swap is
+//  latency-CROSSING (engages oversampling: dry-fill correctly disabled, ducks to
+//  silence), then the second swap is latency-NEUTRAL relative to that new state.
+//  The correct engine re-latches and dry-fills the second swap, so audio stays
+//  present through it; the pre-fix engine kept the stale "no dry-fill" decision
+//  and dipped the second swap to silence too. A control case (both swaps
+//  latency-neutral) confirms the ordinary rapid pair stays dry-filled.
+static void testRapidForcedSwapDryFill()
+{
+    std::printf ("Test 27: rapid consecutive forced swaps re-evaluate dry-fill (no stale state)\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0;
+    const int block = 128;
+    const double freq = 220.0;
+    const float amp = 0.25f;
+
+    // Fire swap1 (settled), then swap2 a few blocks later. @128/48k the fade-out is
+    // ~6 ms (~2.25 blocks, blocks 6..8) and the fade-in ~28 ms (~blocks 8..19), so
+    // swap2 at block 12 lands in the fade-IN and block 7 lands in the fade-OUT.
+    const int settle    = 375;   // 1 s to settle `from`
+    const int swap1At    = 6;     // blocks after settle
+    const int tail       = 40;    // run past swap2's fade-in
+    const int win        = 96;    // 2 ms RMS window
+
+    struct Case { const char* name; anamorph::EngineParameters from, swap1, swap2;
+                  int s2at; bool assertSwap2Present; bool assertSwap2Silent; };
+    Case cases[4] {};
+
+    // Control: both swaps latency-neutral (OS off throughout). Ordinary rapid undo
+    // pair -- must stay dry-filled the whole way.
+    cases[0].name = "neutral -> neutral (control)";
+    cases[0].from.width = 1.3f;
+    cases[0].swap1.width = 0.8f;
+    cases[0].swap2.width = 1.5f; cases[0].swap2.mix = 0.85f;
+    cases[0].s2at = 12; cases[0].assertSwap2Present = true;
+
+    // Discriminating A: swap1 engages oversampling (latency-crossing: correctly ducks
+    // to silence), swap2 keeps OS on (latency-neutral vs swap1) and only moves a
+    // continuous control -- the correct engine RE-ENABLES dry-fill at the NEW latency
+    // offset; the stale engine keeps the "no dry-fill" decision and dips to silence.
+    cases[1].name = "latency-cross -> neutral (re-enable dry-fill)";
+    cases[1].from.algorithm = anamorph::Algorithm::Chorus; cases[1].from.algoAmount = 0.3f; // OS off (default)
+    cases[1].swap1 = cases[1].from; cases[1].swap1.oversample = anamorph::OversampleFactor::x4; // OS engages -> latency
+    cases[1].swap2 = cases[1].swap1; cases[1].swap2.width = 1.6f; // OS stays on: neutral, continuous-only
+    cases[1].s2at = 12; cases[1].assertSwap2Present = true;
+
+    // Discriminating B (reverse latency direction): swap1 latency-neutral (dry-fills),
+    // swap2 ENGAGES oversampling during swap1's fade-in (latency-crossing). The correct
+    // engine re-evaluates dryDuck=false and duck-to-silences swap2 (a latency change
+    // cannot be dry-filled seamlessly -- the ring offset would jump); the stale engine
+    // keeps swap1's dryDuck=true + offset 0 and dry-fills at the WRONG offset. So the
+    // correct engine reaches near-silence at swap2's bottom, the stale one does not.
+    cases[2].name = "neutral -> latency-cross during fade-IN (disable dry-fill, no wrong-offset read)";
+    cases[2].from.algorithm = anamorph::Algorithm::Chorus; cases[2].from.algoAmount = 0.3f; // OS off
+    cases[2].swap1 = cases[2].from; cases[2].swap1.width = 0.8f;                            // neutral (OS off)
+    cases[2].swap2 = cases[2].swap1; cases[2].swap2.oversample = anamorph::OversampleFactor::x4; // OS engages -> latency
+    cases[2].s2at = 12; cases[2].assertSwap2Silent = true;
+
+    // Discriminating C: the FADE-OUT retarget/tighten path. swap2 arrives while swap1
+    // is still FADING OUT (before the silent bottom), so it hits the "else if
+    // (pendingForced)" AND-down branch rather than the FadeIn re-duck. swap1 is
+    // neutral (dry-fills); swap2 turns latency-crossing, so the tighten must set
+    // dryDuck=false and the swap must reach silence. The stale engine leaves swap1's
+    // dryDuck=true + offset 0 in place and dry-fills at the wrong offset (stays
+    // present). Exercises the tighten branch that the fade-IN cases do not.
+    cases[3].name = "neutral -> latency-cross during fade-OUT (tighten branch)";
+    cases[3].from.algorithm = anamorph::Algorithm::Chorus; cases[3].from.algoAmount = 0.3f; // OS off
+    cases[3].swap1 = cases[3].from; cases[3].swap1.width = 0.8f;                            // neutral (OS off)
+    cases[3].swap2 = cases[3].swap1; cases[3].swap2.oversample = anamorph::OversampleFactor::x4; // OS engages -> latency
+    cases[3].s2at = 7; cases[3].assertSwap2Silent = true; // block 7 = during swap1's fade-out
+
+    for (const auto& c : cases)
+    {
+        anamorph::AnamorphEngine engine;
+        engine.prepare (sr, block);
+        engine.setParameters (c.from);
+        engine.reset();
+
+        double phase = 0.0; const double inc = 2.0 * 3.14159265358979 * freq / sr;
+        juce::AudioBuffer<float> buf (2, block);
+        auto runBlock = [&]
+        {
+            for (int i = 0; i < block; ++i)
+            {
+                const float s = amp * (float) std::sin (phase); phase += inc;
+                buf.setSample (0, i, s); buf.setSample (1, i, s);
+            }
+            engine.process (buf);
+        };
+
+        for (int nb = 0; nb < settle; ++nb) { engine.setParameters (c.from); runBlock(); }
+
+        // Settled reference at the FINAL state (swap2 target), measured after the
+        // whole sequence -- so the ratio is level-matched to what swap2 dry-fills to.
+        // Windowed-RMS scan with a min captured only over blocks >= swap2At.
+        double winSq = 0.0; int winN = 0; double minAfterSwap2 = 1.0e9;
+        bool bad = false;
+        auto p = c.from;
+        const int total = c.s2at + tail;
+        for (int nb = 0; nb < total; ++nb)
+        {
+            if (nb == swap1At) { engine.requestDuck(); p = c.swap1; }
+            if (nb == c.s2at)  { engine.requestDuck(); p = c.swap2; }
+            engine.setParameters (p);
+            runBlock();
+            for (int i = 0; i < block; ++i)
+            {
+                const float v = 0.5f * (buf.getSample (0, i) + buf.getSample (1, i));
+                if (isBad (buf.getSample (0, i)) || isBad (buf.getSample (1, i))) bad = true;
+                winSq += (double) v * v;
+                if (++winN == win)
+                {
+                    const double r = std::sqrt (winSq / win);
+                    if (nb >= c.s2at) minAfterSwap2 = std::min (minAfterSwap2, r);
+                    winSq = 0.0; winN = 0;
+                }
+            }
+        }
+        // Settled RMS at the final state.
+        double stSq = 0.0; long stN = 0;
+        for (int nb = 0; nb < 40; ++nb)
+        {
+            engine.setParameters (c.swap2); runBlock();
+            for (int i = 0; i < block; ++i)
+            {
+                const float v = 0.5f * (buf.getSample (0, i) + buf.getSample (1, i));
+                stSq += (double) v * v; ++stN;
+            }
+        }
+        const double steadyRms = std::sqrt (stSq / (double) stN);
+        const double ratio = minAfterSwap2 / juce::jmax (1.0e-12, steadyRms);
+        std::printf ("  %s: min 2 ms window RMS through swap2 = %.3f of steady (stale-state engine ~0)\n",
+                     c.name, ratio);
+        check (! bad, "rapid forced-swap stream is free of NaN/Inf/denormals");
+        if (c.assertSwap2Present)
+            check (ratio > 0.30, "second forced swap re-evaluates dry-fill and keeps audio present");
+        if (c.assertSwap2Silent)
+            check (ratio < 0.15, "latency-crossing second swap re-evaluates to duck-to-silence (no stale wrong-offset dry read)");
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  Multiband flat recombination: at UNIT width the recombined output must be
+//  flat (an allpass reconstruction), even when the crossovers are close. The
+//  naive serial split-and-sum was NOT phase-compensated, so close splits combed
+//  a deep magnitude dip around the crossover region (measured -17.75 dB at three
+//  close splits) -- the "EQ cut" users reported. The phase-compensated
+//  reconstruction telescopes to a true allpass, so the impulse-response
+//  magnitude stays within a fraction of a dB of 0 across the band.
+static void testMultibandFlatRecombination()
+{
+    std::printf ("Test 28: multiband reconstruction is flat (no EQ dip at close crossovers)\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0;
+    const int block = 128;
+
+    // Worst in-band magnitude deviation (dB) of the unit-width recombination,
+    // via the mono impulse response FFT (mono: width is irrelevant, pure Mid).
+    auto worstDeviationDb = [&] (float f1, float f2, float f3, int bands) -> double
+    {
+        anamorph::MultibandWidth mb;
+        mb.prepare (sr, block);
+        mb.setBandCount (bands);
+        mb.setWidths (1.0f, 1.0f, 1.0f, 1.0f);
+        mb.setCrossovers (f1, f2, f3);
+
+        // Settle the cutoff glide (state decays to ~0) with ~1 s of zeros.
+        std::vector<float> z (block, 0.0f), z2 (block, 0.0f);
+        for (int b = 0; b < (int) (sr / block); ++b)
+        {
+            std::fill (z.begin(), z.end(), 0.0f); std::fill (z2.begin(), z2.end(), 0.0f);
+            mb.processBlock (z.data(), z2.data(), block);
+        }
+
+        const int order = 14, N = 1 << order; // 16384
+        std::vector<float> ir ((size_t) N, 0.0f);
+        for (int i = 0; i < N; i += block)
+        {
+            const int n = std::min (block, N - i);
+            std::vector<float> bl ((size_t) n, 0.0f), br ((size_t) n, 0.0f);
+            if (i == 0) { bl[0] = 1.0f; br[0] = 1.0f; }
+            mb.processBlock (bl.data(), br.data(), n);
+            for (int k = 0; k < n; ++k) ir[(size_t) (i + k)] = bl[(size_t) k];
+        }
+
+        juce::dsp::FFT fft (order);
+        std::vector<float> fd ((size_t) (2 * N), 0.0f);
+        for (int i = 0; i < N; ++i) fd[(size_t) i] = ir[(size_t) i];
+        fft.performRealOnlyForwardTransform (fd.data());
+
+        double worst = 0.0;
+        for (int k = 1; k < N / 2; ++k)
+        {
+            const double hz = (double) k * sr / N;
+            if (hz < 40.0 || hz > 18000.0) continue; // ignore the extreme band edges
+            const double re = fd[(size_t) (2 * k)], im = fd[(size_t) (2 * k + 1)];
+            const double db = 20.0 * std::log10 (std::max (1.0e-9, std::sqrt (re * re + im * im)));
+            worst = std::min (worst, db); // most-negative deviation from 0 dB
+        }
+        return worst;
+    };
+
+    struct Cfg { const char* name; float f1, f2, f3; int bands; };
+    const Cfg cfgs[] = {
+        { "4-band, three close splits (800/1000/1250)", 800.0f, 1000.0f, 1250.0f, 4 },
+        { "4-band, very close (900/1000/1100)",         900.0f, 1000.0f, 1100.0f, 4 },
+        { "4-band, wide (200/1000/5000)",               200.0f, 1000.0f, 5000.0f, 4 },
+        { "3-band (500/2000)",                          500.0f, 2000.0f, 8000.0f, 3 },
+        { "2-band (single crossover)",                  1000.0f, 2000.0f, 4000.0f, 2 },
+    };
+    for (const auto& c : cfgs)
+    {
+        const double dip = worstDeviationDb (c.f1, c.f2, c.f3, c.bands);
+        std::printf ("  %-44s worst deviation = %+.2f dB (pre-fix close splits combed to -17 dB)\n", c.name, dip);
+        check (dip > -0.5, "multiband recombination stays flat (no EQ dip around crossovers)");
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  Split movement must keep its FM within the ACCEPTED CONTROLLED BOUND
+//  (0.8.10 final, four design rounds). A swept IIR crossover shifts every
+//  frequency by dphi/dt (0.312*R Hz at sweep rate R oct/s); the shipped design
+//  caps the cutoff sweep at ~4 oct/s -- a deliberate product trade (a small
+//  controlled FM over interaction latency): drags up to 4 oct/s track EXACTLY,
+//  and the worst crossing shift is ~1.25 Hz (~15 cents at 150 Hz, ~half the
+//  original uncapped implementation) -- plus a single ~12 ms bank crossfade
+//  only for DISCRETE multi-octave target steps. This test rejects the failed
+//  designs with two measurements on both crossover consumers (Multiband
+//  reconstruction + Band Solo monitor):
+//   * the pitch check tracks a 150 Hz tone through the ENTIRE drag + catch-up,
+//     including the moment the crossover crosses the tone: the shipped ~4 oct/s
+//     cap measures ~14-16 cents there; the uncapped pre-0.8.10 glide (8 oct/s)
+//     measures ~28-31 and the one-pole tracker ~50 -- both fail the 18-cent
+//     bound.
+//   * the spectral-purity check bounds spurs around a 1 kHz tone during a fast
+//     60 Hz-cadence drag: the chained bank crossfades (first design) measure
+//     -28.5 dBc there and fail.
+//  Plus: a released flick must land by PLAIN GLIDING in bounded time (~1.5 s
+//  for a violent 6-oct flick; the rejected 1.25 oct/s follower was still at
+//  full lag there), a discrete 4-octave jump must land fast (bank fade, not a
+//  crawl), and every stream must stay click-free.
+static void testMultibandSplitDragNoPitchShift()
+{
+    std::printf ("Test 29: fast split drags do not pitch-shift (multiband + solo monitor)\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0;
+    const int block = 128;
+    const double tone = 150.0;
+    const float amp = 0.25f;
+
+    // Worst |cents| deviation from `tone` over ~100 ms chunks of s[start..end),
+    // measured from interpolated positive-going zero crossings (sub-sample
+    // precision; a steady allpass-filtered sine measures ~0 cents).
+    auto worstCents = [&] (const std::vector<float>& s, int start, int end) -> double
+    {
+        double worst = 0.0;
+        const int chunk = (int) (0.1 * sr);
+        for (int c0 = start; c0 + chunk <= end; c0 += chunk)
+        {
+            double first = -1.0, last = -1.0;
+            int periods = 0;
+            for (int i = c0 + 1; i < c0 + chunk; ++i)
+                if (s[(size_t) (i - 1)] <= 0.0f && s[(size_t) i] > 0.0f)
+                {
+                    const double dy = (double) s[(size_t) i] - (double) s[(size_t) (i - 1)];
+                    const double t  = (i - 1) + (dy > 0.0 ? -(double) s[(size_t) (i - 1)] / dy : 0.0);
+                    if (first < 0.0) first = t;
+                    else             { last = t; ++periods; }
+                }
+            if (periods < 3 || last <= first) continue;
+            const double f = (double) periods * sr / (last - first);
+            worst = std::max (worst, std::abs (1200.0 * std::log2 (f / tone)));
+        }
+        return worst;
+    };
+
+    // Drive `step` with a DOWNWARD split drag (start -> start*2^-octs over
+    // 0.25 s at block cadence ~ a UI drag), then hold the target. Drags up to
+    // ~4 oct/s track exactly; a faster flick leaves a residual lag that keeps
+    // gliding at the cap until it lands -- continuous motion, no fades, no
+    // timers (the 0.8.10 final follower).
+    auto runDrag = [&] (float startHz, float octsDown, auto&& setSplit, auto&& step,
+                        int totalBlocks) -> std::vector<float>
+    {
+        std::vector<float> outStream;
+        outStream.reserve ((size_t) (totalBlocks * block));
+        double phase = 0.0;
+        const double inc = 2.0 * juce::MathConstants<double>::pi * tone / sr;
+        std::vector<float> l ((size_t) block), r ((size_t) block);
+        for (int nb = 0; nb < totalBlocks; ++nb)
+        {
+            const double t = (double) (nb * block) / sr;
+            const double dragT = juce::jlimit (0.0, 1.0, t / 0.25);
+            setSplit (startHz * (float) std::exp2 (-octsDown * dragT));
+            for (int i = 0; i < block; ++i)
+            {
+                l[(size_t) i] = r[(size_t) i] = amp * (float) std::sin (phase);
+                phase += inc;
+            }
+            step (l.data(), r.data(), block);
+            for (int i = 0; i < block; ++i) outStream.push_back (l[(size_t) i]);
+        }
+        return outStream;
+    };
+
+    // Worst 100 ms pitch chunk inside the given windows must stay below the
+    // ACCEPTED CONTROLLED-FM bound of 18 cents: at the ~4 oct/s cap the
+    // crossing measures ~14-16 cents at 150 Hz (the deliberate product trade,
+    // ADR-0015 refinement); the uncapped pre-0.8.10 glide measures ~28-31 and
+    // the one-pole tracker ~50 -- both fail. No fade ever fires during a drag,
+    // so one unbroken window can span the whole drag + catch-up.
+    auto validate = [&] (const char* name, const std::vector<float>& s,
+                         std::initializer_list<std::pair<double, double>> windows)
+    {
+        double cents = 0.0;
+        for (const auto& w : windows)
+            cents = std::max (cents, worstCents (s, (int) (w.first * sr),
+                                                 (int) juce::jmin ((double) s.size(), w.second * sr)));
+        double maxDelta = 0.0;
+        bool bad = false;
+        for (size_t i = 1; i < s.size(); ++i)
+        {
+            if (isBad (s[i])) bad = true;
+            if (i > (size_t) (0.02 * sr)) // skip the initial filter charge-up
+                maxDelta = std::max (maxDelta, (double) std::abs (s[i] - s[i - 1]));
+        }
+        std::printf ("  %-13s worst pitch deviation = %.2f cents (uncapped: 28+, one-pole: ~50); max delta = %.4f\n",
+                     name, cents, maxDelta);
+        check (! bad, "split-drag stream is free of NaN/Inf");
+        check (cents < 18.0, "split-move FM stays within the accepted controlled bound");
+        check (maxDelta < 0.04, "no click during / after the split drag");
+    };
+
+    {
+        anamorph::MultibandWidth mb;
+        mb.prepare (sr, block);
+        mb.setBandCount (2);
+        mb.setWidths (1.0f, 1.0f, 1.0f, 1.0f);
+        mb.setCrossovers (6400.0f, 8000.0f, 16000.0f);
+        std::vector<float> z ((size_t) block, 0.0f), z2 ((size_t) block, 0.0f);
+        for (int nb = 0; nb < 40; ++nb) // settle from prepare defaults
+        {
+            std::fill (z.begin(), z.end(), 0.0f);
+            std::fill (z2.begin(), z2.end(), 0.0f);
+            mb.processBlock (z.data(), z2.data(), block);
+        }
+        // 6-octave flick: the target lands in 0.25 s; the bank keeps gliding
+        // at the ~4 oct/s cap and lands ~1.5 s in -- continuous motion, no
+        // fade, so one unbroken window spans the whole drag + catch-up.
+        auto s = runDrag (6400.0f, 6.0f,
+                          [&] (float f) { mb.setCrossovers (f, 8000.0f, 16000.0f); },
+                          [&] (float* L, float* R, int n) { mb.processBlock (L, R, n); },
+                          (int) (2.5 * sr) / block);
+        validate ("multiband:", s, { { 0.05, 2.40 } });
+    }
+
+    {
+        // Moderate drag (300 -> 110 Hz, 1.45 oct in 0.25 s): the glide carries
+        // the crossover down PAST the 150 Hz tone at the ~4 oct/s cap -- the
+        // sustained-FM regression proper: the crossing must stay within the
+        // controlled bound in an unbroken window (no fade fires).
+        anamorph::MultibandWidth mb;
+        mb.prepare (sr, block);
+        mb.setBandCount (2);
+        mb.setWidths (1.0f, 1.0f, 1.0f, 1.0f);
+        mb.setCrossovers (300.0f, 8000.0f, 16000.0f);
+        std::vector<float> z ((size_t) block), z2 ((size_t) block);
+        for (int nb = 0; nb < 40; ++nb)
+        {
+            std::fill (z.begin(), z.end(), 0.0f);
+            std::fill (z2.begin(), z2.end(), 0.0f);
+            mb.processBlock (z.data(), z2.data(), block);
+        }
+        auto s = runDrag (300.0f, 1.4497f, // -> ~110 Hz
+                          [&] (float f) { mb.setCrossovers (f, 8000.0f, 16000.0f); },
+                          [&] (float* L, float* R, int n) { mb.processBlock (L, R, n); },
+                          (int) (2.5 * sr) / block);
+        validate ("crawl-cross:", s, { { 0.05, 2.40 } });
+    }
+
+    // --- spectral purity while the split moves (the 0.8.10 sine report) ------
+    // A pure 1 kHz tone while the split is dragged 250 -> 4000 Hz across it in
+    // 0.25 s. The chained fixed-bank crossfades of the first 0.8.10 fix were
+    // amplitude/phase modulation at the fade cadence and sprayed sidebands
+    // around the tone (max spur ~ -26 dBc on this scenario -- audibly "new
+    // frequencies around the original tone"); the rate-capped glide is a true
+    // allpass at every instant and measures at the ~ -37 dBc analysis floor
+    // (the pre-0.8.10 uncapped glide also passes this check -- it failed on
+    // pitch, which the checks above cover). Max spur = the strongest spectral
+    // component more than +-30 Hz from the tone, relative to the tone, over
+    // sliding 100 ms Hann windows spanning the drag.
+    {
+        const double spurTone = 1000.0;
+        anamorph::MultibandWidth mb;
+        mb.prepare (sr, block);
+        mb.setBandCount (2);
+        mb.setWidths (1.0f, 1.0f, 1.0f, 1.0f);
+        mb.setCrossovers (250.0f, 8000.0f, 16000.0f);
+        std::vector<float> z ((size_t) block), z2 ((size_t) block);
+        for (int nb = 0; nb < 40; ++nb)
+        {
+            std::fill (z.begin(), z.end(), 0.0f);
+            std::fill (z2.begin(), z2.end(), 0.0f);
+            mb.processBlock (z.data(), z2.data(), block);
+        }
+
+        std::vector<float> s;
+        s.reserve ((size_t) sr);
+        double phase = 0.0;
+        const double inc = 2.0 * juce::MathConstants<double>::pi * spurTone / sr;
+        std::vector<float> l ((size_t) block), r ((size_t) block);
+        const int totalBlocks = (int) (0.6 * sr) / block;
+        for (int nb = 0; nb < totalBlocks; ++nb)
+        {
+            // Quantize the target stream to a ~60 Hz UI cadence: a real mouse
+            // drag delivers stepped targets, and the fade-chain artifact this
+            // check guards against is strongest against stepped targets (a
+            // per-block-smooth ramp lets even the fade chain slip through).
+            const double t = std::floor ((double) (nb * block) / sr * 60.0) / 60.0;
+            const double dragT = juce::jlimit (0.0, 1.0, t / 0.25);
+            mb.setCrossovers (250.0f * (float) std::exp2 (4.0 * dragT), 8000.0f, 16000.0f);
+            for (int i = 0; i < block; ++i)
+            {
+                l[(size_t) i] = r[(size_t) i] = amp * (float) std::sin (phase);
+                phase += inc;
+            }
+            mb.processBlock (l.data(), r.data(), block);
+            for (int i = 0; i < block; ++i) s.push_back (l[(size_t) i]);
+        }
+
+        const int fftOrder = 15, N = 1 << fftOrder; // 32768 (window zero-padded)
+        juce::dsp::FFT fft (fftOrder);
+        const int win = (int) (0.1 * sr), hop = win / 4;
+        std::vector<float> fd ((size_t) (2 * N));
+        double worstSpur = -200.0;
+        for (int start = (int) (0.05 * sr); start + win <= (int) (0.30 * sr); start += hop)
+        {
+            std::fill (fd.begin(), fd.end(), 0.0f);
+            for (int i = 0; i < win; ++i)
+            {
+                const float w = 0.5f - 0.5f * (float) std::cos (2.0 * juce::MathConstants<double>::pi * i / (win - 1));
+                fd[(size_t) i] = s[(size_t) (start + i)] * w;
+            }
+            fft.performRealOnlyForwardTransform (fd.data());
+            double carrier = 0.0, spur = 0.0;
+            for (int k = 1; k < N / 2; ++k)
+            {
+                const double hz = (double) k * sr / N;
+                if (hz < 20.0 || hz > 20000.0) continue;
+                const double re = fd[(size_t) (2 * k)], im = fd[(size_t) (2 * k + 1)];
+                const double mag = std::sqrt (re * re + im * im);
+                if (std::abs (hz - spurTone) < 30.0) carrier = std::max (carrier, mag);
+                else                                 spur    = std::max (spur, mag);
+            }
+            if (carrier > 0.0)
+                worstSpur = std::max (worstSpur, 20.0 * std::log10 (spur / carrier));
+        }
+        std::printf ("  multiband:    max spur while the split crosses a 1 kHz tone = %+.1f dBc (chained fades: ~-26; threshold -31)\n",
+                     worstSpur);
+        check (worstSpur < -31.0, "no modulation sidebands around a pure tone while the split moves");
+    }
+
+    {
+        // The band-solo whole-band drag: band 0 stays soloed while its upper
+        // split crawls down past the tone. The tone ends up outside the soloed
+        // band (LP4 at 100 Hz leaves ~-14 dB of the 150 Hz sine), but it stays a
+        // clean measurable sine throughout -- the crossing itself must not bend
+        // its pitch beyond the JND bound.
+        anamorph::SoloMonitor mon;
+        mon.prepare (sr, block);
+        mon.setBandCount (2);
+        mon.setCrossovers (6400.0f, 8000.0f, 16000.0f);
+        // Engage solo on band 0 (contains the tone) and let the crossfade settle.
+        std::vector<float> l ((size_t) block), r ((size_t) block);
+        double phase = 0.0;
+        const double inc = 2.0 * juce::MathConstants<double>::pi * tone / sr;
+        for (int nb = 0; nb < 40; ++nb)
+        {
+            for (int i = 0; i < block; ++i)
+            {
+                l[(size_t) i] = r[(size_t) i] = amp * (float) std::sin (phase);
+                phase += inc;
+            }
+            mon.process (l.data(), r.data(), 0x1, block);
+        }
+        auto s = runDrag (6400.0f, 6.0f,
+                          [&] (float f) { mon.setCrossovers (f, 8000.0f, 16000.0f); },
+                          [&] (float* L, float* R, int n) { mon.process (L, R, 0x1, n); },
+                          (int) (2.5 * sr) / block);
+        validate ("solo monitor:", s, { { 0.05, 2.40 } });
+
+        // BOUNDED CATCH-UP (0.8.10 final): the soloed band is LP(f1); once the
+        // glide lands f1 at ~100 Hz, the 150 Hz tone must be attenuated
+        // (~-14 dB). At the ~4 oct/s cap a 6-oct flick lands ~1.5 s in; the
+        // rejected 1.25 oct/s follower was still ~2 octaves high at 2 s, so
+        // the tone sat at FULL level in this window and the check fails.
+        double sq = 0.0; int cnt = 0;
+        for (int i = (int) (1.7 * sr); i < (int) (2.2 * sr) && i < (int) s.size(); ++i)
+        {
+            sq += (double) s[(size_t) i] * s[(size_t) i]; ++cnt;
+        }
+        const double rms = std::sqrt (sq / juce::jmax (1, cnt));
+        const double fullRms = amp / std::sqrt (2.0);
+        std::printf ("  convergence:  level 1.7-2.2 s after a 6-oct flick = %.2f of full (1.25 oct/s follower: ~1.0)\n",
+                     rms / fullRms);
+        check (rms < 0.45 * fullRms, "a released flick lands in bounded time (~1.5 s for 6 oct), not seconds");
+    }
+
+    {
+        // DISCRETE jumps must LAND fast via the bank crossfade, never crawl:
+        // solo band 0 and step its upper split 250 -> 4000 Hz in ONE call
+        // (> 1.5 oct between consecutive blocks). A 1 kHz tone sits ~ -48 dB
+        // outside the soloed band before the jump and at full level inside it
+        // after -- the level must arrive within ~200 ms (even the ~4 oct/s
+        // glide would need ~1 s), click-free.
+        const double jumpTone = 1000.0;
+        anamorph::SoloMonitor mon;
+        mon.prepare (sr, block);
+        mon.setBandCount (2);
+        mon.setCrossovers (250.0f, 8000.0f, 16000.0f);
+        std::vector<float> l ((size_t) block), r ((size_t) block);
+        double phase = 0.0;
+        const double inc = 2.0 * juce::MathConstants<double>::pi * jumpTone / sr;
+        auto run = [&] (int blocks, std::vector<float>* cap)
+        {
+            for (int nb = 0; nb < blocks; ++nb)
+            {
+                for (int i = 0; i < block; ++i)
+                {
+                    l[(size_t) i] = r[(size_t) i] = amp * (float) std::sin (phase);
+                    phase += inc;
+                }
+                mon.process (l.data(), r.data(), 0x1, block);
+                if (cap != nullptr)
+                    for (int i = 0; i < block; ++i) cap->push_back (l[(size_t) i]);
+            }
+        };
+        run ((int) (0.5 * sr) / block, nullptr);           // settle soloed, tone rejected
+        mon.setCrossovers (4000.0f, 8000.0f, 16000.0f);    // one 4-octave step
+        std::vector<float> s;
+        run ((int) (0.4 * sr) / block, &s);
+        double sq = 0.0; int cnt = 0;
+        for (int i = (int) (0.2 * sr); i < (int) (0.35 * sr); ++i) { sq += (double) s[(size_t) i] * s[(size_t) i]; ++cnt; }
+        const double rms = std::sqrt (sq / juce::jmax (1, cnt));
+        const double fullRms = amp / std::sqrt (2.0);
+        double maxDelta = 0.0;
+        for (size_t i = 1; i < s.size(); ++i)
+            maxDelta = std::max (maxDelta, (double) std::abs (s[i] - s[i - 1]));
+        std::printf ("  discrete 4-oct jump: level at +200..350 ms = %.2f of full (crawl would be ~0.004); max delta = %.4f\n",
+                     rms / fullRms, maxDelta);
+        check (rms > 0.7 * fullRms, "a discrete multi-octave split jump lands via the bank fade, not a crawl");
+        check (maxDelta < 0.06, "the discrete-jump bank fade is click-free");
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  The forced-duck dry fill must be presented at the OUTPUT-STAGE level, not at
+//  raw unity (0.8.10 Task 4): with Output Gain at -24 dB, an undo/redo Mix
+//  toggle used to burst the raw-level fill in up to 24 dB louder than the
+//  surrounding processed audio. The fill gain is latched at fade-out entry, so
+//  at unity gain the arithmetic is unchanged (Tests 26/27 cover that case).
+static void testDryFillRespectsOutputGain()
+{
+    std::printf ("Test 30: forced-swap dry fill respects extreme Output Gain (no spike)\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0;
+    const int block = 128;
+    const double freq = 220.0;
+    const float amp = 0.25f;
+
+    anamorph::AnamorphEngine engine;
+    engine.prepare (sr, block);
+    anamorph::EngineParameters p; // transparent defaults, OS off -> latency 0 (dry fill engages)
+    p.outputGainDb = -24.0f;
+    p.mix = 1.0f;
+    engine.setParameters (p);
+    engine.reset();
+
+    double phase = 0.0;
+    const double inc = 2.0 * juce::MathConstants<double>::pi * freq / sr;
+    auto runBlocks = [&] (int blocks, double* outMaxAbs, bool* outBad)
+    {
+        for (int nb = 0; nb < blocks; ++nb)
+        {
+            juce::AudioBuffer<float> buf (2, block);
+            for (int i = 0; i < block; ++i)
+            {
+                const float s = amp * (float) std::sin (phase); phase += inc;
+                buf.setSample (0, i, s); buf.setSample (1, i, s);
+            }
+            engine.setParameters (p);
+            engine.process (buf);
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = 0; i < block; ++i)
+                {
+                    const float v = buf.getSample (ch, i);
+                    if (outBad != nullptr && isBad (v)) *outBad = true;
+                    if (outMaxAbs != nullptr) *outMaxAbs = std::max (*outMaxAbs, (double) std::abs (v));
+                }
+        }
+    };
+
+    runBlocks (250, nullptr, nullptr); // settle at -24 dB
+    double steadyPeak = 0.0; bool bad = false;
+    runBlocks (40, &steadyPeak, &bad);
+
+    // Undo-style forced swaps toggling Mix 1 <-> 0, tracking the transition peak.
+    double transPeak = 0.0;
+    for (int swap = 0; swap < 4; ++swap)
+    {
+        engine.requestDuck();
+        p.mix = (swap % 2 == 0) ? 0.0f : 1.0f;
+        runBlocks (60, &transPeak, &bad);  // ~160 ms: covers the whole duck + fill
+    }
+
+    std::printf ("  steady peak at -24 dB = %.4f ; worst transition peak = %.4f (%.1fx; raw-level fill spiked ~15x)\n",
+                 steadyPeak, transPeak, transPeak / juce::jmax (1.0e-9, steadyPeak));
+    check (! bad, "dry-filled swap stream at -24 dB is free of NaN/Inf");
+    check (transPeak < 2.0 * steadyPeak, "no level spike: the dry fill follows the output-stage gain");
+    check (transPeak > 0.25 * steadyPeak, "the dry fill still fills: the swap does not dip toward silence");
+}
+
+// ---------------------------------------------------------------------------
+//  A forced bulk swap (undo / A-B / preset) can land while an ORDINARY discrete
+//  duck is still fading OUT. The request is consumed from duckRequest on entry
+//  to setParameters, so if the FadeOut path does not capture it the swap
+//  finishes with normal-duck semantics: no wholesale swap at the silent bottom,
+//  no smoother snap, and -- the observable used here -- no clean-slate reset,
+//  so stale delay-line audio replays as the fade lifts. The fixed engine
+//  upgrades the in-flight duck to a forced one (same fade, forced bottom).
+//  Scenario A discriminates via a Haas delay line full of loud audio + silent
+//  input: the forced bottom resets it (exact silence after the bottom); the
+//  pre-fix ordinary bottom leaves it draining through the fade-in.
+//  Scenario B guards the upgrade's transition quality on a steady sine: no
+//  click at the upgrade moment, and the duck still bottoms at silence -- the
+//  upgraded window deliberately keeps duck-to-silence (dry-fill is never
+//  engaged mid-fade; the fresh-entry fill guarantee stays with Tests 26/27).
+static void testForcedSwapDuringOrdinaryFadeOut()
+{
+    std::printf ("Test 31: a forced swap during an ordinary fade-out keeps forced semantics\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0;
+    const int block = 128;                        // ~2.67 ms; fade-out ~6 ms spans ~2.25 blocks
+
+    // --- Scenario A: stale-tail discriminator ------------------------------
+    {
+        anamorph::AnamorphEngine engine;
+        engine.prepare (sr, block);
+        anamorph::EngineParameters from;          // Haas holds a 35 ms tail; OS off (latency 0)
+        from.algorithm   = anamorph::Algorithm::Haas;
+        from.algoAmount  = 1.0f;
+        from.haasDelayMs = 35.0f;
+        from.mix         = 1.0f;                  // wet-only: the tail is the whole output
+        engine.setParameters (from);
+        engine.reset();
+
+        double phase = 0.0;
+        const double inc = 2.0 * juce::MathConstants<double>::pi * 1000.0 / sr;
+        juce::AudioBuffer<float> buf (2, block);
+        auto runBlock = [&] (bool loud)
+        {
+            for (int i = 0; i < block; ++i)
+            {
+                const float s = loud ? 0.5f * (float) std::sin (phase) : 0.0f; phase += inc;
+                buf.setSample (0, i, s); buf.setSample (1, i, s);
+            }
+            engine.process (buf);
+        };
+
+        for (int nb = 0; nb < 375; ++nb) { engine.setParameters (from); runBlock (true); }
+
+        auto to = from;
+        to.monoMakerEnable = true;                // duck-worthy discrete change, Haas untouched
+        engine.setParameters (to);                // block 0: ordinary FadeOut begins
+        runBlock (false);                         // input silent from here; tail keeps draining
+        engine.requestDuck();                     // block 1 (~2.7 ms in, mid-fade-out):
+        engine.setParameters (to);                //   the undo()/redo() shape lands mid-duck
+        runBlock (false);
+
+        bool bad = false; double postBottomMax = 0.0;
+        for (int nb = 2; nb < 13; ++nb)           // bottom lands inside block 2 (~6 ms)
+        {
+            engine.setParameters (to); runBlock (false);
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = 0; i < block; ++i)
+                {
+                    const float v = buf.getSample (ch, i);
+                    if (isBad (v)) bad = true;
+                    if (nb >= 3)                  // measure 8..35 ms: past the bottom, inside the tail
+                        postBottomMax = std::max (postBottomMax, (double) std::abs (v));
+                }
+        }
+        std::printf ("  A: max |out| after the silent bottom (silent input) = %.6f (pre-fix 0.494: stale Haas tail replays)\n",
+                     postBottomMax);
+        check (! bad, "upgraded-duck stream is free of NaN/Inf");
+        check (postBottomMax < 1.0e-4, "forced bottom taken: stale delay-line audio does not replay");
+    }
+
+    // --- Scenario B: transition quality of the upgrade ---------------------
+    {
+        anamorph::AnamorphEngine engine;
+        engine.prepare (sr, block);
+        anamorph::EngineParameters from;          // near-transparent defaults
+        from.mix = 1.0f;
+        engine.setParameters (from);
+        engine.reset();
+
+        double phase = 0.0;
+        const double inc = 2.0 * juce::MathConstants<double>::pi * 220.0 / sr;
+        const float amp = 0.25f;
+        juce::AudioBuffer<float> buf (2, block);
+        auto runBlock = [&]
+        {
+            for (int i = 0; i < block; ++i)
+            {
+                const float s = amp * (float) std::sin (phase); phase += inc;
+                buf.setSample (0, i, s); buf.setSample (1, i, s);
+            }
+            engine.process (buf);
+        };
+
+        auto p = from;
+        for (int nb = 0; nb < 375; ++nb) { engine.setParameters (p); runBlock(); }
+
+        double steadySq = 0.0; long steadyN = 0;
+        for (int nb = 0; nb < 38; ++nb)
+        {
+            engine.setParameters (p); runBlock();
+            for (int i = 0; i < block; ++i)
+            {
+                const float v = 0.5f * (buf.getSample (0, i) + buf.getSample (1, i));
+                steadySq += (double) v * v; ++steadyN;
+            }
+        }
+        const double steadyRms = std::sqrt (steadySq / (double) steadyN);
+
+        bool bad = false; double maxDelta = 0.0, minWinRms = 1.0e9;
+        float prev = 0.0f; bool havePrev = false;
+        double winSq = 0.0; int winN = 0; const int win = 96; // 2 ms windows
+        auto scanBlock = [&]
+        {
+            for (int i = 0; i < block; ++i)
+            {
+                const float v = 0.5f * (buf.getSample (0, i) + buf.getSample (1, i));
+                if (isBad (buf.getSample (0, i)) || isBad (buf.getSample (1, i))) bad = true;
+                if (havePrev) maxDelta = std::max (maxDelta, (double) std::abs (v - prev));
+                prev = v; havePrev = true;
+                winSq += (double) v * v;
+                if (++winN == win) { minWinRms = std::min (minWinRms, std::sqrt (winSq / win)); winSq = 0.0; winN = 0; }
+            }
+        };
+
+        p.monoMakerEnable = true;                 // ordinary duck (input is dual-mono: level-neutral)
+        engine.setParameters (p); runBlock(); scanBlock();
+        engine.requestDuck();                     // forced swap lands mid-fade-out
+        engine.setParameters (p); runBlock(); scanBlock();
+        for (int nb = 0; nb < 36; ++nb) { engine.setParameters (p); runBlock(); scanBlock(); } // ~100 ms
+
+        double tailSq = 0.0; long tailN = 0;      // settled level after the swap
+        for (int nb = 0; nb < 38; ++nb)
+        {
+            engine.setParameters (p); runBlock();
+            for (int i = 0; i < block; ++i)
+            {
+                const float v = 0.5f * (buf.getSample (0, i) + buf.getSample (1, i));
+                tailSq += (double) v * v; ++tailN;
+            }
+        }
+        const double tailRms = std::sqrt (tailSq / (double) tailN);
+
+        std::printf ("  B: max sample delta %.4f (sine slope ~0.0072); duck floor %.3f of steady; recovery %.3f of steady\n",
+                     maxDelta, minWinRms / steadyRms, tailRms / steadyRms);
+        check (! bad, "upgrade transition stream is free of NaN/Inf");
+        check (maxDelta < 0.02, "no click at the forced-upgrade moment (envelope stays smooth)");
+        check (minWinRms < 0.10 * steadyRms, "upgraded duck still bottoms at silence (no mid-fade fill step)");
+        check (tailRms > 0.9 * steadyRms && tailRms < 1.1 * steadyRms, "full recovery after the upgraded swap");
+    }
+}
+
+// ---------------------------------------------------------------------------
 int main()
 {
     std::printf ("=== Anamorph DSP self-tests ===\n");
@@ -1344,6 +2246,12 @@ int main()
     testMultibandEnableCrossfadeClickFree();
     testSoloMultibandEnableClickFree();
     testDryAlignGateRecomb();
+    testForcedSwapNoDropout();
+    testRapidForcedSwapDryFill();
+    testMultibandFlatRecombination();
+    testMultibandSplitDragNoPitchShift();
+    testDryFillRespectsOutputGain();
+    testForcedSwapDuringOrdinaryFadeOut();
     testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);
