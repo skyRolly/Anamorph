@@ -92,7 +92,7 @@ identical path (parameter → per-block target → follower); block size does no
 per-sample follower; exactly one smoothing stage exists (verified: no GUI/parameter smoothing
 upstream).
 
-## v0.8.10 final decision (refinement — direct interaction over inaudibility)
+## v0.8.10 final decision (refinement — direct interaction over inaudibility; rate law refined again in the slow-drag fix below)
 
 The bounded follower above was evaluated in interactive testing and its **latency was rejected**
 as a UX regression: at 1.25 oct/s the audible crossover lagged every ordinary fast drag (a
@@ -128,16 +128,65 @@ Follower trajectories stay deterministic and closed-form: lag grows at `(v − 4
 a drag outruns the cap, drains at 4 oct/s otherwise, and resolves in `lag/4` s after release.
 Manual drags and host automation share the identical path; exactly one smoothing stage exists.
 
+## Crossover Follower Slow-Drag Regression (v0.8.10 maintenance fix)
+
+**Observed behaviour.** Interactive testing of the flat 4 oct/s cap above reported an inversion:
+*very fast* flicks felt acceptable while *slow-to-normal* drags left the audible crossover
+trailing the GUI line, with movement continuing for several seconds after release.
+
+**Root cause (measured, not a state bug).** The follower math is correct — a drag at or below its
+cap tracks 1:1, and no target update resets or interferes with the glide state. The regression is
+a *calibration-vs-geometry* error: the Multiband display maps ~10 octaves onto ~900 px
+(≈ 90 px/octave), so ordinary human gestures of 400–2000 px/s are **4–22 oct/s** — above the flat
+cap. Trajectory reconstruction through the real pipeline (mouse events → 0.5 px write gate →
+block-cadence target reads → glide) shows a 600 px/s "normal" drag pinned 2.4 octaves behind with
+0.63 s of post-release crawl, and every faster gesture worse (up to ~4.9 oct behind, ~1.4 s of
+crawl — on top of trailing throughout the drag itself). Genuinely slow drags (≤ 360 px/s) tracked
+exactly, and violent flicks could escape through the discrete-jump bank fade (a coalesced
+> 1.5 oct per-block step lands in 12 ms) — which is precisely why "fast felt better than slow".
+The deeper error: the swept-allpass shift at sweep rate R is a **constant 0.312·R Hz wherever the
+crossing sits**, so a cap flat in oct/s spends its entire artifact budget protecting low crossings
+(where a constant-Hz shift is nearest the bass register's constant-Hz pitch JND) and buys nothing
+but lag at high ones.
+
+**Fix (the operating curve, not the architecture).** The glide becomes a **slew-limited
+smoother**: per sample each cutoff moves by its ~20 ms one-pole demand toward the target, clamped
+to a **frequency-proportional cap `R(f) = 4 · max(1, f/300 Hz)` oct/s**:
+
+- Below 300 Hz the flat 4 oct/s floor is unchanged — shift ≤ 1.25 Hz, the original bound, so a
+  150 Hz crossing still measures ~14 cents (Test 29: 14.0–14.2c, same as before the fix).
+- Above 300 Hz the cap grows with the cutoff, holding the shift at **0.42 % of the crossing
+  (~7 cents)** — 13.3 oct/s at 1 kHz, 160 at 12 kHz. 300 Hz is the measured knee for the spur
+  bound: an fref = 150 variant rode 27 oct/s past a 1 kHz tone and sprayed −27 dBc (> the
+  −31 dBc bound); fref = 300 measures at the −41 dBc analysis floor.
+- The one-pole leg exists for spectral purity, not feel: it filters the 60 Hz UI staircase out of
+  the demand and **tapers every arrival** — a bare rate-clamp lands at full speed, a corner in
+  the phase trajectory that measured −24 dBc of splatter when it coincided with a tone.
+
+Kinematics after the fix (same reconstruction): drags ≤ 4 oct/s track 1:1 (± the 20 ms ease); the
+600 px/s complaint gesture converges **0.01 s** after release (was 0.63 s); a 950 px/s drag 0.09 s
+(was 0.94 s); even a full-panel flick lands in ~0.5 s of continuous motion (was ~1.4 s plus the
+in-drag trailing). No timers, no prediction, no consolidation — the v0.8.10 final architecture
+(zero-latency LR4, per-sample glide + discrete-jump bank fade, flat recombination) is unchanged;
+only the glide's rate law and arrival shape moved.
+
+Regression: Test 29 gained a **normal-drag tracking** scenario on both paths (150 Hz → 12 kHz over
+0.95 s at a 60 Hz cadence — 6.65 oct/s ≈ 600 px/s): the audible band edge must be at the target
+0.1–0.35 s after release (solo monitor ≥ 0.9 of full level, measures 0.99; the multiband width-0
+leak ≤ 0.15, measures 0.01). Re-pinned to the flat cap, both checks fail (0.47 and 0.60) —
+verified in both directions. All prior Test 29 bounds hold at the same measured values.
+
 ## Consequences
 
-- Fast drags carry a small **controlled, bounded FM** (~15 cents at a 150 Hz crossing, less
-  everywhere above) instead of interaction latency — the accepted product trade (KI-012). Drags
-  ≤ 4 oct/s are artifact-bounded *and* exact-tracking.
+- Fast drags carry a small **controlled, bounded FM** (~14 cents at a 150 Hz crossing, ~7 cents
+  at any crossing above 300 Hz) instead of interaction latency — the accepted product trade
+  (KI-012). Drags within the cap are artifact-bounded *and* track 1:1.
 - The pure-sine protocol is enforced by regression (`testMultibandSplitDragNoPitchShift`, Test 29)
-  at the refined operating point: < 18 cents worst 100 ms chunk through drags, crawls, and the
-  tone crossing (the shipped cap measures ~14; the uncapped original ~28 and the one-pole ~50
-  fail); spur < −31 dBc at a 60 Hz drag cadence; a released 6-oct flick lands by plain gliding
-  in ~1.5 s (the 1.25 oct/s follower measures full lag there and fails); discrete jumps land via
+  at the final operating curve: < 18 cents worst 100 ms chunk through drags, crawls, and the
+  tone crossing (the shipped follower measures ~14; the uncapped original ~28 and the bare
+  one-pole ~50 fail); spur < −31 dBc at a 60 Hz drag cadence (measures −41.3); a released 6-oct
+  flick lands by plain gliding well under a second; a normal-speed drag's band edge arrives with
+  the gesture on both paths (the flat-cap follower fails both checks); discrete jumps land via
   the bank fade; every stream click-free.
 - Any future attempt to make fast tracking artifact-free must change the crossover class
   (linear-phase, H2) — a reported-latency change requiring a new ADR + Architecture Review.

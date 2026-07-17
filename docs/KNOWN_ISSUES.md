@@ -10,10 +10,12 @@ robustness, multiband flat recombination, adaptive `FrameClock` GUI refresh, plu
 correctness round: split-drag pitch-shift fix, Band Solo alt-click exclusive solo, Option-reset
 undo fix — the last of which surfaced **KI-010** (typed value-box entry still bypasses undo, same
 mechanism, reported not fixed) — and the second correctness round: the split-drag transition
-rework — final design after four measured rounds: a hard ~4 oct/s rate-capped cutoff glide
-(ADR-0015 final: direct tracking for any drag ≤ 4 oct/s, a small controlled FM above it —
-the 1.25 oct/s "inaudibility" follower + release consolidation was rejected for interaction
-latency) plus a discrete-jump bank crossfade, recorded as the **KI-012** limitation
+rework — final design after five measured rounds: a slew-limited cutoff smoother under a
+frequency-proportional R(f) = 4·max(1, f/300) oct/s cap (ADR-0015 final + slow-drag fix: normal
+drags track 1:1, a small controlled FM above the cap — the 1.25 oct/s "inaudibility" follower +
+release consolidation was rejected for interaction latency, and the interim flat 4 oct/s cap
+for the slow-drag regression) plus a discrete-jump bank crossfade, recorded as the **KI-012**
+limitation
 (artifact-free fast IIR tracking is physically impossible) — the
 forced-duck dry-fill output-gain latch (Test 30), and **KI-011** (Apple-Silicon-native tooltip
 white corners — fix applied, hardware re-test pending); **KI-009 carried
@@ -36,7 +38,7 @@ JUCE 8.0.14; before that 0.8.8 for PR #54).
 | KI-009 | REAPER: Save Preset text editor loses keyboard focus (Space hits transport; a click does not re-focus until the dialog is reopened) | Low | Reported, host-specific (REAPER); pending manual investigation |
 | KI-010 | Typing a value into a knob/slider text box creates no Undo step (gesture-less edit path) | Low | Confirmed (code path); reported during the 0.8.10 Option-reset fix, not yet fixed |
 | KI-011 | macOS Apple-Silicon-native: tooltip corners rendered an opaque white frame (TooltipWindow opacity contract) | Low | Fix applied (editor marks the TooltipWindow non-opaque on macOS); Apple Silicon visual re-test pending |
-| KI-012 | Fast Multiband split drags carry a small controlled FM (~15 cents at a 150 Hz crossing under the ~4 oct/s cap; drags ≤ 4 oct/s track exactly; a violent flick catches up in ≤ ~1.5 s of continuous motion; fast artifact-free tracking needs linear-phase splits = latency change) | Low | Documented limitation (ADR-0015 final); revisit only via Architecture Review |
+| KI-012 | Fast Multiband split drags carry a small controlled FM (~14 cents at a 150 Hz crossing, ~7 cents above 300 Hz, under the R(f) = 4·max(1, f/300) oct/s cap; normal drags track 1:1; a violent flick catches up in ~0.5 s of continuous motion; fast artifact-free tracking needs linear-phase splits = latency change) | Low | Documented limitation (ADR-0015 final + slow-drag fix); revisit only via Architecture Review |
 
 ---
 
@@ -296,23 +298,25 @@ A **deliberate, measured limitation** shipped with the 0.8.10 split-movement fix
 it is not mistaken for a defect. A swept zero-latency IIR crossover is inherently a phase
 modulator: its allpass phase at any fixed frequency rotates by up to 2π per crossover crossing,
 which is a genuine frequency shift of `0.312·R` Hz at sweep rate `R` oct/s. No transition scheme
-removes this — four implementations were measured against a pure-sine protocol (uncapped ~8 oct/s
+removes this — five implementations were measured against a pure-sine protocol (uncapped ~8 oct/s
 glide: +31 cents at a 150 Hz crossing; chained 12 ms bank crossfades: −25…−28 dBc modulation
 sidebands; τ=15 ms one-pole tracking: ~50 cent FM at a fast crossing; a 1.25 oct/s
 "inaudibility" cap + 0.25 s release consolidation: measurably clean but rejected in interactive
-testing for **interaction latency** — the audio lagged the GUI on ordinary fast drags and jumped
-after release). The shipped design (ADR-0015 final) caps the sweep at **~4 oct/s** under the
-restated product trade: *a small amount of controlled FM is preferable to obvious interaction
-latency.*
+testing for **interaction latency**; a flat ~4 oct/s cap: fixed the flick case but pinned every
+normal drag whole octaves behind on the ~90 px/octave display — the v0.8.10 slow-drag
+regression). The shipped design (ADR-0015 final + slow-drag fix) is a slew-limited smoother
+under a **frequency-proportional cap `R(f) = 4·max(1, f/300 Hz)` oct/s**, keeping the restated
+product trade: *a small amount of controlled FM is preferable to obvious interaction latency.*
 
-- **Consequence:** any drag up to 4 oct/s tracks **exactly** (zero GUI/DSP gap — the crossover
-  feels attached to the mouse). Movement faster than the cap carries a bounded shift of
-  ~1.25 Hz: worst measured 100 ms chunk **~15 cents at a 150 Hz crossing, ~2 cents at 1 kHz**
-  (spurs at the −41 dBc analysis floor, < 0.1 dB envelope ripple) — roughly half the original
-  pre-fix implementation — and a violent 6-octave flick catches up in ~1.25 s of *continuous*
-  motion after release (no timers, no delayed jump). Discrete jumps (> 1.5 oct target steps:
-  automation snaps, preset-style changes) land within ~12 ms via the state-copied bank
-  crossfade as before.
+- **Consequence:** drags within the cap track 1:1 (± a 20 ms ease — the crossover feels
+  attached to the mouse; the cap is 13.3 oct/s at 1 kHz, 160 at 12 kHz, so normal gestures
+  never outrun it above ~300 Hz). Movement faster than the cap carries a bounded shift of
+  **0.42 % of the crossing (~7 cents) above 300 Hz and ≤ 1.25 Hz below** — worst measured
+  100 ms chunk **~14 cents at a 150 Hz crossing** (spurs at the −41 dBc analysis floor,
+  < 0.1 dB envelope ripple) — and even a violent full-panel flick catches up in ~0.5 s of
+  *continuous* motion after release (no timers, no delayed jump). Discrete jumps (> 1.5 oct
+  target steps: automation snaps, preset-style changes) land within ~12 ms via the state-copied
+  bank crossfade as before.
 - **The only artifact-free fast alternative is linear-phase crossovers** (a moving linear-phase
   split at unit width is a pure delay — zero phase modulation by construction), which adds
   reported latency: a **Hard Stop** item (`ARCHITECTURE_REVIEW_GATE.md`) requiring an ADR, PDC/

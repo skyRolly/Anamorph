@@ -19,9 +19,10 @@ no benchmark/profiling data exists in the repository, and inventing numbers is p
 
 - **Crossover-move cost (0.8.10).** `MonoMaker` calls `LR4Xover::setCutoffFrequency` per sample
   during its cutoff glide (recomputes coefficients in place, no allocation). `MultibandWidth`
-  and `SoloMonitor` do the same while a split tracks under the ~4 oct/s cap (ADR-0015 final) —
-  per-sample `tan` recomputes on the moving splits for the duration of the drag plus ≤ ~1.5 s
-  of worst-case catch-up after a violent flick — and additionally run BOTH banks for one ~12 ms
+  and `SoloMonitor` do the same while a split tracks under the R(f) = 4·max(1, f/300) oct/s cap
+  (ADR-0015 final + slow-drag fix) — per-sample `tan` recomputes on the moving splits for the
+  duration of the drag plus ≤ ~1 s of worst-case catch-up (a full-panel flick released at the
+  20 Hz edge; typical flicks drain in ~0.5 s) — and additionally run BOTH banks for one ~12 ms
   crossfade per discrete jump (2× the stage's filter ticks for that fade only).
   Evidence [Verified]: src/dsp/MultibandWidth.cpp (glide + jump-fade trigger);
   MonoMaker.cpp:32-36; SoloMonitor.cpp.

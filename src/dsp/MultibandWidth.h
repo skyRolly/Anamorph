@@ -106,27 +106,45 @@ private:
     // the fundamental, spurs outside +-30 Hz, envelope dips, at drag speeds
     // 1..24 oct/s):
     //
-    //  * CONTINUOUS MOVEMENT: the active bank's cutoffs glide per sample under
-    //    a HARD RATE CAP of ~4 octaves/second. A swept IIR crossover is
-    //    inherently a phase modulator -- its allpass phase at any fixed
-    //    frequency rotates by up to 2pi per crossover crossing, and dphi/dt is
-    //    a genuine frequency shift of 0.312*R Hz at sweep rate R oct/s. No
-    //    smoothing shape can remove that (a one-pole tracking a fast drag FMs
-    //    at the full drag rate -- rejected; chained bank crossfades are
-    //    amplitude/phase modulation at the fade cadence, -25..-28 dBc
-    //    sidebands -- rejected; a 1.25 oct/s "inaudibility" cap with a
-    //    quiet-timeout release consolidation converged, but lagged every fast
-    //    drag audibly and read as a delayed jump after release -- rejected as
-    //    a UX regression). The cap is therefore a PRODUCT trade, not an
-    //    inaudibility bound: a small controlled FM is preferable to obvious
-    //    interaction latency. R = 4 oct/s tracks any drag up to 4 oct/s
-    //    EXACTLY -- zero GUI/DSP gap, the crossover feels attached to the
-    //    mouse -- and bounds the shift at ~1.25 Hz: ~15 cents at a 150 Hz
-    //    crossing, ~2 cents at 1 kHz (spurs at the -41 dBc analysis floor,
-    //    < 0.1 dB envelope ripple), roughly HALF the original uncapped
-    //    implementation's worst case (+31c at 150 Hz). Even a violent 6-octave
-    //    flick drains in ~1.25 s of continuous motion -- no timers, no
-    //    deferred catch-up, no post-release jump (ADR-0015 refinement).
+    //  * CONTINUOUS MOVEMENT: the active bank's cutoffs are a SLEW-LIMITED
+    //    SMOOTHER of the target -- per sample each cutoff moves by the ~20 ms
+    //    one-pole demand toward its target, clamped to a FREQUENCY-
+    //    PROPORTIONAL RATE CAP R(f) = 4 oct/s * max(1, f/300 Hz). A swept IIR
+    //    crossover is inherently a phase modulator -- its allpass phase at any
+    //    fixed frequency rotates by up to 2pi per crossover crossing, and
+    //    dphi/dt is a genuine frequency shift of 0.312*R Hz at sweep rate R
+    //    oct/s. No smoothing shape can remove that (a bare one-pole tracking a
+    //    fast drag FMs at the full drag rate -- rejected; chained bank
+    //    crossfades are amplitude/phase modulation at the fade cadence,
+    //    -25..-28 dBc sidebands -- rejected; a 1.25 oct/s "inaudibility" cap
+    //    with a quiet-timeout release consolidation lagged every fast drag and
+    //    read as a delayed jump after release -- rejected as a UX regression;
+    //    a FLAT 4 oct/s cap fixed the violent-flick case but pinned every
+    //    NORMAL drag: the display spans ~10 octaves in ~900 px, so ordinary
+    //    400..2000 px/s gestures are 4..22 oct/s and trailed by whole octaves,
+    //    draining at 0.25 s/oct after release -- the v0.8.10 slow-drag
+    //    regression). The bound that matters perceptually is the SHIFT, and
+    //    the shift at sweep rate R is a constant 0.312*R Hz regardless of
+    //    where the crossing sits -- a cap flat in oct/s spends its whole
+    //    budget protecting low crossings and only ADDS LAG at high ones.
+    //    Scaling the cap with the current cutoff bounds the shift at 0.42% of
+    //    the crossing (~7 cents) at any frequency above 300 Hz, and below
+    //    300 Hz the flat 4 oct/s floor keeps it <= 1.25 Hz -- the bass
+    //    register's constant-Hz pitch JND, the same worst case the flat cap
+    //    accepted at a 150 Hz crossing (~14 cents, unchanged). The cap keeps
+    //    every crossing slow enough that the FM skirts stay inside the +-30 Hz
+    //    spur window (13.3 oct/s at 1 kHz measures at the -41 dBc analysis
+    //    floor; the rejected fref=150 variant rode 27 oct/s past 1 kHz and
+    //    sprayed -27 dBc). The one-pole leg matters too: it filters the 60 Hz
+    //    UI staircase out of the demand AND tapers every arrival (rate -> 0
+    //    smoothly as the gap closes) -- a hard rate-clamp arrival is a corner
+    //    in the phase trajectory that measured -24 dBc when it landed near a
+    //    tone. Kinematics: drags up to 4 oct/s track 1:1 (plus the 20 ms
+    //    ease); above 300 Hz the allowed rate grows with f (13 oct/s at 1 kHz,
+    //    160 at 12 kHz), so normal drags stay attached and even a full-panel
+    //    flick lands in ~0.4-0.6 s of continuous motion -- no timers, no
+    //    deferred catch-up, no post-release jump (ADR-0015 final + slow-drag
+    //    refinement).
     //
     //  * DISCRETE JUMPS (the TARGET stepping > kFadeThresholdOct between two
     //    consecutive blocks -- an automation step / preset-style snap, never
@@ -152,13 +170,33 @@ private:
     // take the glide path.
     static constexpr float kFadeThresholdOct = 1.5f;
 
+    // Anchor of the frequency-proportional rate cap: below this the cap is a
+    // flat 4 oct/s (swept-allpass shift <= 1.25 Hz, the bass-register JND);
+    // above it the cap grows as R(f) = 4 * f/kRateRefHz oct/s, which holds the
+    // shift at a constant 0.42% of the crossing frequency (~7 cents) and keeps
+    // every crossing's FM skirts inside the +-30 Hz spur criterion (300 is the
+    // measured knee: fref 150 sprays -27 dBc past a 1 kHz tone, 300 sits at
+    // the -41 dBc analysis floor with pitch unchanged).
+    static constexpr float kRateRefHz = 300.0f;
+
     void setBankCutoffs (XoverBank& b) noexcept;                       // -> targetF
     void copyBankState  (XoverBank& to, const XoverBank& from) noexcept;
 
     double sr = 44100.0;
-    float  glideStep = 1.0f;   // per-sample multiplicative cap, 2^(4/sr) (~4 oct/s)
+    float  glideStep = 1.0f;   // per-sample multiplicative BASE cap, 2^(4/sr) (~4 oct/s at f <= kRateRefHz)
     float  targetF[3]     { 180.0f, 800.0f, 3000.0f };
     float  prevTargetF[3] { 180.0f, 800.0f, 3000.0f }; // last block's targets (step detector)
+
+    // One-pole demand coefficient of the slew-limited smoother (~20 ms, the
+    // width glide's constant): per sample each cutoff moves gap*smoothCoeff,
+    // clamped to the R(f) cap. The one-pole leg de-staircases the 60 Hz UI
+    // target cadence AND tapers every arrival -- a bare rate-clamp lands at
+    // full speed, a corner in the phase trajectory that measured -24 dBc of
+    // splatter when it coincided with a tone. The glide's snap eps grows with
+    // f because a float one-pole stalls once gap*coeff < ulp(f) (~1.5 Hz at
+    // 20 kHz) -- without the snap the solo monitor's settled fast path could
+    // never see cutoffs == targets and would stay hot forever.
+    float smoothCoeff = 0.0f;
 
     // Per-sample one-pole smoothing of the band widths (0.7.0 #1).
     float wCoeff     = 0.0f;

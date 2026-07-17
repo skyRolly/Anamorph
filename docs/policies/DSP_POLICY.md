@@ -19,7 +19,8 @@ architecture docs, and the ADRs. These must hold across releases.
    crossfade advances on every block in which any gain is unsettled. Once fully settled at
    passthrough, the per-sample work is skipped and the filter bank goes cold; re-entry resets
    the filters and snaps the cutoffs to their targets under the ~12 ms crossfade (settled fast
-   path, 0.8.9 / H1; since 0.8.10 cutoff changes track under a hard ~4 oct/s rate cap,
+   path, 0.8.9 / H1; since 0.8.10 cutoff changes track via a slew-limited smoother — a ~20 ms
+   one-pole demand clamped to a frequency-proportional cap R(f) = 4·max(1, f/300) oct/s —
    with a single bank crossfade for discrete multi-octave target steps). (ADR-0004/0006) Evidence: AnamorphEngine.cpp:878-894 (call site + invariant
    comment); SoloMonitor.h:22-38 (crossfade + settled fast path); SoloMonitor.cpp (gate +
    cold re-entry); tests `testSoloMonitor`, `testSoloNoGhostInSilence`,
