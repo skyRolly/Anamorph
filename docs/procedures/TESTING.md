@@ -15,7 +15,7 @@ scripts/run-tests.sh             # runs the AnamorphTests console app
 
 ### What the tests cover
 
-`tests/dsp_tests.cpp` has **29 DSP tests** using a `check(cond, "what")` harness, covering: MS
+`tests/dsp_tests.cpp` has **30 DSP tests** using a `check(cond, "what")` harness, covering: MS
 round-trip (bit-exact), transparent default, true-bypass null + latency match, Mono Maker
 (post-Mix), Multiband mono-compat, Solo band selectivity + transparency, Level Match
 (unity/no-ratchet/silence-freeze/mix-coupling/multiband-unity), crossover automation safety,
@@ -34,7 +34,13 @@ crossfade, and a RELEASED 6-octave flick must land by plain gliding within ~1.5 
 1.25 oct/s follower measures full level at 1.7–2.2 s and fails), all click-free — on both the
 Multiband and Solo-monitor paths; and the forced-duck dry-fill gain regression (`testDryFillRespectsOutputGain`, Test 30):
 with Output Gain at −24 dB an undo/redo-style Mix toggle must not spike beyond 2× the steady
-output (the unscaled raw-level fill measures 15.8× and fails) while still filling the dip. It additionally carries **one state-restoration robustness guard**,
+output (the unscaled raw-level fill measures 15.8× and fails) while still filling the dip; and
+the forced-swap-during-fade-out regression (`testForcedSwapDuringOrdinaryFadeOut`, Test 31): a
+forced bulk swap landing while an ordinary discrete duck is still fading OUT must keep forced
+semantics — stale delay-line audio must not replay after the silent bottom (the pre-fix engine,
+which dropped the consumed forced request in that window, measures a 0.494-peak Haas-tail replay
+against silent input and fails) — while the upgrade stays click-free and the duck still bottoms
+at silence. It additionally carries **one state-restoration robustness guard**,
 `testAbActiveClampOnCorruptState` — it drives a corrupted `<AB active="…">` blob through the same
 read+clamp the processor uses (`anamorph::clampAbSlotIndex`, `src/AbSlotIndex.h`) and asserts an
 out-of-range A/B index can never index `abSlot[]`/`abUndo[]` out of bounds, while valid 0/1 are

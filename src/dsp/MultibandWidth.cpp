@@ -135,9 +135,13 @@ void MultibandWidth::processBlock (float* left, float* right, int numSamples,
     // active bank's ladder state, so it starts transient-free -- and fades the
     // output over to it: one bounded transition event instead of a multi-second
     // crawl. Continuous movement of ANY speed never fades; it glides per sample
-    // under the ~4 oct/s cap below. A step arriving mid-fade latches
-    // pendingJump and re-fires at the next block after the fade lands,
-    // straight to the LATEST target.
+    // under the ~4 oct/s cap below. The fade's destination is LATCHED when the
+    // fade starts (setBankCutoffs on the incoming bank): target movement during
+    // the fade -- step or glide (the glide below is paused) -- WAITS. A step
+    // arriving mid-fade only sets pendingJump; once the fade lands, the next
+    // block re-runs this trigger against the targets as they stand THEN, and a
+    // NEW fade starts only if they are still > 0.1 oct away (worthIt skips a
+    // target that came back meanwhile); smaller residues drain via the glide.
     {
         bool step = pendingJump;
         for (int i = 0; i < crossovers && ! step; ++i)
@@ -147,7 +151,7 @@ void MultibandWidth::processBlock (float* left, float* right, int numSamples,
         if (step)
         {
             if (fading)
-                pendingJump = true;             // remember; fire when this fade lands
+                pendingJump = true;             // remember; re-check once this fade lands
             else
             {
                 bool worthIt = false;           // skip if the target came back meanwhile

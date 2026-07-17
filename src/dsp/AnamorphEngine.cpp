@@ -301,6 +301,23 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
             // dryDuckLat (its L_out is fixed for the duck).
             dryDuck = dryDuck && (predictLatency (pendingP) == dryDuckLat);
         }
+        else if (forceDuck)
+        {
+            // A forced bulk swap arrived while an ORDINARY duck is still fading
+            // OUT (the FadeIn case re-ducks above; a forced fade-out is the tighten
+            // branch). The request was already consumed from duckRequest, so it
+            // must be captured here or the swap would finish with normal-duck
+            // semantics: no wholesale swap at the bottom, no smoother snap, no
+            // clean-slate reset -- stale delay-line/oversampler contents would
+            // replay as the fade lifts (the A/B "weird sound" this path exists to
+            // prevent). Upgrade the in-flight duck in place: same fade, forced
+            // bottom. Dry-fill stays OFF -- it was never on for this duck (ordinary
+            // entries set dryDuck = false) and engaging it mid-fade would step the
+            // fill in at the current dry weight, the same no-mid-fade-enable rule
+            // as the tighten above; this narrow window keeps plain duck-to-silence.
+            pendingForced = true;
+            dryDuck       = false;
+        }
 
         // A forced swap defers everything to the silent bottom; otherwise keep
         // continuous controls live during the duck.

@@ -6,7 +6,19 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **v0.8.10 final follower decision** (2026-07-17, PR #59). The
+Last updated: for the **PR #59 final review fixes** (2026-07-17, two items). (1) **Forced duck
+during an ordinary fade-out** — a forced request (undo/redo/A-B/preset) landing in the ~6 ms
+fade-out window of a non-forced discrete duck was consumed but dropped, so the swap finished
+with normal-duck semantics (no silent-bottom wholesale swap/smoother snap/clean-slate reset —
+a stale Haas tail replayed at 0.494 peak against silent input). The engine now upgrades the
+in-flight duck to forced in place (dry-fill stays off: never engaged mid-fade). CHANGELOG +
+`testForcedSwapDuringOrdinaryFadeOut` (Test 31; DSP tests 29→**30**, checks 106→**112**;
+README, TESTING_POLICY, TESTING, HANDOVER synced). (2) **Crossover fade comments corrected**
+(comment-only, `MultibandWidth.cpp/.h`, `SoloMonitor.cpp`): the discrete-jump bank fade's
+destination is latched at fade start — movement during the fade waits (glide paused), and after
+the fade lands a NEW fade may start toward the then-current targets (skipped if within 0.1 oct);
+the old wording implied the fade always (re)targets the newest cutoffs. Prior: the
+**v0.8.10 final follower decision** (2026-07-17, PR #59). The
 bounded-convergence follower (1.25 oct/s cap + release consolidation) was evaluated in
 interactive testing and **rejected for interaction latency**; final design (ADR-0015
 "v0.8.10 final decision"): the rate cap rises to a hard **~4 oct/s** (drags ≤ 4 oct/s track

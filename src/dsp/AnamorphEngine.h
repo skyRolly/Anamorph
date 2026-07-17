@@ -145,6 +145,10 @@ private:
     // fade-out and swaps EVERYTHING -- continuous included -- at the silent bottom,
     // snapping the smoothers there, so no parameter (smoothed or not) can pop
     // mid-fade. A normal discrete duck still applies continuous immediately (#1).
+    // Forced-ness is never dropped by fade timing: a forced request landing while
+    // an ORDINARY duck is still fading out upgrades that duck in place (same fade,
+    // forced bottom, dry-fill stays off -- see the FadeOut upgrade branch in
+    // setParameters); landing during FadeIn it re-ducks via beginForcedDuck.
     bool  pendingForced = false;
     // Dry-fill for the FORCED duck: while a forced duck is in flight the output is
     // crossfaded against the delay-aligned RAW input (the true-bypass ring, whose

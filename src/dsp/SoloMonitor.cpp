@@ -138,8 +138,12 @@ void SoloMonitor::process (float* left, float* right, int mask, int numSamples) 
 
     // DISCRETE-JUMP bank crossfade (0.8.10, mirrors MultibandWidth): only a
     // TARGET that stepped > kFadeThresholdOct since the previous block fades to
-    // the state-copied idle bank -- one bounded event. Continuous movement of
-    // any speed glides per sample below under the ~4 oct/s rate cap.
+    // the state-copied idle bank -- one bounded event, its destination LATCHED
+    // at fade start (movement during the fade waits; the glide below is paused).
+    // Continuous movement of any speed glides per sample below under the
+    // ~4 oct/s rate cap. A step mid-fade only sets pendingJump: after the fade
+    // lands the trigger re-runs against the then-current targets, and a NEW
+    // fade starts only if they are still > 0.1 oct away.
     {
         bool step = pendingJump;
         for (int i = 0; i < crossovers && ! step; ++i)
@@ -149,7 +153,7 @@ void SoloMonitor::process (float* left, float* right, int mask, int numSamples) 
         if (step)
         {
             if (fading)
-                pendingJump = true;             // remember; fire when this fade lands
+                pendingJump = true;             // remember; re-check once this fade lands
             else
             {
                 bool worthIt = false;           // skip if the target came back meanwhile

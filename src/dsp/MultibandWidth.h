@@ -135,9 +135,11 @@ private:
     //    ladder state plus the new cutoffs and the output crossfades over
     //    ~12 ms: ONE bounded transition event (a 4-octave step measures
     //    -18 dBc / -2.4 dB for 12 ms; the same step glided at a fast rate
-    //    would chirp at -4.7 dBc). A step arriving mid-fade is remembered
-    //    (pendingJump) and fires when the fade lands, always to the LATEST
-    //    target.
+    //    would chirp at -4.7 dBc). The fade's destination is LATCHED at fade
+    //    start; a step arriving mid-fade is only remembered (pendingJump) --
+    //    after the fade lands, a NEW fade may start toward the then-current
+    //    targets (skipped if they came back within 0.1 oct; small residues
+    //    drain via the glide instead).
     XoverBank bank[2];
     int       active  = 0;     // the glide/settled bank; 1-active fades in on a jump
     bool      fading  = false;

@@ -33,6 +33,19 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   (still message-thread). Evidence: this PR. [Verified]
 
 ### Fixed
+- **A forced bulk swap (undo/redo/A-B/preset) landing while an ordinary discrete duck was still
+  fading out no longer loses its forced semantics.** The forced request is consumed on entry to
+  the engine's parameter-swap state machine; in the narrow (~6 ms) fade-out window of a
+  non-forced discrete duck it used to be silently dropped — the swap then finished as a normal
+  duck: no wholesale swap at the silent bottom, no smoother snap, and no clean-slate reset, so
+  stale delay-line/oversampler audio could replay as the fade lifted (a 0.494-peak Haas-tail
+  replay measured against silent input) and a big undo level jump could swell instead of
+  snapping while silent. The in-flight duck is now upgraded in place to a forced one (same fade,
+  forced bottom); it deliberately keeps duck-to-silence — the dry fill is never engaged mid-fade
+  (engaging it would step the fill in at the current dry weight), matching the existing
+  no-mid-fade-re-enable latch rule. Fresh forced swaps (Tests 26/27/30) are unchanged. Guarded
+  by `testForcedSwapDuringOrdinaryFadeOut` (Test 31; DSP tests 29→30, checks 106→112).
+  Evidence: this PR. [Verified]
 - **Multiband split movement reworked: no spurious frequencies around a pure tone, no clicks,
   and fast-drag pitch modulation cut to a small controlled bound — while the audible crossover
   stays attached to the mouse.** Four design rounds, each graded against a pure-sine protocol

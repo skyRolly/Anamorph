@@ -2062,6 +2062,163 @@ static void testDryFillRespectsOutputGain()
 }
 
 // ---------------------------------------------------------------------------
+//  A forced bulk swap (undo / A-B / preset) can land while an ORDINARY discrete
+//  duck is still fading OUT. The request is consumed from duckRequest on entry
+//  to setParameters, so if the FadeOut path does not capture it the swap
+//  finishes with normal-duck semantics: no wholesale swap at the silent bottom,
+//  no smoother snap, and -- the observable used here -- no clean-slate reset,
+//  so stale delay-line audio replays as the fade lifts. The fixed engine
+//  upgrades the in-flight duck to a forced one (same fade, forced bottom).
+//  Scenario A discriminates via a Haas delay line full of loud audio + silent
+//  input: the forced bottom resets it (exact silence after the bottom); the
+//  pre-fix ordinary bottom leaves it draining through the fade-in.
+//  Scenario B guards the upgrade's transition quality on a steady sine: no
+//  click at the upgrade moment, and the duck still bottoms at silence -- the
+//  upgraded window deliberately keeps duck-to-silence (dry-fill is never
+//  engaged mid-fade; the fresh-entry fill guarantee stays with Tests 26/27).
+static void testForcedSwapDuringOrdinaryFadeOut()
+{
+    std::printf ("Test 31: a forced swap during an ordinary fade-out keeps forced semantics\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0;
+    const int block = 128;                        // ~2.67 ms; fade-out ~6 ms spans ~2.25 blocks
+
+    // --- Scenario A: stale-tail discriminator ------------------------------
+    {
+        anamorph::AnamorphEngine engine;
+        engine.prepare (sr, block);
+        anamorph::EngineParameters from;          // Haas holds a 35 ms tail; OS off (latency 0)
+        from.algorithm   = anamorph::Algorithm::Haas;
+        from.algoAmount  = 1.0f;
+        from.haasDelayMs = 35.0f;
+        from.mix         = 1.0f;                  // wet-only: the tail is the whole output
+        engine.setParameters (from);
+        engine.reset();
+
+        double phase = 0.0;
+        const double inc = 2.0 * juce::MathConstants<double>::pi * 1000.0 / sr;
+        juce::AudioBuffer<float> buf (2, block);
+        auto runBlock = [&] (bool loud)
+        {
+            for (int i = 0; i < block; ++i)
+            {
+                const float s = loud ? 0.5f * (float) std::sin (phase) : 0.0f; phase += inc;
+                buf.setSample (0, i, s); buf.setSample (1, i, s);
+            }
+            engine.process (buf);
+        };
+
+        for (int nb = 0; nb < 375; ++nb) { engine.setParameters (from); runBlock (true); }
+
+        auto to = from;
+        to.monoMakerEnable = true;                // duck-worthy discrete change, Haas untouched
+        engine.setParameters (to);                // block 0: ordinary FadeOut begins
+        runBlock (false);                         // input silent from here; tail keeps draining
+        engine.requestDuck();                     // block 1 (~2.7 ms in, mid-fade-out):
+        engine.setParameters (to);                //   the undo()/redo() shape lands mid-duck
+        runBlock (false);
+
+        bool bad = false; double postBottomMax = 0.0;
+        for (int nb = 2; nb < 13; ++nb)           // bottom lands inside block 2 (~6 ms)
+        {
+            engine.setParameters (to); runBlock (false);
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = 0; i < block; ++i)
+                {
+                    const float v = buf.getSample (ch, i);
+                    if (isBad (v)) bad = true;
+                    if (nb >= 3)                  // measure 8..35 ms: past the bottom, inside the tail
+                        postBottomMax = std::max (postBottomMax, (double) std::abs (v));
+                }
+        }
+        std::printf ("  A: max |out| after the silent bottom (silent input) = %.6f (pre-fix 0.494: stale Haas tail replays)\n",
+                     postBottomMax);
+        check (! bad, "upgraded-duck stream is free of NaN/Inf");
+        check (postBottomMax < 1.0e-4, "forced bottom taken: stale delay-line audio does not replay");
+    }
+
+    // --- Scenario B: transition quality of the upgrade ---------------------
+    {
+        anamorph::AnamorphEngine engine;
+        engine.prepare (sr, block);
+        anamorph::EngineParameters from;          // near-transparent defaults
+        from.mix = 1.0f;
+        engine.setParameters (from);
+        engine.reset();
+
+        double phase = 0.0;
+        const double inc = 2.0 * juce::MathConstants<double>::pi * 220.0 / sr;
+        const float amp = 0.25f;
+        juce::AudioBuffer<float> buf (2, block);
+        auto runBlock = [&]
+        {
+            for (int i = 0; i < block; ++i)
+            {
+                const float s = amp * (float) std::sin (phase); phase += inc;
+                buf.setSample (0, i, s); buf.setSample (1, i, s);
+            }
+            engine.process (buf);
+        };
+
+        auto p = from;
+        for (int nb = 0; nb < 375; ++nb) { engine.setParameters (p); runBlock(); }
+
+        double steadySq = 0.0; long steadyN = 0;
+        for (int nb = 0; nb < 38; ++nb)
+        {
+            engine.setParameters (p); runBlock();
+            for (int i = 0; i < block; ++i)
+            {
+                const float v = 0.5f * (buf.getSample (0, i) + buf.getSample (1, i));
+                steadySq += (double) v * v; ++steadyN;
+            }
+        }
+        const double steadyRms = std::sqrt (steadySq / (double) steadyN);
+
+        bool bad = false; double maxDelta = 0.0, minWinRms = 1.0e9;
+        float prev = 0.0f; bool havePrev = false;
+        double winSq = 0.0; int winN = 0; const int win = 96; // 2 ms windows
+        auto scanBlock = [&]
+        {
+            for (int i = 0; i < block; ++i)
+            {
+                const float v = 0.5f * (buf.getSample (0, i) + buf.getSample (1, i));
+                if (isBad (buf.getSample (0, i)) || isBad (buf.getSample (1, i))) bad = true;
+                if (havePrev) maxDelta = std::max (maxDelta, (double) std::abs (v - prev));
+                prev = v; havePrev = true;
+                winSq += (double) v * v;
+                if (++winN == win) { minWinRms = std::min (minWinRms, std::sqrt (winSq / win)); winSq = 0.0; winN = 0; }
+            }
+        };
+
+        p.monoMakerEnable = true;                 // ordinary duck (input is dual-mono: level-neutral)
+        engine.setParameters (p); runBlock(); scanBlock();
+        engine.requestDuck();                     // forced swap lands mid-fade-out
+        engine.setParameters (p); runBlock(); scanBlock();
+        for (int nb = 0; nb < 36; ++nb) { engine.setParameters (p); runBlock(); scanBlock(); } // ~100 ms
+
+        double tailSq = 0.0; long tailN = 0;      // settled level after the swap
+        for (int nb = 0; nb < 38; ++nb)
+        {
+            engine.setParameters (p); runBlock();
+            for (int i = 0; i < block; ++i)
+            {
+                const float v = 0.5f * (buf.getSample (0, i) + buf.getSample (1, i));
+                tailSq += (double) v * v; ++tailN;
+            }
+        }
+        const double tailRms = std::sqrt (tailSq / (double) tailN);
+
+        std::printf ("  B: max sample delta %.4f (sine slope ~0.0072); duck floor %.3f of steady; recovery %.3f of steady\n",
+                     maxDelta, minWinRms / steadyRms, tailRms / steadyRms);
+        check (! bad, "upgrade transition stream is free of NaN/Inf");
+        check (maxDelta < 0.02, "no click at the forced-upgrade moment (envelope stays smooth)");
+        check (minWinRms < 0.10 * steadyRms, "upgraded duck still bottoms at silence (no mid-fade fill step)");
+        check (tailRms > 0.9 * steadyRms && tailRms < 1.1 * steadyRms, "full recovery after the upgraded swap");
+    }
+}
+
+// ---------------------------------------------------------------------------
 int main()
 {
     std::printf ("=== Anamorph DSP self-tests ===\n");
@@ -2094,6 +2251,7 @@ int main()
     testMultibandFlatRecombination();
     testMultibandSplitDragNoPitchShift();
     testDryFillRespectsOutputGain();
+    testForcedSwapDuringOrdinaryFadeOut();
     testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);
