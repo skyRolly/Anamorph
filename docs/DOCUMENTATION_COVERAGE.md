@@ -6,7 +6,13 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **v0.8.10 follower refinement + investigation record** (2026-07-14,
+Last updated: for the **pre-release hardening plan** (2026-07-17, PR #59, docs-only): new
+`docs/architecture/RELEASE_HARDENING_PLAN.md` — the planning artifact for the commercial-release
+program (licensing, anti-piracy posture, build hardening, signing/notarization, installers,
+release pipeline, multi-agent parallelization contract). No code change; decisions it proposes
+are gated on future ADR-0016..0020 + Architecture Review. Architecture self-coverage count
+updated (15 docs; ADR count synced to 15 after ADR-0015). Prior: the
+**v0.8.10 follower refinement + investigation record** (2026-07-14,
 PR #59). The split-movement follower gained bounded convergence (rate cap 1.0 → 1.25 oct/s —
 still under the JND/5-cent bound — plus release consolidation: targets quiet ≥ 0.25 s with
 > 1.5 oct of stale lag land via the existing single bank fade; a 6-oct flick now settles in
@@ -147,7 +153,7 @@ HEAD `c605fbe` (JUCE 8.0.14).
 | Tier | Files | Status |
 |---|---|---|
 | docs root | SOURCE_OF_TRUTH, HANDOVER, REPOSITORY_MAP, DOCUMENTATION_COVERAGE, POSTMORTEMS, KNOWN_ISSUES, FUTURE_RISKS | Present |
-| architecture | 14 docs + ADR_INDEX + 12 ADRs | Present |
+| architecture | 15 docs (incl. RELEASE_HARDENING_PLAN) + ADR_INDEX + 15 ADRs | Present |
 | procedures | 8 docs | Present |
 | policies | 15 docs | Present |
 | root | README, CHANGELOG, CLAUDE | Present |
