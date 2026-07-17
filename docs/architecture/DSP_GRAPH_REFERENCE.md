@@ -47,10 +47,12 @@ factor) but the stage's position in the chain is fixed.
 (src/dsp/LR4Xover.h, Wave 2 / H6 — bit-identical arithmetic to the
 `juce::dsp::LinkwitzRileyFilter` it replaced, LP/HP dual output). Cutoff-change smoothing
 differs by stage (0.8.10): `MonoMaker` keeps the per-sample multiplicative glide
-(`glideCoeff = exp2(8/sr)`, ~8 oct/s); `MultibandWidth` and `SoloMonitor` glide at a **hard
-~4 oct/s cap** (`glideStep = exp2(4/sr)`) — a swept LR4 shifts every frequency by
-`0.312·R` Hz, so drags up to 4 oct/s track exactly while faster ones keep a bounded ~1.25 Hz
-shift (the controlled-FM-over-latency product trade, ADR-0015 final) — plus a single ~12 ms
+(`glideCoeff = exp2(8/sr)`, ~8 oct/s); `MultibandWidth` and `SoloMonitor` run a **slew-limited
+smoother** — per sample each cutoff moves by its ~20 ms one-pole demand, clamped to the
+frequency-proportional cap `R(f) = 4·max(1, f/300) oct/s` — a swept LR4 shifts every frequency
+by `0.312·R` Hz, so the shift stays ~0.42 % of the crossing (~7 cents) above 300 Hz and
+≤ 1.25 Hz below while normal drags track 1:1 (the controlled-FM-over-latency product trade,
+ADR-0015 final + slow-drag fix) — plus a single ~12 ms
 crossfade to a state-copied second bank for **discrete target steps** (> 1.5 oct between
 consecutive blocks), so automation snaps land instantly (ADR-0015, CHANGELOG [0.8.10],
 Test 29).

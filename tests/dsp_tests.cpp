@@ -1717,9 +1717,10 @@ static void testMultibandSplitDragNoPitchShift()
 
     // Drive `step` with a DOWNWARD split drag (start -> start*2^-octs over
     // 0.25 s at block cadence ~ a UI drag), then hold the target. Drags up to
-    // ~4 oct/s track exactly; a faster flick leaves a residual lag that keeps
-    // gliding at the cap until it lands -- continuous motion, no fades, no
-    // timers (the 0.8.10 final follower).
+    // the frequency-proportional cap R(f) = 4 * max(1, f/300) oct/s track
+    // 1:1 (plus the ~20 ms ease); a faster flick leaves a residual lag that
+    // keeps gliding at the cap until it lands -- continuous motion, no fades,
+    // no timers (the 0.8.10 final follower + slow-drag fix).
     auto runDrag = [&] (float startHz, float octsDown, auto&& setSplit, auto&& step,
                         int totalBlocks) -> std::vector<float>
     {
@@ -1745,11 +1746,12 @@ static void testMultibandSplitDragNoPitchShift()
     };
 
     // Worst 100 ms pitch chunk inside the given windows must stay below the
-    // ACCEPTED CONTROLLED-FM bound of 18 cents: at the ~4 oct/s cap the
-    // crossing measures ~14-16 cents at 150 Hz (the deliberate product trade,
-    // ADR-0015 refinement); the uncapped pre-0.8.10 glide measures ~28-31 and
-    // the one-pole tracker ~50 -- both fail. No fade ever fires during a drag,
-    // so one unbroken window can span the whole drag + catch-up.
+    // ACCEPTED CONTROLLED-FM bound of 18 cents: under the R(f) cap a 150 Hz
+    // crossing happens at ~4 oct/s and measures ~14-17 cents (the deliberate
+    // product trade, ADR-0015 refinement); the uncapped pre-0.8.10 glide
+    // measures ~28-31 and the bare one-pole tracker ~50 -- both fail. No fade
+    // ever fires during a drag, so one unbroken window can span the whole
+    // drag + catch-up.
     auto validate = [&] (const char* name, const std::vector<float>& s,
                          std::initializer_list<std::pair<double, double>> windows)
     {
@@ -1786,7 +1788,8 @@ static void testMultibandSplitDragNoPitchShift()
             mb.processBlock (z.data(), z2.data(), block);
         }
         // 6-octave flick: the target lands in 0.25 s; the bank keeps gliding
-        // at the ~4 oct/s cap and lands ~1.5 s in -- continuous motion, no
+        // under the R(f) cap (fast down to 300 Hz, then the flat 4 oct/s
+        // floor) and lands well under a second in -- continuous motion, no
         // fade, so one unbroken window spans the whole drag + catch-up.
         auto s = runDrag (6400.0f, 6.0f,
                           [&] (float f) { mb.setCrossovers (f, 8000.0f, 16000.0f); },
@@ -1932,9 +1935,10 @@ static void testMultibandSplitDragNoPitchShift()
 
         // BOUNDED CATCH-UP (0.8.10 final): the soloed band is LP(f1); once the
         // glide lands f1 at ~100 Hz, the 150 Hz tone must be attenuated
-        // (~-14 dB). At the ~4 oct/s cap a 6-oct flick lands ~1.5 s in; the
-        // rejected 1.25 oct/s follower was still ~2 octaves high at 2 s, so
-        // the tone sat at FULL level in this window and the check fails.
+        // (~-14 dB). Under the R(f) cap a 6-oct flick lands well under a
+        // second in; the rejected 1.25 oct/s follower was still ~2 octaves
+        // high at 2 s, so the tone sat at FULL level in this window and the
+        // check fails.
         double sq = 0.0; int cnt = 0;
         for (int i = (int) (1.7 * sr); i < (int) (2.2 * sr) && i < (int) s.size(); ++i)
         {
@@ -1952,8 +1956,8 @@ static void testMultibandSplitDragNoPitchShift()
         // solo band 0 and step its upper split 250 -> 4000 Hz in ONE call
         // (> 1.5 oct between consecutive blocks). A 1 kHz tone sits ~ -48 dB
         // outside the soloed band before the jump and at full level inside it
-        // after -- the level must arrive within ~200 ms (even the ~4 oct/s
-        // glide would need ~1 s), click-free.
+        // after -- the level must arrive within ~200 ms (even the R(f)-capped
+        // glide would need ~0.4 s), click-free.
         const double jumpTone = 1000.0;
         anamorph::SoloMonitor mon;
         mon.prepare (sr, block);
@@ -1991,6 +1995,127 @@ static void testMultibandSplitDragNoPitchShift()
                      rms / fullRms, maxDelta);
         check (rms > 0.7 * fullRms, "a discrete multi-octave split jump lands via the bank fade, not a crawl");
         check (maxDelta < 0.06, "the discrete-jump bank fade is click-free");
+    }
+
+    // --- NORMAL-DRAG TRACKING (the v0.8.10 slow-drag regression) -------------
+    // The Multiband display spans ~10 octaves in ~900 px, so an ordinary
+    // 600 px/s drag is ~6.6 oct/s -- ABOVE the old flat 4 oct/s cap. That cap
+    // pinned the DSP split whole octaves behind the mouse for the entire drag
+    // and let it crawl on for ~a second after release, while a violent flick
+    // escaped through the discrete-jump fade and felt instant -- "slow drags
+    // are limited harder than fast ones". Under the frequency-proportional cap
+    // the split must arrive WITH the gesture: drag one split 150 Hz -> 12 kHz
+    // over 0.95 s at a 60 Hz UI cadence (6.65 oct/s) and require the audible
+    // band edge to be AT the target 0.1..0.35 s after release. The flat-cap
+    // follower is still ~1.3 octaves shy at that point on both paths -- both
+    // checks fail on it; the 20 ms ease of the fixed follower converges within
+    // ~0.1 s.
+    {
+        // Solo-monitor path: band 0 soloed, a 4 kHz tone starts far outside
+        // the LP band (split 150 Hz -> silent) and must sit at FULL level in
+        // the post-release window once the split has climbed to 12 kHz.
+        anamorph::SoloMonitor mon;
+        mon.prepare (sr, block);
+        mon.setBandCount (2);
+        mon.setCrossovers (150.0f, 8000.0f, 16000.0f);
+        const double dragTone = 4000.0;
+        std::vector<float> l ((size_t) block), r ((size_t) block);
+        double phase = 0.0;
+        const double inc = 2.0 * juce::MathConstants<double>::pi * dragTone / sr;
+        for (int nb = 0; nb < 40; ++nb) // settle the solo crossfade, tone rejected
+        {
+            for (int i = 0; i < block; ++i)
+            {
+                l[(size_t) i] = r[(size_t) i] = amp * (float) std::sin (phase);
+                phase += inc;
+            }
+            mon.process (l.data(), r.data(), 0x1, block);
+        }
+        std::vector<float> s;
+        const int totalBlocks = (int) (1.5 * sr) / block;
+        for (int nb = 0; nb < totalBlocks; ++nb)
+        {
+            const double t = std::floor ((double) (nb * block) / sr * 60.0) / 60.0;
+            const double dragT = juce::jlimit (0.0, 1.0, t / 0.95);
+            mon.setCrossovers (150.0f * (float) std::exp2 (6.3219 * dragT), 8000.0f, 16000.0f);
+            for (int i = 0; i < block; ++i)
+            {
+                l[(size_t) i] = r[(size_t) i] = amp * (float) std::sin (phase);
+                phase += inc;
+            }
+            mon.process (l.data(), r.data(), 0x1, block);
+            for (int i = 0; i < block; ++i) s.push_back (l[(size_t) i]);
+        }
+        double sq = 0.0; int cnt = 0;
+        for (int i = (int) (1.05 * sr); i < (int) (1.30 * sr) && i < (int) s.size(); ++i)
+        {
+            sq += (double) s[(size_t) i] * s[(size_t) i]; ++cnt;
+        }
+        const double rms = std::sqrt (sq / juce::jmax (1, cnt));
+        const double fullRms = amp / std::sqrt (2.0);
+        double maxDelta = 0.0;
+        for (size_t i = 1; i < s.size(); ++i)
+            maxDelta = std::max (maxDelta, (double) std::abs (s[i] - s[i - 1]));
+        std::printf ("  normal drag:  solo band edge at +100..350 ms after release = %.2f of full (flat 4 oct/s cap: ~0.5); max delta = %.4f\n",
+                     rms / fullRms, maxDelta);
+        check (rms > 0.9 * fullRms, "a normal-speed drag's band edge arrives with the gesture (solo monitor)");
+        // A full-level 4 kHz sine's own per-sample slope is amp*2*pi*4000/sr
+        // ~= 0.131; a click would spike above it.
+        check (maxDelta < 0.16, "the normal-speed drag is click-free (solo monitor)");
+    }
+
+    {
+        // Multiband path, observed through the width routing: the tone plays
+        // on the LEFT only and band 2 has width 0, so while the tone is ABOVE
+        // the split it collapses to mono and leaks onto the RIGHT at half
+        // level. Once the split passes it, the tone joins band 1 (width 1,
+        // identity) and the RIGHT channel must fall silent in the same
+        // post-release window.
+        anamorph::MultibandWidth mb;
+        mb.prepare (sr, block);
+        mb.setBandCount (2);
+        mb.setWidths (1.0f, 0.0f, 1.0f, 1.0f);
+        mb.setCrossovers (150.0f, 8000.0f, 16000.0f);
+        const double dragTone = 4000.0;
+        std::vector<float> l ((size_t) block), r ((size_t) block);
+        double phase = 0.0;
+        const double inc = 2.0 * juce::MathConstants<double>::pi * dragTone / sr;
+        for (int nb = 0; nb < 40; ++nb) // settle from prepare defaults
+        {
+            for (int i = 0; i < block; ++i)
+            {
+                l[(size_t) i] = amp * (float) std::sin (phase);
+                r[(size_t) i] = 0.0f;
+                phase += inc;
+            }
+            mb.processBlock (l.data(), r.data(), block);
+        }
+        std::vector<float> sR;
+        const int totalBlocks = (int) (1.5 * sr) / block;
+        for (int nb = 0; nb < totalBlocks; ++nb)
+        {
+            const double t = std::floor ((double) (nb * block) / sr * 60.0) / 60.0;
+            const double dragT = juce::jlimit (0.0, 1.0, t / 0.95);
+            mb.setCrossovers (150.0f * (float) std::exp2 (6.3219 * dragT), 8000.0f, 16000.0f);
+            for (int i = 0; i < block; ++i)
+            {
+                l[(size_t) i] = amp * (float) std::sin (phase);
+                r[(size_t) i] = 0.0f;
+                phase += inc;
+            }
+            mb.processBlock (l.data(), r.data(), block);
+            for (int i = 0; i < block; ++i) sR.push_back (r[(size_t) i]);
+        }
+        double sq = 0.0; int cnt = 0;
+        for (int i = (int) (1.05 * sr); i < (int) (1.30 * sr) && i < (int) sR.size(); ++i)
+        {
+            sq += (double) sR[(size_t) i] * sR[(size_t) i]; ++cnt;
+        }
+        const double rms = std::sqrt (sq / juce::jmax (1, cnt));
+        const double monoRms = 0.5 * amp / std::sqrt (2.0); // the width-0 mono leak level
+        std::printf ("  normal drag:  multiband width-0 leak at +100..350 ms after release = %.2f of the leak level (flat cap: ~0.9)\n",
+                     rms / monoRms);
+        check (rms < 0.15 * monoRms, "a normal-speed drag's band edge arrives with the gesture (multiband)");
     }
 }
 

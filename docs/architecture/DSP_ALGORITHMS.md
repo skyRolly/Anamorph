@@ -91,19 +91,27 @@ crossing); **chained ~12 ms bank crossfades** were AM/PM at the fade cadence (sp
 dBc around a pure tone); a **one-pole tracker (τ≈15 ms)** FM'd at the full drag rate (~50 cents
 measured at the crossing of a fast drag); a **~1.25 oct/s "inaudibility" cap + 0.25 s release
 consolidation** converged in bounded time but lagged every fast drag audibly and jumped after
-release — rejected as a UX regression (interaction latency). Final (ADR-0015 refinement):
-*continuous movement* glides per sample under a **hard ~4 oct/s rate cap** — a deliberate
-product trade (small controlled FM over interaction latency): drags up to 4 oct/s track
-**exactly** (zero GUI/DSP gap), faster ones bound the shift at ~1.25 Hz (**~15 cents measured at
-a 150 Hz crossing, ~2 at 1 kHz**, spurs at the −41 dBc analysis floor, <0.1 dB envelope ripple
-— about half the pre-0.8.10 worst case), and even a 6-octave flick drains in ~1.25 s of
-continuous motion; no timers, no deferred catch-up. *Discrete jumps* (the TARGET stepping
+release — rejected as a UX regression (interaction latency); a **flat ~4 oct/s cap** fixed the
+flick case but pinned every normal drag (the display is ~90 px/octave, so ordinary 400–2000 px/s
+gestures are 4–22 oct/s) whole octaves behind the mouse — the v0.8.10 slow-drag regression.
+Final (ADR-0015, slow-drag fix): *continuous movement* is a **slew-limited smoother** — per
+sample each cutoff moves by its ~20 ms one-pole demand toward the target, clamped to a
+**frequency-proportional cap `R(f) = 4·max(1, f/300 Hz)` oct/s**. The shift at sweep rate R is a
+constant `0.312·R` Hz wherever the crossing sits, so the flat cap's entire budget protected low
+crossings and only added lag at high ones; the scaled cap holds the shift at **0.42 % of the
+crossing (~7 cents) above 300 Hz** and ≤ 1.25 Hz below (**~14 cents measured at a 150 Hz
+crossing** — unchanged; spurs at the −41 dBc analysis floor; the one-pole leg de-staircases the
+60 Hz UI cadence and tapers arrivals — a bare rate-clamp landing measured −24 dBc of splatter).
+Drags track 1:1 up to the cap (13.3 oct/s at 1 kHz, 160 at 12 kHz); a normal 600 px/s drag
+converges 0.01 s after release and even a full-panel flick lands in ~0.5 s of continuous motion;
+no timers, no deferred catch-up. *Discrete jumps* (the TARGET stepping
 > 1.5 oct between consecutive blocks — automation steps/snaps, unreachable by dragging)
 crossfade to the second, state-copied bank over ~12 ms: one bounded event (−18 dBc at a
 4-octave step); a step arriving mid-fade re-fires to the latest target when the fade lands.
 Regression: Test 29 (worst 100 ms chunk < 18 cents through drags, crawls and the tone crossing;
-max spur < −31 dBc; released flicks land by plain gliding in ~1.5 s; discrete jumps land via the
-fade, click-free). Widths one-pole smoothed (~20 ms), shared by both banks.
+max spur < −31 dBc; released flicks land by plain gliding well under a second; a normal-speed
+drag's band edge arrives with the gesture on both paths — the flat-cap follower fails; discrete
+jumps land via the fade, click-free). Widths one-pole smoothed (~20 ms), shared by both banks.
 - **Crossover safety**: Nyquist clamp `[20, 0.45·sr]` applied **before** ordering, then the
   1.1× separation ordering re-clamped **top-down** so separation can never push a cutoff past
   Nyquist (the 0.8.2 "+600 dB" fix). `.cpp:55-71`.
@@ -112,8 +120,8 @@ fade, click-free). Widths one-pole smoothed (~20 ms), shared by both banks.
 
 ## SoloMonitor — `src/dsp/SoloMonitor.{h,cpp}`
 
-POST-EVERYTHING audition: mirrors the Multiband split (same LR crossovers, same ~1 oct/s
-rate-capped glide + discrete-jump crossfade for cutoff changes, 0.8.10) and is **called every
+POST-EVERYTHING audition: mirrors the Multiband split (same LR crossovers, same slew-limited
+R(f)-capped smoother + discrete-jump crossfade for cutoff changes, 0.8.10) and is **called every
 block**. Output is a per-band
 smoothed crossfade: `passGain` (→1
 when nothing soloed) sums the true output; each `bandGain[b]` (`SmoothedValue`, ~12 ms) sums in

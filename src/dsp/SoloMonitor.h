@@ -18,10 +18,11 @@ namespace anamorph
 //  It mirrors the Multiband's band split: the same crossover frequencies and band
 //  count, so soloing "band b" auditions exactly band b's spectral region of the
 //  final output. Cutoff changes use the Multiband's strategy (0.8.10 final): a
-//  ~4 oct/s rate-capped glide for continuous movement (drags up to that rate
-//  track exactly; faster ones keep a small bounded FM; flat magnitude at every
-//  instant) and a single ~12 ms bank crossfade for a discrete multi-octave
-//  target step -- see MultibandWidth.h.
+//  slew-limited smoother for continuous movement (~20 ms one-pole demand
+//  clamped to R(f) = 4 * max(1, f/300) oct/s -- normal drags track 1:1, the
+//  swept-allpass FM stays <= ~7 cents of the crossing above 300 Hz; flat
+//  magnitude at every instant) and a single ~12 ms bank crossfade for a
+//  discrete multi-octave target step -- see MultibandWidth.h.
 //
 //  Click-free by construction (0.8.1): the crossover filters run every block that
 //  can be heard and the output is a per-band SMOOTHED crossfade between the true
@@ -57,11 +58,14 @@ public:
 private:
     // One crossover bank (flat-state LR4Xover, H6). Cutoff changes use the same
     // strategy as the Multiband (0.8.10 final, full rationale in
-    // MultibandWidth.h): continuous movement glides the active bank per sample
-    // under a HARD ~4 oct/s rate cap -- drags up to that rate track exactly,
-    // faster ones bound the swept-allpass frequency shift at ~1.25 Hz -- with
-    // flat magnitude at every instant; only a DISCRETE target step (> 1.5 oct
-    // between consecutive blocks) crossfades to the state-copied idle bank over
+    // MultibandWidth.h): continuous movement is a slew-limited smoother -- per
+    // sample each cutoff moves by its ~20 ms one-pole demand, clamped to the
+    // frequency-proportional cap R(f) = 4 * max(1, f/300) oct/s. A flat
+    // 4 oct/s floor below 300 Hz bounds the swept-allpass shift at ~1.25 Hz;
+    // above it the cap grows with the cutoff so the shift stays ~0.42% of the
+    // crossing (~7 cents) while normal drags track 1:1 -- flat magnitude at
+    // every instant; only a DISCRETE target step (> 1.5 oct between
+    // consecutive blocks) crossfades to the state-copied idle bank over
     // ~12 ms (one bounded event instead of a multi-second crawl).
     struct XoverBank
     {
@@ -76,13 +80,22 @@ private:
     bool      pendingJump = false; // a discrete step arrived while fading
 
     static constexpr float kFadeThresholdOct = 1.5f;  // matches MultibandWidth
+    static constexpr float kRateRefHz        = 300.0f; // rate-cap anchor, matches MultibandWidth
 
     void setBankCutoffs (XoverBank& b) noexcept;
 
     double sr = 44100.0;
-    float  glideStep = 1.0f; // per-sample multiplicative cap, 2^(4/sr) (~4 oct/s)
+    float  glideStep = 1.0f; // per-sample multiplicative BASE cap, 2^(4/sr) (~4 oct/s at f <= kRateRefHz)
     float  targetF[3]     { 180.0f, 800.0f, 3000.0f };
     float  prevTargetF[3] { 180.0f, 800.0f, 3000.0f }; // last block's targets (step detector)
+
+    // One-pole demand coefficient of the slew-limited smoother (~20 ms),
+    // mirroring MultibandWidth (full rationale there): per sample each cutoff
+    // moves gap*smoothCoeff clamped to the R(f) cap; the one-pole leg
+    // de-staircases the UI cadence and tapers arrivals, and the f-scaled snap
+    // eps guarantees the settled fast path can reach cutoffs == targets
+    // despite float one-pole stall.
+    float smoothCoeff = 0.0f;
     int    bands = 4;
     bool   running = true; // false = settled-passthrough fast path active, filters cold (H1)
 

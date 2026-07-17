@@ -33,6 +33,31 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   (still message-thread). Evidence: this PR. [Verified]
 
 ### Fixed
+- **Crossover follower slow-drag regression: normal-speed split drags no longer trail the mouse
+  by whole octaves and crawl on for seconds after release (ADR-0015 "Crossover Follower
+  Slow-Drag Regression").** The v0.8.10 final follower capped cutoff movement at a flat
+  ~4 oct/s, calibrated at a 150 Hz crossing — but the Multiband display maps ~10 octaves onto
+  ~900 px, so ordinary 400–2000 px/s gestures are 4–22 oct/s: every normal drag was pinned at
+  the cap (a 600 px/s drag released ~2.4 octaves behind and crawled for another 0.6 s, trailing
+  audibly throughout), while a violent flick could escape through the discrete-jump bank fade
+  and feel instant — the reported "slow drags are limited harder than fast ones" inversion. The
+  root cause is physical, not a state bug: a swept LR4's frequency shift is a constant
+  `0.312·R` Hz wherever the crossing sits, so a cap flat in oct/s spends its whole artifact
+  budget protecting bass crossings and buys nothing but lag at high ones. The glide is now a
+  **slew-limited smoother**: per sample each cutoff moves by its ~20 ms one-pole demand toward
+  the target, clamped to a **frequency-proportional cap `R(f) = 4·max(1, f/300 Hz)` oct/s** —
+  the shift stays ≤ 1.25 Hz below 300 Hz (a 150 Hz crossing still measures ~14 cents, unchanged)
+  and ~0.42 % of the crossing (~7 cents) above, the one-pole leg filters the 60 Hz UI staircase
+  and tapers arrivals (a bare rate-clamp landing measured −24 dBc of splatter; 300 Hz is the
+  measured spur knee — an fref = 150 variant sprayed −27 dBc past a 1 kHz tone, the shipped
+  anchor sits at the −41 dBc analysis floor). Normal drags now track 1:1 (the 600 px/s complaint
+  gesture converges 0.01 s after release, was 0.63 s) and even a full-panel flick lands in
+  ~0.5 s of continuous motion; every prior Test 29 artifact bound holds at the same measured
+  values (~14 cents, −41.3 dBc, discrete jumps < 200 ms, click-free). Test 29 gained a
+  normal-drag tracking regression on both the Multiband and Solo-monitor paths (band edge at the
+  target 0.1–0.35 s after release; the flat-cap follower fails both checks — verified by
+  temporarily re-pinning). `MultibandWidth`/`SoloMonitor` only; no signal-order, latency, or
+  parameter change. Evidence: this PR. [Verified]
 - **A forced bulk swap (undo/redo/A-B/preset) landing while an ordinary discrete duck was still
   fading out no longer loses its forced semantics.** The forced request is consumed on entry to
   the engine's parameter-swap state machine; in the narrow (~6 ms) fade-out window of a

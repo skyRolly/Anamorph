@@ -24,15 +24,19 @@ solo+multiband-enable), the dry-align gate comb regression (`testDryAlignGateRec
 Wave 2 / H4: a Mix dip after a gated full-wet stretch must re-engage the dry bank
 phase-matched — the KI-#1 metric), the split-movement regression
 (`testMultibandSplitDragNoPitchShift`, Test 29): the worst 100 ms pitch chunk of a 150 Hz tone
-must stay < 18 cents (the accepted controlled-FM bound of the ~4 oct/s cap, ADR-0015 final)
-through drags and the whole catch-up — including an unbroken crawl-crossing scenario where the
-crossover passes the tone (~14 cents measured; the pre-0.8.10 uncapped ~8 oct/s glide measures
-~28 and the interim one-pole tracker ~50, both fail) — the max spectral spur around a 1 kHz tone
-during a 60 Hz-cadence drag must stay below −31 dBc (the interim chained bank crossfades measure
-−28.5 dBc and fail), a discrete 4-octave target step must land within ~200 ms via the bank
-crossfade, and a RELEASED 6-octave flick must land by plain gliding within ~1.5 s (the rejected
-1.25 oct/s follower measures full level at 1.7–2.2 s and fails), all click-free — on both the
-Multiband and Solo-monitor paths; and the forced-duck dry-fill gain regression (`testDryFillRespectsOutputGain`, Test 30):
+must stay < 18 cents (the accepted controlled-FM bound of the R(f) = 4·max(1, f/300) oct/s
+slew-limited smoother, ADR-0015 final + slow-drag fix) through drags and the whole catch-up —
+including an unbroken crawl-crossing scenario where the crossover passes the tone (~14 cents
+measured; the pre-0.8.10 uncapped ~8 oct/s glide measures ~28 and the interim bare one-pole
+tracker ~50, both fail) — the max spectral spur around a 1 kHz tone during a 60 Hz-cadence drag
+must stay below −31 dBc (measures −41.3; the interim chained bank crossfades measure −28.5 dBc
+and the rejected fref=150 cap variant −27, both fail), a discrete 4-octave target step must land
+within ~200 ms via the bank crossfade, a RELEASED 6-octave flick must land by plain gliding well
+under a second, and a NORMAL-SPEED drag (150 Hz → 12 kHz over 0.95 s at a 60 Hz cadence,
+~600 px/s on the real display) must have its audible band edge AT the target 0.1–0.35 s after
+release on both paths (the flat 4 oct/s cap of the slow-drag regression measures 0.47 of full
+level on the solo path and 0.60 of the width-0 leak on the multiband path — both fail), all
+click-free — on both the Multiband and Solo-monitor paths; and the forced-duck dry-fill gain regression (`testDryFillRespectsOutputGain`, Test 30):
 with Output Gain at −24 dB an undo/redo-style Mix toggle must not spike beyond 2× the steady
 output (the unscaled raw-level fill measures 15.8× and fails) while still filling the dip; and
 the forced-swap-during-fade-out regression (`testForcedSwapDuringOrdinaryFadeOut`, Test 31): a

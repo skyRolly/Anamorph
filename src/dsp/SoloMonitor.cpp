@@ -14,11 +14,15 @@ void SoloMonitor::prepare (double sampleRate, int maxBlock)
     // ~12 ms cutoff crossfade for DISCRETE target jumps only, matching the
     // Multiband (0.8.10) and the gain crossfade below.
     fadeLen = juce::jmax (1, (int) std::lround (0.012 * sampleRate));
-    // Hard ~4 oct/s cutoff rate cap: drags up to that rate track EXACTLY (zero
-    // GUI/DSP gap); faster ones bound the swept-allpass frequency shift at
-    // ~1.25 Hz -- a small controlled FM chosen over interaction latency (see
+    // BASE cutoff rate cap, ~4 oct/s; the per-sample glide scales it with the
+    // CURRENT cutoff above kRateRefHz (R(f) = 4 * max(1, f/300) oct/s), so the
+    // swept-allpass shift stays ~0.42% of the crossing (~7 cents) instead of
+    // a constant 1.25 Hz that only added drag lag at high crossings (see
     // MultibandWidth.h).
     glideStep = std::exp2 (4.0f / (float) sr);
+    // One-pole demand of the slew-limited smoother (~20 ms), mirroring
+    // MultibandWidth: de-staircases the UI cadence and tapers arrivals.
+    smoothCoeff = 1.0f - std::exp (-1.0f / (0.02f * (float) sr));
 
     // ~12 ms crossfade: long enough to be click-free, short enough to feel instant.
     const double xfade = 0.012;
@@ -196,21 +200,29 @@ void SoloMonitor::process (float* left, float* right, int mask, int numSamples) 
 
     for (int n = 0; n < numSamples; ++n)
     {
-        // RATE-CAPPED cutoff glide (0.8.10): each active split tracks its
-        // target per sample, capped at ~4 oct/s (drags up to that rate track
-        // exactly; faster ones bound the swept-allpass shift at ~1.25 Hz);
-        // paused while a discrete-jump fade is in flight.
+        // SLEW-LIMITED cutoff smoother (0.8.10 + slow-drag fix): per sample
+        // each active split moves by its ~20 ms one-pole demand toward the
+        // target, clamped to the frequency-proportional cap
+        // R(f) = 4 * max(1, f/kRateRefHz) oct/s (mirrors MultibandWidth;
+        // rationale there); paused while a discrete-jump fade is in flight.
         if (! fading)
         {
             auto& bk = bank[active];
             for (int i = 0; i < crossovers; ++i)
-                if (std::abs (bk.f[i] - targetF[i]) > 0.05f)
+            {
+                const float gap = targetF[i] - bk.f[i];
+                if (std::abs (gap) > 0.05f + 2.0e-4f * targetF[i])
                 {
-                    bk.f[i] = targetF[i] > bk.f[i]
-                                ? juce::jmin (targetF[i], bk.f[i] * glideStep)
-                                : juce::jmax (targetF[i], bk.f[i] / glideStep);
-                    bk.x[i].setCutoffFrequency (bk.f[i]);
+                    const float capMove = bk.f[i] * (glideStep - 1.0f)
+                                        * juce::jmax (1.0f, bk.f[i] * (1.0f / kRateRefHz));
+                    bk.f[i] += juce::jlimit (-capMove, capMove, gap * smoothCoeff);
                 }
+                else if (! (std::abs (gap) > 0.0f))
+                    continue;                       // settled exactly: filters hold
+                else
+                    bk.f[i] = targetF[i];           // terminal snap (float one-pole stall)
+                bk.x[i].setCutoffFrequency (bk.f[i]);
+            }
         }
 
         // Advance every smoother exactly once per sample (bank-independent).

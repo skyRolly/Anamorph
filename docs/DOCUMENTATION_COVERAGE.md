@@ -6,7 +6,23 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **PR #59 final review fixes** (2026-07-17, two items). (1) **Forced duck
+Last updated: for the **crossover follower slow-drag regression fix** (2026-07-17, post-merge
+v0.8.10 maintenance, new PR). The v0.8.10 final flat ~4 oct/s cap was calibrated at a 150 Hz
+crossing, but the display maps ~10 octaves onto ~900 px, so ordinary 400–2000 px/s drags are
+4–22 oct/s — every normal drag trailed by octaves and crawled after release while violent flicks
+escaped via the discrete-jump fade (the reported slow-vs-fast inversion). The glide in
+`MultibandWidth`/`SoloMonitor` is now a **slew-limited smoother**: a ~20 ms one-pole demand
+clamped per sample to a **frequency-proportional cap R(f) = 4·max(1, f/300 Hz) oct/s** — the
+swept-allpass shift stays ≤ 1.25 Hz below 300 Hz (150 Hz crossing still ~14 cents) and ~7 cents
+of the crossing above; the one-pole leg de-staircases the 60 Hz UI cadence and tapers arrivals
+(a bare clamp landing measured −24 dBc; fref = 300 is the measured spur knee, −41.3 dBc at the
+floor). Normal drags now track 1:1 (600 px/s converges 0.01 s after release, was 0.63 s); all
+prior artifact bounds hold at the same values. Test 29 gained a normal-drag tracking regression
+on both paths (checks 112→**115**; flat-cap re-pin fails both — verified in both directions).
+Synced: ADR-0015 (new "Crossover Follower Slow-Drag Regression" section, + ADR_INDEX row),
+CHANGELOG, DSP_ALGORITHMS, DSP_GRAPH_REFERENCE, DSP_POLICY inv. 3, PERFORMANCE_BUDGET,
+REALTIME_SAFETY_AUDIT, FUTURE_RISKS RISK-002, KI-012, TESTING, HANDOVER. Prior: the
+**PR #59 final review fixes** (2026-07-17, two items). (1) **Forced duck
 during an ordinary fade-out** — a forced request (undo/redo/A-B/preset) landing in the ~6 ms
 fade-out window of a non-forced discrete duck was consumed but dropped, so the swap finished
 with normal-duck semantics (no silent-bottom wholesale swap/smoother snap/clean-slate reset —
