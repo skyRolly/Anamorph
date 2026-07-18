@@ -2397,7 +2397,10 @@ static void testHighRateCrossoverSnap()
         // Solo monitor: the glide only runs while the monitor is HOT, so keep
         // a band soloed for the whole drag (the real-world shape: dragging a
         // split while auditioning a band), then release and let the gains
-        // settle -- the fast path then hinges ONLY on cutoffs == targets.
+        // settle. The bitwise getLiveCutoff checks below are what guard the
+        // 192 kHz stall snap; since Wave 3 the cold gate hinges on the gains
+        // only (cutoff-decoupled), so the isSettledCold checks are engagement
+        // sanity, no longer a stall symptom.
         anamorph::SoloMonitor mon;
         mon.setBandCount (4);
         mon.setCrossovers (startF[0], startF[1], startF[2]);
@@ -2477,6 +2480,83 @@ static void testHighRateCrossoverSnap()
 }
 
 // ---------------------------------------------------------------------------
+static void testSoloColdThroughDrag()
+{
+    std::printf ("Test 33: solo monitor stays cold through a no-solo split drag (Wave 3)\n");
+
+    // The H1 settled fast path is gated on the GAINS only (Wave 3): with
+    // nothing soloed the output is provably 1*in + 0*bands whatever the
+    // cutoffs do, so a split drag must not wake the bank. Pre-Wave-3 the gate
+    // also required every cutoff within 0.05 Hz of its target, so a no-solo
+    // drag ran 6 LR4 filters + 5 smoother ticks + up to 3 tan updates per
+    // sample just to compute that provable passthrough (the stayedCold check
+    // below fails on that behaviour). Cold means the buffer is not even
+    // touched; re-engaging must still snap the cutoffs to the FRESHEST
+    // targets under the engage crossfade.
+    const double sr = 48000.0;
+    const int block = 512;
+    const int settleBlocks = 20;   // >> the ~12 ms gain crossfade
+
+    anamorph::SoloMonitor mon;
+    mon.setBandCount (4);
+    mon.setCrossovers (180.0f, 800.0f, 3000.0f);
+    mon.prepare (sr, block);
+
+    std::mt19937 rng (24680);
+    std::uniform_real_distribution<float> d (-0.7f, 0.7f);
+    std::vector<float> l ((size_t) block), r ((size_t) block), lRef ((size_t) block), rRef ((size_t) block);
+
+    auto runBlock = [&] (int mask)
+    {
+        for (int i = 0; i < block; ++i) { l[(size_t) i] = d (rng); r[(size_t) i] = d (rng); }
+        lRef = l; rRef = r;
+        mon.process (l.data(), r.data(), mask, block);
+    };
+
+    for (int nb = 0; nb < settleBlocks; ++nb) runBlock (0);
+    check (mon.isSettledCold(), "monitor is cold once nothing is soloed and the gains settle");
+
+    // Drag the splits at UI cadence while nothing is soloed: the monitor must
+    // stay cold and the output must stay the bit-untouched passthrough.
+    bool untouched = true, stayedCold = true;
+    for (int nb = 1; nb <= 40; ++nb)
+    {
+        mon.setCrossovers (180.0f  +  4.0f * (float) nb,
+                           800.0f  +  8.0f * (float) nb,
+                           3000.0f + 20.0f * (float) nb);
+        runBlock (0);
+        stayedCold = stayedCold && mon.isSettledCold();
+        for (int i = 0; i < block && untouched; ++i)
+            untouched = ! (std::abs (l[(size_t) i] - lRef[(size_t) i]) > 0.0f)
+                     && ! (std::abs (r[(size_t) i] - rRef[(size_t) i]) > 0.0f);
+    }
+    check (stayedCold, "monitor stays cold through the whole no-solo drag");
+    check (untouched,  "cold passthrough leaves the buffer bit-untouched during the drag");
+
+    // Re-engage: cold re-entry snaps the cutoffs to the drag's FINAL targets
+    // (not where the glide left off pre-drag) and the band-pass engages.
+    runBlock (1);
+    const float endF[3] = { 180.0f + 4.0f * 40.0f, 800.0f + 8.0f * 40.0f, 3000.0f + 20.0f * 40.0f };
+    bool snapped = true;
+    for (int i = 0; i < 3; ++i)
+        snapped = snapped && ! (std::abs (mon.getLiveCutoff (i) - endF[i]) > 0.0f);
+    check (snapped, "re-engage snaps the cutoffs to the freshest drag targets");
+
+    bool changed = false, allFinite = true;
+    for (int nb = 0; nb < settleBlocks; ++nb)
+    {
+        runBlock (1);
+        for (int i = 0; i < block; ++i)
+        {
+            changed   = changed || (std::abs (l[(size_t) i] - lRef[(size_t) i]) > 0.0f);
+            allFinite = allFinite && std::isfinite (l[(size_t) i]) && std::isfinite (r[(size_t) i]);
+        }
+    }
+    check (changed,   "re-engaged solo audibly band-passes (output differs from the passthrough)");
+    check (allFinite, "re-engaged output stays finite");
+}
+
+// ---------------------------------------------------------------------------
 int main()
 {
     std::printf ("=== Anamorph DSP self-tests ===\n");
@@ -2511,6 +2591,7 @@ int main()
     testDryFillRespectsOutputGain();
     testForcedSwapDuringOrdinaryFadeOut();
     testHighRateCrossoverSnap();
+    testSoloColdThroughDrag();
     testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);

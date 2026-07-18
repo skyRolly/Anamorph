@@ -62,6 +62,22 @@ public:
         }
     }
 
+    // Adopt another crossover's COEFFICIENTS (state untouched) -- Wave 3. The
+    // four filters of one Multiband split (x / dx / ax / dax) always share the
+    // same cutoff, so one update() -- one double tan + divide -- can serve all
+    // of them. Bit-exact by construction: the adopted g/h ARE the values this
+    // filter's own update() would produce for the same cutoff and sample rate,
+    // and the stored cutoff/rate stay coherent for any later
+    // setCutoffFrequency call.
+    void copyCoefficientsFrom (const LR4Xover& other) noexcept
+    {
+        g  = other.g;
+        R2 = other.R2;
+        h  = other.h;
+        cutoffFrequency = other.cutoffFrequency;
+        sampleRate      = other.sampleRate;
+    }
+
     // Low/high split, one channel (0 or 1). Identical arithmetic to
     // juce::dsp::LinkwitzRileyFilter<float>::processSample (in, low, high).
     void processSample (int channel, float inputValue, float& outputLow, float& outputHigh) noexcept
@@ -84,6 +100,33 @@ public:
 
         outputLow  = yL2;
         outputHigh = yL - R2 * yB + yH - yL2;
+    }
+
+    // 2nd-order allpass at the crossover, one channel -- Wave 3 (the 0.8.10
+    // "allpass-biquad" follow-up recorded in PERFORMANCE_BUDGET.md). The
+    // Multiband's phase compensation only ever consumes the SUM lo + hi of the
+    // ladder above, and that sum telescopes:
+    //   lo + hi = yL2 + (((yL - R2*yB) + yH) - yL2)  ~=  (yL - R2*yB) + yH,
+    // i.e. the whole second TPT section cancels except for one float
+    // subtract/add rounding pair (measured <= 1.2e-7 on +-0.7 noise, fixed and
+    // per-sample-gliding cutoffs alike). This method computes the surviving
+    // first-section expression directly -- half the ladder's arithmetic and
+    // state traffic. NOT bit-identical to summing processSample's outputs
+    // (class B, ~1 ulp/sample); it uses only s1/s2, so s3/s4 stay untouched
+    // and a bank that mixes processSample and processSampleAllpass on the SAME
+    // instance would desync -- the Multiband uses dedicated ax/dax instances
+    // that only ever call this.
+    float processSampleAllpass (int channel, float inputValue) noexcept
+    {
+        auto yH = (inputValue - (R2 + g) * s1[channel] - s2[channel]) * h;
+
+        auto yB = g * yH + s1[channel];
+        s1[channel] = g * yH + yB;
+
+        auto yL = g * yB + s2[channel];
+        s2[channel] = g * yB + yL;
+
+        return yL - R2 * yB + yH;
     }
 
 private:

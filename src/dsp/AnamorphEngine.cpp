@@ -939,6 +939,43 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
             if (++dryDelayWrite >= ddSize) dryDelayWrite = 0;
         }
     }
+    else if (! mixSmooth.isSmoothing())
+    {
+        // Settled Mix (Wave 3): m -- and therefore the dry-source smoothstep --
+        // are block constants (a settled getCurrentValue equals the value every
+        // settled getNextValue tick would return, and the tick is
+        // mutation-free). The per-sample ring writes/reads and the blend are
+        // the IDENTICAL expressions of the general loop below evaluated with
+        // the same m/ts, so this path is bit-exact; only the per-sample
+        // recomputation of those constants goes. This is the steady
+        // partial-Mix listening state, where the dry bank also runs (H4
+        // cannot gate it) -- the most expensive settled state on record.
+        const float m  = mixSmooth.getCurrentValue();
+        const float t  = juce::jlimit (0.0f, 1.0f, m * (1.0f / kAlignMix));
+        const float ts = t * t * (3.0f - 2.0f * t); // smoothstep: clean -> A(dry)
+        for (int i = 0; i < n; ++i)
+        {
+            ddL[dryDelayWrite] = dL[i];
+            ddR[dryDelayWrite] = dR[i];
+            adL[dryDelayWrite] = aL[i];
+            adR[dryDelayWrite] = aR[i];
+            int rp = dryDelayWrite - lat; if (rp < 0) rp += ddSize;
+            const float cleanL = ddL[rp], cleanR = ddR[rp];
+            const float alignL = adL[rp], alignR = adR[rp];
+            if (++dryDelayWrite >= ddSize) dryDelayWrite = 0;
+
+            lrL[i] = alignL; lrR[i] = alignR;
+
+            float dryL = cleanL, dryR = cleanR;
+            if (dryAligned)
+            {
+                dryL = cleanL + ts * (alignL - cleanL);
+                dryR = cleanR + ts * (alignR - cleanR);
+            }
+            L[i] = dryL + m * (L[i] - dryL);
+            R[i] = dryR + m * (R[i] - dryR);
+        }
+    }
     else
     for (int i = 0; i < n; ++i)
     {
@@ -1048,6 +1085,32 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     // duckDry false this adds exactly nothing (bit-exact original arithmetic).
     const float* bxL = bypassDryScratch.getReadPointer (0);
     const float* bxR = bypassDryScratch.getReadPointer (1);
+    // Settled fast path (Wave 3): with no switch duck in flight and all three
+    // output smoothers parked, g / gL / gR are block constants and sg == 1, so
+    // the constant stereo gain (g * gL) -- the identical product the per-sample
+    // path computes, since x * 1.0f is exact -- can be hoisted; the settled
+    // getNextValue ticks are mutation-free, so skipping them is
+    // state-identical (the H1/H10 argument). At exact unity gain the multiply
+    // is skipped outright (x * 1.0f is bitwise x for every finite value; a
+    // non-finite sample is zeroed by the scrub below in both variants).
+    // duckDry is in the gate defensively: it implies a duck in flight, but if
+    // it were ever latched without one the original loop still runs.
+    if (! fading && ! duckDry
+        && ! outGainSmooth.isSmoothing()
+        && ! matchGainSmooth.isSmoothing()
+        && ! outBalanceSmooth.isSmoothing())
+    {
+        const float g  = p.autoGainMatch ? matchGainSmooth.getCurrentValue()
+                                         : outGainSmooth.getCurrentValue();
+        const float b  = outBalanceSmooth.getCurrentValue();
+        const float gL = (b > 0.0f) ? (1.0f - b) : 1.0f;
+        const float gR = (b < 0.0f) ? (1.0f + b) : 1.0f;
+        const float cL = g * gL;
+        const float cR = g * gR;
+        if (std::abs (cL - 1.0f) > 0.0f || std::abs (cR - 1.0f) > 0.0f)
+            for (int i = 0; i < n; ++i) { L[i] *= cL; R[i] *= cR; }
+    }
+    else
     for (int i = 0; i < n; ++i)
     {
         // When Level Match is engaged the matched gain REPLACES Output Gain, so

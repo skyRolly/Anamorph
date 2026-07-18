@@ -32,15 +32,17 @@ namespace anamorph
 //  stale-filter charge-up, no revealed tail). When nothing is soloed the passthrough
 //  gain settles to exactly 1 -> bit-exact true output.
 //
-//  Settled fast path (0.8.9 / H1): once nothing is soloed AND every gain smoother
-//  has fully settled (passGain == 1, all bandGains == 0) AND no cutoff change is
-//  pending, process() is a provable passthrough (out = 1*in + 0*bands), so the
-//  filter/smoother work is skipped and the bank goes cold. Re-entry resets the
-//  filters and snaps the cutoffs to their targets while the band gains are still
-//  ~0, so the charge-up is masked by the same ~12 ms crossfade that always covered
-//  an engage (the engine's mbRunning warm/cold pattern). The crossfade still
-//  advances on every block in which ANY gain is unsettled -- the click-free
-//  invariant holds.
+//  Settled fast path (0.8.9 / H1; cutoff-decoupled Wave 3): once nothing is
+//  soloed AND every gain smoother has fully settled (passGain == 1, all
+//  bandGains == 0), process() is a provable passthrough (out = 1*in + 0*bands)
+//  -- the cutoffs do not appear in that arithmetic -- so the filter/smoother
+//  work is skipped and the bank goes cold, and it STAYS cold while the split
+//  targets move (a no-solo drag used to wake the whole bank for nothing).
+//  Re-entry resets the filters and snaps the cutoffs to the then-current
+//  targets while the band gains are still ~0, so the charge-up is masked by
+//  the same ~12 ms crossfade that always covered an engage (the engine's
+//  mbRunning warm/cold pattern). The crossfade still advances on every block
+//  in which ANY gain is unsettled -- the click-free invariant holds.
 // ============================================================================
 class SoloMonitor
 {
@@ -58,8 +60,9 @@ public:
     // Test-only introspection (dsp_tests, Test 32): the live cutoff of split i
     // on the active bank (== the setCrossovers target exactly once the glide
     // has snapped), and whether the settled-passthrough fast path (H1) is
-    // engaged (filters cold) -- its cutoff gate needs every split within
-    // 0.05 Hz of target, which after any real move only the exact snap reaches.
+    // engaged (filters cold). Since Wave 3 the cold gate hinges on the GAINS
+    // only (cutoff-decoupled), so isSettledCold() is a plain engagement sanity
+    // check; the bitwise cutoff assertions are what guard the stall snap.
     float getLiveCutoff (int i) const noexcept { return bank[active].f[juce::jlimit (0, 2, i)]; }
     bool  isSettledCold() const noexcept       { return ! running; }
 

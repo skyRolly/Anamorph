@@ -15,7 +15,7 @@ scripts/run-tests.sh             # runs the AnamorphTests console app
 
 ### What the tests cover
 
-`tests/dsp_tests.cpp` has **31 DSP tests** using a `check(cond, "what")` harness, covering: MS
+`tests/dsp_tests.cpp` has **32 DSP tests** using a `check(cond, "what")` harness, covering: MS
 round-trip (bit-exact), transparent default, true-bypass null + latency match, Mono Maker
 (post-Mix), Multiband mono-compat, Solo band selectivity + transparency, Level Match
 (unity/no-ratchet/silence-freeze/mix-coupling/multiband-unity), crossover automation safety,
@@ -50,7 +50,13 @@ monitor's settled fast path go cold, at 44.1/48/96/192 kHz, through targets insi
 192 kHz float-stall zones (just above the binade edges ≥ 2048 Hz) including the worst one
 (16.6 kHz) — the pre-fix glide, whose one-pole add stalls below `ulp(f)/2` while the gap is
 still above the terminal-snap eps, rests 0.4688/0.9375/1.8750/3.75 Hz short at 192 kHz, never
-goes cold, and fails, while the normal-rate passes double as the unchanged-behavior guard. It
+goes cold, and fails, while the normal-rate passes double as the unchanged-behavior guard; and
+the solo-monitor cold-through-drag regression (`testSoloColdThroughDrag`, Test 33, Wave 3): with
+NOTHING soloed, dragging the splits at UI cadence must leave the monitor's settled fast path
+engaged — the bank stays cold, the output buffer is **bit-untouched** on every block — and
+re-engaging a solo must snap the cutoffs to the freshest drag targets under the engage crossfade
+(the pre-Wave-3 gains+cutoffs gate wakes the bank on the first target move and glides instead of
+snapping, failing both the stayed-cold and freshest-snap checks). It
 additionally carries **one state-restoration robustness guard**,
 `testAbActiveClampOnCorruptState` — it drives a corrupted `<AB active="…">` blob through the same
 read+clamp the processor uses (`anamorph::clampAbSlotIndex`, `src/AbSlotIndex.h`) and asserts an

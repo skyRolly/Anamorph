@@ -60,10 +60,18 @@ void MultibandWidth::setBankCutoffs (XoverBank& b) noexcept
     for (int i = 0; i < 3; ++i)
     {
         b.f[i] = targetF[i];
-        b.x[i] .setCutoffFrequency (targetF[i]);
-        b.dx[i].setCutoffFrequency (targetF[i]);  // dry twins stay phase-locked (KI #1)
-        b.ax[i].setCutoffFrequency (targetF[i]);  // compensation allpasses share the split cutoff
-        b.dax[i].setCutoffFrequency (targetF[i]);
+        // One tan per split (Wave 3): x computes the coefficients, the twins
+        // adopt them -- the four filters of a split always share one cutoff, so
+        // the adopted g/h are bit-identical to what their own update() would
+        // produce. ax[0]/dax[0] are skipped: the compensation loop runs
+        // i = 1..crossovers-1, so split 0 has no allpass to keep in sync.
+        b.x[i].setCutoffFrequency (targetF[i]);
+        b.dx[i].copyCoefficientsFrom (b.x[i]);    // dry twins stay phase-locked (KI #1)
+        if (i > 0)
+        {
+            b.ax[i] .copyCoefficientsFrom (b.x[i]); // compensation allpasses share the split cutoff
+            b.dax[i].copyCoefficientsFrom (b.x[i]);
+        }
     }
 }
 
@@ -184,8 +192,12 @@ void MultibandWidth::processBlock (float* left, float* right, int numSamples,
         auto& bk = bank[active];
         for (int i = 0; i < crossovers; ++i)
         {
-            bk.dx[i] .setCutoffFrequency (bk.f[i]);
-            bk.dax[i].setCutoffFrequency (bk.f[i]);
+            // x[i] always holds the coefficients for bk.f[i] (every write of
+            // f[i] pairs with an x[i] update), so the dry twins adopt them
+            // instead of re-running the identical tan (Wave 3, bit-exact).
+            // dax[0] is never processed (the compensation loop starts at 1).
+            bk.dx[i].copyCoefficientsFrom (bk.x[i]);
+            if (i > 0) bk.dax[i].copyCoefficientsFrom (bk.x[i]);
         }
     }
 
@@ -211,9 +223,10 @@ void MultibandWidth::processBlock (float* left, float* right, int numSamples,
 
         for (int i = 1; i < crossovers; ++i)
         {
-            float aL0, aL1, aR0, aR1;
-            bk.ax[i].processSample (0, accL, aL0, aL1); accL = aL0 + aL1;
-            bk.ax[i].processSample (1, accR, aR0, aR1); accR = aR0 + aR1;
+            // Direct 2nd-order allpass (Wave 3): the lo+hi sum the compensation
+            // consumes IS the ladder's first section -- see processSampleAllpass.
+            accL = bk.ax[i].processSampleAllpass (0, accL);
+            accR = bk.ax[i].processSampleAllpass (1, accR);
 
             bk.x[i].processSample (0, curL, loL, hiL);
             bk.x[i].processSample (1, curR, loR, hiR);
@@ -244,9 +257,10 @@ void MultibandWidth::processBlock (float* left, float* right, int numSamples,
 
         for (int i = 1; i < crossovers; ++i)
         {
-            float aL0, aL1, aR0, aR1;
-            bk.dax[i].processSample (0, accL, aL0, aL1); accL = aL0 + aL1;
-            bk.dax[i].processSample (1, accR, aR0, aR1); accR = aR0 + aR1;
+            // Same first-section allpass as the wet (Wave 3): dry stays
+            // phase-identical to the wet by construction.
+            accL = bk.dax[i].processSampleAllpass (0, accL);
+            accR = bk.dax[i].processSampleAllpass (1, accR);
 
             bk.dx[i].processSample (0, curL, loL, hiL);
             bk.dx[i].processSample (1, curR, loR, hiR);
@@ -310,9 +324,18 @@ void MultibandWidth::processBlock (float* left, float* right, int numSamples,
                     continue;                       // settled exactly: filters hold
                 else
                     bk.f[i] = targetF[i];           // terminal snap
-                bk.x[i] .setCutoffFrequency (bk.f[i]);
-                bk.ax[i].setCutoffFrequency (bk.f[i]); // compensation allpass glides with its split
-                if (align) { bk.dx[i].setCutoffFrequency (bk.f[i]); bk.dax[i].setCutoffFrequency (bk.f[i]); } // dry bank locked to the wet
+                // One tan per moving split (Wave 3): x computes, the twins
+                // adopt bit-identical coefficients -- 12 tan/sample worst case
+                // (3 splits, dry aligned) becomes 3. ax[0]/dax[0] are never
+                // processed (the compensation loop starts at split 1), so
+                // split 0 skips them entirely.
+                bk.x[i].setCutoffFrequency (bk.f[i]);
+                if (i > 0) bk.ax[i].copyCoefficientsFrom (bk.x[i]); // compensation allpass glides with its split
+                if (align)
+                {
+                    bk.dx[i].copyCoefficientsFrom (bk.x[i]);        // dry bank locked to the wet
+                    if (i > 0) bk.dax[i].copyCoefficientsFrom (bk.x[i]);
+                }
             }
         }
 
