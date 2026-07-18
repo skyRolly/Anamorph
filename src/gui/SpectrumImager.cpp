@@ -588,7 +588,14 @@ void SpectrumImager::runTransform()
         fftData[(size_t) i] = 0.5f * (fifoL[(size_t) i] + fifoR[(size_t) i]);
     std::fill (fftData.begin() + fftSize, fftData.end(), 0.0f);
     window.multiplyWithWindowingTable (fftData.data(), (size_t) fftSize);
-    fft.performFrequencyOnlyForwardTransform (fftData.data());
+    // ignoreNegativeFreqs (Wave 3): every consumer reads bins 0..fftSize/2
+    // only (the mags loop, the silent-path fill, magForColumn), and a real
+    // input's negative-frequency magnitudes are a mirror of those -- so let
+    // JUCE compute |X[k]| for the fftSize/2+1 consumed bins and zero the rest
+    // instead of reconstructing and abs-ing all fftSize bins. The consumed
+    // values are the identical std::abs of the identical complex spectrum:
+    // no visual change by construction.
+    fft.performFrequencyOnlyForwardTransform (fftData.data(), true);
 }
 
 // S2 idle gate around the FFT. The maths, sizes, window and read are exactly
