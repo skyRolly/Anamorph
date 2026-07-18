@@ -231,3 +231,82 @@ All measured on Linux x86_64 / GCC / Release with the full hardening set applied
 - pluginval cannot run in this sandbox (egress policy — same constraint recorded for the JUCE
   bump, ADR-0012); the strictness-10 both-modes gate runs on CI, which now validates the
   **stripped** Linux binary (the strip step was ordered before pluginval on purpose).
+
+## 6. Review follow-up — artifact-safety fixes (v0.8.11 sync)
+
+**Release context:** RH-PR-2 ships as part of **v0.8.11**. The branch was rebased onto main
+after the v0.8.11 version bump (PR #64) and performance Wave 3 (PR #62) merged; the CHANGELOG
+entry moved from `[Unreleased]` into `[0.8.11]` **### Security** per the release structure.
+Post-rebase suite under the hardened flags: **136 checks, 0 failures** (Wave 3 added Test 33 +
+checks). The flag set itself is unchanged from §2, so the §5 byte-exact twin-dump proof of
+flag-neutrality stands (it was measured against the flags, and no numerics-affecting flag was
+touched then or now; Wave 3's own behaviour evidence is in
+`worklogs/performance/WAVE3_INVESTIGATION.md`).
+
+### Review findings (both confirmed real)
+
+1. **Linux: a strip failure could still upload an unstripped customer artifact.** Root cause:
+   the staging and upload steps ran under `if: always()` — designed to preserve beta artifacts
+   when *pluginval* fails, but it equally fired when the *strip* step failed, staging and
+   uploading the un-stripped binaries the build produced (exactly the RH-R4 leak this PR
+   exists to close).
+2. **Windows: a mid-step packaging failure could upload the public bundle with its PDB
+   inside.** Root cause: operation order inside the staging step — the PDB *retention* loop
+   (which `Write-Error`-aborts if a PDB is missing) ran BEFORE the public-copy PDB *removal*;
+   with `$ErrorActionPreference='Stop'`, an abort in retention skipped the removal entirely,
+   and the `if: always()` upload then published the bundle with `Anamorph.pdb` still inside
+   (the VST3 linker drops it inside the bundle directory that gets copied recursively).
+
+### Fix (CI-only; no build-flag, binary, or runtime change)
+
+- **Upload gating:** customer staging/uploads are now conditioned on their producing step
+  having SUCCEEDED — Linux `stage` requires `steps.strip.outcome == 'success'`, each customer
+  upload requires its staging/packaging step's `outcome == 'success'` (macOS given the same
+  pattern for uniformity). `!cancelled() && outcome == 'success'` is used instead of plain
+  step-ordering defaults so a *pluginval* failure still yields beta artifacts (the original
+  reason for `always()`), while a *packaging* failure cannot upload. Developer `-debug`
+  artifacts remain preserved on failure (`outcome != 'skipped'`) — they never contain
+  customer binaries.
+- **Windows step reordering (leak-safe by construction):** (1) locate everything first — an
+  abort copies nothing; (2) copy the public artifact; (3) **immediately purge every debug
+  file** (`.pdb/.ilk/.exp/.debug`) from the public copy — before any abortable step; (4)
+  retain PDBs into the debug dir (abort here is now leak-safe); (5) validate the public copy
+  contains no debug files.
+- **Self-validation added:** the Linux strip step asserts `.symtab` is gone from both shipped
+  binaries; the Linux staging step re-asserts no `.symtab` and no `.debug`/PDB files inside
+  the customer dist; the Windows staging step asserts no debug-extension files remain.
+
+### Validation (verbatim step scripts extracted from build.yml and executed locally)
+
+- **Linux success path:** strip + stage exit 0; customer dist `nm: no symbols`, zero debug
+  files; debug dir carries both `.debug` files.
+- **Linux failure sim 1 (strip fails — missing binary):** strip step exits 1 → under the new
+  conditions `steps.strip.outcome == 'failure'` skips staging AND the customer upload; no
+  customer dist is even created.
+- **Linux failure sim 2 (defense-in-depth — an unstripped binary reaches staging):** staging
+  validation catches it (`::error::customer artifact contains an unstripped binary`), exits 1,
+  customer upload gated off.
+- **Linux failure sim 3 (stray `.debug` file in the public copy):** validation detects, fails.
+- **Windows (bash mirror of the pwsh phases — pwsh unavailable in this sandbox; same commands,
+  same order, same abort semantics):** success path separates PDBs (public: none; debug:
+  `Anamorph.vst3.pdb` + `Anamorph.standalone.pdb`); failure sim (Standalone PDB missing —
+  abort in phase 4) leaves the public dist with **zero** PDBs because the purge ran in
+  phase 3, and the upload is gated off anyway — two independent layers.
+- Workflow YAML parse-validated. First real Windows/macOS execution remains this PR's CI run
+  (asserted strictly — wrong assumptions fail loudly, and now cannot upload).
+
+### Conflict-resolution notes (rebase onto v0.8.11 main)
+
+- `CHANGELOG.md`: kept main's `[0.8.11]` structure (Wave 3 `### Changed` + the two maintenance
+  fixes under `### Fixed`); the RH-PR-2 entry added as `### Security` inside `[0.8.11]`
+  (Keep-a-Changelog section order), updated to describe the upload-gating/self-validation
+  behaviour. `[Unreleased]` no longer exists.
+- `docs/DOCUMENTATION_COVERAGE.md`: both sides prepended a "Last updated" entry — resolved
+  with this PR's entry first, the v0.8.11 version-prep entry demoted to the "Prior:" chain
+  (nothing dropped).
+- `docs/REPOSITORY_MAP.md`: both sides added a `worklogs/` top-level entry (Wave 3's and this
+  PR's) — merged into one.
+- `docs/architecture/RELEASE_HARDENING_PLAN.md` QA-gate row: synced 31/130 → **32/136** — the
+  one-line drift the version-bump PR explicitly recorded as pending "once the PRs land".
+- `CMakeLists.txt` auto-merged: v0.8.11 version from main preserved, `AnamorphHardening`
+  block intact. `build.yml` had no upstream changes.
