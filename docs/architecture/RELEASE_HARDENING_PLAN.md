@@ -18,17 +18,17 @@ this program must follow.
 | Area | Current state | Evidence |
 |---|---|---|
 | Licensing | **None.** No license manager, no activation, no trial logic anywhere in `src/` | [Verified] `src/` tree |
-| macOS signing | CI **ad-hoc** codesign (`--sign -`), **not notarized**; users must strip quarantine manually; sign commands are `\|\| true` (failures swallowed) | [Verified] build.yml:166-169; PACKAGING.md |
+| macOS signing | CI **ad-hoc** codesign (`--sign -`), **not notarized**; users must strip quarantine manually. ~~Sign commands `\|\| true`~~ — since RH-PR-2 a signing failure fails the job (ADR-0021) | [Verified] build.yml (Package macOS plugins step); PACKAGING.md |
 | Windows signing | **None** (no Authenticode) | [Verified] build.yml (no sign step) |
-| Symbol hygiene | **No strip step** on any platform; no explicit `CXX_VISIBILITY_PRESET`; no dSYM/PDB retention | [Verified] build.yml, CMakeLists.txt (greps: no `strip`/`VISIBILITY`) |
-| LTO | `juce::juce_recommended_lto_flags` linked on the plugin target | [Verified] CMakeLists.txt (Anamorph `target_link_libraries`) |
+| Symbol hygiene | **Closed by RH-PR-2 (ADR-0021):** retain-then-strip pipeline on all platforms — debug info generated (`-g`/`/Zi`+`/DEBUG`), captured as separate `Anamorph-<OS>-debug` artifacts (split `.debug`/dSYM/PDB), public binaries stripped (`nm: no symbols`; dynamic exports untouched). Visibility was already hidden via JUCE's plugin helpers (JUCEUtils.cmake) — the earlier "no explicit `CXX_VISIBILITY_PRESET`" row described our CMakeLists, not the effective build; recorded in the ADR instead of restated | [Verified] build.yml, CMakeLists.txt (AnamorphHardening), RH_PR2_INVESTIGATION.md |
+| LTO | `juce::juce_recommended_lto_flags` linked on the plugin target; **verified applied** to compiles and the final format-target links (`-flto` measured on both, RH-PR-2) | [Verified] CMakeLists.txt; RH_PR2_INVESTIGATION.md |
 | Networking | `JUCE_USE_CURL=0`, `JUCE_WEB_BROWSER=0` → **no `juce::URL` backend on Linux**; macOS/Windows use native OS backends | [Verified] CMakeLists.txt compile definitions; DEPENDENCY_POLICY.md |
 | Installers | None (`.pkg`/`.msi` absent); raw CI artifacts + `INSTALL.txt` | [Verified] PACKAGING.md "Not in scope" |
 | Update mechanism | None | [Verified] `src/` tree |
 | Crash reporting | None | [Verified] `src/` tree |
 | Version management | No git tags (RISK-003); version in `CMakeLists.txt` + About box; CI run number as build number | [Verified] RELEASE_PROCESS.md |
 | Release pipeline | Single `build.yml` (push/PR/dispatch; `contents: read`); artifacts per push; no tag-triggered release flow | [Verified] CI_CD.md |
-| QA gate | 31 DSP self-tests + A/B guard (130 checks) + pluginval strictness 10, deterministic + randomise ×3, blocking on 3 OSes; Level-5 manual audition | [Verified] TESTING_POLICY.md, CI_CD.md |
+| QA gate | 32 DSP self-tests + A/B guard (136 checks) + pluginval strictness 10, deterministic + randomise ×3, blocking on 3 OSes; Level-5 manual audition | [Verified] TESTING_POLICY.md, CI_CD.md |
 | AAX / PACE | **Out of scope** (no Avid/PACE/iLok) — PACE licensing is therefore *not* an available protection option | [Verified] COMPATIBILITY_POLICY.md |
 
 ## 2. Release risk assessment
@@ -41,12 +41,12 @@ IDs are program-local (`RH-R*`); if any is accepted as a standing repository ris
 | RH-R1 | No licensing → the product cannot be sold with any entitlement enforcement at all | Critical (blocking) |
 | RH-R2 | macOS not notarized → Gatekeeper blocks by default on modern macOS; the `xattr` workaround is a support wall and looks untrustworthy to paying customers | Critical (blocking) |
 | RH-R3 | No Windows Authenticode → SmartScreen "unknown publisher" interstitials; some AV heuristics flag unsigned audio plugins | High |
-| RH-R4 | Unstripped binaries with full symbol names → reverse engineering of the DSP and (future) license checks is close to effortless | High |
+| RH-R4 | ~~Unstripped binaries with full symbol names~~ **Mitigated by RH-PR-2 (ADR-0021)**: shipped binaries stripped, RTTI typeinfo names the only accepted residue | ~~High~~ Closed |
 | RH-R5 | No installers → manual copy instructions; wrong-folder installs; no upgrade path | High |
 | RH-R6 | No git tags / tag-triggered release pipeline → shipped bytes not reproducibly attributable to a source state (extends RISK-003 to commercial impact) | Medium |
 | RH-R7 | No update notification → shipped defects persist silently in the field | Medium |
-| RH-R8 | No crash reporting / retained debug symbols → field crashes are undiagnosable once binaries are stripped (the RH-R4 fix makes this worse without symbol retention) | Medium |
-| RH-R9 | `codesign ... \|\| true` — a signing failure ships an unsigned artifact silently | Medium (one-line fix, folded into RH-PR-3) |
+| RH-R8 | No crash reporting; ~~no retained debug symbols~~ **symbol retention shipped in RH-PR-2** (per-run `Anamorph-<OS>-debug` artifacts: split `.debug`/dSYM/PDB) — a full crash-reporter remains Phase-2 (§7) | Medium → Low (symbolication now possible) |
+| RH-R9 | ~~`codesign ... \|\| true`~~ **Failure-visibility half fixed in RH-PR-2** (a sign/staging failure now fails the job); Developer ID signing itself is still RH-PR-3 | ~~Medium~~ Low |
 
 ## 3. Guardrails — what this program must not touch
 
@@ -195,14 +195,14 @@ releases, (3) make sharing traceable (watermarks), (4) keep the durable enforcem
 
 | Measure | Detail | Status |
 |---|---|---|
-| Symbol visibility | `CXX_VISIBILITY_PRESET hidden` + `VISIBILITY_INLINES_HIDDEN` on all targets; verify what JUCE's plugin helpers already set and make it explicit | Not set explicitly today [Verified] |
-| Strip | Release artifacts stripped (`strip -x` mac / `strip` Linux / PDB separated on MSVC), **with dSYM/PDB/split-debuginfo generated first and retained as CI artifacts** for crash symbolication (pairs with RH-R8) | No strip today [Verified] |
-| LTO | Already linked via `juce::juce_recommended_lto_flags`; verify it actually applies to Release compiles of all three targets (the DSP core is an INTERFACE lib — flags come from each consuming target) | Partially present [Verified linked; effect to verify in RH-PR-2] |
+| Symbol visibility | JUCE's plugin helpers already set `CXX_VISIBILITY_PRESET hidden` + `VISIBILITY_INLINES_HIDDEN` on the shared-code and every format target (JUCEUtils.cmake; 16 dynamic exports measured) — recorded in ADR-0021 rather than restated in our CMakeLists | **Verified satisfied-by-JUCE (RH-PR-2)** |
+| Strip | Release artifacts stripped (`strip -x` mac / `strip --strip-unneeded` Linux / PDB separated on MSVC), **with dSYM/PDB/split-debuginfo generated first and retained as CI artifacts** for crash symbolication (pairs with RH-R8) | **Implemented (RH-PR-2, ADR-0021)** |
+| LTO | Linked via `juce::juce_recommended_lto_flags`; `-flto` measured on Release compiles AND the final format-target links (PUBLIC propagation from the shared-code target) | **Verified applied (RH-PR-2)** |
 | Optimization | Keep `-O3`/Release as-is — **no flag change that could alter DSP numerics without a twin-dump check** (`DSP_POLICY` Class rules apply to build flags too; `-ffast-math` stays off unless separately ADR'd) | Existing |
-| Assert/log hygiene | Audit that `NDEBUG` strips `jassert`s and that no debug logging or path-revealing strings ship in Release | To audit |
+| Assert/log hygiene | Audited: zero assertion-message and zero source-path strings in the Release binary; `NDEBUG` effective | **Audited clean (RH-PR-2)** |
 | String hygiene | License-check-adjacent literals (server URLs, state strings) built at runtime or lightly encoded so `strings` doesn't hand a crack roadmap over; **no blanket string encryption** (theater §5) | To implement with licensing |
-| Windows hardening | `/DYNAMICBASE` (ASLR), `/guard:cf` (CFG), `/GS` — mostly MSVC defaults; make explicit and verified | Defaults assumed [Unverified — confirm in RH-PR-2] |
-| Linux hardening | `-Wl,-z,relro,-z,now`, PIC (already required for a shared plugin), stack protector strong | To make explicit |
+| Windows hardening | `/guard:cf` (CFG) added (compile+link — not an MSVC default); `/DYNAMICBASE /NXCOMPAT` pinned explicitly; `/GS` remains the compiler default | **Implemented (RH-PR-2)** |
+| Linux hardening | `-Wl,-z,relro,-z,now,-z,noexecstack` (full RELRO measured via `BIND_NOW`), PIC (inherent), `-fstack-protector-strong` explicit | **Implemented (RH-PR-2)** |
 
 **Regression discipline:** RH-PR-2 must prove the flags are *behaviour-neutral*: full DSP
 self-test suite + a twin engine dump (byte-exactness methodology from the 0.8.9/0.8.10 rounds)
@@ -288,7 +288,7 @@ Numbering continues after ADR-0015 [Verified: ADR_INDEX.md].
 |---|---|---|---|
 | RH-PR-1 Plan + doc syncs | Yes (docs only) | `docs/architecture/RELEASE_HARDENING_PLAN.md`, coverage/map rows | None |
 | ADR-0016..0020 drafting | Yes (each its own file) | `docs/architecture/design-decisions/ADR-00NN-*.md`, ADR_INDEX (1 row each — append-only, low conflict) | Human decisions |
-| RH-PR-2 Build hardening | Yes vs docs/DSP; **serialize vs any other CMakeLists/build.yml PR** | `CMakeLists.txt`, `.github/workflows/build.yml` | PR #59 merged (CMakeLists version line churn) |
+| RH-PR-2 Build hardening | **Implemented — ADR-0021** (behaviour-neutral by twin dump + the full 136-check self-test suite) | `CMakeLists.txt`, `.github/workflows/build.yml` | — (landed) |
 | RH-PR-3 macOS sign+notarize | After RH-PR-2 (same build.yml region); parallel vs licensing | `.github/workflows/*`, `packaging/macos/*`, new scripts | Apple account; ADR-0019 |
 | RH-PR-4 License core lib | **Yes — fully parallel** (new files only) | new `src/licensing/*`, new `tests/license_tests.cpp`, CMake target append | ADR-0016/0017 accepted |
 | RH-PR-5 Windows signing (+installer) | Parallel vs 3/4 (disjoint files) after RH-PR-2 | new `packaging/windows/*`, release.yml section | Cert service; ADR-0019 |
@@ -325,8 +325,8 @@ Numbering continues after ADR-0015 [Verified: ADR_INDEX.md].
 1. **RH-PR-1** — this plan (docs only, immediately).
 2. **Human gate** — business decisions + cert/account procurement + ADR-0016/0017/0019 review.
    Nothing else is truly blocked meanwhile:
-3. **RH-PR-2** — build hardening + symbol retention (no external dependencies; behaviour-neutral
-   by twin dump; **the recommended first implementation task**).
+3. **RH-PR-2** — build hardening + symbol retention — **done (ADR-0021)**; behaviour-neutrality
+   proven by a byte-exact twin engine dump + the full self-test suite.
 4. **RH-PR-4** — license core library (new files only; headless unit tests; can start the moment
    ADR-0016/0017 are accepted, fully parallel with 3/5).
 5. **RH-PR-3 → 6** (macOS chain) and **RH-PR-5** (Windows) as credentials arrive.

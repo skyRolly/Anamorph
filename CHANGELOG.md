@@ -78,6 +78,27 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   temporarily re-pinning). `MultibandWidth`/`SoloMonitor` only; no signal-order, latency, or
   parameter change. Evidence: PR #60 (commit `3268cc2`, merge `0c50c47`). [Verified]
 
+### Security
+- **Build hardening (RH-PR-2, ADR-0021): shipped binaries are now stripped, with debug symbols
+  retained as separate CI artifacts.** Release binaries previously shipped their full static
+  symbol table (~15,000 entries — every internal DSP/processor method name readable), while no
+  debug info existed on any platform, so field crashes were unsymbolizable. Now every platform
+  generates full debug info (`-g`; `/Zi`+`/DEBUG` on Windows — Release PDBs exist for the first
+  time), captures it as `Anamorph-<OS>-debug` artifacts (split `.debug` / PDB / dSYM), and strips
+  the public binaries (Linux VST3 20% smaller; dynamic exports untouched — hosts still resolve
+  `GetPluginFactory`). The customer-facing artifacts are upload-gated on the strip/packaging
+  steps succeeding and self-validate (no symbol table, no `.debug`/PDB files) with all debug
+  material purged from the public staging copy before any check that can abort — a partial
+  packaging failure can no longer upload a symbol-bearing artifact. Additional pinned hardening:
+  full RELRO + `BIND_NOW` + non-exec stack and explicit `-fstack-protector-strong` on Linux,
+  dead-code section GC on all POSIX platforms, `/guard:cf` (Control Flow Guard) + explicit
+  `/DYNAMICBASE /NXCOMPAT` on Windows. CI artifact and macOS ad-hoc signing failures are no
+  longer swallowed (`|| true` removed; `if-no-files-found: error`), and Linux pluginval now
+  validates the exact stripped bytes users receive. Behaviour-neutral by construction and by
+  measurement: no optimization/numerics flag touched, full self-test suite green and a
+  deterministic ~10.7 s engine twin dump is byte-identical before/after (evidence: ADR-0021;
+  `worklogs/release-hardening/RH_PR2_INVESTIGATION.md`). Evidence: PR #63. [Verified]
+
 ## [0.8.10] — 2026-07-14
 ### Changed
 - **Alt/Option-click on an unsoloed Band Solo button now solos ONLY that band (exclusive

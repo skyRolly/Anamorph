@@ -64,7 +64,12 @@ build/Anamorph_artefacts/Release/Standalone/Anamorph[.app|.exe]
 build/.../AnamorphTests                                       # the DSP self-test app
 ```
 
-Evidence [Verified]: scripts/build.sh:19-30; .github/workflows/build.yml:52-53.
+Evidence [Verified]: scripts/build.sh:19-30; .github/workflows/build.yml (build/stage steps).
+
+**Symbols (ADR-0021):** local Release builds carry full debug info (`-g` / `/Zi` via the
+`AnamorphHardening` flags) and are **never stripped locally** — debugging a local build works
+out of the box. Stripping (with debug-info retention as separate `Anamorph-<OS>-debug`
+artifacts) happens only in CI packaging; see `docs/procedures/CI_CD.md` / `PACKAGING.md`.
 
 ## Network domains the build needs (restricted sandboxes)
 

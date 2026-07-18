@@ -51,6 +51,63 @@ else()
 endif()
 
 # ----------------------------------------------------------------------------
+#  Build hardening (RH-PR-2, ADR-0021) — behaviour-neutral binary hygiene.
+#
+#  Carried by an INTERFACE target so the flags propagate as usage requirements:
+#  linked PUBLIC into the shared-code target they reach every plugin format
+#  target's compiles AND its final link; AnamorphTests links them too, so the
+#  self-tests always validate the shipped flag configuration.
+#
+#  Deliberately absent (see ADR-0021):
+#    * -O3 / LTO / -ffast-math — numerics-affecting flags are frozen
+#      (DSP_POLICY; LTO already ships via juce::juce_recommended_lto_flags).
+#    * Symbol visibility — JUCE's plugin helpers already set
+#      CXX_VISIBILITY_PRESET hidden + VISIBILITY_INLINES_HIDDEN on the shared
+#      code and every format target (JUCEUtils.cmake); restating it here would
+#      only mask where the setting really comes from.
+#    * strip — stripping happens in CI packaging AFTER the debug info is
+#      captured (dSYM / PDB / .debug artifacts, see build.yml); local builds
+#      stay fully debuggable.
+# ----------------------------------------------------------------------------
+add_library(AnamorphHardening INTERFACE)
+if(MSVC)
+    # /Zi (Release): generate debug info so the linker can emit a PDB — CMake's
+    #   MSVC Release otherwise compiles without /Zi and links without /DEBUG,
+    #   i.e. no PDB exists at all and field crashes are unsymbolizable.
+    # /guard:cf: Control Flow Guard — the one hardening flag MSVC does not
+    #   enable by default. /DYNAMICBASE /NXCOMPAT are defaults, pinned
+    #   explicitly so a toolchain change cannot silently drop them.
+    # /DEBUG alone would flip the linker to /OPT:NOREF,NOICF; /OPT:REF,ICF
+    #   restores the exact non-/DEBUG Release link semantics, so the shipped
+    #   image matches the previous one and only the PDB is new.
+    target_compile_options(AnamorphHardening INTERFACE
+        /guard:cf $<$<CONFIG:Release>:/Zi>)
+    target_link_options(AnamorphHardening INTERFACE
+        /guard:cf /DYNAMICBASE /NXCOMPAT
+        $<$<CONFIG:Release>:/DEBUG /OPT:REF /OPT:ICF>)
+else()
+    # -g (Release): adds debug sections only — GCC/Clang codegen is unchanged;
+    #   CI extracts them (objcopy --only-keep-debug / dsymutil) and strips the
+    #   shipped binary. Behaviour-neutrality is proven by the twin engine dump
+    #   (worklogs/release-hardening/RH_PR2_INVESTIGATION.md).
+    # -ffunction-sections/-fdata-sections + --gc-sections / -dead_strip:
+    #   per-symbol sections so the linker drops unreferenced code/data.
+    # -fstack-protector-strong: made explicit (was distro-default-dependent).
+    target_compile_options(AnamorphHardening INTERFACE
+        -fstack-protector-strong
+        -ffunction-sections -fdata-sections
+        $<$<CONFIG:Release>:-g>)
+    if(APPLE)
+        target_link_options(AnamorphHardening INTERFACE
+            -Wl,-dead_strip)
+    else()
+        target_link_options(AnamorphHardening INTERFACE
+            -Wl,--gc-sections
+            -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack)
+    endif()
+endif()
+
+# ----------------------------------------------------------------------------
 #  Format-agnostic DSP core  (decoupled from the plugin format wrapper)
 #
 #  Implemented as an INTERFACE library so the sources are compiled into each
@@ -138,6 +195,7 @@ target_link_libraries(Anamorph
         juce::juce_dsp
         juce::juce_opengl
     PUBLIC
+        AnamorphHardening
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags
@@ -162,6 +220,8 @@ if(ANAMORPH_BUILD_TESTS)
             juce::juce_audio_basics
             juce::juce_data_structures   # ValueTree for the state-restoration clamp test
         PUBLIC
+            AnamorphHardening
             juce::juce_recommended_config_flags
             juce::juce_recommended_warning_flags)
 endif()
+

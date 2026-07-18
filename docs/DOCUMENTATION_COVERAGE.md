@@ -6,7 +6,29 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **v0.8.11 version preparation** (2026-07-18, PR
+Last updated: for **RH-PR-2 Build Hardening + review follow-up** (2026-07-18, release-hardening
+program, ADR-0021, PR #63 `release-hardening/build-hardening`, rebased onto the v0.8.11 bump —
+the CHANGELOG entry now lives under `[0.8.11]` **### Security**). Behaviour-neutral binary
+hygiene: an `AnamorphHardening` INTERFACE target pins `-fstack-protector-strong`, section GC,
+Release `-g`, full RELRO (`-z,relro,-z,now,-z,noexecstack`) on Linux, `-Wl,-dead_strip` on
+macOS, and `/guard:cf` + `/DYNAMICBASE /NXCOMPAT` + Release `/Zi`+`/DEBUG /OPT:REF,ICF` on
+Windows; CI runs a retain-then-strip pipeline (split `.debug`/dSYM/PDB captured as separate
+`Anamorph-<OS>-debug` artifacts, public binaries stripped — Linux VST3 −19.8%, `nm: no
+symbols`, dynamic exports untouched; Linux strips before pluginval so the gate validates
+shipped bytes; macOS order dsymutil → strip → codesign with `|| true` swallowing removed;
+`if-no-files-found: error` everywhere). **Review follow-up (artifact-safety):** customer
+uploads are now gated on their strip/staging steps succeeding (`steps.<id>.outcome` — the old
+`if: always()` could upload an unstripped Linux binary after a strip failure), the Windows
+staging purges ALL debug material from the public copy immediately after the copy and before
+any abortable validation (the old order could leak the in-bundle PDB), and both public staging
+steps end with an explicit no-symtab/no-`.debug`/no-PDB self-validation. Numerics-affecting
+flags untouched; proven by a byte-identical twin engine dump + a green full suite (136 checks
+post-Wave-3). Baseline finding recorded: symbol visibility was ALREADY hidden via JUCE's
+plugin helpers (plan §1 drift corrected). Synced: new ADR-0021 (+ ADR_INDEX row),
+RELEASE_HARDENING_PLAN (§1/§2/§6.1/§10/§12 statuses + the pending QA-row 32/136 sync noted by
+the version-bump entry below), CI_CD, PACKAGING, BUILD, REPOSITORY_MAP (worklogs/ entry merged
+with Wave 3's), CHANGELOG (`[0.8.11]` ### Security); investigation + validation + review
+evidence in `worklogs/release-hardening/RH_PR2_INVESTIGATION.md`. Prior: for the **v0.8.11 version preparation** (2026-07-18, PR
 `release/v0.8.11-version-bump` — version/release metadata only, no functional change).
 `CMakeLists.txt` project version 0.8.10 → **0.8.11** (single source: `ANAMORPH_VERSION_STRING`
 and the JUCE plugin version derive from it); README version line; HANDOVER status rows
@@ -246,7 +268,8 @@ HEAD `c605fbe` (JUCE 8.0.14).
 | Tier | Files | Status |
 |---|---|---|
 | docs root | SOURCE_OF_TRUTH, HANDOVER, REPOSITORY_MAP, DOCUMENTATION_COVERAGE, POSTMORTEMS, KNOWN_ISSUES, FUTURE_RISKS | Present |
-| architecture | 15 docs (incl. RELEASE_HARDENING_PLAN) + ADR_INDEX + 15 ADRs | Present |
+| architecture | 15 docs (incl. RELEASE_HARDENING_PLAN) + ADR_INDEX + 16 ADRs (0016–0020 reserved, see plan §8) | Present |
+| worklogs | release-hardening/ (RH program working evidence; finalized decisions live in ADRs) | Present |
 | procedures | 8 docs | Present |
 | policies | 15 docs | Present |
 | root | README, CHANGELOG, CLAUDE | Present |
