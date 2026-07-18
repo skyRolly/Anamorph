@@ -8,17 +8,20 @@ Directory and file map with per-component responsibilities. Architecture rationa
 ```
 Anamorph/
 ├── CMakeLists.txt          Build: JUCE FetchContent (pinned 8.0.14), AnamorphDSP INTERFACE lib,
-│                           plugin target (VST3 [+AU on macOS] [+Standalone]), tests app.
+│                           AnamorphHardening flags (ADR-0021), plugin target
+│                           (VST3 [+AU on macOS] [+Standalone]), tests app.
 ├── README.md               Project façade (features, status, quick start, docs nav).
 ├── CHANGELOG.md            Version history (Keep a Changelog; evidence-cited).
 ├── CLAUDE.md               AI/contributor entry point: mandatory policy pre-read + repo constraints.
 ├── src/                    Source (wrapper + GUI + DSP core).
 ├── tests/                  Headless DSP self-tests.
 ├── worklogs/               Session-local investigation records for future agents (NOT
-│                           architecture docs; e.g. performance/WAVE3_INVESTIGATION.md).
+│                           architecture docs; e.g. performance/WAVE3_INVESTIGATION.md,
+│                           release-hardening/RH_PR2_INVESTIGATION.md — finalized decisions
+│                           graduate to ADRs; worklogs are the raw evidence trail).
 ├── scripts/                setup / build / test / pluginval.
 ├── packaging/              macOS install notes.
-├── .github/workflows/      CI (build + validate on 3 OSes).
+├── .github/workflows/      CI (build + validate on 3 OSes; retain-then-strip symbol pipeline).
 └── docs/                   This documentation library.
 ```
 

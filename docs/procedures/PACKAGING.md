@@ -7,11 +7,16 @@ and `packaging/macos/INSTALL.txt`.
 
 | Platform | Artifact | Contents |
 |---|---|---|
-| Linux | `Anamorph-Linux` | `Anamorph.vst3`, `Anamorph` (Standalone) |
-| Windows | `Anamorph-Windows` | `Anamorph.vst3`, `Anamorph.exe` (Standalone) |
-| macOS | `Anamorph-macOS` | universal `Anamorph.vst3`, `Anamorph.component` (AU), `Anamorph.app`, `INSTALL.txt` |
+| Linux | `Anamorph-Linux` | stripped `Anamorph.vst3`, `Anamorph` (Standalone) |
+| Linux | `Anamorph-Linux-debug` | split debug info (`.debug` files, `.gnu_debuglink`-referenced) |
+| Windows | `Anamorph-Windows` | `Anamorph.vst3`, `Anamorph.exe` (Standalone; no PDBs) |
+| Windows | `Anamorph-Windows-debug` | linker PDBs for both shipped images |
+| macOS | `Anamorph-macOS` | universal stripped `Anamorph.vst3`, `Anamorph.component` (AU), `Anamorph.app`, `INSTALL.txt` |
+| macOS | `Anamorph-macOS-debug` | universal dSYM bundles for all three |
 
-Evidence [Verified]: build.yml:47-61,97-114,150-178.
+Public binaries are **stripped** (RH-PR-2, ADR-0021); the `-debug` artifacts carry the full
+symbol/debug information for crash symbolication and must never be redistributed with a release.
+Evidence [Verified]: build.yml (stage/upload steps per job).
 
 ## Plugin identifiers (for host validation)
 
@@ -30,8 +35,11 @@ Evidence [Verified]: packaging/macos/INSTALL.txt:38-40.
 ## macOS signing & quarantine
 
 CI **ad-hoc** codesigns the bundles (`codesign --force --deep --sign -`) — they are **NOT
-notarized**. Gatekeeper quarantines them after download, so the user must remove the quarantine
-flag. Evidence [Verified]: build.yml:159-162; INSTALL.txt:4-10.
+notarized**. Order inside the packaging step (ADR-0021): `dsymutil` (capture dSYMs) → `strip -x`
+→ codesign — signing is LAST because stripping afterwards would invalidate the seal. A codesign
+failure now fails the job (the former `|| true` swallowing was removed). Gatekeeper quarantines
+the bundles after download, so the user must remove the quarantine flag.
+Evidence [Verified]: build.yml (Package macOS plugins step); INSTALL.txt:4-10.
 
 Install (from `INSTALL.txt`):
 ```bash
@@ -46,11 +54,11 @@ Evidence [Verified]: INSTALL.txt:13-33,46-51.
 
 ## Universal binary verification (macOS)
 
-The macOS job verifies both slices are present:
+The macOS job verifies both slices are present (strict — a missing slice fails the job):
 ```bash
 lipo -archs Anamorph.vst3/Contents/MacOS/Anamorph        # expect: x86_64 arm64
 ```
-Evidence [Verified]: build.yml:168-170.
+Evidence [Verified]: build.yml (Package macOS plugins step).
 
 ## Standard plug-in install locations
 

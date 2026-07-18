@@ -23,6 +23,11 @@ permissions:
 # Both mode steps ALWAYS run: the randomise step is guarded with `if: !cancelled()`
 # so a deterministic failure never SKIPS randomise -- both modes always report
 # independently. The job still fails if either mode fails.
+#
+# Symbol handling (RH-PR-2, ADR-0021): every platform generates full debug
+# info, retains it as a separate *-debug artifact (split .debug / PDB / dSYM)
+# for crash symbolication, and ships STRIPPED public binaries. On Linux the
+# strip runs before pluginval so the release gate validates the shipped bytes.
 
 jobs:
   linux:
@@ -41,6 +46,28 @@ jobs:
       - name: Build (VST3 + Standalone + tests)
         run: cmake --build build --config Release
 
+      # RH-PR-2 (ADR-0021): capture split debug info, then strip the shipped
+      # binaries. Runs BEFORE pluginval so the release gate validates the
+      # exact stripped bytes users receive. --strip-unneeded keeps .dynsym
+      # (the VST3 entry points hosts resolve); the .debug files carry the full
+      # symbol/debug info for crash symbolication and ship as a SEPARATE
+      # artifact, never inside the public one.
+      - name: Extract debug symbols + strip shipped binaries
+        run: |
+          set -e
+          SO="build/Anamorph_artefacts/Release/VST3/Anamorph.vst3/Contents/x86_64-linux/Anamorph.so"
+          APP="build/Anamorph_artefacts/Release/Standalone/Anamorph"
+          DBG="dist/Anamorph-Linux-debug"
+          mkdir -p "$DBG"
+          objcopy --only-keep-debug "$SO"  "$DBG/Anamorph.vst3.so.debug"
+          objcopy --only-keep-debug "$APP" "$DBG/Anamorph.standalone.debug"
+          strip --strip-unneeded "$SO"
+          strip --strip-unneeded "$APP"
+          objcopy --add-gnu-debuglink="$DBG/Anamorph.vst3.so.debug"    "$SO"
+          objcopy --add-gnu-debuglink="$DBG/Anamorph.standalone.debug" "$APP"
+          # The stripped plugin must still export its VST3 entry point.
+          nm -D "$SO" | grep -q GetPluginFactory
+
       - name: DSP self-tests
         run: ./scripts/run-tests.sh
 
@@ -57,10 +84,11 @@ jobs:
       - name: Stage Linux artifacts (VST3 + Standalone)
         if: always()
         run: |
+          set -e
           DIST="dist/Anamorph-Linux"
           mkdir -p "$DIST"
           cp -R build/Anamorph_artefacts/Release/VST3/Anamorph.vst3 "$DIST/"
-          cp    build/Anamorph_artefacts/Release/Standalone/Anamorph "$DIST/Anamorph" || true
+          cp    build/Anamorph_artefacts/Release/Standalone/Anamorph "$DIST/Anamorph"
 
       - name: Upload Linux artifacts
         if: always()
@@ -68,7 +96,15 @@ jobs:
         with:
           name: Anamorph-Linux
           path: dist/Anamorph-Linux
-          if-no-files-found: warn
+          if-no-files-found: error
+
+      - name: Upload Linux debug symbols (crash symbolication)
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: Anamorph-Linux-debug
+          path: dist/Anamorph-Linux-debug
+          if-no-files-found: error
 
   windows:
     runs-on: windows-latest
@@ -101,16 +137,36 @@ jobs:
         shell: pwsh
         run: ./scripts/run-pluginval.ps1 -Strictness 10 -Mode randomise
 
-      - name: Stage Windows artifacts (VST3 + Standalone)
+      # RH-PR-2 (ADR-0021): Release now links with /DEBUG (+/OPT:REF,ICF), so
+      # linker PDBs exist for the shipped images. They are retained as a
+      # SEPARATE debug artifact for crash symbolication and are actively
+      # removed from the public artifact -- the VST3 linker drops its PDB
+      # inside the .vst3 bundle directory, which the recursive copy would
+      # otherwise publish (full symbol names = a reverse-engineering map).
+      - name: Stage Windows artifacts (VST3 + Standalone; PDBs separated)
         if: always()
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           $dist = 'dist/Anamorph-Windows'
+          $dbg  = 'dist/Anamorph-Windows-debug'
           New-Item -ItemType Directory -Force -Path $dist | Out-Null
+          New-Item -ItemType Directory -Force -Path $dbg  | Out-Null
           $vst3 = Get-ChildItem -Recurse -Path build -Filter Anamorph.vst3 -Directory | Select-Object -First 1
-          if ($vst3) { Copy-Item -Recurse -Force $vst3.FullName $dist }
+          if (-not $vst3) { Write-Error 'Anamorph.vst3 bundle not found' }
+          Copy-Item -Recurse -Force $vst3.FullName $dist
           $exe = Get-ChildItem -Recurse -Path build -Filter Anamorph.exe | Where-Object { $_.FullName -match 'Standalone' } | Select-Object -First 1
-          if ($exe) { Copy-Item -Force $exe.FullName $dist }
+          if (-not $exe) { Write-Error 'Standalone Anamorph.exe not found' }
+          Copy-Item -Force $exe.FullName $dist
+          # Retain the two shipped images' linker PDBs under distinct names.
+          foreach ($kind in @('VST3', 'Standalone')) {
+            $pdb = Get-ChildItem -Recurse -Path build -Filter Anamorph.pdb |
+                   Where-Object { $_.FullName -match $kind } | Select-Object -First 1
+            if (-not $pdb) { Write-Error "linker PDB for $kind not found" }
+            Copy-Item -Force $pdb.FullName (Join-Path $dbg ("Anamorph." + $kind.ToLower() + ".pdb"))
+          }
+          # The public artifact must never contain symbols.
+          Get-ChildItem -Recurse -Path $dist -Filter *.pdb | Remove-Item -Force
 
       - name: Upload Windows artifacts
         if: always()
@@ -118,7 +174,15 @@ jobs:
         with:
           name: Anamorph-Windows
           path: dist/Anamorph-Windows
-          if-no-files-found: warn
+          if-no-files-found: error
+
+      - name: Upload Windows debug symbols (crash symbolication)
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: Anamorph-Windows-debug
+          path: dist/Anamorph-Windows-debug
+          if-no-files-found: error
 
   macos:
     runs-on: macos-14   # Apple Silicon runner; we build a universal binary
@@ -154,27 +218,42 @@ jobs:
         if: ${{ !cancelled() }}
         run: ./scripts/run-pluginval.sh 10 randomise
 
+      # RH-PR-2 (ADR-0021): order matters -- 1) dsymutil captures a universal
+      # dSYM per bundle (the only crash-symbolication source once stripped),
+      # 2) strip -x removes local symbols, 3) codesign LAST (stripping after
+      # signing would invalidate the seal). Signing and slice verification are
+      # no longer '|| true': a failure must fail the job, not silently ship a
+      # broken artifact (RH-R9). Proper Developer ID signing + notarization is
+      # RH-PR-3 scope.
       - name: Package macOS plugins (VST3 + AU + Standalone)
         if: always()
         run: |
           set -e
           DIST="dist/Anamorph-macOS"
-          mkdir -p "$DIST"
+          DBG="dist/Anamorph-macOS-debug"
+          mkdir -p "$DIST" "$DBG"
           VST3="build/Anamorph_artefacts/Release/VST3/Anamorph.vst3"
           AU="build/Anamorph_artefacts/Release/AU/Anamorph.component"
           APP="build/Anamorph_artefacts/Release/Standalone/Anamorph.app"
+          for B in "$VST3" "$AU" "$APP"; do
+            BIN="$B/Contents/MacOS/Anamorph"
+            dsymutil "$BIN" -o "$DBG/$(basename "$B").dSYM"
+            strip -x "$BIN"
+          done
           # Ad-hoc codesign so macOS will load the bundles after quarantine removal.
-          codesign --force --deep --sign - "$VST3" || true
-          codesign --force --deep --sign - "$AU"   || true
-          codesign --force --deep --sign - "$APP"  || true
+          codesign --force --deep --sign - "$VST3"
+          codesign --force --deep --sign - "$AU"
+          codesign --force --deep --sign - "$APP"
           cp -R "$VST3" "$DIST/"
           cp -R "$AU"   "$DIST/"
           cp -R "$APP"  "$DIST/"
           cp packaging/macos/INSTALL.txt "$DIST/INSTALL.txt"
           # Verify both slices are present in the universal binary.
-          echo "== VST3 arches =="; lipo -archs "$DIST/Anamorph.vst3/Contents/MacOS/Anamorph" || true
-          echo "== AU arches ==";   lipo -archs "$DIST/Anamorph.component/Contents/MacOS/Anamorph" || true
-          echo "== App arches ==";  lipo -archs "$DIST/Anamorph.app/Contents/MacOS/Anamorph" || true
+          echo "== VST3 arches =="; lipo -archs "$DIST/Anamorph.vst3/Contents/MacOS/Anamorph"
+          echo "== AU arches ==";   lipo -archs "$DIST/Anamorph.component/Contents/MacOS/Anamorph"
+          echo "== App arches ==";  lipo -archs "$DIST/Anamorph.app/Contents/MacOS/Anamorph"
+          # The stripped, signed plugin must still expose its VST3 entry point.
+          nm -gU "$DIST/Anamorph.vst3/Contents/MacOS/Anamorph" | grep -q GetPluginFactory
 
       - name: Upload macOS plugins (VST3 + AU + Standalone)
         if: always()
@@ -182,4 +261,12 @@ jobs:
         with:
           name: Anamorph-macOS
           path: dist/Anamorph-macOS
+          if-no-files-found: error
+
+      - name: Upload macOS debug symbols (dSYMs, crash symbolication)
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: Anamorph-macOS-debug
+          path: dist/Anamorph-macOS-debug
           if-no-files-found: error
