@@ -344,3 +344,83 @@ ambiguous double-PDB both abort with the public dist already purged (zero PDBs).
 CI-only checks: first real execution of the Windows pwsh staging and the macOS
 `dsymutil → strip -x → codesign` sequence on this PR's run — wrong assumptions fail loudly and
 cannot upload.
+
+## 8. CI follow-up — Windows PDB discovery + macOS dSYM validation (first real CI run)
+
+§7 item 1 shipped untested on real Windows CI (§7's own validation note flagged this as the one
+remaining CI-only check). The first actual run proved the "own output directory" assumption wrong.
+
+### Windows — root cause
+
+CI failure:
+
+```
+expected exactly one linker PDB next to:
+build/Anamorph_artefacts/Release/VST3/Anamorph.vst3/Contents/x86_64-win/Anamorph.vst3
+found 0
+```
+
+`AnamorphHardening` (`CMakeLists.txt`) adds `/DEBUG /OPT:REF /OPT:ICF` for MSVC Release but never
+sets `PDB_OUTPUT_DIRECTORY`/`PDB_NAME` on any target. JUCE's CMake support retargets
+`RUNTIME_OUTPUT_DIRECTORY`/`LIBRARY_OUTPUT_DIRECTORY` for the VST3 format target so the shipped
+binary lands directly at its final bundle path (`.../Contents/x86_64-win/Anamorph.vst3`) — but
+that retarget does not carry the PDB with it. With `PDB_OUTPUT_DIRECTORY` unset, the Visual Studio
+generator falls back to MSBuild's own default (`$(OutDir)$(TargetName).pdb`), where `$(TargetName)`
+is the *CMake target's* internal name (e.g. `Anamorph_VST3`), not the `OUTPUT_NAME`/`SUFFIX`-renamed
+`Anamorph.vst3` used for the shipped image. §6's investigation-phase note ("the linker drops
+`Anamorph.vst3.pdb` next to the binary inside the bundle") was an unverified CMake-semantics
+inference, explicitly marked "PDB behaviour to confirm on CI" — this run is that confirmation, and
+it was wrong on both counts named in this task: neither the same directory nor the same base name.
+
+### Windows — fix
+
+Same-directory / fixed-name guessing is replaced with reading the authoritative source: the
+CodeView (RSDS) debug-directory record MSVC embeds in the linked PE image itself, which carries the
+PDB's exact link-time name and path (`Get-EmbeddedPdbPath` in `build.yml`, a ~55-line PE/COFF
+debug-directory parser — DOS/PE header → optional-header data directory #6 → section-table RVA
+mapping → `IMAGE_DEBUG_TYPE_CODEVIEW`/`RSDS` record → NUL-terminated path string). The recorded path
+is tried directly first (valid within the same job/workspace that produced it); if that doesn't
+resolve, a scoped search under `build/` for that *exact* recorded filename is used, still requiring
+precisely one match. This is anchored to linker-recorded ground truth rather than a guessed pattern,
+so it does not reintroduce the tree-wide substring matching §7 removed. A missing CodeView record
+(no `/DEBUG`) or an unresolvable/ambiguous PDB both fail the job clearly (`Write-Error`, consistent
+with the project's existing fail-closed policy for developer debug artifacts — `if-no-files-found:
+error`, upload gated on the staging step's success). Leak-safe phase order from §6/§7
+(locate → copy public → purge → retain debug → validate) is unchanged; only the PDB-locate logic
+inside the retain phase changed.
+
+### macOS — reviewer-identified risk
+
+Reviewer flagged that `dsymutil` under LTO can produce an empty, incomplete, or warning-only
+invalid dSYM, or fail on missing object-file references — and, critically, that `dsymutil`
+frequently still exits `0` when this happens, only warning on stderr. The pre-fix script
+(`dsymutil "$BIN" -o "$DBG/....dSYM"; strip -x "$BIN"`) relied solely on `set -e`'s exit-code check,
+which this failure mode does not trip.
+
+### macOS — fix
+
+Before stripping, each bundle's `dsymutil` invocation is now validated three ways: (1) its stdout
+and stderr are captured and any `warning` line is treated as fatal (the same heuristic used by
+common Crashlytics/Sentry-style symbol-upload pipelines for exactly this dsymutil behaviour); (2)
+the produced dSYM's DWARF payload (`Contents/Resources/DWARF/Anamorph`) must exist and be non-empty;
+(3) `dwarfdump --uuid` on that DWARF file must report the identical UUID set as `dwarfdump --uuid`
+on the still-unstripped binary, so a dSYM that is present but covers the wrong/incomplete slices is
+still caught. Any failure aborts the job before `strip -x` runs, so a broken debug artifact is never
+uploaded silently. LTO, codesign-last ordering, and every other RH-PR-2 packaging decision (§6, §7)
+are unchanged.
+
+### Validation (this follow-up; both platforms are CI-only, no Windows/macOS runner available here)
+
+- `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/build.yml'))"` — parses clean.
+- macOS packaging step body extracted verbatim and checked with `bash -n` — clean.
+- Windows staging step body extracted verbatim; brace/paren balance verified with a comment-and-
+  string-aware PowerShell tokenizer (naive counting is skewed by parentheses inside comments/error-
+  message text) — balanced. No `pwsh` is available in this sandbox to execute it; first live
+  execution is this PR's Windows CI run, same caveat §7 already carried forward for the code this
+  replaces.
+- Full local DSP self-test suite re-run: **136 checks, 0 failures** (no DSP/runtime/parameter/
+  serialization code touched by this follow-up — confirmed by `git diff --stat` showing only
+  `.github/workflows/build.yml` plus this worklog entry).
+- Scope check: `git diff --stat` against the pre-follow-up RH-PR-2 tip shows exactly
+  `.github/workflows/build.yml` (workflow logic) and this file (documentation) — no CMake, ADR, or
+  `src/`/`tests/` changes.

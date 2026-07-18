@@ -177,9 +177,7 @@ jobs:
       # RH-PR-2 (ADR-0021): Release now links with /DEBUG (+/OPT:REF,ICF), so
       # linker PDBs exist for the shipped images. They are retained as a
       # SEPARATE debug artifact for crash symbolication and are actively
-      # removed from the public artifact -- the VST3 linker drops its PDB
-      # inside the .vst3 bundle directory, which the recursive copy would
-      # otherwise publish (full symbol names = a reverse-engineering map).
+      # removed from the public artifact.
       #
       # Customer-artifact safety (RH-PR-2 review): the order below is
       # deliberate -- locate everything BEFORE copying anything, purge every
@@ -188,6 +186,25 @@ jobs:
       # at any point can therefore never leave a symbol-bearing public
       # artifact behind, and the upload below is additionally gated on this
       # step succeeding.
+      #
+      # RH-PR-2 follow-up (CI reliability): the original PDB retention
+      # assumed the linker drops each image's PDB in the SAME directory as
+      # the shipped binary, named after it. Neither holds for this
+      # JUCE/CMake/MSVC layout -- JUCE retargets RUNTIME/LIBRARY_OUTPUT_DIRECTORY
+      # to place the shipped .vst3/.exe at their final bundle location, but
+      # PDB_OUTPUT_DIRECTORY is never set, so the linker's /PDB: default falls
+      # back to the target's own CMake binary directory under $(TargetName),
+      # e.g. Anamorph_VST3.pdb -- a different name in a different directory,
+      # which is what CI observed as "found 0". Rather than guess a new fixed
+      # path (fragile the same way), the PDB is now identified from the
+      # authoritative source: the CodeView (RSDS) debug-directory record MSVC
+      # embeds in the linked image itself, which carries the PDB's exact
+      # link-time name and path. That recorded path is tried directly first
+      # (valid within the same job/workspace that built it); if it does not
+      # resolve, a scoped search under build/ for that EXACT recorded
+      # filename is used, still requiring precisely one match -- this is
+      # anchored to linker-recorded ground truth, not a guessed pattern, so
+      # it is not the "tree-wide substring matching" this replaces.
       - name: Stage Windows artifacts (VST3 + Standalone; PDBs separated)
         id: stage_windows
         if: ${{ !cancelled() }}
@@ -198,6 +215,68 @@ jobs:
           $dbg  = 'dist/Anamorph-Windows-debug'
           New-Item -ItemType Directory -Force -Path $dist | Out-Null
           New-Item -ItemType Directory -Force -Path $dbg  | Out-Null
+
+          # Read the CodeView (RSDS) debug-directory record MSVC embeds in a
+          # /DEBUG-linked PE image, returning the PDB path exactly as the
+          # linker recorded it (or $null if the image carries no debug
+          # directory at all). This is the ground truth for where the PDB
+          # actually is -- not an assumption about co-location or naming.
+          function Get-EmbeddedPdbPath {
+            param([Parameter(Mandatory)][string]$ImagePath)
+            $bytes = [System.IO.File]::ReadAllBytes($ImagePath)
+            if ($bytes.Length -lt 0x40 -or $bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) {
+              Write-Error "$ImagePath is not a valid PE image (missing MZ signature)"
+            }
+            $peOffset = [BitConverter]::ToInt32($bytes, 0x3C)
+            if ($bytes[$peOffset] -ne 0x50 -or $bytes[$peOffset + 1] -ne 0x45) {
+              Write-Error "$ImagePath is not a valid PE image (missing PE signature)"
+            }
+            $coffOffset = $peOffset + 4
+            $numberOfSections = [BitConverter]::ToUInt16($bytes, $coffOffset + 2)
+            $sizeOfOptionalHeader = [BitConverter]::ToUInt16($bytes, $coffOffset + 16)
+            $optHeaderOffset = $coffOffset + 20
+            $magic = [BitConverter]::ToUInt16($bytes, $optHeaderOffset)
+            $dataDirOffset = $optHeaderOffset + $(if ($magic -eq 0x20B) { 112 } else { 96 })
+            $debugEntryOffset = $dataDirOffset + (6 * 8)   # data-directory index 6 = Debug
+            $debugRva  = [BitConverter]::ToUInt32($bytes, $debugEntryOffset)
+            $debugSize = [BitConverter]::ToUInt32($bytes, $debugEntryOffset + 4)
+            if ($debugRva -eq 0 -or $debugSize -eq 0) { return $null }
+            # Map the debug directory's RVA to a file offset via the section table.
+            $sectionTableOffset = $optHeaderOffset + $sizeOfOptionalHeader
+            $debugFileOffset = -1
+            for ($i = 0; $i -lt $numberOfSections; $i++) {
+              $s = $sectionTableOffset + ($i * 40)
+              $vsize = [BitConverter]::ToUInt32($bytes, $s + 8)
+              $vaddr = [BitConverter]::ToUInt32($bytes, $s + 12)
+              $rawPtr = [BitConverter]::ToUInt32($bytes, $s + 20)
+              if ($debugRva -ge $vaddr -and $debugRva -lt ($vaddr + [Math]::Max($vsize, 1))) {
+                $debugFileOffset = $rawPtr + ($debugRva - $vaddr); break
+              }
+            }
+            if ($debugFileOffset -lt 0) {
+              Write-Error "$ImagePath : could not map the debug directory RVA to a file offset"
+            }
+            # Walk the IMAGE_DEBUG_DIRECTORY array (28 bytes/entry) for an
+            # IMAGE_DEBUG_TYPE_CODEVIEW (2) entry carrying an RSDS record.
+            $entryCount = [Math]::Floor($debugSize / 28)
+            for ($i = 0; $i -lt $entryCount; $i++) {
+              $e = $debugFileOffset + ($i * 28)
+              $type = [BitConverter]::ToUInt32($bytes, $e + 12)
+              $pointerToRaw = [BitConverter]::ToUInt32($bytes, $e + 24)
+              if ($type -eq 2 -and $pointerToRaw -gt 0) {
+                $sig = [BitConverter]::ToUInt32($bytes, $pointerToRaw)
+                if ($sig -eq 0x53445352) {   # 'RSDS'
+                  # Signature(4) + GUID(16) + Age(4), then a NUL-terminated path.
+                  $strStart = $pointerToRaw + 24
+                  $strEnd = $strStart
+                  while ($strEnd -lt $bytes.Length -and $bytes[$strEnd] -ne 0) { $strEnd++ }
+                  return [System.Text.Encoding]::ASCII.GetString($bytes, $strStart, $strEnd - $strStart)
+                }
+              }
+            }
+            return $null
+          }
+
           # 1) Locate everything first -- abort here copies NOTHING public.
           #    Each locate demands EXACTLY ONE match: zero is a build-layout
           #    failure, more than one is ambiguity we refuse to guess about.
@@ -219,17 +298,29 @@ jobs:
             Where-Object { $_.Extension -in '.pdb', '.ilk', '.exp', '.debug' } |
             Remove-Item -Force
           # 4) Retain each shipped image's linker PDB (abort here is now
-          #    leak-safe). The linker writes the PDB into the image's own
-          #    output directory, so the retention is ANCHORED to the images
-          #    located in step 1 -- no filename guessing, no tree-wide
-          #    substring matching -- and demands exactly one PDB per image.
+          #    leak-safe), identified via its embedded CodeView record rather
+          #    than an assumed name/location (see follow-up note above).
           foreach ($img in @(@{ tag = 'vst3'; bin = $vst3Bin }, @{ tag = 'standalone'; bin = $exe })) {
-            $pdbs = @(Get-ChildItem -Path $img.bin.Directory.FullName -Filter *.pdb -File)
-            if ($pdbs.Count -ne 1) {
-              Write-Error ("expected exactly one linker PDB next to " + $img.bin.FullName +
-                           ", found " + $pdbs.Count + " -- debug artifact would be wrong/incomplete")
+            $recordedPdbPath = Get-EmbeddedPdbPath -ImagePath $img.bin.FullName
+            if (-not $recordedPdbPath) {
+              Write-Error ("no CodeView debug-directory entry embedded in " + $img.bin.FullName +
+                           " -- expected one because Release links with /DEBUG (CMakeLists.txt AnamorphHardening); " +
+                           "debug artifact would be wrong/incomplete")
             }
-            Copy-Item -Force $pdbs[0].FullName (Join-Path $dbg ("Anamorph." + $img.tag + ".pdb"))
+            $pdbName = Split-Path -Leaf $recordedPdbPath
+            $pdbFile = $null
+            if (Test-Path -LiteralPath $recordedPdbPath -PathType Leaf) {
+              $pdbFile = Get-Item -LiteralPath $recordedPdbPath
+            } else {
+              $candidates = @(Get-ChildItem -Recurse -Path build -Filter $pdbName -File)
+              if ($candidates.Count -ne 1) {
+                Write-Error ("PDB '" + $pdbName + "' (recorded in " + $img.bin.FullName + "'s debug info at link " +
+                             "time) not found uniquely under build/ -- found " + $candidates.Count +
+                             " -- debug artifact would be wrong/incomplete")
+              }
+              $pdbFile = $candidates[0]
+            }
+            Copy-Item -Force $pdbFile.FullName (Join-Path $dbg ("Anamorph." + $img.tag + ".pdb"))
           }
           # 5) Validate: the customer artifact must contain no debug files.
           $leak = Get-ChildItem -Recurse -Path $dist -File |
@@ -299,6 +390,18 @@ jobs:
       # no longer '|| true': a failure must fail the job, not silently ship a
       # broken artifact (RH-R9). Proper Developer ID signing + notarization is
       # RH-PR-3 scope.
+      #
+      # RH-PR-2 follow-up (CI reliability): dsymutil under LTO can silently
+      # emit an empty/incomplete dSYM -- and frequently still exits 0 while
+      # doing it, only warning on stderr (e.g. "could not find object file"
+      # for an LTO-merged compilation unit). Exit-code checking alone (the
+      # previous behaviour under `set -e`) does not catch this, so the dSYM
+      # is now validated before the binary is stripped: dsymutil's own
+      # stderr is captured and treated as fatal on any warning, and the
+      # produced dSYM's DWARF payload is confirmed present, non-empty, and
+      # UUID-matched against every slice of the (still-unstripped) binary --
+      # an empty/degenerate/mismatched dSYM fails the job instead of
+      # uploading silently-broken debug info.
       - name: Package macOS plugins (VST3 + AU + Standalone)
         id: package
         if: ${{ !cancelled() }}
@@ -312,7 +415,35 @@ jobs:
           APP="build/Anamorph_artefacts/Release/Standalone/Anamorph.app"
           for B in "$VST3" "$AU" "$APP"; do
             BIN="$B/Contents/MacOS/Anamorph"
-            dsymutil "$BIN" -o "$DBG/$(basename "$B").dSYM"
+            DSYM="$DBG/$(basename "$B").dSYM"
+            # Slice UUIDs from the still-unstripped binary -- the reference
+            # the produced dSYM must cover exactly.
+            BIN_UUIDS=$(dwarfdump --uuid "$BIN" | awk '{print $2}' | sort)
+            if [ -z "$BIN_UUIDS" ]; then
+              echo "::error::$BIN has no Mach-O UUID -- cannot verify dSYM coverage"; exit 1
+            fi
+            DSYMUTIL_LOG=$(mktemp)
+            if ! dsymutil "$BIN" -o "$DSYM" >"$DSYMUTIL_LOG" 2>&1; then
+              cat "$DSYMUTIL_LOG"; rm -f "$DSYMUTIL_LOG"
+              echo "::error::dsymutil failed for $BIN"; exit 1
+            fi
+            if grep -qi 'warning' "$DSYMUTIL_LOG"; then
+              cat "$DSYMUTIL_LOG"; rm -f "$DSYMUTIL_LOG"
+              echo "::error::dsymutil emitted warnings for $BIN -- treating as a degenerate dSYM (RH-PR-2 LTO robustness gate)"
+              exit 1
+            fi
+            rm -f "$DSYMUTIL_LOG"
+            DWARF_FILE="$DSYM/Contents/Resources/DWARF/$(basename "$BIN")"
+            if [ ! -s "$DWARF_FILE" ]; then
+              echo "::error::$DSYM has no (or an empty) DWARF payload at $DWARF_FILE"; exit 1
+            fi
+            DSYM_UUIDS=$(dwarfdump --uuid "$DWARF_FILE" | awk '{print $2}' | sort)
+            if [ "$DSYM_UUIDS" != "$BIN_UUIDS" ]; then
+              echo "::error::$DSYM UUIDs do not match $BIN -- incomplete/wrong dSYM"
+              echo "  binary: $BIN_UUIDS"
+              echo "  dSYM:   $DSYM_UUIDS"
+              exit 1
+            fi
             strip -x "$BIN"
           done
           # Ad-hoc codesign so macOS will load the bundles after quarantine removal.
