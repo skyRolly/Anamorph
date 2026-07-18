@@ -28,10 +28,12 @@ permissions:
 # info, retains it as a separate *-debug artifact (split .debug / PDB / dSYM)
 # for crash symbolication, and ships STRIPPED public binaries. On Linux the
 # strip runs before pluginval so the release gate validates the shipped bytes.
-# Customer uploads are gated on their strip/packaging steps SUCCEEDING (never
-# `if: always()`) and the staging steps self-validate (no symbol table, no
-# debug files in the public copy), so a partial packaging failure can never
-# upload a symbol-bearing customer artifact.
+# Customer uploads are gated on the DSP self-tests AND their strip/packaging
+# steps SUCCEEDING (never `if: always()`), and the staging steps self-validate
+# (no symbol table, no debug files in the public copy) -- neither a partial
+# packaging failure nor a failed behavioural gate can ship a customer
+# artifact. Developer *-debug artifacts and (on pluginval-only failures) beta
+# artifacts remain available.
 
 jobs:
   linux:
@@ -80,6 +82,7 @@ jobs:
           nm -D "$SO" | grep -q GetPluginFactory
 
       - name: DSP self-tests
+        id: tests
         run: ./scripts/run-tests.sh
 
       - name: pluginval (strictness 10, deterministic x3 -- release gate)
@@ -117,8 +120,11 @@ jobs:
             echo "::error::customer artifact contains debug files"; exit 1
           fi
 
+      # A failed DSP self-test blocks the CUSTOMER upload (fail-closed: only a
+      # build that passed its behavioural gate may ship), while a
+      # pluginval-only failure still yields beta artifacts as before.
       - name: Upload Linux artifacts
-        if: ${{ !cancelled() && steps.stage.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.stage.outcome == 'success' }}
         uses: actions/upload-artifact@v5
         with:
           name: Anamorph-Linux
@@ -149,6 +155,7 @@ jobs:
         run: cmake --build build --config Release
 
       - name: DSP self-tests
+        id: tests
         shell: pwsh
         run: |
           $exe = Get-ChildItem -Recurse -Path build -Filter AnamorphTests.exe | Select-Object -First 1
@@ -192,10 +199,17 @@ jobs:
           New-Item -ItemType Directory -Force -Path $dist | Out-Null
           New-Item -ItemType Directory -Force -Path $dbg  | Out-Null
           # 1) Locate everything first -- abort here copies NOTHING public.
-          $vst3 = Get-ChildItem -Recurse -Path build -Filter Anamorph.vst3 -Directory | Select-Object -First 1
-          if (-not $vst3) { Write-Error 'Anamorph.vst3 bundle not found' }
-          $exe = Get-ChildItem -Recurse -Path build -Filter Anamorph.exe | Where-Object { $_.FullName -match 'Standalone' } | Select-Object -First 1
-          if (-not $exe) { Write-Error 'Standalone Anamorph.exe not found' }
+          #    Each locate demands EXACTLY ONE match: zero is a build-layout
+          #    failure, more than one is ambiguity we refuse to guess about.
+          $vst3 = @(Get-ChildItem -Recurse -Path build -Filter Anamorph.vst3 -Directory)
+          if ($vst3.Count -ne 1) { Write-Error "expected exactly one Anamorph.vst3 bundle, found $($vst3.Count)" }
+          $vst3 = $vst3[0]
+          $vst3Bin = @(Get-ChildItem -Recurse -Path $vst3.FullName -File | Where-Object { $_.Extension -eq '.vst3' })
+          if ($vst3Bin.Count -ne 1) { Write-Error "expected exactly one .vst3 image inside $($vst3.FullName), found $($vst3Bin.Count)" }
+          $vst3Bin = $vst3Bin[0]
+          $exe = @(Get-ChildItem -Recurse -Path build -Filter Anamorph.exe | Where-Object { $_.Directory.Name -eq 'Standalone' })
+          if ($exe.Count -ne 1) { Write-Error "expected exactly one Standalone Anamorph.exe, found $($exe.Count)" }
+          $exe = $exe[0]
           # 2) Copy the public artifact.
           Copy-Item -Recurse -Force $vst3.FullName $dist
           Copy-Item -Force $exe.FullName $dist
@@ -204,21 +218,28 @@ jobs:
           Get-ChildItem -Recurse -Path $dist -File |
             Where-Object { $_.Extension -in '.pdb', '.ilk', '.exp', '.debug' } |
             Remove-Item -Force
-          # 4) Retain the two shipped images' linker PDBs under distinct
-          #    names (abort here is now leak-safe).
-          foreach ($kind in @('VST3', 'Standalone')) {
-            $pdb = Get-ChildItem -Recurse -Path build -Filter Anamorph.pdb |
-                   Where-Object { $_.FullName -match $kind } | Select-Object -First 1
-            if (-not $pdb) { Write-Error "linker PDB for $kind not found" }
-            Copy-Item -Force $pdb.FullName (Join-Path $dbg ("Anamorph." + $kind.ToLower() + ".pdb"))
+          # 4) Retain each shipped image's linker PDB (abort here is now
+          #    leak-safe). The linker writes the PDB into the image's own
+          #    output directory, so the retention is ANCHORED to the images
+          #    located in step 1 -- no filename guessing, no tree-wide
+          #    substring matching -- and demands exactly one PDB per image.
+          foreach ($img in @(@{ tag = 'vst3'; bin = $vst3Bin }, @{ tag = 'standalone'; bin = $exe })) {
+            $pdbs = @(Get-ChildItem -Path $img.bin.Directory.FullName -Filter *.pdb -File)
+            if ($pdbs.Count -ne 1) {
+              Write-Error ("expected exactly one linker PDB next to " + $img.bin.FullName +
+                           ", found " + $pdbs.Count + " -- debug artifact would be wrong/incomplete")
+            }
+            Copy-Item -Force $pdbs[0].FullName (Join-Path $dbg ("Anamorph." + $img.tag + ".pdb"))
           }
           # 5) Validate: the customer artifact must contain no debug files.
           $leak = Get-ChildItem -Recurse -Path $dist -File |
                   Where-Object { $_.Extension -in '.pdb', '.ilk', '.exp', '.debug' }
           if ($leak) { Write-Error ("customer artifact contains debug files: " + ($leak.FullName -join ', ')) }
 
+      # A failed DSP self-test blocks the CUSTOMER upload (fail-closed), while
+      # a pluginval-only failure still yields beta artifacts as before.
       - name: Upload Windows artifacts
-        if: ${{ !cancelled() && steps.stage_windows.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.stage_windows.outcome == 'success' }}
         uses: actions/upload-artifact@v5
         with:
           name: Anamorph-Windows
@@ -256,6 +277,7 @@ jobs:
         run: cmake --build build --config Release
 
       - name: DSP self-tests
+        id: tests
         run: |
           chmod +x scripts/*.sh
           ./scripts/run-tests.sh
@@ -313,8 +335,10 @@ jobs:
       # verified) artifact — same gating pattern as Linux/Windows. The
       # packaging step itself is leak-safe by ordering (strip precedes every
       # copy into the public staging dir, under set -e).
+      # A failed DSP self-test blocks the CUSTOMER upload (fail-closed), while
+      # a pluginval-only failure still yields beta artifacts as before.
       - name: Upload macOS plugins (VST3 + AU + Standalone)
-        if: ${{ !cancelled() && steps.package.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.package.outcome == 'success' }}
         uses: actions/upload-artifact@v5
         with:
           name: Anamorph-macOS

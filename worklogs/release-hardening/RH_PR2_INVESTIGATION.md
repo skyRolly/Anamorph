@@ -135,7 +135,8 @@ All behaviour-neutral (no optimization/numerics flag touched; `-ffast-math` stay
 
 ## 4. Experiments & validation runs (evidence)
 
-- **Baseline** (bc5f852, unmodified flags): full self-test suite `130 checks, 0 failures`.
+- **Baseline** (bc5f852, unmodified flags): full self-test suite `130 checks, 0 failures`
+  (the pre-Wave-3 tree's count; the suite is 136 checks after the v0.8.11 rebase — §6).
 - **Twin engine dump** (behaviour-neutrality proof): a local console harness (kept out of the
   shipped tree; source preserved below) drives `anamorph::AnamorphEngine` at 48 kHz/512 through
   ~10.7 s of deterministic input (two detuned sines + fixed-seed LCG noise) with a feature-heavy
@@ -201,7 +202,8 @@ int main (int argc, char** argv)
 
 All measured on Linux x86_64 / GCC / Release with the full hardening set applied:
 
-- **DSP self-tests:** `130 checks, 0 failures` (identical to baseline).
+- **DSP self-tests:** `130 checks, 0 failures` (identical to baseline; 136/136 on the rebased
+  v0.8.11 tree — §6).
 - **Twin engine dump:** byte-identical to baseline —
   `sha256 6efa116a923440125522368dbe815abdba414c32d95d4e75f8142c3b716e3472` for BOTH
   `dump_baseline.bin` and `dump_hardened.bin`; `cmp` clean. The flag set is behaviour-neutral
@@ -310,3 +312,35 @@ touched then or now; Wave 3's own behaviour evidence is in
   one-line drift the version-bump PR explicitly recorded as pending "once the PRs land".
 - `CMakeLists.txt` auto-merged: v0.8.11 version from main preserved, `AnamorphHardening`
   block intact. `build.yml` had no upstream changes.
+
+## 7. Final review fixes
+
+1. **Windows PDB retention robustness.** The retention searched the whole build tree for the
+   literal name `Anamorph.pdb` and took the FIRST path whose string contained `VST3`/
+   `Standalone` — fragile against PDB naming and layout changes, and silently wrong on multiple
+   matches. Now: every locate demands **exactly one** match (bundle, the `.vst3` image inside
+   it, the Standalone exe — zero OR multiple matches are hard errors), and each image's linker
+   PDB is taken from **that image's own output directory** (where the linker writes it) with an
+   exactly-one requirement — no filename guessing, no tree-wide substring matching, clear
+   errors naming the image when the expectation fails. The leak-safe phase order from §6 is
+   unchanged (locate → copy → purge → retain → validate).
+2. **Documentation count drift (Wave-3 rebase).** ADR-0021's evidence line and the plan's §10
+   row said "130 self-tests"; the rebased tree's suite is **136 checks**. Both updated; the
+   worklog's §4/§5 baseline numbers are annotated as the pre-Wave-3 tree's historical counts
+   rather than rewritten (they were true of those runs).
+3. **Customer uploads now require the DSP self-tests to pass.** The upload gates from §6
+   checked only strip/staging success, so a tests failure (the behavioural gate) could still
+   ship a customer artifact. Every customer upload now additionally requires
+   `steps.tests.outcome == 'success'` (all three platforms — the `DSP self-tests` steps got
+   `id: tests`). pluginval-only failures still yield beta artifacts (unchanged, deliberate);
+   developer `-debug` artifacts still survive failures (`outcome != 'skipped'`).
+
+Validation: suite re-run green (**136 checks, 0 failures**); workflow YAML parse-validated;
+Linux strip/stage step scripts re-extracted verbatim and re-run (success path: `nm: no
+symbols`, zero debug files; unstripped-binary and stray-debug-file sims still fail closed);
+Windows phase logic re-simulated in a bash mirror including the new anchored PDB discovery —
+success separates `Anamorph.vst3.pdb`/`Anamorph.standalone.pdb`, a missing sibling PDB and an
+ambiguous double-PDB both abort with the public dist already purged (zero PDBs). Remaining
+CI-only checks: first real execution of the Windows pwsh staging and the macOS
+`dsymutil → strip -x → codesign` sequence on this PR's run — wrong assumptions fail loudly and
+cannot upload.

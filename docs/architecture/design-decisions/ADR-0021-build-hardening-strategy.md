@@ -70,6 +70,14 @@ under the shipped flag configuration):
 - **Artifact/signing hygiene:** every `|| true` removed from staging/codesign/lipo steps;
   `if-no-files-found: error` on all uploads. (Failure *visibility* half of RH-R9; Developer ID
   signing + notarization remain RH-PR-3.)
+- **Fail-closed customer uploads:** each customer artifact upload requires the DSP self-tests
+  AND its own strip/staging/packaging step to have SUCCEEDED (`steps.<id>.outcome` gating —
+  never `if: always()`); staging steps self-validate (no symbol table, no debug files) with all
+  debug material purged from the public copy before any abortable operation, and Windows PDB
+  retention is anchored to each located image's own output directory (exactly one PDB required —
+  no filename guessing or tree-wide substring matching). A failed behavioural gate or partial
+  packaging failure cannot ship a customer artifact; developer `-debug` artifacts and (on
+  pluginval-only failures) beta artifacts remain available.
 - **Untouched by decision:** `-O3`, LTO (verified already active via
   `juce::juce_recommended_lto_flags` on compile and final link), no `-ffast-math`; symbol
   visibility (JUCE-owned, verified); RTTI stays on (typeinfo strings are accepted residue —
@@ -108,7 +116,9 @@ evidence).
 ## Evidence + confidence
 
 **Verified (measured):** baseline/post metrics, byte-identical twin engine dump
-(sha256 `6efa116a…3472` both builds), 130/130 self-tests under hardened flags, stripped-binary
+(sha256 `6efa116a…3472` both builds), 136/136 self-tests under hardened flags on the v0.8.11
+tree (the flag-neutrality dump was measured pre-Wave-3 at that tree's 130 checks; the flag set
+is unchanged since), stripped-binary
 `dlopen` + entry-point resolution, full-RELRO flags in the ELF. **To confirm on CI:** Windows
 PDB emission paths and macOS dsymutil/strip/codesign sequence (derived from CMake/JUCE
 semantics; validated by the first CI run of this PR).

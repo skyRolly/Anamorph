@@ -52,6 +52,10 @@ failures as green and has been removed). Evidence [Verified]: `.github/workflows
 7. **Stage + upload artifacts** (`actions/upload-artifact@v5`) — public artifacts plus a
    separate `Anamorph-<OS>-debug` artifact per platform (crash-symbolication material; never
    mixed into the public one). All staging is strict: no `|| true`, `if-no-files-found: error`.
+   **Customer uploads are fail-closed**: each requires the DSP self-tests AND its own
+   strip/staging/packaging step to have succeeded (`steps.<id>.outcome` gating), and the staging
+   steps self-validate (no symbol table, no debug files in the public copy). A pluginval-only
+   failure still uploads beta artifacts; developer `-debug` artifacts survive packaging failures.
 
 Evidence [Verified]: `.github/workflows/build.yml`; `scripts/run-pluginval.sh`; `scripts/run-pluginval.ps1`.
 
