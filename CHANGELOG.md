@@ -6,7 +6,7 @@ SHA + date** as the Evidence Source (per `docs/policies/CHANGELOG_POLICY.md`). E
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
-## [Unreleased]
+## [0.8.11] — 2026-07-18
 ### Changed
 - **Multiband and crossover-drag CPU cost reduced (performance Wave 3; no behaviour change
   by design).** Four independent optimisations, all validated by a 12-scenario full-engine
@@ -30,7 +30,53 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Also: the spectrum analyser's FFT now computes only the non-negative-frequency
   magnitudes it reads (identical visuals, ~half the per-transform magnitude work).
   Full investigation record: `worklogs/performance/WAVE3_INVESTIGATION.md`.
-  Evidence: this PR. [Verified]
+  Evidence: PR #62 (merge `b2481db`). [Verified]
+
+### Fixed
+- **At very high sample rates (192 kHz) a moved crossover now always lands exactly on its
+  target; previously it could rest up to 3.75 Hz short forever and keep the solo monitor's
+  settled fast path from ever engaging (ADR-0015 "High-Sample-Rate Terminal-Snap
+  Robustness").** The cutoff glide's per-sample one-pole add stops changing a float once the
+  move drops below `ulp(f)/2`, and the terminal-snap eps (0.05 + 2e-4·f Hz) covers that stall
+  only up to 96 kHz (margin ≥ 1.76×; 3.55–4.27× at 44.1/48 kHz): at 192 kHz the margin falls to
+  0.88–0.98× just past every binade edge ≥ 2048 Hz (parameter-range hard-stall zones
+  [2049–2093], [4097–4437], [8194–9125], [16388–18500] Hz, both approach directions —
+  exact-float simulation; higher binades up to the DSP-level 86.4 kHz Nyquist clamp stall too,
+  same ≤ 0.4-cent resting error). Audio was
+  never wrong (< 0.4 cents off), but cutoffs could never equal targets, so the H1 settled fast
+  path stayed unreachable and the crossover filters/smoothers stayed hot indefinitely. The glide
+  now also snaps to the exact target the moment the float add can no longer move the cutoff —
+  eps, rate law R(f), smoothing, and fade thresholds untouched; behavior at ≤ 96 kHz
+  bit-identical (the eps snap always fires first). Guarded by `testHighRateCrossoverSnap`
+  (Test 32; DSP tests 30→31, checks 115→130): bitwise-exact landing plus cold-path engagement at
+  44.1/48/96/192 kHz — pre-fix it fails at 192 kHz exactly (measured resting gaps
+  0.4688/0.9375/1.8750/3.75 Hz, never cold) and passes at the normal rates, doubling as the
+  unchanged-behavior guard. Evidence: PR #61 (commit `c72d3c3`, merge `bc5f852`). [Verified]
+- **Crossover follower slow-drag regression: normal-speed split drags no longer trail the mouse
+  by whole octaves and crawl on for seconds after release (ADR-0015 "Crossover Follower
+  Slow-Drag Regression").** The v0.8.10 final follower capped cutoff movement at a flat
+  ~4 oct/s, calibrated at a 150 Hz crossing — but the Multiband display maps ~10 octaves onto
+  ~900 px, so ordinary 400–2000 px/s gestures are 4–22 oct/s: every normal drag was pinned at
+  the cap (a 600 px/s drag released ~2.4 octaves behind and crawled for another 0.6 s, trailing
+  audibly throughout), while a violent flick could escape through the discrete-jump bank fade
+  and feel instant — the reported "slow drags are limited harder than fast ones" inversion. The
+  root cause is physical, not a state bug: a swept LR4's frequency shift is a constant
+  `0.312·R` Hz wherever the crossing sits, so a cap flat in oct/s spends its whole artifact
+  budget protecting bass crossings and buys nothing but lag at high ones. The glide is now a
+  **slew-limited smoother**: per sample each cutoff moves by its ~20 ms one-pole demand toward
+  the target, clamped to a **frequency-proportional cap `R(f) = 4·max(1, f/300 Hz)` oct/s** —
+  the shift stays ≤ 1.25 Hz below 300 Hz (a 150 Hz crossing still measures ~14 cents, unchanged)
+  and ~0.42 % of the crossing (~7 cents) above, the one-pole leg filters the 60 Hz UI staircase
+  and tapers arrivals (a bare rate-clamp landing measured −24 dBc of splatter; 300 Hz is the
+  measured spur knee — an fref = 150 variant sprayed −27 dBc past a 1 kHz tone, the shipped
+  anchor sits at the −41 dBc analysis floor). Normal drags now track 1:1 (the 600 px/s complaint
+  gesture converges 0.01 s after release, was 0.63 s) and even a full-panel flick lands in
+  ~0.5 s of continuous motion; every prior Test 29 artifact bound holds at the same measured
+  values (~14 cents, −41.3 dBc, discrete jumps < 200 ms, click-free). Test 29 gained a
+  normal-drag tracking regression on both the Multiband and Solo-monitor paths (band edge at the
+  target 0.1–0.35 s after release; the flat-cap follower fails both checks — verified by
+  temporarily re-pinning). `MultibandWidth`/`SoloMonitor` only; no signal-order, latency, or
+  parameter change. Evidence: PR #60 (commit `3268cc2`, merge `0c50c47`). [Verified]
 
 ## [0.8.10] — 2026-07-14
 ### Changed
@@ -59,50 +105,6 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   (still message-thread). Evidence: this PR. [Verified]
 
 ### Fixed
-- **At very high sample rates (192 kHz) a moved crossover now always lands exactly on its
-  target; previously it could rest up to 3.75 Hz short forever and keep the solo monitor's
-  settled fast path from ever engaging (ADR-0015 "High-Sample-Rate Terminal-Snap
-  Robustness").** The cutoff glide's per-sample one-pole add stops changing a float once the
-  move drops below `ulp(f)/2`, and the terminal-snap eps (0.05 + 2e-4·f Hz) covers that stall
-  only up to 96 kHz (margin ≥ 1.76×; 3.55–4.27× at 44.1/48 kHz): at 192 kHz the margin falls to
-  0.88–0.98× just past every binade edge ≥ 2048 Hz (parameter-range hard-stall zones
-  [2049–2093], [4097–4437], [8194–9125], [16388–18500] Hz, both approach directions —
-  exact-float simulation; higher binades up to the DSP-level 86.4 kHz Nyquist clamp stall too,
-  same ≤ 0.4-cent resting error). Audio was
-  never wrong (< 0.4 cents off), but cutoffs could never equal targets, so the H1 settled fast
-  path stayed unreachable and the crossover filters/smoothers stayed hot indefinitely. The glide
-  now also snaps to the exact target the moment the float add can no longer move the cutoff —
-  eps, rate law R(f), smoothing, and fade thresholds untouched; behavior at ≤ 96 kHz
-  bit-identical (the eps snap always fires first). Guarded by `testHighRateCrossoverSnap`
-  (Test 32; DSP tests 30→31, checks 115→130): bitwise-exact landing plus cold-path engagement at
-  44.1/48/96/192 kHz — pre-fix it fails at 192 kHz exactly (measured resting gaps
-  0.4688/0.9375/1.8750/3.75 Hz, never cold) and passes at the normal rates, doubling as the
-  unchanged-behavior guard. Evidence: this PR. [Verified]
-- **Crossover follower slow-drag regression: normal-speed split drags no longer trail the mouse
-  by whole octaves and crawl on for seconds after release (ADR-0015 "Crossover Follower
-  Slow-Drag Regression").** The v0.8.10 final follower capped cutoff movement at a flat
-  ~4 oct/s, calibrated at a 150 Hz crossing — but the Multiband display maps ~10 octaves onto
-  ~900 px, so ordinary 400–2000 px/s gestures are 4–22 oct/s: every normal drag was pinned at
-  the cap (a 600 px/s drag released ~2.4 octaves behind and crawled for another 0.6 s, trailing
-  audibly throughout), while a violent flick could escape through the discrete-jump bank fade
-  and feel instant — the reported "slow drags are limited harder than fast ones" inversion. The
-  root cause is physical, not a state bug: a swept LR4's frequency shift is a constant
-  `0.312·R` Hz wherever the crossing sits, so a cap flat in oct/s spends its whole artifact
-  budget protecting bass crossings and buys nothing but lag at high ones. The glide is now a
-  **slew-limited smoother**: per sample each cutoff moves by its ~20 ms one-pole demand toward
-  the target, clamped to a **frequency-proportional cap `R(f) = 4·max(1, f/300 Hz)` oct/s** —
-  the shift stays ≤ 1.25 Hz below 300 Hz (a 150 Hz crossing still measures ~14 cents, unchanged)
-  and ~0.42 % of the crossing (~7 cents) above, the one-pole leg filters the 60 Hz UI staircase
-  and tapers arrivals (a bare rate-clamp landing measured −24 dBc of splatter; 300 Hz is the
-  measured spur knee — an fref = 150 variant sprayed −27 dBc past a 1 kHz tone, the shipped
-  anchor sits at the −41 dBc analysis floor). Normal drags now track 1:1 (the 600 px/s complaint
-  gesture converges 0.01 s after release, was 0.63 s) and even a full-panel flick lands in
-  ~0.5 s of continuous motion; every prior Test 29 artifact bound holds at the same measured
-  values (~14 cents, −41.3 dBc, discrete jumps < 200 ms, click-free). Test 29 gained a
-  normal-drag tracking regression on both the Multiband and Solo-monitor paths (band edge at the
-  target 0.1–0.35 s after release; the flat-cap follower fails both checks — verified by
-  temporarily re-pinning). `MultibandWidth`/`SoloMonitor` only; no signal-order, latency, or
-  parameter change. Evidence: this PR. [Verified]
 - **A forced bulk swap (undo/redo/A-B/preset) landing while an ordinary discrete duck was still
   fading out no longer loses its forced semantics.** The forced request is consumed on entry to
   the engine's parameter-swap state machine; in the narrow (~6 ms) fade-out window of a

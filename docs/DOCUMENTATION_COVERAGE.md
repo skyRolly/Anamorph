@@ -6,7 +6,21 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for **performance Wave 3 — runtime optimisation** (2026-07-18, unreleased cycle,
+Last updated: for the **v0.8.11 version preparation** (2026-07-18, PR
+`release/v0.8.11-version-bump` — version/release metadata only, no functional change).
+`CMakeLists.txt` project version 0.8.10 → **0.8.11** (single source: `ANAMORPH_VERSION_STRING`
+and the JUCE plugin version derive from it); README version line; HANDOVER status rows
+(Current Version / Build / Release / Pending Tasks — the completed Wave-3 candidate removed
+from the backlog text). CHANGELOG: the `[Unreleased]` Wave-3 entry became **`[0.8.11] —
+2026-07-18`** (evidence PR #62, merge `b2481db`), and the two post-release maintenance fixes
+recorded under `[0.8.10]` after it shipped — the slow-drag follower regression (PR #60,
+`3268cc2`) and the 192 kHz terminal-snap robustness fix (PR #61, `c72d3c3`) — **moved into
+`[0.8.11]`** with their evidence lines updated: the released 0.8.10 binaries (PR #59,
+2026-07-14) predate both, so `[0.8.10]` claiming them was recorded drift against
+CHANGELOG_POLICY rule 2 (no invented history). Deliberately untouched: PR #63's build-hardening
+work and files (CMake hardening/CI/ADR-0021/RELEASE_HARDENING_PLAN — including that doc's
+still-pending 32/136 QA-row sync noted in the previous entry). Prior: for
+**performance Wave 3 — runtime optimisation** (2026-07-18, unreleased cycle,
 PR `performance/wave3-runtime-optimization`). Investigation-first wave (baselines, callgrind
 attribution and the full decision record live in `worklogs/performance/WAVE3_INVESTIGATION.md`
 — a new top-level `worklogs/` directory for session-local records, added to REPOSITORY_MAP).
