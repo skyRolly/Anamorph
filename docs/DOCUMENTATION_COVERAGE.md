@@ -6,7 +6,25 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **crossover follower slow-drag regression fix** (2026-07-17, post-merge
+Last updated: for the **high-sample-rate crossover terminal-snap robustness fix** (2026-07-17,
+v0.8.10 maintenance, PR `fix/high-sr-crossover-snap`). Review of the slew-limited smoother found
+a numerical edge case, confirmed by exact-float simulation: the per-sample one-pole add stalls
+once its move drops below `ulp(f)/2`, and the terminal-snap eps (0.05 + 2e-4·f) out-runs that
+stall only up to 96 kHz (margin ≥ 1.76×; 3.55–4.27× at 44.1/48 kHz) — at 192 kHz the margin is
+**0.88–0.98×** just past every binade edge ≥ 2048 Hz (parameter-range hard-stall zones
+[2049–2093] [4097–4437] [8194–9125] [16388–18500] Hz, resting gap up to 3.75 Hz, both
+directions; higher binades to the 86.4 kHz DSP clamp stall too, ≤ 0.4 cents), so a moved crossover
+could rest short of its target forever: audio < 0.4 cents off, but the SoloMonitor settled fast
+path (H1, needs ≤ 0.05 Hz) never engaged and filters/smoothers stayed hot. Minimal fix in
+`MultibandWidth.cpp`/`SoloMonitor.cpp`: the glide **also snaps exactly when the float add can no
+longer move the cutoff** — eps, R(f), smoothing, fade thresholds untouched; ≤ 96 kHz
+bit-identical (eps snap always fires first). Guarded by `testHighRateCrossoverSnap` (Test 32;
+DSP tests 30→**31**, checks 115→**130**): bitwise-exact landing + cold-path engagement at four
+rates; pre-fix fails at 192 kHz only (0.4688/0.9375/1.8750/3.75 Hz, never cold — proven by
+stash-rebuild). Synced: ADR-0015 (new "High-Sample-Rate Terminal-Snap Robustness" section),
+CHANGELOG, README, TESTING_POLICY, TESTING, HANDOVER, RELEASE_HARDENING_PLAN QA row. Test-only
+`getLiveCutoff`/`isSettledCold` accessors added to the two headers. Prior: the **crossover
+follower slow-drag regression fix** (2026-07-17, post-merge
 v0.8.10 maintenance, new PR). The v0.8.10 final flat ~4 oct/s cap was calibrated at a 150 Hz
 crossing, but the display maps ~10 octaves onto ~900 px, so ordinary 400–2000 px/s drags are
 4–22 oct/s — every normal drag trailed by octaves and crawled after release while violent flicks

@@ -277,15 +277,34 @@ void MultibandWidth::processBlock (float* left, float* right, int numSamples,
             {
                 const float gap = targetF[i] - bk.f[i];
                 // The snap eps scales with f: a float one-pole stalls once
-                // gap*coeff < ulp(f) (~1.5 Hz at 20 kHz), and the terminal
-                // snap is <= 0.35 cents -- inaudible (see MultibandWidth.h).
+                // gap*coeff < ulp(f)/2 (resting gap ulp(f)/(2*coeff)), and the
+                // terminal snap is <= 0.35 cents -- inaudible (see
+                // MultibandWidth.h).
                 if (std::abs (gap) > 0.05f + 2.0e-4f * targetF[i])
                 {
                     // Cap move per sample: f * (2^(R(f)/sr) - 1), with the
                     // linearised exponent (exact to ~3e-5 even at 20 kHz).
                     const float capMove = bk.f[i] * (glideStep - 1.0f)
                                         * juce::jmax (1.0f, bk.f[i] * (1.0f / kRateRefHz));
-                    bk.f[i] += juce::jlimit (-capMove, capMove, gap * smoothCoeff);
+                    const float next = bk.f[i]
+                                     + juce::jlimit (-capMove, capMove, gap * smoothCoeff);
+                    // High-rate stall snap (0.8.10): above ~170 kHz the eps no
+                    // longer covers the float stall -- at 192 kHz the one-pole
+                    // add stops moving the float while |gap| is still ABOVE
+                    // the eps (eps/stall margin 0.88-0.98x just past every
+                    // binade edge >= 2048 Hz; resting gap ulp(f)/(2*coeff) =
+                    // 3.75 Hz at a 16.4 kHz split, doubling per binade up to
+                    // 15 Hz at the 86.4 kHz Nyquist-clamp ceiling), so the eps
+                    // snap could never fire, the cutoff sat off-target
+                    // forever, and the solo monitor's settled fast path never
+                    // engaged. Snap exactly when the add can no longer move
+                    // the float: at <= 96 kHz this never triggers (margin
+                    // >= 1.76x -- the eps snap always fires first, sequence
+                    // bit-identical), and at 192 kHz it lands within
+                    // ~0.4 cents of the target at ANY cutoff, the same
+                    // inaudibility bound as the eps snap. (Exact compare, house idiom: the
+                    // difference of equal floats is exactly 0.)
+                    bk.f[i] = ! (std::abs (next - bk.f[i]) > 0.0f) ? targetF[i] : next;
                 }
                 else if (! (std::abs (gap) > 0.0f))
                     continue;                       // settled exactly: filters hold

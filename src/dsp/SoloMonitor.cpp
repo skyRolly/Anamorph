@@ -215,7 +215,16 @@ void SoloMonitor::process (float* left, float* right, int mask, int numSamples) 
                 {
                     const float capMove = bk.f[i] * (glideStep - 1.0f)
                                         * juce::jmax (1.0f, bk.f[i] * (1.0f / kRateRefHz));
-                    bk.f[i] += juce::jlimit (-capMove, capMove, gap * smoothCoeff);
+                    const float next = bk.f[i]
+                                     + juce::jlimit (-capMove, capMove, gap * smoothCoeff);
+                    // High-rate stall snap (0.8.10): above ~170 kHz the
+                    // one-pole add can stop moving the float while |gap| is
+                    // still ABOVE the eps (eps/stall margin 0.88-0.98x at
+                    // 192 kHz), which would leave the settled fast path above
+                    // unreachable forever. Never triggers at <= 96 kHz (the
+                    // eps snap always fires first) -- full rationale in
+                    // MultibandWidth.cpp.
+                    bk.f[i] = ! (std::abs (next - bk.f[i]) > 0.0f) ? targetF[i] : next;
                 }
                 else if (! (std::abs (gap) > 0.0f))
                     continue;                       // settled exactly: filters hold

@@ -55,6 +55,14 @@ public:
     // mask == 0 (no solo) leaves L/R untouched -- the true plugin output.
     void process (float* left, float* right, int mask, int numSamples) noexcept;
 
+    // Test-only introspection (dsp_tests, Test 32): the live cutoff of split i
+    // on the active bank (== the setCrossovers target exactly once the glide
+    // has snapped), and whether the settled-passthrough fast path (H1) is
+    // engaged (filters cold) -- its cutoff gate needs every split within
+    // 0.05 Hz of target, which after any real move only the exact snap reaches.
+    float getLiveCutoff (int i) const noexcept { return bank[active].f[juce::jlimit (0, 2, i)]; }
+    bool  isSettledCold() const noexcept       { return ! running; }
+
 private:
     // One crossover bank (flat-state LR4Xover, H6). Cutoff changes use the same
     // strategy as the Multiband (0.8.10 final, full rationale in
@@ -94,7 +102,10 @@ private:
     // moves gap*smoothCoeff clamped to the R(f) cap; the one-pole leg
     // de-staircases the UI cadence and tapers arrivals, and the f-scaled snap
     // eps guarantees the settled fast path can reach cutoffs == targets
-    // despite float one-pole stall.
+    // despite float one-pole stall. Above ~170 kHz the eps alone no longer
+    // out-runs the stall, so the glide also snaps the moment the float add
+    // stops moving the cutoff (exact convergence at 192 kHz; bit-identical
+    // at <= 96 kHz -- see MultibandWidth.h).
     float smoothCoeff = 0.0f;
     int    bands = 4;
     bool   running = true; // false = settled-passthrough fast path active, filters cold (H1)

@@ -176,6 +176,42 @@ Regression: Test 29 gained a **normal-drag tracking** scenario on both paths (15
 leak ≤ 0.15, measures 0.01). Re-pinned to the flat cap, both checks fail (0.47 and 0.60) —
 verified in both directions. All prior Test 29 bounds hold at the same measured values.
 
+## High-Sample-Rate Terminal-Snap Robustness (v0.8.10 maintenance fix)
+
+**Issue.** The slew-limited smoother's terminal snap (`|gap| ≤ 0.05 + 2e-4·target` Hz) exists
+because a float one-pole cannot land exactly: the per-sample add `f += gap·smoothCoeff` stops
+changing the float once the move drops below `ulp(f)/2`, a hard stall at a resting gap of
+`ulp(f)/(2·smoothCoeff)`. Review of the shipped law found — and exact-float simulation
+confirmed — that the eps out-runs that stall only up to 96 kHz. `smoothCoeff` shrinks as `1/sr`
+while the float lattice does not, so at 192 kHz the eps/stall margin drops **below 1**
+(0.88–0.98×) just past every binade edge ≥ 2048 Hz: measured hard-stall zones
+[2049–2093], [4097–4437], [8194–9125], [16388–18500] Hz within the split-parameter range,
+resting gap up to 3.75 Hz, both approach directions — higher binades up to the DSP-level
+86.4 kHz Nyquist clamp stall too (resting gap doubling per binade to 15 Hz, still ≤ 0.4 cents
+relative). Margins elsewhere: 3.86–4.27× at 44.1 kHz, 3.55–3.92× at 48 kHz, 1.76–1.96× at
+96 kHz (the 1.76 floor at its 32768 Hz clamp-range binade edge); stalls first become possible
+around ~170 kHz. Audio stayed correct
+(< 0.4 cents off target), but cutoffs never equalled targets, so `SoloMonitor`'s settled fast
+path (H1, needs `|gap| ≤ 0.05` Hz) could never engage and the filters, smoothers, and per-sample
+coefficient updates stayed hot forever.
+
+**Fix (numerical robustness only — no operating-point change).** The glide computes
+`next = f + clamp(gap·smoothCoeff, ±capMove)` and **also snaps to the exact target the moment
+`next` compares equal to `f`** — i.e. precisely when the float add can no longer move the cutoff.
+The eps, rate law `R(f)`, smoothing constant, and fade thresholds are untouched. At ≤ 96 kHz the
+stall-snap condition is unreachable (the eps snap always fires first — the arithmetic sequence is
+bit-identical, re-verified by the full suite); at 192 kHz it lands the cutoff exactly, within
+~0.4 cents (`≤ 2^-23/(2·smoothCoeff)` relative, independent of where the cutoff sits) — the same
+inaudibility class as the eps snap.
+The rate cap can never be the stalling term (`capMove/f ≥ 2.77/sr ≫ ulp/f` for any real rate), so
+the snap can only fire at the terminal approach.
+
+Regression: `testHighRateCrossoverSnap` (Test 32) drives both paths through targets inside three
+192 kHz stall zones at 44.1/48/96/192 kHz plus the worst zone (16.6 kHz, resting gap 3.75 Hz) at
+192 kHz, and requires bitwise-exact landing and SoloMonitor cold-path engagement. Pre-fix it
+fails exactly at 192 kHz (measured resting gaps 0.4688/0.9375/1.8750/3.75 Hz, never cold) and
+passes at 44.1/48/96 kHz — the normal-rate checks double as the unchanged-behavior guard.
+
 ## Consequences
 
 - Fast drags carry a small **controlled, bounded FM** (~14 cents at a 150 Hz crossing, ~7 cents

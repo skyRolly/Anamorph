@@ -77,6 +77,11 @@ public:
                        const float* dryInL = nullptr, const float* dryInR = nullptr,
                        float* dryOutL = nullptr, float* dryOutR = nullptr) noexcept;
 
+    // Test-only introspection (dsp_tests): the live (glided) cutoff of split i
+    // on the active bank -- equals the setCrossovers target exactly once the
+    // glide has snapped (Test 32 asserts the snap at 192 kHz).
+    float getLiveCutoff (int i) const noexcept { return bank[active].f[juce::jlimit (0, 2, i)]; }
+
 private:
     // One complete crossover bank at ONE FIXED set of cutoffs (flat-state
     // LR4Xover units, H6):
@@ -193,9 +198,15 @@ private:
     // target cadence AND tapers every arrival -- a bare rate-clamp lands at
     // full speed, a corner in the phase trajectory that measured -24 dBc of
     // splatter when it coincided with a tone. The glide's snap eps grows with
-    // f because a float one-pole stalls once gap*coeff < ulp(f) (~1.5 Hz at
-    // 20 kHz) -- without the snap the solo monitor's settled fast path could
-    // never see cutoffs == targets and would stay hot forever.
+    // f because a float one-pole stalls once gap*coeff < ulp(f)/2 -- without
+    // a snap the solo monitor's settled fast path could never see cutoffs ==
+    // targets and would stay hot forever. The eps out-runs the stall only up
+    // to 96 kHz (margin >= 1.76x there, 3.5-4.3x at 44.1/48 kHz); above
+    // ~170 kHz the resting stall gap ulp(f)/(2*coeff) EXCEEDS the eps just
+    // past every binade edge >= 2048 Hz (0.88-0.98x at 192 kHz), so the glide
+    // ALSO snaps the moment the float add stops moving the cutoff -- exact
+    // convergence at any rate, bit-identical at <= 96 kHz where the eps snap
+    // always fires first.
     float smoothCoeff = 0.0f;
 
     // Per-sample one-pole smoothing of the band widths (0.7.0 #1).

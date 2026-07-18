@@ -2344,6 +2344,139 @@ static void testForcedSwapDuringOrdinaryFadeOut()
 }
 
 // ---------------------------------------------------------------------------
+static void testHighRateCrossoverSnap()
+{
+    std::printf ("Test 32: high-rate crossover snap lands exactly (192 kHz float stall)\n");
+
+    // The cutoff glide's one-pole term gap*smoothCoeff shrinks with 1/sr but
+    // the float lattice ulp(f) does not: the add f += move stops changing the
+    // float once move < ulp(f)/2, a hard stall at a resting gap of
+    // ulp(f)/(2*smoothCoeff). At 44.1/48/96 kHz the terminal-snap eps
+    // (0.05 + 2e-4*f) covers that gap with a 1.76-4.3x margin, but at 192 kHz
+    // the margin drops to 0.88-0.98x just past every binade edge >= 2048 Hz
+    // (parameter-range stall zones [2049,2093] [4097,4437] [8194,9125]
+    // [16388,18500] Hz; higher binades up to the 86.4 kHz DSP Nyquist clamp
+    // stall too, same <= 0.4-cent resting error, covered by the same snap):
+    // pre-fix the cutoff rested up to 3.75 Hz below target FOREVER -- audio
+    // still correct (< 0.4 cents off), but cutoffs never equalled targets, so
+    // the solo monitor's settled fast path could never engage and the filters
+    // and smoothers stayed hot. The stall snap must land every cutoff EXACTLY
+    // at 192 kHz, and at <= 96 kHz the eps snap must keep firing first
+    // (unchanged behavior -- these rates pass pre-fix too).
+    const int block = 512;
+
+    // One target inside each of the three lower 192 kHz stall zones (all
+    // Nyquist-safe at 44.1 kHz); the top zone is checked at 192 kHz below.
+    const float startF [3] = { 2000.0f, 4040.0f, 8270.0f };
+    const float targetF[3] = { 2080.0f, 4200.0f, 8600.0f };
+
+    for (double sr : { 44100.0, 48000.0, 96000.0, 192000.0 })
+    {
+        std::vector<float> l ((size_t) block, 0.0f), r ((size_t) block, 0.0f);
+        const int glideBlocks  = (int) (1.2 * sr) / block; // ~90 ms one-pole + crawl, x10 margin
+        const int settleBlocks = (int) (0.1 * sr) / block; // > the 12 ms gain crossfade
+
+        // Multiband: the glide runs whenever bands > 1; step every split ~0.05
+        // oct (glide path, far under the 1.5-oct fade threshold) and require
+        // bitwise landing.
+        anamorph::MultibandWidth mb;
+        mb.setBandCount (4);
+        mb.setWidths (1.0f, 1.0f, 1.0f, 1.0f);
+        mb.setCrossovers (startF[0], startF[1], startF[2]);
+        mb.prepare (sr, block);
+        mb.setCrossovers (targetF[0], targetF[1], targetF[2]);
+        for (int nb = 0; nb < glideBlocks; ++nb)
+        {
+            std::fill (l.begin(), l.end(), 0.0f);
+            std::fill (r.begin(), r.end(), 0.0f);
+            mb.processBlock (l.data(), r.data(), block);
+        }
+        bool mbExact = true;
+        for (int i = 0; i < 3; ++i) mbExact = mbExact && ! (std::abs (mb.getLiveCutoff (i) - targetF[i]) > 0.0f);
+
+        // Solo monitor: the glide only runs while the monitor is HOT, so keep
+        // a band soloed for the whole drag (the real-world shape: dragging a
+        // split while auditioning a band), then release and let the gains
+        // settle -- the fast path then hinges ONLY on cutoffs == targets.
+        anamorph::SoloMonitor mon;
+        mon.setBandCount (4);
+        mon.setCrossovers (startF[0], startF[1], startF[2]);
+        mon.prepare (sr, block);
+        auto run = [&] (int blocks, int mask)
+        {
+            for (int nb = 0; nb < blocks; ++nb)
+            {
+                std::fill (l.begin(), l.end(), 0.0f);
+                std::fill (r.begin(), r.end(), 0.0f);
+                mon.process (l.data(), r.data(), mask, block);
+            }
+        };
+        run (settleBlocks, 0x1);                       // solo engaged, monitor hot
+        mon.setCrossovers (targetF[0], targetF[1], targetF[2]);
+        run (glideBlocks, 0x1);                        // glide converges (or stalls)
+        run (settleBlocks, 0);                         // release; gains settle; fast path may engage
+        bool monExact = true;
+        for (int i = 0; i < 3; ++i) monExact = monExact && ! (std::abs (mon.getLiveCutoff (i) - targetF[i]) > 0.0f);
+
+        std::printf ("  sr %6.0f: mb gaps %+0.4f %+0.4f %+0.4f Hz; solo gaps %+0.4f %+0.4f %+0.4f Hz; cold=%d (pre-fix @192k: 0.47/0.94/1.87 short, never cold)\n",
+                     sr,
+                     targetF[0] - mb.getLiveCutoff (0),  targetF[1] - mb.getLiveCutoff (1),  targetF[2] - mb.getLiveCutoff (2),
+                     targetF[0] - mon.getLiveCutoff (0), targetF[1] - mon.getLiveCutoff (1), targetF[2] - mon.getLiveCutoff (2),
+                     (int) mon.isSettledCold());
+        check (mbExact,  "multiband cutoffs land bitwise-exactly on their targets");
+        check (monExact, "solo-monitor cutoffs land bitwise-exactly on their targets");
+        check (mon.isSettledCold(), "solo monitor's settled fast path engages (filters go cold)");
+    }
+
+    // The top stall zone [16388,18500] Hz needs Nyquist headroom, so check it
+    // at 192 kHz only -- the worst measured case (resting gap 3.75 Hz).
+    {
+        const double sr = 192000.0;
+        std::vector<float> l ((size_t) block, 0.0f), r ((size_t) block, 0.0f);
+        const int glideBlocks  = (int) (1.2 * sr) / block;
+        const int settleBlocks = (int) (0.1 * sr) / block;
+
+        anamorph::MultibandWidth mb;
+        mb.setBandCount (2);
+        mb.setWidths (1.0f, 1.0f, 1.0f, 1.0f);
+        mb.setCrossovers (16000.0f, 19000.0f, 22000.0f);
+        mb.prepare (sr, block);
+        mb.setCrossovers (16600.0f, 19000.0f, 22000.0f);
+        for (int nb = 0; nb < glideBlocks; ++nb)
+        {
+            std::fill (l.begin(), l.end(), 0.0f);
+            std::fill (r.begin(), r.end(), 0.0f);
+            mb.processBlock (l.data(), r.data(), block);
+        }
+
+        anamorph::SoloMonitor mon;
+        mon.setBandCount (2);
+        mon.setCrossovers (16000.0f, 19000.0f, 22000.0f);
+        mon.prepare (sr, block);
+        auto run = [&] (int blocks, int mask)
+        {
+            for (int nb = 0; nb < blocks; ++nb)
+            {
+                std::fill (l.begin(), l.end(), 0.0f);
+                std::fill (r.begin(), r.end(), 0.0f);
+                mon.process (l.data(), r.data(), mask, block);
+            }
+        };
+        run (settleBlocks, 0x1);
+        mon.setCrossovers (16600.0f, 19000.0f, 22000.0f);
+        run (glideBlocks, 0x1);
+        run (settleBlocks, 0);
+
+        std::printf ("  192k top zone: mb gap %+0.4f Hz; solo gap %+0.4f Hz; cold=%d (pre-fix: 3.75 short, never cold)\n",
+                     16600.0f - mb.getLiveCutoff (0), 16600.0f - mon.getLiveCutoff (0),
+                     (int) mon.isSettledCold());
+        check (! (std::abs (mb.getLiveCutoff (0)  - 16600.0f) > 0.0f), "multiband lands exactly in the worst 192 kHz stall zone (16.6 kHz)");
+        check (! (std::abs (mon.getLiveCutoff (0) - 16600.0f) > 0.0f), "solo monitor lands exactly in the worst 192 kHz stall zone (16.6 kHz)");
+        check (mon.isSettledCold(), "solo monitor goes cold after the worst-zone drag at 192 kHz");
+    }
+}
+
+// ---------------------------------------------------------------------------
 int main()
 {
     std::printf ("=== Anamorph DSP self-tests ===\n");
@@ -2377,6 +2510,7 @@ int main()
     testMultibandSplitDragNoPitchShift();
     testDryFillRespectsOutputGain();
     testForcedSwapDuringOrdinaryFadeOut();
+    testHighRateCrossoverSnap();
     testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);
