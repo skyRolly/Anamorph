@@ -92,8 +92,11 @@ private:
     //            crossover allpass phase as the wet and never combs (KI #1);
     //   ax[]  -- the reconstruction phase-compensation allpasses (flat
     //            recombination): the running low-sum passes through each higher
-    //            split's allpass (LR4 lo+hi) before the next band is added, so
-    //            close crossovers no longer dip (only i = 1..bands-2 are used);
+    //            split's allpass (the LR4's lo+hi sum -- computed directly as
+    //            the ladder's first 2nd-order section since Wave 3, see
+    //            LR4Xover::processSampleAllpass) before the next band is added,
+    //            so close crossovers no longer dip (only i = 1..bands-2 are
+    //            used; index 0 is never processed and stays un-updated);
     //   dax[] -- the dry twins of ax[], keeping A(dry) phase-identical to the wet.
     // All 12 filters of a bank share f[], so wet, dry, and compensation stay
     // phase-locked by construction.
