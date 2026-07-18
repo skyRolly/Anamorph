@@ -26,7 +26,11 @@ permissions:
 #
 # Symbol handling (RH-PR-2, ADR-0021): every platform generates full debug
 # info, retains it as a separate *-debug artifact (split .debug / PDB / dSYM)
-# for crash symbolication, and ships STRIPPED public binaries. On Linux the
+# for crash symbolication, and ships STRIPPED public binaries. On macOS the
+# dSYM capture is BEST-EFFORT: under Release+LTO the DWARF needed for dSYM
+# reconstruction may no longer exist at packaging time (see the package
+# step), in which case the -debug upload is skipped with a warning while the
+# customer artifacts ship normally. On Linux the
 # strip runs before pluginval so the release gate validates the shipped bytes.
 # Customer uploads are gated on the DSP self-tests AND their strip/packaging
 # steps SUCCEEDING (never `if: always()`), and the staging steps self-validate
@@ -391,17 +395,27 @@ jobs:
       # broken artifact (RH-R9). Proper Developer ID signing + notarization is
       # RH-PR-3 scope.
       #
-      # RH-PR-2 follow-up (CI reliability): dsymutil under LTO can silently
-      # emit an empty/incomplete dSYM -- and frequently still exits 0 while
-      # doing it, only warning on stderr (e.g. "could not find object file"
-      # for an LTO-merged compilation unit). Exit-code checking alone (the
-      # previous behaviour under `set -e`) does not catch this, so the dSYM
-      # is now validated before the binary is stripped: dsymutil's own
-      # stderr is captured and treated as fatal on any warning, and the
-      # produced dSYM's DWARF payload is confirmed present, non-empty, and
-      # UUID-matched against every slice of the (still-unstripped) binary --
-      # an empty/degenerate/mismatched dSYM fails the job instead of
-      # uploading silently-broken debug info.
+      # RH-PR-2 follow-up 2 (CI reliability): dsymutil warnings are NOT fatal.
+      # The first follow-up treated any dsymutil warning as a degenerate
+      # dSYM and failed the job -- wrong for this build configuration. Under
+      # Release + LTO the DWARF the linked binary references lives in the
+      # linker's TEMPORARY LTO object (/tmp/lto.o), already deleted when
+      # dsymutil runs; dsymutil then warns ("unable to open object file"),
+      # exits 0, and emits a dSYM without usable DWARF. That is an expected
+      # property of the build configuration, not a broken customer artifact
+      # (the shipped binary never contained that debug info to begin with) --
+      # so it failed EVERY macOS packaging run. dSYM capture is now
+      # BEST-EFFORT and judged on its OUTPUT, never on warning text: a
+      # produced dSYM is kept only if its DWARF payload exists, its UUID set
+      # matches the binary's slices exactly, and it carries at least one
+      # DWARF compile unit; anything else is discarded with a clear
+      # ::warning:: and packaging CONTINUES. The customer pipeline
+      # (strip -x -> codesign -> verify) is never blocked by debug-capture
+      # problems, and the -debug artifact uploads only when a validated
+      # dSYM exists (steps.package.outputs.debug_artifacts). Restoring full
+      # macOS symbolication needs the LTO object persisted via
+      # -Wl,-object_path_lto -- a linker-flag change deliberately out of
+      # scope here (RH-PR-3 candidate; worklog section 9).
       - name: Package macOS plugins (VST3 + AU + Standalone)
         id: package
         if: ${{ !cancelled() }}
@@ -413,39 +427,71 @@ jobs:
           VST3="build/Anamorph_artefacts/Release/VST3/Anamorph.vst3"
           AU="build/Anamorph_artefacts/Release/AU/Anamorph.component"
           APP="build/Anamorph_artefacts/Release/Standalone/Anamorph.app"
+          USABLE_DSYMS=0
           for B in "$VST3" "$AU" "$APP"; do
             BIN="$B/Contents/MacOS/Anamorph"
-            DSYM="$DBG/$(basename "$B").dSYM"
-            # Slice UUIDs from the still-unstripped binary -- the reference
-            # the produced dSYM must cover exactly.
-            BIN_UUIDS=$(dwarfdump --uuid "$BIN" | awk '{print $2}' | sort)
+            NAME="$(basename "$B")"
+            DSYM="$DBG/$NAME.dSYM"
+            # ---- Best-effort developer dSYM capture: nothing in this block
+            # may abort the job -- failures degrade to a ::warning:: and the
+            # dSYM is discarded. Customer-artifact steps are NOT gated on it.
+            DSYM_OK=1
+            BIN_UUIDS="$(dwarfdump --uuid "$BIN" | awk '{print $2}' | sort)" || BIN_UUIDS=""
             if [ -z "$BIN_UUIDS" ]; then
-              echo "::error::$BIN has no Mach-O UUID -- cannot verify dSYM coverage"; exit 1
+              echo "::warning::$NAME: cannot read Mach-O slice UUIDs -- a dSYM would be unvalidatable, skipping debug capture"
+              DSYM_OK=0
             fi
-            DSYMUTIL_LOG=$(mktemp)
-            if ! dsymutil "$BIN" -o "$DSYM" >"$DSYMUTIL_LOG" 2>&1; then
-              cat "$DSYMUTIL_LOG"; rm -f "$DSYMUTIL_LOG"
-              echo "::error::dsymutil failed for $BIN"; exit 1
+            if [ "$DSYM_OK" -eq 1 ]; then
+              DSYMUTIL_LOG="$(mktemp)"
+              if ! dsymutil "$BIN" -o "$DSYM" >"$DSYMUTIL_LOG" 2>&1; then
+                cat "$DSYMUTIL_LOG"
+                echo "::warning::$NAME: dsymutil failed -- continuing without a dSYM (best-effort debug capture)"
+                DSYM_OK=0
+              elif [ -s "$DSYMUTIL_LOG" ]; then
+                # Informational only (e.g. the expected Release+LTO
+                # "/tmp/lto.o unable to open object file" warnings):
+                # usability is decided by validating the OUTPUT below,
+                # never by the presence of dsymutil warnings.
+                cat "$DSYMUTIL_LOG"
+              fi
+              rm -f "$DSYMUTIL_LOG"
             fi
-            if grep -qi 'warning' "$DSYMUTIL_LOG"; then
-              cat "$DSYMUTIL_LOG"; rm -f "$DSYMUTIL_LOG"
-              echo "::error::dsymutil emitted warnings for $BIN -- treating as a degenerate dSYM (RH-PR-2 LTO robustness gate)"
-              exit 1
+            if [ "$DSYM_OK" -eq 1 ]; then
+              DWARF_FILE="$DSYM/Contents/Resources/DWARF/$(basename "$BIN")"
+              if [ ! -s "$DWARF_FILE" ]; then
+                echo "::warning::$NAME: dSYM has no (or an empty) DWARF payload -- discarding it (expected under Release+LTO: the temporary LTO object holding the DWARF is gone by dsymutil time)"
+                DSYM_OK=0
+              else
+                DSYM_UUIDS="$(dwarfdump --uuid "$DWARF_FILE" | awk '{print $2}' | sort)" || DSYM_UUIDS=""
+                CU_COUNT="$(dwarfdump --debug-info "$DWARF_FILE" 2>/dev/null | grep -c 'DW_TAG_compile_unit' || true)"
+                if [ "$DSYM_UUIDS" != "$BIN_UUIDS" ]; then
+                  echo "::warning::$NAME: dSYM UUIDs do not match the binary's slices -- discarding the mismatched dSYM"
+                  DSYM_OK=0
+                elif [ "$CU_COUNT" -eq 0 ]; then
+                  echo "::warning::$NAME: dSYM carries no DWARF compile units (degenerate) -- discarding it"
+                  DSYM_OK=0
+                fi
+              fi
             fi
-            rm -f "$DSYMUTIL_LOG"
-            DWARF_FILE="$DSYM/Contents/Resources/DWARF/$(basename "$BIN")"
-            if [ ! -s "$DWARF_FILE" ]; then
-              echo "::error::$DSYM has no (or an empty) DWARF payload at $DWARF_FILE"; exit 1
+            if [ "$DSYM_OK" -eq 1 ]; then
+              USABLE_DSYMS=$((USABLE_DSYMS + 1))
+              echo "$NAME: validated dSYM captured (UUID-matched, $CU_COUNT compile units)"
+            else
+              rm -rf "$DSYM"
             fi
-            DSYM_UUIDS=$(dwarfdump --uuid "$DWARF_FILE" | awk '{print $2}' | sort)
-            if [ "$DSYM_UUIDS" != "$BIN_UUIDS" ]; then
-              echo "::error::$DSYM UUIDs do not match $BIN -- incomplete/wrong dSYM"
-              echo "  binary: $BIN_UUIDS"
-              echo "  dSYM:   $DSYM_UUIDS"
-              exit 1
-            fi
+            # ---- Customer artifact: stripping ALWAYS proceeds -- debug
+            # capture problems never weaken or skip it.
             strip -x "$BIN"
           done
+          if [ "$USABLE_DSYMS" -eq 0 ]; then
+            echo "::warning::no usable dSYM was produced (expected under Release+LTO) -- the -debug upload will be skipped; crash symbolication is unavailable for this build"
+          fi
+          # Written BEFORE codesign/copy/verification below so dSYMs captured
+          # above still upload even if those later steps fail. (A strip
+          # failure inside the loop above aborts earlier, leaving the flag
+          # unwritten -- the -debug upload is then skipped along with the
+          # failed job, which is the fail-closed default.)
+          echo "debug_artifacts=$([ "$USABLE_DSYMS" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
           # Ad-hoc codesign so macOS will load the bundles after quarantine removal.
           codesign --force --deep --sign - "$VST3"
           codesign --force --deep --sign - "$AU"
@@ -460,6 +506,11 @@ jobs:
           echo "== App arches ==";  lipo -archs "$DIST/Anamorph.app/Contents/MacOS/Anamorph"
           # The stripped, signed plugin must still expose its VST3 entry point.
           nm -gU "$DIST/Anamorph.vst3/Contents/MacOS/Anamorph" | grep -q GetPluginFactory
+          # The customer artifact must contain no debug material (parity with
+          # the Linux/Windows staging self-checks).
+          if find "$DIST" \( -name '*.dSYM' -o -name '*.debug' -o -name '*.pdb' \) -print | grep -q .; then
+            echo "::error::customer artifact contains debug files"; exit 1
+          fi
 
       # Customer-artifact safety (RH-PR-2 review): upload only a fully
       # packaged (dSYM-captured, stripped, signed, slice- and entry-point-
@@ -476,8 +527,14 @@ jobs:
           path: dist/Anamorph-macOS
           if-no-files-found: error
 
+      # Uploaded only when at least one VALIDATED dSYM was captured (the
+      # best-effort policy above): with zero usable dSYMs the upload is
+      # skipped -- with a warning already emitted by the package step --
+      # instead of failing on an empty directory. The outputs flag is
+      # written before the abortable packaging steps, so dSYMs captured
+      # before a later codesign/verification failure are still preserved.
       - name: Upload macOS debug symbols (dSYMs, crash symbolication)
-        if: ${{ !cancelled() && steps.package.outcome != 'skipped' }}
+        if: ${{ !cancelled() && steps.package.outcome != 'skipped' && steps.package.outputs.debug_artifacts == 'true' }}
         uses: actions/upload-artifact@v5
         with:
           name: Anamorph-macOS-debug

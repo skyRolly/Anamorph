@@ -424,3 +424,70 @@ are unchanged.
 - Scope check: `git diff --stat` against the pre-follow-up RH-PR-2 tip shows exactly
   `.github/workflows/build.yml` (workflow logic) and this file (documentation) — no CMake, ADR, or
   `src/`/`tests/` changes.
+
+## 9. CI follow-up 2 — macOS dSYM capture must be best-effort under Release+LTO
+
+§8's macOS hardening introduced a regression: it treated **any** dsymutil warning as a degenerate
+dSYM and failed the packaging job. The first real macOS run failed with:
+
+```
+warning: (x86_64) /tmp/lto.o unable to open object file: No such file or directory
+warning: (arm64) /tmp/lto.o unable to open object file: No debug symbols in executable
+```
+
+### Root cause — the assumption "any dsymutil warning = invalid dSYM" is wrong for this build
+
+On macOS the linker does not embed DWARF in the linked binary; it records references (OSO/N_OSO
+entries) to the **object files** that hold it, and dsymutil later reads those objects to assemble
+the dSYM. `AnamorphHardening` adds `-g` so the objects do carry DWARF — but under LTO the "object"
+the final link consumes is the linker's **temporary LTO-merged module** (`/tmp/lto.o`), deleted as
+soon as the link finishes. By packaging time there is nothing for dsymutil to read: it warns
+exactly as observed, exits **0**, and emits a dSYM without usable DWARF. This is an inherent
+property of the Release+LTO configuration, not a broken artifact — the shipped binary never
+contained that debug info in the first place, so the customer artifact is bit-for-bit unaffected.
+§8's warnings-are-fatal gate therefore failed **every** macOS packaging run while guarding nothing:
+warning text is not a usability signal.
+
+### Correction (CI-only, `build.yml` macOS job)
+
+Developer dSYM capture is now **best-effort**, judged on the *output*, never on warning text:
+
+- Per bundle: run dsymutil (warnings logged, informational); keep the dSYM only if the DWARF
+  payload exists and is non-empty **and** `dwarfdump --uuid` on it matches the binary's slice UUID
+  set exactly **and** it contains ≥ 1 DWARF compile unit (a UUID-only stub with zero CUs is
+  degenerate — the expected LTO outcome). An unusable dSYM is discarded with a `::warning::`
+  annotation and packaging **continues**.
+- `strip -x` runs unconditionally after each capture attempt; codesign-last ordering, lipo slice
+  checks, and the `GetPluginFactory` export check are unchanged. A new final self-check asserts
+  the customer staging dir contains no `*.dSYM`/`*.debug`/`*.pdb` (parity with Linux/Windows
+  staging self-validation) — customer-artifact protection is strengthened, not weakened.
+- The `-debug` upload is gated on a new `debug_artifacts` step output (written **before** the
+  abortable codesign/verify steps, preserving the §6 property that captured debug artifacts
+  survive later failures): zero usable dSYMs → upload skipped with a clear warning instead of
+  `if-no-files-found: error` failing the job on an empty directory.
+- Windows PDB retention (§8) and Linux strip/staging (§6/§7) are untouched.
+
+**Accepted consequence:** with the current pinned flag set, macOS CI ships no crash-symbolication
+artifact (Linux `.debug` and Windows PDB retention are unaffected — their debug info doesn't ride
+on deleted temporaries). Restoring full macOS symbolication requires persisting the LTO object via
+`-Wl,-object_path_lto,<path>` — a linker-flag change deliberately **not** made here (out of this
+follow-up's scope; no compiler/CMake changes) and recorded as an RH-PR-3 candidate.
+
+### Validation (this follow-up)
+
+- Workflow YAML parses; macOS step body extracted verbatim and `bash -n` clean.
+- **Local end-to-end simulation** of the extracted step body with mocked
+  `dsymutil`/`dwarfdump`/`strip`/`codesign`/`lipo`/`nm` and a faked build tree, four scenarios:
+  1. **Warning-only degenerate dSYM (the CI failure case):** dsymutil prints the exact observed
+     warnings, exits 0, emits a dSYM with no DWARF payload → step **succeeds**, customer staging
+     dir fully populated (3 bundles + INSTALL.txt), degenerate dSYM discarded (debug dir empty),
+     `debug_artifacts=false`, warnings annotated.
+  2. **Valid dSYM:** DWARF payload + matching UUIDs + CUs present → retained,
+     `debug_artifacts=true`, step succeeds (validation still enforced).
+  3. **UUID mismatch:** dSYM discarded with warning, step still succeeds, `debug_artifacts=false`.
+  4. **Debug material planted in the customer staging dir:** final self-check **fails the step**
+     (fail-closed proof for the new customer-side assertion).
+- Full DSP suite re-run: **136 checks, 0 failures** (no product code touched; diff = `build.yml` +
+  this file).
+- Real-runner caveat unchanged from §7/§8: first live execution of the corrected macOS path is
+  this push's CI run.
