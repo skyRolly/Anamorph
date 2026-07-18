@@ -95,7 +95,7 @@ void SoloMonitor::process (float* left, float* right, int mask, int numSamples) 
     for (int b = 0; b < 4; ++b)
         bandGain[b].setTargetValue ((b <= crossovers && heard (b)) ? 1.0f : 0.0f);
 
-    // ---- Settled fast path (H1, 0.8.9) --------------------------------------
+    // ---- Settled fast path (H1, 0.8.9; cutoff-decoupled Wave 3) -------------
     // With nothing soloed and every smoother fully settled, each sample computes
     // exactly 1*in + 0*band0 + ... : the passthrough the header already documents
     // as the bit-exact true output. Skipping the whole loop reproduces it without
@@ -105,7 +105,21 @@ void SoloMonitor::process (float* left, float* right, int mask, int numSamples) 
     // a settled smoother is mutation-free, so skipping it is state-identical.
     // The gate sits AFTER the setTargetValue calls above: any target change this
     // block arms the ramp -> isSmoothing() -> the crossfade advances as always.
-    // The cutoff check mirrors the fade trigger's 0.05 Hz criterion below.
+    //
+    // The GAINS alone prove the output -- the cutoffs do not appear in the
+    // settled passthrough arithmetic. The original H1 gate also required every
+    // cutoff within 0.05 Hz of its target, so a split DRAG with nothing soloed
+    // woke the whole bank (6 LR4 + 5 smoother ticks + up to 3 tan updates per
+    // sample, ~22 % of the engine's drag profile) just to compute that provable
+    // passthrough for the entire drag + catch-up. Wave 3 drops the cutoff term:
+    // the monitor stays cold through no-solo target movement. Nothing else
+    // changes -- while cold the targets simply accumulate, and the existing
+    // cold re-entry below already resets the filters and SNAPS the cutoffs to
+    // the then-current targets under the engage crossfade (which is also why
+    // gliding while inaudible was pure waste: re-entry discards that progress).
+    // A >1.5-oct step landing while cold cannot mis-fire the jump-fade either:
+    // re-entry runs BEFORE the fade trigger, so the snapped bank is already
+    // within 0.1 oct of the targets and worthIt stays false.
     if (! anySolo && ! fading && ! passGain.isSmoothing()
         && ! (std::abs (passGain.getCurrentValue() - 1.0f) > 0.0f))
     {
@@ -113,8 +127,6 @@ void SoloMonitor::process (float* left, float* right, int mask, int numSamples) 
         for (int b = 0; b < 4 && settled; ++b)
             settled = ! bandGain[b].isSmoothing()
                    && ! (std::abs (bandGain[b].getCurrentValue()) > 0.0f);
-        for (int i = 0; i < crossovers && settled; ++i)
-            settled = ! (std::abs (bank[active].f[i] - targetF[i]) > 0.05f);
         if (settled)
         {
             running = false; // filters go cold; the re-entry below re-warms them
