@@ -15,7 +15,7 @@ scripts/run-tests.sh             # runs the AnamorphTests console app
 
 ### What the tests cover
 
-`tests/dsp_tests.cpp` has **30 DSP tests** using a `check(cond, "what")` harness, covering: MS
+`tests/dsp_tests.cpp` has **31 DSP tests** using a `check(cond, "what")` harness, covering: MS
 round-trip (bit-exact), transparent default, true-bypass null + latency match, Mono Maker
 (post-Mix), Multiband mono-compat, Solo band selectivity + transparency, Level Match
 (unity/no-ratchet/silence-freeze/mix-coupling/multiband-unity), crossover automation safety,
@@ -44,7 +44,14 @@ forced bulk swap landing while an ordinary discrete duck is still fading OUT mus
 semantics — stale delay-line audio must not replay after the silent bottom (the pre-fix engine,
 which dropped the consumed forced request in that window, measures a 0.494-peak Haas-tail replay
 against silent input and fails) — while the upgrade stays click-free and the duck still bottoms
-at silence. It additionally carries **one state-restoration robustness guard**,
+at silence; and the high-sample-rate terminal-snap regression (`testHighRateCrossoverSnap`,
+Test 32): a moved crossover must land **bitwise-exactly** on its target and let the solo
+monitor's settled fast path go cold, at 44.1/48/96/192 kHz, through targets inside the measured
+192 kHz float-stall zones (just above the binade edges ≥ 2048 Hz) including the worst one
+(16.6 kHz) — the pre-fix glide, whose one-pole add stalls below `ulp(f)/2` while the gap is
+still above the terminal-snap eps, rests 0.4688/0.9375/1.8750/3.75 Hz short at 192 kHz, never
+goes cold, and fails, while the normal-rate passes double as the unchanged-behavior guard. It
+additionally carries **one state-restoration robustness guard**,
 `testAbActiveClampOnCorruptState` — it drives a corrupted `<AB active="…">` blob through the same
 read+clamp the processor uses (`anamorph::clampAbSlotIndex`, `src/AbSlotIndex.h`) and asserts an
 out-of-range A/B index can never index `abSlot[]`/`abUndo[]` out of bounds, while valid 0/1 are

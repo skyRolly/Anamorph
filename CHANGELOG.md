@@ -33,6 +33,25 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   (still message-thread). Evidence: this PR. [Verified]
 
 ### Fixed
+- **At very high sample rates (192 kHz) a moved crossover now always lands exactly on its
+  target; previously it could rest up to 3.75 Hz short forever and keep the solo monitor's
+  settled fast path from ever engaging (ADR-0015 "High-Sample-Rate Terminal-Snap
+  Robustness").** The cutoff glide's per-sample one-pole add stops changing a float once the
+  move drops below `ulp(f)/2`, and the terminal-snap eps (0.05 + 2e-4·f Hz) covers that stall
+  only up to 96 kHz (margin ≥ 1.76×; 3.55–4.27× at 44.1/48 kHz): at 192 kHz the margin falls to
+  0.88–0.98× just past every binade edge ≥ 2048 Hz (parameter-range hard-stall zones
+  [2049–2093], [4097–4437], [8194–9125], [16388–18500] Hz, both approach directions —
+  exact-float simulation; higher binades up to the DSP-level 86.4 kHz Nyquist clamp stall too,
+  same ≤ 0.4-cent resting error). Audio was
+  never wrong (< 0.4 cents off), but cutoffs could never equal targets, so the H1 settled fast
+  path stayed unreachable and the crossover filters/smoothers stayed hot indefinitely. The glide
+  now also snaps to the exact target the moment the float add can no longer move the cutoff —
+  eps, rate law R(f), smoothing, and fade thresholds untouched; behavior at ≤ 96 kHz
+  bit-identical (the eps snap always fires first). Guarded by `testHighRateCrossoverSnap`
+  (Test 32; DSP tests 30→31, checks 115→130): bitwise-exact landing plus cold-path engagement at
+  44.1/48/96/192 kHz — pre-fix it fails at 192 kHz exactly (measured resting gaps
+  0.4688/0.9375/1.8750/3.75 Hz, never cold) and passes at the normal rates, doubling as the
+  unchanged-behavior guard. Evidence: this PR. [Verified]
 - **Crossover follower slow-drag regression: normal-speed split drags no longer trail the mouse
   by whole octaves and crawl on for seconds after release (ADR-0015 "Crossover Follower
   Slow-Drag Regression").** The v0.8.10 final follower capped cutoff movement at a flat
