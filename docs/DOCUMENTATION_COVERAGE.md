@@ -6,7 +6,33 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **high-sample-rate crossover terminal-snap robustness fix** (2026-07-17,
+Last updated: for **performance Wave 3 — runtime optimisation** (2026-07-18, unreleased cycle,
+PR `performance/wave3-runtime-optimization`). Investigation-first wave (baselines, callgrind
+attribution and the full decision record live in `worklogs/performance/WAVE3_INVESTIGATION.md`
+— a new top-level `worklogs/` directory for session-local records, added to REPOSITORY_MAP).
+Four DSP changes + one GUI flag: **(1)** SoloMonitor's H1 cold gate decoupled from cutoff
+proximity (gains alone prove the passthrough; a no-solo split drag — ~22 % of the drag-profile
+instructions — no longer wakes the bank; Class A, guarded by new `testSoloColdThroughDrag`,
+Test 33, proven to fail pre-change); **(2)** per-split LR4 coefficient sharing
+(`LR4Xover::copyCoefficientsFrom`): x/dx/ax/dax always share one cutoff, so the glide, the
+aligned-block resync and `setBankCutoffs` compute `tan` once per split (12→3 per sample worst
+case) and the never-processed `ax[0]`/`dax[0]` are not updated at all (Class A); **(3)** the
+phase-compensation allpass is the ladder's first 2nd-order section computed directly
+(`LR4Xover::processSampleAllpass` — the recorded 0.8.10 follow-up; Class B ≤ 1.2e-7, 2–24
+samples per 204,800 in the twin dump); **(4)** settled output-stage and settled-Mix per-sample
+constants hoisted per block (Class A); **(5)** SpectrumImager FFT `ignoreNegativeFreqs=true`
+(consumers read bins ≤ N/2 only; identical visuals). Rejected with reasons (recorded in the
+worklog): LoudnessMatch off-gating (Measure readout + Apply are live consumers with Match off),
+LevelMeters editor-closed gating (held peaks must persist), velvet parked-envelope freeze.
+Fair interleaved before/after (session-local, 48 kHz): drags −35…−50 %, settled multiband
+−9…−17 %, transparent floor −6.6 %. Suite 32 DSP tests + A/B guard, checks 130→**136**, twin
+dump bit-exact on every Class-A row. Synced: PERFORMANCE_BUDGET (allpass follow-up marked done,
+H1/crossover-move/GUI rows updated, stale process() line-range corrected), CHANGELOG
+([Unreleased]), README, TESTING_POLICY, TESTING, HANDOVER, REPOSITORY_MAP (worklogs/).
+**Deliberately NOT touched** (a parallel release-hardening PR owns release documentation):
+RELEASE_HARDENING_PLAN.md — its QA-gate row still reads "31 DSP self-tests … (130 checks)" and
+needs the one-line 32/136 sync once the PRs land (recorded drift, not silently fixed).
+Prior: the **high-sample-rate crossover terminal-snap robustness fix** (2026-07-17,
 v0.8.10 maintenance, PR `fix/high-sr-crossover-snap`). Review of the slew-limited smoother found
 a numerical edge case, confirmed by exact-float simulation: the per-sample one-pole add stalls
 once its move drops below `ulp(f)/2`, and the terminal-snap eps (0.05 + 2e-4·f) out-runs that

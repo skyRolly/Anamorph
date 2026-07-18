@@ -14,6 +14,8 @@ Anamorph/
 ├── CLAUDE.md               AI/contributor entry point: mandatory policy pre-read + repo constraints.
 ├── src/                    Source (wrapper + GUI + DSP core).
 ├── tests/                  Headless DSP self-tests.
+├── worklogs/               Session-local investigation records for future agents (NOT
+│                           architecture docs; e.g. performance/WAVE3_INVESTIGATION.md).
 ├── scripts/                setup / build / test / pluginval.
 ├── packaging/              macOS install notes.
 ├── .github/workflows/      CI (build + validate on 3 OSes).

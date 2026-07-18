@@ -6,6 +6,32 @@ SHA + date** as the Evidence Source (per `docs/policies/CHANGELOG_POLICY.md`). E
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
+## [Unreleased]
+### Changed
+- **Multiband and crossover-drag CPU cost reduced (performance Wave 3; no behaviour change
+  by design).** Four independent optimisations, all validated by a 12-scenario full-engine
+  output twin-dump plus the DSP self-test suite: **(1)** the Band Solo monitor's settled
+  fast path is now gated on its crossfade gains alone, so dragging a split with **nothing
+  soloed** no longer wakes the whole solo filter bank to compute a provable passthrough
+  (bit-identical output; the bank stays cold and re-engaging still snaps to the freshest
+  cutoffs under the same ~12 ms crossfade — regression Test 33); **(2)** the four
+  crossover filters of one multiband split (wet, dry twin, and the two phase-compensation
+  allpasses) now share one coefficient computation per update instead of four identical
+  `tan` evaluations — bit-identical, cutting the worst-case per-sample coefficient math of
+  a dry-aligned split drag to a quarter; **(3)** the flat-recombination phase-compensation
+  allpass is computed directly as the Linkwitz-Riley ladder's first 2nd-order section (the
+  `lo+hi` sum it always equalled, the optimisation recorded in `PERFORMANCE_BUDGET.md`
+  since 0.8.10) — half the allpass arithmetic; output equal to within one float rounding
+  pair (measured max 1.2e-7, a few samples per 200-block dump; 44.1–192 kHz unaffected
+  otherwise); **(4)** the settled output-gain stage and settled-Mix dry/wet blend hoist
+  their per-sample smoother ticks and constants per block (bit-identical). Session-local
+  measurements (48 kHz, Release, Linux x86_64): continuous crossover drags −35…−50 %
+  engine cost, settled 3/4-band multiband states −9…−17 %, transparent floor −6.6 %.
+  Also: the spectrum analyser's FFT now computes only the non-negative-frequency
+  magnitudes it reads (identical visuals, ~half the per-transform magnitude work).
+  Full investigation record: `worklogs/performance/WAVE3_INVESTIGATION.md`.
+  Evidence: this PR. [Verified]
+
 ## [0.8.10] — 2026-07-14
 ### Changed
 - **Alt/Option-click on an unsoloed Band Solo button now solos ONLY that band (exclusive
