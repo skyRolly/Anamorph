@@ -476,7 +476,7 @@ static void testSoloMonitor()
             engine.setParameters (p);
             engine.process (buf);
             if (nb >= 45)
-                for (int i = 0; i < block; ++i) { const float v = buf.getSample (0, i); sq += v * v; ++cnt; }
+                for (int i = 0; i < block; ++i) { const float v = buf.getSample (0, i); sq += static_cast<double> (v) * static_cast<double> (v); ++cnt; }
         }
         return std::sqrt (sq / juce::jmax (1, cnt));
     };
