@@ -356,7 +356,8 @@ static void testMultibandMonoCompat()
             for (int i = 0; i < block; ++i)
             {
                 const float mono = buf.getSample (0, i) + buf.getSample (1, i);
-                blkIn += mono * mono;
+                const double monoD = static_cast<double> (mono);
+                blkIn += monoD * monoD;
             }
             engine.setParameters (p);
             engine.process (buf);
