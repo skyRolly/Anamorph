@@ -21,7 +21,9 @@ Anamorph/
 │                           graduate to ADRs; worklogs are the raw evidence trail).
 ├── scripts/                setup / build / test / pluginval.
 ├── packaging/              macOS install notes.
-├── .github/workflows/      CI (build + validate on 3 OSes; retain-then-strip symbol pipeline).
+├── .github/                CI + security tooling: workflows/ (build + validate on 3 OSes with
+│                           retain-then-strip symbol pipeline; CodeQL; MSVC /analyze;
+│                           Dependency Review) and dependabot.yml (github-actions ecosystem only).
 └── docs/                   This documentation library.
 ```
 
@@ -76,6 +78,10 @@ Anamorph/
 | `src/AbSlotIndex.h` | `anamorph::kNumAbSlots` + `clampAbSlotIndex` — single source of truth for A/B slot sizing/clamping. |
 | `packaging/macos/INSTALL.txt` | macOS install + de-quarantine instructions (ad-hoc signed, not notarized). |
 | `.github/workflows/build.yml` | 3-OS build + DSP tests + pluginval; strictness-10, both modes ×3, **blocking on all three platforms**. |
+| `.github/workflows/codeql.yml` | CodeQL (`c-cpp` manual build + `actions`); alerts scoped to repo-own code. See `docs/procedures/CI_CD.md` §Security scanning. |
+| `.github/workflows/msvc.yml` | MSVC `/analyze` → SARIF; JUCE treated as external; path-filtered triggers. |
+| `.github/workflows/dependency-review.yml` | Dependency Review on PRs to `main` (GitHub Actions deps; comment on failure only). |
+| `.github/dependabot.yml` | Weekly grouped `github-actions` bumps; JUCE stays manually pinned (`DEPENDENCY_POLICY.md`). |
 
 ## `docs/` — documentation library
 

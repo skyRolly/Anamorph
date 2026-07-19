@@ -6,7 +6,22 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for **RH-PR-2 Build Hardening + review follow-up** (2026-07-18, release-hardening
+Last updated: for the **security-tooling configuration review** (2026-07-19, branch
+`security-tooling/config-review`). The four generated GitHub security configs were optimized
+against the repository's actual shape: `dependabot.yml` was **invalid as generated**
+(`package-ecosystem: ""` — rejected by the Dependabot schema) and now monitors the only
+supported ecosystem here, `github-actions` (weekly, grouped into one PR; JUCE stays
+FetchContent-pinned + review-gated per `DEPENDENCY_POLICY.md`); `codeql.yml` switched `c-cpp`
+from `build-mode: none` (near-zero include resolution — JUCE is absent from the bare checkout)
+to a **manual build** mirroring the Linux CI steps but compiling only `Anamorph_VST3` +
+`AnamorphTests` with `-DANAMORPH_BUILD_STANDALONE=OFF`, with alerts scoped to repo-own code
+(`paths-ignore: build` excludes the FetchContent'd JUCE tree) and docs-only changes skipping
+the workflow; `msvc.yml` gained the **required** build step (juceaide-generated files),
+JUCE-as-external suppression (`ignoredIncludePaths`/`ignoredTargetPaths` → `build/_deps`),
+path-filtered triggers, and `upload-sarif` v3→v4; `dependency-review.yml` comments on failure
+only. Validated: schema (github-workflows + dependabot vendor schemas), local build of the
+exact analysis targets, 136/136 self-tests. Synced: CI_CD (§Security scanning),
+REPOSITORY_MAP. Prior: for **RH-PR-2 Build Hardening + review follow-up** (2026-07-18, release-hardening
 program, ADR-0021, PR #63 `release-hardening/build-hardening`, rebased onto the v0.8.11 bump —
 the CHANGELOG entry now lives under `[0.8.11]` **### Security**). Behaviour-neutral binary
 hygiene: an `AnamorphHardening` INTERFACE target pins `-fstack-protector-strong`, section GC,
