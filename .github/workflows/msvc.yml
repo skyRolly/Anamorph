@@ -19,7 +19,10 @@
 #
 # The action below is not certified by GitHub; it is provided by Microsoft
 # under its own terms (https://github.com/microsoft/msvc-code-analysis-action)
-# and is pinned to the commit of its latest release (v0.1.1).
+# and is pinned to the head of its main branch (2023-03-22): the last tagged
+# release (v0.1.1) predates the buildConfiguration input and silently analyzes
+# codemodel.configurations[0] on multi-config generators, whereas this commit
+# fails closed unless the analyzed configuration is named explicitly.
 name: Microsoft C++ Code Analysis
 
 on:
@@ -71,11 +74,16 @@ jobs:
         run: cmake --build ${{ env.build }} --config Debug --target Anamorph_VST3 AnamorphTests
 
       - name: Initialize MSVC Code Analysis
-        uses: microsoft/msvc-code-analysis-action@04825f6d9e00f87422d6bf04e1a38b1f3ed60d99 # v0.1.1
+        uses: microsoft/msvc-code-analysis-action@96315324a485db21449515180214ecb78c16a1c5 # main 2023-03-22 (v0.1.1 + buildConfiguration; no later release)
         # Provide a unique ID to access the sarif output path
         id: run-analysis
         with:
           cmakeBuildDirectory: ${{ env.build }}
+          # windows-latest uses the (multi-config) Visual Studio generator;
+          # analyze exactly the configuration the Build step compiled. The
+          # pinned action version errors out if this does not name an
+          # existing configuration -- no silent first-configuration fallback.
+          buildConfiguration: Debug
           # Ruleset file that will determine what checks will be run
           ruleset: NativeRecommendedRules.ruleset
           # FetchContent'd JUCE: suppress diagnostics from its headers and
