@@ -272,7 +272,7 @@ static void testMonoMaker()
                 for (int i = 0; i < block; ++i)
                 {
                     const float side = 0.5f * (buf.getSample (0, i) - buf.getSample (1, i));
-                    sideSq += side * side; ++counted;
+                    sideSq += static_cast<double> (side) * static_cast<double> (side); ++counted;
                 }
         }
         return std::sqrt (sideSq / juce::jmax (1, counted));
