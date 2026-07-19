@@ -428,7 +428,7 @@ static void testMonoMakerPostMix()
                 for (int i = 0; i < block; ++i)
                 {
                     const float side = 0.5f * (buf.getSample (0, i) - buf.getSample (1, i));
-                    outSq += side * side; ++cnt;
+                    outSq += static_cast<double> (side) * static_cast<double> (side); ++cnt;
                 }
         }
         // input side RMS == sin RMS ~ 0.707; compare the measured tail to it.
