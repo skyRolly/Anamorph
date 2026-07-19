@@ -1301,7 +1301,8 @@ static void testDryAlignGateRecomb()
         for (int i = 0; i < block; ++i)
         {
             const float mono = buf.getSample (0, i) + buf.getSample (1, i);
-            blkIn += mono * mono;
+            const double m = static_cast<double> (mono);
+            blkIn += m * m;
         }
         engine.setParameters (p);
         engine.process (buf);
@@ -1309,7 +1310,8 @@ static void testDryAlignGateRecomb()
         for (int i = 0; i < block; ++i)
         {
             const float mono = buf.getSample (0, i) + buf.getSample (1, i);
-            blkOut += mono * mono;
+            const double m = static_cast<double> (mono);
+            blkOut += m * m;
         }
         if (nb >= 80 && nb < 90)  { inSqTr += blkIn; outSqTr += blkOut; } // transition window
         if (nb >= 100)            { inSq   += blkIn; outSq   += blkOut; } // settled at mix 0.5
