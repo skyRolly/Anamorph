@@ -510,7 +510,7 @@ static void testSoloMonitor()
             engine.process (buf);
             if (nb >= 40)
                 for (int ch = 0; ch < 2; ++ch)
-                    for (int i = 0; i < block; ++i) { const float v = buf.getSample (ch, i); sq += v * v; }
+                    for (int i = 0; i < block; ++i) { const float v = buf.getSample (ch, i); sq += static_cast<double> (v) * static_cast<double> (v); }
         }
         return sq;
     };
