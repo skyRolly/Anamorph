@@ -68,10 +68,15 @@ jobs:
         run: cmake -B ${{ env.build }} -DANAMORPH_BUILD_STANDALONE=OFF
 
       # Required (see header): juceaide-generated files are consumed by the
-      # plugin translation units. Debug is the VS generator's first/default
-      # configuration, which is what the analysis pass resolves against.
+      # plugin translation units. Release, matching the repository's entire
+      # validation strategy (build.yml gates, DSP self-tests, pluginval, and
+      # the CodeQL manual build all run Release -- "validate the shipped
+      # configuration", ADR-0021): analysis then sees the NDEBUG preprocessor
+      # state customers receive (where assert-guards vanish and their
+      # findings become real) plus the Release-only hardening flags, instead
+      # of the never-shipped _DEBUG/JUCE_DEBUG paths.
       - name: Build CMake
-        run: cmake --build ${{ env.build }} --config Debug --target Anamorph_VST3 AnamorphTests
+        run: cmake --build ${{ env.build }} --config Release --target Anamorph_VST3 AnamorphTests
 
       - name: Initialize MSVC Code Analysis
         uses: microsoft/msvc-code-analysis-action@96315324a485db21449515180214ecb78c16a1c5 # main 2023-03-22 (v0.1.1 + buildConfiguration; no later release)
@@ -80,10 +85,13 @@ jobs:
         with:
           cmakeBuildDirectory: ${{ env.build }}
           # windows-latest uses the (multi-config) Visual Studio generator;
-          # analyze exactly the configuration the Build step compiled. The
-          # pinned action version errors out if this does not name an
-          # existing configuration -- no silent first-configuration fallback.
-          buildConfiguration: Debug
+          # analyze exactly the configuration the Build step compiled (see
+          # its comment for why Release). The pinned action version errors
+          # out if this does not name an existing configuration -- no silent
+          # first-configuration fallback. A second (Debug) analysis pass was
+          # considered and rejected: it would double the workflow's full
+          # build + /analyze recompile cost to cover developer-only paths.
+          buildConfiguration: Release
           # Ruleset file that will determine what checks will be run
           ruleset: NativeRecommendedRules.ruleset
           # FetchContent'd JUCE: suppress diagnostics from its headers and
