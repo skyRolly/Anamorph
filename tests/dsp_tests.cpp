@@ -365,7 +365,7 @@ static void testMultibandMonoCompat()
                 for (int i = 0; i < block; ++i)
                 {
                     const float mono = buf.getSample (0, i) + buf.getSample (1, i);
-                    outSq += mono * mono;
+                    outSq += static_cast<double> (mono) * static_cast<double> (mono);
                 }
                 inSq += blkIn;
             }
