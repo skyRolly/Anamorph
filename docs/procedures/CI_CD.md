@@ -1,6 +1,8 @@
 # CI_CD.md
 
-Continuous integration / delivery. Source of truth: `.github/workflows/build.yml`.
+Continuous integration / delivery. Source of truth: `.github/workflows/build.yml`
+(build + validate) and the security-scanning workflows listed in
+[Security scanning](#security-scanning).
 
 ## Triggers
 
@@ -81,6 +83,21 @@ The macOS job captures dSYMs, strips, then ad-hoc codesigns the bundles, verifie
 slices with `lipo -archs`, and asserts the stripped VST3 still exports `GetPluginFactory` — all
 strict (a failure fails the job; the `\|\| true` swallowing was removed in RH-PR-2/ADR-0021).
 Evidence [Verified]: `.github/workflows/build.yml`.
+
+## Security scanning
+
+Separate from the build/validate pipeline, four security workflows/configs run against `main`:
+
+| File | What it does | Triggers |
+|---|---|---|
+| `.github/workflows/codeql.yml` | CodeQL: `c-cpp` (manual build — VST3 + tests targets, Standalone off) + `actions`. Alerts filtered to repo-own code (`paths-ignore: build` excludes the FetchContent'd JUCE tree). Default query suite. | push/PR to `main` (docs-only changes skipped), weekly, dispatch |
+| `.github/workflows/msvc.yml` | MSVC `/analyze` (NativeRecommendedRules) → SARIF upload. Build step required (juceaide-generated files); JUCE under `build/_deps` treated as external. | push/PR to `main` path-filtered to `src/`, `tests/`, `CMakeLists.txt`; weekly; dispatch |
+| `.github/workflows/dependency-review.yml` | Dependency Review on PRs (GitHub Actions deps only — the graph does not index CMake FetchContent). Comments only on failure. | PR to `main` |
+| `.github/dependabot.yml` | Weekly grouped `github-actions` version bumps (single PR). JUCE is **not** Dependabot-managed — pinned + review-gated per `DEPENDENCY_POLICY.md`. | weekly |
+
+Both analysis workflows configure with `-DANAMORPH_BUILD_STANDALONE=OFF`: the Standalone format
+recompiles the same translation units as VST3, so analyzing it doubles cost for zero extra
+coverage. Evidence [Verified]: the four files above.
 
 ## Reproducing CI locally
 

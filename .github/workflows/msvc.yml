@@ -1,20 +1,45 @@
-# This workflow uses actions that are not certified by GitHub.
-# They are provided by a third-party and are governed by
-# separate terms of service, privacy policy, and support
-# documentation.
+# Microsoft C++ Code Analysis (MSVC /analyze) -- complements CodeQL with the
+# MSVC-specific C6xxx security/correctness rules (NativeRecommendedRules).
 #
-# Find more information at:
-# https://github.com/microsoft/msvc-code-analysis-action
-
+# The build step is REQUIRED for this project: juce_add_plugin generates
+# metadata/helper files via juceaide during the build, so analyzing a
+# configure-only tree fails on missing generated files. Only the VST3 and
+# test targets are built -- Standalone (existing CMake option, default ON)
+# recompiles the identical translation units for zero extra coverage.
+#
+# The FetchContent'd JUCE tree (build/_deps) is treated as external/system
+# code (ignoredIncludePaths + ignoredTargetPaths) so the uploaded SARIF only
+# carries findings in the repository's own sources; JUCE is pin-locked and
+# review-gated per docs/policies/DEPENDENCY_POLICY.md.
+#
+# Triggers are path-filtered to C++/CMake changes: this workflow performs a
+# full MSVC build plus a second /analyze compile pass, which is pure cost on
+# docs/CI-script changes. The weekly schedule keeps a baseline scan against
+# newly-added rules.
+#
+# The action below is not certified by GitHub; it is provided by Microsoft
+# under its own terms (https://github.com/microsoft/msvc-code-analysis-action)
+# and is pinned to the commit of its latest release (v0.1.1).
 name: Microsoft C++ Code Analysis
 
 on:
   push:
     branches: [ "main" ]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'CMakeLists.txt'
+      - '.github/workflows/msvc.yml'
   pull_request:
     branches: [ "main" ]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'CMakeLists.txt'
+      - '.github/workflows/msvc.yml'
   schedule:
     - cron: '24 0 * * 1'
+  workflow_dispatch:
 
 env:
   # Path to the CMake build directory.
@@ -34,33 +59,32 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Configure CMake
-        run: cmake -B ${{ env.build }}
+        run: cmake -B ${{ env.build }} -DANAMORPH_BUILD_STANDALONE=OFF
 
-      # Build is not required unless generated source files are used
-      # - name: Build CMake
-      #   run: cmake --build ${{ env.build }}
+      # Required (see header): juceaide-generated files are consumed by the
+      # plugin translation units. Debug is the VS generator's first/default
+      # configuration, which is what the analysis pass resolves against.
+      - name: Build CMake
+        run: cmake --build ${{ env.build }} --config Debug --target Anamorph_VST3 AnamorphTests
 
       - name: Initialize MSVC Code Analysis
-        uses: microsoft/msvc-code-analysis-action@04825f6d9e00f87422d6bf04e1a38b1f3ed60d99
+        uses: microsoft/msvc-code-analysis-action@04825f6d9e00f87422d6bf04e1a38b1f3ed60d99 # v0.1.1
         # Provide a unique ID to access the sarif output path
         id: run-analysis
         with:
           cmakeBuildDirectory: ${{ env.build }}
           # Ruleset file that will determine what checks will be run
           ruleset: NativeRecommendedRules.ruleset
+          # FetchContent'd JUCE: suppress diagnostics from its headers and
+          # skip analysis of its helper targets (juceaide etc.).
+          ignoredIncludePaths: ${{ env.build }}/_deps
+          ignoredTargetPaths: ${{ env.build }}/_deps
 
       # Upload SARIF file to GitHub Code Scanning Alerts
       - name: Upload SARIF to GitHub
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: ${{ steps.run-analysis.outputs.sarif }}
-
-      # Upload SARIF file as an Artifact to download and view
-      # - name: Upload SARIF as an Artifact
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: sarif-file
-      #     path: ${{ steps.run-analysis.outputs.sarif }}
