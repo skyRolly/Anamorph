@@ -6,15 +6,32 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **security-tooling configuration review** (2026-07-19, branch
-`security-tooling/config-review`). The four generated GitHub security configs were optimized
-against the repository's actual shape: `dependabot.yml` was **invalid as generated**
-(`package-ecosystem: ""` — rejected by the Dependabot schema) and now monitors the only
-supported ecosystem here, `github-actions` (weekly, grouped into one PR; JUCE stays
-FetchContent-pinned + review-gated per `DEPENDENCY_POLICY.md`); `codeql.yml` switched `c-cpp`
-from `build-mode: none` (near-zero include resolution — JUCE is absent from the bare checkout)
-to a **manual build** mirroring the Linux CI steps but compiling only `Anamorph_VST3` +
-`AnamorphTests` with `-DANAMORPH_BUILD_STANDALONE=OFF`, with alerts scoped to repo-own code
+Last updated: for **performance Wave 4 — idle/background runtime optimisation** (2026-07-19,
+unreleased cycle, branch `claude/beautiful-sagan-JAUFI`). Implements the Wave-3 handover's
+remaining ranked candidates, all Class A: LevelMeter static-layer cache + opaque (the H2/H13/N2
+recipe — the last of the four visualizers; −29…−31 % per meter frame, raw-pixel-identical),
+SpectrumImager per-transform dB cache (−92 % of the decay-tail tick) + paint `Path` reuse,
+editor 24 Hz memoisations (preset-name shaping keyed on inputs, combo-hover pre-gate, match
+readout on value change), Vectorscope hidden-editor gate, Haas parked fast path (rings keep
+recording; new Test 34 `testHaasParkedWarmHistory` guards the warm history), vectorized NaN-scan
+detector (bit-identical healing, NaN-injection twin rows), segmented scope/bypass ring copies
+(publication contract unchanged). Callgrind A/B: transparent floor −4.9 %, haas-parked −12.4 %,
+bypass-on −3.0 % whole-run instructions; 19-scenario twin dump bit-exact; suite 33 DSP tests +
+A/B guard, checks 136→**140**; warning set byte-stable. A 4-lens verification/discovery
+Workflow was lost to an org spend limit — verification was carried in-line against primary
+sources; the fresh-eyes sweep is recorded as a follow-up in the worklog. Synced:
+PERFORMANCE_BUDGET (GUI row + two new Wave-4 cost bullets), CHANGELOG (`[Unreleased]`),
+TESTING_POLICY + TESTING + README + RELEASE_HARDENING_PLAN QA row (32/136 → 33/140), HANDOVER
+(Test Status / Pending Tasks); investigation + validation evidence in
+`worklogs/performance/WAVE4_INVESTIGATION.md`. Prior: for the **security-tooling configuration
+review** (2026-07-19, branch `security-tooling/config-review`). The four generated GitHub
+security configs were optimized against the repository's actual shape: `dependabot.yml` was
+**invalid as generated** (`package-ecosystem: ""` — rejected by the Dependabot schema) and now
+monitors the only supported ecosystem here, `github-actions` (weekly, grouped into one PR; JUCE
+stays FetchContent-pinned + review-gated per `DEPENDENCY_POLICY.md`); `codeql.yml` switched
+`c-cpp` from `build-mode: none` (near-zero include resolution — JUCE is absent from the bare
+checkout) to a **manual build** mirroring the Linux CI steps but compiling only `Anamorph_VST3`
++ `AnamorphTests` with `-DANAMORPH_BUILD_STANDALONE=OFF`, with alerts scoped to repo-own code
 (`paths-ignore: build` excludes the FetchContent'd JUCE tree) and docs-only changes skipping
 the workflow; `msvc.yml` gained the **required** build step (juceaide-generated files),
 JUCE-as-external suppression (`ignoredIncludePaths`/`ignoredTargetPaths` → `build/_deps`),

@@ -1,5 +1,7 @@
 #include "AnamorphEngine.h"
 #include "MidSide.h"
+#include <cstdint>
+#include <cstring>
 
 namespace anamorph
 {
@@ -761,11 +763,19 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         }
         else
         {
-            for (int i = 0; i < n; ++i)
+            // Write-only fill (the normal state, every block): identical ring
+            // bytes as the per-sample loop, in at most two contiguous copies
+            // (Wave 4). The read-back branch above is left per-sample: its
+            // reads can overlap this block's own writes when readLat < n.
+            int i = 0;
+            while (i < n)
             {
-                bdL[bypassDelayWrite] = L[i];
-                bdR[bypassDelayWrite] = R[i];
-                if (++bypassDelayWrite >= bdSize) bypassDelayWrite = 0;
+                const int seg = juce::jmin (n - i, bdSize - bypassDelayWrite);
+                juce::FloatVectorOperations::copy (bdL + bypassDelayWrite, L + i, seg);
+                juce::FloatVectorOperations::copy (bdR + bypassDelayWrite, R + i, seg);
+                bypassDelayWrite += seg;
+                if (bypassDelayWrite >= bdSize) bypassDelayWrite = 0;
+                i += seg;
             }
         }
     }
@@ -1173,11 +1183,32 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     // the multiband blow-up at the source; if anything ever still went non-finite it
     // would latch a dead channel / poison the meters, so any non-finite sample is
     // replaced with 0 and the stateful nodes are reset to stop the source (self-heal).
+    // Detection first (Wave 4): a float is non-finite iff its exponent field is
+    // all-ones, and that masked field's numeric MAX over the block reaches
+    // 0x7f800000 iff at least one sample is non-finite -- so a branch-free,
+    // auto-vectorizable max-reduction replaces the per-sample isfinite branches
+    // on the (always-taken) clean path. No false positives, no false negatives;
+    // the zeroing pass below is the unchanged original and runs only when the
+    // detector fired, so healing behaviour is bit-identical.
     bool nonFinite = false;
-    for (int i = 0; i < n; ++i)
     {
-        if (! std::isfinite (L[i])) { L[i] = 0.0f; nonFinite = true; }
-        if (! std::isfinite (R[i])) { R[i] = 0.0f; nonFinite = true; }
+        uint32_t worst = 0;
+        for (int i = 0; i < n; ++i)
+        {
+            uint32_t bl, br;
+            std::memcpy (&bl, L + i, sizeof (bl));
+            std::memcpy (&br, R + i, sizeof (br));
+            bl &= 0x7f800000u;
+            br &= 0x7f800000u;
+            const uint32_t m = bl > br ? bl : br;
+            worst = worst > m ? worst : m;
+        }
+        if (worst == 0x7f800000u)
+            for (int i = 0; i < n; ++i)
+            {
+                if (! std::isfinite (L[i])) { L[i] = 0.0f; nonFinite = true; }
+                if (! std::isfinite (R[i])) { R[i] = 0.0f; nonFinite = true; }
+            }
     }
     if (nonFinite)
     {

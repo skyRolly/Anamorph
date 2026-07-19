@@ -7,14 +7,14 @@ Repository Governance Policy. Test acceptance levels and the release gate.
 | Level | Name | What | Where |
 |---|---|---|---|
 | **1** | Static analysis | Compiler warnings (recommended warning flags), CodeQL | `juce::juce_recommended_warning_flags` (CMakeLists.txt:143,165); GitHub code scanning |
-| **2** | Unit / behaviour | Deterministic DSP assertions + state-restoration robustness | `tests/dsp_tests.cpp` (32 DSP tests + 1 A/B state-restoration clamp guard) |
+| **2** | Unit / behaviour | Deterministic DSP assertions + state-restoration robustness | `tests/dsp_tests.cpp` (33 DSP tests + 1 A/B state-restoration clamp guard) |
 | **3** | DSP validation | MS round-trip exact; no NaN/Inf/denormals across the algorithm × OS × feature matrix; latency==actual; bypass null; click-free transitions | `tests/dsp_tests.cpp` |
 | **4** | pluginval | VST3 conformance; editor open/close under `xvfb` | `scripts/run-pluginval.sh` |
 | **5** | Manual validation | Audio sound quality + GUI/OpenGL visual appearance (cannot be judged headlessly) | Load `.vst3` in a DAW |
 
 ## Hard release gate
 
-- **Level 2/3 self-tests must pass** (the headless gate, `scripts/run-tests.sh`): the 32 DSP
+- **Level 2/3 self-tests must pass** (the headless gate, `scripts/run-tests.sh`): the 33 DSP
   self-tests **and** the A/B state-restoration clamp guard.
 - **pluginval must pass at strictness 10 in BOTH modes on ALL THREE platforms** (Linux, Windows,
   macOS), each mode run as **3 consecutive passes**: **deterministic** (`run-pluginval.sh 10

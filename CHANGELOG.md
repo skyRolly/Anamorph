@@ -6,6 +6,30 @@ SHA + date** as the Evidence Source (per `docs/policies/CHANGELOG_POLICY.md`). E
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
+## [Unreleased]
+### Changed
+- **Idle and background CPU cost reduced (performance Wave 4; no behaviour change by
+  design).** Eight independent Class-A optimisations, all validated bit-exact on a
+  19-scenario full-engine output twin-dump (including NaN-injection self-heal rows),
+  pixel-identical on raw-pixel dumps of the affected views, and green on the DSP suite
+  (now 140 checks): **(1)** the Input/Output level meter caches its static layer (panel,
+  headers, bar slots, dB ruler) like the other three visualizers and became opaque —
+  measured −29…−31 % per meter frame, pixel-identical; **(2)** the spectrum analyser
+  converts bins to dB once per new FFT instead of on every decay tick (−92 % of the
+  release-tail loop after audio stops) and **(3)** reuses its paint path storage (no
+  per-paint heap growth); **(4)** the editor's 24 Hz tick re-shapes the preset name,
+  polls combo hover and re-formats the Level-Match readout only when their inputs
+  actually changed; **(5)** the vectorscope stops scanning the scope ring while the
+  plugin window is hidden by the host (parity with the other visualizers' hidden
+  gates); **(6)** the Haas widener, when selected with Amount at 0, skips its dead
+  per-sample delay read + blend while keeping the delay lines recording, so re-engaging
+  is seamless (regression Test 34 guards the warm history); **(7)** the defensive
+  NaN/Inf scan runs a vectorized detector first and only heals when something is
+  actually non-finite (bit-identical healing); **(8)** the scope and bypass ring fills
+  copy in contiguous segments instead of per-sample. Session-local callgrind: default
+  transparent state −4.9 % instructions, Haas-parked −12.4 %, bypass engaged −3.0 %.
+  Evidence: this PR (performance Wave 4); worklogs/performance/WAVE4_INVESTIGATION.md. [Verified]
+
 ## [0.8.11] — 2026-07-18
 ### Changed
 - **Multiband and crossover-drag CPU cost reduced (performance Wave 3; no behaviour change

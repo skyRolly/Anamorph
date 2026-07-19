@@ -2559,6 +2559,83 @@ static void testSoloColdThroughDrag()
     check (allFinite, "re-engaged output stays finite");
 }
 
+static void testHaasParkedWarmHistory()
+{
+    std::printf ("Test 34: parked Haas passes through bit-untouched with WARM history (Wave 4)\n");
+
+    // The Wave-4 parked fast path skips the interpolated read + blend once the
+    // wet glide sits at exactly 0, but MUST keep writing the delay lines: a
+    // re-engage reads history recorded while parked (the same reasoning that
+    // rejected freezing Velvet's envelopes, W3-9). These checks are
+    // path-agnostic behaviour invariants: (1) parked blocks leave the buffer
+    // bit-untouched; (2) the first engaged blocks reproduce signal recorded
+    // DURING the parked stretch -- this fails if a future "optimisation" stops
+    // the parked ring writes; (3) a re-parked processor is bit-transparent
+    // again after the wet glide drains.
+    juce::ScopedNoDenormals noDenormals; // FTZ, exactly like the real audio thread
+
+    const double sr = 48000.0;
+    const int block = 512;
+
+    anamorph::HaasProcessor haas;
+    haas.prepare (sr, block);
+    haas.setDelayMs (20.0f);   // 960 samples: the first engaged block reads parked-era history
+    haas.setSide (true);       // the delayed blend lands on the RIGHT channel
+    haas.setAmount (0.0f);
+
+    std::mt19937 rng (13579);
+    std::uniform_real_distribution<float> d (-0.7f, 0.7f);
+    std::vector<float> l ((size_t) block), r ((size_t) block), lRef ((size_t) block), rRef ((size_t) block);
+
+    bool untouched = true;
+    for (int nb = 0; nb < 20; ++nb)
+    {
+        for (int i = 0; i < block; ++i) { l[(size_t) i] = d (rng); r[(size_t) i] = d (rng); }
+        lRef = l; rRef = r;
+        haas.processBlock (l.data(), r.data(), block);
+        for (int i = 0; i < block && untouched; ++i)
+            untouched = ! (std::abs (l[(size_t) i] - lRef[(size_t) i]) > 0.0f)
+                     && ! (std::abs (r[(size_t) i] - rRef[(size_t) i]) > 0.0f);
+    }
+    check (untouched, "parked Haas (amount 0) leaves the buffer bit-untouched");
+
+    // Engage on SILENT input: everything non-zero on the right channel must
+    // come from the delay line, i.e. from history written while parked.
+    haas.setAmount (1.0f);
+    float peak = 0.0f;
+    bool finite = true;
+    std::fill (l.begin(), l.end(), 0.0f);
+    std::fill (r.begin(), r.end(), 0.0f);
+    haas.processBlock (l.data(), r.data(), block);
+    for (int i = 0; i < block; ++i)
+    {
+        peak   = std::max (peak, std::abs (r[(size_t) i]));
+        finite = finite && std::isfinite (l[(size_t) i]) && std::isfinite (r[(size_t) i]);
+    }
+    check (peak > 0.01f, "re-engage plays back history recorded WHILE parked (rings stayed warm)");
+    check (finite, "re-engaged output stays finite");
+
+    // Re-park: after the wet glide drains (and FTZ flushes its tail to exactly
+    // 0), the processor is bit-transparent again.
+    haas.setAmount (0.0f);
+    for (int nb = 0; nb < 250; ++nb) // ~2.7 s >> the ~1.8 s FTZ flush of the glide
+    {
+        for (int i = 0; i < block; ++i) { l[(size_t) i] = d (rng); r[(size_t) i] = d (rng); }
+        haas.processBlock (l.data(), r.data(), block);
+    }
+    bool reparked = true;
+    for (int nb = 0; nb < 5; ++nb)
+    {
+        for (int i = 0; i < block; ++i) { l[(size_t) i] = d (rng); r[(size_t) i] = d (rng); }
+        lRef = l; rRef = r;
+        haas.processBlock (l.data(), r.data(), block);
+        for (int i = 0; i < block && reparked; ++i)
+            reparked = ! (std::abs (l[(size_t) i] - lRef[(size_t) i]) > 0.0f)
+                    && ! (std::abs (r[(size_t) i] - rRef[(size_t) i]) > 0.0f);
+    }
+    check (reparked, "re-parked Haas returns to a bit-untouched passthrough");
+}
+
 // ---------------------------------------------------------------------------
 int main()
 {
@@ -2595,6 +2672,7 @@ int main()
     testForcedSwapDuringOrdinaryFadeOut();
     testHighRateCrossoverSnap();
     testSoloColdThroughDrag();
+    testHaasParkedWarmHistory();
     testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);

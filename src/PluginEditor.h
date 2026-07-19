@@ -236,6 +236,20 @@ private:
     bool  tooltipsOn = false;   // tooltips default OFF
     bool  metersOn = false;
     bool  msState = false;      // cached M/S decoder state (drives L/R<->M/S labels, #12/#13)
+
+    // 24 Hz timer memoisation (Wave 4). The shown preset text is a pure
+    // function of (name, dirty, slot width): the GlyphArrangement shaping in
+    // refreshPresetDisplay re-runs only when one of them changed. The combo
+    // hover poll is pre-gated by one editor-level cursor test (the S11 idiom):
+    // with the cursor outside no visible box can contain it, so the per-box
+    // queries only run while the cursor is inside or a box is still lit. The
+    // match readout re-formats only when the raw published float changed
+    // (bitwise compare, so even a NaN transition still updates).
+    juce::String presetShownName;      // pm.currentName() the shaping last ran for
+    bool  presetShownDirty = false;
+    int   presetShownWidth = -1;       // presetName.getWidth() it last ran for
+    bool  comboHoverLit = false;       // some box's "hov" property is currently set
+    float shownMatchGainDb = -1.0e9f;  // raw getMatchGainDb() last formatted
     float meterAnim = 0.0f;     // 0..1 eased meter reveal (#19)
     bool  persistDragging = false; // dragging the Settings Persist bar (#26)
     int   persistHold = 0;      // frames the Persist bar has been held (anti-flicker, #7)

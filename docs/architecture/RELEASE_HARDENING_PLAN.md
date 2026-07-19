@@ -28,7 +28,7 @@ this program must follow.
 | Crash reporting | None | [Verified] `src/` tree |
 | Version management | No git tags (RISK-003); version in `CMakeLists.txt` + About box; CI run number as build number | [Verified] RELEASE_PROCESS.md |
 | Release pipeline | Single `build.yml` (push/PR/dispatch; `contents: read`); artifacts per push; no tag-triggered release flow | [Verified] CI_CD.md |
-| QA gate | 32 DSP self-tests + A/B guard (136 checks) + pluginval strictness 10, deterministic + randomise ×3, blocking on 3 OSes; Level-5 manual audition | [Verified] TESTING_POLICY.md, CI_CD.md |
+| QA gate | 33 DSP self-tests + A/B guard (140 checks) + pluginval strictness 10, deterministic + randomise ×3, blocking on 3 OSes; Level-5 manual audition | [Verified] TESTING_POLICY.md, CI_CD.md |
 | AAX / PACE | **Out of scope** (no Avid/PACE/iLok) — PACE licensing is therefore *not* an available protection option | [Verified] COMPATIBILITY_POLICY.md |
 
 ## 2. Release risk assessment

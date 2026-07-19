@@ -30,6 +30,15 @@ Vectorscope::~Vectorscope() { frameClock.stop(); }
 
 void Vectorscope::tick()
 {
+    // Whole-editor hidden (host hid the window without destroying the editor):
+    // skip the freshness scan entirely, like the LevelMeter / StereoMeter S3
+    // gates (Wave 4 -- this was the one visualizer ticking while unseen). On
+    // re-show the very next tick sees the accumulated `fresh` delta, scans the
+    // (capacity-capped) newly arrived frames and repaints -- the same
+    // conservative catch-up the constructor's gate init performs.
+    if (! isShowing())
+        return;
+
     // Idle repaint gate. paint() is a pure function of (window content,
     // persistence, size) -- the trail's age-alpha is positional, not clocked --
     // so a frame only needs re-rendering when that content can have changed.
