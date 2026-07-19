@@ -43,7 +43,7 @@ jobs:
   linux:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install build dependencies
         run: |
@@ -129,7 +129,7 @@ jobs:
       # pluginval-only failure still yields beta artifacts as before.
       - name: Upload Linux artifacts
         if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.stage.outcome == 'success' }}
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: Anamorph-Linux
           path: dist/Anamorph-Linux
@@ -140,7 +140,7 @@ jobs:
       # step never ran at all.
       - name: Upload Linux debug symbols (crash symbolication)
         if: ${{ !cancelled() && steps.strip.outcome != 'skipped' }}
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: Anamorph-Linux-debug
           path: dist/Anamorph-Linux-debug
@@ -149,7 +149,7 @@ jobs:
   windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       # Default Visual Studio generator (multi-config); MSVC is auto-detected.
       - name: Configure
@@ -335,7 +335,7 @@ jobs:
       # a pluginval-only failure still yields beta artifacts as before.
       - name: Upload Windows artifacts
         if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.stage_windows.outcome == 'success' }}
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: Anamorph-Windows
           path: dist/Anamorph-Windows
@@ -346,7 +346,7 @@ jobs:
       # never ran at all.
       - name: Upload Windows debug symbols (crash symbolication)
         if: ${{ !cancelled() && steps.stage_windows.outcome != 'skipped' }}
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: Anamorph-Windows-debug
           path: dist/Anamorph-Windows-debug
@@ -355,7 +355,7 @@ jobs:
   macos:
     runs-on: macos-14   # Apple Silicon runner; we build a universal binary
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install build tools
         run: brew install ninja || true
@@ -521,7 +521,7 @@ jobs:
       # a pluginval-only failure still yields beta artifacts as before.
       - name: Upload macOS plugins (VST3 + AU + Standalone)
         if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.package.outcome == 'success' }}
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: Anamorph-macOS
           path: dist/Anamorph-macOS
@@ -535,7 +535,7 @@ jobs:
       # before a later codesign/verification failure are still preserved.
       - name: Upload macOS debug symbols (dSYMs, crash symbolication)
         if: ${{ !cancelled() && steps.package.outcome != 'skipped' && steps.package.outputs.debug_artifacts == 'true' }}
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: Anamorph-macOS-debug
           path: dist/Anamorph-macOS-debug
