@@ -147,6 +147,26 @@ no benchmark/profiling data exists in the repository, and inventing numbers is p
   (`sameParameters` + width hoist), src/dsp/VelvetNoise.cpp (parked fast path),
   src/dsp/LevelMeters.h, src/dsp/LoudnessMatch.cpp;
   worklogs/performance/WAVE5_INVESTIGATION.md.
+- **v0.8.11 final pass: the remaining named candidates are closed as no-op, with
+  measurements (no code change).** The long-open **GUI fresh-eyes sweep** was
+  carried in-line (the Workflow lens was lost to the org token limit a third
+  time) and found the whole GUI paint + message-thread surface already
+  exhaustively gated/cached across Waves 1–4 — the only residual (per-call
+  `juce::Path`/`Font` locals in the `LookAndFeel` slider draws) is transient
+  (gesture-only) and not worth restructuring a shared stateless LookAndFeel.
+  **W3-10** (skip `applyWidth` at settled Width==1) stays deferred: a 50 M-sample
+  probe shows `applyWidth(·,·,1.0f)` differs from identity in **15.5 %** of
+  samples (~1 ULP), so it is **Class B** — a bit-changing DSP change not worth
+  taking into a release for ~9 flops/sample the W5-C hoist already vectorised.
+  **W5-D** (K-weighting lane-parallel bank) was **prototyped** (`scratchpad/
+  kwbench.cpp`): bit-exact vs the scalar chains (0/80 M mismatches) but only
+  **1.10×** at the frozen baseline SSE2 flags (2-wide doubles); the 4-wide win
+  needs `-march`/AVX2, itself a numerics-frozen build-contract change that would
+  also break the prototype's bit-exactness via FMA. `loudness.process()` was also
+  confirmed **intentionally unconditional** (feeds the always-live match readout;
+  must stay warm for automation-driven engage) — not dead work. Net: ~0.5–1 % of
+  floor available behind an AVX decision, deferred. Evidence [Verified]:
+  worklogs/performance/FINAL_PASS_v0.8.11_INVESTIGATION.md.
 - **VelvetNoise** has an O(maxTaps=64) sparse-FIR inner loop per sample, plus a full-buffer
   `std::fill` on the transport-stop completion (no alloc). As of 0.8.8 the surrounding per-sample
   work is gated without changing output: the 64-tap weight rebuild + `sqrt` normalisation runs only

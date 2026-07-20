@@ -6,7 +6,22 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for **performance Wave 5 — per-block/settled-state runtime optimisation +
+Last updated: for the **v0.8.11 final performance pass & release-readiness audit** (2026-07-20,
+branch `claude/beautiful-sagan-JAUFI`, restarted from `main` @ `4aac4eb` — PR #76 = Waves 4+5,
+merged). **No code change:** the three remaining named candidates were closed with measured
+verdicts. The long-open **GUI fresh-eyes sweep** is DONE — carried in-line after the Workflow
+lens was lost to the org token limit a third time; the GUI paint + message-thread surface is
+already exhaustively cached/gated across Waves 1–4, the only residual (per-call `Path`/`Font`
+locals in the shared `LookAndFeel` slider draws) transient and not worth a restructure. **W3-10**
+deferred as Class B (a 50 M-sample probe: `applyWidth(·,·,1.0f)` differs from identity in 15.5 %
+of samples, ~1 ULP). **W5-D** prototyped (`scratchpad/kwbench.cpp`): bit-exact vs the scalar
+K-weighting chains but only 1.10× at the frozen SSE2 flags — the 4-wide win needs an AVX2/`-march`
+build decision (itself numerics-frozen + FMA-divergent). `loudness.process()` confirmed
+intentionally unconditional (feeds the live match readout). Release-readiness audit: build +
+140-check suite green, no version/test-count drift, no release blockers; documentation-only, so
+**no CHANGELOG entry** per CHANGELOG_POLICY rule 3. Synced: this file, PERFORMANCE_BUDGET (final-
+pass bullet), HANDOVER (Pending-Tasks + Release-Status rows). Evidence:
+`worklogs/performance/FINAL_PASS_v0.8.11_INVESTIGATION.md`. Prior: for **performance Wave 5 — per-block/settled-state runtime optimisation +
 v0.8.11 changelog consolidation** (2026-07-20, branch `claude/beautiful-sagan-JAUFI`, rebased
 onto main @ `912a755` — the security-tooling/CodeQL-autofix PRs #65–#75; the one rebase
 conflict (both sides' new head entry in THIS file) was resolved by keeping both in order).
