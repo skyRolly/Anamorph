@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <cstdint>
 
 namespace anamorph
 {
@@ -108,6 +109,17 @@ private:
     double currentDriveDb     = 0.0;
     double currentMix         = 1.0;
     double prevPredictedGainDb = 0.0; // last block's absolute predict (to spot a rise)
+
+    // Wave-5 per-block memos -- bit-exact caches of pure functions:
+    //  * estBoostDb keyed on the BITWISE (Drive, Mix) pair (stateless; the
+    //    pair only moves while a knob drags);
+    //  * the MEASURE smoothing coefficients keyed on the block size (their
+    //    only other input, sampleRate, re-keys via prepare()).
+    std::uint64_t memoDriveBits = 0, memoMixBits = 0;
+    double memoBoostDb   = 0.0;
+    bool   memoBoostValid = false;
+    int    coeffForN = -1;
+    double coeffFast = 0.0, coeffSlow = 0.0;
 
     std::atomic<float> matchGainDb { 0.0f };
 };

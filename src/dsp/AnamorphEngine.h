@@ -92,6 +92,12 @@ private:
     // True when two snapshots differ in a control that would click if applied
     // instantly (so the switch must be ducked rather than applied live).
     static bool discreteDiffers (const EngineParameters& a, const EngineParameters& b) noexcept;
+    // True when two snapshots are BITWISE identical in every field (floats by
+    // bit pattern, so NaN == NaN and +0 != -0) -- the Wave-5 steady-state gate.
+    // Like discreteDiffers/copyContinuous, this list must cover every
+    // EngineParameters field: a new field MUST be added here too, or an edit
+    // to it would be ignored while nothing else changes.
+    static bool sameParameters (const EngineParameters& a, const EngineParameters& b) noexcept;
     // True when the actual PROCESSING differs (excludes Level-Match / Bypass),
     // i.e. when the loudness measurement is genuinely stale and must re-arm (#1).
     static bool processingDiffers (const EngineParameters& a, const EngineParameters& b) noexcept;

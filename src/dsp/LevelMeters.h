@@ -164,7 +164,18 @@ public:
     bool  getRmsClipR()  const noexcept { return rclipR.load (std::memory_order_relaxed) != 0; }
 
 private:
-    float barFall() const noexcept { return std::exp (-(float) blockDur / 0.10f); } // fast fall after hold
+    // Fast fall after hold. The expf is a pure function of blockDur, which only
+    // changes when the host block size does -- cached per size (Wave 5), keyed
+    // by the exact double (the S4 idiom; a changed size recomputes).
+    float barFall() noexcept
+    {
+        if (std::abs (blockDur - barFallForDur) > 0.0)
+        {
+            barFallForDur = blockDur;
+            barFallCached = std::exp (-(float) blockDur / 0.10f);
+        }
+        return barFallCached;
+    }
     static void  sanitize (float& v) noexcept { if (! std::isfinite (v)) v = 0.0f; } // recover a NaN-latched envelope
     static float db (float lin) noexcept { return lin > 1.0e-6f ? 20.0f * std::log10 (lin) : -100.0f; }
     static void  store (std::atomic<float>& a, float v) noexcept { a.store (v, std::memory_order_relaxed); }
@@ -197,9 +208,13 @@ private:
         store (dimLdb, db (pkDimL)); store (dimRdb, db (pkDimR));
         store (briLdb, db (std::sqrt (msBriL))); store (briRdb, db (std::sqrt (msBriR)));
         store (barLdb, db (barPeakL)); store (barRdb, db (barPeakR));
-        store (peakHoldLdb, db (peakHoldL)); store (peakHoldRdb, db (peakHoldR));
+        // One conversion per channel (Wave 5): the clip compare consumes the
+        // exact float just published instead of recomputing db(peakHold) --
+        // two redundant log10 calls per meter per block removed.
+        const float phLdb = db (peakHoldL), phRdb = db (peakHoldR);
+        store (peakHoldLdb, phLdb); store (peakHoldRdb, phRdb);
         store (rmsNumLdb, rmsNumL); store (rmsNumRdb, rmsNumR);
-        store (clipL, db (peakHoldL) > 0.0f ? 1 : 0); store (clipR, db (peakHoldR) > 0.0f ? 1 : 0);
+        store (clipL, phLdb > 0.0f ? 1 : 0); store (clipR, phRdb > 0.0f ? 1 : 0);
         store (rclipL, rmsClipL ? 1 : 0); store (rclipR, rmsClipR ? 1 : 0);
     }
 
@@ -208,6 +223,8 @@ private:
     static constexpr double kRmsFall = 8.0;  // dB/s slow RMS-number fall (#15)
 
     double sr = 48000.0, blockDur = 0.01;
+    double barFallForDur = -1.0;   // blockDur the cached fall factor was built for (Wave 5)
+    float  barFallCached = 0.0f;
     float dimRel = 0, briRise = 0, briFall = 0, numRise = 0, numFall = 0;
 
     float pkDimL = 0, pkDimR = 0, msBriL = 0, msBriR = 0, msNumL = 0, msNumR = 0;

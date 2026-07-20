@@ -6,8 +6,25 @@ SHA + date** as the Evidence Source (per `docs/policies/CHANGELOG_POLICY.md`). E
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
-## [Unreleased]
+## [0.8.11] — 2026-07-20
 ### Changed
+- **Per-block and settled-state CPU cost reduced further (performance Wave 5; no behaviour
+  change by design).** Eight Class-A trims, all bit-exact on the 19-scenario engine
+  twin-dump and green on the 140-check suite: the engine now skips re-adopting a
+  bit-identical parameter snapshot (the steady-playback case — the per-block parameter
+  path drops from ~250 to ~91 instructions); the Velvet Noise widener, parked at
+  Amount 0 (the default state), skips its provably-dead per-sample glide/weights/stop
+  bookkeeping while its presence envelope, gate and history keep tracking (re-engage
+  unchanged); the settled global-Width stage hoists its per-sample smoother call; the
+  meter publish path and Level-Match drop redundant per-block log10/exp/pow
+  recomputations of unchanged pure functions, and silent blocks skip the LUFS
+  conversion they never consumed. Session-local callgrind: default transparent state
+  −4.5 %, 64-sample-block host-like state −5.5 % whole-run instructions; active
+  algorithm paths unchanged (±0.2 %). Also corrects a Wave-4 measurement note: the
+  recorded "2× per-sample cost at 64-sample blocks" was container CPU drift; the real
+  small-buffer overhead is +10–20 %. Full record:
+  `worklogs/performance/WAVE5_INVESTIGATION.md`.
+  Evidence: PR #76 (performance Waves 4+5). [Verified]
 - **Idle and background CPU cost reduced (performance Wave 4; no behaviour change by
   design).** Eight independent Class-A optimisations, all validated bit-exact on a
   19-scenario full-engine output twin-dump (including NaN-injection self-heal rows),
@@ -28,10 +45,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   actually non-finite (bit-identical healing); **(8)** the scope and bypass ring fills
   copy in contiguous segments instead of per-sample. Session-local callgrind: default
   transparent state −4.9 % instructions, Haas-parked −12.4 %, bypass engaged −3.0 %.
-  Evidence: this PR (performance Wave 4); worklogs/performance/WAVE4_INVESTIGATION.md. [Verified]
-
-## [0.8.11] — 2026-07-18
-### Changed
+  Evidence: PR #76 (performance Wave 4); worklogs/performance/WAVE4_INVESTIGATION.md. [Verified]
 - **Multiband and crossover-drag CPU cost reduced (performance Wave 3; no behaviour change
   by design).** Four independent optimisations, all validated by a 12-scenario full-engine
   output twin-dump plus the DSP self-test suite: **(1)** the Band Solo monitor's settled

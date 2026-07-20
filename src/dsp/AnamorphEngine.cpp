@@ -157,6 +157,57 @@ void AnamorphEngine::reset()
 //  so they are swapped in only while the output is ducked to silence. Polarity
 //  is excluded (it already ramps through zero via its own smoother).
 // ---------------------------------------------------------------------------
+// Bitwise whole-snapshot equality (Wave 5). Floats compare by BIT PATTERN
+// (NaN == NaN, +0 != -0): the gate's question is "is this snapshot the very
+// same bytes the engine already adopted?", so identical bits must gate and
+// any bit difference must fall through to the normal adopt path. Like
+// discreteDiffers/copyContinuous, this list must name EVERY EngineParameters
+// field -- a field added there and forgotten here would have its edits
+// ignored whenever nothing else moves.
+bool AnamorphEngine::sameParameters (const EngineParameters& a, const EngineParameters& b) noexcept
+{
+    auto sameF = [] (float x, float y) noexcept
+    {
+        return std::memcmp (&x, &y, sizeof (float)) == 0;
+    };
+    return a.channelMode == b.channelMode
+        && a.monoSum     == b.monoSum
+        && a.swapLR      == b.swapLR
+        && sameF (a.inputBalance, b.inputBalance)
+        && a.polarityL   == b.polarityL
+        && a.polarityR   == b.polarityR
+        && a.msMode      == b.msMode
+        && sameF (a.driveDb, b.driveDb)
+        && a.algorithm   == b.algorithm
+        && sameF (a.algoAmount, b.algoAmount)
+        && sameF (a.haasDelayMs, b.haasDelayMs)
+        && a.haasSide    == b.haasSide
+        && sameF (a.velvetDensity, b.velvetDensity)
+        && sameF (a.chorusRate, b.chorusRate)
+        && sameF (a.chorusDepth, b.chorusDepth)
+        && a.dimMode     == b.dimMode
+        && sameF (a.width, b.width)
+        && a.mbEnable    == b.mbEnable
+        && a.mbBands     == b.mbBands
+        && a.mbSolo      == b.mbSolo
+        && sameF (a.mbFreqLow, b.mbFreqLow)
+        && sameF (a.mbFreqMid, b.mbFreqMid)
+        && sameF (a.mbFreqHigh, b.mbFreqHigh)
+        && sameF (a.mbWidthLow, b.mbWidthLow)
+        && sameF (a.mbWidthMid, b.mbWidthMid)
+        && sameF (a.mbWidthHiMid, b.mbWidthHiMid)
+        && sameF (a.mbWidthHigh, b.mbWidthHigh)
+        && a.monoMakerEnable == b.monoMakerEnable
+        && sameF (a.monoMakerFreq, b.monoMakerFreq)
+        && sameF (a.mix, b.mix)
+        && sameF (a.outputGainDb, b.outputGainDb)
+        && sameF (a.outputBalance, b.outputBalance)
+        && a.autoGainMatch == b.autoGainMatch
+        && a.solo        == b.solo
+        && a.oversample  == b.oversample
+        && a.bypass      == b.bypass;
+}
+
 bool AnamorphEngine::discreteDiffers (const EngineParameters& a, const EngineParameters& b) noexcept
 {
     return a.channelMode      != b.channelMode
@@ -276,8 +327,22 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
         }
         else
         {
-            p = np;                          // continuous-only change
-            updateDerived();
+            // Steady-state no-change gate (Wave 5): during normal playback the
+            // wrapper rebuilds and hands in a snapshot EVERY block; when it is
+            // bit-identical to the adopted state, re-adopting it and re-running
+            // updateDerived (2 decibelsToGain pow calls + ~25 module setters +
+            // ~12 smoother-target stores, all producing the already-set values)
+            // is pure per-block waste. updateDerived's one non-pure input --
+            // loudness.getMatchGainDb() for the matchGainSmooth target -- is
+            // re-applied FRESH by process() every block (the matchTarget
+            // refresh), so skipping it here loses nothing. Bitwise field
+            // compare: an unchanged snapshot (even a pathological NaN one)
+            // behaves exactly as its previous block did.
+            if (! sameParameters (np, p))
+            {
+                p = np;                      // continuous-only change
+                updateDerived();
+            }
         }
     }
     else
@@ -822,8 +887,20 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     else if (p.algorithm == Algorithm::Velvet) velvet.processBlock (L, R, n);
 
     // -------- Global Width (MS-domain) --------------------------------------
-    for (int i = 0; i < n; ++i)
-        applyWidth (L[i], R[i], widthSmooth.getNextValue());
+    // Settled hoist (Wave 5): a settled SmoothedValue's getNextValue() returns
+    // `target` without mutating anything (the same library semantics H1/H10
+    // already rely on), so hoisting the value feeds applyWidth the identical
+    // float every sample and lets the ~9-flop kernel vectorize. A gliding
+    // width keeps the original per-sample call verbatim.
+    if (! widthSmooth.isSmoothing())
+    {
+        const float w = widthSmooth.getTargetValue();
+        for (int i = 0; i < n; ++i)
+            applyWidth (L[i], R[i], w);
+    }
+    else
+        for (int i = 0; i < n; ++i)
+            applyWidth (L[i], R[i], widthSmooth.getNextValue());
 
     // -------- Multiband Width (Advanced) ------------------------------------
     // Reconstruct the dry through the SAME crossover banks as the wet, at unit
