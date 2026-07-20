@@ -1,5 +1,6 @@
 #include "PluginEditor.h"
 #include <cmath>
+#include <cstring>
 
 using namespace anamorph::gui;
 
@@ -975,15 +976,27 @@ void AnamorphAudioProcessorEditor::timerCallback()
     // Drive combo hover from the actual cursor position so exactly ONE box is ever
     // lit and a stale highlight always clears -- the enter/exit events through the
     // child label were unreliable (sometimes stuck on, sometimes never lit) (#20).
-    for (auto* box : allCombos)
+    // Wave 4 pre-gate (the S11 idiom): every box lies inside the editor bounds,
+    // so with the cursor outside (or the editor unseen) no box can contain it --
+    // the per-box queries then only need to run while a stale highlight is
+    // still lit, to clear it exactly as before.
+    const bool comboCursorInside = isShowing()
+                                && getLocalBounds().contains (getMouseXYRelative());
+    if (comboCursorInside || comboHoverLit)
     {
-        const bool hov = box->isShowing()
-                       && box->getLocalBounds().contains (box->getMouseXYRelative());
-        if ((bool) box->getProperties().getWithDefault ("hov", false) != hov)
+        bool anyLit = false;
+        for (auto* box : allCombos)
         {
-            box->getProperties().set ("hov", hov);
-            box->repaint();
+            const bool hov = box->isShowing()
+                           && box->getLocalBounds().contains (box->getMouseXYRelative());
+            if ((bool) box->getProperties().getWithDefault ("hov", false) != hov)
+            {
+                box->getProperties().set ("hov", hov);
+                box->repaint();
+            }
+            anyLit = anyLit || hov;
         }
+        comboHoverLit = anyLit;
     }
 
     // (The level-meter reveal animation itself runs per display frame in
@@ -1030,7 +1043,15 @@ void AnamorphAudioProcessorEditor::timerCallback()
     processor.pollUndoCoalesce(); // fold settled sound edits into undo steps (#10-12)
     undoButton.setEnabled (processor.canUndo());
     redoButton.setEnabled (processor.canRedo());
-    matchReadout.setText (juce::String (processor.getEngine().getMatchGainDb(), 1) + " dB", juce::dontSendNotification);
+    // Wave 4: re-format the readout only when the raw published float changed.
+    // Bitwise compare (not ==): a NaN would otherwise read as "unchanged" and
+    // freeze the readout on the previous value.
+    const float matchDb = processor.getEngine().getMatchGainDb();
+    if (std::memcmp (&matchDb, &shownMatchGainDb, sizeof (matchDb)) != 0)
+    {
+        shownMatchGainDb = matchDb;
+        matchReadout.setText (juce::String (matchDb, 1) + " dB", juce::dontSendNotification);
+    }
 }
 
 // Vsync-stepped meter reveal: the v0.5.9 exponential ease (factor 0.55 per
@@ -1310,6 +1331,20 @@ namespace
 void AnamorphAudioProcessorEditor::refreshPresetDisplay()
 {
     auto& pm = processor.getPresets();
+
+    // Wave 4: the shaping below (GlyphArrangement measurement, abbreviation,
+    // clip loop) is a pure function of these three inputs; skip it on the
+    // 24 Hz tick unless one of them actually changed.
+    const juce::String liveName  = pm.currentName();
+    const bool         liveDirty = pm.isDirty();
+    if (liveName == presetShownName
+        && liveDirty == presetShownDirty
+        && presetName.getWidth() == presetShownWidth)
+        return;
+    presetShownName  = liveName;
+    presetShownDirty = liveDirty;
+    presetShownWidth = presetName.getWidth();
+
     // A small asterisk marks an edited preset -- lighter than the old bullet (#6).
     const juce::String marker = pm.isDirty() ? " *" : juce::String();
 

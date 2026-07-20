@@ -6,8 +6,46 @@ SHA + date** as the Evidence Source (per `docs/policies/CHANGELOG_POLICY.md`). E
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
-## [0.8.11] — 2026-07-18
+## [0.8.11] — 2026-07-20
 ### Changed
+- **Per-block and settled-state CPU cost reduced further (performance Wave 5; no behaviour
+  change by design).** Eight Class-A trims, all bit-exact on the 19-scenario engine
+  twin-dump and green on the 140-check suite: the engine now skips re-adopting a
+  bit-identical parameter snapshot (the steady-playback case — the per-block parameter
+  path drops from ~250 to ~91 instructions); the Velvet Noise widener, parked at
+  Amount 0 (the default state), skips its provably-dead per-sample glide/weights/stop
+  bookkeeping while its presence envelope, gate and history keep tracking (re-engage
+  unchanged); the settled global-Width stage hoists its per-sample smoother call; the
+  meter publish path and Level-Match drop redundant per-block log10/exp/pow
+  recomputations of unchanged pure functions, and silent blocks skip the LUFS
+  conversion they never consumed. Session-local callgrind: default transparent state
+  −4.5 %, 64-sample-block host-like state −5.5 % whole-run instructions; active
+  algorithm paths unchanged (±0.2 %). Also corrects a Wave-4 measurement note: the
+  recorded "2× per-sample cost at 64-sample blocks" was container CPU drift; the real
+  small-buffer overhead is +10–20 %. Full record:
+  `worklogs/performance/WAVE5_INVESTIGATION.md`.
+  Evidence: PR #76 (performance Waves 4+5). [Verified]
+- **Idle and background CPU cost reduced (performance Wave 4; no behaviour change by
+  design).** Eight independent Class-A optimisations, all validated bit-exact on a
+  19-scenario full-engine output twin-dump (including NaN-injection self-heal rows),
+  pixel-identical on raw-pixel dumps of the affected views, and green on the DSP suite
+  (now 140 checks): **(1)** the Input/Output level meter caches its static layer (panel,
+  headers, bar slots, dB ruler) like the other three visualizers and became opaque —
+  measured −29…−31 % per meter frame, pixel-identical; **(2)** the spectrum analyser
+  converts bins to dB once per new FFT instead of on every decay tick (−92 % of the
+  release-tail loop after audio stops) and **(3)** reuses its paint path storage (no
+  per-paint heap growth); **(4)** the editor's 24 Hz tick re-shapes the preset name,
+  polls combo hover and re-formats the Level-Match readout only when their inputs
+  actually changed; **(5)** the vectorscope stops scanning the scope ring while the
+  plugin window is hidden by the host (parity with the other visualizers' hidden
+  gates); **(6)** the Haas widener, when selected with Amount at 0, skips its dead
+  per-sample delay read + blend while keeping the delay lines recording, so re-engaging
+  is seamless (regression Test 34 guards the warm history); **(7)** the defensive
+  NaN/Inf scan runs a vectorized detector first and only heals when something is
+  actually non-finite (bit-identical healing); **(8)** the scope and bypass ring fills
+  copy in contiguous segments instead of per-sample. Session-local callgrind: default
+  transparent state −4.9 % instructions, Haas-parked −12.4 %, bypass engaged −3.0 %.
+  Evidence: PR #76 (performance Wave 4); worklogs/performance/WAVE4_INVESTIGATION.md. [Verified]
 - **Multiband and crossover-drag CPU cost reduced (performance Wave 3; no behaviour change
   by design).** Four independent optimisations, all validated by a 12-scenario full-engine
   output twin-dump plus the DSP self-test suite: **(1)** the Band Solo monitor's settled

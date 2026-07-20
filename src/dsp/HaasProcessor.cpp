@@ -46,6 +46,29 @@ void HaasProcessor::processBlock (float* left, float* right, int numSamples) noe
 {
     constexpr float smooth = 0.0005f; // glide delay changes to avoid zipper noise
     constexpr float aSmooth = 0.001f; // glide the wet amount (click-free, #1)
+
+    // Parked fast path (Wave 4): with the wet glide settled at EXACTLY 0 (the
+    // audio thread runs under ScopedNoDenormals, so the asymptotic amount tail
+    // flushes to true zero) and the target still 0, the blend x + 0*(d - x) is
+    // bit-exactly x for any finite d -- so the interpolated read and the blend
+    // are pure waste. The delay lines MUST keep recording (a re-engage reads
+    // the history written while parked -- the same reasoning that rejected the
+    // Velvet env freeze, W3-9) and the delay glide keeps tracking retargets, so
+    // only the read + blend are skipped. Exact compares, no epsilon: any
+    // non-zero amount takes the full path unchanged.
+    if (! (std::abs (amount) > 0.0f) && ! (std::abs (currentAmount) > 0.0f))
+    {
+        for (int n = 0; n < numSamples; ++n)
+        {
+            currentSamples += smooth * (targetSamples - currentSamples);
+            bufL[(size_t) writeL] = left[n];
+            bufR[(size_t) writeR] = right[n];
+            writeL = (writeL + 1) & bufMask;
+            writeR = (writeR + 1) & bufMask;
+        }
+        return;
+    }
+
     for (int n = 0; n < numSamples; ++n)
     {
         currentSamples += smooth  * (targetSamples - currentSamples);

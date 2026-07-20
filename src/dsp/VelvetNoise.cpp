@@ -122,9 +122,14 @@ void VelvetNoise::processBlock (float* left, float* right, int numSamples) noexc
     //  * the block fits the prepare()-sized scratch (always true from the
     //    engine; belt-and-braces for direct callers).
     const float dNext = currentDensity + dSmooth * (targetDensity - currentDensity);
+    // Density glide at its float fixpoint with the weights already built for it:
+    // one tick provably changes nothing, so a whole block of ticks changes
+    // nothing (the fixpoint is absorbing; targets only move between blocks).
+    // Shared by the H5 gather gate below and the Wave-5 parked gate after it.
+    const bool densityAtFixpoint = dNext == currentDensity
+                                && currentDensity == weightsDensity;
     if (! stopping
-        && dNext == currentDensity
-        && currentDensity == weightsDensity
+        && densityAtFixpoint
         && (currentAmount > 0.0f || targetAmount > 0.0f)
         && numSamples <= (int) accum.size())
     {
@@ -167,6 +172,48 @@ void VelvetNoise::processBlock (float* left, float* right, int numSamples) noexc
             // the precomputed sum unconditionally is output-identical. stopG is
             // omitted: it is exactly 1 whenever this path is eligible.
             float decorr = accum[(size_t) i];
+            decorr *= norm * currentAmount * gate;
+
+            const float newSide = side + decorr;
+            left[i]  = mid + newSide;
+            right[i] = mid - newSide;
+
+            writePos = (writePos + 1) & histMask;
+        }
+        return;
+    }
+
+    // Parked fast path (Wave 5 -- the Haas-parked / W3-9-compliant shape). With
+    // the density glide at its fixpoint, the amount glide settled at exactly 0
+    // with a 0 target (its one-pole flushes to true zero under the block's
+    // ScopedNoDenormals) and no stop fade in flight, every skipped operation
+    // below is provably a no-op this block: the density tick (fixpoint), the
+    // weights compare (equal by the gate), the amount tick (0 += k*0), and the
+    // stop machine (! stopping). What MUST keep running does: the presence
+    // env/gate keep tracking the input so a re-engage opens with the correct
+    // state (the exact reasoning that REJECTED freezing them, W3-9), the
+    // history keeps recording for the same reason, and the output write-back
+    // keeps the full multiplier chain verbatim -- decorr stays the same signed
+    // zero the general loop produces (stopG omitted: it is exactly 1 here, the
+    // H5 precedent) -- so the MS round-trip lands on identical bits.
+    if (! stopping
+        && densityAtFixpoint
+        && ! (currentAmount > 0.0f) && ! (targetAmount > 0.0f))
+    {
+        for (int i = 0; i < numSamples; ++i)
+        {
+            const float L = left[i], R = right[i];
+            const float mid  = (L + R) * 0.5f;
+            const float side = (L - R) * 0.5f;
+
+            const float a = std::abs (mid);
+            env += (a > env ? envAtk : envRel) * (a - env);
+            const float gateTarget = (env > 0.0005f) ? 1.0f : 0.0f; // ~ -66 dBFS presence
+            gate += (gateTarget > gate ? gateAtk : gateRel) * (gateTarget - gate);
+
+            midHist[(size_t) writePos] = mid;
+
+            float decorr = 0.0f;
             decorr *= norm * currentAmount * gate;
 
             const float newSide = side + decorr;

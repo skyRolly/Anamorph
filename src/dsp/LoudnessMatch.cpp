@@ -1,6 +1,7 @@
 #include "LoudnessMatch.h"
 #include <cmath>
 #include <algorithm>
+#include <cstring>
 
 namespace anamorph
 {
@@ -55,6 +56,8 @@ void LoudnessMatch::prepare (double sr)
     // ~400 ms integration (momentary-loudness style) single-pole window.
     const double tau = 0.4;
     smoothCoeff = 1.0 - std::exp (-1.0 / (tau * sr));
+    coeffForN = -1;          // blockDur depends on sampleRate: re-key the coeff cache (Wave 5)
+    memoBoostValid = false;
     reset();
 }
 
@@ -119,13 +122,6 @@ void LoudnessMatch::process (const float* dryL, const float* dryR,
         meanSqWet += smoothCoeff * (wPow - meanSqWet);
     }
 
-    // Convert to LUFS and take the difference. Guard against silence.
-    const double floorMs = 1.0e-7;
-    const double dLufs = -0.691 + 10.0 * std::log10 (std::max (meanSqDry, floorMs));
-    const double wLufs = -0.691 + 10.0 * std::log10 (std::max (meanSqWet, floorMs));
-
-    double target = clampd (dLufs - wLufs, -24.0, 24.0);
-
     // No valid measurement data while the input is silent: MEASURE waits (holds the
     // last trusted value) rather than deriving from near-zero energy. ~ -60 dBFS gate.
     const double kSilence = 1.0e-6;
@@ -133,7 +129,23 @@ void LoudnessMatch::process (const float* dryL, const float* dryR,
     const double blockDur = (double) numSamples / sampleRate;
 
     // ---- PREDICT: absolute, pure function of Drive + Mix (no accumulation) --------
-    const double predictedGainDb = clampd (-estBoostDb (currentDriveDb, currentMix), -24.0, 0.0);
+    // Memoised on the BITWISE (Drive, Mix) pair (Wave 5): estBoostDb is
+    // stateless and its inputs only move while a knob drags, so identical bits
+    // reuse the identical result instead of re-running 2x pow + tanh + 2x log10
+    // every block while Drive is engaged.
+    {
+        std::uint64_t kd, km;
+        std::memcpy (&kd, &currentDriveDb, sizeof (kd));
+        std::memcpy (&km, &currentMix,     sizeof (km));
+        if (! memoBoostValid || kd != memoDriveBits || km != memoMixBits)
+        {
+            memoDriveBits = kd;
+            memoMixBits   = km;
+            memoBoostValid = true;
+            memoBoostDb = estBoostDb (currentDriveDb, currentMix);
+        }
+    }
+    const double predictedGainDb = clampd (-memoBoostDb, -24.0, 0.0);
     const double predictDelta = predictedGainDb - prevPredictedGainDb;
     prevPredictedGainDb = predictedGainDb;
     // The instant the expected boost RISES (Drive/Mix cranked) pre-duck so neither the
@@ -146,9 +158,25 @@ void LoudnessMatch::process (const float* dryL, const float* dryR,
     // ---- MEASURE: ground truth while there is audio; frozen on silence ------------
     if (! silent)
     {
+        // Convert to LUFS and take the difference -- computed HERE, its only
+        // consumer (Wave 5): a silent block used to burn the two log10 calls
+        // just to discard the result. Guard against silence.
+        const double floorMs = 1.0e-7;
+        const double dLufs = -0.691 + 10.0 * std::log10 (std::max (meanSqDry, floorMs));
+        const double wLufs = -0.691 + 10.0 * std::log10 (std::max (meanSqWet, floorMs));
+        const double target = clampd (dLufs - wLufs, -24.0, 24.0);
+
         const double diff = target - displayedGainDb;
-        const double tau  = (std::abs (diff) > 2.0) ? 0.06 : 0.9; // fast vs. slow
-        const double coeff = 1.0 - std::exp (-blockDur / tau);
+        // The two smoothing coefficients are pure constants of the block size
+        // (fast/slow tau); the exp re-ran every audible block (Wave 5). A
+        // sampleRate change re-keys via prepare().
+        if (numSamples != coeffForN)
+        {
+            coeffForN = numSamples;
+            coeffFast = 1.0 - std::exp (-blockDur / 0.06);
+            coeffSlow = 1.0 - std::exp (-blockDur / 0.9);
+        }
+        const double coeff = (std::abs (diff) > 2.0) ? coeffFast : coeffSlow; // fast vs. slow
         displayedGainDb += coeff * diff;
     }
     // silent -> hold displayedGainDb (no drift); the predict floor above still guards.

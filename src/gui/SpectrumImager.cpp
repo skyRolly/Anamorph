@@ -103,6 +103,7 @@ SpectrumImager::SpectrumImager (anamorph::ScopeBuffer& s, juce::AudioProcessorVa
     fifoR.assign ((size_t) fftSize, 0.0f);
     fftData.assign ((size_t) fftSize * 2, 0.0f);
     mags.assign ((size_t) fftSize / 2 + 1, kMinDb);
+    magsDb.assign ((size_t) fftSize / 2 + 1, kMinDb); // = gainToDecibels of the all-zero fftData
     redLevel.assign ((size_t) fftSize / 2 + 1, 0.0f);
 
     // S2 gate init: treat whatever the ring already holds as non-silent, so
@@ -782,11 +783,21 @@ void SpectrumImager::tick (double dt)
     // identical; they just stop being evaluated once provably static.
     bool dataMoved = false;
     if (pushFFT())
+    {
         magsSettled = false;
+        // dB conversion once per NEW transform (Wave 4), not per decay tick:
+        // pushFFT() returning true is the only way fftData changes, so magsDb
+        // always holds exactly gainToDecibels(fftData[k] * norm) -- the decay
+        // loop below reads the identical values it used to recompute. The
+        // multi-second release tail after audio stops (frozen ring, mags still
+        // draining) previously re-ran all ~4k log10 conversions every tick.
+        const float norm = 2.0f / (float) fftSize;
+        for (int k = 0; k <= fftSize / 2; ++k)
+            magsDb[(size_t) k] = juce::Decibels::gainToDecibels (fftData[(size_t) k] * norm, kMinDb);
+    }
 
     if (! magsSettled)
     {
-        const float norm = 2.0f / (float) fftSize;
         // Release decay per tick, dt-corrected (0.25 at the old fixed 60 Hz):
         // same decay time on any display, matching 60 Hz to within the display
         // quantum. Attack stays instantaneous (db > m). Computed once per tick,
@@ -795,7 +806,7 @@ void SpectrumImager::tick (double dt)
         bool any = false;
         for (int k = 0; k <= fftSize / 2; ++k)
         {
-            const float db = juce::Decibels::gainToDecibels (fftData[(size_t) k] * norm, kMinDb);
+            const float db = magsDb[(size_t) k];
             float& m = mags[(size_t) k];
             const float next = db > m ? db : m + (db - m) * rRel;
             if (std::abs (next - m) > 0.0f) { m = next; any = true; }
@@ -1109,7 +1120,12 @@ void SpectrumImager::paint (juce::Graphics& g)
             const float t = (juce::jlimit (kMinDb, kMaxDb, db) - kMinDb) / (kMaxDb - kMinDb);
             return (r.getBottom() + 8.0f) - t * (r.getHeight() + 8.0f);
         };
-        juce::Path spec;
+        // Member paths, cleared not reconstructed (Wave 4): clear() retains the
+        // storage, so steady-state active paints add zero path allocations. The
+        // point sequence is identical to the former locals (addPath appends the
+        // same elements the copy constructor copied).
+        juce::Path& spec = specPath;
+        spec.clear();
         bool started = false;
         for (float x = r.getX(); x <= r.getRight(); x += 1.0f)
         {
@@ -1117,7 +1133,9 @@ void SpectrumImager::paint (juce::Graphics& g)
             if (! started) { spec.startNewSubPath (x, y); started = true; }
             else            spec.lineTo (x, y);
         }
-        juce::Path fillPath (spec);
+        juce::Path& fillPath = specFillPath;
+        fillPath.clear();
+        fillPath.addPath (spec);
         fillPath.lineTo (r.getRight(), r.getBottom() + 2.0f);
         fillPath.lineTo (r.getX(), r.getBottom() + 2.0f);
         fillPath.closeSubPath();
@@ -1171,7 +1189,8 @@ void SpectrumImager::paint (juce::Graphics& g)
                     if (rl < 0.012f) continue;
                     const float x0 = r.getX() + (float) xi, x1 = x0 + 2.0f;
                     const float y0 = topY (x0), y1 = topY (x1);
-                    juce::Path q;
+                    juce::Path& q = clipQuadPath; // reused storage (Wave 4)
+                    q.clear();
                     q.startNewSubPath (x0, y0);
                     q.lineTo (x1, y1);
                     q.lineTo (x1, bot);

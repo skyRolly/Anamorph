@@ -161,6 +161,12 @@ private:
     juce::dsp::FFT  fft { fftOrder };
     juce::dsp::WindowingFunction<float> window { (size_t) fftSize, juce::dsp::WindowingFunction<float>::hann };
     std::vector<float> fifoL, fifoR, fftData, mags;
+    // Per-bin dBFS of the CURRENT fftData (Wave 4): gainToDecibels is a pure
+    // function of fftData[k] (norm is a compile-time constant of fftSize), so
+    // it is converted once per new transform -- pushFFT() true, the only writer
+    // of fftData -- instead of per decay tick. The release tail after audio
+    // stops used to re-run ~4k log10s per tick on identical input.
+    std::vector<float> magsDb;
     std::vector<float> redLevel; // per-bin clip-glow level, temporally smoothed (#4)
     std::vector<float> redColX;  // per-pixel clip level, horizontally feathered (0.6.16)
     double sampleRate = 48000.0;
@@ -172,6 +178,11 @@ private:
     std::vector<int>   redColBin;       // clip mapping: [xi] = FFT bin drawn at column xi
     double redBinSR = 0.0;              // sample rate redColBin was built for
     std::vector<float> clipBlurScratch; // reused triangular-blur buffer (was a per-paint vector)
+    // Reused paint paths (Wave 4): Path::clear() keeps the allocated storage
+    // (Array::clearQuick), so the ~one-point-per-pixel spectrum line and its
+    // fill stop growing fresh heap blocks on every active paint. Same points,
+    // same rendering -- only the allocation churn goes.
+    juce::Path specPath, specFillPath, clipQuadPath;
 
     // Cached bottom layer (H17, the H2 recipe): the glass panel + band tints +
     // frequency-grid verticals -- everything painted BELOW the spectrum. Unlike

@@ -15,7 +15,7 @@ scripts/run-tests.sh             # runs the AnamorphTests console app
 
 ### What the tests cover
 
-`tests/dsp_tests.cpp` has **32 DSP tests** using a `check(cond, "what")` harness, covering: MS
+`tests/dsp_tests.cpp` has **33 DSP tests** using a `check(cond, "what")` harness, covering: MS
 round-trip (bit-exact), transparent default, true-bypass null + latency match, Mono Maker
 (post-Mix), Multiband mono-compat, Solo band selectivity + transparency, Level Match
 (unity/no-ratchet/silence-freeze/mix-coupling/multiband-unity), crossover automation safety,
@@ -56,7 +56,13 @@ NOTHING soloed, dragging the splits at UI cadence must leave the monitor's settl
 engaged — the bank stays cold, the output buffer is **bit-untouched** on every block — and
 re-engaging a solo must snap the cutoffs to the freshest drag targets under the engage crossfade
 (the pre-Wave-3 gains+cutoffs gate wakes the bank on the first target move and glides instead of
-snapping, failing both the stayed-cold and freshest-snap checks). It
+snapping, failing both the stayed-cold and freshest-snap checks); and the parked-Haas
+warm-history regression (`testHaasParkedWarmHistory`, Test 34, Wave 4): with Haas selected and
+Amount settled at exactly 0 (under FTZ, as on the real audio thread) every block must pass
+through **bit-untouched**, re-engaging on silent input must play back audio recorded WHILE
+parked (the delay lines must keep recording through the parked fast path — this fails if a
+future change stops the parked ring writes), and re-parking must return to bit-transparency
+once the wet glide drains. It
 additionally carries **one state-restoration robustness guard**,
 `testAbActiveClampOnCorruptState` — it drives a corrupted `<AB active="…">` blob through the same
 read+clamp the processor uses (`anamorph::clampAbSlotIndex`, `src/AbSlotIndex.h`) and asserts an

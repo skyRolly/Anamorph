@@ -1,5 +1,7 @@
 #include "AnamorphEngine.h"
 #include "MidSide.h"
+#include <cstdint>
+#include <cstring>
 
 namespace anamorph
 {
@@ -155,6 +157,57 @@ void AnamorphEngine::reset()
 //  so they are swapped in only while the output is ducked to silence. Polarity
 //  is excluded (it already ramps through zero via its own smoother).
 // ---------------------------------------------------------------------------
+// Bitwise whole-snapshot equality (Wave 5). Floats compare by BIT PATTERN
+// (NaN == NaN, +0 != -0): the gate's question is "is this snapshot the very
+// same bytes the engine already adopted?", so identical bits must gate and
+// any bit difference must fall through to the normal adopt path. Like
+// discreteDiffers/copyContinuous, this list must name EVERY EngineParameters
+// field -- a field added there and forgotten here would have its edits
+// ignored whenever nothing else moves.
+bool AnamorphEngine::sameParameters (const EngineParameters& a, const EngineParameters& b) noexcept
+{
+    auto sameF = [] (float x, float y) noexcept
+    {
+        return std::memcmp (&x, &y, sizeof (float)) == 0;
+    };
+    return a.channelMode == b.channelMode
+        && a.monoSum     == b.monoSum
+        && a.swapLR      == b.swapLR
+        && sameF (a.inputBalance, b.inputBalance)
+        && a.polarityL   == b.polarityL
+        && a.polarityR   == b.polarityR
+        && a.msMode      == b.msMode
+        && sameF (a.driveDb, b.driveDb)
+        && a.algorithm   == b.algorithm
+        && sameF (a.algoAmount, b.algoAmount)
+        && sameF (a.haasDelayMs, b.haasDelayMs)
+        && a.haasSide    == b.haasSide
+        && sameF (a.velvetDensity, b.velvetDensity)
+        && sameF (a.chorusRate, b.chorusRate)
+        && sameF (a.chorusDepth, b.chorusDepth)
+        && a.dimMode     == b.dimMode
+        && sameF (a.width, b.width)
+        && a.mbEnable    == b.mbEnable
+        && a.mbBands     == b.mbBands
+        && a.mbSolo      == b.mbSolo
+        && sameF (a.mbFreqLow, b.mbFreqLow)
+        && sameF (a.mbFreqMid, b.mbFreqMid)
+        && sameF (a.mbFreqHigh, b.mbFreqHigh)
+        && sameF (a.mbWidthLow, b.mbWidthLow)
+        && sameF (a.mbWidthMid, b.mbWidthMid)
+        && sameF (a.mbWidthHiMid, b.mbWidthHiMid)
+        && sameF (a.mbWidthHigh, b.mbWidthHigh)
+        && a.monoMakerEnable == b.monoMakerEnable
+        && sameF (a.monoMakerFreq, b.monoMakerFreq)
+        && sameF (a.mix, b.mix)
+        && sameF (a.outputGainDb, b.outputGainDb)
+        && sameF (a.outputBalance, b.outputBalance)
+        && a.autoGainMatch == b.autoGainMatch
+        && a.solo        == b.solo
+        && a.oversample  == b.oversample
+        && a.bypass      == b.bypass;
+}
+
 bool AnamorphEngine::discreteDiffers (const EngineParameters& a, const EngineParameters& b) noexcept
 {
     return a.channelMode      != b.channelMode
@@ -274,8 +327,22 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
         }
         else
         {
-            p = np;                          // continuous-only change
-            updateDerived();
+            // Steady-state no-change gate (Wave 5): during normal playback the
+            // wrapper rebuilds and hands in a snapshot EVERY block; when it is
+            // bit-identical to the adopted state, re-adopting it and re-running
+            // updateDerived (2 decibelsToGain pow calls + ~25 module setters +
+            // ~12 smoother-target stores, all producing the already-set values)
+            // is pure per-block waste. updateDerived's one non-pure input --
+            // loudness.getMatchGainDb() for the matchGainSmooth target -- is
+            // re-applied FRESH by process() every block (the matchTarget
+            // refresh), so skipping it here loses nothing. Bitwise field
+            // compare: an unchanged snapshot (even a pathological NaN one)
+            // behaves exactly as its previous block did.
+            if (! sameParameters (np, p))
+            {
+                p = np;                      // continuous-only change
+                updateDerived();
+            }
         }
     }
     else
@@ -761,11 +828,19 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
         }
         else
         {
-            for (int i = 0; i < n; ++i)
+            // Write-only fill (the normal state, every block): identical ring
+            // bytes as the per-sample loop, in at most two contiguous copies
+            // (Wave 4). The read-back branch above is left per-sample: its
+            // reads can overlap this block's own writes when readLat < n.
+            int i = 0;
+            while (i < n)
             {
-                bdL[bypassDelayWrite] = L[i];
-                bdR[bypassDelayWrite] = R[i];
-                if (++bypassDelayWrite >= bdSize) bypassDelayWrite = 0;
+                const int seg = juce::jmin (n - i, bdSize - bypassDelayWrite);
+                juce::FloatVectorOperations::copy (bdL + bypassDelayWrite, L + i, seg);
+                juce::FloatVectorOperations::copy (bdR + bypassDelayWrite, R + i, seg);
+                bypassDelayWrite += seg;
+                if (bypassDelayWrite >= bdSize) bypassDelayWrite = 0;
+                i += seg;
             }
         }
     }
@@ -812,8 +887,20 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     else if (p.algorithm == Algorithm::Velvet) velvet.processBlock (L, R, n);
 
     // -------- Global Width (MS-domain) --------------------------------------
-    for (int i = 0; i < n; ++i)
-        applyWidth (L[i], R[i], widthSmooth.getNextValue());
+    // Settled hoist (Wave 5): a settled SmoothedValue's getNextValue() returns
+    // `target` without mutating anything (the same library semantics H1/H10
+    // already rely on), so hoisting the value feeds applyWidth the identical
+    // float every sample and lets the ~9-flop kernel vectorize. A gliding
+    // width keeps the original per-sample call verbatim.
+    if (! widthSmooth.isSmoothing())
+    {
+        const float w = widthSmooth.getTargetValue();
+        for (int i = 0; i < n; ++i)
+            applyWidth (L[i], R[i], w);
+    }
+    else
+        for (int i = 0; i < n; ++i)
+            applyWidth (L[i], R[i], widthSmooth.getNextValue());
 
     // -------- Multiband Width (Advanced) ------------------------------------
     // Reconstruct the dry through the SAME crossover banks as the wet, at unit
@@ -1173,11 +1260,32 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
     // the multiband blow-up at the source; if anything ever still went non-finite it
     // would latch a dead channel / poison the meters, so any non-finite sample is
     // replaced with 0 and the stateful nodes are reset to stop the source (self-heal).
+    // Detection first (Wave 4): a float is non-finite iff its exponent field is
+    // all-ones, and that masked field's numeric MAX over the block reaches
+    // 0x7f800000 iff at least one sample is non-finite -- so a branch-free,
+    // auto-vectorizable max-reduction replaces the per-sample isfinite branches
+    // on the (always-taken) clean path. No false positives, no false negatives;
+    // the zeroing pass below is the unchanged original and runs only when the
+    // detector fired, so healing behaviour is bit-identical.
     bool nonFinite = false;
-    for (int i = 0; i < n; ++i)
     {
-        if (! std::isfinite (L[i])) { L[i] = 0.0f; nonFinite = true; }
-        if (! std::isfinite (R[i])) { R[i] = 0.0f; nonFinite = true; }
+        uint32_t worst = 0;
+        for (int i = 0; i < n; ++i)
+        {
+            uint32_t bl, br;
+            std::memcpy (&bl, L + i, sizeof (bl));
+            std::memcpy (&br, R + i, sizeof (br));
+            bl &= 0x7f800000u;
+            br &= 0x7f800000u;
+            const uint32_t m = bl > br ? bl : br;
+            worst = worst > m ? worst : m;
+        }
+        if (worst == 0x7f800000u)
+            for (int i = 0; i < n; ++i)
+            {
+                if (! std::isfinite (L[i])) { L[i] = 0.0f; nonFinite = true; }
+                if (! std::isfinite (R[i])) { R[i] = 0.0f; nonFinite = true; }
+            }
     }
     if (nonFinite)
     {

@@ -3,6 +3,7 @@
 #include <atomic>
 #include <array>
 #include <cstdint>
+#include <cstring>
 
 namespace anamorph
 {
@@ -41,11 +42,20 @@ public:
             l += n - capacity;
             r += n - capacity;
             w = end - (uint64_t) capacity;
+            n = capacity;
         }
-        for (; w != end; ++w)
+        // At most two contiguous segments instead of a per-sample masked store
+        // (Wave 4): the ring bytes and the single release-store publication are
+        // identical -- readers only ever copy frames strictly below the index
+        // they acquire, so intra-block store order was never observable.
+        const int idx   = (int) (w & mask);
+        const int first = n < capacity - idx ? n : capacity - idx;
+        std::memcpy (left.data()  + idx, l, (size_t) first * sizeof (float));
+        std::memcpy (right.data() + idx, r, (size_t) first * sizeof (float));
+        if (n > first)
         {
-            left [w & mask] = *l++;
-            right[w & mask] = *r++;
+            std::memcpy (left.data(),  l + first, (size_t) (n - first) * sizeof (float));
+            std::memcpy (right.data(), r + first, (size_t) (n - first) * sizeof (float));
         }
         write.store (end, std::memory_order_release);
     }
