@@ -1599,9 +1599,15 @@ void SpectrumImager::mouseDown (const juce::MouseEvent& e)
     const int b = bandAtX (p.x);
     if (nearWidthLine (p, b))
     {
+        // Press only BEGINS the width ("Bandwidth") interaction; the value is written on
+        // the first mouseDrag (identical yToWidth mapping below), not on the press itself --
+        // the same press-then-drag contract the crossover handle above already uses. Until
+        // v0.8.12 mouseDown snapped the width to the click Y, so a bare click -- or a click a
+        // few px off the line (grab tolerance kWidthGrab = 8 px) -- moved the divider and
+        // wrote the parameter with no drag. A click that never drags now begins+ends an empty
+        // gesture (no value change, no automation/undo step), exactly like the handle path.
         dragBand = b; dragHandle = -1;
         beginGesture (widthP[b]);
-        setParam (widthP[b], yToWidth (p.y));
         repaint();
         return;
     }

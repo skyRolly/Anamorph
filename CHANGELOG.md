@@ -22,6 +22,18 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   record: `worklogs/performance/WAVE6_GPU_RENDER_INVESTIGATION.md`.
   Evidence: PR #79 / commit `2c649ac` (performance Wave 6). [Verified]
 
+### Fixed
+- **MultiBand Bandwidth (band Width) no longer changes on a bare mouse click.** Pressing on a band's
+  horizontal width line used to snap the Width to the click position immediately — a click a few
+  pixels off the line (grab tolerance 8 px) moved the divider and wrote the parameter with no drag.
+  A press now only **begins** the interaction; the Width updates on the first mouse **drag** (the
+  same press-then-drag contract the vertical crossover handles already used, and the identical
+  `yToWidth` drag mapping). A click that never drags begins and ends an empty gesture — no value
+  change, no automation/undo step. Drag feel, parameter mapping, snapping and every other MultiBand
+  interaction are unchanged. Single-line correction in `SpectrumImager::mouseDown`; full record:
+  `worklogs/BANDWIDTH_DRAG_FIX_v0.8.12.md`.
+  Evidence: PR #79 (v0.8.12 GUI interaction fix). [Verified]
+
 ## [0.8.11] — 2026-07-20
 ### Changed
 - **Per-block and settled-state CPU cost reduced further (performance Wave 5; no behaviour
