@@ -1324,11 +1324,34 @@ void SpectrumImager::paint (juce::Graphics& g)
         bandCurve (soloCurveBand, bandCol (soloCurveBand).brighter (0.2f), soloCurveA);
 
     // --- per-band solo headphones + delete x ----------------------------
-    // Drawn inside a transparency layer at the wanted opacity so the headband and
-    // earcups never double up into a bright seam where they meet (0.6.11 #2).
+    // The headband + earcups composite through one partial-opacity layer so they never
+    // double up into a bright seam where they meet (0.6.11 #2) -- see paintHeadphone for
+    // the full-opacity direct-draw fast path and the glyph-clip that bounds that layer's
+    // offscreen (GPU Wave 6).
     auto paintHeadphone = [&] (juce::Rectangle<float> bx, juce::Colour solid, float alpha)
     {
-        g.beginTransparencyLayer (alpha);
+        // The headband arc + two earcups go through a transparency layer so their overlap
+        // can't double-blend into a bright seam at partial opacity (0.6.11 #2). GPU Wave 6
+        // (0.8.12): two behaviour-neutral trims to this per-band path, which is NOT
+        // interaction-gated -- a band wider than 30 px always shows a headphone (loop below),
+        // so it runs every frame the spectrum repaints while Advanced is open and audio plays.
+        //   * At FULL opacity the seam cannot occur (opaque same-colour draws overwrite rather
+        //     than accumulate), so skip the layer and draw direct -- pixel-identical. Only the
+        //     soloed/on band hits alpha == 1.0; every other band eases in [0.4, 0.9], never here.
+        //   * Otherwise clip to the glyph's own box BEFORE beginTransparencyLayer: JUCE sizes the
+        //     offscreen the layer allocates to the CURRENT clip bounds, which here is the whole
+        //     plot rounded-rect (reduceClipRegion at the top of paint) -- so without this each
+        //     call allocates a plot-sized offscreen (an FBO on the macOS/Windows GL compositor)
+        //     and composites it back. The +4 px margin covers the earcups (which reach ~1 px past
+        //     bx) and their AA, so every drawn pixel is inside the clip and the composite is
+        //     byte-identical; only the offscreen shrinks (~plot -> ~26x23 px).
+        const bool useLayer = alpha < 0.999f;
+        juce::Graphics::ScopedSaveState clipToIcon (g);
+        if (useLayer)
+        {
+            g.reduceClipRegion (bx.expanded (4.0f).toNearestInt());
+            g.beginTransparencyLayer (alpha);
+        }
         auto cup = bx.reduced (1.0f, 0.5f);
         const float cx = cup.getCentreX();
         const float rx = cup.getWidth() * 0.5f;
@@ -1343,7 +1366,8 @@ void SpectrumImager::paint (juce::Graphics& g)
         const float cupW = 4.2f, cupH = 6.4f;              // over-ear cups (#2)
         g.fillRoundedRectangle (cx - ex - cupW * 0.5f, ey - 0.5f, cupW, cupH, 1.8f);
         g.fillRoundedRectangle (cx + ex - cupW * 0.5f, ey - 0.5f, cupW, cupH, 1.8f);
-        g.endTransparencyLayer();
+        if (useLayer)
+            g.endTransparencyLayer();
     };
     for (int b = 0; b < N; ++b)
     {

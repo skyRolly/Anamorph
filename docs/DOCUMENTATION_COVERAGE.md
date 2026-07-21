@@ -6,7 +6,22 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **v0.8.11 final performance pass & release-readiness audit** (2026-07-20,
+Last updated: for **performance Wave 6 — GPU/GUI rendering-efficiency (v0.8.12)** (2026-07-21,
+branch `claude/beautiful-sagan-JAUFI`, restarted from `main` @ `c6f3226` — PR #78 merged). **One
+behaviour-neutral code change** (`src/gui/SpectrumImager.cpp`, `paintHeadphone`): the per-band solo-
+headphone transparency layer was allocating a **plot-sized offscreen framebuffer every Advanced-mode
+frame** (JUCE sizes a transparency-layer offscreen to the current clip, which was the whole plot
+rounded-rect, not the ~18×15 px glyph); it is now clipped to the glyph (+4 px, covering the earcups +
+AA → pixel-identical) and skipped entirely at full opacity. A 5-lens adversarial Workflow (14 agents)
+confirmed the idle/Simple/hidden GPU paths are already ~0 and at their frontier, and that the spectrum
+**cannot** be made opaque pixel-identically (it nests bottom-flush in a translucent rounded panel, so
+its bottom corners straddle a two-colour arc no flat pre-fill reproduces). Build + **140-check suite
+green**; no DSP/threading/parameter/serialization/latency change; GPU measurement unavailable in the
+headless container (analytical estimate — the affected GL path is macOS/Windows-only, Linux is CPU per
+ADR-0011). Version bump `0.8.11 → 0.8.12` (`CMakeLists.txt:14`). Synced: this file, CHANGELOG
+(`[0.8.12]` **### Changed**), HANDOVER (Current-Version + Pending-Tasks rows), README (version line).
+Evidence: `worklogs/performance/WAVE6_GPU_RENDER_INVESTIGATION.md`. Prior: for the **v0.8.11 final
+performance pass & release-readiness audit** (2026-07-20,
 branch `claude/beautiful-sagan-JAUFI`, restarted from `main` @ `4aac4eb` — PR #76 = Waves 4+5,
 merged). **No code change:** the three remaining named candidates were closed with measured
 verdicts. The long-open **GUI fresh-eyes sweep** is DONE — carried in-line after the Workflow
