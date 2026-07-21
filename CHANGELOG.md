@@ -6,6 +6,22 @@ SHA + date** as the Evidence Source (per `docs/policies/CHANGELOG_POLICY.md`). E
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
+## [0.8.12] — 2026-07-21
+### Changed
+- **Advanced-mode GPU/rendering cost reduced (performance Wave 6; pixel-identical, no behaviour
+  change).** The per-band solo-headphone glyph in the spectral band editor no longer wraps its
+  transparency layer around the whole plot: on macOS/Windows (GPU-composited) each visible headphone
+  was allocating a **plot-sized offscreen framebuffer + full-plot alpha composite every frame** the
+  spectrum repaints while Advanced is open and audio plays — up to ~4×/frame, all behind an ~18×15 px
+  icon. The layer is now clipped to the glyph (offscreen ≈ 26×23 px, a ~200× smaller allocation) and
+  skipped entirely at full opacity (the soloed band, where no seam can form). Output is byte-identical
+  (the clip margin covers the earcups + anti-aliasing); idle, Simple-mode and hidden GPU cost were
+  already ~0 and are unchanged. Linux (CPU render, no GL per ADR-0011) sees the same reduction as lower
+  paint allocation. Everything else in the render pipeline was investigated and left unchanged (the
+  spectrum cannot be made opaque pixel-identically — it nests in a translucent rounded panel). Full
+  record: `worklogs/performance/WAVE6_GPU_RENDER_INVESTIGATION.md`.
+  Evidence: this commit (performance Wave 6). [Verified]
+
 ## [0.8.11] — 2026-07-20
 ### Changed
 - **Per-block and settled-state CPU cost reduced further (performance Wave 5; no behaviour
