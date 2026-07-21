@@ -20,7 +20,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   paint allocation. Everything else in the render pipeline was investigated and left unchanged (the
   spectrum cannot be made opaque pixel-identically — it nests in a translucent rounded panel). Full
   record: `worklogs/performance/WAVE6_GPU_RENDER_INVESTIGATION.md`.
-  Evidence: this commit (performance Wave 6). [Verified]
+  Evidence: PR #79 / commit `2c649ac` (performance Wave 6). [Verified]
 
 ## [0.8.11] — 2026-07-20
 ### Changed

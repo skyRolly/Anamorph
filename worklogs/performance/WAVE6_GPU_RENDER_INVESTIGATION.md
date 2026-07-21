@@ -12,7 +12,7 @@
 
 - **Date:** 2026-07-21
 - **Branch:** `claude/beautiful-sagan-JAUFI`, restarted from `main` @ `c6f3226` (PR #78 merged;
-  fast-forward, fresh follow-up → new PR). Target version **0.8.12**.
+  fast-forward, fresh follow-up → **PR #79**). Target version **0.8.12**.
 - **Environment / method:** same container, gcc 13.3.0, CMake/Ninja Release. Static analysis of the
   full repaint→GPU pipeline plus a 5-lens adversarial Workflow (14 agents) tasked to *find* a win or
   prove none survives. **Direct GPU measurement is unavailable** here (headless container, no GPU/
