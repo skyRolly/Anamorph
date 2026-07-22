@@ -87,3 +87,31 @@ change; the OS query runs on the message thread only, and only while a button ap
   stays inert).
 - GUI mouse interaction has no unit test (the suite is a DSP console app); verified by the event-path
   reasoning above and the adversarial review.
+
+## 5. Follow-up: the rotary press glow could stay lit (idle-gate seal ordering)
+
+A review found one residual edge: after a lost outside-release, the rotary **press glow** (`actA`)
+could remain at full brightness until the cursor re-entered the window.
+
+**Root cause — a message-thread ordering hole in the fix above.** With the cursor outside and the
+glow settled at `actA = 1.0`, the micro-anim driver is idle (`microSettled = true`). On a lost
+release, if the **24 Hz reconcile tick runs before the next vblank `stepMicroAnims` pass**, its
+`getCurrentModifiersRealtime()` call refreshes JUCE's cached modifiers — flipping
+`isMouseButtonDownAnywhere()` false — and `stepMicroAnims`' S11 idle gate (cursor outside + no
+button + settled + generations unchanged) then early-returns **before its widget loop ever saw the
+release**: the `physicalButtonDown()` AND-gate that would have eased `actA` to 0 never executes, and
+nothing re-opens the gate until `mouseInside` becomes true again. (The vblank-first ordering escapes:
+the pass runs while the cached flag is still stale-true, starts the ease, and the in-flight motion
+keeps `microSettled = false` until converged.) The same seal affected the value-box case: the
+reconcile cleared its `"dragging"` flag and repainted, but the repaint draws the **eased** `actA` —
+still 1.0.
+
+**Fix (one line).** The reconcile block also sets `microSettled = false`. That re-opens both idle
+gates for exactly one pass; the widget loop runs, sees the physical button up, and eases
+`actA`/`hovA` down exactly as a normal release would (repainting only as values move), then
+re-settles — every gate closes again by itself. No gate is removed, no frequency raised, no
+continuous repaint: the extra cost is the ~150 ms ease a normal release always costs, and the block
+still cannot fire during a live drag (the OS reports the button down). **Confirmed visual-only:** the
+parameter gestures were already safe — imager gestures close in `cancelActiveDrag`, and a JUCE
+`Slider`'s own drag/gesture ends via the mouseUp JUCE synthesizes on the next real mouse event; only
+the eased glow had no wake-up path.

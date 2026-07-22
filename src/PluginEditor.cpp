@@ -1060,8 +1060,8 @@ void AnamorphAudioProcessorEditor::timerCallback()
     // state via getCurrentModifiersRealtime() -- which also REFRESHES the cached state, so after
     // one reconcile tick the gate goes quiet by itself. If the button is actually up, reconcile
     // the drag state we own: clear the knob value-box "dragging" flag, drop the Persist-bar drag,
-    // and cancel a stuck Multiband drag. The eased press GLOW clears independently in
-    // stepMicroAnims. During a real drag the button is genuinely down, so this block is inert.
+    // and cancel a stuck Multiband drag. During a real drag the button is genuinely down, so this
+    // block is inert.
     if (juce::Component::isMouseButtonDownAnywhere()
         && ! juce::ModifierKeys::getCurrentModifiersRealtime().isAnyMouseButtonDown())
     {
@@ -1073,6 +1073,15 @@ void AnamorphAudioProcessorEditor::timerCallback()
             }
         persistDragging = false;
         if (imager) imager->cancelActiveDrag();
+        // Wake the micro-anim driver for one pass so the stale press GLOW (actA) eases out.
+        // Ordering subtlety: with the cursor outside and the glow settled at full press, the
+        // realtime query above just flipped isMouseButtonDownAnywhere() false -- which would
+        // SEAL stepMicroAnims' idle gate (mouseInside false, no button, settled, generations
+        // unchanged) before its widget loop ever saw the release, leaving the knob lit until
+        // the cursor re-enters. Un-settling re-opens the gate for exactly one pass; the loop
+        // then eases actA/hovA down (repainting only as values move, like any normal release)
+        // and re-settles, so every idle gate closes again by itself.
+        microSettled = false;
     }
 }
 
