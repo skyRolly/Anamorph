@@ -1052,6 +1052,28 @@ void AnamorphAudioProcessorEditor::timerCallback()
         shownMatchGainDb = matchDb;
         matchReadout.setText (juce::String (matchDb, 1) + " dB", juce::dontSendNotification);
     }
+
+    // Release-outside safety net (v0.8.12): if a mouseUp is delivered OUTSIDE the plugin window
+    // (released over the host / desktop) JUCE may never route it here, so a control can stay
+    // logically pressed. JUCE's cached button state stays stale-"down" too, so gate on it first
+    // (cheap, no syscall) and only when it says a button is held do we ask the OS for the REAL
+    // state via getCurrentModifiersRealtime() -- which also REFRESHES the cached state, so after
+    // one reconcile tick the gate goes quiet by itself. If the button is actually up, reconcile
+    // the drag state we own: clear the knob value-box "dragging" flag, drop the Persist-bar drag,
+    // and cancel a stuck Multiband drag. The eased press GLOW clears independently in
+    // stepMicroAnims. During a real drag the button is genuinely down, so this block is inert.
+    if (juce::Component::isMouseButtonDownAnywhere()
+        && ! juce::ModifierKeys::getCurrentModifiersRealtime().isAnyMouseButtonDown())
+    {
+        for (const auto& w : animated)
+            if ((bool) w.comp->getProperties().getWithDefault ("dragging", false))
+            {
+                w.comp->getProperties().set ("dragging", false);
+                w.comp->repaint();
+            }
+        persistDragging = false;
+        if (imager) imager->cancelActiveDrag();
+    }
 }
 
 // Vsync-stepped meter reveal: the v0.5.9 exponential ease (factor 0.55 per
@@ -1191,6 +1213,19 @@ void AnamorphAudioProcessorEditor::stepMicroAnims (double dt)
     if (knobSweepTime > 0.0) knobSweepTime -= dt;
     const bool sweeping = uiAnimOn && knobSweepTime > 0.0;
 
+    // Release-outside safety net (v0.8.12): the REAL OS button state, queried lazily -- only if a
+    // slider actually reports held below (never during hover / idle), and at most once per call.
+    // A press released OUTSIDE the plugin window leaves isMouseButtonDown() / "dragging" stale-
+    // true until JUCE sees another event; ANDing the glow with the real state clears it. A fresh
+    // query (not a cached flag) means a genuine press still lights instantly -- no onset lag.
+    int realDownCached = -1;
+    auto physicalButtonDown = [&realDownCached]
+    {
+        if (realDownCached < 0)
+            realDownCached = juce::ModifierKeys::getCurrentModifiersRealtime().isAnyMouseButtonDown() ? 1 : 0;
+        return realDownCached == 1;
+    };
+
     for (const auto& w : animated)
     {
         juce::Component* const c = w.comp;
@@ -1224,8 +1259,9 @@ void AnamorphAudioProcessorEditor::stepMicroAnims (double dt)
 
         if (auto* s = w.slider)
         {
-            const bool buttonHeld = s->isMouseButtonDown()
-                                  || (bool) props.getWithDefault ("dragging", false);
+            const bool buttonHeld = (s->isMouseButtonDown()
+                                  || (bool) props.getWithDefault ("dragging", false))
+                                  && physicalButtonDown(); // release-outside safety net (v0.8.12)
             actT = buttonHeld ? 1.0f : 0.0f;
 
             // ROTARY knobs AND LINEAR sliders ease their drawn position toward the

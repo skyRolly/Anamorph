@@ -1599,14 +1599,17 @@ void SpectrumImager::mouseDown (const juce::MouseEvent& e)
     const int b = bandAtX (p.x);
     if (nearWidthLine (p, b))
     {
-        // Press only BEGINS the width ("Bandwidth") interaction; the value is written on
-        // the first mouseDrag (identical yToWidth mapping below), not on the press itself --
-        // the same press-then-drag contract the crossover handle above already uses. Until
-        // v0.8.12 mouseDown snapped the width to the click Y, so a bare click -- or a click a
-        // few px off the line (grab tolerance kWidthGrab = 8 px) -- moved the divider and
-        // wrote the parameter with no drag. A click that never drags now begins+ends an empty
-        // gesture (no value change, no automation/undo step), exactly like the handle path.
+        // Press only BEGINS the width ("Bandwidth") interaction -- the value is written by
+        // mouseDrag, never on the press (v0.8.12). The drag is RELATIVE and modelled on the
+        // crossover handle: remember the press Y now, and only once the cursor has moved past a
+        // 3 px threshold (widthHoldActive -- the crossover's click-vs-drag idiom) does the Width
+        // start moving, anchored so it follows the mouse DELTA from the grab rather than jumping
+        // to the absolute cursor. So a bare click, or a click a few px off the line (grab
+        // tolerance kWidthGrab = 8 px), or a tiny hand jitter, begins+ends an EMPTY gesture --
+        // no value change, no divider jump, no automation/undo step. See mouseDrag.
         dragBand = b; dragHandle = -1;
+        widthPressY = p.y;          // for the 3 px drag-engage threshold
+        widthHoldActive = false;    // value stays put until the threshold is crossed
         beginGesture (widthP[b]);
         repaint();
         return;
@@ -1657,7 +1660,18 @@ void SpectrumImager::mouseDrag (const juce::MouseEvent& e)
     }
     else if (dragBand >= 0)
     {
-        setParam (widthP[dragBand], yToWidth ((float) e.position.y));
+        // Relative Width drag past a 3 px threshold (mirrors the crossover's handleHoldActive
+        // click-vs-drag gate). Below the threshold nothing moves, so a click or hand jitter
+        // leaves Width untouched. On crossing it we anchor dragGrabDY to the CURRENT line, so
+        // the value starts exactly where it was (no jump to the absolute cursor) and then
+        // follows the mouse delta -- the line stays attached to the grabbed point.
+        if (! widthHoldActive && std::abs ((float) e.position.y - widthPressY) > 3.0f)
+        {
+            widthHoldActive = true;
+            dragGrabDY = (float) e.position.y - widthToY (bandWidth (dragBand));
+        }
+        if (widthHoldActive)
+            setParam (widthP[dragBand], yToWidth ((float) e.position.y - dragGrabDY));
     }
     repaint();
 }
@@ -1694,7 +1708,35 @@ void SpectrumImager::mouseUp (const juce::MouseEvent& e)
     dragHandle = dragBand = -1;
     dragRemovePending = false;
     handleHoldActive = false; // a click that never became a hold leaves the preview dark
+    widthHoldActive  = false;
     updateHover (e.position);
+    repaint();
+}
+// Release-outside safety net (v0.8.12): the editor's 24 Hz reconcile calls this when the
+// physical mouse button is up but a drag is still active -- i.e. a mouseUp was lost because
+// the button was released outside the plugin window. Close any open parameter gesture and
+// clear the press/drag flags WITHOUT firing the on-release actions (delete band / toggle solo /
+// commit a band move): a lost release is not a deliberate release-over-target. Cheap no-op when
+// nothing is active. Runs on the message thread, like every mouse handler; both this and
+// mouseUp guard on the same flags, so whichever runs first makes the other a no-op -- a
+// parameter's endChangeGesture can never fire twice.
+void SpectrumImager::cancelActiveDrag()
+{
+    if (dragBand < 0 && dragHandle < 0 && soloPressBand < 0 && pressDeleteBand < 0)
+        return;
+    if (dragBand   >= 0) endGesture (widthP[dragBand]);
+    if (dragHandle >= 0) endGesture (freqP[dragHandle]);
+    if (soloPressBand >= 0)
+    {
+        if (soloHoldActive && onClearSoloPreview) onClearSoloPreview();
+        if (soloMovedBand) endBandMove();
+    }
+    dragBand = dragHandle = soloPressBand = pressDeleteBand = -1;
+    dragRemovePending = false;
+    handleHoldActive  = false;
+    widthHoldActive   = false;
+    soloHoldActive = soloMovedBand = false;
+    updateHover (getMouseXYRelative().toFloat());
     repaint();
 }
 void SpectrumImager::mouseDoubleClick (const juce::MouseEvent& e)

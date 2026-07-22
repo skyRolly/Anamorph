@@ -5,7 +5,7 @@
 > actual drag. Fixed so a press only *begins* the interaction; the Width updates on the first
 > `mouseDrag`, using the existing drag mapping. Minimal event-state correction — one line removed.
 
-- **Date:** 2026-07-21 · **Version:** 0.8.12 (same PR #79) · **Branch:** `claude/beautiful-sagan-JAUFI`.
+- **Date:** 2026-07-21 · **Version:** 0.8.12 (PR #80, commit `c0cbd05`) · **Branch:** `claude/beautiful-sagan-JAUFI`.
 
 ## 1. Original issue
 
@@ -80,3 +80,30 @@ Width, double-click all remain as-is).
   event-path reasoning above and by matching the established, long-shipped crossover-handle contract.
 - **Behaviour:** press-without-drag writes nothing (empty begin/end gesture); drag writes the Width via
   the unchanged `yToWidth` mapping; divider motion and every other MultiBand interaction are unchanged.
+
+## 6. Follow-up (same v0.8.12): relative drag + click-vs-drag threshold
+
+A second pass refined the drag itself (the click fix above left the drag ABSOLUTE — it still snapped
+Width to the cursor Y on the first move). The drag is now **relative** and gains a 3 px engage
+threshold, mirroring the crossover handle:
+
+- `mouseDown` remembers `widthPressY` and leaves `widthHoldActive = false`; still no value write.
+- `mouseDrag`: once `|e.position.y - widthPressY| > 3 px`, it engages and anchors
+  `dragGrabDY = e.position.y - widthToY(bandWidth(dragBand))` **at that moment**, then writes
+  `yToWidth(e.position.y - dragGrabDY)`. Because the anchor is taken at engagement against the
+  still-original Width, the very first write is `yToWidth(widthToY(origW)) = origW` **exactly**
+  (`yToWidth∘widthToY` is the identity on the 0–2 range — verified by the adversarial review) — no
+  jump to the absolute cursor, no step at the 3 px boundary — and thereafter the value follows the
+  mouse delta (the line stays attached to the grabbed point). Below the threshold nothing moves, so a
+  click or hand jitter never nudges Width. Anchoring at engagement (not at press) is what avoids a
+  ~3 px step.
+- `mouseUp` and `cancelActiveDrag` reset `widthHoldActive`; the flag is only consulted while
+  `dragBand >= 0`, and the same `mouseDown` that sets `dragBand` also clears it, so it can never be
+  stale-true.
+
+This is the grab-offset + 3 px gate the vertical crossover already used (`dragGrabDX` /
+`handleHoldActive`); parameter mapping and smoothing are unchanged. It also composes correctly with
+the divider visual: `busy` (`dragBand >= 0`) snaps `drawnW` to the live parameter every frame, which
+now holds the original value until the drag engages — so the line holds still on press, exactly the
+desired feel. Full record of the accompanying release-outside stuck-state fix:
+`worklogs/MOUSE_RELEASE_STATE_FIX_v0.8.12.md`.
