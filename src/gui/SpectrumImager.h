@@ -38,6 +38,11 @@ public:
     void mouseDoubleClick (const juce::MouseEvent&) override;
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
+    // Release-outside safety net (v0.8.12): called by the editor's 24 Hz reconcile when the
+    // physical mouse button is up but a drag is still active (a mouseUp lost outside the plugin
+    // window). Ends any open gesture + clears the drag flags without firing on-release actions.
+    void cancelActiveDrag();
+
     // Wired up by the editor. The momentary solo audition is a non-undoable engine
     // override (#8); onSweep / isSweeping share the editor's eased-position window so
     // a reset / preset / A-B / undo travels the split & width lines (#1).
@@ -229,6 +234,9 @@ private:
     float addX        = 0.0f;
     float dragGrabDX  = 0.0f;     // cursor-to-line offset while dragging a split (#10/#11)
     float dragOrigX[3] { 0, 0, 0 }; // split x positions at drag start, for the reversible projection
+    float widthPressY   = 0.0f;   // cursor y at a Width grab, for the 3 px drag-engage threshold (v0.8.12)
+    float dragGrabDY    = 0.0f;   // cursor-to-line offset while dragging a Width -> relative, no jump (v0.8.12)
+    bool  widthHoldActive = false;// Width drag engaged past the 3 px threshold (click-vs-drag, v0.8.12)
 
     int   scrollHandle = -1;
     int   scrollBand   = -1;

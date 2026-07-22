@@ -22,6 +22,36 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   record: `worklogs/performance/WAVE6_GPU_RENDER_INVESTIGATION.md`.
   Evidence: PR #79 / commit `2c649ac` (performance Wave 6). [Verified]
 
+### Fixed
+- **MultiBand Bandwidth (band Width) no longer changes on a bare mouse click.** Pressing on a band's
+  horizontal width line used to snap the Width to the click position immediately — a click a few
+  pixels off the line (grab tolerance 8 px) moved the divider and wrote the parameter with no drag.
+  A press now only **begins** the interaction; the Width updates on the first mouse **drag** (the
+  same press-then-drag contract the vertical crossover handles already used, and the identical
+  `yToWidth` drag mapping). A click that never drags begins and ends an empty gesture — no value
+  change, no automation/undo step. Drag feel, parameter mapping, snapping and every other MultiBand
+  interaction are unchanged. Single-line correction in `SpectrumImager::mouseDown`; full record:
+  `worklogs/BANDWIDTH_DRAG_FIX_v0.8.12.md`.
+  Evidence: PR #80 / commit `c0cbd05` (v0.8.12 GUI interaction fix). [Verified]
+- **MultiBand Bandwidth drag is now RELATIVE, with a click-vs-drag threshold.** Grabbing a band's
+  Width line and dragging now moves the value by the mouse **delta** from the grab (the line stays
+  attached to the grabbed point) instead of snapping to the absolute cursor, and the value only starts
+  moving once the cursor has crossed a 3 px threshold — so a click, or tiny hand jitter, never nudges
+  Width. This matches the vertical crossover-handle drag contract (grab-offset + 3 px gate). Parameter
+  mapping, smoothing and every other MultiBand interaction are unchanged.
+  Evidence: PR #80 (v0.8.12 GUI interaction refinement). [Verified]
+- **Controls no longer stay stuck "pressed" when the mouse button is released outside the plugin
+  window.** If a host delivers the mouse-up over the host/desktop (so JUCE never routes it to the
+  editor and its cached button state stays stale-down), knobs, sliders and the MultiBand drag could
+  remain visually/logically held. The editor now reconciles against the **real OS button state**
+  (`getCurrentModifiersRealtime()`, gated so it is queried only while a button appears held): a genuine
+  release clears the stuck press glow, the value-box drag flag, the Persist-bar drag and any stuck
+  MultiBand gesture. Effective on **Windows and Linux** (JUCE's macOS realtime query returns the cached
+  button state, so macOS behaviour is unchanged — where AppKit's mouse capture makes lost releases rare
+  to begin with). Normal drag, press-feedback onset and automation are unchanged. Full record:
+  `worklogs/MOUSE_RELEASE_STATE_FIX_v0.8.12.md`.
+  Evidence: PR #80 (v0.8.12 GUI interaction fix). [Verified]
+
 ## [0.8.11] — 2026-07-20
 ### Changed
 - **Per-block and settled-state CPU cost reduced further (performance Wave 5; no behaviour
