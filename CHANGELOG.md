@@ -46,7 +46,9 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   remain visually/logically held. The editor now reconciles against the **real OS button state**
   (`getCurrentModifiersRealtime()`, gated so it is queried only while a button appears held): a genuine
   release clears the stuck press glow, the value-box drag flag, the Persist-bar drag and any stuck
-  MultiBand gesture. Normal drag, press-feedback onset and automation are unchanged. Full record:
+  MultiBand gesture. Effective on **Windows and Linux** (JUCE's macOS realtime query returns the cached
+  button state, so macOS behaviour is unchanged — where AppKit's mouse capture makes lost releases rare
+  to begin with). Normal drag, press-feedback onset and automation are unchanged. Full record:
   `worklogs/MOUSE_RELEASE_STATE_FIX_v0.8.12.md`.
   Evidence: PR #80 (v0.8.12 GUI interaction fix). [Verified]
 

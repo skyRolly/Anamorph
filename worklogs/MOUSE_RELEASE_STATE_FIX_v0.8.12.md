@@ -30,9 +30,15 @@ MultiBand editor separately holds `dragBand`/`dragHandle`/`soloPressBand`/`press
 `mouseUp` is lost, none of these clear.
 
 `getCurrentModifiersRealtime()` — unlike the cached modifiers — queries the OS for the **actual**
-current button state (X11 `XQueryPointer` / Win32 `GetAsyncKeyState` / macOS `pressedMouseButtons`),
-so it is reliable even when no JUCE event arrived. Crucially it also **writes back** to JUCE's cached
+current button state on **Linux/X11 (`XQueryPointer`) and Windows (`GetAsyncKeyState`)**, so it is
+reliable there even when no JUCE event arrived; crucially it also **writes back** to JUCE's cached
 `currentModifiers`, so one reconcile pass re-synchronizes everything that reads the cached state.
+**Platform caveat (verified in the vendored JUCE 8):** the macOS implementation refreshes only the
+*keyboard* modifiers and returns the *cached* mouse-button flags — it never queries
+`[NSEvent pressedMouseButtons]` — so on macOS the reconcile's "cached-down && realtime-up" gate can
+never be satisfied and the whole mechanism is deliberately inert: behaviour there equals the pre-fix
+state (no regression; macOS also loses outside releases far less often, since AppKit delivers the
+mouse-up to the window that captured the mouse-down). The recovery therefore covers Windows/Linux.
 
 ## 3. Fix (minimal, message-thread only)
 
@@ -115,3 +121,16 @@ still cannot fire during a live drag (the OS reports the button down). **Confirm
 parameter gestures were already safe — imager gestures close in `cancelActiveDrag`, and a JUCE
 `Slider`'s own drag/gesture ends via the mouseUp JUCE synthesizes on the next real mouse event; only
 the eased glow had no wake-up path.
+
+**Independent verification (2-agent adversarial Workflow, both `CONFIRM`):** root cause and fix
+sufficiency confirmed in both message-thread orderings — `microSettled` is ANDed into **both** idle
+gates, so the woken pass cannot be blocked by the FNV probe gate either; the ease is self-sustaining
+(`microSettled = !anyMotion`) until convergence; a no-op fire costs exactly one no-repaint pass and
+the realtime write-back quiets the pre-gate on the next tick (one-shot, no storm). Accepted narrow
+caveats, none introduced by this line: (a) the **macOS inertness** above (pre-existing at the
+mechanism level; behaviour unchanged there); (b) a **~42 ms release-then-repress race** — if a new
+physical press lands anywhere between the timer wake and the first woken vblank pass, the glow
+re-seals at full until the cursor re-enters the editor (recoverable, extremely narrow); (c) the
+pre-existing terminal-ease residual (`actA` stalls at ~0.01–0.03 because the 0.0015 no-op threshold
+beats the 0.004 snap at 60+ Hz) — identical for every normal release, painted contribution
+≤ ~2/255.
