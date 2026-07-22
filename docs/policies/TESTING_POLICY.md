@@ -6,7 +6,7 @@ Repository Governance Policy. Test acceptance levels and the release gate.
 
 | Level | Name | What | Where |
 |---|---|---|---|
-| **1** | Static analysis | Compiler warnings (recommended warning flags), CodeQL | `juce::juce_recommended_warning_flags` (CMakeLists.txt:143,165); GitHub code scanning |
+| **1** | Static analysis | Compiler warnings (recommended warning flags), CodeQL | `juce::juce_recommended_warning_flags` (CMakeLists.txt:201,225); GitHub code scanning |
 | **2** | Unit / behaviour | Deterministic DSP assertions + state-restoration robustness | `tests/dsp_tests.cpp` (33 DSP tests + 1 A/B state-restoration clamp guard) |
 | **3** | DSP validation | MS round-trip exact; no NaN/Inf/denormals across the algorithm × OS × feature matrix; latency==actual; bypass null; click-free transitions | `tests/dsp_tests.cpp` |
 | **4** | pluginval | VST3 conformance; editor open/close under `xvfb` | `scripts/run-pluginval.sh` |
@@ -35,4 +35,4 @@ Evidence [Verified]: scripts/run-tests.sh; scripts/run-pluginval.sh / scripts/ru
 2. **DSP-policy invariants must have a guarding test** where feasible (see the invariant→test map
    in `DSP_POLICY.md`).
 3. The pluginval **signal-only retry** is permitted (it works around a host-side JUCE/X11 crash,
-   not a plugin defect) but never retries a real validation failure (`run-pluginval.sh:46-76`).
+   not a plugin defect) but never retries a real validation failure (`run-pluginval.sh:63-96`).

@@ -1,4 +1,4 @@
-# MultiBand Bandwidth drag-behaviour fix (v0.8.12 GUI interaction)
+# Multiband Bandwidth drag-behaviour fix (v0.8.12 GUI interaction)
 
 > A bare mouse **press** on a band's Width ("Bandwidth") line changed the value immediately (the
 > divider snapped to the click position and the parameter was written) instead of waiting for an
@@ -9,7 +9,7 @@
 
 ## 1. Original issue
 
-In the MultiBand spectral editor, clicking-and-holding on a band's horizontal width line
+In the Multiband spectral editor, clicking-and-holding on a band's horizontal width line
 immediately set the Width to the cursor's vertical position — so a click without dragging (or a
 click landing a few pixels off the line, within the 8 px grab tolerance) moved the divider and wrote
 the parameter. Expected: a press begins the interaction; only a drag changes the value.
@@ -53,7 +53,7 @@ change, no automation write, no undo step — exactly as the crossover handle al
 
 **Files changed:** `src/gui/SpectrumImager.cpp` (one line removed + an explanatory comment).
 Nothing else touched — no DSP, no parameter mapping, no serialization, no automation semantics, no
-other MultiBand interaction (crossover drag, add/remove band, solo, alt-click reset, scroll-wheel
+other Multiband interaction (crossover drag, add/remove band, solo, alt-click reset, scroll-wheel
 Width, double-click all remain as-is).
 
 ## 4. Why it is minimal and safe
@@ -79,7 +79,7 @@ Width, double-click all remain as-is).
   GUI mouse interaction has no unit test (the suite is a DSP console app); the fix is verified by the
   event-path reasoning above and by matching the established, long-shipped crossover-handle contract.
 - **Behaviour:** press-without-drag writes nothing (empty begin/end gesture); drag writes the Width via
-  the unchanged `yToWidth` mapping; divider motion and every other MultiBand interaction are unchanged.
+  the unchanged `yToWidth` mapping; divider motion and every other Multiband interaction are unchanged.
 
 ## 6. Follow-up (same v0.8.12): relative drag + click-vs-drag threshold
 

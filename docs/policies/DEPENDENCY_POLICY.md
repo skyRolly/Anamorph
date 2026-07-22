@@ -29,13 +29,13 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
    move DSP/latency/editor behaviour invisibly to the headless gate.
 3. Re-verify the `RELEASE_COMPATIBILITY_CHECKLIST.md` (latency reporting, session reload) after a bump.
 4. Prefer the offline path (`-DANAMORPH_JUCE_PATH`) for reproducibility in restricted CI.
-5. `JUCE_*` compile flags in `CMakeLists.txt:123-132` (no webview, no curl, no splash, strict
+5. `JUCE_*` compile flags in `CMakeLists.txt:183-188` (no webview, no curl, no splash, strict
    ref-counted pointer) are part of the dependency contract; changing them is a build change.
 
 ## Compliance log
 
 - **JUCE 8.0.8 → 8.0.14** — recorded in **ADR-0012** (the first dependency bump enforced under rule 1
-  above; the bootstrap use of this rule). Verified green by CI (build + 23 DSP self-tests + pluginval
+  above; the bootstrap use of this rule). Verified green by CI (build + the then-current 23 DSP self-tests + pluginval
   strictness 10 on the Linux gate); commit `41acaa7`. The manual audition (rule 2, Level 5) **was
   performed** post-CI by the maintainer — a DAW audition of 8.0.14 against the 8.0.8 baseline with no
   perceptual regressions (2026-06-29) — and is recorded in **ADR-0012** (*Manual Audition (Level 5)*).

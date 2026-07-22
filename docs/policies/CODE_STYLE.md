@@ -6,7 +6,7 @@ read like the surrounding code.
 ## Language / build
 
 - **C++17**, no compiler extensions (`CMAKE_CXX_STANDARD 17`, `CMAKE_CXX_EXTENSIONS OFF`).
-- Builds clean under `juce::juce_recommended_warning_flags` (CMakeLists.txt:143,165) — keep it warning-free.
+- Builds clean under `juce::juce_recommended_warning_flags` (CMakeLists.txt:201,225) — keep it warning-free.
 
 ## Naming (observed)
 

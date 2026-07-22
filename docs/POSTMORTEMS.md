@@ -36,7 +36,7 @@ required) · Fix · Why this fix · Prevention.
 
 ## INC-003 — Multiband crossover automation explosion ("+600 dB")
 - **Date:** 2026-06-27 (`f259a80`) · **Affected version:** ≤0.8.1, fixed 0.8.2 · **Severity:** Critical
-- **Evidence [Partially Verified]:** CHANGELOG.md [0.8.2]. **[Verified]:** test `testCrossoverAutomationSafe`; ADR-0009; src/dsp/MultibandWidth.cpp:55-71.
+- **Evidence [Partially Verified]:** CHANGELOG.md [0.8.2]. **[Verified]:** test `testCrossoverAutomationSafe`; ADR-0009; src/dsp/MultibandWidth.cpp:96-102 (Nyquist clamp).
 
 - **Problem:** Automating a split toward Nyquist (4 bands crowded high) made the DSP blow up.
 - **Symptom:** A "+600 dB" burst that stuck one channel and killed the other.
@@ -48,7 +48,7 @@ required) · Fix · Why this fix · Prevention.
 
 ## INC-004 — Meter NaN-latch (bright bar vanished)
 - **Date:** 2026-06-27 (`f259a80`) · **Affected version:** ≤0.8.1, fixed 0.8.2 · **Severity:** Medium
-- **Evidence [Partially Verified]:** CHANGELOG.md [0.8.2]. **[Verified]:** test `testMeterRecoversFromNaN`; src/dsp/LevelMeters.h:73-77.
+- **Evidence [Partially Verified]:** CHANGELOG.md [0.8.2]. **[Verified]:** test `testMeterRecoversFromNaN`; src/dsp/LevelMeters.h:110-111 (finite clamp), :179 (`sanitize`).
 
 - **Problem:** A single non-finite sample permanently latched a meter envelope at NaN.
 - **Symptom:** The bright (RMS) meter bar vanished and never returned.
@@ -72,7 +72,7 @@ required) · Fix · Why this fix · Prevention.
 
 ## INC-006 — Linux editor-automation segfault (OpenGL/X11 UAF)
 - **Date:** 2026-06-28 (`c924ff8`) · **Affected version:** ≤0.8.4, fixed 0.8.5 · **Severity:** High (crash)
-- **Evidence [Partially Verified]:** CHANGELOG.md [0.8.5]. **[Verified]:** commit c924ff8; ADR-0011; src/PluginEditor.cpp:246-256; scripts/run-pluginval.sh:46-76.
+- **Evidence [Partially Verified]:** CHANGELOG.md [0.8.5]. **[Verified]:** commit c924ff8; ADR-0011; src/PluginEditor.cpp:265 (GL-attach platform gate); scripts/run-pluginval.sh:63-96.
 
 - **Problem:** Rapid editor open/close on Linux crashed (pluginval "Editor Automation" and real Linux DAWs).
 - **Symptom:** A use-after-free segfault during editor teardown.
@@ -84,7 +84,7 @@ required) · Fix · Why this fix · Prevention.
 
 ## INC-007 — Multiband Enable mute/dropout
 - **Date:** 2026-06-28 (`10fbfa0`) · **Affected version:** ≤0.8.5, fixed 0.8.6 · **Severity:** Medium
-- **Evidence [Partially Verified]:** CHANGELOG.md [0.8.6]. **[Verified]:** test `testMultibandEnableCrossfadeClickFree`; ADR-0004; src/dsp/AnamorphEngine.cpp:655-707.
+- **Evidence [Partially Verified]:** CHANGELOG.md [0.8.6]. **[Verified]:** test `testMultibandEnableCrossfadeClickFree`; ADR-0004; src/dsp/AnamorphEngine.cpp:104-105, :513, :920-921 (`mbEnableBlend` crossfade).
 
 - **Problem:** Toggling Multiband Enable briefly muted/dropped the output.
 - **Symptom:** A momentary dropout on enable/disable.
@@ -108,7 +108,7 @@ required) · Fix · Why this fix · Prevention.
 
 ## INC-009 — Band Solo + Multiband Enable click
 - **Date:** 2026-06-28 (`6a24b82`) · **Affected version:** 0.8.6, fixed 0.8.7 · **Severity:** Medium
-- **Evidence [Verified]:** CHANGELOG.md [0.8.7]; commit 6a24b82; test `testSoloMultibandEnableClickFree`; src/dsp/AnamorphEngine.cpp:831-845; ADR-0004.
+- **Evidence [Verified]:** CHANGELOG.md [0.8.7]; commit 6a24b82; test `testSoloMultibandEnableClickFree`; src/dsp/AnamorphEngine.cpp:1254 (`soloMonitor.process`, every block); ADR-0004.
 
 - **Problem:** With a Band Solo active, toggling Multiband Enable clicked on both edges (a regression introduced by INC-007's 0.8.6 change).
 - **Symptom:** An audible click (amplitude + phase step) on both enable and disable edges, only when a band was soloed.

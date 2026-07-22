@@ -22,12 +22,12 @@ Evidence [Verified]: build.yml (stage/upload steps per job).
 
 | Field | Value | Source |
 |---|---|---|
-| Company | RollyTech | CMakeLists.txt:89 |
-| Bundle ID | `com.rollytech.anamorph` | CMakeLists.txt:90 |
-| Manufacturer code | `Anmf` | CMakeLists.txt:91 |
-| Plugin code | `Anmr` | CMakeLists.txt:92 |
-| Product name | Anamorph | CMakeLists.txt:94 |
-| VST3 categories | Fx, Spatial, Stereo | CMakeLists.txt:101 |
+| Company | RollyTech | CMakeLists.txt:146 |
+| Bundle ID | `com.rollytech.anamorph` | CMakeLists.txt:147 |
+| Manufacturer code | `Anmf` | CMakeLists.txt:148 |
+| Plugin code | `Anmr` | CMakeLists.txt:149 |
+| Product name | Anamorph | CMakeLists.txt:151 |
+| VST3 categories | Fx, Spatial, Stereo | CMakeLists.txt:158 |
 
 AU validation (macOS): `auval -v aufx Anmr Anmf` (type=`aufx`, subtype=`Anmr`, manufacturer=`Anmf`).
 Evidence [Verified]: packaging/macos/INSTALL.txt:38-40.

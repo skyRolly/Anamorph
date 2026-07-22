@@ -35,11 +35,11 @@ documents the required `xattr -dr com.apple.quarantine` step for end users (`PAC
 
 `MAJOR.MINOR.PATCH`, pre-1.0 (< 1.0.0 = pre-release line). There are currently **no git tags** in
 the repository; the version lives in `CMakeLists.txt` and the About box.
-Evidence [Verified]: CMakeLists.txt:14,119-125. (Tagging releases is recommended but not
+Evidence [Verified]: CMakeLists.txt:14,176-182. (Tagging releases is recommended but not
 currently practiced — `TODO: adopt git release tags to make CHANGELOG reconstruction Verified.`)
 
 ## After release
 
-- Update `docs/CHANGELOG.md` if any post-tag fixes land.
+- Update `CHANGELOG.md` (repository root) if any post-tag fixes land.
 - Refresh `docs/HANDOVER.md` (Current Version, Build/Test/Release Status).
 - Re-run the compatibility checklist on the next version against the just-shipped one.
