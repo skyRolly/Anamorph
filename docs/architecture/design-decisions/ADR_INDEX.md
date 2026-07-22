@@ -19,11 +19,11 @@ Status values: Proposed · Accepted · Deprecated · Superseded.
 | [ADR-0009](ADR-0009-nan-selfheal-nyquist-clamp.md) | Crossover Nyquist clamp + engine-wide NaN/Inf self-heal; no output clipper | Accepted | Verified |
 | [ADR-0010](ADR-0010-host-hidden-internalstate.md) | Host-hidden `InternalState` for non-musical parameters | Accepted | Verified (code) / Partially Verified (history) |
 | [ADR-0011](ADR-0011-linux-x11-cpu-render.md) | Linux/X11 CPU rendering — no OpenGL attach | Accepted | Verified (code) / Partially Verified (history) |
-| [ADR-0012](ADR-0012-juce-8.0.14-upgrade.md) | JUCE dependency upgrade 8.0.8 → 8.0.14 | Accepted | Verified (CI build + 23 tests + pluginval) |
+| [ADR-0012](ADR-0012-juce-8.0.14-upgrade.md) | JUCE dependency upgrade 8.0.8 → 8.0.14 | Accepted | Verified (CI build + the then-current 23 tests + pluginval) |
 | [ADR-0013](ADR-0013-raw-normalised-serialization-attribute.md) | Additive `raw` normalised value attribute (exact discrete-param state round-trip) | Accepted | Verified (CI `--randomise` state restoration) |
 | [ADR-0014](ADR-0014-multiband-bands-solo-automatable.md) | Expose `mbBands`/`mbSolo` to host automation (remove `withAutomatable(false)`) | Accepted | Verified (code) |
 | [ADR-0015](ADR-0015-split-drag-zero-latency-follower.md) | Split-movement transitions: zero-latency LR4 retained, rate-capped follower — v0.8.10 final + slow-drag fix: slew-limited smoother under R(f) = 4·max(1, f/300) oct/s, controlled FM over latency (full A–H3 investigation history) | Accepted | Verified (measurements + code + Test 29) |
-| [ADR-0021](ADR-0021-build-hardening-strategy.md) | Build Hardening Strategy (RH-PR-2): retain-then-strip symbol pipeline + separate debug artifacts, full RELRO/CFG/stack-protector pinned, artifact/signing failure hygiene; numerics-affecting flags frozen (0016–0020 reserved by RELEASE_HARDENING_PLAN §8) | Accepted | Verified (twin-dump byte-exact + 130 self-tests + binary audit; Windows/macOS steps confirmed by CI) |
+| [ADR-0021](ADR-0021-build-hardening-strategy.md) | Build Hardening Strategy (RH-PR-2): retain-then-strip symbol pipeline + separate debug artifacts, full RELRO/CFG/stack-protector pinned, artifact/signing failure hygiene; numerics-affecting flags frozen (0016–0020 reserved by RELEASE_HARDENING_PLAN §8) | Accepted | Verified (twin-dump byte-exact + the then-current 130-check suite + binary audit; Windows/macOS steps confirmed by CI) |
 
 ## How to add an ADR
 

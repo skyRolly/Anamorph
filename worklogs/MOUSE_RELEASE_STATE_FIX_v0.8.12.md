@@ -1,16 +1,16 @@
 # Mouse release-outside stuck-state fix (v0.8.12 GUI interaction)
 
-> A control (knob, slider, or the MultiBand drag) could stay stuck in the pressed/dragging state if
+> A control (knob, slider, or the Multiband drag) could stay stuck in the pressed/dragging state if
 > the physical mouse button was released **outside** the plugin window. Root cause: the host delivers
 > that mouse-up over itself/the desktop, so JUCE never routes it to the editor and its cached button
 > state stays stale-"down". Fix: reconcile against the **real OS button state** on the 24 Hz timer and
 > in the micro-anim glow, gated so the OS is only queried while a button actually appears held.
 
-- **Date:** 2026-07-21 · **Version:** 0.8.12 (PR #80) · **Branch:** `claude/beautiful-sagan-JAUFI`.
+- **Date:** 2026-07-22 · **Version:** 0.8.12 (PR #80) · **Branch:** `claude/beautiful-sagan-JAUFI`.
 
 ## 1. Problem
 
-Press-and-hold a knob / slider / MultiBand handle, drag the cursor outside the plugin window, release
+Press-and-hold a knob / slider / Multiband handle, drag the cursor outside the plugin window, release
 the button there. The plugin often never receives the `mouseUp` (the OS routed it to whatever was under
 the cursor). The control then stays visually lit (press glow) and logically "held" — and JUCE's own
 cached modifier state (`ModifierKeys::getCurrentModifiers()`, `isMouseButtonDownAnywhere()`) stays
@@ -26,7 +26,7 @@ Two independent stale-state sources feed the pressed appearance:
   via `onDragStart/onDragEnd`.
 
 Both the LookAndFeel press glow and the micro-anim `actA` read `isMouseButtonDown() || "dragging"`. The
-MultiBand editor separately holds `dragBand`/`dragHandle`/`soloPressBand`/`pressDeleteBand`. When the
+Multiband editor separately holds `dragBand`/`dragHandle`/`soloPressBand`/`pressDeleteBand`. When the
 `mouseUp` is lost, none of these clear.
 
 `getCurrentModifiersRealtime()` — unlike the cached modifiers — queries the OS for the **actual**

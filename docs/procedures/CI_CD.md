@@ -25,7 +25,7 @@ failures as green and has been removed). Evidence [Verified]: `.github/workflows
 
 ## Pipeline (per job)
 
-1. **Checkout** (`actions/checkout@v5`).
+1. **Checkout** (`actions/checkout@v7`).
 2. **Configure** — `cmake -B build [-G Ninja] -DCMAKE_BUILD_TYPE=Release
    -DANAMORPH_BUILD_NUMBER=${{ github.run_number }}` (the run number becomes the About-box build
    number). Windows uses the default VS generator; macOS adds
@@ -51,7 +51,7 @@ failures as green and has been removed). Evidence [Verified]: `.github/workflows
    the GPU-less/headless `windows-latest` runner cannot host the editor GUI tests (environmental, not a
    plugin defect — the editor validates on Linux + macOS; see KI-007). This skips one *test category*
    on one runner, distinct from the mode-level "never skip" rule above; all non-GUI tests still block.
-7. **Stage + upload artifacts** (`actions/upload-artifact@v5`) — public artifacts plus a
+7. **Stage + upload artifacts** (`actions/upload-artifact@v7`) — public artifacts plus a
    separate `Anamorph-<OS>-debug` artifact per platform (crash-symbolication material; never
    mixed into the public one). All staging is strict: no `|| true`, `if-no-files-found: error`.
    **Customer uploads are fail-closed**: each requires the DSP self-tests AND its own

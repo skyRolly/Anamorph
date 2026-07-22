@@ -3,8 +3,13 @@
 Potential technical risks. Each is evidence-based (constraint C7) — no invented risks. ADRs and
 postmortems may reference these IDs to close the loop. Severity: Low / Medium / High / Critical.
 
-Verified against repository HEAD `c605fbe` (0.8.7 content audit); version-synced to the
-**v0.8.10 release** (finalized 2026-07-14, PR #59 — undo/redo forced-duck dry-fill, multiband
+Verified against repository HEAD `64e87c4` (post-v0.8.12 content re-audit); version-synced to the
+**v0.8.12 release** (changelog-dated 2026-07-22, PR #79 performance Wave 6 + PR #80 GUI interaction
+fixes — pixel-identical / message-thread-only, no new risk; the **v0.8.11 release** of 2026-07-20
+likewise introduced none: PRs #60/#61 — the ADR-0015 crossover-follower fixes, behaviour-changing
+by design with the trade tracked as KI-012; PRs #62/#76 — Class-A performance Waves 3–5,
+twin-dump validated; PR #63 — RH-PR-2 build hardening, byte-exact). Prior sync: the **v0.8.10 release**
+(finalized 2026-07-14, PR #59 — undo/redo forced-duck dry-fill, multiband
 flat recombination, adaptive `FrameClock` GUI refresh — introduces no new risk: the engine fixes
 are behaviour-preserving (single swaps byte-identical) or a documented magnitude correction
 (multiband), `FrameClock` is a message-thread GUI change, and the multiband allpass adds a known
@@ -44,14 +49,17 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   R(f) = 4·max(1, f/300) oct/s cap — ADR-0015 final + slow-drag fix — so the per-sample
   recompute lasts as long as the drag plus ≤ ~1 s of worst-case catch-up; a discrete step
   instead runs **two banks for one ~12 ms crossfade**, 2× the stage's filter ticks). Under heavy multiband automation or on low-power hosts this could be a
-  hot path. It is unprofiled.
+  hot path. Formal budget numbers are not yet committed (session-local Wave-3/4/5 callgrind
+  measurements exist — drag scenarios −35…−50 % after Wave 3; see PERFORMANCE_BUDGET).
 - **Impact:** Higher-than-necessary CPU in Simple mode and CPU spikes during fast split automation.
 - **Likelihood (evidence-based):** Medium — the cost is real and constant; whether it matters
   depends on host/SR/buffer, which are unmeasured.
-- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:845; src/dsp/MultibandWidth.cpp (glide + fade paths);
+- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:1254 (`soloMonitor.process`, always-on); src/dsp/MultibandWidth.cpp (glide + fade paths);
   Devin PR #50 review (efficiency note); `docs/architecture/PERFORMANCE_BUDGET.md` (TODOs).
-- **Mitigation:** Profile (PERFORMANCE_BUDGET TODO); consider skipping the SoloMonitor filters when
-  settled at `passGain==1` (a DSP change → ADR + Review). Correctness is unaffected either way.
+- **Mitigation:** Formal profiling (PERFORMANCE_BUDGET numeric budgets remain TODO). The SoloMonitor
+  settled-skip **shipped**: H1 (0.8.9) plus the Wave-3 gains-only cold gate, guarded by Test 33
+  (`testSoloColdThroughDrag`) — the settled passthrough now goes fully cold. Correctness is
+  unaffected either way.
 
 ## RISK-003 — No git release tags
 - **Risk:** The repository has no tags, so version/CHANGELOG attribution relies on commit messages.
@@ -69,7 +77,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 - **Impact:** A real crash regression could ship if it happens to pass on retry.
 - **Likelihood (evidence-based):** Low — retries are capped at 3 and a deterministic crash still
   fails all attempts.
-- **Evidence [Verified]:** scripts/run-pluginval.sh:46-76 (retry only on exit ≥128, cap 3).
+- **Evidence [Verified]:** scripts/run-pluginval.sh:63-96 (`run_one_pass`; retry only on exit ≥128, cap 3).
 - **Mitigation:** Investigate any repeated crash rather than trusting the pass; keep the cap; a real
   assertion (exit <128) already fails immediately with no retry.
 

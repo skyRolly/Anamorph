@@ -288,7 +288,7 @@ Numbering continues after ADR-0015 [Verified: ADR_INDEX.md].
 |---|---|---|---|
 | RH-PR-1 Plan + doc syncs | Yes (docs only) | `docs/architecture/RELEASE_HARDENING_PLAN.md`, coverage/map rows | None |
 | ADR-0016..0020 drafting | Yes (each its own file) | `docs/architecture/design-decisions/ADR-00NN-*.md`, ADR_INDEX (1 row each — append-only, low conflict) | Human decisions |
-| RH-PR-2 Build hardening | **Implemented — ADR-0021** (behaviour-neutral by twin dump + the full 136-check self-test suite) | `CMakeLists.txt`, `.github/workflows/build.yml` | — (landed) |
+| RH-PR-2 Build hardening | **Implemented — ADR-0021** (behaviour-neutral by twin dump + the then-current 136-check self-test suite) | `CMakeLists.txt`, `.github/workflows/build.yml` | — (landed) |
 | RH-PR-3 macOS sign+notarize | After RH-PR-2 (same build.yml region); parallel vs licensing | `.github/workflows/*`, `packaging/macos/*`, new scripts | Apple account; ADR-0019 |
 | RH-PR-4 License core lib | **Yes — fully parallel** (new files only) | new `src/licensing/*`, new `tests/license_tests.cpp`, CMake target append | ADR-0016/0017 accepted |
 | RH-PR-5 Windows signing (+installer) | Parallel vs 3/4 (disjoint files) after RH-PR-2 | new `packaging/windows/*`, release.yml section | Cert service; ADR-0019 |

@@ -114,7 +114,7 @@ pluginval exit fails the job on every platform. Linux/macOS use `run-pluginval.s
 |---|---|---|
 | A `check` assertion fails | DSP regression | the named test in `tests/dsp_tests.cpp`; compare against the invariant it guards (`docs/policies/DSP_POLICY.md`) |
 | pluginval exits < 128 | real validation failure | the pluginval log line; do **not** retry — it's a genuine defect |
-| pluginval exits ≥ 128 (crash) | the known X11 host flake | retried automatically; if it still fails after 3 tries, treat as a failure (`run-pluginval.sh:75`) |
+| pluginval exits ≥ 128 (crash) | the known X11 host flake | retried automatically; if it still fails after 3 tries, treat as a failure (`run-pluginval.sh:70-90`, `run_one_pass`) |
 | `AnamorphTests not found` | not built yet | run `scripts/build.sh` first (`run-tests.sh:8-11`) |
 
 ## What cannot be verified headlessly

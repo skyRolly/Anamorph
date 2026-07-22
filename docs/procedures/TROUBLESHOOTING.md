@@ -11,13 +11,13 @@ Diagnosing build, validation, and runtime problems. For the validation workflow 
 | `libwebkit2gtk-4.1-dev` not found | Newer/older Ubuntu | Try `libwebkit2gtk-4.0-dev` (setup-linux.sh:33). |
 | `AnamorphTests not found` when testing | Not built, or tests disabled | `scripts/build.sh`; ensure `ANAMORPH_BUILD_TESTS=ON`. |
 | Wrong/old JUCE behaviour | Stale fetched JUCE | Confirm the pinned tag `8.0.14` (CMakeLists.txt:33); a JUCE bump is a Build System change (ARCHITECTURE_REVIEW_GATE). |
-| Linker errors mixing JUCE modules | DSP compiled as a STATIC lib | The DSP core is an **INTERFACE** lib by design (CMakeLists.txt:54-73) — keep it INTERFACE; do not pre-compile JUCE modules into a static lib. |
+| Linker errors mixing JUCE modules | DSP compiled as a STATIC lib | The DSP core is an **INTERFACE** lib by design (CMakeLists.txt:110-120) — keep it INTERFACE; do not pre-compile JUCE modules into a static lib. |
 
 ## Validation (pluginval)
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| pluginval crashes on editor open/close (Linux) | Known host-side JUCE X11 `XEmbedComponent` use-after-free (not the plugin) | Handled by the signal-only retry in `run-pluginval.sh:46-76`; the plugin already drops its OpenGL child window on Linux (ADR-0011). |
+| pluginval crashes on editor open/close (Linux) | Known host-side JUCE X11 `XEmbedComponent` use-after-free (not the plugin) | Handled by the signal-only retry in `run-pluginval.sh:63-96`; the plugin already drops its OpenGL child window on Linux (ADR-0011). |
 | pluginval exits < 128 | Real validation failure | Read the log line; this is a genuine defect — do **not** retry. |
 | Editor tests fail "no display" | Headless without xvfb | The script uses `xvfb-run -a` when available (run-pluginval.sh:42-44); install `xvfb`. |
 

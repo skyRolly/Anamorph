@@ -8,9 +8,9 @@ Status taxonomy: **Verified** (provable from build/CI/code) · **Partially Verif
 
 | Format | Status | Evidence |
 |---|---|---|
-| **VST3** | **Verified** | Built on Linux/Windows/macOS; primary target; pluginval gate. CMakeLists.txt:80; build.yml all jobs |
-| **AU (Audio Unit)** | **Verified (build)** / **Unverified (host)** | Built on macOS as `.component` (universal); real Logic/GarageBand loading not tested in repo. CMakeLists.txt:81-83; build.yml:150-170 |
-| **Standalone** | **Verified** | Built on all three OSes. CMakeLists.txt:84-86 |
+| **VST3** | **Verified** | Built on Linux/Windows/macOS; primary target; pluginval gate. CMakeLists.txt:137; build.yml all jobs |
+| **AU (Audio Unit)** | **Verified (build)** / **Unverified (host)** | Built on macOS as `.component` (universal); real Logic/GarageBand loading not tested in repo. CMakeLists.txt:138-140; build.yml macos job (:355-542) |
+| **Standalone** | **Verified** | Built on all three OSes. CMakeLists.txt:141-143 |
 | **AAX** | **Not Supported** | Out of scope: needs an Avid account + PACE/iLok signing. docs/policies/COMPATIBILITY_POLICY.md. (DSP core is wrapper-agnostic, so a future AAX wrapper is low-cost, but it is explicitly not built today.) |
 
 ## Platforms / architectures

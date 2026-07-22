@@ -14,7 +14,7 @@ only — it configures and builds entirely from the command line on a headless L
 
 ## Project status
 - **Version 0.8.12** (pre-1.0). Active development on a feature-branch → PR → `main` workflow.
-- Validation gate: **33 DSP self-tests** + **pluginval strictness 10** (headless Linux, blocking).
+- Validation gate: **33 DSP self-tests** + **pluginval strictness 10** (both modes ×3, blocking on all three CI platforms).
 - A green build + pluginval pass is **"ready to audition,"** not final sign-off (audio/visual
   quality needs a DAW — see `docs/procedures/TESTING.md`).
 

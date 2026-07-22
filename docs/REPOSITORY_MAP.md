@@ -45,7 +45,8 @@ Anamorph/
 | `Vectorscope.{h,cpp}` | Diamond/Lissajous goniometer (reads `ScopeBuffer`). |
 | `SpectrumImager.{h,cpp}` | Multiband spectral editor (FFT + drag-to-split bands); writes crossover/width/solo params. |
 | `LevelMeter.{h,cpp}` | Per-channel L/R Peak + RMS meters. |
-| `CorrelationMeter.{h,cpp}` | Phase-correlation + balance meters. |
+| `CorrelationMeter.{h,cpp}` | Phase-correlation + balance meters (GUI class `StereoMeter`). |
+| `FrameClock.h` | Adaptive display-rate refresh driver shared by the four visualizers (VBlank-paced, ~125 Hz cap; 0.8.10). |
 
 ## `src/dsp/` — format-agnostic DSP core (`AnamorphDSP` INTERFACE lib)
 
@@ -59,6 +60,7 @@ Anamorph/
 | `ChorusEngine.{h,cpp}` | Chorus + Dimension-D. |
 | `MonoMaker.{h,cpp}` | LR4 low-freq mono (post-Mix). |
 | `MultibandWidth.{h,cpp}` | 1–4 band per-band width + phase-matched A(dry). |
+| `LR4Xover.h` | Flat-state Linkwitz–Riley crossover clone (Wave-2 H6; bit-identical to the `juce::dsp` original). |
 | `SoloMonitor.{h,cpp}` | Post-everything Band-Solo audition band-pass. |
 | `LoudnessMatch.{h,cpp}` | BS.1770 Level Match (Measure + absolute Predict). |
 | `Correlation.h` | Phase-correlation estimator. |
@@ -69,7 +71,7 @@ Anamorph/
 
 | Path | Responsibility |
 |---|---|
-| `tests/dsp_tests.cpp` | 23 headless DSP acceptance tests + 1 A/B state-restoration clamp guard (`check(cond, "...")` harness; `main` runs all). |
+| `tests/dsp_tests.cpp` | 33 headless DSP acceptance tests + 1 A/B state-restoration clamp guard (`check(cond, "...")` harness; `main` runs all). |
 | `scripts/setup-linux.sh` | Ubuntu build dependencies (+ xvfb). |
 | `scripts/build.sh` | CMake + Ninja build; prints artifact paths. |
 | `scripts/run-tests.sh` | Runs `AnamorphTests`. |
@@ -101,4 +103,4 @@ docs/
                      CHANGELOG, TESTING, RELEASE, DEPENDENCY, CODE_STYLE)
 ```
 
-Evidence [Verified]: file tree from the repository; CMakeLists.txt:62-115; src/ listing.
+Evidence [Verified]: file tree from the repository; CMakeLists.txt:72-108 (hardening interface) + :119 (`AnamorphDSP`) / :145 (`juce_add_plugin`); src/ listing.

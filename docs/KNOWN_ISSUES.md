@@ -4,8 +4,13 @@
 in `POSTMORTEMS.md`, not here. Each entry is evidence-backed (constraint C7). When an item is
 fixed, remove it here and (if notable) add a `POSTMORTEMS.md` entry.
 
-Verified against repository HEAD `c605fbe` (0.8.7 content audit); version-synced to the
-**v0.8.10 release** (finalized 2026-07-14, PR #59 — undo/redo forced-duck dry-fill + rapid-swap
+Verified against repository HEAD `64e87c4` (post-v0.8.12 content re-audit); version-synced to the
+**v0.8.12 release** (changelog-dated 2026-07-22, PR #79 performance Wave 6 + PR #80 GUI interaction
+fixes — one issue **added**: KI-013, the release-outside stuck-press reconcile is inert on macOS
+(JUCE's realtime query returns cached button state there); no issue removed. The **v0.8.11 release**
+of 2026-07-20 (PRs #60/#61 — the ADR-0015 crossover-follower fixes; PRs #62/#76 — performance
+Waves 3–5; PR #63 — RH-PR-2 build hardening) added and
+removed none). Prior sync: the **v0.8.10 release** (finalized 2026-07-14, PR #59 — undo/redo forced-duck dry-fill + rapid-swap
 robustness, multiband flat recombination, adaptive `FrameClock` GUI refresh, plus the pre-merge
 correctness round: split-drag pitch-shift fix, Band Solo alt-click exclusive solo, Option-reset
 undo fix — the last of which surfaced **KI-010** (typed value-box entry still bypasses undo, same
@@ -33,12 +38,13 @@ JUCE 8.0.14; before that 0.8.8 for PR #54).
 | KI-004 | No automated DAW/host-compatibility testing | Medium | Confirmed (coverage gap) |
 | KI-005 | No graphical installer (manual copy install) | Low | Confirmed (packaging) |
 | KI-006 | Linux: tooltip rounded corners render an opaque black background instead of transparent | Low | Fix applied (LookAndFeel); Linux visual re-test pending |
-| KI-007 | Windows: pluginval "Editor Automation" abnormally terminates (was hidden by a run-pluginval.ps1 false green) | Medium | False green closed; GL-drop cleared the crash (CI-confirmed); advancedMode-automation fix pending CI |
+| KI-007 | Windows: pluginval "Editor Automation" abnormally terminates (was hidden by a run-pluginval.ps1 false green) | Medium | False green closed; GL-drop cleared the crash (CI-confirmed); advancedMode-automation fix in place — no recurrence observed (green release gates recorded in HANDOVER Build Status, v0.8.9–v0.8.12) |
 | KI-008 | Advanced-toggle one-frame tear in async-resize hosts (JUCE VST3 wrapper window-grant gap) | Low | Confirmed, external (JUCE wrapper + host); not fixable plugin-side without a JUCE change |
 | KI-009 | REAPER: Save Preset text editor loses keyboard focus (Space hits transport; a click does not re-focus until the dialog is reopened) | Low | Reported, host-specific (REAPER); pending manual investigation |
 | KI-010 | Typing a value into a knob/slider text box creates no Undo step (gesture-less edit path) | Low | Confirmed (code path); reported during the 0.8.10 Option-reset fix, not yet fixed |
 | KI-011 | macOS Apple-Silicon-native: tooltip corners rendered an opaque white frame (TooltipWindow opacity contract) | Low | Fix applied (editor marks the TooltipWindow non-opaque on macOS); Apple Silicon visual re-test pending |
 | KI-012 | Fast Multiband split drags carry a small controlled FM (~14 cents at a 150 Hz crossing, ~7 cents above 300 Hz, under the R(f) = 4·max(1, f/300) oct/s cap; normal drags track 1:1; a violent flick catches up in ~0.5 s of continuous motion; fast artifact-free tracking needs linear-phase splits = latency change) | Low | Documented limitation (ADR-0015 final + slow-drag fix); revisit only via Architecture Review |
+| KI-013 | macOS: release outside the window can still leave a control stuck pressed (the v0.8.12 reconcile is inert there — JUCE's realtime query returns cached mouse-button state on macOS) | Low | Confirmed, external (JUCE platform implementation); recovery on cursor re-entry intact |
 
 ---
 
@@ -49,8 +55,8 @@ is deferred to the silent duck bottom, where `mbStructuralChange` (which still i
 the fade-in instead of staying warm, partially defeating the 0.8.6 warm-bank design for that
 specific case. The reset is **masked by the duck (inaudible)**, so there is no user-visible defect;
 a stand-alone `mbEnable` toggle (the common case) is unaffected and stays warm.
-- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:488-489 (`mbStructuralChange` includes
-  `pendingP.mbEnable != p.mbEnable`), :555 (reset on it). Raised in Devin review of PR #50
+- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:676 (`mbStructuralChange` includes
+  `pendingP.mbEnable != p.mbEnable`), :743 (reset on it). Raised in Devin review of PR #50
   (unresolved thread). See FUTURE_RISKS / ADR-0004 (warm-bank intent).
 - **Possible resolution:** remove `mbEnable` from `mbStructuralChange` so a concurrent toggle fades
   out via `mbEnableBlend` while staying warm. This is a DSP state-transition change → requires an
@@ -60,7 +66,7 @@ a stand-alone `mbEnable` toggle (the common case) is unaffected and stays warm.
 CI ad-hoc codesigns the macOS bundles but does **not** notarize them, so Gatekeeper quarantines
 them after download and the user must run `xattr -dr com.apple.quarantine` before the DAW will load
 them.
-- **Evidence [Verified]:** .github/workflows/build.yml:159-162 (`codesign --sign -`, no notarization);
+- **Evidence [Verified]:** .github/workflows/build.yml:495-498 (`codesign --sign -`, no notarization);
   packaging/macos/INSTALL.txt:4-10,30-33. See `docs/procedures/PACKAGING.md`.
 
 ## KI-003 — pluginval Linux editor tests crash (external)
@@ -69,7 +75,7 @@ The editor open/close tests can crash under pluginval on Linux due to a use-afte
 pointer). It is **not a defect in this plugin** (the plugin already drops its OpenGL child window on
 Linux, INC-006/ADR-0011) and is mitigated by a signal-only retry, but it cannot be fixed from this
 repository.
-- **Evidence [Verified]:** scripts/run-pluginval.sh:46-76; ADR-0011. See FUTURE_RISKS RISK-004.
+- **Evidence [Verified]:** scripts/run-pluginval.sh:63-96 (`run_one_pass`, signal-only retry); ADR-0011. See FUTURE_RISKS RISK-004.
 
 ## KI-004 — No automated DAW/host-compatibility testing
 There is no in-repo test matrix across real DAWs; pluginval is the only conformance proxy. Host
@@ -91,7 +97,7 @@ session state, and is fully isolated from the pluginval state-restoration work.
 - **Mechanism:** on platforms **without per-pixel window alpha** (Linux/X11 with no compositor),
   `juce::TooltipWindow` cannot be semi-transparent, so the area **outside** the rounded capsule
   renders the window's opaque (black) fill. This is the same class of artefact already documented for
-  the popup menu, which is kept square for exactly this reason (src/gui/LookAndFeel.cpp:543-545).
+  the popup menu, which is kept square for exactly this reason (src/gui/LookAndFeel.cpp:557-560).
 - **Fix [code Verified; Linux visual re-test pending]:** `AnamorphLookAndFeel::drawTooltip`
   (src/gui/LookAndFeel.cpp) now pre-fills the full tooltip bounds with the capsule colour when
   `juce::Desktop::canUseSemiTransparentWindows()` is `false`, so the corners match the capsule rather
@@ -215,7 +221,7 @@ the JUCE focus/peer path REAPER takes).
   REAPER. The retry loop runs **only on dialog open** (`showSavePreset(true)` → `focusSaveNameField(4)`);
   there is **no focus re-acquisition after a later focus loss** — no `focusLost` handler,
   `mouseDown`-grab, or `setMouseClickGrabsKeyboardFocus` override on `saveNameEditor` (repo-wide:
-  the only focus calls are PluginEditor.cpp:1401-1402 and the unrelated SpectrumImager freq editor).
+  the only focus calls are PluginEditor.cpp:1481/:1496-1503 (`focusSaveNameField`) and the unrelated SpectrumImager freq editor).
   A click on the field then relies on JUCE's default click-to-focus, which is subject to the same
   `peer->isFocused()` abort if REAPER holds OS focus on the plugin's parent window — consistent with
   "clicking the text does not reactivate editing until the dialog is reopened". This is a strong
@@ -323,5 +329,23 @@ product trade: *a small amount of controlled FM is preferable to obvious interac
   dry-alignment rework, and a project-owner decision. Not attempted here by policy.
 - **Evidence [Verified]:** src/dsp/MultibandWidth.h (design rationale + measurements);
   tests/dsp_tests.cpp `testMultibandSplitDragNoPitchShift` (Test 29, grades the whole movement);
-  ADR-0015 "v0.8.10 final decision"; CHANGELOG [0.8.10]. Severity **Low** (small bounded
+  ADR-0015 "v0.8.10 final decision"; CHANGELOG [0.8.10] + [0.8.11] (the slow-drag fix entry moved
+  there in the maintainer-instructed consolidation). Severity **Low** (small bounded
   artifact, accepted product trade).
+
+## KI-013 — macOS: release outside the window can still leave a control stuck "pressed"
+
+- **Problem:** v0.8.12 reconciles stuck pressed/drag state against the real OS mouse-button state
+  when a mouse-up lands outside the plugin window (CHANGELOG `[0.8.12]`). On macOS the mechanism is
+  **inert**: JUCE 8.0.14's `ModifierKeys::getCurrentModifiersRealtime()` refreshes only *keyboard*
+  modifiers there and returns the *cached* mouse-button flags (it never queries
+  `[NSEvent pressedMouseButtons]`), so the "cached-down && realtime-up" gate can never fire. macOS
+  behaviour is therefore unchanged from pre-0.8.12: a lost outside release can leave a control
+  visually pressed until the cursor re-enters and the next real event resynchronizes.
+- **Mitigating factor:** AppKit delivers the mouse-up to the window that captured the mouse-down,
+  so lost releases are rare on macOS in the first place; recovery on cursor re-entry is intact.
+- **Evidence [Verified]:** JUCE 8.0.14 (FetchContent) `juce_NSViewComponentPeer_mac.mm` (realtime query
+  returns cached mouse flags); `worklogs/MOUSE_RELEASE_STATE_FIX_v0.8.12.md` §2 (platform caveat);
+  CHANGELOG `[0.8.12]` ("Effective on Windows and Linux"). Fixable only via a JUCE-side change or a
+  platform-specific `pressedMouseButtons` query (would need its own review). Severity **Low**,
+  external (JUCE platform implementation).

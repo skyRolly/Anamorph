@@ -6,7 +6,31 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for **performance Wave 6 — GPU/GUI rendering-efficiency (v0.8.12)** (2026-07-21,
+Last updated: for the **post-v0.8.12 repository audit & documentation-consistency pass**
+(2026-07-22, branch `claude/beautiful-sagan-JAUFI` at `main` @ `64e87c4` — PR #80 merged).
+**Documentation-only.** Two things: (1) **retroactive coverage of PR #80** (v0.8.12 GUI interaction
+fixes: bare-press no-write + relative Width drag with 3 px threshold in `src/gui/SpectrumImager.{h,cpp}`,
+release-outside stuck-press reconcile in `src/PluginEditor.cpp`; recorded in
+`worklogs/BANDWIDTH_DRAG_FIX_v0.8.12.md` + `worklogs/MOUSE_RELEASE_STATE_FIX_v0.8.12.md` — PR #80
+synced CHANGELOG/HANDOVER/worklogs but missed this file, a lifecycle slip closed here); and
+(2) a **full drift audit with minimal corrections**: CHANGELOG `[0.8.12]` re-dated 2026-07-22 (two
+of its fixes landed that day) and "MultiBand"/"Bandwidth" normalized to the registry terms
+"Multiband"/"Width"; HANDOVER snapshot-HEAD + Build/Release-Status rows refreshed to v0.8.12 (were
+frozen at v0.8.11/136 checks) and RH-PR-2 marked shipped; KNOWN_ISSUES + FUTURE_RISKS headers
+re-synced (were at v0.8.10) with **KI-013 added** (macOS-inert release-outside reconcile — platform
+limitation of the v0.8.12 fix); stale line-number evidence citations refreshed in KNOWN_ISSUES
+(KI-001/002/003/006/009/012), FUTURE_RISKS (RISK-002 incl. marking the shipped H1/Wave-3
+SoloMonitor skip, RISK-004), POSTMORTEMS (INC-003/004/006/007/009), REPOSITORY_MAP (test count
+23→33, `FrameClock.h` + `LR4Xover.h` rows added, CMake cites), README (3-OS pluginval gate scope),
+CI_CD (actions @v7), DEPENDENCY_POLICY (`JUCE_*` flags at `CMakeLists.txt:183-188`; "then-current"
+qualifiers), PACKAGING + COMPATIBILITY_MATRIX (CMake line cites), ADR_INDEX (130-check/23-test
+wording), BUILD + TESTING_POLICY + CODE_STYLE + TROUBLESHOOTING + RELEASE_PROCESS + TESTING (the
+same class of post-RH-PR-2 stale CMake/script cites, caught by the pre-commit verification pass),
+PERFORMANCE_BUDGET (GUI-redraw row gained its missing Wave-6/0.8.12 record), RELEASE_HARDENING_PLAN
+("then-current 136-check" qualifier). The whole edit set was adversarially verified pre-commit
+(3 lenses: citation accuracy, history preservation, completeness — see the worklog §1).
+Roadmap + deferred-item review recorded in `worklogs/POST_v0.8.12_AUDIT_AND_ROADMAP.md`. No code
+change; no version bump. Prior: for **performance Wave 6 — GPU/GUI rendering-efficiency (v0.8.12)** (2026-07-21,
 branch `claude/beautiful-sagan-JAUFI`, restarted from `main` @ `c6f3226` — PR #78 merged). **One
 behaviour-neutral code change** (`src/gui/SpectrumImager.cpp`, `paintHeadphone`): the per-band solo-
 headphone transparency layer was allocating a **plot-sized offscreen framebuffer every Advanced-mode
@@ -352,7 +376,7 @@ HEAD `c605fbe` (JUCE 8.0.14).
 |---|---|---|
 | docs root | SOURCE_OF_TRUTH, HANDOVER, REPOSITORY_MAP, DOCUMENTATION_COVERAGE, POSTMORTEMS, KNOWN_ISSUES, FUTURE_RISKS | Present |
 | architecture | 15 docs (incl. RELEASE_HARDENING_PLAN) + ADR_INDEX + 16 ADRs (0016–0020 reserved, see plan §8) | Present |
-| worklogs | release-hardening/ (RH program working evidence; finalized decisions live in ADRs) | Present |
+| worklogs | performance/ (Waves 3–6 + the v0.8.11 final-pass and crossover-glide investigations), release-hardening/ (RH program working evidence; finalized decisions live in ADRs), root-level v0.8.12 GUI-fix records (`BANDWIDTH_DRAG_FIX_v0.8.12.md`, `MOUSE_RELEASE_STATE_FIX_v0.8.12.md`) + `POST_v0.8.12_AUDIT_AND_ROADMAP.md` | Present |
 | procedures | 8 docs | Present |
 | policies | 15 docs | Present |
 | root | README, CHANGELOG, CLAUDE | Present |
