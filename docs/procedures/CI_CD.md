@@ -1,13 +1,28 @@
 # CI_CD.md
 
 Continuous integration / delivery. Source of truth: `.github/workflows/build.yml`
-(build + validate) and the security-scanning workflows listed in
+(build + validate), `.github/workflows/release.yml` (tag-triggered release pipeline
+skeleton, RH-PR-8) and the security-scanning workflows listed in
 [Security scanning](#security-scanning).
 
 ## Triggers
 
-`push` to any branch (`"**"`), `pull_request`, and `workflow_dispatch`. Permissions:
-`contents: read`. Evidence [Verified]: build.yml:3-10.
+`build.yml`: `push` to any branch (`"**"`), `pull_request`, `workflow_dispatch`, and
+`workflow_call` (so `release.yml` can reuse the whole matrix — tag pushes do NOT trigger
+`build.yml` directly, the `branches` filter excludes tag events). Permissions:
+`contents: read`. Evidence [Verified]: build.yml (`on:` block).
+
+`release.yml`: `push` of an annotated `v[0-9]+.[0-9]+.[0-9]+` tag, plus `workflow_dispatch`
+as a no-release **rehearsal** (validate + full build only). Jobs: fail-closed metadata
+validation (tag ⇄ `CMakeLists.txt` version ⇄ `CHANGELOG.md` section, annotated-tag check) →
+`build.yml` via `workflow_call` (single build, identical gates and artifacts) → **draft**
+GitHub Release (the exact source-archived platform zips renamed to
+`Anamorph-<version>-<OS>.zip` — never re-packed, preserving permissions/symlinks/bundle
+layout — + `SHA256SUMS.txt` + `RELEASE_MANIFEST.txt` + the CHANGELOG section as notes; `contents: write` scoped to that one
+job; publishing the draft stays a manual maintainer action per RELEASE_POLICY). No
+third-party actions beyond `actions/checkout` / `actions/download-artifact` + the `gh` CLI
+with the ephemeral `GITHUB_TOKEN`; no signing secrets exist in the repository.
+Evidence [Verified]: release.yml.
 
 ## Build matrix
 

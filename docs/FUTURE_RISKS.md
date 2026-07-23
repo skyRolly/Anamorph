@@ -71,8 +71,12 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 - **Impact:** CHANGELOG entries for older versions stay Partially Verified / reconstructed; harder to
   reproduce a specific shipped build.
 - **Likelihood (evidence-based):** High — already the case (`git tag` is empty).
-- **Evidence [Verified]:** `git tag` empty; `docs/policies/CHANGELOG_POLICY.md`; `docs/procedures/RELEASE_PROCESS.md` (TODO).
-- **Mitigation:** Adopt annotated release tags going forward; until then, cite commit SHAs.
+- **Evidence [Verified]:** `git tag` empty; `docs/policies/CHANGELOG_POLICY.md`; `docs/procedures/RELEASE_PROCESS.md`.
+- **Mitigation:** **Infrastructure shipped (RH-PR-8, v0.8.13 cycle):** annotated `vX.Y.Z` tag
+  convention + tag-triggered `release.yml` (fail-closed tag⇄version⇄CHANGELOG validation →
+  reused `build.yml` gates → draft GitHub Release with versioned artifacts + SHA-256 sums +
+  manifest). The risk **closes when the first release tag is cut** (planned: v0.8.13); until
+  then, cite commit SHAs. Historical entries keep SHA evidence permanently.
 
 ## RISK-004 — pluginval signal-only retry masking a real crash
 - **Risk:** `run-pluginval.sh` retries on any signal-crash to absorb the external X11 flake

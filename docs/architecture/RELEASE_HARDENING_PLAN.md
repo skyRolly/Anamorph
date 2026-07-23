@@ -26,8 +26,8 @@ this program must follow.
 | Installers | None (`.pkg`/`.msi` absent); raw CI artifacts + `INSTALL.txt` | [Verified] PACKAGING.md "Not in scope" |
 | Update mechanism | None | [Verified] `src/` tree |
 | Crash reporting | None | [Verified] `src/` tree |
-| Version management | No git tags (RISK-003); version in `CMakeLists.txt` + About box; CI run number as build number | [Verified] RELEASE_PROCESS.md |
-| Release pipeline | Single `build.yml` (push/PR/dispatch; `contents: read`); artifacts per push; no tag-triggered release flow | [Verified] CI_CD.md |
+| Version management | **Annotated `vX.Y.Z` tag convention adopted (RH-PR-8)**; no tag cut yet (first: v0.8.13 — closes RISK-003 when practiced); version in `CMakeLists.txt` + About box; CI run number as build number | [Verified] RELEASE_PROCESS.md §Tagging |
+| Release pipeline | `build.yml` (push/PR/dispatch/`workflow_call`; `contents: read`) + **tag-triggered `release.yml` skeleton (RH-PR-8)**: metadata validation → reused build gates → draft GitHub Release (versioned artifacts + SHA-256 + manifest; `contents: write` scoped to the draft-release job only; no signing secrets exist) | [Verified] CI_CD.md; release.yml |
 | QA gate | 33 DSP self-tests + A/B guard (140 checks) + the 9-test state-compatibility suite (774 checks) + pluginval strictness 10, deterministic + randomise ×3, blocking on 3 OSes; Level-5 manual audition | [Verified] TESTING_POLICY.md, CI_CD.md |
 | AAX / PACE | **Out of scope** (no Avid/PACE/iLok) — PACE licensing is therefore *not* an available protection option | [Verified] COMPATIBILITY_POLICY.md |
 
@@ -43,7 +43,7 @@ IDs are program-local (`RH-R*`); if any is accepted as a standing repository ris
 | RH-R3 | No Windows Authenticode → SmartScreen "unknown publisher" interstitials; some AV heuristics flag unsigned audio plugins | High |
 | RH-R4 | ~~Unstripped binaries with full symbol names~~ **Mitigated by RH-PR-2 (ADR-0021)**: shipped binaries stripped, RTTI typeinfo names the only accepted residue | ~~High~~ Closed |
 | RH-R5 | No installers → manual copy instructions; wrong-folder installs; no upgrade path | High |
-| RH-R6 | No git tags / tag-triggered release pipeline → shipped bytes not reproducibly attributable to a source state (extends RISK-003 to commercial impact) | Medium |
+| RH-R6 | ~~No git tags / tag-triggered release pipeline~~ **Pipeline shipped by RH-PR-8** (tag convention + `release.yml`); residual = no tag cut yet — closes with the first release tag (v0.8.13), which makes shipped bytes attributable to a source state (RISK-003) | Medium → Low |
 | RH-R7 | No update notification → shipped defects persist silently in the field | Medium |
 | RH-R8 | No crash reporting; ~~no retained debug symbols~~ **symbol retention shipped in RH-PR-2** (per-run `Anamorph-<OS>-debug` artifacts: split `.debug`/dSYM/PDB) — a full crash-reporter remains Phase-2 (§7) | Medium → Low (symbolication now possible) |
 | RH-R9 | ~~`codesign ... \|\| true`~~ **Failure-visibility half fixed in RH-PR-2** (a sign/staging failure now fails the job); Developer ID signing itself is still RH-PR-3 | ~~Medium~~ Low |
@@ -294,7 +294,7 @@ Numbering continues after ADR-0015 [Verified: ADR_INDEX.md].
 | RH-PR-5 Windows signing (+installer) | Parallel vs 3/4 (disjoint files) after RH-PR-2 | new `packaging/windows/*`, release.yml section | Cert service; ADR-0019 |
 | RH-PR-6 macOS installer | After RH-PR-3 | `packaging/macos/*` | RH-PR-3 |
 | RH-PR-7 Plugin/GUI license integration | **No — serialize with all other `src/` GUI/processor work** | `src/PluginProcessor.*`, `src/PluginEditor.*`, new `src/gui/AuthPanel.*` | RH-PR-4; a quiet window on PluginEditor |
-| RH-PR-8 Tags + release.yml | After RH-PR-2; parallel vs 4 | new `.github/workflows/release.yml`, `docs/procedures/RELEASE_PROCESS.md` | RH-PR-2 |
+| RH-PR-8 Tags + release.yml | **Implemented — skeleton shipped (v0.8.13 cycle)**: annotated `vX.Y.Z` tag convention, tag-triggered `release.yml` (fail-closed tag⇄version⇄CHANGELOG validation → reused `build.yml` gates via `workflow_call` → draft GitHub Release with versioned artifacts + SHA-256 sums + manifest; `workflow_dispatch` rehearsal mode). Signing/notarization/installer sections remain for RH-PR-3/5/5b/6; first tag cut at the v0.8.13 release closes RISK-003/RH-R6 | `.github/workflows/release.yml` (new), `build.yml` (`workflow_call` trigger only), `docs/procedures/RELEASE_PROCESS.md` | RH-PR-2 (landed) |
 | RH-PR-9 Update check + QA matrix | After 4, 8 | `src/licensing/UpdateCheck.*`, editor hook, `RELEASE_COMPATIBILITY_CHECKLIST.md` | RH-PR-4/7/8 |
 | DSP changes (any) | **Do not parallelize with this program's `src/` PRs**; DSP-only PRs (e.g. the multiband allpass rework) stay parallel-safe vs licensing/CI work | `src/dsp/*` | Existing roadmap |
 

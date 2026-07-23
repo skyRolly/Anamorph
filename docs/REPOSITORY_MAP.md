@@ -81,7 +81,8 @@ Anamorph/
 | `scripts/run-pluginval.ps1` | pluginval on Windows (same strictness/mode/×3 structure; exit code is the sole signal). |
 | `src/AbSlotIndex.h` | `anamorph::kNumAbSlots` + `clampAbSlotIndex` — single source of truth for A/B slot sizing/clamping. |
 | `packaging/macos/INSTALL.txt` | macOS install + de-quarantine instructions (ad-hoc signed, not notarized). |
-| `.github/workflows/build.yml` | 3-OS build + DSP tests + pluginval; strictness-10, both modes ×3, **blocking on all three platforms**. |
+| `.github/workflows/build.yml` | 3-OS build + DSP tests + pluginval; strictness-10, both modes ×3, **blocking on all three platforms**; also callable (`workflow_call`) by release.yml. |
+| `.github/workflows/release.yml` | RH-PR-8 release skeleton: annotated `vX.Y.Z` tag → fail-closed metadata validation → reused build.yml gates → **draft** GitHub Release (versioned artifacts + SHA-256 sums + manifest); `workflow_dispatch` = rehearsal. |
 | `.github/workflows/codeql.yml` | CodeQL (`c-cpp` manual build + `actions`); alerts scoped to repo-own code. See `docs/procedures/CI_CD.md` §Security scanning. |
 | `.github/workflows/msvc.yml` | MSVC `/analyze` → SARIF; JUCE treated as external; path-filtered triggers. |
 | `.github/workflows/dependency-review.yml` | Dependency Review on PRs to `main` (GitHub Actions deps; comment on failure only). |
