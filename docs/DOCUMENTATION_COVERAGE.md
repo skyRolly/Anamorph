@@ -6,7 +6,17 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **RH-PR-8 release-pipeline foundation + its review follow-up
+Last updated: for the **product-readiness roadmap review** (v0.8.13 cycle, 2026-07-23, on
+`main` @ `dcfad73` — PRs #82/#83/#84/#85 all merged). Roadmap-only pass, deliberately NOT
+another audit: drift review limited to correctness-affecting items (none found). NEW
+`worklogs/PRODUCT_READINESS_ROADMAP_v0.8.13.md` — maturity assessment (engineering High /
+release Medium-high / commercial Low / UX Medium), blockers split (pre-1.0 vs 0.9.x vs
+optional), 4-phase ordered roadmap (v0.8.13 completion → user-facing readiness → commercial
+infra → v1.0 prep), documentation-review verdicts (user docs MISSING → Phase-2 item 1;
+developer + release docs sufficient/complete), and technical-order rationale (auval before
+host matrix; presets before golden-audio; signing before installers; licensing last).
+HANDOVER Roadmap row re-pointed at the new plan (the previous pointer directed the next agent
+at already-finished work). Prior: for the **RH-PR-8 release-pipeline foundation + its review follow-up
 (release-artifact integrity)** — the follow-up archives customer artifacts **at the source**
 (`zip -ry` / `Compress-Archive` / `ditto`) because the artifact transport preserves neither
 Unix permissions nor symlinks, and turns the release job's staging into a **rename-only**
