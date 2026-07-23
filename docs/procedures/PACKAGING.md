@@ -7,12 +7,19 @@ and `packaging/macos/INSTALL.txt`.
 
 | Platform | Artifact | Contents |
 |---|---|---|
-| Linux | `Anamorph-Linux` | stripped `Anamorph.vst3`, `Anamorph` (Standalone) |
+| Linux | `Anamorph-Linux` | `Anamorph-Linux.zip` (single archive: stripped `Anamorph.vst3`, `Anamorph` Standalone) |
 | Linux | `Anamorph-Linux-debug` | split debug info (`.debug` files, `.gnu_debuglink`-referenced) |
-| Windows | `Anamorph-Windows` | `Anamorph.vst3`, `Anamorph.exe` (Standalone; no PDBs) |
+| Windows | `Anamorph-Windows` | `Anamorph-Windows.zip` (single archive: `Anamorph.vst3`, `Anamorph.exe` Standalone; no PDBs) |
 | Windows | `Anamorph-Windows-debug` | linker PDBs for both shipped images |
-| macOS | `Anamorph-macOS` | universal stripped `Anamorph.vst3`, `Anamorph.component` (AU), `Anamorph.app`, `INSTALL.txt` |
+| macOS | `Anamorph-macOS` | `Anamorph-macOS.zip` (single `ditto` archive: universal stripped `Anamorph.vst3`, `Anamorph.component` (AU), `Anamorph.app`, `INSTALL.txt`) |
 | macOS | `Anamorph-macOS-debug` | universal dSYM bundles for all three |
+
+Customer artifacts are **archived at the source** (Info-ZIP `-ry` on Linux, `Compress-Archive`
+on Windows, `ditto -c -k` on macOS) because the artifact transport itself does not preserve
+Unix file permissions or symlinks — the archive bytes do. Extract with `unzip` (Linux) /
+Explorer (Windows) / double-click or `ditto -x -k` (macOS); executable bits and the signed
+macOS bundle layout are intact inside. `release.yml` publishes these exact archive bytes
+untouched (renamed to `Anamorph-<version>-<OS>.zip`).
 
 Public binaries are **stripped** (RH-PR-2, ADR-0021); the `-debug` artifacts carry the full
 symbol/debug information for crash symbolication and must never be redistributed with a release.

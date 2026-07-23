@@ -6,7 +6,14 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **RH-PR-8 release-pipeline foundation** (v0.8.13 cycle, 2026-07-23,
+Last updated: for the **RH-PR-8 release-pipeline foundation + its review follow-up
+(release-artifact integrity)** — the follow-up archives customer artifacts **at the source**
+(`zip -ry` / `Compress-Archive` / `ditto`) because the artifact transport preserves neither
+Unix permissions nor symlinks, and turns the release job's staging into a **rename-only**
+step (the archives CI validated are published byte-identically; Linux round-trip proven
+locally with real build output — 755 bits + `cmp`-identical; annotated-accept /
+lightweight-reject tag tests replicated green; PACKAGING.md artifact-layout table updated
+to the single-archive contents) — (v0.8.13 cycle, 2026-07-23,
 branch `claude/beautiful-sagan-JAUFI` on `main` @ `ee82380` — PR #83 merged). Infrastructure
 only, no product behaviour/version change. NEW `.github/workflows/release.yml` (annotated
 `vX.Y.Z` tag → fail-closed tag⇄version⇄CHANGELOG validation → the FULL existing `build.yml`

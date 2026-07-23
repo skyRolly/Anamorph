@@ -55,10 +55,12 @@ Pushing the tag triggers `.github/workflows/release.yml`, which:
    the same 3-OS matrix, DSP + state suites, pluginval strictness 10 both modes ×3, symbol
    retain-then-strip, fail-closed artifact gating. Tag pushes do not trigger `build.yml`
    directly (its `branches` filter excludes tag events), so nothing builds twice.
-3. **Creates a DRAFT GitHub Release** with versioned copies of the same customer artifacts
-   (`Anamorph-<version>-<OS>.zip`), `SHA256SUMS.txt`, a `RELEASE_MANIFEST.txt`
-   (version / tag / commit / CI build number / per-platform hashes / run link), and the
-   CHANGELOG section as the release notes. Debug-symbol artifacts stay internal (ADR-0021).
+3. **Creates a DRAFT GitHub Release** with the **exact per-platform archives CI built and
+   validated** — renamed to `Anamorph-<version>-<OS>.zip`, never unpacked or re-packed, so
+   Unix permissions, symlinks and the signed macOS bundle layout inside them are untouched —
+   plus `SHA256SUMS.txt` and a `RELEASE_MANIFEST.txt` (version / tag / commit / CI build
+   number / per-platform hashes / run link), with the CHANGELOG section as the release notes.
+   Debug-symbol artifacts stay internal (ADR-0021).
 
 **Publishing the draft is a manual maintainer action** — after the Level-5 audition
 (RELEASE_POLICY precondition 7). No signing/notarization/installers yet (RH-PR-3/5/5b/6).

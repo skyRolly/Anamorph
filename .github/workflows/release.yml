@@ -103,8 +103,10 @@ jobs:
     uses: ./.github/workflows/build.yml
 
   # --------------------------------------------------------------------------
-  # Draft GitHub Release: versioned copies of the SAME customer artifacts,
-  # SHA-256 sums, a plain-text manifest (version / tag / commit / CI build
+  # Draft GitHub Release: the EXACT archives the platform packaging steps
+  # built and CI validated (renamed to carry the version — never re-packed,
+  # so permissions/symlinks/bundle layout inside them are untouched), SHA-256
+  # sums, a plain-text manifest (version / tag / commit / CI build
   # number / per-platform hashes), and the CHANGELOG section as the notes.
   # DRAFT only — publishing is the maintainer's action after the Level-5
   # audition (RELEASE_POLICY precondition 7). Debug-symbol artifacts stay
@@ -132,9 +134,15 @@ jobs:
           VERSION="${{ needs.validate.outputs.version }}"
           TAG="v${VERSION}"
           mkdir -p dist
+          # Each artifact carries ONE archive, created at the source by the
+          # platform packaging step (zip -ry / Compress-Archive / ditto) so
+          # Unix modes, symlinks and the signed macOS bundle layout are
+          # preserved INSIDE the archive bytes. Rename ONLY — the exact bytes
+          # CI built and validated are what gets published (no unzip/re-zip).
           for OS in Linux Windows macOS; do
-            [ -d "stage/Anamorph-${OS}" ] || { echo "::error::expected artifact Anamorph-${OS} is missing"; exit 1; }
-            (cd "stage/Anamorph-${OS}" && zip -qr "../../dist/Anamorph-${VERSION}-${OS}.zip" .)
+            SRC="stage/Anamorph-${OS}/Anamorph-${OS}.zip"
+            [ -f "$SRC" ] || { echo "::error::expected archive ${SRC} is missing from the build artifacts"; exit 1; }
+            mv "$SRC" "dist/Anamorph-${VERSION}-${OS}.zip"
           done
           (cd dist && sha256sum Anamorph-*.zip > SHA256SUMS.txt)
 

@@ -83,6 +83,36 @@ unchanged — the release assets are *copies* staged from the same artifacts.
 4. Review the draft GitHub Release and **publish it** (new, deliberately manual).
 5. macOS de-quarantine guidance for users remains until RH-PR-3 (notarization).
 
+## 6b. Follow-up: release artifact integrity fix (review finding)
+
+**Root cause.** The initial skeleton downloaded the customer artifacts and re-zipped the
+extracted trees. But `actions/upload-artifact` stores file *content* only — **Unix
+permissions and symlinks are lost at upload** (all three platforms uploaded raw directory
+trees). The release job would therefore have re-packed permission-stripped files into the
+published zips: on Linux/macOS the `.so`/binaries lose their executable bits (a broken
+distributed plugin), and the macOS signed-bundle layout would be reconstructed by a generic
+`zip` rather than a bundle-safe archiver. (The same loss already affects anyone downloading
+the per-push artifacts directly — a pre-existing limitation this fix also removes.)
+
+**Fix (archive at the source; publish exact bytes).** Each platform's EXISTING staging step
+now ends by producing one archive whose *bytes* encode the permissions/symlinks — Info-ZIP
+`zip -ry` (Linux), `Compress-Archive` (Windows, parity), `ditto -c -k` (macOS, the
+bundle-safe archiver) — and the customer artifact carries that single zip
+(`path: dist/Anamorph-<OS>.zip`). `release.yml` now performs a **rename only**
+(`Anamorph-<OS>.zip` → `Anamorph-<version>-<OS>.zip`): no unzip, no re-zip — the archives CI
+built and validated are byte-identically what the draft release publishes, and the SHA-256
+sums/manifest are computed over those exact bytes. Staging self-checks, gating conditions,
+step ids, and debug artifacts are unchanged.
+
+**Validation.** Both workflows re-parse as valid YAML. Linux integrity proven locally with
+the real build tree: `zip -ry` → `unzip` round-trip preserves `755` on the Standalone binary
+and `Anamorph.so`, with byte-identical content (`cmp`). Windows/macOS archive commands are
+platform-standard (perms are a non-issue on Windows; `ditto` is Apple's own bundle
+archiver) — exercised by the next CI run/rehearsal. Tag-gate tests (replicating the validate
+step against a scratch repo): annotated tag matching the CMake version → **ACCEPT**;
+lightweight tag → **REJECT** ("is commit, not annotated"); annotated but version-mismatched →
+**REJECT** — no change to the validation logic was needed.
+
 ## 7. Future RH items this unblocks
 
 RH-PR-3 (sign+notarize inserts into `release.yml` between build and draft-release),

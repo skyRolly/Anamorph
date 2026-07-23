@@ -16,8 +16,9 @@ skeleton, RH-PR-8) and the security-scanning workflows listed in
 as a no-release **rehearsal** (validate + full build only). Jobs: fail-closed metadata
 validation (tag ⇄ `CMakeLists.txt` version ⇄ `CHANGELOG.md` section, annotated-tag check) →
 `build.yml` via `workflow_call` (single build, identical gates and artifacts) → **draft**
-GitHub Release (versioned `Anamorph-<version>-<OS>.zip` copies + `SHA256SUMS.txt` +
-`RELEASE_MANIFEST.txt` + the CHANGELOG section as notes; `contents: write` scoped to that one
+GitHub Release (the exact source-archived platform zips renamed to
+`Anamorph-<version>-<OS>.zip` — never re-packed, preserving permissions/symlinks/bundle
+layout — + `SHA256SUMS.txt` + `RELEASE_MANIFEST.txt` + the CHANGELOG section as notes; `contents: write` scoped to that one
 job; publishing the draft stays a manual maintainer action per RELEASE_POLICY). No
 third-party actions beyond `actions/checkout` / `actions/download-artifact` + the `gh` CLI
 with the ephemeral `GITHUB_TOKEN`; no signing secrets exist in the repository.

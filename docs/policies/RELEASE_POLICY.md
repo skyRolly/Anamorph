@@ -24,8 +24,9 @@ Repository Governance Policy. Preconditions that must hold before a version ship
 A release corresponds to the CI artifacts built per push: `Anamorph-Linux`, `Anamorph-Windows`,
 `Anamorph-macOS` (universal VST3 + AU + Standalone). See `procedures/PACKAGING.md`.
 Since RH-PR-8, pushing an annotated `vX.Y.Z` release tag additionally produces a **draft**
-GitHub Release with versioned copies of the same artifacts + SHA-256 sums + a traceability
-manifest, via `.github/workflows/release.yml` (metadata validated fail-closed; the existing
+GitHub Release carrying the **exact archives CI built and validated** (renamed with the
+version, never re-packed) + SHA-256 sums + a traceability manifest, via
+`.github/workflows/release.yml` (metadata validated fail-closed; the existing
 `build.yml` gates are reused unchanged). **Publishing the draft is a manual maintainer action**
 after precondition 7 (Level-5 audition) — the pipeline cannot ship a release on its own.
 See `procedures/RELEASE_PROCESS.md` §Tagging.

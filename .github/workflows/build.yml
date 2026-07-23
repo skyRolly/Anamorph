@@ -129,6 +129,13 @@ jobs:
           if find "$DIST" -type f \( -name '*.debug' -o -name '*.pdb' -o -name '*.dSYM' \) | grep -q .; then
             echo "::error::customer artifact contains debug files"; exit 1
           fi
+          # Archive at the SOURCE with Unix modes + symlinks preserved
+          # (Info-ZIP stores them; the actions/upload-artifact transport does
+          # NOT preserve file permissions). The artifact carries this single
+          # zip, and release.yml publishes these exact bytes untouched --
+          # without this, the executable bits on Anamorph.so / the Standalone
+          # binary are lost in the artifact round-trip.
+          (cd "$DIST" && zip -qry ../Anamorph-Linux.zip .)
 
       # A failed DSP self-test blocks the CUSTOMER upload (fail-closed: only a
       # build that passed its behavioural gate may ship), while a
@@ -138,7 +145,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: Anamorph-Linux
-          path: dist/Anamorph-Linux
+          path: dist/Anamorph-Linux.zip
           if-no-files-found: error
 
       # Developer debug artifacts are preserved even when a later step fails
@@ -340,6 +347,10 @@ jobs:
           $leak = Get-ChildItem -Recurse -Path $dist -File |
                   Where-Object { $_.Extension -in '.pdb', '.ilk', '.exp', '.debug' }
           if ($leak) { Write-Error ("customer artifact contains debug files: " + ($leak.FullName -join ', ')) }
+          # 6) Single-archive artifact for parity with Linux/macOS (no Unix
+          # permissions to preserve on Windows, but the release pipeline
+          # publishes these exact bytes untouched on every platform).
+          Compress-Archive -Path (Join-Path $dist '*') -DestinationPath 'dist/Anamorph-Windows.zip' -Force
 
       # A failed DSP self-test blocks the CUSTOMER upload (fail-closed), while
       # a pluginval-only failure still yields beta artifacts as before.
@@ -348,7 +359,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: Anamorph-Windows
-          path: dist/Anamorph-Windows
+          path: dist/Anamorph-Windows.zip
           if-no-files-found: error
 
       # Developer debug artifacts are preserved even when validation fails
@@ -521,6 +532,12 @@ jobs:
           if find "$DIST" \( -name '*.dSYM' -o -name '*.debug' -o -name '*.pdb' \) -print | grep -q .; then
             echo "::error::customer artifact contains debug files"; exit 1
           fi
+          # Archive with ditto (the bundle-safe macOS archiver: preserves
+          # permissions, symlinks, extended attributes and the signed bundle
+          # layout; the actions/upload-artifact transport preserves none of
+          # those). The artifact carries this single zip and release.yml
+          # publishes these exact bytes untouched.
+          /usr/bin/ditto -c -k "$DIST" dist/Anamorph-macOS.zip
 
       # Customer-artifact safety (RH-PR-2 review): upload only a fully
       # packaged (dSYM-captured, stripped, signed, slice- and entry-point-
@@ -534,7 +551,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: Anamorph-macOS
-          path: dist/Anamorph-macOS
+          path: dist/Anamorph-macOS.zip
           if-no-files-found: error
 
       # Uploaded only when at least one VALIDATED dSYM was captured (the
