@@ -5,11 +5,12 @@ How to configure and build Anamorph. Headless, command-line only (CMake + JUCE; 
 ## Toolchain
 
 - **CMake ≥ 3.22**, a **C++17** compiler, **Ninja** (recommended generator).
-- **JUCE 8.0.14** is fetched automatically (CMake `FetchContent`, pinned tag) — or pointed at a
-  local checkout. See `docs/policies/DEPENDENCY_POLICY.md` for the version-lock reasoning.
+- **JUCE 9.0.0** is fetched automatically (CMake `FetchContent`, pinned to the tag's immutable
+  commit SHA `f8f8864…`) — or pointed at a local checkout. See
+  `docs/policies/DEPENDENCY_POLICY.md` for the version-lock reasoning and ADR-0022 for the bump.
 
 Evidence [Verified]: CMakeLists.txt:1 (`cmake_minimum_required(VERSION 3.22)`), :16-18 (C++17),
-:33 (JUCE tag 8.0.14), :44-50 (FetchContent).
+:36-38 (JUCE 9.0.0 commit pin), :47-55 (FetchContent).
 
 ## Linux dependencies (Ubuntu)
 
@@ -39,11 +40,11 @@ Evidence [Verified]: scripts/build.sh:14-15.
 
 | Option | Default | Effect |
 |---|---|---|
-| `ANAMORPH_BUILD_TESTS` | ON | Build the `AnamorphTests` + `AnamorphStateTests` console apps (CMakeLists.txt:27,207) |
-| `ANAMORPH_BUILD_STANDALONE` | ON | Add the Standalone target (CMakeLists.txt:28,141-143) |
-| `ANAMORPH_JUCE_PATH` | "" | Use a local JUCE checkout instead of fetching (CMakeLists.txt:32,38-40) |
-| `ANAMORPH_JUCE_TAG` | 8.0.14 | JUCE tag to fetch when no local path (CMakeLists.txt:33) |
-| `ANAMORPH_BUILD_NUMBER` | 0 | CI build/dev number shown in the About box (CMakeLists.txt:178) |
+| `ANAMORPH_BUILD_TESTS` | ON | Build the `AnamorphTests` + `AnamorphStateTests` console apps (CMakeLists.txt:27,212) |
+| `ANAMORPH_BUILD_STANDALONE` | ON | Add the Standalone target (CMakeLists.txt:28,146-148) |
+| `ANAMORPH_JUCE_PATH` | "" | Use a local JUCE checkout instead of fetching (CMakeLists.txt:32,43-45) |
+| `ANAMORPH_JUCE_TAG` | `f8f8864…` (= tag 9.0.0) | JUCE git rev to fetch when no local path; `ANAMORPH_JUCE_VERSION` carries the readable version (CMakeLists.txt:36-38) |
+| `ANAMORPH_BUILD_NUMBER` | 0 | CI build/dev number shown in the About box (CMakeLists.txt:183) |
 
 Offline build (no network) with a local JUCE:
 ```bash
@@ -53,7 +54,7 @@ cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DANAMORPH_JUCE_PATH=/path/to
 ## Formats produced
 
 `VST3` everywhere; `+ AU` additionally on macOS; `+ Standalone` when `ANAMORPH_BUILD_STANDALONE`
-is ON. Evidence [Verified]: CMakeLists.txt:137-143.
+is ON. Evidence [Verified]: CMakeLists.txt:142-148.
 
 ## Artifact paths
 
@@ -84,4 +85,4 @@ Evidence [Verified]: scripts/setup-linux.sh:8-13.
 
 `ANAMORPH_VERSION_STRING`, `ANAMORPH_BUILD_NUMBER`, `JUCE_WEB_BROWSER=0`, `JUCE_USE_CURL=0`,
 `JUCE_VST3_CAN_REPLACE_VST2=0`, `JUCE_DISPLAY_SPLASH_SCREEN=0`, `JUCE_REPORT_APP_USAGE=0`,
-`JUCE_STRICT_REFCOUNTEDPOINTER=1`. Evidence [Verified]: CMakeLists.txt:180-189.
+`JUCE_STRICT_REFCOUNTEDPOINTER=1`. Evidence [Verified]: CMakeLists.txt:185-194.

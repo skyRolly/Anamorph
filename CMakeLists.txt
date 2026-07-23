@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.22)
 #  Anamorph — Stereo Tools Audio Plugin (VST3)
 #
 #  Headless, command-line-only build. CMake + JUCE only (no Projucer / IDE).
-#  Pulls JUCE via FetchContent (pinned tag). VST3 SDK ships with JUCE.
+#  Pulls JUCE via FetchContent (pinned immutable commit). VST3 SDK ships with JUCE.
 #
 #  Build:
 #     cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -30,7 +30,12 @@ option(ANAMORPH_BUILD_STANDALONE "Build the Standalone target for convenience" O
 # Allow pointing at a local JUCE checkout to avoid network in restricted CI.
 #   -DANAMORPH_JUCE_PATH=/path/to/JUCE
 set(ANAMORPH_JUCE_PATH "" CACHE STRING "Path to a local JUCE checkout (optional)")
-set(ANAMORPH_JUCE_TAG  "8.0.14" CACHE STRING "JUCE git tag to fetch when no local path is given")
+# JUCE 9.0.0 — pinned by the tag's IMMUTABLE commit SHA, not the (mutable) tag
+# name, so the dependency cannot silently change under a re-pointed tag
+# (dependency hardening; the human-readable version lives in ANAMORPH_JUCE_VERSION).
+set(ANAMORPH_JUCE_VERSION "9.0.0" CACHE STRING "Human-readable JUCE version of the pinned commit")
+set(ANAMORPH_JUCE_TAG  "f8f8864172464b9adf9eba6101e1f784838d1597" CACHE STRING
+    "JUCE git rev to fetch when no local path is given (commit SHA of tag ${ANAMORPH_JUCE_VERSION})")
 
 # ----------------------------------------------------------------------------
 #  Bring in JUCE
@@ -40,7 +45,7 @@ if(ANAMORPH_JUCE_PATH)
     add_subdirectory(${ANAMORPH_JUCE_PATH} ${CMAKE_BINARY_DIR}/JUCE)
 else()
     include(FetchContent)
-    message(STATUS "Anamorph: fetching JUCE ${ANAMORPH_JUCE_TAG} from github.com/juce-framework/JUCE")
+    message(STATUS "Anamorph: fetching JUCE ${ANAMORPH_JUCE_VERSION} (${ANAMORPH_JUCE_TAG}) from github.com/juce-framework/JUCE")
     FetchContent_Declare(
         JUCE
         GIT_REPOSITORY https://github.com/juce-framework/JUCE.git

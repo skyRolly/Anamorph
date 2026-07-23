@@ -28,4 +28,4 @@ A release corresponds to the CI artifacts built per push: `Anamorph-Linux`, `Ana
 
 `MAJOR.MINOR.PATCH`, pre-1.0 (< 1.0.0 = pre-release line), plus a CI build/dev number passed as
 `-DANAMORPH_BUILD_NUMBER=${run_number}` and shown in the About box.
-Evidence [Verified]: CMakeLists.txt:14,119-125; .github/workflows/build.yml:33.
+Evidence [Verified]: CMakeLists.txt:14,124-130; .github/workflows/build.yml:33.

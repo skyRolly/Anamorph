@@ -6,7 +6,27 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **state-serialization & parameter-compatibility regression harness**
+Last updated: for the **JUCE 8.0.14 → 9.0.0 migration & dependency hardening** (v0.8.13
+cycle, 2026-07-23, branch `claude/beautiful-sagan-JAUFI` on `main` @ `1502077` — PR #82
+merged). **Dependency migration, zero C++ source changes**: the complete 9.0.0
+breaking-change surface has no project exposure (audit table in
+`worklogs/JUCE9_MIGRATION_v0.8.13.md` §1.1). CMake pin → the tag's **immutable commit SHA**
+`f8f8864…` with new `ANAMORPH_JUCE_VERSION` (supply-chain hardening, audit roadmap item);
+`scripts/setup-linux.sh` + `libegl-dev` (JUCE 9 Linux GL uses EGL, not GLX). Validation:
+engine output **bit-identical** 8.0.14 vs 9.0.0 (32-scenario twin dump incl. latencies);
+140 + 774 suites green under 9.0.0 with the 8.0.14-frozen registry snapshot passing
+**unchanged**; `juce_recommended_warning_flags` byte-identical and DSP-TU warnings identical
+under both versions (no new warnings); pluginval on the CI gates (local egress 403, ADR-0012
+precedent). New **ADR-0022** (Proposed — pending Architecture-Review sign-off + the
+DEPENDENCY_POLICY Level-5 audition) + index row. Docs synced: DEPENDENCY_POLICY (SHA-pin rule +
+EGL), BUILD, README, TROUBLESHOOTING (pin row + the discovered stale-CMake-cache trap row),
+REPOSITORY_MAP, COMPATIBILITY_MATRIX, FUTURE_RISKS RISK-001, KNOWN_ISSUES (KI-011/KI-013
+evidence re-verified against the JUCE 9 tree; KI-013 not fixed upstream), HANDOVER — plus a
+repo-wide `CMakeLists.txt:NN` citation sweep (+5 shift from the pin block; every cite
+re-verified, two pre-existing stale cites fixed: ARCHITECTURE.md, COMPATIBILITY_MATRIX VST3
+row). No version bump / CHANGELOG entry (stays inside v0.8.13; a JUCE bump is user-visible at
+release time — the release-prep changelog entry will record it, per the 8.0.14 precedent
+where the bump shipped inside `[0.8.8]`). Prior: for the **state-serialization & parameter-compatibility regression harness**
 (v0.8.13 cycle, 2026-07-23, branch `claude/beautiful-sagan-JAUFI` on `main` @ `823bfbe` —
 PR #81 merged). **Validation infrastructure only** — no parameter, serialization, DSP or
 user-visible behaviour change; no version bump / CHANGELOG entry (release-prep steps; the

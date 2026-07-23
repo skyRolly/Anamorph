@@ -10,8 +10,9 @@ Diagnosing build, validation, and runtime problems. For the validation workflow 
 | Missing X11/ALSA/GTK headers on Linux | Build deps not installed | Run `scripts/setup-linux.sh`. |
 | `libwebkit2gtk-4.1-dev` not found | Newer/older Ubuntu | Try `libwebkit2gtk-4.0-dev` (setup-linux.sh:33). |
 | `AnamorphTests not found` when testing | Not built, or tests disabled | `scripts/build.sh`; ensure `ANAMORPH_BUILD_TESTS=ON`. |
-| Wrong/old JUCE behaviour | Stale fetched JUCE | Confirm the pinned tag `8.0.14` (CMakeLists.txt:33); a JUCE bump is a Build System change (ARCHITECTURE_REVIEW_GATE). |
-| Linker errors mixing JUCE modules | DSP compiled as a STATIC lib | The DSP core is an **INTERFACE** lib by design (CMakeLists.txt:110-120) — keep it INTERFACE; do not pre-compile JUCE modules into a static lib. |
+| Wrong/old JUCE behaviour | Stale fetched JUCE | Confirm the pinned commit `f8f8864…` = JUCE 9.0.0 (CMakeLists.txt:36-38); a JUCE bump is a Build System change (ARCHITECTURE_REVIEW_GATE, ADR-0022). |
+| Configure says `fetching JUCE 9.0.0 (<old rev>)` | `ANAMORPH_JUCE_TAG` is a CACHE variable — an existing `build/` keeps the OLD pin after a pull | Delete `build/` (or `cmake -B build -UANAMORPH_JUCE_TAG -UANAMORPH_JUCE_VERSION`) so the new pin takes effect; the configure banner prints version + rev precisely so a mismatch is visible. |
+| Linker errors mixing JUCE modules | DSP compiled as a STATIC lib | The DSP core is an **INTERFACE** lib by design (CMakeLists.txt:115-125) — keep it INTERFACE; do not pre-compile JUCE modules into a static lib. |
 
 ## Validation (pluginval)
 

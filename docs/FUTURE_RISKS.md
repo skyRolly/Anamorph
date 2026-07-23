@@ -30,16 +30,20 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 ---
 
 ## RISK-001 — JUCE version bump
-- **Risk:** JUCE is pinned to exactly `8.0.14`. A future bump can silently change DSP behaviour
-  (oversampling, Linkwitz-Riley filters, `dsp::AudioBlock`), reported latency, the parameter/state
-  ABI, and the X11 editor-embedding path (the INC-006 crash lives in JUCE's host code).
+- **Risk:** JUCE is pinned to exactly `9.0.0` (immutable commit `f8f8864…`, ADR-0022; previously
+  tag `8.0.14`, ADR-0012). A future bump can silently change DSP behaviour (oversampling,
+  Linkwitz-Riley filters, `dsp::AudioBlock`), reported latency, the parameter/state ABI, and the
+  X11 editor-embedding path (the INC-006 crash lives in JUCE's host code).
 - **Impact:** Audible DSP/latency drift, session/automation incompatibility, or a returning editor
   crash — none of which the headless gate fully catches.
 - **Likelihood (evidence-based):** Medium — dependencies eventually need security/feature updates;
-  the pin defers but does not eliminate this.
-- **Evidence [Verified]:** CMakeLists.txt:33 (exact tag); ADR-0011 (X11 in JUCE); `docs/policies/DEPENDENCY_POLICY.md`.
+  the pin defers but does not eliminate this. The SHA pin (v0.8.13 cycle) additionally removes the
+  re-pointed-tag variant of the risk.
+- **Evidence [Verified]:** CMakeLists.txt:36-38 (exact commit); ADR-0011 (X11 in JUCE); `docs/policies/DEPENDENCY_POLICY.md`.
 - **Mitigation:** Treat any bump as a Build System change → ADR + Architecture Review; run full DSP
-  tests + pluginval (3 OSes) + a manual audition + the RELEASE_COMPATIBILITY_CHECKLIST after.
+  tests + pluginval (3 OSes) + a manual audition + the RELEASE_COMPATIBILITY_CHECKLIST after. The
+  8.0.14→9.0.0 bump additionally proved engine output **bit-identical** via a 32-scenario twin
+  dump (ADR-0022) — the pattern to repeat on future bumps.
 
 ## RISK-002 — Always-on banks / crossover-move cost (CPU)
 - **Risk:** `SoloMonitor` runs every block even with multiband off and no solo (INC-009 invariant;

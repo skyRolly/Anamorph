@@ -275,7 +275,8 @@ render correctly): the area outside the tooltip's rounded capsule showed an **op
 rectangle** instead of transparent rounded corners.
 
 - **Mechanism [Verified, code path]:** `juce::TooltipWindow` declares itself **opaque**
-  (`setOpaque (true)` in its constructor, JUCE 8.0.14 juce_TooltipWindow.cpp:42) while
+  (`setOpaque (true)` in its constructor — JUCE 8.0.14 juce_TooltipWindow.cpp:42; unchanged in
+  JUCE 9.0.0, now at windows/juce_TooltipWindow.cpp:43) while
   `AnamorphLookAndFeel::drawTooltip` deliberately leaves the pixels outside the rounded capsule
   unpainted on platforms with per-pixel window alpha. That is an opacity-contract violation: the
   corner pixels are **undefined**, and what appears there depends on the compositing pipeline.
@@ -345,7 +346,8 @@ product trade: *a small amount of controlled FM is preferable to obvious interac
 - **Mitigating factor:** AppKit delivers the mouse-up to the window that captured the mouse-down,
   so lost releases are rare on macOS in the first place; recovery on cursor re-entry is intact.
 - **Evidence [Verified]:** JUCE 8.0.14 (FetchContent) `juce_NSViewComponentPeer_mac.mm` (realtime query
-  returns cached mouse flags); `worklogs/MOUSE_RELEASE_STATE_FIX_v0.8.12.md` §2 (platform caveat);
+  returns cached mouse flags; **re-verified unchanged in JUCE 9.0.0** during the ADR-0022 bump —
+  still keyboard-modifiers-only); `worklogs/MOUSE_RELEASE_STATE_FIX_v0.8.12.md` §2 (platform caveat);
   CHANGELOG `[0.8.12]` ("Effective on Windows and Linux"). Fixable only via a JUCE-side change or a
   platform-specific `pressedMouseButtons` query (would need its own review). Severity **Low**,
   external (JUCE platform implementation).

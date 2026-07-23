@@ -8,9 +8,9 @@ Status taxonomy: **Verified** (provable from build/CI/code) · **Partially Verif
 
 | Format | Status | Evidence |
 |---|---|---|
-| **VST3** | **Verified** | Built on Linux/Windows/macOS; primary target; pluginval gate. CMakeLists.txt:137; build.yml all jobs |
-| **AU (Audio Unit)** | **Verified (build)** / **Unverified (host)** | Built on macOS as `.component` (universal); real Logic/GarageBand loading not tested in repo. CMakeLists.txt:138-140; build.yml macos job (:355-542) |
-| **Standalone** | **Verified** | Built on all three OSes. CMakeLists.txt:141-143 |
+| **VST3** | **Verified** | Built on Linux/Windows/macOS; primary target; pluginval gate. CMakeLists.txt:142; build.yml all jobs |
+| **AU (Audio Unit)** | **Verified (build)** / **Unverified (host)** | Built on macOS as `.component` (universal); real Logic/GarageBand loading not tested in repo. CMakeLists.txt:143-145; build.yml macos job (:355-542) |
+| **Standalone** | **Verified** | Built on all three OSes. CMakeLists.txt:146-148 |
 | **AAX** | **Not Supported** | Out of scope: needs an Avid account + PACE/iLok signing. docs/policies/COMPATIBILITY_POLICY.md. (DSP core is wrapper-agnostic, so a future AAX wrapper is low-cost, but it is explicitly not built today.) |
 
 ## Platforms / architectures
@@ -47,7 +47,7 @@ without test evidence.`
 
 | Dependency | Pin | Status | Evidence |
 |---|---|---|---|
-| JUCE | tag **8.0.14** (FetchContent, `GIT_SHALLOW`) | **Verified** | CMakeLists.txt:33,44-50 |
+| JUCE | **9.0.0** — immutable commit `f8f8864…` (FetchContent, `GIT_SHALLOW`; ADR-0022) | **Verified** | CMakeLists.txt:36-38,47-55 |
 | C++ standard | C++17 (`CMAKE_CXX_STANDARD 17`) | **Verified** | CMakeLists.txt:16-18 |
 | pluginval | latest release (downloaded by script) | **Verified** | scripts/run-pluginval.sh:34 |
 
