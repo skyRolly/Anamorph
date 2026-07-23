@@ -24,7 +24,7 @@ endif()
 # ----------------------------------------------------------------------------
 #  Options
 # ----------------------------------------------------------------------------
-option(ANAMORPH_BUILD_TESTS "Build the DSP self-test executable" ON)
+option(ANAMORPH_BUILD_TESTS "Build the self-test executables (DSP + state compatibility)" ON)
 option(ANAMORPH_BUILD_STANDALONE "Build the Standalone target for convenience" ON)
 
 # Allow pointing at a local JUCE checkout to avoid network in restricted CI.
@@ -219,6 +219,52 @@ if(ANAMORPH_BUILD_TESTS)
             juce::juce_dsp
             juce::juce_audio_basics
             juce::juce_data_structures   # ValueTree for the state-restoration clamp test
+        PUBLIC
+            AnamorphHardening
+            juce::juce_recommended_config_flags
+            juce::juce_recommended_warning_flags)
+
+    # ------------------------------------------------------------------------
+    #  State-compatibility self-tests (headless gate, scripts/run-tests.sh)
+    #
+    #  Exercises the REAL AnamorphAudioProcessor (state round-trip, parameter
+    #  registry snapshot, legacy migrations, presets), so it compiles the
+    #  plugin sources into its own console target — the same each-target-
+    #  compiles-the-sources pattern as the AnamorphDSP INTERFACE lib; JUCE's
+    #  shared-code target links its modules PRIVATE, so it cannot be reused
+    #  here without restructuring the shipped build. The editor/GUI sources
+    #  are compiled (createEditor() references them) but never instantiated:
+    #  the tests run headlessly and open no window.
+    # ------------------------------------------------------------------------
+    juce_add_console_app(AnamorphStateTests PRODUCT_NAME "AnamorphStateTests")
+    target_sources(AnamorphStateTests PRIVATE
+        tests/state_tests.cpp
+        src/PluginProcessor.cpp
+        src/PluginEditor.cpp
+        src/PluginParameters.cpp
+        src/PresetManager.cpp
+        src/gui/LookAndFeel.cpp
+        src/gui/Vectorscope.cpp
+        src/gui/CorrelationMeter.cpp
+        src/gui/LevelMeter.cpp
+        src/gui/SpectrumImager.cpp)
+    target_include_directories(AnamorphStateTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_compile_definitions(AnamorphStateTests PUBLIC
+        ANAMORPH_VERSION_STRING="${PROJECT_VERSION}"
+        ANAMORPH_BUILD_NUMBER="${ANAMORPH_BUILD_NUMBER}"
+        ANAMORPH_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures"
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_DISPLAY_SPLASH_SCREEN=0
+        JUCE_REPORT_APP_USAGE=0
+        JUCE_STRICT_REFCOUNTEDPOINTER=1
+        JUCE_STANDALONE_APPLICATION=1)
+    target_link_libraries(AnamorphStateTests
+        PRIVATE
+            AnamorphDSP
+            juce::juce_audio_utils
+            juce::juce_dsp
+            juce::juce_opengl
         PUBLIC
             AnamorphHardening
             juce::juce_recommended_config_flags

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Legacy fixture: v0.2 host chunk — the BARE APVTS tree, no AnamorphRoot wrapper,
+     no raw attributes, no InternalState, no A/B. Read path: the
+     xml->hasTagName("ANAMORPH") backward-compat branch in setStateInformation.
+     Frozen: do not modernise this file — it models what v0.2 wrote. -->
+<ANAMORPH>
+  <PARAM id="drive" value="6.0"/>
+  <PARAM id="algorithm" value="2.0"/>
+  <PARAM id="width" value="1.5"/>
+  <PARAM id="mix" value="0.8"/>
+  <PARAM id="haasDelay" value="20.0"/>
+  <PARAM id="outputGain" value="-3.0"/>
+</ANAMORPH>

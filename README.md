@@ -14,7 +14,7 @@ only — it configures and builds entirely from the command line on a headless L
 
 ## Project status
 - **Version 0.8.12** (pre-1.0). Active development on a feature-branch → PR → `main` workflow.
-- Validation gate: **33 DSP self-tests** + **pluginval strictness 10** (both modes ×3, blocking on all three CI platforms).
+- Validation gate: **33 DSP self-tests** + the **9-test state-compatibility suite** + **pluginval strictness 10** (both modes ×3, blocking on all three CI platforms).
 - A green build + pluginval pass is **"ready to audition,"** not final sign-off (audio/visual
   quality needs a DAW — see `docs/procedures/TESTING.md`).
 
@@ -40,7 +40,7 @@ scripts/setup-linux.sh
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release        # ...or: scripts/build.sh
 
-# 3. Run the DSP self-tests
+# 3. Run the headless self-tests (DSP + state compatibility)
 scripts/run-tests.sh
 
 # 4. Validate the VST3 with pluginval (strictness 10 = the release gate)

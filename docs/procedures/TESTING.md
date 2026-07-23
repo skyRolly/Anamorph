@@ -3,15 +3,15 @@
 How to run and interpret the validation suite. Acceptance levels and the hard gate are defined in
 `docs/policies/TESTING_POLICY.md`.
 
-## DSP self-tests
+## Headless self-tests (DSP + state)
 
 ```bash
-scripts/build.sh                 # build (produces AnamorphTests)
-scripts/run-tests.sh             # runs the AnamorphTests console app
+scripts/build.sh                 # build (produces AnamorphTests + AnamorphStateTests)
+scripts/run-tests.sh             # runs BOTH console apps (fail-closed: a missing binary fails)
 ```
 
-`run-tests.sh` finds `AnamorphTests` under `build/` and runs it; it exits non-zero on any failed
-`check`. Evidence [Verified]: scripts/run-tests.sh:7-13.
+`run-tests.sh` finds `AnamorphTests` and `AnamorphStateTests` under `build/` and runs both; it
+exits non-zero on any failed `check` or missing binary. Evidence [Verified]: scripts/run-tests.sh.
 
 ### What the tests cover
 
@@ -69,11 +69,37 @@ read+clamp the processor uses (`anamorph::clampAbSlotIndex`, `src/AbSlotIndex.h`
 out-of-range A/B index can never index `abSlot[]`/`abUndo[]` out of bounds, while valid 0/1 are
 preserved. Evidence [Verified]: tests/dsp_tests.cpp (`main` registers all tests).
 
+### State-compatibility self-tests (v0.8.13 harness)
+
+`tests/state_tests.cpp` (**9 tests**, own console target `AnamorphStateTests`) automates the
+COMPATIBILITY policy family against the **real `AnamorphAudioProcessor`** (the target compiles
+the plugin sources; the editor is linked but never instantiated — fully headless):
+serialized-schema shape (every `SERIALIZATION_REGISTRY.md` field), a **parameter-registry
+snapshot** (IDs/names/order/automation flags/step texts exact + range mappings probed at 5
+normalised points, vs `tests/fixtures/parameter_registry.snapshot`), a raw-exact
+save→load→save round-trip (byte-identical; APVTS + `raw` + InternalState + A/B slots + preset
+meta; undo cleared), the three legacy migration paths via frozen fixtures
+(`legacy_v0_2_bare_apvts.xml`, `legacy_pre_0_6_4_ab_slots.xml`,
+`legacy_pre_0_8_4_view_params.xml`), corrupt/foreign-state robustness (garbage/truncated blob,
+out-of-range `AB@active` clamp end-to-end, unknown future fields, corrupt slot XML), the user
+preset save→reload round-trip incl. the exclusion rules (`mbSolo` reset, Bypass/`advancedMode`
+untouched), and A/B + view-param preservation across restore.
+Evidence [Verified]: tests/state_tests.cpp; CMakeLists.txt (`AnamorphStateTests`).
+
+**Changing the parameter surface intentionally** (ADR + `PARAMETER_REGISTRY.md` update
+required, per `PARAMETER_COMPATIBILITY_POLICY.md`): re-freeze the snapshot with
+`AnamorphStateTests --write-snapshot` and let the snapshot diff be reviewed in the PR. An
+**unintentional** change fails the suite on all three CI platforms — that is the point.
+The registry comparison is numerically tolerant (1e-4 relative) only for the numeric fields —
+the five range-mapping probes, the default, and the interval (libm ULP differences across
+platforms); IDs, names, ordering, flags, counts and step texts compare exactly.
+
 ### Adding a test
 
 Bug fixes ship a regression test that **fails on the old code and passes on the fix** (the
 project's established practice; `docs/policies/TESTING_POLICY.md`). Use the existing
-`check(cond, "description")` harness and add the call in `main`.
+`check(cond, "description")` harness and add the call in `main` (DSP behaviour →
+`tests/dsp_tests.cpp`; state/serialization/preset behaviour → `tests/state_tests.cpp`).
 
 ## pluginval (VST3 conformance)
 
@@ -113,9 +139,10 @@ pluginval exit fails the job on every platform. Linux/macOS use `run-pluginval.s
 | Symptom | Likely cause | Where to look |
 |---|---|---|
 | A `check` assertion fails | DSP regression | the named test in `tests/dsp_tests.cpp`; compare against the invariant it guards (`docs/policies/DSP_POLICY.md`) |
+| A state-test `check` fails | serialization / parameter-surface regression | the named test in `tests/state_tests.cpp`; if the change is INTENTIONAL it needs the compatibility-policy process (ADR + registry update + `--write-snapshot`) |
 | pluginval exits < 128 | real validation failure | the pluginval log line; do **not** retry — it's a genuine defect |
 | pluginval exits ≥ 128 (crash) | the known X11 host flake | retried automatically; if it still fails after 3 tries, treat as a failure (`run-pluginval.sh:70-90`, `run_one_pass`) |
-| `AnamorphTests not found` | not built yet | run `scripts/build.sh` first (`run-tests.sh:8-11`) |
+| `AnamorphTests`/`AnamorphStateTests` `not found` | not built yet | run `scripts/build.sh` first (`run-tests.sh:10-20`) |
 
 ## What cannot be verified headlessly
 

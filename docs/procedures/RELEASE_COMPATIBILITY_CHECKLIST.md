@@ -9,11 +9,18 @@ Hard compatibility gate. **Every box must be checked before a release ships.** T
 - [ ] **Parameter IDs unchanged** — diff the parameter set against the previous release; no `pid::`
       ID renamed or removed. (Display-name changes are allowed; record in CHANGELOG.)
       Ref: `docs/architecture/PARAMETER_REGISTRY.md`, `docs/policies/PARAMETER_COMPATIBILITY_POLICY.md`.
+      *Automated since the v0.8.13 cycle:* the registry-snapshot test in `tests/state_tests.cpp`
+      (`AnamorphStateTests`, CI-blocking on all three platforms) fails on any ID/name/order/
+      range/automation-flag change vs `tests/fixtures/parameter_registry.snapshot`.
 - [ ] **Serialization schema verified** — no field removed or semantically changed in
       `AnamorphRoot` / `ANAMORPH` (APVTS) / `ANAMORPH_INTERNAL` / `AB`; additions tolerate absence.
       Ref: `docs/architecture/SERIALIZATION_REGISTRY.md`, `docs/policies/SESSION_COMPATIBILITY_POLICY.md`.
+      *Automated since the v0.8.13 cycle:* schema-shape + raw-exact round-trip + the three
+      legacy-format fixtures in `tests/state_tests.cpp`. The cross-version step below stays manual.
 - [ ] **Presets migrated** — factory presets and a representative user `.anamorph` still load and
       sound identical. Ref: `src/PresetManager.cpp`.
+      *Partially automated:* `tests/state_tests.cpp` proves save→reload structural equality +
+      exclusion rules + factory loadability; "sound identical" remains a Level-5 (audition) check.
 - [ ] **Pluginval passed (both modes)** — `scripts/run-pluginval.sh 10 deterministic` **and**
       `scripts/run-pluginval.sh 10 randomise` (`--randomise` ×3) pass on the Linux gate (strictness 10).
       Ref: `docs/procedures/TESTING.md`.
@@ -28,6 +35,10 @@ Hard compatibility gate. **Every box must be checked before a release ships.** T
 - [ ] **Session reload verified** — save a session in the previous version, load it in the new
       version: sound, preset name, dirty-star, and both A/B slots reproduce exactly.
       Ref: `docs/architecture/STATE_SERIALIZATION.md`.
+      *Partially automated:* the round-trip + legacy-fixture tests prove the CURRENT binary reads
+      the modelled v0.2 / pre-0.6.4 / pre-0.8.4 formats; the true vN−1-binary → vN load remains
+      this manual step (the fixtures are reconstructions, not field captures —
+      `worklogs/STATE_HARNESS_v0.8.13.md` §5).
 
 ## If any box cannot be checked
 

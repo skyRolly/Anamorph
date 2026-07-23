@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Legacy fixture: pre-0.8.4 session — modern AnamorphRoot + modern A/B slot keys
+     (slotAParams/slotAName/... with per-slot preset meta), but NO ANAMORPH_INTERNAL
+     child: Oversampling / UI Scale / Persistence / Meters / Tooltips / Animations
+     were still ordinary APVTS PARAM nodes and must migrate via
+     InternalState::migrateFromLegacyApvts. No raw attributes (pre-0.8.7).
+     Frozen: do not modernise this file. -->
+<AnamorphRoot presetName="My Vocal" presetBaseline="legacy-baseline-sig">
+  <ANAMORPH>
+    <PARAM id="width" value="0.8"/>
+    <PARAM id="mix" value="0.65"/>
+    <PARAM id="oversample" value="2.0"/>
+    <PARAM id="uiScale" value="1.0"/>
+    <PARAM id="scopePersist" value="0.25"/>
+    <PARAM id="metersOn" value="0.0"/>
+    <PARAM id="tooltipsOn" value="1.0"/>
+    <PARAM id="uiAnimations" value="1.0"/>
+  </ANAMORPH>
+  <AB active="0"
+      slotAParams="&lt;ANAMORPH&gt;&lt;PARAM id=&quot;width&quot; value=&quot;0.8&quot;/&gt;&lt;/ANAMORPH&gt;"
+      slotAName=""
+      slotABase=""
+      slotBParams="&lt;ANAMORPH&gt;&lt;PARAM id=&quot;width&quot; value=&quot;1.5&quot;/&gt;&lt;/ANAMORPH&gt;"
+      slotBName="Slot B Preset"
+      slotBBase="slot-b-baseline"/>
+</AnamorphRoot>

@@ -36,7 +36,7 @@ See `docs/REPOSITORY_MAP.md` for the full map. Key entry points:
 - Parameter surface: `src/PluginParameters.{h,cpp}` (`createAnamorphLayout`, `pid::`).
 - State save/recall: `src/PluginProcessor.cpp` (`get/setStateInformation`).
 - Editor / GUI: `src/PluginEditor.cpp`, `src/gui/`.
-- Tests: `tests/dsp_tests.cpp`.
+- Tests: `tests/dsp_tests.cpp` (DSP), `tests/state_tests.cpp` (state/parameter compatibility) + `tests/fixtures/`.
 
 ## Standalone app for quick manual checks
 
