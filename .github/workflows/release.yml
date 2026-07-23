@@ -1,0 +1,178 @@
+# ============================================================================
+#  Release pipeline foundation (RH-PR-8, closes the RISK-003 infrastructure gap)
+#
+#  Trigger: pushing an ANNOTATED release tag  vMAJOR.MINOR.PATCH  (e.g. v0.8.13)
+#  on the release commit. Tag pushes do not trigger build.yml (its `branches`
+#  filter excludes tag events), so a release runs the full build+validation
+#  matrix exactly ONCE — by CALLING build.yml (workflow_call): same three OS
+#  jobs, same blocking DSP+state suites, same pluginval strictness-10 gates,
+#  same artifact layout. Nothing is duplicated and no gate is weakened.
+#
+#  Pipeline:   validate (tag ⇄ CMake version ⇄ CHANGELOG section, fail-closed)
+#            → build (reused build.yml — the existing release gates)
+#            → draft-release (versioned copies of the SAME artifacts +
+#              SHA256SUMS + RELEASE_MANIFEST + CHANGELOG excerpt as notes,
+#              published as a DRAFT GitHub Release — publishing stays a HUMAN
+#              action, after the Level-5 audition per RELEASE_POLICY).
+#
+#  workflow_dispatch = pipeline REHEARSAL: runs validate (report-only where a
+#  real tag is required) + the full build, but never creates a release. This
+#  lets the pipeline be exercised without cutting a tag.
+#
+#  Deliberately NOT here (later RH-PRs, per RELEASE_HARDENING_PLAN §6/§8):
+#  code signing (RH-PR-3/5), notarization (RH-PR-3), installers (RH-PR-5b/6),
+#  update checks (RH-PR-7). Secrets: none — this workflow uses only the
+#  ephemeral GITHUB_TOKEN, scoped `contents: write` on the draft-release job.
+# ============================================================================
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:   # rehearsal mode: validate + build only, no release
+
+permissions:
+  contents: read
+
+jobs:
+  # --------------------------------------------------------------------------
+  # Fail-closed metadata validation BEFORE spending build minutes: the tag,
+  # the CMake project version, and the CHANGELOG must agree, and the tag must
+  # be annotated (it carries the tagger/date that make the release traceable).
+  # --------------------------------------------------------------------------
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      is-release: ${{ steps.meta.outputs.is-release }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Validate release metadata (tag ⇄ version ⇄ CHANGELOG)
+        id: meta
+        run: |
+          set -euo pipefail
+          CMAKE_VERSION="$(sed -nE 's/^project\(Anamorph VERSION ([0-9]+\.[0-9]+\.[0-9]+) .*/\1/p' CMakeLists.txt)"
+          [ -n "$CMAKE_VERSION" ] || { echo "::error::could not parse project VERSION from CMakeLists.txt"; exit 1; }
+          echo "CMake project version: $CMAKE_VERSION"
+
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+            TAG_VERSION="${TAG#v}"
+            echo "release tag: $TAG (commit ${GITHUB_SHA})"
+
+            # The tag must be ANNOTATED (tagger + date = traceability metadata).
+            git fetch --force origin "refs/tags/${TAG}:refs/tags/${TAG}" >/dev/null 2>&1 || true
+            TYPE="$(git cat-file -t "refs/tags/${TAG}")"
+            if [ "$TYPE" != "tag" ]; then
+              echo "::error::release tag ${TAG} is ${TYPE}, not an annotated tag -- create it with: git tag -a ${TAG} -m 'Anamorph ${TAG_VERSION}'"
+              exit 1
+            fi
+
+            if [ "$TAG_VERSION" != "$CMAKE_VERSION" ]; then
+              echo "::error::tag ${TAG} does not match CMakeLists.txt project VERSION ${CMAKE_VERSION} -- bump the version (RELEASE_PROCESS.md step 1) before tagging"
+              exit 1
+            fi
+            if ! grep -qE "^## \[${TAG_VERSION//./\\.}\]" CHANGELOG.md; then
+              echo "::error::CHANGELOG.md has no '## [${TAG_VERSION}]' section -- write the release entry (RELEASE_PROCESS.md step 2) before tagging"
+              exit 1
+            fi
+            echo "is-release=true"  >> "$GITHUB_OUTPUT"
+            echo "version=${TAG_VERSION}" >> "$GITHUB_OUTPUT"
+          else
+            # Rehearsal (workflow_dispatch): no tag to cross-check; report the
+            # state that a real tag would be validated against.
+            if grep -qE "^## \[${CMAKE_VERSION//./\\.}\]" CHANGELOG.md; then
+              echo "rehearsal: CHANGELOG already has a [${CMAKE_VERSION}] section"
+            else
+              echo "::warning::rehearsal: CHANGELOG has no [${CMAKE_VERSION}] section yet -- a real v${CMAKE_VERSION} tag would FAIL validation until the release entry exists"
+            fi
+            echo "is-release=false" >> "$GITHUB_OUTPUT"
+            echo "version=${CMAKE_VERSION}" >> "$GITHUB_OUTPUT"
+          fi
+
+  # --------------------------------------------------------------------------
+  # The EXISTING build + validation matrix, unchanged: 3 OSes, DSP + state
+  # suites, pluginval strictness 10 both modes ×3, retain-then-strip symbol
+  # pipeline, fail-closed artifact gating. Artifacts (Anamorph-Linux/-Windows/
+  # -macOS + *-debug) land in THIS run.
+  # --------------------------------------------------------------------------
+  build:
+    needs: validate
+    uses: ./.github/workflows/build.yml
+
+  # --------------------------------------------------------------------------
+  # Draft GitHub Release: versioned copies of the SAME customer artifacts,
+  # SHA-256 sums, a plain-text manifest (version / tag / commit / CI build
+  # number / per-platform hashes), and the CHANGELOG section as the notes.
+  # DRAFT only — publishing is the maintainer's action after the Level-5
+  # audition (RELEASE_POLICY precondition 7). Debug-symbol artifacts stay
+  # internal per-run artifacts (ADR-0021) and are NOT attached.
+  # --------------------------------------------------------------------------
+  draft-release:
+    if: needs.validate.outputs.is-release == 'true'
+    needs: [validate, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # create the draft release + upload assets (this job only)
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download customer artifacts (from the build call in this run)
+        uses: actions/download-artifact@v7
+        with:
+          pattern: "Anamorph-{Linux,Windows,macOS}"
+          path: stage
+
+      - name: Stage versioned assets + sums + manifest
+        id: stage
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.validate.outputs.version }}"
+          TAG="v${VERSION}"
+          mkdir -p dist
+          for OS in Linux Windows macOS; do
+            [ -d "stage/Anamorph-${OS}" ] || { echo "::error::expected artifact Anamorph-${OS} is missing"; exit 1; }
+            (cd "stage/Anamorph-${OS}" && zip -qr "../../dist/Anamorph-${VERSION}-${OS}.zip" .)
+          done
+          (cd dist && sha256sum Anamorph-*.zip > SHA256SUMS.txt)
+
+          {
+            echo "Anamorph ${VERSION} — release manifest"
+            echo "tag:          ${TAG}"
+            echo "commit:       ${GITHUB_SHA}"
+            echo "build number: ${GITHUB_RUN_NUMBER} (About-box build id, -DANAMORPH_BUILD_NUMBER)"
+            echo "workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo "date (UTC):   $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo
+            echo "artifacts (sha256):"
+            cat dist/SHA256SUMS.txt | sed 's/^/  /'
+          } > dist/RELEASE_MANIFEST.txt
+          cat dist/RELEASE_MANIFEST.txt
+
+          # Release notes = this version's CHANGELOG section, verbatim.
+          # (exact prefix compare -- version dots are not treated as regex).
+          awk -v ver="${VERSION}" '
+            index($0, "## [" ver "]") == 1 {on=1; print; next}
+            on && /^## \[/ {exit}
+            on {print}' CHANGELOG.md > notes.md
+          [ -s notes.md ] || { echo "::error::empty CHANGELOG extraction for ${VERSION}"; exit 1; }
+
+      - name: Create DRAFT GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.validate.outputs.version }}"
+          gh release create "v${VERSION}" \
+            --draft \
+            --verify-tag \
+            --title "Anamorph ${VERSION}" \
+            --notes-file notes.md \
+            dist/Anamorph-"${VERSION}"-Linux.zip \
+            dist/Anamorph-"${VERSION}"-Windows.zip \
+            dist/Anamorph-"${VERSION}"-macOS.zip \
+            dist/SHA256SUMS.txt \
+            dist/RELEASE_MANIFEST.txt
+          echo "Draft release v${VERSION} created -- publishing remains a manual step (RELEASE_POLICY Level-5 audition first)."

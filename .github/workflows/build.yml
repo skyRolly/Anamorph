@@ -5,6 +5,12 @@ on:
     branches: [ "**" ]
   pull_request:
   workflow_dispatch:
+  # RH-PR-8: lets release.yml REUSE this exact build+validation matrix on a
+  # release tag (single build, same gates, artifacts land in the caller run).
+  # Purely additive -- branch/PR/dispatch behaviour is unchanged, and tag
+  # pushes still do not trigger THIS workflow (the `branches` filter excludes
+  # tag events); they trigger release.yml, which calls this one.
+  workflow_call:
 
 permissions:
   contents: read

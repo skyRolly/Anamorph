@@ -6,7 +6,25 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **JUCE 8.0.14 → 9.0.0 migration & dependency hardening** (v0.8.13
+Last updated: for the **RH-PR-8 release-pipeline foundation** (v0.8.13 cycle, 2026-07-23,
+branch `claude/beautiful-sagan-JAUFI` on `main` @ `ee82380` — PR #83 merged). Infrastructure
+only, no product behaviour/version change. NEW `.github/workflows/release.yml` (annotated
+`vX.Y.Z` tag → fail-closed tag⇄version⇄CHANGELOG validation → the FULL existing `build.yml`
+gates reused via a new additive `workflow_call` trigger (6-line `on:`-block diff, branch/PR
+behaviour byte-identical; tag pushes triggered nothing before) → **draft** GitHub Release
+with versioned artifact copies + `SHA256SUMS.txt` + `RELEASE_MANIFEST.txt` + CHANGELOG-section
+notes; `workflow_dispatch` rehearsal mode; `contents: write` scoped to the one release job;
+no third-party actions beyond `actions/*` + `gh`; publishing stays manual per RELEASE_POLICY).
+No tag created (first: the v0.8.13 release — closes RISK-003 when cut). Docs synced:
+RELEASE_PROCESS (§Tagging + release pipeline; stale "no tags TODO" replaced), RELEASE_POLICY
+(Artifacts note), CI_CD (Triggers + source-of-truth), FUTURE_RISKS RISK-003 mitigation,
+RELEASE_HARDENING_PLAN (§1 baseline rows + §10 RH-PR-8 row per its §13 update protocol),
+REPOSITORY_MAP, HANDOVER. Work record:
+`worklogs/release-hardening/RH_PR8_RELEASE_PIPELINE.md` (incl. the scoped dependency/security
+review: no new third-party actions; SHA-pinning of actions + the pluginval download pin remain
+open supply-chain items). Validation: both workflows YAML-parse; the validate/stage shell
+logic executed locally against real repo data (version parse, CHANGELOG gate, 46-line notes
+extraction); end-to-end proof = the post-merge `workflow_dispatch` rehearsal. Prior: for the **JUCE 8.0.14 → 9.0.0 migration & dependency hardening** (v0.8.13
 cycle, 2026-07-23, branch `claude/beautiful-sagan-JAUFI` on `main` @ `1502077` — PR #82
 merged). **Dependency migration, zero C++ source changes**: the complete 9.0.0
 breaking-change surface has no project exposure (audit table in
