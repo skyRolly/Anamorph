@@ -6,20 +6,22 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
 
 | Dependency | Pin | Mechanism | Evidence |
 |---|---|---|---|
-| **JUCE** | tag **8.0.14** | CMake `FetchContent` (`GIT_SHALLOW`), overridable via `-DANAMORPH_JUCE_PATH` | CMakeLists.txt:33,38-51 |
+| **JUCE** | **9.0.0**, pinned by **immutable commit SHA** `f8f8864172464b9adf9eba6101e1f784838d1597` | CMake `FetchContent` (`GIT_SHALLOW`), overridable via `-DANAMORPH_JUCE_PATH` | CMakeLists.txt:36-38,47-55 |
 | **pluginval** | latest release (download) | `scripts/run-pluginval.sh` | run-pluginval.sh:34 |
 | **C++ standard** | C++17 | `CMAKE_CXX_STANDARD 17`, extensions off | CMakeLists.txt:16-18 |
-| Linux system libs | distro packages | `scripts/setup-linux.sh` (ALSA, JACK, X11, FreeType, GTK/WebKit, mesa, xvfb) | setup-linux.sh:21-29 |
+| Linux system libs | distro packages | `scripts/setup-linux.sh` (ALSA, JACK, X11, FreeType, GTK/WebKit, mesa, **EGL — required by JUCE 9's Linux GL context path**, xvfb) | setup-linux.sh |
 
 ## Version-lock reasoning
 
-- **JUCE is pinned to an exact tag (8.0.14)**, not a branch or `latest`. JUCE is the framework for
-  the entire DSP (oversampling, Linkwitz-Riley filters, `dsp::AudioBlock`), parameter system
-  (APVTS), GUI, and plugin-format wrappers — an unpinned bump can silently change DSP behaviour,
-  latency, the editor/X11 embedding path (the 0.8.5 incident lives in JUCE's X11 host code), and
-  the parameter/state ABI. The pin makes builds reproducible and keeps the audited behaviour
-  stable. Evidence [Verified]: CMakeLists.txt:33,44-50; the X11 dependency is documented in
-  ADR-0011.
+- **JUCE is pinned to an exact IMMUTABLE commit** (`f8f8864…` = tag 9.0.0; `ANAMORPH_JUCE_VERSION`
+  carries the human-readable version), not a branch, `latest`, or a mutable tag *name* — since the
+  v0.8.13 cycle the SHA pin also protects against an upstream re-pointed tag (ADR-0022). JUCE is
+  the framework for the entire DSP (oversampling, Linkwitz-Riley filters, `dsp::AudioBlock`),
+  parameter system (APVTS), GUI, and plugin-format wrappers — an unpinned bump can silently change
+  DSP behaviour, latency, the editor/X11 embedding path (the 0.8.5 incident lives in JUCE's X11
+  host code), and the parameter/state ABI. The pin makes builds reproducible and keeps the audited
+  behaviour stable. Evidence [Verified]: CMakeLists.txt:36-38,47-55; the X11 dependency is
+  documented in ADR-0011.
 
 ## Upgrade rules
 
@@ -29,11 +31,20 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
    move DSP/latency/editor behaviour invisibly to the headless gate.
 3. Re-verify the `RELEASE_COMPATIBILITY_CHECKLIST.md` (latency reporting, session reload) after a bump.
 4. Prefer the offline path (`-DANAMORPH_JUCE_PATH`) for reproducibility in restricted CI.
-5. `JUCE_*` compile flags in `CMakeLists.txt:183-188` (no webview, no curl, no splash, strict
+5. `JUCE_*` compile flags in `CMakeLists.txt:188-193` (no webview, no curl, no splash, strict
    ref-counted pointer) are part of the dependency contract; changing them is a build change.
 
 ## Compliance log
 
+- **JUCE 8.0.14 → 9.0.0 + immutable-commit pinning** — recorded in **ADR-0022** (v0.8.13 cycle).
+  Zero C++ source changes (no project exposure to the 9.0.0 breaking surface); Linux gains
+  `libegl-dev` (JUCE 9 GL-context path uses EGL). Rule-2 verification: DSP suite (140 checks) +
+  state suite (774 checks, incl. the 8.0.14-frozen parameter-registry snapshot passing
+  unchanged) green under 9.0.0, **and** engine output proven **bit-identical** 8.0.14 vs 9.0.0
+  by a 32-scenario twin dump incl. reported latencies (`worklogs/JUCE9_MIGRATION_v0.8.13.md`);
+  pluginval both modes ×3 runs on the CI gates. The **manual audition (rule 2, Level 5) is
+  OPEN** — pending the maintainer's DAW audition of 9.0.0 against the 8.0.14 baseline; until
+  then ADR-0022 stays Proposed.
 - **JUCE 8.0.8 → 8.0.14** — recorded in **ADR-0012** (the first dependency bump enforced under rule 1
   above; the bootstrap use of this rule). Verified green by CI (build + the then-current 23 DSP self-tests + pluginval
   strictness 10 on the Linux gate); commit `41acaa7`. The manual audition (rule 2, Level 5) **was

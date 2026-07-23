@@ -6,7 +6,7 @@ Repository Governance Policy. Test acceptance levels and the release gate.
 
 | Level | Name | What | Where |
 |---|---|---|---|
-| **1** | Static analysis | Compiler warnings (recommended warning flags), CodeQL | `juce::juce_recommended_warning_flags` (CMakeLists.txt:201,225); GitHub code scanning |
+| **1** | Static analysis | Compiler warnings (recommended warning flags), CodeQL | `juce::juce_recommended_warning_flags` (CMakeLists.txt:206,230); GitHub code scanning |
 | **2** | Unit / behaviour | Deterministic DSP assertions + state/parameter compatibility (schema shape, registry snapshot, raw-exact round-trip, legacy migrations, corrupt-state robustness, preset round-trip) | `tests/dsp_tests.cpp` (33 DSP tests + 1 A/B clamp guard) + `tests/state_tests.cpp` (9 state-compatibility tests, `AnamorphStateTests`) |
 | **3** | DSP validation | MS round-trip exact; no NaN/Inf/denormals across the algorithm × OS × feature matrix; latency==actual; bypass null; click-free transitions | `tests/dsp_tests.cpp` |
 | **4** | pluginval | VST3 conformance; editor open/close under `xvfb` | `scripts/run-pluginval.sh` |
