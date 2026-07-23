@@ -47,6 +47,7 @@ IDs are program-local (`RH-R*`); if any is accepted as a standing repository ris
 | RH-R7 | No update notification → shipped defects persist silently in the field | Medium |
 | RH-R8 | No crash reporting; ~~no retained debug symbols~~ **symbol retention shipped in RH-PR-2** (per-run `Anamorph-<OS>-debug` artifacts: split `.debug`/dSYM/PDB) — a full crash-reporter remains Phase-2 (§7) | Medium → Low (symbolication now possible) |
 | RH-R9 | ~~`codesign ... \|\| true`~~ **Failure-visibility half fixed in RH-PR-2** (a sign/staging failure now fails the job); Developer ID signing itself is still RH-PR-3 | ~~Medium~~ Low |
+| RH-R10 | **Third-party licence compliance is broader than the JUCE tier**: the VST3 SDK (ships inside JUCE) is dual-licensed GPLv3 / the proprietary Steinberg *VST 3 Licence Agreement* — closed-source commercial VST3 distribution requires the signed agreement (+ logo/trademark obligations); JUCE additionally vendors harfbuzz/sheenbidi/lunasvg(9)/codec libraries needing a **NOTICES/attribution file** in the distribution. Owner action (agreements) + a small engineering deliverable (NOTICES). Found in the v0.8.13 product-readiness review | High (blocking commercial sale; zero impact on free/AGPL distribution) |
 
 ## 3. Guardrails — what this program must not touch
 
