@@ -7,6 +7,14 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **product-readiness roadmap review** (v0.8.13 cycle, 2026-07-23, on
+`main` @ `dcfad73`; extended the same day with the **item-by-item re-evaluation + independent
+gap hunt**: 14 carried items re-classified (Must-now / before-1.0 / nice / defer, with
+reasons); NEW findings — **Steinberg VST3-SDK licence compliance + third-party NOTICES**
+(recorded as RH-R10 in RELEASE_HARDENING_PLAN §2, the pass's one doc fix beyond the roadmap),
+support-workflow gap (no issue templates/SUPPORT.md), the undo/gesture-coalescer test gap
+(largest hand-verified-only subsystem; now cheap to cover via the state-harness target), and
+a "what 1.0 commits to" policy gap; plus an explicit outdated-assumptions retirement list.
+Original entry: (v0.8.13 cycle, 2026-07-23, on
 `main` @ `dcfad73` — PRs #82/#83/#84/#85 all merged). Roadmap-only pass, deliberately NOT
 another audit: drift review limited to correctness-affecting items (none found). NEW
 `worklogs/PRODUCT_READINESS_ROADMAP_v0.8.13.md` — maturity assessment (engineering High /
