@@ -7,7 +7,7 @@ Repository Governance Policy. Test acceptance levels and the release gate.
 | Level | Name | What | Where |
 |---|---|---|---|
 | **1** | Static analysis | Compiler warnings (recommended warning flags), CodeQL | `juce::juce_recommended_warning_flags` (CMakeLists.txt:201,225); GitHub code scanning |
-| **2** | Unit / behaviour | Deterministic DSP assertions + state-restoration robustness | `tests/dsp_tests.cpp` (33 DSP tests + 1 A/B state-restoration clamp guard) |
+| **2** | Unit / behaviour | Deterministic DSP assertions + state/parameter compatibility (schema shape, registry snapshot, raw-exact round-trip, legacy migrations, corrupt-state robustness, preset round-trip) | `tests/dsp_tests.cpp` (33 DSP tests + 1 A/B clamp guard) + `tests/state_tests.cpp` (9 state-compatibility tests, `AnamorphStateTests`) |
 | **3** | DSP validation | MS round-trip exact; no NaN/Inf/denormals across the algorithm × OS × feature matrix; latency==actual; bypass null; click-free transitions | `tests/dsp_tests.cpp` |
 | **4** | pluginval | VST3 conformance; editor open/close under `xvfb` | `scripts/run-pluginval.sh` |
 | **5** | Manual validation | Audio sound quality + GUI/OpenGL visual appearance (cannot be judged headlessly) | Load `.vst3` in a DAW |
@@ -15,7 +15,8 @@ Repository Governance Policy. Test acceptance levels and the release gate.
 ## Hard release gate
 
 - **Level 2/3 self-tests must pass** (the headless gate, `scripts/run-tests.sh`): the 33 DSP
-  self-tests **and** the A/B state-restoration clamp guard.
+  self-tests, the A/B state-restoration clamp guard, **and** the 9-test state-compatibility
+  suite (`AnamorphStateTests` — both binaries are required; a missing one fails the gate).
 - **pluginval must pass at strictness 10 in BOTH modes on ALL THREE platforms** (Linux, Windows,
   macOS), each mode run as **3 consecutive passes**: **deterministic** (`run-pluginval.sh 10
   deterministic`, fixed `--random-seed 0`) **and** **randomise** (`run-pluginval.sh 10 randomise` —

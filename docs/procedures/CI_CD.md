@@ -31,8 +31,9 @@ failures as green and has been removed). Evidence [Verified]: `.github/workflows
    number). Windows uses the default VS generator; macOS adds
    `-DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13`.
 3. **Build** — `cmake --build build --config Release`.
-4. **DSP self-tests** — `scripts/run-tests.sh` (Linux/macOS); on Windows the runner locates and
-   runs `AnamorphTests.exe`.
+4. **DSP + state self-tests** — `scripts/run-tests.sh` runs `AnamorphTests` **and**
+   `AnamorphStateTests` fail-closed (Linux/macOS); on Windows the runner locates and runs both
+   `AnamorphTests.exe` and `AnamorphStateTests.exe`, propagating the first failing exit code.
 5. **Symbol handling (RH-PR-2, ADR-0021)** — Linux extracts split debug info (`objcopy
    --only-keep-debug`), strips the shipped binaries (`strip --strip-unneeded`; `.gnu_debuglink`
    embedded) and asserts `GetPluginFactory` is still exported — ordered **before** pluginval so

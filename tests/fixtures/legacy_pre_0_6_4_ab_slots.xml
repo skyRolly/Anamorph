@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Legacy fixture: pre-0.6.4 session — AnamorphRoot with the OLD A/B slot keys
+     (slotA/slotB, params-only XML strings; no per-slot name/baseline), no raw
+     attributes, and NO ANAMORPH_INTERNAL child: the Settings still lived as
+     ordinary APVTS PARAM nodes (oversample/uiScale/... below), which
+     InternalState::migrateFromLegacyApvts must map (0-based choice index ->
+     1-based combo ID). Frozen: do not modernise this file. -->
+<AnamorphRoot>
+  <ANAMORPH>
+    <PARAM id="width" value="1.2"/>
+    <PARAM id="drive" value="3.0"/>
+    <PARAM id="oversample" value="1.0"/>
+    <PARAM id="uiScale" value="4.0"/>
+    <PARAM id="scopePersist" value="0.75"/>
+    <PARAM id="metersOn" value="1.0"/>
+    <PARAM id="tooltipsOn" value="1.0"/>
+    <PARAM id="uiAnimations" value="0.0"/>
+  </ANAMORPH>
+  <AB active="1"
+      slotA="&lt;ANAMORPH&gt;&lt;PARAM id=&quot;width&quot; value=&quot;1.8&quot;/&gt;&lt;/ANAMORPH&gt;"
+      slotB="&lt;ANAMORPH&gt;&lt;PARAM id=&quot;width&quot; value=&quot;0.6&quot;/&gt;&lt;/ANAMORPH&gt;"/>
+</AnamorphRoot>

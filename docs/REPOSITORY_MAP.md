@@ -14,7 +14,7 @@ Anamorph/
 ├── CHANGELOG.md            Version history (Keep a Changelog; evidence-cited).
 ├── CLAUDE.md               AI/contributor entry point: mandatory policy pre-read + repo constraints.
 ├── src/                    Source (wrapper + GUI + DSP core).
-├── tests/                  Headless DSP self-tests.
+├── tests/                  Headless self-tests (DSP + state compatibility) and fixtures.
 ├── worklogs/               Session-local investigation records for future agents (NOT
 │                           architecture docs; e.g. performance/WAVE3_INVESTIGATION.md,
 │                           release-hardening/RH_PR2_INVESTIGATION.md — finalized decisions
@@ -72,9 +72,11 @@ Anamorph/
 | Path | Responsibility |
 |---|---|
 | `tests/dsp_tests.cpp` | 33 headless DSP acceptance tests + 1 A/B state-restoration clamp guard (`check(cond, "...")` harness; `main` runs all). |
+| `tests/state_tests.cpp` | 9 headless state-compatibility tests (schema shape, parameter-registry snapshot, raw-exact round-trip, 3 legacy migration fixtures, corrupt-state robustness, preset round-trip, A/B + view-param preservation) — own console target `AnamorphStateTests` compiling the plugin sources. |
+| `tests/fixtures/` | Compatibility fixtures: `parameter_registry.snapshot` (re-frozen only via `AnamorphStateTests --write-snapshot` for INTENTIONAL parameter changes) + 3 frozen legacy session XMLs (v0.2 / pre-0.6.4 / pre-0.8.4). |
 | `scripts/setup-linux.sh` | Ubuntu build dependencies (+ xvfb). |
 | `scripts/build.sh` | CMake + Ninja build; prints artifact paths. |
-| `scripts/run-tests.sh` | Runs `AnamorphTests`. |
+| `scripts/run-tests.sh` | Runs `AnamorphTests` + `AnamorphStateTests` (fail-closed). |
 | `scripts/run-pluginval.sh` | pluginval on Linux/macOS (strictness + mode args — `deterministic` \| `randomise`, each ×3; signal-only retry for the X11 host flake). |
 | `scripts/run-pluginval.ps1` | pluginval on Windows (same strictness/mode/×3 structure; exit code is the sole signal). |
 | `src/AbSlotIndex.h` | `anamorph::kNumAbSlots` + `clampAbSlotIndex` — single source of truth for A/B slot sizing/clamping. |

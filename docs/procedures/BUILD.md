@@ -39,7 +39,7 @@ Evidence [Verified]: scripts/build.sh:14-15.
 
 | Option | Default | Effect |
 |---|---|---|
-| `ANAMORPH_BUILD_TESTS` | ON | Build the `AnamorphTests` console app (CMakeLists.txt:27,207) |
+| `ANAMORPH_BUILD_TESTS` | ON | Build the `AnamorphTests` + `AnamorphStateTests` console apps (CMakeLists.txt:27,207) |
 | `ANAMORPH_BUILD_STANDALONE` | ON | Add the Standalone target (CMakeLists.txt:28,141-143) |
 | `ANAMORPH_JUCE_PATH` | "" | Use a local JUCE checkout instead of fetching (CMakeLists.txt:32,38-40) |
 | `ANAMORPH_JUCE_TAG` | 8.0.14 | JUCE tag to fetch when no local path (CMakeLists.txt:33) |
@@ -62,6 +62,7 @@ build/Anamorph_artefacts/Release/VST3/Anamorph.vst3
 build/Anamorph_artefacts/Release/AU/Anamorph.component        # macOS only
 build/Anamorph_artefacts/Release/Standalone/Anamorph[.app|.exe]
 build/.../AnamorphTests                                       # the DSP self-test app
+build/.../AnamorphStateTests                                  # the state-compatibility self-test app
 ```
 
 Evidence [Verified]: scripts/build.sh:19-30; .github/workflows/build.yml (build/stage steps).

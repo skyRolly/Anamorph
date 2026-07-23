@@ -85,7 +85,7 @@ jobs:
           done
           nm -D "$SO" | grep -q GetPluginFactory
 
-      - name: DSP self-tests
+      - name: DSP + state self-tests
         id: tests
         run: ./scripts/run-tests.sh
 
@@ -158,13 +158,17 @@ jobs:
       - name: Build (VST3 + Standalone + tests)
         run: cmake --build build --config Release
 
-      - name: DSP self-tests
+      - name: DSP + state self-tests
         id: tests
         shell: pwsh
         run: |
           $exe = Get-ChildItem -Recurse -Path build -Filter AnamorphTests.exe | Select-Object -First 1
           if (-not $exe) { Write-Error 'AnamorphTests.exe not found'; exit 1 }
           & $exe.FullName
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $stateExe = Get-ChildItem -Recurse -Path build -Filter AnamorphStateTests.exe | Select-Object -First 1
+          if (-not $stateExe) { Write-Error 'AnamorphStateTests.exe not found'; exit 1 }
+          & $stateExe.FullName
 
       - name: pluginval (strictness 10, deterministic x3 -- release gate)
         shell: pwsh
@@ -371,7 +375,7 @@ jobs:
       - name: Build (VST3 + AU + Standalone + tests)
         run: cmake --build build --config Release
 
-      - name: DSP self-tests
+      - name: DSP + state self-tests
         id: tests
         run: |
           chmod +x scripts/*.sh

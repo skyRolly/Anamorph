@@ -6,7 +6,27 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **post-v0.8.12 repository audit & documentation-consistency pass**
+Last updated: for the **state-serialization & parameter-compatibility regression harness**
+(v0.8.13 cycle, 2026-07-23, branch `claude/beautiful-sagan-JAUFI` on `main` @ `823bfbe` —
+PR #81 merged). **Validation infrastructure only** — no parameter, serialization, DSP or
+user-visible behaviour change; no version bump / CHANGELOG entry (release-prep steps; the
+changelog scopes to user-visible changes). NEW: `tests/state_tests.cpp` (9 headless
+state-compatibility tests exercising the real `AnamorphAudioProcessor`: schema shape vs
+SERIALIZATION_REGISTRY, parameter-registry snapshot vs a frozen fixture, raw-exact
+save→load→save round-trip, the v0.2 / pre-0.6.4 / pre-0.8.4 legacy-migration paths via frozen
+fixture XMLs, corrupt/foreign-state robustness, user-preset round-trip + exclusion rules, A/B +
+view-param preservation), `tests/fixtures/` (registry snapshot + 3 legacy session models), the
+`AnamorphStateTests` CMake console target (test block only — shipped targets untouched), and the
+blocking CI wiring (`scripts/run-tests.sh` runs both suites fail-closed; the Windows job runs
+both exes; step ids/gating unchanged). Docs synced: TESTING.md (new suite section + snapshot
+workflow), TESTING_POLICY (Level-2 row + hard gate), RELEASE_COMPATIBILITY_CHECKLIST
+(automation annotations on 4 items), CI_CD.md (pipeline step 4), REPOSITORY_MAP, BUILD.md,
+DEVELOPMENT.md, README, RELEASE_HARDENING_PLAN (QA-gate row), HANDOVER. The whole edit set was
+adversarially verified pre-commit (3 lenses: citation accuracy, test quality, policy/scope);
+the pass surfaced and fixed one missed required sync (CI_CD.md), several overstated wordings,
+and four test hardenings (recorded in the worklog §4). Design + architecture
+record: `worklogs/STATE_HARNESS_v0.8.13.md` (includes the honest remaining-gaps statement:
+legacy fixtures are reconstructions; cross-version vN−1→vN reload stays manual). Prior: for the **post-v0.8.12 repository audit & documentation-consistency pass**
 (2026-07-22, branch `claude/beautiful-sagan-JAUFI` at `main` @ `64e87c4` — PR #80 merged).
 **Documentation-only.** Two things: (1) **retroactive coverage of PR #80** (v0.8.12 GUI interaction
 fixes: bare-press no-write + relative Width drag with 3 px threshold in `src/gui/SpectrumImager.{h,cpp}`,
@@ -376,7 +396,7 @@ HEAD `c605fbe` (JUCE 8.0.14).
 |---|---|---|
 | docs root | SOURCE_OF_TRUTH, HANDOVER, REPOSITORY_MAP, DOCUMENTATION_COVERAGE, POSTMORTEMS, KNOWN_ISSUES, FUTURE_RISKS | Present |
 | architecture | 15 docs (incl. RELEASE_HARDENING_PLAN) + ADR_INDEX + 16 ADRs (0016–0020 reserved, see plan §8) | Present |
-| worklogs | performance/ (Waves 3–6 + the v0.8.11 final-pass and crossover-glide investigations), release-hardening/ (RH program working evidence; finalized decisions live in ADRs), root-level v0.8.12 GUI-fix records (`BANDWIDTH_DRAG_FIX_v0.8.12.md`, `MOUSE_RELEASE_STATE_FIX_v0.8.12.md`) + `POST_v0.8.12_AUDIT_AND_ROADMAP.md` | Present |
+| worklogs | performance/ (Waves 3–6 + the v0.8.11 final-pass and crossover-glide investigations), release-hardening/ (RH program working evidence; finalized decisions live in ADRs), root-level v0.8.12 GUI-fix records (`BANDWIDTH_DRAG_FIX_v0.8.12.md`, `MOUSE_RELEASE_STATE_FIX_v0.8.12.md`) + `POST_v0.8.12_AUDIT_AND_ROADMAP.md` + `STATE_HARNESS_v0.8.13.md` | Present |
 | procedures | 8 docs | Present |
 | policies | 15 docs | Present |
 | root | README, CHANGELOG, CLAUDE | Present |
