@@ -4,9 +4,10 @@ Operational status snapshot for technical handover. Update on every release
 (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.md`). Facts are Verified from the repository;
 fields with no repository evidence are marked `TODO` rather than invented (constraint C7).
 
-Snapshot taken with the v0.8.13-cycle **RH-PR-8 release-pipeline foundation** change set
-applied on HEAD `ee82380` (v0.8.12 + audit PR #81 + state-harness PR #82 + JUCE-9 migration
-PR #83, all merged; JUCE 9.0.0 SHA-pinned — ADR-0022, Level-5 audition pending).
+Snapshot taken with the v0.8.13-cycle **product-readiness roadmap** change set applied on
+`main` @ `dcfad73` (v0.8.12 + all five v0.8.13-cycle PRs merged: audit #81, state harness
+#82, JUCE 9 migration #83 (SHA-pinned, ADR-0022 — Level-5 audition pending), RH-PR-8
+pipeline + artifact-integrity #84, release rehearsal #85).
 
 ## Operational status
 
