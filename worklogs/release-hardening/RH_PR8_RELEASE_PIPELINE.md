@@ -113,6 +113,39 @@ step against a scratch repo): annotated tag matching the CMake version → **ACC
 lightweight tag → **REJECT** ("is commit, not annotated"); annotated but version-mismatched →
 **REJECT** — no change to the validation logic was needed.
 
+## 6c. Release rehearsal (post-merge, end-to-end validation)
+
+Run: <https://github.com/skyRolly/Anamorph/actions/runs/30011792515> (`workflow_dispatch` on
+`main` @ `65e1906`, Release run #1, **SUCCESS**, ~19 min).
+
+* **validate**: SUCCESS in 7 s — log shows `CMake project version: 0.8.12` and
+  `rehearsal: CHANGELOG already has a [0.8.12] section`; outputs set; the release path was
+  correctly NOT taken. Tag-gate matrix replicated locally against a scratch repo:
+  annotated+matching tag → ACCEPT; **lightweight tag → REJECT** ("is commit, not annotated");
+  annotated version-mismatch → REJECT; annotated with missing CHANGELOG section → REJECT (4/4).
+* **build (reused build.yml via workflow_call)**: linux SUCCESS (10.3 min — strip, DSP+state
+  suites, pluginval both modes ×3, stage+upload), windows SUCCESS (11.3 min), macos SUCCESS
+  (~18.5 min incl. universal build + both pluginval modes + ditto package). `draft-release`
+  correctly skipped (`is-release=false`).
+* **Artifacts** (5): `Anamorph-Linux` / `-Windows` / `-macOS` each carrying ONE
+  source-created zip, + Linux/Windows debug. `Anamorph-macOS-debug` absent = the **documented
+  best-effort dSYM-under-LTO skip** (the open "macOS dSYM restoration" roadmap item; not a
+  pipeline defect). The CI-built `Anamorph-Linux` artifact was downloaded and inspected:
+  contains exactly `Anamorph-Linux.zip`; the inner listing records `-rwxr-xr-x` on `Anamorph`
+  and `Anamorph.vst3/Contents/x86_64-linux/Anamorph.so`; extraction restores mode 755 on
+  both; the `.so` has **no `.symtab`** (stripped release bytes) and **exports
+  `GetPluginFactory`** (structurally loadable VST3); full bundle tree + `moduleinfo.json`
+  present. **Archive-at-source works end-to-end.**
+* **Release-metadata logic** (draft-release job cannot run without a tag, by design): executed
+  locally against real archives with simulated CI env — rename-only versioned naming,
+  `sha256sum -c` OK, manifest carries version/tag/commit/build number/run URL/hashes, notes =
+  the exact 46-line `[0.8.12]` CHANGELOG section, and the binary inside the renamed release
+  zip is `cmp`-identical to the build output.
+* **Verdict**: the pipeline is validated for the first real tag. Remaining first-tag-only
+  step: the draft-release job's `gh release create` executes for the first time on the real
+  `v0.8.13` tag (its logic is local-proven; the draft is reviewable before publishing, so the
+  residual risk is contained by design). No documentation drift was revealed.
+
 ## 7. Future RH items this unblocks
 
 RH-PR-3 (sign+notarize inserts into `release.yml` between build and draft-release),
