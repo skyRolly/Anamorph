@@ -373,5 +373,4 @@ Bypass (top bar) crossfades to the untouched signal while keeping the analyzers 
 
 ---
 
-*Anamorph is © 2026 RollyTech — www.rolly.tech. Found a bug? Please open an issue on the
-project's GitHub page with your OS, DAW and steps to reproduce.*
+*Anamorph is © 2026 RollyTech — www.rolly.tech.*
