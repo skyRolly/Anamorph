@@ -147,12 +147,30 @@ sudo xattr -dr com.apple.quarantine /Library/Audio/Plug-Ins/Components/Anamorph.
 
 ## Verifying a download (optional, all platforms)
 
-Each release includes `SHA256SUMS.txt`. To check a file:
+Each release includes `SHA256SUMS.txt`. Download it next to the file you want to check,
+then run the command for your platform from that folder:
+
+**Linux** — checks every release file present in the folder, skips the rest:
 
 ```sh
-sha256sum -c --ignore-missing SHA256SUMS.txt        # Linux
-shasum -a 256 -c --ignore-missing SHA256SUMS.txt    # macOS
-CertUtil -hashfile <file> SHA256                    # Windows (compare by eye)
+sha256sum -c --ignore-missing SHA256SUMS.txt
+```
+
+**macOS** — check exactly the file you downloaded (replace the filename with yours;
+repeat per file if you downloaded more than one). This form works on every macOS
+version — older systems' `shasum` doesn't have the `--ignore-missing` option:
+
+```sh
+grep "Anamorph-0.9.0-macOS.pkg" SHA256SUMS.txt | shasum -a 256 -c -
+```
+
+A good file prints `Anamorph-0.9.0-macOS.pkg: OK`.
+
+**Windows** — print the hash and compare it by eye to the matching line in
+`SHA256SUMS.txt`:
+
+```bat
+CertUtil -hashfile Anamorph-0.9.0-Windows-Installer.exe SHA256
 ```
 
 `RELEASE_MANIFEST.txt` on the release lists the exact version, git tag, commit and CI

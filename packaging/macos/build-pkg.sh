@@ -52,6 +52,9 @@ productbuild --synthesize \
 productbuild --distribution "$WORK/distribution.xml" --package-path "$WORK" "$OUT"
 
 # Self-check: the package must expand and contain all three components.
+# `installer -pkginfo` is a query flag (no root needed) — validated on the
+# macos-14 runner (CI run 30056361865: it printed the package title
+# "Anamorph 0.9.0"); installing is what needs sudo, not this.
 installer -pkginfo -pkg "$OUT"
 pkgutil --expand "$OUT" "$WORK/expanded"
 for id in vst3 au app; do
