@@ -23,7 +23,7 @@ this program must follow.
 | Symbol hygiene | **Closed by RH-PR-2 (ADR-0021):** retain-then-strip pipeline on all platforms — debug info generated (`-g`/`/Zi`+`/DEBUG`), captured as separate `Anamorph-<OS>-debug` artifacts (split `.debug`/dSYM/PDB), public binaries stripped (`nm: no symbols`; dynamic exports untouched). Visibility was already hidden via JUCE's plugin helpers (JUCEUtils.cmake) — the earlier "no explicit `CXX_VISIBILITY_PRESET`" row described our CMakeLists, not the effective build; recorded in the ADR instead of restated | [Verified] build.yml, CMakeLists.txt (AnamorphHardening), RH_PR2_INVESTIGATION.md |
 | LTO | `juce::juce_recommended_lto_flags` linked on the plugin target; **verified applied** to compiles and the final format-target links (`-flto` measured on both, RH-PR-2) | [Verified] CMakeLists.txt; RH_PR2_INVESTIGATION.md |
 | Networking | `JUCE_USE_CURL=0`, `JUCE_WEB_BROWSER=0` → **no `juce::URL` backend on Linux**; macOS/Windows use native OS backends | [Verified] CMakeLists.txt compile definitions; DEPENDENCY_POLICY.md |
-| Installers | **Unsigned skeletons shipped (v0.9.0)**: Linux tar.gz + install script, Windows Inno Setup exe, macOS `.pkg` — built in CI from the validated staging dirs, published on releases next to the zips; signing/notarization of them remain RH-PR-3/5 | [Verified] PACKAGING.md §Installable packages; build.yml packaging steps |
+| Installers | **Unsigned skeletons shipped (v0.9.0)**: Linux install script (inside the zip), Windows Inno Setup exe (component selection + dual-path destination page), macOS `.pkg` (component selection) — built in CI from the validated staging dirs, published on releases next to the zips; all system-wide; signing/notarization of them remain RH-PR-3/5 | [Verified] PACKAGING.md §Installers; build.yml packaging steps |
 | Update mechanism | None | [Verified] `src/` tree |
 | Crash reporting | None | [Verified] `src/` tree |
 | Version management | **Annotated `vX.Y.Z` tag convention adopted (RH-PR-8)**; no tag cut yet (first: v0.9.0 — closes RISK-003 when practiced); version in `CMakeLists.txt` + About box; CI run number as build number | [Verified] RELEASE_PROCESS.md §Tagging |
@@ -42,7 +42,7 @@ IDs are program-local (`RH-R*`); if any is accepted as a standing repository ris
 | RH-R2 | macOS not notarized → Gatekeeper blocks by default on modern macOS; the `xattr` workaround is a support wall and looks untrustworthy to paying customers | Critical (blocking) |
 | RH-R3 | No Windows Authenticode → SmartScreen "unknown publisher" interstitials; some AV heuristics flag unsigned audio plugins | High |
 | RH-R4 | ~~Unstripped binaries with full symbol names~~ **Mitigated by RH-PR-2 (ADR-0021)**: shipped binaries stripped, RTTI typeinfo names the only accepted residue | ~~High~~ Closed |
-| RH-R5 | ~~No installers~~ **Unsigned installer skeletons shipped (v0.9.0)**: Linux tar.gz + install script, Windows Inno Setup exe (stable AppId → upgrade path + uninstall entry), macOS .pkg to the standard locations. Residual = the installers are unsigned (RH-R2/R3 apply to them) | High → Low (residual folds into RH-R2/R3) |
+| RH-R5 | ~~No installers~~ **Unsigned installer skeletons shipped (v0.9.0)**: Linux install script inside the zip, Windows Inno Setup exe (stable AppId → upgrade path + uninstall entry; component selection), macOS .pkg (component selection) to the standard system-wide locations. Residual = the installers are unsigned (RH-R2/R3 apply to them) | High → Low (residual folds into RH-R2/R3) |
 | RH-R6 | ~~No git tags / tag-triggered release pipeline~~ **Pipeline shipped by RH-PR-8** (tag convention + `release.yml`); residual = no tag cut yet — closes with the first release tag (v0.9.0), which makes shipped bytes attributable to a source state (RISK-003) | Medium → Low |
 | RH-R7 | No update notification → shipped defects persist silently in the field | Medium |
 | RH-R8 | No crash reporting; ~~no retained debug symbols~~ **symbol retention shipped in RH-PR-2** (per-run `Anamorph-<OS>-debug` artifacts: split `.debug`/dSYM/PDB) — a full crash-reporter remains Phase-2 (§7) | Medium → Low (symbolication now possible) |
@@ -233,15 +233,15 @@ reverted or ADR'd, not shipped silently.
 
 **Linux (in RH-PR-2/6):**
 - No platform signing/notarization ecosystem exists; ship stripped, hardened binaries with
-  **published SHA-256 checksums** in the release notes, packaged as a tarball + install script.
-  Accept the weaker protection floor explicitly (the Linux audio market rewards openness;
-  heavier DRM here costs more goodwill than it protects).
+  **published SHA-256 checksums** in the release notes, packaged as a flat zip with an
+  install script. Accept the weaker protection floor explicitly (the Linux audio market
+  rewards openness; heavier DRM here costs more goodwill than it protects).
 
 ## 7. Release engineering (Phase 5)
 
 | Area | Plan |
 |---|---|
-| Installers | macOS: signed + notarized `.pkg` (`productbuild`) installing to the standard `/Library/Audio/Plug-Ins/` paths (PACKAGING.md table), selectable VST3/AU/Standalone components. Windows: Inno Setup (or WiX) `.exe`/`.msi` → `%CommonProgramFiles%\VST3\`, Authenticode-signed. Linux: versioned tarball + `install.sh` + SHA-256 sums |
+| Installers | macOS: signed + notarized `.pkg` (`productbuild`) installing to the standard `/Library/Audio/Plug-Ins/` paths (PACKAGING.md table), selectable VST3/AU/Standalone components. Windows: Inno Setup (or WiX) `.exe`/`.msi` → `%CommonProgramFiles%\VST3\`, Authenticode-signed. Linux: flat zip + `install.sh` + SHA-256 sums |
 | Version management | **Adopt annotated git tags** (`v0.8.10` style) — closes RISK-003; the tag is the release trigger and the CHANGELOG entry cites it (upgrades CHANGELOG evidence from "commit SHA" to "tag") |
 | Release pipeline | New separate `release.yml` triggered by tag push: build (reusing the build.yml matrix) → sign → notarize/staple → package installers → generate SHA-256 sums → draft GitHub Release with CHANGELOG excerpt. Secrets scoped to a protected GitHub *environment* with required review; `build.yml` keeps `contents: read` and **never** sees signing secrets (PR builds from agents must not be able to exfiltrate them) |
 | Update mechanism | In-plugin **check only** (never self-update a plugin binary): message-thread fetch of a signed version manifest over HTTPS, compare, show a non-modal notice linking to the account page. Opt-out in Settings (host-hidden `InternalState`, ADR-0010 pattern — *not* a new APVTS parameter). Same Linux networking caveat as §4.3 |

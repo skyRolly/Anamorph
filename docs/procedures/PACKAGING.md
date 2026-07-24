@@ -8,8 +8,7 @@ Build-artifact structure, installers, code-signing, and install layout. Source:
 
 | Platform | Artifact | Contents |
 |---|---|---|
-| Linux | `Anamorph-Linux` | `Anamorph-Linux.zip` (single archive: stripped `Anamorph.vst3`, `Anamorph` Standalone, `INSTALL.txt`) |
-| Linux | `Anamorph-Linux-package` | `Anamorph-<version>-Linux.tar.gz` (the zip contents + `install.sh`/`uninstall.sh`, under a versioned top-level dir) |
+| Linux | `Anamorph-Linux` | `Anamorph-Linux.zip` (single archive: stripped `Anamorph.vst3`, `Anamorph` Standalone, `install.sh`/`uninstall.sh`, `INSTALL.txt`) |
 | Linux | `Anamorph-Linux-debug` | split debug info (`.debug` files, `.gnu_debuglink`-referenced) |
 | Windows | `Anamorph-Windows` | `Anamorph-Windows.zip` (single archive: `Anamorph.vst3`, `Anamorph.exe` Standalone, `INSTALL.txt`; no PDBs) |
 | Windows | `Anamorph-Windows-installer` | `Anamorph-<version>-Windows-Installer.exe` (Inno Setup, built from the same staged payload) |
@@ -20,34 +19,46 @@ Build-artifact structure, installers, code-signing, and install layout. Source:
 
 Customer artifacts are **archived at the source** (Info-ZIP `-ry` on Linux, `Compress-Archive`
 on Windows, `ditto -c -k` on macOS) because the artifact transport itself does not preserve
-Unix file permissions or symlinks — the archive bytes do. Extract with `unzip` (Linux) /
-Explorer (Windows) / double-click or `ditto -x -k` (macOS); executable bits and the signed
-macOS bundle layout are intact inside. `release.yml` publishes these exact archive bytes
-untouched (renamed to `Anamorph-<version>-<OS>.zip`).
+Unix file permissions or symlinks — the archive bytes do. All three zips store the payload
+at the **archive root** (no versioned wrapper directory, no nested archive): extracting
+shows the packaged files immediately. Extract with `unzip` (Linux) / Explorer (Windows) /
+double-click or `ditto -x -k` (macOS); executable bits and the signed macOS bundle layout
+are intact inside (the Linux staging step self-checks the executable bits of the
+Standalone, the `.so` and the install scripts inside the zip). `release.yml` publishes
+these exact archive bytes untouched (renamed to `Anamorph-<version>-<OS>.zip`).
 
-## Installable packages (v0.9.0)
+## Installers (v0.9.0)
 
-Each platform job additionally builds a **user-installable package** from the *same*
-validated staging directory the zip was archived from, in a separate, additively gated step
-(`package_linux` / `package_windows` / `package_macos_pkg`), each with the version parsed
-from `CMakeLists.txt` embedded in a deterministic file name:
+Every platform offers an **installer route** and a **manual (zip) route**; both install
+into the standard **system-wide** locations. The Windows/macOS installers are built from
+the *same* validated staging directory the zip was archived from, in separate, additively
+gated steps (`package_windows` / `package_macos_pkg`), each with the version parsed from
+`CMakeLists.txt` embedded in a deterministic file name:
 
-- **Linux** — `Anamorph-<version>-Linux.tar.gz`: the staged payload plus
-  `packaging/linux/install.sh` / `uninstall.sh` / `INSTALL.txt` under a versioned top-level
-  directory. `install.sh` installs user-locally (`~/.vst3`, `~/.local/bin`) with no root;
-  a CI self-check asserts the executable bit survived into the tarball.
+- **Linux** — the installer is `packaging/linux/install.sh`, shipped **inside the zip**
+  (no separate Linux package archive). It installs system-wide with root (`sudo`):
+  VST3 → `/usr/lib/vst3`, Standalone → `/usr/local/bin`; `uninstall.sh` reverses it.
 - **Windows** — `Anamorph-<version>-Windows-Installer.exe`: compiled by the preinstalled
-  Inno Setup 6 (`ISCC.exe`) from `packaging/windows/Anamorph.iss` (stable `AppId`; VST3 →
-  `{commoncf64}\VST3`, Standalone → Program Files + Start-menu, real uninstall entry;
-  requires elevation). Not yet Authenticode-signed — RH-PR-5 signs this same exe.
+  Inno Setup 6 (`ISCC.exe`) from `packaging/windows/Anamorph.iss` (stable `AppId`;
+  requires elevation; real uninstall entry). Wizard: a **component page** (*Install VST3*
+  / *Install Standalone*, both pre-selected, at least one required — enforced in
+  `[Code]`), then **one destination page with both paths** (VST3 folder above the
+  Standalone folder; defaults `{commoncf64}\VST3` and Program Files + Start-menu). The
+  chosen Standalone folder is written back to `{app}`, so the uninstaller and Start-menu
+  icon follow it. No post-install "launch" checkbox. Not yet Authenticode-signed —
+  RH-PR-5 signs this same exe.
 - **macOS** — `Anamorph-<version>-macOS.pkg`: `packaging/macos/build-pkg.sh` builds three
   component packages (VST3 → `/Library/Audio/Plug-Ins/VST3`, AU → `.../Components`, app →
-  `/Applications`) and combines them with `productbuild`; a self-check expands the result
-  and asserts all three component identifiers. Payloads installed by Installer.app carry no
-  quarantine attribute (unlike zip-extracted bundles). Not yet signed/notarized — RH-PR-3
-  signs + notarizes this same package.
+  `/Applications`) and combines them with `productbuild` over a hand-written distribution
+  (**`customize="allow"`, all choices pre-selected** — the default is a full install and
+  Installer.app's *Customize* button exposes per-component checkboxes; `<domains
+  enable_localSystem>` pins the system-wide destinations). A self-check expands the
+  result and asserts all three component identifiers plus the customize/pre-selected
+  attributes. Payloads installed by Installer.app carry no quarantine attribute (unlike
+  zip-extracted bundles). Not yet signed/notarized — RH-PR-3 signs + notarizes this same
+  package.
 
-`release.yml` downloads the three package artifacts alongside the zips, **fail-closes on a
+`release.yml` downloads the two installer artifacts alongside the zips, **fail-closes on a
 missing or version-skewed file name**, moves them into the draft release unmodified, and
 covers them in `SHA256SUMS.txt`. The user manual (`docs/user/USER_MANUAL.md`) is attached
 as `Anamorph-<version>-UserManual.md`.
@@ -98,17 +109,19 @@ lipo -archs Anamorph.vst3/Contents/MacOS/Anamorph        # expect: x86_64 arm64
 ```
 Evidence [Verified]: build.yml (Package macOS plugins step).
 
-## Standard plug-in install locations
+## Standard install locations (system-wide, both routes)
 
-| Format | macOS | Windows | Linux |
+| What | macOS | Windows | Linux |
 |---|---|---|---|
-| VST3 | `/Library/Audio/Plug-Ins/VST3/` | `%CommonProgramFiles%\VST3\` | `~/.vst3/` |
+| VST3 | `/Library/Audio/Plug-Ins/VST3/` | `%CommonProgramFiles%\VST3\` | `/usr/lib/vst3/` |
 | AU | `/Library/Audio/Plug-Ins/Components/` | — | — |
+| Standalone | `/Applications/` | `%ProgramFiles%\Anamorph\` | `/usr/local/bin/` |
 
-(All three now asserted from repo evidence: the per-platform `packaging/<os>/INSTALL.txt`
-files and the installer destinations in `packaging/windows/Anamorph.iss` /
-`packaging/macos/build-pkg.sh` / `packaging/linux/install.sh`. The Windows installer uses
-the per-machine `{commoncf64}\VST3`; the Linux install script uses the per-user `~/.vst3`.)
+Installer and manual routes target the **same system-wide locations** (the Windows
+installer additionally lets the user change both paths on its destination page). All
+asserted from repo evidence: the per-platform `packaging/<os>/INSTALL.txt` files and the
+installer destinations in `packaging/windows/Anamorph.iss` / `packaging/macos/build-pkg.sh`
+/ `packaging/linux/install.sh`.
 
 ## Not in scope
 

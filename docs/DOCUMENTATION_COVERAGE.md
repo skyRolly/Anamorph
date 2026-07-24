@@ -6,7 +6,24 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **v0.9.0 release preparation** (2026-07-24, PR #87, on top of
+Last updated: for the **v0.9.0 installer/packaging rework** (2026-07-24, PR #89): the
+Windows Inno Setup installer gains a **component page** (Install VST3 / Install
+Standalone, both pre-selected, ≥1 enforced) and a **single destination page with both
+paths** (VST3 above Standalone; the launch-after-install checkbox is removed); the macOS
+`.pkg` gains **component selection** (hand-written distribution, `customize="allow"`,
+full-install default, system-wide domain); the Linux `install.sh`/`uninstall.sh` move
+**into the zip** and switch to **system-wide** installs (`/usr/lib/vst3`,
+`/usr/local/bin`, root required) — the separate `Anamorph-<version>-Linux.tar.gz`
+package artifact is REMOVED (release archives are flat ZIPs only, payload at the archive
+root); all three `INSTALL.txt` files restructured (Installer vs Manual sections, both
+system-wide). Docs synced per the lifecycle triggers: PACKAGING (artifact table,
+archive-contract note, §Installers rewrite, install-locations table incl. Standalone
+row), CI_CD (pipeline item 8 + artifact table), RELEASE_PROCESS (asset list),
+INSTALLATION.md (all three platforms + version-number placeholders replacing literal
+versions), USER_MANUAL (version-agnostic wording), README (Installing section),
+KNOWN_ISSUES (KI-005 wording), RELEASE_HARDENING_PLAN (installer rows/plan wording),
+HANDOVER (status rows), REPOSITORY_MAP (packaging rows), CHANGELOG `[0.9.0]` packaging
+bullet. Prior: for the **v0.9.0 release preparation** (2026-07-24, PR #87, on top of
 `main` @ `86b4273`): version bump 0.8.12 → **0.9.0** + CHANGELOG `[0.9.0]`; **installable
 packages** added to CI (Linux `Anamorph-<version>-Linux.tar.gz` + `packaging/linux/`
 install/uninstall scripts, Windows `Anamorph-<version>-Windows-Installer.exe` via

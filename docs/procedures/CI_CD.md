@@ -76,13 +76,15 @@ failures as green and has been removed). Evidence [Verified]: `.github/workflows
    strip/staging/packaging step to have succeeded (`steps.<id>.outcome` gating), and the staging
    steps self-validate (no symbol table, no debug files in the public copy). A pluginval-only
    failure still uploads beta artifacts; developer `-debug` artifacts survive packaging failures.
-8. **Installable packages (v0.9.0, additive)** — after each staging step, a separate
-   packaging step builds the user-installable package from the same validated staging dir
-   (Linux `tar.gz` + install scripts with an exec-bit self-check; Windows Inno Setup
-   installer via the preinstalled `ISCC.exe`; macOS `.pkg` via
-   `packaging/macos/build-pkg.sh` with a component self-check). Uploaded as
-   `Anamorph-<OS>-{package,installer}` artifacts under the same fail-closed gate as the
-   customer zips (tests + own step outcome). See `PACKAGING.md` §Installable packages.
+8. **Installers (v0.9.0)** — the Linux zip itself carries `install.sh`/`uninstall.sh`
+   (system-wide install; the staging step self-checks the executable bits inside the
+   zip). After the Windows/macOS staging steps, a separate packaging step builds the
+   user-installable installer from the same validated staging dir (Windows Inno Setup
+   installer — component selection + dual-path destination page — via the preinstalled
+   `ISCC.exe`; macOS `.pkg` with component selection via `packaging/macos/build-pkg.sh`,
+   self-checked for components + customize attributes). Uploaded as
+   `Anamorph-<OS>-installer` artifacts under the same fail-closed gate as the customer
+   zips (tests + own step outcome). See `PACKAGING.md` §Installers.
 
 Evidence [Verified]: `.github/workflows/build.yml`; `scripts/run-pluginval.sh`; `scripts/run-pluginval.ps1`.
 
@@ -97,8 +99,7 @@ miss. Evidence [Verified]: `.github/workflows/build.yml`.
 
 | Artifact | Contents | `if-no-files-found` |
 |---|---|---|
-| `Anamorph-Linux` | `Anamorph-Linux.zip`: stripped `Anamorph.vst3` + `Anamorph` (Standalone) + `INSTALL.txt` | error |
-| `Anamorph-Linux-package` | `Anamorph-<version>-Linux.tar.gz` (payload + `install.sh`/`uninstall.sh`) | error |
+| `Anamorph-Linux` | `Anamorph-Linux.zip`: stripped `Anamorph.vst3` + `Anamorph` (Standalone) + `install.sh`/`uninstall.sh` + `INSTALL.txt` | error |
 | `Anamorph-Linux-debug` | `Anamorph.vst3.so.debug`, `Anamorph.standalone.debug` (split debug info) | error |
 | `Anamorph-Windows` | `Anamorph-Windows.zip`: `Anamorph.vst3` + `Anamorph.exe` (Standalone; PDBs removed) + `INSTALL.txt` | error |
 | `Anamorph-Windows-installer` | `Anamorph-<version>-Windows-Installer.exe` (Inno Setup) | error |
