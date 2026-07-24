@@ -1,7 +1,7 @@
 # Anamorph — User Manual
 
-*Applies to Anamorph 0.9.0. The plug-in's exact version and build number are shown on the
-About screen (click the **ANAMORPH** title).*
+*The plug-in's exact version and build number are shown on the About screen (click the
+**ANAMORPH** title).*
 
 ---
 
@@ -275,7 +275,7 @@ A preset stores **sound parameters only**. Deliberately excluded: Bypass, band s
 Presets are **forward-compatible**: a preset saved by an older Anamorph loads fine in a
 newer one — any parameter the old file doesn't mention simply keeps its factory default.
 Parameter identities are frozen and regression-tested in CI, so `.anamorph` files and DAW
-sessions from 0.8.x load unchanged in 0.9.0.
+sessions from older versions load unchanged in newer ones.
 
 ### 7.4 A/B compare
 

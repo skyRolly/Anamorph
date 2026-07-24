@@ -10,18 +10,27 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 
 ## [0.9.0] — 2026-07-24
 ### Added
-- **User-installable packages for every platform**, published alongside the unchanged
-  archive downloads. Linux: `Anamorph-<version>-Linux.tar.gz` with `install.sh` /
-  `uninstall.sh` (user-local install to `~/.vst3` and `~/.local/bin`, no root needed).
-  Windows: `Anamorph-<version>-Windows-Installer.exe` (Inno Setup — VST3 to
-  `Common Files\VST3`, Standalone + Start-menu entry, real uninstall entry in
-  Settings › Apps; not yet Authenticode-signed, so SmartScreen warns once — RH-PR-5).
-  macOS: `Anamorph-<version>-macOS.pkg` (installs VST3 + AU + Standalone app to the
-  standard `/Library/Audio/Plug-Ins` and `/Applications` locations; package payloads carry
-  no quarantine attribute, so the manual `xattr` step the zip needs disappears; not yet
-  notarized — right-click → Open once — RH-PR-3). All three are built in CI from the same
-  validated staging directories as the existing zips; nothing is re-packed downstream.
-  Evidence: PR #87 (v0.9.0 release prep). [Verified]
+- **User-installable packages for every platform**, published alongside the flat ZIP
+  archive downloads (extracting any zip shows the packaged files directly — no wrapper
+  folder, no nested archive). Both install routes on every platform target the standard
+  **system-wide** locations. Linux: `install.sh` / `uninstall.sh` ship inside
+  `Anamorph-<version>-Linux.zip` (system-wide install to `/usr/lib/vst3` and
+  `/usr/local/bin` with `sudo`; no separate tar.gz package). Windows:
+  `Anamorph-<version>-Windows-Installer.exe` (Inno Setup — component page with
+  *Install VST3* / *Install Standalone*, both pre-selected and at least one required;
+  one destination page configures both paths, VST3 above Standalone; VST3 to
+  `Common Files\VST3`, Standalone + Start-menu entry to Program Files; real uninstall
+  entry in Settings › Apps; no post-install launch checkbox; not yet
+  Authenticode-signed, so SmartScreen warns once — RH-PR-5). macOS:
+  `Anamorph-<version>-macOS.pkg` with **component selection** (VST3 / AU / Standalone
+  app choices, full install by default via Installer's Customize button) to the standard
+  `/Library/Audio/Plug-Ins` and `/Applications` locations; package payloads carry no
+  quarantine attribute, so the manual `xattr` step the zip needs disappears; not yet
+  notarized — right-click → Open once — RH-PR-3. All installers are built in CI from the
+  same validated staging directories as the zips; nothing is re-packed downstream.
+  Evidence: PR #87 (v0.9.0 release prep); PR #89 (installer/packaging rework:
+  component selection, dual-path destination, system-wide installs, ZIP-only
+  artifacts). [Verified]
 - **User documentation**: a full user manual (`docs/user/USER_MANUAL.md`, also attached to
   GitHub releases) covering every panel, control and parameter, signal flow, the four
   widening algorithms, presets/A-B, workflow examples and troubleshooting; plus a
@@ -77,11 +86,12 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   the three legacy session-format migration paths, corrupt/foreign state handling, preset
   round-trips and A/B preservation. Validation infrastructure only.
   Evidence: PR #82 / commit `d6bdb13`; `worklogs/STATE_HARNESS_v0.8.13.md`. [Verified]
-- **New CI packaging artifacts** `Anamorph-Linux-package`, `Anamorph-Windows-installer` and
-  `Anamorph-macOS-installer` carry the installable packages above; the existing
-  `Anamorph-<OS>` (+`-debug`) artifacts are unchanged. The release job stages the packages
+- **New CI packaging artifacts** `Anamorph-Windows-installer` and `Anamorph-macOS-installer`
+  carry the installers above; the `Anamorph-Linux` zip artifact now additionally carries
+  `install.sh`/`uninstall.sh` (its staging step self-checks the executable bits inside the
+  zip), and the `-debug` artifacts are unchanged. The release job stages the installers
   with the same fail-closed, never-re-packed contract as the zips.
-  Evidence: PR #87 (v0.9.0 release prep). [Verified]
+  Evidence: PR #87 (v0.9.0 release prep); PR #89 (packaging rework). [Verified]
 
 ## [0.8.12] — 2026-07-22
 ### Changed

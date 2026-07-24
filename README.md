@@ -52,9 +52,10 @@ The produced plugin is typically at `build/Anamorph_artefacts/Release/VST3/Anamo
 
 ## Installing (users)
 Releases are published on the **GitHub Releases** page (draft → published after the manual
-audition): per platform an **installer/package** (Linux `tar.gz` + install script, Windows
-Inno Setup installer, macOS `.pkg`) *and* a plain zip, plus `SHA256SUMS.txt` and
-`RELEASE_MANIFEST.txt`. Step-by-step: **[`docs/user/INSTALLATION.md`](docs/user/INSTALLATION.md)**;
+audition): per platform an **installer** (Windows Inno Setup installer and macOS `.pkg`,
+both with component selection; on Linux the zip itself carries `install.sh`) *and* a plain
+zip (flat contents — extracting shows the files directly), plus `SHA256SUMS.txt` and
+`RELEASE_MANIFEST.txt`. Both routes install to the standard system-wide locations. Step-by-step: **[`docs/user/INSTALLATION.md`](docs/user/INSTALLATION.md)**;
 full manual: **[`docs/user/USER_MANUAL.md`](docs/user/USER_MANUAL.md)**.
 Prebuilt binaries for all three OSes are also uploaded as **GitHub Actions artifacts** on every
 push (macOS bundles are ad-hoc signed, not notarized — see `packaging/macos/INSTALL.txt`).

@@ -1,48 +1,52 @@
 Anamorph — Linux install / 安装说明
 ====================================
 
-This package was built by CI for x86_64 Linux. It contains:
+This package was built by CI for x86_64 Linux. Extracting the zip gives you:
 
   Anamorph.vst3/   the VST3 plug-in bundle
   Anamorph         the Standalone application
-  install.sh       installs both for the current user (no root needed)
+  install.sh       installer script (system-wide, needs root)
   uninstall.sh     removes what install.sh installed
+  INSTALL.txt      this file
 
-本包由 CI 为 x86_64 Linux 构建,包含 VST3 插件、独立版程序,以及
-install.sh(为当前用户安装,不需要 root)和 uninstall.sh(卸载)。
+本包由 CI 为 x86_64 Linux 构建,解压后即可看到 VST3 插件、独立版程序,
+以及 install.sh(系统级安装,需要 root)和 uninstall.sh(卸载)。
+
+Both installation methods below install SYSTEM-WIDE (for all users), into
+the standard locations every DAW scans by default.
+下面两种安装方式都是系统级安装(对所有用户生效),装到 DAW 默认扫描的标准位置。
 
 --------------------------------------------------------------------
-1) Easy install / 一键安装
+A) Installer installation (recommended) / 脚本安装(推荐)
 --------------------------------------------------------------------
-      ./install.sh
+      sudo ./install.sh
 
   This copies:
-    Anamorph.vst3  ->  ~/.vst3/Anamorph.vst3        (the standard user VST3 path)
-    Anamorph       ->  ~/.local/bin/Anamorph        (Standalone)
+    Anamorph.vst3  ->  /usr/lib/vst3/Anamorph.vst3     (standard system VST3 path)
+    Anamorph       ->  /usr/local/bin/Anamorph         (Standalone)
 
-  install.sh 会把 VST3 复制到 ~/.vst3/,独立版复制到 ~/.local/bin/。
+  install.sh 会把 VST3 复制到 /usr/lib/vst3/,独立版复制到 /usr/local/bin/。
 
   To remove later / 以后卸载:
-      ./uninstall.sh
+      sudo ./uninstall.sh
 
 --------------------------------------------------------------------
-2) Manual install / 手动安装
+B) Manual installation / 手动安装
 --------------------------------------------------------------------
   * VST3 (REAPER, Bitwig, Ardour, Qtractor, ...):
-        mkdir -p ~/.vst3
-        cp -R Anamorph.vst3 ~/.vst3/
-
-    System-wide instead (all users, needs root) / 系统级安装(需要 root):
+        sudo mkdir -p /usr/lib/vst3
         sudo cp -R Anamorph.vst3 /usr/lib/vst3/
 
   * Standalone / 独立版:
-        cp Anamorph ~/.local/bin/     (or any directory on your PATH)
+        sudo cp Anamorph /usr/local/bin/
+
+  Copying into /usr needs root (sudo). / 复制到 /usr 需要 root 权限(sudo)。
 
 --------------------------------------------------------------------
-3) Rescan in your DAW / 在 DAW 里重新扫描插件
+Rescan in your DAW / 在 DAW 里重新扫描插件
 --------------------------------------------------------------------
   * REAPER:  Options > Preferences > Plug-ins > VST > Re-scan.
-             Make sure ~/.vst3 is in the VST3 path list (it is by default).
+             /usr/lib/vst3 is in the default VST3 path list.
   * Bitwig:  Settings > Locations > Plug-in Locations.
   * Ardour:  Preferences > Plugins > Scan for Plugins.
 
@@ -51,10 +55,10 @@ Troubleshooting / 常见问题
 --------------------------------------------------------------------
 - "Permission denied" when launching the Standalone: the executable bit
   was lost (some archive tools drop it). Fix / 如果提示没有执行权限:
-      chmod +x ~/.local/bin/Anamorph
-      chmod +x ~/.vst3/Anamorph.vst3/Contents/x86_64-linux/Anamorph.so
-- Standalone not found after install: make sure ~/.local/bin is on your
-  PATH (log out/in after the first install on some distros).
-  安装后找不到独立版:确认 ~/.local/bin 在 PATH 里。
-- The plug-in needs a working ALSA/JACK/PipeWire audio setup for the
-  Standalone; inside a DAW no extra setup is needed.
+      sudo chmod +x /usr/local/bin/Anamorph
+      sudo chmod +x /usr/lib/vst3/Anamorph.vst3/Contents/x86_64-linux/Anamorph.so
+- DAW doesn't find the plug-in: make sure the WHOLE Anamorph.vst3 folder
+  (not a file from inside it) is in /usr/lib/vst3, then rescan.
+  找不到插件:确认复制的是整个 Anamorph.vst3 文件夹,再重新扫描。
+- The Standalone needs a working ALSA/JACK/PipeWire audio setup; inside a
+  DAW no extra setup is needed.

@@ -6,9 +6,10 @@ fixed, remove it here and (if notable) add a `POSTMORTEMS.md` entry.
 
 Version-synced to **v0.9.0** (release-prep, 2026-07-24, PR #87 — no plugin code changed since
 v0.8.12 (the JUCE 9 bump is proven bit-identical), so no issue's status moved except one issue
-**removed**: KI-005 "No graphical installer" — v0.9.0 ships a Linux tar.gz+install-script, a
-Windows Inno Setup installer and a macOS .pkg (unsigned until RH-PR-3/5; `docs/procedures/PACKAGING.md`
-§Installable packages). Previously verified against repository HEAD `64e87c4` (post-v0.8.12
+**removed**: KI-005 "No graphical installer" — v0.9.0 ships a Linux install script (inside
+the zip), a Windows Inno Setup installer and a macOS .pkg, all installing system-wide with
+component selection on Windows/macOS (unsigned until RH-PR-3/5; `docs/procedures/PACKAGING.md`
+§Installers). Previously verified against repository HEAD `64e87c4` (post-v0.8.12
 content re-audit), synced to the **v0.8.12 release** (changelog-dated 2026-07-22, PR #79
 performance Wave 6 + PR #80 GUI interaction fixes — one issue **added**: KI-013, the
 release-outside stuck-press reconcile is inert on macOS
@@ -41,7 +42,6 @@ JUCE 8.0.14; before that 0.8.8 for PR #54).
 | KI-002 | macOS artifacts not notarized (manual de-quarantine required) | Medium | Confirmed (distribution) |
 | KI-003 | pluginval Linux editor tests crash (external host-side JUCE) | Low | Confirmed, mitigated/external |
 | KI-004 | No automated DAW/host-compatibility testing | Medium | Confirmed (coverage gap) |
-| KI-005 | No graphical installer (manual copy install) | Low | Confirmed (packaging) |
 | KI-006 | Linux: tooltip rounded corners render an opaque black background instead of transparent | Low | Fix applied (LookAndFeel); Linux visual re-test pending |
 | KI-007 | Windows: pluginval "Editor Automation" abnormally terminates (was hidden by a run-pluginval.ps1 false green) | Medium | False green closed; GL-drop cleared the crash (CI-confirmed); advancedMode-automation fix in place — no recurrence observed (green release gates recorded in HANDOVER Build Status, v0.8.9–v0.8.12) |
 | KI-008 | Advanced-toggle one-frame tear in async-resize hosts (JUCE VST3 wrapper window-grant gap) | Low | Confirmed, external (JUCE wrapper + host); not fixable plugin-side without a JUCE change |
@@ -88,9 +88,10 @@ behaviour (Ableton/Logic/Cubase/Reaper/Pro Tools/...) is therefore **Unverified*
 - **Evidence [Verified]:** docs/architecture/COMPATIBILITY_MATRIX.md (hosts Unverified); docs/procedures/TESTING.md ("What cannot be verified headlessly").
   Enforced as a manual line item in `docs/procedures/RELEASE_COMPATIBILITY_CHECKLIST.md`.
 
-*(KI-005 "No graphical installer" — RESOLVED in v0.9.0: Linux tar.gz + install script,
-Windows Inno Setup installer, macOS .pkg; see `docs/procedures/PACKAGING.md` §Installable
-packages. The installers are not yet signed/notarized — that remains KI-002 / RH-PR-3/5.
+*(KI-005 "No graphical installer" — RESOLVED in v0.9.0: Linux install script shipped in
+the zip, Windows Inno Setup installer (component selection + dual-path destination page),
+macOS .pkg (component selection); see `docs/procedures/PACKAGING.md` §Installers. The
+installers are not yet signed/notarized — that remains KI-002 / RH-PR-3/5.
 ID retired, never reused.)*
 
 ## KI-006 — Linux tooltip corners render black instead of transparent
