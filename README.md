@@ -20,7 +20,7 @@ only — it configures and builds entirely from the command line on a headless L
 
 ## Supported platforms & formats
 - **Formats:** VST3 (all platforms), **AU** (macOS, for Logic/GarageBand), Standalone.
-  **AAX is not supported** (out of scope — needs Avid/PACE/iLok).
+  **AAX is not supported**.
 - **Platforms:** Linux x86-64, Windows x86-64, macOS universal (arm64 + x86_64).
 - **I/O:** stereo→stereo and mono→stereo (output is always stereo; **mono→mono is not supported**).
 - Full matrix + status: `docs/architecture/COMPATIBILITY_MATRIX.md`.
