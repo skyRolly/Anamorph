@@ -121,6 +121,8 @@ jobs:
           cp -R build/Anamorph_artefacts/Release/VST3/Anamorph.vst3 "$DIST/"
           cp    build/Anamorph_artefacts/Release/Standalone/Anamorph "$DIST/Anamorph"
           cp    packaging/linux/INSTALL.txt "$DIST/INSTALL.txt"
+          install -m 755 packaging/linux/install.sh   "$DIST/install.sh"
+          install -m 755 packaging/linux/uninstall.sh "$DIST/uninstall.sh"
           # The customer artifact must contain no symbol table and no debug files.
           while IFS= read -r -d '' ELF; do
             if readelf -S "$ELF" 2>/dev/null | grep -q '\.symtab'; then
@@ -132,34 +134,19 @@ jobs:
           fi
           # Archive at the SOURCE with Unix modes + symlinks preserved
           # (Info-ZIP stores them; the actions/upload-artifact transport does
-          # NOT preserve file permissions). The artifact carries this single
-          # zip, and release.yml publishes these exact bytes untouched --
-          # without this, the executable bits on Anamorph.so / the Standalone
-          # binary are lost in the artifact round-trip.
+          # NOT preserve file permissions). Entries sit at the archive ROOT --
+          # extracting shows the payload immediately, with no wrapper folder
+          # and no nested archive. The artifact carries this single zip, and
+          # release.yml publishes these exact bytes untouched -- without this,
+          # the executable bits on Anamorph.so / the Standalone binary /
+          # install.sh are lost in the artifact round-trip.
           (cd "$DIST" && zip -qry ../Anamorph-Linux.zip .)
-
-      # v0.9.0 packaging (additive): a user-installable versioned tarball
-      # NEXT TO the unchanged zip artifact. tar preserves Unix modes natively;
-      # the deterministic name embeds the version parsed from CMakeLists.txt
-      # (the same single source release.yml validates a tag against).
-      - name: Package Linux tarball (user-installable)
-        id: package_linux
-        if: ${{ !cancelled() && steps.stage.outcome == 'success' }}
-        run: |
-          set -e
-          VERSION="$(sed -nE 's/^project\(Anamorph VERSION ([0-9]+\.[0-9]+\.[0-9]+) .*/\1/p' CMakeLists.txt)"
-          test -n "$VERSION"
-          PKG="dist/pkgroot/Anamorph-${VERSION}-Linux"
-          mkdir -p "$PKG"
-          cp -R dist/Anamorph-Linux/Anamorph.vst3 "$PKG/"
-          cp    dist/Anamorph-Linux/Anamorph "$PKG/Anamorph"
-          install -m 755 packaging/linux/install.sh   "$PKG/install.sh"
-          install -m 755 packaging/linux/uninstall.sh "$PKG/uninstall.sh"
-          cp packaging/linux/INSTALL.txt "$PKG/INSTALL.txt"
-          tar -C dist/pkgroot -czf "dist/Anamorph-${VERSION}-Linux.tar.gz" "Anamorph-${VERSION}-Linux"
-          # Self-check: executable bits survived into the tarball.
-          tar -tzvf "dist/Anamorph-${VERSION}-Linux.tar.gz" | grep -E '/Anamorph$' | grep -q '^-rwx' \
-            || { echo "::error::Standalone lost its executable bit in the tarball"; exit 1; }
+          # Self-check: executable bits survived into the zip.
+          for f in Anamorph install.sh uninstall.sh \
+                   Anamorph.vst3/Contents/x86_64-linux/Anamorph.so; do
+            zipinfo dist/Anamorph-Linux.zip "$f" | grep -q '^-rwx' \
+              || { echo "::error::$f lost its executable bit in the zip"; exit 1; }
+          done
 
       # A failed DSP self-test blocks the CUSTOMER upload (fail-closed: only a
       # build that passed its behavioural gate may ship), while a
@@ -170,15 +157,6 @@ jobs:
         with:
           name: Anamorph-Linux
           path: dist/Anamorph-Linux.zip
-          if-no-files-found: error
-
-      # Same fail-closed gate as the customer artifact (tests + its own step).
-      - name: Upload Linux package (installable tarball)
-        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.package_linux.outcome == 'success' }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: Anamorph-Linux-package
-          path: dist/Anamorph-*-Linux.tar.gz
           if-no-files-found: error
 
       # Developer debug artifacts are preserved even when a later step fails

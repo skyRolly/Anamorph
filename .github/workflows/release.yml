@@ -21,9 +21,9 @@
 #
 #  Deliberately NOT here (later RH-PRs, per RELEASE_HARDENING_PLAN §6/§8):
 #  code signing (RH-PR-5), notarization (RH-PR-3), update checks (RH-PR-7).
-#  Installers/packages (v0.9.0): BUILT by build.yml's per-platform packaging
-#  steps (tar.gz / Inno Setup exe / .pkg) and only STAGED here — same
-#  rename-only, never re-packed contract as the zips. Secrets: none — this
+#  Installers (v0.9.0): BUILT by build.yml's per-platform packaging steps
+#  (Inno Setup exe / .pkg; the Linux zip itself carries install.sh) and only
+#  STAGED here — same rename-only, never re-packed contract as the zips. Secrets: none — this
 #  workflow uses only the ephemeral GITHUB_TOKEN, scoped `contents: write`
 #  on the draft-release job.
 # ============================================================================
@@ -127,7 +127,7 @@ jobs:
       - name: Download customer artifacts (from the build call in this run)
         uses: actions/download-artifact@v7
         with:
-          pattern: "Anamorph-{Linux,Windows,macOS,Linux-package,Windows-installer,macOS-installer}"
+          pattern: "Anamorph-{Linux,Windows,macOS,Windows-installer,macOS-installer}"
           path: stage
 
       - name: Stage versioned assets + sums + manifest
@@ -147,13 +147,13 @@ jobs:
             [ -f "$SRC" ] || { echo "::error::expected archive ${SRC} is missing from the build artifacts"; exit 1; }
             mv "$SRC" "dist/Anamorph-${VERSION}-${OS}.zip"
           done
-          # Installable packages (v0.9.0): built by build.yml's packaging
-          # steps with the version already embedded in the name. Fail-closed
-          # on absence AND on a version mismatch (a skewed artifact would
-          # mean the build ran against a different CMake version than the
-          # tag validated). Move only — never re-packed.
+          # Installers (v0.9.0): built by build.yml's packaging steps with
+          # the version already embedded in the name (the Linux installer is
+          # install.sh inside the zip above — no separate Linux package).
+          # Fail-closed on absence AND on a version mismatch (a skewed
+          # artifact would mean the build ran against a different CMake
+          # version than the tag validated). Move only — never re-packed.
           for PKG in \
-            "Anamorph-Linux-package/Anamorph-${VERSION}-Linux.tar.gz" \
             "Anamorph-Windows-installer/Anamorph-${VERSION}-Windows-Installer.exe" \
             "Anamorph-macOS-installer/Anamorph-${VERSION}-macOS.pkg"; do
             SRC="stage/${PKG}"
@@ -200,7 +200,6 @@ jobs:
             dist/Anamorph-"${VERSION}"-Linux.zip \
             dist/Anamorph-"${VERSION}"-Windows.zip \
             dist/Anamorph-"${VERSION}"-macOS.zip \
-            dist/Anamorph-"${VERSION}"-Linux.tar.gz \
             dist/Anamorph-"${VERSION}"-Windows-Installer.exe \
             dist/Anamorph-"${VERSION}"-macOS.pkg \
             dist/Anamorph-"${VERSION}"-UserManual.md \
