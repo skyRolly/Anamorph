@@ -246,8 +246,8 @@ private:
     // bit; a press-and-hold auditions THIS band alone (engine override, restored on
     // release); a hold-and-drag moves the band with rigid, anchor-based translation
     // so the split tracks the cursor 1:1 and a limited band keeps its width (0.6.12).
-    // An Alt/Option quick click acts on EVERY band at once (0.8.9): soloed band ->
-    // clear all solos, unsoloed band -> solo all bands.
+    // An Alt/Option quick click (0.8.10 exclusive-solo redesign): unsoloed band ->
+    // solo THAT band exclusively; soloed band -> clear all solos.
     int   soloPressBand   = -1;
     juce::uint32 soloPressMs = 0;
     bool  soloPressAlt    = false;   // Alt/Option held at press -> all-bands action on release

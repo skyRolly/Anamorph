@@ -13,8 +13,10 @@ static juce::String tidyTip (const juce::String& tip)
     return t;
 }
 
+// Fallback for builds that bypass CMake (which always defines the real value
+// from `project VERSION`); deliberately not a release number so it can't go stale.
 #ifndef ANAMORPH_VERSION_STRING
- #define ANAMORPH_VERSION_STRING "0.4.0"
+ #define ANAMORPH_VERSION_STRING "0.0.0-dev"
 #endif
 #ifndef ANAMORPH_BUILD_NUMBER
  #define ANAMORPH_BUILD_NUMBER "0"

@@ -120,6 +120,7 @@ jobs:
           mkdir -p "$DIST"
           cp -R build/Anamorph_artefacts/Release/VST3/Anamorph.vst3 "$DIST/"
           cp    build/Anamorph_artefacts/Release/Standalone/Anamorph "$DIST/Anamorph"
+          cp    packaging/linux/INSTALL.txt "$DIST/INSTALL.txt"
           # The customer artifact must contain no symbol table and no debug files.
           while IFS= read -r -d '' ELF; do
             if readelf -S "$ELF" 2>/dev/null | grep -q '\.symtab'; then
@@ -137,6 +138,29 @@ jobs:
           # binary are lost in the artifact round-trip.
           (cd "$DIST" && zip -qry ../Anamorph-Linux.zip .)
 
+      # v0.9.0 packaging (additive): a user-installable versioned tarball
+      # NEXT TO the unchanged zip artifact. tar preserves Unix modes natively;
+      # the deterministic name embeds the version parsed from CMakeLists.txt
+      # (the same single source release.yml validates a tag against).
+      - name: Package Linux tarball (user-installable)
+        id: package_linux
+        if: ${{ !cancelled() && steps.stage.outcome == 'success' }}
+        run: |
+          set -e
+          VERSION="$(sed -nE 's/^project\(Anamorph VERSION ([0-9]+\.[0-9]+\.[0-9]+) .*/\1/p' CMakeLists.txt)"
+          test -n "$VERSION"
+          PKG="dist/pkgroot/Anamorph-${VERSION}-Linux"
+          mkdir -p "$PKG"
+          cp -R dist/Anamorph-Linux/Anamorph.vst3 "$PKG/"
+          cp    dist/Anamorph-Linux/Anamorph "$PKG/Anamorph"
+          install -m 755 packaging/linux/install.sh   "$PKG/install.sh"
+          install -m 755 packaging/linux/uninstall.sh "$PKG/uninstall.sh"
+          cp packaging/linux/INSTALL.txt "$PKG/INSTALL.txt"
+          tar -C dist/pkgroot -czf "dist/Anamorph-${VERSION}-Linux.tar.gz" "Anamorph-${VERSION}-Linux"
+          # Self-check: executable bits survived into the tarball.
+          tar -tzvf "dist/Anamorph-${VERSION}-Linux.tar.gz" | grep -E '/Anamorph$' | grep -q '^-rwx' \
+            || { echo "::error::Standalone lost its executable bit in the tarball"; exit 1; }
+
       # A failed DSP self-test blocks the CUSTOMER upload (fail-closed: only a
       # build that passed its behavioural gate may ship), while a
       # pluginval-only failure still yields beta artifacts as before.
@@ -146,6 +170,15 @@ jobs:
         with:
           name: Anamorph-Linux
           path: dist/Anamorph-Linux.zip
+          if-no-files-found: error
+
+      # Same fail-closed gate as the customer artifact (tests + its own step).
+      - name: Upload Linux package (installable tarball)
+        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.package_linux.outcome == 'success' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: Anamorph-Linux-package
+          path: dist/Anamorph-*-Linux.tar.gz
           if-no-files-found: error
 
       # Developer debug artifacts are preserved even when a later step fails
@@ -313,6 +346,7 @@ jobs:
           # 2) Copy the public artifact.
           Copy-Item -Recurse -Force $vst3.FullName $dist
           Copy-Item -Force $exe.FullName $dist
+          Copy-Item -Force packaging/windows/INSTALL.txt $dist
           # 3) Purge ALL debug material from the public copy BEFORE any
           #    further step that can abort.
           Get-ChildItem -Recurse -Path $dist -File |
@@ -352,6 +386,27 @@ jobs:
           # publishes these exact bytes untouched on every platform).
           Compress-Archive -Path (Join-Path $dist '*') -DestinationPath 'dist/Anamorph-Windows.zip' -Force
 
+      # v0.9.0 packaging (additive): a user-installable Inno Setup installer
+      # built from the SAME validated (debug-purged) staging directory the zip
+      # was archived from. ISCC is preinstalled on windows-latest. The
+      # deterministic output name embeds the version parsed from CMakeLists.txt.
+      - name: Package Windows installer (Inno Setup)
+        id: package_windows
+        if: ${{ !cancelled() && steps.stage_windows.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $m = Select-String -Path CMakeLists.txt -Pattern '^project\(Anamorph VERSION ([0-9]+\.[0-9]+\.[0-9]+) '
+          if (-not $m) { Write-Error 'could not parse project VERSION from CMakeLists.txt' }
+          $version = $m.Matches[0].Groups[1].Value
+          $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) { Write-Error "Inno Setup 6 not found at $iscc (expected preinstalled on windows-latest)" }
+          $staging = (Resolve-Path 'dist/Anamorph-Windows').Path
+          & $iscc "/DAppVersion=$version" "/DStagingDir=$staging" "/Odist" 'packaging/windows/Anamorph.iss'
+          if ($LASTEXITCODE -ne 0) { Write-Error "ISCC failed with exit code $LASTEXITCODE" }
+          $out = "dist/Anamorph-$version-Windows-Installer.exe"
+          if (-not (Test-Path $out)) { Write-Error "expected installer output missing: $out" }
+
       # A failed DSP self-test blocks the CUSTOMER upload (fail-closed), while
       # a pluginval-only failure still yields beta artifacts as before.
       - name: Upload Windows artifacts
@@ -360,6 +415,15 @@ jobs:
         with:
           name: Anamorph-Windows
           path: dist/Anamorph-Windows.zip
+          if-no-files-found: error
+
+      # Same fail-closed gate as the customer artifact (tests + its own step).
+      - name: Upload Windows installer
+        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.package_windows.outcome == 'success' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: Anamorph-Windows-installer
+          path: dist/Anamorph-*-Windows-Installer.exe
           if-no-files-found: error
 
       # Developer debug artifacts are preserved even when validation fails
@@ -539,6 +603,21 @@ jobs:
           # publishes these exact bytes untouched.
           /usr/bin/ditto -c -k "$DIST" dist/Anamorph-macOS.zip
 
+      # v0.9.0 packaging (additive): a user-installable .pkg (RH-PR-6
+      # skeleton) built from the SAME validated staging dir the zip was
+      # archived from. pkgbuild/productbuild are OS-native on the runner;
+      # RH-PR-3 will later sign+notarize this same package. The deterministic
+      # output name embeds the version parsed from CMakeLists.txt.
+      - name: Package macOS installer (.pkg)
+        id: package_macos_pkg
+        if: ${{ !cancelled() && steps.package.outcome == 'success' }}
+        run: |
+          set -e
+          VERSION="$(sed -nE 's/^project\(Anamorph VERSION ([0-9]+\.[0-9]+\.[0-9]+) .*/\1/p' CMakeLists.txt)"
+          test -n "$VERSION"
+          chmod +x packaging/macos/build-pkg.sh
+          packaging/macos/build-pkg.sh dist/Anamorph-macOS "$VERSION" "dist/Anamorph-${VERSION}-macOS.pkg"
+
       # Customer-artifact safety (RH-PR-2 review): upload only a fully
       # packaged (dSYM-captured, stripped, signed, slice- and entry-point-
       # verified) artifact — same gating pattern as Linux/Windows. The
@@ -552,6 +631,15 @@ jobs:
         with:
           name: Anamorph-macOS
           path: dist/Anamorph-macOS.zip
+          if-no-files-found: error
+
+      # Same fail-closed gate as the customer artifact (tests + its own step).
+      - name: Upload macOS installer
+        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.package_macos_pkg.outcome == 'success' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: Anamorph-macOS-installer
+          path: dist/Anamorph-*-macOS.pkg
           if-no-files-found: error
 
       # Uploaded only when at least one VALIDATED dSYM was captured (the

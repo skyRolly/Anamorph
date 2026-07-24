@@ -13,7 +13,7 @@ only — it configures and builds entirely from the command line on a headless L
 - Diamond **vectorscope**, correlation + L/R Peak/RMS meters; click-free transitions throughout.
 
 ## Project status
-- **Version 0.8.12** (pre-1.0). Active development on a feature-branch → PR → `main` workflow.
+- **Version 0.9.0** (pre-1.0). Active development on a feature-branch → PR → `main` workflow.
 - Validation gate: **33 DSP self-tests** + the **9-test state-compatibility suite** + **pluginval strictness 10** (both modes ×3, blocking on all three CI platforms).
 - A green build + pluginval pass is **"ready to audition,"** not final sign-off (audio/visual
   quality needs a DAW — see `docs/procedures/TESTING.md`).
@@ -49,8 +49,15 @@ scripts/run-pluginval.sh 10
 ```
 
 The produced plugin is typically at `build/Anamorph_artefacts/Release/VST3/Anamorph.vst3`.
-Prebuilt binaries for all three OSes are uploaded as **GitHub Actions artifacts** on every push
-(macOS bundles are ad-hoc signed, not notarized — see `packaging/macos/INSTALL.txt`).
+
+## Installing (users)
+Releases are published on the **GitHub Releases** page (draft → published after the manual
+audition): per platform an **installer/package** (Linux `tar.gz` + install script, Windows
+Inno Setup installer, macOS `.pkg`) *and* a plain zip, plus `SHA256SUMS.txt` and
+`RELEASE_MANIFEST.txt`. Step-by-step: **[`docs/user/INSTALLATION.md`](docs/user/INSTALLATION.md)**;
+full manual: **[`docs/user/USER_MANUAL.md`](docs/user/USER_MANUAL.md)**.
+Prebuilt binaries for all three OSes are also uploaded as **GitHub Actions artifacts** on every
+push (macOS bundles are ad-hoc signed, not notarized — see `packaging/macos/INSTALL.txt`).
 
 To build without network (JUCE already on disk): `cmake -B build -DANAMORPH_JUCE_PATH=/path/to/JUCE ...`
 
@@ -64,6 +71,7 @@ only the nonlinear stages. Full detail: `docs/architecture/`.
 ## Documentation
 The full technical documentation lives in **[`docs/`](docs/)**:
 - **Start here:** [`docs/SOURCE_OF_TRUTH.md`](docs/SOURCE_OF_TRUTH.md) · [`docs/HANDOVER.md`](docs/HANDOVER.md) · [`docs/REPOSITORY_MAP.md`](docs/REPOSITORY_MAP.md)
+- **For users:** [`docs/user/`](docs/user/) (installation guide, user manual)
 - **Architecture & decisions:** [`docs/architecture/`](docs/architecture/) (signal flow, DSP algorithms, parameters, state, threading, latency, ADRs)
 - **How-to:** [`docs/procedures/`](docs/procedures/) (build, CI/CD, testing, packaging, release)
 - **Rules (binding):** [`docs/policies/`](docs/policies/) (real-time audio, threading, DSP, compatibility, AI-agent)

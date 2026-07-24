@@ -8,8 +8,9 @@ Repository Governance Policy. How `CHANGELOG.md` is maintained.
    Deprecated / Security, newest first. Semantic-ish `MAJOR.MINOR.PATCH` (pre-1.0 line).
 2. **No invented history.** Never infer that a past version contained a feature by reasoning
    backward from current code. Each entry cites an **Evidence Source** — a commit SHA, commit
-   range, or PR (the repository has **no git tags**, so a release tag alone is never available as
-   evidence). An entry that cannot be tied to such evidence is marked
+   range, or PR (entries up to `[0.8.12]` predate git tags, so a release tag alone was never
+   available as evidence for them; from the first annotated release tag — `v0.9.0` — onward the
+   tag is also citable). An entry that cannot be tied to such evidence is marked
    `[Unverified Historical Reconstruction]`.
 3. **User-visible changes only.** Refactors, cleanups, formatting, and renames are **not**
    changelog entries **unless** a PR/commit explicitly states a user-visible impact.

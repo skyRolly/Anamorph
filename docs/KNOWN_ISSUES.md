@@ -4,9 +4,14 @@
 in `POSTMORTEMS.md`, not here. Each entry is evidence-backed (constraint C7). When an item is
 fixed, remove it here and (if notable) add a `POSTMORTEMS.md` entry.
 
-Verified against repository HEAD `64e87c4` (post-v0.8.12 content re-audit); version-synced to the
-**v0.8.12 release** (changelog-dated 2026-07-22, PR #79 performance Wave 6 + PR #80 GUI interaction
-fixes — one issue **added**: KI-013, the release-outside stuck-press reconcile is inert on macOS
+Version-synced to **v0.9.0** (release-prep, 2026-07-24, PR #87 — no plugin code changed since
+v0.8.12 (the JUCE 9 bump is proven bit-identical), so no issue's status moved except one issue
+**removed**: KI-005 "No graphical installer" — v0.9.0 ships a Linux tar.gz+install-script, a
+Windows Inno Setup installer and a macOS .pkg (unsigned until RH-PR-3/5; `docs/procedures/PACKAGING.md`
+§Installable packages). Previously verified against repository HEAD `64e87c4` (post-v0.8.12
+content re-audit), synced to the **v0.8.12 release** (changelog-dated 2026-07-22, PR #79
+performance Wave 6 + PR #80 GUI interaction fixes — one issue **added**: KI-013, the
+release-outside stuck-press reconcile is inert on macOS
 (JUCE's realtime query returns cached button state there); no issue removed. The **v0.8.11 release**
 of 2026-07-20 (PRs #60/#61 — the ADR-0015 crossover-follower fixes; PRs #62/#76 — performance
 Waves 3–5; PR #63 — RH-PR-2 build hardening) added and
@@ -83,10 +88,10 @@ behaviour (Ableton/Logic/Cubase/Reaper/Pro Tools/...) is therefore **Unverified*
 - **Evidence [Verified]:** docs/architecture/COMPATIBILITY_MATRIX.md (hosts Unverified); docs/procedures/TESTING.md ("What cannot be verified headlessly").
   Enforced as a manual line item in `docs/procedures/RELEASE_COMPATIBILITY_CHECKLIST.md`.
 
-## KI-005 — No graphical installer
-Installation is a manual file copy to the platform plug-in folders (plus de-quarantine on macOS);
-the repository contains no `.pkg`/`.msi`/installer build.
-- **Evidence [Verified]:** no installer in the repository; packaging/macos/INSTALL.txt; `docs/procedures/PACKAGING.md` (TODO).
+*(KI-005 "No graphical installer" — RESOLVED in v0.9.0: Linux tar.gz + install script,
+Windows Inno Setup installer, macOS .pkg; see `docs/procedures/PACKAGING.md` §Installable
+packages. The installers are not yet signed/notarized — that remains KI-002 / RH-PR-3/5.
+ID retired, never reused.)*
 
 ## KI-006 — Linux tooltip corners render black instead of transparent
 On **Linux**, the rounded-capsule tooltip showed an **opaque black** fill in the corners (outside the

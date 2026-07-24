@@ -6,7 +6,26 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **product-readiness roadmap review** (v0.8.13 cycle, 2026-07-23, on
+Last updated: for the **v0.9.0 release preparation** (2026-07-24, PR #87, on top of
+`main` @ `86b4273`): version bump 0.8.12 → **0.9.0** + CHANGELOG `[0.9.0]`; **installable
+packages** added to CI (Linux `Anamorph-<version>-Linux.tar.gz` + `packaging/linux/`
+install/uninstall scripts, Windows `Anamorph-<version>-Windows-Installer.exe` via
+`packaging/windows/Anamorph.iss`, macOS `Anamorph-<version>-macOS.pkg` via
+`packaging/macos/build-pkg.sh` — all built from the same validated staging dirs, uploaded
+as three NEW artifacts, staged fail-closed into the draft release by release.yml alongside
+the unchanged zips); **NEW user docs area `docs/user/`** (USER_MANUAL.md — full end-user
+manual, attached to releases; INSTALLATION.md — per-platform install guide) closing the
+roadmap's "zero user docs" P0 gap; `INSTALL.txt` now ships in all three zips (previously
+macOS only). Docs synced per the lifecycle triggers: PACKAGING (installable-packages
+section replaces the "no installer" TODO; artifact table + install-locations evidence),
+RELEASE_PROCESS (v0.9.0 tag examples; release-asset list), CI_CD (triggers/pipeline/
+artifact table incl. the macOS-debug best-effort correction), README (version, user-docs
+links, Releases distribution), HANDOVER (all status rows), KNOWN_ISSUES (KI-005 resolved —
+installers exist; header re-synced), FUTURE_RISKS (header re-synced), CHANGELOG_POLICY +
+CHANGELOG preamble (tags exist from v0.9.0), RELEASE_HARDENING_PLAN (RH-R5 mitigated,
+RH-PR-5b/6 skeletons landed, first-tag references v0.8.13 → v0.9.0), REPOSITORY_MAP
+(docs/user/ + packaging/* rows), and one stale code comment (SpectrumImager.h alt-click
+solo semantics, pre-0.8.10 wording). Prior: for the **product-readiness roadmap review** (v0.8.13 cycle, 2026-07-23, on
 `main` @ `dcfad73`; extended the same day with the **item-by-item re-evaluation + independent
 gap hunt**: 14 carried items re-classified (Must-now / before-1.0 / nice / defer, with
 reasons); NEW findings — **Steinberg VST3-SDK licence compliance + third-party NOTICES**
