@@ -42,7 +42,6 @@ JUCE 8.0.14; before that 0.8.8 for PR #54).
 | KI-002 | macOS artifacts not notarized (manual de-quarantine required) | Medium | Confirmed (distribution) |
 | KI-003 | pluginval Linux editor tests crash (external host-side JUCE) | Low | Confirmed, mitigated/external |
 | KI-004 | No automated DAW/host-compatibility testing | Medium | Confirmed (coverage gap) |
-| KI-005 | No graphical installer (manual copy install) | Low | Confirmed (packaging) |
 | KI-006 | Linux: tooltip rounded corners render an opaque black background instead of transparent | Low | Fix applied (LookAndFeel); Linux visual re-test pending |
 | KI-007 | Windows: pluginval "Editor Automation" abnormally terminates (was hidden by a run-pluginval.ps1 false green) | Medium | False green closed; GL-drop cleared the crash (CI-confirmed); advancedMode-automation fix in place — no recurrence observed (green release gates recorded in HANDOVER Build Status, v0.8.9–v0.8.12) |
 | KI-008 | Advanced-toggle one-frame tear in async-resize hosts (JUCE VST3 wrapper window-grant gap) | Low | Confirmed, external (JUCE wrapper + host); not fixable plugin-side without a JUCE change |

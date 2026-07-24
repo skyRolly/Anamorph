@@ -119,8 +119,10 @@ Extract the zip, then (administrator approval needed for both):
 ### Installer installation (.pkg)
 
 1. Download `Anamorph-<version>-macOS.pkg`.
-2. Because the package is not notarized yet, the first double-click may be refused.
-   **Right-click (Ctrl-click) the .pkg → Open → Open.**
+2. Because the package is not notarized yet, the first double-click will be refused.
+   Open ***System Settings → Privacy & Security***, scroll down and click **Open Anyway**
+   next to the blocked-package message, then confirm. (On macOS 14 and earlier you can
+   instead right-click / Ctrl-click the .pkg → *Open* → *Open*.)
 3. Follow the installer. The default is a **full installation**; click **Customize** on
    the *Installation Type* step to choose which components to install:
 

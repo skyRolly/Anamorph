@@ -70,8 +70,11 @@ var
 
 procedure InitializeWizard;
 begin
-  { One destination page for both components, shown right after the component
-    page. Index 0 (top) = VST3 folder, index 1 = Standalone folder. }
+  // One destination page for both components, shown right after the component
+  // page. Index 0 (top) = VST3 folder, index 1 = Standalone folder.
+  // NOTE: comments in this section are //-style throughout — Pascal { } comments
+  // do not nest, so a literal constant name like the ones expanded below would
+  // terminate a brace comment early and break the ISCC compile.
   DestPage := CreateInputDirPage(wpSelectComponents,
     'Select Destination Locations',
     'Where should the selected components be installed?',
@@ -81,12 +84,12 @@ begin
   DestPage.Add('VST3 plug-in folder (the plug-in installs as Anamorph.vst3 inside it):');
   DestPage.Add('Standalone application folder:');
   DestPage.Values[0] := ExpandConstant('{commoncf64}\VST3');
-  DestPage.Values[1] := WizardDirValue;   { previous install dir, else {autopf}\Anamorph }
+  DestPage.Values[1] := WizardDirValue;   // previous install dir, else the DefaultDirName default
 end;
 
 procedure CurPageChanged(CurPageID: Integer);
 begin
-  { Only the paths of selected components are editable. }
+  // Only the paths of selected components are editable.
   if (DestPage <> nil) and (CurPageID = DestPage.ID) then
   begin
     DestPage.PromptLabels[0].Enabled := WizardIsComponentSelected('vst3');
@@ -103,7 +106,7 @@ begin
   Result := True;
   if CurPageID = wpSelectComponents then
   begin
-    { At least one component must be selected before continuing. }
+    // At least one component must be selected before continuing.
     if WizardSelectedComponents(False) = '' then
     begin
       MsgBox('Select at least one component to install.', mbError, MB_OK);
@@ -124,9 +127,9 @@ begin
       Result := False;
       exit;
     end;
-    { Feed the chosen Standalone folder back into {app} (the dir page is
-      disabled, so this edit is the only writer). The uninstaller and the
-      Start-menu icon resolve against it. }
+    // Feed the chosen Standalone folder back into the app directory constant
+    // (the dir page is disabled, so this edit is the only writer). The
+    // uninstaller and the Start-menu icon resolve against it.
     WizardForm.DirEdit.Text := DestPage.Values[1];
   end;
 end;

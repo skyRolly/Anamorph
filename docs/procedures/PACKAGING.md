@@ -79,7 +79,7 @@ Evidence [Verified]: build.yml (stage/upload steps per job).
 | VST3 categories | Fx, Spatial, Stereo | CMakeLists.txt:163 |
 
 AU validation (macOS): `auval -v aufx Anmr Anmf` (type=`aufx`, subtype=`Anmr`, manufacturer=`Anmf`).
-Evidence [Verified]: packaging/macos/INSTALL.txt:38-40.
+Evidence [Verified]: packaging/macos/INSTALL.txt:70-72.
 
 ## macOS signing & quarantine
 
@@ -99,7 +99,7 @@ sudo xattr -dr com.apple.quarantine /Library/Audio/Plug-Ins/VST3/Anamorph.vst3
 sudo xattr -dr com.apple.quarantine /Library/Audio/Plug-Ins/Components/Anamorph.component
 ```
 Logic Pro / GarageBand load **AU only** (`.component`); VST3 hosts use the `.vst3`.
-Evidence [Verified]: INSTALL.txt:13-33,46-51.
+Evidence [Verified]: INSTALL.txt:47-65.
 
 ## Universal binary verification (macOS)
 

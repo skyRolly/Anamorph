@@ -86,11 +86,12 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   the three legacy session-format migration paths, corrupt/foreign state handling, preset
   round-trips and A/B preservation. Validation infrastructure only.
   Evidence: PR #82 / commit `d6bdb13`; `worklogs/STATE_HARNESS_v0.8.13.md`. [Verified]
-- **New CI packaging artifacts** `Anamorph-Linux-package`, `Anamorph-Windows-installer` and
-  `Anamorph-macOS-installer` carry the installable packages above; the existing
-  `Anamorph-<OS>` (+`-debug`) artifacts are unchanged. The release job stages the packages
+- **New CI packaging artifacts** `Anamorph-Windows-installer` and `Anamorph-macOS-installer`
+  carry the installers above; the `Anamorph-Linux` zip artifact now additionally carries
+  `install.sh`/`uninstall.sh` (its staging step self-checks the executable bits inside the
+  zip), and the `-debug` artifacts are unchanged. The release job stages the installers
   with the same fail-closed, never-re-packed contract as the zips.
-  Evidence: PR #87 (v0.9.0 release prep). [Verified]
+  Evidence: PR #87 (v0.9.0 release prep); PR #89 (packaging rework). [Verified]
 
 ## [0.8.12] — 2026-07-22
 ### Changed

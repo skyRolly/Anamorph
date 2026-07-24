@@ -18,7 +18,8 @@ validation (tag ⇄ `CMakeLists.txt` version ⇄ `CHANGELOG.md` section, annotat
 `build.yml` via `workflow_call` (single build, identical gates and artifacts) → **draft**
 GitHub Release (the exact source-archived platform zips renamed to
 `Anamorph-<version>-<OS>.zip` — never re-packed, preserving permissions/symlinks/bundle
-layout — + the three installable packages, already version-named at build time and moved
+layout — + the two installers (Windows Inno Setup exe, macOS pkg; the Linux installer is
+`install.sh` inside the Linux zip), already version-named at build time and moved
 unmodified after a fail-closed name/version check, + `Anamorph-<version>-UserManual.md`
 + `SHA256SUMS.txt` over all assets + `RELEASE_MANIFEST.txt` + the CHANGELOG section as notes; `contents: write` scoped to that one
 job; publishing the draft stays a manual maintainer action per RELEASE_POLICY). No

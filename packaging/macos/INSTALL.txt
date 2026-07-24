@@ -31,10 +31,14 @@ A) Installer installation (.pkg, recommended) / 安装程序(.pkg,推荐)
   默认完整安装(VST3 + AU + 独立版);在"安装类型"一步点"自定义"可以
   选择要安装的组件。用安装包装的文件没有隔离标记,不需要下面的终端命令。
 
-  Because the package is not notarized yet, macOS may refuse the first
-  double-click: right-click (Ctrl-click) the .pkg > "Open" > "Open".
-  因为还没有 Apple 公证,第一次打开可能被拦——对 .pkg 右键(按住 Ctrl 点击)
-  选"打开",再点"打开"。
+  Because the package is not notarized yet, macOS will refuse the first
+  double-click. Open  System Settings > Privacy & Security , scroll down
+  and click "Open Anyway" next to the blocked-package message, then
+  confirm. (On macOS 14 and earlier you can instead right-click /
+  Ctrl-click the .pkg > "Open" > "Open".)
+  因为还没有 Apple 公证,第一次打开会被拦。打开"系统设置 > 隐私与安全性",
+  在被拦截的提示旁点"仍要打开"并确认。(macOS 14 及更早版本也可以对 .pkg
+  右键(按住 Ctrl 点击)选"打开",再点"打开"。)
 
   Uninstall / 卸载: delete the three installed items listed above (Finder
   asks for your password for the /Library ones).
