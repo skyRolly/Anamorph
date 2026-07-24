@@ -35,4 +35,5 @@ See `procedures/RELEASE_PROCESS.md` §Tagging.
 
 `MAJOR.MINOR.PATCH`, pre-1.0 (< 1.0.0 = pre-release line), plus a CI build/dev number passed as
 `-DANAMORPH_BUILD_NUMBER=${run_number}` and shown in the About box.
-Evidence [Verified]: CMakeLists.txt:14,181-187; .github/workflows/build.yml:54,156,373.
+Evidence [Verified]: CMakeLists.txt:14,181-187; .github/workflows/build.yml:60,180,432 (the
+per-OS Configure steps passing `-DANAMORPH_BUILD_NUMBER`).

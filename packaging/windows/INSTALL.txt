@@ -8,7 +8,10 @@ the standard locations, and need administrator approval.
 --------------------------------------------------------------------
 A) Installer installation (recommended) / 安装程序(推荐)
 --------------------------------------------------------------------
-  Run  Anamorph-<version>-Windows-Installer.exe  and follow the wizard:
+  Run  Anamorph-<version>-Windows-Installer.exe  (a separate download from the
+  GitHub release — it is not inside this zip) and follow the wizard:
+  运行 Anamorph-<version>-Windows-Installer.exe(在 GitHub Release 里单独下载,
+  不在本 zip 包内),按向导操作:
 
   1. Choose the components / 选择组件:
        [x] Install VST3         (the plug-in for your DAW / DAW 里用的插件)

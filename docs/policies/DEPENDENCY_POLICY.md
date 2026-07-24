@@ -7,7 +7,7 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
 | Dependency | Pin | Mechanism | Evidence |
 |---|---|---|---|
 | **JUCE** | **9.0.0**, pinned by **immutable commit SHA** `f8f8864172464b9adf9eba6101e1f784838d1597` | CMake `FetchContent` (`GIT_SHALLOW`), overridable via `-DANAMORPH_JUCE_PATH` | CMakeLists.txt:36-38,47-55 |
-| **pluginval** | latest release (download) | `scripts/run-pluginval.sh` | run-pluginval.sh:34 |
+| **pluginval** | latest release (download) | `scripts/run-pluginval.sh` | run-pluginval.sh:43-48 |
 | **C++ standard** | C++17 | `CMAKE_CXX_STANDARD 17`, extensions off | CMakeLists.txt:16-18 |
 | Linux system libs | distro packages | `scripts/setup-linux.sh` (ALSA, JACK, X11, FreeType, GTK/WebKit, mesa, **EGL — required by JUCE 9's Linux GL context path**, xvfb) | setup-linux.sh |
 

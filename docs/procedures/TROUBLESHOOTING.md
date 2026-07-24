@@ -8,7 +8,8 @@ Diagnosing build, validation, and runtime problems. For the validation workflow 
 |---|---|---|
 | FetchContent fails to clone JUCE | No network to `github.com` | Use a local checkout: `-DANAMORPH_JUCE_PATH=/path/to/JUCE` (BUILD.md). |
 | Missing X11/ALSA/GTK headers on Linux | Build deps not installed | Run `scripts/setup-linux.sh`. |
-| `libwebkit2gtk-4.1-dev` not found | Newer/older Ubuntu | Try `libwebkit2gtk-4.0-dev` (setup-linux.sh:33). |
+| `libwebkit2gtk-4.1-dev` not found | Newer/older Ubuntu | Try `libwebkit2gtk-4.0-dev` (setup-linux.sh:31 installs 4.1; :36 documents the fallback). |
+| `EGL/egl.h` not found on Linux | `libegl-dev` missing — JUCE 9 builds its Linux GL context on EGL | `scripts/setup-linux.sh` installs it (setup-linux.sh:13-15,30); on a hand-rolled dep list add `libegl-dev`. |
 | `AnamorphTests not found` when testing | Not built, or tests disabled | `scripts/build.sh`; ensure `ANAMORPH_BUILD_TESTS=ON`. |
 | Wrong/old JUCE behaviour | Stale fetched JUCE | Confirm the pinned commit `f8f8864…` = JUCE 9.0.0 (CMakeLists.txt:36-38); a JUCE bump is a Build System change (ARCHITECTURE_REVIEW_GATE, ADR-0022). |
 | Configure says `fetching JUCE 9.0.0 (<old rev>)` | `ANAMORPH_JUCE_TAG` is a CACHE variable — an existing `build/` keeps the OLD pin after a pull | Delete `build/` (or `cmake -B build -UANAMORPH_JUCE_TAG -UANAMORPH_JUCE_VERSION`) so the new pin takes effect; the configure banner prints version + rev precisely so a mismatch is visible. |
@@ -20,13 +21,13 @@ Diagnosing build, validation, and runtime problems. For the validation workflow 
 |---|---|---|
 | pluginval crashes on editor open/close (Linux) | Known host-side JUCE X11 `XEmbedComponent` use-after-free (not the plugin) | Handled by the signal-only retry in `run-pluginval.sh:63-96`; the plugin already drops its OpenGL child window on Linux (ADR-0011). |
 | pluginval exits < 128 | Real validation failure | Read the log line; this is a genuine defect — do **not** retry. |
-| Editor tests fail "no display" | Headless without xvfb | The script uses `xvfb-run -a` when available (run-pluginval.sh:42-44); install `xvfb`. |
+| Editor tests fail "no display" | Headless without xvfb | The script uses `xvfb-run -a` when available (run-pluginval.sh:50-53); install `xvfb`. |
 
 ## Runtime / DAW
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| macOS plugin won't load after download | Gatekeeper quarantine (ad-hoc signed, not notarized) | `sudo xattr -dr com.apple.quarantine <bundle>` (PACKAGING.md / INSTALL.txt). |
+| macOS plugin won't load after a **zip** install | Gatekeeper quarantine (ad-hoc signed, not notarized) | `sudo xattr -dr com.apple.quarantine <bundle>` (PACKAGING.md / `packaging/macos/INSTALL.txt`), or use the `.pkg`, whose payloads are not quarantined (KI-002). |
 | Logic Pro doesn't see the plugin | Logic loads **AU only** | Install the `.component`; verify with `auval -v aufx Anmr Anmf`. |
 | Plugin not offered on a mono track | Expected | mono→stereo is the headline layout; **mono→mono is Not Supported** (output is always stereo, PluginProcessor.cpp:33-43). |
 | Vectorscope looks different on Linux vs macOS/Windows | By design | Linux/BSD render CPU-side (no OpenGL attach); macOS/Windows GPU-composite (ADR-0011). Visually identical. |

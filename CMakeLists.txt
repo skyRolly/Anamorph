@@ -164,7 +164,10 @@ juce_add_plugin(Anamorph
     DESCRIPTION             "Stereo Tools / Stereo image toolkit"
 )
 
-target_sources(Anamorph PRIVATE
+# Wrapper + GUI sources. Single source of truth: AnamorphStateTests below
+# compiles the SAME list into its own console target, so a new wrapper/GUI file
+# must never be added to only one of them.
+set(ANAMORPH_PLUGIN_SOURCES
     src/PluginProcessor.cpp
     src/PluginEditor.cpp
     src/PluginParameters.cpp
@@ -175,6 +178,8 @@ target_sources(Anamorph PRIVATE
     src/gui/LevelMeter.cpp
     src/gui/SpectrumImager.cpp
 )
+
+target_sources(Anamorph PRIVATE ${ANAMORPH_PLUGIN_SOURCES})
 
 target_include_directories(Anamorph PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
@@ -207,7 +212,9 @@ target_link_libraries(Anamorph
 )
 
 # ----------------------------------------------------------------------------
-#  DSP self-tests (headless gate, see scripts/run-tests.sh)
+#  Headless self-tests (both gates, see scripts/run-tests.sh):
+#    AnamorphTests      -- DSP acceptance suite
+#    AnamorphStateTests -- state / parameter-compatibility suite (below)
 # ----------------------------------------------------------------------------
 if(ANAMORPH_BUILD_TESTS)
     juce_add_console_app(AnamorphTests PRODUCT_NAME "AnamorphTests")
@@ -244,15 +251,7 @@ if(ANAMORPH_BUILD_TESTS)
     juce_add_console_app(AnamorphStateTests PRODUCT_NAME "AnamorphStateTests")
     target_sources(AnamorphStateTests PRIVATE
         tests/state_tests.cpp
-        src/PluginProcessor.cpp
-        src/PluginEditor.cpp
-        src/PluginParameters.cpp
-        src/PresetManager.cpp
-        src/gui/LookAndFeel.cpp
-        src/gui/Vectorscope.cpp
-        src/gui/CorrelationMeter.cpp
-        src/gui/LevelMeter.cpp
-        src/gui/SpectrumImager.cpp)
+        ${ANAMORPH_PLUGIN_SOURCES})
     target_include_directories(AnamorphStateTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
     target_compile_definitions(AnamorphStateTests PUBLIC
         ANAMORPH_VERSION_STRING="${PROJECT_VERSION}"

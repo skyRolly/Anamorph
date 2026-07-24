@@ -87,8 +87,9 @@ CI **ad-hoc** codesigns the bundles (`codesign --force --deep --sign -`) — the
 notarized**. Order inside the packaging step (ADR-0021): `dsymutil` (capture dSYMs) → `strip -x`
 → codesign — signing is LAST because stripping afterwards would invalidate the seal. A codesign
 failure now fails the job (the former `|| true` swallowing was removed). Gatekeeper quarantines
-the bundles after download, so the user must remove the quarantine flag.
-Evidence [Verified]: build.yml (Package macOS plugins step); INSTALL.txt:4-10.
+**zip-extracted** bundles after download, so that route requires removing the quarantine flag;
+the `.pkg` route does not (Installer.app-written payloads are not quarantined).
+Evidence [Verified]: build.yml (Package macOS plugins step); packaging/macos/INSTALL.txt:4-10.
 
 Install (from `INSTALL.txt`):
 ```bash
@@ -99,7 +100,9 @@ sudo xattr -dr com.apple.quarantine /Library/Audio/Plug-Ins/VST3/Anamorph.vst3
 sudo xattr -dr com.apple.quarantine /Library/Audio/Plug-Ins/Components/Anamorph.component
 ```
 Logic Pro / GarageBand load **AU only** (`.component`); VST3 hosts use the `.vst3`.
-Evidence [Verified]: INSTALL.txt:47-65.
+The `xattr` step is the **zip route only** — payloads written by the `.pkg` installer carry no
+quarantine attribute. Evidence [Verified]: packaging/macos/INSTALL.txt:47-65 (manual route),
+:27-28 (no quarantine via the installer).
 
 ## Universal binary verification (macOS)
 

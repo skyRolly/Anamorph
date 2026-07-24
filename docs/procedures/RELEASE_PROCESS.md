@@ -29,8 +29,11 @@ artifacts, or build locally per `BUILD.md`. The CI build number is `${{ github.r
 
 ## macOS signing / notarization
 
-CI ad-hoc codesigns the macOS bundles; they are **NOT notarized**. The shipped `INSTALL.txt`
-documents the required `xattr -dr com.apple.quarantine` step for end users (`PACKAGING.md`).
+CI ad-hoc codesigns the macOS bundles; they are **NOT notarized**. The shipped
+`packaging/macos/INSTALL.txt` documents the `xattr -dr com.apple.quarantine` step required by the
+**zip route** (payloads installed by the `.pkg` carry no quarantine attribute, so that route needs
+no Terminal step) and how to get past the Gatekeeper prompt on the unsigned `.pkg`
+itself (`PACKAGING.md`).
 `TODO: notarization is not configured in the repository; document the workflow here if/when added.`
 
 ## Versioning

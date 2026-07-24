@@ -22,8 +22,8 @@
 [Setup]
 ; ArchitecturesAllowed/InstallIn64BitMode use the `x64compatible` identifier,
 ; which requires Inno Setup >= 6.3 (2024). Validated: windows-latest ships the
-; 6.7.1 compiler engine and compiled this script successfully (CI run
-; 30056361865, "Package Windows installer" step).
+; 6.7.1 compiler engine and compiles this script successfully in the
+; "Package Windows installer (Inno Setup)" step of build.yml's windows job.
 ; Stable AppId: upgrades and uninstalls must always target the same product.
 AppId={{D1E3D8F8-C9CE-415C-AC73-A6AA842987BD}
 AppName=Anamorph

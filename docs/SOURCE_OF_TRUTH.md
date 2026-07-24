@@ -7,9 +7,9 @@ source must be corrected to match.
 ## Authority order (highest → lowest)
 
 1. **Source Code** (`src/**`) — the running behaviour. The ultimate ground truth.
-2. **Verified Test Cases** (`tests/dsp_tests.cpp`) — executable assertions that pin
-   behaviour the code must satisfy. A claim proven by code **and** a test is the
-   strongest evidence available (`Verified`).
+2. **Verified Test Cases** (`tests/dsp_tests.cpp`, `tests/state_tests.cpp`) — executable
+   assertions that pin behaviour the code must satisfy. A claim proven by code **and** a
+   test is the strongest evidence available (`Verified`).
 3. **ADR** (`docs/architecture/design-decisions/`) — the final, dated record of a
    design decision. An ADR records *why* a constraint exists and supersedes any
    descriptive document about the same topic.

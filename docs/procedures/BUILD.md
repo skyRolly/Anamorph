@@ -19,9 +19,11 @@ scripts/setup-linux.sh     # safe to re-run; installs build + X11/audio/GTK/WebK
 ```
 
 Installs: `build-essential cmake git ninja-build pkg-config`, ALSA/JACK/curl, FreeType/Fontconfig,
-X11 (`libx11/xcomposite/xcursor/xext/xinerama/xrandr/xrender`), `libglu1-mesa-dev mesa-common-dev`,
-`libwebkit2gtk-4.1-dev libgtk-3-dev`, and `xvfb`. If `libwebkit2gtk-4.1-dev` is unavailable, try
-`libwebkit2gtk-4.0-dev`. Evidence [Verified]: scripts/setup-linux.sh:21-33.
+X11 (`libx11/xcomposite/xcursor/xext/xinerama/xrandr/xrender`), `libglu1-mesa-dev mesa-common-dev
+libegl-dev`, `libwebkit2gtk-4.1-dev libgtk-3-dev`, and `xvfb`. **`libegl-dev` is required since
+JUCE 9** (it creates Linux OpenGL contexts via EGL instead of GLX; ADR-0022). If
+`libwebkit2gtk-4.1-dev` is unavailable, try `libwebkit2gtk-4.0-dev`.
+Evidence [Verified]: scripts/setup-linux.sh:24-32 (package list), :13-15 (the EGL note).
 
 ## Configure + build
 
@@ -76,7 +78,7 @@ artifacts) happens only in CI packaging; see `docs/procedures/CI_CD.md` / `PACKA
 ## Network domains the build needs (restricted sandboxes)
 
 - Ubuntu apt mirrors (`archive.ubuntu.com` / `ports.ubuntu.com`) — `setup-linux.sh`.
-- `github.com` — JUCE source (pinned tag via FetchContent).
+- `github.com` — JUCE source (pinned commit SHA via FetchContent).
 - `github.com` — pluginval release (only for `scripts/run-pluginval.sh`).
 
 Evidence [Verified]: scripts/setup-linux.sh:8-13.

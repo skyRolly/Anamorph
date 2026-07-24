@@ -6,7 +6,40 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **v0.9.0 installer/packaging rework** (2026-07-24, PR #89): the
+Last updated: for the **post-v0.9.0 maintenance audit** (2026-07-24, on `main` @ `4226d2c`):
+a repository-wide drift/maintainability pass with **no behaviour change** — no DSP, GUI,
+parameter, serialization or CI-gate change, so **no CHANGELOG entry and no version bump**
+(CHANGELOG_POLICY rule 3). Fixed: `CMakeLists.txt` — the 9-file wrapper/GUI source list was
+duplicated verbatim between the plugin target and `AnamorphStateTests` (a new source added to
+one only would silently desync the state suite's coverage) → single `ANAMORPH_PLUGIN_SOURCES`
+variable, build graph provably identical (`ninja: no work to do` after reconfigure), plus the
+stale "DSP self-tests" section header for a block that builds both suites;
+`.github/dependabot.yml` — comment still said JUCE **8.0.14** pinned to a **tag** (it is 9.0.0
+pinned by immutable commit SHA, ADR-0022); `release.yml` — stale `v0.8.13` tag example (the
+first tag is v0.9.0); `packaging/windows/Anamorph.iss` — validation note cited a CI run and step
+name that predate the rewritten script; `packaging/windows/INSTALL.txt` — the zip's own notes
+told the reader to run an installer `.exe` that is not in the zip (macOS INSTALL.txt already
+said "from the GitHub release"); `BUILD.md` — the Linux dependency list omitted **`libegl-dev`**,
+required since JUCE 9, and still called the JUCE pin a "tag" (+ a new EGL row in
+TROUBLESHOOTING); `SOURCE_OF_TRUTH.md` — authority level 2 named only `tests/dsp_tests.cpp`,
+not `tests/state_tests.cpp`; **KI-002 rewritten** — it claimed manual `xattr` is required for
+macOS artifacts full stop, contradicting the v0.9.0 `.pkg` route (payloads are not quarantined;
+what remains there is the one-time Gatekeeper approval of the unsigned package), with the same
+zip-vs-pkg scope applied in `PACKAGING.md`, `RELEASE_PROCESS.md` and `TROUBLESHOOTING.md`;
+`HANDOVER.md` — snapshot HEAD frozen at `86b4273` (pre-#88/#89) → `4226d2c`, and "the three
+installable packages" → the two installers + the in-zip Linux scripts; `FUTURE_RISKS.md` /
+`KNOWN_ISSUES.md` version-sync headers extended to PR #89. Stale `file:line` evidence
+citations corrected where they pointed at unrelated code: RELEASE_POLICY (`build.yml:54,156,373`
+→ `:60,180,432`), KNOWN_ISSUES KI-002 (`build.yml:495-498` → `:558-561`; macOS INSTALL.txt
+ranges), DEPENDENCY_POLICY (`run-pluginval.sh:34` → `:43-48`), TROUBLESHOOTING
+(`run-pluginval.sh:42-44` → `:50-53`; `setup-linux.sh:33` → `:31,36`), PACKAGING (two bare
+`INSTALL.txt:` cites qualified to `packaging/macos/`). Validation: Release build green, 140-check
+DSP + 774-check state suites green, no new compiler warnings. Reported but NOT fixed (need an
+owner / exceed "minimal"): the CMake-version-parsing regex exists in three independent copies
+(build.yml Windows PowerShell, build.yml macOS `sed`, release.yml `sed`); the Windows installer
+does not remember the VST3 folder across upgrades and its `UninstallDisplayIcon` points at
+`Anamorph.exe` even on a VST3-only install; HANDOVER's status cells are multi-thousand-character
+single table rows. Prior: for the **v0.9.0 installer/packaging rework** (2026-07-24, PR #89): the
 Windows Inno Setup installer gains a **component page** (Install VST3 / Install
 Standalone, both pre-selected, ≥1 enforced) and a **single destination page with both
 paths** (VST3 above Standalone; the launch-after-install checkbox is removed); the macOS

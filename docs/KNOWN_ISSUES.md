@@ -4,7 +4,8 @@
 in `POSTMORTEMS.md`, not here. Each entry is evidence-backed (constraint C7). When an item is
 fixed, remove it here and (if notable) add a `POSTMORTEMS.md` entry.
 
-Version-synced to **v0.9.0** (release-prep, 2026-07-24, PR #87 — no plugin code changed since
+Version-synced to **v0.9.0** (release-prep, 2026-07-24, PR #87 + the installer/packaging rework
+PR #89 — no plugin code changed since
 v0.8.12 (the JUCE 9 bump is proven bit-identical), so no issue's status moved except one issue
 **removed**: KI-005 "No graphical installer" — v0.9.0 ships a Linux install script (inside
 the zip), a Windows Inno Setup installer and a macOS .pkg, all installing system-wide with
@@ -39,7 +40,7 @@ JUCE 8.0.14; before that 0.8.8 for PR #54).
 | ID | Issue | Severity | Status |
 |---|---|---|---|
 | KI-001 | Concurrent Multiband-Enable + other discrete change cold-starts the crossover bank | Low | Confirmed, masked (inaudible) |
-| KI-002 | macOS artifacts not notarized (manual de-quarantine required) | Medium | Confirmed (distribution) |
+| KI-002 | macOS artifacts not notarized (Gatekeeper prompt on the `.pkg`; manual de-quarantine on the zip route) | Medium | Confirmed (distribution) |
 | KI-003 | pluginval Linux editor tests crash (external host-side JUCE) | Low | Confirmed, mitigated/external |
 | KI-004 | No automated DAW/host-compatibility testing | Medium | Confirmed (coverage gap) |
 | KI-006 | Linux: tooltip rounded corners render an opaque black background instead of transparent | Low | Fix applied (LookAndFeel); Linux visual re-test pending |
@@ -68,11 +69,19 @@ a stand-alone `mbEnable` toggle (the common case) is unaffected and stays warm.
   ADR + Architecture Review (`docs/policies/ARCHITECTURE_REVIEW_GATE.md`); not done here.
 
 ## KI-002 — macOS artifacts not notarized
-CI ad-hoc codesigns the macOS bundles but does **not** notarize them, so Gatekeeper quarantines
-them after download and the user must run `xattr -dr com.apple.quarantine` before the DAW will load
-them.
-- **Evidence [Verified]:** .github/workflows/build.yml:495-498 (`codesign --sign -`, no notarization);
-  packaging/macos/INSTALL.txt:4-10,30-33. See `docs/procedures/PACKAGING.md`.
+CI ad-hoc codesigns the macOS bundles but does **not** notarize them. Two user-facing
+consequences, both still open:
+- **Zip route:** Gatekeeper quarantines the extracted bundles, so the user must run
+  `xattr -dr com.apple.quarantine` before the DAW will load them.
+- **`.pkg` route (v0.9.0):** the installed payloads are **not** quarantined (no Terminal step),
+  but opening the unsigned package itself is refused once — the user has to approve it via
+  *System Settings → Privacy & Security → Open Anyway*.
+
+Notarization (RH-PR-3) closes both.
+- **Evidence [Verified]:** .github/workflows/build.yml:558-561 (`codesign --force --deep --sign -`,
+  no notarization); packaging/macos/INSTALL.txt:4-10 (ad-hoc, not notarized), :34-41 (the
+  Gatekeeper approval for the .pkg), :61-65 (the zip-route `xattr` step).
+  See `docs/procedures/PACKAGING.md`.
 
 ## KI-003 — pluginval Linux editor tests crash (external)
 The editor open/close tests can crash under pluginval on Linux due to a use-after-free in
