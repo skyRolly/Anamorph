@@ -1,18 +1,25 @@
 Anamorph — Windows install / 安装说明
 ====================================
 
-Two ways to install / 两种安装方式:
+Both installation methods below install SYSTEM-WIDE (for all users), into
+the standard locations, and need administrator approval.
+下面两种安装方式都是系统级安装(对所有用户生效),装到标准位置,需要管理员权限。
 
 --------------------------------------------------------------------
-A) Installer (recommended) / 安装程序(推荐)
+A) Installer installation (recommended) / 安装程序(推荐)
 --------------------------------------------------------------------
-  Run  Anamorph-<version>-Windows-Installer.exe  and follow the wizard.
-  It installs:
-    VST3        ->  C:\Program Files\Common Files\VST3\Anamorph.vst3
-    Standalone  ->  C:\Program Files\Anamorph\Anamorph.exe  (+ Start-menu entry)
+  Run  Anamorph-<version>-Windows-Installer.exe  and follow the wizard:
 
-  运行 Anamorph-<version>-Windows-Installer.exe,按向导操作即可。
-  VST3 会装到系统标准位置,独立版会出现在开始菜单。
+  1. Choose the components / 选择组件:
+       [x] Install VST3         (the plug-in for your DAW / DAW 里用的插件)
+       [x] Install Standalone   (the separate application / 独立运行的程序)
+     Both are selected by default; at least one must stay selected.
+     默认两个都勾选;至少要保留一个。
+
+  2. Confirm the install locations (both on one page, VST3 first) /
+     确认安装位置(同一页设置,VST3 在上):
+       VST3        ->  C:\Program Files\Common Files\VST3   (Anamorph.vst3 goes inside)
+       Standalone  ->  C:\Program Files\Anamorph            (+ Start-menu entry / 开始菜单)
 
   The installer is not code-signed yet, so Windows SmartScreen may warn:
   click "More info" > "Run anyway".
@@ -23,15 +30,16 @@ A) Installer (recommended) / 安装程序(推荐)
     (or the "Uninstall Anamorph" Start-menu entry)
 
 --------------------------------------------------------------------
-B) Manual (zip) / 手动安装(zip 包)
+B) Manual installation (zip) / 手动安装(zip 包)
 --------------------------------------------------------------------
   From the zip, copy / 从 zip 里复制:
     Anamorph.vst3   (the whole folder / 整个文件夹)
         ->  C:\Program Files\Common Files\VST3\
-    Anamorph.exe    ->  anywhere you like / 放到任意位置
+    Anamorph.exe
+        ->  C:\Program Files\Anamorph\   (create the folder / 新建这个文件夹)
 
-  Copying into Common Files needs administrator approval.
-  复制到 Common Files 需要管理员权限。
+  Copying into Program Files needs administrator approval.
+  复制到 Program Files 需要管理员权限。
 
 --------------------------------------------------------------------
 Rescan in your DAW / 在 DAW 里重新扫描插件
