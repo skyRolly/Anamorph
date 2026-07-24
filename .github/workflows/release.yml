@@ -20,9 +20,12 @@
 #  lets the pipeline be exercised without cutting a tag.
 #
 #  Deliberately NOT here (later RH-PRs, per RELEASE_HARDENING_PLAN §6/§8):
-#  code signing (RH-PR-3/5), notarization (RH-PR-3), installers (RH-PR-5b/6),
-#  update checks (RH-PR-7). Secrets: none — this workflow uses only the
-#  ephemeral GITHUB_TOKEN, scoped `contents: write` on the draft-release job.
+#  code signing (RH-PR-5), notarization (RH-PR-3), update checks (RH-PR-7).
+#  Installers/packages (v0.9.0): BUILT by build.yml's per-platform packaging
+#  steps (tar.gz / Inno Setup exe / .pkg) and only STAGED here — same
+#  rename-only, never re-packed contract as the zips. Secrets: none — this
+#  workflow uses only the ephemeral GITHUB_TOKEN, scoped `contents: write`
+#  on the draft-release job.
 # ============================================================================
 name: Release
 
@@ -124,7 +127,7 @@ jobs:
       - name: Download customer artifacts (from the build call in this run)
         uses: actions/download-artifact@v7
         with:
-          pattern: "Anamorph-{Linux,Windows,macOS}"
+          pattern: "Anamorph-{Linux,Windows,macOS,Linux-package,Windows-installer,macOS-installer}"
           path: stage
 
       - name: Stage versioned assets + sums + manifest
@@ -144,7 +147,23 @@ jobs:
             [ -f "$SRC" ] || { echo "::error::expected archive ${SRC} is missing from the build artifacts"; exit 1; }
             mv "$SRC" "dist/Anamorph-${VERSION}-${OS}.zip"
           done
-          (cd dist && sha256sum Anamorph-*.zip > SHA256SUMS.txt)
+          # Installable packages (v0.9.0): built by build.yml's packaging
+          # steps with the version already embedded in the name. Fail-closed
+          # on absence AND on a version mismatch (a skewed artifact would
+          # mean the build ran against a different CMake version than the
+          # tag validated). Move only — never re-packed.
+          for PKG in \
+            "Anamorph-Linux-package/Anamorph-${VERSION}-Linux.tar.gz" \
+            "Anamorph-Windows-installer/Anamorph-${VERSION}-Windows-Installer.exe" \
+            "Anamorph-macOS-installer/Anamorph-${VERSION}-macOS.pkg"; do
+            SRC="stage/${PKG}"
+            [ -f "$SRC" ] || { echo "::error::expected package ${SRC} is missing from the build artifacts (version skew or packaging step failure)"; exit 1; }
+            mv "$SRC" dist/
+          done
+          # The user manual ships as a release asset too (from this checkout,
+          # which the tag points at).
+          cp docs/user/USER_MANUAL.md "dist/Anamorph-${VERSION}-UserManual.md"
+          (cd dist && sha256sum Anamorph-* > SHA256SUMS.txt)
 
           {
             echo "Anamorph ${VERSION} — release manifest"
@@ -181,6 +200,10 @@ jobs:
             dist/Anamorph-"${VERSION}"-Linux.zip \
             dist/Anamorph-"${VERSION}"-Windows.zip \
             dist/Anamorph-"${VERSION}"-macOS.zip \
+            dist/Anamorph-"${VERSION}"-Linux.tar.gz \
+            dist/Anamorph-"${VERSION}"-Windows-Installer.exe \
+            dist/Anamorph-"${VERSION}"-macOS.pkg \
+            dist/Anamorph-"${VERSION}"-UserManual.md \
             dist/SHA256SUMS.txt \
             dist/RELEASE_MANIFEST.txt
           echo "Draft release v${VERSION} created -- publishing remains a manual step (RELEASE_POLICY Level-5 audition first)."

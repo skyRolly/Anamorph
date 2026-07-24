@@ -20,7 +20,7 @@ Anamorph/
 │                           release-hardening/RH_PR2_INVESTIGATION.md — finalized decisions
 │                           graduate to ADRs; worklogs are the raw evidence trail).
 ├── scripts/                setup / build / test / pluginval.
-├── packaging/              macOS install notes.
+├── packaging/              Per-platform install notes + installer assets (linux/, windows/, macos/).
 ├── .github/                CI + security tooling: workflows/ (build + validate on 3 OSes with
 │                           retain-then-strip symbol pipeline; CodeQL; MSVC /analyze;
 │                           Dependency Review) and dependabot.yml (github-actions ecosystem only).
@@ -81,6 +81,11 @@ Anamorph/
 | `scripts/run-pluginval.ps1` | pluginval on Windows (same strictness/mode/×3 structure; exit code is the sole signal). |
 | `src/AbSlotIndex.h` | `anamorph::kNumAbSlots` + `clampAbSlotIndex` — single source of truth for A/B slot sizing/clamping. |
 | `packaging/macos/INSTALL.txt` | macOS install + de-quarantine instructions (ad-hoc signed, not notarized). |
+| `packaging/macos/build-pkg.sh` | Builds the macOS `.pkg` installer (three component packages + productbuild) from the CI-staged payload. |
+| `packaging/windows/Anamorph.iss` + `INSTALL.txt` | Inno Setup installer script (stable AppId, VST3 → Common Files) + Windows install notes (shipped in the zip). |
+| `packaging/linux/install.sh`, `uninstall.sh`, `INSTALL.txt` | User-local Linux installer/uninstaller (`~/.vst3`, `~/.local/bin`) + install notes; all three ship in the tar.gz. |
+| `docs/user/USER_MANUAL.md` | Full end-user manual (interface, signal flow, algorithms, presets, workflows, troubleshooting); attached to GitHub releases. |
+| `docs/user/INSTALLATION.md` | End-user installation guide for all three platforms (installer + manual routes). |
 | `.github/workflows/build.yml` | 3-OS build + DSP tests + pluginval; strictness-10, both modes ×3, **blocking on all three platforms**; also callable (`workflow_call`) by release.yml. |
 | `.github/workflows/release.yml` | RH-PR-8 release skeleton: annotated `vX.Y.Z` tag → fail-closed metadata validation → reused build.yml gates → **draft** GitHub Release (versioned artifacts + SHA-256 sums + manifest); `workflow_dispatch` = rehearsal. |
 | `.github/workflows/codeql.yml` | CodeQL (`c-cpp` manual build + `actions`); alerts scoped to repo-own code. See `docs/procedures/CI_CD.md` §Security scanning. |

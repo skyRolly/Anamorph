@@ -1,0 +1,52 @@
+Anamorph — Windows install / 安装说明
+====================================
+
+Two ways to install / 两种安装方式:
+
+--------------------------------------------------------------------
+A) Installer (recommended) / 安装程序(推荐)
+--------------------------------------------------------------------
+  Run  Anamorph-<version>-Windows-Installer.exe  and follow the wizard.
+  It installs:
+    VST3        ->  C:\Program Files\Common Files\VST3\Anamorph.vst3
+    Standalone  ->  C:\Program Files\Anamorph\Anamorph.exe  (+ Start-menu entry)
+
+  运行 Anamorph-<version>-Windows-Installer.exe,按向导操作即可。
+  VST3 会装到系统标准位置,独立版会出现在开始菜单。
+
+  The installer is not code-signed yet, so Windows SmartScreen may warn:
+  click "More info" > "Run anyway".
+  安装程序尚未数字签名,SmartScreen 可能提示——点"更多信息"再点"仍要运行"。
+
+  Uninstall / 卸载:
+    Settings > Apps > Installed apps > Anamorph > Uninstall
+    (or the "Uninstall Anamorph" Start-menu entry)
+
+--------------------------------------------------------------------
+B) Manual (zip) / 手动安装(zip 包)
+--------------------------------------------------------------------
+  From the zip, copy / 从 zip 里复制:
+    Anamorph.vst3   (the whole folder / 整个文件夹)
+        ->  C:\Program Files\Common Files\VST3\
+    Anamorph.exe    ->  anywhere you like / 放到任意位置
+
+  Copying into Common Files needs administrator approval.
+  复制到 Common Files 需要管理员权限。
+
+--------------------------------------------------------------------
+Rescan in your DAW / 在 DAW 里重新扫描插件
+--------------------------------------------------------------------
+  * REAPER:      Options > Preferences > Plug-ins > VST > Re-scan.
+  * Ableton:     Options > Preferences > Plug-Ins > Rescan.
+  * FL Studio:   Plugin Manager > Find installed plugins.
+  * Cubase:      Studio > VST Plug-in Manager > Rescan All.
+
+--------------------------------------------------------------------
+Troubleshooting / 常见问题
+--------------------------------------------------------------------
+- Plug-in not found: make sure the WHOLE Anamorph.vst3 folder (not just a
+  file from inside it) is in Common Files\VST3, then rescan.
+  找不到插件:确认复制的是整个 Anamorph.vst3 文件夹,再重新扫描。
+- SmartScreen blocks the Standalone: "More info" > "Run anyway".
+- The plug-in is 64-bit; it will not appear in 32-bit hosts.
+  插件为 64 位,32 位宿主里不会出现。

@@ -21,7 +21,9 @@ the hard compatibility gate is `RELEASE_COMPATIBILITY_CHECKLIST.md`.
 ## Build the release artifacts
 
 Releases correspond to the CI artifacts built per push (`CI_CD.md`):
-`Anamorph-Linux`, `Anamorph-Windows`, `Anamorph-macOS`. Push the release commit and use that run's
+`Anamorph-Linux`, `Anamorph-Windows`, `Anamorph-macOS` (archives) plus the installable
+packages `Anamorph-Linux-package`, `Anamorph-Windows-installer`, `Anamorph-macOS-installer`
+(`PACKAGING.md` §Installable packages). Push the release commit and use that run's
 artifacts, or build locally per `BUILD.md`. The CI build number is `${{ github.run_number }}`
 (`-DANAMORPH_BUILD_NUMBER=...`), shown in the About box.
 
@@ -38,12 +40,12 @@ documents the required `xattr -dr com.apple.quarantine` step for end users (`PAC
 
 ## Tagging + release pipeline (RH-PR-8)
 
-**Tag convention:** an **annotated** tag `vMAJOR.MINOR.PATCH` (e.g. `v0.8.13`) on the release
+**Tag convention:** an **annotated** tag `vMAJOR.MINOR.PATCH` (e.g. `v0.9.0`) on the release
 commit on `main`, created AFTER pre-release steps 1–7 above are complete:
 
 ```bash
-git tag -a v0.8.13 -m "Anamorph 0.8.13"
-git push origin v0.8.13
+git tag -a v0.9.0 -m "Anamorph 0.9.0"
+git push origin v0.9.0
 ```
 
 Pushing the tag triggers `.github/workflows/release.yml`, which:
@@ -58,16 +60,21 @@ Pushing the tag triggers `.github/workflows/release.yml`, which:
 3. **Creates a DRAFT GitHub Release** with the **exact per-platform archives CI built and
    validated** — renamed to `Anamorph-<version>-<OS>.zip`, never unpacked or re-packed, so
    Unix permissions, symlinks and the signed macOS bundle layout inside them are untouched —
-   plus `SHA256SUMS.txt` and a `RELEASE_MANIFEST.txt` (version / tag / commit / CI build
-   number / per-platform hashes / run link), with the CHANGELOG section as the release notes.
-   Debug-symbol artifacts stay internal (ADR-0021).
+   plus the three installable packages (`Anamorph-<version>-Linux.tar.gz`,
+   `Anamorph-<version>-Windows-Installer.exe`, `Anamorph-<version>-macOS.pkg`; already
+   version-named at build time, fail-closed on absence or version skew, moved unmodified),
+   the user manual (`Anamorph-<version>-UserManual.md`), `SHA256SUMS.txt` over all assets,
+   and a `RELEASE_MANIFEST.txt` (version / tag / commit / CI build number / hashes / run
+   link), with the CHANGELOG section as the release notes. Debug-symbol artifacts stay
+   internal (ADR-0021).
 
 **Publishing the draft is a manual maintainer action** — after the Level-5 audition
-(RELEASE_POLICY precondition 7). No signing/notarization/installers yet (RH-PR-3/5/5b/6).
+(RELEASE_POLICY precondition 7). No signing/notarization yet (RH-PR-3/5); the installers
+ship unsigned, with the user-facing consequences documented in `docs/user/INSTALLATION.md`.
 A pipeline **rehearsal** without a tag: run `release.yml` via `workflow_dispatch`
 (validate + full build; no release is created).
 
-No release tag exists yet — the first will be cut at the v0.8.13 release. Historical
+No release tag exists yet — the first will be cut at the v0.9.0 release. Historical
 CHANGELOG entries keep their commit-SHA evidence; entries from the first tag onward cite the
 tag (upgrades CHANGELOG evidence per `CHANGELOG_POLICY.md`; closes RISK-003 when practiced).
 Evidence [Verified]: .github/workflows/release.yml; .github/workflows/build.yml (`workflow_call`).

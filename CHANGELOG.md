@@ -1,10 +1,87 @@
 # Changelog
 
 All notable user-visible changes to Anamorph. Format follows [Keep a Changelog]; versions are
-`MAJOR.MINOR.PATCH` (pre-1.0). The repository has **no git tags**, so each entry cites its **commit
-SHA + date** as the Evidence Source (per `docs/policies/CHANGELOG_POLICY.md`). Entries for the
+`MAJOR.MINOR.PATCH` (pre-1.0). Entries up to and including `[0.8.12]` predate git tags and cite
+their **commit SHA + date** as the Evidence Source (per `docs/policies/CHANGELOG_POLICY.md`);
+from `[0.9.0]` onward each release is additionally marked by an annotated `vX.Y.Z` tag
+(`docs/procedures/RELEASE_PROCESS.md` §Tagging). Entries for the
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
+
+## [0.9.0] — 2026-07-24
+### Added
+- **User-installable packages for every platform**, published alongside the unchanged
+  archive downloads. Linux: `Anamorph-<version>-Linux.tar.gz` with `install.sh` /
+  `uninstall.sh` (user-local install to `~/.vst3` and `~/.local/bin`, no root needed).
+  Windows: `Anamorph-<version>-Windows-Installer.exe` (Inno Setup — VST3 to
+  `Common Files\VST3`, Standalone + Start-menu entry, real uninstall entry in
+  Settings › Apps; not yet Authenticode-signed, so SmartScreen warns once — RH-PR-5).
+  macOS: `Anamorph-<version>-macOS.pkg` (installs VST3 + AU + Standalone app to the
+  standard `/Library/Audio/Plug-Ins` and `/Applications` locations; package payloads carry
+  no quarantine attribute, so the manual `xattr` step the zip needs disappears; not yet
+  notarized — right-click → Open once — RH-PR-3). All three are built in CI from the same
+  validated staging directories as the existing zips; nothing is re-packed downstream.
+  Evidence: PR #87 (v0.9.0 release prep). [Verified]
+- **User documentation**: a full user manual (`docs/user/USER_MANUAL.md`, also attached to
+  GitHub releases) covering every panel, control and parameter, signal flow, the four
+  widening algorithms, presets/A-B, workflow examples and troubleshooting; plus a
+  per-platform installation guide (`docs/user/INSTALLATION.md`). `INSTALL.txt` is now
+  included in the Linux and Windows zips (the macOS zip already shipped one).
+  Evidence: PR #87 (v0.9.0 release prep). [Verified]
+
+### Changed
+- **JUCE framework 8.0.14 → 9.0.0**, pinned by the release tag's immutable commit SHA
+  `f8f8864172464b9adf9eba6101e1f784838d1597` instead of a mutable tag name (supply-chain
+  hardening; ADR-0022). Zero project C++ source changes were required. Behaviour proven
+  unchanged: 32-scenario engine twin-dump bit-identical (all hashes and reported latencies
+  equal under 8.0.14 and 9.0.0), 140-check DSP suite + 774-check state suite green, and the
+  parameter-registry snapshot frozen under 8.0.14 passes byte-for-byte under 9.0.0.
+  Source builds on Linux need one new package: `libegl-dev` (JUCE 9 creates GL contexts
+  via EGL). Cross-link: `docs/architecture/design-decisions/ADR-0022-juce-9.0.0-upgrade-sha-pin.md`,
+  `worklogs/JUCE9_MIGRATION_v0.8.13.md`. Evidence: PR #83 / commit `edcba14`. [Verified]
+
+### Fixed
+- **Downloaded CI artifacts no longer lose Unix executable permissions.** Each per-push
+  customer artifact now carries a single archive created on the build machine itself
+  (`zip -ry` / `Compress-Archive` / `ditto -c -k`), because the artifact transport strips
+  file modes from bare directory trees — previously an extracted Linux/macOS download
+  needed a manual `chmod +x`. Release assets publish those exact bytes, renamed only.
+  Evidence: PR #84 / commit `42dd8ae`; verified against CI-built bytes in
+  `worklogs/release-hardening/RH_PR8_RELEASE_PIPELINE.md` §6c. [Verified]
+
+### Compatibility
+- **No parameter, preset, session or DSP behaviour changes in this release.** Sessions and
+  presets saved with any 0.8.x build load unchanged (and this is now regression-tested —
+  see Build / Release below). The engine's output and reported latency are bit-identical
+  to v0.8.12 across the JUCE 9 bump. Evidence: PR #82/#83 validation records. [Verified]
+
+### Documentation
+- Post-v0.8.12 repository audit: drift corrections across ~20 developer documents, KI-013
+  recorded (macOS release-outside stuck-press reconcile is inert), and the product-readiness
+  roadmap that scheduled this release's packaging/user-docs work (including the newly
+  identified RH-R10 third-party licence-compliance item).
+  Evidence: PR #81 / commit `15c4159`; PR #86 / commits `96f2ae5`, `2a55b14`. [Verified]
+
+### Build / Release
+- **Tag-triggered release pipeline** (`.github/workflows/release.yml`): pushing an annotated
+  `vX.Y.Z` tag validates fail-closed (annotated tag ⇄ CMake `project VERSION` ⇄ CHANGELOG
+  section), runs the full existing 3-OS build/validation matrix exactly once via
+  `workflow_call`, and creates a **draft** GitHub Release with versioned assets,
+  `SHA256SUMS.txt` and `RELEASE_MANIFEST.txt` (version / tag / commit / CI build number /
+  run URL / hashes). Publishing the draft remains a manual maintainer action after the
+  Level-5 audition. Rehearsed end-to-end before this release (Actions run 30011792515).
+  Evidence: PR #84 / commit `d991e46`; rehearsal record PR #85 / commit `6ea31ba`. [Verified]
+- **State-serialization & parameter-compatibility regression harness** as a blocking CI gate
+  on all three platforms: the new `AnamorphStateTests` target (774 checks) freezes the
+  parameter registry against a committed snapshot and regression-tests state round-trips,
+  the three legacy session-format migration paths, corrupt/foreign state handling, preset
+  round-trips and A/B preservation. Validation infrastructure only.
+  Evidence: PR #82 / commit `d6bdb13`; `worklogs/STATE_HARNESS_v0.8.13.md`. [Verified]
+- **New CI packaging artifacts** `Anamorph-Linux-package`, `Anamorph-Windows-installer` and
+  `Anamorph-macOS-installer` carry the installable packages above; the existing
+  `Anamorph-<OS>` (+`-debug`) artifacts are unchanged. The release job stages the packages
+  with the same fail-closed, never-re-packed contract as the zips.
+  Evidence: PR #87 (v0.9.0 release prep). [Verified]
 
 ## [0.8.12] — 2026-07-22
 ### Changed

@@ -18,7 +18,9 @@ validation (tag ⇄ `CMakeLists.txt` version ⇄ `CHANGELOG.md` section, annotat
 `build.yml` via `workflow_call` (single build, identical gates and artifacts) → **draft**
 GitHub Release (the exact source-archived platform zips renamed to
 `Anamorph-<version>-<OS>.zip` — never re-packed, preserving permissions/symlinks/bundle
-layout — + `SHA256SUMS.txt` + `RELEASE_MANIFEST.txt` + the CHANGELOG section as notes; `contents: write` scoped to that one
+layout — + the three installable packages, already version-named at build time and moved
+unmodified after a fail-closed name/version check, + `Anamorph-<version>-UserManual.md`
++ `SHA256SUMS.txt` over all assets + `RELEASE_MANIFEST.txt` + the CHANGELOG section as notes; `contents: write` scoped to that one
 job; publishing the draft stays a manual maintainer action per RELEASE_POLICY). No
 third-party actions beyond `actions/checkout` / `actions/download-artifact` + the `gh` CLI
 with the ephemeral `GITHUB_TOKEN`; no signing secrets exist in the repository.
@@ -74,6 +76,13 @@ failures as green and has been removed). Evidence [Verified]: `.github/workflows
    strip/staging/packaging step to have succeeded (`steps.<id>.outcome` gating), and the staging
    steps self-validate (no symbol table, no debug files in the public copy). A pluginval-only
    failure still uploads beta artifacts; developer `-debug` artifacts survive packaging failures.
+8. **Installable packages (v0.9.0, additive)** — after each staging step, a separate
+   packaging step builds the user-installable package from the same validated staging dir
+   (Linux `tar.gz` + install scripts with an exec-bit self-check; Windows Inno Setup
+   installer via the preinstalled `ISCC.exe`; macOS `.pkg` via
+   `packaging/macos/build-pkg.sh` with a component self-check). Uploaded as
+   `Anamorph-<OS>-{package,installer}` artifacts under the same fail-closed gate as the
+   customer zips (tests + own step outcome). See `PACKAGING.md` §Installable packages.
 
 Evidence [Verified]: `.github/workflows/build.yml`; `scripts/run-pluginval.sh`; `scripts/run-pluginval.ps1`.
 
@@ -88,12 +97,15 @@ miss. Evidence [Verified]: `.github/workflows/build.yml`.
 
 | Artifact | Contents | `if-no-files-found` |
 |---|---|---|
-| `Anamorph-Linux` | stripped `Anamorph.vst3` + `Anamorph` (Standalone) | error |
+| `Anamorph-Linux` | `Anamorph-Linux.zip`: stripped `Anamorph.vst3` + `Anamorph` (Standalone) + `INSTALL.txt` | error |
+| `Anamorph-Linux-package` | `Anamorph-<version>-Linux.tar.gz` (payload + `install.sh`/`uninstall.sh`) | error |
 | `Anamorph-Linux-debug` | `Anamorph.vst3.so.debug`, `Anamorph.standalone.debug` (split debug info) | error |
-| `Anamorph-Windows` | `Anamorph.vst3` + `Anamorph.exe` (Standalone; PDBs removed) | error |
+| `Anamorph-Windows` | `Anamorph-Windows.zip`: `Anamorph.vst3` + `Anamorph.exe` (Standalone; PDBs removed) + `INSTALL.txt` | error |
+| `Anamorph-Windows-installer` | `Anamorph-<version>-Windows-Installer.exe` (Inno Setup) | error |
 | `Anamorph-Windows-debug` | `Anamorph.vst3.pdb`, `Anamorph.standalone.pdb` | error |
-| `Anamorph-macOS` | universal stripped `Anamorph.vst3` + `.component` (AU) + `.app` + `INSTALL.txt` | error |
-| `Anamorph-macOS-debug` | `Anamorph.vst3.dSYM`, `Anamorph.component.dSYM`, `Anamorph.app.dSYM` | error |
+| `Anamorph-macOS` | `Anamorph-macOS.zip`: universal stripped `Anamorph.vst3` + `.component` (AU) + `.app` + `INSTALL.txt` | error |
+| `Anamorph-macOS-installer` | `Anamorph-<version>-macOS.pkg` (VST3 + AU + app components) | error |
+| `Anamorph-macOS-debug` | `Anamorph.vst3.dSYM`, `Anamorph.component.dSYM`, `Anamorph.app.dSYM` — **best-effort**: the upload step is skipped (with a CI warning) when Release+LTO yields no usable dSYM, so this artifact can be absent | error (when it runs) |
 
 The macOS job captures dSYMs, strips, then ad-hoc codesigns the bundles, verifies both arch
 slices with `lipo -archs`, and asserts the stripped VST3 still exports `GetPluginFactory` — all

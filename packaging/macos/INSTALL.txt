@@ -10,6 +10,23 @@ quarantine it after download. Follow the steps below or it won't load.
 步骤去掉隔离,否则 DAW 里加载不出来。
 
 --------------------------------------------------------------------
+0) Easiest: the .pkg installer / 最简单:用 .pkg 安装包
+--------------------------------------------------------------------
+  If you downloaded  Anamorph-<version>-macOS.pkg  (from the GitHub
+  release), just open it — it installs the VST3, AU and the app into the
+  right places, and NO quarantine/xattr steps below are needed.
+  Because the package is not notarized yet, macOS may refuse the first
+  double-click: right-click (Ctrl-click) the .pkg > "Open" > "Open".
+
+  如果你下载的是 Anamorph-<version>-macOS.pkg(GitHub Release 里提供),
+  直接安装即可,VST3/AU/独立版会装到正确位置,也不需要下面的去隔离步骤。
+  因为还没有 Apple 公证,第一次打开可能被拦——对 .pkg 右键(按住 Ctrl 点击)
+  选"打开",再点"打开"。
+
+  The steps below are for the ZIP download only.
+  下面的步骤只针对 ZIP 包的手动安装。
+
+--------------------------------------------------------------------
 1) Install the formats you need / 安装你需要的格式
 --------------------------------------------------------------------
   * VST3  (Reaper, Ableton, Cubase, Bitwig, ...):

@@ -3,7 +3,10 @@
 Potential technical risks. Each is evidence-based (constraint C7) — no invented risks. ADRs and
 postmortems may reference these IDs to close the loop. Severity: Low / Medium / High / Critical.
 
-Verified against repository HEAD `64e87c4` (post-v0.8.12 content re-audit); version-synced to the
+Version-synced to **v0.9.0** (release-prep, 2026-07-24, PR #87 — packaging/installers + user
+docs + version bump; no DSP/GUI code change, no new risk; the unsigned installers inherit the
+existing signing/notarization gap already tracked as RH-PR-3/5). Previously verified against
+repository HEAD `64e87c4` (post-v0.8.12 content re-audit), synced to the
 **v0.8.12 release** (changelog-dated 2026-07-22, PR #79 performance Wave 6 + PR #80 GUI interaction
 fixes — pixel-identical / message-thread-only, no new risk; the **v0.8.11 release** of 2026-07-20
 likewise introduced none: PRs #60/#61 — the ADR-0015 crossover-follower fixes, behaviour-changing
@@ -75,7 +78,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 - **Mitigation:** **Infrastructure shipped (RH-PR-8, v0.8.13 cycle):** annotated `vX.Y.Z` tag
   convention + tag-triggered `release.yml` (fail-closed tag⇄version⇄CHANGELOG validation →
   reused `build.yml` gates → draft GitHub Release with versioned artifacts + SHA-256 sums +
-  manifest). The risk **closes when the first release tag is cut** (planned: v0.8.13); until
+  manifest). The risk **closes when the first release tag is cut** (planned: v0.9.0); until
   then, cite commit SHAs. Historical entries keep SHA evidence permanently.
 
 ## RISK-004 — pluginval signal-only retry masking a real crash

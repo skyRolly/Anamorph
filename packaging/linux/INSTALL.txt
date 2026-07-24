@@ -1,0 +1,60 @@
+Anamorph — Linux install / 安装说明
+====================================
+
+This package was built by CI for x86_64 Linux. It contains:
+
+  Anamorph.vst3/   the VST3 plug-in bundle
+  Anamorph         the Standalone application
+  install.sh       installs both for the current user (no root needed)
+  uninstall.sh     removes what install.sh installed
+
+本包由 CI 为 x86_64 Linux 构建,包含 VST3 插件、独立版程序,以及
+install.sh(为当前用户安装,不需要 root)和 uninstall.sh(卸载)。
+
+--------------------------------------------------------------------
+1) Easy install / 一键安装
+--------------------------------------------------------------------
+      ./install.sh
+
+  This copies:
+    Anamorph.vst3  ->  ~/.vst3/Anamorph.vst3        (the standard user VST3 path)
+    Anamorph       ->  ~/.local/bin/Anamorph        (Standalone)
+
+  install.sh 会把 VST3 复制到 ~/.vst3/,独立版复制到 ~/.local/bin/。
+
+  To remove later / 以后卸载:
+      ./uninstall.sh
+
+--------------------------------------------------------------------
+2) Manual install / 手动安装
+--------------------------------------------------------------------
+  * VST3 (REAPER, Bitwig, Ardour, Qtractor, ...):
+        mkdir -p ~/.vst3
+        cp -R Anamorph.vst3 ~/.vst3/
+
+    System-wide instead (all users, needs root) / 系统级安装(需要 root):
+        sudo cp -R Anamorph.vst3 /usr/lib/vst3/
+
+  * Standalone / 独立版:
+        cp Anamorph ~/.local/bin/     (or any directory on your PATH)
+
+--------------------------------------------------------------------
+3) Rescan in your DAW / 在 DAW 里重新扫描插件
+--------------------------------------------------------------------
+  * REAPER:  Options > Preferences > Plug-ins > VST > Re-scan.
+             Make sure ~/.vst3 is in the VST3 path list (it is by default).
+  * Bitwig:  Settings > Locations > Plug-in Locations.
+  * Ardour:  Preferences > Plugins > Scan for Plugins.
+
+--------------------------------------------------------------------
+Troubleshooting / 常见问题
+--------------------------------------------------------------------
+- "Permission denied" when launching the Standalone: the executable bit
+  was lost (some archive tools drop it). Fix / 如果提示没有执行权限:
+      chmod +x ~/.local/bin/Anamorph
+      chmod +x ~/.vst3/Anamorph.vst3/Contents/x86_64-linux/Anamorph.so
+- Standalone not found after install: make sure ~/.local/bin is on your
+  PATH (log out/in after the first install on some distros).
+  安装后找不到独立版:确认 ~/.local/bin 在 PATH 里。
+- The plug-in needs a working ALSA/JACK/PipeWire audio setup for the
+  Standalone; inside a DAW no extra setup is needed.
