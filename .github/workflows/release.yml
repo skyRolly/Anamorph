@@ -163,6 +163,13 @@ jobs:
           # The user manual ships as a release asset too (from this checkout,
           # which the tag points at).
           cp docs/user/USER_MANUAL.md "dist/Anamorph-${VERSION}-UserManual.md"
+          # Third-party attribution as release assets. The zips and the Windows
+          # installer already carry these files inside; publishing them on the
+          # release page covers the macOS .pkg route, whose payload is only the
+          # bundles themselves. Version-named so the SHA256SUMS glob below covers
+          # them like every other asset. See THIRD_PARTY_LICENSES.md.
+          cp NOTICE                  "dist/Anamorph-${VERSION}-NOTICE.txt"
+          cp THIRD_PARTY_LICENSES.md "dist/Anamorph-${VERSION}-THIRD_PARTY_LICENSES.md"
           (cd dist && sha256sum Anamorph-* > SHA256SUMS.txt)
 
           {
@@ -203,6 +210,8 @@ jobs:
             dist/Anamorph-"${VERSION}"-Windows-Installer.exe \
             dist/Anamorph-"${VERSION}"-macOS.pkg \
             dist/Anamorph-"${VERSION}"-UserManual.md \
+            dist/Anamorph-"${VERSION}"-NOTICE.txt \
+            dist/Anamorph-"${VERSION}"-THIRD_PARTY_LICENSES.md \
             dist/SHA256SUMS.txt \
             dist/RELEASE_MANIFEST.txt
           echo "Draft release v${VERSION} created -- publishing remains a manual step (RELEASE_POLICY Level-5 audition first)."

@@ -67,9 +67,11 @@ Pushing the tag triggers `.github/workflows/release.yml`, which:
    `Anamorph-<version>-macOS.pkg`; already version-named at build time, fail-closed on
    absence or version skew, moved unmodified — the Linux installer is `install.sh` inside
    the Linux zip),
-   the user manual (`Anamorph-<version>-UserManual.md`), `SHA256SUMS.txt` over all assets,
-   and a `RELEASE_MANIFEST.txt` (version / tag / commit / CI build number / hashes / run
-   link), with the CHANGELOG section as the release notes. Debug-symbol artifacts stay
+   the user manual (`Anamorph-<version>-UserManual.md`), the third-party attribution
+   (`Anamorph-<version>-NOTICE.txt`, `Anamorph-<version>-THIRD_PARTY_LICENSES.md` — the
+   `.pkg` payload is the bundles only, so these ride on the release page), `SHA256SUMS.txt`
+   over all assets, and a `RELEASE_MANIFEST.txt` (version / tag / commit / CI build number /
+   hashes / run link), with the CHANGELOG section as the release notes. Debug-symbol artifacts stay
    internal (ADR-0021).
 
 **Publishing the draft is a manual maintainer action** — after the Level-5 audition

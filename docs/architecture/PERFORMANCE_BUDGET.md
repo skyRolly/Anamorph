@@ -10,7 +10,7 @@ no benchmark/profiling data exists in the repository, and inventing numbers is p
 |---|---|
 | **`processBlock` performs no heap allocations.** All scratch buffers and DSP state are allocated in `prepare()`; the audio path uses only pre-sized buffers and scalar state. | DSP audit of all 12 modules; src/dsp/AnamorphEngine.cpp:26-111 (prepare allocations) vs the whole of `process()` (no `new`/resize/lock — line range re-verified Wave 3 after the function grew) |
 | **No locks / mutexes / file IO on the audio thread.** | `REALTIME_SAFETY_AUDIT.md`; no `mutex`/`lock`/IO in `src/dsp/**` audio paths |
-| **`ScopedNoDenormals` is active for the whole block.** | src/PluginProcessor.cpp:66 |
+| **`ScopedNoDenormals` is active for the whole block.** | src/PluginProcessor.cpp:109 |
 | **Oversampling only runs when nonlinear work exists** (Drive>0 or Chorus/Dim-D); linear chains skip it → no needless CPU. | src/dsp/AnamorphEngine.cpp:19-23 |
 | **GUI redraw is bounded, idle-gated (0.8.8) AND display-rate-adaptive (0.8.10)**. The editor timer stays 24 Hz and the editor's meter/micro-anim VBlank stays per-frame; the four visualizers (Vectorscope, LevelMeter, StereoMeter, SpectrumImager), formerly fixed 60 Hz `juce::Timer`s, now refresh from `gui::FrameClock` — a `VBlankAttachment` paced to the display and capped near 120 Hz (executes every `ceil(rate/126)`-th vblank: 60→60, 120→120, 144→72, 240→120; 60 Hz wall-clock fallback when the cadence is unmeasurable). Every temporal ease/decay was re-expressed in `dt` form (matching the old 60 Hz curves to within the display quantum), so smoothness scales to the panel while the S1/S2/S3/H15 idle gates and once-per-block audio ballistics are unchanged. The *work* inside each tick still runs only while something visible can change: the Vectorscope, Spectrum analyser and meters repaint only on real content change, the analyser's FFT runs only on a changed/non-silent window (and not at all while hidden), and since Wave 3 computes only the non-negative-frequency magnitudes its consumers read (`ignoreNegativeFreqs`, ~half the per-transform magnitude work, identical visuals), the micro-animation poll skips when provably static — and since Wave 2 (H15) it decides "provably static" from three relaxed change-generation counters (sound params, view params, InternalState) instead of hashing every tracked widget's value at 60 Hz, which was 68-87 % of the remaining idle editor instructions in the Round-2 attribution — and the 24 Hz signature strings rebuild only on a parameter change. Idle GUI cost drops to ~0. Active repaint cost is also bounded (0.8.9 / H2 + H13 + N2): the Vectorscope's static layer (background gradient, rounded panel, glass edges, grid, labels) and each StereoMeter's static layer (glass panel, centre tick) — pure functions of size/scale/look — are rendered once into cached physical-resolution images and blitted per frame; only signal-dependent drawing (point cloud, clip ring, meter pointer, meter end labels for z-order) is rasterized live. These components are opaque (N2): the cached layers are RGB with the editor's flat `colours::bg` backdrop baked into the rounded corners, so the blit is an opaque copy (not an alpha composite) and the parent never re-renders beneath them. The Spectrum analyser caches its bottom layer the same way (H17: panel + band tints + grid, keyed on its exactly-converging eased inputs) but stays translucent — it sits on the editor's semi-transparent Multiband panel, so the N2 opacity pattern does not apply there. The `FrameClock` refresh (0.8.10) stops the Advanced-only Imager while hidden and debounces its rate cap against single-vblank jitter, so idle stays ~0 on any display. Wave 6 (0.8.12) removed the last avoidable GPU cost: the Spectrum analyser's per-band solo-headphone glyph no longer allocates a **plot-sized transparency-layer offscreen every Advanced-mode frame** — the layer is clipped to the glyph (~200× smaller offscreen) and skipped entirely at full opacity, pixel-identical (worklogs/performance/WAVE6_GPU_RENDER_INVESTIGATION.md). Since Wave 4 the **LevelMeter** carries the same opaque static-layer cache as the other three visualizers (panel, IN/OUT + L/R headers, the four recessed bar slots and the centre dB ruler blit from a cached RGB image; only the numbers, fills, peak blocks and live glass edges rasterize per frame — measured −29…−31 % per meter frame, pixel-identical), the **Vectorscope** tick early-returns while the whole editor is hidden (parity with the S3 gates; it was the one visualizer still scanning the ring unseen), the **Spectrum analyser** converts bins to dB once per NEW transform instead of per decay tick (the multi-second release tail after audio stops re-ran ~4k log10s per tick on identical input; measured −92 % of that loop) and reuses its spectrum/fill/clip-quad `Path` storage across paints (no per-paint heap growth), and the editor's 24 Hz tick memoises its three remaining unconditional jobs: preset-name shaping re-runs only when (name, dirty, slot width) changed, the combo hover poll runs only while the cursor is inside the editor or a box is still lit, and the match readout re-formats only when the raw published float changed (bitwise compare). | src/gui/Vectorscope.cpp, SpectrumImager.cpp, LevelMeter.cpp, CorrelationMeter.cpp, FrameClock.h; src/PluginEditor.cpp `stepMicroAnims` + `timerCallback` + `refreshPresetDisplay`; CHANGELOG [0.8.8], [0.8.9], [0.8.10], [0.8.11], [0.8.12]; worklogs/performance/WAVE4_INVESTIGATION.md + WAVE6_GPU_RENDER_INVESTIGATION.md |
 | **Scope transfer is O(1) amortised** (lock-free SPSC ring, fixed 16384 capacity, no alloc); the write index is published **once per block** (`pushBlock`, 0.8.8), so readers observe whole committed blocks. | src/dsp/ScopeBuffer.h:28-80 |
@@ -203,6 +203,66 @@ matrix. Do not populate with estimated numbers.`
 `TODO: Per-instance memory is not measured. Structurally, allocation is bounded and occurs
 only in prepare() (delay lines sized to max latency + max block; chorus buffers to 8× rate;
 ScopeBuffer fixed at 16384 stereo frames). Requires measurement for a concrete figure.`
+
+## How to produce those numbers — required benchmark procedure
+
+The three TODOs above are open because **no repeatable benchmark is committed to this
+repository**: `scripts/` has no bench entry point, `tests/` measures correctness only, and every
+number quoted in the Wave 3-6 worklogs came from a *session-local* scratch harness that was never
+checked in (see e.g. `worklogs/performance/WAVE3_INVESTIGATION.md`). Anyone can therefore
+reproduce a measurement, but no two people will reproduce the *same* one. This section fixes the
+method so results are comparable across sessions and machines; it deliberately adds **no
+infrastructure** — closing RISK-002 needs measurements, not a framework.
+
+**What to measure.** `anamorph::AnamorphEngine` alone, not the plug-in wrapper and not the GUI.
+It is a plain library target (`AnamorphDSP`, `CMakeLists.txt`) with no JUCE plug-in host required,
+and `tests/dsp_tests.cpp` already demonstrates the whole calling pattern: construct,
+`prepare(sr, block)`, `setParameters(EngineParameters)`, then
+`process(juce::AudioBuffer<float>&)` on a pre-sized stereo buffer in a loop
+(`AnamorphEngine.h:60`; see e.g. `dsp_tests.cpp:118`). A bench is that loop with a timer around
+it — a single scratch `.cpp` linked against `AnamorphDSP`. Allocate the buffer once, outside the
+timed region: the point is to measure the engine, not `AudioBuffer`'s constructor. Note that
+`AnamorphDSP` is an **INTERFACE** library, so the bench needs its own target that compiles the
+sources — add it behind an OFF-by-default option (mirroring `ANAMORPH_BUILD_TESTS`) so it never
+enters a release build.
+
+**Build it the way users get it.** `-DCMAKE_BUILD_TYPE=Release` only. The `AnamorphHardening`
+flags and `juce::juce_recommended_lto_flags` are part of the shipped configuration, so a bench
+that does not link them is measuring a different binary.
+
+**The matrix.** Each cell is one number; record every axis with the result or the number is
+meaningless:
+
+| Axis | Points to cover |
+|---|---|
+| Sample rate | 44.1, 48, 96, 192 kHz |
+| Block size | 32, 64, 128, 256 samples |
+| Algorithm | Haas, Velvet Noise, Chorus, Dimension-D |
+| Oversampling | Off, and the engaged case (2×/4×/8× **with Drive > 0**, since the wrap only engages for nonlinear/modulation work — see the Verified row above) |
+| Multiband | off; 4 bands static; 4 bands with a split **dragging** (the RISK-002 hot path) |
+
+**What to record per cell.** Wall-clock **nanoseconds per sample**, derived from a run long
+enough to dominate timer noise (≥ 10 s of audio), plus the *worst single block* in the run —
+peak matters more than average for a real-time thread. Take the **median of ≥ 5 repetitions** and
+report the spread; a single run on a shared or thermally-throttled machine is not a datum.
+Report the CPU model, OS, compiler and version alongside, and state whether the machine was
+otherwise idle. For attribution rather than totals, `valgrind --tool=callgrind` over the same
+harness gives instruction counts that are stable across machines — that is what the Wave 3-6
+worklogs used, and it is the right tool for comparing two candidate implementations.
+
+**Memory.** Per-instance footprint is a `prepare()`-time question, not a steady-state one: measure
+RSS before and after `prepare()` at the largest supported sample rate and block size. There is
+nothing to measure during `process()` — that it allocates nothing is the invariant below.
+
+**The pass/fail question these numbers must answer** — the reason RISK-002 is open:
+
+> On a defensibly modest machine, at 48 kHz / 128 samples, how many Anamorph instances can run
+> before the engine consumes a whole core — and does a fast Multiband split drag produce a
+> transient cost that would drop a buffer at that instance count?
+
+Until that has an answer, the CPU/memory rows above stay TODO. **Do not populate them with
+estimates** (constraint C2); a number without the recorded matrix position, machine and
+methodology is worse than an honest TODO.
 
 ## Invariant
 

@@ -9,8 +9,8 @@ Field-level ledger of everything written to session state. Companion to
 > migration support (a read path for the old field). Adding a field is allowed only if absence
 > is handled (a default), so older sessions still load.
 
-Evidence [Verified]: backward-compat paths at src/PluginProcessor.cpp:345-384;
-src/InternalState.h:86-122.
+Evidence [Verified]: backward-compat paths at src/PluginProcessor.cpp:557-560 (pre-0.8.4 `migrateFromLegacyApvts`), :576-593 (pre-0.6.4 `readSlot`), :596-600 (v0.2 bare APVTS);
+src/InternalState.h:92-128.
 
 ## `AnamorphRoot` properties
 
@@ -19,7 +19,7 @@ src/InternalState.h:86-122.
 | `presetName` | String | ≥0.6 (Unverified exact) | No | No | falls back to current name |
 | `presetBaseline` | String | 0.6.x (#6) [Partially Verified] | No | No | `adoptRestoredState` clean baseline |
 
-Source: src/PluginProcessor.cpp:308-309, :350-393.
+Source: src/PluginProcessor.cpp:516-517 (write), :562-567 (read), :608-610 (default).
 
 ## `ANAMORPH` child (APVTS)
 
@@ -58,7 +58,7 @@ Source: src/PluginProcessor.cpp `getStateInformation` / `setStateInformation` / 
 
 **‡** Sessions saved **before** 0.8.4 have no `ANAMORPH_INTERNAL` child; these values are
 recovered from the legacy APVTS PARAM nodes by `migrateFromLegacyApvts` (choice indices are
-0-based legacy → 1-based ComboBox). Evidence [Verified]: src/InternalState.h:100-122;
+0-based legacy → 1-based ComboBox). Evidence [Verified]: src/InternalState.h:106-128;
 [Partially Verified] introduced-0.8.4: CHANGELOG.md [0.8.4].
 
 ## `AB` child
@@ -71,7 +71,7 @@ recovered from the legacy APVTS PARAM nodes by `migrateFromLegacyApvts` (choice 
 | `slotABase` / `slotBBase` | String | 0.6.4 (#6) | No | No | "" |
 
 **◊** Pre-0.6.4 sessions stored params-only under `slotA`/`slotB`; `readSlot` migrates them.
-Evidence [Verified]: src/PluginProcessor.cpp:361-378.
+Evidence [Verified]: src/PluginProcessor.cpp:586-590 (the legacy-key fallback inside `readSlot`, :576-593).
 
 ## Legacy root formats (read-only compatibility)
 
@@ -79,7 +79,7 @@ Evidence [Verified]: src/PluginProcessor.cpp:361-378.
 |---|---|---|
 | v0.2 bare APVTS tree | `xml->hasTagName(apvts.state.getType())` | `apvts.replaceState` |
 
-Source: src/PluginProcessor.cpp:381-384.
+Source: src/PluginProcessor.cpp:596-600.
 
 ## Notes
 

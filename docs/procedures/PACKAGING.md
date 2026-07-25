@@ -8,12 +8,12 @@ Build-artifact structure, installers, code-signing, and install layout. Source:
 
 | Platform | Artifact | Contents |
 |---|---|---|
-| Linux | `Anamorph-Linux` | `Anamorph-Linux.zip` (single archive: stripped `Anamorph.vst3`, `Anamorph` Standalone, `install.sh`/`uninstall.sh`, `INSTALL.txt`) |
+| Linux | `Anamorph-Linux` | `Anamorph-Linux.zip` (single archive: stripped `Anamorph.vst3`, `Anamorph` Standalone, `install.sh`/`uninstall.sh`, `INSTALL.txt`, `NOTICE`, `THIRD_PARTY_LICENSES.md`, `SUPPORT.md`) |
 | Linux | `Anamorph-Linux-debug` | split debug info (`.debug` files, `.gnu_debuglink`-referenced) |
-| Windows | `Anamorph-Windows` | `Anamorph-Windows.zip` (single archive: `Anamorph.vst3`, `Anamorph.exe` Standalone, `INSTALL.txt`; no PDBs) |
+| Windows | `Anamorph-Windows` | `Anamorph-Windows.zip` (single archive: `Anamorph.vst3`, `Anamorph.exe` Standalone, `INSTALL.txt`, `NOTICE`, `THIRD_PARTY_LICENSES.md`, `SUPPORT.md`; no PDBs) |
 | Windows | `Anamorph-Windows-installer` | `Anamorph-<version>-Windows-Installer.exe` (Inno Setup, built from the same staged payload) |
 | Windows | `Anamorph-Windows-debug` | linker PDBs for both shipped images |
-| macOS | `Anamorph-macOS` | `Anamorph-macOS.zip` (single `ditto` archive: universal stripped `Anamorph.vst3`, `Anamorph.component` (AU), `Anamorph.app`, `INSTALL.txt`) |
+| macOS | `Anamorph-macOS` | `Anamorph-macOS.zip` (single `ditto` archive: universal stripped `Anamorph.vst3`, `Anamorph.component` (AU), `Anamorph.app`, `INSTALL.txt`, `NOTICE`, `THIRD_PARTY_LICENSES.md`, `SUPPORT.md`) |
 | macOS | `Anamorph-macOS-installer` | `Anamorph-<version>-macOS.pkg` (pkgbuild/productbuild, built from the same staged payload) |
 | macOS | `Anamorph-macOS-debug` | universal dSYM bundles (best-effort under Release+LTO — may be absent, with a CI warning) |
 
@@ -62,6 +62,24 @@ gated steps (`package_windows` / `package_macos_pkg`), each with the version par
 missing or version-skewed file name**, moves them into the draft release unmodified, and
 covers them in `SHA256SUMS.txt`. The user manual (`docs/user/USER_MANUAL.md`) is attached
 as `Anamorph-<version>-UserManual.md`.
+
+## Third-party attribution in the artifacts
+
+Several licences JUCE vendors require their notice to **accompany a binary distribution** —
+libjpeg/IJG, FLAC and Ogg Vorbis mandate it outright; HarfBuzz and SheenBidi carry
+copyright/attribution terms. `NOTICE` and `THIRD_PARTY_LICENSES.md` therefore travel with the
+binaries, not just in the repository:
+
+| Route | How the attribution arrives |
+|---|---|
+| All three zips | `NOTICE`, `THIRD_PARTY_LICENSES.md` and `SUPPORT.md` staged into the archive root next to `INSTALL.txt` (each `INSTALL.txt` points at `SUPPORT.md`, so it has to be there) |
+| Windows installer | `[Files]` entries into `{app}`, **unconditional** — all three install whichever components the user selects |
+| macOS `.pkg` | the package payload is the three bundles only, so the attribution rides on the release page instead: `Anamorph-<version>-NOTICE.txt` + `Anamorph-<version>-THIRD_PARTY_LICENSES.md`, version-named so `SHA256SUMS.txt` covers them |
+
+The inventory itself — what is compiled in, what is only vendored, and how that was verified —
+is in [`THIRD_PARTY_LICENSES.md`](../../THIRD_PARTY_LICENSES.md). Re-verify it after any JUCE
+bump: two components (FreeType and stb, both inside PlutoVG) are absent from JUCE's own
+`LICENSE.md` and are only found by walking the compiled translation units.
 
 Public binaries are **stripped** (RH-PR-2, ADR-0021); the `-debug` artifacts carry the full
 symbol/debug information for crash symbolication and must never be redistributed with a release.

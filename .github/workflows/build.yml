@@ -123,6 +123,12 @@ jobs:
           cp    packaging/linux/INSTALL.txt "$DIST/INSTALL.txt"
           install -m 755 packaging/linux/install.sh   "$DIST/install.sh"
           install -m 755 packaging/linux/uninstall.sh "$DIST/uninstall.sh"
+          # Third-party attribution must travel WITH the binaries: several of the
+          # licences JUCE vendors (IJG libjpeg, FLAC, Ogg Vorbis, HarfBuzz) require
+          # their notice to accompany a binary distribution. See THIRD_PARTY_LICENSES.md.
+          cp    NOTICE                    "$DIST/NOTICE"
+          cp    THIRD_PARTY_LICENSES.md   "$DIST/THIRD_PARTY_LICENSES.md"
+          cp    SUPPORT.md                "$DIST/SUPPORT.md"
           # The customer artifact must contain no symbol table and no debug files.
           while IFS= read -r -d '' ELF; do
             if readelf -S "$ELF" 2>/dev/null | grep -q '\.symtab'; then
@@ -325,6 +331,10 @@ jobs:
           Copy-Item -Recurse -Force $vst3.FullName $dist
           Copy-Item -Force $exe.FullName $dist
           Copy-Item -Force packaging/windows/INSTALL.txt $dist
+          # Third-party attribution ships with the binaries (see THIRD_PARTY_LICENSES.md).
+          Copy-Item -Force NOTICE $dist
+          Copy-Item -Force THIRD_PARTY_LICENSES.md $dist
+          Copy-Item -Force SUPPORT.md $dist
           # 3) Purge ALL debug material from the public copy BEFORE any
           #    further step that can abort.
           Get-ChildItem -Recurse -Path $dist -File |
@@ -563,6 +573,10 @@ jobs:
           cp -R "$AU"   "$DIST/"
           cp -R "$APP"  "$DIST/"
           cp packaging/macos/INSTALL.txt "$DIST/INSTALL.txt"
+          # Third-party attribution ships with the binaries (see THIRD_PARTY_LICENSES.md).
+          cp NOTICE                  "$DIST/NOTICE"
+          cp THIRD_PARTY_LICENSES.md "$DIST/THIRD_PARTY_LICENSES.md"
+          cp SUPPORT.md              "$DIST/SUPPORT.md"
           # Verify both slices are present in the universal binary.
           echo "== VST3 arches =="; lipo -archs "$DIST/Anamorph.vst3/Contents/MacOS/Anamorph"
           echo "== AU arches ==";   lipo -archs "$DIST/Anamorph.component/Contents/MacOS/Anamorph"

@@ -13,8 +13,8 @@ are in `docs/policies/THREADING_POLICY.md` and `docs/policies/REALTIME_AUDIO_POL
 | **Worker / background** | none | No `std::thread`/`Thread`/`ThreadPool`. FFT runs on the GUI thread. |
 
 Evidence [Verified]:
-- Source: src/PluginProcessor.cpp:64-131 (audio thread), :66 `ScopedNoDenormals`
-- Source: src/PluginEditor.cpp:613 (24 Hz timer), :616-622 (VBlank), :246-256 (OpenGL gate)
+- Source: src/PluginProcessor.cpp:107-175 (`processBlock`), :109 `ScopedNoDenormals`
+- Source: src/PluginEditor.cpp:643 (24 Hz timer), :646-652 (VBlank), :267-281 (OpenGL gate)
 - Source: src/gui/Vectorscope.h:18-20 ("Nothing is ever drawn on the audio thread")
 
 ## OpenGL platform gate (0.8.5)
@@ -77,7 +77,7 @@ Editor destructor order (matters): release VBlank → `stopTimer()` → `openGLC
 ### GUI → Audio
 | Data | Mechanism | Writer | Reader | Source |
 |---|---|---|---|---|
-| Automatable params | APVTS atomics (`std::atomic<float>*`, read once/block) | GUI attachments / host | audio `toEngine` | PluginParameters.cpp:201-300 |
+| Automatable params | APVTS atomics (`std::atomic<float>*`, read once/block) | GUI attachments / host | audio `toEngine` | PluginParameters.cpp:326-389 |
 | Host-hidden params (Oversampling, view) | `InternalState` `juce::ValueTree` + `int`/`float` atomics | GUI `juce::Value` binding | audio (oversample only) | InternalState.h:60-138 |
 | Momentary solo audition | `std::atomic<int> soloPreviewMask` (relaxed, −1 = use param) | GUI `setSoloPreview` | audio processBlock | PluginProcessor.h:72-73,130; .cpp:128 |
 | Meter hold reset | `std::atomic<int> resetReq` (exchange) | GUI `resetHold()` | audio `process()` | LevelMeters.h:58,62 |

@@ -66,15 +66,15 @@ Evidence [Verified]: src/PluginProcessor.cpp (`getStateInformation` / `setStateI
 
 | Legacy format | Handling | Source |
 |---|---|---|
-| **v0.2**: root *is* the APVTS tree | `setStateInformation` else-branch `apvts.replaceState` | :381-384 |
-| **pre-0.6.4**: A/B slots stored params only (`slotA`/`slotB`) | `readSlot` legacy-key fallback | :371-375 |
-| **pre-0.8.4**: Oversampling/view were APVTS params (no `ANAMORPH_INTERNAL`) | `migrateFromLegacyApvts` | :345-348; InternalState.h:100-122 |
+| **v0.2**: root *is* the APVTS tree | `setStateInformation` else-branch `apvts.replaceState` | :596-600 |
+| **pre-0.6.4**: A/B slots stored params only (`slotA`/`slotB`) | `readSlot` legacy-key fallback | :576-593 |
+| **pre-0.8.4**: Oversampling/view were APVTS params (no `ANAMORPH_INTERNAL`) | `migrateFromLegacyApvts` | :557-560; InternalState.h:106-128 |
 
 ## View-parameter preservation on restore
 
 `applyStatePreservingView` restores a snapshot but **keeps the current** shared view params
 (`pid::viewParams` = `bypass`) so an A/B / undo / preset apply never flips the view state.
-Evidence [Verified]: src/PluginProcessor.cpp:198-209.
+Evidence [Verified]: src/PluginProcessor.cpp:246-261 (`applyStatePreservingView`).
 
 ## Invariants
 

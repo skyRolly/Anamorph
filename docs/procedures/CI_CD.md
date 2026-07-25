@@ -21,6 +21,7 @@ GitHub Release (the exact source-archived platform zips renamed to
 layout — + the two installers (Windows Inno Setup exe, macOS pkg; the Linux installer is
 `install.sh` inside the Linux zip), already version-named at build time and moved
 unmodified after a fail-closed name/version check, + `Anamorph-<version>-UserManual.md`
++ `Anamorph-<version>-NOTICE.txt` + `Anamorph-<version>-THIRD_PARTY_LICENSES.md`
 + `SHA256SUMS.txt` over all assets + `RELEASE_MANIFEST.txt` + the CHANGELOG section as notes; `contents: write` scoped to that one
 job; publishing the draft stays a manual maintainer action per RELEASE_POLICY). No
 third-party actions beyond `actions/checkout` / `actions/download-artifact` + the `gh` CLI
@@ -100,12 +101,12 @@ miss. Evidence [Verified]: `.github/workflows/build.yml`.
 
 | Artifact | Contents | `if-no-files-found` |
 |---|---|---|
-| `Anamorph-Linux` | `Anamorph-Linux.zip`: stripped `Anamorph.vst3` + `Anamorph` (Standalone) + `install.sh`/`uninstall.sh` + `INSTALL.txt` | error |
+| `Anamorph-Linux` | `Anamorph-Linux.zip`: stripped `Anamorph.vst3` + `Anamorph` (Standalone) + `install.sh`/`uninstall.sh` + `INSTALL.txt` + `NOTICE` + `THIRD_PARTY_LICENSES.md` + `SUPPORT.md` | error |
 | `Anamorph-Linux-debug` | `Anamorph.vst3.so.debug`, `Anamorph.standalone.debug` (split debug info) | error |
-| `Anamorph-Windows` | `Anamorph-Windows.zip`: `Anamorph.vst3` + `Anamorph.exe` (Standalone; PDBs removed) + `INSTALL.txt` | error |
+| `Anamorph-Windows` | `Anamorph-Windows.zip`: `Anamorph.vst3` + `Anamorph.exe` (Standalone; PDBs removed) + `INSTALL.txt` + `NOTICE` + `THIRD_PARTY_LICENSES.md` + `SUPPORT.md` | error |
 | `Anamorph-Windows-installer` | `Anamorph-<version>-Windows-Installer.exe` (Inno Setup) | error |
 | `Anamorph-Windows-debug` | `Anamorph.vst3.pdb`, `Anamorph.standalone.pdb` | error |
-| `Anamorph-macOS` | `Anamorph-macOS.zip`: universal stripped `Anamorph.vst3` + `.component` (AU) + `.app` + `INSTALL.txt` | error |
+| `Anamorph-macOS` | `Anamorph-macOS.zip`: universal stripped `Anamorph.vst3` + `.component` (AU) + `.app` + `INSTALL.txt` + `NOTICE` + `THIRD_PARTY_LICENSES.md` + `SUPPORT.md` | error |
 | `Anamorph-macOS-installer` | `Anamorph-<version>-macOS.pkg` (VST3 + AU + app components) | error |
 | `Anamorph-macOS-debug` | `Anamorph.vst3.dSYM`, `Anamorph.component.dSYM`, `Anamorph.app.dSYM` — **best-effort**: the upload step is skipped (with a CI warning) when Release+LTO yields no usable dSYM, so this artifact can be absent | error (when it runs) |
 

@@ -37,15 +37,16 @@ only — it configures and builds entirely from the command line on a headless L
 # 1. Install build dependencies (Ubuntu; safe to re-run)
 scripts/setup-linux.sh
 
-# 2. Configure + build (fetches the pinned JUCE tag via CMake FetchContent)
+# 2. Configure + build (fetches the pinned JUCE commit via CMake FetchContent)
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release        # ...or: scripts/build.sh
 
 # 3. Run the headless self-tests (DSP + state compatibility)
 scripts/run-tests.sh
 
-# 4. Validate the VST3 with pluginval (strictness 10 = the release gate)
-scripts/run-pluginval.sh 10
+# 4. Validate the VST3 with pluginval — the release gate is BOTH modes, x3 each
+scripts/run-pluginval.sh 10 deterministic
+scripts/run-pluginval.sh 10 randomise
 ```
 
 The produced plugin is typically at `build/Anamorph_artefacts/Release/VST3/Anamorph.vst3`.
@@ -59,6 +60,10 @@ zip (flat contents — extracting shows the files directly), plus `SHA256SUMS.tx
 full manual: **[`docs/user/USER_MANUAL.md`](docs/user/USER_MANUAL.md)**.
 Prebuilt binaries for all three OSes are also uploaded as **GitHub Actions artifacts** on every
 push (macOS bundles are ad-hoc signed, not notarized — see `packaging/macos/INSTALL.txt`).
+
+New to the plug-in? The manual's **[Quick start](docs/user/USER_MANUAL.md#2-quick-start)**
+takes you from download to first widened sound. Stuck? **[SUPPORT.md](SUPPORT.md)** says what
+to check and what a useful bug report contains.
 
 To build without network (JUCE already on disk): `cmake -B build -DANAMORPH_JUCE_PATH=/path/to/JUCE ...`
 
@@ -77,6 +82,18 @@ The full technical documentation lives in **[`docs/`](docs/)**:
 - **How-to:** [`docs/procedures/`](docs/procedures/) (build, CI/CD, testing, packaging, release)
 - **Rules (binding):** [`docs/policies/`](docs/policies/) (real-time audio, threading, DSP, compatibility, AI-agent)
 - **History & status:** [`CHANGELOG.md`](CHANGELOG.md) · [`docs/POSTMORTEMS.md`](docs/POSTMORTEMS.md) · [`docs/KNOWN_ISSUES.md`](docs/KNOWN_ISSUES.md) · [`docs/FUTURE_RISKS.md`](docs/FUTURE_RISKS.md)
+- **Support & compliance:** [`SUPPORT.md`](SUPPORT.md) · [`NOTICE`](NOTICE) · [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md)
+
+## Licensing
+Anamorph is built on **JUCE**, whose modules are dual-licensed under the **AGPLv3** or the
+commercial JUCE 9 licence. **This repository does not yet declare a licence of its own** — the
+choice of JUCE tier and of Anamorph's own distribution terms is an open owner decision, recorded
+in [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) §"Open licensing decisions" and
+[`docs/architecture/RELEASE_HARDENING_PLAN.md`](docs/architecture/RELEASE_HARDENING_PLAN.md).
+Third-party attribution for the shipped binaries is in [`NOTICE`](NOTICE); the full verified
+inventory (component, purpose, origin, licence, obligations) is in
+[`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md). **Commercial VST3 distribution requires
+reviewing Steinberg's licensing requirements separately.**
 
 Contributors and AI agents: read **[`CLAUDE.md`](CLAUDE.md)** and `docs/policies/AI_AGENT_POLICY.md`
 before changing code — some changes (parameter IDs, serialization, threading, DSP order, latency)

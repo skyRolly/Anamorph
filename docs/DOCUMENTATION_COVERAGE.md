@@ -6,7 +6,35 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **post-v0.9.0 maintenance audit** (2026-07-24, on `main` @ `4226d2c`):
+Last updated: for the **v0.9.0 release-hardening & commercial-readiness audit** (2026-07-25,
+on `main` @ `0a98ebd`, PR #92; record: `worklogs/RELEASE_HARDENING_AUDIT_v0.9.0.md`). **No `src/`
+change.** Six parallel investigation lenses + adversarial verification over the repository and
+the pinned JUCE tree. **New:** `NOTICE` and `THIRD_PARTY_LICENSES.md` (verified third-party
+inventory — every component classified compiled-in vs vendored-but-not-built from
+`build/build.ninja` and object symbols rather than from JUCE's manifest, which is how FreeType
+and stb, both vendored *inside* PlutoVG, were found; the Steinberg VST 3 SDK is **MIT** in JUCE
+9.0.0, correcting RH-R10's GPLv3/proprietary claim, with the trademark/distribution review left
+explicitly open); `SUPPORT.md`; `.github/ISSUE_TEMPLATE/{bug_report,config}.yml`. **Packaging:**
+both attribution files now ship inside all three zips, are installed unconditionally by the
+Windows installer, and are attached as version-named release assets (covering the `.pkg`
+route) — several vendored licences (IJG, FLAC, Ogg Vorbis) require the notice to accompany a
+binary distribution. **User docs:** USER_MANUAL gained a Quick start, a Standalone-application
+section, system requirements, a TOC and a rewritten FAQ (rescanning per DAW, Windows paths,
+Gatekeeper both routes, presets, CPU, latency, automation, session compatibility), and three
+defects were fixed — "set Mix to 0 %" was the manual's most-repeated instruction but `mixK` is
+Advanced-only (`PluginEditor.cpp:856`), seven controls were documented under host-parameter
+names rather than GUI labels, and the MULTIBAND `On` toggle was undocumented; INSTALLATION
+gained the missing macOS `mkdir -p`; macOS `INSTALL.txt` dropped its "unsigned developer build
+for testing" line. **Policy/plan:** RELEASE_POLICY (artifact list + a new third-party-attribution
+precondition), RELEASE_HARDENING_PLAN (RH-R10 corrected, **RH-R11** added for the missing
+LICENSE/EULA, §12a post-v0.9.0 follow-ups RH-F1..F6), PERFORMANCE_BUDGET (a required benchmark
+procedure for RISK-002 — no infrastructure added), TESTING (a "gaps in the automated coverage"
+section: the AU is never auval-validated, and no frozen golden-audio reference exists by
+design), KNOWN_ISSUES (**KI-014** AU unvalidated, **KI-015** no declared licence), HANDOVER
+(release status: four unsatisfied RELEASE_POLICY preconditions, none fixable by code),
+REPOSITORY_MAP, PACKAGING, CI_CD, README, CHANGELOG `[0.9.0]`. Validation: Release build green,
+140-check DSP + 774-check state suites green, pluginval strictness 10 green in both modes ×3.
+Prior: for the **post-v0.9.0 maintenance audit** (2026-07-24, on `main` @ `4226d2c`):
 a repository-wide drift/maintainability pass with **no behaviour change** — no DSP, GUI,
 parameter, serialization or CI-gate change, so **no CHANGELOG entry and no version bump**
 (CHANGELOG_POLICY rule 3). Fixed: `CMakeLists.txt` — the 9-file wrapper/GUI source list was

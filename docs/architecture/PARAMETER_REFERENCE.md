@@ -2,7 +2,7 @@
 
 Purpose, behaviour, and UI mapping of each parameter. IDs, types, defaults, and ranges are in
 `PARAMETER_REGISTRY.md` (the compatibility ledger). This document describes *what each control
-does*. Evidence: src/PluginParameters.cpp:114-198, src/PluginParameters.cpp:241-300 (`toEngine`),
+does*. Evidence: src/PluginParameters.cpp:135-284 (`createAnamorphLayout`), :326-389 (`toEngine`),
 src/dsp/AnamorphEngine.cpp (application).
 
 ## Advanced-mode gating

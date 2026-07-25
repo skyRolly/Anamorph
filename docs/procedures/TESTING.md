@@ -144,6 +144,33 @@ pluginval exit fails the job on every platform. Linux/macOS use `run-pluginval.s
 | pluginval exits ≥ 128 (crash) | the known X11 host flake | retried automatically; if it still fails after 3 tries, treat as a failure (`run-pluginval.sh:70-90`, `run_one_pass`) |
 | `AnamorphTests`/`AnamorphStateTests` `not found` | not built yet | run `scripts/build.sh` first (`run-tests.sh:10-20`) |
 
+## Gaps in the automated coverage (known, deliberate)
+
+Two things the gates above do **not** do. Both are recorded so nobody assumes coverage that
+doesn't exist:
+
+- **The AU is never validated automatically.** `run-pluginval.sh` locates and validates
+  `Anamorph.vst3` only, so the macOS `Anamorph.component` — the build Logic Pro and GarageBand
+  load — reaches users having passed no format-conformance gate. Apple's `auval` is the tool
+  (`auval -v aufx Anmr Anmf`, matching the `PLUGIN_CODE` / `PLUGIN_MANUFACTURER_CODE` in
+  `CMakeLists.txt:153-154`), but it only sees a component that is *registered*, so a CI step would
+  have to copy the built bundle into `~/Library/Audio/Plug-Ins/Components/` and force a registry
+  refresh (`killall -9 AudioComponentRegistrar`) before running it. **Ordering matters:** the
+  macOS packaging step runs `strip -x` *before* it ad-hoc codesigns, and a stripped-but-unsigned
+  arm64 bundle will not load — so the auval step must come **after** the whole packaging step, not
+  between its strip and codesign. Whether it is reliable on a headless GitHub `macos-14` runner is
+  **unverified from this repository** — see `docs/architecture/RELEASE_HARDENING_PLAN.md`.
+- **No frozen golden-audio reference exists.** `tests/fixtures/` holds a parameter-registry
+  snapshot and three legacy session XMLs — metadata, not audio. The DSP suite pins *behavioural
+  invariants* (exact nulls, click-freeness, spectral-spur and pitch bounds, cold-path bit-identity)
+  rather than a stored waveform, which is deliberate: a golden audio file would freeze bit-exact
+  output and collide with the Class-B numerical changes `DSP_POLICY.md` explicitly permits. The
+  right tool for "did this change alter the sound" is the **twin dump** — build the engine before
+  and after, run the same scenario matrix through both, compare hashes and reported latencies —
+  which is what the JUCE 9 migration used across 32 scenarios
+  (`worklogs/JUCE9_MIGRATION_v0.8.13.md`). That harness is session-local and not committed, so the
+  method must currently be re-created per investigation.
+
 ## What cannot be verified headlessly
 
 Audio **sound quality** and GUI/vectorscope **visual appearance** cannot be judged in a headless

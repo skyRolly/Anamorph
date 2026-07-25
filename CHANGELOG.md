@@ -31,6 +31,25 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Evidence: PR #87 (v0.9.0 release prep); PR #89 (installer/packaging rework:
   component selection, dual-path destination, system-wide installs, ZIP-only
   artifacts). [Verified]
+- **A support path for users**: `SUPPORT.md` (what to check before reporting, and what a useful
+  report contains) plus a GitHub bug-report form that asks for the fields triage actually needs —
+  version *and* build number from the About screen, OS (including whether an Apple Silicon host
+  runs natively or under Rosetta), DAW, format, install route, Oversampling setting and whether
+  the Standalone reproduces it. `SUPPORT.md` ships inside the zips and the Windows installer, and
+  every `INSTALL.txt` points at it. It states plainly that Anamorph writes **no log file**, so
+  nobody goes looking for one. Evidence: PR #91 (v0.9.0 release-hardening audit). [Verified]
+- **Third-party attribution ships with the binaries.** `NOTICE` and `THIRD_PARTY_LICENSES.md`
+  are staged into all three platform zips, installed by the Windows installer regardless of
+  which components are selected, and attached to the GitHub Release (covering the macOS
+  `.pkg`, whose payload is only the bundles). `THIRD_PARTY_LICENSES.md` is a verified
+  inventory — every component is classified compiled-in vs vendored-but-not-built from the
+  build graph and object symbols, which is how it caught two components (FreeType and stb,
+  both inside PlutoVG) that JUCE's own `LICENSE.md` does not list. It also corrects the
+  Steinberg VST 3 SDK licence on record: the SDK bundled with JUCE 9.0.0 is **MIT**, not the
+  GPLv3/proprietary dual licence earlier documentation described — the VST trademark and
+  plug-in distribution terms remain governed separately by Steinberg.
+  Evidence: PR #91 (v0.9.0 release-hardening audit);
+  `worklogs/RELEASE_HARDENING_AUDIT_v0.9.0.md`. [Verified]
 - **User documentation**: a full user manual (`docs/user/USER_MANUAL.md`, also attached to
   GitHub releases) covering every panel, control and parameter, signal flow, the four
   widening algorithms, presets/A-B, workflow examples and troubleshooting; plus a

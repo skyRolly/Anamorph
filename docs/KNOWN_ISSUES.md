@@ -51,6 +51,8 @@ JUCE 8.0.14; before that 0.8.8 for PR #54).
 | KI-011 | macOS Apple-Silicon-native: tooltip corners rendered an opaque white frame (TooltipWindow opacity contract) | Low | Fix applied (editor marks the TooltipWindow non-opaque on macOS); Apple Silicon visual re-test pending |
 | KI-012 | Fast Multiband split drags carry a small controlled FM (~14 cents at a 150 Hz crossing, ~7 cents above 300 Hz, under the R(f) = 4·max(1, f/300) oct/s cap; normal drags track 1:1; a violent flick catches up in ~0.5 s of continuous motion; fast artifact-free tracking needs linear-phase splits = latency change) | Low | Documented limitation (ADR-0015 final + slow-drag fix); revisit only via Architecture Review |
 | KI-013 | macOS: release outside the window can still leave a control stuck pressed (the v0.8.12 reconcile is inert there — JUCE's realtime query returns cached mouse-button state on macOS) | Low | Confirmed, external (JUCE platform implementation); recovery on cursor re-entry intact |
+| KI-014 | The macOS **AU** is built and shipped but never validated automatically — `run-pluginval.sh` only sees the VST3, and no `auval` step exists in CI | Medium | Confirmed (coverage gap); recipe + verdict recorded as RH-F3 |
+| KI-015 | Anamorph declares **no licence of its own** — the repository root has no `LICENSE` file and the installers present no EULA, so the terms the binaries are offered under are undeclared | High | Confirmed; owner/legal decision (RH-R11 / RH-F1), not an engineering task |
 
 ---
 
@@ -230,13 +232,13 @@ the JUCE focus/peer path REAPER takes).
   workaround for the *open* path: `focusSaveNameField()` grabs keyboard focus and, if the grab does
   not stick (the preset-menu's desktop window still owns OS focus at the callback instant, and JUCE
   aborts an internal focus move while `! peer->isFocused()`), it retries on later message-loop
-  passes up to four times (src/PluginEditor.cpp:1387-1406; declared PluginEditor.h). This shipped in
+  passes up to four times (src/PluginEditor.cpp:1498-1506; declared PluginEditor.h:85). This shipped in
   the v0.8.9 CHANGELOG "Fixed" entry ("The Save Preset name field reliably receives typing — Space
   included") and was **validated headless end-to-end**, i.e. against the JUCE wrapper, not against
   REAPER. The retry loop runs **only on dialog open** (`showSavePreset(true)` → `focusSaveNameField(4)`);
   there is **no focus re-acquisition after a later focus loss** — no `focusLost` handler,
   `mouseDown`-grab, or `setMouseClickGrabsKeyboardFocus` override on `saveNameEditor` (repo-wide:
-  the only focus calls are PluginEditor.cpp:1481/:1496-1503 (`focusSaveNameField`) and the unrelated SpectrumImager freq editor).
+  the only focus calls are PluginEditor.cpp:1483 (the on-open call) / :1498-1506 (`focusSaveNameField` itself) and the unrelated SpectrumImager freq editor).
   A click on the field then relies on JUCE's default click-to-focus, which is subject to the same
   `peer->isFocused()` abort if REAPER holds OS focus on the plugin's parent window — consistent with
   "clicking the text does not reactivate editing until the dialog is reopened". This is a strong
@@ -366,3 +368,35 @@ product trade: *a small amount of controlled FM is preferable to obvious interac
   CHANGELOG `[0.8.12]` ("Effective on Windows and Linux"). Fixable only via a JUCE-side change or a
   platform-specific `pressedMouseButtons` query (would need its own review). Severity **Low**,
   external (JUCE platform implementation).
+
+## KI-014 — The macOS AU is shipped but never validated automatically
+`scripts/run-pluginval.sh` locates and validates `Anamorph.vst3` only, so the AU component that
+Logic Pro and GarageBand load reaches users having passed **no** format-conformance gate — while
+the VST3 passes pluginval at strictness 10 in two modes on all three platforms. The AU is built,
+stripped, ad-hoc signed and slice-verified like the other formats, so this is a *validation*
+gap, not a build gap.
+- **Why not fixed here:** `auval` only sees a *registered* component, so a CI step must copy the
+  built bundle into `~/Library/Audio/Plug-Ins/Components/` and force a registry refresh
+  (`killall -9 AudioComponentRegistrar`) before running `auval -v aufx Anmr Anmf`. Whether that is
+  reliable on a headless `macos-14` runner cannot be established from this repository, and adding
+  an unproven **blocking** gate immediately before a release tag is the wrong trade.
+- **Evidence [Verified]:** scripts/run-pluginval.sh:31 (`find ... -name 'Anamorph.vst3'` — VST3
+  only); .github/workflows/build.yml macOS job (AU built and packaged, no auval step);
+  CMakeLists.txt:153-154 (the `Anmf`/`Anmr` codes auval needs).
+- **Plan:** RH-F3 in `docs/architecture/RELEASE_HARDENING_PLAN.md` §12a — land after v0.9.0,
+  non-blocking first, promote once it has proven stable. See also `docs/procedures/TESTING.md`
+  §"Gaps in the automated coverage".
+
+## KI-015 — Anamorph declares no licence of its own
+The repository root has **no `LICENSE` file**, and neither installer presents an end-user licence
+agreement, so the terms under which Anamorph's own source and binaries are offered are
+undeclared. This is coupled to an upstream choice: JUCE 9 modules are dual-licensed **AGPLv3 or
+commercial**, and which arm applies determines what Anamorph may itself be offered under.
+- **Scope:** owner/legal decision. No code change can close it, and this repository deliberately
+  makes no determination. Third-party *attribution* — a separate obligation — **is** discharged,
+  by `NOTICE` and `THIRD_PARTY_LICENSES.md` shipping with the binaries.
+- **Evidence [Verified]:** no `LICENSE`/`COPYING` at the repository root; `THIRD_PARTY_LICENSES.md`
+  §"Open licensing decisions"; JUCE `LICENSE.md` in the pinned tree (dual licence);
+  `docs/architecture/RELEASE_HARDENING_PLAN.md` RH-R11 / RH-F1.
+- **Related:** the Steinberg VST 3 review (RH-F2) is a separate owner item — the SDK code is MIT
+  in JUCE 9.0.0, but VST trademark use and plug-in distribution terms are governed separately.

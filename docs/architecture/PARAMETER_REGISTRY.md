@@ -13,7 +13,7 @@ parameter. Changing this surface breaks sessions, automation, and presets in the
 Enforced by convention + the version field: all parameters use `ParameterID { id, kVersion }`
 with `kVersion = 1`. The string `id` (not the display name) is the persistent key.
 
-Evidence [Verified]: src/PluginParameters.cpp:13 (`kVersion = 1`), :67-68; src/PluginParameters.h:14-88.
+Evidence [Verified]: src/PluginParameters.cpp:95 (`kVersion = 1`); src/PluginParameters.h:14-88.
 
 ## APVTS parameters (host-visible)
 
@@ -46,8 +46,8 @@ value for exact state round-trip (ADR-0013); the DSP/host text still see the sna
 | `dimMode` | Dim-D Style | C | Classic (1) | Subtle/Classic/Wide/Lush | yes | yes | yes |
 | `width` | Width | F | 1.0 | 0..2 | yes | yes | yes |
 | `mbEnable` | Multiband Enable | B | **true** ¶ | — | yes | yes | yes |
-| `mbBands` | Multiband Bands | I | 4 | 1..4 | yes | yes | yes |
-| `mbSolo` | Multiband Solo | I | 0 | 0..15 (4-bit mask) | yes | yes | yes † |
+| `mbBands` | Multiband Bands | I | 4 | 1..4 | yes | yes ‡ | yes |
+| `mbSolo` | Multiband Solo | I | 0 | 0..15 (4-bit mask) | yes | yes ‡ | yes † |
 | `mbFreqLow` | Multiband Split 1 | F | 180.0 | 20..20000 Hz (log) | yes | yes | yes |
 | `mbFreqMid` | Multiband Split 2 | F | 800.0 | 20..20000 Hz (log) | yes | yes | yes |
 | `mbFreqHigh` | Multiband Split 3 | F | 3000.0 | 20..20000 Hz (log) | yes | yes | yes |
@@ -65,7 +65,7 @@ value for exact state round-trip (ADR-0013); the DSP/host text still see the sna
 | `bypass` | Bypass | B | false | — | yes (host bypass) | yes | yes ◊ |
 | `advancedMode` | Advanced Mode | B | false | — | yes | **no** ◊◊ | yes |
 
-36 APVTS parameters. Evidence [Verified]: src/PluginParameters.cpp:114-198.
+36 APVTS parameters. Evidence [Verified]: src/PluginParameters.cpp:135-284 (`createAnamorphLayout`).
 
 Footnotes:
 - **‡** `mbBands`/`mbSolo` are now **fully automatable and visible** in the host's automation list

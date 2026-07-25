@@ -29,11 +29,11 @@ Diagnosing build, validation, and runtime problems. For the validation workflow 
 |---|---|---|
 | macOS plugin won't load after a **zip** install | Gatekeeper quarantine (ad-hoc signed, not notarized) | `sudo xattr -dr com.apple.quarantine <bundle>` (PACKAGING.md / `packaging/macos/INSTALL.txt`), or use the `.pkg`, whose payloads are not quarantined (KI-002). |
 | Logic Pro doesn't see the plugin | Logic loads **AU only** | Install the `.component`; verify with `auval -v aufx Anmr Anmf`. |
-| Plugin not offered on a mono track | Expected | mono→stereo is the headline layout; **mono→mono is Not Supported** (output is always stereo, PluginProcessor.cpp:33-43). |
+| Plugin not offered on a mono track | Expected | mono→stereo is the headline layout; **mono→mono is Not Supported** (output is always stereo, PluginProcessor.cpp:81-82). |
 | Vectorscope looks different on Linux vs macOS/Windows | By design | Linux/BSD render CPU-side (no OpenGL attach); macOS/Windows GPU-composite (ADR-0011). Visually identical. |
-| DSP suddenly resets / brief glitch under extreme automation | NaN/Inf self-heal fired | A non-finite sample was produced upstream; the engine self-heals (AnamorphEngine.cpp:847-870). Crossovers are Nyquist-clamped (ADR-0009) — if it recurs, capture the parameter automation that triggered it. |
+| DSP suddenly resets / brief glitch under extreme automation | NaN/Inf self-heal fired | A non-finite sample was produced upstream; the engine self-heals (AnamorphEngine.cpp:1256-1300). Crossovers are Nyquist-clamped (ADR-0009) — if it recurs, capture the parameter automation that triggered it. |
 | A control click/pops on toggle | Should not happen | All discrete switches duck; Bypass/Multiband-Enable/Solo crossfade (ADR-0004). If reproducible, add a regression test (TESTING.md) and check the relevant click-free test. |
-| Meters stuck / bar vanished | Was a NaN-latch (fixed 0.8.2) | Meters self-heal non-finite envelopes (LevelMeters.h:73-77). If it recurs, the source is upstream non-finite audio. |
+| Meters stuck / bar vanished | Was a NaN-latch (fixed 0.8.2) | Meters self-heal non-finite envelopes (LevelMeters.h:92-100, with `sanitize` at :179). If it recurs, the source is upstream non-finite audio. |
 
 ## "What cannot be verified headlessly"
 
