@@ -30,6 +30,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 | RISK-003 | No git release tags → fragile version/CHANGELOG attribution | Low | High (already true) |
 | RISK-004 | pluginval signal-only retry could mask a real future editor crash | Medium | Low |
 | RISK-005 | Manual-only audio/visual + host validation lets regressions ship green | Medium | Medium |
+| RISK-006 | Undeclared licensing: no `LICENSE`/EULA, and the JUCE 9 AGPLv3-vs-commercial tier is unchosen | High | High (already true) |
 
 ---
 
@@ -110,3 +111,23 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 Create the next `RISK-NNN` only when a TODO/FIXME, issue, PR discussion, or concrete code limitation
 supports it. State the likelihood **basis**, cite evidence with a confidence level, and give a
 mitigation. Do not invent risks to fill the template.
+
+## RISK-006 — Undeclared licensing (no LICENSE, no EULA, JUCE tier unchosen)
+- **Risk:** The repository root has **no `LICENSE` file** and neither installer presents an
+  end-user agreement, so the terms under which Anamorph's own source and binaries are offered are
+  undeclared. This is coupled upstream: JUCE 9 modules are dual-licensed **AGPLv3 or commercial**,
+  and which arm applies constrains what Anamorph may itself be offered under. A third strand —
+  the Steinberg VST 3 trademark/distribution review — is separate again (the SDK *code* is MIT in
+  JUCE 9.0.0; the VST name and plug-in distribution terms are not covered by that grant).
+- **Impact:** Blocks a commercial release outright, and leaves even a free release legally
+  ambiguous for anyone who downloads, redistributes or contributes. Third-party **attribution**
+  is a different obligation and is already discharged (`NOTICE` + `THIRD_PARTY_LICENSES.md` ship
+  with the binaries) — this risk is specifically about Anamorph's *own* terms.
+- **Likelihood (evidence-based):** High — already the case (`ls` shows no `LICENSE`/`COPYING`).
+- **Evidence [Verified]:** repository root (no licence file); `THIRD_PARTY_LICENSES.md`
+  §"Open licensing decisions"; the pinned JUCE tree's `LICENSE.md` (dual licence);
+  `docs/KNOWN_ISSUES.md` KI-015.
+- **Mitigation:** **None available to engineering** — this is an owner/legal decision, tracked as
+  RH-R11 / RH-F1 (and RH-F2 for Steinberg) in `docs/architecture/RELEASE_HARDENING_PLAN.md`. It
+  closes when a tier is chosen and a `LICENSE` (plus an EULA, if the product is sold) is added.
+  Until then, cite this risk rather than assuming any particular terms.

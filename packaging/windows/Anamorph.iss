@@ -63,6 +63,7 @@ Source: "{#StagingDir}\Anamorph.exe"; DestDir: "{app}"; Components: standalone; 
 ; selected — several vendored licences require the notice with the binaries.
 Source: "{#StagingDir}\NOTICE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#StagingDir}\THIRD_PARTY_LICENSES.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#StagingDir}\SUPPORT.md"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\Anamorph"; Filename: "{app}\Anamorph.exe"; Components: standalone

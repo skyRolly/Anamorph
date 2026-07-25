@@ -4,8 +4,8 @@
 > documentation quality, maintenance quality, and release-blocker discovery. **No DSP, GUI,
 > parameter, serialization or CI-gate behaviour was changed.**
 
-- **Date:** 2026-07-25 · **Base:** `main` @ `4226d2c` (v0.9.0 RC; PR #89 merged, PR #91 open) ·
-  **Branch:** `claude/beautiful-sagan-JAUFI`.
+- **Date:** 2026-07-25 · **Base:** `main` @ `0a98ebd` (v0.9.0 RC; PRs #89/#90/#91 merged) ·
+  **Branch:** `claude/beautiful-sagan-JAUFI` → PR #92.
 - **Method:** six parallel investigation lenses (licence forensics, release blockers, user-doc
   quality, roadmap triage, maintenance sweep, support infrastructure) over the repository *and*
   the fetched JUCE tree, each finding then put through an adversarial verifier instructed to
@@ -165,22 +165,68 @@ developer build for testing" — accurate once, wrong on a release artifact.
 
 ---
 
+## 5a. Maintenance sweep (Part 6) — and the audit auditing itself
+
+The maintenance lens found a **systemic** problem the earlier mechanical range-check could not
+see: ~20 `file:line` "Evidence [Verified]" anchors across the architecture and procedure docs now
+point at *unrelated code*. They are all still inside their files, so nothing flags them — the
+sources simply grew underneath them. The worst was the canonical one: `AnamorphEngine::process`
+cited identically as `:493-949` in both `SIGNAL_FLOW.md` and `DSP_GRAPH_REFERENCE.md` when the
+function actually spans **660-1339**. Fixed here: that pair, `toEngine` (`:241-300`/`:201-300` →
+`:326-389`), `ScopedNoDenormals` (`:66` → `:109`), the three legacy state-restore paths in
+`STATE_SERIALIZATION.md` (v0.2 `:381-384` → `:596-600`; `readSlot` `:371-375` → `:576-593`;
+`migrateFromLegacyApvts` `:345-348` → `:557-560`), and KI-009's two anchors, which were off by
+~100 lines. Also: `PARAMETER_REGISTRY.md` carried a `‡` footnote with no `‡` anywhere in the
+table (now attached to `mbBands`/`mbSolo`'s Auto-Safe column, which is what ADR-0014 changed), and
+the README quick-start still called the JUCE pin a "tag".
+
+**A line-range citation convention that survives edits is a genuinely open problem** — anchoring
+on symbol names rather than line numbers would, but that is a doc-wide convention change, not a
+release fix. Recorded, not attempted.
+
+Two lenses then turned on this audit's *own* output, which is where they earned their keep:
+
+- The **benchmark procedure I wrote documented an API that does not exist** — I specified
+  `process(L, R, n)`; the real signature is `process(juce::AudioBuffer<float>&)`
+  (`AnamorphEngine.h:60`). A future contributor following it would have hit a compile error on
+  line one. Fixed, with a note to hoist the buffer allocation out of the timed region.
+- The **`HANDOVER` "Known Blockers" row still said "KI-001…KI-013, all Low/Medium, none
+  release-blocking"** — written before this same audit added KI-014 (Medium) and KI-015 (High).
+  Fixed.
+- The **bug-report form never asked for Oversampling** — the single biggest influence on CPU and
+  on whether latency is reported, and (being host-hidden session state) not recoverable from
+  anything a user can attach. Added, along with an Apple-Silicon-native-vs-Rosetta distinction
+  (the exact axis KI-011 turns on) and a "does the Standalone reproduce it?" discriminator, since
+  host-specific defects dominate the confirmed-issue list.
+- **Nothing a user downloads pointed at `SUPPORT.md`.** All three `INSTALL.txt` files now do —
+  and `SUPPORT.md` ships beside them in the zips and the Windows installer, so the pointer
+  resolves offline.
+- `SUPPORT.md` **overstated crash symbolication** (CI artifacts expire, and macOS dSYM capture is
+  best-effort under Release+LTO) and **assumed GitHub private vulnerability reporting is enabled**
+  when that is a repository setting nothing here can confirm. Both softened to what is true, and
+  the one real untrusted-input surface — XML preset/session parsing — is now named.
+
 ## 6. What changed
 
 **New files:** `NOTICE`, `THIRD_PARTY_LICENSES.md`, `SUPPORT.md`,
 `.github/ISSUE_TEMPLATE/bug_report.yml`, `.github/ISSUE_TEMPLATE/config.yml`.
 
-**Packaging (attribution now travels with the binaries):** `build.yml` stages `NOTICE` +
-`THIRD_PARTY_LICENSES.md` into all three platform staging dirs; `Anamorph.iss` installs both
-unconditionally; `release.yml` publishes them as version-named assets so `SHA256SUMS.txt` covers
-them.
+**Packaging (attribution and the support path now travel with the binaries):** `build.yml` stages
+`NOTICE` + `THIRD_PARTY_LICENSES.md` + `SUPPORT.md` into all three platform staging dirs;
+`Anamorph.iss` installs all three unconditionally; `release.yml` publishes the two attribution
+files as version-named assets so `SHA256SUMS.txt` covers them. All three `INSTALL.txt` files point
+at `SUPPORT.md`.
 
 **Docs:** `USER_MANUAL` (Quick start, Standalone, system requirements, TOC, FAQ rewrite, control
 names, MULTIBAND `On`), `INSTALLATION`, `README` (licensing status, support/compliance links,
-both-mode pluginval), `PACKAGING`, `CI_CD`, `TESTING` (coverage-gaps section), `RELEASE_POLICY`
-(artifacts + a new attribution precondition), `RELEASE_HARDENING_PLAN` (RH-R10 corrected, RH-R11
-added, §12a follow-ups), `PERFORMANCE_BUDGET` (benchmark procedure), `KNOWN_ISSUES` (KI-014,
-KI-015), `HANDOVER` (release status), `REPOSITORY_MAP`, macOS `INSTALL.txt`.
+both-mode pluginval, JUCE-pin wording), `PACKAGING`, `CI_CD`, `TESTING` (coverage-gaps section),
+`RELEASE_POLICY` (artifacts + a new attribution precondition), `RELEASE_HARDENING_PLAN` (RH-R10
+corrected, RH-R11 added, §12a follow-ups), `PERFORMANCE_BUDGET` (benchmark procedure + the API
+fix), `FUTURE_RISKS` (**RISK-006** — undeclared licensing, graduated from RH-R11 per the plan's
+own rule), `KNOWN_ISSUES` (KI-014, KI-015, KI-009 citations), `HANDOVER` (release status + Known
+Blockers), `REPOSITORY_MAP`, `SIGNAL_FLOW`/`DSP_GRAPH_REFERENCE`/`ARCHITECTURE`/`THREAD_MODEL`/
+`STATE_SERIALIZATION`/`PARAMETER_REFERENCE`/`PARAMETER_REGISTRY` (stale evidence anchors), all
+three `INSTALL.txt`.
 
 **No `src/` change.** Per `CHANGELOG_POLICY` rule 3 this is not a user-visible change set in the
 changelog sense; the packaging additions are recorded there because they alter what ships.

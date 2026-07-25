@@ -38,7 +38,7 @@ The wrapper reads the APVTS atomics once per block and fills an `EngineParameter
 parameter ID.
 
 Evidence [Verified]:
-- Source: src/PluginParameters.cpp:241-300 (`toEngine`)
+- Source: src/PluginParameters.cpp:326-389 (`toEngine`)
 - Source: src/PluginProcessor.cpp:127-131 (per-block snapshot → `engine.setParameters` → `engine.process`)
 
 ## 3. Module inventory
@@ -74,7 +74,7 @@ Evidence [Verified]:
 Evidence [Verified]:
 - Source: src/PluginEditor.cpp:246-256 (OpenGL platform gate)
 - Source: src/dsp/ScopeBuffer.h:8-18 (lock-free SPSC)
-- Source: src/PluginProcessor.cpp:66 (`juce::ScopedNoDenormals`)
+- Source: src/PluginProcessor.cpp:109 (`juce::ScopedNoDenormals`)
 
 ## 5. I/O layouts
 

@@ -37,7 +37,7 @@ only — it configures and builds entirely from the command line on a headless L
 # 1. Install build dependencies (Ubuntu; safe to re-run)
 scripts/setup-linux.sh
 
-# 2. Configure + build (fetches the pinned JUCE tag via CMake FetchContent)
+# 2. Configure + build (fetches the pinned JUCE commit via CMake FetchContent)
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release        # ...or: scripts/build.sh
 

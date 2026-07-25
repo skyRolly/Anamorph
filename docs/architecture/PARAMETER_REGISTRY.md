@@ -46,8 +46,8 @@ value for exact state round-trip (ADR-0013); the DSP/host text still see the sna
 | `dimMode` | Dim-D Style | C | Classic (1) | Subtle/Classic/Wide/Lush | yes | yes | yes |
 | `width` | Width | F | 1.0 | 0..2 | yes | yes | yes |
 | `mbEnable` | Multiband Enable | B | **true** ¶ | — | yes | yes | yes |
-| `mbBands` | Multiband Bands | I | 4 | 1..4 | yes | yes | yes |
-| `mbSolo` | Multiband Solo | I | 0 | 0..15 (4-bit mask) | yes | yes | yes † |
+| `mbBands` | Multiband Bands | I | 4 | 1..4 | yes | yes ‡ | yes |
+| `mbSolo` | Multiband Solo | I | 0 | 0..15 (4-bit mask) | yes | yes ‡ | yes † |
 | `mbFreqLow` | Multiband Split 1 | F | 180.0 | 20..20000 Hz (log) | yes | yes | yes |
 | `mbFreqMid` | Multiband Split 2 | F | 800.0 | 20..20000 Hz (log) | yes | yes | yes |
 | `mbFreqHigh` | Multiband Split 3 | F | 3000.0 | 20..20000 Hz (log) | yes | yes | yes |

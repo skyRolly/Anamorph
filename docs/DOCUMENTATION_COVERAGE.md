@@ -7,7 +7,7 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **v0.9.0 release-hardening & commercial-readiness audit** (2026-07-25,
-on `main` @ `4226d2c`; record: `worklogs/RELEASE_HARDENING_AUDIT_v0.9.0.md`). **No `src/`
+on `main` @ `0a98ebd`, PR #92; record: `worklogs/RELEASE_HARDENING_AUDIT_v0.9.0.md`). **No `src/`
 change.** Six parallel investigation lenses + adversarial verification over the repository and
 the pinned JUCE tree. **New:** `NOTICE` and `THIRD_PARTY_LICENSES.md` (verified third-party
 inventory — every component classified compiled-in vs vendored-but-not-built from

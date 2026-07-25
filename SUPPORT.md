@@ -48,9 +48,11 @@ report actionable.
 ### If it is a crash
 
 Say what you were doing when it happened, and whether it is reproducible. Host crash reports
-(macOS Console, Windows Event Viewer) help if you have them. Note that public builds are
-**stripped**, so a stack trace from your machine will not be symbolicated — the matching debug
-symbols are retained per CI build and can be applied on our side.
+(macOS Console, Windows Event Viewer) help if you have them. Public builds are **stripped**, so a
+stack trace from your machine will not be symbolicated. Debug symbols *are* produced per CI build
+as separate artifacts, so symbolication is often possible on our side — with two caveats: CI
+artifacts expire, and macOS dSYM capture is best-effort under the release build configuration, so
+it can be unavailable for a given build. Reproduction steps remain more valuable than a trace.
 
 ## 3. Before reporting: two quick checks
 
@@ -64,10 +66,14 @@ symbols are retained per CI build and can be applied on our side.
 
 ## Security
 
-Anamorph processes only audio and its own preset/session data, and makes no network connections
-(`JUCE_USE_CURL=0`, `JUCE_WEB_BROWSER=0`, no telemetry). If you believe you have found a security
-problem, please report it privately through GitHub's security advisory flow on the repository
-rather than opening a public issue.
+Anamorph makes no network connections (`JUCE_USE_CURL=0`, `JUCE_WEB_BROWSER=0`, no telemetry). It
+does parse untrusted input in one place: `.anamorph` preset files and host session state are XML,
+so a malformed or hostile file is the realistic attack surface.
+
+If you believe you have found a security problem, please **do not open a public issue**. Use
+GitHub's private vulnerability reporting on this repository if the *Security* tab offers it; if it
+does not, open an issue saying only that you have a security report and asking for a private
+contact — no details in the public thread.
 
 ## Scope
 

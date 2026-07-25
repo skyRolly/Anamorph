@@ -63,10 +63,14 @@ body:
     id: os
     attributes:
       label: Operating system
+      description: >
+        On Apple Silicon, whether the host runs natively or under Rosetta matters — some known
+        issues only appear in one of the two.
       options:
         - Windows (x86-64)
-        - macOS (Apple Silicon)
-        - macOS (Intel)
+        - macOS — Apple Silicon, host running natively (arm64)
+        - macOS — Apple Silicon, host running under Rosetta (x86_64)
+        - macOS — Intel
         - Linux (x86-64)
     validations:
       required: true
@@ -107,6 +111,33 @@ body:
       label: Sample rate and buffer size
       description: Only needed for audio problems (clicks, dropouts, CPU, latency).
       placeholder: "48 kHz, 256 samples"
+
+  - type: dropdown
+    id: oversampling
+    attributes:
+      label: Oversampling setting
+      description: >
+        In the Settings overlay (gear icon). This is session state, not a host parameter, so it
+        cannot be recovered from anything you attach — but it is the single biggest influence on
+        CPU and on whether the plug-in reports latency.
+      options:
+        - "Off"
+        - "2x"
+        - "4x"
+        - "8x"
+        - "Don't know / not relevant"
+
+  - type: dropdown
+    id: also-standalone
+    attributes:
+      label: Does it also happen in the Standalone application?
+      description: >
+        Most confirmed issues in this project are host-specific, so this one answer often decides
+        where to look first.
+      options:
+        - "Yes — happens in the Standalone too"
+        - "No — only in the DAW"
+        - "Haven't tried"
 
   - type: textarea
     id: extra

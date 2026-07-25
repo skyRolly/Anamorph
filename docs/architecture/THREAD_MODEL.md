@@ -77,7 +77,7 @@ Editor destructor order (matters): release VBlank → `stopTimer()` → `openGLC
 ### GUI → Audio
 | Data | Mechanism | Writer | Reader | Source |
 |---|---|---|---|---|
-| Automatable params | APVTS atomics (`std::atomic<float>*`, read once/block) | GUI attachments / host | audio `toEngine` | PluginParameters.cpp:201-300 |
+| Automatable params | APVTS atomics (`std::atomic<float>*`, read once/block) | GUI attachments / host | audio `toEngine` | PluginParameters.cpp:326-389 |
 | Host-hidden params (Oversampling, view) | `InternalState` `juce::ValueTree` + `int`/`float` atomics | GUI `juce::Value` binding | audio (oversample only) | InternalState.h:60-138 |
 | Momentary solo audition | `std::atomic<int> soloPreviewMask` (relaxed, −1 = use param) | GUI `setSoloPreview` | audio processBlock | PluginProcessor.h:72-73,130; .cpp:128 |
 | Meter hold reset | `std::atomic<int> resetReq` (exchange) | GUI `resetHold()` | audio `process()` | LevelMeters.h:58,62 |
