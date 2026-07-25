@@ -125,7 +125,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Download customer artifacts (from the build call in this run)
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           pattern: "Anamorph-{Linux,Windows,macOS,Windows-installer,macOS-installer}"
           path: stage
