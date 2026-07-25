@@ -6,14 +6,20 @@ questions.
 
 ## 1. Check the documentation first
 
+These live online, so the links below work from anywhere:
+
 | Your question | Where to look |
 |---|---|
-| How do I install it? Where do the files go? | [`docs/user/INSTALLATION.md`](docs/user/INSTALLATION.md) — installer and manual routes for Linux, Windows and macOS |
-| How does a control work? What does this panel do? | [`docs/user/USER_MANUAL.md`](docs/user/USER_MANUAL.md) |
-| It doesn't show up in my DAW / it won't load / CPU is high | [`docs/user/USER_MANUAL.md`](docs/user/USER_MANUAL.md) §"FAQ & troubleshooting" |
-| Is this a known problem? | [`docs/KNOWN_ISSUES.md`](docs/KNOWN_ISSUES.md) — confirmed limitations, with workarounds where they exist |
-| What changed between releases? | [`CHANGELOG.md`](CHANGELOG.md) |
-| I want to build from source | [`docs/procedures/BUILD.md`](docs/procedures/BUILD.md); build problems: [`docs/procedures/TROUBLESHOOTING.md`](docs/procedures/TROUBLESHOOTING.md) (contributor-facing) |
+| How do I install it? Where do the files go? | [Installation guide](https://github.com/skyRolly/Anamorph/blob/main/docs/user/INSTALLATION.md) — installer and manual routes for Linux, Windows and macOS |
+| How does a control work? What does this panel do? | [User manual](https://github.com/skyRolly/Anamorph/blob/main/docs/user/USER_MANUAL.md) |
+| It doesn't show up in my DAW / it won't load / CPU is high | [User manual §"FAQ & troubleshooting"](https://github.com/skyRolly/Anamorph/blob/main/docs/user/USER_MANUAL.md#9-faq--troubleshooting) |
+| Is this a known problem? | [Known issues](https://github.com/skyRolly/Anamorph/blob/main/docs/KNOWN_ISSUES.md) — confirmed limitations, with workarounds where they exist |
+| What changed between releases? | [Changelog](https://github.com/skyRolly/Anamorph/blob/main/CHANGELOG.md) |
+| I want to build from source | [Build guide](https://github.com/skyRolly/Anamorph/blob/main/docs/procedures/BUILD.md); build problems: [Troubleshooting](https://github.com/skyRolly/Anamorph/blob/main/docs/procedures/TROUBLESHOOTING.md) (contributor-facing) |
+
+**Offline?** The user manual is also attached to every GitHub release as
+`Anamorph-<version>-UserManual.md`. Next to this file you already have `INSTALL.txt` (per-platform
+install steps), `NOTICE` and `THIRD_PARTY_LICENSES.md`.
 
 ## 2. Open an issue
 
@@ -57,8 +63,9 @@ it can be unavailable for a given build. Reproduction steps remain more valuable
 ## 3. Before reporting: two quick checks
 
 1. **Rescan your plug-ins.** A stale host cache or a blocklist entry from a previous failed scan
-   explains a large share of "it doesn't appear" reports. `USER_MANUAL.md` §FAQ has the per-DAW
-   steps.
+   explains a large share of "it doesn't appear" reports. The user manual's
+   [FAQ](https://github.com/skyRolly/Anamorph/blob/main/docs/user/USER_MANUAL.md#9-faq--troubleshooting)
+   has the per-DAW steps.
 2. **Compare against unprocessed audio.** Press **Bypass** in the top bar (always visible), or
    switch to **Advanced** and set the OUTPUT panel's **Mix** to 0 %, at which point the output is
    bit-exactly the input. If the problem persists there, it is not coming from Anamorph's
@@ -79,4 +86,5 @@ contact — no details in the public thread.
 
 This repository is the plug-in itself. It cannot help with third-party DAW bugs, operating-system
 problems, or audio-interface driver issues — though pointing them out is still useful, since a
-workaround may belong in `docs/KNOWN_ISSUES.md`.
+workaround may belong in the
+[known-issues list](https://github.com/skyRolly/Anamorph/blob/main/docs/KNOWN_ISSUES.md).

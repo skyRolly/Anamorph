@@ -25,8 +25,8 @@ Raw stereo input (mono upmixed to stereo by the wrapper)
   │
   1b. M/S Solo (isolate Mid or Side)           (:854-857)
   │
-  -- capture conditioned input as Level-Match reference (inputScratch)         (:859-866)
-  -- capture dry for dry/wet Mix (dryScratch)                                  (:865-866)
+  -- capture the conditioned input ONCE (dryScratch): the dry source for the   (:865-866)
+     dry/wet Mix, and the same buffer the silence-edge scan reads
   │
   2. Effect engine
        2a. Oversampled nonlinear region:        Drive (tanh) -> Chorus/Dim-D    (:868-883)
