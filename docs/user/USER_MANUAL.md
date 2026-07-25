@@ -387,9 +387,15 @@ up changes, sorted alphabetically).
 
 ### 7.3 What a preset contains — and compatibility
 
-A preset stores **sound parameters only**. Deliberately excluded: Bypass, band solo
-(always off after a load), Simple/Advanced state, and everything in Settings
+Loading a preset changes **sound parameters only**. Deliberately left alone: Bypass, band
+solo (always off after a load), Simple/Advanced state, and everything in Settings
 (oversampling, window size, etc. stay as they are in your session).
+
+*(The saved `.anamorph` file itself is a dump of the whole parameter tree, so it does
+contain whatever Bypass / band-solo / Advanced state you had at save time — those values
+are simply ignored on load. Nothing to worry about when sharing presets; it just means the
+file is slightly larger than the list above implies. Settings items are genuinely absent:
+they are not host parameters at all.)*
 
 Presets are **forward-compatible**: a preset saved by an older Anamorph loads fine in a
 newer one — any parameter the old file doesn't mention simply keeps its factory default.

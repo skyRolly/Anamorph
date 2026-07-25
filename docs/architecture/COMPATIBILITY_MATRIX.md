@@ -25,9 +25,9 @@ Status taxonomy: **Verified** (provable from build/CI/code) · **Partially Verif
 
 | Layout | Status | Evidence |
 |---|---|---|
-| stereo → stereo | **Verified** | src/PluginProcessor.cpp:33-43; test `testTransparentDefault` |
-| mono → stereo | **Verified** | src/PluginProcessor.cpp:41-42,77-78 |
-| **mono → mono** | **Not Supported** | Deliberately rejected: output is always stereo. src/PluginProcessor.cpp:31, :38-39 |
+| stereo → stereo | **Verified** | src/PluginProcessor.cpp:7-8 (bus declaration), :76-86 (`isBusesLayoutSupported`); test `testTransparentDefault` |
+| mono → stereo | **Verified** | src/PluginProcessor.cpp:84-85 (mono input accepted), :120-121 (mono duplicated to both channels) |
+| **mono → mono** | **Not Supported** | Deliberately rejected: output is always stereo. src/PluginProcessor.cpp:81-82 |
 
 ## DAW hosts
 

@@ -180,9 +180,18 @@ function actually spans **660-1339**. Fixed here: that pair, `toEngine` (`:241-3
 table (now attached to `mbBands`/`mbSolo`'s Auto-Safe column, which is what ADR-0014 changed), and
 the README quick-start still called the JUCE pin a "tag".
 
+A second sweep, after the verify phase corrected the finder's own proposed values, fixed **18
+more** across ARCHITECTURE, THREAD_MODEL, COMPATIBILITY_MATRIX, TROUBLESHOOTING,
+STATE_SERIALIZATION, SERIALIZATION_REGISTRY, LATENCY_MODEL, PARAMETER_REGISTRY and
+PARAMETER_REFERENCE — every replacement value spot-checked against the source before applying.
+Notable: `COMPATIBILITY_MATRIX`'s three I/O rows all pointed into an unrelated A/B snapshot
+comment rather than `isBusesLayoutSupported`, and `TROUBLESHOOTING`'s NaN self-heal anchor was
+~400 lines off.
+
 **A line-range citation convention that survives edits is a genuinely open problem** — anchoring
-on symbol names rather than line numbers would, but that is a doc-wide convention change, not a
-release fix. Recorded, not attempted.
+on symbol names would fix it, but `SOURCE_OF_TRUTH.md:48-55` mandates the `path:lines` form for
+`Source:` lines, so changing it is a governing-convention change, not a release fix. Recorded,
+not attempted.
 
 Two lenses then turned on this audit's *own* output, which is where they earned their keep:
 
@@ -201,6 +210,11 @@ Two lenses then turned on this audit's *own* output, which is where they earned 
 - **Nothing a user downloads pointed at `SUPPORT.md`.** All three `INSTALL.txt` files now do —
   and `SUPPORT.md` ships beside them in the zips and the Windows installer, so the pointer
   resolves offline.
+- **`USER_MANUAL` §7.3 described preset *file contents* wrongly.** It said a preset "stores sound
+  parameters only", but `PresetManager::saveUser` writes `apvts.copyState()` — the whole tree, so
+  the `.anamorph` file does contain Bypass / band-solo / Advanced state. The exclusion is applied
+  on **load**, not on write. The user-visible behaviour was described correctly; the claim about
+  the file was not. Reworded.
 - `SUPPORT.md` **overstated crash symbolication** (CI artifacts expire, and macOS dSYM capture is
   best-effort under Release+LTO) and **assumed GitHub private vulnerability reporting is enabled**
   when that is a repository setting nothing here can confirm. Both softened to what is true, and

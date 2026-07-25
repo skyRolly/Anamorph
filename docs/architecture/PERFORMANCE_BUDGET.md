@@ -221,7 +221,10 @@ and `tests/dsp_tests.cpp` already demonstrates the whole calling pattern: constr
 `process(juce::AudioBuffer<float>&)` on a pre-sized stereo buffer in a loop
 (`AnamorphEngine.h:60`; see e.g. `dsp_tests.cpp:118`). A bench is that loop with a timer around
 it — a single scratch `.cpp` linked against `AnamorphDSP`. Allocate the buffer once, outside the
-timed region: the point is to measure the engine, not `AudioBuffer`'s constructor.
+timed region: the point is to measure the engine, not `AudioBuffer`'s constructor. Note that
+`AnamorphDSP` is an **INTERFACE** library, so the bench needs its own target that compiles the
+sources — add it behind an OFF-by-default option (mirroring `ANAMORPH_BUILD_TESTS`) so it never
+enters a release build.
 
 **Build it the way users get it.** `-DCMAKE_BUILD_TYPE=Release` only. The `AnamorphHardening`
 flags and `juce::juce_recommended_lto_flags` are part of the shipped configuration, so a bench

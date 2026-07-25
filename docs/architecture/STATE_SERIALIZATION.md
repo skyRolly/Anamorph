@@ -74,7 +74,7 @@ Evidence [Verified]: src/PluginProcessor.cpp (`getStateInformation` / `setStateI
 
 `applyStatePreservingView` restores a snapshot but **keeps the current** shared view params
 (`pid::viewParams` = `bypass`) so an A/B / undo / preset apply never flips the view state.
-Evidence [Verified]: src/PluginProcessor.cpp:198-209.
+Evidence [Verified]: src/PluginProcessor.cpp:246-261 (`applyStatePreservingView`).
 
 ## Invariants
 
