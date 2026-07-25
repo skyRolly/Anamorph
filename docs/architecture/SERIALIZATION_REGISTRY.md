@@ -10,7 +10,7 @@ Field-level ledger of everything written to session state. Companion to
 > is handled (a default), so older sessions still load.
 
 Evidence [Verified]: backward-compat paths at src/PluginProcessor.cpp:557-560 (pre-0.8.4 `migrateFromLegacyApvts`), :576-593 (pre-0.6.4 `readSlot`), :596-600 (v0.2 bare APVTS);
-src/InternalState.h:86-122.
+src/InternalState.h:92-128.
 
 ## `AnamorphRoot` properties
 
@@ -58,7 +58,7 @@ Source: src/PluginProcessor.cpp `getStateInformation` / `setStateInformation` / 
 
 **‡** Sessions saved **before** 0.8.4 have no `ANAMORPH_INTERNAL` child; these values are
 recovered from the legacy APVTS PARAM nodes by `migrateFromLegacyApvts` (choice indices are
-0-based legacy → 1-based ComboBox). Evidence [Verified]: src/InternalState.h:100-122;
+0-based legacy → 1-based ComboBox). Evidence [Verified]: src/InternalState.h:106-128;
 [Partially Verified] introduced-0.8.4: CHANGELOG.md [0.8.4].
 
 ## `AB` child
@@ -79,7 +79,7 @@ Evidence [Verified]: src/PluginProcessor.cpp:586-590 (the legacy-key fallback in
 |---|---|---|
 | v0.2 bare APVTS tree | `xml->hasTagName(apvts.state.getType())` | `apvts.replaceState` |
 
-Source: src/PluginProcessor.cpp:381-384.
+Source: src/PluginProcessor.cpp:596-600.
 
 ## Notes
 

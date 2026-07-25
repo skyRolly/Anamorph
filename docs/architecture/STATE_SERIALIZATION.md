@@ -68,7 +68,7 @@ Evidence [Verified]: src/PluginProcessor.cpp (`getStateInformation` / `setStateI
 |---|---|---|
 | **v0.2**: root *is* the APVTS tree | `setStateInformation` else-branch `apvts.replaceState` | :596-600 |
 | **pre-0.6.4**: A/B slots stored params only (`slotA`/`slotB`) | `readSlot` legacy-key fallback | :576-593 |
-| **pre-0.8.4**: Oversampling/view were APVTS params (no `ANAMORPH_INTERNAL`) | `migrateFromLegacyApvts` | :557-560; InternalState.h:100-122 |
+| **pre-0.8.4**: Oversampling/view were APVTS params (no `ANAMORPH_INTERNAL`) | `migrateFromLegacyApvts` | :557-560; InternalState.h:106-128 |
 
 ## View-parameter preservation on restore
 
