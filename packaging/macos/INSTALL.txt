@@ -80,4 +80,6 @@ Notes / 说明
 - If macOS still complains, right-click the .component/.vst3/.app in Finder
   once and choose "Open", or check System Settings > Privacy & Security for
   an "Open Anyway" button.
-- This is an unsigned developer build for testing.
+- Third-party attribution for this build is in the NOTICE and
+  THIRD_PARTY_LICENSES.md files next to this one.
+  本版本的第三方组件署名见同目录的 NOTICE 和 THIRD_PARTY_LICENSES.md。

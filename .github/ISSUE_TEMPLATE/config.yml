@@ -1,0 +1,14 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Installation guide
+    url: https://github.com/skyRolly/Anamorph/blob/main/docs/user/INSTALLATION.md
+    about: Per-platform install steps, file locations, security-warning notes and uninstall.
+  - name: User manual — FAQ & troubleshooting
+    url: https://github.com/skyRolly/Anamorph/blob/main/docs/user/USER_MANUAL.md
+    about: Plug-in not appearing, rescanning, presets, CPU, latency, automation, session compatibility.
+  - name: Known issues
+    url: https://github.com/skyRolly/Anamorph/blob/main/docs/KNOWN_ISSUES.md
+    about: Confirmed limitations and their workarounds — check here before filing a bug.
+  - name: Getting help
+    url: https://github.com/skyRolly/Anamorph/blob/main/SUPPORT.md
+    about: What to check first and what a good report contains.

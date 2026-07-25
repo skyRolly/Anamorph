@@ -59,6 +59,10 @@ Name: "standalone"; Description: "Install Standalone"; Types: full custom
 [Files]
 Source: "{#StagingDir}\Anamorph.vst3\*"; DestDir: "{code:GetVst3Dir}\Anamorph.vst3"; Components: vst3; Flags: recursesubdirs createallsubdirs ignoreversion
 Source: "{#StagingDir}\Anamorph.exe"; DestDir: "{app}"; Components: standalone; Flags: ignoreversion
+; Third-party attribution accompanies every install, whichever components are
+; selected — several vendored licences require the notice with the binaries.
+Source: "{#StagingDir}\NOTICE"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#StagingDir}\THIRD_PARTY_LICENSES.md"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\Anamorph"; Filename: "{app}\Anamorph.exe"; Components: standalone

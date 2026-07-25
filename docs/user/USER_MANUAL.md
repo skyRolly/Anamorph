@@ -3,6 +3,24 @@
 *The plug-in's exact version and build number are shown on the About screen (click the
 **ANAMORPH** title).*
 
+**New here? Go straight to [§2 Quick start](#2-quick-start).**
+
+### Contents
+
+1. [Introduction](#1-introduction) — what Anamorph is and the idea behind it
+2. [Quick start](#2-quick-start) — install, first launch, first sound, the standalone app
+3. [The interface](#3-the-interface) — every panel and control
+4. [The four algorithms](#4-the-four-algorithms)
+5. [Signal flow](#5-signal-flow)
+6. [Simple mode, Advanced mode, and the Multiband display](#6-simple-mode-advanced-mode-and-the-multiband-display)
+7. [Presets and A/B](#7-presets-and-ab)
+8. [Workflow examples](#8-workflow-examples)
+9. [FAQ & troubleshooting](#9-faq--troubleshooting)
+
+Installation is covered separately in the
+**[Installation guide](INSTALLATION.md)**. If something is wrong and this manual doesn't answer
+it, see **[SUPPORT.md](../../SUPPORT.md)** and **[KNOWN_ISSUES.md](../KNOWN_ISSUES.md)**.
+
 ---
 
 ## 1. Introduction
@@ -34,12 +52,107 @@ you at all times how wide — and how mono-safe — the result is.
 
 ---
 
-## 2. Installation
+## 2. Quick start
 
-See the step-by-step [Installation guide](INSTALLATION.md) for all three platforms
-(installer/package **and** manual zip routes, file locations, security-warning notes,
-uninstall). Short version: run the platform installer from the GitHub release, then
-rescan plug-ins in your DAW.
+Five minutes from download to first widened sound.
+
+### 2.1 Install
+
+Download the release for your platform from the project's **GitHub Releases** page. Each
+platform offers an **installer** (the easy route) and a plain **zip** (copy the files
+yourself). Both install to the standard system-wide locations your DAW already scans, and
+both need an administrator/root step.
+
+| Platform | Easy route | What it installs |
+|---|---|---|
+| Windows | run the `…-Windows-Installer.exe` | VST3 into `Common Files\VST3`, Standalone into Program Files |
+| macOS | open the `…-macOS.pkg` | VST3, AU and the Standalone app into the standard `/Library` and `/Applications` locations |
+| Linux | `sudo ./install.sh` from inside the extracted zip | VST3 into `/usr/lib/vst3`, Standalone into `/usr/local/bin` |
+
+The installers are not code-signed or notarized yet, so Windows SmartScreen and macOS
+Gatekeeper will each warn you once — that is expected, and
+[the installation guide](INSTALLATION.md) shows exactly which button to click. Full
+step-by-step instructions, manual-copy paths and uninstall live there too.
+
+**What you need.** A 64-bit machine — Windows x86-64, macOS (Apple Silicon or Intel; the
+build targets macOS 10.13 and later), or x86-64 Linux — and a VST3 or (on macOS) AU host.
+There is no 32-bit build. Anamorph adapts to whatever sample rate and buffer size your host
+uses; the standard 44.1–192 kHz range is what the DSP suite exercises. The plug-in makes no
+network connections and needs no account or activation.
+
+### 2.2 First launch
+
+**Rescan your plug-ins.** Most DAWs only look for new plug-ins on demand:
+
+| DAW | Rescan |
+|---|---|
+| REAPER | *Options → Preferences → Plug-ins → VST → Re-scan* |
+| Ableton Live | *Preferences → Plug-Ins → Rescan* |
+| Cubase / Nuendo | *Studio → VST Plug-in Manager → Rescan All* |
+| FL Studio | *Plugin Manager → Find installed plugins* |
+| Logic Pro / GarageBand | validates AUs automatically on launch |
+| Bitwig | *Settings → Locations → Plug-in Locations* |
+| Ardour | *Preferences → Plugins → Scan for Plugins* |
+
+Anamorph is **64-bit only**, and it is an audio **effect** — look under effects/audio FX,
+not instruments. On macOS, Logic Pro and GarageBand load the **AU** (`.component`); every
+other DAW uses the **VST3**.
+
+### 2.3 Load it on a track
+
+Insert Anamorph on a **mono** or **stereo** audio track (or a bus). Mono tracks get the
+mono→stereo layout — that is the "turn mono into stereo" case. The output is always
+stereo, so a mono→mono slot will not offer the plug-in.
+
+You'll see the **Simple** view: the top bar, the diamond **vectorscope** in the middle,
+and the **WIDEN** panel. That is the whole core of the plug-in.
+
+### 2.4 Your first sound
+
+1. Play the track and watch the vectorscope — a mono source draws a **vertical line**.
+2. In WIDEN, pick an **Algorithm**. Start with **Velvet Noise**: it creates stereo width
+   while leaving the mono sum bit-identical, which makes it the safe default.
+3. Raise **Amount** to around 40–60 %. The vectorscope opens out horizontally; the
+   correlation meter underneath should stay positive.
+4. Press **Bypass** in the top bar to A/B against no processing at all. Bypass is always
+   available and crossfades cleanly, so it is your reference point in Simple view.
+5. Want a partial blend rather than in/out? **Mix** lives in the OUTPUT panel, which is
+   **Advanced-only** — press **Adv** in the top bar to reveal it. At **Mix = 0 %** the
+   output is bit-exactly the input.
+
+Then check mono compatibility, which is the whole point of the vectorscope: collapse to
+mono (your console's mono button, or the **Mono** toggle in the Advanced INPUT panel) and
+listen for anything that disappears.
+
+### 2.5 The Standalone application
+
+Anamorph also installs as a **standalone app** (`Anamorph.exe` on Windows, `Anamorph.app` on
+macOS, `Anamorph` on Linux) — the same plug-in with its own audio device, useful for checking
+a file or a live input without opening a DAW.
+
+The first thing to do on launch is pick your audio hardware, in the standalone's **audio
+settings** dialog: the device, the sample rate, the buffer size and which input to process.
+Anamorph's Windows build does **not** include ASIO (the ASIO SDK is not redistributable, so it
+is not compiled in) — Windows uses the system audio backends, and on Linux it is
+ALSA/JACK/PipeWire. If you need ASIO specifically, use the VST3 in a host that provides it.
+
+Everything else — the interface, presets, A/B, undo — behaves exactly as described in this
+manual, and presets are shared with the plug-in versions since they live in the same per-user
+folder ([§7.2](#72-saving-and-managing)).
+
+Two differences worth knowing: there is no host, so there is no automation and no session to
+save into (settings persist per user instead), and latency compensation is your DAW's job —
+irrelevant here because nothing is running alongside it.
+
+### 2.6 Where to go next
+
+- Want more than the basics? Press **Adv** in the top bar for the INPUT, OUTPUT and
+  **MULTIBAND** sections — [§6](#6-simple-mode-advanced-mode-and-the-multiband-display).
+- Not sure which algorithm to reach for? [§4](#4-the-four-algorithms) compares all four.
+- Want a starting point rather than a blank slate? Ten factory presets ship built in —
+  [§7](#7-presets-and-ab).
+- Concrete recipes for mixing, mastering and sound design: [§8](#8-workflow-examples).
+- Something not working? [§9](#9-faq--troubleshooting).
 
 ---
 
@@ -101,11 +214,12 @@ The creative heart of the plug-in.
 
 One knob slot changes with the algorithm:
 
-- **Haas** → **Haas Delay** (1 … 35 ms) and a **FOCUS** selector (Left/Right — the side
-  the image leans toward; the *other* channel gets the delay).
-- **Velvet Noise** → **Velvet Density** (0 … 100 % — how many of the sparse noise taps
-  are active).
-- **Chorus** → **Chorus Rate** (0.05 … 5 Hz) and **Chorus Depth** (0 … 100 %).
+- **Haas** → **Delay** (1 … 35 ms; host parameter *Haas Delay*) and a **FOCUS** selector
+  (Left/Right — the side the image leans toward; the *other* channel gets the delay).
+- **Velvet Noise** → **Density** (0 … 100 %; host parameter *Velvet Density*) — how many of
+  the sparse noise taps are active.
+- **Chorus** → **Rate** (0.05 … 5 Hz) and **Depth** (0 … 100 %); host parameters *Chorus
+  Rate* / *Chorus Depth*.
 - **Dim-D** → **STYLE** selector (Subtle / Classic / Wide / Lush — progressively wider,
   deeper, slower voicings).
 
@@ -120,7 +234,7 @@ Conditions the signal *before* any widening:
 | **M/S** | Treats the incoming stereo pair as already Mid/Side-encoded and decodes it to L/R. The labels of the other input controls switch between L/R and M/S wording to match. |
 | **Swap** | Swaps Left/Right (or Mid/Side when M/S is on). |
 | **ø L/M, ø R/S** | Polarity (phase) invert per channel. |
-| **Input Balance** | Trims the L/R (or M/S) balance into the processor; the readout shows `L −x %` / `C` / `R x %`. |
+| **Balance** (host: *Input Balance*) | Trims the L/R (or M/S) balance into the processor; the readout shows `L −x %` / `C` / `R x %`. |
 | **M/S Solo** | Off / Mid / Side — listen to just the Mid or just the Side of the input, before the widener. Great for hearing what the algorithm adds. |
 
 ### 3.5 OUTPUT panel (Advanced only)
@@ -129,8 +243,8 @@ Conditions the signal *before* any widening:
 |---|---|
 | **Mix** | Dry/wet balance. The dry path is **delay- and phase-compensated** through the same crossovers, so intermediate Mix settings don't comb-filter, and **Mix 0 % is a bit-exact null** with the input. |
 | **Mono Maker** | Collapses everything **below** the set frequency (20 … 500 Hz, default 120 Hz) to mono — the classic way to keep the low end solid and vinyl/club-safe. Applied after Mix. |
-| **Output Gain** | ±24 dB final trim. |
-| **Output Balance** | Final L/R balance. |
+| **Output** (host: *Output Gain*) | ±24 dB final trim. |
+| **Balance** (host: *Output Balance*) | Final L/R balance. |
 | **Level Match** | Loudness-matches output to input (BS.1770) so widening doesn't fool you with a level change. The readout shows the correction being applied; **Apply Gain** writes that value permanently into Output Gain and switches Match off. |
 
 ### 3.6 Settings overlay (gear icon)
@@ -218,6 +332,11 @@ itself travels with the session and with A/B, and is never stored in presets.
 The MULTIBAND bar shows a live spectrum with up to four bands separated by up to three
 draggable split handles; each band has a horizontal **width line** and a small
 **headphone (solo)** glyph, plus a **number chip** showing the split frequency.
+
+**The `On` toggle** at the right of the MULTIBAND header is what actually applies the
+per-band widths to the audio. With it off you can still see the spectrum and set up your
+bands, splits and widths — nothing you do there reaches the sound until you switch it on.
+Turning it on or off crossfades, so it is click-free either way.
 
 | Gesture | Result |
 |---|---|
@@ -325,51 +444,136 @@ session.
 
 ---
 
-## 9. Troubleshooting
+## 9. FAQ & troubleshooting
+
+### Installing and loading
 
 **The plug-in doesn't appear in my DAW.**
-Check the install location for your platform (see the [Installation guide](INSTALLATION.md)),
-make sure you copied/installed the *whole* `Anamorph.vst3` bundle folder, then force a
-plug-in rescan. On macOS, Logic/GarageBand only see the AU (`.component`); other DAWs use
-the VST3. Anamorph is 64-bit only.
+Work through these in order:
 
-**macOS says the plug-in/app "cannot be opened" or it fails to load after a zip install.**
-That is Gatekeeper quarantine on un-notarized software. Either use the `.pkg` installer
-(no quarantine on installed files) or run the `xattr -dr com.apple.quarantine …` commands
-from the zip's `INSTALL.txt`, then rescan.
+1. **Rescan.** Most hosts only look on demand — see the table in
+   [§2.2](#22-first-launch). This alone fixes most cases.
+2. **Right format?** Logic Pro and GarageBand load **AU only** (`Anamorph.component`);
+   everything else uses the **VST3**. Anamorph is 64-bit only and will not appear in a
+   32-bit host.
+3. **Right place?** Check the install location for your platform in the
+   [Installation guide](INSTALLATION.md). If you copied by hand, make sure you moved the
+   *whole* `Anamorph.vst3` **folder** — not a single file from inside it.
+4. **Right kind of track?** It is an audio effect, not an instrument, and the output is
+   always stereo — a mono→mono slot will not offer it.
+5. **Blocklisted from an earlier failed scan?** Clear that host's plug-in cache or
+   blocklist entry for Anamorph and scan again. This is common after a macOS quarantine
+   problem: the first scan fails, the host remembers, and it never retries on its own.
 
-**Windows SmartScreen blocks the installer/app.**
-"More info → Run anyway" — expected until the binaries are code-signed.
+**How do I rescan plug-ins?**
+See the per-DAW table in [§2.2](#22-first-launch).
 
-**The DAW scan hangs or the plug-in fails a scan once.**
-Rescan; if a host cached a failed scan (common after a quarantine issue on macOS), clear
-that host's plug-in cache/blocklist entry and scan again.
+**Where exactly does it install on Windows?**
+The VST3 goes to `C:\Program Files\Common Files\VST3\Anamorph.vst3` (the folder every
+VST3 host scans by default) and the Standalone to `C:\Program Files\Anamorph\`, with a
+Start-menu entry. The installer lets you change **both** paths on its destination page,
+and its component page lets you install only one of the two. Uninstall from
+*Settings → Apps → Installed apps → Anamorph*.
 
-**High CPU.**
-Oversampling is the main cost — set it to Off/2× (it only affects Drive/Chorus/Dim-D
-character at high drive). Closing the editor or hiding meters reduces GUI load; the
-Linux build intentionally renders on the CPU.
+**macOS says it "cannot be opened", or the plug-in won't load after a zip install.**
+That is Gatekeeper, because the binaries are not notarized yet.
 
-**Clicks or level jumps when switching presets/A-B?**
-A brief dip to the dry signal is by design (it masks parameter jumps). If levels differ
-between A and B, engage **Level Match** while comparing.
+- Opening the **`.pkg`**: macOS refuses the first double-click. Open
+  *System Settings → Privacy & Security*, scroll down, click **Open Anyway** next to the
+  blocked-package message, then confirm. (On macOS 14 and earlier you can instead
+  right-click the `.pkg` → *Open* → *Open*.)
+- After a **zip** install: the extracted bundles carry a quarantine flag and the DAW will
+  refuse them. Either use the `.pkg` (its installed files are never quarantined) or run
+  the `xattr -dr com.apple.quarantine …` commands from the zip's `INSTALL.txt`, then
+  rescan.
 
-**Preset didn't save / can't find my preset.**
-Presets go to the per-user folder in §7.2 (created automatically). In REAPER, if the
-Save-Preset name field loses keyboard focus and Space toggles the transport, close and
-reopen the save dialog — a known host-focus quirk.
+**Windows SmartScreen blocks the installer or the app.**
+*More info → Run anyway*. Expected until the binaries are code-signed.
 
-**Undo doesn't undo a typed value / a mouse-wheel band nudge.**
+### Sound and performance
+
+**How much CPU should I expect, and how do I reduce it?**
+**Oversampling** is by far the largest cost — it is a Settings item, and it only changes
+the character of the nonlinear stages (Drive, Chorus, Dim-D) at high drive, so Off or 2×
+is a reasonable working setting. The **Multiband** section costs more than global width
+(more filters per band). On the GUI side, closing the editor window removes essentially
+all of it; hiding the meters helps too. The Linux build renders the graphics on the CPU by
+design.
+
+**Does Anamorph add latency?**
+Almost always **zero**. Reported latency is non-zero *only* when the oversampler is
+actually running, and it only runs when there is nonlinear or modulation work for it to
+do — that is: Oversampling set to 2×/4×/8× **and** either Drive above zero **or** the
+Chorus / Dim-D algorithm selected. Choose Oversampling with Drive at 0 and Haas or Velvet
+Noise, and the oversampler stays bypassed at zero latency. When it does engage, the
+plug-in **reports** its filter latency to the host, so delay compensation keeps everything
+in time automatically. The Haas algorithm's delay is part of the effect, not reported
+latency — that is the point of it. So if your DAW shows a plug-in delay, oversampling is
+engaged.
+
+**Clicks or level jumps when switching presets or A/B?**
+A brief dip to the dry signal is deliberate — it masks the parameter jump. If A and B sit
+at noticeably different levels, engage **Level Match** while comparing.
+
+**Something in the sound seems wrong.**
+Press **Bypass** in the top bar — it crossfades to the untouched signal while keeping the
+analyzers running, so you can watch the meters both ways, and it is available in Simple
+view. For a bit-exact reference instead of a crossfade, switch to **Advanced** (the **Adv**
+button) and set the OUTPUT panel's **Mix** to 0 %: the output is then bit-exactly the
+input. Raise it again and A/B.
+
+### Automation and sessions
+
+**Can I automate the controls?**
+Yes — every sound parameter is exposed to the host and can be automated or MIDI-mapped
+from your DAW as usual, including the crossover frequencies, the per-band widths, the band
+count and the band-solo mask. The Settings overlay items (oversampling, window size, scope
+persistence, tooltips, animations, meter visibility) are deliberately **not** host
+parameters at all, so they never clutter your automation list — they are session state and
+are saved with your project. Bypass is a host parameter, but it is excluded from A/B, undo
+and presets.
+
+**Will my old sessions still work after I update?**
+Yes. Parameter identities are frozen and regression-tested in CI, so DAW sessions and
+`.anamorph` presets saved by an older Anamorph load unchanged in a newer one — any
+parameter an older file doesn't mention simply keeps its default. See
+[§7.3](#73-what-a-preset-contains--and-compatibility).
+
+### Presets
+
+**Where are my presets stored?**
+User presets are plain XML files with the `.anamorph` extension, in a per-user folder —
+the exact path per platform is in [§7.2](#72-saving-and-managing). Factory presets are
+built into the plug-in and are not files.
+
+**How do I share a preset, or move presets to another machine?**
+Copy the `.anamorph` files out of that folder. They are portable across platforms. Anyone
+can load one with *Load Preset…* from anywhere on disk, or drop it into their own preset
+folder to have it appear in the menu.
+
+**Preset didn't save / I can't find it.**
+The folder in §7.2 is created on demand. In REAPER, if the Save-Preset name field loses
+keyboard focus and Space starts the transport instead of typing a space, close and reopen
+the save dialog — a known host-focus quirk.
+
+**Can I rename or delete presets from inside the plug-in?**
+No — manage the files in the preset folder directly. The plug-in picks up changes and
+sorts alphabetically.
+
+### Known quirks
+
+**Undo doesn't undo a typed value or a mouse-wheel band nudge.**
 Known limitation: values typed into a value box and Multiband mouse-wheel nudges don't
-create undo steps yet. Knob/drag gestures, resets, and preset loads all do.
+create undo steps yet. Knob drags, resets and preset loads all do.
 
 **A control looks stuck "pressed" (macOS).**
 If the mouse button was released outside the plug-in window, the pressed look can linger
-until the cursor re-enters the window — cosmetic only; the value isn't changing.
+until the cursor re-enters the window. Cosmetic only — the value is not changing.
 
-**Something in the sound seems wrong.**
-Set **Mix** to 0 % — the output is then bit-exactly the input; raise it again and A/B.
-Bypass (top bar) crossfades to the untouched signal while keeping the analyzers alive.
+**Anything else?**
+[`docs/KNOWN_ISSUES.md`](../KNOWN_ISSUES.md) lists every confirmed limitation with its
+current status. If your problem isn't there, [`SUPPORT.md`](../../SUPPORT.md) explains what
+to include in a report.
 
 ---
 

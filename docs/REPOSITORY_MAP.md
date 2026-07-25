@@ -13,6 +13,12 @@ Anamorph/
 ├── README.md               Project façade (features, status, quick start, docs nav).
 ├── CHANGELOG.md            Version history (Keep a Changelog; evidence-cited).
 ├── CLAUDE.md               AI/contributor entry point: mandatory policy pre-read + repo constraints.
+├── NOTICE                  Third-party attribution that must accompany a binary distribution
+│                           (ships inside every zip, the Windows installer, and as a release asset).
+├── THIRD_PARTY_LICENSES.md Verified inventory of every third-party component: purpose, origin,
+│                           licence, obligations, what is compiled in vs only vendored, and the
+│                           open licensing decisions. Re-verify after any JUCE bump.
+├── SUPPORT.md              User-facing: where to look first, what a good bug report contains.
 ├── src/                    Source (wrapper + GUI + DSP core).
 ├── tests/                  Headless self-tests (DSP + state compatibility) and fixtures.
 ├── worklogs/               Session-local investigation records for future agents (NOT
@@ -92,6 +98,7 @@ Anamorph/
 | `.github/workflows/msvc.yml` | MSVC `/analyze` → SARIF; JUCE treated as external; path-filtered triggers. |
 | `.github/workflows/dependency-review.yml` | Dependency Review on PRs to `main` (GitHub Actions deps; comment on failure only). |
 | `.github/dependabot.yml` | Weekly grouped `github-actions` bumps; JUCE stays manually pinned (`DEPENDENCY_POLICY.md`). |
+| `.github/ISSUE_TEMPLATE/` | `bug_report.yml` (version+build, OS, DAW, format, install route, repro — the fields triage actually needs) + `config.yml` (links to the install guide, FAQ, known issues, SUPPORT). |
 
 ## `docs/` — documentation library
 

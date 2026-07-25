@@ -204,6 +204,60 @@ matrix. Do not populate with estimated numbers.`
 only in prepare() (delay lines sized to max latency + max block; chorus buffers to 8× rate;
 ScopeBuffer fixed at 16384 stereo frames). Requires measurement for a concrete figure.`
 
+## How to produce those numbers — required benchmark procedure
+
+The three TODOs above are open because **no repeatable benchmark is committed to this
+repository**: `scripts/` has no bench entry point, `tests/` measures correctness only, and every
+number quoted in the Wave 3-6 worklogs came from a *session-local* scratch harness that was never
+checked in (see e.g. `worklogs/performance/WAVE3_INVESTIGATION.md`). Anyone can therefore
+reproduce a measurement, but no two people will reproduce the *same* one. This section fixes the
+method so results are comparable across sessions and machines; it deliberately adds **no
+infrastructure** — closing RISK-002 needs measurements, not a framework.
+
+**What to measure.** `anamorph::AnamorphEngine` alone, not the plug-in wrapper and not the GUI.
+It is a plain library target (`AnamorphDSP`, `CMakeLists.txt`) with no JUCE plug-in host required,
+and `tests/dsp_tests.cpp` already demonstrates the whole calling pattern: construct, `prepare(sr,
+block)`, `setParameters(EngineParameters)`, then `process(L, R, n)` in a loop. A bench is that
+loop with a timer around it — a single scratch `.cpp` linked against `AnamorphDSP`.
+
+**Build it the way users get it.** `-DCMAKE_BUILD_TYPE=Release` only. The `AnamorphHardening`
+flags and `juce::juce_recommended_lto_flags` are part of the shipped configuration, so a bench
+that does not link them is measuring a different binary.
+
+**The matrix.** Each cell is one number; record every axis with the result or the number is
+meaningless:
+
+| Axis | Points to cover |
+|---|---|
+| Sample rate | 44.1, 48, 96, 192 kHz |
+| Block size | 32, 64, 128, 256 samples |
+| Algorithm | Haas, Velvet Noise, Chorus, Dimension-D |
+| Oversampling | Off, and the engaged case (2×/4×/8× **with Drive > 0**, since the wrap only engages for nonlinear/modulation work — see the Verified row above) |
+| Multiband | off; 4 bands static; 4 bands with a split **dragging** (the RISK-002 hot path) |
+
+**What to record per cell.** Wall-clock **nanoseconds per sample**, derived from a run long
+enough to dominate timer noise (≥ 10 s of audio), plus the *worst single block* in the run —
+peak matters more than average for a real-time thread. Take the **median of ≥ 5 repetitions** and
+report the spread; a single run on a shared or thermally-throttled machine is not a datum.
+Report the CPU model, OS, compiler and version alongside, and state whether the machine was
+otherwise idle. For attribution rather than totals, `valgrind --tool=callgrind` over the same
+harness gives instruction counts that are stable across machines — that is what the Wave 3-6
+worklogs used, and it is the right tool for comparing two candidate implementations.
+
+**Memory.** Per-instance footprint is a `prepare()`-time question, not a steady-state one: measure
+RSS before and after `prepare()` at the largest supported sample rate and block size. There is
+nothing to measure during `process()` — that it allocates nothing is the invariant below.
+
+**The pass/fail question these numbers must answer** — the reason RISK-002 is open:
+
+> On a defensibly modest machine, at 48 kHz / 128 samples, how many Anamorph instances can run
+> before the engine consumes a whole core — and does a fast Multiband split drag produce a
+> transient cost that would drop a buffer at that instance count?
+
+Until that has an answer, the CPU/memory rows above stay TODO. **Do not populate them with
+estimates** (constraint C2); a number without the recorded matrix position, machine and
+methodology is worse than an honest TODO.
+
 ## Invariant
 
 > `processBlock` must remain allocation-free, lock-free, and IO-free (see

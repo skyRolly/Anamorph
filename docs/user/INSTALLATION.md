@@ -147,6 +147,7 @@ The zip route requires removing macOS's quarantine flag by hand — follow the
 `INSTALL.txt` inside the zip. Short version (copy what you need, then de-quarantine it):
 
 ```sh
+sudo mkdir -p /Library/Audio/Plug-Ins/VST3 /Library/Audio/Plug-Ins/Components
 sudo cp -R "Anamorph.vst3"      /Library/Audio/Plug-Ins/VST3/
 sudo cp -R "Anamorph.component" /Library/Audio/Plug-Ins/Components/
 sudo cp -R "Anamorph.app"       /Applications/
@@ -197,3 +198,12 @@ CertUtil -hashfile Anamorph-<version>-Windows-Installer.exe SHA256
 `RELEASE_MANIFEST.txt` on the release lists the exact version, git tag, commit and CI
 build number the binaries were produced from — the same version and build number the
 plug-in's About screen shows (click the ANAMORPH title in the plug-in).
+
+---
+
+## Next steps
+
+Installed? The user manual's **[Quick start](USER_MANUAL.md#2-quick-start)** covers the first
+launch, rescanning in your DAW and your first widened sound. If something isn't working, the
+manual's **[FAQ & troubleshooting](USER_MANUAL.md#9-faq--troubleshooting)** is the fastest route;
+after that, [`KNOWN_ISSUES.md`](../KNOWN_ISSUES.md) and [`SUPPORT.md`](../../SUPPORT.md).
