@@ -21,6 +21,7 @@ GitHub Release (the exact source-archived platform zips renamed to
 layout — + the two installers (Windows Inno Setup exe, macOS pkg; the Linux installer is
 `install.sh` inside the Linux zip), already version-named at build time and moved
 unmodified after a fail-closed name/version check, + `Anamorph-<version>-UserManual.md`
++ `Anamorph-<version>-NOTICE.txt` + `Anamorph-<version>-THIRD_PARTY_LICENSES.md`
 + `SHA256SUMS.txt` over all assets + `RELEASE_MANIFEST.txt` + the CHANGELOG section as notes; `contents: write` scoped to that one
 job; publishing the draft stays a manual maintainer action per RELEASE_POLICY). No
 third-party actions beyond `actions/checkout` / `actions/download-artifact` + the `gh` CLI
