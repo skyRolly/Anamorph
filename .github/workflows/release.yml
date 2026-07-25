@@ -1,7 +1,7 @@
 # ============================================================================
 #  Release pipeline foundation (RH-PR-8, closes the RISK-003 infrastructure gap)
 #
-#  Trigger: pushing an ANNOTATED release tag  vMAJOR.MINOR.PATCH  (e.g. v0.8.13)
+#  Trigger: pushing an ANNOTATED release tag  vMAJOR.MINOR.PATCH  (e.g. v0.9.0)
 #  on the release commit. Tag pushes do not trigger build.yml (its `branches`
 #  filter excludes tag events), so a release runs the full build+validation
 #  matrix exactly ONCE — by CALLING build.yml (workflow_call): same three OS

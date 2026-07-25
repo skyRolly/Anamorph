@@ -4,8 +4,9 @@ Potential technical risks. Each is evidence-based (constraint C7) — no invente
 postmortems may reference these IDs to close the loop. Severity: Low / Medium / High / Critical.
 
 Version-synced to **v0.9.0** (release-prep, 2026-07-24, PR #87 — packaging/installers + user
-docs + version bump; no DSP/GUI code change, no new risk; the unsigned installers inherit the
-existing signing/notarization gap already tracked as RH-PR-3/5). Previously verified against
+docs + version bump — and PR #89, the installer/packaging rework: component selection, system-wide
+installs, flat ZIP-only artifacts; no DSP/GUI code change in either, no new risk; the unsigned
+installers inherit the existing signing/notarization gap already tracked as RH-PR-3/5). Previously verified against
 repository HEAD `64e87c4` (post-v0.8.12 content re-audit), synced to the
 **v0.8.12 release** (changelog-dated 2026-07-22, PR #79 performance Wave 6 + PR #80 GUI interaction
 fixes — pixel-identical / message-thread-only, no new risk; the **v0.8.11 release** of 2026-07-20
