@@ -30,7 +30,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 | RISK-003 | No git release tags → fragile version/CHANGELOG attribution | Low | High (already true) |
 | RISK-004 | pluginval signal-only retry could mask a real future editor crash | Medium | Low |
 | RISK-005 | Manual-only audio/visual + host validation lets regressions ship green | Medium | Medium |
-| RISK-006 | Undeclared licensing: no `LICENSE`/EULA, and the JUCE 9 AGPLv3-vs-commercial tier is unchosen | High | High (already true) |
+| RISK-006 | Undeclared licensing: no `LICENSE`/EULA, and the commercial JUCE licence required by the closed-source model is not yet obtained | High | High (already true) |
 
 ---
 
@@ -132,5 +132,6 @@ mitigation. Do not invent risks to fill the template.
   `docs/KNOWN_ISSUES.md` KI-015.
 - **Mitigation:** **None available to engineering** — this is an owner/legal decision, tracked as
   RH-R11 / RH-F1 (and RH-F2 for Steinberg) in `docs/architecture/RELEASE_HARDENING_PLAN.md`. It
-  closes when a tier is chosen and a `LICENSE` (plus an EULA, if the product is sold) is added.
-  Until then, cite this risk rather than assuming any particular terms.
+  closes when the commercial JUCE licence is obtained and a `LICENSE` (plus an EULA, if the
+  product is sold) is added. Until then, cite this risk rather than assuming any particular
+  terms.

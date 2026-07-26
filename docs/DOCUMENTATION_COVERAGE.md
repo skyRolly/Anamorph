@@ -6,7 +6,22 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **v0.9.0 release-hardening & commercial-readiness audit** (2026-07-25,
+Last updated: for the **flat-artifact / lean-package / closed-source documentation pass**
+(2026-07-26, PR #93). **No `src/` change.** The `Anamorph-<OS>` artifacts now upload loose
+staged files (payload + `INSTALL.txt`; Linux adds `install.sh`/`uninstall.sh` — extract the
+artifact zip once to see them directly; the transport drops exec bits on that route), new
+`Anamorph-<OS>-release` artifacts carry the permission-preserving source archives that
+`release.yml` publishes byte-identically, and `NOTICE`/`THIRD_PARTY_LICENSES.md`/`SUPPORT.md`
+ship **only** as version-named release-page assets — no longer inside any zip or installer
+payload; each `INSTALL.txt` carries the IJG acknowledgement + pointer. README now states the
+product model (closed-source commercial; docs grouped user/legal/developer), and the
+licensing blocker set (KI-015/RISK-006/RH-R11/RH-F1, THIRD_PARTY_LICENSES, NOTICE, HANDOVER)
+uniformly records that the model rules out the AGPLv3 arm, so the commercial JUCE licence is
+required before commercial distribution. Synced: PACKAGING, CI_CD, RELEASE_PROCESS,
+RELEASE_POLICY, REPOSITORY_MAP, SOURCE_OF_TRUTH (doc-class scope), USER_MANUAL (online link
+fallbacks), CHANGELOG `[0.9.0]`, this file.
+
+Prior: the **v0.9.0 release-hardening & commercial-readiness audit** (2026-07-25,
 on `main` @ `0a98ebd`, PR #92; record: `worklogs/RELEASE_HARDENING_AUDIT_v0.9.0.md`). **No `src/`
 change.** Six parallel investigation lenses + adversarial verification over the repository and
 the pinned JUCE tree. **New:** `NOTICE` and `THIRD_PARTY_LICENSES.md` (verified third-party
@@ -14,11 +29,12 @@ inventory — every component classified compiled-in vs vendored-but-not-built f
 `build/build.ninja` and object symbols rather than from JUCE's manifest, which is how FreeType
 and stb, both vendored *inside* PlutoVG, were found; the Steinberg VST 3 SDK is **MIT** in JUCE
 9.0.0, correcting RH-R10's GPLv3/proprietary claim, with the trademark/distribution review left
-explicitly open); `SUPPORT.md`; `.github/ISSUE_TEMPLATE/{bug_report,config}.yml`. **Packaging:**
-both attribution files now ship inside all three zips, are installed unconditionally by the
-Windows installer, and are attached as version-named release assets (covering the `.pkg`
-route) — several vendored licences (IJG, FLAC, Ogg Vorbis) require the notice to accompany a
-binary distribution. **User docs:** USER_MANUAL gained a Quick start, a Standalone-application
+explicitly open); `SUPPORT.md`; `.github/ISSUE_TEMPLATE/{bug_report,config}.yml`. **Packaging
+(superseded 2026-07-26 — see the head entry):** both attribution files at that point shipped
+inside all three zips, installed unconditionally by the Windows installer, and were attached as
+version-named release assets (covering the `.pkg` route) — several vendored licences (IJG,
+FLAC, Ogg Vorbis) require the notice to accompany a binary distribution; the release-page
+assets are now the sole route, with the IJG line in every `INSTALL.txt`. **User docs:** USER_MANUAL gained a Quick start, a Standalone-application
 section, system requirements, a TOC and a rewritten FAQ (rescanning per DAW, Windows paths,
 Gatekeeper both routes, presets, CPU, latency, automation, session compatibility), and three
 defects were fixed — "set Mix to 0 %" was the manual's most-repeated instruction but `mixK` is

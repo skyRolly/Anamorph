@@ -51,9 +51,11 @@ JUCE's own words: *"The JUCE Framework modules are dual-licensed under the AGPLv
 commercial JUCE licence."* Every JUCE source file repeats the choice in its header comment
 (see e.g. `modules/juce_audio_formats/codecs/juce_MP3AudioFormat.cpp:1-33`).
 
-**Which arm of that dual licence Anamorph is distributed under is an open owner decision.**
-It is not recorded anywhere in this repository, and the repository currently declares no
-licence of its own. See [Open licensing decisions](#open-licensing-decisions).
+**The owner has stated the product model (2026-07-26): closed-source commercial.** That
+model cannot satisfy the AGPLv3 arm, so the commercial JUCE 9 licence must be in place
+before commercial distribution; obtaining it (and which tier) remains an open owner action —
+see [Open licensing decisions](#open-licensing-decisions). The repository currently declares
+no licence of its own.
 
 ---
 
@@ -211,6 +213,6 @@ is resolved by this document.
    sold. The installers do not currently present one.
 4. **Steinberg VST 3 requirements** for commercial distribution and trademark use — see §3.
 
-Blockers 1–4 are recorded in `docs/architecture/RELEASE_HARDENING_PLAN.md` (RH-R10 and the
-ADR-0016..0020 decision set). They are **not** engineering tasks and cannot be closed by a code
-change.
+Blockers 1–4 are recorded in `docs/architecture/RELEASE_HARDENING_PLAN.md` (RH-R11 / RH-F1;
+RH-R10 / RH-F2 for the Steinberg item). They are **not** engineering tasks and cannot be closed
+by a code change.

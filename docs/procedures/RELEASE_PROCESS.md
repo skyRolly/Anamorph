@@ -20,11 +20,13 @@ the hard compatibility gate is `RELEASE_COMPATIBILITY_CHECKLIST.md`.
 
 ## Build the release artifacts
 
-Releases correspond to the CI artifacts built per push (`CI_CD.md`):
-`Anamorph-Linux`, `Anamorph-Windows`, `Anamorph-macOS` (flat archives; the Linux one
-carries the install scripts) plus the installers `Anamorph-Windows-installer` and
-`Anamorph-macOS-installer` (`PACKAGING.md` §Installers). Push the release commit and use that run's
-artifacts, or build locally per `BUILD.md`. The CI build number is `${{ github.run_number }}`
+Releases publish the `Anamorph-<OS>-release` source archives built per push (`CI_CD.md`) —
+permission-preserving flat zips; the Linux one carries the install scripts — plus the
+installers `Anamorph-Windows-installer` and `Anamorph-macOS-installer` (`PACKAGING.md`
+§Installers). The plain `Anamorph-<OS>` artifacts are loose-file per-push downloads (the
+artifact transport drops Unix executable bits on that route) and are **not** release
+material. Push the release commit and use that run's artifacts, or build locally per
+`BUILD.md`. The CI build number is `${{ github.run_number }}`
 (`-DANAMORPH_BUILD_NUMBER=...`), shown in the About box.
 
 ## macOS signing / notarization

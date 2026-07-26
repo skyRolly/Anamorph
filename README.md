@@ -85,7 +85,9 @@ The full technical documentation lives in **[`docs/`](docs/)**:
 
 The documentation falls into three classes, kept deliberately separate:
 **user documentation** ([`docs/user/`](docs/user/) — installation guide + user manual — and
-[`SUPPORT.md`](SUPPORT.md), all also attached to releases), **legal / licensing documents**
+[`SUPPORT.md`](SUPPORT.md); the manual and SUPPORT.md are also attached to every release,
+while per-platform install steps ship inside each package as `INSTALL.txt`), **legal /
+licensing documents**
 ([`NOTICE`](NOTICE) · [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md); Anamorph's own
 `LICENSE`/EULA are pending — see below), and **developer documentation** (everything else
 under `docs/`, plus `CLAUDE.md`).

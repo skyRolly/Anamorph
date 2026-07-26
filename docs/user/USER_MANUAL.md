@@ -18,8 +18,13 @@
 9. [FAQ & troubleshooting](#9-faq--troubleshooting)
 
 Installation is covered separately in the
-**[Installation guide](INSTALLATION.md)**. If something is wrong and this manual doesn't answer
-it, see **[SUPPORT.md](../../SUPPORT.md)** and **[KNOWN_ISSUES.md](../KNOWN_ISSUES.md)**.
+**[Installation guide](INSTALLATION.md)** (online:
+<https://github.com/skyRolly/Anamorph/blob/main/docs/user/INSTALLATION.md>). If something is
+wrong and this manual doesn't answer it, see
+**[SUPPORT.md](../../SUPPORT.md)** (online:
+<https://github.com/skyRolly/Anamorph/blob/main/SUPPORT.md> — also published on each release
+page as `Anamorph-<version>-SUPPORT.md`) and **[KNOWN_ISSUES.md](../KNOWN_ISSUES.md)** (online:
+<https://github.com/skyRolly/Anamorph/blob/main/docs/KNOWN_ISSUES.md>).
 
 ---
 
@@ -71,8 +76,10 @@ both need an administrator/root step.
 
 The installers are not code-signed or notarized yet, so Windows SmartScreen and macOS
 Gatekeeper will each warn you once — that is expected, and
-[the installation guide](INSTALLATION.md) shows exactly which button to click. Full
-step-by-step instructions, manual-copy paths and uninstall live there too.
+[the installation guide](INSTALLATION.md) (online:
+<https://github.com/skyRolly/Anamorph/blob/main/docs/user/INSTALLATION.md>) shows exactly
+which button to click. Full step-by-step instructions, manual-copy paths and uninstall live
+there too.
 
 **What you need.** A 64-bit machine — Windows x86-64, macOS (Apple Silicon or Intel; the
 build targets macOS 10.13 and later), or x86-64 Linux — and a VST3 or (on macOS) AU host.
@@ -463,8 +470,10 @@ Work through these in order:
    everything else uses the **VST3**. Anamorph is 64-bit only and will not appear in a
    32-bit host.
 3. **Right place?** Check the install location for your platform in the
-   [Installation guide](INSTALLATION.md). If you copied by hand, make sure you moved the
-   *whole* `Anamorph.vst3` **folder** — not a single file from inside it.
+   [Installation guide](INSTALLATION.md) (online:
+   <https://github.com/skyRolly/Anamorph/blob/main/docs/user/INSTALLATION.md>). If you copied
+   by hand, make sure you moved the *whole* `Anamorph.vst3` **folder** — not a single file
+   from inside it.
 4. **Right kind of track?** It is an audio effect, not an instrument, and the output is
    always stereo — a mono→mono slot will not offer it.
 5. **Blocklisted from an earlier failed scan?** Clear that host's plug-in cache or
@@ -534,9 +543,9 @@ input. Raise it again and A/B.
 Yes — every sound parameter is exposed to the host and can be automated or MIDI-mapped
 from your DAW as usual, including the crossover frequencies, the per-band widths, the band
 count and the band-solo mask. The Settings overlay items (oversampling, window size, scope
-persistence, tooltips, animations, meter visibility) are deliberately **not** host
-parameters at all, so they never clutter your automation list — they are session state and
-are saved with your project. Bypass is a host parameter, but it is excluded from A/B, undo
+persistence, tooltips, animations) and the top bar's meters toggle are deliberately **not**
+host parameters at all, so they never clutter your automation list — they are session state
+and are saved with your project. Bypass is a host parameter, but it is excluded from A/B, undo
 and presets.
 
 **Will my old sessions still work after I update?**
@@ -577,9 +586,12 @@ If the mouse button was released outside the plug-in window, the pressed look ca
 until the cursor re-enters the window. Cosmetic only — the value is not changing.
 
 **Anything else?**
-[`docs/KNOWN_ISSUES.md`](../KNOWN_ISSUES.md) lists every confirmed limitation with its
-current status. If your problem isn't there, [`SUPPORT.md`](../../SUPPORT.md) explains what
-to include in a report.
+[`docs/KNOWN_ISSUES.md`](../KNOWN_ISSUES.md) (online:
+<https://github.com/skyRolly/Anamorph/blob/main/docs/KNOWN_ISSUES.md>) lists every confirmed
+limitation with its current status. If your problem isn't there,
+[`SUPPORT.md`](../../SUPPORT.md) (online:
+<https://github.com/skyRolly/Anamorph/blob/main/SUPPORT.md>) explains what to include in a
+report.
 
 ---
 
