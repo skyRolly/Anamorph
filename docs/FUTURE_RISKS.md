@@ -115,14 +115,17 @@ mitigation. Do not invent risks to fill the template.
 ## RISK-006 — Undeclared licensing (no LICENSE, no EULA, JUCE tier unchosen)
 - **Risk:** The repository root has **no `LICENSE` file** and neither installer presents an
   end-user agreement, so the terms under which Anamorph's own source and binaries are offered are
-  undeclared. This is coupled upstream: JUCE 9 modules are dual-licensed **AGPLv3 or commercial**,
-  and which arm applies constrains what Anamorph may itself be offered under. A third strand —
+  undeclared. The stated product model (owner, 2026-07-26) is **closed-source commercial**; JUCE 9
+  modules are dual-licensed **AGPLv3 or commercial**, and a closed-source distribution cannot use
+  the AGPLv3 arm — the commercial JUCE tier must be in place before commercial distribution. A
+  third strand —
   the Steinberg VST 3 trademark/distribution review — is separate again (the SDK *code* is MIT in
   JUCE 9.0.0; the VST name and plug-in distribution terms are not covered by that grant).
 - **Impact:** Blocks a commercial release outright, and leaves even a free release legally
   ambiguous for anyone who downloads, redistributes or contributes. Third-party **attribution**
-  is a different obligation and is already discharged (`NOTICE` + `THIRD_PARTY_LICENSES.md` ship
-  with the binaries) — this risk is specifically about Anamorph's *own* terms.
+  is a different obligation and is already discharged (`NOTICE` + `THIRD_PARTY_LICENSES.md`
+  accompany every download as release-page assets, with the IJG acknowledgement + pointer in
+  every `INSTALL.txt`) — this risk is specifically about Anamorph's *own* terms.
 - **Likelihood (evidence-based):** High — already the case (`ls` shows no `LICENSE`/`COPYING`).
 - **Evidence [Verified]:** repository root (no licence file); `THIRD_PARTY_LICENSES.md`
   §"Open licensing decisions"; the pinned JUCE tree's `LICENSE.md` (dual licence);

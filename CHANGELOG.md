@@ -35,13 +35,16 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   report contains) plus a GitHub bug-report form that asks for the fields triage actually needs —
   version *and* build number from the About screen, OS (including whether an Apple Silicon host
   runs natively or under Rosetta), DAW, format, install route, Oversampling setting and whether
-  the Standalone reproduces it. `SUPPORT.md` ships inside the zips and the Windows installer, and
-  every `INSTALL.txt` points at it. It states plainly that Anamorph writes **no log file**, so
-  nobody goes looking for one. Evidence: PR #91 (v0.9.0 release-hardening audit). [Verified]
-- **Third-party attribution ships with the binaries.** `NOTICE` and `THIRD_PARTY_LICENSES.md`
-  are staged into all three platform zips, installed by the Windows installer regardless of
-  which components are selected, and attached to the GitHub Release (covering the macOS
-  `.pkg`, whose payload is only the bundles). `THIRD_PARTY_LICENSES.md` is a verified
+  the Standalone reproduces it. `SUPPORT.md` is attached to every GitHub release as
+  `Anamorph-<version>-SUPPORT.md`, and every `INSTALL.txt` links the online guide. It states
+  plainly that Anamorph writes **no log file**, so nobody goes looking for one.
+  Evidence: PR #91 (v0.9.0 release-hardening audit); PR #92 (lean packages — support/attribution
+  as release-page assets). [Verified]
+- **Third-party attribution accompanies every download.** `NOTICE` and
+  `THIRD_PARTY_LICENSES.md` are published as version-named assets on every GitHub release,
+  next to the zips and installers (the packages themselves stay lean — payload +
+  `INSTALL.txt` only, each `INSTALL.txt` carrying the mandatory IJG acknowledgement and a
+  pointer to those assets). `THIRD_PARTY_LICENSES.md` is a verified
   inventory — every component is classified compiled-in vs vendored-but-not-built from the
   build graph and object symbols, which is how it caught two components (FreeType and stb,
   both inside PlutoVG) that JUCE's own `LICENSE.md` does not list. It also corrects the
@@ -69,13 +72,18 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   `worklogs/JUCE9_MIGRATION_v0.8.13.md`. Evidence: PR #83 / commit `edcba14`. [Verified]
 
 ### Fixed
-- **Downloaded CI artifacts no longer lose Unix executable permissions.** Each per-push
-  customer artifact now carries a single archive created on the build machine itself
-  (`zip -ry` / `Compress-Archive` / `ditto -c -k`), because the artifact transport strips
-  file modes from bare directory trees — previously an extracted Linux/macOS download
-  needed a manual `chmod +x`. Release assets publish those exact bytes, renamed only.
-  Evidence: PR #84 / commit `42dd8ae`; verified against CI-built bytes in
-  `worklogs/release-hardening/RH_PR8_RELEASE_PIPELINE.md` §6c. [Verified]
+- **Per-push CI artifacts extract straight to the payload** — downloading `Anamorph-<OS>`
+  and extracting the artifact zip shows `Anamorph.vst3`, the Standalone and `INSTALL.txt`
+  directly: no nested archive, no wrapper folder. **Release downloads keep correct Unix
+  permissions**: each platform also uploads an internal `Anamorph-<OS>-release` artifact
+  holding an archive created on the build machine itself (`zip -ry` / `Compress-Archive` /
+  `ditto -c -k` — the artifact transport strips file modes from bare directory trees), and
+  the release pipeline publishes those exact bytes, renamed only. On the per-push loose-file
+  route the executable bits are dropped by the transport; `INSTALL.txt` documents the
+  `sh install.sh` / `chmod +x` fallbacks.
+  Evidence: PR #84 / commit `42dd8ae` (source-archived permissions; verified against CI-built
+  bytes in `worklogs/release-hardening/RH_PR8_RELEASE_PIPELINE.md` §6c); PR #92 (flat
+  per-push artifacts + `-release` archive split). [Verified]
 
 ### Compatibility
 - **No parameter, preset, session or DSP behaviour changes in this release.** Sessions and
@@ -106,11 +114,14 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   round-trips and A/B preservation. Validation infrastructure only.
   Evidence: PR #82 / commit `d6bdb13`; `worklogs/STATE_HARNESS_v0.8.13.md`. [Verified]
 - **New CI packaging artifacts** `Anamorph-Windows-installer` and `Anamorph-macOS-installer`
-  carry the installers above; the `Anamorph-Linux` zip artifact now additionally carries
-  `install.sh`/`uninstall.sh` (its staging step self-checks the executable bits inside the
-  zip), and the `-debug` artifacts are unchanged. The release job stages the installers
-  with the same fail-closed, never-re-packed contract as the zips.
-  Evidence: PR #87 (v0.9.0 release prep); PR #89 (packaging rework). [Verified]
+  carry the installers above; the Linux payload now additionally carries
+  `install.sh`/`uninstall.sh` (the staging step self-checks the executable bits inside the
+  release archive); each platform uploads an `Anamorph-<OS>-release` source-archive
+  artifact for the release pipeline, and the `-debug` artifacts are unchanged. The release
+  job stages the installers with the same fail-closed, never-re-packed contract as the
+  release zips.
+  Evidence: PR #87 (v0.9.0 release prep); PR #89 (packaging rework); PR #92 (artifact
+  split). [Verified]
 
 ## [0.8.12] — 2026-07-22
 ### Changed

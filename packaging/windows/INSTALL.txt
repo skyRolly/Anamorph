@@ -62,7 +62,16 @@ Troubleshooting / 常见问题
 - The plug-in is 64-bit; it will not appear in 32-bit hosts.
   插件为 64 位,32 位宿主里不会出现。
 
-Need help or found a bug? See SUPPORT.md next to this file (also in the GitHub
-repository) — it lists what to check first and what a useful report contains.
-遇到问题或发现 bug:见同目录的 SUPPORT.md(GitHub 仓库里也有),里面写了
-先检查什么、以及一份有用的报告需要包含哪些信息。
+--------------------------------------------------------------------
+Support & third-party attribution / 支持与第三方署名
+--------------------------------------------------------------------
+Need help or found a bug? See the support guide — what to check first and
+what a useful report contains:
+遇到问题或发现 bug:见支持指南(先检查什么、报告需要包含哪些信息):
+    https://github.com/skyRolly/Anamorph/blob/main/SUPPORT.md
+
+This software is based in part on the work of the Independent JPEG Group.
+Full third-party attribution is in the NOTICE and THIRD_PARTY_LICENSES
+files published next to this package on the download (release) page.
+本软件部分基于 Independent JPEG Group 的工作;完整第三方署名见下载页
+(Release 页面)随包发布的 NOTICE 与 THIRD_PARTY_LICENSES 文件。

@@ -17,9 +17,11 @@ These live online, so the links below work from anywhere:
 | What changed between releases? | [Changelog](https://github.com/skyRolly/Anamorph/blob/main/CHANGELOG.md) |
 | I want to build from source | [Build guide](https://github.com/skyRolly/Anamorph/blob/main/docs/procedures/BUILD.md); build problems: [Troubleshooting](https://github.com/skyRolly/Anamorph/blob/main/docs/procedures/TROUBLESHOOTING.md) (contributor-facing) |
 
-**Offline?** The user manual is also attached to every GitHub release as
-`Anamorph-<version>-UserManual.md`. Next to this file you already have `INSTALL.txt` (per-platform
-install steps), `NOTICE` and `THIRD_PARTY_LICENSES.md`.
+**Offline?** The user manual, this guide, and the third-party attribution are all attached to
+every GitHub release as `Anamorph-<version>-UserManual.md`, `Anamorph-<version>-SUPPORT.md`,
+`Anamorph-<version>-NOTICE.txt` and `Anamorph-<version>-THIRD_PARTY_LICENSES.md` — download them
+alongside the package if you'll need them without a connection. Inside the package itself,
+`INSTALL.txt` covers the per-platform install steps.
 
 ## 2. Open an issue
 

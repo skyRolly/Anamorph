@@ -14,7 +14,8 @@ Anamorph/
 ├── CHANGELOG.md            Version history (Keep a Changelog; evidence-cited).
 ├── CLAUDE.md               AI/contributor entry point: mandatory policy pre-read + repo constraints.
 ├── NOTICE                  Third-party attribution that must accompany a binary distribution
-│                           (ships inside every zip, the Windows installer, and as a release asset).
+│                           (published as a version-named asset on every GitHub release; each
+│                           package's INSTALL.txt points at it).
 ├── THIRD_PARTY_LICENSES.md Verified inventory of every third-party component: purpose, origin,
 │                           licence, obligations, what is compiled in vs only vendored, and the
 │                           open licensing decisions. Re-verify after any JUCE bump.

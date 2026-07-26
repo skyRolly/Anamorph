@@ -80,7 +80,7 @@ consequences, both still open:
   *System Settings → Privacy & Security → Open Anyway*.
 
 Notarization (RH-PR-3) closes both.
-- **Evidence [Verified]:** .github/workflows/build.yml:558-561 (`codesign --force --deep --sign -`,
+- **Evidence [Verified]:** .github/workflows/build.yml:592-595 (`codesign --force --deep --sign -`,
   no notarization); packaging/macos/INSTALL.txt:4-10 (ad-hoc, not notarized), :34-41 (the
   Gatekeeper approval for the .pkg), :61-65 (the zip-route `xattr` step).
   See `docs/procedures/PACKAGING.md`.
@@ -390,11 +390,14 @@ gap, not a build gap.
 ## KI-015 — Anamorph declares no licence of its own
 The repository root has **no `LICENSE` file**, and neither installer presents an end-user licence
 agreement, so the terms under which Anamorph's own source and binaries are offered are
-undeclared. This is coupled to an upstream choice: JUCE 9 modules are dual-licensed **AGPLv3 or
-commercial**, and which arm applies determines what Anamorph may itself be offered under.
+undeclared. The owner has stated the product model (2026-07-26): **closed-source commercial**.
+JUCE 9 modules are dual-licensed **AGPLv3 or commercial**, and a closed-source distribution
+cannot use the AGPLv3 arm — so the commercial JUCE tier must be obtained before commercial
+distribution, alongside Anamorph's own LICENSE/EULA text.
 - **Scope:** owner/legal decision. No code change can close it, and this repository deliberately
-  makes no determination. Third-party *attribution* — a separate obligation — **is** discharged,
-  by `NOTICE` and `THIRD_PARTY_LICENSES.md` shipping with the binaries.
+  makes no determination. Third-party *attribution* — a separate obligation — **is** discharged:
+  `NOTICE` and `THIRD_PARTY_LICENSES.md` accompany every download as version-named release-page
+  assets, and every `INSTALL.txt` carries the IJG acknowledgement plus a pointer to them.
 - **Evidence [Verified]:** no `LICENSE`/`COPYING` at the repository root; `THIRD_PARTY_LICENSES.md`
   §"Open licensing decisions"; JUCE `LICENSE.md` in the pinned tree (dual licence);
   `docs/architecture/RELEASE_HARDENING_PLAN.md` RH-R11 / RH-F1.
