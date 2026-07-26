@@ -72,11 +72,12 @@ Anamorph 为闭源商业软件,(c) 2026 RollyTech,保留所有权利。
 不授予任何源代码权利,请勿转发本安装包。
 
 --------------------------------------------------------------------
-Support & third-party attribution / 支持与第三方署名
+Testing & third-party attribution / 测试与第三方署名
 --------------------------------------------------------------------
-Need help or found a bug? See the support guide — what to check first and
-what a useful report contains:
-遇到问题或发现 bug:见支持指南(先检查什么、报告需要包含哪些信息):
+Testing this build? The internal testing guide says what a tester may do
+with it, what to check first, and what a test report must contain:
+测试本版本:内部测试指南说明测试者的权限、先检查什么,
+以及测试报告须包含哪些内容:
     https://github.com/skyRolly/Anamorph/blob/main/SUPPORT.md
 
 This software is based in part on the work of the Independent JPEG Group.

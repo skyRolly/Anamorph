@@ -18,7 +18,8 @@ This document is not legal advice.
 
 | Fact | Evidence |
 |---|---|
-| Networking is compiled **out**: JUCE's HTTP/cURL stack and the embedded web browser are disabled for every target — the plug-in, and both test binaries | `CMakeLists.txt:193-194` (`JUCE_WEB_BROWSER=0`, `JUCE_USE_CURL=0`), `:224-225`, `:260-261` |
+| The embedded web browser is disabled and libcurl is not linked, for every target — the plug-in and both test binaries | `CMakeLists.txt:193-194` (`JUCE_WEB_BROWSER=0`, `JUCE_USE_CURL=0`), `:224-225`, `:260-261` |
+| Nothing under `src/` opens a network connection, so JUCE's networking code is never referenced and the linker drops it | `CMakeLists.txt:110` (`-Wl,--gc-sections`), `:107` (`-Wl,-dead_strip`, Apple), `:92` (`/OPT:REF`, MSVC); the shipped binary contains **no** `WebInputStream` symbol |
 | JUCE's own usage reporting and splash screen are disabled | `CMakeLists.txt:196-197` (`JUCE_DISPLAY_SPLASH_SCREEN=0`, `JUCE_REPORT_APP_USAGE=0`) |
 | No analytics, telemetry, crash-reporting or update-check code exists in `src/` | no such symbol appears anywhere under `src/` |
 
@@ -36,7 +37,7 @@ Anamorph writes three kinds of file, all local, all containing only plug-in sett
 
 | What | Where | When |
 |---|---|---|
-| **User presets** (`.anamorph`, XML) — sound-parameter values and a preset name you choose | your user application-data directory, under `RollyTech/Anamorph/Presets/` (Linux `~/.config/…`, macOS `~/Library/Application Support/…`, Windows `%APPDATA%\…`) — `src/PresetManager.cpp:54-55`, written at `:216-220` | the preset *file* only when you save a preset; the containing directory is also created the first time you open the **Load Preset** dialog (`src/PluginEditor.cpp:1455`) |
+| **User presets** (`.anamorph`, XML) — sound-parameter values and a preset name you choose | your user application-data directory, under `RollyTech/Anamorph/Presets/` (Linux `~/.config/…`, macOS `~/Library/…` — JUCE's `userApplicationDataDirectory` is `~/Library`, without an `Application Support` segment — Windows `%APPDATA%\…`) — `src/PresetManager.cpp:54-55`, written at `:216-220` | the preset *file* only when you save a preset; the containing directory is also created the first time you open the **Load Preset** dialog (`src/PluginEditor.cpp:1455`) |
 | **Session state** — the full parameter set, A/B slots and view settings, serialised as XML | inside **your host's** project/session file; Anamorph hands the data to the host, which decides where to store it | whenever the host saves its session |
 | **Standalone application settings** — audio-device selection, input-mute flag, last plug-in state, the window position, and the full path of the last state file you opened or saved from the Standalone's own Save/Load dialog | `Anamorph.settings`, written by JUCE's standard Standalone wrapper (Linux `~/.config/Anamorph.settings`, macOS `~/Library/Application Support/Anamorph.settings`, Windows in the user application-data folder) — `juce_audio_plugin_client_Standalone.cpp:71-82` in the pinned JUCE tree; the path entry is written at `juce_StandaloneFilterWindow.h:198` and read at `:187`, the window coordinates at `:752-753` | Standalone only; never when running as a plug-in |
 
@@ -67,8 +68,11 @@ screenshots or recordings you attach. What is asked for and why is set out in
 
 Reports filed on the GitHub issue tracker are **public**, and are stored and processed by GitHub
 under GitHub's own terms and privacy policy — not under this document. Attach nothing you would
-not publish. For anything sensitive, use the private channel described in
-[`SUPPORT.md`](SUPPORT.md) §"Security".
+not publish. For a **security** problem, follow [`SUPPORT.md`](SUPPORT.md) §6 — GitHub's private
+vulnerability reporting if the repository's *Security* tab offers it, otherwise ask for a private
+contact without posting details. For anything else you should not post publicly, use the private
+channel **if one was given to you** for this testing round ([`SUPPORT.md`](SUPPORT.md) §3); no
+private address is recorded in this repository.
 
 *`[OWNER DECISION]` — how test reports and tester contact details are retained, for how long, and
 under which controller, is not settled. No retention or processing commitment is made here.*
@@ -79,13 +83,17 @@ Anamorph statically compiles third-party libraries (JUCE and the components it v
 inventoried in [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) and attributed in
 [`NOTICE`](NOTICE). **None of them is a network, analytics or telemetry component** — the set is
 GUI rendering, text shaping, image/audio codecs, the plug-in format SDKs and OpenGL declarations.
-The libraries capable of file or network I/O in JUCE's wider distribution are either not linked
-or compiled out, as recorded in `THIRD_PARTY_LICENSES.md` §4.
+No networking component appears in the compiled-in inventory (`THIRD_PARTY_LICENSES.md` §2), and
+the `ldd`-verified list of dynamically linked system libraries (§5, lines 174-176) contains no
+`libcurl`. `THIRD_PARTY_LICENSES.md` §4 records the components present in the JUCE tree but not
+built into Anamorph.
 
 ## 6. Children / special categories
 
-Anamorph is a professional audio tool that collects no data at all, so it processes no personal
-data of any category, including data relating to children.
+Anamorph has no account or sign-in, transmits nothing and contacts no server, so no data of any
+kind — including data relating to children — reaches the project through the software. What it
+writes locally is listed in §2. No determination about the application of any data-protection
+regime is made here; see the `[OWNER/LEGAL DECISION]` note in §7.
 
 ## 7. Scope and changes
 
@@ -104,5 +112,6 @@ the other licensing/legal items as `RH-F1` in
 ---
 
 **Verify it yourself.** Every claim in §1 is checkable without trusting this document: the
-compile-time switches are in `CMakeLists.txt`, and a network monitor pointed at the Standalone or
-at your host will show Anamorph opening no connection.
+compile-time switches are in `CMakeLists.txt`, the shipped binary carries no `WebInputStream`
+symbol (`nm -C` on the installed VST3), and a network monitor pointed at the Standalone or at
+your host will show Anamorph opening no connection.

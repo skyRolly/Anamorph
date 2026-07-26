@@ -83,7 +83,7 @@ closed-source commercial product, 2026-07-26). The obligations are discharged li
 | Where | What |
 |---|---|
 | Release page (every download route) | `Anamorph-<version>-NOTICE.txt`, `Anamorph-<version>-THIRD_PARTY_LICENSES.md` and `Anamorph-<version>-SUPPORT.md` published next to the zips/installers, version-named so `SHA256SUMS.txt` covers them |
-| Inside every package | each `INSTALL.txt` carries the **mandatory IJG acknowledgement** ("based in part on the work of the Independent JPEG Group") plus a pointer to the release-page attribution files and the online support guide |
+| Inside every package | each `INSTALL.txt` carries the **mandatory IJG acknowledgement** ("based in part on the work of the Independent JPEG Group") plus a pointer to the release-page attribution files and the online internal testing guide |
 | Repository | `NOTICE` and `THIRD_PARTY_LICENSES.md` at the root remain the source the release assets are copied from |
 
 Anyone **redistributing** the binaries outside the release page (e.g. mirroring a zip alone)

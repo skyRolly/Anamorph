@@ -25,11 +25,14 @@ Last reviewed: **2026-07-26** (v0.9.0, internal-testing phase).
 
 v0.9.0 is being prepared for **internal / beta testing**, not for sale.
 
-- Builds reach testers as **GitHub Release** assets and as per-push CI artifacts
-  (`docs/procedures/PACKAGING.md`). Publishing a release is a manual maintainer action after the
-  Level-5 audition (`docs/policies/RELEASE_POLICY.md` precondition 7).
-- Testers hold an **evaluation licence only** — `EULA.md` §2.1; the tester-facing statement of the
-  same is [`SUPPORT.md`](../SUPPORT.md).
+- Builds reach testers as per-push CI artifacts today; the **GitHub Release** route is implemented
+  but no tag has been cut yet (`RISK-003`) — `docs/procedures/PACKAGING.md`. Publishing a release
+  is a manual maintainer action after the Level-5 audition (`docs/policies/RELEASE_POLICY.md`
+  precondition 7).
+- **No licence is in force** (`EULA.md` §0, and §1 above). Testers hold builds by the owner's
+  direct permission, for evaluation and reporting only; `EULA.md` §2.1 is the **draft** wording
+  intended to cover that phase, not its source. The tester-facing statement is
+  [`SUPPORT.md`](../SUPPORT.md) §1.
 - Feedback runs through the project's testing channel, defined in `SUPPORT.md`.
 - **No commercial distribution may occur** until the items in §4 are closed.
 
@@ -51,10 +54,12 @@ separate from the third-party attribution.
 published, because it is an unapproved draft: shipping it would present it as terms in force,
 which `EULA.md` §0 explicitly denies. `TRADEMARKS.md` and this file are internal-facing and are
 not published either. `PRIVACY.md` is currently repo-only as well; the repository is public
-(§4 item 5), so testers reach all three by the absolute GitHub URLs `SUPPORT.md` links, but they
-do **not** travel with an offline download. *Adding `PRIVACY.md` to the release assets is a
-one-line `release.yml` change and a reasonable next step — it is a packaging-behaviour change and
-therefore an owner call, not one this documentation pass makes.*
+(§4 item 5), so testers reach `EULA.md`, `PRIVACY.md` and this file by the absolute GitHub URLs
+`SUPPORT.md` links, while `TRADEMARKS.md` is reachable only from `README.md` and `EULA.md` §4.
+None of them travels with an offline download. *Adding `PRIVACY.md` to the release assets is a
+two-line `release.yml` change (a staging `cp` plus an asset argument to `gh release create`) and a
+reasonable next step — it is a packaging-behaviour change and therefore an owner call, not one
+this documentation pass makes.*
 
 **Signing status:** macOS bundles are ad-hoc signed and **not notarized**; Windows installers are
 **not** Authenticode-signed (`KI-002`, `RH-PR-3`/`RH-PR-5`). Both are user-visible on first launch
@@ -67,7 +72,7 @@ None of these is an engineering task; no code change can close any of them.
 | # | Decision | Blocks | Authoritative record |
 |---|---|---|---|
 | 1 | **Commercial JUCE 9 licence.** JUCE modules are dual-licensed AGPLv3 *or* commercial. A closed-source distribution cannot satisfy the AGPLv3 arm, so the commercial tier must be in place before commercial distribution. Which tier, and its purchase, are unrecorded. | commercial release | `THIRD_PARTY_LICENSES.md` §"Open licensing decisions" #1; `KI-015`; `RISK-006`; `RH-R11`/`RH-F1` |
-| 2 | **Anamorph's own `LICENSE`.** The repository declares no terms for its own source or binaries. | clarity for every reader | `THIRD_PARTY_LICENSES.md` §"Open licensing decisions" #2; `KI-015` |
+| 2 | **Anamorph's own `LICENSE`.** The repository declares no terms for its own source or binaries. | commercial release | `THIRD_PARTY_LICENSES.md` §"Open licensing decisions" #2; `KI-015`; `RISK-006`; `RH-R11`/`RH-F1` |
 | 3 | **EULA** for the distributed binaries. A draft exists ([`EULA.md`](../EULA.md)) with 10 marked open decisions; no installer presents it. | commercial sale | `THIRD_PARTY_LICENSES.md` §"Open licensing decisions" #3; `EULA.md` §"Open decisions" |
 | 4 | **Steinberg VST 3 review.** The SDK code bundled with JUCE 9.0.0 is MIT, but the VST name/logo and the plug-in development/distribution terms are governed separately. | commercial VST3 distribution | `THIRD_PARTY_LICENSES.md` §3; `RH-R10`/`RH-F2`; `TRADEMARKS.md` §4 |
 | 5 | **Repository visibility.** The GitHub repository `skyRolly/Anamorph` is **public**, with forking enabled and no `LICENSE` file, while the product model is closed-source commercial. Whether the source stays publicly readable is an owner decision with a direct bearing on decisions 1–3. Stated as a fact; no determination is made here. | should be settled alongside 1–3 | *this document* |
@@ -94,7 +99,7 @@ So that these are not re-opened as if outstanding:
 
 Both lists must be empty:
 
-**Owner/legal** — §4 items 1, 3, 4 (and 6, 7 for the markets concerned).
+**Owner/legal** — §4 items 1, 2, 3, 4 (and 6, 7 for the markets concerned).
 
 **Engineering / process** — the `RELEASE_POLICY.md` preconditions still open for v0.9.0, which are
 tracked in `docs/HANDOVER.md` §Release Status: `ADR-0022` still `Proposed`,

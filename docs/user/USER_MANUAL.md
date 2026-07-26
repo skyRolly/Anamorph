@@ -21,7 +21,7 @@ Installation is covered separately in the
 **[Installation guide](INSTALLATION.md)** (online:
 <https://github.com/skyRolly/Anamorph/blob/main/docs/user/INSTALLATION.md>). If something is
 wrong and this manual doesn't answer it, see
-**[SUPPORT.md](../../SUPPORT.md)** (online:
+the internal testing guide **[SUPPORT.md](../../SUPPORT.md)** (online:
 <https://github.com/skyRolly/Anamorph/blob/main/SUPPORT.md> — also published on each release
 page as `Anamorph-<version>-SUPPORT.md`) and **[KNOWN_ISSUES.md](../KNOWN_ISSUES.md)** (online:
 <https://github.com/skyRolly/Anamorph/blob/main/docs/KNOWN_ISSUES.md>).
@@ -386,7 +386,7 @@ extension, stored per user:
 | OS | Folder |
 |---|---|
 | Windows | `%APPDATA%\RollyTech\Anamorph\Presets` |
-| macOS | `~/Library/Application Support/RollyTech/Anamorph/Presets` |
+| macOS | `~/Library/RollyTech/Anamorph/Presets` |
 | Linux | `~/.config/RollyTech/Anamorph/Presets` |
 
 There is no in-plugin rename/delete — manage the files in that folder (the plug-in picks
@@ -589,9 +589,9 @@ until the cursor re-enters the window. Cosmetic only — the value is not changi
 [`docs/KNOWN_ISSUES.md`](../KNOWN_ISSUES.md) (online:
 <https://github.com/skyRolly/Anamorph/blob/main/docs/KNOWN_ISSUES.md>) lists every confirmed
 limitation with its current status. If your problem isn't there,
-[`SUPPORT.md`](../../SUPPORT.md) (online:
-<https://github.com/skyRolly/Anamorph/blob/main/SUPPORT.md>) explains what to include in a
-report.
+the internal testing guide [`SUPPORT.md`](../../SUPPORT.md) (online:
+<https://github.com/skyRolly/Anamorph/blob/main/SUPPORT.md>) explains what a test report must
+contain.
 
 ---
 

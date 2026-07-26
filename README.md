@@ -99,7 +99,9 @@ The documentation falls into **four classes**, kept deliberately separate:
 The user manual, `SUPPORT.md`, `NOTICE` and `THIRD_PARTY_LICENSES.md` are attached to every
 release as version-named assets; per-platform install steps ship inside each package as
 `INSTALL.txt`. Developer documentation is **not** shipped and grants no rights to the source
-it describes.
+it describes — with two documented exceptions: [`docs/KNOWN_ISSUES.md`](docs/KNOWN_ISSUES.md)
+and [`CHANGELOG.md`](CHANGELOG.md) are developer-authored but deliberately **tester-surfaced**
+(`SUPPORT.md` routes testers to both).
 
 ## Licensing
 **Anamorph is a closed-source commercial product — it is not open-source software.** The

@@ -209,4 +209,5 @@ plug-in's About screen shows (click the ANAMORPH title in the plug-in).
 Installed? The user manual's **[Quick start](USER_MANUAL.md#2-quick-start)** covers the first
 launch, rescanning in your DAW and your first widened sound. If something isn't working, the
 manual's **[FAQ & troubleshooting](USER_MANUAL.md#9-faq--troubleshooting)** is the fastest route;
-after that, [`KNOWN_ISSUES.md`](../KNOWN_ISSUES.md) and [`SUPPORT.md`](../../SUPPORT.md).
+after that, [`KNOWN_ISSUES.md`](../KNOWN_ISSUES.md) and the internal testing guide
+[`SUPPORT.md`](../../SUPPORT.md).

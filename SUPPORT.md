@@ -20,14 +20,17 @@ nothing else. Specifically:
   in this repository is not a source-code licence.
 - **No redistribution.** Do not pass builds, installers, links or credentials to anyone who was
   not given them by the project owner.
-- **No public disclosure** of the build, its behaviour, screenshots or issues, unless the project
-  owner has said so.
 - **Evaluation only.** Your permission lasts as long as the owner runs the testing programme, and
   ends when they withdraw the build or the programme.
+- **Disclosure.** The default reporting channel is the **public** issue tracker (§3), so ordinary
+  reporting is public by design. Beyond that, no confidentiality or embargo condition is recorded
+  in this repository — if the owner gave you the build under one, it came from them directly and
+  not from this document.
 
-The draft terms are in [`EULA.md`](https://github.com/skyRolly/Anamorph/blob/main/EULA.md) §2.1
-(marked as a draft — no approved licence exists yet; see
-[`docs/COMMERCIAL_STATUS.md`](https://github.com/skyRolly/Anamorph/blob/main/docs/COMMERCIAL_STATUS.md)).
+The draft terms are in [`EULA.md`](https://github.com/skyRolly/Anamorph/blob/main/EULA.md)
+§2.1 (the evaluation grant), §3 (the restrictions) and §10 (how long it lasts) — marked as a
+draft; no approved licence exists yet, see
+[`docs/COMMERCIAL_STATUS.md`](https://github.com/skyRolly/Anamorph/blob/main/docs/COMMERCIAL_STATUS.md).
 
 **Treat it as pre-release.** Every automated gate passing means the build is *"ready to audition,"
 not final* — do not put it on production work you cannot afford to redo. Known limitations are
@@ -94,11 +97,11 @@ All six are required.
 | 5 | **Reproduction steps** | The shortest sequence that shows it, **starting from a freshly inserted instance**, plus what you expected instead. If it needs a specific preset or session, say which. |
 | 6 | **Logs / screenshots, where applicable** | See §5 — Anamorph writes no log file. For anything visual, attach a screenshot or a short screen recording; for a crash, attach the host's crash report if you have one. |
 
-Also worth including when relevant: **sample rate and buffer size** (any audio problem), the
-**Oversampling** setting from the Settings overlay (the single biggest influence on CPU and on
-whether latency is reported, and it is session state that cannot be recovered from an attachment),
-**how you installed** (installer or manual zip), and whether the **Standalone** reproduces it —
-that one answer often decides where to look first.
+The report form additionally requires **how you installed** (installer or manual zip). Also worth
+including when relevant: **sample rate and buffer size** (any audio problem), the **Oversampling**
+setting from the Settings overlay (the single biggest influence on CPU and on whether latency is
+reported, and it is session state that cannot be recovered from an attachment), and whether the
+**Standalone** reproduces it — that one answer often decides where to look first.
 
 ## 5. Logs, crashes and symbols
 

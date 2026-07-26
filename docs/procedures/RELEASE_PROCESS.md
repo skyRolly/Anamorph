@@ -70,8 +70,8 @@ Pushing the tag triggers `.github/workflows/release.yml`, which:
    `Anamorph-<version>-macOS.pkg`; already version-named at build time, fail-closed on
    absence or version skew, moved unmodified — the Linux installer is `install.sh` inside
    the Linux zip),
-   the user manual (`Anamorph-<version>-UserManual.md`), the third-party attribution and
-   support guide (`Anamorph-<version>-NOTICE.txt`, `Anamorph-<version>-THIRD_PARTY_LICENSES.md`,
+   the user manual (`Anamorph-<version>-UserManual.md`), the third-party attribution and the
+   internal testing guide (`Anamorph-<version>-NOTICE.txt`, `Anamorph-<version>-THIRD_PARTY_LICENSES.md`,
    `Anamorph-<version>-SUPPORT.md` — the packages themselves are lean, so these accompany
    every download route from the release page), `SHA256SUMS.txt`
    over all assets, and a `RELEASE_MANIFEST.txt` (version / tag / commit / CI build number /

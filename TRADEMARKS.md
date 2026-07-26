@@ -20,14 +20,18 @@ Until the owner records a registration status, documentation must describe these
 must not print a ™ or ® symbol next to them — an unfounded registration symbol is itself a
 misrepresentation risk.
 
-### Permitted use of the Anamorph name by others
+### Use of the Anamorph name by others — not decided
 
-Because Anamorph is closed-source commercial software licensed, not sold
-([`EULA.md`](EULA.md) §4), no right to use the product or company name is granted with a copy of
-the software. Referring to Anamorph by name — in a review, a tutorial, a compatibility list or a
-bug report — is ordinary descriptive use and needs no permission. Using the name or any Anamorph
-branding **as your own**, on your own product, or in a way that suggests endorsement or origin,
-does not follow from possessing a copy.
+The repository's recorded position is that no terms are declared and all rights are reserved by
+default ([`docs/COMMERCIAL_STATUS.md`](docs/COMMERCIAL_STATUS.md) §1), so no right to use the
+product or company name is granted with a copy of the software. Nothing in this repository
+restricts referring to Anamorph by name in a review, a tutorial, a compatibility list or a bug
+report, and no brand-usage policy exists (§4 item 4). Using the name or any Anamorph branding
+**as your own**, on your own product, or in a way that suggests endorsement or origin, does not
+follow from possessing a copy.
+
+*`[OWNER/LEGAL DECISION]` — no position on third-party use of the Anamorph or RollyTech names is
+recorded, and none is determined here.*
 
 *`[OWNER/LEGAL DECISION]` — a formal brand-usage/press-kit policy (logo files, permitted variants,
 minimum clear space, colour) does not exist. None is needed for the internal-testing phase.*
@@ -44,16 +48,16 @@ system a step applies to, or which host a setting lives in.
 | **Audio Units** / **AU**, **macOS**, **Logic Pro**, **GarageBand**, **Apple Silicon**, **Rosetta**, **Gatekeeper** | Apple Inc. | the macOS AU build, install steps and the notarization notes | `docs/user/INSTALLATION.md`, `docs/architecture/COMPATIBILITY_MATRIX.md` |
 | **Windows**, **SmartScreen** | Microsoft Corporation | the Windows build and its unsigned-installer warning | `docs/user/INSTALLATION.md`, `packaging/windows/INSTALL.txt` |
 | **JUCE** | Raw Material Software Limited | the framework Anamorph is built with | `THIRD_PARTY_LICENSES.md` §1 |
-| **AAX**, **Pro Tools** | Avid Technology, Inc. | named only to state that AAX is **Not Supported** | `docs/policies/COMPATIBILITY_POLICY.md` |
+| **AAX**, **Pro Tools** | Avid Technology, Inc. | AAX is named to state it is **Not Supported**; Pro Tools is named in the list of hosts with no in-repo test evidence | `docs/policies/COMPATIBILITY_POLICY.md`; `docs/architecture/COMPATIBILITY_MATRIX.md:14,40` |
 | **ASIO** | Steinberg Media Technologies GmbH | named only to state it is not enabled | `THIRD_PARTY_LICENSES.md` §4 |
-| **REAPER**, **Ableton Live**, **Cubase**, **Nuendo**, **FL Studio**, **Bitwig Studio**, **Ardour**, **Qtractor** | Cockos Inc.; Ableton AG; Steinberg Media Technologies GmbH; Image-Line; Bitwig GmbH; the Ardour project; the Qtractor project | host-specific rescan and troubleshooting instructions | `docs/user/USER_MANUAL.md:96-102`, `docs/user/INSTALLATION.md` |
+| **REAPER**, **Ableton Live**, **Cubase**, **Nuendo**, **FL Studio**, **Bitwig Studio**, **Ardour**, **Qtractor** | Cockos Inc.; Ableton AG; Steinberg Media Technologies GmbH; Image-Line; Bitwig GmbH; the Ardour project; the Qtractor project | host-specific rescan and troubleshooting instructions | `docs/user/USER_MANUAL.md:96-102`, `docs/user/INSTALLATION.md`, `packaging/linux/INSTALL.txt:36` (Qtractor) |
 | **Linux** | Linus Torvalds | the Linux build target | throughout |
 | **OpenGL** | Khronos Group | the GPU compositing path on macOS/Windows | `THIRD_PARTY_LICENSES.md` §2 |
 | **Inno Setup**, **pluginval** | jrsoftware; Tracktion Corporation | build/CI tooling, never redistributed | `THIRD_PARTY_LICENSES.md` §6 |
 
 Owner names are the commonly stated proprietors of each mark. Only Steinberg Media Technologies
-GmbH (`NOTICE:155`), the Khronos Group (`NOTICE:316`) and Raw Material Software Limited
-(`NOTICE:17`) are independently recorded elsewhere in this repository; the rest are stated for
+GmbH (`NOTICE:161`), the Khronos Group (`NOTICE:322`) and Raw Material Software Limited
+(`NOTICE:23`) are independently recorded elsewhere in this repository; the rest are stated for
 identification only. *`[OWNER/LEGAL DECISION]` — verify each proprietor before any commercial use
 of these names.*
 

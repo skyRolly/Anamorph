@@ -12,8 +12,8 @@ body:
         [`docs/KNOWN_ISSUES.md`](../blob/main/docs/KNOWN_ISSUES.md) too: the problem may
         already be a documented limitation with a workaround.
 
-        ⚠ **This tracker is public.** Attach nothing you are not willing to publish; use the
-        private channel you were given for anything else.
+        ⚠ **This tracker is public.** Attach nothing you are not willing to publish. If you were
+        given a private channel for this testing round, use it for anything else.
 
         **There is no log file.** Anamorph writes no diagnostic output, so the fields below are
         what make a report reproducible.

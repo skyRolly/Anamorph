@@ -48,8 +48,8 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   connection of its own — every disk write and the one About-screen link cited to source),
   `TRADEMARKS.md` (product/company name status, the third-party marks used descriptively, and
   the naming obligations the IJG, Xiph.Org and zlib licences impose) and the internal record
-  `docs/COMMERCIAL_STATUS.md`. Every reader-facing document that previously carried no product
-  notice now does: each package's `INSTALL.txt` gained its own bilingual **Licence** section,
+  `docs/COMMERCIAL_STATUS.md`. Closed-source notices were added where the documents that reach a
+  tester carried none: each package's `INSTALL.txt` gained its own bilingual **Licence** section,
   above and separate from the third-party attribution, and the user manual and installation
   guide state the model. Evidence: the internal-testing documentation pass. [Verified]
 - **Third-party attribution accompanies every download.** `NOTICE` and
