@@ -48,10 +48,12 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   connection of its own — every disk write and the one About-screen link cited to source),
   `TRADEMARKS.md` (product/company name status, the third-party marks used descriptively, and
   the naming obligations the IJG, Xiph.Org and zlib licences impose) and the internal record
-  `docs/COMMERCIAL_STATUS.md`. Closed-source notices were added where the documents that reach a
-  tester carried none: each package's `INSTALL.txt` gained its own bilingual **Licence** section,
-  above and separate from the third-party attribution, and the user manual and installation
-  guide state the model. Evidence: the internal-testing documentation pass. [Verified]
+  `docs/COMMERCIAL_STATUS.md`. The product model is stated once for a general audience, in the
+  README's licensing section, and otherwise only where it is operative — those documents, the
+  internal testing guide and the developer records. The user-facing set stays on using the
+  product: the manual and the installation guide end with a plain copyright line, and each
+  package's `INSTALL.txt` carries one in its own bilingual section, above and separate from the
+  mandatory third-party attribution. Evidence: the internal-testing documentation pass. [Verified]
 - **Third-party attribution accompanies every download.** `NOTICE` and
   `THIRD_PARTY_LICENSES.md` are published as version-named assets on every GitHub release,
   next to the zips and installers (the packages themselves stay lean — payload +

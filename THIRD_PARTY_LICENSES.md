@@ -207,9 +207,10 @@ is resolved by this document.
    before commercial distribution**. Which tier, and its acquisition, remain owner/legal
    actions; nothing in this repository records that purchase.
 2. **Anamorph's own licence.** The repository root has **no `LICENSE` file**, so the terms under
-   which Anamorph's own source and binaries are offered are undeclared. `docs/user/USER_MANUAL.md`
-   and each package's `INSTALL.txt` state the model (closed-source commercial, all rights
-   reserved) but grant nothing.
+   which Anamorph's own source and binaries are offered are undeclared. [`NOTICE`](NOTICE) and
+   `README.md` §Licensing state the product model; `docs/user/USER_MANUAL.md`,
+   `docs/user/INSTALLATION.md` and each package's `INSTALL.txt` carry a copyright line only.
+   None of them grants anything.
 3. **An end-user licence agreement (EULA)** for the distributed binaries, if the product is to be
    sold. The installers do not currently present one. [`EULA.md`](EULA.md) is an **unapproved
    draft** — not in force, not shipped — listing the ten decisions its approval needs.

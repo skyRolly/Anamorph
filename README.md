@@ -14,8 +14,8 @@ only — it configures and builds entirely from the command line on a headless L
 
 ## Project status
 - **Version 0.9.0** (pre-1.0), in the **internal-testing phase** — builds go to testers for
-  evaluation, not to customers. Anamorph is a **closed-source commercial product**; see
-  [Licensing](#licensing) and [`docs/COMMERCIAL_STATUS.md`](docs/COMMERCIAL_STATUS.md).
+  evaluation, not to customers (see [Licensing](#licensing); internal record:
+  [`docs/COMMERCIAL_STATUS.md`](docs/COMMERCIAL_STATUS.md)).
 - Active development on a feature-branch → PR → `main` workflow.
 - Validation gate: **33 DSP self-tests** + the **9-test state-compatibility suite** + **pluginval strictness 10** (both modes ×3, blocking on all three CI platforms).
 - A green build + pluginval pass is **"ready to audition,"** not final sign-off (audio/visual
@@ -98,10 +98,9 @@ The documentation falls into **four classes**, kept deliberately separate:
 
 The user manual, `SUPPORT.md`, `NOTICE` and `THIRD_PARTY_LICENSES.md` are attached to every
 release as version-named assets; per-platform install steps ship inside each package as
-`INSTALL.txt`. Developer documentation is **not** shipped and grants no rights to the source
-it describes — with two documented exceptions: [`docs/KNOWN_ISSUES.md`](docs/KNOWN_ISSUES.md)
-and [`CHANGELOG.md`](CHANGELOG.md) are developer-authored but deliberately **tester-surfaced**
-(`SUPPORT.md` routes testers to both).
+`INSTALL.txt`. Developer documentation is **not** shipped, with two documented exceptions:
+[`docs/KNOWN_ISSUES.md`](docs/KNOWN_ISSUES.md) and [`CHANGELOG.md`](CHANGELOG.md) are
+developer-authored but deliberately **tester-surfaced** (`SUPPORT.md` routes testers to both).
 
 ## Licensing
 **Anamorph is a closed-source commercial product — it is not open-source software.** The

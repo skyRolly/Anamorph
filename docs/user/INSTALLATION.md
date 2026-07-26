@@ -1,10 +1,7 @@
 # Installing Anamorph
 
 This guide is for **users and testers** — how to install a build you were given.
-**Anamorph is closed-source commercial software.** © 2026 RollyTech. All rights reserved;
-installing a build grants no rights to Anamorph's source code (see
-[`SUPPORT.md`](../../SUPPORT.md) §1). Maintainers building the project:
-[`docs/procedures/BUILD.md`](../procedures/BUILD.md).
+Maintainers building the project: [`docs/procedures/BUILD.md`](../procedures/BUILD.md).
 
 Anamorph is distributed from the project's **GitHub Releases** page. Every release offers,
 per platform, an **installer** (the easy way) and a **plain ZIP archive** (the manual
@@ -211,3 +208,7 @@ launch, rescanning in your DAW and your first widened sound. If something isn't 
 manual's **[FAQ & troubleshooting](USER_MANUAL.md#9-faq--troubleshooting)** is the fastest route;
 after that, [`KNOWN_ISSUES.md`](../KNOWN_ISSUES.md) and the internal testing guide
 [`SUPPORT.md`](../../SUPPORT.md).
+
+---
+
+*Anamorph is © 2026 RollyTech — www.rolly.tech. All rights reserved.*

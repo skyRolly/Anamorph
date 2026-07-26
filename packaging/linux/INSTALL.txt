@@ -65,13 +65,10 @@ Troubleshooting / 常见问题
   DAW no extra setup is needed.
 
 --------------------------------------------------------------------
-Licence / 许可
+Copyright / 版权
 --------------------------------------------------------------------
-Anamorph is closed-source commercial software. (c) 2026 RollyTech.
-All rights reserved. No rights to Anamorph's source code are granted,
-and this package may not be redistributed.
-Anamorph 为闭源商业软件,(c) 2026 RollyTech,保留所有权利。
-不授予任何源代码权利,请勿转发本安装包。
+Anamorph is (c) 2026 RollyTech. All rights reserved.
+Anamorph (c) 2026 RollyTech,保留所有权利。
 
 --------------------------------------------------------------------
 Testing & third-party attribution / 测试与第三方署名

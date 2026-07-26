@@ -47,8 +47,13 @@ v0.9.0 is being prepared for **internal / beta testing**, not for sale.
 Packages themselves are deliberately **lean** — payload + `INSTALL.txt` only. Legal and support
 documents accompany a download as release-page assets, with the mandatory IJG acknowledgement
 carried inside every `INSTALL.txt` (`RELEASE_POLICY.md` §"Third-party attribution"). Each
-`INSTALL.txt` also carries Anamorph's own closed-source/all-rights-reserved notice, kept visually
-separate from the third-party attribution.
+`INSTALL.txt` also carries Anamorph's own copyright line, kept visually separate from the
+third-party attribution. The product model is stated **once for a general audience** — `README.md`
+§Licensing — and is otherwise kept only where it is operative: §1 above, the legal class
+(`NOTICE`, `EULA.md`, `PRIVACY.md`, `TRADEMARKS.md`, `THIRD_PARTY_LICENSES.md`), the
+internal/testing class (`SUPPORT.md` §1 and the bug-report form) and the developer documents where
+it drives the JUCE-tier consequence (`KI-015`, `RISK-006`, `RH-R11`). User-facing documents are
+deliberately **not** repeat-labelled (owner instruction, 2026-07-26).
 
 **Which documents are published as release assets — a deliberate split.** `EULA.md` is **not**
 published, because it is an unapproved draft: shipping it would present it as terms in force,

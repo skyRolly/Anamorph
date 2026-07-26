@@ -7,7 +7,7 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **internal-testing preparation & closed-source product documentation pass**
-(2026-07-26, on `main` @ `aecd448`). **No `src/` change.** The v0.9.0 **release date moved to
+(2026-07-26, PR #94, on top of `main` @ `aecd448`). **No `src/` change.** The v0.9.0 **release date moved to
 2026-07-26** in `CHANGELOG.md` and its two HANDOVER restatements (PR-landing and audit-run dates
 left untouched). `SUPPORT.md` was **rewritten from a public support document into the internal
 testing guide** — evaluation-only permission, no source-code rights, no redistribution, the
@@ -21,13 +21,19 @@ and the `Dim-D` / "Roland Dimension-D-style" review item) and `docs/COMMERCIAL_S
 internal index of product model, distribution model and the eight open owner/legal decisions —
 including the newly recorded fact that the GitHub repository is public with forking enabled while
 the product model is closed-source). README regrouped its documentation index into **four
-classes** (user / internal-testing / legal / developer). Closed-source notices added where a
-reader-facing document had none: every `INSTALL.txt` (its own Licence section, bilingual, above
-and separate from the third-party attribution), `USER_MANUAL` footer, `INSTALLATION` opening.
+classes** (user / internal-testing / legal / developer). Product-model wording was then **rebalanced on owner instruction**: it is
+stated once for a general audience in `README.md` §Licensing and otherwise kept only where it is
+operative — the legal class, the internal/testing class (`SUPPORT.md` §1, the bug-report form) and
+the developer documents that derive the JUCE-tier consequence. The user-facing set stays on using
+the product: `USER_MANUAL` and `INSTALLATION` end with a plain copyright line, every `INSTALL.txt`
+carries one in its own bilingual section above and separate from the mandatory third-party
+attribution (which is unchanged), and the manual's Quick start and FAQ carry no legal wording at
+all.
 Synced: README, SUPPORT, REPOSITORY_MAP (root + `docs/` trees, `user/` branch), SOURCE_OF_TRUTH
 (four-class scope + per-class authority), HANDOVER (snapshot base, release date, KI-015 wording),
-DOCUMENTATION_LIFECYCLE_POLICY (documentation-only trigger table), CHANGELOG `[0.9.0]`, issue
-templates, this file (self-coverage tiers, ADR count).
+DOCUMENTATION_LIFECYCLE_POLICY (documentation-only trigger table), THIRD_PARTY_LICENSES
+(§"Open licensing decisions" #2), CHANGELOG `[0.9.0]`, issue templates, this file (self-coverage
+tiers, ADR count).
 
 Prior: for the **flat-artifact / lean-package / closed-source documentation pass**
 (2026-07-26, PR #93). **No `src/` change.** The `Anamorph-<OS>` artifacts now upload loose
