@@ -390,7 +390,8 @@ gap, not a build gap.
 ## KI-015 — Anamorph declares no licence of its own
 The repository root has **no `LICENSE` file**, and neither installer presents an end-user licence
 agreement, so the terms under which Anamorph's own source and binaries are offered are
-undeclared. The owner has stated the product model (2026-07-26): **closed-source commercial**.
+undeclared. `EULA.md` exists only as an **unapproved draft** — explicitly not in force, not
+shipped, with every open owner/legal decision marked — so it does not close this issue. The owner has stated the product model (2026-07-26): **closed-source commercial**.
 JUCE 9 modules are dual-licensed **AGPLv3 or commercial**, and a closed-source distribution
 cannot use the AGPLv3 arm — so the commercial JUCE tier must be obtained before commercial
 distribution, alongside Anamorph's own LICENSE/EULA text.
@@ -403,3 +404,5 @@ distribution, alongside Anamorph's own LICENSE/EULA text.
   `docs/architecture/RELEASE_HARDENING_PLAN.md` RH-R11 / RH-F1.
 - **Related:** the Steinberg VST 3 review (RH-F2) is a separate owner item — the SDK code is MIT
   in JUCE 9.0.0, but VST trademark use and plug-in distribution terms are governed separately.
+- **Index:** all open owner/legal decisions, including this one, are listed in
+  `docs/COMMERCIAL_STATUS.md` §4.

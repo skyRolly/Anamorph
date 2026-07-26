@@ -13,7 +13,10 @@ only — it configures and builds entirely from the command line on a headless L
 - Diamond **vectorscope**, correlation + L/R Peak/RMS meters; click-free transitions throughout.
 
 ## Project status
-- **Version 0.9.0** (pre-1.0). Active development on a feature-branch → PR → `main` workflow.
+- **Version 0.9.0** (pre-1.0), in the **internal-testing phase** — builds go to testers for
+  evaluation, not to customers (see [Licensing](#licensing); internal record:
+  [`docs/COMMERCIAL_STATUS.md`](docs/COMMERCIAL_STATUS.md)).
+- Active development on a feature-branch → PR → `main` workflow.
 - Validation gate: **33 DSP self-tests** + the **9-test state-compatibility suite** + **pluginval strictness 10** (both modes ×3, blocking on all three CI platforms).
 - A green build + pluginval pass is **"ready to audition,"** not final sign-off (audio/visual
   quality needs a DAW — see `docs/procedures/TESTING.md`).
@@ -62,8 +65,9 @@ Prebuilt binaries for all three OSes are also uploaded as **GitHub Actions artif
 push (macOS bundles are ad-hoc signed, not notarized — see `packaging/macos/INSTALL.txt`).
 
 New to the plug-in? The manual's **[Quick start](docs/user/USER_MANUAL.md#2-quick-start)**
-takes you from download to first widened sound. Stuck? **[SUPPORT.md](SUPPORT.md)** says what
-to check and what a useful bug report contains.
+takes you from download to first widened sound. Testing a pre-release build?
+**[SUPPORT.md](SUPPORT.md)** is the internal testing guide — what a tester may do with a build,
+what to check first, and what a test report must contain.
 
 To build without network (JUCE already on disk): `cmake -B build -DANAMORPH_JUCE_PATH=/path/to/JUCE ...`
 
@@ -83,31 +87,48 @@ The full technical documentation lives in **[`docs/`](docs/)**:
 - **Rules (binding):** [`docs/policies/`](docs/policies/) (real-time audio, threading, DSP, compatibility, AI-agent)
 - **History & status:** [`CHANGELOG.md`](CHANGELOG.md) · [`docs/POSTMORTEMS.md`](docs/POSTMORTEMS.md) · [`docs/KNOWN_ISSUES.md`](docs/KNOWN_ISSUES.md) · [`docs/FUTURE_RISKS.md`](docs/FUTURE_RISKS.md)
 
-The documentation falls into three classes, kept deliberately separate:
-**user documentation** ([`docs/user/`](docs/user/) — installation guide + user manual — and
-[`SUPPORT.md`](SUPPORT.md); the manual and SUPPORT.md are also attached to every release,
-while per-platform install steps ship inside each package as `INSTALL.txt`), **legal /
-licensing documents**
-([`NOTICE`](NOTICE) · [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md); Anamorph's own
-`LICENSE`/EULA are pending — see below), and **developer documentation** (everything else
-under `docs/`, plus `CLAUDE.md`).
+The documentation falls into **four classes**, kept deliberately separate:
+
+| Class | Documents | Audience |
+|---|---|---|
+| **User** | [`docs/user/INSTALLATION.md`](docs/user/INSTALLATION.md) · [`docs/user/USER_MANUAL.md`](docs/user/USER_MANUAL.md) (incl. its [Quick start](docs/user/USER_MANUAL.md#2-quick-start) and [FAQ](docs/user/USER_MANUAL.md#9-faq--troubleshooting)) | anyone running the plug-in |
+| **Internal / testing** | [`SUPPORT.md`](SUPPORT.md) · the [bug-report form](.github/ISSUE_TEMPLATE/bug_report.yml) | internal and beta testers |
+| **Legal / licensing** | [`EULA.md`](EULA.md) (draft) · [`PRIVACY.md`](PRIVACY.md) · [`TRADEMARKS.md`](TRADEMARKS.md) · [`NOTICE`](NOTICE) · [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) | everyone; Anamorph's own `LICENSE` is still pending — see below |
+| **Developer** | everything under [`docs/`](docs/) not listed above (architecture, procedures, policies, status), plus [`CLAUDE.md`](CLAUDE.md) and [`docs/COMMERCIAL_STATUS.md`](docs/COMMERCIAL_STATUS.md) | maintainers and AI agents |
+
+The user manual, `SUPPORT.md`, `NOTICE` and `THIRD_PARTY_LICENSES.md` are attached to every
+release as version-named assets; per-platform install steps ship inside each package as
+`INSTALL.txt`. Developer documentation is **not** shipped, with two documented exceptions:
+[`docs/KNOWN_ISSUES.md`](docs/KNOWN_ISSUES.md) and [`CHANGELOG.md`](CHANGELOG.md) are
+developer-authored but deliberately **tester-surfaced** (`SUPPORT.md` routes testers to both).
 
 ## Licensing
-**Anamorph is a closed-source commercial product — it is not open-source software.** No
-`LICENSE` file is present and this repository grants no rights to use, copy, modify or
-redistribute the code or binaries beyond what written permission from RollyTech provides
-(all rights reserved by default). Two owner-level licensing actions remain open, recorded in
+**Anamorph is a closed-source commercial product — it is not open-source software.** The
+source being readable here is not a licence: no `LICENSE` file is present, and this repository
+grants no right to use, copy, modify or redistribute the code or binaries beyond what written
+permission from RollyTech provides (all rights reserved by default). Nothing under `docs/` is a
+source-code licence.
+
+Three strands, kept separate:
+
+- **Anamorph's own terms** — still to be settled. [`EULA.md`](EULA.md) is an **unapproved
+  draft** with every open decision marked; it is not in force and no build ships it. Testers
+  hold an evaluation-only permission ([`SUPPORT.md`](SUPPORT.md) §1).
+- **Third-party dependency licences** — attribution for the shipped binaries is in
+  [`NOTICE`](NOTICE); the full verified inventory (component, purpose, origin, licence,
+  obligations) is in [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md). Both are published
+  with every release. Anamorph is built on **JUCE**, whose modules are dual-licensed AGPLv3 or
+  commercial; a closed-source distribution model cannot use the AGPLv3 arm, so the **commercial
+  JUCE tier** must be in place before commercial distribution.
+  **Commercial VST3 distribution requires reviewing Steinberg's licensing requirements
+  separately.**
+- **Product data and names** — [`PRIVACY.md`](PRIVACY.md) (Anamorph collects nothing and makes
+  no network connections) and [`TRADEMARKS.md`](TRADEMARKS.md).
+
+The open owner/legal decisions are indexed in
+[`docs/COMMERCIAL_STATUS.md`](docs/COMMERCIAL_STATUS.md) §4 and recorded authoritatively in
 [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) §"Open licensing decisions" and
-[`docs/architecture/RELEASE_HARDENING_PLAN.md`](docs/architecture/RELEASE_HARDENING_PLAN.md):
-Anamorph's own `LICENSE`/EULA text, and the **commercial JUCE licence tier** — Anamorph is
-built on **JUCE**, whose modules are dual-licensed AGPLv3 or commercial, and a closed-source
-distribution model cannot use the AGPLv3 arm, so the commercial tier must be in place before
-commercial distribution.
-Third-party attribution for the shipped binaries is in [`NOTICE`](NOTICE); the full verified
-inventory (component, purpose, origin, licence, obligations) is in
-[`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) — both are published with every release.
-**Commercial VST3 distribution requires reviewing Steinberg's licensing requirements
-separately.**
+[`docs/architecture/RELEASE_HARDENING_PLAN.md`](docs/architecture/RELEASE_HARDENING_PLAN.md).
 
 Contributors and AI agents: read **[`CLAUDE.md`](CLAUDE.md)** and `docs/policies/AI_AGENT_POLICY.md`
 before changing code — some changes (parameter IDs, serialization, threading, DSP order, latency)

@@ -1,7 +1,8 @@
 # DOCUMENTATION_LIFECYCLE_POLICY.md
 
 Repository Governance Policy. Defines which documents must be updated when code changes — the
-trigger map that keeps docs and code in sync (prevents documentation rot).
+trigger map that keeps docs and code in sync (prevents documentation rot) — plus the two
+documentation-only triggers below.
 
 ## Core rule
 
@@ -29,6 +30,15 @@ existing doc, run a **drift check** and report any code/doc disagreement (constr
 | **Ship a version** | `CHANGELOG.md`, `HANDOVER.md`, `README.md` (status/version) |
 | **Fix a notable incident** | `POSTMORTEMS.md` (new INC), `KNOWN_ISSUES.md` (remove if it was listed) |
 | **New unresolved limitation** | `KNOWN_ISSUES.md` and/or `FUTURE_RISKS.md` (new RISK) |
+
+## Documentation-only triggers
+
+Not every documentation obligation starts with a code change. These two do not:
+
+| Change | Update these |
+|---|---|
+| **Add / remove / reclassify a document** | `docs/REPOSITORY_MAP.md` (tree entry), `docs/SOURCE_OF_TRUTH.md` (class list), `README.md` §Documentation (class table), `docs/DOCUMENTATION_COVERAGE.md` (self-coverage) |
+| **Product-model / licensing / legal-status change** | `docs/COMMERCIAL_STATUS.md`, the affected legal document (`EULA.md` / `PRIVACY.md` / `TRADEMARKS.md` / `NOTICE` / `THIRD_PARTY_LICENSES.md`), `docs/KNOWN_ISSUES.md` (KI-015), `docs/FUTURE_RISKS.md` (RISK-006), `docs/architecture/RELEASE_HARDENING_PLAN.md` (RH-R11/RH-F1), `README.md` §Licensing |
 
 ## Audit obligation
 

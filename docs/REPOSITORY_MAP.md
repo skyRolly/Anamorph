@@ -19,7 +19,14 @@ Anamorph/
 ├── THIRD_PARTY_LICENSES.md Verified inventory of every third-party component: purpose, origin,
 │                           licence, obligations, what is compiled in vs only vendored, and the
 │                           open licensing decisions. Re-verify after any JUCE bump.
-├── SUPPORT.md              User-facing: where to look first, what a good bug report contains.
+├── EULA.md                 Anamorph's own end-user terms — an UNAPPROVED DRAFT, not in force and
+│                           not shipped by any installer; every open owner/legal decision marked.
+├── PRIVACY.md              What Anamorph collects (nothing), sends (nothing) and writes to disk;
+│                           every claim cited to source. Legal class, derived from the code.
+├── TRADEMARKS.md           Product/company name status, third-party marks used descriptively, and
+│                           the naming obligations the dependency licences impose.
+├── SUPPORT.md              Internal-testing guide: what a tester may do with a build, what to
+│                           check first, and what a test report must contain.
 ├── src/                    Source (wrapper + GUI + DSP core).
 ├── tests/                  Headless self-tests (DSP + state compatibility) and fixtures.
 ├── worklogs/               Session-local investigation records for future agents (NOT
@@ -99,14 +106,17 @@ Anamorph/
 | `.github/workflows/msvc.yml` | MSVC `/analyze` → SARIF; JUCE treated as external; path-filtered triggers. |
 | `.github/workflows/dependency-review.yml` | Dependency Review on PRs to `main` (GitHub Actions deps; comment on failure only). |
 | `.github/dependabot.yml` | Weekly grouped `github-actions` bumps; JUCE stays manually pinned (`DEPENDENCY_POLICY.md`). |
-| `.github/ISSUE_TEMPLATE/` | `bug_report.yml` (version+build, OS, DAW, format, install route, repro — the fields triage actually needs) + `config.yml` (links to the install guide, FAQ, known issues, SUPPORT). |
+| `.github/ISSUE_TEMPLATE/` | `bug_report.yml` — the "Test report — bug" form (version+build, OS, DAW, format, install route, repro — the fields triage actually needs; carries the closed-source/public-tracker notice) + `config.yml` (links to the install guide, FAQ, known issues and the internal testing guide). |
 
 ## `docs/` — documentation library
 
 ```
 docs/
 ├── SOURCE_OF_TRUTH.md, HANDOVER.md, REPOSITORY_MAP.md, DOCUMENTATION_COVERAGE.md,
-│   POSTMORTEMS.md, KNOWN_ISSUES.md, FUTURE_RISKS.md
+│   POSTMORTEMS.md, KNOWN_ISSUES.md, FUTURE_RISKS.md, COMMERCIAL_STATUS.md
+│   (COMMERCIAL_STATUS.md = internal index of the product model, distribution model and the
+│    open owner/legal decisions; it indexes, never overrides, the records it cites)
+├── user/           (end-user class: USER_MANUAL, INSTALLATION)
 ├── architecture/   (system reference: ARCHITECTURE, SIGNAL_FLOW, DSP_GRAPH_REFERENCE,
 │                    THREAD_MODEL, API_REFERENCE, PARAMETER_*/SERIALIZATION_*/STATE_*,
 │                    LATENCY_MODEL, PERFORMANCE_BUDGET, REALTIME_SAFETY_AUDIT,

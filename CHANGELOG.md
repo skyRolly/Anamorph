@@ -8,7 +8,7 @@ from `[0.9.0]` onward each release is additionally marked by an annotated `vX.Y.
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
-## [0.9.0] — 2026-07-24
+## [0.9.0] — 2026-07-26
 ### Added
 - **User-installable packages for every platform**, published alongside the flat ZIP
   archive downloads (extracting any zip shows the packaged files directly — no wrapper
@@ -31,15 +31,29 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Evidence: PR #87 (v0.9.0 release prep); PR #89 (installer/packaging rework:
   component selection, dual-path destination, system-wide installs, ZIP-only
   artifacts). [Verified]
-- **A support path for users**: `SUPPORT.md` (what to check before reporting, and what a useful
-  report contains) plus a GitHub bug-report form that asks for the fields triage actually needs —
-  version *and* build number from the About screen, OS (including whether an Apple Silicon host
-  runs natively or under Rosetta), DAW, format, install route, Oversampling setting and whether
-  the Standalone reproduces it. `SUPPORT.md` is attached to every GitHub release as
+- **An internal testing guide**: `SUPPORT.md` states what a tester may do with a build
+  (evaluation only — no source-code rights, no redistribution), where reports go (the project's
+  testing channel), the three checks worth doing first, and the six fields a test report must
+  carry — Anamorph version *and* build number from the About screen, operating system, DAW/host,
+  plug-in format, reproduction steps, and logs/screenshots where applicable. The GitHub
+  **Test report — bug** form asks for exactly those plus install route, Oversampling setting and
+  whether the Standalone reproduces it. `SUPPORT.md` is attached to every GitHub release as
   `Anamorph-<version>-SUPPORT.md`, and every `INSTALL.txt` links the online guide. It states
   plainly that Anamorph writes **no log file**, so nobody goes looking for one.
   Evidence: PR #91 (v0.9.0 release-hardening audit); PR #92 (lean packages — support/attribution
-  as release-page assets). [Verified]
+  as release-page assets); the internal-testing documentation pass. [Verified]
+- **Product documents for a closed-source commercial plug-in**: `EULA.md` (an **unapproved
+  draft** — not in force, presented by no installer, with every open owner/legal decision
+  marked), `PRIVACY.md` (Anamorph collects nothing, transmits nothing and opens no network
+  connection of its own — every disk write and the one About-screen link cited to source),
+  `TRADEMARKS.md` (product/company name status, the third-party marks used descriptively, and
+  the naming obligations the IJG, Xiph.Org and zlib licences impose) and the internal record
+  `docs/COMMERCIAL_STATUS.md`. The product model is stated once for a general audience, in the
+  README's licensing section, and otherwise only where it is operative — those documents, the
+  internal testing guide and the developer records. The user-facing set stays on using the
+  product: the manual and the installation guide end with a plain copyright line, and each
+  package's `INSTALL.txt` carries one in its own bilingual section, above and separate from the
+  mandatory third-party attribution. Evidence: the internal-testing documentation pass. [Verified]
 - **Third-party attribution accompanies every download.** `NOTICE` and
   `THIRD_PARTY_LICENSES.md` are published as version-named assets on every GitHub release,
   next to the zips and installers (the packages themselves stay lean — payload +
@@ -97,6 +111,12 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   roadmap that scheduled this release's packaging/user-docs work (including the newly
   identified RH-R10 third-party licence-compliance item).
   Evidence: PR #81 / commit `15c4159`; PR #86 / commits `96f2ae5`, `2a55b14`. [Verified]
+- The documentation set is now grouped into **four explicitly separated classes** — user,
+  internal/testing, legal/licensing and developer — with the authority rules for each in
+  `docs/SOURCE_OF_TRUTH.md` and the index in `README.md`. `docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.md`
+  gained documentation-only triggers so adding or reclassifying a document, or changing the
+  product/licensing status, forces the corresponding index updates.
+  Evidence: the internal-testing documentation pass. [Verified]
 
 ### Build / Release
 - **Tag-triggered release pipeline** (`.github/workflows/release.yml`): pushing an annotated
