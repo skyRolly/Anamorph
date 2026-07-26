@@ -1,7 +1,10 @@
 # Installing Anamorph
 
-This guide is for **users** of the plug-in. If you want to build Anamorph from source,
-see [`docs/procedures/BUILD.md`](../procedures/BUILD.md) instead.
+This guide is for **users and testers** — how to install a build you were given.
+**Anamorph is closed-source commercial software.** © 2026 RollyTech. All rights reserved;
+installing a build grants no rights to Anamorph's source code (see
+[`SUPPORT.md`](../../SUPPORT.md) §1). Maintainers building the project:
+[`docs/procedures/BUILD.md`](../procedures/BUILD.md).
 
 Anamorph is distributed from the project's **GitHub Releases** page. Every release offers,
 per platform, an **installer** (the easy way) and a **plain ZIP archive** (the manual

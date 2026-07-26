@@ -9,6 +9,6 @@ contact_links:
   - name: Known issues
     url: https://github.com/skyRolly/Anamorph/blob/main/docs/KNOWN_ISSUES.md
     about: Confirmed limitations and their workarounds — check here before filing a bug.
-  - name: Getting help
+  - name: Internal testing guide
     url: https://github.com/skyRolly/Anamorph/blob/main/SUPPORT.md
-    about: What to check first and what a good report contains.
+    about: What testers may do with a build, what to check first, and what a test report must contain.

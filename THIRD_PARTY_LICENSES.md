@@ -208,11 +208,14 @@ is resolved by this document.
    actions; nothing in this repository records that purchase.
 2. **Anamorph's own licence.** The repository root has **no `LICENSE` file**, so the terms under
    which Anamorph's own source and binaries are offered are undeclared. `docs/user/USER_MANUAL.md`
-   carries a bare copyright line ("© 2026 RollyTech") and nothing more.
+   and each package's `INSTALL.txt` state the model (closed-source commercial, all rights
+   reserved) but grant nothing.
 3. **An end-user licence agreement (EULA)** for the distributed binaries, if the product is to be
-   sold. The installers do not currently present one.
+   sold. The installers do not currently present one. [`EULA.md`](EULA.md) is an **unapproved
+   draft** — not in force, not shipped — listing the ten decisions its approval needs.
 4. **Steinberg VST 3 requirements** for commercial distribution and trademark use — see §3.
 
 Blockers 1–4 are recorded in `docs/architecture/RELEASE_HARDENING_PLAN.md` (RH-R11 / RH-F1;
-RH-R10 / RH-F2 for the Steinberg item). They are **not** engineering tasks and cannot be closed
+RH-R10 / RH-F2 for the Steinberg item) and indexed with the remaining owner decisions in
+`docs/COMMERCIAL_STATUS.md` §4. They are **not** engineering tasks and cannot be closed
 by a code change.

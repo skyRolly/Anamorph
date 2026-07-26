@@ -112,10 +112,11 @@ Create the next `RISK-NNN` only when a TODO/FIXME, issue, PR discussion, or conc
 supports it. State the likelihood **basis**, cite evidence with a confidence level, and give a
 mitigation. Do not invent risks to fill the template.
 
-## RISK-006 — Undeclared licensing (no LICENSE, no EULA, JUCE tier unchosen)
+## RISK-006 — Undeclared licensing (no LICENSE, no approved EULA, JUCE tier unchosen)
 - **Risk:** The repository root has **no `LICENSE` file** and neither installer presents an
   end-user agreement, so the terms under which Anamorph's own source and binaries are offered are
-  undeclared. The stated product model (owner, 2026-07-26) is **closed-source commercial**; JUCE 9
+  undeclared. `EULA.md` is an **unapproved draft** (not in force, not shipped) and does not
+  change that. The stated product model (owner, 2026-07-26) is **closed-source commercial**; JUCE 9
   modules are dual-licensed **AGPLv3 or commercial**, and a closed-source distribution cannot use
   the AGPLv3 arm — the commercial JUCE tier must be in place before commercial distribution. A
   third strand —
@@ -131,7 +132,8 @@ mitigation. Do not invent risks to fill the template.
   §"Open licensing decisions"; the pinned JUCE tree's `LICENSE.md` (dual licence);
   `docs/KNOWN_ISSUES.md` KI-015.
 - **Mitigation:** **None available to engineering** — this is an owner/legal decision, tracked as
-  RH-R11 / RH-F1 (and RH-F2 for Steinberg) in `docs/architecture/RELEASE_HARDENING_PLAN.md`. It
+  RH-R11 / RH-F1 (and RH-F2 for Steinberg) in `docs/architecture/RELEASE_HARDENING_PLAN.md` and
+  indexed with the other open decisions in `docs/COMMERCIAL_STATUS.md` §4. It
   closes when the commercial JUCE licence is obtained and a `LICENSE` (plus an EULA, if the
   product is sold) is added. Until then, cite this risk rather than assuming any particular
   terms.

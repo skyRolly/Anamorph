@@ -25,19 +25,33 @@ source must be corrected to match.
 > `docs/policies/ADR_POLICY.md`). Policy weight is higher than general descriptive
 > Architecture because a Policy is a hard rule, not a description.
 
-## Scope: the other two documentation classes
+## Scope: the other three documentation classes
 
 The numbered order above governs the **developer documentation** chain. The README's other
-two classes sit alongside it, not inside it:
+three classes sit alongside it, not inside it:
 
-- **User documentation** (`docs/user/`, `SUPPORT.md`) is *derived*: it must describe what
-  the code and developer chain establish, and on any conflict it is the user document that
-  gets corrected (per `DOCUMENTATION_LIFECYCLE_POLICY.md`). It never serves as evidence.
-- **Legal documents** (`NOTICE`, `THIRD_PARTY_LICENSES.md`) are authoritative for
-  third-party attribution and licence *facts* — each claim cites the licence file it was
-  read from — and change only through the re-verification procedure they describe
-  (`THIRD_PARTY_LICENSES.md` §"How this inventory was produced"). Where a developer doc
-  disagrees with them on an attribution fact, the developer doc is corrected.
+- **User documentation** (`docs/user/`) is *derived*: it must describe what the code and
+  developer chain establish, and on any conflict it is the user document that gets corrected
+  (per `DOCUMENTATION_LIFECYCLE_POLICY.md`). It never serves as evidence.
+- **Internal / testing documentation** (`SUPPORT.md`, `.github/ISSUE_TEMPLATE/`) is derived in
+  the same way, with one addition: its statements about what a tester may and may not do
+  restate the legal class and must not diverge from it. Where it conflicts with `EULA.md`,
+  `SUPPORT.md` is corrected.
+- **Legal documents** are two different things and rank differently:
+  - `NOTICE` and `THIRD_PARTY_LICENSES.md` are **authoritative for third-party attribution and
+    licence facts** — each claim cites the licence file it was read from — and change only
+    through the re-verification procedure they describe (`THIRD_PARTY_LICENSES.md` §"How this
+    inventory was produced"). Where a developer doc disagrees with them on an attribution fact,
+    the developer doc is corrected.
+  - `EULA.md`, `PRIVACY.md` and `TRADEMARKS.md` concern **Anamorph's own terms**. `PRIVACY.md`
+    is derived from the source and is corrected when the source disagrees. `EULA.md` is an
+    unapproved draft and is authoritative for nothing; it may only be changed by, or on the
+    instruction of, the owner. `TRADEMARKS.md` is factual except for the items it explicitly
+    marks as open.
+  - `docs/COMMERCIAL_STATUS.md` is a developer **index** of all of the above; on any conflict
+    the record it cites wins.
+
+No document in these three classes may be cited as evidence for a technical claim.
 
 ## Conflict-resolution rule
 

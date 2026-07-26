@@ -595,4 +595,7 @@ report.
 
 ---
 
-*Anamorph is © 2026 RollyTech — www.rolly.tech.*
+*Anamorph is © 2026 RollyTech — www.rolly.tech. Anamorph is closed-source commercial software;
+all rights reserved. This manual documents the product and grants no rights to its source code.
+Pre-release builds are evaluation-only — see [`SUPPORT.md`](../../SUPPORT.md) (online:
+<https://github.com/skyRolly/Anamorph/blob/main/SUPPORT.md>) §1.*

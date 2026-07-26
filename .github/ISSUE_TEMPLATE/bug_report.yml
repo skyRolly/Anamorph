@@ -1,13 +1,19 @@
-name: Bug report
-description: Something in Anamorph behaves incorrectly, crashes, or will not load.
+name: Test report — bug
+description: Something in this Anamorph test build behaves incorrectly, crashes, or will not load.
 labels: ["bug"]
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for taking the time to report this. Please check
-        [`docs/KNOWN_ISSUES.md`](../blob/main/docs/KNOWN_ISSUES.md) first — the problem may
+        Anamorph is **closed-source commercial software** currently in **internal testing**.
+        Before filing, please read [`SUPPORT.md`](../blob/main/SUPPORT.md) — it covers what
+        testers may do with a build, the three checks worth doing first, and what a usable
+        report contains. Check
+        [`docs/KNOWN_ISSUES.md`](../blob/main/docs/KNOWN_ISSUES.md) too: the problem may
         already be a documented limitation with a workaround.
+
+        ⚠ **This tracker is public.** Attach nothing you are not willing to publish; use the
+        private channel you were given for anything else.
 
         **There is no log file.** Anamorph writes no diagnostic output, so the fields below are
         what make a report reproducible.
@@ -101,7 +107,7 @@ body:
       options:
         - Installer (Windows .exe / macOS .pkg / Linux install.sh)
         - Manual — extracted the zip and copied the files myself
-        - Built from source
+        - Built from source (project maintainers only)
     validations:
       required: true
 

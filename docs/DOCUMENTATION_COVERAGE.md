@@ -6,7 +6,30 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **flat-artifact / lean-package / closed-source documentation pass**
+Last updated: for the **internal-testing preparation & closed-source product documentation pass**
+(2026-07-26, on `main` @ `aecd448`). **No `src/` change.** The v0.9.0 **release date moved to
+2026-07-26** in `CHANGELOG.md` and its two HANDOVER restatements (PR-landing and audit-run dates
+left untouched). `SUPPORT.md` was **rewritten from a public support document into the internal
+testing guide** — evaluation-only permission, no source-code rights, no redistribution, the
+project's testing channel, and six mandatory report fields (version+build, OS, DAW/host, format,
+reproduction steps, logs/screenshots); the bug-report form became "Test report — bug" and carries
+the closed-source + public-tracker notice. **New:** `EULA.md` (an **unapproved draft**, not in
+force and not shipped, every open owner/legal decision marked), `PRIVACY.md` (collects nothing,
+sends nothing; every disk write and the one About-screen link cited to source), `TRADEMARKS.md`
+(name status, third-party marks used descriptively, the naming obligations IJG/Xiph/zlib impose,
+and the `Dim-D` / "Roland Dimension-D-style" review item) and `docs/COMMERCIAL_STATUS.md` (the
+internal index of product model, distribution model and the eight open owner/legal decisions —
+including the newly recorded fact that the GitHub repository is public with forking enabled while
+the product model is closed-source). README regrouped its documentation index into **four
+classes** (user / internal-testing / legal / developer). Closed-source notices added where a
+reader-facing document had none: every `INSTALL.txt` (its own Licence section, bilingual, above
+and separate from the third-party attribution), `USER_MANUAL` footer, `INSTALLATION` opening.
+Synced: README, SUPPORT, REPOSITORY_MAP (root + `docs/` trees, `user/` branch), SOURCE_OF_TRUTH
+(four-class scope + per-class authority), HANDOVER (snapshot base, release date, KI-015 wording),
+DOCUMENTATION_LIFECYCLE_POLICY (documentation-only trigger table), CHANGELOG `[0.9.0]`, issue
+templates, this file (self-coverage tiers, ADR count).
+
+Prior: for the **flat-artifact / lean-package / closed-source documentation pass**
 (2026-07-26, PR #93). **No `src/` change.** The `Anamorph-<OS>` artifacts now upload loose
 staged files (payload + `INSTALL.txt`; Linux adds `install.sh`/`uninstall.sh` — extract the
 artifact zip once to see them directly; the transport drops exec bits on that route), new
@@ -14,7 +37,8 @@ artifact zip once to see them directly; the transport drops exec bits on that ro
 `release.yml` publishes byte-identically, and `NOTICE`/`THIRD_PARTY_LICENSES.md`/`SUPPORT.md`
 ship **only** as version-named release-page assets — no longer inside any zip or installer
 payload; each `INSTALL.txt` carries the IJG acknowledgement + pointer. README now states the
-product model (closed-source commercial; docs grouped user/legal/developer), and the
+product model (closed-source commercial; docs grouped user/legal/developer — the grouping
+was superseded 2026-07-26, see the head entry), and the
 licensing blocker set (KI-015/RISK-006/RH-R11/RH-F1, THIRD_PARTY_LICENSES, NOTICE, HANDOVER)
 uniformly records that the model rules out the AGPLv3 arm, so the commercial JUCE licence is
 required before commercial distribution. Synced: PACKAGING, CI_CD, RELEASE_PROCESS,
@@ -570,12 +594,16 @@ HEAD `c605fbe` (JUCE 8.0.14).
 
 | Tier | Files | Status |
 |---|---|---|
-| docs root | SOURCE_OF_TRUTH, HANDOVER, REPOSITORY_MAP, DOCUMENTATION_COVERAGE, POSTMORTEMS, KNOWN_ISSUES, FUTURE_RISKS | Present |
-| architecture | 15 docs (incl. RELEASE_HARDENING_PLAN) + ADR_INDEX + 16 ADRs (0016–0020 reserved, see plan §8) | Present |
+| docs root | SOURCE_OF_TRUTH, HANDOVER, REPOSITORY_MAP, DOCUMENTATION_COVERAGE, POSTMORTEMS, KNOWN_ISSUES, FUTURE_RISKS, COMMERCIAL_STATUS | Present |
+| user | USER_MANUAL, INSTALLATION | Present |
+| architecture | 15 docs (incl. RELEASE_HARDENING_PLAN) + ADR_INDEX + 17 ADRs (0016–0020 reserved, see plan §8) | Present |
 | worklogs | performance/ (Waves 3–6 + the v0.8.11 final-pass and crossover-glide investigations), release-hardening/ (RH program working evidence; finalized decisions live in ADRs), root-level v0.8.12 GUI-fix records (`BANDWIDTH_DRAG_FIX_v0.8.12.md`, `MOUSE_RELEASE_STATE_FIX_v0.8.12.md`) + `POST_v0.8.12_AUDIT_AND_ROADMAP.md` + `STATE_HARNESS_v0.8.13.md` | Present |
 | procedures | 8 docs | Present |
 | policies | 15 docs | Present |
-| root | README, CHANGELOG, CLAUDE | Present |
+| root — developer/status | README, CHANGELOG, CLAUDE | Present |
+| root — legal | NOTICE, THIRD_PARTY_LICENSES, EULA (unapproved draft — not in force), PRIVACY, TRADEMARKS | Present |
+| root — internal/testing | SUPPORT | Present |
+| .github | ISSUE_TEMPLATE/{bug_report,config}.yml, workflows/*, dependabot.yml | Present |
 
 ## Known coverage gaps / TODOs
 

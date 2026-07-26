@@ -63,6 +63,15 @@ Troubleshooting / 常见问题
   插件为 64 位,32 位宿主里不会出现。
 
 --------------------------------------------------------------------
+Licence / 许可
+--------------------------------------------------------------------
+Anamorph is closed-source commercial software. (c) 2026 RollyTech.
+All rights reserved. No rights to Anamorph's source code are granted,
+and this package may not be redistributed.
+Anamorph 为闭源商业软件,(c) 2026 RollyTech,保留所有权利。
+不授予任何源代码权利,请勿转发本安装包。
+
+--------------------------------------------------------------------
 Support & third-party attribution / 支持与第三方署名
 --------------------------------------------------------------------
 Need help or found a bug? See the support guide — what to check first and
