@@ -47,6 +47,8 @@ operative — the legal class, the internal/testing class (`SUPPORT.md` §1, the
 the developer documents that derive the JUCE-tier consequence. The user-facing set stays on using
 the product: `USER_MANUAL` and `INSTALLATION` end with a plain copyright line, every `INSTALL.txt`
 carries one in its own bilingual section above and separate from the mandatory third-party
+(**superseded 2026-07-26 — see the head entry: `INSTALL.txt` is installation-only, so no
+attribution section remains for it to sit above**)
 attribution (which is unchanged), and the manual's Quick start and FAQ carry no legal wording at
 all.
 Synced: README, SUPPORT, REPOSITORY_MAP (root + `docs/` trees, `user/` branch), SOURCE_OF_TRUTH

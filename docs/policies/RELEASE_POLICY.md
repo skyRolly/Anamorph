@@ -49,6 +49,10 @@ assets are the **sole** carrier of the mandatory IJG acknowledgement: a release 
 be published** without the `Anamorph-<version>-NOTICE.txt` and
 `Anamorph-<version>-THIRD_PARTY_LICENSES.md` assets attached; redistributing the binaries
 outside the release page requires carrying those files along.
+Recorded as a fact, not as a determination: the **per-push CI artifacts** are a separate,
+internal-testing download route and carry no attribution file at all. Whether that route
+needs one is an owner/legal question this repository does not answer (`KI-015`;
+`docs/COMMERCIAL_STATUS.md` §4).
 `THIRD_PARTY_LICENSES.md` must be **re-verified after any JUCE version bump** — the inventory
 is derived from the pinned tree, and two components (FreeType and stb, vendored inside PlutoVG)
 do not appear in JUCE's own `LICENSE.md`. See `procedures/PACKAGING.md` §"Third-party
@@ -58,5 +62,5 @@ attribution & support files".
 
 `MAJOR.MINOR.PATCH`, pre-1.0 (< 1.0.0 = pre-release line), plus a CI build/dev number passed as
 `-DANAMORPH_BUILD_NUMBER=${run_number}` and shown in the About box.
-Evidence [Verified]: CMakeLists.txt:14,181-187; .github/workflows/build.yml:60,199,466 (the
+Evidence [Verified]: CMakeLists.txt:14,181-187; .github/workflows/build.yml:60,180,438 (the
 per-OS Configure steps passing `-DANAMORPH_BUILD_NUMBER`).

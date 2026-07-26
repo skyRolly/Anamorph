@@ -89,10 +89,13 @@ override them. Anamorph itself never reads audio files; the codecs come along wi
 
 Three of the above impose an attribution obligation on binary distribution. All three are
 discharged by [`NOTICE`](NOTICE), which — together with this file — is published as a
-**version-named asset on every GitHub release**, next to the zips and installers (the
-packages themselves are deliberately lean; each `INSTALL.txt` inside them carries the IJG
-acknowledgement verbatim plus a pointer to these release-page files). Anyone redistributing
-the binaries away from the release page must carry `NOTICE` and this file along:
+**version-named asset on every GitHub release**, next to the zips and installers. The
+packages themselves are deliberately lean and, since 2026-07-26 (owner decision), each
+`INSTALL.txt` inside them carries installation instructions only — so these release-page
+assets are the **sole** carrier of the IJG acknowledgement, and a release must not be
+published without them (`docs/policies/RELEASE_POLICY.md` §"Third-party attribution").
+Anyone redistributing the binaries away from the release page must carry `NOTICE` and this
+file along:
 
 - **libjpeg (IJG)** — condition (2): *"If only executable code is distributed, then the
   accompanying documentation must state that 'this software is based in part on the work of the

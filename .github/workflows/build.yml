@@ -125,9 +125,11 @@ jobs:
           install -m 755 packaging/linux/uninstall.sh "$DIST/uninstall.sh"
           # Attribution/support files (NOTICE, THIRD_PARTY_LICENSES.md,
           # SUPPORT.md) are deliberately NOT staged: the packages carry only
-          # what a user needs to install. They ship as release-page assets
-          # instead (release.yml), and each INSTALL.txt carries the mandatory
-          # IJG acknowledgement plus a pointer to them.
+          # what a user needs to install, and INSTALL.txt is installation-only
+          # since 2026-07-26. They ship as version-named release-page assets
+          # (release.yml), which are therefore the SOLE carrier of the
+          # mandatory IJG acknowledgement -- RELEASE_POLICY forbids publishing
+          # a release without them.
           # The customer artifact must contain no symbol table and no debug files.
           while IFS= read -r -d '' ELF; do
             if readelf -S "$ELF" 2>/dev/null | grep -q '\.symtab'; then
@@ -324,8 +326,10 @@ jobs:
           Copy-Item -Force $exe.FullName $dist
           Copy-Item -Force packaging/windows/INSTALL.txt $dist
           # Attribution/support files are NOT staged (packages carry only what
-          # a user needs to install); they ship as release-page assets, and
-          # INSTALL.txt carries the IJG acknowledgement + a pointer to them.
+          # a user needs to install; INSTALL.txt is installation-only). They
+          # ship as version-named release-page assets, the SOLE carrier of the
+          # mandatory IJG acknowledgement -- RELEASE_POLICY forbids publishing
+          # a release without them.
           # 3) Purge ALL debug material from the public copy BEFORE any
           #    further step that can abort.
           Get-ChildItem -Recurse -Path $dist -File |
@@ -566,8 +570,10 @@ jobs:
           cp -R "$APP"  "$DIST/"
           cp packaging/macos/INSTALL.txt "$DIST/INSTALL.txt"
           # Attribution/support files are NOT staged (packages carry only what
-          # a user needs to install); they ship as release-page assets, and
-          # INSTALL.txt carries the IJG acknowledgement + a pointer to them.
+          # a user needs to install; INSTALL.txt is installation-only). They
+          # ship as version-named release-page assets, the SOLE carrier of the
+          # mandatory IJG acknowledgement -- RELEASE_POLICY forbids publishing
+          # a release without them.
           # Verify both slices are present in the universal binary.
           echo "== VST3 arches =="; lipo -archs "$DIST/Anamorph.vst3/Contents/MacOS/Anamorph"
           echo "== AU arches ==";   lipo -archs "$DIST/Anamorph.component/Contents/MacOS/Anamorph"

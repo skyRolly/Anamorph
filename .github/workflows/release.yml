@@ -23,7 +23,9 @@
 #  code signing (RH-PR-5), notarization (RH-PR-3), update checks (RH-PR-7).
 #  Installers (v0.9.0): BUILT by build.yml's per-platform packaging steps
 #  (Inno Setup exe / .pkg; the Linux zip itself carries install.sh) and only
-#  STAGED here — same rename-only, never re-packed contract as the zips. Secrets: none — this
+#  STAGED here — moved unmodified, never re-packed. The per-platform zips are
+#  archived here from the validated staging trees, behind a fail-closed
+#  permission check. Secrets: none — this
 #  workflow uses only the ephemeral GITHUB_TOKEN, scoped `contents: write`
 #  on the draft-release job.
 # ============================================================================

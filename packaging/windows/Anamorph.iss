@@ -60,9 +60,11 @@ Name: "standalone"; Description: "Install Standalone"; Types: full custom
 Source: "{#StagingDir}\Anamorph.vst3\*"; DestDir: "{code:GetVst3Dir}\Anamorph.vst3"; Components: vst3; Flags: recursesubdirs createallsubdirs ignoreversion
 Source: "{#StagingDir}\Anamorph.exe"; DestDir: "{app}"; Components: standalone; Flags: ignoreversion
 ; The installer payload is deliberately lean: only what the user needs to run
-; the product. Third-party attribution (NOTICE, THIRD_PARTY_LICENSES.md) and
-; SUPPORT.md accompany every download as release-page assets instead, and the
-; shipped INSTALL.txt carries the mandatory IJG acknowledgement + pointer.
+; the product -- it carries no attribution file, and INSTALL.txt (which this
+; installer does not install either) is installation-only since 2026-07-26.
+; Third-party attribution (NOTICE, THIRD_PARTY_LICENSES.md) and SUPPORT.md
+; accompany every download as release-page assets instead, and those assets are
+; the sole carrier of the mandatory IJG acknowledgement.
 
 [Icons]
 Name: "{group}\Anamorph"; Filename: "{app}\Anamorph.exe"; Components: standalone
