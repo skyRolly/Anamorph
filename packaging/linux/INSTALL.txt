@@ -69,18 +69,3 @@ Copyright / 版权
 --------------------------------------------------------------------
 Anamorph is (c) 2026 RollyTech. All rights reserved.
 Anamorph (c) 2026 RollyTech,保留所有权利。
-
---------------------------------------------------------------------
-Testing & third-party attribution / 测试与第三方署名
---------------------------------------------------------------------
-Testing this build? The internal testing guide says what a tester may do
-with it, what to check first, and what a test report must contain:
-测试本版本:内部测试指南说明测试者的权限、先检查什么,
-以及测试报告须包含哪些内容:
-    https://github.com/skyRolly/Anamorph/blob/main/SUPPORT.md
-
-This software is based in part on the work of the Independent JPEG Group.
-Full third-party attribution is in the NOTICE and THIRD_PARTY_LICENSES
-files published next to this package on the download (release) page.
-本软件部分基于 Independent JPEG Group 的工作;完整第三方署名见下载页
-(Release 页面)随包发布的 NOTICE 与 THIRD_PARTY_LICENSES 文件。

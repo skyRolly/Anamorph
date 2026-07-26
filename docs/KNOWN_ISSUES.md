@@ -398,7 +398,7 @@ distribution, alongside Anamorph's own LICENSE/EULA text.
 - **Scope:** owner/legal decision. No code change can close it, and this repository deliberately
   makes no determination. Third-party *attribution* — a separate obligation — **is** discharged:
   `NOTICE` and `THIRD_PARTY_LICENSES.md` accompany every download as version-named release-page
-  assets, and every `INSTALL.txt` carries the IJG acknowledgement plus a pointer to them.
+  assets, which since 2026-07-26 are the sole carrier of the IJG acknowledgement.
 - **Evidence [Verified]:** no `LICENSE`/`COPYING` at the repository root; `THIRD_PARTY_LICENSES.md`
   §"Open licensing decisions"; JUCE `LICENSE.md` in the pinned tree (dual licence);
   `docs/architecture/RELEASE_HARDENING_PLAN.md` RH-R11 / RH-F1.

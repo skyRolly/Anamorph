@@ -125,8 +125,8 @@ mitigation. Do not invent risks to fill the template.
 - **Impact:** Blocks a commercial release outright, and leaves even a free release legally
   ambiguous for anyone who downloads, redistributes or contributes. Third-party **attribution**
   is a different obligation and is already discharged (`NOTICE` + `THIRD_PARTY_LICENSES.md`
-  accompany every download as release-page assets, with the IJG acknowledgement + pointer in
-  every `INSTALL.txt`) — this risk is specifically about Anamorph's *own* terms.
+  accompany every download as release-page assets, which since 2026-07-26 carry the IJG
+  acknowledgement on their own) — this risk is specifically about Anamorph's *own* terms.
 - **Likelihood (evidence-based):** High — already the case (`ls` shows no `LICENSE`/`COPYING`).
 - **Evidence [Verified]:** repository root (no licence file); `THIRD_PARTY_LICENSES.md`
   §"Open licensing decisions"; the pinned JUCE tree's `LICENSE.md` (dual licence);

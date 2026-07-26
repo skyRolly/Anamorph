@@ -9,30 +9,29 @@ Build-artifact structure, installers, code-signing, and install layout. Source:
 | Platform | Artifact | Contents |
 |---|---|---|
 | Linux | `Anamorph-Linux` | the staged files themselves: stripped `Anamorph.vst3`, `Anamorph` Standalone, `install.sh`/`uninstall.sh`, `INSTALL.txt` — the artifact's downloaded zip contains them **directly** (extract once, no wrapper folder, no nested archive) |
-| Linux | `Anamorph-Linux-release` | `Anamorph-Linux.zip` — the permission-preserving source archive of the same staging dir, consumed **only** by `release.yml` |
 | Linux | `Anamorph-Linux-debug` | split debug info (`.debug` files, `.gnu_debuglink`-referenced) |
 | Windows | `Anamorph-Windows` | the staged files themselves: `Anamorph.vst3`, `Anamorph.exe` Standalone, `INSTALL.txt` (no PDBs) — extract once, payload directly |
-| Windows | `Anamorph-Windows-release` | `Anamorph-Windows.zip` — the source archive for `release.yml` |
 | Windows | `Anamorph-Windows-installer` | `Anamorph-<version>-Windows-Installer.exe` (Inno Setup, built from the same staged payload) |
 | Windows | `Anamorph-Windows-debug` | linker PDBs for both shipped images |
 | macOS | `Anamorph-macOS` | the staged files themselves: universal stripped `Anamorph.vst3`, `Anamorph.component` (AU), `Anamorph.app`, `INSTALL.txt` — extract once, payload directly |
-| macOS | `Anamorph-macOS-release` | `Anamorph-macOS.zip` — the `ditto` source archive for `release.yml` |
 | macOS | `Anamorph-macOS-installer` | `Anamorph-<version>-macOS.pkg` (pkgbuild/productbuild, built from the same staged payload) |
 | macOS | `Anamorph-macOS-debug` | universal dSYM bundles (best-effort under Release+LTO — may be absent, with a CI warning) |
 
-Each platform ships **two routes from one validated staging dir**. The plain
+Each platform ships **one artifact from one validated staging dir**. The
 `Anamorph-<OS>` artifact uploads the staged **files**, so the zip GitHub serves for it
 contains the payload at its root — extracting shows the packaged files immediately, with
 no wrapper folder and no nested archive. The trade-off: the artifact transport does not
 preserve Unix file permissions, so on Linux/macOS the executable bits are lost on that
 route — `INSTALL.txt` documents the `sh install.sh` / `chmod +x` fallbacks (the install
-scripts themselves `chmod 755` what they install). The `Anamorph-<OS>-release` artifact
-carries the archive **created at the source** (Info-ZIP `-ry` on Linux, `Compress-Archive`
-on Windows, `ditto -c -k` on macOS; payload at the archive root; the Linux staging step
-self-checks the executable bits inside the zip), which **does** preserve permissions,
-symlinks and the signed macOS bundle layout. `release.yml` publishes those exact archive
-bytes untouched (renamed to `Anamorph-<version>-<OS>.zip`), so **release downloads always
-extract with correct permissions**. The packages contain only what a user needs to
+scripts themselves `chmod 755` what they install). `release.yml` archives that **same**
+tree into `Anamorph-<version>-<OS>.zip`: it restores the executable bits on the payload
+paths first (`Anamorph`, `install.sh`, `uninstall.sh`, `*.so` on Linux;
+`*/Contents/MacOS/*` on macOS — Windows carries no Unix modes), writes the entries at the
+archive root, then **fail-closes** unless every expected executable is present in the zip
+with its mode. So **release downloads always extract with correct permissions**, while the
+published zip is archived from bytes CI already built and validated. On macOS the ad-hoc
+signature lives inside each Mach-O and in `Contents/_CodeSignature`, both ordinary files,
+so it survives the artifact round-trip. The packages contain only what a user needs to
 install — attribution/support files are release-page assets instead (see below).
 
 ## Installers (v0.9.0)
@@ -66,8 +65,8 @@ gated steps (`package_windows` / `package_macos_pkg`), each with the version par
   zip-extracted bundles). Not yet signed/notarized — RH-PR-3 signs + notarizes this same
   package.
 
-`release.yml` downloads the two installer artifacts alongside the `Anamorph-<OS>-release`
-archives, **fail-closes on a missing or version-skewed file name**, moves them into the
+`release.yml` downloads the two installer artifacts alongside the `Anamorph-<OS>` staging
+trees, **fail-closes on a missing or version-skewed file name**, moves them into the
 draft release unmodified, and covers them in `SHA256SUMS.txt`. The user manual
 (`docs/user/USER_MANUAL.md`) is attached as `Anamorph-<version>-UserManual.md`, and
 `SUPPORT.md` as `Anamorph-<version>-SUPPORT.md`.
@@ -83,7 +82,7 @@ closed-source commercial product, 2026-07-26). The obligations are discharged li
 | Where | What |
 |---|---|
 | Release page (every download route) | `Anamorph-<version>-NOTICE.txt`, `Anamorph-<version>-THIRD_PARTY_LICENSES.md` and `Anamorph-<version>-SUPPORT.md` published next to the zips/installers, version-named so `SHA256SUMS.txt` covers them |
-| Inside every package | each `INSTALL.txt` carries the **mandatory IJG acknowledgement** ("based in part on the work of the Independent JPEG Group") plus a pointer to the release-page attribution files and the online internal testing guide |
+| Inside every package | nothing — since 2026-07-26 (owner decision) `INSTALL.txt` carries installation instructions only, so the **mandatory IJG acknowledgement** rests entirely on the release-page `NOTICE` asset that accompanies every download |
 | Repository | `NOTICE` and `THIRD_PARTY_LICENSES.md` at the root remain the source the release assets are copied from |
 
 Anyone **redistributing** the binaries outside the release page (e.g. mirroring a zip alone)

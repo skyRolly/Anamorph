@@ -20,12 +20,13 @@ the hard compatibility gate is `RELEASE_COMPATIBILITY_CHECKLIST.md`.
 
 ## Build the release artifacts
 
-Releases publish the `Anamorph-<OS>-release` source archives built per push (`CI_CD.md`) —
-permission-preserving flat zips; the Linux one carries the install scripts — plus the
+Releases publish flat zips archived by `release.yml` from the `Anamorph-<OS>` staging
+trees built per push (`CI_CD.md`) — the Linux one carries the install scripts — plus the
 installers `Anamorph-Windows-installer` and `Anamorph-macOS-installer` (`PACKAGING.md`
-§Installers). The plain `Anamorph-<OS>` artifacts are loose-file per-push downloads (the
-artifact transport drops Unix executable bits on that route) and are **not** release
-material. Push the release commit and use that run's artifacts, or build locally per
+§Installers). Those same `Anamorph-<OS>` artifacts are the loose-file per-push downloads;
+the artifact transport drops Unix executable bits on that route, and `release.yml`
+restores them before archiving (fail-closed). Push the release commit and use that run's
+artifacts, or build locally per
 `BUILD.md`. The CI build number is `${{ github.run_number }}`
 (`-DANAMORPH_BUILD_NUMBER=...`), shown in the About box.
 
@@ -62,10 +63,10 @@ Pushing the tag triggers `.github/workflows/release.yml`, which:
    the same 3-OS matrix, DSP + state suites, pluginval strictness 10 both modes ×3, symbol
    retain-then-strip, fail-closed artifact gating. Tag pushes do not trigger `build.yml`
    directly (its `branches` filter excludes tag events), so nothing builds twice.
-3. **Creates a DRAFT GitHub Release** with the **exact per-platform archives CI built and
-   validated** (from the `Anamorph-<OS>-release` artifacts) — renamed to
-   `Anamorph-<version>-<OS>.zip`, never unpacked or re-packed, so Unix permissions,
-   symlinks and the signed macOS bundle layout inside them are untouched —
+3. **Creates a DRAFT GitHub Release** with the **exact per-platform payloads CI built and
+   validated** (the `Anamorph-<OS>` staging trees) — archived as
+   `Anamorph-<version>-<OS>.zip` with the executable bits the artifact transport drops
+   restored on the known payload paths and then verified fail-closed inside the zip —
    plus the two installers (`Anamorph-<version>-Windows-Installer.exe`,
    `Anamorph-<version>-macOS.pkg`; already version-named at build time, fail-closed on
    absence or version skew, moved unmodified — the Linux installer is `install.sh` inside

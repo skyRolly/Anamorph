@@ -71,8 +71,8 @@ reproduced in [`NOTICE`](NOTICE) and inventoried in
 1. **Independent JPEG Group (libjpeg)** — the IJG licence forbids using an IJG author's or
    company name in advertising or publicity relating to the software without prior written
    permission. Anamorph does not. The separate mandatory acknowledgement — *"this software is
-   based in part on the work of the Independent JPEG Group"* — is carried in every package's
-   `INSTALL.txt` and in `NOTICE`.
+   based in part on the work of the Independent JPEG Group"* — is carried in `NOTICE`,
+   published as a release asset next to every download.
 2. **Xiph.Org Foundation (FLAC, Ogg Vorbis)** — the BSD 3-clause third clause forbids using the
    Foundation's name, or its contributors' names, to endorse or promote Anamorph without prior
    written permission. Anamorph does not.

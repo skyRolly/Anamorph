@@ -14,8 +14,8 @@ Anamorph/
 ├── CHANGELOG.md            Version history (Keep a Changelog; evidence-cited).
 ├── CLAUDE.md               AI/contributor entry point: mandatory policy pre-read + repo constraints.
 ├── NOTICE                  Third-party attribution that must accompany a binary distribution
-│                           (published as a version-named asset on every GitHub release; each
-│                           package's INSTALL.txt points at it).
+│                           (published as a version-named asset on every GitHub release — the
+│                           sole carrier of the mandatory IJG acknowledgement).
 ├── THIRD_PARTY_LICENSES.md Verified inventory of every third-party component: purpose, origin,
 │                           licence, obligations, what is compiled in vs only vendored, and the
 │                           open licensing decisions. Re-verify after any JUCE bump.
@@ -94,13 +94,13 @@ Anamorph/
 | `scripts/run-pluginval.sh` | pluginval on Linux/macOS (strictness + mode args — `deterministic` \| `randomise`, each ×3; signal-only retry for the X11 host flake). |
 | `scripts/run-pluginval.ps1` | pluginval on Windows (same strictness/mode/×3 structure; exit code is the sole signal). |
 | `src/AbSlotIndex.h` | `anamorph::kNumAbSlots` + `clampAbSlotIndex` — single source of truth for A/B slot sizing/clamping. |
-| `packaging/macos/INSTALL.txt` | macOS install + de-quarantine instructions (ad-hoc signed, not notarized). |
+| `packaging/macos/INSTALL.txt` | macOS install + de-quarantine instructions (ad-hoc signed, not notarized). Installation content only — no testing or attribution section. |
 | `packaging/macos/build-pkg.sh` | Builds the macOS `.pkg` installer (three component packages + productbuild, component selection with a full-install default) from the CI-staged payload. |
 | `packaging/windows/Anamorph.iss` + `INSTALL.txt` | Inno Setup installer script (stable AppId; component page + dual-path destination page, VST3 → Common Files) + Windows install notes (shipped in the zip). |
 | `packaging/linux/install.sh`, `uninstall.sh`, `INSTALL.txt` | System-wide Linux installer/uninstaller (`/usr/lib/vst3`, `/usr/local/bin`, needs root) + install notes; all three ship in the zip. |
 | `docs/user/USER_MANUAL.md` | Full end-user manual (interface, signal flow, algorithms, presets, workflows, troubleshooting); attached to GitHub releases. |
 | `docs/user/INSTALLATION.md` | End-user installation guide for all three platforms (installer + manual routes). |
-| `.github/workflows/build.yml` | 3-OS build + DSP **and state** self-tests + pluginval (strictness-10, both modes ×3, **blocking on all three platforms**); stages the per-platform packages — flat `Anamorph-<OS>` artifacts (loose files), permission-preserving `-release` archives for release.yml, Windows/macOS installers, `-debug` symbols; also callable (`workflow_call`) by release.yml. |
+| `.github/workflows/build.yml` | 3-OS build + DSP **and state** self-tests + pluginval (strictness-10, both modes ×3, **blocking on all three platforms**); stages the per-platform packages — flat `Anamorph-<OS>` artifacts (loose files; release.yml archives the release zip from the same tree), Windows/macOS installers, `-debug` symbols; also callable (`workflow_call`) by release.yml. |
 | `.github/workflows/release.yml` | RH-PR-8 release skeleton: annotated `vX.Y.Z` tag → fail-closed metadata validation → reused build.yml gates → **draft** GitHub Release (versioned artifacts + SHA-256 sums + manifest); `workflow_dispatch` = rehearsal. |
 | `.github/workflows/codeql.yml` | CodeQL (`c-cpp` manual build + `actions`); alerts scoped to repo-own code. See `docs/procedures/CI_CD.md` §Security scanning. |
 | `.github/workflows/msvc.yml` | MSVC `/analyze` → SARIF; JUCE treated as external; path-filtered triggers. |

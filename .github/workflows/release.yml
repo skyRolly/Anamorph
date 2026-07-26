@@ -10,7 +10,7 @@
 #
 #  Pipeline:   validate (tag ⇄ CMake version ⇄ CHANGELOG section, fail-closed)
 #            → build (reused build.yml — the existing release gates)
-#            → draft-release (versioned copies of the SAME artifacts +
+#            → draft-release (versioned archives of the SAME validated +
 #              SHA256SUMS + RELEASE_MANIFEST + CHANGELOG excerpt as notes,
 #              published as a DRAFT GitHub Release — publishing stays a HUMAN
 #              action, after the Level-5 audition per RELEASE_POLICY).
@@ -99,19 +99,20 @@ jobs:
   # The EXISTING build + validation matrix, unchanged: 3 OSes, DSP + state
   # suites, pluginval strictness 10 both modes ×3, retain-then-strip symbol
   # pipeline, fail-closed artifact gating. Artifacts (Anamorph-Linux/-Windows/
-  # -macOS loose-file downloads + *-release source archives + *-debug) land
-  # in THIS run.
+  # -macOS loose-file payloads, the two installers and *-debug) land in THIS
+  # run.
   # --------------------------------------------------------------------------
   build:
     needs: validate
     uses: ./.github/workflows/build.yml
 
   # --------------------------------------------------------------------------
-  # Draft GitHub Release: the EXACT archives the platform packaging steps
-  # built and CI validated (renamed to carry the version — never re-packed,
-  # so permissions/symlinks/bundle layout inside them are untouched), SHA-256
-  # sums, a plain-text manifest (version / tag / commit / CI build
-  # number / per-platform hashes), and the CHANGELOG section as the notes.
+  # Draft GitHub Release: the EXACT staging trees the platform packaging
+  # steps built and CI validated, archived here with the executable bits the
+  # artifact transport drops restored and verified fail-closed, plus the two
+  # installers moved unmodified, SHA-256 sums, a plain-text manifest (version /
+  # tag / commit / CI build number / per-platform hashes), and the CHANGELOG
+  # section as the notes.
   # DRAFT only — publishing is the maintainer's action after the Level-5
   # audition (RELEASE_POLICY precondition 7). Debug-symbol artifacts stay
   # internal per-run artifacts (ADR-0021) and are NOT attached.
@@ -128,11 +129,11 @@ jobs:
       - name: Download customer artifacts (from the build call in this run)
         uses: actions/download-artifact@v8
         with:
-          # The *-release artifacts carry the permission-preserving archives
-          # created at the source by the platform packaging steps; the plain
-          # Anamorph-<OS> artifacts hold loose files for per-push downloads
-          # and are not used here.
-          pattern: "Anamorph-{Linux-release,Windows-release,macOS-release,Windows-installer,macOS-installer}"
+          # The Anamorph-<OS> artifacts hold each platform's validated
+          # staging tree as loose files; the release zips are archived from
+          # them below. The *-debug artifacts stay internal (ADR-0021) and are
+          # deliberately not matched.
+          pattern: "Anamorph-{Linux,Windows,macOS,Windows-installer,macOS-installer}"
           path: stage
 
       - name: Stage versioned assets + sums + manifest
@@ -142,16 +143,45 @@ jobs:
           VERSION="${{ needs.validate.outputs.version }}"
           TAG="v${VERSION}"
           mkdir -p dist
-          # Each *-release artifact carries ONE archive, created at the source
-          # by the platform packaging step (zip -ry / Compress-Archive /
-          # ditto) so Unix modes, symlinks and the signed macOS bundle layout
-          # are preserved INSIDE the archive bytes. Rename ONLY — the exact
-          # bytes CI built and validated are what gets published (no
-          # unzip/re-zip).
+          DIST_ABS="$PWD/dist"
+          # Each Anamorph-<OS> artifact carries the platform's validated
+          # staging tree as loose files — the same tree the installers were
+          # built from, and the same one the per-push artifact serves. The
+          # artifact transport does not carry Unix file modes, so restore the
+          # executable bits on the payload paths, then archive each tree with
+          # its entries at the archive ROOT: extracting a published zip shows
+          # the payload directly (no wrapper folder, no nested archive).
+          # macOS: the ad-hoc signature lives inside each Mach-O and in
+          # Contents/_CodeSignature — ordinary files — so it survives the
+          # round-trip; only the mode bits need restoring.
           for OS in Linux Windows macOS; do
-            SRC="stage/Anamorph-${OS}-release/Anamorph-${OS}.zip"
-            [ -f "$SRC" ] || { echo "::error::expected archive ${SRC} is missing from the build artifacts"; exit 1; }
-            mv "$SRC" "dist/Anamorph-${VERSION}-${OS}.zip"
+            SRC="stage/Anamorph-${OS}"
+            [ -d "$SRC" ] || { echo "::error::expected staging tree ${SRC} is missing from the build artifacts"; exit 1; }
+            case "$OS" in
+              Linux)
+                chmod 755 "$SRC/Anamorph" "$SRC/install.sh" "$SRC/uninstall.sh"
+                find "$SRC" -type f -name '*.so' -exec chmod 755 {} + ;;
+              macOS)
+                find "$SRC" -type f -path '*/Contents/MacOS/*' -exec chmod 755 {} + ;;
+              Windows)
+                : ;;   # the Windows payload carries no Unix modes
+            esac
+            (cd "$SRC" && zip -qry "${DIST_ABS}/Anamorph-${VERSION}-${OS}.zip" .)
+          done
+          # Fail-closed: every executable a platform needs must be present in
+          # the published zip AND carry its mode. A silent permission
+          # regression here would ship a package that cannot load or run.
+          for ENTRY in \
+            "Linux:Anamorph" \
+            "Linux:install.sh" \
+            "Linux:uninstall.sh" \
+            "Linux:Anamorph.vst3/Contents/x86_64-linux/Anamorph.so" \
+            "macOS:Anamorph.vst3/Contents/MacOS/Anamorph" \
+            "macOS:Anamorph.component/Contents/MacOS/Anamorph" \
+            "macOS:Anamorph.app/Contents/MacOS/Anamorph"; do
+            OS="${ENTRY%%:*}"; F="${ENTRY#*:}"
+            zipinfo "dist/Anamorph-${VERSION}-${OS}.zip" "$F" 2>/dev/null | grep -q '^-rwx' \
+              || { echo "::error::${F} is missing or lost its executable bit in Anamorph-${VERSION}-${OS}.zip"; exit 1; }
           done
           # Installers (v0.9.0): built by build.yml's packaging steps with
           # the version already embedded in the name (the Linux installer is
