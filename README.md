@@ -82,18 +82,32 @@ The full technical documentation lives in **[`docs/`](docs/)**:
 - **How-to:** [`docs/procedures/`](docs/procedures/) (build, CI/CD, testing, packaging, release)
 - **Rules (binding):** [`docs/policies/`](docs/policies/) (real-time audio, threading, DSP, compatibility, AI-agent)
 - **History & status:** [`CHANGELOG.md`](CHANGELOG.md) · [`docs/POSTMORTEMS.md`](docs/POSTMORTEMS.md) · [`docs/KNOWN_ISSUES.md`](docs/KNOWN_ISSUES.md) · [`docs/FUTURE_RISKS.md`](docs/FUTURE_RISKS.md)
-- **Support & compliance:** [`SUPPORT.md`](SUPPORT.md) · [`NOTICE`](NOTICE) · [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md)
+
+The documentation falls into three classes, kept deliberately separate:
+**user documentation** ([`docs/user/`](docs/user/) — installation guide + user manual — and
+[`SUPPORT.md`](SUPPORT.md); the manual and SUPPORT.md are also attached to every release,
+while per-platform install steps ship inside each package as `INSTALL.txt`), **legal /
+licensing documents**
+([`NOTICE`](NOTICE) · [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md); Anamorph's own
+`LICENSE`/EULA are pending — see below), and **developer documentation** (everything else
+under `docs/`, plus `CLAUDE.md`).
 
 ## Licensing
-Anamorph is built on **JUCE**, whose modules are dual-licensed under the **AGPLv3** or the
-commercial JUCE 9 licence. **This repository does not yet declare a licence of its own** — the
-choice of JUCE tier and of Anamorph's own distribution terms is an open owner decision, recorded
-in [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) §"Open licensing decisions" and
-[`docs/architecture/RELEASE_HARDENING_PLAN.md`](docs/architecture/RELEASE_HARDENING_PLAN.md).
+**Anamorph is a closed-source commercial product — it is not open-source software.** No
+`LICENSE` file is present and this repository grants no rights to use, copy, modify or
+redistribute the code or binaries beyond what written permission from RollyTech provides
+(all rights reserved by default). Two owner-level licensing actions remain open, recorded in
+[`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) §"Open licensing decisions" and
+[`docs/architecture/RELEASE_HARDENING_PLAN.md`](docs/architecture/RELEASE_HARDENING_PLAN.md):
+Anamorph's own `LICENSE`/EULA text, and the **commercial JUCE licence tier** — Anamorph is
+built on **JUCE**, whose modules are dual-licensed AGPLv3 or commercial, and a closed-source
+distribution model cannot use the AGPLv3 arm, so the commercial tier must be in place before
+commercial distribution.
 Third-party attribution for the shipped binaries is in [`NOTICE`](NOTICE); the full verified
 inventory (component, purpose, origin, licence, obligations) is in
-[`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md). **Commercial VST3 distribution requires
-reviewing Steinberg's licensing requirements separately.**
+[`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) — both are published with every release.
+**Commercial VST3 distribution requires reviewing Steinberg's licensing requirements
+separately.**
 
 Contributors and AI agents: read **[`CLAUDE.md`](CLAUDE.md)** and `docs/policies/AI_AGENT_POLICY.md`
 before changing code — some changes (parameter IDs, serialization, threading, DSP order, latency)

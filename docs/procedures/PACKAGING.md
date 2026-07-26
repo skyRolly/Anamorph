@@ -8,24 +8,32 @@ Build-artifact structure, installers, code-signing, and install layout. Source:
 
 | Platform | Artifact | Contents |
 |---|---|---|
-| Linux | `Anamorph-Linux` | `Anamorph-Linux.zip` (single archive: stripped `Anamorph.vst3`, `Anamorph` Standalone, `install.sh`/`uninstall.sh`, `INSTALL.txt`, `NOTICE`, `THIRD_PARTY_LICENSES.md`, `SUPPORT.md`) |
+| Linux | `Anamorph-Linux` | the staged files themselves: stripped `Anamorph.vst3`, `Anamorph` Standalone, `install.sh`/`uninstall.sh`, `INSTALL.txt` — the artifact's downloaded zip contains them **directly** (extract once, no wrapper folder, no nested archive) |
+| Linux | `Anamorph-Linux-release` | `Anamorph-Linux.zip` — the permission-preserving source archive of the same staging dir, consumed **only** by `release.yml` |
 | Linux | `Anamorph-Linux-debug` | split debug info (`.debug` files, `.gnu_debuglink`-referenced) |
-| Windows | `Anamorph-Windows` | `Anamorph-Windows.zip` (single archive: `Anamorph.vst3`, `Anamorph.exe` Standalone, `INSTALL.txt`, `NOTICE`, `THIRD_PARTY_LICENSES.md`, `SUPPORT.md`; no PDBs) |
+| Windows | `Anamorph-Windows` | the staged files themselves: `Anamorph.vst3`, `Anamorph.exe` Standalone, `INSTALL.txt` (no PDBs) — extract once, payload directly |
+| Windows | `Anamorph-Windows-release` | `Anamorph-Windows.zip` — the source archive for `release.yml` |
 | Windows | `Anamorph-Windows-installer` | `Anamorph-<version>-Windows-Installer.exe` (Inno Setup, built from the same staged payload) |
 | Windows | `Anamorph-Windows-debug` | linker PDBs for both shipped images |
-| macOS | `Anamorph-macOS` | `Anamorph-macOS.zip` (single `ditto` archive: universal stripped `Anamorph.vst3`, `Anamorph.component` (AU), `Anamorph.app`, `INSTALL.txt`, `NOTICE`, `THIRD_PARTY_LICENSES.md`, `SUPPORT.md`) |
+| macOS | `Anamorph-macOS` | the staged files themselves: universal stripped `Anamorph.vst3`, `Anamorph.component` (AU), `Anamorph.app`, `INSTALL.txt` — extract once, payload directly |
+| macOS | `Anamorph-macOS-release` | `Anamorph-macOS.zip` — the `ditto` source archive for `release.yml` |
 | macOS | `Anamorph-macOS-installer` | `Anamorph-<version>-macOS.pkg` (pkgbuild/productbuild, built from the same staged payload) |
 | macOS | `Anamorph-macOS-debug` | universal dSYM bundles (best-effort under Release+LTO — may be absent, with a CI warning) |
 
-Customer artifacts are **archived at the source** (Info-ZIP `-ry` on Linux, `Compress-Archive`
-on Windows, `ditto -c -k` on macOS) because the artifact transport itself does not preserve
-Unix file permissions or symlinks — the archive bytes do. All three zips store the payload
-at the **archive root** (no versioned wrapper directory, no nested archive): extracting
-shows the packaged files immediately. Extract with `unzip` (Linux) / Explorer (Windows) /
-double-click or `ditto -x -k` (macOS); executable bits and the signed macOS bundle layout
-are intact inside (the Linux staging step self-checks the executable bits of the
-Standalone, the `.so` and the install scripts inside the zip). `release.yml` publishes
-these exact archive bytes untouched (renamed to `Anamorph-<version>-<OS>.zip`).
+Each platform ships **two routes from one validated staging dir**. The plain
+`Anamorph-<OS>` artifact uploads the staged **files**, so the zip GitHub serves for it
+contains the payload at its root — extracting shows the packaged files immediately, with
+no wrapper folder and no nested archive. The trade-off: the artifact transport does not
+preserve Unix file permissions, so on Linux/macOS the executable bits are lost on that
+route — `INSTALL.txt` documents the `sh install.sh` / `chmod +x` fallbacks (the install
+scripts themselves `chmod 755` what they install). The `Anamorph-<OS>-release` artifact
+carries the archive **created at the source** (Info-ZIP `-ry` on Linux, `Compress-Archive`
+on Windows, `ditto -c -k` on macOS; payload at the archive root; the Linux staging step
+self-checks the executable bits inside the zip), which **does** preserve permissions,
+symlinks and the signed macOS bundle layout. `release.yml` publishes those exact archive
+bytes untouched (renamed to `Anamorph-<version>-<OS>.zip`), so **release downloads always
+extract with correct permissions**. The packages contain only what a user needs to
+install — attribution/support files are release-page assets instead (see below).
 
 ## Installers (v0.9.0)
 
@@ -58,23 +66,29 @@ gated steps (`package_windows` / `package_macos_pkg`), each with the version par
   zip-extracted bundles). Not yet signed/notarized — RH-PR-3 signs + notarizes this same
   package.
 
-`release.yml` downloads the two installer artifacts alongside the zips, **fail-closes on a
-missing or version-skewed file name**, moves them into the draft release unmodified, and
-covers them in `SHA256SUMS.txt`. The user manual (`docs/user/USER_MANUAL.md`) is attached
-as `Anamorph-<version>-UserManual.md`.
+`release.yml` downloads the two installer artifacts alongside the `Anamorph-<OS>-release`
+archives, **fail-closes on a missing or version-skewed file name**, moves them into the
+draft release unmodified, and covers them in `SHA256SUMS.txt`. The user manual
+(`docs/user/USER_MANUAL.md`) is attached as `Anamorph-<version>-UserManual.md`, and
+`SUPPORT.md` as `Anamorph-<version>-SUPPORT.md`.
 
-## Third-party attribution in the artifacts
+## Third-party attribution & support files (release-page assets)
 
 Several licences JUCE vendors require their notice to **accompany a binary distribution** —
 libjpeg/IJG, FLAC and Ogg Vorbis mandate it outright; HarfBuzz and SheenBidi carry
-copyright/attribution terms. `NOTICE` and `THIRD_PARTY_LICENSES.md` therefore travel with the
-binaries, not just in the repository:
+copyright/attribution terms. The packages themselves are deliberately **lean** (payload +
+`INSTALL.txt` only — no attribution or support files inside; owner decision for the
+closed-source commercial product, 2026-07-26). The obligations are discharged like this:
 
-| Route | How the attribution arrives |
+| Where | What |
 |---|---|
-| All three zips | `NOTICE`, `THIRD_PARTY_LICENSES.md` and `SUPPORT.md` staged into the archive root next to `INSTALL.txt` (each `INSTALL.txt` points at `SUPPORT.md`, so it has to be there) |
-| Windows installer | `[Files]` entries into `{app}`, **unconditional** — all three install whichever components the user selects |
-| macOS `.pkg` | the package payload is the three bundles only, so the attribution rides on the release page instead: `Anamorph-<version>-NOTICE.txt` + `Anamorph-<version>-THIRD_PARTY_LICENSES.md`, version-named so `SHA256SUMS.txt` covers them |
+| Release page (every download route) | `Anamorph-<version>-NOTICE.txt`, `Anamorph-<version>-THIRD_PARTY_LICENSES.md` and `Anamorph-<version>-SUPPORT.md` published next to the zips/installers, version-named so `SHA256SUMS.txt` covers them |
+| Inside every package | each `INSTALL.txt` carries the **mandatory IJG acknowledgement** ("based in part on the work of the Independent JPEG Group") plus a pointer to the release-page attribution files and the online support guide |
+| Repository | `NOTICE` and `THIRD_PARTY_LICENSES.md` at the root remain the source the release assets are copied from |
+
+Anyone **redistributing** the binaries outside the release page (e.g. mirroring a zip alone)
+must carry the `NOTICE`/`THIRD_PARTY_LICENSES.md` files along with it — the notice-with-binaries
+obligations attach to the distribution, wherever it happens.
 
 The inventory itself — what is compiled in, what is only vendored, and how that was verified —
 is in [`THIRD_PARTY_LICENSES.md`](../../THIRD_PARTY_LICENSES.md). Re-verify it after any JUCE

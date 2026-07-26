@@ -16,12 +16,13 @@ skeleton, RH-PR-8) and the security-scanning workflows listed in
 as a no-release **rehearsal** (validate + full build only). Jobs: fail-closed metadata
 validation (tag ⇄ `CMakeLists.txt` version ⇄ `CHANGELOG.md` section, annotated-tag check) →
 `build.yml` via `workflow_call` (single build, identical gates and artifacts) → **draft**
-GitHub Release (the exact source-archived platform zips renamed to
-`Anamorph-<version>-<OS>.zip` — never re-packed, preserving permissions/symlinks/bundle
-layout — + the two installers (Windows Inno Setup exe, macOS pkg; the Linux installer is
-`install.sh` inside the Linux zip), already version-named at build time and moved
-unmodified after a fail-closed name/version check, + `Anamorph-<version>-UserManual.md`
-+ `Anamorph-<version>-NOTICE.txt` + `Anamorph-<version>-THIRD_PARTY_LICENSES.md`
+GitHub Release (the exact source-archived platform zips — from the `Anamorph-<OS>-release`
+artifacts — renamed to `Anamorph-<version>-<OS>.zip`, never re-packed, preserving
+permissions/symlinks/bundle layout, + the two installers (Windows Inno Setup exe, macOS
+pkg; the Linux installer is `install.sh` inside the Linux zip), already version-named at
+build time and moved unmodified after a fail-closed name/version check,
++ `Anamorph-<version>-UserManual.md` + `Anamorph-<version>-NOTICE.txt`
++ `Anamorph-<version>-THIRD_PARTY_LICENSES.md` + `Anamorph-<version>-SUPPORT.md`
 + `SHA256SUMS.txt` over all assets + `RELEASE_MANIFEST.txt` + the CHANGELOG section as notes; `contents: write` scoped to that one
 job; publishing the draft stays a manual maintainer action per RELEASE_POLICY). No
 third-party actions beyond `actions/checkout` / `actions/download-artifact` + the `gh` CLI
@@ -71,9 +72,11 @@ failures as green and has been removed). Evidence [Verified]: `.github/workflows
    the GPU-less/headless `windows-latest` runner cannot host the editor GUI tests (environmental, not a
    plugin defect — the editor validates on Linux + macOS; see KI-007). This skips one *test category*
    on one runner, distinct from the mode-level "never skip" rule above; all non-GUI tests still block.
-7. **Stage + upload artifacts** (`actions/upload-artifact@v7`) — public artifacts plus a
-   separate `Anamorph-<OS>-debug` artifact per platform (crash-symbolication material; never
-   mixed into the public one). All staging is strict: no `|| true`, `if-no-files-found: error`.
+7. **Stage + upload artifacts** (`actions/upload-artifact@v7`) — per platform: the public
+   `Anamorph-<OS>` loose-file artifact, the `Anamorph-<OS>-release` source archive (for
+   `release.yml`), and a separate `Anamorph-<OS>-debug` artifact (crash-symbolication
+   material; never mixed into the public one). All staging is strict: no `|| true`,
+   `if-no-files-found: error`.
    **Customer uploads are fail-closed**: each requires the DSP self-tests AND its own
    strip/staging/packaging step to have succeeded (`steps.<id>.outcome` gating), and the staging
    steps self-validate (no symbol table, no debug files in the public copy). A pluginval-only
@@ -101,14 +104,24 @@ miss. Evidence [Verified]: `.github/workflows/build.yml`.
 
 | Artifact | Contents | `if-no-files-found` |
 |---|---|---|
-| `Anamorph-Linux` | `Anamorph-Linux.zip`: stripped `Anamorph.vst3` + `Anamorph` (Standalone) + `install.sh`/`uninstall.sh` + `INSTALL.txt` + `NOTICE` + `THIRD_PARTY_LICENSES.md` + `SUPPORT.md` | error |
+| `Anamorph-Linux` | loose staged files (extract the artifact zip once → payload directly): stripped `Anamorph.vst3` + `Anamorph` (Standalone) + `install.sh`/`uninstall.sh` + `INSTALL.txt` | error |
+| `Anamorph-Linux-release` | `Anamorph-Linux.zip` — the permission-preserving source archive, consumed only by `release.yml` | error |
 | `Anamorph-Linux-debug` | `Anamorph.vst3.so.debug`, `Anamorph.standalone.debug` (split debug info) | error |
-| `Anamorph-Windows` | `Anamorph-Windows.zip`: `Anamorph.vst3` + `Anamorph.exe` (Standalone; PDBs removed) + `INSTALL.txt` + `NOTICE` + `THIRD_PARTY_LICENSES.md` + `SUPPORT.md` | error |
+| `Anamorph-Windows` | loose staged files: `Anamorph.vst3` + `Anamorph.exe` (Standalone; PDBs removed) + `INSTALL.txt` | error |
+| `Anamorph-Windows-release` | `Anamorph-Windows.zip` — the source archive for `release.yml` | error |
 | `Anamorph-Windows-installer` | `Anamorph-<version>-Windows-Installer.exe` (Inno Setup) | error |
 | `Anamorph-Windows-debug` | `Anamorph.vst3.pdb`, `Anamorph.standalone.pdb` | error |
-| `Anamorph-macOS` | `Anamorph-macOS.zip`: universal stripped `Anamorph.vst3` + `.component` (AU) + `.app` + `INSTALL.txt` + `NOTICE` + `THIRD_PARTY_LICENSES.md` + `SUPPORT.md` | error |
+| `Anamorph-macOS` | loose staged files: universal stripped `Anamorph.vst3` + `.component` (AU) + `.app` + `INSTALL.txt` | error |
+| `Anamorph-macOS-release` | `Anamorph-macOS.zip` — the `ditto` source archive for `release.yml` | error |
 | `Anamorph-macOS-installer` | `Anamorph-<version>-macOS.pkg` (VST3 + AU + app components) | error |
 | `Anamorph-macOS-debug` | `Anamorph.vst3.dSYM`, `Anamorph.component.dSYM`, `Anamorph.app.dSYM` — **best-effort**: the upload step is skipped (with a CI warning) when Release+LTO yields no usable dSYM, so this artifact can be absent | error (when it runs) |
+
+The plain `Anamorph-<OS>` artifacts hold **loose files** so a downloaded artifact extracts
+straight to the payload (no nested archive); the artifact transport drops Unix executable
+bits on that route (`INSTALL.txt` documents the fallbacks). The `-release` artifacts carry
+the archives created at the source — permissions/symlinks/bundle layout intact — and are
+what `release.yml` publishes byte-for-byte. Attribution/support files are **not** inside
+the packages; they ship as release-page assets (`PACKAGING.md` §Third-party attribution).
 
 The macOS job captures dSYMs, strips, then ad-hoc codesigns the bundles, verifies both arch
 slices with `lipo -archs`, and asserts the stripped VST3 still exports `GetPluginFactory` — all

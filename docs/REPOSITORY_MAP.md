@@ -14,7 +14,8 @@ Anamorph/
 ├── CHANGELOG.md            Version history (Keep a Changelog; evidence-cited).
 ├── CLAUDE.md               AI/contributor entry point: mandatory policy pre-read + repo constraints.
 ├── NOTICE                  Third-party attribution that must accompany a binary distribution
-│                           (ships inside every zip, the Windows installer, and as a release asset).
+│                           (published as a version-named asset on every GitHub release; each
+│                           package's INSTALL.txt points at it).
 ├── THIRD_PARTY_LICENSES.md Verified inventory of every third-party component: purpose, origin,
 │                           licence, obligations, what is compiled in vs only vendored, and the
 │                           open licensing decisions. Re-verify after any JUCE bump.
@@ -92,7 +93,7 @@ Anamorph/
 | `packaging/linux/install.sh`, `uninstall.sh`, `INSTALL.txt` | System-wide Linux installer/uninstaller (`/usr/lib/vst3`, `/usr/local/bin`, needs root) + install notes; all three ship in the zip. |
 | `docs/user/USER_MANUAL.md` | Full end-user manual (interface, signal flow, algorithms, presets, workflows, troubleshooting); attached to GitHub releases. |
 | `docs/user/INSTALLATION.md` | End-user installation guide for all three platforms (installer + manual routes). |
-| `.github/workflows/build.yml` | 3-OS build + DSP tests + pluginval; strictness-10, both modes ×3, **blocking on all three platforms**; also callable (`workflow_call`) by release.yml. |
+| `.github/workflows/build.yml` | 3-OS build + DSP **and state** self-tests + pluginval (strictness-10, both modes ×3, **blocking on all three platforms**); stages the per-platform packages — flat `Anamorph-<OS>` artifacts (loose files), permission-preserving `-release` archives for release.yml, Windows/macOS installers, `-debug` symbols; also callable (`workflow_call`) by release.yml. |
 | `.github/workflows/release.yml` | RH-PR-8 release skeleton: annotated `vX.Y.Z` tag → fail-closed metadata validation → reused build.yml gates → **draft** GitHub Release (versioned artifacts + SHA-256 sums + manifest); `workflow_dispatch` = rehearsal. |
 | `.github/workflows/codeql.yml` | CodeQL (`c-cpp` manual build + `actions`); alerts scoped to repo-own code. See `docs/procedures/CI_CD.md` §Security scanning. |
 | `.github/workflows/msvc.yml` | MSVC `/analyze` → SARIF; JUCE treated as external; path-filtered triggers. |

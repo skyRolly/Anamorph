@@ -273,3 +273,19 @@ changelog sense; the packaging additions are recorded there because they alter w
 
 Then `git tag -a v0.9.0` → the draft GitHub Release → manual publish. Steps 1-3 gate the tag;
 step 4 gates selling it.
+
+---
+
+## Addendum (2026-07-26) — attribution route superseded by owner decision
+
+The in-package attribution route this audit implemented (NOTICE / THIRD_PARTY_LICENSES.md /
+SUPPORT.md staged into all three zips and the Windows installer) was **superseded**: the owner
+stated Anamorph is a closed-source commercial plugin and directed that the packages stay lean.
+The files now accompany every download as **version-named release-page assets**
+(`Anamorph-<version>-{NOTICE.txt,THIRD_PARTY_LICENSES.md,SUPPORT.md}`), and every `INSTALL.txt`
+carries the mandatory IJG acknowledgement plus a pointer to them. Additionally, the stated
+closed-source model rules out the AGPLv3 arm of the JUCE dual licence, so RH-F1 is now
+specifically "obtain the commercial JUCE tier + write LICENSE/EULA". Current state:
+`docs/procedures/PACKAGING.md` §"Third-party attribution & support files";
+`docs/policies/RELEASE_POLICY.md` §"Third-party attribution". This section records the change of
+route only — the audit body above is the historical record and is left unedited.

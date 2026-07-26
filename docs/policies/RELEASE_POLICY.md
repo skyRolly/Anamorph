@@ -22,31 +22,40 @@ Repository Governance Policy. Preconditions that must hold before a version ship
 ## Artifacts
 
 A release corresponds to the CI artifacts built per push: `Anamorph-Linux`, `Anamorph-Windows`,
-`Anamorph-macOS` (universal VST3 + AU + Standalone), plus the two installer artifacts
-`Anamorph-Windows-installer` and `Anamorph-macOS-installer`. See `procedures/PACKAGING.md`.
+`Anamorph-macOS` (universal VST3 + AU + Standalone; loose files — a downloaded artifact
+extracts straight to the payload), their `Anamorph-<OS>-release` source archives
+(permission-preserving, consumed only by the release pipeline), plus the two installer
+artifacts `Anamorph-Windows-installer` and `Anamorph-macOS-installer`. See
+`procedures/PACKAGING.md`.
 Since RH-PR-8, pushing an annotated `vX.Y.Z` release tag additionally produces a **draft**
-GitHub Release carrying the **exact archives CI built and validated** (renamed with the
-version, never re-packed) + the two installers (moved unmodified, fail-closed on version skew)
-+ the user manual + `NOTICE` and `THIRD_PARTY_LICENSES.md` + SHA-256 sums over all assets + a
-traceability manifest, via `.github/workflows/release.yml` (metadata validated fail-closed; the
-existing `build.yml` gates are reused unchanged). **Publishing the draft is a manual maintainer
-action** after precondition 7 (Level-5 audition) — the pipeline cannot ship a release on its
-own. See `procedures/RELEASE_PROCESS.md` §Tagging.
+GitHub Release carrying the **exact archives CI built and validated** (the `-release`
+artifacts, renamed with the version, never re-packed) + the two installers (moved
+unmodified, fail-closed on version skew) + the user manual + `NOTICE`,
+`THIRD_PARTY_LICENSES.md` and `SUPPORT.md` as version-named assets + SHA-256 sums over all
+assets + a traceability manifest, via `.github/workflows/release.yml` (metadata validated
+fail-closed; the existing `build.yml` gates are reused unchanged). **Publishing the draft is
+a manual maintainer action** after precondition 7 (Level-5 audition) — the pipeline cannot
+ship a release on its own. See `procedures/RELEASE_PROCESS.md` §Tagging.
 
 ## Third-party attribution (required with every release)
 
-`NOTICE` and `THIRD_PARTY_LICENSES.md` must ship **with the binaries**, not only in the
-repository: several licences JUCE vendors (libjpeg/IJG, FLAC, Ogg Vorbis) require their notice
-to accompany a binary distribution. They are staged into all three zips, installed by the
-Windows installer, and attached to the GitHub Release (which covers the macOS `.pkg` route).
+`NOTICE` and `THIRD_PARTY_LICENSES.md` must **accompany every binary distribution**, not
+only sit in the repository: several licences JUCE vendors (libjpeg/IJG, FLAC, Ogg Vorbis)
+require their notice with a binary distribution. Since 2026-07-26 (owner decision — the
+packages stay lean for the closed-source commercial product) they are discharged as
+**version-named release-page assets** published next to every zip/installer, while each
+package's `INSTALL.txt` carries the mandatory IJG acknowledgement plus a pointer to those
+assets. A release **must not be published** without the `Anamorph-<version>-NOTICE.txt` and
+`Anamorph-<version>-THIRD_PARTY_LICENSES.md` assets attached; redistributing the binaries
+outside the release page requires carrying those files along.
 `THIRD_PARTY_LICENSES.md` must be **re-verified after any JUCE version bump** — the inventory
 is derived from the pinned tree, and two components (FreeType and stb, vendored inside PlutoVG)
 do not appear in JUCE's own `LICENSE.md`. See `procedures/PACKAGING.md` §"Third-party
-attribution in the artifacts".
+attribution & support files".
 
 ## Versioning
 
 `MAJOR.MINOR.PATCH`, pre-1.0 (< 1.0.0 = pre-release line), plus a CI build/dev number passed as
 `-DANAMORPH_BUILD_NUMBER=${run_number}` and shown in the About box.
-Evidence [Verified]: CMakeLists.txt:14,181-187; .github/workflows/build.yml:60,186,442 (the
+Evidence [Verified]: CMakeLists.txt:14,181-187; .github/workflows/build.yml:60,199,466 (the
 per-OS Configure steps passing `-DANAMORPH_BUILD_NUMBER`).

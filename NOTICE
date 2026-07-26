@@ -17,9 +17,10 @@ Framework
 Anamorph is built with the JUCE framework (Raw Material Software Limited),
 pinned to JUCE 9.0.0 (commit f8f8864172464b9adf9eba6101e1f784838d1597).
 The JUCE Framework modules are dual-licensed under the AGPLv3 and the
-commercial JUCE 9 licence. Anamorph's distribution terms under that dual
-licence are an open owner decision — see THIRD_PARTY_LICENSES.md §"Open
-licensing decisions" and docs/architecture/RELEASE_HARDENING_PLAN.md.
+commercial JUCE 9 licence. Anamorph is a closed-source commercial product,
+which cannot satisfy the AGPLv3 arm; obtaining the commercial JUCE licence
+is an open owner action — see THIRD_PARTY_LICENSES.md §"Open licensing
+decisions" and docs/architecture/RELEASE_HARDENING_PLAN.md.
 
 --------------------------------------------------------------------------
 Independent JPEG Group (libjpeg)

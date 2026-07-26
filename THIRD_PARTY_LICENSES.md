@@ -51,9 +51,11 @@ JUCE's own words: *"The JUCE Framework modules are dual-licensed under the AGPLv
 commercial JUCE licence."* Every JUCE source file repeats the choice in its header comment
 (see e.g. `modules/juce_audio_formats/codecs/juce_MP3AudioFormat.cpp:1-33`).
 
-**Which arm of that dual licence Anamorph is distributed under is an open owner decision.**
-It is not recorded anywhere in this repository, and the repository currently declares no
-licence of its own. See [Open licensing decisions](#open-licensing-decisions).
+**The owner has stated the product model (2026-07-26): closed-source commercial.** That
+model cannot satisfy the AGPLv3 arm, so the commercial JUCE 9 licence must be in place
+before commercial distribution; obtaining it (and which tier) remains an open owner action —
+see [Open licensing decisions](#open-licensing-decisions). The repository currently declares
+no licence of its own.
 
 ---
 
@@ -86,7 +88,11 @@ override them. Anamorph itself never reads audio files; the codecs come along wi
 ### Notices that are *mandatory*, not courtesy
 
 Three of the above impose an attribution obligation on binary distribution. All three are
-discharged by [`NOTICE`](NOTICE):
+discharged by [`NOTICE`](NOTICE), which — together with this file — is published as a
+**version-named asset on every GitHub release**, next to the zips and installers (the
+packages themselves are deliberately lean; each `INSTALL.txt` inside them carries the IJG
+acknowledgement verbatim plus a pointer to these release-page files). Anyone redistributing
+the binaries away from the release page must carry `NOTICE` and this file along:
 
 - **libjpeg (IJG)** — condition (2): *"If only executable code is distributed, then the
   accompanying documentation must state that 'this software is based in part on the work of the
@@ -193,10 +199,13 @@ notice obligation attaches to the shipped product.
 These require an **owner/business decision** and are deliberately left open here. None of them
 is resolved by this document.
 
-1. **Which arm of the JUCE 9 dual licence Anamorph ships under.** JUCE 9 modules are AGPLv3 *or*
-   commercial. The choice determines whether Anamorph's own source must be offered under
-   AGPLv3-compatible terms, and it is the input to decision 2. Nothing in this repository
-   records a choice.
+1. **Obtaining the commercial JUCE 9 licence tier.** JUCE 9 modules are AGPLv3 *or*
+   commercial. The owner has stated the product intent (2026-07-26): **Anamorph is a
+   closed-source commercial plugin.** The AGPLv3 arm requires offering the source under
+   AGPLv3-compatible terms, which a closed-source distribution model does not do — so as a
+   factual consequence of that stated intent, **a commercial JUCE licence must be in place
+   before commercial distribution**. Which tier, and its acquisition, remain owner/legal
+   actions; nothing in this repository records that purchase.
 2. **Anamorph's own licence.** The repository root has **no `LICENSE` file**, so the terms under
    which Anamorph's own source and binaries are offered are undeclared. `docs/user/USER_MANUAL.md`
    carries a bare copyright line ("© 2026 RollyTech") and nothing more.
@@ -204,6 +213,6 @@ is resolved by this document.
    sold. The installers do not currently present one.
 4. **Steinberg VST 3 requirements** for commercial distribution and trademark use — see §3.
 
-Blockers 1–4 are recorded in `docs/architecture/RELEASE_HARDENING_PLAN.md` (RH-R10 and the
-ADR-0016..0020 decision set). They are **not** engineering tasks and cannot be closed by a code
-change.
+Blockers 1–4 are recorded in `docs/architecture/RELEASE_HARDENING_PLAN.md` (RH-R11 / RH-F1;
+RH-R10 / RH-F2 for the Steinberg item). They are **not** engineering tasks and cannot be closed
+by a code change.

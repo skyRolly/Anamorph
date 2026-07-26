@@ -25,6 +25,20 @@ source must be corrected to match.
 > `docs/policies/ADR_POLICY.md`). Policy weight is higher than general descriptive
 > Architecture because a Policy is a hard rule, not a description.
 
+## Scope: the other two documentation classes
+
+The numbered order above governs the **developer documentation** chain. The README's other
+two classes sit alongside it, not inside it:
+
+- **User documentation** (`docs/user/`, `SUPPORT.md`) is *derived*: it must describe what
+  the code and developer chain establish, and on any conflict it is the user document that
+  gets corrected (per `DOCUMENTATION_LIFECYCLE_POLICY.md`). It never serves as evidence.
+- **Legal documents** (`NOTICE`, `THIRD_PARTY_LICENSES.md`) are authoritative for
+  third-party attribution and licence *facts* — each claim cites the licence file it was
+  read from — and change only through the re-verification procedure they describe
+  (`THIRD_PARTY_LICENSES.md` §"How this inventory was produced"). Where a developer doc
+  disagrees with them on an attribution fact, the developer doc is corrected.
+
 ## Conflict-resolution rule
 
 If documentation and source code disagree:

@@ -20,11 +20,13 @@ the hard compatibility gate is `RELEASE_COMPATIBILITY_CHECKLIST.md`.
 
 ## Build the release artifacts
 
-Releases correspond to the CI artifacts built per push (`CI_CD.md`):
-`Anamorph-Linux`, `Anamorph-Windows`, `Anamorph-macOS` (flat archives; the Linux one
-carries the install scripts) plus the installers `Anamorph-Windows-installer` and
-`Anamorph-macOS-installer` (`PACKAGING.md` §Installers). Push the release commit and use that run's
-artifacts, or build locally per `BUILD.md`. The CI build number is `${{ github.run_number }}`
+Releases publish the `Anamorph-<OS>-release` source archives built per push (`CI_CD.md`) —
+permission-preserving flat zips; the Linux one carries the install scripts — plus the
+installers `Anamorph-Windows-installer` and `Anamorph-macOS-installer` (`PACKAGING.md`
+§Installers). The plain `Anamorph-<OS>` artifacts are loose-file per-push downloads (the
+artifact transport drops Unix executable bits on that route) and are **not** release
+material. Push the release commit and use that run's artifacts, or build locally per
+`BUILD.md`. The CI build number is `${{ github.run_number }}`
 (`-DANAMORPH_BUILD_NUMBER=...`), shown in the About box.
 
 ## macOS signing / notarization
@@ -61,15 +63,17 @@ Pushing the tag triggers `.github/workflows/release.yml`, which:
    retain-then-strip, fail-closed artifact gating. Tag pushes do not trigger `build.yml`
    directly (its `branches` filter excludes tag events), so nothing builds twice.
 3. **Creates a DRAFT GitHub Release** with the **exact per-platform archives CI built and
-   validated** — renamed to `Anamorph-<version>-<OS>.zip`, never unpacked or re-packed, so
-   Unix permissions, symlinks and the signed macOS bundle layout inside them are untouched —
+   validated** (from the `Anamorph-<OS>-release` artifacts) — renamed to
+   `Anamorph-<version>-<OS>.zip`, never unpacked or re-packed, so Unix permissions,
+   symlinks and the signed macOS bundle layout inside them are untouched —
    plus the two installers (`Anamorph-<version>-Windows-Installer.exe`,
    `Anamorph-<version>-macOS.pkg`; already version-named at build time, fail-closed on
    absence or version skew, moved unmodified — the Linux installer is `install.sh` inside
    the Linux zip),
-   the user manual (`Anamorph-<version>-UserManual.md`), the third-party attribution
-   (`Anamorph-<version>-NOTICE.txt`, `Anamorph-<version>-THIRD_PARTY_LICENSES.md` — the
-   `.pkg` payload is the bundles only, so these ride on the release page), `SHA256SUMS.txt`
+   the user manual (`Anamorph-<version>-UserManual.md`), the third-party attribution and
+   support guide (`Anamorph-<version>-NOTICE.txt`, `Anamorph-<version>-THIRD_PARTY_LICENSES.md`,
+   `Anamorph-<version>-SUPPORT.md` — the packages themselves are lean, so these accompany
+   every download route from the release page), `SHA256SUMS.txt`
    over all assets, and a `RELEASE_MANIFEST.txt` (version / tag / commit / CI build number /
    hashes / run link), with the CHANGELOG section as the release notes. Debug-symbol artifacts stay
    internal (ADR-0021).
