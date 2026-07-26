@@ -125,9 +125,11 @@ jobs:
           install -m 755 packaging/linux/uninstall.sh "$DIST/uninstall.sh"
           # Attribution/support files (NOTICE, THIRD_PARTY_LICENSES.md,
           # SUPPORT.md) are deliberately NOT staged: the packages carry only
-          # what a user needs to install. They ship as release-page assets
-          # instead (release.yml), and each INSTALL.txt carries the mandatory
-          # IJG acknowledgement plus a pointer to them.
+          # what a user needs to install, and INSTALL.txt is installation-only
+          # since 2026-07-26. They ship as version-named release-page assets
+          # (release.yml), which are therefore the SOLE carrier of the
+          # mandatory IJG acknowledgement -- RELEASE_POLICY forbids publishing
+          # a release without them.
           # The customer artifact must contain no symbol table and no debug files.
           while IFS= read -r -d '' ELF; do
             if readelf -S "$ELF" 2>/dev/null | grep -q '\.symtab'; then
@@ -137,25 +139,14 @@ jobs:
           if find "$DIST" -type f \( -name '*.debug' -o -name '*.pdb' -o -name '*.dSYM' \) | grep -q .; then
             echo "::error::customer artifact contains debug files"; exit 1
           fi
-          # Two artifact routes ship from this ONE validated staging dir:
-          #  * Anamorph-Linux uploads the staged FILES themselves, so the zip
-          #    GitHub serves for the artifact contains the payload directly --
-          #    extract once, no wrapper folder, no nested archive. The
-          #    artifact transport does NOT preserve Unix file modes; the
-          #    INSTALL.txt install commands and troubleshooting cover that
-          #    (sh install.sh / chmod +x).
-          #  * Anamorph-Linux-release carries the Info-ZIP archive below,
-          #    created at the source with modes + symlinks stored and entries
-          #    at the archive ROOT. release.yml publishes these exact bytes
-          #    untouched, so the RELEASE zips keep the executable bits on
-          #    Anamorph.so / the Standalone binary / install.sh.
-          (cd "$DIST" && zip -qry ../Anamorph-Linux.zip .)
-          # Self-check: executable bits survived into the zip.
-          for f in Anamorph install.sh uninstall.sh \
-                   Anamorph.vst3/Contents/x86_64-linux/Anamorph.so; do
-            zipinfo dist/Anamorph-Linux.zip "$f" | grep -q '^-rwx' \
-              || { echo "::error::$f lost its executable bit in the zip"; exit 1; }
-          done
+          # ONE artifact ships from this validated staging dir: Anamorph-Linux
+          # uploads the staged FILES themselves, so the zip GitHub serves for
+          # the artifact contains the payload directly -- extract once, no
+          # wrapper folder, no nested archive. The artifact transport does NOT
+          # preserve Unix file modes; INSTALL.txt covers that for the per-push
+          # route (sh install.sh / chmod +x), and release.yml restores the
+          # executable bits before archiving the published release zip, behind
+          # its own fail-closed self-check.
 
       # A failed DSP self-test blocks the CUSTOMER upload (fail-closed: only a
       # build that passed its behavioural gate may ship), while a
@@ -166,16 +157,6 @@ jobs:
         with:
           name: Anamorph-Linux
           path: dist/Anamorph-Linux
-          if-no-files-found: error
-
-      # The permission-preserving source archive, for release.yml only (the
-      # release pipeline publishes these exact bytes). Same fail-closed gate.
-      - name: Upload Linux release archive
-        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.stage.outcome == 'success' }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: Anamorph-Linux-release
-          path: dist/Anamorph-Linux.zip
           if-no-files-found: error
 
       # Developer debug artifacts are preserved even when a later step fails
@@ -345,8 +326,10 @@ jobs:
           Copy-Item -Force $exe.FullName $dist
           Copy-Item -Force packaging/windows/INSTALL.txt $dist
           # Attribution/support files are NOT staged (packages carry only what
-          # a user needs to install); they ship as release-page assets, and
-          # INSTALL.txt carries the IJG acknowledgement + a pointer to them.
+          # a user needs to install; INSTALL.txt is installation-only). They
+          # ship as version-named release-page assets, the SOLE carrier of the
+          # mandatory IJG acknowledgement -- RELEASE_POLICY forbids publishing
+          # a release without them.
           # 3) Purge ALL debug material from the public copy BEFORE any
           #    further step that can abort.
           Get-ChildItem -Recurse -Path $dist -File |
@@ -381,12 +364,11 @@ jobs:
           $leak = Get-ChildItem -Recurse -Path $dist -File |
                   Where-Object { $_.Extension -in '.pdb', '.ilk', '.exp', '.debug' }
           if ($leak) { Write-Error ("customer artifact contains debug files: " + ($leak.FullName -join ', ')) }
-          # 6) Release archive (Anamorph-Windows-release artifact) for parity
-          # with Linux/macOS: the release pipeline publishes these exact bytes
-          # untouched on every platform. The Anamorph-Windows artifact itself
-          # uploads the staged FILES, so its downloaded zip contains the
-          # payload directly (extract once, no nested archive).
-          Compress-Archive -Path (Join-Path $dist '*') -DestinationPath 'dist/Anamorph-Windows.zip' -Force
+          # The Anamorph-Windows artifact uploads the staged FILES, so its
+          # downloaded zip contains the payload directly (extract once, no
+          # wrapper folder, no nested archive). release.yml archives the same
+          # staging tree into the published release zip. Windows carries no
+          # Unix file modes, so nothing needs restoring on that route.
 
       # v0.9.0 packaging (additive): a user-installable Inno Setup installer
       # built from the SAME validated (debug-purged) staging directory the zip
@@ -417,16 +399,6 @@ jobs:
         with:
           name: Anamorph-Windows
           path: dist/Anamorph-Windows
-          if-no-files-found: error
-
-      # The source archive for release.yml only (the release pipeline
-      # publishes these exact bytes). Same fail-closed gate.
-      - name: Upload Windows release archive
-        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.stage_windows.outcome == 'success' }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: Anamorph-Windows-release
-          path: dist/Anamorph-Windows.zip
           if-no-files-found: error
 
       # Same fail-closed gate as the customer artifact (tests + its own step).
@@ -598,8 +570,10 @@ jobs:
           cp -R "$APP"  "$DIST/"
           cp packaging/macos/INSTALL.txt "$DIST/INSTALL.txt"
           # Attribution/support files are NOT staged (packages carry only what
-          # a user needs to install); they ship as release-page assets, and
-          # INSTALL.txt carries the IJG acknowledgement + a pointer to them.
+          # a user needs to install; INSTALL.txt is installation-only). They
+          # ship as version-named release-page assets, the SOLE carrier of the
+          # mandatory IJG acknowledgement -- RELEASE_POLICY forbids publishing
+          # a release without them.
           # Verify both slices are present in the universal binary.
           echo "== VST3 arches =="; lipo -archs "$DIST/Anamorph.vst3/Contents/MacOS/Anamorph"
           echo "== AU arches ==";   lipo -archs "$DIST/Anamorph.component/Contents/MacOS/Anamorph"
@@ -611,17 +585,16 @@ jobs:
           if find "$DIST" \( -name '*.dSYM' -o -name '*.debug' -o -name '*.pdb' \) -print | grep -q .; then
             echo "::error::customer artifact contains debug files"; exit 1
           fi
-          # Release archive, made with ditto (the bundle-safe macOS archiver:
-          # preserves permissions, symlinks, extended attributes and the
-          # signed bundle layout; the actions/upload-artifact transport
-          # preserves none of those). It ships via the Anamorph-macOS-release
-          # artifact and release.yml publishes these exact bytes untouched.
-          # The Anamorph-macOS artifact itself uploads the staged FILES, so
-          # its downloaded zip contains the bundles directly (extract once,
-          # no nested archive) -- at the cost of the executable bits, which
-          # that transport drops; INSTALL.txt documents the chmod fallback
-          # for the Standalone app on that route.
-          /usr/bin/ditto -c -k "$DIST" dist/Anamorph-macOS.zip
+          # The Anamorph-macOS artifact uploads the staged FILES, so its
+          # downloaded zip contains the bundles directly (extract once, no
+          # wrapper folder, no nested archive) -- at the cost of the
+          # executable bits, which the artifact transport drops; INSTALL.txt
+          # documents the chmod fallback for the Standalone app on that
+          # route. release.yml restores those bits on Contents/MacOS/* and
+          # archives the tree into the published release zip. The ad-hoc
+          # signature written above lives inside each Mach-O and in
+          # Contents/_CodeSignature -- ordinary files -- so it survives the
+          # artifact round-trip; only the mode bits need restoring.
 
       # v0.9.0 packaging (additive): a user-installable .pkg (RH-PR-6
       # skeleton) built from the SAME validated staging dir the zip was
@@ -651,16 +624,6 @@ jobs:
         with:
           name: Anamorph-macOS
           path: dist/Anamorph-macOS
-          if-no-files-found: error
-
-      # The ditto source archive for release.yml only (the release pipeline
-      # publishes these exact bytes). Same fail-closed gate.
-      - name: Upload macOS release archive
-        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.package.outcome == 'success' }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: Anamorph-macOS-release
-          path: dist/Anamorph-macOS.zip
           if-no-files-found: error
 
       # Same fail-closed gate as the customer artifact (tests + its own step).

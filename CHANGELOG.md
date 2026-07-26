@@ -27,7 +27,8 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   `/Library/Audio/Plug-Ins` and `/Applications` locations; package payloads carry no
   quarantine attribute, so the manual `xattr` step the zip needs disappears; not yet
   notarized — right-click → Open once — RH-PR-3. All installers are built in CI from the
-  same validated staging directories as the zips; nothing is re-packed downstream.
+  same validated staging directories as the zips; the installers are then moved into the
+  release unmodified, and the release zips are archived from those same validated trees.
   Evidence: PR #87 (v0.9.0 release prep); PR #89 (installer/packaging rework:
   component selection, dual-path destination, system-wide installs, ZIP-only
   artifacts). [Verified]
@@ -38,7 +39,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   plug-in format, reproduction steps, and logs/screenshots where applicable. The GitHub
   **Test report — bug** form asks for exactly those plus install route, Oversampling setting and
   whether the Standalone reproduces it. `SUPPORT.md` is attached to every GitHub release as
-  `Anamorph-<version>-SUPPORT.md`, and every `INSTALL.txt` links the online guide. It states
+  `Anamorph-<version>-SUPPORT.md`. It states
   plainly that Anamorph writes **no log file**, so nobody goes looking for one.
   Evidence: PR #91 (v0.9.0 release-hardening audit); PR #92 (lean packages — support/attribution
   as release-page assets); the internal-testing documentation pass. [Verified]
@@ -52,13 +53,13 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   README's licensing section, and otherwise only where it is operative — those documents, the
   internal testing guide and the developer records. The user-facing set stays on using the
   product: the manual and the installation guide end with a plain copyright line, and each
-  package's `INSTALL.txt` carries one in its own bilingual section, above and separate from the
-  mandatory third-party attribution. Evidence: the internal-testing documentation pass. [Verified]
+  package's `INSTALL.txt` carries one in its own bilingual section. Evidence: the internal-testing documentation pass. [Verified]
 - **Third-party attribution accompanies every download.** `NOTICE` and
   `THIRD_PARTY_LICENSES.md` are published as version-named assets on every GitHub release,
   next to the zips and installers (the packages themselves stay lean — payload +
-  `INSTALL.txt` only, each `INSTALL.txt` carrying the mandatory IJG acknowledgement and a
-  pointer to those assets). `THIRD_PARTY_LICENSES.md` is a verified
+  `INSTALL.txt` only, and `INSTALL.txt` carries installation instructions alone, so the
+  release assets are the sole carrier of the mandatory IJG acknowledgement).
+  `THIRD_PARTY_LICENSES.md` is a verified
   inventory — every component is classified compiled-in vs vendored-but-not-built from the
   build graph and object symbols, which is how it caught two components (FreeType and stb,
   both inside PlutoVG) that JUCE's own `LICENSE.md` does not list. It also corrects the
@@ -89,15 +90,15 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 - **Per-push CI artifacts extract straight to the payload** — downloading `Anamorph-<OS>`
   and extracting the artifact zip shows `Anamorph.vst3`, the Standalone and `INSTALL.txt`
   directly: no nested archive, no wrapper folder. **Release downloads keep correct Unix
-  permissions**: each platform also uploads an internal `Anamorph-<OS>-release` artifact
-  holding an archive created on the build machine itself (`zip -ry` / `Compress-Archive` /
-  `ditto -c -k` — the artifact transport strips file modes from bare directory trees), and
-  the release pipeline publishes those exact bytes, renamed only. On the per-push loose-file
+  permissions**: the artifact transport strips file modes from directory trees, so the
+  release job restores the executable bits on the payload paths before archiving each
+  validated staging tree into `Anamorph-<version>-<OS>.zip`, then fails closed unless every
+  expected executable carries its mode inside the published zip. On the per-push loose-file
   route the executable bits are dropped by the transport; `INSTALL.txt` documents the
   `sh install.sh` / `chmod +x` fallbacks.
-  Evidence: PR #84 / commit `42dd8ae` (source-archived permissions; verified against CI-built
+  Evidence: PR #84 / commit `42dd8ae` (permission handling; verified against CI-built
   bytes in `worklogs/release-hardening/RH_PR8_RELEASE_PIPELINE.md` §6c); PR #92 (flat
-  per-push artifacts + `-release` archive split). [Verified]
+  per-push artifacts); the artifact-cleanup pass (single artifact per platform). [Verified]
 
 ### Compatibility
 - **No parameter, preset, session or DSP behaviour changes in this release.** Sessions and
@@ -135,13 +136,11 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Evidence: PR #82 / commit `d6bdb13`; `worklogs/STATE_HARNESS_v0.8.13.md`. [Verified]
 - **New CI packaging artifacts** `Anamorph-Windows-installer` and `Anamorph-macOS-installer`
   carry the installers above; the Linux payload now additionally carries
-  `install.sh`/`uninstall.sh` (the staging step self-checks the executable bits inside the
-  release archive); each platform uploads an `Anamorph-<OS>-release` source-archive
-  artifact for the release pipeline, and the `-debug` artifacts are unchanged. The release
-  job stages the installers with the same fail-closed, never-re-packed contract as the
-  release zips.
-  Evidence: PR #87 (v0.9.0 release prep); PR #89 (packaging rework); PR #92 (artifact
-  split). [Verified]
+  `install.sh`/`uninstall.sh`. Each platform uploads exactly one customer artifact
+  (`Anamorph-<OS>`) plus its `-debug` symbols; the release job archives the release zip
+  from that same tree and moves the installers in unmodified, both fail-closed.
+  Evidence: PR #87 (v0.9.0 release prep); PR #89 (packaging rework); PR #92 (flat
+  artifacts); the artifact-cleanup pass. [Verified]
 
 ## [0.8.12] — 2026-07-22
 ### Changed

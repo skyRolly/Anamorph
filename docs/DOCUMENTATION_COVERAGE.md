@@ -6,7 +6,27 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **internal-testing preparation & closed-source product documentation pass**
+Last updated: for the **artifact & INSTALL.txt cleanup pass** (2026-07-26, on top of `main` @
+`2d0a906`). **No `src/` change; no installer or runtime behaviour change.** The three internal
+`Anamorph-<OS>-release` artifacts are **removed**, along with the archive-creation steps that fed
+them (`zip -ry` / `Compress-Archive` / `ditto -c -k`): each platform now uploads exactly one
+customer artifact (`Anamorph-<OS>`, loose files) plus its `-debug` symbols. `release.yml`
+downloads those same trees, restores the executable bits the artifact transport drops
+(`Anamorph`, `install.sh`, `uninstall.sh`, `*.so` on Linux; `*/Contents/MacOS/*` on macOS;
+Windows carries no Unix modes), archives each tree with its entries at the archive root, and then
+**fails closed** unless every expected executable is present in the published zip with its mode —
+so release assets keep their names, contents and permissions, and no nested archive is
+reintroduced. The three `packaging/*/INSTALL.txt` files lose their "Testing & third-party
+attribution" section entirely and now carry installation instructions, paths, platform notes and a
+copyright line only; the mandatory IJG acknowledgement therefore rests solely on the
+release-page `NOTICE` asset that `RELEASE_POLICY` requires on every published release. Synced:
+CI_CD (pipeline step 7, artifact table, route note), PACKAGING (artifact table, routes,
+attribution table), RELEASE_POLICY (§Artifacts, §Third-party attribution), RELEASE_PROCESS
+(§Build the release artifacts, §Tagging step 3), REPOSITORY_MAP, HANDOVER (snapshot base,
+distribution), COMMERCIAL_STATUS, KNOWN_ISSUES (KI-015), FUTURE_RISKS (RISK-006), TRADEMARKS §3,
+CHANGELOG `[0.9.0]`, this file.
+
+Prior: for the **internal-testing preparation & closed-source product documentation pass**
 (2026-07-26, PR #94, on top of `main` @ `aecd448`). **No `src/` change.** The v0.9.0 **release date moved to
 2026-07-26** in `CHANGELOG.md` and its two HANDOVER restatements (PR-landing and audit-run dates
 left untouched). `SUPPORT.md` was **rewritten from a public support document into the internal
@@ -27,6 +47,8 @@ operative — the legal class, the internal/testing class (`SUPPORT.md` §1, the
 the developer documents that derive the JUCE-tier consequence. The user-facing set stays on using
 the product: `USER_MANUAL` and `INSTALLATION` end with a plain copyright line, every `INSTALL.txt`
 carries one in its own bilingual section above and separate from the mandatory third-party
+(**superseded 2026-07-26 — see the head entry: `INSTALL.txt` is installation-only, so no
+attribution section remains for it to sit above**)
 attribution (which is unchanged), and the manual's Quick start and FAQ carry no legal wording at
 all.
 Synced: README, SUPPORT, REPOSITORY_MAP (root + `docs/` trees, `user/` branch), SOURCE_OF_TRUTH
@@ -40,9 +62,11 @@ Prior: for the **flat-artifact / lean-package / closed-source documentation pass
 staged files (payload + `INSTALL.txt`; Linux adds `install.sh`/`uninstall.sh` — extract the
 artifact zip once to see them directly; the transport drops exec bits on that route), new
 `Anamorph-<OS>-release` artifacts carry the permission-preserving source archives that
-`release.yml` publishes byte-identically, and `NOTICE`/`THIRD_PARTY_LICENSES.md`/`SUPPORT.md`
+`release.yml` publishes byte-identically (**superseded 2026-07-26 — see the head entry: those
+artifacts are removed and `release.yml` archives the release zips itself**), and `NOTICE`/`THIRD_PARTY_LICENSES.md`/`SUPPORT.md`
 ship **only** as version-named release-page assets — no longer inside any zip or installer
-payload; each `INSTALL.txt` carries the IJG acknowledgement + pointer. README now states the
+payload; each `INSTALL.txt` carries the IJG acknowledgement + pointer (**superseded 2026-07-26 —
+`INSTALL.txt` is installation-only**). README now states the
 product model (closed-source commercial; docs grouped user/legal/developer — the grouping
 was superseded 2026-07-26, see the head entry), and the
 licensing blocker set (KI-015/RISK-006/RH-R11/RH-F1, THIRD_PARTY_LICENSES, NOTICE, HANDOVER)

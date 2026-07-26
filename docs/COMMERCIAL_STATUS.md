@@ -41,14 +41,14 @@ v0.9.0 is being prepared for **internal / beta testing**, not for sale.
 | Channel | What ships | Status |
 |---|---|---|
 | **GitHub Releases** (draft → manually published) | flat permission-preserving zips per platform, Windows Inno Setup installer, macOS `.pkg`, user manual, `NOTICE`, `THIRD_PARTY_LICENSES.md`, `SUPPORT.md`, `SHA256SUMS.txt`, `RELEASE_MANIFEST.txt` | implemented; first tag not yet cut (`RISK-003`) |
-| **Per-push CI artifacts** | loose-file payloads for testers; internal `-release` archives feed the release pipeline | implemented |
+| **Per-push CI artifacts** | loose-file payloads for testers; the same trees are archived into the release zips | implemented |
 | **Commercial storefront** | — | does not exist; not designed |
 
-Packages themselves are deliberately **lean** — payload + `INSTALL.txt` only. Legal and support
-documents accompany a download as release-page assets, with the mandatory IJG acknowledgement
-carried inside every `INSTALL.txt` (`RELEASE_POLICY.md` §"Third-party attribution"). Each
-`INSTALL.txt` also carries Anamorph's own copyright line, kept visually separate from the
-third-party attribution. The product model is stated **once for a general audience** — `README.md`
+Packages themselves are deliberately **lean** — payload + `INSTALL.txt` only, and since
+2026-07-26 `INSTALL.txt` carries installation instructions plus a copyright line and nothing
+else. Legal and support documents accompany a download as release-page assets, which are
+therefore the sole carrier of the mandatory IJG acknowledgement
+(`RELEASE_POLICY.md` §"Third-party attribution"). The product model is stated **once for a general audience** — `README.md`
 §Licensing — and is otherwise kept only where it is operative: §1 above, the legal class
 (`NOTICE`, `EULA.md`, `PRIVACY.md`, `TRADEMARKS.md`, `THIRD_PARTY_LICENSES.md`), the
 internal/testing class (`SUPPORT.md` §1 and the bug-report form) and the developer documents where
@@ -92,7 +92,8 @@ So that these are not re-opened as if outstanding:
 - **Third-party attribution.** `NOTICE` + `THIRD_PARTY_LICENSES.md` inventory every component
   compiled into the binaries, verified against the pinned JUCE tree, and discharge the mandatory
   binary-distribution notices (IJG libjpeg, FLAC, Ogg Vorbis, HarfBuzz, SheenBidi). Published with
-  every release; the IJG line is inside every package. (`RH-R10` engineering half — closed.)
+  every release, and are the sole carrier of the IJG line since `INSTALL.txt` became
+  installation-only. (`RH-R10` engineering half — closed.)
 - **Build/supply-chain hardening.** `ADR-0021`; JUCE pinned to an immutable commit (`ADR-0022`).
 - **Release pipeline.** Tag-triggered, fail-closed, draft-only (`RH-PR-8`).
 - **Installers** for Windows and macOS, plus Linux install scripts (`RH-PR-5b`/`RH-PR-6`) — built
