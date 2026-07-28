@@ -6,7 +6,20 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **artifact & INSTALL.txt cleanup pass** (2026-07-26, on top of `main` @
+Last updated: for the **keynote/launch-video script worklog** (2026-07-28, on top of `main` @
+`82b2f61`). **No `src/` change; no product-document change.** Added
+`worklogs/KEYNOTE_SCRIPT_v0.9.0.md` — a session work product (marketing draft): product
+positioning analysis, selling points, and an English + Chinese launch-video script, all derived
+from the existing developer chain. It is explicitly marked derived content, may never be cited
+as evidence, quotes no unmeasured performance numbers (constraint C2), uses no ™/® symbols
+(`TRADEMARKS.md`), and does not alter product status (`docs/COMMERCIAL_STATUS.md`: v0.9.0
+remains internal-testing, not for sale). Worklogs sit outside the four documentation classes
+(`docs/REPOSITORY_MAP.md` describes `worklogs/` generically), so no
+`REPOSITORY_MAP`/`SOURCE_OF_TRUTH`/README class-table change applies; this entry satisfies the
+audit obligation. Not a changelog entry (no user-visible product change, `CHANGELOG_POLICY.md`
+rule 3).
+
+Prior: for the **artifact & INSTALL.txt cleanup pass** (2026-07-26, on top of `main` @
 `2d0a906`). **No `src/` change; no installer or runtime behaviour change.** The three internal
 `Anamorph-<OS>-release` artifacts are **removed**, along with the archive-creation steps that fed
 them (`zip -ry` / `Compress-Archive` / `ditto -c -k`): each platform now uploads exactly one
