@@ -289,7 +289,7 @@ Create the space you hear."
   §3 are the only mentions.
 - Velvet Noise phrasing is fixed: "a mono sum hears the untouched center" — not "bit-identical."
 - Latency is phrased as *reported*: zero unless oversampling is engaged with nonlinear work.
-- "K-weighted loudness curve" describes the Level Match measurement, and stays secondary to
+- "K-weighted loudness measurement" describes what Level Match uses, and stays secondary to
   its creative purpose (comparing character without a loudness difference). If ITU-R BS.1770
   is ever named on screen, it appears only as the measurement curve — never as a compliance
   or broadcast-standard claim.
