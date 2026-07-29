@@ -72,14 +72,14 @@ Demo sources: one mono synth line (§1, recurring), doubled rhythm guitars (§3 
 pad (§3 Velvet Noise), electric piano (§3 Chorus), a string/synth bus (§3 Dim-D), a full mix
 (§5).
 
-Narration ≈ 908 words total; runtime ≈ 7:25. Pacing assumes ~145–155 wpm spoken, with
+Narration ≈ 904 words total; runtime ≈ 7:25. Pacing assumes ~145–155 wpm spoken, with
 listening gaps where marked. Section word counts (actual, recounted) noted for the editor.
 
 ---
 
 ## The script
 
-### §1 · 0:00–1:00 — "I know the space I want" *(102 words + four ~4 s listens)*
+### §1 · 0:00–1:00 — "I know the space I want" *(100 words + four ~4 s listens)*
 
 **ON SCREEN:** A DAW session, mid-project, nothing staged. One mono synth line loops — the
 scope (not yet explained) shows a single vertical trace. The developer's hands on the
@@ -101,7 +101,7 @@ So — same part, four ways.
 None of these is wrong. They're four different kinds of space. Every widening method has a
 different idea of space. Anamorph lets you choose which idea you want.
 
-And that's the plugin I want to show you — because I just did all four of those inside it."
+And that's the plugin I want to show you — because those four ideas are all inside it."
 
 **NOTE:** The four variations are performed inside Anamorph by switching methods. No other
 plugin appears in the video. The methods are deliberately unnamed here; they get their names
@@ -217,7 +217,7 @@ all of it takes automation — crossovers included."
 
 ---
 
-### §6 · 5:30–6:20 — Getting back to it *(107 words)*
+### §6 · 5:30–6:20 — Getting back to it *(101 words)*
 
 **ON SCREEN:** The A/B pill in the top bar. A holds Velvet Noise, B holds Dim-D, same part.
 Switching between them; each slot's preset name visible. Level Match engaged — the readout
@@ -227,8 +227,8 @@ in the standalone app.
 
 **VOICE:**
 "The rest is about coming back to a decision. A and B are two complete working states — each
-keeps its own settings, its own preset, its own undo history, a hundred and twenty-eight steps
-deep. I use them to hold two methods on the same part.
+keeps its own settings, its own preset, its own undo history. I use them to hold two methods
+on the same part.
 
 One thing matters when you compare: different methods don't land at the same loudness. Level
 Match measures both using a K-weighted loudness curve and holds them level. It isolates the
@@ -240,7 +240,7 @@ standalone."
 
 ---
 
-### §7 · 6:20–6:55 — The plugin itself *(76 words; hard cap 35 s)*
+### §7 · 6:20–6:55 — The plugin itself *(80 words; hard cap 35 s)*
 
 **ON SCREEN:** Flat and quick: the plugin running on Linux, Windows, macOS — three short
 clips, no logos animation. The standalone app. A fresh insert opening straight to the
@@ -248,8 +248,8 @@ interface — no login, no activation prompt, nothing asked. Plain text, small: 
 AU (macOS) · Standalone. No AAX. Output is always stereo.*
 
 **VOICE:**
-"VST3 on Linux, Windows and macOS. AU on the Mac. A standalone app. The output is always
-stereo, and there's no AAX version.
+"It runs as VST3 on Linux, Windows and macOS, AU on Mac, or as a standalone app. The output
+is always stereo, and there's no AAX version.
 
 It works without an account, activation, or network connection.
 
