@@ -18,14 +18,14 @@
 
 **Thesis (spoken form):** "Width is not just a number. It's a method."
 
-**Statement.** Anamorph is a stereo width instrument that puts the method in your hands. It
+**Statement.** Anamorph is a stereo width plugin that puts the method in your hands. It
 offers several ways of creating space, each with its own character, and keeps the process
 visible and controllable while you work. It does not decide what a stereo image should sound
 like — the engineer does. It shortens the path from the space the engineer hears to the space
 that comes out of the monitors.
 
 **Hierarchy (non-negotiable in every line).** The engineer holds the artistic intention and
-makes the aesthetic decision. The instrument provides a more direct path from intention to
+makes the aesthetic decision. The plugin provides a more direct path from intention to
 result. Nothing in the script implies the viewer misjudges, needs protection, or is being
 corrected.
 
@@ -35,7 +35,7 @@ around visualization and workflow. All valid. Anamorph's distinction: the stereo
 method itself becomes a creative choice. "Most tools are designed around a particular idea of
 space. Anamorph makes that choice explicit."
 
-**Emotional register.** Agency. "The instrument responds exactly to what I intended." A
+**Emotional register.** Agency. "The plugin responds exactly to what I intended." A
 well-made tool disappears between intention and result.
 
 **Brand words** (Precise / Essential / Unbound) are never spoken or written in the video —
@@ -72,7 +72,7 @@ Demo sources: one mono synth line (§1, recurring), doubled rhythm guitars (§3 
 pad (§3 Velvet Noise), electric piano (§3 Chorus), a string/synth bus (§3 Dim-D), a full mix
 (§5).
 
-Narration ≈ 920 words total; runtime ≈ 7:15. Pacing assumes ~145–155 wpm spoken, with
+Narration ≈ 890 words total; runtime ≈ 7:15. Pacing assumes ~145–155 wpm spoken, with
 listening gaps where marked. Section word counts (actual, recounted) noted for the editor.
 
 ---
@@ -108,7 +108,7 @@ in §3.
 
 ---
 
-### §2 · 0:55–1:40 — "Width is made, not turned up" *(112 words)*
+### §2 · 0:55–1:40 — "Width is made, not turned up" *(117 words)*
 
 **ON SCREEN:** First proper look at the interface: Simple view — the diamond scope, one WIDEN
 panel. Camera settles on the Algorithm selector. A minimal M/S diagram overlays for one
@@ -120,14 +120,14 @@ gives you a knob for *how much* — and behind that knob there's a process. A de
 modulation, a decorrelation. The process is what you're hearing. Most tools are designed
 around a particular idea of space. Anamorph makes that choice explicit.
 
-The thinking underneath is Mid/Side: every method exists to create Side content, and the
-Width controls only ever scale the Side. One of the four leaves the center completely
+The thinking underneath is Mid/Side: every method creates Side content differently, and
+Width controls how much of that space you end up with. One of the four leaves the center
 untouched; the others trade a little of it for the space. Most tools let you choose the
 result. Few let you choose the process behind it. Here they are."
 
 ---
 
-### §3 · 1:40–3:45 — The four methods *(centerpiece; 244 words + four ~6 s demos, narration may resume over each demo's tail)*
+### §3 · 1:40–3:45 — The four methods *(centerpiece; 243 words + four ~6 s demos, narration may resume over each demo's tail)*
 
 **ON SCREEN:** One section per method. The selector changes; the method's own controls slide
 in (Delay + Focus for Haas; Density for Velvet Noise; Rate + Depth for Chorus; Style for
@@ -139,8 +139,8 @@ checklists.
 
 "Haas first — the oldest idea here: arrival time. One channel leads, anywhere from one to
 thirty-five milliseconds; Focus picks the side. *(doubled guitars)* That's separation — the
-part doesn't just widen, it takes a side. The trade is physics: the channels stop matching,
-so a mono sum turns the delay into comb filtering.
+part doesn't just widen, it takes a side. And because it's built on timing, it responds
+differently when something sums it — that's part of the character.
 
 Velvet Noise is the reason I started building this at all. No lead channel, no modulation —
 it manufactures Side content out of the Mid by sparse decorrelation. *(mono pad)* Diffuse.
@@ -152,9 +152,9 @@ piano)* The character is motion — and motion is the point. When a part should 
 nothing else does this. When a part has to hold still... it won't. That's the whole
 personality.
 
-And Dim-D — the answer to the opening request. My take on an idea from a legendary piece of
-studio rack hardware: two modulated taps in each channel, working against each other, so most
-of the pitch movement cancels itself. What's left is size. *(string bus)* Four voicings,
+And Dim-D — the answer to the opening request. My take on a classic studio hardware approach:
+two modulated taps in each channel, working against each other, so most of the pitch movement
+cancels itself. What's left is size. *(string bus)* Four voicings,
 Subtle through Lush. What it won't do is take a side or shimmer — size is all it makes. The
 room just gets bigger.
 
@@ -163,10 +163,11 @@ pass the input through untouched — and there's a Drive stage in front, for whe
 density first."
 
 **NOTE:** No method is framed as superior; each beat is process → character → the request it
-answers → what it costs — and all four pay, Dim-D included (it won't take a side or shimmer).
-Keep internal figures (tap counts, modulation offsets, window lengths) out of narration —
-wrong altitude. The named hardware behind Dim-D is never spoken. Width's range (to double) is
-established by §2's "the Width controls only ever scale the Side" plus the on-screen control.
+answers → what comes with it — and all four carry something, Dim-D included (it won't take a
+side or shimmer). Every summing difference is spoken as character, never as a warning. Keep
+internal figures (tap counts, modulation offsets, window lengths) out of narration — wrong
+altitude. The hardware behind Dim-D is never named. Width's role is set conceptually in §2
+("how much of that space you end up with"); its range shows on the on-screen control.
 
 ---
 
@@ -192,7 +193,7 @@ actually does.
 
 ---
 
-### §5 · 4:25–5:15 — When the space changes with frequency *(124 words, narration rides over the demo)*
+### §5 · 4:25–5:15 — When the space changes with frequency *(108 words, narration rides over the demo)*
 
 **ON SCREEN:** A full mix. Global width first — the whole image opens, including the lows.
 Then the Advanced view: the live spectrum, a crossover dragged into place (smoothly), a second
@@ -209,18 +210,17 @@ where I want them. Still one method — but every band gets its own width. Lows 
 barely move. The top opens.
 
 The headphone icon solos a band. That's a monitor tap at the end of the chain — it changes
-nothing about the processing. There's a mono maker too, if you want everything below a chosen
-frequency brought to center. And all of it takes automation — crossovers included."
+nothing about the processing. And all of it takes automation — crossovers included."
 
 ---
 
-### §6 · 5:15–6:05 — Getting back to it *(106 words)*
+### §6 · 5:15–6:05 — Getting back to it *(102 words)*
 
 **ON SCREEN:** The A/B pill in the top bar. A holds Velvet Noise, B holds Dim-D, same part.
 Switching between them; each slot's preset name visible. Level Match engaged — the readout
-settles; the two states now sit at the same loudness. APPLY GAIN clicked once. Undo stepped
-back through a knob gesture. A preset file shown in a file browser, then the same preset open
-in the standalone app.
+(a K-weighted loudness measurement) settles; the two states now sit at the same loudness.
+APPLY GAIN clicked once. Undo stepped back through a knob gesture. A preset file shown in a
+file browser, then the same preset open in the standalone app.
 
 **VOICE:**
 "The rest is about coming back to a decision. A and B are two complete working states — each
@@ -228,16 +228,15 @@ keeps its own settings, its own preset, its own undo history, a hundred and twen
 deep. I use them to hold two methods on the same part.
 
 One thing matters when you compare: different methods don't land at the same loudness. Level
-Match measures both on a K-weighted curve and holds them level. It isolates the character
-difference. Once you've chosen, Apply writes the gain into the output and switches itself
-off.
+Match measures both and holds them level. It isolates the character difference. Once you've
+chosen, Apply writes the gain into the output and switches itself off.
 
 Presets are plain files. They move between machines — and between the plugin and the
 standalone."
 
 ---
 
-### §7 · 6:05–6:40 — The instrument itself *(82 words; hard cap 35 s)*
+### §7 · 6:05–6:40 — The plugin itself *(74 words; hard cap 35 s)*
 
 **ON SCREEN:** Flat and quick: the plugin running on Linux, Windows, macOS — three short
 clips, no logos animation. The standalone app. A network monitor beside the running plugin:
@@ -248,8 +247,7 @@ stereo.*
 "VST3 on Linux, Windows and macOS. AU on the Mac. A standalone app. The output is always
 stereo, and there's no AAX version.
 
-It runs with no account and no activation. It never touches the network — it sends nothing,
-to anyone.
+It works without an account, activation, or network connection.
 
 It reports zero latency unless you enable oversampling and something nonlinear is running —
 then it reports what it uses, and holds it steady.
@@ -289,8 +287,8 @@ Create the space you hear."
 - Velvet Noise phrasing is fixed: "a mono sum hears the untouched center" — not "bit-identical."
 - Latency is phrased as *reported*: zero unless oversampling is engaged with nonlinear work.
 - "K-weighted curve" describes the Level Match measurement; no standards-compliance claim.
-- Dim-D: "an idea from a legendary piece of studio rack hardware" — the original hardware and
-  its manufacturer are never named on screen or in narration (open trademark review item).
+- Dim-D: "a classic studio hardware approach" — the original hardware and its manufacturer
+  are never named on screen or in narration (open trademark review item).
 - No ™/® anywhere. Banned vocabulary: revolutionary, ultimate, next-generation, perfect,
   intelligent, powerful, innovative, professional-grade, comprehensive; avoid "precision,"
   "transparent," "advanced" (except the UI's own labels), "optimized."
@@ -312,7 +310,7 @@ Create the space you hear."
 **Fact-source map (every narration claim → repository evidence)**
 - Four methods & their controls → `src/dsp/EngineParameters.h`, `src/dsp/HaasProcessor.cpp`,
   `src/dsp/VelvetNoise.{h,cpp}`, `src/dsp/ChorusEngine.{h,cpp}`; user manual §3.3–4
-- Haas 1–35 ms + Focus; mono-sum combing caveat → `EngineParameters.h`, user manual §4
+- Haas 1–35 ms + Focus; distinct summing behavior → `EngineParameters.h`, user manual §4
 - Velvet: Side built from Mid; center untouched in a sum → `VelvetNoise.h`, DSP_POLICY inv. 6
 - Dim-D: two anti-phase taps, pitch movement cancels; four voicings → `ChorusEngine.{h,cpp}`
 - Amount 0 designed as identity; Width 0–200%; Drive ahead of the method →
@@ -321,7 +319,6 @@ Create the space you hear."
   `src/gui/Vectorscope.h`, user manual §3.2
 - Multiband: ≤3 crossovers / 4 bands, per-band width, live spectrum; solo is monitoring-only →
   `src/dsp/MultibandWidth.h`, `src/dsp/SoloMonitor.h`, `src/gui/SpectrumImager.h`, ADR-0006/0014
-- Mono maker 20–500 Hz → `src/dsp/MonoMaker.h`, user manual §3.5
 - Automation incl. crossovers/band widths → user manual §9, ADR-0014
 - A/B slots with per-slot preset, undo (128), matched gain → ADR-0008, user manual §3.1/§7.4
 - Level Match K-weighted; Apply writes Output Gain and disengages → `src/dsp/LoudnessMatch.cpp`, ADR-0007
