@@ -6,11 +6,14 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **keynote/launch-video script worklog** (2026-07-28, on top of `main` @
-`82b2f61`). **No `src/` change; no product-document change.** Added
-`worklogs/KEYNOTE_SCRIPT_v0.9.0.md` — a session work product (marketing draft): product
-positioning analysis, selling points, and an English + Chinese launch-video script, all derived
-from the existing developer chain. It is explicitly marked derived content, may never be cited
+Last updated: for the **product video script worklog** (2026-07-29, on top of `main` @
+`82b2f61`). **No `src/` change; no product-document change.** Added (and subsequently revised,
+in the same unmerged branch) `worklogs/KEYNOTE_SCRIPT_v0.9.0.md` — a session work product
+(marketing draft): a locked product positioning ("width is a method"; the plugin as instrument,
+not assistant) and a complete ~7-minute developer-walkthrough video script with production
+guardrails, all derived from the existing developer chain. An earlier keynote-style draft in
+the same file was superseded by this revision; a Chinese adaptation is deferred until the
+English script is approved. It is explicitly marked derived content, may never be cited
 as evidence, quotes no unmeasured performance numbers (constraint C2), uses no ™/® symbols
 (`TRADEMARKS.md`), and does not alter product status (`docs/COMMERCIAL_STATUS.md`: v0.9.0
 remains internal-testing, not for sale). Worklogs sit outside the four documentation classes
