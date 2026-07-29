@@ -72,14 +72,14 @@ Demo sources: one mono synth line (§1, recurring), doubled rhythm guitars (§3 
 pad (§3 Velvet Noise), electric piano (§3 Chorus), a string/synth bus (§3 Dim-D), a full mix
 (§5).
 
-Narration ≈ 890 words total; runtime ≈ 7:15. Pacing assumes ~145–155 wpm spoken, with
+Narration ≈ 895 words total; runtime ≈ 7:15. Pacing assumes ~145–155 wpm spoken, with
 listening gaps where marked. Section word counts (actual, recounted) noted for the editor.
 
 ---
 
 ## The script
 
-### §1 · 0:00–0:55 — "I know the space I want" *(99 words + four ~4 s listens)*
+### §1 · 0:00–0:55 — "I know the space I want" *(102 words + four ~4 s listens)*
 
 **ON SCREEN:** A DAW session, mid-project, nothing staged. One mono synth line loops — the
 scope (not yet explained) shows a single vertical trace. The developer's hands on the
@@ -88,14 +88,15 @@ selector changing on a plugin window — no names legible yet, no logo. On the f
 to black, then the title card: **ANAMORPH**, small, no music swell.
 
 **VOICE:**
-"One synth, one pattern — mono. And I knew exactly what I wanted from it: wider, but still.
+"One synth, one pattern — mono. I knew exactly what I wanted from it: wider, but still in
+place.
 
 So — same part, four ways.
 
 *(listen)* Wider — but now it leans. One side arrives first.
 *(listen)* Wider — and moving. It's not what I asked for.
 *(listen)* Wider — and diffuse. The line turned into a texture.
-*(listen)* Wider... and still.
+*(listen)* Wider... and it stays put.
 
 None of these is wrong. They're four different kinds of space. Every widening method has a
 different idea of space. Anamorph lets you choose which idea you want.
@@ -108,7 +109,7 @@ in §3.
 
 ---
 
-### §2 · 0:55–1:40 — "Width is made, not turned up" *(117 words)*
+### §2 · 0:55–1:40 — "Width is made, not turned up" *(119 words)*
 
 **ON SCREEN:** First proper look at the interface: Simple view — the diamond scope, one WIDEN
 panel. Camera settles on the Algorithm selector. A minimal M/S diagram overlays for one
@@ -116,18 +117,18 @@ sentence only — two labeled arrows, gone in four seconds. No tutorial graphics
 
 **VOICE:**
 "Here's what I kept running into. Width is not just a number. It's a method. Every widener
-gives you a knob for *how much* — and behind that knob there's a process. A delay, a
-modulation, a decorrelation. The process is what you're hearing. Most tools are designed
-around a particular idea of space. Anamorph makes that choice explicit.
+gives you a knob for *how much*. Behind it there's a process. A delay, a modulation, a
+decorrelation. The process is what you're hearing. Most tools are designed around a
+particular idea of space. Anamorph makes that choice explicit.
 
-The thinking underneath is Mid/Side: every method creates Side content differently, and
-Width controls how much of that space you end up with. One of the four leaves the center
-untouched; the others trade a little of it for the space. Most tools let you choose the
-result. Few let you choose the process behind it. Here they are."
+Underneath, it's Mid/Side: every method shapes the stereo field differently, creating its own
+kind of Side content — and Width sets how much of that space you keep. One of the four leaves
+the center untouched; the others trade a little of it for the space. Most tools let you
+choose the result. Few let you choose the process behind it. Here they are."
 
 ---
 
-### §3 · 1:40–3:45 — The four methods *(centerpiece; 243 words + four ~6 s demos, narration may resume over each demo's tail)*
+### §3 · 1:40–3:45 — The four methods *(centerpiece; 249 words + four ~6 s demos, narration may resume over each demo's tail)*
 
 **ON SCREEN:** One section per method. The selector changes; the method's own controls slide
 in (Delay + Focus for Haas; Density for Velvet Noise; Rate + Depth for Chorus; Style for
@@ -148,11 +149,11 @@ Not left or right — around. Nothing moves. The Mid passes straight through, so
 hears the untouched center. You're spending focus to buy air.
 
 Chorus, you already know. A modulated delay, the two sides moving out of step. *(electric
-piano)* The character is motion — and motion is the point. When a part should shimmer,
-nothing else does this. When a part has to hold still... it won't. That's the whole
+piano)* The character is motion — and motion is the point. When a part should shimmer, that
+character is hard to replace. When a part has to hold still... it won't. That's the whole
 personality.
 
-And Dim-D — the answer to the opening request. My take on a classic studio hardware approach:
+And Dim-D — one answer to the opening request. My take on a classic studio hardware approach:
 two modulated taps in each channel, working against each other, so most of the pitch movement
 cancels itself. What's left is size. *(string bus)* Four voicings,
 Subtle through Lush. What it won't do is take a side or shimmer — size is all it makes. The
@@ -171,7 +172,7 @@ altitude. The hardware behind Dim-D is never named. Width's role is set conceptu
 
 ---
 
-### §4 · 3:45–4:25 — What the process looks like *(94 words)*
+### §4 · 3:45–4:25 — What the process looks like *(99 words)*
 
 **ON SCREEN:** The diamond scope, full frame. Quick intercuts: the §3 sources replayed for
 two seconds each — the trace leans (Haas), becomes a cloud (Velvet), breathes (Chorus),
@@ -180,8 +181,9 @@ the material.
 
 **VOICE:**
 "Now — the diamond. The scope is drawn so mono is a vertical line, and Side content spreads it
-sideways. Which means each method draws its own picture. Haas leans the trace. Velvet turns it
-into a cloud. Chorus breathes. Dim-D just gets wider. You can watch the process you chose.
+sideways. Which means each method tends to draw its own picture. On this source: Haas leans
+the trace. Velvet turns it into a cloud. Chorus breathes. Dim-D just gets wider. You can watch
+the process you chose.
 
 Beside it, correlation — plus one to minus one. Width is Side energy, and Side behaves
 differently when something downstream sums it. The meter lets you keep an eye on that while
@@ -193,7 +195,7 @@ actually does.
 
 ---
 
-### §5 · 4:25–5:15 — When the space changes with frequency *(108 words, narration rides over the demo)*
+### §5 · 4:25–5:15 — When the space changes with frequency *(100 words, narration rides over the demo)*
 
 **ON SCREEN:** A full mix. Global width first — the whole image opens, including the lows.
 Then the Advanced view: the live spectrum, a crossover dragged into place (smoothly), a second
@@ -209,8 +211,8 @@ So: the full view. The spectrum is live. I can drop in up to three crossovers an
 where I want them. Still one method — but every band gets its own width. Lows stay put. Mids
 barely move. The top opens.
 
-The headphone icon solos a band. That's a monitor tap at the end of the chain — it changes
-nothing about the processing. And all of it takes automation — crossovers included."
+The headphone icon solos a band for monitoring. It changes nothing about the processing. And
+all of it takes automation — crossovers included."
 
 ---
 
@@ -236,12 +238,12 @@ standalone."
 
 ---
 
-### §7 · 6:05–6:40 — The plugin itself *(74 words; hard cap 35 s)*
+### §7 · 6:05–6:40 — The plugin itself *(73 words; hard cap 35 s)*
 
 **ON SCREEN:** Flat and quick: the plugin running on Linux, Windows, macOS — three short
-clips, no logos animation. The standalone app. A network monitor beside the running plugin:
-flat line. Plain text, small: *VST3 · AU (macOS) · Standalone. No AAX. Output is always
-stereo.*
+clips, no logos animation. The standalone app. A fresh insert opening straight to the
+interface — no login, no activation prompt, nothing asked. Plain text, small: *VST3 ·
+AU (macOS) · Standalone. No AAX. Output is always stereo.*
 
 **VOICE:**
 "VST3 on Linux, Windows and macOS. AU on the Mac. A standalone app. The output is always
@@ -249,15 +251,15 @@ stereo, and there's no AAX version.
 
 It works without an account, activation, or network connection.
 
-It reports zero latency unless you enable oversampling and something nonlinear is running —
-then it reports what it uses, and holds it steady.
+When oversampling runs a nonlinear stage, the added latency is reported to the host and held
+steady. The default path reports none.
 
 Right now, Anamorph is in testing. A group of testers is working with it before I call it
 finished."
 
 ---
 
-### §8 · 6:40–7:15 — Close *(53 words)*
+### §8 · 6:40–7:15 — Close *(50 words)*
 
 **ON SCREEN:** Back to the opening session. The mono synth from §1, now sitting wide and
 still — the Dim-D setting from the cold open. The scope holds. Cut to black. Tagline, plain
@@ -268,8 +270,7 @@ text, no music swell: **Create the space you hear.** Then a plain availability c
 "So — no. Anamorph won't tell you how wide anything should be. That was never the job. You
 already hear the space you want. You've probably been hearing it all along.
 
-What I built is the shortest path I could make between that — and what comes out of your
-monitors.
+What I built is a shorter path between that — and what comes out of your monitors.
 
 *(beat)*
 
