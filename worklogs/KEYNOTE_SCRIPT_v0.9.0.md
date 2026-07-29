@@ -72,14 +72,14 @@ Demo sources: one mono synth line (§1, recurring), doubled rhythm guitars (§3 
 pad (§3 Velvet Noise), electric piano (§3 Chorus), a string/synth bus (§3 Dim-D), a full mix
 (§5).
 
-Narration ≈ 896 words total; runtime ≈ 7:15. Pacing assumes ~145–155 wpm spoken, with
+Narration ≈ 904 words total; runtime ≈ 7:15. Pacing assumes ~145–155 wpm spoken, with
 listening gaps where marked. Section word counts (actual, recounted) noted for the editor.
 
 ---
 
 ## The script
 
-### §1 · 0:00–0:55 — "I know the space I want" *(103 words + four ~4 s listens)*
+### §1 · 0:00–0:55 — "I know the space I want" *(102 words + four ~4 s listens)*
 
 **ON SCREEN:** A DAW session, mid-project, nothing staged. One mono synth line loops — the
 scope (not yet explained) shows a single vertical trace. The developer's hands on the
@@ -94,7 +94,7 @@ place.
 So — same part, four ways.
 
 *(listen)* Wider — but now it leans. One side arrives first.
-*(listen)* Wider — and moving. It's not what I asked for.
+*(listen)* Wider — and moving. A different kind of space.
 *(listen)* Wider — and diffuse. The line turned into a texture.
 *(listen)* Wider... but still holding its place.
 
@@ -129,7 +129,7 @@ it. Here they are."
 
 ---
 
-### §3 · 1:40–3:45 — The four methods *(centerpiece; 248 words + four ~6 s demos, narration may resume over each demo's tail)*
+### §3 · 1:40–3:45 — The four methods *(centerpiece; 253 words + four ~6 s demos, narration may resume over each demo's tail)*
 
 **ON SCREEN:** One section per method. The selector changes; the method's own controls slide
 in (Delay + Focus for Haas; Density for Velvet Noise; Rate + Depth for Chorus; Style for
@@ -140,25 +140,25 @@ checklists.
 **VOICE:**
 
 "Haas first — the oldest idea here: arrival time. One channel leads, anywhere from one to
-thirty-five milliseconds; Focus picks the side. *(doubled guitars)* That's separation — the
-part doesn't just widen, it takes a side. And because it's built on timing, it responds
-differently when something sums it — that's part of the character.
+thirty-five milliseconds; Focus picks the side. *(doubled guitars)* The part doesn't just
+widen, it gains a sense of directional separation. And because it's built on timing, it
+responds differently when something sums it — that's part of the character.
 
 Velvet Noise is the reason I started building this at all. No lead channel, no modulation —
 it manufactures Side content out of the Mid by sparse decorrelation. *(mono pad)* Diffuse.
 Not left or right — around. Nothing moves. The Mid passes straight through, so a mono sum
-hears the untouched center. You're spending focus to buy air.
+hears the untouched center. You're trading directional focus for diffusion.
 
 Chorus, you already know. A modulated delay, the two sides moving out of step. *(electric
 piano)* The character is motion — and motion is the point. When a part should shimmer, that
-character is hard to replace. When a part has to hold still... it won't. That's the whole
-personality.
+character is hard to replace. When a part needs to stay still, that movement becomes the
+trade-off. That's the whole personality.
 
 And Dim-D — one answer to the opening request. My take on a hardware-inspired dimensional
 expansion approach: two modulated taps in each channel, working against each other, so most
 of the pitch movement cancels itself. What's left is size. *(string bus)* Four voicings,
-Subtle through Lush. What it won't do is take a side or shimmer. The image gains dimension
-without becoming an obvious effect.
+Subtle through Lush. Its character is not about taking a side or obvious shimmer. The image
+gains dimension without becoming an obvious effect.
 
 Underneath every method, the same two amounts: Amount and Width. I designed Amount at zero to
 pass the input through untouched — and there's a Drive stage in front, for when a part needs
@@ -173,7 +173,7 @@ altitude. The hardware behind Dim-D is never named. Width's role is set conceptu
 
 ---
 
-### §4 · 3:45–4:25 — What the process looks like *(100 words)*
+### §4 · 3:45–4:25 — What the process looks like *(101 words)*
 
 **ON SCREEN:** The diamond scope, full frame. Quick intercuts: the §3 sources replayed for
 two seconds each — the trace leans (Haas), becomes a cloud (Velvet), breathes (Chorus),
@@ -183,12 +183,12 @@ the material.
 **VOICE:**
 "Now — the diamond. The scope is drawn so mono is a vertical line, and Side content spreads it
 sideways. Which means each method tends to draw its own picture. On this source: Haas leans
-the trace. Velvet turns it into a cloud. Chorus breathes. Dim-D just gets wider. You can watch
-the process you chose.
+the trace. Velvet turns it into a cloud. Chorus breathes. Dim-D expands the image without the
+same visible motion. You can watch the process you chose.
 
 Beside it, correlation — plus one to minus one. Width creates Side energy, and Side energy
 behaves differently when the signal is summed. The meter lets you keep an eye on that while
-you work. That's all it's for. Meters reveal. They don't judge. You decide."
+you work. Meters reveal. They don't judge. You decide."
 
 **NOTE:** The only mono line in the video is the one above. Verify the four scope
 characterizations against the real build during capture; adjust wording to what the trace
@@ -217,7 +217,7 @@ all of it takes automation — crossovers included."
 
 ---
 
-### §6 · 5:15–6:05 — Getting back to it *(107 words)*
+### §6 · 5:15–6:05 — Getting back to it *(106 words)*
 
 **ON SCREEN:** The A/B pill in the top bar. A holds Velvet Noise, B holds Dim-D, same part.
 Switching between them; each slot's preset name visible. Level Match engaged — the readout
@@ -231,7 +231,7 @@ keeps its own settings, its own preset, its own undo history, a hundred and twen
 deep. I use them to hold two methods on the same part.
 
 One thing matters when you compare: different methods don't land at the same loudness. Level
-Match measures both using a K-weighted loudness curve and holds them level. It isolates the
+Match measures both using K-weighted loudness measurement and holds them level. It isolates the
 character difference. Once you've chosen, Apply writes the gain into the output and switches
 itself off.
 
@@ -240,7 +240,7 @@ standalone."
 
 ---
 
-### §7 · 6:05–6:40 — The plugin itself *(73 words; hard cap 35 s)*
+### §7 · 6:05–6:40 — The plugin itself *(76 words; hard cap 35 s)*
 
 **ON SCREEN:** Flat and quick: the plugin running on Linux, Windows, macOS — three short
 clips, no logos animation. The standalone app. A fresh insert opening straight to the
@@ -254,14 +254,14 @@ stereo, and there's no AAX version.
 It works without an account, activation, or network connection.
 
 When oversampling runs a nonlinear stage, the added latency is reported to the host and held
-steady. The default path reports none.
+steady. The default processing path reports no added latency.
 
 Right now, Anamorph is in testing. A group of testers is working with it before I call it
 finished."
 
 ---
 
-### §8 · 6:40–7:15 — Close *(50 words)*
+### §8 · 6:40–7:15 — Close *(51 words)*
 
 **ON SCREEN:** Back to the opening session. The mono synth from §1, now sitting wide and
 still — the Dim-D setting from the cold open. The scope holds. Cut to black. Tagline, plain
