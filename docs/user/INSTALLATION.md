@@ -135,7 +135,7 @@ Extract the zip, then (administrator approval needed for both):
    Files installed by the package carry **no quarantine flag**, so no Terminal steps are
    needed afterwards.
 4. Rescan in your DAW. Logic Pro / GarageBand use the AU and validate it automatically on
-   launch (you can check from Terminal with `auval -v aufx Anmr Anmf` — "PASS" means Logic
+   launch (you can check from Terminal with `auval -v aufx Anmr RTec` — "PASS" means Logic
    will see it).
 
 **Uninstall:** delete the installed items in the table above (Finder will ask for your
@@ -163,7 +163,7 @@ sudo xattr -dr com.apple.quarantine /Applications/Anamorph.app
 - **Plug-in doesn't load from the zip install** — you skipped the `xattr` quarantine
   step above; run it and rescan.
 - **Logic/GarageBand don't see it** — they only use the AU (`.component`); check
-  `auval -v aufx Anmr Anmf`.
+  `auval -v aufx Anmr RTec`.
 
 ---
 

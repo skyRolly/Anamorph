@@ -42,23 +42,42 @@ itself (`PACKAGING.md`).
 ## Versioning
 
 `MAJOR.MINOR.PATCH`, pre-1.0 (< 1.0.0 = pre-release line); the version lives in
-`CMakeLists.txt` and the About box. Evidence [Verified]: CMakeLists.txt:14,181-187.
+`CMakeLists.txt` and the About box. Evidence [Verified]: CMakeLists.txt:14 (`project VERSION`),
+:186-192 (the versioning comment, `ANAMORPH_BUILD_NUMBER`, and the two version compile definitions).
 
 ## Tagging + release pipeline (RH-PR-8)
 
-**Tag convention:** an **annotated** tag `vMAJOR.MINOR.PATCH` (e.g. `v0.9.0`) on the release
-commit on `main`, created AFTER pre-release steps 1–7 above are complete:
+**Tag convention:** an **annotated** tag `vMAJOR.MINOR.PATCH` on the release commit on `main`,
+created AFTER pre-release steps 1–7 above are complete. The tag must equal the `CMakeLists.txt`
+`project VERSION` exactly — `release.yml` fails closed on any mismatch. **The next tag is
+`v0.9.1`** (0.9.0 was written up but never tagged; the manufacturer-code change, ADR-0023, lands
+on top of it):
 
 ```bash
-git tag -a v0.9.0 -m "Anamorph 0.9.0"
-git push origin v0.9.0
+git tag -a v0.9.1 -m "Anamorph 0.9.1"
+git push origin v0.9.1
 ```
+
+**Date the CHANGELOG heading before tagging — the pipeline now enforces it.** `release.yml`
+extracts the `## [x.y.z]` section **verbatim, heading included**, as the release **notes body**
+(the release *title* is set separately to `Anamorph <version>`), so a heading still reading
+`— Unreleased` would appear at the top of the published notes. Validation therefore **fails
+closed unless the heading carries an ISO date** — which covers a bare `## [x.y.z]` with no date at
+all, not only the literal word `Unreleased`.
+
+Two practical consequences:
+
+- Date the heading **in the commit the tag points at**, not afterwards — the check reads the
+  tagged tree.
+- A `workflow_dispatch` rehearsal only *warns* about an undated heading, so rehearsals stay green
+  while the real tag does not.
 
 Pushing the tag triggers `.github/workflows/release.yml`, which:
 
 1. **Validates release metadata fail-closed** — the tag must be annotated, must equal the
-   `CMakeLists.txt` `project VERSION`, and `CHANGELOG.md` must already carry the `## [x.y.z]`
-   section (i.e. steps 1–2 above are enforced, not assumed).
+   `CMakeLists.txt` `project VERSION`, `CHANGELOG.md` must already carry the `## [x.y.z]`
+   section **carrying an ISO release date** (i.e. steps 1–2 above are enforced, not assumed).
+   An undated heading — `— Unreleased` or bare — is rejected.
 2. **Runs the full existing gate exactly once** by *calling* `build.yml` (`workflow_call`) —
    the same 3-OS matrix, DSP + state suites, pluginval strictness 10 both modes ×3, symbol
    retain-then-strip, fail-closed artifact gating. Tag pushes do not trigger `build.yml`
@@ -85,7 +104,7 @@ ship unsigned, with the user-facing consequences documented in `docs/user/INSTAL
 A pipeline **rehearsal** without a tag: run `release.yml` via `workflow_dispatch`
 (validate + full build; no release is created).
 
-No release tag exists yet — the first will be cut at the v0.9.0 release. Historical
+No release tag exists yet — the first will be cut at the **v0.9.1** release (0.9.0 was written up but never tagged; ADR-0023 lands on top of it). Historical
 CHANGELOG entries keep their commit-SHA evidence; entries from the first tag onward cite the
 tag (upgrades CHANGELOG evidence per `CHANGELOG_POLICY.md`; closes RISK-003 when practiced).
 Evidence [Verified]: .github/workflows/release.yml; .github/workflows/build.yml (`workflow_call`).

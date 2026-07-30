@@ -152,7 +152,7 @@ doesn't exist:
 - **The AU is never validated automatically.** `run-pluginval.sh` locates and validates
   `Anamorph.vst3` only, so the macOS `Anamorph.component` — the build Logic Pro and GarageBand
   load — reaches users having passed no format-conformance gate. Apple's `auval` is the tool
-  (`auval -v aufx Anmr Anmf`, matching the `PLUGIN_CODE` / `PLUGIN_MANUFACTURER_CODE` in
+  (`auval -v aufx Anmr RTec`, matching the `PLUGIN_CODE` / `PLUGIN_MANUFACTURER_CODE` in
   `CMakeLists.txt:153-154`), but it only sees a component that is *registered*, so a CI step would
   have to copy the built bundle into `~/Library/Audio/Plug-Ins/Components/` and force a registry
   refresh (`killall -9 AudioComponentRegistrar`) before running it. **Ordering matters:** the

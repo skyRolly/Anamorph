@@ -18,18 +18,68 @@ exception (below) is satisfied:
 | **Host-visible parameter semantic change** | Automation lanes now mean something different. |
 | **Reported-latency behaviour change** | Host PDC desyncs; timing shifts. |
 | **Automation behaviour change** | Recorded automation plays back differently. |
+| **Plugin identity change** (`PLUGIN_MANUFACTURER_CODE`, `PLUGIN_CODE`, `PRODUCT_NAME`) | The host cannot find the plug-in at all: the manufacturer code is the AU component's manufacturer field, and JUCE derives the VST3 class UID from all three. The session reports the plug-in as missing. |
 
 ## The only exception
 
 A prohibited change may proceed **only if all** of the following are satisfied:
 
 1. an **ADR** records the decision (`ADR_POLICY.md`), and
-2. a **migration plan** preserves old sessions (a read path / default for the old form), and
+2. a **migration plan** preserves old sessions (a read path / default for the old form) — see the
+   identity carve-out below for the one case where no such plan can exist, and
 3. the **Release Compatibility Checklist** passes (`procedures/RELEASE_COMPATIBILITY_CHECKLIST.md`), and
 4. the change clears the **Architecture Review Gate** (human review).
 
 The reference precedent is the 0.8.4 move of view params out of the APVTS, done with
 `InternalState::migrateFromLegacyApvts` (ADR-0010).
+
+### Carve-out: plugin-identity changes (condition 2)
+
+Condition 2 assumes the host still **resolves** the plug-in, so the plug-in can read the old form
+itself. For a **plugin-identity change** that assumption fails by construction: the manufacturer
+code, plugin code and product name are what the host matches on, so once they change the host
+never reaches the plug-in's state-restoration code at all — there is no read path to write, and
+no migration plan can exist. Requiring one would not protect users; it would only make the
+condition impossible to satisfy while the change itself stayed possible to make.
+
+For an identity change, and **only** for an identity change, condition 2 is satisfied instead by
+**all** of:
+
+- **2a.** **No annotated release tag exists at all** — i.e. the product has never been released.
+  (Builds already given to testers are covered by 2b, not by a migration.)
+- **2b.** A documented **recovery procedure** in `KNOWN_ISSUES.md`, written for the person holding
+  an affected session, stating what they will see and what to do.
+- **2c.** The ADR records that the changed field is **frozen** afterwards.
+
+**2a is a condition on the state of the world, not a token an exception consumes.** It is true
+while no tag exists — for *every* identity field at once — and becomes permanently false the moment
+the first annotated tag is cut, again for every field at once. So:
+
+- Before the first tag, the carve-out is available for **any** identity field, and using it for one
+  field does not use it up for another. (A product rename before the first tag would be governed
+  by the same three conditions, not blocked by an earlier manufacturer-code change.)
+- After the first tag, the carve-out is available for **none** of them. An identity change proposed
+  then has no route through this policy at all — not a harder one, none.
+
+This is what makes the carve-out non-repeatable across a product's life without making it
+artificially scarce before release.
+
+**Exceptions granted so far:**
+
+| Change | ADR | Condition 2 satisfied by | Status |
+|---|---|---|---|
+| View params moved out of the APVTS (0.8.4) | ADR-0010 | **Migration plan** — `InternalState::migrateFromLegacyApvts`; old sessions read the legacy form | Accepted |
+| Manufacturer code `Anmf` → `RTec` (0.9.1) | ADR-0023 | **The identity carve-out.** 2a: no annotated tag exists. 2b: recovery documented as KI-016 (re-insert the plug-in, re-load the preset). 2c: ADR-0023 freezes the manufacturer code. | Decision **Accepted** (2026-07-30); **condition 3 still open** — the Release Compatibility Checklist has not been completed for this release. It gates the tag, not the merge. |
+
+Note that "Accepted" in this table refers to the ADR, i.e. the *decision*. An exception is only
+**fully satisfied** when all four conditions are met, and condition 3 is a **release-time** check
+by construction — so an entry can legitimately sit here with the decision approved and the
+checklist outstanding. What must never happen is a release shipping in that state
+(`RELEASE_POLICY.md` precondition 3).
+
+2a remains true only until the first annotated tag is cut. From that moment the identity — every
+field of it — is frozen, and a later identity change has **no** route through this policy: the
+carve-out is unavailable and condition 2 proper is unsatisfiable for it.
 
 ## Backward-compatibility paths that must be preserved
 

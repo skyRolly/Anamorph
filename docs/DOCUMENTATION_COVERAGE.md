@@ -6,7 +6,143 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **product video script worklog** (2026-07-29, on top of `main` @
+Last updated: for the **third review pass on the 0.9.1 change set** (2026-07-30). Three findings
+fixed, three were confirmations. No `src/` change.
+
+**The `Unreleased` guard had a residual hole.** It rejected only a heading containing the word
+`Unreleased`; a heading written as a bare `## [0.9.1]` is equally undated and would have published
+undated notes. The check now requires an **ISO date** in the heading, which subsumes both cases and
+matches the format every existing entry already uses. Exercised against five heading forms
+(`— Unreleased`, bare, em-dash-dated, hyphen-dated, two-digit minor) plus both real CHANGELOG
+sections. Synced: `release.yml` (tag branch + rehearsal warning), `RELEASE_PROCESS`, `CI_CD`,
+`HANDOVER`.
+
+**`FUTURE_RISKS` was edited for 0.9.1 but kept a v0.9.0 version-sync lead**, leaving it and
+`KNOWN_ISSUES` disagreeing about which version the status documents are synced to. Re-led to
+v0.9.1, recording that ADR-0023 adds no new *risk* — the one-time session break is a known issue
+(KI-016), not a forward-looking one.
+
+**More reported-then-corrected line drift (C6), in a document this change set touched.** `BUILD.md`
+carried three stale `CMakeLists.txt` citations the previous pass did not report:
+`ANAMORPH_BUILD_TESTS` `:27,212` → `:27,219`, `ANAMORPH_BUILD_NUMBER` `:183` → `:188`, compile
+definitions `:185-194` → `:190-199`. Sweeping for the same class found a fourth, shared by
+`RELEASE_PROCESS` and `RELEASE_POLICY`: the versioning citation `:181-187` → `:186-192`. All five
+re-verified against the file. (`build.yml:60,180,438` for the build-number Configure steps was
+checked and is correct.)
+
+**Confirmed, no change:** the auval recipe is consistent in every maintained carrier; the guard
+interacts correctly with the verbatim notes extraction; the `curl`/`unzip` fix matches what
+`run-pluginval.sh` invokes and its re-based citations all resolve.
+
+Prior: for the **second review pass on the 0.9.1 change set** (2026-07-30). Six findings
+fixed, no `src/` change.
+
+**The exception was over-claimed.** ADR-0023's status line said the `ARCHITECTURE_REVIEW_GATE` item
+and the `COMPATIBILITY_POLICY` exception were "both now cleared". The exception needs all four
+conditions and **condition 3 — the Release Compatibility Checklist — has never been completed for
+this release**, as `HANDOVER` says in the same change set. The ADR now carries a per-condition table
+marking 3 **OPEN** (a release-time gate: it blocks the tag, not the merge), and the exceptions table
+in `COMPATIBILITY_POLICY` says the same. The ADR's own rule — "must not claim a green gate it did
+not observe" — was what the blanket sentence broke.
+
+**The carve-out was scoped wrongly.** 2a read "no annotated tag exists for any build carrying the
+old identity", and the exceptions table called it "spent", which would have closed the only route
+for a later `PLUGIN_CODE` or `PRODUCT_NAME` change (a product rename before the first tag) on the
+strength of a manufacturer-code change. 2a is a **condition on the state of the world, not a token
+an exception consumes**: true while no tag exists — for every identity field at once — and
+permanently false from the first tag, again for every field at once. Reworded in
+`COMPATIBILITY_POLICY` and ADR-0023.
+
+**The 0.9.0 → 0.9.1 first-tag renumbering was incomplete.** Still claiming v0.9.0 as the first tag:
+`RELEASE_PROCESS` (§After release), `CHANGELOG_POLICY` rule 2, `FUTURE_RISKS` RISK-003,
+`RELEASE_HARDENING_PLAN` (Version-management row, RH-R6, RH-PR-8 row, RH-F3 timing), `HANDOVER`
+(Branch Strategy). All corrected.
+
+**`RELEASE_PROCESS` contradicted the new pipeline check.** It still told maintainers an undated
+`Unreleased` heading "would be published with that word in it" and that "the validation only checks
+that the section *exists*" — the same change set had made that a fail-closed rejection. Corrected,
+with the two practical consequences spelled out (date the heading **in the tagged commit**;
+rehearsals only warn).
+
+**The guard's justification was wrong about *what* it protects.** The release **title** is set
+separately (`--title "Anamorph <version>"`); the extracted section becomes the **notes body**. The
+check is right and stays; the wording is fixed in `release.yml`, `CI_CD`, `RELEASE_PROCESS` and
+`HANDOVER`.
+
+**Reported-then-corrected line-number drift (C6).** The previously reported `ADR-0001` citation
+`CMakeLists.txt:62-73` → `:124-135` (and `:149-166` → `:228-237` for the tests-link-the-core
+range), plus the same drift in `TROUBLESHOOTING` (`:115-125` → `:124-135`), found by the reviewer.
+Both re-verified against the file. Reporting came first, in the prior pass; this is the correction.
+
+**Stale version snapshots refreshed:** `HANDOVER`'s snapshot preamble (v0.9.0 was never tagged;
+0.9.1 is the release in preparation and the first tag) and `COMMERCIAL_STATUS` (§Last reviewed,
+§2, §6). `COMMERCIAL_STATUS` keeps its **2026-07-26** review date deliberately — its substance
+(product model, distribution model, open owner/legal decisions) is untouched by a version
+renumbering, and a review date that moves on every version bump stops meaning anything.
+
+Prior: for the **ADR-0023 sign-off + the pluginval dependency fix** (2026-07-30). Two
+changes, neither touching `src/`.
+
+**ADR-0023 is now `Accepted`.** The maintainer signed off the Architecture Review and performed the
+Level-5 identity check on 2026-07-30 — the 0.9.1 build registers under the new identity in a host,
+and `auval -v aufx Anmr RTec` was run on macOS. That was the only check that exercises the change,
+and no automated gate in this repository could have stood in for it, since nothing in the suite
+observes plug-in identity. Status synced in ADR-0023 (incl. its *Verification performed* section),
+`ADR_INDEX`, `COMPATIBILITY_POLICY` (exceptions table), and `HANDOVER` (Current Version, Release
+Status, Known Blockers — the v0.9.1 tag blockers drop from five to **four**; the remaining four are
+the missing licence plus three `RELEASE_POLICY` preconditions, all carried unchanged from the
+v0.9.0 audit and all still requiring a human). Deliberately **not** upgraded: the ADR's
+`AnamorphTests` / `AnamorphStateTests` / pluginval rows stay `Unverified in-repo` — the sign-off
+covered the identity behaviour, which is what needed a human; the machine-checkable gates are
+reported by CI on the change set, and an ADR must not claim a green gate it did not observe (C2/C7).
+
+**`scripts/setup-linux.sh` now installs `curl` and `unzip`.** `run-pluginval.sh` calls both to
+fetch and extract the pluginval release, and neither was installed — `libcurl4-openssl-dev` is the
+development headers, not the CLI. GitHub-hosted runners preinstall both, which is exactly why the
+gap never showed in CI and would only have bitten on a fresh machine or a minimal container, i.e.
+the case this script exists to cover. Found while fixing the same defect in the sibling repository.
+Synced: `BUILD.md` (§Linux dependencies — package list plus a paragraph separating the three
+pluginval-only packages from the build dependencies; §Network domains), `TROUBLESHOOTING.md` (a new
+`command not found` row). The script gained lines, so the `setup-linux.sh:NNN` citations in both
+documents were re-based: package list `:24-32` → `:29-38`, EGL note `:13-15` → `:18-20`, network
+domains `:8-13` → `:8-12`, webkit `:31`/`:36` → `:37`/`:42`, `libegl-dev` `:30` → `:36`.
+
+Prior: for the **vendor manufacturer-code change** (2026-07-30, on top of `main` @
+`c0fca30`). **No `src/` change; DSP, parameter surface and serialized state bit-identical to
+0.9.0.** `PLUGIN_MANUFACTURER_CODE` changes `Anmf` → `RTec` (`CMakeLists.txt:153`) so the vendor
+code spells RollyTech rather than the first product, ahead of the second product line member
+(Anabasis) adopting the same value. Version bumped to **0.9.1** (`CMakeLists.txt:14`). The code is
+host-facing identity — the AU component's manufacturer field, and an input to JUCE's VST3 class
+UID — so pre-0.9.1 sessions report the plug-in as missing; that is documented, not fixable, and
+one-time. Added: **ADR-0023** (options incl. "keep `Anmf` forever" and the rejected
+`Roll`/`RolT`/`RlyT` candidates; opened as `Proposed`, `Accepted` 2026-07-30 — see the head entry)
++ its `ADR_INDEX` row; **KI-016** + its summary-table row.
+ADR count in the self-coverage table synced 17 → **18**.
+Synced: CHANGELOG (`[0.9.1] ### Changed`, evidence = PR #97 per `CHANGELOG_POLICY` rule 2; the
+preamble's "from [0.9.0] onward each release is tagged" claim corrected — 0.9.0 was written up but
+never tagged, so the first annotated tag will be v0.9.1), README (§Project status), HANDOVER
+(Current Version, Release Status incl. the tag name `v0.9.1`, Known Blockers), COMPATIBILITY_POLICY
+(new *Plugin identity change* prohibited-row; an **identity carve-out** to exception condition 2 —
+enacted by ADR-0023, because condition 2 as written is unsatisfiable by construction for an
+identity change and the policy would otherwise have contradicted itself; and an
+"Exceptions granted so far" table recording that the carve-out's 2a ground is spent),
+RELEASE_PROCESS (§Tagging — next tag is `v0.9.1`, and date the heading before tagging),
+`release.yml` + CI_CD (a fail-closed check rejecting a tag whose CHANGELOG heading is still marked
+`Unreleased`, since the heading is published verbatim as the release-notes title), TRADEMARKS
+(§1 — the code is a RollyTech name-bearing identifier), PACKAGING (§Plugin identifiers),
+KNOWN_ISSUES (version-sync lead), and every `auval -v aufx Anmr Anmf` invocation → `RTec`
+(`packaging/macos/INSTALL.txt`, `docs/user/INSTALLATION.md`, `PACKAGING.md`, `TROUBLESHOOTING.md`,
+`TESTING.md`, `KNOWN_ISSUES.md` KI-014, `RELEASE_HARDENING_PLAN.md` RH-F3).
+**Deliberately not changed:** `worklogs/PRODUCT_READINESS_ROADMAP_v0.8.13.md:36` still carries the
+old `auval` recipe — worklogs are a historical evidence trail, not maintained documents, and
+rewriting one to match today's code would falsify the record.
+**Drift observed, not corrected (constraint C6):** `ADR-0001` cites `CMakeLists.txt:62-73` for the
+`AnamorphDSP` INTERFACE library, which now lives at `:124-135` (as `ARCHITECTURE.md` correctly
+states); this predates the present change and is out of its scope.
+The comment added beside the new code is deliberately same-line, so no `CMakeLists.txt:NNN`
+citation anywhere in the documentation shifts.
+
+Prior: for the **product video script worklog** (2026-07-29, on top of `main` @
 `82b2f61`). **No `src/` change; no product-document change.** Added (and subsequently revised,
 in the same unmerged branch) `worklogs/KEYNOTE_SCRIPT_v0.9.0.md` — a session work product
 (marketing draft): a locked product positioning ("width is a method"; the plugin as instrument,
@@ -642,7 +778,7 @@ HEAD `c605fbe` (JUCE 8.0.14).
 |---|---|---|
 | docs root | SOURCE_OF_TRUTH, HANDOVER, REPOSITORY_MAP, DOCUMENTATION_COVERAGE, POSTMORTEMS, KNOWN_ISSUES, FUTURE_RISKS, COMMERCIAL_STATUS | Present |
 | user | USER_MANUAL, INSTALLATION | Present |
-| architecture | 15 docs (incl. RELEASE_HARDENING_PLAN) + ADR_INDEX + 17 ADRs (0016–0020 reserved, see plan §8) | Present |
+| architecture | 15 docs (incl. RELEASE_HARDENING_PLAN) + ADR_INDEX + 18 ADRs (0016–0020 reserved, see plan §8) | Present |
 | worklogs | performance/ (Waves 3–6 + the v0.8.11 final-pass and crossover-glide investigations), release-hardening/ (RH program working evidence; finalized decisions live in ADRs), root-level v0.8.12 GUI-fix records (`BANDWIDTH_DRAG_FIX_v0.8.12.md`, `MOUSE_RELEASE_STATE_FIX_v0.8.12.md`) + `POST_v0.8.12_AUDIT_AND_ROADMAP.md` + `STATE_HARNESS_v0.8.13.md` | Present |
 | procedures | 8 docs | Present |
 | policies | 15 docs | Present |

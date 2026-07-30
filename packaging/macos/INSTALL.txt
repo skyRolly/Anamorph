@@ -68,8 +68,8 @@ B) Manual installation (zip) / 手动安装(zip 包)
 Rescan in your DAW / 在 DAW 里重新扫描插件
 --------------------------------------------------------------------
   * Logic Pro: it runs AU validation on launch. To check from Terminal:
-        auval -v aufx Anmr Anmf
-    (type=aufx, subtype=Anmr, manufacturer=Anmf). "PASS" means Logic will see it.
+        auval -v aufx Anmr RTec
+    (type=aufx, subtype=Anmr, manufacturer=RTec). "PASS" means Logic will see it.
   * REAPER: Preferences > Plug-ins > VST/AU > Re-scan.
 
 --------------------------------------------------------------------

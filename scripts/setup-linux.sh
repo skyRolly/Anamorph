@@ -10,6 +10,11 @@
 #  The build itself additionally needs:
 #    - github.com           (JUCE source, pinned commit, via CMake FetchContent)
 #    - github.com / dl       (pluginval release download, optional)
+#  curl + unzip: used by scripts/run-pluginval.sh to fetch and extract that
+#  release. NOT implied by libcurl4-openssl-dev, which is the development
+#  headers, not the CLI. GitHub-hosted runners preinstall both, so a missing
+#  one only ever surfaces on a fresh machine or a minimal container -- exactly
+#  the case this script exists to cover.
 #  libegl-dev: JUCE 9 creates Linux OpenGL contexts via EGL instead of GLX
 #  (juce_opengl linuxPackages "egl gl"), so EGL headers are a build dependency
 #  even though Anamorph never attaches a GL context on Linux (ADR-0011).
@@ -23,6 +28,7 @@ $SUDO apt-get update -y
 
 $SUDO DEBIAN_FRONTEND=noninteractive apt-get install -y \
     build-essential cmake git ninja-build pkg-config \
+    curl unzip \
     libasound2-dev libjack-jackd2-dev libcurl4-openssl-dev \
     libfreetype6-dev libfontconfig1-dev \
     libx11-dev libxcomposite-dev libxcursor-dev libxext-dev \
