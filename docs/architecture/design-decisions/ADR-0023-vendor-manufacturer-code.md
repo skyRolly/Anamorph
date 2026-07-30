@@ -72,6 +72,26 @@ vendor field only.
 remaining "before the first release" justification, and there is no scenario in which this ADR is
 a precedent for one.
 
+### This ADR also amends `COMPATIBILITY_POLICY.md`
+
+`COMPATIBILITY_POLICY` §"The only exception" required, as condition 2, that "a **migration plan**
+preserves old sessions (a read path / default for the old form)". That condition is **unsatisfiable
+by construction** for an identity change: the host matches on the identity, so once it changes the
+host never reaches the plug-in's state-restoration code and there is no read path to write. Left
+as-is, the policy would have declared this change both permitted (it is an exception) and
+impossible (condition 2 can never be met) — a rulebook that contradicts itself is worse than one
+that forbids the change outright.
+
+This ADR therefore adds an explicit **identity carve-out** to condition 2, satisfied by all of:
+**2a** no annotated release tag exists for any build carrying the old identity; **2b** a documented
+recovery procedure in `KNOWN_ISSUES.md`; **2c** the ADR records the identity as frozen afterwards
+and 2a as spent.
+
+2a is the load-bearing clause: it can be true at most once in a product's life, so the carve-out
+cannot be reused. An identity change proposed after the first release tag has **no** route through
+the policy — not a harder one, none. Per `ADR_POLICY.md` rule 5, a Policy change is enacted by an
+ADR, which is what this section does.
+
 ## Consequences
 
 - **Sessions saved with any pre-0.9.1 build report Anamorph as missing.** Recovery: re-insert the

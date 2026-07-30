@@ -15,9 +15,18 @@ host-facing identity — the AU component's manufacturer field, and an input to 
 UID — so pre-0.9.1 sessions report the plug-in as missing; that is documented, not fixable, and
 one-time. Added: **ADR-0023** (`Proposed`; options incl. "keep `Anmf` forever" and the rejected
 `Roll`/`RolT`/`RlyT` candidates) + its `ADR_INDEX` row; **KI-016** + its summary-table row.
-Synced: CHANGELOG (`[0.9.1] ### Changed`), README (§Project status), HANDOVER (Current Version,
-Release Status, Known Blockers), COMPATIBILITY_POLICY (new *Plugin identity change* prohibited-row
-+ an "Exceptions granted so far" table recording that this exception is spent), TRADEMARKS
+ADR count in the self-coverage table synced 17 → **18**.
+Synced: CHANGELOG (`[0.9.1] ### Changed`, evidence = PR #97 per `CHANGELOG_POLICY` rule 2; the
+preamble's "from [0.9.0] onward each release is tagged" claim corrected — 0.9.0 was written up but
+never tagged, so the first annotated tag will be v0.9.1), README (§Project status), HANDOVER
+(Current Version, Release Status incl. the tag name `v0.9.1`, Known Blockers), COMPATIBILITY_POLICY
+(new *Plugin identity change* prohibited-row; an **identity carve-out** to exception condition 2 —
+enacted by ADR-0023, because condition 2 as written is unsatisfiable by construction for an
+identity change and the policy would otherwise have contradicted itself; and an
+"Exceptions granted so far" table recording that the carve-out's 2a ground is spent),
+RELEASE_PROCESS (§Tagging — next tag is `v0.9.1`, and date the heading before tagging),
+`release.yml` + CI_CD (a fail-closed check rejecting a tag whose CHANGELOG heading is still marked
+`Unreleased`, since the heading is published verbatim as the release-notes title), TRADEMARKS
 (§1 — the code is a RollyTech name-bearing identifier), PACKAGING (§Plugin identifiers),
 KNOWN_ISSUES (version-sync lead), and every `auval -v aufx Anmr Anmf` invocation → `RTec`
 (`packaging/macos/INSTALL.txt`, `docs/user/INSTALLATION.md`, `PACKAGING.md`, `TROUBLESHOOTING.md`,
@@ -667,7 +676,7 @@ HEAD `c605fbe` (JUCE 8.0.14).
 |---|---|---|
 | docs root | SOURCE_OF_TRUTH, HANDOVER, REPOSITORY_MAP, DOCUMENTATION_COVERAGE, POSTMORTEMS, KNOWN_ISSUES, FUTURE_RISKS, COMMERCIAL_STATUS | Present |
 | user | USER_MANUAL, INSTALLATION | Present |
-| architecture | 15 docs (incl. RELEASE_HARDENING_PLAN) + ADR_INDEX + 17 ADRs (0016–0020 reserved, see plan §8) | Present |
+| architecture | 15 docs (incl. RELEASE_HARDENING_PLAN) + ADR_INDEX + 18 ADRs (0016–0020 reserved, see plan §8) | Present |
 | worklogs | performance/ (Waves 3–6 + the v0.8.11 final-pass and crossover-glide investigations), release-hardening/ (RH program working evidence; finalized decisions live in ADRs), root-level v0.8.12 GUI-fix records (`BANDWIDTH_DRAG_FIX_v0.8.12.md`, `MOUSE_RELEASE_STATE_FIX_v0.8.12.md`) + `POST_v0.8.12_AUDIT_AND_ROADMAP.md` + `STATE_HARNESS_v0.8.13.md` | Present |
 | procedures | 8 docs | Present |
 | policies | 15 docs | Present |

@@ -2,9 +2,12 @@
 
 All notable user-visible changes to Anamorph. Format follows [Keep a Changelog]; versions are
 `MAJOR.MINOR.PATCH` (pre-1.0). Entries up to and including `[0.8.12]` predate git tags and cite
-their **commit SHA + date** as the Evidence Source (per `docs/policies/CHANGELOG_POLICY.md`);
-from `[0.9.0]` onward each release is additionally marked by an annotated `vX.Y.Z` tag
-(`docs/procedures/RELEASE_PROCESS.md` §Tagging). Entries for the
+their **commit SHA + date** as the Evidence Source (per `docs/policies/CHANGELOG_POLICY.md`).
+The annotated-tag convention and the tag-triggered release pipeline exist
+(`docs/procedures/RELEASE_PROCESS.md` §Tagging), but **no tag has been cut yet**: `[0.9.0]` was
+written as a release entry and then superseded before it was tagged, so the first annotated
+`vX.Y.Z` tag will be **v0.9.1**, and from that tag onward the tag is also a citable Evidence
+Source. Until then every entry cites a commit SHA or a PR. Entries for the
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
@@ -19,8 +22,9 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Re-insert the plug-in and re-load your preset; saved parameter state, preset files and the
   install locations are unaffected, and the DSP is bit-identical to 0.9.0. On macOS, Logic
   re-scans the AU under the new identity and `auval` becomes `auval -v aufx Anmr RTec`.
-  Recorded as **ADR-0023**; the disruption is tracked as **KI-016**.
-  Evidence: CMakeLists.txt:153 (`PLUGIN_MANUFACTURER_CODE RTec`). [Verified]
+  Recorded as **ADR-0023** (which also adds the plugin-identity carve-out to
+  `COMPATIBILITY_POLICY.md` condition 2); the disruption is tracked as **KI-016**.
+  Evidence: PR #97. [Verified]
 
 ## [0.9.0] — 2026-07-26
 ### Added

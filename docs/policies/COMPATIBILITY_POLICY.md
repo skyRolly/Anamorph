@@ -25,23 +25,47 @@ exception (below) is satisfied:
 A prohibited change may proceed **only if all** of the following are satisfied:
 
 1. an **ADR** records the decision (`ADR_POLICY.md`), and
-2. a **migration plan** preserves old sessions (a read path / default for the old form), and
+2. a **migration plan** preserves old sessions (a read path / default for the old form) — see the
+   identity carve-out below for the one case where no such plan can exist, and
 3. the **Release Compatibility Checklist** passes (`procedures/RELEASE_COMPATIBILITY_CHECKLIST.md`), and
 4. the change clears the **Architecture Review Gate** (human review).
 
 The reference precedent is the 0.8.4 move of view params out of the APVTS, done with
 `InternalState::migrateFromLegacyApvts` (ADR-0010).
 
+### Carve-out: plugin-identity changes (condition 2)
+
+Condition 2 assumes the host still **resolves** the plug-in, so the plug-in can read the old form
+itself. For a **plugin-identity change** that assumption fails by construction: the manufacturer
+code, plugin code and product name are what the host matches on, so once they change the host
+never reaches the plug-in's state-restoration code at all — there is no read path to write, and
+no migration plan can exist. Requiring one would not protect users; it would only make the
+condition impossible to satisfy while the change itself stayed possible to make.
+
+For an identity change, and **only** for an identity change, condition 2 is satisfied instead by
+**all** of:
+
+- **2a.** No annotated release tag exists for any build carrying the old identity — i.e. the change
+  is made before the product has ever been released. (Builds already given to testers are covered
+  by 2b, not by a migration.)
+- **2b.** A documented **recovery procedure** in `KNOWN_ISSUES.md`, written for the person holding
+  an affected session, stating what they will see and what to do.
+- **2c.** The ADR records that the identity is **frozen** afterwards, and that 2a is thereby spent.
+
+2a is what makes this non-repeatable: it can be true at most once in a product's life. An identity
+change proposed after the first release tag has no route through this policy at all — not a harder
+one, none.
+
 **Exceptions granted so far:**
 
-| Change | ADR | Migration | Status |
+| Change | ADR | Condition 2 satisfied by | Status |
 |---|---|---|---|
-| View params moved out of the APVTS (0.8.4) | ADR-0010 | `InternalState::migrateFromLegacyApvts` — old sessions read the legacy form | Accepted |
-| Manufacturer code `Anmf` → `RTec` (0.9.1) | ADR-0023 | **None possible** — a host cannot be told that a missing plug-in is this one. Mitigation is documented recovery (re-insert the plug-in) plus taking the change before the first release tag. Recorded as KI-016. | Proposed |
+| View params moved out of the APVTS (0.8.4) | ADR-0010 | **Migration plan** — `InternalState::migrateFromLegacyApvts`; old sessions read the legacy form | Accepted |
+| Manufacturer code `Anmf` → `RTec` (0.9.1) | ADR-0023 | **The identity carve-out.** 2a: no annotated tag existed for any build carrying `Anmf`. 2b: recovery documented as KI-016 (re-insert the plug-in, re-load the preset). 2c: ADR-0023 freezes the identity and records 2a as spent. | Proposed |
 
-The manufacturer-code exception is granted **once**, on the explicit ground that no build had yet
-been tagged or publicly released. That ground is spent: from v0.9.1 the plugin identity is frozen,
-and no comparable exception is available for it again.
+2a is now spent for this product. From v0.9.1 the plugin identity is frozen, and a later identity
+change has **no** route through this policy — the carve-out is unavailable to it, and condition 2
+proper is unsatisfiable for it.
 
 ## Backward-compatibility paths that must be preserved
 

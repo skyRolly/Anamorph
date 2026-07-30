@@ -14,7 +14,9 @@ skeleton, RH-PR-8) and the security-scanning workflows listed in
 
 `release.yml`: `push` of an annotated `v[0-9]+.[0-9]+.[0-9]+` tag, plus `workflow_dispatch`
 as a no-release **rehearsal** (validate + full build only). Jobs: fail-closed metadata
-validation (tag ⇄ `CMakeLists.txt` version ⇄ `CHANGELOG.md` section, annotated-tag check) →
+validation (tag ⇄ `CMakeLists.txt` version ⇄ `CHANGELOG.md` section, annotated-tag check, and —
+since the section heading is published verbatim as the release-notes title — a check that the
+heading is no longer marked `Unreleased`) →
 `build.yml` via `workflow_call` (single build, identical gates and artifacts) → **draft**
 GitHub Release (the validated `Anamorph-<OS>` staging trees archived as
 `Anamorph-<version>-<OS>.zip` with the executable bits the artifact transport drops

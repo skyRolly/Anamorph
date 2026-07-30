@@ -83,6 +83,14 @@ jobs:
               echo "::error::CHANGELOG.md has no '## [${TAG_VERSION}]' section -- write the release entry (RELEASE_PROCESS.md step 2) before tagging"
               exit 1
             fi
+            # The section is extracted VERBATIM as the GitHub Release notes (see the
+            # notes step below), heading included -- so a heading still reading
+            # "— Unreleased" would be published as the release's own title. The
+            # existence check above cannot catch that. Fail closed instead.
+            if grep -qiE "^## \[${TAG_VERSION//./\\.}\].*unreleased" CHANGELOG.md; then
+              echo "::error::CHANGELOG.md '## [${TAG_VERSION}]' is still marked Unreleased -- date the heading (RELEASE_PROCESS.md step 2) before tagging"
+              exit 1
+            fi
             echo "is-release=true"  >> "$GITHUB_OUTPUT"
             echo "version=${TAG_VERSION}" >> "$GITHUB_OUTPUT"
           else
@@ -90,6 +98,9 @@ jobs:
             # state that a real tag would be validated against.
             if grep -qE "^## \[${CMAKE_VERSION//./\\.}\]" CHANGELOG.md; then
               echo "rehearsal: CHANGELOG already has a [${CMAKE_VERSION}] section"
+              if grep -qiE "^## \[${CMAKE_VERSION//./\\.}\].*unreleased" CHANGELOG.md; then
+                echo "::warning::rehearsal: the [${CMAKE_VERSION}] heading is still marked Unreleased -- a real v${CMAKE_VERSION} tag would FAIL validation until it is dated"
+              fi
             else
               echo "::warning::rehearsal: CHANGELOG has no [${CMAKE_VERSION}] section yet -- a real v${CMAKE_VERSION} tag would FAIL validation until the release entry exists"
             fi

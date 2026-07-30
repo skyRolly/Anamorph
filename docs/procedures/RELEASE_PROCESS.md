@@ -46,13 +46,21 @@ itself (`PACKAGING.md`).
 
 ## Tagging + release pipeline (RH-PR-8)
 
-**Tag convention:** an **annotated** tag `vMAJOR.MINOR.PATCH` (e.g. `v0.9.0`) on the release
-commit on `main`, created AFTER pre-release steps 1–7 above are complete:
+**Tag convention:** an **annotated** tag `vMAJOR.MINOR.PATCH` on the release commit on `main`,
+created AFTER pre-release steps 1–7 above are complete. The tag must equal the `CMakeLists.txt`
+`project VERSION` exactly — `release.yml` fails closed on any mismatch. **The next tag is
+`v0.9.1`** (0.9.0 was written up but never tagged; the manufacturer-code change, ADR-0023, lands
+on top of it):
 
 ```bash
-git tag -a v0.9.0 -m "Anamorph 0.9.0"
-git push origin v0.9.0
+git tag -a v0.9.1 -m "Anamorph 0.9.1"
+git push origin v0.9.1
 ```
+
+**Date the CHANGELOG heading before tagging.** `release.yml` extracts the `## [x.y.z]` section
+verbatim as the GitHub Release notes, so a heading still reading `— Unreleased` would be published
+with that word in it. Step 2 of the pre-release checklist covers this; the validation only checks
+that the section *exists*, not that it is dated.
 
 Pushing the tag triggers `.github/workflows/release.yml`, which:
 

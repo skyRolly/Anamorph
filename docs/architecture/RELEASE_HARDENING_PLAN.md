@@ -342,7 +342,9 @@ Numbering continues after ADR-0015 [Verified: ADR_INDEX.md].
 
 Recorded by the v0.9.0 release-hardening & commercial-readiness audit. Each was evaluated and
 **deliberately not implemented in the release PR** — the reason is part of the entry. None of them
-blocks the v0.9.0 tag; the two owner decisions block a *commercial* release.
+blocks the first release tag — which is now **v0.9.1**, not v0.9.0 (0.9.0 was written up but never
+tagged; ADR-0023's manufacturer-code change lands on top of it). The two owner decisions block a
+*commercial* release.
 
 | # | Item | Verdict | Why not now |
 |---|---|---|---|
