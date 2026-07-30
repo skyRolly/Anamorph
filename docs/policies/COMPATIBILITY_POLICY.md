@@ -61,7 +61,7 @@ one, none.
 | Change | ADR | Condition 2 satisfied by | Status |
 |---|---|---|---|
 | View params moved out of the APVTS (0.8.4) | ADR-0010 | **Migration plan** — `InternalState::migrateFromLegacyApvts`; old sessions read the legacy form | Accepted |
-| Manufacturer code `Anmf` → `RTec` (0.9.1) | ADR-0023 | **The identity carve-out.** 2a: no annotated tag existed for any build carrying `Anmf`. 2b: recovery documented as KI-016 (re-insert the plug-in, re-load the preset). 2c: ADR-0023 freezes the identity and records 2a as spent. | Proposed |
+| Manufacturer code `Anmf` → `RTec` (0.9.1) | ADR-0023 | **The identity carve-out.** 2a: no annotated tag existed for any build carrying `Anmf`. 2b: recovery documented as KI-016 (re-insert the plug-in, re-load the preset). 2c: ADR-0023 freezes the identity and records 2a as spent. | **Accepted** (2026-07-30) |
 
 2a is now spent for this product. From v0.9.1 the plugin identity is frozen, and a later identity
 change has **no** route through this policy — the carve-out is unavailable to it, and condition 2

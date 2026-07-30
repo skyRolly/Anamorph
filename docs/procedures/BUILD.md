@@ -18,12 +18,19 @@ Evidence [Verified]: CMakeLists.txt:1 (`cmake_minimum_required(VERSION 3.22)`), 
 scripts/setup-linux.sh     # safe to re-run; installs build + X11/audio/GTK/WebKit deps + xvfb
 ```
 
-Installs: `build-essential cmake git ninja-build pkg-config`, ALSA/JACK/curl, FreeType/Fontconfig,
-X11 (`libx11/xcomposite/xcursor/xext/xinerama/xrandr/xrender`), `libglu1-mesa-dev mesa-common-dev
-libegl-dev`, `libwebkit2gtk-4.1-dev libgtk-3-dev`, and `xvfb`. **`libegl-dev` is required since
-JUCE 9** (it creates Linux OpenGL contexts via EGL instead of GLX; ADR-0022). If
-`libwebkit2gtk-4.1-dev` is unavailable, try `libwebkit2gtk-4.0-dev`.
-Evidence [Verified]: scripts/setup-linux.sh:24-32 (package list), :13-15 (the EGL note).
+Installs: `build-essential cmake git ninja-build pkg-config`, `curl unzip`, ALSA/JACK/libcurl,
+FreeType/Fontconfig, X11 (`libx11/xcomposite/xcursor/xext/xinerama/xrandr/xrender`),
+`libglu1-mesa-dev mesa-common-dev libegl-dev`, `libwebkit2gtk-4.1-dev libgtk-3-dev`, and `xvfb`.
+**`libegl-dev` is required since JUCE 9** (it creates Linux OpenGL contexts via EGL instead of
+GLX; ADR-0022). If `libwebkit2gtk-4.1-dev` is unavailable, try `libwebkit2gtk-4.0-dev`.
+
+Three of these serve **pluginval**, not the build: `xvfb` (the editor tests need a display) and
+`curl` + `unzip` (`run-pluginval.sh` downloads and extracts the pluginval release). The `curl`
+CLI is *not* implied by `libcurl4-openssl-dev`, which is only the development headers —
+GitHub-hosted runners preinstall both tools, so a missing one surfaces on a fresh machine or a
+minimal container rather than in CI.
+Evidence [Verified]: scripts/setup-linux.sh:29-38 (package list), :18-20 (the EGL note),
+:13-17 (the curl/unzip note).
 
 ## Configure + build
 
@@ -81,7 +88,7 @@ artifacts) happens only in CI packaging; see `docs/procedures/CI_CD.md` / `PACKA
 - `github.com` — JUCE source (pinned commit SHA via FetchContent).
 - `github.com` — pluginval release (only for `scripts/run-pluginval.sh`).
 
-Evidence [Verified]: scripts/setup-linux.sh:8-13.
+Evidence [Verified]: scripts/setup-linux.sh:8-12.
 
 ## Compile definitions (part of the build contract)
 

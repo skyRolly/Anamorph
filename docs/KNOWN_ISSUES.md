@@ -438,9 +438,14 @@ only one granted).
   identity — the DSP and state suites do not compile it into an assertion, and pluginval validates
   whatever UID the built VST3 carries. That is precisely why the change is recorded here and in
   ADR-0023 rather than left to surface itself.
-- **Evidence [Verified (code) / Unverified (host behaviour)]:** CMakeLists.txt:153
-  (`PLUGIN_MANUFACTURER_CODE RTec`); ADR-0023; CHANGELOG `[0.9.1]`. The host-side effect is
-  **Unverified in-repo** — it needs a DAW and is a Level-5 check.
+- **Evidence [Verified (code) / Verified — manual (new identity) / Unverified (old-session
+  effect)]:** CMakeLists.txt:153 (`PLUGIN_MANUFACTURER_CODE RTec`); ADR-0023 (`Accepted`
+  2026-07-30); CHANGELOG `[0.9.1]`. The **new** identity registering correctly was confirmed by the
+  maintainer's Level-5 check on 2026-07-30 (host registration + `auval -v aufx Anmr RTec`) — a
+  human sign-off, not headlessly reproducible. The **old-session** effect described above is
+  derived from the mechanism (the host matches on the identity, so it cannot resolve a pre-0.9.1
+  reference) and was **not** separately observed; it is stated as a consequence, not as a
+  measurement.
 - **Closure:** this entry stays for as long as pre-0.9.1 builds are in testers' hands; it is
   removed once no tester is carrying one, and is then recorded in `POSTMORTEMS.md` only if it
   actually cost someone work.

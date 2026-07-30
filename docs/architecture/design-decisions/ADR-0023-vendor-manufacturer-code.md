@@ -1,7 +1,8 @@
 # ADR-0023 — Vendor manufacturer code `Anmf` → `RTec` (product-line identity)
 
-**Status:** Proposed (pending Architecture-Review sign-off; the change is an
-`ARCHITECTURE_REVIEW_GATE` item and a `COMPATIBILITY_POLICY` exception)
+**Status:** **Accepted** — Architecture Review signed off by the maintainer on **2026-07-30**,
+together with the Level-5 identity check (see *Verification performed*). The change is an
+`ARCHITECTURE_REVIEW_GATE` item and a `COMPATIBILITY_POLICY` exception; both are now cleared.
 
 ## Context
 
@@ -110,13 +111,24 @@ ADR, which is what this section does.
 
 ## Verification performed
 
+- **Level-5 identity check — PERFORMED (2026-07-30, maintainer).** The 0.9.1 build was loaded in a
+  host, the new identity registers, and `auval -v aufx Anmr RTec` was run on macOS. This is the
+  only check that actually exercises the change, and it is a **human sign-off**: it is not
+  reproducible from CI and no automated gate in this repository can substitute for it (nothing in
+  the suite observes plug-in identity — that is the whole reason this ADR exists).
+  `[Verified — manual, not headlessly reproducible]`
+- **Architecture Review — signed off (2026-07-30, maintainer).** Clears the
+  `ARCHITECTURE_REVIEW_GATE` item and condition 4 of the `COMPATIBILITY_POLICY` exception.
 - `AnamorphTests` + `AnamorphStateTests`: **expected unchanged** — neither compiles the plug-in
-  identity into an assertion. Not yet run in this change set. `[Unverified]`
+  identity into an assertion. Confirmation comes from the CI run on the change set, not from this
+  ADR. `[Unverified in-repo]`
 - pluginval: **expected unchanged**; it validates the built VST3 wherever the UID lands.
-  `[Unverified]`
-- The one check that actually exercises the change — loading the new build in a host and
-  confirming the new identity registers, plus `auval -v aufx Anmr RTec` on macOS — is a **Level-5
-  manual step** and is **OPEN**. Until it is performed this ADR stays `Proposed`.
+  `[Unverified in-repo]`
+
+The two `Unverified in-repo` rows are deliberately *not* upgraded by the sign-off: the maintainer
+confirmed the identity behaviour, which is what needed a human. The suites and pluginval are
+machine-checkable and are reported by CI on this change — an ADR must not claim a green gate it
+did not observe (constraint C2/C7).
 
 ## Related code
 

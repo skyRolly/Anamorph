@@ -8,8 +8,9 @@ Diagnosing build, validation, and runtime problems. For the validation workflow 
 |---|---|---|
 | FetchContent fails to clone JUCE | No network to `github.com` | Use a local checkout: `-DANAMORPH_JUCE_PATH=/path/to/JUCE` (BUILD.md). |
 | Missing X11/ALSA/GTK headers on Linux | Build deps not installed | Run `scripts/setup-linux.sh`. |
-| `libwebkit2gtk-4.1-dev` not found | Newer/older Ubuntu | Try `libwebkit2gtk-4.0-dev` (setup-linux.sh:31 installs 4.1; :36 documents the fallback). |
-| `EGL/egl.h` not found on Linux | `libegl-dev` missing — JUCE 9 builds its Linux GL context on EGL | `scripts/setup-linux.sh` installs it (setup-linux.sh:13-15,30); on a hand-rolled dep list add `libegl-dev`. |
+| `libwebkit2gtk-4.1-dev` not found | Newer/older Ubuntu | Try `libwebkit2gtk-4.0-dev` (setup-linux.sh:37 installs 4.1; :42 documents the fallback). |
+| `EGL/egl.h` not found on Linux | `libegl-dev` missing — JUCE 9 builds its Linux GL context on EGL | `scripts/setup-linux.sh` installs it (setup-linux.sh:18-20,36); on a hand-rolled dep list add `libegl-dev`. |
+| `curl: command not found` / `unzip: command not found` running `run-pluginval.sh` | The pluginval download/extract tools are missing — `libcurl4-openssl-dev` is headers, not the CLI | `scripts/setup-linux.sh` installs both (setup-linux.sh:31); CI runners preinstall them, so this only appears on a fresh machine or a minimal container. |
 | `AnamorphTests not found` when testing | Not built, or tests disabled | `scripts/build.sh`; ensure `ANAMORPH_BUILD_TESTS=ON`. |
 | Wrong/old JUCE behaviour | Stale fetched JUCE | Confirm the pinned commit `f8f8864…` = JUCE 9.0.0 (CMakeLists.txt:36-38); a JUCE bump is a Build System change (ARCHITECTURE_REVIEW_GATE, ADR-0022). |
 | Configure says `fetching JUCE 9.0.0 (<old rev>)` | `ANAMORPH_JUCE_TAG` is a CACHE variable — an existing `build/` keeps the OLD pin after a pull | Delete `build/` (or `cmake -B build -UANAMORPH_JUCE_TAG -UANAMORPH_JUCE_VERSION`) so the new pin takes effect; the configure banner prints version + rev precisely so a mismatch is visible. |

@@ -6,15 +6,43 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **vendor manufacturer-code change** (2026-07-30, on top of `main` @
+Last updated: for the **ADR-0023 sign-off + the pluginval dependency fix** (2026-07-30). Two
+changes, neither touching `src/`.
+
+**ADR-0023 is now `Accepted`.** The maintainer signed off the Architecture Review and performed the
+Level-5 identity check on 2026-07-30 — the 0.9.1 build registers under the new identity in a host,
+and `auval -v aufx Anmr RTec` was run on macOS. That was the only check that exercises the change,
+and no automated gate in this repository could have stood in for it, since nothing in the suite
+observes plug-in identity. Status synced in ADR-0023 (incl. its *Verification performed* section),
+`ADR_INDEX`, `COMPATIBILITY_POLICY` (exceptions table), and `HANDOVER` (Current Version, Release
+Status, Known Blockers — the v0.9.1 tag blockers drop from five to **four**; the remaining four are
+the missing licence plus three `RELEASE_POLICY` preconditions, all carried unchanged from the
+v0.9.0 audit and all still requiring a human). Deliberately **not** upgraded: the ADR's
+`AnamorphTests` / `AnamorphStateTests` / pluginval rows stay `Unverified in-repo` — the sign-off
+covered the identity behaviour, which is what needed a human; the machine-checkable gates are
+reported by CI on the change set, and an ADR must not claim a green gate it did not observe (C2/C7).
+
+**`scripts/setup-linux.sh` now installs `curl` and `unzip`.** `run-pluginval.sh` calls both to
+fetch and extract the pluginval release, and neither was installed — `libcurl4-openssl-dev` is the
+development headers, not the CLI. GitHub-hosted runners preinstall both, which is exactly why the
+gap never showed in CI and would only have bitten on a fresh machine or a minimal container, i.e.
+the case this script exists to cover. Found while fixing the same defect in the sibling repository.
+Synced: `BUILD.md` (§Linux dependencies — package list plus a paragraph separating the three
+pluginval-only packages from the build dependencies; §Network domains), `TROUBLESHOOTING.md` (a new
+`command not found` row). The script gained lines, so the `setup-linux.sh:NNN` citations in both
+documents were re-based: package list `:24-32` → `:29-38`, EGL note `:13-15` → `:18-20`, network
+domains `:8-13` → `:8-12`, webkit `:31`/`:36` → `:37`/`:42`, `libegl-dev` `:30` → `:36`.
+
+Prior: for the **vendor manufacturer-code change** (2026-07-30, on top of `main` @
 `c0fca30`). **No `src/` change; DSP, parameter surface and serialized state bit-identical to
 0.9.0.** `PLUGIN_MANUFACTURER_CODE` changes `Anmf` → `RTec` (`CMakeLists.txt:153`) so the vendor
 code spells RollyTech rather than the first product, ahead of the second product line member
 (Anabasis) adopting the same value. Version bumped to **0.9.1** (`CMakeLists.txt:14`). The code is
 host-facing identity — the AU component's manufacturer field, and an input to JUCE's VST3 class
 UID — so pre-0.9.1 sessions report the plug-in as missing; that is documented, not fixable, and
-one-time. Added: **ADR-0023** (`Proposed`; options incl. "keep `Anmf` forever" and the rejected
-`Roll`/`RolT`/`RlyT` candidates) + its `ADR_INDEX` row; **KI-016** + its summary-table row.
+one-time. Added: **ADR-0023** (options incl. "keep `Anmf` forever" and the rejected
+`Roll`/`RolT`/`RlyT` candidates; opened as `Proposed`, `Accepted` 2026-07-30 — see the head entry)
++ its `ADR_INDEX` row; **KI-016** + its summary-table row.
 ADR count in the self-coverage table synced 17 → **18**.
 Synced: CHANGELOG (`[0.9.1] ### Changed`, evidence = PR #97 per `CHANGELOG_POLICY` rule 2; the
 preamble's "from [0.9.0] onward each release is tagged" claim corrected — 0.9.0 was written up but
