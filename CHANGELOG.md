@@ -11,7 +11,7 @@ Source. Until then every entry cites a commit SHA or a PR. Entries for the
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
-## [0.9.1] — Unreleased
+## [0.9.1] — 2026-07-30
 ### Changed
 - **The manufacturer code is now `RTec` (was `Anmf`)** — the 4-character vendor identifier every
   RollyTech plug-in shares. It abbreviated the *product* rather than the company, which does not
