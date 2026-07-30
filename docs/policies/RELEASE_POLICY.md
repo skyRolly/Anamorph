@@ -62,5 +62,5 @@ attribution & support files".
 
 `MAJOR.MINOR.PATCH`, pre-1.0 (< 1.0.0 = pre-release line), plus a CI build/dev number passed as
 `-DANAMORPH_BUILD_NUMBER=${run_number}` and shown in the About box.
-Evidence [Verified]: CMakeLists.txt:14,181-187; .github/workflows/build.yml:60,180,438 (the
+Evidence [Verified]: CMakeLists.txt:14,186-192; .github/workflows/build.yml:60,180,438 (the
 per-OS Configure steps passing `-DANAMORPH_BUILD_NUMBER`).

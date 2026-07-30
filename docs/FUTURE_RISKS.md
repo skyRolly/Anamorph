@@ -3,7 +3,10 @@
 Potential technical risks. Each is evidence-based (constraint C7) — no invented risks. ADRs and
 postmortems may reference these IDs to close the loop. Severity: Low / Medium / High / Critical.
 
-Version-synced to **v0.9.0** (release-prep, 2026-07-24, PR #87 — packaging/installers + user
+Version-synced to **v0.9.1** (manufacturer-code change, ADR-0023 — no new risk: RISK-003's
+mitigation now names v0.9.1 as the first tag, and the one-time session break is a documented
+known issue (KI-016), not a forward-looking risk). Prior sync: **v0.9.0** (release-prep,
+2026-07-24, PR #87 — packaging/installers + user
 docs + version bump — and PR #89, the installer/packaging rework: component selection, system-wide
 installs, flat ZIP-only artifacts; no DSP/GUI code change in either, no new risk; the unsigned
 installers inherit the existing signing/notarization gap already tracked as RH-PR-3/5). Previously verified against

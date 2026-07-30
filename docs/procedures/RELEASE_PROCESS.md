@@ -42,7 +42,8 @@ itself (`PACKAGING.md`).
 ## Versioning
 
 `MAJOR.MINOR.PATCH`, pre-1.0 (< 1.0.0 = pre-release line); the version lives in
-`CMakeLists.txt` and the About box. Evidence [Verified]: CMakeLists.txt:14,181-187.
+`CMakeLists.txt` and the About box. Evidence [Verified]: CMakeLists.txt:14 (`project VERSION`),
+:186-192 (the versioning comment, `ANAMORPH_BUILD_NUMBER`, and the two version compile definitions).
 
 ## Tagging + release pipeline (RH-PR-8)
 
@@ -61,7 +62,8 @@ git push origin v0.9.1
 extracts the `## [x.y.z]` section **verbatim, heading included**, as the release **notes body**
 (the release *title* is set separately to `Anamorph <version>`), so a heading still reading
 `— Unreleased` would appear at the top of the published notes. Validation therefore **fails
-closed** on a heading still marked `Unreleased`.
+closed unless the heading carries an ISO date** — which covers a bare `## [x.y.z]` with no date at
+all, not only the literal word `Unreleased`.
 
 Two practical consequences:
 
@@ -74,8 +76,8 @@ Pushing the tag triggers `.github/workflows/release.yml`, which:
 
 1. **Validates release metadata fail-closed** — the tag must be annotated, must equal the
    `CMakeLists.txt` `project VERSION`, `CHANGELOG.md` must already carry the `## [x.y.z]`
-   section, **and that heading must no longer be marked `Unreleased`** (i.e. steps 1–2 above are
-   enforced, not assumed).
+   section **carrying an ISO release date** (i.e. steps 1–2 above are enforced, not assumed).
+   An undated heading — `— Unreleased` or bare — is rejected.
 2. **Runs the full existing gate exactly once** by *calling* `build.yml` (`workflow_call`) —
    the same 3-OS matrix, DSP + state suites, pluginval strictness 10 both modes ×3, symbol
    retain-then-strip, fail-closed artifact gating. Tag pushes do not trigger `build.yml`

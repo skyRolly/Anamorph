@@ -6,7 +6,35 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **second review pass on the 0.9.1 change set** (2026-07-30). Six findings
+Last updated: for the **third review pass on the 0.9.1 change set** (2026-07-30). Three findings
+fixed, three were confirmations. No `src/` change.
+
+**The `Unreleased` guard had a residual hole.** It rejected only a heading containing the word
+`Unreleased`; a heading written as a bare `## [0.9.1]` is equally undated and would have published
+undated notes. The check now requires an **ISO date** in the heading, which subsumes both cases and
+matches the format every existing entry already uses. Exercised against five heading forms
+(`— Unreleased`, bare, em-dash-dated, hyphen-dated, two-digit minor) plus both real CHANGELOG
+sections. Synced: `release.yml` (tag branch + rehearsal warning), `RELEASE_PROCESS`, `CI_CD`,
+`HANDOVER`.
+
+**`FUTURE_RISKS` was edited for 0.9.1 but kept a v0.9.0 version-sync lead**, leaving it and
+`KNOWN_ISSUES` disagreeing about which version the status documents are synced to. Re-led to
+v0.9.1, recording that ADR-0023 adds no new *risk* — the one-time session break is a known issue
+(KI-016), not a forward-looking one.
+
+**More reported-then-corrected line drift (C6), in a document this change set touched.** `BUILD.md`
+carried three stale `CMakeLists.txt` citations the previous pass did not report:
+`ANAMORPH_BUILD_TESTS` `:27,212` → `:27,219`, `ANAMORPH_BUILD_NUMBER` `:183` → `:188`, compile
+definitions `:185-194` → `:190-199`. Sweeping for the same class found a fourth, shared by
+`RELEASE_PROCESS` and `RELEASE_POLICY`: the versioning citation `:181-187` → `:186-192`. All five
+re-verified against the file. (`build.yml:60,180,438` for the build-number Configure steps was
+checked and is correct.)
+
+**Confirmed, no change:** the auval recipe is consistent in every maintained carrier; the guard
+interacts correctly with the verbatim notes extraction; the `curl`/`unzip` fix matches what
+`run-pluginval.sh` invokes and its re-based citations all resolve.
+
+Prior: for the **second review pass on the 0.9.1 change set** (2026-07-30). Six findings
 fixed, no `src/` change.
 
 **The exception was over-claimed.** ADR-0023's status line said the `ARCHITECTURE_REVIEW_GATE` item

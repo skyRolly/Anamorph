@@ -49,11 +49,11 @@ Evidence [Verified]: scripts/build.sh:14-15.
 
 | Option | Default | Effect |
 |---|---|---|
-| `ANAMORPH_BUILD_TESTS` | ON | Build the `AnamorphTests` + `AnamorphStateTests` console apps (CMakeLists.txt:27,212) |
+| `ANAMORPH_BUILD_TESTS` | ON | Build the `AnamorphTests` + `AnamorphStateTests` console apps (CMakeLists.txt:27,219) |
 | `ANAMORPH_BUILD_STANDALONE` | ON | Add the Standalone target (CMakeLists.txt:28,146-148) |
 | `ANAMORPH_JUCE_PATH` | "" | Use a local JUCE checkout instead of fetching (CMakeLists.txt:32,43-45) |
 | `ANAMORPH_JUCE_TAG` | `f8f8864…` (= tag 9.0.0) | JUCE git rev to fetch when no local path; `ANAMORPH_JUCE_VERSION` carries the readable version (CMakeLists.txt:36-38) |
-| `ANAMORPH_BUILD_NUMBER` | 0 | CI build/dev number shown in the About box (CMakeLists.txt:183) |
+| `ANAMORPH_BUILD_NUMBER` | 0 | CI build/dev number shown in the About box (CMakeLists.txt:188) |
 
 Offline build (no network) with a local JUCE:
 ```bash
@@ -94,4 +94,4 @@ Evidence [Verified]: scripts/setup-linux.sh:8-12.
 
 `ANAMORPH_VERSION_STRING`, `ANAMORPH_BUILD_NUMBER`, `JUCE_WEB_BROWSER=0`, `JUCE_USE_CURL=0`,
 `JUCE_VST3_CAN_REPLACE_VST2=0`, `JUCE_DISPLAY_SPLASH_SCREEN=0`, `JUCE_REPORT_APP_USAGE=0`,
-`JUCE_STRICT_REFCOUNTEDPOINTER=1`. Evidence [Verified]: CMakeLists.txt:185-194.
+`JUCE_STRICT_REFCOUNTEDPOINTER=1`. Evidence [Verified]: CMakeLists.txt:190-199.
