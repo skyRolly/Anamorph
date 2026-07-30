@@ -104,12 +104,12 @@ Evidence [Verified]: build.yml (stage/upload steps per job).
 |---|---|---|
 | Company | RollyTech | CMakeLists.txt:151 |
 | Bundle ID | `com.rollytech.anamorph` | CMakeLists.txt:152 |
-| Manufacturer code | `Anmf` | CMakeLists.txt:153 |
+| Manufacturer code | `RTec` | CMakeLists.txt:153 — vendor-wide, shared by every RollyTech plug-in; was `Anmf` before 0.9.1 (ADR-0023) |
 | Plugin code | `Anmr` | CMakeLists.txt:154 |
 | Product name | Anamorph | CMakeLists.txt:156 |
 | VST3 categories | Fx, Spatial, Stereo | CMakeLists.txt:163 |
 
-AU validation (macOS): `auval -v aufx Anmr Anmf` (type=`aufx`, subtype=`Anmr`, manufacturer=`Anmf`).
+AU validation (macOS): `auval -v aufx Anmr RTec` (type=`aufx`, subtype=`Anmr`, manufacturer=`RTec`).
 Evidence [Verified]: packaging/macos/INSTALL.txt:70-72.
 
 ## macOS signing & quarantine

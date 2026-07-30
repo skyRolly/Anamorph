@@ -6,7 +6,32 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **product video script worklog** (2026-07-29, on top of `main` @
+Last updated: for the **vendor manufacturer-code change** (2026-07-30, on top of `main` @
+`c0fca30`). **No `src/` change; DSP, parameter surface and serialized state bit-identical to
+0.9.0.** `PLUGIN_MANUFACTURER_CODE` changes `Anmf` → `RTec` (`CMakeLists.txt:153`) so the vendor
+code spells RollyTech rather than the first product, ahead of the second product line member
+(Anabasis) adopting the same value. Version bumped to **0.9.1** (`CMakeLists.txt:14`). The code is
+host-facing identity — the AU component's manufacturer field, and an input to JUCE's VST3 class
+UID — so pre-0.9.1 sessions report the plug-in as missing; that is documented, not fixable, and
+one-time. Added: **ADR-0023** (`Proposed`; options incl. "keep `Anmf` forever" and the rejected
+`Roll`/`RolT`/`RlyT` candidates) + its `ADR_INDEX` row; **KI-016** + its summary-table row.
+Synced: CHANGELOG (`[0.9.1] ### Changed`), README (§Project status), HANDOVER (Current Version,
+Release Status, Known Blockers), COMPATIBILITY_POLICY (new *Plugin identity change* prohibited-row
++ an "Exceptions granted so far" table recording that this exception is spent), TRADEMARKS
+(§1 — the code is a RollyTech name-bearing identifier), PACKAGING (§Plugin identifiers),
+KNOWN_ISSUES (version-sync lead), and every `auval -v aufx Anmr Anmf` invocation → `RTec`
+(`packaging/macos/INSTALL.txt`, `docs/user/INSTALLATION.md`, `PACKAGING.md`, `TROUBLESHOOTING.md`,
+`TESTING.md`, `KNOWN_ISSUES.md` KI-014, `RELEASE_HARDENING_PLAN.md` RH-F3).
+**Deliberately not changed:** `worklogs/PRODUCT_READINESS_ROADMAP_v0.8.13.md:36` still carries the
+old `auval` recipe — worklogs are a historical evidence trail, not maintained documents, and
+rewriting one to match today's code would falsify the record.
+**Drift observed, not corrected (constraint C6):** `ADR-0001` cites `CMakeLists.txt:62-73` for the
+`AnamorphDSP` INTERFACE library, which now lives at `:124-135` (as `ARCHITECTURE.md` correctly
+states); this predates the present change and is out of its scope.
+The comment added beside the new code is deliberately same-line, so no `CMakeLists.txt:NNN`
+citation anywhere in the documentation shifts.
+
+Prior: for the **product video script worklog** (2026-07-29, on top of `main` @
 `82b2f61`). **No `src/` change; no product-document change.** Added (and subsequently revised,
 in the same unmerged branch) `worklogs/KEYNOTE_SCRIPT_v0.9.0.md` — a session work product
 (marketing draft): a locked product positioning ("width is a method"; the plugin as instrument,

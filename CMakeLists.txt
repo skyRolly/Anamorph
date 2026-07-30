@@ -11,7 +11,7 @@ cmake_minimum_required(VERSION 3.22)
 #     cmake --build build --config Release
 # ============================================================================
 
-project(Anamorph VERSION 0.9.0 LANGUAGES C CXX)
+project(Anamorph VERSION 0.9.1 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -150,7 +150,7 @@ endif()
 juce_add_plugin(Anamorph
     COMPANY_NAME            "RollyTech"
     BUNDLE_ID               "com.rollytech.anamorph"
-    PLUGIN_MANUFACTURER_CODE Anmf
+    PLUGIN_MANUFACTURER_CODE RTec   # vendor-wide, was Anmf; host IDENTITY - frozen, ADR-0023
     PLUGIN_CODE             Anmr
     FORMATS                 ${ANAMORPH_FORMATS}
     PRODUCT_NAME            "Anamorph"

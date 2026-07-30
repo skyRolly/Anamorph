@@ -4,7 +4,10 @@
 in `POSTMORTEMS.md`, not here. Each entry is evidence-backed (constraint C7). When an item is
 fixed, remove it here and (if notable) add a `POSTMORTEMS.md` entry.
 
-Version-synced to **v0.9.0** (release-prep, 2026-07-24, PR #87 + the installer/packaging rework
+Version-synced to **v0.9.1** (manufacturer-code change, ADR-0023 — **one issue added**: KI-016,
+sessions saved before 0.9.1 report the plug-in as missing because the AU manufacturer field and
+the VST3 class UID changed; no issue removed, no status moved, and the DSP is bit-identical to
+0.9.0). Prior sync: **v0.9.0** (release-prep, 2026-07-24, PR #87 + the installer/packaging rework
 PR #89 — no plugin code changed since
 v0.8.12 (the JUCE 9 bump is proven bit-identical), so no issue's status moved except one issue
 **removed**: KI-005 "No graphical installer" — v0.9.0 ships a Linux install script (inside
@@ -53,6 +56,7 @@ JUCE 8.0.14; before that 0.8.8 for PR #54).
 | KI-013 | macOS: release outside the window can still leave a control stuck pressed (the v0.8.12 reconcile is inert there — JUCE's realtime query returns cached mouse-button state on macOS) | Low | Confirmed, external (JUCE platform implementation); recovery on cursor re-entry intact |
 | KI-014 | The macOS **AU** is built and shipped but never validated automatically — `run-pluginval.sh` only sees the VST3, and no `auval` step exists in CI | Medium | Confirmed (coverage gap); recipe + verdict recorded as RH-F3 |
 | KI-015 | Anamorph declares **no licence of its own** — the repository root has no `LICENSE` file and the installers present no EULA, so the terms the binaries are offered under are undeclared | High | Confirmed; owner/legal decision (RH-R11 / RH-F1), not an engineering task |
+| KI-016 | **Sessions saved with a pre-0.9.1 build report Anamorph as missing** — 0.9.1 changed the manufacturer code `Anmf` → `RTec`, which is the AU component's manufacturer field and feeds the VST3 class UID, so the host cannot match the old identity | Medium | Confirmed, **deliberate** and one-time (ADR-0023); recovery is to re-insert the plug-in |
 
 ---
 
@@ -377,12 +381,12 @@ stripped, ad-hoc signed and slice-verified like the other formats, so this is a 
 gap, not a build gap.
 - **Why not fixed here:** `auval` only sees a *registered* component, so a CI step must copy the
   built bundle into `~/Library/Audio/Plug-Ins/Components/` and force a registry refresh
-  (`killall -9 AudioComponentRegistrar`) before running `auval -v aufx Anmr Anmf`. Whether that is
+  (`killall -9 AudioComponentRegistrar`) before running `auval -v aufx Anmr RTec`. Whether that is
   reliable on a headless `macos-14` runner cannot be established from this repository, and adding
   an unproven **blocking** gate immediately before a release tag is the wrong trade.
 - **Evidence [Verified]:** scripts/run-pluginval.sh:31 (`find ... -name 'Anamorph.vst3'` — VST3
   only); .github/workflows/build.yml macOS job (AU built and packaged, no auval step);
-  CMakeLists.txt:153-154 (the `Anmf`/`Anmr` codes auval needs).
+  CMakeLists.txt:153-154 (the `RTec`/`Anmr` codes auval needs).
 - **Plan:** RH-F3 in `docs/architecture/RELEASE_HARDENING_PLAN.md` §12a — land after v0.9.0,
   non-blocking first, promote once it has proven stable. See also `docs/procedures/TESTING.md`
   §"Gaps in the automated coverage".
@@ -406,3 +410,37 @@ distribution, alongside Anamorph's own LICENSE/EULA text.
   in JUCE 9.0.0, but VST trademark use and plug-in distribution terms are governed separately.
 - **Index:** all open owner/legal decisions, including this one, are listed in
   `docs/COMMERCIAL_STATUS.md` §4.
+
+## KI-016 — Sessions saved before 0.9.1 report Anamorph as missing
+v0.9.1 changed the **manufacturer code** from `Anmf` to `RTec` (**ADR-0023**) — the vendor
+identifier every RollyTech plug-in shares. That code is the **AU component's manufacturer field**,
+and it feeds the **VST3 class UID** (JUCE derives the UID from the manufacturer code, the plug-in
+code and the plug-in name), so a host that recorded the pre-0.9.1 identity in a session cannot
+match the 0.9.1 build and reports Anamorph as **missing** rather than loading it.
+
+This is a *deliberate, one-time* change, taken before the first release tag because a manufacturer
+code only becomes more expensive to change. It is **not** a defect and will not recur: the code is
+frozen from 0.9.1 onward (`docs/policies/COMPATIBILITY_POLICY.md` — the ADR-0023 exception is the
+only one granted).
+
+- **What a tester sees:** the plug-in slot in an old session shows as missing/unavailable; on
+  macOS, Logic and GarageBand no longer list the old AU until the new one is scanned.
+- **Workaround:** re-insert Anamorph on the track and re-load the preset (or re-dial the
+  settings). If the plug-in does not appear at all, force a plug-in rescan and clear any
+  failed-scan/blocklist entry.
+- **What is NOT affected:** saved parameter state, preset files (`.anamorph`), the parameter IDs,
+  the serialization schema, the install locations, and the audio — the 0.9.1 DSP is bit-identical
+  to 0.9.0. Only the *identity the host files the plug-in under* changed. Automation lanes are
+  lost only because they belong to the instance the host can no longer find, not because
+  automation itself changed.
+- **macOS AU validation** is now `auval -v aufx Anmr RTec`.
+- **Why no automated gate caught it:** nothing in the repository's validation observes plug-in
+  identity — the DSP and state suites do not compile it into an assertion, and pluginval validates
+  whatever UID the built VST3 carries. That is precisely why the change is recorded here and in
+  ADR-0023 rather than left to surface itself.
+- **Evidence [Verified (code) / Unverified (host behaviour)]:** CMakeLists.txt:153
+  (`PLUGIN_MANUFACTURER_CODE RTec`); ADR-0023; CHANGELOG `[0.9.1]`. The host-side effect is
+  **Unverified in-repo** — it needs a DAW and is a Level-5 check.
+- **Closure:** this entry stays for as long as pre-0.9.1 builds are in testers' hands; it is
+  removed once no tester is carrying one, and is then recorded in `POSTMORTEMS.md` only if it
+  actually cost someone work.

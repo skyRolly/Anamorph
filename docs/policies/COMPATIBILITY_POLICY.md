@@ -18,6 +18,7 @@ exception (below) is satisfied:
 | **Host-visible parameter semantic change** | Automation lanes now mean something different. |
 | **Reported-latency behaviour change** | Host PDC desyncs; timing shifts. |
 | **Automation behaviour change** | Recorded automation plays back differently. |
+| **Plugin identity change** (`PLUGIN_MANUFACTURER_CODE`, `PLUGIN_CODE`, `PRODUCT_NAME`) | The host cannot find the plug-in at all: the manufacturer code is the AU component's manufacturer field, and JUCE derives the VST3 class UID from all three. The session reports the plug-in as missing. |
 
 ## The only exception
 
@@ -30,6 +31,17 @@ A prohibited change may proceed **only if all** of the following are satisfied:
 
 The reference precedent is the 0.8.4 move of view params out of the APVTS, done with
 `InternalState::migrateFromLegacyApvts` (ADR-0010).
+
+**Exceptions granted so far:**
+
+| Change | ADR | Migration | Status |
+|---|---|---|---|
+| View params moved out of the APVTS (0.8.4) | ADR-0010 | `InternalState::migrateFromLegacyApvts` — old sessions read the legacy form | Accepted |
+| Manufacturer code `Anmf` → `RTec` (0.9.1) | ADR-0023 | **None possible** — a host cannot be told that a missing plug-in is this one. Mitigation is documented recovery (re-insert the plug-in) plus taking the change before the first release tag. Recorded as KI-016. | Proposed |
+
+The manufacturer-code exception is granted **once**, on the explicit ground that no build had yet
+been tagged or publicly released. That ground is spent: from v0.9.1 the plugin identity is frozen,
+and no comparable exception is available for it again.
 
 ## Backward-compatibility paths that must be preserved
 

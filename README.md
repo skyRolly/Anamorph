@@ -13,9 +13,13 @@ only — it configures and builds entirely from the command line on a headless L
 - Diamond **vectorscope**, correlation + L/R Peak/RMS meters; click-free transitions throughout.
 
 ## Project status
-- **Version 0.9.0** (pre-1.0), in the **internal-testing phase** — builds go to testers for
+- **Version 0.9.1** (pre-1.0), in the **internal-testing phase** — builds go to testers for
   evaluation, not to customers (see [Licensing](#licensing); internal record:
   [`docs/COMMERCIAL_STATUS.md`](docs/COMMERCIAL_STATUS.md)).
+- **0.9.1 changes the manufacturer code** (`Anmf` → `RTec`, the vendor identifier now shared with
+  the second RollyTech plug-in). It is host-facing identity, so **sessions saved with an earlier
+  build report Anamorph as missing** — re-insert the plug-in and re-load the preset. Audio,
+  parameters and presets are unchanged. ADR-0023 · [`KI-016`](docs/KNOWN_ISSUES.md).
 - Active development on a feature-branch → PR → `main` workflow.
 - Validation gate: **33 DSP self-tests** + the **9-test state-compatibility suite** + **pluginval strictness 10** (both modes ×3, blocking on all three CI platforms).
 - A green build + pluginval pass is **"ready to audition,"** not final sign-off (audio/visual
