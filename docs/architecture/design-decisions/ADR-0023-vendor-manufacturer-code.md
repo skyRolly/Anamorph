@@ -1,8 +1,21 @@
 # ADR-0023 — Vendor manufacturer code `Anmf` → `RTec` (product-line identity)
 
-**Status:** **Accepted** — Architecture Review signed off by the maintainer on **2026-07-30**,
-together with the Level-5 identity check (see *Verification performed*). The change is an
-`ARCHITECTURE_REVIEW_GATE` item and a `COMPATIBILITY_POLICY` exception; both are now cleared.
+**Status:** **Accepted** — the *decision* is signed off. Architecture Review cleared by the
+maintainer on **2026-07-30**, together with the Level-5 identity check (see *Verification
+performed*).
+
+**The `COMPATIBILITY_POLICY` exception is NOT yet fully satisfied.** It needs all four conditions,
+and only three are met:
+
+| Condition | State |
+|---|---|
+| 1 — an ADR records the decision | ✅ this document |
+| 2 — migration plan, or the identity carve-out | ✅ carve-out 2a/2b/2c (below) |
+| 3 — the **Release Compatibility Checklist** passes | ❌ **OPEN** — never completed for this release (`HANDOVER.md`, Release Status). It is a **release-time** gate, not a merge-time one, so it does not block landing this change; it does block cutting `v0.9.1`. |
+| 4 — Architecture Review Gate cleared | ✅ 2026-07-30 |
+
+Condition 3 is deliberately left open rather than waved through: this ADR states below that it
+"must not claim a green gate it did not observe", and the release checklist is exactly such a gate.
 
 ## Context
 
@@ -69,9 +82,9 @@ ever built, so it never carries an identity it has to change.
 `PRODUCT_NAME` and the parameter/serialization surface are **unchanged** — this ADR changes the
 vendor field only.
 
-**The code is now frozen.** A second change would be a `COMPATIBILITY_POLICY` breach with no
-remaining "before the first release" justification, and there is no scenario in which this ADR is
-a precedent for one.
+**The code is frozen from the first annotated tag.** After that, a second change would be a
+`COMPATIBILITY_POLICY` breach with no remaining "before the first release" justification, and there
+is no scenario in which this ADR is a precedent for one.
 
 ### This ADR also amends `COMPATIBILITY_POLICY.md`
 
@@ -84,14 +97,17 @@ impossible (condition 2 can never be met) — a rulebook that contradicts itself
 that forbids the change outright.
 
 This ADR therefore adds an explicit **identity carve-out** to condition 2, satisfied by all of:
-**2a** no annotated release tag exists for any build carrying the old identity; **2b** a documented
-recovery procedure in `KNOWN_ISSUES.md`; **2c** the ADR records the identity as frozen afterwards
-and 2a as spent.
+**2a** no annotated release tag exists at all; **2b** a documented recovery procedure in
+`KNOWN_ISSUES.md`; **2c** the ADR records the changed field as frozen afterwards.
 
-2a is the load-bearing clause: it can be true at most once in a product's life, so the carve-out
-cannot be reused. An identity change proposed after the first release tag has **no** route through
-the policy — not a harder one, none. Per `ADR_POLICY.md` rule 5, a Policy change is enacted by an
-ADR, which is what this section does.
+2a is the load-bearing clause, and it is a **condition on the state of the world, not a token this
+exception consumes**: it is true while the product has never been released — for every identity
+field at once — and becomes permanently false when the first annotated tag is cut, again for every
+field at once. So before the first tag the carve-out remains available for `PLUGIN_CODE` or
+`PRODUCT_NAME` too (a product rename, say); after it, for none of them. That is what makes the
+carve-out non-repeatable across a product's life without making it artificially scarce beforehand.
+
+Per `ADR_POLICY.md` rule 5, a Policy change is enacted by an ADR, which is what this section does.
 
 ## Consequences
 

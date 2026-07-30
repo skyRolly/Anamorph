@@ -45,27 +45,41 @@ condition impossible to satisfy while the change itself stayed possible to make.
 For an identity change, and **only** for an identity change, condition 2 is satisfied instead by
 **all** of:
 
-- **2a.** No annotated release tag exists for any build carrying the old identity — i.e. the change
-  is made before the product has ever been released. (Builds already given to testers are covered
-  by 2b, not by a migration.)
+- **2a.** **No annotated release tag exists at all** — i.e. the product has never been released.
+  (Builds already given to testers are covered by 2b, not by a migration.)
 - **2b.** A documented **recovery procedure** in `KNOWN_ISSUES.md`, written for the person holding
   an affected session, stating what they will see and what to do.
-- **2c.** The ADR records that the identity is **frozen** afterwards, and that 2a is thereby spent.
+- **2c.** The ADR records that the changed field is **frozen** afterwards.
 
-2a is what makes this non-repeatable: it can be true at most once in a product's life. An identity
-change proposed after the first release tag has no route through this policy at all — not a harder
-one, none.
+**2a is a condition on the state of the world, not a token an exception consumes.** It is true
+while no tag exists — for *every* identity field at once — and becomes permanently false the moment
+the first annotated tag is cut, again for every field at once. So:
+
+- Before the first tag, the carve-out is available for **any** identity field, and using it for one
+  field does not use it up for another. (A product rename before the first tag would be governed
+  by the same three conditions, not blocked by an earlier manufacturer-code change.)
+- After the first tag, the carve-out is available for **none** of them. An identity change proposed
+  then has no route through this policy at all — not a harder one, none.
+
+This is what makes the carve-out non-repeatable across a product's life without making it
+artificially scarce before release.
 
 **Exceptions granted so far:**
 
 | Change | ADR | Condition 2 satisfied by | Status |
 |---|---|---|---|
 | View params moved out of the APVTS (0.8.4) | ADR-0010 | **Migration plan** — `InternalState::migrateFromLegacyApvts`; old sessions read the legacy form | Accepted |
-| Manufacturer code `Anmf` → `RTec` (0.9.1) | ADR-0023 | **The identity carve-out.** 2a: no annotated tag existed for any build carrying `Anmf`. 2b: recovery documented as KI-016 (re-insert the plug-in, re-load the preset). 2c: ADR-0023 freezes the identity and records 2a as spent. | **Accepted** (2026-07-30) |
+| Manufacturer code `Anmf` → `RTec` (0.9.1) | ADR-0023 | **The identity carve-out.** 2a: no annotated tag exists. 2b: recovery documented as KI-016 (re-insert the plug-in, re-load the preset). 2c: ADR-0023 freezes the manufacturer code. | Decision **Accepted** (2026-07-30); **condition 3 still open** — the Release Compatibility Checklist has not been completed for this release. It gates the tag, not the merge. |
 
-2a is now spent for this product. From v0.9.1 the plugin identity is frozen, and a later identity
-change has **no** route through this policy — the carve-out is unavailable to it, and condition 2
-proper is unsatisfiable for it.
+Note that "Accepted" in this table refers to the ADR, i.e. the *decision*. An exception is only
+**fully satisfied** when all four conditions are met, and condition 3 is a **release-time** check
+by construction — so an entry can legitimately sit here with the decision approved and the
+checklist outstanding. What must never happen is a release shipping in that state
+(`RELEASE_POLICY.md` precondition 3).
+
+2a remains true only until the first annotated tag is cut. From that moment the identity — every
+field of it — is frozen, and a later identity change has **no** route through this policy: the
+carve-out is unavailable and condition 2 proper is unsatisfiable for it.
 
 ## Backward-compatibility paths that must be preserved
 

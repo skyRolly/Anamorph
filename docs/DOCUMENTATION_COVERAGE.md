@@ -6,7 +6,53 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **ADR-0023 sign-off + the pluginval dependency fix** (2026-07-30). Two
+Last updated: for the **second review pass on the 0.9.1 change set** (2026-07-30). Six findings
+fixed, no `src/` change.
+
+**The exception was over-claimed.** ADR-0023's status line said the `ARCHITECTURE_REVIEW_GATE` item
+and the `COMPATIBILITY_POLICY` exception were "both now cleared". The exception needs all four
+conditions and **condition 3 — the Release Compatibility Checklist — has never been completed for
+this release**, as `HANDOVER` says in the same change set. The ADR now carries a per-condition table
+marking 3 **OPEN** (a release-time gate: it blocks the tag, not the merge), and the exceptions table
+in `COMPATIBILITY_POLICY` says the same. The ADR's own rule — "must not claim a green gate it did
+not observe" — was what the blanket sentence broke.
+
+**The carve-out was scoped wrongly.** 2a read "no annotated tag exists for any build carrying the
+old identity", and the exceptions table called it "spent", which would have closed the only route
+for a later `PLUGIN_CODE` or `PRODUCT_NAME` change (a product rename before the first tag) on the
+strength of a manufacturer-code change. 2a is a **condition on the state of the world, not a token
+an exception consumes**: true while no tag exists — for every identity field at once — and
+permanently false from the first tag, again for every field at once. Reworded in
+`COMPATIBILITY_POLICY` and ADR-0023.
+
+**The 0.9.0 → 0.9.1 first-tag renumbering was incomplete.** Still claiming v0.9.0 as the first tag:
+`RELEASE_PROCESS` (§After release), `CHANGELOG_POLICY` rule 2, `FUTURE_RISKS` RISK-003,
+`RELEASE_HARDENING_PLAN` (Version-management row, RH-R6, RH-PR-8 row, RH-F3 timing), `HANDOVER`
+(Branch Strategy). All corrected.
+
+**`RELEASE_PROCESS` contradicted the new pipeline check.** It still told maintainers an undated
+`Unreleased` heading "would be published with that word in it" and that "the validation only checks
+that the section *exists*" — the same change set had made that a fail-closed rejection. Corrected,
+with the two practical consequences spelled out (date the heading **in the tagged commit**;
+rehearsals only warn).
+
+**The guard's justification was wrong about *what* it protects.** The release **title** is set
+separately (`--title "Anamorph <version>"`); the extracted section becomes the **notes body**. The
+check is right and stays; the wording is fixed in `release.yml`, `CI_CD`, `RELEASE_PROCESS` and
+`HANDOVER`.
+
+**Reported-then-corrected line-number drift (C6).** The previously reported `ADR-0001` citation
+`CMakeLists.txt:62-73` → `:124-135` (and `:149-166` → `:228-237` for the tests-link-the-core
+range), plus the same drift in `TROUBLESHOOTING` (`:115-125` → `:124-135`), found by the reviewer.
+Both re-verified against the file. Reporting came first, in the prior pass; this is the correction.
+
+**Stale version snapshots refreshed:** `HANDOVER`'s snapshot preamble (v0.9.0 was never tagged;
+0.9.1 is the release in preparation and the first tag) and `COMMERCIAL_STATUS` (§Last reviewed,
+§2, §6). `COMMERCIAL_STATUS` keeps its **2026-07-26** review date deliberately — its substance
+(product model, distribution model, open owner/legal decisions) is untouched by a version
+renumbering, and a review date that moves on every version bump stops meaning anything.
+
+Prior: for the **ADR-0023 sign-off + the pluginval dependency fix** (2026-07-30). Two
 changes, neither touching `src/`.
 
 **ADR-0023 is now `Accepted`.** The maintainer signed off the Architecture Review and performed the

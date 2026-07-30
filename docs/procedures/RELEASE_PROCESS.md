@@ -57,16 +57,25 @@ git tag -a v0.9.1 -m "Anamorph 0.9.1"
 git push origin v0.9.1
 ```
 
-**Date the CHANGELOG heading before tagging.** `release.yml` extracts the `## [x.y.z]` section
-verbatim as the GitHub Release notes, so a heading still reading `— Unreleased` would be published
-with that word in it. Step 2 of the pre-release checklist covers this; the validation only checks
-that the section *exists*, not that it is dated.
+**Date the CHANGELOG heading before tagging — the pipeline now enforces it.** `release.yml`
+extracts the `## [x.y.z]` section **verbatim, heading included**, as the release **notes body**
+(the release *title* is set separately to `Anamorph <version>`), so a heading still reading
+`— Unreleased` would appear at the top of the published notes. Validation therefore **fails
+closed** on a heading still marked `Unreleased`.
+
+Two practical consequences:
+
+- Date the heading **in the commit the tag points at**, not afterwards — the check reads the
+  tagged tree.
+- A `workflow_dispatch` rehearsal only *warns* about an undated heading, so rehearsals stay green
+  while the real tag does not.
 
 Pushing the tag triggers `.github/workflows/release.yml`, which:
 
 1. **Validates release metadata fail-closed** — the tag must be annotated, must equal the
-   `CMakeLists.txt` `project VERSION`, and `CHANGELOG.md` must already carry the `## [x.y.z]`
-   section (i.e. steps 1–2 above are enforced, not assumed).
+   `CMakeLists.txt` `project VERSION`, `CHANGELOG.md` must already carry the `## [x.y.z]`
+   section, **and that heading must no longer be marked `Unreleased`** (i.e. steps 1–2 above are
+   enforced, not assumed).
 2. **Runs the full existing gate exactly once** by *calling* `build.yml` (`workflow_call`) —
    the same 3-OS matrix, DSP + state suites, pluginval strictness 10 both modes ×3, symbol
    retain-then-strip, fail-closed artifact gating. Tag pushes do not trigger `build.yml`
@@ -93,7 +102,7 @@ ship unsigned, with the user-facing consequences documented in `docs/user/INSTAL
 A pipeline **rehearsal** without a tag: run `release.yml` via `workflow_dispatch`
 (validate + full build; no release is created).
 
-No release tag exists yet — the first will be cut at the v0.9.0 release. Historical
+No release tag exists yet — the first will be cut at the **v0.9.1** release (0.9.0 was written up but never tagged; ADR-0023 lands on top of it). Historical
 CHANGELOG entries keep their commit-SHA evidence; entries from the first tag onward cite the
 tag (upgrades CHANGELOG evidence per `CHANGELOG_POLICY.md`; closes RISK-003 when practiced).
 Evidence [Verified]: .github/workflows/release.yml; .github/workflows/build.yml (`workflow_call`).

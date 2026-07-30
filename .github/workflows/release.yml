@@ -83,10 +83,11 @@ jobs:
               echo "::error::CHANGELOG.md has no '## [${TAG_VERSION}]' section -- write the release entry (RELEASE_PROCESS.md step 2) before tagging"
               exit 1
             fi
-            # The section is extracted VERBATIM as the GitHub Release notes (see the
+            # The section is extracted VERBATIM as the release NOTES BODY (see the
             # notes step below), heading included -- so a heading still reading
-            # "— Unreleased" would be published as the release's own title. The
-            # existence check above cannot catch that. Fail closed instead.
+            # "— Unreleased" would sit at the top of the published notes. (The
+            # release TITLE is set separately, to "Anamorph <version>", and is not
+            # affected.) The existence check above cannot catch this. Fail closed.
             if grep -qiE "^## \[${TAG_VERSION//./\\.}\].*unreleased" CHANGELOG.md; then
               echo "::error::CHANGELOG.md '## [${TAG_VERSION}]' is still marked Unreleased -- date the heading (RELEASE_PROCESS.md step 2) before tagging"
               exit 1
