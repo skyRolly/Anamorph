@@ -114,6 +114,11 @@ private:
     {
         juce::ValueTree params;
         juce::String     name, baseline;
+        // Which preset row produced this state (#4). In-memory only, exactly like the
+        // rest of this struct's use for A/B and undo -- getStateInformation writes
+        // `name`/`baseline` and nothing else, so the saved schema is unchanged and a
+        // slot rebuilt from disk simply comes back with the default (unknown) identity.
+        anamorph::PresetManager::Selection selection;
         bool isValid() const noexcept { return params.isValid(); }
     };
     StateSet currentStateSet();                  // current params + live preset meta

@@ -3,7 +3,8 @@
 **Status:** Accepted
 
 ## Context
-Oversampling, Window Size, Scope Persistence, Tooltips, UI Animations, and Show Meters are
+Oversampling, Window Size (labelled **UI Scale** since 0.9.2 — display name only, the
+`int_uiScale` identifier is unchanged), Scope Persistence, Tooltips, UI Animations, and Show Meters are
 view/engine-config, not musical parameters. Exposed as VST3 parameters they cluttered the host's
 automation list.
 

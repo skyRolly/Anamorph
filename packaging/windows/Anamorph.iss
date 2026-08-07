@@ -87,8 +87,8 @@ begin
     'Setup will install each selected component into its folder below.' + #13#10 +
     'To continue, click Next. To pick different folders, click Browse.',
     False, 'Anamorph');
-  DestPage.Add('VST3 plug-in folder (the plug-in installs as Anamorph.vst3 inside it):');
-  DestPage.Add('Standalone application folder:');
+  DestPage.Add('VST3 Plug-in folder (the plug-in installs as Anamorph.vst3 inside it):');
+  DestPage.Add('Standalone Application folder:');
   DestPage.Values[0] := ExpandConstant('{commoncf64}\VST3');
   DestPage.Values[1] := WizardDirValue;   // previous install dir, else the DefaultDirName default
 end;

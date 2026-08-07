@@ -59,15 +59,15 @@ cat > "$WORK/distribution.xml" <<EOF
         <line choice="au"/>
         <line choice="app"/>
     </choices-outline>
-    <choice id="vst3" title="VST3 plug-in" start_selected="true"
+    <choice id="vst3" title="VST3 Plug-in" start_selected="true"
             description="Installs Anamorph.vst3 into /Library/Audio/Plug-Ins/VST3 (REAPER, Ableton Live, Cubase, Bitwig, ...).">
         <pkg-ref id="com.rollytech.anamorph.vst3"/>
     </choice>
-    <choice id="au" title="AU plug-in" start_selected="true"
+    <choice id="au" title="AU Plug-in" start_selected="true"
             description="Installs Anamorph.component into /Library/Audio/Plug-Ins/Components (Logic Pro, GarageBand, ...).">
         <pkg-ref id="com.rollytech.anamorph.au"/>
     </choice>
-    <choice id="app" title="Standalone application" start_selected="true"
+    <choice id="app" title="Standalone Application" start_selected="true"
             description="Installs Anamorph.app into /Applications.">
         <pkg-ref id="com.rollytech.anamorph.app"/>
     </choice>

@@ -232,7 +232,7 @@ void AnamorphAudioProcessor::syncCommitted()
 // additive `raw` attribute so A/B slots + undo round-trip discrete params exactly (no snap drift).
 AnamorphAudioProcessor::StateSet AnamorphAudioProcessor::currentStateSet()
 {
-    return { copyStateWithRawValues(), presets.currentName(), presets.baseline() };
+    return { copyStateWithRawValues(), presets.currentName(), presets.baseline(), presets.selection() };
 }
 
 // Restore a state set: parameters (keeping the shared view params) AND the
@@ -240,7 +240,7 @@ AnamorphAudioProcessor::StateSet AnamorphAudioProcessor::currentStateSet()
 void AnamorphAudioProcessor::applyStateSet (const StateSet& s)
 {
     applyStatePreservingView (s.params);
-    presets.setMeta (s.name, s.baseline);
+    presets.setMeta (s.name, s.baseline, s.selection);
 }
 
 void AnamorphAudioProcessor::applyStatePreservingView (const juce::ValueTree& target)
@@ -549,7 +549,7 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
             reassertParameters (params, /*notifyHost*/ false); // host restore: no host-notify (see below)
         }
 
-        // Restore the host-hidden Settings / view state (Oversampling, Window Size,
+        // Restore the host-hidden Settings / view state (Oversampling, UI Scale,
         // Persistence, Tooltips, Animations, Show Meters). A changed Oversampling fires
         // InternalState's callback -> updateLatency(); prepareToPlay re-asserts it anyway.
         // Pre-0.8.4 sessions have no ANAMORPH_INTERNAL child (these were APVTS params back

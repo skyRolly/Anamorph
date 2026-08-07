@@ -20,6 +20,7 @@
 //       active, unknown root, unknown extra fields, corrupt slot XML).
 //    6. Preset save -> reload round-trip (user preset file + exclusion rules).
 //    7. A/B + view-param preservation across slot apply and session restore.
+//    8. Factory/user preset identity when a user preset shares a factory name.
 //
 //  Fixture workflow: an INTENTIONAL parameter/schema change (which requires an
 //  ADR + registry update per the compatibility policies) is recorded by
@@ -766,6 +767,84 @@ static void testAbAndViewParamPreservation()
 }
 
 // ---------------------------------------------------------------------------
+// Nothing stops a user preset from carrying a factory preset's name, and until
+// 0.9.2 the preset list was searched by NAME: the factory block is list-front, so
+// the factory row answered for both and the drop-down tick could never sit on the
+// user preset -- not even immediately after saving it. Identity is now the factory
+// preset's immutable internal id vs. the user preset's FILE, two namespaces that
+// cannot collide (#4). The identity is deliberately runtime-only (adding a field to
+// the saved state is an Architecture Review Gate item), so the last check below
+// pins the documented residual: a RESTORED session has only the name and resolves
+// to the factory row, exactly as every earlier version did.
+static void testDuplicateNameFactoryVsUserPreset()
+{
+    std::printf ("State test 10: factory/user preset identity with a shared name\n");
+    AnamorphAudioProcessor p;
+    p.prepareToPlay (48000.0, 512);
+    auto& presets = p.getPresets();
+
+    const juce::String shared = "Wide Master";   // a shipped factory preset
+    int factoryIdx = -1, factoryCount = 0;
+    for (int i = 0; i < presets.entries().size(); ++i)
+    {
+        const auto& e = presets.entries().getReference (i);
+        if (! e.isFactory) continue;
+        ++factoryCount;
+        if (e.name == shared) factoryIdx = i;
+    }
+    check (factoryIdx >= 0, "the shared-name factory preset ships");
+    if (factoryIdx < 0) return;
+
+    // Same protocol as test 8: the harness writes into the REAL user preset folder,
+    // so park a genuine file of that name and put it back afterwards.
+    auto presetFile = anamorph::PresetManager::presetDirectory()
+                          .getChildFile (shared + anamorph::PresetManager::fileSuffix());
+    auto parked = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                      .getChildFile ("AnamorphDupNameHarness.parked");
+    const bool hadUserFile = presetFile.existsAsFile();
+    if (hadUserFile) { parked.deleteFile(); presetFile.moveFileTo (parked); }
+
+    presets.load (factoryIdx);
+    check (presets.currentIndex() == factoryIdx, "the factory preset is current before any user file exists");
+
+    // The case the split exists for: save a user preset under the factory name.
+    check (presets.saveUser (shared), "saveUser succeeds under a factory preset's name");
+    check (presetFile.existsAsFile(), "user preset file written");
+    checkStr (presets.currentName(), shared, "the shared name is still what is DISPLAYED");
+    const int userIdx = presets.currentIndex();
+    check (userIdx >= factoryCount, "the saved USER preset is current, not the same-named factory one");
+
+    // Both rows remain individually selectable, in both directions.
+    presets.load (factoryIdx);
+    check (presets.currentIndex() == factoryIdx, "selecting the factory row returns the tick to it");
+    presets.load (userIdx);
+    check (presets.currentIndex() == userIdx, "selecting the user row moves the tick back to it");
+
+    // A/B carries the identity in memory, so a switch away and back does not snap
+    // the tick onto the same-named factory row.
+    p.abSwitchTo (1);
+    p.abSwitchTo (0);
+    check (presets.currentIndex() == userIdx, "A/B switch away and back preserves the user-preset identity");
+
+    // Documented residual: the saved session carries the NAME only.
+    presets.load (userIdx);
+    juce::MemoryBlock blob;
+    p.getStateInformation (blob);
+    {
+        AnamorphAudioProcessor q;
+        q.prepareToPlay (48000.0, 512);
+        q.setStateInformation (blob.getData(), (int) blob.getSize());
+        checkStr (q.getPresets().currentName(), shared, "restored session remembers the shared name");
+        check (q.getPresets().currentIndex() == factoryIdx,
+               "a restored session has no identity and falls back to the documented factory tie-break");
+    }
+
+    check (presetFile.deleteFile(), "test preset file removed");
+    if (hadUserFile) parked.moveFileTo (presetFile);
+    presets.refresh();
+}
+
+// ---------------------------------------------------------------------------
 int main (int argc, char* argv[])
 {
     juce::ScopedJuceInitialiser_GUI juceInit; // MessageManager for APVTS/processor on this thread
@@ -790,6 +869,7 @@ int main (int argc, char* argv[])
     testCorruptAndForeignState();
     testPresetSaveReloadRoundTrip();
     testAbAndViewParamPreservation();
+    testDuplicateNameFactoryVsUserPreset();
 
     std::printf ("\n%d checks, %d failure(s)\n", checks, failures);
     return failures == 0 ? 0 : 1;

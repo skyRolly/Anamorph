@@ -21,6 +21,16 @@ src/InternalState.h:92-128.
 
 Source: src/PluginProcessor.cpp:516-517 (write), :562-567 (read), :608-610 (default).
 
+**Deliberately NOT serialized: the preset *identity*.** Since 0.9.2 a factory preset is
+identified in memory by an immutable internal id and a user preset by its file
+(`PresetManager::Selection`), so a user preset sharing a factory preset's name no longer
+mis-ticks the menu. That identity rides on `StateSet` through A/B and undo but is **not** written
+here: adding a root field is an `ARCHITECTURE_REVIEW_GATE` item (rule 1 of
+`SESSION_COMPATIBILITY_POLICY.md`), and a 0.9.1 session would have nothing to restore into it.
+A restored session therefore carries `presetName` alone and resolves a clashing name to the
+factory preset — the same answer every earlier version gave. Source: src/PresetManager.h:38-70;
+src/PluginProcessor.h:113-125.
+
 ## `ANAMORPH` child (APVTS)
 
 The full APVTS tree — all 36 parameters from `PARAMETER_REGISTRY.md`. Serialized via

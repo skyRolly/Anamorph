@@ -6,7 +6,61 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **third review pass on the 0.9.1 change set** (2026-07-30). Three findings
+Last updated: for the **0.9.2 change set** (2026-08-07) — the first `src/` change since 0.9.0.
+Four changes, one investigation, one new regression test.
+
+**Preset drop-down lifetime + crash (`src/PluginEditor.cpp`).** The menu was a free-standing
+always-on-top window created with `PopupMenu::setLookAndFeel (&lnf)` — a raw pointer to an editor
+**member** — and a raw `this` in its callback. Closing the plug-in window with the menu open left
+it on screen painting through a destroyed LookAndFeel, and clicking an item ran the callback on a
+destroyed editor. It is now `withParentComponent (this)` (JUCE parents the MenuWindow as a CHILD,
+so it cannot outlive the editor, and `Component::getLookAndFeel()` resolves our LookAndFeel by
+walking the tree) plus a `SafePointer` callback; the "Load Preset…" file chooser, reachable from
+the same menu, got the same guard. Synced: `CHANGELOG.md`, `README.md`, `HANDOVER.md`.
+
+**Factory-preset identity (`src/PresetManager.{h,cpp}`, `src/PluginProcessor.{h,cpp}`).** The
+preset list was searched by NAME and the factory block is list-front, so a user preset sharing a
+factory preset's name could never hold the drop-down tick. A factory preset now carries an
+immutable internal `factoryId` and a user preset is identified by its file
+(`PresetManager::Selection`); the menu, the top bar and the Save Preset field still show the
+**name**. The identity is **runtime-only** and rides on `StateSet` through A/B and undo — it is
+deliberately not serialized, because a new root field is an `ARCHITECTURE_REVIEW_GATE` item
+(`SESSION_COMPATIBILITY_POLICY` rule 1) and a 0.9.1 session has nothing to restore into it; a
+restored session resolves a clashing name to the factory row, as before. Synced:
+`SERIALIZATION_REGISTRY.md` (an explicit "deliberately NOT serialized" note), `API_REFERENCE.md`,
+`USER_MANUAL.md` §7.2, `TESTING.md`, `TESTING_POLICY.md`, `RELEASE_HARDENING_PLAN.md`,
+`CHANGELOG.md`. State test 10 pins all four behaviours **including** the documented residual.
+
+**`Window Size` → `UI Scale` (display name only).** `PARAMETER_COMPATIBILITY_POLICY` permits a
+display-name change; the identifier `int_uiScale` and the pre-0.8.4 legacy APVTS id `uiScale` its
+migration reads are untouched, so this is not a serialization change and needs no ADR. Recorded
+with the repo's own footnote form in `PARAMETER_REGISTRY.md` (`※`, mirroring the `Haas Side` →
+`Haas Focus` precedent). Synced: `PARAMETER_REFERENCE.md`, `REPOSITORY_MAP.md`, `USER_MANUAL.md`
+(×3), `README.md`, the six source comments naming the control, and a **clarifying annotation** in
+ADR-0010 — the ADR body is otherwise left verbatim, since ADRs are append-only.
+
+**Installer component titles.** macOS `<choice title=…>` → *VST3 Plug-in* / *AU Plug-in* /
+*Standalone Application*; the two Windows destination-page **labels** → *VST3 Plug-in folder* /
+*Standalone Application folder*. Prose sentences keep lowercase "plug-in"/"application" (the
+`MsgBox` strings, the `:90` parenthetical, every legal/manual use). The Windows `[Components]`
+descriptions ("Install VST3" / "Install Standalone") contain neither phrase and are unchanged, so
+the five doc quotes of them stay valid. No CI or self-check assertion matches a title — the macOS
+self-check matches `<choice id=…>` and the package identifiers. Synced: `PACKAGING.md`,
+`INSTALLATION.md` (the macOS Component table, which had drifted twice over: *AU (Audio Unit)* and
+*Standalone app* never matched the installer even before this change — corrected here in the same
+pass, and reported rather than silently changed).
+
+**macOS key auto-repeat: investigated, no code change (KI-017).** Holding a letter or digit in a
+text field types once and stops while punctuation repeats. Traced through the pinned JUCE: a
+focused `TextEditor` makes `findCurrentTextInputTarget()` non-null, so every key-down goes to
+`[inputContext handleEvent:]` first and printable characters return via `insertText:` — the path
+macOS press-and-hold and the IME own — while "special" keys return via `doCommandBySelector:` and
+repeat normally. Everything inside the plug-in was eliminated by inspection (the bounded focus
+retry, `setSelectAllWhenFocused`, the 24 Hz timer, the VBlank attachment, the UI-scale transform,
+both `getCurrentModifiersRealtime` call sites). Filed as **KI-017** with the two discriminating
+checks; no `CHANGELOG` entry, since nothing user-visible changed (`CHANGELOG_POLICY` rule 3).
+
+Prior: for the **third review pass on the 0.9.1 change set** (2026-07-30). Three findings
 fixed, three were confirmations. No `src/` change.
 
 **The `Unreleased` guard had a residual hole.** It rejected only a heading containing the word

@@ -47,8 +47,8 @@ Anamorph/
 |---|---|
 | `PluginProcessor.{h,cpp}` | VST3/Standalone wrapper: bus layouts, `processBlock`, state save/recall, PDC, custom Undo/Redo, A/B compare. |
 | `PluginParameters.{h,cpp}` | APVTS layout (`createAnamorphLayout`), `pid::` IDs, atomic cache, `toEngine` → `EngineParameters`. |
-| `InternalState.h` | Host-hidden session/view params (Oversampling, Window Size, Persistence, Tooltips, Animations, Meters). |
-| `PresetManager.{h,cpp}` | Factory + user `.anamorph` presets (sound params only). |
+| `InternalState.h` | Host-hidden session/view params (Oversampling, UI Scale, Persistence, Tooltips, Animations, Meters). |
+| `PresetManager.{h,cpp}` | Factory + user `.anamorph` presets (sound params only). Factory presets carry an immutable internal id, user presets are identified by their file — the runtime-only `Selection` that keeps a shared name from mis-ticking the menu. |
 | `PluginEditor.{h,cpp}` | Simple/Advanced UI, OpenGL context (macOS/Windows only), 24 Hz + VBlank timers. |
 
 ## `src/gui/` — GUI components

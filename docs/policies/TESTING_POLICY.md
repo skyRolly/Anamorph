@@ -15,7 +15,7 @@ Repository Governance Policy. Test acceptance levels and the release gate.
 ## Hard release gate
 
 - **Level 2/3 self-tests must pass** (the headless gate, `scripts/run-tests.sh`): the 33 DSP
-  self-tests, the A/B state-restoration clamp guard, **and** the 9-test state-compatibility
+  self-tests, the A/B state-restoration clamp guard, **and** the 10-test state-compatibility
   suite (`AnamorphStateTests` — both binaries are required; a missing one fails the gate).
 - **pluginval must pass at strictness 10 in BOTH modes on ALL THREE platforms** (Linux, Windows,
   macOS), each mode run as **3 consecutive passes**: **deterministic** (`run-pluginval.sh 10

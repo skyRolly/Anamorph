@@ -557,9 +557,9 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
 
     // Whole-window scale (F4): vectors redraw at the new size, stays crisp.
     setupComboInternal (uiScaleBox, { "XS", "S", "M", "L", "XL" },
-                        "Window size - M is the original; everything scales in proportion",
+                        "UI scale - M is the original; everything scales in proportion",
                         processor.getInternal().uiScaleValue());
-    uiScaleLabel.setText ("Window Size", juce::dontSendNotification);
+    uiScaleLabel.setText ("UI Scale", juce::dontSendNotification);
     uiScaleLabel.setColour (juce::Label::textColourId, colours::textDim);
     settingsBackdrop.addAndMakeVisible (uiScaleLabel);
     settingsBackdrop.addAndMakeVisible (uiScaleBox);
@@ -1333,7 +1333,7 @@ void AnamorphAudioProcessorEditor::applyUiScale()
 
 // The host calls this with its display/DPI scale (notably Windows hosts on a
 // scaled display). JUCE's default would overwrite our transform with scale(newScale)
-// and so wipe out the user's Window-Size choice; instead we remember it and re-apply
+// and so wipe out the user's UI-Scale choice; instead we remember it and re-apply
 // the COMPOSED transform, so DPI and the UI scale multiply correctly (#window-size).
 void AnamorphAudioProcessorEditor::setScaleFactor (float newScale)
 {
@@ -1417,7 +1417,21 @@ void AnamorphAudioProcessorEditor::showPresetMenu()
     pm.refresh();
 
     juce::PopupMenu m;
-    m.setLookAndFeel (&lnf);
+    // NO setLookAndFeel (&lnf) any more: that handed the menu a RAW pointer to an
+    // editor MEMBER, and JUCE's MenuWindow is an independent desktop window that
+    // OUTLIVES the editor when the host tears the plug-in window down (or the user
+    // switches to another plug-in) while the menu is open -- so the menu stayed on
+    // screen painting through a dangling LookAndFeel (the lost item styling), and
+    // clicking an item then ran the callback below on a destroyed editor. Parenting
+    // the menu to the editor instead closes both by CONSTRUCTION: the MenuWindow
+    // becomes a CHILD component, so it cannot outlive its parent or linger outside
+    // the plug-in window, and juce::Component::getLookAndFeel() walks up to the
+    // editor's own `lnf` on its own -- the family styling arrives with no pointer to
+    // dangle (juce_PopupMenu.cpp MenuWindow ctor: setLookAndFeel(nullptr) then
+    // pc->addChildComponent(this), and every ItemComponent is built after that).
+    // The alternatives were both worse: dismissAllActiveMenus() in the destructor
+    // also closes ANOTHER instance's menu, and a shared static LookAndFeel trades
+    // this for static-destruction order at DLL unload.
     const int cur = pm.currentIndex();
     m.addSectionHeader ("FACTORY");
     bool userHeader = false;
@@ -1436,16 +1450,20 @@ void AnamorphAudioProcessorEditor::showPresetMenu()
     // full -- the slot itself is narrow (#8).
     m.showMenuAsync (juce::PopupMenu::Options()
                          .withTargetComponent (presetName)
+                         .withParentComponent (this)   // lifetime + look-and-feel; see above
                          .withMinimumWidth (228),
-        [this] (int r)
+        // SafePointer, not a raw `this`: belt and braces next to the parenting above,
+        // so a callback that still runs after the editor is gone returns instead of
+        // dereferencing freed memory.
+        [safeThis = juce::Component::SafePointer<AnamorphAudioProcessorEditor> (this)] (int r)
         {
-            if (r == 0) return;
-            if (r == 10001) { showSavePreset (true); return; }
-            if (r == 10002) { showLoadPreset(); return; }
-            processor.getEngine().requestDuck();   // mask the level jump (#1, 0.6.4)
-            processor.getPresets().load (r - 1);
-            knobSweepTime = 0.45; // sweep the knobs to the preset (#3)
-            refreshPresetDisplay();
+            if (r == 0 || safeThis == nullptr) return;
+            if (r == 10001) { safeThis->showSavePreset (true); return; }
+            if (r == 10002) { safeThis->showLoadPreset(); return; }
+            safeThis->processor.getEngine().requestDuck();   // mask the level jump (#1, 0.6.4)
+            safeThis->processor.getPresets().load (r - 1);
+            safeThis->knobSweepTime = 0.45; // sweep the knobs to the preset (#3)
+            safeThis->refreshPresetDisplay();
         });
 }
 
@@ -1457,16 +1475,22 @@ void AnamorphAudioProcessorEditor::showLoadPreset()
         "Load Anamorph Preset", dir, "*" + anamorph::PresetManager::fileSuffix());
 
     fileChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-        [this] (const juce::FileChooser& fc)
+        // Same hazard as the preset menu above, one step further along the same path
+        // ("Load Preset..." opens this chooser): the OS chooser is modal to the HOST,
+        // not to us, so closing the plug-in window while it is open would run this
+        // callback on a destroyed editor.
+        [safeThis = juce::Component::SafePointer<AnamorphAudioProcessorEditor> (this)]
+        (const juce::FileChooser& fc)
         {
+            if (safeThis == nullptr) return;
             const auto file = fc.getResult();
             if (file.existsAsFile())
             {
-                processor.getEngine().requestDuck(); // mask the level jump (#1, 0.6.4)
-                if (processor.getPresets().loadFile (file))
+                safeThis->processor.getEngine().requestDuck(); // mask the level jump (#1, 0.6.4)
+                if (safeThis->processor.getPresets().loadFile (file))
                 {
-                    knobSweepTime = 0.45; // sweep the knobs to the preset (#3)
-                    refreshPresetDisplay();
+                    safeThis->knobSweepTime = 0.45; // sweep the knobs to the preset (#3)
+                    safeThis->refreshPresetDisplay();
                 }
             }
         });

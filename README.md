@@ -13,15 +13,19 @@ only — it configures and builds entirely from the command line on a headless L
 - Diamond **vectorscope**, correlation + L/R Peak/RMS meters; click-free transitions throughout.
 
 ## Project status
-- **Version 0.9.1** (pre-1.0), in the **internal-testing phase** — builds go to testers for
+- **Version 0.9.2** (pre-1.0), in the **internal-testing phase** — builds go to testers for
   evaluation, not to customers (see [Licensing](#licensing); internal record:
   [`docs/COMMERCIAL_STATUS.md`](docs/COMMERCIAL_STATUS.md)).
-- **0.9.1 changes the manufacturer code** (`Anmf` → `RTec`, the vendor identifier now shared with
-  the second RollyTech plug-in). It is host-facing identity, so **sessions saved with an earlier
+- **0.9.2 fixes the preset drop-down** (it no longer stays on screen — or crashes on click —
+  after the plug-in window closes) and lets a user preset share a factory preset's name without
+  losing its place in the menu; the Settings control *Window Size* is now labelled **UI Scale**.
+  Saved state, parameters and the DSP are unchanged.
+- **0.9.1 changed the manufacturer code** (`Anmf` → `RTec`, the vendor identifier now shared with
+  the second RollyTech plug-in). It is host-facing identity, so **sessions saved with a pre-0.9.1
   build report Anamorph as missing** — re-insert the plug-in and re-load the preset. Audio,
   parameters and presets are unchanged. ADR-0023 · [`KI-016`](docs/KNOWN_ISSUES.md).
 - Active development on a feature-branch → PR → `main` workflow.
-- Validation gate: **33 DSP self-tests** + the **9-test state-compatibility suite** + **pluginval strictness 10** (both modes ×3, blocking on all three CI platforms).
+- Validation gate: **33 DSP self-tests** + the **10-test state-compatibility suite** + **pluginval strictness 10** (both modes ×3, blocking on all three CI platforms).
 - A green build + pluginval pass is **"ready to audition,"** not final sign-off (audio/visual
   quality needs a DAW — see `docs/procedures/TESTING.md`).
 
@@ -141,5 +145,5 @@ are hard-stop, human-review-required.
 ## Simple vs. Advanced mode
 **Simple** (default) is the Widen core around the vectorscope (algorithm, Drive, Amount, Width).
 **Advanced** adds the Input, Output, and Multiband modules; Advanced-only modules default-bypass when
-Advanced is off while their values are remembered. Settings (Oversampling, window size, persistence,
+Advanced is off while their values are remembered. Settings (Oversampling, UI Scale, persistence,
 tooltips, animations) are host-hidden session state.

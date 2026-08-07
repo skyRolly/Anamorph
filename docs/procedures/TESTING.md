@@ -71,7 +71,7 @@ preserved. Evidence [Verified]: tests/dsp_tests.cpp (`main` registers all tests)
 
 ### State-compatibility self-tests (v0.8.13 harness)
 
-`tests/state_tests.cpp` (**9 tests**, own console target `AnamorphStateTests`) automates the
+`tests/state_tests.cpp` (**10 tests**, own console target `AnamorphStateTests`) automates the
 COMPATIBILITY policy family against the **real `AnamorphAudioProcessor`** (the target compiles
 the plugin sources; the editor is linked but never instantiated — fully headless):
 serialized-schema shape (every `SERIALIZATION_REGISTRY.md` field), a **parameter-registry
@@ -83,7 +83,10 @@ meta; undo cleared), the three legacy migration paths via frozen fixtures
 `legacy_pre_0_8_4_view_params.xml`), corrupt/foreign-state robustness (garbage/truncated blob,
 out-of-range `AB@active` clamp end-to-end, unknown future fields, corrupt slot XML), the user
 preset save→reload round-trip incl. the exclusion rules (`mbSolo` reset, Bypass/`advancedMode`
-untouched), and A/B + view-param preservation across restore.
+untouched), A/B + view-param preservation across restore, and **factory/user preset identity when
+a user preset carries a factory preset's name** (0.9.2: saving under the shared name selects the
+USER row, both rows stay individually selectable, an A/B round-trip keeps the identity, and a
+restored session — which stores the name only — resolves to the documented factory tie-break).
 Evidence [Verified]: tests/state_tests.cpp; CMakeLists.txt (`AnamorphStateTests`).
 
 **Changing the parameter surface intentionally** (ADR + `PARAMETER_REGISTRY.md` update

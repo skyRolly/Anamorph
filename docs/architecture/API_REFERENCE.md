@@ -73,10 +73,12 @@ Evidence [Verified]: src/InternalState.h:60-122.
 |---|---|---|
 | `presetDirectory` / `fileSuffix` | `static juce::File () / static juce::String ()` | `.anamorph` user-preset location. |
 | `refresh` / `entries` | rescan / accessor | User-folder listing. |
-| `load` / `loadFile` / `step` / `saveUser` | preset ops (message thread) | Load/save sound params only (view params excluded). |
+| `load` / `loadFile` / `step` / `saveUser` | preset ops (message thread) | Load/save sound params only (view params excluded). Each sets `Selection`. |
 | `currentName` / `isDirty` / `baseline` / `setMeta` | preset metadata | Name + dirty-star, travels with state sets. |
+| `Selection` / `selection` | `struct { Kind kind; juce::String factoryId; juce::File file; }` | Which row produced the current sound: a factory preset's immutable internal id, or a user preset's file. Drives `currentIndex()` so a shared name cannot mis-tick the menu. **Runtime only** — travels with a `StateSet` through A/B and undo, never serialized (a saved session restores `Kind::unknown` and resolves by name). |
+| `Entry::factoryId` | `juce::String` | Empty for user presets; the factory preset's internal id otherwise. Immutable — renaming a preset is a display change, renaming an id would re-point live A/B and undo slots. |
 
-Evidence [Verified]: src/PresetManager.h:24-65.
+Evidence [Verified]: src/PresetManager.h:30-100.
 
 ## DSP module public interfaces
 

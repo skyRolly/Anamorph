@@ -11,6 +11,40 @@ Source. Until then every entry cites a commit SHA or a PR. Entries for the
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
+## [0.9.2] — 2026-08-07
+### Fixed
+- **The preset drop-down no longer outlives the plug-in window — and clicking it afterwards no
+  longer crashes.** With the preset menu open, closing the plug-in window (or switching to
+  another plug-in) left the menu on screen; hovering it lost the custom item styling, and
+  clicking any item took down the plug-in and/or the host. The menu was a free-standing
+  always-on-top window that held a raw pointer to the editor's LookAndFeel and a raw `this` in
+  its callback, both of which the editor's destructor invalidated. It is now a **child of the
+  editor**, so it cannot outlive it or float outside the window, and it inherits the styling
+  through the component tree instead of a stored pointer; the callback holds a `SafePointer`.
+  The "Load Preset…" file-chooser callback — reachable from the same menu — got the same guard.
+  Evidence: PR #100. [Verified]
+- **A user preset that shares a factory preset's name is now selectable in its own right.** The
+  preset list was searched by NAME and the factory block is first, so the tick in the drop-down
+  always landed on the factory row — even immediately after saving a user preset over that name,
+  and the ‹ › arrows stepped from the wrong row. A factory preset is now identified by an
+  immutable internal id and a user preset by its file on disk, two namespaces that cannot
+  collide; the menu, the top bar and the Save Preset field still show the **name**, so nothing
+  looks different until the names clash. Saved sessions are byte-for-byte unchanged (the identity
+  is runtime state, like A/B and undo); a session reloaded from disk knows only the name and
+  resolves a clashing one to the factory preset, as every earlier version did.
+  Evidence: PR #100. [Verified]
+
+### Changed
+- **The Settings control "Window Size" is now labelled "UI Scale"** (and its tooltip with it).
+  Display name only: the XS…XL steps, what they scale, and the stored session value are
+  unchanged — the identifier `int_uiScale` is immutable and untouched, so saved sessions recall
+  exactly as before. Evidence: PR #100. [Verified]
+- **The installers name their components in title case.** macOS: *VST3 Plug-in*, *AU Plug-in*,
+  *Standalone Application* (was "VST3 plug-in" / "AU plug-in" / "Standalone application").
+  Windows: the two destination-page labels now read *VST3 Plug-in folder* and *Standalone
+  Application folder*. Wording only — what gets installed, and where, is unchanged.
+  Evidence: PR #100. [Verified]
+
 ## [0.9.1] — 2026-07-30
 ### Changed
 - **The manufacturer code is now `RTec` (was `Anmf`)** — the 4-character vendor identifier every

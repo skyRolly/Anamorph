@@ -31,7 +31,32 @@ public:
     {
         juce::String name;
         bool         isFactory = false;
-        juce::File   file;     // user presets only
+        juce::File   file;      // user presets only
+        juce::String factoryId; // factory presets only -- immutable internal identity (#4)
+    };
+
+    // What PRODUCED the current sound, as opposed to what it is CALLED.
+    //
+    // The list used to be searched by NAME, so a user preset saved under a factory
+    // preset's name could never be the "current" entry: the name matched the factory
+    // row first and the drop-down tick stayed there no matter which of the two was
+    // actually loaded. Identity therefore no longer travels as a name: a factory
+    // preset is its immutable `factoryId` (the menu still SHOWS the name, and Save
+    // Preset still pre-fills the name), and a user preset is its file on disk. The
+    // two namespaces cannot collide, so a duplicate name is now merely a duplicate
+    // label.
+    //
+    // Deliberately RUNTIME-ONLY. It rides along with a state set through A/B and
+    // undo (both in-memory), but it is NOT serialised: adding a field to the saved
+    // state is an Architecture Review Gate item (SESSION_COMPATIBILITY_POLICY rule 1),
+    // and a v0.9.1 session has no such field to restore anyway. A restored session
+    // therefore comes back as `unknown` and resolves by name exactly as before.
+    struct Selection
+    {
+        enum class Kind { unknown, factory, userFile };
+        Kind         kind = Kind::unknown;
+        juce::String factoryId;  // kind == factory
+        juce::File   file;       // kind == userFile
     };
 
     // Local user-preset folder (created on demand):
@@ -53,10 +78,21 @@ public:
     // isDirty() = (current sound != baseline), so restoring both reproduces the
     // exact name + dirty-star the state had.
     juce::String baseline() const noexcept { return sigAtLoad; }
-    void setMeta (const juce::String& name, const juce::String& baselineSig) noexcept
+    const Selection& selection() const noexcept { return sel; }
+    // `sourceSel` carries the identity (#4) so an A/B switch or an undo restores the
+    // tick on the row that actually produced the sound. Session restore passes the
+    // default (unknown) -- nothing about the source survives on disk.
+    void setMeta (const juce::String& name, const juce::String& baselineSig,
+                  const Selection& sourceSel) noexcept
     {
         current = name;
         sigAtLoad = baselineSig;
+        sel = sourceSel;
+    }
+    // Session restore: a name and a baseline, but no identity to restore.
+    void setMeta (const juce::String& name, const juce::String& baselineSig) noexcept
+    {
+        setMeta (name, baselineSig, Selection());
     }
 
     void load (int index);                           // message thread only
@@ -89,6 +125,7 @@ private:
     juce::AudioProcessorValueTreeState& apvts;
     juce::Array<Entry> list;
     juce::String current { "Default" };
+    Selection    sel;                   // identity of `current` (#4); unknown after a session restore
     juce::String sigAtLoad;
     mutable juce::String cachedSig;     // last signature built by isDirty() (S10)
     mutable juce::uint32 cachedSigGen = 0; // generation it was built at; 0 = never
