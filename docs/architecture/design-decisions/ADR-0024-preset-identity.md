@@ -1,7 +1,10 @@
 # ADR-0024 — Factory-preset identity is an internal id, carried in plug-in state
 
-**Status:** Accepted (**amended 2026-08-07, before merge** — see §Amendment; the original decision
-text is preserved verbatim below it)
+**Status:** **Accepted** (**amended 2026-08-07, before merge** — see §Amendment; the original
+decision text is preserved verbatim below it). The Amendment adds fields to the Serialization
+Registry, which is an `ARCHITECTURE_REVIEW_GATE.md` item: **Architecture Review cleared by the
+maintainer on 2026-08-07**, re-confirmed **2026-08-08**. See §*Serialization sign-off* in the
+Amendment for what was reviewed.
 
 ## Context
 The preset browser shows one flat list: ten built-in FACTORY presets followed by the USER presets
@@ -176,6 +179,31 @@ formed stored value cannot select the wrong preset.
 `ARCHITECTURE_REVIEW_GATE.md` item and an AI-agent Hard Stop. It is recorded here as approved by the
 maintainer rather than taken by an agent. `SERIALIZATION_REGISTRY.md` carries the six new field rows;
 `SESSION_COMPATIBILITY_POLICY.md` rule 4's round-trip list gains the indicator identity.
+
+### Serialization sign-off
+
+**Architecture Review cleared by the maintainer on 2026-08-07, re-confirmed 2026-08-08.** The six
+additive fields were **manually reviewed and approved**; they were not merged on a green build.
+Recorded here in the form ADR-0023 uses for the other gated change in this line, because
+`ARCHITECTURE_REVIEW_GATE.md` §Procedure step 3 makes the ADR the place a gated decision is written
+down, and this is the one gate the repository cannot verify from its own tree.
+
+| What was reviewed | State |
+|---|---|
+| 1 — the change is **additive only**: `presetSource` / `presetFactoryId` / `presetUserFile` on `AnamorphRoot`, and the same trio per A/B slot. No field removed, renamed, or given a new meaning | ✅ `SERIALIZATION_REGISTRY.md`, `AnamorphRoot` + `AB` tables |
+| 2 — **backward compatibility**: every addition tolerates absence, and absence decodes to `unknown`, i.e. the pre-0.9.2 name fallback. A 0.9.1 session loads unchanged | ✅ `SESSION_COMPATIBILITY_POLICY.md` rules 1–2; state test 12's pre-0.9.2 case |
+| 3 — **forward compatibility**: an older build ignores the unknown properties, so a 0.9.2 session still opens in 0.9.1 with the pre-0.9.2 behaviour | ✅ additive properties on an existing node |
+| 4 — **no undocumented serialization behaviour**: every field, its default-if-absent, and the encoding rule are in the registry; the narrative half is in `STATE_SERIALIZATION.md` | ✅ both carriers, citations anchored |
+| 5 — **user preset FILES are untouched** — the `.anamorph` format is byte-for-byte what 0.9.1 wrote | ✅ nothing in this change writes a preset file |
+| 6 — an ADR records the decision (`ADR_POLICY.md` rule 1, `ARCHITECTURE_REVIEW_GATE.md` step 3) | ✅ this document, registered in `ADR_INDEX.md` |
+
+**Scope of this sign-off.** It covers *these* fields, in *this* change set, on the grounds above. It
+is **not** a standing approval: `ARCHITECTURE_REVIEW_GATE.md` still classifies **any** Serialization
+Registry field add, removal or semantic change as a gated item and an AI-agent Hard Stop, and the
+next one needs its own review and its own record. The release-time
+`procedures/RELEASE_COMPATIBILITY_CHECKLIST.md` is a separate gate and is unaffected by this
+sign-off — in particular its manual **Session reload** box (a v0.9.1 binary's session opened in
+v0.9.2) is still owed before a release is cut.
 
 **Amended related code:** `src/PresetManager.h` (`SelectionFields`, `encodeSelection`,
 `decodeSelection`, the two-argument `adoptRestoredState`), `src/PresetManager.cpp` (the encode/decode

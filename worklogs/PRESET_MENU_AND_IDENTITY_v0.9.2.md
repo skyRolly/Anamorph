@@ -807,3 +807,47 @@ list here:
 - the unknown-root-chunk behaviour, **including** leaving the undo history untouched for a no-op
   restore attempt. Recorded in §13 beside the disclosure, so the recognised/unrecognised asymmetry
   reads as a deliberate split with a sign-off rather than an inconsistency.
+
+## 16. Eleventh review round — the serialization sign-off becomes a record, not prose
+
+The reviewer's point was procedural, and correct. `ARCHITECTURE_REVIEW_GATE.md` lists *"Serialization
+Registry change — any field add/remove/semantic change"* as a gated item, this change set adds six
+fields, and the approval existed only as a sentence inside the ADR-0024 Amendment: *"It is recorded
+here as approved by the maintainer rather than taken by an agent."* That asserts the gate was cleared
+without recording **when**, **what was reviewed**, or **how far the approval reaches** — and it is the
+one gate nothing in the tree can verify, so the record is the entire evidence.
+
+**Where it went, and why there.** `ARCHITECTURE_REVIEW_GATE.md` §Procedure step 3 says a gated
+decision is written down as an ADR, and `ADR_POLICY.md` makes the ADR the final decision record. So
+the sign-off belongs in ADR-0024, not in a new register — and the repository already has a shape for
+it: **ADR-0023** carries a dated Status line plus a condition table for the other gated change in
+this line. ADR-0024 now matches that shape:
+
+- the **Status** line carries the date and names the gate, instead of only pointing at the Amendment;
+- a new **§Serialization sign-off** states that the fields were manually reviewed and approved, with
+  a six-row table covering additive-only, backward compatibility, forward compatibility, no
+  undocumented behaviour, user preset files untouched, and the ADR-registration condition — each row
+  naming the carrier that evidences it;
+- a **Scope** paragraph makes the approval non-transferable: it covers these fields in this change
+  set, the gate still applies to every future serialization change, and the release-time
+  `RELEASE_COMPATIBILITY_CHECKLIST.md` is a separate gate whose manual **Session reload** box is
+  still owed.
+
+That last paragraph is the load-bearing half. A sign-off that does not bound itself reads, to the
+next agent, as "serialization changes are fine here" — which is the opposite of what the gate says.
+
+`SERIALIZATION_REGISTRY.md` gained a four-line pointer above the new field table. The registry is the
+artifact the gate rule names, so a reader who arrives there — rather than at the ADR — now finds the
+sign-off and its bounds without having to know the Amendment exists.
+
+Documentation only: no serialization schema change, no source file touched, no test changed. Nothing
+about the fields themselves moved; only the record of who approved them, when, and how far that
+reaches.
+
+**The other findings in this round were confirmed as accepted decisions and left alone**, per the
+maintainer: the ComboBox look-and-feel ownership (no refactor without a failure case), the
+FileChooser lifetime handling, the open-gesture-during-save undo residual, the unknown-root restore
+behaviour including its undo-history half, the A/B rule that a slot's sound and metadata must come
+from one restore source (so metadata read from an invalid payload is deliberately discarded), and the
+state tests' preset-folder park/restore protocol. Each is already recorded in this worklog or in
+`DOCUMENTATION_COVERAGE.md`; none contradicts the code as it stands, so none needed a new entry.

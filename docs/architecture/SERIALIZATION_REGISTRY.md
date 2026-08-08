@@ -43,6 +43,11 @@ src/PluginProcessor.cpp:706-722 (the else-branch), :607 (the unparsable-blob gua
 
 ### The preset **indicator identity** (0.9.2, ADR-0024 as amended)
 
+> **Architecture Review sign-off.** Adding these fields is an `ARCHITECTURE_REVIEW_GATE.md` item.
+> Cleared by the maintainer on **2026-08-07**, re-confirmed **2026-08-08**; what was reviewed is
+> recorded in **ADR-0024 §Amendment → Serialization sign-off**. That sign-off covers these fields
+> only — the gate still applies to every future field add, removal or semantic change.
+
 Three additive `AnamorphRoot` properties, plus three per A/B slot below. They record which preset
 row the indicator should point at, so a reopened project ticks the row that produced the sound even
 when a user preset shares a factory preset's NAME. **Metadata only** — the sound is restored from
