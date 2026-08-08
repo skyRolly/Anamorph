@@ -96,7 +96,7 @@ folder) are not disjoint.
 ## Related code
 - `src/PresetManager.h:30-36` (`Entry::factoryId`), `:54-76` (`Selection`, incl. its equality
   operators), `:78-94` (`SelectionFields`, `encodeSelection`/`decodeSelection`), `:116`
-  (`selection()`), `:120-131` (`setMeta`), `:138-143` (`adoptRestoredState`), `:151-157` (`onSaved`)
+  (`selection()`), `:120-141` (`setMeta`), `:148-153` (`adoptRestoredState`), `:161-167` (`onSaved`)
 - `src/PresetManager.cpp:19-58` (the factory table + `findFactory`), `:108-132` (`currentIndex`),
   `:202-250` (`load`), `:252-266` (`loadFile`), `:278-299` (`saveUser`), `:301-306`
   (`adoptRestoredState`), `:312-365` (`encodeSelection`/`decodeSelection`)
@@ -175,7 +175,7 @@ pinned the pre-fix "keeps whatever the slot held" behaviour and now asserts the 
 Evidence [Verified] — **as amended**; this block describes the ADR in force, not the original
 decision preserved above it:
 - Source: the **Related code** list above, plus the **Amended related code** in the Amendment.
-- Tests: `AnamorphStateTests`, 856 checks, green. **State test 10** — the shared-name save, both
+- Tests: `AnamorphStateTests`, 858 checks, green. **State test 10** — the shared-name save, both
   rows selectable, the A/B round-trip, undo after a save, redo invalidation on an identical-sounding
   switch, the outside-folder file and the deleted user preset. **State test 11** — factory-id
   integrity (present, unique, every one resolving), which is what makes `load()`'s assert

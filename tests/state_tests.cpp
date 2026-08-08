@@ -556,6 +556,15 @@ static void testLegacyPre064AbSlots()
                (double) dynamic_cast<juce::RangedAudioParameter*> (p.getAPVTS().getParameter ("width"))
                             ->convertTo0to1 (1.8f),
                1.0e-6, "switching to legacy slot A applies its width");
+    // ...and the slot reads as "no preset", NOT as "a modified preset". The slot carries no
+    // baseline, and an absent baseline is not evidence of an edit -- the same rule state test 4
+    // pins for a v0.2 root ("restored v0.2 state adopts a clean baseline"). A literal empty
+    // baseline would compare unequal to every possible signature, so the top bar would render a
+    // bare " *": a modified-marker against a preset that does not exist.
+    check (! p.getPresets().isDirty(),
+           "a legacy slot switched into reads as clean, not as permanently modified");
+    checkStr (p.getPresets().currentName(), "",
+              "...and shows no preset name rather than borrowing the other slot's");
 }
 
 // ---------------------------------------------------------------------------

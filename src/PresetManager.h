@@ -117,15 +117,25 @@ public:
     // `sourceSel` carries the identity (#4) so an A/B switch, an undo or a session restore
     // puts the tick back on the row that actually produced the sound. A pre-0.9.2 session
     // has none to carry, and passes the default (unknown) -> the name fallback.
+    //
+    // An EMPTY `baselineSig` means the state being adopted never recorded one. The only thing
+    // that produces it is a pre-0.6.4 A/B slot, which stored parameters ALONE -- every in-memory
+    // producer (the constructor, load, loadFile, saveUser, adoptRestoredState, and therefore
+    // currentStateSet and every undo / redo / A-B / copy snapshot built from it) always fills it.
+    // "No baseline" is not "modified": soundSig() is never empty, so a literal "" would compare
+    // unequal to every possible sound and report the slot dirty forever -- a modified-marker on a
+    // preset the slot does not even have (it has no name either). The state being adopted becomes
+    // its own clean baseline instead, which is exactly the rule adoptRestoredState() applies to a
+    // session root that carries no `presetBaseline`.
     void setMeta (const juce::String& name, const juce::String& baselineSig,
-                  const Selection& sourceSel) noexcept
+                  const Selection& sourceSel)
     {
         current = name;
-        sigAtLoad = baselineSig;
+        sigAtLoad = baselineSig.isNotEmpty() ? baselineSig : soundSig();
         sel = sourceSel;
     }
     // Convenience for callers with no identity to carry (currently tests only).
-    void setMeta (const juce::String& name, const juce::String& baselineSig) noexcept
+    void setMeta (const juce::String& name, const juce::String& baselineSig)
     {
         setMeta (name, baselineSig, Selection());
     }

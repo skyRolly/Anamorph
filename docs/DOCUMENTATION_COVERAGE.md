@@ -165,6 +165,21 @@ changed, not merely added:** state test 5's `slotAName == "Default"` under the c
 keeps pre-restore meta" *pinned the defect* — it described a fresh instance's construction snapshot as
 if it were the rule. It now asserts the default, alongside a repeated-restore case that shows why.
 
+**"No baseline recorded" is not "modified" (fifth review round).** The A/B fix above left a second
+half unfinished: a pre-0.6.4 slot restores with an empty *baseline* as well as an empty name, and
+`isDirty()` is `soundSig() != sigAtLoad`. `soundSig()` is never empty, so an empty baseline compares
+unequal to every possible sound and the slot read as **permanently modified** — with no name, the top
+bar rendered a bare ` *`: a modified-marker against a preset that does not exist. The project already
+has a rule for "restored parameters, no recorded baseline": `adoptRestoredState` sets the restored
+state as the clean one, which `SERIALIZATION_REGISTRY.md` documents for the root `presetBaseline` and
+state test 4 pins for a v0.2 session. `setMeta` now applies that same rule, so it is one rule with one
+spelling instead of two answers to the same question. Unreachable from undo, redo, A/B and copy —
+every in-memory producer fills the baseline — so the branch is legacy-restore only. The *empty name*
+was left as-is deliberately: the slot genuinely has no preset, and the pre-fix "Default" was a
+factual error (the slot's parameters were not the defaults). Maintainer confirmation of the direction
+is recorded per the review sign-off; no serialization field changed and `""` keeps its meaning
+("absent"), so this is a read-path interpretation, not an `ARCHITECTURE_REVIEW_GATE` item.
+
 **Documentation follow-up on the identity match (no behaviour change).** ADR-0024's Consequences now
 state the three properties plainly: the match is a raw path-string compare with **no**
 canonicalisation (`getLinkedTarget()` considered and rejected — it resolves symlinks but not

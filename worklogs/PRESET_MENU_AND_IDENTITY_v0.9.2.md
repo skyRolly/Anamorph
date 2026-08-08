@@ -9,7 +9,7 @@
 - **Date:** 2026-08-07 · **Version:** 0.9.2 (PR #100) · **Branch:** `claude/beautiful-sagan-JAUFI`.
 - **Reference tree:** JUCE 9.0.0 at the pinned commit `f8f8864…` (`CMakeLists.txt:36-38`), fetched
   and read locally; all JUCE line citations below are against that commit.
-- **Suites:** `AnamorphTests` 140 checks, `AnamorphStateTests` 856 checks (was 774), both green.
+- **Suites:** `AnamorphTests` 140 checks, `AnamorphStateTests` 858 checks (was 774), both green.
 
 ---
 
@@ -187,7 +187,7 @@ is pure name, so in the duplicate-name case it ticks **both** rows. Its factory 
 index, not a stable string, so reordering the table would silently re-point a live hint. Nothing was
 ported.
 
-**Test-count delta:** state test 10 added 23 checks (774 → 797); §5, §7 and §8 take the suite to 847, and §9 to 856. Each of H1, H3 and H4 has an
+**Test-count delta:** state test 10 added 23 checks (774 → 797); §5, §7 and §8 take the suite to 847, §9 to 856 and §10 to 858. Each of H1, H3 and H4 has an
 assertion that was verified to **fail** with its fix disabled — a test that cannot fail is not a
 test.
 
@@ -424,3 +424,52 @@ moved — everything after `readSlot`'s body in `PluginProcessor.cpp` and after 
 signature string), `a legacy restore does not leave the previous session's slot name attached` (got
 `"Gentle Width"`), and `a tilde-named preset keeps its tick across a reload`. Suite: 847 → **856
 checks**, 0 failures; `AnamorphTests` 140, unchanged.
+
+## 10. Fifth review round — "no baseline recorded" is not "modified"
+
+§9 fixed *which* metadata a legacy A/B slot restores with, and got the second half of the question
+wrong. A pre-0.6.4 slot now comes back with `name == ""` **and** `baseline == ""`. `isDirty()` is
+`soundSig() != sigAtLoad` and `soundSig()` is never empty, so an empty baseline compares unequal to
+every possible sound: switch into that slot and it reads as **permanently modified**, with no name to
+attach the marker to. `refreshPresetDisplay` builds `name + (isDirty() ? " *" : "")`, so the top bar
+renders a bare ` *`.
+
+The reviewer flagged it as a *possible* UX consequence and asked whether it was intended. It is not,
+and the repository already answers the question. `adoptRestoredState` ends with
+`sigAtLoad = soundSig(); // restored state counts as the clean baseline`, `SERIALIZATION_REGISTRY.md`
+records that as the root `presetBaseline` default-if-absent, and state test 4 pins it for a v0.2
+session (`restored v0.2 state adopts a clean baseline`). A pre-0.6.4 A/B slot is the *same situation*
+— restored parameters with no recorded baseline — so it should get the same answer. Two answers to
+one question was the defect.
+
+**The fix is the branch, not a new rule:** `setMeta` treats an empty `baselineSig` as "the state being
+adopted is its own clean baseline". Chosen over a special case in `applyStateSet` because
+`PresetManager` is where "what a baseline means" already lives (next to `adoptRestoredState`), and
+because `soundSig()` is private to it. It is provably legacy-only: the constructor, `load`,
+`loadFile`, `saveUser` and `adoptRestoredState` all fill `sigAtLoad`, and `currentStateSet()` reads
+it, so every undo, redo, A/B and copy snapshot carries a real baseline and never reaches the branch.
+`setMeta` lost its `noexcept` — it now calls `soundSig()`, which allocates, exactly as
+`adoptRestoredState` always has.
+
+**The empty NAME was deliberately left alone.** The slot really does carry no preset; the pre-fix
+`"Default"` was not a friendlier label but a factual error, since the slot's parameters were not the
+defaults. Rendering it as an empty top-bar label is what "no preset" looks like, and inventing a
+placeholder string would be UI copy under constraint C8. Flagged for the maintainer rather than
+decided here.
+
+**Not a gate item.** No serialization field was added, removed or renamed, and `""` keeps its meaning
+("no baseline recorded"). What changed is how the reader *interprets* that absence — the same class
+of change `SERIALIZATION_REGISTRY.md`'s INVARIANT contemplates when it requires absence to have a
+handled default. The maintainer's review sign-off covers the direction; recorded here and in
+`DOCUMENTATION_COVERAGE.md`.
+
+**Verification.** `a legacy slot switched into reads as clean, not as permanently modified` fails with
+the branch reverted (the sole failure in an otherwise green run) and passes with it. Its companion,
+`...and shows no preset name rather than borrowing the other slot's`, passes both ways — §9's
+unconditional `dst.name` assignment already guarantees it; it is kept as a pin so a future change
+cannot restore the borrowed name without tripping something. Suite: 856 → **858 checks**, 0 failures;
+`AnamorphTests` 140, unchanged.
+
+**Also this round:** the PR description still reported the pre-§9 count (844 checks) while
+`HANDOVER.md`, `RELEASE_HARDENING_PLAN.md` and ADR-0024 had moved on; all carriers now read 858. The
+repository itself contained no stale `844`.

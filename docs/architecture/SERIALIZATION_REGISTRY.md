@@ -111,9 +111,19 @@ recovered from the legacy APVTS PARAM nodes by `migrateFromLegacyApvts` (choice 
 | `slotAUserFile` / `slotBUserFile` | String | 0.9.2 | No | No | `""` |
 
 The per-slot trio is the same indicator identity as the root one, with the same encoding, defaults
-and fallbacks, so switching A/B after a reload ticks each slot's own row. `readSlot` **assigns** it
-unconditionally rather than merging: `abSlot[]` are processor members and a host may restore into one
-live instance repeatedly, so absent must mean the default, not "whatever the previous session left".
+and fallbacks, so switching A/B after a reload ticks each slot's own row. `readSlot` **assigns** all
+six metadata fields (name, baseline, identity trio) unconditionally rather than merging: `abSlot[]`
+are processor members and a host may restore into one live instance repeatedly, so absent must mean
+the default, not "whatever the previous session left".
+
+An empty `slotABase` / `slotBBase` means **"no baseline was recorded"**, which is *not* the same as
+"modified". Only a pre-0.6.4 slot can produce it — every in-memory producer fills it — and
+`PresetManager::setMeta` resolves it the way `adoptRestoredState` resolves an absent root
+`presetBaseline`: the state being applied becomes its own **clean** baseline. A literal `""` would
+compare unequal to every possible `soundSig()`, so such a slot would read as permanently edited and
+the top bar would render a bare ` *` — a modified-marker against a preset the slot does not have
+(its name is empty by the same rule). Source: src/PresetManager.h:120-141 (`setMeta`);
+src/PresetManager.cpp:301-306 (`adoptRestoredState`, the root-side rule).
 
 **◊** Pre-0.6.4 sessions stored params-only under `slotA`/`slotB`; `readSlot` migrates them.
 Evidence [Verified]: src/PluginProcessor.cpp:661-665 (the legacy-key fallback inside `readSlot`, :641-671);

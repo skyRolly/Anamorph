@@ -91,9 +91,12 @@ Evidence [Verified]: src/PluginProcessor.cpp:563-593 (`getStateInformation`).
      i.e. the pre-0.9.2 name fallback.
    - Restore A/B slots; the `active` index is **clamped** to a valid slot (`clampAbSlotIndex`,
      `src/AbSlotIndex.h`); per-slot reader falls back to pre-0.6.4 "slotA"/"slotB" (params-only)
-     keys. Each slot's identity is **assigned unconditionally**, not merged: `abSlot[]` are
-     processor members and a host may restore into one live instance repeatedly, so an absent field
-     must mean the default rather than whatever the previous session left there.
+     keys. Each slot's name, baseline and identity are **assigned unconditionally**, not merged:
+     `abSlot[]` are processor members and a host may restore into one live instance repeatedly, so an
+     absent field must mean the default rather than whatever the previous session left there. A slot
+     that comes back with an **empty baseline** (only a pre-0.6.4 slot can) becomes clean at its own
+     state when it is switched into — "no baseline recorded" is not "modified"; see
+     `SERIALIZATION_REGISTRY.md`, `AB` child.
 3. **Else if the root is the bare APVTS state type:** backward-compat path for v0.2 sessions
    (`apvts.replaceState` + `reassertParameters`).
 4. Clear undo history; adopt preset metadata **including the decoded identity**
