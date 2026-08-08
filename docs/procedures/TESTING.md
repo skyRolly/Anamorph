@@ -95,8 +95,9 @@ all-defaults signature), and the **indicator identity across a session reload** 
 identities restore, per A/B slot; an unresolvable factory id, a deleted user preset, a preset nested
 in a SUB-folder of the preset folder and a pre-0.9.2 session with no identity each take their
 documented fallback; and in EVERY one of those
-six paths the restored parameters are asserted bit-identical, because the identity is metadata and
-must never influence the sound).
+seven paths — the six that go through the reload helper plus the A/B slot check — the restored
+parameters are asserted bit-identical, because the identity is metadata and must never influence the
+sound).
 Evidence [Verified]: tests/state_tests.cpp; CMakeLists.txt (`AnamorphStateTests`).
 
 **Changing the parameter surface intentionally** (ADR + `PARAMETER_REGISTRY.md` update

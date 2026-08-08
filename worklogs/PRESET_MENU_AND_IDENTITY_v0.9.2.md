@@ -9,7 +9,7 @@
 - **Date:** 2026-08-07 · **Version:** 0.9.2 (PR #100) · **Branch:** `claude/beautiful-sagan-JAUFI`.
 - **Reference tree:** JUCE 9.0.0 at the pinned commit `f8f8864…` (`CMakeLists.txt:36-38`), fetched
   and read locally; all JUCE line citations below are against that commit.
-- **Suites:** `AnamorphTests` 140 checks, `AnamorphStateTests` 842 checks (was 774), both green.
+- **Suites:** `AnamorphTests` 140 checks, `AnamorphStateTests` 844 checks (was 774), both green.
 
 ---
 
@@ -85,7 +85,7 @@ because the corrected version is less obvious than the wrong one.
 - JUCE's self-heal is present but cannot fire. `windowIsStillValid()` dismisses when
   `componentAttachedTo != options.getTargetComponent()` — and **both are `WeakReference<Component>`
   to `presetName`**, an editor member, so they null in the same instant and the comparison is false.
-  That is the 残留.
+  That is the leftover menu.
 - The lost item styling is **not** a use-after-free. `PopupMenu` stores its look-and-feel as a
   `WeakReference<LookAndFeel>`, so `setLookAndFeel (&lnf)` *nulled*; `Component::getLookAndFeel()`
   then falls back to `LookAndFeel_V4`. Cosmetic. (It does trip `~LookAndFeel`'s debug assertion
@@ -126,7 +126,7 @@ it survives editor destruction with certainty. Fixed with the same guard; this i
 change reaches past the literal report. Everything else is clear: the three `Backdrop` overlays,
 every `Button::onClick` / `ComboBox::onChange` / `Slider::onValueChange`, and the `VBlankAttachment`
 are all owned by editor members. **Reported, not fixed:** the combo-box popups store an
-editor-member LookAndFeel the same way (same styling loss, same 残留) but their callback is
+editor-member LookAndFeel the same way (same styling loss, same leftover menu) but their callback is
 `ModalCallbackFunction::forComponent`, i.e. already SafePointer-based — no memory-safety defect, no
 reported symptom, and changing it touches seven call sites across two LookAndFeel subclasses.
 
@@ -165,7 +165,9 @@ change). Writing the test exposed a **second instance of the same gap**:
 current one, so switching between two identically-sounding presets left the previous preset's
 metadata on the baseline. Now the metadata is adopted in that branch too, still with no undo step.
 
-**H4 — `readSlot` left a stale identity on an A/B slot.** `abSlot[]` are processor members and many
+**H4 — `readSlot` left a stale identity on an A/B slot.** *(Superseded by §5: the identity is now
+serialized per slot, so `readSlot` DECODES it rather than clearing it. The defect and the reason the
+assignment must be unconditional are unchanged.)* `abSlot[]` are processor members and many
 hosts call `setStateInformation` repeatedly on one live instance. The identity is not serialized, so
 there is nothing to read it from; without clearing it first, a second session's slot inherited the
 first session's identity. `dst.selection = {}` at the top of the reader.
@@ -181,7 +183,7 @@ is pure name, so in the duplicate-name case it ticks **both** rows. Its factory 
 index, not a stable string, so reordering the table would silently re-point a live hint. Nothing was
 ported.
 
-**Test-count delta:** state test 10 adds 23 checks (774 → 797). Each of H1, H3 and H4 has an
+**Test-count delta:** state test 10 added 23 checks (774 → 797); §5 and §7 take the suite to 844. Each of H1, H3 and H4 has an
 assertion that was verified to **fail** with its fix disabled — a test that cannot fail is not a
 test.
 
@@ -232,8 +234,8 @@ drift apart.
    shared preset carry someone else's identity.
 2. **Parameter restore is independent of identity restore.** The sound comes from the `ANAMORPH`
    child; the identity is applied afterwards through `setMeta` / `adoptRestoredState`, neither of
-   which touches a parameter. State test 12 asserts bit-identical parameters on **all five** paths,
-   including the two where the identity deliberately fails to resolve.
+   which touches a parameter. State test 12 asserts bit-identical parameters on **all seven** paths,
+   including the three where the identity deliberately fails to resolve.
 3. **A wrong-but-well-formed stored value cannot select the wrong preset.** It resolves or it ticks
    nothing — `currentIndex()`'s existing rule that a *known* identity absent from the list returns
    -1 (the H1 fix) is what makes the new fallbacks safe rather than merely tidy.
@@ -272,10 +274,15 @@ blamed, but not the `peer->isFocused()` abort it actually works around.
 at `:457`, and `ItemComponent` calls `parent.addAndMakeVisible` before `getIdealSize` (`:139-146`),
 which resolves through `getLookAndFeel()`. Restoring it would re-arm the `~LookAndFeel` assertion
 (it fires on any live `WeakReference`, and `lnf` is a member destroyed before this editor's
-`Component` base — i.e. before the menu's asynchronous cancel). The two calls that genuinely see the
-default look-and-feel are bound one line before the parenting: `setOpaque` (same answer —
-`colours::bgPanel` is opaque) and `preparePopupMenuWindow` (a no-op we do not override). Both inert;
-now recorded in the code as the latent trap they are.
+`Component` base — i.e. before the menu's asynchronous cancel). **Three** calls resolve through the
+default look-and-feel, not two. Two are inert and bound one line before the parenting: `setOpaque`
+(same answer — `colours::bgPanel` is opaque) and `preparePopupMenuWindow` (a no-op we do not
+override). The third is **load-bearing** and earlier still: `getParentComponentForMenuOptions`
+(`juce_PopupMenu.cpp:353`, in the member-init list) is what actually installs the parent, so a
+process-global default look-and-feel that overrode it to return `nullptr` would silently discard the
+parenting and drop the menu back to a desktop window, leaving only the SafePointer. Every JUCE
+look-and-feel inherits `LookAndFeel_V2`'s pass-through and nothing Anamorph owns can reach it — now
+recorded in the code as the latent trap it is.
 
 ## 7. Third review round — two defects in the §5 work
 

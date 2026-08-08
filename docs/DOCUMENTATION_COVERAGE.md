@@ -12,11 +12,12 @@ Four changes, one investigation, one new regression test.
 **Preset drop-down lifetime + crash (`src/PluginEditor.cpp`).** Filed as **INC-010**. Three facts,
 separated after an adversarial re-read of the pinned JUCE source — the first draft of this entry
 (and of the code comment) got the mechanism wrong and is corrected here rather than left standing.
-(1) The **残留** is not an oversight in JUCE: `MenuWindow::windowIsStillValid()` dismisses when
+(1) The **leftover menu** is not an oversight in JUCE: `MenuWindow::windowIsStillValid()` dismisses when
 `componentAttachedTo != options.getTargetComponent()`, but both are `WeakReference` to
 `presetName`, so they null *together* and the comparison is false. (2) The **lost styling is not a
-use-after-free** — `PopupMenu` holds its look-and-feel as a `WeakReference<LookAndFeel>`, which
-nulls and falls back to `LookAndFeel_V4`. (3) The **crash** is the raw `this` in the callback.
+use-after-free** — the MenuWindow copies the look-and-feel into its own `Component::lookAndFeel`
+slot (`juce_PopupMenu.cpp:366`), a `WeakReference` that nulls and falls back to `LookAndFeel_V4`
+(the `PopupMenu` itself is a stack local, gone long before the editor). (3) The **crash** is the raw `this` in the callback.
 The fix is `withParentComponent (this)` (JUCE parents the MenuWindow as a CHILD, cancelled with
 result 0 by `ModalComponentManager` on destruction *or* hide; `Component::getLookAndFeel()` then
 resolves our LookAndFeel by walking the tree) plus a `SafePointer` callback — which is **not**
@@ -105,8 +106,12 @@ at `juce_PopupMenu.cpp:370-372` and only then builds items (`:457`), and `ItemCo
 any live `WeakReference`: `lnf` is a member and so is destroyed *before* this editor's `Component`
 base, i.e. before the menu is asynchronously cancelled. The only two calls that still see the
 default look-and-feel are bound one line before the parenting — `setOpaque` (same answer,
-`colours::bgPanel` is opaque) and `preparePopupMenuWindow` (a no-op we do not override). Both inert
-today; recorded in the code as the latent trap they are.
+`colours::bgPanel` is opaque) and `preparePopupMenuWindow` (a no-op we do not override). A **third**
+resolves through it earlier still and is **load-bearing**: `getParentComponentForMenuOptions`
+(`juce_PopupMenu.cpp:353`, in the member-init list), whose return value is what installs the parent —
+so a process-global default look-and-feel overriding it to return `nullptr` would silently discard
+the parenting. Every JUCE look-and-feel inherits `LookAndFeel_V2`'s pass-through, and the default is
+not ours to control; recorded in the code as the latent trap it is.
 
 **`focusSaveNameField`'s comment was stale, not its behaviour.** It justified the retry by the
 preset menu's own desktop window owning OS focus — which parenting removed. The retry stays, because

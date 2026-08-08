@@ -21,6 +21,9 @@
 //    6. Preset save -> reload round-trip (user preset file + exclusion rules).
 //    7. A/B + view-param preservation across slot apply and session restore.
 //    8. Factory/user preset identity when a user preset shares a factory name.
+//    9. Factory-id integrity: present, unique, and every one resolving.
+//   10. The preset indicator identity across a session reload, incl. every
+//       fallback -- and bit-identical parameters on every one of those paths.
 //
 //  Fixture workflow: an INTENTIONAL parameter/schema change (which requires an
 //  ADR + registry update per the compatibility policies) is recorded by
@@ -860,7 +863,11 @@ static void testDuplicateNameFactoryVsUserPreset()
         auto outside = juce::File::getSpecialLocation (juce::File::tempDirectory)
                            .getChildFile (shared + anamorph::PresetManager::fileSuffix());
         outside.deleteFile();
-        if (presetFile.copyFileTo (outside))
+        // Asserted, not skipped: a silent `if` here would let the suite report 0 failures on a
+        // runner where the copy fails, with these checks never executed at all.
+        const bool stagedOutside = presetFile.copyFileTo (outside);
+        check (stagedOutside, "outside-folder copy staged");
+        if (stagedOutside)
         {
             check (presets.loadFile (outside), "loadFile accepts a preset from outside the folder");
             checkStr (presets.currentName(), shared, "an outside file still displays its own name");
@@ -1050,7 +1057,12 @@ static void testPresetIndicatorIdentityAcrossRestore()
         auto nestedDir = anamorph::PresetManager::presetDirectory().getChildFile ("AnamorphHarnessNested");
         auto nested    = nestedDir.getChildFile (shared + anamorph::PresetManager::fileSuffix());
         nested.deleteFile();
-        if (nestedDir.createDirectory() && presetFile.copyFileTo (nested))
+        // Asserted for the same reason as the outside-folder case above: this is the guard for
+        // the isAChildOf-vs-direct-child fix, and a silent skip would leave it unguarded while
+        // the suite still exits 0.
+        const bool stagedNested = nestedDir.createDirectory() && presetFile.copyFileTo (nested);
+        check (stagedNested, "nested sub-folder copy staged");
+        if (stagedNested)
         {
             check (presets.loadFile (nested), "loadFile accepts a preset from a sub-folder");
             check (presets.currentIndex() < 0, "a nested preset ticks nothing while live");

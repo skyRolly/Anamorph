@@ -150,7 +150,7 @@ shape; state test 10's reload assertion).
 Evidence [Verified] — **as amended**; this block describes the ADR in force, not the original
 decision preserved above it:
 - Source: the **Related code** list above, plus the **Amended related code** in the Amendment.
-- Tests: `AnamorphStateTests`, 842 checks, green. **State test 10** — the shared-name save, both
+- Tests: `AnamorphStateTests`, 844 checks, green. **State test 10** — the shared-name save, both
   rows selectable, the A/B round-trip, undo after a save, redo invalidation on an identical-sounding
   switch, the outside-folder file and the deleted user preset. **State test 11** — factory-id
   integrity (present, unique, every one resolving), which is what makes `load()`'s assert
