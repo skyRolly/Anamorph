@@ -241,6 +241,22 @@ had already been written as though the rule were symmetric, so this is the code 
 documented invariant rather than a new one. `currentStateSet()` builds a fresh tree per call, so the
 explicit `createCopy()` for slot independence is no longer needed.
 
+**The empty preset label gets a placeholder (ninth review round).** The blank top-bar button a
+pre-0.6.4 A/B slot produced — flagged as a maintainer decision under constraint C8 — is now
+**No Preset**, with sign-off dated 2026-08-08. It is a *display* substitution in
+`refreshPresetDisplay`, deliberately **not** in `PresetManager::currentName()`: that accessor also
+feeds the serialized `presetName` and the Save Preset pre-fill, so a placeholder there would be
+written into every session saved from a nameless slot and offered as the default preset *file* name.
+The stored name stays `""`, the identity stays `unknown`, and `currentIndex()` still ticks nothing.
+State test 5 gained the assertion that closes the loop — a re-save must still write `presetName=""`
+— and moving the substitution into the accessor as a control fails four assertions. `ADR-0024`'s
+"no user-visible string was added" consequence was **false** once this landed and is corrected in
+place rather than left to drift; the `CHANGELOG` entry now names the label. `TESTING.md`'s
+restore-path sentence was one behind in both numbers (seven/six → eight/seven) and had missed the
+tilde case in its fallback list; tests are the source of truth, so the prose moved. The `setMeta`
+ordering invariant, already in the header, is now also stated at `applyStateSet` — the two lines that
+*are* the order, and the place a future edit would break it.
+
 **Declined in the same round, recorded so it is not re-raised: an `AnamorphRoot` with no `ANAMORPH`
 child.** Such a chunk is *recognised*, so it restores the fields it carries and resolves the absent
 ones to their documented defaults — while `params.isValid()` is false, so the parameters keep their

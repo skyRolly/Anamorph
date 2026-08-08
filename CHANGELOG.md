@@ -44,7 +44,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   slots.** Sessions saved before 0.6.4 store the A and B slots as parameter values only, with no
   preset name attached. When the host reloaded such a project into a plug-in that already had a
   project open, each slot kept the *previous* project's preset name and modified-marker while
-  showing the newly loaded sound. Each slot now reads as "no preset" — no borrowed name, and no
+  showing the newly loaded sound. Each slot now reads as **No Preset** — no borrowed name, and no
   modified-marker either, since a slot that never recorded a preset has nothing to be modified
   from. Sound and parameter values were never affected.
   Evidence: PR #100. [Verified]

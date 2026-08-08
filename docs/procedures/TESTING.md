@@ -94,9 +94,10 @@ sound identical **but re-picking the already-selected row does not**, and a
 unresolvable id would apply the plain defaults, so exactly one factory preset may sit on the
 all-defaults signature), and the **indicator identity across a session reload** (factory and user
 identities restore, per A/B slot; an unresolvable factory id, a deleted user preset, a preset nested
-in a SUB-folder of the preset folder and a pre-0.9.2 session with no identity each take their
-documented fallback; and in EVERY one of those
-seven paths — the six that go through the reload helper plus the A/B slot check — the restored
+in a SUB-folder of the preset folder, a preset whose file NAME `juce::File::isAbsolutePath` accepts
+(a leading `~` on POSIX) and a pre-0.9.2 session with no identity each take their documented
+fallback; and in EVERY one of those
+eight paths — the seven that go through the reload helper plus the A/B slot check — the restored
 parameters are asserted bit-identical, because the identity is metadata and must never influence the
 sound).
 Evidence [Verified]: tests/state_tests.cpp; CMakeLists.txt (`AnamorphStateTests`).

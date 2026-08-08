@@ -9,7 +9,7 @@
 - **Date:** 2026-08-07 · **Version:** 0.9.2 (PR #100) · **Branch:** `claude/beautiful-sagan-JAUFI`.
 - **Reference tree:** JUCE 9.0.0 at the pinned commit `f8f8864…` (`CMakeLists.txt:36-38`), fetched
   and read locally; all JUCE line citations below are against that commit.
-- **Suites:** `AnamorphTests` 140 checks, `AnamorphStateTests` 893 checks (was 774), both green.
+- **Suites:** `AnamorphTests` 140 checks, `AnamorphStateTests` 894 checks (was 774), both green.
 
 ---
 
@@ -187,7 +187,7 @@ is pure name, so in the duplicate-name case it ticks **both** rows. Its factory 
 index, not a stable string, so reordering the table would silently re-point a live hint. Nothing was
 ported.
 
-**Test-count delta:** state test 10 added 23 checks (774 → 797); §5, §7 and §8 take the suite to 847, §9 to 856, §10 to 858, §11 to 866, §12 to 878 and §13 to 893. Each of H1, H3 and H4 has an
+**Test-count delta:** state test 10 added 23 checks (774 → 797); §5, §7 and §8 take the suite to 847, §9 to 856, §10 to 858, §11 to 866, §12 to 878, §13 to 893 and §14 to 894. Each of H1, H3 and H4 has an
 assertion that was verified to **fail** with its fix disabled — a test that cannot fail is not a
 test.
 
@@ -714,3 +714,57 @@ both halves of each slot from the same (old) project, and outside this round.
 Maintainer sign-off for every item in this round is recorded per the review confirmation. None is an
 `ARCHITECTURE_REVIEW_GATE` item: no serialization field was added, removed or changed in meaning, no
 ADR decision moved, and the wire format is byte-compatible in both directions.
+
+## 14. Ninth review round — the empty label gets a placeholder, and two documentation items
+
+**The empty preset label.** §10 decided that a pre-0.6.4 A/B slot shows an empty name rather than the
+factually-wrong `"Default"`, and flagged the resulting blank top-bar button for the maintainer as UI
+copy under constraint C8. That call has now been made: the button renders **No Preset**.
+
+The whole question was *where*. `refreshPresetDisplay` builds `name + marker` from
+`PresetManager::currentName()`, and `currentName()` has two other readers — `getStateInformation`
+writes it to the serialized `presetName` property, and `showSavePreset` pre-fills the Save Preset
+field with it. Putting the placeholder in the accessor, which is the tidier-looking option, would
+therefore have written `"No Preset"` into every session saved from a nameless slot and offered it as
+the default *preset file name*. It stays in the editor:
+
+- **Display:** `refreshPresetDisplay` substitutes the placeholder before measuring, so abbreviation
+  and clipping apply to what is actually drawn.
+- **Model:** `currentName()` still returns `""`, `selection()` is still `unknown`, `currentIndex()`
+  still ticks nothing. No serialization meaning moved and no identity was invented.
+- **Save dialog:** untouched, and commented as deliberate — an empty field the user types into is the
+  right pre-fill for a state that has no preset.
+
+State test 5 gained the assertion that closes the loop: after switching into a legacy slot, a re-save
+must still write `presetName=""`. With the substitution moved into `currentName()` as a control, four
+assertions fail — the two existing name pins in tests 5 and 12, plus this new serialized-property
+one — which is exactly the guard rail wanted, since that is the refactor a future reader is most
+likely to attempt.
+
+`ADR-0024`'s Consequences said *"No user-visible string was added (constraint C8): the ids never
+surface."* That is now false in its first half, so it is corrected in place rather than left to drift:
+one string was added, with the sign-off date and the reason it lives in the editor. The `CHANGELOG`
+entry for the legacy-slot fix now names the label it produces.
+
+**`TESTING.md`'s restore-path count.** The procedure said *"in EVERY one of those seven paths — the
+six that go through the reload helper plus the A/B slot check"*. Counting `restoreInto` call sites in
+`testPresetIndicatorIdentityAcrossRestore`: factory, factory-fallback, user, user-nested,
+user-fallback, pre-0.9.2, and the `~`-named round-trip — **seven** — plus the A/B slot check, so
+**eight**. Both numbers were one behind; the tilde case (§9) was added after that sentence was
+written. ADR-0024 and the PR description already said eight. Tests are the source of truth here, so
+the prose moved, not the tests; the fallback list in the same sentence gained the tilde case it had
+also missed.
+
+**The `setMeta` ordering invariant** was already recorded in `PresetManager.h` (added in the previous
+round: *"PRECONDITION for that fallback, not enforced by the signature…"*). What was missing is the
+statement at the place a future edit would actually break it — `applyStateSet`, whose two lines *are*
+the order. It now says so, and says what breaks: swapping them baselines a pre-0.6.4 slot against the
+outgoing sound and leaves its dirty-star wrong with nothing to catch it.
+
+**Verification.** Suite: 893 → **894 checks**, 0 failures; `AnamorphTests` 140; full build of every
+target exits 0. The new assertion was verified to fail (with three others) under the
+placeholder-in-the-model control. No serialization field, ADR decision or preset-identity rule
+changed; the only behaviour difference is one string drawn in the top bar.
+
+Maintainer sign-off for all three items is recorded per the review confirmation, including the C8
+sign-off for the new UI string.

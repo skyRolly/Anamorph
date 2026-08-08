@@ -567,6 +567,12 @@ static void testLegacyPre064AbSlots()
            "a legacy slot switched into reads as clean, not as permanently modified");
     checkStr (p.getPresets().currentName(), "",
               "...and shows no preset name rather than borrowing the other slot's");
+    // The empty name is a MODEL fact and has to stay one. The top bar substitutes a "No Preset"
+    // placeholder for DISPLAY (refreshPresetDisplay), and that placeholder must never reach the
+    // serialized field or the Save Preset pre-fill -- both read currentName(). Pinning the saved
+    // property is what makes moving the substitution into PresetManager fail loudly.
+    checkStr (stateTreeOf (p)["presetName"].toString(), "",
+              "the top bar's placeholder never reaches the serialized preset name");
 }
 
 // ---------------------------------------------------------------------------

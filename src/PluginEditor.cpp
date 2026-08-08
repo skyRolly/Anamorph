@@ -1398,10 +1398,21 @@ void AnamorphAudioProcessorEditor::refreshPresetDisplay()
     const juce::Font font (juce::FontOptions (13.0f)); // matches the presetname button font
     const float avail = (float) presetName.getWidth() - 12.0f - textWidth (font, marker);
 
-    juce::String name = pm.currentName();
+    // An EMPTY preset name is a real state, not a bug: a pre-0.6.4 A/B slot carries no preset of
+    // its own (readSlot leaves its name empty by the "absence means default" rule), and switching
+    // into one pushes that empty name through applyStateSet. Rendering it verbatim would leave the
+    // top bar an unlabelled clickable region, so the DISPLAY substitutes a placeholder.
+    //
+    // Display only, and deliberately here rather than in PresetManager::currentName(): that
+    // accessor feeds `presetName` in getStateInformation (the serialized field) and pre-fills the
+    // Save Preset field, so a placeholder there would be written into the session and offered as a
+    // preset file name. The stored name stays "", the identity stays `unknown`, and currentIndex()
+    // still ticks nothing -- state test 5 pins all three, so this cannot drift into the model.
+    juce::String name = pm.currentName().isNotEmpty() ? pm.currentName()
+                                                      : juce::String ("No Preset");
     if (textWidth (font, name) > avail)
     {
-        name = abbreviate (pm.currentName());          // consonant skeleton (#7)
+        name = abbreviate (name);                      // consonant skeleton (#7)
         while (name.isNotEmpty() && textWidth (font, name) > avail)
             name = name.dropLastCharacters (1);        // hard-clip if still too wide
     }
@@ -1546,6 +1557,9 @@ void AnamorphAudioProcessorEditor::showSavePreset (bool show)
     {
         savePresetBackdrop.toFront (false);
         resized();
+        // The RAW name on purpose, not refreshPresetDisplay's placeholder: for a state that
+        // carries no preset the right pre-fill is an empty field the user types into, never
+        // "No Preset" offered as a preset file name.
         saveNameEditor.setText (processor.getPresets().currentName(), false);
         focusSaveNameField (4);
     }

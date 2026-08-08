@@ -91,7 +91,14 @@ folder) are not disjoint.
   decode to the literal relative string and lose the tick, so it takes the absolute-path branch
   instead — less portable for that one preset, but `decode(encode(s)) == s` holds, which is the
   invariant the whole design rests on.
-- No user-visible string was added (constraint C8): the ids never surface.
+- **One** user-visible string was added, late and deliberately (constraint C8, maintainer sign-off
+  2026-08-08): the top bar renders **No Preset** when the preset name is empty. The ids themselves
+  still never surface. The empty name is a real state this change set created — a pre-0.6.4 A/B slot
+  carries no preset of its own — and rendering it verbatim left the top-bar button an unlabelled
+  clickable region. The substitution lives in `refreshPresetDisplay`, **not** in
+  `PresetManager::currentName()`, because that accessor feeds the serialized `presetName` and the
+  Save Preset pre-fill: a placeholder there would be written into the session and offered as a preset
+  file name. State test 5 pins the separation (stored name and saved property both stay empty).
 
 ## Related code
 - `src/PresetManager.h:30-36` (`Entry::factoryId`), `:54-76` (`Selection`, incl. its equality
@@ -101,7 +108,7 @@ folder) are not disjoint.
   `:202-250` (`load`), `:252-266` (`loadFile`), `:278-314` (`saveUser`), `:316-327`
   (`adoptRestoredState`), `:333-386` (`encodeSelection`/`decodeSelection`)
 - `src/PluginProcessor.h:113-125` (`StateSet::selection`)
-- `src/PluginProcessor.cpp:36-47` (the hooks, incl. `onSaved`), `:243-254`
+- `src/PluginProcessor.cpp:36-47` (the hooks, incl. `onSaved`), `:243-259`
   (`currentStateSet`/`applyStateSet`), `:417-449` (`commitPresetSwitchUndoStep`, incl. the
   identity-moved guard on redo), `:550-571` (`writeSelection`/`readSelection`), `:652-693`
   (`readSlot`)
@@ -175,7 +182,7 @@ pinned the pre-fix "keeps whatever the slot held" behaviour and now asserts the 
 Evidence [Verified] — **as amended**; this block describes the ADR in force, not the original
 decision preserved above it:
 - Source: the **Related code** list above, plus the **Amended related code** in the Amendment.
-- Tests: `AnamorphStateTests`, 893 checks, green. **State test 10** — the shared-name save, both
+- Tests: `AnamorphStateTests`, 894 checks, green. **State test 10** — the shared-name save, both
   rows selectable, the A/B round-trip, undo after a save, redo invalidation on an identical-sounding
   switch, the outside-folder file and the deleted user preset. **State test 11** — factory-id
   integrity (present, unique, every one resolving), which is what makes `load()`'s assert

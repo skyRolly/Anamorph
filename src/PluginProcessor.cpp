@@ -249,6 +249,11 @@ AnamorphAudioProcessor::StateSet AnamorphAudioProcessor::currentStateSet()
 // preset metadata, so the name + dirty-star reappear exactly as stored (#6).
 void AnamorphAudioProcessor::applyStateSet (const StateSet& s)
 {
+    // ORDER IS LOAD-BEARING: parameters first, metadata second. setMeta resolves an EMPTY
+    // baseline by calling soundSig(), which reads the LIVE apvts -- so it means "the state
+    // just applied is its own clean baseline" only while these two lines are in this order.
+    // Swapping them would baseline a pre-0.6.4 A/B slot against the OUTGOING sound and leave
+    // its dirty-star wrong from then on, with nothing to catch it. See PresetManager.h.
     applyStatePreservingView (s.params);
     presets.setMeta (s.name, s.baseline, s.selection);
 }
