@@ -9,7 +9,7 @@
 - **Date:** 2026-08-07 · **Version:** 0.9.2 (PR #100) · **Branch:** `claude/beautiful-sagan-JAUFI`.
 - **Reference tree:** JUCE 9.0.0 at the pinned commit `f8f8864…` (`CMakeLists.txt:36-38`), fetched
   and read locally; all JUCE line citations below are against that commit.
-- **Suites:** `AnamorphTests` 140 checks, `AnamorphStateTests` 844 checks (was 774), both green.
+- **Suites:** `AnamorphTests` 140 checks, `AnamorphStateTests` 847 checks (was 774), both green.
 
 ---
 
@@ -187,7 +187,7 @@ is pure name, so in the duplicate-name case it ticks **both** rows. Its factory 
 index, not a stable string, so reordering the table would silently re-point a live hint. Nothing was
 ported.
 
-**Test-count delta:** state test 10 added 23 checks (774 → 797); §5 and §7 take the suite to 844. Each of H1, H3 and H4 has an
+**Test-count delta:** state test 10 added 23 checks (774 → 797); §5, §7 and §8 take the suite to 847. Each of H1, H3 and H4 has an
 assertion that was verified to **fail** with its fix disabled — a test that cannot fail is not a
 test.
 
@@ -337,3 +337,33 @@ leaves the dialog open with the text still in the field. The save fails **visibl
 exactly the outcome the proposed guard was meant to produce, so the guard would have been a no-op.
 Verified empirically against the pinned `juce_core`, for `~foo`, `~/foo`, `~` and `~root`, with a
 normal name as the control.
+
+## 8. Post-merge review round — the redo guard, narrowed
+
+§7's redo fix was correct in direction and too broad in reach. `commitPresetSwitchUndoStep`'s
+same-sound branch cleared redo **unconditionally**, so re-picking the row that is *already ticked* —
+identical sound, identical identity — threw the redo stack away. Reproduction: load preset A, move a
+knob (one undo step), Undo (redo now holds that edit), click preset A again in the drop-down; the
+signature matches the committed one, the else branch runs, redo is discarded, and the edit the user
+was about to redo is gone for good.
+
+The justification only ever held for a *moved* identity: a surviving redo entry carries the previous
+preset's identity, so redoing it after a switch would drag the tick off the row just chosen. Where
+the identity did not move there is nothing for the redo entry to contradict. The guard is now exactly
+that condition — `presets.selection() != committed.selection` — which required a small equality
+operator on `Selection` that compares only the fields the `kind` actually uses, so a stale
+`factoryId` left on a `userFile` selection cannot make two identical rows compare different.
+
+Both halves are asserted, and both were checked against the pre-fix behaviour: the existing
+"a sonically identical preset switch still invalidates redo" (different row) passes before **and**
+after, and the new "re-selecting the already-current preset preserves redo" fails before and passes
+after. That pairing is the point — it proves the change narrowed the rule rather than removed it.
+
+Two documentation items landed in the same round. `STATE_SERIALIZATION.md` — the narrative half of
+the pair whose ledger half (`SERIALIZATION_REGISTRY.md`) was synced in §5 — still drew the pre-0.9.2
+`AnamorphRoot` layout, so it described a saved session the software no longer produces; its schema
+block, both step lists, its backward-compatibility table and its evidence anchors are now current,
+and it gained the root-vs-slot, metadata-only and absence/unresolvable rules that the ledger states
+field-by-field. And `DOCUMENTATION_COVERAGE.md` still carried the `~foo` claim as a pre-existing
+defect, contradicting §7's refutation of it in the same change set; the ledger now records the
+refutation instead, so a future agent does not "fix" a non-defect.

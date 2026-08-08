@@ -73,16 +73,17 @@ folder) are not disjoint.
 - No user-visible string was added (constraint C8): the ids never surface.
 
 ## Related code
-- `src/PresetManager.h:30-36` (`Entry::factoryId`), `:54-77` (`Selection`, `SelectionFields`,
-  `encodeSelection`/`decodeSelection`), `:99` (`selection()`), `:103-114` (`setMeta`),
-  `:121-126` (`adoptRestoredState`), `:134-140` (`onSaved`)
+- `src/PresetManager.h:30-36` (`Entry::factoryId`), `:54-76` (`Selection`, incl. its equality
+  operators), `:78-93` (`SelectionFields`, `encodeSelection`/`decodeSelection`), `:115`
+  (`selection()`), `:119-130` (`setMeta`), `:137-142` (`adoptRestoredState`), `:150-156` (`onSaved`)
 - `src/PresetManager.cpp:19-58` (the factory table + `findFactory`), `:108-132` (`currentIndex`),
   `:202-250` (`load`), `:252-266` (`loadFile`), `:278-299` (`saveUser`), `:301-306`
   (`adoptRestoredState`), `:312-353` (`encodeSelection`/`decodeSelection`)
 - `src/PluginProcessor.h:113-125` (`StateSet::selection`)
 - `src/PluginProcessor.cpp:36-47` (the hooks, incl. `onSaved`), `:243-254`
-  (`currentStateSet`/`applyStateSet`), `:417-443` (`commitPresetSwitchUndoStep`),
-  `:531-551` (`writeSelection`/`readSelection`), `:635-660` (`readSlot`)
+  (`currentStateSet`/`applyStateSet`), `:417-449` (`commitPresetSwitchUndoStep`, incl. the
+  identity-moved guard on redo), `:540-561` (`writeSelection`/`readSelection`), `:641-666`
+  (`readSlot`)
 - `tests/state_tests.cpp` — state tests 10, 11 and 12
 
 ## Amendment — the identity IS persisted, in plug-in state only (2026-08-07, pre-merge)
@@ -150,7 +151,7 @@ shape; state test 10's reload assertion).
 Evidence [Verified] — **as amended**; this block describes the ADR in force, not the original
 decision preserved above it:
 - Source: the **Related code** list above, plus the **Amended related code** in the Amendment.
-- Tests: `AnamorphStateTests`, 844 checks, green. **State test 10** — the shared-name save, both
+- Tests: `AnamorphStateTests`, 847 checks, green. **State test 10** — the shared-name save, both
   rows selectable, the A/B round-trip, undo after a save, redo invalidation on an identical-sounding
   switch, the outside-folder file and the deleted user preset. **State test 11** — factory-id
   integrity (present, unique, every one resolving), which is what makes `load()`'s assert

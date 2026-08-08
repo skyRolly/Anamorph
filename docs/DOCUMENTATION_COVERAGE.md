@@ -116,10 +116,28 @@ invariant the header and the ADR both state. Now a **direct-child** test, which 
 one: `refresh()` scans non-recursively, so only a direct child can ever be a menu row. And the new
 `else` branch of `commitPresetSwitchUndoStep` did not clear redo, unlike the `if` branch one line
 above whose comment states the rule — so undo, then select the same-sounding preset on the other row,
-then Redo, and the tick jumped back out of an abandoned `StateSet`. **Reported, not fixed
-(pre-existing):** `saveUser` builds its path with `getChildFile`, which short-circuits for anything
-`isAbsolutePath` accepts; on macOS/Linux a leading `~` survives `createLegalFileName`, so saving a
-preset named `~foo` writes outside the folder and still returns success.
+then Redo, and the tick jumped back out of an abandoned `StateSet`. (That branch then had to be
+narrowed again — see below.)
+
+**Raised and REFUTED, recorded so it is not re-raised:** a `saveUser` defect for preset names with a
+leading `~`. The JUCE facts are real as far as they go — `getChildFile` short-circuits for anything
+`isAbsolutePath` accepts, and on macOS/Linux a leading `~` survives `createLegalFileName` — but the
+write cannot succeed. `replaceWithText` does not open the target: it writes a hidden sibling built
+from `getParentDirectory()`, and for a separator-less path that is the path itself, which is not a
+directory. `createLegalFileName` strips `/` and `\`, so every tilde-leading name hits the same
+degenerate parent. `saveUser` therefore returns **false**, nothing is written anywhere, and the Save
+dialog stays open with the text intact — the save fails *visibly*, which is exactly what the proposed
+guard was meant to produce. Verified empirically against the pinned `juce_core` for `~foo`, `~/foo`,
+`~` and `~root`, with a normal name as the control. **No code change; no defect.** The refutation and
+its probe are in `worklogs/PRESET_MENU_AND_IDENTITY_v0.9.2.md` §7.
+
+**Redo invalidation, narrowed after review.** The `else` branch above cleared redo unconditionally,
+so *re-picking the row that is already ticked* — identical sound, identical identity — silently threw
+away a redo the user was about to press. It now clears redo only when the identity actually **moved**
+(`presets.selection() != committed.selection`), which is the only case where a surviving redo entry
+could drag the tick off the row just chosen. The same-sound/**different**-row case still invalidates,
+and its assertion is unchanged; a second assertion covers the re-select case, and both were verified
+against the pre-fix behaviour.
 
 **Declined, with evidence: restoring `PopupMenu::setLookAndFeel (&lnf)`.** The stated goal was to
 make item *measurement* use `AnamorphLookAndFeel` — but it already does. `MenuWindow` parents itself

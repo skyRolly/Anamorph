@@ -57,6 +57,22 @@ public:
         Kind         kind = Kind::unknown;
         juce::String factoryId;  // kind == factory
         juce::File   file;       // kind == userFile
+
+        // "Is this the same row?" -- only the fields the kind actually uses take part, so a
+        // stale factoryId left on a userFile selection cannot make two equal rows compare
+        // different. Used to decide whether a preset load MOVED the identity (#4).
+        bool operator== (const Selection& o) const noexcept
+        {
+            if (kind != o.kind) return false;
+            switch (kind)
+            {
+                case Kind::factory:  return factoryId == o.factoryId;
+                case Kind::userFile: return file == o.file;
+                case Kind::unknown:
+                default:             return true;
+            }
+        }
+        bool operator!= (const Selection& o) const noexcept { return ! operator== (o); }
     };
 
     // The wire form of a Selection: three plain strings, so the encoding lives with the

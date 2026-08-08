@@ -427,14 +427,20 @@ void AnamorphAudioProcessor::commitPresetSwitchUndoStep()
     }
     else
     {
-        // Same SOUND, different preset -- e.g. a user preset saved from the factory preset
-        // next to it. There is nothing sonic to undo, so no step is recorded, but the
-        // baseline must still adopt the new name / identity / clean baseline: leaving the
-        // previous preset's metadata on it means the next undo restores THAT name and tick
-        // onto this sound (#4). Redo is invalidated here for the same reason as in the branch
-        // above: this IS a new user action, and a surviving redo entry carries the PREVIOUS
-        // preset's identity, so redoing it would move the tick off the row the user just picked.
-        abUndo[abActive].redo.clear();
+        // Same SOUND -- e.g. a user preset saved from the factory preset next to it, or the
+        // user simply re-picking the row that is already ticked. There is nothing sonic to
+        // undo, so no step is recorded, but the baseline must still adopt the new name /
+        // identity / clean baseline: leaving the previous preset's metadata on it means the
+        // next undo restores THAT name and tick onto this sound (#4).
+        //
+        // Redo is invalidated ONLY when the identity actually MOVED. A surviving redo entry
+        // carries the PREVIOUS preset's identity, so redoing it after a switch would drag the
+        // tick off the row the user just picked -- that is the case worth destroying redo for.
+        // Re-adopting the identity that is already committed changes nothing the redo entry
+        // could contradict, and clearing it there would silently discard an edit the user had
+        // undone and was about to redo, for no benefit.
+        if (presets.selection() != committed.selection)
+            abUndo[abActive].redo.clear();
         committed = currentStateSet();
     }
     lastPolledSig = sig;

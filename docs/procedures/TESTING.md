@@ -86,7 +86,8 @@ preset save→reload round-trip incl. the exclusion rules (`mbSolo` reset, Bypas
 untouched), A/B + view-param preservation across restore, **factory/user preset identity when a
 user preset carries a factory preset's name** (0.9.2: saving under the shared name selects the USER
 row, both rows stay individually selectable, an A/B round-trip keeps the identity, an undo after a
-save keeps it too, a preset switch invalidates redo even when the two presets sound identical, and a
+save keeps it too, a preset switch invalidates redo when the identity moves even if the two presets
+sound identical **but re-picking the already-selected row does not**, and a
 `.anamorph` loaded from OUTSIDE the preset folder or a user preset deleted from disk both tick
 **nothing** rather than falling back to the same-named factory row),
 **factory-id integrity** (ids present, unique, and every one resolving in the table — an

@@ -9,7 +9,7 @@ Field-level ledger of everything written to session state. Companion to
 > migration support (a read path for the old field). Adding a field is allowed only if absence
 > is handled (a default), so older sessions still load.
 
-Evidence [Verified]: backward-compat paths at src/PluginProcessor.cpp:612-615 (pre-0.8.4 `migrateFromLegacyApvts`), :635-660 (pre-0.6.4 `readSlot`), :662-667 (v0.2 bare APVTS);
+Evidence [Verified]: backward-compat paths at src/PluginProcessor.cpp:618-621 (pre-0.8.4 `migrateFromLegacyApvts`), :641-666 (pre-0.6.4 `readSlot`), :668-673 (v0.2 bare APVTS);
 src/InternalState.h:92-128.
 
 ## `AnamorphRoot` properties
@@ -19,7 +19,7 @@ src/InternalState.h:92-128.
 | `presetName` | String | ≥0.6 (Unverified exact) | No | No | falls back to current name |
 | `presetBaseline` | String | 0.6.x (#6) [Partially Verified] | No | No | `adoptRestoredState` clean baseline |
 
-Source: src/PluginProcessor.cpp:561-562 (write), :617-624 (read), :674-676 (default).
+Source: src/PluginProcessor.cpp:567-568 (write), :623-631 (read), :680-682 (default).
 
 ### The preset **indicator identity** (0.9.2, ADR-0024 as amended)
 
@@ -47,7 +47,8 @@ fallback (rule 2 of `SESSION_COMPATIBILITY_POLICY.md`). A well-formed value that
 a removed factory id, a deleted or moved user preset — ticks **nothing**; it never falls back to a
 same-named preset. Source: src/PresetManager.h:54-77 (`Selection`, `SelectionFields`);
 src/PresetManager.cpp:312-353 (`encodeSelection` / `decodeSelection`);
-src/PluginProcessor.cpp:531-551 (`writeSelection`/`readSelection`), :569 (write), :621 (read).
+src/PluginProcessor.cpp:540-561 (`writeSelection`/`readSelection`), :575 (root write),
+:584 / :588 (per-slot write), :627 (root read), :648 (per-slot read).
 
 ## `ANAMORPH` child (APVTS)
 
@@ -107,8 +108,8 @@ unconditionally rather than merging: `abSlot[]` are processor members and a host
 live instance repeatedly, so absent must mean the default, not "whatever the previous session left".
 
 **◊** Pre-0.6.4 sessions stored params-only under `slotA`/`slotB`; `readSlot` migrates them.
-Evidence [Verified]: src/PluginProcessor.cpp:650-654 (the legacy-key fallback inside `readSlot`, :635-660);
-the per-slot identity is written at :578 / :582 and read at :642.
+Evidence [Verified]: src/PluginProcessor.cpp:656-660 (the legacy-key fallback inside `readSlot`, :641-666);
+the per-slot identity is written at :584 / :588 and read at :648.
 
 ## Legacy root formats (read-only compatibility)
 
@@ -116,7 +117,7 @@ the per-slot identity is written at :578 / :582 and read at :642.
 |---|---|---|
 | v0.2 bare APVTS tree | `xml->hasTagName(apvts.state.getType())` | `apvts.replaceState` |
 
-Source: src/PluginProcessor.cpp:662-667.
+Source: src/PluginProcessor.cpp:668-673.
 
 ## Notes
 

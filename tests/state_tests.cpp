@@ -857,6 +857,22 @@ static void testDuplicateNameFactoryVsUserPreset()
     presets.load (factoryIdx);   // same sound as the user preset it was saved from
     check (! p.canRedo(), "a sonically identical preset switch still invalidates redo");
 
+    // ...but only because the identity MOVED. Re-picking the row that is already ticked
+    // changes nothing a redo entry could contradict, so discarding the user's redo there
+    // would throw away an undone edit for no benefit.
+    if (auto* driveAgain = p.getAPVTS().getParameter ("drive"))
+    {
+        driveAgain->beginChangeGesture();
+        driveAgain->setValueNotifyingHost (0.37f);
+        driveAgain->endChangeGesture();
+    }
+    p.pollUndoCoalesce();
+    p.undo();
+    check (p.canRedo(), "the second undo leaves a redo entry");
+    check (presets.currentIndex() == factoryIdx, "the factory row is the one currently selected");
+    presets.load (factoryIdx);   // re-select the ALREADY-current preset
+    check (p.canRedo(), "re-selecting the already-current preset preserves redo");
+
     // A `.anamorph` file from OUTSIDE the preset folder is on no menu row, so nothing is
     // ticked -- it must NOT fall back to the same-named factory row.
     {
