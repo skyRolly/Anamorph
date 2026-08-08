@@ -9,7 +9,7 @@ Field-level ledger of everything written to session state. Companion to
 > migration support (a read path for the old field). Adding a field is allowed only if absence
 > is handled (a default), so older sessions still load.
 
-Evidence [Verified]: backward-compat paths at src/PluginProcessor.cpp:618-621 (pre-0.8.4 `migrateFromLegacyApvts`), :641-671 (pre-0.6.4 `readSlot`), :673-678 (v0.2 bare APVTS);
+Evidence [Verified]: backward-compat paths at src/PluginProcessor.cpp:618-621 (pre-0.8.4 `migrateFromLegacyApvts`), :641-687 (pre-0.6.4 `readSlot`), :689-694 (v0.2 bare APVTS);
 src/InternalState.h:92-128.
 
 ## `AnamorphRoot` properties
@@ -19,7 +19,7 @@ src/InternalState.h:92-128.
 | `presetName` | String | ≥0.6 (Unverified exact) | No | No | falls back to current name |
 | `presetBaseline` | String | 0.6.x (#6) [Partially Verified] | No | No | `adoptRestoredState` clean baseline |
 
-Source: src/PluginProcessor.cpp:567-568 (write), :623-631 (read), :685-687 (default).
+Source: src/PluginProcessor.cpp:567-568 (write), :623-631 (read), :701-703 (default).
 
 ### The preset **indicator identity** (0.9.2, ADR-0024 as amended)
 
@@ -56,7 +56,7 @@ same-named preset. Source: src/PresetManager.h:54-76 (`Selection`), :78-94 (`Sel
 `encodeSelection` / `decodeSelection`);
 src/PresetManager.cpp:312-365 (`encodeSelection` / `decodeSelection`);
 src/PluginProcessor.cpp:540-561 (`writeSelection`/`readSelection`), :575 (root write),
-:584 / :588 (per-slot write), :627 (root read), :653 (per-slot read).
+:584 / :588 (per-slot write), :627 (root read), :669 (per-slot read).
 
 ## `ANAMORPH` child (APVTS)
 
@@ -111,10 +111,22 @@ recovered from the legacy APVTS PARAM nodes by `migrateFromLegacyApvts` (choice 
 | `slotAUserFile` / `slotBUserFile` | String | 0.9.2 | No | No | `""` |
 
 The per-slot trio is the same indicator identity as the root one, with the same encoding, defaults
-and fallbacks, so switching A/B after a reload ticks each slot's own row. `readSlot` **assigns** all
-six metadata fields (name, baseline, identity trio) unconditionally rather than merging: `abSlot[]`
-are processor members and a host may restore into one live instance repeatedly, so absent must mean
-the default, not "whatever the previous session left".
+and fallbacks, so switching A/B after a reload ticks each slot's own row.
+
+**`readSlot` resets the whole slot first, then overlays what the node carries.** `abSlot[]` are
+processor members and a host may restore into one live instance repeatedly, so absent must mean the
+default rather than "whatever the previous session left" — and that has to hold for the slot as a
+**whole**, not field by field, or the two halves of one slot come out of two different projects.
+Concretely: an `AB` node that exists but whose slot params cannot be read (no `slotAParams` *and* no
+pre-0.6.4 `slotA`, or a payload that fails to parse) would otherwise keep the previous restore's
+**sound** while its name, baseline and identity were reset around it.
+
+The params default is not an empty tree but **"lazily initialised from current"** (the table above),
+and an **invalid** tree is how this processor already spells that: `StateSet::isValid()` is
+`params.isValid()`, and `abEnsureInit()` re-seeds an invalid slot from `currentStateSet()` before
+anything can read it. So a slot with no usable payload comes back seeded from the state that was
+just restored — sound and metadata from one project. Source: src/PluginProcessor.cpp:641-687
+(`readSlot`), :490-498 (`abEnsureInit`); src/PluginProcessor.h:113-126 (`StateSet::isValid`).
 
 An empty `slotABase` / `slotBBase` means **"no baseline was recorded"**, which is *not* the same as
 "modified". Only a pre-0.6.4 slot can produce it — every in-memory producer fills it — and
@@ -126,8 +138,8 @@ the top bar would render a bare ` *` — a modified-marker against a preset the 
 src/PresetManager.cpp:301-306 (`adoptRestoredState`, the root-side rule).
 
 **◊** Pre-0.6.4 sessions stored params-only under `slotA`/`slotB`; `readSlot` migrates them.
-Evidence [Verified]: src/PluginProcessor.cpp:661-665 (the legacy-key fallback inside `readSlot`, :641-671);
-the per-slot identity is written at :584 / :588 and read at :653.
+Evidence [Verified]: src/PluginProcessor.cpp:677-681 (the legacy-key fallback inside `readSlot`, :641-687);
+the per-slot identity is written at :584 / :588 and read at :669.
 
 ## Legacy root formats (read-only compatibility)
 
@@ -135,7 +147,7 @@ the per-slot identity is written at :584 / :588 and read at :653.
 |---|---|---|
 | v0.2 bare APVTS tree | `xml->hasTagName(apvts.state.getType())` | `apvts.replaceState` |
 
-Source: src/PluginProcessor.cpp:673-678.
+Source: src/PluginProcessor.cpp:689-694.
 
 ## Notes
 

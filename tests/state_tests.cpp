@@ -807,6 +807,60 @@ static void testAbAndViewParamPreservation()
     check (juce::exactlyEqual (rawOf (q, "bypass"), 1.0f), "A/B switch after restore still preserves Bypass");
     q.abSwitchTo (0);
     check (juce::exactlyEqual (rawOf (q, "width"), widthA), "slot A content survives switching away and back");
+
+    // --- An AB node carrying no USABLE params payload for a slot -----------------
+    // A restore must not leave HALF of a slot behind. abSlot[] are processor members and a
+    // host may call setStateInformation repeatedly on ONE live instance, so a blob whose AB
+    // node exists but whose slot params cannot be read used to keep the PREVIOUS restore's
+    // SOUND while that slot's name, baseline and identity were reset around it -- one slot
+    // holding two projects. The documented default for the params is "lazily initialised from
+    // current" (SERIALIZATION_REGISTRY.md, `AB` child), which abEnsureInit() already
+    // implements off StateSet::isValid(), so such a slot must come back INVALID and be
+    // re-seeded from the state that was just restored.
+    {
+        struct Variant { void (*breakSlotA) (juce::ValueTree&); const char* what; };
+        const Variant variants[] = {
+            { [] (juce::ValueTree& n) { n.removeProperty ("slotAParams", nullptr);
+                                        n.removeProperty ("slotA", nullptr); },   // pre-0.6.4 key too
+              "with no params key at all" },
+            { [] (juce::ValueTree& n) { n.setProperty ("slotAParams", "<ANAMORPH truncated", nullptr); },
+              "with an unparsable params payload" },
+        };
+
+        for (const auto& v : variants)
+        {
+            // Put a distinctive STALE sound in slot A, then park on slot B: switching AWAY
+            // from a slot snapshots the live state into it, so the defect is only observable
+            // on the slot the restored session is NOT sitting on.
+            if (q.abActiveSlot() != 0) q.abSwitchTo (0);
+            setRaw (q, "width", 0.9f);
+            q.abSwitchTo (1);                 // slot A := width 0.9
+            setRaw (q, "width", 0.45f);       // the live sound the broken session restores to
+
+            const juce::String tag = juce::String (" (slot A ") + v.what + ")";
+            const auto msgSetup   = "the session being broken really carries slot A params" + tag;
+            const auto msgLive    = "the broken session's live sound restores" + tag;
+            const auto msgSound   = "a slot with no usable stored sound is re-seeded from the state "
+                                    "just restored, not left holding the previous session's sound" + tag;
+            const auto msgMeta    = "...and that slot's metadata comes from the same restore as its sound" + tag;
+
+            auto broken = stateTreeOf (q);
+            auto brokenAb = broken.getChildWithName ("AB");
+            check (brokenAb.isValid() && brokenAb.hasProperty ("slotAParams"), msgSetup.toRawUTF8());
+            v.breakSlotA (brokenAb);
+
+            if (auto xml = broken.createXml())
+            {
+                const auto reBlob = BlobCodec::wrap (*xml);
+                q.setStateInformation (reBlob.getData(), (int) reBlob.getSize());
+                const auto restoredName = q.getPresets().currentName();
+                checkNear ((double) rawOf (q, "width"), 0.45, 1.0e-6, msgLive.toRawUTF8());
+                q.abSwitchTo (0);
+                checkNear ((double) rawOf (q, "width"), 0.45, 1.0e-6, msgSound.toRawUTF8());
+                checkStr (q.getPresets().currentName(), restoredName, msgMeta.toRawUTF8());
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

@@ -9,7 +9,7 @@
 - **Date:** 2026-08-07 · **Version:** 0.9.2 (PR #100) · **Branch:** `claude/beautiful-sagan-JAUFI`.
 - **Reference tree:** JUCE 9.0.0 at the pinned commit `f8f8864…` (`CMakeLists.txt:36-38`), fetched
   and read locally; all JUCE line citations below are against that commit.
-- **Suites:** `AnamorphTests` 140 checks, `AnamorphStateTests` 858 checks (was 774), both green.
+- **Suites:** `AnamorphTests` 140 checks, `AnamorphStateTests` 866 checks (was 774), both green.
 
 ---
 
@@ -187,7 +187,7 @@ is pure name, so in the duplicate-name case it ticks **both** rows. Its factory 
 index, not a stable string, so reordering the table would silently re-point a live hint. Nothing was
 ported.
 
-**Test-count delta:** state test 10 added 23 checks (774 → 797); §5, §7 and §8 take the suite to 847, §9 to 856 and §10 to 858. Each of H1, H3 and H4 has an
+**Test-count delta:** state test 10 added 23 checks (774 → 797); §5, §7 and §8 take the suite to 847, §9 to 856, §10 to 858 and §11 to 866. Each of H1, H3 and H4 has an
 assertion that was verified to **fail** with its fix disabled — a test that cannot fail is not a
 test.
 
@@ -473,3 +473,53 @@ cannot restore the borrowed name without tripping something. Suite: 856 → **85
 **Also this round:** the PR description still reported the pre-§9 count (844 checks) while
 `HANDOVER.md`, `RELEASE_HARDENING_PLAN.md` and ADR-0024 had moved on; all carriers now read 858. The
 repository itself contained no stale `844`.
+
+## 11. Sixth review round — a slot has to reset as a WHOLE
+
+§9 applied "absence means default" to `dst.selection`, `dst.name` and `dst.baseline` and left
+`dst.params` where it was: assigned only inside `if (ab.hasProperty (pk))` / `else if (ab.hasProperty
+(legacyKey))`. So an `AB` node that exists while a slot's payload cannot be read — neither
+`slotAParams` nor the pre-0.6.4 `slotA`, or a payload present but unparsable — kept the **previous
+restore's sound** while its name, baseline and identity were reset around it. One slot, one project's
+sound under another project's label.
+
+The direction of the regression matters. Before this PR both halves were inherited together:
+consistently stale, which is wrong but at least internally coherent. §9 made them separable, so this
+is a defect the earlier rounds introduced, not one they exposed. Correctness of a *rule* is not
+correctness of its *application*: applying it to three of four fields is worse than applying it to
+none.
+
+**The fix uses a mechanism that already existed.** `readSlot` now does `dst = {}` before the overlay
+reads. The right default for the params is not an empty tree — `SERIALIZATION_REGISTRY.md` has said
+"lazily initialised from current" for `slotAParams`/`slotBParams` since 0.6.4 — and an **invalid**
+tree is how this processor already spells that: `StateSet::isValid()` is `params.isValid()`, and
+`abEnsureInit()` re-seeds an invalid slot from `currentStateSet()` before `getStateInformation`,
+`abSwitchTo` or `abCopyToOther` can read it. So the slot comes back seeded from the state that was
+just restored, sound and metadata from one project, with no new field, no new sentinel and no change
+to the A/B design. The whole-slot reset also repairs the present-but-unparsable payload, which the
+old code left holding the previous tree for the same reason.
+
+**Rejected: patching only the two branches** (`else { dst.params = {}; }`). It fixes the one shape the
+review named and leaves the rule stated field by field, which is what produced the defect. Resetting
+first states the invariant once and survives the next field being added.
+
+**Not extended to a missing `AB` child.** When the whole `AB` node is absent (a v0.2 session, or a
+stripped modern blob) `readSlot` is never called and `abSlot[]` — and `abActive` — persist from the
+previous restore. That is the *consistently stale* shape, pre-existing since 0.6.4, and outside the
+finding. Recorded here so it is a known gap rather than an oversight.
+
+**Verification.** State test 9 gained a two-variant block — params key absent, and params payload
+unparsable — each: stale a distinctive sound into slot A, park the restored session on slot B so
+switching away cannot mask it, restore into the **same live instance**, then switch in and assert the
+sound is the restored one. Both discriminating assertions fail with `dst = {}` removed (`got
+0.900000036, expected 0.45`, twice). The companion assertion that the slot's name matches the same
+restore passes both ways *in this construction* — the broken blobs keep `slotAName`, so the pre-fix
+slot showed the **new** project's name over the **old** project's sound, which is the defect itself;
+it is kept as a pin on the pairing. Suite: 858 → **866 checks**, 0 failures; `AnamorphTests` 140,
+unchanged.
+
+**No `CHANGELOG.md` entry.** No shipped version writes an `AB` node lacking both params keys, so
+nothing user-visible changes for any session this project can produce (`CHANGELOG_POLICY` rule 3).
+This is corrupt/truncated-state robustness — state test 7's category — and it is recorded in
+`DOCUMENTATION_COVERAGE.md` instead. The maintainer's review sign-off covers the fix; no ADR is owed,
+since no serialization field was added, removed or changed in meaning.

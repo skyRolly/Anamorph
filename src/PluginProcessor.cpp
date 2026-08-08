@@ -642,14 +642,30 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
                                    const char* sk, const char* fk, const char* uk,
                                    const char* legacyKey)
             {
-                // All THREE metadata fields are assigned unconditionally, not merged: abSlot[]
-                // are processor members that a host may restore into repeatedly on ONE live
-                // instance, so "absent" has to mean the default ("" / unknown) rather than
-                // "whatever the previous session left here". Reading them outside the params
-                // branch is what makes that true for the pre-0.6.4 legacy shape too, which
-                // carries params only -- otherwise the previous session's preset name and dirty
-                // baseline stay attached to freshly restored parameters. The defaults match the
-                // ones SERIALIZATION_REGISTRY.md already records for these fields.
+                // Start from the DEFAULT slot and overlay only what this AB node actually
+                // carries. abSlot[] are processor members that a host may restore into
+                // repeatedly on ONE live instance, so every absent field has to mean its
+                // default rather than "whatever the previous session left here" -- and that
+                // has to hold for the slot as a WHOLE, not field by field. Resetting first is
+                // what keeps the two halves of a slot from coming out of two different
+                // projects: a blob whose AB node exists but carries no params payload for this
+                // slot (hand-edited, truncated, or the payload present but unparsable) would
+                // otherwise keep the previous restore's SOUND while its name, baseline and
+                // identity were reset around it.
+                //
+                // The default for the params is not an empty tree but "lazily initialised from
+                // current" (SERIALIZATION_REGISTRY.md, `AB` child), and an INVALID tree is
+                // already how this processor spells that: StateSet::isValid() is
+                // params.isValid(), and abEnsureInit() re-seeds an invalid slot from
+                // currentStateSet() before anything can read it. So the slot comes back seeded
+                // from the state that was just restored -- sound and metadata from one project.
+                //
+                // The metadata reads below sit outside the params branch on purpose: that is
+                // what makes the rule hold for the pre-0.6.4 shape too, which carries params
+                // ALONE -- otherwise the previous session's preset name and dirty baseline stay
+                // attached to freshly restored parameters. All of these defaults are the ones
+                // SERIALIZATION_REGISTRY.md already records for these fields.
+                dst = {};
                 dst.selection = readSelection (ab, sk, fk, uk);
                 dst.name      = ab.getProperty (nk).toString();
                 dst.baseline  = ab.getProperty (bk).toString();

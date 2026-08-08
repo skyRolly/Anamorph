@@ -180,6 +180,24 @@ factual error (the slot's parameters were not the defaults). Maintainer confirma
 is recorded per the review sign-off; no serialization field changed and `""` keeps its meaning
 ("absent"), so this is a read-path interpretation, not an `ARCHITECTURE_REVIEW_GATE` item.
 
+**A slot must reset as a whole, or its two halves come from two projects (sixth review round).** The
+"absence means default" rule was applied field by field — `dst.selection`, `dst.name` and
+`dst.baseline` — but `dst.params` was still only touched inside the two params-present branches. An
+`AB` node that exists while a slot's payload cannot be read (neither `slotAParams` nor the pre-0.6.4
+`slotA`, or a payload that fails to parse) therefore kept the **previous restore's sound** while its
+metadata was reset around it: one slot holding one project's sound under another project's label.
+Before this PR both halves were inherited together — consistently stale, which is wrong but not
+*mixed* — so this was a defect the earlier rounds introduced, not a pre-existing one. `readSlot` now
+resets the slot to a default `StateSet` first and overlays what the node carries. The params default
+is not an empty tree but **"lazily initialised from current"**, which the registry already recorded
+and which `abEnsureInit()` already implements off `StateSet::isValid()` — so no new mechanism, no new
+field, and the slot comes back seeded from the state just restored. The reset also covers the
+present-but-unparsable payload for free. Both cases are pinned by state test 9 and were verified to
+fail with the reset removed. **No `CHANGELOG.md` entry:** no shipped version writes an `AB` node
+lacking both params keys, so there is no user-visible change to report under `CHANGELOG_POLICY` rule
+3 — this is corrupt/truncated-state robustness, the category state test 7 covers. Maintainer
+confirmation of the direction is recorded per the review sign-off.
+
 **Documentation follow-up on the identity match (no behaviour change).** ADR-0024's Consequences now
 state the three properties plainly: the match is a raw path-string compare with **no**
 canonicalisation (`getLinkedTarget()` considered and rejected — it resolves symlinks but not

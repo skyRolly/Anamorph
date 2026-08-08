@@ -4,7 +4,7 @@ How session state is saved and restored. The field-level ledger is in
 `SERIALIZATION_REGISTRY.md`; binding rules are in
 `docs/policies/SESSION_COMPATIBILITY_POLICY.md`.
 
-Evidence [Verified]: src/PluginProcessor.cpp:563-593 (`getStateInformation`), :595-690
+Evidence [Verified]: src/PluginProcessor.cpp:563-593 (`getStateInformation`), :595-706
 (`setStateInformation`), :540-561 (the `writeSelection` / `readSelection` helpers);
 src/PresetManager.cpp:312-365 (`encodeSelection` / `decodeSelection`).
 
@@ -91,12 +91,15 @@ Evidence [Verified]: src/PluginProcessor.cpp:563-593 (`getStateInformation`).
      i.e. the pre-0.9.2 name fallback.
    - Restore A/B slots; the `active` index is **clamped** to a valid slot (`clampAbSlotIndex`,
      `src/AbSlotIndex.h`); per-slot reader falls back to pre-0.6.4 "slotA"/"slotB" (params-only)
-     keys. Each slot's name, baseline and identity are **assigned unconditionally**, not merged:
+     keys. Each slot is **reset to its default first**, then overlaid with whatever the node carries:
      `abSlot[]` are processor members and a host may restore into one live instance repeatedly, so an
-     absent field must mean the default rather than whatever the previous session left there. A slot
-     that comes back with an **empty baseline** (only a pre-0.6.4 slot can) becomes clean at its own
-     state when it is switched into — "no baseline recorded" is not "modified"; see
-     `SERIALIZATION_REGISTRY.md`, `AB` child.
+     absent field must mean the default rather than whatever the previous session left there — for the
+     slot as a **whole**, so its sound and its metadata can never come from two different projects. A
+     slot whose params are missing or unparsable comes back **invalid** and `abEnsureInit()` re-seeds
+     it from the state just restored (the documented "lazily initialised from current" default). A
+     slot that comes back with an **empty baseline** (only a pre-0.6.4 slot can) becomes clean at its
+     own state when it is switched into — "no baseline recorded" is not "modified". Both rules are
+     stated field-by-field in `SERIALIZATION_REGISTRY.md`, `AB` child.
 3. **Else if the root is the bare APVTS state type:** backward-compat path for v0.2 sessions
    (`apvts.replaceState` + `reassertParameters`).
 4. Clear undo history; adopt preset metadata **including the decoded identity**
@@ -109,8 +112,8 @@ Evidence [Verified]: src/PluginProcessor.cpp (`getStateInformation` / `setStateI
 
 | Legacy format | Handling | Source |
 |---|---|---|
-| **v0.2**: root *is* the APVTS tree | `setStateInformation` else-branch `apvts.replaceState` | :673-678 |
-| **pre-0.6.4**: A/B slots stored params only (`slotA`/`slotB`) | `readSlot` legacy-key fallback | :661-665 (within `readSlot`, :641-671) |
+| **v0.2**: root *is* the APVTS tree | `setStateInformation` else-branch `apvts.replaceState` | :689-694 |
+| **pre-0.6.4**: A/B slots stored params only (`slotA`/`slotB`) | `readSlot` legacy-key fallback | :677-681 (within `readSlot`, :641-687) |
 | **pre-0.8.4**: Oversampling/view were APVTS params (no `ANAMORPH_INTERNAL`) | `migrateFromLegacyApvts` | :618-621; InternalState.h:106-128 |
 | **pre-0.9.2**: no indicator identity in the session | `decodeSelection` yields `unknown` → name fallback | src/PresetManager.cpp:336-353; :128-131 |
 

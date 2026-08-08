@@ -103,7 +103,7 @@ folder) are not disjoint.
 - `src/PluginProcessor.h:113-125` (`StateSet::selection`)
 - `src/PluginProcessor.cpp:36-47` (the hooks, incl. `onSaved`), `:243-254`
   (`currentStateSet`/`applyStateSet`), `:417-449` (`commitPresetSwitchUndoStep`, incl. the
-  identity-moved guard on redo), `:540-561` (`writeSelection`/`readSelection`), `:641-671`
+  identity-moved guard on redo), `:540-561` (`writeSelection`/`readSelection`), `:641-687`
   (`readSlot`)
 - `tests/state_tests.cpp` — state tests 10, 11 and 12
 
@@ -175,7 +175,7 @@ pinned the pre-fix "keeps whatever the slot held" behaviour and now asserts the 
 Evidence [Verified] — **as amended**; this block describes the ADR in force, not the original
 decision preserved above it:
 - Source: the **Related code** list above, plus the **Amended related code** in the Amendment.
-- Tests: `AnamorphStateTests`, 858 checks, green. **State test 10** — the shared-name save, both
+- Tests: `AnamorphStateTests`, 866 checks, green. **State test 10** — the shared-name save, both
   rows selectable, the A/B round-trip, undo after a save, redo invalidation on an identical-sounding
   switch, the outside-folder file and the deleted user preset. **State test 11** — factory-id
   integrity (present, unique, every one resolving), which is what makes `load()`'s assert
