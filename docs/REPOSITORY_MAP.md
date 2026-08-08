@@ -48,7 +48,7 @@ Anamorph/
 | `PluginProcessor.{h,cpp}` | VST3/Standalone wrapper: bus layouts, `processBlock`, state save/recall, PDC, custom Undo/Redo, A/B compare. |
 | `PluginParameters.{h,cpp}` | APVTS layout (`createAnamorphLayout`), `pid::` IDs, atomic cache, `toEngine` → `EngineParameters`. |
 | `InternalState.h` | Host-hidden session/view params (Oversampling, UI Scale, Persistence, Tooltips, Animations, Meters). |
-| `PresetManager.{h,cpp}` | Factory + user `.anamorph` presets (sound params only). Factory presets carry an immutable internal id, user presets are identified by their file — the runtime-only `Selection` that keeps a shared name from mis-ticking the menu. |
+| `PresetManager.{h,cpp}` | Factory + user `.anamorph` presets (sound params only). Factory presets carry an immutable internal id, user presets are identified by their file — the `Selection` that keeps a shared name from mis-ticking the menu, and that is carried in plug-in state so the indicator survives a reload (ADR-0024). |
 | `PluginEditor.{h,cpp}` | Simple/Advanced UI, OpenGL context (macOS/Windows only), 24 Hz + VBlank timers. |
 
 ## `src/gui/` — GUI components
@@ -86,7 +86,7 @@ Anamorph/
 | Path | Responsibility |
 |---|---|
 | `tests/dsp_tests.cpp` | 33 headless DSP acceptance tests + 1 A/B state-restoration clamp guard (`check(cond, "...")` harness; `main` runs all). |
-| `tests/state_tests.cpp` | 9 headless state-compatibility tests (schema shape, parameter-registry snapshot, raw-exact round-trip, 3 legacy migration fixtures, corrupt-state robustness, preset round-trip, A/B + view-param preservation) — own console target `AnamorphStateTests` compiling the plugin sources. |
+| `tests/state_tests.cpp` | 12 headless state-compatibility tests (schema shape, parameter-registry snapshot, raw-exact round-trip, 3 legacy migration fixtures, corrupt-state robustness, preset round-trip, A/B + view-param preservation, factory/user preset identity under a shared name, factory-id integrity, indicator identity across a session reload) — own console target `AnamorphStateTests` compiling the plugin sources. |
 | `tests/fixtures/` | Compatibility fixtures: `parameter_registry.snapshot` (re-frozen only via `AnamorphStateTests --write-snapshot` for INTENTIONAL parameter changes) + 3 frozen legacy session XMLs (v0.2 / pre-0.6.4 / pre-0.8.4). |
 | `scripts/setup-linux.sh` | Ubuntu build dependencies (+ xvfb). |
 | `scripts/build.sh` | CMake + Ninja build; prints artifact paths. |

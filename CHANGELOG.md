@@ -32,9 +32,13 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   and the ‹ › arrows stepped from the wrong row. A factory preset is now identified by an
   immutable internal id and a user preset by its file on disk, two namespaces that cannot
   collide; the menu, the top bar and the Save Preset field still show the **name**, so nothing
-  looks different until the names clash. Saved sessions are byte-for-byte unchanged (the identity
-  is runtime state, like A/B and undo); a session reloaded from disk knows only the name and
-  resolves a clashing one to the factory preset, as every earlier version did.
+  looks different until the names clash. **The choice survives reopening the project**: the
+  session now remembers which row was selected, per A/B slot as well. Your `.anamorph` files are
+  untouched — nothing was added to them — and the sound always restores exactly as saved, whether
+  or not the remembered preset is still there. If it is not (a factory preset removed by a later
+  version, or a user preset you have since deleted, renamed or moved), the drop-down simply shows
+  no checkmark rather than picking something else with the same name. Projects saved by an earlier
+  version keep the old behaviour, which was to fall back to the name.
   Evidence: PR #100. [Verified]
 
 ### Changed

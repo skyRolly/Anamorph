@@ -13,7 +13,8 @@ Subset of `COMPATIBILITY_POLICY.md`. Governs state serialization
 3. **Every legacy read path stays.** The v0.2, pre-0.6.4, and pre-0.8.4 read paths must remain
    (see `SERIALIZATION_REGISTRY.md` → "Legacy root formats").
 4. **A save→load round-trip must reproduce** the sound, preset name, dirty-star, both A/B slots,
-   and the active slot.
+   the active slot, and — since 0.9.2 (ADR-0024 as amended) — the **preset indicator identity**,
+   which is metadata: the sound must restore identically even when the identity does not resolve.
 5. **View params are preserved on restore.** `applyStatePreservingView` keeps the current
    `pid::viewParams` (Bypass) across an A/B/undo/preset apply.
 

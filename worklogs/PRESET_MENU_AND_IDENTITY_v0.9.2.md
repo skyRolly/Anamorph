@@ -3,13 +3,13 @@
 > Five maintainer-reported items. Four produced code; one produced a root-cause and a Known Issue
 > instead, because the mechanism turned out to sit below the plug-in. This worklog keeps the
 > reasoning that does not belong in `CHANGELOG.md` or an ADR — in particular the JUCE-source traces,
-> the rejected fixes, and the three defects an adversarial review found in the first draft of the
-> preset-identity change.
+> the rejected fixes, the six defects review found before merge, and the follow-up round in which
+> the indicator identity moved into plug-in state (§5-6).
 
 - **Date:** 2026-08-07 · **Version:** 0.9.2 (PR #100) · **Branch:** `claude/beautiful-sagan-JAUFI`.
 - **Reference tree:** JUCE 9.0.0 at the pinned commit `f8f8864…` (`CMakeLists.txt:36-38`), fetched
   and read locally; all JUCE line citations below are against that commit.
-- **Suites:** `AnamorphTests` 140 checks, `AnamorphStateTests` 797 checks (was 774), both green.
+- **Suites:** `AnamorphTests` 140 checks, `AnamorphStateTests` 836 checks (was 774), both green.
 
 ---
 
@@ -148,12 +148,12 @@ control reached the name scan even when the identity was *known*. Loading a `.an
 the preset folder — identity known, on no row — then ticked whatever shared the name, i.e. the
 same-named **factory** row. The code's own comment claimed the opposite. One `return -1`.
 
-**H2 — session restore carries the name only.** Kept, deliberately, and pinned by a test. The
-alternative is a serialized field, which is a Hard Stop; ADR-0024 §4 says so explicitly so that the
-next agent asked to "fix the tick after reload" does not reach for one. Resolving the name lazily on
-first `currentIndex()` was considered and dropped — it converges anyway on the first `load()`, and
-resolving inside `setStateInformation` would need `refresh()`, i.e. filesystem I/O on whichever
-thread the host calls it from: a new cross-thread path, and another gate item.
+**H2 — session restore carried the name only.** Kept in the first round, deliberately: the
+alternative is a serialized field, i.e. a Hard Stop. **Closed in the follow-up round**, after the
+maintainer supplied the Architecture-Review approval — see §5. Resolving the name lazily on first
+`currentIndex()` was considered and dropped even then: it converges anyway on the first `load()`,
+and resolving inside `setStateInformation` would need `refresh()`, i.e. filesystem I/O on whichever
+thread the host calls it from — a new cross-thread path, and another gate item.
 
 **H3 — `saveUser` never re-baselined the undo snapshot.** A save changes no parameter, so the
 gesture-gated coalescer never notices it and the processor's `committed` keeps the *pre-save* name,
@@ -208,3 +208,71 @@ table listed *AU (Audio Unit)* and *Standalone app*, neither of which ever match
 corrected in the same pass since the column is headed "Component". And the sibling Anabasis still
 carries the lowercase installer wording in its own `packaging/`, so the two RollyTech installers are
 now inconsistent — that is a separate repo and was not touched.
+
+---
+
+## 5. Follow-up round — the indicator identity moves into plug-in state (ADR-0024 amendment)
+
+The maintainer asked for the H2 residual to be closed *without* touching user preset files, and
+supplied the Architecture-Review approval the change needs. That approval is the only reason an
+agent may do this: it is a Serialization Registry addition, i.e. an `ARCHITECTURE_REVIEW_GATE` item
+and an AI-agent Hard Stop.
+
+**Shape.** Six additive strings — `presetSource` / `presetFactoryId` / `presetUserFile` on
+`AnamorphRoot`, and the same trio per A/B slot. `PresetManager::encodeSelection` /
+`decodeSelection` are the single place that knows the wire form; `PluginProcessor`'s
+`writeSelection` / `readSelection` are three-line adapters so the root node and both slots cannot
+drift apart.
+
+**Three properties the design is built to guarantee, each asserted:**
+
+1. **User preset files are untouched.** A `.anamorph` written by 0.9.1 and one written by 0.9.2 are
+   identical. The identity belongs to the *project*, not to the preset — a preset file has no way to
+   know which sessions reference it, and putting an id in it would also make every hand-copied or
+   shared preset carry someone else's identity.
+2. **Parameter restore is independent of identity restore.** The sound comes from the `ANAMORPH`
+   child; the identity is applied afterwards through `setMeta` / `adoptRestoredState`, neither of
+   which touches a parameter. State test 12 asserts bit-identical parameters on **all five** paths,
+   including the two where the identity deliberately fails to resolve.
+3. **A wrong-but-well-formed stored value cannot select the wrong preset.** It resolves or it ticks
+   nothing — `currentIndex()`'s existing rule that a *known* identity absent from the list returns
+   -1 (the H1 fix) is what makes the new fallbacks safe rather than merely tidy.
+
+**Why a file NAME and not a path**, for a preset inside the preset folder: the name is already a
+complete identity there, it keeps the user's home directory out of the saved project, and a project
+opened on another machine still resolves. A preset opened through "Load Preset…" from *outside* the
+folder has no such anchor, so its absolute path is stored instead — it is on no menu row either way,
+but this keeps `decode(encode(s)) == s` true rather than silently re-pointing it at a same-named file
+in the folder.
+
+**Backward and forward compatibility.** Absent, empty, half-written and unrecognised all decode to
+`unknown`, which is precisely the pre-0.9.2 name fallback — so an old project behaves exactly as it
+did (`SESSION_COMPATIBILITY_POLICY` rule 2). Nothing was removed and no existing field changed
+meaning (rule 1). A 0.9.2 project opened in 0.9.1 simply ignores six unknown attributes.
+
+**ADR handling.** ADR-0024 is amended in place rather than superseded by a new ADR: it has not
+reached `main`, the amendment is dated and keeps the original decision text verbatim above it, and
+only clause 3 (and the residual it produced) is reversed — clauses 1, 2 and 5 stand unchanged. A
+separate superseding ADR-0025 would have been the other defensible shape; flagged for the maintainer
+rather than chosen silently.
+
+## 6. Follow-up round — the other four review items
+
+**Accepted.** `docs/REPOSITORY_MAP.md` still said 9 state tests (the one carrier the previous round
+missed). `saveUser` now flushes pending undo coalescing before re-baselining, matching
+`onAboutToLoad` and `undo()`/`redo()` — without it, `syncCommitted()`'s `pendingGestureCommit = false`
+silently discarded a closed-but-unpolled knob gesture's undo step. `load()` resolves a factory id
+BEFORE the undo bracket opens (the rule the user-preset parse in the same function already followed),
+asserts it, and fails as a clean no-op instead of applying defaults under an identity that resolves
+to nothing. The `focusSaveNameField` comment was rewritten: parenting removed the desktop window it
+blamed, but not the `peer->isFocused()` abort it actually works around.
+
+**Declined, with evidence: restoring `m.setLookAndFeel (&lnf)`.** Item measurement already uses
+`AnamorphLookAndFeel` — `MenuWindow` parents itself at `juce_PopupMenu.cpp:370-372` and builds items
+at `:457`, and `ItemComponent` calls `parent.addAndMakeVisible` before `getIdealSize` (`:139-146`),
+which resolves through `getLookAndFeel()`. Restoring it would re-arm the `~LookAndFeel` assertion
+(it fires on any live `WeakReference`, and `lnf` is a member destroyed before this editor's
+`Component` base — i.e. before the menu's asynchronous cancel). The two calls that genuinely see the
+default look-and-feel are bound one line before the parenting: `setOpaque` (same answer —
+`colours::bgPanel` is opaque) and `preparePopupMenuWindow` (a no-op we do not override). Both inert;
+now recorded in the code as the latent trap they are.

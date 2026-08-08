@@ -21,15 +21,29 @@ src/InternalState.h:92-128.
 
 Source: src/PluginProcessor.cpp:516-517 (write), :562-567 (read), :608-610 (default).
 
-**Deliberately NOT serialized: the preset *identity*.** Since 0.9.2 a factory preset is
-identified in memory by an immutable internal id and a user preset by its file
-(`PresetManager::Selection`), so a user preset sharing a factory preset's name no longer
-mis-ticks the menu. That identity rides on `StateSet` through A/B and undo but is **not** written
-here: adding a root field is an `ARCHITECTURE_REVIEW_GATE` item (rule 1 of
-`SESSION_COMPATIBILITY_POLICY.md`), and a 0.9.1 session would have nothing to restore into it.
-A restored session therefore carries `presetName` alone and resolves a clashing name to the
-factory preset — the same answer every earlier version gave. Source: src/PresetManager.h:38-70;
-src/PluginProcessor.h:113-125.
+### The preset **indicator identity** (0.9.2, ADR-0024 as amended)
+
+Three additive `AnamorphRoot` properties, plus three per A/B slot below. They record which preset
+row the indicator should point at, so a reopened project ticks the row that produced the sound even
+when a user preset shares a factory preset's NAME. **Metadata only** — the sound is restored from
+the `ANAMORPH` child and is bit-identical whether or not these resolve — and **nothing is written
+into a user preset FILE**: that format is unchanged.
+
+| Field | Type | Introduced | Migration Required | Required | Default if absent |
+|---|---|---|---|---|---|
+| `presetSource` | String (`""` / `"factory"` / `"user"`) | 0.9.2 | No | No | `""` → identity `unknown` |
+| `presetFactoryId` | String | 0.9.2 | No | No | `""` |
+| `presetUserFile` | String | 0.9.2 | No | No | `""` |
+
+`presetUserFile` holds the preset's **file name** when it lives in the user preset folder, and its
+absolute path otherwise (a file opened through "Load Preset…" from elsewhere). Encoding and decoding
+live in one place — `PresetManager::encodeSelection` / `decodeSelection`.
+
+Absent, empty, half-written or unrecognised all decode to `unknown`, which is the pre-0.9.2 name
+fallback (rule 2 of `SESSION_COMPATIBILITY_POLICY.md`). A well-formed value that no longer resolves —
+a removed factory id, a deleted or moved user preset — ticks **nothing**; it never falls back to a
+same-named preset. Source: src/PresetManager.h:38-95; src/PresetManager.cpp (`encodeSelection`,
+`decodeSelection`); src/PluginProcessor.cpp (`writeSelection`/`readSelection`).
 
 ## `ANAMORPH` child (APVTS)
 
@@ -79,6 +93,14 @@ recovered from the legacy APVTS PARAM nodes by `migrateFromLegacyApvts` (choice 
 | `slotAParams` / `slotBParams` | String (XML of APVTS tree) | 0.6.4 (#6) [Partially Verified] | Yes ◊ | No | lazily initialised from current |
 | `slotAName` / `slotBName` | String | 0.6.4 (#6) | No | No | "" |
 | `slotABase` / `slotBBase` | String | 0.6.4 (#6) | No | No | "" |
+| `slotASource` / `slotBSource` | String (`""` / `"factory"` / `"user"`) | 0.9.2 | No | No | `""` → identity `unknown` |
+| `slotAFactoryId` / `slotBFactoryId` | String | 0.9.2 | No | No | `""` |
+| `slotAUserFile` / `slotBUserFile` | String | 0.9.2 | No | No | `""` |
+
+The per-slot trio is the same indicator identity as the root one, with the same encoding, defaults
+and fallbacks, so switching A/B after a reload ticks each slot's own row. `readSlot` **assigns** it
+unconditionally rather than merging: `abSlot[]` are processor members and a host may restore into one
+live instance repeatedly, so absent must mean the default, not "whatever the previous session left".
 
 **◊** Pre-0.6.4 sessions stored params-only under `slotA`/`slotB`; `readSlot` migrates them.
 Evidence [Verified]: src/PluginProcessor.cpp:586-590 (the legacy-key fallback inside `readSlot`, :576-593).

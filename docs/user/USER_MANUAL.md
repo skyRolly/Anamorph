@@ -395,8 +395,11 @@ up changes, sorted alphabetically).
 Saving a user preset under a **factory preset's name** is allowed, and the two stay
 separate: the checkmark follows whichever one you actually loaded, and ‹ › steps from it.
 Both rows show the same label, so tell them apart by the FACTORY / USER section they sit
-in. One exception: reopening the project later restores the *name* only, so if the two
-still share it the checkmark returns to the factory row until you pick one.
+in. Reopening the project puts the checkmark back where it was, for each A/B slot
+independently. If the preset it was on is no longer there — you deleted, renamed or moved
+the file — the sound still loads exactly as saved and the menu simply shows no checkmark,
+rather than picking a different preset that happens to share the name. (Projects saved
+before 0.9.2 have only the name to go on, so a clashing one lands on the factory row.)
 
 ### 7.3 What a preset contains — and compatibility
 

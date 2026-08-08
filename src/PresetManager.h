@@ -46,11 +46,11 @@ public:
     // two namespaces cannot collide, so a duplicate name is now merely a duplicate
     // label.
     //
-    // Deliberately RUNTIME-ONLY. It rides along with a state set through A/B and
-    // undo (both in-memory), but it is NOT serialised: adding a field to the saved
-    // state is an Architecture Review Gate item (SESSION_COMPATIBILITY_POLICY rule 1),
-    // and a v0.9.1 session has no such field to restore anyway. A restored session
-    // therefore comes back as `unknown` and resolves by name exactly as before.
+    // It rides along with a state set through A/B and undo (both in-memory), and since
+    // 0.9.2 it is ALSO persisted with the session so the indicator survives reopening a
+    // project (ADR-0024 amendment). What is persisted is three additive strings in the
+    // PLUG-IN state only -- user preset FILES keep their format byte-for-byte, and the
+    // parameter state restores independently of whether the identity resolves.
     struct Selection
     {
         enum class Kind { unknown, factory, userFile };
@@ -58,6 +58,22 @@ public:
         juce::String factoryId;  // kind == factory
         juce::File   file;       // kind == userFile
     };
+
+    // The wire form of a Selection: three plain strings, so the encoding lives with the
+    // type rather than being spelled out at each serialization site.
+    //
+    // A user preset inside the preset folder is stored as its FILE NAME, not its full
+    // path: within that folder the name is already a complete identity, it keeps the
+    // user's home directory out of the saved project, and a project moved to another
+    // machine still resolves. A file loaded from OUTSIDE the folder has no such anchor,
+    // so its absolute path is stored -- it is on no menu row either way, but storing the
+    // path keeps `decode(encode(s)) == s` true rather than silently re-pointing it at a
+    // same-named file in the folder.
+    struct SelectionFields { juce::String kind, factoryId, userFile; };
+    static SelectionFields encodeSelection (const Selection&);
+    static Selection       decodeSelection (const juce::String& kind,
+                                            const juce::String& factoryId,
+                                            const juce::String& userFile);
 
     // Local user-preset folder (created on demand):
     //   macOS  ~/Library/Application Support/RollyTech/Anamorph/Presets
@@ -73,6 +89,7 @@ public:
     int  currentIndex() const noexcept;              // -1 when name not in list
     bool isDirty() const;                            // sound edited since load/save
 
+    // (Selection also travels with the SESSION since 0.9.2 -- see encodeSelection below.)
     // The preset "metadata" that must travel WITH a state set through undo / A-B /
     // copy (#6): the base preset name and the clean-signature it was loaded at.
     // isDirty() = (current sound != baseline), so restoring both reproduces the
@@ -100,8 +117,12 @@ public:
     void step (int delta);                           // prev/next with wrap-around
     bool saveUser (const juce::String& name);        // write + select; false on IO error
 
-    // Host state restore: adopt the remembered name WITHOUT applying anything.
-    void adoptRestoredState (const juce::String& name);
+    // Host state restore: adopt the remembered name + identity WITHOUT applying anything.
+    // `restoredSel` is whatever the session carried (default = unknown, i.e. a pre-0.9.2
+    // session), and it is METADATA ONLY -- it never touches a parameter, so the sound
+    // restores identically whether or not the identity resolves.
+    void adoptRestoredState (const juce::String& name, const Selection& restoredSel);
+    void adoptRestoredState (const juce::String& name) { adoptRestoredState (name, Selection()); }
 
     // Undo bracketing (set by the processor). onAboutToLoad fires BEFORE any parameter changes
     // (flush a settled edit into its own step); onLoaded fires AFTER the new name/baseline are set

@@ -42,27 +42,58 @@ preset list was searched by NAME and the factory block is list-front, so a user 
 factory preset's name could never hold the drop-down tick. A factory preset now carries an
 immutable internal `factoryId` and a user preset is identified by its file
 (`PresetManager::Selection`); the menu, the top bar and the Save Preset field still show the
-**name**. The identity is **runtime-only** and rides on `StateSet` through A/B and undo — it is
-deliberately not serialized, because a new root field is an `ARCHITECTURE_REVIEW_GATE` item
-(`SESSION_COMPATIBILITY_POLICY` rule 1) and a 0.9.1 session has nothing to restore into it; a
-restored session resolves a clashing name to the factory row, as before. Synced:
-`SERIALIZATION_REGISTRY.md` (an explicit "deliberately NOT serialized" note), `API_REFERENCE.md`,
+**name**. The identity rides on `StateSet` through A/B and undo, and — after the maintainer
+supplied the Architecture-Review approval the gate requires — **also with the session**, so
+reopening a project ticks the row that produced the sound. Six additive metadata fields (3 in
+`AnamorphRoot`, 3 per A/B slot); **user preset FILES are unchanged**, parameter restore is
+independent of identity restore, and anything unresolvable ticks nothing rather than a same-named
+substitute. Recorded as **ADR-0024** (registered in `ADR_INDEX.md`), whose original "never
+serialized" clause is reversed by a dated **Amendment** that keeps the original text verbatim above
+it — the reversal, its approval and its fallback table are exactly what a future agent would
+otherwise re-litigate straight into a Hard Stop. Synced: `SERIALIZATION_REGISTRY.md` (six new field
+rows), `SESSION_COMPATIBILITY_POLICY.md` (rule 4's round-trip list), `API_REFERENCE.md`,
 `USER_MANUAL.md` §7.2, `TESTING.md`, `TESTING_POLICY.md`, `RELEASE_HARDENING_PLAN.md`,
-`CHANGELOG.md`, and recorded as **ADR-0024** (registered in `ADR_INDEX.md`) — the "never
-serialized" half is a decision a future agent would otherwise re-litigate straight into a Hard
-Stop. `ADR-0008` gained the third `StateSet` field and re-based line anchors (a factual re-sync,
-not a reversal; ADRs stay append-only). State test 10 pins every behaviour **including** the
-documented residual.
+`REPOSITORY_MAP.md`, `HANDOVER.md`, `CHANGELOG.md`. `ADR-0008` gained the third `StateSet` field and
+re-based line anchors (a factual re-sync, not a reversal; ADRs stay append-only). State tests 10,
+11 and 12 pin the live behaviour, the id integrity and the whole restore matrix including every
+fallback.
 
-Three defects found by an adversarial review of the first draft and fixed before merge, each with
-its own assertion (all three verified to fail with the fix disabled): the identity scan **fell
-through** to the name scan when the identity was known but absent from the list, so a `.anamorph`
+Six defects found by review and fixed before merge, each with its own assertion, and every one
+verified to fail with its fix disabled. Three from the first adversarial pass: the identity scan
+**fell through** to the name scan when the identity was known but absent from the list, so a `.anamorph`
 loaded from outside the preset folder ticked the same-named factory row — the exact mis-tick this
 change exists to remove; `saveUser` never re-baselined the processor's undo snapshot, so the first
 undo after a save restored the pre-save name/identity (fixed with an `onSaved` hook →
 `syncCommitted()`, which creates no undo step because a save is not a sound change — and the same
 gap existed for a preset switch whose sound is identical to the current one); and `readSlot` left
 a stale identity on an A/B slot when a host restored a second session into one live instance.
+
+Three more from the maintainer's follow-up review. **`saveUser` did not flush pending undo
+coalescing** before re-baselining: `syncCommitted()` clears `pendingGestureCommit`, so a knob
+gesture that had closed but not yet been polled was folded into the new baseline with no undo step
+— the edit silently stopped being undoable. `onSaved` now does `pollUndoCoalesce(); syncCommitted();`,
+matching the two other program-state jumps (`onAboutToLoad`, and `undo()`/`redo()`). **A factory id
+that fails to resolve** applied the plain defaults and then adopted the factory identity anyway;
+`load()` now resolves it BEFORE the undo bracket opens — the same rule the user-preset parse three
+lines above already followed — asserts it, and fails as a clean no-op otherwise. State test 11 pins
+the invariant that makes the assert unreachable: ids present, unique, and every one resolving.
+
+**Declined, with evidence: restoring `PopupMenu::setLookAndFeel (&lnf)`.** The stated goal was to
+make item *measurement* use `AnamorphLookAndFeel` — but it already does. `MenuWindow` parents itself
+at `juce_PopupMenu.cpp:370-372` and only then builds items (`:457`), and `ItemComponent` calls
+`parent.addAndMakeVisible` *before* `getIdealSize` (`:139-146`), which resolves through
+`getLookAndFeel()`. Restoring it would instead re-arm the `~LookAndFeel` assertion, which fires on
+any live `WeakReference`: `lnf` is a member and so is destroyed *before* this editor's `Component`
+base, i.e. before the menu is asynchronously cancelled. The only two calls that still see the
+default look-and-feel are bound one line before the parenting — `setOpaque` (same answer,
+`colours::bgPanel` is opaque) and `preparePopupMenuWindow` (a no-op we do not override). Both inert
+today; recorded in the code as the latent trap they are.
+
+**`focusSaveNameField`'s comment was stale, not its behaviour.** It justified the retry by the
+preset menu's own desktop window owning OS focus — which parenting removed. The retry stays, because
+the abort it works around is not menu-specific: `Component::takeKeyboardFocus` gives up while the
+plug-in's own peer is not OS-focused, and whether it is, at that instant, is the host's call (the
+failure KI-009 tracks in REAPER). Comment rewritten; the bounded 4 × 50 ms retry is untouched.
 
 **`Window Size` → `UI Scale` (display name only).** `PARAMETER_COMPATIBILITY_POLICY` permits a
 display-name change; the identifier `int_uiScale` and the pre-0.8.4 legacy APVTS id `uiScale` its

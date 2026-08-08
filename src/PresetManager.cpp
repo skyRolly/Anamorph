@@ -99,12 +99,12 @@ void PresetManager::refresh()
 // than to whichever one the name hit first (always the factory row, since the factory
 // block is list-front).
 //
-// The NAME fallback below is still needed and still correct: it covers everything that
-// carries a name but no live identity -- a session restored from disk (the identity is
-// runtime-only), a `.anamorph` file loaded from OUTSIDE the preset folder, and a user
-// preset that has since been renamed or deleted on disk. In the duplicate-name case the
-// fallback keeps the pre-0.9.2 answer (the factory row), which is the documented
-// tie-break, not an accident.
+// The NAME fallback below is still needed and still correct, but its remit narrowed in
+// 0.9.2 when the identity started travelling with the session: it now covers only state
+// that carries a name and NO identity -- a pre-0.9.2 session, or one whose identity
+// properties were dropped or hand-edited. There it keeps the pre-0.9.2 answer (the
+// factory row on a duplicate name), which is the documented tie-break, not an accident.
+// Everything that HAS an identity is answered above, including with -1.
 int PresetManager::currentIndex() const noexcept
 {
     if (sel.kind != Selection::Kind::unknown)
@@ -204,11 +204,23 @@ void PresetManager::load (int index)
     if (index < 0 || index >= list.size()) return;
     const auto& e = list.getReference (index);
 
-    // Parse a user preset BEFORE opening the undo bracket: a corrupt file must fail cleanly, without
-    // an onAboutToLoad() with no matching onLoaded() (which would flush undo coalescing yet record no
-    // step, leaving the undo timeline half-open). Factory presets can't fail. Mirrors loadFile().
+    // Resolve EVERYTHING that can fail BEFORE opening the undo bracket: a failure must be a
+    // clean no-op, never an onAboutToLoad() with no matching onLoaded() (which would flush undo
+    // coalescing yet record no step, leaving the undo timeline half-open). Mirrors loadFile().
     std::unique_ptr<juce::XmlElement> userXml;
-    if (! e.isFactory)
+    const Factory* factory = nullptr;
+    if (e.isFactory)
+    {
+        // The entry's id was copied straight out of the table by refresh(), so a miss is a
+        // programming error (a duplicated or edited id), not a user condition -- assert it.
+        // Failing as a no-op is what the non-debug build must do: applying defaults while
+        // ADOPTING a factory identity that resolves to nothing would leave the tick pointing
+        // at a preset whose sound was never applied.
+        factory = findFactory (e.factoryId);
+        jassert (factory != nullptr);
+        if (factory == nullptr) return;
+    }
+    else
     {
         userXml = juce::parseXML (e.file);
         if (userXml == nullptr) return;
@@ -221,10 +233,9 @@ void PresetManager::load (int index)
         applyDefaults();
         // Resolved through the ID, not the list position: the entry already carries the
         // identity the selection is about to adopt, so the two can never disagree (#4).
-        if (const auto* f = findFactory (e.factoryId))
-            for (const auto& o : f->set)
-                if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (apvts.getParameter (o.id)))
-                    rp->setValueNotifyingHost (rp->convertTo0to1 (o.value));
+        for (const auto& o : factory->set)
+            if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (apvts.getParameter (o.id)))
+                rp->setValueNotifyingHost (rp->convertTo0to1 (o.value));
     }
     else
     {
@@ -287,11 +298,51 @@ bool PresetManager::saveUser (const juce::String& rawName)
     return true;
 }
 
-void PresetManager::adoptRestoredState (const juce::String& name)
+void PresetManager::adoptRestoredState (const juce::String& name, const Selection& restoredSel)
 {
     if (name.isNotEmpty()) current = name;
-    sel = {};               // a restored session carries a name, never an identity (#4)
+    sel = restoredSel;      // unknown for a pre-0.9.2 session -> the name fallback, as before (#4)
     sigAtLoad = soundSig(); // restored state counts as the clean baseline
+}
+
+// ----------------------------------------------------------------------------
+//  Indicator identity <-> session state. Metadata only: nothing here reads or writes
+//  a parameter, and nothing here touches a user preset FILE.
+// ----------------------------------------------------------------------------
+PresetManager::SelectionFields PresetManager::encodeSelection (const Selection& s)
+{
+    switch (s.kind)
+    {
+        case Selection::Kind::factory:
+            return { "factory", s.factoryId, {} };
+
+        case Selection::Kind::userFile:
+            return { "user", {}, s.file.isAChildOf (presetDirectory()) ? s.file.getFileName()
+                                                                       : s.file.getFullPathName() };
+
+        case Selection::Kind::unknown:
+        default:
+            return {};
+    }
+}
+
+PresetManager::Selection PresetManager::decodeSelection (const juce::String& kind,
+                                                        const juce::String& factoryId,
+                                                        const juce::String& userFile)
+{
+    // Anything unrecognised, empty or half-written decodes to `unknown`, which is the
+    // pre-0.9.2 behaviour (resolve by name). A wrong-but-well-formed value cannot select
+    // the wrong row either: currentIndex() answers -1 for an identity it cannot find,
+    // rather than falling back to a same-named preset.
+    if (kind == "factory" && factoryId.isNotEmpty())
+        return { Selection::Kind::factory, factoryId, {} };
+
+    if (kind == "user" && userFile.isNotEmpty())
+        return { Selection::Kind::userFile, {},
+                 juce::File::isAbsolutePath (userFile) ? juce::File (userFile)
+                                                       : presetDirectory().getChildFile (userFile) };
+
+    return {};
 }
 
 } // namespace anamorph

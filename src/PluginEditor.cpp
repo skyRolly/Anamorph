@@ -1440,6 +1440,18 @@ void AnamorphAudioProcessorEditor::showPresetMenu()
     // own `lnf` instead, and every ItemComponent is built after the parenting, so the
     // family styling arrives with nothing stored anywhere to go stale.
     //
+    // Do NOT "restore" setLookAndFeel here as a measurement fix -- measurement already
+    // uses ours. The MenuWindow ctor parents at juce_PopupMenu.cpp:370-372 and only
+    // then builds the items (:457), and ItemComponent calls parent.addAndMakeVisible
+    // BEFORE getIdealSize (:139-146), which resolves through getLookAndFeel(). Setting
+    // it back would instead re-arm the ~LookAndFeel assertion (it fires on any live
+    // WeakReference), because `lnf` is a member and so is destroyed BEFORE this
+    // editor's Component base -- i.e. before the menu is asynchronously cancelled.
+    // The only two calls that still see the DEFAULT look-and-feel are bound at :368,
+    // one line before the parenting: setOpaque (same answer -- colours::bgPanel is
+    // opaque) and preparePopupMenuWindow (a no-op we do not override). Both are inert
+    // today; a future override of either would silently not apply to this menu.
+    //
     // maxColumns 1 preserves TODAY's shape: a parented menu is budgeted against the
     // editor (~688 px in Simple mode) rather than the display, and JUCE reacts to
     // overflow by adding COLUMNS before it scrolls -- past ~14 user presets the list
@@ -1527,16 +1539,25 @@ void AnamorphAudioProcessorEditor::showSavePreset (bool show)
 }
 
 // Focus the save-name field so typing (Space included) goes into the text and not
-// to the host. A plain grabKeyboardFocus() here silently did NOTHING when invoked
-// from the preset-menu callback: the menu's own desktop window still owns the OS
-// focus at that moment (its teardown + focus restoration run AFTER the user
-// callback -- juce_PopupMenu.cpp, PopupMenuCompletionCallback), and JUCE aborts
-// the whole internal focus move while the peer isn't focused (juce_Component.cpp,
-// takeKeyboardFocus: "if (! peer->isFocused()) return"). With no JUCE component
-// focused, every keystroke stays with the host, which reads Space as transport.
+// to the host. A plain grabKeyboardFocus() from the preset-menu callback silently
+// did NOTHING, and the retry below is what made it stick.
+//
+// The original reason was the menu's own DESKTOP window: it still owned the OS
+// focus at the callback instant, because its teardown + focus restoration run AFTER
+// the user callback (juce_PopupMenu.cpp, PopupMenuCompletionCallback). Since 0.9.2
+// the preset menu is PARENTED to this editor (see showPresetMenu), so it has no peer
+// of its own and that particular window is gone -- but the retry stays, because the
+// abort it works around is not menu-specific: juce::Component::takeKeyboardFocus
+// gives up on the whole internal focus move while the plug-in's own peer is not OS
+// focused ("if (! peer->isFocused() || ...) return", juce_Component.cpp), and
+// whether it is focused at that instant is the HOST's call. With no JUCE component
+// focused, every keystroke stays with the host, which reads Space as transport --
+// the failure KI-009 tracks in REAPER.
+//
 // So: try now (covers the standalone / already-focused case), then re-try on later
-// message-loop passes until the grab actually STICKS -- by then the menu window is
-// gone and peer->grabFocus() can take the OS focus for real.
+// message-loop passes until the grab actually STICKS. Bounded at 4 x 50 ms, and it
+// stops the moment the field reports focus, so it cannot still be running while the
+// user types.
 void AnamorphAudioProcessorEditor::focusSaveNameField (int attemptsLeft)
 {
     if (! savePresetBackdrop.isVisible()) return; // dismissed meanwhile -- stop retrying

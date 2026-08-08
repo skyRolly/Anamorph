@@ -308,8 +308,13 @@ static void testSerializedSchemaShape()
 
     auto ab = root.getChildWithName ("AB");
     check (ab.isValid(), "AB child present");
+    for (auto* field : { "presetSource", "presetFactoryId", "presetUserFile" })
+        check (root.hasProperty (field), field);
+
     for (auto* field : { "active", "slotAParams", "slotAName", "slotABase",
-                         "slotBParams", "slotBName", "slotBBase" })
+                         "slotASource", "slotAFactoryId", "slotAUserFile",
+                         "slotBParams", "slotBName", "slotBBase",
+                         "slotBSource", "slotBFactoryId", "slotBUserFile" })
         check (ab.hasProperty (field), field);
 }
 
@@ -772,10 +777,8 @@ static void testAbAndViewParamPreservation()
 // the factory row answered for both and the drop-down tick could never sit on the
 // user preset -- not even immediately after saving it. Identity is now the factory
 // preset's immutable internal id vs. the user preset's FILE, two namespaces that
-// cannot collide (#4). The identity is deliberately runtime-only (adding a field to
-// the saved state is an Architecture Review Gate item), so the last check below
-// pins the documented residual: a RESTORED session has only the name and resolves
-// to the factory row, exactly as every earlier version did.
+// cannot collide (#4). This test covers the LIVE behaviour; state test 12 covers the
+// same identity across a session save -> reload, including every fallback.
 static void testDuplicateNameFactoryVsUserPreset()
 {
     std::printf ("State test 10: factory/user preset identity with a shared name\n");
@@ -866,7 +869,8 @@ static void testDuplicateNameFactoryVsUserPreset()
     check (presets.currentIndex() < 0, "a deleted user preset ticks nothing, not the same-named factory row");
     check (presets.saveUser (shared), "re-create the user preset for the restore check");
 
-    // Documented residual: the saved session carries the NAME only.
+    // The session carries the identity too since 0.9.2, so the tick survives a reload.
+    // (State test 12 covers the restore matrix in full, including the fallbacks.)
     check (presets.currentIndex() == userIdx, "the re-created user preset lands on the same row");
     presets.load (userIdx);
     juce::MemoryBlock blob;
@@ -876,8 +880,202 @@ static void testDuplicateNameFactoryVsUserPreset()
         q.prepareToPlay (48000.0, 512);
         q.setStateInformation (blob.getData(), (int) blob.getSize());
         checkStr (q.getPresets().currentName(), shared, "restored session remembers the shared name");
-        check (q.getPresets().currentIndex() == factoryIdx,
-               "a restored session has no identity and falls back to the documented factory tie-break");
+        check (q.getPresets().currentIndex() == userIdx,
+               "a restored session keeps the tick on the USER row, not the same-named factory one");
+    }
+
+    check (presetFile.deleteFile(), "test preset file removed");
+    if (hadUserFile) parked.moveFileTo (presetFile);
+    presets.refresh();
+}
+
+// ---------------------------------------------------------------------------
+// The factory ids are the identity half of ADR-0024, and `refresh()` copies them
+// straight out of the table into the rows the menu shows. Nothing in the type system
+// stops a duplicated or edited id, and the failure would be quiet: `load()` would find
+// no overrides and apply the plain defaults. These checks make that loud.
+static void testFactoryPresetIdIntegrity()
+{
+    std::printf ("State test 11: factory-preset id integrity\n");
+    AnamorphAudioProcessor p;
+    auto& presets = p.getPresets();
+
+    // A freshly constructed processor sits on all-parameter defaults and the manager takes
+    // its baseline there, so this string IS the all-defaults sound signature — obtained
+    // without reaching into the private applyDefaults().
+    const juce::String defaultsSig = presets.baseline();
+
+    juce::StringArray ids;
+    bool everyFactoryIdIsSet = true, userRowsCarryNoId = true;
+    for (const auto& e : presets.entries())
+    {
+        if (e.isFactory)
+        {
+            everyFactoryIdIsSet = everyFactoryIdIsSet && e.factoryId.isNotEmpty();
+            ids.add (e.factoryId);
+        }
+        else
+        {
+            userRowsCarryNoId = userRowsCarryNoId && e.factoryId.isEmpty();
+        }
+    }
+    check (ids.size() >= 2, "factory presets ship");
+    check (everyFactoryIdIsSet, "every factory row carries a non-empty id");
+    check (userRowsCarryNoId, "user rows carry no factory id");
+
+    juce::StringArray uniqueIds (ids);
+    uniqueIds.removeDuplicates (false); // case-SENSITIVE: the ids are exact tokens
+    check (uniqueIds.size() == ids.size(), "factory ids are unique");
+
+    // Every id must RESOLVE in the table. One that does not would apply the defaults and
+    // nothing else, landing on the all-defaults signature — and exactly one factory preset
+    // (the one with an empty override set) is allowed to sit there.
+    int atDefaults = 0;
+    for (int i = 0; i < presets.entries().size(); ++i)
+    {
+        if (! presets.entries().getReference (i).isFactory) continue;
+        presets.load (i);
+        if (presets.baseline() == defaultsSig) ++atDefaults;
+    }
+    check (atDefaults == 1,
+           "exactly one factory preset is the all-defaults one -- every other id resolves to its overrides");
+}
+
+// ---------------------------------------------------------------------------
+// The indicator identity is carried in the SESSION since 0.9.2 (ADR-0024 amendment),
+// so reopening a project puts the tick back on the row that produced the sound even
+// when a user preset shares a factory preset's name. Three additive root properties and
+// three per A/B slot; user preset FILES are untouched. Every path below also asserts
+// that the restored PARAMETERS are bit-identical, because the identity is metadata and
+// must never influence the sound — including when it fails to resolve.
+static void testPresetIndicatorIdentityAcrossRestore()
+{
+    std::printf ("State test 12: preset indicator identity survives a session reload\n");
+
+    auto rawSnapshot = [] (AnamorphAudioProcessor& proc)
+    {
+        std::vector<float> v;
+        for (auto* rp : rangedParams (proc)) v.push_back (rp->getValue());
+        return v;
+    };
+    auto sameRaw = [] (const std::vector<float>& a, const std::vector<float>& b)
+    {
+        if (a.size() != b.size()) return false;
+        for (size_t i = 0; i < a.size(); ++i)
+            if (! juce::exactlyEqual (a[i], b[i])) return false;
+        return true;
+    };
+    // Restore `blob` into a NEW processor and report (index, name, params-match).
+    struct Restored { int index; juce::String name; bool paramsMatch; };
+    auto restoreInto = [&] (const juce::MemoryBlock& blob, const std::vector<float>& expectRaw)
+    {
+        AnamorphAudioProcessor q;
+        q.prepareToPlay (48000.0, 512);
+        q.setStateInformation (blob.getData(), (int) blob.getSize());
+        return Restored { q.getPresets().currentIndex(), q.getPresets().currentName(),
+                          sameRaw (rawSnapshot (q), expectRaw) };
+    };
+
+    const juce::String shared = "Wide Master";   // a shipped factory preset
+    AnamorphAudioProcessor p;
+    p.prepareToPlay (48000.0, 512);
+    auto& presets = p.getPresets();
+
+    int factoryIdx = -1;
+    for (int i = 0; i < presets.entries().size(); ++i)
+    {
+        const auto& e = presets.entries().getReference (i);
+        if (e.isFactory && e.name == shared) factoryIdx = i;
+    }
+    check (factoryIdx >= 0, "the shared-name factory preset ships");
+    if (factoryIdx < 0) return;
+
+    auto presetFile = anamorph::PresetManager::presetDirectory()
+                          .getChildFile (shared + anamorph::PresetManager::fileSuffix());
+    auto parked = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                      .getChildFile ("AnamorphIndicatorHarness.parked");
+    const bool hadUserFile = presetFile.existsAsFile();
+    if (hadUserFile) { parked.deleteFile(); presetFile.moveFileTo (parked); }
+
+    // --- Case 1: a FACTORY preset is current -------------------------------------
+    presets.load (factoryIdx);
+    const auto factoryRaw = rawSnapshot (p);
+    juce::MemoryBlock factoryBlob;
+    p.getStateInformation (factoryBlob);
+    {
+        const auto r = restoreInto (factoryBlob, factoryRaw);
+        check (r.index == factoryIdx, "case 1: a restored session ticks the factory preset it was on");
+        checkStr (r.name, shared, "case 1: the displayed name restores");
+        check (r.paramsMatch, "case 1: parameters restore bit-identically");
+    }
+
+    // --- Case 1 fallback: the stored factory id no longer exists -------------------
+    {
+        auto tree = juce::ValueTree::fromXml (*BlobCodec::unwrap (factoryBlob));
+        tree.setProperty ("presetFactoryId", "aPresetThatWasRemoved", nullptr);
+        const auto r = restoreInto (BlobCodec::wrap (*tree.createXml()), factoryRaw);
+        check (r.index < 0, "case 1 fallback: an unresolvable factory id ticks NOTHING");
+        check (r.paramsMatch, "case 1 fallback: parameters still restore bit-identically");
+    }
+
+    // --- Case 2: a USER preset sharing the factory name is current ----------------
+    check (presets.saveUser (shared), "a user preset can be saved under the factory name");
+    const int userIdx = presets.currentIndex();
+    check (userIdx > factoryIdx, "the saved user preset sits below the factory block");
+    setRaw (p, "drive", 0.61f);                  // make the user preset's sound distinct
+    check (presets.saveUser (shared), "re-save so the file matches the live sound");
+    const auto userRaw = rawSnapshot (p);
+    juce::MemoryBlock userBlob;
+    p.getStateInformation (userBlob);
+    {
+        const auto r = restoreInto (userBlob, userRaw);
+        check (r.index == userIdx, "case 2: a restored session ticks the USER row, not the same-named factory one");
+        checkStr (r.name, shared, "case 2: the displayed name restores");
+        check (r.paramsMatch, "case 2: parameters restore bit-identically");
+    }
+
+    // --- Case 2 fallback: the user preset file is gone ----------------------------
+    {
+        check (presetFile.deleteFile(), "user preset file removed before the restore");
+        const auto r = restoreInto (userBlob, userRaw);
+        check (r.index < 0, "case 2 fallback: a missing user preset ticks NOTHING, not the same-named factory row");
+        checkStr (r.name, shared, "case 2 fallback: the displayed name still restores");
+        check (r.paramsMatch, "case 2 fallback: parameters still restore bit-identically");
+    }
+
+    // --- Case 3: a pre-0.9.2 session, with no identity stored ---------------------
+    {
+        auto tree = juce::ValueTree::fromXml (*BlobCodec::unwrap (userBlob));
+        tree.removeProperty ("presetSource",    nullptr);
+        tree.removeProperty ("presetFactoryId", nullptr);
+        tree.removeProperty ("presetUserFile",  nullptr);
+        check (! tree.hasProperty ("presetSource"), "the pre-0.9.2 fixture really has no identity");
+        // The file is still deleted here, so the ONLY thing the name could resolve to is
+        // the factory row -- which is exactly the documented pre-0.9.2 answer.
+        const auto r = restoreInto (BlobCodec::wrap (*tree.createXml()), userRaw);
+        check (r.index == factoryIdx, "case 3: a session with no stored identity falls back to the name");
+        check (r.paramsMatch, "case 3: parameters still restore bit-identically");
+    }
+
+    // --- A/B: each slot carries its own identity across the reload ----------------
+    {
+        check (presets.saveUser (shared), "re-create the user preset for the A/B check");
+        const int userRow = presets.currentIndex();
+        p.abSwitchTo (1);
+        presets.load (factoryIdx);        // slot B := the factory preset
+        const auto abRaw = rawSnapshot (p);
+        juce::MemoryBlock abBlob;
+        p.getStateInformation (abBlob);
+
+        AnamorphAudioProcessor q;
+        q.prepareToPlay (48000.0, 512);
+        q.setStateInformation (abBlob.getData(), (int) abBlob.getSize());
+        check (q.abActiveSlot() == 1, "the restored session lands on slot B");
+        check (q.getPresets().currentIndex() == factoryIdx, "slot B's factory identity restores");
+        check (sameRaw (rawSnapshot (q), abRaw), "slot B parameters restore bit-identically");
+        q.abSwitchTo (0);
+        check (q.getPresets().currentIndex() == userRow,
+               "slot A's USER identity restores independently of slot B's");
     }
 
     check (presetFile.deleteFile(), "test preset file removed");
@@ -911,6 +1109,8 @@ int main (int argc, char* argv[])
     testPresetSaveReloadRoundTrip();
     testAbAndViewParamPreservation();
     testDuplicateNameFactoryVsUserPreset();
+    testFactoryPresetIdIntegrity();
+    testPresetIndicatorIdentityAcrossRestore();
 
     std::printf ("\n%d checks, %d failure(s)\n", checks, failures);
     return failures == 0 ? 0 : 1;

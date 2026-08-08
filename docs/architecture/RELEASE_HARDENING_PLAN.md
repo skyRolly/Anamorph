@@ -28,7 +28,7 @@ this program must follow.
 | Crash reporting | None | [Verified] `src/` tree |
 | Version management | **Annotated `vX.Y.Z` tag convention adopted (RH-PR-8)**; no tag cut yet (first: **v0.9.2** — closes RISK-003 when practiced); version in `CMakeLists.txt` + About box; CI run number as build number | [Verified] RELEASE_PROCESS.md §Tagging |
 | Release pipeline | `build.yml` (push/PR/dispatch/`workflow_call`; `contents: read`) + **tag-triggered `release.yml` skeleton (RH-PR-8)**: metadata validation → reused build gates → draft GitHub Release (versioned artifacts + SHA-256 + manifest; `contents: write` scoped to the draft-release job only; no signing secrets exist) | [Verified] CI_CD.md; release.yml |
-| QA gate | 33 DSP self-tests + A/B guard (140 checks) + the 10-test state-compatibility suite (797 checks) + pluginval strictness 10, deterministic + randomise ×3, blocking on 3 OSes; Level-5 manual audition | [Verified] TESTING_POLICY.md, CI_CD.md |
+| QA gate | 33 DSP self-tests + A/B guard (140 checks) + the 12-test state-compatibility suite (836 checks) + pluginval strictness 10, deterministic + randomise ×3, blocking on 3 OSes; Level-5 manual audition | [Verified] TESTING_POLICY.md, CI_CD.md |
 | AAX / PACE | **Out of scope** (no Avid/PACE/iLok) — PACE licensing is therefore *not* an available protection option | [Verified] COMPATIBILITY_POLICY.md |
 
 ## 2. Release risk assessment

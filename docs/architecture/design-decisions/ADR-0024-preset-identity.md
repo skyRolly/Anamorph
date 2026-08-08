@@ -1,6 +1,7 @@
-# ADR-0024 — Factory-preset identity is an internal id, and is deliberately never serialized
+# ADR-0024 — Factory-preset identity is an internal id, carried in plug-in state
 
-**Status:** Accepted
+**Status:** Accepted (**amended 2026-08-07, before merge** — see §Amendment; the original decision
+text is preserved verbatim below it)
 
 ## Context
 The preset browser shows one flat list: ten built-in FACTORY presets followed by the USER presets
@@ -26,7 +27,8 @@ folder) are not disjoint.
   Chosen. Two namespaces that cannot collide. The id never surfaces: the menu, the top bar and the
   Save Preset field all still show the **name**.
 - **D. C, plus persist the identity** so a reloaded session also resolves a clash correctly.
-  **Rejected** — see the Decision.
+  Rejected in the original decision; **adopted by the Amendment below**, with maintainer approval for
+  the gated serialization change.
 
 ## Decision
 1. **Identity, not name.** `PresetManager::Entry` carries a `factoryId` for factory rows;
@@ -58,9 +60,11 @@ folder) are not disjoint.
   `‹ ›` steps from whichever was actually loaded. The two are told apart in the UI by their
   FACTORY / USER section, since the label is the same by construction.
 - A `.anamorph` file loaded from outside the preset folder ticks nothing. Correct: it is on no row.
-- **Residual (accepted):** reopening a project restores the name only, so a still-clashing name
+- ~~**Residual (accepted):** reopening a project restores the name only, so a still-clashing name
   returns the tick to the factory row until the user picks one. Fixing this requires (D) and is
-  therefore a Hard Stop — **an agent must not implement it**; it needs human Architecture Review.
+  therefore a Hard Stop — **an agent must not implement it**; it needs human Architecture Review.~~
+  **Closed by the Amendment below** (the maintainer supplied the Architecture-Review approval); the
+  name fallback now applies only to state that carries no identity at all.
 - `juce::File` equality is a path-string compare (JUCE does no canonicalisation), so a chooser
   result that reaches a preset-folder file by a different spelling (symlinked `$HOME`,
   `/private/var` vs `/var`, UNC vs mapped drive) fails the identity match and degrades to "no tick",
@@ -76,6 +80,64 @@ folder) are not disjoint.
 - `src/PluginProcessor.cpp:36-41` (the hooks), `:233-250` (`currentStateSet`/`applyStateSet`),
   `:410-433` (`commitPresetSwitchUndoStep`), `:576-600` (`readSlot` clears the identity)
 - `tests/state_tests.cpp` — state test 10
+
+## Amendment — the identity IS persisted, in plug-in state only (2026-08-07, pre-merge)
+
+Decision **3** above (never serialized) and the residual it produced in **Consequences** are
+reversed on maintainer instruction, which also supplies the Architecture-Review approval the change
+needs. Nothing else in this ADR changes: the identity model (1), the immutability rule (2) and the
+save re-baselining (5) all stand, and (4) — the factory tie-break — survives as the *fallback* for
+state that carries no identity rather than as the answer for every reload.
+
+**What changed.** `getStateInformation` now writes three additive strings alongside `presetName` /
+`presetBaseline`, and three more per A/B slot: a kind (`""` / `"factory"` / `"user"`), a factory id,
+and a user-preset file. `setStateInformation` decodes them back into a `Selection`. The encoding
+lives on `PresetManager` (`encodeSelection` / `decodeSelection`), so exactly one place knows the wire
+form.
+
+**What did NOT change, and is the point of the shape chosen:**
+
+- **User preset files are untouched.** No id, no metadata, no format change — a `.anamorph` written
+  by 0.9.1 and one written by 0.9.2 are identical. The identity lives in the *session*, which is the
+  only place that knows which preset a given project was using.
+- **Parameter restore is independent of identity restore.** The sound comes from the `ANAMORPH`
+  child; the identity is metadata applied afterwards via `setMeta` / `adoptRestoredState`, neither of
+  which touches a parameter. Every fallback below therefore restores the exact saved sound.
+- **`SESSION_COMPATIBILITY_POLICY` rule 1 is respected** — nothing was removed and no existing field
+  changed meaning; these are additions, and rule 2 (additions tolerate absence) is what makes the
+  pre-0.9.2 path work unchanged.
+- A user preset inside the preset folder is stored as its **file name**, not an absolute path: within
+  that folder the name is already a complete identity, it keeps the user's home directory out of the
+  saved project, and a project opened on another machine still resolves. A preset loaded from
+  *outside* the folder has no such anchor and stores its path, so `decode(encode(s)) == s` stays true
+  instead of silently re-pointing at a same-named file in the folder.
+
+**Fallbacks, all three verified by state test 12:**
+
+| stored | on reload | result |
+|---|---|---|
+| a factory id that still exists | resolved | that factory row is ticked |
+| a factory id that no longer exists | not found | **no row ticked** — never a same-named substitute |
+| a user file that still exists | resolved | that user row is ticked, even against a same-named factory preset |
+| a user file that is gone / moved | not found | **no row ticked** — never the same-named factory row |
+| nothing (pre-0.9.2, or hand-stripped) | `unknown` | the pre-0.9.2 name fallback, i.e. the factory tie-break of (4) |
+
+The "no row ticked" answers are not new behaviour: they are `currentIndex()`'s existing rule that a
+*known* identity which is absent from the list ticks nothing, which is exactly why a wrong-but-well-
+formed stored value cannot select the wrong preset.
+
+**Gate status.** This IS a Serialization Registry addition and therefore an
+`ARCHITECTURE_REVIEW_GATE.md` item and an AI-agent Hard Stop. It is recorded here as approved by the
+maintainer rather than taken by an agent. `SERIALIZATION_REGISTRY.md` carries the six new field rows;
+`SESSION_COMPATIBILITY_POLICY.md` rule 4's round-trip list gains the indicator identity.
+
+**Amended related code:** `src/PresetManager.h` (`SelectionFields`, `encodeSelection`,
+`decodeSelection`, the two-argument `adoptRestoredState`), `src/PresetManager.cpp` (the encode/decode
+bodies), `src/PluginProcessor.cpp` (`writeSelection`/`readSelection`, `getStateInformation`,
+`setStateInformation`, `readSlot`), `tests/state_tests.cpp` (state test 12; state test 1's schema
+shape; state test 10's reload assertion).
+
+---
 
 Evidence [Verified]:
 - Source: as listed above.
