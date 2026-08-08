@@ -163,17 +163,30 @@ pluginval exit fails the job on every platform. Linux/macOS use `run-pluginval.s
 Three things the gates above do **not** do. All are recorded so nobody assumes coverage that
 doesn't exist:
 
-- **GUI-lifetime defects have no headless test.** `AnamorphStateTests` compiles the editor but
-  never instantiates it, so a defect that only exists while a modal child is open and its owner is
-  destroyed — the 0.9.2 preset drop-down crash (**INC-010**) — cannot be expressed there. The
-  0.9.2 fix therefore shipped **without** a regression test, which `TESTING_POLICY.md` rule 1 would
-  otherwise require; it is recorded here as the deliberate residue rather than waived silently.
-  Prevention is by construction instead: a menu given `withParentComponent` has no independent
-  lifetime to get wrong. The *structural* half ("is the menu a child of the editor") would be
-  headlessly assertable if the harness ever instantiates an editor — the sibling Anabasis does
-  exactly that in its own suite on all three runners — but adding editor instantiation to a
-  blocking gate is a harness change that needs to be proven on the Windows and macOS runners
-  first, not folded into a bug fix.
+- **GUI-lifetime defects have no headless test.** This is a **`TESTING_POLICY` rule-1 exception
+  under ADR-0025**, and this entry is the register that ADR names. Its four required disclosures:
+
+  1. *Why no reliable test exists.* The Level-2/3 surface is two console targets
+     (`scripts/run-tests.sh`), and `tests/state_tests.cpp:6-8` records that it "compiles the plugin
+     sources — the editor is linked but never instantiated". A defect that exists only while a
+     **modal child is open and its owner is destroyed** — the 0.9.2 preset drop-down crash,
+     **INC-010** — has no object to act on there. Level 4 does open and close the editor, but
+     pluginval drives a host we do not control and never opens a menu first.
+  2. *What replaced it.* The fix removes the lifetime rather than the symptom: a menu given
+     `withParentComponent` is a child component, so `ModalComponentManager`'s
+     `ComponentMovementWatcher` cancels it with result 0 on the owner's destruction **or hide**, and
+     it has no independent lifetime left to get wrong. The remaining asynchronous window is closed by
+     a `SafePointer`. Every other async/modal callback in the editor was audited for the same shape;
+     the "Load Preset…" file chooser was the only other one, and it got the same guard. The
+     mechanism was re-derived from the pinned JUCE source rather than assumed — see INC-010.
+  3. *Where the gap is tracked.* Here, and cross-referenced from `POSTMORTEMS.md` INC-010.
+  4. *Whether infrastructure could close it.* **Partly, and concretely.** The *structural* half —
+     "is the menu a child of the editor" — becomes assertable the moment the harness instantiates an
+     editor, which the sibling plug-in Anabasis already does in its own suite on all three CI
+     runners. That is a harness change to prove on the Windows and macOS runners on its own merits,
+     not to fold into a crash fix. The *behavioural* half — destroy the owner while the menu is
+     modal and then click an item — needs a driven message loop and remains out of reach. Per
+     ADR-0025 §5 this entry is revisited when that harness lands, not left standing.
 
 - **The AU is never validated automatically.** `run-pluginval.sh` locates and validates
   `Anamorph.vst3` only, so the macOS `Anamorph.component` — the build Logic Pro and GarageBand

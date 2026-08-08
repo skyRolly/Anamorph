@@ -7,7 +7,24 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.2 change set** (2026-08-07) — the first `src/` change since 0.9.0.
-Four changes, one investigation, one new regression test.
+Four changes, one investigation, three new regression tests, and one governance amendment.
+
+**Governance: `TESTING_POLICY` rule 1 gains a narrow exception (ADR-0025).** The rule ("every bug fix
+ships a regression test") was stated unconditionally, while the project has in practice shipped one
+fix — INC-010 — without one, because no automated surface reaches a defect that only exists while a
+modal child is open and its owner is destroyed. That deviation had been recorded in a Procedure and
+in this ledger, both of which rank **below** Policy, so nothing at or above Policy level described
+what the project actually does. **ADR-0025** closes that: the default is unchanged, the release gate
+is untouched, and the exception is available **only** where the repository has no stable automated
+surface reaching the defect (GUI/component lifetime, host-owned UI behaviour, OS-level asynchrony) —
+never for a test that is merely hard to write. Invoking it requires four disclosures (why no test
+exists, what replaced it, where the gap is tracked, whether infrastructure could close it), and the
+exception lapses when the surface appears. `docs/procedures/TESTING.md` §"Gaps in the automated
+coverage" is named as the register — the role it already played for the AU-conformance and
+golden-audio gaps that `KNOWN_ISSUES.md` KI-014 and `RELEASE_HARDENING_PLAN.md` RH-F3 cite. Per
+`ADR_POLICY` rule 5 / `SOURCE_OF_TRUTH`, the ADR is the instrument that makes the Policy change; per
+rule 1 it is registered in `ADR_INDEX.md`. **A one-off waiver was explicitly rejected** — the goal
+was a rule that describes the engineering reality, not an escape hatch for one entry.
 
 **Preset drop-down lifetime + crash (`src/PluginEditor.cpp`).** Filed as **INC-010**. Three facts,
 separated after an adversarial re-read of the pinned JUCE source — the first draft of this entry
@@ -28,8 +45,14 @@ before it scrolls — past ~14 user presets the list would have silently gone tw
 no-op `drawResizableFrame` (JUCE paints a frame over the border ring only when parented). The
 "Load Preset…" file chooser, reachable from the same menu, got the same `SafePointer` guard.
 No regression test: the failure is a GUI-lifetime use-after-free, which `tests/state_tests.cpp`
-cannot express — recorded here as an explicit `TESTING_POLICY` waiver, with prevention by
-construction instead (a parented menu has no independent lifetime to get wrong). Synced:
+cannot express — the harness links the editor but never instantiates it. This is **not** a one-off
+waiver: **ADR-0025** amends `TESTING_POLICY` rule 1 with a narrow, disclosure-bound exception for
+defects that no automated surface reaches, the default stays "every bug fix ships a regression test",
+the release gate is untouched, and INC-010 is the first invocation. Its four required disclosures —
+why no test exists, what replaced it (removal of the lifetime by construction, plus a `SafePointer`
+for the residual asynchronous window), where the gap is tracked, and what infrastructure would close
+it — are recorded in `TESTING.md` §"Gaps in the automated coverage", which that ADR names as the
+register, and summarised in INC-010's Prevention field. Synced:
 `CHANGELOG.md`, `README.md`, `HANDOVER.md`, `POSTMORTEMS.md` (INC-010).
 **Reported, not fixed (C6):** the combo-box popups store an editor-member LookAndFeel the same way
 and would lose styling identically, but their callback is `ModalCallbackFunction::forComponent`,

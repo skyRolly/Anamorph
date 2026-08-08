@@ -33,6 +33,19 @@ Evidence [Verified]: scripts/run-tests.sh; scripts/run-pluginval.sh / scripts/ru
 
 1. **Every bug fix ships a regression test** that fails on the old code and passes on the fix
    (the project's established practice — e.g. the 0.8.7 Solo+Multiband click test).
+
+   **Exception (ADR-0025), narrow and disclosure-bound.** A fix may ship without one **only** when
+   no reliable automated test can be written because **the repository has no stable automated
+   surface that reaches the defect** — GUI/component lifetime, host-owned UI behaviour, or
+   OS-level asynchronous behaviour. Difficulty, slowness or inconvenience do **not** qualify: if a
+   surface exists, or a reasonable extension of one would reach it, this rule applies unchanged.
+   Invoking the exception requires **all four** of: (a) why no reliable test exists, citing the
+   surface and the specific reason it cannot reach the defect; (b) what manual or structural
+   verification replaced it; (c) where the coverage gap is tracked — the register is
+   `docs/procedures/TESTING.md` §"Gaps in the automated coverage"; (d) whether future test
+   infrastructure could close the gap, named concretely if so. An exception lapses when the surface
+   appears, and its register entry is then revisited rather than left standing.
+   This changes nothing about the **release gate** above: Levels 2, 3 and pluginval remain blocking.
 2. **DSP-policy invariants must have a guarding test** where feasible (see the invariant→test map
    in `DSP_POLICY.md`).
 3. The pluginval **signal-only retry** is permitted (it works around a host-side JUCE/X11 crash,

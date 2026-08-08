@@ -86,10 +86,12 @@ because the corrected version is less obvious than the wrong one.
   `componentAttachedTo != options.getTargetComponent()` — and **both are `WeakReference<Component>`
   to `presetName`**, an editor member, so they null in the same instant and the comparison is false.
   That is the leftover menu.
-- The lost item styling is **not** a use-after-free. `PopupMenu` stores its look-and-feel as a
-  `WeakReference<LookAndFeel>`, so `setLookAndFeel (&lnf)` *nulled*; `Component::getLookAndFeel()`
-  then falls back to `LookAndFeel_V4`. Cosmetic. (It does trip `~LookAndFeel`'s debug assertion
-  about live weak references.)
+- The lost item styling is **not** a use-after-free. The MenuWindow **copies** the menu's
+  look-and-feel into its own `Component::lookAndFeel` slot (`juce_PopupMenu.cpp:366`), and that slot
+  is a `WeakReference`, so it *nulled*; `Component::getLookAndFeel()` then falls back to
+  `LookAndFeel_V4`. (The `PopupMenu` itself is a stack local in `showPresetMenu` and is gone long
+  before the editor — it cannot be the reference that outlives us.) Cosmetic. (It does trip
+  `~LookAndFeel`'s debug assertion about live weak references.)
 - The **crash** is the raw `this` in the `showMenuAsync` callback. `withDeletionCheck` was never
   used, so JUCE's `resultID = 0` escape hatch was inert and the lambda ran with a real item id.
 
@@ -131,9 +133,11 @@ editor-member LookAndFeel the same way (same styling loss, same leftover menu) b
 reported symptom, and changing it touches seven call sites across two LookAndFeel subclasses.
 
 **No regression test.** A GUI-lifetime use-after-free is not expressible in
-`tests/state_tests.cpp`, which links the editor but never instantiates it. Recorded as an explicit
-`TESTING_POLICY` waiver; prevention is by construction instead — a parented menu has no independent
-lifetime to get wrong.
+`tests/state_tests.cpp`, which links the editor but never instantiates it. Prevention is by
+construction instead — a parented menu has no independent lifetime to get wrong. Recorded first as a
+disclosed deviation from `TESTING_POLICY` rule 1; **superseded by ADR-0025**, which amends that rule
+with a narrow exception for defects no automated surface reaches and names `TESTING.md` §Gaps as the
+register. INC-010 is its first invocation, with all four required disclosures recorded there.
 
 ---
 
