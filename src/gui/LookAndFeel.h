@@ -112,6 +112,13 @@ public:
     void drawPopupMenuSectionHeader (juce::Graphics&, const juce::Rectangle<int>& area,
                                      const juce::String& sectionName) override;
     int  getPopupMenuBorderSize() override { return 3; } // narrower top/bottom dead-zone (#9)
+    // JUCE paints a "resizable frame" over a menu ONLY when the menu has a parent component
+    // (juce_PopupMenu.cpp paintOverChildren) -- two translucent black rects in the 3 px border
+    // ring, on top of the hairline drawPopupMenuBackground already draws. The preset menu became
+    // a child in 0.9.2 (lifetime fix), so without this no-op it would gain a doubled edge the
+    // rest of the UI does not have. Anamorph has no resizable windows or ResizableBorderComponent,
+    // so this override has no other caller.
+    void drawResizableFrame (juce::Graphics&, int, int, const juce::BorderSize<int>&) override {}
     // Fixed, uniform row height so a taller combo doesn't get taller rows (#3).
     void getIdealPopupMenuItemSize (const juce::String& text, bool isSeparator,
                                     int standardHeight, int& idealWidth, int& idealHeight) override;

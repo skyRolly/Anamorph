@@ -71,7 +71,7 @@ preserved. Evidence [Verified]: tests/dsp_tests.cpp (`main` registers all tests)
 
 ### State-compatibility self-tests (v0.8.13 harness)
 
-`tests/state_tests.cpp` (**9 tests**, own console target `AnamorphStateTests`) automates the
+`tests/state_tests.cpp` (**12 tests**, own console target `AnamorphStateTests`) automates the
 COMPATIBILITY policy family against the **real `AnamorphAudioProcessor`** (the target compiles
 the plugin sources; the editor is linked but never instantiated — fully headless):
 serialized-schema shape (every `SERIALIZATION_REGISTRY.md` field), a **parameter-registry
@@ -83,7 +83,23 @@ meta; undo cleared), the three legacy migration paths via frozen fixtures
 `legacy_pre_0_8_4_view_params.xml`), corrupt/foreign-state robustness (garbage/truncated blob,
 out-of-range `AB@active` clamp end-to-end, unknown future fields, corrupt slot XML), the user
 preset save→reload round-trip incl. the exclusion rules (`mbSolo` reset, Bypass/`advancedMode`
-untouched), and A/B + view-param preservation across restore.
+untouched), A/B + view-param preservation across restore, **factory/user preset identity when a
+user preset carries a factory preset's name** (0.9.2: saving under the shared name selects the USER
+row, both rows stay individually selectable, an A/B round-trip keeps the identity, an undo after a
+save keeps it too, a preset switch invalidates redo when the identity moves even if the two presets
+sound identical **but re-picking the already-selected row does not**, and a
+`.anamorph` loaded from OUTSIDE the preset folder or a user preset deleted from disk both tick
+**nothing** rather than falling back to the same-named factory row),
+**factory-id integrity** (ids present, unique, and every one resolving in the table — an
+unresolvable id would apply the plain defaults, so exactly one factory preset may sit on the
+all-defaults signature), and the **indicator identity across a session reload** (factory and user
+identities restore, per A/B slot; an unresolvable factory id, a deleted user preset, a preset nested
+in a SUB-folder of the preset folder, a preset whose file NAME `juce::File::isAbsolutePath` accepts
+(a leading `~` on POSIX) and a pre-0.9.2 session with no identity each take their documented
+fallback; and in EVERY one of those
+eight paths — the seven that go through the reload helper plus the A/B slot check — the restored
+parameters are asserted bit-identical, because the identity is metadata and must never influence the
+sound).
 Evidence [Verified]: tests/state_tests.cpp; CMakeLists.txt (`AnamorphStateTests`).
 
 **Changing the parameter surface intentionally** (ADR + `PARAMETER_REGISTRY.md` update
@@ -146,8 +162,33 @@ pluginval exit fails the job on every platform. Linux/macOS use `run-pluginval.s
 
 ## Gaps in the automated coverage (known, deliberate)
 
-Two things the gates above do **not** do. Both are recorded so nobody assumes coverage that
+Three things the gates above do **not** do. All are recorded so nobody assumes coverage that
 doesn't exist:
+
+- **GUI-lifetime defects have no headless test.** This is a **`TESTING_POLICY` rule-1 exception
+  under ADR-0025**, and this entry is the register that ADR names. Its four required disclosures:
+
+  1. *Why no reliable test exists.* The Level-2/3 surface is two console targets
+     (`scripts/run-tests.sh`), and `tests/state_tests.cpp:6-8` records that it "compiles the plugin
+     sources — the editor is linked but never instantiated". A defect that exists only while a
+     **modal child is open and its owner is destroyed** — the 0.9.2 preset drop-down crash,
+     **INC-010** — has no object to act on there. Level 4 does open and close the editor, but
+     pluginval drives a host we do not control and never opens a menu first.
+  2. *What replaced it.* The fix removes the lifetime rather than the symptom: a menu given
+     `withParentComponent` is a child component, so `ModalComponentManager`'s
+     `ComponentMovementWatcher` cancels it with result 0 on the owner's destruction **or hide**, and
+     it has no independent lifetime left to get wrong. The remaining asynchronous window is closed by
+     a `SafePointer`. Every other async/modal callback in the editor was audited for the same shape;
+     the "Load Preset…" file chooser was the only other one, and it got the same guard. The
+     mechanism was re-derived from the pinned JUCE source rather than assumed — see INC-010.
+  3. *Where the gap is tracked.* Here, and cross-referenced from `POSTMORTEMS.md` INC-010.
+  4. *Whether infrastructure could close it.* **Partly, and concretely.** The *structural* half —
+     "is the menu a child of the editor" — becomes assertable the moment the harness instantiates an
+     editor, which the sibling plug-in Anabasis already does in its own suite on all three CI
+     runners. That is a harness change to prove on the Windows and macOS runners on its own merits,
+     not to fold into a crash fix. The *behavioural* half — destroy the owner while the menu is
+     modal and then click an item — needs a driven message loop and remains out of reach. Per
+     ADR-0025 §5 this entry is revisited when that harness lands, not left standing.
 
 - **The AU is never validated automatically.** `run-pluginval.sh` locates and validates
   `Anamorph.vst3` only, so the macOS `Anamorph.component` — the build Logic Pro and GarageBand

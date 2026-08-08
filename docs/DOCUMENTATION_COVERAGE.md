@@ -6,7 +6,354 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **third review pass on the 0.9.1 change set** (2026-07-30). Three findings
+Last updated: for the **0.9.2 change set** (2026-08-07) — the first `src/` change since 0.9.0.
+Four changes, one investigation, three new regression tests, and one governance amendment.
+
+**Governance: `TESTING_POLICY` rule 1 gains a narrow exception (ADR-0025).** The rule ("every bug fix
+ships a regression test") was stated unconditionally, while the project has in practice shipped one
+fix — INC-010 — without one, because no automated surface reaches a defect that only exists while a
+modal child is open and its owner is destroyed. That deviation had been recorded in a Procedure and
+in this ledger, both of which rank **below** Policy, so nothing at or above Policy level described
+what the project actually does. **ADR-0025** closes that: the default is unchanged, the release gate
+is untouched, and the exception is available **only** where the repository has no stable automated
+surface reaching the defect (GUI/component lifetime, host-owned UI behaviour, OS-level asynchrony) —
+never for a test that is merely hard to write. Invoking it requires four disclosures (why no test
+exists, what replaced it, where the gap is tracked, whether infrastructure could close it), and the
+exception lapses when the surface appears. `docs/procedures/TESTING.md` §"Gaps in the automated
+coverage" is named as the register — the role it already played for the AU-conformance and
+golden-audio gaps that `KNOWN_ISSUES.md` KI-014 and `RELEASE_HARDENING_PLAN.md` RH-F3 cite. Per
+`ADR_POLICY` rule 5 / `SOURCE_OF_TRUTH`, the ADR is the instrument that makes the Policy change; per
+rule 1 it is registered in `ADR_INDEX.md`. **A one-off waiver was explicitly rejected** — the goal
+was a rule that describes the engineering reality, not an escape hatch for one entry.
+
+**Preset drop-down lifetime + crash (`src/PluginEditor.cpp`).** Filed as **INC-010**. Three facts,
+separated after an adversarial re-read of the pinned JUCE source — the first draft of this entry
+(and of the code comment) got the mechanism wrong and is corrected here rather than left standing.
+(1) The **leftover menu** is not an oversight in JUCE: `MenuWindow::windowIsStillValid()` dismisses when
+`componentAttachedTo != options.getTargetComponent()`, but both are `WeakReference` to
+`presetName`, so they null *together* and the comparison is false. (2) The **lost styling is not a
+use-after-free** — the MenuWindow copies the look-and-feel into its own `Component::lookAndFeel`
+slot (`juce_PopupMenu.cpp:366`), a `WeakReference` that nulls and falls back to `LookAndFeel_V4`
+(the `PopupMenu` itself is a stack local, gone long before the editor). (3) The **crash** is the raw `this` in the callback.
+The fix is `withParentComponent (this)` (JUCE parents the MenuWindow as a CHILD, cancelled with
+result 0 by `ModalComponentManager` on destruction *or* hide; `Component::getLookAndFeel()` then
+resolves our LookAndFeel by walking the tree) plus a `SafePointer` callback — which is **not**
+redundant, since that cancel is asynchronous and the menu's 20 Hz timer can still emit a non-zero
+result in the gap. Two side effects of parenting were neutralised in the same change:
+`withMaximumNumColumns (1)` (a parented menu is budgeted against the editor, and JUCE adds COLUMNS
+before it scrolls — past ~14 user presets the list would have silently gone two-column) and a
+no-op `drawResizableFrame` (JUCE paints a frame over the border ring only when parented). The
+"Load Preset…" file chooser, reachable from the same menu, got the same `SafePointer` guard.
+No regression test: the failure is a GUI-lifetime use-after-free, which `tests/state_tests.cpp`
+cannot express — the harness links the editor but never instantiates it. This is **not** a one-off
+waiver: **ADR-0025** amends `TESTING_POLICY` rule 1 with a narrow, disclosure-bound exception for
+defects that no automated surface reaches, the default stays "every bug fix ships a regression test",
+the release gate is untouched, and INC-010 is the first invocation. Its four required disclosures —
+why no test exists, what replaced it (removal of the lifetime by construction, plus a `SafePointer`
+for the residual asynchronous window), where the gap is tracked, and what infrastructure would close
+it — are recorded in `TESTING.md` §"Gaps in the automated coverage", which that ADR names as the
+register, and summarised in INC-010's Prevention field. Synced:
+`CHANGELOG.md`, `README.md`, `HANDOVER.md`, `POSTMORTEMS.md` (INC-010).
+**Reported, not fixed (C6):** the combo-box popups store an editor-member LookAndFeel the same way
+and would lose styling identically, but their callback is `ModalCallbackFunction::forComponent`,
+i.e. already SafePointer-based — no memory-safety defect, no reported symptom, seven call sites
+across two LookAndFeel subclasses. Out of scope. Likewise `SpectrumImager`'s `freqEditor`
+`onFocusLost` can fire during teardown; it is owned by the editor it belongs to, so it is a
+different (and lesser) class of hazard.
+
+**Factory-preset identity (`src/PresetManager.{h,cpp}`, `src/PluginProcessor.{h,cpp}`).** The
+preset list was searched by NAME and the factory block is list-front, so a user preset sharing a
+factory preset's name could never hold the drop-down tick. A factory preset now carries an
+immutable internal `factoryId` and a user preset is identified by its file
+(`PresetManager::Selection`); the menu, the top bar and the Save Preset field still show the
+**name**. The identity rides on `StateSet` through A/B and undo, and — after the maintainer
+supplied the Architecture-Review approval the gate requires — **also with the session**, so
+reopening a project ticks the row that produced the sound. Six additive metadata fields (3 in
+`AnamorphRoot`, 3 per A/B slot); **user preset FILES are unchanged**, parameter restore is
+independent of identity restore, and anything unresolvable ticks nothing rather than a same-named
+substitute. Recorded as **ADR-0024** (registered in `ADR_INDEX.md`), whose original "never
+serialized" clause is reversed by a dated **Amendment** that keeps the original text verbatim above
+it — the reversal, its approval and its fallback table are exactly what a future agent would
+otherwise re-litigate straight into a Hard Stop. Synced: `SERIALIZATION_REGISTRY.md` (six new field
+rows), `SESSION_COMPATIBILITY_POLICY.md` (rule 4's round-trip list), `API_REFERENCE.md`,
+`USER_MANUAL.md` §7.2, `TESTING.md`, `TESTING_POLICY.md`, `RELEASE_HARDENING_PLAN.md`,
+`REPOSITORY_MAP.md`, `HANDOVER.md`, `CHANGELOG.md`, and **`PRIVACY.md`** — that document states
+every claim about what reaches disk, and the session can now carry a preset **file name**, or an
+absolute **path** in the one case where the selected preset was opened from outside the preset
+folder. The path case is the same class as the Standalone's `lastStateFile` entry the document
+already carves out, and it is now carved out alongside it, with the reason the in-folder case stores
+a name instead. `ADR-0008` gained the third `StateSet` field and
+re-based line anchors (a factual re-sync, not a reversal; ADRs stay append-only). State tests 10,
+11 and 12 pin the live behaviour, the id integrity and the whole restore matrix including every
+fallback.
+
+Six defects found by review and fixed before merge, each with its own assertion, and every one
+verified to fail with its fix disabled. Three from the first adversarial pass: the identity scan
+**fell through** to the name scan when the identity was known but absent from the list, so a `.anamorph`
+loaded from outside the preset folder ticked the same-named factory row — the exact mis-tick this
+change exists to remove; `saveUser` never re-baselined the processor's undo snapshot, so the first
+undo after a save restored the pre-save name/identity (fixed with an `onSaved` hook →
+`syncCommitted()`, which creates no undo step because a save is not a sound change — and the same
+gap existed for a preset switch whose sound is identical to the current one); and `readSlot` left
+a stale identity on an A/B slot when a host restored a second session into one live instance.
+
+Three more from the maintainer's follow-up review. **`saveUser` did not flush pending undo
+coalescing** before re-baselining: `syncCommitted()` clears `pendingGestureCommit`, so a knob
+gesture that had closed but not yet been polled was folded into the new baseline with no undo step
+— the edit silently stopped being undoable. `onSaved` now does `pollUndoCoalesce(); syncCommitted();`,
+matching the two other program-state jumps (`onAboutToLoad`, and `undo()`/`redo()`). **A factory id
+that fails to resolve** applied the plain defaults and then adopted the factory identity anyway;
+`load()` now resolves it BEFORE the undo bracket opens — the same rule the user-preset parse three
+lines above already followed — asserts it, and fails as a clean no-op otherwise. State test 11 pins
+the invariant that makes the assert unreachable: ids present, unique, and every one resolving.
+
+**Two more from a third, independent review of the finished change set**, both introduced by the
+plug-in-state work and both now fixed with a discriminating assertion. `encodeSelection` used
+`juce::File::isAChildOf` to decide whether a preset lives in the preset folder — but JUCE implements
+that **recursively**, so a preset opened from a **sub-folder** was stored by bare name and decoded to
+a *different*, same-named file directly in the folder, breaking the `decode(encode(s)) == s`
+invariant the header and the ADR both state. Now a **direct-child** test, which is also the honest
+one: `refresh()` scans non-recursively, so only a direct child can ever be a menu row. And the new
+`else` branch of `commitPresetSwitchUndoStep` did not clear redo, unlike the `if` branch one line
+above whose comment states the rule — so undo, then select the same-sounding preset on the other row,
+then Redo, and the tick jumped back out of an abandoned `StateSet`. (That branch then had to be
+narrowed again — see below.)
+
+**Raised and REFUTED, recorded so it is not re-raised:** a `saveUser` defect for preset names with a
+leading `~`. The JUCE facts are real as far as they go — `getChildFile` short-circuits for anything
+`isAbsolutePath` accepts, and on macOS/Linux a leading `~` survives `createLegalFileName` — but the
+write cannot succeed. `replaceWithText` does not open the target: it writes a hidden sibling built
+from `getParentDirectory()`, and for a separator-less path that is the path itself, which is not a
+directory. `createLegalFileName` strips `/` and `\`, so every tilde-leading name hits the same
+degenerate parent. `saveUser` therefore returns **false**, nothing is written anywhere, and the Save
+dialog stays open with the text intact — the save fails *visibly*, which is exactly what the proposed
+guard was meant to produce. Verified empirically against the pinned `juce_core` for `~foo`, `~/foo`,
+`~` and `~root`, with a normal name as the control. **No code change; no defect.** The refutation and
+its probe are in `worklogs/PRESET_MENU_AND_IDENTITY_v0.9.2.md` §7.
+
+**Redo invalidation, narrowed after review.** The `else` branch above cleared redo unconditionally,
+so *re-picking the row that is already ticked* — identical sound, identical identity — silently threw
+away a redo the user was about to press. It now clears redo only when the identity actually **moved**
+(`presets.selection() != committed.selection`), which is the only case where a surviving redo entry
+could drag the tick off the row just chosen. The same-sound/**different**-row case still invalidates,
+and its assertion is unchanged; a second assertion covers the re-select case, and both were verified
+against the pre-fix behaviour.
+
+**The encoder's second ambiguity: a direct-child name that `isAbsolutePath` accepts.** The
+`isAChildOf` fix above closed the *nesting* route into a broken `decode(encode(s)) == s`; a leading
+`~` was the other one. `decodeSelection` reads a bare name back through
+`presetDirectory().getChildFile(name)`, and `getChildFile` short-circuits to the raw `File`
+constructor for anything `isAbsolutePath` accepts, so `~foo.anamorph` sitting **directly in** the
+preset folder decoded to a literal relative path and the row lost its tick on reload. This does not
+contradict the `saveUser` refutation recorded above — that refutation is about the **save** path,
+which genuinely cannot create such a file; `USER_MANUAL.md` tells users to manage presets as files, so
+a hand-copied one reaches `refresh()` and can be loaded and encoded like any other. The encoder now
+requires the bare name to be unambiguous (`! juce::File::isAbsolutePath (name)`) and otherwise takes
+the absolute-path branch it already shares with outside-the-folder and sub-folder presets. No preset
+file format change, no canonicalisation, no weakening of the no-name-fallback rule. State test 12
+gained the round-trip case; verified to fail with the fix disabled.
+
+**A/B slot metadata now follows "absence means default".** `readSlot` read `dst.name` and
+`dst.baseline` *inside* the `hasProperty("slotAParams")` branch, so the pre-0.6.4 legacy shape — params
+only — left both untouched. `abSlot[]` are processor members and a host may call
+`setStateInformation` on one live instance repeatedly, so a legacy session restored after a modern one
+kept the **previous** session's preset name and dirty-baseline attached to freshly restored
+parameters. Both reads moved out of the branch, next to the identity read that already had this right.
+The resulting defaults (`""` / `""`) are the ones `SERIALIZATION_REGISTRY.md` already documented, so
+the code caught up to the ledger; no field was added, removed or renamed. **An existing assertion was
+changed, not merely added:** state test 5's `slotAName == "Default"` under the comment "legacy slot
+keeps pre-restore meta" *pinned the defect* — it described a fresh instance's construction snapshot as
+if it were the rule. It now asserts the default, alongside a repeated-restore case that shows why.
+
+**"No baseline recorded" is not "modified" (fifth review round).** The A/B fix above left a second
+half unfinished: a pre-0.6.4 slot restores with an empty *baseline* as well as an empty name, and
+`isDirty()` is `soundSig() != sigAtLoad`. `soundSig()` is never empty, so an empty baseline compares
+unequal to every possible sound and the slot read as **permanently modified** — with no name, the top
+bar rendered a bare ` *`: a modified-marker against a preset that does not exist. The project already
+has a rule for "restored parameters, no recorded baseline": `adoptRestoredState` sets the restored
+state as the clean one, which `SERIALIZATION_REGISTRY.md` documents for the root `presetBaseline` and
+state test 4 pins for a v0.2 session. `setMeta` now applies that same rule, so it is one rule with one
+spelling instead of two answers to the same question. Unreachable from undo, redo, A/B and copy —
+every in-memory producer fills the baseline — so the branch is legacy-restore only. The *empty name*
+was left as-is deliberately: the slot genuinely has no preset, and the pre-fix "Default" was a
+factual error (the slot's parameters were not the defaults). Maintainer confirmation of the direction
+is recorded per the review sign-off; no serialization field changed and `""` keeps its meaning
+("absent"), so this is a read-path interpretation, not an `ARCHITECTURE_REVIEW_GATE` item.
+
+**A slot must reset as a whole, or its two halves come from two projects (sixth review round).** The
+"absence means default" rule was applied field by field — `dst.selection`, `dst.name` and
+`dst.baseline` — but `dst.params` was still only touched inside the two params-present branches. An
+`AB` node that exists while a slot's payload cannot be read (neither `slotAParams` nor the pre-0.6.4
+`slotA`, or a payload that fails to parse) therefore kept the **previous restore's sound** while its
+metadata was reset around it: one slot holding one project's sound under another project's label.
+Before this PR both halves were inherited together — consistently stale, which is wrong but not
+*mixed* — so this was a defect the earlier rounds introduced, not a pre-existing one. `readSlot` now
+resets the slot to a default `StateSet` first and overlays what the node carries. The params default
+is not an empty tree but **"lazily initialised from current"**, which the registry already recorded
+and which `abEnsureInit()` already implements off `StateSet::isValid()` — so no new mechanism, no new
+field, and the slot comes back seeded from the state just restored. The reset also covers the
+present-but-unparsable payload for free. Both cases are pinned by state test 9 and were verified to
+fail with the reset removed. **No `CHANGELOG.md` entry:** no shipped version writes an `AB` node
+lacking both params keys, so there is no user-visible change to report under `CHANGELOG_POLICY` rule
+3 — this is corrupt/truncated-state robustness, the category state test 7 covers. Maintainer
+confirmation of the direction is recorded per the review sign-off.
+
+**The root preset NAME had the same leak as the slots (seventh review round).** `readSlot`'s rule —
+metadata never inherits across a repeated restore — was not applied to `AnamorphRoot`. Both adoption
+paths fell back to the live `presets.currentName()`: the `haveBaseline` branch via
+`restoredName.isNotEmpty() ? restoredName : presets.currentName()`, and `adoptRestoredState` via
+`if (name.isNotEmpty()) current = name;`. `presets` is a processor member, so on a host's second
+`setStateInformation` into one instance that is the **previous project's** label — new sound, new
+identity, old name, and with no stored identity the name scan could then tick the old project's row.
+This became reachable *because* of this PR: an empty preset name is now a real state (a session saved
+while sitting on a nameless A/B slot stores `presetName=""`).
+
+**Absent and empty are different answers**, and only `setStateInformation` can tell them apart — the
+distinction `haveBaseline` already drew for the sibling field. Absent means a session predating the
+field (< 0.6) and resolves to the new `PresetManager::defaultName()`, a **constant**, whose
+name-fallback tick is the documented ADR-0024 answer for identity-less state; present-but-empty is
+adopted verbatim. `adoptRestoredState` now assigns the name unconditionally, so "what the session
+carried" and "what absence means" stop being decided in two places. No serialization field changed,
+and no existing assertion moved — state test 4's `preset name falls back to Default` still passes,
+because a v0.2 blob has no `presetName` property. Four cases (empty/absent × baseline/no-baseline)
+are pinned in state test 12; all eight new assertions were verified to fail with the fix reverted.
+Maintainer confirmation of the direction is recorded per the review sign-off.
+
+**An unrecognised chunk is not a restore (eighth review round).** `setStateInformation` handles two
+root shapes; anything else matched neither and *fell through* to the adoption block, which clears the
+undo history and writes the restored preset name, identity and baseline. With nothing restored, that
+relabelled the live sound — after the previous round, with the constant `"Default"` — dropped the
+identity to `unknown` so the name scan ticked whatever shared the label, and re-baselined the
+dirty-star. The name half was introduced by the previous round; the identity and baseline halves were
+**pre-existing**, since `adoptRestoredState` always assigned those two unconditionally. The fix is an
+`else { return; }`, which is the same answer the `getXmlFromBinary` guard at the top of the function
+already gives an unparsable blob — the identical situation one layer down. It also stops the undo
+history being cleared for a session that never loaded; disclosed rather than slipped in, since that
+half was not named in the finding.
+
+**`abEnsureInit` now seeds both slots the same way.** It seeded an invalid slot A from
+`currentStateSet()` but an invalid slot B from a **copy of slot A**. On the path that runs every time
+— construction, both slots invalid — the two are indistinguishable, so this changes nothing there.
+They diverged only when slot A was valid and slot B was not, i.e. an `AB` node whose `slotBParams`
+alone was missing or unparsable: slot B came back as a duplicate of slot A rather than as the state
+just restored, and a later save wrote that duplicate out. The registry and `STATE_SERIALIZATION.md`
+had already been written as though the rule were symmetric, so this is the code catching up to the
+documented invariant rather than a new one. `currentStateSet()` builds a fresh tree per call, so the
+explicit `createCopy()` for slot independence is no longer needed.
+
+**The empty preset label gets a placeholder (ninth review round).** The blank top-bar button a
+pre-0.6.4 A/B slot produced — flagged as a maintainer decision under constraint C8 — is now
+**No Preset**, with sign-off dated 2026-08-08. It is a *display* substitution in
+`refreshPresetDisplay`, deliberately **not** in `PresetManager::currentName()`: that accessor also
+feeds the serialized `presetName` and the Save Preset pre-fill, so a placeholder there would be
+written into every session saved from a nameless slot and offered as the default preset *file* name.
+The stored name stays `""`, the identity stays `unknown`, and `currentIndex()` still ticks nothing.
+State test 5 gained the assertion that closes the loop — a re-save must still write `presetName=""`
+— and moving the substitution into the accessor as a control fails four assertions. `ADR-0024`'s
+"no user-visible string was added" consequence was **false** once this landed and is corrected in
+place rather than left to drift; the `CHANGELOG` entry now names the label. `TESTING.md`'s
+restore-path sentence was one behind in both numbers (seven/six → eight/seven) and had missed the
+tilde case in its fallback list; tests are the source of truth, so the prose moved. The `setMeta`
+ordering invariant, already in the header, is now also stated at `applyStateSet` — the two lines that
+*are* the order, and the place a future edit would break it.
+
+**Declined in the same round, recorded so it is not re-raised: an `AnamorphRoot` with no `ANAMORPH`
+child.** Such a chunk is *recognised*, so it restores the fields it carries and resolves the absent
+ones to their documented defaults — while `params.isValid()` is false, so the parameters keep their
+current values and the live sound ends up labelled `defaultName()`. It reproduces, and it is
+deliberately left alone: the rule this round implements is about *unrecognised* input; field-by-field
+handling of a recognised root is the existing design and state test 7's `restoreWithActive` depends
+on it (an `AnamorphRoot` carrying only an `AB` child must still apply the clamped `active`); the
+obvious alternative — skip adoption when there are no params — re-introduces the cross-restore
+leakage the previous round removed; and `getStateInformation` always writes an `ANAMORPH` child, so no
+shipped version can produce one. Reasoning in full in `worklogs/…v0.9.2.md` §13.
+
+**`setMeta`'s identity-less overload removed.** The two-argument overload forwarded a
+default-constructed `Selection`, so "forget which row produced this sound" — the mis-tick ADR-0024
+exists to remove — was something a caller could do without writing it down. Its only caller was a
+test, which now passes `Selection()` explicitly. The one-argument `adoptRestoredState` overload was
+dead code with the identical shape and went with it. No behaviour change. The header also now records
+the precondition `setMeta`'s empty-baseline fallback depends on and the signature cannot enforce: the
+parameters the metadata describes must already be applied, because `soundSig()` reads the live APVTS.
+
+**Re-raised and re-refuted: the `~foo` `saveUser` claim.** A later review reported this ledger as
+still asserting that `saveUser` "writes outside the folder and still returns success". It does not,
+and has not since the round recorded in `worklogs/…v0.9.2.md` §8 — the sentence was removed there and
+the entry above has stated the refutation ever since (introduced `9b67b8d`, corrected `55e062d`). The
+repository holds no conflicting description: `DOCUMENTATION_COVERAGE.md` and worklog §7 both say the
+write fails and `saveUser` returns **false**, and §9 records that the *encode*-side sibling — a
+`~`-named file a user copies in by hand — was a separate, real defect. Because the claim keeps coming
+back, the refutation now also lives in the **code**, at the `getChildFile` call it is raised against;
+per `SOURCE_OF_TRUTH` that outranks every document and is the first thing a reader of
+`saveUser` sees.
+
+**Documentation follow-up on the identity match (no behaviour change).** ADR-0024's Consequences now
+state the three properties plainly: the match is a raw path-string compare with **no**
+canonicalisation (`getLinkedTarget()` considered and rejected — it resolves symlinks but not
+`/private/var`, mount aliases or UNC spellings, trading a predictable "no tick" for a partial one);
+cross-machine resolution holds only for the name-encoded case, because a stored absolute path fails
+`isAbsolutePath` on the other platform; and a file name that looks like a path is stored as a path.
+`SERIALIZATION_REGISTRY.md` gained both encoder conditions and the raw-compare note.
+`API_REFERENCE.md`, `STATE_SERIALIZATION.md` and the ADR had their `src/` citations re-anchored where
+this round's edits moved them.
+
+**Declined, with evidence: restoring `PopupMenu::setLookAndFeel (&lnf)`.** The stated goal was to
+make item *measurement* use `AnamorphLookAndFeel` — but it already does. `MenuWindow` parents itself
+at `juce_PopupMenu.cpp:370-372` and only then builds items (`:457`), and `ItemComponent` calls
+`parent.addAndMakeVisible` *before* `getIdealSize` (`:139-146`), which resolves through
+`getLookAndFeel()`. Restoring it would instead re-arm the `~LookAndFeel` assertion, which fires on
+any live `WeakReference`: `lnf` is a member and so is destroyed *before* this editor's `Component`
+base, i.e. before the menu is asynchronously cancelled. The only two calls that still see the
+default look-and-feel are bound one line before the parenting — `setOpaque` (same answer,
+`colours::bgPanel` is opaque) and `preparePopupMenuWindow` (a no-op we do not override). A **third**
+resolves through it earlier still and is **load-bearing**: `getParentComponentForMenuOptions`
+(`juce_PopupMenu.cpp:353`, in the member-init list), whose return value is what installs the parent —
+so a process-global default look-and-feel overriding it to return `nullptr` would silently discard
+the parenting. Every JUCE look-and-feel inherits `LookAndFeel_V2`'s pass-through, and the default is
+not ours to control; recorded in the code as the latent trap it is.
+
+**`focusSaveNameField`'s comment was stale, not its behaviour.** It justified the retry by the
+preset menu's own desktop window owning OS focus — which parenting removed. The retry stays, because
+the abort it works around is not menu-specific: `Component::takeKeyboardFocus` gives up while the
+plug-in's own peer is not OS-focused, and whether it is, at that instant, is the host's call (the
+failure KI-009 tracks in REAPER). Comment rewritten; the bounded 4 × 50 ms retry is untouched.
+
+**`Window Size` → `UI Scale` (display name only).** `PARAMETER_COMPATIBILITY_POLICY` permits a
+display-name change; the identifier `int_uiScale` and the pre-0.8.4 legacy APVTS id `uiScale` its
+migration reads are untouched, so this is not a serialization change and needs no ADR. Recorded
+with the repo's own footnote form in `PARAMETER_REGISTRY.md` (`※`, mirroring the `Haas Side` →
+`Haas Focus` precedent). Synced: `PARAMETER_REFERENCE.md`, `REPOSITORY_MAP.md`, `USER_MANUAL.md`
+(×3), `README.md`, the six source comments naming the control, and a **clarifying annotation** in
+ADR-0010 — the ADR body is otherwise left verbatim, since ADRs are append-only.
+
+**Installer component titles.** macOS `<choice title=…>` → *VST3 Plug-in* / *AU Plug-in* /
+*Standalone Application*; the two Windows destination-page **labels** → *VST3 Plug-in folder* /
+*Standalone Application folder*. Prose sentences keep lowercase "plug-in"/"application" (the
+`MsgBox` strings, the `:90` parenthetical, every legal/manual use). The Windows `[Components]`
+descriptions ("Install VST3" / "Install Standalone") contain neither phrase and are unchanged, so
+the five doc quotes of them stay valid. No CI or self-check assertion matches a title — the macOS
+self-check matches `<choice id=…>` and the package identifiers. Synced: `PACKAGING.md`,
+`INSTALLATION.md` (the macOS Component table, which had drifted twice over: *AU (Audio Unit)* and
+*Standalone app* never matched the installer even before this change — corrected here in the same
+pass, and reported rather than silently changed).
+
+**macOS key auto-repeat: investigated, no code change (KI-017).** Holding a letter or digit in a
+text field types once and stops while punctuation repeats. Traced through the pinned JUCE: a
+focused `TextEditor` makes `findCurrentTextInputTarget()` non-null, so every key-down goes to
+`[inputContext handleEvent:]` first and printable characters return via `insertText:` — the path
+macOS press-and-hold and the IME own — while "special" keys return via `doCommandBySelector:` and
+repeat normally. Everything inside the plug-in was eliminated by inspection (the bounded focus
+retry, `setSelectAllWhenFocused`, the 24 Hz timer, the VBlank attachment, the UI-scale transform,
+both `getCurrentModifiersRealtime` call sites). Filed as **KI-017** with the two discriminating
+checks; no `CHANGELOG` entry, since nothing user-visible changed (`CHANGELOG_POLICY` rule 3).
+
+**First-tag renumbering, swept this time.** The 0.9.0 → 0.9.1 renumbering was recorded here as
+incomplete; the 0.9.1 → 0.9.2 one repeated it and is now closed in the same pass:
+`CHANGELOG.md` preamble, `CHANGELOG_POLICY.md`, `FUTURE_RISKS.md` (×2), `COMMERCIAL_STATUS.md`
+(×3) and `RELEASE_HARDENING_PLAN.md` (×5) all named v0.9.1 as the first annotated tag. Neither
+`FUTURE_RISKS.md` nor `COMMERCIAL_STATUS.md` had been touched by the version bump at all.
+
+Prior: for the **third review pass on the 0.9.1 change set** (2026-07-30). Three findings
 fixed, three were confirmations. No `src/` change.
 
 **The `Unreleased` guard had a residual hole.** It rejected only a heading containing the word

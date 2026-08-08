@@ -6,10 +6,59 @@ their **commit SHA + date** as the Evidence Source (per `docs/policies/CHANGELOG
 The annotated-tag convention and the tag-triggered release pipeline exist
 (`docs/procedures/RELEASE_PROCESS.md` §Tagging), but **no tag has been cut yet**: `[0.9.0]` was
 written as a release entry and then superseded before it was tagged, so the first annotated
-`vX.Y.Z` tag will be **v0.9.1**, and from that tag onward the tag is also a citable Evidence
+`vX.Y.Z` tag will be **v0.9.2** (0.9.1 was likewise written up and superseded before tagging),
+and from that tag onward the tag is also a citable Evidence
 Source. Until then every entry cites a commit SHA or a PR. Entries for the
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
+
+## [0.9.2] — 2026-08-07
+### Fixed
+- **The preset drop-down no longer outlives the plug-in window — and clicking it afterwards no
+  longer crashes.** With the preset menu open, closing the plug-in window (or switching to
+  another plug-in) left the menu on screen; hovering it lost the custom item styling, and
+  clicking any item took down the plug-in and/or the host. The menu was a free-standing
+  always-on-top window owned by nothing the editor could reach, and its callback captured a raw
+  pointer to the editor — so the click ran on freed memory. (The lost styling was a second,
+  harmless symptom: the menu's reference to the editor's look-and-feel merely went null, and a
+  null one falls back to JUCE's default.) It is now a **child of the editor**, so it cannot
+  outlive it or float outside the window, and it inherits the styling through the component tree
+  instead of holding a reference at all; the callback holds a `SafePointer`. The "Load Preset…"
+  file-chooser callback — reachable from the same menu — got the same guard.
+  Evidence: PR #100. [Verified]
+- **A user preset that shares a factory preset's name is now selectable in its own right.** The
+  preset list was searched by NAME and the factory block is first, so the tick in the drop-down
+  always landed on the factory row — even immediately after saving a user preset over that name,
+  and the ‹ › arrows stepped from the wrong row. A factory preset is now identified by an
+  immutable internal id and a user preset by its file on disk, two namespaces that cannot
+  collide; the menu, the top bar and the Save Preset field still show the **name**, so nothing
+  looks different until the names clash. **The choice survives reopening the project**: the
+  session now remembers which row was selected, per A/B slot as well. Your `.anamorph` files are
+  untouched — nothing was added to them — and the sound always restores exactly as saved, whether
+  or not the remembered preset is still there. If it is not (a factory preset removed by a later
+  version, or a user preset you have since deleted, renamed or moved), the drop-down simply shows
+  no checkmark rather than picking something else with the same name. Projects saved by an earlier
+  version keep the old behaviour, which was to fall back to the name.
+  Evidence: PR #100. [Verified]
+- **Reopening a very old project no longer leaves the previous project's preset name on the A/B
+  slots.** Sessions saved before 0.6.4 store the A and B slots as parameter values only, with no
+  preset name attached. When the host reloaded such a project into a plug-in that already had a
+  project open, each slot kept the *previous* project's preset name and modified-marker while
+  showing the newly loaded sound. Each slot now reads as **No Preset** — no borrowed name, and no
+  modified-marker either, since a slot that never recorded a preset has nothing to be modified
+  from. Sound and parameter values were never affected.
+  Evidence: PR #100. [Verified]
+
+### Changed
+- **The Settings control "Window Size" is now labelled "UI Scale"** (and its tooltip with it).
+  Display name only: the XS…XL steps, what they scale, and the stored session value are
+  unchanged — the identifier `int_uiScale` is immutable and untouched, so saved sessions recall
+  exactly as before. Evidence: PR #100. [Verified]
+- **The installers name their components in title case.** macOS: *VST3 Plug-in*, *AU Plug-in*,
+  *Standalone Application* (was "VST3 plug-in" / "AU plug-in" / "Standalone application").
+  Windows: the two destination-page labels now read *VST3 Plug-in folder* and *Standalone
+  Application folder*. Wording only — what gets installed, and where, is unchanged.
+  Evidence: PR #100. [Verified]
 
 ## [0.9.1] — 2026-07-30
 ### Changed

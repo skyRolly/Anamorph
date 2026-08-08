@@ -50,12 +50,12 @@ itself (`PACKAGING.md`).
 **Tag convention:** an **annotated** tag `vMAJOR.MINOR.PATCH` on the release commit on `main`,
 created AFTER pre-release steps 1–7 above are complete. The tag must equal the `CMakeLists.txt`
 `project VERSION` exactly — `release.yml` fails closed on any mismatch. **The next tag is
-`v0.9.1`** (0.9.0 was written up but never tagged; the manufacturer-code change, ADR-0023, lands
-on top of it):
+`v0.9.2`** (neither 0.9.0 nor 0.9.1 was tagged; 0.9.1's manufacturer-code change and 0.9.2's
+GUI/preset fixes both land on top of the 0.9.0 write-up):
 
 ```bash
-git tag -a v0.9.1 -m "Anamorph 0.9.1"
-git push origin v0.9.1
+git tag -a v0.9.2 -m "Anamorph 0.9.2"
+git push origin v0.9.2
 ```
 
 **Date the CHANGELOG heading before tagging — the pipeline now enforces it.** `release.yml`
@@ -104,7 +104,7 @@ ship unsigned, with the user-facing consequences documented in `docs/user/INSTAL
 A pipeline **rehearsal** without a tag: run `release.yml` via `workflow_dispatch`
 (validate + full build; no release is created).
 
-No release tag exists yet — the first will be cut at the **v0.9.1** release (0.9.0 was written up but never tagged; ADR-0023 lands on top of it). Historical
+No release tag exists yet — the first will be cut at the **v0.9.2** release (neither 0.9.0 nor 0.9.1 was tagged). Historical
 CHANGELOG entries keep their commit-SHA evidence; entries from the first tag onward cite the
 tag (upgrades CHANGELOG evidence per `CHANGELOG_POLICY.md`; closes RISK-003 when practiced).
 Evidence [Verified]: .github/workflows/release.yml; .github/workflows/build.yml (`workflow_call`).

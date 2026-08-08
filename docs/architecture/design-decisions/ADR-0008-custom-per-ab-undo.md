@@ -16,7 +16,8 @@ or exclude view params, and would treat an A/B switch as undoable.
 
 ## Decision
 Each A/B slot owns its own undo/redo stacks of `StateSet` snapshots (sound parameters + preset
-name + dirty baseline). The editor's timer calls `pollUndoCoalesce()`, which is **gesture-gated**:
+name + dirty baseline + — since 0.9.2 — the preset **identity**, i.e. which factory id or user
+file produced the sound; ADR-0024). The editor's timer calls `pollUndoCoalesce()`, which is **gesture-gated**:
 the processor listens to parameter begin/end gestures and commits exactly one step after the last
 gesture closes, folding a whole drag into a single entry; **host automation** (which opens no
 gesture) folds into the baseline **without** a step. A **preset load** also opens no gesture, so it
@@ -39,10 +40,10 @@ cleared on session restore.
 - Cost: a hand-rolled history with a 128-entry cap per slot.
 
 ## Related code
-- `src/PluginProcessor.cpp:162-296` (signature, coalesce, undo/redo, A/B)
-- `src/PluginProcessor.h:55-115` (StateSet, UndoStacks, A/B members)
+- `src/PluginProcessor.cpp:215-232, :340-520` (signature, coalesce, undo/redo, A/B)
+- `src/PluginProcessor.h:113-125, :144-171` (StateSet, UndoStacks, A/B members)
 - `src/PluginParameters.h:64-87` (view/preset exclusion lists)
 
 Evidence [Verified]:
-- Source: src/PluginProcessor.cpp:162-296
+- Source: src/PluginProcessor.cpp:215-232, :340-520
 - History [Partially Verified]: CHANGELOG.md [0.6.x and earlier] (0.5.1, "Replaces JUCE's global undo manager")

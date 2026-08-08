@@ -114,6 +114,14 @@ private:
     {
         juce::ValueTree params;
         juce::String     name, baseline;
+        // Which preset row produced this state (#4). Travels with A/B and undo like the
+        // rest of this struct, and since 0.9.2 it is SERIALIZED too -- once on the root for
+        // the live selection and once per A/B slot -- so reopening a project ticks the row
+        // that produced the sound (ADR-0024 as amended; SERIALIZATION_REGISTRY.md).
+        // `readSlot` ASSIGNS it rather than merging, so an absent field means the default
+        // (unknown) and a repeat restore into one live instance cannot inherit the previous
+        // session's slot identity.
+        anamorph::PresetManager::Selection selection;
         bool isValid() const noexcept { return params.isValid(); }
     };
     StateSet currentStateSet();                  // current params + live preset meta

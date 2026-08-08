@@ -8,7 +8,7 @@ restating them; where this file and the record it cites disagree, the cited reco
 (`SOURCE_OF_TRUTH.md`).
 
 Last reviewed: **2026-07-26** (substance unchanged since). The release then in preparation was
-v0.9.0; it was never tagged, and the release in preparation is now **v0.9.1** (the vendor
+v0.9.0; neither it nor v0.9.1 was tagged, and the release in preparation is now **v0.9.2** (the vendor
 manufacturer-code change, ADR-0023). Nothing in this document — the product model, the
 distribution model, or the open owner/legal decisions — is affected by that renumbering, so the
 review date stands and moves only when the substance does.
@@ -27,7 +27,7 @@ review date stands and moves only when the substance does.
 
 ## 2. Current phase — internal testing
 
-The current pre-1.0 build (**v0.9.1**; see `docs/HANDOVER.md`) is being prepared for
+The current pre-1.0 build (**v0.9.2**; see `docs/HANDOVER.md`) is being prepared for
 **internal / beta testing**, not for sale.
 
 - Builds reach testers as per-push CI artifacts today; the **GitHub Release** route is implemented
@@ -112,7 +112,7 @@ Both lists must be empty:
 
 **Owner/legal** — §4 items 1, 2, 3, 4 (and 6, 7 for the markets concerned).
 
-**Engineering / process** — the `RELEASE_POLICY.md` preconditions still open for v0.9.1, which are
+**Engineering / process** — the `RELEASE_POLICY.md` preconditions still open for v0.9.2, which are
 tracked in `docs/HANDOVER.md` §Release Status: `ADR-0022` still `Proposed`,
 `RELEASE_COMPATIBILITY_CHECKLIST.md` never completed for this release, and no Level-5 manual
 audition recorded. Signing and notarization (`RH-PR-3`/`RH-PR-5`) are not release-blocking but are

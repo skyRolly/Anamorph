@@ -262,7 +262,7 @@ presets, and are invisible to host automation:
 | Setting | Options | Notes |
 |---|---|---|
 | **Oversampling** | Off (1×) / 2× / 4× / 8× | For the nonlinear stages (Drive, Chorus, Dim-D). **Off adds no latency.** Higher factors reduce aliasing at higher CPU cost and add a small, host-compensated latency — but only while a nonlinear stage is actually active (§5). |
-| **Window Size** | XS / S / M / L / XL | UI scale steps (75 % … 150 %); M is the original size. |
+| **UI Scale** | XS / S / M / L / XL | Scales the whole window (75 % … 150 %); M is the original size. (Labelled *Window Size* before 0.9.2.) |
 | **Vectorscope Persist** | 0 … 100 % | Afterglow length. While you drag it, the Settings panel becomes see-through so you can watch the scope behind it. |
 | **Tooltips** | on/off | Default off. |
 | **UI Animations** | on/off | Default on. |
@@ -392,11 +392,20 @@ extension, stored per user:
 There is no in-plugin rename/delete — manage the files in that folder (the plug-in picks
 up changes, sorted alphabetically).
 
+Saving a user preset under a **factory preset's name** is allowed, and the two stay
+separate: the checkmark follows whichever one you actually loaded, and ‹ › steps from it.
+Both rows show the same label, so tell them apart by the FACTORY / USER section they sit
+in. Reopening the project puts the checkmark back where it was, for each A/B slot
+independently. If the preset it was on is no longer there — you deleted, renamed or moved
+the file — the sound still loads exactly as saved and the menu simply shows no checkmark,
+rather than picking a different preset that happens to share the name. (Projects saved
+before 0.9.2 have only the name to go on, so a clashing one lands on the factory row.)
+
 ### 7.3 What a preset contains — and compatibility
 
 Loading a preset changes **sound parameters only**. Deliberately left alone: Bypass, band
 solo (always off after a load), Simple/Advanced state, and everything in Settings
-(oversampling, window size, etc. stay as they are in your session).
+(oversampling, UI scale, etc. stay as they are in your session).
 
 *(The saved `.anamorph` file itself is a dump of the whole parameter tree, so it does
 contain whatever Bypass / band-solo / Advanced state you had at save time — those values
@@ -542,7 +551,7 @@ input. Raise it again and A/B.
 **Can I automate the controls?**
 Yes — every sound parameter is exposed to the host and can be automated or MIDI-mapped
 from your DAW as usual, including the crossover frequencies, the per-band widths, the band
-count and the band-solo mask. The Settings overlay items (oversampling, window size, scope
+count and the band-solo mask. The Settings overlay items (oversampling, UI scale, scope
 persistence, tooltips, animations) and the top bar's meters toggle are deliberately **not**
 host parameters at all, so they never clutter your automation list — they are session state
 and are saved with your project. Bypass is a host parameter, but it is excluded from A/B, undo

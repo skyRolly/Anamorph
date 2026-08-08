@@ -24,7 +24,7 @@ public:
     // The host reports its display/DPI scale here (Windows hosts call this). We
     // COMPOSE it with the user UI-scale rather than let JUCE's default overwrite our
     // transform -- that overwrite is what made the window open at the wrong size and
-    // ignore the Window-Size combo on some Windows hosts (Mac uses backing scale, so
+    // ignore the UI-Scale combo on some Windows hosts (Mac uses backing scale, so
     // it never hit this).
     void setScaleFactor (float newScale) override;
 

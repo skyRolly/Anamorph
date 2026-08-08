@@ -10,7 +10,7 @@ namespace anamorph
 // ============================================================================
 //  InternalState  (host-hidden session parameters)
 //
-//  The Settings controls (Oversampling, Window Size, Scope Persistence, Tooltips, UI
+//  The Settings controls (Oversampling, UI Scale, Scope Persistence, Tooltips, UI
 //  Animations) and Show Meters are NOT musical parameters: they are view / engine-config
 //  state. Exposing them as VST3 parameters cluttered the host's parameter list (REAPER
 //  shows every parameter regardless of JUCE's `withAutomatable(false)` flag), so they are
@@ -100,7 +100,7 @@ public:
 
     // One-time migration from a pre-0.8.4 session, where these were ordinary APVTS
     // parameters. Old sessions have no ANAMORPH_INTERNAL child, so without this their
-    // saved Oversampling / Window Size / Persistence / Tooltips / Animations / Show Meters
+    // saved Oversampling / UI Scale / Persistence / Tooltips / Animations / Show Meters
     // would silently revert to defaults. Reads the legacy PARAM nodes (id/value) out of the
     // saved APVTS state and maps them onto the host-hidden InternalState.
     void migrateFromLegacyApvts (const juce::ValueTree& apvtsState)
