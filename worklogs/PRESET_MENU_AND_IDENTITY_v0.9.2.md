@@ -9,7 +9,7 @@
 - **Date:** 2026-08-07 · **Version:** 0.9.2 (PR #100) · **Branch:** `claude/beautiful-sagan-JAUFI`.
 - **Reference tree:** JUCE 9.0.0 at the pinned commit `f8f8864…` (`CMakeLists.txt:36-38`), fetched
   and read locally; all JUCE line citations below are against that commit.
-- **Suites:** `AnamorphTests` 140 checks, `AnamorphStateTests` 878 checks (was 774), both green.
+- **Suites:** `AnamorphTests` 140 checks, `AnamorphStateTests` 893 checks (was 774), both green.
 
 ---
 
@@ -187,7 +187,7 @@ is pure name, so in the duplicate-name case it ticks **both** rows. Its factory 
 index, not a stable string, so reordering the table would silently re-point a live hint. Nothing was
 ported.
 
-**Test-count delta:** state test 10 added 23 checks (774 → 797); §5, §7 and §8 take the suite to 847, §9 to 856, §10 to 858, §11 to 866 and §12 to 878. Each of H1, H3 and H4 has an
+**Test-count delta:** state test 10 added 23 checks (774 → 797); §5, §7 and §8 take the suite to 847, §9 to 856, §10 to 858, §11 to 866, §12 to 878 and §13 to 893. Each of H1, H3 and H4 has an
 assertion that was verified to **fail** with its fix disabled — a test that cannot fail is not a
 test.
 
@@ -602,3 +602,115 @@ last two reports blurred: the *encode* side of the same character **was** a real
 Maintainer sign-off for both items in this round is recorded per the review confirmation; neither is
 an `ARCHITECTURE_REVIEW_GATE` item, since no serialization field was added, removed or changed in
 meaning and no ADR decision moved.
+
+## 13. Eighth review round — an unrecognised chunk is not a restore, and A/B slot symmetry
+
+**`setStateInformation` had a third case nobody was maintaining.** It handles two root shapes,
+`AnamorphRoot` and the bare v0.2 APVTS tree. A chunk matching neither — a foreign or forward-version
+root, which state test 7 has exercised since 0.8.13 — fell straight through to the adoption block:
+
+```
+abUndo[0] = {}; abUndo[1] = {};                       // "fresh session"
+const auto adoptedName = haveName ? restoredName : PresetManager::defaultName();
+if (haveBaseline) presets.setMeta (adoptedName, restoredBaseline, restoredSelection);
+else              presets.adoptRestoredState (adoptedName, restoredSelection);
+```
+
+With nothing restored, `haveName`/`haveBaseline` are both false, so the live sound was **relabelled**
+`"Default"`, its identity dropped to `unknown` (so `currentIndex()`'s name scan ticked the factory
+*Default* row), its dirty-star re-baselined, and the undo history cleared — all describing a session
+that never loaded.
+
+**Only part of this was new.** §12 made `adoptRestoredState` assign the name unconditionally, which
+is what put the *label* in the blast radius. The *identity* and *baseline* halves were pre-existing:
+`sel = restoredSel` and `sigAtLoad = soundSig()` were always unconditional. So §12 widened a defect
+rather than creating one, and the correct scope is all four fields, which is what the maintainer's
+brief says.
+
+**The fix is `else { return; }`, and the argument for it is already in the function.** Six lines
+above, `if (xml == nullptr) return;` gives exactly this answer to a blob `getXmlFromBinary` cannot
+parse. An unrecognised *root* is the same situation one layer down: input we do not recognise never
+becomes state. Guarding the four fields individually would have been the special-case hack the brief
+warns against, and would have left the undo-history clear — which is the same error in a different
+member. **Disclosed:** stopping that clear was not named in the finding. It follows from the same
+rule (nothing loaded ⇒ nothing to protect the user's history *from*) and discarding undo for a no-op
+is strictly worse than keeping it, but it is a behaviour change beyond the four listed fields.
+
+**A/B slot initialisation was asymmetric.** `abEnsureInit()` seeded an invalid slot A from
+`currentStateSet()` and an invalid slot B from **a copy of slot A**. Worth being precise about when
+that mattered: at construction *both* slots are invalid, so slot A is seeded from the live state and
+slot B copies it — the same value either way, which is why the asymmetry survived this long. It
+diverged only when slot A was valid and slot B was not: an `AB` node whose `slotBParams` alone was
+missing or unparsable, which §11's whole-slot reset made reachable as "invalid" rather than "stale".
+Slot B then came back as a **duplicate of slot A** instead of the state just restored, and a later
+save wrote that duplicate out.
+
+Both `SERIALIZATION_REGISTRY.md` and `STATE_SERIALIZATION.md` already described the rule as
+symmetric — "re-seeded from the state that was just restored" — so the code was the half that was
+wrong. It is now one loop over `abSlot`, and since `currentStateSet()` builds a fresh tree per call,
+the explicit `createCopy()` that kept the slots independent is no longer needed.
+
+**API: `setMeta`'s identity-less overload is gone.** `setMeta(name, baseline)` forwarded a
+default-constructed `Selection`, so *forgetting which row produced the sound* — the mis-tick ADR-0024
+exists to remove — was something a caller could do without writing it down. Its only caller was a
+test, which now passes `Selection()` explicitly, which is the point: the call site states the intent.
+The one-argument `adoptRestoredState` overload had the identical shape and no callers at all, so it
+went with it rather than being left as the same trap under a different name. No behaviour change.
+
+**Documented: the precondition `setMeta`'s baseline fallback rests on.** The empty-baseline branch
+calls `soundSig()`, which reads the **live** APVTS — so "the state being adopted is its own clean
+baseline" is only true because every caller applies the parameters *first* (`applyStateSet` does
+`applyStatePreservingView()` then `setMeta`; `setStateInformation` restores the `ANAMORPH` child long
+before the adoption block). A future caller adopting metadata before applying its parameters would
+baseline against the outgoing sound and mis-report the dirty star from then on, silently. The
+signature cannot express that, so the header now states it.
+
+**Verification, each fix reverted independently.**
+
+| reverted | failures |
+|---|---|
+| the `else { return; }` | 6 — name (`got "Default"`), identity/checkmark, baseline, dirty-star, and both repeated-attempt assertions |
+| `abEnsureInit`'s symmetry | 2 — exactly the slot-B variants, `got 0.700000048` (slot A's sound), slot A untouched |
+
+State test 7's foreign-root block now runs with real metadata present (a loaded factory preset, then
+an edit so the dirty-star is on) and asserts name, checkmark, baseline and dirty-star across **two**
+consecutive unknown-chunk restores into one live instance. State test 9's payload block gained the
+slot dimension: four variants (slot A / slot B × absent key / unparsable payload), each staging three
+distinct sounds — `0.70` in the other slot, `0.90` stale in the broken slot, `0.45` live — so a
+duplicate, a stale carry-over and the correct answer are all distinguishable. Suite: 878 → **893
+checks**, 0 failures; `AnamorphTests` 140, unchanged.
+
+**No `CHANGELOG.md` entry.** The A/B symmetry and the unknown-chunk guard both need a session shape no
+released build writes (an `AB` node missing one slot's payload; a root tag this plug-in never
+produces), so nothing user-visible changes for any session a shipped version can have saved
+(`CHANGELOG_POLICY` rule 3). The `setMeta` overload removal is an internal API change with no
+behaviour.
+
+**Considered and DECLINED, so it is not re-raised: an `AnamorphRoot` carrying no `ANAMORPH` child.**
+An adversarial probe run against this change set asked whether the sibling case is the same defect:
+a chunk that IS a recognised `AnamorphRoot` but has no parameters child restores nothing sonically
+(`params.isValid()` is false, so no `replaceState`) while still adopting metadata — so the live sound
+ends up labelled `defaultName()` with a clean baseline. It reproduces. It is nevertheless **not**
+changed, for four reasons that need to survive the next reviewer:
+
+1. **It is recognised input.** The brief, and the rule this round implements, is about chunks of
+   *neither* shape. An `AnamorphRoot` declares itself one of ours.
+2. **Field-by-field is the deliberate design for a recognised root**, and something already depends
+   on it: state test 7's `restoreWithActive` feeds an `AnamorphRoot` carrying *only* an `AB` child
+   and requires the clamped `active` to be applied. Aborting the restore when the params child is
+   missing would break that, and would be the special-case hack the brief warns against.
+3. **The obvious alternative re-introduces the bug this PR spent three rounds removing.** "Skip the
+   adoption when `params.isValid()` is false" means a repeated restore into a live instance keeps the
+   *previous* project's name, identity and baseline — exactly the leakage §12 closed. Neither answer
+   is clean for a chunk that carries structure but no sound; the current one at least never leaks
+   across projects, and its metadata comes from the chunk in front of it.
+4. **No shipped version can write one.** `getStateInformation` always appends
+   `copyStateWithRawValues()`, so this is hand-edited/corrupt territory — state test 7's remit.
+
+The same probe re-raised the v0.2 branch leaving `abSlot[]` and `abActive` from the previous restore.
+That is the *consistently stale* gap already recorded at the end of §11: pre-existing since 0.6.4,
+both halves of each slot from the same (old) project, and outside this round.
+
+Maintainer sign-off for every item in this round is recorded per the review confirmation. None is an
+`ARCHITECTURE_REVIEW_GATE` item: no serialization field was added, removed or changed in meaning, no
+ADR decision moved, and the wire format is byte-compatible in both directions.

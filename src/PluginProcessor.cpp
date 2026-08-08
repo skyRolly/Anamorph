@@ -489,12 +489,22 @@ void AnamorphAudioProcessor::redo()
 // ----------------------------------------------------------------------------
 void AnamorphAudioProcessor::abEnsureInit()
 {
-    if (! abSlot[0].isValid()) abSlot[0] = currentStateSet();
-    if (! abSlot[1].isValid())
-    {
-        abSlot[1] = abSlot[0];
-        abSlot[1].params = abSlot[0].params.createCopy(); // independent tree
-    }
+    // An INVALID slot means "no stored state for this slot" -- at construction, or after a
+    // restore whose AB node carried no usable params payload for it (readSlot resets the whole
+    // slot, so an unreadable payload arrives here rather than keeping the previous project's).
+    // BOTH slots get the same answer, the current live state, which is what
+    // SERIALIZATION_REGISTRY.md means by "lazily initialised from current".
+    //
+    // Slot B used to be seeded from a copy of slot A instead. At construction the two are
+    // indistinguishable -- slot A has just been seeded from the same live state -- so this
+    // changes nothing on the path that runs every time. They diverged only when slot A was
+    // valid and slot B was not, i.e. an AB node whose `slotBParams` alone was missing or
+    // unparsable: slot B came back as a DUPLICATE of slot A rather than as the state just
+    // restored, and a later save wrote that duplicate out. currentStateSet() builds a fresh
+    // tree per call, so the slots stay independent with no explicit copy.
+    for (auto& slot : abSlot)
+        if (! slot.isValid())
+            slot = currentStateSet();
 }
 
 void AnamorphAudioProcessor::abApplySlot (int slot)
@@ -692,6 +702,23 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
         auto legacy = juce::ValueTree::fromXml (*xml);
         apvts.replaceState (legacy);
         reassertParameters (legacy, /*notifyHost*/ false); // legacy host restore: no host-notify
+    }
+    else
+    {
+        // Neither shape: a foreign or forward-version chunk. NOTHING above ran -- not one
+        // parameter, not the Settings, not the A/B slots -- so the sound in force is still the
+        // one the user had, and nothing below may claim otherwise. Everything after this point
+        // ADOPTS: it clears the undo history for the "new session" and writes the restored
+        // preset name, identity and baseline into the manager. Running that with nothing
+        // restored relabels the live sound (with no `presetName` to read it would resolve to
+        // defaultName()), drops the identity to `unknown` so the drop-down ticks whatever
+        // shares the label, and re-baselines the dirty-star -- metadata describing a session
+        // that was never loaded.
+        //
+        // Returning is the same answer the guard at the top of this function already gives an
+        // unparsable blob, which is the same situation one layer down: input we do not
+        // recognise is not a restore.
+        return;
     }
 
     // Fresh session: clear undo history.

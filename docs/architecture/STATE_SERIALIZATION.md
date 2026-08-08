@@ -4,8 +4,8 @@ How session state is saved and restored. The field-level ledger is in
 `SERIALIZATION_REGISTRY.md`; binding rules are in
 `docs/policies/SESSION_COMPATIBILITY_POLICY.md`.
 
-Evidence [Verified]: src/PluginProcessor.cpp:563-593 (`getStateInformation`), :595-717
-(`setStateInformation`), :540-561 (the `writeSelection` / `readSelection` helpers);
+Evidence [Verified]: src/PluginProcessor.cpp:573-603 (`getStateInformation`), :605-744
+(`setStateInformation`), :550-571 (the `writeSelection` / `readSelection` helpers);
 src/PresetManager.cpp:333-386 (`encodeSelection` / `decodeSelection`).
 
 ## On-disk schema (`getStateInformation`)
@@ -59,7 +59,7 @@ a factory id removed by a later version, a user preset deleted, renamed or moved
 rather than falling back to a same-named row. The field-level ledger, including the file-name vs
 absolute-path encoding rule, is in `SERIALIZATION_REGISTRY.md`.
 
-Evidence [Verified]: src/PluginProcessor.cpp:563-593 (`getStateInformation`).
+Evidence [Verified]: src/PluginProcessor.cpp:573-603 (`getStateInformation`).
 
 ## `getStateInformation` logic
 
@@ -96,13 +96,21 @@ Evidence [Verified]: src/PluginProcessor.cpp:563-593 (`getStateInformation`).
      absent field must mean the default rather than whatever the previous session left there — for the
      slot as a **whole**, so its sound and its metadata can never come from two different projects. A
      slot whose params are missing or unparsable comes back **invalid** and `abEnsureInit()` re-seeds
-     it from the state just restored (the documented "lazily initialised from current" default). A
+     it from the state just restored (the documented "lazily initialised from current" default) —
+     **both** slots, symmetrically; slot B used to be seeded from a copy of slot A, which only
+     differed when slot A alone was readable and made slot B a duplicate of it. A
      slot that comes back with an **empty baseline** (only a pre-0.6.4 slot can) becomes clean at its
      own state when it is switched into — "no baseline recorded" is not "modified". Both rules are
      stated field-by-field in `SERIALIZATION_REGISTRY.md`, `AB` child.
 3. **Else if the root is the bare APVTS state type:** backward-compat path for v0.2 sessions
    (`apvts.replaceState` + `reassertParameters`).
-4. Clear undo history; adopt preset metadata **including the decoded identity**
+4. **Else — neither shape:** a foreign or forward-version root. Nothing above ran, so the function
+   **returns here**: no parameter, Settings value or A/B slot was touched, and step 5 must not run
+   either. Everything in step 5 *adopts* — it would clear the undo history for a session that never
+   loaded and write a preset name, identity and baseline describing it, relabelling the sound the
+   user actually has. Same answer as the `getXmlFromBinary` guard in step 1: input we do not
+   recognise is not a restore.
+5. Clear undo history; adopt preset metadata **including the decoded identity**
    (`setMeta` / `adoptRestoredState`); `syncCommitted()`. The name is resolved here and only here,
    because only this scope can tell an **absent** `presetName` (a session predating the field →
    `PresetManager::defaultName()`) from a **present but empty** one (a real "no preset" state →
@@ -117,9 +125,9 @@ Evidence [Verified]: src/PluginProcessor.cpp (`getStateInformation` / `setStateI
 
 | Legacy format | Handling | Source |
 |---|---|---|
-| **v0.2**: root *is* the APVTS tree | `setStateInformation` else-branch `apvts.replaceState` | :690-695 |
-| **pre-0.6.4**: A/B slots stored params only (`slotA`/`slotB`) | `readSlot` legacy-key fallback | :678-682 (within `readSlot`, :642-688) |
-| **pre-0.8.4**: Oversampling/view were APVTS params (no `ANAMORPH_INTERNAL`) | `migrateFromLegacyApvts` | :618-621; InternalState.h:106-128 |
+| **v0.2**: root *is* the APVTS tree | `setStateInformation` else-branch `apvts.replaceState` | :700-705 |
+| **pre-0.6.4**: A/B slots stored params only (`slotA`/`slotB`) | `readSlot` legacy-key fallback | :688-692 (within `readSlot`, :652-693) |
+| **pre-0.8.4**: Oversampling/view were APVTS params (no `ANAMORPH_INTERNAL`) | `migrateFromLegacyApvts` | :628-631; InternalState.h:106-128 |
 | **pre-0.9.2**: no indicator identity in the session | `decodeSelection` yields `unknown` → name fallback | src/PresetManager.cpp:369-386; :128-131 |
 
 ## View-parameter preservation on restore

@@ -219,6 +219,47 @@ because a v0.2 blob has no `presetName` property. Four cases (empty/absent × ba
 are pinned in state test 12; all eight new assertions were verified to fail with the fix reverted.
 Maintainer confirmation of the direction is recorded per the review sign-off.
 
+**An unrecognised chunk is not a restore (eighth review round).** `setStateInformation` handles two
+root shapes; anything else matched neither and *fell through* to the adoption block, which clears the
+undo history and writes the restored preset name, identity and baseline. With nothing restored, that
+relabelled the live sound — after the previous round, with the constant `"Default"` — dropped the
+identity to `unknown` so the name scan ticked whatever shared the label, and re-baselined the
+dirty-star. The name half was introduced by the previous round; the identity and baseline halves were
+**pre-existing**, since `adoptRestoredState` always assigned those two unconditionally. The fix is an
+`else { return; }`, which is the same answer the `getXmlFromBinary` guard at the top of the function
+already gives an unparsable blob — the identical situation one layer down. It also stops the undo
+history being cleared for a session that never loaded; disclosed rather than slipped in, since that
+half was not named in the finding.
+
+**`abEnsureInit` now seeds both slots the same way.** It seeded an invalid slot A from
+`currentStateSet()` but an invalid slot B from a **copy of slot A**. On the path that runs every time
+— construction, both slots invalid — the two are indistinguishable, so this changes nothing there.
+They diverged only when slot A was valid and slot B was not, i.e. an `AB` node whose `slotBParams`
+alone was missing or unparsable: slot B came back as a duplicate of slot A rather than as the state
+just restored, and a later save wrote that duplicate out. The registry and `STATE_SERIALIZATION.md`
+had already been written as though the rule were symmetric, so this is the code catching up to the
+documented invariant rather than a new one. `currentStateSet()` builds a fresh tree per call, so the
+explicit `createCopy()` for slot independence is no longer needed.
+
+**Declined in the same round, recorded so it is not re-raised: an `AnamorphRoot` with no `ANAMORPH`
+child.** Such a chunk is *recognised*, so it restores the fields it carries and resolves the absent
+ones to their documented defaults — while `params.isValid()` is false, so the parameters keep their
+current values and the live sound ends up labelled `defaultName()`. It reproduces, and it is
+deliberately left alone: the rule this round implements is about *unrecognised* input; field-by-field
+handling of a recognised root is the existing design and state test 7's `restoreWithActive` depends
+on it (an `AnamorphRoot` carrying only an `AB` child must still apply the clamped `active`); the
+obvious alternative — skip adoption when there are no params — re-introduces the cross-restore
+leakage the previous round removed; and `getStateInformation` always writes an `ANAMORPH` child, so no
+shipped version can produce one. Reasoning in full in `worklogs/…v0.9.2.md` §13.
+
+**`setMeta`'s identity-less overload removed.** The two-argument overload forwarded a
+default-constructed `Selection`, so "forget which row produced this sound" — the mis-tick ADR-0024
+exists to remove — was something a caller could do without writing it down. Its only caller was a
+test, which now passes `Selection()` explicitly. The one-argument `adoptRestoredState` overload was
+dead code with the identical shape and went with it. No behaviour change. The header also now records
+the precondition `setMeta`'s empty-baseline fallback depends on and the signature cannot enforce: the
+parameters the metadata describes must already be applied, because `soundSig()` reads the live APVTS.
+
 **Re-raised and re-refuted: the `~foo` `saveUser` claim.** A later review reported this ledger as
 still asserting that `saveUser` "writes outside the folder and still returns success". It does not,
 and has not since the round recorded in `worklogs/…v0.9.2.md` §8 — the sentence was removed there and

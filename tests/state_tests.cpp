@@ -377,7 +377,9 @@ static void testStateRoundTripExact()
     a.abSwitchTo (1);
     setRaw (a, "width", 0.9f);
     a.abSwitchTo (0);
-    a.getPresets().setMeta ("RoundTrip Fixture", "sig-baseline-token");
+    // Selection() spelled out: this fixture carries no identity, and setMeta makes callers say so.
+    a.getPresets().setMeta ("RoundTrip Fixture", "sig-baseline-token",
+                            anamorph::PresetManager::Selection());
 
     juce::MemoryBlock blobA;
     a.getStateInformation (blobA);
@@ -618,12 +620,42 @@ static void testCorruptAndForeignState()
     }
 
     // Foreign root tag: neither restore branch applies; no crash.
+    //
+    // ...and nothing may be ADOPTED either. Input we do not recognise is not a restore: the sound
+    // in force is still the user's, so relabelling it, dropping its identity or re-baselining its
+    // dirty-star would describe a session that never loaded. A host may hand a live instance any
+    // chunk it likes, so this is checked with real metadata present -- a loaded preset, then an
+    // edit so the dirty-star is on -- which is exactly what such a call could leak away.
     {
+        auto& pm = p.getPresets();
+        pm.load (1);                                  // a named factory preset, with an identity
+        setRaw (p, "width", 0.33f);                   // ...edited, so isDirty() is true
+        const auto nameBefore  = pm.currentName();
+        const int  rowBefore   = pm.currentIndex();
+        const auto baseBefore  = pm.baseline();
+        const bool dirtyBefore = pm.isDirty();
+        const float wBefore    = rawOf (p, "width");
+        check (nameBefore.isNotEmpty() && rowBefore >= 0 && dirtyBefore,
+               "there is real preset metadata for an unknown chunk to disturb");
+
         juce::XmlElement foreign ("SOME_FUTURE_ROOT");
         foreign.setAttribute ("v", 99);
         const auto blob = BlobCodec::wrap (foreign);
         p.setStateInformation (blob.getData(), (int) blob.getSize());
-        check (juce::exactlyEqual (rawOf (p, "width"), widthBefore), "unknown root tag leaves parameters untouched");
+
+        check (juce::exactlyEqual (rawOf (p, "width"), wBefore), "unknown root tag leaves parameters untouched");
+        checkStr (pm.currentName(), nameBefore, "...and the preset NAME untouched");
+        check (pm.currentIndex() == rowBefore,      "...and the identity/checkmark untouched");
+        checkStr (pm.baseline(), baseBefore,        "...and the dirty baseline untouched");
+        check (pm.isDirty() == dirtyBefore,         "...so the dirty-star still reflects the live sound");
+
+        // Repeat it: a host may do this any number of times on one live instance.
+        p.setStateInformation (blob.getData(), (int) blob.getSize());
+        checkStr (pm.currentName(), nameBefore, "a repeated unknown chunk still leaks nothing");
+        check (pm.currentIndex() == rowBefore, "...identity still intact after the second attempt");
+
+        setRaw (p, "width", widthBefore);              // restore this test's working state
+        pm.setMeta ("Default", {}, anamorph::PresetManager::Selection());
     }
 
     // Out-of-range A/B active (hand-edited / forward-version blob) clamps —
@@ -817,37 +849,52 @@ static void testAbAndViewParamPreservation()
     // current" (SERIALIZATION_REGISTRY.md, `AB` child), which abEnsureInit() already
     // implements off StateSet::isValid(), so such a slot must come back INVALID and be
     // re-seeded from the state that was just restored.
+    // BOTH slot positions are covered. abEnsureInit() used to seed an invalid slot B from slot A
+    // rather than from the live state, so slot B additionally pins that asymmetry: with slot A
+    // intact and only slot B unreadable, the pre-fix answer was a DUPLICATE of slot A.
     {
-        struct Variant { void (*breakSlotA) (juce::ValueTree&); const char* what; };
+        struct Variant { int slot; void (*breakIt) (juce::ValueTree&); const char* what; };
         const Variant variants[] = {
-            { [] (juce::ValueTree& n) { n.removeProperty ("slotAParams", nullptr);
-                                        n.removeProperty ("slotA", nullptr); },   // pre-0.6.4 key too
-              "with no params key at all" },
-            { [] (juce::ValueTree& n) { n.setProperty ("slotAParams", "<ANAMORPH truncated", nullptr); },
-              "with an unparsable params payload" },
+            { 0, [] (juce::ValueTree& n) { n.removeProperty ("slotAParams", nullptr);
+                                           n.removeProperty ("slotA", nullptr); }, // pre-0.6.4 key too
+                 "slot A with no params key at all" },
+            { 0, [] (juce::ValueTree& n) { n.setProperty ("slotAParams", "<ANAMORPH truncated", nullptr); },
+                 "slot A with an unparsable params payload" },
+            { 1, [] (juce::ValueTree& n) { n.removeProperty ("slotBParams", nullptr);
+                                           n.removeProperty ("slotB", nullptr); },
+                 "slot B with no params key at all" },
+            { 1, [] (juce::ValueTree& n) { n.setProperty ("slotBParams", "<ANAMORPH truncated", nullptr); },
+                 "slot B with an unparsable params payload" },
         };
 
         for (const auto& v : variants)
         {
-            // Put a distinctive STALE sound in slot A, then park on slot B: switching AWAY
-            // from a slot snapshots the live state into it, so the defect is only observable
-            // on the slot the restored session is NOT sitting on.
-            if (q.abActiveSlot() != 0) q.abSwitchTo (0);
+            const int   other   = 1 - v.slot;
+            const char* brokenK = v.slot == 0 ? "slotAParams" : "slotBParams";
+
+            // Three distinct sounds, so every wrong answer is distinguishable from the right one:
+            // 0.70 in the OTHER slot (what a duplicate would produce), 0.90 stale in the broken
+            // slot (what keeping the previous restore would produce), 0.45 live (the correct one).
+            // The session must PARK on the other slot -- switching away from a slot snapshots the
+            // live state into it, which would mask the defect.
+            if (q.abActiveSlot() != other) q.abSwitchTo (other);
+            setRaw (q, "width", 0.7f);
+            q.abSwitchTo (v.slot);            // the other slot := 0.70
             setRaw (q, "width", 0.9f);
-            q.abSwitchTo (1);                 // slot A := width 0.9
+            q.abSwitchTo (other);             // the broken slot := 0.90 (stale), parked on `other`
             setRaw (q, "width", 0.45f);       // the live sound the broken session restores to
 
-            const juce::String tag = juce::String (" (slot A ") + v.what + ")";
-            const auto msgSetup   = "the session being broken really carries slot A params" + tag;
+            const juce::String tag = juce::String (" (") + v.what + ")";
+            const auto msgSetup   = "the session being broken really carries that slot's params" + tag;
             const auto msgLive    = "the broken session's live sound restores" + tag;
             const auto msgSound   = "a slot with no usable stored sound is re-seeded from the state "
-                                    "just restored, not left holding the previous session's sound" + tag;
+                                    "just restored -- not the previous session's, not the other slot's" + tag;
             const auto msgMeta    = "...and that slot's metadata comes from the same restore as its sound" + tag;
 
             auto broken = stateTreeOf (q);
             auto brokenAb = broken.getChildWithName ("AB");
-            check (brokenAb.isValid() && brokenAb.hasProperty ("slotAParams"), msgSetup.toRawUTF8());
-            v.breakSlotA (brokenAb);
+            check (brokenAb.isValid() && brokenAb.hasProperty (brokenK), msgSetup.toRawUTF8());
+            v.breakIt (brokenAb);
 
             if (auto xml = broken.createXml())
             {
@@ -855,7 +902,7 @@ static void testAbAndViewParamPreservation()
                 q.setStateInformation (reBlob.getData(), (int) reBlob.getSize());
                 const auto restoredName = q.getPresets().currentName();
                 checkNear ((double) rawOf (q, "width"), 0.45, 1.0e-6, msgLive.toRawUTF8());
-                q.abSwitchTo (0);
+                q.abSwitchTo (v.slot);
                 checkNear ((double) rawOf (q, "width"), 0.45, 1.0e-6, msgSound.toRawUTF8());
                 checkStr (q.getPresets().currentName(), restoredName, msgMeta.toRawUTF8());
             }

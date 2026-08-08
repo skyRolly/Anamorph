@@ -134,17 +134,24 @@ public:
     // preset the slot does not even have (it has no name either). The state being adopted becomes
     // its own clean baseline instead, which is exactly the rule adoptRestoredState() applies to a
     // session root that carries no `presetBaseline`.
+    //
+    // PRECONDITION for that fallback, not enforced by the signature: the parameters this metadata
+    // describes must ALREADY be applied. soundSig() reads the LIVE apvts, so "its own clean
+    // baseline" means "the sound in force right now" -- correct only because every caller applies
+    // first (applyStateSet does applyStatePreservingView() then this; setStateInformation restores
+    // the ANAMORPH child long before the adoption block). A caller that adopted metadata BEFORE
+    // applying its parameters would baseline against the outgoing sound and mis-report the dirty
+    // star from then on, silently. Adopt after applying, always.
+    //
+    // There is deliberately NO identity-less overload. One existed until 0.9.2 and it made
+    // "forget which row produced this sound" -- the mis-tick ADR-0024 exists to remove -- something
+    // a caller could do without writing it down. Pass `Selection()` explicitly to mean it.
     void setMeta (const juce::String& name, const juce::String& baselineSig,
                   const Selection& sourceSel)
     {
         current = name;
         sigAtLoad = baselineSig.isNotEmpty() ? baselineSig : soundSig();
         sel = sourceSel;
-    }
-    // Convenience for callers with no identity to carry (currently tests only).
-    void setMeta (const juce::String& name, const juce::String& baselineSig)
-    {
-        setMeta (name, baselineSig, Selection());
     }
 
     void load (int index);                           // message thread only
@@ -153,11 +160,14 @@ public:
     bool saveUser (const juce::String& name);        // write + select; false on IO error
 
     // Host state restore: adopt the remembered name + identity WITHOUT applying anything.
-    // `restoredSel` is whatever the session carried (default = unknown, i.e. a pre-0.9.2
-    // session), and it is METADATA ONLY -- it never touches a parameter, so the sound
-    // restores identically whether or not the identity resolves.
+    // `restoredSel` is whatever the session carried -- `Selection()` (unknown) for a pre-0.9.2
+    // session, which is the name fallback -- and it is METADATA ONLY: it never touches a
+    // parameter, so the sound
+    // restores identically whether or not the identity resolves. Its baseline is derived from the
+    // live sound, so the same "apply the parameters first" precondition as setMeta applies. Like
+    // setMeta it takes the identity explicitly -- the one-argument overload was removed with
+    // setMeta's for the same reason.
     void adoptRestoredState (const juce::String& name, const Selection& restoredSel);
-    void adoptRestoredState (const juce::String& name) { adoptRestoredState (name, Selection()); }
 
     // Undo bracketing (set by the processor). onAboutToLoad fires BEFORE any parameter changes
     // (flush a settled edit into its own step); onLoaded fires AFTER the new name/baseline are set
