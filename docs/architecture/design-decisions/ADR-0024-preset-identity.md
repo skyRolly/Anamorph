@@ -73,13 +73,17 @@ folder) are not disjoint.
 - No user-visible string was added (constraint C8): the ids never surface.
 
 ## Related code
-- `src/PresetManager.h:30-70` (`Entry::factoryId`, `Selection`, `selection()`, `setMeta`, `onSaved`)
-- `src/PresetManager.cpp:19-58` (the factory table + `findFactory`), `:96-135` (`currentIndex`),
-  `:214-250` (`load`/`loadFile`), `:276-300` (`saveUser`, `adoptRestoredState`)
+- `src/PresetManager.h:30-36` (`Entry::factoryId`), `:54-77` (`Selection`, `SelectionFields`,
+  `encodeSelection`/`decodeSelection`), `:99` (`selection()`), `:103-114` (`setMeta`),
+  `:121-126` (`adoptRestoredState`), `:134-140` (`onSaved`)
+- `src/PresetManager.cpp:19-58` (the factory table + `findFactory`), `:108-132` (`currentIndex`),
+  `:202-250` (`load`), `:252-266` (`loadFile`), `:278-299` (`saveUser`), `:301-306`
+  (`adoptRestoredState`), `:312-353` (`encodeSelection`/`decodeSelection`)
 - `src/PluginProcessor.h:113-125` (`StateSet::selection`)
-- `src/PluginProcessor.cpp:36-41` (the hooks), `:233-250` (`currentStateSet`/`applyStateSet`),
-  `:410-433` (`commitPresetSwitchUndoStep`), `:576-600` (`readSlot` clears the identity)
-- `tests/state_tests.cpp` — state test 10
+- `src/PluginProcessor.cpp:36-47` (the hooks, incl. `onSaved`), `:243-254`
+  (`currentStateSet`/`applyStateSet`), `:417-443` (`commitPresetSwitchUndoStep`),
+  `:531-551` (`writeSelection`/`readSelection`), `:635-660` (`readSlot`)
+- `tests/state_tests.cpp` — state tests 10, 11 and 12
 
 ## Amendment — the identity IS persisted, in plug-in state only (2026-08-07, pre-merge)
 
@@ -143,10 +147,19 @@ shape; state test 10's reload assertion).
 
 ---
 
-Evidence [Verified]:
-- Source: as listed above.
-- Tests: `AnamorphStateTests` state test 10 (797 checks total, green) — the shared-name save, both
-  rows selectable, the A/B round-trip, undo after a save, the outside-folder file, the deleted user
-  preset, and the documented restore tie-break. State test 1 (serialized schema shape) passing
-  unchanged is the evidence that nothing was added to the saved state.
+Evidence [Verified] — **as amended**; this block describes the ADR in force, not the original
+decision preserved above it:
+- Source: the **Related code** list above, plus the **Amended related code** in the Amendment.
+- Tests: `AnamorphStateTests`, 842 checks, green. **State test 10** — the shared-name save, both
+  rows selectable, the A/B round-trip, undo after a save, redo invalidation on an identical-sounding
+  switch, the outside-folder file and the deleted user preset. **State test 11** — factory-id
+  integrity (present, unique, every one resolving), which is what makes `load()`'s assert
+  unreachable. **State test 12** — the whole restore matrix of the Amendment: factory restore, user
+  restore against a same-named factory preset, an unresolvable factory id, a missing user preset, a
+  preset nested in a sub-folder, a pre-0.9.2 session with no identity, and per-A/B-slot identity —
+  each asserting the restored parameters are **bit-identical**, which is the evidence that the
+  identity is metadata and never reaches the sound. **State test 1** pins the new schema shape (the
+  three root fields + six slot fields); it was amended for that, and its passing is no longer
+  evidence that the saved state is unchanged — the saved state gained six additive fields, by
+  design and with approval.
 - History: CHANGELOG.md `[0.9.2]`; PR #100.

@@ -9,7 +9,7 @@ Field-level ledger of everything written to session state. Companion to
 > migration support (a read path for the old field). Adding a field is allowed only if absence
 > is handled (a default), so older sessions still load.
 
-Evidence [Verified]: backward-compat paths at src/PluginProcessor.cpp:557-560 (pre-0.8.4 `migrateFromLegacyApvts`), :576-593 (pre-0.6.4 `readSlot`), :596-600 (v0.2 bare APVTS);
+Evidence [Verified]: backward-compat paths at src/PluginProcessor.cpp:612-615 (pre-0.8.4 `migrateFromLegacyApvts`), :635-660 (pre-0.6.4 `readSlot`), :662-667 (v0.2 bare APVTS);
 src/InternalState.h:92-128.
 
 ## `AnamorphRoot` properties
@@ -19,7 +19,7 @@ src/InternalState.h:92-128.
 | `presetName` | String | ≥0.6 (Unverified exact) | No | No | falls back to current name |
 | `presetBaseline` | String | 0.6.x (#6) [Partially Verified] | No | No | `adoptRestoredState` clean baseline |
 
-Source: src/PluginProcessor.cpp:516-517 (write), :562-567 (read), :608-610 (default).
+Source: src/PluginProcessor.cpp:561-562 (write), :617-624 (read), :674-676 (default).
 
 ### The preset **indicator identity** (0.9.2, ADR-0024 as amended)
 
@@ -45,8 +45,9 @@ Encoding and decoding live in one place — `PresetManager::encodeSelection` / `
 Absent, empty, half-written or unrecognised all decode to `unknown`, which is the pre-0.9.2 name
 fallback (rule 2 of `SESSION_COMPATIBILITY_POLICY.md`). A well-formed value that no longer resolves —
 a removed factory id, a deleted or moved user preset — ticks **nothing**; it never falls back to a
-same-named preset. Source: src/PresetManager.h:38-95; src/PresetManager.cpp (`encodeSelection`,
-`decodeSelection`); src/PluginProcessor.cpp (`writeSelection`/`readSelection`).
+same-named preset. Source: src/PresetManager.h:54-77 (`Selection`, `SelectionFields`);
+src/PresetManager.cpp:312-353 (`encodeSelection` / `decodeSelection`);
+src/PluginProcessor.cpp:531-551 (`writeSelection`/`readSelection`), :569 (write), :621 (read).
 
 ## `ANAMORPH` child (APVTS)
 
@@ -106,7 +107,8 @@ unconditionally rather than merging: `abSlot[]` are processor members and a host
 live instance repeatedly, so absent must mean the default, not "whatever the previous session left".
 
 **◊** Pre-0.6.4 sessions stored params-only under `slotA`/`slotB`; `readSlot` migrates them.
-Evidence [Verified]: src/PluginProcessor.cpp:586-590 (the legacy-key fallback inside `readSlot`, :576-593).
+Evidence [Verified]: src/PluginProcessor.cpp:650-654 (the legacy-key fallback inside `readSlot`, :635-660);
+the per-slot identity is written at :578 / :582 and read at :642.
 
 ## Legacy root formats (read-only compatibility)
 
@@ -114,7 +116,7 @@ Evidence [Verified]: src/PluginProcessor.cpp:586-590 (the legacy-key fallback in
 |---|---|---|
 | v0.2 bare APVTS tree | `xml->hasTagName(apvts.state.getType())` | `apvts.replaceState` |
 
-Source: src/PluginProcessor.cpp:596-600.
+Source: src/PluginProcessor.cpp:662-667.
 
 ## Notes
 
