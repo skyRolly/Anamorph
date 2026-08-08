@@ -53,7 +53,12 @@ it — the reversal, its approval and its fallback table are exactly what a futu
 otherwise re-litigate straight into a Hard Stop. Synced: `SERIALIZATION_REGISTRY.md` (six new field
 rows), `SESSION_COMPATIBILITY_POLICY.md` (rule 4's round-trip list), `API_REFERENCE.md`,
 `USER_MANUAL.md` §7.2, `TESTING.md`, `TESTING_POLICY.md`, `RELEASE_HARDENING_PLAN.md`,
-`REPOSITORY_MAP.md`, `HANDOVER.md`, `CHANGELOG.md`. `ADR-0008` gained the third `StateSet` field and
+`REPOSITORY_MAP.md`, `HANDOVER.md`, `CHANGELOG.md`, and **`PRIVACY.md`** — that document states
+every claim about what reaches disk, and the session can now carry a preset **file name**, or an
+absolute **path** in the one case where the selected preset was opened from outside the preset
+folder. The path case is the same class as the Standalone's `lastStateFile` entry the document
+already carves out, and it is now carved out alongside it, with the reason the in-folder case stores
+a name instead. `ADR-0008` gained the third `StateSet` field and
 re-based line anchors (a factual re-sync, not a reversal; ADRs stay append-only). State tests 10,
 11 and 12 pin the live behaviour, the id integrity and the whole restore matrix including every
 fallback.
