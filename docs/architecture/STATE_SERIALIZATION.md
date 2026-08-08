@@ -4,9 +4,9 @@ How session state is saved and restored. The field-level ledger is in
 `SERIALIZATION_REGISTRY.md`; binding rules are in
 `docs/policies/SESSION_COMPATIBILITY_POLICY.md`.
 
-Evidence [Verified]: src/PluginProcessor.cpp:563-593 (`getStateInformation`), :595-706
+Evidence [Verified]: src/PluginProcessor.cpp:563-593 (`getStateInformation`), :595-717
 (`setStateInformation`), :540-561 (the `writeSelection` / `readSelection` helpers);
-src/PresetManager.cpp:312-365 (`encodeSelection` / `decodeSelection`).
+src/PresetManager.cpp:333-386 (`encodeSelection` / `decodeSelection`).
 
 ## On-disk schema (`getStateInformation`)
 
@@ -103,7 +103,12 @@ Evidence [Verified]: src/PluginProcessor.cpp:563-593 (`getStateInformation`).
 3. **Else if the root is the bare APVTS state type:** backward-compat path for v0.2 sessions
    (`apvts.replaceState` + `reassertParameters`).
 4. Clear undo history; adopt preset metadata **including the decoded identity**
-   (`setMeta` / `adoptRestoredState`); `syncCommitted()`.
+   (`setMeta` / `adoptRestoredState`); `syncCommitted()`. The name is resolved here and only here,
+   because only this scope can tell an **absent** `presetName` (a session predating the field →
+   `PresetManager::defaultName()`) from a **present but empty** one (a real "no preset" state →
+   adopted verbatim). Neither resolves to the live `presets.currentName()`: a host reuses one
+   processor across restores, so that is the *previous* project's label — the same rule step 2
+   applies to the A/B slots. See `SERIALIZATION_REGISTRY.md`, `AnamorphRoot` properties.
 
 Evidence [Verified]: src/PluginProcessor.cpp (`getStateInformation` / `setStateInformation` /
 `reassertParameters` / `copyStateWithRawValues`).
@@ -112,10 +117,10 @@ Evidence [Verified]: src/PluginProcessor.cpp (`getStateInformation` / `setStateI
 
 | Legacy format | Handling | Source |
 |---|---|---|
-| **v0.2**: root *is* the APVTS tree | `setStateInformation` else-branch `apvts.replaceState` | :689-694 |
-| **pre-0.6.4**: A/B slots stored params only (`slotA`/`slotB`) | `readSlot` legacy-key fallback | :677-681 (within `readSlot`, :641-687) |
+| **v0.2**: root *is* the APVTS tree | `setStateInformation` else-branch `apvts.replaceState` | :690-695 |
+| **pre-0.6.4**: A/B slots stored params only (`slotA`/`slotB`) | `readSlot` legacy-key fallback | :678-682 (within `readSlot`, :642-688) |
 | **pre-0.8.4**: Oversampling/view were APVTS params (no `ANAMORPH_INTERNAL`) | `migrateFromLegacyApvts` | :618-621; InternalState.h:106-128 |
-| **pre-0.9.2**: no indicator identity in the session | `decodeSelection` yields `unknown` → name fallback | src/PresetManager.cpp:336-353; :128-131 |
+| **pre-0.9.2**: no indicator identity in the session | `decodeSelection` yields `unknown` → name fallback | src/PresetManager.cpp:369-386; :128-131 |
 
 ## View-parameter preservation on restore
 

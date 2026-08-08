@@ -1268,6 +1268,63 @@ static void testPresetIndicatorIdentityAcrossRestore()
         presets.refresh();
     }
 
+    // --- A repeated restore must not inherit the previous project's preset NAME ----
+    // Hosts call setStateInformation on ONE live processor any number of times, so the root
+    // metadata follows the same rule readSlot follows for the A/B slots: an absent or empty
+    // field resolves to its own default, never to what the previous project left behind. The
+    // two cases are different answers and only setStateInformation can tell them apart:
+    //   * `presetName` PRESENT but empty -- a real state since 0.9.2 (a session saved while
+    //     sitting on a nameless A/B slot stores exactly that) -- is adopted verbatim;
+    //   * `presetName` ABSENT (a session predating the field, < 0.6) resolves to
+    //     PresetManager::defaultName(), a CONSTANT, whose name-fallback tick is the documented
+    //     ADR-0024 answer for a session that carries no identity.
+    // Both adoption paths are exercised: with `presetBaseline` present (setMeta) and without
+    // it (adoptRestoredState), because each used to inherit in its own way.
+    {
+        struct NameCase { bool stripName, stripBaseline; const char* expected; const char* what; };
+        const NameCase nameCases[] = {
+            { false, false, "",        "empty presetName, baseline present"  },
+            { false, true,  "",        "empty presetName, no baseline"       },
+            { true,  false, "Default", "absent presetName, baseline present" },
+            { true,  true,  "Default", "absent presetName, no baseline"      },
+        };
+
+        for (const auto& c : nameCases)
+        {
+            const juce::String tag = juce::String (" (") + c.what + ")";
+            const auto msgSetup = "project A really has a preset name to leak" + tag;
+            const auto msgName  = "a repeated restore resolves the preset name from the session, "
+                                  "not from the previous project" + tag;
+            const auto msgTick  = "...so the drop-down cannot tick the previous project's row" + tag;
+
+            AnamorphAudioProcessor r;
+            r.prepareToPlay (48000.0, 512);
+            r.getPresets().load (1);                    // project A: a named factory preset
+            const auto projectAName = r.getPresets().currentName();
+            const int  projectARow  = r.getPresets().currentIndex();
+            check (projectAName.isNotEmpty() && projectAName != "Default" && projectARow > 0,
+                   msgSetup.toRawUTF8());
+
+            // Project B: the same session shape, carrying no identity (so the name fallback is
+            // what resolves the tick) and no usable preset name.
+            auto projectB = stateTreeOf (r);
+            projectB.removeProperty ("presetSource",    nullptr);
+            projectB.removeProperty ("presetFactoryId", nullptr);
+            projectB.removeProperty ("presetUserFile",  nullptr);
+            if (c.stripName)      projectB.removeProperty ("presetName", nullptr);
+            else                  projectB.setProperty   ("presetName", "", nullptr);
+            if (c.stripBaseline)  projectB.removeProperty ("presetBaseline", nullptr);
+
+            if (auto xml = projectB.createXml())
+            {
+                const auto blobB = BlobCodec::wrap (*xml);
+                r.setStateInformation (blobB.getData(), (int) blobB.getSize()); // SAME live instance
+                checkStr (r.getPresets().currentName(), c.expected, msgName.toRawUTF8());
+                check (r.getPresets().currentIndex() != projectARow, msgTick.toRawUTF8());
+            }
+        }
+    }
+
     check (presetFile.deleteFile(), "test preset file removed");
     if (hadUserFile) parked.moveFileTo (presetFile);
     presets.refresh();

@@ -600,7 +600,7 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
     auto root = juce::ValueTree::fromXml (*xml);
     juce::String restoredName, restoredBaseline;
     anamorph::PresetManager::Selection restoredSelection; // unknown unless the session carried one
-    bool haveBaseline = false;
+    bool haveName = false, haveBaseline = false;          // property PRESENT, as opposed to non-empty
     if (root.hasType ("AnamorphRoot"))
     {
         auto params = root.getChildWithName (apvts.state.getType());
@@ -621,6 +621,7 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
             internal.migrateFromLegacyApvts (params);
 
         restoredName = root.getProperty ("presetName").toString();
+        haveName     = root.hasProperty ("presetName");
         // Absent (pre-0.9.2), empty or unrecognised all decode to `unknown`, i.e. the name
         // fallback this build already used. Metadata only -- the parameters above are already
         // restored at this point and are not touched by anything below.
@@ -698,9 +699,19 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
 
     // Adopt the remembered preset name + baseline so the dirty-star is reproduced
     // (#6); fall back to a clean baseline at the restored state when absent.
-    if (haveBaseline) presets.setMeta (restoredName.isNotEmpty() ? restoredName : presets.currentName(),
-                                       restoredBaseline, restoredSelection);
-    else              presets.adoptRestoredState (restoredName, restoredSelection);
+    //
+    // ABSENT and EMPTY are different answers, and only this scope can tell them apart -- the
+    // same distinction `haveBaseline` already draws for the sibling field. `presetName` is
+    // absent only in a session that predates it (< 0.6): there the label is the one a fresh
+    // manager carries, and it has to be that CONSTANT rather than presets.currentName(), which
+    // is whatever the PREVIOUS project left on this instance (hosts reuse one processor across
+    // setStateInformation calls -- the same rule readSlot follows for the A/B slots above).
+    // A present-but-EMPTY presetName is a real value meaning "this state has no preset"; since
+    // 0.9.2 a session saved while sitting on a nameless A/B slot stores exactly that, so it is
+    // adopted verbatim and must never be turned back into a name.
+    const auto adoptedName = haveName ? restoredName : anamorph::PresetManager::defaultName();
+    if (haveBaseline) presets.setMeta (adoptedName, restoredBaseline, restoredSelection);
+    else              presets.adoptRestoredState (adoptedName, restoredSelection);
 
     syncCommitted();
 }

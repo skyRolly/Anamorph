@@ -100,6 +100,13 @@ public:
     static juce::File presetDirectory();
     static juce::String fileSuffix() { return ".anamorph"; } // shared with the OS chooser filter (#3)
 
+    // The label a manager carries before any session, preset load or save -- and therefore also
+    // the right answer for a session that predates the `presetName` field (< 0.6). It is a
+    // CONSTANT on purpose: the restore path needs a fallback for that case, and the obvious
+    // candidate -- currentName() -- is whatever the PREVIOUS project left on this instance,
+    // since hosts reuse one processor across setStateInformation calls.
+    static juce::String defaultName() { return "Default"; }
+
     void refresh();                                  // rescan the user folder
     const juce::Array<Entry>& entries() const noexcept { return list; }
 
@@ -181,7 +188,7 @@ private:
 
     juce::AudioProcessorValueTreeState& apvts;
     juce::Array<Entry> list;
-    juce::String current { "Default" };
+    juce::String current { defaultName() };
     Selection    sel;                   // identity of `current` (#4); unknown after a session restore
     juce::String sigAtLoad;
     mutable juce::String cachedSig;     // last signature built by isDirty() (S10)

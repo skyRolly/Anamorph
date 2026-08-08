@@ -283,6 +283,21 @@ bool PresetManager::saveUser (const juce::String& rawName)
     auto dir = presetDirectory();
     if (! dir.createDirectory()) return false;
 
+    // NOT a path escape, though it reads like one and has been reported as one more than once.
+    // `getChildFile` does short-circuit to the raw File constructor for anything isAbsolutePath
+    // accepts, and a leading `~` survives createLegalFileName on POSIX -- so `~foo.anamorph` really
+    // does yield the unresolved relative path rather than a file in `dir`. The WRITE then cannot
+    // succeed: replaceWithText never opens the target, it writes a hidden sibling built from
+    // getParentDirectory(), and for a separator-less path getPathUpToLastSlash() returns the path
+    // itself -- not a directory. createLegalFileName strips `/` and `\`, so a name reaching here can
+    // never contain a separator and every tilde-leading name hits that same degenerate parent.
+    // saveUser therefore returns FALSE below, nothing is written anywhere, and the editor's
+    // `if (saveUser(...))` leaves the Save dialog open with the text intact -- the save fails
+    // VISIBLY, which is what a sanitisation guard here would have produced anyway. Verified against
+    // the pinned juce_core for `~foo`, `~/foo`, `~` and `~root`. Do not "fix" this; see
+    // worklogs/PRESET_MENU_AND_IDENTITY_v0.9.2.md §7. (The ENCODE side of the same character was a
+    // real defect and is fixed in encodeSelection -- a `~`-named file a user copies into the folder
+    // by hand. Different function, different question: §9.)
     auto file = dir.getChildFile (name + kPresetExt);
     auto xml  = apvts.copyState().createXml();
     if (xml == nullptr || ! file.replaceWithText (xml->toString())) return false;
@@ -300,7 +315,13 @@ bool PresetManager::saveUser (const juce::String& rawName)
 
 void PresetManager::adoptRestoredState (const juce::String& name, const Selection& restoredSel)
 {
-    if (name.isNotEmpty()) current = name;
+    // `name` is adopted VERBATIM, empty included. An empty preset name is a real state since
+    // 0.9.2 -- a session saved while sitting on a nameless A/B slot stores exactly that -- and
+    // keeping the old name instead would leave the PREVIOUS project's label on this instance,
+    // because hosts reuse one processor across setStateInformation calls. Resolving "the field
+    // was absent" (a pre-0.6 session) into defaultName() is the caller's job: only the caller
+    // can tell an absent property from an empty one, exactly as it already does for the baseline.
+    current = name;
     sel = restoredSel;      // unknown for a pre-0.9.2 session -> the name fallback, as before (#4)
     sigAtLoad = soundSig(); // restored state counts as the clean baseline
 }

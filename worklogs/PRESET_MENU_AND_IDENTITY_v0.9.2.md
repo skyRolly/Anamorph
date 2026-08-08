@@ -9,7 +9,7 @@
 - **Date:** 2026-08-07 · **Version:** 0.9.2 (PR #100) · **Branch:** `claude/beautiful-sagan-JAUFI`.
 - **Reference tree:** JUCE 9.0.0 at the pinned commit `f8f8864…` (`CMakeLists.txt:36-38`), fetched
   and read locally; all JUCE line citations below are against that commit.
-- **Suites:** `AnamorphTests` 140 checks, `AnamorphStateTests` 866 checks (was 774), both green.
+- **Suites:** `AnamorphTests` 140 checks, `AnamorphStateTests` 878 checks (was 774), both green.
 
 ---
 
@@ -187,7 +187,7 @@ is pure name, so in the duplicate-name case it ticks **both** rows. Its factory 
 index, not a stable string, so reordering the table would silently re-point a live hint. Nothing was
 ported.
 
-**Test-count delta:** state test 10 added 23 checks (774 → 797); §5, §7 and §8 take the suite to 847, §9 to 856, §10 to 858 and §11 to 866. Each of H1, H3 and H4 has an
+**Test-count delta:** state test 10 added 23 checks (774 → 797); §5, §7 and §8 take the suite to 847, §9 to 856, §10 to 858, §11 to 866 and §12 to 878. Each of H1, H3 and H4 has an
 assertion that was verified to **fail** with its fix disabled — a test that cannot fail is not a
 test.
 
@@ -318,7 +318,10 @@ line; both outcomes of a preset load now invalidate redo identically. Deliberate
 the `onSaved` path: ADR-0024 §5 states a save is not a sound change, so leaving redo alone there is
 the consistent answer.
 
-**Raised and then REFUTED — no defect, recorded so it is not re-raised.** A reviewer proposed that
+**Raised and then REFUTED — `saveUser` returns FALSE for a `~`-leading name; nothing is written and
+no code changed.** (Verdict first, because this paragraph has been mis-read as *reporting* the defect
+and the claim has been re-raised twice since. The refutation now also lives in the code at
+`src/PresetManager.cpp`'s `getChildFile` call — see §12.) A reviewer proposed that
 `saveUser` can silently succeed for a name with a leading `~`: `juce::File::getChildFile`
 short-circuits to the raw `File` constructor for anything `isAbsolutePath` accepts, a leading `~`
 qualifies on macOS/Linux, and `File::createLegalFileName` does not strip it — so
@@ -523,3 +526,79 @@ nothing user-visible changes for any session this project can produce (`CHANGELO
 This is corrupt/truncated-state robustness — state test 7's category — and it is recorded in
 `DOCUMENTATION_COVERAGE.md` instead. The maintainer's review sign-off covers the fix; no ADR is owed,
 since no serialization field was added, removed or changed in meaning.
+
+## 12. Seventh review round — the root preset name, and the tilde claim's third appearance
+
+**The root had the same leak the slots did.** §9 and §11 established that A/B slot metadata never
+inherits across a repeated restore. `AnamorphRoot` was never brought under that rule. Both adoption
+paths fell back to the live `presets.currentName()`:
+
+```
+if (haveBaseline) presets.setMeta (restoredName.isNotEmpty() ? restoredName : presets.currentName(), …);
+else              presets.adoptRestoredState (restoredName, …);   // if (name.isNotEmpty()) current = name;
+```
+
+`presets` is a processor member, so on a host's second `setStateInformation` into one instance that
+fallback is the **previous project's** label: new sound, new identity, old name — and with no stored
+identity, `currentIndex()`'s name scan could then tick the old project's row. This PR is what made it
+reachable: §9 turned an empty preset name into a real state, and a session saved while sitting on a
+nameless A/B slot writes `presetName=""`.
+
+**Absent and empty are different answers.** That is the whole design question, and the file already
+had the idiom: `haveBaseline` distinguishes a *present* `presetBaseline` from an absent one. So
+`haveName` now does the same, and the adoption block resolves once:
+
+- **absent** — a session predating the field (< 0.6) — resolves to `PresetManager::defaultName()`,
+  a **constant**. Its name-fallback tick is ADR-0024 Decision 4's documented answer for state that
+  carries no identity, so nothing about that decision moves.
+- **present but empty** is adopted verbatim: "this state has no preset". Turning it back into a name
+  would invent one, which is the §10 mistake in a different place.
+
+`adoptRestoredState` now assigns `current = name` unconditionally. The point is not the line saved —
+it is that "what the session carried" and "what absence means" stop being answered in two places, and
+only the caller can see `hasProperty`.
+
+**Rejected: adopting verbatim in both cases** (absent → `""` as well). It is the more uniform rule and
+it is what §10 argued for the A/B slot, but it would change what every pre-0.6 session displays on a
+*fresh* instance too — behaviour the finding did not raise — and it would empty the name that
+ADR-0024 Decision 4's tie-break is defined in terms of. The narrower fix satisfies every stated
+invariant; the broader one is an ADR question, not a bug fix.
+
+**`defaultName()` is new, and small on purpose.** The constructor already hard-coded `"Default"`; it
+now reads `current { defaultName() }`, so the restore path and the constructor cannot drift. No
+behaviour hook, no serialization field.
+
+**Verification.** State test 12 pins all four combinations — `presetName` empty vs absent × baseline
+present vs absent — each: load a named factory preset (project A), build project B from that session
+with the identity stripped so the name fallback is what resolves the tick, then restore into the
+**same live instance** and assert both the name and that the tick did not stay on project A's row.
+All **eight** assertions fail with the fix reverted (`got "Gentle Width"` in every case). No existing
+assertion changed: state test 4's `preset name falls back to Default` still passes, because a v0.2
+blob has no `presetName` property at all — which is exactly the absent/empty distinction the fix
+introduces. Suite: 866 → **878 checks**, 0 failures; `AnamorphTests` 140, unchanged.
+
+**No `CHANGELOG.md` entry.** Reaching it needs a session whose `presetName` is empty or absent
+restored into an instance that already had a project open. Empty is only produced by 0.9.2 itself,
+which has never shipped; absent means a pre-0.6 session. Nothing user-visible changes for any session
+a released build can have written (`CHANGELOG_POLICY` rule 3).
+
+**The tilde claim, third appearance.** A review reported `DOCUMENTATION_COVERAGE.md` as still
+asserting that `saveUser` "writes outside the folder and still returns success", conflicting with §7.
+It does not: that sentence was introduced in `9b67b8d` and removed in `55e062d` (the round recorded in
+§8), and the ledger has carried the refutation ever since. A sweep of `docs/`, `worklogs/` and the
+root `*.md` for the claim, for `saveUser`, and for `isAbsolutePath`/`getChildFile` found **no**
+surviving statement of it anywhere — the finding was generated against a pre-`55e062d` tree, which the
+same review batch corroborates by also reporting the check count as 844.
+
+So there was no contradiction left to remove — but the claim has now been raised three times, which is
+itself the signal. Two changes, both aimed at the re-raise rather than at a live inconsistency:
+§7's paragraph now leads with the **verdict** instead of with the claim it refutes (it had been
+mis-read as *reporting* the defect), and the refutation is recorded in the **code**, in `saveUser`
+at the `getChildFile` call it is raised against — which per `SOURCE_OF_TRUTH` outranks every document
+and is the first thing a reader of that function sees. The comment also names the distinction the
+last two reports blurred: the *encode* side of the same character **was** a real defect (§9), the
+*save* side is not.
+
+Maintainer sign-off for both items in this round is recorded per the review confirmation; neither is
+an `ARCHITECTURE_REVIEW_GATE` item, since no serialization field was added, removed or changed in
+meaning and no ADR decision moved.

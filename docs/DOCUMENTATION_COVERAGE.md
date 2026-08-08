@@ -198,6 +198,38 @@ lacking both params keys, so there is no user-visible change to report under `CH
 3 — this is corrupt/truncated-state robustness, the category state test 7 covers. Maintainer
 confirmation of the direction is recorded per the review sign-off.
 
+**The root preset NAME had the same leak as the slots (seventh review round).** `readSlot`'s rule —
+metadata never inherits across a repeated restore — was not applied to `AnamorphRoot`. Both adoption
+paths fell back to the live `presets.currentName()`: the `haveBaseline` branch via
+`restoredName.isNotEmpty() ? restoredName : presets.currentName()`, and `adoptRestoredState` via
+`if (name.isNotEmpty()) current = name;`. `presets` is a processor member, so on a host's second
+`setStateInformation` into one instance that is the **previous project's** label — new sound, new
+identity, old name, and with no stored identity the name scan could then tick the old project's row.
+This became reachable *because* of this PR: an empty preset name is now a real state (a session saved
+while sitting on a nameless A/B slot stores `presetName=""`).
+
+**Absent and empty are different answers**, and only `setStateInformation` can tell them apart — the
+distinction `haveBaseline` already drew for the sibling field. Absent means a session predating the
+field (< 0.6) and resolves to the new `PresetManager::defaultName()`, a **constant**, whose
+name-fallback tick is the documented ADR-0024 answer for identity-less state; present-but-empty is
+adopted verbatim. `adoptRestoredState` now assigns the name unconditionally, so "what the session
+carried" and "what absence means" stop being decided in two places. No serialization field changed,
+and no existing assertion moved — state test 4's `preset name falls back to Default` still passes,
+because a v0.2 blob has no `presetName` property. Four cases (empty/absent × baseline/no-baseline)
+are pinned in state test 12; all eight new assertions were verified to fail with the fix reverted.
+Maintainer confirmation of the direction is recorded per the review sign-off.
+
+**Re-raised and re-refuted: the `~foo` `saveUser` claim.** A later review reported this ledger as
+still asserting that `saveUser` "writes outside the folder and still returns success". It does not,
+and has not since the round recorded in `worklogs/…v0.9.2.md` §8 — the sentence was removed there and
+the entry above has stated the refutation ever since (introduced `9b67b8d`, corrected `55e062d`). The
+repository holds no conflicting description: `DOCUMENTATION_COVERAGE.md` and worklog §7 both say the
+write fails and `saveUser` returns **false**, and §9 records that the *encode*-side sibling — a
+`~`-named file a user copies in by hand — was a separate, real defect. Because the claim keeps coming
+back, the refutation now also lives in the **code**, at the `getChildFile` call it is raised against;
+per `SOURCE_OF_TRUTH` that outranks every document and is the first thing a reader of
+`saveUser` sees.
+
 **Documentation follow-up on the identity match (no behaviour change).** ADR-0024's Consequences now
 state the three properties plainly: the match is a raw path-string compare with **no**
 canonicalisation (`getLinkedTarget()` considered and rejected — it resolves symlinks but not
