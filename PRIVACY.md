@@ -47,13 +47,23 @@ of something you did:
 - the Standalone's `lastStateFile`, written only if you use the Standalone's own Save/Load-state
   dialog;
 - the session's preset references — **three** of them: one for the preset you have selected and one
-  for **each A/B slot**. A reference is a filesystem path **only when** that preset was opened with
-  **Load Preset…** from outside your preset folder (or from a sub-folder of it); a preset sitting
-  directly in the preset folder is recorded by its **file name** only, deliberately, so the folder's
-  location (and with it your account name) stays out of the saved project, and so a project opened
-  on another machine still finds the preset (`PresetManager::encodeSelection`). An A/B slot keeps
-  its reference until you switch into that slot again or overwrite it, so a path can persist in the
-  project after the preset stops being the one you are using.
+  for **each A/B slot**. The rule is one condition with two halves
+  (`PresetManager::encodeSelection`, `src/PresetManager.cpp:340-360`): a preset is recorded by its
+  **file name** alone when it sits **directly in** your preset folder **and** its name cannot itself
+  be mistaken for a path; **otherwise the full filesystem path is stored**. The file-name form is
+  deliberate — it keeps the folder's location (and with it your account name) out of the saved
+  project, and lets a project opened on another machine still find the preset. Three situations
+  produce the path form:
+  - a preset opened with **Load Preset…** from **outside** your preset folder;
+  - one in a **sub-folder** of your preset folder, which is also only reachable through
+    **Load Preset…**;
+  - one sitting directly in the folder whose **file name itself looks like a path** — on macOS and
+    Linux, a name beginning with `~`. This is the only one of the three that does not involve
+    **Load Preset…**: such a preset is an ordinary drop-down entry, and it is the *name* alone that
+    forces the path form, because a bare `~name` would not point back at the file on reload.
+
+  An A/B slot keeps its reference until you switch into that slot again or overwrite it, so a path
+  can persist in the project after the preset stops being the one you are using.
 
 A filesystem path contains your account name on most systems. Apart from those two entries, none of
 these files contains personal data beyond what you type into them (a preset name), and none is

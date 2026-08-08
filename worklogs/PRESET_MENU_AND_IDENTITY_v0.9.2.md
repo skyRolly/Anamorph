@@ -636,6 +636,11 @@ member. **Disclosed:** stopping that clear was not named in the finding. It foll
 rule (nothing loaded ⇒ nothing to protect the user's history *from*) and discarding undo for a no-op
 is strictly worse than keeping it, but it is a behaviour change beyond the four listed fields.
 
+**Confirmed by the maintainer, 2026-08-08**, including that second half: unrecognised state data must
+not mutate live preset metadata, and leaving the undo history alone for a no-op restore attempt is
+accepted. So the split — a *recognised* restore clears undo, an *unrecognised* chunk does not — is a
+deliberate asymmetry with a sign-off behind it, not an oversight to be "tidied" later.
+
 **A/B slot initialisation was asymmetric.** `abEnsureInit()` seeded an invalid slot A from
 `currentStateSet()` and an invalid slot B from **a copy of slot A**. Worth being precise about when
 that mattered: at construction *both* slots are invalid, so slot A is seeded from the live state and
@@ -768,3 +773,37 @@ changed; the only behaviour difference is one string drawn in the top bar.
 
 Maintainer sign-off for all three items is recorded per the review confirmation, including the C8
 sign-off for the new UI string.
+
+## 15. Tenth review round — PRIVACY.md was the one carrier left describing two of three cases
+
+`PRIVACY.md` is the document that claims to enumerate *everything* that reaches disk, so an
+incomplete list there is a different kind of error from an incomplete list anywhere else. Its preset
+reference bullet said a reference is a filesystem path **"only when"** the preset was opened with
+**Load Preset…** from outside the preset folder or from a sub-folder of it. `encodeSelection` has a
+third path-storing condition, added in §9: a preset sitting *directly in* the folder whose file name
+`juce::File::isAbsolutePath` accepts — a leading `~` on POSIX — also stores its absolute path.
+ADR-0024 and `SERIALIZATION_REGISTRY.md` both gained that condition at the time; `PRIVACY.md` did
+not, so an "only when" claim in the privacy disclosure was false.
+
+The bullet now states the **rule** rather than a list of symptoms — file name alone when the preset
+is a direct child *and* its name cannot be mistaken for a path, full path otherwise — and then gives
+the three situations that produce the path form. Stating the rule first is what stops this recurring:
+a list can fall behind the code, a complement of the code's own condition cannot. The third case is
+called out as the one that does **not** involve **Load Preset…**, because the previous wording tied
+path storage to that dialog and a reader would otherwise conclude a drop-down preset is always safe.
+
+Documentation only: no encoding logic, no serialization behaviour, no identity rule changed. No
+`CHANGELOG` entry — nothing user-visible changed (`CHANGELOG_POLICY` rule 3); this corrects a
+statement about behaviour that has been in the change set since §9.
+
+**Maintainer sign-offs recorded in the same round**, at the records they constrain rather than as a
+list here:
+
+- the **No Preset** placeholder is editor-presentation only — model returns an empty name,
+  serialization stores an empty `presetName`, and the placeholder must never become persisted
+  metadata; and C8 is satisfied *because* the string is none of those things. Recorded in ADR-0024
+  §Consequences, next to the string it governs, with state test 5 named as what fails first if it
+  moves.
+- the unknown-root-chunk behaviour, **including** leaving the undo history untouched for a no-op
+  restore attempt. Recorded in §13 beside the disclosure, so the recognised/unrecognised asymmetry
+  reads as a deliberate split with a sign-off rather than an inconsistency.

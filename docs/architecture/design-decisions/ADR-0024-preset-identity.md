@@ -100,6 +100,13 @@ folder) are not disjoint.
   Save Preset pre-fill: a placeholder there would be written into the session and offered as a preset
   file name. State test 5 pins the separation (stored name and saved property both stay empty).
 
+  **Confirmed by the maintainer, 2026-08-08**, as three standing conditions on that string, not just
+  on the wording: the placeholder belongs to the **editor presentation layer only**; the model keeps
+  returning an empty name; serialization keeps storing an empty `presetName`. A UI-only placeholder
+  satisfies C8 precisely *because* it is none of those things — it must never become part of the
+  preset identity or of serialized state. Any change that moves it into `PresetManager` breaks the
+  sign-off, and state test 5 fails first.
+
 ## Related code
 - `src/PresetManager.h:30-36` (`Entry::factoryId`), `:54-76` (`Selection`, incl. its equality
   operators), `:78-94` (`SelectionFields`, `encodeSelection`/`decodeSelection`), `:123`
