@@ -431,7 +431,10 @@ void AnamorphAudioProcessor::commitPresetSwitchUndoStep()
         // next to it. There is nothing sonic to undo, so no step is recorded, but the
         // baseline must still adopt the new name / identity / clean baseline: leaving the
         // previous preset's metadata on it means the next undo restores THAT name and tick
-        // onto this sound (#4).
+        // onto this sound (#4). Redo is invalidated here for the same reason as in the branch
+        // above: this IS a new user action, and a surviving redo entry carries the PREVIOUS
+        // preset's identity, so redoing it would move the tick off the row the user just picked.
+        abUndo[abActive].redo.clear();
         committed = currentStateSet();
     }
     lastPolledSig = sig;

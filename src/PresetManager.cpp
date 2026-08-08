@@ -317,8 +317,15 @@ PresetManager::SelectionFields PresetManager::encodeSelection (const Selection& 
             return { "factory", s.factoryId, {} };
 
         case Selection::Kind::userFile:
-            return { "user", {}, s.file.isAChildOf (presetDirectory()) ? s.file.getFileName()
-                                                                       : s.file.getFullPathName() };
+            // DIRECT child, not descendant. juce::File::isAChildOf recurses (juce_File.cpp), so it
+            // is also true for a file nested in a SUB-folder of the preset folder -- and that file
+            // would then be stored as its bare name and decode back to a DIFFERENT file of the same
+            // name sitting directly in the folder. `refresh()` scans non-recursively, so a direct
+            // child is the only thing that can ever be a menu row anyway; everything else takes the
+            // absolute-path branch and round-trips exactly.
+            return { "user", {}, s.file.getParentDirectory() == presetDirectory()
+                                     ? s.file.getFileName()
+                                     : s.file.getFullPathName() };
 
         case Selection::Kind::unknown:
         default:

@@ -35,9 +35,12 @@ into a user preset FILE**: that format is unchanged.
 | `presetFactoryId` | String | 0.9.2 | No | No | `""` |
 | `presetUserFile` | String | 0.9.2 | No | No | `""` |
 
-`presetUserFile` holds the preset's **file name** when it lives in the user preset folder, and its
-absolute path otherwise (a file opened through "Load Preset…" from elsewhere). Encoding and decoding
-live in one place — `PresetManager::encodeSelection` / `decodeSelection`.
+`presetUserFile` holds the preset's **file name** when it sits **directly in** the user preset
+folder, and its absolute path in every other case — a file opened through "Load Preset…" from
+elsewhere, or one nested in a sub-folder. The distinction is a direct-child test, not a descendant
+test: `refresh()` scans the folder non-recursively, so only a direct child can ever be a menu row,
+and encoding a nested file by name would decode to a *different* same-named file in the folder.
+Encoding and decoding live in one place — `PresetManager::encodeSelection` / `decodeSelection`.
 
 Absent, empty, half-written or unrecognised all decode to `unknown`, which is the pre-0.9.2 name
 fallback (rule 2 of `SESSION_COMPATIBILITY_POLICY.md`). A well-formed value that no longer resolves —

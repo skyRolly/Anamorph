@@ -62,13 +62,14 @@ public:
     // The wire form of a Selection: three plain strings, so the encoding lives with the
     // type rather than being spelled out at each serialization site.
     //
-    // A user preset inside the preset folder is stored as its FILE NAME, not its full
-    // path: within that folder the name is already a complete identity, it keeps the
+    // A user preset sitting DIRECTLY in the preset folder is stored as its FILE NAME, not
+    // its full path: there the name is already a complete identity (`refresh()` scans the
+    // folder non-recursively, so only direct children can ever be menu rows), it keeps the
     // user's home directory out of the saved project, and a project moved to another
-    // machine still resolves. A file loaded from OUTSIDE the folder has no such anchor,
-    // so its absolute path is stored -- it is on no menu row either way, but storing the
-    // path keeps `decode(encode(s)) == s` true rather than silently re-pointing it at a
-    // same-named file in the folder.
+    // machine still resolves. Anything else -- a file loaded from outside the folder, or
+    // one nested in a sub-folder of it -- stores its absolute path, which keeps
+    // `decode(encode(s)) == s` true rather than silently re-pointing it at a same-named
+    // file sitting directly in the folder.
     struct SelectionFields { juce::String kind, factoryId, userFile; };
     static SelectionFields encodeSelection (const Selection&);
     static Selection       decodeSelection (const juce::String& kind,
@@ -96,9 +97,9 @@ public:
     // exact name + dirty-star the state had.
     juce::String baseline() const noexcept { return sigAtLoad; }
     const Selection& selection() const noexcept { return sel; }
-    // `sourceSel` carries the identity (#4) so an A/B switch or an undo restores the
-    // tick on the row that actually produced the sound. Session restore passes the
-    // default (unknown) -- nothing about the source survives on disk.
+    // `sourceSel` carries the identity (#4) so an A/B switch, an undo or a session restore
+    // puts the tick back on the row that actually produced the sound. A pre-0.9.2 session
+    // has none to carry, and passes the default (unknown) -> the name fallback.
     void setMeta (const juce::String& name, const juce::String& baselineSig,
                   const Selection& sourceSel) noexcept
     {
@@ -106,7 +107,7 @@ public:
         sigAtLoad = baselineSig;
         sel = sourceSel;
     }
-    // Session restore: a name and a baseline, but no identity to restore.
+    // Convenience for callers with no identity to carry (currently tests only).
     void setMeta (const juce::String& name, const juce::String& baselineSig) noexcept
     {
         setMeta (name, baselineSig, Selection());

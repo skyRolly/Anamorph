@@ -106,11 +106,15 @@ form.
 - **`SESSION_COMPATIBILITY_POLICY` rule 1 is respected** — nothing was removed and no existing field
   changed meaning; these are additions, and rule 2 (additions tolerate absence) is what makes the
   pre-0.9.2 path work unchanged.
-- A user preset inside the preset folder is stored as its **file name**, not an absolute path: within
-  that folder the name is already a complete identity, it keeps the user's home directory out of the
-  saved project, and a project opened on another machine still resolves. A preset loaded from
-  *outside* the folder has no such anchor and stores its path, so `decode(encode(s)) == s` stays true
-  instead of silently re-pointing at a same-named file in the folder.
+- A user preset sitting **directly in** the preset folder is stored as its **file name**, not an
+  absolute path: there the name is already a complete identity, it keeps the user's home directory
+  out of the saved project, and a project opened on another machine still resolves. Everything else
+  — a preset loaded from *outside* the folder, or one nested in a sub-folder of it — stores its
+  absolute path, so `decode(encode(s)) == s` stays true instead of silently re-pointing at a
+  same-named file in the folder. The test is a **direct-child** one (`getParentDirectory() ==
+  presetDirectory()`), deliberately **not** `juce::File::isAChildOf`, which recurses: a nested file
+  would otherwise be stored by bare name and decode to a different file. `refresh()` scans
+  non-recursively, so a direct child is the only thing that can ever be a menu row.
 
 **Fallbacks, all three verified by state test 12:**
 

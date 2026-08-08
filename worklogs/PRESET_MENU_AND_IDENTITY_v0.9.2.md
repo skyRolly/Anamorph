@@ -9,7 +9,7 @@
 - **Date:** 2026-08-07 · **Version:** 0.9.2 (PR #100) · **Branch:** `claude/beautiful-sagan-JAUFI`.
 - **Reference tree:** JUCE 9.0.0 at the pinned commit `f8f8864…` (`CMakeLists.txt:36-38`), fetched
   and read locally; all JUCE line citations below are against that commit.
-- **Suites:** `AnamorphTests` 140 checks, `AnamorphStateTests` 836 checks (was 774), both green.
+- **Suites:** `AnamorphTests` 140 checks, `AnamorphStateTests` 842 checks (was 774), both green.
 
 ---
 
@@ -276,3 +276,42 @@ which resolves through `getLookAndFeel()`. Restoring it would re-arm the `~LookA
 default look-and-feel are bound one line before the parenting: `setOpaque` (same answer —
 `colours::bgPanel` is opaque) and `preparePopupMenuWindow` (a no-op we do not override). Both inert;
 now recorded in the code as the latent trap they are.
+
+## 7. Third review round — two defects in the §5 work
+
+An independent review of the finished change set found two more, both introduced by §5 and both now
+fixed with a discriminating assertion.
+
+**`juce::File::isAChildOf` recurses.** `encodeSelection` used it to decide "is this preset in the
+preset folder, so I can store just its name?" — but JUCE implements it as
+`return getParentDirectory().isAChildOf (potentialParent);` (`juce_File.cpp:400-414`), i.e. true at
+*any* depth. A preset opened through "Load Preset…" from a **sub-folder** of the preset folder was
+therefore stored as its bare file name and decoded on reload as
+`presetDirectory().getChildFile(name)` — a **different file**. With a same-named preset sitting
+directly in the folder (exactly the duplicate-name situation this whole change is about), the
+reloaded session ticked *that* row, and `‹ ›` then stepped from it. The sound was still correct; only
+the identity was wrong, and nothing warned, because both files carry the same display name. It broke
+the `decode(encode(s)) == s` invariant the header and the ADR Amendment both state.
+
+Fixed by testing for a **direct child** — `s.file.getParentDirectory() == presetDirectory()` — which
+is also the more honest test: `refresh()` scans non-recursively, so a direct child is the only thing
+that can ever *be* a menu row. Everything else now takes the absolute-path branch and round-trips
+exactly. State test 12 gained a nested-path case that runs with the same-named flat preset present.
+
+**The new `else` branch of `commitPresetSwitchUndoStep` did not clear redo.** The `if` branch does,
+one line above, with the comment "a new user action invalidates the redo stack" — and a sonically
+identical preset switch is no less a user action. Leaving redo alive there meant: undo an edit, then
+select the same-sounding preset on the *other* row, then press Redo — and the tick jumped back to the
+previous preset's row, restored out of an abandoned `StateSet` whose `.selection` was stale. One
+line; both outcomes of a preset load now invalidate redo identically. Deliberately **not** applied to
+the `onSaved` path: ADR-0024 §5 states a save is not a sound change, so leaving redo alone there is
+the consistent answer.
+
+**Reported, not fixed — pre-existing.** `saveUser` builds its target with
+`dir.getChildFile (name + kPresetExt)`, and `juce::File::getChildFile` short-circuits to the raw
+`File` constructor for anything `isAbsolutePath` accepts. On macOS/Linux a leading `~` qualifies and
+`File::createLegalFileName` does not strip it, so saving a preset named `~foo` writes outside the
+preset folder (relative to the host's CWD when `getpwnam` fails), `saveUser` still returns `true`, and
+the preset never appears on the menu. Pre-existing, unchanged by this work, and not worsened by it —
+the resulting identity round-trips and correctly ticks nothing. Filed here rather than fixed, because
+it is an input-validation defect in its own right.

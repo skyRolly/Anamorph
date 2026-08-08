@@ -91,8 +91,9 @@ from disk both tick **nothing** rather than falling back to the same-named facto
 **factory-id integrity** (ids present, unique, and every one resolving in the table — an
 unresolvable id would apply the plain defaults, so exactly one factory preset may sit on the
 all-defaults signature), and the **indicator identity across a session reload** (factory and user
-identities restore, per A/B slot; an unresolvable factory id, a deleted user preset and a
-pre-0.9.2 session with no identity each take their documented fallback; and in EVERY one of those
+identities restore, per A/B slot; an unresolvable factory id, a deleted user preset, a preset
+nested in a SUB-folder of the preset folder and a pre-0.9.2 session with no identity each take their
+documented fallback; and in EVERY one of those
 five paths the restored parameters are asserted bit-identical, because the identity is metadata and
 must never influence the sound).
 Evidence [Verified]: tests/state_tests.cpp; CMakeLists.txt (`AnamorphStateTests`).

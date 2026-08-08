@@ -847,6 +847,13 @@ static void testDuplicateNameFactoryVsUserPreset()
     p.undo();
     check (presets.currentIndex() == userIdx, "undo after a save keeps the saved preset's identity");
 
+    // A preset switch is a user action even when the two presets SOUND identical, so it must
+    // invalidate redo like any other. A surviving entry carries the PREVIOUS preset's identity,
+    // so redoing it would move the tick off the row the user just picked.
+    check (p.canRedo(), "the undo above leaves a redo entry");
+    presets.load (factoryIdx);   // same sound as the user preset it was saved from
+    check (! p.canRedo(), "a sonically identical preset switch still invalidates redo");
+
     // A `.anamorph` file from OUTSIDE the preset folder is on no menu row, so nothing is
     // ticked -- it must NOT fall back to the same-named factory row.
     {
@@ -1032,6 +1039,33 @@ static void testPresetIndicatorIdentityAcrossRestore()
         check (r.index == userIdx, "case 2: a restored session ticks the USER row, not the same-named factory one");
         checkStr (r.name, shared, "case 2: the displayed name restores");
         check (r.paramsMatch, "case 2: parameters restore bit-identically");
+    }
+
+    // --- Case 2, nested: a preset under a SUB-folder of the preset folder ----------
+    // `refresh()` scans non-recursively, so a nested file is on no menu row and must tick
+    // nothing — before AND after a reload. It is the case where encoding by file NAME would
+    // silently re-point the identity at the same-named preset sitting directly in the folder,
+    // which still exists at this point in the test.
+    {
+        auto nestedDir = anamorph::PresetManager::presetDirectory().getChildFile ("AnamorphHarnessNested");
+        auto nested    = nestedDir.getChildFile (shared + anamorph::PresetManager::fileSuffix());
+        nested.deleteFile();
+        if (nestedDir.createDirectory() && presetFile.copyFileTo (nested))
+        {
+            check (presets.loadFile (nested), "loadFile accepts a preset from a sub-folder");
+            check (presets.currentIndex() < 0, "a nested preset ticks nothing while live");
+            const auto nestedRaw = rawSnapshot (p);
+            juce::MemoryBlock nestedBlob;
+            p.getStateInformation (nestedBlob);
+            const auto r = restoreInto (nestedBlob, nestedRaw);
+            check (r.index < 0,
+                   "case 2 nested: a reloaded nested preset ticks nothing, not the same-named row in the folder");
+            check (r.paramsMatch, "case 2 nested: parameters restore bit-identically");
+            nested.deleteFile();
+        }
+        nestedDir.deleteRecursively();
+        presets.refresh();
+        presets.load (userIdx);   // back to the flat user preset for the checks below
     }
 
     // --- Case 2 fallback: the user preset file is gone ----------------------------

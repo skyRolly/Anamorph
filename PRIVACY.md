@@ -47,10 +47,10 @@ of something you did:
 - the Standalone's `lastStateFile`, written only if you use the Standalone's own Save/Load-state
   dialog;
 - the session's preset reference, **when and only when** the selected preset was opened with **Load
-  Preset…** from somewhere outside your preset folder. A preset that lives in the preset folder is
-  recorded by its **file name** only — deliberately, so the folder's location (and with it your
-  account name) stays out of the saved project, and so a project opened on another machine still
-  finds the preset (`PresetManager::encodeSelection`).
+  Preset…** from outside your preset folder (or from a sub-folder of it). A preset sitting directly
+  in the preset folder is recorded by its **file name** only — deliberately, so the folder's
+  location (and with it your account name) stays out of the saved project, and so a project opened
+  on another machine still finds the preset (`PresetManager::encodeSelection`).
 
 A filesystem path contains your account name on most systems. Apart from those two entries, none of
 these files contains personal data beyond what you type into them (a preset name), and none is

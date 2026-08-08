@@ -83,6 +83,20 @@ that fails to resolve** applied the plain defaults and then adopted the factory 
 lines above already followed — asserts it, and fails as a clean no-op otherwise. State test 11 pins
 the invariant that makes the assert unreachable: ids present, unique, and every one resolving.
 
+**Two more from a third, independent review of the finished change set**, both introduced by the
+plug-in-state work and both now fixed with a discriminating assertion. `encodeSelection` used
+`juce::File::isAChildOf` to decide whether a preset lives in the preset folder — but JUCE implements
+that **recursively**, so a preset opened from a **sub-folder** was stored by bare name and decoded to
+a *different*, same-named file directly in the folder, breaking the `decode(encode(s)) == s`
+invariant the header and the ADR both state. Now a **direct-child** test, which is also the honest
+one: `refresh()` scans non-recursively, so only a direct child can ever be a menu row. And the new
+`else` branch of `commitPresetSwitchUndoStep` did not clear redo, unlike the `if` branch one line
+above whose comment states the rule — so undo, then select the same-sounding preset on the other row,
+then Redo, and the tick jumped back out of an abandoned `StateSet`. **Reported, not fixed
+(pre-existing):** `saveUser` builds its path with `getChildFile`, which short-circuits for anything
+`isAbsolutePath` accepts; on macOS/Linux a leading `~` survives `createLegalFileName`, so saving a
+preset named `~foo` writes outside the folder and still returns success.
+
 **Declined, with evidence: restoring `PopupMenu::setLookAndFeel (&lnf)`.** The stated goal was to
 make item *measurement* use `AnamorphLookAndFeel` — but it already does. `MenuWindow` parents itself
 at `juce_PopupMenu.cpp:370-372` and only then builds items (`:457`), and `ItemComponent` calls
