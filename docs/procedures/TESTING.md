@@ -85,8 +85,11 @@ out-of-range `AB@active` clamp end-to-end, unknown future fields, corrupt slot X
 preset save→reload round-trip incl. the exclusion rules (`mbSolo` reset, Bypass/`advancedMode`
 untouched), A/B + view-param preservation across restore, and **factory/user preset identity when
 a user preset carries a factory preset's name** (0.9.2: saving under the shared name selects the
-USER row, both rows stay individually selectable, an A/B round-trip keeps the identity, and a
-restored session — which stores the name only — resolves to the documented factory tie-break).
+USER row, both rows stay individually selectable, an A/B round-trip keeps the identity, an undo
+after a save keeps it too, a `.anamorph` loaded from OUTSIDE the preset folder and a user preset
+deleted from disk both tick **nothing** rather than falling back to the same-named factory row,
+and a restored session — which stores the name only — resolves to the documented factory
+tie-break).
 Evidence [Verified]: tests/state_tests.cpp; CMakeLists.txt (`AnamorphStateTests`).
 
 **Changing the parameter surface intentionally** (ADR + `PARAMETER_REGISTRY.md` update
@@ -149,8 +152,20 @@ pluginval exit fails the job on every platform. Linux/macOS use `run-pluginval.s
 
 ## Gaps in the automated coverage (known, deliberate)
 
-Two things the gates above do **not** do. Both are recorded so nobody assumes coverage that
+Three things the gates above do **not** do. All are recorded so nobody assumes coverage that
 doesn't exist:
+
+- **GUI-lifetime defects have no headless test.** `AnamorphStateTests` compiles the editor but
+  never instantiates it, so a defect that only exists while a modal child is open and its owner is
+  destroyed — the 0.9.2 preset drop-down crash (**INC-010**) — cannot be expressed there. The
+  0.9.2 fix therefore shipped **without** a regression test, which `TESTING_POLICY.md` rule 1 would
+  otherwise require; it is recorded here as the deliberate residue rather than waived silently.
+  Prevention is by construction instead: a menu given `withParentComponent` has no independent
+  lifetime to get wrong. The *structural* half ("is the menu a child of the editor") would be
+  headlessly assertable if the harness ever instantiates an editor — the sibling Anabasis does
+  exactly that in its own suite on all three runners — but adding editor instantiation to a
+  blocking gate is a harness change that needs to be proven on the Windows and macOS runners
+  first, not folded into a bug fix.
 
 - **The AU is never validated automatically.** `run-pluginval.sh` locates and validates
   `Anamorph.vst3` only, so the macOS `Anamorph.component` — the build Logic Pro and GarageBand

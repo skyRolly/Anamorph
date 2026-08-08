@@ -9,14 +9,33 @@ that documentation (Verified / Partially Verified / Unverified / Not Supported).
 Last updated: for the **0.9.2 change set** (2026-08-07) — the first `src/` change since 0.9.0.
 Four changes, one investigation, one new regression test.
 
-**Preset drop-down lifetime + crash (`src/PluginEditor.cpp`).** The menu was a free-standing
-always-on-top window created with `PopupMenu::setLookAndFeel (&lnf)` — a raw pointer to an editor
-**member** — and a raw `this` in its callback. Closing the plug-in window with the menu open left
-it on screen painting through a destroyed LookAndFeel, and clicking an item ran the callback on a
-destroyed editor. It is now `withParentComponent (this)` (JUCE parents the MenuWindow as a CHILD,
-so it cannot outlive the editor, and `Component::getLookAndFeel()` resolves our LookAndFeel by
-walking the tree) plus a `SafePointer` callback; the "Load Preset…" file chooser, reachable from
-the same menu, got the same guard. Synced: `CHANGELOG.md`, `README.md`, `HANDOVER.md`.
+**Preset drop-down lifetime + crash (`src/PluginEditor.cpp`).** Filed as **INC-010**. Three facts,
+separated after an adversarial re-read of the pinned JUCE source — the first draft of this entry
+(and of the code comment) got the mechanism wrong and is corrected here rather than left standing.
+(1) The **残留** is not an oversight in JUCE: `MenuWindow::windowIsStillValid()` dismisses when
+`componentAttachedTo != options.getTargetComponent()`, but both are `WeakReference` to
+`presetName`, so they null *together* and the comparison is false. (2) The **lost styling is not a
+use-after-free** — `PopupMenu` holds its look-and-feel as a `WeakReference<LookAndFeel>`, which
+nulls and falls back to `LookAndFeel_V4`. (3) The **crash** is the raw `this` in the callback.
+The fix is `withParentComponent (this)` (JUCE parents the MenuWindow as a CHILD, cancelled with
+result 0 by `ModalComponentManager` on destruction *or* hide; `Component::getLookAndFeel()` then
+resolves our LookAndFeel by walking the tree) plus a `SafePointer` callback — which is **not**
+redundant, since that cancel is asynchronous and the menu's 20 Hz timer can still emit a non-zero
+result in the gap. Two side effects of parenting were neutralised in the same change:
+`withMaximumNumColumns (1)` (a parented menu is budgeted against the editor, and JUCE adds COLUMNS
+before it scrolls — past ~14 user presets the list would have silently gone two-column) and a
+no-op `drawResizableFrame` (JUCE paints a frame over the border ring only when parented). The
+"Load Preset…" file chooser, reachable from the same menu, got the same `SafePointer` guard.
+No regression test: the failure is a GUI-lifetime use-after-free, which `tests/state_tests.cpp`
+cannot express — recorded here as an explicit `TESTING_POLICY` waiver, with prevention by
+construction instead (a parented menu has no independent lifetime to get wrong). Synced:
+`CHANGELOG.md`, `README.md`, `HANDOVER.md`, `POSTMORTEMS.md` (INC-010).
+**Reported, not fixed (C6):** the combo-box popups store an editor-member LookAndFeel the same way
+and would lose styling identically, but their callback is `ModalCallbackFunction::forComponent`,
+i.e. already SafePointer-based — no memory-safety defect, no reported symptom, seven call sites
+across two LookAndFeel subclasses. Out of scope. Likewise `SpectrumImager`'s `freqEditor`
+`onFocusLost` can fire during teardown; it is owned by the editor it belongs to, so it is a
+different (and lesser) class of hazard.
 
 **Factory-preset identity (`src/PresetManager.{h,cpp}`, `src/PluginProcessor.{h,cpp}`).** The
 preset list was searched by NAME and the factory block is list-front, so a user preset sharing a
@@ -29,7 +48,21 @@ deliberately not serialized, because a new root field is an `ARCHITECTURE_REVIEW
 restored session resolves a clashing name to the factory row, as before. Synced:
 `SERIALIZATION_REGISTRY.md` (an explicit "deliberately NOT serialized" note), `API_REFERENCE.md`,
 `USER_MANUAL.md` §7.2, `TESTING.md`, `TESTING_POLICY.md`, `RELEASE_HARDENING_PLAN.md`,
-`CHANGELOG.md`. State test 10 pins all four behaviours **including** the documented residual.
+`CHANGELOG.md`, and recorded as **ADR-0024** (registered in `ADR_INDEX.md`) — the "never
+serialized" half is a decision a future agent would otherwise re-litigate straight into a Hard
+Stop. `ADR-0008` gained the third `StateSet` field and re-based line anchors (a factual re-sync,
+not a reversal; ADRs stay append-only). State test 10 pins every behaviour **including** the
+documented residual.
+
+Three defects found by an adversarial review of the first draft and fixed before merge, each with
+its own assertion (all three verified to fail with the fix disabled): the identity scan **fell
+through** to the name scan when the identity was known but absent from the list, so a `.anamorph`
+loaded from outside the preset folder ticked the same-named factory row — the exact mis-tick this
+change exists to remove; `saveUser` never re-baselined the processor's undo snapshot, so the first
+undo after a save restored the pre-save name/identity (fixed with an `onSaved` hook →
+`syncCommitted()`, which creates no undo step because a save is not a sound change — and the same
+gap existed for a preset switch whose sound is identical to the current one); and `readSlot` left
+a stale identity on an A/B slot when a host restored a second session into one live instance.
 
 **`Window Size` → `UI Scale` (display name only).** `PARAMETER_COMPATIBILITY_POLICY` permits a
 display-name change; the identifier `int_uiScale` and the pre-0.8.4 legacy APVTS id `uiScale` its
@@ -59,6 +92,12 @@ repeat normally. Everything inside the plug-in was eliminated by inspection (the
 retry, `setSelectAllWhenFocused`, the 24 Hz timer, the VBlank attachment, the UI-scale transform,
 both `getCurrentModifiersRealtime` call sites). Filed as **KI-017** with the two discriminating
 checks; no `CHANGELOG` entry, since nothing user-visible changed (`CHANGELOG_POLICY` rule 3).
+
+**First-tag renumbering, swept this time.** The 0.9.0 → 0.9.1 renumbering was recorded here as
+incomplete; the 0.9.1 → 0.9.2 one repeated it and is now closed in the same pass:
+`CHANGELOG.md` preamble, `CHANGELOG_POLICY.md`, `FUTURE_RISKS.md` (×2), `COMMERCIAL_STATUS.md`
+(×3) and `RELEASE_HARDENING_PLAN.md` (×5) all named v0.9.1 as the first annotated tag. Neither
+`FUTURE_RISKS.md` nor `COMMERCIAL_STATUS.md` had been touched by the version bump at all.
 
 Prior: for the **third review pass on the 0.9.1 change set** (2026-07-30). Three findings
 fixed, three were confirmations. No `src/` change.

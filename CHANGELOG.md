@@ -6,7 +6,8 @@ their **commit SHA + date** as the Evidence Source (per `docs/policies/CHANGELOG
 The annotated-tag convention and the tag-triggered release pipeline exist
 (`docs/procedures/RELEASE_PROCESS.md` §Tagging), but **no tag has been cut yet**: `[0.9.0]` was
 written as a release entry and then superseded before it was tagged, so the first annotated
-`vX.Y.Z` tag will be **v0.9.1**, and from that tag onward the tag is also a citable Evidence
+`vX.Y.Z` tag will be **v0.9.2** (0.9.1 was likewise written up and superseded before tagging),
+and from that tag onward the tag is also a citable Evidence
 Source. Until then every entry cites a commit SHA or a PR. Entries for the
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
@@ -17,11 +18,13 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   longer crashes.** With the preset menu open, closing the plug-in window (or switching to
   another plug-in) left the menu on screen; hovering it lost the custom item styling, and
   clicking any item took down the plug-in and/or the host. The menu was a free-standing
-  always-on-top window that held a raw pointer to the editor's LookAndFeel and a raw `this` in
-  its callback, both of which the editor's destructor invalidated. It is now a **child of the
-  editor**, so it cannot outlive it or float outside the window, and it inherits the styling
-  through the component tree instead of a stored pointer; the callback holds a `SafePointer`.
-  The "Load Preset…" file-chooser callback — reachable from the same menu — got the same guard.
+  always-on-top window owned by nothing the editor could reach, and its callback captured a raw
+  pointer to the editor — so the click ran on freed memory. (The lost styling was a second,
+  harmless symptom: the menu's reference to the editor's look-and-feel merely went null, and a
+  null one falls back to JUCE's default.) It is now a **child of the editor**, so it cannot
+  outlive it or float outside the window, and it inherits the styling through the component tree
+  instead of holding a reference at all; the callback holds a `SafePointer`. The "Load Preset…"
+  file-chooser callback — reachable from the same menu — got the same guard.
   Evidence: PR #100. [Verified]
 - **A user preset that shares a factory preset's name is now selectable in its own right.** The
   preset list was searched by NAME and the factory block is first, so the tick in the drop-down

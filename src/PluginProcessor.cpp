@@ -35,6 +35,9 @@ AnamorphAudioProcessor::AnamorphAudioProcessor()
     // then record exactly ONE undo step for the switch, so a preset change is undoable (ADR-0008).
     presets.onAboutToLoad = [this] { pollUndoCoalesce(); };
     presets.onLoaded      = [this] { commitPresetSwitchUndoStep(); };
+    // A save changes no parameter, so nothing else would ever refresh `committed` off the
+    // pre-save preset -- and the next undo would restore that stale name/identity/baseline.
+    presets.onSaved       = [this] { syncCommitted(); };
     presets.soundParamGeneration = [this] { return soundParamGen.load (std::memory_order_relaxed); }; // S10
 
     syncCommitted(); // establish the undo baseline
@@ -415,6 +418,15 @@ void AnamorphAudioProcessor::commitPresetSwitchUndoStep()
         committed = currentStateSet();                 // now carries the NEW preset name + clean baseline
         committedSig = sig;
     }
+    else
+    {
+        // Same SOUND, different preset -- e.g. a user preset saved from the factory preset
+        // next to it. There is nothing sonic to undo, so no step is recorded, but the
+        // baseline must still adopt the new name / identity / clean baseline: leaving the
+        // previous preset's metadata on it means the next undo restores THAT name and tick
+        // onto this sound (#4).
+        committed = currentStateSet();
+    }
     lastPolledSig = sig;
     openGestures = 0;             // a preset load is a program state jump, not a user gesture -- drop any
     pendingGestureCommit = false; // in-flight gesture bookkeeping so nothing re-commits afterwards
@@ -576,6 +588,12 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
             auto readSlot = [&ab] (StateSet& dst, const char* pk, const char* nk, const char* bk,
                                    const char* legacyKey)
             {
+                // The preset identity is not serialized (#4), so there is nothing to read it
+                // from -- and abSlot[] are processor members that a host may restore into
+                // repeatedly on ONE live instance. Clearing it first makes "absent" mean the
+                // default; leaving it would carry the PREVIOUS session's identity into a slot
+                // whose name/params just came from a different one.
+                dst.selection = {};
                 if (ab.hasProperty (pk))
                 {
                     if (auto x = juce::parseXML (ab.getProperty (pk).toString()))

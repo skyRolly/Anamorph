@@ -108,6 +108,7 @@ void PresetManager::refresh()
 int PresetManager::currentIndex() const noexcept
 {
     if (sel.kind != Selection::Kind::unknown)
+    {
         for (int i = 0; i < list.size(); ++i)
         {
             const auto& e = list.getReference (i);
@@ -116,6 +117,13 @@ int PresetManager::currentIndex() const noexcept
             if (sel.kind == Selection::Kind::userFile && ! e.isFactory && e.file == sel.file)
                 return i;
         }
+        // A KNOWN identity that is not in the list means the thing that produced this
+        // sound is not on the menu -- a file loaded from outside the preset folder, or a
+        // user preset deleted/renamed on disk since. It must show NO tick. Falling through
+        // to the name scan would instead tick whatever shares the name, i.e. exactly the
+        // factory row this change exists to stop mis-ticking.
+        return -1;
+    }
 
     for (int i = 0; i < list.size(); ++i)
         if (list.getReference (i).name == current)
@@ -275,6 +283,7 @@ bool PresetManager::saveUser (const juce::String& rawName)
     // tick to the USER row instead of leaving it on the factory one (#4).
     sel = { Selection::Kind::userFile, {}, file };
     sigAtLoad = soundSig();
+    if (onSaved) onSaved(); // re-baseline the processor's undo snapshot onto the saved preset
     return true;
 }
 

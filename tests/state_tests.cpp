@@ -826,7 +826,48 @@ static void testDuplicateNameFactoryVsUserPreset()
     p.abSwitchTo (0);
     check (presets.currentIndex() == userIdx, "A/B switch away and back preserves the user-preset identity");
 
+    // Undo must not yank the tick back to the row that was current before the save.
+    // saveUser() changes no parameter, so nothing else refreshes the processor's undo
+    // baseline; without the onSaved hook `committed` keeps the pre-save (factory) identity
+    // and the first undo restores it.
+    presets.load (factoryIdx);
+    check (presets.saveUser (shared), "re-save under the shared name");
+    check (presets.currentIndex() == userIdx, "the save selects the user row");
+    if (auto* drive = p.getAPVTS().getParameter ("drive"))
+    {
+        drive->beginChangeGesture();               // one finished gesture == one undo step
+        drive->setValueNotifyingHost (0.83f);
+        drive->endChangeGesture();
+    }
+    p.pollUndoCoalesce();                          // the editor's 24 Hz poll, driven by hand
+    check (p.canUndo(), "the knob edit after a save is undoable");
+    p.undo();
+    check (presets.currentIndex() == userIdx, "undo after a save keeps the saved preset's identity");
+
+    // A `.anamorph` file from OUTSIDE the preset folder is on no menu row, so nothing is
+    // ticked -- it must NOT fall back to the same-named factory row.
+    {
+        auto outside = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                           .getChildFile (shared + anamorph::PresetManager::fileSuffix());
+        outside.deleteFile();
+        if (presetFile.copyFileTo (outside))
+        {
+            check (presets.loadFile (outside), "loadFile accepts a preset from outside the folder");
+            checkStr (presets.currentName(), shared, "an outside file still displays its own name");
+            check (presets.currentIndex() < 0, "an outside file ticks nothing, not the same-named factory row");
+            outside.deleteFile();
+        }
+    }
+
+    // Same rule when the selected user preset disappears from disk.
+    presets.load (userIdx);
+    check (presetFile.deleteFile(), "user preset file removed while selected");
+    presets.refresh();
+    check (presets.currentIndex() < 0, "a deleted user preset ticks nothing, not the same-named factory row");
+    check (presets.saveUser (shared), "re-create the user preset for the restore check");
+
     // Documented residual: the saved session carries the NAME only.
+    check (presets.currentIndex() == userIdx, "the re-created user preset lands on the same row");
     presets.load (userIdx);
     juce::MemoryBlock blob;
     p.getStateInformation (blob);

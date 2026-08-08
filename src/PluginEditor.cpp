@@ -1417,20 +1417,36 @@ void AnamorphAudioProcessorEditor::showPresetMenu()
     pm.refresh();
 
     juce::PopupMenu m;
-    // NO setLookAndFeel (&lnf) any more: that handed the menu a RAW pointer to an
-    // editor MEMBER, and JUCE's MenuWindow is an independent desktop window that
-    // OUTLIVES the editor when the host tears the plug-in window down (or the user
-    // switches to another plug-in) while the menu is open -- so the menu stayed on
-    // screen painting through a dangling LookAndFeel (the lost item styling), and
-    // clicking an item then ran the callback below on a destroyed editor. Parenting
-    // the menu to the editor instead closes both by CONSTRUCTION: the MenuWindow
-    // becomes a CHILD component, so it cannot outlive its parent or linger outside
-    // the plug-in window, and juce::Component::getLookAndFeel() walks up to the
-    // editor's own `lnf` on its own -- the family styling arrives with no pointer to
-    // dangle (juce_PopupMenu.cpp MenuWindow ctor: setLookAndFeel(nullptr) then
-    // pc->addChildComponent(this), and every ItemComponent is built after that).
-    // The alternatives were both worse: dismissAllActiveMenus() in the destructor
-    // also closes ANOTHER instance's menu, and a shared static LookAndFeel trades
+    // With no parent, JUCE's MenuWindow is an independent always-on-top DESKTOP window
+    // owned by the process-global ModalComponentManager -- the editor holds no reference
+    // to it and is never consulted, so it survived the plug-in window being torn down.
+    // Worse, JUCE's own self-heal cannot fire: MenuWindow::windowIsStillValid() dismisses
+    // when `componentAttachedTo != options.getTargetComponent()`, but BOTH are
+    // WeakReference<Component> to `presetName`, so on the editor's death they null in the
+    // same instant and the comparison is false. That left the menu on screen, and clicking
+    // an item ran the callback below on a destroyed editor -- the crash.
+    //
+    // `.withParentComponent (this)` makes the ctor take `pc->addChildComponent (this)`
+    // instead of `addToDesktop`, so the menu is a CHILD: it is clipped to the editor,
+    // stacks with it (it goes behind with our window instead of floating over the next
+    // plug-in), and ModalComponentManager's ComponentMovementWatcher cancels it with
+    // result 0 on the editor's destruction or hide.
+    //
+    // Dropping setLookAndFeel (&lnf) is part of the same move, not a separate fix.
+    // PopupMenu stores its LookAndFeel as a WeakReference (juce_PopupMenu.h), so it
+    // NULLED rather than dangled when the editor died -- and a null slot falls back to
+    // the default LookAndFeel_V4, which is exactly the "hovering loses the custom
+    // styling" symptom. Parented, Component::getLookAndFeel() walks up to the editor's
+    // own `lnf` instead, and every ItemComponent is built after the parenting, so the
+    // family styling arrives with nothing stored anywhere to go stale.
+    //
+    // maxColumns 1 preserves TODAY's shape: a parented menu is budgeted against the
+    // editor (~688 px in Simple mode) rather than the display, and JUCE reacts to
+    // overflow by adding COLUMNS before it scrolls -- past ~14 user presets the list
+    // would silently become two columns. Same option the combo popups already use.
+    // The alternatives to parenting were both worse: dismissAllActiveMenus() in the
+    // destructor walks a process-global list and would also close ANOTHER instance's
+    // (or another JUCE plug-in's) open menu, and a shared static LookAndFeel trades
     // this for static-destruction order at DLL unload.
     const int cur = pm.currentIndex();
     m.addSectionHeader ("FACTORY");
@@ -1450,11 +1466,13 @@ void AnamorphAudioProcessorEditor::showPresetMenu()
     // full -- the slot itself is narrow (#8).
     m.showMenuAsync (juce::PopupMenu::Options()
                          .withTargetComponent (presetName)
-                         .withParentComponent (this)   // lifetime + look-and-feel; see above
+                         .withParentComponent (this)     // lifetime + look-and-feel; see above
+                         .withMaximumNumColumns (1)      // stay one column; see above
                          .withMinimumWidth (228),
-        // SafePointer, not a raw `this`: belt and braces next to the parenting above,
-        // so a callback that still runs after the editor is gone returns instead of
-        // dereferencing freed memory.
+        // SafePointer, not a raw `this` -- and NOT redundant next to the parenting above:
+        // the watcher's cancel() is ASYNCHRONOUS, so between the editor's ~Component and
+        // the async dismissal the menu is parentless but its 20 Hz MouseSourceState timer
+        // is still running and can still emit a NON-zero result. This closes that window.
         [safeThis = juce::Component::SafePointer<AnamorphAudioProcessorEditor> (this)] (int r)
         {
             if (r == 0 || safeThis == nullptr) return;

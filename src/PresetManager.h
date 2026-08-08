@@ -109,6 +109,14 @@ public:
     // restore, saveUser, or construction. Empty when no processor is bracketing (safe to skip).
     std::function<void()> onAboutToLoad, onLoaded;
 
+    // Fired by saveUser() after the new name/identity/baseline are in place. A save changes no
+    // parameter value, so the processor's gesture-gated coalescer never notices it and its
+    // `committed` snapshot would keep the PRE-save name, baseline and identity forever -- the
+    // next undo would then restore them and yank the tick back onto the row that was current
+    // before the save. Re-baselining here creates no undo step, which is right: saving is not a
+    // sound change. Empty when no processor wires it up (safe to skip).
+    std::function<void()> onSaved;
+
     // S10: set by the processor -- generation counter of the sound-parameter
     // values, bumped on every value change. Lets isDirty() reuse its last
     // BUILT signature while provably nothing changed (the comparison against
