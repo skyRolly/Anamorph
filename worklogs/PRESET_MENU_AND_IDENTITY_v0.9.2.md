@@ -314,11 +314,22 @@ line; both outcomes of a preset load now invalidate redo identically. Deliberate
 the `onSaved` path: ADR-0024 §5 states a save is not a sound change, so leaving redo alone there is
 the consistent answer.
 
-**Reported, not fixed — pre-existing.** `saveUser` builds its target with
-`dir.getChildFile (name + kPresetExt)`, and `juce::File::getChildFile` short-circuits to the raw
-`File` constructor for anything `isAbsolutePath` accepts. On macOS/Linux a leading `~` qualifies and
-`File::createLegalFileName` does not strip it, so saving a preset named `~foo` writes outside the
-preset folder (relative to the host's CWD when `getpwnam` fails), `saveUser` still returns `true`, and
-the preset never appears on the menu. Pre-existing, unchanged by this work, and not worsened by it —
-the resulting identity round-trips and correctly ticks nothing. Filed here rather than fixed, because
-it is an input-validation defect in its own right.
+**Raised and then REFUTED — no defect, recorded so it is not re-raised.** A reviewer proposed that
+`saveUser` can silently succeed for a name with a leading `~`: `juce::File::getChildFile`
+short-circuits to the raw `File` constructor for anything `isAbsolutePath` accepts, a leading `~`
+qualifies on macOS/Linux, and `File::createLegalFileName` does not strip it — so
+`dir.getChildFile ("~foo.anamorph")` really does yield the unresolved relative path
+`"~foo.anamorph"`. All of that is true, and it is where the analysis stopped.
+
+The write cannot succeed. `File::replaceWithText` does not open the target: it writes a hidden
+sibling built from `target.getParentDirectory()`, and for a path with no separator
+`getPathUpToLastSlash()` returns the path itself — so the "parent directory" is `"~foo.anamorph"`,
+which is not a directory, the temp write fails, and `replaceWithText` returns false. That is
+guaranteed rather than incidental: `createLegalFileName` strips `/` and `\`, so a name reaching
+`getChildFile` can never contain a separator, and every tilde-leading name hits the same degenerate
+parent. `saveUser` therefore returns **false** at its own write check; `refresh()`, `current`, `sel`
+and `onSaved()` are all unreachable, nothing is written anywhere, and the editor's `if (saveUser(...))`
+leaves the dialog open with the text still in the field. The save fails **visibly** — which is
+exactly the outcome the proposed guard was meant to produce, so the guard would have been a no-op.
+Verified empirically against the pinned `juce_core`, for `~foo`, `~/foo`, `~` and `~root`, with a
+normal name as the control.
