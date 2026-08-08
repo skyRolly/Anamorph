@@ -139,6 +139,42 @@ could drag the tick off the row just chosen. The same-sound/**different**-row ca
 and its assertion is unchanged; a second assertion covers the re-select case, and both were verified
 against the pre-fix behaviour.
 
+**The encoder's second ambiguity: a direct-child name that `isAbsolutePath` accepts.** The
+`isAChildOf` fix above closed the *nesting* route into a broken `decode(encode(s)) == s`; a leading
+`~` was the other one. `decodeSelection` reads a bare name back through
+`presetDirectory().getChildFile(name)`, and `getChildFile` short-circuits to the raw `File`
+constructor for anything `isAbsolutePath` accepts, so `~foo.anamorph` sitting **directly in** the
+preset folder decoded to a literal relative path and the row lost its tick on reload. This does not
+contradict the `saveUser` refutation recorded above — that refutation is about the **save** path,
+which genuinely cannot create such a file; `USER_MANUAL.md` tells users to manage presets as files, so
+a hand-copied one reaches `refresh()` and can be loaded and encoded like any other. The encoder now
+requires the bare name to be unambiguous (`! juce::File::isAbsolutePath (name)`) and otherwise takes
+the absolute-path branch it already shares with outside-the-folder and sub-folder presets. No preset
+file format change, no canonicalisation, no weakening of the no-name-fallback rule. State test 12
+gained the round-trip case; verified to fail with the fix disabled.
+
+**A/B slot metadata now follows "absence means default".** `readSlot` read `dst.name` and
+`dst.baseline` *inside* the `hasProperty("slotAParams")` branch, so the pre-0.6.4 legacy shape — params
+only — left both untouched. `abSlot[]` are processor members and a host may call
+`setStateInformation` on one live instance repeatedly, so a legacy session restored after a modern one
+kept the **previous** session's preset name and dirty-baseline attached to freshly restored
+parameters. Both reads moved out of the branch, next to the identity read that already had this right.
+The resulting defaults (`""` / `""`) are the ones `SERIALIZATION_REGISTRY.md` already documented, so
+the code caught up to the ledger; no field was added, removed or renamed. **An existing assertion was
+changed, not merely added:** state test 5's `slotAName == "Default"` under the comment "legacy slot
+keeps pre-restore meta" *pinned the defect* — it described a fresh instance's construction snapshot as
+if it were the rule. It now asserts the default, alongside a repeated-restore case that shows why.
+
+**Documentation follow-up on the identity match (no behaviour change).** ADR-0024's Consequences now
+state the three properties plainly: the match is a raw path-string compare with **no**
+canonicalisation (`getLinkedTarget()` considered and rejected — it resolves symlinks but not
+`/private/var`, mount aliases or UNC spellings, trading a predictable "no tick" for a partial one);
+cross-machine resolution holds only for the name-encoded case, because a stored absolute path fails
+`isAbsolutePath` on the other platform; and a file name that looks like a path is stored as a path.
+`SERIALIZATION_REGISTRY.md` gained both encoder conditions and the raw-compare note.
+`API_REFERENCE.md`, `STATE_SERIALIZATION.md` and the ADR had their `src/` citations re-anchored where
+this round's edits moved them.
+
 **Declined, with evidence: restoring `PopupMenu::setLookAndFeel (&lnf)`.** The stated goal was to
 make item *measurement* use `AnamorphLookAndFeel` — but it already does. `MenuWindow` parents itself
 at `juce_PopupMenu.cpp:370-372` and only then builds items (`:457`), and `ItemComponent` calls

@@ -9,7 +9,7 @@ Field-level ledger of everything written to session state. Companion to
 > migration support (a read path for the old field). Adding a field is allowed only if absence
 > is handled (a default), so older sessions still load.
 
-Evidence [Verified]: backward-compat paths at src/PluginProcessor.cpp:618-621 (pre-0.8.4 `migrateFromLegacyApvts`), :641-666 (pre-0.6.4 `readSlot`), :668-673 (v0.2 bare APVTS);
+Evidence [Verified]: backward-compat paths at src/PluginProcessor.cpp:618-621 (pre-0.8.4 `migrateFromLegacyApvts`), :641-671 (pre-0.6.4 `readSlot`), :673-678 (v0.2 bare APVTS);
 src/InternalState.h:92-128.
 
 ## `AnamorphRoot` properties
@@ -19,7 +19,7 @@ src/InternalState.h:92-128.
 | `presetName` | String | ≥0.6 (Unverified exact) | No | No | falls back to current name |
 | `presetBaseline` | String | 0.6.x (#6) [Partially Verified] | No | No | `adoptRestoredState` clean baseline |
 
-Source: src/PluginProcessor.cpp:567-568 (write), :623-631 (read), :680-682 (default).
+Source: src/PluginProcessor.cpp:567-568 (write), :623-631 (read), :685-687 (default).
 
 ### The preset **indicator identity** (0.9.2, ADR-0024 as amended)
 
@@ -36,19 +36,27 @@ into a user preset FILE**: that format is unchanged.
 | `presetUserFile` | String | 0.9.2 | No | No | `""` |
 
 `presetUserFile` holds the preset's **file name** when it sits **directly in** the user preset
-folder, and its absolute path in every other case — a file opened through "Load Preset…" from
-elsewhere, or one nested in a sub-folder. The distinction is a direct-child test, not a descendant
-test: `refresh()` scans the folder non-recursively, so only a direct child can ever be a menu row,
-and encoding a nested file by name would decode to a *different* same-named file in the folder.
-Encoding and decoding live in one place — `PresetManager::encodeSelection` / `decodeSelection`.
+folder *and* that name cannot be mistaken for a path; its absolute path in every other case — a file
+opened through "Load Preset…" from elsewhere, one nested in a sub-folder, or one whose name
+`juce::File::isAbsolutePath` accepts (a leading `~` on POSIX). Both conditions exist to keep
+`decode(encode(s)) == s` true: the direct-child test is not a descendant test, because `refresh()`
+scans non-recursively and a nested file encoded by name would decode to a *different* same-named
+file in the folder; and a `~`-leading bare name would decode to a literal relative path rather than
+the file in the folder. Encoding and decoding live in one place —
+`PresetManager::encodeSelection` / `decodeSelection`.
+
+Resolution is a **raw path-string compare** with no canonicalisation (`juce::File::operator==`), so
+a path that reaches the same file by a different spelling, or an absolute path read on a different
+platform, resolves to nothing and ticks nothing. Accepted and explained in ADR-0024 §Consequences.
 
 Absent, empty, half-written or unrecognised all decode to `unknown`, which is the pre-0.9.2 name
 fallback (rule 2 of `SESSION_COMPATIBILITY_POLICY.md`). A well-formed value that no longer resolves —
 a removed factory id, a deleted or moved user preset — ticks **nothing**; it never falls back to a
-same-named preset. Source: src/PresetManager.h:54-77 (`Selection`, `SelectionFields`);
-src/PresetManager.cpp:312-353 (`encodeSelection` / `decodeSelection`);
+same-named preset. Source: src/PresetManager.h:54-76 (`Selection`), :78-94 (`SelectionFields`,
+`encodeSelection` / `decodeSelection`);
+src/PresetManager.cpp:312-365 (`encodeSelection` / `decodeSelection`);
 src/PluginProcessor.cpp:540-561 (`writeSelection`/`readSelection`), :575 (root write),
-:584 / :588 (per-slot write), :627 (root read), :648 (per-slot read).
+:584 / :588 (per-slot write), :627 (root read), :653 (per-slot read).
 
 ## `ANAMORPH` child (APVTS)
 
@@ -108,8 +116,8 @@ unconditionally rather than merging: `abSlot[]` are processor members and a host
 live instance repeatedly, so absent must mean the default, not "whatever the previous session left".
 
 **◊** Pre-0.6.4 sessions stored params-only under `slotA`/`slotB`; `readSlot` migrates them.
-Evidence [Verified]: src/PluginProcessor.cpp:656-660 (the legacy-key fallback inside `readSlot`, :641-666);
-the per-slot identity is written at :584 / :588 and read at :648.
+Evidence [Verified]: src/PluginProcessor.cpp:661-665 (the legacy-key fallback inside `readSlot`, :641-671);
+the per-slot identity is written at :584 / :588 and read at :653.
 
 ## Legacy root formats (read-only compatibility)
 
@@ -117,7 +125,7 @@ the per-slot identity is written at :584 / :588 and read at :648.
 |---|---|---|
 | v0.2 bare APVTS tree | `xml->hasTagName(apvts.state.getType())` | `apvts.replaceState` |
 
-Source: src/PluginProcessor.cpp:668-673.
+Source: src/PluginProcessor.cpp:673-678.
 
 ## Notes
 

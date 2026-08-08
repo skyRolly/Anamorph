@@ -520,9 +520,35 @@ static void testLegacyPre064AbSlots()
                "slot A params survive the legacy read");
     checkNear ((double) slotB.getChildWithProperty ("id", "width")["value"], 0.6, 1.0e-6,
                "slot B params survive the legacy read");
-    // Legacy slots carry no name/baseline of their own: the read keeps the slot's
-    // pre-restore meta — for a fresh instance, the construction snapshot ("Default").
-    checkStr (ab["slotAName"].toString(), "Default", "legacy slot keeps pre-restore meta");
+    // Legacy slots carry no name/baseline of their own, so the read must produce the
+    // DEFAULT for them -- the same "absence means default" rule the identity fields follow.
+    // (Before 0.9.2 this kept whatever the slot happened to hold, which on a fresh instance
+    // was the construction snapshot "Default" and on a re-restore was the PREVIOUS session's
+    // name -- see the repeated-restore check below.)
+    checkStr (ab["slotAName"].toString(), "", "a legacy slot carries no name of its own");
+    checkStr (ab["slotABase"].toString(), "", "...and no baseline of its own");
+
+    // Repeated restore into ONE live instance -- the case the rule exists for. A host may
+    // call setStateInformation on the same processor any number of times; a legacy AB node
+    // carries params only, so the slot's metadata must come back as the default rather than
+    // as whatever the previous session left attached to abSlot[].
+    {
+        AnamorphAudioProcessor q;
+        q.prepareToPlay (48000.0, 512);
+        q.getPresets().load (1);      // a factory preset that is not "Default"
+        q.abSwitchTo (1);             // snapshots the loaded state (name + identity) into slot A
+        auto abBefore = stateTreeOf (q).getChildWithName ("AB");
+        check (abBefore["slotAName"].toString().isNotEmpty(),
+               "the modern session gives slot A a name to inherit");
+        if (applyXmlFixture (q, "legacy_pre_0_6_4_ab_slots.xml"))
+        {
+            auto abAfter = stateTreeOf (q).getChildWithName ("AB");
+            checkStr (abAfter["slotAName"].toString(), "",
+                      "a legacy restore does not leave the previous session's slot name attached");
+            checkStr (abAfter["slotASource"].toString(), "",
+                      "...and clears its identity the same way");
+        }
+    }
 
     // Behavioural: switching to slot A applies the legacy-read params.
     p.abSwitchTo (0);
@@ -1138,6 +1164,45 @@ static void testPresetIndicatorIdentityAcrossRestore()
         q.abSwitchTo (0);
         check (q.getPresets().currentIndex() == userRow,
                "slot A's USER identity restores independently of slot B's");
+    }
+
+    // --- A user preset whose FILE NAME looks like an absolute path --------------
+    // Nothing stops a user dropping `~foo.anamorph` into the preset folder by hand -- the
+    // manual tells them to manage presets as files -- and `juce::File::isAbsolutePath`
+    // accepts a leading `~` on POSIX. Encoding such a direct child by BARE NAME would come
+    // back from the decoder as the literal relative string, so the row would silently lose
+    // its tick on reload. The encoder must fall back to the absolute path for it.
+    {
+        // Built from a full path string on purpose: getChildFile would short-circuit on the
+        // very ambiguity under test.
+        auto tilde = juce::File (anamorph::PresetManager::presetDirectory().getFullPathName()
+                                     + juce::File::getSeparatorString()
+                                     + "~AnamorphTildeHarness" + anamorph::PresetManager::fileSuffix());
+        tilde.deleteFile();
+        const bool stagedTilde = presetFile.copyFileTo (tilde);
+        check (stagedTilde, "tilde-named preset staged");
+        if (stagedTilde)
+        {
+            presets.refresh();
+            int tildeIdx = -1;
+            for (int i = 0; i < presets.entries().size(); ++i)
+                if (presets.entries().getReference (i).file == tilde) tildeIdx = i;
+            check (tildeIdx >= 0, "the tilde-named preset appears as a menu row");
+            if (tildeIdx >= 0)
+            {
+                presets.load (tildeIdx);
+                check (presets.currentIndex() == tildeIdx, "the tilde-named preset is current while live");
+                const auto tildeRaw = rawSnapshot (p);
+                juce::MemoryBlock tildeBlob;
+                p.getStateInformation (tildeBlob);
+                const auto r = restoreInto (tildeBlob, tildeRaw);
+                check (r.index == tildeIdx,
+                       "a tilde-named preset keeps its tick across a reload (encode/decode round-trips)");
+                check (r.paramsMatch, "tilde-named preset: parameters restore bit-identically");
+            }
+            tilde.deleteFile();
+        }
+        presets.refresh();
     }
 
     check (presetFile.deleteFile(), "test preset file removed");

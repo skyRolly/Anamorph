@@ -4,9 +4,9 @@ How session state is saved and restored. The field-level ledger is in
 `SERIALIZATION_REGISTRY.md`; binding rules are in
 `docs/policies/SESSION_COMPATIBILITY_POLICY.md`.
 
-Evidence [Verified]: src/PluginProcessor.cpp:563-593 (`getStateInformation`), :595-685
+Evidence [Verified]: src/PluginProcessor.cpp:563-593 (`getStateInformation`), :595-690
 (`setStateInformation`), :540-561 (the `writeSelection` / `readSelection` helpers);
-src/PresetManager.cpp:312-353 (`encodeSelection` / `decodeSelection`).
+src/PresetManager.cpp:312-365 (`encodeSelection` / `decodeSelection`).
 
 ## On-disk schema (`getStateInformation`)
 
@@ -106,8 +106,8 @@ Evidence [Verified]: src/PluginProcessor.cpp (`getStateInformation` / `setStateI
 
 | Legacy format | Handling | Source |
 |---|---|---|
-| **v0.2**: root *is* the APVTS tree | `setStateInformation` else-branch `apvts.replaceState` | :668-673 |
-| **pre-0.6.4**: A/B slots stored params only (`slotA`/`slotB`) | `readSlot` legacy-key fallback | :656-660 (within `readSlot`, :641-666) |
+| **v0.2**: root *is* the APVTS tree | `setStateInformation` else-branch `apvts.replaceState` | :673-678 |
+| **pre-0.6.4**: A/B slots stored params only (`slotA`/`slotB`) | `readSlot` legacy-key fallback | :661-665 (within `readSlot`, :641-671) |
 | **pre-0.8.4**: Oversampling/view were APVTS params (no `ANAMORPH_INTERNAL`) | `migrateFromLegacyApvts` | :618-621; InternalState.h:106-128 |
 | **pre-0.9.2**: no indicator identity in the session | `decodeSelection` yields `unknown` → name fallback | src/PresetManager.cpp:336-353; :128-131 |
 

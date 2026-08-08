@@ -65,24 +65,45 @@ folder) are not disjoint.
   therefore a Hard Stop — **an agent must not implement it**; it needs human Architecture Review.~~
   **Closed by the Amendment below** (the maintainer supplied the Architecture-Review approval); the
   name fallback now applies only to state that carries no identity at all.
-- `juce::File` equality is a path-string compare (JUCE does no canonicalisation), so a chooser
-  result that reaches a preset-folder file by a different spelling (symlinked `$HOME`,
-  `/private/var` vs `/var`, UNC vs mapped drive) fails the identity match and degrades to "no tick",
-  which is safe. Not normalised on purpose — `getLinkedTarget()` would change what "the same preset"
-  means and has its own failure modes.
+- **Identity matching is a raw path-string compare, deliberately.** `currentIndex()` matches a user
+  preset with `e.file == sel.file`, and `juce::File::operator==` compares the path string
+  (case-insensitively on Windows) with **no canonicalisation whatsoever**: no symlink resolution, no
+  `/private/var`↔`/var` folding on macOS, no UNC↔mapped-drive folding on Windows, no relative-path
+  normalisation. A chooser result that reaches a preset-folder file by a different *spelling* than
+  `refresh()` produced therefore fails to match its own menu row and shows **no tick**. That is the
+  safe direction (never a *wrong* tick) and it is the documented contract, not an oversight:
+  `getLinkedTarget()` would change what "the same preset" means — a symlink and its target would
+  become one identity — and brings its own failure modes on every platform. On macOS the
+  `/private/var` case is common enough that a tester may report it as a bug; this paragraph is the
+  answer.
+- **Cross-machine resolution holds only for the name-encoded case.** A preset stored by bare file
+  name resolves against whatever `presetDirectory()` is on the machine opening the project, so it
+  survives the move. A preset stored by absolute path does not: `decodeSelection` treats the stored
+  string as a path only when `juce::File::isAbsolutePath` accepts it on the *current* platform, so a
+  Windows `C:\…` path reopened on Linux (or the reverse) fails that test, resolves to a file that
+  does not exist, and ticks nothing. Safe, and consistent with "unresolvable ticks nothing" — but it
+  means the portability property applies to presets sitting **directly in** the preset folder, which
+  is the case users actually hit when they share a project alongside a preset folder.
+- **A file name that looks like a path is stored as a path.** The bare-name encoding is only used
+  when the name cannot be mistaken for one: `juce::File::isAbsolutePath` accepts a leading `~` on
+  POSIX, and nothing stops a user dropping `~foo.anamorph` into the preset folder by hand (the
+  manual tells them to manage presets as files). Encoding such a direct child by bare name would
+  decode to the literal relative string and lose the tick, so it takes the absolute-path branch
+  instead — less portable for that one preset, but `decode(encode(s)) == s` holds, which is the
+  invariant the whole design rests on.
 - No user-visible string was added (constraint C8): the ids never surface.
 
 ## Related code
 - `src/PresetManager.h:30-36` (`Entry::factoryId`), `:54-76` (`Selection`, incl. its equality
-  operators), `:78-93` (`SelectionFields`, `encodeSelection`/`decodeSelection`), `:115`
-  (`selection()`), `:119-130` (`setMeta`), `:137-142` (`adoptRestoredState`), `:150-156` (`onSaved`)
+  operators), `:78-94` (`SelectionFields`, `encodeSelection`/`decodeSelection`), `:116`
+  (`selection()`), `:120-131` (`setMeta`), `:138-143` (`adoptRestoredState`), `:151-157` (`onSaved`)
 - `src/PresetManager.cpp:19-58` (the factory table + `findFactory`), `:108-132` (`currentIndex`),
   `:202-250` (`load`), `:252-266` (`loadFile`), `:278-299` (`saveUser`), `:301-306`
-  (`adoptRestoredState`), `:312-353` (`encodeSelection`/`decodeSelection`)
+  (`adoptRestoredState`), `:312-365` (`encodeSelection`/`decodeSelection`)
 - `src/PluginProcessor.h:113-125` (`StateSet::selection`)
 - `src/PluginProcessor.cpp:36-47` (the hooks, incl. `onSaved`), `:243-254`
   (`currentStateSet`/`applyStateSet`), `:417-449` (`commitPresetSwitchUndoStep`, incl. the
-  identity-moved guard on redo), `:540-561` (`writeSelection`/`readSelection`), `:641-666`
+  identity-moved guard on redo), `:540-561` (`writeSelection`/`readSelection`), `:641-671`
   (`readSlot`)
 - `tests/state_tests.cpp` — state tests 10, 11 and 12
 
@@ -114,12 +135,14 @@ form.
 - A user preset sitting **directly in** the preset folder is stored as its **file name**, not an
   absolute path: there the name is already a complete identity, it keeps the user's home directory
   out of the saved project, and a project opened on another machine still resolves. Everything else
-  — a preset loaded from *outside* the folder, or one nested in a sub-folder of it — stores its
-  absolute path, so `decode(encode(s)) == s` stays true instead of silently re-pointing at a
-  same-named file in the folder. The test is a **direct-child** one (`getParentDirectory() ==
+  — a preset loaded from *outside* the folder, one nested in a sub-folder of it, or one whose name
+  `juce::File::isAbsolutePath` would accept — stores its absolute path, so `decode(encode(s)) == s`
+  stays true instead of silently re-pointing at a same-named file in the folder or decoding to a
+  literal relative string. The folder test is a **direct-child** one (`getParentDirectory() ==
   presetDirectory()`), deliberately **not** `juce::File::isAChildOf`, which recurses: a nested file
   would otherwise be stored by bare name and decode to a different file. `refresh()` scans
-  non-recursively, so a direct child is the only thing that can ever be a menu row.
+  non-recursively, so a direct child is the only thing that can ever be a menu row. See the last two
+  **Consequences** bullets for the name-ambiguity case and the cross-machine limits.
 
 **Fallbacks, all three verified by state test 12:**
 
@@ -144,22 +167,26 @@ maintainer rather than taken by an agent. `SERIALIZATION_REGISTRY.md` carries th
 `decodeSelection`, the two-argument `adoptRestoredState`), `src/PresetManager.cpp` (the encode/decode
 bodies), `src/PluginProcessor.cpp` (`writeSelection`/`readSelection`, `getStateInformation`,
 `setStateInformation`, `readSlot`), `tests/state_tests.cpp` (state test 12; state test 1's schema
-shape; state test 10's reload assertion).
+shape; state test 10's reload assertion; state test 5's legacy-slot metadata expectation, which had
+pinned the pre-fix "keeps whatever the slot held" behaviour and now asserts the documented default).
 
 ---
 
 Evidence [Verified] — **as amended**; this block describes the ADR in force, not the original
 decision preserved above it:
 - Source: the **Related code** list above, plus the **Amended related code** in the Amendment.
-- Tests: `AnamorphStateTests`, 847 checks, green. **State test 10** — the shared-name save, both
+- Tests: `AnamorphStateTests`, 856 checks, green. **State test 10** — the shared-name save, both
   rows selectable, the A/B round-trip, undo after a save, redo invalidation on an identical-sounding
   switch, the outside-folder file and the deleted user preset. **State test 11** — factory-id
   integrity (present, unique, every one resolving), which is what makes `load()`'s assert
   unreachable. **State test 12** — the whole restore matrix of the Amendment: factory restore, user
   restore against a same-named factory preset, an unresolvable factory id, a missing user preset, a
-  preset nested in a sub-folder, a pre-0.9.2 session with no identity, and per-A/B-slot identity —
-  each asserting the restored parameters are **bit-identical**, which is the evidence that the
-  identity is metadata and never reaches the sound. **State test 1** pins the new schema shape (the
+  preset nested in a sub-folder, a direct-child preset whose name `isAbsolutePath` accepts, a
+  pre-0.9.2 session with no identity, and per-A/B-slot identity — each asserting the restored
+  parameters are **bit-identical**, which is the evidence that the identity is metadata and never
+  reaches the sound. **State test 5** covers the other half of the per-slot rule: a legacy
+  (params-only) AB node restores the slot's name, baseline and identity to their **defaults**,
+  including on a repeated restore into one live instance. **State test 1** pins the new schema shape (the
   three root fields + six slot fields); it was amended for that, and its passing is no longer
   evidence that the saved state is unchanged — the saved state gained six additive fields, by
   design and with approval.

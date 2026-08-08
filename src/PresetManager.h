@@ -82,10 +82,11 @@ public:
     // its full path: there the name is already a complete identity (`refresh()` scans the
     // folder non-recursively, so only direct children can ever be menu rows), it keeps the
     // user's home directory out of the saved project, and a project moved to another
-    // machine still resolves. Anything else -- a file loaded from outside the folder, or
-    // one nested in a sub-folder of it -- stores its absolute path, which keeps
-    // `decode(encode(s)) == s` true rather than silently re-pointing it at a same-named
-    // file sitting directly in the folder.
+    // machine still resolves. Anything else stores its absolute path, which keeps
+    // `decode(encode(s)) == s` true: a file loaded from outside the folder, one nested in a
+    // sub-folder of it (whose bare name would decode to a DIFFERENT same-named file sitting
+    // directly in the folder), and one whose name juce::File::isAbsolutePath would accept --
+    // a leading `~` on POSIX -- which would decode to a literal relative path instead.
     struct SelectionFields { juce::String kind, factoryId, userFile; };
     static SelectionFields encodeSelection (const Selection&);
     static Selection       decodeSelection (const juce::String& kind,

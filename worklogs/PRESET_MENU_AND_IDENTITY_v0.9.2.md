@@ -9,7 +9,7 @@
 - **Date:** 2026-08-07 · **Version:** 0.9.2 (PR #100) · **Branch:** `claude/beautiful-sagan-JAUFI`.
 - **Reference tree:** JUCE 9.0.0 at the pinned commit `f8f8864…` (`CMakeLists.txt:36-38`), fetched
   and read locally; all JUCE line citations below are against that commit.
-- **Suites:** `AnamorphTests` 140 checks, `AnamorphStateTests` 847 checks (was 774), both green.
+- **Suites:** `AnamorphTests` 140 checks, `AnamorphStateTests` 856 checks (was 774), both green.
 
 ---
 
@@ -187,7 +187,7 @@ is pure name, so in the duplicate-name case it ticks **both** rows. Its factory 
 index, not a stable string, so reordering the table would silently re-point a live hint. Nothing was
 ported.
 
-**Test-count delta:** state test 10 added 23 checks (774 → 797); §5, §7 and §8 take the suite to 847. Each of H1, H3 and H4 has an
+**Test-count delta:** state test 10 added 23 checks (774 → 797); §5, §7 and §8 take the suite to 847, and §9 to 856. Each of H1, H3 and H4 has an
 assertion that was verified to **fail** with its fix disabled — a test that cannot fail is not a
 test.
 
@@ -367,3 +367,60 @@ and it gained the root-vs-slot, metadata-only and absence/unresolvable rules tha
 field-by-field. And `DOCUMENTATION_COVERAGE.md` still carried the `~foo` claim as a pre-existing
 defect, contradicting §7's refutation of it in the same change set; the ledger now records the
 refutation instead, so a future agent does not "fix" a non-defect.
+
+## 9. Fourth review round — the tilde round-trip, and "absence means default" for A/B metadata
+
+**A direct-child file name that `isAbsolutePath` accepts broke `decode(encode(s)) == s`.** §7 fixed
+the *nesting* half of the encoder and left a second way in. `encodeSelection` stored a direct child of
+the preset folder as its bare file name; `decodeSelection` reads that back with
+`presetDirectory().getChildFile(name)`, and `getChildFile` short-circuits to the raw `File`
+constructor for anything `juce::File::isAbsolutePath` accepts — a leading `~` on POSIX. So a preset
+named `~foo.anamorph` sitting directly in the folder encoded as `"~foo.anamorph"` and decoded as the
+literal *relative* string, which matches no row: the tick vanished on reload and `‹ ›` had nothing to
+step from. The sound was unaffected, as always with the identity fields.
+
+§7 established that `saveUser` cannot *create* such a name — `replaceWithText`'s degenerate parent
+directory makes the write fail visibly — and that refutation stands for the **save** path. It says
+nothing about the **encode** path: `USER_MANUAL.md` tells users to manage presets as files, so a
+hand-copied `~foo.anamorph` reaches `refresh()`, becomes a menu row, and can be loaded and encoded
+like any other. The fix is one extra condition on the name-encoding branch —
+`! juce::File::isAbsolutePath (name)` — so such a file falls through to the absolute-path branch it
+already shares with outside-the-folder and sub-folder presets. That one preset loses cross-machine
+portability of its tick; the round-trip invariant holds, which is the property the design depends on.
+Deliberately **not** fixed by canonicalising or rewriting names: the preset file format is untouched
+and the no-name-fallback rule is untouched.
+
+**A/B slot metadata did not follow "absence means default".** `readSlot` assigned `dst.selection`
+unconditionally (§5 got that right) but read `dst.name` and `dst.baseline` *inside* the
+`hasProperty (pk)` branch, so the pre-0.6.4 legacy shape — params only — left both untouched.
+`abSlot[]` are processor members and a host may call `setStateInformation` on one live instance
+repeatedly, so restoring a legacy session after a modern one left the **previous** session's preset
+name and dirty-baseline attached to the freshly restored parameters: the A/B slot showed a preset
+name that had nothing to do with its sound. Moving the two reads out of the branch is the whole fix;
+the defaults it now produces (`""` / `""`) are the ones `SERIALIZATION_REGISTRY.md` already documented,
+so this is the code catching up to the ledger rather than a format change. No serialization field was
+added, removed or renamed.
+
+**An existing assertion was changed, not just added.** State test 5 asserted
+`slotAName == "Default"` under the comment "legacy slot keeps pre-restore meta" — it *pinned the
+defective behaviour*, describing a fresh instance's construction snapshot as if it were the rule. It
+now asserts `""` for both `slotAName` and `slotABase`, with the repeated-restore case that shows why
+the old expectation was wrong.
+
+**Documentation.** ADR-0024's Consequences now states the three properties of the identity match
+plainly: it is a raw path-string compare with no canonicalisation (`getLinkedTarget()` was considered
+and rejected — it resolves symlinks but not `/private/var`, mount aliases or UNC spellings, so it
+would trade a predictable "no tick" for a partial one); cross-machine resolution holds only for the
+name-encoded case; and a file name that looks like a path is stored as a path. `SERIALIZATION_REGISTRY.md`
+gained both encoder conditions and the raw-compare note, and its drifted citation was corrected
+(`src/PresetManager.h:54-77` → `:54-76` for `Selection`, `:78-94` for `SelectionFields` and the two
+functions). No behaviour was introduced by any of this. The citations that this round's own edits
+moved — everything after `readSlot`'s body in `PluginProcessor.cpp` and after the encoder comment in
+`PresetManager.h`/`.cpp` — were re-anchored in the same pass across `SERIALIZATION_REGISTRY.md`,
+`STATE_SERIALIZATION.md`, `API_REFERENCE.md` and this ADR.
+
+**Negative controls.** All four new assertions were run with their fix reverted and observed to fail:
+`a legacy slot carries no name of its own` (got `"Default"`), `...and no baseline of its own` (got the
+signature string), `a legacy restore does not leave the previous session's slot name attached` (got
+`"Gentle Width"`), and `a tilde-named preset keeps its tick across a reload`. Suite: 847 → **856
+checks**, 0 failures; `AnamorphTests` 140, unchanged.

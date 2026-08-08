@@ -317,15 +317,27 @@ PresetManager::SelectionFields PresetManager::encodeSelection (const Selection& 
             return { "factory", s.factoryId, {} };
 
         case Selection::Kind::userFile:
+        {
             // DIRECT child, not descendant. juce::File::isAChildOf recurses (juce_File.cpp), so it
             // is also true for a file nested in a SUB-folder of the preset folder -- and that file
             // would then be stored as its bare name and decode back to a DIFFERENT file of the same
             // name sitting directly in the folder. `refresh()` scans non-recursively, so a direct
             // child is the only thing that can ever be a menu row anyway; everything else takes the
             // absolute-path branch and round-trips exactly.
-            return { "user", {}, s.file.getParentDirectory() == presetDirectory()
-                                     ? s.file.getFileName()
+            //
+            // ...and the bare name has to be one the decoder cannot mistake for a path. Nothing
+            // stops a user dropping `~foo.anamorph` into the preset folder by hand (the manual
+            // tells them to manage presets as files), and `juce::File::isAbsolutePath` accepts a
+            // leading `~` on POSIX -- so a bare `~foo.anamorph` would come back as the literal
+            // relative string rather than the file in the folder, and the row would lose its tick.
+            // Such a name simply takes the absolute-path branch instead: less portable for that one
+            // preset, but `decode(encode(s)) == s` holds, which is the invariant that matters.
+            const auto name = s.file.getFileName();
+            const bool nameIsUnambiguous = ! juce::File::isAbsolutePath (name);
+            return { "user", {}, (s.file.getParentDirectory() == presetDirectory() && nameIsUnambiguous)
+                                     ? name
                                      : s.file.getFullPathName() };
+        }
 
         case Selection::Kind::unknown:
         default:

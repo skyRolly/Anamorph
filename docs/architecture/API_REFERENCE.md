@@ -76,10 +76,10 @@ Evidence [Verified]: src/InternalState.h:60-122.
 | `load` / `loadFile` / `step` / `saveUser` | preset ops (message thread) | Load/save sound params only (view params excluded). Each sets `Selection`. |
 | `currentName` / `isDirty` / `baseline` / `setMeta` | preset metadata | Name + dirty-star, travels with state sets. |
 | `Selection` / `selection` | `struct { Kind kind; juce::String factoryId; juce::File file; }` | Which row produced the current sound: a factory preset's immutable internal id, or a user preset's file. Drives `currentIndex()` so a shared name cannot mis-tick the menu. Travels with a `StateSet` through A/B and undo, **and with the session** since 0.9.2. |
-| `SelectionFields` / `encodeSelection` / `decodeSelection` | `struct { juce::String kind, factoryId, userFile; }` + two statics | The one place that knows the wire form of a `Selection` (3 strings, written to `AnamorphRoot` and to each A/B slot). Absent/empty/unrecognised decodes to `Kind::unknown` = the pre-0.9.2 name fallback. A user preset inside the preset folder encodes as its **file name**, one from elsewhere as its absolute path. Nothing here reads or writes a parameter, and nothing touches a user preset **file**. |
+| `SelectionFields` / `encodeSelection` / `decodeSelection` | `struct { juce::String kind, factoryId, userFile; }` + two statics | The one place that knows the wire form of a `Selection` (3 strings, written to `AnamorphRoot` and to each A/B slot). Absent/empty/unrecognised decodes to `Kind::unknown` = the pre-0.9.2 name fallback. A user preset sitting **directly in** the preset folder, whose name cannot itself be mistaken for a path, encodes as its **file name**; everything else (elsewhere on disk, a sub-folder, a `~`-leading name) encodes as its absolute path, so `decode(encode(s)) == s` holds. Nothing here reads or writes a parameter, and nothing touches a user preset **file**. |
 | `Entry::factoryId` | `juce::String` | Empty for user presets; the factory preset's internal id otherwise. Immutable — renaming a preset is a display change, renaming an id would re-point live A/B and undo slots. |
 
-Evidence [Verified]: src/PresetManager.h:30-100.
+Evidence [Verified]: src/PresetManager.h:30-101.
 
 ## DSP module public interfaces
 

@@ -642,16 +642,21 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
                                    const char* sk, const char* fk, const char* uk,
                                    const char* legacyKey)
             {
-                // Assigned unconditionally, not merged: abSlot[] are processor members that a
-                // host may restore into repeatedly on ONE live instance, so "absent" has to mean
-                // the default (unknown) rather than "whatever the previous session left here".
+                // All THREE metadata fields are assigned unconditionally, not merged: abSlot[]
+                // are processor members that a host may restore into repeatedly on ONE live
+                // instance, so "absent" has to mean the default ("" / unknown) rather than
+                // "whatever the previous session left here". Reading them outside the params
+                // branch is what makes that true for the pre-0.6.4 legacy shape too, which
+                // carries params only -- otherwise the previous session's preset name and dirty
+                // baseline stay attached to freshly restored parameters. The defaults match the
+                // ones SERIALIZATION_REGISTRY.md already records for these fields.
                 dst.selection = readSelection (ab, sk, fk, uk);
+                dst.name      = ab.getProperty (nk).toString();
+                dst.baseline  = ab.getProperty (bk).toString();
                 if (ab.hasProperty (pk))
                 {
                     if (auto x = juce::parseXML (ab.getProperty (pk).toString()))
                         dst.params = juce::ValueTree::fromXml (*x);
-                    dst.name     = ab.getProperty (nk).toString();
-                    dst.baseline = ab.getProperty (bk).toString();
                 }
                 else if (ab.hasProperty (legacyKey)) // pre-0.6.4 slots: params only
                 {

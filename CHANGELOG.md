@@ -40,6 +40,13 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   no checkmark rather than picking something else with the same name. Projects saved by an earlier
   version keep the old behaviour, which was to fall back to the name.
   Evidence: PR #100. [Verified]
+- **Reopening a very old project no longer leaves the previous project's preset name on the A/B
+  slots.** Sessions saved before 0.6.4 store the A and B slots as parameter values only, with no
+  preset name attached. When the host reloaded such a project into a plug-in that already had a
+  project open, each slot kept the *previous* project's preset name and modified-marker while
+  showing the newly loaded sound. Both now reset to "no preset", which is what "the slot carries
+  no name" has always meant everywhere else. Sound and parameter values were never affected.
+  Evidence: PR #100. [Verified]
 
 ### Changed
 - **The Settings control "Window Size" is now labelled "UI Scale"** (and its tooltip with it).
