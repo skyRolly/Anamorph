@@ -557,9 +557,9 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
 
     // Whole-window scale (F4): vectors redraw at the new size, stays crisp.
     setupComboInternal (uiScaleBox, { "XS", "S", "M", "L", "XL" },
-                        "Window size - M is the original; everything scales in proportion",
+                        "UI scale - M is the original; everything scales in proportion",
                         processor.getInternal().uiScaleValue());
-    uiScaleLabel.setText ("Window Size", juce::dontSendNotification);
+    uiScaleLabel.setText ("UI Scale", juce::dontSendNotification);
     uiScaleLabel.setColour (juce::Label::textColourId, colours::textDim);
     settingsBackdrop.addAndMakeVisible (uiScaleLabel);
     settingsBackdrop.addAndMakeVisible (uiScaleBox);
@@ -1333,7 +1333,7 @@ void AnamorphAudioProcessorEditor::applyUiScale()
 
 // The host calls this with its display/DPI scale (notably Windows hosts on a
 // scaled display). JUCE's default would overwrite our transform with scale(newScale)
-// and so wipe out the user's Window-Size choice; instead we remember it and re-apply
+// and so wipe out the user's UI-Scale choice; instead we remember it and re-apply
 // the COMPOSED transform, so DPI and the UI scale multiply correctly (#window-size).
 void AnamorphAudioProcessorEditor::setScaleFactor (float newScale)
 {
@@ -1398,10 +1398,21 @@ void AnamorphAudioProcessorEditor::refreshPresetDisplay()
     const juce::Font font (juce::FontOptions (13.0f)); // matches the presetname button font
     const float avail = (float) presetName.getWidth() - 12.0f - textWidth (font, marker);
 
-    juce::String name = pm.currentName();
+    // An EMPTY preset name is a real state, not a bug: a pre-0.6.4 A/B slot carries no preset of
+    // its own (readSlot leaves its name empty by the "absence means default" rule), and switching
+    // into one pushes that empty name through applyStateSet. Rendering it verbatim would leave the
+    // top bar an unlabelled clickable region, so the DISPLAY substitutes a placeholder.
+    //
+    // Display only, and deliberately here rather than in PresetManager::currentName(): that
+    // accessor feeds `presetName` in getStateInformation (the serialized field) and pre-fills the
+    // Save Preset field, so a placeholder there would be written into the session and offered as a
+    // preset file name. The stored name stays "", the identity stays `unknown`, and currentIndex()
+    // still ticks nothing -- state test 5 pins all three, so this cannot drift into the model.
+    juce::String name = pm.currentName().isNotEmpty() ? pm.currentName()
+                                                      : juce::String ("No Preset");
     if (textWidth (font, name) > avail)
     {
-        name = abbreviate (pm.currentName());          // consonant skeleton (#7)
+        name = abbreviate (name);                      // consonant skeleton (#7)
         while (name.isNotEmpty() && textWidth (font, name) > avail)
             name = name.dropLastCharacters (1);        // hard-clip if still too wide
     }
@@ -1417,7 +1428,62 @@ void AnamorphAudioProcessorEditor::showPresetMenu()
     pm.refresh();
 
     juce::PopupMenu m;
-    m.setLookAndFeel (&lnf);
+    // With no parent, JUCE's MenuWindow is an independent always-on-top DESKTOP window
+    // owned by the process-global ModalComponentManager -- the editor holds no reference
+    // to it and is never consulted, so it survived the plug-in window being torn down.
+    // Worse, JUCE's own self-heal cannot fire: MenuWindow::windowIsStillValid() dismisses
+    // when `componentAttachedTo != options.getTargetComponent()`, but BOTH are
+    // WeakReference<Component> to `presetName`, so on the editor's death they null in the
+    // same instant and the comparison is false. That left the menu on screen, and clicking
+    // an item ran the callback below on a destroyed editor -- the crash.
+    //
+    // `.withParentComponent (this)` makes the ctor take `pc->addChildComponent (this)`
+    // instead of `addToDesktop`, so the menu is a CHILD: it is clipped to the editor,
+    // stacks with it (it goes behind with our window instead of floating over the next
+    // plug-in), and ModalComponentManager's ComponentMovementWatcher cancels it with
+    // result 0 on the editor's destruction or hide.
+    //
+    // Dropping setLookAndFeel (&lnf) is part of the same move, not a separate fix. The
+    // MenuWindow COPIES the menu's look-and-feel into its own Component::lookAndFeel
+    // slot (juce_PopupMenu.cpp:366) -- that slot is a WeakReference (juce_Component.h),
+    // so it NULLED rather than dangled when the editor died, and a null slot falls back
+    // to the default LookAndFeel_V4: exactly the "hovering loses the custom styling"
+    // symptom. (The `PopupMenu m` below is a stack local and is long gone by then; the
+    // reference that outlives us is the window's copy.) Parented,
+    // Component::getLookAndFeel() walks up to the editor's own `lnf` instead, and every
+    // ItemComponent is built after the parenting, so the family styling arrives with
+    // nothing stored anywhere to go stale.
+    //
+    // Do NOT "restore" setLookAndFeel here as a measurement fix -- measurement already
+    // uses ours. The MenuWindow ctor parents at juce_PopupMenu.cpp:370-372 and only
+    // then builds the items (:457), and ItemComponent calls parent.addAndMakeVisible
+    // BEFORE getIdealSize (:139-146), which resolves through getLookAndFeel(). Setting
+    // it back would instead re-arm the ~LookAndFeel assertion (it fires on any live
+    // WeakReference), because `lnf` is a member and so is destroyed BEFORE this
+    // editor's Component base -- i.e. before the menu is asynchronously cancelled, so
+    // it would fire on every window-closed-with-the-menu-open in a debug build.
+    //
+    // THREE calls still resolve through the DEFAULT look-and-feel, all before the
+    // parenting. Two are inert: setOpaque (:452, same answer -- colours::bgPanel is
+    // opaque) and preparePopupMenuWindow (:500, a no-op we do not override); a future
+    // override of either would silently not apply to this menu. The third is
+    // LOAD-BEARING: getParentComponentForMenuOptions (:353, in the member-init list),
+    // whose return value is what actually installs the parent below. Every JUCE
+    // look-and-feel inherits LookAndFeel_V2's implementation, which returns
+    // options.getParentComponent() unchanged -- but the process-global default is not
+    // ours, so a host or another plug-in that installs one overriding it to return
+    // nullptr would silently discard the parenting and drop this menu back to a desktop
+    // window. Only the SafePointer below would still hold. Not reachable through
+    // anything Anamorph owns; recorded so it is not rediscovered as a mystery.
+    //
+    // maxColumns 1 preserves TODAY's shape: a parented menu is budgeted against the
+    // editor (~688 px in Simple mode) rather than the display, and JUCE reacts to
+    // overflow by adding COLUMNS before it scrolls -- past ~14 user presets the list
+    // would silently become two columns. Same option the combo popups already use.
+    // The alternatives to parenting were both worse: dismissAllActiveMenus() in the
+    // destructor walks a process-global list and would also close ANOTHER instance's
+    // (or another JUCE plug-in's) open menu, and a shared static LookAndFeel trades
+    // this for static-destruction order at DLL unload.
     const int cur = pm.currentIndex();
     m.addSectionHeader ("FACTORY");
     bool userHeader = false;
@@ -1436,16 +1502,22 @@ void AnamorphAudioProcessorEditor::showPresetMenu()
     // full -- the slot itself is narrow (#8).
     m.showMenuAsync (juce::PopupMenu::Options()
                          .withTargetComponent (presetName)
+                         .withParentComponent (this)     // lifetime + look-and-feel; see above
+                         .withMaximumNumColumns (1)      // stay one column; see above
                          .withMinimumWidth (228),
-        [this] (int r)
+        // SafePointer, not a raw `this` -- and NOT redundant next to the parenting above:
+        // the watcher's cancel() is ASYNCHRONOUS, so between the editor's ~Component and
+        // the async dismissal the menu is parentless but its 20 Hz MouseSourceState timer
+        // is still running and can still emit a NON-zero result. This closes that window.
+        [safeThis = juce::Component::SafePointer<AnamorphAudioProcessorEditor> (this)] (int r)
         {
-            if (r == 0) return;
-            if (r == 10001) { showSavePreset (true); return; }
-            if (r == 10002) { showLoadPreset(); return; }
-            processor.getEngine().requestDuck();   // mask the level jump (#1, 0.6.4)
-            processor.getPresets().load (r - 1);
-            knobSweepTime = 0.45; // sweep the knobs to the preset (#3)
-            refreshPresetDisplay();
+            if (r == 0 || safeThis == nullptr) return;
+            if (r == 10001) { safeThis->showSavePreset (true); return; }
+            if (r == 10002) { safeThis->showLoadPreset(); return; }
+            safeThis->processor.getEngine().requestDuck();   // mask the level jump (#1, 0.6.4)
+            safeThis->processor.getPresets().load (r - 1);
+            safeThis->knobSweepTime = 0.45; // sweep the knobs to the preset (#3)
+            safeThis->refreshPresetDisplay();
         });
 }
 
@@ -1457,16 +1529,22 @@ void AnamorphAudioProcessorEditor::showLoadPreset()
         "Load Anamorph Preset", dir, "*" + anamorph::PresetManager::fileSuffix());
 
     fileChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-        [this] (const juce::FileChooser& fc)
+        // Same hazard as the preset menu above, one step further along the same path
+        // ("Load Preset..." opens this chooser): the OS chooser is modal to the HOST,
+        // not to us, so closing the plug-in window while it is open would run this
+        // callback on a destroyed editor.
+        [safeThis = juce::Component::SafePointer<AnamorphAudioProcessorEditor> (this)]
+        (const juce::FileChooser& fc)
         {
+            if (safeThis == nullptr) return;
             const auto file = fc.getResult();
             if (file.existsAsFile())
             {
-                processor.getEngine().requestDuck(); // mask the level jump (#1, 0.6.4)
-                if (processor.getPresets().loadFile (file))
+                safeThis->processor.getEngine().requestDuck(); // mask the level jump (#1, 0.6.4)
+                if (safeThis->processor.getPresets().loadFile (file))
                 {
-                    knobSweepTime = 0.45; // sweep the knobs to the preset (#3)
-                    refreshPresetDisplay();
+                    safeThis->knobSweepTime = 0.45; // sweep the knobs to the preset (#3)
+                    safeThis->refreshPresetDisplay();
                 }
             }
         });
@@ -1479,22 +1557,41 @@ void AnamorphAudioProcessorEditor::showSavePreset (bool show)
     {
         savePresetBackdrop.toFront (false);
         resized();
+        // The RAW name on purpose, not refreshPresetDisplay's placeholder: for a state that
+        // carries no preset the right pre-fill is an empty field the user types into, never
+        // "No Preset" offered as a preset file name.
         saveNameEditor.setText (processor.getPresets().currentName(), false);
         focusSaveNameField (4);
     }
 }
 
 // Focus the save-name field so typing (Space included) goes into the text and not
-// to the host. A plain grabKeyboardFocus() here silently did NOTHING when invoked
-// from the preset-menu callback: the menu's own desktop window still owns the OS
-// focus at that moment (its teardown + focus restoration run AFTER the user
-// callback -- juce_PopupMenu.cpp, PopupMenuCompletionCallback), and JUCE aborts
-// the whole internal focus move while the peer isn't focused (juce_Component.cpp,
-// takeKeyboardFocus: "if (! peer->isFocused()) return"). With no JUCE component
-// focused, every keystroke stays with the host, which reads Space as transport.
+// to the host. A plain grabKeyboardFocus() from the preset-menu callback silently
+// did NOTHING, and the retry below is what made it stick.
+//
+// The reason is NOT the ordering the pre-0.9.2 comment here gave. It claimed the
+// menu's teardown + focus restoration run AFTER the user callback; against the pinned
+// JUCE they run BEFORE it. ModalComponentManager::handleAsyncUpdate walks a modal
+// item's callbacks in REVERSE attach order, and the user lambda is attached first
+// (enterModalState, juce_PopupMenu.cpp:2291) with PopupMenuCompletionCallback second
+// (:2292) -- so the completion callback runs first, destroying the menu window and
+// calling toFront(true)/grabKeyboardFocus on the way out, and only then do we get
+// called. What defeats the immediate grab is that OS focus transfer being
+// asynchronous, not the menu still owning focus. (Since 0.9.2 the menu is PARENTED to
+// this editor and has no peer of its own at all -- see showPresetMenu.)
+//
+// The retry stays regardless, because the abort it works around is not menu-specific:
+// juce::Component::takeKeyboardFocus
+// gives up on the whole internal focus move while the plug-in's own peer is not OS
+// focused ("if (! peer->isFocused() || ...) return", juce_Component.cpp), and
+// whether it is focused at that instant is the HOST's call. With no JUCE component
+// focused, every keystroke stays with the host, which reads Space as transport --
+// the failure KI-009 tracks in REAPER.
+//
 // So: try now (covers the standalone / already-focused case), then re-try on later
-// message-loop passes until the grab actually STICKS -- by then the menu window is
-// gone and peer->grabFocus() can take the OS focus for real.
+// message-loop passes until the grab actually STICKS. Bounded at 4 x 50 ms, and it
+// stops the moment the field reports focus, so it cannot still be running while the
+// user types.
 void AnamorphAudioProcessorEditor::focusSaveNameField (int attemptsLeft)
 {
     if (! savePresetBackdrop.isVisible()) return; // dismissed meanwhile -- stop retrying

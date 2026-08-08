@@ -35,6 +35,16 @@ AnamorphAudioProcessor::AnamorphAudioProcessor()
     // then record exactly ONE undo step for the switch, so a preset change is undoable (ADR-0008).
     presets.onAboutToLoad = [this] { pollUndoCoalesce(); };
     presets.onLoaded      = [this] { commitPresetSwitchUndoStep(); };
+    // A save changes no parameter, so nothing else would ever refresh `committed` off the
+    // pre-save preset -- and the next undo would restore that stale name/identity/baseline.
+    // Flush FIRST, exactly like the other program-state jumps (onAboutToLoad above, and
+    // undo()/redo()): syncCommitted() clears pendingGestureCommit, so a knob gesture that
+    // closed but has not been polled yet would otherwise be folded into the new baseline
+    // with NO undo step -- the edit silently stops being undoable. Flushing here is safe
+    // even though it runs AFTER the save's own mutations, because a save touches no
+    // parameter and leaves `committed` alone: the step it records is still the exact
+    // pre-edit state set, with the pre-save preset metadata, which is what undo wants.
+    presets.onSaved       = [this] { pollUndoCoalesce(); syncCommitted(); };
     presets.soundParamGeneration = [this] { return soundParamGen.load (std::memory_order_relaxed); }; // S10
 
     syncCommitted(); // establish the undo baseline
@@ -232,15 +242,20 @@ void AnamorphAudioProcessor::syncCommitted()
 // additive `raw` attribute so A/B slots + undo round-trip discrete params exactly (no snap drift).
 AnamorphAudioProcessor::StateSet AnamorphAudioProcessor::currentStateSet()
 {
-    return { copyStateWithRawValues(), presets.currentName(), presets.baseline() };
+    return { copyStateWithRawValues(), presets.currentName(), presets.baseline(), presets.selection() };
 }
 
 // Restore a state set: parameters (keeping the shared view params) AND the
 // preset metadata, so the name + dirty-star reappear exactly as stored (#6).
 void AnamorphAudioProcessor::applyStateSet (const StateSet& s)
 {
+    // ORDER IS LOAD-BEARING: parameters first, metadata second. setMeta resolves an EMPTY
+    // baseline by calling soundSig(), which reads the LIVE apvts -- so it means "the state
+    // just applied is its own clean baseline" only while these two lines are in this order.
+    // Swapping them would baseline a pre-0.6.4 A/B slot against the OUTGOING sound and leave
+    // its dirty-star wrong from then on, with nothing to catch it. See PresetManager.h.
     applyStatePreservingView (s.params);
-    presets.setMeta (s.name, s.baseline);
+    presets.setMeta (s.name, s.baseline, s.selection);
 }
 
 void AnamorphAudioProcessor::applyStatePreservingView (const juce::ValueTree& target)
@@ -415,6 +430,24 @@ void AnamorphAudioProcessor::commitPresetSwitchUndoStep()
         committed = currentStateSet();                 // now carries the NEW preset name + clean baseline
         committedSig = sig;
     }
+    else
+    {
+        // Same SOUND -- e.g. a user preset saved from the factory preset next to it, or the
+        // user simply re-picking the row that is already ticked. There is nothing sonic to
+        // undo, so no step is recorded, but the baseline must still adopt the new name /
+        // identity / clean baseline: leaving the previous preset's metadata on it means the
+        // next undo restores THAT name and tick onto this sound (#4).
+        //
+        // Redo is invalidated ONLY when the identity actually MOVED. A surviving redo entry
+        // carries the PREVIOUS preset's identity, so redoing it after a switch would drag the
+        // tick off the row the user just picked -- that is the case worth destroying redo for.
+        // Re-adopting the identity that is already committed changes nothing the redo entry
+        // could contradict, and clearing it there would silently discard an edit the user had
+        // undone and was about to redo, for no benefit.
+        if (presets.selection() != committed.selection)
+            abUndo[abActive].redo.clear();
+        committed = currentStateSet();
+    }
     lastPolledSig = sig;
     openGestures = 0;             // a preset load is a program state jump, not a user gesture -- drop any
     pendingGestureCommit = false; // in-flight gesture bookkeeping so nothing re-commits afterwards
@@ -461,12 +494,22 @@ void AnamorphAudioProcessor::redo()
 // ----------------------------------------------------------------------------
 void AnamorphAudioProcessor::abEnsureInit()
 {
-    if (! abSlot[0].isValid()) abSlot[0] = currentStateSet();
-    if (! abSlot[1].isValid())
-    {
-        abSlot[1] = abSlot[0];
-        abSlot[1].params = abSlot[0].params.createCopy(); // independent tree
-    }
+    // An INVALID slot means "no stored state for this slot" -- at construction, or after a
+    // restore whose AB node carried no usable params payload for it (readSlot resets the whole
+    // slot, so an unreadable payload arrives here rather than keeping the previous project's).
+    // BOTH slots get the same answer, the current live state, which is what
+    // SERIALIZATION_REGISTRY.md means by "lazily initialised from current".
+    //
+    // Slot B used to be seeded from a copy of slot A instead. At construction the two are
+    // indistinguishable -- slot A has just been seeded from the same live state -- so this
+    // changes nothing on the path that runs every time. They diverged only when slot A was
+    // valid and slot B was not, i.e. an AB node whose `slotBParams` alone was missing or
+    // unparsable: slot B came back as a DUPLICATE of slot A rather than as the state just
+    // restored, and a later save wrote that duplicate out. currentStateSet() builds a fresh
+    // tree per call, so the slots stay independent with no explicit copy.
+    for (auto& slot : abSlot)
+        if (! slot.isValid())
+            slot = currentStateSet();
 }
 
 void AnamorphAudioProcessor::abApplySlot (int slot)
@@ -509,23 +552,55 @@ juce::AudioProcessorEditor* AnamorphAudioProcessor::createEditor()
     return new AnamorphAudioProcessorEditor (*this);
 }
 
+namespace
+{
+    // One place that knows a Selection is three properties, shared by the root node and both
+    // A/B slots. The encoding itself lives on PresetManager (`encodeSelection`).
+    void writeSelection (juce::ValueTree& t, const anamorph::PresetManager::Selection& s,
+                         const char* kindKey, const char* factoryKey, const char* fileKey)
+    {
+        const auto f = anamorph::PresetManager::encodeSelection (s);
+        t.setProperty (kindKey,    f.kind,      nullptr);
+        t.setProperty (factoryKey, f.factoryId, nullptr);
+        t.setProperty (fileKey,    f.userFile,  nullptr);
+    }
+
+    anamorph::PresetManager::Selection readSelection (const juce::ValueTree& t,
+                                                      const char* kindKey, const char* factoryKey,
+                                                      const char* fileKey)
+    {
+        return anamorph::PresetManager::decodeSelection (t.getProperty (kindKey).toString(),
+                                                         t.getProperty (factoryKey).toString(),
+                                                         t.getProperty (fileKey).toString());
+    }
+}
+
 void AnamorphAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
     abEnsureInit();
     juce::ValueTree root ("AnamorphRoot");
     root.setProperty ("presetName", presets.currentName(), nullptr);     // remembered across sessions (F2)
     root.setProperty ("presetBaseline", presets.baseline(), nullptr);    // so the dirty-star survives reload (#6)
+    // Which preset row the indicator points at, so reopening a project puts the tick back
+    // where it was even when a user preset shares a factory preset's NAME (ADR-0024
+    // amendment). Three additive strings, always written; all-empty means "no identity",
+    // which is exactly what a pre-0.9.2 session restores as. METADATA ONLY: the sound comes
+    // from the APVTS child below and is restored identically whether or not these resolve.
+    // Nothing here is written into a user preset FILE -- that format is untouched.
+    writeSelection (root, presets.selection(), "presetSource", "presetFactoryId", "presetUserFile");
     root.appendChild (copyStateWithRawValues(), nullptr); // APVTS state + exact "raw" values per PARAM
     root.appendChild (internal.copyState(), nullptr); // host-hidden Settings / view state
     juce::ValueTree ab ("AB");
     ab.setProperty ("active", abActive, nullptr);
-    // Each slot carries its params AND its preset name + baseline (#6).
+    // Each slot carries its params AND its preset name + baseline (#6) + its indicator identity.
     ab.setProperty ("slotAParams", abSlot[0].params.toXmlString(), nullptr);
     ab.setProperty ("slotAName",   abSlot[0].name, nullptr);
     ab.setProperty ("slotABase",   abSlot[0].baseline, nullptr);
+    writeSelection (ab, abSlot[0].selection, "slotASource", "slotAFactoryId", "slotAUserFile");
     ab.setProperty ("slotBParams", abSlot[1].params.toXmlString(), nullptr);
     ab.setProperty ("slotBName",   abSlot[1].name, nullptr);
     ab.setProperty ("slotBBase",   abSlot[1].baseline, nullptr);
+    writeSelection (ab, abSlot[1].selection, "slotBSource", "slotBFactoryId", "slotBUserFile");
     root.appendChild (ab, nullptr);
 
     if (auto xml = root.createXml())
@@ -539,7 +614,8 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
 
     auto root = juce::ValueTree::fromXml (*xml);
     juce::String restoredName, restoredBaseline;
-    bool haveBaseline = false;
+    anamorph::PresetManager::Selection restoredSelection; // unknown unless the session carried one
+    bool haveName = false, haveBaseline = false;          // property PRESENT, as opposed to non-empty
     if (root.hasType ("AnamorphRoot"))
     {
         auto params = root.getChildWithName (apvts.state.getType());
@@ -549,7 +625,7 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
             reassertParameters (params, /*notifyHost*/ false); // host restore: no host-notify (see below)
         }
 
-        // Restore the host-hidden Settings / view state (Oversampling, Window Size,
+        // Restore the host-hidden Settings / view state (Oversampling, UI Scale,
         // Persistence, Tooltips, Animations, Show Meters). A changed Oversampling fires
         // InternalState's callback -> updateLatency(); prepareToPlay re-asserts it anyway.
         // Pre-0.8.4 sessions have no ANAMORPH_INTERNAL child (these were APVTS params back
@@ -560,6 +636,11 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
             internal.migrateFromLegacyApvts (params);
 
         restoredName = root.getProperty ("presetName").toString();
+        haveName     = root.hasProperty ("presetName");
+        // Absent (pre-0.9.2), empty or unrecognised all decode to `unknown`, i.e. the name
+        // fallback this build already used. Metadata only -- the parameters above are already
+        // restored at this point and are not touched by anything below.
+        restoredSelection = readSelection (root, "presetSource", "presetFactoryId", "presetUserFile");
         if (root.hasProperty ("presetBaseline"))
         {
             restoredBaseline = root.getProperty ("presetBaseline").toString();
@@ -574,14 +655,40 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
             // an out-of-bounds access (anamorph::kNumAbSlots). Valid states (0/1) are unchanged.
             abActive = anamorph::clampAbSlotIndex ((int) ab.getProperty ("active", 0));
             auto readSlot = [&ab] (StateSet& dst, const char* pk, const char* nk, const char* bk,
+                                   const char* sk, const char* fk, const char* uk,
                                    const char* legacyKey)
             {
+                // Start from the DEFAULT slot and overlay only what this AB node actually
+                // carries. abSlot[] are processor members that a host may restore into
+                // repeatedly on ONE live instance, so every absent field has to mean its
+                // default rather than "whatever the previous session left here" -- and that
+                // has to hold for the slot as a WHOLE, not field by field. Resetting first is
+                // what keeps the two halves of a slot from coming out of two different
+                // projects: a blob whose AB node exists but carries no params payload for this
+                // slot (hand-edited, truncated, or the payload present but unparsable) would
+                // otherwise keep the previous restore's SOUND while its name, baseline and
+                // identity were reset around it.
+                //
+                // The default for the params is not an empty tree but "lazily initialised from
+                // current" (SERIALIZATION_REGISTRY.md, `AB` child), and an INVALID tree is
+                // already how this processor spells that: StateSet::isValid() is
+                // params.isValid(), and abEnsureInit() re-seeds an invalid slot from
+                // currentStateSet() before anything can read it. So the slot comes back seeded
+                // from the state that was just restored -- sound and metadata from one project.
+                //
+                // The metadata reads below sit outside the params branch on purpose: that is
+                // what makes the rule hold for the pre-0.6.4 shape too, which carries params
+                // ALONE -- otherwise the previous session's preset name and dirty baseline stay
+                // attached to freshly restored parameters. All of these defaults are the ones
+                // SERIALIZATION_REGISTRY.md already records for these fields.
+                dst = {};
+                dst.selection = readSelection (ab, sk, fk, uk);
+                dst.name      = ab.getProperty (nk).toString();
+                dst.baseline  = ab.getProperty (bk).toString();
                 if (ab.hasProperty (pk))
                 {
                     if (auto x = juce::parseXML (ab.getProperty (pk).toString()))
                         dst.params = juce::ValueTree::fromXml (*x);
-                    dst.name     = ab.getProperty (nk).toString();
-                    dst.baseline = ab.getProperty (bk).toString();
                 }
                 else if (ab.hasProperty (legacyKey)) // pre-0.6.4 slots: params only
                 {
@@ -589,8 +696,10 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
                         dst.params = juce::ValueTree::fromXml (*x);
                 }
             };
-            readSlot (abSlot[0], "slotAParams", "slotAName", "slotABase", "slotA");
-            readSlot (abSlot[1], "slotBParams", "slotBName", "slotBBase", "slotB");
+            readSlot (abSlot[0], "slotAParams", "slotAName", "slotABase",
+                      "slotASource", "slotAFactoryId", "slotAUserFile", "slotA");
+            readSlot (abSlot[1], "slotBParams", "slotBName", "slotBBase",
+                      "slotBSource", "slotBFactoryId", "slotBUserFile", "slotB");
         }
     }
     else if (xml->hasTagName (apvts.state.getType())) // backward-compat (v0.2)
@@ -599,15 +708,42 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
         apvts.replaceState (legacy);
         reassertParameters (legacy, /*notifyHost*/ false); // legacy host restore: no host-notify
     }
+    else
+    {
+        // Neither shape: a foreign or forward-version chunk. NOTHING above ran -- not one
+        // parameter, not the Settings, not the A/B slots -- so the sound in force is still the
+        // one the user had, and nothing below may claim otherwise. Everything after this point
+        // ADOPTS: it clears the undo history for the "new session" and writes the restored
+        // preset name, identity and baseline into the manager. Running that with nothing
+        // restored relabels the live sound (with no `presetName` to read it would resolve to
+        // defaultName()), drops the identity to `unknown` so the drop-down ticks whatever
+        // shares the label, and re-baselines the dirty-star -- metadata describing a session
+        // that was never loaded.
+        //
+        // Returning is the same answer the guard at the top of this function already gives an
+        // unparsable blob, which is the same situation one layer down: input we do not
+        // recognise is not a restore.
+        return;
+    }
 
     // Fresh session: clear undo history.
     abUndo[0] = {}; abUndo[1] = {};
 
     // Adopt the remembered preset name + baseline so the dirty-star is reproduced
     // (#6); fall back to a clean baseline at the restored state when absent.
-    if (haveBaseline) presets.setMeta (restoredName.isNotEmpty() ? restoredName : presets.currentName(),
-                                       restoredBaseline);
-    else              presets.adoptRestoredState (restoredName);
+    //
+    // ABSENT and EMPTY are different answers, and only this scope can tell them apart -- the
+    // same distinction `haveBaseline` already draws for the sibling field. `presetName` is
+    // absent only in a session that predates it (< 0.6): there the label is the one a fresh
+    // manager carries, and it has to be that CONSTANT rather than presets.currentName(), which
+    // is whatever the PREVIOUS project left on this instance (hosts reuse one processor across
+    // setStateInformation calls -- the same rule readSlot follows for the A/B slots above).
+    // A present-but-EMPTY presetName is a real value meaning "this state has no preset"; since
+    // 0.9.2 a session saved while sitting on a nameless A/B slot stores exactly that, so it is
+    // adopted verbatim and must never be turned back into a name.
+    const auto adoptedName = haveName ? restoredName : anamorph::PresetManager::defaultName();
+    if (haveBaseline) presets.setMeta (adoptedName, restoredBaseline, restoredSelection);
+    else              presets.adoptRestoredState (adoptedName, restoredSelection);
 
     syncCommitted();
 }

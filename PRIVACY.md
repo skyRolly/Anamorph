@@ -38,13 +38,26 @@ Anamorph writes three kinds of file, all local, all containing only plug-in sett
 | What | Where | When |
 |---|---|---|
 | **User presets** (`.anamorph`, XML) — sound-parameter values and a preset name you choose | your user application-data directory, under `RollyTech/Anamorph/Presets/` (Linux `~/.config/…`, macOS `~/Library/…` — JUCE's `userApplicationDataDirectory` is `~/Library`, without an `Application Support` segment — Windows `%APPDATA%\…`) — `src/PresetManager.cpp:54-55`, written at `:216-220` | the preset *file* only when you save a preset; the containing directory is also created the first time you open the **Load Preset** dialog (`src/PluginEditor.cpp:1455`) |
-| **Session state** — the full parameter set, A/B slots and view settings, serialised as XML | inside **your host's** project/session file; Anamorph hands the data to the host, which decides where to store it | whenever the host saves its session |
+| **Session state** — the full parameter set, A/B slots and view settings, serialised as XML, plus the name of the preset you had selected and — since 0.9.2 — a reference to *which* preset that was, so reopening the project restores the checkmark (`src/PluginProcessor.cpp`, `getStateInformation`; encoded by `PresetManager::encodeSelection`) | inside **your host's** project/session file; Anamorph hands the data to the host, which decides where to store it | whenever the host saves its session |
 | **Standalone application settings** — audio-device selection, input-mute flag, last plug-in state, the window position, and the full path of the last state file you opened or saved from the Standalone's own Save/Load dialog | `Anamorph.settings`, written by JUCE's standard Standalone wrapper (Linux `~/.config/Anamorph.settings`, macOS `~/Library/Application Support/Anamorph.settings`, Windows in the user application-data folder) — `juce_audio_plugin_client_Standalone.cpp:71-82` in the pinned JUCE tree; the path entry is written at `juce_StandaloneFilterWindow.h:198` and read at `:187`, the window coordinates at `:752-753` | Standalone only; never when running as a plug-in |
 
-Apart from the Standalone's `lastStateFile` entry — a filesystem path, which on most systems
-contains your account name, and which is written only if you use the Standalone's own
-Save/Load-state dialog — none of these files contains personal data beyond what you type into them
-(a preset name), and none is transmitted anywhere.
+Two entries are filesystem paths rather than settings, and both are written only as a direct result
+of something you did:
+
+- the Standalone's `lastStateFile`, written only if you use the Standalone's own Save/Load-state
+  dialog;
+- the session's preset references — **three** of them: one for the preset you have selected and one
+  for **each A/B slot**. A reference is a filesystem path **only when** that preset was opened with
+  **Load Preset…** from outside your preset folder (or from a sub-folder of it); a preset sitting
+  directly in the preset folder is recorded by its **file name** only, deliberately, so the folder's
+  location (and with it your account name) stays out of the saved project, and so a project opened
+  on another machine still finds the preset (`PresetManager::encodeSelection`). An A/B slot keeps
+  its reference until you switch into that slot again or overwrite it, so a path can persist in the
+  project after the preset stops being the one you are using.
+
+A filesystem path contains your account name on most systems. Apart from those two entries, none of
+these files contains personal data beyond what you type into them (a preset name), and none is
+transmitted anywhere.
 
 ### There is no log file
 

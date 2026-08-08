@@ -4,7 +4,12 @@
 in `POSTMORTEMS.md`, not here. Each entry is evidence-backed (constraint C7). When an item is
 fixed, remove it here and (if notable) add a `POSTMORTEMS.md` entry.
 
-Version-synced to **v0.9.1** (manufacturer-code change, ADR-0023 — **one issue added**: KI-016,
+Version-synced to **v0.9.2** (preset drop-down lifetime/crash fix, factory-preset identity, the
+`Window Size` → `UI Scale` label and the installer component titles — **one issue added**: KI-017,
+macOS suppresses key auto-repeat for letters and digits in any focused text field, which is an OS
+text-input behaviour rather than a plug-in defect; **no issue removed** — the crash fixed this
+cycle was never filed here, it was reported directly by the maintainer). Prior sync:
+**v0.9.1** (manufacturer-code change, ADR-0023 — **one issue added**: KI-016,
 sessions saved before 0.9.1 report the plug-in as missing because the AU manufacturer field and
 the VST3 class UID changed; no issue removed, no status moved, and the DSP is bit-identical to
 0.9.0). Prior sync: **v0.9.0** (release-prep, 2026-07-24, PR #87 + the installer/packaging rework
@@ -57,6 +62,7 @@ JUCE 8.0.14; before that 0.8.8 for PR #54).
 | KI-014 | The macOS **AU** is built and shipped but never validated automatically — `run-pluginval.sh` only sees the VST3, and no `auval` step exists in CI | Medium | Confirmed (coverage gap); recipe + verdict recorded as RH-F3 |
 | KI-015 | Anamorph declares **no licence of its own** — the repository root has no `LICENSE` file and the installers present no EULA, so the terms the binaries are offered under are undeclared | High | Confirmed; owner/legal decision (RH-R11 / RH-F1), not an engineering task |
 | KI-016 | **Sessions saved with a pre-0.9.1 build report Anamorph as missing** — 0.9.1 changed the manufacturer code `Anmf` → `RTec`, which is the AU component's manufacturer field and feeds the VST3 class UID, so the host cannot match the old identity | Medium | Confirmed, **deliberate** and one-time (ADR-0023); recovery is to re-insert the plug-in |
+| KI-017 | macOS: holding a letter or digit in a plug-in text field does not auto-repeat (symbols do) — macOS press-and-hold owns the alphanumeric keys once a JUCE text field has focus | Low | Confirmed external (macOS text input); JUCE path verified, OS attribution pending one `defaults` check; user-side workaround documented |
 
 ---
 
@@ -449,3 +455,81 @@ only one granted).
 - **Closure:** this entry stays for as long as pre-0.9.1 builds are in testers' hands; it is
   removed once no tester is carrying one, and is then recorded in `POSTMORTEMS.md` only if it
   actually cost someone work.
+
+## KI-017 — macOS: holding a letter or digit in a text field does not auto-repeat
+Reported for the **Save Preset** name field: holding a letter or a digit types the character once
+and then stops, while punctuation/symbol keys repeat normally. It is **not specific to that
+field** — the same applies to every text entry in the plug-in (the knob/slider value boxes), and
+it is a **macOS text-input behaviour, not an Anamorph or JUCE defect**.
+
+Mechanism, traced end to end in the pinned JUCE 9.0.0 source. A focused `juce::TextEditor` is a
+`juce::TextInputTarget`, so `ComponentPeer::findCurrentTextInputTarget()` returns it
+(`juce_ComponentPeer.cpp:291-301`). Both `keyDown:` and `performKeyEquivalent:` then funnel into
+`NSViewComponentPeer::sendEventToInputContextOrComponent`, whose **first** act is
+`[inputContext handleEvent: ev]` (`juce_NSViewComponentPeer_mac.mm:1655-1662`); JUCE's own
+`redirectKeyDown` / `TextEditor::keyPressed` runs only if the input context declines the event
+(`:1667-1668`). Printable characters therefore arrive through AppKit's `insertText:` (`:2396-2435`),
+which is exactly where macOS implements **press-and-hold** — JUCE supports it deliberately (its
+comments at `:2409-2412` and `:2580` describe the accent popup). "Special" keys take the other
+branch — `doCommandBySelector:` (`:2437-2467`) → `redirectKeyDown` → `TextEditor::keyPressed` — and
+are therefore re-delivered on every OS repeat. Neither JUCE nor Anamorph contains any repeat logic
+to compensate: for printable characters, auto-repeat is owned entirely by the OS.
+
+Two AppKit behaviours sit exactly on that path and both produce "letters and digits dead, other
+keys fine":
+1. **A non-Roman input source** (Pinyin, Zhuyin, ABC-Extended) consumes `a`–`z` as composition
+   keys and `0`–`9` as candidate selectors while passing punctuation straight through. This
+   matches the reported set — letters **and** digits — exactly.
+2. **`ApplePressAndHoldEnabled`** (default on) hands the accent-capable keys to the press-and-hold
+   panel instead of the key-repeat generator. On its own it does not account for digits.
+
+- **Affected platform:** macOS only. Windows (`juce_HWNDComponentPeer_windows.cpp`) and Linux
+  (`juce_XWindowSystem_linux.cpp`) deliver every repeat as an ordinary key event and are
+  structurally unaffected.
+- **Which of the two it is, and the user-side workaround** — in this order, seconds each:
+  1. Switch the macOS input source to plain **ABC / U.S.** (not Pinyin, Zhuyin or ABC-Extended),
+     reopen Save Preset, hold a letter and a digit. Repeat returns ⇒ cause 1, external.
+  2. `defaults write -g ApplePressAndHoldEnabled -bool false`, then log out and back in (or
+     relaunch the host). Repeat returns ⇒ cause 2, external. This is a **system** preference,
+     deliberately left to the user.
+  3. Pin the failing set precisely. "letters + digits fail, punctuation repeats" and "every
+     printable character fails, Backspace/arrows repeat" point at different mechanisms; the second
+     is exactly the `insertText:` vs `doCommandBySelector:` split above.
+- **Confirming it is the OS, not the plug-in** (either check settles it): type into one of the
+  plug-in's knob value boxes — the same no-repeat applies, because it is the same JUCE text-input
+  path; or rename a track in the DAW itself — its own fields behave identically while the setting
+  is on. The sibling plug-in **Anabasis** lands on the identical path (its save field is a plain
+  `juce::TextEditor` with the same setup), so it must show the same behaviour on the same machine;
+  if it does **not**, this attribution is wrong — see Closure.
+- **Why no fix is attempted here.** Three routes were examined and all three are worse than the
+  symptom. (1) Having the plug-in write `ApplePressAndHoldEnabled` itself: `NSUserDefaults` is
+  **process-wide**, so a plug-in doing that silently changes the host's own text fields and every
+  other plug-in in that process — state Anamorph does not own. (2) Bypassing the input context for
+  printable keys: that is where dead keys, accents and CJK/IME composition live, so it would trade
+  a repeat annoyance for broken non-Latin input — and it is a JUCE source patch, i.e. a Build
+  System change under `ARCHITECTURE_REVIEW_GATE.md` + `DEPENDENCY_POLICY.md` (the pin is an
+  immutable SHA, ADR-0022). (3) Synthesising the repeat from a `Timer` inside a `TextEditor`
+  subclass: it would double-type for every user who has press-and-hold disabled, and it cannot
+  read the user's System Settings repeat delay/rate.
+- **Relationship to KI-009:** different mechanism, same control. KI-009 is a *focus* problem
+  (REAPER-specific, the field stops receiving keys at all); this is a *repeat* problem that occurs
+  with focus working correctly, in every host, on macOS.
+- **Evidence [Verified (code path) / Unverified (the macOS-side attribution)]:**
+  src/PluginEditor.cpp:326-355 (the field), :1475-1506 (show + focus);
+  `juce_NSViewComponentPeer_mac.mm:1655-1668, 2396-2435`; `juce_ComponentPeer.cpp:291-301`. The
+  JUCE trace is verified line by line against the pinned commit; the attribution to the macOS
+  text-input layer is inferred from the symptom signature (letters **and** digits suppressed,
+  symbols unaffected) and has **not** been observed on hardware. Steps 1–2 above are what move it
+  to Verified and decide which of the two causes it is. Everything inside the plug-in was
+  eliminated by inspection: the `focusSaveNameField` retry is bounded at 4 × 50 ms and only runs
+  from `showSavePreset(true)`; `setSelectAllWhenFocused` fires once per focus gain, not per
+  keystroke; the 24 Hz timer and the VBlank attachment only repaint; the UI-scale
+  `AffineTransform` is not consulted by key routing; and both `getCurrentModifiersRealtime()`
+  call sites are gated behind a held mouse button.
+- **Closure:** if the DAW's own text fields repeat while the plug-in's do not — or if Anabasis
+  repeats on the same machine — this attribution is wrong and the entry is re-opened as a
+  host-side first-responder investigation (the same class as KI-009): `performKeyEquivalent:`
+  reaches the JUCE view through the view hierarchy even when it is not first responder, whereas
+  plain `keyDown:` requires first-responder status, so a host that reclaims first responder after
+  the first key-down would drop exactly the printable-character repeats while special keys keep
+  arriving.

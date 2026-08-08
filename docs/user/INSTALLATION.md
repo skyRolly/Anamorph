@@ -128,9 +128,9 @@ Extract the zip, then (administrator approval needed for both):
 
    | Component | Where |
    |---|---|
-   | VST3 plug-in | `/Library/Audio/Plug-Ins/VST3/Anamorph.vst3` |
-   | AU (Audio Unit) | `/Library/Audio/Plug-Ins/Components/Anamorph.component` |
-   | Standalone app | `/Applications/Anamorph.app` |
+   | VST3 Plug-in | `/Library/Audio/Plug-Ins/VST3/Anamorph.vst3` |
+   | AU Plug-in (Audio Unit) | `/Library/Audio/Plug-Ins/Components/Anamorph.component` |
+   | Standalone Application | `/Applications/Anamorph.app` |
 
    Files installed by the package carry **no quarantine flag**, so no Terminal steps are
    needed afterwards.

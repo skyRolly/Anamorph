@@ -20,6 +20,10 @@
 //       active, unknown root, unknown extra fields, corrupt slot XML).
 //    6. Preset save -> reload round-trip (user preset file + exclusion rules).
 //    7. A/B + view-param preservation across slot apply and session restore.
+//    8. Factory/user preset identity when a user preset shares a factory name.
+//    9. Factory-id integrity: present, unique, and every one resolving.
+//   10. The preset indicator identity across a session reload, incl. every
+//       fallback -- and bit-identical parameters on every one of those paths.
 //
 //  Fixture workflow: an INTENTIONAL parameter/schema change (which requires an
 //  ADR + registry update per the compatibility policies) is recorded by
@@ -307,8 +311,13 @@ static void testSerializedSchemaShape()
 
     auto ab = root.getChildWithName ("AB");
     check (ab.isValid(), "AB child present");
+    for (auto* field : { "presetSource", "presetFactoryId", "presetUserFile" })
+        check (root.hasProperty (field), field);
+
     for (auto* field : { "active", "slotAParams", "slotAName", "slotABase",
-                         "slotBParams", "slotBName", "slotBBase" })
+                         "slotASource", "slotAFactoryId", "slotAUserFile",
+                         "slotBParams", "slotBName", "slotBBase",
+                         "slotBSource", "slotBFactoryId", "slotBUserFile" })
         check (ab.hasProperty (field), field);
 }
 
@@ -368,7 +377,9 @@ static void testStateRoundTripExact()
     a.abSwitchTo (1);
     setRaw (a, "width", 0.9f);
     a.abSwitchTo (0);
-    a.getPresets().setMeta ("RoundTrip Fixture", "sig-baseline-token");
+    // Selection() spelled out: this fixture carries no identity, and setMeta makes callers say so.
+    a.getPresets().setMeta ("RoundTrip Fixture", "sig-baseline-token",
+                            anamorph::PresetManager::Selection());
 
     juce::MemoryBlock blobA;
     a.getStateInformation (blobA);
@@ -511,9 +522,35 @@ static void testLegacyPre064AbSlots()
                "slot A params survive the legacy read");
     checkNear ((double) slotB.getChildWithProperty ("id", "width")["value"], 0.6, 1.0e-6,
                "slot B params survive the legacy read");
-    // Legacy slots carry no name/baseline of their own: the read keeps the slot's
-    // pre-restore meta — for a fresh instance, the construction snapshot ("Default").
-    checkStr (ab["slotAName"].toString(), "Default", "legacy slot keeps pre-restore meta");
+    // Legacy slots carry no name/baseline of their own, so the read must produce the
+    // DEFAULT for them -- the same "absence means default" rule the identity fields follow.
+    // (Before 0.9.2 this kept whatever the slot happened to hold, which on a fresh instance
+    // was the construction snapshot "Default" and on a re-restore was the PREVIOUS session's
+    // name -- see the repeated-restore check below.)
+    checkStr (ab["slotAName"].toString(), "", "a legacy slot carries no name of its own");
+    checkStr (ab["slotABase"].toString(), "", "...and no baseline of its own");
+
+    // Repeated restore into ONE live instance -- the case the rule exists for. A host may
+    // call setStateInformation on the same processor any number of times; a legacy AB node
+    // carries params only, so the slot's metadata must come back as the default rather than
+    // as whatever the previous session left attached to abSlot[].
+    {
+        AnamorphAudioProcessor q;
+        q.prepareToPlay (48000.0, 512);
+        q.getPresets().load (1);      // a factory preset that is not "Default"
+        q.abSwitchTo (1);             // snapshots the loaded state (name + identity) into slot A
+        auto abBefore = stateTreeOf (q).getChildWithName ("AB");
+        check (abBefore["slotAName"].toString().isNotEmpty(),
+               "the modern session gives slot A a name to inherit");
+        if (applyXmlFixture (q, "legacy_pre_0_6_4_ab_slots.xml"))
+        {
+            auto abAfter = stateTreeOf (q).getChildWithName ("AB");
+            checkStr (abAfter["slotAName"].toString(), "",
+                      "a legacy restore does not leave the previous session's slot name attached");
+            checkStr (abAfter["slotASource"].toString(), "",
+                      "...and clears its identity the same way");
+        }
+    }
 
     // Behavioural: switching to slot A applies the legacy-read params.
     p.abSwitchTo (0);
@@ -521,6 +558,21 @@ static void testLegacyPre064AbSlots()
                (double) dynamic_cast<juce::RangedAudioParameter*> (p.getAPVTS().getParameter ("width"))
                             ->convertTo0to1 (1.8f),
                1.0e-6, "switching to legacy slot A applies its width");
+    // ...and the slot reads as "no preset", NOT as "a modified preset". The slot carries no
+    // baseline, and an absent baseline is not evidence of an edit -- the same rule state test 4
+    // pins for a v0.2 root ("restored v0.2 state adopts a clean baseline"). A literal empty
+    // baseline would compare unequal to every possible signature, so the top bar would render a
+    // bare " *": a modified-marker against a preset that does not exist.
+    check (! p.getPresets().isDirty(),
+           "a legacy slot switched into reads as clean, not as permanently modified");
+    checkStr (p.getPresets().currentName(), "",
+              "...and shows no preset name rather than borrowing the other slot's");
+    // The empty name is a MODEL fact and has to stay one. The top bar substitutes a "No Preset"
+    // placeholder for DISPLAY (refreshPresetDisplay), and that placeholder must never reach the
+    // serialized field or the Save Preset pre-fill -- both read currentName(). Pinning the saved
+    // property is what makes moving the substitution into PresetManager fail loudly.
+    checkStr (stateTreeOf (p)["presetName"].toString(), "",
+              "the top bar's placeholder never reaches the serialized preset name");
 }
 
 // ---------------------------------------------------------------------------
@@ -574,12 +626,42 @@ static void testCorruptAndForeignState()
     }
 
     // Foreign root tag: neither restore branch applies; no crash.
+    //
+    // ...and nothing may be ADOPTED either. Input we do not recognise is not a restore: the sound
+    // in force is still the user's, so relabelling it, dropping its identity or re-baselining its
+    // dirty-star would describe a session that never loaded. A host may hand a live instance any
+    // chunk it likes, so this is checked with real metadata present -- a loaded preset, then an
+    // edit so the dirty-star is on -- which is exactly what such a call could leak away.
     {
+        auto& pm = p.getPresets();
+        pm.load (1);                                  // a named factory preset, with an identity
+        setRaw (p, "width", 0.33f);                   // ...edited, so isDirty() is true
+        const auto nameBefore  = pm.currentName();
+        const int  rowBefore   = pm.currentIndex();
+        const auto baseBefore  = pm.baseline();
+        const bool dirtyBefore = pm.isDirty();
+        const float wBefore    = rawOf (p, "width");
+        check (nameBefore.isNotEmpty() && rowBefore >= 0 && dirtyBefore,
+               "there is real preset metadata for an unknown chunk to disturb");
+
         juce::XmlElement foreign ("SOME_FUTURE_ROOT");
         foreign.setAttribute ("v", 99);
         const auto blob = BlobCodec::wrap (foreign);
         p.setStateInformation (blob.getData(), (int) blob.getSize());
-        check (juce::exactlyEqual (rawOf (p, "width"), widthBefore), "unknown root tag leaves parameters untouched");
+
+        check (juce::exactlyEqual (rawOf (p, "width"), wBefore), "unknown root tag leaves parameters untouched");
+        checkStr (pm.currentName(), nameBefore, "...and the preset NAME untouched");
+        check (pm.currentIndex() == rowBefore,      "...and the identity/checkmark untouched");
+        checkStr (pm.baseline(), baseBefore,        "...and the dirty baseline untouched");
+        check (pm.isDirty() == dirtyBefore,         "...so the dirty-star still reflects the live sound");
+
+        // Repeat it: a host may do this any number of times on one live instance.
+        p.setStateInformation (blob.getData(), (int) blob.getSize());
+        checkStr (pm.currentName(), nameBefore, "a repeated unknown chunk still leaks nothing");
+        check (pm.currentIndex() == rowBefore, "...identity still intact after the second attempt");
+
+        setRaw (p, "width", widthBefore);              // restore this test's working state
+        pm.setMeta ("Default", {}, anamorph::PresetManager::Selection());
     }
 
     // Out-of-range A/B active (hand-edited / forward-version blob) clamps —
@@ -763,6 +845,542 @@ static void testAbAndViewParamPreservation()
     check (juce::exactlyEqual (rawOf (q, "bypass"), 1.0f), "A/B switch after restore still preserves Bypass");
     q.abSwitchTo (0);
     check (juce::exactlyEqual (rawOf (q, "width"), widthA), "slot A content survives switching away and back");
+
+    // --- An AB node carrying no USABLE params payload for a slot -----------------
+    // A restore must not leave HALF of a slot behind. abSlot[] are processor members and a
+    // host may call setStateInformation repeatedly on ONE live instance, so a blob whose AB
+    // node exists but whose slot params cannot be read used to keep the PREVIOUS restore's
+    // SOUND while that slot's name, baseline and identity were reset around it -- one slot
+    // holding two projects. The documented default for the params is "lazily initialised from
+    // current" (SERIALIZATION_REGISTRY.md, `AB` child), which abEnsureInit() already
+    // implements off StateSet::isValid(), so such a slot must come back INVALID and be
+    // re-seeded from the state that was just restored.
+    // BOTH slot positions are covered. abEnsureInit() used to seed an invalid slot B from slot A
+    // rather than from the live state, so slot B additionally pins that asymmetry: with slot A
+    // intact and only slot B unreadable, the pre-fix answer was a DUPLICATE of slot A.
+    {
+        struct Variant { int slot; void (*breakIt) (juce::ValueTree&); const char* what; };
+        const Variant variants[] = {
+            { 0, [] (juce::ValueTree& n) { n.removeProperty ("slotAParams", nullptr);
+                                           n.removeProperty ("slotA", nullptr); }, // pre-0.6.4 key too
+                 "slot A with no params key at all" },
+            { 0, [] (juce::ValueTree& n) { n.setProperty ("slotAParams", "<ANAMORPH truncated", nullptr); },
+                 "slot A with an unparsable params payload" },
+            { 1, [] (juce::ValueTree& n) { n.removeProperty ("slotBParams", nullptr);
+                                           n.removeProperty ("slotB", nullptr); },
+                 "slot B with no params key at all" },
+            { 1, [] (juce::ValueTree& n) { n.setProperty ("slotBParams", "<ANAMORPH truncated", nullptr); },
+                 "slot B with an unparsable params payload" },
+        };
+
+        for (const auto& v : variants)
+        {
+            const int   other   = 1 - v.slot;
+            const char* brokenK = v.slot == 0 ? "slotAParams" : "slotBParams";
+
+            // Three distinct sounds, so every wrong answer is distinguishable from the right one:
+            // 0.70 in the OTHER slot (what a duplicate would produce), 0.90 stale in the broken
+            // slot (what keeping the previous restore would produce), 0.45 live (the correct one).
+            // The session must PARK on the other slot -- switching away from a slot snapshots the
+            // live state into it, which would mask the defect.
+            if (q.abActiveSlot() != other) q.abSwitchTo (other);
+            setRaw (q, "width", 0.7f);
+            q.abSwitchTo (v.slot);            // the other slot := 0.70
+            setRaw (q, "width", 0.9f);
+            q.abSwitchTo (other);             // the broken slot := 0.90 (stale), parked on `other`
+            setRaw (q, "width", 0.45f);       // the live sound the broken session restores to
+
+            const juce::String tag = juce::String (" (") + v.what + ")";
+            const auto msgSetup   = "the session being broken really carries that slot's params" + tag;
+            const auto msgLive    = "the broken session's live sound restores" + tag;
+            const auto msgSound   = "a slot with no usable stored sound is re-seeded from the state "
+                                    "just restored -- not the previous session's, not the other slot's" + tag;
+            const auto msgMeta    = "...and that slot's metadata comes from the same restore as its sound" + tag;
+
+            auto broken = stateTreeOf (q);
+            auto brokenAb = broken.getChildWithName ("AB");
+            check (brokenAb.isValid() && brokenAb.hasProperty (brokenK), msgSetup.toRawUTF8());
+            v.breakIt (brokenAb);
+
+            if (auto xml = broken.createXml())
+            {
+                const auto reBlob = BlobCodec::wrap (*xml);
+                q.setStateInformation (reBlob.getData(), (int) reBlob.getSize());
+                const auto restoredName = q.getPresets().currentName();
+                checkNear ((double) rawOf (q, "width"), 0.45, 1.0e-6, msgLive.toRawUTF8());
+                q.abSwitchTo (v.slot);
+                checkNear ((double) rawOf (q, "width"), 0.45, 1.0e-6, msgSound.toRawUTF8());
+                checkStr (q.getPresets().currentName(), restoredName, msgMeta.toRawUTF8());
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Nothing stops a user preset from carrying a factory preset's name, and until
+// 0.9.2 the preset list was searched by NAME: the factory block is list-front, so
+// the factory row answered for both and the drop-down tick could never sit on the
+// user preset -- not even immediately after saving it. Identity is now the factory
+// preset's immutable internal id vs. the user preset's FILE, two namespaces that
+// cannot collide (#4). This test covers the LIVE behaviour; state test 12 covers the
+// same identity across a session save -> reload, including every fallback.
+static void testDuplicateNameFactoryVsUserPreset()
+{
+    std::printf ("State test 10: factory/user preset identity with a shared name\n");
+    AnamorphAudioProcessor p;
+    p.prepareToPlay (48000.0, 512);
+    auto& presets = p.getPresets();
+
+    const juce::String shared = "Wide Master";   // a shipped factory preset
+    int factoryIdx = -1, factoryCount = 0;
+    for (int i = 0; i < presets.entries().size(); ++i)
+    {
+        const auto& e = presets.entries().getReference (i);
+        if (! e.isFactory) continue;
+        ++factoryCount;
+        if (e.name == shared) factoryIdx = i;
+    }
+    check (factoryIdx >= 0, "the shared-name factory preset ships");
+    if (factoryIdx < 0) return;
+
+    // Same protocol as test 8: the harness writes into the REAL user preset folder,
+    // so park a genuine file of that name and put it back afterwards.
+    auto presetFile = anamorph::PresetManager::presetDirectory()
+                          .getChildFile (shared + anamorph::PresetManager::fileSuffix());
+    auto parked = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                      .getChildFile ("AnamorphDupNameHarness.parked");
+    const bool hadUserFile = presetFile.existsAsFile();
+    if (hadUserFile) { parked.deleteFile(); presetFile.moveFileTo (parked); }
+
+    presets.load (factoryIdx);
+    check (presets.currentIndex() == factoryIdx, "the factory preset is current before any user file exists");
+
+    // The case the split exists for: save a user preset under the factory name.
+    check (presets.saveUser (shared), "saveUser succeeds under a factory preset's name");
+    check (presetFile.existsAsFile(), "user preset file written");
+    checkStr (presets.currentName(), shared, "the shared name is still what is DISPLAYED");
+    const int userIdx = presets.currentIndex();
+    check (userIdx >= factoryCount, "the saved USER preset is current, not the same-named factory one");
+
+    // Both rows remain individually selectable, in both directions.
+    presets.load (factoryIdx);
+    check (presets.currentIndex() == factoryIdx, "selecting the factory row returns the tick to it");
+    presets.load (userIdx);
+    check (presets.currentIndex() == userIdx, "selecting the user row moves the tick back to it");
+
+    // A/B carries the identity in memory, so a switch away and back does not snap
+    // the tick onto the same-named factory row.
+    p.abSwitchTo (1);
+    p.abSwitchTo (0);
+    check (presets.currentIndex() == userIdx, "A/B switch away and back preserves the user-preset identity");
+
+    // Undo must not yank the tick back to the row that was current before the save.
+    // saveUser() changes no parameter, so nothing else refreshes the processor's undo
+    // baseline; without the onSaved hook `committed` keeps the pre-save (factory) identity
+    // and the first undo restores it.
+    presets.load (factoryIdx);
+    check (presets.saveUser (shared), "re-save under the shared name");
+    check (presets.currentIndex() == userIdx, "the save selects the user row");
+    if (auto* drive = p.getAPVTS().getParameter ("drive"))
+    {
+        drive->beginChangeGesture();               // one finished gesture == one undo step
+        drive->setValueNotifyingHost (0.83f);
+        drive->endChangeGesture();
+    }
+    p.pollUndoCoalesce();                          // the editor's 24 Hz poll, driven by hand
+    check (p.canUndo(), "the knob edit after a save is undoable");
+    p.undo();
+    check (presets.currentIndex() == userIdx, "undo after a save keeps the saved preset's identity");
+
+    // A preset switch is a user action even when the two presets SOUND identical, so it must
+    // invalidate redo like any other. A surviving entry carries the PREVIOUS preset's identity,
+    // so redoing it would move the tick off the row the user just picked.
+    check (p.canRedo(), "the undo above leaves a redo entry");
+    presets.load (factoryIdx);   // same sound as the user preset it was saved from
+    check (! p.canRedo(), "a sonically identical preset switch still invalidates redo");
+
+    // ...but only because the identity MOVED. Re-picking the row that is already ticked
+    // changes nothing a redo entry could contradict, so discarding the user's redo there
+    // would throw away an undone edit for no benefit.
+    if (auto* driveAgain = p.getAPVTS().getParameter ("drive"))
+    {
+        driveAgain->beginChangeGesture();
+        driveAgain->setValueNotifyingHost (0.37f);
+        driveAgain->endChangeGesture();
+    }
+    p.pollUndoCoalesce();
+    p.undo();
+    check (p.canRedo(), "the second undo leaves a redo entry");
+    check (presets.currentIndex() == factoryIdx, "the factory row is the one currently selected");
+    presets.load (factoryIdx);   // re-select the ALREADY-current preset
+    check (p.canRedo(), "re-selecting the already-current preset preserves redo");
+
+    // A `.anamorph` file from OUTSIDE the preset folder is on no menu row, so nothing is
+    // ticked -- it must NOT fall back to the same-named factory row.
+    {
+        auto outside = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                           .getChildFile (shared + anamorph::PresetManager::fileSuffix());
+        outside.deleteFile();
+        // Asserted, not skipped: a silent `if` here would let the suite report 0 failures on a
+        // runner where the copy fails, with these checks never executed at all.
+        const bool stagedOutside = presetFile.copyFileTo (outside);
+        check (stagedOutside, "outside-folder copy staged");
+        if (stagedOutside)
+        {
+            check (presets.loadFile (outside), "loadFile accepts a preset from outside the folder");
+            checkStr (presets.currentName(), shared, "an outside file still displays its own name");
+            check (presets.currentIndex() < 0, "an outside file ticks nothing, not the same-named factory row");
+            outside.deleteFile();
+        }
+    }
+
+    // Same rule when the selected user preset disappears from disk.
+    presets.load (userIdx);
+    check (presetFile.deleteFile(), "user preset file removed while selected");
+    presets.refresh();
+    check (presets.currentIndex() < 0, "a deleted user preset ticks nothing, not the same-named factory row");
+    check (presets.saveUser (shared), "re-create the user preset for the restore check");
+
+    // The session carries the identity too since 0.9.2, so the tick survives a reload.
+    // (State test 12 covers the restore matrix in full, including the fallbacks.)
+    check (presets.currentIndex() == userIdx, "the re-created user preset lands on the same row");
+    presets.load (userIdx);
+    juce::MemoryBlock blob;
+    p.getStateInformation (blob);
+    {
+        AnamorphAudioProcessor q;
+        q.prepareToPlay (48000.0, 512);
+        q.setStateInformation (blob.getData(), (int) blob.getSize());
+        checkStr (q.getPresets().currentName(), shared, "restored session remembers the shared name");
+        check (q.getPresets().currentIndex() == userIdx,
+               "a restored session keeps the tick on the USER row, not the same-named factory one");
+    }
+
+    check (presetFile.deleteFile(), "test preset file removed");
+    if (hadUserFile) parked.moveFileTo (presetFile);
+    presets.refresh();
+}
+
+// ---------------------------------------------------------------------------
+// The factory ids are the identity half of ADR-0024, and `refresh()` copies them
+// straight out of the table into the rows the menu shows. Nothing in the type system
+// stops a duplicated or edited id, and the failure would be quiet: `load()` would find
+// no overrides and apply the plain defaults. These checks make that loud.
+static void testFactoryPresetIdIntegrity()
+{
+    std::printf ("State test 11: factory-preset id integrity\n");
+    AnamorphAudioProcessor p;
+    auto& presets = p.getPresets();
+
+    // A freshly constructed processor sits on all-parameter defaults and the manager takes
+    // its baseline there, so this string IS the all-defaults sound signature — obtained
+    // without reaching into the private applyDefaults().
+    const juce::String defaultsSig = presets.baseline();
+
+    juce::StringArray ids;
+    bool everyFactoryIdIsSet = true, userRowsCarryNoId = true;
+    for (const auto& e : presets.entries())
+    {
+        if (e.isFactory)
+        {
+            everyFactoryIdIsSet = everyFactoryIdIsSet && e.factoryId.isNotEmpty();
+            ids.add (e.factoryId);
+        }
+        else
+        {
+            userRowsCarryNoId = userRowsCarryNoId && e.factoryId.isEmpty();
+        }
+    }
+    check (ids.size() >= 2, "factory presets ship");
+    check (everyFactoryIdIsSet, "every factory row carries a non-empty id");
+    check (userRowsCarryNoId, "user rows carry no factory id");
+
+    juce::StringArray uniqueIds (ids);
+    uniqueIds.removeDuplicates (false); // case-SENSITIVE: the ids are exact tokens
+    check (uniqueIds.size() == ids.size(), "factory ids are unique");
+
+    // Every id must RESOLVE in the table. One that does not would apply the defaults and
+    // nothing else, landing on the all-defaults signature — and exactly one factory preset
+    // (the one with an empty override set) is allowed to sit there.
+    int atDefaults = 0;
+    for (int i = 0; i < presets.entries().size(); ++i)
+    {
+        if (! presets.entries().getReference (i).isFactory) continue;
+        presets.load (i);
+        if (presets.baseline() == defaultsSig) ++atDefaults;
+    }
+    check (atDefaults == 1,
+           "exactly one factory preset is the all-defaults one -- every other id resolves to its overrides");
+}
+
+// ---------------------------------------------------------------------------
+// The indicator identity is carried in the SESSION since 0.9.2 (ADR-0024 amendment),
+// so reopening a project puts the tick back on the row that produced the sound even
+// when a user preset shares a factory preset's name. Three additive root properties and
+// three per A/B slot; user preset FILES are untouched. Every path below also asserts
+// that the restored PARAMETERS are bit-identical, because the identity is metadata and
+// must never influence the sound — including when it fails to resolve.
+static void testPresetIndicatorIdentityAcrossRestore()
+{
+    std::printf ("State test 12: preset indicator identity survives a session reload\n");
+
+    auto rawSnapshot = [] (AnamorphAudioProcessor& proc)
+    {
+        std::vector<float> v;
+        for (auto* rp : rangedParams (proc)) v.push_back (rp->getValue());
+        return v;
+    };
+    auto sameRaw = [] (const std::vector<float>& a, const std::vector<float>& b)
+    {
+        if (a.size() != b.size()) return false;
+        for (size_t i = 0; i < a.size(); ++i)
+            if (! juce::exactlyEqual (a[i], b[i])) return false;
+        return true;
+    };
+    // Restore `blob` into a NEW processor and report (index, name, params-match).
+    struct Restored { int index; juce::String name; bool paramsMatch; };
+    auto restoreInto = [&] (const juce::MemoryBlock& blob, const std::vector<float>& expectRaw)
+    {
+        AnamorphAudioProcessor q;
+        q.prepareToPlay (48000.0, 512);
+        q.setStateInformation (blob.getData(), (int) blob.getSize());
+        return Restored { q.getPresets().currentIndex(), q.getPresets().currentName(),
+                          sameRaw (rawSnapshot (q), expectRaw) };
+    };
+
+    const juce::String shared = "Wide Master";   // a shipped factory preset
+    AnamorphAudioProcessor p;
+    p.prepareToPlay (48000.0, 512);
+    auto& presets = p.getPresets();
+
+    int factoryIdx = -1;
+    for (int i = 0; i < presets.entries().size(); ++i)
+    {
+        const auto& e = presets.entries().getReference (i);
+        if (e.isFactory && e.name == shared) factoryIdx = i;
+    }
+    check (factoryIdx >= 0, "the shared-name factory preset ships");
+    if (factoryIdx < 0) return;
+
+    auto presetFile = anamorph::PresetManager::presetDirectory()
+                          .getChildFile (shared + anamorph::PresetManager::fileSuffix());
+    auto parked = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                      .getChildFile ("AnamorphIndicatorHarness.parked");
+    const bool hadUserFile = presetFile.existsAsFile();
+    if (hadUserFile) { parked.deleteFile(); presetFile.moveFileTo (parked); }
+
+    // --- Case 1: a FACTORY preset is current -------------------------------------
+    presets.load (factoryIdx);
+    const auto factoryRaw = rawSnapshot (p);
+    juce::MemoryBlock factoryBlob;
+    p.getStateInformation (factoryBlob);
+    {
+        const auto r = restoreInto (factoryBlob, factoryRaw);
+        check (r.index == factoryIdx, "case 1: a restored session ticks the factory preset it was on");
+        checkStr (r.name, shared, "case 1: the displayed name restores");
+        check (r.paramsMatch, "case 1: parameters restore bit-identically");
+    }
+
+    // --- Case 1 fallback: the stored factory id no longer exists -------------------
+    {
+        auto tree = juce::ValueTree::fromXml (*BlobCodec::unwrap (factoryBlob));
+        tree.setProperty ("presetFactoryId", "aPresetThatWasRemoved", nullptr);
+        const auto r = restoreInto (BlobCodec::wrap (*tree.createXml()), factoryRaw);
+        check (r.index < 0, "case 1 fallback: an unresolvable factory id ticks NOTHING");
+        check (r.paramsMatch, "case 1 fallback: parameters still restore bit-identically");
+    }
+
+    // --- Case 2: a USER preset sharing the factory name is current ----------------
+    check (presets.saveUser (shared), "a user preset can be saved under the factory name");
+    const int userIdx = presets.currentIndex();
+    check (userIdx > factoryIdx, "the saved user preset sits below the factory block");
+    setRaw (p, "drive", 0.61f);                  // make the user preset's sound distinct
+    check (presets.saveUser (shared), "re-save so the file matches the live sound");
+    const auto userRaw = rawSnapshot (p);
+    juce::MemoryBlock userBlob;
+    p.getStateInformation (userBlob);
+    {
+        const auto r = restoreInto (userBlob, userRaw);
+        check (r.index == userIdx, "case 2: a restored session ticks the USER row, not the same-named factory one");
+        checkStr (r.name, shared, "case 2: the displayed name restores");
+        check (r.paramsMatch, "case 2: parameters restore bit-identically");
+    }
+
+    // --- Case 2, nested: a preset under a SUB-folder of the preset folder ----------
+    // `refresh()` scans non-recursively, so a nested file is on no menu row and must tick
+    // nothing — before AND after a reload. It is the case where encoding by file NAME would
+    // silently re-point the identity at the same-named preset sitting directly in the folder,
+    // which still exists at this point in the test.
+    {
+        auto nestedDir = anamorph::PresetManager::presetDirectory().getChildFile ("AnamorphHarnessNested");
+        auto nested    = nestedDir.getChildFile (shared + anamorph::PresetManager::fileSuffix());
+        nested.deleteFile();
+        // Asserted for the same reason as the outside-folder case above: this is the guard for
+        // the isAChildOf-vs-direct-child fix, and a silent skip would leave it unguarded while
+        // the suite still exits 0.
+        const bool stagedNested = nestedDir.createDirectory() && presetFile.copyFileTo (nested);
+        check (stagedNested, "nested sub-folder copy staged");
+        if (stagedNested)
+        {
+            check (presets.loadFile (nested), "loadFile accepts a preset from a sub-folder");
+            check (presets.currentIndex() < 0, "a nested preset ticks nothing while live");
+            const auto nestedRaw = rawSnapshot (p);
+            juce::MemoryBlock nestedBlob;
+            p.getStateInformation (nestedBlob);
+            const auto r = restoreInto (nestedBlob, nestedRaw);
+            check (r.index < 0,
+                   "case 2 nested: a reloaded nested preset ticks nothing, not the same-named row in the folder");
+            check (r.paramsMatch, "case 2 nested: parameters restore bit-identically");
+            nested.deleteFile();
+        }
+        nestedDir.deleteRecursively();
+        presets.refresh();
+        presets.load (userIdx);   // back to the flat user preset for the checks below
+    }
+
+    // --- Case 2 fallback: the user preset file is gone ----------------------------
+    {
+        check (presetFile.deleteFile(), "user preset file removed before the restore");
+        const auto r = restoreInto (userBlob, userRaw);
+        check (r.index < 0, "case 2 fallback: a missing user preset ticks NOTHING, not the same-named factory row");
+        checkStr (r.name, shared, "case 2 fallback: the displayed name still restores");
+        check (r.paramsMatch, "case 2 fallback: parameters still restore bit-identically");
+    }
+
+    // --- Case 3: a pre-0.9.2 session, with no identity stored ---------------------
+    {
+        auto tree = juce::ValueTree::fromXml (*BlobCodec::unwrap (userBlob));
+        tree.removeProperty ("presetSource",    nullptr);
+        tree.removeProperty ("presetFactoryId", nullptr);
+        tree.removeProperty ("presetUserFile",  nullptr);
+        check (! tree.hasProperty ("presetSource"), "the pre-0.9.2 fixture really has no identity");
+        // The file is still deleted here, so the ONLY thing the name could resolve to is
+        // the factory row -- which is exactly the documented pre-0.9.2 answer.
+        const auto r = restoreInto (BlobCodec::wrap (*tree.createXml()), userRaw);
+        check (r.index == factoryIdx, "case 3: a session with no stored identity falls back to the name");
+        check (r.paramsMatch, "case 3: parameters still restore bit-identically");
+    }
+
+    // --- A/B: each slot carries its own identity across the reload ----------------
+    {
+        check (presets.saveUser (shared), "re-create the user preset for the A/B check");
+        const int userRow = presets.currentIndex();
+        p.abSwitchTo (1);
+        presets.load (factoryIdx);        // slot B := the factory preset
+        const auto abRaw = rawSnapshot (p);
+        juce::MemoryBlock abBlob;
+        p.getStateInformation (abBlob);
+
+        AnamorphAudioProcessor q;
+        q.prepareToPlay (48000.0, 512);
+        q.setStateInformation (abBlob.getData(), (int) abBlob.getSize());
+        check (q.abActiveSlot() == 1, "the restored session lands on slot B");
+        check (q.getPresets().currentIndex() == factoryIdx, "slot B's factory identity restores");
+        check (sameRaw (rawSnapshot (q), abRaw), "slot B parameters restore bit-identically");
+        q.abSwitchTo (0);
+        check (q.getPresets().currentIndex() == userRow,
+               "slot A's USER identity restores independently of slot B's");
+    }
+
+    // --- A user preset whose FILE NAME looks like an absolute path --------------
+    // Nothing stops a user dropping `~foo.anamorph` into the preset folder by hand -- the
+    // manual tells them to manage presets as files -- and `juce::File::isAbsolutePath`
+    // accepts a leading `~` on POSIX. Encoding such a direct child by BARE NAME would come
+    // back from the decoder as the literal relative string, so the row would silently lose
+    // its tick on reload. The encoder must fall back to the absolute path for it.
+    {
+        // Built from a full path string on purpose: getChildFile would short-circuit on the
+        // very ambiguity under test.
+        auto tilde = juce::File (anamorph::PresetManager::presetDirectory().getFullPathName()
+                                     + juce::File::getSeparatorString()
+                                     + "~AnamorphTildeHarness" + anamorph::PresetManager::fileSuffix());
+        tilde.deleteFile();
+        const bool stagedTilde = presetFile.copyFileTo (tilde);
+        check (stagedTilde, "tilde-named preset staged");
+        if (stagedTilde)
+        {
+            presets.refresh();
+            int tildeIdx = -1;
+            for (int i = 0; i < presets.entries().size(); ++i)
+                if (presets.entries().getReference (i).file == tilde) tildeIdx = i;
+            check (tildeIdx >= 0, "the tilde-named preset appears as a menu row");
+            if (tildeIdx >= 0)
+            {
+                presets.load (tildeIdx);
+                check (presets.currentIndex() == tildeIdx, "the tilde-named preset is current while live");
+                const auto tildeRaw = rawSnapshot (p);
+                juce::MemoryBlock tildeBlob;
+                p.getStateInformation (tildeBlob);
+                const auto r = restoreInto (tildeBlob, tildeRaw);
+                check (r.index == tildeIdx,
+                       "a tilde-named preset keeps its tick across a reload (encode/decode round-trips)");
+                check (r.paramsMatch, "tilde-named preset: parameters restore bit-identically");
+            }
+            tilde.deleteFile();
+        }
+        presets.refresh();
+    }
+
+    // --- A repeated restore must not inherit the previous project's preset NAME ----
+    // Hosts call setStateInformation on ONE live processor any number of times, so the root
+    // metadata follows the same rule readSlot follows for the A/B slots: an absent or empty
+    // field resolves to its own default, never to what the previous project left behind. The
+    // two cases are different answers and only setStateInformation can tell them apart:
+    //   * `presetName` PRESENT but empty -- a real state since 0.9.2 (a session saved while
+    //     sitting on a nameless A/B slot stores exactly that) -- is adopted verbatim;
+    //   * `presetName` ABSENT (a session predating the field, < 0.6) resolves to
+    //     PresetManager::defaultName(), a CONSTANT, whose name-fallback tick is the documented
+    //     ADR-0024 answer for a session that carries no identity.
+    // Both adoption paths are exercised: with `presetBaseline` present (setMeta) and without
+    // it (adoptRestoredState), because each used to inherit in its own way.
+    {
+        struct NameCase { bool stripName, stripBaseline; const char* expected; const char* what; };
+        const NameCase nameCases[] = {
+            { false, false, "",        "empty presetName, baseline present"  },
+            { false, true,  "",        "empty presetName, no baseline"       },
+            { true,  false, "Default", "absent presetName, baseline present" },
+            { true,  true,  "Default", "absent presetName, no baseline"      },
+        };
+
+        for (const auto& c : nameCases)
+        {
+            const juce::String tag = juce::String (" (") + c.what + ")";
+            const auto msgSetup = "project A really has a preset name to leak" + tag;
+            const auto msgName  = "a repeated restore resolves the preset name from the session, "
+                                  "not from the previous project" + tag;
+            const auto msgTick  = "...so the drop-down cannot tick the previous project's row" + tag;
+
+            AnamorphAudioProcessor r;
+            r.prepareToPlay (48000.0, 512);
+            r.getPresets().load (1);                    // project A: a named factory preset
+            const auto projectAName = r.getPresets().currentName();
+            const int  projectARow  = r.getPresets().currentIndex();
+            check (projectAName.isNotEmpty() && projectAName != "Default" && projectARow > 0,
+                   msgSetup.toRawUTF8());
+
+            // Project B: the same session shape, carrying no identity (so the name fallback is
+            // what resolves the tick) and no usable preset name.
+            auto projectB = stateTreeOf (r);
+            projectB.removeProperty ("presetSource",    nullptr);
+            projectB.removeProperty ("presetFactoryId", nullptr);
+            projectB.removeProperty ("presetUserFile",  nullptr);
+            if (c.stripName)      projectB.removeProperty ("presetName", nullptr);
+            else                  projectB.setProperty   ("presetName", "", nullptr);
+            if (c.stripBaseline)  projectB.removeProperty ("presetBaseline", nullptr);
+
+            if (auto xml = projectB.createXml())
+            {
+                const auto blobB = BlobCodec::wrap (*xml);
+                r.setStateInformation (blobB.getData(), (int) blobB.getSize()); // SAME live instance
+                checkStr (r.getPresets().currentName(), c.expected, msgName.toRawUTF8());
+                check (r.getPresets().currentIndex() != projectARow, msgTick.toRawUTF8());
+            }
+        }
+    }
+
+    check (presetFile.deleteFile(), "test preset file removed");
+    if (hadUserFile) parked.moveFileTo (presetFile);
+    presets.refresh();
 }
 
 // ---------------------------------------------------------------------------
@@ -790,6 +1408,9 @@ int main (int argc, char* argv[])
     testCorruptAndForeignState();
     testPresetSaveReloadRoundTrip();
     testAbAndViewParamPreservation();
+    testDuplicateNameFactoryVsUserPreset();
+    testFactoryPresetIdIntegrity();
+    testPresetIndicatorIdentityAcrossRestore();
 
     std::printf ("\n%d checks, %d failure(s)\n", checks, failures);
     return failures == 0 ? 0 : 1;

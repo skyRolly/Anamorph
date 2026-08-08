@@ -50,18 +50,21 @@ gated steps (`package_windows` / `package_macos_pkg`), each with the version par
   requires elevation; real uninstall entry). Wizard: a **component page** (*Install VST3*
   / *Install Standalone*, both pre-selected, at least one required — enforced in
   `[Code]`), then **one destination page with both paths** (VST3 folder above the
-  Standalone folder; defaults `{commoncf64}\VST3` and Program Files + Start-menu). The
-  chosen Standalone folder is written back to `{app}`, so the uninstaller and Start-menu
-  icon follow it. No post-install "launch" checkbox. Not yet Authenticode-signed —
-  RH-PR-5 signs this same exe.
+  Standalone folder; its two field labels read *VST3 Plug-in folder* and *Standalone
+  Application folder* since 0.9.2; defaults `{commoncf64}\VST3` and Program Files +
+  Start-menu). The chosen Standalone folder is written back to `{app}`, so the uninstaller
+  and Start-menu icon follow it. No post-install "launch" checkbox. Not yet
+  Authenticode-signed — RH-PR-5 signs this same exe.
 - **macOS** — `Anamorph-<version>-macOS.pkg`: `packaging/macos/build-pkg.sh` builds three
   component packages (VST3 → `/Library/Audio/Plug-Ins/VST3`, AU → `.../Components`, app →
   `/Applications`) and combines them with `productbuild` over a hand-written distribution
   (**`customize="allow"`, all choices pre-selected** — the default is a full install and
-  Installer.app's *Customize* button exposes per-component checkboxes; `<domains
+  Installer.app's *Customize* button exposes per-component checkboxes, titled *VST3
+  Plug-in* / *AU Plug-in* / *Standalone Application* since 0.9.2; `<domains
   enable_localSystem>` pins the system-wide destinations). A self-check expands the
   result and asserts all three component identifiers plus the customize/pre-selected
-  attributes. Payloads installed by Installer.app carry no quarantine attribute (unlike
+  attributes — it matches on `<choice id=…>`, not on the titles, so the wording is free to
+  change. Payloads installed by Installer.app carry no quarantine attribute (unlike
   zip-extracted bundles). Not yet signed/notarized — RH-PR-3 signs + notarizes this same
   package.
 

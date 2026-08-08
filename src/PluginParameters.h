@@ -58,7 +58,7 @@ namespace pid
     inline constexpr const char* bypass         = "bypass";
     // UI-only (still saved with state)
     inline constexpr const char* advancedMode   = "advancedMode";
-    // Oversampling, Scope Persistence, Show Meters, Tooltips, UI Animations and Window Size
+    // Oversampling, Scope Persistence, Show Meters, Tooltips, UI Animations and UI Scale
     // are NO LONGER APVTS parameters -- they live in anamorph::InternalState (host-hidden) so
     // the host can't list them. Their legacy string ids are referenced only by the one-time
     // migration in InternalState::migrateFromLegacyApvts (read directly as literals).

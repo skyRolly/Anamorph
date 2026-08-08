@@ -102,11 +102,16 @@ way to hide a parameter). Serialized in `ANAMORPH_INTERNAL`; never in A/B/Undo/p
 | Identifier | Purpose | Default | Host Visible | Serialized |
 |---|---|---|---|---|
 | `int_oversample` | Oversampling factor (drives DSP + PDC) | 1 ("Off/1x") | **no** | yes |
-| `int_uiScale` | Window size | 3 ("M") | no | yes |
+| `int_uiScale` | UI Scale (whole-window scale, XS..XL) ※ | 3 ("M") | no | yes |
 | `int_scopePersist` | Vectorscope persistence | 0.5 | no | yes |
 | `int_metersOn` | Show meters | false | no | yes |
 | `int_tooltipsOn` | Tooltips | false | no | yes |
 | `int_uiAnimations` | UI animations | true | no | yes |
+
+- **※** Display label renamed `Window Size` → `UI Scale` in 0.9.2; the identifier `int_uiScale` is
+  **unchanged**, as is the pre-0.8.4 legacy APVTS id `uiScale` its migration reads (the immutability
+  invariant in action, same shape as the `Haas Side` → `Haas Focus` rename above). Evidence
+  [Verified]: src/PluginEditor.cpp:562; src/InternalState.h:34,:123.
 
 Evidence [Verified]: src/InternalState.h:31-55.
 
