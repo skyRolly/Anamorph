@@ -23,13 +23,13 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   line's position was not among the things it looked at; it is now. Reported on macOS; the cause was
   platform-independent, so the fix applies everywhere. Nothing else about the display changed — an
   idle, settled view still stops repainting exactly as before.
-  Evidence: PR #100. [Verified]
+  Evidence: PR #101. [Verified]
 - **Closing a Settings drop-down no longer closes Settings with it.** With a drop-down open in
   Settings, clicking outside it now closes **only** the drop-down, wherever you click — inside the
   Settings panel (which already behaved this way) or outside it (which used to close Settings too).
   Settings itself closes on the next click outside the panel, once no drop-down is open, exactly as
   before.
-  Evidence: PR #100. [Verified]
+  Evidence: PR #101. [Verified]
 
 ## [0.9.2] — 2026-08-07
 ### Fixed

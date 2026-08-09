@@ -5,7 +5,8 @@
 > JUCE modal rule that deliberately re-delivers the click it just consumed. This worklog keeps the
 > traces; `CHANGELOG.md` keeps the user-facing statements.
 
-- **Date:** 2026-08-09 · **Version:** 0.9.3 (PR #100) · **Branch:** `claude/beautiful-sagan-JAUFI`.
+- **Date:** 2026-08-09 · **Version:** 0.9.3 (PR #101, commit `7afd07e`) · **Branch:** `claude/beautiful-sagan-JAUFI`.
+  PR #100 (v0.9.2) is merged and is this branch's merge-base — it is not the source of these fixes.
 - **Reference tree:** JUCE 9.0.0 at the pinned commit `f8f8864…` (`CMakeLists.txt:36-38`), fetched
   and read locally; all JUCE line citations below are against that commit.
 - **Scope:** editor only. No parameter, serialization or DSP change — 0.9.3 is state- and
@@ -140,5 +141,11 @@ This is the **ADR-0025** exception, invoked with its four required disclosures:
    needs: a headless harness that instantiates the editor and drives synthetic mouse events. Until
    that exists these two join the same list rather than being waived silently.
 
-**Manual verification owed** (no headless substitute): bug 1 on macOS with a silent track, sweeping
-the pointer within one band; bug 2 on each platform, including the edge cases enumerated in §2.
+**Manual verification — performed and signed off by the maintainer, 2026-08-09.** Both checks the
+headless suites cannot stand in for: bug 1 on macOS with a silent track, sweeping the pointer within
+one band; bug 2 on each platform, including the edge cases enumerated in §2. This closes ADR-0025
+disclosure 2 for these two entries — the exception is discharged, not merely declared.
+
+It signs off **these two fixes only**. The `RELEASE_POLICY` preconditions that still gate a tag are
+untouched by it: the Level-5 **audio** audition and the `RELEASE_COMPATIBILITY_CHECKLIST` remain
+open, as `HANDOVER.md` §Release Status records.

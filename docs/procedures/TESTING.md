@@ -202,8 +202,10 @@ doesn't exist:
   2. *What replaced it.* Both root causes were traced to specific lines — our own S2 repaint gate for
      the first, `juce_Component.cpp:2507-2544` and `juce_ModalComponentManager.cpp:81-89` in the
      pinned tree for the second — with the exact conditions that make each reachable written down in
-     `worklogs/GUI_INTERACTION_FIXES_v0.9.3.md`, plus a manual check per platform at the Level-5
-     audition.
+     `worklogs/GUI_INTERACTION_FIXES_v0.9.3.md`, plus a manual check per platform — **performed and
+     signed off by the maintainer on 2026-08-09**, so this disclosure is discharged rather than
+     pending. The sign-off covers these two fixes only; the Level-5 *audio* audition and the
+     compatibility checklist are separate and remain open (`HANDOVER.md` §Release Status).
   3. *Where the gap is tracked.* Here, alongside the INC-010 entry above.
   4. *Whether infrastructure could close it.* **Yes, and it is the same infrastructure** the INC-010
      entry names: a harness that instantiates the editor and drives synthetic mouse events. Both of
