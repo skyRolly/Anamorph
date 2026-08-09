@@ -6,11 +6,30 @@ their **commit SHA + date** as the Evidence Source (per `docs/policies/CHANGELOG
 The annotated-tag convention and the tag-triggered release pipeline exist
 (`docs/procedures/RELEASE_PROCESS.md` §Tagging), but **no tag has been cut yet**: `[0.9.0]` was
 written as a release entry and then superseded before it was tagged, so the first annotated
-`vX.Y.Z` tag will be **v0.9.2** (0.9.1 was likewise written up and superseded before tagging),
+`vX.Y.Z` tag will be **v0.9.3** (0.9.0, 0.9.1 and 0.9.2 were each written up and superseded before
+tagging),
 and from that tag onward the tag is also a citable Evidence
 Source. Until then every entry cites a commit SHA or a PR. Entries for the
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
+
+## [0.9.3] — 2026-08-09
+### Fixed
+- **The Multiband "add split" line no longer sticks while you move the mouse.** Hovering the
+  Multiband spectrum (Advanced mode) shows a preview line marking where a click would add a new
+  split. On a quiet track the line could stop following the pointer and hang at one spot, only
+  catching up once the pointer reached something else that redraws — a Solo headphone, a split
+  handle. The display was skipping frames it had judged identical to the last one, and the preview
+  line's position was not among the things it looked at; it is now. Reported on macOS; the cause was
+  platform-independent, so the fix applies everywhere. Nothing else about the display changed — an
+  idle, settled view still stops repainting exactly as before.
+  Evidence: PR #100. [Verified]
+- **Closing a Settings drop-down no longer closes Settings with it.** With a drop-down open in
+  Settings, clicking outside it now closes **only** the drop-down, wherever you click — inside the
+  Settings panel (which already behaved this way) or outside it (which used to close Settings too).
+  Settings itself closes on the next click outside the panel, once no drop-down is open, exactly as
+  before.
+  Evidence: PR #100. [Verified]
 
 ## [0.9.2] — 2026-08-07
 ### Fixed

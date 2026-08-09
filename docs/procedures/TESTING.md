@@ -162,7 +162,7 @@ pluginval exit fails the job on every platform. Linux/macOS use `run-pluginval.s
 
 ## Gaps in the automated coverage (known, deliberate)
 
-Three things the gates above do **not** do. All are recorded so nobody assumes coverage that
+Four things the gates above do **not** do. All are recorded so nobody assumes coverage that
 doesn't exist:
 
 - **GUI-lifetime defects have no headless test.** This is a **`TESTING_POLICY` rule-1 exception
@@ -189,6 +189,26 @@ doesn't exist:
      not to fold into a crash fix. The *behavioural* half — destroy the owner while the menu is
      modal and then click an item — needs a driven message loop and remains out of reach. Per
      ADR-0025 §5 this entry is revisited when that harness lands, not left standing.
+
+- **Editor interaction defects have no headless test either.** A second
+  **`TESTING_POLICY` rule-1 exception under ADR-0025**, for the two v0.9.3 GUI fixes: the Multiband
+  add-split preview line stalling under a moving pointer, and a Settings drop-down's dismissing click
+  also closing Settings. Same four disclosures:
+
+  1. *Why no reliable test exists.* Both need things the two console targets do not have — a real
+     vblank tick plus pointer motion over a settled spectrum for the first, and JUCE's modal
+     machinery delivering a real mouse-down for the second. The editor is linked but never
+     instantiated (`tests/state_tests.cpp:6-8`), and neither suite has a pointer or a display.
+  2. *What replaced it.* Both root causes were traced to specific lines — our own S2 repaint gate for
+     the first, `juce_Component.cpp:2507-2544` and `juce_ModalComponentManager.cpp:81-89` in the
+     pinned tree for the second — with the exact conditions that make each reachable written down in
+     `worklogs/GUI_INTERACTION_FIXES_v0.9.3.md`, plus a manual check per platform at the Level-5
+     audition.
+  3. *Where the gap is tracked.* Here, alongside the INC-010 entry above.
+  4. *Whether infrastructure could close it.* **Yes, and it is the same infrastructure** the INC-010
+     entry names: a harness that instantiates the editor and drives synthetic mouse events. Both of
+     these become assertable at that point — a hover move must dirty the frame, and a backdrop click
+     while a combo pop-up is active must not dismiss. Revisited when that harness lands.
 
 - **The AU is never validated automatically.** `run-pluginval.sh` locates and validates
   `Anamorph.vst3` only, so the macOS `Anamorph.component` — the build Logic Pro and GarageBand

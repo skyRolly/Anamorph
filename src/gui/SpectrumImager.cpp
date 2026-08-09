@@ -1518,6 +1518,27 @@ void SpectrumImager::setContextTooltip()
 
 void SpectrumImager::updateHover (juce::Point<float> p)
 {
+    // Snapshot everything this function may change that paint() reads, so the S2 repaint gate
+    // (end of tick()) can see a hover-only move.
+    //
+    // The gate repaints when the spectrum data moved, an eased alpha moved, or a drawn split /
+    // width position moved -- on the stated assumption that "mouse-driven fields [have] handlers
+    // [that] already repaint explicitly". This handler was the one that did not, and `addX` -- the
+    // X of the "click to add a split" preview line, drawn in paint() -- is none of the three things
+    // the gate watches. So while the cursor moved WITHIN one band's add zone the line froze: every
+    // alpha had already arrived at its target (addA == 1 throughout), and on a settled view (silence,
+    // decays finished) nothing else moved either, so the gate stayed shut and the last painted X
+    // stayed on screen. Moving onto some other hotspot changed an alpha (e.g. soloA), the gate
+    // opened, and the line jumped to the cursor -- which is exactly how the bug was reported.
+    //
+    // `frameDirty` rather than repaint(): the imager's FrameClock runs whenever it is visible
+    // (visibilityChanged() starts/stops it), and a hidden component receives no mouse events, so the
+    // flag is always consumed by the next vblank tick. That keeps painting paced at one frame per
+    // vblank instead of one per mouse event, which is what the gate is for.
+    const int   wasHandle = hoverHandle, wasWidth = hoverWidth, wasAdd = hoverAdd;
+    const int   wasDelete = hoverDelete, wasDeleteExact = hoverDeleteExact, wasSolo = hoverSolo;
+    const float wasAddX   = addX;
+
     const int N = bandCount();
     hoverHandle = hoverWidth = hoverAdd = hoverDelete = hoverDeleteExact = hoverSolo = -1;
 
@@ -1544,6 +1565,13 @@ void SpectrumImager::updateHover (juce::Point<float> p)
         hoverDeleteExact = deleteHit (p);
         if (hoverDeleteExact >= 0) setMouseCursor (juce::MouseCursor::PointingHandCursor);
     }
+
+    // `addX` only matters while hoverAdd >= 0, and it is written only on that branch, so a move
+    // with no add target leaves it untouched and cannot mark the frame dirty spuriously.
+    if (hoverHandle != wasHandle || hoverWidth != wasWidth || hoverAdd != wasAdd
+        || hoverDelete != wasDelete || hoverDeleteExact != wasDeleteExact || hoverSolo != wasSolo
+        || ! juce::exactlyEqual (addX, wasAddX))
+        frameDirty = true;
 
     setContextTooltip();
 }

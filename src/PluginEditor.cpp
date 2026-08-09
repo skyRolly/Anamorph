@@ -540,6 +540,35 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
 
     settingsBackdrop.dropShadow = true; // soft feathered outer shadow (#14)
     settingsBackdrop.onDismiss = [this] { showSettings (false); };
+    // While a Settings drop-down is open, a click anywhere outside it closes ONLY the drop-down --
+    // inside the panel (which already worked, the click misses `panel`'s dismiss test) and outside
+    // it (which used to close Settings too). Settings closes on the NEXT click, once no menu is up.
+    //
+    // Why isPopupActive() is an exact test here and not a guess, in two halves:
+    //   * It is still TRUE. The flag is cleared by comboBoxPopupMenuFinishedCallback ->
+    //     ComboBox::hidePopup(), a MODAL CALLBACK, and ModalComponentManager dispatches those
+    //     asynchronously -- ModalItem::cancel() only sets isActive=false and triggerAsyncUpdate()s
+    //     (juce_ModalComponentManager.cpp:81-89). This lambda runs synchronously inside the very
+    //     mouse-down that dismissed the menu, i.e. strictly before that callback.
+    //   * It cannot be a false positive. If a menu were STILL modal we would never be called at
+    //     all: internalMouseDown returns before invoking mouseDown while the block is in force
+    //     (juce_Component.cpp:2517-2522). So a live flag at this point can only mean "this click
+    //     just closed it".
+    // Nor can it get stuck: menuActive is cleared by ~ComboBox and by enablementChanged(), and
+    // showPopup() early-returns BEFORE setting it when the box is disabled -- and these boxes are
+    // never disabled. That matters because the backdrop click is the only way to close Settings.
+    //
+    // `allCombos` rather than the two Settings boxes by name: it already exists, and it keeps this
+    // correct if a drop-down is ever added to the panel. A combo elsewhere in the editor cannot have
+    // a menu open while the backdrop is up -- the backdrop covers the editor and eats the click that
+    // would open one -- and swallowing a stray click would be the safe direction regardless.
+    settingsBackdrop.swallowsDismissClick = [this]
+    {
+        for (auto* box : allCombos)
+            if (box != nullptr && box->isPopupActive())
+                return true;
+        return false;
+    };
     addChildComponent (settingsBackdrop);
 
     settingsTitle.setText ("SETTINGS", juce::dontSendNotification);

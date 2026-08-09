@@ -6,7 +6,39 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.2 change set** (2026-08-07) — the first `src/` change since 0.9.0.
+Last updated: for the **0.9.3 change set** (2026-08-09) — two editor-only GUI interaction fixes on
+top of 0.9.2. Below that, the 0.9.2 entry (2026-08-07) is retained in full.
+
+**Two interaction bugs, both with non-obvious mechanisms (0.9.3).** *(1)* The Multiband **add-split
+preview line** stalled under a moving pointer. The S2 repaint gate skips a frame when nothing it
+watches moved — spectrum data, eased alphas, drawn split/width positions — on the stated assumption
+that "mouse-driven fields [have] handlers [that] already repaint explicitly". `updateHover()` was the
+handler that did not, and `addX`, the preview line's X, is none of the three things the gate watches.
+So with the pointer moving *within one band's add zone* (hoverAdd unchanged, `addA` already at 1.0)
+over a *settled* spectrum, nothing moved and the line froze; crossing into another hotspot moved an
+alpha and it jumped to the cursor. `updateHover` now marks the frame dirty when its output changed —
+`frameDirty` rather than `repaint()`, so painting stays paced at one frame per vblank, which is what
+the gate is for. The gate itself is untouched: an idle view still stops repainting. *(2)* A **Settings
+drop-down's dismissing click also closed Settings**, because JUCE *deliberately re-delivers* it:
+`internalMouseDown` dismisses the modal menu via `internalModalInputAttempt()` and then, seeing the
+modal loop has exited, passes the same mouse-down to the component underneath
+(`juce_Component.cpp:2507-2544`). `Backdrop` now consults a predicate first; for Settings it reports
+whether any combo still has `isPopupActive()`, which is an **exact** test in both directions — still
+true because the flag is cleared by an asynchronously-dispatched modal callback
+(`juce_ModalComponentManager.cpp:81-89`), and never a false positive because a *still*-modal menu
+would mean we were never called. Reasoning, edge cases and the stuck-flag analysis:
+`worklogs/GUI_INTERACTION_FIXES_v0.9.3.md`. **Neither fix has an automated test** — both are
+editor-interaction defects and the harness instantiates no editor and drives no pointer; registered
+as a second **ADR-0025** exception with its four disclosures in `TESTING.md` §Gaps, beside INC-010.
+**Version carriers swept** for the 0.9.2 → 0.9.3 bump: `CMakeLists.txt`, `CHANGELOG.md`, `README.md`,
+`HANDOVER.md`, `KNOWN_ISSUES.md`, `FUTURE_RISKS.md`, `RELEASE_PROCESS.md`, `RELEASE_HARDENING_PLAN.md`,
+`CHANGELOG_POLICY.md`, ADR-0024 — every place naming the *release in preparation* or the *first
+annotated tag*, which is now **v0.9.3** (0.9.0, 0.9.1 and 0.9.2 were each written up and superseded
+before a tag was cut). Historical references to what 0.9.2 introduced are left as they are.
+
+---
+
+Previously: for the **0.9.2 change set** (2026-08-07) — the first `src/` change since 0.9.0.
 Four changes, one investigation, three new regression tests, and one governance amendment.
 
 **Governance: `TESTING_POLICY` rule 1 gains a narrow exception (ADR-0025).** The rule ("every bug fix

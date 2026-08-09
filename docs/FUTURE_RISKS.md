@@ -3,10 +3,13 @@
 Potential technical risks. Each is evidence-based (constraint C7) — no invented risks. ADRs and
 postmortems may reference these IDs to close the loop. Severity: Low / Medium / High / Critical.
 
-Version-synced to **v0.9.2** (preset drop-down lifetime/crash fix, factory-preset identity, the
-`UI Scale` label and the installer component titles — **no new risk**: nothing forward-looking
-changed, and the one new limitation is an OS text-input behaviour filed as KI-017, not a risk.
-RISK-003's mitigation now names **v0.9.2** as the first tag). Prior sync: **v0.9.1**
+Version-synced to **v0.9.3** (two GUI interaction fixes: the Multiband add-split preview line no
+longer stalls while the pointer moves, and a Settings drop-down's dismissing click no longer closes
+Settings with it — **no new risk**: no serialized state, parameter or DSP behaviour changed.
+RISK-003's mitigation now names **v0.9.3** as the first tag). Prior sync: **v0.9.2**
+(preset drop-down lifetime/crash fix, factory-preset identity, the `UI Scale` label and the installer
+component titles — no new risk; the one new limitation is an OS text-input behaviour filed as
+KI-017). Prior: **v0.9.1**
 (manufacturer-code change, ADR-0023 — no new risk: RISK-003's
 mitigation then named v0.9.1 as the first tag, and the one-time session break is a documented
 known issue (KI-016), not a forward-looking risk). Prior sync: **v0.9.0** (release-prep,
@@ -87,7 +90,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 - **Mitigation:** **Infrastructure shipped (RH-PR-8, v0.8.13 cycle):** annotated `vX.Y.Z` tag
   convention + tag-triggered `release.yml` (fail-closed tag⇄version⇄CHANGELOG validation →
   reused `build.yml` gates → draft GitHub Release with versioned artifacts + SHA-256 sums +
-  manifest). The risk **closes when the first release tag is cut** (planned: **v0.9.2** — 0.9.0 and 0.9.1 were both written up but never tagged); until
+  manifest). The risk **closes when the first release tag is cut** (planned: **v0.9.3** — 0.9.0, 0.9.1 and 0.9.2 were each written up but never tagged); until
   then, cite commit SHAs. Historical entries keep SHA evidence permanently.
 
 ## RISK-004 — pluginval signal-only retry masking a real crash

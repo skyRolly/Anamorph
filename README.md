@@ -13,9 +13,14 @@ only — it configures and builds entirely from the command line on a headless L
 - Diamond **vectorscope**, correlation + L/R Peak/RMS meters; click-free transitions throughout.
 
 ## Project status
-- **Version 0.9.2** (pre-1.0), in the **internal-testing phase** — builds go to testers for
+- **Version 0.9.3** (pre-1.0), in the **internal-testing phase** — builds go to testers for
   evaluation, not to customers (see [Licensing](#licensing); internal record:
   [`docs/COMMERCIAL_STATUS.md`](docs/COMMERCIAL_STATUS.md)).
+- **0.9.3 fixes two interaction annoyances.** In Advanced mode the Multiband **add-split preview
+  line** now keeps following the pointer instead of occasionally hanging at one spot on a quiet
+  track; and with a **Settings drop-down open**, a click outside it closes only the drop-down —
+  Settings stays open, and closes on the next click as before. Editor-only: saved state, parameters
+  and the DSP are unchanged.
 - **0.9.2 fixes the preset drop-down** (it no longer stays on screen — or crashes on click —
   after the plug-in window closes) and lets a user preset share a factory preset's name without
   losing its place in the menu; the Settings control *Window Size* is now labelled **UI Scale**.

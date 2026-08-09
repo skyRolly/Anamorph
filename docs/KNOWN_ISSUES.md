@@ -4,7 +4,9 @@
 in `POSTMORTEMS.md`, not here. Each entry is evidence-backed (constraint C7). When an item is
 fixed, remove it here and (if notable) add a `POSTMORTEMS.md` entry.
 
-Version-synced to **v0.9.2** (preset drop-down lifetime/crash fix, factory-preset identity, the
+Version-synced to **v0.9.3** (two GUI interaction fixes — the Multiband add-split preview line and
+the Settings drop-down dismissal — **no issue added or closed**). Prior sync: **v0.9.2**
+(preset drop-down lifetime/crash fix, factory-preset identity, the
 `Window Size` → `UI Scale` label and the installer component titles — **one issue added**: KI-017,
 macOS suppresses key auto-repeat for letters and digits in any focused text field, which is an OS
 text-input behaviour rather than a plug-in defect; **no issue removed** — the crash fixed this

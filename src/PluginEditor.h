@@ -37,6 +37,15 @@ private:
     struct Backdrop : public juce::Component
     {
         std::function<void()> onDismiss;
+        // Consulted BEFORE onDismiss. Returns true when THIS click is the one that just dismissed a
+        // modal pop-up owned by the panel (a Settings drop-down), in which case it must not also
+        // close the panel: JUCE hands us that click anyway. Component::internalMouseDown sees the
+        // modal menu, calls internalModalInputAttempt() -- which dismisses it -- and then, because
+        // the modal loop has exited, deliberately delivers the SAME mouse-down to us
+        // (juce_Component.cpp:2507-2544 in the pinned tree; the comment there says so outright).
+        // Without this hook one click on the backdrop closed the drop-down AND Settings. Empty for
+        // backdrops that host no pop-up (safe to skip). See the wiring for why the test is exact.
+        std::function<bool()> swallowsDismissClick;
         juce::Rectangle<int>  panel;
         bool   aboutText = false;
         float  reveal = 0.0f;   // 0 = solid, 1 = see-through (Persist drag, #26)
@@ -47,6 +56,7 @@ private:
         void paintBrightEdges (juce::Graphics&, juce::Rectangle<float>, float radius); // 0.5.5 About edges (#3)
         void mouseDown (const juce::MouseEvent& e) override
         {
+            if (swallowsDismissClick && swallowsDismissClick()) return;
             if (aboutText || ! panel.contains (e.getPosition()))
                 if (onDismiss) onDismiss();
         }
