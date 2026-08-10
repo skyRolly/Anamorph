@@ -26,11 +26,13 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Evidence: PR #101. [Verified]
 - **A click that closes a menu now only closes the menu.** Whenever a drop-down or right-click menu
   is open, clicking anywhere outside it closes it and does nothing else — it cannot also close the
-  Settings panel, toggle A/B, add a Multiband split, move a control, or press a button. A second
-  click then works normally. Previously that one click did two things at once, and in the Save
-  Preset dialog it could **discard the name you had just typed**: right-clicking the name field
-  opens the system text menu, and dismissing it also closed the dialog. This now holds for the
-  Settings drop-downs, the Save Preset text menu and the preset menu alike.
+  Settings panel, toggle A/B, add a Multiband split, move a control, or press a button. Previously
+  that one click did two things at once, and in the Save Preset dialog it could **discard the name
+  you had just typed**: right-clicking the name field opens the system text menu, and dismissing it
+  also closed the dialog. This now holds for the Settings drop-downs, the Save Preset text menu and
+  the preset menu alike. One residual, tracked as **KI-018**: the dismissing click reaches no
+  control, but the system still counts it, so a *very* quick click straight afterwards on the same
+  spot can land as a double-click — pause briefly, or move the pointer a little, before the next one.
   Evidence: PR #101. [Verified]
 - **The right-click text menu no longer truncates its longest item**, which showed as
   *"Select ..."* instead of *"Select All"*. Menu width is now measured from the text in the menu's

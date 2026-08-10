@@ -60,7 +60,7 @@ file already uses for a disabled button. All of it is editor-only and joins the 
 entry in `TESTING.md` §Gaps. Maintainer sign-off (2026-08-09) covers the **problem reports and the
 required contract**; it is not a manual test of the implementation and touches no release gate.
 
-**Two interaction bugs, both with non-obvious mechanisms (0.9.3).** *(1)* The Multiband **add-split
+**The two interaction bugs this cycle opened with, both with non-obvious mechanisms (0.9.3).** *(1)* The Multiband **add-split
 preview line** stalled under a moving pointer. The S2 repaint gate skips a frame when nothing it
 watches moved — spectrum data, eased alphas, drawn split/width positions — on the stated assumption
 that "mouse-driven fields [have] handlers [that] already repaint explicitly". `updateHover()` was the
@@ -73,12 +73,15 @@ the gate is for. The gate itself is untouched: an idle view still stops repainti
 drop-down's dismissing click also closed Settings**, because JUCE *deliberately re-delivers* it:
 `internalMouseDown` dismisses the modal menu via `internalModalInputAttempt()` and then, seeing the
 modal loop has exited, passes the same mouse-down to the component underneath
-(`juce_Component.cpp:2507-2544`). `Backdrop` now consults a predicate first; for Settings it reports
-whether any combo still has `isPopupActive()`, which is an **exact** test in both directions — still
-true because the flag is cleared by an asynchronously-dispatched modal callback
-(`juce_ModalComponentManager.cpp:81-89`), and never a false positive because a *still*-modal menu
-would mean we were never called. Reasoning, edge cases and the stuck-flag analysis:
-`worklogs/GUI_INTERACTION_FIXES_v0.9.3.md`. **Neither fix has an automated test** — both are
+(`juce_Component.cpp:2507-2544`). The **shipped** answer is the editor-level `PopupShield` described
+in the entry above — a single always-visible, normally-inert overlay that starts intercepting while
+any pop-up is on screen, so the dismissing click reaches no control at all. (The first attempt at
+this fix was a Settings-only predicate on `Backdrop` reading `ComboBox::isPopupActive()`; it was
+**removed** within the same PR once the same defect turned up on the Save Preset dialog, where
+`TextEditor`'s menu state is private and the predicate could not reach it. Nothing named
+`swallowsDismissClick` or `isPopupActive` survives in the editor — the shield is the mechanism.)
+Reasoning, edge cases and the JUCE-signal analysis: `worklogs/GUI_INTERACTION_FIXES_v0.9.3.md`.
+**Neither fix has an automated test** — both are
 editor-interaction defects and the harness instantiates no editor and drives no pointer; registered
 as a second **ADR-0025** exception with its four disclosures in `TESTING.md` §Gaps, beside INC-010.
 **Version carriers swept** for the 0.9.2 → 0.9.3 bump: `CMakeLists.txt`, `CHANGELOG.md`, `README.md`,

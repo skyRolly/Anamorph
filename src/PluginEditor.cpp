@@ -1544,9 +1544,13 @@ void AnamorphAudioProcessorEditor::showPresetMenu()
     // it would fire on every window-closed-with-the-menu-open in a debug build.
     //
     // THREE calls still resolve through the DEFAULT look-and-feel, all before the
-    // parenting. Two are inert: setOpaque (:452, same answer -- colours::bgPanel is
-    // opaque) and preparePopupMenuWindow (:500, a no-op we do not override); a future
-    // override of either would silently not apply to this menu. The third is
+    // parenting. setOpaque (:452) is inert -- same answer either way, colours::bgPanel
+    // is opaque. preparePopupMenuWindow (:500) is NOT inert any more: since 0.9.3
+    // AnamorphLookAndFeel overrides it as the pop-up-tracking hook, and the DEFAULT
+    // look-and-feel's implementation is the empty LookAndFeel_V2 one -- so our override
+    // simply never runs for THIS menu. That is not a loose end, it is the reason
+    // `presetMenusOpen` exists; the block at the showMenuAsync call below spells out
+    // why parenting cannot change it. The third call is
     // LOAD-BEARING: getParentComponentForMenuOptions (:353, in the member-init list),
     // whose return value is what actually installs the parent below. Every JUCE
     // look-and-feel inherits LookAndFeel_V2's implementation, which returns
