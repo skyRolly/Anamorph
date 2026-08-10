@@ -244,7 +244,7 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
 {
     setLookAndFeel (&lnf);
     tooltips.setLookAndFeel (&lnf);
-    tooltips.isEnabled = [this] { return tooltipsOn; }; // gate at the source; see GatedTooltipWindow
+    tooltips.tooltipsEnabled = [this] { return tooltipsOn; }; // gate at the source; see GatedTooltipWindow
 
     // Pop-up dismissal shield (see PopupShield). Added once and left VISIBLE; it paints nothing and
     // only starts intercepting while a menu is on screen, so it never disturbs hover or the cursor.

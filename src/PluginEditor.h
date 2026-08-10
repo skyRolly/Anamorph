@@ -170,21 +170,6 @@ private:
     void applyScopePersist();
 
     AnamorphAudioProcessor& processor;
-    // --- Pop-up dismissal: one shield, one flag, three feeders -------------------------------
-    // `openMenus` holds every PopupMenu window currently on screen that reported itself through
-    // AnamorphLookAndFeel::onPopupMenuWindowCreated (ComboBox drop-downs, TextEditor context
-    // menus), as SafePointers so a destroyed window drops out on its own. `presetMenusOpen` counts
-    // the menus this editor shows itself, which do NOT reach that hook -- their look-and-feel is
-    // null at construction, so JUCE resolves the default one there. Either being non-empty raises
-    // the shield.
-    PopupShield popupShield;
-    bool shieldRaised = false;   // the shield is always visible; this is whether it intercepts
-    juce::Array<juce::Component::SafePointer<juce::Component>> openMenus;
-    int  presetMenusOpen = 0;
-    void notePopupMenuOpened (juce::Component& menuWindow);
-    void refreshPopupShield();   // prunes dead windows and shows/hides the shield
-    void componentBeingDeleted (juce::Component&) override; // a tracked pop-up window went away
-
     anamorph::gui::AnamorphLookAndFeel lnf;
     anamorph::gui::CompactComboLookAndFeel compactCombo; // smaller list for Input combos (#12)
     anamorph::gui::SimpleComboLookAndFeel  simpleCombo;  // bigger text for Simple-mode Widen combos (#17)
@@ -202,14 +187,40 @@ private:
     struct GatedTooltipWindow : public juce::TooltipWindow
     {
         using juce::TooltipWindow::TooltipWindow;
-        std::function<bool()> isEnabled;   // empty => behave exactly like juce::TooltipWindow
+        // NOT named `isEnabled`: juce::Component::isEnabled() is a non-virtual member function
+        // (juce_Component.h:1592) that a data member of that name would HIDE in this scope -- and
+        // hide silently, since `tooltips.isEnabled()` would still compile and still return a bool,
+        // just the wrong one. Empty => behave exactly like juce::TooltipWindow.
+        std::function<bool()> tooltipsEnabled;
         juce::String getTipFor (juce::Component& c) override
         {
-            if (isEnabled && ! isEnabled()) return {};
+            if (tooltipsEnabled && ! tooltipsEnabled()) return {};
             return juce::TooltipWindow::getTipFor (c);
         }
     };
     GatedTooltipWindow tooltips { nullptr, 600 };
+
+    // --- Pop-up dismissal: one shield, one flag, three feeders -------------------------------
+    // Declared AFTER the look-and-feel members on purpose, like every other child component here:
+    // members are destroyed in reverse declaration order, so a child declared later dies BEFORE the
+    // look-and-feels it may resolve through. `popupShield` does not resolve one today -- it paints
+    // nothing and never calls setLookAndFeel -- but the moment it gains a paint() that does, the
+    // inverted order would surface as the `~LookAndFeel` live-WeakReference assertion that
+    // showPresetMenu's INC-010 comment describes. Keeping the convention costs nothing.
+    //
+    // `openMenus` holds every PopupMenu window currently on screen that reported itself through
+    // AnamorphLookAndFeel::onPopupMenuWindowCreated (ComboBox drop-downs, TextEditor context
+    // menus), as SafePointers so a destroyed window drops out on its own. `presetMenusOpen` counts
+    // the menus this editor shows itself, which do NOT reach that hook -- their look-and-feel is
+    // null at construction, so JUCE resolves the default one there. Either being non-empty raises
+    // the shield.
+    PopupShield popupShield;
+    bool shieldRaised = false;   // the shield is always visible; this is whether it intercepts
+    juce::Array<juce::Component::SafePointer<juce::Component>> openMenus;
+    int  presetMenusOpen = 0;
+    void notePopupMenuOpened (juce::Component& menuWindow);
+    void refreshPopupShield();   // prunes dead windows and shows/hides the shield
+    void componentBeingDeleted (juce::Component&) override; // a tracked pop-up window went away
 
     // Centrepiece + meters
     std::unique_ptr<anamorph::gui::Vectorscope> scope;
