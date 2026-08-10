@@ -422,18 +422,26 @@ the file's substance is unaffected by a renumbering, which is what that date tra
 
 ---
 
-## 9. A drop-down outliving the plug-in window being hidden (fixed)
+## 9. A pop-up outliving the plug-in window (fixed)
 
 The last round accepted this as "behaviour unchanged". The second pass traced what the unchanged
 behaviour actually costs the user, and it is a defect rather than a residue, so it was reopened and
 fixed.
 
-**Symptom.** With a Settings drop-down or a right-click text menu open, a host that *hides* the
-plug-in view rather than destroying it leaves the menu behind: a floating always-on-top strip over a
-window that is no longer there. On return, the first click goes to dismissing that leftover instead
-of to the control it was aimed at.
+**Symptom.** With a Settings drop-down or a right-click text menu open, the menu can be left behind
+as a floating always-on-top strip over a window that is no longer in front of the user. Three ways in,
+found in two rounds:
 
-**Why the existing machinery misses it.** JUCE already cancels a modal component the moment its owner
+1. the host **hides** the plug-in view rather than destroying it;
+2. the host **destroys** the editor while a drop-down is up;
+3. the user **switches application** (Cmd-Tab / Alt-Tab) **with the pointer resting on a menu item** —
+   maintainer-confirmed, and the worst of the three, because clicking the leftover pulls the plug-in's
+   window back in front of whatever they switched to.
+
+On return, the plug-in also spends its first click dismissing the leftover instead of pressing the
+control it was aimed at.
+
+**Why the existing machinery misses (1).** JUCE already cancels a modal component the moment its owner
 stops showing — `ModalComponentManager::ModalItem` is a `ComponentMovementWatcher`, and
 `componentVisibilityChanged` / `componentPeerChanged` both end in
 `if (! component->isShowing()) cancel();` (`juce_ModalComponentManager.cpp:60-68`). The watcher
@@ -446,8 +454,32 @@ A `ComboBox` or `TextEditor` drop-down is not. JUCE builds it as a free-standing
 invisible to it. The menu's own visibility does not change, so nothing cancels.
 `MenuWindow::windowIsStillValid` is no second line of defence either: it compares `componentAttachedTo`
 against `options.getTargetComponent()` (`juce_PopupMenu.cpp:806-816`), two `WeakReference`s to the same
-still-alive control, so it reads valid across a hide. Editor *destruction* was never the problem — the
-destructor removes the listeners and the array goes with the object.
+still-alive control, so it reads valid across a hide.
+
+**Why it misses (2).** Same root cause, one step further along. `ModalItem::componentBeingDeleted`
+cancels when the deleted component *is* the modal one or is a **parent** of it, so the parented preset
+menu is cancelled by the editor's own destruction — and a desktop drop-down, again sharing no
+ancestor, is not. The destructor removed the component listeners (so the eventual deletion could not
+call back into freed memory) but never asked the window to go away, leaving exactly the orphan INC-010
+described, one menu type later.
+
+**Why it misses (3).** JUCE *does* dismiss on an app switch — but only with the cursor off the menu.
+`MouseSourceState::checkButtonState` reads:
+
+```
+if (! window.doesAnyJuceCompHaveFocus() && ! reallyContained)
+{
+    if (timeNow > window.lastFocusedTime + 10)
+    {
+        PopupMenuSettings::menuWasHiddenBecauseOfAppChange = true;
+        window.dismissMenu (nullptr);
+    }
+}
+```
+
+(`juce_PopupMenu.cpp:1565-1572`.) `reallyContained` is "the pointer is over this menu window", so
+hovering an item while Cmd-Tabbing takes the `else` branches and the menu simply stays. This one is
+**not** specific to desktop menus: the parented preset menu has the identical hole.
 
 **What that costs, precisely.** Three things, only the first of which is about the shield:
 
@@ -456,40 +488,69 @@ destructor removes the listeners and the array goes with the object.
   because the menu is still modal and JUCE's own `internalModalInputAttempt` dismisses it. But the
   click is spent, and the editor looks broken for exactly as long as it takes to work that out.
 - The stray menu is a visible always-on-top window with nothing behind it. That is INC-010's reported
-  symptom verbatim, one menu type later.
+  symptom verbatim, one menu type later — and in case (3) it can raise a background plug-in window.
 - It is still modal, and modality is **process-global**: every other JUCE component in the process —
   including another Anamorph instance's editor — is blocked while it is up.
 
-**Fix.** Do for those windows exactly what JUCE's watcher does for a parented one: same trigger, same
-action. `dismissOrphanedPopupMenus` calls `exitModalState (0)` on every tracked window once
-`! isShowing()`, which is the call `ModalItem::cancel` itself ends in; it self-guards on
-`isCurrentlyModal`, so a window already on its way out is a no-op, and deletion stays asynchronous so
-`componentBeingDeleted` lowers the shield when it lands.
+**Fix.** One function, `dismissTrackedPopupMenus`, which cancels every pop-up this editor owns, and
+three callers. It takes two passes because no single hook sees both kinds: `openMenus` holds the
+windows that reported through the look-and-feel, and a preset menu never reaches that hook — but it
+*is* an editor child, and "modal child of mine" identifies it exactly, since nothing else this editor
+owns ever enters a modal state. `exitModalState (0)` is the call `ModalItem::cancel` itself ends in;
+it self-guards on `isCurrentlyModal`, so anything already on its way out is a no-op, and deletion
+stays asynchronous, so `componentBeingDeleted` lowers the shield when it lands and nothing re-enters
+the destructor.
+
+The three callers:
+
+| caller | condition | covers |
+|---|---|---|
+| `~AnamorphAudioProcessorEditor` | unconditional, **before** the listeners are removed | (2) |
+| `dismissOrphanedPopupMenus`, from the 24 Hz tick | `! isShowing()` | (1) |
+| the same, same tick | `! juce::Process::isForegroundProcess()` | (3) |
+
+`Process::isForegroundProcess()` is the first half of JUCE's own `doesAnyJuceCompHaveFocus()`
+(`juce_PopupMenu.cpp:894-897`); the second half,
+`detail::WindowingHelpers::isEmbeddedInForegroundProcess`, exists for an **out-of-process** plug-in
+and is internal to the module. Anamorph builds VST3 / AU / Standalone — all in-process
+(`CMakeLists.txt:140-147`) — so the public half is the whole test here. **Adding AUv3 would need the
+other half and must revisit this**, or every menu would be cancelled the instant it opened.
 
 Deliberately **not** `PopupMenu::dismissAllActiveMenus()` — process-global, and it would close another
 instance's menu. That is the objection that already ruled it out in INC-010.
 
 **Why the 24 Hz tick rather than an event.** There is no event to listen for. The editor going off
 screen can come from an ancestor's `setVisible`, a peer change, or a minimise; `isShowing()` folds all
-three (`juce_Component.cpp`), but none of them notifies *us* — `ComponentMovementWatcher` gets there by
-registering on every ancestor, which is machinery for a case the tick already covers. The tick runs
-regardless of visibility (`startTimerHz (24)` in the constructor, `stopTimer()` only in the
-destructor) and already scans `openMenus` as the shield's backstop, so the cost is one `isShowing()`
-call on an almost-always-empty array, and the latency is invisible by definition — the editor is
-hidden.
+three, but none of them notifies *us* — `ComponentMovementWatcher` gets there by registering on every
+ancestor, which is machinery for a case the tick already covers. An application switch is a
+process-level fact with no `Component` event at all. The tick runs regardless of visibility
+(`startTimerHz (24)` in the constructor, `stopTimer()` only in the destructor) and already scans
+`openMenus` as the shield's backstop, so the cost is two predicate calls on an almost-always-empty
+array — and in both cases the user is looking elsewhere, so up to 42 ms of latency is invisible.
 
-**Blast radius.** The predicate is `! isShowing()`, so nothing at all changes while the editor is
-showing: the dismissal contract, the shield's z-order, one-click dismissal and the scroll/pinch
-swallow are untouched. The one behaviour it does add is that minimising the host window with a
-drop-down open now closes the drop-down — which is what already happened to the preset menu, and what
-a native menu does.
+**Blast radius.** The conditions are "not on screen" and "not the foreground application", so nothing
+changes while the plug-in is in front of the user: the dismissal contract, the shield's z-order,
+one-click dismissal and the scroll/pinch swallow are untouched. Two behaviours are added, both of
+them what a native menu already does: minimising the host with a drop-down open closes it, and so does
+switching away from the host.
 
-**Honest limit.** `isShowing()` is false when an ancestor is hidden, when the peer is gone, or when
-the peer reports minimised. A host that hides its own native window without any of those leaves
-`isShowing()` true and the menu alive — but that case emits no signal any in-bounds mechanism could
-read, and it is identical to what the preset menu has done since 0.9.2. Consistency with the parented
-case is the guarantee being offered here, not omniscience.
+**Honest limits.** Two.
 
-**Manual check owed:** in a host that hides rather than destroys the editor, open a Settings
-drop-down, hide the window, re-show it, and confirm no stray menu and that the first click presses the
-control it lands on. Not reachable headlessly for the reasons in §3.
+- `isShowing()` is false when an ancestor is hidden, when the peer is gone, or when the peer reports
+  minimised. A host that hides its own native window without any of those leaves `isShowing()` true —
+  but that emits no signal any in-bounds mechanism could read, and it is identical to what the preset
+  menu has done since 0.9.2. Consistency with the parented case is the guarantee, not omniscience.
+- `Process::isForegroundProcess()` is an **application**-level test. Switching to a different window
+  of the *same* host application leaves it true. JUCE's own test adds "no JUCE peer is focused", which
+  in a plug-in only ever sees our own windows, so it would not decide that case either; the
+  maintainer-confirmed repro is an application switch, and that is what is fixed.
+
+**Manual checks owed** (none reachable headlessly, for the reasons in §3):
+
+- In a host that hides rather than destroys the editor: open a Settings drop-down, hide the window,
+  re-show it. No stray menu, and the first click presses the control it lands on.
+- Close the plug-in window outright with a drop-down open. No menu is left on screen.
+- Open the Save Preset right-click menu, rest the pointer **on a menu item**, Cmd-Tab / Alt-Tab away.
+  The menu is gone, and nothing can pull the plug-in window back in front.
+- The same three with the **preset** menu, which the modal-child pass now covers as well.
+- Confirm normal use is unchanged: open and use each drop-down with the plug-in in front.

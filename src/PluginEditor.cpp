@@ -682,6 +682,16 @@ AnamorphAudioProcessorEditor::~AnamorphAudioProcessorEditor()
                        (anamorph::gui::AnamorphLookAndFeel*) &compactCombo,
                        (anamorph::gui::AnamorphLookAndFeel*) &simpleCombo })
         laf->onPopupMenuWindowCreated = nullptr;
+    // Cancel BEFORE forgetting them. `dismissOrphanedPopupMenus` cannot help here -- it runs off the
+    // 24 Hz tick, which stopTimer() above has just ended, and it is conditional besides; a host
+    // usually destroys a *visible* editor. A parented preset menu is cancelled by JUCE's own watcher
+    // on this destruction (ModalItem::componentBeingDeleted fires for an ancestor too), but a
+    // ComboBox / TextEditor drop-down is a desktop window that watcher never sees, so without this it
+    // would outlive the editor exactly as the preset menu did before INC-010: floating over nothing,
+    // still modal, still blocking every JUCE component in the process. The cancel is asynchronous, so
+    // nothing re-enters this destructor; the listener removal below is what keeps the eventual
+    // deletion from calling back into freed memory.
+    dismissTrackedPopupMenus();
     for (auto& w : openMenus)
         if (auto* c = w.getComponent())
             c->removeComponentListener (this);
@@ -1022,14 +1032,53 @@ void AnamorphAudioProcessorEditor::refreshPopupShield()
 // no-op. Deletion stays asynchronous, and componentBeingDeleted lowers the shield when it lands.
 // NOT PopupMenu::dismissAllActiveMenus(): that is process-global and would close another instance's
 // menu -- the objection that ruled it out in INC-010.
-void AnamorphAudioProcessorEditor::dismissOrphanedPopupMenus()
+// Cancel every pop-up this editor owns. It takes two passes because no single hook sees both kinds:
+// `openMenus` holds the ComboBox / TextEditor windows that reported through the look-and-feel, and a
+// preset menu never reaches that hook -- but it IS an editor child (INC-010 parented it), and
+// "modal child of mine" identifies it exactly, because nothing else this editor owns ever enters a
+// modal state. exitModalState is the call ModalItem::cancel itself ends in; it self-guards on
+// isCurrentlyModal, so anything already on its way out is a no-op, and deletion stays asynchronous,
+// which is why this is safe to call from the destructor. Never PopupMenu::dismissAllActiveMenus():
+// that is process-global and would close another instance's menu (the INC-010 objection).
+void AnamorphAudioProcessorEditor::dismissTrackedPopupMenus()
 {
-    if (openMenus.isEmpty() || isShowing())
-        return;
-
     for (auto& w : openMenus)
         if (auto* menuWindow = w.getComponent())
             menuWindow->exitModalState (0);   // cancel, exactly as a dismissing click would
+
+    for (auto* child : getChildren())
+        if (child->isCurrentlyModal (false))
+            child->exitModalState (0);
+}
+
+// A pop-up belongs to an editor that is on screen in a foreground application. Lose either and it is
+// stranded, so cancel it. Two ways that happens, and JUCE covers neither:
+//
+//  * HIDDEN EDITOR. ModalComponentManager::ModalItem is a ComponentMovementWatcher on the modal
+//    component and cancels the moment `! component->isShowing()`
+//    (juce_ModalComponentManager.cpp:60-68). It registers on the component AND its ancestors, so the
+//    parented preset menu is cancelled for free -- but a ComboBox / TextEditor drop-down is a
+//    free-standing DESKTOP window with no ancestor in common with us, so the watcher only ever sees
+//    the menu's own visibility, which hiding the editor does not touch. MenuWindow::windowIsStillValid
+//    is no backstop either: it compares two WeakReferences to the still-alive target control
+//    (juce_PopupMenu.cpp:806-816).
+//  * BACKGROUND APPLICATION. JUCE does dismiss a menu on an app switch, but only with the cursor OFF
+//    it: MouseSourceState::checkButtonState gates that branch on `! reallyContained`
+//    (juce_PopupMenu.cpp:1565-1572). Cmd-Tab / Alt-Tab away with the pointer resting on a menu item
+//    and the menu simply stays -- a live, always-on-top, still-modal strip belonging to a plug-in
+//    that is no longer in front, and clicking an item pulls that window back to the foreground.
+//    Process::isForegroundProcess() is the first half of JUCE's own test there (the second half,
+//    detail::WindowingHelpers::isEmbeddedInForegroundProcess, covers an OUT-OF-PROCESS plug-in and is
+//    internal to the module; Anamorph builds VST3 / AU / Standalone -- all in-process -- so the
+//    public half is the whole test. Adding AUv3 would need the other half and must revisit this).
+void AnamorphAudioProcessorEditor::dismissOrphanedPopupMenus()
+{
+    if (openMenus.isEmpty() && presetMenusOpen == 0)
+        return;
+    if (isShowing() && juce::Process::isForegroundProcess())
+        return;
+
+    dismissTrackedPopupMenus();
 }
 
 void AnamorphAudioProcessorEditor::componentBeingDeleted (juce::Component& c)
@@ -1067,10 +1116,12 @@ void AnamorphAudioProcessorEditor::timerCallback()
     // the one path on which showMenuAsync drops the callback without invoking it. The decrement in
     // that callback therefore always runs. Costs a scan of an almost-always-empty array.
     //
-    // The tick is also what notices the editor going off screen with a desktop drop-down still up:
-    // that produces no notification we could listen for -- an ancestor's setVisible, a peer change or
-    // a minimise all end at `isShowing()` and none of them touch the menu -- so the same scan that is
-    // already here reads it. Hidden means the latency is invisible by definition.
+    // The tick is also what notices a pop-up outliving its owner's right to it -- the editor going
+    // off screen, or the application going to the background. Neither produces a notification we
+    // could listen for instead: an ancestor's setVisible, a peer change and a minimise all end at
+    // `isShowing()` without touching the menu, and an app switch is a process-level fact with no
+    // Component event at all. The same scan that is already here reads both, and in both cases the
+    // user is looking elsewhere, so the latency is invisible.
     dismissOrphanedPopupMenus();
     refreshPopupShield();
 

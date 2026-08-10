@@ -7,9 +7,9 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.3 change set** (2026-08-09) — six editor-only GUI interaction fixes on
-top of 0.9.2 (add-split preview line, unified pop-up dismissal, drop-down lifetime across a hidden
-window, menu width, disabled menu items, Tooltips off), landed across four rounds; the entries below
-run newest-first. Below them, the 0.9.2
+top of 0.9.2 (add-split preview line, unified pop-up dismissal, pop-up lifetime across a hidden,
+destroyed or backgrounded window, menu width, disabled menu items, Tooltips off), landed across five
+rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
 
 **Follow-up round on the pop-up work (0.9.3).** Four items, three of them corrections to the change
@@ -57,24 +57,50 @@ now lives only at the member's construction), and — reversing an earlier accep
 The sign-off covers the **direction and the accepted-as-is decisions**; it is not a manual test of the
 implementation and touches no release gate.
 
-**A drop-down could outlive the plug-in window being hidden (0.9.3, sixth Fixed entry).** INC-010 gave
-the preset menu a parent so that hiding or destroying the editor cancels it; it could not do the same
-for a ComboBox or TextEditor drop-down, which JUCE builds as a free-standing **desktop** window with no
-ancestor in common with the editor. The watcher that performs that cancel —
-`ModalComponentManager::ModalItem`, a `ComponentMovementWatcher` that fires on `! isShowing()` —
-registers on the modal component and its ancestors, so for a desktop menu it only ever sees the menu's
-own visibility, which a host hiding the plug-in view does not touch; `MenuWindow::windowIsStillValid`
-is no help either, comparing two `WeakReference`s to the target control that both survive a hide. The
-menu was therefore stranded: a floating always-on-top strip over a view that is gone (INC-010's exact
+**A pop-up could outlive the plug-in window (0.9.3, sixth Fixed entry).** INC-010 gave the preset menu
+a parent so that hiding or destroying the editor cancels it; it could not do the same for a ComboBox
+or TextEditor drop-down, which JUCE builds as a free-standing **desktop** window with no ancestor in
+common with the editor. The watcher that performs that cancel — `ModalComponentManager::ModalItem`, a
+`ComponentMovementWatcher` firing on `! isShowing()` and on the deletion of the component *or a
+parent* — registers on the modal component and its ancestors, so for a desktop menu it only ever sees
+the menu's own visibility and lifetime. `MenuWindow::windowIsStillValid` is no help either, comparing
+two `WeakReference`s to the target control that both survive a hide. **Three** ways in, found across
+two review rounds: the host **hides** the view, the host **destroys** the editor (the destructor
+removed the component listeners but never asked the window to go away), and — maintainer-confirmed,
+and the worst — an **application switch with the pointer resting on a menu item**, where JUCE's own
+app-change dismissal does not fire because `MouseSourceState::checkButtonState` gates it on
+`! reallyContained`. That last one is not desktop-specific: the parented preset menu has the identical
+hole. Stranded, the menu is a floating always-on-top strip over a window that is gone (INC-010's exact
 reported symptom, one menu type later), still modal and so still blocking every JUCE component in the
-process, and still counted in `openMenus`, so the re-shown editor spent its first click dismissing it
-instead of pressing the control aimed at. The editor now issues the same cancel itself —
-`exitModalState (0)` on each tracked window once `! isShowing()` — from the 24 Hz tick, which is the
-only observer available: an ancestor's `setVisible`, a peer change and a minimise all end at
-`isShowing()` and none of them notify us. Deliberately **not**
+process, still counted in `openMenus` so the returning editor spends its first click dismissing it —
+and in the app-switch case, clicking it pulls a background plug-in window back in front. One function
+now cancels every pop-up the editor owns, in two passes because no single hook sees both kinds
+(`openMenus`, plus any **modal child** — which identifies the parented preset menu exactly, since
+nothing else the editor owns ever enters a modal state), called unconditionally from the destructor
+and conditionally from the 24 Hz tick on `! isShowing() || ! Process::isForegroundProcess()`. The tick
+is the only observer available: an ancestor's `setVisible`, a peer change and a minimise all end at
+`isShowing()` without notifying us, and an app switch has no `Component` event at all.
+`Process::isForegroundProcess()` is the first half of JUCE's own test; the second half covers
+out-of-process plug-ins and is module-internal, which is sound here because Anamorph builds VST3 / AU
+/ Standalone only — **adding AUv3 must revisit it**. Deliberately **not**
 `PopupMenu::dismissAllActiveMenus()`, which is process-global and would close another instance's menu
-— the objection that already ruled it out in INC-010. Nothing changes while the editor is showing, so
-the dismissal contract, the shield's z-order and the one-click behaviour are untouched.
+— the objection that already ruled it out in INC-010. Nothing changes while the plug-in is in front of
+the user, so the dismissal contract, the shield's z-order and the one-click behaviour are untouched.
+
+**Menu width: the discretionary part removed (0.9.3).** The width fix summed the chrome
+`drawPopupMenuItem` actually spends (12 + 14 + 12 = 38) and then added 12 px of "breathing room" on
+top, for 50 against the previous flat 30. That allowance widens **every** menu drawn through the
+look-and-feel — including the combo drop-downs — wherever the item text rather than
+`withMinimumWidth (box.getWidth())` is the binding constraint, so the discretionary part was silently
+changing the relationship between a control and its own list, and the Widen/Style/Focus layout
+contract outranks pop-up padding. The margin is now 2 px and is no longer discretionary: it is a
+rounding guard, because `drawPopupMenuItem` uses `Graphics::drawText`'s three-argument overload whose
+`useEllipsesIfTooBig` defaults to true, so text measuring one sub-pixel over the strip would ellipsise
+rather than overhang. Total 40 — still ≥ the 38 actually spent, so the *"Select All"* clipping fix is
+intact and now exact. **No layout code changed** in this cycle: the closed-state width, alignment,
+spacing and label positions of the Widen/Style/Focus group are identical to 0.9.2 (`git diff` against
+`main` shows the only `resized()` change on the branch is `popupShield.setBounds`, a transparent
+full-editor overlay, and no `LookAndFeel` combo/label sizing or drawing method was touched).
 
 **Pop-up dismissal became one mechanism instead of one predicate (0.9.3).** Verification of the
 Settings fix found the same defect on the Save Preset dialog, where it *destroys typed input*: a

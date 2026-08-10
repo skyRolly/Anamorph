@@ -433,23 +433,31 @@ juce::PopupMenu::Options AnamorphLookAndFeel::getOptionsForComboBoxPopupMenu (ju
              .withStandardItemHeight (label.getHeight());
 }
 
-// The horizontal budget drawPopupMenuItem spends, plus a deliberate margin, named once so the
-// measuring and the drawing cannot drift apart -- which is exactly what went wrong: the old allowance was a bare +30
-// against a layout that spends 12 + 14 + 12 = 38 before the text has any room at all, so a longer
-// label ("Select All" in the Save Preset field's context menu) was measured narrower than it draws
-// and JUCE clipped it to "Select ...". Deriving the number instead of picking one also keeps this
-// correct in the environments a fixed width cannot survive -- a different UI font, a different
-// hinting/rasteriser, or the Simple/compact variants that override getPopupMenuFont().
+// The horizontal budget drawPopupMenuItem spends, named once so the measuring and the drawing cannot
+// drift apart -- which is exactly what went wrong: the old allowance was a bare +30 against a layout
+// that spends 12 + 14 + 12 = 38 before the text has any room at all, so a longer label ("Select All"
+// in the Save Preset field's context menu) was measured narrower than it draws and JUCE clipped it
+// to "Select ...". Deriving the number instead of picking one also keeps this correct in the
+// environments a fixed width cannot survive -- a different UI font, a different hinting/rasteriser,
+// or the Simple/compact variants that override getPopupMenuFont().
+//
+// The total is kept to what is actually SPENT plus a rounding guard, and nothing more. This budget
+// widens EVERY pop-up drawn through this look-and-feel, including the combo drop-downs, wherever the
+// item text rather than withMinimumWidth (box.getWidth()) is the binding constraint -- so a
+// discretionary margin here silently changes the relationship between a control and its own list.
+// An earlier revision carried 12 px of "breathing room" on top; it was removed because it was not an
+// allowance for anything drawn, and the layout contract of the controls outranks pop-up padding.
 namespace menuMetrics
 {
     constexpr float padX        = 12.0f; // drawPopupMenuItem's r.reduced (12, 0), both edges
     constexpr float tickGutter  = 14.0f; // the tick column, reserved whether or not it is ticked
-    // Deliberate breathing room, NOT an allowance for anything drawn: the sub-menu arrow spans
-    // [right-12, right-12+h*0.12] and so already sits inside padX. Without it the longest label
-    // would end exactly on the text area's edge.
-    constexpr float trailing    = 12.0f;
+    // NOT breathing room: drawPopupMenuItem's g.drawText uses the 3-argument overload, whose
+    // useEllipsesIfTooBig defaults to TRUE, so text that measures one sub-pixel wider than the strip
+    // it is drawn into ellipsises rather than overhangs. Measurement and drawing use the same font,
+    // so the gap can only ever be a rounding difference; 2 px covers it and is invisible.
+    constexpr float trailing    = 2.0f;
     // A floor against a degenerate menu (one glyph, or an empty item), NOT a layout preference:
-    // it is deliberately just above the chrome total (50) so it can never widen a pop-up past the
+    // it is deliberately just above the chrome total (40) so it can never widen a pop-up past the
     // control that opened it. The combo path has its own, larger floor anyway --
     // getOptionsForComboBoxPopupMenu passes withMinimumWidth (box.getWidth()).
     constexpr int   minimumWide = 64;
