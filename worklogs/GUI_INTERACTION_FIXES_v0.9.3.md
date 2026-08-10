@@ -290,15 +290,13 @@ underneath); `SpectrumImager` (a dismissing click cannot add a band); `ABControl
 second click after dismissal behaving normally; and visually, *Select All* shown in full with
 disabled items clearly dimmer, at more than one UI scale.
 
-Two more were added by the 2026-08-10 review sign-off, both accepted as-is in code and owed only a
-look: the **Widen combos in Simple mode** (15.5 pt), where the menu-width allowance now sums to 50 px
-against the 38 px the drawing actually spends, so every menu measured on its item text — not on
-`withMinimumWidth (box.getWidth())` — is up to 20 px wider than in 0.9.2; and a **host that hides
-rather than destroys the editor** while a ComboBox or TextEditor drop-down is open. Those menus are
-desktop windows (INC-010's parenting fix covers only the preset menu) and `windowIsStillValid`
-compares two references that both stay valid across a hide, so the menu can survive, `openMenus` stays
-non-empty, and the re-shown editor looks unresponsive until it is dismissed. Behaviour deliberately
-unchanged; editor *destruction* is already handled by the destructor's listener teardown.
+Two more were added by the 2026-08-10 review sign-off. The **Widen combos in Simple mode** (15.5 pt)
+are accepted as-is in code and owed only a look: the menu-width allowance now sums to 50 px against
+the 38 px the drawing actually spends, so every menu measured on its item text — not on
+`withMinimumWidth (box.getWidth())` — is up to 20 px wider than in 0.9.2. A **host that hides rather
+than destroys the editor** while a drop-down is open was first accepted as-is too, then **fixed** in
+the following round — see §9; what is still owed there is the on-device confirmation in such a host,
+not a decision.
 
 
 ---
@@ -421,3 +419,77 @@ with the mechanism, the workaround and what would close it upstream.
 preparation in three places. Only those three statements changed; its genuinely historical references
 (which versions were never tagged, what 0.9.2 contained) are preserved, and its review date stands —
 the file's substance is unaffected by a renumbering, which is what that date tracks.
+
+---
+
+## 9. A drop-down outliving the plug-in window being hidden (fixed)
+
+The last round accepted this as "behaviour unchanged". The second pass traced what the unchanged
+behaviour actually costs the user, and it is a defect rather than a residue, so it was reopened and
+fixed.
+
+**Symptom.** With a Settings drop-down or a right-click text menu open, a host that *hides* the
+plug-in view rather than destroying it leaves the menu behind: a floating always-on-top strip over a
+window that is no longer there. On return, the first click goes to dismissing that leftover instead
+of to the control it was aimed at.
+
+**Why the existing machinery misses it.** JUCE already cancels a modal component the moment its owner
+stops showing — `ModalComponentManager::ModalItem` is a `ComponentMovementWatcher`, and
+`componentVisibilityChanged` / `componentPeerChanged` both end in
+`if (! component->isShowing()) cancel();` (`juce_ModalComponentManager.cpp:60-68`). The watcher
+registers on the component **and its ancestors**, which is exactly why INC-010's parenting fix earns
+that cancel for free: the preset menu is an editor child, so hiding the editor reaches its watcher.
+
+A `ComboBox` or `TextEditor` drop-down is not. JUCE builds it as a free-standing **desktop** window
+(neither path passes a parent component, and INC-010's `withParentComponent` applies only to
+`showPresetMenu`), so the watcher's ancestor set is the menu alone and the editor's visibility is
+invisible to it. The menu's own visibility does not change, so nothing cancels.
+`MenuWindow::windowIsStillValid` is no second line of defence either: it compares `componentAttachedTo`
+against `options.getTargetComponent()` (`juce_PopupMenu.cpp:806-816`), two `WeakReference`s to the same
+still-alive control, so it reads valid across a hide. Editor *destruction* was never the problem — the
+destructor removes the listeners and the array goes with the object.
+
+**What that costs, precisely.** Three things, only the first of which is about the shield:
+
+- `openMenus` stays non-empty, so `refreshPopupShield` keeps the shield intercepting. The re-shown
+  editor spends its first click dismissing the stray menu — one dead click, not a permanent lock,
+  because the menu is still modal and JUCE's own `internalModalInputAttempt` dismisses it. But the
+  click is spent, and the editor looks broken for exactly as long as it takes to work that out.
+- The stray menu is a visible always-on-top window with nothing behind it. That is INC-010's reported
+  symptom verbatim, one menu type later.
+- It is still modal, and modality is **process-global**: every other JUCE component in the process —
+  including another Anamorph instance's editor — is blocked while it is up.
+
+**Fix.** Do for those windows exactly what JUCE's watcher does for a parented one: same trigger, same
+action. `dismissOrphanedPopupMenus` calls `exitModalState (0)` on every tracked window once
+`! isShowing()`, which is the call `ModalItem::cancel` itself ends in; it self-guards on
+`isCurrentlyModal`, so a window already on its way out is a no-op, and deletion stays asynchronous so
+`componentBeingDeleted` lowers the shield when it lands.
+
+Deliberately **not** `PopupMenu::dismissAllActiveMenus()` — process-global, and it would close another
+instance's menu. That is the objection that already ruled it out in INC-010.
+
+**Why the 24 Hz tick rather than an event.** There is no event to listen for. The editor going off
+screen can come from an ancestor's `setVisible`, a peer change, or a minimise; `isShowing()` folds all
+three (`juce_Component.cpp`), but none of them notifies *us* — `ComponentMovementWatcher` gets there by
+registering on every ancestor, which is machinery for a case the tick already covers. The tick runs
+regardless of visibility (`startTimerHz (24)` in the constructor, `stopTimer()` only in the
+destructor) and already scans `openMenus` as the shield's backstop, so the cost is one `isShowing()`
+call on an almost-always-empty array, and the latency is invisible by definition — the editor is
+hidden.
+
+**Blast radius.** The predicate is `! isShowing()`, so nothing at all changes while the editor is
+showing: the dismissal contract, the shield's z-order, one-click dismissal and the scroll/pinch
+swallow are untouched. The one behaviour it does add is that minimising the host window with a
+drop-down open now closes the drop-down — which is what already happened to the preset menu, and what
+a native menu does.
+
+**Honest limit.** `isShowing()` is false when an ancestor is hidden, when the peer is gone, or when
+the peer reports minimised. A host that hides its own native window without any of those leaves
+`isShowing()` true and the menu alive — but that case emits no signal any in-bounds mechanism could
+read, and it is identical to what the preset menu has done since 0.9.2. Consistency with the parented
+case is the guarantee being offered here, not omniscience.
+
+**Manual check owed:** in a host that hides rather than destroys the editor, open a Settings
+drop-down, hide the window, re-show it, and confirm no stray menu and that the first click presses the
+control it lands on. Not reachable headlessly for the reasons in §3.

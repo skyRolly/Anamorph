@@ -6,9 +6,10 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.3 change set** (2026-08-09) — five editor-only GUI interaction fixes on
-top of 0.9.2 (add-split preview line, unified pop-up dismissal, menu width, disabled menu items,
-Tooltips off), landed across three rounds; the entries below run newest-first. Below them, the 0.9.2
+Last updated: for the **0.9.3 change set** (2026-08-09) — six editor-only GUI interaction fixes on
+top of 0.9.2 (add-split preview line, unified pop-up dismissal, drop-down lifetime across a hidden
+window, menu width, disabled menu items, Tooltips off), landed across four rounds; the entries below
+run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
 
 **Follow-up round on the pop-up work (0.9.3).** Four items, three of them corrections to the change
@@ -37,23 +38,43 @@ per-control guards that undo the shield's whole point. `COMMERCIAL_STATUS.md` wa
 0.9.2 → 0.9.3 sweep missed; only its three current-release statements changed, its historical ones
 and its review date stand.
 
-**Review sign-off on the 0.9.3 pop-up round (2026-08-10).** A later review pass raised eight further
-items; the maintainer reviewed each and **accepted the current implementation** on five, which are
+**Review sign-off on the 0.9.3 pop-up round (2026-08-10).** Two review passes raised nine further
+items; the maintainer reviewed each and **accepted the current implementation** on six, which are
 therefore closed rather than open: the **pop-up width** growing up to 20 px on every menu (intentional
-visual adjustment — `getIdealPopupMenuItemSize`'s allowance is unchanged); **hidden-editor pop-up
-lifetime** (a ComboBox/TextEditor menu is a desktop window and INC-010's parenting fix covers only the
-preset menu, so such a menu can outlive a *hidden* editor and hold the shield up — behaviour
-unchanged, host-specific manual validation still owed, tracked in the worklog's manual-check list);
-**unconditional shield `toFront`** on every raise-path refresh (not required — the "nothing
-intercepting is brought to front while the shield is raised" invariant holds today and is documented);
-**`presetMenusOpen` recovery machinery** (not required — the counter cannot leak, see *(3)* above);
-and **`SpectrumImager::mouseExit` setting `frameDirty`** (not required — clearing a hover index always
-moves an ease target, so the tick gate already opens). Three items were **actioned**: the PopupShield
-hover explanation (corrected — the mechanism is asynchronous fake moves plus modal blocking plus
-geometric hover, not raise ordering), the worklog's superseded predicate section (now banner-marked),
-and the **tooltip delay redundancy** (`tooltipsOn ? 600 : 0x3fffffff` removed; the 600 ms now lives
-only at the member's construction). The sign-off covers the **direction and the accepted-as-is
-decisions**; it is not a manual test of the implementation and touches no release gate.
+visual adjustment — `getIdealPopupMenuItemSize`'s allowance is unchanged); **unconditional shield
+`toFront`** on every raise-path refresh (not required — the "nothing intercepting is brought to front
+while the shield is raised" invariant holds today and is documented); the shield **staying frontmost**
+after the first pop-up (accepted with the current overlay ordering); **`presetMenusOpen` recovery
+machinery** (not required — the counter cannot leak, see *(3)* above); **`SpectrumImager::mouseExit`
+setting `frameDirty`** (not required — clearing a hover index always moves an ease target, so the tick
+gate already opens); and the shield **swallowing scroll and pinch** for as long as a menu is open
+(part of the interaction contract, not only the dismissing event). Four were **actioned**: the
+PopupShield hover explanation (corrected — the mechanism is asynchronous fake moves plus modal
+blocking plus geometric hover, not raise ordering), the worklog's superseded predicate section (now
+banner-marked), the **tooltip delay redundancy** (`tooltipsOn ? 600 : 0x3fffffff` removed; the 600 ms
+now lives only at the member's construction), and — reversing an earlier accept — the
+**hidden-editor pop-up lifetime**, promoted to a fix once the second pass traced its user-facing cost.
+The sign-off covers the **direction and the accepted-as-is decisions**; it is not a manual test of the
+implementation and touches no release gate.
+
+**A drop-down could outlive the plug-in window being hidden (0.9.3, sixth Fixed entry).** INC-010 gave
+the preset menu a parent so that hiding or destroying the editor cancels it; it could not do the same
+for a ComboBox or TextEditor drop-down, which JUCE builds as a free-standing **desktop** window with no
+ancestor in common with the editor. The watcher that performs that cancel —
+`ModalComponentManager::ModalItem`, a `ComponentMovementWatcher` that fires on `! isShowing()` —
+registers on the modal component and its ancestors, so for a desktop menu it only ever sees the menu's
+own visibility, which a host hiding the plug-in view does not touch; `MenuWindow::windowIsStillValid`
+is no help either, comparing two `WeakReference`s to the target control that both survive a hide. The
+menu was therefore stranded: a floating always-on-top strip over a view that is gone (INC-010's exact
+reported symptom, one menu type later), still modal and so still blocking every JUCE component in the
+process, and still counted in `openMenus`, so the re-shown editor spent its first click dismissing it
+instead of pressing the control aimed at. The editor now issues the same cancel itself —
+`exitModalState (0)` on each tracked window once `! isShowing()` — from the 24 Hz tick, which is the
+only observer available: an ancestor's `setVisible`, a peer change and a minimise all end at
+`isShowing()` and none of them notify us. Deliberately **not**
+`PopupMenu::dismissAllActiveMenus()`, which is process-global and would close another instance's menu
+— the objection that already ruled it out in INC-010. Nothing changes while the editor is showing, so
+the dismissal contract, the shield's z-order and the one-click behaviour are untouched.
 
 **Pop-up dismissal became one mechanism instead of one predicate (0.9.3).** Verification of the
 Settings fix found the same defect on the Save Preset dialog, where it *destroys typed input*: a

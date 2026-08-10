@@ -19,9 +19,11 @@ only — it configures and builds entirely from the command line on a headless L
 - **0.9.3 is a round of interaction fixes.** The Multiband **add-split preview line** keeps
   following the pointer instead of occasionally hanging at one spot on a quiet track; **a click
   that closes a menu now only closes the menu** — it can no longer also close a panel, discard a
-  half-typed preset name or nudge a control underneath; right-click menus size themselves to their
-  longest item and grey out what you cannot pick; and turning **Tooltips** off now takes effect at
-  once. Editor-only: saved state, parameters and the DSP are unchanged.
+  half-typed preset name or nudge a control underneath; an open drop-down no longer **outlives the
+  plug-in window being hidden**, so nothing is left floating and the first click on return goes to
+  the control you aimed at; right-click menus size themselves to their longest item and grey out what
+  you cannot pick; and turning **Tooltips** off now takes effect at once. Editor-only: saved state,
+  parameters and the DSP are unchanged.
 - **0.9.2 fixes the preset drop-down** (it no longer stays on screen — or crashes on click —
   after the plug-in window closes) and lets a user preset share a factory preset's name without
   losing its place in the menu; the Settings control *Window Size* is now labelled **UI Scale**.

@@ -34,6 +34,13 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   control, but the system still counts it, so a *very* quick click straight afterwards on the same
   spot can land as a double-click — pause briefly, or move the pointer a little, before the next one.
   Evidence: PR #101. [Verified]
+- **A drop-down no longer outlives the plug-in window being hidden.** With a Settings drop-down or a
+  right-click text menu open, a host that hides the plug-in window rather than closing it left the
+  menu behind as a stray always-on-top strip over the rest of the screen, and the plug-in gave its
+  first click on return to dismissing that leftover instead of to the control you aimed at. Any menu
+  still open is now closed as soon as the window goes away, exactly as the preset menu already was in
+  0.9.2. Nothing changes while the window is open.
+  Evidence: PR #101. [Verified]
 - **The right-click text menu no longer truncates its longest item**, which showed as
   *"Select ..."* instead of *"Select All"*. Menu width is now measured from the text in the menu's
   own font, so it stays correct with a different font, a different UI scale or a different platform

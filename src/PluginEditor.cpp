@@ -1002,6 +1002,36 @@ void AnamorphAudioProcessorEditor::refreshPopupShield()
     popupShield.setInterceptsMouseClicks (wanted, false);
 }
 
+// A drop-down must not outlive the editor being taken off screen. JUCE already guarantees that for a
+// menu it can see: ModalComponentManager::ModalItem is a ComponentMovementWatcher on the modal
+// component, and it cancels the moment `! component->isShowing()`
+// (juce_ModalComponentManager.cpp:60-68). The watcher registers on the component AND its ancestors,
+// so the preset menu -- an editor CHILD since INC-010 -- is cancelled for free when the editor is
+// hidden. A ComboBox or TextEditor drop-down is a free-standing DESKTOP window with no ancestor in
+// common, so the watcher only ever sees the menu's own visibility, which a host hiding the editor
+// does not touch; MenuWindow::windowIsStillValid does not help either, since it compares two
+// WeakReferences to the target control that both stay valid across a hide
+// (juce_PopupMenu.cpp:806-816). The menu is then stranded: still modal, still a floating always-on-
+// top window over a plug-in view that is gone (INC-010's reported symptom, fixed there only for the
+// preset menu), still blocking every JUCE component in the process, and holding the shield up so
+// that a re-shown editor spends its first click dismissing it.
+//
+// So do for those windows exactly what JUCE's watcher does for a parented one: same trigger
+// (isShowing), same action (cancel with result 0). exitModalState is the very call ModalItem::cancel
+// ends in, and it self-guards on isCurrentlyModal, so a window that is already on its way out is a
+// no-op. Deletion stays asynchronous, and componentBeingDeleted lowers the shield when it lands.
+// NOT PopupMenu::dismissAllActiveMenus(): that is process-global and would close another instance's
+// menu -- the objection that ruled it out in INC-010.
+void AnamorphAudioProcessorEditor::dismissOrphanedPopupMenus()
+{
+    if (openMenus.isEmpty() || isShowing())
+        return;
+
+    for (auto& w : openMenus)
+        if (auto* menuWindow = w.getComponent())
+            menuWindow->exitModalState (0);   // cancel, exactly as a dismissing click would
+}
+
 void AnamorphAudioProcessorEditor::componentBeingDeleted (juce::Component& c)
 {
     openMenus.removeIf ([&c] (const juce::Component::SafePointer<juce::Component>& w)
@@ -1036,6 +1066,12 @@ void AnamorphAudioProcessorEditor::timerCallback()
     // Preset, all unconditional), so PopupMenu::createWindow can never return null for it, which is
     // the one path on which showMenuAsync drops the callback without invoking it. The decrement in
     // that callback therefore always runs. Costs a scan of an almost-always-empty array.
+    //
+    // The tick is also what notices the editor going off screen with a desktop drop-down still up:
+    // that produces no notification we could listen for -- an ancestor's setVisible, a peer change or
+    // a minimise all end at `isShowing()` and none of them touch the menu -- so the same scan that is
+    // already here reads it. Hidden means the latency is invisible by definition.
+    dismissOrphanedPopupMenus();
     refreshPopupShield();
 
     // Sync cached view-state with the (possibly externally changed) parameters.

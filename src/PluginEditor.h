@@ -236,6 +236,7 @@ private:
     int  presetMenusOpen = 0;
     void notePopupMenuOpened (juce::Component& menuWindow);
     void refreshPopupShield();   // prunes dead windows and shows/hides the shield
+    void dismissOrphanedPopupMenus();  // cancels tracked menus once the editor stops showing
     void componentBeingDeleted (juce::Component&) override; // a tracked pop-up window went away
 
     // Centrepiece + meters
