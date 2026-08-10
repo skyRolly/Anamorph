@@ -65,15 +65,30 @@ private:
     // It is ALWAYS visible and paints nothing; only its mouse interception is toggled. (dimOverlay is
     // the precedent for the transparent-to-the-mouse half only -- it is a full-editor overlay with
     // setInterceptsMouseClicks (false, false) -- but it is NOT always visible: it is added with
-    // addChildComponent and follows the Bypass state.) Toggling interception rather than visibility
-    // is not a stylistic choice: setVisible() and toFront() both send a fake mouse move
-    // (juce_Component.cpp:559, :883), and the raise happens from the MenuWindow CONSTRUCTOR, i.e.
-    // before the menu enters its modal state -- so the component under the cursor was not yet
-    // blocked and received a real mouseExit, dropping its hover wash and cursor for as long as the
-    // menu stayed open. setInterceptsMouseClicks is pure flag assignment with no events at all
-    // (juce_Component.cpp:1336-1341), so toggling it leaves hover exactly as JUCE leaves it while a
-    // menu is modal. The toFront still fires a fake move, but it runs while the shield is still
-    // transparent, so that move re-resolves to the same control underneath and changes nothing.
+    // addChildComponent and follows the Bypass state.)
+    //
+    // WHY RAISING THE SHIELD CANNOT DISTURB HOVER -- and it is not the order we raise it in.
+    // Every fake mouse move in play here is ASYNCHRONOUS: Component::sendFakeMouseMove ->
+    // MouseInputSource::triggerFakeMove -> triggerAsyncUpdate (juce_MouseInputSourceImpl.h:449-451).
+    // It is dispatched a message-loop pass later, so it lands after showWithOptionalCallback has run
+    // setVisible(true), enterModalState AND toFront on the menu (juce_PopupMenu.cpp:2290-2294) and
+    // returned -- our own toFront, and the one JUCE fires from the menu's setVisible, are the same
+    // deferred move. Two independent properties make that dispatch a no-op for hover:
+    //   1. The menu is modal by then, and Component::internalMouseEnter/internalMouseExit BOTH
+    //      early-return for a target that isCurrentlyBlockedByAnotherModalComponent()
+    //      (juce_Component.cpp:2414-2420, :2452-2458). MenuWindow does not override
+    //      canModalEventBeSentToComponent, so every editor child -- the control under the cursor and
+    //      this shield alike -- is blocked (juce_ComponentHelpers.h:213-219). No mouseExit/mouseEnter
+    //      is delivered, so the only two event-driven hover consumers in src/ (SpectrumImager's hover
+    //      indices, ABControl::hovered) cannot be cleared, whatever the hit test resolves to.
+    //   2. Every other hover visual here is derived GEOMETRICALLY, never from enter/exit:
+    //      stepMicroAnims takes `over` from getMouseXYRelative() to drive hovA (PluginEditor.cpp:
+    //      1331-1333) and the combo "hov" flag does the same (:1072-1073). That is the v0.6.1
+    //      stuck-hover fix, and it makes hovA immune to componentUnderMouse churn by construction.
+    // Toggling interception rather than visibility is therefore about cost and side effects, not
+    // hover: setInterceptsMouseClicks is pure flag assignment (juce_Component.cpp:1336-1341), where
+    // setVisible would add a full-editor repaint() on every menu open plus a repaintParent() and a
+    // cached-image release on every close (:555-563), for no behavioural gain.
     struct PopupShield : public juce::Component
     {
         PopupShield()

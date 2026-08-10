@@ -67,6 +67,14 @@ mouse handlers write without repainting, and `paint()` does not read them — th
 
 ## 2. A Settings drop-down's dismissing click also closed Settings
 
+> **Superseded within this same PR — see §4.** The **Report** and the **Why one click did two things**
+> analysis below still stand and are the origin of the whole pop-up work. The **fix** described here
+> — `Backdrop::swallowsDismissClick` + a `ComboBox::isPopupActive()` predicate — was **removed** and
+> replaced by the editor-level `PopupShield` once the same defect turned up on a `TextEditor` context
+> menu (INC-011), which a `ComboBox`-shaped predicate cannot express. Nothing named
+> `swallowsDismissClick` exists in `src/`; read §4 for the shipped implementation. The design record
+> below is kept because §4's rationale is a direct answer to it.
+
 **Report.** With a drop-down open in Settings: clicking inside the Settings panel but outside the
 drop-down closes only the drop-down (Settings stays); clicking **outside** the panel closes the
 drop-down **and** Settings. Wanted: while any drop-down is open, one click anywhere outside it closes
@@ -97,7 +105,7 @@ JUCE **deliberately** delivers the same mouse-down to the component underneath. 
 The inside-the-panel case only differed because the click missed `panel`'s dismiss test; the pop-up
 was being dismissed by the same mechanism there too.
 
-**Fix, and why the test is exact rather than a heuristic.** `Backdrop` gained an optional
+**Fix as first attempted — SUPERSEDED by §4, not in `src/`.** `Backdrop` gained an optional
 `swallowsDismissClick` predicate, consulted first; for `settingsBackdrop` it returns true when any
 box in the editor's existing `allCombos` reports `isPopupActive()`. Two facts make that precise:
 
@@ -122,6 +130,11 @@ and swallowing a stray click would be the safe direction anyway.
 
 **Not wired to the other backdrops.** About and Save Preset host no combo, and only one backdrop is
 visible at a time. The hook is opt-in and empty elsewhere.
+
+*(End of the superseded design. **What actually ships is §4.** That last paragraph is exactly why the
+predicate had to go: "not wired to the other backdrops" was correct for the reported symptom and
+wrong for the defect class — the Save Preset backdrop hosts a `TextEditor`, whose context menu
+reaches the same JUCE re-delivery path.)*
 
 ## 3. No automated regression tests, and why
 
@@ -282,22 +295,56 @@ disabled items clearly dimmer, at more than one UI scale.
 
 ## 8. Follow-up review: three corrections and one accepted limitation
 
-### 8.1 The shield was clearing hover state (fixed)
+### 8.1 The shield and hover state — reasoning corrected in the follow-up review
 
-Raising the shield with `setVisible (true)` / `toFront` sends a fake mouse move
+**What this section originally claimed** (kept for context; the mechanism below supersedes it):
+raising the shield with `setVisible (true)` / `toFront` sends a fake mouse move
 (`juce_Component.cpp:559`, `:883`), and the raise happens from the `MenuWindow` **constructor** —
-before the menu enters its modal state. So the control under the cursor was not yet blocked and
-received a genuine `mouseExit`: `SpectrumImager` cleared every hover index, `ABControl` dropped its
-hover wash, and the cursor reverted to the default, for as long as the menu stayed open. Not a
-correctness failure, but a visible regression on *every* drop-down, not just the dismissing click.
+before the menu enters its modal state — so the control under the cursor was not yet blocked and
+received a genuine `mouseExit`, clearing `SpectrumImager`'s hover indices and `ABControl::hovered`
+for as long as the menu stayed open. The shield was switched from visibility-toggling to
+**interception-toggling** on that reasoning, with the ordering in `refreshPopupShield` (re-order
+first, intercept second) presented as what kept the fake move landing on the control underneath.
 
-The fix keeps the guarantee and drops the side effect: the shield is now **always visible and
-inert**, and only its *interception* is toggled. `setInterceptsMouseClicks` is pure flag assignment
-with no events at all (`juce_Component.cpp:1336-1341`), so flipping it leaves hover exactly as JUCE
-leaves it while a menu is modal. The `toFront` still fires a fake move, but it now runs while the
-shield is still transparent, so that move re-resolves to the same control underneath and changes
-nothing. This is also the shape `dimOverlay` already uses in this editor — an always-visible,
-non-intercepting full-editor overlay — so it is one fewer idiom, not one more.
+**The mechanism is not that.** A later trace against the pinned JUCE found the premise wrong at its
+root: **the fake move is asynchronous.** `Component::sendFakeMouseMove` calls
+`MouseInputSource::triggerFakeMove`, which is a bare `triggerAsyncUpdate()`
+(`juce_MouseInputSourceImpl.h:449-451`). It is dispatched a message-loop pass later — after
+`showWithOptionalCallback` has run `setVisible (true)`, `enterModalState` **and** `toFront` on the
+menu (`juce_PopupMenu.cpp:2290-2294`) and returned. So the ordering in `refreshPopupShield` buys
+nothing: the deferred move always hit-tests against an already-intercepting shield, and JUCE's own
+move from the menu's `setVisible (true)` is the same deferred move, not a second, earlier one.
+
+Hover survives for two reasons that hold independently of any ordering we choose:
+
+1. **Modality gates the delivery, not the hit test.** By dispatch time the menu is modal, and
+   `Component::internalMouseEnter` / `internalMouseExit` *both* early-return before touching any
+   state when the target `isCurrentlyBlockedByAnotherModalComponent()` (`juce_Component.cpp:
+   2414-2420`, `:2452-2458`). `MenuWindow` does not override `canModalEventBeSentToComponent`, so
+   every editor child — the control under the cursor **and** the shield — is blocked
+   (`juce_ComponentHelpers.h:213-219`). `componentUnderMouse` moves to the shield as bookkeeping, but
+   no `mouseExit`/`mouseEnter` callback is delivered, so the only two event-driven hover consumers in
+   `src/` (`SpectrumImager::mouseExit`, `ABControl`'s `hovered`) cannot be cleared. *(The cursor
+   reverting to the arrow while a menu is up is JUCE's own designed behaviour for any modal
+   component — `internalMouseExit` calls `showMouseCursor (NormalCursor)` on that same early-out —
+   and is unrelated to the shield.)*
+2. **This editor does not derive hover from enter/exit anyway.** `stepMicroAnims` computes
+   `over` geometrically — `mouseInside && c->isShowing() && c->getLocalBounds().contains
+   (c->getMouseXYRelative())` (`src/PluginEditor.cpp:1331-1333`) — to drive `hovA`, and the combo
+   `"hov"` flag uses the same test (`:1072-1073`). That is the v0.6.1 stuck-hover fix, and it makes
+   `hovA` immune to `componentUnderMouse` churn by construction.
+
+A third, partial gate applies to the common path: `ComboBox` and `TextEditor` open their menus from
+`mouseDown` with the button still held (`juce_ComboBox.cpp:567-575`), and `sendFakeMouseMove`
+early-returns while the source is dragging (`juce_Component.cpp:2756`), so for those two no move is
+posted at all. It does not cover the preset menu, which opens from a button `onClick` on mouse-up.
+
+**The shipped design is unchanged and remains correct**, on a different justification: toggling
+interception avoids `setVisible`'s repaint side effects — a full-editor `repaint()` on every menu
+open, a `repaintParent()` plus a cached-image release on every close (`juce_Component.cpp:555-563`) —
+where `setInterceptsMouseClicks` is pure flag assignment (`:1336-1341`). It is also the shape
+`dimOverlay` already uses in this editor — an always-visible, non-intercepting full-editor overlay —
+so it is one fewer idiom, not one more.
 
 ### 8.2 "Does the preset menu really miss the look-and-feel hook?" — re-verified, yes (unchanged)
 

@@ -12,13 +12,12 @@ Tooltips off), landed across three rounds; the entries below run newest-first. B
 entry (2026-08-07) is retained in full.
 
 **Follow-up round on the pop-up work (0.9.3).** Four items, three of them corrections to the change
-set itself. *(1)* The shield was **clearing hover state**: `setVisible`/`toFront` send a fake mouse
-move, and the raise happens from the `MenuWindow` constructor — before the menu is modal — so the
-control under the cursor got a real `mouseExit` and lost its hover wash and cursor for as long as the
-menu was open. It is now **always visible and inert**, with only its *interception* toggled;
-`setInterceptsMouseClicks` is pure flag assignment with no events, and the remaining `toFront` runs
-while the shield is still transparent. That is also the shape `dimOverlay` already uses here, so it
-is one fewer idiom. *(2)* The claim that the preset menu cannot reach the look-and-feel hook was
+set itself. *(1)* The shield is **always visible and inert**, with only its *interception* toggled —
+the shape `dimOverlay` already uses here, so it is one fewer idiom. The reason is `setVisible`'s
+repaint cost, not hover: raising the shield cannot disturb hover at all, because every fake mouse
+move involved is **asynchronous** and therefore dispatched once the menu is already modal, at which
+point `internalMouseEnter`/`internalMouseExit` early-return for every blocked component — and this
+editor derives hover **geometrically** rather than from enter/exit in any case. *(2)* The claim that the preset menu cannot reach the look-and-feel hook was
 **re-verified and holds**, with a sharper reason: `MenuWindow` binds `auto& lf = getLookAndFeel()`
 *before* parenting and calls `preparePopupMenuWindow` through that bound **reference**, which
 parenting cannot rebind — so the separate counter stays and the comment now carries the real

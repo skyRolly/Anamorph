@@ -984,10 +984,14 @@ void AnamorphAudioProcessorEditor::refreshPopupShield()
         return;
     shieldRaised = wanted;
 
-    // Raise = re-order, THEN intercept, in that order. The re-order sends a fake mouse move and
-    // must happen while the shield is still transparent, so that move lands on the control under
-    // the cursor and leaves its hover state alone; flipping interception afterwards sends nothing.
-    // Lowering needs no re-order at all.
+    // Raise = re-order, then intercept. The order is NOT what protects hover: the re-order's fake
+    // mouse move is asynchronous (Component::sendFakeMouseMove -> triggerAsyncUpdate,
+    // juce_MouseInputSourceImpl.h:449-451), so it is dispatched well after the interception flag has
+    // flipped -- as is the move JUCE itself fires from the menu's setVisible (juce_PopupMenu.cpp:
+    // 2290). Neither can strip hover: by dispatch time the menu is modal, and internalMouseEnter/Exit
+    // early-return for every blocked component, while this editor derives hover geometrically rather
+    // than from enter/exit. The full argument is on PopupShield in the header. Lowering needs no
+    // re-order at all.
     if (wanted)
         popupShield.toFront (false);          // in front of the Settings/About backdrop too, and
                                               // BEFORE a parented menu is added (appended in front)
