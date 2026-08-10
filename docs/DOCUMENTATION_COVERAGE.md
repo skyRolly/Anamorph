@@ -6,8 +6,10 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.3 change set** (2026-08-09) — two editor-only GUI interaction fixes on
-top of 0.9.2. Below that, the 0.9.2 entry (2026-08-07) is retained in full.
+Last updated: for the **0.9.3 change set** (2026-08-09) — five editor-only GUI interaction fixes on
+top of 0.9.2 (add-split preview line, unified pop-up dismissal, menu width, disabled menu items,
+Tooltips off), landed across three rounds; the entries below run newest-first. Below them, the 0.9.2
+entry (2026-08-07) is retained in full.
 
 **Follow-up round on the pop-up work (0.9.3).** Four items, three of them corrections to the change
 set itself. *(1)* The shield was **clearing hover state**: `setVisible`/`toFront` send a fake mouse

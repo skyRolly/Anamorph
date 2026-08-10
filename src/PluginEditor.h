@@ -62,8 +62,10 @@ private:
     // Keyboard focus is deliberately left alone: toFront (false) skips grabKeyboardFocus
     // (juce_Component.cpp:928-934) and setMouseClickGrabsKeyboardFocus (false) covers the click, so
     // raising the shield cannot pull focus out of the Save Preset field mid-edit.
-    // It is ALWAYS visible and paints nothing; only its mouse interception is toggled -- the same
-    // shape dimOverlay already uses (an always-visible, non-intercepting full-editor overlay). That
+    // It is ALWAYS visible and paints nothing; only its mouse interception is toggled. (dimOverlay is
+    // the precedent for the transparent-to-the-mouse half only -- it is a full-editor overlay with
+    // setInterceptsMouseClicks (false, false) -- but it is NOT always visible: it is added with
+    // addChildComponent and follows the Bypass state.) Toggling interception rather than visibility
     // is not a stylistic choice: setVisible() and toFront() both send a fake mouse move
     // (juce_Component.cpp:559, :883), and the raise happens from the MenuWindow CONSTRUCTOR, i.e.
     // before the menu enters its modal state -- so the component under the cursor was not yet
@@ -80,12 +82,23 @@ private:
             setMouseClickGrabsKeyboardFocus (false);
             setWantsKeyboardFocus (false);
         }
-        // Deliberately empty: consuming the event IS the behaviour. mouseUp/drag/doubleClick are
-        // overridden too so the rest of that same gesture cannot leak through either.
+        // Deliberately empty: consuming the event IS the behaviour. The first four only state that
+        // intent -- juce::Component's versions are already `{}` (juce_Component.cpp:2310-2314).
+        //
+        // The last two are the ones that actually do something. Component::mouseWheelMove and
+        // ::mouseMagnify are NOT empty in the base class: each forwards the event to the nearest
+        // enabled ancestor (:2316-2328), which for this shield is the editor itself. Without these,
+        // a scroll or a pinch over a raised shield would arrive at
+        // AnamorphAudioProcessorEditor::mouseWheelMove -- harmless today, since the Persist-reveal
+        // branch there keys on `e.eventComponent == &scopePersistK`, but it makes "the shield
+        // consumes the gesture" false in a way that only holds by luck. Overriding them costs
+        // nothing and makes the contract literal.
         void mouseDown        (const juce::MouseEvent&) override {}
         void mouseUp          (const juce::MouseEvent&) override {}
         void mouseDrag        (const juce::MouseEvent&) override {}
         void mouseDoubleClick (const juce::MouseEvent&) override {}
+        void mouseWheelMove   (const juce::MouseEvent&, const juce::MouseWheelDetails&) override {}
+        void mouseMagnify     (const juce::MouseEvent&, float) override {}
     };
 
     // Translucent modal backdrop hosting a centred panel (About / Settings).

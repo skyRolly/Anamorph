@@ -210,10 +210,14 @@ doesn't exist:
      front of a menu, because `MenuWindow` sets `alwaysOnTop` (`juce_PopupMenu.cpp:365`) and
      `Component::toFront` on a non-always-on-top component inserts behind every always-on-top sibling
      (`juce_Component.cpp:914-922`). Conditions and reasoning in
-     `worklogs/GUI_INTERACTION_FIXES_v0.9.3.md`, plus a manual check per platform — **performed and
-     signed off by the maintainer on 2026-08-09**, so this disclosure is discharged rather than
-     pending. The sign-off covers these two fixes only; the Level-5 *audio* audition and the
-     compatibility checklist are separate and remain open (`HANDOVER.md` §Release Status).
+     `worklogs/GUI_INTERACTION_FIXES_v0.9.3.md`, plus a manual check per platform. That check was
+     **performed and signed off by the maintainer on 2026-08-09 for the first two fixes** (the
+     add-split preview line and the pop-up dismissal behaviour), discharging this disclosure for
+     those. The later three — the shield's interception-only redesign, the two menu-rendering fixes
+     and the Tooltips transition — carry a sign-off on the **problem reports and the required
+     contract**, not on a manual test of the implementation, so their manual checks are still owed
+     and are listed at the end of the worklog. None of this touches the Level-5 *audio* audition or
+     the compatibility checklist, which are separate and remain open (`HANDOVER.md` §Release Status).
   3. *Where the gap is tracked.* Here, alongside the INC-010 entry above.
   4. *Whether infrastructure could close it.* **Yes, and it is the same infrastructure** the INC-010
      entry names: a harness that instantiates the editor and drives synthetic mouse events. All of
