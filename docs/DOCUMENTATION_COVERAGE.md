@@ -86,6 +86,13 @@ Reasoning, edge cases and the JUCE-signal analysis: `worklogs/GUI_INTERACTION_FI
 **Neither fix has an automated test** — both are
 editor-interaction defects and the harness instantiates no editor and drives no pointer; registered
 as a second **ADR-0025** exception with its four disclosures in `TESTING.md` §Gaps, beside INC-010.
+The Save Preset case is also filed as **INC-011** — it destroys typed user input, which clears the
+same bar INC-008 set for a pure GUI-interaction regression, and `DOCUMENTATION_LIFECYCLE_POLICY`'s
+trigger map ("Fix a notable incident → `POSTMORTEMS.md`") therefore applies. Its most transferable
+finding is not the JUCE mechanism but the process one: the Settings drop-down was fixed first with a
+`ComboBox::isPopupActive()` predicate, a design *incapable* of expressing the `TextEditor` case, so
+no amount of testing that fix could have reached its sibling — a fix scoped to what exposed a defect
+rather than to its cause cannot find the rest of the class.
 **Version carriers swept** for the 0.9.2 → 0.9.3 bump: `CMakeLists.txt`, `CHANGELOG.md`, `README.md`,
 `HANDOVER.md`, `KNOWN_ISSUES.md`, `FUTURE_RISKS.md`, `RELEASE_PROCESS.md`, `RELEASE_HARDENING_PLAN.md`,
 `CHANGELOG_POLICY.md`, ADR-0024 — every place naming the *release in preparation* or the *first

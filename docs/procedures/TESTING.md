@@ -218,7 +218,8 @@ doesn't exist:
      contract**, not on a manual test of the implementation, so their manual checks are still owed
      and are listed at the end of the worklog. None of this touches the Level-5 *audio* audition or
      the compatibility checklist, which are separate and remain open (`HANDOVER.md` §Release Status).
-  3. *Where the gap is tracked.* Here, alongside the INC-010 entry above.
+  3. *Where the gap is tracked.* Here, alongside the INC-010 entry above, and referenced from
+     **INC-011**'s Prevention field.
   4. *Whether infrastructure could close it.* **Yes, and it is the same infrastructure** the INC-010
      entry names: a harness that instantiates the editor and drives synthetic mouse events. All of
      these become assertable at that point — a hover move must dirty the frame, a click while a

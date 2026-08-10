@@ -139,6 +139,13 @@ public:
     std::function<void (juce::Component& menuWindow)> onPopupMenuWindowCreated;
     void preparePopupMenuWindow (juce::Component& newMenuWindow) override
     {
+        // Chain first, observe second: this hook is purely ADDITIVE. The inherited implementation is
+        // LookAndFeel_V2's empty one in the pinned tree (juce_LookAndFeel_V2.cpp:1172), so today the
+        // call is free -- but a later JUCE that gives menu windows real per-look-and-feel preparation
+        // here (shadow, opacity, rounding) would otherwise be silently skipped for every Anamorph
+        // menu. Same shape as the other overrides in this class that extend rather than replace
+        // (getSliderLayout, drawButtonText, fillTextEditorBackground, drawTextEditorOutline).
+        juce::LookAndFeel_V4::preparePopupMenuWindow (newMenuWindow);
         if (onPopupMenuWindowCreated) onPopupMenuWindowCreated (newMenuWindow);
     }
 
