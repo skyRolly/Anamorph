@@ -998,6 +998,14 @@ void AnamorphAudioProcessorEditor::refreshPopupShield()
         return;
     shieldRaised = wanted;
 
+    // Calibrate the foreground test at the one instant we KNOW the user is working in this editor:
+    // a pop-up has just opened, which only a click on one of our controls can do. If the process is
+    // the foreground application then, it is a process that CAN be foreground, so a later `false`
+    // means the user switched away. If it is not foreground even now, the test carries no
+    // information here and dismissOrphanedPopupMenus must not act on it -- see the argument there.
+    if (wanted)
+        popupOpenedWhileForeground = juce::Process::isForegroundProcess();
+
     // Raise = re-order, then intercept. The order is NOT what protects hover: the re-order's fake
     // mouse move is asynchronous (Component::sendFakeMouseMove -> triggerAsyncUpdate,
     // juce_MouseInputSourceImpl.h:449-451), so it is dispatched well after the interception flag has
@@ -1038,8 +1046,16 @@ void AnamorphAudioProcessorEditor::refreshPopupShield()
 // "modal child of mine" identifies it exactly, because nothing else this editor owns ever enters a
 // modal state. exitModalState is the call ModalItem::cancel itself ends in; it self-guards on
 // isCurrentlyModal, so anything already on its way out is a no-op, and deletion stays asynchronous,
-// which is why this is safe to call from the destructor. Never PopupMenu::dismissAllActiveMenus():
-// that is process-global and would close another instance's menu (the INC-010 objection).
+// which is why this is safe to call from the destructor.
+//
+// PopupMenu::dismissAllActiveMenus() is not used here, because it is process-global and would close
+// another instance's menu (the INC-010 objection). That is a statement about THIS function, not an
+// invariant of the destructor path: our cancel is asynchronous, so ComboBox::menuActive is still set
+// when the member combo boxes are destroyed after the destructor body, and ~ComboBox -> hidePopup()
+// calls dismissAllActiveMenus itself (juce_ComboBox.cpp:509-516). That is pre-existing JUCE
+// behaviour we cannot opt out of, and it is bounded -- only one menu can be modal per process. It
+// also covers only the combo case: ~TextEditor has no equivalent, which is one reason the cancel
+// below is load-bearing rather than belt-and-braces.
 void AnamorphAudioProcessorEditor::dismissTrackedPopupMenus()
 {
     for (auto& w : openMenus)
@@ -1067,18 +1083,32 @@ void AnamorphAudioProcessorEditor::dismissTrackedPopupMenus()
 //    (juce_PopupMenu.cpp:1565-1572). Cmd-Tab / Alt-Tab away with the pointer resting on a menu item
 //    and the menu simply stays -- a live, always-on-top, still-modal strip belonging to a plug-in
 //    that is no longer in front, and clicking an item pulls that window back to the foreground.
-//    Process::isForegroundProcess() is the first half of JUCE's own test there (the second half,
-//    detail::WindowingHelpers::isEmbeddedInForegroundProcess, covers an OUT-OF-PROCESS plug-in and is
-//    internal to the module; Anamorph builds VST3 / AU / Standalone -- all in-process -- so the
-//    public half is the whole test. Adding AUv3 would need the other half and must revisit this).
+//
+// Process::isForegroundProcess() is only HALF of JUCE's own test for that
+// (doesAnyJuceCompHaveFocus, juce_PopupMenu.cpp:894-897); the other half,
+// detail::WindowingHelpers::isEmbeddedInForegroundProcess, is what covers a plug-in whose editor
+// lives in a window owned by a DIFFERENT process -- and it is internal to the module, so we cannot
+// call it. That case is not exotic and it is not about the format: whether a plug-in runs inside the
+// host's process is the HOST's choice (Bitwig gives every plug-in its own helper process; bridged
+// and sandboxed hosting does the same elsewhere), so a plain VST3 hits it. There the process is
+// never the foreground application, and using the half-test alone would cancel every menu within one
+// tick of it opening -- the controls would be unusable with the mouse.
+//
+// So the half-test is used only where it means something, decided by the editor itself rather than
+// assumed: `popupOpenedWhileForeground` records what it read at the moment a pop-up opened, which is
+// necessarily a moment the user was clicking one of our controls. True => this process does go
+// foreground, so a later false is a genuine app switch. False => it never will here, and a false now
+// says nothing, so we leave the menu alone and JUCE's own dismissal (which still fires whenever the
+// pointer is off the menu) remains the only cover in that hosting mode -- exactly the pre-0.9.3
+// position, never worse. The hidden-editor half below is unaffected and stays unconditional.
 void AnamorphAudioProcessorEditor::dismissOrphanedPopupMenus()
 {
     if (openMenus.isEmpty() && presetMenusOpen == 0)
         return;
-    if (isShowing() && juce::Process::isForegroundProcess())
-        return;
 
-    dismissTrackedPopupMenus();
+    const bool switchedAway = popupOpenedWhileForeground && ! juce::Process::isForegroundProcess();
+    if (! isShowing() || switchedAway)
+        dismissTrackedPopupMenus();
 }
 
 void AnamorphAudioProcessorEditor::componentBeingDeleted (juce::Component& c)

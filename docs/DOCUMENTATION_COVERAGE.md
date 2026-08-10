@@ -40,8 +40,9 @@ and its review date stand.
 
 **Review sign-off on the 0.9.3 pop-up round (2026-08-10).** Two review passes raised nine further
 items; the maintainer reviewed each and **accepted the current implementation** on six, which are
-therefore closed rather than open: the **pop-up width** growing up to 20 px on every menu (intentional
-visual adjustment — `getIdealPopupMenuItemSize`'s allowance is unchanged); **unconditional shield
+therefore closed rather than open: the **pop-up width** growing on every menu (intentional visual
+adjustment — kept, though the round after trimmed its discretionary half, see the Menu width entry
+below); **unconditional shield
 `toFront`** on every raise-path refresh (not required — the "nothing intercepting is brought to front
 while the shield is raised" invariant holds today and is documented); the shield **staying frontmost**
 after the first pop-up (accepted with the current overlay ordering); **`presetMenusOpen` recovery
@@ -77,12 +78,21 @@ and in the app-switch case, clicking it pulls a background plug-in window back i
 now cancels every pop-up the editor owns, in two passes because no single hook sees both kinds
 (`openMenus`, plus any **modal child** — which identifies the parented preset menu exactly, since
 nothing else the editor owns ever enters a modal state), called unconditionally from the destructor
-and conditionally from the 24 Hz tick on `! isShowing() || ! Process::isForegroundProcess()`. The tick
-is the only observer available: an ancestor's `setVisible`, a peer change and a minimise all end at
-`isShowing()` without notifying us, and an app switch has no `Component` event at all.
-`Process::isForegroundProcess()` is the first half of JUCE's own test; the second half covers
-out-of-process plug-ins and is module-internal, which is sound here because Anamorph builds VST3 / AU
-/ Standalone only — **adding AUv3 must revisit it**. Deliberately **not**
+and conditionally from the 24 Hz tick on `! isShowing()` or a genuine application switch. The tick is
+the only observer available: an ancestor's `setVisible`, a peer change and a minimise all end at
+`isShowing()` without notifying us, and an app switch has no `Component` event at all. The app-switch
+half is **self-calibrating**, after a first attempt got it wrong. `Process::isForegroundProcess()` is
+only half of JUCE's own test; the other half — which covers a plug-in whose editor lives in a window
+owned by a different process — is module-internal, and the first revision argued it was safe to skip
+because Anamorph ships VST3 / AU / Standalone rather than AUv3. That conflated the *format* with the
+*hosting mode*: whether a plug-in runs inside the host's process is the **host's** choice (Bitwig
+gives every plug-in a helper process by default; bridged and sandboxed hosting does the same), so a
+plain VST3 hits it, the call reads `false` permanently while the editor is in active use, and every
+menu was cancelled within one tick of opening — the controls were unusable with the mouse. The editor
+now records what that call reads at the moment a pop-up **opens**, which only a click on one of its
+own controls can produce, and treats a later `false` as an app switch only if it read `true` then;
+where it never reads `true`, JUCE's own dismissal remains the only cover, which is exactly the
+pre-0.9.3 position rather than a regression. Deliberately **not**
 `PopupMenu::dismissAllActiveMenus()`, which is process-global and would close another instance's menu
 — the objection that already ruled it out in INC-010. Nothing changes while the plug-in is in front of
 the user, so the dismissal contract, the shield's z-order and the one-click behaviour are untouched.

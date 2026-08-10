@@ -258,9 +258,19 @@ what makes it portable — the failure was never font-specific, but a fixed widt
 JUCE passes `item.text + "   " + shortcut` for measurement (`juce_PopupMenu.cpp:333-336`), so the
 right-aligned shortcut column is covered by the same measurement.
 
-The 64 px floor is a floor, not a preference: it sits just above the 50 px chrome total, so it cannot
+The 64 px floor is a floor, not a preference: it sits just above the 40 px chrome total, so it cannot
 widen a pop-up past the control that opened it. The combo path keeps its own, larger floor —
 `getOptionsForComboBoxPopupMenu` passes `withMinimumWidth (box.getWidth())`.
+
+**Revised in a later round.** The first revision carried a further 12 px of "breathing room" on top of
+the 38, for a total of 50 — a discretionary margin, and one that widened *every* menu drawn through
+this look-and-feel, combo drop-downs included, wherever the item text rather than
+`withMinimumWidth (box.getWidth())` was the binding constraint. Since the Widen/Style/Focus layout
+contract outranks pop-up padding, that margin is now **2 px** and is no longer discretionary: it is a
+rounding guard, because `drawPopupMenuItem` uses `Graphics::drawText`'s three-argument overload whose
+`useEllipsesIfTooBig` defaults to true, so text measuring one sub-pixel over the strip would ellipsise
+rather than overhang. The shipped total is **40** — still above the 38 actually spent, so the fix is
+intact and now exact — and the delta against 0.9.2's flat 30 is **10 px**, not 20.
 
 ## 6. Disabled menu items look disabled
 
@@ -291,12 +301,12 @@ second click after dismissal behaving normally; and visually, *Select All* shown
 disabled items clearly dimmer, at more than one UI scale.
 
 Two more were added by the 2026-08-10 review sign-off. The **Widen combos in Simple mode** (15.5 pt)
-are accepted as-is in code and owed only a look: the menu-width allowance now sums to 50 px against
-the 38 px the drawing actually spends, so every menu measured on its item text — not on
-`withMinimumWidth (box.getWidth())` — is up to 20 px wider than in 0.9.2. A **host that hides rather
-than destroys the editor** while a drop-down is open was first accepted as-is too, then **fixed** in
-the following round — see §9; what is still owed there is the on-device confirmation in such a host,
-not a decision.
+are owed a look: the menu-width allowance sums to 40 px against the 38 px the drawing actually spends,
+so every menu measured on its item text — not on `withMinimumWidth (box.getWidth())` — is 10 px wider
+than in 0.9.2. (That was 50 px / 20 px in the first revision; the discretionary 12 px came back out in
+the round that followed — see the revision note in §5.) A **host that hides rather than destroys the
+editor** while a drop-down is open was first accepted as-is too, then **fixed** in the following round
+— see §9; what is still owed there is the on-device confirmation in such a host, not a decision.
 
 
 ---
@@ -507,14 +517,40 @@ The three callers:
 |---|---|---|
 | `~AnamorphAudioProcessorEditor` | unconditional, **before** the listeners are removed | (2) |
 | `dismissOrphanedPopupMenus`, from the 24 Hz tick | `! isShowing()` | (1) |
-| the same, same tick | `! juce::Process::isForegroundProcess()` | (3) |
+| the same, same tick | a **genuine** application switch (see below) | (3) |
 
-`Process::isForegroundProcess()` is the first half of JUCE's own `doesAnyJuceCompHaveFocus()`
-(`juce_PopupMenu.cpp:894-897`); the second half,
-`detail::WindowingHelpers::isEmbeddedInForegroundProcess`, exists for an **out-of-process** plug-in
-and is internal to the module. Anamorph builds VST3 / AU / Standalone — all in-process
-(`CMakeLists.txt:140-147`) — so the public half is the whole test here. **Adding AUv3 would need the
-other half and must revisit this**, or every menu would be cancelled the instant it opened.
+`Process::isForegroundProcess()` is only the first half of JUCE's own `doesAnyJuceCompHaveFocus()`
+(`juce_PopupMenu.cpp:894-897`). The second half,
+`detail::WindowingHelpers::isEmbeddedInForegroundProcess`, is exactly what covers a plug-in whose
+editor lives in a window owned by a **different process** — and it is internal to the module, so we
+cannot call it.
+
+**The first attempt got this wrong** and the review caught it. It argued the missing half was safe to
+skip because Anamorph builds VST3 / AU / Standalone rather than AUv3. That conflates the **format**
+with the **hosting mode**: whether a plug-in runs inside the host's process is the *host's* choice,
+not the format's — Bitwig gives every plug-in its own helper process by default, and bridged or
+sandboxed hosting does the same elsewhere — so a plain VST3 is precisely the case that half exists
+for. There, `isForegroundProcess()` is *permanently* false while the user is actively clicking the
+editor, and the tick cancelled every drop-down, the preset list and every right-click menu within
+~42 ms of opening. Those controls were unusable with the mouse.
+
+**The half-test is now used only where it means something, and the editor decides that itself rather
+than assuming it.** `refreshPopupShield` records what the call reads on the raise edge — the instant a
+pop-up opens, which only a click on one of our own controls can produce, so it is the sharpest probe
+available:
+
+- **read `true`**: this process does become the foreground application, so a later `false` is a real
+  application switch and the menu is cancelled. In-process hosting behaves exactly as before.
+- **read `false`**: it never will here, so a later `false` carries no information and is ignored. The
+  menu is left alone, and JUCE's own dismissal — which still fires on every app change where the
+  pointer is *off* the menu — remains the only cover in that hosting mode. That is precisely the
+  pre-0.9.3 position: a residual, never a regression.
+
+The probe is taken at pop-up-open time rather than sampled continuously on purpose. A continuous
+sample would latch `true` off any transient activation of our process — the "Load Preset…"
+`FileChooser` raises a native panel from this process and could do exactly that — and from then on
+every tick would read `false` and cancel menus again. Pop-up-open time cannot be reached without the
+user clicking our editor, so it cannot latch on something that is not user interaction.
 
 Deliberately **not** `PopupMenu::dismissAllActiveMenus()` — process-global, and it would close another
 instance's menu. That is the objection that already ruled it out in INC-010.
@@ -544,6 +580,12 @@ switching away from the host.
   of the *same* host application leaves it true. JUCE's own test adds "no JUCE peer is focused", which
   in a plug-in only ever sees our own windows, so it would not decide that case either; the
   maintainer-confirmed repro is an application switch, and that is what is fixed.
+- In **out-of-process / bridged hosting** the probe reads `false` and this editor performs no
+  app-switch dismissal at all, by design — see above. JUCE's own dismissal still covers every case
+  where the pointer is off the menu, so the residual there is the pre-0.9.3 hole, unchanged. Closing
+  it would need `isEmbeddedInForegroundProcess`, which is module-internal; re-deriving it from native
+  window ownership is out of proportion to a cosmetic residue and would be a platform-specific
+  mechanism in an editor that has none.
 
 **Manual checks owed** (none reachable headlessly, for the reasons in §3):
 
@@ -551,6 +593,10 @@ switching away from the host.
   re-show it. No stray menu, and the first click presses the control it lands on.
 - Close the plug-in window outright with a drop-down open. No menu is left on screen.
 - Open the Save Preset right-click menu, rest the pointer **on a menu item**, Cmd-Tab / Alt-Tab away.
-  The menu is gone, and nothing can pull the plug-in window back in front.
+  In an in-process host the menu is gone and nothing can pull the plug-in window back in front; in an
+  out-of-process host (Bitwig's default) the documented residual applies instead.
+- **In an out-of-process host specifically** (Bitwig, or any bridged/sandboxed configuration), the
+  regression check that motivated this round: every drop-down, the preset list and a right-click text
+  menu must open and *stay* open, and be usable with the mouse.
 - The same three with the **preset** menu, which the modal-child pass now covers as well.
 - Confirm normal use is unchanged: open and use each drop-down with the plug-in in front.

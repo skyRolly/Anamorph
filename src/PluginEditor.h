@@ -232,6 +232,10 @@ private:
     // the shield.
     PopupShield popupShield;
     bool shieldRaised = false;   // the shield is always visible; this is whether it intercepts
+    // Whether Process::isForegroundProcess() read true at the last pop-up open -- i.e. whether that
+    // test means anything in this host. Out-of-process / bridged hosting makes it permanently false;
+    // see dismissOrphanedPopupMenus for why that must not be read as "the user switched away".
+    bool popupOpenedWhileForeground = false;
     juce::Array<juce::Component::SafePointer<juce::Component>> openMenus;
     int  presetMenusOpen = 0;
     void notePopupMenuOpened (juce::Component& menuWindow);
