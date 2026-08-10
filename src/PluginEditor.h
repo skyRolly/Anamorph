@@ -213,6 +213,7 @@ private:
             return juce::TooltipWindow::getTipFor (c);
         }
     };
+    // 600 ms is the ONLY place the appear-delay is set; applyTooltipsEnabled never touches it.
     GatedTooltipWindow tooltips { nullptr, 600 };
 
     // --- Pop-up dismissal: one shield, one flag, three feeders -------------------------------

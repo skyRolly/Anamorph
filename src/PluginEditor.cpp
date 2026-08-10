@@ -819,11 +819,15 @@ void AnamorphAudioProcessorEditor::setupToggleInternal (juce::ToggleButton& t, c
 
 void AnamorphAudioProcessorEditor::applyTooltipsEnabled()
 {
-    tooltips.setMillisecondsBeforeTipAppears (tooltipsOn ? 600 : 0x3fffffff);
-    // The delay alone is not a switch: it is only consulted on the slow path, and it does nothing
-    // about a tip already on screen (see GatedTooltipWindow). getTipFor now returns nothing while
-    // disabled, so the next timer tick would hide it -- hide it here so the transition is immediate
-    // rather than up to one tick late, which is what "switch it off" should mean.
+    // ONE switch: GatedTooltipWindow::getTipFor returns nothing while tooltipsOn is false, and JUCE's
+    // own state machine does the rest. The delay stays at the 600 ms the member is constructed with,
+    // in both states -- the old `tooltipsOn ? 600 : 0x3fffffff` was a second encoding of the same off
+    // state, and a dead one: millisecondsBeforeTipAppears is read on one branch only, already inside
+    // `newTip.isNotEmpty()` (juce_TooltipWindow.cpp:250-256), which an empty tip never reaches.
+    //
+    // hideTip stays. The next timer tick would hide a tip already on screen anyway (the fast path
+    // hides on an empty tip), but hiding here makes the transition immediate rather than up to one
+    // tick late, which is what "switch it off" should mean.
     if (! tooltipsOn)
         tooltips.hideTip();
 }

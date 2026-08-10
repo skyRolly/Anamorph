@@ -17,7 +17,8 @@ the shape `dimOverlay` already uses here, so it is one fewer idiom. The reason i
 repaint cost, not hover: raising the shield cannot disturb hover at all, because every fake mouse
 move involved is **asynchronous** and therefore dispatched once the menu is already modal, at which
 point `internalMouseEnter`/`internalMouseExit` early-return for every blocked component — and this
-editor derives hover **geometrically** rather than from enter/exit in any case. *(2)* The claim that the preset menu cannot reach the look-and-feel hook was
+editor derives hover **geometrically** rather than from enter/exit in any case. *(2)* The claim that
+the preset menu cannot reach the look-and-feel hook was
 **re-verified and holds**, with a sharper reason: `MenuWindow` binds `auto& lf = getLookAndFeel()`
 *before* parenting and calls `preparePopupMenuWindow` through that bound **reference**, which
 parenting cannot rebind — so the separate counter stays and the comment now carries the real
@@ -35,6 +36,24 @@ out of bounds — no reset API, a process-global double-click timeout (the KI-01
 per-control guards that undo the shield's whole point. `COMMERCIAL_STATUS.md` was the one carrier the
 0.9.2 → 0.9.3 sweep missed; only its three current-release statements changed, its historical ones
 and its review date stand.
+
+**Review sign-off on the 0.9.3 pop-up round (2026-08-10).** A later review pass raised eight further
+items; the maintainer reviewed each and **accepted the current implementation** on five, which are
+therefore closed rather than open: the **pop-up width** growing up to 20 px on every menu (intentional
+visual adjustment — `getIdealPopupMenuItemSize`'s allowance is unchanged); **hidden-editor pop-up
+lifetime** (a ComboBox/TextEditor menu is a desktop window and INC-010's parenting fix covers only the
+preset menu, so such a menu can outlive a *hidden* editor and hold the shield up — behaviour
+unchanged, host-specific manual validation still owed, tracked in the worklog's manual-check list);
+**unconditional shield `toFront`** on every raise-path refresh (not required — the "nothing
+intercepting is brought to front while the shield is raised" invariant holds today and is documented);
+**`presetMenusOpen` recovery machinery** (not required — the counter cannot leak, see *(3)* above);
+and **`SpectrumImager::mouseExit` setting `frameDirty`** (not required — clearing a hover index always
+moves an ease target, so the tick gate already opens). Three items were **actioned**: the PopupShield
+hover explanation (corrected — the mechanism is asynchronous fake moves plus modal blocking plus
+geometric hover, not raise ordering), the worklog's superseded predicate section (now banner-marked),
+and the **tooltip delay redundancy** (`tooltipsOn ? 600 : 0x3fffffff` removed; the 600 ms now lives
+only at the member's construction). The sign-off covers the **direction and the accepted-as-is
+decisions**; it is not a manual test of the implementation and touches no release gate.
 
 **Pop-up dismissal became one mechanism instead of one predicate (0.9.3).** Verification of the
 Settings fix found the same defect on the Save Preset dialog, where it *destroys typed input*: a

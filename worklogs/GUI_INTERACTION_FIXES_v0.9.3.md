@@ -290,6 +290,16 @@ underneath); `SpectrumImager` (a dismissing click cannot add a band); `ABControl
 second click after dismissal behaving normally; and visually, *Select All* shown in full with
 disabled items clearly dimmer, at more than one UI scale.
 
+Two more were added by the 2026-08-10 review sign-off, both accepted as-is in code and owed only a
+look: the **Widen combos in Simple mode** (15.5 pt), where the menu-width allowance now sums to 50 px
+against the 38 px the drawing actually spends, so every menu measured on its item text — not on
+`withMinimumWidth (box.getWidth())` — is up to 20 px wider than in 0.9.2; and a **host that hides
+rather than destroys the editor** while a ComboBox or TextEditor drop-down is open. Those menus are
+desktop windows (INC-010's parenting fix covers only the preset menu) and `windowIsStillValid`
+compares two references that both stay valid across a hide, so the menu can survive, `openMenus` stays
+non-empty, and the re-shown editor looks unresponsive until it is dismissed. Behaviour deliberately
+unchanged; editor *destruction* is already handled by the destructor's listener teardown.
+
 
 ---
 
@@ -384,6 +394,12 @@ rest — the same fast path hides on an empty tip instead of showing one, and th
 nothing to show either. `applyTooltipsEnabled` additionally calls `hideTip()` so the transition is
 immediate rather than up to one timer tick late. One override and one call: no second tooltip
 system, no timer of our own, and the enabled path is untouched.
+
+*Follow-up:* the `tooltipsOn ? 600 : 0x3fffffff` line was left in place at first, so two mechanisms
+encoded the same off state. It has since been **removed** — the delay now sits only where the member
+is constructed (`GatedTooltipWindow tooltips { nullptr, 600 }`) and nothing changes it at runtime.
+Behaviour is unaffected: `millisecondsBeforeTipAppears` is read on one branch only, already inside
+`newTip.isNotEmpty()` (`juce_TooltipWindow.cpp:250-256`), which the gate's empty tip never reaches.
 
 ### 8.5 The dismissing click still counts toward the double-click run — **KI-018**
 
