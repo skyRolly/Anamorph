@@ -244,12 +244,14 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
 {
     setLookAndFeel (&lnf);
     tooltips.setLookAndFeel (&lnf);
+    tooltips.isEnabled = [this] { return tooltipsOn; }; // gate at the source; see GatedTooltipWindow
 
-    // Pop-up dismissal shield (see PopupShield). Added once, hidden, and raised only while a menu
-    // is on screen. All three look-and-feels report through the same hook -- compactCombo and
+    // Pop-up dismissal shield (see PopupShield). Added once and left VISIBLE; it paints nothing and
+    // only starts intercepting while a menu is on screen, so it never disturbs hover or the cursor.
+    // All three look-and-feels report through the same hook -- compactCombo and
     // simpleCombo derive from AnamorphLookAndFeel, and a menu carries the look-and-feel of the box
     // that opened it, so a drop-down styled by either of them would otherwise go unseen.
-    addChildComponent (popupShield);
+    addAndMakeVisible (popupShield);   // visible but inert; refreshPopupShield toggles interception
     for (auto* laf : { (anamorph::gui::AnamorphLookAndFeel*) &lnf,
                        (anamorph::gui::AnamorphLookAndFeel*) &compactCombo,
                        (anamorph::gui::AnamorphLookAndFeel*) &simpleCombo })
@@ -818,6 +820,12 @@ void AnamorphAudioProcessorEditor::setupToggleInternal (juce::ToggleButton& t, c
 void AnamorphAudioProcessorEditor::applyTooltipsEnabled()
 {
     tooltips.setMillisecondsBeforeTipAppears (tooltipsOn ? 600 : 0x3fffffff);
+    // The delay alone is not a switch: it is only consulted on the slow path, and it does nothing
+    // about a tip already on screen (see GatedTooltipWindow). getTipFor now returns nothing while
+    // disabled, so the next timer tick would hide it -- hide it here so the transition is immediate
+    // rather than up to one tick late, which is what "switch it off" should mean.
+    if (! tooltipsOn)
+        tooltips.hideTip();
 }
 
 void AnamorphAudioProcessorEditor::applyScopePersist()
@@ -972,18 +980,18 @@ void AnamorphAudioProcessorEditor::refreshPopupShield()
             openMenus.remove (i);            // SafePointer nulls itself if a listener ever missed one
 
     const bool wanted = ! openMenus.isEmpty() || presetMenusOpen > 0;
-    if (wanted == popupShield.isVisible())
+    if (wanted == shieldRaised)
         return;
+    shieldRaised = wanted;
 
+    // Raise = re-order, THEN intercept, in that order. The re-order sends a fake mouse move and
+    // must happen while the shield is still transparent, so that move lands on the control under
+    // the cursor and leaves its hover state alone; flipping interception afterwards sends nothing.
+    // Lowering needs no re-order at all.
     if (wanted)
-    {
-        popupShield.toFront (false);          // in front of the Settings/About backdrop too...
-        popupShield.setVisible (true);        // ...and BEFORE a parented menu is added, so that
-    }                                         //    menu (appended after) still sits in front.
-    else
-    {
-        popupShield.setVisible (false);
-    }
+        popupShield.toFront (false);          // in front of the Settings/About backdrop too, and
+                                              // BEFORE a parented menu is added (appended in front)
+    popupShield.setInterceptsMouseClicks (wanted, false);
 }
 
 void AnamorphAudioProcessorEditor::componentBeingDeleted (juce::Component& c)
@@ -1012,10 +1020,14 @@ void AnamorphAudioProcessorEditor::showSettings (bool show)
 // ----------------------------------------------------------------------------
 void AnamorphAudioProcessorEditor::timerCallback()
 {
-    // Backstop for the pop-up shield. componentBeingDeleted already lowers it the instant a menu
-    // window dies, which is what keeps a following click responsive; this only guarantees that a
-    // missed notification can never leave the shield up, because a stuck shield would make the
-    // whole editor unclickable. Costs a scan of an almost-always-empty array.
+    // Backstop for the pop-up shield, scoped to `openMenus`: componentBeingDeleted already lowers
+    // the shield the instant a menu window dies, and this only guarantees that a MISSED such
+    // notification cannot leave it up, because a stuck shield would make the editor unclickable.
+    // It does not -- and need not -- reconcile presetMenusOpen, which is not notification-driven:
+    // showPresetMenu always adds at least three items (the FACTORY section header plus Save/Load
+    // Preset, all unconditional), so PopupMenu::createWindow can never return null for it, which is
+    // the one path on which showMenuAsync drops the callback without invoking it. The decrement in
+    // that callback therefore always runs. Costs a scan of an almost-always-empty array.
     refreshPopupShield();
 
     // Sync cached view-state with the (possibly externally changed) parameters.
@@ -1568,11 +1580,18 @@ void AnamorphAudioProcessorEditor::showPresetMenu()
 
     // Widen the list so the longest factory name ("Synth Dimension") shows in
     // full -- the slot itself is narrow (#8).
-    // This menu does NOT reach AnamorphLookAndFeel::onPopupMenuWindowCreated -- its own
-    // look-and-feel is null (see above), so JUCE resolves the DEFAULT one for that call. Track it
-    // directly instead. Raising the shield BEFORE showMenuAsync also fixes the z-order: the menu is
-    // parented to this editor, and JUCE appends a new child in front of the existing ones, so a
-    // shield raised first stays behind the menu and in front of everything else.
+    // This menu does NOT reach AnamorphLookAndFeel::onPopupMenuWindowCreated, so it is tracked here
+    // instead. Re-verified against the pinned tree, because "the menu is parented to the editor, so
+    // it must inherit our look-and-feel" is the natural guess and it is wrong: MenuWindow binds
+    // `auto& lf = getLookAndFeel()` at juce_PopupMenu.cpp:368, BEFORE pc->addChildComponent (this)
+    // at :372, and preparePopupMenuWindow is called through that same bound REFERENCE at :500 (its
+    // only call site in the file). Parenting afterwards cannot rebind a reference. With this menu's
+    // own look-and-feel null -- findLookAndFeel returns menu.lookAndFeel.get() at :1422-1425 -- what
+    // :368 resolves is the process DEFAULT look-and-feel, so our override never runs for it.
+    //
+    // Raising the shield BEFORE showMenuAsync also settles the z-order: the menu is parented to this
+    // editor, and JUCE appends a new child in front of the existing ones, so a shield raised first
+    // stays behind the menu and in front of everything else.
     ++presetMenusOpen;
     refreshPopupShield();
     m.showMenuAsync (juce::PopupMenu::Options()

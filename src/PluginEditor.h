@@ -62,11 +62,21 @@ private:
     // Keyboard focus is deliberately left alone: toFront (false) skips grabKeyboardFocus
     // (juce_Component.cpp:928-934) and setMouseClickGrabsKeyboardFocus (false) covers the click, so
     // raising the shield cannot pull focus out of the Save Preset field mid-edit.
+    // It is ALWAYS visible and paints nothing; only its mouse interception is toggled -- the same
+    // shape dimOverlay already uses (an always-visible, non-intercepting full-editor overlay). That
+    // is not a stylistic choice: setVisible() and toFront() both send a fake mouse move
+    // (juce_Component.cpp:559, :883), and the raise happens from the MenuWindow CONSTRUCTOR, i.e.
+    // before the menu enters its modal state -- so the component under the cursor was not yet
+    // blocked and received a real mouseExit, dropping its hover wash and cursor for as long as the
+    // menu stayed open. setInterceptsMouseClicks is pure flag assignment with no events at all
+    // (juce_Component.cpp:1336-1341), so toggling it leaves hover exactly as JUCE leaves it while a
+    // menu is modal. The toFront still fires a fake move, but it runs while the shield is still
+    // transparent, so that move re-resolves to the same control underneath and changes nothing.
     struct PopupShield : public juce::Component
     {
         PopupShield()
         {
-            setInterceptsMouseClicks (true, false); // swallow for us, never for children (there are none)
+            setInterceptsMouseClicks (false, false); // inert until raised; see refreshPopupShield
             setMouseClickGrabsKeyboardFocus (false);
             setWantsKeyboardFocus (false);
         }
@@ -155,6 +165,7 @@ private:
     // null at construction, so JUCE resolves the default one there. Either being non-empty raises
     // the shield.
     PopupShield popupShield;
+    bool shieldRaised = false;   // the shield is always visible; this is whether it intercepts
     juce::Array<juce::Component::SafePointer<juce::Component>> openMenus;
     int  presetMenusOpen = 0;
     void notePopupMenuOpened (juce::Component& menuWindow);
@@ -165,7 +176,27 @@ private:
     anamorph::gui::CompactComboLookAndFeel compactCombo; // smaller list for Input combos (#12)
     anamorph::gui::SimpleComboLookAndFeel  simpleCombo;  // bigger text for Simple-mode Widen combos (#17)
     juce::OpenGLContext openGLContext;
-    juce::TooltipWindow tooltips { nullptr, 600 };
+    // Tooltips are switched off at the SOURCE, not just slowed down. The Settings toggle used to
+    // only push millisecondsBeforeTipAppears to a huge value, which does not touch a tip already on
+    // screen and -- worse -- is bypassed entirely while one is: TooltipWindow::timerCallback takes a
+    // fast path when `isVisible() || now < lastHideTime + 500` and calls showTip() on any tip change
+    // without consulting the delay (juce_TooltipWindow.cpp:242-247). That is exactly the reported
+    // "disable it and the tip stays, then moving quickly to another control shows a new one".
+    //
+    // getTipFor is virtual, so returning nothing while disabled makes JUCE's own state machine do
+    // the work: the same fast path hides on an empty tip rather than showing one, and the slow path
+    // has nothing to show either. One override, no second tooltip system, no timer of our own.
+    struct GatedTooltipWindow : public juce::TooltipWindow
+    {
+        using juce::TooltipWindow::TooltipWindow;
+        std::function<bool()> isEnabled;   // empty => behave exactly like juce::TooltipWindow
+        juce::String getTipFor (juce::Component& c) override
+        {
+            if (isEnabled && ! isEnabled()) return {};
+            return juce::TooltipWindow::getTipFor (c);
+        }
+    };
+    GatedTooltipWindow tooltips { nullptr, 600 };
 
     // Centrepiece + meters
     std::unique_ptr<anamorph::gui::Vectorscope> scope;

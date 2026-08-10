@@ -41,6 +41,12 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   selected, or *Paste* with an empty clipboard, are drawn dimmed instead of identically to the items
   you can actually pick.
   Evidence: PR #101. [Verified]
+- **Turning Tooltips off now takes effect immediately.** A tooltip already on screen used to stay
+  there, and moving quickly to another control could still bring up a new one — the setting only
+  slowed tooltips down rather than switching them off, and the delay was bypassed entirely while a
+  tooltip was showing. Off now means off: the visible one disappears at once and no new one can
+  appear. Turning them back on behaves as before.
+  Evidence: PR #101. [Verified]
 
 ## [0.9.2] — 2026-08-07
 ### Fixed

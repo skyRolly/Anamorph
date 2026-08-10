@@ -9,6 +9,32 @@ that documentation (Verified / Partially Verified / Unverified / Not Supported).
 Last updated: for the **0.9.3 change set** (2026-08-09) — two editor-only GUI interaction fixes on
 top of 0.9.2. Below that, the 0.9.2 entry (2026-08-07) is retained in full.
 
+**Follow-up round on the pop-up work (0.9.3).** Four items, three of them corrections to the change
+set itself. *(1)* The shield was **clearing hover state**: `setVisible`/`toFront` send a fake mouse
+move, and the raise happens from the `MenuWindow` constructor — before the menu is modal — so the
+control under the cursor got a real `mouseExit` and lost its hover wash and cursor for as long as the
+menu was open. It is now **always visible and inert**, with only its *interception* toggled;
+`setInterceptsMouseClicks` is pure flag assignment with no events, and the remaining `toFront` runs
+while the shield is still transparent. That is also the shape `dimOverlay` already uses here, so it
+is one fewer idiom. *(2)* The claim that the preset menu cannot reach the look-and-feel hook was
+**re-verified and holds**, with a sharper reason: `MenuWindow` binds `auto& lf = getLookAndFeel()`
+*before* parenting and calls `preparePopupMenuWindow` through that bound **reference**, which
+parenting cannot rebind — so the separate counter stays and the comment now carries the real
+argument. *(3)* The 24 Hz backstop's comment was read twice as covering `presetMenusOpen`; it covers
+`openMenus`, and the counter needs no cover because `showPresetMenu` always adds three unconditional
+items, so `createWindow` can never return null — the one path that drops the callback. Comment
+corrected; **no recovery machinery added for a statically unreachable state**. *(4)* **Tooltips**:
+disabling them left a visible tip up and a quick move could raise another, because the setting only
+lengthened `millisecondsBeforeTipAppears` and `TooltipWindow::timerCallback` bypasses that delay
+entirely while a tip is showing. `getTipFor` is virtual, so tooltips are now switched off **at the
+source** and JUCE's own state machine hides rather than shows; `hideTip()` makes the transition
+immediate. Filed as **KI-018**, not fixed: the dismissing click is consumed by the shield but still
+counts toward JUCE's multi-click run (`registerMouseDown` is component-agnostic), and every lever is
+out of bounds — no reset API, a process-global double-click timeout (the KI-017 objection), or
+per-control guards that undo the shield's whole point. `COMMERCIAL_STATUS.md` was the one carrier the
+0.9.2 → 0.9.3 sweep missed; only its three current-release statements changed, its historical ones
+and its review date stand.
+
 **Pop-up dismissal became one mechanism instead of one predicate (0.9.3).** Verification of the
 Settings fix found the same defect on the Save Preset dialog, where it *destroys typed input*: a
 right-click opens `TextEditor`'s context menu, and the click that dismisses it was re-delivered to

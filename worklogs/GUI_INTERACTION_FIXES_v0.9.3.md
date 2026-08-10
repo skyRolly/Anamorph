@@ -276,3 +276,85 @@ outside closes only the menu, typed text survives); the preset menu (dismissal t
 underneath); `SpectrumImager` (a dismissing click cannot add a band); `ABControl` (cannot toggle); a
 second click after dismissal behaving normally; and visually, *Select All* shown in full with
 disabled items clearly dimmer, at more than one UI scale.
+
+
+---
+
+## 8. Follow-up review: three corrections and one accepted limitation
+
+### 8.1 The shield was clearing hover state (fixed)
+
+Raising the shield with `setVisible (true)` / `toFront` sends a fake mouse move
+(`juce_Component.cpp:559`, `:883`), and the raise happens from the `MenuWindow` **constructor** —
+before the menu enters its modal state. So the control under the cursor was not yet blocked and
+received a genuine `mouseExit`: `SpectrumImager` cleared every hover index, `ABControl` dropped its
+hover wash, and the cursor reverted to the default, for as long as the menu stayed open. Not a
+correctness failure, but a visible regression on *every* drop-down, not just the dismissing click.
+
+The fix keeps the guarantee and drops the side effect: the shield is now **always visible and
+inert**, and only its *interception* is toggled. `setInterceptsMouseClicks` is pure flag assignment
+with no events at all (`juce_Component.cpp:1336-1341`), so flipping it leaves hover exactly as JUCE
+leaves it while a menu is modal. The `toFront` still fires a fake move, but it now runs while the
+shield is still transparent, so that move re-resolves to the same control underneath and changes
+nothing. This is also the shape `dimOverlay` already uses in this editor — an always-visible,
+non-intercepting full-editor overlay — so it is one fewer idiom, not one more.
+
+### 8.2 "Does the preset menu really miss the look-and-feel hook?" — re-verified, yes (unchanged)
+
+The natural objection is that the preset menu is parented to the editor, so it should inherit our
+look-and-feel and reach `preparePopupMenuWindow` after all, making the separate counter redundant.
+It does not, and the reason is sharper than the original comment gave: `MenuWindow` binds
+`auto& lf = getLookAndFeel()` at `juce_PopupMenu.cpp:368`, **before** `pc->addChildComponent (this)`
+at `:372`, and calls `preparePopupMenuWindow` through that same bound **reference** at `:500` — its
+only call site in the file. Parenting afterwards cannot rebind a reference. With this menu's own
+look-and-feel null (`findLookAndFeel` returns `menu.lookAndFeel.get()`, `:1422-1425`), what `:368`
+resolves is the process **default** look-and-feel. So the counter stays, and the comment now carries
+the reference-binding argument rather than the weaker "captured before parenting" phrasing.
+
+### 8.3 The backstop's scope (comment corrected, no code change)
+
+The 24 Hz backstop prunes `openMenus`; it does not reconcile `presetMenusOpen`, and the comment was
+read twice as claiming otherwise. It does not need to: `showPresetMenu` always adds at least three
+items — the FACTORY section header plus Save/Load Preset, all unconditional — so
+`PopupMenu::createWindow` can never return null for it, which is the one path on which
+`showMenuAsync` drops the callback without invoking it. The decrement therefore always runs. The
+comment now says which half it covers and why the other half needs no cover. No recovery machinery
+was added for a statically unreachable state.
+
+### 8.4 Tooltips: off now means off (fixed)
+
+Disabling Tooltips left a visible tooltip on screen, and moving quickly to another control could
+still raise a new one. Both come from one cause: `applyTooltipsEnabled` only pushed
+`millisecondsBeforeTipAppears` to a huge value, and that value is only consulted on
+`TooltipWindow::timerCallback`'s **slow** path. While a tip is visible — or within 500 ms of one
+hiding — the timer takes a fast path and calls `showTip()` on any tip change *without consulting the
+delay at all* (`juce_TooltipWindow.cpp:242-247`). So the "switch" was never a switch; it was a very
+long delay that a visible tooltip bypassed.
+
+`TooltipWindow::getTipFor` is **virtual**, so the fix is to switch tooltips off at the source: a
+small `GatedTooltipWindow` returns nothing while disabled, and JUCE's own state machine does the
+rest — the same fast path hides on an empty tip instead of showing one, and the slow path has
+nothing to show either. `applyTooltipsEnabled` additionally calls `hideTip()` so the transition is
+immediate rather than up to one timer tick late. One override and one call: no second tooltip
+system, no timer of our own, and the enabled path is untouched.
+
+### 8.5 The dismissing click still counts toward the double-click run — **KI-018**
+
+Confirmed and *not* fixed, deliberately. The shield stops the dismissing click reaching any control,
+but it cannot un-count it: JUCE's multi-click run lives on the input source, and
+`registerMouseDown` records position/time/buttons/peer only — **not the target component**
+(`juce_MouseInputSourceImpl.h:577-595`, `:561`) — and runs during dispatch, before any component is
+consulted. So a fast second click can arrive at a control as a double-click.
+
+Every available lever is out of bounds: `MouseInputSource` exposes no reset for the run;
+`MouseEvent::setDoubleClickTimeout` is **process-global** and would change the host's and every other
+plug-in's behaviour (the objection that already ruled out writing `ApplePressAndHoldEnabled` in
+KI-017); holding the shield up for the timeout would swallow the legitimate second click, breaking
+the contract it exists to enforce; per-control guards re-create the approach the shield replaced; and
+patching JUCE is a gated Build System change for a Low-severity cosmetic race. Filed as **KI-018**
+with the mechanism, the workaround and what would close it upstream.
+
+**Also corrected in this round:** `docs/COMMERCIAL_STATUS.md` still named v0.9.2 as the release in
+preparation in three places. Only those three statements changed; its genuinely historical references
+(which versions were never tagged, what 0.9.2 contained) are preserved, and its review date stands —
+the file's substance is unaffected by a renumbering, which is what that date tracks.

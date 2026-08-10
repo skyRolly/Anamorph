@@ -4,8 +4,10 @@
 in `POSTMORTEMS.md`, not here. Each entry is evidence-backed (constraint C7). When an item is
 fixed, remove it here and (if notable) add a `POSTMORTEMS.md` entry.
 
-Version-synced to **v0.9.3** (two GUI interaction fixes — the Multiband add-split preview line and
-the Settings drop-down dismissal — **no issue added or closed**). Prior sync: **v0.9.2**
+Version-synced to **v0.9.3** (GUI interaction fixes — the Multiband add-split preview line, the
+unified pop-up dismissal shield, two menu-rendering fixes and the Tooltips on/off transition —
+**one issue added**: KI-018, the dismissing click still counts toward JUCE's double-click run).
+Prior sync: **v0.9.2**
 (preset drop-down lifetime/crash fix, factory-preset identity, the
 `Window Size` → `UI Scale` label and the installer component titles — **one issue added**: KI-017,
 macOS suppresses key auto-repeat for letters and digits in any focused text field, which is an OS
@@ -65,6 +67,7 @@ JUCE 8.0.14; before that 0.8.8 for PR #54).
 | KI-015 | Anamorph declares **no licence of its own** — the repository root has no `LICENSE` file and the installers present no EULA, so the terms the binaries are offered under are undeclared | High | Confirmed; owner/legal decision (RH-R11 / RH-F1), not an engineering task |
 | KI-016 | **Sessions saved with a pre-0.9.1 build report Anamorph as missing** — 0.9.1 changed the manufacturer code `Anmf` → `RTec`, which is the AU component's manufacturer field and feeds the VST3 class UID, so the host cannot match the old identity | Medium | Confirmed, **deliberate** and one-time (ADR-0023); recovery is to re-insert the plug-in |
 | KI-017 | macOS: holding a letter or digit in a plug-in text field does not auto-repeat (symbols do) — macOS press-and-hold owns the alphanumeric keys once a JUCE text field has focus | Low | Confirmed external (macOS text input); JUCE path verified, OS attribution pending one `defaults` check; user-side workaround documented |
+| KI-018 | The click that dismisses a pop-up is not delivered to any control (by design), but it still counts toward JUCE's multi-click run, so a fast follow-up click can arrive as a **double**-click | Low | Confirmed; traced to `MouseInputSourceImpl::registerMouseDown`, which is component-agnostic. No in-bounds fix exists — see the entry |
 
 ---
 
@@ -535,3 +538,43 @@ keys fine":
   plain `keyDown:` requires first-responder status, so a host that reclaims first responder after
   the first key-down would drop exactly the printable-character repeats while special keys keep
   arriving.
+
+## KI-018 — a fast click right after dismissing a pop-up can register as a double-click
+Since v0.9.3 the click that dismisses a pop-up is consumed by the editor's `PopupShield` and reaches
+no control — that part works. What it cannot do is un-count that click. If the user clicks again
+**within the double-click timeout and close to the same spot**, the control that finally receives it
+sees `getNumberOfMultipleClicks() == 2` and JUCE calls its `mouseDoubleClick`. On a knob that means a
+reset-to-default or the numeric entry box, from what the user experienced as a first click.
+
+**Mechanism, from the pinned JUCE 9.0.0.** The multi-click run lives on the *input source*, not on a
+component. `MouseInputSourceImpl::registerMouseDown` records only position, time, buttons, touch flag
+and peer id (`juce_MouseInputSourceImpl.h:577-595`), and `canBePartOfMultipleClickWith` (`:561`)
+compares exactly those — the **target component is not part of the comparison**. Registration happens
+in the event dispatch (`:238`) before any component is consulted, so a click the shield swallows is
+already in the run by the time we could react to it.
+
+**Why it is not fixed.** There is no in-bounds lever:
+
+- `MouseInputSource` exposes **no** reset/clear API for the run — only getters
+  (`juce_MouseInputSource.h:175`), and `mouseDowns[]` is private to the impl.
+- `MouseEvent::setDoubleClickTimeout` (`juce_MouseEvent.h:374`) is **static and process-global**.
+  Writing it from a plug-in would change double-click behaviour for the host and every other plug-in
+  in that process — the same objection that ruled out writing `ApplePressAndHoldEnabled` in
+  **KI-017**, and out of bounds for the same reason.
+- Keeping the shield up for the whole double-click timeout would swallow the legitimate second
+  click, contradicting the interaction contract the shield exists to enforce.
+- Guarding inside each control's `mouseDoubleClick` re-creates the per-control approach the shield
+  replaced: every knob, label, the imager and the A/B control would need it, and a control added
+  later would silently miss it.
+- Patching JUCE is a Build System change under `ARCHITECTURE_REVIEW_GATE.md` + `DEPENDENCY_POLICY.md`
+  (the pin is an immutable SHA, ADR-0022), for a Low-severity cosmetic race.
+
+- **What a tester sees:** with a drop-down or right-click menu open, click outside it to dismiss and
+  then click a knob again quickly — the knob may jump to its default or open its value box instead of
+  registering as a plain click.
+- **Workaround:** pause briefly (past the system double-click time) or move the pointer more than a
+  few pixels before the next click; either breaks the run.
+- **What is NOT affected:** the dismissal guarantee itself. The first click still reaches no control,
+  no parameter moves from it, and nothing is written to state. Severity **Low**.
+- **What would close it:** a JUCE API to reset the multi-click run on an input source, or a
+  per-source (rather than process-global) double-click timeout. Both are upstream changes.
