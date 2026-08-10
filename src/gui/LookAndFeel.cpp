@@ -433,8 +433,8 @@ juce::PopupMenu::Options AnamorphLookAndFeel::getOptionsForComboBoxPopupMenu (ju
              .withStandardItemHeight (label.getHeight());
 }
 
-// The horizontal budget drawPopupMenuItem actually consumes, named once so the measuring and the
-// drawing cannot drift apart -- which is exactly what went wrong: the old allowance was a bare +30
+// The horizontal budget drawPopupMenuItem spends, plus a deliberate margin, named once so the
+// measuring and the drawing cannot drift apart -- which is exactly what went wrong: the old allowance was a bare +30
 // against a layout that spends 12 + 14 + 12 = 38 before the text has any room at all, so a longer
 // label ("Select All" in the Save Preset field's context menu) was measured narrower than it draws
 // and JUCE clipped it to "Select ...". Deriving the number instead of picking one also keeps this
@@ -444,7 +444,10 @@ namespace menuMetrics
 {
     constexpr float padX        = 12.0f; // drawPopupMenuItem's r.reduced (12, 0), both edges
     constexpr float tickGutter  = 14.0f; // the tick column, reserved whether or not it is ticked
-    constexpr float trailing    = 12.0f; // sub-menu arrow / breathing room at the right edge
+    // Deliberate breathing room, NOT an allowance for anything drawn: the sub-menu arrow spans
+    // [right-12, right-12+h*0.12] and so already sits inside padX. Without it the longest label
+    // would end exactly on the text area's edge.
+    constexpr float trailing    = 12.0f;
     // A floor against a degenerate menu (one glyph, or an empty item), NOT a layout preference:
     // it is deliberately just above the chrome total (50) so it can never widen a pop-up past the
     // control that opened it. The combo path has its own, larger floor anyway --
