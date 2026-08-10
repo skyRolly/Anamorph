@@ -1,4 +1,4 @@
-# Multiband add-split line stall + Settings drop-down dismissal (v0.9.3)
+# Multiband add-split line stall + unified pop-up dismissal, and two menu-rendering fixes (v0.9.3)
 
 > Two maintainer-reported GUI interaction bugs. Both turned out to be one-line-class fixes sitting on
 > top of non-obvious mechanisms — a repaint optimisation that could not see the moving thing, and a
@@ -149,3 +149,130 @@ disclosure 2 for these two entries — the exception is discharged, not merely d
 It signs off **these two fixes only**. The `RELEASE_POLICY` preconditions that still gate a tag are
 untouched by it: the Level-5 **audio** audition and the `RELEASE_COMPATIBILITY_CHECKLIST` remain
 open, as `HANDOVER.md` §Release Status records.
+
+
+---
+
+## 4. Unified pop-up dismissal — one shield instead of per-control predicates
+
+§2 fixed the Settings case with a predicate on the Settings backdrop: "was a ComboBox pop-up open
+when this click arrived". Verification then found the same defect on the **Save Preset** dialog, and
+it is worse there — it destroys work.
+
+**The Save Preset case.** `saveNameEditor` is a `juce::TextEditor`; `popupMenuEnabled` defaults true
+(`juce_TextEditor.h:817`) and nothing in `src/` turns it off, so a right-click opens a modal
+`PopupMenu` (`juce_TextEditor.cpp:1567-1593`). The gate on that branch is
+`if (wasFocused || ! selectAllTextWhenFocused)`; we set `setSelectAllWhenFocused (true)` and
+`showSavePreset` focuses the field, so `wasFocused` is true and the menu opens. Dismissing it with a
+click outside the panel re-delivered that click to `savePresetBackdrop`, whose `onDismiss` is
+`showSavePreset (false)` — **the dialog closed and the typed name was gone**.
+
+**Why the §2 predicate could not be extended to it.** `TextEditor::menuActive` is private with no
+accessor, and a `TextEditor` is not a `ComboBox`, so `allCombos` sees nothing. The ComboBox fix
+worked only because `ComboBox::isPopupActive()` happens to be public.
+
+**Why there is no universal JUCE signal.** All three candidates were read in the pinned tree and all
+three fail:
+
+| Candidate | Why not |
+|---|---|
+| `Component::flags.mouseDownWasBlocked` | private — *and* reset to `false` at `juce_Component.cpp:2525`, before delivery |
+| `Component::getNumCurrentlyModalComponents()` | counts only `isActive` items (`juce_ModalComponentManager.cpp:155-163`), and `ModalItem::cancel()` clears that synchronously (`:81-89`) — reads **0** inside our handler |
+| `PopupMenu` | only `dismissAllActiveMenus()` is public; `getActiveWindows()` is private |
+
+So the state has to be ours. What makes any such state work is one uniform property: the
+**dismissal** is synchronous, but everything that *clears* pop-up state runs from the
+**asynchronous** modal callback. So our state still says "open" during the pass-through click, and
+can never be a false positive — a genuinely-still-modal pop-up means `internalMouseDown` returned at
+`:2517-2522` and we were never called.
+
+**The mechanism: two feeders, one flag, one enforcement point.**
+
+- `AnamorphLookAndFeel::preparePopupMenuWindow` — JUCE calls this from the `MenuWindow` constructor
+  (`juce_PopupMenu.cpp:500`) on the **menu's own** look-and-feel. Both `ComboBox` (`:561`) and
+  `TextEditor` (`:1578`) set that to ours, so this one hook catches every menu we did not create.
+  All three look-and-feel instances (`lnf`, `compactCombo`, `simpleCombo`) are wired, because a menu
+  carries the look-and-feel of the box that opened it.
+- **The preset menu is tracked directly**, because it is the one menu this hook cannot see:
+  `findLookAndFeel` returns `menu.lookAndFeel.get()` (`:1422-1425`), which is null since INC-010
+  deliberately dropped its `setLookAndFeel`, and the `lf` used at `:500` is captured at `:368`
+  *before* parenting — so JUCE resolves the **default** look-and-feel there, not the one it would
+  inherit. Restoring `setLookAndFeel` would re-arm the `~LookAndFeel` assertion INC-010 removed, so
+  the counter is the cheaper answer.
+- **`PopupShield`** — a transparent full-editor child that overrides `mouseDown`/`Up`/`Drag`/
+  `DoubleClick` to do nothing. While it is up it *is* the component the pass-through click lands on.
+
+**Why a shield rather than more predicates.** The contract is "the dismissing click must not act on
+anything underneath", and *underneath* is any control the cursor happens to be over. Several act on
+the press itself: `ABControl::mouseDown` toggles A/B, `SpectrumImager::mouseDown` can **add a band**,
+a `Backdrop` closes its panel. A predicate per control is N places to get right and N places to
+forget; one shield is one place, and it covers controls added later for free. The §2 predicate was
+removed rather than kept alongside it — two mechanisms for one rule is how they drift apart.
+
+**The z-order is structural, not incidental**, which is what makes the shield safe to ship without a
+GUI test. `PopupMenu::MenuWindow` sets `setAlwaysOnTop (true)` in its constructor
+(`juce_PopupMenu.cpp:365`), and `Component::toFront` on a component **without** that flag walks its
+insert index back past every always-on-top sibling (`juce_Component.cpp:914-922`). The shield does
+not set the flag, so it *cannot* be raised in front of a menu — even if it were raised while one was
+already open. Nothing in `src/` sets `alwaysOnTop`, so a menu window is the only sibling that can
+outrank it. `showPresetMenu` also raises the shield before `showMenuAsync`, so the append order
+agrees with the flag order; either alone would be sufficient.
+
+**Focus is left alone**, which matters precisely for the case that motivated this: `toFront (false)`
+skips `grabKeyboardFocus` (`juce_Component.cpp:928-934`), and `setMouseClickGrabsKeyboardFocus
+(false)` covers the click, so raising the shield cannot pull focus out of the Save Preset field
+mid-edit.
+
+**Lowering it.** `componentBeingDeleted` on each tracked window lowers it the instant the window
+dies — prompt enough that a fast second click is never swallowed — and `refreshPopupShield()` also
+runs from the 24 Hz tick as a backstop. That backstop is not decoration: a shield stuck visible would
+make the entire editor unclickable, so it is worth a scan of an almost-always-empty array to make
+that state unreachable. The array holds `Component::SafePointer`s, so an entry drops out on its own
+even if a notification were ever missed.
+
+## 5. Menu width: measured from what the drawing actually spends
+
+`getIdealPopupMenuItemSize` allowed `textWidth + 30`. `drawPopupMenuItem` spends `12 + 14 + 12 = 38`
+on chrome *before* the text has any room — `r.reduced (12, 0)` on both edges plus a 14 px tick
+gutter — so every item was measured **8 px narrower than it draws**, and JUCE clipped the longest
+one. In the Save Preset field's context menu that is *"Select All"*, which appeared as
+*"Select ..."*.
+
+The fix is not a bigger number but a *derived* one: the padding, gutter and trailing room are named
+constants that the measuring code now sums, so the two halves cannot drift apart again. That is also
+what makes it portable — the failure was never font-specific, but a fixed width would have been.
+`getPopupMenuFont()` is virtual, so the compact and Simple variants measure in their own font; and
+JUCE passes `item.text + "   " + shortcut` for measurement (`juce_PopupMenu.cpp:333-336`), so the
+right-aligned shortcut column is covered by the same measurement.
+
+The 64 px floor is a floor, not a preference: it sits just above the 50 px chrome total, so it cannot
+widen a pop-up past the control that opened it. The combo path keeps its own, larger floor —
+`getOptionsForComboBoxPopupMenu` passes `withMinimumWidth (box.getWidth())`.
+
+## 6. Disabled menu items look disabled
+
+`drawPopupMenuItem` took `bool /*isActive*/` and ignored it, so a greyed-out entry rendered exactly
+like a live one — visible in the Save Preset context menu, where *Cut*/*Copy* are inactive with no
+selection and *Paste* is inactive with an empty clipboard. The flag is now honoured for the label,
+the tick, the shortcut and the sub-menu arrow, at **0.4** alpha — the disabled alpha this same file
+already uses for a disabled button (`drawButtonText`), so the menu matches the rest of the UI instead
+of inventing a shade. The highlight fill is also suppressed for an inactive row, so "cannot be
+chosen" and "looks choosable" can never contradict each other. Enabled rendering is byte-identical.
+
+## 7. Verification status for §4-§6
+
+Same constraint as §3: all three are editor-only, and the harness instantiates no editor and drives
+no pointer. They join the existing **ADR-0025** entry rather than getting one of their own.
+
+**Maintainer sign-off on record (2026-08-09):** the Settings click-through and the Save Preset
+context-menu data loss are confirmed real, and the one-click-only dismissal contract is approved.
+That sign-off is on the **problem reports and the required contract** — it is not a manual test of
+this implementation, and it does not touch any release gate.
+
+**Manual checks owed on the implementation**, none of which a headless suite can stand in for: a
+ComboBox drop-down (inside click selects, outside click only dismisses); the Settings panel (the
+dismissing click does not reach a control); the Save Preset field (right-click menu works, clicking
+outside closes only the menu, typed text survives); the preset menu (dismissal triggers nothing
+underneath); `SpectrumImager` (a dismissing click cannot add a band); `ABControl` (cannot toggle); a
+second click after dismissal behaving normally; and visually, *Select All* shown in full with
+disabled items clearly dimmer, at more than one UI scale.

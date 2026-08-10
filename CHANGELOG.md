@@ -24,11 +24,22 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   platform-independent, so the fix applies everywhere. Nothing else about the display changed — an
   idle, settled view still stops repainting exactly as before.
   Evidence: PR #101. [Verified]
-- **Closing a Settings drop-down no longer closes Settings with it.** With a drop-down open in
-  Settings, clicking outside it now closes **only** the drop-down, wherever you click — inside the
-  Settings panel (which already behaved this way) or outside it (which used to close Settings too).
-  Settings itself closes on the next click outside the panel, once no drop-down is open, exactly as
-  before.
+- **A click that closes a menu now only closes the menu.** Whenever a drop-down or right-click menu
+  is open, clicking anywhere outside it closes it and does nothing else — it cannot also close the
+  Settings panel, toggle A/B, add a Multiband split, move a control, or press a button. A second
+  click then works normally. Previously that one click did two things at once, and in the Save
+  Preset dialog it could **discard the name you had just typed**: right-clicking the name field
+  opens the system text menu, and dismissing it also closed the dialog. This now holds for the
+  Settings drop-downs, the Save Preset text menu and the preset menu alike.
+  Evidence: PR #101. [Verified]
+- **The right-click text menu no longer truncates its longest item**, which showed as
+  *"Select ..."* instead of *"Select All"*. Menu width is now measured from the text in the menu's
+  own font, so it stays correct with a different font, a different UI scale or a different platform
+  renderer rather than fitting one machine.
+  Evidence: PR #101. [Verified]
+- **Menu items that cannot be chosen now look it.** Entries such as *Cut* and *Copy* with nothing
+  selected, or *Paste* with an empty clipboard, are drawn dimmed instead of identically to the items
+  you can actually pick.
   Evidence: PR #101. [Verified]
 
 ## [0.9.2] — 2026-08-07

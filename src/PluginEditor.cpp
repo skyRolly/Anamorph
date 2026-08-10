@@ -244,6 +244,16 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
 {
     setLookAndFeel (&lnf);
     tooltips.setLookAndFeel (&lnf);
+
+    // Pop-up dismissal shield (see PopupShield). Added once, hidden, and raised only while a menu
+    // is on screen. All three look-and-feels report through the same hook -- compactCombo and
+    // simpleCombo derive from AnamorphLookAndFeel, and a menu carries the look-and-feel of the box
+    // that opened it, so a drop-down styled by either of them would otherwise go unseen.
+    addChildComponent (popupShield);
+    for (auto* laf : { (anamorph::gui::AnamorphLookAndFeel*) &lnf,
+                       (anamorph::gui::AnamorphLookAndFeel*) &compactCombo,
+                       (anamorph::gui::AnamorphLookAndFeel*) &simpleCombo })
+        laf->onPopupMenuWindowCreated = [this] (juce::Component& w) { notePopupMenuOpened (w); };
    #if JUCE_MAC
     // juce::TooltipWindow declares itself OPAQUE (its constructor calls
     // setOpaque(true)) while our LookAndFeel's drawTooltip deliberately leaves
@@ -540,35 +550,6 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
 
     settingsBackdrop.dropShadow = true; // soft feathered outer shadow (#14)
     settingsBackdrop.onDismiss = [this] { showSettings (false); };
-    // While a Settings drop-down is open, a click anywhere outside it closes ONLY the drop-down --
-    // inside the panel (which already worked, the click misses `panel`'s dismiss test) and outside
-    // it (which used to close Settings too). Settings closes on the NEXT click, once no menu is up.
-    //
-    // Why isPopupActive() is an exact test here and not a guess, in two halves:
-    //   * It is still TRUE. The flag is cleared by comboBoxPopupMenuFinishedCallback ->
-    //     ComboBox::hidePopup(), a MODAL CALLBACK, and ModalComponentManager dispatches those
-    //     asynchronously -- ModalItem::cancel() only sets isActive=false and triggerAsyncUpdate()s
-    //     (juce_ModalComponentManager.cpp:81-89). This lambda runs synchronously inside the very
-    //     mouse-down that dismissed the menu, i.e. strictly before that callback.
-    //   * It cannot be a false positive. If a menu were STILL modal we would never be called at
-    //     all: internalMouseDown returns before invoking mouseDown while the block is in force
-    //     (juce_Component.cpp:2517-2522). So a live flag at this point can only mean "this click
-    //     just closed it".
-    // Nor can it get stuck: menuActive is cleared by ~ComboBox and by enablementChanged(), and
-    // showPopup() early-returns BEFORE setting it when the box is disabled -- and these boxes are
-    // never disabled. That matters because the backdrop click is the only way to close Settings.
-    //
-    // `allCombos` rather than the two Settings boxes by name: it already exists, and it keeps this
-    // correct if a drop-down is ever added to the panel. A combo elsewhere in the editor cannot have
-    // a menu open while the backdrop is up -- the backdrop covers the editor and eats the click that
-    // would open one -- and swallowing a stray click would be the safe direction regardless.
-    settingsBackdrop.swallowsDismissClick = [this]
-    {
-        for (auto* box : allCombos)
-            if (box != nullptr && box->isPopupActive())
-                return true;
-        return false;
-    };
     addChildComponent (settingsBackdrop);
 
     settingsTitle.setText ("SETTINGS", juce::dontSendNotification);
@@ -693,6 +674,17 @@ AnamorphAudioProcessorEditor::~AnamorphAudioProcessorEditor()
     soloBox.setLookAndFeel (nullptr);
     for (auto* box : { &algorithmBox, &haasSideBox, &dimModeBox })
         box->setLookAndFeel (nullptr); // detach simpleCombo before it's destroyed (#17)
+    // Drop the pop-up hooks before anything else unwinds: a menu can still be on screen here (its
+    // cancellation is asynchronous), and its window must not call back into a half-destroyed editor.
+    for (auto* laf : { (anamorph::gui::AnamorphLookAndFeel*) &lnf,
+                       (anamorph::gui::AnamorphLookAndFeel*) &compactCombo,
+                       (anamorph::gui::AnamorphLookAndFeel*) &simpleCombo })
+        laf->onPopupMenuWindowCreated = nullptr;
+    for (auto& w : openMenus)
+        if (auto* c = w.getComponent())
+            c->removeComponentListener (this);
+    openMenus.clearQuick();
+
     tooltips.setLookAndFeel (nullptr);
     setLookAndFeel (nullptr);
 }
@@ -960,6 +952,47 @@ void AnamorphAudioProcessorEditor::mouseWheelMove (const juce::MouseEvent& e, co
     }
 }
 
+// A PopupMenu window has just been constructed through one of our look-and-feels. Track it and
+// raise the shield. The window reports here from its own constructor (juce_PopupMenu.cpp:500), i.e.
+// before any click can reach it, so the shield is always up first.
+void AnamorphAudioProcessorEditor::notePopupMenuOpened (juce::Component& menuWindow)
+{
+    openMenus.addIfNotAlreadyThere (juce::Component::SafePointer<juce::Component> (&menuWindow));
+    menuWindow.addComponentListener (this);   // componentBeingDeleted -> lower the shield promptly
+    refreshPopupShield();
+}
+
+// The single place the shield's visibility is decided. Called when a menu opens, when one is
+// destroyed, and once per editor tick as a backstop -- a shield stuck visible would make the whole
+// editor unclickable, so it is worth costing a pointer scan at 24 Hz to guarantee it cannot happen.
+void AnamorphAudioProcessorEditor::refreshPopupShield()
+{
+    for (int i = openMenus.size(); --i >= 0;)
+        if (openMenus.getReference (i).getComponent() == nullptr)
+            openMenus.remove (i);            // SafePointer nulls itself if a listener ever missed one
+
+    const bool wanted = ! openMenus.isEmpty() || presetMenusOpen > 0;
+    if (wanted == popupShield.isVisible())
+        return;
+
+    if (wanted)
+    {
+        popupShield.toFront (false);          // in front of the Settings/About backdrop too...
+        popupShield.setVisible (true);        // ...and BEFORE a parented menu is added, so that
+    }                                         //    menu (appended after) still sits in front.
+    else
+    {
+        popupShield.setVisible (false);
+    }
+}
+
+void AnamorphAudioProcessorEditor::componentBeingDeleted (juce::Component& c)
+{
+    openMenus.removeIf ([&c] (const juce::Component::SafePointer<juce::Component>& w)
+                        { return w.getComponent() == &c; });
+    refreshPopupShield();
+}
+
 void AnamorphAudioProcessorEditor::showSettings (bool show)
 {
     if (show)
@@ -979,6 +1012,12 @@ void AnamorphAudioProcessorEditor::showSettings (bool show)
 // ----------------------------------------------------------------------------
 void AnamorphAudioProcessorEditor::timerCallback()
 {
+    // Backstop for the pop-up shield. componentBeingDeleted already lowers it the instant a menu
+    // window dies, which is what keeps a following click responsive; this only guarantees that a
+    // missed notification can never leave the shield up, because a stuck shield would make the
+    // whole editor unclickable. Costs a scan of an almost-always-empty array.
+    refreshPopupShield();
+
     // Sync cached view-state with the (possibly externally changed) parameters.
     if (advancedToggle.getToggleState() != advanced)
     {
@@ -1529,6 +1568,13 @@ void AnamorphAudioProcessorEditor::showPresetMenu()
 
     // Widen the list so the longest factory name ("Synth Dimension") shows in
     // full -- the slot itself is narrow (#8).
+    // This menu does NOT reach AnamorphLookAndFeel::onPopupMenuWindowCreated -- its own
+    // look-and-feel is null (see above), so JUCE resolves the DEFAULT one for that call. Track it
+    // directly instead. Raising the shield BEFORE showMenuAsync also fixes the z-order: the menu is
+    // parented to this editor, and JUCE appends a new child in front of the existing ones, so a
+    // shield raised first stays behind the menu and in front of everything else.
+    ++presetMenusOpen;
+    refreshPopupShield();
     m.showMenuAsync (juce::PopupMenu::Options()
                          .withTargetComponent (presetName)
                          .withParentComponent (this)     // lifetime + look-and-feel; see above
@@ -1540,6 +1586,13 @@ void AnamorphAudioProcessorEditor::showPresetMenu()
         // is still running and can still emit a NON-zero result. This closes that window.
         [safeThis = juce::Component::SafePointer<AnamorphAudioProcessorEditor> (this)] (int r)
         {
+            // Lower the shield first, on EVERY outcome including a cancel (r == 0) -- this runs
+            // from the modal callback, after the dismissing click has already been swallowed.
+            if (safeThis != nullptr)
+            {
+                safeThis->presetMenusOpen = juce::jmax (0, safeThis->presetMenusOpen - 1);
+                safeThis->refreshPopupShield();
+            }
             if (r == 0 || safeThis == nullptr) return;
             if (r == 10001) { safeThis->showSavePreset (true); return; }
             if (r == 10002) { safeThis->showLoadPreset(); return; }
@@ -1718,6 +1771,7 @@ void AnamorphAudioProcessorEditor::resized()
     dimOverlay.setBounds (getLocalBounds().withTrimmedTop (46));
     aboutBackdrop.setBounds (getLocalBounds());
     settingsBackdrop.setBounds (getLocalBounds());
+    popupShield.setBounds (getLocalBounds());
 
     // About panel + clickable link
     aboutBackdrop.panel = getLocalBounds().withSizeKeepingCentre (440, 290);

@@ -191,26 +191,35 @@ doesn't exist:
      ADR-0025 §5 this entry is revisited when that harness lands, not left standing.
 
 - **Editor interaction defects have no headless test either.** A second
-  **`TESTING_POLICY` rule-1 exception under ADR-0025**, for the two v0.9.3 GUI fixes: the Multiband
-  add-split preview line stalling under a moving pointer, and a Settings drop-down's dismissing click
-  also closing Settings. Same four disclosures:
+  **`TESTING_POLICY` rule-1 exception under ADR-0025**, covering the v0.9.3 GUI fixes: the Multiband
+  add-split preview line stalling under a moving pointer; the unified pop-up dismissal shield (a
+  dismissing click must close the pop-up and touch nothing underneath — Settings drop-downs, the
+  Save Preset text menu, the preset menu); and the two menu-rendering fixes (width measured from the
+  item text, disabled items drawn dimmed). Same four disclosures:
 
-  1. *Why no reliable test exists.* Both need things the two console targets do not have — a real
-     vblank tick plus pointer motion over a settled spectrum for the first, and JUCE's modal
-     machinery delivering a real mouse-down for the second. The editor is linked but never
-     instantiated (`tests/state_tests.cpp:6-8`), and neither suite has a pointer or a display.
-  2. *What replaced it.* Both root causes were traced to specific lines — our own S2 repaint gate for
+  1. *Why no reliable test exists.* They need things the two console targets do not have — a real
+     vblank tick plus pointer motion over a settled spectrum for the first, JUCE's modal machinery
+     delivering a real mouse-down for the shield, and a rasteriser plus a font for the menu-width and
+     disabled-item rendering. The editor is linked but never instantiated
+     (`tests/state_tests.cpp:6-8`), and neither suite has a pointer or a display.
+  2. *What replaced it.* Every root cause was traced to specific lines — our own S2 repaint gate for
      the first, `juce_Component.cpp:2507-2544` and `juce_ModalComponentManager.cpp:81-89` in the
-     pinned tree for the second — with the exact conditions that make each reachable written down in
+     pinned tree for the shield, and the mismatch between `getIdealPopupMenuItemSize` and
+     `drawPopupMenuItem`'s own layout for the width. Where a GUI test would normally be the evidence,
+     the shield's riskiest property is instead **proved from the source**: it cannot be raised in
+     front of a menu, because `MenuWindow` sets `alwaysOnTop` (`juce_PopupMenu.cpp:365`) and
+     `Component::toFront` on a non-always-on-top component inserts behind every always-on-top sibling
+     (`juce_Component.cpp:914-922`). Conditions and reasoning in
      `worklogs/GUI_INTERACTION_FIXES_v0.9.3.md`, plus a manual check per platform — **performed and
      signed off by the maintainer on 2026-08-09**, so this disclosure is discharged rather than
      pending. The sign-off covers these two fixes only; the Level-5 *audio* audition and the
      compatibility checklist are separate and remain open (`HANDOVER.md` §Release Status).
   3. *Where the gap is tracked.* Here, alongside the INC-010 entry above.
   4. *Whether infrastructure could close it.* **Yes, and it is the same infrastructure** the INC-010
-     entry names: a harness that instantiates the editor and drives synthetic mouse events. Both of
-     these become assertable at that point — a hover move must dirty the frame, and a backdrop click
-     while a combo pop-up is active must not dismiss. Revisited when that harness lands.
+     entry names: a harness that instantiates the editor and drives synthetic mouse events. All of
+     these become assertable at that point — a hover move must dirty the frame, a click while a
+     pop-up is open must reach the shield and no control, and a measured menu must fit its longest
+     item. Revisited when that harness lands.
 
 - **The AU is never validated automatically.** `run-pluginval.sh` locates and validates
   `Anamorph.vst3` only, so the macOS `Anamorph.component` — the build Logic Pro and GarageBand

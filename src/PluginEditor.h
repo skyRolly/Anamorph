@@ -13,7 +13,8 @@
 //  AnamorphAudioProcessorEditor  (v0.3 UI pass)
 // ============================================================================
 class AnamorphAudioProcessorEditor : public juce::AudioProcessorEditor,
-                                     private juce::Timer
+                                     private juce::Timer,
+                                     private juce::ComponentListener // pop-up windows, see PopupShield
 {
 public:
     explicit AnamorphAudioProcessorEditor (AnamorphAudioProcessor&);
@@ -33,19 +34,54 @@ private:
     using ButtonAttachment   = juce::AudioProcessorValueTreeState::ButtonAttachment;
     using ComboBoxAttachment = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
 
+    // Consumes the click that dismissed a pop-up, so it cannot also act on whatever sits under it.
+    //
+    // JUCE re-delivers that click on purpose: Component::internalMouseDown sees the modal menu,
+    // calls internalModalInputAttempt() -- which dismisses it synchronously -- and then, because
+    // the modal loop has now exited, hands the SAME mouse-down to the component underneath
+    // (juce_Component.cpp:2507-2544 in the pinned tree; the comment there says so outright).
+    // Underneath is whatever the cursor happens to be over, and several of those act on the press
+    // itself: ABControl::mouseDown toggles A/B, SpectrumImager::mouseDown can ADD a band, a
+    // Backdrop closes its panel and discards what was typed into it.
+    //
+    // A shield is the whole enforcement layer: raised in front of everything while any pop-up is on
+    // screen, it is the component that click lands on, and it does nothing with it. One mechanism,
+    // one place, rather than a predicate bolted onto every control that could be hit -- and it
+    // covers controls added later for free.
+    //
+    // It never covers the pop-up itself, and that is structural rather than a matter of ordering.
+    // A ComboBox / TextEditor menu is its own desktop window, so the shield (an editor child) is not
+    // even in the same hierarchy. The preset menu IS an editor child -- but PopupMenu::MenuWindow
+    // sets setAlwaysOnTop (true) in its constructor (juce_PopupMenu.cpp:365), and Component::toFront
+    // on a NON-always-on-top component walks its insert index back past every always-on-top sibling
+    // (juce_Component.cpp:914-922). The shield does not set that flag, so it cannot be raised in
+    // front of a menu even if it is raised while one is already open. Nothing else in src/ sets
+    // alwaysOnTop, so a menu window is the only sibling that can outrank it. (showPresetMenu also
+    // raises the shield BEFORE showMenuAsync, so the append order agrees with the flag order.)
+    //
+    // Keyboard focus is deliberately left alone: toFront (false) skips grabKeyboardFocus
+    // (juce_Component.cpp:928-934) and setMouseClickGrabsKeyboardFocus (false) covers the click, so
+    // raising the shield cannot pull focus out of the Save Preset field mid-edit.
+    struct PopupShield : public juce::Component
+    {
+        PopupShield()
+        {
+            setInterceptsMouseClicks (true, false); // swallow for us, never for children (there are none)
+            setMouseClickGrabsKeyboardFocus (false);
+            setWantsKeyboardFocus (false);
+        }
+        // Deliberately empty: consuming the event IS the behaviour. mouseUp/drag/doubleClick are
+        // overridden too so the rest of that same gesture cannot leak through either.
+        void mouseDown        (const juce::MouseEvent&) override {}
+        void mouseUp          (const juce::MouseEvent&) override {}
+        void mouseDrag        (const juce::MouseEvent&) override {}
+        void mouseDoubleClick (const juce::MouseEvent&) override {}
+    };
+
     // Translucent modal backdrop hosting a centred panel (About / Settings).
     struct Backdrop : public juce::Component
     {
         std::function<void()> onDismiss;
-        // Consulted BEFORE onDismiss. Returns true when THIS click is the one that just dismissed a
-        // modal pop-up owned by the panel (a Settings drop-down), in which case it must not also
-        // close the panel: JUCE hands us that click anyway. Component::internalMouseDown sees the
-        // modal menu, calls internalModalInputAttempt() -- which dismisses it -- and then, because
-        // the modal loop has exited, deliberately delivers the SAME mouse-down to us
-        // (juce_Component.cpp:2507-2544 in the pinned tree; the comment there says so outright).
-        // Without this hook one click on the backdrop closed the drop-down AND Settings. Empty for
-        // backdrops that host no pop-up (safe to skip). See the wiring for why the test is exact.
-        std::function<bool()> swallowsDismissClick;
         juce::Rectangle<int>  panel;
         bool   aboutText = false;
         float  reveal = 0.0f;   // 0 = solid, 1 = see-through (Persist drag, #26)
@@ -56,7 +92,6 @@ private:
         void paintBrightEdges (juce::Graphics&, juce::Rectangle<float>, float radius); // 0.5.5 About edges (#3)
         void mouseDown (const juce::MouseEvent& e) override
         {
-            if (swallowsDismissClick && swallowsDismissClick()) return;
             if (aboutText || ! panel.contains (e.getPosition()))
                 if (onDismiss) onDismiss();
         }
@@ -112,6 +147,20 @@ private:
     void applyScopePersist();
 
     AnamorphAudioProcessor& processor;
+    // --- Pop-up dismissal: one shield, one flag, three feeders -------------------------------
+    // `openMenus` holds every PopupMenu window currently on screen that reported itself through
+    // AnamorphLookAndFeel::onPopupMenuWindowCreated (ComboBox drop-downs, TextEditor context
+    // menus), as SafePointers so a destroyed window drops out on its own. `presetMenusOpen` counts
+    // the menus this editor shows itself, which do NOT reach that hook -- their look-and-feel is
+    // null at construction, so JUCE resolves the default one there. Either being non-empty raises
+    // the shield.
+    PopupShield popupShield;
+    juce::Array<juce::Component::SafePointer<juce::Component>> openMenus;
+    int  presetMenusOpen = 0;
+    void notePopupMenuOpened (juce::Component& menuWindow);
+    void refreshPopupShield();   // prunes dead windows and shows/hides the shield
+    void componentBeingDeleted (juce::Component&) override; // a tracked pop-up window went away
+
     anamorph::gui::AnamorphLookAndFeel lnf;
     anamorph::gui::CompactComboLookAndFeel compactCombo; // smaller list for Input combos (#12)
     anamorph::gui::SimpleComboLookAndFeel  simpleCombo;  // bigger text for Simple-mode Widen combos (#17)

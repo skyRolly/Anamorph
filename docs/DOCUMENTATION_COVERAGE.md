@@ -9,6 +9,31 @@ that documentation (Verified / Partially Verified / Unverified / Not Supported).
 Last updated: for the **0.9.3 change set** (2026-08-09) — two editor-only GUI interaction fixes on
 top of 0.9.2. Below that, the 0.9.2 entry (2026-08-07) is retained in full.
 
+**Pop-up dismissal became one mechanism instead of one predicate (0.9.3).** Verification of the
+Settings fix found the same defect on the Save Preset dialog, where it *destroys typed input*: a
+right-click opens `TextEditor`'s context menu, and the click that dismisses it was re-delivered to
+the backdrop, which closed the dialog. The Settings predicate could not be extended — `TextEditor`'s
+menu state is private, and JUCE exposes no universal "this click just dismissed a pop-up" signal
+(all three candidates were read in the pinned tree and all three fail; the table is in the worklog).
+So the editor now owns the state: `AnamorphLookAndFeel::preparePopupMenuWindow` catches every menu
+built through our look-and-feel (ComboBox and TextEditor both set it), the preset menu is counted
+directly because its own look-and-feel is null at that moment, and a single transparent
+**`PopupShield`** takes the click. The Settings-only predicate was **removed**, not kept alongside —
+the contract is "the dismissing click touches nothing underneath", and *underneath* includes controls
+that act on the press (`ABControl` toggles A/B, `SpectrumImager` can add a band), so one shield is
+both smaller and more complete than a predicate per control. The riskiest property is proved from the
+source rather than left to a GUI test: the shield cannot be raised in front of a menu, because
+`MenuWindow` sets `alwaysOnTop` and `Component::toFront` inserts a non-always-on-top component behind
+every always-on-top sibling. **Two menu-rendering fixes rode along**, both in the shared
+look-and-feel rather than patched per menu: `getIdealPopupMenuItemSize` allowed 30 px of chrome
+against a layout that spends 38, so the longest item was measured narrower than it draws and JUCE
+clipped *"Select All"* to *"Select ..."* — the allowance is now summed from named constants the
+drawing code uses, so the two cannot drift; and `drawPopupMenuItem` was **ignoring its `isActive`
+argument**, so disabled entries rendered identically to live ones — now dimmed at the 0.4 alpha this
+file already uses for a disabled button. All of it is editor-only and joins the existing ADR-0025
+entry in `TESTING.md` §Gaps. Maintainer sign-off (2026-08-09) covers the **problem reports and the
+required contract**; it is not a manual test of the implementation and touches no release gate.
+
 **Two interaction bugs, both with non-obvious mechanisms (0.9.3).** *(1)* The Multiband **add-split
 preview line** stalled under a moving pointer. The S2 repaint gate skips a frame when nothing it
 watches moved — spectrum data, eased alphas, drawn split/width positions — on the stated assumption
