@@ -30,9 +30,11 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   that one click did two things at once, and in the Save Preset dialog it could **discard the name
   you had just typed**: right-clicking the name field opens the system text menu, and dismissing it
   also closed the dialog. This now holds for the Settings drop-downs, the Save Preset text menu and
-  the preset menu alike. One residual, tracked as **KI-018**: the dismissing click reaches no
-  control, but the system still counts it, so a *very* quick click straight afterwards on the same
-  spot can land as a double-click — pause briefly, or move the pointer a little, before the next one.
+  the preset menu alike, within the plug-in window the menu belongs to. Two residuals: **KI-018**, the
+  dismissing click reaches no control but the system still counts it, so a *very* quick click straight
+  afterwards on the same spot can land as a double-click (pause briefly, or move the pointer a little,
+  before the next one); and **KI-020**, with two Anamorph windows open at once a click aimed at the
+  *other* one can still act, because menus are managed system-wide rather than per window.
   Evidence: PR #101. [Verified]
 - **An open menu no longer outlives the plug-in window.** A drop-down or right-click menu could be
   left behind as a stray always-on-top strip over the rest of the screen in three situations: the

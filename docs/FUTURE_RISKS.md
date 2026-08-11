@@ -6,8 +6,9 @@ postmortems may reference these IDs to close the loop. Severity: Low / Medium / 
 Version-synced to **v0.9.3** (six GUI interaction fixes: the Multiband add-split preview line, the
 unified pop-up dismissal shield, pop-up lifetime across a hidden editor / background application,
 menu width, disabled menu items and the Tooltips on/off transition
-— **no new risk**: editor-only, with no serialized state, parameter or DSP behaviour changed. The one
-new limitation, KI-018, is a known *issue* and lives in `KNOWN_ISSUES.md`, not here.
+— **no new risk**: editor-only, with no serialized state, parameter or DSP behaviour changed. The three
+new limitations — KI-018, KI-019 and KI-020 — are known *issues* and live in `KNOWN_ISSUES.md`, not
+here.
 RISK-003's mitigation now names **v0.9.3** as the first tag). Prior sync: **v0.9.2**
 (preset drop-down lifetime/crash fix, factory-preset identity, the `UI Scale` label and the installer
 component titles — no new risk; the one new limitation is an OS text-input behaviour filed as

@@ -555,6 +555,54 @@ user clicking our editor, so it cannot latch on something that is not user inter
 Deliberately **not** `PopupMenu::dismissAllActiveMenus()` — process-global, and it would close another
 instance's menu. That is the objection that already ruled it out in INC-010.
 
+**Cancelling is not enough: the completion callback pulls the window back.** Maintainer-confirmed
+after the first version of this fix shipped, and the sharpest irony in the whole change set — the
+dismissal meant to stop a leftover menu raising a background plug-in window was raising it *itself*,
+with no click at all. `PopupMenuCompletionCallback::modalStateFinished` restores the pre-menu focus
+when any modal state ends:
+
+```
+if (PopupMenuSettings::menuWasHiddenBecauseOfAppChange)
+    return;
+
+if (auto* focusComponent = Component::getCurrentlyFocusedComponent())
+    if (focusedIsNotMinimised)
+    {
+        if (auto* topLevel = focusComponent->getTopLevelComponent())
+            topLevel->toFront (true);                       // raises the OS window
+        if (focusComponent->isShowing() && ! focusComponent->hasKeyboardFocus (true))
+            focusComponent->grabKeyboardFocus();
+    }
+```
+
+(`juce_PopupMenu.cpp:2247-2268`.) A `ComboBox`, `TextEditor` or the preset button takes keyboard focus
+on the click that opens its menu, so `focusComponent` is one of ours and `topLevel` is the component
+holding the host-provided peer — `toFront (true)` on it is `makeKeyAndOrderFront:` / `SetWindowPos` on
+the **DAW's** window. Cancelling after the user has Cmd-Tabbed away therefore hauled the DAW back in
+front of the application they had just switched to, and took their next keystrokes with it. JUCE
+suppresses this for its *own* app-change dismissal by setting
+`PopupMenuSettings::menuWasHiddenBecauseOfAppChange` first (§9's "why it misses (3)" quotes that
+code); the flag is file-static (`:61`) and unreachable from here.
+
+**Fix: release the focus first.** The guard reads the focus **live** —
+`Component::getCurrentlyFocusedComponent()` at completion time, not a value captured when the menu
+opened — so `giveAwayKeyboardFocus()` before cancelling makes the entire branch a no-op. Three
+properties make it the right lever rather than a workaround:
+
+- **Correctly scoped.** `Component::giveAwayKeyboardFocusInternal` is guarded by
+  `hasKeyboardFocus (true)`, so calling it on the editor releases focus only if this editor or one of
+  its children holds it. A second instance's focus is untouched — no process-global reach.
+- **Only on this path.** It sits in `dismissOrphanedPopupMenus`, so a menu dismissed or *selected*
+  while the editor is active restores focus exactly as JUCE intends. Normal completion is unchanged.
+- **Nothing in `src/` acts on focus loss.** `saveNameEditor` has `onReturnKey` and `onEscapeKey` and
+  no focus handler, so a half-typed preset name survives — which INC-011 requires. The slider value
+  boxes are `Label`s that commit on focus loss, which is what clicking away already does.
+
+Semantically it is also the honest thing: the user left. Restoring focus to a control they walked away
+from is the bug; not restoring it is the contract. The destructor path needs no equivalent —
+`~Component` already clears the focus for a focused child (`juce_Component.cpp`), so by the time the
+asynchronous completion runs there is nothing left to restore to.
+
 **Why the 24 Hz tick rather than an event.** There is no event to listen for. The editor going off
 screen can come from an ancestor's `setVisible`, a peer change, or a minimise; `isShowing()` folds all
 three, but none of them notifies *us* — `ComponentMovementWatcher` gets there by registering on every
@@ -580,6 +628,21 @@ switching away from the host.
   of the *same* host application leaves it true. JUCE's own test adds "no JUCE peer is focused", which
   in a plug-in only ever sees our own windows, so it would not decide that case either; the
   maintainer-confirmed repro is an application switch, and that is what is fixed.
+- **Linux/X11 never observes an app switch** — filed as **KI-019**.
+  `Process::isForegroundProcess()` there is `LinuxComponentPeer::isActiveApplication`
+  (`juce_Windowing_linux.cpp:686`), a static initialised to `false` (`:677`) and assigned **only**
+  `true`, from `grabFocus()` on a successful X11 focus grab (`:326-327`). Nothing ever clears it, so
+  it is a write-once latch, not a live foreground state: the probe and the later reading are always
+  equal and `switchedAway` can never become true. Inert in the safe direction — a missing dismissal,
+  never a spurious one — and the hidden-editor and destroyed-editor halves work there normally,
+  because both are decided by `isShowing()`, which is accurate on every platform.
+- **The dismissal contract is per-instance** — filed as **KI-020**, and unchanged by this PR.
+  Modality is process-global, so a menu open in instance A blocks B's components too; a click on B
+  dismisses A's menu and is then re-delivered to B's control, whose shield is not raised because B has
+  no way to learn that A opened a menu. 0.9.3 closed the same-instance half of that and left the
+  cross-instance half exactly where it was. Every route to closing it is out of bounds or worse than
+  the defect (a shared static registry is the ownership INC-010 rejected; raising every instance's
+  shield would make an unrelated editor unclickable) — see the KI.
 - In **out-of-process / bridged hosting** the probe reads `false` and this editor performs no
   app-switch dismissal at all, by design — see above. JUCE's own dismissal still covers every case
   where the pointer is off the menu, so the residual there is the pre-0.9.3 hole, unchanged. Closing
@@ -592,6 +655,9 @@ switching away from the host.
 - In a host that hides rather than destroys the editor: open a Settings drop-down, hide the window,
   re-show it. No stray menu, and the first click presses the control it lands on.
 - Close the plug-in window outright with a drop-down open. No menu is left on screen.
+- Cmd-Tab / Alt-Tab away with any menu open and confirm the **host window does not come back to the
+  front** and does not steal typing focus from the application switched to; then return and confirm
+  the half-typed Save Preset name is still in the field.
 - Open the Save Preset right-click menu, rest the pointer **on a menu item**, Cmd-Tab / Alt-Tab away.
   In an in-process host the menu is gone and nothing can pull the plug-in window back in front; in an
   out-of-process host (Bitwig's default) the documented residual applies instead.

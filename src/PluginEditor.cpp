@@ -1107,8 +1107,29 @@ void AnamorphAudioProcessorEditor::dismissOrphanedPopupMenus()
         return;
 
     const bool switchedAway = popupOpenedWhileForeground && ! juce::Process::isForegroundProcess();
-    if (! isShowing() || switchedAway)
-        dismissTrackedPopupMenus();
+    if (isShowing() && ! switchedAway)
+        return;
+
+    // Let go of the keyboard focus BEFORE cancelling, or closing the menu drags the window back.
+    // PopupMenuCompletionCallback::modalStateFinished restores the pre-menu focus when the modal
+    // state ends -- `topLevel->toFront (true)` on whatever holds the focus, then grabKeyboardFocus
+    // (juce_PopupMenu.cpp:2247-2268). In a plug-in that top level is the host's own window, so on
+    // this path it would haul the DAW in front of the application the user just switched to and
+    // take their next keystrokes with it: the exact symptom this dismissal exists to prevent,
+    // happening without a click. JUCE suppresses that restore for its own app-change dismissal by
+    // setting PopupMenuSettings::menuWasHiddenBecauseOfAppChange, which is file-static and
+    // unreachable from here (:61) -- but the restore reads the focus LIVE, via
+    // Component::getCurrentlyFocusedComponent() at completion time rather than a value captured
+    // when the menu opened, so releasing ours first makes the whole branch a no-op.
+    //
+    // Scoped, not global: Component::giveAwayKeyboardFocus is guarded by hasKeyboardFocus (true), so
+    // it can only release focus THIS editor or one of its children actually holds -- a second
+    // instance's focus is untouched. And it is on this path only: a menu dismissed while the editor
+    // is active still restores focus exactly as JUCE intends. No handler in src/ acts on focus loss
+    // (`saveNameEditor` has onReturnKey/onEscapeKey and nothing else), so a half-typed preset name
+    // survives this, which INC-011 requires.
+    giveAwayKeyboardFocus();
+    dismissTrackedPopupMenus();
 }
 
 void AnamorphAudioProcessorEditor::componentBeingDeleted (juce::Component& c)
