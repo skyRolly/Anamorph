@@ -6,7 +6,7 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.3 change set** (2026-08-09) — six editor-only GUI interaction fixes on
+Last updated: for the **0.9.3 change set** (2026-08-11, matching the CHANGELOG heading) — six editor-only GUI interaction fixes on
 top of 0.9.2 (add-split preview line, unified pop-up dismissal, pop-up lifetime across a hidden,
 destroyed or backgrounded window, menu width, disabled menu items, Tooltips off), landed across five
 rounds; the entries below run newest-first. Below them, the 0.9.2
@@ -54,6 +54,21 @@ packaging), so all three were fixed; `release.yml` and `msvc.yml` use default `s
 were never exposed. Documentation-visible outcome: `build.yml`'s header now states the invariant —
 every step consuming build output names the step it depends on.
 
+**CI gating completed on Linux, and release dates reconciled (2026-08-11).** The previous pass gated
+every consumer of build output on `steps.build.outcome`, which was right for Windows and macOS and
+one step short on Linux: there the strip/objcopy step sits between the build and pluginval *because*
+the release gate is meant to validate the stripped bytes, so the producer the randomise gate must name
+is `strip`, not `build`. Its deterministic sibling already had that gate for free from default
+`success()` semantics; the randomise step, carrying an explicit `if:`, had to say so. `strip` subsumes
+`build` (it has no `if:` of its own, so a failed build leaves it `skipped`). `build.yml`'s header
+invariant is sharpened accordingly: every step names the step that **produces what it consumes** —
+which is `build` on Windows and macOS, and `strip` on Linux. Separately, the 0.9.3 **release** date is
+now 2026-08-11 everywhere it appears as a release or change-set date (CHANGELOG, HANDOVER, README,
+this file's "Last updated", the worklog header). Dates that record an **event** — INC-011's fix-commit
+date, the 2026-08-09 manual-verification and sign-off records — keep the date they happened on, per
+`POSTMORTEMS.md`'s "dates are the fix commit dates" rule; conflating the two would rewrite history to
+tidy a heading.
+
 **Maintainer sign-off on the remaining 0.9.3 review items (2026-08-11).** Reviewed and accepted with
 no code change, on the basis that each is a recorded observation rather than a current correctness or
 user-visible problem: the tooltip gate depending on `getTipFor` being the only path that can raise a
@@ -61,7 +76,11 @@ tip; combo menus outliving the editor's look-and-feel members (pre-existing, and
 destructor cancel); the shield z-order invariant being unenforced; `getChildren()` reordering during
 `exitModalState`; the repeated idempotent cancel attempts while the editor stays hidden; preset-menu
 double-tracking being benign if its premise ever changed; and `SpectrumImager::mouseExit` reaching the
-repaint gate through the eased alphas rather than `frameDirty`. Verified-correct observations
+repaint gate through the eased alphas rather than `frameDirty`; the menu chrome budget being +10 px
+against 0.9.2 for every menu whose width is text-derived, and the new 64 px floor for a degenerate
+one-glyph item (nothing in `src/` produces one) — both are the intended consequence of deriving the
+budget from what the drawing spends, and the one place they meet the narrowed Widen box is a visual
+check, not a defect. Verified-correct observations
 (pop-up feeder coverage, listener teardown ordering, the foreground probe's self-healing sampling, the
 inline-edit cancellation reaching exactly the two commit-on-focus-loss paths, the hover snapshot's
 completeness) are recorded as confirmations, not actions. The **one** review item that did change code

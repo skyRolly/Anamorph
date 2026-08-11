@@ -5,7 +5,10 @@
 > JUCE modal rule that deliberately re-delivers the click it just consumed. This worklog keeps the
 > traces; `CHANGELOG.md` keeps the user-facing statements.
 
-- **Date:** 2026-08-09 · **Version:** 0.9.3 (PR #101, commit `7afd07e`) · **Branch:** `claude/beautiful-sagan-JAUFI`.
+- **Dates:** work ran **2026-08-09 → 2026-08-11**; the release is dated **2026-08-11**, matching the
+  `[0.9.3]` CHANGELOG heading. Dated sign-offs and manual-verification records below keep the date
+  they actually happened on -- they are events, not the release. · **Version:** 0.9.3
+  (PR #101, commit `7afd07e`) · **Branch:** `claude/beautiful-sagan-JAUFI`.
   PR #100 (v0.9.2) is merged and is this branch's merge-base — it is not the source of these fixes.
 - **Reference tree:** JUCE 9.0.0 at the pinned commit `f8f8864…` (`CMakeLists.txt:36-38`), fetched
   and read locally; all JUCE line citations below are against that commit.
@@ -750,7 +753,15 @@ the **Simple-mode WIDEN box with *Velvet Noise* selected**. That box loses 31 px
 while `SimpleComboLookAndFeel` renders at 15.5 pt. `drawLabel` uses `drawFittedText` with the label's
 `minimumHorizontalScale`, so the failure mode is horizontal squeezing rather than clipping — but the
 longest algorithm name is the one to look at, and the arithmetic above only covers edges and the seam,
-not glyph metrics.
+not glyph metrics. **A visual check, not a design change**: the layout stays as specified unless that
+check finds a real problem.
+
+While that box is open, check its **list against the box** too. Two independent changes met there: the
+box narrowed to 125 px, and the menu chrome budget went from a flat 30 to a derived 40. The list is
+floored at `withMinimumWidth (box.getWidth())`, so it is 125 px unless the text-derived width exceeds
+that — *Velvet Noise* at 15 pt plus 40 comes out near 120, i.e. the floor should still bind and the
+list should be exactly as wide as the box. Near enough to the crossing point to be worth looking at
+rather than asserting.
 
 **A note on the constant's placement.** `kAlgoRowGap` and `algoBoxWidth` live at **file scope**, not
 inside `resized()`. As a block-scope `constexpr` read from a capture-less lambda they compiled on GCC

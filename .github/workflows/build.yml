@@ -35,7 +35,11 @@ permissions:
 # tree with no plug-in in it, and the job's LAST error was a cascade
 # ("expected exactly one Anamorph.vst3 bundle, found 0") rather than the compile
 # error that caused it. Every step that consumes build output therefore names the
-# step it depends on -- never a bare `!cancelled()`.
+# step that PRODUCES what it consumes -- never a bare `!cancelled()`, and not
+# always `build`: on Linux the pluginval gates validate the STRIPPED bytes, so
+# there the producer is `strip` (which subsumes `build`, having no `if:` of its
+# own). Windows and macOS have no such intermediate step, so `build` is the
+# producer there.
 #
 # Symbol handling (RH-PR-2, ADR-0021): every platform generates full debug
 # info, retains it as a separate *-debug artifact (split .debug / PDB / dSYM)
@@ -108,11 +112,17 @@ jobs:
 
       - name: pluginval (strictness 10, randomise x3 -- release gate)
         # NEVER skipped for a deterministic FAILURE: both modes must report independently, so a
-        # deterministic failure cannot hide the randomise result. It IS skipped when the build did not
-        # produce a plug-in, because `!cancelled()` alone is true after ANY upstream failure -- a
-        # compile error then produced a "not found -- build first" line that read like the cause and
-        # buried the real one. The job still fails if either gate fails.
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        # deterministic failure cannot hide the randomise result. It IS skipped when there is nothing
+        # valid to validate, because `!cancelled()` alone is true after ANY upstream failure. The job
+        # still fails if either gate fails.
+        #
+        # Names `strip`, not `build`, and that is the point of the invariant rather than a detail:
+        # on Linux the release gate validates the STRIPPED bytes (that is why the strip step runs
+        # before pluginval at all), so the step that PRODUCES what this consumes is the strip, not the
+        # compile. `steps.strip.outcome == 'success'` subsumes the build anyway -- strip carries no
+        # `if:`, so a failed build leaves it 'skipped'. Its deterministic sibling gets the same gate
+        # for free from default success() semantics; this one has to say so.
+        if: ${{ !cancelled() && steps.strip.outcome == 'success' }}
         run: ./scripts/run-pluginval.sh 10 randomise
 
       # Customer-artifact safety (RH-PR-2 review): staging and upload are
