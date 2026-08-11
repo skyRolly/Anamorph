@@ -57,28 +57,54 @@ gated steps (`package_windows` / `package_macos_pkg`), each with the version par
   the prompt: **as root** (`sudo ./install.sh`, the pre-0.9.3 documented form) it installs
   system-wide unchanged — root has no meaningful per-user home — and with **no terminal on
   stdin** it takes the default. Mode 2 fail-closes rather than degrading: no `sudo` on
-  `PATH` prints the "use a user installation instead" error and exits 1; a failed elevated
-  operation prints the permission-denied message and exits 1, leaving nothing half-installed.
-  Both modes **stage beside the destination and then swap**: the installed plug-in is displaced
-  only once its replacement is complete, so a copy that fails part-way — no space, unreadable
-  payload, an interrupted run — leaves the previously working install untouched instead of
-  destroying it. The swap moves the old bundle **aside** (`.Anamorph.vst3.prev`) rather than
-  deleting it and then renames the staged copy (`.Anamorph.vst3.new`) into place, so a complete
-  copy exists at every instant — deleting first would open a window in which the destination is
-  empty and the staged copy is the only one. A `reconcile` helper puts the parked bundle back if
-  the run stops mid-swap; it also runs at the *start* of a run, recovering a bundle parked by an
-  earlier run that a `SIGKILL` ended before any handler could, and it drops the parked copy only
-  once the destination is populated again. `INT`, `TERM` and `HUP` are trapped explicitly, because
-  dash — `/bin/sh` on Debian and Ubuntu — does not run `EXIT` traps when the script is signalled.
-  Every swap step is a same-filesystem rename, which also replaces a **running** Standalone that
-  `cp` refuses with `Text file busy`.
-  `uninstall.sh` mirrors the same two modes, so a per-user install is removed without root.
+  `PATH` prints the "use a user installation instead" error and exits 1, and a failed elevated
+  operation prints the permission-denied message and exits 1.
+
+  **Replacement transaction — what is actually guaranteed.** Each installed artifact is
+  replaced atomically; the **two artifacts are not one transaction**, and the guarantee is
+  stated per artifact rather than for the install as a whole:
+
+  | Point of failure | Result |
+  |---|---|
+  | staging (copy fails, payload unreadable, disk full) | nothing has been displaced — the previous install is untouched, complete |
+  | commit of the VST3 (rename fails, or the run is interrupted) | the parked previous bundle is restored; the previous install is intact |
+  | after the VST3 commit, at the Standalone commit | **new VST3 + previous Standalone** — both valid, both loadable, but a mixed pair until the run is repeated |
+  | untrappable kill (`SIGKILL`, power loss) mid-swap | the previous bundle is left parked outside the scan path; the **next run restores it** before doing anything else |
+
+  So "the previous install is never destroyed" holds unconditionally, while "all or nothing"
+  does **not** — the last row is a real, if benign, mixed state. Re-running the installer
+  resolves it.
+
+  **How.** The replacement is built in a stage directory, the old bundle is moved **aside**
+  (`Anamorph.vst3.prev`) rather than deleted, and only then is the finished copy renamed into
+  place — so a complete copy exists at every instant. Deleting first would open a window in
+  which the destination is empty and the staged copy is the only one. A `reconcile` helper
+  restores the parked bundle if the run stops mid-swap, runs again at the *start* of the next
+  run (which is what recovers a `SIGKILL`), and drops the parked copy only once the destination
+  is populated again. `INT`, `TERM` and `HUP` are trapped explicitly because dash — `/bin/sh` on
+  Debian and Ubuntu — does not run `EXIT` traps when the script is signalled.
+
+  **Where it stages.** `.anamorph-install-stage` **next to** the plug-in directory (`$HOME` or
+  `/usr/lib`), so an incomplete bundle never appears inside the path DAWs scan. That location is
+  only usable on the same filesystem as the destination — every commit must stay a rename — and
+  `~/.vst3` or `/usr/lib/vst3` can be a symlink onto another mount, so the script **probes** it
+  with a **hard link**, the one operation that cannot cross a filesystem (`mv` is no test: it
+  falls back to copy-and-unlink). If the probe fails, staging falls back to the same directory
+  name *inside* the plug-in directory, same filesystem by construction. A false negative costs
+  the scan-path property, never atomicity. The Standalone stages beside its own destination
+  (`.Anamorph.new`) because its directory may be on a different filesystem again, and a bin
+  directory is not a scan path. Every commit is a same-filesystem rename, which also replaces a
+  **running** Standalone that `cp` refuses with `Text file busy`.
+
+  `uninstall.sh` mirrors the same two modes, so a per-user install is removed without root, and
+  removes the installer's own scratch (both stage-directory locations and the staged Standalone)
+  by exact name, so an interrupted install leaves nothing that survives a deliberate uninstall.
+
   **Not chased** (the Linux counterpart of the macOS note below): a per-user install does not
-  detect or remove an existing system-wide one. Both paths are default scan paths, so a user who
-  installed system-wide before 0.9.3 and then takes the new default has two copies and the DAW's
-  scan order decides which loads — documented as a troubleshooting entry in `INSTALL.txt` and
-  `docs/user/INSTALLATION.md`, not worked around in the script (removing a system-wide install
-  from the per-user path would need the elevation that mode exists to avoid).
+  *remove* an existing system-wide one — that would need the elevation the mode exists to avoid
+  — but it does **detect** one (a plain `test -e`) and warn, naming what is still installed
+  system-wide and the `sudo ./uninstall.sh` that clears it. Registered as **KI-021**; also a
+  troubleshooting entry in `INSTALL.txt` and `docs/user/INSTALLATION.md`.
 - **Windows** — `Anamorph-<version>-Windows-Installer.exe`: compiled by the preinstalled
   Inno Setup 6 (`ISCC.exe`) from `packaging/windows/Anamorph.iss` (stable `AppId`;
   requires elevation; real uninstall entry). Wizard: a **component page** (*Install VST3*
@@ -187,11 +213,16 @@ quarantine attribute. Evidence [Verified]: packaging/macos/INSTALL.txt:47-65 (ma
 **Guarantee (0.9.3 onward).** Every selected component copies its payload to the
 destination above on *every* run, with no reference to what a previous install left
 behind. Installed, moved away, deleted — re-running the installer always ends with the
-item present at its destination.
+item present at its destination. **Per component, not all-or-nothing:** components install in
+sequence, so if one fails its `postinstall` check the installation is reported as failed with the
+components already written left in place. Each of those is a complete, valid install of that
+format; there is no rollback, and re-running resolves the mix.
 
 **How** — `build_component()` in `build-pkg.sh` patches the component plist that
 `pkgbuild --analyze` generates and turns two defaults off for every bundle it lists
-(nested ones included):
+(the top-level entries `--analyze` reports; a bundle nested inside another appears under its
+parent's `ChildBundles` and is not patched — nor does it need to be, since only top-level bundles
+reach `PackageInfo`'s membership lists, and the assertions below would fail the build if one did):
 
 | Key | Value | Why |
 |---|---|---|
@@ -214,22 +245,28 @@ expected item is missing. It runs only for components the user actually selected
 **Not chased.** A copy the user moved elsewhere is left where they put it — the installer
 restores the standard destination rather than tracking the moved bundle. A stale copy in
 `~/Library/Audio/Plug-Ins/...` from an old relocated install is likewise the user's to
-delete; hosts may otherwise see two Anamorphs.
+delete; hosts may otherwise see two Anamorphs. Registered as **KI-022** — deliberate, and the
+direct trade for INC-012.
 
 **Build-time self-checks** (fail the macOS job, so this cannot silently regress). In `PackageInfo`
 each state is a membership list — `<relocate>` for `BundleIsRelocatable`, **`<bundle-version>`** for
 `BundleIsVersionChecked` — written self-closing when empty, so a listed bundle shows as the
 `<element><bundle` pair. The checks, in order:
 
-1. **The assertion patterns are proved live.** A throwaway component is built from the same payload
-   with the defaults left *on*; being relocatable and version-checked by definition, it must match
-   both patterns. This exists because a name pkgbuild never writes makes an assertion that always
-   passes — the first cut of the version check looked for `<version-check>` and was dead. If Apple
-   renames an element, the build stops here and prints the probe's `PackageInfo` rather than
-   shipping a check that cannot fire.
+1. **The assertion patterns are proved to track their keys.** The app payload is packaged twice,
+   differing *only* in the component-plist keys `build_component()` sets: once with pkgbuild's
+   defaults, once with the patched plist. `<relocate>` and `<bundle-version>` must be populated in
+   the first and empty in the second, and `<upgrade-bundle>` populated in both. This is a controlled
+   A/B, not a name check: proving an element is *producible* would not show that its membership list
+   follows `BundleIsRelocatable` / `BundleIsVersionChecked` rather than something else. A name
+   pkgbuild never writes makes an assertion that always passes — the first cut of the version check
+   looked for `<version-check>` and was dead — and a list that ignored its key would be just as
+   silent. Either way the build stops here and prints the probe's `PackageInfo`.
 2. All **three** component `PackageInfo` files must be found — counted first, because a loop over an
    empty match would pass every assertion without running one.
-3. Each must list no relocatable and no version-checked bundle, and declare its `postinstall`.
+3. Each must list no relocatable and no version-checked bundle, must carry `<upgrade-bundle>` (the
+   overwrite action, previously the one patched key with no assertion of its own), and must declare
+   its `postinstall`.
 4. `pkgutil --expand-full` must show each component's payload carrying the whole bundle down to
    `Contents/MacOS/Anamorph`.
 Evidence [Verified]: `packaging/macos/build-pkg.sh`; INC-012 in `docs/POSTMORTEMS.md`.

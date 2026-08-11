@@ -13,6 +13,63 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
 
+**Consolidated installer round (0.9.3) — the transaction finished, and the limitations registered.**
+
+*The transaction, completed rather than patched again.* Two prior rounds each fixed the failure the
+review named and left the adjacent one standing; this round took the whole lifecycle. What changed
+beyond the previous fix: staging moved **out of the DAW scan path** (`.anamorph-install-stage` next
+to the plug-in directory), chosen by a **hard-link probe** — the one operation that cannot cross a
+filesystem, where the obvious `mv` probe is no test at all because it silently falls back to
+copy-and-unlink, and `~/.vst3` may be a symlink onto another mount. A false negative falls back
+inside the plug-in directory and costs only the scan-path property, never atomicity; this was
+verified against a real second filesystem, which is also how the missing `mkdir` for that fallback
+was found. Both modes now share one `choose_stage_dir`/`reconcile`/`arm_traps` implementation
+instead of two near-copies that had already drifted once. The elevation prefix is declared once at
+the top and stays empty on the per-user path.
+
+*Sequencing bug found by testing, not reading.* `reconcile` sweeps an empty stage directory as
+scratch, so creating that directory **before** the opening reconcile meant an upgrade (destination
+present) had its stage directory deleted underneath it. Creating it after reconcile is the fix. The
+same class as the previous round's finding: the recovery helper must not destroy what the
+transaction still needs.
+
+*Uninstall made consistent with what install owns.* `uninstall.sh` removes both possible stage
+directory locations and the staged Standalone, by exact name, so an interrupted install leaves
+nothing that survives a deliberate uninstall. It matches no patterns and touches no user data.
+
+*Coexistence warning.* A per-user install now detects an existing system-wide one (`test -e`, no
+elevation) and names what is still installed there plus the `sudo ./uninstall.sh` that clears it.
+Detection only — the maintainer's decision, recorded here; removing it would need exactly the
+elevation the per-user mode exists to avoid.
+
+*macOS assertion strengthened from name to semantics.* Proving `<bundle-version>` is *producible*
+did not prove its membership tracks `BundleIsVersionChecked`. The build now runs a controlled A/B on
+one payload — same bundle, packaged with pkgbuild's defaults and with the patched plist — and
+requires each list to appear with the key on and vanish with it off. `<upgrade-bundle>` gained an
+assertion too, which closes the one patched key that had none. The stale "nested bundles are covered
+too" claim was corrected in both the script and `PACKAGING.md`: nested bundles appear under the
+parent's `ChildBundles`, are not patched, and do not need to be.
+
+*Guarantees reconciled with what the code actually provides.* "Nothing half-installed" was too
+strong: the VST3 and the Standalone are two artifacts, each replaced atomically, and a failure
+between the two commits leaves a new VST3 with the previous Standalone — both valid, a mixed pair.
+`PACKAGING.md` now states the guarantee per artifact with a point-of-failure table, the CHANGELOG
+entry says what the user actually gets, and the macOS "every selected component is written" line
+notes that components install in sequence with no rollback.
+
+*Registered, not silently solved (DOCUMENTATION_LIFECYCLE trigger: new unresolved limitation).*
+**KI-021** (Linux per-user install does not displace a system-wide one) and **KI-022** (macOS
+non-relocatable packaging leaves a user-moved copy behind) now exist in `KNOWN_ISSUES.md`, the list
+testers and the release checklist actually consult, with the procedure docs cross-referencing them.
+Both are deliberate trades and neither had a register entry despite being documented in packaging
+procedure — the gap the review named.
+
+*Maintainer sign-off, 2026-08-11 (recorded, not re-requested).* The judgement calls in this round —
+that the coexistence warning is wanted, that both limitations are documented rather than
+behaviourally redesigned, and that the macOS semantic assertion is required — were approved by the
+maintainer in advance. This is a **decision** sign-off; it is not manual testing and is not recorded
+as any.
+
 **Final review round (0.9.3) — two defects in the packaging round, plus the visual sign-off.**
 
 *The fix reproduced the defect's own shape.* The INC-012 prevention assertion for version checking
@@ -44,9 +101,10 @@ the install under the same injected failure.
 *Follow-up: the stage-and-swap still had an interruption window.* The swap deleted the destination
 before renaming the staged copy in, so between those two commands the staged copy was the only
 one — and the cleanup handler removed exactly that on the way out, turning a Ctrl-C into total
-loss. The stage-and-swap shape was right; the **order** was not. The old bundle is now moved
-**aside** (`.Anamorph.vst3.prev`) instead of deleted, so a complete copy exists at every instant,
-and cleanup restores rather than only deletes. Three things this round established that are worth
+loss. The stage-and-swap shape was right; the **order** was not. This round made the old bundle move
+**aside** instead of being deleted, so a complete copy exists at every instant, and made cleanup
+restore rather than only delete. (The staging paths it used were superseded by the consolidated
+round above, which moved them out of the DAW scan path; the ordering property is unchanged.) Three things this round established that are worth
 carrying forward: `EXIT` traps are **not** enough for interruption — dash, `/bin/sh` on
 Debian/Ubuntu, does not run them when the script is signalled, so `INT`/`TERM`/`HUP` are trapped
 explicitly (measured, not assumed); the restore must be **ordered before** the scratch removal

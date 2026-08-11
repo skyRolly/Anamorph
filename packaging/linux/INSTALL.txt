@@ -117,10 +117,11 @@ Troubleshooting / 常见问题
   找不到插件:确认复制的是整个 Anamorph.vst3 文件夹,再重新扫描。
 - Anamorph listed twice, or an update seems not to apply: you have both a
   per-user and a system-wide install. Installing for the current user does not
-  remove an older system-wide copy, and both paths are scanned. Remove the one
-  you do not want, then rescan / 如果 DAW 里出现两个 Anamorph,或更新后仍是旧版本:
+  remove an older system-wide copy, and both paths are scanned - install.sh
+  warns when it finds one. Remove the one you do not want, then rescan /
+  如果 DAW 里出现两个 Anamorph,或更新后仍是旧版本:
   说明用户级和系统级各装了一份,按用户安装不会删除旧的系统级副本,两个目录都会被
-  扫描。删掉不需要的那份再重新扫描:
+  扫描(install.sh 检测到时会提示)。删掉不需要的那份再重新扫描:
       sudo ./uninstall.sh      (removes the system-wide copy)
       ./uninstall.sh           (removes the per-user copy)
 - The Standalone needs a working ALSA/JACK/PipeWire audio setup; inside a

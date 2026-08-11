@@ -33,8 +33,14 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   `/usr/lib/vst3` and `/usr/local/bin`, and only then are you asked for a password — for the copy
   itself, not for the whole script. Running `sudo ./install.sh` still installs system-wide without
   asking, so existing instructions keep working. If a system-wide install cannot proceed (no
-  `sudo`, or a password you cannot supply) it says so and stops rather than half-installing.
+  `sudo`, or a password you cannot supply) it says so and stops without having changed anything.
   `./uninstall.sh` offers the same two choices, so a per-user install is also removed without root.
+  **Re-installing can no longer cost you a working plug-in**: the replacement is built first and the
+  installed one is only displaced once that copy is complete, so a failure — no space, an unreadable
+  download, or closing the terminal part-way — leaves what you already had, and a run stopped at the
+  very last moment restores it on the next attempt. If an older **system-wide** install is still
+  present when you install for your user, the installer now says so and prints the command that
+  removes it, because DAWs scan both places and an update can otherwise look as if it did not apply.
   Linux only — the Windows and macOS installers are unchanged.
   Evidence: PR #102. [Verified]
 

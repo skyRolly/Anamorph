@@ -63,8 +63,12 @@ build_component () {
   mkdir -p "$root" "$scripts"
   cp -R "$DIST/$bundle" "$root/"
 
-  # Patch what pkgbuild itself analysed (rather than hand-writing the plist),
-  # so RootRelativeBundlePath always matches and nested bundles are covered too.
+  # Patch what pkgbuild itself analysed (rather than hand-writing the plist), so
+  # RootRelativeBundlePath always matches by construction. The loop walks the
+  # top-level array entries; a bundle nested inside another is reported under the
+  # parent's ChildBundles rather than as its own entry, and is not patched here —
+  # nor does it need to be, since only top-level bundles appear in PackageInfo's
+  # membership lists, and the assertions below would fail the build if one ever did.
   pkgbuild --analyze --root "$root" "$plist"
   local i=0
   while /usr/libexec/PlistBuddy -c "Print :$i:RootRelativeBundlePath" "$plist" >/dev/null 2>&1; do
@@ -151,32 +155,55 @@ grep -q 'customize="allow"' "$WORK/expanded/Distribution" \
   || { echo "error: $OUT does not pre-select all three components (default must be a full install)" >&2; exit 1; }
 
 # Install-state independence (INC-012): no component may be relocatable or
-# version-checked, and each must carry its postinstall check. In PackageInfo each
-# of those states is a membership list — `<relocate>` for BundleIsRelocatable,
-# `<bundle-version>` for BundleIsVersionChecked — emitted self-closing when empty,
-# so it is the `<element><bundle` pair that means a bundle is listed.
+# version-checked, each must keep BundleOverwriteAction=upgrade, and each must
+# carry its postinstall check. In PackageInfo each of those states is a
+# membership list — `<relocate>` for BundleIsRelocatable, `<bundle-version>` for
+# BundleIsVersionChecked, `<upgrade-bundle>` for the overwrite action — emitted
+# self-closing when empty, so it is the `<element><bundle` pair that means a
+# bundle is listed.
 #
-# These assertions match on element NAMES, which makes a wrong name an assertion
-# that always passes: precisely the silent-success shape INC-012 is about. (The
-# first cut of this check looked for `<version-check>`, an element pkgbuild never
-# writes, and was therefore dead.) So the names are PROVED against pkgbuild on
-# every build before being relied on: a throwaway component built from the same
-# payload with the defaults left ON is relocatable and version-checked by
-# definition, so it must match both patterns. If it does not, the pattern is
-# wrong and the build stops here rather than shipping a check that cannot fire.
-pkgbuild --root "$WORK/root-app" --identifier com.rollytech.anamorph.probe \
-         --version "$VERSION" --install-location "/Applications" "$WORK/probe.pkg" >/dev/null
-pkgutil --expand "$WORK/probe.pkg" "$WORK/probe-expanded"
-probe=$(tr -d ' \n\t' < "$WORK/probe-expanded/PackageInfo")
-for pattern in '<relocate><bundle' '<bundle-version><bundle'; do
-  case "$probe" in
+# Those assertions match on element names, and a name that pkgbuild never writes
+# is an assertion that always passes — precisely the silent-success shape
+# INC-012 is about. (The first cut of this check looked for `<version-check>`,
+# which does not exist, and was therefore dead.) Proving the name is producible
+# is still not enough: it does not show the list TRACKS the component-plist key
+# it stands for. So the mapping is established by a controlled A/B on the same
+# payload — the app bundle is packaged twice, differing only in the keys
+# build_component() sets. Each list must appear with pkgbuild's defaults and
+# disappear when its key is switched off. If that stops holding, the build stops
+# here rather than shipping assertions that cannot fire.
+probe_info() {                  # $1 = tag; remaining args go to pkgbuild
+  _tag=$1; shift
+  pkgbuild --root "$WORK/root-app" --identifier com.rollytech.anamorph.probe \
+           --version "$VERSION" --install-location "/Applications" \
+           "$@" "$WORK/probe-$_tag.pkg" >/dev/null
+  pkgutil --expand "$WORK/probe-$_tag.pkg" "$WORK/probe-$_tag-x"
+  tr -d ' \n\t' < "$WORK/probe-$_tag-x/PackageInfo"
+}
+probe_fail() {                  # $1 = tag, $2 = message
+  echo "error: $2" >&2
+  echo "---- PackageInfo of probe '$1' ----" >&2
+  cat "$WORK/probe-$1-x/PackageInfo" >&2
+  exit 1
+}
+PROBE_ON=$(probe_info defaults)
+PROBE_OFF=$(probe_info patched --component-plist "$WORK/component-app.plist")
+for pattern in '<relocate><bundle' '<bundle-version><bundle' '<upgrade-bundle><bundle'; do
+  case "$PROBE_ON" in
     *"$pattern"*) ;;
-    *) echo "error: pkgbuild's own defaults produce no '$pattern' — the INC-012 assertion keyed on it cannot fire" >&2
-       echo "---- probe PackageInfo (pkgbuild defaults: relocatable + version-checked) ----" >&2
-       cat "$WORK/probe-expanded/PackageInfo" >&2
-       exit 1 ;;
+    *) probe_fail defaults "pkgbuild's defaults produce no '$pattern' — the assertion keyed on it cannot fire" ;;
   esac
 done
+for pattern in '<relocate><bundle' '<bundle-version><bundle'; do
+  case "$PROBE_OFF" in
+    *"$pattern"*) probe_fail patched "'$pattern' survives with its component-plist key switched off — that list does not track the key it is asserted for" ;;
+    *) ;;
+  esac
+done
+case "$PROBE_OFF" in
+  *'<upgrade-bundle><bundle'*) ;;
+  *) probe_fail patched "BundleOverwriteAction=upgrade did not reach PackageInfo as <upgrade-bundle>" ;;
+esac
 
 # Count first — a loop over an empty `find` would pass every assertion below
 # without executing one of them.
@@ -192,6 +219,10 @@ while IFS= read -r info; do
   case "$flat" in
     *'<bundle-version><bundle'*)
       echo "error: $info marks a bundle version-checked — a re-install could skip the destination" >&2; exit 1 ;;
+  esac
+  case "$flat" in
+    *'<upgrade-bundle><bundle'*) ;;
+    *) echo "error: $info does not carry BundleOverwriteAction=upgrade — a re-install could merge into the old bundle" >&2; exit 1 ;;
   esac
   case "$flat" in
     *'<scripts><postinstall'*) ;;

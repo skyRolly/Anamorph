@@ -10,6 +10,14 @@
 # re-executed through sudo. Running it AS root (the documented `sudo ./install.sh`)
 # selects mode 2 without asking: root has no meaningful per-user home to install
 # into, so that invocation keeps behaving exactly as it did before 0.9.3.
+#
+# REPLACING AN EXISTING INSTALL is a transaction (see `reconcile` below): the
+# replacement is built somewhere else, the old bundle is moved ASIDE rather than
+# deleted, and only then is the finished copy renamed into place — so a complete
+# copy of the plug-in exists at every instant and any failure or interruption
+# leaves a working install behind. The VST3 bundle and the Standalone are two
+# separate artifacts, each replaced atomically; they are not one transaction (see
+# PACKAGING.md).
 set -eu
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -18,6 +26,10 @@ APP_SRC="$HERE/Anamorph"
 
 SYS_VST3_DIR="/usr/lib/vst3"
 SYS_BIN_DIR="/usr/local/bin"
+
+# Elevation prefix. Stays EMPTY for the per-user path and when already root; only
+# system-wide mode below sets it, and only around individual operations.
+SUDO=''
 
 [ -d "$VST3_SRC" ] || { echo "error: Anamorph.vst3 not found next to install.sh" >&2; exit 1; }
 [ -f "$APP_SRC" ]  || { echo "error: Anamorph (Standalone) not found next to install.sh" >&2; exit 1; }
@@ -54,6 +66,73 @@ else
     echo "Not running on a terminal - installing for the current user (the default)."
 fi
 
+# ------------------------------------------------- shared transaction helpers
+# Both modes run the identical transaction; only the elevation prefix, the
+# failure reporting and the closing summary differ.
+
+# Picks where the replacement is built. Preferred: a hidden directory NEXT TO the
+# plug-in directory, so an incomplete bundle never appears inside the path DAWs
+# scan. That is only usable when it is on the same filesystem as the destination,
+# because every commit below must stay a rename — and ~/.vst3 or /usr/lib/vst3
+# may be a symlink onto another mount. So the candidate is not assumed but PROBED
+# with a HARD LINK, which is the one operation that cannot cross a filesystem —
+# `mv` is no test at all here, since it silently falls back to copy-and-unlink.
+# If the probe fails for any reason (different mount, or a filesystem without
+# hard links), staging falls back to a hidden directory INSIDE the plug-in
+# directory, which is the same filesystem by construction. A false negative is
+# therefore harmless: it costs the scan-path property, never the atomicity.
+choose_stage_dir() {            # $1 = plug-in directory; prints the stage directory
+    _out="${1%/*}/.anamorph-install-stage"
+    _in="$1/.anamorph-install-stage"
+    # A run killed outright (SIGKILL, power loss) can leave the previous bundle
+    # parked. Keep using whichever directory holds it, so it stays recoverable.
+    if [ -d "$_out/Anamorph.vst3.prev" ]; then printf '%s\n' "$_out"; return 0; fi
+    if [ -d "$_in/Anamorph.vst3.prev" ];  then printf '%s\n' "$_in";  return 0; fi
+    # shellcheck disable=SC2086  # $SUDO is deliberately empty outside system mode
+    if $SUDO mkdir -p "$_out" 2>/dev/null \
+       && $SUDO touch "$_out/.probe" 2>/dev/null \
+       && $SUDO ln "$_out/.probe" "$1/.anamorph-probe" 2>/dev/null
+    then
+        # shellcheck disable=SC2086
+        $SUDO rm -f "$_out/.probe" "$1/.anamorph-probe" 2>/dev/null || true
+        printf '%s\n' "$_out"
+    else
+        # shellcheck disable=SC2086
+        $SUDO rm -rf "$_out" 2>/dev/null || true
+        printf '%s\n' "$_in"
+    fi
+}
+
+# Restores the transaction and clears its scratch. Runs BEFORE the work starts —
+# which recovers a bundle parked by a run that was killed before any handler
+# could run — and again from the traps below. EXIT alone does not cover
+# interruption: dash, /bin/sh on Debian and Ubuntu, does not run EXIT traps when
+# the script is terminated by a signal, so INT, TERM and HUP are trapped too.
+reconcile() {
+    if [ ! -e "$VST3_DEST" ] && [ -d "$PREV_VST3" ]; then
+        # shellcheck disable=SC2086
+        $SUDO mv "$PREV_VST3" "$VST3_DEST" 2>/dev/null || true
+    fi
+    # shellcheck disable=SC2086
+    $SUDO rm -rf "$STAGE_VST3" "$STAGE_APP" 2>/dev/null || true
+    # The parked copy is dropped ONLY once the destination is populated again: if
+    # the restore above could not complete it is the last copy, and deleting it
+    # here would be the very loss this guards against.
+    if [ -e "$VST3_DEST" ]; then
+        # shellcheck disable=SC2086
+        $SUDO rm -rf "$PREV_VST3" 2>/dev/null || true
+        # shellcheck disable=SC2086
+        $SUDO rmdir "$STAGE_DIR" 2>/dev/null || true   # only when empty
+    fi
+}
+
+arm_traps() {
+    trap 'reconcile' EXIT
+    trap 'reconcile; exit 130' INT
+    trap 'reconcile; exit 143' TERM
+    trap 'reconcile; exit 129' HUP
+}
+
 # ------------------------------------------------------- 1) current-user mode
 if [ "$mode" = user ]; then
     [ -n "${HOME:-}" ] || {
@@ -63,50 +142,22 @@ if [ "$mode" = user ]; then
     }
     VST3_DIR="$HOME/.vst3"
     BIN_DIR="$HOME/.local/bin"
-
     VST3_DEST="$VST3_DIR/Anamorph.vst3"
-    STAGE_VST3="$VST3_DIR/.Anamorph.vst3.new"
-    STAGE_APP="$BIN_DIR/.Anamorph.new"
-    PREV_VST3="$VST3_DIR/.Anamorph.vst3.prev"
-
-    # Stage beside the destination, then swap. Copying straight over the
-    # installed plug-in would destroy a working install the moment the copy
-    # failed (no space, unreadable payload, an interrupted run); staging keeps
-    # the old one until the new one is complete. Staging next to the
-    # destination, not in /tmp, keeps every swap step a same-filesystem rename,
-    # which cannot fail for space and replaces a RUNNING Standalone that `cp`
-    # would refuse with "Text file busy".
-    #
-    # The swap moves the old bundle ASIDE rather than deleting it, so a COMPLETE
-    # copy exists at every instant: the old one in place, then the old one parked
-    # next to it while the finished replacement is renamed in, then the new one.
-    # Deleting first would open a window in which the destination is empty and
-    # the staged copy is the only one -- and the cleanup below would then remove
-    # that too, leaving nothing installed.
-    #
-    # `reconcile` puts the parked copy back if anything stops the run mid-swap.
-    # It also runs BEFORE the work starts, which clears scratch (and recovers a
-    # parked bundle) left by an earlier run killed with a signal no trap can
-    # catch. EXIT alone is not enough to cover interruption: dash -- /bin/sh on
-    # Debian and Ubuntu -- does not run EXIT traps when the script is terminated
-    # by a signal, so INT, TERM and HUP are trapped explicitly.
-    reconcile() {
-        if [ ! -e "$VST3_DEST" ] && [ -d "$PREV_VST3" ]; then
-            mv "$PREV_VST3" "$VST3_DEST" 2>/dev/null || true
-        fi
-        rm -rf "$STAGE_VST3" "$STAGE_APP" 2>/dev/null || true
-        # The parked copy is dropped ONLY once the destination is populated
-        # again: if the restore above could not complete, it is the only copy
-        # left and deleting it here would be the very loss this guards against.
-        [ ! -e "$VST3_DEST" ] || rm -rf "$PREV_VST3" 2>/dev/null || true
-    }
 
     mkdir -p "$VST3_DIR" "$BIN_DIR"
+    STAGE_DIR="$(choose_stage_dir "$VST3_DIR")"
+    STAGE_VST3="$STAGE_DIR/Anamorph.vst3"
+    PREV_VST3="$STAGE_DIR/Anamorph.vst3.prev"
+    # The Standalone is staged beside ITS destination: $BIN_DIR can be on a
+    # different filesystem from the plug-in directory, and its commit must be a
+    # rename too. A bin directory is not a plug-in scan path, so nothing here
+    # needs to keep an incomplete copy out of it beyond the leading dot.
+    STAGE_APP="$BIN_DIR/.Anamorph.new"
+
     reconcile
-    trap 'reconcile' EXIT
-    trap 'reconcile; exit 130' INT
-    trap 'reconcile; exit 143' TERM
-    trap 'reconcile; exit 129' HUP
+    arm_traps
+    # After reconcile, which sweeps an empty stage directory away as scratch.
+    mkdir -p "$STAGE_DIR"
 
     cp -R "$VST3_SRC" "$STAGE_VST3"
     cp "$APP_SRC" "$STAGE_APP"
@@ -116,21 +167,29 @@ if [ "$mode" = user ]; then
     mv "$STAGE_VST3" "$VST3_DEST"
     mv "$STAGE_APP" "$BIN_DIR/Anamorph"
     rm -rf "$PREV_VST3"
+    rmdir "$STAGE_DIR" 2>/dev/null || true
     trap - EXIT INT TERM HUP
 
     echo "Installed (current user only - no root needed):"
-    echo "  VST3       -> $VST3_DIR/Anamorph.vst3"
+    echo "  VST3       -> $VST3_DEST"
     echo "  Standalone -> $BIN_DIR/Anamorph"
     case ":${PATH:-}:" in
         *":$BIN_DIR:"*) ;;
         *) echo "Note: $BIN_DIR is not on your PATH - start the Standalone with the full path above." ;;
     esac
+    if [ -e "$SYS_VST3_DIR/Anamorph.vst3" ] || [ -e "$SYS_BIN_DIR/Anamorph" ]; then
+        echo "Note: an older SYSTEM-WIDE install is still present. DAWs scan both locations,"
+        echo "      so Anamorph can appear twice and the DAW decides which one loads - this"
+        echo "      update may look as if it did not apply. Still installed system-wide:"
+        if [ -e "$SYS_VST3_DIR/Anamorph.vst3" ]; then echo "        $SYS_VST3_DIR/Anamorph.vst3"; fi
+        if [ -e "$SYS_BIN_DIR/Anamorph" ];      then echo "        $SYS_BIN_DIR/Anamorph"; fi
+        echo "      Remove it with:  sudo ./uninstall.sh"
+    fi
     echo "Rescan plug-ins in your DAW to pick it up. Uninstall later with:  ./uninstall.sh"
     exit 0
 fi
 
 # --------------------------------------------------------- 2) system-wide mode
-SUDO=''
 if [ "$(id -u)" -ne 0 ]; then
     command -v sudo >/dev/null 2>&1 || {
         echo "error: a system-wide install needs root, but 'sudo' is not available." >&2
@@ -153,46 +212,36 @@ priv() {
     }
 }
 
-SYS_VST3_DEST="$SYS_VST3_DIR/Anamorph.vst3"
-STAGE_VST3="$SYS_VST3_DIR/.Anamorph.vst3.new"
-STAGE_APP="$SYS_BIN_DIR/.Anamorph.new"
-PREV_VST3="$SYS_VST3_DIR/.Anamorph.vst3.prev"
+VST3_DIR="$SYS_VST3_DIR"
+BIN_DIR="$SYS_BIN_DIR"
+VST3_DEST="$VST3_DIR/Anamorph.vst3"
 
-# Stage beside the destination, then swap — same reasoning, and the same
-# move-aside-rather-than-delete ordering, as the per-user path above.
-sys_reconcile() {
-    if [ ! -e "$SYS_VST3_DEST" ] && [ -d "$PREV_VST3" ]; then
-        # shellcheck disable=SC2086  # $SUDO is deliberately empty when already root
-        $SUDO mv "$PREV_VST3" "$SYS_VST3_DEST" 2>/dev/null || true
-    fi
-    # shellcheck disable=SC2086
-    $SUDO rm -rf "$STAGE_VST3" "$STAGE_APP" 2>/dev/null || true
-    # Parked copy dropped only once the destination is populated again — see the
-    # per-user reconcile above.
-    # shellcheck disable=SC2086
-    [ ! -e "$SYS_VST3_DEST" ] || $SUDO rm -rf "$PREV_VST3" 2>/dev/null || true
-}
+priv mkdir -p "$VST3_DIR" "$BIN_DIR"
+STAGE_DIR="$(choose_stage_dir "$VST3_DIR")"
+STAGE_VST3="$STAGE_DIR/Anamorph.vst3"
+PREV_VST3="$STAGE_DIR/Anamorph.vst3.prev"
+STAGE_APP="$BIN_DIR/.Anamorph.new"
 
-priv mkdir -p "$SYS_VST3_DIR" "$SYS_BIN_DIR"
-sys_reconcile
-trap 'sys_reconcile' EXIT
-trap 'sys_reconcile; exit 130' INT
-trap 'sys_reconcile; exit 143' TERM
-trap 'sys_reconcile; exit 129' HUP
+reconcile
+arm_traps
+# After reconcile, which sweeps an empty stage directory away as scratch.
+priv mkdir -p "$STAGE_DIR"
 
 priv cp -R "$VST3_SRC" "$STAGE_VST3"
 priv cp "$APP_SRC" "$STAGE_APP"
 # shellcheck disable=SC2086
 $SUDO chmod 755 "$STAGE_APP" "$STAGE_VST3/Contents/x86_64-linux/Anamorph.so" 2>/dev/null || true
 
-[ ! -e "$SYS_VST3_DEST" ] || priv mv "$SYS_VST3_DEST" "$PREV_VST3"
-priv mv "$STAGE_VST3" "$SYS_VST3_DEST"
-priv mv "$STAGE_APP" "$SYS_BIN_DIR/Anamorph"
+[ ! -e "$VST3_DEST" ] || priv mv "$VST3_DEST" "$PREV_VST3"
+priv mv "$STAGE_VST3" "$VST3_DEST"
+priv mv "$STAGE_APP" "$BIN_DIR/Anamorph"
 # shellcheck disable=SC2086
 $SUDO rm -rf "$PREV_VST3" 2>/dev/null || true
+# shellcheck disable=SC2086
+$SUDO rmdir "$STAGE_DIR" 2>/dev/null || true
 trap - EXIT INT TERM HUP
 
 echo "Installed (system-wide, all users):"
-echo "  VST3       -> $SYS_VST3_DIR/Anamorph.vst3"
-echo "  Standalone -> $SYS_BIN_DIR/Anamorph"
+echo "  VST3       -> $VST3_DEST"
+echo "  Standalone -> $BIN_DIR/Anamorph"
 echo "Rescan plug-ins in your DAW to pick it up. Uninstall later with:  sudo ./uninstall.sh"

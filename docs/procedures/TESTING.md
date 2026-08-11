@@ -283,9 +283,15 @@ doesn't exist:
     `PATH`; a `sudo` the user cannot authenticate). *Verified 2026-08-11 on Linux against a stubbed
     payload* — default/`1`/unrecognised answers all install per-user with no elevation, `2` installs
     system-wide via `sudo`, missing `sudo` and denied elevation each exit 1 having installed
-    nothing, root skips the prompt, and install→uninstall round-trips in both modes. What that run
-    does **not** cover, and a real machine must: that a DAW actually finds `~/.vst3/Anamorph.vst3`
-    after a per-user install.
+    nothing, root skips the prompt, and install→uninstall round-trips in both modes. The
+    **replacement transaction** was verified the same way and to the same date, by injecting each
+    failure rather than reading the code: failed staging, failed commit, `INT`/`TERM`/`HUP` delivered
+    inside the swap window, `SIGKILL` in the window followed by recovery on the next run (including
+    a next run that itself fails), staging location on a normal layout and on a `~/.vst3` symlinked
+    to a second filesystem, uninstall after an interrupted install, and the coexistence warning —
+    each against a control run of the previous script that ends with nothing installed. What that
+    run does **not** cover, and a real machine must: that a DAW actually finds
+    `~/.vst3/Anamorph.vst3` after a per-user install.
   - **Windows installer:** unchanged in 0.9.3 beyond the two 0.9.2 casing corrections.
   **Could infrastructure close it:** yes, and cheaply for macOS — `installer -pkg … -target /`
   on the runner, then assert the three destinations, re-run after `mv`-ing one away. That is the

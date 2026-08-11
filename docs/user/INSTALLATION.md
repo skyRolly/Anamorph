@@ -118,7 +118,8 @@ sudo cp Anamorph /usr/local/bin/
 - **Anamorph appears twice, or an update doesn't seem to take** — you have both installs. If
   you previously ran `sudo ./install.sh` and now take the per-user default, the older
   system-wide copy stays where it is: both paths are scanned, so the DAW may list two, and
-  which one it loads depends on its scan order. Remove the one you don't want —
+  which one it loads depends on its scan order. **The installer warns you when it finds one**
+  and names what is still installed system-wide. Remove the one you don't want —
   `sudo ./uninstall.sh` for the system-wide copy, `./uninstall.sh` for the per-user one —
   then rescan.
 - **Standalone needs audio** — a working ALSA/JACK/PipeWire setup; pick the device in the
