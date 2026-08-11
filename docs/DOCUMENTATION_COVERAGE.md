@@ -8,9 +8,59 @@ that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.3 change set** (2026-08-11, matching the CHANGELOG heading) — six editor-only GUI interaction fixes on
 top of 0.9.2 (add-split preview line, unified pop-up dismissal, pop-up lifetime across a hidden,
-destroyed or backgrounded window, menu width, disabled menu items, Tooltips off), landed across five
-rounds; the entries below run newest-first. Below them, the 0.9.2
+destroyed or backgrounded window, menu width, disabled menu items, Tooltips off) plus a
+**packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
+across six rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**Packaging round (0.9.3) — `packaging/` only, no `src/` change.** Two independent installer items,
+both requested with an explicit scope restriction to their own platform, and both verifiable only
+where CI does not go.
+
+*Linux — an install that no longer needs root.* `install.sh`/`uninstall.sh` now prompt for one of two
+modes and **default to the per-user one** (`~/.vst3` + `~/.local/bin`), which matches how Linux DAWs
+actually scan: `~/.vst3` is the VST3 standard's per-user folder and a default path in
+REAPER/Bitwig/Ardour, so nothing is lost by not writing to `/usr`. The design decisions worth
+keeping: elevation is **per operation** (`priv() { $SUDO "$@" || fail; }`), never a re-exec of the
+script through `sudo`; **root skips the prompt** and installs system-wide, so the previously
+documented `sudo ./install.sh` keeps its exact old behaviour rather than becoming a per-user install
+into `/root`; a **non-tty stdin** takes the default instead of blocking; and every unrecognised answer
+falls back to the default, as specified. The two failure paths fail **closed** — no `sudo` on `PATH`
+and a `sudo` the user cannot authenticate both print their message and exit 1 with nothing
+half-installed. Verified on Linux against a stubbed payload across the mode matrix, the failure paths
+and install→uninstall round-trips in both modes (recorded in `TESTING.md`); what that cannot show is a
+real DAW finding `~/.vst3/Anamorph.vst3`, which stays a manual check. Docs synced per the lifecycle
+trigger (**Packaging** → `PACKAGING.md`, `RELEASE_PROCESS.md`) plus the user-facing carriers that
+asserted the old behaviour: `packaging/linux/INSTALL.txt`, `docs/user/INSTALLATION.md`,
+`USER_MANUAL.md` §2.1, `README.md`, `REPOSITORY_MAP.md`, `CI_CD.md` §8.
+
+*macOS — INC-012, an installer that reported success without installing.* `pkgbuild` marks every
+bundle it finds **relocatable by default**; Installer.app then resolves the destination by looking the
+bundle identifier up in the receipt/Spotlight database and writes over **whatever copy it finds**,
+using `--install-location` only when the lookup comes up empty. Move `/Applications/Anamorph.app`
+elsewhere — dragging it to the Trash counts, since that is still a file on the volume and still
+indexed — and the next install reports success while `/Applications` stays empty. `build-pkg.sh` now
+patches the plist `pkgbuild --analyze` produces (rather than hand-writing one, so
+`RootRelativeBundlePath` matches by construction and nested bundles are covered) and passes it back
+via `--component-plist`. The audit-relevant point is **which** claim was wrong: the pre-fix build-time
+self-check verified the *package* thoroughly — three component identifiers, `customize="allow"`, all
+choices pre-selected — and that check was correct and remains; relocation is simply not a property of
+the archive, only of install-time behaviour, so no amount of package inspection could have caught it.
+The new assertions therefore cover the two things that *are* inspectable (no relocatable and no
+version-checked bundle in any `PackageInfo`; `pkgutil --expand-full` payload completeness), and the
+rest is now an explicit **coverage gap**: `TESTING.md` §"Gaps in the automated coverage" gained a
+fifth bullet — *no gate ever installs anything* — carrying the owed four-case re-install matrix per
+format. `PACKAGING.md` gained §"macOS reinstall behaviour (idempotency)" recording the destinations,
+the guarantee, the three plist keys and the receipt assumption (receipts are still written but are
+never read to decide where or whether to copy, so `pkgutil --forget` is never needed to make an
+install work).
+
+*Drift found and corrected (C6).* `HANDOVER.md`'s Current Version row still ended the menu-width
+paragraph with "no layout code changed in the cycle" — true when written, contradicted by the
+equal-width Widen row that landed later in the same cycle. The 2026-08-11 round corrected this
+sentence in this file (see the layout entry below) but not the HANDOVER instance. Corrected to name
+the Widen row as the cycle's one deliberate layout change; the entry-count in the same row (six
+Fixed / two Changed) is now seven / three.
 
 **Follow-up round on the pop-up work (0.9.3).** Four items, three of them corrections to the change
 set itself. *(1)* The shield is **always visible and inert**, with only its *interception* toggled —

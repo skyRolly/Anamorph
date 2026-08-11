@@ -162,7 +162,7 @@ pluginval exit fails the job on every platform. Linux/macOS use `run-pluginval.s
 
 ## Gaps in the automated coverage (known, deliberate)
 
-Four things the gates above do **not** do. All are recorded so nobody assumes coverage that
+Five things the gates above do **not** do. All are recorded so nobody assumes coverage that
 doesn't exist:
 
 - **GUI-lifetime defects have no headless test.** This is a **`TESTING_POLICY` rule-1 exception
@@ -257,6 +257,31 @@ doesn't exist:
   which is what the JUCE 9 migration used across 32 scenarios
   (`worklogs/JUCE9_MIGRATION_v0.8.13.md`). That harness is session-local and not committed, so the
   method must currently be re-created per investigation.
+
+- **No gate ever installs anything.** CI builds the packages and inspects them — the Inno Setup
+  exe, the expanded `.pkg` (component identifiers, `customize="allow"`, non-relocatable
+  components, payload completeness), the staged Linux tree — but never runs an installation,
+  because installing needs elevation and would mutate the runner. Everything that only exists at
+  *install* time is therefore manual. **INC-012** is what that gap costs: bundle relocation is a
+  property of Installer.app's behaviour, invisible in the archive, and every manual check until
+  then had been a first install onto a machine with no prior copy — the one case it cannot affect.
+  The checks that remain owed to a human:
+  - **macOS `.pkg`, per format (VST3 / AU / app), four cases each:** fresh machine · over an
+    existing install · after moving the installed item elsewhere · after deleting it. Each must end
+    with the item present at the destination in
+    `docs/procedures/PACKAGING.md` §"macOS reinstall behaviour", and a moved copy must be left
+    where the user put it.
+  - **Linux `install.sh`/`uninstall.sh`:** both modes, plus the failure paths (no `sudo` on
+    `PATH`; a `sudo` the user cannot authenticate). *Verified 2026-08-11 on Linux against a stubbed
+    payload* — default/`1`/unrecognised answers all install per-user with no elevation, `2` installs
+    system-wide via `sudo`, missing `sudo` and denied elevation each exit 1 having installed
+    nothing, root skips the prompt, and install→uninstall round-trips in both modes. What that run
+    does **not** cover, and a real machine must: that a DAW actually finds `~/.vst3/Anamorph.vst3`
+    after a per-user install.
+  - **Windows installer:** unchanged in 0.9.3 beyond the two 0.9.2 casing corrections.
+  **Could infrastructure close it:** yes, and cheaply for macOS — `installer -pkg … -target /`
+  on the runner, then assert the three destinations, re-run after `mv`-ing one away. That is the
+  obvious follow-up if this class recurs.
 
 ## What cannot be verified headlessly
 

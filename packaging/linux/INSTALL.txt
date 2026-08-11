@@ -5,49 +5,89 @@ This package was built by CI for x86_64 Linux. Extracting the zip gives you:
 
   Anamorph.vst3/   the VST3 plug-in bundle
   Anamorph         the Standalone application
-  install.sh       installer script (system-wide, needs root)
+  install.sh       installer script (asks: current user, or system-wide)
   uninstall.sh     removes what install.sh installed
   INSTALL.txt      this file
 
 本包由 CI 为 x86_64 Linux 构建,解压后即可看到 VST3 插件、独立版程序,
-以及 install.sh(系统级安装,需要 root)和 uninstall.sh(卸载)。
+以及 install.sh(安装,可选当前用户或系统级)和 uninstall.sh(卸载)。
 
-Both installation methods below install SYSTEM-WIDE (for all users), into
-the standard locations every DAW scans by default.
-下面两种安装方式都是系统级安装(对所有用户生效),装到 DAW 默认扫描的标准位置。
+install.sh offers TWO locations. The recommended one — installing for the
+current user only — needs NO root and NO password:
+install.sh 提供两种安装位置,推荐的"仅当前用户"方式不需要 root,也不用输密码:
+
+  1) current user (default) / 仅当前用户(默认)
+       Anamorph.vst3  ->  ~/.vst3/Anamorph.vst3
+       Anamorph       ->  ~/.local/bin/Anamorph
+  2) system-wide, all users / 系统级,所有用户
+       Anamorph.vst3  ->  /usr/lib/vst3/Anamorph.vst3
+       Anamorph       ->  /usr/local/bin/Anamorph
+
+~/.vst3 is the VST3 standard's per-user Linux folder and is scanned by default
+by REAPER, Bitwig, Ardour and other Linux DAWs — a per-user install shows up in
+your DAW just like a system-wide one, without touching system directories.
+~/.vst3 是 VST3 标准规定的用户级插件目录,REAPER、Bitwig、Ardour 等 Linux 宿主
+默认就会扫描它,因此按用户安装同样能被识别,而且不会改动系统目录。
 
 --------------------------------------------------------------------
 A) Installer installation (recommended) / 脚本安装(推荐)
 --------------------------------------------------------------------
-      sudo sh ./install.sh
+      ./install.sh
 
-  This copies:
-    Anamorph.vst3  ->  /usr/lib/vst3/Anamorph.vst3     (standard system VST3 path)
-    Anamorph       ->  /usr/local/bin/Anamorph         (Standalone)
+  It prints:
 
-  install.sh 会把 VST3 复制到 /usr/lib/vst3/,独立版复制到 /usr/local/bin/。
+      Anamorph Linux Plugin Installer
+
+      Choose installation location:
+
+      1) Install for current user (recommended)
+         ~/.vst3
+
+      2) Install system-wide
+         /usr/lib/vst3
+
+      Select [1/2]:
+
+  Press Enter (or 1) for the per-user install — no sudo, no password. Choose 2
+  for a system-wide install; only that mode elevates, and only for the copy
+  itself, so sudo asks for your password then. Anything else is treated as the
+  default (1).
+  直接回车(或输入 1)= 仅当前用户安装,不需要 sudo 和密码;输入 2 = 系统级安装,
+  此时才会用 sudo 请求密码。输入其他内容按默认(1)处理。
+
+  Running it as root (`sudo ./install.sh`) installs system-wide without asking.
+  用 `sudo ./install.sh` 运行时直接进行系统级安装,不再询问。
 
   To remove later / 以后卸载:
-      sudo sh ./uninstall.sh
+      ./uninstall.sh          (same choice; per-user removal needs no root)
+      sudo ./uninstall.sh     (system-wide)
 
 --------------------------------------------------------------------
 B) Manual installation / 手动安装
 --------------------------------------------------------------------
-  * VST3 (REAPER, Bitwig, Ardour, Qtractor, ...):
+  * Current user, no root (recommended) / 仅当前用户,无需 root(推荐):
+        mkdir -p ~/.vst3 ~/.local/bin
+        cp -R Anamorph.vst3 ~/.vst3/
+        cp Anamorph ~/.local/bin/
+
+  * System-wide / 系统级(所有用户):
         sudo mkdir -p /usr/lib/vst3
         sudo cp -R Anamorph.vst3 /usr/lib/vst3/
-
-  * Standalone / 独立版:
         sudo cp Anamorph /usr/local/bin/
 
-  Copying into /usr needs root (sudo). / 复制到 /usr 需要 root 权限(sudo)。
+  Copying into /usr needs root (sudo); copying into your home does not.
+  复制到 /usr 需要 root 权限(sudo),复制到自己的家目录则不需要。
 
 --------------------------------------------------------------------
 Rescan in your DAW / 在 DAW 里重新扫描插件
 --------------------------------------------------------------------
+  Installing does not make a running DAW notice the plug-in — rescan, or
+  restart the DAW. Both ~/.vst3 and /usr/lib/vst3 are default VST3 paths.
+  装完后正在运行的 DAW 不会自动发现插件,需要重新扫描或重启 DAW。
+  ~/.vst3 和 /usr/lib/vst3 都在默认的 VST3 搜索路径里。
+
   * REAPER:  Options > Preferences > Plug-ins > VST > Re-scan.
-             /usr/lib/vst3 is in the default VST3 path list.
-  * Bitwig:  Settings > Locations > Plug-in Locations.
+  * Bitwig:  Settings > Locations > Plug-in Locations (then Rescan).
   * Ardour:  Preferences > Plugins > Scan for Plugins.
 
 --------------------------------------------------------------------
@@ -56,10 +96,18 @@ Troubleshooting / 常见问题
 - "Permission denied" when launching the Standalone: the executable bit
   was lost (per-push CI artifact downloads and some archive tools drop it;
   release zips keep it). Fix / 如果提示没有执行权限:
-      sudo chmod +x /usr/local/bin/Anamorph
+      chmod +x ~/.local/bin/Anamorph                                    # per-user
+      chmod +x ~/.vst3/Anamorph.vst3/Contents/x86_64-linux/Anamorph.so
+      sudo chmod +x /usr/local/bin/Anamorph                             # system-wide
       sudo chmod +x /usr/lib/vst3/Anamorph.vst3/Contents/x86_64-linux/Anamorph.so
+  (install.sh sets these itself; they only need fixing after a manual copy.)
+- "Anamorph: command not found" after a per-user install: ~/.local/bin is not
+  on your PATH — start it with the full path (~/.local/bin/Anamorph) or add
+  that folder to PATH. install.sh warns when this is the case.
+  按用户安装后提示找不到命令:说明 ~/.local/bin 不在 PATH 里,用完整路径启动,
+  或把该目录加入 PATH。
 - DAW doesn't find the plug-in: make sure the WHOLE Anamorph.vst3 folder
-  (not a file from inside it) is in /usr/lib/vst3, then rescan.
+  (not a file from inside it) is in ~/.vst3 or /usr/lib/vst3, then rescan.
   找不到插件:确认复制的是整个 Anamorph.vst3 文件夹,再重新扫描。
 - The Standalone needs a working ALSA/JACK/PipeWire audio setup; inside a
   DAW no extra setup is needed.

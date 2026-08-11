@@ -25,7 +25,11 @@ only — it configures and builds entirely from the command line on a headless L
   right-click menus size themselves to their longest item and grey out what you cannot pick; and
   turning **Tooltips** off now takes effect at once. One visible change beyond the fixes: the **Widen**
   row's two drop-downs are now equal width with the join between them on the panel's centre line.
-  Editor-only: saved state, parameters and the DSP are unchanged.
+  Installers: the **Linux** installer now asks where to install and **defaults to your own account**
+  (`~/.vst3`, no root needed), and the **macOS** `.pkg` re-installs properly after the app or a
+  plug-in has been moved or deleted — it used to update the moved copy and report success while the
+  standard location stayed empty. Nothing in `src/` changed for either: saved state, parameters and
+  the DSP are unchanged.
 - **0.9.2 fixes the preset drop-down** (it no longer stays on screen — or crashes on click —
   after the plug-in window closes) and lets a user preset share a factory preset's name without
   losing its place in the menu; the Settings control *Window Size* is now labelled **UI Scale**.
@@ -77,7 +81,9 @@ Releases are published on the **GitHub Releases** page (draft → published afte
 audition): per platform an **installer** (Windows Inno Setup installer and macOS `.pkg`,
 both with component selection; on Linux the zip itself carries `install.sh`) *and* a plain
 zip (flat contents — extracting shows the files directly), plus `SHA256SUMS.txt` and
-`RELEASE_MANIFEST.txt`. Both routes install to the standard system-wide locations. Step-by-step: **[`docs/user/INSTALLATION.md`](docs/user/INSTALLATION.md)**;
+`RELEASE_MANIFEST.txt`. Both routes install to the standard locations — system-wide on
+Windows and macOS; on Linux `install.sh` asks, and defaults to a per-user install into
+`~/.vst3` that needs no root. Step-by-step: **[`docs/user/INSTALLATION.md`](docs/user/INSTALLATION.md)**;
 full manual: **[`docs/user/USER_MANUAL.md`](docs/user/USER_MANUAL.md)**.
 Prebuilt binaries for all three OSes are also uploaded as **GitHub Actions artifacts** on every
 push (macOS bundles are ad-hoc signed, not notarized — see `packaging/macos/INSTALL.txt`).

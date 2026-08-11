@@ -36,15 +36,30 @@ install — attribution/support files are release-page assets instead (see below
 
 ## Installers (v0.9.0)
 
-Every platform offers an **installer route** and a **manual (zip) route**; both install
-into the standard **system-wide** locations. The Windows/macOS installers are built from
+Every platform offers an **installer route** and a **manual (zip) route**, both landing in
+the standard locations: **system-wide** on Windows and macOS, while the Linux installer
+**asks** and defaults to a **per-user** install (since 0.9.3). The Windows/macOS installers are built from
 the *same* validated staging directory the zip was archived from, in separate, additively
 gated steps (`package_windows` / `package_macos_pkg`), each with the version parsed from
 `CMakeLists.txt` embedded in a deterministic file name:
 
 - **Linux** — the installer is `packaging/linux/install.sh`, shipped **inside the zip**
-  (no separate Linux package archive). It installs system-wide with root (`sudo`):
-  VST3 → `/usr/lib/vst3`, Standalone → `/usr/local/bin`; `uninstall.sh` reverses it.
+  (no separate Linux package archive). Since 0.9.3 it **prompts for one of two modes**,
+  defaulting to the per-user one:
+
+  | Mode | VST3 | Standalone | Elevation |
+  |---|---|---|---|
+  | **1) current user** (default: Enter, `1`, or any unrecognised answer) | `~/.vst3` | `~/.local/bin` | none — `sudo` is never called |
+  | 2) system-wide | `/usr/lib/vst3` | `/usr/local/bin` | `sudo` per operation, never for the whole script |
+
+  `~/.vst3` is the VST3 standard's per-user Linux folder and is a default scan path in
+  REAPER/Bitwig/Ardour, so the no-root route is the recommended one. Two invocations skip
+  the prompt: **as root** (`sudo ./install.sh`, the pre-0.9.3 documented form) it installs
+  system-wide unchanged — root has no meaningful per-user home — and with **no terminal on
+  stdin** it takes the default. Mode 2 fail-closes rather than degrading: no `sudo` on
+  `PATH` prints the "use a user installation instead" error and exits 1; a failed elevated
+  operation prints the permission-denied message and exits 1, leaving nothing half-installed.
+  `uninstall.sh` mirrors the same two modes, so a per-user install is removed without root.
 - **Windows** — `Anamorph-<version>-Windows-Installer.exe`: compiled by the preinstalled
   Inno Setup 6 (`ISCC.exe`) from `packaging/windows/Anamorph.iss` (stable `AppId`;
   requires elevation; real uninstall entry). Wizard: a **component page** (*Install VST3*
@@ -57,7 +72,9 @@ gated steps (`package_windows` / `package_macos_pkg`), each with the version par
   Authenticode-signed — RH-PR-5 signs this same exe.
 - **macOS** — `Anamorph-<version>-macOS.pkg`: `packaging/macos/build-pkg.sh` builds three
   component packages (VST3 → `/Library/Audio/Plug-Ins/VST3`, AU → `.../Components`, app →
-  `/Applications`) and combines them with `productbuild` over a hand-written distribution
+  `/Applications`), each **non-relocatable and non-version-checked** (see
+  §"macOS reinstall behaviour" below — this is what makes a re-install idempotent), and
+  combines them with `productbuild` over a hand-written distribution
   (**`customize="allow"`, all choices pre-selected** — the default is a full install and
   Installer.app's *Customize* button exposes per-component checkboxes, titled *VST3
   Plug-in* / *AU Plug-in* / *Standalone Application* since 0.9.2; `<domains
@@ -138,6 +155,54 @@ The `xattr` step is the **zip route only** — payloads written by the `.pkg` in
 quarantine attribute. Evidence [Verified]: packaging/macos/INSTALL.txt:47-65 (manual route),
 :27-28 (no quarantine via the installer).
 
+## macOS reinstall behaviour (idempotency)
+
+**Expected destinations** — fixed, and not negotiable at install time:
+
+| Component | Identifier | Destination |
+|---|---|---|
+| VST3 | `com.rollytech.anamorph.vst3` | `/Library/Audio/Plug-Ins/VST3/Anamorph.vst3` |
+| AU | `com.rollytech.anamorph.au` | `/Library/Audio/Plug-Ins/Components/Anamorph.component` |
+| Standalone | `com.rollytech.anamorph.app` | `/Applications/Anamorph.app` |
+
+**Guarantee (0.9.3 onward).** Every selected component copies its payload to the
+destination above on *every* run, with no reference to what a previous install left
+behind. Installed, moved away, deleted — re-running the installer always ends with the
+item present at its destination.
+
+**How** — `build_component()` in `build-pkg.sh` patches the component plist that
+`pkgbuild --analyze` generates and turns two defaults off for every bundle it lists
+(nested ones included):
+
+| Key | Value | Why |
+|---|---|---|
+| `BundleIsRelocatable` | `false` | The default `true` makes Installer.app look the bundle identifier up in the receipt/Spotlight database and write the payload over **whatever copy it finds**, ignoring `--install-location`. That is the INC-012 defect: move `/Applications/Anamorph.app` elsewhere (the Trash counts — still on disk, still indexed) and the next install "succeeds" into the moved copy while `/Applications` stays empty. |
+| `BundleIsVersionChecked` | `false` | The default compares the installed bundle's version and **skips** the copy when it is already at or above the package version — the same silent-success failure from the other end, and the reason a repair install of the same version could do nothing. |
+| `BundleOverwriteAction` | `upgrade` | pkgbuild's default, pinned explicitly: the write replaces the bundle rather than merging into it, so no file from an older install survives inside the new one. |
+
+**Receipts.** Receipts are still written (`pkgutil --pkgs | grep com.rollytech.anamorph`)
+and remain the record of what was installed — but nothing in the install path *reads* them
+to decide where or whether to copy, which is exactly the assumption being removed. A
+`pkgutil --forget` is therefore never needed to make an install work; it only clears the
+record. Files a previous version installed but the current one no longer ships are not
+removed from the destination bundle's parent — the payload is authoritative for the
+bundle, not for the folder it sits in.
+
+**Backstop.** Each component carries a `postinstall` that checks its item exists at the
+destination and exits non-zero otherwise, so an install cannot report success while the
+expected item is missing. It runs only for components the user actually selected.
+
+**Not chased.** A copy the user moved elsewhere is left where they put it — the installer
+restores the standard destination rather than tracking the moved bundle. A stale copy in
+`~/Library/Audio/Plug-Ins/...` from an old relocated install is likewise the user's to
+delete; hosts may otherwise see two Anamorphs.
+
+**Build-time self-checks** (fail the macOS job, so this cannot silently regress): every
+component's `PackageInfo` must list no relocatable and no version-checked bundle and must
+declare its `postinstall`; and `pkgutil --expand-full` must show each component's payload
+carrying the whole bundle down to `Contents/MacOS/Anamorph`.
+Evidence [Verified]: `packaging/macos/build-pkg.sh`; INC-012 in `docs/POSTMORTEMS.md`.
+
 ## Universal binary verification (macOS)
 
 The macOS job verifies both slices are present (strict — a missing slice fails the job):
@@ -146,19 +211,20 @@ lipo -archs Anamorph.vst3/Contents/MacOS/Anamorph        # expect: x86_64 arm64
 ```
 Evidence [Verified]: build.yml (Package macOS plugins step).
 
-## Standard install locations (system-wide, both routes)
+## Standard install locations (both routes)
 
-| What | macOS | Windows | Linux |
-|---|---|---|---|
-| VST3 | `/Library/Audio/Plug-Ins/VST3/` | `%CommonProgramFiles%\VST3\` | `/usr/lib/vst3/` |
-| AU | `/Library/Audio/Plug-Ins/Components/` | — | — |
-| Standalone | `/Applications/` | `%ProgramFiles%\Anamorph\` | `/usr/local/bin/` |
+| What | macOS | Windows | Linux (per-user, default) | Linux (system-wide) |
+|---|---|---|---|---|
+| VST3 | `/Library/Audio/Plug-Ins/VST3/` | `%CommonProgramFiles%\VST3\` | `~/.vst3/` | `/usr/lib/vst3/` |
+| AU | `/Library/Audio/Plug-Ins/Components/` | — | — | — |
+| Standalone | `/Applications/` | `%ProgramFiles%\Anamorph\` | `~/.local/bin/` | `/usr/local/bin/` |
 
-Installer and manual routes target the **same system-wide locations** (the Windows
-installer additionally lets the user change both paths on its destination page). All
-asserted from repo evidence: the per-platform `packaging/<os>/INSTALL.txt` files and the
-installer destinations in `packaging/windows/Anamorph.iss` / `packaging/macos/build-pkg.sh`
-/ `packaging/linux/install.sh`.
+Installer and manual routes target the **same locations** — system-wide on macOS and
+Windows (whose installer additionally lets the user change both paths on its destination
+page), and on Linux whichever of the two columns the user picked. All asserted from repo
+evidence: the per-platform `packaging/<os>/INSTALL.txt` files and the installer
+destinations in `packaging/windows/Anamorph.iss` / `packaging/macos/build-pkg.sh` /
+`packaging/linux/install.sh`.
 
 ## Not in scope
 

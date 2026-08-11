@@ -95,9 +95,9 @@ Anamorph/
 | `scripts/run-pluginval.ps1` | pluginval on Windows (same strictness/mode/×3 structure; exit code is the sole signal). |
 | `src/AbSlotIndex.h` | `anamorph::kNumAbSlots` + `clampAbSlotIndex` — single source of truth for A/B slot sizing/clamping. |
 | `packaging/macos/INSTALL.txt` | macOS install + de-quarantine instructions (ad-hoc signed, not notarized). Installation content only — no testing or attribution section. |
-| `packaging/macos/build-pkg.sh` | Builds the macOS `.pkg` installer (three component packages + productbuild, component selection with a full-install default) from the CI-staged payload. |
+| `packaging/macos/build-pkg.sh` | Builds the macOS `.pkg` installer (three component packages + productbuild, component selection with a full-install default, every component non-relocatable so a re-install always writes its declared destination) from the CI-staged payload. |
 | `packaging/windows/Anamorph.iss` + `INSTALL.txt` | Inno Setup installer script (stable AppId; component page + dual-path destination page, VST3 → Common Files) + Windows install notes (shipped in the zip). |
-| `packaging/linux/install.sh`, `uninstall.sh`, `INSTALL.txt` | System-wide Linux installer/uninstaller (`/usr/lib/vst3`, `/usr/local/bin`, needs root) + install notes; all three ship in the zip. |
+| `packaging/linux/install.sh`, `uninstall.sh`, `INSTALL.txt` | Linux installer/uninstaller — prompts for per-user (`~/.vst3`, `~/.local/bin`, no root; the default) or system-wide (`/usr/lib/vst3`, `/usr/local/bin`, `sudo`) — + install notes; all three ship in the zip. |
 | `docs/user/USER_MANUAL.md` | Full end-user manual (interface, signal flow, algorithms, presets, workflows, troubleshooting); attached to GitHub releases. |
 | `docs/user/INSTALLATION.md` | End-user installation guide for all three platforms (installer + manual routes). |
 | `.github/workflows/build.yml` | 3-OS build + DSP **and state** self-tests + pluginval (strictness-10, both modes ×3, **blocking on all three platforms**); stages the per-platform packages — flat `Anamorph-<OS>` artifacts (loose files; release.yml archives the release zip from the same tree), Windows/macOS installers, `-debug` symbols; also callable (`workflow_call`) by release.yml. |
