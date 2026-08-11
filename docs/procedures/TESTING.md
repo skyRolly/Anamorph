@@ -162,7 +162,7 @@ pluginval exit fails the job on every platform. Linux/macOS use `run-pluginval.s
 
 ## Gaps in the automated coverage (known, deliberate)
 
-Four things the gates above do **not** do. All are recorded so nobody assumes coverage that
+Five things the gates above do **not** do. All are recorded so nobody assumes coverage that
 doesn't exist:
 
 - **GUI-lifetime defects have no headless test.** This is a **`TESTING_POLICY` rule-1 exception
@@ -224,9 +224,17 @@ doesn't exist:
      **performed and signed off by the maintainer on 2026-08-09 for the first two fixes** (the
      add-split preview line and the pop-up dismissal behaviour), discharging this disclosure for
      those. The later three — the shield's interception-only redesign, the two menu-rendering fixes
-     and the Tooltips transition — carry a sign-off on the **problem reports and the required
-     contract**, not on a manual test of the implementation, so their manual checks are still owed
-     and are listed at the end of the worklog. None of this touches the Level-5 *audio* audition or
+     and the Tooltips transition — carried a sign-off on the **problem reports and the required
+     contract** rather than on a manual test of the implementation. The **visual** half of what was
+     then still owed is now discharged: the maintainer **reviewed and approved it on 2026-08-11** —
+     the equal-width Widen / Style-Focus row is confirmed **intentional**, the narrower Simple-mode
+     Widen control is **accepted**, the current pop-up/menu width behaviour is **accepted**, and the
+     remaining visual verification items are **approved** (recorded in
+     `worklogs/GUI_INTERACTION_FIXES_v0.9.3.md` §7 and §10). That sign-off covers the **visual/UI**
+     items only: the behavioural per-platform checks in the same lists (a dismissing click reaching
+     no control, pop-up lifetime across a hidden/closed/backgrounded window, the out-of-process host
+     confirmation) and the **installer** checks in the fifth bullet below are **not** covered by it
+     and remain owed. None of this touches the Level-5 *audio* audition or
      the compatibility checklist, which are separate and remain open (`HANDOVER.md` §Release Status).
   3. *Where the gap is tracked.* Here, alongside the INC-010 entry above, and referenced from
      **INC-011**'s Prevention field.
@@ -257,6 +265,37 @@ doesn't exist:
   which is what the JUCE 9 migration used across 32 scenarios
   (`worklogs/JUCE9_MIGRATION_v0.8.13.md`). That harness is session-local and not committed, so the
   method must currently be re-created per investigation.
+
+- **No gate ever installs anything.** CI builds the packages and inspects them — the Inno Setup
+  exe, the expanded `.pkg` (component identifiers, `customize="allow"`, non-relocatable
+  components, payload completeness), the staged Linux tree — but never runs an installation,
+  because installing needs elevation and would mutate the runner. Everything that only exists at
+  *install* time is therefore manual. **INC-012** is what that gap costs: bundle relocation is a
+  property of Installer.app's behaviour, invisible in the archive, and every manual check until
+  then had been a first install onto a machine with no prior copy — the one case it cannot affect.
+  The checks that remain owed to a human:
+  - **macOS `.pkg`, per format (VST3 / AU / app), four cases each:** fresh machine · over an
+    existing install · after moving the installed item elsewhere · after deleting it. Each must end
+    with the item present at the destination in
+    `docs/procedures/PACKAGING.md` §"macOS reinstall behaviour", and a moved copy must be left
+    where the user put it.
+  - **Linux `install.sh`/`uninstall.sh`:** both modes, plus the failure paths (no `sudo` on
+    `PATH`; a `sudo` the user cannot authenticate). *Verified 2026-08-11 on Linux against a stubbed
+    payload* — default/`1`/unrecognised answers all install per-user with no elevation, `2` installs
+    system-wide via `sudo`, missing `sudo` and denied elevation each exit 1 having installed
+    nothing, root skips the prompt, and install→uninstall round-trips in both modes. The
+    **replacement transaction** was verified the same way and to the same date, by injecting each
+    failure rather than reading the code: failed staging, failed commit, `INT`/`TERM`/`HUP` delivered
+    inside the swap window, `SIGKILL` in the window followed by recovery on the next run (including
+    a next run that itself fails), staging location on a normal layout and on a `~/.vst3` symlinked
+    to a second filesystem, uninstall after an interrupted install, and the coexistence warning —
+    each against a control run of the previous script that ends with nothing installed. What that
+    run does **not** cover, and a real machine must: that a DAW actually finds
+    `~/.vst3/Anamorph.vst3` after a per-user install.
+  - **Windows installer:** unchanged in 0.9.3 beyond the two 0.9.2 casing corrections.
+  **Could infrastructure close it:** yes, and cheaply for macOS — `installer -pkg … -target /`
+  on the runner, then assert the three destinations, re-run after `mv`-ing one away. That is the
+  obvious follow-up if this class recurs.
 
 ## What cannot be verified headlessly
 

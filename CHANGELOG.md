@@ -25,6 +25,24 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   a destination is left blank read *VST3 Plug-in* and *Standalone Application*, the same capitalisation
   as the fields themselves — the two the 0.9.2 installer title-casing pass missed.
   Evidence: PR #101. [Verified]
+- **The Linux installer no longer requires root.** `./install.sh` now asks where to put Anamorph
+  and **defaults to your own account** — VST3 into `~/.vst3`, the Standalone into `~/.local/bin` —
+  which needs no `sudo` and no password, and touches no system directory. `~/.vst3` is the folder
+  REAPER, Bitwig, Ardour and other Linux DAWs already scan, so the plug-in appears exactly as it
+  did before. Press Enter to take it; choose *2* for the previous system-wide install into
+  `/usr/lib/vst3` and `/usr/local/bin`, and only then are you asked for a password — for the copy
+  itself, not for the whole script. Running `sudo ./install.sh` still installs system-wide without
+  asking, so existing instructions keep working. If a system-wide install cannot proceed (no
+  `sudo`, or a password you cannot supply) it says so and stops without having changed anything.
+  `./uninstall.sh` offers the same two choices, so a per-user install is also removed without root.
+  **Re-installing can no longer cost you a working plug-in**: the replacement is built first and the
+  installed one is only displaced once that copy is complete, so a failure — no space, an unreadable
+  download, or closing the terminal part-way — leaves what you already had, and a run stopped at the
+  very last moment restores it on the next attempt. If an older **system-wide** install is still
+  present when you install for your user, the installer now says so and prints the command that
+  removes it, because DAWs scan both places and an update can otherwise look as if it did not apply.
+  Linux only — the Windows and macOS installers are unchanged.
+  Evidence: PR #102. [Verified]
 
 ### Fixed
 - **The Multiband "add split" line no longer sticks while you move the mouse.** Hovering the
@@ -75,6 +93,17 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   tooltip was showing. Off now means off: the visible one disappears at once and no new one can
   appear. Turning them back on behaves as before.
   Evidence: PR #101. [Verified]
+- **macOS: re-running the installer now really re-installs.** If you had moved `Anamorph.app` out of
+  `/Applications` (or dragged it to the Trash) and ran the installer again, it reported success while
+  `/Applications` stayed empty — it had quietly updated the copy wherever you had put it. The same
+  applied to the VST3 and the AU: a plug-in moved out of `/Library/Audio/Plug-Ins/…` was what got
+  refreshed, so the DAW still found nothing at the standard path, and re-installing the same version
+  over an intact copy could do nothing at all. Every selected component is now written to its
+  standard location on every run, regardless of what an earlier install left behind, and an install
+  that cannot put an item there reports failure instead of success. A copy you moved is left where
+  you put it — delete it yourself if you don't want two.
+  Evidence: PR #102; INC-012 in `docs/POSTMORTEMS.md`. [Verified (packaging configuration) /
+  manual re-install matrix pending on a Mac — `docs/procedures/TESTING.md`]
 
 ## [0.9.2] — 2026-08-07
 ### Fixed

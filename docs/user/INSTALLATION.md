@@ -18,8 +18,10 @@ Formats per platform: Linux and Windows ship VST3 + Standalone; macOS ships
 VST3 + AU + Standalone. The plug-in is 64-bit only. macOS builds are universal
 (Apple Silicon + Intel).
 
-**Both routes install system-wide** (for all users of the machine), into the standard
-locations DAWs scan by default, so both need an administrator/root step.
+**On Windows and macOS both routes install system-wide** (for all users of the machine),
+into the standard locations DAWs scan by default, so both need an administrator step.
+**On Linux the installer asks you** — the default is a **per-user** install into `~/.vst3`,
+which needs no root at all; a system-wide install is offered as the second choice.
 
 > **Heads-up about security warnings.** Anamorph is not yet code-signed (Windows) or
 > notarized (macOS). Your OS will warn you once at install time. The workarounds below are
@@ -32,28 +34,63 @@ locations DAWs scan by default, so both need an administrator/root step.
 ### Installer installation (install.sh)
 
 1. Download and extract `Anamorph-<version>-Linux.zip`.
-2. In the extracted folder, run:
+2. In the extracted folder, run it **without** `sudo`:
 
    ```sh
-   sudo ./install.sh
+   ./install.sh
    ```
 
-   This installs, **system-wide** (root needed):
+   It asks where to install:
 
-   | What | Where |
-   |---|---|
-   | VST3 plug-in | `/usr/lib/vst3/Anamorph.vst3` |
-   | Standalone app | `/usr/local/bin/Anamorph` |
+   ```
+   Anamorph Linux Installer
+
+   Choose installation location:
+
+   1) Install for current user (recommended)
+      ~/.vst3
+
+   2) Install system-wide
+      /usr/lib/vst3
+
+   Select [1/2]:
+   ```
+
+   | Choice | VST3 plug-in | Standalone app | Needs root? |
+   |---|---|---|---|
+   | **1) current user** (press Enter — the default) | `~/.vst3/Anamorph.vst3` | `~/.local/bin/Anamorph` | no |
+   | 2) system-wide, all users | `/usr/lib/vst3/Anamorph.vst3` | `/usr/local/bin/Anamorph` | yes (`sudo`, for the copy only) |
+
+   **The per-user install is recommended**: it needs no root access and no password, it
+   leaves system directories untouched, and `~/.vst3` is the VST3 standard's per-user
+   Linux folder — REAPER, Bitwig, Ardour and other Linux DAWs scan it by default, so the
+   plug-in shows up exactly as a system-wide one would. Anything typed that is not `2` is
+   treated as the default. Choosing 2 prints *"System-wide installation requires
+   administrator privileges"* and lets `sudo` ask for your password; only the copy runs
+   elevated, never the whole script. Running `sudo ./install.sh` installs system-wide
+   without asking, as before.
 
 3. Rescan plug-ins in your DAW (REAPER: *Options → Preferences → Plug-ins → VST →
-   Re-scan*; Bitwig: *Settings → Locations*; Ardour: *Preferences → Plugins*).
+   Re-scan*; Bitwig: *Settings → Locations → Plug-in Locations*, then rescan; Ardour:
+   *Preferences → Plugins → Scan for Plugins*). A DAW that is already running will not
+   notice the new plug-in until you rescan or restart it.
 
-To remove it later, run `sudo ./uninstall.sh` from the same folder.
+To remove it later, run `./uninstall.sh` from the same folder — it offers the same two
+choices, and removing a per-user install needs no root either (`sudo ./uninstall.sh`
+removes the system-wide one).
 
 ### Manual installation (zip)
 
-Copy `Anamorph.vst3` (the whole folder) into `/usr/lib/vst3/` and the `Anamorph`
-standalone executable into `/usr/local/bin/` (both need root):
+Per-user, no root — copy `Anamorph.vst3` (the whole folder) into `~/.vst3/` and the
+`Anamorph` standalone executable into `~/.local/bin/`:
+
+```sh
+mkdir -p ~/.vst3 ~/.local/bin
+cp -R Anamorph.vst3 ~/.vst3/
+cp Anamorph ~/.local/bin/
+```
+
+System-wide instead (both need root):
 
 ```sh
 sudo mkdir -p /usr/lib/vst3
@@ -64,11 +101,27 @@ sudo cp Anamorph /usr/local/bin/
 ### Linux troubleshooting
 
 - **"Permission denied" launching the Standalone** — some archive tools drop the
-  executable bit. Fix: `sudo chmod +x /usr/local/bin/Anamorph` (and, if the DAW can't
-  load the plug-in,
-  `sudo chmod +x /usr/lib/vst3/Anamorph.vst3/Contents/x86_64-linux/Anamorph.so`).
-- **DAW doesn't find the plug-in** — check `/usr/lib/vst3` is in the DAW's VST3 search
-  path (it is by default in REAPER/Bitwig/Ardour), then rescan.
+  executable bit (`install.sh` sets it itself, so this only follows a manual copy). Fix:
+  `chmod +x ~/.local/bin/Anamorph` (and, if the DAW can't load the plug-in,
+  `chmod +x ~/.vst3/Anamorph.vst3/Contents/x86_64-linux/Anamorph.so`) — with `sudo` and
+  the `/usr/...` paths for a system-wide install.
+- **`./install.sh: Permission denied`** — you downloaded the package as a per-push CI
+  artifact, which drops the executable bit (release zips keep it). Run `sh ./install.sh`
+  instead (or `sudo sh ./install.sh` to go straight to a system-wide install); the script
+  behaves identically either way.
+- **`Anamorph: command not found` after a per-user install** — `~/.local/bin` is not on
+  your `PATH`; start it with the full path `~/.local/bin/Anamorph`, or add that folder to
+  `PATH`. `install.sh` prints a note when it spots this.
+- **DAW doesn't find the plug-in** — check `~/.vst3` (per-user) or `/usr/lib/vst3`
+  (system-wide) is in the DAW's VST3 search path (both are by default in
+  REAPER/Bitwig/Ardour), then rescan.
+- **Anamorph appears twice, or an update doesn't seem to take** — you have both installs. If
+  you previously ran `sudo ./install.sh` and now take the per-user default, the older
+  system-wide copy stays where it is: both paths are scanned, so the DAW may list two, and
+  which one it loads depends on its scan order. **The installer warns you when it finds one**
+  and names what is still installed system-wide. Remove the one you don't want —
+  `sudo ./uninstall.sh` for the system-wide copy, `./uninstall.sh` for the per-user one —
+  then rescan.
 - **Standalone needs audio** — a working ALSA/JACK/PipeWire setup; pick the device in the
   app's audio settings.
 

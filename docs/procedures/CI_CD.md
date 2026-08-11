@@ -85,8 +85,9 @@ failures as green and has been removed). Evidence [Verified]: `.github/workflows
    steps self-validate (no symbol table, no debug files in the public copy). A pluginval-only
    failure still uploads beta artifacts; developer `-debug` artifacts survive packaging failures.
 8. **Installers (v0.9.0)** — the Linux zip itself carries `install.sh`/`uninstall.sh`
-   (system-wide install; `release.yml` restores and then fail-closed-verifies their
-   executable bits when it archives the release zip). After the Windows/macOS staging steps, a separate packaging step builds the
+   (per-user install by default, system-wide on request, since 0.9.3; `release.yml`
+   restores and then fail-closed-verifies their executable bits when it archives the
+   release zip). After the Windows/macOS staging steps, a separate packaging step builds the
    user-installable installer from the same validated staging dir (Windows Inno Setup
    installer — component selection + dual-path destination page — via the preinstalled
    `ISCC.exe`; macOS `.pkg` with component selection via `packaging/macos/build-pkg.sh`,

@@ -7,9 +7,11 @@ fixed, remove it here and (if notable) add a `POSTMORTEMS.md` entry.
 Version-synced to **v0.9.3** (six GUI interaction fixes plus an equal-width Widen row — the Multiband add-split preview line, the
 unified pop-up dismissal shield, pop-up lifetime across a hidden, destroyed or backgrounded window,
 two menu-rendering fixes and the Tooltips on/off transition —
-**three issues added**: KI-018, the dismissing click still counts toward JUCE's double-click run;
-KI-019, the app-switch pop-up dismissal is inert on Linux/X11; and KI-020, the dismissal guarantee
-is per-instance where pop-up modality is process-global).
+**five issues added**: KI-018, the dismissing click still counts toward JUCE's double-click run;
+KI-019, the app-switch pop-up dismissal is inert on Linux/X11; KI-020, the dismissal guarantee
+is per-instance where pop-up modality is process-global; and, from the 0.9.3 **installer** work,
+KI-021, a Linux per-user install leaves an existing system-wide one in place, and KI-022, the macOS
+package no longer follows a bundle the user moved out of its standard location).
 Prior sync: **v0.9.2**
 (preset drop-down lifetime/crash fix, factory-preset identity, the
 `Window Size` → `UI Scale` label and the installer component titles — **one issue added**: KI-017,
@@ -73,6 +75,8 @@ JUCE 8.0.14; before that 0.8.8 for PR #54).
 | KI-018 | The click that dismisses a pop-up is not delivered to any control (by design), but it still counts toward JUCE's multi-click run, so a fast follow-up click can arrive as a **double**-click | Low | Confirmed; traced to `MouseInputSourceImpl::registerMouseDown`, which is component-agnostic. No in-bounds fix exists — see the entry |
 | KI-019 | **Linux/X11**: the 0.9.3 dismissal of an open pop-up when the user switches application does not fire — JUCE's foreground flag there is a write-once latch, never cleared, so "switched away" can never be observed | Low | Confirmed (code path, pinned JUCE); inert in the SAFE direction — no spurious dismissal. The hidden-editor and editor-destroyed halves work normally on Linux |
 | KI-020 | With **two or more Anamorph editors open at once**, the "a dismissing click activates nothing" guarantee holds only within the instance that owns the open pop-up: modality is process-global, so the re-delivered click can reach a *different* instance's control | Low | Confirmed (code path); pre-dates 0.9.3 and is not introduced by the shield. No in-bounds fix — see the entry |
+| KI-021 | **Linux**: a per-user install (the 0.9.3 default) does not remove an existing **system-wide** one, so both are on the DAW's scan path and its scan order decides which version loads — an update can look as if it did not apply | Low | Confirmed, **deliberate**: removing the system copy needs the elevation the per-user mode exists to avoid. The installer now **warns** when it finds one; removal is one `sudo ./uninstall.sh` |
+| KI-022 | **macOS**: components are non-relocatable since 0.9.3 (INC-012), so a bundle the user deliberately moved — to `~/Applications`, or a plug-in kept under `~/Library/Audio/Plug-Ins/…` — is left where it is and a fresh copy is installed at the standard location, leaving two copies with the same bundle identifier | Low | Confirmed, **deliberate trade** for INC-012: following a moved copy is exactly the behaviour that let an install silently write nowhere useful. Documented in the installer's `INSTALL.txt`; removal is manual |
 
 ---
 
@@ -643,3 +647,51 @@ process-global call INC-010 ruled out for the same reason.
   open simultaneously and a click aimed at the second one while the first has a menu up.
 - **What would close it:** a JUCE signal identifying which component tree a modal dismissal belonged
   to, which would let a non-owning editor recognise the re-delivered click without shared state.
+
+## KI-021 — a Linux per-user install does not displace an existing system-wide one
+0.9.3 made the per-user location (`~/.vst3` + `~/.local/bin`) the installer's **default**, where
+every earlier build installed system-wide. A user who ran `sudo ./install.sh` under 0.9.2 and then
+takes the new default ends up with **both**:
+
+| | VST3 | Standalone |
+|---|---|---|
+| new, per-user | `~/.vst3/Anamorph.vst3` | `~/.local/bin/Anamorph` |
+| older, system-wide | `/usr/lib/vst3/Anamorph.vst3` | `/usr/local/bin/Anamorph` |
+
+Both VST3 paths are default scan paths in REAPER, Bitwig and Ardour, so the host lists Anamorph
+twice, and **which one it loads depends on its scan order** — the update can appear not to have
+applied at all.
+
+- **Why it is not fixed in code:** removing `/usr/lib/vst3/Anamorph.vst3` requires root, and the
+  whole point of the per-user mode is that it never asks for it. Silently escalating from the
+  no-root path would be worse than the duplication.
+- **What the installer does instead:** after a per-user install it **detects** the system-wide copy
+  (a plain `test -e`, no elevation) and prints what is still installed there plus the one command
+  that removes it, `sudo ./uninstall.sh`.
+- **What a tester sees:** two Anamorph entries after a rescan, or an "old" version loading after an
+  apparently successful update.
+- **Workaround:** `sudo ./uninstall.sh` (removes only the system-wide copy), then rescan.
+- **Evidence [Verified]:** `packaging/linux/install.sh` (per-user summary block);
+  `docs/procedures/PACKAGING.md` §Installers; `packaging/linux/INSTALL.txt` and
+  `docs/user/INSTALLATION.md` troubleshooting entries.
+
+## KI-022 — macOS: a user-moved copy is left behind, so two copies can coexist
+Since 0.9.3 every macOS component is built **non-relocatable** (`BundleIsRelocatable=false`), which
+is the fix for **INC-012** — relocation is what let the installer write over a copy the user had
+moved (the Trash included) and report success while the standard location stayed empty.
+
+The trade is the case relocation was designed for: a user who *deliberately* keeps `Anamorph.app`
+in `~/Applications`, or a plug-in under `~/Library/Audio/Plug-Ins/…`, now gets a second copy at the
+standard location on the next install. Both carry the same bundle identifier, and a host scanning
+user *and* system plug-in folders lists Anamorph twice.
+
+- **Why it is not fixed in code:** following a moved copy is precisely the behaviour INC-012 removed.
+  A destination that depends on where a previous install ended up cannot be made reliable; a fixed
+  destination can. The duplication is visible and removable, the INC-012 failure was neither.
+- **What a tester sees:** after an upgrade, a copy at the standard location *and* the one they had
+  moved; possibly two entries in a host that scans both folders.
+- **Workaround:** delete whichever copy is unwanted. Only shows up on an **upgrade** of a
+  hand-moved install, which no automated gate exercises.
+- **Evidence [Verified]:** `packaging/macos/build-pkg.sh` (`build_component`);
+  `docs/procedures/PACKAGING.md` §"macOS reinstall behaviour (idempotency)" §Not chased;
+  `packaging/macos/INSTALL.txt`; INC-012 in `docs/POSTMORTEMS.md`.

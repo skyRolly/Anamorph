@@ -65,14 +65,15 @@ Five minutes from download to first widened sound.
 
 Download the release for your platform from the project's **GitHub Releases** page. Each
 platform offers an **installer** (the easy route) and a plain **zip** (copy the files
-yourself). Both install to the standard system-wide locations your DAW already scans, and
-both need an administrator/root step.
+yourself). Both install to the standard locations your DAW already scans; on Windows and
+macOS that is system-wide and needs an administrator step, while the Linux installer asks
+and defaults to a per-user install that needs no root at all.
 
 | Platform | Easy route | What it installs |
 |---|---|---|
 | Windows | run the `…-Windows-Installer.exe` | VST3 into `Common Files\VST3`, Standalone into Program Files |
 | macOS | open the `…-macOS.pkg` | VST3, AU and the Standalone app into the standard `/Library` and `/Applications` locations |
-| Linux | `sudo ./install.sh` from inside the extracted zip | VST3 into `/usr/lib/vst3`, Standalone into `/usr/local/bin` |
+| Linux | `./install.sh` from inside the extracted zip | asks: **current user** (default, no root) — VST3 into `~/.vst3`, Standalone into `~/.local/bin` — or system-wide, into `/usr/lib/vst3` and `/usr/local/bin` |
 
 The installers are not code-signed or notarized yet, so Windows SmartScreen and macOS
 Gatekeeper will each warn you once — that is expected, and

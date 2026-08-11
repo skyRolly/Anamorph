@@ -14,6 +14,10 @@
 # The distribution offers COMPONENT SELECTION (VST3 / AU / Standalone app,
 # all pre-selected — the default is a full install; Installer.app's
 # "Customize" button exposes the checkboxes).
+#
+# Every component is built NON-RELOCATABLE and NON-VERSION-CHECKED, so each
+# install copies the payload to its declared destination unconditionally —
+# see build_component() below (INC-012).
 set -euo pipefail
 
 DIST=${1:?usage: build-pkg.sh <staged-dir> <version> <output.pkg>}
@@ -27,21 +31,77 @@ done
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 
-# One component package per install destination.
-mkdir -p "$WORK/vst3" "$WORK/au" "$WORK/app"
-cp -R "$DIST/Anamorph.vst3"      "$WORK/vst3/"
-cp -R "$DIST/Anamorph.component" "$WORK/au/"
-cp -R "$DIST/Anamorph.app"       "$WORK/app/"
+# Sets a component-plist key, adding it if pkgbuild's analysis did not emit it.
+#   plist_put <plist> <array-index> <key> <type> <value>
+plist_put () {
+  /usr/libexec/PlistBuddy -c "Set :$2:$3 $5" "$1" 2>/dev/null \
+    || /usr/libexec/PlistBuddy -c "Add :$2:$3 $4 $5" "$1"
+}
 
-pkgbuild --root "$WORK/vst3" --identifier com.rollytech.anamorph.vst3 \
-         --version "$VERSION" --install-location "/Library/Audio/Plug-Ins/VST3" \
-         "$WORK/AnamorphVST3.pkg"
-pkgbuild --root "$WORK/au"   --identifier com.rollytech.anamorph.au \
-         --version "$VERSION" --install-location "/Library/Audio/Plug-Ins/Components" \
-         "$WORK/AnamorphAU.pkg"
-pkgbuild --root "$WORK/app"  --identifier com.rollytech.anamorph.app \
-         --version "$VERSION" --install-location "/Applications" \
-         "$WORK/AnamorphApp.pkg"
+# Builds one component package, with RELOCATION and VERSION CHECKING OFF.
+#
+# Why: pkgbuild's default component plist marks every bundle it finds as
+# relocatable. At install time the Installer then looks the bundle identifier
+# up in the system's receipt/Spotlight database and, if a copy is found
+# ANYWHERE, writes the payload over THAT copy instead of the declared
+# --install-location. Move /Applications/Anamorph.app to the Desktop (or drag
+# it to the Trash, which is still on disk and still indexed) and re-run the
+# installer: it reports success, updates the copy it found, and /Applications
+# stays empty. Version checking fails the same way from the other end — a
+# bundle already at or above the package version is skipped rather than
+# overwritten. Both are switched off here, so a component always writes its
+# payload to its declared destination, from the payload alone, with no
+# reference to previous installation state (INC-012).
+#
+# BundleOverwriteAction=upgrade (pkgbuild's default, pinned explicitly) makes
+# that write a replacement rather than a merge, so no file from an older
+# install survives inside the new bundle.
+build_component () {
+  local id=$1 bundle=$2 dest=$3 out=$4
+  local root="$WORK/root-$id" plist="$WORK/component-$id.plist" scripts="$WORK/scripts-$id"
+
+  mkdir -p "$root" "$scripts"
+  cp -R "$DIST/$bundle" "$root/"
+
+  # Patch what pkgbuild itself analysed (rather than hand-writing the plist), so
+  # RootRelativeBundlePath always matches by construction. The loop walks the
+  # top-level array entries; a bundle nested inside another is reported under the
+  # parent's ChildBundles rather than as its own entry, and is not patched here —
+  # nor does it need to be, since only top-level bundles appear in PackageInfo's
+  # membership lists, and the assertions below would fail the build if one ever did.
+  pkgbuild --analyze --root "$root" "$plist"
+  local i=0
+  while /usr/libexec/PlistBuddy -c "Print :$i:RootRelativeBundlePath" "$plist" >/dev/null 2>&1; do
+    plist_put "$plist" "$i" BundleIsRelocatable    bool   false
+    plist_put "$plist" "$i" BundleIsVersionChecked bool   false
+    plist_put "$plist" "$i" BundleOverwriteAction  string upgrade
+    i=$((i + 1))
+  done
+  [ "$i" -gt 0 ] || { echo "error: pkgbuild --analyze found no bundle in $bundle" >&2; exit 1; }
+
+  # Fail-closed backstop: if the payload is not at the destination when the
+  # component finishes, the install reports FAILURE instead of success. It runs
+  # only for components the user actually selected.
+  cat > "$scripts/postinstall" <<POST
+#!/bin/sh
+# Installed-state check for $bundle (\$3 = destination volume).
+set -eu
+DEST="\${3:-/}"
+DEST="\${DEST%/}$dest/$bundle"
+[ -e "\$DEST" ] || { echo "Anamorph: $bundle is missing from \$DEST after install" >&2; exit 1; }
+exit 0
+POST
+  chmod +x "$scripts/postinstall"
+
+  pkgbuild --root "$root" --identifier "com.rollytech.anamorph.$id" \
+           --version "$VERSION" --install-location "$dest" \
+           --component-plist "$plist" --scripts "$scripts" "$out"
+}
+
+# One component package per install destination.
+build_component vst3 Anamorph.vst3      "/Library/Audio/Plug-Ins/VST3"       "$WORK/AnamorphVST3.pkg"
+build_component au   Anamorph.component "/Library/Audio/Plug-Ins/Components" "$WORK/AnamorphAU.pkg"
+build_component app  Anamorph.app       "/Applications"                      "$WORK/AnamorphApp.pkg"
 
 # Distribution definition, written explicitly (a synthesized one hard-wires
 # customize="never", which hides the component checkboxes). customize="allow"
@@ -93,4 +153,94 @@ grep -q 'customize="allow"' "$WORK/expanded/Distribution" \
   || { echo "error: $OUT lost customize=\"allow\" (component selection disabled)" >&2; exit 1; }
 [ "$(grep -c 'start_selected="true"' "$WORK/expanded/Distribution")" -eq 3 ] \
   || { echo "error: $OUT does not pre-select all three components (default must be a full install)" >&2; exit 1; }
+
+# Install-state independence (INC-012): no component may be relocatable or
+# version-checked, each must keep BundleOverwriteAction=upgrade, and each must
+# carry its postinstall check. In PackageInfo each of those states is a
+# membership list — `<relocate>` for BundleIsRelocatable, `<bundle-version>` for
+# BundleIsVersionChecked, `<upgrade-bundle>` for the overwrite action — emitted
+# self-closing when empty, so it is the `<element><bundle` pair that means a
+# bundle is listed.
+#
+# Those assertions match on element names, and a name that pkgbuild never writes
+# is an assertion that always passes — precisely the silent-success shape
+# INC-012 is about. (The first cut of this check looked for `<version-check>`,
+# which does not exist, and was therefore dead.) Proving the name is producible
+# is still not enough: it does not show the list TRACKS the component-plist key
+# it stands for. So the mapping is established by a controlled A/B on the same
+# payload — the app bundle is packaged twice, differing only in the keys
+# build_component() sets. Each list must appear with pkgbuild's defaults and
+# disappear when its key is switched off. If that stops holding, the build stops
+# here rather than shipping assertions that cannot fire.
+probe_info() {                  # $1 = tag; remaining args go to pkgbuild
+  _tag=$1; shift
+  pkgbuild --root "$WORK/root-app" --identifier com.rollytech.anamorph.probe \
+           --version "$VERSION" --install-location "/Applications" \
+           "$@" "$WORK/probe-$_tag.pkg" >/dev/null
+  pkgutil --expand "$WORK/probe-$_tag.pkg" "$WORK/probe-$_tag-x"
+  tr -d ' \n\t' < "$WORK/probe-$_tag-x/PackageInfo"
+}
+probe_fail() {                  # $1 = tag, $2 = message
+  echo "error: $2" >&2
+  echo "---- PackageInfo of probe '$1' ----" >&2
+  cat "$WORK/probe-$1-x/PackageInfo" >&2
+  exit 1
+}
+PROBE_ON=$(probe_info defaults)
+PROBE_OFF=$(probe_info patched --component-plist "$WORK/component-app.plist")
+for pattern in '<relocate><bundle' '<bundle-version><bundle' '<upgrade-bundle><bundle'; do
+  case "$PROBE_ON" in
+    *"$pattern"*) ;;
+    *) probe_fail defaults "pkgbuild's defaults produce no '$pattern' — the assertion keyed on it cannot fire" ;;
+  esac
+done
+for pattern in '<relocate><bundle' '<bundle-version><bundle'; do
+  case "$PROBE_OFF" in
+    *"$pattern"*) probe_fail patched "'$pattern' survives with its component-plist key switched off — that list does not track the key it is asserted for" ;;
+    *) ;;
+  esac
+done
+case "$PROBE_OFF" in
+  *'<upgrade-bundle><bundle'*) ;;
+  *) probe_fail patched "BundleOverwriteAction=upgrade did not reach PackageInfo as <upgrade-bundle>" ;;
+esac
+
+# Count first — a loop over an empty `find` would pass every assertion below
+# without executing one of them.
+INFOS=$(find "$WORK/expanded" -name PackageInfo | wc -l | tr -d ' ')
+[ "$INFOS" -eq 3 ] \
+  || { echo "error: expected 3 component PackageInfo files in $OUT, found $INFOS" >&2; exit 1; }
+while IFS= read -r info; do
+  flat=$(tr -d ' \n\t' < "$info")
+  case "$flat" in
+    *'<relocate><bundle'*)
+      echo "error: $info marks a bundle relocatable — a re-install could write over a moved copy" >&2; exit 1 ;;
+  esac
+  case "$flat" in
+    *'<bundle-version><bundle'*)
+      echo "error: $info marks a bundle version-checked — a re-install could skip the destination" >&2; exit 1 ;;
+  esac
+  case "$flat" in
+    *'<upgrade-bundle><bundle'*) ;;
+    *) echo "error: $info does not carry BundleOverwriteAction=upgrade — a re-install could merge into the old bundle" >&2; exit 1 ;;
+  esac
+  case "$flat" in
+    *'<scripts><postinstall'*) ;;
+    *) echo "error: $info has no postinstall installed-state check" >&2; exit 1 ;;
+  esac
+done < <(find "$WORK/expanded" -name PackageInfo)
+
+# Payload completeness: every component must carry the whole bundle, so an
+# install never depends on files a previous install left behind.
+pkgutil --expand-full "$OUT" "$WORK/full"
+while IFS='|' read -r pkg bundle; do
+  [ -d "$WORK/full/$pkg/Payload/$bundle" ] \
+    || { echo "error: $pkg carries no $bundle payload" >&2; exit 1; }
+  [ -f "$WORK/full/$pkg/Payload/$bundle/Contents/MacOS/Anamorph" ] \
+    || { echo "error: $pkg payload $bundle has no Contents/MacOS/Anamorph" >&2; exit 1; }
+done <<'PAYLOADS'
+AnamorphVST3.pkg|Anamorph.vst3
+AnamorphAU.pkg|Anamorph.component
+AnamorphApp.pkg|Anamorph.app
+PAYLOADS
 echo "built $OUT"

@@ -8,9 +8,208 @@ that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.3 change set** (2026-08-11, matching the CHANGELOG heading) — six editor-only GUI interaction fixes on
 top of 0.9.2 (add-split preview line, unified pop-up dismissal, pop-up lifetime across a hidden,
-destroyed or backgrounded window, menu width, disabled menu items, Tooltips off), landed across five
-rounds; the entries below run newest-first. Below them, the 0.9.2
+destroyed or backgrounded window, menu width, disabled menu items, Tooltips off) plus a
+**packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
+across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**Probe-state fix (0.9.3) — the staging probe could decide future installs.**
+
+The hard-link probe that chooses the staging location writes one marker into the plug-in directory,
+and `ln` refuses an existing target. A run killed between creating and removing that marker left it
+there for good, and from then on the probe failed on **every** later run — pinning staging to the
+in-scan-path fallback permanently, which is exactly the arrangement the round before had moved away
+from. Reproduced against the tree before fixing: with a marker pre-placed in `~/.vst3`, the install
+succeeded but staged inside the scan directory. `uninstall.sh` did not list the marker either, so it
+survived a full uninstall and contradicted the "leaves nothing that survives a deliberate uninstall"
+line in `PACKAGING.md`.
+
+The fix is to make the marker **stateless** rather than to chase its cleanup: it is removed up front
+on every run, before the probe and before the recovery paths that never probe, so a leftover can only
+ever be litter. Deleting it only *after* use would not have been enough — that is the same
+kill-between-two-commands window that created the bug. `-rf` rather than `-f`, so even a directory
+under that name cannot pin the choice; nothing but the probe is ever written to that path. The
+uninstaller's scratch list gained the marker so an interrupted install leaves nothing behind.
+
+Verified by execution in both modes: stale marker (file and directory), `INT`/`TERM`/`HUP`/`KILL`
+delivered inside the probe window itself — after which the installed plug-in is untouched, because
+the probe runs before any staging, and the **next run stages outside again** — repeat installs
+leaving no marker, and uninstall clearing one. The full transaction matrix was re-run unchanged, so
+the stage-and-swap and recovery guarantees are intact. No new known issue: this defect is fixed, not
+carried.
+
+**Consolidated installer round (0.9.3) — the transaction finished, and the limitations registered.**
+
+*The transaction, completed rather than patched again.* Two prior rounds each fixed the failure the
+review named and left the adjacent one standing; this round took the whole lifecycle. What changed
+beyond the previous fix: staging moved **out of the DAW scan path** (`.anamorph-install-stage` next
+to the plug-in directory), chosen by a **hard-link probe** — the one operation that cannot cross a
+filesystem, where the obvious `mv` probe is no test at all because it silently falls back to
+copy-and-unlink, and `~/.vst3` may be a symlink onto another mount. A false negative falls back
+inside the plug-in directory and costs only the scan-path property, never atomicity; this was
+verified against a real second filesystem, which is also how the missing `mkdir` for that fallback
+was found. Both modes now share one `choose_stage_dir`/`reconcile`/`arm_traps` implementation
+instead of two near-copies that had already drifted once. The elevation prefix is declared once at
+the top and stays empty on the per-user path.
+
+*Sequencing bug found by testing, not reading.* `reconcile` sweeps an empty stage directory as
+scratch, so creating that directory **before** the opening reconcile meant an upgrade (destination
+present) had its stage directory deleted underneath it. Creating it after reconcile is the fix. The
+same class as the previous round's finding: the recovery helper must not destroy what the
+transaction still needs.
+
+*Uninstall made consistent with what install owns.* `uninstall.sh` removes both possible stage
+directory locations and the staged Standalone, by exact name, so an interrupted install leaves
+nothing that survives a deliberate uninstall. It matches no patterns and touches no user data.
+
+*Coexistence warning.* A per-user install now detects an existing system-wide one (`test -e`, no
+elevation) and names what is still installed there plus the `sudo ./uninstall.sh` that clears it.
+Detection only — the maintainer's decision, recorded here; removing it would need exactly the
+elevation the per-user mode exists to avoid.
+
+*macOS assertion strengthened from name to semantics.* Proving `<bundle-version>` is *producible*
+did not prove its membership tracks `BundleIsVersionChecked`. The build now runs a controlled A/B on
+one payload — same bundle, packaged with pkgbuild's defaults and with the patched plist — and
+requires each list to appear with the key on and vanish with it off. `<upgrade-bundle>` gained an
+assertion too, which closes the one patched key that had none. The stale "nested bundles are covered
+too" claim was corrected in both the script and `PACKAGING.md`: nested bundles appear under the
+parent's `ChildBundles`, are not patched, and do not need to be.
+
+*Guarantees reconciled with what the code actually provides.* "Nothing half-installed" was too
+strong: the VST3 and the Standalone are two artifacts, each replaced atomically, and a failure
+between the two commits leaves a new VST3 with the previous Standalone — both valid, a mixed pair.
+`PACKAGING.md` now states the guarantee per artifact with a point-of-failure table, the CHANGELOG
+entry says what the user actually gets, and the macOS "every selected component is written" line
+notes that components install in sequence with no rollback.
+
+*Registered, not silently solved (DOCUMENTATION_LIFECYCLE trigger: new unresolved limitation).*
+**KI-021** (Linux per-user install does not displace a system-wide one) and **KI-022** (macOS
+non-relocatable packaging leaves a user-moved copy behind) now exist in `KNOWN_ISSUES.md`, the list
+testers and the release checklist actually consult, with the procedure docs cross-referencing them.
+Both are deliberate trades and neither had a register entry despite being documented in packaging
+procedure — the gap the review named.
+
+*Maintainer sign-off, 2026-08-11 (recorded, not re-requested).* The judgement calls in this round —
+that the coexistence warning is wanted, that both limitations are documented rather than
+behaviourally redesigned, and that the macOS semantic assertion is required — were approved by the
+maintainer in advance. This is a **decision** sign-off; it is not manual testing and is not recorded
+as any.
+
+**Final review round (0.9.3) — two defects in the packaging round, plus the visual sign-off.**
+
+*The fix reproduced the defect's own shape.* The INC-012 prevention assertion for version checking
+was keyed on `<version-check>`, an element pkgbuild never writes — so it passed unconditionally. A
+check that cannot fire is the same silent success as an install that cannot install, which makes this
+worth recording rather than quietly correcting: the sibling `<relocate>` assertion was named
+correctly and did work, and the asymmetry is invisible in a green build. In `PackageInfo` these
+states are membership lists (`<relocate>`, `<bundle-version>`), so the name is now correct **and
+proved on every build** — a throwaway component built from the same payload with the defaults left
+on is relocatable and version-checked by definition and must match both patterns, and if it does not
+the build stops and prints that `PackageInfo`. Verifying an assertion by construction rather than by
+inspection is the transferable part; the same reasoning produced the `PackageInfo` **count** guard in
+the round before, for the same class of vacuous pass.
+
+*The replacement path destroyed what it was replacing.* `install.sh` removed the installed
+`Anamorph.vst3` before copying its replacement, so a copy that failed part-way left the user with no
+plug-in at all — contradicting the "nothing half-installed" guarantee this file and `PACKAGING.md`
+already asserted. Both modes now stage beside the destination and swap. Two notes: the **per-user**
+path had the identical defect and was fixed with it (the review cited only the system-wide path, but
+per-user is now the *default* path, so fixing one and leaving the other was not a defensible release
+state); and staging beside the destination rather than in `/tmp` keeps the final step a
+same-filesystem rename, which additionally replaces a **running** Standalone that `cp` refuses with
+`Text file busy` — verified directly, along with a control run proving the pre-fix script destroys
+the install under the same injected failure.
+
+*Wording.* The installer's title is now `Anamorph Linux Installer`, matching
+`Anamorph Linux Uninstaller`; the two docs that quote the prompt were updated with it.
+
+*Follow-up: the stage-and-swap still had an interruption window.* The swap deleted the destination
+before renaming the staged copy in, so between those two commands the staged copy was the only
+one — and the cleanup handler removed exactly that on the way out, turning a Ctrl-C into total
+loss. The stage-and-swap shape was right; the **order** was not. This round made the old bundle move
+**aside** instead of being deleted, so a complete copy exists at every instant, and made cleanup
+restore rather than only delete. (The staging paths it used were superseded by the consolidated
+round above, which moved them out of the DAW scan path; the ordering property is unchanged.) Three things this round established that are worth
+carrying forward: `EXIT` traps are **not** enough for interruption — dash, `/bin/sh` on
+Debian/Ubuntu, does not run them when the script is signalled, so `INT`/`TERM`/`HUP` are trapped
+explicitly (measured, not assumed); the restore must be **ordered before** the scratch removal
+*and* the parked copy kept until the destination is repopulated, a flaw the first draft of this fix
+still had and the failure tests caught; and `SIGKILL` — which no handler covers — now leaves the
+old bundle parked and recoverable, with the next run's opening `reconcile` restoring it. Verified
+by injecting a failing commit rename and by delivering `INT`/`TERM`/`HUP` inside the window in both
+modes (elevated included), each against a control run of the previous script that ends with nothing
+installed. `PACKAGING.md`'s mechanism paragraph is corrected; its guarantee wording already
+described the intended behaviour and stands unchanged.
+
+*Inspected and accepted as non-blocking, with reasons.* A per-user install does not displace an
+existing system-wide one — real and, for 0.9.3, the likely upgrade path, but the fix would need the
+elevation that mode exists to avoid, so it is **documented** (`INSTALL.txt`, `INSTALLATION.md`,
+`PACKAGING.md` §Not chased) rather than coded, mirroring the macOS stale-copy treatment. The `read`
+EOF fallback discards a value only when a user types an answer and presses Ctrl-D instead of Enter on
+a tty; the cited pipe repro cannot reach it at all, because a pipe fails `[ -t 0 ]` and never
+prompts. `plist_put`'s Set/Add fallback is covered by the assertions now that the version key has a
+live one. The remaining items (pkgbuild bundle classification, per-component postinstall
+non-atomicity, the earlier pop-up/tooltip/focus/z-order/`SpectrumImager` findings) were re-read and
+need no change; the macOS guarantee text was checked and does not claim atomicity. The
+permission-denied message stays as written — it is maintainer-specified wording (C8), even though it
+now also prints for non-permission failures.
+
+*Sign-off recorded (2026-08-11).* The maintainer approved the **visual** items: the equal-width Widen
+/ Style-Focus row is intentional, the narrower Simple-mode Widen control is acceptable, the current
+pop-up/menu width behaviour is acceptable, and the remaining visual verification items are approved.
+Recorded in `TESTING.md` (ADR-0025 disclosure 2) and `worklogs/GUI_INTERACTION_FIXES_v0.9.3.md` §7
+and §10. **Scope of that sign-off:** visual/UI only — the behavioural per-platform checks and every
+**installer** check (the macOS four-case re-install matrix, a DAW finding `~/.vst3` on Linux) are not
+covered and remain owed.
+
+**Packaging round (0.9.3) — `packaging/` only, no `src/` change.** Two independent installer items,
+both requested with an explicit scope restriction to their own platform, and both verifiable only
+where CI does not go.
+
+*Linux — an install that no longer needs root.* `install.sh`/`uninstall.sh` now prompt for one of two
+modes and **default to the per-user one** (`~/.vst3` + `~/.local/bin`), which matches how Linux DAWs
+actually scan: `~/.vst3` is the VST3 standard's per-user folder and a default path in
+REAPER/Bitwig/Ardour, so nothing is lost by not writing to `/usr`. The design decisions worth
+keeping: elevation is **per operation** (`priv() { $SUDO "$@" || fail; }`), never a re-exec of the
+script through `sudo`; **root skips the prompt** and installs system-wide, so the previously
+documented `sudo ./install.sh` keeps its exact old behaviour rather than becoming a per-user install
+into `/root`; a **non-tty stdin** takes the default instead of blocking; and every unrecognised answer
+falls back to the default, as specified. The two failure paths fail **closed** — no `sudo` on `PATH`
+and a `sudo` the user cannot authenticate both print their message and exit 1 with nothing
+half-installed. Verified on Linux against a stubbed payload across the mode matrix, the failure paths
+and install→uninstall round-trips in both modes (recorded in `TESTING.md`); what that cannot show is a
+real DAW finding `~/.vst3/Anamorph.vst3`, which stays a manual check. Docs synced per the lifecycle
+trigger (**Packaging** → `PACKAGING.md`, `RELEASE_PROCESS.md`) plus the user-facing carriers that
+asserted the old behaviour: `packaging/linux/INSTALL.txt`, `docs/user/INSTALLATION.md`,
+`USER_MANUAL.md` §2.1, `README.md`, `REPOSITORY_MAP.md`, `CI_CD.md` §8.
+
+*macOS — INC-012, an installer that reported success without installing.* `pkgbuild` marks every
+bundle it finds **relocatable by default**; Installer.app then resolves the destination by looking the
+bundle identifier up in the receipt/Spotlight database and writes over **whatever copy it finds**,
+using `--install-location` only when the lookup comes up empty. Move `/Applications/Anamorph.app`
+elsewhere — dragging it to the Trash counts, since that is still a file on the volume and still
+indexed — and the next install reports success while `/Applications` stays empty. `build-pkg.sh` now
+patches the plist `pkgbuild --analyze` produces (rather than hand-writing one, so
+`RootRelativeBundlePath` matches by construction and nested bundles are covered) and passes it back
+via `--component-plist`. The audit-relevant point is **which** claim was wrong: the pre-fix build-time
+self-check verified the *package* thoroughly — three component identifiers, `customize="allow"`, all
+choices pre-selected — and that check was correct and remains; relocation is simply not a property of
+the archive, only of install-time behaviour, so no amount of package inspection could have caught it.
+The new assertions therefore cover the two things that *are* inspectable (no relocatable and no
+version-checked bundle in any `PackageInfo`; `pkgutil --expand-full` payload completeness), and the
+rest is now an explicit **coverage gap**: `TESTING.md` §"Gaps in the automated coverage" gained a
+fifth bullet — *no gate ever installs anything* — carrying the owed four-case re-install matrix per
+format. `PACKAGING.md` gained §"macOS reinstall behaviour (idempotency)" recording the destinations,
+the guarantee, the three plist keys and the receipt assumption (receipts are still written but are
+never read to decide where or whether to copy, so `pkgutil --forget` is never needed to make an
+install work).
+
+*Drift found and corrected (C6).* `HANDOVER.md`'s Current Version row still ended the menu-width
+paragraph with "no layout code changed in the cycle" — true when written, contradicted by the
+equal-width Widen row that landed later in the same cycle. The 2026-08-11 round corrected this
+sentence in this file (see the layout entry below) but not the HANDOVER instance. Corrected to name
+the Widen row as the cycle's one deliberate layout change; the entry-count in the same row (six
+Fixed / two Changed) is now seven / three.
 
 **Follow-up round on the pop-up work (0.9.3).** Four items, three of them corrections to the change
 set itself. *(1)* The shield is **always visible and inert**, with only its *interception* toggled —
