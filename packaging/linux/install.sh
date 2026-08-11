@@ -30,7 +30,7 @@ if [ "$(id -u)" -eq 0 ]; then
     echo "Running as root - installing system-wide (for all users)."
 elif [ -t 0 ]; then
     cat <<'EOF'
-Anamorph Linux Plugin Installer
+Anamorph Linux Installer
 
 Choose installation location:
 
@@ -64,11 +64,27 @@ if [ "$mode" = user ]; then
     VST3_DIR="$HOME/.vst3"
     BIN_DIR="$HOME/.local/bin"
 
+    STAGE_VST3="$VST3_DIR/.Anamorph.vst3.new"
+    STAGE_APP="$BIN_DIR/.Anamorph.new"
+
+    # Stage beside the destination, then swap. Copying straight over the
+    # installed plug-in would destroy a working install the moment the copy
+    # failed (no space, unreadable payload, an interrupted run); staging keeps
+    # the old one until the new one is complete. Staging next to the
+    # destination, not in /tmp, keeps the final step a same-filesystem rename,
+    # which cannot fail for space and replaces a RUNNING Standalone that `cp`
+    # would refuse with "Text file busy".
     mkdir -p "$VST3_DIR" "$BIN_DIR"
+    trap 'rm -rf "$STAGE_VST3" "$STAGE_APP" 2>/dev/null || true' EXIT
+    rm -rf "$STAGE_VST3" "$STAGE_APP"
+    cp -R "$VST3_SRC" "$STAGE_VST3"
+    cp "$APP_SRC" "$STAGE_APP"
+    chmod 755 "$STAGE_APP" "$STAGE_VST3/Contents/x86_64-linux/Anamorph.so" 2>/dev/null || true
+
     rm -rf "$VST3_DIR/Anamorph.vst3"
-    cp -R "$VST3_SRC" "$VST3_DIR/"
-    cp "$APP_SRC" "$BIN_DIR/Anamorph"
-    chmod 755 "$BIN_DIR/Anamorph" "$VST3_DIR/Anamorph.vst3/Contents/x86_64-linux/Anamorph.so" 2>/dev/null || true
+    mv "$STAGE_VST3" "$VST3_DIR/Anamorph.vst3"
+    mv "$STAGE_APP" "$BIN_DIR/Anamorph"
+    trap - EXIT
 
     echo "Installed (current user only - no root needed):"
     echo "  VST3       -> $VST3_DIR/Anamorph.vst3"
@@ -105,12 +121,25 @@ priv() {
     }
 }
 
+STAGE_VST3="$SYS_VST3_DIR/.Anamorph.vst3.new"
+STAGE_APP="$SYS_BIN_DIR/.Anamorph.new"
+
+# Stage beside the destination, then swap — same reasoning as the per-user path
+# above: a failed copy must not have destroyed the plug-in that was working
+# before the run, and the swap is a same-filesystem rename.
 priv mkdir -p "$SYS_VST3_DIR" "$SYS_BIN_DIR"
-priv rm -rf "$SYS_VST3_DIR/Anamorph.vst3"
-priv cp -R "$VST3_SRC" "$SYS_VST3_DIR/"
-priv cp "$APP_SRC" "$SYS_BIN_DIR/Anamorph"
+# shellcheck disable=SC2064  # expand $SUDO and the paths now, not at trap time
+trap "$SUDO rm -rf '$STAGE_VST3' '$STAGE_APP' 2>/dev/null || true" EXIT
+priv rm -rf "$STAGE_VST3" "$STAGE_APP"
+priv cp -R "$VST3_SRC" "$STAGE_VST3"
+priv cp "$APP_SRC" "$STAGE_APP"
 # shellcheck disable=SC2086
-$SUDO chmod 755 "$SYS_BIN_DIR/Anamorph" "$SYS_VST3_DIR/Anamorph.vst3/Contents/x86_64-linux/Anamorph.so" 2>/dev/null || true
+$SUDO chmod 755 "$STAGE_APP" "$STAGE_VST3/Contents/x86_64-linux/Anamorph.so" 2>/dev/null || true
+
+priv rm -rf "$SYS_VST3_DIR/Anamorph.vst3"
+priv mv "$STAGE_VST3" "$SYS_VST3_DIR/Anamorph.vst3"
+priv mv "$STAGE_APP" "$SYS_BIN_DIR/Anamorph"
+trap - EXIT
 
 echo "Installed (system-wide, all users):"
 echo "  VST3       -> $SYS_VST3_DIR/Anamorph.vst3"

@@ -59,7 +59,19 @@ gated steps (`package_windows` / `package_macos_pkg`), each with the version par
   stdin** it takes the default. Mode 2 fail-closes rather than degrading: no `sudo` on
   `PATH` prints the "use a user installation instead" error and exits 1; a failed elevated
   operation prints the permission-denied message and exits 1, leaving nothing half-installed.
+  Both modes **stage beside the destination and then swap** (`.Anamorph.vst3.new` /
+  `.Anamorph.new`, removed on a failed run): the installed plug-in is displaced only once its
+  replacement is complete, so a copy that fails part-way — no space, unreadable payload, an
+  interrupted run — leaves the previously working install untouched instead of destroying it. The
+  swap is a same-filesystem rename, which also replaces a **running** Standalone that `cp` refuses
+  with `Text file busy`.
   `uninstall.sh` mirrors the same two modes, so a per-user install is removed without root.
+  **Not chased** (the Linux counterpart of the macOS note below): a per-user install does not
+  detect or remove an existing system-wide one. Both paths are default scan paths, so a user who
+  installed system-wide before 0.9.3 and then takes the new default has two copies and the DAW's
+  scan order decides which loads — documented as a troubleshooting entry in `INSTALL.txt` and
+  `docs/user/INSTALLATION.md`, not worked around in the script (removing a system-wide install
+  from the per-user path would need the elevation that mode exists to avoid).
 - **Windows** — `Anamorph-<version>-Windows-Installer.exe`: compiled by the preinstalled
   Inno Setup 6 (`ISCC.exe`) from `packaging/windows/Anamorph.iss` (stable `AppId`;
   requires elevation; real uninstall entry). Wizard: a **component page** (*Install VST3*
@@ -197,11 +209,22 @@ restores the standard destination rather than tracking the moved bundle. A stale
 `~/Library/Audio/Plug-Ins/...` from an old relocated install is likewise the user's to
 delete; hosts may otherwise see two Anamorphs.
 
-**Build-time self-checks** (fail the macOS job, so this cannot silently regress): all **three**
-component `PackageInfo` files must be found — the count is asserted first, because a loop over an
-empty match would pass every assertion without running one — and each must list no relocatable and
-no version-checked bundle and declare its `postinstall`; and `pkgutil --expand-full` must show each
-component's payload carrying the whole bundle down to `Contents/MacOS/Anamorph`.
+**Build-time self-checks** (fail the macOS job, so this cannot silently regress). In `PackageInfo`
+each state is a membership list — `<relocate>` for `BundleIsRelocatable`, **`<bundle-version>`** for
+`BundleIsVersionChecked` — written self-closing when empty, so a listed bundle shows as the
+`<element><bundle` pair. The checks, in order:
+
+1. **The assertion patterns are proved live.** A throwaway component is built from the same payload
+   with the defaults left *on*; being relocatable and version-checked by definition, it must match
+   both patterns. This exists because a name pkgbuild never writes makes an assertion that always
+   passes — the first cut of the version check looked for `<version-check>` and was dead. If Apple
+   renames an element, the build stops here and prints the probe's `PackageInfo` rather than
+   shipping a check that cannot fire.
+2. All **three** component `PackageInfo` files must be found — counted first, because a loop over an
+   empty match would pass every assertion without running one.
+3. Each must list no relocatable and no version-checked bundle, and declare its `postinstall`.
+4. `pkgutil --expand-full` must show each component's payload carrying the whole bundle down to
+   `Contents/MacOS/Anamorph`.
 Evidence [Verified]: `packaging/macos/build-pkg.sh`; INC-012 in `docs/POSTMORTEMS.md`.
 
 ## Universal binary verification (macOS)

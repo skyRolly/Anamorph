@@ -151,10 +151,35 @@ grep -q 'customize="allow"' "$WORK/expanded/Distribution" \
   || { echo "error: $OUT does not pre-select all three components (default must be a full install)" >&2; exit 1; }
 
 # Install-state independence (INC-012): no component may be relocatable or
-# version-checked, and each must carry its postinstall check. Empty elements are
-# written self-closing (`<relocate/>`), so it is the `<relocate><bundle` pair
-# that means a bundle is listed. Count first — a loop over an empty `find` would
-# pass every assertion below without executing one of them.
+# version-checked, and each must carry its postinstall check. In PackageInfo each
+# of those states is a membership list — `<relocate>` for BundleIsRelocatable,
+# `<bundle-version>` for BundleIsVersionChecked — emitted self-closing when empty,
+# so it is the `<element><bundle` pair that means a bundle is listed.
+#
+# These assertions match on element NAMES, which makes a wrong name an assertion
+# that always passes: precisely the silent-success shape INC-012 is about. (The
+# first cut of this check looked for `<version-check>`, an element pkgbuild never
+# writes, and was therefore dead.) So the names are PROVED against pkgbuild on
+# every build before being relied on: a throwaway component built from the same
+# payload with the defaults left ON is relocatable and version-checked by
+# definition, so it must match both patterns. If it does not, the pattern is
+# wrong and the build stops here rather than shipping a check that cannot fire.
+pkgbuild --root "$WORK/root-app" --identifier com.rollytech.anamorph.probe \
+         --version "$VERSION" --install-location "/Applications" "$WORK/probe.pkg" >/dev/null
+pkgutil --expand "$WORK/probe.pkg" "$WORK/probe-expanded"
+probe=$(tr -d ' \n\t' < "$WORK/probe-expanded/PackageInfo")
+for pattern in '<relocate><bundle' '<bundle-version><bundle'; do
+  case "$probe" in
+    *"$pattern"*) ;;
+    *) echo "error: pkgbuild's own defaults produce no '$pattern' — the INC-012 assertion keyed on it cannot fire" >&2
+       echo "---- probe PackageInfo (pkgbuild defaults: relocatable + version-checked) ----" >&2
+       cat "$WORK/probe-expanded/PackageInfo" >&2
+       exit 1 ;;
+  esac
+done
+
+# Count first — a loop over an empty `find` would pass every assertion below
+# without executing one of them.
 INFOS=$(find "$WORK/expanded" -name PackageInfo | wc -l | tr -d ' ')
 [ "$INFOS" -eq 3 ] \
   || { echo "error: expected 3 component PackageInfo files in $OUT, found $INFOS" >&2; exit 1; }
@@ -165,7 +190,7 @@ while IFS= read -r info; do
       echo "error: $info marks a bundle relocatable — a re-install could write over a moved copy" >&2; exit 1 ;;
   esac
   case "$flat" in
-    *'<version-check><bundle'*)
+    *'<bundle-version><bundle'*)
       echo "error: $info marks a bundle version-checked — a re-install could skip the destination" >&2; exit 1 ;;
   esac
   case "$flat" in

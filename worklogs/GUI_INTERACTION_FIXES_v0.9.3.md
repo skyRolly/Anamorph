@@ -314,6 +314,14 @@ change — §10.) A **host that hides rather than destroys the
 editor** while a drop-down is open was first accepted as-is too, then **fixed** in the following round
 — see §9; what is still owed there is the on-device confirmation in such a host, not a decision.
 
+**Maintainer sign-off, 2026-08-11 — the visual items are approved and no longer owed.** Reviewed and
+approved: the **current pop-up/menu width behaviour** (the +10 px against 0.9.2 stands as shipped),
+the **Simple-mode Widen combos** including the narrower control, and the **remaining visual
+verification items** in the list above. This discharges the visual half of the checks owed here.
+Still owed, and **not** covered by this sign-off: the *behavioural* checks in the same list — that a
+dismissing click reaches no control in each of the named places, that a second click afterwards
+behaves normally, and the on-device confirmation in a host that hides rather than destroys the editor.
+
 
 ---
 
@@ -762,6 +770,12 @@ floored at `withMinimumWidth (box.getWidth())`, so it is 125 px unless the text-
 that — *Velvet Noise* at 15 pt plus 40 comes out near 120, i.e. the floor should still bind and the
 list should be exactly as wide as the box. Near enough to the crossing point to be worth looking at
 rather than asserting.
+
+**Maintainer sign-off, 2026-08-11 — approved; these checks are discharged.** The equal-width Widen /
+Style-Focus row is confirmed **intentional and correct as specified**, the **narrower Simple-mode
+Widen control is acceptable**, and the list-versus-box check above is approved along with it. The
+layout stays exactly as specified; nothing here reopens the design, and the reverted pop-up-width
+interpretation stays reverted.
 
 **A note on the constant's placement.** `kAlgoRowGap` and `algoBoxWidth` live at **file scope**, not
 inside `resized()`. As a block-scope `constexpr` read from a capture-less lambda they compiled on GCC

@@ -10,8 +10,57 @@ Last updated: for the **0.9.3 change set** (2026-08-11, matching the CHANGELOG h
 top of 0.9.2 (add-split preview line, unified pop-up dismissal, pop-up lifetime across a hidden,
 destroyed or backgrounded window, menu width, disabled menu items, Tooltips off) plus a
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
-across six rounds; the entries below run newest-first. Below them, the 0.9.2
+across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**Final review round (0.9.3) — two defects in the packaging round, plus the visual sign-off.**
+
+*The fix reproduced the defect's own shape.* The INC-012 prevention assertion for version checking
+was keyed on `<version-check>`, an element pkgbuild never writes — so it passed unconditionally. A
+check that cannot fire is the same silent success as an install that cannot install, which makes this
+worth recording rather than quietly correcting: the sibling `<relocate>` assertion was named
+correctly and did work, and the asymmetry is invisible in a green build. In `PackageInfo` these
+states are membership lists (`<relocate>`, `<bundle-version>`), so the name is now correct **and
+proved on every build** — a throwaway component built from the same payload with the defaults left
+on is relocatable and version-checked by definition and must match both patterns, and if it does not
+the build stops and prints that `PackageInfo`. Verifying an assertion by construction rather than by
+inspection is the transferable part; the same reasoning produced the `PackageInfo` **count** guard in
+the round before, for the same class of vacuous pass.
+
+*The replacement path destroyed what it was replacing.* `install.sh` removed the installed
+`Anamorph.vst3` before copying its replacement, so a copy that failed part-way left the user with no
+plug-in at all — contradicting the "nothing half-installed" guarantee this file and `PACKAGING.md`
+already asserted. Both modes now stage beside the destination and swap. Two notes: the **per-user**
+path had the identical defect and was fixed with it (the review cited only the system-wide path, but
+per-user is now the *default* path, so fixing one and leaving the other was not a defensible release
+state); and staging beside the destination rather than in `/tmp` keeps the final step a
+same-filesystem rename, which additionally replaces a **running** Standalone that `cp` refuses with
+`Text file busy` — verified directly, along with a control run proving the pre-fix script destroys
+the install under the same injected failure.
+
+*Wording.* The installer's title is now `Anamorph Linux Installer`, matching
+`Anamorph Linux Uninstaller`; the two docs that quote the prompt were updated with it.
+
+*Inspected and accepted as non-blocking, with reasons.* A per-user install does not displace an
+existing system-wide one — real and, for 0.9.3, the likely upgrade path, but the fix would need the
+elevation that mode exists to avoid, so it is **documented** (`INSTALL.txt`, `INSTALLATION.md`,
+`PACKAGING.md` §Not chased) rather than coded, mirroring the macOS stale-copy treatment. The `read`
+EOF fallback discards a value only when a user types an answer and presses Ctrl-D instead of Enter on
+a tty; the cited pipe repro cannot reach it at all, because a pipe fails `[ -t 0 ]` and never
+prompts. `plist_put`'s Set/Add fallback is covered by the assertions now that the version key has a
+live one. The remaining items (pkgbuild bundle classification, per-component postinstall
+non-atomicity, the earlier pop-up/tooltip/focus/z-order/`SpectrumImager` findings) were re-read and
+need no change; the macOS guarantee text was checked and does not claim atomicity. The
+permission-denied message stays as written — it is maintainer-specified wording (C8), even though it
+now also prints for non-permission failures.
+
+*Sign-off recorded (2026-08-11).* The maintainer approved the **visual** items: the equal-width Widen
+/ Style-Focus row is intentional, the narrower Simple-mode Widen control is acceptable, the current
+pop-up/menu width behaviour is acceptable, and the remaining visual verification items are approved.
+Recorded in `TESTING.md` (ADR-0025 disclosure 2) and `worklogs/GUI_INTERACTION_FIXES_v0.9.3.md` §7
+and §10. **Scope of that sign-off:** visual/UI only — the behavioural per-platform checks and every
+**installer** check (the macOS four-case re-install matrix, a DAW finding `~/.vst3` on Linux) are not
+covered and remain owed.
 
 **Packaging round (0.9.3) — `packaging/` only, no `src/` change.** Two independent installer items,
 both requested with an explicit scope restriction to their own platform, and both verifiable only

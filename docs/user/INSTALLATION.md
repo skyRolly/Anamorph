@@ -43,7 +43,7 @@ which needs no root at all; a system-wide install is offered as the second choic
    It asks where to install:
 
    ```
-   Anamorph Linux Plugin Installer
+   Anamorph Linux Installer
 
    Choose installation location:
 
@@ -115,6 +115,12 @@ sudo cp Anamorph /usr/local/bin/
 - **DAW doesn't find the plug-in** — check `~/.vst3` (per-user) or `/usr/lib/vst3`
   (system-wide) is in the DAW's VST3 search path (both are by default in
   REAPER/Bitwig/Ardour), then rescan.
+- **Anamorph appears twice, or an update doesn't seem to take** — you have both installs. If
+  you previously ran `sudo ./install.sh` and now take the per-user default, the older
+  system-wide copy stays where it is: both paths are scanned, so the DAW may list two, and
+  which one it loads depends on its scan order. Remove the one you don't want —
+  `sudo ./uninstall.sh` for the system-wide copy, `./uninstall.sh` for the per-user one —
+  then rescan.
 - **Standalone needs audio** — a working ALSA/JACK/PipeWire setup; pick the device in the
   app's audio settings.
 

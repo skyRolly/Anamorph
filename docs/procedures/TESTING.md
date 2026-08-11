@@ -224,9 +224,17 @@ doesn't exist:
      **performed and signed off by the maintainer on 2026-08-09 for the first two fixes** (the
      add-split preview line and the pop-up dismissal behaviour), discharging this disclosure for
      those. The later three — the shield's interception-only redesign, the two menu-rendering fixes
-     and the Tooltips transition — carry a sign-off on the **problem reports and the required
-     contract**, not on a manual test of the implementation, so their manual checks are still owed
-     and are listed at the end of the worklog. None of this touches the Level-5 *audio* audition or
+     and the Tooltips transition — carried a sign-off on the **problem reports and the required
+     contract** rather than on a manual test of the implementation. The **visual** half of what was
+     then still owed is now discharged: the maintainer **reviewed and approved it on 2026-08-11** —
+     the equal-width Widen / Style-Focus row is confirmed **intentional**, the narrower Simple-mode
+     Widen control is **accepted**, the current pop-up/menu width behaviour is **accepted**, and the
+     remaining visual verification items are **approved** (recorded in
+     `worklogs/GUI_INTERACTION_FIXES_v0.9.3.md` §7 and §10). That sign-off covers the **visual/UI**
+     items only: the behavioural per-platform checks in the same lists (a dismissing click reaching
+     no control, pop-up lifetime across a hidden/closed/backgrounded window, the out-of-process host
+     confirmation) and the **installer** checks in the fifth bullet below are **not** covered by it
+     and remain owed. None of this touches the Level-5 *audio* audition or
      the compatibility checklist, which are separate and remain open (`HANDOVER.md` §Release Status).
   3. *Where the gap is tracked.* Here, alongside the INC-010 entry above, and referenced from
      **INC-011**'s Prevention field.
