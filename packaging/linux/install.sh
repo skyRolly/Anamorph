@@ -64,27 +64,59 @@ if [ "$mode" = user ]; then
     VST3_DIR="$HOME/.vst3"
     BIN_DIR="$HOME/.local/bin"
 
+    VST3_DEST="$VST3_DIR/Anamorph.vst3"
     STAGE_VST3="$VST3_DIR/.Anamorph.vst3.new"
     STAGE_APP="$BIN_DIR/.Anamorph.new"
+    PREV_VST3="$VST3_DIR/.Anamorph.vst3.prev"
 
     # Stage beside the destination, then swap. Copying straight over the
     # installed plug-in would destroy a working install the moment the copy
     # failed (no space, unreadable payload, an interrupted run); staging keeps
     # the old one until the new one is complete. Staging next to the
-    # destination, not in /tmp, keeps the final step a same-filesystem rename,
+    # destination, not in /tmp, keeps every swap step a same-filesystem rename,
     # which cannot fail for space and replaces a RUNNING Standalone that `cp`
     # would refuse with "Text file busy".
+    #
+    # The swap moves the old bundle ASIDE rather than deleting it, so a COMPLETE
+    # copy exists at every instant: the old one in place, then the old one parked
+    # next to it while the finished replacement is renamed in, then the new one.
+    # Deleting first would open a window in which the destination is empty and
+    # the staged copy is the only one -- and the cleanup below would then remove
+    # that too, leaving nothing installed.
+    #
+    # `reconcile` puts the parked copy back if anything stops the run mid-swap.
+    # It also runs BEFORE the work starts, which clears scratch (and recovers a
+    # parked bundle) left by an earlier run killed with a signal no trap can
+    # catch. EXIT alone is not enough to cover interruption: dash -- /bin/sh on
+    # Debian and Ubuntu -- does not run EXIT traps when the script is terminated
+    # by a signal, so INT, TERM and HUP are trapped explicitly.
+    reconcile() {
+        if [ ! -e "$VST3_DEST" ] && [ -d "$PREV_VST3" ]; then
+            mv "$PREV_VST3" "$VST3_DEST" 2>/dev/null || true
+        fi
+        rm -rf "$STAGE_VST3" "$STAGE_APP" 2>/dev/null || true
+        # The parked copy is dropped ONLY once the destination is populated
+        # again: if the restore above could not complete, it is the only copy
+        # left and deleting it here would be the very loss this guards against.
+        [ ! -e "$VST3_DEST" ] || rm -rf "$PREV_VST3" 2>/dev/null || true
+    }
+
     mkdir -p "$VST3_DIR" "$BIN_DIR"
-    trap 'rm -rf "$STAGE_VST3" "$STAGE_APP" 2>/dev/null || true' EXIT
-    rm -rf "$STAGE_VST3" "$STAGE_APP"
+    reconcile
+    trap 'reconcile' EXIT
+    trap 'reconcile; exit 130' INT
+    trap 'reconcile; exit 143' TERM
+    trap 'reconcile; exit 129' HUP
+
     cp -R "$VST3_SRC" "$STAGE_VST3"
     cp "$APP_SRC" "$STAGE_APP"
     chmod 755 "$STAGE_APP" "$STAGE_VST3/Contents/x86_64-linux/Anamorph.so" 2>/dev/null || true
 
-    rm -rf "$VST3_DIR/Anamorph.vst3"
-    mv "$STAGE_VST3" "$VST3_DIR/Anamorph.vst3"
+    [ ! -e "$VST3_DEST" ] || mv "$VST3_DEST" "$PREV_VST3"
+    mv "$STAGE_VST3" "$VST3_DEST"
     mv "$STAGE_APP" "$BIN_DIR/Anamorph"
-    trap - EXIT
+    rm -rf "$PREV_VST3"
+    trap - EXIT INT TERM HUP
 
     echo "Installed (current user only - no root needed):"
     echo "  VST3       -> $VST3_DIR/Anamorph.vst3"
@@ -121,25 +153,44 @@ priv() {
     }
 }
 
+SYS_VST3_DEST="$SYS_VST3_DIR/Anamorph.vst3"
 STAGE_VST3="$SYS_VST3_DIR/.Anamorph.vst3.new"
 STAGE_APP="$SYS_BIN_DIR/.Anamorph.new"
+PREV_VST3="$SYS_VST3_DIR/.Anamorph.vst3.prev"
 
-# Stage beside the destination, then swap — same reasoning as the per-user path
-# above: a failed copy must not have destroyed the plug-in that was working
-# before the run, and the swap is a same-filesystem rename.
+# Stage beside the destination, then swap — same reasoning, and the same
+# move-aside-rather-than-delete ordering, as the per-user path above.
+sys_reconcile() {
+    if [ ! -e "$SYS_VST3_DEST" ] && [ -d "$PREV_VST3" ]; then
+        # shellcheck disable=SC2086  # $SUDO is deliberately empty when already root
+        $SUDO mv "$PREV_VST3" "$SYS_VST3_DEST" 2>/dev/null || true
+    fi
+    # shellcheck disable=SC2086
+    $SUDO rm -rf "$STAGE_VST3" "$STAGE_APP" 2>/dev/null || true
+    # Parked copy dropped only once the destination is populated again — see the
+    # per-user reconcile above.
+    # shellcheck disable=SC2086
+    [ ! -e "$SYS_VST3_DEST" ] || $SUDO rm -rf "$PREV_VST3" 2>/dev/null || true
+}
+
 priv mkdir -p "$SYS_VST3_DIR" "$SYS_BIN_DIR"
-# shellcheck disable=SC2064  # expand $SUDO and the paths now, not at trap time
-trap "$SUDO rm -rf '$STAGE_VST3' '$STAGE_APP' 2>/dev/null || true" EXIT
-priv rm -rf "$STAGE_VST3" "$STAGE_APP"
+sys_reconcile
+trap 'sys_reconcile' EXIT
+trap 'sys_reconcile; exit 130' INT
+trap 'sys_reconcile; exit 143' TERM
+trap 'sys_reconcile; exit 129' HUP
+
 priv cp -R "$VST3_SRC" "$STAGE_VST3"
 priv cp "$APP_SRC" "$STAGE_APP"
 # shellcheck disable=SC2086
 $SUDO chmod 755 "$STAGE_APP" "$STAGE_VST3/Contents/x86_64-linux/Anamorph.so" 2>/dev/null || true
 
-priv rm -rf "$SYS_VST3_DIR/Anamorph.vst3"
-priv mv "$STAGE_VST3" "$SYS_VST3_DIR/Anamorph.vst3"
+[ ! -e "$SYS_VST3_DEST" ] || priv mv "$SYS_VST3_DEST" "$PREV_VST3"
+priv mv "$STAGE_VST3" "$SYS_VST3_DEST"
 priv mv "$STAGE_APP" "$SYS_BIN_DIR/Anamorph"
-trap - EXIT
+# shellcheck disable=SC2086
+$SUDO rm -rf "$PREV_VST3" 2>/dev/null || true
+trap - EXIT INT TERM HUP
 
 echo "Installed (system-wide, all users):"
 echo "  VST3       -> $SYS_VST3_DIR/Anamorph.vst3"

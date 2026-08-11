@@ -59,12 +59,19 @@ gated steps (`package_windows` / `package_macos_pkg`), each with the version par
   stdin** it takes the default. Mode 2 fail-closes rather than degrading: no `sudo` on
   `PATH` prints the "use a user installation instead" error and exits 1; a failed elevated
   operation prints the permission-denied message and exits 1, leaving nothing half-installed.
-  Both modes **stage beside the destination and then swap** (`.Anamorph.vst3.new` /
-  `.Anamorph.new`, removed on a failed run): the installed plug-in is displaced only once its
-  replacement is complete, so a copy that fails part-way — no space, unreadable payload, an
-  interrupted run — leaves the previously working install untouched instead of destroying it. The
-  swap is a same-filesystem rename, which also replaces a **running** Standalone that `cp` refuses
-  with `Text file busy`.
+  Both modes **stage beside the destination and then swap**: the installed plug-in is displaced
+  only once its replacement is complete, so a copy that fails part-way — no space, unreadable
+  payload, an interrupted run — leaves the previously working install untouched instead of
+  destroying it. The swap moves the old bundle **aside** (`.Anamorph.vst3.prev`) rather than
+  deleting it and then renames the staged copy (`.Anamorph.vst3.new`) into place, so a complete
+  copy exists at every instant — deleting first would open a window in which the destination is
+  empty and the staged copy is the only one. A `reconcile` helper puts the parked bundle back if
+  the run stops mid-swap; it also runs at the *start* of a run, recovering a bundle parked by an
+  earlier run that a `SIGKILL` ended before any handler could, and it drops the parked copy only
+  once the destination is populated again. `INT`, `TERM` and `HUP` are trapped explicitly, because
+  dash — `/bin/sh` on Debian and Ubuntu — does not run `EXIT` traps when the script is signalled.
+  Every swap step is a same-filesystem rename, which also replaces a **running** Standalone that
+  `cp` refuses with `Text file busy`.
   `uninstall.sh` mirrors the same two modes, so a per-user install is removed without root.
   **Not chased** (the Linux counterpart of the macOS note below): a per-user install does not
   detect or remove an existing system-wide one. Both paths are default scan paths, so a user who

@@ -41,6 +41,23 @@ the install under the same injected failure.
 *Wording.* The installer's title is now `Anamorph Linux Installer`, matching
 `Anamorph Linux Uninstaller`; the two docs that quote the prompt were updated with it.
 
+*Follow-up: the stage-and-swap still had an interruption window.* The swap deleted the destination
+before renaming the staged copy in, so between those two commands the staged copy was the only
+one — and the cleanup handler removed exactly that on the way out, turning a Ctrl-C into total
+loss. The stage-and-swap shape was right; the **order** was not. The old bundle is now moved
+**aside** (`.Anamorph.vst3.prev`) instead of deleted, so a complete copy exists at every instant,
+and cleanup restores rather than only deletes. Three things this round established that are worth
+carrying forward: `EXIT` traps are **not** enough for interruption — dash, `/bin/sh` on
+Debian/Ubuntu, does not run them when the script is signalled, so `INT`/`TERM`/`HUP` are trapped
+explicitly (measured, not assumed); the restore must be **ordered before** the scratch removal
+*and* the parked copy kept until the destination is repopulated, a flaw the first draft of this fix
+still had and the failure tests caught; and `SIGKILL` — which no handler covers — now leaves the
+old bundle parked and recoverable, with the next run's opening `reconcile` restoring it. Verified
+by injecting a failing commit rename and by delivering `INT`/`TERM`/`HUP` inside the window in both
+modes (elevated included), each against a control run of the previous script that ends with nothing
+installed. `PACKAGING.md`'s mechanism paragraph is corrected; its guarantee wording already
+described the intended behaviour and stands unchanged.
+
 *Inspected and accepted as non-blocking, with reasons.* A per-user install does not displace an
 existing system-wide one — real and, for 0.9.3, the likely upgrade path, but the fix would need the
 elevation that mode exists to avoid, so it is **documented** (`INSTALL.txt`, `INSTALLATION.md`,
