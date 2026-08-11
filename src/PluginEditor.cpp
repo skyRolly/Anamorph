@@ -248,17 +248,15 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
 
     // Pop-up dismissal shield (see PopupShield). Added once and left VISIBLE; it paints nothing and
     // only starts intercepting while a menu is on screen, so it never disturbs hover or the cursor.
-    // EVERY look-and-feel a combo can carry reports through the same hook -- compactCombo,
-    // simpleCombo and widenCombo all derive from AnamorphLookAndFeel, and a menu carries the
-    // look-and-feel of the box that opened it, so a drop-down styled by any of them would otherwise
-    // go unseen and its dismissing click would reach a control. Adding a look-and-feel to this
-    // editor means adding it here.
+    // EVERY look-and-feel a combo can carry reports through the same hook -- compactCombo and
+    // simpleCombo derive from AnamorphLookAndFeel, and a menu carries the look-and-feel of the box
+    // that opened it, so a drop-down styled by either of them would otherwise go unseen and its
+    // dismissing click would reach a control. Adding a look-and-feel to this editor means adding it
+    // here.
     addAndMakeVisible (popupShield);   // visible but inert; refreshPopupShield toggles interception
-    widenCombo.useLegacyMenuWidth = true;   // Widen group keeps its 0.9.2 list width (#w)
     for (auto* laf : { (anamorph::gui::AnamorphLookAndFeel*) &lnf,
                        (anamorph::gui::AnamorphLookAndFeel*) &compactCombo,
-                       (anamorph::gui::AnamorphLookAndFeel*) &simpleCombo,
-                       (anamorph::gui::AnamorphLookAndFeel*) &widenCombo })
+                       (anamorph::gui::AnamorphLookAndFeel*) &simpleCombo })
         laf->onPopupMenuWindowCreated = [this] (juce::Component& w) { notePopupMenuOpened (w); };
    #if JUCE_MAC
     // juce::TooltipWindow declares itself OPAQUE (its constructor calls
@@ -679,13 +677,12 @@ AnamorphAudioProcessorEditor::~AnamorphAudioProcessorEditor()
     channelModeBox.setLookAndFeel (nullptr);
     soloBox.setLookAndFeel (nullptr);
     for (auto* box : { &algorithmBox, &haasSideBox, &dimModeBox })
-        box->setLookAndFeel (nullptr); // detach simpleCombo / widenCombo before either is destroyed (#17)
+        box->setLookAndFeel (nullptr); // detach simpleCombo before it's destroyed (#17)
     // Drop the pop-up hooks before anything else unwinds: a menu can still be on screen here (its
     // cancellation is asynchronous), and its window must not call back into a half-destroyed editor.
     for (auto* laf : { (anamorph::gui::AnamorphLookAndFeel*) &lnf,
                        (anamorph::gui::AnamorphLookAndFeel*) &compactCombo,
-                       (anamorph::gui::AnamorphLookAndFeel*) &simpleCombo,
-                       (anamorph::gui::AnamorphLookAndFeel*) &widenCombo })
+                       (anamorph::gui::AnamorphLookAndFeel*) &simpleCombo })
         laf->onPopupMenuWindowCreated = nullptr;
     // Cancel BEFORE forgetting them. `dismissOrphanedPopupMenus` cannot help here -- it runs off the
     // 24 Hz tick, which stopTimer() above has just ended, and it is conditional besides; a host
@@ -948,11 +945,7 @@ void AnamorphAudioProcessorEditor::applyWidenFonts()
         comboFontMode = mode;
         for (auto* box : { &algorithmBox, &haasSideBox, &dimModeBox })
         {
-            // Advanced used to pass nullptr, which resolves `lnf` through the component tree.
-            // widenCombo IS that look-and-feel -- same class, nothing overridden -- with the one
-            // difference these three boxes need: their list keeps its 0.9.2 width.
-            box->setLookAndFeel (advanced ? (anamorph::gui::AnamorphLookAndFeel*) &widenCombo
-                                          : &simpleCombo);
+            box->setLookAndFeel (advanced ? nullptr : &simpleCombo);
             passComboHoverThrough (*box);
         }
     }
@@ -1145,31 +1138,42 @@ void AnamorphAudioProcessorEditor::dismissOrphanedPopupMenus()
     if (isShowing() && ! switchedAway)
         return;
 
-    // Let go of the keyboard focus BEFORE cancelling, or closing the menu drags the window back.
-    // PopupMenuCompletionCallback::modalStateFinished restores the pre-menu focus when the modal
-    // state ends -- `topLevel->toFront (true)` on whatever holds the focus, then grabKeyboardFocus
-    // (juce_PopupMenu.cpp:2247-2268). In a plug-in that top level is the host's own window, so on
-    // this path it would haul the DAW in front of the application the user just switched to and
-    // take their next keystrokes with it: the exact symptom this dismissal exists to prevent,
-    // happening without a click. JUCE suppresses that restore for its own app-change dismissal by
-    // setting PopupMenuSettings::menuWasHiddenBecauseOfAppChange, which is file-static and
-    // unreachable from here (:61) -- but the restore reads the focus LIVE, via
-    // Component::getCurrentlyFocusedComponent() at completion time rather than a value captured
-    // when the menu opened, so releasing ours first makes the whole branch a no-op.
+    // The focus work is for the APPLICATION SWITCH only; the hidden-editor branch skips it on
+    // purpose. What it answers is PopupMenuCompletionCallback::modalStateFinished restoring the
+    // pre-menu focus when the modal state ends -- `topLevel->toFront (true)` on whatever holds the
+    // focus, then grabKeyboardFocus (juce_PopupMenu.cpp:2247-2268). In a plug-in that top level is
+    // the host's own window, so after the user has Cmd-Tabbed away it hauls the DAW in front of the
+    // application they switched to and takes their next keystrokes with it: the exact symptom this
+    // dismissal exists to prevent, happening without a click. JUCE suppresses the restore for its
+    // OWN app-change dismissal by setting PopupMenuSettings::menuWasHiddenBecauseOfAppChange, which
+    // is file-static and unreachable from here (:61) -- but the restore reads the focus LIVE, via
+    // Component::getCurrentlyFocusedComponent() at completion time rather than a value captured when
+    // the menu opened, so releasing ours first makes the whole branch a no-op.
     //
-    // Scoped, not global: Component::giveAwayKeyboardFocus is guarded by hasKeyboardFocus (true), so
-    // it can only release focus THIS editor or one of its children actually holds -- a second
-    // instance's focus is untouched. And it is on this path only: a menu dismissed while the editor
-    // is active still restores focus exactly as JUCE intends.
+    // A merely HIDDEN editor has none of that: the window being re-fronted is the one the user is
+    // still working in, so there is nothing to steal focus from and nothing to suppress. Releasing
+    // focus there was pure cost -- a re-shown Save Preset dialog came back with its name field
+    // unfocused (the KI-009 class of symptom, and focusSaveNameField is not re-armed by a re-show),
+    // and an in-progress inline edit was discarded for no reason. Cancelling the stranded pop-up
+    // itself stays unconditional; only the focus handling is scoped.
     //
-    // But releasing focus is not free, and an earlier revision of this comment claimed it was on the
-    // strength of a sweep that only covered PluginEditor.{h,cpp}. Two inline text edits in src/ treat
-    // losing focus as "the user clicked away" and APPLY what is in the box -- which is right for a
-    // click and wrong here, because this release is the editor's decision, taken precisely because
-    // the user is no longer looking. Park both first, with the Escape outcome rather than the Return
-    // one, so leaving the application can never write a half-typed value.
-    cancelInlineTextEdits();
-    giveAwayKeyboardFocus();
+    // Scoped in the other sense too: Component::giveAwayKeyboardFocus is guarded by
+    // hasKeyboardFocus (true), so it can only release focus THIS editor or one of its children
+    // actually holds -- a second instance's focus is untouched. And a menu dismissed while the
+    // editor is active and in front still restores focus exactly as JUCE intends.
+    //
+    // Releasing focus is not free, either, and an earlier revision of this comment claimed it was on
+    // the strength of a sweep that covered only PluginEditor.{h,cpp}. Two inline text edits in src/
+    // treat losing focus as "the user clicked away" and APPLY what is in the box -- right for a
+    // click, wrong for a release the editor decides on because the user is no longer looking. Park
+    // both first, with the Escape outcome rather than the Return one, so leaving the application can
+    // never write a half-typed value.
+    if (switchedAway)
+    {
+        cancelInlineTextEdits();
+        giveAwayKeyboardFocus();
+    }
+
     dismissTrackedPopupMenus();
 }
 
@@ -2083,12 +2087,21 @@ void AnamorphAudioProcessorEditor::resized()
         auto twoKnob = [&] (juce::Rectangle<int> row, juce::Slider& s1, juce::Label& l1,
                             juce::Slider& s2, juce::Label& l2)
         { placeKnob (row.removeFromLeft (row.getWidth() / 2), s1, l1); placeKnob (row, s2, l2); };
+        // WIDEN and its Style/Focus companion are EQUAL width, and the gap between them is what is
+        // left over -- take the same slice off each end of the row and the remainder in the middle is
+        // W - 2w, whose midpoint sits at w + (W - 2w)/2 == W/2 exactly, for odd and even W alike. So
+        // "equal boxes" and "the seam is centred on the module" are the same constraint, not two that
+        // have to be reconciled; nothing here needs a magic number beyond the gap itself. The
+        // Style/Focus LABEL takes the identical slice from the identical row width, which is what
+        // keeps it left-aligned with its box rather than merely near it.
+        constexpr int algoGap = 6;
+        auto algoBoxW = [] (int rowWidth) { return (rowWidth - algoGap) / 2; };
         auto layoutAlgoRow = [&] (juce::Rectangle<int> algoRow)
         {
-            algorithmBox.setBounds (algoRow.removeFromLeft (algoRow.getWidth() - 100).reduced (0, 1));
-            algoRow.removeFromLeft (6);
-            haasSideBox.setBounds (algoRow.reduced (0, 1));
-            dimModeBox.setBounds  (haasSideBox.getBounds());
+            const int w = algoBoxW (algoRow.getWidth());
+            algorithmBox.setBounds (algoRow.removeFromLeft  (w).reduced (0, 1));
+            haasSideBox .setBounds (algoRow.removeFromRight (w).reduced (0, 1));
+            dimModeBox  .setBounds (haasSideBox.getBounds());
         };
         auto layoutCharacter = [&] (juce::Rectangle<int> cell, juce::Slider& wK, juce::Label& wL)
         {
@@ -2105,7 +2118,7 @@ void AnamorphAudioProcessorEditor::resized()
             auto col = rightPanel.reduced (22, 0);
             col.removeFromTop (juce::jmax (16, (col.getHeight() - blockH) / 2));
 
-            { auto lr = col.removeFromTop (16); algoOptLabel.setBounds (lr.removeFromRight (94)); algorithmLabel.setBounds (lr); }
+            { auto lr = col.removeFromTop (16); algoOptLabel.setBounds (lr.removeFromRight (algoBoxW (lr.getWidth()))); algorithmLabel.setBounds (lr); }
             col.removeFromTop (8);
             layoutAlgoRow (col.removeFromTop (30));
             col.removeFromTop (26);
@@ -2119,7 +2132,7 @@ void AnamorphAudioProcessorEditor::resized()
             // bottom block. The four knobs sit a touch higher for a more balanced
             // column (0.6.9 #17).
             auto col = rightPanel.reduced (20, 14);
-            { auto lr = col.removeFromTop (16); algoOptLabel.setBounds (lr.removeFromRight (94)); algorithmLabel.setBounds (lr); }
+            { auto lr = col.removeFromTop (16); algoOptLabel.setBounds (lr.removeFromRight (algoBoxW (lr.getWidth()))); algorithmLabel.setBounds (lr); }
             col.removeFromTop (8);
             layoutAlgoRow (col.removeFromTop (30));
             col.removeFromTop (40);

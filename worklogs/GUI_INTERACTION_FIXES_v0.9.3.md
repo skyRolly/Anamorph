@@ -272,22 +272,6 @@ rounding guard, because `drawPopupMenuItem` uses `Graphics::drawText`'s three-ar
 rather than overhang. The shipped total is **40** — still above the 38 actually spent, so the fix is
 intact and now exact — and the delta against 0.9.2's flat 30 is **10 px**, not 20.
 
-**And the Widen group keeps its 0.9.2 list widths outright.** Even 10 px is 10 px on the
-Widen / Style / Focus combos, whose list width is part of that group's layout contract, so those three
-opt out of the derived budget entirely: `AnamorphLookAndFeel::useLegacyMenuWidth` restores the 0.9.2
-formula verbatim — flat `+30`, no floor. It is an **instance** flag, not a mode: `SimpleComboLookAndFeel`
-sets it (Simple mode), and Advanced mode now carries `widenCombo`, a plain `AnamorphLookAndFeel`
-instance identical to `lnf` in every drawing and font respect and existing only to carry the flag —
-`lnf` itself must not have it, because `lnf` also styles the preset menu and the TextEditor context
-menus, which are where the clipping actually was. Advanced mode previously passed `nullptr` on those
-boxes, which resolves `lnf` through the component tree, so nothing about their appearance changes.
-
-Under-measuring by the 8 px the drawing spends is exactly the 0.9.2 behaviour those boxes are
-specified against, and it stays invisible there because `getOptionsForComboBoxPopupMenu` floors every
-combo list at `box.getWidth()`. **Wiring note:** a look-and-feel a combo can carry must also be given
-`onPopupMenuWindowCreated`, or a drop-down styled by it goes untracked and its dismissing click reaches
-a control. `widenCombo` is in that list in both the constructor and the destructor.
-
 ## 6. Disabled menu items look disabled
 
 `drawPopupMenuItem` took `bool /*isActive*/` and ignored it, so a greyed-out entry rendered exactly
@@ -317,10 +301,13 @@ second click after dismissal behaving normally; and visually, *Select All* shown
 disabled items clearly dimmer, at more than one UI scale.
 
 Two more were added by the 2026-08-10 review sign-off. The **Widen combos in Simple mode** (15.5 pt)
-are owed a look for the opposite reason to before: they are now specified to be **unchanged** from
-0.9.2, because those three boxes opt out of the new budget (`useLegacyMenuWidth`, §5). Earlier rounds
-had them 20 px and then 10 px wider; the check is that the list is back to the 0.9.2 width and that
-*Style* / *Focus* still sit directly over their boxes. A **host that hides rather than destroys the
+are owed a look: the menu-width allowance sums to 40 px against the 38 px the drawing actually spends,
+so every menu measured on its item text — not on `withMinimumWidth (box.getWidth())` — is 10 px wider
+than in 0.9.2. (That was 50 px / 20 px in the first revision; the discretionary 12 px came back out in
+the round that followed — see the revision note in §5. An intervening round also had these three
+combos opt out of the budget entirely; that was a misreading of the request and has been reverted, so
+they share the same budget as every other menu again. What the group actually wanted was a **layout**
+change — §10.) A **host that hides rather than destroys the
 editor** while a drop-down is open was first accepted as-is too, then **fixed** in the following round
 — see §9; what is still owed there is the on-device confirmation in such a host, not a decision.
 
@@ -709,3 +696,56 @@ switching away from the host.
   menu must open and *stay* open, and be usable with the mouse.
 - The same three with the **preset** menu, which the modal-child pass now covers as well.
 - Confirm normal use is unchanged: open and use each drop-down with the plug-in in front.
+
+---
+
+## 10. Widen / Style / Focus: equal boxes, seam on the module centre line
+
+**Approved design intent** (maintainer, 2026-08-11), and the correct reading of a request an earlier
+round answered in the wrong dimension: the ask was never about the *pop-up list* width, it was about
+the **controls**. WIDEN and its Style/Focus companion were laid out with a hard-coded 100 px reserved
+on the right — a 156/94 split in Simple mode and 160/94 in Advanced — so the two boxes were visibly
+unequal and the seam between them sat well right of centre.
+
+**What is specified.** Equal box widths, and the midpoint of the gap between them exactly on the
+column's centre line. Those look like two constraints; they are one. Take the same slice `w` off each
+end of a row of width `W` and the leftover gap is `W - 2w`, whose midpoint is
+`w + (W - 2w) / 2 == W / 2` — for odd and even `W` alike, with no rounding case to special-case:
+
+```cpp
+constexpr int algoGap = 6;
+auto algoBoxW = [] (int rowWidth) { return (rowWidth - algoGap) / 2; };
+
+const int w = algoBoxW (algoRow.getWidth());
+algorithmBox.setBounds (algoRow.removeFromLeft  (w).reduced (0, 1));
+haasSideBox .setBounds (algoRow.removeFromRight (w).reduced (0, 1));
+dimModeBox  .setBounds (haasSideBox.getBounds());
+```
+
+`algoGap` is the only number left in the row, and it is the gap itself rather than a reserved column,
+so nothing has to be kept in step with anything else.
+
+**The labels follow by construction, not by a matching constant.** The label row is the same `col`, so
+it has the same width, and `algoOptLabel` takes the identical slice: `lr.removeFromRight (algoBoxW
+(lr.getWidth()))`. Same x, same width as the box below it, in both modes and at every UI scale — the
+old code paired `removeFromRight (94)` with a `- 100` in the row and relied on the two being adjusted
+together. `algorithmLabel` keeps the remainder, so its left edge is still the column's left edge and
+the WIDEN label does not move, as specified.
+
+**Resulting geometry** (`rightPanel` is 300 px; Simple insets 22, Advanced 20):
+
+| mode | col `W` | box `w` | gap | Widen right edge | Style/Focus left edge | seam midpoint vs centre |
+|---|---|---|---|---|---|---|
+| Simple | 256 | 125 | 6 | 787 (was 818, **−31**) | 793 (was 824, **−31**) | 790 = 790 ✓ |
+| Advanced | 260 | 127 | 6 | 787 (was 820, **−33**) | 793 (was 826, **−33**) | 790 = 790 ✓ |
+
+Both edges move left, all three boxes are equal width, the seam lands on the centre line, and the
+Style/Focus label is byte-identical in bounds to its box. Reproduced arithmetically against JUCE's
+`removeFromLeft` / `removeFromRight` semantics rather than eyeballed; the **on-device check owed** is
+simply that the row reads as two equal halves with the labels sitting over their boxes, in both modes
+and at more than one UI scale.
+
+**Not touched:** `getIdealPopupMenuItemSize`, `getOptionsForComboBoxPopupMenu` and every other
+look-and-feel path. This is a layout change and nothing else — the earlier `useLegacyMenuWidth` /
+`widenCombo` mechanism, which tried to answer the same request through pop-up sizing, was reverted in
+the same commit.

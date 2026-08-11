@@ -123,10 +123,6 @@ public:
     // measured from the item text in the menu's own font (see the .cpp for the chrome budget).
     void getIdealPopupMenuItemSize (const juce::String& text, bool isSeparator,
                                     int standardHeight, int& idealWidth, int& idealHeight) override;
-    // Opt an INSTANCE out of the 0.9.3 chrome budget and back onto the 0.9.2 formula. Set only on
-    // the look-and-feels the Widen / Style / Focus combos use, whose list widths are part of that
-    // group's layout contract; see the .cpp. Every other menu keeps the derived budget.
-    bool useLegacyMenuWidth = false;
 
     // Every PopupMenu window built through THIS look-and-feel reports itself here
     // (juce_PopupMenu.cpp:500 calls it from the MenuWindow constructor). It is the one hook that
@@ -200,7 +196,6 @@ public:
 class SimpleComboLookAndFeel : public AnamorphLookAndFeel
 {
 public:
-    SimpleComboLookAndFeel() { useLegacyMenuWidth = true; } // Widen group: 0.9.2 list widths (#w)
     juce::Font getComboBoxFont (juce::ComboBox&) override { return juce::Font (juce::FontOptions (15.5f)); }
     juce::Font getPopupMenuFont() override                { return juce::Font (juce::FontOptions (15.0f)); }
     void getIdealPopupMenuItemSize (const juce::String& text, bool isSeparator,

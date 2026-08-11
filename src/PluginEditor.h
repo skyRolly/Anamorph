@@ -188,11 +188,6 @@ private:
     anamorph::gui::AnamorphLookAndFeel lnf;
     anamorph::gui::CompactComboLookAndFeel compactCombo; // smaller list for Input combos (#12)
     anamorph::gui::SimpleComboLookAndFeel  simpleCombo;  // bigger text for Simple-mode Widen combos (#17)
-    // Advanced-mode Widen / Style / Focus. Identical to `lnf` in every drawing and font respect --
-    // it is the same class with nothing overridden -- and exists only to carry useLegacyMenuWidth,
-    // which `lnf` must not have because `lnf` also styles the preset and TextEditor context menus.
-    // Before this it was nullptr on those boxes, i.e. `lnf` resolved through the component tree.
-    anamorph::gui::AnamorphLookAndFeel     widenCombo;
     juce::OpenGLContext openGLContext;
     // Tooltips are switched off at the SOURCE, not just slowed down. The Settings toggle used to
     // only push millisecondsBeforeTipAppears to a huge value, which does not touch a tip already on

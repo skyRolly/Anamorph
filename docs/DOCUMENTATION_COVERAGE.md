@@ -38,6 +38,26 @@ per-control guards that undo the shield's whole point. `COMMERCIAL_STATUS.md` wa
 0.9.2 → 0.9.3 sweep missed; only its three current-release statements changed, its historical ones
 and its review date stand.
 
+**Widen / Style / Focus laid out as equal halves (0.9.3, approved design intent 2026-08-11).** The
+row reserved a hard-coded 100 px on the right, so WIDEN and its Style/Focus companion were visibly
+unequal (156/94 in Simple, 160/94 in Advanced) and the seam between them sat right of centre. They are
+now equal width with the gap centred on the column — one constraint, not two: taking the same slice
+off each end leaves a gap whose midpoint is the row's midpoint for odd and even widths alike. The
+Style/Focus label takes the identical slice from the identical row width, so it is left-aligned with
+its box by construction rather than by a second constant kept in step; the WIDEN label keeps the
+remainder and does not move. Both edges move left (−31 px Simple, −33 px Advanced). **No
+look-and-feel path is involved** — an earlier round had read the request as being about pop-up list
+width and introduced `useLegacyMenuWidth` / `widenCombo`, which is reverted in the same commit.
+
+**Focus release narrowed to the application-switch branch (0.9.3, approved 2026-08-11).**
+`dismissOrphanedPopupMenus` was releasing keyboard focus on both of its triggers, but only the
+app-switch one needs it — suppressing `PopupMenuCompletionCallback`'s `toFront (true)` requires a
+window the user has moved *away* from. On the hidden-editor branch the window being re-fronted is the
+one they are still working in, so the release bought nothing and cost two things: a re-shown Save
+Preset dialog came back with its name field unfocused (the KI-009 class of symptom, and
+`focusSaveNameField` is not re-armed by a re-show) and an in-progress inline edit was discarded. The
+cancel itself remains unconditional on both branches; only the focus handling is scoped.
+
 **Maintainer sign-off on the residual pop-up limitations (2026-08-11).** Reviewed and **accepted as
 documented limitations rather than defects**, closing them for this release: **KI-019** (Linux/X11
 never observes an application switch, so that third dismissal is inert there — the platform's
@@ -138,12 +158,9 @@ contract outranks pop-up padding. The margin is now 2 px and is no longer discre
 rounding guard, because `drawPopupMenuItem` uses `Graphics::drawText`'s three-argument overload whose
 `useEllipsesIfTooBig` defaults to true, so text measuring one sub-pixel over the strip would ellipsise
 rather than overhang. Total 40 — still ≥ the 38 actually spent, so the *"Select All"* clipping fix is
-intact and now exact. The **Widen / Style / Focus** combos then opted out of the budget altogether and
-keep the 0.9.2 formula verbatim (`AnamorphLookAndFeel::useLegacyMenuWidth`, an instance flag carried by
-`SimpleComboLookAndFeel` and by a new `widenCombo` instance for Advanced mode — identical to `lnf`
-except for the flag, which `lnf` must not have because it also styles the menus the clipping was
-actually in). Their list widths are part of that group's layout contract, which outranks a menu-sizing
-improvement they never needed. **No layout code changed** in this cycle: the closed-state width, alignment,
+intact and now exact. A later round briefly had the **Widen / Style / Focus** combos opt out of the
+budget entirely (`useLegacyMenuWidth` plus a `widenCombo` instance); that answered the request in the
+wrong dimension and was **reverted** — see the layout entry below. Every menu shares the one budget. **No layout code changed** in this cycle: the closed-state width, alignment,
 spacing and label positions of the Widen/Style/Focus group are identical to 0.9.2 (`git diff` against
 `main` shows the only `resized()` change on the branch is `popupShield.setBounds`, a transparent
 full-editor overlay, and no `LookAndFeel` combo/label sizing or drawing method was touched).
