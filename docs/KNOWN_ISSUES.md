@@ -4,7 +4,7 @@
 in `POSTMORTEMS.md`, not here. Each entry is evidence-backed (constraint C7). When an item is
 fixed, remove it here and (if notable) add a `POSTMORTEMS.md` entry.
 
-Version-synced to **v0.9.3** (six GUI interaction fixes — the Multiband add-split preview line, the
+Version-synced to **v0.9.3** (six GUI interaction fixes plus an equal-width Widen row — the Multiband add-split preview line, the
 unified pop-up dismissal shield, pop-up lifetime across a hidden, destroyed or backgrounded window,
 two menu-rendering fixes and the Tooltips on/off transition —
 **three issues added**: KI-018, the dismissing click still counts toward JUCE's double-click run;

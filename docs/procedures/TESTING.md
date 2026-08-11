@@ -191,11 +191,21 @@ doesn't exist:
      ADR-0025 §5 this entry is revisited when that harness lands, not left standing.
 
 - **Editor interaction defects have no headless test either.** A second
-  **`TESTING_POLICY` rule-1 exception under ADR-0025**, covering the v0.9.3 GUI fixes: the Multiband
-  add-split preview line stalling under a moving pointer; the unified pop-up dismissal shield (a
-  dismissing click must close the pop-up and touch nothing underneath — Settings drop-downs, the
-  Save Preset text menu, the preset menu); and the two menu-rendering fixes (width measured from the
-  item text, disabled items drawn dimmed). Same four disclosures:
+  **`TESTING_POLICY` rule-1 exception under ADR-0025**, covering **all six** v0.9.3 GUI fixes.
+  Enumerated in full rather than leaving any to be inferred, because ADR-0025 §3 makes the four
+  disclosures mandatory *per invocation* and every one of the six ships without a regression test:
+
+  1. the Multiband add-split preview line stalling under a moving pointer;
+  2. the unified pop-up dismissal shield — a dismissing click must close the pop-up and touch nothing
+     underneath (Settings drop-downs, the Save Preset text menu, the preset menu);
+  3. **pop-up lifetime** — a drop-down must not outlive the editor being hidden, destroyed or sent to
+     the background, and cancelling one must neither pull the host window back to the front nor apply
+     a half-typed inline edit;
+  4. menu width measured from the item text (it clipped *Select All*);
+  5. disabled menu items drawn dimmed;
+  6. **Tooltips off meaning off** — gated at the source through the virtual `getTipFor`.
+
+  The same four disclosures apply to all six:
 
   1. *Why no reliable test exists.* They need things the two console targets do not have — a real
      vblank tick plus pointer motion over a settled spectrum for the first, JUCE's modal machinery

@@ -741,11 +741,78 @@ the WIDEN label does not move, as specified.
 
 Both edges move left, all three boxes are equal width, the seam lands on the centre line, and the
 Style/Focus label is byte-identical in bounds to its box. Reproduced arithmetically against JUCE's
-`removeFromLeft` / `removeFromRight` semantics rather than eyeballed; the **on-device check owed** is
-simply that the row reads as two equal halves with the labels sitting over their boxes, in both modes
-and at more than one UI scale.
+`removeFromLeft` / `removeFromRight` semantics rather than eyeballed.
+
+**On-device checks owed**, neither reachable headlessly: that the row reads as two equal halves with
+the labels sitting over their boxes, in both modes and at more than one UI scale — and, specifically,
+the **Simple-mode WIDEN box with *Velvet Noise* selected**. That box loses 31 px, and
+`positionComboBoxText` gives the closed-state label `width - 29`, so its text area goes 127 → 96 px
+while `SimpleComboLookAndFeel` renders at 15.5 pt. `drawLabel` uses `drawFittedText` with the label's
+`minimumHorizontalScale`, so the failure mode is horizontal squeezing rather than clipping — but the
+longest algorithm name is the one to look at, and the arithmetic above only covers edges and the seam,
+not glyph metrics.
+
+**A note on the constant's placement.** `kAlgoRowGap` and `algoBoxWidth` live at **file scope**, not
+inside `resized()`. As a block-scope `constexpr` read from a capture-less lambda they compiled on GCC
+and Clang — reading a constexpr value is not an odr-use, so no capture is required — and MSVC 19.51
+rejected it outright (`C3493`), taking the whole Windows CI job down. A namespace-scope constant has
+no storage duration to capture, so every compiler agrees. See §11.
 
 **Not touched:** `getIdealPopupMenuItemSize`, `getOptionsForComboBoxPopupMenu` and every other
 look-and-feel path. This is a layout change and nothing else — the earlier `useLegacyMenuWidth` /
 `widenCombo` mechanism, which tried to answer the same request through pop-up sizing, was reverted in
 the same commit.
+
+---
+
+## 11. Windows CI went red, and the reported error was not the cause
+
+**What the job said.** `expected exactly one Anamorph.vst3 bundle, found 0`, from the Windows staging
+step — the last error in the log, and a complete red herring. One line above it: `Anamorph.vst3 not
+found -- build first`. Both are consequences.
+
+**What actually failed**, ~90 lines earlier and never surfaced as the job's outcome:
+
+```
+src\PluginEditor.cpp(2098,64): error C3493: 'algoGap' cannot be implicitly captured
+                                because no default capture mode has been specified
+src\PluginEditor.cpp(2101,27): error C2064: term does not evaluate to a function taking 1 arguments
+src\PluginEditor.cpp(2121,93): error C2064: ...
+src\PluginEditor.cpp(2135,93): error C2064: ...
+```
+
+`constexpr int algoGap = 6;` was a **block-scope** constant inside `resized()`, read from the
+capture-less `algoBoxW` lambda. Reading a constexpr value is not an odr-use, so the standard requires
+no capture and GCC and Clang compile it — which is exactly why it passed every local and Linux/macOS
+gate. MSVC 19.51 disagrees. Whether that is a defect or a reading, the fix has to be portable: the
+constant and the helper moved to **file scope**, where there is no storage duration to capture and no
+compiler has an opinion. A sweep of all 22 capture-less lambdas in `src/` found this was the only
+instance of the pattern.
+
+**The second defect — why the cause was buried — is the one worth keeping.** `build.yml` gated the
+pluginval-randomise and artifact-staging steps on `if: ${{ !cancelled() }}`. That reads as "unless the
+run was cancelled", and it is: **`!cancelled()` is true after ANY upstream failure**. The intent was
+narrow and good — a deterministic pluginval failure must not *skip* the randomise gate, so both modes
+always report independently — but the guard does not distinguish "the previous gate failed" from
+"there is nothing built to gate". After a compile error the job therefore ran pluginval against an
+empty tree and then staged artifacts that did not exist, and the operator saw a packaging error.
+
+Fixed by naming the dependency instead of relying on a negation: every platform's build step now
+carries `id: build`, and each step that consumes build output is gated
+`!cancelled() && steps.build.outcome == 'success'`. `!cancelled()` is kept rather than plain
+`success()` so the original intent survives — a *pluginval* failure still stages a beta artifact and
+still runs the other mode.
+
+**The same class was present on more than one platform**, which is why the audit was worth doing
+rather than patching Windows alone:
+
+| platform | randomise pluginval | staging / packaging |
+|---|---|---|
+| Linux | bare `!cancelled()` — **fixed** | already gated via `steps.strip.outcome` ✓ |
+| Windows | bare `!cancelled()` — **fixed** | bare `!cancelled()` — **fixed** (this is what emitted the misleading error) |
+| macOS | bare `!cancelled()` — **fixed** | bare `!cancelled()` — **fixed** |
+
+`release.yml` and `msvc.yml` use no `!cancelled()`, `always()` or `continue-on-error` at all, so they
+inherit GitHub's default `success()` semantics and were never exposed. The invariant is now written
+into `build.yml`'s header block: *every step that consumes build output names the step it depends on —
+never a bare `!cancelled()`.*

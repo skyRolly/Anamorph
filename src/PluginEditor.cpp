@@ -13,6 +13,21 @@ static juce::String tidyTip (const juce::String& tip)
     return t;
 }
 
+// WIDEN and its Style/Focus companion are laid out as equal halves of their row, with this gap
+// between them. Taking the same slice off each end leaves a gap of `rowWidth - 2 * w`, whose midpoint
+// is `w + (rowWidth - 2w) / 2 == rowWidth / 2` -- so "equal boxes" and "the seam is centred on the
+// module" are one constraint, not two, for odd and even widths alike. The Style/Focus LABEL takes the
+// identical slice from the identical row width, which is what keeps it left-aligned with its box
+// rather than merely near it.
+//
+// FILE SCOPE on purpose. As a block-scope `constexpr` inside resized() it was read from a
+// capture-less lambda, which GCC and Clang accept -- reading a constexpr value is not an odr-use, so
+// no capture is required -- but MSVC 19.51 rejects it (C3493, "cannot be implicitly captured because
+// no default capture mode has been specified") and took the whole Windows build with it. A namespace
+// -scope constant has no storage duration to capture, so every compiler agrees.
+static constexpr int kAlgoRowGap = 6;
+static int algoBoxWidth (int rowWidth) { return (rowWidth - kAlgoRowGap) / 2; }
+
 // Fallback for builds that bypass CMake (which always defines the real value
 // from `project VERSION`); deliberately not a release number so it can't go stale.
 #ifndef ANAMORPH_VERSION_STRING
@@ -2087,18 +2102,11 @@ void AnamorphAudioProcessorEditor::resized()
         auto twoKnob = [&] (juce::Rectangle<int> row, juce::Slider& s1, juce::Label& l1,
                             juce::Slider& s2, juce::Label& l2)
         { placeKnob (row.removeFromLeft (row.getWidth() / 2), s1, l1); placeKnob (row, s2, l2); };
-        // WIDEN and its Style/Focus companion are EQUAL width, and the gap between them is what is
-        // left over -- take the same slice off each end of the row and the remainder in the middle is
-        // W - 2w, whose midpoint sits at w + (W - 2w)/2 == W/2 exactly, for odd and even W alike. So
-        // "equal boxes" and "the seam is centred on the module" are the same constraint, not two that
-        // have to be reconciled; nothing here needs a magic number beyond the gap itself. The
-        // Style/Focus LABEL takes the identical slice from the identical row width, which is what
-        // keeps it left-aligned with its box rather than merely near it.
-        constexpr int algoGap = 6;
-        auto algoBoxW = [] (int rowWidth) { return (rowWidth - algoGap) / 2; };
+        // Equal halves with the seam on the module's centre line -- see kAlgoRowGap / algoBoxWidth
+        // at the top of this file for the geometry and for why they live at file scope.
         auto layoutAlgoRow = [&] (juce::Rectangle<int> algoRow)
         {
-            const int w = algoBoxW (algoRow.getWidth());
+            const int w = algoBoxWidth (algoRow.getWidth());
             algorithmBox.setBounds (algoRow.removeFromLeft  (w).reduced (0, 1));
             haasSideBox .setBounds (algoRow.removeFromRight (w).reduced (0, 1));
             dimModeBox  .setBounds (haasSideBox.getBounds());
@@ -2118,7 +2126,7 @@ void AnamorphAudioProcessorEditor::resized()
             auto col = rightPanel.reduced (22, 0);
             col.removeFromTop (juce::jmax (16, (col.getHeight() - blockH) / 2));
 
-            { auto lr = col.removeFromTop (16); algoOptLabel.setBounds (lr.removeFromRight (algoBoxW (lr.getWidth()))); algorithmLabel.setBounds (lr); }
+            { auto lr = col.removeFromTop (16); algoOptLabel.setBounds (lr.removeFromRight (algoBoxWidth (lr.getWidth()))); algorithmLabel.setBounds (lr); }
             col.removeFromTop (8);
             layoutAlgoRow (col.removeFromTop (30));
             col.removeFromTop (26);
@@ -2132,7 +2140,7 @@ void AnamorphAudioProcessorEditor::resized()
             // bottom block. The four knobs sit a touch higher for a more balanced
             // column (0.6.9 #17).
             auto col = rightPanel.reduced (20, 14);
-            { auto lr = col.removeFromTop (16); algoOptLabel.setBounds (lr.removeFromRight (algoBoxW (lr.getWidth()))); algorithmLabel.setBounds (lr); }
+            { auto lr = col.removeFromTop (16); algoOptLabel.setBounds (lr.removeFromRight (algoBoxWidth (lr.getWidth()))); algorithmLabel.setBounds (lr); }
             col.removeFromTop (8);
             layoutAlgoRow (col.removeFromTop (30));
             col.removeFromTop (40);

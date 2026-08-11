@@ -38,6 +38,35 @@ per-control guards that undo the shield's whole point. `COMMERCIAL_STATUS.md` wa
 0.9.2 → 0.9.3 sweep missed; only its three current-release statements changed, its historical ones
 and its review date stand.
 
+**Windows CI failure: a portability defect, and a workflow guard that hid it (0.9.3).** The Windows
+job reported `expected exactly one Anamorph.vst3 bundle, found 0` from its staging step. The cause was
+a compile error ~90 lines earlier: `constexpr int algoGap` was a block-scope constant read from a
+capture-less lambda, which GCC and Clang accept (reading a constexpr value is not an odr-use) and MSVC
+19.51 rejects (`C3493`). Moved with its helper to **file scope**, where no capture question arises; a
+sweep of all 22 capture-less lambdas in `src/` confirmed it was the only instance. The second defect
+is the one worth remembering: `build.yml` gated the randomise-pluginval and staging steps on
+`if: ${{ !cancelled() }}`, which is **true after any upstream failure**, so a compile error let both
+run against a tree with no plug-in in it and the job's last error was a cascade. Every platform's build
+step now carries `id: build` and every consumer of build output is gated on
+`steps.build.outcome == 'success'`; `!cancelled()` is kept alongside it so a *pluginval* failure still
+stages a beta artifact. The same bare guard existed on Linux (randomise) and macOS (randomise +
+packaging), so all three were fixed; `release.yml` and `msvc.yml` use default `success()` semantics and
+were never exposed. Documentation-visible outcome: `build.yml`'s header now states the invariant —
+every step consuming build output names the step it depends on.
+
+**Maintainer sign-off on the remaining 0.9.3 review items (2026-08-11).** Reviewed and accepted with
+no code change, on the basis that each is a recorded observation rather than a current correctness or
+user-visible problem: the tooltip gate depending on `getTipFor` being the only path that can raise a
+tip; combo menus outliving the editor's look-and-feel members (pre-existing, and narrowed by the
+destructor cancel); the shield z-order invariant being unenforced; `getChildren()` reordering during
+`exitModalState`; the repeated idempotent cancel attempts while the editor stays hidden; preset-menu
+double-tracking being benign if its premise ever changed; and `SpectrumImager::mouseExit` reaching the
+repaint gate through the eased alphas rather than `frameDirty`. Verified-correct observations
+(pop-up feeder coverage, listener teardown ordering, the foreground probe's self-healing sampling, the
+inline-edit cancellation reaching exactly the two commit-on-focus-loss paths, the hover snapshot's
+completeness) are recorded as confirmations, not actions. The **one** review item that did change code
+in this pass is the Windows CI defect above; the layout and CHANGELOG items are documentation.
+
 **Widen / Style / Focus laid out as equal halves (0.9.3, approved design intent 2026-08-11).** The
 row reserved a hard-coded 100 px on the right, so WIDEN and its Style/Focus companion were visibly
 unequal (156/94 in Simple, 160/94 in Advanced) and the seam between them sat right of centre. They are
@@ -160,10 +189,13 @@ rounding guard, because `drawPopupMenuItem` uses `Graphics::drawText`'s three-ar
 rather than overhang. Total 40 — still ≥ the 38 actually spent, so the *"Select All"* clipping fix is
 intact and now exact. A later round briefly had the **Widen / Style / Focus** combos opt out of the
 budget entirely (`useLegacyMenuWidth` plus a `widenCombo` instance); that answered the request in the
-wrong dimension and was **reverted** — see the layout entry below. Every menu shares the one budget. **No layout code changed** in this cycle: the closed-state width, alignment,
-spacing and label positions of the Widen/Style/Focus group are identical to 0.9.2 (`git diff` against
-`main` shows the only `resized()` change on the branch is `popupShield.setBounds`, a transparent
-full-editor overlay, and no `LookAndFeel` combo/label sizing or drawing method was touched).
+wrong dimension and was **reverted** — see the layout entry below. Every menu shares the one budget. This paragraph once ended by asserting that **no layout code changed** in
+this cycle. That was true while the menu-width work was the only `resized()` edit on the branch, and
+became **false** with the equal-halves commit, which rewrote `layoutAlgoRow` and both `algoOptLabel`
+rows — so the claim is withdrawn rather than left contradicting the Widen/Style/Focus layout entry
+above, which is the accurate record. What survives it is the narrower point it was making: the
+menu-width work *itself* touched no layout code, and no `LookAndFeel` combo/label sizing or drawing
+method has been changed at any point in this cycle.
 
 **Pop-up dismissal became one mechanism instead of one predicate (0.9.3).** Verification of the
 Settings fix found the same defect on the Save Preset dialog, where it *destroys typed input*: a

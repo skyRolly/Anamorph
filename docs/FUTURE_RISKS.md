@@ -3,7 +3,7 @@
 Potential technical risks. Each is evidence-based (constraint C7) — no invented risks. ADRs and
 postmortems may reference these IDs to close the loop. Severity: Low / Medium / High / Critical.
 
-Version-synced to **v0.9.3** (six GUI interaction fixes: the Multiband add-split preview line, the
+Version-synced to **v0.9.3** (six GUI interaction fixes plus an equal-width Widen row: the Multiband add-split preview line, the
 unified pop-up dismissal shield, pop-up lifetime across a hidden editor / background application,
 menu width, disabled menu items and the Tooltips on/off transition
 — **no new risk**: editor-only, with no serialized state, parameter or DSP behaviour changed. The three

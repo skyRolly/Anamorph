@@ -23,8 +23,9 @@ only — it configures and builds entirely from the command line on a headless L
   window** — hiding it, closing it or switching to another application closes the menu too, so
   nothing is left floating and the first click on return goes to the control you aimed at;
   right-click menus size themselves to their longest item and grey out what you cannot pick; and
-  turning **Tooltips** off now takes effect at once. Editor-only: saved state, parameters and the DSP
-  are unchanged.
+  turning **Tooltips** off now takes effect at once. One visible change beyond the fixes: the **Widen**
+  row's two drop-downs are now equal width with the join between them on the panel's centre line.
+  Editor-only: saved state, parameters and the DSP are unchanged.
 - **0.9.2 fixes the preset drop-down** (it no longer stays on screen — or crashes on click —
   after the plug-in window closes) and lets a user preset share a factory preset's name without
   losing its place in the menu; the Settings control *Window Size* is now labelled **UI Scale**.

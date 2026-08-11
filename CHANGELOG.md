@@ -13,8 +13,14 @@ Source. Until then every entry cites a commit SHA or a PR. Entries for the
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
-## [0.9.3] — 2026-08-09
+## [0.9.3] — 2026-08-11
 ### Changed
+- **The Widen row's two drop-downs are now equal width.** *Widen* and the *Style* / *Focus* box beside
+  it were noticeably different sizes, with the join between them sitting right of the panel's centre.
+  They are now the same width, the join lands on the centre line, and both boxes start a little
+  further left; the *Style* and *Focus* captions move with their box. Same controls, same behaviour —
+  only the proportions of that row changed. Simple and Advanced modes both.
+  Evidence: PR #101. [Verified]
 - **Windows installer: two folder prompts now match the labels above them.** The messages shown when
   a destination is left blank read *VST3 Plug-in* and *Standalone Application*, the same capitalisation
   as the fields themselves — the two the 0.9.2 installer title-casing pass missed.

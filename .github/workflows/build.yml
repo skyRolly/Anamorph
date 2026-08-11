@@ -26,9 +26,16 @@ permissions:
 # randomise -- each repeated 3 consecutive times (scripts/run-pluginval.sh on
 # Linux/macOS, scripts/run-pluginval.ps1 on Windows). A non-zero pluginval exit
 # fails the job on every platform (no continue-on-error / swallowed exit codes).
-# Both mode steps ALWAYS run: the randomise step is guarded with `if: !cancelled()`
-# so a deterministic failure never SKIPS randomise -- both modes always report
-# independently. The job still fails if either mode fails.
+# Both mode steps ALWAYS run for a deterministic FAILURE: the randomise step is
+# guarded with `if: !cancelled() && steps.build.outcome == 'success'` so a
+# deterministic failure never SKIPS randomise -- both modes always report
+# independently. The job still fails if either mode fails. The build clause is
+# load-bearing: `!cancelled()` alone is true after ANY upstream failure, so
+# without it a compile error let pluginval and the staging steps run against a
+# tree with no plug-in in it, and the job's LAST error was a cascade
+# ("expected exactly one Anamorph.vst3 bundle, found 0") rather than the compile
+# error that caused it. Every step that consumes build output therefore names the
+# step it depends on -- never a bare `!cancelled()`.
 #
 # Symbol handling (RH-PR-2, ADR-0021): every platform generates full debug
 # info, retains it as a separate *-debug artifact (split .debug / PDB / dSYM)
@@ -60,6 +67,7 @@ jobs:
         run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DANAMORPH_BUILD_NUMBER=${{ github.run_number }}
 
       - name: Build (VST3 + Standalone + tests)
+        id: build
         run: cmake --build build --config Release
 
       # RH-PR-2 (ADR-0021): capture split debug info, then strip the shipped
@@ -99,10 +107,12 @@ jobs:
         run: ./scripts/run-pluginval.sh 10 deterministic
 
       - name: pluginval (strictness 10, randomise x3 -- release gate)
-        # NEVER skipped: run the randomise gate even if the deterministic gate above failed, so both
-        # modes always report independently (a deterministic failure must not hide the randomise result).
-        # The job still fails if either gate fails; !cancelled() only skips on an actual run cancellation.
-        if: ${{ !cancelled() }}
+        # NEVER skipped for a deterministic FAILURE: both modes must report independently, so a
+        # deterministic failure cannot hide the randomise result. It IS skipped when the build did not
+        # produce a plug-in, because `!cancelled()` alone is true after ANY upstream failure -- a
+        # compile error then produced a "not found -- build first" line that read like the cause and
+        # buried the real one. The job still fails if either gate fails.
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: ./scripts/run-pluginval.sh 10 randomise
 
       # Customer-artifact safety (RH-PR-2 review): staging and upload are
@@ -180,6 +190,7 @@ jobs:
         run: cmake -B build -DANAMORPH_BUILD_NUMBER=${{ github.run_number }}
 
       - name: Build (VST3 + Standalone + tests)
+        id: build
         run: cmake --build build --config Release
 
       - name: DSP + state self-tests
@@ -199,10 +210,12 @@ jobs:
         run: ./scripts/run-pluginval.ps1 -Strictness 10 -Mode deterministic
 
       - name: pluginval (strictness 10, randomise x3 -- release gate)
-        # NEVER skipped: run the randomise gate even if the deterministic gate above failed, so both
-        # modes always report independently (a deterministic failure must not hide the randomise result).
-        # The job still fails if either gate fails; !cancelled() only skips on an actual run cancellation.
-        if: ${{ !cancelled() }}
+        # NEVER skipped for a deterministic FAILURE: both modes must report independently, so a
+        # deterministic failure cannot hide the randomise result. It IS skipped when the build did not
+        # produce a plug-in, because `!cancelled()` alone is true after ANY upstream failure -- a
+        # compile error then produced a "not found -- build first" line that read like the cause and
+        # buried the real one. The job still fails if either gate fails.
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         shell: pwsh
         run: ./scripts/run-pluginval.ps1 -Strictness 10 -Mode randomise
 
@@ -239,7 +252,11 @@ jobs:
       # it is not the "tree-wide substring matching" this replaces.
       - name: Stage Windows artifacts (VST3 + Standalone; PDBs separated)
         id: stage_windows
-        if: ${{ !cancelled() }}
+        # Gated on the build, like Linux's staging is via steps.strip: `!cancelled()` alone is true
+        # after a compile error, and this step then failed with "expected exactly one Anamorph.vst3
+        # bundle, found 0" -- the LAST error in the log and a completely misleading one. It stays
+        # !cancelled() rather than plain success() so a pluginval failure still stages a beta artifact.
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -438,6 +455,7 @@ jobs:
           -DANAMORPH_BUILD_NUMBER=${{ github.run_number }}
 
       - name: Build (VST3 + AU + Standalone + tests)
+        id: build
         run: cmake --build build --config Release
 
       - name: DSP + state self-tests
@@ -450,10 +468,12 @@ jobs:
         run: ./scripts/run-pluginval.sh 10 deterministic
 
       - name: pluginval (strictness 10, randomise x3 -- release gate)
-        # NEVER skipped: run the randomise gate even if the deterministic gate above failed, so both
-        # modes always report independently (a deterministic failure must not hide the randomise result).
-        # The job still fails if either gate fails; !cancelled() only skips on an actual run cancellation.
-        if: ${{ !cancelled() }}
+        # NEVER skipped for a deterministic FAILURE: both modes must report independently, so a
+        # deterministic failure cannot hide the randomise result. It IS skipped when the build did not
+        # produce a plug-in, because `!cancelled()` alone is true after ANY upstream failure -- a
+        # compile error then produced a "not found -- build first" line that read like the cause and
+        # buried the real one. The job still fails if either gate fails.
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: ./scripts/run-pluginval.sh 10 randomise
 
       # RH-PR-2 (ADR-0021): order matters -- 1) dsymutil captures a universal
@@ -487,7 +507,10 @@ jobs:
       # scope here (RH-PR-3 candidate; worklog section 9).
       - name: Package macOS plugins (VST3 + AU + Standalone)
         id: package
-        if: ${{ !cancelled() }}
+        # Same gate, same reason as the Windows staging step above: after a compile error
+        # `!cancelled()` is still true, so this would run with nothing to package and report a
+        # cascade instead of the cause. Still !cancelled() so a pluginval failure stages a beta.
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           set -e
           DIST="dist/Anamorph-macOS"
