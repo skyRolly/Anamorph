@@ -1,12 +1,11 @@
 #!/bin/sh
-# Removes what packaging/linux/install.sh installed — the same two modes, so a
-# per-user install can be removed without root:
+# Anamorph Linux uninstaller. Two modes, matching the installer:
 #
-#   1) current user (default, no root)  ~/.vst3/Anamorph.vst3, ~/.local/bin/Anamorph
-#   2) system-wide  (needs root)        /usr/lib/vst3/Anamorph.vst3, /usr/local/bin/Anamorph
+#   1) Current user (default, no root)  ~/.vst3/Anamorph.vst3, ~/.local/bin/Anamorph
+#   2) System-wide  (needs root)        /usr/lib/vst3/Anamorph.vst3, /usr/local/bin/Anamorph
 #
-# Running it AS root (the documented `sudo ./uninstall.sh`) removes the
-# system-wide install without asking, exactly as before 0.9.3.
+# Running this script as root (sudo ./uninstall.sh) removes the system-wide
+# installation without asking. Your presets and settings are always kept.
 set -eu
 
 SYS_VST3_DIR="/usr/lib/vst3"
@@ -14,8 +13,7 @@ SYS_BIN_DIR="/usr/local/bin"
 SYS_VST3="$SYS_VST3_DIR/Anamorph.vst3"
 SYS_APP="$SYS_BIN_DIR/Anamorph"
 
-# Elevation prefix. Stays EMPTY for the per-user path and when already root; only
-# system-wide mode below sets it, and only around individual operations.
+# Only a system-wide uninstall sets this; a per-user uninstall never uses sudo.
 SUDO=''
 
 # ---------------------------------------------------------------- mode choice
@@ -52,14 +50,8 @@ fi
 
 removed=0
 
-# Removes the transaction scratch install.sh owns, so a deliberate uninstall does
-# not leave behind what an interrupted install left. Only the exact names the
-# installer creates are touched: its stage directory (either of the two places
-# install.sh may pick — see `choose_stage_dir` there, which prefers a hidden
-# directory next to the plug-in directory and falls back to one inside it) and
-# the staged Standalone. A parked bundle inside the stage directory goes with it;
-# uninstalling means removing Anamorph, so there is nothing left to recover to.
-# `$SUDO` is empty in per-user mode. Nothing here matches on a pattern.
+# Clears temporary files an interrupted install may have left behind. Only the
+# exact names the installer creates are removed; nothing else is touched.
 remove_install_scratch() {          # $1 = plug-in directory, $2 = bin directory
     for _scratch in "${1%/*}/.anamorph-install-stage" \
                     "$1/.anamorph-install-stage" \
@@ -67,8 +59,7 @@ remove_install_scratch() {          # $1 = plug-in directory, $2 = bin directory
                     "$2/.Anamorph.new"
     do
         if [ -e "$_scratch" ]; then
-            # shellcheck disable=SC2086  # $SUDO is deliberately empty outside system mode
-            $SUDO rm -rf "$_scratch" && echo "removed leftover installer scratch $_scratch"
+            $SUDO rm -rf "$_scratch" && echo "removed leftover installer file $_scratch"
         fi
     done
 }
@@ -104,9 +95,8 @@ if [ "$(id -u)" -ne 0 ]; then
     echo "You may be prompted for your password."
 fi
 
-# Elevate the individual removals only, never the whole script.
+# Only the individual removals are elevated, never the whole script.
 priv() {
-    # shellcheck disable=SC2086  # $SUDO is deliberately empty when already root
     $SUDO "$@" || {
         echo "System uninstall failed because permission was denied." >&2
         echo "Ensure sudo access is available, or run this script as root." >&2
