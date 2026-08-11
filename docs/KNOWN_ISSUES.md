@@ -4,7 +4,14 @@
 in `POSTMORTEMS.md`, not here. Each entry is evidence-backed (constraint C7). When an item is
 fixed, remove it here and (if notable) add a `POSTMORTEMS.md` entry.
 
-Version-synced to **v0.9.2** (preset drop-down lifetime/crash fix, factory-preset identity, the
+Version-synced to **v0.9.3** (six GUI interaction fixes plus an equal-width Widen row — the Multiband add-split preview line, the
+unified pop-up dismissal shield, pop-up lifetime across a hidden, destroyed or backgrounded window,
+two menu-rendering fixes and the Tooltips on/off transition —
+**three issues added**: KI-018, the dismissing click still counts toward JUCE's double-click run;
+KI-019, the app-switch pop-up dismissal is inert on Linux/X11; and KI-020, the dismissal guarantee
+is per-instance where pop-up modality is process-global).
+Prior sync: **v0.9.2**
+(preset drop-down lifetime/crash fix, factory-preset identity, the
 `Window Size` → `UI Scale` label and the installer component titles — **one issue added**: KI-017,
 macOS suppresses key auto-repeat for letters and digits in any focused text field, which is an OS
 text-input behaviour rather than a plug-in defect; **no issue removed** — the crash fixed this
@@ -63,6 +70,9 @@ JUCE 8.0.14; before that 0.8.8 for PR #54).
 | KI-015 | Anamorph declares **no licence of its own** — the repository root has no `LICENSE` file and the installers present no EULA, so the terms the binaries are offered under are undeclared | High | Confirmed; owner/legal decision (RH-R11 / RH-F1), not an engineering task |
 | KI-016 | **Sessions saved with a pre-0.9.1 build report Anamorph as missing** — 0.9.1 changed the manufacturer code `Anmf` → `RTec`, which is the AU component's manufacturer field and feeds the VST3 class UID, so the host cannot match the old identity | Medium | Confirmed, **deliberate** and one-time (ADR-0023); recovery is to re-insert the plug-in |
 | KI-017 | macOS: holding a letter or digit in a plug-in text field does not auto-repeat (symbols do) — macOS press-and-hold owns the alphanumeric keys once a JUCE text field has focus | Low | Confirmed external (macOS text input); JUCE path verified, OS attribution pending one `defaults` check; user-side workaround documented |
+| KI-018 | The click that dismisses a pop-up is not delivered to any control (by design), but it still counts toward JUCE's multi-click run, so a fast follow-up click can arrive as a **double**-click | Low | Confirmed; traced to `MouseInputSourceImpl::registerMouseDown`, which is component-agnostic. No in-bounds fix exists — see the entry |
+| KI-019 | **Linux/X11**: the 0.9.3 dismissal of an open pop-up when the user switches application does not fire — JUCE's foreground flag there is a write-once latch, never cleared, so "switched away" can never be observed | Low | Confirmed (code path, pinned JUCE); inert in the SAFE direction — no spurious dismissal. The hidden-editor and editor-destroyed halves work normally on Linux |
+| KI-020 | With **two or more Anamorph editors open at once**, the "a dismissing click activates nothing" guarantee holds only within the instance that owns the open pop-up: modality is process-global, so the re-delivered click can reach a *different* instance's control | Low | Confirmed (code path); pre-dates 0.9.3 and is not introduced by the shield. No in-bounds fix — see the entry |
 
 ---
 
@@ -533,3 +543,103 @@ keys fine":
   plain `keyDown:` requires first-responder status, so a host that reclaims first responder after
   the first key-down would drop exactly the printable-character repeats while special keys keep
   arriving.
+
+## KI-018 — a fast click right after dismissing a pop-up can register as a double-click
+Since v0.9.3 the click that dismisses a pop-up is consumed by the editor's `PopupShield` and reaches
+no control — that part works. What it cannot do is un-count that click. If the user clicks again
+**within the double-click timeout and close to the same spot**, the control that finally receives it
+sees `getNumberOfMultipleClicks() == 2` and JUCE calls its `mouseDoubleClick`. On a knob that means a
+reset-to-default or the numeric entry box, from what the user experienced as a first click.
+
+**Mechanism, from the pinned JUCE 9.0.0.** The multi-click run lives on the *input source*, not on a
+component. `MouseInputSourceImpl::registerMouseDown` records only position, time, buttons, touch flag
+and peer id (`juce_MouseInputSourceImpl.h:577-595`), and `canBePartOfMultipleClickWith` (`:561`)
+compares exactly those — the **target component is not part of the comparison**. Registration happens
+in the event dispatch (`:238`) before any component is consulted, so a click the shield swallows is
+already in the run by the time we could react to it.
+
+**Why it is not fixed.** There is no in-bounds lever:
+
+- `MouseInputSource` exposes **no** reset/clear API for the run — only getters
+  (`juce_MouseInputSource.h:175`), and `mouseDowns[]` is private to the impl.
+- `MouseEvent::setDoubleClickTimeout` (`juce_MouseEvent.h:374`) is **static and process-global**.
+  Writing it from a plug-in would change double-click behaviour for the host and every other plug-in
+  in that process — the same objection that ruled out writing `ApplePressAndHoldEnabled` in
+  **KI-017**, and out of bounds for the same reason.
+- Keeping the shield up for the whole double-click timeout would swallow the legitimate second
+  click, contradicting the interaction contract the shield exists to enforce.
+- Guarding inside each control's `mouseDoubleClick` re-creates the per-control approach the shield
+  replaced: every knob, label, the imager and the A/B control would need it, and a control added
+  later would silently miss it.
+- Patching JUCE is a Build System change under `ARCHITECTURE_REVIEW_GATE.md` + `DEPENDENCY_POLICY.md`
+  (the pin is an immutable SHA, ADR-0022), for a Low-severity cosmetic race.
+
+- **What a tester sees:** with a drop-down or right-click menu open, click outside it to dismiss and
+  then click a knob again quickly — the knob may jump to its default or open its value box instead of
+  registering as a plain click.
+- **Workaround:** pause briefly (past the system double-click time) or move the pointer more than a
+  few pixels before the next click; either breaks the run.
+- **What is NOT affected:** the dismissal guarantee itself. The first click still reaches no control,
+  no parameter moves from it, and nothing is written to state. Severity **Low**.
+- **What would close it:** a JUCE API to reset the multi-click run on an input source, or a
+  per-source (rather than process-global) double-click timeout. Both are upstream changes.
+
+## KI-019 — Linux/X11: an open pop-up is not dismissed when you switch application
+Since v0.9.3 the editor cancels an open drop-down or right-click menu when the plug-in window is
+hidden, when the editor is destroyed, or when the user switches to another application. **The third
+of those does not happen on Linux.** The first two work normally there.
+
+**Mechanism, from the pinned JUCE 9.0.0.** The app-switch branch asks
+`juce::Process::isForegroundProcess()`. On Linux that is
+`LinuxComponentPeer::isActiveApplication` (`juce_Windowing_linux.cpp:686`), a static initialised to
+`false` (`:677`) and assigned **only** `true`, from `grabFocus()` on a successful X11 focus grab
+(`:326-327`). Nothing ever sets it back. So it is a write-once latch rather than a live foreground
+state: before the latch the call is always `false`, after it always `true`, and either way the value
+never *changes*, which is what "switched away" requires.
+
+**Why that is the safe direction.** The editor probes the call at the moment a pop-up opens and only
+treats a later `false` as an app switch if it read `true` then. On Linux those two readings are always
+equal, so the branch is inert — it can never cancel a menu spuriously. The failure mode is a missing
+dismissal, not an unwanted one.
+
+- **What a tester sees:** on Linux, Alt-Tab away with a drop-down or right-click menu open **and the
+  pointer resting on a menu item**, and the menu stays on screen. With the pointer anywhere else JUCE
+  dismisses it itself, so the visible case is narrow.
+- **Workaround:** move the pointer off the menu before switching, or click the menu away first.
+- **What is NOT affected:** hiding the plug-in window and closing it both still cancel the menu on
+  Linux, because those are decided by `isShowing()`, which is accurate on every platform.
+- **What would close it:** an upstream Linux `isActiveApplication` that follows X11 focus-out as well
+  as focus-in, or JUCE exposing `detail::WindowingHelpers::isEmbeddedInForegroundProcess`. Both are
+  JUCE changes; re-deriving X11 focus ownership inside the editor would put platform-specific window
+  code in a component that has none.
+
+## KI-020 — the pop-up dismissal guarantee is per-instance, not per-process
+Since v0.9.3 the click that dismisses a pop-up reaches no control — **in the editor that owns the
+pop-up**. With two or more Anamorph editors visible at once it does not hold across them.
+
+**Mechanism.** JUCE modality is process-global. A menu open in instance A blocks *every* component in
+the process, B's included, so a click on B takes the same `internalMouseDown` path
+(`juce_Component.cpp:2507-2544`): A's menu is dismissed and the same mouse-down is then re-delivered
+to B's control. B's `PopupShield` is not raised, because it is raised only from hooks owned by B's own
+look-and-feels and by B's own `presetMenusOpen` — B has no way to know A opened a menu. So B's knob,
+A/B control or Multiband split acts on a click the user meant only as a dismissal.
+
+**Not introduced by the shield.** This is the pre-0.9.3 behaviour, unchanged: before the shield the
+click reached a control in *every* instance, including the owning one. 0.9.3 removed the same-instance
+half of the problem and left the cross-instance half exactly as it was.
+
+**Why it is not fixed.** Closing it means one editor observing another's modal state. The available
+routes are all out of bounds or worse than the defect: a process-wide registry shared between editor
+instances is exactly the shared-static ownership INC-010 rejected (static-destruction order at DLL
+unload); raising every instance's shield from any instance's menu would make an unrelated editor
+unclickable whenever a neighbour opens a drop-down; and `PopupMenu::dismissAllActiveMenus()` is the
+process-global call INC-010 ruled out for the same reason.
+
+- **What a tester sees:** two Anamorph instances side by side; open a drop-down in one and click a
+  control in the other — the drop-down closes *and* that control responds.
+- **Workaround:** dismiss the menu with a click inside its own editor first.
+- **What is NOT affected:** everything within one editor. The single-instance case — which is what the
+  0.9.3 CHANGELOG entry describes — is unchanged and complete. Severity **Low**: it needs two editors
+  open simultaneously and a click aimed at the second one while the first has a menu up.
+- **What would close it:** a JUCE signal identifying which component tree a modal dismissal belonged
+  to, which would let a non-owning editor recognise the re-delivered click without shared state.

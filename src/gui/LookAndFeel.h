@@ -119,9 +119,35 @@ public:
     // rest of the UI does not have. Anamorph has no resizable windows or ResizableBorderComponent,
     // so this override has no other caller.
     void drawResizableFrame (juce::Graphics&, int, int, const juce::BorderSize<int>&) override {}
-    // Fixed, uniform row height so a taller combo doesn't get taller rows (#3).
+    // Fixed, uniform row height so a taller combo doesn't get taller rows (#3); the WIDTH is
+    // measured from the item text in the menu's own font (see the .cpp for the chrome budget).
     void getIdealPopupMenuItemSize (const juce::String& text, bool isSeparator,
                                     int standardHeight, int& idealWidth, int& idealHeight) override;
+
+    // Every PopupMenu window built through THIS look-and-feel reports itself here
+    // (juce_PopupMenu.cpp:500 calls it from the MenuWindow constructor). It is the one hook that
+    // catches a menu we did not create ourselves -- a ComboBox drop-down (juce_ComboBox.cpp:561
+    // sets the menu's look-and-feel to ours) and a TextEditor context menu
+    // (juce_TextEditor.cpp:1578 does the same). The editor uses it to know a pop-up is on screen;
+    // see PluginEditor's pop-up shield. Empty when nobody is listening (safe to skip).
+    //
+    // NOT called for a menu whose own look-and-feel is null: findLookAndFeel returns
+    // `menu.lookAndFeel.get()` (juce_PopupMenu.cpp:1422-1425), and the `lf` used at :500 is captured
+    // at :368, BEFORE the window is parented -- so it is the default look-and-feel, not the one it
+    // would inherit from its parent. The preset menu is that case (INC-010 dropped its
+    // setLookAndFeel on purpose), and the editor tracks it directly instead.
+    std::function<void (juce::Component& menuWindow)> onPopupMenuWindowCreated;
+    void preparePopupMenuWindow (juce::Component& newMenuWindow) override
+    {
+        // Chain first, observe second: this hook is purely ADDITIVE. The inherited implementation is
+        // LookAndFeel_V2's empty one in the pinned tree (juce_LookAndFeel_V2.cpp:1172), so today the
+        // call is free -- but a later JUCE that gives menu windows real per-look-and-feel preparation
+        // here (shadow, opacity, rounding) would otherwise be silently skipped for every Anamorph
+        // menu. Same shape as the other overrides in this class that extend rather than replace
+        // (getSliderLayout, drawButtonText, fillTextEditorBackground, drawTextEditorOutline).
+        juce::LookAndFeel_V4::preparePopupMenuWindow (newMenuWindow);
+        if (onPopupMenuWindowCreated) onPopupMenuWindowCreated (newMenuWindow);
+    }
 
     juce::Font getLabelFont (juce::Label&) override;
     juce::Font getTextButtonFont (juce::TextButton&, int buttonHeight) override;

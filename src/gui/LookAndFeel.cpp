@@ -433,14 +433,52 @@ juce::PopupMenu::Options AnamorphLookAndFeel::getOptionsForComboBoxPopupMenu (ju
              .withStandardItemHeight (label.getHeight());
 }
 
+// The horizontal budget drawPopupMenuItem spends, named once so the measuring and the drawing cannot
+// drift apart -- which is exactly what went wrong: the old allowance was a bare +30 against a layout
+// that spends 12 + 14 + 12 = 38 before the text has any room at all, so a longer label ("Select All"
+// in the Save Preset field's context menu) was measured narrower than it draws and JUCE clipped it
+// to "Select ...". Deriving the number instead of picking one also keeps this correct in the
+// environments a fixed width cannot survive -- a different UI font, a different hinting/rasteriser,
+// or the Simple/compact variants that override getPopupMenuFont().
+//
+// The total is kept to what is actually SPENT plus a rounding guard, and nothing more. This budget
+// widens EVERY pop-up drawn through this look-and-feel, including the combo drop-downs, wherever the
+// item text rather than withMinimumWidth (box.getWidth()) is the binding constraint -- so a
+// discretionary margin here silently changes the relationship between a control and its own list.
+// An earlier revision carried 12 px of "breathing room" on top; it was removed because it was not an
+// allowance for anything drawn, and the layout contract of the controls outranks pop-up padding.
+namespace menuMetrics
+{
+    constexpr float padX        = 12.0f; // drawPopupMenuItem's r.reduced (12, 0), both edges
+    constexpr float tickGutter  = 14.0f; // the tick column, reserved whether or not it is ticked
+    // NOT breathing room: drawPopupMenuItem's g.drawText uses the 3-argument overload, whose
+    // useEllipsesIfTooBig defaults to TRUE, so text that measures one sub-pixel wider than the strip
+    // it is drawn into ellipsises rather than overhangs. Measurement and drawing use the same font,
+    // so the gap can only ever be a rounding difference; 2 px covers it and is invisible.
+    constexpr float trailing    = 2.0f;
+    // A floor against a degenerate menu (one glyph, or an empty item), NOT a layout preference:
+    // it is deliberately just above the chrome total (40) so it can never widen a pop-up past the
+    // control that opened it. The combo path has its own, larger floor anyway --
+    // getOptionsForComboBoxPopupMenu passes withMinimumWidth (box.getWidth()).
+    constexpr int   minimumWide = 64;
+}
+
 void AnamorphLookAndFeel::getIdealPopupMenuItemSize (const juce::String& text, bool isSeparator,
                                                      int, int& idealWidth, int& idealHeight)
 {
     if (isSeparator) { idealWidth = 60; idealHeight = 8; return; }
+    // `text` arrives as the item text PLUS its shortcut, joined by three spaces
+    // (PopupMenu::ItemComponent::getTextForMeasurement, juce_PopupMenu.cpp:333-336), so measuring
+    // it covers the right-aligned shortcut column drawPopupMenuItem paints into the same strip.
+    // getPopupMenuFont() is virtual, so the compact / Simple variants measure in THEIR font.
     auto f = getPopupMenuFont();
     juce::GlyphArrangement ga;
     ga.addLineOfText (f, text, 0.0f, 0.0f);
-    idealWidth  = (int) std::ceil (ga.getBoundingBox (0, -1, true).getWidth()) + 30;
+    const float textW = ga.getBoundingBox (0, -1, true).getWidth();
+    idealWidth  = juce::jmax (menuMetrics::minimumWide,
+                              (int) std::ceil (textW + 2.0f * menuMetrics::padX
+                                                     + menuMetrics::tickGutter
+                                                     + menuMetrics::trailing));
     idealHeight = 23; // uniform across every combo regardless of its on-screen height (#3)
 }
 
@@ -485,7 +523,7 @@ void AnamorphLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& b
 // solid accent tint with no gradient, sheen or bevel (the previous glassy version
 // read as dated "Vista aero", #3).
 void AnamorphLookAndFeel::drawPopupMenuItem (juce::Graphics& g, const juce::Rectangle<int>& area,
-                                             bool isSeparator, bool /*isActive*/, bool isHighlighted,
+                                             bool isSeparator, bool isActive, bool isHighlighted,
                                              bool isTicked, bool hasSubMenu, const juce::String& text,
                                              const juce::String& shortcutKeyText,
                                              const juce::Drawable* /*icon*/, const juce::Colour* /*textColour*/)
@@ -499,23 +537,32 @@ void AnamorphLookAndFeel::drawPopupMenuItem (juce::Graphics& g, const juce::Rect
     }
 
     auto r = area.toFloat();
-    if (isHighlighted)
+    // `isActive` is JUCE's "this item can be chosen" flag, and it used to be ignored here, so a
+    // greyed-out entry rendered identically to a live one -- visible in the Save Preset field's
+    // context menu, where Cut/Copy are inactive with no selection and Paste is inactive with an
+    // empty clipboard. 0.4 is the disabled alpha this file already uses for a disabled button
+    // (drawButtonText), so the menu now matches the rest of the UI rather than inventing a shade.
+    // Applies to every menu drawn through this look-and-feel, not just that one.
+    const float textAlpha = ! isActive ? 0.4f : (isHighlighted ? 1.0f : 0.88f);
+    // An inactive row is never the highlighted one in JUCE's own navigation; guarding anyway keeps
+    // "cannot be chosen" and "looks choosable" from ever contradicting each other.
+    if (isHighlighted && isActive)
     {
         // One flat accent tint, lightly rounded -- clean and modern (#3).
         g.setColour (colours::accent.withAlpha (0.18f));
         g.fillRoundedRectangle (r.reduced (3.0f, 1.0f), 4.0f);
     }
 
-    g.setColour (isHighlighted ? colours::text : colours::text.withMultipliedAlpha (0.88f));
+    g.setColour (colours::text.withMultipliedAlpha (textAlpha));
     g.setFont (getPopupMenuFont());
 
     auto textArea = r.reduced (12.0f, 0.0f);
     if (isTicked)
     {
         auto tick = textArea.removeFromLeft (14.0f);
-        g.setColour (colours::accent);
+        g.setColour (colours::accent.withMultipliedAlpha (isActive ? 1.0f : 0.4f));
         g.fillEllipse (tick.getCentreX() - 2.0f, tick.getCentreY() - 2.0f, 4.0f, 4.0f);
-        g.setColour (isHighlighted ? colours::text : colours::text.withMultipliedAlpha (0.88f));
+        g.setColour (colours::text.withMultipliedAlpha (textAlpha));
     }
     else
     {
@@ -526,7 +573,7 @@ void AnamorphLookAndFeel::drawPopupMenuItem (juce::Graphics& g, const juce::Rect
 
     if (shortcutKeyText.isNotEmpty())
     {
-        g.setColour (colours::textDim);
+        g.setColour (colours::textDim.withMultipliedAlpha (isActive ? 1.0f : 0.4f));
         g.setFont (getPopupMenuFont().withHeight (11.0f));
         g.drawText (shortcutKeyText, textArea, juce::Justification::centredRight);
     }
@@ -539,7 +586,7 @@ void AnamorphLookAndFeel::drawPopupMenuItem (juce::Graphics& g, const juce::Rect
         p.startNewSubPath (x, cy - h * 0.12f);
         p.lineTo (x + h * 0.12f, cy);
         p.lineTo (x, cy + h * 0.12f);
-        g.setColour (colours::textDim);
+        g.setColour (colours::textDim.withMultipliedAlpha (isActive ? 1.0f : 0.4f));
         g.strokePath (p, juce::PathStrokeType (1.4f));
     }
 }

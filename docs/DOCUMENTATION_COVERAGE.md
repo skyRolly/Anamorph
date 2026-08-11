@@ -6,7 +6,281 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.2 change set** (2026-08-07) — the first `src/` change since 0.9.0.
+Last updated: for the **0.9.3 change set** (2026-08-11, matching the CHANGELOG heading) — six editor-only GUI interaction fixes on
+top of 0.9.2 (add-split preview line, unified pop-up dismissal, pop-up lifetime across a hidden,
+destroyed or backgrounded window, menu width, disabled menu items, Tooltips off), landed across five
+rounds; the entries below run newest-first. Below them, the 0.9.2
+entry (2026-08-07) is retained in full.
+
+**Follow-up round on the pop-up work (0.9.3).** Four items, three of them corrections to the change
+set itself. *(1)* The shield is **always visible and inert**, with only its *interception* toggled —
+the shape `dimOverlay` already uses here, so it is one fewer idiom. The reason is `setVisible`'s
+repaint cost, not hover: raising the shield cannot disturb hover at all, because every fake mouse
+move involved is **asynchronous** and therefore dispatched once the menu is already modal, at which
+point `internalMouseEnter`/`internalMouseExit` early-return for every blocked component — and this
+editor derives hover **geometrically** rather than from enter/exit in any case. *(2)* The claim that
+the preset menu cannot reach the look-and-feel hook was
+**re-verified and holds**, with a sharper reason: `MenuWindow` binds `auto& lf = getLookAndFeel()`
+*before* parenting and calls `preparePopupMenuWindow` through that bound **reference**, which
+parenting cannot rebind — so the separate counter stays and the comment now carries the real
+argument. *(3)* The 24 Hz backstop's comment was read twice as covering `presetMenusOpen`; it covers
+`openMenus`, and the counter needs no cover because `showPresetMenu` always adds three unconditional
+items, so `createWindow` can never return null — the one path that drops the callback. Comment
+corrected; **no recovery machinery added for a statically unreachable state**. *(4)* **Tooltips**:
+disabling them left a visible tip up and a quick move could raise another, because the setting only
+lengthened `millisecondsBeforeTipAppears` and `TooltipWindow::timerCallback` bypasses that delay
+entirely while a tip is showing. `getTipFor` is virtual, so tooltips are now switched off **at the
+source** and JUCE's own state machine hides rather than shows; `hideTip()` makes the transition
+immediate. Filed as **KI-018**, not fixed: the dismissing click is consumed by the shield but still
+counts toward JUCE's multi-click run (`registerMouseDown` is component-agnostic), and every lever is
+out of bounds — no reset API, a process-global double-click timeout (the KI-017 objection), or
+per-control guards that undo the shield's whole point. `COMMERCIAL_STATUS.md` was the one carrier the
+0.9.2 → 0.9.3 sweep missed; only its three current-release statements changed, its historical ones
+and its review date stand.
+
+**Windows CI failure: a portability defect, and a workflow guard that hid it (0.9.3).** The Windows
+job reported `expected exactly one Anamorph.vst3 bundle, found 0` from its staging step. The cause was
+a compile error ~90 lines earlier: `constexpr int algoGap` was a block-scope constant read from a
+capture-less lambda, which GCC and Clang accept (reading a constexpr value is not an odr-use) and MSVC
+19.51 rejects (`C3493`). Moved with its helper to **file scope**, where no capture question arises; a
+sweep of all 22 capture-less lambdas in `src/` confirmed it was the only instance. The second defect
+is the one worth remembering: `build.yml` gated the randomise-pluginval and staging steps on
+`if: ${{ !cancelled() }}`, which is **true after any upstream failure**, so a compile error let both
+run against a tree with no plug-in in it and the job's last error was a cascade. Every platform's build
+step now carries `id: build` and every consumer of build output is gated on
+`steps.build.outcome == 'success'`; `!cancelled()` is kept alongside it so a *pluginval* failure still
+stages a beta artifact. The same bare guard existed on Linux (randomise) and macOS (randomise +
+packaging), so all three were fixed; `release.yml` and `msvc.yml` use default `success()` semantics and
+were never exposed. Documentation-visible outcome: `build.yml`'s header now states the invariant —
+every step consuming build output names the step it depends on.
+
+**CI gating completed on Linux, and release dates reconciled (2026-08-11).** The previous pass gated
+every consumer of build output on `steps.build.outcome`, which was right for Windows and macOS and
+one step short on Linux: there the strip/objcopy step sits between the build and pluginval *because*
+the release gate is meant to validate the stripped bytes, so the producer the randomise gate must name
+is `strip`, not `build`. Its deterministic sibling already had that gate for free from default
+`success()` semantics; the randomise step, carrying an explicit `if:`, had to say so. `strip` subsumes
+`build` (it has no `if:` of its own, so a failed build leaves it `skipped`). `build.yml`'s header
+invariant is sharpened accordingly: every step names the step that **produces what it consumes** —
+which is `build` on Windows and macOS, and `strip` on Linux. Separately, the 0.9.3 **release** date is
+now 2026-08-11 everywhere it appears as a release or change-set date (CHANGELOG, HANDOVER, README,
+this file's "Last updated", the worklog header). Dates that record an **event** — INC-011's fix-commit
+date, the 2026-08-09 manual-verification and sign-off records — keep the date they happened on, per
+`POSTMORTEMS.md`'s "dates are the fix commit dates" rule; conflating the two would rewrite history to
+tidy a heading.
+
+**Maintainer sign-off on the remaining 0.9.3 review items (2026-08-11).** Reviewed and accepted with
+no code change, on the basis that each is a recorded observation rather than a current correctness or
+user-visible problem: the tooltip gate depending on `getTipFor` being the only path that can raise a
+tip; combo menus outliving the editor's look-and-feel members (pre-existing, and narrowed by the
+destructor cancel); the shield z-order invariant being unenforced; `getChildren()` reordering during
+`exitModalState`; the repeated idempotent cancel attempts while the editor stays hidden; preset-menu
+double-tracking being benign if its premise ever changed; and `SpectrumImager::mouseExit` reaching the
+repaint gate through the eased alphas rather than `frameDirty`; the menu chrome budget being +10 px
+against 0.9.2 for every menu whose width is text-derived, and the new 64 px floor for a degenerate
+one-glyph item (nothing in `src/` produces one) — both are the intended consequence of deriving the
+budget from what the drawing spends, and the one place they meet the narrowed Widen box is a visual
+check, not a defect. Verified-correct observations
+(pop-up feeder coverage, listener teardown ordering, the foreground probe's self-healing sampling, the
+inline-edit cancellation reaching exactly the two commit-on-focus-loss paths, the hover snapshot's
+completeness) are recorded as confirmations, not actions. The **one** review item that did change code
+in this pass is the Windows CI defect above; the layout and CHANGELOG items are documentation.
+
+**Widen / Style / Focus laid out as equal halves (0.9.3, approved design intent 2026-08-11).** The
+row reserved a hard-coded 100 px on the right, so WIDEN and its Style/Focus companion were visibly
+unequal (156/94 in Simple, 160/94 in Advanced) and the seam between them sat right of centre. They are
+now equal width with the gap centred on the column — one constraint, not two: taking the same slice
+off each end leaves a gap whose midpoint is the row's midpoint for odd and even widths alike. The
+Style/Focus label takes the identical slice from the identical row width, so it is left-aligned with
+its box by construction rather than by a second constant kept in step; the WIDEN label keeps the
+remainder and does not move. Both edges move left (−31 px Simple, −33 px Advanced). **No
+look-and-feel path is involved** — an earlier round had read the request as being about pop-up list
+width and introduced `useLegacyMenuWidth` / `widenCombo`, which is reverted in the same commit.
+
+**Focus release narrowed to the application-switch branch (0.9.3, approved 2026-08-11).**
+`dismissOrphanedPopupMenus` was releasing keyboard focus on both of its triggers, but only the
+app-switch one needs it — suppressing `PopupMenuCompletionCallback`'s `toFront (true)` requires a
+window the user has moved *away* from. On the hidden-editor branch the window being re-fronted is the
+one they are still working in, so the release bought nothing and cost two things: a re-shown Save
+Preset dialog came back with its name field unfocused (the KI-009 class of symptom, and
+`focusSaveNameField` is not re-armed by a re-show) and an in-progress inline edit was discarded. The
+cancel itself remains unconditional on both branches; only the focus handling is scoped.
+
+**Maintainer sign-off on the residual pop-up limitations (2026-08-11).** Reviewed and **accepted as
+documented limitations rather than defects**, closing them for this release: **KI-019** (Linux/X11
+never observes an application switch, so that third dismissal is inert there — the platform's
+foreground flag is a write-once latch; inert in the safe direction, and the hidden-editor and
+destroyed-editor halves work normally) and **KI-020** (pop-up modality is process-global, so with two
+Anamorph editors open the dismissing click can still reach the *other* instance's control —
+pre-existing, and 0.9.3 closed only the same-instance half). Neither is to be redesigned for 0.9.3:
+no broader pop-up architecture change is required. Also accepted unchanged in the same pass: the
+sub-menu arrow sitting outside the named width budget (no menu in `src/` uses `addSubMenu`), the
+`minimumWide` floor's comment overstating its guarantee (every combo is far wider than 64 px in both
+modes), section headers measured in the item font (over-measurement can only widen), the compact
+combo lists inheriting the derived budget, the tooltip gate's 42 ms tick latency, future overlay /
+z-order hardening, and the cosmetic stale-hover residue after a menu closes. The sign-off covers the
+**decision to document rather than change**; it is not a manual test of the implementation and
+touches no release gate.
+
+**A stranded pop-up's focus release could apply a half-typed value (0.9.3).** The app-switch dismissal
+releases keyboard focus before cancelling, so JUCE's completion callback cannot re-front the host
+window. The first revision asserted that was free — on the strength of a sweep that covered
+`PluginEditor.{h,cpp}` and not `src/gui/`. Two inline text edits treat losing focus as *"the user
+clicked away"* and **apply** what is in the box: `SpectrumImager`'s crossover-frequency chip
+(`freqEditor->onFocusLost` → `commitFreqEditor`, a parameter write inside a change gesture plus a
+`projectGaps` nudge to the neighbouring splits) and a slider's value box (`createSliderTextBox` builds
+the `Label` with `lossOfFocusDiscardsChanges = false`). Either one turns switching application into a
+parameter write the user never asked for, with an automation and undo step to match. `cancelInlineTextEdits()`
+now runs first and ends both with the **Escape** outcome instead — `SpectrumImager::cancelInlineEdit()`
+clears `editingHandle` so the later asynchronous `onFocusLost` finds nothing to commit, and
+`Label::hideEditor (true)` is literally what `Label::textEditorEscapeKeyPressed` ends in. Normal
+click-away, Return and Escape are untouched, and `saveNameEditor` is deliberately excluded — it has no
+focus-loss handler, so its text stays put, which INC-011 requires.
+
+**Review sign-off on the 0.9.3 pop-up round (2026-08-10).** Two review passes raised nine further
+items; the maintainer reviewed each and **accepted the current implementation** on six, which are
+therefore closed rather than open: the **pop-up width** growing on every menu (intentional visual
+adjustment — kept, though the round after trimmed its discretionary half, see the Menu width entry
+below); **unconditional shield
+`toFront`** on every raise-path refresh (not required — the "nothing intercepting is brought to front
+while the shield is raised" invariant holds today and is documented); the shield **staying frontmost**
+after the first pop-up (accepted with the current overlay ordering); **`presetMenusOpen` recovery
+machinery** (not required — the counter cannot leak, see *(3)* above); **`SpectrumImager::mouseExit`
+setting `frameDirty`** (not required — clearing a hover index always moves an ease target, so the tick
+gate already opens); and the shield **swallowing scroll and pinch** for as long as a menu is open
+(part of the interaction contract, not only the dismissing event). Four were **actioned**: the
+PopupShield hover explanation (corrected — the mechanism is asynchronous fake moves plus modal
+blocking plus geometric hover, not raise ordering), the worklog's superseded predicate section (now
+banner-marked), the **tooltip delay redundancy** (`tooltipsOn ? 600 : 0x3fffffff` removed; the 600 ms
+now lives only at the member's construction), and — reversing an earlier accept — the
+**hidden-editor pop-up lifetime**, promoted to a fix once the second pass traced its user-facing cost.
+The sign-off covers the **direction and the accepted-as-is decisions**; it is not a manual test of the
+implementation and touches no release gate.
+
+**A pop-up could outlive the plug-in window (0.9.3, third Fixed entry).** INC-010 gave the preset menu
+a parent so that hiding or destroying the editor cancels it; it could not do the same for a ComboBox
+or TextEditor drop-down, which JUCE builds as a free-standing **desktop** window with no ancestor in
+common with the editor. The watcher that performs that cancel — `ModalComponentManager::ModalItem`, a
+`ComponentMovementWatcher` firing on `! isShowing()` and on the deletion of the component *or a
+parent* — registers on the modal component and its ancestors, so for a desktop menu it only ever sees
+the menu's own visibility and lifetime. `MenuWindow::windowIsStillValid` is no help either, comparing
+two `WeakReference`s to the target control that both survive a hide. **Three** ways in, found across
+two review rounds: the host **hides** the view, the host **destroys** the editor (the destructor
+removed the component listeners but never asked the window to go away), and — maintainer-confirmed,
+and the worst — an **application switch with the pointer resting on a menu item**, where JUCE's own
+app-change dismissal does not fire because `MouseSourceState::checkButtonState` gates it on
+`! reallyContained`. That last one is not desktop-specific: the parented preset menu has the identical
+hole. Stranded, the menu is a floating always-on-top strip over a window that is gone (INC-010's exact
+reported symptom, one menu type later), still modal and so still blocking every JUCE component in the
+process, still counted in `openMenus` so the returning editor spends its first click dismissing it —
+and in the app-switch case, clicking it pulls a background plug-in window back in front. One function
+now cancels every pop-up the editor owns, in two passes because no single hook sees both kinds
+(`openMenus`, plus any **modal child** — which identifies the parented preset menu exactly, since
+nothing else the editor owns ever enters a modal state), called unconditionally from the destructor
+and conditionally from the 24 Hz tick on `! isShowing()` or a genuine application switch. The tick is
+the only observer available: an ancestor's `setVisible`, a peer change and a minimise all end at
+`isShowing()` without notifying us, and an app switch has no `Component` event at all. The app-switch
+half is **self-calibrating**, after a first attempt got it wrong. `Process::isForegroundProcess()` is
+only half of JUCE's own test; the other half — which covers a plug-in whose editor lives in a window
+owned by a different process — is module-internal, and the first revision argued it was safe to skip
+because Anamorph ships VST3 / AU / Standalone rather than AUv3. That conflated the *format* with the
+*hosting mode*: whether a plug-in runs inside the host's process is the **host's** choice (Bitwig
+gives every plug-in a helper process by default; bridged and sandboxed hosting does the same), so a
+plain VST3 hits it, the call reads `false` permanently while the editor is in active use, and every
+menu was cancelled within one tick of opening — the controls were unusable with the mouse. The editor
+now records what that call reads at the moment a pop-up **opens**, which only a click on one of its
+own controls can produce, and treats a later `false` as an app switch only if it read `true` then;
+where it never reads `true`, JUCE's own dismissal remains the only cover, which is exactly the
+pre-0.9.3 position rather than a regression. Deliberately **not**
+`PopupMenu::dismissAllActiveMenus()`, which is process-global and would close another instance's menu
+— the objection that already ruled it out in INC-010. Nothing changes while the plug-in is in front of
+the user, so the dismissal contract, the shield's z-order and the one-click behaviour are untouched.
+
+**Menu width: the discretionary part removed (0.9.3).** The width fix summed the chrome
+`drawPopupMenuItem` actually spends (12 + 14 + 12 = 38) and then added 12 px of "breathing room" on
+top, for 50 against the previous flat 30. That allowance widens **every** menu drawn through the
+look-and-feel — including the combo drop-downs — wherever the item text rather than
+`withMinimumWidth (box.getWidth())` is the binding constraint, so the discretionary part was silently
+changing the relationship between a control and its own list, and the Widen/Style/Focus layout
+contract outranks pop-up padding. The margin is now 2 px and is no longer discretionary: it is a
+rounding guard, because `drawPopupMenuItem` uses `Graphics::drawText`'s three-argument overload whose
+`useEllipsesIfTooBig` defaults to true, so text measuring one sub-pixel over the strip would ellipsise
+rather than overhang. Total 40 — still ≥ the 38 actually spent, so the *"Select All"* clipping fix is
+intact and now exact. A later round briefly had the **Widen / Style / Focus** combos opt out of the
+budget entirely (`useLegacyMenuWidth` plus a `widenCombo` instance); that answered the request in the
+wrong dimension and was **reverted** — see the layout entry below. Every menu shares the one budget. This paragraph once ended by asserting that **no layout code changed** in
+this cycle. That was true while the menu-width work was the only `resized()` edit on the branch, and
+became **false** with the equal-halves commit, which rewrote `layoutAlgoRow` and both `algoOptLabel`
+rows — so the claim is withdrawn rather than left contradicting the Widen/Style/Focus layout entry
+above, which is the accurate record. What survives it is the narrower point it was making: the
+menu-width work *itself* touched no layout code, and no `LookAndFeel` combo/label sizing or drawing
+method has been changed at any point in this cycle.
+
+**Pop-up dismissal became one mechanism instead of one predicate (0.9.3).** Verification of the
+Settings fix found the same defect on the Save Preset dialog, where it *destroys typed input*: a
+right-click opens `TextEditor`'s context menu, and the click that dismisses it was re-delivered to
+the backdrop, which closed the dialog. The Settings predicate could not be extended — `TextEditor`'s
+menu state is private, and JUCE exposes no universal "this click just dismissed a pop-up" signal
+(all three candidates were read in the pinned tree and all three fail; the table is in the worklog).
+So the editor now owns the state: `AnamorphLookAndFeel::preparePopupMenuWindow` catches every menu
+built through our look-and-feel (ComboBox and TextEditor both set it), the preset menu is counted
+directly because its own look-and-feel is null at that moment, and a single transparent
+**`PopupShield`** takes the click. The Settings-only predicate was **removed**, not kept alongside —
+the contract is "the dismissing click touches nothing underneath", and *underneath* includes controls
+that act on the press (`ABControl` toggles A/B, `SpectrumImager` can add a band), so one shield is
+both smaller and more complete than a predicate per control. The riskiest property is proved from the
+source rather than left to a GUI test: the shield cannot be raised in front of a menu, because
+`MenuWindow` sets `alwaysOnTop` and `Component::toFront` inserts a non-always-on-top component behind
+every always-on-top sibling. **Two menu-rendering fixes rode along**, both in the shared
+look-and-feel rather than patched per menu: `getIdealPopupMenuItemSize` allowed 30 px of chrome
+against a layout that spends 38, so the longest item was measured narrower than it draws and JUCE
+clipped *"Select All"* to *"Select ..."* — the allowance is now summed from named constants the
+drawing code uses, so the two cannot drift; and `drawPopupMenuItem` was **ignoring its `isActive`
+argument**, so disabled entries rendered identically to live ones — now dimmed at the 0.4 alpha this
+file already uses for a disabled button. All of it is editor-only and joins the existing ADR-0025
+entry in `TESTING.md` §Gaps. Maintainer sign-off (2026-08-09) covers the **problem reports and the
+required contract**; it is not a manual test of the implementation and touches no release gate.
+
+**The two interaction bugs this cycle opened with, both with non-obvious mechanisms (0.9.3).** *(1)* The Multiband **add-split
+preview line** stalled under a moving pointer. The S2 repaint gate skips a frame when nothing it
+watches moved — spectrum data, eased alphas, drawn split/width positions — on the stated assumption
+that "mouse-driven fields [have] handlers [that] already repaint explicitly". `updateHover()` was the
+handler that did not, and `addX`, the preview line's X, is none of the three things the gate watches.
+So with the pointer moving *within one band's add zone* (hoverAdd unchanged, `addA` already at 1.0)
+over a *settled* spectrum, nothing moved and the line froze; crossing into another hotspot moved an
+alpha and it jumped to the cursor. `updateHover` now marks the frame dirty when its output changed —
+`frameDirty` rather than `repaint()`, so painting stays paced at one frame per vblank, which is what
+the gate is for. The gate itself is untouched: an idle view still stops repainting. *(2)* A **Settings
+drop-down's dismissing click also closed Settings**, because JUCE *deliberately re-delivers* it:
+`internalMouseDown` dismisses the modal menu via `internalModalInputAttempt()` and then, seeing the
+modal loop has exited, passes the same mouse-down to the component underneath
+(`juce_Component.cpp:2507-2544`). The **shipped** answer is the editor-level `PopupShield` described
+in the entry above — a single always-visible, normally-inert overlay that starts intercepting while
+any pop-up is on screen, so the dismissing click reaches no control at all. (The first attempt at
+this fix was a Settings-only predicate on `Backdrop` reading `ComboBox::isPopupActive()`; it was
+**removed** within the same PR once the same defect turned up on the Save Preset dialog, where
+`TextEditor`'s menu state is private and the predicate could not reach it. Nothing named
+`swallowsDismissClick` or `isPopupActive` survives in the editor — the shield is the mechanism.)
+Reasoning, edge cases and the JUCE-signal analysis: `worklogs/GUI_INTERACTION_FIXES_v0.9.3.md`.
+**Neither fix has an automated test** — both are
+editor-interaction defects and the harness instantiates no editor and drives no pointer; registered
+as a second **ADR-0025** exception with its four disclosures in `TESTING.md` §Gaps, beside INC-010.
+The Save Preset case is also filed as **INC-011** — it destroys typed user input, which clears the
+same bar INC-008 set for a pure GUI-interaction regression, and `DOCUMENTATION_LIFECYCLE_POLICY`'s
+trigger map ("Fix a notable incident → `POSTMORTEMS.md`") therefore applies. Its most transferable
+finding is not the JUCE mechanism but the process one: the Settings drop-down was fixed first with a
+`ComboBox::isPopupActive()` predicate, a design *incapable* of expressing the `TextEditor` case, so
+no amount of testing that fix could have reached its sibling — a fix scoped to what exposed a defect
+rather than to its cause cannot find the rest of the class.
+**Version carriers swept** for the 0.9.2 → 0.9.3 bump: `CMakeLists.txt`, `CHANGELOG.md`, `README.md`,
+`HANDOVER.md`, `KNOWN_ISSUES.md`, `FUTURE_RISKS.md`, `RELEASE_PROCESS.md`, `RELEASE_HARDENING_PLAN.md`,
+`CHANGELOG_POLICY.md`, ADR-0024 — every place naming the *release in preparation* or the *first
+annotated tag*, which is now **v0.9.3** (0.9.0, 0.9.1 and 0.9.2 were each written up and superseded
+before a tag was cut). Historical references to what 0.9.2 introduced are left as they are.
+
+---
+
+Previously: for the **0.9.2 change set** (2026-08-07) — the first `src/` change since 0.9.0.
 Four changes, one investigation, three new regression tests, and one governance amendment.
 
 **Governance: `TESTING_POLICY` rule 1 gains a narrow exception (ADR-0025).** The rule ("every bug fix

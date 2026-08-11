@@ -6,11 +6,75 @@ their **commit SHA + date** as the Evidence Source (per `docs/policies/CHANGELOG
 The annotated-tag convention and the tag-triggered release pipeline exist
 (`docs/procedures/RELEASE_PROCESS.md` §Tagging), but **no tag has been cut yet**: `[0.9.0]` was
 written as a release entry and then superseded before it was tagged, so the first annotated
-`vX.Y.Z` tag will be **v0.9.2** (0.9.1 was likewise written up and superseded before tagging),
+`vX.Y.Z` tag will be **v0.9.3** (0.9.0, 0.9.1 and 0.9.2 were each written up and superseded before
+tagging),
 and from that tag onward the tag is also a citable Evidence
 Source. Until then every entry cites a commit SHA or a PR. Entries for the
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
+
+## [0.9.3] — 2026-08-11
+### Changed
+- **The Widen row's two drop-downs are now equal width.** *Widen* and the *Style* / *Focus* box beside
+  it were noticeably different sizes, with the join between them sitting right of the panel's centre.
+  They are now the same width, the join lands on the centre line, and both boxes start a little
+  further left; the *Style* and *Focus* captions move with their box. Same controls, same behaviour —
+  only the proportions of that row changed. Simple and Advanced modes both.
+  Evidence: PR #101. [Verified]
+- **Windows installer: two folder prompts now match the labels above them.** The messages shown when
+  a destination is left blank read *VST3 Plug-in* and *Standalone Application*, the same capitalisation
+  as the fields themselves — the two the 0.9.2 installer title-casing pass missed.
+  Evidence: PR #101. [Verified]
+
+### Fixed
+- **The Multiband "add split" line no longer sticks while you move the mouse.** Hovering the
+  Multiband spectrum (Advanced mode) shows a preview line marking where a click would add a new
+  split. On a quiet track the line could stop following the pointer and hang at one spot, only
+  catching up once the pointer reached something else that redraws — a Solo headphone, a split
+  handle. The display was skipping frames it had judged identical to the last one, and the preview
+  line's position was not among the things it looked at; it is now. Reported on macOS; the cause was
+  platform-independent, so the fix applies everywhere. Nothing else about the display changed — an
+  idle, settled view still stops repainting exactly as before.
+  Evidence: PR #101. [Verified]
+- **A click that closes a menu now only closes the menu.** Whenever a drop-down or right-click menu
+  is open, clicking anywhere outside it closes it and does nothing else — it cannot also close the
+  Settings panel, toggle A/B, add a Multiband split, move a control, or press a button. Previously
+  that one click did two things at once, and in the Save Preset dialog it could **discard the name
+  you had just typed**: right-clicking the name field opens the system text menu, and dismissing it
+  also closed the dialog. This now holds for the Settings drop-downs, the Save Preset text menu and
+  the preset menu alike, within the plug-in window the menu belongs to. Two residuals: **KI-018**, the
+  dismissing click reaches no control but the system still counts it, so a *very* quick click straight
+  afterwards on the same spot can land as a double-click (pause briefly, or move the pointer a little,
+  before the next one); and **KI-020**, with two Anamorph windows open at once a click aimed at the
+  *other* one can still act, because menus are managed system-wide rather than per window.
+  Evidence: PR #101. [Verified]
+- **An open menu no longer outlives the plug-in window.** A drop-down or right-click menu could be
+  left behind as a stray always-on-top strip over the rest of the screen in three situations: the
+  host **hiding** the plug-in window rather than closing it, the host **closing** it outright, and
+  **switching to another application** with the pointer resting on a menu item — in that last case
+  clicking the leftover even pulled the plug-in's window back in front of whatever you had switched
+  to. On return the plug-in also spent its first click dismissing the leftover instead of pressing
+  the control you aimed at. Any menu still open is now closed as soon as the window is hidden, closed
+  or sent to the background, matching what the preset menu already did in 0.9.2. Nothing changes
+  while the plug-in is in front of you. One residual, tracked as **KI-019**: on **Linux** the
+  switching-application case is not covered — hiding and closing the window both are — so a menu left
+  open there stays until you click it away.
+  Evidence: PR #101. [Verified]
+- **The right-click text menu no longer truncates its longest item**, which showed as
+  *"Select ..."* instead of *"Select All"*. Menu width is now measured from the text in the menu's
+  own font, so it stays correct with a different font, a different UI scale or a different platform
+  renderer rather than fitting one machine.
+  Evidence: PR #101. [Verified]
+- **Menu items that cannot be chosen now look it.** Entries such as *Cut* and *Copy* with nothing
+  selected, or *Paste* with an empty clipboard, are drawn dimmed instead of identically to the items
+  you can actually pick.
+  Evidence: PR #101. [Verified]
+- **Turning Tooltips off now takes effect immediately.** A tooltip already on screen used to stay
+  there, and moving quickly to another control could still bring up a new one — the setting only
+  slowed tooltips down rather than switching them off, and the delay was bypassed entirely while a
+  tooltip was showing. Off now means off: the visible one disappears at once and no new one can
+  appear. Turning them back on behaves as before.
+  Evidence: PR #101. [Verified]
 
 ## [0.9.2] — 2026-08-07
 ### Fixed

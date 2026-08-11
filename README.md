@@ -13,9 +13,19 @@ only — it configures and builds entirely from the command line on a headless L
 - Diamond **vectorscope**, correlation + L/R Peak/RMS meters; click-free transitions throughout.
 
 ## Project status
-- **Version 0.9.2** (pre-1.0), in the **internal-testing phase** — builds go to testers for
+- **Version 0.9.3** (pre-1.0), in the **internal-testing phase** — builds go to testers for
   evaluation, not to customers (see [Licensing](#licensing); internal record:
   [`docs/COMMERCIAL_STATUS.md`](docs/COMMERCIAL_STATUS.md)).
+- **0.9.3 is a round of interaction fixes.** The Multiband **add-split preview line** keeps
+  following the pointer instead of occasionally hanging at one spot on a quiet track; **a click
+  that closes a menu now only closes the menu** — it can no longer also close a panel, discard a
+  half-typed preset name or nudge a control underneath; an open menu no longer **outlives the plug-in
+  window** — hiding it, closing it or switching to another application closes the menu too, so
+  nothing is left floating and the first click on return goes to the control you aimed at;
+  right-click menus size themselves to their longest item and grey out what you cannot pick; and
+  turning **Tooltips** off now takes effect at once. One visible change beyond the fixes: the **Widen**
+  row's two drop-downs are now equal width with the join between them on the panel's centre line.
+  Editor-only: saved state, parameters and the DSP are unchanged.
 - **0.9.2 fixes the preset drop-down** (it no longer stays on screen — or crashes on click —
   after the plug-in window closes) and lets a user preset share a factory preset's name without
   losing its place in the menu; the Settings control *Window Size* is now labelled **UI Scale**.

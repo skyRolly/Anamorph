@@ -43,6 +43,14 @@ public:
     // window). Ends any open gesture + clears the drag flags without firing on-release actions.
     void cancelActiveDrag();
 
+    // Abandons an in-progress inline crossover-frequency edit WITHOUT applying it -- the Escape-key
+    // outcome, reached without the user pressing Escape. `freqEditor->onFocusLost` commits, which is
+    // right for "the user clicked elsewhere" but wrong for a focus release the EDITOR decides on
+    // (leaving the application with a menu open); that would write a half-typed crossover, complete
+    // with a change gesture and a nudge to the neighbouring splits. A caller releasing focus for a
+    // reason the user did not initiate must call this first. Harmless when nothing is being edited.
+    void cancelInlineEdit() { if (editingHandle >= 0) closeFreqEditor(); }
+
     // Wired up by the editor. The momentary solo audition is a non-undoable engine
     // override (#8); onSweep / isSweeping share the editor's eased-position window so
     // a reset / preset / A-B / undo travels the split & width lines (#1).

@@ -13,7 +13,8 @@
 //  AnamorphAudioProcessorEditor  (v0.3 UI pass)
 // ============================================================================
 class AnamorphAudioProcessorEditor : public juce::AudioProcessorEditor,
-                                     private juce::Timer
+                                     private juce::Timer,
+                                     private juce::ComponentListener // pop-up windows, see PopupShield
 {
 public:
     explicit AnamorphAudioProcessorEditor (AnamorphAudioProcessor&);
@@ -32,6 +33,88 @@ private:
     using SliderAttachment   = juce::AudioProcessorValueTreeState::SliderAttachment;
     using ButtonAttachment   = juce::AudioProcessorValueTreeState::ButtonAttachment;
     using ComboBoxAttachment = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
+
+    // Consumes the click that dismissed a pop-up, so it cannot also act on whatever sits under it.
+    //
+    // JUCE re-delivers that click on purpose: Component::internalMouseDown sees the modal menu,
+    // calls internalModalInputAttempt() -- which dismisses it synchronously -- and then, because
+    // the modal loop has now exited, hands the SAME mouse-down to the component underneath
+    // (juce_Component.cpp:2507-2544 in the pinned tree; the comment there says so outright).
+    // Underneath is whatever the cursor happens to be over, and several of those act on the press
+    // itself: ABControl::mouseDown toggles A/B, SpectrumImager::mouseDown can ADD a band, a
+    // Backdrop closes its panel and discards what was typed into it.
+    //
+    // A shield is the whole enforcement layer: raised in front of everything while any pop-up is on
+    // screen, it is the component that click lands on, and it does nothing with it. One mechanism,
+    // one place, rather than a predicate bolted onto every control that could be hit -- and it
+    // covers controls added later for free.
+    //
+    // It never covers the pop-up itself, and that is structural rather than a matter of ordering.
+    // A ComboBox / TextEditor menu is its own desktop window, so the shield (an editor child) is not
+    // even in the same hierarchy. The preset menu IS an editor child -- but PopupMenu::MenuWindow
+    // sets setAlwaysOnTop (true) in its constructor (juce_PopupMenu.cpp:365), and Component::toFront
+    // on a NON-always-on-top component walks its insert index back past every always-on-top sibling
+    // (juce_Component.cpp:914-922). The shield does not set that flag, so it cannot be raised in
+    // front of a menu even if it is raised while one is already open. Nothing else in src/ sets
+    // alwaysOnTop, so a menu window is the only sibling that can outrank it. (showPresetMenu also
+    // raises the shield BEFORE showMenuAsync, so the append order agrees with the flag order.)
+    //
+    // Keyboard focus is deliberately left alone: toFront (false) skips grabKeyboardFocus
+    // (juce_Component.cpp:928-934) and setMouseClickGrabsKeyboardFocus (false) covers the click, so
+    // raising the shield cannot pull focus out of the Save Preset field mid-edit.
+    // It is ALWAYS visible and paints nothing; only its mouse interception is toggled. (dimOverlay is
+    // the precedent for the transparent-to-the-mouse half only -- it is a full-editor overlay with
+    // setInterceptsMouseClicks (false, false) -- but it is NOT always visible: it is added with
+    // addChildComponent and follows the Bypass state.)
+    //
+    // WHY RAISING THE SHIELD CANNOT DISTURB HOVER -- and it is not the order we raise it in.
+    // Every fake mouse move in play here is ASYNCHRONOUS: Component::sendFakeMouseMove ->
+    // MouseInputSource::triggerFakeMove -> triggerAsyncUpdate (juce_MouseInputSourceImpl.h:449-451).
+    // It is dispatched a message-loop pass later, so it lands after showWithOptionalCallback has run
+    // setVisible(true), enterModalState AND toFront on the menu (juce_PopupMenu.cpp:2290-2294) and
+    // returned -- our own toFront, and the one JUCE fires from the menu's setVisible, are the same
+    // deferred move. Two independent properties make that dispatch a no-op for hover:
+    //   1. The menu is modal by then, and Component::internalMouseEnter/internalMouseExit BOTH
+    //      early-return for a target that isCurrentlyBlockedByAnotherModalComponent()
+    //      (juce_Component.cpp:2414-2420, :2452-2458). MenuWindow does not override
+    //      canModalEventBeSentToComponent, so every editor child -- the control under the cursor and
+    //      this shield alike -- is blocked (juce_ComponentHelpers.h:213-219). No mouseExit/mouseEnter
+    //      is delivered, so the only two event-driven hover consumers in src/ (SpectrumImager's hover
+    //      indices, ABControl::hovered) cannot be cleared, whatever the hit test resolves to.
+    //   2. Every other hover visual here is derived GEOMETRICALLY, never from enter/exit:
+    //      stepMicroAnims takes `over` from getMouseXYRelative() to drive hovA (PluginEditor.cpp:
+    //      1331-1333) and the combo "hov" flag does the same (:1072-1073). That is the v0.6.1
+    //      stuck-hover fix, and it makes hovA immune to componentUnderMouse churn by construction.
+    // Toggling interception rather than visibility is therefore about cost and side effects, not
+    // hover: setInterceptsMouseClicks is pure flag assignment (juce_Component.cpp:1336-1341), where
+    // setVisible would add a full-editor repaint() on every menu open plus a repaintParent() and a
+    // cached-image release on every close (:555-563), for no behavioural gain.
+    struct PopupShield : public juce::Component
+    {
+        PopupShield()
+        {
+            setInterceptsMouseClicks (false, false); // inert until raised; see refreshPopupShield
+            setMouseClickGrabsKeyboardFocus (false);
+            setWantsKeyboardFocus (false);
+        }
+        // Deliberately empty: consuming the event IS the behaviour. The first four only state that
+        // intent -- juce::Component's versions are already `{}` (juce_Component.cpp:2310-2314).
+        //
+        // The last two are the ones that actually do something. Component::mouseWheelMove and
+        // ::mouseMagnify are NOT empty in the base class: each forwards the event to the nearest
+        // enabled ancestor (:2316-2328), which for this shield is the editor itself. Without these,
+        // a scroll or a pinch over a raised shield would arrive at
+        // AnamorphAudioProcessorEditor::mouseWheelMove -- harmless today, since the Persist-reveal
+        // branch there keys on `e.eventComponent == &scopePersistK`, but it makes "the shield
+        // consumes the gesture" false in a way that only holds by luck. Overriding them costs
+        // nothing and makes the contract literal.
+        void mouseDown        (const juce::MouseEvent&) override {}
+        void mouseUp          (const juce::MouseEvent&) override {}
+        void mouseDrag        (const juce::MouseEvent&) override {}
+        void mouseDoubleClick (const juce::MouseEvent&) override {}
+        void mouseWheelMove   (const juce::MouseEvent&, const juce::MouseWheelDetails&) override {}
+        void mouseMagnify     (const juce::MouseEvent&, float) override {}
+    };
 
     // Translucent modal backdrop hosting a centred panel (About / Settings).
     struct Backdrop : public juce::Component
@@ -106,7 +189,61 @@ private:
     anamorph::gui::CompactComboLookAndFeel compactCombo; // smaller list for Input combos (#12)
     anamorph::gui::SimpleComboLookAndFeel  simpleCombo;  // bigger text for Simple-mode Widen combos (#17)
     juce::OpenGLContext openGLContext;
-    juce::TooltipWindow tooltips { nullptr, 600 };
+    // Tooltips are switched off at the SOURCE, not just slowed down. The Settings toggle used to
+    // only push millisecondsBeforeTipAppears to a huge value, which does not touch a tip already on
+    // screen and -- worse -- is bypassed entirely while one is: TooltipWindow::timerCallback takes a
+    // fast path when `isVisible() || now < lastHideTime + 500` and calls showTip() on any tip change
+    // without consulting the delay (juce_TooltipWindow.cpp:242-247). That is exactly the reported
+    // "disable it and the tip stays, then moving quickly to another control shows a new one".
+    //
+    // getTipFor is virtual, so returning nothing while disabled makes JUCE's own state machine do
+    // the work: the same fast path hides on an empty tip rather than showing one, and the slow path
+    // has nothing to show either. One override, no second tooltip system, no timer of our own.
+    struct GatedTooltipWindow : public juce::TooltipWindow
+    {
+        using juce::TooltipWindow::TooltipWindow;
+        // NOT named `isEnabled`: juce::Component::isEnabled() is a non-virtual member function
+        // (juce_Component.h:1592) that a data member of that name would HIDE in this scope -- and
+        // hide silently, since `tooltips.isEnabled()` would still compile and still return a bool,
+        // just the wrong one. Empty => behave exactly like juce::TooltipWindow.
+        std::function<bool()> tooltipsEnabled;
+        juce::String getTipFor (juce::Component& c) override
+        {
+            if (tooltipsEnabled && ! tooltipsEnabled()) return {};
+            return juce::TooltipWindow::getTipFor (c);
+        }
+    };
+    // 600 ms is the ONLY place the appear-delay is set; applyTooltipsEnabled never touches it.
+    GatedTooltipWindow tooltips { nullptr, 600 };
+
+    // --- Pop-up dismissal: one shield, one flag, three feeders -------------------------------
+    // Declared AFTER the look-and-feel members on purpose, like every other child component here:
+    // members are destroyed in reverse declaration order, so a child declared later dies BEFORE the
+    // look-and-feels it may resolve through. `popupShield` does not resolve one today -- it paints
+    // nothing and never calls setLookAndFeel -- but the moment it gains a paint() that does, the
+    // inverted order would surface as the `~LookAndFeel` live-WeakReference assertion that
+    // showPresetMenu's INC-010 comment describes. Keeping the convention costs nothing.
+    //
+    // `openMenus` holds every PopupMenu window currently on screen that reported itself through
+    // AnamorphLookAndFeel::onPopupMenuWindowCreated (ComboBox drop-downs, TextEditor context
+    // menus), as SafePointers so a destroyed window drops out on its own. `presetMenusOpen` counts
+    // the menus this editor shows itself, which do NOT reach that hook -- their look-and-feel is
+    // null at construction, so JUCE resolves the default one there. Either being non-empty raises
+    // the shield.
+    PopupShield popupShield;
+    bool shieldRaised = false;   // the shield is always visible; this is whether it intercepts
+    // Whether Process::isForegroundProcess() read true at the last pop-up open -- i.e. whether that
+    // test means anything in this host. Out-of-process / bridged hosting makes it permanently false;
+    // see dismissOrphanedPopupMenus for why that must not be read as "the user switched away".
+    bool popupOpenedWhileForeground = false;
+    juce::Array<juce::Component::SafePointer<juce::Component>> openMenus;
+    int  presetMenusOpen = 0;
+    void notePopupMenuOpened (juce::Component& menuWindow);
+    void refreshPopupShield();   // prunes dead windows and shows/hides the shield
+    void dismissTrackedPopupMenus();   // cancels every pop-up this editor owns, unconditionally
+    void cancelInlineTextEdits();      // parks in-progress inline edits without applying them
+    void dismissOrphanedPopupMenus();  // ... and the same, once one can no longer belong to us
+    void componentBeingDeleted (juce::Component&) override; // a tracked pop-up window went away
 
     // Centrepiece + meters
     std::unique_ptr<anamorph::gui::Vectorscope> scope;
