@@ -153,7 +153,11 @@ grep -q 'customize="allow"' "$WORK/expanded/Distribution" \
 # Install-state independence (INC-012): no component may be relocatable or
 # version-checked, and each must carry its postinstall check. Empty elements are
 # written self-closing (`<relocate/>`), so it is the `<relocate><bundle` pair
-# that means a bundle is listed.
+# that means a bundle is listed. Count first — a loop over an empty `find` would
+# pass every assertion below without executing one of them.
+INFOS=$(find "$WORK/expanded" -name PackageInfo | wc -l | tr -d ' ')
+[ "$INFOS" -eq 3 ] \
+  || { echo "error: expected 3 component PackageInfo files in $OUT, found $INFOS" >&2; exit 1; }
 while IFS= read -r info; do
   flat=$(tr -d ' \n\t' < "$info")
   case "$flat" in

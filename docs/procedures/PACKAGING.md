@@ -197,10 +197,11 @@ restores the standard destination rather than tracking the moved bundle. A stale
 `~/Library/Audio/Plug-Ins/...` from an old relocated install is likewise the user's to
 delete; hosts may otherwise see two Anamorphs.
 
-**Build-time self-checks** (fail the macOS job, so this cannot silently regress): every
-component's `PackageInfo` must list no relocatable and no version-checked bundle and must
-declare its `postinstall`; and `pkgutil --expand-full` must show each component's payload
-carrying the whole bundle down to `Contents/MacOS/Anamorph`.
+**Build-time self-checks** (fail the macOS job, so this cannot silently regress): all **three**
+component `PackageInfo` files must be found — the count is asserted first, because a loop over an
+empty match would pass every assertion without running one — and each must list no relocatable and
+no version-checked bundle and declare its `postinstall`; and `pkgutil --expand-full` must show each
+component's payload carrying the whole bundle down to `Contents/MacOS/Anamorph`.
 Evidence [Verified]: `packaging/macos/build-pkg.sh`; INC-012 in `docs/POSTMORTEMS.md`.
 
 ## Universal binary verification (macOS)
