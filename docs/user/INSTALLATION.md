@@ -105,6 +105,10 @@ sudo cp Anamorph /usr/local/bin/
   `chmod +x ~/.local/bin/Anamorph` (and, if the DAW can't load the plug-in,
   `chmod +x ~/.vst3/Anamorph.vst3/Contents/x86_64-linux/Anamorph.so`) — with `sudo` and
   the `/usr/...` paths for a system-wide install.
+- **`./install.sh: Permission denied`** — you downloaded the package as a per-push CI
+  artifact, which drops the executable bit (release zips keep it). Run `sh ./install.sh`
+  instead (or `sudo sh ./install.sh` to go straight to a system-wide install); the script
+  behaves identically either way.
 - **`Anamorph: command not found` after a per-user install** — `~/.local/bin` is not on
   your `PATH`; start it with the full path `~/.local/bin/Anamorph`, or add that folder to
   `PATH`. `install.sh` prints a note when it spots this.

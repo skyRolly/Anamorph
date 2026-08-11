@@ -93,6 +93,12 @@ Rescan in your DAW / 在 DAW 里重新扫描插件
 --------------------------------------------------------------------
 Troubleshooting / 常见问题
 --------------------------------------------------------------------
+- "Permission denied" running ./install.sh (or ./uninstall.sh): downloading
+  this package as a per-push CI artifact drops the executable bit (release
+  zips keep it). Run it through the shell instead — everything else is
+  identical / 用 sh 运行即可,其余完全一样:
+      sh ./install.sh
+      sudo sh ./install.sh     (straight to a system-wide install)
 - "Permission denied" when launching the Standalone: the executable bit
   was lost (per-push CI artifact downloads and some archive tools drop it;
   release zips keep it). Fix / 如果提示没有执行权限:
