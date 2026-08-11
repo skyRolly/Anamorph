@@ -272,6 +272,22 @@ rounding guard, because `drawPopupMenuItem` uses `Graphics::drawText`'s three-ar
 rather than overhang. The shipped total is **40** — still above the 38 actually spent, so the fix is
 intact and now exact — and the delta against 0.9.2's flat 30 is **10 px**, not 20.
 
+**And the Widen group keeps its 0.9.2 list widths outright.** Even 10 px is 10 px on the
+Widen / Style / Focus combos, whose list width is part of that group's layout contract, so those three
+opt out of the derived budget entirely: `AnamorphLookAndFeel::useLegacyMenuWidth` restores the 0.9.2
+formula verbatim — flat `+30`, no floor. It is an **instance** flag, not a mode: `SimpleComboLookAndFeel`
+sets it (Simple mode), and Advanced mode now carries `widenCombo`, a plain `AnamorphLookAndFeel`
+instance identical to `lnf` in every drawing and font respect and existing only to carry the flag —
+`lnf` itself must not have it, because `lnf` also styles the preset menu and the TextEditor context
+menus, which are where the clipping actually was. Advanced mode previously passed `nullptr` on those
+boxes, which resolves `lnf` through the component tree, so nothing about their appearance changes.
+
+Under-measuring by the 8 px the drawing spends is exactly the 0.9.2 behaviour those boxes are
+specified against, and it stays invisible there because `getOptionsForComboBoxPopupMenu` floors every
+combo list at `box.getWidth()`. **Wiring note:** a look-and-feel a combo can carry must also be given
+`onPopupMenuWindowCreated`, or a drop-down styled by it goes untracked and its dismissing click reaches
+a control. `widenCombo` is in that list in both the constructor and the destructor.
+
 ## 6. Disabled menu items look disabled
 
 `drawPopupMenuItem` took `bool /*isActive*/` and ignored it, so a greyed-out entry rendered exactly
@@ -301,10 +317,10 @@ second click after dismissal behaving normally; and visually, *Select All* shown
 disabled items clearly dimmer, at more than one UI scale.
 
 Two more were added by the 2026-08-10 review sign-off. The **Widen combos in Simple mode** (15.5 pt)
-are owed a look: the menu-width allowance sums to 40 px against the 38 px the drawing actually spends,
-so every menu measured on its item text — not on `withMinimumWidth (box.getWidth())` — is 10 px wider
-than in 0.9.2. (That was 50 px / 20 px in the first revision; the discretionary 12 px came back out in
-the round that followed — see the revision note in §5.) A **host that hides rather than destroys the
+are owed a look for the opposite reason to before: they are now specified to be **unchanged** from
+0.9.2, because those three boxes opt out of the new budget (`useLegacyMenuWidth`, §5). Earlier rounds
+had them 20 px and then 10 px wider; the check is that the list is back to the 0.9.2 width and that
+*Style* / *Focus* still sit directly over their boxes. A **host that hides rather than destroys the
 editor** while a drop-down is open was first accepted as-is too, then **fixed** in the following round
 — see §9; what is still owed there is the on-device confirmation in such a host, not a decision.
 

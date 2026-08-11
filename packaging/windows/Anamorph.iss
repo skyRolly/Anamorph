@@ -123,13 +123,13 @@ begin
   begin
     if WizardIsComponentSelected('vst3') and (Trim(DestPage.Values[0]) = '') then
     begin
-      MsgBox('Enter a folder for the VST3 plug-in.', mbError, MB_OK);
+      MsgBox('Enter a folder for the VST3 Plug-in.', mbError, MB_OK);
       Result := False;
       exit;
     end;
     if WizardIsComponentSelected('standalone') and (Trim(DestPage.Values[1]) = '') then
     begin
-      MsgBox('Enter a folder for the Standalone application.', mbError, MB_OK);
+      MsgBox('Enter a folder for the Standalone Application.', mbError, MB_OK);
       Result := False;
       exit;
     end;

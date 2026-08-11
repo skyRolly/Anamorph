@@ -467,6 +467,20 @@ void AnamorphLookAndFeel::getIdealPopupMenuItemSize (const juce::String& text, b
                                                      int, int& idealWidth, int& idealHeight)
 {
     if (isSeparator) { idealWidth = 60; idealHeight = 8; return; }
+    // The Widen / Style / Focus combos opt out (useLegacyMenuWidth): the width of their lists is
+    // part of that group's layout contract, so they keep the 0.9.2 formula verbatim -- the flat +30
+    // and no floor -- rather than the derived budget below. Under-measuring by the 8 px the drawing
+    // actually spends is the 0.9.2 behaviour those boxes are specified against, and it is invisible
+    // there because getOptionsForComboBoxPopupMenu floors every combo list at box.getWidth(). The
+    // clipping this function exists to fix was in a TextEditor context menu, which is unaffected.
+    if (useLegacyMenuWidth)
+    {
+        juce::GlyphArrangement legacy;
+        legacy.addLineOfText (getPopupMenuFont(), text, 0.0f, 0.0f);
+        idealWidth  = (int) std::ceil (legacy.getBoundingBox (0, -1, true).getWidth()) + 30;
+        idealHeight = 23;
+        return;
+    }
     // `text` arrives as the item text PLUS its shortcut, joined by three spaces
     // (PopupMenu::ItemComponent::getTextForMeasurement, juce_PopupMenu.cpp:333-336), so measuring
     // it covers the right-aligned shortcut column drawPopupMenuItem paints into the same strip.

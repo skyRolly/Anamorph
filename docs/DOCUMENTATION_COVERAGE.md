@@ -107,7 +107,12 @@ contract outranks pop-up padding. The margin is now 2 px and is no longer discre
 rounding guard, because `drawPopupMenuItem` uses `Graphics::drawText`'s three-argument overload whose
 `useEllipsesIfTooBig` defaults to true, so text measuring one sub-pixel over the strip would ellipsise
 rather than overhang. Total 40 — still ≥ the 38 actually spent, so the *"Select All"* clipping fix is
-intact and now exact. **No layout code changed** in this cycle: the closed-state width, alignment,
+intact and now exact. The **Widen / Style / Focus** combos then opted out of the budget altogether and
+keep the 0.9.2 formula verbatim (`AnamorphLookAndFeel::useLegacyMenuWidth`, an instance flag carried by
+`SimpleComboLookAndFeel` and by a new `widenCombo` instance for Advanced mode — identical to `lnf`
+except for the flag, which `lnf` must not have because it also styles the menus the clipping was
+actually in). Their list widths are part of that group's layout contract, which outranks a menu-sizing
+improvement they never needed. **No layout code changed** in this cycle: the closed-state width, alignment,
 spacing and label positions of the Widen/Style/Focus group are identical to 0.9.2 (`git diff` against
 `main` shows the only `resized()` change on the branch is `popupShield.setBounds`, a transparent
 full-editor overlay, and no `LookAndFeel` combo/label sizing or drawing method was touched).

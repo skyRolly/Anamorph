@@ -14,6 +14,12 @@ Source. Until then every entry cites a commit SHA or a PR. Entries for the
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
 ## [0.9.3] — 2026-08-09
+### Changed
+- **Windows installer: two folder prompts now match the labels above them.** The messages shown when
+  a destination is left blank read *VST3 Plug-in* and *Standalone Application*, the same capitalisation
+  as the fields themselves — the two the 0.9.2 installer title-casing pass missed.
+  Evidence: PR #101. [Verified]
+
 ### Fixed
 - **The Multiband "add split" line no longer sticks while you move the mouse.** Hovering the
   Multiband spectrum (Advanced mode) shows a preview line marking where a click would add a new

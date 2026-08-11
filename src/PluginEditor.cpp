@@ -248,13 +248,17 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
 
     // Pop-up dismissal shield (see PopupShield). Added once and left VISIBLE; it paints nothing and
     // only starts intercepting while a menu is on screen, so it never disturbs hover or the cursor.
-    // All three look-and-feels report through the same hook -- compactCombo and
-    // simpleCombo derive from AnamorphLookAndFeel, and a menu carries the look-and-feel of the box
-    // that opened it, so a drop-down styled by either of them would otherwise go unseen.
+    // EVERY look-and-feel a combo can carry reports through the same hook -- compactCombo,
+    // simpleCombo and widenCombo all derive from AnamorphLookAndFeel, and a menu carries the
+    // look-and-feel of the box that opened it, so a drop-down styled by any of them would otherwise
+    // go unseen and its dismissing click would reach a control. Adding a look-and-feel to this
+    // editor means adding it here.
     addAndMakeVisible (popupShield);   // visible but inert; refreshPopupShield toggles interception
+    widenCombo.useLegacyMenuWidth = true;   // Widen group keeps its 0.9.2 list width (#w)
     for (auto* laf : { (anamorph::gui::AnamorphLookAndFeel*) &lnf,
                        (anamorph::gui::AnamorphLookAndFeel*) &compactCombo,
-                       (anamorph::gui::AnamorphLookAndFeel*) &simpleCombo })
+                       (anamorph::gui::AnamorphLookAndFeel*) &simpleCombo,
+                       (anamorph::gui::AnamorphLookAndFeel*) &widenCombo })
         laf->onPopupMenuWindowCreated = [this] (juce::Component& w) { notePopupMenuOpened (w); };
    #if JUCE_MAC
     // juce::TooltipWindow declares itself OPAQUE (its constructor calls
@@ -675,12 +679,13 @@ AnamorphAudioProcessorEditor::~AnamorphAudioProcessorEditor()
     channelModeBox.setLookAndFeel (nullptr);
     soloBox.setLookAndFeel (nullptr);
     for (auto* box : { &algorithmBox, &haasSideBox, &dimModeBox })
-        box->setLookAndFeel (nullptr); // detach simpleCombo before it's destroyed (#17)
+        box->setLookAndFeel (nullptr); // detach simpleCombo / widenCombo before either is destroyed (#17)
     // Drop the pop-up hooks before anything else unwinds: a menu can still be on screen here (its
     // cancellation is asynchronous), and its window must not call back into a half-destroyed editor.
     for (auto* laf : { (anamorph::gui::AnamorphLookAndFeel*) &lnf,
                        (anamorph::gui::AnamorphLookAndFeel*) &compactCombo,
-                       (anamorph::gui::AnamorphLookAndFeel*) &simpleCombo })
+                       (anamorph::gui::AnamorphLookAndFeel*) &simpleCombo,
+                       (anamorph::gui::AnamorphLookAndFeel*) &widenCombo })
         laf->onPopupMenuWindowCreated = nullptr;
     // Cancel BEFORE forgetting them. `dismissOrphanedPopupMenus` cannot help here -- it runs off the
     // 24 Hz tick, which stopTimer() above has just ended, and it is conditional besides; a host
@@ -943,7 +948,11 @@ void AnamorphAudioProcessorEditor::applyWidenFonts()
         comboFontMode = mode;
         for (auto* box : { &algorithmBox, &haasSideBox, &dimModeBox })
         {
-            box->setLookAndFeel (advanced ? nullptr : &simpleCombo);
+            // Advanced used to pass nullptr, which resolves `lnf` through the component tree.
+            // widenCombo IS that look-and-feel -- same class, nothing overridden -- with the one
+            // difference these three boxes need: their list keeps its 0.9.2 width.
+            box->setLookAndFeel (advanced ? (anamorph::gui::AnamorphLookAndFeel*) &widenCombo
+                                          : &simpleCombo);
             passComboHoverThrough (*box);
         }
     }
