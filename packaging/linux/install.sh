@@ -84,17 +84,31 @@ fi
 choose_stage_dir() {            # $1 = plug-in directory; prints the stage directory
     _out="${1%/*}/.anamorph-install-stage"
     _in="$1/.anamorph-install-stage"
+    _probe="$1/.anamorph-probe"
+    # The link target below is the ONE thing this script writes into the scan
+    # directory, and `ln` refuses to overwrite an existing target. A run killed
+    # between creating and removing it would therefore fail the probe on EVERY
+    # later run and pin staging to the in-scan-path fallback permanently — a
+    # leftover marker silently deciding future installs. Clearing it up front,
+    # unconditionally and before the recovery paths that never probe, makes the
+    # marker stateless: a leftover can only ever be litter, never a decision.
+    # (`-rf`, not `-f`, so even a directory left under that name cannot pin the
+    # choice; nothing but this probe is ever written to that path.)
+    # shellcheck disable=SC2086  # $SUDO is deliberately empty outside system mode
+    $SUDO rm -rf "$_probe" 2>/dev/null || true
     # A run killed outright (SIGKILL, power loss) can leave the previous bundle
     # parked. Keep using whichever directory holds it, so it stays recoverable.
     if [ -d "$_out/Anamorph.vst3.prev" ]; then printf '%s\n' "$_out"; return 0; fi
     if [ -d "$_in/Anamorph.vst3.prev" ];  then printf '%s\n' "$_in";  return 0; fi
-    # shellcheck disable=SC2086  # $SUDO is deliberately empty outside system mode
+    # shellcheck disable=SC2086
     if $SUDO mkdir -p "$_out" 2>/dev/null \
        && $SUDO touch "$_out/.probe" 2>/dev/null \
-       && $SUDO ln "$_out/.probe" "$1/.anamorph-probe" 2>/dev/null
+       && $SUDO ln "$_out/.probe" "$_probe" 2>/dev/null
     then
+        # Both ends go now, so nothing survives a successful probe. The staging
+        # and commit below never touch this name again.
         # shellcheck disable=SC2086
-        $SUDO rm -f "$_out/.probe" "$1/.anamorph-probe" 2>/dev/null || true
+        $SUDO rm -f "$_out/.probe" "$_probe" 2>/dev/null || true
         printf '%s\n' "$_out"
     else
         # shellcheck disable=SC2086

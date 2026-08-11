@@ -13,6 +13,31 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
 
+**Probe-state fix (0.9.3) — the staging probe could decide future installs.**
+
+The hard-link probe that chooses the staging location writes one marker into the plug-in directory,
+and `ln` refuses an existing target. A run killed between creating and removing that marker left it
+there for good, and from then on the probe failed on **every** later run — pinning staging to the
+in-scan-path fallback permanently, which is exactly the arrangement the round before had moved away
+from. Reproduced against the tree before fixing: with a marker pre-placed in `~/.vst3`, the install
+succeeded but staged inside the scan directory. `uninstall.sh` did not list the marker either, so it
+survived a full uninstall and contradicted the "leaves nothing that survives a deliberate uninstall"
+line in `PACKAGING.md`.
+
+The fix is to make the marker **stateless** rather than to chase its cleanup: it is removed up front
+on every run, before the probe and before the recovery paths that never probe, so a leftover can only
+ever be litter. Deleting it only *after* use would not have been enough — that is the same
+kill-between-two-commands window that created the bug. `-rf` rather than `-f`, so even a directory
+under that name cannot pin the choice; nothing but the probe is ever written to that path. The
+uninstaller's scratch list gained the marker so an interrupted install leaves nothing behind.
+
+Verified by execution in both modes: stale marker (file and directory), `INT`/`TERM`/`HUP`/`KILL`
+delivered inside the probe window itself — after which the installed plug-in is untouched, because
+the probe runs before any staging, and the **next run stages outside again** — repeat installs
+leaving no marker, and uninstall clearing one. The full transaction matrix was re-run unchanged, so
+the stage-and-swap and recovery guarantees are intact. No new known issue: this defect is fixed, not
+carried.
+
 **Consolidated installer round (0.9.3) — the transaction finished, and the limitations registered.**
 
 *The transaction, completed rather than patched again.* Two prior rounds each fixed the failure the

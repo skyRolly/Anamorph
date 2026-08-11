@@ -91,14 +91,19 @@ gated steps (`package_windows` / `package_macos_pkg`), each with the version par
   with a **hard link**, the one operation that cannot cross a filesystem (`mv` is no test: it
   falls back to copy-and-unlink). If the probe fails, staging falls back to the same directory
   name *inside* the plug-in directory, same filesystem by construction. A false negative costs
-  the scan-path property, never atomicity. The Standalone stages beside its own destination
+  the scan-path property, never atomicity. The probe's link target is the only thing written
+  into the scan directory, and `ln` refuses an existing target — so it is **removed up front on
+  every run**, before the probe and before the recovery paths that never probe. A marker left by
+  a run killed mid-probe is therefore litter, never a decision; without that clear it would fail
+  the probe on every later run and pin staging to the fallback permanently. The Standalone stages beside its own destination
   (`.Anamorph.new`) because its directory may be on a different filesystem again, and a bin
   directory is not a scan path. Every commit is a same-filesystem rename, which also replaces a
   **running** Standalone that `cp` refuses with `Text file busy`.
 
   `uninstall.sh` mirrors the same two modes, so a per-user install is removed without root, and
-  removes the installer's own scratch (both stage-directory locations and the staged Standalone)
-  by exact name, so an interrupted install leaves nothing that survives a deliberate uninstall.
+  removes the installer's own scratch (both stage-directory locations, the probe marker and the
+  staged Standalone) by exact name, so an interrupted install leaves nothing that survives a
+  deliberate uninstall.
 
   **Not chased** (the Linux counterpart of the macOS note below): a per-user install does not
   *remove* an existing system-wide one — that would need the elevation the mode exists to avoid

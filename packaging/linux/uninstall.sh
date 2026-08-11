@@ -63,6 +63,7 @@ removed=0
 remove_install_scratch() {          # $1 = plug-in directory, $2 = bin directory
     for _scratch in "${1%/*}/.anamorph-install-stage" \
                     "$1/.anamorph-install-stage" \
+                    "$1/.anamorph-probe" \
                     "$2/.Anamorph.new"
     do
         if [ -e "$_scratch" ]; then
