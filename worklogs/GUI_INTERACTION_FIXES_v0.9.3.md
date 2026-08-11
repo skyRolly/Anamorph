@@ -619,6 +619,30 @@ from is the bug; not restoring it is the contract. The destructor path needs no 
 `~Component` already clears the focus for a focused child (`juce_Component.cpp`), so by the time the
 asynchronous completion runs there is nothing left to restore to.
 
+**Releasing focus is not free, and the first attempt said it was.** That claim rested on a sweep of
+`PluginEditor.{h,cpp}` only, which is how it missed `src/gui/`. Two inline text edits treat losing
+focus as *"the user clicked away"* and **apply** what is in the box — correct for a click, wrong for a
+release this editor decides on precisely because the user is no longer looking:
+
+| edit | what focus loss does | reachable how |
+|---|---|---|
+| `SpectrumImager`'s crossover-frequency chip | `freqEditor->onFocusLost` → `commitFreqEditor`, which writes the parameter inside a change gesture **and** nudges the neighbouring splits via `projectGaps` | double-click a split's frequency chip, right-click inside the field (its context menu is tracked), switch application |
+| a slider's value box | `createSliderTextBox` builds the `Label` with `setEditable (false, editable, /* lossOfFocusDiscardsChanges */ false)`, so `Label`'s focus-loss path takes `textEditorReturnKeyPressed` | double-click a value box, right-click inside it, switch application |
+
+Either one turns leaving the application into a parameter write the user never asked for, complete
+with an automation and undo step. `cancelInlineTextEdits()` therefore runs **first**, ending both with
+the **Escape** outcome rather than the Return one: `SpectrumImager::cancelInlineEdit()` (a new
+one-liner that calls the existing `closeFreqEditor`, which clears `editingHandle` so the later
+asynchronous `onFocusLost` finds nothing to commit) and `Label::hideEditor (true)` — which is exactly
+what `Label::textEditorEscapeKeyPressed` itself ends in, so it is the existing Escape behaviour, not a
+new one. Normal click-away, Return and Escape are untouched.
+
+`saveNameEditor` is deliberately **not** in that list: it has no focus-loss handler, so its text
+simply stays put across the switch, which is what INC-011 requires. The value-box branch is reached
+through `dynamic_cast<Label*>` on the focused editor's parent, guarded by `isParentOf`, so it can only
+ever catch a focused editor owned by a `Label` under this editor — and `presetName` is a `TextButton`,
+so the only editable `Label` in `src/` is the value box itself.
+
 **Why the 24 Hz tick rather than an event.** There is no event to listen for. The editor going off
 screen can come from an ancestor's `setVisible`, a peer change, or a minimise; `isShowing()` folds all
 three, but none of them notifies *us* — `ComponentMovementWatcher` gets there by registering on every
@@ -674,6 +698,9 @@ switching away from the host.
 - Cmd-Tab / Alt-Tab away with any menu open and confirm the **host window does not come back to the
   front** and does not steal typing focus from the application switched to; then return and confirm
   the half-typed Save Preset name is still in the field.
+- With a **half-typed crossover frequency** in a split's inline chip (and its right-click menu open),
+  Cmd-Tab / Alt-Tab away: the split must be **unchanged**, with no automation or undo step written.
+  The same with a **half-typed slider value box**.
 - Open the Save Preset right-click menu, rest the pointer **on a menu item**, Cmd-Tab / Alt-Tab away.
   In an in-process host the menu is gone and nothing can pull the plug-in window back in front; in an
   out-of-process host (Bitwig's default) the documented residual applies instead.

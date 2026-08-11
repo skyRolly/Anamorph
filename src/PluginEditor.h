@@ -246,6 +246,7 @@ private:
     void notePopupMenuOpened (juce::Component& menuWindow);
     void refreshPopupShield();   // prunes dead windows and shows/hides the shield
     void dismissTrackedPopupMenus();   // cancels every pop-up this editor owns, unconditionally
+    void cancelInlineTextEdits();      // parks in-progress inline edits without applying them
     void dismissOrphanedPopupMenus();  // ... and the same, once one can no longer belong to us
     void componentBeingDeleted (juce::Component&) override; // a tracked pop-up window went away
 

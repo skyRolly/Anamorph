@@ -38,6 +38,37 @@ per-control guards that undo the shield's whole point. `COMMERCIAL_STATUS.md` wa
 0.9.2 → 0.9.3 sweep missed; only its three current-release statements changed, its historical ones
 and its review date stand.
 
+**Maintainer sign-off on the residual pop-up limitations (2026-08-11).** Reviewed and **accepted as
+documented limitations rather than defects**, closing them for this release: **KI-019** (Linux/X11
+never observes an application switch, so that third dismissal is inert there — the platform's
+foreground flag is a write-once latch; inert in the safe direction, and the hidden-editor and
+destroyed-editor halves work normally) and **KI-020** (pop-up modality is process-global, so with two
+Anamorph editors open the dismissing click can still reach the *other* instance's control —
+pre-existing, and 0.9.3 closed only the same-instance half). Neither is to be redesigned for 0.9.3:
+no broader pop-up architecture change is required. Also accepted unchanged in the same pass: the
+sub-menu arrow sitting outside the named width budget (no menu in `src/` uses `addSubMenu`), the
+`minimumWide` floor's comment overstating its guarantee (every combo is far wider than 64 px in both
+modes), section headers measured in the item font (over-measurement can only widen), the compact
+combo lists inheriting the derived budget, the tooltip gate's 42 ms tick latency, future overlay /
+z-order hardening, and the cosmetic stale-hover residue after a menu closes. The sign-off covers the
+**decision to document rather than change**; it is not a manual test of the implementation and
+touches no release gate.
+
+**A stranded pop-up's focus release could apply a half-typed value (0.9.3).** The app-switch dismissal
+releases keyboard focus before cancelling, so JUCE's completion callback cannot re-front the host
+window. The first revision asserted that was free — on the strength of a sweep that covered
+`PluginEditor.{h,cpp}` and not `src/gui/`. Two inline text edits treat losing focus as *"the user
+clicked away"* and **apply** what is in the box: `SpectrumImager`'s crossover-frequency chip
+(`freqEditor->onFocusLost` → `commitFreqEditor`, a parameter write inside a change gesture plus a
+`projectGaps` nudge to the neighbouring splits) and a slider's value box (`createSliderTextBox` builds
+the `Label` with `lossOfFocusDiscardsChanges = false`). Either one turns switching application into a
+parameter write the user never asked for, with an automation and undo step to match. `cancelInlineTextEdits()`
+now runs first and ends both with the **Escape** outcome instead — `SpectrumImager::cancelInlineEdit()`
+clears `editingHandle` so the later asynchronous `onFocusLost` finds nothing to commit, and
+`Label::hideEditor (true)` is literally what `Label::textEditorEscapeKeyPressed` ends in. Normal
+click-away, Return and Escape are untouched, and `saveNameEditor` is deliberately excluded — it has no
+focus-loss handler, so its text stays put, which INC-011 requires.
+
 **Review sign-off on the 0.9.3 pop-up round (2026-08-10).** Two review passes raised nine further
 items; the maintainer reviewed each and **accepted the current implementation** on six, which are
 therefore closed rather than open: the **pop-up width** growing on every menu (intentional visual
@@ -58,7 +89,7 @@ now lives only at the member's construction), and — reversing an earlier accep
 The sign-off covers the **direction and the accepted-as-is decisions**; it is not a manual test of the
 implementation and touches no release gate.
 
-**A pop-up could outlive the plug-in window (0.9.3, sixth Fixed entry).** INC-010 gave the preset menu
+**A pop-up could outlive the plug-in window (0.9.3, third Fixed entry).** INC-010 gave the preset menu
 a parent so that hiding or destroying the editor cancels it; it could not do the same for a ComboBox
 or TextEditor drop-down, which JUCE builds as a free-standing **desktop** window with no ancestor in
 common with the editor. The watcher that performs that cancel — `ModalComponentManager::ModalItem`, a

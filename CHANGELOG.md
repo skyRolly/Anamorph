@@ -50,7 +50,9 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   to. On return the plug-in also spent its first click dismissing the leftover instead of pressing
   the control you aimed at. Any menu still open is now closed as soon as the window is hidden, closed
   or sent to the background, matching what the preset menu already did in 0.9.2. Nothing changes
-  while the plug-in is in front of you.
+  while the plug-in is in front of you. One residual, tracked as **KI-019**: on **Linux** the
+  switching-application case is not covered — hiding and closing the window both are — so a menu left
+  open there stays until you click it away.
   Evidence: PR #101. [Verified]
 - **The right-click text menu no longer truncates its longest item**, which showed as
   *"Select ..."* instead of *"Select All"*. Menu width is now measured from the text in the menu's

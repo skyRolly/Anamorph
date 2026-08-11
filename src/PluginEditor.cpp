@@ -1076,6 +1076,32 @@ void AnamorphAudioProcessorEditor::dismissTrackedPopupMenus()
             child->exitModalState (0);
 }
 
+// The two inline text edits whose focus loss APPLIES what is typed, ended here with the Escape
+// outcome instead. Both are correct to commit on a real click-away; neither is correct to commit
+// because this editor released the focus itself.
+//
+//  * SpectrumImager's crossover-frequency chip -- `freqEditor->onFocusLost` runs commitFreqEditor,
+//    which writes the parameter inside a change gesture and nudges the neighbouring splits through
+//    projectGaps. A half-typed number would land in the host's automation and undo history.
+//  * A slider's value box -- createSliderTextBox builds it with
+//    `setEditable (false, editable, /* lossOfFocusDiscardsChanges */ false)`, so Label's own
+//    focus-loss path takes textEditorReturnKeyPressed. hideEditor (true) is exactly what
+//    Label::textEditorEscapeKeyPressed ends in, so this is the Escape behaviour, not a new one.
+//
+// `saveNameEditor` is deliberately NOT in this list: it has no focus-loss handler, so its text
+// simply stays put across the switch -- which is what INC-011 requires. The dynamic_cast reaches
+// only a focused editor owned by a Label under THIS editor, so nothing else can be caught by it.
+void AnamorphAudioProcessorEditor::cancelInlineTextEdits()
+{
+    if (imager != nullptr)
+        imager->cancelInlineEdit();
+
+    if (auto* focused = juce::Component::getCurrentlyFocusedComponent())
+        if (isParentOf (focused))
+            if (auto* valueBox = dynamic_cast<juce::Label*> (focused->getParentComponent()))
+                valueBox->hideEditor (true);   // discard, exactly as Escape does
+}
+
 // A pop-up belongs to an editor that is on screen in a foreground application. Lose either and it is
 // stranded, so cancel it. Two ways that happens, and JUCE covers neither:
 //
@@ -1134,9 +1160,15 @@ void AnamorphAudioProcessorEditor::dismissOrphanedPopupMenus()
     // Scoped, not global: Component::giveAwayKeyboardFocus is guarded by hasKeyboardFocus (true), so
     // it can only release focus THIS editor or one of its children actually holds -- a second
     // instance's focus is untouched. And it is on this path only: a menu dismissed while the editor
-    // is active still restores focus exactly as JUCE intends. No handler in src/ acts on focus loss
-    // (`saveNameEditor` has onReturnKey/onEscapeKey and nothing else), so a half-typed preset name
-    // survives this, which INC-011 requires.
+    // is active still restores focus exactly as JUCE intends.
+    //
+    // But releasing focus is not free, and an earlier revision of this comment claimed it was on the
+    // strength of a sweep that only covered PluginEditor.{h,cpp}. Two inline text edits in src/ treat
+    // losing focus as "the user clicked away" and APPLY what is in the box -- which is right for a
+    // click and wrong here, because this release is the editor's decision, taken precisely because
+    // the user is no longer looking. Park both first, with the Escape outcome rather than the Return
+    // one, so leaving the application can never write a half-typed value.
+    cancelInlineTextEdits();
     giveAwayKeyboardFocus();
     dismissTrackedPopupMenus();
 }
