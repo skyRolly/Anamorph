@@ -7,7 +7,7 @@ Directory and file map with per-component responsibilities. Architecture rationa
 
 ```
 Anamorph/
-├── CMakeLists.txt          Build: JUCE FetchContent (9.0.0, pinned by commit SHA), AnamorphDSP INTERFACE lib,
+├── CMakeLists.txt          Build: JUCE FetchContent (9.0.1, pinned by commit SHA), AnamorphDSP INTERFACE lib,
 │                           AnamorphHardening flags (ADR-0021), plugin target
 │                           (VST3 [+AU on macOS] [+Standalone]), tests app.
 ├── README.md               Project façade (features, status, quick start, docs nav).

@@ -11,7 +11,7 @@ cmake_minimum_required(VERSION 3.22)
 #     cmake --build build --config Release
 # ============================================================================
 
-project(Anamorph VERSION 0.9.3 LANGUAGES C CXX)
+project(Anamorph VERSION 0.9.4 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -30,11 +30,11 @@ option(ANAMORPH_BUILD_STANDALONE "Build the Standalone target for convenience" O
 # Allow pointing at a local JUCE checkout to avoid network in restricted CI.
 #   -DANAMORPH_JUCE_PATH=/path/to/JUCE
 set(ANAMORPH_JUCE_PATH "" CACHE STRING "Path to a local JUCE checkout (optional)")
-# JUCE 9.0.0 — pinned by the tag's IMMUTABLE commit SHA, not the (mutable) tag
+# JUCE 9.0.1 — pinned by the tag's IMMUTABLE commit SHA, not the (mutable) tag
 # name, so the dependency cannot silently change under a re-pointed tag
 # (dependency hardening; the human-readable version lives in ANAMORPH_JUCE_VERSION).
-set(ANAMORPH_JUCE_VERSION "9.0.0" CACHE STRING "Human-readable JUCE version of the pinned commit")
-set(ANAMORPH_JUCE_TAG  "f8f8864172464b9adf9eba6101e1f784838d1597" CACHE STRING
+set(ANAMORPH_JUCE_VERSION "9.0.1" CACHE STRING "Human-readable JUCE version of the pinned commit")
+set(ANAMORPH_JUCE_TAG  "e18f7f506c0b96f2c738a0bcd7fe6467a5005ad8" CACHE STRING
     "JUCE git rev to fetch when no local path is given (commit SHA of tag ${ANAMORPH_JUCE_VERSION})")
 
 # ----------------------------------------------------------------------------

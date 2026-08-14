@@ -12,7 +12,7 @@ The short attribution notices that must accompany a binary distribution are repr
 ## How this inventory was produced
 
 Anamorph has exactly one declared dependency: **JUCE**, fetched by CMake `FetchContent` and
-pinned to an immutable commit (`CMakeLists.txt:36-38`; ADR-0022). Every third-party component
+pinned to an immutable commit (`CMakeLists.txt:36-38`; ADR-0022, ADR-0026). Every third-party component
 below therefore arrives *inside the JUCE source tree* — nothing else is vendored, and no
 package manager is used.
 
@@ -29,8 +29,8 @@ To re-verify after a JUCE bump, repeat exactly that: read the new `LICENSE.md`, 
 symbol probes against a fresh Release build. See
 [`docs/policies/DEPENDENCY_POLICY.md`](docs/policies/DEPENDENCY_POLICY.md).
 
-Pinned version at the time of writing: **JUCE 9.0.0**, commit
-`f8f8864172464b9adf9eba6101e1f784838d1597`. Paths below are relative to that checkout
+Pinned version at the time of writing: **JUCE 9.0.1**, commit
+`e18f7f506c0b96f2c738a0bcd7fe6467a5005ad8`. Paths below are relative to that checkout
 (`build/_deps/juce-src/` in a local build) unless stated otherwise.
 
 ---
@@ -82,7 +82,7 @@ All of it arrives via JUCE modules; none of it is separately vendored by this re
 | **AudioUnitSDK** | The AU wrapper — **macOS builds only** | Apache License 2.0 | `modules/juce_audio_plugin_client/AU/AudioUnitSDK/LICENSE.txt` |
 
 FLAC and Ogg Vorbis reach the binary because `JUCE_USE_FLAC` and `JUCE_USE_OGGVORBIS` both
-default to `1` (`modules/juce_audio_formats/juce_audio_formats.h:74-85`) and Anamorph does not
+default to `1` (`modules/juce_audio_formats/juce_audio_formats.h:74-76,101-103`) and Anamorph does not
 override them. Anamorph itself never reads audio files; the codecs come along with the module.
 
 ### Notices that are *mandatory*, not courtesy
@@ -128,7 +128,7 @@ zlib and libpng ask for acknowledgement but explicitly do *not* require it; it i
 
 ## 3. Steinberg VST 3 — separate review required
 
-The VST 3 SDK **source code** bundled with JUCE 9.0.0 is under the **MIT licence**
+The VST 3 SDK **source code** bundled with JUCE 9.0.1 is under the **MIT licence**
 (`.../VST3_SDK/LICENSE.txt`, "Copyright (c) 2025, Steinberg Media Technologies GmbH"). That is a
 change from older SDK releases, which were dual-licensed GPLv3 / proprietary agreement — earlier
 Anamorph documentation described that older arrangement and has been corrected.
@@ -155,7 +155,7 @@ confirmed excluded by the stated gate *and* by the absence of its symbols from t
 
 | Component | Licence (per JUCE's `LICENSE.md` / its own file) | Why it is not in Anamorph |
 |---|---|---|
-| **JUCE MP3 decoder** | JUCE's own terms, with an explicit patent/IP disclaimer | `JUCE_USE_MP3AUDIOFORMAT` defaults to **0** (`juce_audio_formats.h:99-101`) and Anamorph does not enable it, so `juce_MP3AudioFormat.cpp`'s body is `#if`-ed out. JUCE's disclaimer warns the code is *"NOT guaranteed to be free from infringements of 3rd-party intellectual property"* — Anamorph therefore ships no MP3 decoder. |
+| **JUCE MP3 decoder** | JUCE's own terms, with an explicit patent/IP disclaimer | `JUCE_USE_MP3AUDIOFORMAT` defaults to **0** (`juce_audio_formats.h:117-119`) and Anamorph does not enable it, so `juce_MP3AudioFormat.cpp`'s body is `#if`-ed out. JUCE's disclaimer warns the code is *"NOT guaranteed to be free from infringements of 3rd-party intellectual property"* — Anamorph therefore ships no MP3 decoder. |
 | **LV2 SDK** (lv2, lilv, serd, sord, sratom) | ISC | `juce_audio_processors_headless_lv2_libs.cpp` is compiled but its content is behind `#if JUCE_INTERNAL_HAS_LV2`; the object contains no `lv2_`/`lilv_`/`serd_`/`sord_`/`sratom_` symbols. Anamorph neither builds an LV2 plug-in nor hosts plug-ins. |
 | **AAX SDK** | Proprietary Avid AAX licence / GPLv3 | AAX is **Not Supported** (`docs/policies/COMPATIBILITY_POLICY.md`); it is not in Anamorph's CMake `FORMATS`. |
 | **Steinberg ASIO SDK** | Proprietary Steinberg ASIO licence / GPLv3 | Only the licence file and three headers are present (`modules/juce_audio_devices/native/asio/`); `JUCE_ASIO` is not enabled, and the SDK proper is not vendored. |

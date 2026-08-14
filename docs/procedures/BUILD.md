@@ -5,12 +5,13 @@ How to configure and build Anamorph. Headless, command-line only (CMake + JUCE; 
 ## Toolchain
 
 - **CMake ≥ 3.22**, a **C++17** compiler, **Ninja** (recommended generator).
-- **JUCE 9.0.0** is fetched automatically (CMake `FetchContent`, pinned to the tag's immutable
-  commit SHA `f8f8864…`) — or pointed at a local checkout. See
-  `docs/policies/DEPENDENCY_POLICY.md` for the version-lock reasoning and ADR-0022 for the bump.
+- **JUCE 9.0.1** is fetched automatically (CMake `FetchContent`, pinned to the tag's immutable
+  commit SHA `e18f7f5…`) — or pointed at a local checkout. See
+  `docs/policies/DEPENDENCY_POLICY.md` for the version-lock reasoning, ADR-0022 for the move to
+  the 9.0 line and the SHA pin, and ADR-0026 for the 9.0.1 bump.
 
 Evidence [Verified]: CMakeLists.txt:1 (`cmake_minimum_required(VERSION 3.22)`), :16-18 (C++17),
-:36-38 (JUCE 9.0.0 commit pin), :47-55 (FetchContent).
+:36-38 (JUCE 9.0.1 commit pin), :47-55 (FetchContent).
 
 ## Linux dependencies (Ubuntu)
 
@@ -52,7 +53,7 @@ Evidence [Verified]: scripts/build.sh:14-15.
 | `ANAMORPH_BUILD_TESTS` | ON | Build the `AnamorphTests` + `AnamorphStateTests` console apps (CMakeLists.txt:27,219) |
 | `ANAMORPH_BUILD_STANDALONE` | ON | Add the Standalone target (CMakeLists.txt:28,146-148) |
 | `ANAMORPH_JUCE_PATH` | "" | Use a local JUCE checkout instead of fetching (CMakeLists.txt:32,43-45) |
-| `ANAMORPH_JUCE_TAG` | `f8f8864…` (= tag 9.0.0) | JUCE git rev to fetch when no local path; `ANAMORPH_JUCE_VERSION` carries the readable version (CMakeLists.txt:36-38) |
+| `ANAMORPH_JUCE_TAG` | `e18f7f5…` (= tag 9.0.1) | JUCE git rev to fetch when no local path; `ANAMORPH_JUCE_VERSION` carries the readable version (CMakeLists.txt:36-38) |
 | `ANAMORPH_BUILD_NUMBER` | 0 | CI build/dev number shown in the About box (CMakeLists.txt:188) |
 
 Offline build (no network) with a local JUCE:

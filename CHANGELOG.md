@@ -6,12 +6,42 @@ their **commit SHA + date** as the Evidence Source (per `docs/policies/CHANGELOG
 The annotated-tag convention and the tag-triggered release pipeline exist
 (`docs/procedures/RELEASE_PROCESS.md` §Tagging), but **no tag has been cut yet**: `[0.9.0]` was
 written as a release entry and then superseded before it was tagged, so the first annotated
-`vX.Y.Z` tag will be **v0.9.3** (0.9.0, 0.9.1 and 0.9.2 were each written up and superseded before
-tagging),
+`vX.Y.Z` tag will be **v0.9.4** (0.9.0, 0.9.1, 0.9.2 and 0.9.3 were each written up and superseded
+before tagging),
 and from that tag onward the tag is also a citable Evidence
 Source. Until then every entry cites a commit SHA or a PR. Entries for the
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
+
+## [0.9.4] — 2026-08-15
+### Changed
+- **JUCE framework 9.0.0 → 9.0.1**, pinned by the release tag's immutable commit SHA
+  `e18f7f506c0b96f2c738a0bcd7fe6467a5005ad8` — the same SHA-pin mechanism the 9.0.0 bump
+  introduced, so the dependency still cannot move under a re-pointed tag (ADR-0026).
+  **No project C++ source change was required and no new build dependency appears.** Neither
+  breaking change upstream records for 9.0.1 reaches Anamorph: the vendored
+  zlib/libjpeg/libpng/libflac C-language switch was already in force at 9.0.0 (it is documented
+  in 9.0.1 retroactively) and Anamorph links no separate copy of those libraries, and the
+  relocated WebBrowserComponent package is unreachable with `JUCE_WEB_BROWSER=0`.
+  **Anamorph's sound, reported latency, parameters and saved state are unchanged.** Proven
+  rather than assumed: the 32-scenario engine twin dump is **bit-identical** — every output hash
+  and every reported latency equal under 9.0.0 and 9.0.1 — the 140-check DSP suite and the
+  894-check state suite are green, the parameter-registry snapshot frozen under 8.0.14 still
+  passes byte-for-byte, and pluginval passes at strictness 10 in both modes ×3. Four of the JUCE
+  modules Anamorph depends on — `juce_dsp`, `juce_audio_basics`, `juce_data_structures` and
+  `juce_audio_plugin_client` — contain **no code change whatsoever** between the two tags, only
+  their version strings, so the DSP, the parameter/state layer and the VST3/AU/Standalone
+  wrappers are untouched by the upgrade.
+  What the upgrade does bring is upstream maintenance in the framework code the **editor** sits
+  on. On **Linux**: a long run of queued messages can no longer starve the window-system
+  callbacks (upstream's unresponsive-GUI fix), screens are enumerated even when the window
+  manager publishes no `_NET_WORKAREA`, an unavailable XInput2 device list is handled instead of
+  dereferenced, and the display-refresh timer is set from the measured refresh period. On
+  **Windows**: Direct2D no longer leaves an unpainted seam at opaque component edges under
+  fractional display scaling. On **macOS**: guards in the Metal layer renderer and in the message
+  manager during shutdown, plus a new CoreAudio path in the Standalone's device layer.
+  Cross-link: `docs/architecture/design-decisions/ADR-0026-juce-9.0.1-upgrade.md`,
+  `worklogs/JUCE901_UPGRADE_v0.9.4.md`. [Verified]
 
 ## [0.9.3] — 2026-08-11
 ### Changed

@@ -3,7 +3,12 @@
 Potential technical risks. Each is evidence-based (constraint C7) — no invented risks. ADRs and
 postmortems may reference these IDs to close the loop. Severity: Low / Medium / High / Critical.
 
-Version-synced to **v0.9.3** (six GUI interaction fixes plus an equal-width Widen row: the Multiband add-split preview line, the
+Version-synced to **v0.9.4** (the JUCE 9.0.0 → 9.0.1 dependency upgrade, ADR-0026 — **no new
+risk**: RISK-001 is the risk this change is an instance of, and its mitigation was executed in
+full (twin-dump bit-identity, both suites, pluginval strictness 10 in both modes, identical
+warning set); no source, no build dependency, no serialized state, parameter or DSP behaviour
+changed, and no new limitation appeared. RISK-003's mitigation now names **v0.9.4** as the first
+tag — v0.9.3 was written up but, like 0.9.0-0.9.2 before it, never cut). Prior sync: **v0.9.3** (six GUI interaction fixes plus an equal-width Widen row: the Multiband add-split preview line, the
 unified pop-up dismissal shield, pop-up lifetime across a hidden editor / background application,
 menu width, disabled menu items and the Tooltips on/off transition
 — **no new risk**: editor-only, with no serialized state, parameter or DSP behaviour changed. The three
@@ -48,7 +53,8 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 ---
 
 ## RISK-001 — JUCE version bump
-- **Risk:** JUCE is pinned to exactly `9.0.0` (immutable commit `f8f8864…`, ADR-0022; previously
+- **Risk:** JUCE is pinned to exactly `9.0.1` (immutable commit `e18f7f5…`, ADR-0026; previously
+  `9.0.0` = `f8f8864…`, ADR-0022; before that
   tag `8.0.14`, ADR-0012). A future bump can silently change DSP behaviour (oversampling,
   Linkwitz-Riley filters, `dsp::AudioBlock`), reported latency, the parameter/state ABI, and the
   X11 editor-embedding path (the INC-006 crash lives in JUCE's host code).
@@ -61,7 +67,9 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 - **Mitigation:** Treat any bump as a Build System change → ADR + Architecture Review; run full DSP
   tests + pluginval (3 OSes) + a manual audition + the RELEASE_COMPATIBILITY_CHECKLIST after. The
   8.0.14→9.0.0 bump additionally proved engine output **bit-identical** via a 32-scenario twin
-  dump (ADR-0022) — the pattern to repeat on future bumps.
+  dump (ADR-0022) — the pattern to repeat on future bumps, and it **was** repeated for
+  9.0.0→9.0.1 (ADR-0026: 32/32 hashes and latencies identical, warning set byte-identical across
+  the 18 project translation units).
 
 ## RISK-002 — Always-on banks / crossover-move cost (CPU)
 - **Risk:** `SoloMonitor` runs every block even with multiband off and no solo (INC-009 invariant;
@@ -93,7 +101,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 - **Mitigation:** **Infrastructure shipped (RH-PR-8, v0.8.13 cycle):** annotated `vX.Y.Z` tag
   convention + tag-triggered `release.yml` (fail-closed tag⇄version⇄CHANGELOG validation →
   reused `build.yml` gates → draft GitHub Release with versioned artifacts + SHA-256 sums +
-  manifest). The risk **closes when the first release tag is cut** (planned: **v0.9.3** — 0.9.0, 0.9.1 and 0.9.2 were each written up but never tagged); until
+  manifest). The risk **closes when the first release tag is cut** (planned: **v0.9.4** — 0.9.0, 0.9.1, 0.9.2 and 0.9.3 were each written up but never tagged); until
   then, cite commit SHAs. Historical entries keep SHA evidence permanently.
 
 ## RISK-004 — pluginval signal-only retry masking a real crash
@@ -134,7 +142,7 @@ mitigation. Do not invent risks to fill the template.
   the AGPLv3 arm — the commercial JUCE tier must be in place before commercial distribution. A
   third strand —
   the Steinberg VST 3 trademark/distribution review — is separate again (the SDK *code* is MIT in
-  JUCE 9.0.0; the VST name and plug-in distribution terms are not covered by that grant).
+  JUCE 9.0.1; the VST name and plug-in distribution terms are not covered by that grant).
 - **Impact:** Blocks a commercial release outright, and leaves even a free release legally
   ambiguous for anyone who downloads, redistributes or contributes. Third-party **attribution**
   is a different obligation and is already discharged (`NOTICE` + `THIRD_PARTY_LICENSES.md`

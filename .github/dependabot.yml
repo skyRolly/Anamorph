@@ -1,7 +1,7 @@
 # Dependabot configuration for Anamorph.
 #
 # github-actions is the ONLY Dependabot-supported ecosystem in this repo.
-# The C++ dependency (JUCE 9.0.0) is fetched by CMake FetchContent pinned to
+# The C++ dependency (JUCE 9.0.1) is fetched by CMake FetchContent pinned to
 # the release tag's IMMUTABLE commit SHA (ADR-0022); CMake is not a Dependabot
 # ecosystem, and a JUCE bump is deliberately a manual, review-gated Build
 # System change (an unpinned bump can silently move DSP behaviour/latency/state

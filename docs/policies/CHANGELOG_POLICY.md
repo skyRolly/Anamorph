@@ -9,7 +9,7 @@ Repository Governance Policy. How `CHANGELOG.md` is maintained.
 2. **No invented history.** Never infer that a past version contained a feature by reasoning
    backward from current code. Each entry cites an **Evidence Source** — a commit SHA, commit
    range, or PR (entries up to `[0.8.12]` predate git tags, so a release tag alone was never
-   available as evidence for them; from the first annotated release tag — **`v0.9.3`** (0.9.0, 0.9.1 and 0.9.2 were each written up but never tagged) — onward the
+   available as evidence for them; from the first annotated release tag — **`v0.9.4`** (0.9.0, 0.9.1, 0.9.2 and 0.9.3 were each written up but never tagged) — onward the
    tag is also citable). An entry that cannot be tied to such evidence is marked
    `[Unverified Historical Reconstruction]`.
 3. **User-visible changes only.** Refactors, cleanups, formatting, and renames are **not**

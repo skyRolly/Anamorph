@@ -13,9 +13,18 @@ only — it configures and builds entirely from the command line on a headless L
 - Diamond **vectorscope**, correlation + L/R Peak/RMS meters; click-free transitions throughout.
 
 ## Project status
-- **Version 0.9.3** (pre-1.0), in the **internal-testing phase** — builds go to testers for
+- **Version 0.9.4** (pre-1.0), in the **internal-testing phase** — builds go to testers for
   evaluation, not to customers (see [Licensing](#licensing); internal record:
   [`docs/COMMERCIAL_STATUS.md`](docs/COMMERCIAL_STATUS.md)).
+- **0.9.4 is a framework maintenance release: JUCE 9.0.0 → 9.0.1.** Nothing in Anamorph's own
+  source changed, and the sound, reported latency, parameters and saved state are unchanged —
+  proven by a 32-scenario engine twin dump that is bit-identical across the two JUCE versions,
+  both self-test suites, and pluginval at strictness 10 in both modes. What it brings is upstream
+  maintenance in the framework the editor sits on: on Linux a busy message queue can no longer
+  starve the window system (upstream's unresponsive-GUI fix), screens are detected on more window
+  managers and a missing input-device list no longer crashes; on Windows a thin unpainted seam at
+  panel edges under fractional display scaling is gone; on macOS, renderer and shutdown guards.
+  ADR-0026.
 - **0.9.3 is a round of interaction fixes.** The Multiband **add-split preview line** keeps
   following the pointer instead of occasionally hanging at one spot on a quiet track; **a click
   that closes a menu now only closes the menu** — it can no longer also close a panel, discard a
@@ -51,7 +60,7 @@ only — it configures and builds entirely from the command line on a headless L
 - Full matrix + status: `docs/architecture/COMPATIBILITY_MATRIX.md`.
 
 ## Requirements
-- **CMake ≥ 3.22**, a **C++17** compiler, **Ninja** (recommended). **JUCE 9.0.0** is fetched
+- **CMake ≥ 3.22**, a **C++17** compiler, **Ninja** (recommended). **JUCE 9.0.1** is fetched
   automatically (pinned to an immutable commit via CMake `FetchContent`) or pointed at a local
   checkout.
 - Linux build deps install via `scripts/setup-linux.sh`. See `docs/procedures/BUILD.md`.
