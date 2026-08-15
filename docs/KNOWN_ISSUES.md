@@ -4,7 +4,11 @@
 in `POSTMORTEMS.md`, not here. Each entry is evidence-backed (constraint C7). When an item is
 fixed, remove it here and (if notable) add a `POSTMORTEMS.md` entry.
 
-Version-synced to **v0.9.3** (six GUI interaction fixes plus an equal-width Widen row — the Multiband add-split preview line, the
+Version-synced to **v0.9.4** (the JUCE 9.0.0 → 9.0.1 dependency upgrade, ADR-0026 — **no issue
+added or removed**: no `src/` change, engine output bit-identical across the two JUCE versions, and
+the two known issues whose mechanism lives in JUCE (KI-013, KI-019) were re-verified byte-identical
+there, so neither is fixed upstream nor regressed).
+Prior sync: **v0.9.3** (six GUI interaction fixes plus an equal-width Widen row — the Multiband add-split preview line, the
 unified pop-up dismissal shield, pop-up lifetime across a hidden, destroyed or backgrounded window,
 two menu-rendering fixes and the Tooltips on/off transition —
 **five issues added**: KI-018, the dismissing click still counts toward JUCE's double-click run;

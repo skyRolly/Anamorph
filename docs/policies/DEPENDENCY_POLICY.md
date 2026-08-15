@@ -51,18 +51,19 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
   reload (state suite) unchanged. Rule 5: the `JUCE_*` compile flags are untouched. The
   `THIRD_PARTY_LICENSES.md` re-verification required by `RELEASE_POLICY.md` was performed —
   JUCE's `LICENSE.md` and all twelve cited licence files are byte-identical between the tags.
-  The **manual audition (rule 2, Level 5) is OPEN** — pending the maintainer's DAW audition;
-  until then ADR-0026 stays Proposed. It also discharges the audition ADR-0022 left open for the
-  9.0 line, which is now to be performed against the 9.0.1 build.
+  The **manual audition (rule 2, Level 5) was performed** by the maintainer against this build
+  (2026-08-15) and **ADR-0026 is `Accepted`**; the same audition discharges the one ADR-0022 left
+  open for the 9.0 line, which is now `Accepted` too.
 - **JUCE 8.0.14 → 9.0.0 + immutable-commit pinning** — recorded in **ADR-0022** (v0.8.13 cycle).
   Zero C++ source changes (no project exposure to the 9.0.0 breaking surface); Linux gains
   `libegl-dev` (JUCE 9 GL-context path uses EGL). Rule-2 verification: DSP suite (140 checks) +
   state suite (774 checks, incl. the 8.0.14-frozen parameter-registry snapshot passing
   unchanged) green under 9.0.0, **and** engine output proven **bit-identical** 8.0.14 vs 9.0.0
   by a 32-scenario twin dump incl. reported latencies (`worklogs/JUCE9_MIGRATION_v0.8.13.md`);
-  pluginval both modes ×3 runs on the CI gates. The **manual audition (rule 2, Level 5) is
-  OPEN** — pending the maintainer's DAW audition of 9.0.0 against the 8.0.14 baseline; until
-  then ADR-0022 stays Proposed.
+  pluginval both modes ×3 runs on the CI gates. The **manual audition (rule 2, Level 5) was
+  performed** (2026-08-15) and **ADR-0022 is `Accepted`**; it was carried out against the
+  **9.0.1** build that succeeded this pin — engine output is bit-identical across
+  8.0.14 → 9.0.0 → 9.0.1, so the later build's audition covers this one's editor surface too.
 - **JUCE 8.0.8 → 8.0.14** — recorded in **ADR-0012** (the first dependency bump enforced under rule 1
   above; the bootstrap use of this rule). Verified green by CI (build + the then-current 23 DSP self-tests + pluginval
   strictness 10 on the Linux gate); commit `41acaa7`. The manual audition (rule 2, Level 5) **was

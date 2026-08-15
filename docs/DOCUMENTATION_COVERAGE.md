@@ -18,8 +18,8 @@ entry (2026-08-07) is retained in full.
 **JUCE 9.0.0 → 9.0.1 dependency upgrade (0.9.4) — a Build System change with no source diff.**
 
 A JUCE bump is an `ARCHITECTURE_REVIEW_GATE` Build System change, so it carries an ADR
-(**ADR-0026**, Proposed) and the `DEPENDENCY_POLICY` rule-2 verification, and it is flagged on the
-PR for human Architecture Review. The pin moved to the tag's immutable commit
+(**ADR-0026**, `Accepted` 2026-08-15) and the `DEPENDENCY_POLICY` rule-2 verification, and it was
+flagged on the PR for human Architecture Review. The pin moved to the tag's immutable commit
 `e18f7f5…`; `project(... VERSION)` moved 0.9.3 → 0.9.4 with the release dated 2026-08-15.
 **No C++ source change and no build-dependency change were required**, and that is a finding
 rather than an assumption: neither of the two breaking changes upstream records for 9.0.1 reaches
@@ -64,11 +64,13 @@ state suites green, including the 8.0.14-frozen parameter-registry snapshot; plu
 10 green locally in both modes ×3; a byte-identical compiler-warning set (19 instances) across the
 18 project translation units built against both trees; and the `RELEASE_POLICY` third-party
 re-verification (JUCE's `LICENSE.md` and all twelve cited licence files byte-identical). **Not
-verified here:** the Level-5 manual audition, which stays OPEN — 9.0.1 changes editor-adjacent
-framework code (Linux message-loop scheduling, display enumeration, vblank period; Windows
-Direct2D edge painting; macOS Metal-layer guards), and appearance/feel is a human judgement.
-ADR-0026 therefore stays **Proposed**, and ADR-0022's still-open audition of the 9.0 line is now
-to be performed against this build.
+verifiable headlessly, and therefore done by hand:** the Level-5 manual audition — 9.0.1 changes
+editor-adjacent framework code (Linux message-loop scheduling, display enumeration, vblank period;
+Windows Direct2D edge painting; macOS Metal-layer guards), and appearance/feel is a human
+judgement. That audition was **performed against this build on 2026-08-15**, so **ADR-0026 is
+`Accepted`**; the same audition discharges the one ADR-0022 had left open for the 9.0 line, which
+is now `Accepted` too. Two of the four long-standing tag blockers close with it (`HANDOVER`
+§Release Status): the compatibility checklist and the missing licence remain.
 
 **Probe-state fix (0.9.3) — the staging probe could decide future installs.**
 

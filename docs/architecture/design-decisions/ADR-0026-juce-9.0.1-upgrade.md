@@ -1,7 +1,7 @@
 # ADR-0026 — JUCE dependency upgrade 9.0.0 → 9.0.1
 
-**Status:** Proposed (implementation verified headlessly; pending the maintainer's
-Architecture-Review sign-off and the Level-5 manual audition — see Consequences)
+**Status:** **Accepted** (Architecture Review + the DEPENDENCY_POLICY rule-2 Level-5 manual
+audition signed off 2026-08-15)
 
 ## Context
 JUCE is pinned to an exact version, and any JUCE bump is a **Build System change requiring an
@@ -70,14 +70,13 @@ serialization; keep the diff minimal; keep the pin immutable.
   so an existing `build/` keeps the old pin after a pull — delete `build/` or `-U` the two
   variables (TROUBLESHOOTING row, already present).
 - Licence terms are unchanged (dual AGPLv3 / commercial JUCE 9; `LICENSE.md` byte-identical).
-- **Open items (human-gated), inherited unchanged from ADR-0022:** (1) Architecture-Review
-  sign-off for this Build System change; (2) the **Level-5 manual audition** required by
-  DEPENDENCY_POLICY rule 2 for any JUCE bump. The twin dump covers engine numerics; it cannot
-  cover editor **appearance or feel**, and 9.0.1 does change editor-adjacent framework code
-  (Linux message-loop scheduling, Linux display enumeration and vblank period, Windows Direct2D
-  edge painting, macOS Metal-layer guards). Until both are done this ADR stays **Proposed** and
-  the upgrade is "ready to audition", not signed off. ADR-0022's own audition of the 9.0 line
-  remains open and is now discharged against the 9.0.1 build.
+- **The two human gates are closed.** Architecture Review signed off this Build System change,
+  and the **Level-5 manual audition** required by DEPENDENCY_POLICY rule 2 was performed against
+  the 9.0.1 build (2026-08-15) — the part no headless gate reaches, since the twin dump covers
+  engine numerics but not editor **appearance or feel**, and 9.0.1 does change editor-adjacent
+  framework code (Linux message-loop scheduling, Linux display enumeration and vblank period,
+  Windows Direct2D edge painting, macOS Metal-layer guards). The same audition discharges the
+  one ADR-0022 left open for the 9.0 line, which is now signed off against 9.0.1.
 
 ## Related code
 - `CMakeLists.txt:33-38` (pin + banner comment), `:47-55` (FetchContent).

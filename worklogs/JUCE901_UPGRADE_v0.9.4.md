@@ -4,7 +4,7 @@ Controlled dependency migration: JUCE **9.0.0 → 9.0.1**, the maintenance relea
 Anamorph already ships. No feature work, no redesign; the diff is the pin change, the version
 bump and documentation. A JUCE bump is a **Build System change** → Architecture-Review-Gate item
 (precedent: ADR-0012 for 8.0.8 → 8.0.14, ADR-0022 for 8.0.14 → 9.0.0); recorded in **ADR-0026**
-and flagged on the PR.
+(`Accepted` 2026-08-15) and flagged on the PR.
 
 ## 1. Dependency audit (Phase 1 — before any modification)
 
@@ -103,7 +103,7 @@ What did change, and why it is or is not reachable:
 * **`scripts/setup-linux.sh`: no change required** — no module Anamorph uses altered its
   declared `linuxPackages` / `OSXFrameworks` / `windowsLibs`; the only metadata difference across
   all fourteen module headers is the `version:` field.
-* Docs synced: CHANGELOG `[0.9.4]`, ADR-0026 (+ index row, Proposed), DEPENDENCY_POLICY (pin
+* Docs synced: CHANGELOG `[0.9.4]`, ADR-0026 (+ index row), DEPENDENCY_POLICY (pin
   table, version-lock rule, compliance log), BUILD.md, TROUBLESHOOTING, README, REPOSITORY_MAP,
   COMPATIBILITY_MATRIX, FUTURE_RISKS RISK-001, HANDOVER, THIRD_PARTY_LICENSES + TRADEMARKS
   (pinned-version citations), `.github/dependabot.yml`, DOCUMENTATION_COVERAGE.
@@ -169,13 +169,17 @@ What did change, and why it is or is not reachable:
 
 ## 5. Remaining migration risks
 
-1. **Level-5 manual audition (OPEN, human-gated)** — required by DEPENDENCY_POLICY rule 2 for
-   any JUCE bump. The twin dump proves engine numerics and the modules behind the DSP and the
-   wrappers have no code change at all, but 9.0.1 *does* touch editor-adjacent framework code:
-   Linux message-loop scheduling and display/vblank handling, Windows Direct2D edge painting,
-   macOS Metal-layer guards, and FreeType named-instance guards. Appearance and feel are a human
-   judgement. Until attested, ADR-0026 stays **Proposed** — and ADR-0022's own still-open
-   audition of the 9.0 line is now discharged against this build rather than against 9.0.0.
+1. **Level-5 manual audition — PERFORMED (2026-08-15), the one risk this closes.** Required by
+   DEPENDENCY_POLICY rule 2 for any JUCE bump. It is the gate that matters here: the twin dump
+   proves engine numerics, and the modules behind the DSP and the wrappers have no code change at
+   all, but 9.0.1 *does* touch editor-adjacent framework code — Linux message-loop scheduling and
+   display/vblank handling (the `VBlankAttachment` / `FrameClock` path this worklog analyses in
+   §1.2), Windows Direct2D edge painting, macOS Metal-layer guards, and FreeType named-instance
+   guards. The §1.2 argument that the vblank period is unchanged for real refresh rates and that
+   `FrameClock` is timestamp-driven is a code argument, not a perceptual one; the audition is what
+   confirms appearance and feel, and it did. **ADR-0026 is `Accepted`**, and the same audition
+   discharges the one ADR-0022 left open for the 9.0 line — it was carried out against this build
+   rather than against 9.0.0, which covers both pins' editor surface.
 2. **Windows/macOS compile** — not locally provable here; the CI matrix on this PR is the
    verification (fail-closed).
 3. **New macOS CoreAudio calls** — the Standalone's device layer only (the plug-in does not own

@@ -27,7 +27,7 @@ review date stands and moves only when the substance does.
 
 ## 2. Current phase — internal testing
 
-The current pre-1.0 build (**v0.9.3**; see `docs/HANDOVER.md`) is being prepared for
+The current pre-1.0 build (**v0.9.4**; see `docs/HANDOVER.md`) is being prepared for
 **internal / beta testing**, not for sale.
 
 - Builds reach testers as per-push CI artifacts today; the **GitHub Release** route is implemented
@@ -112,10 +112,10 @@ Both lists must be empty:
 
 **Owner/legal** — §4 items 1, 2, 3, 4 (and 6, 7 for the markets concerned).
 
-**Engineering / process** — the `RELEASE_POLICY.md` preconditions still open for v0.9.3, which are
-tracked in `docs/HANDOVER.md` §Release Status: `ADR-0022` still `Proposed`,
-`RELEASE_COMPATIBILITY_CHECKLIST.md` never completed for this release, and no Level-5 manual
-audition recorded. Signing and notarization (`RH-PR-3`/`RH-PR-5`) are not release-blocking but are
+**Engineering / process** — the `RELEASE_POLICY.md` precondition still open for v0.9.4, tracked in
+`docs/HANDOVER.md` §Release Status: `RELEASE_COMPATIBILITY_CHECKLIST.md` has never been completed
+for this release. The other two cleared on 2026-08-15 — every ADR is now `Accepted`, and the
+Level-5 manual audition was performed against the shipping v0.9.4 / JUCE 9.0.1 build. Signing and notarization (`RH-PR-3`/`RH-PR-5`) are not release-blocking but are
 user-visible.
 
 ---
