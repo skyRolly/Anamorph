@@ -45,6 +45,17 @@ That covers the whole translation unit, which is a stronger statement than the s
 twin dump used for the JUCE and C++23 changes. `src/dsp/VelvetNoise.cpp` is DSP code, so this
 matters: the velvet tap grid is bit-exact, i.e. Class A.
 
+**Verified on the diagnosing toolchain, and swept for stragglers.** On CI run `31900529457`
+(`macos-26-arm64`, AppleClang 21.0.0.21000101) the macOS job's normalised warning set is
+**15 sites / 108 instances, `diff`-identical to the `macos-14` / AppleClang 15 set** — the image
+change added four diagnostics and this change removed exactly those four, with nothing else moved.
+A full local Clang 18 build of both self-test targets (**56 compilations**) then found **zero**
+`-Wimplicit-int-float-conversion` anywhere in the project sources, so no unreported site was left
+behind; only the pre-existing `-Wsign-conversion`/`-Wswitch-enum`/`-Wmissing-prototypes`/
+`-Wfloat-equal`/`-Wshadow*`/`-Wunused-but-set-variable` families remain. Gates re-run on the
+change: 140-check DSP + 894-check state suites green, pluginval strictness 10 green in both modes
+×3 locally (no retry) and on all three CI platforms.
+
 **A rejected alternative, for the record.** `juce::Rectangle::proportionOfWidth (0.40f)` would
 read better at the `PluginEditor` sites but returns `ValueType (w * p)` — a **truncation**, where
 the existing code rounds. That is a behaviour change, so the cast was preferred.

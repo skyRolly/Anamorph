@@ -61,8 +61,9 @@ other category appeared. **All four were then fixed** in the follow-up change: e
 now carries the explicit `(float)` cast that spells out the conversion the compiler was already
 performing implicitly, which is why the three translation units compile to **byte-identical**
 machine code before and after (verified object-for-object at the shipped flags with `-g0
--fno-lto`, so only real codegen is compared). The macOS warning set is back to its
-pre-image-change shape: 15 sites / 108 instances. Bit-exact macOS
+-fno-lto`, so only real codegen is compared). Confirmed on the runner: the macOS job's warning set
+is now **15 sites / 108 instances, `diff`-identical to the `macos-14` / AppleClang 15 set** — the
+image change added four diagnostics and the fix removed exactly those four. Bit-exact macOS
 output across the two compilers is **not** claimed: it is not provable headlessly from this
 repository, and compiler-level numerical differences are the Class-B changes `DSP_POLICY.md`
 permits (see RH-F4). What is proven is the behavioural gate — both suites and both pluginval
