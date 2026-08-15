@@ -5,8 +5,11 @@ How to configure and build Anamorph. Headless, command-line only (CMake + JUCE; 
 ## Toolchain
 
 - **CMake ≥ 3.22**, a **C++23** compiler, **Ninja** (recommended generator). Verified on GCC 13,
-  AppleClang 15.4 and MSVC (VS 2022 on `windows-latest`); on MSVC, CMake requests C++23 as
-  `/std:c++latest` (ADR-0027).
+  AppleClang 21 (Xcode 26.6 — the `macos-latest` image, `macos-26-arm64`) and MSVC (VS 2022 on
+  `windows-latest`); on MSVC, CMake requests C++23 as `/std:c++latest` (ADR-0027). The macOS
+  figure moved with the CI runner: the C++23 migration was verified on the then-current
+  `macos-14` image, whose AppleClang identifies as 15.0.0.15000309 (Xcode 15.4) — the compiler
+  version, not the Xcode version, is what `CMAKE_CXX_COMPILER_VERSION` reports.
 - **JUCE 9.0.1** is fetched automatically (CMake `FetchContent`, pinned to the tag's immutable
   commit SHA `e18f7f5…`) — or pointed at a local checkout. See
   `docs/policies/DEPENDENCY_POLICY.md` for the version-lock reasoning, ADR-0022 for the move to

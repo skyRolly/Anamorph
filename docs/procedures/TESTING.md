@@ -253,7 +253,7 @@ doesn't exist:
   refresh (`killall -9 AudioComponentRegistrar`) before running it. **Ordering matters:** the
   macOS packaging step runs `strip -x` *before* it ad-hoc codesigns, and a stripped-but-unsigned
   arm64 bundle will not load — so the auval step must come **after** the whole packaging step, not
-  between its strip and codesign. Whether it is reliable on a headless GitHub `macos-14` runner is
+  between its strip and codesign. Whether it is reliable on a headless GitHub `macos-latest` runner is
   **unverified from this repository** — see `docs/architecture/RELEASE_HARDENING_PLAN.md`.
 - **No frozen golden-audio reference exists.** `tests/fixtures/` holds a parameter-registry
   snapshot and three legacy session XMLs — metadata, not audio. The DSP suite pins *behavioural

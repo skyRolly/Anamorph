@@ -40,7 +40,29 @@ Every push builds the full set of formats on all three desktop OSes:
 |---|---|---|---|
 | **linux** | `ubuntu-latest` | VST3 + Standalone (+ tests) | strictness 10, **both modes ×3** (deterministic + randomise) — **blocking** |
 | **windows** | `windows-latest` (MSVC, multi-config) | VST3 + Standalone (+ tests) | strictness 10, **both modes ×3** — **blocking** |
-| **macos** | `macos-14` (Apple Silicon) | universal VST3 + AU + Standalone (+ tests) | strictness 10, **both modes ×3** — **blocking** |
+| **macos** | `macos-latest` (Apple Silicon) | universal VST3 + AU + Standalone (+ tests) | strictness 10, **both modes ×3** — **blocking** |
+
+All three runners use the **floating** `*-latest` label. macOS moved off the pinned `macos-14`
+image on 2026-08-15: `actions/runner-images` marks macOS 14 **deprecated** (deprecation opened
+2026-07-06, October brownouts, **fully unsupported 2026-11-02**, after which a job carrying the
+label is terminated with an error), and `macos-latest` currently resolves to **macOS 26 Arm64**.
+The x86_64 half of the universal binary is cross-compiled on the arm64 runner and the packaging
+step's `lipo -archs` check verifies both slices are present, so an image change that broke the
+fat build would fail the job rather than silently ship a thin one.
+
+The image carries the macOS toolchain, so this moved the macOS compiler with it: **AppleClang
+15.0.0.15000309 (Xcode 15.4) → 21.0.0.21000101 (Xcode 26.6)**, image `macos-26-arm64`
+`20260728.0273.1`. `CMAKE_OSX_DEPLOYMENT_TARGET=10.13` is still accepted and both slices still
+build. One measured consequence, recorded rather than fixed: AppleClang 21 adds
+**`-Wimplicit-int-float-conversion` at four pre-existing sites** — `src/PluginEditor.cpp:245,246`,
+`src/gui/LookAndFeel.cpp:262` and `src/dsp/VelvetNoise.cpp:30`, each an `int` widened inside a
+float expression (108 → 126 warning instances on this job). No warning disappeared, no other
+category appeared, the source is unchanged, and Level 1 is not part of the hard release gate
+(`TESTING_POLICY.md`) — these are new *diagnostics* on old code, not new code. Bit-exact macOS
+output across the two compilers is **not** claimed: it is not provable headlessly from this
+repository, and compiler-level numerical differences are the Class-B changes `DSP_POLICY.md`
+permits (see RH-F4). What is proven is the behavioural gate — both suites and both pluginval
+modes green on the new image.
 
 Validation is **uniform and blocking on every platform**: there is no `continue-on-error` — a non-zero
 pluginval exit fails the job everywhere (the old Windows/macOS `continue-on-error` masked real `exit 1`

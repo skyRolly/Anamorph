@@ -7,13 +7,91 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
-C++17 → C++23 language-standard migration (first below), applied on top of the JUCE 9.0.0 → 9.0.1
-dependency upgrade in the same version; the JUCE entry follows it. Under it, the **0.9.3 change set** (2026-08-11) is retained in full — six editor-only GUI interaction fixes on
+macOS CI runner move `macos-14` → `macos-latest` (first below), then the C++17 → C++23
+language-standard migration, both applied on top of the JUCE 9.0.0 → 9.0.1
+dependency upgrade in the same version; the JUCE entry follows them. Under it, the **0.9.3 change set** (2026-08-11) is retained in full — six editor-only GUI interaction fixes on
 top of 0.9.2 (add-split preview line, unified pop-up dismissal, pop-up lifetime across a hidden,
 destroyed or backgrounded window, menu width, disabled menu items, Tooltips off) plus a
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**macOS CI runner `macos-14` → `macos-latest` (0.9.4, no version bump) — a CI-workflow change, one
+line of YAML, no source and no build-configuration change.**
+
+`actions/runner-images` marks the macOS 14 images **deprecated**: deprecation opened 2026-07-06,
+eight brownouts run through October 2026, and the labels are **fully unsupported on 2026-11-02**,
+after which a job carrying `macos-14` is terminated with an error. `macos-latest` currently
+resolves to **macOS 26 Arm64**. The `macos` job now uses the floating label, matching
+`ubuntu-latest`/`windows-latest` on the other two jobs of the same matrix; nothing else in the job
+moved — same configure line (`CMAKE_OSX_ARCHITECTURES="arm64;x86_64"`,
+`CMAKE_OSX_DEPLOYMENT_TARGET=10.13`), same self-tests, same two pluginval strictness-10 gates,
+same `dsymutil` → `strip -x` → ad-hoc-codesign order, same `.pkg` packaging. `release.yml` reuses
+this job via `workflow_call`, so the release pipeline inherits the new image with **no edit of its
+own** — it is the single point of definition, and the workflow files were re-parsed to confirm
+`macos` is the only job that names a macOS runner.
+
+**Why the floating label rather than pinning `macos-15`/`macos-26`.** A pinned image is a
+scheduled outage: it goes end-of-life and fails the entire matrix on removal day. The floating
+label moves with GitHub's rollout, and this job's existing gates are what detect a bad image —
+`lipo -archs` proves both universal slices are present (the x86_64 half is cross-compiled on an
+arm64 runner), the DSP and state suites prove behaviour, pluginval proves format conformance, and
+the packaging self-checks prove the `.pkg`. The trade is recorded rather than assumed: a floating
+label can change the AppleClang/SDK under the shipped macOS binaries without a repository commit,
+which is the same exposure the project already accepts on `ubuntu-latest`/`windows-latest` and the
+same class as ADR-0027's MSVC `/std:c++latest` caveat.
+
+**Validated by the runner it changes.** CI run `31895877794` on `macos-latest` resolved to image
+`macos-26-arm64` `20260728.0273.1` and went green end to end: configure accepted
+`CMAKE_OSX_DEPLOYMENT_TARGET=10.13`, the universal build succeeded, both self-test suites passed,
+pluginval strictness 10 passed in **both** modes ×3, `lipo -archs` reported `x86_64 arm64` for all
+three bundles, and `Anamorph-0.9.4-macOS.pkg` built with its three components and passed the
+`installer -pkginfo` / `pkgutil --expand` self-checks. The degenerate-dSYM path (`-debug` upload
+skipped under Release+LTO) behaves exactly as on `macos-14` — compared against the previous green
+macOS job, not assumed. Linux and Windows were unaffected and green in the same run.
+
+**The measured consequence: the macOS compiler moved with the image.** AppleClang
+**15.0.0.15000309 (Xcode 15.4) → 21.0.0.21000101 (Xcode 26.6)**. Diffing the macOS warning sets of
+the two runs, normalised, gives 15 → 19 distinct sites and 108 → 126 instances: nothing
+disappeared, no category changed, and the whole delta is
+**`-Wimplicit-int-float-conversion` at four pre-existing sites** —
+`src/PluginEditor.cpp:245,246` (`getWidth() * 0.40f`), `src/gui/LookAndFeel.cpp:262`
+(`k * (barW + gap)`) and `src/dsp/VelvetNoise.cpp:30` (`m * cell`), each an `int` widened inside a
+float expression. **Recorded, not fixed**: the source is unchanged, so these are new diagnostics on
+old code; Level 1 is not part of the `TESTING_POLICY` hard release gate; and touching four
+arithmetic sites is exactly the unrelated source change this task excludes. Bit-exact macOS output
+across the two compilers is **not claimed** — it is not provable headlessly from this repository,
+and compiler-level numerical differences are the Class-B changes `DSP_POLICY.md` permits (RH-F4).
+The behavioural gate is what carries the claim.
+
+**Not a gated change and not a CHANGELOG entry.** `ARCHITECTURE_REVIEW_GATE`'s Build System item
+covers CMake structure, the JUCE version/pin and the dependency set; a runner label is none of
+those, and `DEPENDENCY_POLICY`'s pinned-dependency table does not list it — so no ADR, unlike
+ADR-0027. `CHANGELOG_POLICY` rule 3 (user-visible changes only) excludes it, matching the
+precedent HANDOVER already records for the CI-side PRs #65–#75.
+
+Docs synced (`DOCUMENTATION_LIFECYCLE_POLICY` trigger map, **CI workflow → `CI_CD.md`,
+`TESTING.md`**): `CI_CD` (the build-matrix runner cell plus a paragraph on the deprecation dates
+and the floating-label choice), `TESTING` (the RH-F3/auval feasibility sentence names the runner),
+and the two documents that repeat that same sentence — `KNOWN_ISSUES` KI-014 and
+`RELEASE_HARDENING_PLAN` RH-F3 — plus `BUILD`'s toolchain line, whose "Verified on …" record names
+the macOS compiler, and the **KNOWN_ISSUES** and **FUTURE_RISKS** v0.9.4 version-sync headers
+(each states what the version's changes did to that document; both record "no entry added" with
+the reason). `COMPATIBILITY_MATRIX` needed no edit: its macOS row cites the workflow, not an image
+label, and the deployment target and both architectures are unchanged. `HANDOVER` needed none: its
+Build Status row claims all three CI platforms green, which the new image satisfies.
+
+**Drift found and corrected while re-reading that BUILD line (C6).** It read "AppleClang 15.4",
+which is the **Xcode** version of the `macos-14` image; the compiler
+`CMAKE_CXX_COMPILER_VERSION` actually reported there was **15.0.0.15000309**. The line now gives
+the compiler version with the Xcode version alongside it, for both the old and the new image. The
+same conflation appears in `ADR-0027` §Verification and the C++23 worklog; those are dated records
+of that change and are left as written.
+
+**Dated records left alone (C6, report-don't-rewrite).** `ADR-0027` §Verification, both C++23
+worklog tables, `worklogs/RELEASE_HARDENING_AUDIT_v0.9.0.md:160` and the `macos-14` run-ID comment
+in `packaging/macos/build-pkg.sh` state what was measured **on the image of the day**. They are
+historical evidence, not live statements, and are not retro-edited.
 
 **C++ standard 17 → 23 (0.9.4, no version bump) — a Build System change with a one-line source diff.**
 
