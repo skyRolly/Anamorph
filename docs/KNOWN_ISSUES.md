@@ -431,8 +431,9 @@ distribution, alongside Anamorph's own LICENSE/EULA text.
 - **Evidence [Verified]:** no `LICENSE`/`COPYING` at the repository root; `THIRD_PARTY_LICENSES.md`
   §"Open licensing decisions"; JUCE `LICENSE.md` in the pinned tree (dual licence);
   `docs/architecture/RELEASE_HARDENING_PLAN.md` RH-R11 / RH-F1.
-- **Related:** the Steinberg VST 3 review (RH-F2) is a separate owner item — the SDK code is MIT
-  in JUCE 9.0.0, but VST trademark use and plug-in distribution terms are governed separately.
+- **Related:** the Steinberg VST 3 review (RH-F2) is a separate owner item — the SDK code in the
+  pinned JUCE tree is MIT, but VST trademark use and plug-in distribution terms are governed
+  separately.
 - **Index:** all open owner/legal decisions, including this one, are listed in
   `docs/COMMERCIAL_STATUS.md` §4.
 
@@ -481,7 +482,7 @@ and then stops, while punctuation/symbol keys repeat normally. It is **not speci
 field** — the same applies to every text entry in the plug-in (the knob/slider value boxes), and
 it is a **macOS text-input behaviour, not an Anamorph or JUCE defect**.
 
-Mechanism, traced end to end in the pinned JUCE 9.0.0 source. A focused `juce::TextEditor` is a
+Mechanism, traced end to end in the pinned JUCE source. A focused `juce::TextEditor` is a
 `juce::TextInputTarget`, so `ComponentPeer::findCurrentTextInputTarget()` returns it
 (`juce_ComponentPeer.cpp:291-301`). Both `keyDown:` and `performKeyEquivalent:` then funnel into
 `NSViewComponentPeer::sendEventToInputContextOrComponent`, whose **first** act is
