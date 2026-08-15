@@ -409,7 +409,7 @@ gap, not a build gap.
 - **Why not fixed here:** `auval` only sees a *registered* component, so a CI step must copy the
   built bundle into `~/Library/Audio/Plug-Ins/Components/` and force a registry refresh
   (`killall -9 AudioComponentRegistrar`) before running `auval -v aufx Anmr RTec`. Whether that is
-  reliable on a headless `macos-14` runner cannot be established from this repository, and adding
+  reliable on a headless `macos-latest` runner cannot be established from this repository, and adding
   an unproven **blocking** gate immediately before a release tag is the wrong trade.
 - **Evidence [Verified]:** scripts/run-pluginval.sh:31 (`find ... -name 'Anamorph.vst3'` — VST3
   only); .github/workflows/build.yml macOS job (AU built and packaged, no auval step);

@@ -40,7 +40,15 @@ Every push builds the full set of formats on all three desktop OSes:
 |---|---|---|---|
 | **linux** | `ubuntu-latest` | VST3 + Standalone (+ tests) | strictness 10, **both modes ×3** (deterministic + randomise) — **blocking** |
 | **windows** | `windows-latest` (MSVC, multi-config) | VST3 + Standalone (+ tests) | strictness 10, **both modes ×3** — **blocking** |
-| **macos** | `macos-14` (Apple Silicon) | universal VST3 + AU + Standalone (+ tests) | strictness 10, **both modes ×3** — **blocking** |
+| **macos** | `macos-latest` (Apple Silicon) | universal VST3 + AU + Standalone (+ tests) | strictness 10, **both modes ×3** — **blocking** |
+
+All three runners use the **floating** `*-latest` label. macOS moved off the pinned `macos-14`
+image on 2026-08-15: `actions/runner-images` marks macOS 14 **deprecated** (deprecation opened
+2026-07-06, October brownouts, **fully unsupported 2026-11-02**, after which a job carrying the
+label is terminated with an error), and `macos-latest` currently resolves to **macOS 26 Arm64**.
+The x86_64 half of the universal binary is cross-compiled on the arm64 runner and the packaging
+step's `lipo -archs` check verifies both slices are present, so an image change that broke the
+fat build would fail the job rather than silently ship a thin one.
 
 Validation is **uniform and blocking on every platform**: there is no `continue-on-error` — a non-zero
 pluginval exit fails the job everywhere (the old Windows/macOS `continue-on-error` masked real `exit 1`
