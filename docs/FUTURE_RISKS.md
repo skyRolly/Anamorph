@@ -14,8 +14,11 @@ stable `/std:c++23`, so CMake requests `/std:c++latest`) is carried in ADR-0027 
 its escape hatches. The same version also moves the macOS CI job off the **deprecated** `macos-14`
 image to `macos-latest` — likewise **no new risk entry**: the floating label is what the other two
 jobs already use, its toolchain-drift exposure is the same shape as ADR-0027's MSVC
-`/std:c++latest` caveat, and it is recorded with the measured compiler move and its four new
-diagnostics in `docs/procedures/CI_CD.md`. RISK-003's mitigation now names **v0.9.4** as the first
+`/std:c++latest` caveat, and it is recorded with the measured compiler move in
+`docs/procedures/CI_CD.md`. The four `-Wimplicit-int-float-conversion` diagnostics that move
+surfaced are **fixed** — an explicit `(float)` cast per site, with the three translation units
+verified to compile to byte-identical machine code, so no risk attaches to them either.
+RISK-003's mitigation now names **v0.9.4** as the first
 tag — v0.9.3 was written up but, like 0.9.0-0.9.2 before it, never cut). Prior sync: **v0.9.3** (six GUI interaction fixes plus an equal-width Widen row: the Multiband add-split preview line, the
 unified pop-up dismissal shield, pop-up lifetime across a hidden editor / background application,
 menu width, disabled menu items and the Tooltips on/off transition

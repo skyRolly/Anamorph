@@ -53,12 +53,16 @@ fat build would fail the job rather than silently ship a thin one.
 The image carries the macOS toolchain, so this moved the macOS compiler with it: **AppleClang
 15.0.0.15000309 (Xcode 15.4) → 21.0.0.21000101 (Xcode 26.6)**, image `macos-26-arm64`
 `20260728.0273.1`. `CMAKE_OSX_DEPLOYMENT_TARGET=10.13` is still accepted and both slices still
-build. One measured consequence, recorded rather than fixed: AppleClang 21 adds
+build. One measured consequence: AppleClang 21 raised
 **`-Wimplicit-int-float-conversion` at four pre-existing sites** — `src/PluginEditor.cpp:245,246`,
 `src/gui/LookAndFeel.cpp:262` and `src/dsp/VelvetNoise.cpp:30`, each an `int` widened inside a
-float expression (108 → 126 warning instances on this job). No warning disappeared, no other
-category appeared, the source is unchanged, and Level 1 is not part of the hard release gate
-(`TESTING_POLICY.md`) — these are new *diagnostics* on old code, not new code. Bit-exact macOS
+float expression (108 → 126 warning instances on that first job). No warning disappeared and no
+other category appeared. **All four were then fixed** in the follow-up change: each `int` operand
+now carries the explicit `(float)` cast that spells out the conversion the compiler was already
+performing implicitly, which is why the three translation units compile to **byte-identical**
+machine code before and after (verified object-for-object at the shipped flags with `-g0
+-fno-lto`, so only real codegen is compared). The macOS warning set is back to its
+pre-image-change shape: 15 sites / 108 instances. Bit-exact macOS
 output across the two compilers is **not** claimed: it is not provable headlessly from this
 repository, and compiler-level numerical differences are the Class-B changes `DSP_POLICY.md`
 permits (see RH-F4). What is proven is the behavioural gate — both suites and both pluginval

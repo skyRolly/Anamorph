@@ -242,8 +242,8 @@ void AnamorphAudioProcessorEditor::ABControl::paint (juce::Graphics& g)
     auto inner = getLocalBounds();
     g.setFont (juce::Font (juce::FontOptions (14.0f)).withExtraKerningFactor (0.04f));
 
-    auto aRect = inner.removeFromLeft (juce::roundToInt (inner.getWidth() * 0.40f));
-    auto bRect = inner.removeFromRight (juce::roundToInt (getWidth() * 0.40f));
+    auto aRect = inner.removeFromLeft (juce::roundToInt ((float) inner.getWidth() * 0.40f));
+    auto bRect = inner.removeFromRight (juce::roundToInt ((float) getWidth() * 0.40f));
 
     g.setColour (colours::textDim.withAlpha (0.7f));
     g.drawText ("/", inner, juce::Justification::centred);
