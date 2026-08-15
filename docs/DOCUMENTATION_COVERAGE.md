@@ -18,8 +18,8 @@ entry (2026-08-07) is retained in full.
 **C++ standard 17 → 23 (0.9.4, no version bump) — a Build System change with a one-line source diff.**
 
 The C++ standard sits in the `DEPENDENCY_POLICY` pinned-dependency table, so raising it is an
-`ARCHITECTURE_REVIEW_GATE` Build System change: it carries an ADR (**ADR-0027**, `Proposed`) and
-is flagged on the PR for human Architecture Review. `CMAKE_CXX_STANDARD` moved 17 → 23 in place
+`ARCHITECTURE_REVIEW_GATE` Build System change: it carries an ADR (**ADR-0027**, `Accepted`
+2026-08-15 — Architecture Review signed off) and was flagged on the PR for that review. `CMAKE_CXX_STANDARD` moved 17 → 23 in place
 on `CMakeLists.txt:16`, so no downstream `CMakeLists.txt:NNN` citation moved; the version stays
 0.9.4 and the release date stays 2026-08-15, as commissioned.
 
@@ -34,12 +34,30 @@ ordinary compatibility adjustment.
 
 Docs synced: CHANGELOG `[0.9.4]` (a second `### Changed` entry above the JUCE one), new ADR-0027
 + `ADR_INDEX` row, `DEPENDENCY_POLICY` (pin table + a new compliance-log entry), `CODE_STYLE`
-(the language line), BUILD (toolchain + the `:16-18` evidence citation), README (Requirements),
-COMPATIBILITY_MATRIX (toolchain pin row), HANDOVER (the C++-standard dependency row),
+(the language line), BUILD (toolchain + the `:16-18` evidence citation), README (Requirements
+**and the 0.9.4 status bullet**), COMPATIBILITY_MATRIX (toolchain pin row), HANDOVER (the
+C++-standard dependency row, the snapshot paragraph, Current Version, Build Status, Release
+Status and Known Blockers), the **KNOWN_ISSUES** and **FUTURE_RISKS** version-sync headers,
 `.github/workflows/codeql.yml` (its header comment named the standard), and
 `worklogs/CXX23_MIGRATION_v0.9.4.md`. CI_CD needed no edit — it names no standard.
 `TESTING.md`/`TESTING_POLICY` needed none: no test was added, changed or removed, and the gate
 is unchanged.
+
+**A release-status correction the first pass missed.** Four 0.9.4 statements still described the
+version as JUCE-only with **no `src/` change** — the README status bullet, the HANDOVER snapshot
+paragraph, and the KNOWN_ISSUES and FUTURE_RISKS version-sync headers. That was true of the JUCE
+upgrade alone and stopped being true of the *version* once the C++23 migration landed in it; all
+four now name both changes and describe the one-line `src/` diff. The JUCE-scoped statements that
+say "no source change" **about the JUCE bump** (CHANGELOG's JUCE entry, the JUCE section below)
+are correct as written and are left alone.
+
+**Why the warning counts differ between the two 0.9.4 entries.** The C++23 records cite **27
+compilations / 29 instances**; the JUCE records cite **18 / 19**. Same measurement, different
+command set: the JUCE cycle measured `AnamorphStateTests` alone, this one measured both self-test
+targets, so the 8 shared `AnamorphDSP` sources are counted once per target and
+`tests/dsp_tests.cpp` is covered at all. Re-measuring the narrower set at C++23 returns exactly
+18/19, so nothing drifted. Stated in CHANGELOG, `DEPENDENCY_POLICY`, ADR-0027 and
+`worklogs/CXX23_MIGRATION_v0.9.4.md` §4.4; the numbers themselves are unchanged.
 
 **Dated records left alone (C6, report-don't-rewrite).** `ADR-0022:39`, `ADR-0026:36` and the two
 JUCE worklogs each state the toolchain contract **as of that change**, where "C++17" was true.

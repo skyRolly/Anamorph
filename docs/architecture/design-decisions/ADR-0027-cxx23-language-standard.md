@@ -1,7 +1,7 @@
 # ADR-0027 — C++ language standard 17 → 23
 
-**Status:** **Proposed** (Build System change — `ARCHITECTURE_REVIEW_GATE.md`; flagged on the PR
-for human Architecture Review)
+**Status:** **Accepted** (Build System change — `ARCHITECTURE_REVIEW_GATE.md`; Architecture
+Review signed off 2026-08-15)
 
 ## Context
 The C++ standard is part of the build contract: `DEPENDENCY_POLICY.md` lists it in the pinned
@@ -69,7 +69,10 @@ substantial compatibility or long-term maintenance problems that cannot reasonab
   GCC/libstdc++ **and** Clang/libc++, and on the CI matrix. Counts equal the C++17 baseline.
 - **No new compiler warnings**: all 27 project translation-unit compilations re-run with the
   shipped flags at `-std=c++17` and `-std=c++23`, real `-O3` codegen — **29 instances each,
-  sets identical** (the pre-existing `-Wsign-conversion`/`-Wshadow`/`-Wswitch-enum`/
+  sets identical**. That 27/29 spans **both** self-test targets' compile-command sets (the 8
+  shared DSP sources compile once per target); ADR-0026's 18/19 is the `AnamorphStateTests` set
+  alone, which still measures 18/19 at C++23 — different scope, not drift
+  (`worklogs/CXX23_MIGRATION_v0.9.4.md` §4.4) (the pre-existing `-Wsign-conversion`/`-Wshadow`/`-Wswitch-enum`/
   `-Wfloat-equal`/`-Wmisleading-indentation`/`-Woverloaded-virtual` baseline).
 - **pluginval strictness 10**: deterministic ×3 and `--randomise` ×3, green locally on the C++23
   build and on all three blocking CI platform gates.

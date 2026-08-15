@@ -46,8 +46,11 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
   build as the macOS proxy; DSP suite (140 checks) + state suite (894 checks, incl. the
   8.0.14-frozen parameter-registry snapshot passing unchanged) green under both standard
   libraries; engine output proven **bit-identical** C++17 vs C++23 by the 32-scenario twin dump
-  incl. reported latencies (`worklogs/CXX23_MIGRATION_v0.9.4.md`); 27 project translation units
-  produce a **byte-identical** 29-instance warning set at both standards; pluginval strictness 10
+  incl. reported latencies (`worklogs/CXX23_MIGRATION_v0.9.4.md`); 27 project translation-unit
+  **compilations** — both self-test targets' command sets — produce a **byte-identical**
+  29-instance warning set at both standards (the JUCE entry below cites 18/19 because it measured
+  the `AnamorphStateTests` set alone; that narrower set still yields 18/19 at C++23, so the two
+  are the same measurement at different scopes); pluginval strictness 10
   green in both modes ×3 locally and on the three CI gates. `CMAKE_CXX_EXTENSIONS OFF` and the
   CMake ≥ 3.22 floor are unchanged; no JUCE, packaging or system-library change. Rule 2's Level-5
   audition does **not** apply — it is a JUCE-bump rule, and here no framework code moved under
