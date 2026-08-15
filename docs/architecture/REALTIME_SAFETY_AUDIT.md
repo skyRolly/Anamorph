@@ -13,7 +13,7 @@ Audit basis: full read of `src/dsp/**` and `src/PluginProcessor.cpp` (two indepe
 | `AnamorphAudioProcessor::processBlock` | **Verified** — `ScopedNoDenormals`; param snapshot is atomic loads; no alloc/lock/IO | n/a (engine.prepare) | PluginProcessor.cpp:64-131 |
 | `AnamorphEngine::process` | **Verified** — all scratch pre-sized; no alloc/lock/IO | prepare(): all buffers + oversamplers | AnamorphEngine.cpp:26-113 vs :472-899 |
 | `MidSide` | **Verified** — pure arithmetic, `noexcept` | none | MidSide.h:21-42 |
-| `HaasProcessor` | **Verified** — `process`/`reset` use pre-sized vectors (`std::fill`, no resize) | prepare(): `bufL/bufR.assign` | HaasProcessor.cpp:14-21,45-62 |
+| `HaasProcessor` | **Verified** — `process`/`reset` use pre-sized vectors (`std::fill`, no resize) | prepare(): `bufL/bufR.assign` | HaasProcessor.cpp:15-22,46-63 |
 | `VelvetNoise` | **Verified** — no alloc/lock/IO; note O(64) per-sample loop + transport-stop `std::fill` (no alloc) | prepare(): `midHist.assign`, RNG construct | VelvetNoise.cpp:10-17,81-139 |
 | `ChorusEngine` | **Verified** — `std::sin` per sample, pre-sized buffers | prepare(): `bufL/bufR.assign` (sized to 8× rate) | ChorusEngine.cpp:11-19,55-112 |
 | `MonoMaker` | **Verified** — per-sample `setCutoffFrequency` (in-place coeff recompute, no alloc) | prepare(): scalar only (`LR4Xover` state is flat — no heap since Wave 2 / H6) | MonoMaker.cpp:7-18,25-47 |
