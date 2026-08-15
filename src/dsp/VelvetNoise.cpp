@@ -27,7 +27,7 @@ void VelvetNoise::prepare (double sampleRate, int maxBlockSize, unsigned seed)
     const float cell = (float) decorrSamps / (float) maxTaps;
     for (int m = 0; m < maxTaps; ++m)
     {
-        int p = (int) std::round (m * cell + uni (rng) * (cell - 1.0f));
+        int p = (int) std::round ((float) m * cell + uni (rng) * (cell - 1.0f));
         p = std::max (1, std::min (decorrSamps - 1, p)); // skip tap 0 (keep side decorrelated)
         pos[(size_t) m]  = p;
         sign[(size_t) m] = (uni (rng) < 0.5f) ? -1.0f : 1.0f;

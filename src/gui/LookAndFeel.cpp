@@ -259,7 +259,7 @@ void AnamorphLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButto
         if (onAv > 0.02f) { g.setColour (col.withAlpha (0.18f * onAv)); g.fillRoundedRectangle (bounds.reduced (3.0f), 4.0f); }
         for (int k = 0; k < 2; ++k)
         {
-            auto bar = juce::Rectangle<float> (x0 + k * (barW + gap), y0, barW, barH);
+            auto bar = juce::Rectangle<float> (x0 + (float) k * (barW + gap), y0, barW, barH);
             g.setColour (col.withAlpha (0.55f));
             g.drawRoundedRectangle (bar, 1.5f, 1.0f);                 // hollow top
             const float ratio = (k == 0) ? 0.55f : 0.80f;            // unequal fills

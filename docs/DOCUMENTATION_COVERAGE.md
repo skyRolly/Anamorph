@@ -6,8 +6,9 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
-macOS CI runner move `macos-14` → `macos-latest` (first below), then the C++17 → C++23
+Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the four
+AppleClang 21 `-Wimplicit-int-float-conversion` fixes (first below), the macOS CI runner move
+`macos-14` → `macos-latest` that surfaced them, then the C++17 → C++23
 language-standard migration, both applied on top of the JUCE 9.0.0 → 9.0.1
 dependency upgrade in the same version; the JUCE entry follows them. Under it, the **0.9.3 change set** (2026-08-11) is retained in full — six editor-only GUI interaction fixes on
 top of 0.9.2 (add-split preview line, unified pop-up dismissal, pop-up lifetime across a hidden,
@@ -15,6 +16,59 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**AppleClang 21 `-Wimplicit-int-float-conversion` × 4 (0.9.4, no version bump) — a source change
+that provably changes no machine code.**
+
+The runner move below surfaced four of these; this follow-up resolves all four. Each is an `int`
+operand widened inside a float expression, and each now carries the explicit `(float)` cast that
+spells out the conversion the compiler was already performing:
+
+| Site | Before | After |
+|---|---|---|
+| `src/PluginEditor.cpp:245` | `roundToInt (inner.getWidth() * 0.40f)` | `roundToInt ((float) inner.getWidth() * 0.40f)` |
+| `src/PluginEditor.cpp:246` | `roundToInt (getWidth() * 0.40f)` | `roundToInt ((float) getWidth() * 0.40f)` |
+| `src/gui/LookAndFeel.cpp:262` | `x0 + k * (barW + gap)` | `x0 + (float) k * (barW + gap)` |
+| `src/dsp/VelvetNoise.cpp:30` | `std::round (m * cell + …)` | `std::round ((float) m * cell + …)` |
+
+**Nothing is suppressed.** No `#pragma`, no `-Wno-…`, no change to
+`juce_recommended_warning_flags`; the diagnostic is resolved at each site by making the intended
+conversion explicit, which is also the idiom the surrounding code already uses (the two lines
+above the VelvetNoise site read `(float) decorrSamps / (float) maxTaps`).
+
+**Behaviour is provably unchanged, not argued.** `int * float` performs the usual arithmetic
+conversion of the `int` operand to `float` and then multiplies; `(float) i * f` is that same
+conversion written out. Verified rather than reasoned: each of the three translation units was
+compiled at the shipped flags with `-g0 -fno-lto` appended (so debug metadata and LTO bitcode
+cannot mask the comparison) before and after the edit — **all three objects are byte-identical**.
+That covers the whole translation unit, which is a stronger statement than the scenario-matrix
+twin dump used for the JUCE and C++23 changes. `src/dsp/VelvetNoise.cpp` is DSP code, so this
+matters: the velvet tap grid is bit-exact, i.e. Class A.
+
+**Verified on the diagnosing toolchain, and swept for stragglers.** On CI run `31900529457`
+(`macos-26-arm64`, AppleClang 21.0.0.21000101) the macOS job's normalised warning set is
+**15 sites / 108 instances, `diff`-identical to the `macos-14` / AppleClang 15 set** — the image
+change added four diagnostics and this change removed exactly those four, with nothing else moved.
+A full local Clang 18 build of both self-test targets (**56 compilations**) then found **zero**
+`-Wimplicit-int-float-conversion` anywhere in the project sources, so no unreported site was left
+behind; only the pre-existing `-Wsign-conversion`/`-Wswitch-enum`/`-Wmissing-prototypes`/
+`-Wfloat-equal`/`-Wshadow*`/`-Wunused-but-set-variable` families remain. Gates re-run on the
+change: 140-check DSP + 894-check state suites green, pluginval strictness 10 green in both modes
+×3 locally (no retry) and on all three CI platforms.
+
+**A rejected alternative, for the record.** `juce::Rectangle::proportionOfWidth (0.40f)` would
+read better at the `PluginEditor` sites but returns `ValueType (w * p)` — a **truncation**, where
+the existing code rounds. That is a behaviour change, so the cast was preferred.
+
+**Not gated, and no CHANGELOG entry.** No parameter, serialization, threading, DSP-order or
+latency surface is touched, and the machine code is identical, so no
+`ARCHITECTURE_REVIEW_GATE` item applies and no ADR is warranted. `CHANGELOG_POLICY` rule 3
+excludes it: nothing a user of the plug-in can observe changed.
+
+Docs synced: `CI_CD` (its toolchain paragraph recorded these four as unfixed and now records the
+fix and the byte-identical-object evidence) and the **KNOWN_ISSUES** / **FUTURE_RISKS** v0.9.4
+version-sync headers, which pointed at `CI_CD` for the same four diagnostics. No other document
+named them.
 
 **macOS CI runner `macos-14` → `macos-latest` (0.9.4, no version bump) — a CI-workflow change, one
 line of YAML, no source and no build-configuration change.**
@@ -57,9 +111,9 @@ disappeared, no category changed, and the whole delta is
 **`-Wimplicit-int-float-conversion` at four pre-existing sites** —
 `src/PluginEditor.cpp:245,246` (`getWidth() * 0.40f`), `src/gui/LookAndFeel.cpp:262`
 (`k * (barW + gap)`) and `src/dsp/VelvetNoise.cpp:30` (`m * cell`), each an `int` widened inside a
-float expression. **Recorded, not fixed**: the source is unchanged, so these are new diagnostics on
-old code; Level 1 is not part of the `TESTING_POLICY` hard release gate; and touching four
-arithmetic sites is exactly the unrelated source change this task excludes. Bit-exact macOS output
+float expression. **Recorded, not fixed here** — the source was unchanged by this change, so these
+were new diagnostics on old code, and Level 1 is not part of the `TESTING_POLICY` hard release
+gate; they are **resolved in the follow-up entry above**. Bit-exact macOS output
 across the two compilers is **not claimed** — it is not provable headlessly from this repository,
 and compiler-level numerical differences are the Class-B changes `DSP_POLICY.md` permits (RH-F4).
 The behavioural gate is what carries the claim.
