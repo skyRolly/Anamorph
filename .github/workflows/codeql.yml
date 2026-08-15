@@ -1,4 +1,4 @@
-# CodeQL analysis for Anamorph (C++17 / JUCE audio plugin).
+# CodeQL analysis for Anamorph (C++23 / JUCE audio plugin).
 #
 # Languages analyzed:
 #   * c-cpp   -- src/ + tests/ (the only application code in the repo)

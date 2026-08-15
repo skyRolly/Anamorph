@@ -8,7 +8,7 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
 |---|---|---|---|
 | **JUCE** | **9.0.1**, pinned by **immutable commit SHA** `e18f7f506c0b96f2c738a0bcd7fe6467a5005ad8` | CMake `FetchContent` (`GIT_SHALLOW`), overridable via `-DANAMORPH_JUCE_PATH` | CMakeLists.txt:36-38,47-55 |
 | **pluginval** | latest release (download) | `scripts/run-pluginval.sh` | run-pluginval.sh:43-48 |
-| **C++ standard** | C++17 | `CMAKE_CXX_STANDARD 17`, extensions off | CMakeLists.txt:16-18 |
+| **C++ standard** | C++23 | `CMAKE_CXX_STANDARD 23`, extensions off (ADR-0027) | CMakeLists.txt:16-18 |
 | Linux system libs | distro packages | `scripts/setup-linux.sh` (ALSA, JACK, X11, FreeType, GTK/WebKit, mesa, **EGL — required by JUCE 9's Linux GL context path**, xvfb) | setup-linux.sh |
 
 ## Version-lock reasoning
@@ -36,6 +36,26 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
 
 ## Compliance log
 
+- **C++ standard 17 → 23** — recorded in **ADR-0027** (v0.9.4 cycle, applied on top of the
+  JUCE 9.0.1 tree with **no version bump**). Rule 1 (Build System change → gate + ADR) applied to
+  the `CMAKE_CXX_STANDARD` line as a pinned dependency of this table. One C++ source change was
+  required and is the whole of it: `#include <algorithm>` in `src/dsp/HaasProcessor.cpp`, because
+  libc++ stops including `<algorithm>` transitively at `_LIBCPP_STD_VER >= 20` — found by the
+  **macOS CI build failing**, not by inspection. Verification: builds green on all three
+  platforms (GCC 13, AppleClang 15.4, MSVC `/std:c++latest`) plus a local Clang 18 + **libc++**
+  build as the macOS proxy; DSP suite (140 checks) + state suite (894 checks, incl. the
+  8.0.14-frozen parameter-registry snapshot passing unchanged) green under both standard
+  libraries; engine output proven **bit-identical** C++17 vs C++23 by the 32-scenario twin dump
+  incl. reported latencies (`worklogs/CXX23_MIGRATION_v0.9.4.md`); 27 project translation-unit
+  **compilations** — both self-test targets' command sets — produce a **byte-identical**
+  29-instance warning set at both standards (the JUCE entry below cites 18/19 because it measured
+  the `AnamorphStateTests` set alone; that narrower set still yields 18/19 at C++23, so the two
+  are the same measurement at different scopes); pluginval strictness 10
+  green in both modes ×3 locally and on the three CI gates. `CMAKE_CXX_EXTENSIONS OFF` and the
+  CMake ≥ 3.22 floor are unchanged; no JUCE, packaging or system-library change. Rule 2's Level-5
+  audition does **not** apply — it is a JUCE-bump rule, and here no framework code moved under
+  the editor. Open caveat carried in ADR-0027 §Consequences: MSVC has no stable `/std:c++23`, so
+  CMake requests `/std:c++latest` on Windows.
 - **JUCE 9.0.0 → 9.0.1** — recorded in **ADR-0026** (v0.9.4 cycle). Zero C++ source changes and
   **no build-dependency change**: neither 9.0.1 breaking change has project exposure (the vendored
   zlib/jpeg/png/flac C-language switch was already in force at 9.0.0 and Anamorph links no

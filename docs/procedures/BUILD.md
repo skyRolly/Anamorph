@@ -4,13 +4,15 @@ How to configure and build Anamorph. Headless, command-line only (CMake + JUCE; 
 
 ## Toolchain
 
-- **CMake ≥ 3.22**, a **C++17** compiler, **Ninja** (recommended generator).
+- **CMake ≥ 3.22**, a **C++23** compiler, **Ninja** (recommended generator). Verified on GCC 13,
+  AppleClang 15.4 and MSVC (VS 2022 on `windows-latest`); on MSVC, CMake requests C++23 as
+  `/std:c++latest` (ADR-0027).
 - **JUCE 9.0.1** is fetched automatically (CMake `FetchContent`, pinned to the tag's immutable
   commit SHA `e18f7f5…`) — or pointed at a local checkout. See
   `docs/policies/DEPENDENCY_POLICY.md` for the version-lock reasoning, ADR-0022 for the move to
   the 9.0 line and the SHA pin, and ADR-0026 for the 9.0.1 bump.
 
-Evidence [Verified]: CMakeLists.txt:1 (`cmake_minimum_required(VERSION 3.22)`), :16-18 (C++17),
+Evidence [Verified]: CMakeLists.txt:1 (`cmake_minimum_required(VERSION 3.22)`), :16-18 (C++23),
 :36-38 (JUCE 9.0.1 commit pin), :47-55 (FetchContent).
 
 ## Linux dependencies (Ubuntu)

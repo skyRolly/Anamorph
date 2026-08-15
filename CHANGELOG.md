@@ -15,6 +15,27 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 
 ## [0.9.4] — 2026-08-15
 ### Changed
+- **Building Anamorph from source now needs a C++23 compiler** (was C++17). The project compiles
+  at `CMAKE_CXX_STANDARD 23` with compiler extensions still off; CMake ≥ 3.22 and the JUCE 9.0.1
+  pin are unchanged, and the released binaries are unaffected — this changes the build
+  requirement, nothing a user of the plug-in sees. **Anamorph's sound, reported latency,
+  parameters and saved state are unchanged**, proven rather than assumed: the 32-scenario engine
+  twin dump is **bit-identical** between C++17 and C++23 — every output hash and every reported
+  latency equal — the 140-check DSP suite and the 894-check state suite are green under both
+  libstdc++ and libc++, the parameter-registry snapshot frozen under JUCE 8.0.14 still passes
+  byte-for-byte, the 27 project translation-unit **compilations** produce an identical 29-instance
+  compiler warning set at both standards, and pluginval passes at strictness 10 in both modes ×3.
+  (That 27/29 is the wider scope — **both** self-test targets' compile-command sets, so the eight
+  shared DSP sources are measured once per target. The JUCE entry below cites 18/19, which is the
+  `AnamorphStateTests` set alone; measured at C++23 that narrower set still yields exactly 18 and
+  19, so the two figures are the same measurement at different scopes, not drift.)
+  One source line changed in the whole migration: `src/dsp/HaasProcessor.cpp` now includes
+  `<algorithm>` explicitly, because libc++ stops supplying it transitively from C++20 onward —
+  caught by the macOS build, fixed with the include its two sibling DSP files already carry.
+  A C++20 fallback was evaluated and not taken; the one Windows caveat (MSVC has no stable
+  `/std:c++23`, so CMake requests `/std:c++latest`) is recorded in the ADR.
+  Cross-link: `docs/architecture/design-decisions/ADR-0027-cxx23-language-standard.md`,
+  `worklogs/CXX23_MIGRATION_v0.9.4.md`. [Verified]
 - **JUCE framework 9.0.0 → 9.0.1**, pinned by the release tag's immutable commit SHA
   `e18f7f506c0b96f2c738a0bcd7fe6467a5005ad8` — the same SHA-pin mechanism the 9.0.0 bump
   introduced, so the dependency still cannot move under a re-pointed tag (ADR-0026).

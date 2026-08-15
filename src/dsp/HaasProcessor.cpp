@@ -1,5 +1,6 @@
 #include "HaasProcessor.h"
 #include <cmath>
+#include <algorithm>
 
 namespace anamorph
 {

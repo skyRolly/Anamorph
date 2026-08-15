@@ -7,7 +7,11 @@ Version-synced to **v0.9.4** (the JUCE 9.0.0 → 9.0.1 dependency upgrade, ADR-0
 risk**: RISK-001 is the risk this change is an instance of, and its mitigation was executed in
 full (twin-dump bit-identity, both suites, pluginval strictness 10 in both modes, identical
 warning set); no source, no build dependency, no serialized state, parameter or DSP behaviour
-changed, and no new limitation appeared. RISK-003's mitigation now names **v0.9.4** as the first
+changed, and no new limitation appeared. The same version also carries the **C++ standard 17 → 23**
+migration (ADR-0027) — likewise **no new risk entry**: its one `src/` change is an added
+`#include`, engine output is bit-identical C++17 vs C++23, and its single open caveat (MSVC has no
+stable `/std:c++23`, so CMake requests `/std:c++latest`) is carried in ADR-0027 §Consequences with
+its escape hatches. RISK-003's mitigation now names **v0.9.4** as the first
 tag — v0.9.3 was written up but, like 0.9.0-0.9.2 before it, never cut). Prior sync: **v0.9.3** (six GUI interaction fixes plus an equal-width Widen row: the Multiband add-split preview line, the
 unified pop-up dismissal shield, pop-up lifetime across a hidden editor / background application,
 menu width, disabled menu items and the Tooltips on/off transition

@@ -4,8 +4,10 @@
 in `POSTMORTEMS.md`, not here. Each entry is evidence-backed (constraint C7). When an item is
 fixed, remove it here and (if notable) add a `POSTMORTEMS.md` entry.
 
-Version-synced to **v0.9.4** (the JUCE 9.0.0 → 9.0.1 dependency upgrade, ADR-0026 — **no issue
-added or removed**: no `src/` change, engine output bit-identical across the two JUCE versions, and
+Version-synced to **v0.9.4** (the JUCE 9.0.0 → 9.0.1 dependency upgrade, ADR-0026, plus the
+C++ standard 17 → 23 migration, ADR-0027 — **no issue added or removed**: the only `src/` change
+is one added `#include`, engine output bit-identical across both the two JUCE versions and
+C++17 vs C++23, and
 the two known issues whose mechanism lives in JUCE (KI-013, KI-019) were re-verified byte-identical
 there, so neither is fixed upstream nor regressed).
 Prior sync: **v0.9.3** (six GUI interaction fixes plus an equal-width Widen row — the Multiband add-split preview line, the
