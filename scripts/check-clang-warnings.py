@@ -73,6 +73,19 @@
 #  same trap `check-citations.py` documents for a deliberate re-anchor — and the
 #  baseline is meant to shrink.
 #
+#  THE BASELINE DESCRIBES ONE COMPILER, and that is recorded rather than assumed.
+#  Which diagnostics Clang emits is a property of the MAJOR VERSION —
+#  `-Wshadow-field`, `-Wsign-conversion` and `-Wunused-but-set-variable` have all
+#  moved between majors — so counts taken from one say nothing about another. Left
+#  unpinned, the reference point was whatever `ubuntu-latest` resolved `clang` to
+#  that week, and a runner-image bump would fail the gate on a push that changed
+#  nothing in the tree: the same defect the "never key on line numbers" rule above
+#  exists to avoid, one level up. `ANAMORPH_CLANG_VERSION` in
+#  `.github/workflows/build.yml` pins the compiler the job installs, the baseline
+#  records the major it was generated with, and `--clang-major` refuses to run the
+#  comparison when the two disagree — exit 2, because that is the check failing to
+#  run, not the tree regressing.
+#
 #  `--self-test` is the repository's existing answer to "prove the checker is
 #  live before trusting its silence" (`check-docs.py --self-test`, and
 #  `check-portability.py --compile-canary` for the same reason). It feeds the
@@ -88,6 +101,8 @@
 
 import argparse
 import collections
+import contextlib
+import io
 import os
 import re
 import sys
@@ -202,20 +217,35 @@ def scan(log_path: str, root: str, base: str):
 
 # --- baseline ----------------------------------------------------------------
 
+# The compiler the baseline describes, recorded in the file itself. It is a
+# COMMENT so the entry parser never sees it -- the entry format stays exactly
+# `<count> <flag> <path>` -- while still being machine-readable.
+BASELINE_CLANG_MAJOR = re.compile(r"^#\s*clang-major:\s*(\d+)\s*$")
+
+
 def read_baseline(path: str):
-    """Parse a baseline file into {(relative path, flag): count}.
+    """Parse a baseline file into ({(relative path, flag): count}, clang_major).
 
     A MISSING file is an empty baseline, not an error: that is the strict
     reading (every warning is new), so forgetting the file cannot weaken the
     gate. An UNPARSEABLE file IS an error -- silently treating a corrupt
     baseline as empty would turn one mistake into a wall of false findings, and
     silently treating it as universal would turn it into no gate at all.
+
+    `clang_major` is None when the file records no version, which is how a
+    hand-written or pre-pin baseline reads. The caller decides what to do about
+    that; parsing does not guess.
     """
     if not os.path.exists(path):
-        return {}
+        return {}, None
     out = {}
+    major = None
     with open(path, "r", encoding="utf-8") as handle:
         for lineno, raw in enumerate(handle, 1):
+            version = BASELINE_CLANG_MAJOR.match(raw.strip())
+            if version:
+                major = int(version.group(1))
+                continue
             line = raw.split("#", 1)[0].strip()
             if not line:
                 continue
@@ -224,7 +254,7 @@ def read_baseline(path: str):
                 raise ValueError(
                     f"{path}:{lineno}: expected '<count> <flag> <path>', got {raw.strip()!r}")
             out[(fields[2], fields[1])] = int(fields[0])
-    return out
+    return out, major
 
 
 BASELINE_HEADER = """\
@@ -237,6 +267,14 @@ BASELINE_HEADER = """\
 # which introduced nothing gets regenerated blindly, which accepts whatever else
 # appeared alongside.
 #
+# THIS FILE DESCRIBES ONE COMPILER. Which diagnostics Clang emits is a property
+# of the major version -- -Wshadow-field, -Wsign-conversion and
+# -Wunused-but-set-variable have all moved between majors -- so these counts mean
+# nothing against a different one. The `clang-major` line below records which,
+# `ANAMORPH_CLANG_VERSION` in .github/workflows/build.yml pins the compiler the
+# job installs, and the checker refuses to run when the two disagree. Bump both
+# in the SAME change and read the resulting diff.
+#
 # THIS FILE IS A DEBT LIST, NOT A PERMISSION LIST. Every entry is a warning this
 # repository has not fixed yet. The gate fails on anything ABOVE these counts, so
 # new warnings cannot be added to a file that already has one; a count that FALLS
@@ -246,17 +284,25 @@ BASELINE_HEADER = """\
 # Regenerate with:
 #   cmake --build build-clang --target ... 2>&1 | tee clang-build.log
 #   python3 scripts/check-clang-warnings.py --log clang-build.log \\
-#       --root "$PWD" --build-dir "$PWD/build-clang" --write-baseline
+#       --root "$PWD" --build-dir "$PWD/build-clang" \\
+#       --clang-major <n> --write-baseline
 # and read the diff before committing it -- that diff is the entire review.
 """
 
 
-def write_baseline(path: str, counts) -> int:
+def write_baseline(path: str, counts, clang_major) -> int:
+    if clang_major is None:
+        print("check-clang-warnings: --write-baseline needs --clang-major <n> -- a baseline "
+              "that does not say which compiler produced it cannot be checked against one.",
+              file=sys.stderr)
+        return 2
     with open(path, "w", encoding="utf-8") as handle:
         handle.write(BASELINE_HEADER)
+        handle.write(f"#\n# clang-major: {clang_major}\n")
         for (rel, flag), count in sorted(counts.items(), key=lambda kv: (kv[0][1], kv[0][0])):
             handle.write(f"{count}\t{flag}\t{rel}\n")
-    print(f"check-clang-warnings: wrote {len(counts)} baseline entr(ies) to {path}")
+    print(f"check-clang-warnings: wrote {len(counts)} baseline entr(ies) for clang-{clang_major} "
+          f"to {path}")
     return 0
 
 
@@ -391,7 +437,39 @@ def self_test() -> int:
                 failures += 1
                 print(f"self-test FAIL: {label}: got {got}, want {want}", file=sys.stderr)
 
-    total = len(SELF_TEST_CASES) + len(line_cases) + len(baseline_cases) + len(dedup_checks)
+        # THE VERSION RECORD ROUND-TRIPS AND IS ACTUALLY READ. Without this the
+        # `# clang-major:` line could stop being written, or stop being parsed,
+        # and the mismatch guard would silently pass everything -- a guard that
+        # cannot fire is the failure mode this whole file is written against.
+        # The comment-stripping order matters too: the version line begins with
+        # `#`, so a parser that stripped comments first would never see it, and
+        # the entry parser must never see it either.
+        bl_path = os.path.join(tmp, "baseline.txt")
+        # Both writes report to stdout/stderr on their own account, and one of
+        # them reports a REFUSAL. Swallowed here so the self-test's own output
+        # stays the pass/fail line it is read as -- an operator scanning a CI log
+        # should not have to work out that an error message is an expectation.
+        quiet = io.StringIO()
+        with contextlib.redirect_stdout(quiet), contextlib.redirect_stderr(quiet):
+            write_baseline(bl_path, {("src/a.cpp", "-Wshadow"): 1}, 18)
+            round_tripped, major = read_baseline(bl_path)
+            absent = read_baseline(os.path.join(tmp, "absent.txt"))
+            refused = write_baseline(os.path.join(tmp, "noversion.txt"), {}, None)
+        version_checks = [
+            (major, 18, "the recorded clang major round-trips"),
+            (round_tripped, {("src/a.cpp", "-Wshadow"): 1},
+             "the version line is not mistaken for an entry"),
+            (absent, ({}, None),
+             "a missing baseline is empty and version-less, not an error"),
+            (refused, 2, "writing a baseline without a version is refused"),
+        ]
+        for got, want, label in version_checks:
+            if got != want:
+                failures += 1
+                print(f"self-test FAIL: {label}: got {got!r}, want {want!r}", file=sys.stderr)
+
+    total = (len(SELF_TEST_CASES) + len(line_cases) + len(baseline_cases)
+             + len(dedup_checks) + len(version_checks))
     if failures:
         print(f"\ncheck-clang-warnings: {failures} of {total} self-test case(s) failed.",
               file=sys.stderr)
@@ -414,6 +492,9 @@ def main() -> int:
                         help="accepted-warnings baseline (default: scripts/clang-warning-baseline.txt)")
     parser.add_argument("--write-baseline", action="store_true",
                         help="rewrite the baseline from this log instead of checking against it")
+    parser.add_argument("--clang-major", type=int, default=None,
+                        help="the Clang major version that produced the log; must match the "
+                             "`clang-major` line recorded in the baseline")
     args = parser.parse_args()
 
     if args.self_test:
@@ -428,13 +509,38 @@ def main() -> int:
         return 2
 
     if args.write_baseline:
-        return write_baseline(args.baseline, counts)
+        return write_baseline(args.baseline, counts, args.clang_major)
 
     try:
-        baseline = read_baseline(args.baseline)
+        baseline, baseline_major = read_baseline(args.baseline)
     except ValueError as exc:
         print(f"check-clang-warnings: {exc}", file=sys.stderr)
         return 2
+
+    # THE COMPILER MUST MATCH THE ONE THE BASELINE DESCRIBES. Counts recorded for
+    # one Clang major say nothing about another's output, so a mismatch is not a
+    # weaker comparison -- it is a meaningless one, and it would present as either
+    # a wall of "new" warnings or a suspiciously clean run depending on which way
+    # the diagnostic set moved. Exit 2, the code that means THE CHECK could not
+    # run, never the 1 that means the tree regressed.
+    #
+    # Both directions are refused. An unrecorded version (a pre-pin or
+    # hand-written baseline) is just as unusable as a wrong one: it cannot be
+    # confirmed to describe this compiler, and a gate that assumes it does is the
+    # silent-mismatch failure this check exists to prevent.
+    if args.clang_major is not None:
+        if baseline_major is None:
+            print(f"check-clang-warnings: {args.baseline} records no `# clang-major:` line, so it "
+                  f"cannot be confirmed to describe clang-{args.clang_major}. Regenerate it with "
+                  f"--clang-major {args.clang_major} --write-baseline and read the diff.",
+                  file=sys.stderr)
+            return 2
+        if baseline_major != args.clang_major:
+            print(f"check-clang-warnings: baseline describes clang-{baseline_major} but the log "
+                  f"came from clang-{args.clang_major}. Diagnostics move between majors, so these "
+                  f"counts do not apply. Bump ANAMORPH_CLANG_VERSION and re-baseline in the SAME "
+                  f"change, and read the diff.", file=sys.stderr)
+            return 2
 
     regressions, improvements = compare_to_baseline(counts, sites, baseline)
 

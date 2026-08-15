@@ -42,9 +42,38 @@ concurrency:
 #     10   pre-release gold standard -- REQUIRED, and in force here
 #
 # Lowering it below 10 is a deliberate act that must be justified in the PR.
+#
+# ---------------------------------------------------------------------------
+# THE CLANG MAJOR VERSION IS PINNED, and for the same one-place reason.
+#
+# `linux-clang` compares its diagnostics against `scripts/clang-warning-baseline.txt`,
+# which records exact per-(path, flag) site counts. Which diagnostics Clang emits
+# is a property of the COMPILER VERSION -- `-Wshadow-field`, `-Wsign-conversion`
+# and `-Wunused-but-set-variable` all move between majors -- so an unpinned
+# `clang` means the baseline's reference point is whatever `ubuntu-latest`
+# happens to resolve to that week. A runner-image bump would then turn the gate
+# red (or, worse, quietly green with fewer diagnostics) on a push that changed
+# nothing in the tree. That is exactly the failure the baseline's
+# "never key on line numbers" rule was written to avoid, reintroduced one level
+# up.
+#
+# 18 is not an arbitrary choice: it is the version the checked-in baseline was
+# generated with (Ubuntu clang 18.1.3), and it is what `ubuntu-latest`
+# (ubuntu-24.04) resolves `clang` to today -- so the pin changes no diagnostic,
+# it just stops the reference point from moving underneath the file.
+#
+# The baseline RECORDS this number in its own header and
+# `check-clang-warnings.py` refuses to run when the two disagree: bumping the pin
+# without re-baselining is then a loud, specific failure rather than a silent
+# comparison against another compiler's output. Bump both in the same change,
+# and read the baseline diff.
+#
+# `sanitizers` pins to the same major so its `libclang-rt-<n>-dev` is
+# version-matched by construction instead of being derived from `clang --version`.
 # ---------------------------------------------------------------------------
 env:
   ANAMORPH_PLUGINVAL_STRICTNESS: 10
+  ANAMORPH_CLANG_VERSION: 18
 
 # Every push builds the FULL set of formats on all three desktop OSes so beta
 # testers can install on any platform:
@@ -318,23 +347,48 @@ jobs:
           echo "debug_artifacts=true" >> "$GITHUB_OUTPUT"
 
       # MALLOC_PERTURB_ FILLS FRESH HEAP WITH A NON-ZERO PATTERN and freed heap
-      # with its complement. Linux hands back zero-filled pages and macOS does
+      # with a different one. Linux hands back zero-filled pages and macOS does
       # not, so a read-before-write in DSP state is benign here and arbitrary
       # there -- the symptom is platform-specific while the DEFECT is not. This
       # makes the Linux run behave like the hostile allocator for free: no
       # rebuild, no instrumentation, no measurable slowdown.
       #
-      # 255 on purpose rather than an arbitrary byte: 0xFF fills a float buffer
-      # with NaN, so an uninitialised READ of audio state fails a check instead of
-      # passing on a plausible-looking value. glibc-only, which is why it is set
-      # here and on `linux-clang` and NOT on the macOS job, where libmalloc
-      # ignores it and the variable would read as coverage that does not exist.
-      # valgrind in `sanitizers` answers the same question more thoroughly and far
-      # more slowly; this is the cheap one, on every push.
+      # THE VALUE IS NOT THE FILL BYTE, and getting that backwards is why this
+      # said 255 for one round. glibc applies the variable ASYMMETRICALLY:
+      #
+      #     alloc_perturb (p, n)  ->  memset (p, perturb_byte ^ 0xff, n)
+      #     free_perturb  (p, n)  ->  memset (p, perturb_byte,        n)
+      #
+      # so the FRESH-allocation fill is the COMPLEMENT of the value. 255 was
+      # chosen to write 0xFF into fresh buffers and did the exact opposite: it
+      # wrote 0x00, which is the benign zero-fill this step exists to defeat.
+      # Measured, not inferred -- with 255 a fresh 4 KiB buffer reads
+      # `00 00 00 00` and so does a recycled one, making the setting strictly
+      # WORSE than leaving it unset (unset, a recycled chunk reads back real
+      # garbage such as `20 3b 40 ce`).
+      #
+      # 1 gives fresh = 0xFE and freed = 0x01. A float built from 0xFEFEFEFE is
+      # -1.69e38, near the negative end of the float range: an uninitialised read
+      # of audio state is then enormous AND wrong-signed, so every level, null,
+      # transparency and click-free assertion in both suites fails on it.
+      #
+      # NaN IS NOT AVAILABLE HERE, so the earlier claim could not have held at any
+      # value. A float whose four bytes are all B has exponent
+      # ((B & 0x7f) << 1) | (B >> 7), which is 0xFF only for B = 0xFF -- and
+      # fresh = 0xFF needs perturb_byte = 0, which is glibc's "perturbation off"
+      # sentinel. Swept all 255 selectable values to confirm: 254 give a loud
+      # finite float, 255 gives zero, none gives NaN, Inf or a denormal. NaN
+      # coverage is what the `sanitizers` job is for.
+      #
+      # glibc-only, which is why it is set here and on `linux-clang` and NOT on
+      # the macOS job, where libmalloc ignores it and the variable would read as
+      # coverage that does not exist. valgrind in `sanitizers` answers the same
+      # question more thoroughly and far more slowly; this is the cheap one, on
+      # every push.
       - name: DSP + state self-tests
         id: tests
         env:
-          MALLOC_PERTURB_: 255
+          MALLOC_PERTURB_: 1
         run: ./scripts/run-tests.sh
 
       - name: pluginval (deterministic x3 -- release gate)
@@ -487,16 +541,27 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # The PINNED Clang, not the image's default `clang`. See the env block for
+      # why: the warning baseline records per-(path, flag) counts, and which
+      # diagnostics Clang emits moves between majors, so an unpinned compiler
+      # makes a runner-image bump indistinguishable from a source regression.
+      # `lld-<n>` is installed alongside so the pinned toolchain is complete on
+      # the box; which `ld.lld` the driver actually selects is settled by
+      # `check_linker_flag` at configure time (see CMakeLists.txt).
       - name: Install build dependencies
         run: |
           chmod +x scripts/*.sh
           ./scripts/setup-linux.sh
+          sudo apt-get install -y \
+            "clang-${ANAMORPH_CLANG_VERSION}" "lld-${ANAMORPH_CLANG_VERSION}"
+          "clang-${ANAMORPH_CLANG_VERSION}" --version
 
       - name: Configure (Clang)
         run: >
           cmake -B build-clang -G Ninja
           -DCMAKE_BUILD_TYPE=Release
-          -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+          -DCMAKE_C_COMPILER=clang-${{ env.ANAMORPH_CLANG_VERSION }}
+          -DCMAKE_CXX_COMPILER=clang++-${{ env.ANAMORPH_CLANG_VERSION }}
           -DANAMORPH_BUILD_STANDALONE=OFF
           -DANAMORPH_BUILD_NUMBER=${{ github.run_number }}
 
@@ -507,7 +572,9 @@ jobs:
       # that changes the SIMDRegister overload set fails this step instead of
       # silently turning the lint into a no-op.
       - name: Portability compile canary (pinned JUCE still has the hazard)
-        run: python3 scripts/check-portability.py --compile-canary build-clang/_deps/juce-src/modules --cxx clang++
+        run: >
+          python3 scripts/check-portability.py --compile-canary build-clang/_deps/juce-src/modules
+          --cxx clang++-${{ env.ANAMORPH_CLANG_VERSION }}
 
       # PROVE THE GATE IS LIVE BEFORE TRUSTING ITS SILENCE. This is the same move
       # `check-docs.py --self-test` and `--compile-canary` make, for the same
@@ -536,11 +603,17 @@ jobs:
           # (src/dsp/ScopeBuffer.h and src/gui/../dsp/ScopeBuffer.h), which the
           # resolver folds into one baseline key and a text match would not.
           # The baseline defaults to scripts/clang-warning-baseline.txt.
+          # `--clang-major` is checked against the version recorded IN that file:
+          # the counts describe one compiler's diagnostics, so comparing them to
+          # another compiler's output is not a weaker check, it is a meaningless
+          # one. A mismatch exits 2 ("the check could not run") rather than 1
+          # ("the tree regressed"), because that is what it is.
           # `scripts/check-clang-warnings.py` carries the reasoning in full.
           python3 scripts/check-clang-warnings.py \
             --log clang-build.log \
             --root "${GITHUB_WORKSPACE}" \
-            --build-dir "${GITHUB_WORKSPACE}/build-clang"
+            --build-dir "${GITHUB_WORKSPACE}/build-clang" \
+            --clang-major "${ANAMORPH_CLANG_VERSION}"
 
       # Run the suites the Clang build produced, not just compile them: a
       # miscompile is the thing a second toolchain is most useful for finding,
@@ -548,7 +621,7 @@ jobs:
       - name: DSP + state self-tests (Clang build)
         id: tests
         env:
-          MALLOC_PERTURB_: 255      # see the `linux` job's self-test step
+          MALLOC_PERTURB_: 1        # fresh heap = 0xFE; see the `linux` job's self-test step
         run: |
           ./build-clang/AnamorphTests_artefacts/Release/AnamorphTests
           ./build-clang/AnamorphStateTests_artefacts/Release/AnamorphStateTests
@@ -594,26 +667,32 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # The SAME pinned Clang major as `linux-clang` (see the env block). This job
+      # has no baseline to protect, but the pin buys something concrete here too:
+      # clang's sanitizer runtime ships SEPARATELY from clang on Debian/Ubuntu,
+      # and without it the link fails with "cannot find libclang_rt.asan-x86_64.a",
+      # which reads as a project problem and is not one. The package is
+      # version-suffixed, so the unpinned form had to DERIVE the major by
+      # scraping `clang --version` and fall back to an unsuffixed alias that does
+      # not exist on every image. With the major known up front the runtime is
+      # named directly and a missing one fails loudly instead of silently taking
+      # the fallback path (`set -e` is on).
       - name: Install build dependencies
         run: |
           chmod +x scripts/*.sh
           ./scripts/setup-linux.sh
-          # clang's sanitizer runtime ships SEPARATELY from clang on Debian/Ubuntu.
-          # Without it the link fails with "cannot find libclang_rt.asan-x86_64.a",
-          # which reads as a project problem and is not one. The version-suffixed
-          # package is the reliable name; the unsuffixed one is a convenience alias
-          # that does not exist on every image, so try both and fail loudly if
-          # neither lands (`set -e` is on -- the `-y valgrind clang` line is not a
-          # swallow, it is the minimum this job cannot run without).
-          sudo apt-get install -y valgrind clang
-          sudo apt-get install -y libclang-rt-dev \
-            || sudo apt-get install -y "libclang-rt-$(clang --version | sed -n 's/.*clang version \([0-9]*\).*/\1/p')-dev"
+          sudo apt-get install -y valgrind \
+            "clang-${ANAMORPH_CLANG_VERSION}" \
+            "lld-${ANAMORPH_CLANG_VERSION}" \
+            "libclang-rt-${ANAMORPH_CLANG_VERSION}-dev"
+          "clang-${ANAMORPH_CLANG_VERSION}" --version
 
       - name: Configure (Clang, ASan + UBSan)
         run: >
           cmake -B build-san -G Ninja
           -DCMAKE_BUILD_TYPE=RelWithDebInfo
-          -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+          -DCMAKE_C_COMPILER=clang-${{ env.ANAMORPH_CLANG_VERSION }}
+          -DCMAKE_CXX_COMPILER=clang++-${{ env.ANAMORPH_CLANG_VERSION }}
           -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
           -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
           -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
@@ -806,8 +885,18 @@ jobs:
             # was intended. Diagnostics quality, not correctness: these images come
             # from MSVC in this same job.
             $peOffset = [BitConverter]::ToInt32($bytes, 0x3C)
-            if ($peOffset -lt 0 -or ($peOffset + 24) -gt $bytes.Length) {
-              Write-Error "$ImagePath : e_lfanew ($peOffset) points outside the file ($($bytes.Length) bytes) -- image is truncated or malformed"
+            # 26, not 24, and the two bytes matter: this ONE guard covers every
+            # read between here and the next check, so it has to cover the
+            # LARGEST of them, not the offset of the last one. Those reads are
+            # the PE signature (peOffset+0..1), NumberOfSections (peOffset+6..7),
+            # SizeOfOptionalHeader (peOffset+20..21) and the optional header's
+            # Magic (peOffset+24..25) -- 4 for the signature, 20 for the COFF
+            # file header, then 2 for Magic. At exactly +24 or +25 the earlier
+            # bound admitted the file and `ToUInt16($bytes, $optHeaderOffset)`
+            # then threw the raw .NET IndexOutOfRangeException this function
+            # exists to replace with a diagnosable message.
+            if ($peOffset -lt 0 -or ($peOffset + 26) -gt $bytes.Length) {
+              Write-Error "$ImagePath : e_lfanew ($peOffset) points outside the file, or leaves fewer than 26 bytes (PE signature + COFF header + optional-header Magic) of $($bytes.Length) -- image is truncated or malformed"
             }
             if ($bytes[$peOffset] -ne 0x50 -or $bytes[$peOffset + 1] -ne 0x45) {
               Write-Error "$ImagePath is not a valid PE image (missing PE signature)"
@@ -1084,70 +1173,6 @@ jobs:
           fi
           ANAMORPH_TEST_RUNNER="arch -x86_64" ./scripts/run-tests.sh
 
-      - name: pluginval VST3 (deterministic x3 -- release gate)
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: ./scripts/run-pluginval.sh ${{ env.ANAMORPH_PLUGINVAL_STRICTNESS }} deterministic vst3
-
-      - name: pluginval VST3 (randomise x3 -- release gate)
-        # NEVER skipped for a deterministic FAILURE: both modes must report independently, so a
-        # deterministic failure cannot hide the randomise result. It IS skipped when the build did not
-        # produce a plug-in, because `!cancelled()` alone is true after ANY upstream failure -- a
-        # compile error then produced a "not found -- build first" line that read like the cause and
-        # buried the real one. The job still fails if either gate fails.
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: ./scripts/run-pluginval.sh ${{ env.ANAMORPH_PLUGINVAL_STRICTNESS }} randomise vst3
-
-      # INSTALL THE AU BEFORE VALIDATING IT, deliberately, and not as
-      # belt-and-braces. macOS resolves Audio Units through the AudioComponent
-      # registry (`AudioComponentFindNext`, which is what JUCE's
-      # AudioUnitPluginFormat calls), and the registry only knows about bundles
-      # under a Components directory. A freshly built .component sitting in the
-      # build tree can therefore report ZERO plugin types however correct it is --
-      # which would make this gate red for an environmental reason, or (worse, if
-      # pluginval ever treats "no types" as nothing to do) green without
-      # validating anything. Installing first removes the question instead of
-      # depending on the answer.
-      #
-      # `killall AudioComponentRegistrar` forces the registry to re-scan rather
-      # than serve a cached list; it is `|| true` because the daemon may simply
-      # not be running yet on a fresh runner, which is not a failure. The copy
-      # itself is NOT `|| true`.
-      - name: Install the AU so the AudioComponent registry can find it
-        id: au_install
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: |
-          set -e
-          DEST="$HOME/Library/Audio/Plug-Ins/Components"
-          mkdir -p "$DEST"
-          rm -rf "$DEST/Anamorph.component"
-          cp -R build/Anamorph_artefacts/Release/AU/Anamorph.component "$DEST/"
-          killall -9 AudioComponentRegistrar 2>/dev/null || true
-          echo "bundle=$DEST/Anamorph.component" >> "$GITHUB_OUTPUT"
-          ls -d "$DEST/Anamorph.component"
-
-      # THE AU IS VALIDATED TOO, and only here -- it is the one format that
-      # exists on exactly one platform, and the ONLY one Logic and GarageBand
-      # load. Before this the release gate ran against the VST3 alone on all
-      # three OSes, so the AU shipped to Logic users having passed no automated
-      # validation at all, on a build where `lipo -archs` output was printed
-      # rather than asserted. Same strictness (the env block above is still the
-      # only copy), same two modes, same 3 consecutive passes -- an AU that only
-      # passes sometimes is not a passing AU.
-      #
-      # Gated on the BUILD and on the INSTALL, never on the VST3 steps: a VST3
-      # failure must not hide the AU's result, and vice versa.
-      - name: pluginval AU (deterministic x3 -- release gate)
-        if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.au_install.outcome == 'success' }}
-        env:
-          ANAMORPH_PLUGINVAL_BUNDLE: ${{ steps.au_install.outputs.bundle }}
-        run: ./scripts/run-pluginval.sh ${{ env.ANAMORPH_PLUGINVAL_STRICTNESS }} deterministic au
-
-      - name: pluginval AU (randomise x3 -- release gate)
-        if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.au_install.outcome == 'success' }}
-        env:
-          ANAMORPH_PLUGINVAL_BUNDLE: ${{ steps.au_install.outputs.bundle }}
-        run: ./scripts/run-pluginval.sh ${{ env.ANAMORPH_PLUGINVAL_STRICTNESS }} randomise au
-
       # RH-PR-2 (ADR-0021): order matters -- 1) dsymutil captures a universal
       # dSYM per bundle (the only crash-symbolication source once stripped),
       # 2) strip -x removes local symbols, 3) codesign LAST (stripping after
@@ -1181,7 +1206,12 @@ jobs:
         id: package
         # Same gate, same reason as the Windows staging step above: after a compile error
         # `!cancelled()` is still true, so this would run with nothing to package and report a
-        # cascade instead of the cause. Still !cancelled() so a pluginval failure stages a beta.
+        # cascade instead of the cause.
+        # It stays `!cancelled()` rather than plain success() so a failing SELF-TEST still
+        # produces a beta artifact, exactly as on the other two platforms. It no longer needs to
+        # survive a pluginval failure -- the gates now run AFTER this step, against what it
+        # produces (see the block below) -- but the self-test clause is the same relaxation and
+        # is still load-bearing.
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           set -e
@@ -1307,6 +1337,126 @@ jobs:
           # signature written above lives inside each Mach-O and in
           # Contents/_CodeSignature -- ordinary files -- so it survives the
           # artifact round-trip; only the mode bits need restoring.
+
+      # =====================================================================
+      # THE RELEASE GATE RUNS HERE, AFTER PACKAGING, AND THAT ORDERING IS THE
+      # POINT: it is what makes macOS validate the bytes it actually ships.
+      #
+      # It used to run before the packaging step, which meant every macOS
+      # pluginval pass described a bundle that no longer existed by the time the
+      # artifact was uploaded -- `strip -x` and `codesign --force --deep` both
+      # rewrite the Mach-O afterwards, so a defect introduced BY stripping or
+      # signing shipped unvalidated. Linux has always validated post-strip for
+      # exactly this reason; this is macOS catching up, and it closes the
+      # asymmetry rather than documenting it.
+      #
+      # It is free to do, because the packaging step mutates the bundles IN
+      # PLACE in the build tree and only then copies them to `dist/` -- so the
+      # shipped tree exists at this point and both formats can be named
+      # explicitly with ANAMORPH_PLUGINVAL_BUNDLE. Naming them beats letting
+      # `run-pluginval.sh` search `build/`: the build tree now holds the same
+      # bytes, but "the copy we ship" is the claim being made, so it is the copy
+      # that gets pointed at.
+      #
+      # THE COST, stated rather than discovered: these steps gate on `package`,
+      # so a packaging failure now skips validation. That is the same trade
+      # Linux already makes (`steps.strip.outcome == 'success'`) and for the same
+      # reason -- a half-packaged bundle is in a state nobody ships, and
+      # validating it adds a red step that hides the real cause. The uploads are
+      # unaffected: they gate on `tests` + `package`, never on pluginval, so a
+      # validation-only failure still yields a beta artifact exactly as before.
+      # =====================================================================
+
+      # INSTALL THE AU BEFORE VALIDATING IT, deliberately, and not as
+      # belt-and-braces. macOS resolves Audio Units through the AudioComponent
+      # registry (`AudioComponentFindNext`, which is what JUCE's
+      # AudioUnitPluginFormat calls), and the registry only knows about bundles
+      # under a Components directory. A .component sitting outside one can
+      # therefore report ZERO plugin types however correct it is -- which would
+      # make this gate red for an environmental reason, or (worse, if pluginval
+      # ever treats "no types" as nothing to do) green without validating
+      # anything. Installing first removes the question instead of depending on
+      # the answer.
+      #
+      # The source is now `dist/` -- the stripped, ad-hoc-signed, slice-verified
+      # tree the artifact is uploaded from. An ad-hoc signature is what lets
+      # macOS load the bundle at all after quarantine removal, so this is also
+      # the first point at which the installed copy is in the state a user's
+      # machine sees.
+      #
+      # `killall AudioComponentRegistrar` forces the registry to re-scan rather
+      # than serve a cached list; it is `|| true` because the daemon may simply
+      # not be running yet on a fresh runner, which is not a failure. The copy
+      # itself is NOT `|| true`.
+      - name: Install the packaged AU so the AudioComponent registry can find it
+        id: au_install
+        if: ${{ !cancelled() && steps.package.outcome == 'success' }}
+        run: |
+          set -e
+          DEST="$HOME/Library/Audio/Plug-Ins/Components"
+          mkdir -p "$DEST"
+          rm -rf "$DEST/Anamorph.component"
+          cp -R dist/Anamorph-macOS/Anamorph.component "$DEST/"
+          killall -9 AudioComponentRegistrar 2>/dev/null || true
+          echo "bundle=$DEST/Anamorph.component" >> "$GITHUB_OUTPUT"
+          ls -d "$DEST/Anamorph.component"
+
+      - name: pluginval VST3 (deterministic x3 -- release gate)
+        # Gated on `package`, which is what produces the bytes being validated --
+        # the same "name the producer, never a bare !cancelled()" rule the other
+        # two platforms follow. `!cancelled()` is still there so a FAILING
+        # deterministic run cannot skip the randomise run below.
+        if: ${{ !cancelled() && steps.package.outcome == 'success' }}
+        env:
+          ANAMORPH_PLUGINVAL_BUNDLE: dist/Anamorph-macOS/Anamorph.vst3
+        run: ./scripts/run-pluginval.sh ${{ env.ANAMORPH_PLUGINVAL_STRICTNESS }} deterministic vst3
+
+      - name: pluginval VST3 (randomise x3 -- release gate)
+        # NEVER skipped for a deterministic FAILURE: both modes must report independently, so a
+        # deterministic failure cannot hide the randomise result. It IS skipped when packaging did
+        # not produce a shippable bundle, because `!cancelled()` alone is true after ANY upstream
+        # failure -- which produced a "not found -- build first" line that read like the cause and
+        # buried the real one. The job still fails if either gate fails.
+        if: ${{ !cancelled() && steps.package.outcome == 'success' }}
+        env:
+          ANAMORPH_PLUGINVAL_BUNDLE: dist/Anamorph-macOS/Anamorph.vst3
+        run: ./scripts/run-pluginval.sh ${{ env.ANAMORPH_PLUGINVAL_STRICTNESS }} randomise vst3
+
+      # THE AU IS VALIDATED TOO, and only here -- it is the one format that
+      # exists on exactly one platform, and the ONLY one Logic and GarageBand
+      # load. Before this the release gate ran against the VST3 alone on all
+      # three OSes, so the AU shipped to Logic users having passed no automated
+      # validation at all, on a build where `lipo -archs` output was printed
+      # rather than asserted. Same strictness (the env block above is still the
+      # only copy), same two modes, same 3 consecutive passes -- an AU that only
+      # passes sometimes is not a passing AU.
+      #
+      # Gated on the INSTALL, never on the VST3 steps: a VST3 failure must not
+      # hide the AU's result, and vice versa. The install itself gates on
+      # `package`, so that dependency is carried without repeating it.
+      - name: pluginval AU (deterministic x3 -- release gate)
+        if: ${{ !cancelled() && steps.au_install.outcome == 'success' }}
+        env:
+          ANAMORPH_PLUGINVAL_BUNDLE: ${{ steps.au_install.outputs.bundle }}
+        run: ./scripts/run-pluginval.sh ${{ env.ANAMORPH_PLUGINVAL_STRICTNESS }} deterministic au
+
+      - name: pluginval AU (randomise x3 -- release gate)
+        if: ${{ !cancelled() && steps.au_install.outcome == 'success' }}
+        env:
+          ANAMORPH_PLUGINVAL_BUNDLE: ${{ steps.au_install.outputs.bundle }}
+        run: ./scripts/run-pluginval.sh ${{ env.ANAMORPH_PLUGINVAL_STRICTNESS }} randomise au
+
+      # Leave the runner as we found it. On an ephemeral runner this is
+      # cosmetic, but `docs/procedures/TESTING.md` now tells a human to
+      # reproduce these steps locally, and an install into a real
+      # ~/Library/Audio/Plug-Ins/Components that nothing removes is a surprise
+      # worth not shipping in the instructions. `!cancelled()` and the
+      # not-skipped test rather than `success()`: the copy exists whenever the
+      # install step ran at all, including when a later gate failed, and that is
+      # exactly when it most needs removing.
+      - name: Remove the AU installed for validation
+        if: ${{ !cancelled() && steps.au_install.outcome != 'skipped' }}
+        run: rm -rf "$HOME/Library/Audio/Plug-Ins/Components/Anamorph.component"
 
       # v0.9.0 packaging (additive): a user-installable .pkg (RH-PR-6
       # skeleton) built from the SAME validated staging dir the zip was

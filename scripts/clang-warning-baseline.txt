@@ -7,6 +7,14 @@
 # which introduced nothing gets regenerated blindly, which accepts whatever else
 # appeared alongside.
 #
+# THIS FILE DESCRIBES ONE COMPILER. Which diagnostics Clang emits is a property
+# of the major version -- -Wshadow-field, -Wsign-conversion and
+# -Wunused-but-set-variable have all moved between majors -- so these counts mean
+# nothing against a different one. The `clang-major` line below records which,
+# `ANAMORPH_CLANG_VERSION` in .github/workflows/build.yml pins the compiler the
+# job installs, and the checker refuses to run when the two disagree. Bump both
+# in the SAME change and read the resulting diff.
+#
 # THIS FILE IS A DEBT LIST, NOT A PERMISSION LIST. Every entry is a warning this
 # repository has not fixed yet. The gate fails on anything ABOVE these counts, so
 # new warnings cannot be added to a file that already has one; a count that FALLS
@@ -16,8 +24,11 @@
 # Regenerate with:
 #   cmake --build build-clang --target ... 2>&1 | tee clang-build.log
 #   python3 scripts/check-clang-warnings.py --log clang-build.log \
-#       --root "$PWD" --build-dir "$PWD/build-clang" --write-baseline
+#       --root "$PWD" --build-dir "$PWD/build-clang" \
+#       --clang-major <n> --write-baseline
 # and read the diff before committing it -- that diff is the entire review.
+#
+# clang-major: 18
 2	-Wfloat-equal	src/dsp/VelvetNoise.cpp
 4	-Wmissing-prototypes	tests/state_tests.cpp
 1	-Wshadow	src/PluginProcessor.cpp

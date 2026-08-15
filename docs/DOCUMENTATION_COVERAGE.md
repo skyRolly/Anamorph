@@ -7,7 +7,7 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
-**CI/validation round** (first below), then the four
+**CI review follow-up** (first below), then the **CI/validation round** it corrects, then the four
 AppleClang 21 `-Wimplicit-int-float-conversion` fixes, the macOS CI runner move
 `macos-14` → `macos-latest` that surfaced them, then the C++17 → C++23
 language-standard migration, both applied on top of the JUCE 9.0.0 → 9.0.1
@@ -17,6 +17,63 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**CI + validation round — review follow-up (0.9.4, no version bump). Five corrections, and the
+first is the one worth reading twice.**
+
+Landed on top of the migration entry below, all five from a review of it. None changes what the
+pipeline is *for*; four change whether it does what it claims.
+
+1. **`MALLOC_PERTURB_=255` provided no coverage at all — it was worse than not setting it.** glibc
+   applies the variable asymmetrically (`alloc_perturb → memset(p, perturb_byte ^ 0xff, n)`,
+   `free_perturb → memset(p, perturb_byte, n)`), so the value is the FREED fill and its complement
+   is the FRESH one. 255 therefore wrote `0x00` into fresh allocations: exactly the benign
+   zero-filled heap the step exists to defeat, and *deterministically*, where leaving the variable
+   unset at least returns real recycled garbage. Corrected to `1` (fresh `0xFE`, freed `0x01`).
+   Measured three ways: a `malloc` probe (255 → `00 00 00 00`, 1 → `fe fe fe fe`); a sweep of all
+   255 selectable values; and a read-before-write reproduction whose peak reads `0` under both
+   *unset* and `255` and `1.69e38` under `1`. The original "0xFF fills a float buffer with NaN"
+   rationale could not have held at any value — a float of four identical bytes `B` has exponent
+   `((B & 0x7f) << 1) | (B >> 7)`, which is `0xFF` only for `B = 0xFF`, and a fresh fill of `0xFF`
+   needs `perturb_byte = 0`, glibc's "off" sentinel. NaN coverage is the `sanitizers` job's.
+2. **The PE header guard was two bytes short of the read it protected.** It admitted
+   `peOffset + 24 <= length` and the code then read the optional-header Magic at `peOffset + 24..25`.
+   Corrected to 26 (PE signature 4 + COFF header 20 + Magic 2). Reproduced against synthetic
+   truncated images: at 24 and 25 bytes of slack the old bound let `ToUInt16` throw the raw .NET
+   `IndexOutOfRange` the function exists to replace; the new bound diagnoses all three of 23/24/25
+   and hands ≥ 26 to the next guard.
+3. **The Clang warning baseline had a floating reference point.** Its per-(path, flag) counts are a
+   property of the compiler major, but `linux-clang` used whatever `ubuntu-latest` resolved `clang`
+   to — so a runner-image bump could turn the gate red on a push that changed nothing, the same
+   defect the "never key on line numbers" rule exists to avoid, one level up. `ANAMORPH_CLANG_VERSION`
+   now pins the major in one place (18 — the version the baseline was generated with, and what
+   ubuntu-24.04 resolves `clang` to, so no diagnostic moved); both Clang jobs install and use
+   `clang-<n>`; the baseline records `# clang-major:` and the checker **refuses to run** on a
+   mismatch (exit 2, not 1). The pin also lets `sanitizers` name `libclang-rt-<n>-dev` directly
+   instead of scraping `clang --version` for it.
+4. **macOS validated a bundle it did not ship.** The gates ran before the packaging step, and
+   `strip -x` + `codesign --force --deep` rewrite the Mach-O immediately afterwards. Both formats'
+   gates now run **after** packaging against `dist/Anamorph-macOS/`, named explicitly through
+   `ANAMORPH_PLUGINVAL_BUNDLE`. Every platform now validates the bytes it ships. The trade is
+   recorded rather than discovered: a packaging failure now skips validation, which is the trade
+   Linux already made. The AU copy installed for the registry is removed again afterwards.
+5. **The CHANGELOG fence tracker closed on a nested opener.** A backtick fence carrying an info
+   string (a `cpp`-tagged opener) nested inside an untagged backtick block ended the *outer* fence,
+   after which the block's body was read as
+   structure and the real closer re-opened one — inverting the mask to EOF. The extractor now
+   applies CommonMark §4.5 in full (same character, at least as long, nothing but trailing
+   whitespace) and agrees with `scripts/check-docs.py`'s `fence_mask` on all 11 edge cases tested,
+   under both mawk and gawk. All 20 existing CHANGELOG versions extract byte-identically, so the fix
+   is latent-only — which is the point, since the tracker exists for the first fenced sample anyone
+   adds.
+
+Docs synced: `CI_CD` (the perturbation paragraph rewritten with the mechanism and the sweep; a new
+compiler-pin paragraph in §The Clang warning baseline; §Known coverage limits' shipped-bytes bullet
+rewritten now that all three platforms qualify, and its AU bullet narrowed to the `auval` point; the
+pipeline's step 6 given the post-packaging ordering and its trade; the local-reproduction snippet
+switched to the pinned compiler), `TESTING_POLICY` (the Level 1b value and the note that it is not
+the fill byte), `TESTING` (the closed-AU-gap entry re-stated for the new ordering and the cleanup
+step). Validation for this round is recorded in the round's own summary.
 
 **CI + validation round (0.9.4, no version bump) — reviewed against the sibling product Anabasis
 and migrated selectively.**

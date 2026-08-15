@@ -134,13 +134,32 @@ else()
         # `/usr/lib/bfd-plugins` and fail against another. That is precisely why
         # it is pinned here rather than worked around inside the one CI job.
         #
-        # lld ships with the compiler that produced the bitcode, so it is always
-        # version-matched, and it resolves LTO symbol requests against archives
-        # correctly. PROBED rather than assumed: where it is absent the build
-        # falls back to the default linker with a warning that names the hazard,
-        # because refusing to configure would be a worse failure than a link that
-        # may well succeed. `scripts/setup-linux.sh` installs it, which is what
-        # makes the probe succeed on a machine set up by the documented route.
+        # lld resolves LTO symbol requests against archives correctly, which is
+        # the property being bought. `-fuse-ld=lld` names the linker GENERICALLY
+        # on purpose: which `ld.lld` the driver then selects is the environment's
+        # business, not this file's, and on Debian/Ubuntu it is `/usr/bin/ld.lld`
+        # -- clang searches its own program path before PATH, so a caller cannot
+        # redirect it by prepending a directory (tried; it does not work). So the
+        # linker is NOT guaranteed to share the compiler's major version, and the
+        # CI job pins only the COMPILER (ANAMORPH_CLANG_VERSION, which exists to
+        # keep the warning baseline's reference point still). That is fine here:
+        # LLVM bitcode is forward-compatible, so a newer lld reads an older
+        # clang's output, and the reverse is caught loudly by the link rather than
+        # silently.
+        #
+        # PROBED rather than assumed: `check_linker_flag` links a real TU with the
+        # flag in the configuration actually being built (sanitizer flags
+        # included), so the answer is about this environment, not about a version
+        # number. Where lld is absent the build falls back to the default linker
+        # with a warning that names the hazard, because refusing to configure
+        # would be a worse failure than a link that may well succeed.
+        # `scripts/setup-linux.sh` installs lld, which is what makes the probe
+        # succeed on a machine set up by the documented route.
+        #
+        # The probe result is CACHED in ANAMORPH_HAVE_LLD, so a build directory
+        # configured before lld was installed keeps the fallback until that cache
+        # entry is cleared. CI always configures a fresh tree; locally, delete
+        # `build-clang/CMakeCache.txt` if the warning outlives the install.
         if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
             include(CheckLinkerFlag)
             check_linker_flag(CXX "-fuse-ld=lld" ANAMORPH_HAVE_LLD)

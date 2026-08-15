@@ -309,21 +309,22 @@ rather than deleted, because a gap that was real and is now covered is worth bei
   pluginval gate against `Anamorph.component` as well as `Anamorph.vst3` — same strictness, both
   modes, ×3 each — so the build Logic Pro and GarageBand load passes the same format-conformance
   gate as the VST3. The registry problem this entry described is solved the way it predicted: an
-  install step copies the built bundle into `~/Library/Audio/Plug-Ins/Components/` and forces a
+  install step copies the bundle into `~/Library/Audio/Plug-Ins/Components/` and forces a
   refresh (`killall -9 AudioComponentRegistrar`) before validation, and
   `ANAMORPH_PLUGINVAL_BUNDLE` points the script at *that* copy rather than at the build tree.
-  **Ordering was handled as this entry required:** the AU gates run **before** the packaging step,
-  i.e. against a bundle that is neither stripped nor re-signed, so the stripped-but-unsigned arm64
-  state it warned about never arises. Two things this deliberately did **not** do, so the remaining
-  scope is not overstated:
+  **Ordering:** the AU (and VST3) gates run **after** the packaging step, against
+  `dist/Anamorph-macOS/` — the stripped, ad-hoc-signed tree the artifact is uploaded from — so the
+  validated bytes are the shipped bytes. The stripped-but-unsigned state this entry warned about
+  never arises, because `package` signs *after* it strips and the gate runs after both. The
+  installed copy is removed again once the AU gates have reported, so reproducing these steps by
+  hand does not leave a plug-in behind in your real `~/Library`. One thing this deliberately did
+  **not** do, so the remaining scope is not overstated:
   - It uses **pluginval**, not Apple's `auval` (`auval -v aufx Anmr RTec`, matching the
     `PLUGIN_CODE` / `PLUGIN_MANUFACTURER_CODE` in `CMakeLists.txt:153-154`). pluginval hosts the AU
     through JUCE's `AudioUnitPluginFormat`, which is the same resolution path a JUCE-hosted DAW
     takes and the same test set the other two platforms are held to; `auval` is Apple's own
     conformance tool and tests things pluginval does not. Adding it is a further step, not a
     substitute for this one.
-  - It validates the **pre-packaging** bundle. Like Windows, and unlike Linux, macOS therefore still
-    does not validate the exact bytes it ships — see `CI_CD.md` §Known coverage limits.
 - **No frozen golden-audio reference exists.** `tests/fixtures/` holds a parameter-registry
   snapshot and three legacy session XMLs — metadata, not audio. The DSP suite pins *behavioural
   invariants* (exact nulls, click-freeness, spectral-spur and pitch bounds, cold-path bit-identity)

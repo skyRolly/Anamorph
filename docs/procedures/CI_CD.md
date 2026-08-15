@@ -134,11 +134,26 @@ otherwise fine, and a red build does not skip them.
   that suite passes under memcheck untouched, but it would leave the DSP suite with no
   uninitialised-read detector at all.)
 
-`MALLOC_PERTURB_=255` is set on the `linux` and `linux-clang` self-test steps: glibc then fills fresh
-heap with a non-zero pattern (0xFF fills a float buffer with **NaN**, so an uninitialised read of
-audio state fails a check instead of passing on a plausible value) and freed heap with its
-complement. It is the cheap version of the question valgrind answers slowly, on every push. Not set
-on macOS, where libmalloc ignores it and the variable would read as coverage that does not exist.
+`MALLOC_PERTURB_=1` is set on the `linux` and `linux-clang` self-test steps: glibc then fills **fresh**
+heap with `0xFE` and **freed** heap with `0x01`, so an uninitialised read of audio state comes back as
+≈ `-1.69e38` — enormous *and* wrong-signed, which every level, null, transparency and click-free
+assertion in both suites fails on. It is the cheap version of the question valgrind answers slowly, on
+every push. Not set on macOS, where libmalloc ignores it and the variable would read as coverage that
+does not exist.
+
+**The value is not the fill byte**, and this setting said `255` for one round on the assumption that
+it was. glibc applies the variable asymmetrically —
+`alloc_perturb(p,n) → memset(p, perturb_byte ^ 0xff, n)` but
+`free_perturb(p,n) → memset(p, perturb_byte, n)` — so the fresh-allocation fill is the **complement**
+of the value. `255` therefore wrote `0x00` into fresh buffers: precisely the benign zero-fill the step
+exists to defeat, and *strictly worse than leaving the variable unset*, because unset a recycled chunk
+still reads back real garbage while `255` zeroes that too. Measured, not inferred.
+
+The original rationale — "`0xFF` fills a float buffer with NaN" — could not have held at **any** value.
+A float whose four bytes are all `B` has exponent `((B & 0x7f) << 1) | (B >> 7)`, which is `0xFF` only
+for `B = 0xFF`, and a fresh fill of `0xFF` needs `perturb_byte = 0`, which is glibc's
+"perturbation off" sentinel. All 255 selectable values were swept: 254 give a loud finite float, `255`
+gives zero, and none gives NaN, Inf or a denormal. NaN coverage is what the `sanitizers` job provides.
 
 All three runners use the **floating** `*-latest` label. macOS moved off the pinned `macos-14`
 image on 2026-08-15: `actions/runner-images` marks macOS 14 **deprecated** (deprecation opened
@@ -231,19 +246,29 @@ failures as green and has been removed). Evidence [Verified]: `.github/workflows
    **Both mode steps ALWAYS run** for a *validation* failure: they carry the same explicit condition
    (`!cancelled() && steps.<producer>.outcome == 'success'`), so a deterministic failure **never
    skips** randomise — both modes report independently every run. The producer is named rather than
-   using a bare `!cancelled()`, which is true after *any* upstream failure: on Linux it is `strip`
-   (validation sees the stripped bytes, so that is what produces what it consumes), on Windows and
-   macOS it is `build`. Without it a compile error let the gates run against a tree with no plug-in
-   and the job's last error was a cascade rather than the cause.
+   using a bare `!cancelled()`, which is true after *any* upstream failure: on Linux it is `strip`,
+   on **macOS** it is `package`, and on Windows it is `build` — in each case the step that produces
+   the bytes being validated. Without it a compile error let the gates run against a tree with no
+   plug-in and the job's last error was a cascade rather than the cause.
+   **On macOS the gates run after packaging**, against `dist/Anamorph-macOS/`, so they see the
+   stripped and ad-hoc-signed bundles the artifact is uploaded from. They used to run before it, and
+   every pass then described a bundle that `strip -x` and `codesign --force --deep` rewrote
+   immediately afterwards. The trade is stated rather than discovered: a *packaging* failure now
+   skips validation, which is the same trade Linux already makes and for the same reason — a
+   half-packaged bundle is in a state nobody ships. The uploads are unaffected; they gate on
+   `tests` + `package` and never on pluginval, so a validation-only failure still yields a beta
+   artifact.
    **macOS also validates the AU**, at the same strictness, in the same two modes, ×3 each. It is the
    one format that exists on exactly one platform and the only one Logic and GarageBand load, and
    until this landed the gate ran against the VST3 alone on all three OSes — so the AU shipped to
    Logic users having passed no automated validation at all. The `.component` is **installed** into
    `~/Library/Audio/Plug-Ins/Components` first (and `AudioComponentRegistrar` killed to force a
    re-scan) because macOS resolves Audio Units through the AudioComponent registry, which only knows
-   about bundles under a Components directory: a freshly built, never-installed `.component` can
-   report zero plugin types however correct it is. The AU steps gate on the **install**, the VST3
-   steps on the **build**, so neither format can hide the other's result.
+   about bundles under a Components directory: a `.component` outside one can report zero plugin
+   types however correct it is. The AU steps gate on that **install** (which itself gates on
+   `package`), the VST3 steps on `package` directly, so neither format can hide the other's result.
+   A final step removes the installed copy again, so reproducing the sequence by hand does not leave
+   a plug-in behind in a real `~/Library`.
    **Windows** additionally runs with `--skip-gui-tests`:
    the GPU-less/headless `windows-latest` runner cannot host the editor GUI tests (environmental, not a
    plugin defect — the editor validates on Linux + macOS; see KI-007). This skips one *test category*
@@ -320,6 +345,20 @@ accepts whatever else appeared alongside. The count is what stops a file that al
 for the file to shrink, never a failure — the commit that fixes a warning must not be the commit that
 goes red. Regenerate with `--write-baseline` and **read the diff**; that diff is the entire review.
 
+**The baseline describes one compiler, and the compiler is pinned.** Which diagnostics Clang emits is
+a property of the major version — `-Wshadow-field`, `-Wsign-conversion` and
+`-Wunused-but-set-variable` have all moved between majors — so counts taken from one say nothing
+about another. Left unpinned, the reference point was whatever `ubuntu-latest` resolved `clang` to
+that week, and a runner-image bump would have failed the gate on a push that changed nothing in the
+tree: the same defect the "never key on line numbers" rule exists to avoid, one level up.
+`ANAMORPH_CLANG_VERSION` in `build.yml` is the single authority for the major; `linux-clang` installs
+`clang-<n>`/`lld-<n>` and configures with `clang-<n>`/`clang++-<n>`; `sanitizers` uses the same major,
+which also lets it name `libclang-rt-<n>-dev` directly instead of scraping `clang --version` for it.
+The baseline records the major in a `# clang-major:` line and `--clang-major` **refuses to run** when
+the two disagree — exit 2, the code meaning *the check* could not run, not the 1 meaning the tree
+regressed. An unrecorded version is refused for the same reason a wrong one is: it cannot be
+confirmed to describe this compiler. Bump the pin and re-baseline in the **same** change.
+
 **Only judge a baseline against a FULL build.** A count also falls when the log simply lacks the
 translation unit that carries the warning, which is what an incremental rebuild produces — ninja
 recompiles only what changed. CI always builds from a fresh checkout, so its log is complete; a local
@@ -384,12 +423,16 @@ Evidence [Verified]: `.github/workflows/build.yml`.
 
 Stated here rather than left to be rediscovered. None is a defect; each is a decision.
 
-- **Only Linux validates the shipped bytes.** Its strip runs *before* pluginval. On macOS
-  `strip -x` + ad-hoc codesign happen in the packaging step *after* validation, and the Windows
-  public copy is produced after it too — so on those two platforms a defect introduced **by**
-  stripping or signing would ship unvalidated. Reordering is not free: macOS must codesign last or
-  the seal breaks. The staging self-checks (`.symtab` absence, both slices, `GetPluginFactory` still
-  exported, no debug files) are what stands in for it.
+- **Every platform now validates the bytes it ships**, but by three different routes, so it is worth
+  being precise about each. **Linux** strips *before* pluginval, so the gate sees the stripped `.so`.
+  **macOS** validates *after* the packaging step, against `dist/Anamorph-macOS/` — the stripped,
+  ad-hoc-signed tree the artifact is uploaded from — for the VST3 and the AU alike; this was not
+  true until the gate was moved, and until then every macOS pass described a bundle that `strip -x`
+  and `codesign --force --deep` rewrote immediately afterwards. **Windows** validates the build-tree
+  bundle, and that *is* the shipped image: the staging step copies the bundle and deletes debug
+  *files* from the copy, but nothing rewrites the `.vst3` module itself, so the validated and shipped
+  bytes are the same. The residual asymmetry is only in what each staging self-check can assert —
+  see the Windows bullet below.
 - **No native Intel macOS runner.** The `macos` job builds universal on Apple Silicon and now
   executes the x86_64 slice under **Rosetta 2**, which translates x86_64 to arm64 and runs on arm64
   hardware — FPCR rather than MXCSR, NEON rather than SSE. That closes the "run by nothing" gap but
@@ -405,11 +448,11 @@ Stated here rather than left to be rediscovered. None is a defect; each is a dec
 - **`--skip-gui-tests` on Windows** skips one test category on one runner (KI-007, environmental).
 - **The `linux-clang` job is not `-Werror`** — see §Build matrix for why it cannot be yet, and
   [The Clang warning baseline](#the-clang-warning-baseline) for the 14 sites it currently accepts.
-- **The AU is validated pre-packaging, and by pluginval rather than `auval`.** The gate hosts the
-  `.component` through JUCE's `AudioUnitPluginFormat` — the same resolution path a JUCE-hosted DAW
-  takes, and the same test set the other two platforms are held to. Apple's `auval`
-  (`auval -v aufx Anmr RTec`) is its own conformance tool and tests things pluginval does not;
-  adding it is a further step, not a substitute for this one.
+- **The AU is validated by pluginval rather than `auval`.** The gate hosts the `.component` through
+  JUCE's `AudioUnitPluginFormat` — the same resolution path a JUCE-hosted DAW takes, and the same
+  test set the other two platforms are held to. Apple's `auval` (`auval -v aufx Anmr RTec`) is its
+  own conformance tool and tests things pluginval does not; adding it is a further step, not a
+  substitute for this one. (The bundle it validates *is* the shipped one — see the first bullet.)
 - **`ANAMORPH_TESTS_NO_FTZ=1` on the valgrind step** relaxes the denormal half of one DSP assertion,
   because valgrind emulates floating point and does not honour the CPU's FTZ/DAZ bits. NaN and Inf
   stay gated there, and every native job asserts the full check. See §Build matrix.
@@ -468,11 +511,19 @@ The `linux-clang` and `sanitizers` jobs use their own build trees so they never 
 above — `build-clang`, `build-san`, `build-vg`. All are covered by `.gitignore`'s `build*/`.
 
 ```bash
+CLANG=18   # ANAMORPH_CLANG_VERSION in .github/workflows/build.yml is the authority
 cmake -B build-clang -G Ninja -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DANAMORPH_BUILD_STANDALONE=OFF
+      -DCMAKE_C_COMPILER="clang-$CLANG" -DCMAKE_CXX_COMPILER="clang++-$CLANG" \
+      -DANAMORPH_BUILD_STANDALONE=OFF
 cmake --build build-clang --target AnamorphTests AnamorphStateTests Anamorph_VST3 2>&1 | tee clang-build.log
-python3 scripts/check-clang-warnings.py --log clang-build.log --root "$PWD" --build-dir "$PWD/build-clang"
-python3 scripts/check-portability.py --compile-canary build-clang/_deps/juce-src/modules --cxx clang++
+python3 scripts/check-clang-warnings.py --log clang-build.log --root "$PWD" \
+        --build-dir "$PWD/build-clang" --clang-major "$CLANG"
+python3 scripts/check-portability.py --compile-canary build-clang/_deps/juce-src/modules \
+        --cxx "clang++-$CLANG"
 ```
+
+Use the **pinned** major, not your distribution's default `clang`: the baseline records which
+compiler it describes and the checker refuses to compare against a different one, so an unpinned
+local run reports `exit 2` rather than a misleading pass or fail.
 
 See `TESTING.md` for the validation gate and `PACKAGING.md` for the macOS signing/quarantine steps.
