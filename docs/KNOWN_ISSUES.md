@@ -9,7 +9,12 @@ C++ standard 17 → 23 migration, ADR-0027 — **no issue added or removed**: th
 is one added `#include`, engine output bit-identical across both the two JUCE versions and
 C++17 vs C++23, and
 the two known issues whose mechanism lives in JUCE (KI-013, KI-019) were re-verified byte-identical
-there, so neither is fixed upstream nor regressed).
+there, so neither is fixed upstream nor regressed). The same version also moves the macOS CI job
+off the **deprecated** `macos-14` image to `macos-latest` — likewise **no issue added or removed**:
+no source, packaging or gate changed, and the four new
+`-Wimplicit-int-float-conversion` diagnostics AppleClang 21 raises on pre-existing code are
+recorded in `docs/procedures/CI_CD.md`, not here (they are diagnostics on unchanged source, not a
+product limitation).
 Prior sync: **v0.9.3** (six GUI interaction fixes plus an equal-width Widen row — the Multiband add-split preview line, the
 unified pop-up dismissal shield, pop-up lifetime across a hidden, destroyed or backgrounded window,
 two menu-rendering fixes and the Tooltips on/off transition —

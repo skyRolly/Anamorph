@@ -41,6 +41,29 @@ label can change the AppleClang/SDK under the shipped macOS binaries without a r
 which is the same exposure the project already accepts on `ubuntu-latest`/`windows-latest` and the
 same class as ADR-0027's MSVC `/std:c++latest` caveat.
 
+**Validated by the runner it changes.** CI run `31895877794` on `macos-latest` resolved to image
+`macos-26-arm64` `20260728.0273.1` and went green end to end: configure accepted
+`CMAKE_OSX_DEPLOYMENT_TARGET=10.13`, the universal build succeeded, both self-test suites passed,
+pluginval strictness 10 passed in **both** modes ×3, `lipo -archs` reported `x86_64 arm64` for all
+three bundles, and `Anamorph-0.9.4-macOS.pkg` built with its three components and passed the
+`installer -pkginfo` / `pkgutil --expand` self-checks. The degenerate-dSYM path (`-debug` upload
+skipped under Release+LTO) behaves exactly as on `macos-14` — compared against the previous green
+macOS job, not assumed. Linux and Windows were unaffected and green in the same run.
+
+**The measured consequence: the macOS compiler moved with the image.** AppleClang
+**15.0.0.15000309 (Xcode 15.4) → 21.0.0.21000101 (Xcode 26.6)**. Diffing the macOS warning sets of
+the two runs, normalised, gives 15 → 19 distinct sites and 108 → 126 instances: nothing
+disappeared, no category changed, and the whole delta is
+**`-Wimplicit-int-float-conversion` at four pre-existing sites** —
+`src/PluginEditor.cpp:245,246` (`getWidth() * 0.40f`), `src/gui/LookAndFeel.cpp:262`
+(`k * (barW + gap)`) and `src/dsp/VelvetNoise.cpp:30` (`m * cell`), each an `int` widened inside a
+float expression. **Recorded, not fixed**: the source is unchanged, so these are new diagnostics on
+old code; Level 1 is not part of the `TESTING_POLICY` hard release gate; and touching four
+arithmetic sites is exactly the unrelated source change this task excludes. Bit-exact macOS output
+across the two compilers is **not claimed** — it is not provable headlessly from this repository,
+and compiler-level numerical differences are the Class-B changes `DSP_POLICY.md` permits (RH-F4).
+The behavioural gate is what carries the claim.
+
 **Not a gated change and not a CHANGELOG entry.** `ARCHITECTURE_REVIEW_GATE`'s Build System item
 covers CMake structure, the JUCE version/pin and the dependency set; a runner label is none of
 those, and `DEPENDENCY_POLICY`'s pinned-dependency table does not list it — so no ADR, unlike
@@ -52,8 +75,18 @@ Docs synced (`DOCUMENTATION_LIFECYCLE_POLICY` trigger map, **CI workflow → `CI
 and the floating-label choice), `TESTING` (the RH-F3/auval feasibility sentence names the runner),
 and the two documents that repeat that same sentence — `KNOWN_ISSUES` KI-014 and
 `RELEASE_HARDENING_PLAN` RH-F3 — plus `BUILD`'s toolchain line, whose "Verified on …" record names
-the macOS compiler. `COMPATIBILITY_MATRIX` needed no edit: its macOS row cites the workflow, not
-an image label, and the deployment target and both architectures are unchanged.
+the macOS compiler, and the **KNOWN_ISSUES** and **FUTURE_RISKS** v0.9.4 version-sync headers
+(each states what the version's changes did to that document; both record "no entry added" with
+the reason). `COMPATIBILITY_MATRIX` needed no edit: its macOS row cites the workflow, not an image
+label, and the deployment target and both architectures are unchanged. `HANDOVER` needed none: its
+Build Status row claims all three CI platforms green, which the new image satisfies.
+
+**Drift found and corrected while re-reading that BUILD line (C6).** It read "AppleClang 15.4",
+which is the **Xcode** version of the `macos-14` image; the compiler
+`CMAKE_CXX_COMPILER_VERSION` actually reported there was **15.0.0.15000309**. The line now gives
+the compiler version with the Xcode version alongside it, for both the old and the new image. The
+same conflation appears in `ADR-0027` §Verification and the C++23 worklog; those are dated records
+of that change and are left as written.
 
 **Dated records left alone (C6, report-don't-rewrite).** `ADR-0027` §Verification, both C++23
 worklog tables, `worklogs/RELEASE_HARDENING_AUDIT_v0.9.0.md:160` and the `macos-14` run-ID comment
