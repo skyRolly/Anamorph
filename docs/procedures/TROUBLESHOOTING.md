@@ -12,8 +12,8 @@ Diagnosing build, validation, and runtime problems. For the validation workflow 
 | `EGL/egl.h` not found on Linux | `libegl-dev` missing — JUCE 9 builds its Linux GL context on EGL | `scripts/setup-linux.sh` installs it (setup-linux.sh:18-20,36); on a hand-rolled dep list add `libegl-dev`. |
 | `curl: command not found` / `unzip: command not found` running `run-pluginval.sh` | The pluginval download/extract tools are missing — `libcurl4-openssl-dev` is headers, not the CLI | `scripts/setup-linux.sh` installs both (setup-linux.sh:31); CI runners preinstall them, so this only appears on a fresh machine or a minimal container. |
 | `AnamorphTests not found` when testing | Not built, or tests disabled | `scripts/build.sh`; ensure `ANAMORPH_BUILD_TESTS=ON`. |
-| Wrong/old JUCE behaviour | Stale fetched JUCE | Confirm the pinned commit `f8f8864…` = JUCE 9.0.0 (CMakeLists.txt:36-38); a JUCE bump is a Build System change (ARCHITECTURE_REVIEW_GATE, ADR-0022). |
-| Configure says `fetching JUCE 9.0.0 (<old rev>)` | `ANAMORPH_JUCE_TAG` is a CACHE variable — an existing `build/` keeps the OLD pin after a pull | Delete `build/` (or `cmake -B build -UANAMORPH_JUCE_TAG -UANAMORPH_JUCE_VERSION`) so the new pin takes effect; the configure banner prints version + rev precisely so a mismatch is visible. |
+| Wrong/old JUCE behaviour | Stale fetched JUCE | Confirm the pinned commit `e18f7f5…` = JUCE 9.0.1 (CMakeLists.txt:36-38); a JUCE bump is a Build System change (ARCHITECTURE_REVIEW_GATE, ADR-0022 / ADR-0026). |
+| Configure says `fetching JUCE 9.0.1 (<old rev>)` | `ANAMORPH_JUCE_TAG` is a CACHE variable — an existing `build/` keeps the OLD pin after a pull | Delete `build/` (or `cmake -B build -UANAMORPH_JUCE_TAG -UANAMORPH_JUCE_VERSION`) so the new pin takes effect; the configure banner prints version + rev precisely so a mismatch is visible. |
 | Linker errors mixing JUCE modules | DSP compiled as a STATIC lib | The DSP core is an **INTERFACE** lib by design (CMakeLists.txt:124-135) — keep it INTERFACE; do not pre-compile JUCE modules into a static lib. |
 
 ## Validation (pluginval)

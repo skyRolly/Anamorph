@@ -4,7 +4,7 @@
 #   * c-cpp   -- src/ + tests/ (the only application code in the repo)
 #   * actions -- .github/workflows/ (workflow security queries)
 #
-# c-cpp uses build-mode MANUAL, not "none": JUCE 8.0.14 arrives via CMake
+# c-cpp uses build-mode MANUAL, not "none": JUCE arrives via CMake
 # FetchContent at configure time, so the bare checkout contains no framework
 # headers and a no-build analysis could resolve almost none of the includes.
 # The manual build mirrors the proven Linux CI steps from build.yml

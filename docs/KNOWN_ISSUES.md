@@ -4,7 +4,11 @@
 in `POSTMORTEMS.md`, not here. Each entry is evidence-backed (constraint C7). When an item is
 fixed, remove it here and (if notable) add a `POSTMORTEMS.md` entry.
 
-Version-synced to **v0.9.3** (six GUI interaction fixes plus an equal-width Widen row — the Multiband add-split preview line, the
+Version-synced to **v0.9.4** (the JUCE 9.0.0 → 9.0.1 dependency upgrade, ADR-0026 — **no issue
+added or removed**: no `src/` change, engine output bit-identical across the two JUCE versions, and
+the two known issues whose mechanism lives in JUCE (KI-013, KI-019) were re-verified byte-identical
+there, so neither is fixed upstream nor regressed).
+Prior sync: **v0.9.3** (six GUI interaction fixes plus an equal-width Widen row — the Multiband add-split preview line, the
 unified pop-up dismissal shield, pop-up lifetime across a hidden, destroyed or backgrounded window,
 two menu-rendering fixes and the Tooltips on/off transition —
 **five issues added**: KI-018, the dismissing click still counts toward JUCE's double-click run;
@@ -387,8 +391,9 @@ product trade: *a small amount of controlled FM is preferable to obvious interac
 - **Mitigating factor:** AppKit delivers the mouse-up to the window that captured the mouse-down,
   so lost releases are rare on macOS in the first place; recovery on cursor re-entry is intact.
 - **Evidence [Verified]:** JUCE 8.0.14 (FetchContent) `juce_NSViewComponentPeer_mac.mm` (realtime query
-  returns cached mouse flags; **re-verified unchanged in JUCE 9.0.0** during the ADR-0022 bump —
-  still keyboard-modifiers-only); `worklogs/MOUSE_RELEASE_STATE_FIX_v0.8.12.md` §2 (platform caveat);
+  returns cached mouse flags; **re-verified unchanged in JUCE 9.0.0** during the ADR-0022 bump and
+  again in **9.0.1** during ADR-0026, where the file is byte-identical — still
+  keyboard-modifiers-only); `worklogs/MOUSE_RELEASE_STATE_FIX_v0.8.12.md` §2 (platform caveat);
   CHANGELOG `[0.8.12]` ("Effective on Windows and Linux"). Fixable only via a JUCE-side change or a
   platform-specific `pressedMouseButtons` query (would need its own review). Severity **Low**,
   external (JUCE platform implementation).
@@ -426,8 +431,9 @@ distribution, alongside Anamorph's own LICENSE/EULA text.
 - **Evidence [Verified]:** no `LICENSE`/`COPYING` at the repository root; `THIRD_PARTY_LICENSES.md`
   §"Open licensing decisions"; JUCE `LICENSE.md` in the pinned tree (dual licence);
   `docs/architecture/RELEASE_HARDENING_PLAN.md` RH-R11 / RH-F1.
-- **Related:** the Steinberg VST 3 review (RH-F2) is a separate owner item — the SDK code is MIT
-  in JUCE 9.0.0, but VST trademark use and plug-in distribution terms are governed separately.
+- **Related:** the Steinberg VST 3 review (RH-F2) is a separate owner item — the SDK code in the
+  pinned JUCE tree is MIT, but VST trademark use and plug-in distribution terms are governed
+  separately.
 - **Index:** all open owner/legal decisions, including this one, are listed in
   `docs/COMMERCIAL_STATUS.md` §4.
 
@@ -476,7 +482,7 @@ and then stops, while punctuation/symbol keys repeat normally. It is **not speci
 field** — the same applies to every text entry in the plug-in (the knob/slider value boxes), and
 it is a **macOS text-input behaviour, not an Anamorph or JUCE defect**.
 
-Mechanism, traced end to end in the pinned JUCE 9.0.0 source. A focused `juce::TextEditor` is a
+Mechanism, traced end to end in the pinned JUCE source. A focused `juce::TextEditor` is a
 `juce::TextInputTarget`, so `ComponentPeer::findCurrentTextInputTarget()` returns it
 (`juce_ComponentPeer.cpp:291-301`). Both `keyDown:` and `performKeyEquivalent:` then funnel into
 `NSViewComponentPeer::sendEventToInputContextOrComponent`, whose **first** act is
@@ -555,9 +561,9 @@ no control — that part works. What it cannot do is un-count that click. If the
 sees `getNumberOfMultipleClicks() == 2` and JUCE calls its `mouseDoubleClick`. On a knob that means a
 reset-to-default or the numeric entry box, from what the user experienced as a first click.
 
-**Mechanism, from the pinned JUCE 9.0.0.** The multi-click run lives on the *input source*, not on a
+**Mechanism, from the pinned JUCE 9.0.1.** The multi-click run lives on the *input source*, not on a
 component. `MouseInputSourceImpl::registerMouseDown` records only position, time, buttons, touch flag
-and peer id (`juce_MouseInputSourceImpl.h:577-595`), and `canBePartOfMultipleClickWith` (`:561`)
+and peer id (`juce_MouseInputSourceImpl.h:581-599`), and `canBePartOfMultipleClickWith` (`:565`)
 compares exactly those — the **target component is not part of the comparison**. Registration happens
 in the event dispatch (`:238`) before any component is consulted, so a click the shield swallows is
 already in the run by the time we could react to it.
@@ -593,10 +599,10 @@ Since v0.9.3 the editor cancels an open drop-down or right-click menu when the p
 hidden, when the editor is destroyed, or when the user switches to another application. **The third
 of those does not happen on Linux.** The first two work normally there.
 
-**Mechanism, from the pinned JUCE 9.0.0.** The app-switch branch asks
+**Mechanism, from the pinned JUCE 9.0.1.** The app-switch branch asks
 `juce::Process::isForegroundProcess()`. On Linux that is
-`LinuxComponentPeer::isActiveApplication` (`juce_Windowing_linux.cpp:686`), a static initialised to
-`false` (`:677`) and assigned **only** `true`, from `grabFocus()` on a successful X11 focus grab
+`LinuxComponentPeer::isActiveApplication` (`juce_Windowing_linux.cpp:687`), a static initialised to
+`false` (`:678`) and assigned **only** `true`, from `grabFocus()` on a successful X11 focus grab
 (`:326-327`). Nothing ever sets it back. So it is a write-once latch rather than a live foreground
 state: before the latch the call is always `false`, after it always `true`, and either way the value
 never *changes*, which is what "switched away" requires.

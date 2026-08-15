@@ -1,7 +1,8 @@
 # ADR-0022 — JUCE dependency upgrade 8.0.14 → 9.0.0 + immutable-commit pinning
 
-**Status:** Proposed (implementation verified headlessly; pending the maintainer's
-Architecture-Review sign-off and the Level-5 manual audition — see Consequences)
+**Status:** **Accepted** (Architecture Review + the DEPENDENCY_POLICY rule-2 Level-5 manual
+audition signed off 2026-08-15; the audition was performed against the 9.0.1 build that succeeded
+this pin — ADR-0026)
 
 ## Context
 JUCE is pinned to an exact version (ADR-0003, ADR-0012, `docs/policies/DEPENDENCY_POLICY.md`);
@@ -57,12 +58,13 @@ serialization; keep the diff minimal; and make the pin immutable/reproducible.
   configure banner prints `version (rev)` so a mismatch is visible.
 - Licence: still dual AGPLv3/commercial, now under the **JUCE 9 EULA** wording — an owner-level
   business note, no build/code impact.
-- **Open items (human-gated):** (1) Architecture-Review sign-off for this Build System change;
-  (2) the **Level-5 manual audition** required by DEPENDENCY_POLICY rule 2 for any JUCE bump —
-  the 9.0.0 build must be auditioned in a DAW against the 8.0.14 baseline (as done for
-  ADR-0012). The twin dump covers engine numerics; it cannot cover editor/visual appearance
-  (JUCE 9 reworked SVG/font/renderer internals) or host-integration feel. Until both are done
-  this ADR stays **Proposed** and the migration is "ready to audition", not signed off.
+- **The two human gates are closed.** Architecture Review signed off this Build System change,
+  and the **Level-5 manual audition** required by DEPENDENCY_POLICY rule 2 was performed
+  (2026-08-15) — the part the twin dump cannot reach, since it covers engine numerics but not
+  editor/visual appearance (JUCE 9 reworked SVG/font/renderer internals) or host-integration
+  feel. The audition was carried out against the **9.0.1** build (ADR-0026) rather than 9.0.0,
+  which is the stronger check: engine output is bit-identical across 8.0.14 → 9.0.0 → 9.0.1, so
+  auditioning the later build covers this pin's editor surface as well as its successor's.
 
 ## Related code
 - `CMakeLists.txt:36-38` (pin), `:47-55` (FetchContent); `scripts/setup-linux.sh` (EGL).

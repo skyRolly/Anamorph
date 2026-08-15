@@ -6,12 +6,71 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.3 change set** (2026-08-11, matching the CHANGELOG heading) — six editor-only GUI interaction fixes on
+Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the JUCE
+9.0.0 → 9.0.1 dependency upgrade, a documentation-heavy change with no `src/` diff; its entry is
+first below. Under it, the **0.9.3 change set** (2026-08-11) is retained in full — six editor-only GUI interaction fixes on
 top of 0.9.2 (add-split preview line, unified pop-up dismissal, pop-up lifetime across a hidden,
 destroyed or backgrounded window, menu width, disabled menu items, Tooltips off) plus a
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**JUCE 9.0.0 → 9.0.1 dependency upgrade (0.9.4) — a Build System change with no source diff.**
+
+A JUCE bump is an `ARCHITECTURE_REVIEW_GATE` Build System change, so it carries an ADR
+(**ADR-0026**, `Accepted` 2026-08-15) and the `DEPENDENCY_POLICY` rule-2 verification, and it was
+flagged on the PR for human Architecture Review. The pin moved to the tag's immutable commit
+`e18f7f5…`; `project(... VERSION)` moved 0.9.3 → 0.9.4 with the release dated 2026-08-15.
+**No C++ source change and no build-dependency change were required**, and that is a finding
+rather than an assumption: neither of the two breaking changes upstream records for 9.0.1 reaches
+the project, and no JUCE module Anamorph links altered its declared system packages — across all
+fourteen module headers the only metadata difference is the `version:` field, so
+`scripts/setup-linux.sh` is untouched.
+
+Docs synced: CHANGELOG `[0.9.4]`, ADR-0026 + `ADR_INDEX`, `DEPENDENCY_POLICY` (pin table,
+version-lock rule, compliance log), BUILD, TROUBLESHOOTING, README, REPOSITORY_MAP,
+COMPATIBILITY_MATRIX, FUTURE_RISKS (RISK-001 + the version-sync header), HANDOVER (the snapshot
+paragraph + Current Version / Build Status / Release Status / Known Blockers / the JUCE dependency
+row), RELEASE_PROCESS and COMMERCIAL_STATUS (the tag/release-in-preparation statements),
+THIRD_PARTY_LICENSES + TRADEMARKS + COMMERCIAL_STATUS + RELEASE_HARDENING_PLAN (the pinned
+version each cites), `.github/dependabot.yml`, and `worklogs/JUCE901_UPGRADE_v0.9.4.md`. CI_CD
+needed no edit — it is version-free by design.
+
+**A tag-name consequence, recorded rather than assumed.** `git tag` is still empty, so the first
+annotated tag becomes **v0.9.4** — v0.9.3 joins 0.9.0-0.9.2 as written-up-but-never-cut. That
+moved three live statements: `CHANGELOG_POLICY` rule 2, the CHANGELOG preamble and RISK-003's
+mitigation.
+
+**Citation sweep.** Of the 22 JUCE source files cited by name-and-line anywhere in the docs,
+exactly **three** differ between the two tags (`juce_audio_formats.h`,
+`juce_MouseInputSourceImpl.h`, `juce_Windowing_linux.cpp`); the other 19 are byte-identical, so
+their citations stand unchanged. The three were re-anchored where a *live* document cites them
+against the current pin — `THIRD_PARTY_LICENSES` §2/§4 (the FLAC/Ogg and MP3 config defaults) and
+`KNOWN_ISSUES` KI-018/KI-019 (whose mechanisms are re-stated against 9.0.1, both re-verified
+byte-identical in substance). `POSTMORTEMS` and the worklogs were deliberately **not** touched:
+each is a dated record that names the tree it was traced in ("from the pinned JUCE 9.0.0
+source"), so its line numbers are correct for that tree — the same period-correct-history rule
+the 8.0.14 → 9.0.0 migration applied.
+
+**Drift found and reported (C6), not silently carried.** `.github/workflows/codeql.yml` still
+described the dependency as "JUCE 8.0.14" — stale since the 9.0.0 migration, i.e. pre-existing,
+not introduced here. The sentence's point is version-independent, so the minimal correction was
+to drop the number rather than restate it, which also stops the line drifting again.
+
+**What is verified and what is not.** Verified headlessly: 32/32 twin-dump hashes **and**
+reported/predicted latencies identical across the two JUCE versions (the ADR-0022 harness re-run,
+with the 32 hashes mutually distinct so the matrix discriminates); 140-check DSP and 894-check
+state suites green, including the 8.0.14-frozen parameter-registry snapshot; pluginval strictness
+10 green locally in both modes ×3; a byte-identical compiler-warning set (19 instances) across the
+18 project translation units built against both trees; and the `RELEASE_POLICY` third-party
+re-verification (JUCE's `LICENSE.md` and all twelve cited licence files byte-identical). **Not
+verifiable headlessly, and therefore done by hand:** the Level-5 manual audition — 9.0.1 changes
+editor-adjacent framework code (Linux message-loop scheduling, display enumeration, vblank period;
+Windows Direct2D edge painting; macOS Metal-layer guards), and appearance/feel is a human
+judgement. That audition was **performed against this build on 2026-08-15**, so **ADR-0026 is
+`Accepted`**; the same audition discharges the one ADR-0022 had left open for the 9.0 line, which
+is now `Accepted` too. Two of the four long-standing tag blockers close with it (`HANDOVER`
+§Release Status): the compatibility checklist and the missing licence remain.
 
 **Probe-state fix (0.9.3) — the staging probe could decide future installs.**
 

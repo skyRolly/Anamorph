@@ -47,7 +47,7 @@ without test evidence.`
 
 | Dependency | Pin | Status | Evidence |
 |---|---|---|---|
-| JUCE | **9.0.0** — immutable commit `f8f8864…` (FetchContent, `GIT_SHALLOW`; ADR-0022) | **Verified** | CMakeLists.txt:36-38,47-55 |
+| JUCE | **9.0.1** — immutable commit `e18f7f5…` (FetchContent, `GIT_SHALLOW`; ADR-0022, ADR-0026) | **Verified** | CMakeLists.txt:36-38,47-55 |
 | C++ standard | C++17 (`CMAKE_CXX_STANDARD 17`) | **Verified** | CMakeLists.txt:16-18 |
 | pluginval | latest release (downloaded by script) | **Verified** | scripts/run-pluginval.sh:34 |
 
