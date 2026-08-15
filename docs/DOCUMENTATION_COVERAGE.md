@@ -6,8 +6,9 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the four
-AppleClang 21 `-Wimplicit-int-float-conversion` fixes (first below), the macOS CI runner move
+Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
+**CI/validation round** (first below), then the four
+AppleClang 21 `-Wimplicit-int-float-conversion` fixes, the macOS CI runner move
 `macos-14` → `macos-latest` that surfaced them, then the C++17 → C++23
 language-standard migration, both applied on top of the JUCE 9.0.0 → 9.0.1
 dependency upgrade in the same version; the JUCE entry follows them. Under it, the **0.9.3 change set** (2026-08-11) is retained in full — six editor-only GUI interaction fixes on
@@ -16,6 +17,85 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**CI + validation round (0.9.4, no version bump) — reviewed against the sibling product Anabasis
+and migrated selectively.**
+
+Anabasis' CI is the newer implementation of the same design, so its workflows, lints and scripts
+were read against this repository's and adopted where the reasoning transfers. What landed, grouped
+by what it closes:
+
+**Coverage that did not exist.** The macOS **AU** is now validated by pluginval at the same
+strictness, both modes ×3 — installed into `~/Library/Audio/Plug-Ins/Components/` with the
+AudioComponent registry refreshed first, because a never-installed `.component` can report zero
+plugin types however correct it is. The universal binary's **x86_64 slice is now executed**, under
+Rosetta 2, via a new `ANAMORPH_TEST_RUNNER` prefix in `run-tests.sh`; it was compiled on every push
+and run by nothing. Two new jobs: **`linux-clang`** (Clang's warning set is strictly larger than
+GCC's, and it builds the LTO'd plugin — the configuration users install and the only one no other
+job compiles with a second toolchain) and **`sanitizers`** (ASan + UBSan, then valgrind memcheck
+from an unsanitized build; there was no dynamic-analysis coverage at all). Two new lint jobs,
+**`docs`** and **`source-lint`**, carrying four checkers with self-tests.
+
+**Defects the review found.** `--random-seed 0` is pluginval's *"pick a random seed"* sentinel, so
+the "deterministic" gate was not deterministic — measured, not inferred (seed 0 printed a different
+`Random seed:` per run against pluginval 1.0.4; seed 1 printed `0x1` every time). The Linux
+`.gnu_debuglink` stored a CI-workspace-relative path no user's machine has. `lipo -archs` output was
+printed rather than asserted, and it exits 0 for a thin Mach-O. `find … | head -n1` /
+`Select-Object -First 1` picked whichever build enumerated first. `$SUDO DEBIAN_FRONTEND=… apt-get`
+breaks when `$SUDO` is empty. `build.sh` exited 1 after a successful build whenever an optional
+artefact was absent, silently breaking `build.sh && run-tests.sh`. Every same-repo PR built the
+3-OS matrix a second time, and concurrent pushes raced full matrices.
+
+**What was NOT migrated, and why** — recorded so the omissions are decisions rather than gaps:
+Anabasis' `preflight` job (a pre-P1 scaffold guard; this repository has had a `CMakeLists.txt`
+since long before 0.9.0, so it would be a permanent no-op adding a `needs:` edge to every build);
+`cxx23-canary.yml` (it exists to pre-warn a C++20 → C++23 baseline raise, and this project is
+*already* at C++23 — there is nothing to canary); the `channel_probe` / `engine_repro` host-side
+tools (product code written around a specific Anabasis field report, not CI infrastructure — porting
+them means authoring new C++, and pluginval already loads the built bundle through
+`juce_audio_processors` at strictness 10); the `macos-*-intel` native-Intel job (a real gap, but
+Rosetta execution closes the cheap 95% of it for no extra runner — recorded in `CI_CD.md` §Known
+coverage limits, not silently dropped); and `.gitattributes` (Anabasis needs `text eol=lf` because
+its snapshot fixture is compared **byte-wise**; this repository's comparison is line-based through
+`juce::StringArray::fromLines`, which strips `\r`, so the hazard does not reach it).
+
+**The one adaptation worth naming.** The Clang warning gate could not be adopted as-is: this tree
+already carries 14 first-party Clang warning sites, and clearing them means renaming a member across
+the editor, adding cases to engine switches and changing float comparisons in DSP code — source work
+that belongs in its own review under `DSP_POLICY.md`. Landing the job red teaches people to ignore
+it; landing it non-blocking makes a gate that cannot fail. So it asserts **no new** warnings against
+a checked-in baseline keyed on `(path, flag)` with a site count — never line numbers, which drift on
+unrelated edits — and a falling count is a notice asking the baseline to shrink, never a failure.
+The debt list is `scripts/clang-warning-baseline.txt` and is reproduced in `CI_CD.md`.
+
+Docs synced (`DOCUMENTATION_LIFECYCLE_POLICY` trigger map, **CI workflow → `CI_CD.md`,
+`TESTING.md`**): `CI_CD` (triggers + concurrency + the same-repo-PR guard, the strictness single
+source, the seven-job build matrix and what each non-packaging job is for, pipeline steps 4–7, the
+AU gate, the Rosetta slice, the baseline, evidence anchors, a new **Known coverage limits** section,
+and a rewritten local-reproduction section), `TESTING_POLICY` (Level 1 restated to include the
+warning gate and the lints, a new Level 1b for dynamic analysis, the hard gate reworded for AU +
+both formats + the nonzero seed + ambiguity, a new rule 4 requiring every lint to prove it is live,
+and the strictness number **removed** in favour of the workflow's `env:` block), `TESTING` (the
+pluginval section rewritten for the seed/format/bundle-override/ambiguity behaviour, the CI section
+given the four new jobs and the citation-base warning, and the **AU gap struck through as closed**),
+`REPOSITORY_MAP` (the tree comment, all nine script rows, the `build.yml` row). Six stale
+`file:line` anchors into the two rewritten scripts were re-anchored in this same change set
+(`POSTMORTEMS`, `FUTURE_RISKS`, `KNOWN_ISSUES`, `TROUBLESHOOTING`, `TESTING` ×2), which is the rule
+`check-citations.py` now enforces for `src/`+`tests/`. Three pre-existing blockquote
+lazy-continuation defects that `check-docs.py` found on its first run — a line-wrapped `> 1.5 oct`
+landing at column 0 in `CHANGELOG`, `DSP_ALGORITHMS` and `ADR-0015` — were fixed by reflowing, with
+no wording change.
+
+**Validation.** actionlint (with shellcheck) clean on all five workflows; every pwsh step and
+`run-pluginval.ps1` parsed with the PowerShell 7.4 parser; `bash -n` + shellcheck clean on all
+scripts. All four lints green with their self-tests (`check-docs` 57 cases / 99 files,
+`check-clang-warnings` 24 cases, `check-portability` 45 files, `check-citations` 198 anchors).
+Both suites green under GCC, under Clang, and under ASan + UBSan (140 and 894 checks each time).
+pluginval strictness 10 green, both modes ×3, with the seed observably pinned at `0x1`. The lld
+probe reports `Success` under Clang and is **absent** under GCC, confirming the shipped Linux link
+is unchanged. The new debuglink was read back off the stripped binaries. The warning gate was
+adversarially checked: it fails on a new file, fails on an extra site in an already-baselined
+file+flag, and ignores a new vendored warning. [Verified]
 
 **AppleClang 21 `-Wimplicit-int-float-conversion` × 4 (0.9.4, no version bump) — a source change
 that provably changes no machine code.**

@@ -109,6 +109,51 @@ else()
         target_link_options(AnamorphHardening INTERFACE
             -Wl,--gc-sections
             -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack)
+
+        # CLANG ON LINUX LINKS WITH LLD, and this is a correctness requirement
+        # rather than a preference. It is scoped to Clang deliberately: the
+        # SHIPPED Linux binary is built by GCC (the `linux` job), which never
+        # reaches this branch, so the released artifact's link is unchanged by
+        # this block. Added for the `linux-clang` job, which builds the LTO'd
+        # plugin target with Clang.
+        #
+        # GNU ld scans a static archive ONCE, in command-line order, selecting
+        # the members that resolve the symbols undefined at that moment. Under
+        # `-flto` (which juce_recommended_lto_flags applies to the plugin) the
+        # archive members are BITCODE: codegen runs only AFTER that scan, and the
+        # merged object it emits needs symbols the scan already passed over --
+        # out-of-line copies, vtables and typeinfo that only became referenced
+        # once the optimiser had inlined and devirtualised across translation
+        # units. ld.bfd does not rescan, so those become undefined references.
+        # The failure is spectacular and misleading: the plugin link reports
+        # hundreds of missing JUCE symbols that are demonstrably present in
+        # `libAnamorph_SharedCode.a`.
+        #
+        # Whether it fires at all depends on the binutils/plugin pairing -- the
+        # same source, same compiler and same flags link cleanly against one
+        # `/usr/lib/bfd-plugins` and fail against another. That is precisely why
+        # it is pinned here rather than worked around inside the one CI job.
+        #
+        # lld ships with the compiler that produced the bitcode, so it is always
+        # version-matched, and it resolves LTO symbol requests against archives
+        # correctly. PROBED rather than assumed: where it is absent the build
+        # falls back to the default linker with a warning that names the hazard,
+        # because refusing to configure would be a worse failure than a link that
+        # may well succeed. `scripts/setup-linux.sh` installs it, which is what
+        # makes the probe succeed on a machine set up by the documented route.
+        if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+            include(CheckLinkerFlag)
+            check_linker_flag(CXX "-fuse-ld=lld" ANAMORPH_HAVE_LLD)
+            if(ANAMORPH_HAVE_LLD)
+                target_link_options(AnamorphHardening INTERFACE -fuse-ld=lld)
+            else()
+                message(WARNING
+                    "Anamorph: Clang on Linux without lld. LTO links through GNU ld can fail with "
+                    "undefined references to symbols that ARE in libAnamorph_SharedCode.a (one-pass "
+                    "archive scan vs post-scan LTO codegen). Install lld (scripts/setup-linux.sh "
+                    "does) if a link fails that way.")
+            endif()
+        endif()
     endif()
 endif()
 

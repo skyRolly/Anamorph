@@ -20,7 +20,7 @@ Diagnosing build, validation, and runtime problems. For the validation workflow 
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| pluginval crashes on editor open/close (Linux) | Known host-side JUCE X11 `XEmbedComponent` use-after-free (not the plugin) | Handled by the signal-only retry in `run-pluginval.sh:63-96`; the plugin already drops its OpenGL child window on Linux (ADR-0011). |
+| pluginval crashes on editor open/close (Linux) | Known host-side JUCE X11 `XEmbedComponent` use-after-free (not the plugin) | Handled by the signal-only retry in `run-pluginval.sh:147-176`; the plugin already drops its OpenGL child window on Linux (ADR-0011). |
 | pluginval exits < 128 | Real validation failure | Read the log line; this is a genuine defect — do **not** retry. |
 | Editor tests fail "no display" | Headless without xvfb | The script uses `xvfb-run -a` when available (run-pluginval.sh:50-53); install `xvfb`. |
 

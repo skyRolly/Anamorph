@@ -9,9 +9,28 @@ cmake-build-*/
 # JUCE fetch cache (if any local)
 _deps/
 
+# The `linux-clang` job tees the compiler output here, in the workspace root, so
+# `check-clang-warnings.py` can classify it. Reproducing that job locally the way
+# docs/procedures/CI_CD.md describes leaves the same file behind.
+/clang-build.log
+
+# CI staging. Every build.yml packaging step writes here (dist/Anamorph-<OS>,
+# dist/Anamorph-<OS>-debug, the two installers), and so does anyone reproducing a
+# packaging step locally the way docs/procedures/CI_CD.md describes. Untracked
+# build output showing up as untracked files is how a real change gets missed in
+# a `git status` read before a commit.
+/dist/
+
 # Editor / OS cruft
 .DS_Store
 .vscode/
 .idea/
 *.user
 *.swp
+
+# Python bytecode. Running the scripts/check-*.py checkers as scripts does NOT
+# create this -- CPython writes no cache for __main__. It appears when one is
+# imported instead, which is how a checker gets exercised from an ad-hoc
+# verification snippet (importlib against scripts/check-docs.py).
+__pycache__/
+*.py[cod]

@@ -117,22 +117,52 @@ project's established practice; `docs/policies/TESTING_POLICY.md`). Use the exis
 `check(cond, "description")` harness and add the call in `main` (DSP behaviour →
 `tests/dsp_tests.cpp`; state/serialization/preset behaviour → `tests/state_tests.cpp`).
 
-## pluginval (VST3 conformance)
+## pluginval (VST3 + AU conformance)
 
 ```bash
-scripts/run-pluginval.sh 10 deterministic   # strictness 10, fixed seed (release gate, mode A)
-scripts/run-pluginval.sh 10 randomise        # strictness 10, --randomise x3 (release gate, mode B)
-scripts/run-pluginval.sh 10                  # strictness 10, deterministic (default mode)
-scripts/run-pluginval.sh                     # default strictness 8 (the working bar)
+scripts/run-pluginval.sh 10 deterministic        # strictness 10, fixed seed (release gate, mode A)
+scripts/run-pluginval.sh 10 randomise            # strictness 10, --randomise x3 (release gate, mode B)
+scripts/run-pluginval.sh 10                      # strictness 10, deterministic (default mode)
+scripts/run-pluginval.sh                         # default strictness 8 (the working bar)
+scripts/run-pluginval.sh 10 deterministic au     # the AU, macOS only (see below)
 ```
 
 Strictness targets (spec 11.3): `5` development, `8` standard gate, `10` pre-release gold standard.
-Each `mode` — `deterministic` (fixed `--random-seed 0`) and `randomise` (`--randomise`, randomised
-order + time-seeded fuzzing) — runs **3 consecutive** passes. **Both modes must pass at strictness 10
-on all three platforms** (Windows uses `run-pluginval.ps1`): the randomise mode exercises state
-restoration under randomised conditions a fixed-seed run can miss. The script downloads pluginval if
-absent, finds the built `Anamorph.vst3`, and runs under `xvfb-run` when available (Linux editor tests
-need a display). Evidence [Verified]: scripts/run-pluginval.sh / scripts/run-pluginval.ps1.
+The value CI enforces is `ANAMORPH_PLUGINVAL_STRICTNESS` in `.github/workflows/build.yml`, which is
+the single place it is written down.
+
+Each `mode` — `deterministic` and `randomise` (`--randomise`, randomised test **order**) — runs
+**3 consecutive** passes, and **both must pass on all three platforms** (Windows uses
+`run-pluginval.ps1`): the randomise mode exercises state restoration under an order a fixed run
+cannot reach.
+
+**The deterministic seed is nonzero, and it did not used to be.** Both scripts passed
+`--random-seed 0`, which pluginval reads as *"generate a random seed"* (`Source/PluginTests.h`;
+`Source/CommandLine.cpp` forwards the flag only when it differs from that default) — so the
+"deterministic" mode drew a fresh seed on every run and a failure in it could not be reproduced from
+the log. The seed is now pinned to a nonzero value, identically in both scripts. It is meaningful
+*without* `--randomise`: it seeds the RNG the tests themselves draw from, while `--randomise` only
+shuffles test order, so the two flags are independent.
+
+**The third argument is the format**: `vst3` (default) or `au`. `au` is macOS-only and **errors**
+(exit 2) on any other host rather than skipping — a gate that quietly does nothing is worse than no
+gate. The AU is the only format Logic and GarageBand load, and it is validated in CI on macOS in both
+modes ×3, exactly like the VST3. macOS resolves Audio Units through the **AudioComponent registry**,
+which only knows about bundles under a `Components` directory, so a freshly built, never-installed
+`.component` can report *zero plugin types* however correct it is. Install it first — CI copies it to
+`~/Library/Audio/Plug-Ins/Components` and kills `AudioComponentRegistrar` to force a re-scan — and
+point the script at it with `ANAMORPH_PLUGINVAL_BUNDLE`. That variable is fail-closed: set but
+missing is an error, never a silent fall back to discovery.
+
+Discovery of the bundle is fail-closed on **ambiguity** too: exactly one match under `build/` is
+required. The previous `find … | head -n1` validated whichever bundle enumerated first, so a stale or
+multi-config tree could pass the release gate on a bundle that was not the one just built — a
+local-only hazard, which is exactly where it would go unnoticed.
+
+The script downloads pluginval if absent (a failed `chmod +x` on it is now an error rather than
+`|| true`, so a setup fault reports where it happens instead of resurfacing as an opaque "cannot
+execute" from the validation loop), and runs under `xvfb-run` when available (Linux editor tests need
+a display). Evidence [Verified]: scripts/run-pluginval.sh / scripts/run-pluginval.ps1.
 
 ### Signal-only retry (known X11 host flake)
 
@@ -145,10 +175,40 @@ scripts/run-pluginval.sh (`run_one_pass` retry).
 
 ## CI integration
 
-All three CI jobs run the self-tests + pluginval in **both** modes (deterministic ×3 + randomise ×3),
-and **all three are blocking** — Windows/macOS no longer use `continue-on-error`, so a non-zero
+All three build jobs run the self-tests + pluginval in **both** modes (deterministic ×3 + randomise
+×3), and **all three are blocking** — Windows/macOS do not use `continue-on-error`, so a non-zero
 pluginval exit fails the job on every platform. Linux/macOS use `run-pluginval.sh`; Windows uses
-`run-pluginval.ps1`. See `CI_CD.md`. Evidence [Verified]: `.github/workflows/build.yml`.
+`run-pluginval.ps1`. macOS additionally runs the whole gate a second time for the **AU**, and runs
+the self-tests a second time for the **x86_64 slice under Rosetta 2**.
+
+Four further jobs run beside them, none in a `needs:` chain in either direction, so a finding in one
+never skips a binary that is otherwise fine:
+
+| Job | Run it locally as |
+|---|---|
+| `docs` | `python3 scripts/check-docs.py --self-test && python3 scripts/check-docs.py` |
+| `source-lint` | `python3 scripts/check-portability.py` then `python3 scripts/check-citations.py --check --base <rev>` |
+| `linux-clang` | see `CI_CD.md` §Reproducing CI locally (own `build-clang` tree) |
+| `sanitizers` | ASan+UBSan over both suites, then valgrind memcheck over both suites (the valgrind step sets `ANAMORPH_TESTS_NO_FTZ=1` — see below) |
+
+**`ANAMORPH_TESTS_NO_FTZ=1` is for valgrind and nothing else.** The DSP suite treats a denormal in
+the engine output as a failure, which holds because the audio path runs under
+`juce::ScopedNoDenormals` and the CPU flushes denormals to zero *in hardware*. valgrind emulates
+floating point and does not honour the FTZ/DAZ bits, so under memcheck denormals survive and the
+check fails on a build that is correct on every real CPU — while memcheck itself reports **zero
+errors** on the same run. The variable relaxes that half of the check (NaN and Inf stay failures)
+and only a literal `1` enables it. Every native job runs without it, so the invariant is gated on
+every push on every platform; never set it for a normal run.
+
+**`check-citations.py` needs a base revision, and which one you pick changes the answer.** CI compares
+against the *previous push*; a local run against `origin/main` can differ, because a document whose
+citation *count* differs from the base falls back to ordinal pairing, which only judges base
+spellings still present verbatim — and a re-anchor changes the spelling. Run **both** before
+concluding the gate is green. If you re-anchor a citation deliberately, declare the pair in
+`DELIBERATE_REAIMS` in the **same change set**: the tool cannot tell a repair from a drift, so a fix
+landed on its own turns the gate red on the commit that fixed it.
+
+See `CI_CD.md`. Evidence [Verified]: `.github/workflows/build.yml`.
 
 ## Failure analysis
 
@@ -157,13 +217,14 @@ pluginval exit fails the job on every platform. Linux/macOS use `run-pluginval.s
 | A `check` assertion fails | DSP regression | the named test in `tests/dsp_tests.cpp`; compare against the invariant it guards (`docs/policies/DSP_POLICY.md`) |
 | A state-test `check` fails | serialization / parameter-surface regression | the named test in `tests/state_tests.cpp`; if the change is INTENTIONAL it needs the compatibility-policy process (ADR + registry update + `--write-snapshot`) |
 | pluginval exits < 128 | real validation failure | the pluginval log line; do **not** retry — it's a genuine defect |
-| pluginval exits ≥ 128 (crash) | the known X11 host flake | retried automatically; if it still fails after 3 tries, treat as a failure (`run-pluginval.sh:70-90`, `run_one_pass`) |
-| `AnamorphTests`/`AnamorphStateTests` `not found` | not built yet | run `scripts/build.sh` first (`run-tests.sh:10-20`) |
+| pluginval exits ≥ 128 (crash) | the known X11 host flake | retried automatically; if it still fails after 3 tries, treat as a failure (`run-pluginval.sh:154-176`, `run_one_pass`) |
+| `AnamorphTests`/`AnamorphStateTests` `not found` | not built yet | run `scripts/build.sh` first (`run-tests.sh:51-73`) |
 
 ## Gaps in the automated coverage (known, deliberate)
 
-Five things the gates above do **not** do. All are recorded so nobody assumes coverage that
-doesn't exist:
+Things the gates above do **not** do. All are recorded so nobody assumes coverage that
+doesn't exist. One entry — automated AU validation — is now **closed** and kept struck through
+rather than deleted, because a gap that was real and is now covered is worth being able to find.
 
 - **GUI-lifetime defects have no headless test.** This is a **`TESTING_POLICY` rule-1 exception
   under ADR-0025**, and this entry is the register that ADR names. Its four required disclosures:
@@ -244,17 +305,25 @@ doesn't exist:
      pop-up is open must reach the shield and no control, and a measured menu must fit its longest
      item. Revisited when that harness lands.
 
-- **The AU is never validated automatically.** `run-pluginval.sh` locates and validates
-  `Anamorph.vst3` only, so the macOS `Anamorph.component` — the build Logic Pro and GarageBand
-  load — reaches users having passed no format-conformance gate. Apple's `auval` is the tool
-  (`auval -v aufx Anmr RTec`, matching the `PLUGIN_CODE` / `PLUGIN_MANUFACTURER_CODE` in
-  `CMakeLists.txt:153-154`), but it only sees a component that is *registered*, so a CI step would
-  have to copy the built bundle into `~/Library/Audio/Plug-Ins/Components/` and force a registry
-  refresh (`killall -9 AudioComponentRegistrar`) before running it. **Ordering matters:** the
-  macOS packaging step runs `strip -x` *before* it ad-hoc codesigns, and a stripped-but-unsigned
-  arm64 bundle will not load — so the auval step must come **after** the whole packaging step, not
-  between its strip and codesign. Whether it is reliable on a headless GitHub `macos-latest` runner is
-  **unverified from this repository** — see `docs/architecture/RELEASE_HARDENING_PLAN.md`.
+- ~~**The AU is never validated automatically.**~~ **CLOSED.** The macOS job now runs the full
+  pluginval gate against `Anamorph.component` as well as `Anamorph.vst3` — same strictness, both
+  modes, ×3 each — so the build Logic Pro and GarageBand load passes the same format-conformance
+  gate as the VST3. The registry problem this entry described is solved the way it predicted: an
+  install step copies the built bundle into `~/Library/Audio/Plug-Ins/Components/` and forces a
+  refresh (`killall -9 AudioComponentRegistrar`) before validation, and
+  `ANAMORPH_PLUGINVAL_BUNDLE` points the script at *that* copy rather than at the build tree.
+  **Ordering was handled as this entry required:** the AU gates run **before** the packaging step,
+  i.e. against a bundle that is neither stripped nor re-signed, so the stripped-but-unsigned arm64
+  state it warned about never arises. Two things this deliberately did **not** do, so the remaining
+  scope is not overstated:
+  - It uses **pluginval**, not Apple's `auval` (`auval -v aufx Anmr RTec`, matching the
+    `PLUGIN_CODE` / `PLUGIN_MANUFACTURER_CODE` in `CMakeLists.txt:153-154`). pluginval hosts the AU
+    through JUCE's `AudioUnitPluginFormat`, which is the same resolution path a JUCE-hosted DAW
+    takes and the same test set the other two platforms are held to; `auval` is Apple's own
+    conformance tool and tests things pluginval does not. Adding it is a further step, not a
+    substitute for this one.
+  - It validates the **pre-packaging** bundle. Like Windows, and unlike Linux, macOS therefore still
+    does not validate the exact bytes it ships — see `CI_CD.md` §Known coverage limits.
 - **No frozen golden-audio reference exists.** `tests/fixtures/` holds a parameter-registry
   snapshot and three legacy session XMLs — metadata, not audio. The DSP suite pins *behavioural
   invariants* (exact nulls, click-freeness, spectral-spur and pitch bounds, cold-path bit-identity)

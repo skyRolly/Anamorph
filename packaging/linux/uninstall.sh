@@ -52,6 +52,19 @@ removed=0
 
 # Clears temporary files an interrupted install may have left behind. Only the
 # exact names the installer creates are removed; nothing else is touched.
+#
+# THIS LIST IS GATED. `scripts/check-portability.py` compares it against the
+# names install.sh creates and fails CI if either file gains a name the other
+# does not have, so a scratch file can no longer be added on one side only.
+#
+# The installer's `.probe` hard-link file is the one name deliberately outside
+# that comparison, and the reason is a property of the loop below: every entry is
+# removed with an unconditional `rm -rf`, so removing a staging directory removes
+# everything inside it — and `.probe` is only ever created inside one. IF THIS
+# FUNCTION EVER GAINS A PATH THAT LEAVES A STAGING DIRECTORY STANDING (the
+# sibling product has one, to preserve a parked previous version), sweep `.probe`
+# by name here and add it back to `SCRATCH_NAME` in the same change: it is then
+# the one scratch file that can outlive a deliberate uninstall.
 remove_install_scratch() {          # $1 = plug-in directory, $2 = bin directory
     for _scratch in "${1%/*}/.anamorph-install-stage" \
                     "$1/.anamorph-install-stage" \

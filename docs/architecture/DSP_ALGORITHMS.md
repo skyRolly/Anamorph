@@ -104,8 +104,8 @@ crossing** — unchanged; spurs at the −41 dBc analysis floor; the one-pole le
 60 Hz UI cadence and tapers arrivals — a bare rate-clamp landing measured −24 dBc of splatter).
 Drags track 1:1 up to the cap (13.3 oct/s at 1 kHz, 160 at 12 kHz); a normal 600 px/s drag
 converges 0.01 s after release and even a full-panel flick lands in ~0.5 s of continuous motion;
-no timers, no deferred catch-up. *Discrete jumps* (the TARGET stepping
-> 1.5 oct between consecutive blocks — automation steps/snaps, unreachable by dragging)
+no timers, no deferred catch-up. *Discrete jumps* (the TARGET stepping >
+1.5 oct between consecutive blocks — automation steps/snaps, unreachable by dragging)
 crossfade to the second, state-copied bank over ~12 ms: one bounded event (−18 dBc at a
 4-octave step); a step arriving mid-fade re-fires to the latest target when the fade lands.
 Regression: Test 29 (worst 100 ms chunk < 18 cents through drags, crawls and the tone crossing;

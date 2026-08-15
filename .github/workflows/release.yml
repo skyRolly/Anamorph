@@ -243,12 +243,35 @@ jobs:
           } > dist/RELEASE_MANIFEST.txt
           cat dist/RELEASE_MANIFEST.txt
 
-          # Release notes = this version's CHANGELOG section, verbatim.
-          # (exact prefix compare -- version dots are not treated as regex).
+          # Release notes = this version's CHANGELOG section, verbatim: from its
+          # own `## [` heading to the next `## [` heading, or to EOF when it is
+          # the oldest entry.
+          #
+          # `index(...) == 1` is an exact prefix compare: version dots are not
+          # treated as regex.
+          #
+          # A FENCED BLOCK IS DATA, NOT STRUCTURE, and that is what the fence
+          # tracking below adds. Without it, a `## [x.y.z]` line inside a fenced
+          # sample -- an entry template in the preamble, a quoted diff, a worked
+          # example -- would start the extraction there, and a fenced `## [` line
+          # inside a real entry would cut that entry short. Neither exists in
+          # CHANGELOG.md today (it currently carries no fenced blocks at all), so
+          # this changes nothing about the notes any current version produces; it
+          # stops the first fenced sample anyone adds from silently corrupting
+          # them. A fence is closed by its OWN character, so a `~~~` line inside a
+          # ``` block stays data -- the same rule `scripts/check-docs.py` applies
+          # to this file, which is also what gates the other half of the contract:
+          # below the first entry, every `## ` heading must be a `## [` entry
+          # heading, or a section lands in the published notes of a release it
+          # does not belong to.
           awk -v ver="${VERSION}" '
-            index($0, "## [" ver "]") == 1 {on=1; print; next}
-            on && /^## \[/ {exit}
-            on {print}' CHANGELOG.md > notes.md
+            /^(```|~~~)/                   { if (! fence)                   { fence = 1; f = substr ($0, 1, 3) }
+                                             else if (index ($0, f) == 1)   { fence = 0 }
+                                             if (on) print; next }
+            fence                          { if (on) print; next }
+            index($0, "## [" ver "]") == 1 { on = 1; print; next }
+            on && /^## \[/                 { exit }
+            on                             { print }' CHANGELOG.md > notes.md
           [ -s notes.md ] || { echo "::error::empty CHANGELOG extraction for ${VERSION}"; exit 1; }
 
       - name: Create DRAFT GitHub Release

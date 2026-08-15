@@ -127,7 +127,7 @@ The editor open/close tests can crash under pluginval on Linux due to a use-afte
 pointer). It is **not a defect in this plugin** (the plugin already drops its OpenGL child window on
 Linux, INC-006/ADR-0011) and is mitigated by a signal-only retry, but it cannot be fixed from this
 repository.
-- **Evidence [Verified]:** scripts/run-pluginval.sh:63-96 (`run_one_pass`, signal-only retry); ADR-0011. See FUTURE_RISKS RISK-004.
+- **Evidence [Verified]:** scripts/run-pluginval.sh:147-176 (`run_one_pass`, signal-only retry); ADR-0011. See FUTURE_RISKS RISK-004.
 
 ## KI-004 — No automated DAW/host-compatibility testing
 There is no in-repo test matrix across real DAWs; pluginval is the only conformance proxy. Host

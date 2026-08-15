@@ -14,6 +14,37 @@ Source. Until then every entry cites a commit SHA or a PR. Entries for the
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
 ## [0.9.4] — 2026-08-15
+### Fixed
+- **The macOS Audio Unit is now covered by the release gate.** `Anamorph.component` — the build
+  Logic Pro and GarageBand load, and the only format they load — previously shipped having passed
+  **no automated format-conformance validation at all**: the gate located and validated
+  `Anamorph.vst3` on all three platforms and nothing else. The macOS job now runs pluginval against
+  the AU as well, at the same strictness, in both modes, three consecutive passes each. It is
+  installed into `~/Library/Audio/Plug-Ins/Components/` and the AudioComponent registry refreshed
+  first, because macOS resolves Audio Units through that registry and a never-installed `.component`
+  can report zero plugin types however correct it is. This closes the coverage gap
+  `docs/procedures/TESTING.md` recorded under "Gaps in the automated coverage". [Verified]
+- **The Linux `-debug` artifact can now actually be found by a debugger.** The shipped `.so` and
+  Standalone carried a `.gnu_debuglink` written as `dist/Anamorph-Linux-debug/<file>.debug` — a
+  CI-workspace-relative path that exists on no user's machine. `objcopy` stores that string exactly
+  as given and a debugger resolves it relative to the stripped binary's own directory, so
+  automatic symbol lookup could never succeed and the link was decoration. It now stores the bare
+  basename, which is the conventional lookup. Affects the shipped Linux binaries' `.gnu_debuglink`
+  section only — no code, no behaviour, no reported latency. [Verified]
+- **The "deterministic" half of the pluginval release gate was not deterministic.** Both validation
+  scripts passed `--random-seed 0`, and pluginval reads 0 as *"generate a random seed"*
+  (`Source/PluginTests.h`; `Source/CommandLine.cpp` forwards the flag only when it differs from that
+  default), so the flag was equivalent to passing nothing and a failure in that mode could not be
+  reproduced from its log. Measured against pluginval 1.0.4 and this plug-in: seed 0 printed a
+  different `Random seed:` on every run, seed 1 printed `0x1` every time. The seed is now pinned to
+  the same nonzero value in `run-pluginval.sh` and `run-pluginval.ps1`, so all three platforms
+  validate against one seed. The gate still passes at strictness 10 in both modes ×3. [Verified]
+- **A non-universal macOS build could have shipped labelled universal.** The packaging step printed
+  `lipo -archs` output rather than checking it, and `lipo -archs` exits 0 for any valid Mach-O
+  including a thin one — so an arm64-only build would have produced a green run with the evidence
+  sitting unread in the log, and Intel users a plug-in that cannot load. Both slices are now
+  asserted per bundle. [Verified]
+
 ### Changed
 - **Building Anamorph from source now needs a C++23 compiler** (was C++17). The project compiles
   at `CMAKE_CXX_STANDARD 23` with compiler extensions still off; CMake ≥ 3.22 and the JUCE 9.0.1
@@ -595,8 +626,8 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   accepted trade (a small amount of controlled FM is preferable to obvious interaction latency;
   artifact-free *fast* tracking is impossible with zero-latency IIR crossovers and would
   require linear-phase splits — a reported-latency change gated behind an Architecture Review,
-  recorded as the roadmap direction in ADR-0015). **Discrete jumps** (the target stepping
-  > 1.5 oct between consecutive blocks — automation steps/snaps, unreachable by dragging) stay
+  recorded as the roadmap direction in ADR-0015). **Discrete jumps** (the target stepping >
+  1.5 oct between consecutive blocks — automation steps/snaps, unreachable by dragging) stay
   responsive via a single ~12 ms crossfade to a state-copied second filter bank: one bounded
   transition event (−18 dBc at a 4-octave step) instead of a multi-second ease. Settled
   behaviour is bit-identical; flat recombination, mono compatibility, dry/wet phase alignment,

@@ -142,8 +142,8 @@ cap. Trajectory reconstruction through the real pipeline (mouse events → 0.5 p
 block-cadence target reads → glide) shows a 600 px/s "normal" drag pinned 2.4 octaves behind with
 0.63 s of post-release crawl, and every faster gesture worse (up to ~4.9 oct behind, ~1.4 s of
 crawl — on top of trailing throughout the drag itself). Genuinely slow drags (≤ 360 px/s) tracked
-exactly, and violent flicks could escape through the discrete-jump bank fade (a coalesced
-> 1.5 oct per-block step lands in 12 ms) — which is precisely why "fast felt better than slow".
+exactly, and violent flicks could escape through the discrete-jump bank fade (a coalesced >
+1.5 oct per-block step lands in 12 ms) — which is precisely why "fast felt better than slow".
 The deeper error: the swept-allpass shift at sweep rate R is a **constant 0.312·R Hz wherever the
 crossing sits**, so a cap flat in oct/s spends its entire artifact budget protecting low crossings
 (where a constant-Hz shift is nearest the bass register's constant-Hz pitch JND) and buys nothing
