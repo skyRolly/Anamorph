@@ -449,7 +449,15 @@ jobs:
           if-no-files-found: error
 
   macos:
-    runs-on: macos-14   # Apple Silicon runner; we build a universal binary
+    # `macos-latest` (Apple Silicon) -- moved off the DEPRECATED `macos-14`
+    # image per actions/runner-images. Deliberately the FLOATING label, matching
+    # `ubuntu-latest`/`windows-latest` on the other two jobs: a pinned image that
+    # reaches end-of-life fails the whole matrix on removal day, whereas the
+    # floating label moves with GitHub's rollout and the universal-slice, test,
+    # pluginval and packaging gates below detect any toolchain regression it
+    # brings. The x86_64 slice is CROSS-compiled here (the runner is arm64) and
+    # `lipo -archs` in the packaging step verifies both slices are present.
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
 
