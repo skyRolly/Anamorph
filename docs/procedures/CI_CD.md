@@ -174,7 +174,11 @@ compilation-only coverage, on a product whose `CMAKE_OSX_DEPLOYMENT_TARGET=10.13
 to claim Intel support. If Rosetta is absent the step emits a `::warning::` naming the coverage that
 was lost rather than passing quietly — Rosetta's presence is the *image's* property, not the
 product's, so a green product should not go red for it, but a gate that silently does nothing is
-worse than no gate. **Native** Intel hardware is still not covered; see
+worse than no gate. It is a **blocking condition on the macOS customer uploads**, exactly like the
+native arm64 run — a slice that fails its behavioural gate is a defect in the product, so shipping
+the package anyway would validate the Intel half and then ignore the verdict. (The Rosetta-absent
+path exits 0, so it does not block: the uploads proceed on compilation-only Intel coverage with the
+`::warning::` as the record.) **Native** Intel hardware is still not covered; see
 [Known coverage limits](#known-coverage-limits).
 
 The image carries the macOS toolchain, so this moved the macOS compiler with it: **AppleClang
@@ -282,6 +286,10 @@ failures as green and has been removed). Evidence [Verified]: `.github/workflows
    strip/staging/packaging step to have succeeded, and the staging steps self-validate (no symbol
    table, no debug files in the public copy). A pluginval-only failure still uploads beta artifacts;
    developer `-debug` artifacts survive packaging failures.
+   On macOS "the DSP self-tests" is **both** self-test steps: the native arm64 run and the x86_64
+   run under Rosetta each gate the `Anamorph-macOS` artifact and the `.pkg`, because the product
+   ships as one universal binary and the arm64 run alone is half its behavioural gate. The
+   `-debug` (dSYM) upload is unaffected, per the developer-artifact rule above.
    Two gating details are **step outputs rather than step outcomes**, deliberately. The Windows
    staging step emits `public_ok=true` at the moment the public copy is assembled and purged —
    before the developer-side PDB work that can abort — and the customer zip and the installer gate on

@@ -127,8 +127,12 @@ env:
 # steps SUCCEEDING (never `if: always()`), and the staging steps self-validate
 # (no symbol table, no debug files in the public copy) -- neither a partial
 # packaging failure nor a failed behavioural gate can ship a customer
-# artifact. Developer *-debug artifacts and (on pluginval-only failures) beta
-# artifacts remain available.
+# artifact. On macOS "the DSP self-tests" means BOTH slices of the universal
+# binary: the native arm64 run and the x86_64 run under Rosetta are each a
+# blocking condition on the customer uploads, because a slice that fails its
+# behavioural gate is a defect in the product, not in the runner. Developer
+# *-debug artifacts and (on pluginval-only failures) beta artifacts remain
+# available.
 #
 # ---------------------------------------------------------------------------
 # THE SAME-REPO PULL-REQUEST GUARD, carried by every job below.
@@ -1164,7 +1168,18 @@ jobs:
       # workflow is written against. It is a warning rather than an error only
       # because Rosetta's presence is the IMAGE's property, not the product's, and
       # a green product should not go red for it.
+      #
+      # The `id:` is load-bearing, not decoration: the two CUSTOMER uploads below
+      # require this step to have SUCCEEDED, exactly as they require the arm64 run.
+      # Without it the outcome is unreferenceable, and a macOS build whose Intel
+      # half failed its behavioural gate would still hand testers a downloadable
+      # package -- the precise thing the fail-closed rule at the top of this file
+      # forbids. The two ways this step is NOT a failure are both deliberate: an
+      # absent Rosetta exits 0 (image property, per above) so the uploads proceed
+      # on a compilation-only Intel run with the ::warning:: as the record, and a
+      # failed BUILD skips it, where `steps.tests` already blocks the upload.
       - name: DSP + state self-tests, x86_64 slice under Rosetta
+        id: tests_x86_64
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           if ! arch -x86_64 /usr/bin/true 2>/dev/null; then
@@ -1480,17 +1495,23 @@ jobs:
       # copy into the public staging dir, under set -e).
       # A failed DSP self-test blocks the CUSTOMER upload (fail-closed), while
       # a pluginval-only failure still yields beta artifacts as before.
+      # BOTH slices count. The product ships as a universal binary, so `steps.tests`
+      # (arm64, native) is only half of its behavioural gate; `steps.tests_x86_64`
+      # (Rosetta) is the other half, and an Intel failure is a product failure, not
+      # an environment one. Gating on the arm64 run alone would ship a package to
+      # every Intel user off a run that proved the Intel slice misbehaves.
       - name: Upload macOS plugins (VST3 + AU + Standalone)
-        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.package.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.tests_x86_64.outcome == 'success' && steps.package.outcome == 'success' }}
         uses: actions/upload-artifact@v7
         with:
           name: Anamorph-macOS
           path: dist/Anamorph-macOS
           if-no-files-found: error
 
-      # Same fail-closed gate as the customer artifact (tests + its own step).
+      # Same fail-closed gate as the customer artifact (both slices' tests + its
+      # own step) -- the .pkg installs the same universal bundles.
       - name: Upload macOS installer
-        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.package_macos_pkg.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.tests_x86_64.outcome == 'success' && steps.package_macos_pkg.outcome == 'success' }}
         uses: actions/upload-artifact@v7
         with:
           name: Anamorph-macOS-installer

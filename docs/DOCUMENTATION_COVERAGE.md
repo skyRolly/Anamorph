@@ -7,8 +7,9 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
-**documentation re-sync** (first below), then the **CI review follow-up** it follows, then the
-**CI/validation round** that one corrects, then the four
+**macOS Intel artifact gate** (first below), then the **documentation re-sync** before it, then
+the **CI review follow-up** that one follows, then the
+**CI/validation round** it corrects, then the four
 AppleClang 21 `-Wimplicit-int-float-conversion` fixes, the macOS CI runner move
 `macos-14` → `macos-latest` that surfaced them, then the C++17 → C++23
 language-standard migration, both applied on top of the JUCE 9.0.0 → 9.0.1
@@ -18,6 +19,58 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**macOS Intel customer-artifact gate (0.9.4, no version bump). One workflow correction: the new
+x86_64 self-test now blocks the customer uploads it was always supposed to.**
+
+The CI/validation round added a second macOS self-test step that runs the universal binary's
+**x86_64 slice under Rosetta 2** — coverage that did not exist before, since the runner is Apple
+Silicon and the native step exercises arm64 only. The step was added without an `id:`, so its
+outcome was unreferenceable, and the two customer uploads still named `steps.tests` (arm64) and
+their own packaging step. A run whose **Intel** behavioural gate failed therefore went red while
+still publishing `Anamorph-macOS` and the `.pkg`: the job reported the failure and shipped the
+package anyway. That contradicts the invariant stated at the top of `build.yml` — customer uploads
+gated on the DSP self-tests succeeding, never `if: always()`, so that "neither a partial packaging
+failure nor a failed behavioural gate can ship a customer artifact." Validating half the shipped
+product and then ignoring the verdict is the one failure mode that rule exists to prevent, and it
+was pointed at the half that has *no* other coverage — Linux and Windows self-tests say nothing
+about the macOS Intel slice, and native Intel hardware is not in the matrix at all.
+
+**The fix, and why it is the smallest one.** The step gets `id: tests_x86_64`, and both customer
+uploads add `steps.tests_x86_64.outcome == 'success'` — the same clause shape, in the same
+position, as the `steps.tests.outcome == 'success'` beside it, so macOS now reads like Linux and
+Windows rather than like an exception. `== 'success'` rather than `!= 'failure'` is deliberate:
+`!= 'failure'` passes on `skipped`, which is the weaker reading of a fail-closed gate. The Intel
+step itself is **untouched** — same `if:`, same body, same Rosetta probe, same `::warning::` — so
+the validation was not weakened to satisfy the gate. Two non-failure paths stay open by design:
+an absent Rosetta still exits 0 (its presence is the *image's* property, not the product's), so
+the uploads proceed on compilation-only Intel coverage with the warning as the record; and a failed
+**build** skips the step, where `steps.tests` already blocks the upload. The developer dSYM upload
+is unchanged, per the standing rule that `-debug` artifacts survive gate failures. Nothing else
+moved: no compiler pin, no pluginval ordering, no Rosetta detection, no `AudioComponentRegistrar`
+handling, no debuglink, no Windows policy, no CMake, no source.
+
+**Documentation synced with it.** `CI_CD.md` gains the gate in both places that describe it — the
+Rosetta paragraph (§macOS runner) and the customer-upload rule in step 7 — including the
+Rosetta-absent carve-out, so the exception is written down where a reader meets the rule.
+`ADR-0021`'s "each customer artifact upload requires the DSP self-tests AND its own
+strip/staging/packaging step to have SUCCEEDED" needed no edit: that policy statement was already
+true, and this change makes the implementation match it. Three `build.yml` anchors moved with the
+21 inserted lines and were re-anchored against content: `RELEASE_POLICY.md` `:288,758,1141` →
+`:292,762,1145` (the three per-OS Configure steps), `KNOWN_ISSUES.md` KI-002 `:1290-1292` →
+`:1305-1307` (the three `codesign --force --deep --sign -` lines), and `COMPATIBILITY_MATRIX.md`'s
+whole-macOS-job range `:1116-1512` → `:1120-1533`.
+
+**Validation.** actionlint clean on all five workflows — and proven live rather than assumed: a
+canary copy with the id misspelled `tests_x86_65` is rejected with *"property is not defined in
+object type"*, and the type it prints lists `tests_x86_64` among the macOS job's steps, so the
+reference resolves. The two upload conditions were then evaluated exhaustively over every
+combination of `tests` × `tests_x86_64` × `package` × `package_macos_pkg` ∈ {success, failure,
+skipped} × cancelled ∈ {true, false} — 486 cases, with three properties asserted: an Intel failure
+never uploads, an arm64 failure never uploads, and the all-success non-cancelled case uploads both.
+No violations. Cancellation is unchanged (`!cancelled()` still leads both conditions). `check-docs`
+self-test (57 cases) + 99 files, `check-portability` (45 files), `check-citations --check`
+(198 anchors) and `check-clang-warnings --self-test` (28 cases) all green. [Verified]
 
 **Documentation re-sync after the CI rounds (0.9.4, no version bump). Documentation only — no
 workflow, script, CMake or source file was touched.**
