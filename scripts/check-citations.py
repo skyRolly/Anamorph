@@ -332,17 +332,17 @@ DELIBERATE_REAIMS = set([
     #
     # Every one below is now recomputed from the file as it stands and read back
     # line by line, not shifted by an arithmetic delta:
-    #   RELEASE_POLICY  :536,1104,1526  the linux/windows/macos Configure steps
-    #   KNOWN_ISSUES    :1693-1695      the three ad-hoc `codesign` calls
-    #   COMPAT_MATRIX   :1462-1922      the `macos` job, key line to last step
-    #   COMPAT_MATRIX   :1980-2225      the `macos-intel` job, ditto
+    #   RELEASE_POLICY  :542,1110,1532  the linux/windows/macos Configure steps
+    #   KNOWN_ISSUES    :1699-1701      the three ad-hoc `codesign` calls
+    #   COMPAT_MATRIX   :1468-1928      the `macos` job, key line to last step
+    #   COMPAT_MATRIX   :1986-2231      the `macos-intel` job, ditto
     # The lesson is in the header already: a declaration buys ONE transition and
     # costs the tool's opinion for that transition, so the hand-check it
     # substitutes for has to actually happen.
     ("docs/architecture/COMPATIBILITY_MATRIX.md",
-     ".github/workflows/build.yml:1462-1922"),
+     ".github/workflows/build.yml:1468-1928"),
     ("docs/architecture/COMPATIBILITY_MATRIX.md",
-     ".github/workflows/build.yml:1980-2225"),
+     ".github/workflows/build.yml:1986-2231"),
     # These two name the spellings the documents carry TODAY, and they did not
     # always: they were first written with the intermediate values of the commit
     # that introduced them, and the commit after it recomputed both anchors
@@ -354,8 +354,8 @@ DELIBERATE_REAIMS = set([
     # A declaration naming a spelling that exists in no document is dead weight
     # at best and a red default branch at worst, so section 9 of `--self-test`
     # now asserts every entry here is a string its document really contains.
-    ("docs/policies/RELEASE_POLICY.md", ".github/workflows/build.yml:536,1104,1526"),
-    ("docs/KNOWN_ISSUES.md", ".github/workflows/build.yml:1693-1695"),
+    ("docs/policies/RELEASE_POLICY.md", ".github/workflows/build.yml:542,1110,1532"),
+    ("docs/KNOWN_ISSUES.md", ".github/workflows/build.yml:1699-1701"),
     ("docs/procedures/BUILD.md", "scripts/build.sh:19-54"),
 ])
 
@@ -933,6 +933,17 @@ def self_test():
     # those sentences use is what keeps them out of reach.
     check("a bare workflow name is still declined",
           citations("build.yml:288,758,1141"), [])
+    # THE ESCAPE HATCH FOR WORKED EXAMPLES MUST STAY AN ESCAPE HATCH. Tracking
+    # the workflow made it a scanned document as well as a rewrite target, and
+    # its own comment block illustrates what an evidence anchor looks like. An
+    # illustration spelled with a governed path is indistinguishable from
+    # evidence to this tool, so that example names a path outside `TRACKED` --
+    # the remedy the header prescribes. Asserted here so the spelling those
+    # examples rely on cannot quietly become claimable by a future addition.
+    check("the example path used for illustrations is declined",
+          classify(None, "some/file.cpp"), None)
+    check("an example anchor is not claimed end to end",
+          citations("Evidence anchors (`some/file.cpp:695-752`) are exact"), [])
 
     # --- 9. EVERY DECLARATION NAMES A SPELLING ITS DOCUMENT REALLY CARRIES ---
     # A declaration excuses a mismatch, so it is consulted ONLY when one occurs.

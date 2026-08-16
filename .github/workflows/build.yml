@@ -441,9 +441,15 @@ jobs:
       - name: Citation-gate self-test (recognition, mapping and rewriting)
         run: python3 scripts/check-citations.py --self-test
 
-      # Evidence anchors (`src/PluginProcessor.cpp:695-752`) are exact and
+      # Evidence anchors (`some/file.cpp:695-752`) are exact and
       # therefore fragile: an edit ABOVE one silently re-aims it at unrelated
       # code while the document keeps reading as though it were still correct.
+      # The example deliberately names a path OUTSIDE `TRACKED`: this file is
+      # itself a tracked path now, so the checker scans it, and it cannot tell
+      # an illustration of an anchor from an anchor -- spelled with a governed
+      # path this sentence would become a rewrite target and `--fix` would
+      # change the very numbers it exists to talk about. That is the rule the
+      # checker's own header states, applied to the file that describes it.
       # DOCUMENTATION_LIFECYCLE_POLICY.md already requires anchors to be
       # re-anchored in the SAME change set that moves them; this is that rule as
       # a gate, over the 184 anchors `docs/` carried when it landed.
