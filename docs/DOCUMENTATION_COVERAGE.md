@@ -7,7 +7,8 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
-**CI compiler cache + job timeouts** (first below), then the
+**citation-gate coverage for the build definition and the CI workflow** (first below), then the
+**CI compiler cache + job timeouts** after it, then the
 **native Intel macOS job** after it, then the
 **raw-string lexing fix** before it, then the **withdrawn debuglink claim** before it, then the
 **unterminated block-comment invariant**
@@ -29,6 +30,60 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**Citation-gate coverage for `CMakeLists.txt` and `build.yml` (0.9.4, no version bump). Four
+corrected anchors, one checker change, no CI behaviour change beyond making the cache optional.
+`scripts/check-citations.py` + `.github/workflows/build.yml` + `.gitignore` + five documents.**
+
+The round before this one reported a gap rather than fixing it: `check-citations.py` did not track
+`CMakeLists.txt` or `.github/workflows/build.yml`. Review then demonstrated the gap was load-bearing
+rather than theoretical — that round moved 22 lines of one file and several hundred of the other,
+and **four evidence anchors went stale while the gate reported the tree clean**:
+
+| document | claimed | actually pointed at | now |
+|---|---|---|---|
+| `procedures/BUILD.md` | `ANAMORPH_BUILD_TESTS` | `JUCE_REPORT_APP_USAGE=0` | `CMakeLists.txt:27,305` |
+| `policies/RELEASE_POLICY.md` | the build-number definition | mid-comment of the new block | `CMakeLists.txt:14,250-275` |
+| `policies/RELEASE_POLICY.md` | the per-OS Configure steps | three unrelated workflow lines | `build.yml:495,1042,1454` |
+| `KNOWN_ISSUES.md` | the ad-hoc `codesign` calls | the `macos:` job header | `build.yml:1621-1623` |
+
+Two more, detached (`build.yml macos job (:1213-1626)`) rather than spelled as citations, were
+corrected in `COMPATIBILITY_MATRIX.md` and re-spelled so the gate can now see them at all.
+
+**The checker change is two lines of behaviour and one of ownership.** `CMakeLists.txt` is a
+ROOT-level file, so the pattern's "a path must contain a directory separator" rule — written to
+decline a bare `PluginProcessor.cpp:7` as ambiguous across checkouts — could never match it, and
+listing it in `TRACKED` alone would have been **inert**: present in the list, absent from the gate,
+indistinguishable from working. The separator requirement was therefore a proxy for the real test,
+and ownership now rests where it always actually rested, on `TRACKED` membership spelled from the
+repository root. A bare `PluginProcessor.cpp`, `run-pluginval.sh` and `build.yml` are all still
+declined, each asserted by name in the self-test.
+
+That last one is deliberate and load-bearing: this very document records past re-anchorings as prose
+(“`build.yml:288,758,1141` → the three per-OS …”), which is **history, not evidence**. The workflow
+is tracked under its full path, so the bare spelling those sentences use is what keeps `--fix` away
+from the numbers the sentences are about — the exact corruption the header's "prose examples" rule
+exists to prevent.
+
+Coverage went from **217 to 312 checked anchors**. Proven live rather than asserted: inserting one
+line into `CMakeLists.txt` turns the gate red with **60 drift reports** where the previous checker,
+given the identical mutation, reported "217 anchors still point at the same text" and exited 0. Six
+new self-test cases assert both files by name, end to end, plus the guard rails that make them safe
+to rewrite — the FETCHED `build/_deps/juce-src/CMakeLists.txt` is declined, as are revision-pinned
+and sibling-checkout spellings. The four corrections are declared in `DELIBERATE_REAIMS`, good for
+one transition, aims confirmed by the maintainer.
+
+**Still outside, named so the gap is a decision:** `packaging/macos/INSTALL.txt` (4 anchors),
+`NOTICE` (3), `packaging/linux/INSTALL.txt` (1).
+
+**The cache is now genuinely optional.** A review observation, confirmed on inspection: for one
+commit `brew install ninja ccache || true` followed by a bare `ccache --version` swallowed a real
+Homebrew failure and then converted it into a hard failure of a release-gating job. Ninja is
+**preinstalled** on the macOS images, so brew had not previously been load-bearing at all. Each
+install step now resolves `ANAMORPH_COMPILER_LAUNCHER` into `$GITHUB_ENV` and the configure step
+passes it through; empty is how CMake spells "no launcher", verified locally to produce a plain
+compiler invocation that builds. Required tools still fail loudly. `.ccache/` joined `.gitignore`
+for the reason `/dist/` and `/clang-build.log` are there.
 
 **CI compiler cache + job timeouts (0.9.4, no version bump). No new job, no test change, no
 artifact change, no product-behaviour change. `.github/workflows/build.yml` + `CMakeLists.txt`

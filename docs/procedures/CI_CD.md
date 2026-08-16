@@ -350,6 +350,26 @@ Each cached job zeroes its statistics at configure time and prints them after th
 rate is visible per run rather than inferred. **A cold cache is not a failure** — it is what the
 first run on a new lineage looks like.
 
+**And neither is an absent one.** *Required* tools fail loudly; the cache warns and steps aside.
+Each install step resolves `ANAMORPH_COMPILER_LAUNCHER` into `$GITHUB_ENV` — `ccache` when it is
+genuinely installed, empty when it is not — and the configure step passes that through to
+`CMAKE_<LANG>_COMPILER_LAUNCHER`, where empty is how CMake spells "no launcher". A package-manager
+failure therefore costs the cache and nothing else: the build falls back to an ordinary compiler
+invocation, slower but never different, with a `::warning::` naming what was lost. Ninja keeps the
+opposite semantics because it is a genuine requirement — though `|| true` is still correct there,
+since it is **preinstalled** on the runner images and a Homebrew hiccup was never load-bearing for
+it. That distinction was briefly lost: for one commit a bare `ccache --version` after
+`brew install ninja ccache || true` turned any transient brew failure into a hard failure of a
+release-gating job, which is the trade this paragraph exists to prevent being made again.
+
+`.ccache` lives inside the workspace and is git-ignored. On a hosted runner the location is safe by
+ordering — `actions/checkout` runs before the cache restore in every job, so there is nothing to
+clean away — and it cannot reach an artifact, because every packaging step names `build/…` and
+`dist/…` explicitly rather than globbing the root.
+
+**Reviewed and confirmed by the maintainer (2026-08-16)** — the cache strategy, the preserved
+validation coverage and the Intel job's validation scope are settled, not open review items.
+
 ### Job timeouts
 
 Every job carries an explicit `timeout-minutes` (10 for the two lint jobs, 30–60 for the build
@@ -363,7 +383,7 @@ a slow runner while still failing inside the hour.
 ## Pipeline (per job)
 
 1. **Checkout** (`actions/checkout@v7`), then — on every Ninja job — **restore the compiler cache**
-   (`actions/cache@v6`; see "The compiler cache" below).
+   (`actions/cache@v6`; see "The compiler cache" above).
 2. **Configure** — `cmake -B build [-G Ninja] -DCMAKE_BUILD_TYPE=Release
    -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
    -DANAMORPH_BUILD_NUMBER=${{ github.run_number }}` (the run number becomes the About-box build

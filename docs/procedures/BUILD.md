@@ -55,7 +55,7 @@ Evidence [Verified]: scripts/build.sh:14-15.
 
 | Option | Default | Effect |
 |---|---|---|
-| `ANAMORPH_BUILD_TESTS` | ON | Build the `AnamorphTests` + `AnamorphStateTests` console apps (CMakeLists.txt:27,283) |
+| `ANAMORPH_BUILD_TESTS` | ON | Build the `AnamorphTests` + `AnamorphStateTests` console apps (CMakeLists.txt:27,305) |
 | `ANAMORPH_BUILD_STANDALONE` | ON | Add the Standalone target (CMakeLists.txt:28,210-212) |
 | `ANAMORPH_JUCE_PATH` | "" | Use a local JUCE checkout instead of fetching (CMakeLists.txt:32,43-45) |
 | `ANAMORPH_JUCE_TAG` | `e18f7f5…` (= tag 9.0.1) | JUCE git rev to fetch when no local path; `ANAMORPH_JUCE_VERSION` carries the readable version (CMakeLists.txt:36-38) |
