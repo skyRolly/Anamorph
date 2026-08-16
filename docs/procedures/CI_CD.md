@@ -67,7 +67,7 @@ non-packaging jobs that guard classes the build matrix cannot see:
 | Job | Runner | Builds | pluginval |
 |---|---|---|---|
 | **docs** | `ubuntu-latest` | — (`scripts/check-docs.py --self-test` then the lint) | — |
-| **source-lint** | `ubuntu-latest` | — (`check-portability.py`, then `check-citations.py --check`) | — |
+| **source-lint** | `ubuntu-latest` | — (each lint preceded by its own `--self-test`: `check-portability.py`, then `check-citations.py --check`) | — |
 | **linux** | `ubuntu-latest` | VST3 + Standalone (+ tests) | VST3, **both modes ×3** (deterministic + randomise) — **blocking** |
 | **linux-clang** | `ubuntu-latest` | Clang: both test targets + `Anamorph_VST3` (Standalone off) | — (no packaging; the warning gate + both suites) |
 | **sanitizers** | `ubuntu-latest` | Clang ASan+UBSan build, plus an unsanitized build for valgrind | — |
@@ -91,6 +91,11 @@ otherwise fine, and a red build does not skip them.
   `linux-clang` would not catch it. The tree is clean of it; the job is a regression guard.
   (b) the **evidence-anchor gate**: `docs/` carries 184 `file.cpp:NNN` citations, and an edit above
   one silently re-aims it. See [Evidence anchors](#evidence-anchors).
+  Each of the two runs its own `--self-test` **first**, in this job, immediately before the lint it
+  verifies — the same load-bearing move as `docs`, and required by `TESTING_POLICY.md` rule 4. The
+  portability self-test is not the same check as `--compile-canary` in `linux-clang`: that one asks
+  whether the pinned JUCE still *has* the hazard, this one whether the checker still *finds* it, and
+  a green canary over a dead scanner reports a clean tree.
 - **linux-clang** — `juce_recommended_warning_flags` picks its set by **compiler ID**, and Clang's is
   strictly larger than GCC's (`-Wshorten-64-to-32`, `-Wconditional-uninitialized`,
   `-Wsign-conversion`, `-Wcast-align`, `-Wshift-sign-overflow`,
@@ -380,6 +385,15 @@ you intend to act on it.
 citation in `docs/` and the root Markdown whose path is listed in the script's `TRACKED` tuple —
 every root-spelled source path the documents currently cite, 184 anchors at the time it landed.
 
+**`--self-test` runs first, and this is the checker that most needs one.** The other three lints
+report; this one also **rewrites** governed documents under `--fix`, so a defect does not merely miss
+drift — it replaces a correct anchor with a wrong one and prints success. It has done that four
+times (a `rev:`-qualified anchor reaching the ownership test, a compound citation left internally
+contradictory, one span applied twice, a provenance sentence wrapping the sibling product's range),
+and each is now a case in the self-test, in the direction it failed. The cases drive the real
+ownership test, the real citation pattern, the real diff line-map and the real span rewriter over
+synthetic input, so the run needs no base revision and cannot be satisfied by a clean tree.
+
 **What it compares against.** On `push` (the normal path) the base is `github.event.before`, the
 branch's previous tip: **one push of drift at a time**, which is sufficient only because every push
 is checked — hence no `needs:` on the job. On the first push of a branch (`before` is all-zeros) and
@@ -489,7 +503,8 @@ seconds and catch the most:
 
 ```bash
 python3 scripts/check-docs.py --self-test && python3 scripts/check-docs.py
-python3 scripts/check-portability.py
+python3 scripts/check-portability.py --self-test && python3 scripts/check-portability.py
+python3 scripts/check-citations.py --self-test
 python3 scripts/check-citations.py --check --base origin/main   # --fix re-anchors
 python3 scripts/check-clang-warnings.py --self-test
 ```

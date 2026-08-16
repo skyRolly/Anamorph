@@ -66,7 +66,20 @@ WHAT IT CHECKS
                         juce::jmax<size_t> (1, v.size())      # rejected
                         juce::jmax ((size_t) 1, v.size())     # fine, identical result
 
-2. --compile-canary  Proves the premise above is still TRUE of the pinned JUCE,
+2. --self-test      Proves THE CHECKER still works, which is a different question
+                    from 3 below and the one TESTING_POLICY rule 4 is about.  The
+                    lint is a regex over a hand-written comment/literal stripper;
+                    either can stop matching without anything going red, and a
+                    checker that has stopped matching is indistinguishable from a
+                    clean tree.  The cases run the real `blank_comments_and_
+                    literals` + `HAZARD` pair and the real `scratch_names_agree`,
+                    in BOTH directions -- every "must fire" case is a defect the
+                    lint exists to catch, and every "must stay silent" case is
+                    valid code an over-eager version flagged.  Needs nothing but
+                    Python, which is what lets it run in the same job immediately
+                    before the lint.
+
+3. --compile-canary  Proves the premise above is still TRUE of the pinned JUCE,
                      rather than trusting this docstring.  Compiles two tiny
                      translation units against the JUCE modules directory given:
                      the deduced form MUST compile and the explicit form MUST
@@ -80,6 +93,7 @@ WHAT IT CHECKS
 
 Usage:
     scripts/check-portability.py [--root DIR]
+    scripts/check-portability.py --self-test
     scripts/check-portability.py --compile-canary JUCE_MODULES_DIR [--cxx g++]
 
 Exit codes: 0 clean, 1 violations found, 2 usage/environment error.
@@ -88,6 +102,8 @@ Exit codes: 0 clean, 1 violations found, 2 usage/environment error.
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import re
 import subprocess
 import sys
@@ -381,15 +397,187 @@ def compile_canary(modules: Path, cxx: str) -> int:
     return 0 if ok else 1
 
 
+def self_test() -> int:
+    """Assert the lint fires on the hazard and stays silent on valid code.
+
+    THE CANARY DOES NOT COVER THIS, and conflating the two is how the gap got
+    here. `--compile-canary` asks "does the pinned JUCE still HAVE the hazard?"
+    -- a question about the dependency, answerable only where JUCE is checked
+    out, which is why it runs in `linux-clang`. This asks "does the CHECKER
+    still find it?" -- a question about 60 lines of regex and hand-written
+    lexing in this file, answerable with nothing but Python, which is why it can
+    run in `source-lint` immediately before the lint it verifies. A green canary
+    with a broken scanner reports a clean tree, which is exactly the shape
+    TESTING_POLICY rule 4 exists to forbid.
+
+    Both directions are pinned. A lint that only proves it can fire drifts into
+    false positives and gets switched off; one that only proves it stays quiet
+    is the failure this file is written against.
+    """
+    # (label, expected violation count, source text) -- run through the REAL
+    # stripper and the REAL pattern, in the same order `lint()` applies them.
+    cases: list[tuple[str, int, str]] = [
+        # --- must fire ------------------------------------------------------
+        ("qualified explicit argument", 1, "auto n = juce::jmax<size_t> (1, v.size());"),
+        ("unqualified explicit argument", 1, "auto n = jmax<size_t> (1, v.size());"),
+        ("jmin is in the hazard set", 1, "auto n = juce::jmin<size_t> (a, b);"),
+        ("snapToZero is in the hazard set", 1, "juce::snapToZero<float> (x);"),
+        ("space before the angle bracket", 1, "juce::jmax <size_t> (a, b);"),
+        ("spaces around the scope operator", 1, "juce :: jmax<size_t> (a, b);"),
+        ("two hazards on separate lines are both found", 2,
+         "juce::jmax<size_t> (a, b);\njuce::jmin<size_t> (c, d);"),
+        ("code after a closed block comment is still scanned", 1,
+         "/* prose about juce::jmax<size_t> */ juce::jmin<size_t> (a, b);"),
+        ("code after a string literal is still scanned", 1,
+         'log ("juce::jmax<size_t>"); juce::jmin<size_t> (a, b);'),
+        # A DIGIT SEPARATOR MUST NOT OPEN A LITERAL. If `'` in `1'000'000` were
+        # treated as a quote, everything to the next `'` would be blanked -- a
+        # false NEGATIVE, the one failure mode a lint must not have, and the
+        # reason that branch in the stripper exists at all.
+        ("digit separator does not swallow the rest of the line", 1,
+         "auto n = 1'000'000 + juce::jmax<size_t> (a, b);"),
+        # --- must stay silent -----------------------------------------------
+        ("deduced form is the fix, not a defect", 0, "juce::jmax ((size_t) 1, v.size());"),
+        ("jlimit has no SIMD overload", 0, "juce::jlimit<int> (0, 10, x);"),
+        ("roundToInt has no SIMD overload", 0, "juce::roundToInt<float> (x);"),
+        ("line comment naming the hazard", 0, "// juce::jmax<size_t> is the thing we forbid"),
+        ("block comment naming the hazard", 0, "/* juce::jmax<size_t> forbidden */"),
+        ("multi-line block comment naming the hazard", 0,
+         "/*\n * juce::jmax<size_t> (a, b)\n * and juce::jmin<size_t> too\n */"),
+        ("string literal naming the hazard", 0, 'const char* s = "juce::jmax<size_t>";'),
+        ("escaped quote inside a string does not end it early", 0,
+         'const char* s = "a\\" juce::jmax<size_t>";'),
+        ("char literal", 0, "char c = '<';"),
+        # DELIBERATE OVER-MATCH, PINNED HERE SO IT IS A DECISION AND NOT A
+        # SURPRISE. `\s*<` is what lets the pattern see `juce::jmax <size_t>`
+        # (the case six rows above), and the same tolerance necessarily reads a
+        # spaced comparison as a template argument. `jmax` is a function template
+        # in every JUCE header, so `jmax < b` is not valid code to begin with and
+        # the over-match costs nothing real; tightening the pattern to exclude it
+        # would reopen the spaced-argument hole, which is a false NEGATIVE. If a
+        # future edit "fixes" this, that edit fails here and reads this comment.
+        ("a spaced comparison is accepted as the price of spaced arguments", 1,
+         "if (jmax < b) return;"),
+    ]
+
+    failures = checked = 0
+    for label, expected, text in cases:
+        got = sum(1 for line in blank_comments_and_literals(text).splitlines()
+                  if HAZARD.search(line))
+        checked += 1
+        if got != expected:
+            failures += 1
+            print(f"self-test FAIL: {label}: expected {expected} violation(s), got {got}",
+                  file=sys.stderr)
+
+    # LINE NUMBERS MUST SURVIVE THE STRIPPER, because the lint reports them and a
+    # report that names the wrong line sends the reader to innocent code. The
+    # block-comment branch is the one that can lose them -- it emits a space per
+    # character and must emit a newline per newline.
+    stripped = blank_comments_and_literals("a\n/* x\n y\n z */\njuce::jmax<size_t> (a, b);")
+    hits = [n for n, line in enumerate(stripped.splitlines(), 1) if HAZARD.search(line)]
+    checked += 1
+    if hits != [5]:
+        failures += 1
+        print(f"self-test FAIL: block comment shifted the reported line: {hits}, want [5]",
+              file=sys.stderr)
+
+    # --- the end-to-end lint, over a temporary tree ------------------------
+    # The cases above verify the matcher; this verifies that `lint()` actually
+    # REACHES source with it -- suffix filter, recursion, and the report path.
+    # A scanner that works on a string and a walker that never hands it a file
+    # fail identically from outside: silently, green.
+    # `lint()` and `scratch_names_agree()` PRINT their findings, and the findings
+    # below are deliberate. Left on stdout they read as a red run inside a green
+    # one -- a self-test whose passing output contains the word `error:` teaches
+    # the reader to skim past it, which is the habit that hides a real one.
+    def quietly(fn, *a):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            return fn(*a)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "src" / "dsp").mkdir(parents=True)
+        (root / "src" / "Clean.cpp").write_text("int f() { return juce::jmax (1, 2); }\n")
+        checked += 1
+        if quietly(lint, root) != 0:
+            failures += 1
+            print("self-test FAIL: lint() reported a violation on a clean tree", file=sys.stderr)
+
+        (root / "src" / "dsp" / "Bad.h").write_text("auto n = juce::jmax<size_t> (a, b);\n")
+        checked += 1
+        if quietly(lint, root) != 1:
+            failures += 1
+            print("self-test FAIL: lint() did not report a nested hazardous file",
+                  file=sys.stderr)
+
+        # An unscanned suffix must NOT be read -- that is the declared scope, and
+        # a widening would surface here rather than as a surprise finding.
+        (root / "src" / "dsp" / "Bad.h").unlink()
+        (root / "src" / "notes.txt").write_text("auto n = juce::jmax<size_t> (a, b);\n")
+        checked += 1
+        if quietly(lint, root) != 0:
+            failures += 1
+            print("self-test FAIL: lint() scanned a file outside SOURCE_SUFFIXES",
+                  file=sys.stderr)
+
+    # --- the installer/uninstaller scratch-name coupling -------------------
+    # Its own sub-check, its own failure mode: it compares two SETS, and the
+    # comment-stripping in `names()` is what stops a mention satisfying it.
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        pkg = root / "packaging" / "linux"
+        pkg.mkdir(parents=True)
+
+        def scratch_case(label, expected, install, uninstall):
+            nonlocal failures, checked
+            (pkg / "install.sh").write_text(install)
+            (pkg / "uninstall.sh").write_text(uninstall)
+            checked += 1
+            got = quietly(scratch_names_agree, root)
+            if got != expected:
+                failures += 1
+                print(f"self-test FAIL: scratch names {label}: expected {expected}, got {got}",
+                      file=sys.stderr)
+
+        scratch_case("agreeing sets are clean", 0,
+                     'touch "$d/.anamorph-probe"\nmv x "$d/.Anamorph.new"\n',
+                     'rm -rf "$d/.anamorph-probe" "$d/.Anamorph.new"\n')
+        scratch_case("a name the uninstaller never removes is caught", 1,
+                     'touch "$d/.anamorph-probe"\ntouch "$d/.anamorph-stage"\n',
+                     'rm -rf "$d/.anamorph-probe"\n')
+        scratch_case("a name the installer never creates is caught", 1,
+                     'touch "$d/.anamorph-probe"\n',
+                     'rm -rf "$d/.anamorph-probe" "$d/.anamorph-stage"\n')
+        # THE COMMENT MUST NOT COUNT. An edit that deletes the removal and leaves
+        # the paragraph explaining it behind is the exact divergence this check
+        # exists for, and it is the shape that survives review.
+        scratch_case("a name mentioned only in a comment does not satisfy the check", 1,
+                     'touch "$d/.anamorph-probe"\ntouch "$d/.anamorph-stage"\n',
+                     '# we also remove .anamorph-stage here\nrm -rf "$d/.anamorph-probe"\n')
+
+    if failures:
+        print(f"\ncheck-portability: {failures} of {checked} self-test case(s) failed.",
+              file=sys.stderr)
+        return 1
+    print(f"check-portability: self-test passed ({checked} cases).")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Anamorph source portability lint.")
     ap.add_argument("--root", default=str(Path(__file__).resolve().parent.parent),
                     help="repository root (default: the parent of scripts/)")
+    ap.add_argument("--self-test", action="store_true",
+                    help="instead of linting, verify the lint itself still fires and stays silent")
     ap.add_argument("--compile-canary", metavar="JUCE_MODULES_DIR",
                     help="instead of linting, verify the pinned JUCE still has the hazard")
     ap.add_argument("--cxx", default="g++", help="compiler for --compile-canary (default: g++)")
     args = ap.parse_args()
 
+    if args.self_test:
+        return self_test()
     if args.compile_canary:
         return compile_canary(Path(args.compile_canary), args.cxx)
     return lint(Path(args.root))

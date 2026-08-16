@@ -187,7 +187,7 @@ never skips a binary that is otherwise fine:
 | Job | Run it locally as |
 |---|---|
 | `docs` | `python3 scripts/check-docs.py --self-test && python3 scripts/check-docs.py` |
-| `source-lint` | `python3 scripts/check-portability.py` then `python3 scripts/check-citations.py --check --base <rev>` |
+| `source-lint` | `python3 scripts/check-portability.py --self-test` then the lint, then `python3 scripts/check-citations.py --self-test` then `--check --base <rev>` |
 | `linux-clang` | see `CI_CD.md` §Reproducing CI locally (own `build-clang` tree) |
 | `sanitizers` | ASan+UBSan over both suites, then valgrind memcheck over both suites (the valgrind step sets `ANAMORPH_TESTS_NO_FTZ=1` — see below) |
 

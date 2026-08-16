@@ -66,9 +66,23 @@ blocking gate; `env.ANAMORPH_PLUGINVAL_STRICTNESS`; the macOS AU install + AU ga
    not a plugin defect) but never retries a real validation failure
    (`run_one_pass`, `scripts/run-pluginval.sh:154-176`).
 4. **A checker must prove it is live before its silence is trusted.** Every lint in the pipeline
-   ships a self-verification that runs in the same job, immediately before the check itself:
-   `check-docs.py --self-test`, `check-clang-warnings.py --self-test`, and
-   `check-portability.py --compile-canary` (which compiles two translation units against the pinned
-   JUCE to assert the hazard it lints for still exists). A checker that has stopped matching
-   anything is indistinguishable from a clean tree, and a gate that cannot fail is indistinguishable
-   from a gate that passes. Adding a lint without one is not adding a gate.
+   ships a `--self-test` that runs in the same job, immediately before the check itself —
+   `check-docs.py`, `check-clang-warnings.py`, `check-portability.py` and `check-citations.py`, all
+   four. A checker that has stopped matching anything is indistinguishable from a clean tree, and a
+   gate that cannot fail is indistinguishable from a gate that passes. Adding a lint without one is
+   not adding a gate.
+
+   **What a self-test must do.** Run the checker's own functions over synthetic input, in **both**
+   directions: every "must fire" case is a defect the lint exists to catch, every "must stay silent"
+   case is valid input an over-eager revision flagged. Depend on nothing the job does not already
+   have — no build tree, no base revision, no network — because a self-verification that needs the
+   thing it is verifying cannot run beside it. The measure of one is whether a broken checker fails
+   it: each of the four is written against the defects its checker has actually shipped, and is
+   maintained by adding the next one.
+
+   **A premise check is not a self-test, and the two are not interchangeable.**
+   `check-portability.py --compile-canary` compiles two translation units against the pinned JUCE to
+   assert the hazard the lint guards still exists — a question about the *dependency*, answerable
+   only where JUCE is checked out, so it runs in `linux-clang` rather than beside the lint. Both are
+   required and neither substitutes: a green canary with a dead scanner reports a clean tree, and a
+   green self-test with a moved hazard guards something that is no longer there.

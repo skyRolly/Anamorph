@@ -341,10 +341,16 @@ def citations(text):
     return out
 
 
-def build_line_map(base, path):
-    """old line -> new line, from the diff hunks. None inside an edited hunk."""
-    diff = subprocess.run(["git", "diff", "-U0", base, "--", path],
-                          capture_output=True, text=True).stdout
+def line_map_from_diff(diff):
+    """old line -> new line, from the hunk headers of a `-U0` unified diff.
+
+    SPLIT OUT FROM `build_line_map` SO IT CAN BE TESTED. The arithmetic here is
+    the whole tool: every re-anchor this script writes is this function's answer,
+    and it has been wrong once already in a way no tree-level run would have
+    shown (the pure-insertion case below). Feeding it hunk headers directly needs
+    no repository, no commits and no `git`, which is what lets the self-test run
+    in the same job as the check.
+    """
     edits = [(int(h.group(1)), int(h.group(2) or 1), int(h.group(4) or 1))
              for h in re.finditer(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@",
                                   diff, re.M)]
@@ -368,6 +374,13 @@ def build_line_map(base, path):
                 break
         return n + off
     return m
+
+
+def build_line_map(base, path):
+    """old line -> new line for `path` between `base` and the working tree."""
+    diff = subprocess.run(["git", "diff", "-U0", base, "--", path],
+                          capture_output=True, text=True).stdout
+    return line_map_from_diff(diff)
 
 
 # `worklogs/` is deliberately OUT of scope. Those files are research records
@@ -451,6 +464,232 @@ def apply_edits(text, edits):
     return text
 
 
+def self_test():
+    """Assert this tool still recognises, declines, maps and rewrites correctly.
+
+    WHY THIS IS NOT OPTIONAL HERE, of all the lints. The other three REPORT; this
+    one also REWRITES governed documents, so a defect does not merely fail to
+    catch drift — it replaces a correct anchor with a wrong one and prints
+    success. The header lists four occasions on which it did exactly that: 27
+    anchors rewritten across five ADRs because a `rev:` qualifier reached the
+    ownership test, a compound citation left `:1040, 1039, 1053` behind, one
+    span applied twice turning `:2000` into `:20000`, and a provenance sentence
+    that wraps a line carrying the sibling product's range. Every one of those is
+    a case below, in the direction it failed.
+
+    All of it runs on pure functions with synthetic input — no repository, no
+    commits, no `git` — which is what lets this run in the same job immediately
+    before the check it verifies, as TESTING_POLICY rule 4 requires.
+    """
+    failures = checked = 0
+
+    def check(label, got, want):
+        nonlocal failures, checked
+        checked += 1
+        if got != want:
+            failures += 1
+            print(f"self-test FAIL: {label}: got {got!r}, want {want!r}", file=sys.stderr)
+
+    # --- 1. OWNERSHIP: what this tool may rewrite, and what it must not -----
+    # `citations()` returns only the ones it claims, so an empty list IS the
+    # "declined" verdict. Each declined case below is a spelling that, once
+    # rewritten, corrupts something this tool does not own.
+    def cited(text):
+        return [(w, t, [a for a in anchors]) for (w, t, _s, anchors) in citations(text)]
+
+    check("plain anchor is ours",
+          cited("see src/PluginProcessor.cpp:695-752 for the mixer"),
+          [("src/PluginProcessor.cpp:695-752", "src/PluginProcessor.cpp", [(695, 752)])])
+    check("single-line anchor is ours",
+          cited("src/dsp/AnamorphEngine.h:38"),
+          [("src/dsp/AnamorphEngine.h:38", "src/dsp/AnamorphEngine.h", [(38, None)])])
+    # THE COMPOUND FORM. An early version rewrote the first anchor and left the
+    # bare trailing numbers alone, producing an internally contradictory citation
+    # from the tool whose job is keeping them true.
+    check("compound anchor list is one citation with three anchors",
+          cited("src/PluginProcessor.cpp:708-709, 851, 1208"),
+          [("src/PluginProcessor.cpp:708-709, 851, 1208", "src/PluginProcessor.cpp",
+            [(708, 709), (851, None), (1208, None)])])
+    # A PINNED REVISION IS NOT ABOUT THIS WORKING TREE. This is the shape that
+    # rewrote 27 anchors across five ADRs.
+    check("revision-qualified anchor is declined",
+          cited("7686204:src/PluginProcessor.cpp:485-491"), [])
+    check("checkout-qualified anchor is declined by the prefix capture",
+          cited("othertree:src/PluginProcessor.cpp:485-491"), [])
+    # THE LOOKBEHIND, and it is a SEPARATE guard from the prefix capture — this
+    # is the exact spelling that rewrote 27 anchors. `<checkout>:` cannot be
+    # captured as a prefix (`<` and `>` are outside that class), so without the
+    # lookbehind the match simply starts at `src/…`, classifies as OURS because
+    # `prefix` is None, and the sibling's line numbers are rewritten using this
+    # tree's code movement. Blocking the start is not enough on its own either:
+    # the scan would retry at `rc/PluginProcessor.cpp`, which the lookbehind also
+    # refuses because a word character precedes it.
+    check("an angle-bracketed checkout qualifier is declined by the lookbehind",
+          cited("<checkout>:src/PluginProcessor.cpp:485-491"), [])
+    # ...while the punctuation the documents ACTUALLY put in front of a citation
+    # must NOT block it. A lookbehind wide enough to catch every qualifier
+    # catches the gate itself, and the loss is silent — the anchors simply stop
+    # being checked, and a run over a document full of them still prints a
+    # confident count. The two below are the spellings that sit DIRECTLY against
+    # the path in `docs/` (a backtick, 18 occurrences; a bare `(`, 1) and are
+    # therefore the ones a widened lookbehind would swallow; the commoner `; `
+    # and `| ` forms put a space in between and are not at risk.
+    for lead, label in (("`", "backtick"), ("(", "bare parenthesis"),
+                        ("; ", "semicolon and space"), ("| ", "table cell")):
+        check(f"a citation preceded by a {label} is still ours",
+              [c[1] for c in cited(f"{lead}src/PluginProcessor.cpp:485")],
+              ["src/PluginProcessor.cpp"])
+    check("a foreign root is declined",
+          cited("other/checkout/src/PluginProcessor.cpp:12"), [])
+    check("the sibling product's editor path is declined",
+          cited("src/gui/PluginEditor.cpp:1-912"), [])
+    check("a bare file name is declined (ambiguous across checkouts)",
+          cited("PluginProcessor.cpp:7"), [])
+    check("an untracked path is declined",
+          cited("src/NotTracked.cpp:7"), [])
+    # The documented spelling for a PROSE EXAMPLE of a citation. If this ever
+    # starts being claimed, `DOCUMENTATION_COVERAGE.md`'s worked examples get
+    # rewritten and the sentences stop meaning what they say — which happened.
+    check("the prose-example path is declined",
+          cited("write examples as some/file.cpp:107"), [])
+    check("an absolute path is declined",
+          cited("/abs/src/PluginProcessor.cpp:7"), [])
+
+    # --- 2. PROVENANCE BLOCKS: the sibling's anchors, never ours ------------
+    check("a tracked anchor on the provenance line is declined",
+          cited("// Provenance (ADR-0009): adapted from Anabasis src/PluginProcessor.cpp:1-912 @ abc."),
+          [])
+    # THE WRAP IS THE POINT. Line-scoped exclusion covered the marker's own line
+    # and nothing else; a sentence that wraps onto the next line put the
+    # sibling's range outside the exclusion.
+    check("a tracked anchor on a wrapped continuation line is declined",
+          cited("// Provenance (ADR-0009): adapted from the sibling product\n"
+                "// src/PluginProcessor.cpp:36-175 @ abc123.\n"),
+          [])
+    check("markdown provenance wraps without a comment marker",
+          cited("Provenance (ADR-0009): adapted from the sibling\n"
+                "src/PluginProcessor.cpp:36-175 @ abc123.\n"),
+          [])
+    # ...AND THE BLOCK MUST END. `#pragma once` under a `//` marker stripped to
+    # `pragma once`, read as a continuation, and swallowed real content — so a
+    # genuine citation below it went unchecked.
+    check("a differently-prefixed line ends the block, so the next citation is ours",
+          [c[1] for c in cited("// Provenance (ADR-0009): adapted from the sibling.\n"
+                               "#pragma once\n"
+                               "// see src/PluginProcessor.cpp:42\n")],
+          ["src/PluginProcessor.cpp"])
+    # ...AND SO DOES AN EMPTY-BODIED LINE WEARING THE SAME PREFIX. That is the
+    # `//` separator under the sentence in the sibling's editor header, and it is
+    # the boundary a same-prefix block relies on; without it the block runs to
+    # the end of the file and every citation below goes silently unchecked.
+    check("a bare `//` separator ends a same-prefix block",
+          [c[1] for c in cited("// Provenance (ADR-0009): adapted from the sibling.\n"
+                               "//\n"
+                               "// see src/PluginProcessor.cpp:42\n")],
+          ["src/PluginProcessor.cpp"])
+    check("a blank line ends a markdown provenance block",
+          [c[1] for c in cited("Provenance (ADR-0009): adapted from the sibling.\n"
+                               "\n"
+                               "see src/PluginProcessor.cpp:42\n")],
+          ["src/PluginProcessor.cpp"])
+
+    # --- 3. THE LINE MAP: every re-anchor this tool writes is its answer -----
+    def hunks(*hs):
+        return line_map_from_diff("".join(f"@@ -{h} @@\n" for h in hs))
+
+    # A PURE INSERTION SITS AFTER `start`, so `start` itself does not move. The
+    # general test read `start + 0 - 1 < n` and shifted it one line too far.
+    m = hunks("9,0 +10,2")
+    check("pure insertion: the line above it does not move", m(9), 9)
+    check("pure insertion: the line below it moves by the inserted count", m(10), 12)
+    # A PREPEND IS SPELLED `-0,0`, not `-1,0` — git counts the insertion as
+    # sitting after old line ZERO. The hunk shapes here are the ones `git diff
+    # -U0` actually emits, verified against it; a self-test written against a
+    # plausible-looking spelling proves the parser handles input it never sees.
+    m = hunks("0,0 +1,3")
+    check("prepend shifts the whole file", m(1), 4)
+    # The OMITTED-COUNT form: `+3` with no `,n` means exactly one line, and the
+    # regex has to default it rather than read None.
+    m = hunks("2,0 +3")
+    check("single-line insertion: the line above does not move", m(2), 2)
+    check("single-line insertion: the line below moves by one", m(3), 4)
+    # A line INSIDE an edited hunk has no honest answer — the text it named may
+    # not exist any more — and `None` is what makes the caller report UNMAPPABLE
+    # instead of inventing a number.
+    m = hunks("10,5 +10,7")
+    check("a line inside an edited hunk is unmappable", m(12), None)
+    check("a line above an edited hunk is unchanged", m(9), 9)
+    check("a line below an edited hunk shifts by the delta", m(20), 22)
+    m = hunks("10,5 +10,2")
+    check("a shrinking hunk shifts later lines back", m(20), 17)
+    m = hunks("5,0 +6,1", "50,0 +52,10")
+    check("multiple hunks accumulate", m(60), 71)
+    check("only hunks above the line count", m(10), 11)
+    check("an empty diff is the identity map", line_map_from_diff("")(42), 42)
+
+    # --- 4. THE REWRITE: spans, not strings ---------------------------------
+    # `str.replace` matches a PREFIX: repairing `:107` also mangles `:1076`.
+    check("edits apply right-to-left by span",
+          apply_edits("a:1 b:2", [(1, 3, ":10"), (5, 7, ":20")]), "a:10 b:20")
+    # ONE SPAN IS SAFE ONCE. The same edit queued twice spliced the replacement
+    # into the middle of itself: `…cpp:2000` became `…cpp:20000`.
+    check("a duplicate edit is applied once, not twice",
+          apply_edits("x:2000", [(1, 6, ":3000"), (1, 6, ":3000")]), "x:3000")
+    try:
+        apply_edits("abcdefgh", [(1, 5, "X"), (3, 7, "Y")])
+        check("overlapping spans are refused", "no exception", "ValueError")
+    except ValueError:
+        check("overlapping spans are refused", "ValueError", "ValueError")
+
+    # --- 5. DECLARED RE-AIMS: good for one transition, then reported --------
+    doc = "docs/EXAMPLE.md"
+    old, new = "src/PluginProcessor.cpp:100", "src/PluginProcessor.cpp:200"
+    saved = set(DELIBERATE_REAIMS)
+    try:
+        DELIBERATE_REAIMS.clear()
+        DELIBERATE_REAIMS.add((doc, new))
+        check("a declaration naming the current spelling is honoured",
+              is_declared_reaim(doc, old, new), True)
+        # THE ENTRY MUST NOT SURVIVE ITS OWN TRANSITION. Once the base carries
+        # the re-aimed spelling, `200 == 200` kept matching and swallowed the
+        # drift of every later commit that moved that code. The declaration is
+        # left naming `new` here ON PURPOSE: with the guard removed this case
+        # returns True, which is what makes it a test of the guard rather than
+        # of the set lookup.
+        check("an unchanged spelling is drift, not a re-aim, even when declared",
+              is_declared_reaim(doc, new, new), False)
+        DELIBERATE_REAIMS.clear()
+        DELIBERATE_REAIMS.add((doc, old))
+        check("a declaration naming the base spelling is honoured too",
+              is_declared_reaim(doc, old, new), True)
+        DELIBERATE_REAIMS.clear()
+        check("an undeclared re-spelling is drift",
+              is_declared_reaim(doc, old, new), False)
+        check("a declaration for another document does not apply",
+              is_declared_reaim("docs/OTHER.md", old, new), False)
+    finally:
+        DELIBERATE_REAIMS.clear()
+        DELIBERATE_REAIMS.update(saved)
+
+    # --- 6. THE SCANNED SET still contains what the gate claims -------------
+    # `doc_files()` shells out to `git ls-files`, so this one needs the
+    # repository — but only to confirm the scan is non-empty and reaches BOTH
+    # halves. A tool that scans nothing reports every anchor as verified.
+    scanned = doc_files()
+    check("the scan reaches the documents", any(p.endswith(".md") for p in scanned), True)
+    check("the scan reaches the tracked source too",
+          any(p in TRACKED for p in scanned), True)
+    check("worklogs stay out of scope",
+          any(p.startswith("worklogs/") for p in scanned), False)
+
+    if failures:
+        print(f"\ncheck-citations: {failures} of {checked} self-test case(s) failed.",
+              file=sys.stderr)
+        return 1
+    print(f"check-citations: self-test passed ({checked} cases).")
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(description="Verify documentation evidence anchors.")
     ap.add_argument("--base", default="origin/main",
@@ -460,7 +699,12 @@ def main():
                       help="report drifted citations (the default)")
     mode.add_argument("--fix", action="store_true",
                       help="re-anchor drifted citations instead of only reporting")
+    mode.add_argument("--self-test", action="store_true",
+                      help="verify this tool's own recognition, mapping and rewriting")
     args = ap.parse_args()
+
+    if args.self_test:
+        return self_test()
 
     base_src, now_src = {}, {}
     for path in TRACKED:

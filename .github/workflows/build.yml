@@ -222,8 +222,40 @@ jobs:
           # `check-citations.py` compares against a BASE REVISION, so the run
           # needs history rather than the default single-commit checkout.
           fetch-depth: 0
+      # PROVE THE GATE IS LIVE BEFORE TRUSTING ITS SILENCE (TESTING_POLICY rule
+      # 4): the self-test runs in THIS job, immediately before the lint it
+      # verifies, and needs nothing but Python. It runs the real stripper and the
+      # real pattern over source that must fire and source that must stay quiet,
+      # then the real `lint()` over a temporary tree, then the real scratch-name
+      # comparison — so a dead regex, an over-eager stripper, a walker that
+      # reaches no files or a coupling check that always agrees fails HERE rather
+      # than reporting the tree clean.
+      #
+      # It is NOT the same check as `--compile-canary` in `linux-clang`, and the
+      # two are not interchangeable. That one asks whether the PINNED JUCE still
+      # has the hazard — a question about the dependency, answerable only where
+      # JUCE is checked out. This asks whether the CHECKER still finds it. A
+      # green canary with a broken scanner reports a clean tree; a green
+      # self-test with a changed JUCE guards a hazard that has moved. Both are
+      # required, and only this one can run beside the lint.
+      - name: Portability lint self-test (the lint still fires, and still stays quiet)
+        run: python3 scripts/check-portability.py --self-test
+
       - name: Lint source portability (JUCE SIMD overload hazard)
         run: python3 scripts/check-portability.py
+
+      # Same rule, and this checker needs it MOST: the other three only report,
+      # while this one REWRITES governed documents under `--fix`. A defect here
+      # does not merely fail to catch drift — it replaces a correct anchor with a
+      # wrong one and prints success, which it has done four times (a `rev:`
+      # qualifier reaching the ownership test, a compound citation left
+      # internally contradictory, one span applied twice, a provenance sentence
+      # wrapping the sibling's range). Each is a case in the self-test, in the
+      # direction it failed. It runs on synthetic input through the real
+      # functions, so it needs no base revision and cannot be satisfied by a
+      # clean tree.
+      - name: Citation-gate self-test (recognition, mapping and rewriting)
+        run: python3 scripts/check-citations.py --self-test
 
       # Evidence anchors (`src/PluginProcessor.cpp:695-752`) are exact and
       # therefore fragile: an edit ABOVE one silently re-aims it at unrelated

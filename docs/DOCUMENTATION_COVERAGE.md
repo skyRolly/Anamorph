@@ -7,8 +7,8 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
-**macOS Intel artifact gate** (first below), then the **documentation re-sync** before it, then
-the **CI review follow-up** that one follows, then the
+**lint self-verification round** (first below), then the **macOS Intel artifact gate** before it,
+then the **documentation re-sync**, then the **CI review follow-up** that one follows, then the
 **CI/validation round** it corrects, then the four
 AppleClang 21 `-Wimplicit-int-float-conversion` fixes, the macOS CI runner move
 `macos-14` → `macos-latest` that surfaced them, then the C++17 → C++23
@@ -19,6 +19,86 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**Lint self-verification round (0.9.4, no version bump). Two of the four CI lints could not fail;
+both can now, and the policy says which proof is which.**
+
+`TESTING_POLICY.md` rule 4 requires every pipeline lint to ship a self-verification running **in the
+same job, immediately before the check itself** — because a checker that has stopped matching
+anything is indistinguishable from a clean tree. Two of the four did not satisfy it, and one of them
+was the checker that can do the most damage.
+
+1. **`check-portability.py` had no test of its checker at all.** What the policy named as its
+   self-verification, `--compile-canary`, answers a different question: it compiles two translation
+   units against the pinned JUCE to assert the *hazard* still exists. That is a check on the
+   **dependency**, it needs a JUCE checkout, and it runs in `linux-clang`. Nothing tested the
+   **scanner** — a regex plus 60 lines of hand-written comment/literal lexing plus the
+   installer/uninstaller scratch-name comparison — so a green canary over a dead regex would have
+   reported the tree clean, which is exactly the shape the rule forbids. `--self-test` now runs the
+   real stripper and the real pattern over 20 labelled sources in both directions, then the real
+   `lint()` over a temporary tree (proving the walker reaches files and respects its declared
+   suffixes), then the real `scratch_names_agree` over four installer/uninstaller pairs including
+   the one where the name survives **only in a comment** — the divergence shape that already shipped
+   once in the sibling product. 28 cases.
+
+2. **`check-citations.py` had nothing, and it is the one lint that WRITES.** The other three report;
+   this one re-anchors governed documents under `--fix`, so a defect does not merely miss drift — it
+   replaces a correct anchor with a wrong one and prints success. Its header records four occasions
+   on which it did exactly that: a `rev:`-qualified anchor reaching the ownership test (27 anchors
+   rewritten across five ADRs), a compound citation left reading `:1040, 1039, 1053`, one span
+   applied twice turning `:2000` into `:20000`, and a provenance sentence whose wrap put the sibling
+   product's range outside the exclusion. Every one is now a case, in the direction it failed, and
+   the set extends to the ownership test's whole decline list, the provenance block's two boundary
+   forms, the diff line-map (including the pure-insertion off-by-one and the `None` that makes an
+   edited hunk report UNMAPPABLE rather than invent a number), the span rewriter's de-duplication
+   and overlap refusal, and the declared-re-aim guard that must not survive its own transition.
+   45 cases, on synthetic input through the real functions — no repository, no base revision, no
+   `git`, which is what lets it run beside the check.
+
+**Why this shape rather than the alternatives.** Moving `--compile-canary` into `source-lint` was
+rejected: it needs `build-clang/_deps/juce-src/modules`, so `source-lint` would have to fetch JUCE,
+turning a seconds-long job into a multi-minute one to duplicate a check that already runs — and it
+still would not test the scanner. Narrowing the policy text to describe the shortfall was also
+rejected: the rule is right, and rewriting a rule to match an implementation that misses it is
+documenting the gap rather than closing it. So the policy is **extended** instead: rule 4 now names
+all four `--self-test`s, states what a self-test must do (both directions; no dependency the job
+does not already have), and adds a paragraph distinguishing a **premise** check from a
+**self-test** — both required, neither a substitute, with the failure mode of each spelled out. That
+distinction is the durable part: it is what stops the next lint's canary being filed as its
+self-test.
+
+**One refactor, and only one.** `build_line_map` shelled out to `git diff` and parsed the hunk
+headers in the same function, so the arithmetic that every re-anchor depends on could not be
+reached without a repository. The parsing half is now `line_map_from_diff(diff)` and
+`build_line_map` calls it. No behaviour change; the hunk shapes the self-test feeds it were taken
+from real `git diff -U0` output rather than invented (a prepend is spelled `-0,0`, not `-1,0`, and
+the first draft of the test asserted the wrong one).
+
+**Validation, and the part that matters most: the self-tests were shown to FAIL on a broken
+checker.** Passing on a correct one proves nothing — that is the whole premise of rule 4 — so both
+were mutation-tested. Twenty-two mutations were applied to the two scripts, one at a time, each
+disabling a specific guard: a dead `HAZARD` regex, an over-eager stripper, un-stripped line
+comments, a lost newline in the block-comment branch, a walker that reaches no files, a scratch
+check that always agrees; and on the citation side an ownership test that accepts a `rev:` prefix or
+any path, a dropped compound-anchor group, a removed lookbehind, a lookbehind widened until it
+swallows real citations, disabled provenance exclusion, a provenance block that never ends, the
+pure-insertion off-by-one, an edited hunk returning a number instead of `None`, a misread
+omitted hunk count, removed span de-duplication, a removed overlap refusal, a re-aim guard that
+survives its transition, a re-aim honouring only one spelling, an empty scan set, and a scan that
+drops the source half. **Every one is caught.** Three earlier drafts of the cases were NOT caught
+and were rewritten until they were — the block boundary needed a bare `//` line rather than a
+`#pragma once`, the re-aim case was under the wrong set state, and the lookbehind case had been
+written with a qualifier the *prefix capture* declines, so it never reached the lookbehind at all.
+Beyond that: actionlint clean on all five workflows, with the two new steps confirmed to sit
+immediately before the lints they verify in `source-lint` (read back off the parsed job, not off the
+diff); the 32 inserted lines moved the same three `build.yml` anchors the Intel-gate entry below
+re-anchored, and they were re-anchored again against content — `RELEASE_POLICY` `:324,794,1177`,
+`KNOWN_ISSUES` KI-002 `:1337-1339`, `COMPATIBILITY_MATRIX`'s macOS job range `:1152-1565`; all four self-tests and all four lints
+green (`check-docs` 57 cases / 99 files, `check-clang-warnings` 28, `check-portability` 28 cases /
+45 files, `check-citations` 45 cases / 198 anchors against both `HEAD` and `HEAD~1`); and the
+citation gate exercised end-to-end by inserting a line above a cited anchor in a tracked source —
+it reported 5 drifted citations, `--fix` re-anchored all 5 with 0 needing a human, the re-check went
+green, and the repaired anchor was read back at its new location. [Verified]
 
 **macOS Intel customer-artifact gate (0.9.4, no version bump). One workflow correction: the new
 x86_64 self-test now blocks the customer uploads it was always supposed to.**
