@@ -7,7 +7,8 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
-**lint self-verification round** (first below), then the **macOS Intel artifact gate** before it,
+**check-docs false-green fix** (first below), then the **lint self-verification round** before it,
+then the **macOS Intel artifact gate**,
 then the **documentation re-sync**, then the **CI review follow-up** that one follows, then the
 **CI/validation round** it corrects, then the four
 AppleClang 21 `-Wimplicit-int-float-conversion` fixes, the macOS CI runner move
@@ -19,6 +20,68 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**check-docs false-green fix (0.9.4, no version bump). One defect, found by the review of the round
+below: the documentation lint could report every file clean without opening one.**
+
+`markdown_files()` filtered on `path.parts` — the components of the **absolute** path. `main()`
+resolves the root, so `rglob` yields absolute paths and the skip set (`.git`, `node_modules`, `JUCE`,
+plus `build` / `build-*` / `cmake-build-*`) was matched against every **ancestor of the checkout**,
+not only the directories the scan owns. A clone at `~/build/anamorph`, `/opt/JUCE/anamorph`, or
+anywhere beneath a `node_modules` therefore matched on a directory outside the repository, excluded
+**every** file, and printed `0 file(s) clean` with exit 0. Reproduced both ways before and after:
+copies of this tree under parents named `build`, `JUCE`, `node_modules` and `cmake-build-x` report
+`0 file(s) clean` with the old checker and `99 file(s) clean` with the new one. CI never saw it —
+`GITHUB_WORKSPACE` carries no such component — so the only way to meet it was the local reproduction
+`CI_CD.md` documents, which is to say: the person following the instructions.
+
+**The fix is two lines and one guard, and the guard is the durable half.** The filter now tests
+`path.relative_to(root).parts[:-1]`, so only components below the scan root can say a file is
+generated or vendored — the exclusions that are real are untouched, verified by planting a malformed
+table, a lazy continuation and an unclosed fence inside `build-san/_deps/juce-src/`, `JUCE/docs/` and
+`node_modules/pkg/` in the working tree and confirming the run still reports 99 files clean. (That
+same relative test also makes the two halves of the condition consistent: `SKIP_DIRS` was being
+matched against the filename as well, which was inert only because no skip name ends in `.md`.)
+Separately, `main()` now **refuses to call an empty scan clean** — exit 1, matching this file's
+`0 = clean, 1 = findings` contract and its two existing argument errors, rather than the `2` the
+sibling scripts use for "inconclusive". The filtering bug is what made an empty set reachable on a
+correct tree; the guard is what catches the next way of getting there, and it fires on a directory
+holding only excluded subtrees as well as on an empty one.
+
+**Self-test: 57 → 66 cases.** Six checkouts, one under each skip name (`build`, `build-san`,
+`cmake-build-debug`, `JUCE`, `node_modules`, `.git`), must scan their own documents; the
+in-repository exclusions must survive, including that `building/` and `rebuild/` are **not** build
+trees (named, not prefixed — dropping them would be the same defect wearing the opposite sign) and
+that a nested `docs/build/gen/` is still excluded; and `main()` over an empty directory must not
+return 0. Mutation-tested rather than assumed: reverting the filter to `path.parts`, deleting the
+empty-scan guard, disabling `SKIP_DIRS`, disabling the build-tree test, and widening `_is_build_dir`
+to a prefix match are **all five caught**.
+
+**`packaging/linux/uninstall.sh`: the round below's comment block is reverted in full.** That file
+ships to users inside the Linux zip. The block named `scripts/check-portability.py`, described what
+fails CI, referenced `SCRATCH_NAME` and cited the sibling product's uninstaller — developer content
+in a user-facing script, and the two-line user-oriented comment that was already there says what a
+user needs. `check-portability.py` claimed the note existed ("the other end of the coupling"), so
+that one sentence is corrected in the same change: the reasoning now lives in the checker only, and
+says why.
+
+**Deliberately not changed.** Everything else in the review is informational or was manually
+confirmed: the same-repo PR merge-result gap, deterministic pluginval running after a self-test
+failure, the clang-18 pin, `AudioComponentRegistrar` settling, reusable-workflow concurrency, the
+debuglink co-location note, Windows best-effort staging, the Rosetta `/usr/bin/true` probe, `cp -R`
+vs `ditto`, the digit-separator char-literal note, the cached `ANAMORPH_HAVE_LLD` probe, the
+CHANGELOG tab-indent edge case, the pluginval bundle-override format check, and the bash-3.2 array
+expansions. The 184-vs-198 anchor-count observation is also left: the two figures measure different
+sets (184 was `docs/` alone; 198 includes the tracked sources `doc_files()` added later), and both
+statements are true of the round that wrote them. For the same reason the four `check-docs 57 cases`
+figures in the entries below are **not** rewritten to 66 — each records what that round's run
+reported, and is accurate for it. The current figure is the one above.
+
+**Validation.** `check-docs` self-test 66 cases then 99 files clean; `check-portability` 28 cases /
+45 files; `check-citations` 45 cases and 198 anchors against both `HEAD` and `HEAD~1`;
+`check-clang-warnings` 28 cases. actionlint clean on all five workflows; `bash -n` clean on both
+packaging scripts. The pre-existing argument guards (`no such path`, `not a Markdown file`) and the
+explicit single-file invocation were re-run unchanged. [Verified]
 
 **Lint self-verification round (0.9.4, no version bump). Two of the four CI lints could not fail;
 both can now, and the policy says which proof is which.**

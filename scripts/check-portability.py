@@ -248,9 +248,9 @@ def lint(root: Path) -> int:
 # Listing it anyway would be a false positive against a correct uninstaller — and
 # the reflex fix for a false positive is to switch the lint off, taking the three
 # real names with it. IF this repository's uninstaller ever gains a path that
-# preserves a staging directory, add `|\.probe\b` back in the SAME change: the
-# note in `uninstall.sh`'s `remove_install_scratch` says so at the other end of
-# the coupling.
+# preserves a staging directory, add `|\.probe\b` back in the SAME change.
+# The reasoning lives HERE and only here: `uninstall.sh` ships to users inside
+# the Linux zip, so it carries no note about this lint, this file, or CI.
 SCRATCH_NAME = re.compile(r"\.anamorph-[a-z-]+|\.Anamorph\.new")
 
 

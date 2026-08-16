@@ -137,8 +137,11 @@ Exit:   0 = clean, 1 = findings printed to stderr.
 
 from __future__ import annotations
 
+import contextlib
+import io
 import re
 import sys
+import tempfile
 from pathlib import Path
 from urllib.parse import unquote
 
@@ -381,8 +384,18 @@ def markdown_files(roots: list[Path]) -> list[Path]:
             out.append(root)
             continue
         for path in sorted(root.rglob("*.md")):
-            parts = path.parts[:-1]          # directories only; a file may be named anything
-            if SKIP_DIRS.isdisjoint(path.parts) \
+            # RELATIVE TO THE ROOT, not absolute, and that is the whole of this
+            # function's correctness. `rglob` yields absolute paths when `root`
+            # is absolute -- which it is, `main()` resolves it -- so testing
+            # `path.parts` tested every ANCESTOR of the checkout too. A clone at
+            # `~/build/anamorph`, `/opt/JUCE/anamorph` or anywhere under a
+            # `node_modules` matched the skip set on a directory the scan does
+            # not own, excluded EVERY file, and printed `0 file(s) clean`: the
+            # exact failure this script's docstring names as worse than no
+            # checker. Only the components below the scan root can say anything
+            # about whether a file is generated, vendored, or ours.
+            parts = path.relative_to(root).parts[:-1]   # directories only; a file may be named anything
+            if SKIP_DIRS.isdisjoint(parts) \
                and not any(_is_build_dir(p) for p in parts):
                 out.append(path)
     return out
@@ -741,6 +754,66 @@ def self_test() -> int:
                 file=sys.stderr,
             )
 
+    # --- WHICH FILES GET SCANNED AT ALL ---------------------------------------
+    # The checks above all answer "is this file well-formed"; none of them
+    # notices that no file was handed over. `markdown_files` filtered on the
+    # ABSOLUTE path's components, so a checkout under a directory named `build`,
+    # `JUCE` or `node_modules` -- a plausible place to put one -- matched the
+    # skip set on a directory the scan does not own and excluded everything,
+    # while `main()` printed `0 file(s) clean`. Both halves are pinned here: the
+    # ancestor must not decide, and an empty result must not pass.
+    with tempfile.TemporaryDirectory() as tmp:
+        for parent in ("build", "build-san", "cmake-build-debug", "JUCE",
+                       "node_modules", ".git"):
+            root = Path(tmp) / parent / "checkout"
+            (root / "docs").mkdir(parents=True)
+            (root / "README.md").write_text("# R\n")
+            (root / "docs" / "GUIDE.md").write_text("# G\n")
+            got = sorted(p.name for p in markdown_files([root]))
+            checked += 1
+            if got != ["GUIDE.md", "README.md"]:
+                failures += 1
+                print(f"self-test FAIL: a checkout under {parent!r} scanned {got}, "
+                      f"want ['GUIDE.md', 'README.md']", file=sys.stderr)
+
+        # ...and the exclusions that are REAL must survive the repair. These sit
+        # inside the scan root, which is the only place a skip rule may speak.
+        root = Path(tmp) / "repo"
+        for d in ("docs", "build", "build-san", "cmake-build-debug", "JUCE",
+                  "node_modules", ".git", "building", "rebuild"):
+            (root / d).mkdir(parents=True)
+            (root / d / f"{d}.md").write_text("# x\n")
+        (root / "README.md").write_text("# R\n")
+        got = sorted(p.name for p in markdown_files([root]))
+        # `building` and `rebuild` are NOT build trees -- named, not prefixed --
+        # and dropping them would be the same defect wearing the opposite sign.
+        want = ["README.md", "building.md", "docs.md", "rebuild.md"]
+        checked += 1
+        if got != want:
+            failures += 1
+            print(f"self-test FAIL: in-repository filtering scanned {got}, want {want}",
+                  file=sys.stderr)
+
+        # A nested build tree is excluded at any depth, not only at the top.
+        (root / "docs" / "build" / "gen").mkdir(parents=True)
+        (root / "docs" / "build" / "gen" / "API.md").write_text("# A\n")
+        checked += 1
+        if sorted(p.name for p in markdown_files([root])) != want:
+            failures += 1
+            print("self-test FAIL: a nested build tree was scanned", file=sys.stderr)
+
+        # AN EMPTY SCAN MUST NOT EXIT 0. This is the backstop: whatever future
+        # change empties the set, the run must not call it clean.
+        empty = Path(tmp) / "empty"
+        empty.mkdir()
+        buf = io.StringIO()
+        with contextlib.redirect_stderr(buf):
+            rc = main(["check-docs.py", str(empty)])
+        checked += 1
+        if rc == 0:
+            failures += 1
+            print("self-test FAIL: an empty scan set reported a clean run", file=sys.stderr)
+
     # Counted as they run, never hand-maintained: the previous literal
     # (`len(cases) + 2 + 5 + 3`) drifted the moment a case was added, and the
     # stale figure reached a navigation document before anyone noticed.
@@ -770,6 +843,20 @@ def main(argv: list[str]) -> int:
             return 1
 
     files = markdown_files(roots)
+    # AN EMPTY SCAN IS NEVER A CLEAN RUN. Reporting `0 file(s) clean` is a pass,
+    # and every way of reaching it here is a mistake: a directory with no
+    # documents in it, a skip rule that swallowed the whole tree, or a path that
+    # is not the checkout the caller thought it was. The filtering bug above made
+    # that reachable on a correct tree; this is the guard that would have caught
+    # it independently, and it stays as the backstop for the next way of getting
+    # there. Exit 1, like the other two argument errors -- this file's contract
+    # is `0 = clean, 1 = findings`, and "nothing was checked" is not clean.
+    if not files:
+        print(f"check-docs: no Markdown files found under "
+              f"{', '.join(str(r) for r in roots)} -- refusing to report a clean "
+              f"run over an empty set", file=sys.stderr)
+        return 1
+
     findings: list[str] = []
     for path in files:
         findings += check_file(path, repo)
