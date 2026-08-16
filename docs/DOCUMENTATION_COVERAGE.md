@@ -7,7 +7,8 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
-**portability-scanner false negative** (first below), then the **post-merge citation gate fix**
+**line-splice diagnostic fix** (first below), then the **portability-scanner false negative**
+before it, then the **post-merge citation gate fix**
 before it, then the **merge-result / script-anchor / strictness round**, then the **check-docs
 false-green fix**, then the **lint self-verification round**,
 then the **macOS Intel artifact gate**,
@@ -22,6 +23,49 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**Portability scanner: a line splice inside a literal shifted every diagnostic below it (0.9.4, no
+version bump). One line of the escape branch, plus the regression coverage.
+`scripts/check-portability.py` only.**
+
+The stripper consumed an escape pair as two spaces. That is right for `\t` or `\"`, and wrong when
+the escaped character is the **newline itself** — a C++ line splice. The splice joins two *logical*
+lines but the file still has two *physical* ones, and `lint()` reads the source back by physical line
+number (`raw.splitlines()[lineno - 1]`), so blanking that newline made the stripped text one line
+short and every finding below it was reported against the wrong line **and echoed the wrong source
+text**. Reproduced end to end before the fix: a hazard on line 3 after a spliced string literal was
+reported as `src/A.cpp:2` with the source line printed as `def";` — a developer sent to a line they
+did not write the problem on. Not cosmetic: pointing at the defect is the whole contract of a lint
+whose subject is a compile error that only appears on another platform.
+
+**The repair is `out.append(" \n" if text[i + 1] == "\n" else "  ")`, and it is the smallest change
+that keeps the invariant rather than patching the symptom.** The stripper's contract is
+character-for-character — one output character per input character, a newline for every newline —
+which is what makes both the reported line and the column exact; the block-comment branch already
+honours it, and the literal branch's escape pair was the one place that did not. A space for the
+backslash and a newline for the newline restores it: still two characters for two, and the line
+boundary survives. The reported number is not adjusted after the fact anywhere, which would have
+left the echoed source line wrong.
+
+**Coverage extended in place, not duplicated.** The existing "LINE NUMBERS MUST SURVIVE THE STRIPPER"
+block was a single block-comment assertion; it is now a table over every branch that consumes a
+newline — block comment, string splice, string splice with the hazard **three** lines further down
+(a shift accumulates, so fixing only the immediately-following line is not fixing it), two splices in
+one literal, a splice in a *character* literal, an ordinary escape, an escaped quote, and a raw
+newline inside a literal. Each case also asserts the character-for-character length, because a branch
+emitting the wrong *count* passes a line test whenever the loss lands on a blank stretch. Two
+end-to-end cases read the actual report: the line must be `src/Splice.cpp:4` and the echoed text must
+be the real source line — the number and the echo come from different places, so only reading the
+diagnostic catches them desynchronising. 42 → 59 cases.
+
+**Validation.** The six new splice cases fail against the pre-fix branch and pass against the
+corrected one, checked by restoring the old emit under the new tests. Eleven mutations — the newline
+dropped again, a newline emitted unconditionally, the pair emitting one or three characters, escape
+handling removed, raw newlines blanked, block-comment newlines lost, plus the previous round's prefix
+set and the established regressions — are **all caught**. The lint is unchanged on the real tree: 45
+files, 0 violations, scratch names agree. `check-docs` 66 cases / 99 files, `check-citations` 58
+cases / 217 anchors, `check-clang-warnings` 28 cases, actionlint clean on all five workflows,
+`py_compile` clean. Nothing outside `scripts/check-portability.py` is touched. [Verified]
 
 **Portability scanner: prefixed character literals made it go blind (0.9.4, no version bump).
 One branch, one helper, ten self-test cases. `scripts/check-portability.py` only.**

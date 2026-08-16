@@ -200,7 +200,16 @@ def blank_comments_and_literals(text: str) -> str:
             i += 1
             while i < n and text[i] != quote:
                 if text[i] == "\\" and i + 1 < n:
-                    out.append("  ")
+                    # A LINE SPLICE, not an ordinary escape, when the escaped
+                    # character is the newline itself. The splice joins two
+                    # logical lines but the FILE still has two physical ones, and
+                    # `lint()` reads the source back by physical line number
+                    # (`raw.splitlines()[lineno - 1]`) -- so blanking that
+                    # newline shortens the stripped text by a line and every
+                    # finding below it is reported against the wrong line and
+                    # echoes the wrong source. The block-comment branch above
+                    # keeps its newlines for exactly this reason.
+                    out.append(" \n" if text[i + 1] == "\n" else "  ")
                     i += 2
                     continue
                 out.append("\n" if text[i] == "\n" else " ")
@@ -540,16 +549,53 @@ def self_test() -> int:
                   file=sys.stderr)
 
     # LINE NUMBERS MUST SURVIVE THE STRIPPER, because the lint reports them and a
-    # report that names the wrong line sends the reader to innocent code. The
-    # block-comment branch is the one that can lose them -- it emits a space per
-    # character and must emit a newline per newline.
-    stripped = blank_comments_and_literals("a\n/* x\n y\n z */\njuce::jmax<size_t> (a, b);")
-    hits = [n for n, line in enumerate(stripped.splitlines(), 1) if HAZARD.search(line)]
-    checked += 1
-    if hits != [5]:
-        failures += 1
-        print(f"self-test FAIL: block comment shifted the reported line: {hits}, want [5]",
-              file=sys.stderr)
+    # report that names the wrong line sends the reader to innocent code. Every
+    # branch that consumes a newline has to emit one, and each is pinned by the
+    # physical line the hazard below it lands on.
+    for label, text, want in [
+        # The block-comment branch: a space per character, a newline per newline.
+        ("block comment", "a\n/* x\n y\n z */\njuce::jmax<size_t> (a, b);", [5]),
+        # THE LITERAL BRANCH'S ESCAPE PAIR. A backslash immediately followed by a
+        # physical newline is a C++ LINE SPLICE: it joins two logical lines, but
+        # the file still has two physical ones and `lint()` reads the source back
+        # by physical line number. Consuming the pair as two spaces dropped that
+        # newline, so every finding below a spliced literal was reported one line
+        # short and echoed the wrong source text.
+        ("string line splice",
+         'const char* s = "abc\\\ndef";\nauto n = juce::jmax<size_t> (a, b);', [3]),
+        # ...and the shift must not merely be off by one: it accumulates, so a
+        # hazard several lines further down has to land correctly too.
+        ("string line splice, hazard further down",
+         'const char* s = "abc\\\ndef";\nint a;\nint b;\njuce::jmax<size_t> (a, b);', [5]),
+        ("two splices in one literal",
+         'const char* s = "a\\\nb\\\nc";\njuce::jmin<size_t> (a, b);', [4]),
+        ("splice in a character literal",
+         "char c = '\\\n<';\njuce::jmax<size_t> (a, b);", [3]),
+        # An ORDINARY escape still consumes two characters and emits no newline.
+        ("ordinary escape", 'const char* s = "a\\tb";\njuce::jmax<size_t> (a, b);', [2]),
+        ("escaped quote", 'const char* s = "a\\" juce::jmax<size_t>";\n'
+                          'juce::jmin<size_t> (a, b);', [2]),
+        # A newline inside a literal with no backslash was already preserved;
+        # pinned so the repair cannot be "fixed" into a regression.
+        ("raw newline inside a literal", 'const char* s = "a\nb";\njuce::jmax<size_t> (a, b);',
+         [3]),
+    ]:
+        stripped = blank_comments_and_literals(text)
+        hits = [n for n, line in enumerate(stripped.splitlines(), 1) if HAZARD.search(line)]
+        checked += 1
+        if hits != want:
+            failures += 1
+            print(f"self-test FAIL: {label} shifted the reported line: {hits}, want {want}",
+                  file=sys.stderr)
+        # The stripper's contract is CHARACTER-FOR-CHARACTER, which is what makes
+        # both the line number and the column exact. A branch that emits the
+        # wrong COUNT would pass the line test above whenever the loss happens to
+        # fall on a blank stretch.
+        checked += 1
+        if len(stripped) != len(text):
+            failures += 1
+            print(f"self-test FAIL: {label} changed the text length: "
+                  f"{len(stripped)} != {len(text)}", file=sys.stderr)
 
     # --- the end-to-end lint, over a temporary tree ------------------------
     # The cases above verify the matcher; this verifies that `lint()` actually
@@ -581,9 +627,32 @@ def self_test() -> int:
             print("self-test FAIL: lint() did not report a nested hazardous file",
                   file=sys.stderr)
 
+        # WHAT THE DIAGNOSTIC ACTUALLY PRINTS, not just how many there are. The
+        # line number and the echoed source come from two different places --
+        # the stripped text's line index and `raw.splitlines()[lineno - 1]` --
+        # and a lost newline desynchronises them from the real file without
+        # changing the finding count, so only reading the report catches it.
+        (root / "src" / "dsp" / "Bad.h").unlink()
+        (root / "src" / "Splice.cpp").write_text(
+            'const char* s = "abc\\\ndef";\nint a;\njuce::jmax<size_t> (a, b);\n')
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            lint(root)
+        report = buf.getvalue()
+        checked += 1
+        if "src/Splice.cpp:4: error:" not in report:
+            failures += 1
+            print("self-test FAIL: a hazard after a line-spliced literal was reported at the "
+                  f"wrong line; report was:\n{report}", file=sys.stderr)
+        checked += 1
+        if "\n    juce::jmax<size_t> (a, b);\n" not in report:
+            failures += 1
+            print("self-test FAIL: the diagnostic echoed the wrong source line after a "
+                  f"line-spliced literal; report was:\n{report}", file=sys.stderr)
+        (root / "src" / "Splice.cpp").unlink()
+
         # An unscanned suffix must NOT be read -- that is the declared scope, and
         # a widening would surface here rather than as a surprise finding.
-        (root / "src" / "dsp" / "Bad.h").unlink()
         (root / "src" / "notes.txt").write_text("auto n = juce::jmax<size_t> (a, b);\n")
         checked += 1
         if quietly(lint, root) != 0:
