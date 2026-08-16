@@ -7,7 +7,8 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
-**withdrawn debuglink claim** (first below), then the **unterminated block-comment invariant**
+**raw-string lexing fix** (first below), then the **withdrawn debuglink claim** before it, then the
+**unterminated block-comment invariant**
 before it, then the **unterminated-literal invariant +
 citation scope wording** before it, then the **`_deps` scan scope + visible FTZ relaxation**, then
 the **line-splice diagnostic fix**, then the **portability-scanner false negative**
@@ -26,6 +27,61 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**The stripper did not know what a raw string is (0.9.4, no version bump). One branch, one helper,
+26 cases. `scripts/check-portability.py` only.**
+
+`blank_comments_and_literals` treated every `"` as an ordinary string delimiter. A C++ raw string
+does not end at the next quote — it ends at `)<delim>"` — and it processes no escapes, so
+`R"(a " b)"` terminated on the embedded quote, its contents were scanned as **code**, and its real
+closing quote then opened another "string" that blanked to the next `"` in the file. That last step
+is the false-negative shape this lint exists to prevent: everything after the raw string stops being
+checked. Measured before the fix: `const char* s = R"(a " b)"; auto n = juce::jmax<size_t> (x, y);`
+reported **zero** hazards, and `R"(/* not a comment)"` leaked its contents into the scan. No raw
+string exists under `src/` or `tests/` today, so this was latent — but every other edge of this
+stripper (prefixes, splices, EOF in a literal, EOF in a comment) is explicitly pinned and this one
+was not mentioned at all.
+
+**Recognised, not special-cased.** `RAW_STRING_PREFIXES` is the exact set `{R, LR, uR, UR, u8R}`,
+matched against the whole token to the left via the existing `_left_token` — the same discipline
+`CHAR_LITERAL_PREFIXES` already uses, so an identifier merely *ending* in `R` is not a prefix.
+`_raw_string_end()` then reads the delimiter under the real rule (C++ [lex.string]: at most 16
+d-chars, excluding space, `(`, `)`, `\` and control characters) and searches for `)<delim>"`. It
+returns `None` when the construct is not a valid raw string, and the caller then reads the quote as
+an ordinary one — exactly the behaviour that existed before, so a malformed prefix cannot change
+anything. An unterminated raw string returns end-of-file: it is still a raw string, so it swallows
+the rest of the file rather than resuming as code halfway through a literal.
+
+**Every existing guarantee holds.** The body is blanked one character per character with a newline
+for every newline, and no escape handling — a raw string has none, so a trailing `\` must not
+swallow the delimiter after it. Ordinary strings, character literals and their prefixes, escapes,
+line splices, both comment forms, both EOF guards and hazard detection are untouched; the invariant
+was re-checked across all 45 real source files, character count and newline count both.
+
+**26 cases, chosen so the implementation cannot pass the easy way.** Five prefix forms must each let
+the code *after* the literal be scanned; a custom delimiter whose body contains `)"` must not end it
+early; a multi-line raw string must end at its delimiter rather than at the newline; an unterminated
+one must not blind the code above it; a trailing backslash must stay literal. Four "must stay
+silent" cases put a hazard, comment markers and a `)"` sequence *inside* the literal. Three
+line-preservation cases pin the physical line the following code lands on. And four cases pin what is
+**not** a raw string — a space or a `)` before the paren, a delimiter over 16 characters, a newline
+in the delimiter — each written against an input whose hazard count changes when that rule alone is
+removed, because misclassifying here sends the scan into a delimiter that never closes. 94 → 120
+cases.
+
+**Validation.** The new cases fail against the pre-fix stripper (the raw-string branch removed, the
+tests kept: 7 failures) and pass with it. Nineteen mutations swept — the prefix set emptied, `LR` and
+`u8R` dropped individually, the terminator ignoring the delimiter, consuming to end-of-line, always
+consuming to EOF, the d-char validity check removed, the 16-char bound removed, control characters
+allowed in the delimiter, raw-body newlines blanked, plus the established branches (char-literal
+prefixes, both EOF guards, the splice newline, a dead regex, unstripped line comments) — **all
+caught**. `check-portability --self-test` 120 cases then 45 files / 0 violations; `check-docs` 68
+cases / 99 files; `check-citations` 58 cases / 217 anchors; `check-clang-warnings` 28 cases;
+`py_compile` clean; actionlint clean on all five workflows. No other file changed.
+
+**Sign-off carries forward.** The maintainer's confirmations recorded in the entries below remain
+applied and settled; nothing in this round reopens them and no new approval requirement was created
+for this fix. [Verified]
 
 **A `[Verified]` release note described a defect that never existed (0.9.4, no version bump). The
 claim is withdrawn, not reworded. Four files.**

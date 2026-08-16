@@ -136,6 +136,39 @@ SOURCE_DIRS = ("src", "tests", "tools")
 # false negative this lint must not have.
 CHAR_LITERAL_PREFIXES = frozenset(("L", "u", "U", "u8"))
 
+# ...and the prefixes a RAW string may carry: `R` alone or an encoding prefix
+# with `R` appended. A raw string ends at `)<delim>"`, NOT at the next `"`, and
+# it processes no escapes -- so scanning one as an ordinary string leaves the
+# literal early, reads its contents as code, and then treats the real closing
+# quote as an OPENING one, blanking to the next `"` in the file. That last part
+# is the false-negative shape this lint exists to avoid.
+RAW_STRING_PREFIXES = frozenset(("R", "LR", "uR", "UR", "u8R"))
+
+
+def _raw_string_end(text: str, i: int, n: int) -> int | None:
+    """Index just past the raw string opening at `text[i] == '"'`, or None.
+
+    `None` means "not a valid raw string here", and the caller then reads the
+    quote as an ordinary one -- exactly what it did before raw strings were
+    recognised at all, so a malformed prefix cannot change existing behaviour.
+
+    The delimiter is at most 16 d-chars and excludes space, `(`, `)`, `\\` and
+    control characters (C++ [lex.string]); anything else between the quote and
+    the `(` means this is not a raw string. An UNTERMINATED one returns `n`:
+    a raw string it still is, so it swallows the rest of the file rather than
+    resuming as code halfway through a literal.
+    """
+    j = start = i + 1
+    while j < n and text[j] != "(":
+        if text[j] in " )\\" or ord(text[j]) < 32 or j - start >= 16:
+            return None
+        j += 1
+    if j >= n:
+        return None
+    closer = ")" + text[start:j] + '"'
+    k = text.find(closer, j + 1)
+    return n if k < 0 else k + len(closer)
+
 
 def _left_token(out: list) -> str:
     """The identifier-ish run already emitted immediately left of the cursor.
@@ -200,6 +233,14 @@ def blank_comments_and_literals(text: str) -> str:
             # is not valid C++, where continuing to scan is the safe reading).
             out.append(c)
             i += 1
+        elif (c == '"' and _left_token(out) in RAW_STRING_PREFIXES
+              and (raw_end := _raw_string_end(text, i, n)) is not None):
+            # Blanked whole, delimiters included, one character per character.
+            # No escape handling: a raw string has none, so a trailing `\` in it
+            # must not swallow the character after it.
+            while i < raw_end:
+                out.append("\n" if text[i] == "\n" else " ")
+                i += 1
         elif c in ('"', "'"):
             quote = c
             out.append(" ")
@@ -479,6 +520,51 @@ def self_test() -> int:
          "/* prose about juce::jmax<size_t> */ juce::jmin<size_t> (a, b);"),
         ("code after a string literal is still scanned", 1,
          'log ("juce::jmax<size_t>"); juce::jmin<size_t> (a, b);'),
+        # A RAW STRING ENDS AT `)<delim>"`, NOT AT THE NEXT `"`. Read as an
+        # ordinary string it terminates on the embedded quote, its contents are
+        # scanned as code, and its real closing quote then OPENS a literal that
+        # blanks to the next `"` in the file -- so the code after it stops being
+        # checked. Every prefix is listed because each is a separate token and
+        # only the exact set is a raw-string prefix.
+        ("code after R\"( ... )\" is still scanned", 1,
+         'const char* s = R"(a " b)"; juce::jmax<size_t> (a, b);'),
+        ("code after LR\"( ... )\" is still scanned", 1,
+         'auto s = LR"(a " b)"; juce::jmax<size_t> (a, b);'),
+        ("code after uR\"( ... )\" is still scanned", 1,
+         'auto s = uR"(a " b)"; juce::jmin<size_t> (a, b);'),
+        ("code after UR\"( ... )\" is still scanned", 1,
+         'auto s = UR"(a " b)"; juce::snapToZero<float> (x);'),
+        ("code after u8R\"( ... )\" is still scanned", 1,
+         'auto s = u8R"(a " b)"; juce::jmax<size_t> (a, b);'),
+        # A CUSTOM DELIMITER is what makes `)"` embeddable at all, and the
+        # implementation cannot pass by stopping at the first `)"` it sees.
+        ("a custom delimiter's inner )\" does not end the raw string", 1,
+         'const char* s = R"xy(a)" b)xy"; juce::jmax<size_t> (a, b);'),
+        # ...nor by consuming to the end of the LINE or the end of the FILE.
+        ("a multi-line raw string ends at its delimiter, not at EOF", 1,
+         'auto s = R"(l1\nl2)";\njuce::jmax<size_t> (a, b);'),
+        ("an unterminated raw string does not blind the code above it", 1,
+         'juce::jmax<size_t> (a, b);\nauto s = R"(never closed'),
+        # A raw string has NO escapes, so a trailing backslash must not swallow
+        # the delimiter that follows it.
+        ("a trailing backslash inside a raw string is literal", 1,
+         'const char* s = R"(a\\)"; juce::jmax<size_t> (a, b);'),
+        # WHAT IS *NOT* A RAW STRING has to be decided too, and getting it wrong
+        # sends the scan into a delimiter that never closes -- blanking to EOF
+        # and losing everything after it. A d-char excludes space, `(`, `)`, `\`
+        # and control characters, and there are at most 16 of them
+        # (C++ [lex.string]); a `"` after an R-token that fails any of those is
+        # an ordinary string, which is what this branch read before raw strings
+        # were recognised at all. Each rule below is pinned by an input whose
+        # hazard count changes when that rule alone is removed.
+        ("a space before the paren means it is not a raw string", 1,
+         'auto s = R" (a)"; juce::jmax<size_t> (x, y);'),
+        ("a close paren in the delimiter means it is not a raw string", 1,
+         'auto s = R")x(a)"; juce::jmax<size_t> (x, y);'),
+        ("a delimiter longer than 16 chars means it is not a raw string", 1,
+         'auto s = R"' + 'a' * 17 + '(x"; juce::jmax<size_t> (a, b);'),
+        ("a newline in the delimiter means it is not a raw string", 1,
+         'auto s = R"ab\ncd(x"; juce::jmin<size_t> (a, b);'),
         # A DIGIT SEPARATOR MUST NOT OPEN A LITERAL. If `'` in `1'000'000` were
         # treated as a quote, everything to the next `'` would be blanked -- a
         # false NEGATIVE, the one failure mode a lint must not have, and the
@@ -530,6 +616,17 @@ def self_test() -> int:
         ("multi-line block comment naming the hazard", 0,
          "/*\n * juce::jmax<size_t> (a, b)\n * and juce::jmin<size_t> too\n */"),
         ("string literal naming the hazard", 0, 'const char* s = "juce::jmax<size_t>";'),
+        # THE CONTENTS ARE LITERAL, so a hazard that exists only inside one is
+        # not a finding -- the other half of the same property.
+        ("raw string naming the hazard", 0, 'const char* s = R"(juce::jmax<size_t>)";'),
+        ("raw string naming the hazard, custom delimiter", 0,
+         'const char* s = R"d(juce::jmax<size_t>)" and more)d";'),
+        ("comment markers inside a raw string are not comments", 0,
+         'const char* s = R"(/* juce::jmax<size_t> // )";'),
+        # `R` must be the WHOLE token to be a prefix: an identifier ending in R
+        # followed by an ordinary string is not a raw string.
+        ("an identifier ending in R does not make a raw string", 0,
+         'auto fooR = 1; const char* s = "juce::jmax<size_t>";'),
         ("escaped quote inside a string does not end it early", 0,
          'const char* s = "a\\" juce::jmax<size_t>";'),
         ("char literal", 0, "char c = '<';"),
@@ -612,6 +709,15 @@ def self_test() -> int:
         # closer needs a following `/`.
         ("unterminated block comment at EOF",
          "juce::jmax<size_t> (a, b);\n/* abc", [1]),
+        # RAW STRINGS, on the same invariant: blanked one character per
+        # character, one newline per newline, and the physical line the code
+        # after them lands on is unchanged.
+        ("raw string spanning physical lines",
+         'auto s = R"(l1\nl2\nl3)";\njuce::jmax<size_t> (a, b);', [4]),
+        ("unterminated raw string spanning physical lines",
+         'juce::jmax<size_t> (a, b);\nauto s = R"(l1\nl2', [1]),
+        ("raw string with a newline inside a custom delimiter's body",
+         'auto s = R"tag(a)" b\nc)tag";\njuce::jmin<size_t> (a, b);', [3]),
         ("unterminated block comment spanning physical lines",
          "juce::jmin<size_t> (a, b);\n/* unterminated\nmore", [1]),
         ("unterminated block comment ending on a bare star",
