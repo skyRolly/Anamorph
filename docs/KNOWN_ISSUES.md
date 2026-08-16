@@ -121,7 +121,7 @@ consequences, both still open:
   *System Settings → Privacy & Security → Open Anyway*.
 
 Notarization (RH-PR-3) closes both.
-- **Evidence [Verified]:** .github/workflows/build.yml:1621-1623 (`codesign --force --deep --sign -`,
+- **Evidence [Verified]:** .github/workflows/build.yml:1687-1689 (`codesign --force --deep --sign -`,
   no notarization); packaging/macos/INSTALL.txt:4-10 (ad-hoc, not notarized), :34-41 (the
   Gatekeeper approval for the .pkg), :61-65 (the zip-route `xattr` step).
   See `docs/procedures/PACKAGING.md`.

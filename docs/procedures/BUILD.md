@@ -100,4 +100,7 @@ Evidence [Verified]: scripts/setup-linux.sh:8-12.
 
 `ANAMORPH_VERSION_STRING`, `ANAMORPH_BUILD_NUMBER`, `JUCE_WEB_BROWSER=0`, `JUCE_USE_CURL=0`,
 `JUCE_VST3_CAN_REPLACE_VST2=0`, `JUCE_DISPLAY_SPLASH_SCREEN=0`, `JUCE_REPORT_APP_USAGE=0`,
-`JUCE_STRICT_REFCOUNTEDPOINTER=1`. Evidence [Verified]: CMakeLists.txt:277-284.
+`JUCE_STRICT_REFCOUNTEDPOINTER=1`. `ANAMORPH_BUILD_NUMBER` is the one of these attached to the
+single translation unit that reads it rather than to the targets — its value changes every CI run,
+and a target-wide definition put that changing value on the command line of every TU.
+Evidence [Verified]: CMakeLists.txt:274-284.

@@ -7,7 +7,8 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
-**citation-gate coverage for the build definition and the CI workflow** (first below), then the
+**citation follow-up: two missed anchors and four that were wrong on arrival** (first below), then
+the **citation-gate coverage for the build definition and the CI workflow** after it, then the
 **CI compiler cache + job timeouts** after it, then the
 **native Intel macOS job** after it, then the
 **raw-string lexing fix** before it, then the **withdrawn debuglink claim** before it, then the
@@ -31,6 +32,54 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
 
+**Citation follow-up (0.9.4, no version bump). Six corrected anchors, one wrong workflow comment,
+two unsafe table cells. No CI behaviour change. Six documents + `scripts/check-citations.py`
++ `.github/workflows/build.yml` (comment only).**
+
+Review found two anchors the previous round missed, both below its insertion point and both invisible
+to the new gate for the same reason: they are spelled as **bare continuations**
+(`` `CMakeLists.txt:188-199` … `:292-301` ``), which the parser only recognises in the
+`path:a,b,c` form. `ADR-0001`'s "tests link the core" pointed at `juce::juce_opengl` inside the
+*plugin*'s link block; it is `CMakeLists.txt:314-323`. `BUILD.md`'s compile-definition list cited
+`:277-284` while listing `ANAMORPH_BUILD_NUMBER` — a definition that range no longer contains, since
+scoping moved it to `:274-275`; widened to `:274-284`, deliberately as **one** anchor, because a
+citation whose anchor *count* changes lands in the "review by hand" branch no declaration can excuse.
+
+That continuation spelling is the **house convention** — 131 instances across the ADRs — so it was
+left alone rather than re-spelled for one line. The class is recorded here, not fixed: bringing it
+under the gate means either teaching the parser the convention or rewriting 131 anchors, and neither
+is this round's business.
+
+**Four workflow anchors were wrong on arrival**, which matters more than the two misses. They were
+computed part-way through the previous round; a later edit in that same round (making ccache
+optional, ~+70 lines) moved everything below it, and nothing objected — three were *declared
+re-aims*, and a declaration is precisely a promise the tool will not judge the aim, while the two
+`COMPATIBILITY_MATRIX` ranges were *new* citations, which "have nothing to drift from" and are
+skipped against the base. Both escape hatches are correct individually; both being open at once is
+how a measured number ships stale. All four are now recomputed from the file as it stands and read
+back line by line rather than shifted by an arithmetic delta: `RELEASE_POLICY` `:530,1098,1520`,
+`KNOWN_ISSUES` `:1687-1689`, and the two job ranges `:1456-1916` / `:1974-2219`.
+
+Two more corrections, both of things the previous round introduced. The `linux` job carried a comment
+claiming cached objects meant `objcopy --only-keep-debug` "reads exactly what it always read" — but
+that command operates on the **linked** binary, not on objects, so the dependency it described does
+not exist (the macOS `dsymutil` note, which does walk back to the object files, was already
+accurate). And this document's own history table spelled two cells as `CMakeLists.txt:27,305` /
+`:14,250-275`, violating the checker's own stated rule that **prose examples must not use a tracked
+path** — the rule exists because one worked example in this file was already silently re-anchored
+once. `build.yml` rows escape by being spelled bare; `CMakeLists.txt` is root-level and has no bare
+form, so the table now separates path from anchor (`` `CMakeLists.txt` `:27,305` ``). The same trap
+is now documented beside `TRACKED` for whoever adds the next root-level path — `NOTICE` is named
+there as a candidate and would inherit it.
+
+Investigated and deliberately unchanged: the `merge-check`/`linux` shared cache lineage (verified
+mutually exclusive across all five event shapes), the `github.run_id` cache keys (ordinary
+lineage/eviction trade-offs, no defect), the `!cancelled()` statistics steps (a step with no `if:`
+still defaults to `success()`, so a failed build still skips its producer), the relaxed
+citation-matcher (correct and asserted by name in the self-test), and the `ANAMORPH_BUILD_NUMBER`
+scoping (the only reader is `src/PluginEditor.cpp`, both compiling targets are in this directory
+scope, product behaviour unchanged).
+
 **Citation-gate coverage for `CMakeLists.txt` and `build.yml` (0.9.4, no version bump). Four
 corrected anchors, one checker change, no CI behaviour change beyond making the cache optional.
 `scripts/check-citations.py` + `.github/workflows/build.yml` + `.gitignore` + five documents.**
@@ -42,8 +91,8 @@ and **four evidence anchors went stale while the gate reported the tree clean**:
 
 | document | claimed | actually pointed at | now |
 |---|---|---|---|
-| `procedures/BUILD.md` | `ANAMORPH_BUILD_TESTS` | `JUCE_REPORT_APP_USAGE=0` | `CMakeLists.txt:27,305` |
-| `policies/RELEASE_POLICY.md` | the build-number definition | mid-comment of the new block | `CMakeLists.txt:14,250-275` |
+| `procedures/BUILD.md` | `ANAMORPH_BUILD_TESTS` | `JUCE_REPORT_APP_USAGE=0` | `CMakeLists.txt` `:27,305` |
+| `policies/RELEASE_POLICY.md` | the build-number definition | mid-comment of the new block | `CMakeLists.txt` `:14,250-275` |
 | `policies/RELEASE_POLICY.md` | the per-OS Configure steps | three unrelated workflow lines | `build.yml:495,1042,1454` |
 | `KNOWN_ISSUES.md` | the ad-hoc `codesign` calls | the `macos:` job header | `build.yml:1621-1623` |
 
@@ -63,7 +112,10 @@ That last one is deliberate and load-bearing: this very document records past re
 (“`build.yml:288,758,1141` → the three per-OS …”), which is **history, not evidence**. The workflow
 is tracked under its full path, so the bare spelling those sentences use is what keeps `--fix` away
 from the numbers the sentences are about — the exact corruption the header's "prose examples" rule
-exists to prevent.
+exists to prevent. `CMakeLists.txt` has no such escape, being root-level: its tracked spelling *is*
+its bare one. The table above therefore separates the path from the anchor
+(`` `CMakeLists.txt` `:27,305` ``) so the parser sees no citation, which is the same protection by a
+different route — the two `build.yml` rows need no such treatment and are left as they read.
 
 Coverage went from **217 to 312 checked anchors**. Proven live rather than asserted: inserting one
 line into `CMakeLists.txt` turns the gate red with **60 drift reports** where the previous checker,

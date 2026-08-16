@@ -533,8 +533,13 @@ jobs:
         id: build
         run: cmake --build build --config Release
 
-      # Cached objects are real .o files in the build tree, so `objcopy
-      # --only-keep-debug` below reads exactly what it always read.
+      # A cache hit changes where the .o files came from, never what they
+      # contain, so the link is fed identical input and the `strip` step below
+      # is unaffected. Note what that step actually reads: `objcopy
+      # --only-keep-debug` operates on the LINKED `.so`/executable, not on the
+      # objects, so object provenance could not reach it in the first place.
+      # (macOS is the case where provenance genuinely matters -- `dsymutil`
+      # walks the debug map back to the object files; see that job's note.)
       - name: Compiler cache statistics
         if: ${{ !cancelled() && env.ANAMORPH_COMPILER_LAUNCHER != '' }}
         run: ccache --show-stats --verbose

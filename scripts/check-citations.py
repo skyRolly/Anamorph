@@ -121,7 +121,18 @@ import sys
 # `packaging/linux/INSTALL.txt` (1). They are first-party and versioned, so
 # nothing disqualifies them; they are simply not what this round measured, and a
 # path is not added here until someone has confirmed its anchors are worth
-# rewriting. The documents citing `.md` files by line are deliberately not
+# rewriting.
+#
+# ONE CAVEAT FOR WHOEVER ADDS THE NEXT ROOT-LEVEL PATH, because `NOTICE` above is
+# exactly that shape. A path with directories has a bare escape spelling: prose
+# that must NOT be rewritten can write `build.yml:288` and the parser declines
+# it, which is how this document's own history sentences stay safe. A root-level
+# path has no such escape -- its tracked spelling IS its bare one -- so listing
+# `NOTICE` here makes `NOTICE:12` claimable from ANY prose that mentions it with
+# a line number, including a sentence whose whole point is the old number. The
+# remedy is the one `DOCUMENTATION_COVERAGE.md`'s history table uses: separate
+# the path from the anchor (`` `NOTICE` `:12` ``) so no citation is matched.
+# Weigh that against the coverage before adding one. The documents citing `.md` files by line are deliberately not
 # candidates: `TRACKED` names sources, and a document is edited by prose rules
 # rather than by code movement.
 TRACKED = (
@@ -297,6 +308,41 @@ DELIBERATE_REAIMS = set([
     # against the merge base rather than against a push predecessor.
     ("docs/procedures/BUILD.md", "CMakeLists.txt:27,305"),
     ("docs/policies/RELEASE_POLICY.md", "CMakeLists.txt:14,250-275"),
+    # Same round, found by a second review pass: the compile-definition list
+    # cites the block those definitions live in, and `ANAMORPH_BUILD_NUMBER`
+    # left that block when it was scoped to one translation unit. `:277-284` is
+    # still the `target_compile_definitions(Anamorph PUBLIC ...)` block and no
+    # longer contains it, so the sentence listed a definition its own evidence
+    # disproved. Widened to `:274-284`, which starts at the
+    # `set_source_files_properties` that now carries it -- ONE anchor still, not
+    # two, because a citation whose anchor COUNT changes lands in the
+    # "review by hand" branch that no declaration can excuse.
+    ("docs/procedures/BUILD.md", "CMakeLists.txt:274-284"),
+    # ---------------------------------------------------------------------
+    # THE WORKFLOW ANCHORS WERE WRONG ON ARRIVAL, and the way they got there is
+    # worth recording because this gate is the thing that should have caught it.
+    # They were computed part-way through the round that introduced them and
+    # then a LATER edit in that same round (making ccache optional, ~+70 lines)
+    # moved everything below it. Nothing objected: three of them were declared
+    # re-aims, and a declaration is exactly a promise that the tool must not
+    # judge the aim; the two `COMPATIBILITY_MATRIX` ranges were BRAND NEW
+    # citations, and a new citation "has nothing to drift from" so it is skipped
+    # against the base. Both escape hatches are correct in themselves and both
+    # were open at once, which is how a measured number ships stale.
+    #
+    # Every one below is now recomputed from the file as it stands and read back
+    # line by line, not shifted by an arithmetic delta:
+    #   RELEASE_POLICY  :530,1098,1520  the linux/windows/macos Configure steps
+    #   KNOWN_ISSUES    :1687-1689      the three ad-hoc `codesign` calls
+    #   COMPAT_MATRIX   :1456-1916      the `macos` job, key line to last step
+    #   COMPAT_MATRIX   :1974-2219      the `macos-intel` job, ditto
+    # The lesson is in the header already: a declaration buys ONE transition and
+    # costs the tool's opinion for that transition, so the hand-check it
+    # substitutes for has to actually happen.
+    ("docs/architecture/COMPATIBILITY_MATRIX.md",
+     ".github/workflows/build.yml:1456-1916"),
+    ("docs/architecture/COMPATIBILITY_MATRIX.md",
+     ".github/workflows/build.yml:1974-2219"),
     ("docs/policies/RELEASE_POLICY.md", ".github/workflows/build.yml:495,1042,1454"),
     ("docs/KNOWN_ISSUES.md", ".github/workflows/build.yml:1621-1623"),
     ("docs/procedures/BUILD.md", "scripts/build.sh:19-54"),
