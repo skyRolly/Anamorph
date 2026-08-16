@@ -20,6 +20,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <limits>
 #include <random>
 
@@ -34,9 +36,42 @@ namespace
         if (! cond) { ++failures; std::printf ("  [FAIL] %s\n", what); }
     }
 
+    // THE DENORMAL HALF OF `isBad` IS A PROPERTY OF THE RUNNER AS WELL AS OF THE
+    // ENGINE, and one runner in this pipeline does not have it. The audio path
+    // runs under `juce::ScopedNoDenormals`, which sets the CPU's FTZ/DAZ bits so
+    // a denormal result is flushed to zero IN HARDWARE. valgrind emulates
+    // floating point and does not honour those bits, so under memcheck the flush
+    // never happens, denormals survive into the output, and this check fails on a
+    // build that is correct on every real CPU. Measured, not assumed: under
+    // `valgrind --tool=memcheck` the whole feature matrix reports
+    // "engine output free of NaN/Inf/denormals" as a failure while memcheck
+    // itself reports ZERO errors -- the tool finds no memory defect and the test
+    // fails anyway.
+    //
+    // ANAMORPH_TESTS_NO_FTZ is how the `sanitizers` job's valgrind step says so,
+    // and it relaxes EXACTLY ONE HALF of the check: NaN and Inf remain failures
+    // everywhere, because neither depends on FTZ. Only a literal "1" enables it,
+    // so an unrelated variable in the environment cannot trip it, and it is read
+    // once at start-up rather than per sample.
+    //
+    // NEVER SET THIS ON A NORMAL RUN. The denormal guard is a DSP_POLICY
+    // invariant and these four call sites are the only thing asserting it; the
+    // native Linux, Windows and macOS jobs all run without it, so the invariant
+    // is still gated on every push on every platform. The alternative considered
+    // and rejected was pointing valgrind at the state suite alone -- that suite
+    // passes under memcheck untouched, but it would leave the DSP suite with no
+    // uninitialised-read detector at all, which is the coverage this job exists
+    // to add.
+    const bool ftzUnavailable = []
+    {
+        const char* const v = std::getenv ("ANAMORPH_TESTS_NO_FTZ");
+        return v != nullptr && std::strcmp (v, "1") == 0;
+    }();
+
     bool isBad (float x)
     {
         if (std::isnan (x) || std::isinf (x)) return true;
+        if (ftzUnavailable) return false;
         const float a = std::abs (x);
         return a > 0.0f && a < 1.17549435e-38f; // denormal
     }
@@ -2640,6 +2675,20 @@ static void testHaasParkedWarmHistory()
 int main()
 {
     std::printf ("=== Anamorph DSP self-tests ===\n");
+
+    // A RELAXED RUN MUST SAY SO, in the same run whose result it changes. The
+    // escape hatch is legitimate (see `isBad`), but read once from the
+    // environment it left no trace: a stale export or an inherited CI variable
+    // produced the same "ALL TESTS PASSED" line as a full run, with the
+    // denormal invariant not asserted. Announced twice on purpose -- at the top
+    // where the reader starts and beside the verdict where they stop -- and as
+    // a `::warning::` so a CI run surfaces it the way the Rosetta step surfaces
+    // its own lost coverage.
+    if (ftzUnavailable)
+        std::printf ("::warning::ANAMORPH_TESTS_NO_FTZ=1 -- the DENORMAL half of the "
+                     "NaN/Inf/denormal invariant is NOT asserted in this run (NaN and Inf "
+                     "still are). Set only by the valgrind step; unset it for a full gate.\n");
+
     testMidSideRoundTrip();
     testNoBadSamples();
     testBypassNullAndLatency();
@@ -2676,6 +2725,8 @@ int main()
     testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);
+    if (ftzUnavailable)
+        std::printf ("(ANAMORPH_TESTS_NO_FTZ=1 was set: the denormal invariant was NOT asserted)\n");
     if (failures == 0) { std::printf ("ALL TESTS PASSED\n"); return 0; }
     std::printf ("TESTS FAILED\n");
     return 1;

@@ -15,6 +15,66 @@ on:
 permissions:
   contents: read
 
+# One in-flight run per ref. Pushing three times in ten minutes previously left
+# three full 3-OS matrices racing, which is both wasteful and confusing to read:
+# the Actions page shows three runs for one branch and only the newest describes
+# the tip.
+#
+# cancel-in-progress is GUARDED ON THE REF rather than set to a bare `true`:
+# this workflow is also reached through `workflow_call` from release.yml, and a
+# release build must never be cancelled by an unrelated push. Tag refs therefore
+# queue instead of cancelling.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+# ---------------------------------------------------------------------------
+# pluginval strictness lives in ONE place so raising or lowering the bar is a
+# one-line edit. THIS BLOCK IS THAT PLACE. It replaces six literal `10`s spread
+# across the three build jobs, which is six chances for a raise to land in five
+# of them. The two documents that describe the gate defer to it and state no
+# number of their own: docs/policies/TESTING_POLICY.md owns what the gate
+# REQUIRES (suites, modes, passes, platforms) and docs/procedures/CI_CD.md owns
+# how the pipeline is WIRED.
+#
+#     5    development bar
+#     8    standard gate
+#     10   pre-release gold standard -- REQUIRED, and in force here
+#
+# Lowering it below 10 is a deliberate act that must be justified in the PR.
+#
+# ---------------------------------------------------------------------------
+# THE CLANG MAJOR VERSION IS PINNED, and for the same one-place reason.
+#
+# `linux-clang` compares its diagnostics against `scripts/clang-warning-baseline.txt`,
+# which records exact per-(path, flag) site counts. Which diagnostics Clang emits
+# is a property of the COMPILER VERSION -- `-Wshadow-field`, `-Wsign-conversion`
+# and `-Wunused-but-set-variable` all move between majors -- so an unpinned
+# `clang` means the baseline's reference point is whatever `ubuntu-latest`
+# happens to resolve to that week. A runner-image bump would then turn the gate
+# red (or, worse, quietly green with fewer diagnostics) on a push that changed
+# nothing in the tree. That is exactly the failure the baseline's
+# "never key on line numbers" rule was written to avoid, reintroduced one level
+# up.
+#
+# 18 is not an arbitrary choice: it is the version the checked-in baseline was
+# generated with (Ubuntu clang 18.1.3), and it is what `ubuntu-latest`
+# (ubuntu-24.04) resolves `clang` to today -- so the pin changes no diagnostic,
+# it just stops the reference point from moving underneath the file.
+#
+# The baseline RECORDS this number in its own header and
+# `check-clang-warnings.py` refuses to run when the two disagree: bumping the pin
+# without re-baselining is then a loud, specific failure rather than a silent
+# comparison against another compiler's output. Bump both in the same change,
+# and read the baseline diff.
+#
+# `sanitizers` pins to the same major so its `libclang-rt-<n>-dev` is
+# version-matched by construction instead of being derived from `clang --version`.
+# ---------------------------------------------------------------------------
+env:
+  ANAMORPH_PLUGINVAL_STRICTNESS: 10
+  ANAMORPH_CLANG_VERSION: 18
+
 # Every push builds the FULL set of formats on all three desktop OSes so beta
 # testers can install on any platform:
 #   * Linux   -> VST3 + Standalone
@@ -22,8 +82,8 @@ permissions:
 #   * macOS   -> VST3 + AU + Standalone  (universal arm64 + x86_64)
 #
 # Validation is UNIFORM across all three platforms and BLOCKING on each:
-# pluginval at strictness 10, run in two explicit modes -- deterministic and
-# randomise -- each repeated 3 consecutive times (scripts/run-pluginval.sh on
+# pluginval at the strictness above, run in two explicit modes -- deterministic
+# and randomise -- each repeated 3 consecutive times (scripts/run-pluginval.sh on
 # Linux/macOS, scripts/run-pluginval.ps1 on Windows). A non-zero pluginval exit
 # fails the job on every platform (no continue-on-error / swallowed exit codes).
 # Both mode steps ALWAYS run for a deterministic FAILURE: the randomise step is
@@ -41,6 +101,20 @@ permissions:
 # own). Windows and macOS have no such intermediate step, so `build` is the
 # producer there.
 #
+# ON macOS THE AU IS VALIDATED TOO, and only there -- it is the one format that
+# exists on exactly one platform, and it is the only format Logic and GarageBand
+# load. Until this job existed the release gate ran against the VST3 alone on all
+# three OSes, so the format most of this product's macOS users actually run
+# shipped having passed no automated validation at all.
+#
+# ASYMMETRY, stated rather than glossed: ONLY LINUX validates the shipped bytes.
+# Its strip step runs BEFORE pluginval, so the gate sees exactly what users get.
+# On macOS `strip -x` + ad-hoc codesign happen in the packaging step AFTER
+# pluginval, and on Windows the public copy is produced after validation too --
+# so on those two platforms a defect introduced BY stripping or signing would
+# ship unvalidated. Reordering is not free (macOS must codesign last, or the seal
+# breaks), so it is recorded in docs/procedures/CI_CD.md rather than guessed at.
+#
 # Symbol handling (RH-PR-2, ADR-0021): every platform generates full debug
 # info, retains it as a separate *-debug artifact (split .debug / PDB / dSYM)
 # for crash symbolication, and ships STRIPPED public binaries. On macOS the
@@ -53,12 +127,250 @@ permissions:
 # steps SUCCEEDING (never `if: always()`), and the staging steps self-validate
 # (no symbol table, no debug files in the public copy) -- neither a partial
 # packaging failure nor a failed behavioural gate can ship a customer
-# artifact. Developer *-debug artifacts and (on pluginval-only failures) beta
-# artifacts remain available.
+# artifact. On macOS "the DSP self-tests" means BOTH slices of the universal
+# binary: the native arm64 run and the x86_64 run under Rosetta are each a
+# blocking condition on the customer uploads, because a slice that fails its
+# behavioural gate is a defect in the product, not in the runner. Developer
+# *-debug artifacts and (on pluginval-only failures) beta artifacts remain
+# available.
+#
+# ---------------------------------------------------------------------------
+# THE SAME-REPO PULL-REQUEST GUARD, carried by every job below.
+#
+#     if: github.event_name != 'pull_request' ||
+#         github.event.pull_request.head.repo.full_name != github.repository
+#
+# `push: ["**"]` already builds every commit on every branch, so on a same-repo
+# PR the `pull_request` event built the SAME SHA a second time -- a duplicate
+# 3-OS matrix per commit for as long as the PR stayed open, plus a duplicate
+# CodeQL-adjacent load on the runner pool. FORK pull requests are NOT covered by
+# the push trigger (the push happens in the fork), so they still run: that is the
+# only case the pull_request trigger uniquely serves here.
+#
+# THREE CONSEQUENCES, stated so none is discovered later:
+#   * The push build and the `pull_request` build are NOT the same tree. `push`
+#     builds the branch TIP; `pull_request` builds `refs/pull/N/merge`, the tip
+#     merged with the CURRENT base. A PR green on its own tip can be broken once
+#     the base moves under it, and skipping every job here left that unbuilt
+#     until the merge landed on the default branch. `merge-check` below is the
+#     answer: it is the exact complement of this guard, runs ONLY on a same-repo
+#     PR, and builds and self-tests the merge commit. It deliberately does not
+#     re-run packaging, pluginval or the other two platforms -- those validate
+#     properties of the TIP, which the push build already covered, and
+#     duplicating them is what this guard exists to avoid.
+#   * On a same-repo PR the jobs carrying this guard report as SKIPPED in the
+#     PR's checks list. They can still be required status checks, but only if the
+#     branch protection accepts a skipped conclusion as passing -- the same SHA
+#     was already built on the branch push. `merge-check` is the one check that
+#     actually RUNS there, so it is the one to require if only one can be.
+#   * Inside a reusable workflow `github.event_name` reflects the CALLER's event.
+#     release.yml -- this repository's only caller -- triggers on a tag `push` and
+#     on `workflow_dispatch`, never on `pull_request`, so the guard is TRUE on
+#     every release and every rehearsal run and all jobs execute. THAT CHECK HAS
+#     BEEN MADE, against the caller as it stands. It would stop holding the moment
+#     a `pull_request:` trigger were added to release.yml (or build.yml were
+#     called from any PR-triggered workflow): do not add one without revisiting
+#     this guard. Unlike a `needs:`-gated arrangement the failure mode is a
+#     MISSING check rather than a green run that built nothing -- no job here
+#     gates on another job's output.
+# ---------------------------------------------------------------------------
 
 jobs:
+  # -------------------------------------------------------------------------
+  # THE MERGE RESULT -- the one tree no push build ever compiles.
+  #
+  # `actions/checkout` on a `pull_request` event checks out `refs/pull/N/merge`,
+  # so this job builds the PR merged with the base as it stands right now. That
+  # is the tree the merge button produces, and nothing else in this workflow
+  # sees it: every other job is skipped on a same-repo PR because the push
+  # trigger already built the same SHA -- the TIP, not the merge.
+  #
+  # SCOPED TO SAME-REPO PRs, the exact complement of the guard above. A fork PR
+  # is not covered by the push trigger, so it already runs the full matrix here
+  # and does not need this. Under `workflow_call` the caller's event decides:
+  # release.yml triggers on a tag push and workflow_dispatch, so this job is
+  # skipped on every release and rehearsal, which is correct -- a tag has no
+  # merge result.
+  #
+  # BUILD AND SELF-TESTS ONLY, and that is the whole design. What a moved base
+  # breaks is compilation and behaviour, and both are platform-independent:
+  # a semantic merge conflict fails here. Packaging, pluginval and the other two
+  # platforms validate properties of the tip that the push build already gated,
+  # so re-running them would restore the duplicate matrix the guard removed. No
+  # artifacts are produced: this job answers "does the merge build and pass",
+  # not "what would we ship".
+  # -------------------------------------------------------------------------
+  merge-check:
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install build dependencies
+        run: |
+          chmod +x scripts/*.sh
+          ./scripts/setup-linux.sh
+
+      - name: Configure
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DANAMORPH_BUILD_NUMBER=${{ github.run_number }}
+
+      - name: Build (VST3 + Standalone + tests)
+        run: cmake --build build --config Release
+
+      - name: DSP + state self-tests
+        env:
+          MALLOC_PERTURB_: 1        # fresh heap = 0xFE; see the `linux` job's self-test step
+        run: ./scripts/run-tests.sh
+
+  # -------------------------------------------------------------------------
+  # Documentation structure lint (scripts/check-docs.py).
+  #
+  # Deliberately NOT a dependency of the build jobs: a prose defect should fail
+  # the run, not skip a binary that is otherwise fine. It costs seconds on the
+  # cheapest runner and needs no toolchain.
+  #
+  # `--self-test` runs FIRST and is the load-bearing half. In the sibling product
+  # this checker once reported the repository "50 file(s) clean" while an
+  # unclosed fence exempted 1382 lines of its largest document from every check,
+  # so "the script exited 0" is not evidence unless the script's own guarantees
+  # were exercised in the same run. Both commands are plain `python3` invocations
+  # with no dependencies beyond the standard library.
+  # -------------------------------------------------------------------------
+  docs:
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name != github.repository
+    steps:
+      - uses: actions/checkout@v7
+      - name: Lint documentation structure
+        run: |
+          python3 scripts/check-docs.py --self-test
+          python3 scripts/check-docs.py
+
+  # -------------------------------------------------------------------------
+  # Source portability lint + evidence-anchor gate.
+  #
+  # THE PORTABILITY LINT EXISTS BECAUSE A BUILD JOB CANNOT REPLACE IT. An
+  # explicit template argument on `juce::jmin/jmax/snapToZero` instantiates
+  # juce_dsp's dsp::SIMDRegister overload, and completing that class needs
+  # SIMDNativeOps<T> -- which exists only where T names one of JUCE's ten SIMD
+  # element typedefs. On Linux glibc `uint64_t` IS `unsigned long` IS `size_t`,
+  # so `juce::jmax<size_t>(...)` completes; on macOS libc++ `uint64_t` is
+  # `unsigned long long`, so it does not and the translation unit fails to
+  # compile. The divergence is in the TYPEDEF, not the front end, so NO Linux
+  # compiler can see it -- adding the Linux+Clang job below would NOT catch it.
+  # A lint is the only Linux-runnable guard, which is why it is a separate,
+  # seconds-long job rather than a step inside a build. This tree is clean of it
+  # today; the job is a regression guard, and the sibling product lost three days
+  # of red macOS builds to the one line it guards.
+  #
+  # No `needs:` -- a source defect should fail the run on its own terms, not wait
+  # behind a toolchain.
+  # -------------------------------------------------------------------------
+  source-lint:
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name != github.repository
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # `check-citations.py` compares against a BASE REVISION, so the run
+          # needs history rather than the default single-commit checkout.
+          fetch-depth: 0
+      # PROVE THE GATE IS LIVE BEFORE TRUSTING ITS SILENCE (TESTING_POLICY rule
+      # 4): the self-test runs in THIS job, immediately before the lint it
+      # verifies, and needs nothing but Python. It runs the real stripper and the
+      # real pattern over source that must fire and source that must stay quiet,
+      # then the real `lint()` over a temporary tree, then the real scratch-name
+      # comparison — so a dead regex, an over-eager stripper, a walker that
+      # reaches no files or a coupling check that always agrees fails HERE rather
+      # than reporting the tree clean.
+      #
+      # It is NOT the same check as `--compile-canary` in `linux-clang`, and the
+      # two are not interchangeable. That one asks whether the PINNED JUCE still
+      # has the hazard — a question about the dependency, answerable only where
+      # JUCE is checked out. This asks whether the CHECKER still finds it. A
+      # green canary with a broken scanner reports a clean tree; a green
+      # self-test with a changed JUCE guards a hazard that has moved. Both are
+      # required, and only this one can run beside the lint.
+      - name: Portability lint self-test (the lint still fires, and still stays quiet)
+        run: python3 scripts/check-portability.py --self-test
+
+      - name: Lint source portability (JUCE SIMD overload hazard)
+        run: python3 scripts/check-portability.py
+
+      # Same rule, and this checker needs it MOST: the other three only report,
+      # while this one REWRITES governed documents under `--fix`. A defect here
+      # does not merely fail to catch drift — it replaces a correct anchor with a
+      # wrong one and prints success, which it has done four times (a `rev:`
+      # qualifier reaching the ownership test, a compound citation left
+      # internally contradictory, one span applied twice, a provenance sentence
+      # wrapping the sibling's range). Each is a case in the self-test, in the
+      # direction it failed. It runs on synthetic input through the real
+      # functions, so it needs no base revision and cannot be satisfied by a
+      # clean tree.
+      - name: Citation-gate self-test (recognition, mapping and rewriting)
+        run: python3 scripts/check-citations.py --self-test
+
+      # Evidence anchors (`src/PluginProcessor.cpp:695-752`) are exact and
+      # therefore fragile: an edit ABOVE one silently re-aims it at unrelated
+      # code while the document keeps reading as though it were still correct.
+      # DOCUMENTATION_LIFECYCLE_POLICY.md already requires anchors to be
+      # re-anchored in the SAME change set that moves them; this is that rule as
+      # a gate, over the 184 anchors `docs/` carried when it landed.
+      #
+      # WHAT IT COMPARES AGAINST, precisely:
+      #
+      #   * pull_request -- FORK pull requests only (this job carries the
+      #     same-repo guard above, so a same-repo branch never reaches this event
+      #     here; do not read this branch as the normal case). `base.sha` is fed
+      #     through `git merge-base`. On this event `actions/checkout` checks out
+      #     the GENERATED MERGE COMMIT (`refs/pull/N/merge`), whose first parent
+      #     IS `base.sha`, so `merge-base` returns `base.sha` verbatim and the hop
+      #     is a no-op. It is kept because it is the correct expression of the
+      #     intent and stops being a no-op the moment the checkout names the PR
+      #     head instead -- not because it is doing work today.
+      #   * push -- the normal path, and the one that holds the line.
+      #     `event.before` is the branch's previous tip, so each push is judged
+      #     against its immediate predecessor: ONE PUSH OF DRIFT AT A TIME. That
+      #     is narrower than a merge base and still sufficient, because every
+      #     push is checked -- which is why this job has no `needs:` and cannot be
+      #     skipped by a failing build.
+      #
+      # Two ways `event.before` is unusable, both tested for below: on the first
+      # push of a branch it is all-zeros, and after a FORCE-PUSH it names a commit
+      # the repository may no longer have at all -- `git show` then fails every
+      # file and the script reports "nothing to check against" and exits 2, a red
+      # gate that says nothing about the documents. Both fall back to `HEAD~1`
+      # with a notice, which under-checks rather than failing on a question it
+      # cannot answer.
+      - name: Check documentation evidence anchors
+        run: |
+          set -euo pipefail
+          BASE="${{ github.event.pull_request.base.sha || github.event.before }}"
+          if [ -n "$BASE" ] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            # A merge base exists only when the two share history; a force-push
+            # that rewrote the fork point can leave them disjoint.
+            BASE="$(git merge-base "$BASE" HEAD 2>/dev/null || echo "$BASE")"
+          else
+            BASE=''
+          fi
+          if [ -z "$BASE" ]; then
+            BASE="$(git rev-parse HEAD~1 2>/dev/null || git rev-parse HEAD)"
+            echo "::notice::No usable base revision for this event; falling back to $BASE"
+          fi
+          echo "Comparing evidence anchors against $BASE"
+          python3 scripts/check-citations.py --check --base "$BASE"
+
   linux:
     runs-on: ubuntu-latest
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name != github.repository
     steps:
       - uses: actions/checkout@v7
 
@@ -86,14 +398,35 @@ jobs:
           set -e
           SO="build/Anamorph_artefacts/Release/VST3/Anamorph.vst3/Contents/x86_64-linux/Anamorph.so"
           APP="build/Anamorph_artefacts/Release/Standalone/Anamorph"
+          # NEVER MAKE THIS DIR A DESCENDANT OF THE PUBLIC ONE. The invariant is
+          # about PATH ANCESTRY, not string prefixes: "dist/Anamorph-Linux" IS a
+          # string prefix of "dist/Anamorph-Linux-debug" today and that is fine,
+          # because `upload-artifact` treats `path: dist/Anamorph-Linux` as a
+          # literal directory and `find "$DIST"` descends only that directory --
+          # neither matches by prefix. What would break is a rename to a nested
+          # layout (dist/Anamorph-Linux/debug), which puts the .debug files inside
+          # the uploaded tree AND inside the leak-checked tree at once: shipped
+          # symbols, or a failing leak check, depending on the pattern.
           DBG="dist/Anamorph-Linux-debug"
           mkdir -p "$DBG"
           objcopy --only-keep-debug "$SO"  "$DBG/Anamorph.vst3.so.debug"
           objcopy --only-keep-debug "$APP" "$DBG/Anamorph.standalone.debug"
           strip --strip-unneeded "$SO"
           strip --strip-unneeded "$APP"
-          objcopy --add-gnu-debuglink="$DBG/Anamorph.vst3.so.debug"    "$SO"
-          objcopy --add-gnu-debuglink="$DBG/Anamorph.standalone.debug" "$APP"
+          # objcopy stores only the BASENAME of the argument in .gnu_debuglink
+          # (bfd's bfd_fill_in_gnu_debuglink_section passes it through
+          # lbasename), and a debugger resolves that name relative to the
+          # STRIPPED BINARY'S OWN directory, then .debug/, then the global debug
+          # dir. Passing "$DBG/<file>.debug" therefore stores exactly the same
+          # string as the form below; both were measured to produce a
+          # byte-identical section. This form is written from inside $DBG so the
+          # stored name is the one spelled at the call site rather than one the
+          # reader has to know lbasename produces; it is NOT a behavioural
+          # difference. The binary paths are made absolute because the working
+          # directory changes.
+          SO_ABS="$(readlink -f "$SO")"; APP_ABS="$(readlink -f "$APP")"
+          ( cd "$DBG" && objcopy --add-gnu-debuglink=Anamorph.vst3.so.debug    "$SO_ABS" )
+          ( cd "$DBG" && objcopy --add-gnu-debuglink=Anamorph.standalone.debug "$APP_ABS" )
           # Verify the strip: no static symbol table left, and the plugin must
           # still export its VST3 entry point from .dynsym.
           for BIN in "$SO" "$APP"; do
@@ -102,28 +435,78 @@ jobs:
             fi
           done
           nm -D "$SO" | grep -q GetPluginFactory
+          # Written LAST, so it is set only if every objcopy/strip/verify above
+          # succeeded. The debug upload gates on it rather than on "the step was
+          # not skipped": $DBG is created at the top of this step, so an abort
+          # part-way through would otherwise leave a directory that exists but may
+          # be empty, and the upload would fail a SECOND time on if-no-files-found
+          # -- burying the real error under a cascade.
+          echo "debug_artifacts=true" >> "$GITHUB_OUTPUT"
 
+      # MALLOC_PERTURB_ FILLS FRESH HEAP WITH A NON-ZERO PATTERN and freed heap
+      # with a different one. Linux hands back zero-filled pages and macOS does
+      # not, so a read-before-write in DSP state is benign here and arbitrary
+      # there -- the symptom is platform-specific while the DEFECT is not. This
+      # makes the Linux run behave like the hostile allocator for free: no
+      # rebuild, no instrumentation, no measurable slowdown.
+      #
+      # THE VALUE IS NOT THE FILL BYTE, and getting that backwards is why this
+      # said 255 for one round. glibc applies the variable ASYMMETRICALLY:
+      #
+      #     alloc_perturb (p, n)  ->  memset (p, perturb_byte ^ 0xff, n)
+      #     free_perturb  (p, n)  ->  memset (p, perturb_byte,        n)
+      #
+      # so the FRESH-allocation fill is the COMPLEMENT of the value. 255 was
+      # chosen to write 0xFF into fresh buffers and did the exact opposite: it
+      # wrote 0x00, which is the benign zero-fill this step exists to defeat.
+      # Measured, not inferred -- with 255 a fresh 4 KiB buffer reads
+      # `00 00 00 00` and so does a recycled one, making the setting strictly
+      # WORSE than leaving it unset (unset, a recycled chunk reads back real
+      # garbage such as `20 3b 40 ce`).
+      #
+      # 1 gives fresh = 0xFE and freed = 0x01. A float built from 0xFEFEFEFE is
+      # -1.69e38, near the negative end of the float range: an uninitialised read
+      # of audio state is then enormous AND wrong-signed, so every level, null,
+      # transparency and click-free assertion in both suites fails on it.
+      #
+      # NaN IS NOT AVAILABLE HERE, so the earlier claim could not have held at any
+      # value. A float whose four bytes are all B has exponent
+      # ((B & 0x7f) << 1) | (B >> 7), which is 0xFF only for B = 0xFF -- and
+      # fresh = 0xFF needs perturb_byte = 0, which is glibc's "perturbation off"
+      # sentinel. Swept all 255 selectable values to confirm: 254 give a loud
+      # finite float, 255 gives zero, none gives NaN, Inf or a denormal. NaN
+      # coverage is what the `sanitizers` job is for.
+      #
+      # glibc-only, which is why it is set here and on `linux-clang` and NOT on
+      # the macOS job, where libmalloc ignores it and the variable would read as
+      # coverage that does not exist. valgrind in `sanitizers` answers the same
+      # question more thoroughly and far more slowly; this is the cheap one, on
+      # every push.
       - name: DSP + state self-tests
         id: tests
+        env:
+          MALLOC_PERTURB_: 1
         run: ./scripts/run-tests.sh
 
-      - name: pluginval (strictness 10, deterministic x3 -- release gate)
-        run: ./scripts/run-pluginval.sh 10 deterministic
-
-      - name: pluginval (strictness 10, randomise x3 -- release gate)
-        # NEVER skipped for a deterministic FAILURE: both modes must report independently, so a
-        # deterministic failure cannot hide the randomise result. It IS skipped when there is nothing
-        # valid to validate, because `!cancelled()` alone is true after ANY upstream failure. The job
-        # still fails if either gate fails.
-        #
-        # Names `strip`, not `build`, and that is the point of the invariant rather than a detail:
-        # on Linux the release gate validates the STRIPPED bytes (that is why the strip step runs
-        # before pluginval at all), so the step that PRODUCES what this consumes is the strip, not the
-        # compile. `steps.strip.outcome == 'success'` subsumes the build anyway -- strip carries no
-        # `if:`, so a failed build leaves it 'skipped'. Its deterministic sibling gets the same gate
-        # for free from default success() semantics; this one has to say so.
+      - name: pluginval (deterministic x3 -- release gate)
+        # Explicit condition rather than relying on "no `if:`, so it self-skips".
+        # Both pluginval steps carry the SAME condition, naming exactly what must
+        # have succeeded for the binary to be in the state we intend to validate.
+        # On Linux `strip` is that step, and it subsumes the build: strip carries
+        # no `if:`, so a failed build leaves it 'skipped'. It runs BEFORE
+        # validation so the gate sees the exact stripped bytes users receive.
         if: ${{ !cancelled() && steps.strip.outcome == 'success' }}
-        run: ./scripts/run-pluginval.sh 10 randomise
+        run: ./scripts/run-pluginval.sh ${{ env.ANAMORPH_PLUGINVAL_STRICTNESS }} deterministic vst3
+
+      - name: pluginval (randomise x3 -- release gate)
+        # Same condition as the deterministic step above -- deliberately NOT
+        # `!cancelled()` alone. Two different things are being separated:
+        #   * a DETERMINISTIC pluginval failure must never skip randomise (that is
+        #     what `!cancelled()` buys, and it still holds);
+        #   * an earlier PIPELINE failure must skip BOTH, because nothing worth
+        #     validating exists.
+        if: ${{ !cancelled() && steps.strip.outcome == 'success' }}
+        run: ./scripts/run-pluginval.sh ${{ env.ANAMORPH_PLUGINVAL_STRICTNESS }} randomise vst3
 
       # Customer-artifact safety (RH-PR-2 review): staging and upload are
       # gated on the strip step having SUCCEEDED — never `if: always()` — so
@@ -156,7 +539,11 @@ jobs:
               echo "::error::customer artifact contains an unstripped binary: $ELF"; exit 1
             fi
           done < <(find "$DIST" -type f \( -name 'Anamorph*' -o -name '*.so' \) -print0)
-          if find "$DIST" -type f \( -name '*.debug' -o -name '*.pdb' -o -name '*.dSYM' \) | grep -q .; then
+          # No `-type f`: a .dSYM is a DIRECTORY, so `-type f` would make that arm
+          # permanently dead and the check would read stronger than it is. Linux
+          # produces no dSYMs, but the macOS step calls its own copy "parity with
+          # the Linux/Windows staging self-checks" -- so it has to be parity.
+          if find "$DIST" \( -name '*.debug' -o -name '*.pdb' -o -name '*.dSYM' \) -print | grep -q .; then
             echo "::error::customer artifact contains debug files"; exit 1
           fi
           # ONE artifact ships from this validated staging dir: Anamorph-Linux
@@ -179,19 +566,287 @@ jobs:
           path: dist/Anamorph-Linux
           if-no-files-found: error
 
-      # Developer debug artifacts are preserved even when a later step fails
-      # (they never contain customer-facing binaries), but not if the strip
-      # step never ran at all.
+      # Developer debug artifacts are preserved even when a LATER step fails
+      # (they never contain customer-facing binaries) -- but only when the strip
+      # step itself completed, which is what actually produced the .debug files.
       - name: Upload Linux debug symbols (crash symbolication)
-        if: ${{ !cancelled() && steps.strip.outcome != 'skipped' }}
+        if: ${{ !cancelled() && steps.strip.outputs.debug_artifacts == 'true' }}
         uses: actions/upload-artifact@v7
         with:
           name: Anamorph-Linux-debug
           path: dist/Anamorph-Linux-debug
           if-no-files-found: error
 
+  # -------------------------------------------------------------------------
+  # Linux + Clang, and the first-party warning gate.
+  #
+  # PURPOSE, stated narrowly so it is not oversold: `juce_recommended_warning_flags`
+  # picks its set by COMPILER ID, and Clang's is strictly larger than GCC's --
+  # -Wshorten-64-to-32, -Wconditional-uninitialized, -Wsign-conversion,
+  # -Wcast-align, -Wshift-sign-overflow, -Wzero-as-null-pointer-constant,
+  # -Wimplicit-int-float-conversion. Every one of those diagnostics reached this
+  # project only from the macOS runner, several minutes into a universal build,
+  # or not at all when that job was red for an unrelated reason.
+  #
+  # THIS IS NOT HYPOTHETICAL HERE. The 2026-08-15 image move
+  # (macos-14/AppleClang 15 -> macos-latest/AppleClang 21) surfaced four
+  # PRE-EXISTING -Wimplicit-int-float-conversion sites in src/PluginEditor.cpp,
+  # src/gui/LookAndFeel.cpp and src/dsp/VelvetNoise.cpp that had been in the tree
+  # for months (CI_CD.md §Build matrix). Running Clang on the cheapest runner in
+  # the matrix surfaces that class on the push that introduces it.
+  #
+  # It does NOT catch the typedef-divergence class -- see `source-lint`. Two
+  # different gaps, two different guards; conflating them is how the second one
+  # gets dropped.
+  #
+  # Builds the two test targets AND the plugin. The test targets compile the
+  # entire first-party tree (ANAMORPH_PLUGIN_SOURCES is shared with
+  # AnamorphStateTests by construction, and AnamorphDSP is an INTERFACE library
+  # whose sources compile into every consumer), so warning coverage is complete
+  # from them alone. `Anamorph_VST3` is built anyway because it is the ONLY
+  # target that links `juce_recommended_lto_flags`: a defect the optimiser only
+  # acts on at -flto is invisible to every non-LTO artefact in this pipeline, and
+  # that is the configuration users install. The Standalone is off -- it
+  # recompiles the identical translation units.
+  #
+  # The gate is FIRST-PARTY warnings only, matched structurally by path.
+  # -Werror is not used and cannot be yet: JUCE's own module sources are compiled
+  # into our targets, so a blanket -Werror would gate on a dependency's warnings
+  # and get switched off at the first JUCE bump. Filtering by path gates exactly
+  # what we own.
+  #
+  # IT IS A NO-NEW-WARNINGS GATE, NOT A ZERO-WARNINGS ONE, and that is not a
+  # softening. The tree already carries 14 first-party Clang warning sites
+  # (-Wshadow-field, -Wshadow, -Wswitch-enum, -Wsign-conversion, -Wfloat-equal,
+  # -Wunused-but-set-variable, -Wmissing-prototypes), all of them older than this
+  # job; clearing them means renaming a member across the editor, adding cases to
+  # engine switches and changing float comparisons in DSP code -- source work that
+  # belongs in its own review under DSP_POLICY, not in a CI change. The two
+  # alternatives are worse: a job that lands RED teaches everyone to ignore it,
+  # and a job that cannot fail is not a gate. So the accepted set is pinned in
+  # `scripts/clang-warning-baseline.txt` (a debt list keyed on path+flag with a
+  # site count -- never on line numbers, which drift on unrelated edits) and
+  # ANYTHING ABOVE IT fails. A count that falls is a ::notice:: asking for the
+  # baseline to shrink, never a failure: the commit that fixes a warning must not
+  # be the commit that goes red.
+  # -------------------------------------------------------------------------
+  linux-clang:
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name != github.repository
+    steps:
+      - uses: actions/checkout@v7
+
+      # The PINNED Clang, not the image's default `clang`. See the env block for
+      # why: the warning baseline records per-(path, flag) counts, and which
+      # diagnostics Clang emits moves between majors, so an unpinned compiler
+      # makes a runner-image bump indistinguishable from a source regression.
+      # `lld-<n>` is installed alongside so the pinned toolchain is complete on
+      # the box; which `ld.lld` the driver actually selects is settled by
+      # `check_linker_flag` at configure time (see CMakeLists.txt).
+      - name: Install build dependencies
+        run: |
+          chmod +x scripts/*.sh
+          ./scripts/setup-linux.sh
+          sudo apt-get install -y \
+            "clang-${ANAMORPH_CLANG_VERSION}" "lld-${ANAMORPH_CLANG_VERSION}"
+          "clang-${ANAMORPH_CLANG_VERSION}" --version
+
+      - name: Configure (Clang)
+        run: >
+          cmake -B build-clang -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_C_COMPILER=clang-${{ env.ANAMORPH_CLANG_VERSION }}
+          -DCMAKE_CXX_COMPILER=clang++-${{ env.ANAMORPH_CLANG_VERSION }}
+          -DANAMORPH_BUILD_STANDALONE=OFF
+          -DANAMORPH_BUILD_NUMBER=${{ github.run_number }}
+
+      # The canary belongs HERE rather than in source-lint: it needs the pinned
+      # JUCE on disk, which this job has already fetched. It asserts that the
+      # hazard source-lint guards is still real for the pinned revision -- the
+      # deduced form must compile and the explicit form must not. A JUCE bump
+      # that changes the SIMDRegister overload set fails this step instead of
+      # silently turning the lint into a no-op.
+      - name: Portability compile canary (pinned JUCE still has the hazard)
+        run: >
+          python3 scripts/check-portability.py --compile-canary build-clang/_deps/juce-src/modules
+          --cxx clang++-${{ env.ANAMORPH_CLANG_VERSION }}
+
+      # PROVE THE GATE IS LIVE BEFORE TRUSTING ITS SILENCE. This is the same move
+      # `check-docs.py --self-test` and `--compile-canary` make, for the same
+      # reason: a checker that has stopped matching anything is indistinguishable
+      # from a clean tree. The self-test feeds the classifier every path spelling
+      # this build could produce -- the absolute form CMake's Ninja generator
+      # emits today, the `../src/…` form a relative-path generator would, and the
+      # vendored shapes that must never count -- and fails the job if any is
+      # misclassified.
+      - name: Warning-gate self-test (the classifier still classifies)
+        run: python3 scripts/check-clang-warnings.py --self-test
+
+      - name: Build tests AND the plugin (Clang), gating on first-party warnings
+        id: build
+        run: |
+          set -o pipefail
+          cmake --build build-clang --target AnamorphTests AnamorphStateTests Anamorph_VST3 2>&1 | tee clang-build.log
+          # The classification is STRUCTURAL, not textual: every diagnostic's
+          # path is resolved (absolute as-is, relative against the build dir the
+          # compiler ran in) and then asked whether the real path lands under
+          # src/ or tests/ without passing through a `_deps` component. An
+          # anchored `grep` on the absolute spelling would match here too, but it
+          # could only ever match ONE spelling of a path the build system is free
+          # to change, with no signal if that ever stopped being the spelling --
+          # and this build emits TWO spellings of one file today
+          # (src/dsp/ScopeBuffer.h and src/gui/../dsp/ScopeBuffer.h), which the
+          # resolver folds into one baseline key and a text match would not.
+          # The baseline defaults to scripts/clang-warning-baseline.txt.
+          # `--clang-major` is checked against the version recorded IN that file:
+          # the counts describe one compiler's diagnostics, so comparing them to
+          # another compiler's output is not a weaker check, it is a meaningless
+          # one. A mismatch exits 2 ("the check could not run") rather than 1
+          # ("the tree regressed"), because that is what it is.
+          # `scripts/check-clang-warnings.py` carries the reasoning in full.
+          python3 scripts/check-clang-warnings.py \
+            --log clang-build.log \
+            --root "${GITHUB_WORKSPACE}" \
+            --build-dir "${GITHUB_WORKSPACE}/build-clang" \
+            --clang-major "${ANAMORPH_CLANG_VERSION}"
+
+      # Run the suites the Clang build produced, not just compile them: a
+      # miscompile is the thing a second toolchain is most useful for finding,
+      # and the binaries are already sitting there.
+      - name: DSP + state self-tests (Clang build)
+        id: tests
+        env:
+          MALLOC_PERTURB_: 1        # fresh heap = 0xFE; see the `linux` job's self-test step
+        run: |
+          ./build-clang/AnamorphTests_artefacts/Release/AnamorphTests
+          ./build-clang/AnamorphStateTests_artefacts/Release/AnamorphStateTests
+
+  # -------------------------------------------------------------------------
+  # Sanitizers (Linux). The point of this job is to catch, ON LINUX, defects that
+  # only MANIFEST on another platform.
+  #
+  # Memory that Linux hands back zero-filled is arbitrary on macOS, so an
+  # uninitialised read of DSP state is benign here and poisonous there. That
+  # defect class is platform-INDEPENDENT even though its symptom is not, and
+  # tooling sees it regardless of which bytes the allocator happened to supply.
+  # This repository ships a realtime audio processor with per-block state across
+  # eight DSP stages and had no sanitizer coverage of any kind before this job.
+  #
+  # ASan+UBSan cover out-of-bounds, lifetime and undefined behaviour -- the last
+  # of which also matters because UB is what lets -O3 + LTO on a different target
+  # legally delete a guard. MemorySanitizer, the dedicated uninitialised-read
+  # tool, is deliberately NOT used: it requires every dependency including libc++
+  # and all of JUCE to be instrumented, and an uninstrumented dependency produces
+  # false positives rather than silence. valgrind memcheck answers the same
+  # question with no rebuild of anything, so it carries that half.
+  #
+  # valgrind runs BOTH suites. It is ~50x slower than native, and that cost is
+  # accepted because memcheck is the only uninitialised-read detector in the
+  # pipeline and the read that would matter runs through the real wrapper
+  # `processBlock` -- which only AnamorphStateTests drives. Pointing it at the DSP
+  # suite alone would aim the detector away from the wrapper entirely.
+  #
+  # detect_leaks=0: JUCE's singletons are torn down at exit in ways LeakSanitizer
+  # reports and this job is not a leak gate. halt_on_error=1 on UBSan so the first
+  # violation fails the job rather than scrolling past.
+  #
+  # NOT in any `needs:` chain and not a dependency of anything: it is slower than
+  # the build jobs and a sanitizer finding should not withhold a beta artifact
+  # that the behavioural gates passed.
+  # -------------------------------------------------------------------------
+  sanitizers:
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name != github.repository
+    steps:
+      - uses: actions/checkout@v7
+
+      # The SAME pinned Clang major as `linux-clang` (see the env block). This job
+      # has no baseline to protect, but the pin buys something concrete here too:
+      # clang's sanitizer runtime ships SEPARATELY from clang on Debian/Ubuntu,
+      # and without it the link fails with "cannot find libclang_rt.asan-x86_64.a",
+      # which reads as a project problem and is not one. The package is
+      # version-suffixed, so the unpinned form had to DERIVE the major by
+      # scraping `clang --version` and fall back to an unsuffixed alias that does
+      # not exist on every image. With the major known up front the runtime is
+      # named directly and a missing one fails loudly instead of silently taking
+      # the fallback path (`set -e` is on).
+      - name: Install build dependencies
+        run: |
+          chmod +x scripts/*.sh
+          ./scripts/setup-linux.sh
+          sudo apt-get install -y valgrind \
+            "clang-${ANAMORPH_CLANG_VERSION}" \
+            "lld-${ANAMORPH_CLANG_VERSION}" \
+            "libclang-rt-${ANAMORPH_CLANG_VERSION}-dev"
+          "clang-${ANAMORPH_CLANG_VERSION}" --version
+
+      - name: Configure (Clang, ASan + UBSan)
+        run: >
+          cmake -B build-san -G Ninja
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DCMAKE_C_COMPILER=clang-${{ env.ANAMORPH_CLANG_VERSION }}
+          -DCMAKE_CXX_COMPILER=clang++-${{ env.ANAMORPH_CLANG_VERSION }}
+          -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+          -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+          -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
+          -DANAMORPH_BUILD_STANDALONE=OFF
+          -DANAMORPH_BUILD_NUMBER=${{ github.run_number }}
+
+      # Only the two console targets. They compile the whole first-party tree and
+      # do NOT link juce_recommended_lto_flags (that is on the plugin alone), so
+      # they sanitize cleanly and quickly; a sanitized LTO plugin link would cost
+      # far more for the same source coverage.
+      - name: Build test targets (sanitized)
+        run: cmake --build build-san --target AnamorphTests AnamorphStateTests
+
+      - name: Self-tests under ASan + UBSan
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: |
+          ./build-san/AnamorphTests_artefacts/RelWithDebInfo/AnamorphTests
+          ./build-san/AnamorphStateTests_artefacts/RelWithDebInfo/AnamorphStateTests
+
+      # Uses an UNSANITIZED Release build on purpose: memcheck and ASan
+      # instrument the same memory and running them together is neither faster
+      # nor more sensitive. This is the only uninitialised-read detector in the
+      # pipeline (see the MemorySanitizer note above), so its exit code is the
+      # gate: --error-exitcode makes a reported error fail the job, which is not
+      # valgrind's default.
+      - name: Configure + build both suites (unsanitized, for valgrind)
+        run: |
+          cmake -B build-vg -G Ninja -DCMAKE_BUILD_TYPE=Release -DANAMORPH_BUILD_STANDALONE=OFF
+          cmake --build build-vg --target AnamorphTests AnamorphStateTests
+
+      # ANAMORPH_TESTS_NO_FTZ=1 relaxes ONE assertion in the DSP suite, and only
+      # under this tool. `juce::ScopedNoDenormals` sets the CPU's FTZ/DAZ bits so
+      # a denormal result is flushed to zero in hardware; valgrind emulates
+      # floating point and does not honour those bits, so denormals survive into
+      # the output and "engine output free of NaN/Inf/denormals" fails on a build
+      # that is correct on every real CPU. Measured: memcheck reports ZERO errors
+      # on that same run -- the tool finds no defect and the test fails anyway.
+      # NaN and Inf remain failures here; only the denormal half is relaxed, and
+      # only for this step. Every native job asserts the full check, so the
+      # DSP_POLICY invariant is still gated on every push on every platform.
+      # `tests/dsp_tests.cpp` carries the reasoning at the variable itself.
+      - name: valgrind memcheck (both suites)
+        env:
+          ANAMORPH_TESTS_NO_FTZ: 1
+        run: |
+          VG="valgrind --tool=memcheck --track-origins=yes --leak-check=no
+              --error-exitcode=1 --error-limit=no --num-callers=25"
+          $VG ./build-vg/AnamorphTests_artefacts/Release/AnamorphTests
+          $VG ./build-vg/AnamorphStateTests_artefacts/Release/AnamorphStateTests
+
   windows:
     runs-on: windows-latest
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name != github.repository
     steps:
       - uses: actions/checkout@v7
 
@@ -207,27 +862,60 @@ jobs:
         id: tests
         shell: pwsh
         run: |
-          $exe = Get-ChildItem -Recurse -Path build -Filter AnamorphTests.exe | Select-Object -First 1
-          if (-not $exe) { Write-Error 'AnamorphTests.exe not found'; exit 1 }
+          $ErrorActionPreference = 'Stop'
+          # Exactly ONE match -- like the staging step below, and like
+          # scripts/run-tests.sh. NOT `Select-Object -First 1`, which is what this
+          # step used to do: Windows uses the multi-config Visual Studio
+          # generator, so a tree ever built in more than one configuration holds
+          # several AnamorphTests.exe, and taking whichever enumerates first could
+          # run a Debug binary while the uploaded artifacts come from Release -- a
+          # green gate reporting on the wrong build.
+          function Get-OneTestExe {
+            param([Parameter(Mandatory)][string]$Name)
+            # -ErrorAction SilentlyContinue for the same reason as
+            # scripts/run-pluginval.ps1: $ErrorActionPreference is 'Stop', so a
+            # missing build/ would make Get-ChildItem THROW and the intended
+            # "build first" message below would be unreachable -- the operator
+            # would get a .NET stack trace instead of the one-line fix. In CI this
+            # step only runs after a successful build, so it is a diagnostics gap
+            # rather than a functional one; it is fixed for consistency, because
+            # two discovery sites behaving differently is what invites the next bug.
+            $found = @(Get-ChildItem -Recurse -Path build -Filter $Name -File -ErrorAction SilentlyContinue)
+            if ($found.Count -eq 0) { Write-Error "$Name not found under build -- build first" }
+            if ($found.Count -ne 1) {
+              Write-Error ("$Name is ambiguous -- found " + $found.Count + ": " + ($found.FullName -join ', ') +
+                           " -- refusing to guess which one the gate should run")
+            }
+            return $found[0]
+          }
+          # Locate BOTH before running either, so an ambiguous tree fails before any
+          # test output invites a partial reading.
+          $exe = Get-OneTestExe -Name AnamorphTests.exe
+          $stateExe = Get-OneTestExe -Name AnamorphStateTests.exe
+          $ErrorActionPreference = 'Continue'
           & $exe.FullName
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $stateExe = Get-ChildItem -Recurse -Path build -Filter AnamorphStateTests.exe | Select-Object -First 1
-          if (-not $stateExe) { Write-Error 'AnamorphStateTests.exe not found'; exit 1 }
           & $stateExe.FullName
 
-      - name: pluginval (strictness 10, deterministic x3 -- release gate)
-        shell: pwsh
-        run: ./scripts/run-pluginval.ps1 -Strictness 10 -Mode deterministic
-
-      - name: pluginval (strictness 10, randomise x3 -- release gate)
-        # NEVER skipped for a deterministic FAILURE: both modes must report independently, so a
-        # deterministic failure cannot hide the randomise result. It IS skipped when the build did not
-        # produce a plug-in, because `!cancelled()` alone is true after ANY upstream failure -- a
-        # compile error then produced a "not found -- build first" line that read like the cause and
-        # buried the real one. The job still fails if either gate fails.
+      - name: pluginval (deterministic x3 -- release gate)
+        # Explicit condition rather than relying on "no `if:`, so it self-skips".
+        # Both pluginval steps carry the SAME condition, naming exactly what must
+        # have succeeded for the binary to be worth validating.
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         shell: pwsh
-        run: ./scripts/run-pluginval.ps1 -Strictness 10 -Mode randomise
+        run: ./scripts/run-pluginval.ps1 -Strictness ${{ env.ANAMORPH_PLUGINVAL_STRICTNESS }} -Mode deterministic
+
+      - name: pluginval (randomise x3 -- release gate)
+        # Same condition as the deterministic step above -- deliberately NOT
+        # `!cancelled()` alone. Two different things are being separated:
+        #   * a DETERMINISTIC pluginval failure must never skip randomise (that is
+        #     what `!cancelled()` buys, and it still holds);
+        #   * an earlier PIPELINE failure must skip BOTH, because nothing worth
+        #     validating exists -- a compile error otherwise produced a "not found
+        #     -- build first" line that read like the cause and buried the real one.
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        shell: pwsh
+        run: ./scripts/run-pluginval.ps1 -Strictness ${{ env.ANAMORPH_PLUGINVAL_STRICTNESS }} -Mode randomise
 
       # RH-PR-2 (ADR-0021): Release now links with /DEBUG (+/OPT:REF,ICF), so
       # linker PDBs exist for the shipped images. They are retained as a
@@ -240,7 +928,7 @@ jobs:
       # then run steps that can abort (PDB retention, validation). A failure
       # at any point can therefore never leave a symbol-bearing public
       # artifact behind, and the upload below is additionally gated on this
-      # step succeeding.
+      # step's own checkpoint output.
       #
       # RH-PR-2 follow-up (CI reliability): the original PDB retention
       # assumed the linker drops each image's PDB in the SAME directory as
@@ -286,7 +974,27 @@ jobs:
             if ($bytes.Length -lt 0x40 -or $bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) {
               Write-Error "$ImagePath is not a valid PE image (missing MZ signature)"
             }
+            # EVERY offset below is read OUT OF the image being parsed, so each one
+            # is bounds-checked before it is used as an index. Without that, a
+            # truncated or malformed file throws a raw .NET IndexOutOfRangeException
+            # instead of the diagnosable Write-Error this function is written to
+            # produce -- and the operator gets a stack trace where a one-line cause
+            # was intended. Diagnostics quality, not correctness: these images come
+            # from MSVC in this same job.
             $peOffset = [BitConverter]::ToInt32($bytes, 0x3C)
+            # 26, not 24, and the two bytes matter: this ONE guard covers every
+            # read between here and the next check, so it has to cover the
+            # LARGEST of them, not the offset of the last one. Those reads are
+            # the PE signature (peOffset+0..1), NumberOfSections (peOffset+6..7),
+            # SizeOfOptionalHeader (peOffset+20..21) and the optional header's
+            # Magic (peOffset+24..25) -- 4 for the signature, 20 for the COFF
+            # file header, then 2 for Magic. At exactly +24 or +25 the earlier
+            # bound admitted the file and `ToUInt16($bytes, $optHeaderOffset)`
+            # then threw the raw .NET IndexOutOfRangeException this function
+            # exists to replace with a diagnosable message.
+            if ($peOffset -lt 0 -or ($peOffset + 26) -gt $bytes.Length) {
+              Write-Error "$ImagePath : e_lfanew ($peOffset) points outside the file, or leaves fewer than 26 bytes (PE signature + COFF header + optional-header Magic) of $($bytes.Length) -- image is truncated or malformed"
+            }
             if ($bytes[$peOffset] -ne 0x50 -or $bytes[$peOffset + 1] -ne 0x45) {
               Write-Error "$ImagePath is not a valid PE image (missing PE signature)"
             }
@@ -297,11 +1005,17 @@ jobs:
             $magic = [BitConverter]::ToUInt16($bytes, $optHeaderOffset)
             $dataDirOffset = $optHeaderOffset + $(if ($magic -eq 0x20B) { 112 } else { 96 })
             $debugEntryOffset = $dataDirOffset + (6 * 8)   # data-directory index 6 = Debug
+            if (($debugEntryOffset + 8) -gt $bytes.Length) {
+              Write-Error "$ImagePath : optional header / data directories run past the end of the file ($($bytes.Length) bytes) -- image is truncated or malformed"
+            }
             $debugRva  = [BitConverter]::ToUInt32($bytes, $debugEntryOffset)
             $debugSize = [BitConverter]::ToUInt32($bytes, $debugEntryOffset + 4)
             if ($debugRva -eq 0 -or $debugSize -eq 0) { return $null }
             # Map the debug directory's RVA to a file offset via the section table.
             $sectionTableOffset = $optHeaderOffset + $sizeOfOptionalHeader
+            if (($sectionTableOffset + ($numberOfSections * 40)) -gt $bytes.Length) {
+              Write-Error "$ImagePath : section table ($numberOfSections sections at $sectionTableOffset) runs past the end of the file ($($bytes.Length) bytes) -- image is truncated or malformed"
+            }
             $debugFileOffset = -1
             for ($i = 0; $i -lt $numberOfSections; $i++) {
               $s = $sectionTableOffset + ($i * 40)
@@ -318,11 +1032,22 @@ jobs:
             # Walk the IMAGE_DEBUG_DIRECTORY array (28 bytes/entry) for an
             # IMAGE_DEBUG_TYPE_CODEVIEW (2) entry carrying an RSDS record.
             $entryCount = [Math]::Floor($debugSize / 28)
+            if (($debugFileOffset + ($entryCount * 28)) -gt $bytes.Length) {
+              Write-Error "$ImagePath : debug directory ($entryCount entries at $debugFileOffset) runs past the end of the file ($($bytes.Length) bytes) -- image is truncated or malformed"
+            }
             for ($i = 0; $i -lt $entryCount; $i++) {
               $e = $debugFileOffset + ($i * 28)
               $type = [BitConverter]::ToUInt32($bytes, $e + 12)
               $pointerToRaw = [BitConverter]::ToUInt32($bytes, $e + 24)
               if ($type -eq 2 -and $pointerToRaw -gt 0) {
+                # Bounds-check before indexing: PointerToRawData comes from the
+                # image being parsed, so a truncated or malformed file would
+                # otherwise throw a raw .NET IndexOutOfRange instead of the
+                # intended, diagnosable Write-Error. 28 = Signature(4) + GUID(16)
+                # + Age(4), then at least one path byte.
+                if ($pointerToRaw + 28 -gt $bytes.Length) {
+                  Write-Error "$ImagePath : CodeView record at offset $pointerToRaw runs past the end of the file ($($bytes.Length) bytes) -- image is truncated or malformed"
+                }
                 $sig = [BitConverter]::ToUInt32($bytes, $pointerToRaw)
                 if ($sig -eq 0x53445352) {   # 'RSDS'
                   # Signature(4) + GUID(16) + Age(4), then a NUL-terminated path.
@@ -339,13 +1064,15 @@ jobs:
           # 1) Locate everything first -- abort here copies NOTHING public.
           #    Each locate demands EXACTLY ONE match: zero is a build-layout
           #    failure, more than one is ambiguity we refuse to guess about.
-          $vst3 = @(Get-ChildItem -Recurse -Path build -Filter Anamorph.vst3 -Directory)
+          # -ErrorAction SilentlyContinue: see the self-test step -- a missing build/
+          # must produce the diagnostic below, not a terminating .NET error.
+          $vst3 = @(Get-ChildItem -Recurse -Path build -Filter Anamorph.vst3 -Directory -ErrorAction SilentlyContinue)
           if ($vst3.Count -ne 1) { Write-Error "expected exactly one Anamorph.vst3 bundle, found $($vst3.Count)" }
           $vst3 = $vst3[0]
           $vst3Bin = @(Get-ChildItem -Recurse -Path $vst3.FullName -File | Where-Object { $_.Extension -eq '.vst3' })
           if ($vst3Bin.Count -ne 1) { Write-Error "expected exactly one .vst3 image inside $($vst3.FullName), found $($vst3Bin.Count)" }
           $vst3Bin = $vst3Bin[0]
-          $exe = @(Get-ChildItem -Recurse -Path build -Filter Anamorph.exe | Where-Object { $_.Directory.Name -eq 'Standalone' })
+          $exe = @(Get-ChildItem -Recurse -Path build -Filter Anamorph.exe -ErrorAction SilentlyContinue | Where-Object { $_.Directory.Name -eq 'Standalone' })
           if ($exe.Count -ne 1) { Write-Error "expected exactly one Standalone Anamorph.exe, found $($exe.Count)" }
           $exe = $exe[0]
           # 2) Copy the public artifact.
@@ -362,9 +1089,41 @@ jobs:
           Get-ChildItem -Recurse -Path $dist -File |
             Where-Object { $_.Extension -in '.pdb', '.ilk', '.exp', '.debug' } |
             Remove-Item -Force
-          # 4) Retain each shipped image's linker PDB (abort here is now
+          # 4) Validate the PUBLIC copy and CHECKPOINT it. Everything the customer
+          #    artifact needs is done at this point, so `public_ok` is emitted HERE,
+          #    before the developer-side PDB work below can abort. $GITHUB_OUTPUT is
+          #    read after the step regardless of its outcome, so a later failure
+          #    cannot retract it. Previously the customer upload AND the installer
+          #    gated on this whole step succeeding, which meant a purely
+          #    developer-side symbol problem ALSO withheld the Windows beta
+          #    artifact and its installer, even though the public copy was already
+          #    assembled and purged -- while macOS treats the same class of failure
+          #    as best-effort. The two platforms had opposite policies for one
+          #    situation; this is the macOS policy, applied here.
+          #    WHAT THIS CHECK IS, PRECISELY: it re-lists the same extensions step 3
+          #    just deleted, so it can only fire if Remove-Item silently failed. That
+          #    is a DELETE-CONFIRMATION, not an independent property check, and it is
+          #    weaker than the Linux equivalent (which inspects ELF section headers
+          #    for .symtab and asserts the stripped .so still exports
+          #    GetPluginFactory) and than macOS (which asserts both slices are
+          #    present). Nothing here asserts the shipped .vst3 is still loadable.
+          #    Do NOT substitute a raw byte-string search for `GetPluginFactory`:
+          #    matching the name anywhere in the file is not evidence that it is
+          #    exported. The honest way to close it is to read the PE export table,
+          #    which this step already has the machinery for.
+          $leak = Get-ChildItem -Recurse -Path $dist -File |
+                  Where-Object { $_.Extension -in '.pdb', '.ilk', '.exp', '.debug' }
+          if ($leak) { Write-Error ("customer artifact contains debug files: " + ($leak.FullName -join ', ')) }
+          "public_ok=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+          # 5) Retain each shipped image's linker PDB (abort here is now
           #    leak-safe), identified via its embedded CodeView record rather
           #    than an assumed name/location (see follow-up note above).
+          #    DELIBERATELY STRICT, unlike the macOS dSYM capture: there, a missing
+          #    dSYM is an EXPECTED consequence of Release+LTO; here /DEBUG
+          #    guarantees a PDB, so its absence means the build or this logic is
+          #    wrong and must be seen. The strictness now costs only the -debug
+          #    artifact, which is what it is actually protecting.
           foreach ($img in @(@{ tag = 'vst3'; bin = $vst3Bin }, @{ tag = 'standalone'; bin = $exe })) {
             $recordedPdbPath = Get-EmbeddedPdbPath -ImagePath $img.bin.FullName
             if (-not $recordedPdbPath) {
@@ -387,23 +1146,26 @@ jobs:
             }
             Copy-Item -Force $pdbFile.FullName (Join-Path $dbg ("Anamorph." + $img.tag + ".pdb"))
           }
-          # 5) Validate: the customer artifact must contain no debug files.
-          $leak = Get-ChildItem -Recurse -Path $dist -File |
-                  Where-Object { $_.Extension -in '.pdb', '.ilk', '.exp', '.debug' }
-          if ($leak) { Write-Error ("customer artifact contains debug files: " + ($leak.FullName -join ', ')) }
-          # The Anamorph-Windows artifact uploads the staged FILES, so its
-          # downloaded zip contains the payload directly (extract once, no
-          # wrapper folder, no nested archive). release.yml archives the same
-          # staging tree into the published release zip. Windows carries no
-          # Unix file modes, so nothing needs restoring on that route.
+          # Written LAST, for the same reason as the Linux strip step: $dbg is
+          # created at the top of this step, so gating the debug upload on "this
+          # step was not skipped" would fire it against an empty directory when the
+          # step aborts before the PDB copies -- a second, misleading failure on
+          # if-no-files-found on top of the real one.
+          # -Encoding utf8 is explicit: the runner uses pwsh 7 (UTF-8 by default),
+          # but Windows PowerShell 5.1 would write UTF-16LE and the runner would
+          # not parse the output at all.
+          "debug_artifacts=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       # v0.9.0 packaging (additive): a user-installable Inno Setup installer
       # built from the SAME validated (debug-purged) staging directory the zip
-      # was archived from. ISCC is preinstalled on windows-latest. The
-      # deterministic output name embeds the version parsed from CMakeLists.txt.
+      # was archived from. It therefore gates on the same `public_ok` checkpoint
+      # the customer zip does: repacking a tree that failed validation would
+      # launder a rejected build into an installer. ISCC is preinstalled on
+      # windows-latest. The deterministic output name embeds the version parsed
+      # from CMakeLists.txt.
       - name: Package Windows installer (Inno Setup)
         id: package_windows
-        if: ${{ !cancelled() && steps.stage_windows.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.stage_windows.outputs.public_ok == 'true' }}
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -421,7 +1183,7 @@ jobs:
       # A failed DSP self-test blocks the CUSTOMER upload (fail-closed), while
       # a pluginval-only failure still yields beta artifacts as before.
       - name: Upload Windows artifacts
-        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.stage_windows.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.stage_windows.outputs.public_ok == 'true' }}
         uses: actions/upload-artifact@v7
         with:
           name: Anamorph-Windows
@@ -438,10 +1200,10 @@ jobs:
           if-no-files-found: error
 
       # Developer debug artifacts are preserved even when validation fails
-      # (they never contain customer-facing binaries), but not if staging
-      # never ran at all.
+      # (they never contain customer-facing binaries), but not if the PDB
+      # retention never completed -- see the checkpoint note in the staging step.
       - name: Upload Windows debug symbols (crash symbolication)
-        if: ${{ !cancelled() && steps.stage_windows.outcome != 'skipped' }}
+        if: ${{ !cancelled() && steps.stage_windows.outputs.debug_artifacts == 'true' }}
         uses: actions/upload-artifact@v7
         with:
           name: Anamorph-Windows-debug
@@ -458,6 +1220,9 @@ jobs:
     # brings. The x86_64 slice is CROSS-compiled here (the runner is arm64) and
     # `lipo -archs` in the packaging step verifies both slices are present.
     runs-on: macos-latest
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name != github.repository
     steps:
       - uses: actions/checkout@v7
 
@@ -482,17 +1247,39 @@ jobs:
           chmod +x scripts/*.sh
           ./scripts/run-tests.sh
 
-      - name: pluginval (strictness 10, deterministic x3 -- release gate)
-        run: ./scripts/run-pluginval.sh 10 deterministic
-
-      - name: pluginval (strictness 10, randomise x3 -- release gate)
-        # NEVER skipped for a deterministic FAILURE: both modes must report independently, so a
-        # deterministic failure cannot hide the randomise result. It IS skipped when the build did not
-        # produce a plug-in, because `!cancelled()` alone is true after ANY upstream failure -- a
-        # compile error then produced a "not found -- build first" line that read like the cause and
-        # buried the real one. The job still fails if either gate fails.
+      # ...AND THE OTHER SLICE. The runner is Apple Silicon and the product is a
+      # UNIVERSAL binary, so the step above executes arm64 only: until this step
+      # existed the x86_64 slice was compiled on every push and run by nothing, on
+      # any platform. Half the macOS user base was validated by compilation alone
+      # -- and the deployment target (10.13) exists precisely to claim Intel
+      # support.
+      #
+      # Rosetta 2 runs it in place, so this costs one extra execution of two
+      # console apps rather than another runner. If Rosetta is absent the step
+      # does NOT quietly pass: it emits a ::warning:: naming the coverage that was
+      # lost, because a gate that silently does nothing is the failure mode this
+      # workflow is written against. It is a warning rather than an error only
+      # because Rosetta's presence is the IMAGE's property, not the product's, and
+      # a green product should not go red for it.
+      #
+      # The `id:` is load-bearing, not decoration: the two CUSTOMER uploads below
+      # require this step to have SUCCEEDED, exactly as they require the arm64 run.
+      # Without it the outcome is unreferenceable, and a macOS build whose Intel
+      # half failed its behavioural gate would still hand testers a downloadable
+      # package -- the precise thing the fail-closed rule at the top of this file
+      # forbids. The two ways this step is NOT a failure are both deliberate: an
+      # absent Rosetta exits 0 (image property, per above) so the uploads proceed
+      # on a compilation-only Intel run with the ::warning:: as the record, and a
+      # failed BUILD skips it, where `steps.tests` already blocks the upload.
+      - name: DSP + state self-tests, x86_64 slice under Rosetta
+        id: tests_x86_64
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: ./scripts/run-pluginval.sh 10 randomise
+        run: |
+          if ! arch -x86_64 /usr/bin/true 2>/dev/null; then
+            echo "::warning::Rosetta 2 unavailable on this image -- the x86_64 slice was BUILT but NOT EXECUTED; Intel coverage for this run is compilation only"
+            exit 0
+          fi
+          ANAMORPH_TEST_RUNNER="arch -x86_64" ./scripts/run-tests.sh
 
       # RH-PR-2 (ADR-0021): order matters -- 1) dsymutil captures a universal
       # dSYM per bundle (the only crash-symbolication source once stripped),
@@ -527,7 +1314,12 @@ jobs:
         id: package
         # Same gate, same reason as the Windows staging step above: after a compile error
         # `!cancelled()` is still true, so this would run with nothing to package and report a
-        # cascade instead of the cause. Still !cancelled() so a pluginval failure stages a beta.
+        # cascade instead of the cause.
+        # It stays `!cancelled()` rather than plain success() so a failing SELF-TEST still
+        # produces a beta artifact, exactly as on the other two platforms. It no longer needs to
+        # survive a pluginval failure -- the gates now run AFTER this step, against what it
+        # produces (see the block below) -- but the self-test clause is the same relaxation and
+        # is still load-bearing.
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           set -e
@@ -615,10 +1407,27 @@ jobs:
           # ship as version-named release-page assets, the SOLE carrier of the
           # mandatory IJG acknowledgement -- RELEASE_POLICY forbids publishing
           # a release without them.
-          # Verify both slices are present in the universal binary.
-          echo "== VST3 arches =="; lipo -archs "$DIST/Anamorph.vst3/Contents/MacOS/Anamorph"
-          echo "== AU arches ==";   lipo -archs "$DIST/Anamorph.component/Contents/MacOS/Anamorph"
-          echo "== App arches ==";  lipo -archs "$DIST/Anamorph.app/Contents/MacOS/Anamorph"
+          # ASSERT both slices are present -- do not merely print them. This step
+          # used to `echo` the output of `lipo -archs`, which verifies NOTHING:
+          # `lipo -archs` exits 0 for ANY valid Mach-O, including a thin one, so
+          # an arm64-only build would have shipped labelled universal and Intel
+          # users would have got a plug-in that cannot load, with a green tick and
+          # the evidence sitting unread in the log. Not hypothetical: a folded
+          # YAML scalar silently swallowing the trailing configure flags is a
+          # documented accident in this class of workflow, and the same accident
+          # on -DCMAKE_OSX_ARCHITECTURES produces exactly that thin build.
+          for B in "$DIST/Anamorph.vst3/Contents/MacOS/Anamorph" \
+                   "$DIST/Anamorph.component/Contents/MacOS/Anamorph" \
+                   "$DIST/Anamorph.app/Contents/MacOS/Anamorph"; do
+            ARCHES="$(lipo -archs "$B")"
+            echo "== $B == $ARCHES"
+            for WANT in arm64 x86_64; do
+              case " $ARCHES " in
+                *" $WANT "*) ;;
+                *) echo "::error::$B is missing the $WANT slice (found: $ARCHES) -- not a universal binary"; exit 1 ;;
+              esac
+            done
+          done
           # The stripped, signed plugin must still expose its VST3 entry point.
           nm -gU "$DIST/Anamorph.vst3/Contents/MacOS/Anamorph" | grep -q GetPluginFactory
           # The customer artifact must contain no debug material (parity with
@@ -636,6 +1445,126 @@ jobs:
           # signature written above lives inside each Mach-O and in
           # Contents/_CodeSignature -- ordinary files -- so it survives the
           # artifact round-trip; only the mode bits need restoring.
+
+      # =====================================================================
+      # THE RELEASE GATE RUNS HERE, AFTER PACKAGING, AND THAT ORDERING IS THE
+      # POINT: it is what makes macOS validate the bytes it actually ships.
+      #
+      # It used to run before the packaging step, which meant every macOS
+      # pluginval pass described a bundle that no longer existed by the time the
+      # artifact was uploaded -- `strip -x` and `codesign --force --deep` both
+      # rewrite the Mach-O afterwards, so a defect introduced BY stripping or
+      # signing shipped unvalidated. Linux has always validated post-strip for
+      # exactly this reason; this is macOS catching up, and it closes the
+      # asymmetry rather than documenting it.
+      #
+      # It is free to do, because the packaging step mutates the bundles IN
+      # PLACE in the build tree and only then copies them to `dist/` -- so the
+      # shipped tree exists at this point and both formats can be named
+      # explicitly with ANAMORPH_PLUGINVAL_BUNDLE. Naming them beats letting
+      # `run-pluginval.sh` search `build/`: the build tree now holds the same
+      # bytes, but "the copy we ship" is the claim being made, so it is the copy
+      # that gets pointed at.
+      #
+      # THE COST, stated rather than discovered: these steps gate on `package`,
+      # so a packaging failure now skips validation. That is the same trade
+      # Linux already makes (`steps.strip.outcome == 'success'`) and for the same
+      # reason -- a half-packaged bundle is in a state nobody ships, and
+      # validating it adds a red step that hides the real cause. The uploads are
+      # unaffected: they gate on `tests` + `package`, never on pluginval, so a
+      # validation-only failure still yields a beta artifact exactly as before.
+      # =====================================================================
+
+      # INSTALL THE AU BEFORE VALIDATING IT, deliberately, and not as
+      # belt-and-braces. macOS resolves Audio Units through the AudioComponent
+      # registry (`AudioComponentFindNext`, which is what JUCE's
+      # AudioUnitPluginFormat calls), and the registry only knows about bundles
+      # under a Components directory. A .component sitting outside one can
+      # therefore report ZERO plugin types however correct it is -- which would
+      # make this gate red for an environmental reason, or (worse, if pluginval
+      # ever treats "no types" as nothing to do) green without validating
+      # anything. Installing first removes the question instead of depending on
+      # the answer.
+      #
+      # The source is now `dist/` -- the stripped, ad-hoc-signed, slice-verified
+      # tree the artifact is uploaded from. An ad-hoc signature is what lets
+      # macOS load the bundle at all after quarantine removal, so this is also
+      # the first point at which the installed copy is in the state a user's
+      # machine sees.
+      #
+      # `killall AudioComponentRegistrar` forces the registry to re-scan rather
+      # than serve a cached list; it is `|| true` because the daemon may simply
+      # not be running yet on a fresh runner, which is not a failure. The copy
+      # itself is NOT `|| true`.
+      - name: Install the packaged AU so the AudioComponent registry can find it
+        id: au_install
+        if: ${{ !cancelled() && steps.package.outcome == 'success' }}
+        run: |
+          set -e
+          DEST="$HOME/Library/Audio/Plug-Ins/Components"
+          mkdir -p "$DEST"
+          rm -rf "$DEST/Anamorph.component"
+          cp -R dist/Anamorph-macOS/Anamorph.component "$DEST/"
+          killall -9 AudioComponentRegistrar 2>/dev/null || true
+          echo "bundle=$DEST/Anamorph.component" >> "$GITHUB_OUTPUT"
+          ls -d "$DEST/Anamorph.component"
+
+      - name: pluginval VST3 (deterministic x3 -- release gate)
+        # Gated on `package`, which is what produces the bytes being validated --
+        # the same "name the producer, never a bare !cancelled()" rule the other
+        # two platforms follow. `!cancelled()` is still there so a FAILING
+        # deterministic run cannot skip the randomise run below.
+        if: ${{ !cancelled() && steps.package.outcome == 'success' }}
+        env:
+          ANAMORPH_PLUGINVAL_BUNDLE: dist/Anamorph-macOS/Anamorph.vst3
+        run: ./scripts/run-pluginval.sh ${{ env.ANAMORPH_PLUGINVAL_STRICTNESS }} deterministic vst3
+
+      - name: pluginval VST3 (randomise x3 -- release gate)
+        # NEVER skipped for a deterministic FAILURE: both modes must report independently, so a
+        # deterministic failure cannot hide the randomise result. It IS skipped when packaging did
+        # not produce a shippable bundle, because `!cancelled()` alone is true after ANY upstream
+        # failure -- which produced a "not found -- build first" line that read like the cause and
+        # buried the real one. The job still fails if either gate fails.
+        if: ${{ !cancelled() && steps.package.outcome == 'success' }}
+        env:
+          ANAMORPH_PLUGINVAL_BUNDLE: dist/Anamorph-macOS/Anamorph.vst3
+        run: ./scripts/run-pluginval.sh ${{ env.ANAMORPH_PLUGINVAL_STRICTNESS }} randomise vst3
+
+      # THE AU IS VALIDATED TOO, and only here -- it is the one format that
+      # exists on exactly one platform, and the ONLY one Logic and GarageBand
+      # load. Before this the release gate ran against the VST3 alone on all
+      # three OSes, so the AU shipped to Logic users having passed no automated
+      # validation at all, on a build where `lipo -archs` output was printed
+      # rather than asserted. Same strictness (the env block above is still the
+      # only copy), same two modes, same 3 consecutive passes -- an AU that only
+      # passes sometimes is not a passing AU.
+      #
+      # Gated on the INSTALL, never on the VST3 steps: a VST3 failure must not
+      # hide the AU's result, and vice versa. The install itself gates on
+      # `package`, so that dependency is carried without repeating it.
+      - name: pluginval AU (deterministic x3 -- release gate)
+        if: ${{ !cancelled() && steps.au_install.outcome == 'success' }}
+        env:
+          ANAMORPH_PLUGINVAL_BUNDLE: ${{ steps.au_install.outputs.bundle }}
+        run: ./scripts/run-pluginval.sh ${{ env.ANAMORPH_PLUGINVAL_STRICTNESS }} deterministic au
+
+      - name: pluginval AU (randomise x3 -- release gate)
+        if: ${{ !cancelled() && steps.au_install.outcome == 'success' }}
+        env:
+          ANAMORPH_PLUGINVAL_BUNDLE: ${{ steps.au_install.outputs.bundle }}
+        run: ./scripts/run-pluginval.sh ${{ env.ANAMORPH_PLUGINVAL_STRICTNESS }} randomise au
+
+      # Leave the runner as we found it. On an ephemeral runner this is
+      # cosmetic, but `docs/procedures/TESTING.md` now tells a human to
+      # reproduce these steps locally, and an install into a real
+      # ~/Library/Audio/Plug-Ins/Components that nothing removes is a surprise
+      # worth not shipping in the instructions. `!cancelled()` and the
+      # not-skipped test rather than `success()`: the copy exists whenever the
+      # install step ran at all, including when a later gate failed, and that is
+      # exactly when it most needs removing.
+      - name: Remove the AU installed for validation
+        if: ${{ !cancelled() && steps.au_install.outcome != 'skipped' }}
+        run: rm -rf "$HOME/Library/Audio/Plug-Ins/Components/Anamorph.component"
 
       # v0.9.0 packaging (additive): a user-installable .pkg (RH-PR-6
       # skeleton) built from the SAME validated staging dir the zip was
@@ -659,17 +1588,23 @@ jobs:
       # copy into the public staging dir, under set -e).
       # A failed DSP self-test blocks the CUSTOMER upload (fail-closed), while
       # a pluginval-only failure still yields beta artifacts as before.
+      # BOTH slices count. The product ships as a universal binary, so `steps.tests`
+      # (arm64, native) is only half of its behavioural gate; `steps.tests_x86_64`
+      # (Rosetta) is the other half, and an Intel failure is a product failure, not
+      # an environment one. Gating on the arm64 run alone would ship a package to
+      # every Intel user off a run that proved the Intel slice misbehaves.
       - name: Upload macOS plugins (VST3 + AU + Standalone)
-        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.package.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.tests_x86_64.outcome == 'success' && steps.package.outcome == 'success' }}
         uses: actions/upload-artifact@v7
         with:
           name: Anamorph-macOS
           path: dist/Anamorph-macOS
           if-no-files-found: error
 
-      # Same fail-closed gate as the customer artifact (tests + its own step).
+      # Same fail-closed gate as the customer artifact (both slices' tests + its
+      # own step) -- the .pkg installs the same universal bundles.
       - name: Upload macOS installer
-        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.package_macos_pkg.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.tests_x86_64.outcome == 'success' && steps.package_macos_pkg.outcome == 'success' }}
         uses: actions/upload-artifact@v7
         with:
           name: Anamorph-macOS-installer

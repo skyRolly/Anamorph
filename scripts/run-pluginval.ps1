@@ -9,12 +9,22 @@
 #  crash-retry policy: a REAL validation assertion (a small, clean exit code) fails
 #  the step IMMEDIATELY; an abnormal termination / crash (a large Win32 exception
 #  code, a negative code, or no code) is retried, and STILL fails after the retries.
+#
 #  KEY: pluginval.exe is a GUI-subsystem app, so it must be launched via
 #  System.Diagnostics.Process and explicitly WAITED on (Invoke-Pluginval below) to
 #  obtain a trustworthy exit code -- the call operator (`& $pv`) returns immediately
 #  with a $null $LASTEXITCODE, which both false-greened the original script and, once
 #  the retry loop was added, false-RED-ed it (and spawned concurrent background
-#  validators -> garbled output). Network domain needed: github.com (pluginval download).
+#  validators -> garbled output).
+#
+#  SEED 0 IS NOT A SEED -- see the same note in run-pluginval.sh, which carries the
+#  evidence. pluginval treats 0 as "generate a random one" (`Source/PluginTests.h`),
+#  so `--random-seed 0` is equivalent to passing nothing and the "deterministic"
+#  mode was not deterministic on any platform. $PluginvalSeed below must stay
+#  NONZERO and must match PLUGINVAL_SEED in run-pluginval.sh, so all three
+#  platforms validate against the same seed.
+#
+#  Network domain needed: github.com (pluginval download).
 # ============================================================================
 param(
     [int]    $Strictness = 8,
@@ -29,8 +39,36 @@ $build = Join-Path $root "build"
 $tools = Join-Path $root ".tools"
 New-Item -ItemType Directory -Force -Path $tools | Out-Null
 
-$vst3 = Get-ChildItem -Recurse -Path $build -Filter Anamorph.vst3 -Directory | Select-Object -First 1
-if (-not $vst3) { Write-Host "Anamorph.vst3 not found -- build first (scripts/build.sh)."; exit 1 }
+# Fail closed on ABSENCE and on AMBIGUITY, matching scripts/run-tests.sh,
+# scripts/run-pluginval.sh and the "exactly one match" rule the Windows staging
+# step in build.yml applies. `Select-Object -First 1` was worst HERE of all
+# places: windows-latest uses the multi-config Visual Studio generator, so several
+# configurations of Anamorph.vst3 genuinely coexist in one build tree, and the
+# release gate could pass on a Debug or leftover bundle while the uploaded
+# artifacts come from Release.
+#
+# `-Directory` is load-bearing and is specific to Windows: the VST3 BUNDLE
+# directory is named Anamorph.vst3 and the module inside it is ALSO named
+# Anamorph.vst3 (…/Anamorph.vst3/Contents/x86_64-win/Anamorph.vst3), so an
+# unfiltered -Filter matches a directory and a file and only enumeration order
+# decides which one is validated.
+#
+# -ErrorAction SilentlyContinue is required because $ErrorActionPreference is
+# 'Stop' above: without it a missing build/ makes Get-ChildItem THROW, so the
+# intended "build first" message below is never reached and the operator sees a
+# .NET stack trace instead of the one-line fix.
+$vst3Matches = @(Get-ChildItem -Recurse -Path $build -Filter Anamorph.vst3 -Directory -ErrorAction SilentlyContinue)
+if ($vst3Matches.Count -eq 0) {
+    Write-Host "Anamorph.vst3 not found under $build -- build first (scripts/build.sh)."
+    exit 1
+}
+if ($vst3Matches.Count -ne 1) {
+    Write-Host "Anamorph.vst3 is ambiguous -- found $($vst3Matches.Count) under ${build}:"
+    $vst3Matches | ForEach-Object { Write-Host "  $($_.FullName)" }
+    Write-Host "Refusing to guess which bundle the release gate should validate. Remove the stale build tree."
+    exit 1
+}
+$vst3 = $vst3Matches[0]
 
 $pv = Join-Path $tools "pluginval.exe"
 if (-not (Test-Path $pv)) {
@@ -39,9 +77,11 @@ if (-not (Test-Path $pv)) {
     Expand-Archive -Force "$tools\pluginval.zip" -DestinationPath $tools
 }
 
+# NONZERO by requirement, and identical to PLUGINVAL_SEED in run-pluginval.sh.
+$PluginvalSeed = 1
 switch ($Mode) {
-    "randomise"     { $modeArgs = @("--randomise");        $passes = 3 }
-    "deterministic" { $modeArgs = @("--random-seed", "0"); $passes = 3 }
+    "randomise"     { $modeArgs = @("--randomise");                     $passes = 3 }
+    "deterministic" { $modeArgs = @("--random-seed", "$PluginvalSeed"); $passes = 3 }
     default         { Write-Host "Unknown mode '$Mode' (expected deterministic|randomise)"; exit 2 }
 }
 

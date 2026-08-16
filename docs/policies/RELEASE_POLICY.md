@@ -4,8 +4,10 @@ Repository Governance Policy. Preconditions that must hold before a version ship
 
 ## Preconditions (all required)
 
-1. **Tests green** — DSP self-tests pass (`scripts/run-tests.sh`); pluginval passes at
-   **strictness 10** on the Linux gate (`TESTING_POLICY.md` Levels 2–4).
+1. **Tests green** — DSP self-tests pass (`scripts/run-tests.sh`); pluginval passes at the
+   configured strictness on the Linux gate (`TESTING_POLICY.md` Levels 2–4). The value is
+   `ANAMORPH_PLUGINVAL_STRICTNESS` in `.github/workflows/build.yml`; this precondition is that the
+   gate passes, not that it passes at a number restated here.
 2. **Compatibility checklist passed** — every item in
    `procedures/RELEASE_COMPATIBILITY_CHECKLIST.md` is checked (parameter IDs unchanged or
    migrated, serialization verified, presets migrated, host matrix, latency, automation, session
@@ -62,5 +64,5 @@ attribution & support files".
 
 `MAJOR.MINOR.PATCH`, pre-1.0 (< 1.0.0 = pre-release line), plus a CI build/dev number passed as
 `-DANAMORPH_BUILD_NUMBER=${run_number}` and shown in the About box.
-Evidence [Verified]: CMakeLists.txt:14,186-192; .github/workflows/build.yml:60,180,438 (the
+Evidence [Verified]: CMakeLists.txt:14,250-256; .github/workflows/build.yml:383,855,1238 (the
 per-OS Configure steps passing `-DANAMORPH_BUILD_NUMBER`).

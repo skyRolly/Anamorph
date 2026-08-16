@@ -15,7 +15,13 @@ off the **deprecated** `macos-14` image to `macos-latest`, and the four
 **fixed** (an explicit `(float)` cast at each site; the three translation units compile to
 byte-identical machine code, so nothing observable changed) — likewise **no issue added or
 removed**, and no new limitation to record here. Both are described in
-`docs/procedures/CI_CD.md`.
+`docs/procedures/CI_CD.md`. The same version's **CI/validation round** then removed one issue:
+**KI-014** "The macOS AU is shipped but never validated automatically" — the macOS job now runs
+the full pluginval release gate against the AU as well as the VST3 (same strictness, both modes
+×3, against the packaged bundle), so the coverage gap the entry recorded no longer exists. No
+issue was added by that round: the residual — the gate is **pluginval**, not `auval` — is
+recorded as scope in `docs/procedures/CI_CD.md` §"Known coverage limits" and as the narrowed
+RH-F3, not as a limitation of the product.
 Prior sync: **v0.9.3** (six GUI interaction fixes plus an equal-width Widen row — the Multiband add-split preview line, the
 unified pop-up dismissal shield, pop-up lifetime across a hidden, destroyed or backgrounded window,
 two menu-rendering fixes and the Tooltips on/off transition —
@@ -80,7 +86,6 @@ JUCE 8.0.14; before that 0.8.8 for PR #54).
 | KI-011 | macOS Apple-Silicon-native: tooltip corners rendered an opaque white frame (TooltipWindow opacity contract) | Low | Fix applied (editor marks the TooltipWindow non-opaque on macOS); Apple Silicon visual re-test pending |
 | KI-012 | Fast Multiband split drags carry a small controlled FM (~14 cents at a 150 Hz crossing, ~7 cents above 300 Hz, under the R(f) = 4·max(1, f/300) oct/s cap; normal drags track 1:1; a violent flick catches up in ~0.5 s of continuous motion; fast artifact-free tracking needs linear-phase splits = latency change) | Low | Documented limitation (ADR-0015 final + slow-drag fix); revisit only via Architecture Review |
 | KI-013 | macOS: release outside the window can still leave a control stuck pressed (the v0.8.12 reconcile is inert there — JUCE's realtime query returns cached mouse-button state on macOS) | Low | Confirmed, external (JUCE platform implementation); recovery on cursor re-entry intact |
-| KI-014 | The macOS **AU** is built and shipped but never validated automatically — `run-pluginval.sh` only sees the VST3, and no `auval` step exists in CI | Medium | Confirmed (coverage gap); recipe + verdict recorded as RH-F3 |
 | KI-015 | Anamorph declares **no licence of its own** — the repository root has no `LICENSE` file and the installers present no EULA, so the terms the binaries are offered under are undeclared | High | Confirmed; owner/legal decision (RH-R11 / RH-F1), not an engineering task |
 | KI-016 | **Sessions saved with a pre-0.9.1 build report Anamorph as missing** — 0.9.1 changed the manufacturer code `Anmf` → `RTec`, which is the AU component's manufacturer field and feeds the VST3 class UID, so the host cannot match the old identity | Medium | Confirmed, **deliberate** and one-time (ADR-0023); recovery is to re-insert the plug-in |
 | KI-017 | macOS: holding a letter or digit in a plug-in text field does not auto-repeat (symbols do) — macOS press-and-hold owns the alphanumeric keys once a JUCE text field has focus | Low | Confirmed external (macOS text input); JUCE path verified, OS attribution pending one `defaults` check; user-side workaround documented |
@@ -116,7 +121,7 @@ consequences, both still open:
   *System Settings → Privacy & Security → Open Anyway*.
 
 Notarization (RH-PR-3) closes both.
-- **Evidence [Verified]:** .github/workflows/build.yml:564-567 (`codesign --force --deep --sign -`,
+- **Evidence [Verified]:** .github/workflows/build.yml:1398-1400 (`codesign --force --deep --sign -`,
   no notarization); packaging/macos/INSTALL.txt:4-10 (ad-hoc, not notarized), :34-41 (the
   Gatekeeper approval for the .pkg), :61-65 (the zip-route `xattr` step).
   See `docs/procedures/PACKAGING.md`.
@@ -127,7 +132,7 @@ The editor open/close tests can crash under pluginval on Linux due to a use-afte
 pointer). It is **not a defect in this plugin** (the plugin already drops its OpenGL child window on
 Linux, INC-006/ADR-0011) and is mitigated by a signal-only retry, but it cannot be fixed from this
 repository.
-- **Evidence [Verified]:** scripts/run-pluginval.sh:63-96 (`run_one_pass`, signal-only retry); ADR-0011. See FUTURE_RISKS RISK-004.
+- **Evidence [Verified]:** scripts/run-pluginval.sh:147-176 (`run_one_pass`, signal-only retry); ADR-0011. See FUTURE_RISKS RISK-004.
 
 ## KI-004 — No automated DAW/host-compatibility testing
 There is no in-repo test matrix across real DAWs; pluginval is the only conformance proxy. Host
@@ -406,23 +411,17 @@ product trade: *a small amount of controlled FM is preferable to obvious interac
   platform-specific `pressedMouseButtons` query (would need its own review). Severity **Low**,
   external (JUCE platform implementation).
 
-## KI-014 — The macOS AU is shipped but never validated automatically
-`scripts/run-pluginval.sh` locates and validates `Anamorph.vst3` only, so the AU component that
-Logic Pro and GarageBand load reaches users having passed **no** format-conformance gate — while
-the VST3 passes pluginval at strictness 10 in two modes on all three platforms. The AU is built,
-stripped, ad-hoc signed and slice-verified like the other formats, so this is a *validation*
-gap, not a build gap.
-- **Why not fixed here:** `auval` only sees a *registered* component, so a CI step must copy the
-  built bundle into `~/Library/Audio/Plug-Ins/Components/` and force a registry refresh
-  (`killall -9 AudioComponentRegistrar`) before running `auval -v aufx Anmr RTec`. Whether that is
-  reliable on a headless `macos-latest` runner cannot be established from this repository, and adding
-  an unproven **blocking** gate immediately before a release tag is the wrong trade.
-- **Evidence [Verified]:** scripts/run-pluginval.sh:31 (`find ... -name 'Anamorph.vst3'` — VST3
-  only); .github/workflows/build.yml macOS job (AU built and packaged, no auval step);
-  CMakeLists.txt:153-154 (the `RTec`/`Anmr` codes auval needs).
-- **Plan:** RH-F3 in `docs/architecture/RELEASE_HARDENING_PLAN.md` §12a — land after v0.9.0,
-  non-blocking first, promote once it has proven stable. See also `docs/procedures/TESTING.md`
-  §"Gaps in the automated coverage".
+*(KI-014 "The macOS AU is shipped but never validated automatically" — RESOLVED in v0.9.4: the
+macOS CI job now runs the full pluginval release gate against the AU as well as the VST3, at the
+same strictness, in both modes, three consecutive passes each, and against the **packaged**
+bundle — the stripped, ad-hoc-signed tree the artifact ships from. The registry problem the entry
+described is handled the way it predicted: the `.component` is installed into
+`~/Library/Audio/Plug-Ins/Components/` and `AudioComponentRegistrar` restarted before validation,
+because macOS resolves Audio Units through the AudioComponent registry and a `.component` outside
+one can report zero plugin types however correct it is. The gate uses **pluginval**, not `auval`;
+that residual is scope, not a coverage gap, and is recorded in `docs/procedures/CI_CD.md`
+§"Known coverage limits" and as the narrowed RH-F3. See `docs/procedures/TESTING.md`
+§"Gaps in the automated coverage". ID retired, never reused.)*
 
 ## KI-015 — Anamorph declares no licence of its own
 The repository root has **no `LICENSE` file**, and neither installer presents an end-user licence
@@ -473,7 +472,7 @@ only one granted).
   whatever UID the built VST3 carries. That is precisely why the change is recorded here and in
   ADR-0023 rather than left to surface itself.
 - **Evidence [Verified (code) / Verified — manual (new identity) / Unverified (old-session
-  effect)]:** CMakeLists.txt:153 (`PLUGIN_MANUFACTURER_CODE RTec`); ADR-0023 (`Accepted`
+  effect)]:** CMakeLists.txt:217 (`PLUGIN_MANUFACTURER_CODE RTec`); ADR-0023 (`Accepted`
   2026-07-30); CHANGELOG `[0.9.1]`. The **new** identity registering correctly was confirmed by the
   maintainer's Level-5 check on 2026-07-30 (host registration + `auval -v aufx Anmr RTec`) — a
   human sign-off, not headlessly reproducible. The **old-session** effect described above is

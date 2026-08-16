@@ -6,8 +6,19 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the four
-AppleClang 21 `-Wimplicit-int-float-conversion` fixes (first below), the macOS CI runner move
+Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
+**raw-string lexing fix** (first below), then the **withdrawn debuglink claim** before it, then the
+**unterminated block-comment invariant**
+before it, then the **unterminated-literal invariant +
+citation scope wording** before it, then the **`_deps` scan scope + visible FTZ relaxation**, then
+the **line-splice diagnostic fix**, then the **portability-scanner false negative**
+before it, then the **post-merge citation gate fix**
+before it, then the **merge-result / script-anchor / strictness round**, then the **check-docs
+false-green fix**, then the **lint self-verification round**,
+then the **macOS Intel artifact gate**,
+then the **documentation re-sync**, then the **CI review follow-up** that one follows, then the
+**CI/validation round** it corrects, then the four
+AppleClang 21 `-Wimplicit-int-float-conversion` fixes, the macOS CI runner move
 `macos-14` → `macos-latest` that surfaced them, then the C++17 → C++23
 language-standard migration, both applied on top of the JUCE 9.0.0 → 9.0.1
 dependency upgrade in the same version; the JUCE entry follows them. Under it, the **0.9.3 change set** (2026-08-11) is retained in full — six editor-only GUI interaction fixes on
@@ -16,6 +27,931 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**The stripper did not know what a raw string is (0.9.4, no version bump). One branch, one helper,
+26 cases. `scripts/check-portability.py` only.**
+
+`blank_comments_and_literals` treated every `"` as an ordinary string delimiter. A C++ raw string
+does not end at the next quote — it ends at `)<delim>"` — and it processes no escapes, so
+`R"(a " b)"` terminated on the embedded quote, its contents were scanned as **code**, and its real
+closing quote then opened another "string" that blanked to the next `"` in the file. That last step
+is the false-negative shape this lint exists to prevent: everything after the raw string stops being
+checked. Measured before the fix: `const char* s = R"(a " b)"; auto n = juce::jmax<size_t> (x, y);`
+reported **zero** hazards, and `R"(/* not a comment)"` leaked its contents into the scan. No raw
+string exists under `src/` or `tests/` today, so this was latent — but every other edge of this
+stripper (prefixes, splices, EOF in a literal, EOF in a comment) is explicitly pinned and this one
+was not mentioned at all.
+
+**Recognised, not special-cased.** `RAW_STRING_PREFIXES` is the exact set `{R, LR, uR, UR, u8R}`,
+matched against the whole token to the left via the existing `_left_token` — the same discipline
+`CHAR_LITERAL_PREFIXES` already uses, so an identifier merely *ending* in `R` is not a prefix.
+`_raw_string_end()` then reads the delimiter under the real rule (C++ [lex.string]: at most 16
+d-chars, excluding space, `(`, `)`, `\` and control characters) and searches for `)<delim>"`. It
+returns `None` when the construct is not a valid raw string, and the caller then reads the quote as
+an ordinary one — exactly the behaviour that existed before, so a malformed prefix cannot change
+anything. An unterminated raw string returns end-of-file: it is still a raw string, so it swallows
+the rest of the file rather than resuming as code halfway through a literal.
+
+**Every existing guarantee holds.** The body is blanked one character per character with a newline
+for every newline, and no escape handling — a raw string has none, so a trailing `\` must not
+swallow the delimiter after it. Ordinary strings, character literals and their prefixes, escapes,
+line splices, both comment forms, both EOF guards and hazard detection are untouched; the invariant
+was re-checked across all 45 real source files, character count and newline count both.
+
+**26 cases, chosen so the implementation cannot pass the easy way.** Five prefix forms must each let
+the code *after* the literal be scanned; a custom delimiter whose body contains `)"` must not end it
+early; a multi-line raw string must end at its delimiter rather than at the newline; an unterminated
+one must not blind the code above it; a trailing backslash must stay literal. Four "must stay
+silent" cases put a hazard, comment markers and a `)"` sequence *inside* the literal. Three
+line-preservation cases pin the physical line the following code lands on. And four cases pin what is
+**not** a raw string — a space or a `)` before the paren, a delimiter over 16 characters, a newline
+in the delimiter — each written against an input whose hazard count changes when that rule alone is
+removed, because misclassifying here sends the scan into a delimiter that never closes. 94 → 120
+cases.
+
+**Validation.** The new cases fail against the pre-fix stripper (the raw-string branch removed, the
+tests kept: 7 failures) and pass with it. Nineteen mutations swept — the prefix set emptied, `LR` and
+`u8R` dropped individually, the terminator ignoring the delimiter, consuming to end-of-line, always
+consuming to EOF, the d-char validity check removed, the 16-char bound removed, control characters
+allowed in the delimiter, raw-body newlines blanked, plus the established branches (char-literal
+prefixes, both EOF guards, the splice newline, a dead regex, unstripped line comments) — **all
+caught**. `check-portability --self-test` 120 cases then 45 files / 0 violations; `check-docs` 68
+cases / 99 files; `check-citations` 58 cases / 217 anchors; `check-clang-warnings` 28 cases;
+`py_compile` clean; actionlint clean on all five workflows. No other file changed.
+
+**Sign-off carries forward.** The maintainer's confirmations recorded in the entries below remain
+applied and settled; nothing in this round reopens them and no new approval requirement was created
+for this fix. [Verified]
+
+**A `[Verified]` release note described a defect that never existed (0.9.4, no version bump). The
+claim is withdrawn, not reworded. Four files.**
+
+The CHANGELOG asserted, under `[Verified]`, that the shipped Linux `.so` and Standalone carried a
+`.gnu_debuglink` written as `dist/Anamorph-Linux-debug/<file>.debug` — "a CI-workspace-relative path
+that exists on no user's machine" — and that the workflow change fixed it. The premise is false.
+`objcopy` records only the **basename** of the `--add-gnu-debuglink` argument: bfd's
+`bfd_fill_in_gnu_debuglink_section` passes it through `lbasename`, so a directory in the argument
+never reaches the section.
+
+**Measured here, on GNU objcopy 2.42, not taken from the review.** With `sub/a.debug` extracted from
+`a`: `objcopy --add-gnu-debuglink=sub/a.debug a` stores `a.debug`; the `cd`-into-the-directory form
+stores `a.debug`; and the two `.gnu_debuglink` sections extracted with
+`objcopy -O binary --only-section=.gnu_debuglink` are **byte-identical** under `cmp`. The old and new
+workflow forms therefore produce the same shipped bytes. There was no defect, and the change fixed
+nothing.
+
+**What was done about it.**
+- **CHANGELOG: the bullet is removed, not rewritten.** `CHANGELOG_POLICY` rule 3 admits only
+  user-visible changes, and this one is user-visible in neither direction — the artifact is
+  unchanged. Rule 2 forbids invented history, which is what a reworded entry claiming some *other*
+  benefit would be. 0.9.4 is untagged (no `vX.Y.Z` tag has been cut), so this corrects a draft rather
+  than rewriting published notes.
+- **`build.yml`: the comment now states the actual behaviour** — objcopy stores the basename via
+  `lbasename`, both forms produce a byte-identical section, and the `cd` form is written that way so
+  the stored name is the one spelled at the call site rather than one the reader must know
+  `lbasename` produces. It is explicitly **not** a behavioural difference. The true half of the old
+  comment is kept: a debugger resolves the name relative to the stripped binary's own directory, then
+  `.debug/`, then the global debug dir. **The commands themselves are unchanged** — the code was
+  never wrong, only its justification, and rewriting working workflow code to match a corrected
+  comment would be the same error in the other direction.
+- **`CI_CD.md`: the same premise, corrected the same way**, and it now says what actually follows for
+  a user — the downloaded `.debug` file must be placed next to its binary **either way**, which the
+  false version implied had been fixed.
+- **This file: two `[Verified]` assertions struck in place.** The CI/validation round's "Defects the
+  review found" list named the debuglink among them, and its validation paragraph claimed "the new
+  debuglink was read back off the stripped binaries" — which is precisely the check that would have
+  shown both forms agree. Both are marked WITHDRAWN with the correction beside them rather than
+  deleted, because a silently removed false claim leaves no record that it was made. This is the
+  same in-place treatment the round below used for a case count that did not reproduce.
+
+**Nothing replaces the claim.** No substitute defect is asserted and no independent justification is
+manufactured for the command form; the honest statement is that the artifact never differed.
+
+**Validation.** `objcopy` behaviour verified as above (basename stored, sections `cmp`-identical) —
+that is an artifact-level result on a locally built ELF, not on a CI-produced binary, and is reported
+as such. `check-docs` 68 self-test cases / 99 files clean; `check-citations` 58 cases / 217 anchors;
+`check-portability` 94 cases / 45 files; `check-clang-warnings` 28 cases; actionlint clean on all
+five workflows. No code path changed: `build.yml`'s two `objcopy` invocations, every other workflow
+step, CMake, packaging, DSP and the checkers are untouched. The corrected comment is two lines longer
+than the one it replaces, which moved three `build.yml` anchors; re-anchored against content —
+`RELEASE_POLICY` `:383,855,1238`, `KNOWN_ISSUES` KI-002 `:1398-1400`, `COMPATIBILITY_MATRIX`'s macOS
+job range `:1213-1626`.
+
+**Sign-off applied.** The maintainer's confirmation for this evidence correction is treated as
+already granted and recorded here; the previously confirmed accepted-risk items recorded in the
+entries below (`AudioComponentRegistrar` settling, the Windows staging checkpoint, the Rosetta
+carve-out, pluginval after a DSP self-test failure, and the CI/release policy implications) remain
+settled and untouched. No confirmation request is outstanding. [Verified]
+
+**The same EOF hole in the other branch (0.9.4, no version bump). One guard, five cases,
+`scripts/check-portability.py` only.**
+
+The round below guarded the string/character-literal branch against emitting a closing pad at end of
+file. The **block-comment** branch has the identical shape and was not guarded: its inner loop also
+exits at `i == n`, after which `out.append("  ")` and `i += 2` ran regardless, emitting two
+characters for none consumed. Measured before the fix: `/* abc` → 8 characters from 6;
+`int x;\n/* unterminated\nmore` → 29 from 27. Guarded now on `if i < n:`, mirroring the literal
+branch exactly.
+
+**Three ways in, one exit.** The loop condition is `not (text[i] == "*" and i + 1 < n and text[i +
+1] == "/")`, so a comment whose last character is a bare `*` (`/* abc*`) does **not** satisfy the
+closer test and falls through the same `i == n` exit — as does a bare `/*` at EOF, whose body loop
+never runs at all. All three are pinned separately rather than assumed equivalent, because the loop
+condition is what makes them equivalent and a future edit to it is exactly what would separate them.
+
+**Latent, again, and fixed for the same reason.** The extra characters are spaces, so no reported
+line moved and no such source exists in the tree. But `lint()` maps every finding back to a physical
+source line through this transformation, and the invariant is what the surrounding cases assert per
+case — a branch that quietly does not hold it is the one the next edit builds on. That argument was
+made for the literal branch last round while this branch went on breaking it, which is the more
+precise reason to close it now.
+
+**Five cases in the existing line-preservation table**, each with a hazard on the line *before* the
+unterminated comment so the mapping ahead of it is pinned too: at EOF, spanning physical lines,
+ending on a bare star, the opener alone, and a terminated block comment as the control that the
+guard must not change. 79 → 94 cases. Verified beyond the table: the invariant holds for all 45 real
+source files, length and newline count both.
+
+**Validation.** `check-portability --self-test` 94 cases then 45 files / 0 violations; reverting only
+the guard fails exactly the four new unterminated cases (`35 != 33`, `49 != 47`, `36 != 34`,
+`31 != 29`) and passes with it. Eight mutations swept: both EOF guards removed, block-comment
+newlines lost, the splice newline dropped, the prefix set emptied, a dead regex and unstripped line
+comments are all **caught**. One mutation is *not* caught and is reported rather than papered over —
+never blanking a terminated `*/` leaves those two characters verbatim instead of two spaces, which
+preserves both length and newline count and cannot match `HAZARD`, so it is semantically inert for
+this checker rather than a coverage gap. `check-docs` 68 cases / 99 files, `check-citations` 58 cases
+/ 217 anchors, `check-clang-warnings` 28 cases, `py_compile` clean. No other file changed.
+
+**Sign-off carries forward.** The maintainer's confirmations recorded in the entry below —
+`AudioComponentRegistrar` settling, the Windows artifact behaviour after the staging checkpoint, the
+Rosetta warning-only carve-out, pluginval after a DSP self-test failure, and the CI/release policy
+implications already written up here — remain applied and settled. Nothing in this round reopens
+them, and no new confirmation is outstanding. [Verified]
+
+**The stripper's own contract, held on the one branch that did not (0.9.4, no version bump). Plus
+one stale sentence about a governed scope. Two files.**
+
+1. **`blank_comments_and_literals` broke its character-for-character invariant on an unterminated
+   literal.** The literal branch appended a closing space and advanced `i` unconditionally after its
+   inner scan — but that scan also exits at `i == n`, an unterminated string or character literal at
+   end of file. Blanking a closing quote that is not there emits one character more than it consumed,
+   so the stripped text was a character longer than the source. Measured: `const char* s = "abc`
+   stripped to 21 characters from 20; the same for `char c = '<` and `auto c = L'<`. Guarded now on
+   `if i < n:` — the closing space is emitted only when there is a closing quote to blank.
+
+   **Latent, and fixed anyway, because of what the invariant is for.** The extra character is a
+   space, not a newline, so no line number moved and no such source exists in `src/` or `tests/`.
+   But `lint()` maps every finding back to a physical source line through that transformation, the
+   two defects repaired in the rounds below were both this invariant failing in a way that *did*
+   move a line, and the self-test asserts the contract per case — so a branch that quietly does not
+   hold it is the one the next edit builds on.
+
+   **Coverage extended in the existing table, and the assertion sharpened.** Four cases: an
+   unterminated string, an unterminated character literal, an unterminated *prefixed* character
+   literal, and one spanning two physical lines — each with a hazard on the line *before* it, so the
+   mapping ahead of the unterminated literal is pinned too. The per-case length assertion is now
+   joined by a **newline-count** assertion: length alone cannot see a newline swapped for a space,
+   which is precisely how the line-splice defect below got in. 59 → 79 cases. Verified beyond the
+   table: the invariant holds for all 45 real source files, length and newline count both.
+
+2. **`classify()`'s docstring said the tool "only ever rewrites the nine files it knows".**
+   `TRACKED` now lists 31 paths (25 `src/`, 2 `tests/`, 4 governed `scripts/`). This file's whole
+   premise is that a stale statement about scope is the dangerous kind, and that sentence is the one
+   describing the scope. Reworded to name `TRACKED` itself rather than a count, so it cannot go stale
+   again the next time the list grows; no number was substituted. Documentation only — the
+   classification logic, `TRACKED` and the citation mechanism are untouched. (The "19 anchors across
+   nine files" figure elsewhere in the file counts the *documents carrying script anchors*, a
+   different measurement, and is accurate.)
+
+**Validation.** `check-portability --self-test` 79 cases then 45 files / 0 violations;
+`check-citations --self-test` 58 cases and 217 anchors against `HEAD`; `check-docs` 68 cases / 99
+files; `check-clang-warnings` 28 cases; `py_compile` clean on both modified scripts. The four new
+cases fail against the pre-fix branch (restored under the new tests) and pass against the corrected
+one. Eight mutations — the guard removed, the closing quote never blanked, the splice newline
+dropped, raw newlines blanked, block-comment newlines lost, the prefix set emptied, a dead regex,
+unstripped line comments — are all caught, so terminated literals, escapes, prefixes, comments,
+splices and line mapping are all still pinned rather than merely assumed.
+
+**Sign-off applied, not requested.** The maintainer's existing confirmations are recorded as settled
+for: `AudioComponentRegistrar` settling before the AU gate; the Windows customer artifact surviving a
+failed staging step after the `public_ok` checkpoint; the Rosetta-unavailable warning-only carve-out;
+pluginval running independently after a DSP self-test failure; and the CI/release policy
+implications already written up in this file. Each is an accepted risk or an accepted trade with its
+reasoning recorded where a reader meets the behaviour — none is an open review item, and none was
+changed in this round.
+
+**Deliberately unchanged.** Everything else in the review is informational, investigate-only or
+already accepted: the same-repo PR lint/`merge-check` architecture, the clang-18 pin, release-time
+lint and sanitizer gating, reusable-workflow concurrency, repeated JUCE FetchContent work, the Linux
+debug-directory widening, `ANAMORPH_HAVE_LLD` caching, `run-pluginval.sh`'s `-maxdepth 8`, the
+CMake/lld scope, and the `DELIBERATE_REAIMS` lifecycle (whose entries are expected to be removed once
+the default branch carries the re-anchored spellings — that is the mechanism working, not a defect).
+No workflow, CMake, packaging, DSP or CI change. [Verified]
+
+**Two checkers stopped lying about their own scope (0.9.4, no version bump). A root-level `_deps`
+cache was being linted as project documentation, and a deliberately relaxed DSP run looked identical
+to a full one.**
+
+1. **`check-docs.py` scanned the repository-level dependency cache.** `SKIP_DIRS` held `.git`,
+   `node_modules` and `JUCE`, and `_is_build_dir` covered `build`/`build-*`/`cmake-build-*`. The
+   usual FetchContent layout lands at `build/_deps/juce-src`, which the build-tree rule catches — but
+   `.gitignore` also allows a **top-level** `_deps/`, and that path has no `build*` ancestor.
+   Reproduced: `_deps/juce-src/README.md` carrying JUCE's own Markdown made a local run report a
+   table-fragment finding against a file nobody here wrote, exit 1. `check-clang-warnings.py` already
+   uses `_deps` as its vendored marker, so the two scanners disagreed about what counts as vendored;
+   adding `_deps` to `SKIP_DIRS` is that convention applied consistently, and it is the whole fix —
+   `_is_build_dir` is untouched, since widening it for symmetry is how the "named, not prefixed"
+   rule got broken once already. Two cases: the real `_deps/juce-src/README.md` layout inside a scan
+   root must not be scanned, and a checkout that *lives* under a parent named `_deps` must still be
+   scanned in full — the second because the skip set is scoped below the scan root, and a new entry
+   in it inherits that scoping. 66 → 68 cases.
+
+2. **`ANAMORPH_TESTS_NO_FTZ=1` relaxed a DSP invariant in silence.** The escape hatch itself is
+   sound and stays: valgrind emulates floating point and does not honour the CPU's FTZ/DAZ bits, so
+   under memcheck denormals survive into the output and the check fails on a build that is correct on
+   every real CPU — while memcheck reports zero errors on the same run. What was wrong is that the
+   flag was read once and left no trace: a stale export or an inherited CI variable produced the same
+   `ALL TESTS PASSED` line as a full run, with the denormal half of the invariant never asserted.
+   That is the failure mode `TESTING_POLICY.md` rule 4 and this pipeline's own comments name as
+   unacceptable, applied to the suite rather than to a lint. The suite now announces the relaxation
+   **twice** — a `::warning::` at start-up naming the un-asserted half, and a line beside the verdict
+   so the tail of the log is self-describing too. `::warning::` rather than a plain notice because it
+   is the form this repository already uses for lost-coverage-but-not-a-product-failure (the Rosetta
+   step), so a CI run surfaces it in the UI instead of burying it. No DSP or product code changed, no
+   other assertion moved, and the hatch was not removed to make the warning possible.
+
+**Verified by running both, not by reading the diff.** `AnamorphTests` rebuilt and executed: the
+normal run is unchanged (`140 checks, 0 failures` / `ALL TESTS PASSED`, exit 0, no new output); the
+relaxed run prints the warning as the second line and the reminder above the verdict, still exit 0;
+and `ANAMORPH_TESTS_NO_FTZ=0` and `=yes` neither relax nor announce, so the literal-`1` rule is
+intact. For `_deps`, the reproduction was re-run after the fix — a top-level `_deps/juce-src` with
+violating Markdown is now clean at exit 0, and `build/_deps/…` remains excluded as before.
+
+**Documentation.** One sentence in `TESTING.md`'s "`ANAMORPH_TESTS_NO_FTZ=1` is for valgrind and
+nothing else" paragraph, which is where a contributor is told never to set it and now learns how they
+would notice if it were set. `CI_CD.md`'s two passages describe the relaxation accurately and are
+left alone.
+
+**Signed off, not outstanding: `AudioComponentRegistrar` settling.** The macOS AU gate restarts the
+registrar and proceeds without waiting for the re-scan. In practice the first `AudioComponentFindNext`
+call restarts and blocks on the daemon, so the sequence holds; it is the plausible flake source for a
+blocking gate and is **reviewed and accepted by the maintainer (2026-08-16)** as a known risk rather
+than an oversight. No change requested and none made.
+
+**Validation.** `check-docs` 68 self-test cases / 99 files clean; `check-portability` 59 cases / 45
+files; `check-citations` 58 cases / 217 anchors; `check-clang-warnings` 28 cases; actionlint clean on
+all five workflows; `AnamorphTests` 140 checks, 0 failures in both modes. No workflow, CMake,
+packaging, DSP-product or CI-optimisation change. [Verified]
+
+**Portability scanner: a line splice inside a literal shifted every diagnostic below it (0.9.4, no
+version bump). One line of the escape branch, plus the regression coverage.
+`scripts/check-portability.py` only.**
+
+The stripper consumed an escape pair as two spaces. That is right for `\t` or `\"`, and wrong when
+the escaped character is the **newline itself** — a C++ line splice. The splice joins two *logical*
+lines but the file still has two *physical* ones, and `lint()` reads the source back by physical line
+number (`raw.splitlines()[lineno - 1]`), so blanking that newline made the stripped text one line
+short and every finding below it was reported against the wrong line **and echoed the wrong source
+text**. Reproduced end to end before the fix: a hazard on line 3 after a spliced string literal was
+reported as `src/A.cpp:2` with the source line printed as `def";` — a developer sent to a line they
+did not write the problem on. Not cosmetic: pointing at the defect is the whole contract of a lint
+whose subject is a compile error that only appears on another platform.
+
+**The repair is `out.append(" \n" if text[i + 1] == "\n" else "  ")`, and it is the smallest change
+that keeps the invariant rather than patching the symptom.** The stripper's contract is
+character-for-character — one output character per input character, a newline for every newline —
+which is what makes both the reported line and the column exact; the block-comment branch already
+honours it, and the literal branch's escape pair was the one place that did not. A space for the
+backslash and a newline for the newline restores it: still two characters for two, and the line
+boundary survives. The reported number is not adjusted after the fact anywhere, which would have
+left the echoed source line wrong.
+
+**Coverage extended in place, not duplicated.** The existing "LINE NUMBERS MUST SURVIVE THE STRIPPER"
+block was a single block-comment assertion; it is now a table over every branch that consumes a
+newline — block comment, string splice, string splice with the hazard **three** lines further down
+(a shift accumulates, so fixing only the immediately-following line is not fixing it), two splices in
+one literal, a splice in a *character* literal, an ordinary escape, an escaped quote, and a raw
+newline inside a literal. Each case also asserts the character-for-character length, because a branch
+emitting the wrong *count* passes a line test whenever the loss lands on a blank stretch. Two
+end-to-end cases read the actual report: the line must be `src/Splice.cpp:4` and the echoed text must
+be the real source line — the number and the echo come from different places, so only reading the
+diagnostic catches them desynchronising. 42 → 59 cases.
+
+**Validation.** The six new splice cases fail against the pre-fix branch and pass against the
+corrected one, checked by restoring the old emit under the new tests. Eleven mutations — the newline
+dropped again, a newline emitted unconditionally, the pair emitting one or three characters, escape
+handling removed, raw newlines blanked, block-comment newlines lost, plus the previous round's prefix
+set and the established regressions — are **all caught**. The lint is unchanged on the real tree: 45
+files, 0 violations, scratch names agree. `check-docs` 66 cases / 99 files, `check-citations` 58
+cases / 217 anchors, `check-clang-warnings` 28 cases, actionlint clean on all five workflows,
+`py_compile` clean. Nothing outside `scripts/check-portability.py` is touched. [Verified]
+
+**Portability scanner: prefixed character literals made it go blind (0.9.4, no version bump).
+One branch, one helper, ten self-test cases. `scripts/check-portability.py` only.**
+
+The comment/literal stripper decided a `'` was a **digit separator** (`1'000'000`) by looking at one
+character: if what it had just emitted was alphanumeric, the quote was emitted verbatim rather than
+opening a literal. The stated justification — "a real char literal never has an alphanumeric on its
+left" — is false for the encoding prefixes C++ allows: `L'x'`, `u'x'`, `U'x'`, `u8'x'`. The opening
+quote of `L'<'` was therefore read as a separator; the **closing** quote then had no alphanumeric on
+its left and opened a literal instead, blanking everything to the next `'` — in a real file, to EOF.
+Measured before the fix: `wchar_t c = L'<'; auto n = juce::jmax<size_t> (a, b);` strips to
+`wchar_t c = L'<` and the hazard is **not reported**. All four prefixes behave the same way. No such
+literal exists in `src/` or `tests/` today, so nothing was being missed — the defect is that the
+guard would have been silent the day one was added, which is the one failure mode this lint's own
+docstring says it must not have.
+
+**The fix reads the whole token, not one character.** `_left_token()` walks back over what has been
+emitted and returns the identifier run immediately left of the quote; the branch then asks whether
+that token is a character-literal prefix. Empty → an ordinary `'a'`; `L`/`u`/`U`/`u8` → a prefixed
+literal; anything else alphanumeric → a separator, or code that is not valid C++, where continuing to
+scan is the safe reading. Comment padding is pushed as multi-character entries and stops the walk,
+which is correct — a comment does not continue a token. The one-character test could not have been
+repaired by "the left character is not a digit" either: `u8` ends in one, which is why each prefix is
+pinned separately below.
+
+**Ten cases added, and the fix is not the only thing they caught.** Four prefixed forms must still
+find a hazard after the literal; an escaped quote and an escape sequence inside a prefixed literal
+must be consumed; a literal on one line must not blind the next; two hex/binary separator forms join
+the decimal one; and the prefixed literals must not themselves be reported. A mutation sweep then
+found a **second, pre-existing** false negative that no case covered: a character literal holding a
+double quote (`char q = '"';`). Under the old "emit the quote verbatim" reading the `"` inside it
+opened a *string* and blanked to the next one — the same blindness reached a different way. The
+corrected branch consumes both quotes of a character literal, prefixed or not, so it cannot happen;
+two cases pin it. Self-test 28 → 42 cases.
+
+**Validation.** The five prefixed/multi-line cases fail against the pre-fix branch and pass against
+the corrected one, checked by restoring the old condition under the new tests. Fifteen mutations —
+the prefix set emptied, each prefix dropped individually, the empty-token arm removed, the branch
+forced both ways, the token walk truncated to one character, escape handling removed, plus the
+established regressions (dead regex, unstripped line comments, lost block-comment newlines, a walker
+that reaches no files, a scratch check that always agrees) — are **all caught**. The lint itself is
+unchanged on the real tree: 45 files, 0 violations, scratch names agree. `check-docs` 66 cases / 99
+files, `check-citations` 58 cases / 217 anchors, `check-clang-warnings` 28 cases, actionlint clean on
+all five workflows. Nothing outside `scripts/check-portability.py` is touched. [Verified]
+
+**Post-merge citation gate (0.9.4, no version bump). Six declarations. The gate would have turned
+the default branch red on the first build after this PR merged, for a reason that is not a defect.**
+
+The round below added `scripts/` to `TRACKED` in the **same change set that rewrote those scripts**.
+Against the branch's previous push the anchors read clean — that base already carries the rewrite —
+but against the **merge base** the cited text no longer exists, so no line number satisfies the
+same-text test and `--fix` cannot repair it: six anchors report `UNMAPPABLE`, exit 1. CI resolves
+its base from `github.event.before`, which on the branch is the previous commit and on the default
+branch after a merge is the pre-merge tip. The gate was therefore green here and would have been red
+there. Reproduced exactly, against `2ce2a76`: six UNMAPPABLE across `FUTURE_RISKS`, `POSTMORTEMS`,
+`COMPATIBILITY_MATRIX`, ADR-0011 and `BUILD.md` ×2.
+
+**`DELIBERATE_REAIMS` is the mechanism, and no code changed — only data.** Before using it, the
+branch each of the six takes was checked: all are on the *paired* path, where `is_declared_reaim`
+is consulted **before** the movability test, so a declaration covers an UNMAPPABLE case; the
+count-mismatch path deliberately consults no declaration and is unaffected. All six also satisfy the
+"the spelling actually changed" precondition (`:63-96` → `:147-176`, `:34` → `:121`, `:46-76` →
+`:147-176`, `:29-38` → `:44-54`, `:19-30` → `:19-54`), so the entries are good for exactly one
+transition and the run after it reports each as removable.
+
+**Signed off as the maintainer's confirmation, after re-reading each aim rather than assuming it.**
+Every one was resolved against the sentence that cites it: `:147-176` → the comment block plus
+`run_one_pass` (the signal-only retry); `:121` → the `curl -L …/pluginval` release download;
+`:44-54` → `setup-linux.sh`'s apt package list; `:19-54` → `build.sh`'s artefact-path block. The
+declaration block records which region each names and when to delete them (against the **merge
+base**, not against the previous push — the run prints that distinction itself).
+
+**Not a blanket exemption, proven in four directions.** Against `2ce2a76` the run is now green and
+prints six `ACCEPTED re-aim` lines naming each document — the acceptance is audible, never silent.
+Removing one entry puts that anchor straight back to `UNMAPPABLE`, exit 1. Ordinary drift is
+unchanged: a line inserted above a cited region in `run-pluginval.sh` still reports **10 DRIFTED**
+and exit 1. And a declaration does not shelter its neighbours — `build.sh:14-15` is undeclared in
+the same document as a declared entry, and drifting it fails the run on its own.
+
+**`merge-check` was inspected and left alone.** Read off the parsed workflow: its `if` is the exact
+complement of the same-repo guard; `actions/checkout` carries **no `ref:` override**, so on a
+`pull_request` event it takes the default `refs/pull/N/merge` — the merge result, not the head; it
+runs one Linux configure + build + both self-test suites, with **no artifacts, no pluginval, no
+packaging** and no `needs:`; and the concurrency group keys on `github.ref`, which differs between
+`refs/pull/N/merge` and `refs/heads/<branch>`, so the PR run and the push run cannot cancel each
+other. The five-scenario matrix is unchanged: same-repo PR runs `merge-check` only; fork PR, branch
+push, release via `workflow_call` and `workflow_dispatch` rehearsal all run the full set with
+`merge-check` skipped. Nothing to fix, so nothing was changed.
+
+**Documentation.** `CI_CD.md` §Evidence anchors described only the "re-aimed onto the code it should
+always have named" case; the rewrite case — the one that is green on the branch and red after the
+merge — is now stated there, since a reader who finds six entries in a list documented as empty is
+owed the reason. `packaging/linux/uninstall.sh` re-verified byte-identical to its pre-PR state.
+
+**Validation.** `check-citations` 58 self-test cases; green against the merge base (206 anchors, 6
+accepted re-aims), against `HEAD` (217) and against `HEAD~1` (208); the four negative paths above.
+`check-docs` 66 cases / 99 files, `check-portability` 28 cases / 45 files, `check-clang-warnings`
+28 cases. actionlint clean on all five workflows; `bash -n` clean on the packaging and build
+scripts. [Verified]
+
+**Merge-result CI, script-anchor coverage and one strictness authority (0.9.4, no version bump).
+Three review findings, each a real gap rather than a preference.**
+
+1. **A same-repo PR had no build signal for the tree the merge button produces.** The guard added
+   earlier skips every job on a same-repo PR because `push: ["**"]` already built the SHA — but
+   `push` builds the branch **tip** and `pull_request` builds `refs/pull/N/merge`, the tip merged
+   with the base as it stands. A PR green on its own tip and broken by a moved base was caught by
+   nothing until the merge landed. The fix is a new `merge-check` job carrying the exact complement
+   of the guard: same-repo PRs only, `actions/checkout` on that event gives it the merge commit, and
+   it configures, builds and runs both self-test suites. It stops there deliberately — packaging,
+   pluginval and the other two platforms validate properties of the tip the push build already
+   gated, so re-running them would restore the duplicate 3-OS matrix the guard exists to remove, and
+   what a moved base breaks is compilation and behaviour, both platform-independent. It produces no
+   artifacts. Every job's `if:` was then evaluated over the five event shapes that reach this
+   workflow: same-repo PR runs `merge-check` **only**; fork PR, branch push, release
+   (`workflow_call` with a tag-push caller) and `workflow_dispatch` rehearsal are **unchanged** —
+   full matrix, `merge-check` skipped, which is correct because a tag has no merge result.
+   Concurrency is unaffected: `refs/pull/N/merge` and `refs/heads/<branch>` are different refs, so
+   the two runs do not cancel each other.
+
+2. **The citation gate could not see the script anchors.** `TRACKED` excluded `scripts/`, which left
+   **19 anchors across nine documents** into `run-pluginval.sh`, `run-tests.sh`, `setup-linux.sh`
+   and `build.sh` ungated — and those drift more than the DSP stages do, because a script gets
+   rewritten wholesale. The four are now tracked. Nine live citations spelled them by **bare name**
+   (`run-pluginval.sh:154-176`), which `classify()` declines by design — a bare name is ambiguous
+   across checkouts — so those were root-spelled, which is the spelling the tool's header already
+   prescribes. The three bare-name occurrences in *this* file are records of past re-anchoring and
+   were left alone. Anchor count 198 → 208 against the current base, and 217 once the newly
+   root-spelled ones have a base that carries them.
+
+   **Proven by drift, not by a green run.** A line was inserted into `run-pluginval.sh` and
+   `setup-linux.sh` above the cited regions: the gate reported **12 drifted citations across 9
+   documents** and exit 1 where it had previously been silent, `--fix` re-anchored 15 with 0 needing
+   a human, the re-check went green, and a repaired anchor was read back at its new location. The
+   tree was then restored. Self-test 45 → 58 cases: each of the four scripts is asserted **by name**
+   as a citation target and as a scanned file (dropping one from `TRACKED` costs nothing visible —
+   the citations still read fine and the run still prints a confident count, minus what it stopped
+   checking), a live script anchor is claimed end to end, and the guard rails that made scripts safe
+   to add are pinned in the negative: `build/_deps/juce-src/README.md`, `build-san/scripts/…` and
+   `_deps/scripts/…` must **not** classify, and a bare script name must still be declined.
+
+   **The `154-176` vs `147-176` divergence is not drift and was left as it is.** `154-176` is
+   `run_one_pass` alone, cited where the *rule* is stated (`TESTING_POLICY` rule 3, `TESTING.md`'s
+   failure table); `147-176` adds the comment block explaining why the retry exists, cited where the
+   *rationale* is the point (`FUTURE_RISKS`, `KNOWN_ISSUES`, `POSTMORTEMS`, `TROUBLESHOOTING`,
+   ADR-0011). Both land on the content their sentence describes. They are now gated independently,
+   which is the right outcome: the gate's job is to keep each true, not to make them identical.
+
+3. **The single-strictness-authority claim held in one file only.** `TESTING_POLICY.md` said "this
+   policy states no strictness number" while four other governed documents stated `10` as the
+   requirement — so a raise still meant five edits, which is the staleness the rule was written to
+   remove. `RELEASE_POLICY.md`, `DEPENDENCY_POLICY.md` (upgrade rule 2),
+   `COMPATIBILITY_MATRIX.md` (three platform rows + the DAW-proxy note) and
+   `RELEASE_COMPATIBILITY_CHECKLIST.md` now state that the gate must pass **at the configured
+   strictness** and name `ANAMORPH_PLUGINVAL_STRICTNESS` as where to read it; the checklist item
+   spells its command `<n>` and tells the human to read the value from the workflow rather than from
+   that line. `CI_CD.md` was contradicting itself in the same paragraph — claiming nobody restates
+   the value while printing **10** — and no longer prints it.
+
+   **Two classes of literal deliberately survive.** `DEPENDENCY_POLICY.md`'s **compliance log**, and
+   the equivalent records in `HANDOVER`, `FUTURE_RISKS`, `RELEASE_HARDENING_PLAN` and six ADRs, say
+   what a *past* run was verified at — a fact about that run, wrong to move, and the same rule this
+   change set already applies to historical anchor pairs. `TESTING.md`'s command examples must show
+   a number a reader can type; the three that labelled `10` as "(release gate)" no longer make that
+   claim, and the sentence below them already names the authority. `README.md` is left as a
+   descriptive overview at the bottom of the authority order.
+
+**`packaging/linux/uninstall.sh`: verified byte-identical to its pre-PR state.** The developer-
+oriented block was reverted in the round below; `git diff` against the pre-PR revision is empty, and
+nothing in this round touches it.
+
+**Signed off, not outstanding: pluginval runs after a failing DSP/state self-test by design.** The
+producer step is `strip`/`build`/`package`, none of which depends on `tests`, so a red self-test
+leaves the binary intact and the conformance gates still report — one run yields the whole picture,
+at the cost of two extra pluginval runs after a genuinely broken build. The customer uploads are
+unaffected; they gate on `tests`. **Manually reviewed and confirmed by the maintainer on
+2026-08-16**, and now recorded where a reader meets the behaviour (`CI_CD.md` §pluginval) rather
+than only here. It is settled, not an open review item.
+
+**Validation.** actionlint clean on all five workflows, with the per-event job matrix enumerated
+from the parsed YAML rather than read off the diff. The new job's 69 lines moved the three
+`build.yml` anchors again, re-anchored against content: `RELEASE_POLICY` `:383,853,1236`,
+`KNOWN_ISSUES` KI-002 `:1396-1398`, `COMPATIBILITY_MATRIX`'s macOS job range `:1211-1624`. (Those
+three are still ungated — `build.yml` is not in `TRACKED`; adding it is the obvious next
+candidate and is deliberately not folded into this round.) `check-citations` 58 self-test cases and 208
+anchors against both `HEAD` and `HEAD~1`, plus the drift-injection run above; `check-docs` 66 cases
+/ 99 files; `check-portability` 28 cases / 45 files; `check-clang-warnings` 28 cases. `bash -n`
+clean on the packaging scripts. [Verified]
+
+**check-docs false-green fix (0.9.4, no version bump). One defect, found by the review of the round
+below: the documentation lint could report every file clean without opening one.**
+
+`markdown_files()` filtered on `path.parts` — the components of the **absolute** path. `main()`
+resolves the root, so `rglob` yields absolute paths and the skip set (`.git`, `node_modules`, `JUCE`,
+plus `build` / `build-*` / `cmake-build-*`) was matched against every **ancestor of the checkout**,
+not only the directories the scan owns. A clone at `~/build/anamorph`, `/opt/JUCE/anamorph`, or
+anywhere beneath a `node_modules` therefore matched on a directory outside the repository, excluded
+**every** file, and printed `0 file(s) clean` with exit 0. Reproduced both ways before and after:
+copies of this tree under parents named `build`, `JUCE`, `node_modules` and `cmake-build-x` report
+`0 file(s) clean` with the old checker and `99 file(s) clean` with the new one. CI never saw it —
+`GITHUB_WORKSPACE` carries no such component — so the only way to meet it was the local reproduction
+`CI_CD.md` documents, which is to say: the person following the instructions.
+
+**The fix is two lines and one guard, and the guard is the durable half.** The filter now tests
+`path.relative_to(root).parts[:-1]`, so only components below the scan root can say a file is
+generated or vendored — the exclusions that are real are untouched, verified by planting a malformed
+table, a lazy continuation and an unclosed fence inside `build-san/_deps/juce-src/`, `JUCE/docs/` and
+`node_modules/pkg/` in the working tree and confirming the run still reports 99 files clean. (That
+same relative test also makes the two halves of the condition consistent: `SKIP_DIRS` was being
+matched against the filename as well, which was inert only because no skip name ends in `.md`.)
+Separately, `main()` now **refuses to call an empty scan clean** — exit 1, matching this file's
+`0 = clean, 1 = findings` contract and its two existing argument errors, rather than the `2` the
+sibling scripts use for "inconclusive". The filtering bug is what made an empty set reachable on a
+correct tree; the guard is what catches the next way of getting there, and it fires on a directory
+holding only excluded subtrees as well as on an empty one.
+
+**Self-test: 57 → 66 cases.** Six checkouts, one under each skip name (`build`, `build-san`,
+`cmake-build-debug`, `JUCE`, `node_modules`, `.git`), must scan their own documents; the
+in-repository exclusions must survive, including that `building/` and `rebuild/` are **not** build
+trees (named, not prefixed — dropping them would be the same defect wearing the opposite sign) and
+that a nested `docs/build/gen/` is still excluded; and `main()` over an empty directory must not
+return 0. Mutation-tested rather than assumed: reverting the filter to `path.parts`, deleting the
+empty-scan guard, disabling `SKIP_DIRS`, disabling the build-tree test, and widening `_is_build_dir`
+to a prefix match are **all five caught**.
+
+**`packaging/linux/uninstall.sh`: the round below's comment block is reverted in full.** That file
+ships to users inside the Linux zip. The block named `scripts/check-portability.py`, described what
+fails CI, referenced `SCRATCH_NAME` and cited the sibling product's uninstaller — developer content
+in a user-facing script, and the two-line user-oriented comment that was already there says what a
+user needs. `check-portability.py` claimed the note existed ("the other end of the coupling"), so
+that one sentence is corrected in the same change: the reasoning now lives in the checker only, and
+says why.
+
+**Deliberately not changed.** Everything else in the review is informational or was manually
+confirmed: the same-repo PR merge-result gap, deterministic pluginval running after a self-test
+failure, the clang-18 pin, `AudioComponentRegistrar` settling, reusable-workflow concurrency, the
+debuglink co-location note, Windows best-effort staging, the Rosetta `/usr/bin/true` probe, `cp -R`
+vs `ditto`, the digit-separator char-literal note, the cached `ANAMORPH_HAVE_LLD` probe, the
+CHANGELOG tab-indent edge case, the pluginval bundle-override format check, and the bash-3.2 array
+expansions. The 184-vs-198 anchor-count observation is also left: the two figures measure different
+sets (184 was `docs/` alone; 198 includes the tracked sources `doc_files()` added later), and both
+statements are true of the round that wrote them. For the same reason the four `check-docs 57 cases`
+figures in the entries below are **not** rewritten to 66 — each records what that round's run
+reported, and is accurate for it. The current figure is the one above.
+
+**Validation.** `check-docs` self-test 66 cases then 99 files clean; `check-portability` 28 cases /
+45 files; `check-citations` 45 cases and 198 anchors against both `HEAD` and `HEAD~1`;
+`check-clang-warnings` 28 cases. actionlint clean on all five workflows; `bash -n` clean on both
+packaging scripts. The pre-existing argument guards (`no such path`, `not a Markdown file`) and the
+explicit single-file invocation were re-run unchanged. [Verified]
+
+**Lint self-verification round (0.9.4, no version bump). Two of the four CI lints could not fail;
+both can now, and the policy says which proof is which.**
+
+`TESTING_POLICY.md` rule 4 requires every pipeline lint to ship a self-verification running **in the
+same job, immediately before the check itself** — because a checker that has stopped matching
+anything is indistinguishable from a clean tree. Two of the four did not satisfy it, and one of them
+was the checker that can do the most damage.
+
+1. **`check-portability.py` had no test of its checker at all.** What the policy named as its
+   self-verification, `--compile-canary`, answers a different question: it compiles two translation
+   units against the pinned JUCE to assert the *hazard* still exists. That is a check on the
+   **dependency**, it needs a JUCE checkout, and it runs in `linux-clang`. Nothing tested the
+   **scanner** — a regex plus 60 lines of hand-written comment/literal lexing plus the
+   installer/uninstaller scratch-name comparison — so a green canary over a dead regex would have
+   reported the tree clean, which is exactly the shape the rule forbids. `--self-test` now runs the
+   real stripper and the real pattern over 20 labelled sources in both directions, then the real
+   `lint()` over a temporary tree (proving the walker reaches files and respects its declared
+   suffixes), then the real `scratch_names_agree` over four installer/uninstaller pairs including
+   the one where the name survives **only in a comment** — the divergence shape that already shipped
+   once in the sibling product. 28 cases.
+
+2. **`check-citations.py` had nothing, and it is the one lint that WRITES.** The other three report;
+   this one re-anchors governed documents under `--fix`, so a defect does not merely miss drift — it
+   replaces a correct anchor with a wrong one and prints success. Its header records four occasions
+   on which it did exactly that: a `rev:`-qualified anchor reaching the ownership test (27 anchors
+   rewritten across five ADRs), a compound citation left reading `:1040, 1039, 1053`, one span
+   applied twice turning `:2000` into `:20000`, and a provenance sentence whose wrap put the sibling
+   product's range outside the exclusion. Every one is now a case, in the direction it failed, and
+   the set extends to the ownership test's whole decline list, the provenance block's two boundary
+   forms, the diff line-map (including the pure-insertion off-by-one and the `None` that makes an
+   edited hunk report UNMAPPABLE rather than invent a number), the span rewriter's de-duplication
+   and overlap refusal, and the declared-re-aim guard that must not survive its own transition.
+   45 cases, on synthetic input through the real functions — no repository, no base revision, no
+   `git`, which is what lets it run beside the check.
+
+**Why this shape rather than the alternatives.** Moving `--compile-canary` into `source-lint` was
+rejected: it needs `build-clang/_deps/juce-src/modules`, so `source-lint` would have to fetch JUCE,
+turning a seconds-long job into a multi-minute one to duplicate a check that already runs — and it
+still would not test the scanner. Narrowing the policy text to describe the shortfall was also
+rejected: the rule is right, and rewriting a rule to match an implementation that misses it is
+documenting the gap rather than closing it. So the policy is **extended** instead: rule 4 now names
+all four `--self-test`s, states what a self-test must do (both directions; no dependency the job
+does not already have), and adds a paragraph distinguishing a **premise** check from a
+**self-test** — both required, neither a substitute, with the failure mode of each spelled out. That
+distinction is the durable part: it is what stops the next lint's canary being filed as its
+self-test.
+
+**One refactor, and only one.** `build_line_map` shelled out to `git diff` and parsed the hunk
+headers in the same function, so the arithmetic that every re-anchor depends on could not be
+reached without a repository. The parsing half is now `line_map_from_diff(diff)` and
+`build_line_map` calls it. No behaviour change; the hunk shapes the self-test feeds it were taken
+from real `git diff -U0` output rather than invented (a prepend is spelled `-0,0`, not `-1,0`, and
+the first draft of the test asserted the wrong one).
+
+**Validation, and the part that matters most: the self-tests were shown to FAIL on a broken
+checker.** Passing on a correct one proves nothing — that is the whole premise of rule 4 — so both
+were mutation-tested. Twenty-two mutations were applied to the two scripts, one at a time, each
+disabling a specific guard: a dead `HAZARD` regex, an over-eager stripper, un-stripped line
+comments, a lost newline in the block-comment branch, a walker that reaches no files, a scratch
+check that always agrees; and on the citation side an ownership test that accepts a `rev:` prefix or
+any path, a dropped compound-anchor group, a removed lookbehind, a lookbehind widened until it
+swallows real citations, disabled provenance exclusion, a provenance block that never ends, the
+pure-insertion off-by-one, an edited hunk returning a number instead of `None`, a misread
+omitted hunk count, removed span de-duplication, a removed overlap refusal, a re-aim guard that
+survives its transition, a re-aim honouring only one spelling, an empty scan set, and a scan that
+drops the source half. **Every one is caught.** Three earlier drafts of the cases were NOT caught
+and were rewritten until they were — the block boundary needed a bare `//` line rather than a
+`#pragma once`, the re-aim case was under the wrong set state, and the lookbehind case had been
+written with a qualifier the *prefix capture* declines, so it never reached the lookbehind at all.
+Beyond that: actionlint clean on all five workflows, with the two new steps confirmed to sit
+immediately before the lints they verify in `source-lint` (read back off the parsed job, not off the
+diff); the 32 inserted lines moved the same three `build.yml` anchors the Intel-gate entry below
+re-anchored, and they were re-anchored again against content — `RELEASE_POLICY` `:324,794,1177`,
+`KNOWN_ISSUES` KI-002 `:1337-1339`, `COMPATIBILITY_MATRIX`'s macOS job range `:1152-1565`; all four self-tests and all four lints
+green (`check-docs` 57 cases / 99 files, `check-clang-warnings` 28, `check-portability` 28 cases /
+45 files, `check-citations` 45 cases / 198 anchors against both `HEAD` and `HEAD~1`); and the
+citation gate exercised end-to-end by inserting a line above a cited anchor in a tracked source —
+it reported 5 drifted citations, `--fix` re-anchored all 5 with 0 needing a human, the re-check went
+green, and the repaired anchor was read back at its new location. [Verified]
+
+**macOS Intel customer-artifact gate (0.9.4, no version bump). One workflow correction: the new
+x86_64 self-test now blocks the customer uploads it was always supposed to.**
+
+The CI/validation round added a second macOS self-test step that runs the universal binary's
+**x86_64 slice under Rosetta 2** — coverage that did not exist before, since the runner is Apple
+Silicon and the native step exercises arm64 only. The step was added without an `id:`, so its
+outcome was unreferenceable, and the two customer uploads still named `steps.tests` (arm64) and
+their own packaging step. A run whose **Intel** behavioural gate failed therefore went red while
+still publishing `Anamorph-macOS` and the `.pkg`: the job reported the failure and shipped the
+package anyway. That contradicts the invariant stated at the top of `build.yml` — customer uploads
+gated on the DSP self-tests succeeding, never `if: always()`, so that "neither a partial packaging
+failure nor a failed behavioural gate can ship a customer artifact." Validating half the shipped
+product and then ignoring the verdict is the one failure mode that rule exists to prevent, and it
+was pointed at the half that has *no* other coverage — Linux and Windows self-tests say nothing
+about the macOS Intel slice, and native Intel hardware is not in the matrix at all.
+
+**The fix, and why it is the smallest one.** The step gets `id: tests_x86_64`, and both customer
+uploads add `steps.tests_x86_64.outcome == 'success'` — the same clause shape, in the same
+position, as the `steps.tests.outcome == 'success'` beside it, so macOS now reads like Linux and
+Windows rather than like an exception. `== 'success'` rather than `!= 'failure'` is deliberate:
+`!= 'failure'` passes on `skipped`, which is the weaker reading of a fail-closed gate. The Intel
+step itself is **untouched** — same `if:`, same body, same Rosetta probe, same `::warning::` — so
+the validation was not weakened to satisfy the gate. Two non-failure paths stay open by design:
+an absent Rosetta still exits 0 (its presence is the *image's* property, not the product's), so
+the uploads proceed on compilation-only Intel coverage with the warning as the record; and a failed
+**build** skips the step, where `steps.tests` already blocks the upload. The developer dSYM upload
+is unchanged, per the standing rule that `-debug` artifacts survive gate failures. Nothing else
+moved: no compiler pin, no pluginval ordering, no Rosetta detection, no `AudioComponentRegistrar`
+handling, no debuglink, no Windows policy, no CMake, no source.
+
+**Documentation synced with it.** `CI_CD.md` gains the gate in both places that describe it — the
+Rosetta paragraph (§macOS runner) and the customer-upload rule in step 7 — including the
+Rosetta-absent carve-out, so the exception is written down where a reader meets the rule.
+`ADR-0021`'s "each customer artifact upload requires the DSP self-tests AND its own
+strip/staging/packaging step to have SUCCEEDED" needed no edit: that policy statement was already
+true, and this change makes the implementation match it. Three `build.yml` anchors moved with the
+21 inserted lines and were re-anchored against content: `RELEASE_POLICY.md` `:288,758,1141` →
+`:292,762,1145` (the three per-OS Configure steps), `KNOWN_ISSUES.md` KI-002 `:1290-1292` →
+`:1305-1307` (the three `codesign --force --deep --sign -` lines), and `COMPATIBILITY_MATRIX.md`'s
+whole-macOS-job range `:1116-1512` → `:1120-1533`.
+
+**Validation.** actionlint clean on all five workflows — and proven live rather than assumed: a
+canary copy with the id misspelled `tests_x86_65` is rejected with *"property is not defined in
+object type"*, and the type it prints lists `tests_x86_64` among the macOS job's steps, so the
+reference resolves. The two upload conditions were then evaluated exhaustively over every
+combination of `tests` × `tests_x86_64` × `package` × `package_macos_pkg` ∈ {success, failure,
+skipped} × cancelled ∈ {true, false} — 486 cases, with three properties asserted: an Intel failure
+never uploads, an arm64 failure never uploads, and the all-success non-cancelled case uploads both.
+No violations. Cancellation is unchanged (`!cancelled()` still leads both conditions). `check-docs`
+self-test (57 cases) + 99 files, `check-portability` (45 files), `check-citations --check`
+(198 anchors) and `check-clang-warnings --self-test` (28 cases) all green. [Verified]
+
+**Documentation re-sync after the CI rounds (0.9.4, no version bump). Documentation only — no
+workflow, script, CMake or source file was touched.**
+
+The two CI entries below changed what the pipeline does and moved a large amount of code; this
+round makes the prose that describes them true again. Three things, in descending order of how
+wrong the tree was without them.
+
+1. **KI-014 was still open in the register after the coverage gap it recorded had been closed.**
+   The entry said the macOS AU "is built and shipped but never validated automatically —
+   `run-pluginval.sh` only sees the VST3." That stopped being true in the CI/validation round: the
+   macOS job installs the built `.component` into `~/Library/Audio/Plug-Ins/Components/`, restarts
+   `AudioComponentRegistrar`, and puts the AU through the *same* release gate as the VST3 — same
+   strictness, both modes, three consecutive passes each, against the **packaged** bundle. A known
+   issue whose defect no longer exists is not a stale line, it is a false statement about the
+   shipped product, and it was being read as current by four other documents. Handled per this
+   repository's own fixed-item rule and following the KI-005 precedent: the summary-table row is
+   **removed**, the body section is replaced by an italic tombstone recording the resolution and
+   retiring the ID, and the removal is recorded in the file's version-sync header. `HANDOVER.md`'s
+   Known Blockers row now says KI-014 is closed rather than listing it; its Roadmap row no longer
+   reads as though AU coverage does not exist, and names `auval`-in-CI as an *addition* to a gate
+   that does. `RELEASE_HARDENING_PLAN.md` RH-F3 is **narrowed, not closed** — its premise
+   ("zero automated validation") is superseded, but Apple's `auval` specifically is still not run,
+   and its open question (headless-runner reliability) is unchanged; closing the row would have
+   claimed coverage that does not exist. `TESTING.md` §"Gaps in the automated coverage" already
+   carried the closure from the earlier round and is left as the detailed account both now cite,
+   with `CI_CD.md` §"Known coverage limits" as the record of the pluginval-not-`auval` residual.
+   `COMPATIBILITY_MATRIX.md`'s AU row was the last carrier of the old picture and moved from
+   **Verified (build)** to **Verified (build + conformance)** — its "Unverified (host)" half stays,
+   because pluginval loads the AU through JUCE's `AudioUnitPluginFormat`, which is not Logic.
+   KI-014's own evidence anchors are retired with it rather than re-anchored: the claim they
+   supported (`run-pluginval.sh` finds only `Anamorph.vst3`) is no longer in the script.
+
+2. **52 evidence anchors across 18 documents pointed into moved code.** `CMakeLists.txt` gained 64
+   lines (the lld probe and the hardening block), `build.yml` roughly doubled, and several scripts
+   were rewritten, so every `file:line` citation below the insertion points had drifted. These were
+   **not** shifted by an offset. Each anchor was resolved by reading what the document *claims* and
+   locating that content in the current source, which matters because an offset would have been
+   wrong in both directions: `CODE_STYLE.md` cited `CMakeLists.txt:206,230` for the recommended
+   warning flags, an anchor that was already wrong before this PR (206 was `juce::juce_opengl`) and
+   that no shift could have repaired — the flags are at `:275,301,339`, three sites rather than two,
+   because the tests target was added since. Conversely `TESTING_POLICY.md:67` and
+   `TROUBLESHOOTING.md:23` cite the pluginval signal-only retry at two *different* spans,
+   `:154-176` and `:147-176`; both are correct — one is `run_one_pass` alone, the other includes
+   the comment block that explains why the retry exists — so neither was normalised to the other.
+   One anchor is not a `file:line` citation at all and a mechanical sweep would have skipped it:
+   `COMPATIBILITY_MATRIX.md` cites the *whole macOS job* as a bare range, `build.yml macos job
+   (:355-542)`, and that job now spans `:1116-1512` — it did not move, it grew, and it is the
+   growth that carried the AU gates.
+   The 18 files: `PRIVACY`, `TRADEMARKS`, `HANDOVER`, `KNOWN_ISSUES`, `REPOSITORY_MAP`,
+   `ARCHITECTURE`, `COMPATIBILITY_MATRIX`, ADR-0001 / ADR-0011 / ADR-0023, `CODE_STYLE`,
+   `DEPENDENCY_POLICY`, `RELEASE_POLICY`, `TESTING_POLICY`, `BUILD`, `PACKAGING`, `TESTING`,
+   `TROUBLESHOOTING`.
+
+   **What was deliberately left alone, and why it is not an oversight.** Four older entries in
+   *this* file quote anchor pairs in old → new form — the two "reported-then-corrected line drift
+   (C6)" entries, the `setup-linux.sh` `curl`/`unzip` entry, and the post-v0.9.0 maintenance audit.
+   Those are not citations; they are the historical record of *previous* re-anchoring operations,
+   and **both** halves of each pair are meant to read as they did then — the old half is supposed
+   to be stale, and the new half records where that operation landed it, not where the content sits
+   today. Rewriting either would destroy the audit trail this file exists to keep. The same
+   reasoning applies to anchors inside `worklogs/` and to `POSTMORTEMS.md` entries that quote the
+   code as it stood at the time of an incident.
+
+3. **The `check-clang-warnings` self-test count in the entry below was recorded as 24; it is 28.**
+   Corrected in place rather than left as history — a case count is written down precisely so a
+   reader can re-run the command and get the same number, and one that does not reproduce is worse
+   than none. The four extra cases are the compiler-pin round's baseline version round-trip block.
+   The other three figures in that sentence reproduce exactly as written.
+
+**Validation.** All four lints green with their self-tests, run against this tree:
+`check-docs.py --self-test` (57 cases) then `check-docs.py` over 99 files;
+`check-clang-warnings.py --self-test` (28 cases); `check-portability.py` (45 files);
+`check-citations.py --check` against both `HEAD` and `HEAD~1`, 198 anchors. Every anchor changed in
+this round was additionally re-read at its new location and confirmed to land on the content the
+citing sentence describes — for example `PACKAGING.md:177` → `CMakeLists.txt:217` →
+`PLUGIN_MANUFACTURER_CODE RTec`, `TROUBLESHOOTING.md:25` → `run-pluginval.sh:129-131` → the
+`xvfb-run -a` prefix, and `RELEASE_POLICY.md:65` → `build.yml:288,758,1141` → the three per-OS
+Configure steps. No CI, source, architecture or policy behaviour changed in this round, and the
+pluginval execution order was left exactly as the CI rounds landed it. [Verified]
+
+**CI + validation round — review follow-up (0.9.4, no version bump). Five corrections, and the
+first is the one worth reading twice.**
+
+Landed on top of the migration entry below, all five from a review of it. None changes what the
+pipeline is *for*; four change whether it does what it claims.
+
+1. **`MALLOC_PERTURB_=255` provided no coverage at all — it was worse than not setting it.** glibc
+   applies the variable asymmetrically (`alloc_perturb → memset(p, perturb_byte ^ 0xff, n)`,
+   `free_perturb → memset(p, perturb_byte, n)`), so the value is the FREED fill and its complement
+   is the FRESH one. 255 therefore wrote `0x00` into fresh allocations: exactly the benign
+   zero-filled heap the step exists to defeat, and *deterministically*, where leaving the variable
+   unset at least returns real recycled garbage. Corrected to `1` (fresh `0xFE`, freed `0x01`).
+   Measured three ways: a `malloc` probe (255 → `00 00 00 00`, 1 → `fe fe fe fe`); a sweep of all
+   255 selectable values; and a read-before-write reproduction whose peak reads `0` under both
+   *unset* and `255` and `1.69e38` under `1`. The original "0xFF fills a float buffer with NaN"
+   rationale could not have held at any value — a float of four identical bytes `B` has exponent
+   `((B & 0x7f) << 1) | (B >> 7)`, which is `0xFF` only for `B = 0xFF`, and a fresh fill of `0xFF`
+   needs `perturb_byte = 0`, glibc's "off" sentinel. NaN coverage is the `sanitizers` job's.
+2. **The PE header guard was two bytes short of the read it protected.** It admitted
+   `peOffset + 24 <= length` and the code then read the optional-header Magic at `peOffset + 24..25`.
+   Corrected to 26 (PE signature 4 + COFF header 20 + Magic 2). Reproduced against synthetic
+   truncated images: at 24 and 25 bytes of slack the old bound let `ToUInt16` throw the raw .NET
+   `IndexOutOfRange` the function exists to replace; the new bound diagnoses all three of 23/24/25
+   and hands ≥ 26 to the next guard.
+3. **The Clang warning baseline had a floating reference point.** Its per-(path, flag) counts are a
+   property of the compiler major, but `linux-clang` used whatever `ubuntu-latest` resolved `clang`
+   to — so a runner-image bump could turn the gate red on a push that changed nothing, the same
+   defect the "never key on line numbers" rule exists to avoid, one level up. `ANAMORPH_CLANG_VERSION`
+   now pins the major in one place (18 — the version the baseline was generated with, and what
+   ubuntu-24.04 resolves `clang` to, so no diagnostic moved); both Clang jobs install and use
+   `clang-<n>`; the baseline records `# clang-major:` and the checker **refuses to run** on a
+   mismatch (exit 2, not 1). The pin also lets `sanitizers` name `libclang-rt-<n>-dev` directly
+   instead of scraping `clang --version` for it.
+4. **macOS validated a bundle it did not ship.** The gates ran before the packaging step, and
+   `strip -x` + `codesign --force --deep` rewrite the Mach-O immediately afterwards. Both formats'
+   gates now run **after** packaging against `dist/Anamorph-macOS/`, named explicitly through
+   `ANAMORPH_PLUGINVAL_BUNDLE`. Every platform now validates the bytes it ships. The trade is
+   recorded rather than discovered: a packaging failure now skips validation, which is the trade
+   Linux already made. The AU copy installed for the registry is removed again afterwards.
+5. **The CHANGELOG fence tracker closed on a nested opener.** A backtick fence carrying an info
+   string (a `cpp`-tagged opener) nested inside an untagged backtick block ended the *outer* fence,
+   after which the block's body was read as
+   structure and the real closer re-opened one — inverting the mask to EOF. The extractor now
+   applies CommonMark §4.5 in full (same character, at least as long, nothing but trailing
+   whitespace) and agrees with `scripts/check-docs.py`'s `fence_mask` on all 11 edge cases tested,
+   under both mawk and gawk. All 20 existing CHANGELOG versions extract byte-identically, so the fix
+   is latent-only — which is the point, since the tracker exists for the first fenced sample anyone
+   adds.
+
+Docs synced: `CI_CD` (the perturbation paragraph rewritten with the mechanism and the sweep; a new
+compiler-pin paragraph in §The Clang warning baseline; §Known coverage limits' shipped-bytes bullet
+rewritten now that all three platforms qualify, and its AU bullet narrowed to the `auval` point; the
+pipeline's step 6 given the post-packaging ordering and its trade; the local-reproduction snippet
+switched to the pinned compiler), `TESTING_POLICY` (the Level 1b value and the note that it is not
+the fill byte), `TESTING` (the closed-AU-gap entry re-stated for the new ordering and the cleanup
+step). Validation for this round is recorded in the round's own summary.
+
+**CI + validation round (0.9.4, no version bump) — reviewed against the sibling product Anabasis
+and migrated selectively.**
+
+Anabasis' CI is the newer implementation of the same design, so its workflows, lints and scripts
+were read against this repository's and adopted where the reasoning transfers. What landed, grouped
+by what it closes:
+
+**Coverage that did not exist.** The macOS **AU** is now validated by pluginval at the same
+strictness, both modes ×3 — installed into `~/Library/Audio/Plug-Ins/Components/` with the
+AudioComponent registry refreshed first, because a never-installed `.component` can report zero
+plugin types however correct it is. The universal binary's **x86_64 slice is now executed**, under
+Rosetta 2, via a new `ANAMORPH_TEST_RUNNER` prefix in `run-tests.sh`; it was compiled on every push
+and run by nothing. Two new jobs: **`linux-clang`** (Clang's warning set is strictly larger than
+GCC's, and it builds the LTO'd plugin — the configuration users install and the only one no other
+job compiles with a second toolchain) and **`sanitizers`** (ASan + UBSan, then valgrind memcheck
+from an unsanitized build; there was no dynamic-analysis coverage at all). Two new lint jobs,
+**`docs`** and **`source-lint`**, carrying four checkers with self-tests.
+
+**Defects the review found.** `--random-seed 0` is pluginval's *"pick a random seed"* sentinel, so
+the "deterministic" gate was not deterministic — measured, not inferred (seed 0 printed a different
+`Random seed:` per run against pluginval 1.0.4; seed 1 printed `0x1` every time). ~~The Linux
+`.gnu_debuglink` stored a CI-workspace-relative path no user's machine has.~~ **WITHDRAWN — this one
+was never true; see the head entry.** `objcopy` records only the basename of the
+`--add-gnu-debuglink` argument, so the old form stored `Anamorph.vst3.so.debug` exactly as the new
+one does. `lipo -archs` output was
+printed rather than asserted, and it exits 0 for a thin Mach-O. `find … | head -n1` /
+`Select-Object -First 1` picked whichever build enumerated first. `$SUDO DEBIAN_FRONTEND=… apt-get`
+breaks when `$SUDO` is empty. `build.sh` exited 1 after a successful build whenever an optional
+artefact was absent, silently breaking `build.sh && run-tests.sh`. Every same-repo PR built the
+3-OS matrix a second time, and concurrent pushes raced full matrices.
+
+**What was NOT migrated, and why** — recorded so the omissions are decisions rather than gaps:
+Anabasis' `preflight` job (a pre-P1 scaffold guard; this repository has had a `CMakeLists.txt`
+since long before 0.9.0, so it would be a permanent no-op adding a `needs:` edge to every build);
+`cxx23-canary.yml` (it exists to pre-warn a C++20 → C++23 baseline raise, and this project is
+*already* at C++23 — there is nothing to canary); the `channel_probe` / `engine_repro` host-side
+tools (product code written around a specific Anabasis field report, not CI infrastructure — porting
+them means authoring new C++, and pluginval already loads the built bundle through
+`juce_audio_processors` at strictness 10); the `macos-*-intel` native-Intel job (a real gap, but
+Rosetta execution closes the cheap 95% of it for no extra runner — recorded in `CI_CD.md` §Known
+coverage limits, not silently dropped); and `.gitattributes` (Anabasis needs `text eol=lf` because
+its snapshot fixture is compared **byte-wise**; this repository's comparison is line-based through
+`juce::StringArray::fromLines`, which strips `\r`, so the hazard does not reach it).
+
+**The one adaptation worth naming.** The Clang warning gate could not be adopted as-is: this tree
+already carries 14 first-party Clang warning sites, and clearing them means renaming a member across
+the editor, adding cases to engine switches and changing float comparisons in DSP code — source work
+that belongs in its own review under `DSP_POLICY.md`. Landing the job red teaches people to ignore
+it; landing it non-blocking makes a gate that cannot fail. So it asserts **no new** warnings against
+a checked-in baseline keyed on `(path, flag)` with a site count — never line numbers, which drift on
+unrelated edits — and a falling count is a notice asking the baseline to shrink, never a failure.
+The debt list is `scripts/clang-warning-baseline.txt` and is reproduced in `CI_CD.md`.
+
+Docs synced (`DOCUMENTATION_LIFECYCLE_POLICY` trigger map, **CI workflow → `CI_CD.md`,
+`TESTING.md`**): `CI_CD` (triggers + concurrency + the same-repo-PR guard, the strictness single
+source, the seven-job build matrix and what each non-packaging job is for, pipeline steps 4–7, the
+AU gate, the Rosetta slice, the baseline, evidence anchors, a new **Known coverage limits** section,
+and a rewritten local-reproduction section), `TESTING_POLICY` (Level 1 restated to include the
+warning gate and the lints, a new Level 1b for dynamic analysis, the hard gate reworded for AU +
+both formats + the nonzero seed + ambiguity, a new rule 4 requiring every lint to prove it is live,
+and the strictness number **removed** in favour of the workflow's `env:` block), `TESTING` (the
+pluginval section rewritten for the seed/format/bundle-override/ambiguity behaviour, the CI section
+given the four new jobs and the citation-base warning, and the **AU gap struck through as closed**),
+`REPOSITORY_MAP` (the tree comment, all nine script rows, the `build.yml` row). Six stale
+`file:line` anchors into the two rewritten scripts were re-anchored in this same change set
+(`POSTMORTEMS`, `FUTURE_RISKS`, `KNOWN_ISSUES`, `TROUBLESHOOTING`, `TESTING` ×2), which is the rule
+`check-citations.py` now enforces for `src/`+`tests/`. Three pre-existing blockquote
+lazy-continuation defects that `check-docs.py` found on its first run — a line-wrapped `> 1.5 oct`
+landing at column 0 in `CHANGELOG`, `DSP_ALGORITHMS` and `ADR-0015` — were fixed by reflowing, with
+no wording change.
+
+**Validation.** actionlint (with shellcheck) clean on all five workflows; every pwsh step and
+`run-pluginval.ps1` parsed with the PowerShell 7.4 parser; `bash -n` + shellcheck clean on all
+scripts. All four lints green with their self-tests (`check-docs` 57 cases / 99 files,
+`check-clang-warnings` **28** cases, `check-portability` 45 files, `check-citations` 198 anchors).
+(That figure was recorded as 24 when this entry was written and is corrected here rather than left
+as history: the whole point of writing a case count down is that a reader can re-run the command and
+get the same number. The four additional cases are the compiler-pin round's version round-trip
+block — see the CI review follow-up entry above. The other three figures reproduce unchanged.)
+Both suites green under GCC, under Clang, and under ASan + UBSan (140 and 894 checks each time).
+pluginval strictness 10 green, both modes ×3, with the seed observably pinned at `0x1`. The lld
+probe reports `Success` under Clang and is **absent** under GCC, confirming the shipped Linux link
+is unchanged. ~~The new debuglink was read back off the stripped binaries.~~ **WITHDRAWN with the
+claim above: reading the section back is what would have shown both forms produce the same bytes, so
+whatever was done here, it was not that.** The warning gate was
+adversarially checked: it fails on a new file, fails on an extra site in an already-baselined
+file+flag, and ignores a new vendored warning. [Verified]
 
 **AppleClang 21 `-Wimplicit-int-float-conversion` × 4 (0.9.4, no version bump) — a source change
 that provably changes no machine code.**

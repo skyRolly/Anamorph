@@ -122,7 +122,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 - **Impact:** A real crash regression could ship if it happens to pass on retry.
 - **Likelihood (evidence-based):** Low — retries are capped at 3 and a deterministic crash still
   fails all attempts.
-- **Evidence [Verified]:** scripts/run-pluginval.sh:63-96 (`run_one_pass`; retry only on exit ≥128, cap 3).
+- **Evidence [Verified]:** scripts/run-pluginval.sh:147-176 (`run_one_pass`; retry only on exit ≥128, cap 3).
 - **Mitigation:** Investigate any repeated crash rather than trusting the pass; keep the cap; a real
   assertion (exit <128) already fails immediately with no retry.
 

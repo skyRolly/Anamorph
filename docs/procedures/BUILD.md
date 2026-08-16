@@ -35,7 +35,7 @@ Three of these serve **pluginval**, not the build: `xvfb` (the editor tests need
 CLI is *not* implied by `libcurl4-openssl-dev`, which is only the development headers —
 GitHub-hosted runners preinstall both tools, so a missing one surfaces on a fresh machine or a
 minimal container rather than in CI.
-Evidence [Verified]: scripts/setup-linux.sh:29-38 (package list), :18-20 (the EGL note),
+Evidence [Verified]: scripts/setup-linux.sh:44-54 (package list), :18-20 (the EGL note),
 :13-17 (the curl/unzip note).
 
 ## Configure + build
@@ -55,11 +55,11 @@ Evidence [Verified]: scripts/build.sh:14-15.
 
 | Option | Default | Effect |
 |---|---|---|
-| `ANAMORPH_BUILD_TESTS` | ON | Build the `AnamorphTests` + `AnamorphStateTests` console apps (CMakeLists.txt:27,219) |
-| `ANAMORPH_BUILD_STANDALONE` | ON | Add the Standalone target (CMakeLists.txt:28,146-148) |
+| `ANAMORPH_BUILD_TESTS` | ON | Build the `AnamorphTests` + `AnamorphStateTests` console apps (CMakeLists.txt:27,283) |
+| `ANAMORPH_BUILD_STANDALONE` | ON | Add the Standalone target (CMakeLists.txt:28,210-212) |
 | `ANAMORPH_JUCE_PATH` | "" | Use a local JUCE checkout instead of fetching (CMakeLists.txt:32,43-45) |
 | `ANAMORPH_JUCE_TAG` | `e18f7f5…` (= tag 9.0.1) | JUCE git rev to fetch when no local path; `ANAMORPH_JUCE_VERSION` carries the readable version (CMakeLists.txt:36-38) |
-| `ANAMORPH_BUILD_NUMBER` | 0 | CI build/dev number shown in the About box (CMakeLists.txt:188) |
+| `ANAMORPH_BUILD_NUMBER` | 0 | CI build/dev number shown in the About box (CMakeLists.txt:252) |
 
 Offline build (no network) with a local JUCE:
 ```bash
@@ -69,7 +69,7 @@ cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DANAMORPH_JUCE_PATH=/path/to
 ## Formats produced
 
 `VST3` everywhere; `+ AU` additionally on macOS; `+ Standalone` when `ANAMORPH_BUILD_STANDALONE`
-is ON. Evidence [Verified]: CMakeLists.txt:142-148.
+is ON. Evidence [Verified]: CMakeLists.txt:206-212.
 
 ## Artifact paths
 
@@ -81,7 +81,7 @@ build/.../AnamorphTests                                       # the DSP self-tes
 build/.../AnamorphStateTests                                  # the state-compatibility self-test app
 ```
 
-Evidence [Verified]: scripts/build.sh:19-30; .github/workflows/build.yml (build/stage steps).
+Evidence [Verified]: scripts/build.sh:19-54; .github/workflows/build.yml (build/stage steps).
 
 **Symbols (ADR-0021):** local Release builds carry full debug info (`-g` / `/Zi` via the
 `AnamorphHardening` flags) and are **never stripped locally** — debugging a local build works
@@ -100,4 +100,4 @@ Evidence [Verified]: scripts/setup-linux.sh:8-12.
 
 `ANAMORPH_VERSION_STRING`, `ANAMORPH_BUILD_NUMBER`, `JUCE_WEB_BROWSER=0`, `JUCE_USE_CURL=0`,
 `JUCE_VST3_CAN_REPLACE_VST2=0`, `JUCE_DISPLAY_SPLASH_SCREEN=0`, `JUCE_REPORT_APP_USAGE=0`,
-`JUCE_STRICT_REFCOUNTEDPOINTER=1`. Evidence [Verified]: CMakeLists.txt:190-199.
+`JUCE_STRICT_REFCOUNTEDPOINTER=1`. Evidence [Verified]: CMakeLists.txt:254-262.

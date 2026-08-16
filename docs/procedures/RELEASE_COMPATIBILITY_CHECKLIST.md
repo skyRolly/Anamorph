@@ -21,8 +21,10 @@ Hard compatibility gate. **Every box must be checked before a release ships.** T
       sound identical. Ref: `src/PresetManager.cpp`.
       *Partially automated:* `tests/state_tests.cpp` proves save→reload structural equality +
       exclusion rules + factory loadability; "sound identical" remains a Level-5 (audition) check.
-- [ ] **Pluginval passed (both modes)** — `scripts/run-pluginval.sh 10 deterministic` **and**
-      `scripts/run-pluginval.sh 10 randomise` (`--randomise` ×3) pass on the Linux gate (strictness 10).
+- [ ] **Pluginval passed (both modes)** — `scripts/run-pluginval.sh <n> deterministic` **and**
+      `scripts/run-pluginval.sh <n> randomise` (`--randomise` ×3) pass on the Linux gate, where
+      `<n>` is `ANAMORPH_PLUGINVAL_STRICTNESS` from `.github/workflows/build.yml` — read it there
+      rather than from this line, so a raise cannot leave this checklist certifying the old bar.
       Ref: `docs/procedures/TESTING.md`.
 - [ ] **Host matrix verified** — load in the target hosts and confirm load + automation + state.
       (Currently Unverified in-repo; this requires manual DAW testing —

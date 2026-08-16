@@ -33,10 +33,13 @@ Anamorph/
 │                           architecture docs; e.g. performance/WAVE3_INVESTIGATION.md,
 │                           release-hardening/RH_PR2_INVESTIGATION.md — finalized decisions
 │                           graduate to ADRs; worklogs are the raw evidence trail).
-├── scripts/                setup / build / test / pluginval.
+├── scripts/                setup / build / test / pluginval, plus the four CI lints
+│                           (check-docs, check-portability, check-citations,
+│                           check-clang-warnings — each with its own self-test).
 ├── packaging/              Per-platform install notes + installer assets (linux/, windows/, macos/).
 ├── .github/                CI + security tooling: workflows/ (build + validate on 3 OSes with
-│                           retain-then-strip symbol pipeline; CodeQL; MSVC /analyze;
+│                           retain-then-strip symbol pipeline; doc/source lints; Linux+Clang
+│                           warning gate; ASan/UBSan + valgrind; CodeQL; MSVC /analyze;
 │                           Dependency Review) and dependabot.yml (github-actions ecosystem only).
 └── docs/                   This documentation library.
 ```
@@ -88,11 +91,15 @@ Anamorph/
 | `tests/dsp_tests.cpp` | 33 headless DSP acceptance tests + 1 A/B state-restoration clamp guard (`check(cond, "...")` harness; `main` runs all). |
 | `tests/state_tests.cpp` | 12 headless state-compatibility tests (schema shape, parameter-registry snapshot, raw-exact round-trip, 3 legacy migration fixtures, corrupt-state robustness, preset round-trip, A/B + view-param preservation, factory/user preset identity under a shared name, factory-id integrity, indicator identity across a session reload) — own console target `AnamorphStateTests` compiling the plugin sources. |
 | `tests/fixtures/` | Compatibility fixtures: `parameter_registry.snapshot` (re-frozen only via `AnamorphStateTests --write-snapshot` for INTENTIONAL parameter changes) + 3 frozen legacy session XMLs (v0.2 / pre-0.6.4 / pre-0.8.4). |
-| `scripts/setup-linux.sh` | Ubuntu build dependencies (+ xvfb). |
-| `scripts/build.sh` | CMake + Ninja build; prints artifact paths. |
-| `scripts/run-tests.sh` | Runs `AnamorphTests` + `AnamorphStateTests` (fail-closed). |
-| `scripts/run-pluginval.sh` | pluginval on Linux/macOS (strictness + mode args — `deterministic` \| `randomise`, each ×3; signal-only retry for the X11 host flake). |
-| `scripts/run-pluginval.ps1` | pluginval on Windows (same strictness/mode/×3 structure; exit code is the sole signal). |
+| `scripts/setup-linux.sh` | Ubuntu build dependencies (+ xvfb, + lld for the Clang/LTO link). |
+| `scripts/build.sh` | CMake + Ninja build; prints artifact paths (VST3, Standalone, both suites). |
+| `scripts/run-tests.sh` | Runs `AnamorphTests` + `AnamorphStateTests`, fail-closed on absence **and** ambiguity (exactly one match each). `ANAMORPH_TEST_RUNNER` prefixes both invocations — the macOS job passes `arch -x86_64` to execute the universal binary's other slice. |
+| `scripts/run-pluginval.sh` | pluginval on Linux/macOS (strictness + mode + **format** args — `deterministic` \| `randomise` each ×3, `vst3` \| `au`; fixed **nonzero** seed; `ANAMORPH_PLUGINVAL_BUNDLE` overrides discovery for an installed AU; signal-only retry for the X11 host flake). |
+| `scripts/run-pluginval.ps1` | pluginval on Windows (same strictness/mode/×3/seed structure; exit code is the sole signal; `--skip-gui-tests` for the GPU-less runner, KI-007). |
+| `scripts/check-docs.py` | Structural Markdown lint over the whole document set (table integrity, relative links, blockquote lazy continuation, unclosed fences, CHANGELOG entry-boundary rule). `--self-test` first. |
+| `scripts/check-portability.py` | Rejects explicit template arguments on `juce::jmin/jmax/snapToZero` (instantiates `dsp::SIMDRegister<T>` — compiles on Linux, fails on macOS); also checks the Linux installer/uninstaller scratch-name sets agree. Two different proofs: `--self-test` (in `source-lint`, beside the lint) proves the **checker** still fires and still stays quiet; `--compile-canary` (in `linux-clang`, where JUCE is checked out) proves the **hazard** still exists in the pinned JUCE. |
+| `scripts/check-citations.py` | Keeps `file.cpp:NNN` evidence anchors in `docs/` pointing at the text they named at a base revision. `--check` reports drift, `--fix` re-anchors; deliberate re-aims are declared in `DELIBERATE_REAIMS`. `--self-test` proves the ownership test, the line map and the span rewriter are live — this is the only lint that **writes** to the documents, so a defect corrupts rather than merely misses. |
+| `scripts/check-clang-warnings.py` | The first-party warning gate for the `linux-clang` job: classifies each Clang diagnostic **structurally** by resolved path (`src/`, `tests/`, never through `_deps`). `--self-test` proves the classifier is live. |
 | `src/AbSlotIndex.h` | `anamorph::kNumAbSlots` + `clampAbSlotIndex` — single source of truth for A/B slot sizing/clamping. |
 | `packaging/macos/INSTALL.txt` | macOS install + de-quarantine instructions (ad-hoc signed, not notarized). Installation content only — no testing or attribution section. |
 | `packaging/macos/build-pkg.sh` | Builds the macOS `.pkg` installer (three component packages + productbuild, component selection with a full-install default, every component non-relocatable so a re-install always writes its declared destination) from the CI-staged payload. |
@@ -100,7 +107,7 @@ Anamorph/
 | `packaging/linux/install.sh`, `uninstall.sh`, `INSTALL.txt` | Linux installer/uninstaller — prompts for per-user (`~/.vst3`, `~/.local/bin`, no root; the default) or system-wide (`/usr/lib/vst3`, `/usr/local/bin`, `sudo`) — + install notes; all three ship in the zip. |
 | `docs/user/USER_MANUAL.md` | Full end-user manual (interface, signal flow, algorithms, presets, workflows, troubleshooting); attached to GitHub releases. |
 | `docs/user/INSTALLATION.md` | End-user installation guide for all three platforms (installer + manual routes). |
-| `.github/workflows/build.yml` | 3-OS build + DSP **and state** self-tests + pluginval (strictness-10, both modes ×3, **blocking on all three platforms**); stages the per-platform packages — flat `Anamorph-<OS>` artifacts (loose files; release.yml archives the release zip from the same tree), Windows/macOS installers, `-debug` symbols; also callable (`workflow_call`) by release.yml. |
+| `.github/workflows/build.yml` | 3-OS build + DSP **and state** self-tests + pluginval (both modes ×3, **blocking on all three platforms**, VST3 everywhere and **AU on macOS**; strictness held once in `env.ANAMORPH_PLUGINVAL_STRICTNESS`); plus four non-packaging jobs with no `needs:` in either direction — `docs`, `source-lint`, `linux-clang` (Clang warning gate over `src/`+`tests/`, and the only job that builds the LTO'd plugin with a second compiler), `sanitizers` (ASan+UBSan then valgrind memcheck). Stages the per-platform packages — flat `Anamorph-<OS>` artifacts (loose files; release.yml archives the release zip from the same tree), Windows/macOS installers, `-debug` symbols. One run per ref (`concurrency`, tags exempt from cancellation); same-repo PR events skipped as duplicates of the branch push. Also callable (`workflow_call`) by release.yml. |
 | `.github/workflows/release.yml` | RH-PR-8 release skeleton: annotated `vX.Y.Z` tag → fail-closed metadata validation → reused build.yml gates → **draft** GitHub Release (versioned artifacts + SHA-256 sums + manifest); `workflow_dispatch` = rehearsal. |
 | `.github/workflows/codeql.yml` | CodeQL (`c-cpp` manual build + `actions`); alerts scoped to repo-own code. See `docs/procedures/CI_CD.md` §Security scanning. |
 | `.github/workflows/msvc.yml` | MSVC `/analyze` → SARIF; JUCE treated as external; path-filtered triggers. |
@@ -129,4 +136,4 @@ docs/
                      CHANGELOG, TESTING, RELEASE, DEPENDENCY, CODE_STYLE)
 ```
 
-Evidence [Verified]: file tree from the repository; CMakeLists.txt:77-113 (hardening interface) + :124 (`AnamorphDSP`) / :150 (`juce_add_plugin`); src/ listing.
+Evidence [Verified]: file tree from the repository; CMakeLists.txt:77-177 (hardening interface) + :188 (`AnamorphDSP`) / :214 (`juce_add_plugin`); src/ listing.
