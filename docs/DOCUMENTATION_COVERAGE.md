@@ -54,15 +54,29 @@ same round shifted four anchors, and the self-test failed on all four before the
 (83 cases now, up from 70).
 
 **History is no longer rewritable by the tool it describes.** `CMakeLists.txt` joined `TRACKED` last
-round, and root-level paths have no bare escape spelling, so eight *historical* sentences in this
-document became claimable as live evidence — including one whose entire point is that an anchor was
-**wrong** (`Drift observed, not corrected`), and another that literally states "rewriting one to
+round, and root-level paths have no bare escape spelling, so **eleven** *historical* sentences in
+this document became claimable as live evidence — including one whose entire point is that an anchor
+was **wrong** (`Drift observed, not corrected`), and another that literally states "rewriting one to
 match today's code would falsify the record". A future `--fix` would have silently changed the
 numbers those sentences are about, which is exactly what the checker's own header forbids. Each now
 separates path from anchor (`` `CMakeLists.txt` `:206,230` ``); the one that *illustrates a spelling*
-uses a non-tracked path instead, since splitting it would have destroyed the illustration. Verified
-programmatically: the eight are no longer claimed, and the four genuine live anchors in the same
-document still are.
+uses a non-tracked path instead, since splitting it would have destroyed the illustration.
+
+Eight were caught in the first pass and three more in a second, which is worth recording because the
+three were **misjudged, not missed**: they were read as live pointers ("the version line") when each
+is in fact a record of a past event *at a position*. The sharpest is the C++23 entry, whose claim is
+that the standard "moved 17 → 23 **in place** on `:16`, so no downstream citation moved" — the
+number is load-bearing to the argument, and rewriting it would assert a positional fact that never
+happened. Another sits two lines from a sibling reference in the *same* historical sentence that had
+already been protected, so a `--fix` would have rewritten half a paired record and frozen the other
+half. The discriminator that survives: **is the number the subject of the sentence, or a pointer to a
+thing?** Exactly one `CMakeLists.txt` citation in this document is the latter — "*it is*
+`CMakeLists.txt:314-323`", present tense, where re-anchoring preserves truth — and it is deliberately
+left live so the gate still demonstrably checks real evidence here.
+
+Verified by mutation rather than by reading: a line inserted into `CMakeLists.txt` above all of them,
+then the real `--fix`, leaves all eleven byte-identical and correctly re-anchors the one live
+citation (`:314-323` → `:315-324`).
 
 **Cache statistics can no longer gate a release.** The six `Compiler cache statistics` steps ran
 `ccache --show-stats --verbose` unguarded under `bash -e`; a non-zero exit (an older ccache without
@@ -1390,7 +1404,7 @@ historical evidence, not live statements, and are not retro-edited.
 The C++ standard sits in the `DEPENDENCY_POLICY` pinned-dependency table, so raising it is an
 `ARCHITECTURE_REVIEW_GATE` Build System change: it carries an ADR (**ADR-0027**, `Accepted`
 2026-08-15 — Architecture Review signed off) and was flagged on the PR for that review. `CMAKE_CXX_STANDARD` moved 17 → 23 in place
-on `CMakeLists.txt:16`, so no downstream `CMakeLists.txt:NNN` citation moved; the version stays
+on `CMakeLists.txt` `:16`, so no downstream `CMakeLists.txt:NNN` citation moved; the version stays
 0.9.4 and the release date stays 2026-08-15, as commissioned.
 
 **The one source change is a finding, not a cleanup.** `src/dsp/HaasProcessor.cpp` gains
@@ -2414,7 +2428,7 @@ Prior: for the **vendor manufacturer-code change** (2026-07-30, on top of `main`
 `c0fca30`). **No `src/` change; DSP, parameter surface and serialized state bit-identical to
 0.9.0.** `PLUGIN_MANUFACTURER_CODE` changes `Anmf` → `RTec` (`CMakeLists.txt` `:153`) so the vendor
 code spells RollyTech rather than the first product, ahead of the second product line member
-(Anabasis) adopting the same value. Version bumped to **0.9.1** (`CMakeLists.txt:14`). The code is
+(Anabasis) adopting the same value. Version bumped to **0.9.1** (`CMakeLists.txt` `:14`). The code is
 host-facing identity — the AU component's manufacturer field, and an input to JUCE's VST3 class
 UID — so pre-0.9.1 sessions report the plug-in as missing; that is documented, not fixable, and
 one-time. Added: **ADR-0023** (options incl. "keep `Anmf` forever" and the rejected
@@ -2747,7 +2761,7 @@ confirmed the idle/Simple/hidden GPU paths are already ~0 and at their frontier,
 its bottom corners straddle a two-colour arc no flat pre-fill reproduces). Build + **140-check suite
 green**; no DSP/threading/parameter/serialization/latency change; GPU measurement unavailable in the
 headless container (analytical estimate — the affected GL path is macOS/Windows-only, Linux is CPU per
-ADR-0011). Version bump `0.8.11 → 0.8.12` (`CMakeLists.txt:14`). Synced: this file, CHANGELOG
+ADR-0011). Version bump `0.8.11 → 0.8.12` (`CMakeLists.txt` `:14`). Synced: this file, CHANGELOG
 (`[0.8.12]` **### Changed**), HANDOVER (Current-Version + Pending-Tasks rows), README (version line).
 Evidence: `worklogs/performance/WAVE6_GPU_RENDER_INVESTIGATION.md`. Prior: for the **v0.8.11 final
 performance pass & release-readiness audit** (2026-07-20,
