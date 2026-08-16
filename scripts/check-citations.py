@@ -174,7 +174,7 @@ ANCHOR = re.compile(r"(\d+)(?:-(\d+))?")
 # reporting a clean run. The list going empty is the expected end state of every
 # entry here, so it must be the boring case.
 DELIBERATE_REAIMS = set([
-    # EMPTY, AND THAT IS THE EXPECTED STATE. The sibling's list was NOT carried
+    # EMPTY IS THE EXPECTED RESTING STATE. The sibling's list was NOT carried
     # over: each of its entries excuses one specific `<document>, <path>:<line>`
     # pair in ITS tree, so importing them here would exempt anchors that do not
     # exist in this repository and would silently narrow the gate on the day one
@@ -185,6 +185,34 @@ DELIBERATE_REAIMS = set([
     # code before this gate existed stays wrong and stays green. That limit is
     # stated in the header and is not a reason to delay the gate -- it closes the
     # drift class, which is the one that grows on its own.
+    #
+    # ---------------------------------------------------------------------
+    # v0.9.4 CI/validation round: the four `scripts/` entries joined `TRACKED`
+    # in the SAME change set that rewrote those scripts. Every anchor below
+    # therefore names a region whose TEXT no longer exists at the merge base, so
+    # `--fix` cannot repair it -- it reports UNMAPPABLE and needs a human. This
+    # is the case the list exists for, and it is scoped to exactly the six
+    # transitions that happened: measured against the previous default-branch
+    # revision, not invented.
+    #
+    # Each was re-read at its new location against the sentence that cites it
+    # before being declared, and the aim confirmed by the maintainer:
+    #   :147-176  the signal-only retry -- comment block + `run_one_pass`
+    #   :121      the pluginval release download (`curl -L ...`)
+    #   :44-54    setup-linux.sh's apt package list
+    #   :19-54    build.sh's artefact-path reporting block
+    #
+    # THESE ARE GOOD FOR ONE TRANSITION. Once the default branch carries the
+    # spellings below, `is_declared_reaim`'s "the spelling actually changed"
+    # test can no longer fire for them and the run reports each as removable.
+    # Delete them then -- against the MERGE BASE, per the note that run prints.
+    ("docs/FUTURE_RISKS.md", "scripts/run-pluginval.sh:147-176"),
+    ("docs/POSTMORTEMS.md", "scripts/run-pluginval.sh:147-176"),
+    ("docs/architecture/COMPATIBILITY_MATRIX.md", "scripts/run-pluginval.sh:121"),
+    ("docs/architecture/design-decisions/ADR-0011-linux-x11-cpu-render.md",
+     "scripts/run-pluginval.sh:147-176"),
+    ("docs/procedures/BUILD.md", "scripts/setup-linux.sh:44-54"),
+    ("docs/procedures/BUILD.md", "scripts/build.sh:19-54"),
 ])
 
 

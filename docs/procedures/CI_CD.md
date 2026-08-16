@@ -435,10 +435,21 @@ not audited. A clean run means none of them **moved**.
 **When you re-anchor deliberately** — moving an anchor onto the code it should always have named —
 the tool cannot distinguish that from drift, and the gate goes red on the commit that *fixed* it.
 Declare the pair in `DELIBERATE_REAIMS` in the **same change set** as the re-anchor, never in a
-follow-up. The list starts empty and is expected to return to empty: an entry stops matching once the
-base carries the corrected spelling, and the next run reports it as removable. `--fix` re-anchors
-mechanically; anchors it reports as `UNMAPPABLE` (the cited lines were themselves edited) need a
-human. Prose *examples* of a citation must use a path outside `TRACKED`, or they get re-anchored too.
+follow-up. The list is expected to return to empty: an entry stops matching once the
+base carries the corrected spelling, and the next run reports it as removable — act on that only
+when the base you ran against is the branch's **merge base**, which is the base that still needed it.
+`--fix` re-anchors mechanically; anchors it reports as `UNMAPPABLE` (the cited lines were themselves
+edited) need a human. Prose *examples* of a citation must use a path outside `TRACKED`, or they get
+re-anchored too.
+
+**Rewriting a tracked file is the other case that needs a declaration, and it is the one that bites
+after a merge.** When a change set rewrites a cited source *and* re-anchors the citations into it,
+every one of those anchors is `UNMAPPABLE` against the merge base — the text they named is gone, so
+no line number satisfies the same-text test and `--fix` cannot repair it. Against the branch's
+previous push the same anchors look clean, because that base already carries the rewrite, so the
+gate is green on the branch and red on the first default-branch build after the merge. Declare them
+in the same change set. The v0.9.4 round's six entries are that case, and the block in
+`scripts/check-citations.py` records which region each one names.
 
 ## Artifacts
 

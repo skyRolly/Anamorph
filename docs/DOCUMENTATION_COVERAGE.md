@@ -7,8 +7,9 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
-**merge-result / script-anchor / strictness round** (first below), then the **check-docs
-false-green fix** before it, then the **lint self-verification round**,
+**post-merge citation gate fix** (first below), then the **merge-result / script-anchor / strictness
+round** before it, then the **check-docs false-green fix**, then the **lint self-verification
+round**,
 then the **macOS Intel artifact gate**,
 then the **documentation re-sync**, then the **CI review follow-up** that one follows, then the
 **CI/validation round** it corrects, then the four
@@ -21,6 +22,61 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**Post-merge citation gate (0.9.4, no version bump). Six declarations. The gate would have turned
+the default branch red on the first build after this PR merged, for a reason that is not a defect.**
+
+The round below added `scripts/` to `TRACKED` in the **same change set that rewrote those scripts**.
+Against the branch's previous push the anchors read clean — that base already carries the rewrite —
+but against the **merge base** the cited text no longer exists, so no line number satisfies the
+same-text test and `--fix` cannot repair it: six anchors report `UNMAPPABLE`, exit 1. CI resolves
+its base from `github.event.before`, which on the branch is the previous commit and on the default
+branch after a merge is the pre-merge tip. The gate was therefore green here and would have been red
+there. Reproduced exactly, against `2ce2a76`: six UNMAPPABLE across `FUTURE_RISKS`, `POSTMORTEMS`,
+`COMPATIBILITY_MATRIX`, ADR-0011 and `BUILD.md` ×2.
+
+**`DELIBERATE_REAIMS` is the mechanism, and no code changed — only data.** Before using it, the
+branch each of the six takes was checked: all are on the *paired* path, where `is_declared_reaim`
+is consulted **before** the movability test, so a declaration covers an UNMAPPABLE case; the
+count-mismatch path deliberately consults no declaration and is unaffected. All six also satisfy the
+"the spelling actually changed" precondition (`:63-96` → `:147-176`, `:34` → `:121`, `:46-76` →
+`:147-176`, `:29-38` → `:44-54`, `:19-30` → `:19-54`), so the entries are good for exactly one
+transition and the run after it reports each as removable.
+
+**Signed off as the maintainer's confirmation, after re-reading each aim rather than assuming it.**
+Every one was resolved against the sentence that cites it: `:147-176` → the comment block plus
+`run_one_pass` (the signal-only retry); `:121` → the `curl -L …/pluginval` release download;
+`:44-54` → `setup-linux.sh`'s apt package list; `:19-54` → `build.sh`'s artefact-path block. The
+declaration block records which region each names and when to delete them (against the **merge
+base**, not against the previous push — the run prints that distinction itself).
+
+**Not a blanket exemption, proven in four directions.** Against `2ce2a76` the run is now green and
+prints six `ACCEPTED re-aim` lines naming each document — the acceptance is audible, never silent.
+Removing one entry puts that anchor straight back to `UNMAPPABLE`, exit 1. Ordinary drift is
+unchanged: a line inserted above a cited region in `run-pluginval.sh` still reports **10 DRIFTED**
+and exit 1. And a declaration does not shelter its neighbours — `build.sh:14-15` is undeclared in
+the same document as a declared entry, and drifting it fails the run on its own.
+
+**`merge-check` was inspected and left alone.** Read off the parsed workflow: its `if` is the exact
+complement of the same-repo guard; `actions/checkout` carries **no `ref:` override**, so on a
+`pull_request` event it takes the default `refs/pull/N/merge` — the merge result, not the head; it
+runs one Linux configure + build + both self-test suites, with **no artifacts, no pluginval, no
+packaging** and no `needs:`; and the concurrency group keys on `github.ref`, which differs between
+`refs/pull/N/merge` and `refs/heads/<branch>`, so the PR run and the push run cannot cancel each
+other. The five-scenario matrix is unchanged: same-repo PR runs `merge-check` only; fork PR, branch
+push, release via `workflow_call` and `workflow_dispatch` rehearsal all run the full set with
+`merge-check` skipped. Nothing to fix, so nothing was changed.
+
+**Documentation.** `CI_CD.md` §Evidence anchors described only the "re-aimed onto the code it should
+always have named" case; the rewrite case — the one that is green on the branch and red after the
+merge — is now stated there, since a reader who finds six entries in a list documented as empty is
+owed the reason. `packaging/linux/uninstall.sh` re-verified byte-identical to its pre-PR state.
+
+**Validation.** `check-citations` 58 self-test cases; green against the merge base (206 anchors, 6
+accepted re-aims), against `HEAD` (217) and against `HEAD~1` (208); the four negative paths above.
+`check-docs` 66 cases / 99 files, `check-portability` 28 cases / 45 files, `check-clang-warnings`
+28 cases. actionlint clean on all five workflows; `bash -n` clean on the packaging and build
+scripts. [Verified]
 
 **Merge-result CI, script-anchor coverage and one strictness authority (0.9.4, no version bump).
 Three review findings, each a real gap rather than a preference.**
