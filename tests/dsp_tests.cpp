@@ -2675,6 +2675,20 @@ static void testHaasParkedWarmHistory()
 int main()
 {
     std::printf ("=== Anamorph DSP self-tests ===\n");
+
+    // A RELAXED RUN MUST SAY SO, in the same run whose result it changes. The
+    // escape hatch is legitimate (see `isBad`), but read once from the
+    // environment it left no trace: a stale export or an inherited CI variable
+    // produced the same "ALL TESTS PASSED" line as a full run, with the
+    // denormal invariant not asserted. Announced twice on purpose -- at the top
+    // where the reader starts and beside the verdict where they stop -- and as
+    // a `::warning::` so a CI run surfaces it the way the Rosetta step surfaces
+    // its own lost coverage.
+    if (ftzUnavailable)
+        std::printf ("::warning::ANAMORPH_TESTS_NO_FTZ=1 -- the DENORMAL half of the "
+                     "NaN/Inf/denormal invariant is NOT asserted in this run (NaN and Inf "
+                     "still are). Set only by the valgrind step; unset it for a full gate.\n");
+
     testMidSideRoundTrip();
     testNoBadSamples();
     testBypassNullAndLatency();
@@ -2711,6 +2725,8 @@ int main()
     testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);
+    if (ftzUnavailable)
+        std::printf ("(ANAMORPH_TESTS_NO_FTZ=1 was set: the denormal invariant was NOT asserted)\n");
     if (failures == 0) { std::printf ("ALL TESTS PASSED\n"); return 0; }
     std::printf ("TESTS FAILED\n");
     return 1;

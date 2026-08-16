@@ -165,7 +165,13 @@ TABLE_ROW = re.compile(r"^\s*\|")
 # a checker that disagrees with the thing it checks teaches people to ignore it.
 # If the extractor is ever tightened to `^## `, tighten this in the same change.
 CHANGELOG_VERSION_HEADING = re.compile(r"^## \[")
-SKIP_DIRS = {".git", "node_modules", "JUCE"}
+# `_deps` is FetchContent's cache, and it is listed by name rather than left to
+# the build-tree rule below because `.gitignore` allows one at the repository
+# ROOT (`_deps/`) as well as the usual `build/_deps/`. Only the second has a
+# `build*` ancestor, so the top-level cache was walked and JUCE's own Markdown
+# reported as findings. `check-clang-warnings.py` already treats `_deps` as the
+# vendored marker; this is the same convention in the other scanner.
+SKIP_DIRS = {".git", "node_modules", "JUCE", "_deps"}
 
 # …and every build tree. This set said only the exact name `build`, so a
 # checkout that followed the documented CI reproduction — the sanitizers job
@@ -764,7 +770,7 @@ def self_test() -> int:
     # ancestor must not decide, and an empty result must not pass.
     with tempfile.TemporaryDirectory() as tmp:
         for parent in ("build", "build-san", "cmake-build-debug", "JUCE",
-                       "node_modules", ".git"):
+                       "node_modules", ".git", "_deps"):
             root = Path(tmp) / parent / "checkout"
             (root / "docs").mkdir(parents=True)
             (root / "README.md").write_text("# R\n")
@@ -780,7 +786,7 @@ def self_test() -> int:
         # inside the scan root, which is the only place a skip rule may speak.
         root = Path(tmp) / "repo"
         for d in ("docs", "build", "build-san", "cmake-build-debug", "JUCE",
-                  "node_modules", ".git", "building", "rebuild"):
+                  "node_modules", ".git", "_deps", "building", "rebuild"):
             (root / d).mkdir(parents=True)
             (root / d / f"{d}.md").write_text("# x\n")
         (root / "README.md").write_text("# R\n")
@@ -793,6 +799,18 @@ def self_test() -> int:
             failures += 1
             print(f"self-test FAIL: in-repository filtering scanned {got}, want {want}",
                   file=sys.stderr)
+
+        # THE DEPENDENCY CACHE AT THE REPOSITORY ROOT, which is the shape the
+        # build-tree rule cannot see: `build/_deps/juce-src` has a `build`
+        # ancestor, a top-level `_deps/juce-src` has none, and `.gitignore`
+        # allows both. Written as the real layout rather than a bare directory
+        # name, because it is the nested file that was being reported.
+        (root / "_deps" / "juce-src").mkdir(parents=True)
+        (root / "_deps" / "juce-src" / "README.md").write_text("# J\n\n| a | b |\n| c | d |\n")
+        checked += 1
+        if sorted(p.name for p in markdown_files([root])) != want:
+            failures += 1
+            print("self-test FAIL: a root-level _deps cache was scanned", file=sys.stderr)
 
         # A nested build tree is excluded at any depth, not only at the top.
         (root / "docs" / "build" / "gen").mkdir(parents=True)

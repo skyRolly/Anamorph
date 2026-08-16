@@ -7,7 +7,8 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
-**line-splice diagnostic fix** (first below), then the **portability-scanner false negative**
+**`_deps` scan scope + visible FTZ relaxation** (first below), then the **line-splice diagnostic
+fix** before it, then the **portability-scanner false negative**
 before it, then the **post-merge citation gate fix**
 before it, then the **merge-result / script-anchor / strictness round**, then the **check-docs
 false-green fix**, then the **lint self-verification round**,
@@ -23,6 +24,61 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**Two checkers stopped lying about their own scope (0.9.4, no version bump). A root-level `_deps`
+cache was being linted as project documentation, and a deliberately relaxed DSP run looked identical
+to a full one.**
+
+1. **`check-docs.py` scanned the repository-level dependency cache.** `SKIP_DIRS` held `.git`,
+   `node_modules` and `JUCE`, and `_is_build_dir` covered `build`/`build-*`/`cmake-build-*`. The
+   usual FetchContent layout lands at `build/_deps/juce-src`, which the build-tree rule catches — but
+   `.gitignore` also allows a **top-level** `_deps/`, and that path has no `build*` ancestor.
+   Reproduced: `_deps/juce-src/README.md` carrying JUCE's own Markdown made a local run report a
+   table-fragment finding against a file nobody here wrote, exit 1. `check-clang-warnings.py` already
+   uses `_deps` as its vendored marker, so the two scanners disagreed about what counts as vendored;
+   adding `_deps` to `SKIP_DIRS` is that convention applied consistently, and it is the whole fix —
+   `_is_build_dir` is untouched, since widening it for symmetry is how the "named, not prefixed"
+   rule got broken once already. Two cases: the real `_deps/juce-src/README.md` layout inside a scan
+   root must not be scanned, and a checkout that *lives* under a parent named `_deps` must still be
+   scanned in full — the second because the skip set is scoped below the scan root, and a new entry
+   in it inherits that scoping. 66 → 68 cases.
+
+2. **`ANAMORPH_TESTS_NO_FTZ=1` relaxed a DSP invariant in silence.** The escape hatch itself is
+   sound and stays: valgrind emulates floating point and does not honour the CPU's FTZ/DAZ bits, so
+   under memcheck denormals survive into the output and the check fails on a build that is correct on
+   every real CPU — while memcheck reports zero errors on the same run. What was wrong is that the
+   flag was read once and left no trace: a stale export or an inherited CI variable produced the same
+   `ALL TESTS PASSED` line as a full run, with the denormal half of the invariant never asserted.
+   That is the failure mode `TESTING_POLICY.md` rule 4 and this pipeline's own comments name as
+   unacceptable, applied to the suite rather than to a lint. The suite now announces the relaxation
+   **twice** — a `::warning::` at start-up naming the un-asserted half, and a line beside the verdict
+   so the tail of the log is self-describing too. `::warning::` rather than a plain notice because it
+   is the form this repository already uses for lost-coverage-but-not-a-product-failure (the Rosetta
+   step), so a CI run surfaces it in the UI instead of burying it. No DSP or product code changed, no
+   other assertion moved, and the hatch was not removed to make the warning possible.
+
+**Verified by running both, not by reading the diff.** `AnamorphTests` rebuilt and executed: the
+normal run is unchanged (`140 checks, 0 failures` / `ALL TESTS PASSED`, exit 0, no new output); the
+relaxed run prints the warning as the second line and the reminder above the verdict, still exit 0;
+and `ANAMORPH_TESTS_NO_FTZ=0` and `=yes` neither relax nor announce, so the literal-`1` rule is
+intact. For `_deps`, the reproduction was re-run after the fix — a top-level `_deps/juce-src` with
+violating Markdown is now clean at exit 0, and `build/_deps/…` remains excluded as before.
+
+**Documentation.** One sentence in `TESTING.md`'s "`ANAMORPH_TESTS_NO_FTZ=1` is for valgrind and
+nothing else" paragraph, which is where a contributor is told never to set it and now learns how they
+would notice if it were set. `CI_CD.md`'s two passages describe the relaxation accurately and are
+left alone.
+
+**Signed off, not outstanding: `AudioComponentRegistrar` settling.** The macOS AU gate restarts the
+registrar and proceeds without waiting for the re-scan. In practice the first `AudioComponentFindNext`
+call restarts and blocks on the daemon, so the sequence holds; it is the plausible flake source for a
+blocking gate and is **reviewed and accepted by the maintainer (2026-08-16)** as a known risk rather
+than an oversight. No change requested and none made.
+
+**Validation.** `check-docs` 68 self-test cases / 99 files clean; `check-portability` 59 cases / 45
+files; `check-citations` 58 cases / 217 anchors; `check-clang-warnings` 28 cases; actionlint clean on
+all five workflows; `AnamorphTests` 140 checks, 0 failures in both modes. No workflow, CMake,
+packaging, DSP-product or CI-optimisation change. [Verified]
 
 **Portability scanner: a line splice inside a literal shifted every diagnostic below it (0.9.4, no
 version bump). One line of the escape branch, plus the regression coverage.

@@ -198,7 +198,10 @@ floating point and does not honour the FTZ/DAZ bits, so under memcheck denormals
 check fails on a build that is correct on every real CPU — while memcheck itself reports **zero
 errors** on the same run. The variable relaxes that half of the check (NaN and Inf stay failures)
 and only a literal `1` enables it. Every native job runs without it, so the invariant is gated on
-every push on every platform; never set it for a normal run.
+every push on every platform; never set it for a normal run. A run that *is* relaxed says so — the
+suite prints a `::warning::` naming the un-asserted half at start-up and repeats it beside the
+verdict, so an inherited or stale setting cannot produce a `ALL TESTS PASSED` line that looks like a
+full gate.
 
 **`check-citations.py` needs a base revision, and which one you pick changes the answer.** CI compares
 against the *previous push*; a local run against `origin/main` can differ, because a document whose
