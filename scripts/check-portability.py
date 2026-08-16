@@ -128,6 +128,29 @@ SOURCE_SUFFIXES = (".h", ".hpp", ".cpp", ".cc", ".mm")
 SOURCE_DIRS = ("src", "tests", "tools")
 
 
+# The encoding prefixes a CHARACTER LITERAL may carry (C++11 `L`/`u`/`U`, C++17
+# `u8`). Each puts an alphanumeric immediately left of the opening quote, which
+# is exactly what the digit-separator test below reads -- so without this set
+# `L'<'` is classified as a separator, its CLOSING quote then opens a literal,
+# and everything to the next `'` (or EOF) is blanked. That is the silent
+# false negative this lint must not have.
+CHAR_LITERAL_PREFIXES = frozenset(("L", "u", "U", "u8"))
+
+
+def _left_token(out: list) -> str:
+    """The identifier-ish run already emitted immediately left of the cursor.
+
+    Read back off `out` rather than off `text`, because that is what the callers
+    below reason about and because the comment branches push MULTI-character
+    padding: those entries stop the walk, which is right -- a comment does not
+    continue a token.
+    """
+    j = len(out)
+    while j > 0 and len(out[j - 1]) == 1 and (out[j - 1].isalnum() or out[j - 1] == "_"):
+        j -= 1
+    return "".join(out[j:])
+
+
 def blank_comments_and_literals(text: str) -> str:
     """Return `text` with comments and string/char literals replaced by spaces.
 
@@ -152,18 +175,23 @@ def blank_comments_and_literals(text: str) -> str:
                 i += 1
             out.append("  ")
             i += 2
-        elif c == "'" and (
-            (out and str(out[-1]).isalnum()) or (i + 1 < n and text[i + 1].isdigit())
-        ):
+        elif c == "'" and _left_token(out) not in CHAR_LITERAL_PREFIXES | {""}:
             # A C++ DIGIT SEPARATOR, not a character literal: 1'000'000. Treating
             # it as a quote would blank the source from here to the next `'`,
             # which can only ever hide a hazard (a false NEGATIVE) -- the one
             # failure mode a lint must not have, because it fails by going quiet.
-            # The test is local and deliberately conservative: a separator always
-            # has an alphanumeric on its left (the preceding digit, already
-            # emitted) or a digit on its right, and a real char literal never
-            # does -- `'a'` follows an operator or whitespace, and `x'` is not
-            # valid C++ otherwise.
+            #
+            # The test reads the whole token to the left, not one character, and
+            # that is the difference that matters. A separator always sits
+            # between digits, so SOMETHING alphanumeric precedes it; but so does
+            # the quote of `L'x'`, `u'x'`, `U'x'` and `u8'x'`. Reading one
+            # character cannot tell those apart -- and misreading a literal's
+            # OPENING quote is worse than misreading a separator, because its
+            # closing quote then opens a literal instead and blanks to the next
+            # `'` or to EOF. Comparing the token against the prefix set separates
+            # them exactly: an empty token is an ordinary `'a'`, a prefix is a
+            # prefixed literal, and anything else alphanumeric is a separator (or
+            # is not valid C++, where continuing to scan is the safe reading).
             out.append(c)
             i += 1
         elif c in ('"', "'"):
@@ -436,6 +464,42 @@ def self_test() -> int:
         # reason that branch in the stripper exists at all.
         ("digit separator does not swallow the rest of the line", 1,
          "auto n = 1'000'000 + juce::jmax<size_t> (a, b);"),
+        ("hex digit separator does not swallow the rest of the line", 1,
+         "auto n = 0x1F'FF + juce::jmax<size_t> (a, b);"),
+        ("binary digit separator does not swallow the rest of the line", 1,
+         "auto n = 0b1010'1010 + juce::jmin<size_t> (a, b);"),
+        # ...AND NEITHER MUST A PREFIXED CHARACTER LITERAL, which is the same
+        # blindness reached from the other side. `L`/`u`/`U`/`u8` put an
+        # alphanumeric immediately left of the OPENING quote, so a one-character
+        # test reads it as a separator; the closing quote then opens a literal
+        # and everything to the next `'` -- here the rest of the line, in a real
+        # file the rest of the file -- stops being scanned. Each prefix is listed
+        # separately because `u8` is the one that survives the obvious partial
+        # fix: its token ends in a DIGIT, so "the left character is not a digit"
+        # would still misclassify it.
+        ("L'' does not swallow the rest of the line", 1,
+         "wchar_t c = L'<'; auto n = juce::jmax<size_t> (a, b);"),
+        ("u'' does not swallow the rest of the line", 1,
+         "auto c = u'<'; auto n = juce::jmin<size_t> (a, b);"),
+        ("U'' does not swallow the rest of the line", 1,
+         "auto c = U'<'; auto n = juce::snapToZero<float> (x);"),
+        ("u8'' does not swallow the rest of the line", 1,
+         "auto c = u8'<'; auto n = juce::jmax<size_t> (a, b);"),
+        ("an escaped quote in a prefixed literal does not end it early", 1,
+         "auto c = L'\\''; auto n = juce::jmax<size_t> (a, b);"),
+        ("an escape sequence in a prefixed literal is consumed", 1,
+         "auto c = u8'\\n'; auto n = juce::jmax<size_t> (a, b);"),
+        ("a prefixed literal on one line does not blind the next", 1,
+         "auto c = L'<';\nauto n = juce::jmax<size_t> (a, b);"),
+        # A CHAR LITERAL HOLDING A QUOTE CHARACTER is where "scan the literal's
+        # contents as code" stops being harmless: the `"` inside it would open a
+        # STRING and blank to the next one, which is the same blindness again.
+        # Both quotes of a character literal must therefore be consumed by the
+        # literal branch, not emitted verbatim -- prefixed or not.
+        ("a char literal holding a double quote does not open a string", 1,
+         'char q = \'"\'; auto n = juce::jmax<size_t> (a, b);'),
+        ("a prefixed char literal holding a double quote does not either", 1,
+         'wchar_t q = L\'"\'; auto n = juce::jmax<size_t> (a, b);'),
         # --- must stay silent -----------------------------------------------
         ("deduced form is the fix, not a defect", 0, "juce::jmax ((size_t) 1, v.size());"),
         ("jlimit has no SIMD overload", 0, "juce::jlimit<int> (0, 10, x);"),
@@ -448,6 +512,11 @@ def self_test() -> int:
         ("escaped quote inside a string does not end it early", 0,
          'const char* s = "a\\" juce::jmax<size_t>";'),
         ("char literal", 0, "char c = '<';"),
+        ("digit char literal", 0, "char c = '0';"),
+        ("prefixed char literals are not themselves hazards", 0,
+         "wchar_t a = L'<'; auto b = u'<'; auto c = U'<'; auto d = u8'<';"),
+        ("the hazard named inside a prefixed literal's comment stays quiet", 0,
+         "auto c = L'x'; // juce::jmax<size_t> in a comment"),
         # DELIBERATE OVER-MATCH, PINNED HERE SO IT IS A DECISION AND NOT A
         # SURPRISE. `\s*<` is what lets the pattern see `juce::jmax <size_t>`
         # (the case six rows above), and the same tolerance necessarily reads a

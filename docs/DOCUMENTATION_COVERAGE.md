@@ -7,9 +7,9 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
-**post-merge citation gate fix** (first below), then the **merge-result / script-anchor / strictness
-round** before it, then the **check-docs false-green fix**, then the **lint self-verification
-round**,
+**portability-scanner false negative** (first below), then the **post-merge citation gate fix**
+before it, then the **merge-result / script-anchor / strictness round**, then the **check-docs
+false-green fix**, then the **lint self-verification round**,
 then the **macOS Intel artifact gate**,
 then the **documentation re-sync**, then the **CI review follow-up** that one follows, then the
 **CI/validation round** it corrects, then the four
@@ -22,6 +22,50 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**Portability scanner: prefixed character literals made it go blind (0.9.4, no version bump).
+One branch, one helper, ten self-test cases. `scripts/check-portability.py` only.**
+
+The comment/literal stripper decided a `'` was a **digit separator** (`1'000'000`) by looking at one
+character: if what it had just emitted was alphanumeric, the quote was emitted verbatim rather than
+opening a literal. The stated justification — "a real char literal never has an alphanumeric on its
+left" — is false for the encoding prefixes C++ allows: `L'x'`, `u'x'`, `U'x'`, `u8'x'`. The opening
+quote of `L'<'` was therefore read as a separator; the **closing** quote then had no alphanumeric on
+its left and opened a literal instead, blanking everything to the next `'` — in a real file, to EOF.
+Measured before the fix: `wchar_t c = L'<'; auto n = juce::jmax<size_t> (a, b);` strips to
+`wchar_t c = L'<` and the hazard is **not reported**. All four prefixes behave the same way. No such
+literal exists in `src/` or `tests/` today, so nothing was being missed — the defect is that the
+guard would have been silent the day one was added, which is the one failure mode this lint's own
+docstring says it must not have.
+
+**The fix reads the whole token, not one character.** `_left_token()` walks back over what has been
+emitted and returns the identifier run immediately left of the quote; the branch then asks whether
+that token is a character-literal prefix. Empty → an ordinary `'a'`; `L`/`u`/`U`/`u8` → a prefixed
+literal; anything else alphanumeric → a separator, or code that is not valid C++, where continuing to
+scan is the safe reading. Comment padding is pushed as multi-character entries and stops the walk,
+which is correct — a comment does not continue a token. The one-character test could not have been
+repaired by "the left character is not a digit" either: `u8` ends in one, which is why each prefix is
+pinned separately below.
+
+**Ten cases added, and the fix is not the only thing they caught.** Four prefixed forms must still
+find a hazard after the literal; an escaped quote and an escape sequence inside a prefixed literal
+must be consumed; a literal on one line must not blind the next; two hex/binary separator forms join
+the decimal one; and the prefixed literals must not themselves be reported. A mutation sweep then
+found a **second, pre-existing** false negative that no case covered: a character literal holding a
+double quote (`char q = '"';`). Under the old "emit the quote verbatim" reading the `"` inside it
+opened a *string* and blanked to the next one — the same blindness reached a different way. The
+corrected branch consumes both quotes of a character literal, prefixed or not, so it cannot happen;
+two cases pin it. Self-test 28 → 42 cases.
+
+**Validation.** The five prefixed/multi-line cases fail against the pre-fix branch and pass against
+the corrected one, checked by restoring the old condition under the new tests. Fifteen mutations —
+the prefix set emptied, each prefix dropped individually, the empty-token arm removed, the branch
+forced both ways, the token walk truncated to one character, escape handling removed, plus the
+established regressions (dead regex, unstripped line comments, lost block-comment newlines, a walker
+that reaches no files, a scratch check that always agrees) — are **all caught**. The lint itself is
+unchanged on the real tree: 45 files, 0 violations, scratch names agree. `check-docs` 66 cases / 99
+files, `check-citations` 58 cases / 217 anchors, `check-clang-warnings` 28 cases, actionlint clean on
+all five workflows. Nothing outside `scripts/check-portability.py` is touched. [Verified]
 
 **Post-merge citation gate (0.9.4, no version bump). Six declarations. The gate would have turned
 the default branch red on the first build after this PR merged, for a reason that is not a defect.**
