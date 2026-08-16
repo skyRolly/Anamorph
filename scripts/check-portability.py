@@ -173,8 +173,14 @@ def blank_comments_and_literals(text: str) -> str:
             while i < n and not (text[i] == "*" and i + 1 < n and text[i + 1] == "/"):
                 out.append("\n" if text[i] == "\n" else " ")
                 i += 1
-            out.append("  ")
-            i += 2
+            # ONLY WHEN THERE IS A `*/` TO BLANK, for the same reason as the
+            # literal branch below: this loop also exits at `i == n` -- an
+            # unterminated comment, including one whose last character is a bare
+            # `*` -- and emitting the two-character pad there produces two more
+            # characters than were consumed.
+            if i < n:
+                out.append("  ")
+                i += 2
         elif c == "'" and _left_token(out) not in CHAR_LITERAL_PREFIXES | {""}:
             # A C++ DIGIT SEPARATOR, not a character literal: 1'000'000. Treating
             # it as a quote would blank the source from here to the next `'`,
@@ -599,6 +605,21 @@ def self_test() -> int:
          "juce::jmax<size_t> (a, b);\nauto c = L'<", [1]),
         ("unterminated literal spanning physical lines",
          'juce::jmax<size_t> (a, b);\nconst char* s = "abc\ndef', [1]),
+        # AN UNTERMINATED BLOCK COMMENT, the same EOF shape in the other branch.
+        # Its inner loop exits at `i == n` too, and the two-character `*/` pad ran
+        # regardless -- including for a comment whose last character is a bare
+        # `*`, which the loop condition sends down the same exit because the
+        # closer needs a following `/`.
+        ("unterminated block comment at EOF",
+         "juce::jmax<size_t> (a, b);\n/* abc", [1]),
+        ("unterminated block comment spanning physical lines",
+         "juce::jmin<size_t> (a, b);\n/* unterminated\nmore", [1]),
+        ("unterminated block comment ending on a bare star",
+         "juce::jmax<size_t> (a, b);\n/* abc*", [1]),
+        ("block-comment opener alone at EOF",
+         "juce::jmax<size_t> (a, b);\n/*", [1]),
+        # The terminated forms must be unchanged by that guard.
+        ("terminated block comment", "/* abc */ juce::jmax<size_t> (a, b);", [1]),
     ]:
         stripped = blank_comments_and_literals(text)
         hits = [n for n, line in enumerate(stripped.splitlines(), 1) if HAZARD.search(line)]

@@ -7,9 +7,9 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
-**unterminated-literal invariant + citation scope wording** (first below), then the **`_deps` scan
-scope + visible FTZ relaxation** before it, then the **line-splice diagnostic fix**, then the
-**portability-scanner false negative**
+**unterminated block-comment invariant** (first below), then the **unterminated-literal invariant +
+citation scope wording** before it, then the **`_deps` scan scope + visible FTZ relaxation**, then
+the **line-splice diagnostic fix**, then the **portability-scanner false negative**
 before it, then the **post-merge citation gate fix**
 before it, then the **merge-result / script-anchor / strictness round**, then the **check-docs
 false-green fix**, then the **lint self-verification round**,
@@ -25,6 +25,51 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**The same EOF hole in the other branch (0.9.4, no version bump). One guard, five cases,
+`scripts/check-portability.py` only.**
+
+The round below guarded the string/character-literal branch against emitting a closing pad at end of
+file. The **block-comment** branch has the identical shape and was not guarded: its inner loop also
+exits at `i == n`, after which `out.append("  ")` and `i += 2` ran regardless, emitting two
+characters for none consumed. Measured before the fix: `/* abc` → 8 characters from 6;
+`int x;\n/* unterminated\nmore` → 29 from 27. Guarded now on `if i < n:`, mirroring the literal
+branch exactly.
+
+**Three ways in, one exit.** The loop condition is `not (text[i] == "*" and i + 1 < n and text[i +
+1] == "/")`, so a comment whose last character is a bare `*` (`/* abc*`) does **not** satisfy the
+closer test and falls through the same `i == n` exit — as does a bare `/*` at EOF, whose body loop
+never runs at all. All three are pinned separately rather than assumed equivalent, because the loop
+condition is what makes them equivalent and a future edit to it is exactly what would separate them.
+
+**Latent, again, and fixed for the same reason.** The extra characters are spaces, so no reported
+line moved and no such source exists in the tree. But `lint()` maps every finding back to a physical
+source line through this transformation, and the invariant is what the surrounding cases assert per
+case — a branch that quietly does not hold it is the one the next edit builds on. That argument was
+made for the literal branch last round while this branch went on breaking it, which is the more
+precise reason to close it now.
+
+**Five cases in the existing line-preservation table**, each with a hazard on the line *before* the
+unterminated comment so the mapping ahead of it is pinned too: at EOF, spanning physical lines,
+ending on a bare star, the opener alone, and a terminated block comment as the control that the
+guard must not change. 79 → 94 cases. Verified beyond the table: the invariant holds for all 45 real
+source files, length and newline count both.
+
+**Validation.** `check-portability --self-test` 94 cases then 45 files / 0 violations; reverting only
+the guard fails exactly the four new unterminated cases (`35 != 33`, `49 != 47`, `36 != 34`,
+`31 != 29`) and passes with it. Eight mutations swept: both EOF guards removed, block-comment
+newlines lost, the splice newline dropped, the prefix set emptied, a dead regex and unstripped line
+comments are all **caught**. One mutation is *not* caught and is reported rather than papered over —
+never blanking a terminated `*/` leaves those two characters verbatim instead of two spaces, which
+preserves both length and newline count and cannot match `HAZARD`, so it is semantically inert for
+this checker rather than a coverage gap. `check-docs` 68 cases / 99 files, `check-citations` 58 cases
+/ 217 anchors, `check-clang-warnings` 28 cases, `py_compile` clean. No other file changed.
+
+**Sign-off carries forward.** The maintainer's confirmations recorded in the entry below —
+`AudioComponentRegistrar` settling, the Windows artifact behaviour after the staging checkpoint, the
+Rosetta warning-only carve-out, pluginval after a DSP self-test failure, and the CI/release policy
+implications already written up here — remain applied and settled. Nothing in this round reopens
+them, and no new confirmation is outstanding. [Verified]
 
 **The stripper's own contract, held on the one branch that did not (0.9.4, no version bump). Plus
 one stale sentence about a governed scope. Two files.**
