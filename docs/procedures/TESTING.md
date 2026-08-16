@@ -120,9 +120,9 @@ project's established practice; `docs/policies/TESTING_POLICY.md`). Use the exis
 ## pluginval (VST3 + AU conformance)
 
 ```bash
-scripts/run-pluginval.sh 10 deterministic        # strictness 10, fixed seed (release gate, mode A)
-scripts/run-pluginval.sh 10 randomise            # strictness 10, --randomise x3 (release gate, mode B)
-scripts/run-pluginval.sh 10                      # strictness 10, deterministic (default mode)
+scripts/run-pluginval.sh 10 deterministic        # fixed seed (mode A)
+scripts/run-pluginval.sh 10 randomise            # --randomise x3 (mode B)
+scripts/run-pluginval.sh 10                      # deterministic (default mode)
 scripts/run-pluginval.sh                         # default strictness 8 (the working bar)
 scripts/run-pluginval.sh 10 deterministic au     # the AU, macOS only (see below)
 ```
@@ -217,8 +217,8 @@ See `CI_CD.md`. Evidence [Verified]: `.github/workflows/build.yml`.
 | A `check` assertion fails | DSP regression | the named test in `tests/dsp_tests.cpp`; compare against the invariant it guards (`docs/policies/DSP_POLICY.md`) |
 | A state-test `check` fails | serialization / parameter-surface regression | the named test in `tests/state_tests.cpp`; if the change is INTENTIONAL it needs the compatibility-policy process (ADR + registry update + `--write-snapshot`) |
 | pluginval exits < 128 | real validation failure | the pluginval log line; do **not** retry — it's a genuine defect |
-| pluginval exits ≥ 128 (crash) | the known X11 host flake | retried automatically; if it still fails after 3 tries, treat as a failure (`run-pluginval.sh:154-176`, `run_one_pass`) |
-| `AnamorphTests`/`AnamorphStateTests` `not found` | not built yet | run `scripts/build.sh` first (`run-tests.sh:51-73`) |
+| pluginval exits ≥ 128 (crash) | the known X11 host flake | retried automatically; if it still fails after 3 tries, treat as a failure (`scripts/run-pluginval.sh:154-176`, `run_one_pass`) |
+| `AnamorphTests`/`AnamorphStateTests` `not found` | not built yet | run `scripts/build.sh` first (`scripts/run-tests.sh:51-73`) |
 
 ## Gaps in the automated coverage (known, deliberate)
 

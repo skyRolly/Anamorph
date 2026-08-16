@@ -18,25 +18,42 @@ skeleton, RH-PR-8) and the security-scanning workflows listed in
 minutes previously left three full matrices racing; now the older ones are cancelled — **except on
 a tag**, where a release build must never be cancelled by an unrelated push, so tag refs queue.
 
-**Same-repo pull requests are skipped.** Every job carries
+**Same-repo pull requests run `merge-check` and nothing else.** The build and lint jobs carry
 `if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository`.
 `push: ["**"]` already builds the SHA, so the `pull_request` event was a duplicate 3-OS matrix per
 commit for as long as a PR stayed open. **Fork** PRs are not covered by the push trigger (the push
-happens in the fork), so they still run — the only case that trigger uniquely serves. Two
-consequences: these jobs report as **skipped** in a same-repo PR's checks list (they can still be
-required checks if the branch protection accepts a skipped conclusion), and inside a reusable
-workflow `github.event_name` is the **caller's** event — `release.yml` fires only on a tag `push`
-and `workflow_dispatch`, so the guard is true there and every job runs. **Adding a `pull_request:`
-trigger to `release.yml` would break that**; no job here gates on another job's output, so the
-failure mode is a missing check rather than a green run that built nothing.
+happens in the fork), so they still run the full matrix — the only case that trigger uniquely serves.
+
+The push build and the PR build are **not the same tree**, and that is what `merge-check` exists
+for. `push` builds the branch **tip**; `pull_request` builds `refs/pull/N/merge`, the tip merged
+with the base as it stands. A PR green on its own tip can be broken once the base moves under it,
+and while every job was skipped that tree was never compiled until the merge landed. `merge-check`
+carries the exact complement of the guard — same-repo PRs only — checks out the merge commit,
+builds it and runs both self-test suites. It deliberately stops there: packaging, pluginval and the
+other two platforms validate properties of the tip that the push build already gated, so re-running
+them would restore the duplicate matrix the guard removed. It produces no artifacts.
+
+Two further consequences: the guarded jobs report as **skipped** in a same-repo PR's checks list
+(they can still be required checks if the branch protection accepts a skipped conclusion, and
+`merge-check` is the one that actually runs there, so it is the one to require if only one can be);
+and inside a reusable workflow `github.event_name` is the **caller's** event — `release.yml` fires
+only on a tag `push` and `workflow_dispatch`, so the guard is true there and every guarded job runs
+while `merge-check` is skipped, which is correct: a tag has no merge result. **Adding a
+`pull_request:` trigger to `release.yml` would break that**; no job here gates on another job's
+output, so the failure mode is a missing check rather than a green run that built nothing.
 Evidence [Verified]: `.github/workflows/build.yml` (`concurrency:` block; each job's `if:`).
 
 ## pluginval strictness lives in one place
 
 `ANAMORPH_PLUGINVAL_STRICTNESS` in `build.yml`'s `env:` block is the **single authority** for the
-number, and it is **10**. It replaced six literal `10`s spread across the three build jobs — six
-chances for a raise to land in five of them. This document and `TESTING_POLICY.md` describe what the
-gate *requires* and how it is *wired*; neither restates the value.
+number. It replaced six literals spread across the three build jobs — six chances for a raise to
+land in five of them — and the same rule now holds across the documents: `TESTING_POLICY.md` states
+what the gate *requires*, this file states how it is *wired*, `RELEASE_POLICY.md`,
+`DEPENDENCY_POLICY.md`, `COMPATIBILITY_MATRIX.md` and `RELEASE_COMPATIBILITY_CHECKLIST.md` state
+that the gate must pass, and **none of them prints the value**. Read it from the workflow. The one
+place a literal number still appears is `DEPENDENCY_POLICY.md`'s compliance log, where it records
+the strictness a past bump was actually verified at — a fact about a run, not a requirement, and
+correct to leave frozen.
 Evidence [Verified]: `.github/workflows/build.yml` (`env:` block).
 
 `release.yml`: `push` of an annotated `v[0-9]+.[0-9]+.[0-9]+` tag, plus `workflow_dispatch`
@@ -66,6 +83,7 @@ non-packaging jobs that guard classes the build matrix cannot see:
 
 | Job | Runner | Builds | pluginval |
 |---|---|---|---|
+| **merge-check** | `ubuntu-latest` | VST3 + Standalone + tests, from `refs/pull/N/merge` — **same-repo PRs only**, no packaging, no artifacts | — |
 | **docs** | `ubuntu-latest` | — (`scripts/check-docs.py --self-test` then the lint) | — |
 | **source-lint** | `ubuntu-latest` | — (each lint preceded by its own `--self-test`: `check-portability.py`, then `check-citations.py --check`) | — |
 | **linux** | `ubuntu-latest` | VST3 + Standalone (+ tests) | VST3, **both modes ×3** (deterministic + randomise) — **blocking** |
@@ -74,7 +92,7 @@ non-packaging jobs that guard classes the build matrix cannot see:
 | **windows** | `windows-latest` (MSVC, multi-config) | VST3 + Standalone (+ tests) | VST3, **both modes ×3** — **blocking** |
 | **macos** | `macos-latest` (Apple Silicon) | universal VST3 + AU + Standalone (+ tests) | **VST3 and AU**, both modes ×3 each — **blocking** |
 
-None of the four non-packaging jobs is in a `needs:` chain, in either direction. A prose defect, a
+None of these jobs is in a `needs:` chain, in either direction. A prose defect, a
 portability lint hit or a sanitizer finding fails the run without skipping a binary that is
 otherwise fine, and a red build does not skip them.
 
@@ -259,6 +277,14 @@ failures as green and has been removed). Evidence [Verified]: `.github/workflows
    on **macOS** it is `package`, and on Windows it is `build` — in each case the step that produces
    the bytes being validated. Without it a compile error let the gates run against a tree with no
    plug-in and the job's last error was a cascade rather than the cause.
+   **A failing DSP/state self-test does NOT skip pluginval, and that is the decision, not a side
+   effect.** The producer step is `strip`/`build`/`package`, none of which depends on `tests`, so a
+   red self-test leaves the binary intact and the format-conformance gates still report. One run
+   therefore yields the whole picture — a behavioural regression and a conformance regression are
+   different defects and are worth knowing about together — at the cost of two extra pluginval runs
+   after a genuinely broken build. The customer uploads are unaffected: they gate on `tests`, so a
+   failed self-test still blocks the artifact. **Reviewed and confirmed by the maintainer
+   (2026-08-16); treat it as settled rather than as an open review item.**
    **On macOS the gates run after packaging**, against `dist/Anamorph-macOS/`, so they see the
    stripped and ad-hoc-signed bundles the artifact is uploaded from. They used to run before it, and
    every pass then described a bundle that `strip -x` and `codesign --force --deep` rewrote

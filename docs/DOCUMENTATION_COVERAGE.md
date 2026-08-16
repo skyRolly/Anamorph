@@ -7,7 +7,8 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
-**check-docs false-green fix** (first below), then the **lint self-verification round** before it,
+**merge-result / script-anchor / strictness round** (first below), then the **check-docs
+false-green fix** before it, then the **lint self-verification round**,
 then the **macOS Intel artifact gate**,
 then the **documentation re-sync**, then the **CI review follow-up** that one follows, then the
 **CI/validation round** it corrects, then the four
@@ -20,6 +21,95 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**Merge-result CI, script-anchor coverage and one strictness authority (0.9.4, no version bump).
+Three review findings, each a real gap rather than a preference.**
+
+1. **A same-repo PR had no build signal for the tree the merge button produces.** The guard added
+   earlier skips every job on a same-repo PR because `push: ["**"]` already built the SHA — but
+   `push` builds the branch **tip** and `pull_request` builds `refs/pull/N/merge`, the tip merged
+   with the base as it stands. A PR green on its own tip and broken by a moved base was caught by
+   nothing until the merge landed. The fix is a new `merge-check` job carrying the exact complement
+   of the guard: same-repo PRs only, `actions/checkout` on that event gives it the merge commit, and
+   it configures, builds and runs both self-test suites. It stops there deliberately — packaging,
+   pluginval and the other two platforms validate properties of the tip the push build already
+   gated, so re-running them would restore the duplicate 3-OS matrix the guard exists to remove, and
+   what a moved base breaks is compilation and behaviour, both platform-independent. It produces no
+   artifacts. Every job's `if:` was then evaluated over the five event shapes that reach this
+   workflow: same-repo PR runs `merge-check` **only**; fork PR, branch push, release
+   (`workflow_call` with a tag-push caller) and `workflow_dispatch` rehearsal are **unchanged** —
+   full matrix, `merge-check` skipped, which is correct because a tag has no merge result.
+   Concurrency is unaffected: `refs/pull/N/merge` and `refs/heads/<branch>` are different refs, so
+   the two runs do not cancel each other.
+
+2. **The citation gate could not see the script anchors.** `TRACKED` excluded `scripts/`, which left
+   **19 anchors across nine documents** into `run-pluginval.sh`, `run-tests.sh`, `setup-linux.sh`
+   and `build.sh` ungated — and those drift more than the DSP stages do, because a script gets
+   rewritten wholesale. The four are now tracked. Nine live citations spelled them by **bare name**
+   (`run-pluginval.sh:154-176`), which `classify()` declines by design — a bare name is ambiguous
+   across checkouts — so those were root-spelled, which is the spelling the tool's header already
+   prescribes. The three bare-name occurrences in *this* file are records of past re-anchoring and
+   were left alone. Anchor count 198 → 208 against the current base, and 217 once the newly
+   root-spelled ones have a base that carries them.
+
+   **Proven by drift, not by a green run.** A line was inserted into `run-pluginval.sh` and
+   `setup-linux.sh` above the cited regions: the gate reported **12 drifted citations across 9
+   documents** and exit 1 where it had previously been silent, `--fix` re-anchored 15 with 0 needing
+   a human, the re-check went green, and a repaired anchor was read back at its new location. The
+   tree was then restored. Self-test 45 → 58 cases: each of the four scripts is asserted **by name**
+   as a citation target and as a scanned file (dropping one from `TRACKED` costs nothing visible —
+   the citations still read fine and the run still prints a confident count, minus what it stopped
+   checking), a live script anchor is claimed end to end, and the guard rails that made scripts safe
+   to add are pinned in the negative: `build/_deps/juce-src/README.md`, `build-san/scripts/…` and
+   `_deps/scripts/…` must **not** classify, and a bare script name must still be declined.
+
+   **The `154-176` vs `147-176` divergence is not drift and was left as it is.** `154-176` is
+   `run_one_pass` alone, cited where the *rule* is stated (`TESTING_POLICY` rule 3, `TESTING.md`'s
+   failure table); `147-176` adds the comment block explaining why the retry exists, cited where the
+   *rationale* is the point (`FUTURE_RISKS`, `KNOWN_ISSUES`, `POSTMORTEMS`, `TROUBLESHOOTING`,
+   ADR-0011). Both land on the content their sentence describes. They are now gated independently,
+   which is the right outcome: the gate's job is to keep each true, not to make them identical.
+
+3. **The single-strictness-authority claim held in one file only.** `TESTING_POLICY.md` said "this
+   policy states no strictness number" while four other governed documents stated `10` as the
+   requirement — so a raise still meant five edits, which is the staleness the rule was written to
+   remove. `RELEASE_POLICY.md`, `DEPENDENCY_POLICY.md` (upgrade rule 2),
+   `COMPATIBILITY_MATRIX.md` (three platform rows + the DAW-proxy note) and
+   `RELEASE_COMPATIBILITY_CHECKLIST.md` now state that the gate must pass **at the configured
+   strictness** and name `ANAMORPH_PLUGINVAL_STRICTNESS` as where to read it; the checklist item
+   spells its command `<n>` and tells the human to read the value from the workflow rather than from
+   that line. `CI_CD.md` was contradicting itself in the same paragraph — claiming nobody restates
+   the value while printing **10** — and no longer prints it.
+
+   **Two classes of literal deliberately survive.** `DEPENDENCY_POLICY.md`'s **compliance log**, and
+   the equivalent records in `HANDOVER`, `FUTURE_RISKS`, `RELEASE_HARDENING_PLAN` and six ADRs, say
+   what a *past* run was verified at — a fact about that run, wrong to move, and the same rule this
+   change set already applies to historical anchor pairs. `TESTING.md`'s command examples must show
+   a number a reader can type; the three that labelled `10` as "(release gate)" no longer make that
+   claim, and the sentence below them already names the authority. `README.md` is left as a
+   descriptive overview at the bottom of the authority order.
+
+**`packaging/linux/uninstall.sh`: verified byte-identical to its pre-PR state.** The developer-
+oriented block was reverted in the round below; `git diff` against the pre-PR revision is empty, and
+nothing in this round touches it.
+
+**Signed off, not outstanding: pluginval runs after a failing DSP/state self-test by design.** The
+producer step is `strip`/`build`/`package`, none of which depends on `tests`, so a red self-test
+leaves the binary intact and the conformance gates still report — one run yields the whole picture,
+at the cost of two extra pluginval runs after a genuinely broken build. The customer uploads are
+unaffected; they gate on `tests`. **Manually reviewed and confirmed by the maintainer on
+2026-08-16**, and now recorded where a reader meets the behaviour (`CI_CD.md` §pluginval) rather
+than only here. It is settled, not an open review item.
+
+**Validation.** actionlint clean on all five workflows, with the per-event job matrix enumerated
+from the parsed YAML rather than read off the diff. The new job's 69 lines moved the three
+`build.yml` anchors again, re-anchored against content: `RELEASE_POLICY` `:383,853,1236`,
+`KNOWN_ISSUES` KI-002 `:1396-1398`, `COMPATIBILITY_MATRIX`'s macOS job range `:1211-1624`. (Those
+three are still ungated — `build.yml` is not in `TRACKED`; adding it is the obvious next
+candidate and is deliberately not folded into this round.) `check-citations` 58 self-test cases and 208
+anchors against both `HEAD` and `HEAD~1`, plus the drift-injection run above; `check-docs` 66 cases
+/ 99 files; `check-portability` 28 cases / 45 files; `check-clang-warnings` 28 cases. `bash -n`
+clean on the packaging scripts. [Verified]
 
 **check-docs false-green fix (0.9.4, no version bump). One defect, found by the review of the round
 below: the documentation lint could report every file clean without opening one.**

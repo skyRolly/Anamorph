@@ -79,14 +79,20 @@ import sys
 # of the document) but it does mean the list needs a line when a new source file
 # starts being cited.
 #
-# SCRIPTS ARE DELIBERATELY OUTSIDE THIS LIST, so their citations are NOT gated.
-# Several documents cite `scripts/run-pluginval.sh:147-176` and
-# `scripts/run-tests.sh:51-73`, and those anchors drift exactly the same way; they
-# are excluded only to keep the gate's scope the same as the sibling's on the
-# round that introduced it. Adding them is a one-line change and a real
-# improvement -- do it in a round that is not itself rewriting those scripts,
-# because a wholesale rewrite makes every one of their anchors report as drift and
-# each re-anchor then needs a DELIBERATE_REAIMS entry to land.
+# THE GOVERNED SCRIPTS ARE IN SCOPE, and were the gate's largest hole while they
+# were not. Anchors into `run-pluginval.sh`, `run-tests.sh`, `setup-linux.sh` and
+# `build.sh` drift exactly like the ones into `src/` -- more, in fact, because a
+# script gets rewritten wholesale more often than a DSP stage does. They were held
+# out of the first round only because that round was itself rewriting them, which
+# would have reported every one of their anchors as drift.
+#
+# ONLY FIRST-PARTY, VERSIONED SCRIPTS. What makes a path safe to list is that this
+# repository authors it and `git` tracks it: a generated or fetched file could
+# otherwise become a rewrite target, and this tool rewrites. `_deps/`, `build*/`
+# and the fetched JUCE tree are none of this list's business, and a bare
+# `run-pluginval.sh:154` still does not classify as ours -- the path must carry
+# its directory, which is what tells a citation in this repository apart from the
+# same file name in another checkout.
 TRACKED = (
     "src/InternalState.h",
     "src/PluginEditor.cpp",
@@ -115,6 +121,10 @@ TRACKED = (
     "src/gui/Vectorscope.h",
     "tests/state_tests.cpp",
     "tests/dsp_tests.cpp",
+    "scripts/build.sh",
+    "scripts/run-pluginval.sh",
+    "scripts/run-tests.sh",
+    "scripts/setup-linux.sh",
 )
 
 # A citation is `<path>:<line>`, `<path>:<start>-<end>`, or a COMPOUND list that
@@ -681,6 +691,31 @@ def self_test():
           any(p in TRACKED for p in scanned), True)
     check("worklogs stay out of scope",
           any(p.startswith("worklogs/") for p in scanned), False)
+
+    # --- 7. THE GOVERNED SCRIPTS ARE IN SCOPE -------------------------------
+    # They were outside it once, and the documents kept citing them the whole
+    # time -- 19 anchors across nine files that the gate could not see. Dropping
+    # one from `TRACKED` costs nothing visible: the citations still read fine and
+    # the run still prints a confident count, minus the anchors it stopped
+    # checking. So each is asserted by name rather than by "at least one script".
+    for script in ("scripts/run-pluginval.sh", "scripts/run-tests.sh",
+                   "scripts/setup-linux.sh", "scripts/build.sh"):
+        check(f"{script} is a citation target",
+              classify(None, script), script)
+        check(f"{script} is scanned for its own citations too",
+              script in scanned, True)
+    # A live anchor into one of them classifies end to end, not just in isolation.
+    check("a script anchor is claimed by the parser",
+          [c[1] for c in citations("see `scripts/run-pluginval.sh:154-176` for the retry")],
+          ["scripts/run-pluginval.sh"])
+    # ...and the guard rails that made scripts safe to add still hold: a fetched
+    # or generated file must never become a rewrite target, and a bare file name
+    # is still ambiguous across checkouts however governed the file is.
+    for foreign in ("build/_deps/juce-src/README.md", "build-san/scripts/run-tests.sh",
+                    "_deps/scripts/build.sh"):
+        check(f"{foreign} is not a citation target", classify(None, foreign), None)
+    check("a bare script name is still declined",
+          citations("run-pluginval.sh:154-176"), [])
 
     if failures:
         print(f"\ncheck-citations: {failures} of {checked} self-test case(s) failed.",

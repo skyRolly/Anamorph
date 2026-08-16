@@ -147,11 +147,22 @@ env:
 # the push trigger (the push happens in the fork), so they still run: that is the
 # only case the pull_request trigger uniquely serves here.
 #
-# TWO CONSEQUENCES, stated so neither is discovered later:
-#   * On a same-repo PR these jobs report as SKIPPED in the PR's checks list.
-#     They can still be required status checks, but only if the branch protection
-#     accepts a skipped conclusion as passing -- the same SHA was already built on
-#     the branch push.
+# THREE CONSEQUENCES, stated so none is discovered later:
+#   * The push build and the `pull_request` build are NOT the same tree. `push`
+#     builds the branch TIP; `pull_request` builds `refs/pull/N/merge`, the tip
+#     merged with the CURRENT base. A PR green on its own tip can be broken once
+#     the base moves under it, and skipping every job here left that unbuilt
+#     until the merge landed on the default branch. `merge-check` below is the
+#     answer: it is the exact complement of this guard, runs ONLY on a same-repo
+#     PR, and builds and self-tests the merge commit. It deliberately does not
+#     re-run packaging, pluginval or the other two platforms -- those validate
+#     properties of the TIP, which the push build already covered, and
+#     duplicating them is what this guard exists to avoid.
+#   * On a same-repo PR the jobs carrying this guard report as SKIPPED in the
+#     PR's checks list. They can still be required status checks, but only if the
+#     branch protection accepts a skipped conclusion as passing -- the same SHA
+#     was already built on the branch push. `merge-check` is the one check that
+#     actually RUNS there, so it is the one to require if only one can be.
 #   * Inside a reusable workflow `github.event_name` reflects the CALLER's event.
 #     release.yml -- this repository's only caller -- triggers on a tag `push` and
 #     on `workflow_dispatch`, never on `pull_request`, so the guard is TRUE on
@@ -165,6 +176,54 @@ env:
 # ---------------------------------------------------------------------------
 
 jobs:
+  # -------------------------------------------------------------------------
+  # THE MERGE RESULT -- the one tree no push build ever compiles.
+  #
+  # `actions/checkout` on a `pull_request` event checks out `refs/pull/N/merge`,
+  # so this job builds the PR merged with the base as it stands right now. That
+  # is the tree the merge button produces, and nothing else in this workflow
+  # sees it: every other job is skipped on a same-repo PR because the push
+  # trigger already built the same SHA -- the TIP, not the merge.
+  #
+  # SCOPED TO SAME-REPO PRs, the exact complement of the guard above. A fork PR
+  # is not covered by the push trigger, so it already runs the full matrix here
+  # and does not need this. Under `workflow_call` the caller's event decides:
+  # release.yml triggers on a tag push and workflow_dispatch, so this job is
+  # skipped on every release and rehearsal, which is correct -- a tag has no
+  # merge result.
+  #
+  # BUILD AND SELF-TESTS ONLY, and that is the whole design. What a moved base
+  # breaks is compilation and behaviour, and both are platform-independent:
+  # a semantic merge conflict fails here. Packaging, pluginval and the other two
+  # platforms validate properties of the tip that the push build already gated,
+  # so re-running them would restore the duplicate matrix the guard removed. No
+  # artifacts are produced: this job answers "does the merge build and pass",
+  # not "what would we ship".
+  # -------------------------------------------------------------------------
+  merge-check:
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install build dependencies
+        run: |
+          chmod +x scripts/*.sh
+          ./scripts/setup-linux.sh
+
+      - name: Configure
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DANAMORPH_BUILD_NUMBER=${{ github.run_number }}
+
+      - name: Build (VST3 + Standalone + tests)
+        run: cmake --build build --config Release
+
+      - name: DSP + state self-tests
+        env:
+          MALLOC_PERTURB_: 1        # fresh heap = 0xFE; see the `linux` job's self-test step
+        run: ./scripts/run-tests.sh
+
   # -------------------------------------------------------------------------
   # Documentation structure lint (scripts/check-docs.py).
   #
