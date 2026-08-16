@@ -257,7 +257,8 @@ def classify(prefix, path):
     Requiring the path to be `TRACKED` verbatim is what makes an explicit
     foreign-root test unnecessary: a path from another checkout does not match
     this repository's own layout, so it is declined for the same reason a typo
-    would be — this tool only ever rewrites the nine files it knows.
+    would be — this tool only ever rewrites the files listed in `TRACKED`, and
+    nothing else in the repository or outside it.
     """
     if prefix:
         return None

@@ -7,8 +7,9 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
-**`_deps` scan scope + visible FTZ relaxation** (first below), then the **line-splice diagnostic
-fix** before it, then the **portability-scanner false negative**
+**unterminated-literal invariant + citation scope wording** (first below), then the **`_deps` scan
+scope + visible FTZ relaxation** before it, then the **line-splice diagnostic fix**, then the
+**portability-scanner false negative**
 before it, then the **post-merge citation gate fix**
 before it, then the **merge-result / script-anchor / strictness round**, then the **check-docs
 false-green fix**, then the **lint self-verification round**,
@@ -24,6 +25,66 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**The stripper's own contract, held on the one branch that did not (0.9.4, no version bump). Plus
+one stale sentence about a governed scope. Two files.**
+
+1. **`blank_comments_and_literals` broke its character-for-character invariant on an unterminated
+   literal.** The literal branch appended a closing space and advanced `i` unconditionally after its
+   inner scan — but that scan also exits at `i == n`, an unterminated string or character literal at
+   end of file. Blanking a closing quote that is not there emits one character more than it consumed,
+   so the stripped text was a character longer than the source. Measured: `const char* s = "abc`
+   stripped to 21 characters from 20; the same for `char c = '<` and `auto c = L'<`. Guarded now on
+   `if i < n:` — the closing space is emitted only when there is a closing quote to blank.
+
+   **Latent, and fixed anyway, because of what the invariant is for.** The extra character is a
+   space, not a newline, so no line number moved and no such source exists in `src/` or `tests/`.
+   But `lint()` maps every finding back to a physical source line through that transformation, the
+   two defects repaired in the rounds below were both this invariant failing in a way that *did*
+   move a line, and the self-test asserts the contract per case — so a branch that quietly does not
+   hold it is the one the next edit builds on.
+
+   **Coverage extended in the existing table, and the assertion sharpened.** Four cases: an
+   unterminated string, an unterminated character literal, an unterminated *prefixed* character
+   literal, and one spanning two physical lines — each with a hazard on the line *before* it, so the
+   mapping ahead of the unterminated literal is pinned too. The per-case length assertion is now
+   joined by a **newline-count** assertion: length alone cannot see a newline swapped for a space,
+   which is precisely how the line-splice defect below got in. 59 → 79 cases. Verified beyond the
+   table: the invariant holds for all 45 real source files, length and newline count both.
+
+2. **`classify()`'s docstring said the tool "only ever rewrites the nine files it knows".**
+   `TRACKED` now lists 31 paths (25 `src/`, 2 `tests/`, 4 governed `scripts/`). This file's whole
+   premise is that a stale statement about scope is the dangerous kind, and that sentence is the one
+   describing the scope. Reworded to name `TRACKED` itself rather than a count, so it cannot go stale
+   again the next time the list grows; no number was substituted. Documentation only — the
+   classification logic, `TRACKED` and the citation mechanism are untouched. (The "19 anchors across
+   nine files" figure elsewhere in the file counts the *documents carrying script anchors*, a
+   different measurement, and is accurate.)
+
+**Validation.** `check-portability --self-test` 79 cases then 45 files / 0 violations;
+`check-citations --self-test` 58 cases and 217 anchors against `HEAD`; `check-docs` 68 cases / 99
+files; `check-clang-warnings` 28 cases; `py_compile` clean on both modified scripts. The four new
+cases fail against the pre-fix branch (restored under the new tests) and pass against the corrected
+one. Eight mutations — the guard removed, the closing quote never blanked, the splice newline
+dropped, raw newlines blanked, block-comment newlines lost, the prefix set emptied, a dead regex,
+unstripped line comments — are all caught, so terminated literals, escapes, prefixes, comments,
+splices and line mapping are all still pinned rather than merely assumed.
+
+**Sign-off applied, not requested.** The maintainer's existing confirmations are recorded as settled
+for: `AudioComponentRegistrar` settling before the AU gate; the Windows customer artifact surviving a
+failed staging step after the `public_ok` checkpoint; the Rosetta-unavailable warning-only carve-out;
+pluginval running independently after a DSP self-test failure; and the CI/release policy
+implications already written up in this file. Each is an accepted risk or an accepted trade with its
+reasoning recorded where a reader meets the behaviour — none is an open review item, and none was
+changed in this round.
+
+**Deliberately unchanged.** Everything else in the review is informational, investigate-only or
+already accepted: the same-repo PR lint/`merge-check` architecture, the clang-18 pin, release-time
+lint and sanitizer gating, reusable-workflow concurrency, repeated JUCE FetchContent work, the Linux
+debug-directory widening, `ANAMORPH_HAVE_LLD` caching, `run-pluginval.sh`'s `-maxdepth 8`, the
+CMake/lld scope, and the `DELIBERATE_REAIMS` lifecycle (whose entries are expected to be removed once
+the default branch carries the re-anchored spellings — that is the mechanism working, not a defect).
+No workflow, CMake, packaging, DSP or CI change. [Verified]
 
 **Two checkers stopped lying about their own scope (0.9.4, no version bump). A root-level `_deps`
 cache was being linted as project documentation, and a deliberately relaxed DSP run looked identical

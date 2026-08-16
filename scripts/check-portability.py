@@ -214,8 +214,14 @@ def blank_comments_and_literals(text: str) -> str:
                     continue
                 out.append("\n" if text[i] == "\n" else " ")
                 i += 1
-            out.append(" ")
-            i += 1
+            # ONLY WHEN THERE IS A CLOSING QUOTE. The loop above also exits at
+            # `i == n` -- an unterminated literal at end of file -- and blanking a
+            # character that is not there emits one more than it consumed, which
+            # is the character-for-character contract broken by the branch that
+            # depends on it most.
+            if i < n:
+                out.append(" ")
+                i += 1
         else:
             out.append(c)
             i += 1
@@ -579,6 +585,20 @@ def self_test() -> int:
         # pinned so the repair cannot be "fixed" into a regression.
         ("raw newline inside a literal", 'const char* s = "a\nb";\njuce::jmax<size_t> (a, b);',
          [3]),
+        # AN UNTERMINATED LITERAL AT END OF FILE. The inner scan also exits at
+        # `i == n`, and blanking a closing quote that is not there emitted one
+        # character more than it consumed. Latent -- the extra character is a
+        # space, so no line moved -- but the contract these cases assert is
+        # character-for-character, and a branch that does not hold it is the one
+        # the next edit builds on.
+        ("unterminated string at EOF",
+         'juce::jmax<size_t> (a, b);\nconst char* s = "abc', [1]),
+        ("unterminated character literal at EOF",
+         "juce::jmin<size_t> (a, b);\nchar c = '<", [1]),
+        ("unterminated prefixed character literal at EOF",
+         "juce::jmax<size_t> (a, b);\nauto c = L'<", [1]),
+        ("unterminated literal spanning physical lines",
+         'juce::jmax<size_t> (a, b);\nconst char* s = "abc\ndef', [1]),
     ]:
         stripped = blank_comments_and_literals(text)
         hits = [n for n, line in enumerate(stripped.splitlines(), 1) if HAZARD.search(line)]
@@ -596,6 +616,14 @@ def self_test() -> int:
             failures += 1
             print(f"self-test FAIL: {label} changed the text length: "
                   f"{len(stripped)} != {len(text)}", file=sys.stderr)
+        # ...and the other half of the same contract: every source newline is
+        # represented by exactly one output newline. Length alone cannot see a
+        # newline swapped for a space, which is how the line-splice defect got in.
+        checked += 1
+        if stripped.count("\n") != text.count("\n"):
+            failures += 1
+            print(f"self-test FAIL: {label} changed the newline count: "
+                  f"{stripped.count(chr(10))} != {text.count(chr(10))}", file=sys.stderr)
 
     # --- the end-to-end lint, over a temporary tree ------------------------
     # The cases above verify the matcher; this verifies that `lint()` actually
