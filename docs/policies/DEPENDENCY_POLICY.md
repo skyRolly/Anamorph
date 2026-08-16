@@ -7,7 +7,7 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
 | Dependency | Pin | Mechanism | Evidence |
 |---|---|---|---|
 | **JUCE** | **9.0.1**, pinned by **immutable commit SHA** `e18f7f506c0b96f2c738a0bcd7fe6467a5005ad8` | CMake `FetchContent` (`GIT_SHALLOW`), overridable via `-DANAMORPH_JUCE_PATH` | CMakeLists.txt:36-38,47-55 |
-| **pluginval** | latest release (download) | `scripts/run-pluginval.sh` | run-pluginval.sh:43-48 |
+| **pluginval** | latest release (download) | `scripts/run-pluginval.sh` | run-pluginval.sh:119-126 |
 | **C++ standard** | C++23 | `CMAKE_CXX_STANDARD 23`, extensions off (ADR-0027) | CMakeLists.txt:16-18 |
 | Linux system libs | distro packages | `scripts/setup-linux.sh` (ALSA, JACK, X11, FreeType, GTK/WebKit, mesa, **EGL — required by JUCE 9's Linux GL context path**, xvfb) | setup-linux.sh |
 
@@ -31,7 +31,7 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
    move DSP/latency/editor behaviour invisibly to the headless gate.
 3. Re-verify the `RELEASE_COMPATIBILITY_CHECKLIST.md` (latency reporting, session reload) after a bump.
 4. Prefer the offline path (`-DANAMORPH_JUCE_PATH`) for reproducibility in restricted CI.
-5. `JUCE_*` compile flags in `CMakeLists.txt:188-193` (no webview, no curl, no splash, strict
+5. `JUCE_*` compile flags in `CMakeLists.txt:257-262` (no webview, no curl, no splash, strict
    ref-counted pointer) are part of the dependency contract; changing them is a build change.
 
 ## Compliance log

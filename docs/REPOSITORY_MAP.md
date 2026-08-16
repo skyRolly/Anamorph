@@ -136,4 +136,4 @@ docs/
                      CHANGELOG, TESTING, RELEASE, DEPENDENCY, CODE_STYLE)
 ```
 
-Evidence [Verified]: file tree from the repository; CMakeLists.txt:77-113 (hardening interface) + :124 (`AnamorphDSP`) / :150 (`juce_add_plugin`); src/ listing.
+Evidence [Verified]: file tree from the repository; CMakeLists.txt:77-177 (hardening interface) + :188 (`AnamorphDSP`) / :214 (`juce_add_plugin`); src/ listing.

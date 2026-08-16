@@ -320,7 +320,7 @@ rather than deleted, because a gap that was real and is now covered is worth bei
   hand does not leave a plug-in behind in your real `~/Library`. One thing this deliberately did
   **not** do, so the remaining scope is not overstated:
   - It uses **pluginval**, not Apple's `auval` (`auval -v aufx Anmr RTec`, matching the
-    `PLUGIN_CODE` / `PLUGIN_MANUFACTURER_CODE` in `CMakeLists.txt:153-154`). pluginval hosts the AU
+    `PLUGIN_CODE` / `PLUGIN_MANUFACTURER_CODE` in `CMakeLists.txt:217-218`). pluginval hosts the AU
     through JUCE's `AudioUnitPluginFormat`, which is the same resolution path a JUCE-hosted DAW
     takes and the same test set the other two platforms are held to; `auval` is Apple's own
     conformance tool and tests things pluginval does not. Adding it is a further step, not a

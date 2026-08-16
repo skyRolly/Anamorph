@@ -7,7 +7,8 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
-**CI review follow-up** (first below), then the **CI/validation round** it corrects, then the four
+**documentation re-sync** (first below), then the **CI review follow-up** it follows, then the
+**CI/validation round** that one corrects, then the four
 AppleClang 21 `-Wimplicit-int-float-conversion` fixes, the macOS CI runner move
 `macos-14` → `macos-latest` that surfaced them, then the C++17 → C++23
 language-standard migration, both applied on top of the JUCE 9.0.0 → 9.0.1
@@ -17,6 +18,86 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**Documentation re-sync after the CI rounds (0.9.4, no version bump). Documentation only — no
+workflow, script, CMake or source file was touched.**
+
+The two CI entries below changed what the pipeline does and moved a large amount of code; this
+round makes the prose that describes them true again. Three things, in descending order of how
+wrong the tree was without them.
+
+1. **KI-014 was still open in the register after the coverage gap it recorded had been closed.**
+   The entry said the macOS AU "is built and shipped but never validated automatically —
+   `run-pluginval.sh` only sees the VST3." That stopped being true in the CI/validation round: the
+   macOS job installs the built `.component` into `~/Library/Audio/Plug-Ins/Components/`, restarts
+   `AudioComponentRegistrar`, and puts the AU through the *same* release gate as the VST3 — same
+   strictness, both modes, three consecutive passes each, against the **packaged** bundle. A known
+   issue whose defect no longer exists is not a stale line, it is a false statement about the
+   shipped product, and it was being read as current by four other documents. Handled per this
+   repository's own fixed-item rule and following the KI-005 precedent: the summary-table row is
+   **removed**, the body section is replaced by an italic tombstone recording the resolution and
+   retiring the ID, and the removal is recorded in the file's version-sync header. `HANDOVER.md`'s
+   Known Blockers row now says KI-014 is closed rather than listing it; its Roadmap row no longer
+   reads as though AU coverage does not exist, and names `auval`-in-CI as an *addition* to a gate
+   that does. `RELEASE_HARDENING_PLAN.md` RH-F3 is **narrowed, not closed** — its premise
+   ("zero automated validation") is superseded, but Apple's `auval` specifically is still not run,
+   and its open question (headless-runner reliability) is unchanged; closing the row would have
+   claimed coverage that does not exist. `TESTING.md` §"Gaps in the automated coverage" already
+   carried the closure from the earlier round and is left as the detailed account both now cite,
+   with `CI_CD.md` §"Known coverage limits" as the record of the pluginval-not-`auval` residual.
+   `COMPATIBILITY_MATRIX.md`'s AU row was the last carrier of the old picture and moved from
+   **Verified (build)** to **Verified (build + conformance)** — its "Unverified (host)" half stays,
+   because pluginval loads the AU through JUCE's `AudioUnitPluginFormat`, which is not Logic.
+   KI-014's own evidence anchors are retired with it rather than re-anchored: the claim they
+   supported (`run-pluginval.sh` finds only `Anamorph.vst3`) is no longer in the script.
+
+2. **52 evidence anchors across 18 documents pointed into moved code.** `CMakeLists.txt` gained 64
+   lines (the lld probe and the hardening block), `build.yml` roughly doubled, and several scripts
+   were rewritten, so every `file:line` citation below the insertion points had drifted. These were
+   **not** shifted by an offset. Each anchor was resolved by reading what the document *claims* and
+   locating that content in the current source, which matters because an offset would have been
+   wrong in both directions: `CODE_STYLE.md` cited `CMakeLists.txt:206,230` for the recommended
+   warning flags, an anchor that was already wrong before this PR (206 was `juce::juce_opengl`) and
+   that no shift could have repaired — the flags are at `:275,301,339`, three sites rather than two,
+   because the tests target was added since. Conversely `TESTING_POLICY.md:67` and
+   `TROUBLESHOOTING.md:23` cite the pluginval signal-only retry at two *different* spans,
+   `:154-176` and `:147-176`; both are correct — one is `run_one_pass` alone, the other includes
+   the comment block that explains why the retry exists — so neither was normalised to the other.
+   One anchor is not a `file:line` citation at all and a mechanical sweep would have skipped it:
+   `COMPATIBILITY_MATRIX.md` cites the *whole macOS job* as a bare range, `build.yml macos job
+   (:355-542)`, and that job now spans `:1116-1512` — it did not move, it grew, and it is the
+   growth that carried the AU gates.
+   The 18 files: `PRIVACY`, `TRADEMARKS`, `HANDOVER`, `KNOWN_ISSUES`, `REPOSITORY_MAP`,
+   `ARCHITECTURE`, `COMPATIBILITY_MATRIX`, ADR-0001 / ADR-0011 / ADR-0023, `CODE_STYLE`,
+   `DEPENDENCY_POLICY`, `RELEASE_POLICY`, `TESTING_POLICY`, `BUILD`, `PACKAGING`, `TESTING`,
+   `TROUBLESHOOTING`.
+
+   **What was deliberately left alone, and why it is not an oversight.** Four older entries in
+   *this* file quote anchor pairs in old → new form — the two "reported-then-corrected line drift
+   (C6)" entries, the `setup-linux.sh` `curl`/`unzip` entry, and the post-v0.9.0 maintenance audit.
+   Those are not citations; they are the historical record of *previous* re-anchoring operations,
+   and **both** halves of each pair are meant to read as they did then — the old half is supposed
+   to be stale, and the new half records where that operation landed it, not where the content sits
+   today. Rewriting either would destroy the audit trail this file exists to keep. The same
+   reasoning applies to anchors inside `worklogs/` and to `POSTMORTEMS.md` entries that quote the
+   code as it stood at the time of an incident.
+
+3. **The `check-clang-warnings` self-test count in the entry below was recorded as 24; it is 28.**
+   Corrected in place rather than left as history — a case count is written down precisely so a
+   reader can re-run the command and get the same number, and one that does not reproduce is worse
+   than none. The four extra cases are the compiler-pin round's baseline version round-trip block.
+   The other three figures in that sentence reproduce exactly as written.
+
+**Validation.** All four lints green with their self-tests, run against this tree:
+`check-docs.py --self-test` (57 cases) then `check-docs.py` over 99 files;
+`check-clang-warnings.py --self-test` (28 cases); `check-portability.py` (45 files);
+`check-citations.py --check` against both `HEAD` and `HEAD~1`, 198 anchors. Every anchor changed in
+this round was additionally re-read at its new location and confirmed to land on the content the
+citing sentence describes — for example `PACKAGING.md:177` → `CMakeLists.txt:217` →
+`PLUGIN_MANUFACTURER_CODE RTec`, `TROUBLESHOOTING.md:25` → `run-pluginval.sh:129-131` → the
+`xvfb-run -a` prefix, and `RELEASE_POLICY.md:65` → `build.yml:288,758,1141` → the three per-OS
+Configure steps. No CI, source, architecture or policy behaviour changed in this round, and the
+pluginval execution order was left exactly as the CI rounds landed it. [Verified]
 
 **CI + validation round — review follow-up (0.9.4, no version bump). Five corrections, and the
 first is the one worth reading twice.**
@@ -146,7 +227,11 @@ no wording change.
 **Validation.** actionlint (with shellcheck) clean on all five workflows; every pwsh step and
 `run-pluginval.ps1` parsed with the PowerShell 7.4 parser; `bash -n` + shellcheck clean on all
 scripts. All four lints green with their self-tests (`check-docs` 57 cases / 99 files,
-`check-clang-warnings` 24 cases, `check-portability` 45 files, `check-citations` 198 anchors).
+`check-clang-warnings` **28** cases, `check-portability` 45 files, `check-citations` 198 anchors).
+(That figure was recorded as 24 when this entry was written and is corrected here rather than left
+as history: the whole point of writing a case count down is that a reader can re-run the command and
+get the same number. The four additional cases are the compiler-pin round's version round-trip
+block — see the CI review follow-up entry above. The other three figures reproduce unchanged.)
 Both suites green under GCC, under Clang, and under ASan + UBSan (140 and 894 checks each time).
 pluginval strictness 10 green, both modes ×3, with the seed observably pinned at `0x1`. The lld
 probe reports `Success` under Clang and is **absent** under GCC, confirming the shipped Linux link

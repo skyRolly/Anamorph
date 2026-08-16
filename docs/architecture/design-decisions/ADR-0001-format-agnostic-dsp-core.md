@@ -28,7 +28,7 @@ the plugin wrapper. The engine "knows nothing about parameter IDs or hosts."
 ## Related code
 - `src/dsp/EngineParameters.h:3-17`, `src/dsp/AnamorphEngine.h:38-39`
 - `src/PluginParameters.cpp:241-300` (`toEngine`)
-- `CMakeLists.txt:124-135` (INTERFACE lib), `:228-237` (tests link the core)
+- `CMakeLists.txt:188-199` (INTERFACE lib), `:292-301` (tests link the core)
 
 Evidence [Verified]:
-- Source: src/dsp/AnamorphEngine.h:38-39; src/dsp/EngineParameters.h:3-17; CMakeLists.txt:124-135
+- Source: src/dsp/AnamorphEngine.h:38-39; src/dsp/EngineParameters.h:3-17; CMakeLists.txt:188-199
