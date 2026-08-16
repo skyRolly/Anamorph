@@ -18,7 +18,7 @@ semantics, or serialization, and satisfying the policy requirement for an ADR + 
   the existing self-tests + pluginval.
 
 ## Decision
-Set `ANAMORPH_JUCE_TAG` **8.0.8 → 8.0.14** (`CMakeLists.txt:33`) — the only logic-bearing change. **No
+Set `ANAMORPH_JUCE_TAG` **8.0.8 → 8.0.14** (`CMakeLists.txt` `:33`) — the only logic-bearing change. **No
 DSP, signal-chain, parameter, or serialization source is touched.** Verify via CI: build + the 23 DSP
 self-tests + pluginval strictness 10 on the authoritative Linux gate.
 
@@ -54,10 +54,10 @@ ongoing, forward-looking risk that a *future* bump could drift invisibly to the 
 tracked separately by RISK-001.
 
 ## Related code
-- `CMakeLists.txt:33` (`ANAMORPH_JUCE_TAG "8.0.14"`).
+- `CMakeLists.txt` `:33` (`ANAMORPH_JUCE_TAG "8.0.14"`).
 
 Evidence:
-- Source [Verified]: `CMakeLists.txt:33` (tag 8.0.14).
+- Source [Verified]: `CMakeLists.txt` `:33` (tag 8.0.14).
 - Verification [Verified]: CI run on commit `41acaa7` — Linux gate **success**; log: `pluginval:
   PASSED at strictness 10 (attempt 1/3)`; the 23 DSP self-tests run before pluginval and the job
   concluded success.
