@@ -1624,3 +1624,266 @@ jobs:
           name: Anamorph-macOS-debug
           path: dist/Anamorph-macOS-debug
           if-no-files-found: error
+
+  # ==========================================================================
+  #  NATIVE INTEL macOS -- the one execution environment nothing else covers.
+  #
+  #  ADOPTED FROM THE SIBLING PRODUCT ANABASIS (its `macos-intel` job), which is
+  #  the only capability in that repository's CI this one did not already have.
+  #  It is NOT "the macOS job again on another runner". The distinction it exists
+  #  for is exactly this one:
+  #
+  #      an x86_64 binary running under Rosetta   (the `macos` job above)
+  #      an x86_64 binary running on Intel silicon (this job)
+  #
+  #  The `macos` job builds a UNIVERSAL binary on an Apple Silicon runner, so its
+  #  x86_64 half is CROSS-compiled there and then executed only under Rosetta 2 --
+  #  which translates the x86_64 instruction stream and runs the result on arm64
+  #  hardware. Whether that translation preserves every floating-point corner is
+  #  Apple's contract, not this product's, and it is not the machine a user with
+  #  an Intel Mac has. Four defect classes live in the gap, and no other job in
+  #  this workflow can see any of them:
+  #
+  #    1. INTEL CODE GENERATION. The shipped x86_64 slice is emitted by the
+  #       back end at -O3 + LTO and, until this job, was executed by nothing that
+  #       was actually an Intel CPU. A miscompile there reaches every Intel user
+  #       and no gate.
+  #    2. THE DENORMAL INVARIANT. `tests/dsp_tests.cpp` asserts no denormals in
+  #       the engine output, and that holds because `juce::ScopedNoDenormals`
+  #       flushes them IN HARDWARE -- MXCSR's FTZ/DAZ bits on x86_64, FPCR's FZ
+  #       on arm64. On this runner the assertion is finally checked against the
+  #       register the shipped Intel slice will really set. (The same invariant
+  #       is why the valgrind step needs `ANAMORPH_TESTS_NO_FTZ=1`: an emulator
+  #       that does not honour those bits cannot answer this question either.)
+  #    3. THE INTEL AUDIOUNIT / VST3 RUNTIME. pluginval hosts the bundles
+  #       through the OS's own component registry and plug-in loader. On this
+  #       runner that is the Intel macOS 15 implementation, not the arm64
+  #       macOS 26 one.
+  #    4. A SECOND APPLECLANG ON THE macOS SIDE. `macos-latest` and this image
+  #       do not carry the same Xcode. The four `-Wimplicit-int-float-conversion`
+  #       sites that sat in the tree for months and surfaced only when the macOS
+  #       image moved (CI_CD.md §Build matrix) are the worked example of what a
+  #       single macOS toolchain costs.
+  #
+  #  DELIBERATELY NOT A SHIPPING JOB. It packages nothing, signs nothing, uploads
+  #  nothing: the artifact users receive is still the universal bundle built and
+  #  gated by `macos` above, and duplicating that here would add a second macOS
+  #  artifact with no way to say which is authoritative. The honest scope of this
+  #  job is "the source, compiled for x86_64, behaves correctly when an Intel CPU
+  #  executes it" -- which is the half the Rosetta step cannot answer. The Rosetta
+  #  step answers the other half ("the SHIPPED slice executes correctly"), so the
+  #  two are complements and neither replaces the other. Both remain.
+  #
+  #  COST, measured rather than guessed: the sibling's equivalent job takes ~26
+  #  minutes wall-clock end to end, of which ~19 is the build. `macos` here is
+  #  ~24, so this becomes the critical path by a few minutes and adds no billable
+  #  minutes (public repository). `ANAMORPH_BUILD_STANDALONE=OFF` keeps that
+  #  number down for free -- the Standalone target recompiles the identical
+  #  translation units and nothing in this job validates it, which is the same
+  #  reason `codeql.yml` and `msvc.yml` already turn it off.
+  # ==========================================================================
+  macos-intel:
+    # PINNED BY NECESSITY, not by preference -- the one runner label in this
+    # workflow that cannot float. Per `actions/runner-images`, `macos-latest`
+    # (and `macos-26`, `macos-15`) are the ARM64 images and the Intel ones are
+    # separately named: `macos-15-intel` and `macos-26-intel`, both GA;
+    # `macos-14`/`macos-14-xlarge` are deprecated. "Latest" therefore has no
+    # Intel reading to follow -- the Intel image has to be named. This is NOT
+    # the `macos` job's float being walked back: that job tracks the
+    # ENVIRONMENT the product is tested against, this one names an ISA.
+    #
+    # 15 RATHER THAN 26, deliberately. `macos-26-intel` would carry the same
+    # Xcode generation as `macos-latest`, making this job differ from `macos`
+    # in ISA alone; `macos-15-intel` differs in toolchain too, which is the
+    # point -- a second AppleClang on the macOS side is coverage this project
+    # has already paid for the lack of (the four -Wimplicit-int-float-conversion
+    # sites sat in the tree for months and surfaced only when the macOS image
+    # moved). THE COST, stated rather than discovered: a failure seen only here
+    # has two candidate causes, ISA and toolchain. The disambiguation is a
+    # one-word edit -- re-run this job on `macos-26-intel`; if it still fails,
+    # the cause is the ISA. It is also the configuration the sibling product
+    # runs green today on the same JUCE 9.0.1 pin and the same 10.13
+    # deployment target, which is why it is the one adopted rather than guessed.
+    #
+    # If a future label change ever lands this job on Apple Silicon anyway, the
+    # first step below fails it loudly rather than reporting a green tick about
+    # the wrong architecture.
+    runs-on: macos-15-intel
+    # The SAME same-repo PR guard every other build job carries -- see the block
+    # above the `jobs:` key. Without it this job would run twice per same-repo PR
+    # commit (once for the push, once for the PR event), which is the duplicate
+    # matrix that guard exists to remove. `merge-check` remains the complement
+    # and is untouched: it builds the merge result on Linux and is deliberately
+    # not a four-platform rerun.
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name != github.repository
+    steps:
+      - uses: actions/checkout@v7
+
+      # FAIL, DO NOT WARN, and run it before anything else is spent. A job whose
+      # entire purpose is "execute on Intel" is worse than absent if it quietly
+      # executes somewhere else: the green tick would be read as "Intel is fine".
+      # Both wrong answers are caught -- `uname -m` catches an arm64 runner, and
+      # `sysctl.proc_translated` (1 under Rosetta, 0 or absent on real Intel)
+      # catches a translated shell on an arm64 runner, which `uname -m` alone
+      # would report as x86_64.
+      #
+      # This is the one place in this workflow where an ENVIRONMENT property is
+      # a hard failure rather than a `::warning::`. That is deliberate and it is
+      # the opposite call from the Rosetta step in `macos`: there the coverage is
+      # a bonus on top of a job that has other work to do, so a missing Rosetta
+      # degrades to a warning; here the coverage IS the job.
+      - name: Assert this really is native Intel (not Apple Silicon, not Rosetta)
+        run: |
+          set -e
+          ARCH="$(uname -m)"
+          TRANSLATED="$(sysctl -n sysctl.proc_translated 2>/dev/null || echo 0)"
+          echo "uname -m = $ARCH ; sysctl.proc_translated = $TRANSLATED"
+          sysctl -n machdep.cpu.brand_string || true
+          sw_vers || true
+          if [ "$ARCH" != "x86_64" ]; then
+            echo "::error::this job must run on native x86_64 (got $ARCH) -- the coverage it exists for cannot be produced here"
+            exit 1
+          fi
+          if [ "$TRANSLATED" != "0" ]; then
+            echo "::error::running under Rosetta translation -- that is precisely the coverage this job exists to go beyond (the macos job already runs the x86_64 slice under Rosetta)"
+            exit 1
+          fi
+
+      - name: Install build tools
+        run: brew install ninja || true
+
+      # THIN x86_64, not universal. The universal binary is the shipping
+      # configuration and `macos` above already builds, asserts and ships it;
+      # what is wanted here is that every object came out of the Intel code
+      # generator and that there is no arm64 slice present for the loader to
+      # pick instead. Same deployment target as the shipping build (10.13 --
+      # the flag that claims Intel support in the first place) and the same
+      # build number, so the only intended difference from the shipped x86_64
+      # slice is the machine that compiled it.
+      - name: Configure (native x86_64 only)
+        run: >
+          cmake -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_OSX_ARCHITECTURES=x86_64
+          -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13
+          -DANAMORPH_BUILD_STANDALONE=OFF
+          -DANAMORPH_BUILD_NUMBER=${{ github.run_number }}
+
+      - name: Build (VST3 + AU + tests)
+        run: cmake --build build --config Release
+
+      # ASSERT the architecture of what was just built -- do not assume it from
+      # the configure line. This is the same lesson the packaging step in `macos`
+      # learned the expensive way: a folded YAML scalar silently swallowing the
+      # trailing configure flags is a documented accident in this class of
+      # workflow, and `-DCMAKE_OSX_ARCHITECTURES` is one of the flags it eats.
+      # There it produced a thin binary shipped as universal; here it would
+      # produce a binary this job then describes as "native Intel" on the
+      # strength of the runner alone. `lipo -archs` is asserted, never echoed:
+      # it exits 0 for any valid Mach-O.
+      #
+      # The two test executables are NOT listed: they assert themselves by
+      # running below. An arm64 binary on this host cannot exec at all ("Bad CPU
+      # type in executable"), which is a louder failure than any check here.
+      - name: Assert the built bundles are thin x86_64
+        id: thin
+        run: |
+          set -e
+          for B in "build/Anamorph_artefacts/Release/VST3/Anamorph.vst3/Contents/MacOS/Anamorph" \
+                   "build/Anamorph_artefacts/Release/AU/Anamorph.component/Contents/MacOS/Anamorph"; do
+            ARCHES="$(lipo -archs "$B")"
+            echo "== $B == $ARCHES"
+            if [ "$ARCHES" != "x86_64" ]; then
+              echo "::error::$B is '$ARCHES', expected exactly 'x86_64' -- this job validates the Intel code generator, and a slice it did not emit is not that"
+              exit 1
+            fi
+          done
+
+      # The behavioural gate, on Intel silicon. Same script, same fail-closed
+      # discovery, no ANAMORPH_TEST_RUNNER prefix -- the binaries are native
+      # here, which is the entire point.
+      - name: DSP + state self-tests, native Intel
+        run: |
+          chmod +x scripts/*.sh
+          ./scripts/run-tests.sh
+
+      # Same reason as in `macos`: macOS resolves Audio Units through the
+      # AudioComponent registry, which only knows about bundles under a
+      # Components directory, so a never-installed `.component` can report zero
+      # plugin types however correct it is. Installed from the BUILD TREE rather
+      # than a `dist/` staging tree because this job packages nothing -- what is
+      # being validated is Intel behaviour, not the shipped bytes (those are the
+      # universal bundle, gated post-packaging in `macos`).
+      #
+      # Gated on `thin` rather than `tests` so a self-test failure does not skip
+      # the conformance gates -- the same independence the `macos` job's gates
+      # have from its self-tests.
+      - name: Install the AU so the AudioComponent registry can find it
+        id: au_install
+        if: ${{ !cancelled() && steps.thin.outcome == 'success' }}
+        run: |
+          set -e
+          DEST="$HOME/Library/Audio/Plug-Ins/Components"
+          mkdir -p "$DEST"
+          rm -rf "$DEST/Anamorph.component"
+          cp -R build/Anamorph_artefacts/Release/AU/Anamorph.component "$DEST/"
+          killall -9 AudioComponentRegistrar 2>/dev/null || true
+          echo "bundle=$DEST/Anamorph.component" >> "$GITHUB_OUTPUT"
+          ls -d "$DEST/Anamorph.component"
+
+      # BOTH MODES, BOTH FORMATS, x3 EACH -- the same gate the other three
+      # platforms are held to, at the same single-source strictness. The sibling
+      # runs deterministic only on its Intel job; that is the one place this
+      # implementation deliberately does not follow it. Uniformity is a stated
+      # property of this workflow ("Validation is UNIFORM across all three
+      # platforms and BLOCKING on each", top of file), and a fourth platform
+      # quietly running half the gate would make that sentence false. It also
+      # buys something specific: `randomise` draws a FRESH seed per run, so the
+      # values the tests push through the plug-in differ every time -- and on
+      # this job they go through Intel-generated code on an Intel FPU, a
+      # (architecture x value) space neither the Intel deterministic run nor the
+      # arm64 randomise run reaches. ~5 of this job's ~26 minutes.
+      #
+      # Each step names its producer and carries `!cancelled()`, so no single
+      # gate's failure can skip another's report -- the rule the whole file
+      # follows, and never a bare `!cancelled()`, which is true after ANY
+      # upstream failure and would have pluginval report "not found -- build
+      # first" as though that were the fault. For the VST3 the named producer is
+      # `thin`, not `build`: it carries no `if:` of its own, so it runs only on a
+      # successful build and subsumes it -- the same relationship the `linux`
+      # job's `strip` has to its build, and it additionally means an arm64 or fat
+      # binary cannot be validated and then reported as an Intel result. For the
+      # AU it is `au_install`, which gates on `thin` and so carries that too.
+      - name: pluginval VST3 (deterministic x3), native Intel
+        if: ${{ !cancelled() && steps.thin.outcome == 'success' }}
+        env:
+          ANAMORPH_PLUGINVAL_BUNDLE: build/Anamorph_artefacts/Release/VST3/Anamorph.vst3
+        run: ./scripts/run-pluginval.sh ${{ env.ANAMORPH_PLUGINVAL_STRICTNESS }} deterministic vst3
+
+      - name: pluginval VST3 (randomise x3), native Intel
+        if: ${{ !cancelled() && steps.thin.outcome == 'success' }}
+        env:
+          ANAMORPH_PLUGINVAL_BUNDLE: build/Anamorph_artefacts/Release/VST3/Anamorph.vst3
+        run: ./scripts/run-pluginval.sh ${{ env.ANAMORPH_PLUGINVAL_STRICTNESS }} randomise vst3
+
+      - name: pluginval AU (deterministic x3), native Intel
+        if: ${{ !cancelled() && steps.au_install.outcome == 'success' }}
+        env:
+          ANAMORPH_PLUGINVAL_BUNDLE: ${{ steps.au_install.outputs.bundle }}
+        run: ./scripts/run-pluginval.sh ${{ env.ANAMORPH_PLUGINVAL_STRICTNESS }} deterministic au
+
+      - name: pluginval AU (randomise x3), native Intel
+        if: ${{ !cancelled() && steps.au_install.outcome == 'success' }}
+        env:
+          ANAMORPH_PLUGINVAL_BUNDLE: ${{ steps.au_install.outputs.bundle }}
+        run: ./scripts/run-pluginval.sh ${{ env.ANAMORPH_PLUGINVAL_STRICTNESS }} randomise au
+
+      # Leave the runner as we found it -- same reasoning as the `macos` job:
+      # `TESTING.md` tells a human to reproduce these steps locally, and an
+      # install into a real ~/Library/Audio/Plug-Ins/Components that nothing
+      # removes is a surprise worth not shipping in the instructions.
+      - name: Remove the AU installed for validation
+        if: ${{ !cancelled() && steps.au_install.outcome != 'skipped' }}
+        run: rm -rf "$HOME/Library/Audio/Plug-Ins/Components/Anamorph.component"

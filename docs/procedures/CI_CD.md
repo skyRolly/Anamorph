@@ -78,8 +78,9 @@ Evidence [Verified]: release.yml.
 
 ## Build matrix
 
-Every push builds the full set of formats on all three desktop OSes, alongside four
-non-packaging jobs that guard classes the build matrix cannot see:
+Every push builds the full set of formats on all three desktop OSes — plus a **second macOS job
+that ships nothing and exists only to execute on Intel silicon** — alongside four non-packaging
+jobs that guard classes the build matrix cannot see:
 
 | Job | Runner | Builds | pluginval |
 |---|---|---|---|
@@ -91,6 +92,7 @@ non-packaging jobs that guard classes the build matrix cannot see:
 | **sanitizers** | `ubuntu-latest` | Clang ASan+UBSan build, plus an unsanitized build for valgrind | — |
 | **windows** | `windows-latest` (MSVC, multi-config) | VST3 + Standalone (+ tests) | VST3, **both modes ×3** — **blocking** |
 | **macos** | `macos-latest` (Apple Silicon) | universal VST3 + AU + Standalone (+ tests) | **VST3 and AU**, both modes ×3 each — **blocking** |
+| **macos-intel** | `macos-15-intel` (**native Intel**) | thin x86_64 VST3 + AU (+ tests); Standalone off; **no packaging, no artifacts** | **VST3 and AU**, both modes ×3 each — **blocking** |
 
 None of these jobs is in a `needs:` chain, in either direction. A prose defect, a
 portability lint hit or a sanitizer finding fails the run without skipping a binary that is
@@ -201,8 +203,43 @@ worse than no gate. It is a **blocking condition on the macOS customer uploads**
 native arm64 run — a slice that fails its behavioural gate is a defect in the product, so shipping
 the package anyway would validate the Intel half and then ignore the verdict. (The Rosetta-absent
 path exits 0, so it does not block: the uploads proceed on compilation-only Intel coverage with the
-`::warning::` as the record.) **Native** Intel hardware is still not covered; see
-[Known coverage limits](#known-coverage-limits).
+`::warning::` as the record.)
+
+**`macos-intel` covers the other half — native Intel hardware.** Rosetta 2 translates the x86_64
+instruction stream and runs the result on **arm64** hardware, so the Rosetta step answers "does the
+*shipped* slice execute correctly?" and cannot answer "does an Intel CPU run this correctly?". The
+`macos-intel` job answers the second: it configures **thin x86_64** (`-DCMAKE_OSX_ARCHITECTURES=x86_64`,
+same `10.13` deployment target, `ANAMORPH_BUILD_STANDALONE=OFF`), so every object comes out of the
+Intel code generator with no arm64 slice for the loader to pick instead, then runs both self-test
+suites and the full pluginval gate — VST3 **and** AU, both modes ×3 each, at the same
+`ANAMORPH_PLUGINVAL_STRICTNESS`. Four defect classes live only there: Intel code generation at
+`-O3 + LTO`; the **denormal invariant**, which holds because `ScopedNoDenormals` flushes *in
+hardware* — MXCSR's FTZ/DAZ on x86_64, FPCR's FZ on arm64 — and is therefore checked here against
+the register the shipped Intel slice really sets; the Intel macOS AudioUnit/VST3 runtime; and a
+**second AppleClang** on the macOS side (the two images do not carry the same Xcode, and the four
+`-Wimplicit-int-float-conversion` sites below are what a single macOS toolchain cost last time).
+
+Its first step **fails, not warns**, if `uname -m` is not `x86_64` or `sysctl.proc_translated` is
+not `0` — a job whose purpose is "execute on Intel" is worse than absent if it quietly executes
+somewhere else, because the green tick would be read as "Intel is fine". That is the opposite call
+from the Rosetta step above, and deliberately: there the coverage is a bonus on a job with other
+work to do, here the coverage *is* the job. A second assertion checks `lipo -archs` on both built
+bundles is exactly `x86_64` — asserted, never echoed, for the same reason the packaging step
+asserts rather than prints. The job **packages, signs and uploads nothing**: the artifact users
+receive is still the universal bundle built and gated by `macos`, and a second macOS artifact would
+only raise the question of which is authoritative.
+
+`macos-15-intel` is the one **pinned** runner label in the workflow, by necessity rather than
+preference: per `actions/runner-images`, `macos-latest` / `macos-26` / `macos-15` are the **arm64**
+images and the Intel ones are named separately (`macos-15-intel`, `macos-26-intel`, both GA;
+`macos-14*` deprecated), so "latest" has no Intel reading to follow. **15 rather than 26** is also
+deliberate — `macos-26-intel` would carry the same Xcode generation as `macos-latest` and differ
+from `macos` in ISA alone, whereas `macos-15-intel` differs in toolchain as well, which is the
+second-AppleClang coverage this project has already paid for the lack of. The cost of that choice,
+stated rather than left to be discovered: a failure seen only on this job has **two** candidate
+causes, ISA and toolchain, and the disambiguation is a one-word edit — re-run it on
+`macos-26-intel`, and if it still fails the cause is the ISA. The runtime assertion is what makes
+the pin safe rather than brittle.
 
 The image carries the macOS toolchain, so this moved the macOS compiler with it: **AppleClang
 15.0.0.15000309 (Xcode 15.4) → 21.0.0.21000101 (Xcode 26.6)**, image `macos-26-arm64`
@@ -233,7 +270,10 @@ failures as green and has been removed). Evidence [Verified]: `.github/workflows
 2. **Configure** — `cmake -B build [-G Ninja] -DCMAKE_BUILD_TYPE=Release
    -DANAMORPH_BUILD_NUMBER=${{ github.run_number }}` (the run number becomes the About-box build
    number). Windows uses the default VS generator; macOS adds
-   `-DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13`.
+   `-DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13`, and
+   `macos-intel` the same deployment target with `-DCMAKE_OSX_ARCHITECTURES=x86_64` plus
+   `-DANAMORPH_BUILD_STANDALONE=OFF` (that target recompiles the identical translation units and
+   nothing in that job validates it — the same reason `codeql.yml` and `msvc.yml` turn it off).
 3. **Build** — `cmake --build build --config Release`.
 4. **DSP + state self-tests** — `scripts/run-tests.sh` runs `AnamorphTests` **and**
    `AnamorphStateTests` fail-closed (Linux/macOS); on Windows the step locates and runs both
@@ -243,7 +283,9 @@ failures as green and has been removed). Evidence [Verified]: `.github/workflows
    `find … | head -n1` / `Select-Object -First 1` took whichever path enumerated first, so a
    multi-config tree (which is what Windows always has) or a stale second build tree could gate on a
    *Debug* binary while the uploaded artifacts came from Release — a green report about the wrong
-   build. macOS then repeats the step for the **x86_64 slice under Rosetta** (see above).
+   build. macOS then repeats the step for the **x86_64 slice under Rosetta** (see above), and
+   `macos-intel` runs the same script a third time — unprefixed, because there the binaries are
+   native.
 5. **Symbol handling (RH-PR-2, ADR-0021)** — Linux extracts split debug info (`objcopy
    --only-keep-debug`), strips the shipped binaries (`strip --strip-unneeded`; `.gnu_debuglink`
    embedded) and asserts `GetPluginFactory` is still exported — ordered **before** pluginval so
@@ -350,7 +392,11 @@ Evidence [Verified]: `.github/workflows/build.yml`; `scripts/run-pluginval.sh`; 
 
 Each of Linux, Windows and macOS runs the SAME gate — pluginval at
 `ANAMORPH_PLUGINVAL_STRICTNESS`, deterministic ×3 **and** randomise ×3 — and **all are blocking**.
-macOS runs it **twice over**, once per format (VST3 and AU). Linux runs headless under `xvfb`. The
+macOS runs it **twice over**, once per format (VST3 and AU), and then **again on native Intel**
+(`macos-intel`, both formats, both modes): a fourth job running half a gate would have made the
+heading above false, and `randomise` draws a fresh seed per run, so on Intel it pushes values
+through Intel-generated code on an Intel FPU — an (architecture × value) space neither the Intel
+deterministic run nor the arm64 randomise run reaches. Linux runs headless under `xvfb`. The
 `--randomise` mode randomises test order to surface order-dependent defects a fixed-seed run can
 miss; the fixed seed (nonzero — see step 6) seeds the RNG the tests themselves draw from, so the two
 flags are independent rather than two spellings of the same thing.
@@ -493,11 +539,17 @@ Stated here rather than left to be rediscovered. None is a defect; each is a dec
   *files* from the copy, but nothing rewrites the `.vst3` module itself, so the validated and shipped
   bytes are the same. The residual asymmetry is only in what each staging self-check can assert —
   see the Windows bullet below.
-- **No native Intel macOS runner.** The `macos` job builds universal on Apple Silicon and now
-  executes the x86_64 slice under **Rosetta 2**, which translates x86_64 to arm64 and runs on arm64
-  hardware — FPCR rather than MXCSR, NEON rather than SSE. That closes the "run by nothing" gap but
-  not the "run by an Intel CPU" one. A dedicated `macos-*-intel` job is the only thing that would,
-  at the cost of a fourth macOS runner per push; the cheap 95% is taken and the expensive 5% is not.
+- **Native Intel now runs, but not on the shipped bytes.** This limit used to read "no native Intel
+  macOS runner"; `macos-intel` closed it, and what is left is narrower and worth stating exactly.
+  Two things are covered and they are not the same thing: the `macos` job executes the **shipped**
+  x86_64 slice under Rosetta 2 (translated, on arm64 hardware), and `macos-intel` executes a
+  **separately compiled** thin x86_64 build on a real Intel CPU. Neither is "the shipped slice on an
+  Intel CPU" — that would need the universal artifact carried to an Intel runner, which nothing here
+  does. The residual gap is therefore a *toolchain* one, not an ISA one: the two builds come from
+  different macOS images and different AppleClang majors, so an Intel defect that only the
+  cross-compiler emits would be seen by neither. Both jobs are blocking, so the ISA half is gated;
+  closing the last of it means uploading and revalidating the universal bundle on the Intel runner,
+  which is a further step and not a substitute for either of these.
 - **The Windows staging self-check is a delete-confirmation, not a property check.** It re-lists the
   debug extensions the step just deleted, so it can only fire if `Remove-Item` silently failed.
   Linux inspects ELF section headers and asserts the export; macOS asserts both slices. Windows
@@ -567,6 +619,21 @@ scripts/run-pluginval.sh 10 randomise         # --randomise x3 (the state-restor
 `au` is macOS-only and **errors** on any other host rather than skipping silently; on macOS install
 the `.component` first (or point `ANAMORPH_PLUGINVAL_BUNDLE` at an installed one), because the
 AudioComponent registry only finds bundles under a Components directory.
+
+`macos-intel` is reproducible only **on an Intel Mac** — on Apple Silicon the same commands compile
+and then run under Rosetta, which is the coverage the job exists to go beyond, so a local "pass"
+there proves the wrong thing. Check first, then use the job's own configure line:
+
+```bash
+uname -m                                   # must be x86_64
+sysctl -n sysctl.proc_translated           # must be 0 (or absent) -- 1 means Rosetta
+cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_OSX_ARCHITECTURES=x86_64 -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13 \
+      -DANAMORPH_BUILD_STANDALONE=OFF -DANAMORPH_BUILD_NUMBER=0
+cmake --build build --config Release
+lipo -archs build/Anamorph_artefacts/Release/VST3/Anamorph.vst3/Contents/MacOS/Anamorph  # x86_64
+scripts/run-tests.sh                       # unprefixed: the binaries are native here
+```
 
 The `linux-clang` and `sanitizers` jobs use their own build trees so they never collide with the one
 above — `build-clang`, `build-san`, `build-vg`. All are covered by `.gitignore`'s `build*/`.
