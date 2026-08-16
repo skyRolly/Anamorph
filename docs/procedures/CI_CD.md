@@ -284,6 +284,25 @@ is **5m48s → 2m36s (−55%)** at **129 hits / 5 misses**. Both were measured w
 *deliberately changed between the two runs*, so they describe the CI case rather than a favourable
 one.
 
+**Measured in CI, not only locally.** Baseline run `31952680908` (before this landed) against warm run
+`31959972853`, both the full matrix, all jobs green:
+
+| | baseline | warm | build step: baseline → warm |
+|---|---|---|---|
+| **run wall clock** | **29m51s** | **17m13s** (−42%) | |
+| `macos` (critical path) | 29m44s | 17m09s | 16m40s → **3m09s** |
+| `macos-intel` | 21m26s | 13m12s | 10m21s → 3m04s |
+| `sanitizers` | 15m07s | 6m38s | 12m14s → 3m31s (two builds) |
+| `linux` | 10m57s | 6m21s | 8m04s → 3m34s |
+| `linux-clang` | 9m38s | 4m13s | 7m58s → 2m29s |
+| `windows` (uncached) | 12m49s | 10m02s | runner variance only |
+
+Restoring a cache costs 2–4s and saving one 2–4s, against ~104 MB per lineage — negligible against
+the minutes recovered. The **shape of the pipeline has inverted**: `macos` is still the critical
+path, but its cost is now the four pluginval passes (12m54s of its 17m09s), not compilation
+(3m09s). Further wall-clock reduction has to come out of validation, which is not a trade this
+project should make lightly.
+
 **Why it cannot serve a wrong object.** ccache's own hash is the correctness boundary, not the cache
 key: it hashes the preprocessed source, the complete command line (every `-D`, `-I`, `-f` and
 `-arch`) and — via `CCACHE_COMPILERCHECK=content` — the bytes of the compiler binary. A GitHub cache

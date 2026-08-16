@@ -69,6 +69,19 @@ than asserted: that job's real build and real gate, run cold and then warm, prod
 lines each, `diff`-identical**, and the same verdict (*no new first-party warnings, 14 accepted
 sites in 7 baseline entries*).
 
+Then confirmed in CI rather than left as a local claim. Baseline run `31952680908` against warm run
+`31959972853`, full matrix, all nine jobs green in both: **run wall clock 29m51s → 17m13s (−42%)**.
+Per job, build step first: `macos` 16m40s → **3m09s** (job 29m44s → 17m09s), `macos-intel` 10m21s →
+3m04s (21m26s → 13m12s), `sanitizers` 12m14s → 3m31s across its two builds (15m07s → 6m38s), `linux`
+8m04s → 3m34s (10m57s → 6m21s), `linux-clang` 7m58s → 2m29s (9m38s → 4m13s). Restoring a cache costs
+2–4s and saving one 2–4s against ~104 MB per lineage. The intervening cold run (`31958514768`, the
+push that landed this) came in at 26m11s with no hits available, confirming the caching machinery
+adds no measurable cost when it cannot help.
+
+The pipeline's shape is now inverted: `macos` remains the critical path, but 12m54s of its 17m09s is
+the four pluginval passes and only 3m09s is compilation. Any further wall-clock reduction would have
+to be taken out of validation, which is why this round stops here.
+
 Safety is structural rather than promised: ccache's own hash — preprocessed source, full command
 line, and the compiler binary's *content* (`CCACHE_COMPILERCHECK=content`) — is the correctness
 boundary, so a GitHub cache key can only ever cost a hit and never manufacture a wrong one. That is
