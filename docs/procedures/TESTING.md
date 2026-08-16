@@ -181,8 +181,18 @@ pluginval exit fails the job on every platform. Linux/macOS use `run-pluginval.s
 `run-pluginval.ps1`. macOS additionally runs the whole gate a second time for the **AU**, and runs
 the self-tests a second time for the **x86_64 slice under Rosetta 2**.
 
-Four further jobs run beside them, none in a `needs:` chain in either direction, so a finding in one
-never skips a binary that is otherwise fine:
+A fourth build job, **`macos-intel`** (`macos-15-intel`), runs the same self-tests and the same
+full gate — VST3 and AU, both modes ×3 — against a thin `x86_64` build on **native Intel
+hardware**, and it is blocking too. It exists for the difference between *an x86_64 binary running
+under Rosetta* and *an x86_64 binary running on an Intel CPU*: Rosetta translates and then executes
+on arm64, so the DSP invariants that depend on the hardware denormal-flush bits are being checked
+against the wrong register file. It packages and uploads nothing — the shipped macOS artifact is
+still the universal bundle from the `macos` job. Its first step **fails** the job if `uname -m` is
+not `x86_64` or `sysctl.proc_translated` is not `0`, so it can never report a green Intel result
+from somewhere that is not Intel.
+
+Four further jobs run beside the build jobs, none in a `needs:` chain in either direction, so a
+finding in one never skips a binary that is otherwise fine:
 
 | Job | Run it locally as |
 |---|---|

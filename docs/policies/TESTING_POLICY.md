@@ -10,7 +10,7 @@ Repository Governance Policy. Test acceptance levels and the release gate.
 | **1b** | Dynamic analysis | ASan + UBSan over both suites, then valgrind memcheck over both suites from an unsanitized build; `MALLOC_PERTURB_=1` on the per-push Linux self-tests (glibc fills fresh heap with `0xFE`, freed heap with `0x01` — the value is complemented for allocations, so it is **not** the fill byte) | `sanitizers` job in `.github/workflows/build.yml` |
 | **2** | Unit / behaviour | Deterministic DSP assertions + state/parameter compatibility (schema shape, registry snapshot, raw-exact round-trip, legacy migrations, corrupt-state robustness, preset round-trip) | `tests/dsp_tests.cpp` (33 DSP tests + 1 A/B clamp guard) + `tests/state_tests.cpp` (12 state-compatibility tests, `AnamorphStateTests`) |
 | **3** | DSP validation | MS round-trip exact; no NaN/Inf/denormals across the algorithm × OS × feature matrix; latency==actual; bypass null; click-free transitions | `tests/dsp_tests.cpp` |
-| **4** | pluginval | **VST3 conformance on all three platforms, AU conformance on macOS**; editor open/close under `xvfb` | `scripts/run-pluginval.sh <strictness> <mode> [vst3\|au]` |
+| **4** | pluginval | **VST3 conformance on all three platforms, AU conformance on macOS** — and on macOS both formats are gated twice, once on Apple Silicon and once on **native Intel**; editor open/close under `xvfb` | `scripts/run-pluginval.sh <strictness> <mode> [vst3\|au]` |
 | **5** | Manual validation | Audio sound quality + GUI/OpenGL visual appearance (cannot be judged headlessly) | Load `.vst3` in a DAW |
 
 ## Hard release gate
@@ -20,11 +20,19 @@ Repository Governance Policy. Test acceptance levels and the release gate.
   suite (`AnamorphStateTests` — both binaries are required; a missing one fails the gate, and an
   *ambiguous* one does too: exactly one match is required per binary, so a multi-config or stale
   build tree cannot let the gate report on a different configuration than the one just built).
-  On macOS the suites run **twice** — once natively (arm64) and once for the **x86_64 slice under
-  Rosetta 2**, because the product ships a universal binary and the runner is Apple Silicon.
+  On macOS the suites run **three times**, and the three are not interchangeable: natively on
+  **arm64**; for the shipped universal binary's **x86_64 slice under Rosetta 2** (translated, still
+  executing on arm64 hardware); and on a **native Intel runner**, where a thin x86_64 build is
+  executed by an actual Intel CPU. The product ships a universal binary and the packaging runner is
+  Apple Silicon, so without the third the Intel half of the user base would be gated only by a
+  translation layer — and the no-denormal invariant in particular depends on the hardware flush bits
+  (MXCSR on x86_64, FPCR on arm64), not on the source.
 - **pluginval must pass in BOTH modes on ALL THREE platforms** (Linux, Windows, macOS) and, on
   macOS, **for BOTH formats** (VST3 **and** AU — the AU is the only format Logic and GarageBand
-  load, and it exists on exactly one platform). Each mode runs as **3 consecutive passes**:
+  load, and it exists on exactly one platform) **on both macOS execution environments** (the
+  Apple Silicon job and the native Intel job — same strictness, same two modes, same three passes
+  in each; an architecture is not gated by a job that only compiles for it). Each mode runs as
+  **3 consecutive passes**:
   **deterministic** (`run-pluginval.sh <n> deterministic`) **and** **randomise**
   (`run-pluginval.sh <n> randomise` — `--randomise`). The randomise mode exercises state
   restoration under randomised test order that a fixed-seed run can miss; the deterministic mode

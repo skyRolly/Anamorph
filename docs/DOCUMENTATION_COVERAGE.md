@@ -7,7 +7,8 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
-**raw-string lexing fix** (first below), then the **withdrawn debuglink claim** before it, then the
+**native Intel macOS job** (first below), then the
+**raw-string lexing fix** before it, then the **withdrawn debuglink claim** before it, then the
 **unterminated block-comment invariant**
 before it, then the **unterminated-literal invariant +
 citation scope wording** before it, then the **`_deps` scan scope + visible FTZ relaxation**, then
@@ -27,6 +28,68 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**Native Intel macOS CI (0.9.4, no version bump). One new job, no source change, no artifact
+change. `.github/workflows/build.yml` + six documents.**
+
+Migrated from the sibling product Anabasis after a fresh read of its current `main`
+(`d92cf21`, 2026-08-16) rather than of the copy this repository was seeded from — its `macos-intel`
+job was the only CI capability there that this repository did not already have in some form. The
+gap it closes is one distinction: **an x86_64 binary running under Rosetta** is not **an x86_64
+binary running on Intel silicon**. The `macos` job builds universal on an Apple Silicon runner and
+executes the shipped x86_64 slice under Rosetta 2, which translates the instruction stream and runs
+the result on arm64 hardware; `macos-intel` (`macos-15-intel`) builds thin `x86_64` and executes it
+on a real Intel CPU. Both are blocking and neither replaces the other — the first validates the
+*shipped bytes* under translation, the second validates *Intel execution* of a separately compiled
+build.
+
+Four defect classes were previously ungated anywhere: Intel code generation at `-O3 + LTO`; the
+no-denormal DSP invariant, which holds only because `ScopedNoDenormals` flushes **in hardware**
+(MXCSR FTZ/DAZ on x86_64, FPCR FZ on arm64) and was therefore never checked against the register
+the shipped Intel slice sets; the Intel macOS AudioUnit/VST3 runtime; and a second AppleClang on
+the macOS side. The job runs both self-test suites and the **full** pluginval gate — VST3 and AU,
+deterministic ×3 **and** randomise ×3, at `ANAMORPH_PLUGINVAL_STRICTNESS` — which is where this
+implementation deliberately departs from the sibling's (that one runs deterministic only): a fourth
+platform running half the gate would falsify this workflow's own stated uniformity, and a fresh
+randomise seed on Intel-generated code reaches an (architecture × value) space no other job does.
+It packages, signs and uploads nothing, so the shipped macOS artifact is unchanged.
+
+Two assertions carry the claim rather than the runner label carrying it: the first step **fails**
+(not warns) unless `uname -m` is `x86_64` **and** `sysctl.proc_translated` is `0` — both wrong
+answers caught, since a translated shell on an arm64 runner reports `x86_64` to `uname` — and a
+second asserts `lipo -archs` is exactly `x86_64` on both built bundles, asserted rather than echoed
+for the same reason the packaging step stopped echoing it. `macos-15-intel` is the one **pinned**
+runner label in the workflow: `macos-latest` resolves to Apple Silicon and can never mean Intel, so
+there is no float to follow, and the runtime assertion is what makes the pin safe rather than
+brittle. `ANAMORPH_BUILD_STANDALONE=OFF` (the `codeql.yml` / `msvc.yml` idiom) keeps the build down
+for no coverage loss.
+
+Nothing existing was weakened, and the change is a pure **append** to `build.yml` (new lines
+1627-1889, no existing line moved), so every `build.yml:NNN` anchor in `RELEASE_POLICY.md`,
+`KNOWN_ISSUES.md` and `COMPATIBILITY_MATRIX.md` still resolves. `merge-check`, the same-repo PR
+guard, the `ANAMORPH_CLANG_VERSION: 18` pin, the warning baseline, the concurrency tag exemption
+and the `workflow_call` contract are untouched; the new job carries the identical same-repo PR
+guard and has **no `needs:`**, so it cannot participate in the "green run that built nothing"
+failure mode. Verified by evaluating every job's `if:` from the parsed YAML across five event
+shapes (same-repo PR → `merge-check` only; fork PR, branch push, release `workflow_call`,
+rehearsal → full matrix incl. `macos-intel`, `merge-check` skipped). One consequence stated rather
+than discovered: `release.yml` calls this workflow whole, so the Intel gate now blocks a release
+too — correct for a product whose `10.13` deployment target exists to claim Intel support.
+
+Documents synced: `procedures/CI_CD.md` (build-matrix row + intro, the macOS narrative, pipeline
+steps 2 and 4, §"Validation is uniform", §"Known coverage limits" — the "no native Intel macOS
+runner" bullet **replaced** with the narrower limit that actually remains, and §"Reproducing CI
+locally"), `policies/TESTING_POLICY.md` (Level 4 row; the hard-gate "suites run twice" → three
+times, with why the three are not interchangeable; the pluginval bullet), `procedures/TESTING.md`
+(§CI integration), `architecture/COMPATIBILITY_MATRIX.md` (a new platform row, and the AU row),
+`REPOSITORY_MAP.md` (the `build.yml` row) and `HANDOVER.md` (Test Status). No `CHANGELOG` entry:
+`CHANGELOG_POLICY` rule 3 admits user-visible changes, and this ships no product change.
+
+**The residual limit, stated here as well as in CI_CD.md:** neither macOS job runs *the shipped
+x86_64 slice on an Intel CPU*. The Rosetta step runs the shipped slice but not on Intel; this job
+runs on Intel but not the shipped slice. What is left is a toolchain gap (the two builds come from
+different images and AppleClang majors), not an ISA gap, and closing it means carrying the
+universal artifact to the Intel runner and revalidating there.
 
 **The stripper did not know what a raw string is (0.9.4, no version bump). One branch, one helper,
 26 cases. `scripts/check-portability.py` only.**
