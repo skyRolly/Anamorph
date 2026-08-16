@@ -173,6 +173,66 @@ env:
 #     this guard. Unlike a `needs:`-gated arrangement the failure mode is a
 #     MISSING check rather than a green run that built nothing -- no job here
 #     gates on another job's output.
+#
+# ---------------------------------------------------------------------------
+# THE COMPILER CACHE, carried by every job below that uses the Ninja generator.
+#
+# MEASURED, not assumed. On the Linux Release build (4 cores, the runner's core
+# count) `.ninja_log` splits a cold build of 7m41s into 1409 CPU-seconds of
+# compilation (75%) and 468 CPU-seconds of LTO link (25%), and the compilation
+# is almost all JUCE: 9k lines of first-party source against a framework that
+# every one of the three JUCE-linking targets compiles separately. JUCE is
+# pin-locked to an immutable commit (CMakeLists.txt:49-55, ADR-0022/0026), so
+# that 75% is byte-identical from run to run and recompiling it every push is
+# the single largest piece of avoidable work in this pipeline.
+#
+# ccache, not sccache: sccache's advantage is a shared/distributed object store,
+# which needs a bucket and a credential this repository does not have and should
+# not grow for a build this size; against GitHub's cache both are local-disk
+# caches and ccache is the one already packaged for every image here.
+#
+# WHY THIS IS SAFE, stated plainly because "cache" and "release gate" in one
+# sentence deserves it: ccache's own hash is the correctness boundary, not the
+# cache key below. It hashes the preprocessed source, the full command line
+# (every -D, -I, -f and -arch), and -- via compiler_check=content -- the bytes
+# of the compiler binary itself. A GitHub cache key can therefore only ever
+# cost a HIT; it cannot manufacture a wrong one. That is why the key here is
+# deliberately COARSE and does not hash CMakeLists.txt: a key that changes on
+# every CMake edit would throw the cache away for no correctness gain that
+# ccache is not already providing.
+#
+# Two properties of this repository make it work, and both are load-bearing:
+#   * The build directory name is FIXED per job (`build`, `build-clang`,
+#     `build-san`, `build-vg`). JUCE is fetched by FetchContent INTO the build
+#     directory, so its path appears in the -I flags of every compile; a build
+#     directory that changed name between runs would miss 100% of the time.
+#     This was measured the hard way -- the same tree built at two different
+#     directory names shares nothing.
+#   * No definition on the command line varies per run. Until this change
+#     ANAMORPH_BUILD_NUMBER did: it is ${{ github.run_number }}, it was a
+#     target-wide definition, and the two targets carrying it are 84.4% of
+#     compile time. Every push therefore missed on 84.4% of the build because an
+#     About-box string had incremented. It is now attached to the one
+#     translation unit that reads it (CMakeLists.txt, set_source_files_properties
+#     next to the version block), which is what makes this optimization worth
+#     anything at all.
+#
+# Warnings survive a cache hit -- ccache replays the compiler's stderr verbatim,
+# caret lines and [-Wflag] included. That is not incidental here: `linux-clang`
+# gates on the diagnostic text of its build, and a cache that swallowed warnings
+# would turn that gate green by deleting its input. Verified against the pinned
+# Clang before this was enabled.
+#
+# NOT on `windows`: that job uses the multi-config Visual Studio generator, and
+# ccache's MSVC support requires /Z7-style embedded debug info, while this
+# project deliberately compiles Release with /Zi so the linker emits the PDB
+# that ships as the crash-symbolication artifact (CMakeLists.txt, MSVC block).
+# Trading that artifact for build time is not a trade this pipeline should make,
+# and Windows is not the critical path (12m49s against macOS's 29m44s).
+#
+# Each cached job zeroes the stats at configure time and prints them after the
+# build, so the hit rate is visible per run rather than inferred. A cold cache
+# is not a failure -- it is what the first run on a new lineage looks like.
 # ---------------------------------------------------------------------------
 
 jobs:
@@ -202,9 +262,14 @@ jobs:
   # -------------------------------------------------------------------------
   merge-check:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     if: >-
       github.event_name == 'pull_request' &&
       github.event.pull_request.head.repo.full_name == github.repository
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 500M
+      CCACHE_COMPILERCHECK: content
     steps:
       - uses: actions/checkout@v7
 
@@ -212,12 +277,36 @@ jobs:
         run: |
           chmod +x scripts/*.sh
           ./scripts/setup-linux.sh
+          sudo apt-get install -y ccache
+          ccache --version
+
+      # SHARES A CACHE LINEAGE WITH `linux` -- same compiler, same Release
+      # configuration, same `build` directory name, same targets. The two jobs
+      # never run in the same event (this one is same-repo-PR-only, that one is
+      # everything else), so on a PR this restores the cache the last push to
+      # main wrote. That is the whole reason this job is worth caching: it is
+      # the ONLY build on the same-repo PR path, so its build step is that
+      # path's entire critical path.
+      - name: Restore the compiler cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-ubuntu-gcc-release-${{ github.run_id }}
+          restore-keys: ccache-ubuntu-gcc-release-
 
       - name: Configure
-        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DANAMORPH_BUILD_NUMBER=${{ github.run_number }}
+        run: |
+          ccache --zero-stats
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DANAMORPH_BUILD_NUMBER=${{ github.run_number }}
 
       - name: Build (VST3 + Standalone + tests)
         run: cmake --build build --config Release
+
+      - name: Compiler cache statistics
+        if: ${{ !cancelled() }}
+        run: ccache --show-stats --verbose
 
       - name: DSP + state self-tests
         env:
@@ -240,6 +329,7 @@ jobs:
   # -------------------------------------------------------------------------
   docs:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: >-
       github.event_name != 'pull_request' ||
       github.event.pull_request.head.repo.full_name != github.repository
@@ -272,6 +362,7 @@ jobs:
   # -------------------------------------------------------------------------
   source-lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: >-
       github.event_name != 'pull_request' ||
       github.event.pull_request.head.repo.full_name != github.repository
@@ -368,9 +459,14 @@ jobs:
 
   linux:
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     if: >-
       github.event_name != 'pull_request' ||
       github.event.pull_request.head.repo.full_name != github.repository
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 500M
+      CCACHE_COMPILERCHECK: content
     steps:
       - uses: actions/checkout@v7
 
@@ -378,13 +474,35 @@ jobs:
         run: |
           chmod +x scripts/*.sh
           ./scripts/setup-linux.sh
+          sudo apt-get install -y ccache
+          ccache --version
+
+      # Shared lineage with `merge-check` -- see that job. This is the writer of
+      # the two: it runs on every push, so the cache a PR restores is the one
+      # the last push to the base branch left behind.
+      - name: Restore the compiler cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-ubuntu-gcc-release-${{ github.run_id }}
+          restore-keys: ccache-ubuntu-gcc-release-
 
       - name: Configure
-        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DANAMORPH_BUILD_NUMBER=${{ github.run_number }}
+        run: |
+          ccache --zero-stats
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DANAMORPH_BUILD_NUMBER=${{ github.run_number }}
 
       - name: Build (VST3 + Standalone + tests)
         id: build
         run: cmake --build build --config Release
+
+      # Cached objects are real .o files in the build tree, so `objcopy
+      # --only-keep-debug` below reads exactly what it always read.
+      - name: Compiler cache statistics
+        if: ${{ !cancelled() }}
+        run: ccache --show-stats --verbose
 
       # RH-PR-2 (ADR-0021): capture split debug info, then strip the shipped
       # binaries. Runs BEFORE pluginval so the release gate validates the
@@ -632,9 +750,14 @@ jobs:
   # -------------------------------------------------------------------------
   linux-clang:
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     if: >-
       github.event_name != 'pull_request' ||
       github.event.pull_request.head.repo.full_name != github.repository
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 500M
+      CCACHE_COMPILERCHECK: content
     steps:
       - uses: actions/checkout@v7
 
@@ -649,16 +772,35 @@ jobs:
         run: |
           chmod +x scripts/*.sh
           ./scripts/setup-linux.sh
-          sudo apt-get install -y \
+          sudo apt-get install -y ccache \
             "clang-${ANAMORPH_CLANG_VERSION}" "lld-${ANAMORPH_CLANG_VERSION}"
           "clang-${ANAMORPH_CLANG_VERSION}" --version
+          ccache --version
+
+      # Its OWN lineage, keyed on the pinned Clang major: the objects here are
+      # produced by a different compiler and a different build directory from
+      # the GCC jobs, so nothing would hit across them and mixing the two
+      # lineages would only make each evict the other. ${ANAMORPH_CLANG_VERSION}
+      # is in the key so raising the pin starts a clean lineage rather than
+      # paying a full miss on an inherited one -- ccache would reject those
+      # entries anyway (compiler_check=content), this just stops us shipping
+      # them back and forth.
+      - name: Restore the compiler cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-ubuntu-clang${{ env.ANAMORPH_CLANG_VERSION }}-${{ github.run_id }}
+          restore-keys: ccache-ubuntu-clang${{ env.ANAMORPH_CLANG_VERSION }}-
 
       - name: Configure (Clang)
         run: >
+          ccache --zero-stats &&
           cmake -B build-clang -G Ninja
           -DCMAKE_BUILD_TYPE=Release
           -DCMAKE_C_COMPILER=clang-${{ env.ANAMORPH_CLANG_VERSION }}
           -DCMAKE_CXX_COMPILER=clang++-${{ env.ANAMORPH_CLANG_VERSION }}
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           -DANAMORPH_BUILD_STANDALONE=OFF
           -DANAMORPH_BUILD_NUMBER=${{ github.run_number }}
 
@@ -712,6 +854,17 @@ jobs:
             --build-dir "${GITHUB_WORKSPACE}/build-clang" \
             --clang-major "${ANAMORPH_CLANG_VERSION}"
 
+      # THE HIT RATE IS EVIDENCE HERE, not trivia. This job's gate reads the
+      # diagnostics its own build printed, and a cache hit reprints them from
+      # the cached stderr rather than recompiling. If a future ccache or flag
+      # change ever silenced replayed warnings, this job would go green by
+      # having lost its input -- so the run that first cached these objects and
+      # the runs that replay them must agree on the baseline, and both are
+      # visible in the log.
+      - name: Compiler cache statistics
+        if: ${{ !cancelled() }}
+        run: ccache --show-stats --verbose
+
       # Run the suites the Clang build produced, not just compile them: a
       # miscompile is the thing a second toolchain is most useful for finding,
       # and the binaries are already sitting there.
@@ -758,9 +911,18 @@ jobs:
   # -------------------------------------------------------------------------
   sanitizers:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     if: >-
       github.event_name != 'pull_request' ||
       github.event.pull_request.head.repo.full_name != github.repository
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      # Larger than the single-build jobs: this job compiles the two console
+      # targets TWICE -- once instrumented, once clean for valgrind -- and the
+      # two sets of objects share no cache entries (different flags, different
+      # build directory), so one lineage here holds two builds' worth.
+      CCACHE_MAXSIZE: 800M
+      CCACHE_COMPILERCHECK: content
     steps:
       - uses: actions/checkout@v7
 
@@ -778,14 +940,27 @@ jobs:
         run: |
           chmod +x scripts/*.sh
           ./scripts/setup-linux.sh
-          sudo apt-get install -y valgrind \
+          sudo apt-get install -y valgrind ccache \
             "clang-${ANAMORPH_CLANG_VERSION}" \
             "lld-${ANAMORPH_CLANG_VERSION}" \
             "libclang-rt-${ANAMORPH_CLANG_VERSION}-dev"
           "clang-${ANAMORPH_CLANG_VERSION}" --version
+          ccache --version
+
+      # Its own lineage: the sanitized objects carry -fsanitize=address,undefined
+      # in the command line ccache hashes, so they can never be confused with
+      # `linux-clang`'s -- but keeping them in one lineage would have the two
+      # jobs evicting each other's entries for no benefit.
+      - name: Restore the compiler cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-ubuntu-sanitizers-${{ github.run_id }}
+          restore-keys: ccache-ubuntu-sanitizers-
 
       - name: Configure (Clang, ASan + UBSan)
         run: >
+          ccache --zero-stats &&
           cmake -B build-san -G Ninja
           -DCMAKE_BUILD_TYPE=RelWithDebInfo
           -DCMAKE_C_COMPILER=clang-${{ env.ANAMORPH_CLANG_VERSION }}
@@ -793,6 +968,8 @@ jobs:
           -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
           -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
           -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           -DANAMORPH_BUILD_STANDALONE=OFF
           -DANAMORPH_BUILD_NUMBER=${{ github.run_number }}
 
@@ -819,8 +996,15 @@ jobs:
       # valgrind's default.
       - name: Configure + build both suites (unsanitized, for valgrind)
         run: |
-          cmake -B build-vg -G Ninja -DCMAKE_BUILD_TYPE=Release -DANAMORPH_BUILD_STANDALONE=OFF
+          cmake -B build-vg -G Ninja -DCMAKE_BUILD_TYPE=Release -DANAMORPH_BUILD_STANDALONE=OFF \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           cmake --build build-vg --target AnamorphTests AnamorphStateTests
+
+      # Reported once, after BOTH builds -- the two share a lineage and the
+      # useful number is what the job as a whole avoided recompiling.
+      - name: Compiler cache statistics
+        if: ${{ !cancelled() }}
+        run: ccache --show-stats --verbose
 
       # ANAMORPH_TESTS_NO_FTZ=1 relaxes ONE assertion in the DSP suite, and only
       # under this tool. `juce::ScopedNoDenormals` sets the CPU's FTZ/DAZ bits so
@@ -844,6 +1028,9 @@ jobs:
 
   windows:
     runs-on: windows-latest
+    # No compiler cache here -- see the compiler-cache block above the jobs for
+    # why (/Zi is required for the PDB artifact and ccache's MSVC mode is not).
+    timeout-minutes: 45
     if: >-
       github.event_name != 'pull_request' ||
       github.event.pull_request.head.repo.full_name != github.repository
@@ -1220,26 +1407,62 @@ jobs:
     # brings. The x86_64 slice is CROSS-compiled here (the runner is arm64) and
     # `lipo -archs` in the packaging step verifies both slices are present.
     runs-on: macos-latest
+    timeout-minutes: 60
     if: >-
       github.event_name != 'pull_request' ||
       github.event.pull_request.head.repo.full_name != github.repository
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      # The largest of the lineages, and for one reason: these objects are FAT.
+      # Every compile emits both an arm64 and an x86_64 slice, and this is the
+      # only job building all three plugin formats plus both test suites.
+      CCACHE_MAXSIZE: 1G
+      CCACHE_COMPILERCHECK: content
     steps:
       - uses: actions/checkout@v7
 
       - name: Install build tools
-        run: brew install ninja || true
+        run: |
+          brew install ninja ccache || true
+          ccache --version
+
+      # THE CRITICAL PATH. At 29m44s measured this job is the longest in the
+      # workflow and therefore the run's wall-clock, and its build step was
+      # 16m40s of that -- more than the four pluginval passes put together.
+      #
+      # ccache caches multi-arch compilations correctly: the full -arch LIST is
+      # part of the hash, so a universal object cannot be served to a thin build
+      # or the reverse. Verified before enabling this, and the job's existing
+      # `lipo` assertion on both slices is the backstop that would catch it
+      # regardless.
+      - name: Restore the compiler cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-macos-universal-${{ github.run_id }}
+          restore-keys: ccache-macos-universal-
 
       - name: Configure (universal arm64 + x86_64)
         run: >
+          ccache --zero-stats &&
           cmake -B build -G Ninja
           -DCMAKE_BUILD_TYPE=Release
           -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
           -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           -DANAMORPH_BUILD_NUMBER=${{ github.run_number }}
 
       - name: Build (VST3 + AU + Standalone + tests)
         id: build
         run: cmake --build build --config Release
+
+      # Cached objects are real .o files at the paths the linker recorded, so
+      # the packaging step's `dsymutil` walk is unaffected -- it reads the same
+      # object files it always read, whoever compiled them.
+      - name: Compiler cache statistics
+        if: ${{ !cancelled() }}
+        run: ccache --show-stats --verbose
 
       - name: DSP + state self-tests
         id: tests
@@ -1709,6 +1932,18 @@ jobs:
     # first step below fails it loudly rather than reporting a green tick about
     # the wrong architecture.
     runs-on: macos-15-intel
+    # Bounded like every other job here. It matters more on this one than on
+    # most: `scripts/run-pluginval.sh` passes --timeout-ms 600000, so twelve
+    # pluginval passes have a theoretical ceiling of two hours before GitHub's
+    # 6-hour default would ever apply -- and release.yml reuses this workflow
+    # whole, so a wedged pass would hold a release for that long. Measured
+    # runtime is 21m26s; 60 leaves room for a cold cache and a slow runner
+    # while still failing in the same hour.
+    timeout-minutes: 60
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 500M
+      CCACHE_COMPILERCHECK: content
     # The SAME same-repo PR guard every other build job carries -- see the block
     # above the `jobs:` key. Without it this job would run twice per same-repo PR
     # commit (once for the push, once for the PR event), which is the duplicate
@@ -1752,7 +1987,19 @@ jobs:
           fi
 
       - name: Install build tools
-        run: brew install ninja || true
+        run: |
+          brew install ninja ccache || true
+          ccache --version
+
+      # Its own lineage, and it must be: these objects are thin x86_64 emitted
+      # by a different compiler on a different image from `macos`. Sharing that
+      # job's lineage would transfer a cache in which nothing here can hit.
+      - name: Restore the compiler cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-macos-intel-${{ github.run_id }}
+          restore-keys: ccache-macos-intel-
 
       # THIN x86_64, not universal. The universal binary is the shipping
       # configuration and `macos` above already builds, asserts and ships it;
@@ -1764,15 +2011,22 @@ jobs:
       # slice is the machine that compiled it.
       - name: Configure (native x86_64 only)
         run: >
+          ccache --zero-stats &&
           cmake -B build -G Ninja
           -DCMAKE_BUILD_TYPE=Release
           -DCMAKE_OSX_ARCHITECTURES=x86_64
           -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           -DANAMORPH_BUILD_STANDALONE=OFF
           -DANAMORPH_BUILD_NUMBER=${{ github.run_number }}
 
       - name: Build (VST3 + AU + tests)
         run: cmake --build build --config Release
+
+      - name: Compiler cache statistics
+        if: ${{ !cancelled() }}
+        run: ccache --show-stats --verbose
 
       # ASSERT the architecture of what was just built -- do not assume it from
       # the configure line. This is the same lesson the packaging step in `macos`

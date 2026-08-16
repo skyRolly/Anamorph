@@ -180,7 +180,8 @@ for `B = 0xFF`, and a fresh fill of `0xFF` needs `perturb_byte = 0`, which is gl
 "perturbation off" sentinel. All 255 selectable values were swept: 254 give a loud finite float, `255`
 gives zero, and none gives NaN, Inf or a denormal. NaN coverage is what the `sanitizers` job provides.
 
-All three runners use the **floating** `*-latest` label. macOS moved off the pinned `macos-14`
+The three **shipping** jobs use the **floating** `*-latest` label; `macos-intel` is the one pinned
+label in the workflow and is dealt with separately below. macOS moved off the pinned `macos-14`
 image on 2026-08-15: `actions/runner-images` marks macOS 14 **deprecated** (deprecation opened
 2026-07-06, October brownouts, **fully unsupported 2026-11-02**, after which a job carrying the
 label is terminated with an error), and `macos-latest` currently resolves to **macOS 26 Arm64**.
@@ -241,7 +242,8 @@ causes, ISA and toolchain, and the disambiguation is a one-word edit — re-run 
 `macos-26-intel`, and if it still fails the cause is the ISA. The runtime assertion is what makes
 the pin safe rather than brittle.
 
-The image carries the macOS toolchain, so this moved the macOS compiler with it: **AppleClang
+Back to `macos-latest`, and to the 2026-08-15 move described above: that image carries the macOS
+toolchain, so the move took the macOS compiler with it — **AppleClang
 15.0.0.15000309 (Xcode 15.4) → 21.0.0.21000101 (Xcode 26.6)**, image `macos-26-arm64`
 `20260728.0273.1`. `CMAKE_OSX_DEPLOYMENT_TARGET=10.13` is still accepted and both slices still
 build. One measured consequence: AppleClang 21 raised
@@ -264,12 +266,89 @@ Validation is **uniform and blocking on every platform**: there is no `continue-
 pluginval exit fails the job everywhere (the old Windows/macOS `continue-on-error` masked real `exit 1`
 failures as green and has been removed). Evidence [Verified]: `.github/workflows/build.yml`.
 
+### The compiler cache
+
+Every job that uses the Ninja generator — `merge-check`, `linux`, `linux-clang`, `sanitizers`,
+`macos`, `macos-intel` — compiles through **ccache**, restored from and saved to the GitHub Actions
+cache (`actions/cache@v6`).
+
+**Why, measured rather than assumed.** `.ninja_log` splits a cold Linux Release build into
+**1409 CPU-seconds of compilation (75%) and 468 of LTO link (25%)**, and the compilation is
+overwhelmingly JUCE: ~9k lines of first-party source against a framework that each of the three
+JUCE-linking targets compiles separately. JUCE is pinned to an immutable commit
+(`CMakeLists.txt:49-55`, ADR-0022/ADR-0026), so that 75% is byte-identical from run to run.
+Measured on 4 cores — the runner's core count — the same build with a warm cache is **7m41s → 3m40s
+(−52%)**, at **137 direct hits / 6 misses**, and the residual is the LTO link, which no compiler
+cache touches. The `linux-clang` configuration, measured the same way against the pinned Clang 18,
+is **5m48s → 2m36s (−55%)** at **129 hits / 5 misses**. Both were measured with the build number
+*deliberately changed between the two runs*, so they describe the CI case rather than a favourable
+one.
+
+**Why it cannot serve a wrong object.** ccache's own hash is the correctness boundary, not the cache
+key: it hashes the preprocessed source, the complete command line (every `-D`, `-I`, `-f` and
+`-arch`) and — via `CCACHE_COMPILERCHECK=content` — the bytes of the compiler binary. A GitHub cache
+key can therefore only ever cost a *hit*; it cannot manufacture a wrong one. The keys are
+deliberately coarse for that reason and do **not** hash `CMakeLists.txt`: a key that changed on
+every CMake edit would discard the cache for no correctness gain ccache is not already providing.
+Multi-arch is included — the full `-arch` **list** is hashed, so a universal object cannot be served
+to a thin build or the reverse, and the `macos` job's existing `lipo` assertion on both slices is
+the backstop either way.
+
+**Warnings survive a hit.** ccache replays the compiler's stderr verbatim — caret lines and
+`[-Wflag]` included. That is load-bearing rather than incidental: `linux-clang` gates on the
+diagnostic text of its own build (see "The Clang warning baseline"), and a cache that swallowed
+warnings would turn that gate green by deleting its input. Verified against the pinned Clang 18
+before enabling, by running that job's real build and its real gate twice: cold and warm produce
+**54 warning lines each, `diff`-identical**, and the same verdict — *no new first-party warnings,
+14 accepted sites in 7 baseline entries* — with 129 of the 134 compilations served from cache on the
+warm run.
+
+**One repository property makes it work, and it had to be created.** `ANAMORPH_BUILD_NUMBER` is
+`${{ github.run_number }}` and therefore changes every run. It was a *target-wide* compile
+definition, and the two targets carrying it are **84.4% of compile time**
+(`AnamorphStateTests` 57.7% + `Anamorph` 26.7%) — so every push was guaranteed to miss on 84.4% of
+the build because an About-box string had incremented. It is now attached to the single translation
+unit that reads it (`CMakeLists.txt`, `set_source_files_properties` beside the version block;
+`src/PluginEditor.cpp` already carried the `#ifndef … "0"` fallback). Nothing else ever read it.
+A second property is inherited rather than created: each job's build directory name is fixed
+(`build`, `build-clang`, `build-san`, `build-vg`), which matters because FetchContent puts JUCE
+*inside* the build directory, so its path is in the `-I` flags of every compile — the same tree
+built at two different directory names shares nothing.
+
+**Cache lineages.** `linux` and `merge-check` share one (`ccache-ubuntu-gcc-release-`): same
+compiler, same configuration, same build directory name, and they never run in the same event, so a
+PR's `merge-check` restores what the last push to the base branch wrote. That is the whole reason
+`merge-check` is worth caching — it is the *only* build on the same-repo PR path and therefore that
+path's entire critical path. `linux-clang` keys on the pinned Clang major so raising the pin starts
+a clean lineage; `sanitizers`, `macos` and `macos-intel` each have their own.
+
+**Not on Windows.** ccache's MSVC support requires `/Z7`-style embedded debug info, and this project
+compiles Release with `/Zi` precisely so the linker emits the PDB that ships as the
+crash-symbolication artifact. Windows is also not the critical path (12m49s against macOS's 29m44s),
+so the trade is not worth making.
+
+Each cached job zeroes its statistics at configure time and prints them after the build, so the hit
+rate is visible per run rather than inferred. **A cold cache is not a failure** — it is what the
+first run on a new lineage looks like.
+
+### Job timeouts
+
+Every job carries an explicit `timeout-minutes` (10 for the two lint jobs, 30–60 for the build
+jobs). Without one a wedged job runs to **GitHub's 6-hour default** while holding its slot in the
+`concurrency` group, and because `release.yml` reuses this workflow whole, it would hold a release
+for that long too. The ceiling is real rather than theoretical: `scripts/run-pluginval.sh` passes
+`--timeout-ms 600000`, so `macos-intel`'s twelve pluginval passes have a two-hour worst case on
+their own. Each value is roughly double the measured runtime, which leaves room for a cold cache and
+a slow runner while still failing inside the hour.
+
 ## Pipeline (per job)
 
-1. **Checkout** (`actions/checkout@v7`).
+1. **Checkout** (`actions/checkout@v7`), then — on every Ninja job — **restore the compiler cache**
+   (`actions/cache@v6`; see "The compiler cache" below).
 2. **Configure** — `cmake -B build [-G Ninja] -DCMAKE_BUILD_TYPE=Release
+   -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
    -DANAMORPH_BUILD_NUMBER=${{ github.run_number }}` (the run number becomes the About-box build
-   number). Windows uses the default VS generator; macOS adds
+   number). The launcher flags are absent on Windows alone. Windows uses the default VS generator; macOS adds
    `-DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13`, and
    `macos-intel` the same deployment target with `-DCMAKE_OSX_ARCHITECTURES=x86_64` plus
    `-DANAMORPH_BUILD_STANDALONE=OFF` (that target recompiles the identical translation units and
@@ -317,8 +396,11 @@ failures as green and has been removed). Evidence [Verified]: `.github/workflows
    (`!cancelled() && steps.<producer>.outcome == 'success'`), so a deterministic failure **never
    skips** randomise — both modes report independently every run. The producer is named rather than
    using a bare `!cancelled()`, which is true after *any* upstream failure: on Linux it is `strip`,
-   on **macOS** it is `package`, and on Windows it is `build` — in each case the step that produces
-   the bytes being validated. Without it a compile error let the gates run against a tree with no
+   on **macOS** it is `package`, on Windows it is `build`, and on **`macos-intel`** it is `thin` for
+   the VST3 steps and `au_install` for the AU steps — in each case the step that produces the bytes
+   being validated. (`macos-intel` names two because its AU is validated from an installed copy
+   rather than from the build tree; `thin` carries no `if:` of its own, so naming it subsumes that
+   job's build the way `strip` does on Linux.) Without it a compile error let the gates run against a tree with no
    plug-in and the job's last error was a cascade rather than the cause.
    **A failing DSP/state self-test does NOT skip pluginval, and that is the decision, not a side
    effect.** The producer step is `strip`/`build`/`package`, none of which depends on `tests`, so a
@@ -614,6 +696,13 @@ scripts/run-tests.sh
 scripts/run-pluginval.sh 10 deterministic     # 10 = ANAMORPH_PLUGINVAL_STRICTNESS in build.yml
 scripts/run-pluginval.sh 10 randomise         # --randomise x3 (the state-restoration gate)
 ```
+
+The compiler cache is **not** part of that reproduction and `setup-linux.sh` does not install it:
+it is a CI-time optimization, and a local tree already gets incremental rebuilds from Ninja. To
+reproduce the CI build exactly, add what the workflow adds — `apt-get install -y ccache`, then
+`-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache` on the `cmake -B` line.
+Note that a cache built at one build-directory name will not be hit at another (JUCE lives inside
+the build directory, so its path is in every `-I`), which is why CI's directory names are fixed.
 
 `scripts/run-pluginval.sh` takes an optional third argument, the format: `vst3` (default) or `au`.
 `au` is macOS-only and **errors** on any other host rather than skipping silently; on macOS install

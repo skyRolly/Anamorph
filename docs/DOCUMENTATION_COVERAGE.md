@@ -7,7 +7,8 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
-**native Intel macOS job** (first below), then the
+**CI compiler cache + job timeouts** (first below), then the
+**native Intel macOS job** after it, then the
 **raw-string lexing fix** before it, then the **withdrawn debuglink claim** before it, then the
 **unterminated block-comment invariant**
 before it, then the **unterminated-literal invariant +
@@ -28,6 +29,82 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**CI compiler cache + job timeouts (0.9.4, no version bump). No new job, no test change, no
+artifact change, no product-behaviour change. `.github/workflows/build.yml` + `CMakeLists.txt`
++ three documents.**
+
+A CI *performance* round, measured before it was implemented. Baseline: run `31952680908` (push to
+`main`, 2026-08-16, the first run carrying `macos-intel`) took **29m51s** wall, and the critical
+path is **`macos` at 29m44s** — not `macos-intel` (21m26s), which despite a 5m04s queue delay still
+finished 3m17s earlier. Within `macos`, the **build step alone is 16m40s**, more than its four
+pluginval passes combined (11m25s). Every other build job has the same shape: build is 74–83% of
+`linux`, `linux-clang`, `windows` and `sanitizers`. Compilation, not validation, is this pipeline's
+cost.
+
+`.ninja_log` splits a cold Linux Release build into **1409 CPU-seconds of compilation (75%) and 468
+of LTO link (25%)**, and that compilation is overwhelmingly JUCE — ~9k lines of first-party source
+against a framework each of the three JUCE-linking targets compiles separately, pinned to an
+immutable commit and therefore byte-identical run to run. Recompiling it on every push was the
+largest avoidable cost in the workflow, so the six Ninja jobs now compile through **ccache**
+persisted in `actions/cache`.
+
+**The enabling change is in `CMakeLists.txt`, and without it the rest is nearly worthless.**
+`ANAMORPH_BUILD_NUMBER` is `${{ github.run_number }}` — the one definition whose value changes every
+run — and it was a *target-wide* compile definition. Measured per target from `.ninja_log`, the two
+targets carrying it are **84.4% of compile time** (`AnamorphStateTests` 57.7%, `Anamorph` 26.7%), so
+84.4% of every build was guaranteed to miss the cache because an About-box string had incremented.
+It is now attached with `set_source_files_properties` to the single translation unit that reads it;
+`src/PluginEditor.cpp` already carried an `#ifndef ANAMORPH_BUILD_NUMBER → "0"` fallback, both
+consumers still compile that file from this directory, and `grep` confirms nothing else ever read
+it. Verified from the generated `build.ninja`: the definition now appears on **2 of 111** C++
+objects, and on exactly the two expected ones.
+
+Measured on 4 cores (the runner's core count), same build directory name, **with the build number
+deliberately changed between the two runs** so the test is the CI case and not a favourable one:
+**7m41s → 3m40s (−52%)**, at **137 direct hits / 6 misses**; the `linux-clang` configuration against
+the pinned Clang 18 is **5m48s → 2m36s (−55%)** at **129 hits / 5 misses**. The residual is the LTO
+link, which no compiler cache touches. The warning-replay property was proven the same way rather
+than asserted: that job's real build and real gate, run cold and then warm, produce **54 warning
+lines each, `diff`-identical**, and the same verdict (*no new first-party warnings, 14 accepted
+sites in 7 baseline entries*).
+
+Safety is structural rather than promised: ccache's own hash — preprocessed source, full command
+line, and the compiler binary's *content* (`CCACHE_COMPILERCHECK=content`) — is the correctness
+boundary, so a GitHub cache key can only ever cost a hit and never manufacture a wrong one. That is
+why the keys are coarse and do not hash `CMakeLists.txt`. Two properties were verified rather than
+assumed before enabling: ccache hashes the full `-arch` **list**, so a universal object cannot be
+served to a thin build or the reverse (checked directly: differing `-arch` sets miss, identical sets
+hit — and the `macos` job's `lipo` assertion is the backstop either way); and a cache hit replays
+the compiler's stderr **verbatim**, caret lines and `[-Wflag]` included, which `linux-clang`'s
+warning gate depends on absolutely, since a cache that swallowed warnings would turn that gate green
+by deleting its input.
+
+Windows is deliberately excluded: ccache's MSVC mode requires `/Z7`-style embedded debug info while
+this project compiles Release with `/Zi` so the linker emits the shipped crash-symbolication PDB,
+and Windows is not the critical path (12m49s against 29m44s). Trading a release artifact for build
+time is not a trade this pipeline should make.
+
+Separately, **every job now carries `timeout-minutes`** (10 for the lint jobs, 30–60 for the build
+jobs, each roughly double its measured runtime). There were none. A wedged job otherwise runs to
+GitHub's 6-hour default while holding its `concurrency` slot, and since `release.yml` reuses this
+workflow whole it would hold a release for that long; `scripts/run-pluginval.sh` passes
+`--timeout-ms 600000`, so `macos-intel`'s twelve passes have a two-hour worst case on their own.
+This bounds a failure mode; it does not remove any check.
+
+Nothing about *what* is validated changed: same jobs, same suites, same pluginval modes, passes and
+strictness, same artifacts, same `if:` conditions, still no `needs:` edge anywhere. Documents synced:
+`docs/procedures/CI_CD.md` (new "The compiler cache" and "Job timeouts" subsections; pipeline steps
+1–2), `docs/REPOSITORY_MAP.md` (the `build.yml` row). No `CHANGELOG` entry — `CHANGELOG_POLICY`
+rule 3 admits user-visible changes and this ships no product change; the plugin binary's content is
+unaffected, since the build number still reaches the same translation unit with the same value.
+
+Two documentation inaccuracies introduced by the preceding round were corrected in the same pass,
+both minimal: `CI_CD.md`'s "All three runners use the floating `*-latest` label" (now four runners,
+one of them pinned), and pipeline step 6's producer list, which named `strip`/`package`/`build` but
+not `macos-intel`'s `thin` and `au_install`. A third observation — that the new job's paragraphs had
+been inserted between a later paragraph and its "the image" antecedent — was fixed by naming the
+antecedent rather than reordering the block.
 
 **Native Intel macOS CI (0.9.4, no version bump). One new job, no source change, no artifact
 change. `.github/workflows/build.yml` + six documents.**

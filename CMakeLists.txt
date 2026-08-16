@@ -251,9 +251,31 @@ target_include_directories(Anamorph PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 # plus a build/dev number synced with CI (pass -DANAMORPH_BUILD_NUMBER=${github.run_number}).
 set(ANAMORPH_BUILD_NUMBER "0" CACHE STRING "CI build / dev number shown in the About box")
 
+# The build number is attached to the ONE translation unit that reads it, not to
+# the targets. It is the only definition in this file whose value changes on
+# every build -- CI passes ${{ github.run_number }} -- and a target-wide
+# definition puts that changing value on the command line of every TU in the
+# target, including all of JUCE.
+#
+# That is what made compiler caching almost worthless here: measured on the
+# Linux Release build, the two targets carrying this definition are 84.4% of
+# total compile time (AnamorphStateTests 57.7% + Anamorph 26.7%), so 84.4% of
+# the work was guaranteed to miss the cache on every single run purely because
+# an About-box string had incremented. Scoped to PluginEditor.cpp the same runs
+# hit for everything else and recompile two objects.
+#
+# src/PluginEditor.cpp already carries an `#ifndef ANAMORPH_BUILD_NUMBER ->
+# "0"` fallback (:36-37), so this is not a new contract; it is the same
+# definition delivered to the same reader through a narrower door. Source-file
+# properties are directory-scoped, and BOTH consumers -- the shared-code target
+# and AnamorphStateTests -- compile this file from this directory, so both still
+# see the real number. Nothing else ever read it: `grep ANAMORPH_BUILD_NUMBER
+# src/` matches PluginEditor.cpp alone.
+set_source_files_properties(src/PluginEditor.cpp PROPERTIES
+    COMPILE_DEFINITIONS ANAMORPH_BUILD_NUMBER="${ANAMORPH_BUILD_NUMBER}")
+
 target_compile_definitions(Anamorph PUBLIC
     ANAMORPH_VERSION_STRING="${PROJECT_VERSION}"
-    ANAMORPH_BUILD_NUMBER="${ANAMORPH_BUILD_NUMBER}"
     JUCE_WEB_BROWSER=0          # no webview needed -> no hard webkit dependency at runtime
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0
@@ -319,7 +341,9 @@ if(ANAMORPH_BUILD_TESTS)
     target_include_directories(AnamorphStateTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
     target_compile_definitions(AnamorphStateTests PUBLIC
         ANAMORPH_VERSION_STRING="${PROJECT_VERSION}"
-        ANAMORPH_BUILD_NUMBER="${ANAMORPH_BUILD_NUMBER}"
+        # ANAMORPH_BUILD_NUMBER is attached to PluginEditor.cpp instead -- see
+        # the set_source_files_properties() call and its reasoning above. This
+        # target compiles ${ANAMORPH_PLUGIN_SOURCES}, so it still gets it there.
         ANAMORPH_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures"
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
