@@ -247,12 +247,13 @@ failures as green and has been removed). Evidence [Verified]: `.github/workflows
 5. **Symbol handling (RH-PR-2, ADR-0021)** — Linux extracts split debug info (`objcopy
    --only-keep-debug`), strips the shipped binaries (`strip --strip-unneeded`; `.gnu_debuglink`
    embedded) and asserts `GetPluginFactory` is still exported — ordered **before** pluginval so
-   the gate validates the stripped bytes. The debuglink now stores the **bare basename**, written by
-   running `objcopy` from inside the debug directory: `objcopy` stores the filename exactly as given
-   and a debugger resolves it relative to the *stripped binary's own* directory, so the previous
-   `--add-gnu-debuglink="dist/Anamorph-Linux-debug/…"` baked a CI-workspace-relative path into the
-   shipped `.so` — a path that exists on no user's machine, making the downloaded `-debug` artifact
-   unfindable and the debuglink decoration. macOS runs `dsymutil` → `strip -x` → ad-hoc codesign
+   the gate validates the stripped bytes. The debuglink stores the **bare basename**, and always did:
+   `objcopy` records only the basename of the `--add-gnu-debuglink` argument, so
+   `--add-gnu-debuglink="dist/Anamorph-Linux-debug/…"` and the current form — run from inside the
+   debug directory — produce a byte-identical `.gnu_debuglink` section. A debugger resolves that
+   name relative to the *stripped binary's own* directory, then `.debug/`, then the global debug
+   dir, so a user must place the downloaded `.debug` file next to its binary either way.
+   macOS runs `dsymutil` → `strip -x` → ad-hoc codesign
    (in that order — stripping after signing would invalidate the seal) inside the packaging
    step. Windows retains the Release linker PDBs (now generated via `/Zi` + `/DEBUG`) and
    removes them from the public bundle copy.

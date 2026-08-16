@@ -24,13 +24,6 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   first, because macOS resolves Audio Units through that registry and a never-installed `.component`
   can report zero plugin types however correct it is. This closes the coverage gap
   `docs/procedures/TESTING.md` recorded under "Gaps in the automated coverage". [Verified]
-- **The Linux `-debug` artifact can now actually be found by a debugger.** The shipped `.so` and
-  Standalone carried a `.gnu_debuglink` written as `dist/Anamorph-Linux-debug/<file>.debug` — a
-  CI-workspace-relative path that exists on no user's machine. `objcopy` stores that string exactly
-  as given and a debugger resolves it relative to the stripped binary's own directory, so
-  automatic symbol lookup could never succeed and the link was decoration. It now stores the bare
-  basename, which is the conventional lookup. Affects the shipped Linux binaries' `.gnu_debuglink`
-  section only — no code, no behaviour, no reported latency. [Verified]
 - **The "deterministic" half of the pluginval release gate was not deterministic.** Both validation
   scripts passed `--random-seed 0`, and pluginval reads 0 as *"generate a random seed"*
   (`Source/PluginTests.h`; `Source/CommandLine.cpp` forwards the flag only when it differs from that

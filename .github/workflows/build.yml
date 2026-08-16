@@ -413,15 +413,17 @@ jobs:
           objcopy --only-keep-debug "$APP" "$DBG/Anamorph.standalone.debug"
           strip --strip-unneeded "$SO"
           strip --strip-unneeded "$APP"
-          # objcopy stores the debuglink filename EXACTLY as given, and a debugger
-          # resolves it relative to the STRIPPED BINARY'S OWN directory (then
-          # .debug/, then the global debug dir). The previous form passed
-          # "$DBG/Anamorph.vst3.so.debug", which baked a CI-workspace-relative
-          # path into the shipped .so -- a path that exists on no user's machine,
-          # so the downloaded -debug artifact could never be found automatically
-          # and the debuglink was decoration. Run objcopy from inside $DBG and
-          # pass the bare basename, which is the conventional lookup; the binary
-          # paths are made absolute first because the working directory changes.
+          # objcopy stores only the BASENAME of the argument in .gnu_debuglink
+          # (bfd's bfd_fill_in_gnu_debuglink_section passes it through
+          # lbasename), and a debugger resolves that name relative to the
+          # STRIPPED BINARY'S OWN directory, then .debug/, then the global debug
+          # dir. Passing "$DBG/<file>.debug" therefore stores exactly the same
+          # string as the form below; both were measured to produce a
+          # byte-identical section. This form is written from inside $DBG so the
+          # stored name is the one spelled at the call site rather than one the
+          # reader has to know lbasename produces; it is NOT a behavioural
+          # difference. The binary paths are made absolute because the working
+          # directory changes.
           SO_ABS="$(readlink -f "$SO")"; APP_ABS="$(readlink -f "$APP")"
           ( cd "$DBG" && objcopy --add-gnu-debuglink=Anamorph.vst3.so.debug    "$SO_ABS" )
           ( cd "$DBG" && objcopy --add-gnu-debuglink=Anamorph.standalone.debug "$APP_ABS" )

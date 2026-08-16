@@ -7,7 +7,8 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
-**unterminated block-comment invariant** (first below), then the **unterminated-literal invariant +
+**withdrawn debuglink claim** (first below), then the **unterminated block-comment invariant**
+before it, then the **unterminated-literal invariant +
 citation scope wording** before it, then the **`_deps` scan scope + visible FTZ relaxation**, then
 the **line-splice diagnostic fix**, then the **portability-scanner false negative**
 before it, then the **post-merge citation gate fix**
@@ -25,6 +26,66 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**A `[Verified]` release note described a defect that never existed (0.9.4, no version bump). The
+claim is withdrawn, not reworded. Four files.**
+
+The CHANGELOG asserted, under `[Verified]`, that the shipped Linux `.so` and Standalone carried a
+`.gnu_debuglink` written as `dist/Anamorph-Linux-debug/<file>.debug` — "a CI-workspace-relative path
+that exists on no user's machine" — and that the workflow change fixed it. The premise is false.
+`objcopy` records only the **basename** of the `--add-gnu-debuglink` argument: bfd's
+`bfd_fill_in_gnu_debuglink_section` passes it through `lbasename`, so a directory in the argument
+never reaches the section.
+
+**Measured here, on GNU objcopy 2.42, not taken from the review.** With `sub/a.debug` extracted from
+`a`: `objcopy --add-gnu-debuglink=sub/a.debug a` stores `a.debug`; the `cd`-into-the-directory form
+stores `a.debug`; and the two `.gnu_debuglink` sections extracted with
+`objcopy -O binary --only-section=.gnu_debuglink` are **byte-identical** under `cmp`. The old and new
+workflow forms therefore produce the same shipped bytes. There was no defect, and the change fixed
+nothing.
+
+**What was done about it.**
+- **CHANGELOG: the bullet is removed, not rewritten.** `CHANGELOG_POLICY` rule 3 admits only
+  user-visible changes, and this one is user-visible in neither direction — the artifact is
+  unchanged. Rule 2 forbids invented history, which is what a reworded entry claiming some *other*
+  benefit would be. 0.9.4 is untagged (no `vX.Y.Z` tag has been cut), so this corrects a draft rather
+  than rewriting published notes.
+- **`build.yml`: the comment now states the actual behaviour** — objcopy stores the basename via
+  `lbasename`, both forms produce a byte-identical section, and the `cd` form is written that way so
+  the stored name is the one spelled at the call site rather than one the reader must know
+  `lbasename` produces. It is explicitly **not** a behavioural difference. The true half of the old
+  comment is kept: a debugger resolves the name relative to the stripped binary's own directory, then
+  `.debug/`, then the global debug dir. **The commands themselves are unchanged** — the code was
+  never wrong, only its justification, and rewriting working workflow code to match a corrected
+  comment would be the same error in the other direction.
+- **`CI_CD.md`: the same premise, corrected the same way**, and it now says what actually follows for
+  a user — the downloaded `.debug` file must be placed next to its binary **either way**, which the
+  false version implied had been fixed.
+- **This file: two `[Verified]` assertions struck in place.** The CI/validation round's "Defects the
+  review found" list named the debuglink among them, and its validation paragraph claimed "the new
+  debuglink was read back off the stripped binaries" — which is precisely the check that would have
+  shown both forms agree. Both are marked WITHDRAWN with the correction beside them rather than
+  deleted, because a silently removed false claim leaves no record that it was made. This is the
+  same in-place treatment the round below used for a case count that did not reproduce.
+
+**Nothing replaces the claim.** No substitute defect is asserted and no independent justification is
+manufactured for the command form; the honest statement is that the artifact never differed.
+
+**Validation.** `objcopy` behaviour verified as above (basename stored, sections `cmp`-identical) —
+that is an artifact-level result on a locally built ELF, not on a CI-produced binary, and is reported
+as such. `check-docs` 68 self-test cases / 99 files clean; `check-citations` 58 cases / 217 anchors;
+`check-portability` 94 cases / 45 files; `check-clang-warnings` 28 cases; actionlint clean on all
+five workflows. No code path changed: `build.yml`'s two `objcopy` invocations, every other workflow
+step, CMake, packaging, DSP and the checkers are untouched. The corrected comment is two lines longer
+than the one it replaces, which moved three `build.yml` anchors; re-anchored against content —
+`RELEASE_POLICY` `:383,855,1238`, `KNOWN_ISSUES` KI-002 `:1398-1400`, `COMPATIBILITY_MATRIX`'s macOS
+job range `:1213-1626`.
+
+**Sign-off applied.** The maintainer's confirmation for this evidence correction is treated as
+already granted and recorded here; the previously confirmed accepted-risk items recorded in the
+entries below (`AudioComponentRegistrar` settling, the Windows staging checkpoint, the Rosetta
+carve-out, pluginval after a DSP self-test failure, and the CI/release policy implications) remain
+settled and untouched. No confirmation request is outstanding. [Verified]
 
 **The same EOF hole in the other branch (0.9.4, no version bump). One guard, five cases,
 `scripts/check-portability.py` only.**
@@ -768,8 +829,11 @@ from an unsanitized build; there was no dynamic-analysis coverage at all). Two n
 
 **Defects the review found.** `--random-seed 0` is pluginval's *"pick a random seed"* sentinel, so
 the "deterministic" gate was not deterministic — measured, not inferred (seed 0 printed a different
-`Random seed:` per run against pluginval 1.0.4; seed 1 printed `0x1` every time). The Linux
-`.gnu_debuglink` stored a CI-workspace-relative path no user's machine has. `lipo -archs` output was
+`Random seed:` per run against pluginval 1.0.4; seed 1 printed `0x1` every time). ~~The Linux
+`.gnu_debuglink` stored a CI-workspace-relative path no user's machine has.~~ **WITHDRAWN — this one
+was never true; see the head entry.** `objcopy` records only the basename of the
+`--add-gnu-debuglink` argument, so the old form stored `Anamorph.vst3.so.debug` exactly as the new
+one does. `lipo -archs` output was
 printed rather than asserted, and it exits 0 for a thin Mach-O. `find … | head -n1` /
 `Select-Object -First 1` picked whichever build enumerated first. `$SUDO DEBIAN_FRONTEND=… apt-get`
 breaks when `$SUDO` is empty. `build.sh` exited 1 after a successful build whenever an optional
@@ -827,7 +891,9 @@ block — see the CI review follow-up entry above. The other three figures repro
 Both suites green under GCC, under Clang, and under ASan + UBSan (140 and 894 checks each time).
 pluginval strictness 10 green, both modes ×3, with the seed observably pinned at `0x1`. The lld
 probe reports `Success` under Clang and is **absent** under GCC, confirming the shipped Linux link
-is unchanged. The new debuglink was read back off the stripped binaries. The warning gate was
+is unchanged. ~~The new debuglink was read back off the stripped binaries.~~ **WITHDRAWN with the
+claim above: reading the section back is what would have shown both forms produce the same bytes, so
+whatever was done here, it was not that.** The warning gate was
 adversarially checked: it fails on a new file, fails on an extra site in an already-baselined
 file+flag, and ignores a new vendored warning. [Verified]
 
