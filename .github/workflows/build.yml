@@ -254,6 +254,12 @@ env:
 # it reports nothing rather than failing, and `--zero-stats` is explicitly
 # non-fatal because the default `run:` shell is `bash -e` and a missing ccache
 # would otherwise fail the configure step it is only bookkeeping for.
+# The statistics step is guarded the same way and for a sharper version of the
+# same reason: it is pure reporting, and a non-zero exit from it (an older
+# ccache without `--verbose`, say) would fail the job and then silently skip
+# stripping, staging and every upload, since the steps after it default to
+# `success()`. A footnote to an optimization must not decide whether a
+# release ships.
 # ---------------------------------------------------------------------------
 
 jobs:
@@ -334,7 +340,7 @@ jobs:
 
       - name: Compiler cache statistics
         if: ${{ !cancelled() && env.ANAMORPH_COMPILER_LAUNCHER != '' }}
-        run: ccache --show-stats --verbose
+        run: ccache --show-stats --verbose || true
 
       - name: DSP + state self-tests
         env:
@@ -542,7 +548,7 @@ jobs:
       # walks the debug map back to the object files; see that job's note.)
       - name: Compiler cache statistics
         if: ${{ !cancelled() && env.ANAMORPH_COMPILER_LAUNCHER != '' }}
-        run: ccache --show-stats --verbose
+        run: ccache --show-stats --verbose || true
 
       # RH-PR-2 (ADR-0021): capture split debug info, then strip the shipped
       # binaries. Runs BEFORE pluginval so the release gate validates the
@@ -911,7 +917,7 @@ jobs:
       # visible in the log.
       - name: Compiler cache statistics
         if: ${{ !cancelled() && env.ANAMORPH_COMPILER_LAUNCHER != '' }}
-        run: ccache --show-stats --verbose
+        run: ccache --show-stats --verbose || true
 
       # Run the suites the Clang build produced, not just compile them: a
       # miscompile is the thing a second toolchain is most useful for finding,
@@ -1060,7 +1066,7 @@ jobs:
       # useful number is what the job as a whole avoided recompiling.
       - name: Compiler cache statistics
         if: ${{ !cancelled() && env.ANAMORPH_COMPILER_LAUNCHER != '' }}
-        run: ccache --show-stats --verbose
+        run: ccache --show-stats --verbose || true
 
       # ANAMORPH_TESTS_NO_FTZ=1 relaxes ONE assertion in the DSP suite, and only
       # under this tool. `juce::ScopedNoDenormals` sets the CPU's FTZ/DAZ bits so
@@ -1528,7 +1534,7 @@ jobs:
       # object files it always read, whoever compiled them.
       - name: Compiler cache statistics
         if: ${{ !cancelled() && env.ANAMORPH_COMPILER_LAUNCHER != '' }}
-        run: ccache --show-stats --verbose
+        run: ccache --show-stats --verbose || true
 
       - name: DSP + state self-tests
         id: tests
@@ -2102,7 +2108,7 @@ jobs:
 
       - name: Compiler cache statistics
         if: ${{ !cancelled() && env.ANAMORPH_COMPILER_LAUNCHER != '' }}
-        run: ccache --show-stats --verbose
+        run: ccache --show-stats --verbose || true
 
       # ASSERT the architecture of what was just built -- do not assume it from
       # the configure line. This is the same lesson the packaging step in `macos`

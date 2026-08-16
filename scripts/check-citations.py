@@ -332,19 +332,30 @@ DELIBERATE_REAIMS = set([
     #
     # Every one below is now recomputed from the file as it stands and read back
     # line by line, not shifted by an arithmetic delta:
-    #   RELEASE_POLICY  :530,1098,1520  the linux/windows/macos Configure steps
-    #   KNOWN_ISSUES    :1687-1689      the three ad-hoc `codesign` calls
-    #   COMPAT_MATRIX   :1456-1916      the `macos` job, key line to last step
-    #   COMPAT_MATRIX   :1974-2219      the `macos-intel` job, ditto
+    #   RELEASE_POLICY  :536,1104,1526  the linux/windows/macos Configure steps
+    #   KNOWN_ISSUES    :1693-1695      the three ad-hoc `codesign` calls
+    #   COMPAT_MATRIX   :1462-1922      the `macos` job, key line to last step
+    #   COMPAT_MATRIX   :1980-2225      the `macos-intel` job, ditto
     # The lesson is in the header already: a declaration buys ONE transition and
     # costs the tool's opinion for that transition, so the hand-check it
     # substitutes for has to actually happen.
     ("docs/architecture/COMPATIBILITY_MATRIX.md",
-     ".github/workflows/build.yml:1456-1916"),
+     ".github/workflows/build.yml:1462-1922"),
     ("docs/architecture/COMPATIBILITY_MATRIX.md",
-     ".github/workflows/build.yml:1974-2219"),
-    ("docs/policies/RELEASE_POLICY.md", ".github/workflows/build.yml:495,1042,1454"),
-    ("docs/KNOWN_ISSUES.md", ".github/workflows/build.yml:1621-1623"),
+     ".github/workflows/build.yml:1980-2225"),
+    # These two name the spellings the documents carry TODAY, and they did not
+    # always: they were first written with the intermediate values of the commit
+    # that introduced them, and the commit after it recomputed both anchors
+    # without updating the declarations. Nothing caught that, because a
+    # declaration is only consulted when a citation MISMATCHES, and against the
+    # tip of this branch these no longer mismatch -- so `--check --base HEAD`
+    # was green while `--check` against the MERGE BASE, which is what a push to
+    # the default branch actually compares, reported UNMAPPABLE and exited 1.
+    # A declaration naming a spelling that exists in no document is dead weight
+    # at best and a red default branch at worst, so section 9 of `--self-test`
+    # now asserts every entry here is a string its document really contains.
+    ("docs/policies/RELEASE_POLICY.md", ".github/workflows/build.yml:536,1104,1526"),
+    ("docs/KNOWN_ISSUES.md", ".github/workflows/build.yml:1693-1695"),
     ("docs/procedures/BUILD.md", "scripts/build.sh:19-54"),
 ])
 
@@ -922,6 +933,27 @@ def self_test():
     # those sentences use is what keeps them out of reach.
     check("a bare workflow name is still declined",
           citations("build.yml:288,758,1141"), [])
+
+    # --- 9. EVERY DECLARATION NAMES A SPELLING ITS DOCUMENT REALLY CARRIES ---
+    # A declaration excuses a mismatch, so it is consulted ONLY when one occurs.
+    # That makes a stale entry invisible from the branch it was written on: the
+    # citation it names has already been corrected, so nothing mismatches, so
+    # nothing looks at the entry -- while against the MERGE BASE, which is what a
+    # push to the default branch compares, the real mismatch finds no matching
+    # declaration and the run exits 1. That is not hypothetical; it shipped
+    # twice in one PR, both times as an anchor recomputed in a later commit
+    # without its declaration following. An entry naming a string no document
+    # contains cannot be excusing anything, so it is always a defect -- either
+    # the anchor moved on and the entry should have moved with it, or the entry
+    # outlived its transition and should be deleted.
+    for doc, whole in sorted(DELIBERATE_REAIMS):
+        try:
+            body = read(doc)
+        except OSError:
+            check(f"DELIBERATE_REAIMS names a readable document ({doc})", False, True)
+            continue
+        check(f"DELIBERATE_REAIMS entry is live: {doc} :: {whole}",
+              whole in body, True)
 
     if failures:
         print(f"\ncheck-citations: {failures} of {checked} self-test case(s) failed.",

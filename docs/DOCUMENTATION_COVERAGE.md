@@ -7,7 +7,8 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
-**citation follow-up: two missed anchors and four that were wrong on arrival** (first below), then
+**stale re-aim declaration, protected history, non-gating cache statistics** (first below), then the
+**citation follow-up: two missed anchors and four that were wrong on arrival** after it, then
 the **citation-gate coverage for the build definition and the CI workflow** after it, then the
 **CI compiler cache + job timeouts** after it, then the
 **native Intel macOS job** after it, then the
@@ -32,13 +33,54 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
 
+**Stale re-aim declaration, protected history, non-gating cache statistics (0.9.4, no version
+bump). Three review findings. No CI behaviour change beyond making a reporting step non-fatal.
+`scripts/check-citations.py` + `.github/workflows/build.yml` + four documents.**
+
+**A declaration that would have turned the default branch red.** `DELIBERATE_REAIMS` still named the
+*intermediate* workflow anchors from the commit before last (`:495,1042,1454`), not the values the
+documents were corrected to. The branch stayed green because a declaration is consulted **only when a
+citation mismatches**, and against this branch's own tip nothing mismatches — so `--check --base
+HEAD` passed while `--check` against the **merge base**, which is what a push to the default branch
+actually compares, reported `UNMAPPABLE` and exited 1. Reproduced at `1993dbe` before the fix
+(exit 1) and after (exit 0), and re-checked against every other base CI can pick.
+
+That is the second time in this PR an anchor was recomputed without its declaration following, so
+the class is now closed rather than the instance: **self-test section 9** asserts every
+`DELIBERATE_REAIMS` entry names a string its document really contains. An entry naming a spelling no
+document carries cannot be excusing anything — either the anchor moved on without it, or it outlived
+its transition and should be deleted. It earned its place immediately: editing the workflow in this
+same round shifted four anchors, and the self-test failed on all four before they were re-synced
+(83 cases now, up from 70).
+
+**History is no longer rewritable by the tool it describes.** `CMakeLists.txt` joined `TRACKED` last
+round, and root-level paths have no bare escape spelling, so eight *historical* sentences in this
+document became claimable as live evidence — including one whose entire point is that an anchor was
+**wrong** (`Drift observed, not corrected`), and another that literally states "rewriting one to
+match today's code would falsify the record". A future `--fix` would have silently changed the
+numbers those sentences are about, which is exactly what the checker's own header forbids. Each now
+separates path from anchor (`` `CMakeLists.txt` `:206,230` ``); the one that *illustrates a spelling*
+uses a non-tracked path instead, since splitting it would have destroyed the illustration. Verified
+programmatically: the eight are no longer claimed, and the four genuine live anchors in the same
+document still are.
+
+**Cache statistics can no longer gate a release.** The six `Compiler cache statistics` steps ran
+`ccache --show-stats --verbose` unguarded under `bash -e`; a non-zero exit (an older ccache without
+`--verbose`) would have failed the job and then skipped stripping, staging and every upload, because
+the steps after it default to `success()`. That contradicts this file's own rule — required tools
+fail loudly, the cache steps aside — and is why `--zero-stats` was already guarded. Now `|| true`,
+explained once in the compiler-cache block rather than six times at the call sites.
+
+Re-anchoring the workflow after that edit moved four citations again; all four were recomputed from
+the file as it stands and read back line by line.
+
 **Citation follow-up (0.9.4, no version bump). Six corrected anchors, one wrong workflow comment,
 two unsafe table cells. No CI behaviour change. Six documents + `scripts/check-citations.py`
 + `.github/workflows/build.yml` (comment only).**
 
 Review found two anchors the previous round missed, both below its insertion point and both invisible
 to the new gate for the same reason: they are spelled as **bare continuations**
-(`` `CMakeLists.txt:188-199` … `:292-301` ``), which the parser only recognises in the
+(`` `path/to/file:188-199` … `:292-301` ``), which the parser only recognises in the
 `path:a,b,c` form. `ADR-0001`'s "tests link the core" pointed at `juce::juce_opengl` inside the
 *plugin*'s link block; it is `CMakeLists.txt:314-323`. `BUILD.md`'s compile-definition list cited
 `:277-284` while listing `ANAMORPH_BUILD_NUMBER` — a definition that range no longer contains, since
@@ -64,7 +106,7 @@ Two more corrections, both of things the previous round introduced. The `linux` 
 claiming cached objects meant `objcopy --only-keep-debug` "reads exactly what it always read" — but
 that command operates on the **linked** binary, not on objects, so the dependency it described does
 not exist (the macOS `dsymutil` note, which does walk back to the object files, was already
-accurate). And this document's own history table spelled two cells as `CMakeLists.txt:27,305` /
+accurate). And this document's own history table spelled two cells as `CMakeLists.txt` `:27,305` /
 `:14,250-275`, violating the checker's own stated rule that **prose examples must not use a tracked
 path** — the rule exists because one worked example in this file was already silently re-anchored
 once. `build.yml` rows escape by being spelled bare; `CMakeLists.txt` is root-level and has no bare
@@ -1025,7 +1067,7 @@ wrong the tree was without them.
    were rewritten, so every `file:line` citation below the insertion points had drifted. These were
    **not** shifted by an offset. Each anchor was resolved by reading what the document *claims* and
    locating that content in the current source, which matters because an offset would have been
-   wrong in both directions: `CODE_STYLE.md` cited `CMakeLists.txt:206,230` for the recommended
+   wrong in both directions: `CODE_STYLE.md` cited `CMakeLists.txt` `:206,230` for the recommended
    warning flags, an anchor that was already wrong before this PR (206 was `juce::juce_opengl`) and
    that no shift could have repaired — the flags are at `:275,301,339`, three sites rather than two,
    because the tests target was added since. Conversely `TESTING_POLICY.md:67` and
@@ -1062,7 +1104,7 @@ wrong the tree was without them.
 `check-clang-warnings.py --self-test` (28 cases); `check-portability.py` (45 files);
 `check-citations.py --check` against both `HEAD` and `HEAD~1`, 198 anchors. Every anchor changed in
 this round was additionally re-read at its new location and confirmed to land on the content the
-citing sentence describes — for example `PACKAGING.md:177` → `CMakeLists.txt:217` →
+citing sentence describes — for example `PACKAGING.md:177` → `CMakeLists.txt` `:217` →
 `PLUGIN_MANUFACTURER_CODE RTec`, `TROUBLESHOOTING.md:25` → `run-pluginval.sh:129-131` → the
 `xvfb-run -a` prefix, and `RELEASE_POLICY.md:65` → `build.yml:288,758,1141` → the three per-OS
 Configure steps. No CI, source, architecture or policy behaviour changed in this round, and the
@@ -2331,7 +2373,7 @@ check is right and stays; the wording is fixed in `release.yml`, `CI_CD`, `RELEA
 `HANDOVER`.
 
 **Reported-then-corrected line-number drift (C6).** The previously reported `ADR-0001` citation
-`CMakeLists.txt:62-73` → `:124-135` (and `:149-166` → `:228-237` for the tests-link-the-core
+`CMakeLists.txt` `:62-73` → `:124-135` (and `:149-166` → `:228-237` for the tests-link-the-core
 range), plus the same drift in `TROUBLESHOOTING` (`:115-125` → `:124-135`), found by the reviewer.
 Both re-verified against the file. Reporting came first, in the prior pass; this is the correction.
 
@@ -2370,7 +2412,7 @@ domains `:8-13` → `:8-12`, webkit `:31`/`:36` → `:37`/`:42`, `libegl-dev` `:
 
 Prior: for the **vendor manufacturer-code change** (2026-07-30, on top of `main` @
 `c0fca30`). **No `src/` change; DSP, parameter surface and serialized state bit-identical to
-0.9.0.** `PLUGIN_MANUFACTURER_CODE` changes `Anmf` → `RTec` (`CMakeLists.txt:153`) so the vendor
+0.9.0.** `PLUGIN_MANUFACTURER_CODE` changes `Anmf` → `RTec` (`CMakeLists.txt` `:153`) so the vendor
 code spells RollyTech rather than the first product, ahead of the second product line member
 (Anabasis) adopting the same value. Version bumped to **0.9.1** (`CMakeLists.txt:14`). The code is
 host-facing identity — the AU component's manufacturer field, and an input to JUCE's VST3 class
@@ -2397,7 +2439,7 @@ KNOWN_ISSUES (version-sync lead), and every `auval -v aufx Anmr Anmf` invocation
 **Deliberately not changed:** `worklogs/PRODUCT_READINESS_ROADMAP_v0.8.13.md:36` still carries the
 old `auval` recipe — worklogs are a historical evidence trail, not maintained documents, and
 rewriting one to match today's code would falsify the record.
-**Drift observed, not corrected (constraint C6):** `ADR-0001` cites `CMakeLists.txt:62-73` for the
+**Drift observed, not corrected (constraint C6):** `ADR-0001` cites `CMakeLists.txt` `:62-73` for the
 `AnamorphDSP` INTERFACE library, which now lives at `:124-135` (as `ARCHITECTURE.md` correctly
 states); this predates the present change and is out of its scope.
 The comment added beside the new code is deliberately same-line, so no `CMakeLists.txt:NNN`
@@ -2685,7 +2727,7 @@ limitation of the v0.8.12 fix); stale line-number evidence citations refreshed i
 (KI-001/002/003/006/009/012), FUTURE_RISKS (RISK-002 incl. marking the shipped H1/Wave-3
 SoloMonitor skip, RISK-004), POSTMORTEMS (INC-003/004/006/007/009), REPOSITORY_MAP (test count
 23→33, `FrameClock.h` + `LR4Xover.h` rows added, CMake cites), README (3-OS pluginval gate scope),
-CI_CD (actions @v7), DEPENDENCY_POLICY (`JUCE_*` flags at `CMakeLists.txt:183-188`; "then-current"
+CI_CD (actions @v7), DEPENDENCY_POLICY (`JUCE_*` flags at `CMakeLists.txt` `:183-188`; "then-current"
 qualifiers), PACKAGING + COMPATIBILITY_MATRIX (CMake line cites), ADR_INDEX (130-check/23-test
 wording), BUILD + TESTING_POLICY + CODE_STYLE + TROUBLESHOOTING + RELEASE_PROCESS + TESTING (the
 same class of post-RH-PR-2 stale CMake/script cites, caught by the pre-commit verification pass),
