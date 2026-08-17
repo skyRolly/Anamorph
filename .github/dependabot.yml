@@ -17,7 +17,11 @@
 # Action bumps are grouped, but in TWO groups split by semver impact rather than
 # the single `*` group this file used to carry:
 #
-#   * minor/patch -- safe to judge on a green run. `github/codeql-action` alone
+#   * minor/patch -- safe to judge on a green run. In this tree that is the
+#     `github/codeql-action` trio and nothing else, because a ref pinned at a
+#     bare major (`@v7`) is only ever rewritten when the MAJOR moves: Dependabot
+#     updates a ref in place and keeps its style, and there is no "newer tag"
+#     for a moving `v7`. The trio is pinned at an exact patch (`@v4.37.6`) and
 #     releases every week or two, so essentially all the volume is here.
 #   * major -- can change an action's Node runtime, inputs or outputs. In one
 #     combined PR a single major blocks every safe bump behind it, and the whole
