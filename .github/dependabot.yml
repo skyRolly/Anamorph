@@ -1,24 +1,79 @@
 # Dependabot configuration for Anamorph.
 #
-# github-actions is the ONLY Dependabot-supported ecosystem in this repo.
-# The C++ dependency (JUCE 9.0.1) is fetched by CMake FetchContent pinned to
-# the release tag's IMMUTABLE commit SHA (ADR-0022); CMake is not a Dependabot
-# ecosystem, and a JUCE bump is deliberately a manual, review-gated Build
-# System change (an unpinned bump can silently move DSP behaviour/latency/state
-# ABI) -- see docs/policies/DEPENDENCY_POLICY.md and ARCHITECTURE_REVIEW_GATE.md.
+# github-actions is the ONLY Dependabot-supported ecosystem in this repo, and
+# that is a finding about the tree rather than a default. Of the 33 ecosystems
+# Dependabot supports, none covers what this repository actually depends on:
+# JUCE 9.0.1 arrives through CMake FetchContent pinned to the release tag's
+# IMMUTABLE commit SHA (ADR-0022) and CMake is not an ecosystem; the only C/C++
+# ecosystem is `vcpkg`, which bumps a `builtin-baseline` SHA in a `vcpkg.json`
+# this repository does not have. The pinned Clang major, the apt/brew packages
+# the jobs install, the `*-latest` runner labels and the pluginval release the
+# gate downloads are outside every ecosystem too -- so
+# docs/policies/DEPENDENCY_POLICY.md records what maintains each of them
+# instead, and a JUCE bump stays deliberately manual and review-gated (an
+# unpinned bump can silently move DSP behaviour/latency/state ABI) per that
+# policy and ARCHITECTURE_REVIEW_GATE.md.
 #
-# Action bumps are grouped into a single weekly PR to keep update noise at
-# one CI run per week instead of one per action.
+# Action bumps are grouped, but in TWO groups split by semver impact rather than
+# the single `*` group this file used to carry:
+#
+#   * minor/patch -- safe to judge on a green run. In this tree that is the
+#     `github/codeql-action` trio and nothing else, because a ref pinned at a
+#     bare major (`@v7`) is only ever rewritten when the MAJOR moves: Dependabot
+#     updates a ref in place and keeps its style, and there is no "newer tag"
+#     for a moving `v7`. The trio is pinned at an exact patch (`@v4.37.6`) and
+#     releases every week or two, so essentially all the volume is here.
+#   * major -- can change an action's Node runtime, inputs or outputs. In one
+#     combined PR a single major blocks every safe bump behind it, and the whole
+#     9-job matrix re-runs whenever it is finally read; split, the patches land
+#     on green and the major gets the reading it needs.
+#
+# Both groups keep `patterns: "*"` DELIBERATELY: an action family spread over
+# several refs (`github/codeql-action/init`, `/analyze`, `/upload-sarif` --
+# three distinct dependency names here) is three separate PRs once it falls out
+# of a group, and init and analyze are two halves of one run. Grouping by
+# update-type moves such a family together within its semver class; ungrouped
+# majors would not.
+#
+# Still at most two PRs a week. `cooldown` is deliberately unset: Dependabot
+# already withholds a new version for 3 days by default, and an explicit block
+# would only be restating that.
 version: 2
 updates:
   - package-ecosystem: "github-actions"
+    # `/` is the required spelling: it means `.github/workflows` plus a root
+    # `action.yml`. Local refs (release.yml's `uses: ./.github/workflows/
+    # build.yml`) are ignored by Dependabot by design -- they are this
+    # repository, not a dependency.
     directory: "/"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
     groups:
-      github-actions:
+      github-actions-minor-patch:
         patterns:
           - "*"
+        update-types:
+          - "minor"
+          - "patch"
+      github-actions-major:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
+    ignore:
+      # msvc.yml pins this action to a commit AHEAD of its last release: v0.1.1
+      # predates the `buildConfiguration` input and silently analyses
+      # configurations[0] on a multi-config generator, while the pinned commit
+      # fails closed. A SHA pin carrying no tag is followed to the LATEST
+      # COMMIT, not the latest release, so the first push to that upstream
+      # default branch -- whose HEAD is still the pinned commit, untouched
+      # since 2023-03-22 -- would propose swapping a documented deliberate pin
+      # for an untagged HEAD of a third-party action GitHub does not certify.
+      # Declining costs no security coverage: SHA-pinned actions raise no
+      # Dependabot alerts either way. Re-evaluate BY HAND if that repository
+      # ever cuts a release; .github/workflows/msvc.yml carries the reason for
+      # the pin.
+      - dependency-name: "microsoft/msvc-code-analysis-action"
     commit-message:
       prefix: "ci"

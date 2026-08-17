@@ -136,16 +136,16 @@ else()
         #
         # lld resolves LTO symbol requests against archives correctly, which is
         # the property being bought. `-fuse-ld=lld` names the linker GENERICALLY
-        # on purpose: which `ld.lld` the driver then selects is the environment's
-        # business, not this file's, and on Debian/Ubuntu it is `/usr/bin/ld.lld`
-        # -- clang searches its own program path before PATH, so a caller cannot
-        # redirect it by prepending a directory (tried; it does not work). So the
-        # linker is NOT guaranteed to share the compiler's major version, and the
-        # CI job pins only the COMPILER (ANAMORPH_CLANG_VERSION, which exists to
-        # keep the warning baseline's reference point still). That is fine here:
-        # LLVM bitcode is forward-compatible, so a newer lld reads an older
-        # clang's output, and the reverse is caught loudly by the link rather than
-        # silently.
+        # on purpose: which `ld.lld` the driver selects is the environment's
+        # business, not this file's, and it varies with how clang was PACKAGED --
+        # measured: Ubuntu's `clang++-18` takes `/usr/bin/ld.lld` (the distro
+        # alternative) while apt.llvm.org's `clang++-22` takes its own
+        # `/usr/lib/llvm-22/bin/ld.lld`. Clang searches its own program path
+        # before PATH, so a caller cannot redirect it by prepending a directory
+        # (tried; it does not work). This file therefore guarantees no version
+        # match; CI installs `lld-<major>` beside `clang-<major>` so the pinned
+        # toolchain matches by construction (ADR-0028). Where they DO diverge,
+        # bitcode is forward-compatible and the reverse fails loudly, not silently.
         #
         # PROBED rather than assumed: `check_linker_flag` links a real TU with the
         # flag in the configuration actually being built (sanitizer flags

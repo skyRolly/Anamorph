@@ -33,7 +33,8 @@ Anamorph/
 │                           architecture docs; e.g. performance/WAVE3_INVESTIGATION.md,
 │                           release-hardening/RH_PR2_INVESTIGATION.md — finalized decisions
 │                           graduate to ADRs; worklogs are the raw evidence trail).
-├── scripts/                setup / build / test / pluginval, plus the four CI lints
+├── scripts/                setup (incl. the pinned-Clang apt source) / build / test / pluginval,
+│                           plus the four CI lints
 │                           (check-docs, check-portability, check-citations,
 │                           check-clang-warnings — each with its own self-test).
 ├── packaging/              Per-platform install notes + installer assets (linux/, windows/, macos/).
@@ -92,6 +93,7 @@ Anamorph/
 | `tests/state_tests.cpp` | 12 headless state-compatibility tests (schema shape, parameter-registry snapshot, raw-exact round-trip, 3 legacy migration fixtures, corrupt-state robustness, preset round-trip, A/B + view-param preservation, factory/user preset identity under a shared name, factory-id integrity, indicator identity across a session reload) — own console target `AnamorphStateTests` compiling the plugin sources. |
 | `tests/fixtures/` | Compatibility fixtures: `parameter_registry.snapshot` (re-frozen only via `AnamorphStateTests --write-snapshot` for INTENTIONAL parameter changes) + 3 frozen legacy session XMLs (v0.2 / pre-0.6.4 / pre-0.8.4). |
 | `scripts/setup-linux.sh` | Ubuntu build dependencies (+ xvfb, + lld for the Clang/LTO link). |
+| `scripts/setup-llvm-apt.sh` | Installs ONE Clang major (compiler + `lld` + `libclang-rt`) from **apt.llvm.org**, for the two Linux Clang jobs — Ubuntu's archives stop at `clang-20` for noble while the pin is upstream stable (ADR-0028). Takes the major as an argument so `ANAMORPH_CLANG_VERSION` stays the single authority; reads the suite codename from `/etc/os-release`; **fail-closed** (the compiler is the job, unlike the optional ccache beside it) and asserts the installed major. |
 | `scripts/build.sh` | CMake + Ninja build; prints artifact paths (VST3, Standalone, both suites). |
 | `scripts/run-tests.sh` | Runs `AnamorphTests` + `AnamorphStateTests`, fail-closed on absence **and** ambiguity (exactly one match each). `ANAMORPH_TEST_RUNNER` prefixes both invocations — the macOS job passes `arch -x86_64` to execute the universal binary's other slice. |
 | `scripts/run-pluginval.sh` | pluginval on Linux/macOS (strictness + mode + **format** args — `deterministic` \| `randomise` each ×3, `vst3` \| `au`; fixed **nonzero** seed; `ANAMORPH_PLUGINVAL_BUNDLE` overrides discovery for an installed AU; signal-only retry for the X11 host flake). |
@@ -112,7 +114,7 @@ Anamorph/
 | `.github/workflows/codeql.yml` | CodeQL (`c-cpp` manual build + `actions`); alerts scoped to repo-own code. See `docs/procedures/CI_CD.md` §Security scanning. |
 | `.github/workflows/msvc.yml` | MSVC `/analyze` → SARIF; JUCE treated as external; path-filtered triggers. |
 | `.github/workflows/dependency-review.yml` | Dependency Review on PRs to `main` (GitHub Actions deps; comment on failure only). |
-| `.github/dependabot.yml` | Weekly grouped `github-actions` bumps; JUCE stays manually pinned (`DEPENDENCY_POLICY.md`). |
+| `.github/dependabot.yml` | Weekly `github-actions` bumps in two semver-split groups (minor/patch, major), with the SHA-pinned MSVC-analysis action ignored. Everything else is maintained by another mechanism — `DEPENDENCY_POLICY.md` §Update mechanisms. |
 | `.github/ISSUE_TEMPLATE/` | `bug_report.yml` — the "Test report — bug" form (version+build, OS, DAW, format, install route, repro — the fields triage actually needs; carries the closed-source/public-tracker notice) + `config.yml` (links to the install guide, FAQ, known issues and the internal testing guide). |
 
 ## `docs/` — documentation library

@@ -332,17 +332,23 @@ DELIBERATE_REAIMS = set([
     #
     # Every one below is now recomputed from the file as it stands and read back
     # line by line, not shifted by an arithmetic delta:
-    #   RELEASE_POLICY  :542,1110,1532  the linux/windows/macos Configure steps
-    #   KNOWN_ISSUES    :1699-1701      the three ad-hoc `codesign` calls
-    #   COMPAT_MATRIX   :1468-1928      the `macos` job, key line to last step
-    #   COMPAT_MATRIX   :1986-2231      the `macos-intel` job, ditto
+    #   RELEASE_POLICY  :546,1124,1546  the linux/windows/macos Configure steps
+    #   KNOWN_ISSUES    :1713-1715      the three ad-hoc `codesign` calls
+    #   COMPAT_MATRIX   :1482-1942      the `macos` job, key line to last step
+    #   COMPAT_MATRIX   :1943-1999      its rationale block (cited alongside)
+    #   COMPAT_MATRIX   :2000-2245      the `macos-intel` job, ditto
+    # All five moved +4 or +9 in the Clang-22 round -- the pin rationale grew by
+    # four lines above every anchor, and the two Clang jobs' install steps by
+    # five more above everything from `windows:` down. Recomputed from the file
+    # and read back, NOT shifted by arithmetic; section 9 below is what caught
+    # the four stale declarations this round, which is the second time it has.
     # The lesson is in the header already: a declaration buys ONE transition and
     # costs the tool's opinion for that transition, so the hand-check it
     # substitutes for has to actually happen.
     ("docs/architecture/COMPATIBILITY_MATRIX.md",
-     ".github/workflows/build.yml:1468-1928"),
+     ".github/workflows/build.yml:1482-1942"),
     ("docs/architecture/COMPATIBILITY_MATRIX.md",
-     ".github/workflows/build.yml:1986-2231"),
+     ".github/workflows/build.yml:2000-2245"),
     # These two name the spellings the documents carry TODAY, and they did not
     # always: they were first written with the intermediate values of the commit
     # that introduced them, and the commit after it recomputed both anchors
@@ -354,8 +360,21 @@ DELIBERATE_REAIMS = set([
     # A declaration naming a spelling that exists in no document is dead weight
     # at best and a red default branch at worst, so section 9 of `--self-test`
     # now asserts every entry here is a string its document really contains.
-    ("docs/policies/RELEASE_POLICY.md", ".github/workflows/build.yml:542,1110,1532"),
-    ("docs/KNOWN_ISSUES.md", ".github/workflows/build.yml:1699-1701"),
+    ("docs/policies/RELEASE_POLICY.md", ".github/workflows/build.yml:546,1124,1546"),
+    ("docs/KNOWN_ISSUES.md", ".github/workflows/build.yml:1713-1715"),
+    # THE ONE ANCHOR IN THE CLANG-22 ROUND THAT IS A RE-AIM RATHER THAN A
+    # RE-ANCHOR, and the tool is right to refuse it. `DEPENDENCY_POLICY`'s Clang
+    # row cites the `env:` block, whose lines both MOVED (+4) and CHANGED
+    # (`ANAMORPH_CLANG_VERSION: 20` -> `22`), so there is no text to map from --
+    # `--fix` cannot compute it and reports UNMAPPABLE. Verified by hand at the
+    # new spelling: :78 `env:`, :79 the pluginval strictness, :80 the Clang
+    # major. Recorded here rather than worked around, because the LOCAL run
+    # could not see it: against `origin/main` this row does not exist yet, so the
+    # citation reads as NEW and is skipped, while CI compares against the push
+    # predecessor where it does exist. That is both escape hatches open at once
+    # -- exactly the pair this file's header warns about, and the reason a local
+    # green is not evidence until it is re-run against the base CI will use.
+    ("docs/policies/DEPENDENCY_POLICY.md", ".github/workflows/build.yml:78-80"),
     ("docs/procedures/BUILD.md", "scripts/build.sh:19-54"),
 ])
 

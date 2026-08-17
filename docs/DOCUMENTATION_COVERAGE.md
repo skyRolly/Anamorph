@@ -7,7 +7,9 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
-**stale re-aim declaration, protected history, non-gating cache statistics** (first below), then the
+**dependency-update audit: Clang 18 → 22 (upstream stable, from apt.llvm.org) and the Dependabot
+group split** (first below), then the
+**stale re-aim declaration, protected history, non-gating cache statistics** after it, then the
 **citation follow-up: two missed anchors and four that were wrong on arrival** after it, then
 the **citation-gate coverage for the build definition and the CI workflow** after it, then the
 **CI compiler cache + job timeouts** after it, then the
@@ -32,6 +34,206 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**Dependency-update audit: Clang 18 → 22 (upstream stable, installed from apt.llvm.org), and
+Dependabot split into two semver groups (0.9.4, no version bump). No `src/`, `tests/`,
+`CMakeLists.txt` or packaging change; no shipped byte changes. `.github/workflows/build.yml` +
+`.github/dependabot.yml` + `scripts/setup-llvm-apt.sh` (new) +
+`scripts/clang-warning-baseline.txt` + ADR-0028 + `ARCHITECTURE_REVIEW_GATE.md` + five documents.**
+
+**The audit's first result was an inventory, and it is now written down.** `DEPENDENCY_POLICY.md`
+listed four dependencies (JUCE, pluginval, the C++ standard, Linux system libs) and stopped there, so
+the *pinned Clang major*, the *GitHub Actions refs* and the *runner images* — three externally
+maintained things the pipeline is wired to — appeared in no dependency inventory at all, only in the
+workflow that consumes them. All three are now rows in the table, and a new **§Update mechanisms**
+says per category which mechanism maintains it **and why that one**: automation where an automated PR
+would carry actionable information, hand-maintenance where it would not. That section is the answer to
+"is anything missing from Dependabot", and the answer is no ecosystem is missing — of Dependabot's 33,
+none reads CMake, `apt`, Homebrew, a `releases/latest` download or a workflow `env:` value, and its
+only C/C++ ecosystem (`vcpkg`) wants a `vcpkg.json` this repository does not have.
+
+**Clang 18 → 22, and the pin stays a MAJOR pin.** The rule this settles is *upstream stable*, not
+*newest* and not *whatever the distribution packages*: 22.1.8 (2026-07-10) is the newest non-rc release
+— 23.1.0 is still at rc3 — and apt.llvm.org itself asserts it, `CURRENT_LLVM_STABLE=22`. **An
+intermediate step of this same change set went to 20 and was superseded before merge**, and the reason
+is recorded rather than tidied away: that draft rejected 21/22 as having "no noble publication at all",
+a conclusion drawn from checking **Ubuntu's** archive pockets, which is accurate, and then
+over-generalised. apt.llvm.org publishes noble suites for **17 through 23** on `amd64 arm64 s390x`.
+Needing a different install mechanism is an implementation cost, not an availability blocker.
+The granularity is deliberate: `apt` names these packages by major (`clang-22`), and the baseline's own
+invariant is that diagnostics are a property of the major, so a full-version pin would be both
+inexpressible in the install and self-breaking on the first rebuild — the apt.llvm.org string is
+`1:22.1.8~++20260714014902+ca7933e47d3a-…`, a snapshot of the 22.x branch head. The measured result is
+that **nothing moved but the recorded version**: with clang-20 as the control, clang-22 emits a
+`diff`-identical 52-instance warning census, and `--write-baseline` at 22 changes exactly one line,
+`# clang-major:`. That census also matches Clang 18's, so this tree's accepted set is now stable across
+**three** majors. Both suites pass under the clang-22 build (140 + 894) and again under its
+ASan+UBSan+vptr build; the LTO `Anamorph_VST3` link and `check_linker_flag`'s lld probe are green at 22;
+the `--compile-canary` still rejects the explicit `SIMDRegister` form; and the mismatched pin/baseline
+pair was **observed** to exit 2 before regeneration, which is the guard doing its job rather than an
+assumption about it.
+
+**The install mechanism is a script, and it follows the version rather than choosing it.**
+`scripts/setup-llvm-apt.sh <major>` adds one apt.llvm.org suite with a `signed-by=` keyring and installs
+exactly `clang-N`, `lld-N`, `libclang-rt-N-dev`; the suite codename is read from `/etc/os-release` so a
+future `ubuntu-latest` move cannot silently point it at the wrong one. Deliberately **not**
+`apt.llvm.org/llvm.sh`, which decides the version itself and installs more broadly — that would move
+the authority out of `ANAMORPH_CLANG_VERSION`. It is **fail-closed**, unlike the optional ccache install
+beside it: the pinned Clang *is* the job, so a partial install stops it rather than letting the image's
+default `clang` stand in and trip the baseline guard one step later, reading as a project problem. The
+three *shipping* build jobs never touch apt.llvm.org.
+
+**One behavioural change in the pipeline, and it preserves coverage rather than adding it.** Clang 21
+removed `vptr` from the `-fsanitize=undefined` group, so the bare `address,undefined` the `sanitizers`
+job carried would have silently stopped checking bad downcasts and bad vtables the moment the pin passed
+20. It now names `-fsanitize=address,undefined,vptr`. Reproduced rather than taken from a release note:
+one bad-downcast program, clang-20 reports it from `undefined` alone, clang-22 reports **nothing**, and
+naming `vptr` restores it on 22. It needs RTTI, which this project never disables. This is the trap the
+first draft of ADR-0028 had recorded as a warning for a future bump; the bump happened in the same
+change set, so it is now implemented instead.
+
+**Clang is not, and should not be, bot-updated — and that is a capability finding.** Dependabot parses
+no workflow `env:` key in any ecosystem, so it cannot see `ANAMORPH_CLANG_VERSION` at all. Renovate
+could match it with a `custom.regex` manager, and the PR would be **red by construction**:
+`check-clang-warnings.py` exits 2 whenever the pin and `# clang-major:` disagree, and re-baselining
+means building with the new compiler. Renovate was evaluated for the rest of the tree too and declined
+on capability: it has **no CMake manager** (its only C/C++ manager is Conan), and its runner-label
+support extracts `ubuntu-latest` and then discards it as a non-numeric version. Recorded in
+`DEPENDENCY_POLICY.md` so the evaluation does not have to be repeated from scratch.
+
+**Dependabot: one `*` group became two, split by semver impact.** `github/codeql-action` releases
+every week or two, so nearly all the volume is minor/patch — and in a single combined PR one action
+*major* (a changed Node runtime, input or output) blocks every safe bump behind it while the whole
+9-job matrix re-runs when it is finally read. Both groups keep `patterns: "*"` deliberately: a family
+spread over several refs (`codeql-action/{init,analyze,upload-sarif}` is three dependency names here)
+would become three independent PRs once it fell out of a group, and `init` and `analyze` are two halves
+of one run. `microsoft/msvc-code-analysis-action` is now **ignored**, which is protection rather than
+an exclusion for its own sake: its SHA pin carries no tag, and GitHub's documented behaviour for an
+untagged pin is to follow the **latest commit, not the latest release** — so the first push to that
+upstream branch (whose HEAD is still the pinned commit, untouched since 2023-03-22) would propose
+replacing a pin whose reason is documented in `msvc.yml` with an untagged HEAD of a third-party action
+GitHub does not certify, and SHA-pinned actions raise no Dependabot security alerts either way.
+`cooldown` was considered and left unset: Dependabot already withholds a new version for 3 days by
+default, so an explicit block would restate it.
+
+**ADR-0028 is `Accepted`, and it closes the governance question rather than recording it.** The pin
+sits in `DEPENDENCY_POLICY.md`'s pinned-dependency table, which is the exact condition ADR-0027 cited
+when it treated a one-line `CMAKE_CXX_STANDARD` edit as a gated **Build System change**. The first draft
+of this ADR applied that reading and then left the countervailing precedent — the 2026-08-15 image move
+that took the **shipping** macOS compiler from AppleClang 15 to 21 as a CI change with no ADR — as an
+open tension. It is now resolved, by the repository's own instrument: per `ADR_POLICY.md` rule 5 and
+`SOURCE_OF_TRUTH.md` ("An ADR may change a Policy, but only by an explicit new/updated ADR"), ADR-0028
+carries an **`Amends:`** header and `ARCHITECTURE_REVIEW_GATE.md` now carries the rule — the same shape
+ADR-0025 used to amend `TESTING_POLICY.md` rule 1.
+
+**The discriminator is *who chooses the version*,** not which platform it is on and not whether the
+compiler's output ships. A version **this repository pins** is gated (the Clang major; the C++
+standard). A version the **runner image supplies** is not gated *because it cannot be* — GitHub
+re-points `macos-latest` with no commit here, so a rule demanding review for AppleClang or MSVC is one
+the repository is unable to obey; what it requires instead is detection and record, which is what the
+warning baseline and `CI_CD.md` §Build matrix already do. **Pinning or unpinning a label** for a
+toolchain that builds shipped artifacts *is* gated. AppleClang 15 → 21 is therefore reconciled by the
+second rule rather than exempted from the first: no pinned version changed, because AppleClang was never
+pinned, and the compiler that followed the `macos-14` → `macos-latest` move was GitHub's choice. Under
+the third rule that *label* move would be gated today. The Policy states explicitly that numeric
+symmetry between platforms is **not** required — Apple's version numbers are not upstream LLVM's, and
+the two are chosen by different parties. None of the six `AI_AGENT_POLICY.md` Hard Stops is touched.
+
+**Two drift items found while doing this, both corrected in place with the evidence.** (1) The
+self-coverage table below counted **18 ADRs**; there were 22 before this change (0001–0015 + 0021–0027,
+with 0016–0020 reserved by `RELEASE_HARDENING_PLAN` §8) and 23 with ADR-0028, so the figure was four
+stale and now reads 23. (2) `CI_CD.md`'s ccache paragraph stated the `linux-clang` figure
+(**5m48s → 2m36s**) in the present tense "against the pinned Clang 18"; that was a measurement of a
+configuration the bump retires, so it now reads *then-pinned* and *was*, with the reason attached. The
+same figure inside this file's own dated entry is left alone — historical entries are append-only.
+
+**One defect found while implementing, not planned for.** The `sanitizers` ccache key did not carry
+the Clang major (`linux-clang`'s did), so raising the pin would have left that job restoring an 800 MB
+lineage of objects the new compiler can never hit — not a wrong answer, since ccache hashes the
+compiler binary's contents, but a restore that buys nothing. Both jobs now key on the major, which is
+what `CI_CD.md` §Cache lineages already claimed for one of them.
+
+**`build.yml` grew by 14 lines across this change set, so the anchors below it were recomputed — and
+the guard caught the part that was missed.** The 18 → 20 step held the file at net-zero line count
+precisely to avoid this; the 22 step could not, because the pin rationale needed four more lines and the two Clang
+jobs' install steps five more. Six anchor values across four documents were recomputed **from the file
+as it stands and read back line by line, never shifted by arithmetic**:
+`RELEASE_POLICY` `build.yml:542,1110,1532` → `:546,1124,1546`; `KNOWN_ISSUES` `:1699-1701` →
+`:1713-1715`; `COMPATIBILITY_MATRIX` `:1468-1928` → `:1482-1942` and `:1986-2231` → `:2000-2245` with
+its rationale block `:1929-1985` → `:1943-1999`; and `DEPENDENCY_POLICY`'s own `:74-76` → `:78-80`
+(that last one alone sits above every insertion point, so it moved once and stayed). Those are the
+values the tree carries: the Clang-22 commit landed them five lower, and the `vptr` commit's five added
+lines moved them again — recomputed and re-read both times, which is the whole claim this paragraph
+makes.
+Updating the citations left the four matching `DELIBERATE_REAIMS` declarations naming spellings no
+document contained any more, and **section 9 of `check-citations.py --self-test` failed 4 of 85 cases**
+until they were updated — the second time that assertion has caught exactly this, and the reason it
+exists. Two independent confirmations that the new anchors are right rather than merely consistent: the
+drift check reports no re-spelling at all (the anchors resolve to the *same text* as the base, which is
+the property it actually tests), and a deliberate mutation of one anchor to a wrong value made the gate
+exit 1 while **independently computing the committed value** as the correct answer — `:1708-1710` at
+the time, `:1713-1715` after the `vptr` commit shifted it, each time matching the hand-computation.
+
+**The signing-key pin was presence-only, and review caught it.** `setup-llvm-apt.sh` asserted that the
+expected fingerprint appeared *somewhere* in the dearmored keyring — but `signed-by=` trusts **every**
+key in that file, so a served blob carrying the genuine key concatenated with another one satisfied the
+grep and both became trusted for the suite. The comment beside it claimed the stronger guarantee ("the
+key this repository decided to trust"), so the check was weaker than what it advertised. It now asserts
+identity: the list of **primary** fingerprints must equal the pinned one exactly. It counts `pub:`
+records rather than `fpr:` ones because the genuine key has two fingerprints — a primary and one subkey
+— so an "exactly one fingerprint" test would have rejected the real key. Verified against crafted
+keyrings rather than argued: genuine passes; genuine + a second generated key is **rejected naming both
+primaries**; attacker-only, empty and corrupt keyrings are each rejected with the same specific message;
+and the real script still installs clang 22.1.8 on a clean machine and is idempotent. Testing also
+exposed a diagnostic regression in the first draft of the fix — under `set -e` a corrupt keyring killed
+the shell at the command substitution before the assertion could report anything — so the substitution
+carries `|| true` and lets the assertion do the failing.
+
+**A seventh anchor turned out not to be checked at all, which review surfaced and measurement
+confirmed.** `COMPATIBILITY_MATRIX`'s `macos-intel` row cites two ranges in one sentence, and the
+second was written in the continuation spelling — `…build.yml:1995-2240 (the job), :1938-1994 (its
+rationale block)`. The `CITATION` regex requires a path before the anchors, so the bare `:1938-1994`
+matched nothing: the gate never saw it. Demonstrated rather than reasoned — replacing that value with
+`:100-200` left `--check` at **exit 0** against both `origin/main` and the branch tip. It was *correct*
+(1938–1994 was then the rationale block and 1995 the `macos-intel:` key; both have since moved with the
+file, to `:1943-1999` and `2000`), just unguarded — and it had been unguarded since it was written, not
+by anything this round did. The declaration a reviewer would reach
+for is the wrong instrument and provably so: adding it to `DELIBERATE_REAIMS` fails section 9, because
+that assertion requires the entry to name a string the document contains and the document contains no
+such string. The fix is to give the anchor its path, which is the only spelling `classify()` resolves
+(`build.yml` and `workflows/build.yml` both return `None`). It reads as a new citation for one
+transition and is checked from the next base onward, like any new anchor.
+
+**One of those six anchors was a re-aim, not a re-anchor, and only CI could see it.**
+`DEPENDENCY_POLICY`'s Clang row cites the `env:` block, whose lines both **moved** (+4) and **changed**
+(`ANAMORPH_CLANG_VERSION: 20` → `22`), so there is no base text to map from and `--fix` reports
+UNMAPPABLE. The local run could not catch it: against `origin/main` that row does not exist yet, so the
+citation reads as *new* and is skipped, while CI compares against the **push predecessor**, where it
+does exist — both of the checker's escape hatches open at once, which is precisely the pair its own
+header warns about. `source-lint` went red on exactly one citation out of 302, the aim was re-verified
+by hand (`:78` `env:`, `:79` strictness, `:80` the Clang major) and declared in `DELIBERATE_REAIMS`, and
+the fix was then confirmed **against the base CI actually used** rather than the local default. The
+standing lesson, now applied: a local `--check` green is not evidence until it is re-run against that
+base. This round it was re-run against all five — `origin/main` and every commit on the branch.
+
+Validated: `check-citations` 86 self-test cases and `--check` **exit 0** against `origin/main`
+**and** against each branch commit — 299 anchors reported stable against `origin/main` with 2 re-spelled
+beyond that run's judgement, and 303 checked against the branch predecessor; `check-docs` 68
+cases / 100 files; `check-portability` 45 files / 0 violations; `check-clang-warnings --self-test` 28
+cases, plus the real gate run against the clang-22 build log at the regenerated baseline (**exit 0**,
+14 accepted sites in 7 entries) and the mismatched pair still **refused** (exit 2); `dependabot.yml`
+validated against the SchemaStore Dependabot 2.0 schema (**0 errors**); `actionlint` 1.7.7 over all five
+workflows reporting **the same two findings as `origin/main` and no new one**; `bash -n` clean on all
+five scripts. Synced: `ARCHITECTURE_REVIEW_GATE.md` (the new compiler/toolchain rule), ADR-0028 +
+`ADR_INDEX`, `DEPENDENCY_POLICY.md` (table row, §Update mechanisms, compliance log),
+`CI_CD.md` (§Cache lineages, §The Clang warning baseline, §Reproducing CI locally — the local-repro
+block now calls `setup-llvm-apt.sh`, since Ubuntu has no `clang-22` for noble), `REPOSITORY_MAP.md`
+(the new script + the `scripts/` tree line), this file.
+
+Deliberately **not** changed: `CHANGELOG.md` (rule 3 — a CI toolchain pin is not user-visible),
+`BUILD.md` (its "Verified on" list is about building the product locally and nothing in it became
+false), the floating `*-latest` runner labels (floating is the intent), and pluginval's
+`releases/latest` download, which is already carried as `RELEASE_HARDENING_PLAN.md` **RH-F6**.
 
 **Stale re-aim declaration, protected history, non-gating cache statistics (0.9.4, no version
 bump). Three review findings. No CI behaviour change beyond making a reporting step non-fatal.
@@ -3095,7 +3297,7 @@ HEAD `c605fbe` (JUCE 8.0.14).
 |---|---|---|
 | docs root | SOURCE_OF_TRUTH, HANDOVER, REPOSITORY_MAP, DOCUMENTATION_COVERAGE, POSTMORTEMS, KNOWN_ISSUES, FUTURE_RISKS, COMMERCIAL_STATUS | Present |
 | user | USER_MANUAL, INSTALLATION | Present |
-| architecture | 15 docs (incl. RELEASE_HARDENING_PLAN) + ADR_INDEX + 18 ADRs (0016–0020 reserved, see plan §8) | Present |
+| architecture | 15 docs (incl. RELEASE_HARDENING_PLAN) + ADR_INDEX + 23 ADRs (0016–0020 reserved, see plan §8) | Present |
 | worklogs | performance/ (Waves 3–6 + the v0.8.11 final-pass and crossover-glide investigations), release-hardening/ (RH program working evidence; finalized decisions live in ADRs), root-level v0.8.12 GUI-fix records (`BANDWIDTH_DRAG_FIX_v0.8.12.md`, `MOUSE_RELEASE_STATE_FIX_v0.8.12.md`) + `POST_v0.8.12_AUDIT_AND_ROADMAP.md` + `STATE_HARNESS_v0.8.13.md` | Present |
 | procedures | 8 docs | Present |
 | policies | 15 docs | Present |

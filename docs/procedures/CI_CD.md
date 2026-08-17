@@ -279,8 +279,9 @@ JUCE-linking targets compiles separately. JUCE is pinned to an immutable commit
 (`CMakeLists.txt:49-55`, ADR-0022/ADR-0026), so that 75% is byte-identical from run to run.
 Measured on 4 cores — the runner's core count — the same build with a warm cache is **7m41s → 3m40s
 (−52%)**, at **137 direct hits / 6 misses**, and the residual is the LTO link, which no compiler
-cache touches. The `linux-clang` configuration, measured the same way against the pinned Clang 18,
-is **5m48s → 2m36s (−55%)** at **129 hits / 5 misses**. Both were measured with the build number
+cache touches. The `linux-clang` configuration, measured the same way against the **then-pinned Clang
+18**, was **5m48s → 2m36s (−55%)** at **129 hits / 5 misses** (a figure from that measurement, not a
+claim about the current pin — the compiler has since moved to 22). Both were measured with the build number
 *deliberately changed between the two runs*, so they describe the CI case rather than a favourable
 one.
 
@@ -316,11 +317,14 @@ the backstop either way.
 **Warnings survive a hit.** ccache replays the compiler's stderr verbatim — caret lines and
 `[-Wflag]` included. That is load-bearing rather than incidental: `linux-clang` gates on the
 diagnostic text of its own build (see "The Clang warning baseline"), and a cache that swallowed
-warnings would turn that gate green by deleting its input. Verified against the pinned Clang 18
-before enabling, by running that job's real build and its real gate twice: cold and warm produce
+warnings would turn that gate green by deleting its input. Verified against the **then-pinned Clang
+18** before enabling, by running that job's real build and its real gate twice: cold and warm produced
 **54 warning lines each, `diff`-identical**, and the same verdict — *no new first-party warnings,
 14 accepted sites in 7 baseline entries* — with 129 of the 134 compilations served from cache on the
-warm run.
+warm run. Those three figures are from that measurement, under that compiler; the property they
+establish (replayed stderr is byte-identical to compiled stderr) is a ccache property and is not
+version-specific, and the *verdict* half still holds unchanged at Clang 22 — the accepted set is the
+same 14 sites in 7 entries.
 
 **One repository property makes it work, and it had to be created.** `ANAMORPH_BUILD_NUMBER` is
 `${{ github.run_number }}` and therefore changes every run. It was a *target-wide* compile
@@ -338,8 +342,11 @@ built at two different directory names shares nothing.
 compiler, same configuration, same build directory name, and they never run in the same event, so a
 PR's `merge-check` restores what the last push to the base branch wrote. That is the whole reason
 `merge-check` is worth caching — it is the *only* build on the same-repo PR path and therefore that
-path's entire critical path. `linux-clang` keys on the pinned Clang major so raising the pin starts
-a clean lineage; `sanitizers`, `macos` and `macos-intel` each have their own.
+path's entire critical path. `linux-clang` **and `sanitizers`** both key on the pinned Clang major, so
+raising the pin starts clean lineages instead of restoring entries no build can hit again — ccache
+hashes the compiler binary's own contents (`CCACHE_COMPILERCHECK=content`), so objects from the
+previous major are dead weight rather than wrong answers, but a restored cache full of them is still
+a restore that buys nothing. `macos` and `macos-intel` each have their own.
 
 **Not on Windows.** ccache's MSVC support requires `/Z7`-style embedded debug info, and this project
 compiles Release with `/Zi` precisely so the linker emits the PDB that ships as the
@@ -566,6 +573,93 @@ the two disagree — exit 2, the code meaning *the check* could not run, not the
 regressed. An unrecorded version is refused for the same reason a wrong one is: it cannot be
 confirmed to describe this compiler. Bump the pin and re-baseline in the **same** change.
 
+**The pin is 22 — upstream stable — and it comes from apt.llvm.org.** The rule is *upstream stable*,
+not *newest* and not *whatever Ubuntu packages*: 22.1.8 was released 2026-07-10 and 22.x is the branch
+upstream shipped point releases on, while 23.1.0 is still at **rc3**. Ubuntu's own archives stop at
+`clang-20` for noble, which is what `ubuntu-latest` resolves to, so the toolchain is installed by
+`scripts/setup-llvm-apt.sh` from **apt.llvm.org** — upstream's own Debian/Ubuntu channel, whose
+`llvm.sh` asserts `CURRENT_LLVM_STABLE=22`. Ubuntu's packaging boundary is a fact about Ubuntu's
+release process, not about this project, and it is not allowed to hold the warning gate and the
+sanitizer host two majors behind upstream. ADR-0028 carries the decision, the options it rejected
+(including the intermediate 20 step and its mistaken reading of 21/22 availability), and the policy
+rule it enacts.
+
+What the move cost the baseline was **measured, not assumed**, with clang-20 kept as the control: the
+same three targets built from one tree under 20 and 22 emit a `diff`-identical **52-instance** warning
+census, and `--write-baseline` at 22 reproduces all **7 entries / 14 sites** unchanged — so the only
+line that moved in `scripts/clang-warning-baseline.txt` is `# clang-major:`. The same census also
+matches Clang 18's, so this tree's accepted set has now been stable across three majors. Both suites
+pass under the clang-22 build (140 and 894 checks) and again under its sanitizer build; the LTO
+`Anamorph_VST3` link and `check_linker_flag`'s lld probe are green at 22
+(`clang++-22 -fuse-ld=lld` resolves to `/usr/lib/llvm-22/bin/ld.lld`, LLD 22.1.8); and
+`--compile-canary` still rejects the explicit `SIMDRegister` form.
+
+**`-fsanitize=vptr` is now named explicitly, and that is coverage preserved rather than added.** Clang
+21 removed `vptr` from the `-fsanitize=undefined` group, so the bare `address,undefined` the
+`sanitizers` job used to carry would have silently stopped checking bad downcasts and bad vtables the
+moment the pin passed 20. Reproduced rather than taken from a release note: one bad-downcast program,
+`-fsanitize=undefined`, clang-20 reports *"downcast of address … which does not point to an object of
+type 'B'"*, clang-22 reports **nothing**, and `-fsanitize=undefined,vptr` restores it on 22. It needs
+RTTI, which this project never disables — so it is named on the **C++ compile flags only**. On a C
+translation unit it is dead (a C TU emits the same `__ubsan` reference count with and without it), and
+this job compiles 19 of them from the C sources JUCE vendors; clang-22 accepts it there silently, but
+the driver already hard-errors on `vptr` + `-fno-rtti` even in C mode, and this job fails closed at
+configure time rather than degrading.
+
+The costs, stated so they are not discovered later. A **third-party apt source** is now in the two
+Clang jobs. Its trust surface is narrowed three ways rather than merely acknowledged: the signing key is
+fetched over HTTPS **and pinned by identity** — the keyring must hold *exactly one* primary key and it
+must be `6084F3CF814B57C1CF12EFD515CF4D18AF4F7421` (*Sylvestre Ledru — Debian LLVM packages*), because
+`signed-by=` trusts every key in the file — so a rotated, substituted or appended key fails the job with
+a specific message rather than being trusted silently; `signed-by=` scopes that key to this one suite; and the
+install is **fail-closed** — if apt.llvm.org is unreachable those two jobs fail saying so, while the
+three *shipping* build jobs never touch it. The install is 15 packages / 155 MB / **17.8 s** measured on
+a 4-core box, against 14 / 113 MB / 10.9 s for clang-20 from the stock archive and a no-op for the
+preinstalled clang-18.
+
+**Reproducibility is weaker than the stock archive, and that is the real trade.** apt.llvm.org publishes
+*branch snapshots*, never the tagged `llvmorg-*` build — noble-22 is
+`1:22.1.8~++20260714014902+ca7933e47d3a-…`, the 22.x head just after 22.1.8, and the leading `~` makes
+it sort *below* a hypothetical `1:22.1.8-1`. Suites are rebuilt while their branch is open and freeze
+once it closes, and the pool keeps **only the current `.deb` per architecture** — which is also why an
+exact-version pin is not merely unenforceable here but impossible: it would stop resolving the next time
+the suite is rebuilt. **22.x is closed** (22.1.8 is upstream's newest tag; 23 is the development
+branch), and the mirror shows it: noble-22's index is 18 days old where noble-23's is 2. So the pin
+rests on a frozen suite, not on a hope. The guard still covers only the major; a patch-level diagnostic
+shift inside 22 would surface as a gate failure, not a silent pass. One gain, too: apt.llvm.org
+publishes noble-22 for `amd64 arm64 s390x`, so a future `ubuntu-24.04-arm` Clang job could install it —
+`clang-20` from the stock archive (amd64/i386 only) could not.
+
+**If you re-check apt.llvm.org and it seems to disagree, read the script, not the prose.** The site's
+homepage still labels 21 stable / 22 qualification / 23 development, one cycle stale; `llvm.sh`'s
+`CURRENT_LLVM_STABLE=22` and upstream's own tags are the authority.
+
+**The one upstream default worth naming, because it is a silent one.** Clang ≥ 20 turns on distinct
+TBAA tags for incompatible pointers by default, which upstream says "may silently change code behavior
+for code containing strict-aliasing violations" (`-fno-pointer-tbaa` disables it). This job is not a
+shipping compiler — the Linux artefact is GCC's — but it is a *detector*, so a codegen change here is
+worth having looked at rather than assumed away: both suites pass under the clang-22 Release build
+(140 + 894) and again under its ASan+UBSan+vptr build with `halt_on_error=1`, and the diagnostic set
+did not move. The ABI changes in 20, 21 and 22 (Itanium construction-vtable mangling; larger records
+returned in memory; the MSVC-ABI destructor change) cannot reach this pipeline: every job builds its
+whole tree, JUCE included, from source with one compiler, so there is no mixed-major link anywhere, and
+the MSVC-ABI item belongs to a compiler this project does not use on Windows.
+
+**The baseline held still because the tree trips none of the new checks, not because the compiler
+stood still.** Clang 21 and 22 add 51 and 26 new warning flags respectively and escalate three
+diagnostics to error-by-default (chained comparisons and comparison fold-expressions in 21,
+`-Wincompatible-pointer-types` in 22). The build log was checked for the ones most likely to reach
+JUCE-style code and none appears: `-Wunnecessary-virtual-specifier`, `-Wcharacter-conversion`,
+`-Wexperimental-lifetime-safety`, and the new default-on `-Wgcc-install-dir-libstdcxx` — that last one
+is worth naming because it fires on images carrying several GCC toolchains, which this one does
+(12/13/14). One loss is real but forward-looking: Clang 22 **removes
+`-Wperf-constraint-implies-noexcept` from `-Wall`**, which cannot fire while nothing here is annotated
+`[[clang::nonblocking]]`, and must be enabled explicitly if that ever changes.
+
+**The standard library does not move with the pin.** Both clang-20 and clang-22 select the same
+libstdc++ on this image (`Selected GCC installation: …/13`), so a Clang major bump changes no C++23
+*library* surface here; that follows the runner's GCC, not `ANAMORPH_CLANG_VERSION`.
+
 **Only judge a baseline against a FULL build.** A count also falls when the log simply lacks the
 translation unit that carries the warning, which is what an incremental rebuild produces — ninja
 recompiles only what changed. CI always builds from a fresh checkout, so its log is complete; a local
@@ -701,7 +795,7 @@ Separate from the build/validate pipeline, four security workflows/configs run a
 | `.github/workflows/codeql.yml` | CodeQL: `c-cpp` (manual build — VST3 + tests targets, Standalone off) + `actions`. Alerts filtered to repo-own code (`paths-ignore: build` excludes the FetchContent'd JUCE tree). Default query suite. | push/PR to `main` (docs-only changes skipped), weekly, dispatch |
 | `.github/workflows/msvc.yml` | MSVC `/analyze` (NativeRecommendedRules) → SARIF upload. Build step required (juceaide-generated files); JUCE under `build/_deps` treated as external. | push/PR to `main` path-filtered to `src/`, `tests/`, `CMakeLists.txt`; weekly; dispatch |
 | `.github/workflows/dependency-review.yml` | Dependency Review on PRs (GitHub Actions deps only — the graph does not index CMake FetchContent). Comments only on failure. | PR to `main` |
-| `.github/dependabot.yml` | Weekly grouped `github-actions` version bumps (single PR). JUCE is **not** Dependabot-managed — pinned + review-gated per `DEPENDENCY_POLICY.md`. | weekly |
+| `.github/dependabot.yml` | Weekly `github-actions` version bumps in **two groups split by semver impact** — minor/patch in one PR (nearly all the volume: `github/codeql-action` alone releases every week or two), majors in another, so one major cannot block every safe bump behind it. Both groups keep `patterns: "*"`, which is what holds a multi-ref family (`codeql-action/{init,analyze,upload-sarif}` — three dependency names) together. `microsoft/msvc-code-analysis-action` is **ignored**: its SHA pin carries no tag, and an untagged pin is followed to the latest *commit*, not the latest release. `cooldown` is unset — Dependabot already withholds a new version for 3 days by default. Nothing else in this repository is a Dependabot ecosystem; `DEPENDENCY_POLICY.md` §Update mechanisms says what maintains each of the rest. | weekly |
 
 Both analysis workflows configure with `-DANAMORPH_BUILD_STANDALONE=OFF`: the Standalone format
 recompiles the same translation units as VST3, so analyzing it doubles cost for zero extra
@@ -767,7 +861,8 @@ The `linux-clang` and `sanitizers` jobs use their own build trees so they never 
 above — `build-clang`, `build-san`, `build-vg`. All are covered by `.gitignore`'s `build*/`.
 
 ```bash
-CLANG=18   # ANAMORPH_CLANG_VERSION in .github/workflows/build.yml is the authority
+CLANG=22   # ANAMORPH_CLANG_VERSION in .github/workflows/build.yml is the authority
+scripts/setup-llvm-apt.sh "$CLANG"   # Ubuntu has no clang-22 for noble; this is how CI gets it
 cmake -B build-clang -G Ninja -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_C_COMPILER="clang-$CLANG" -DCMAKE_CXX_COMPILER="clang++-$CLANG" \
       -DANAMORPH_BUILD_STANDALONE=OFF
