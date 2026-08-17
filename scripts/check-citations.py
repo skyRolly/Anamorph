@@ -362,6 +362,19 @@ DELIBERATE_REAIMS = set([
     # now asserts every entry here is a string its document really contains.
     ("docs/policies/RELEASE_POLICY.md", ".github/workflows/build.yml:546,1119,1541"),
     ("docs/KNOWN_ISSUES.md", ".github/workflows/build.yml:1708-1710"),
+    # THE ONE ANCHOR IN THE CLANG-22 ROUND THAT IS A RE-AIM RATHER THAN A
+    # RE-ANCHOR, and the tool is right to refuse it. `DEPENDENCY_POLICY`'s Clang
+    # row cites the `env:` block, whose lines both MOVED (+4) and CHANGED
+    # (`ANAMORPH_CLANG_VERSION: 20` -> `22`), so there is no text to map from --
+    # `--fix` cannot compute it and reports UNMAPPABLE. Verified by hand at the
+    # new spelling: :78 `env:`, :79 the pluginval strictness, :80 the Clang
+    # major. Recorded here rather than worked around, because the LOCAL run
+    # could not see it: against `origin/main` this row does not exist yet, so the
+    # citation reads as NEW and is skipped, while CI compares against the push
+    # predecessor where it does exist. That is both escape hatches open at once
+    # -- exactly the pair this file's header warns about, and the reason a local
+    # green is not evidence until it is re-run against the base CI will use.
+    ("docs/policies/DEPENDENCY_POLICY.md", ".github/workflows/build.yml:78-80"),
     ("docs/procedures/BUILD.md", "scripts/build.sh:19-54"),
 ])
 

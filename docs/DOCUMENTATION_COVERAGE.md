@@ -169,7 +169,20 @@ drift check reports no re-spelling at all (the anchors resolve to the *same text
 the property it actually tests), and a deliberate mutation of one anchor to a wrong value made the gate
 exit 1 while **independently computing `:1708-1710`** as the correct answer.
 
-Validated: `check-citations` 85 self-test cases + `--check` **exit 0** over 301 anchors; `check-docs` 68
+**One of those six anchors was a re-aim, not a re-anchor, and only CI could see it.**
+`DEPENDENCY_POLICY`'s Clang row cites the `env:` block, whose lines both **moved** (+4) and **changed**
+(`ANAMORPH_CLANG_VERSION: 20` → `22`), so there is no base text to map from and `--fix` reports
+UNMAPPABLE. The local run could not catch it: against `origin/main` that row does not exist yet, so the
+citation reads as *new* and is skipped, while CI compares against the **push predecessor**, where it
+does exist — both of the checker's escape hatches open at once, which is precisely the pair its own
+header warns about. `source-lint` went red on exactly one citation out of 302, the aim was re-verified
+by hand (`:78` `env:`, `:79` strictness, `:80` the Clang major) and declared in `DELIBERATE_REAIMS`, and
+the fix was then confirmed **against the base CI actually used** rather than the local default. The
+standing lesson, now applied: a local `--check` green is not evidence until it is re-run against that
+base. This round it was re-run against all five — `origin/main` and every commit on the branch.
+
+Validated: `check-citations` 86 self-test cases + `--check` **exit 0** over 302 anchors against
+`origin/main` **and** against each branch commit; `check-docs` 68
 cases / 100 files; `check-portability` 45 files / 0 violations; `check-clang-warnings --self-test` 28
 cases, plus the real gate run against the clang-22 build log at the regenerated baseline (**exit 0**,
 14 accepted sites in 7 entries) and the mismatched pair still **refused** (exit 2); `dependabot.yml`
