@@ -14,6 +14,17 @@ _deps/
 # docs/procedures/CI_CD.md describes leaves the same file behind.
 /clang-build.log
 
+# The compiler cache. Every Ninja job in build.yml sets CCACHE_DIR to
+# `${{ github.workspace }}/.ccache`, i.e. inside the tree, and so does anyone
+# reproducing one of those builds locally. On a hosted runner the directory is
+# never at risk -- checkout runs before the cache restore in every job, so there
+# is nothing to clean away -- and it stays out of the artifacts because every
+# packaging step names `build/...` and `dist/...` explicitly rather than globbing
+# the root. This entry is for the same reason as /dist/ and /clang-build.log
+# above: a few hundred megabytes of untracked object cache in `git status` is how
+# a real change gets missed in the read before a commit.
+/.ccache/
+
 # CI staging. Every build.yml packaging step writes here (dist/Anamorph-<OS>,
 # dist/Anamorph-<OS>-debug, the two installers), and so does anyone reproducing a
 # packaging step locally the way docs/procedures/CI_CD.md describes. Untracked

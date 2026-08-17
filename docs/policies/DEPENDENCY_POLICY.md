@@ -32,7 +32,7 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
    JUCE change can move DSP/latency/editor behaviour invisibly to the headless gate.
 3. Re-verify the `RELEASE_COMPATIBILITY_CHECKLIST.md` (latency reporting, session reload) after a bump.
 4. Prefer the offline path (`-DANAMORPH_JUCE_PATH`) for reproducibility in restricted CI.
-5. `JUCE_*` compile flags in `CMakeLists.txt:257-262` (no webview, no curl, no splash, strict
+5. `JUCE_*` compile flags in `CMakeLists.txt:279-284` (no webview, no curl, no splash, strict
    ref-counted pointer) are part of the dependency contract; changing them is a build change.
 
 ## Compliance log

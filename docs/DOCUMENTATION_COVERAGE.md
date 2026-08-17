@@ -7,7 +7,11 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
-**native Intel macOS job** (first below), then the
+**stale re-aim declaration, protected history, non-gating cache statistics** (first below), then the
+**citation follow-up: two missed anchors and four that were wrong on arrival** after it, then
+the **citation-gate coverage for the build definition and the CI workflow** after it, then the
+**CI compiler cache + job timeouts** after it, then the
+**native Intel macOS job** after it, then the
 **raw-string lexing fix** before it, then the **withdrawn debuglink claim** before it, then the
 **unterminated block-comment invariant**
 before it, then the **unterminated-literal invariant +
@@ -28,6 +32,255 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**Stale re-aim declaration, protected history, non-gating cache statistics (0.9.4, no version
+bump). Three review findings. No CI behaviour change beyond making a reporting step non-fatal.
+`scripts/check-citations.py` + `.github/workflows/build.yml` + four documents.**
+
+**A declaration that would have turned the default branch red.** `DELIBERATE_REAIMS` still named the
+*intermediate* workflow anchors from the commit before last (`:495,1042,1454`), not the values the
+documents were corrected to. The branch stayed green because a declaration is consulted **only when a
+citation mismatches**, and against this branch's own tip nothing mismatches — so `--check --base
+HEAD` passed while `--check` against the **merge base**, which is what a push to the default branch
+actually compares, reported `UNMAPPABLE` and exited 1. Reproduced at `1993dbe` before the fix
+(exit 1) and after (exit 0), and re-checked against every other base CI can pick.
+
+That is the second time in this PR an anchor was recomputed without its declaration following, so
+the class is now closed rather than the instance: **self-test section 9** asserts every
+`DELIBERATE_REAIMS` entry names a string its document really contains. An entry naming a spelling no
+document carries cannot be excusing anything — either the anchor moved on without it, or it outlived
+its transition and should be deleted. It earned its place immediately: editing the workflow in this
+same round shifted four anchors, and the self-test failed on all four before they were re-synced
+(83 cases now, up from 70).
+
+**History is no longer rewritable by the tool it describes.** `CMakeLists.txt` joined `TRACKED` last
+round, and root-level paths have no bare escape spelling, so **eleven** *historical* sentences in
+this document became claimable as live evidence — including one whose entire point is that an anchor
+was **wrong** (`Drift observed, not corrected`), and another that literally states "rewriting one to
+match today's code would falsify the record". A future `--fix` would have silently changed the
+numbers those sentences are about, which is exactly what the checker's own header forbids. Each now
+separates path from anchor (`` `CMakeLists.txt` `:206,230` ``); the one that *illustrates a spelling*
+uses a non-tracked path instead, since splitting it would have destroyed the illustration.
+
+Eight were caught in the first pass and three more in a second, which is worth recording because the
+three were **misjudged, not missed**: they were read as live pointers ("the version line") when each
+is in fact a record of a past event *at a position*. The sharpest is the C++23 entry, whose claim is
+that the standard "moved 17 → 23 **in place** on `:16`, so no downstream citation moved" — the
+number is load-bearing to the argument, and rewriting it would assert a positional fact that never
+happened. Another sits two lines from a sibling reference in the *same* historical sentence that had
+already been protected, so a `--fix` would have rewritten half a paired record and frozen the other
+half. The discriminator that survives: **is the number the subject of the sentence, or a pointer to a
+thing?** Exactly one `CMakeLists.txt` citation in this document is the latter — "*it is*
+`CMakeLists.txt:314-323`", present tense, where re-anchoring preserves truth — and it is deliberately
+left live so the gate still demonstrably checks real evidence here.
+
+Verified by mutation rather than by reading: a line inserted into `CMakeLists.txt` above all of them,
+then the real `--fix`, leaves all eleven byte-identical and correctly re-anchors the one live
+citation (`:314-323` → `:315-324`).
+
+**Cache statistics can no longer gate a release.** The six `Compiler cache statistics` steps ran
+`ccache --show-stats --verbose` unguarded under `bash -e`; a non-zero exit (an older ccache without
+`--verbose`) would have failed the job and then skipped stripping, staging and every upload, because
+the steps after it default to `success()`. That contradicts this file's own rule — required tools
+fail loudly, the cache steps aside — and is why `--zero-stats` was already guarded. Now `|| true`,
+explained once in the compiler-cache block rather than six times at the call sites.
+
+Re-anchoring the workflow after that edit moved four citations again; all four were recomputed from
+the file as it stands and read back line by line.
+
+**Citation follow-up (0.9.4, no version bump). Six corrected anchors, one wrong workflow comment,
+two unsafe table cells. No CI behaviour change. Six documents + `scripts/check-citations.py`
++ `.github/workflows/build.yml` (comment only).**
+
+Review found two anchors the previous round missed, both below its insertion point and both invisible
+to the new gate for the same reason: they are spelled as **bare continuations**
+(`` `path/to/file:188-199` … `:292-301` ``), which the parser only recognises in the
+`path:a,b,c` form. `ADR-0001`'s "tests link the core" pointed at `juce::juce_opengl` inside the
+*plugin*'s link block; it is `CMakeLists.txt:314-323`. `BUILD.md`'s compile-definition list cited
+`:277-284` while listing `ANAMORPH_BUILD_NUMBER` — a definition that range no longer contains, since
+scoping moved it to `:274-275`; widened to `:274-284`, deliberately as **one** anchor, because a
+citation whose anchor *count* changes lands in the "review by hand" branch no declaration can excuse.
+
+That continuation spelling is the **house convention** — 131 instances across the ADRs — so it was
+left alone rather than re-spelled for one line. The class is recorded here, not fixed: bringing it
+under the gate means either teaching the parser the convention or rewriting 131 anchors, and neither
+is this round's business.
+
+**Four workflow anchors were wrong on arrival**, which matters more than the two misses. They were
+computed part-way through the previous round; a later edit in that same round (making ccache
+optional, ~+70 lines) moved everything below it, and nothing objected — three were *declared
+re-aims*, and a declaration is precisely a promise the tool will not judge the aim, while the two
+`COMPATIBILITY_MATRIX` ranges were *new* citations, which "have nothing to drift from" and are
+skipped against the base. Both escape hatches are correct individually; both being open at once is
+how a measured number ships stale. All four are now recomputed from the file as it stands and read
+back line by line rather than shifted by an arithmetic delta: `RELEASE_POLICY` `:530,1098,1520`,
+`KNOWN_ISSUES` `:1687-1689`, and the two job ranges `:1456-1916` / `:1974-2219`.
+
+Two more corrections, both of things the previous round introduced. The `linux` job carried a comment
+claiming cached objects meant `objcopy --only-keep-debug` "reads exactly what it always read" — but
+that command operates on the **linked** binary, not on objects, so the dependency it described does
+not exist (the macOS `dsymutil` note, which does walk back to the object files, was already
+accurate). And this document's own history table spelled two cells as `CMakeLists.txt` `:27,305` /
+`:14,250-275`, violating the checker's own stated rule that **prose examples must not use a tracked
+path** — the rule exists because one worked example in this file was already silently re-anchored
+once. `build.yml` rows escape by being spelled bare; `CMakeLists.txt` is root-level and has no bare
+form, so the table now separates path from anchor (`` `CMakeLists.txt` `:27,305` ``). The same trap
+is now documented beside `TRACKED` for whoever adds the next root-level path — `NOTICE` is named
+there as a candidate and would inherit it.
+
+Investigated and deliberately unchanged: the `merge-check`/`linux` shared cache lineage (verified
+mutually exclusive across all five event shapes), the `github.run_id` cache keys (ordinary
+lineage/eviction trade-offs, no defect), the `!cancelled()` statistics steps (a step with no `if:`
+still defaults to `success()`, so a failed build still skips its producer), the relaxed
+citation-matcher (correct and asserted by name in the self-test), and the `ANAMORPH_BUILD_NUMBER`
+scoping (the only reader is `src/PluginEditor.cpp`, both compiling targets are in this directory
+scope, product behaviour unchanged).
+
+**Citation-gate coverage for `CMakeLists.txt` and `build.yml` (0.9.4, no version bump). Four
+corrected anchors, one checker change, no CI behaviour change beyond making the cache optional.
+`scripts/check-citations.py` + `.github/workflows/build.yml` + `.gitignore` + five documents.**
+
+The round before this one reported a gap rather than fixing it: `check-citations.py` did not track
+`CMakeLists.txt` or `.github/workflows/build.yml`. Review then demonstrated the gap was load-bearing
+rather than theoretical — that round moved 22 lines of one file and several hundred of the other,
+and **four evidence anchors went stale while the gate reported the tree clean**:
+
+| document | claimed | actually pointed at | now |
+|---|---|---|---|
+| `procedures/BUILD.md` | `ANAMORPH_BUILD_TESTS` | `JUCE_REPORT_APP_USAGE=0` | `CMakeLists.txt` `:27,305` |
+| `policies/RELEASE_POLICY.md` | the build-number definition | mid-comment of the new block | `CMakeLists.txt` `:14,250-275` |
+| `policies/RELEASE_POLICY.md` | the per-OS Configure steps | three unrelated workflow lines | `build.yml:495,1042,1454` |
+| `KNOWN_ISSUES.md` | the ad-hoc `codesign` calls | the `macos:` job header | `build.yml:1621-1623` |
+
+Two more, detached (`build.yml macos job (:1213-1626)`) rather than spelled as citations, were
+corrected in `COMPATIBILITY_MATRIX.md` and re-spelled so the gate can now see them at all.
+
+**The checker change is two lines of behaviour and one of ownership.** `CMakeLists.txt` is a
+ROOT-level file, so the pattern's "a path must contain a directory separator" rule — written to
+decline a bare `PluginProcessor.cpp:7` as ambiguous across checkouts — could never match it, and
+listing it in `TRACKED` alone would have been **inert**: present in the list, absent from the gate,
+indistinguishable from working. The separator requirement was therefore a proxy for the real test,
+and ownership now rests where it always actually rested, on `TRACKED` membership spelled from the
+repository root. A bare `PluginProcessor.cpp`, `run-pluginval.sh` and `build.yml` are all still
+declined, each asserted by name in the self-test.
+
+That last one is deliberate and load-bearing: this very document records past re-anchorings as prose
+(“`build.yml:288,758,1141` → the three per-OS …”), which is **history, not evidence**. The workflow
+is tracked under its full path, so the bare spelling those sentences use is what keeps `--fix` away
+from the numbers the sentences are about — the exact corruption the header's "prose examples" rule
+exists to prevent. `CMakeLists.txt` has no such escape, being root-level: its tracked spelling *is*
+its bare one. The table above therefore separates the path from the anchor
+(`` `CMakeLists.txt` `:27,305` ``) so the parser sees no citation, which is the same protection by a
+different route — the two `build.yml` rows need no such treatment and are left as they read.
+
+Coverage went from **217 to 312 checked anchors**. Proven live rather than asserted: inserting one
+line into `CMakeLists.txt` turns the gate red with **60 drift reports** where the previous checker,
+given the identical mutation, reported "217 anchors still point at the same text" and exited 0. Six
+new self-test cases assert both files by name, end to end, plus the guard rails that make them safe
+to rewrite — the FETCHED `build/_deps/juce-src/CMakeLists.txt` is declined, as are revision-pinned
+and sibling-checkout spellings. The four corrections are declared in `DELIBERATE_REAIMS`, good for
+one transition, aims confirmed by the maintainer.
+
+**Still outside, named so the gap is a decision:** `packaging/macos/INSTALL.txt` (4 anchors),
+`NOTICE` (3), `packaging/linux/INSTALL.txt` (1).
+
+**The cache is now genuinely optional.** A review observation, confirmed on inspection: for one
+commit `brew install ninja ccache || true` followed by a bare `ccache --version` swallowed a real
+Homebrew failure and then converted it into a hard failure of a release-gating job. Ninja is
+**preinstalled** on the macOS images, so brew had not previously been load-bearing at all. Each
+install step now resolves `ANAMORPH_COMPILER_LAUNCHER` into `$GITHUB_ENV` and the configure step
+passes it through; empty is how CMake spells "no launcher", verified locally to produce a plain
+compiler invocation that builds. Required tools still fail loudly. `.ccache/` joined `.gitignore`
+for the reason `/dist/` and `/clang-build.log` are there.
+
+**CI compiler cache + job timeouts (0.9.4, no version bump). No new job, no test change, no
+artifact change, no product-behaviour change. `.github/workflows/build.yml` + `CMakeLists.txt`
++ three documents.**
+
+A CI *performance* round, measured before it was implemented. Baseline: run `31952680908` (push to
+`main`, 2026-08-16, the first run carrying `macos-intel`) took **29m51s** wall, and the critical
+path is **`macos` at 29m44s** — not `macos-intel` (21m26s), which despite a 5m04s queue delay still
+finished 3m17s earlier. Within `macos`, the **build step alone is 16m40s**, more than its four
+pluginval passes combined (11m25s). Every other build job has the same shape: build is 74–83% of
+`linux`, `linux-clang`, `windows` and `sanitizers`. Compilation, not validation, is this pipeline's
+cost.
+
+`.ninja_log` splits a cold Linux Release build into **1409 CPU-seconds of compilation (75%) and 468
+of LTO link (25%)**, and that compilation is overwhelmingly JUCE — ~9k lines of first-party source
+against a framework each of the three JUCE-linking targets compiles separately, pinned to an
+immutable commit and therefore byte-identical run to run. Recompiling it on every push was the
+largest avoidable cost in the workflow, so the six Ninja jobs now compile through **ccache**
+persisted in `actions/cache`.
+
+**The enabling change is in `CMakeLists.txt`, and without it the rest is nearly worthless.**
+`ANAMORPH_BUILD_NUMBER` is `${{ github.run_number }}` — the one definition whose value changes every
+run — and it was a *target-wide* compile definition. Measured per target from `.ninja_log`, the two
+targets carrying it are **84.4% of compile time** (`AnamorphStateTests` 57.7%, `Anamorph` 26.7%), so
+84.4% of every build was guaranteed to miss the cache because an About-box string had incremented.
+It is now attached with `set_source_files_properties` to the single translation unit that reads it;
+`src/PluginEditor.cpp` already carried an `#ifndef ANAMORPH_BUILD_NUMBER → "0"` fallback, both
+consumers still compile that file from this directory, and `grep` confirms nothing else ever read
+it. Verified from the generated `build.ninja`: the definition now appears on **2 of 111** C++
+objects, and on exactly the two expected ones.
+
+Measured on 4 cores (the runner's core count), same build directory name, **with the build number
+deliberately changed between the two runs** so the test is the CI case and not a favourable one:
+**7m41s → 3m40s (−52%)**, at **137 direct hits / 6 misses**; the `linux-clang` configuration against
+the pinned Clang 18 is **5m48s → 2m36s (−55%)** at **129 hits / 5 misses**. The residual is the LTO
+link, which no compiler cache touches. The warning-replay property was proven the same way rather
+than asserted: that job's real build and real gate, run cold and then warm, produce **54 warning
+lines each, `diff`-identical**, and the same verdict (*no new first-party warnings, 14 accepted
+sites in 7 baseline entries*).
+
+Then confirmed in CI rather than left as a local claim. Baseline run `31952680908` against warm run
+`31959972853`, full matrix, all nine jobs green in both: **run wall clock 29m51s → 17m13s (−42%)**.
+Per job, build step first: `macos` 16m40s → **3m09s** (job 29m44s → 17m09s), `macos-intel` 10m21s →
+3m04s (21m26s → 13m12s), `sanitizers` 12m14s → 3m31s across its two builds (15m07s → 6m38s), `linux`
+8m04s → 3m34s (10m57s → 6m21s), `linux-clang` 7m58s → 2m29s (9m38s → 4m13s). Restoring a cache costs
+2–4s and saving one 2–4s against ~104 MB per lineage. The intervening cold run (`31958514768`, the
+push that landed this) came in at 26m11s with no hits available, confirming the caching machinery
+adds no measurable cost when it cannot help.
+
+The pipeline's shape is now inverted: `macos` remains the critical path, but 12m54s of its 17m09s is
+the four pluginval passes and only 3m09s is compilation. Any further wall-clock reduction would have
+to be taken out of validation, which is why this round stops here.
+
+Safety is structural rather than promised: ccache's own hash — preprocessed source, full command
+line, and the compiler binary's *content* (`CCACHE_COMPILERCHECK=content`) — is the correctness
+boundary, so a GitHub cache key can only ever cost a hit and never manufacture a wrong one. That is
+why the keys are coarse and do not hash `CMakeLists.txt`. Two properties were verified rather than
+assumed before enabling: ccache hashes the full `-arch` **list**, so a universal object cannot be
+served to a thin build or the reverse (checked directly: differing `-arch` sets miss, identical sets
+hit — and the `macos` job's `lipo` assertion is the backstop either way); and a cache hit replays
+the compiler's stderr **verbatim**, caret lines and `[-Wflag]` included, which `linux-clang`'s
+warning gate depends on absolutely, since a cache that swallowed warnings would turn that gate green
+by deleting its input.
+
+Windows is deliberately excluded: ccache's MSVC mode requires `/Z7`-style embedded debug info while
+this project compiles Release with `/Zi` so the linker emits the shipped crash-symbolication PDB,
+and Windows is not the critical path (12m49s against 29m44s). Trading a release artifact for build
+time is not a trade this pipeline should make.
+
+Separately, **every job now carries `timeout-minutes`** (10 for the lint jobs, 30–60 for the build
+jobs, each roughly double its measured runtime). There were none. A wedged job otherwise runs to
+GitHub's 6-hour default while holding its `concurrency` slot, and since `release.yml` reuses this
+workflow whole it would hold a release for that long; `scripts/run-pluginval.sh` passes
+`--timeout-ms 600000`, so `macos-intel`'s twelve passes have a two-hour worst case on their own.
+This bounds a failure mode; it does not remove any check.
+
+Nothing about *what* is validated changed: same jobs, same suites, same pluginval modes, passes and
+strictness, same artifacts, same `if:` conditions, still no `needs:` edge anywhere. Documents synced:
+`docs/procedures/CI_CD.md` (new "The compiler cache" and "Job timeouts" subsections; pipeline steps
+1–2), `docs/REPOSITORY_MAP.md` (the `build.yml` row). No `CHANGELOG` entry — `CHANGELOG_POLICY`
+rule 3 admits user-visible changes and this ships no product change; the plugin binary's content is
+unaffected, since the build number still reaches the same translation unit with the same value.
+
+Two documentation inaccuracies introduced by the preceding round were corrected in the same pass,
+both minimal: `CI_CD.md`'s "All three runners use the floating `*-latest` label" (now four runners,
+one of them pinned), and pipeline step 6's producer list, which named `strip`/`package`/`build` but
+not `macos-intel`'s `thin` and `au_install`. A third observation — that the new job's paragraphs had
+been inserted between a later paragraph and its "the image" antecedent — was fixed by naming the
+antecedent rather than reordering the block.
 
 **Native Intel macOS CI (0.9.4, no version bump). One new job, no source change, no artifact
 change. `.github/workflows/build.yml` + six documents.**
@@ -828,7 +1081,7 @@ wrong the tree was without them.
    were rewritten, so every `file:line` citation below the insertion points had drifted. These were
    **not** shifted by an offset. Each anchor was resolved by reading what the document *claims* and
    locating that content in the current source, which matters because an offset would have been
-   wrong in both directions: `CODE_STYLE.md` cited `CMakeLists.txt:206,230` for the recommended
+   wrong in both directions: `CODE_STYLE.md` cited `CMakeLists.txt` `:206,230` for the recommended
    warning flags, an anchor that was already wrong before this PR (206 was `juce::juce_opengl`) and
    that no shift could have repaired — the flags are at `:275,301,339`, three sites rather than two,
    because the tests target was added since. Conversely `TESTING_POLICY.md:67` and
@@ -865,7 +1118,7 @@ wrong the tree was without them.
 `check-clang-warnings.py --self-test` (28 cases); `check-portability.py` (45 files);
 `check-citations.py --check` against both `HEAD` and `HEAD~1`, 198 anchors. Every anchor changed in
 this round was additionally re-read at its new location and confirmed to land on the content the
-citing sentence describes — for example `PACKAGING.md:177` → `CMakeLists.txt:217` →
+citing sentence describes — for example `PACKAGING.md:177` → `CMakeLists.txt` `:217` →
 `PLUGIN_MANUFACTURER_CODE RTec`, `TROUBLESHOOTING.md:25` → `run-pluginval.sh:129-131` → the
 `xvfb-run -a` prefix, and `RELEASE_POLICY.md:65` → `build.yml:288,758,1141` → the three per-OS
 Configure steps. No CI, source, architecture or policy behaviour changed in this round, and the
@@ -1151,7 +1404,7 @@ historical evidence, not live statements, and are not retro-edited.
 The C++ standard sits in the `DEPENDENCY_POLICY` pinned-dependency table, so raising it is an
 `ARCHITECTURE_REVIEW_GATE` Build System change: it carries an ADR (**ADR-0027**, `Accepted`
 2026-08-15 — Architecture Review signed off) and was flagged on the PR for that review. `CMAKE_CXX_STANDARD` moved 17 → 23 in place
-on `CMakeLists.txt:16`, so no downstream `CMakeLists.txt:NNN` citation moved; the version stays
+on `CMakeLists.txt` `:16`, so no downstream `CMakeLists.txt:NNN` citation moved; the version stays
 0.9.4 and the release date stays 2026-08-15, as commissioned.
 
 **The one source change is a finding, not a cleanup.** `src/dsp/HaasProcessor.cpp` gains
@@ -2134,7 +2387,7 @@ check is right and stays; the wording is fixed in `release.yml`, `CI_CD`, `RELEA
 `HANDOVER`.
 
 **Reported-then-corrected line-number drift (C6).** The previously reported `ADR-0001` citation
-`CMakeLists.txt:62-73` → `:124-135` (and `:149-166` → `:228-237` for the tests-link-the-core
+`CMakeLists.txt` `:62-73` → `:124-135` (and `:149-166` → `:228-237` for the tests-link-the-core
 range), plus the same drift in `TROUBLESHOOTING` (`:115-125` → `:124-135`), found by the reviewer.
 Both re-verified against the file. Reporting came first, in the prior pass; this is the correction.
 
@@ -2173,9 +2426,9 @@ domains `:8-13` → `:8-12`, webkit `:31`/`:36` → `:37`/`:42`, `libegl-dev` `:
 
 Prior: for the **vendor manufacturer-code change** (2026-07-30, on top of `main` @
 `c0fca30`). **No `src/` change; DSP, parameter surface and serialized state bit-identical to
-0.9.0.** `PLUGIN_MANUFACTURER_CODE` changes `Anmf` → `RTec` (`CMakeLists.txt:153`) so the vendor
+0.9.0.** `PLUGIN_MANUFACTURER_CODE` changes `Anmf` → `RTec` (`CMakeLists.txt` `:153`) so the vendor
 code spells RollyTech rather than the first product, ahead of the second product line member
-(Anabasis) adopting the same value. Version bumped to **0.9.1** (`CMakeLists.txt:14`). The code is
+(Anabasis) adopting the same value. Version bumped to **0.9.1** (`CMakeLists.txt` `:14`). The code is
 host-facing identity — the AU component's manufacturer field, and an input to JUCE's VST3 class
 UID — so pre-0.9.1 sessions report the plug-in as missing; that is documented, not fixable, and
 one-time. Added: **ADR-0023** (options incl. "keep `Anmf` forever" and the rejected
@@ -2200,7 +2453,7 @@ KNOWN_ISSUES (version-sync lead), and every `auval -v aufx Anmr Anmf` invocation
 **Deliberately not changed:** `worklogs/PRODUCT_READINESS_ROADMAP_v0.8.13.md:36` still carries the
 old `auval` recipe — worklogs are a historical evidence trail, not maintained documents, and
 rewriting one to match today's code would falsify the record.
-**Drift observed, not corrected (constraint C6):** `ADR-0001` cites `CMakeLists.txt:62-73` for the
+**Drift observed, not corrected (constraint C6):** `ADR-0001` cites `CMakeLists.txt` `:62-73` for the
 `AnamorphDSP` INTERFACE library, which now lives at `:124-135` (as `ARCHITECTURE.md` correctly
 states); this predates the present change and is out of its scope.
 The comment added beside the new code is deliberately same-line, so no `CMakeLists.txt:NNN`
@@ -2488,7 +2741,7 @@ limitation of the v0.8.12 fix); stale line-number evidence citations refreshed i
 (KI-001/002/003/006/009/012), FUTURE_RISKS (RISK-002 incl. marking the shipped H1/Wave-3
 SoloMonitor skip, RISK-004), POSTMORTEMS (INC-003/004/006/007/009), REPOSITORY_MAP (test count
 23→33, `FrameClock.h` + `LR4Xover.h` rows added, CMake cites), README (3-OS pluginval gate scope),
-CI_CD (actions @v7), DEPENDENCY_POLICY (`JUCE_*` flags at `CMakeLists.txt:183-188`; "then-current"
+CI_CD (actions @v7), DEPENDENCY_POLICY (`JUCE_*` flags at `CMakeLists.txt` `:183-188`; "then-current"
 qualifiers), PACKAGING + COMPATIBILITY_MATRIX (CMake line cites), ADR_INDEX (130-check/23-test
 wording), BUILD + TESTING_POLICY + CODE_STYLE + TROUBLESHOOTING + RELEASE_PROCESS + TESTING (the
 same class of post-RH-PR-2 stale CMake/script cites, caught by the pre-commit verification pass),
@@ -2508,7 +2761,7 @@ confirmed the idle/Simple/hidden GPU paths are already ~0 and at their frontier,
 its bottom corners straddle a two-colour arc no flat pre-fill reproduces). Build + **140-check suite
 green**; no DSP/threading/parameter/serialization/latency change; GPU measurement unavailable in the
 headless container (analytical estimate — the affected GL path is macOS/Windows-only, Linux is CPU per
-ADR-0011). Version bump `0.8.11 → 0.8.12` (`CMakeLists.txt:14`). Synced: this file, CHANGELOG
+ADR-0011). Version bump `0.8.11 → 0.8.12` (`CMakeLists.txt` `:14`). Synced: this file, CHANGELOG
 (`[0.8.12]` **### Changed**), HANDOVER (Current-Version + Pending-Tasks rows), README (version line).
 Evidence: `worklogs/performance/WAVE6_GPU_RENDER_INVESTIGATION.md`. Prior: for the **v0.8.11 final
 performance pass & release-readiness audit** (2026-07-20,

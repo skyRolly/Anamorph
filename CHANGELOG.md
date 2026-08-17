@@ -1056,7 +1056,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   see ADR-0012). Build/dependency change only — no DSP, signal-chain, parameter, or serialization
   changes; CI re-validates the build + 23 DSP self-tests + pluginval (strictness 10), green on the
   Linux gate. The post-upgrade manual audition (Level 5) against the 8.0.8 baseline found no
-  perceptual regressions (ADR-0012). Evidence: `CMakeLists.txt:33`; commit `41acaa7`. [Verified]
+  perceptual regressions (ADR-0012). Evidence: `CMakeLists.txt` `:33`; commit `41acaa7`. [Verified]
 - Refactored the root `README.md` (slimmed; version history moved into this file) and `CLAUDE.md`
   (policy entry-point); corrected documentation citations and aligned/clarified the signal-chain
   section comments in `EngineParameters.h` / `AnamorphEngine.cpp` (comment-only, no behaviour

@@ -93,6 +93,48 @@ import sys
 # `run-pluginval.sh:154` still does not classify as ours -- the path must carry
 # its directory, which is what tells a citation in this repository apart from the
 # same file name in another checkout.
+#
+# THE BUILD DEFINITION AND THE CI WORKFLOW ARE IN SCOPE, for the same reason the
+# scripts are and after the same lesson, learned the same way. `CMakeLists.txt`
+# carries 90 anchors across the documents and `.github/workflows/build.yml` six;
+# both are first-party, both are `git`-tracked, and both are cited as
+# `Evidence [Verified]` by the policies. They were outside the gate until a CI
+# round inserted 22 lines into one and several hundred into the other, at which
+# point `docs/procedures/BUILD.md` pointed `ANAMORPH_BUILD_TESTS` at
+# `JUCE_REPORT_APP_USAGE=0`, `RELEASE_POLICY.md` pointed the build-number
+# evidence at a comment block and three unrelated workflow lines, and
+# `KNOWN_ISSUES.md` pointed the ad-hoc-codesign evidence at a job header -- and
+# this gate reported the tree clean through all of it, because it was never
+# looking. That is the drift class this file exists to close, arriving in the
+# two files that change most.
+#
+# Adding them is what makes `--fix` able to touch them, so the guard rails
+# matter more here, not less: `build/_deps/juce-src/CMakeLists.txt` is a FETCHED
+# file with the same basename and must never become a rewrite target, and the
+# sibling product has a root `CMakeLists.txt` too. Both are declined -- the
+# first because its path is not `TRACKED` verbatim, the second because a
+# citation qualified by a checkout or a revision is declined outright -- and
+# both are asserted in the self-test rather than left to be reasoned about.
+#
+# STILL OUTSIDE, and named so the gap is a decision rather than an oversight:
+# `packaging/macos/INSTALL.txt` (4 anchors), `NOTICE` (3) and
+# `packaging/linux/INSTALL.txt` (1). They are first-party and versioned, so
+# nothing disqualifies them; they are simply not what this round measured, and a
+# path is not added here until someone has confirmed its anchors are worth
+# rewriting.
+#
+# ONE CAVEAT FOR WHOEVER ADDS THE NEXT ROOT-LEVEL PATH, because `NOTICE` above is
+# exactly that shape. A path with directories has a bare escape spelling: prose
+# that must NOT be rewritten can write `build.yml:288` and the parser declines
+# it, which is how this document's own history sentences stay safe. A root-level
+# path has no such escape -- its tracked spelling IS its bare one -- so listing
+# `NOTICE` here makes `NOTICE:12` claimable from ANY prose that mentions it with
+# a line number, including a sentence whose whole point is the old number. The
+# remedy is the one `DOCUMENTATION_COVERAGE.md`'s history table uses: separate
+# the path from the anchor (`` `NOTICE` `:12` ``) so no citation is matched.
+# Weigh that against the coverage before adding one. The documents citing `.md` files by line are deliberately not
+# candidates: `TRACKED` names sources, and a document is edited by prose rules
+# rather than by code movement.
 TRACKED = (
     "src/InternalState.h",
     "src/PluginEditor.cpp",
@@ -125,6 +167,8 @@ TRACKED = (
     "scripts/run-pluginval.sh",
     "scripts/run-tests.sh",
     "scripts/setup-linux.sh",
+    "CMakeLists.txt",
+    ".github/workflows/build.yml",
 )
 
 # A citation is `<path>:<line>`, `<path>:<start>-<end>`, or a COMPOUND list that
@@ -148,16 +192,37 @@ TRACKED = (
 #   * `<prefix>` therefore CAPTURES the qualifier — a checkout name, or a pinned
 #     revision such as `7686204:` — so `classify()` can see it and decline.
 #
-# The path must contain a directory separator. A bare `PluginProcessor.cpp:7` is
-# ambiguous across checkouts by construction — the architecture documents use a
-# bare name as shorthand for "the file I have been quoting", which inside a
-# paragraph about another product means that product's file — and no amount of
-# context-reading fixes that here. Citations in this repository's own documents
-# are spelled from the root, which is what makes them checkable.
+# THE DIRECTORY SEPARATOR IS NO LONGER REQUIRED BY THE PATTERN, and the reason
+# it once was is worth keeping straight, because the protection it provided has
+# not been given up — it has moved one step later.
+#
+# The original rule read "a path must contain a separator", and its stated
+# purpose was to decline a bare `PluginProcessor.cpp:7`: the architecture
+# documents use a bare name as shorthand for "the file I have been quoting",
+# which inside a paragraph about another product means that product's file.
+# That reasoning is sound and still holds. But the rule was a PROXY for the real
+# test, and the proxy had a hole exactly where this repository's build lives:
+# `CMakeLists.txt` sits at the root, so its root-spelled path IS its bare name
+# and no separator exists to require. The pattern could therefore never match
+# it, and adding it to `TRACKED` would have been inert — a listed file that is
+# silently never checked, which is the one outcome this gate must not produce.
+# That is not hypothetical: 90 anchors into `CMakeLists.txt` across the
+# documents went unchecked the whole time, and a round that moved 22 lines of it
+# left three documents pointing at unrelated code with the gate reporting clean.
+#
+# So the pattern now admits a bare name and `classify()` declines it, which is
+# where ownership was always decided anyway: `TRACKED` spells every path from
+# the repository root, so a bare `PluginProcessor.cpp` still fails to match
+# `src/PluginProcessor.cpp` and is still left alone — as is a bare
+# `run-pluginval.sh` and a bare `build.yml`, each asserted in the self-test.
+# The only names this newly claims are root-level files that `TRACKED` lists
+# verbatim. Under-checking still costs coverage and misclassifying still costs
+# the truth of the document; this moves one specific file out of the first
+# column without moving anything into the second.
 CITATION = re.compile(
     r"(?<![\w./\\:-])"
     r"(?:(?P<prefix>[\w.@-]+):)?"
-    r"(?P<path>[\w.-]+(?:[/\\][\w.-]+)+):"
+    r"(?P<path>[\w.-]+(?:[/\\][\w.-]+)*):"
     r"(?P<anchors>\d+(?:-\d+)?(?:\s*,\s*\d+(?:-\d+)?)*)")
 ANCHOR = re.compile(r"(\d+)(?:-(\d+))?")
 
@@ -212,6 +277,85 @@ DELIBERATE_REAIMS = set([
     ("docs/architecture/design-decisions/ADR-0011-linux-x11-cpu-render.md",
      "scripts/run-pluginval.sh:147-176"),
     ("docs/procedures/BUILD.md", "scripts/setup-linux.sh:44-54"),
+    # ---------------------------------------------------------------------
+    # v0.9.4 CI-performance round: `CMakeLists.txt` and
+    # `.github/workflows/build.yml` joined `TRACKED` in the SAME change set that
+    # CORRECTED the anchors into them -- the same shape as the `scripts/` block
+    # above, arriving for the same reason. The difference is that these four
+    # were not merely moved by an edit: they were already WRONG at the base,
+    # naming unrelated code, because the round before this one moved the two
+    # files while nothing was watching. So each is a genuine re-aim rather than
+    # a re-anchor, `--fix` cannot compute it (the base anchor's text is not the
+    # text the sentence is about), and each was re-read at its new location
+    # against the sentence that cites it and the aim CONFIRMED BY THE MAINTAINER
+    # (2026-08-16) -- the same standard the block above was declared under.
+    #
+    # What each now names, and what it named at the base:
+    #   BUILD.md          CMakeLists.txt:27,305      `if(ANAMORPH_BUILD_TESTS)`
+    #                     was :283, i.e. `JUCE_REPORT_APP_USAGE=0`
+    #   RELEASE_POLICY    CMakeLists.txt:14,250-275  the versioning block, grown
+    #                     by the build-number scoping change; was :250-256, which
+    #                     now stops in the middle of that block's comment
+    #   RELEASE_POLICY    build.yml:495,1042,1454    the linux/windows/macos
+    #                     Configure steps; was :383,855,1238, three unrelated
+    #                     lines after several hundred were inserted above them
+    #   KNOWN_ISSUES      build.yml:1621-1623        the three `codesign
+    #                     --force --deep --sign -` calls; was :1398-1400, which
+    #                     is now the `macos:` job header
+    #
+    # GOOD FOR ONE TRANSITION, like the block above: once the default branch
+    # carries these spellings the run reports each as removable, and it says so
+    # against the merge base rather than against a push predecessor.
+    ("docs/procedures/BUILD.md", "CMakeLists.txt:27,305"),
+    ("docs/policies/RELEASE_POLICY.md", "CMakeLists.txt:14,250-275"),
+    # Same round, found by a second review pass: the compile-definition list
+    # cites the block those definitions live in, and `ANAMORPH_BUILD_NUMBER`
+    # left that block when it was scoped to one translation unit. `:277-284` is
+    # still the `target_compile_definitions(Anamorph PUBLIC ...)` block and no
+    # longer contains it, so the sentence listed a definition its own evidence
+    # disproved. Widened to `:274-284`, which starts at the
+    # `set_source_files_properties` that now carries it -- ONE anchor still, not
+    # two, because a citation whose anchor COUNT changes lands in the
+    # "review by hand" branch that no declaration can excuse.
+    ("docs/procedures/BUILD.md", "CMakeLists.txt:274-284"),
+    # ---------------------------------------------------------------------
+    # THE WORKFLOW ANCHORS WERE WRONG ON ARRIVAL, and the way they got there is
+    # worth recording because this gate is the thing that should have caught it.
+    # They were computed part-way through the round that introduced them and
+    # then a LATER edit in that same round (making ccache optional, ~+70 lines)
+    # moved everything below it. Nothing objected: three of them were declared
+    # re-aims, and a declaration is exactly a promise that the tool must not
+    # judge the aim; the two `COMPATIBILITY_MATRIX` ranges were BRAND NEW
+    # citations, and a new citation "has nothing to drift from" so it is skipped
+    # against the base. Both escape hatches are correct in themselves and both
+    # were open at once, which is how a measured number ships stale.
+    #
+    # Every one below is now recomputed from the file as it stands and read back
+    # line by line, not shifted by an arithmetic delta:
+    #   RELEASE_POLICY  :542,1110,1532  the linux/windows/macos Configure steps
+    #   KNOWN_ISSUES    :1699-1701      the three ad-hoc `codesign` calls
+    #   COMPAT_MATRIX   :1468-1928      the `macos` job, key line to last step
+    #   COMPAT_MATRIX   :1986-2231      the `macos-intel` job, ditto
+    # The lesson is in the header already: a declaration buys ONE transition and
+    # costs the tool's opinion for that transition, so the hand-check it
+    # substitutes for has to actually happen.
+    ("docs/architecture/COMPATIBILITY_MATRIX.md",
+     ".github/workflows/build.yml:1468-1928"),
+    ("docs/architecture/COMPATIBILITY_MATRIX.md",
+     ".github/workflows/build.yml:1986-2231"),
+    # These two name the spellings the documents carry TODAY, and they did not
+    # always: they were first written with the intermediate values of the commit
+    # that introduced them, and the commit after it recomputed both anchors
+    # without updating the declarations. Nothing caught that, because a
+    # declaration is only consulted when a citation MISMATCHES, and against the
+    # tip of this branch these no longer mismatch -- so `--check --base HEAD`
+    # was green while `--check` against the MERGE BASE, which is what a push to
+    # the default branch actually compares, reported UNMAPPABLE and exited 1.
+    # A declaration naming a spelling that exists in no document is dead weight
+    # at best and a red default branch at worst, so section 9 of `--self-test`
+    # now asserts every entry here is a string its document really contains.
+    ("docs/policies/RELEASE_POLICY.md", ".github/workflows/build.yml:542,1110,1532"),
+    ("docs/KNOWN_ISSUES.md", ".github/workflows/build.yml:1699-1701"),
     ("docs/procedures/BUILD.md", "scripts/build.sh:19-54"),
 ])
 
@@ -745,6 +889,82 @@ def self_test():
         check(f"{foreign} is not a citation target", classify(None, foreign), None)
     check("a bare script name is still declined",
           citations("run-pluginval.sh:154-176"), [])
+
+    # --- 8. THE BUILD DEFINITION AND THE CI WORKFLOW ARE IN SCOPE -----------
+    # These joined `TRACKED` after 90 + 6 anchors sat unchecked through a round
+    # that moved both files. Asserted by name for the reason section 7 gives:
+    # dropping one costs nothing visible -- the citations still read fine and the
+    # run still prints a confident count, minus the anchors it stopped checking.
+    for governed in ("CMakeLists.txt", ".github/workflows/build.yml"):
+        check(f"{governed} is a citation target", classify(None, governed), governed)
+        check(f"{governed} is scanned for its own citations too",
+              governed in scanned, True)
+    # END TO END, not just through `classify()`. `CMakeLists.txt` is the case the
+    # old separator-requiring pattern could not express at all: it is a ROOT-level
+    # file, so it has no directory to carry, and the pattern rejected it before
+    # ownership was ever consulted. Listing it without this assertion would put a
+    # file in `TRACKED` that is never matched -- present in the list, absent from
+    # the gate, and indistinguishable from working.
+    check("a root-level CMakeLists anchor is claimed by the parser",
+          [c[1] for c in citations("the option is `CMakeLists.txt:27,305` today")],
+          ["CMakeLists.txt"])
+    check("a compound CMakeLists anchor keeps every anchor",
+          [c[3] for c in citations("CMakeLists.txt:14,250-252,274-275")],
+          [[(14, None), (250, 252), (274, 275)]])
+    check("a workflow anchor is claimed by the parser",
+          [c[1] for c in citations("see `.github/workflows/build.yml:1621-1623`")],
+          [".github/workflows/build.yml"])
+    # The guard rails that made these two safe to add. The FETCHED CMakeLists is
+    # the one that matters most: `--fix` rewrites what it claims, and the JUCE
+    # tree lands inside the workspace at a path whose basename is identical.
+    for foreign in ("build/_deps/juce-src/CMakeLists.txt",
+                    "build-clang/_deps/juce-src/CMakeLists.txt"):
+        check(f"{foreign} is not a citation target", classify(None, foreign), None)
+    check("a revision-pinned CMakeLists anchor is declined",
+          citations("7686204:CMakeLists.txt:14"), [])
+    check("a sibling-checkout CMakeLists anchor is declined",
+          citations("anabasis:CMakeLists.txt:14"), [])
+    # A BARE `build.yml:` MUST STAY DECLINED, and this is load-bearing rather
+    # than incidental. `DOCUMENTATION_COVERAGE.md` records past re-anchorings as
+    # prose -- "`build.yml:288,758,1141` -> the three per-OS ..." -- which are
+    # HISTORY, not evidence: rewriting them would change the numbers the sentence
+    # is about, the exact corruption the header's "prose examples" rule exists to
+    # prevent. The workflow is tracked under its full path, so the bare spelling
+    # those sentences use is what keeps them out of reach.
+    check("a bare workflow name is still declined",
+          citations("build.yml:288,758,1141"), [])
+    # THE ESCAPE HATCH FOR WORKED EXAMPLES MUST STAY AN ESCAPE HATCH. Tracking
+    # the workflow made it a scanned document as well as a rewrite target, and
+    # its own comment block illustrates what an evidence anchor looks like. An
+    # illustration spelled with a governed path is indistinguishable from
+    # evidence to this tool, so that example names a path outside `TRACKED` --
+    # the remedy the header prescribes. Asserted here so the spelling those
+    # examples rely on cannot quietly become claimable by a future addition.
+    check("the example path used for illustrations is declined",
+          classify(None, "some/file.cpp"), None)
+    check("an example anchor is not claimed end to end",
+          citations("Evidence anchors (`some/file.cpp:695-752`) are exact"), [])
+
+    # --- 9. EVERY DECLARATION NAMES A SPELLING ITS DOCUMENT REALLY CARRIES ---
+    # A declaration excuses a mismatch, so it is consulted ONLY when one occurs.
+    # That makes a stale entry invisible from the branch it was written on: the
+    # citation it names has already been corrected, so nothing mismatches, so
+    # nothing looks at the entry -- while against the MERGE BASE, which is what a
+    # push to the default branch compares, the real mismatch finds no matching
+    # declaration and the run exits 1. That is not hypothetical; it shipped
+    # twice in one PR, both times as an anchor recomputed in a later commit
+    # without its declaration following. An entry naming a string no document
+    # contains cannot be excusing anything, so it is always a defect -- either
+    # the anchor moved on and the entry should have moved with it, or the entry
+    # outlived its transition and should be deleted.
+    for doc, whole in sorted(DELIBERATE_REAIMS):
+        try:
+            body = read(doc)
+        except OSError:
+            check(f"DELIBERATE_REAIMS names a readable document ({doc})", False, True)
+            continue
+        check(f"DELIBERATE_REAIMS entry is live: {doc} :: {whole}",
+              whole in body, True)
 
     if failures:
         print(f"\ncheck-citations: {failures} of {checked} self-test case(s) failed.",
