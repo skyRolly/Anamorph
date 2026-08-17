@@ -167,6 +167,21 @@ candidate.
   distinct TBAA tags for incompatible pointers by default, which upstream says may silently change
   behaviour for code with strict-aliasing violations. `-fno-pointer-tbaa` is the escape hatch. Checked
   rather than assumed — see Evidence.
+- **Clang 21 and 22 add dozens of new warning flags and escalate three diagnostics to
+  error-by-default, and this tree trips none of them** — which is *why* the baseline is unchanged, not
+  evidence that the compiler stood still. Per the release notes 21 adds 51 new flags and 22 adds 26,
+  21 makes chained comparisons and comparison fold-expressions errors, and 22 makes
+  `-Wincompatible-pointer-types` an error. Checked against the actual build log rather than assumed:
+  zero occurrences of `-Wunnecessary-virtual-specifier` (new in `-Wextra`, fires on `virtual` members
+  of a `final` class), `-Wcharacter-conversion`, `-Wexperimental-lifetime-safety`, or the new
+  default-on `-Wgcc-install-dir-libstdcxx` — the last worth naming because it fires on images carrying
+  several GCC toolchains, which the runner image does (12/13/14).
+- **One forward-looking loss, and it lands in this project's own subject area:** Clang 22 **removes
+  `-Wperf-constraint-implies-noexcept` from `-Wall`**. It cannot fire today, because nothing here is
+  annotated `[[clang::nonblocking]]`/`nonallocating` — but that is precisely the annotation the
+  RealtimeSanitizer note below contemplates. Whoever adopts those attributes must enable that warning
+  explicitly, or the diagnostic that pairs with them will be silently absent. Recorded here so the two
+  decisions stay attached to each other.
 - **RealtimeSanitizer remains reachable and deliberately not taken.** `-fsanitize=realtime` with
   `[[clang::nonblocking]]` (Clang ≥ 20) would put `REALTIME_AUDIO_POLICY.md`'s central invariant under
   a tool instead of under review. Adopting it means annotating the `processBlock` path and is its own

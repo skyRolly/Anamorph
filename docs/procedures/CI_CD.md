@@ -640,6 +640,17 @@ returned in memory; the MSVC-ABI destructor change) cannot reach this pipeline: 
 whole tree, JUCE included, from source with one compiler, so there is no mixed-major link anywhere, and
 the MSVC-ABI item belongs to a compiler this project does not use on Windows.
 
+**The baseline held still because the tree trips none of the new checks, not because the compiler
+stood still.** Clang 21 and 22 add 51 and 26 new warning flags respectively and escalate three
+diagnostics to error-by-default (chained comparisons and comparison fold-expressions in 21,
+`-Wincompatible-pointer-types` in 22). The build log was checked for the ones most likely to reach
+JUCE-style code and none appears: `-Wunnecessary-virtual-specifier`, `-Wcharacter-conversion`,
+`-Wexperimental-lifetime-safety`, and the new default-on `-Wgcc-install-dir-libstdcxx` — that last one
+is worth naming because it fires on images carrying several GCC toolchains, which this one does
+(12/13/14). One loss is real but forward-looking: Clang 22 **removes
+`-Wperf-constraint-implies-noexcept` from `-Wall`**, which cannot fire while nothing here is annotated
+`[[clang::nonblocking]]`, and must be enabled explicitly if that ever changes.
+
 **The standard library does not move with the pin.** Both clang-20 and clang-22 select the same
 libstdc++ on this image (`Selected GCC installation: …/13`), so a Clang major bump changes no C++23
 *library* surface here; that follows the runner's GCC, not `ANAMORPH_CLANG_VERSION`.
