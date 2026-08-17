@@ -143,9 +143,10 @@ candidate.
   survives a compiler move intact.
 - **A third-party apt source is now in the Linux Clang jobs**, and the trust surface is narrowed
   three ways rather than merely acknowledged: the key is fetched over HTTPS **and then pinned by
-  fingerprint** (`6084F3CF814B57C1CF12EFD515CF4D18AF4F7421`, *Sylvestre Ledru — Debian LLVM
-  packages*), so a rotated or substituted key fails the job with a specific message instead of being
-  trusted silently; `signed-by=` scopes that key to this one suite, so it can validate nothing else on
+  identity** — the keyring must hold *exactly one* primary key and it must be
+  `6084F3CF814B57C1CF12EFD515CF4D18AF4F7421` (*Sylvestre Ledru — Debian LLVM packages*), since
+  `signed-by=` trusts every key in the file, so a rotated, substituted **or merely appended** key fails
+  the job with a specific message instead of being trusted silently; `signed-by=` scopes that key to this one suite, so it can validate nothing else on
   the machine; and the install is fail-closed. If apt.llvm.org is unreachable the two Clang jobs fail
   saying so. The three *shipping* build jobs never touch it.
 - **Reproducibility is at major granularity, and the floating part is now a snapshot string** —
@@ -246,9 +247,10 @@ candidate.
   the prose is one cycle stale. Anyone re-checking this later will see that page and should not read it
   as contradicting this ADR.
 - The signing key's fingerprint was read from the served key locally
-  (`6084F3CF814B57C1CF12EFD515CF4D18AF4F7421`), and the script's assertion was tested in both
-  directions: the real key passes, a deliberately wrong expected fingerprint fails with exit 1 naming
-  expected and actual.
+  (`6084F3CF814B57C1CF12EFD515CF4D18AF4F7421`), and the script's assertion was tested against crafted
+  keyrings: the real key (whose primary carries one subkey) passes; the genuine key **concatenated with
+  a second generated key** is rejected naming both primaries; an attacker-only, an empty and a corrupt
+  keyring are each rejected with the same specific message.
 
 **Not verified here:** a patch-level diagnostic shift *within* major 22 (a future apt.llvm.org rebuild
 of the 22.x branch). Accepted by design — the baseline records majors — and it would surface as a gate

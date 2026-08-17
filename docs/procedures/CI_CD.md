@@ -608,9 +608,10 @@ configure time rather than degrading.
 
 The costs, stated so they are not discovered later. A **third-party apt source** is now in the two
 Clang jobs. Its trust surface is narrowed three ways rather than merely acknowledged: the signing key is
-fetched over HTTPS **and pinned by fingerprint** (`6084F3CF814B57C1CF12EFD515CF4D18AF4F7421`,
-*Sylvestre Ledru — Debian LLVM packages*), so a rotated or substituted key fails the job with a specific
-message rather than being trusted silently; `signed-by=` scopes that key to this one suite; and the
+fetched over HTTPS **and pinned by identity** — the keyring must hold *exactly one* primary key and it
+must be `6084F3CF814B57C1CF12EFD515CF4D18AF4F7421` (*Sylvestre Ledru — Debian LLVM packages*), because
+`signed-by=` trusts every key in the file — so a rotated, substituted or appended key fails the job with
+a specific message rather than being trusted silently; `signed-by=` scopes that key to this one suite; and the
 install is **fail-closed** — if apt.llvm.org is unreachable those two jobs fail saying so, while the
 three *shipping* build jobs never touch it. The install is 15 packages / 155 MB / **17.8 s** measured on
 a 4-core box, against 14 / 113 MB / 10.9 s for clang-20 from the stock archive and a no-op for the

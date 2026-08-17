@@ -92,17 +92,41 @@ if [ ! -s "$KEYRING" ]; then
 fi
 $SUDO chmod 0644 "$KEYRING"
 
-# The key is PINNED BY FINGERPRINT, which is what makes fetching it defensible.
-# HTTPS proves the bytes came from apt.llvm.org; this proves they are the key
-# this repository decided to trust. If upstream ever rotates it, the job fails
-# here with a specific message and a human decides -- which is the outcome you
-# want from a third-party package source, rather than silently trusting whatever
-# key the host served this morning.
+# The key is PINNED BY IDENTITY, which is what makes fetching it defensible.
+# HTTPS proves the bytes came from apt.llvm.org; this proves the keyring holds
+# the key this repository decided to trust AND NOTHING ELSE. If upstream ever
+# rotates it, the job fails here with a specific message and a human decides --
+# which is the outcome you want from a third-party package source, rather than
+# silently trusting whatever key the host served this morning.
+#
+# WHY THE ASSERTION IS ON PRIMARY KEYS AND NOT ON A SUBSTRING. `signed-by=`
+# trusts EVERY key in the keyring for that suite, so "the expected fingerprint
+# appears somewhere in this file" is not the guarantee above: a served blob
+# carrying the genuine key CONCATENATED with another one satisfies it, and both
+# get trusted. The list of primary fingerprints must therefore equal the pinned
+# one exactly -- one line, that value. A second primary key makes it two lines
+# and fails.
+#
+# It counts `pub:` records rather than `fpr:` records because the genuine key
+# has TWO fingerprints: the primary and one subkey. An "exactly one fingerprint"
+# test would reject the real key, so this walks each `pub:` and takes the `fpr:`
+# that follows it. Subkeys are deliberately not enumerated -- a subkey is bound
+# to its primary by a signature only the primary's holder can make, so it adds
+# no identity beyond the primary this pins.
 LLVM_KEY_FPR="6084F3CF814B57C1CF12EFD515CF4D18AF4F7421"
-if ! gpg --show-keys --with-colons "$KEYRING" 2>/dev/null | grep -q "^fpr:*${LLVM_KEY_FPR}:"; then
-    echo "setup-llvm-apt: the key at ${KEYRING} is not the expected LLVM signing key" >&2
-    echo "setup-llvm-apt: expected fingerprint ${LLVM_KEY_FPR} (Sylvestre Ledru - Debian LLVM packages)" >&2
-    echo "setup-llvm-apt: got $(gpg --show-keys --with-colons "$KEYRING" 2>/dev/null | awk -F: '/^fpr:/{print $10; exit}')" >&2
+# `|| true` so the ASSERTION decides, not `set -e`: on an unreadable or corrupt
+# keyring `gpg` exits non-zero, and under `pipefail` that would abort the script
+# at this assignment with no message at all. Failing is right; failing silently
+# is not, so the empty result falls through to the diagnostic below.
+LLVM_PRIMARY_FPRS="$(gpg --show-keys --with-colons "$KEYRING" 2>/dev/null \
+    | awk -F: '/^pub:/ { primary = 1; next } /^fpr:/ { if (primary) { print $10; primary = 0 } }' \
+    || true)"
+if [ "$LLVM_PRIMARY_FPRS" != "$LLVM_KEY_FPR" ]; then
+    echo "setup-llvm-apt: ${KEYRING} does not hold exactly the expected LLVM signing key" >&2
+    echo "setup-llvm-apt: expected exactly one primary key, ${LLVM_KEY_FPR}" >&2
+    echo "setup-llvm-apt:            (Sylvestre Ledru - Debian LLVM packages)" >&2
+    echo "setup-llvm-apt: got primary key(s):" >&2
+    printf '%s\n' "${LLVM_PRIMARY_FPRS:-(none)}" | sed 's/^/setup-llvm-apt:   /' >&2
     exit 1
 fi
 

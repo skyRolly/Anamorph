@@ -174,6 +174,21 @@ the property it actually tests), and a deliberate mutation of one anchor to a wr
 exit 1 while **independently computing the committed value** as the correct answer — `:1708-1710` at
 the time, `:1713-1715` after the `vptr` commit shifted it, each time matching the hand-computation.
 
+**The signing-key pin was presence-only, and review caught it.** `setup-llvm-apt.sh` asserted that the
+expected fingerprint appeared *somewhere* in the dearmored keyring — but `signed-by=` trusts **every**
+key in that file, so a served blob carrying the genuine key concatenated with another one satisfied the
+grep and both became trusted for the suite. The comment beside it claimed the stronger guarantee ("the
+key this repository decided to trust"), so the check was weaker than what it advertised. It now asserts
+identity: the list of **primary** fingerprints must equal the pinned one exactly. It counts `pub:`
+records rather than `fpr:` ones because the genuine key has two fingerprints — a primary and one subkey
+— so an "exactly one fingerprint" test would have rejected the real key. Verified against crafted
+keyrings rather than argued: genuine passes; genuine + a second generated key is **rejected naming both
+primaries**; attacker-only, empty and corrupt keyrings are each rejected with the same specific message;
+and the real script still installs clang 22.1.8 on a clean machine and is idempotent. Testing also
+exposed a diagnostic regression in the first draft of the fix — under `set -e` a corrupt keyring killed
+the shell at the command substitution before the assertion could report anything — so the substitution
+carries `|| true` and lets the assertion do the failing.
+
 **A seventh anchor turned out not to be checked at all, which review surfaced and measurement
 confirmed.** `COMPATIBILITY_MATRIX`'s `macos-intel` row cites two ranges in one sentence, and the
 second was written in the continuation spelling — `…build.yml:1995-2240 (the job), :1938-1994 (its
