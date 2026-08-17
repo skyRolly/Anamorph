@@ -153,21 +153,26 @@ lineage of objects the new compiler can never hit — not a wrong answer, since 
 compiler binary's contents, but a restore that buys nothing. Both jobs now key on the major, which is
 what `CI_CD.md` §Cache lineages already claimed for one of them.
 
-**`build.yml` grew by 9 lines this round, so the anchors below it were recomputed — and the guard
-caught the part that was missed.** The 18 → 20 step held the file at net-zero line count precisely to
-avoid this; the 22 step could not, because the pin rationale needed four more lines and the two Clang
+**`build.yml` grew by 14 lines across this change set, so the anchors below it were recomputed — and
+the guard caught the part that was missed.** The 18 → 20 step held the file at net-zero line count
+precisely to avoid this; the 22 step could not, because the pin rationale needed four more lines and the two Clang
 jobs' install steps five more. Six anchor values across four documents were recomputed **from the file
 as it stands and read back line by line, never shifted by arithmetic**:
-`RELEASE_POLICY` `build.yml:542,1110,1532` → `:546,1119,1541`; `KNOWN_ISSUES` `:1699-1701` →
-`:1708-1710`; `COMPATIBILITY_MATRIX` `:1468-1928` → `:1477-1937` and `:1986-2231` → `:1995-2240` with
-its rationale block `:1929-1985` → `:1938-1994`; and `DEPENDENCY_POLICY`'s own `:74-76` → `:78-80`.
+`RELEASE_POLICY` `build.yml:542,1110,1532` → `:546,1124,1546`; `KNOWN_ISSUES` `:1699-1701` →
+`:1713-1715`; `COMPATIBILITY_MATRIX` `:1468-1928` → `:1482-1942` and `:1986-2231` → `:2000-2245` with
+its rationale block `:1929-1985` → `:1943-1999`; and `DEPENDENCY_POLICY`'s own `:74-76` → `:78-80`
+(that last one alone sits above every insertion point, so it moved once and stayed). Those are the
+values the tree carries: the Clang-22 commit landed them five lower, and the `vptr` commit's five added
+lines moved them again — recomputed and re-read both times, which is the whole claim this paragraph
+makes.
 Updating the citations left the four matching `DELIBERATE_REAIMS` declarations naming spellings no
 document contained any more, and **section 9 of `check-citations.py --self-test` failed 4 of 85 cases**
 until they were updated — the second time that assertion has caught exactly this, and the reason it
 exists. Two independent confirmations that the new anchors are right rather than merely consistent: the
 drift check reports no re-spelling at all (the anchors resolve to the *same text* as the base, which is
 the property it actually tests), and a deliberate mutation of one anchor to a wrong value made the gate
-exit 1 while **independently computing `:1708-1710`** as the correct answer.
+exit 1 while **independently computing the committed value** as the correct answer — `:1708-1710` at
+the time, `:1713-1715` after the `vptr` commit shifted it, each time matching the hand-computation.
 
 **A seventh anchor turned out not to be checked at all, which review surfaced and measurement
 confirmed.** `COMPATIBILITY_MATRIX`'s `macos-intel` row cites two ranges in one sentence, and the
@@ -175,8 +180,9 @@ second was written in the continuation spelling — `…build.yml:1995-2240 (the
 rationale block)`. The `CITATION` regex requires a path before the anchors, so the bare `:1938-1994`
 matched nothing: the gate never saw it. Demonstrated rather than reasoned — replacing that value with
 `:100-200` left `--check` at **exit 0** against both `origin/main` and the branch tip. It was *correct*
-(1938–1994 is the rationale block, 1995 the `macos-intel:` key), just unguarded, and it had been
-unguarded since it was written, not by anything this round did. The declaration a reviewer would reach
+(1938–1994 was then the rationale block and 1995 the `macos-intel:` key; both have since moved with the
+file, to `:1943-1999` and `2000`), just unguarded — and it had been unguarded since it was written, not
+by anything this round did. The declaration a reviewer would reach
 for is the wrong instrument and provably so: adding it to `DELIBERATE_REAIMS` fails section 9, because
 that assertion requires the entry to name a string the document contains and the document contains no
 such string. The fix is to give the anchor its path, which is the only spelling `classify()` resolves
@@ -195,8 +201,9 @@ the fix was then confirmed **against the base CI actually used** rather than the
 standing lesson, now applied: a local `--check` green is not evidence until it is re-run against that
 base. This round it was re-run against all five — `origin/main` and every commit on the branch.
 
-Validated: `check-citations` 86 self-test cases + `--check` **exit 0** over 302 anchors against
-`origin/main` **and** against each branch commit; `check-docs` 68
+Validated: `check-citations` 86 self-test cases and `--check` **exit 0** against `origin/main`
+**and** against each branch commit — 299 anchors reported stable against `origin/main` with 2 re-spelled
+beyond that run's judgement, and 303 checked against the branch predecessor; `check-docs` 68
 cases / 100 files; `check-portability` 45 files / 0 violations; `check-clang-warnings --self-test` 28
 cases, plus the real gate run against the clang-22 build log at the regenerated baseline (**exit 0**,
 14 accepted sites in 7 entries) and the mismatched pair still **refused** (exit 2); `dependabot.yml`
