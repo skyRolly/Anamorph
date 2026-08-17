@@ -281,7 +281,7 @@ Measured on 4 cores — the runner's core count — the same build with a warm c
 (−52%)**, at **137 direct hits / 6 misses**, and the residual is the LTO link, which no compiler
 cache touches. The `linux-clang` configuration, measured the same way against the **then-pinned Clang
 18**, was **5m48s → 2m36s (−55%)** at **129 hits / 5 misses** (a figure from that measurement, not a
-claim about the current pin — the compiler has since moved to 20). Both were measured with the build number
+claim about the current pin — the compiler has since moved to 22). Both were measured with the build number
 *deliberately changed between the two runs*, so they describe the CI case rather than a favourable
 one.
 

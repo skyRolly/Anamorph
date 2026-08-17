@@ -169,6 +169,20 @@ drift check reports no re-spelling at all (the anchors resolve to the *same text
 the property it actually tests), and a deliberate mutation of one anchor to a wrong value made the gate
 exit 1 while **independently computing `:1708-1710`** as the correct answer.
 
+**A seventh anchor turned out not to be checked at all, which review surfaced and measurement
+confirmed.** `COMPATIBILITY_MATRIX`'s `macos-intel` row cites two ranges in one sentence, and the
+second was written in the continuation spelling — `…build.yml:1995-2240 (the job), :1938-1994 (its
+rationale block)`. The `CITATION` regex requires a path before the anchors, so the bare `:1938-1994`
+matched nothing: the gate never saw it. Demonstrated rather than reasoned — replacing that value with
+`:100-200` left `--check` at **exit 0** against both `origin/main` and the branch tip. It was *correct*
+(1938–1994 is the rationale block, 1995 the `macos-intel:` key), just unguarded, and it had been
+unguarded since it was written, not by anything this round did. The declaration a reviewer would reach
+for is the wrong instrument and provably so: adding it to `DELIBERATE_REAIMS` fails section 9, because
+that assertion requires the entry to name a string the document contains and the document contains no
+such string. The fix is to give the anchor its path, which is the only spelling `classify()` resolves
+(`build.yml` and `workflows/build.yml` both return `None`). It reads as a new citation for one
+transition and is checked from the next base onward, like any new anchor.
+
 **One of those six anchors was a re-aim, not a re-anchor, and only CI could see it.**
 `DEPENDENCY_POLICY`'s Clang row cites the `env:` block, whose lines both **moved** (+4) and **changed**
 (`ANAMORPH_CLANG_VERSION: 20` → `22`), so there is no base text to map from and `--fix` reports
