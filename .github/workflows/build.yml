@@ -57,10 +57,10 @@ concurrency:
 # "never key on line numbers" rule was written to avoid, reintroduced one level
 # up.
 #
-# 18 is not an arbitrary choice: it is the version the checked-in baseline was
-# generated with (Ubuntu clang 18.1.3), and it is what `ubuntu-latest`
-# (ubuntu-24.04) resolves `clang` to today -- so the pin changes no diagnostic,
-# it just stops the reference point from moving underneath the file.
+# 20 is the NEWEST major installable from the STOCK archives of the image
+# `ubuntu-latest` resolves to -- clang 20.1.2, noble-updates+security/universe,
+# no apt.llvm.org needed (21+ are published for 26.04 only). 18.x has had no
+# upstream release since 2024-06-20. CI_CD.md records the 18 -> 20 measurement.
 #
 # The baseline RECORDS this number in its own header and
 # `check-clang-warnings.py` refuses to run when the two disagree: bumping the pin
@@ -73,7 +73,7 @@ concurrency:
 # ---------------------------------------------------------------------------
 env:
   ANAMORPH_PLUGINVAL_STRICTNESS: 10
-  ANAMORPH_CLANG_VERSION: 18
+  ANAMORPH_CLANG_VERSION: 20
 
 # Every push builds the FULL set of formats on all three desktop OSes so beta
 # testers can install on any platform:
@@ -1015,16 +1015,16 @@ jobs:
             echo "ANAMORPH_COMPILER_LAUNCHER=" >> "$GITHUB_ENV"
           fi
 
-      # Its own lineage: the sanitized objects carry -fsanitize=address,undefined
-      # in the command line ccache hashes, so they can never be confused with
-      # `linux-clang`'s -- but keeping them in one lineage would have the two
-      # jobs evicting each other's entries for no benefit.
+      # Its own lineage, keyed on the pinned Clang major as `linux-clang`'s is:
+      # sanitized objects carry -fsanitize=address,undefined in the command line
+      # ccache hashes, so a shared lineage could not CONFUSE the two jobs -- it
+      # would just have them evict each other, and a moved pin orphans both.
       - name: Restore the compiler cache
         uses: actions/cache@v6
         with:
           path: ${{ github.workspace }}/.ccache
-          key: ccache-ubuntu-sanitizers-${{ github.run_id }}
-          restore-keys: ccache-ubuntu-sanitizers-
+          key: ccache-ubuntu-sanitizers-clang${{ env.ANAMORPH_CLANG_VERSION }}-${{ github.run_id }}
+          restore-keys: ccache-ubuntu-sanitizers-clang${{ env.ANAMORPH_CLANG_VERSION }}-
 
       - name: Configure (Clang, ASan + UBSan)
         run: >

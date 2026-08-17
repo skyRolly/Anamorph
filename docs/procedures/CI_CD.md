@@ -279,8 +279,9 @@ JUCE-linking targets compiles separately. JUCE is pinned to an immutable commit
 (`CMakeLists.txt:49-55`, ADR-0022/ADR-0026), so that 75% is byte-identical from run to run.
 Measured on 4 cores — the runner's core count — the same build with a warm cache is **7m41s → 3m40s
 (−52%)**, at **137 direct hits / 6 misses**, and the residual is the LTO link, which no compiler
-cache touches. The `linux-clang` configuration, measured the same way against the pinned Clang 18,
-is **5m48s → 2m36s (−55%)** at **129 hits / 5 misses**. Both were measured with the build number
+cache touches. The `linux-clang` configuration, measured the same way against the **then-pinned Clang
+18**, was **5m48s → 2m36s (−55%)** at **129 hits / 5 misses** (a figure from that measurement, not a
+claim about the current pin — the compiler has since moved to 20). Both were measured with the build number
 *deliberately changed between the two runs*, so they describe the CI case rather than a favourable
 one.
 
@@ -338,8 +339,11 @@ built at two different directory names shares nothing.
 compiler, same configuration, same build directory name, and they never run in the same event, so a
 PR's `merge-check` restores what the last push to the base branch wrote. That is the whole reason
 `merge-check` is worth caching — it is the *only* build on the same-repo PR path and therefore that
-path's entire critical path. `linux-clang` keys on the pinned Clang major so raising the pin starts
-a clean lineage; `sanitizers`, `macos` and `macos-intel` each have their own.
+path's entire critical path. `linux-clang` **and `sanitizers`** both key on the pinned Clang major, so
+raising the pin starts clean lineages instead of restoring entries no build can hit again — ccache
+hashes the compiler binary's own contents (`CCACHE_COMPILERCHECK=content`), so objects from the
+previous major are dead weight rather than wrong answers, but a restored cache full of them is still
+a restore that buys nothing. `macos` and `macos-intel` each have their own.
 
 **Not on Windows.** ccache's MSVC support requires `/Z7`-style embedded debug info, and this project
 compiles Release with `/Zi` precisely so the linker emits the PDB that ships as the
@@ -566,6 +570,34 @@ the two disagree — exit 2, the code meaning *the check* could not run, not the
 regressed. An unrecorded version is refused for the same reason a wrong one is: it cannot be
 confirmed to describe this compiler. Bump the pin and re-baseline in the **same** change.
 
+**The pin is 20, raised from 18.** 20 is the newest major installable from the **stock** archives of
+the image `ubuntu-latest` resolves to — clang 20.1.2 from `noble-updates`/`noble-security` universe,
+no third-party apt source; 21 and 22 are published for 26.04 (`resolute`) only and reaching them on
+24.04 would mean adding `apt.llvm.org`. Clang 18.x has had no upstream release since 2024-06-20 and
+four majors have shipped since, and every C++23 *language* feature Clang gained after 18 landed in 19
+and 20 — 21 and 22 add none — so 20 is also the whole of the C++23 delta available here.
+What it cost the baseline was **measured, not assumed**: the same three targets built from one tree
+under clang-18 and clang-20 emit a `diff`-identical 52-instance warning set, and `--write-baseline`
+at 20 reproduces all **7 entries / 14 sites** unchanged, so the only line that moved in
+`scripts/clang-warning-baseline.txt` is `# clang-major:`. Both suites pass under the clang-20 build
+(140 and 894 checks) and again under its ASan+UBSan build, and `--compile-canary` still rejects the
+explicit `SIMDRegister` form. One cost is real and is install-time, not build-time: `clang-18` is
+**preinstalled** on the image (`apt-get install` answers *already the newest version*), while
+`clang-20` + `lld-20` + `libclang-rt-20-dev` are a genuine 14-package, 113 MB install — 10.9 s
+measured on a 4-core box, once per Clang job. `clang-20` is published for **amd64/i386 only** on
+24.04, so a future `ubuntu-24.04-arm` job could not install it; on 26.04 all of 18–22 are available
+on every architecture and 20 is preinstalled.
+
+**The one upstream change worth naming, because it is a silent one.** Clang 20 turns on distinct TBAA
+tags for incompatible pointers by default, which upstream says "may silently change code behavior for
+code containing strict-aliasing violations" (`-fno-pointer-tbaa` disables it). This job is not a
+shipping compiler — the Linux artefact is GCC's — but it is a *detector*, so a codegen change here is
+worth having looked at rather than assumed away: both suites pass under the clang-20 Release build
+(140 + 894) and again under its ASan+UBSan build with `halt_on_error=1`, and the diagnostic set did not
+move. Clang 20's other ABI change (the Itanium construction-vtable mangling, incompatible with ≤19
+without `-fclang-abi-compat=19`) cannot reach this pipeline: every job builds its whole tree, JUCE
+included, from source with one compiler, so there is no mixed-major link anywhere.
+
 **Only judge a baseline against a FULL build.** A count also falls when the log simply lacks the
 translation unit that carries the warning, which is what an incremental rebuild produces — ninja
 recompiles only what changed. CI always builds from a fresh checkout, so its log is complete; a local
@@ -701,7 +733,7 @@ Separate from the build/validate pipeline, four security workflows/configs run a
 | `.github/workflows/codeql.yml` | CodeQL: `c-cpp` (manual build — VST3 + tests targets, Standalone off) + `actions`. Alerts filtered to repo-own code (`paths-ignore: build` excludes the FetchContent'd JUCE tree). Default query suite. | push/PR to `main` (docs-only changes skipped), weekly, dispatch |
 | `.github/workflows/msvc.yml` | MSVC `/analyze` (NativeRecommendedRules) → SARIF upload. Build step required (juceaide-generated files); JUCE under `build/_deps` treated as external. | push/PR to `main` path-filtered to `src/`, `tests/`, `CMakeLists.txt`; weekly; dispatch |
 | `.github/workflows/dependency-review.yml` | Dependency Review on PRs (GitHub Actions deps only — the graph does not index CMake FetchContent). Comments only on failure. | PR to `main` |
-| `.github/dependabot.yml` | Weekly grouped `github-actions` version bumps (single PR). JUCE is **not** Dependabot-managed — pinned + review-gated per `DEPENDENCY_POLICY.md`. | weekly |
+| `.github/dependabot.yml` | Weekly `github-actions` version bumps in **two groups split by semver impact** — minor/patch in one PR (nearly all the volume: `github/codeql-action` alone releases every week or two), majors in another, so one major cannot block every safe bump behind it. Both groups keep `patterns: "*"`, which is what holds a multi-ref family (`codeql-action/{init,analyze,upload-sarif}` — three dependency names) together. `microsoft/msvc-code-analysis-action` is **ignored**: its SHA pin carries no tag, and an untagged pin is followed to the latest *commit*, not the latest release. `cooldown` is unset — Dependabot already withholds a new version for 3 days by default. Nothing else in this repository is a Dependabot ecosystem; `DEPENDENCY_POLICY.md` §Update mechanisms says what maintains each of the rest. | weekly |
 
 Both analysis workflows configure with `-DANAMORPH_BUILD_STANDALONE=OFF`: the Standalone format
 recompiles the same translation units as VST3, so analyzing it doubles cost for zero extra
@@ -767,7 +799,7 @@ The `linux-clang` and `sanitizers` jobs use their own build trees so they never 
 above — `build-clang`, `build-san`, `build-vg`. All are covered by `.gitignore`'s `build*/`.
 
 ```bash
-CLANG=18   # ANAMORPH_CLANG_VERSION in .github/workflows/build.yml is the authority
+CLANG=20   # ANAMORPH_CLANG_VERSION in .github/workflows/build.yml is the authority
 cmake -B build-clang -G Ninja -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_C_COMPILER="clang-$CLANG" -DCMAKE_CXX_COMPILER="clang++-$CLANG" \
       -DANAMORPH_BUILD_STANDALONE=OFF

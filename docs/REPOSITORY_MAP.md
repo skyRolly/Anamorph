@@ -112,7 +112,7 @@ Anamorph/
 | `.github/workflows/codeql.yml` | CodeQL (`c-cpp` manual build + `actions`); alerts scoped to repo-own code. See `docs/procedures/CI_CD.md` §Security scanning. |
 | `.github/workflows/msvc.yml` | MSVC `/analyze` → SARIF; JUCE treated as external; path-filtered triggers. |
 | `.github/workflows/dependency-review.yml` | Dependency Review on PRs to `main` (GitHub Actions deps; comment on failure only). |
-| `.github/dependabot.yml` | Weekly grouped `github-actions` bumps; JUCE stays manually pinned (`DEPENDENCY_POLICY.md`). |
+| `.github/dependabot.yml` | Weekly `github-actions` bumps in two semver-split groups (minor/patch, major), with the SHA-pinned MSVC-analysis action ignored. Everything else is maintained by another mechanism — `DEPENDENCY_POLICY.md` §Update mechanisms. |
 | `.github/ISSUE_TEMPLATE/` | `bug_report.yml` — the "Test report — bug" form (version+build, OS, DAW, format, install route, repro — the fields triage actually needs; carries the closed-source/public-tracker notice) + `config.yml` (links to the install guide, FAQ, known issues and the internal testing guide). |
 
 ## `docs/` — documentation library
