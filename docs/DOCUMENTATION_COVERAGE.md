@@ -7,7 +7,8 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
-**dependency-update audit: Clang 18 → 20 and the Dependabot group split** (first below), then the
+**dependency-update audit: Clang 18 → 22 (upstream stable, from apt.llvm.org) and the Dependabot
+group split** (first below), then the
 **stale re-aim declaration, protected history, non-gating cache statistics** after it, then the
 **citation follow-up: two missed anchors and four that were wrong on arrival** after it, then
 the **citation-gate coverage for the build definition and the CI workflow** after it, then the
@@ -34,10 +35,11 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
 
-**Dependency-update audit: Clang 18 → 20, and Dependabot split into two semver groups (0.9.4, no
-version bump). No `src/`, `tests/`, `CMakeLists.txt` or packaging change; no shipped byte changes.
-`.github/workflows/build.yml` + `.github/dependabot.yml` + `scripts/clang-warning-baseline.txt` +
-four documents.**
+**Dependency-update audit: Clang 18 → 22 (upstream stable, installed from apt.llvm.org), and
+Dependabot split into two semver groups (0.9.4, no version bump). No `src/`, `tests/`,
+`CMakeLists.txt` or packaging change; no shipped byte changes. `.github/workflows/build.yml` +
+`.github/dependabot.yml` + `scripts/setup-llvm-apt.sh` (new) +
+`scripts/clang-warning-baseline.txt` + ADR-0028 + `ARCHITECTURE_REVIEW_GATE.md` + five documents.**
 
 **The audit's first result was an inventory, and it is now written down.** `DEPENDENCY_POLICY.md`
 listed four dependencies (JUCE, pluginval, the C++ standard, Linux system libs) and stopped there, so
@@ -50,22 +52,45 @@ would carry actionable information, hand-maintenance where it would not. That se
 none reads CMake, `apt`, Homebrew, a `releases/latest` download or a workflow `env:` value, and its
 only C/C++ ecosystem (`vcpkg`) wants a `vcpkg.json` this repository does not have.
 
-**Clang 18 → 20, and the pin stays a MAJOR pin.** 18.x has had no upstream release since 2024-06-20
-and four majors have shipped since; 20 is the newest major installable from the **stock** archives of
-the image `ubuntu-latest` resolves to (clang 20.1.2, `noble-updates`/`noble-security` universe), while
-21 and 22 are published for 26.04 only and would mean adding the `apt.llvm.org` third-party
-repository — a new external dependency for a validation job. Every C++23 *language* feature Clang
-gained after 18 landed in 19 and 20, none in 21 or 22, so 20 is also the whole of the reachable C++23
-delta. The granularity is deliberate: `apt` names these packages by major (`clang-20`), and the
-baseline's own invariant is that diagnostics are a property of the major, so a full-version pin would
-be both inexpressible in the install and self-breaking on the first Ubuntu point release. The measured
-result is that **nothing moved but the recorded version**: a clang-18 control build reproduces the
-committed baseline byte-identically (7 entries / 14 sites), clang-20 emits a `diff`-identical
-52-instance warning set, and `--write-baseline` at 20 changes exactly one line, `# clang-major:`. Both
-suites pass under the clang-20 build (140 + 894) and again under its ASan+UBSan build; the
-`--compile-canary` still rejects the explicit `SIMDRegister` form; and the mismatched pin/baseline pair
-was **observed** to exit 2 before regeneration, which is the guard doing its job rather than an
+**Clang 18 → 22, and the pin stays a MAJOR pin.** The rule this settles is *upstream stable*, not
+*newest* and not *whatever the distribution packages*: 22.1.8 (2026-07-10) is the newest non-rc release
+— 23.1.0 is still at rc3 — and apt.llvm.org itself asserts it, `CURRENT_LLVM_STABLE=22`. **An
+intermediate step of this same change set went to 20 and was superseded before merge**, and the reason
+is recorded rather than tidied away: that draft rejected 21/22 as having "no noble publication at all",
+a conclusion drawn from checking **Ubuntu's** archive pockets, which is accurate, and then
+over-generalised. apt.llvm.org publishes noble suites for **17 through 23** on `amd64 arm64 s390x`.
+Needing a different install mechanism is an implementation cost, not an availability blocker.
+The granularity is deliberate: `apt` names these packages by major (`clang-22`), and the baseline's own
+invariant is that diagnostics are a property of the major, so a full-version pin would be both
+inexpressible in the install and self-breaking on the first rebuild — the apt.llvm.org string is
+`1:22.1.8~++20260714014902+ca7933e47d3a-…`, a snapshot of the 22.x branch head. The measured result is
+that **nothing moved but the recorded version**: with clang-20 as the control, clang-22 emits a
+`diff`-identical 52-instance warning census, and `--write-baseline` at 22 changes exactly one line,
+`# clang-major:`. That census also matches Clang 18's, so this tree's accepted set is now stable across
+**three** majors. Both suites pass under the clang-22 build (140 + 894) and again under its
+ASan+UBSan+vptr build; the LTO `Anamorph_VST3` link and `check_linker_flag`'s lld probe are green at 22;
+the `--compile-canary` still rejects the explicit `SIMDRegister` form; and the mismatched pin/baseline
+pair was **observed** to exit 2 before regeneration, which is the guard doing its job rather than an
 assumption about it.
+
+**The install mechanism is a script, and it follows the version rather than choosing it.**
+`scripts/setup-llvm-apt.sh <major>` adds one apt.llvm.org suite with a `signed-by=` keyring and installs
+exactly `clang-N`, `lld-N`, `libclang-rt-N-dev`; the suite codename is read from `/etc/os-release` so a
+future `ubuntu-latest` move cannot silently point it at the wrong one. Deliberately **not**
+`apt.llvm.org/llvm.sh`, which decides the version itself and installs more broadly — that would move
+the authority out of `ANAMORPH_CLANG_VERSION`. It is **fail-closed**, unlike the optional ccache install
+beside it: the pinned Clang *is* the job, so a partial install stops it rather than letting the image's
+default `clang` stand in and trip the baseline guard one step later, reading as a project problem. The
+three *shipping* build jobs never touch apt.llvm.org.
+
+**One behavioural change in the pipeline, and it preserves coverage rather than adding it.** Clang 21
+removed `vptr` from the `-fsanitize=undefined` group, so the bare `address,undefined` the `sanitizers`
+job carried would have silently stopped checking bad downcasts and bad vtables the moment the pin passed
+20. It now names `-fsanitize=address,undefined,vptr`. Reproduced rather than taken from a release note:
+one bad-downcast program, clang-20 reports it from `undefined` alone, clang-22 reports **nothing**, and
+naming `vptr` restores it on 22. It needs RTTI, which this project never disables. This is the trap the
+first draft of ADR-0028 had recorded as a warning for a future bump; the bump happened in the same
+change set, so it is now implemented instead.
 
 **Clang is not, and should not be, bot-updated — and that is a capability finding.** Dependabot parses
 no workflow `env:` key in any ecosystem, so it cannot see `ANAMORPH_CLANG_VERSION` at all. Renovate
@@ -91,14 +116,28 @@ GitHub does not certify, and SHA-pinned actions raise no Dependabot security ale
 `cooldown` was considered and left unset: Dependabot already withholds a new version for 3 days by
 default, so an explicit block would restate it.
 
-**Recorded as ADR-0028 (`Proposed`), not merged on a green build.** The pin now sits in
-`DEPENDENCY_POLICY.md`'s pinned-dependency table, which is the exact condition ADR-0027 cited when it
-treated a one-line `CMAKE_CXX_STANDARD` edit as a gated **Build System change**; the same reading is
-applied here rather than argued away, so the decision is an ADR awaiting Architecture Review. The
-closest precedent runs the other way — the 2026-08-15 image move took the **shipping** macOS compiler
-from AppleClang 15 to 21 as a CI change with no ADR — and that tension is stated in the ADR instead of
-being resolved unilaterally. It is **not** one of the six `AI_AGENT_POLICY.md` Hard Stops, none of
-which this change touches.
+**ADR-0028 is `Accepted`, and it closes the governance question rather than recording it.** The pin
+sits in `DEPENDENCY_POLICY.md`'s pinned-dependency table, which is the exact condition ADR-0027 cited
+when it treated a one-line `CMAKE_CXX_STANDARD` edit as a gated **Build System change**. The first draft
+of this ADR applied that reading and then left the countervailing precedent — the 2026-08-15 image move
+that took the **shipping** macOS compiler from AppleClang 15 to 21 as a CI change with no ADR — as an
+open tension. It is now resolved, by the repository's own instrument: per `ADR_POLICY.md` rule 5 and
+`SOURCE_OF_TRUTH.md` ("An ADR may change a Policy, but only by an explicit new/updated ADR"), ADR-0028
+carries an **`Amends:`** header and `ARCHITECTURE_REVIEW_GATE.md` now carries the rule — the same shape
+ADR-0025 used to amend `TESTING_POLICY.md` rule 1.
+
+**The discriminator is *who chooses the version*,** not which platform it is on and not whether the
+compiler's output ships. A version **this repository pins** is gated (the Clang major; the C++
+standard). A version the **runner image supplies** is not gated *because it cannot be* — GitHub
+re-points `macos-latest` with no commit here, so a rule demanding review for AppleClang or MSVC is one
+the repository is unable to obey; what it requires instead is detection and record, which is what the
+warning baseline and `CI_CD.md` §Build matrix already do. **Pinning or unpinning a label** for a
+toolchain that builds shipped artifacts *is* gated. AppleClang 15 → 21 is therefore reconciled by the
+second rule rather than exempted from the first: no pinned version changed, because AppleClang was never
+pinned, and the compiler that followed the `macos-14` → `macos-latest` move was GitHub's choice. Under
+the third rule that *label* move would be gated today. The Policy states explicitly that numeric
+symmetry between platforms is **not** required — Apple's version numbers are not upstream LLVM's, and
+the two are chosen by different parties. None of the six `AI_AGENT_POLICY.md` Hard Stops is touched.
 
 **Two drift items found while doing this, both corrected in place with the evidence.** (1) The
 self-coverage table below counted **18 ADRs**; there were 22 before this change (0001–0015 + 0021–0027,
@@ -114,20 +153,35 @@ lineage of objects the new compiler can never hit — not a wrong answer, since 
 compiler binary's contents, but a restore that buys nothing. Both jobs now key on the major, which is
 what `CI_CD.md` §Cache lineages already claimed for one of them.
 
-**`build.yml` was edited at net-zero line count on purpose** (11 changed, 11 added): the file is a
-`check-citations.py` TRACKED source and four documented anchors live below the edit sites, so holding
-the line count still is what keeps them from drifting. Validated: `check-citations --check` **exit 0**
-against the new merge base with 85 self-test cases; `check-docs` 68 cases / 100 files (the ADR below
-is the 100th);
-`check-portability` 45 files / 0 violations; `check-clang-warnings --self-test` 28 cases; `actionlint`
-1.7.7 over all five workflows reporting **the same two findings as `origin/main` and no new one**
-(`macos-15-intel` unknown to that release's built-in label list, and a pre-existing `SC2002` style note
-in `release.yml`, a file this change does not touch); and `dependabot.yml` validated against the
-SchemaStore Dependabot 2.0 schema (**0 errors**), the only machine-readable schema published for it —
-GitHub publishes none. Synced: `CI_CD.md`
-(§Cache lineages, §The Clang warning baseline, §Reproducing CI locally, §Security scanning),
-`DEPENDENCY_POLICY.md` (table + new §Update mechanisms + compliance log), `REPOSITORY_MAP.md`, this
-file. Deliberately **not** changed: `CHANGELOG.md` (rule 3 — a CI toolchain pin is not user-visible),
+**`build.yml` grew by 9 lines this round, so the anchors below it were recomputed — and the guard
+caught the part that was missed.** The 18 → 20 step held the file at net-zero line count precisely to
+avoid this; the 22 step could not, because the pin rationale needed four more lines and the two Clang
+jobs' install steps five more. Six anchor values across four documents were recomputed **from the file
+as it stands and read back line by line, never shifted by arithmetic**:
+`RELEASE_POLICY` `build.yml:542,1110,1532` → `:546,1119,1541`; `KNOWN_ISSUES` `:1699-1701` →
+`:1708-1710`; `COMPATIBILITY_MATRIX` `:1468-1928` → `:1477-1937` and `:1986-2231` → `:1995-2240` with
+its rationale block `:1929-1985` → `:1938-1994`; and `DEPENDENCY_POLICY`'s own `:74-76` → `:78-80`.
+Updating the citations left the four matching `DELIBERATE_REAIMS` declarations naming spellings no
+document contained any more, and **section 9 of `check-citations.py --self-test` failed 4 of 85 cases**
+until they were updated — the second time that assertion has caught exactly this, and the reason it
+exists. Two independent confirmations that the new anchors are right rather than merely consistent: the
+drift check reports no re-spelling at all (the anchors resolve to the *same text* as the base, which is
+the property it actually tests), and a deliberate mutation of one anchor to a wrong value made the gate
+exit 1 while **independently computing `:1708-1710`** as the correct answer.
+
+Validated: `check-citations` 85 self-test cases + `--check` **exit 0** over 301 anchors; `check-docs` 68
+cases / 100 files; `check-portability` 45 files / 0 violations; `check-clang-warnings --self-test` 28
+cases, plus the real gate run against the clang-22 build log at the regenerated baseline (**exit 0**,
+14 accepted sites in 7 entries) and the mismatched pair still **refused** (exit 2); `dependabot.yml`
+validated against the SchemaStore Dependabot 2.0 schema (**0 errors**); `actionlint` 1.7.7 over all five
+workflows reporting **the same two findings as `origin/main` and no new one**; `bash -n` clean on all
+five scripts. Synced: `ARCHITECTURE_REVIEW_GATE.md` (the new compiler/toolchain rule), ADR-0028 +
+`ADR_INDEX`, `DEPENDENCY_POLICY.md` (table row, §Update mechanisms, compliance log),
+`CI_CD.md` (§Cache lineages, §The Clang warning baseline, §Reproducing CI locally — the local-repro
+block now calls `setup-llvm-apt.sh`, since Ubuntu has no `clang-22` for noble), `REPOSITORY_MAP.md`
+(the new script + the `scripts/` tree line), this file.
+
+Deliberately **not** changed: `CHANGELOG.md` (rule 3 — a CI toolchain pin is not user-visible),
 `BUILD.md` (its "Verified on" list is about building the product locally and nothing in it became
 false), the floating `*-latest` runner labels (floating is the intent), and pluginval's
 `releases/latest` download, which is already carried as `RELEASE_HARDENING_PLAN.md` **RH-F6**.

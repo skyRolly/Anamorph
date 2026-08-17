@@ -9,7 +9,7 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
 | **JUCE** | **9.0.1**, pinned by **immutable commit SHA** `e18f7f506c0b96f2c738a0bcd7fe6467a5005ad8` | CMake `FetchContent` (`GIT_SHALLOW`), overridable via `-DANAMORPH_JUCE_PATH` | CMakeLists.txt:36-38,47-55 |
 | **pluginval** | latest release (download) | `scripts/run-pluginval.sh` | scripts/run-pluginval.sh:119-126 |
 | **C++ standard** | C++23 | `CMAKE_CXX_STANDARD 23`, extensions off (ADR-0027) | CMakeLists.txt:16-18 |
-| **Clang** (the Linux warning-gate + sanitizer jobs; **ships nothing**) | **major pinned — 20** (ADR-0028) | `ANAMORPH_CLANG_VERSION`, the single authority, consumed by both jobs' `apt` installs, their ccache lineages and `--clang-major`; `scripts/clang-warning-baseline.txt` records the same major and the gate **refuses to run** on a mismatch | .github/workflows/build.yml:74-76 |
+| **Clang** (the Linux warning-gate + sanitizer jobs; **ships nothing**) | **major pinned — 22**, upstream stable (ADR-0028) | `ANAMORPH_CLANG_VERSION`, the single authority, consumed by both jobs' installs, their ccache lineages and `--clang-major`. Installed from **apt.llvm.org** by `scripts/setup-llvm-apt.sh` (Ubuntu's archives stop at 20 for noble), fail-closed. `scripts/clang-warning-baseline.txt` records the same major and the gate **refuses to run** on a mismatch | .github/workflows/build.yml:78-80 |
 | Linux system libs | distro packages | `scripts/setup-linux.sh` (ALSA, JACK, X11, FreeType, GTK/WebKit, mesa, **EGL — required by JUCE 9's Linux GL context path**, xvfb) | setup-linux.sh |
 | **GitHub Actions** | major tags (`@vN`), one exact patch (`codeql-action@v4.37.6`), one commit SHA | **Dependabot**, weekly, two semver-split groups | .github/dependabot.yml |
 | Runner images | floating `*-latest`, plus one deliberate pin (`macos-15-intel`, for native Intel) | GitHub's own image rollout | build.yml `runs-on:` |
@@ -36,7 +36,7 @@ automated PR would carry information a human could act on.
 |---|---|---|
 | GitHub Actions refs | **Dependabot**, weekly, two groups split by semver impact | The only Dependabot ecosystem this repository has. Grouping is what keeps a multi-ref family (`codeql-action/{init,analyze,upload-sarif}`) moving together; splitting minor/patch from major is what stops one major blocking every safe bump. `microsoft/msvc-code-analysis-action` is excluded — see `.github/dependabot.yml` for the reason and `.github/workflows/msvc.yml` for the pin. |
 | **JUCE** | manual, ADR + Architecture Review (rules 1–5 below) | An unpinned bump can silently move DSP behaviour, latency, the editor/X11 path and the state ABI. The evidence a bump needs is a twin dump and a Level-5 audition, which no bot can produce. CMake is not a Dependabot ecosystem in any case, and Renovate has **no CMake manager at all** (its only C/C++ manager is Conan), so "automate it" is not an available option, only a hand-written regex would be. |
-| **Clang major** | manual, and deliberately so | Not expressible to Dependabot: it is a workflow `env:` value, and Dependabot parses no `env:` key in any ecosystem. Renovate could match it with a `custom.regex` manager, but the resulting PR would be **red by construction** — `check-clang-warnings.py` exits 2 whenever the pin and the baseline's `# clang-major:` disagree, and re-baselining requires actually building with the new compiler. The guard is the mechanism: it makes a stale pin a loud, specific failure instead of a silent comparison against another compiler's diagnostics. |
+| **Clang major** | manual, ADR-gated, and deliberately so — **re-tested after the move to apt.llvm.org, not inherited** | Still not expressible to Dependabot: it is a workflow `env:` value, and Dependabot parses no `env:` key in any ecosystem, nor any apt/deb one. Renovate *does* have a `deb` datasource and could point at an apt.llvm.org suite — so the honest reason is not "no tool can see it" but that **the PR could not be green**: `check-clang-warnings.py` exits 2 whenever the pin and the baseline's `# clang-major:` disagree, and reaching green means building with the new compiler and regenerating the site counts, which *is* the review. Every firing would also burn the full pluginval gate. The guard is the mechanism: it makes a stale pin a loud, specific failure instead of a silent comparison against another compiler's diagnostics. The human trigger is one page — `apt.llvm.org/llvm.sh`'s `CURRENT_LLVM_STABLE` — checked when upstream cuts a stable major, and a release candidate does not qualify. |
 | Runner images (`*-latest`) | GitHub's rollout, watched by hand | Nothing to update: the labels already float, and that is intended for every job except `macos-15-intel`. Dependabot does not touch `runs-on:`. Renovate extracts runner labels but then **skips** any that are not a numeric version, so `ubuntu-latest` is read and discarded; pinning the labels to get bot coverage would trade a real property (tracking GitHub's supported image) for a PR. |
 | apt / brew packages | unpinned, installed per job | No ecosystem covers either (`apt`, `deb` and `homebrew` are absent from Dependabot's 33). They are build-environment tools, not linked dependencies: `ninja`/`cmake` do not enter the artefact, and `ccache` is explicitly optional — the jobs fall back to no launcher with a `::warning::` rather than failing. The Clang packages are the exception and are pinned by major above. |
 | Hand-run validation tools (`actionlint`; the SchemaStore `dependabot-2.0.json` schema) | unpinned, fetched when used | Neither runs in CI — they are local checks the contributor workflow leans on, so a version drift shows up as a different answer in front of a human, not as a silent gate change. Both are named here because this change made them load-bearing: `actionlint` 1.7.7 has a known false positive on this repository (`macos-15-intel` is absent from its built-in label list), and the SchemaStore schema is the **only** machine-readable Dependabot schema in existence — GitHub publishes none — so it is the authority a `dependabot.yml` edit is checked against. Pin either one only if it starts gating in CI. |
@@ -64,33 +64,38 @@ repository ever grows a real package manifest.
 
 ## Compliance log
 
-- **Clang major 18 → 20** — recorded in **ADR-0028** (`Proposed`; the versions-considered evaluation,
-  the major-only granularity and the revisit triggers live there). Scope stated first, because it decides
-  which rules apply: this pin is used by `linux-clang` and `sanitizers` only, **neither of which
-  uploads an artifact** — the shipped Linux bytes are GCC's, Windows' are MSVC's, macOS's are
-  AppleClang's — so no shipped binary, no reported latency and no serialized state is touched, and
-  rules 2–3 (twin dump, Level-5 audition, compatibility re-verification) have nothing to act on.
-  Rule 1 is the live question: a compiler used by two CI jobs is not `CMakeLists.txt` structure, the
-  JUCE pin, or the product's dependency set, and the closest precedent in this repository — the
-  2026-08-15 image move that took the **shipping** macOS compiler from AppleClang 15 to 21 — was
-  handled as a CI change with documentation and source fixes, not an ADR. **This change is therefore
-  offered under ADR-0028 as `Proposed` and flagged for the reviewer rather than declared cleared**; it
-  is not one of the six `AI_AGENT_POLICY.md` Hard Stops. Why 20: it is the newest major installable from the stock
-  archives of the image `ubuntu-latest` resolves to (clang 20.1.2, `noble-updates`/`noble-security`
-  universe — 21/22 exist for 26.04 only and would require adding `apt.llvm.org`); 18.x has had no
-  upstream release since 2024-06-20 with four majors since; and every C++23 *language* feature Clang
-  gained after 18 landed in 19–20, with none in 21 or 22. Verification (all measured, one tree, JUCE
-  at the pinned commit): the clang-18 control reproduces the committed baseline **byte-identically**
-  (7 entries / 14 sites), clang-20 emits a **`diff`-identical 52-instance warning set**, so the only
-  line that changed in `scripts/clang-warning-baseline.txt` is `# clang-major:`; 140-check DSP +
-  894-check state suites green under the clang-20 build **and** under its ASan+UBSan build with
-  `libclang-rt-20-dev`; `--compile-canary` still rejects the explicit `SIMDRegister` form; the gate
-  demonstrably **refuses** the mismatched pair (exit 2) before the baseline was regenerated. Costs, so
-  they are not discovered later: `clang-18` is preinstalled on the image while the 20 toolchain is a
-  14-package / 113 MB / 10.9 s apt install per Clang job, and both Clang jobs start a fresh ccache
-  lineage once. Synced: `CI_CD.md` (§Cache lineages, §The Clang warning baseline, §Reproducing CI
-  locally), this table and this log. No `src/`, `tests/`, `CMakeLists.txt` or packaging change; no
-  `CHANGELOG.md` entry (rule 3 — not user-visible).
+- **Clang major 18 → 22** (via 20 in the same unmerged change set) — recorded in **ADR-0028**
+  (`Accepted` 2026-08-17; the versions-considered evaluation, the install mechanism and the revisit
+  trigger live there, as does the correction of the first draft's claim that 21/22 had "no noble
+  publication"). Scope first, because it decides which rules apply: the pin is used by `linux-clang`
+  and `sanitizers` only, **neither of which uploads an artifact** — shipped Linux bytes are GCC's,
+  Windows' MSVC's, macOS's AppleClang's — so no shipped binary, reported latency or serialized state
+  is touched, and rules 2–3 (twin dump, Level-5 audition, compatibility re-verification) have nothing
+  to act on. Rule 1 **does** apply, and the ambiguity that made that a live question is now closed:
+  ADR-0028 amends `ARCHITECTURE_REVIEW_GATE.md` with the *who chooses the version* rule, under which a
+  repository-pinned compiler is gated and a runner-supplied one cannot be. **Why 22:** it is
+  upstream **stable** (22.1.8, 2026-07-10; 23.1.0 is still rc3), which apt.llvm.org itself asserts via
+  `CURRENT_LLVM_STABLE=22`. Ubuntu's archives stop at 20 for noble, so the toolchain comes from
+  apt.llvm.org through `scripts/setup-llvm-apt.sh` — a packaging boundary in Ubuntu is not allowed to
+  decide how current this project's detectors are. **One behavioural change, and it preserves coverage
+  rather than adding it:** Clang 21 dropped `vptr` from `-fsanitize=undefined`, so the `sanitizers` job
+  now names `-fsanitize=address,undefined,vptr`; without it the move past 20 would have silently
+  stopped checking bad downcasts and bad vtables. Verification (all measured, one tree, JUCE at the
+  pinned commit, clang-20 as the control): a **`diff`-identical 52-instance warning census** 20 vs 22
+  — and identical to 18 as well — so the only line that changed in
+  `scripts/clang-warning-baseline.txt` is `# clang-major:`; 140-check DSP + 894-check state suites green
+  under the clang-22 build **and** under its ASan+UBSan+vptr build with `libclang-rt-22-dev`; the LTO
+  `Anamorph_VST3` link and `check_linker_flag`'s lld probe both green at 22;
+  `--compile-canary` still rejects the explicit `SIMDRegister` form; the gate demonstrably **refuses**
+  the mismatched pair (exit 2); and the `vptr` loss reproduced directly by running one bad-downcast
+  program under both majors. Costs, so they are not discovered later: a third-party apt source with an
+  HTTPS-fetched signing key scoped by `signed-by=` to one suite, a **fail-closed** install (the two
+  Clang jobs fail if apt.llvm.org is unreachable; the three shipping jobs do not use it), 15 packages /
+  155 MB / 17.8 s per Clang job, one fresh ccache lineage each, and reproducibility that is now
+  major-granular against a *snapshot*-versioned package rather than a release-versioned one. Synced:
+  `ARCHITECTURE_REVIEW_GATE.md` (the new rule), `CI_CD.md` (§Cache lineages, §The Clang warning
+  baseline, §Reproducing CI locally), `REPOSITORY_MAP.md`, this table and this log. No `src/`,
+  `tests/`, `CMakeLists.txt` or packaging change; no `CHANGELOG.md` entry (rule 3 — not user-visible).
 - **C++ standard 17 → 23** — recorded in **ADR-0027** (v0.9.4 cycle, applied on top of the
   JUCE 9.0.1 tree with **no version bump**). Rule 1 (Build System change → gate + ADR) applied to
   the `CMAKE_CXX_STANDARD` line as a pinned dependency of this table. One C++ source change was

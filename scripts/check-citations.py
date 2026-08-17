@@ -332,17 +332,23 @@ DELIBERATE_REAIMS = set([
     #
     # Every one below is now recomputed from the file as it stands and read back
     # line by line, not shifted by an arithmetic delta:
-    #   RELEASE_POLICY  :542,1110,1532  the linux/windows/macos Configure steps
-    #   KNOWN_ISSUES    :1699-1701      the three ad-hoc `codesign` calls
-    #   COMPAT_MATRIX   :1468-1928      the `macos` job, key line to last step
-    #   COMPAT_MATRIX   :1986-2231      the `macos-intel` job, ditto
+    #   RELEASE_POLICY  :546,1119,1541  the linux/windows/macos Configure steps
+    #   KNOWN_ISSUES    :1708-1710      the three ad-hoc `codesign` calls
+    #   COMPAT_MATRIX   :1477-1937      the `macos` job, key line to last step
+    #   COMPAT_MATRIX   :1938-1994      its rationale block (cited alongside)
+    #   COMPAT_MATRIX   :1995-2240      the `macos-intel` job, ditto
+    # All five moved +4 or +9 in the Clang-22 round -- the pin rationale grew by
+    # four lines above every anchor, and the two Clang jobs' install steps by
+    # five more above everything from `windows:` down. Recomputed from the file
+    # and read back, NOT shifted by arithmetic; section 9 below is what caught
+    # the four stale declarations this round, which is the second time it has.
     # The lesson is in the header already: a declaration buys ONE transition and
     # costs the tool's opinion for that transition, so the hand-check it
     # substitutes for has to actually happen.
     ("docs/architecture/COMPATIBILITY_MATRIX.md",
-     ".github/workflows/build.yml:1468-1928"),
+     ".github/workflows/build.yml:1477-1937"),
     ("docs/architecture/COMPATIBILITY_MATRIX.md",
-     ".github/workflows/build.yml:1986-2231"),
+     ".github/workflows/build.yml:1995-2240"),
     # These two name the spellings the documents carry TODAY, and they did not
     # always: they were first written with the intermediate values of the commit
     # that introduced them, and the commit after it recomputed both anchors
@@ -354,8 +360,8 @@ DELIBERATE_REAIMS = set([
     # A declaration naming a spelling that exists in no document is dead weight
     # at best and a red default branch at worst, so section 9 of `--self-test`
     # now asserts every entry here is a string its document really contains.
-    ("docs/policies/RELEASE_POLICY.md", ".github/workflows/build.yml:542,1110,1532"),
-    ("docs/KNOWN_ISSUES.md", ".github/workflows/build.yml:1699-1701"),
+    ("docs/policies/RELEASE_POLICY.md", ".github/workflows/build.yml:546,1119,1541"),
+    ("docs/KNOWN_ISSUES.md", ".github/workflows/build.yml:1708-1710"),
     ("docs/procedures/BUILD.md", "scripts/build.sh:19-54"),
 ])
 

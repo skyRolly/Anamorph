@@ -323,7 +323,7 @@ warnings would turn that gate green by deleting its input. Verified against the 
 14 accepted sites in 7 baseline entries* — with 129 of the 134 compilations served from cache on the
 warm run. Those three figures are from that measurement, under that compiler; the property they
 establish (replayed stderr is byte-identical to compiled stderr) is a ccache property and is not
-version-specific, and the *verdict* half still holds unchanged at Clang 20 — the accepted set is the
+version-specific, and the *verdict* half still holds unchanged at Clang 22 — the accepted set is the
 same 14 sites in 7 entries.
 
 **One repository property makes it work, and it had to be created.** `ANAMORPH_BUILD_NUMBER` is
@@ -573,33 +573,76 @@ the two disagree — exit 2, the code meaning *the check* could not run, not the
 regressed. An unrecorded version is refused for the same reason a wrong one is: it cannot be
 confirmed to describe this compiler. Bump the pin and re-baseline in the **same** change.
 
-**The pin is 20, raised from 18.** 20 is the newest major installable from the **stock** archives of
-the image `ubuntu-latest` resolves to — clang 20.1.2 from `noble-updates`/`noble-security` universe,
-no third-party apt source; 21 and 22 are published for 26.04 (`resolute`) only and reaching them on
-24.04 would mean adding `apt.llvm.org`. Clang 18.x has had no upstream release since 2024-06-20 and
-four majors have shipped since, and every C++23 *language* feature Clang gained after 18 landed in 19
-and 20 — 21 and 22 add none — so 20 is also the whole of the C++23 delta available here.
-What it cost the baseline was **measured, not assumed**: the same three targets built from one tree
-under clang-18 and clang-20 emit a `diff`-identical 52-instance warning set, and `--write-baseline`
-at 20 reproduces all **7 entries / 14 sites** unchanged, so the only line that moved in
-`scripts/clang-warning-baseline.txt` is `# clang-major:`. Both suites pass under the clang-20 build
-(140 and 894 checks) and again under its ASan+UBSan build, and `--compile-canary` still rejects the
-explicit `SIMDRegister` form. One cost is real and is install-time, not build-time: `clang-18` is
-**preinstalled** on the image (`apt-get install` answers *already the newest version*), while
-`clang-20` + `lld-20` + `libclang-rt-20-dev` are a genuine 14-package, 113 MB install — 10.9 s
-measured on a 4-core box, once per Clang job. `clang-20` is published for **amd64/i386 only** on
-24.04, so a future `ubuntu-24.04-arm` job could not install it; on 26.04 all of 18–22 are available
-on every architecture and 20 is preinstalled.
+**The pin is 22 — upstream stable — and it comes from apt.llvm.org.** The rule is *upstream stable*,
+not *newest* and not *whatever Ubuntu packages*: 22.1.8 was released 2026-07-10 and 22.x is the branch
+upstream shipped point releases on, while 23.1.0 is still at **rc3**. Ubuntu's own archives stop at
+`clang-20` for noble, which is what `ubuntu-latest` resolves to, so the toolchain is installed by
+`scripts/setup-llvm-apt.sh` from **apt.llvm.org** — upstream's own Debian/Ubuntu channel, whose
+`llvm.sh` asserts `CURRENT_LLVM_STABLE=22`. Ubuntu's packaging boundary is a fact about Ubuntu's
+release process, not about this project, and it is not allowed to hold the warning gate and the
+sanitizer host two majors behind upstream. ADR-0028 carries the decision, the options it rejected
+(including the intermediate 20 step and its mistaken reading of 21/22 availability), and the policy
+rule it enacts.
 
-**The one upstream change worth naming, because it is a silent one.** Clang 20 turns on distinct TBAA
-tags for incompatible pointers by default, which upstream says "may silently change code behavior for
-code containing strict-aliasing violations" (`-fno-pointer-tbaa` disables it). This job is not a
+What the move cost the baseline was **measured, not assumed**, with clang-20 kept as the control: the
+same three targets built from one tree under 20 and 22 emit a `diff`-identical **52-instance** warning
+census, and `--write-baseline` at 22 reproduces all **7 entries / 14 sites** unchanged — so the only
+line that moved in `scripts/clang-warning-baseline.txt` is `# clang-major:`. The same census also
+matches Clang 18's, so this tree's accepted set has now been stable across three majors. Both suites
+pass under the clang-22 build (140 and 894 checks) and again under its sanitizer build; the LTO
+`Anamorph_VST3` link and `check_linker_flag`'s lld probe are green at 22
+(`clang++-22 -fuse-ld=lld` resolves to `/usr/lib/llvm-22/bin/ld.lld`, LLD 22.1.8); and
+`--compile-canary` still rejects the explicit `SIMDRegister` form.
+
+**`-fsanitize=vptr` is now named explicitly, and that is coverage preserved rather than added.** Clang
+21 removed `vptr` from the `-fsanitize=undefined` group, so the bare `address,undefined` the
+`sanitizers` job used to carry would have silently stopped checking bad downcasts and bad vtables the
+moment the pin passed 20. Reproduced rather than taken from a release note: one bad-downcast program,
+`-fsanitize=undefined`, clang-20 reports *"downcast of address … which does not point to an object of
+type 'B'"*, clang-22 reports **nothing**, and `-fsanitize=undefined,vptr` restores it on 22. It needs
+RTTI, which this project never disables.
+
+The costs, stated so they are not discovered later. A **third-party apt source** is now in the two
+Clang jobs. Its trust surface is narrowed three ways rather than merely acknowledged: the signing key is
+fetched over HTTPS **and pinned by fingerprint** (`6084F3CF814B57C1CF12EFD515CF4D18AF4F7421`,
+*Sylvestre Ledru — Debian LLVM packages*), so a rotated or substituted key fails the job with a specific
+message rather than being trusted silently; `signed-by=` scopes that key to this one suite; and the
+install is **fail-closed** — if apt.llvm.org is unreachable those two jobs fail saying so, while the
+three *shipping* build jobs never touch it. The install is 15 packages / 155 MB / **17.8 s** measured on
+a 4-core box, against 14 / 113 MB / 10.9 s for clang-20 from the stock archive and a no-op for the
+preinstalled clang-18.
+
+**Reproducibility is weaker than the stock archive, and that is the real trade.** apt.llvm.org publishes
+*branch snapshots*, never the tagged `llvmorg-*` build — noble-22 is
+`1:22.1.8~++20260714014902+ca7933e47d3a-…`, the 22.x head just after 22.1.8, and the leading `~` makes
+it sort *below* a hypothetical `1:22.1.8-1`. Suites are rebuilt while their branch is open and freeze
+once it closes, and the pool keeps **only the current `.deb` per architecture** — which is also why an
+exact-version pin is not merely unenforceable here but impossible: it would stop resolving the next time
+the suite is rebuilt. **22.x is closed** (22.1.8 is upstream's newest tag; 23 is the development
+branch), and the mirror shows it: noble-22's index is 18 days old where noble-23's is 2. So the pin
+rests on a frozen suite, not on a hope. The guard still covers only the major; a patch-level diagnostic
+shift inside 22 would surface as a gate failure, not a silent pass. One gain, too: apt.llvm.org
+publishes noble-22 for `amd64 arm64 s390x`, so a future `ubuntu-24.04-arm` Clang job could install it —
+`clang-20` from the stock archive (amd64/i386 only) could not.
+
+**If you re-check apt.llvm.org and it seems to disagree, read the script, not the prose.** The site's
+homepage still labels 21 stable / 22 qualification / 23 development, one cycle stale; `llvm.sh`'s
+`CURRENT_LLVM_STABLE=22` and upstream's own tags are the authority.
+
+**The one upstream default worth naming, because it is a silent one.** Clang ≥ 20 turns on distinct
+TBAA tags for incompatible pointers by default, which upstream says "may silently change code behavior
+for code containing strict-aliasing violations" (`-fno-pointer-tbaa` disables it). This job is not a
 shipping compiler — the Linux artefact is GCC's — but it is a *detector*, so a codegen change here is
-worth having looked at rather than assumed away: both suites pass under the clang-20 Release build
-(140 + 894) and again under its ASan+UBSan build with `halt_on_error=1`, and the diagnostic set did not
-move. Clang 20's other ABI change (the Itanium construction-vtable mangling, incompatible with ≤19
-without `-fclang-abi-compat=19`) cannot reach this pipeline: every job builds its whole tree, JUCE
-included, from source with one compiler, so there is no mixed-major link anywhere.
+worth having looked at rather than assumed away: both suites pass under the clang-22 Release build
+(140 + 894) and again under its ASan+UBSan+vptr build with `halt_on_error=1`, and the diagnostic set
+did not move. The ABI changes in 20, 21 and 22 (Itanium construction-vtable mangling; larger records
+returned in memory; the MSVC-ABI destructor change) cannot reach this pipeline: every job builds its
+whole tree, JUCE included, from source with one compiler, so there is no mixed-major link anywhere, and
+the MSVC-ABI item belongs to a compiler this project does not use on Windows.
+
+**The standard library does not move with the pin.** Both clang-20 and clang-22 select the same
+libstdc++ on this image (`Selected GCC installation: …/13`), so a Clang major bump changes no C++23
+*library* surface here; that follows the runner's GCC, not `ANAMORPH_CLANG_VERSION`.
 
 **Only judge a baseline against a FULL build.** A count also falls when the log simply lacks the
 translation unit that carries the warning, which is what an incremental rebuild produces — ninja
@@ -802,7 +845,8 @@ The `linux-clang` and `sanitizers` jobs use their own build trees so they never 
 above — `build-clang`, `build-san`, `build-vg`. All are covered by `.gitignore`'s `build*/`.
 
 ```bash
-CLANG=20   # ANAMORPH_CLANG_VERSION in .github/workflows/build.yml is the authority
+CLANG=22   # ANAMORPH_CLANG_VERSION in .github/workflows/build.yml is the authority
+scripts/setup-llvm-apt.sh "$CLANG"   # Ubuntu has no clang-22 for noble; this is how CI gets it
 cmake -B build-clang -G Ninja -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_C_COMPILER="clang-$CLANG" -DCMAKE_CXX_COMPILER="clang++-$CLANG" \
       -DANAMORPH_BUILD_STANDALONE=OFF

@@ -57,10 +57,12 @@ concurrency:
 # "never key on line numbers" rule was written to avoid, reintroduced one level
 # up.
 #
-# 20 is the NEWEST major installable from the STOCK archives of the image
-# `ubuntu-latest` resolves to -- clang 20.1.2, noble-updates+security/universe,
-# no apt.llvm.org needed (21+ are published for 26.04 only). 18.x has had no
-# upstream release since 2024-06-20. CI_CD.md records the 18 -> 20 measurement.
+# 22 is the CURRENT UPSTREAM STABLE major (22.1.8). Ubuntu's own archives stop at
+# 20 for noble, so it comes from apt.llvm.org -- upstream's own channel, added by
+# `scripts/setup-llvm-apt.sh`, which that script's header justifies in full.
+# Ubuntu's packaging boundary is a fact about Ubuntu, not about this project, so
+# it is not allowed to hold the warning gate two majors back. ADR-0028 decides
+# this; CI_CD.md records the measurements.
 #
 # The baseline RECORDS this number in its own header and
 # `check-clang-warnings.py` refuses to run when the two disagree: bumping the pin
@@ -69,11 +71,13 @@ concurrency:
 # and read the baseline diff.
 #
 # `sanitizers` pins to the same major so its `libclang-rt-<n>-dev` is
-# version-matched by construction instead of being derived from `clang --version`.
+# version-matched by construction instead of being derived from `clang --version`
+# -- and, since Clang 21 dropped `vptr` from `-fsanitize=undefined`, so that the
+# flag list can be stated against a known major (see that job).
 # ---------------------------------------------------------------------------
 env:
   ANAMORPH_PLUGINVAL_STRICTNESS: 10
-  ANAMORPH_CLANG_VERSION: 20
+  ANAMORPH_CLANG_VERSION: 22
 
 # Every push builds the FULL set of formats on all three desktop OSes so beta
 # testers can install on any platform:
@@ -817,16 +821,17 @@ jobs:
       # why: the warning baseline records per-(path, flag) counts, and which
       # diagnostics Clang emits moves between majors, so an unpinned compiler
       # makes a runner-image bump indistinguishable from a source regression.
-      # `lld-<n>` is installed alongside so the pinned toolchain is complete on
-      # the box; which `ld.lld` the driver actually selects is settled by
-      # `check_linker_flag` at configure time (see CMakeLists.txt).
+      # The pinned major is newer than Ubuntu ships for this image, so it comes
+      # from apt.llvm.org via the script, which is FAIL-CLOSED on purpose (the
+      # compiler is the job, unlike the optional ccache below) and installs
+      # `lld-<n>` too, so the pinned toolchain is complete on the box; which
+      # `ld.lld` the driver selects is settled by `check_linker_flag` at
+      # configure time (see CMakeLists.txt).
       - name: Install build dependencies
         run: |
           chmod +x scripts/*.sh
           ./scripts/setup-linux.sh
-          sudo apt-get install -y \
-            "clang-${ANAMORPH_CLANG_VERSION}" "lld-${ANAMORPH_CLANG_VERSION}"
-          "clang-${ANAMORPH_CLANG_VERSION}" --version
+          ./scripts/setup-llvm-apt.sh "${ANAMORPH_CLANG_VERSION}"
           # ccache is an OPTIMIZATION, never a requirement -- see the
           # compiler-cache block above the jobs. If it cannot be installed the
           # job builds without a launcher: slower, never different.
@@ -1000,11 +1005,8 @@ jobs:
         run: |
           chmod +x scripts/*.sh
           ./scripts/setup-linux.sh
-          sudo apt-get install -y valgrind \
-            "clang-${ANAMORPH_CLANG_VERSION}" \
-            "lld-${ANAMORPH_CLANG_VERSION}" \
-            "libclang-rt-${ANAMORPH_CLANG_VERSION}-dev"
-          "clang-${ANAMORPH_CLANG_VERSION}" --version
+          ./scripts/setup-llvm-apt.sh "${ANAMORPH_CLANG_VERSION}"
+          sudo apt-get install -y valgrind
           # ccache is an OPTIMIZATION, never a requirement -- see the
           # compiler-cache block above the jobs. If it cannot be installed the
           # job builds without a launcher: slower, never different.
@@ -1016,7 +1018,7 @@ jobs:
           fi
 
       # Its own lineage, keyed on the pinned Clang major as `linux-clang`'s is:
-      # sanitized objects carry -fsanitize=address,undefined in the command line
+      # sanitized objects carry -fsanitize=address,undefined,vptr in the command line
       # ccache hashes, so a shared lineage could not CONFUSE the two jobs -- it
       # would just have them evict each other, and a moved pin orphans both.
       - name: Restore the compiler cache
@@ -1026,16 +1028,23 @@ jobs:
           key: ccache-ubuntu-sanitizers-clang${{ env.ANAMORPH_CLANG_VERSION }}-${{ github.run_id }}
           restore-keys: ccache-ubuntu-sanitizers-clang${{ env.ANAMORPH_CLANG_VERSION }}-
 
-      - name: Configure (Clang, ASan + UBSan)
+      # `vptr` IS SPELLED OUT, and it is coverage PRESERVED rather than added.
+      # Clang 21 removed `vptr` from the `-fsanitize=undefined` group, so the
+      # bare `address,undefined` this job used to carry silently stopped checking
+      # bad downcasts and bad vtables the moment the pin passed 20 -- verified by
+      # running the same bad-downcast program under both majors: clang-20
+      # reported it from `undefined` alone, clang-22 reported nothing until
+      # `vptr` was named. It needs RTTI, which this project never disables.
+      - name: Configure (Clang, ASan + UBSan + vptr)
         run: >
           ccache --zero-stats || true &&
           cmake -B build-san -G Ninja
           -DCMAKE_BUILD_TYPE=RelWithDebInfo
           -DCMAKE_C_COMPILER=clang-${{ env.ANAMORPH_CLANG_VERSION }}
           -DCMAKE_CXX_COMPILER=clang++-${{ env.ANAMORPH_CLANG_VERSION }}
-          -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
-          -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
-          -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
+          -DCMAKE_C_FLAGS="-fsanitize=address,undefined,vptr -fno-omit-frame-pointer"
+          -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined,vptr -fno-omit-frame-pointer"
+          -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined,vptr"
           -DCMAKE_C_COMPILER_LAUNCHER=${{ env.ANAMORPH_COMPILER_LAUNCHER }}
           -DCMAKE_CXX_COMPILER_LAUNCHER=${{ env.ANAMORPH_COMPILER_LAUNCHER }}
           -DANAMORPH_BUILD_STANDALONE=OFF

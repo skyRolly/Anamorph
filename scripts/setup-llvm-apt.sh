@@ -92,6 +92,20 @@ if [ ! -s "$KEYRING" ]; then
 fi
 $SUDO chmod 0644 "$KEYRING"
 
+# The key is PINNED BY FINGERPRINT, which is what makes fetching it defensible.
+# HTTPS proves the bytes came from apt.llvm.org; this proves they are the key
+# this repository decided to trust. If upstream ever rotates it, the job fails
+# here with a specific message and a human decides -- which is the outcome you
+# want from a third-party package source, rather than silently trusting whatever
+# key the host served this morning.
+LLVM_KEY_FPR="6084F3CF814B57C1CF12EFD515CF4D18AF4F7421"
+if ! gpg --show-keys --with-colons "$KEYRING" 2>/dev/null | grep -q "^fpr:*${LLVM_KEY_FPR}:"; then
+    echo "setup-llvm-apt: the key at ${KEYRING} is not the expected LLVM signing key" >&2
+    echo "setup-llvm-apt: expected fingerprint ${LLVM_KEY_FPR} (Sylvestre Ledru - Debian LLVM packages)" >&2
+    echo "setup-llvm-apt: got $(gpg --show-keys --with-colons "$KEYRING" 2>/dev/null | awk -F: '/^fpr:/{print $10; exit}')" >&2
+    exit 1
+fi
+
 echo "deb [signed-by=${KEYRING}] https://apt.llvm.org/${CODENAME}/ ${SUITE} main" \
     | $SUDO tee "$SOURCE" > /dev/null
 
