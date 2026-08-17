@@ -600,7 +600,11 @@ pass under the clang-22 build (140 and 894 checks) and again under its sanitizer
 moment the pin passed 20. Reproduced rather than taken from a release note: one bad-downcast program,
 `-fsanitize=undefined`, clang-20 reports *"downcast of address … which does not point to an object of
 type 'B'"*, clang-22 reports **nothing**, and `-fsanitize=undefined,vptr` restores it on 22. It needs
-RTTI, which this project never disables.
+RTTI, which this project never disables — so it is named on the **C++ compile flags only**. On a C
+translation unit it is dead (a C TU emits the same `__ubsan` reference count with and without it), and
+this job compiles 19 of them from the C sources JUCE vendors; clang-22 accepts it there silently, but
+the driver already hard-errors on `vptr` + `-fno-rtti` even in C mode, and this job fails closed at
+configure time rather than degrading.
 
 The costs, stated so they are not discovered later. A **third-party apt source** is now in the two
 Clang jobs. Its trust surface is narrowed three ways rather than merely acknowledged: the signing key is

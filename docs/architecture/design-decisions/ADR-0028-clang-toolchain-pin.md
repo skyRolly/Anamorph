@@ -94,6 +94,11 @@ added.** Clang 21 removed `vptr` from the `-fsanitize=undefined` group, so the b
 vtables the moment the pin passed 20. Demonstrated, not inferred: the same bad-downcast program under
 both majors — clang-20 reported it from `undefined` alone, clang-22 reported **nothing** until `vptr`
 was named, and reported it again once it was. `vptr` requires RTTI, which this project never disables.
+It is named on the **C++ flags only**: it is an RTTI check, so it is dead on the 19 vendored C
+translation units this job compiles (flac/zlib/libpng/libjpg), which a C TU's unchanged `__ubsan`
+reference count confirms. clang-22 accepts it there silently, but the driver already hard-errors on
+`vptr` + `-fno-rtti` even in C mode, so it does validate the flag where it cannot apply — and this job
+fails closed at configure time rather than degrading. One placement, identical coverage, no exposure.
 
 ### The policy this ADR enacts
 `ARCHITECTURE_REVIEW_GATE.md` listed "Build System change — CMake structure, JUCE version/pin,
@@ -226,8 +231,9 @@ candidate.
   explicit `SIMDRegister` form is still rejected, so the lint it guards is still live at this major.
 - **The `vptr` regression is reproduced directly**: one bad-downcast program, `-fsanitize=undefined`,
   clang-20 reports "downcast of address … which does not point to an object of type 'B'", clang-22
-  reports nothing, and `-fsanitize=undefined,vptr` restores it on 22. `vptr` is accepted for C, C++
-  and at link, and is rejected only with `-fno-rtti`, which this project never sets.
+  reports nothing, and `-fsanitize=undefined,vptr` restores it on 22. Re-verified after the flag was
+  narrowed to the C++ compile flags: the same program still reports both the bad downcast and the bad
+  member call, the sanitized suites stay green, and all 19 vendored C objects still build.
 - **The install mechanism was run**: `scripts/setup-llvm-apt.sh 22` installs clang/lld/libclang-rt
   22.1.8 from `llvm-toolchain-noble-22`, asserts the reported major, and is a no-op on re-run; it
   exits 2 on a missing or non-numeric argument.

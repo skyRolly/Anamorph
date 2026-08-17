@@ -1035,6 +1035,11 @@ jobs:
       # running the same bad-downcast program under both majors: clang-20
       # reported it from `undefined` alone, clang-22 reported nothing until
       # `vptr` was named. It needs RTTI, which this project never disables.
+      # C++ FLAGS ONLY, and do not "fix" the asymmetry: `vptr` is an RTTI check,
+      # so it is dead on the 19 vendored C TUs this job compiles (a C TU emits
+      # the same `__ubsan` count with and without it). clang-22 accepts it there
+      # silently, but the driver hard-errors on `vptr` + `-fno-rtti` even in C,
+      # and this job fails CLOSED at configure time. ADR-0028 has the evidence.
       - name: Configure (Clang, ASan + UBSan + vptr)
         run: >
           ccache --zero-stats || true &&
@@ -1042,7 +1047,7 @@ jobs:
           -DCMAKE_BUILD_TYPE=RelWithDebInfo
           -DCMAKE_C_COMPILER=clang-${{ env.ANAMORPH_CLANG_VERSION }}
           -DCMAKE_CXX_COMPILER=clang++-${{ env.ANAMORPH_CLANG_VERSION }}
-          -DCMAKE_C_FLAGS="-fsanitize=address,undefined,vptr -fno-omit-frame-pointer"
+          -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
           -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined,vptr -fno-omit-frame-pointer"
           -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined,vptr"
           -DCMAKE_C_COMPILER_LAUNCHER=${{ env.ANAMORPH_COMPILER_LAUNCHER }}
