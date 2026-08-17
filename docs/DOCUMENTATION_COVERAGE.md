@@ -117,7 +117,8 @@ what `CI_CD.md` §Cache lineages already claimed for one of them.
 **`build.yml` was edited at net-zero line count on purpose** (11 changed, 11 added): the file is a
 `check-citations.py` TRACKED source and four documented anchors live below the edit sites, so holding
 the line count still is what keeps them from drifting. Validated: `check-citations --check` **exit 0**
-against the new merge base with 85 self-test cases; `check-docs` 68 cases / 99 files;
+against the new merge base with 85 self-test cases; `check-docs` 68 cases / 100 files (the ADR below
+is the 100th);
 `check-portability` 45 files / 0 violations; `check-clang-warnings --self-test` 28 cases; `actionlint`
 1.7.7 over all five workflows reporting **the same two findings as `origin/main` and no new one**
 (`macos-15-intel` unknown to that release's built-in label list, and a pre-existing `SC2002` style note

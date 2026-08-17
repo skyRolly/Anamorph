@@ -317,11 +317,14 @@ the backstop either way.
 **Warnings survive a hit.** ccache replays the compiler's stderr verbatim — caret lines and
 `[-Wflag]` included. That is load-bearing rather than incidental: `linux-clang` gates on the
 diagnostic text of its own build (see "The Clang warning baseline"), and a cache that swallowed
-warnings would turn that gate green by deleting its input. Verified against the pinned Clang 18
-before enabling, by running that job's real build and its real gate twice: cold and warm produce
+warnings would turn that gate green by deleting its input. Verified against the **then-pinned Clang
+18** before enabling, by running that job's real build and its real gate twice: cold and warm produced
 **54 warning lines each, `diff`-identical**, and the same verdict — *no new first-party warnings,
 14 accepted sites in 7 baseline entries* — with 129 of the 134 compilations served from cache on the
-warm run.
+warm run. Those three figures are from that measurement, under that compiler; the property they
+establish (replayed stderr is byte-identical to compiled stderr) is a ccache property and is not
+version-specific, and the *verdict* half still holds unchanged at Clang 20 — the accepted set is the
+same 14 sites in 7 entries.
 
 **One repository property makes it work, and it had to be created.** `ANAMORPH_BUILD_NUMBER` is
 `${{ github.run_number }}` and therefore changes every run. It was a *target-wide* compile

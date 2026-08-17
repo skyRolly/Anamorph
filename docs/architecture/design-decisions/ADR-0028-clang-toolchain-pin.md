@@ -73,6 +73,14 @@ failing" is self-announcing: it fails loudly at install time, on every push, bef
 **Revisit when** `ubuntu-latest` moves to 26.04 (which preinstalls 20/21/22 and makes 21/22 free), or
 at a release-hardening pass — not because a new Clang exists.
 
+**A 21-or-later move carries one trap, recorded here so acting on that trigger cannot spring it
+silently: Clang 21 removed `-fsanitize=vptr` from `-fsanitize=undefined`.** The `sanitizers` job
+configures with `-fsanitize=address,undefined`, so taking 21+ on the strength of "26.04 makes it free"
+would **delete bad-downcast / bad-vtable checking from the only job that has it**, with nothing turning
+red to say so. Whoever takes that step must add `-fsanitize=vptr` explicitly in the same change. This
+is a coverage-loss trap of exactly the kind the warning baseline's own guard exists to prevent, one
+level down.
+
 ## Consequences
 - **No shipped byte changes**, no DSP, latency, parameter or serialization change; rules 2–3 of
   `DEPENDENCY_POLICY.md` (twin dump, Level-5 audition, compatibility re-verification) have nothing to
@@ -90,6 +98,16 @@ at a release-hardening pass — not because a new Clang exists.
   escape hatch if it ever matters.
 - **`clang-20` is amd64/i386-only on 24.04**, so a future `ubuntu-24.04-arm` job could not install it.
   On 26.04 every major 18–22 is available on all architectures.
+- **A capability this project specifically could use becomes reachable, and is deliberately NOT taken
+  here: RealtimeSanitizer** (`-fsanitize=realtime` with `[[clang::nonblocking]]`), new in Clang 20 and
+  absent from 18. It detects allocation, locking and other blocking calls on a thread annotated
+  non-blocking — which is `REALTIME_AUDIO_POLICY.md`'s central invariant, currently held by review and
+  by `THREADING_POLICY.md` rather than by a tool. Adopting it means annotating the `processBlock` path
+  and is its own change under that policy, with its own ADR; this one only makes it possible. Stated
+  because a reviewer weighing the bump should see the upside it unlocks, not only its costs.
+- **Nothing is superseded.** ADR-0026's "toolchain contract" line (CMake ≥ 3.22, C++17→23 per
+  ADR-0027, macOS deployment target) concerns the *product* build; this ADR governs a CI validation
+  compiler that contract never named.
 - **The linker stays deliberately unpinned** (`CMakeLists.txt`, `check_linker_flag`), and
   `scripts/setup-linux.sh` keeps installing the *unsuffixed* `lld`. Incidentally the pairing improves:
   `clang++-20 -fuse-ld=lld` resolves to `/usr/lib/llvm-20/bin/ld.lld`, its own major, because the
