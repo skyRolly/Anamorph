@@ -6,13 +6,14 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
 
 | Dependency | Pin | Mechanism | Evidence |
 |---|---|---|---|
-| **JUCE** | **9.0.1**, pinned by **immutable commit SHA** `e18f7f506c0b96f2c738a0bcd7fe6467a5005ad8` | CMake `FetchContent` (`GIT_SHALLOW`), overridable via `-DANAMORPH_JUCE_PATH` | CMakeLists.txt:36-38,47-55 |
+| **JUCE** | **9.0.1**, pinned by **immutable commit SHA** `e18f7f506c0b96f2c738a0bcd7fe6467a5005ad8` | CMake `FetchContent` (`GIT_SHALLOW`), overridable via `-DANAMORPH_JUCE_PATH` | CMakeLists.txt:48-50, 59-67 |
 | **pluginval** | latest release (download) | `scripts/run-pluginval.sh` | scripts/run-pluginval.sh:119-126 |
 | **C++ standard** | C++23 | `CMAKE_CXX_STANDARD 23`, extensions off (ADR-0027) | CMakeLists.txt:16-18 |
-| **Clang** (the Linux warning-gate + sanitizer jobs; **ships nothing**) | **major pinned — 22**, upstream stable (ADR-0028) | `ANAMORPH_CLANG_VERSION`, the single authority, consumed by both jobs' installs, their ccache lineages and `--clang-major`. Installed from **apt.llvm.org** by `scripts/setup-llvm-apt.sh` (Ubuntu's archives stop at 20 for noble), fail-closed. `scripts/clang-warning-baseline.txt` records the same major and the gate **refuses to run** on a mismatch | .github/workflows/build.yml:78-80 |
+| **Clang** (the Linux warning-gate + sanitizer jobs; **ships nothing**) | **major pinned — 22**, upstream stable (ADR-0028) | `ANAMORPH_CLANG_VERSION`, the single authority, consumed by both jobs' installs, their ccache lineages and `--clang-major`. Installed from **apt.llvm.org** by `scripts/setup-llvm-apt.sh` (Ubuntu's archives stop at 20 for noble), fail-closed. `scripts/clang-warning-baseline.txt` records the same major and the gate **refuses to run** on a mismatch | .github/workflows/build.yml:107-109 |
+| **GCC** (the LTO + GCC-warning-gate job; **ships nothing from that job**, though the same major builds the shipped Linux artifact) | **major pinned — 13**, which is simply what `ubuntu-24.04` ships | `ANAMORPH_GCC_VERSION`, the single authority, consumed by that job's `apt` install, its ccache lineage and `--gcc-major`. Nothing to add to `apt` sources: the pin is *below* the image rather than ahead of it, which is why the **image** is pinned too (`runs-on: ubuntu-24.04`) — naming the compiler without naming the image only moves the unpinned variable one level up. `scripts/gcc-warning-baseline.txt` records the same major and the gate **refuses to run** on a mismatch | .github/workflows/build.yml:110 |
 | Linux system libs | distro packages | `scripts/setup-linux.sh` (ALSA, JACK, X11, FreeType, GTK/WebKit, mesa, **EGL — required by JUCE 9's Linux GL context path**, xvfb) | setup-linux.sh |
 | **GitHub Actions** | major tags (`@vN`), one exact patch (`codeql-action@v4.37.6`), one commit SHA | **Dependabot**, weekly, two semver-split groups | .github/dependabot.yml |
-| Runner images | floating `*-latest`, plus one deliberate pin (`macos-15-intel`, for native Intel) | GitHub's own image rollout | build.yml `runs-on:` |
+| Runner images | floating `*-latest`, plus two deliberate pins (`macos-15-intel`, for native Intel; `ubuntu-24.04` on `linux-lto-tests`, so the GCC warning baseline's reference compiler cannot move underneath it) | GitHub's own image rollout | build.yml `runs-on:` |
 
 ## Version-lock reasoning
 
@@ -23,7 +24,7 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
   parameter system (APVTS), GUI, and plugin-format wrappers — an unpinned bump can silently change
   DSP behaviour, latency, the editor/X11 embedding path (the 0.8.5 incident lives in JUCE's X11
   host code), and the parameter/state ABI. The pin makes builds reproducible and keeps the audited
-  behaviour stable. Evidence [Verified]: CMakeLists.txt:36-38,47-55; the X11 dependency is
+  behaviour stable. Evidence [Verified]: CMakeLists.txt:48-50, 59-67; the X11 dependency is
   documented in ADR-0011.
 
 ## Update mechanisms
@@ -59,7 +60,7 @@ repository ever grows a real package manifest.
    JUCE change can move DSP/latency/editor behaviour invisibly to the headless gate.
 3. Re-verify the `RELEASE_COMPATIBILITY_CHECKLIST.md` (latency reporting, session reload) after a bump.
 4. Prefer the offline path (`-DANAMORPH_JUCE_PATH`) for reproducibility in restricted CI.
-5. `JUCE_*` compile flags in `CMakeLists.txt:279-284` (no webview, no curl, no splash, strict
+5. `JUCE_*` compile flags in `CMakeLists.txt:291-296` (no webview, no curl, no splash, strict
    ref-counted pointer) are part of the dependency contract; changing them is a build change.
 
 ## Compliance log

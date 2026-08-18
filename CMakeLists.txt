@@ -26,6 +26,18 @@ endif()
 # ----------------------------------------------------------------------------
 option(ANAMORPH_BUILD_TESTS "Build the self-test executables (DSP + state compatibility)" ON)
 option(ANAMORPH_BUILD_STANDALONE "Build the Standalone target for convenience" ON)
+# OFF by default, deliberately. A benchmark that always builds gets run casually
+# and its numbers quoted without the machine they came from, which is exactly the
+# C2 failure `PERFORMANCE_BUDGET.md` is written against. It is also the only
+# target here whose *purpose* is timing, so it must never be an incidental part
+# of a correctness build.
+option(ANAMORPH_BUILD_BENCH "Build AnamorphBench, the PERFORMANCE_BUDGET.md measurement harness (OFF by default)" OFF)
+# OFF by default and Clang-only in practice: libFuzzer ships with Clang, so a
+# GCC or MSVC configure with this ON would fail at link with a message about
+# `-fsanitize=fuzzer` rather than about this option. The `fuzz` CI job is the
+# supported way to build it; locally it needs a Clang toolchain and the caller
+# supplies `-fsanitize=fuzzer` through the usual flag variables.
+option(ANAMORPH_BUILD_FUZZ "Build AnamorphFuzzState, the setStateInformation fuzz target (OFF by default; needs Clang/libFuzzer)" OFF)
 
 # Allow pointing at a local JUCE checkout to avoid network in restricted CI.
 #   -DANAMORPH_JUCE_PATH=/path/to/JUCE
@@ -352,6 +364,88 @@ if(ANAMORPH_BUILD_TESTS)
         JUCE_STRICT_REFCOUNTEDPOINTER=1
         JUCE_STANDALONE_APPLICATION=1)
     target_link_libraries(AnamorphStateTests
+        PRIVATE
+            AnamorphDSP
+            juce::juce_audio_utils
+            juce::juce_dsp
+            juce::juce_opengl
+        PUBLIC
+            AnamorphHardening
+            juce::juce_recommended_config_flags
+            juce::juce_recommended_warning_flags)
+endif()
+
+# ----------------------------------------------------------------------------
+#  AnamorphBench -- the measurement procedure `PERFORMANCE_BUDGET.md` prescribes.
+#
+#  OUTSIDE the ANAMORPH_BUILD_TESTS block on purpose: the option is documented as
+#  independent, and nesting it would make `-DANAMORPH_BUILD_BENCH=ON
+#  -DANAMORPH_BUILD_TESTS=OFF` build nothing at all -- silently, which is the
+#  worst way for an option to be a lie. It needs only AnamorphDSP, which is
+#  defined above either way.
+#
+#  IT LINKS THE SHIPPED FLAG SET, including `juce_recommended_lto_flags`, because
+#  the budget document is explicit that a bench which does not is "measuring a
+#  different binary": LTO and the hardening flags are part of what users install.
+#  That makes this the ONLY console target here carrying the LTO flags, which is
+#  intended -- the correctness suites deliberately do not (see the sanitizers and
+#  linux-lto-tests jobs for why).
+# ----------------------------------------------------------------------------
+if(ANAMORPH_BUILD_BENCH)
+    juce_add_console_app(AnamorphBench PRODUCT_NAME "AnamorphBench")
+    target_sources(AnamorphBench PRIVATE tests/bench.cpp)
+    target_include_directories(AnamorphBench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_compile_definitions(AnamorphBench PUBLIC
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_STANDALONE_APPLICATION=1)
+    target_link_libraries(AnamorphBench
+        PRIVATE
+            AnamorphDSP
+            juce::juce_dsp
+            juce::juce_audio_basics
+        PUBLIC
+            AnamorphHardening
+            juce::juce_recommended_config_flags
+            juce::juce_recommended_lto_flags
+            juce::juce_recommended_warning_flags)
+endif()
+
+# ----------------------------------------------------------------------------
+#  AnamorphFuzzState -- libFuzzer over the host state-restore path.
+#
+#  It compiles the PLUGIN SOURCES, exactly as AnamorphStateTests does, because
+#  the target under test is the real `AnamorphAudioProcessor::setStateInformation`
+#  rather than a re-implementation of it. That is also why the editor sources are
+#  in the list: `createEditor()` references them, and they are linked but never
+#  instantiated (the same arrangement, and the same reason, as the state suite).
+#
+#  NO `main`: libFuzzer supplies one, and `-fsanitize=fuzzer` brings it in.
+#
+#  THAT FLAG IS ON THE TARGET, NOT IN THE CACHE VARIABLES, and it has to be:
+#  libFuzzer's `main` collides with the one in CMake's own compiler-probe
+#  program, so `-DCMAKE_CXX_FLAGS=-fsanitize=fuzzer` fails at `project()` with a
+#  duplicate-`main` link error before any of this is reached. The caller still
+#  supplies the *detector* sanitizers (`address,undefined` in the `fuzz` job)
+#  through the usual variables; only the fuzzer driver itself is target-scoped.
+# ----------------------------------------------------------------------------
+if(ANAMORPH_BUILD_FUZZ)
+    add_executable(AnamorphFuzzState
+        tests/fuzz_state.cpp
+        ${ANAMORPH_PLUGIN_SOURCES})
+    target_include_directories(AnamorphFuzzState PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_compile_definitions(AnamorphFuzzState PUBLIC
+        ANAMORPH_VERSION_STRING="${PROJECT_VERSION}"
+        ANAMORPH_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures"
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_DISPLAY_SPLASH_SCREEN=0
+        JUCE_REPORT_APP_USAGE=0
+        JUCE_STRICT_REFCOUNTEDPOINTER=1
+        JUCE_STANDALONE_APPLICATION=1)
+    target_compile_options(AnamorphFuzzState PRIVATE -fsanitize=fuzzer)
+    target_link_options(AnamorphFuzzState PRIVATE -fsanitize=fuzzer)
+    target_link_libraries(AnamorphFuzzState
         PRIVATE
             AnamorphDSP
             juce::juce_audio_utils

@@ -96,11 +96,32 @@ guard is what keeps that out of the Clang warning gate.
 **byte-identical** object with the attribute live and with the macro emptied. That is what permits
 the annotation on a DSP_POLICY-frozen path at all.
 
-### 3. `-Wfunction-effects` is deliberately NOT enabled
+### 3. `-Wfunction-effects` is scoped to the JUCE-free leaf layer, not to the audio path
 
-Option B's measurement is the reason. The rule this ADR sets: **the annotation marks entry points for
-the runtime tool; the compile-time diagnostic waits for the dependency.** The re-evaluation trigger
-is stated in §8.
+Option B's measurement is the reason it is not enabled on the audio path. The rule this ADR sets:
+**the annotation marks entry points for the runtime tool; the compile-time diagnostic waits for the
+dependency** wherever the dependency is in the call graph. The re-evaluation trigger for the broad
+form is stated in §8.
+
+That rule has a boundary, and the boundary is measurable rather than a matter of judgement. The 52
+warnings are *all* transitive — calls into JUCE whose definitions the translation unit cannot see —
+so they appear only where JUCE appears. Over the **leaf layer that includes no JUCE at all**
+(`MidSide.h`, `LR4Xover.h`, `ScopeBuffer.h`, `Correlation.h`, `LevelMeters.h`) the same flag emits
+**0** diagnostics, and it still fires precisely: a seeded call from the annotated driver to the
+non-annotated `anamorph::applyWidth` produces
+
+```
+error: function with 'nonblocking' attribute must not call non-'nonblocking'
+function 'anamorph::applyWidth' [-Werror,-Wfunction-effects]
+```
+
+So the flag is enabled exactly where it is signal and stays off where it is noise. This is a
+**scoping decision inside the option-C choice, not a reversal of it**: `tests/realtime_effects.cpp`
+is a compile-only translation unit (`-fsyntax-only`, seconds, no link, no run) whose annotated driver
+calls the leaf DSP the audio path calls, in the order the audio path calls it. It proves those bodies
+effect-clean before any test executes them — which is the one thing RTSan structurally cannot do,
+since a runtime tool sees only the branches the suite takes. It ships as a step in the `realtime`
+job, and adds neither a target to the shipped build nor a flag to any TU that links.
 
 `-Wperf-constraint-implies-noexcept`, which ADR-0028 paired with this decision, is also **not**
 enabled — but for the opposite reason: it is a no-op here. It fires on definitions whose function
@@ -326,8 +347,10 @@ Evidence [Verified]:
 - **Portability guard**: `g++-13 -Wall -Wextra -Wattributes` compiles the guarded macro with no
   diagnostic and emits `-Wattributes` on the raw spelling; the macro expands to
   `[[clang::nonblocking]]` under clang-22 and to nothing under g++-13.
-- **`-Wfunction-effects` census**: **52** warnings from the annotated engine TU; the flag is in
-  neither `-Wall` nor `-Wextra`.
+- **`-Wfunction-effects` census**: **52** warnings from the annotated engine TU, versus **0** over
+  the JUCE-free leaf layer (`tests/realtime_effects.cpp`); the flag is in neither `-Wall` nor
+  `-Wextra`. The leaf-layer check is verified to still fire: a seeded call to the non-annotated
+  `anamorph::applyWidth` fails it by name.
 - **JUCE 9.0.1**: zero occurrences of `clang::nonblocking` / `clang::nonallocating` / `__rtsan` in
   the pinned checkout.
 - **The audio path under RTSan**, and **the lane failing on a seeded violation**: see the run

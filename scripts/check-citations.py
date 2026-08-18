@@ -271,11 +271,22 @@ DELIBERATE_REAIMS = set([
     # spellings below, `is_declared_reaim`'s "the spelling actually changed"
     # test can no longer fire for them and the run reports each as removable.
     # Delete them then -- against the MERGE BASE, per the note that run prints.
-    ("docs/FUTURE_RISKS.md", "scripts/run-pluginval.sh:147-176"),
-    ("docs/POSTMORTEMS.md", "scripts/run-pluginval.sh:147-176"),
+    #
+    # A DECLARATION MUST TRACK ITS OWN ANCHOR. The spellings here were updated on
+    # 2026-08-18 because a later edit to the CITED file moved the anchor and
+    # `--fix` re-anchored the citing sentence: `run-pluginval.sh` grew the
+    # platform-scoped retry (:147-176 -> :147-197), `CMakeLists.txt` grew the
+    # bench/fuzz options, and `build.yml` grew the GCC pin. The declaration is
+    # not a second copy of the anchor -- it is a claim about a specific spelling,
+    # so when the spelling changes the claim has to change with it. This is
+    # exactly the staleness section 9 of the self-test exists to catch, and it is
+    # what caught it here: the entries were left behind by the first `--fix` and
+    # the self-test failed until they followed.
+    ("docs/FUTURE_RISKS.md", "scripts/run-pluginval.sh:147-197"),
+    ("docs/POSTMORTEMS.md", "scripts/run-pluginval.sh:147-197"),
     ("docs/architecture/COMPATIBILITY_MATRIX.md", "scripts/run-pluginval.sh:121"),
     ("docs/architecture/design-decisions/ADR-0011-linux-x11-cpu-render.md",
-     "scripts/run-pluginval.sh:147-176"),
+     "scripts/run-pluginval.sh:147-197"),
     ("docs/procedures/BUILD.md", "scripts/setup-linux.sh:44-54"),
     # ---------------------------------------------------------------------
     # v0.9.4 CI-performance round: `CMakeLists.txt` and
@@ -306,8 +317,8 @@ DELIBERATE_REAIMS = set([
     # GOOD FOR ONE TRANSITION, like the block above: once the default branch
     # carries these spellings the run reports each as removable, and it says so
     # against the merge base rather than against a push predecessor.
-    ("docs/procedures/BUILD.md", "CMakeLists.txt:27,305"),
-    ("docs/policies/RELEASE_POLICY.md", "CMakeLists.txt:14,250-275"),
+    ("docs/procedures/BUILD.md", "CMakeLists.txt:27, 317"),
+    ("docs/policies/RELEASE_POLICY.md", "CMakeLists.txt:14, 262-287"),
     # Same round, found by a second review pass: the compile-definition list
     # cites the block those definitions live in, and `ANAMORPH_BUILD_NUMBER`
     # left that block when it was scoped to one translation unit. `:277-284` is
@@ -317,7 +328,7 @@ DELIBERATE_REAIMS = set([
     # `set_source_files_properties` that now carries it -- ONE anchor still, not
     # two, because a citation whose anchor COUNT changes lands in the
     # "review by hand" branch that no declaration can excuse.
-    ("docs/procedures/BUILD.md", "CMakeLists.txt:274-284"),
+    ("docs/procedures/BUILD.md", "CMakeLists.txt:286-296"),
     # ---------------------------------------------------------------------
     # THE WORKFLOW ANCHORS WERE WRONG ON ARRIVAL, and the way they got there is
     # worth recording because this gate is the thing that should have caught it.
@@ -389,7 +400,7 @@ DELIBERATE_REAIMS = set([
     # predecessor where it does exist. That is both escape hatches open at once
     # -- exactly the pair this file's header warns about, and the reason a local
     # green is not evidence until it is re-run against the base CI will use.
-    ("docs/policies/DEPENDENCY_POLICY.md", ".github/workflows/build.yml:78-80"),
+    ("docs/policies/DEPENDENCY_POLICY.md", ".github/workflows/build.yml:107-109"),
     # PRE-EXISTING ROT CORRECTED, not fresh drift: these four anchors were
     # stale BEFORE origin/main (PluginProcessor/PluginEditor grew above them
     # long ago), so the tool -- which preserves aim-at-same-text relative to a

@@ -226,19 +226,41 @@ timed region: the point is to measure the engine, not `AudioBuffer`'s constructo
 sources — add it behind an OFF-by-default option (mirroring `ANAMORPH_BUILD_TESTS`) so it never
 enters a release build.
 
-**A working implementation of this exact procedure already exists in the sibling product.**
-Anabasis carries `tests/bench.cpp` (354 lines) behind an `ANABASIS_BUILD_BENCH` option, and its
-header states it is "the DESIGN §9 benchmark procedure (**the one Anamorph only prescribes**)":
-same shape as this section — OFF by default, shipped-Release flags, an SR × block × OS × mode
-matrix, ns/sample plus worst single block, median of ≥5 runs, and the machine recorded beside the
-result. Adopting it here is a **normal engineering task, not an open design question** — the method
-below is already settled by this document. What it is blocked on is one thing, named so it is not
-rediscovered: the bench needs its own console target (`AnamorphDSP` is an INTERFACE library), which
-makes it a **CMake-structure change and therefore review-gated**
-(`docs/policies/ARCHITECTURE_REVIEW_GATE.md` §"Build System change"). Cross-product reuse is also a
-product-family decision rather than an ad-hoc copy. Both belong in that change, not in this
-document. Verified 2026-08-18 against `/home/user/Anabasis/tests/bench.cpp` and its
-`CMakeLists.txt` wiring.
+**The harness now exists: `tests/bench.cpp`, behind `ANAMORPH_BUILD_BENCH` (OFF by default).**
+It implements exactly the procedure below — shipped-Release flags including
+`juce_recommended_lto_flags`, the full SR × block × algorithm × oversampling × multiband matrix,
+median ns/sample plus worst single block, ≥5 repetitions with the spread reported, the buffer
+allocated once outside the timed region, and a deterministic LCG-plus-tone signal so two runs feed
+the engine the same samples. The `AnamorphDSP` INTERFACE library means it compiles the sources into
+its own console target; that **is** a Build System change under
+`docs/policies/ARCHITECTURE_REVIEW_GATE.md`, and it landed under the maintainer approval covering
+this roadmap item (2026-08-18) rather than by treating the gate as inapplicable. The procedure was
+settled by this document beforehand and is unchanged by the implementation; the sibling product's
+`tests/bench.cpp` was read as a worked example of the same method, not copied.
+
+**Constraint C2 is enforced by the harness, not merely stated by this document.** If it cannot
+identify the CPU and `ANAMORPH_BENCH_CPU` is unset, it **exits 2 and prints nothing** — an
+unattributable number is worse than no number, so it declines to produce one. `ANAMORPH_BENCH_SECONDS`
+(default 10) and `ANAMORPH_BENCH_REPS` (default 5) are the two knobs, and their defaults are the
+minimums this section requires rather than arbitrary values.
+
+**CI builds and smoke-runs it; CI does not gate on its numbers, and that is a measurement rather
+than a preference.** Across independent invocations on an otherwise idle machine, the median
+ns/sample varied by **7.2%** and the worst-block figure by **65.4%**. A threshold on the worst-block
+number would be pure noise, and a threshold on the median would sit inside its own run-to-run
+variance — either one is the gate-that-cries-wolf this repository's testing policy is written
+against, and the first red run would teach everyone to re-run it. What CI *does* catch by building
+and smoke-running the target is the regression that actually happens to benchmark harnesses: one
+that silently stops compiling against the engine it measures, so the numbers are unobtainable on the
+day someone needs them. The step lives in `linux-lto-tests`, which already builds shipped-class
+optimized code.
+
+**The rows above are still TODO, and the reason has changed.** It is no longer "there is no
+harness" — it is that a defensible number needs a machine this project can name and hold still. A
+shared cloud runner is precisely the "shared or thermally-throttled machine" this section says is
+not a datum, and the 65.4% worst-block spread measured on one is the evidence for that sentence
+rather than a hypothetical. Run the harness on a known desktop, record the CPU/OS/compiler beside
+every cell, and populate the rows in that change.
 
 **Build it the way users get it.** `-DCMAKE_BUILD_TYPE=Release` only. The `AnamorphHardening`
 flags and `juce::juce_recommended_lto_flags` are part of the shipped configuration, so a bench

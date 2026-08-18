@@ -26,7 +26,7 @@ serialization; keep the diff minimal; keep the pin immutable.
 - `ANAMORPH_JUCE_TAG` → **`e18f7f506c0b96f2c738a0bcd7fe6467a5005ad8`** (the commit of upstream
   tag `9.0.1`, verified via `git ls-remote` **and** by the fetched tree's own checkout log
   "JUCE version 9.0.1"); `ANAMORPH_JUCE_VERSION` → **`9.0.1`**. Both are printed by the configure
-  banner (`CMakeLists.txt:36-38,47-55`). GitHub still serves shallow fetch-by-SHA, so
+  banner (`CMakeLists.txt:48-50, 59-67`). GitHub still serves shallow fetch-by-SHA, so
   `GIT_SHALLOW` is retained.
 - **No C++ source change, and no build-dependency change.** Neither 9.0.1 breaking change has
   project exposure, and no JUCE module Anamorph uses changed its declared `linuxPackages` /
@@ -79,10 +79,10 @@ serialization; keep the diff minimal; keep the pin immutable.
   one ADR-0022 left open for the 9.0 line, which is now signed off against 9.0.1.
 
 ## Related code
-- `CMakeLists.txt:33-38` (pin + banner comment), `:47-55` (FetchContent).
+- `CMakeLists.txt:45-50` (pin + banner comment), `:47-55` (FetchContent).
 
 Evidence:
-- Source [Verified]: CMakeLists.txt:36-38 (`ANAMORPH_JUCE_VERSION "9.0.1"`, SHA pin).
+- Source [Verified]: CMakeLists.txt:48-50 (`ANAMORPH_JUCE_VERSION "9.0.1"`, SHA pin).
 - Upstream [Verified]: `git ls-remote --tags` → `9.0.1` = `e18f7f5…`; the FetchContent'd tree at
   `build/_deps/juce-src` resolves to that SHA with subject "JUCE version 9.0.1"; JUCE
   `BREAKING_CHANGES.md` ("Version 9.0.1", 2 entries) and `CHANGE_LIST.md` reviewed at that commit.

@@ -74,10 +74,40 @@ concurrency:
 # version-matched by construction instead of being derived from `clang --version`
 # -- and, since Clang 21 dropped `vptr` from `-fsanitize=undefined`, so that the
 # flag list can be stated against a known major (see that job).
+#
+# ---------------------------------------------------------------------------
+# THE GCC MAJOR IS PINNED FOR THE SAME REASON, on the one job that gates GCC
+# diagnostics (`linux-lto-tests`, which also runs `check-gcc-warnings.py`).
+#
+# The argument is identical -- `scripts/gcc-warning-baseline.txt` records exact
+# per-(path, flag) site counts and refuses to run against another major -- but
+# the SUPPLY is the opposite way round, and that changes the mechanism. The
+# Clang pin is AHEAD of what the image ships, so it is installed from
+# apt.llvm.org. This pin is simply WHAT THE IMAGE SHIPS (noble's default `g++`
+# is 13.3), so there is nothing to install and the only real risk is the image
+# moving underneath it. That is why the job naming this pin also pins
+# `runs-on: ubuntu-24.04` rather than `ubuntu-latest`: naming the compiler
+# without naming the image only moves the unpinned variable one level up, and
+# a `g++-13` that has left the archive fails at apt rather than at the gate.
+#
+# WHY GCC AT ALL, next to a Clang gate whose default warning set is strictly
+# larger: "larger" is not "a superset". GCC sees two classes Clang structurally
+# does not -- a parameter or local shadowing a member outside a constructor
+# (`-Wshadow`; Clang's `-Wshadow-all` does not report it) and
+# `-Wmisleading-indentation` (no Clang equivalent). Three such sites exist in
+# this tree today and are recorded in the baseline as accepted debt; the gate is
+# there so the NEXT one fails the push that introduces it. ADR-0029 records the
+# decision; `scripts/check-gcc-warnings.py` carries the measurements and the
+# reasoning for the two flags deliberately left OUT of the gated set.
+#
+# The gated FLAG SET is not restated here: the workflow asks the script for it
+# (`--print-flags`), so the flags the build uses and the flags the gate knows
+# about cannot drift apart.
 # ---------------------------------------------------------------------------
 env:
   ANAMORPH_PLUGINVAL_STRICTNESS: 10
   ANAMORPH_CLANG_VERSION: 22
+  ANAMORPH_GCC_VERSION: 13
 
 # Every push builds the FULL set of formats on all three desktop OSes so beta
 # testers can install on any platform:
@@ -186,7 +216,7 @@ env:
 # compilation (75%) and 468 CPU-seconds of LTO link (25%), and the compilation
 # is almost all JUCE: 9k lines of first-party source against a framework that
 # every one of the three JUCE-linking targets compiles separately. JUCE is
-# pin-locked to an immutable commit (CMakeLists.txt:49-55, ADR-0022/0026), so
+# pin-locked to an immutable commit (CMakeLists.txt:61-67, ADR-0022/0026), so
 # that 75% is byte-identical from run to run and recompiling it every push is
 # the single largest piece of avoidable work in this pipeline.
 #
@@ -982,13 +1012,19 @@ jobs:
   # `processBlock` -- which only AnamorphStateTests drives. Pointing it at the DSP
   # suite alone would aim the detector away from the wrapper entirely.
   #
-  # detect_leaks=0: this job is scoped as not-a-leak-gate. The factual claim that
-  # used to sit here -- JUCE singleton teardown producing LeakSanitizer reports --
-  # was retested 2026-08-18 and is no longer true: both suites run leak-CLEAN
-  # under detect_leaks=1 with clang 22 / JUCE 9.0.1. The scoping is kept anyway
-  # because reversing a documented gate decision is the maintainer's call, and
-  # a future JUCE upgrade could reintroduce exit-order reports with no defect;
-  # flipping this to 1 is a one-line change if that gate is wanted.
+  # detect_leaks=1 -- LeakSanitizer IS a gate here now (maintainer decision,
+  # 2026-08-18). The claim that used to justify switching it off -- JUCE
+  # singleton teardown producing spurious reports -- was retested and is simply
+  # not true on clang 22 / JUCE 9.0.1: both suites run leak-CLEAN, 159 + 900
+  # checks, zero LeakSanitizer reports. Leaving it off was costing real coverage
+  # for a reason that had expired.
+  #
+  # If a future JUCE upgrade reintroduces exit-order reports, the response is to
+  # investigate the report, not to reach for detect_leaks=0 again: a leak in the
+  # plug-in and a leak in a dependency's teardown look different in the stack,
+  # and this repository has no suppression file precisely so that the difference
+  # has to be looked at. (The `fuzz` job runs with detect_leaks=0 for a specific,
+  # documented reason of its own -- it leaks one JUCE initialiser on purpose.)
   # halt_on_error=1 on UBSan so the first violation fails the job rather than
   # scrolling past.
   #
@@ -1116,7 +1152,7 @@ jobs:
       # restating a default is the copy that rots when the default moves.
       - name: Self-tests under ASan + UBSan
         env:
-          ASAN_OPTIONS: detect_leaks=0:check_initialization_order=1:strict_init_order=1:strict_string_checks=1
+          ASAN_OPTIONS: detect_leaks=1:check_initialization_order=1:strict_init_order=1:strict_string_checks=1
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
         run: |
           ./build-san/AnamorphTests_artefacts/RelWithDebInfo/AnamorphTests
@@ -2335,7 +2371,13 @@ jobs:
   # `release.yml` depends on this workflow's aggregate result -- see the
   # `sanitizers` comment above for the full topology.
   linux-lto-tests:
-    runs-on: ubuntu-latest
+    # PINNED, not `ubuntu-latest`: this job also gates GCC diagnostics against
+    # scripts/gcc-warning-baseline.txt, and that baseline describes ONE compiler
+    # (see ANAMORPH_GCC_VERSION in the env block above). An image move that
+    # changed the default `g++` would make a runner upgrade indistinguishable
+    # from a source regression -- the exact failure the Clang pin exists to
+    # prevent, reintroduced through the image instead of through the package.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     if: >-
       github.event_name != 'pull_request' ||
@@ -2351,6 +2393,14 @@ jobs:
         run: |
           chmod +x scripts/*.sh
           ./scripts/setup-linux.sh
+          # The PINNED g++, named rather than inherited. On ubuntu-24.04 this is
+          # already the default compiler, so the install is a no-op that COSTS
+          # nothing and BUYS the failure mode we want: if the pin and the image
+          # ever stop agreeing, apt says so here, loudly, instead of the warning
+          # gate exiting 2 twenty minutes later with a version mismatch.
+          # FAIL-CLOSED on purpose -- unlike ccache below, the compiler is the job.
+          sudo apt-get install -y "g++-${ANAMORPH_GCC_VERSION}"
+          "g++-${ANAMORPH_GCC_VERSION}" --version
           # ccache is an OPTIMIZATION, never a requirement -- see the
           # compiler-cache block above the jobs. If it cannot be installed the
           # job builds without a launcher: slower, never different.
@@ -2368,29 +2418,108 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ${{ github.workspace }}/.ccache
-          key: ccache-ubuntu-gcc-lto-${{ github.run_id }}
-          restore-keys: ccache-ubuntu-gcc-lto-
+          key: ccache-ubuntu-gcc${{ env.ANAMORPH_GCC_VERSION }}-lto-${{ github.run_id }}
+          restore-keys: ccache-ubuntu-gcc${{ env.ANAMORPH_GCC_VERSION }}-lto-
 
+      # THE GATED WARNING FLAGS COME FROM THE SCRIPT, not from this file. They
+      # are GCC-only diagnostics that `juce_recommended_warning_flags` does not
+      # turn on for either compiler, so they have to be added by hand somewhere
+      # -- and the one place they must not be written twice is here, because a
+      # flag present in the build but unknown to the gate is a warning nobody
+      # counts, and a flag known to the gate but absent from the build is a
+      # baseline entry that can never be reproduced.
+      #
+      # None of them affect codegen, so the LTO objects this job exists to test
+      # are byte-identical with and without them; and all five are FRONT-END
+      # diagnostics, emitted while compiling each TU, so `-flto` neither hides
+      # nor invents any of them. (That is also why the post-inlining
+      # `-Wnull-dereference` is deliberately not in the set -- under LTO its
+      # answer would depend on link-time inlining decisions. The script's header
+      # gives the full reasoning for both exclusions.)
       - name: Configure (GCC, -flto on the test suites)
-        run: >
-          ccache --zero-stats || true &&
-          cmake -B build-lto -G Ninja
-          -DCMAKE_BUILD_TYPE=Release
-          -DCMAKE_C_FLAGS="-flto"
-          -DCMAKE_CXX_FLAGS="-flto"
-          -DCMAKE_EXE_LINKER_FLAGS="-flto"
-          -DCMAKE_C_COMPILER_LAUNCHER=${{ env.ANAMORPH_COMPILER_LAUNCHER }}
-          -DCMAKE_CXX_COMPILER_LAUNCHER=${{ env.ANAMORPH_COMPILER_LAUNCHER }}
-          -DANAMORPH_BUILD_STANDALONE=OFF
-          -DANAMORPH_BUILD_NUMBER=${{ github.run_number }}
+        run: |
+          ccache --zero-stats || true
+          GCC_WARNINGS="$(python3 scripts/check-gcc-warnings.py --print-flags)"
+          echo "Gated GCC-only warnings: ${GCC_WARNINGS}"
+          cmake -B build-lto -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER="gcc-${ANAMORPH_GCC_VERSION}" \
+            -DCMAKE_CXX_COMPILER="g++-${ANAMORPH_GCC_VERSION}" \
+            -DCMAKE_C_FLAGS="-flto" \
+            -DCMAKE_CXX_FLAGS="-flto ${GCC_WARNINGS}" \
+            -DCMAKE_EXE_LINKER_FLAGS="-flto" \
+            -DCMAKE_C_COMPILER_LAUNCHER=${{ env.ANAMORPH_COMPILER_LAUNCHER }} \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=${{ env.ANAMORPH_COMPILER_LAUNCHER }} \
+            -DANAMORPH_BUILD_STANDALONE=OFF \
+            -DANAMORPH_BUILD_NUMBER=${{ github.run_number }}
 
-      - name: Build test targets (LTO)
-        run: cmake --build build-lto --target AnamorphTests AnamorphStateTests
+      # PROVE THE GATE IS LIVE BEFORE TRUSTING ITS SILENCE -- the same move
+      # `check-clang-warnings.py --self-test`, `check-docs.py --self-test` and
+      # the portability canary make, for the same reason: a checker that has
+      # stopped matching anything is indistinguishable from a clean tree. The
+      # cases feed the real classifier every path spelling this build could
+      # produce and both directions of the baseline comparison.
+      - name: GCC warning-gate self-test (the classifier still classifies)
+        run: python3 scripts/check-gcc-warnings.py --self-test
+
+      # THESE TWO TARGETS ARE THE WHOLE FIRST-PARTY SURFACE, which is what makes
+      # this the right job to carry the gate rather than a job of its own:
+      # AnamorphStateTests compiles ${ANAMORPH_PLUGIN_SOURCES} (every src/*.cpp
+      # outside dsp/) and both targets compile src/dsp/*.cpp through the
+      # AnamorphDSP INTERFACE library, so between them every first-party
+      # translation unit the gate can speak about is built here already. The
+      # gate therefore costs one `tee` and one python invocation, not a runner.
+      - name: Build test targets (LTO), gating on first-party GCC warnings
+        run: |
+          set -o pipefail
+          cmake --build build-lto --target AnamorphTests AnamorphStateTests 2>&1 | tee gcc-build.log
+          # Classification is STRUCTURAL rather than textual, for the reason the
+          # Clang gate's step spells out: every diagnostic's path is resolved and
+          # asked whether it lands under src/ or tests/ without passing through a
+          # `_deps` component, so a generator or wrapper change cannot silently
+          # turn this into a step that passes forever with zero coverage.
+          # `--gcc-major` is checked against the version recorded IN the baseline:
+          # a mismatch exits 2 ("the check could not run"), never 1 ("the tree
+          # regressed"), because that is what it is.
+          python3 scripts/check-gcc-warnings.py \
+            --log gcc-build.log \
+            --root "${GITHUB_WORKSPACE}" \
+            --build-dir "${GITHUB_WORKSPACE}/build-lto" \
+            --gcc-major "${ANAMORPH_GCC_VERSION}"
 
       - name: Self-tests against LTO codegen
         run: |
           ./build-lto/AnamorphTests_artefacts/Release/AnamorphTests
           ./build-lto/AnamorphStateTests_artefacts/Release/AnamorphStateTests
+
+      # THE BENCHMARK IS BUILT AND SMOKE-RUN HERE, AND IT ASSERTS NO TIMING.
+      # That is a measured decision, not caution: across five independent
+      # invocations of the same cell on an IDLE machine, the median ns/sample
+      # moved 7.2% and the worst-block figure moved 65.4%. A shared CI runner is
+      # noisier than that, so any threshold wide enough not to fail spuriously
+      # would only catch regressions the correctness suites' own runtime already
+      # makes obvious. PERFORMANCE_BUDGET.md records the numbers and the rule.
+      #
+      # What this step DOES buy is the thing a committed harness can actually
+      # guarantee: that it still compiles against the current engine API and
+      # still runs. A benchmark nobody builds silently stops matching the code
+      # it measures, which is precisely how the Wave 3-6 scratch harnesses were
+      # lost. The real measurement is a deliberate local run at full length.
+      #
+      # It builds in THIS job because the bench links `juce_recommended_lto_flags`
+      # -- the shipped configuration the budget document requires it to measure --
+      # so the LTO lane is where that toolchain is already warm.
+      - name: Build + smoke-run the benchmark harness (no timing assertion)
+        run: |
+          cmake -B build-bench -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DANAMORPH_BUILD_BENCH=ON -DANAMORPH_BUILD_TESTS=OFF \
+            -DANAMORPH_BUILD_STANDALONE=OFF \
+            -DCMAKE_C_COMPILER_LAUNCHER=${{ env.ANAMORPH_COMPILER_LAUNCHER }} \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=${{ env.ANAMORPH_COMPILER_LAUNCHER }}
+          cmake --build build-bench --target AnamorphBench
+          # Deliberately tiny: this proves the harness runs, not what it costs.
+          ANAMORPH_BENCH_SECONDS=0.1 ANAMORPH_BENCH_REPS=1 \
+            ./build-bench/AnamorphBench_artefacts/Release/AnamorphBench
 
       - name: Compiler cache statistics
         if: ${{ !cancelled() && env.ANAMORPH_COMPILER_LAUNCHER != '' }}
@@ -2507,12 +2636,147 @@ jobs:
           -DANAMORPH_BUILD_STANDALONE=OFF
           -DANAMORPH_BUILD_NUMBER=${{ github.run_number }}
 
+      # COMPILE-TIME effect verification for the first-party leaf layer, and the
+      # one tier that follows a CALL. RTSan and the allocation guard are runtime
+      # tools (they see what the suite executes); `check-realtime.py` is a text
+      # scan (it sees constructs written literally in an audio-path body).
+      # Neither catches a leaf that calls an allocating helper defined
+      # elsewhere -- `-Wfunction-effects` does, through the call graph.
+      #
+      # SCOPED TO ONE TU, NOT THE BUILD. Enabling the flag over
+      # `AnamorphEngine.cpp` produces 52 warnings, essentially all JUCE calls
+      # whose definitions that TU cannot see; JUCE 9.0.1 carries no annotations
+      # of its own, so those are warnings about correct code (ADR-0029 records
+      # the decision not to enable it build-wide). `tests/realtime_effects.cpp`
+      # includes only the JUCE-free first-party leaves, where the signal is
+      # clean: measured 0 diagnostics on this tree, and a call to an
+      # unannotated helper seeded into `applyWidth` fails the compile.
+      #
+      # Runs AFTER configure because it needs the FetchContent'd JUCE headers
+      # (`LR4Xover.h` includes `juce_dsp`). `-fsyntax-only`: no link, no run.
+      - name: Realtime effect diagnostics (first-party leaf layer)
+        run: |
+          clang++-${{ env.ANAMORPH_CLANG_VERSION }} -std=c++23 -O2 \
+            -I src -I src/dsp -I build-rtsan/_deps/juce-src/modules \
+            -DJUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1 -DJUCE_STANDALONE_APPLICATION=1 \
+            -Werror=function-effects -fsyntax-only tests/realtime_effects.cpp
+
       - name: Build the DSP suite (RealtimeSanitizer)
         run: cmake --build build-rtsan --target AnamorphTests
 
       # No env: block on purpose -- see the RTSAN_OPTIONS note above.
       - name: DSP self-tests under RealtimeSanitizer
         run: ./build-rtsan/AnamorphTests_artefacts/RelWithDebInfo/AnamorphTests
+
+      - name: Compiler cache statistics
+        if: ${{ !cancelled() && env.ANAMORPH_COMPILER_LAUNCHER != '' }}
+        run: ccache --show-stats --verbose || true
+
+  # -------------------------------------------------------------------------
+  # State fuzzing (Linux). libFuzzer over `setStateInformation`, the one entry
+  # point where the plug-in parses bytes it did not write: a session from an
+  # older version, a preset from another machine, a host that truncated a chunk.
+  #
+  # WHY THIS AND NOT MORE STATE FIXTURES. `AnamorphStateTests` already drives the
+  # shaped cases -- three legacy fixtures, a garbage blob, an out-of-range A/B
+  # index, unknown fields, a corrupt slot -- and every one of them was written
+  # after a human thought of it. This is the part that does not have to think of
+  # it first. The oracle is the sanitizer, not an assertion: a rejected blob is a
+  # PASS, because refusing malformed state is what this path is for.
+  #
+  # BOUNDED, so it is a gate rather than a background service: a fixed
+  # `-max_total_time` seeded from the committed corpus. It is not looking for
+  # deep bugs on a 90-second budget -- it is looking for the regression that a
+  # state-schema change just introduced, starting from inputs that already reach
+  # the parser.
+  #
+  # `detect_leaks=0` IS DELIBERATE AND IS NOT A GAP: the harness leaks exactly
+  # one object on purpose (JUCE's `ScopedJuceInitialiser_GUI`), because letting
+  # `shutdownJuce_GUI()` run under libFuzzer's `exit()` produced a double-free in
+  # `DeletedAtShutdown::deleteAll()` during `__run_exit_handlers` -- measured, on
+  # the empty input, within 60 s. `tests/fuzz_state.cpp` carries the full note.
+  # Leak coverage for the same code lives in the `sanitizers` job.
+  #
+  # NOT in any `needs:` chain, matching the other validation lanes; like them it
+  # is still release-blocking through `release.yml`'s aggregate dependency.
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name != github.repository
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 400M
+      CCACHE_COMPILERCHECK: content
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install build dependencies
+        run: |
+          chmod +x scripts/*.sh
+          ./scripts/setup-linux.sh
+          ./scripts/setup-llvm-apt.sh "${ANAMORPH_CLANG_VERSION}"
+          if sudo apt-get install -y ccache && ccache --version; then
+            echo "ANAMORPH_COMPILER_LAUNCHER=ccache" >> "$GITHUB_ENV"
+          else
+            echo "::warning::ccache unavailable -- building without the compiler cache"
+            echo "ANAMORPH_COMPILER_LAUNCHER=" >> "$GITHUB_ENV"
+          fi
+
+      - name: Restore the compiler cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-ubuntu-fuzz-clang${{ env.ANAMORPH_CLANG_VERSION }}-${{ github.run_id }}
+          restore-keys: ccache-ubuntu-fuzz-clang${{ env.ANAMORPH_CLANG_VERSION }}-
+
+      # `-fsanitize=fuzzer` is NOT in these flags on purpose: libFuzzer's `main`
+      # collides with CMake's compiler-probe program and configure fails at
+      # `project()`. The target adds it itself (CMakeLists.txt); the detector
+      # sanitizers belong here.
+      - name: Configure (Clang, libFuzzer + ASan + UBSan)
+        run: >
+          ccache --zero-stats || true &&
+          cmake -B build-fuzz -G Ninja
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DCMAKE_C_COMPILER=clang-${{ env.ANAMORPH_CLANG_VERSION }}
+          -DCMAKE_CXX_COMPILER=clang++-${{ env.ANAMORPH_CLANG_VERSION }}
+          -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+          -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+          -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
+          -DANAMORPH_BUILD_FUZZ=ON
+          -DANAMORPH_BUILD_TESTS=OFF
+          -DANAMORPH_BUILD_STANDALONE=OFF
+          -DCMAKE_C_COMPILER_LAUNCHER=${{ env.ANAMORPH_COMPILER_LAUNCHER }}
+          -DCMAKE_CXX_COMPILER_LAUNCHER=${{ env.ANAMORPH_COMPILER_LAUNCHER }}
+          -DANAMORPH_BUILD_NUMBER=${{ github.run_number }}
+
+      - name: Build the fuzz target
+        run: cmake --build build-fuzz --target AnamorphFuzzState
+
+      - name: Fuzz setStateInformation (bounded)
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: |
+          mkdir -p fuzz-findings
+          ./build-fuzz/AnamorphFuzzState tests/fuzz-corpus \
+            -max_total_time=90 -rss_limit_mb=4096 -print_final_stats=1 \
+            -artifact_prefix=fuzz-findings/
+
+      # A crashing input is only useful if it leaves the machine. libFuzzer
+      # writes the exact bytes that reproduce, and `tests/fuzz_state.cpp` feeds
+      # the input to the real entry point unmodified -- so the artifact below is
+      # a host chunk that reproduces the failure by being handed back.
+      - name: Upload fuzz findings
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v5
+        with:
+          name: Anamorph-fuzz-findings
+          path: fuzz-findings/
+          retention-days: 14
+          if-no-files-found: ignore
 
       - name: Compiler cache statistics
         if: ${{ !cancelled() && env.ANAMORPH_COMPILER_LAUNCHER != '' }}

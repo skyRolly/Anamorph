@@ -1,0 +1,36 @@
+# check-gcc-warnings baseline -- ACCEPTED first-party GCC-only warnings.
+#
+# One line per (warning flag, source path):  <count>  <flag>  <path>
+# `count` is the number of DISTINCT sites (path:line:col), deduplicated across
+# translation units. Line numbers are deliberately NOT recorded: they drift on
+# every unrelated edit above a warning, and a baseline that fails on changes
+# which introduced nothing gets regenerated blindly, which accepts whatever else
+# appeared alongside.
+#
+# THIS FILE DESCRIBES ONE COMPILER. -Wmisleading-indentation's heuristic and
+# -Wshadow's treatment of members have both moved between GCC majors, so these
+# counts mean nothing against a different one. The `gcc-major` line below records
+# which, and the gate refuses to run against a log from another.
+#
+# This is a DEBT LIST, not a permission list. The gated flag set lives in
+# scripts/check-gcc-warnings.py, which also records why -Wnull-dereference and
+# -Wmismatched-new-delete are excluded.
+#
+# Regenerate with the SAME build the gate runs against -- the two gated targets
+# between them compile every first-party translation unit, and a baseline taken
+# from a narrower build under-records:
+#   cmake -B build-lto -G Ninja -DCMAKE_BUILD_TYPE=Release \
+#       -DCMAKE_C_COMPILER=gcc-<n> -DCMAKE_CXX_COMPILER=g++-<n> \
+#       -DCMAKE_C_FLAGS="-flto" \
+#       -DCMAKE_CXX_FLAGS="-flto $(python3 scripts/check-gcc-warnings.py --print-flags)" \
+#       -DCMAKE_EXE_LINKER_FLAGS="-flto" -DANAMORPH_BUILD_STANDALONE=OFF
+#   cmake --build build-lto --target AnamorphTests AnamorphStateTests 2>&1 | tee gcc-build.log
+#   python3 scripts/check-gcc-warnings.py --log gcc-build.log \
+#       --root "$PWD" --build-dir "$PWD/build-lto" \
+#       --gcc-major <n> --write-baseline
+# and read the diff before committing it -- that diff is the entire review.
+#
+# gcc-major: 13
+1	-Wmisleading-indentation	src/dsp/AnamorphEngine.cpp
+1	-Wshadow	src/PluginParameters.cpp
+1	-Wshadow	src/PluginProcessor.cpp

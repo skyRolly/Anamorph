@@ -74,7 +74,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 - **Likelihood (evidence-based):** Medium — dependencies eventually need security/feature updates;
   the pin defers but does not eliminate this. The SHA pin (v0.8.13 cycle) additionally removes the
   re-pointed-tag variant of the risk.
-- **Evidence [Verified]:** CMakeLists.txt:36-38 (exact commit); ADR-0011 (X11 in JUCE); `docs/policies/DEPENDENCY_POLICY.md`.
+- **Evidence [Verified]:** CMakeLists.txt:48-50 (exact commit); ADR-0011 (X11 in JUCE); `docs/policies/DEPENDENCY_POLICY.md`.
 - **Mitigation:** Treat any bump as a Build System change → ADR + Architecture Review; run full DSP
   tests + pluginval (3 OSes) + a manual audition + the RELEASE_COMPATIBILITY_CHECKLIST after. The
   8.0.14→9.0.0 bump additionally proved engine output **bit-identical** via a 32-scenario twin
@@ -116,13 +116,15 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   then, cite commit SHAs. Historical entries keep SHA evidence permanently.
 
 ## RISK-004 — pluginval signal-only retry masking a real crash
-- **Risk:** `run-pluginval.sh` retries on any signal-crash to absorb the external X11 flake
+- **Risk:** `run-pluginval.sh` retries on a signal-crash to absorb the external X11 flake
   (INC-006/KI-003). A genuine *new* editor crash that also exits with a signal could be retried away
   and pass on a later attempt, hiding a real defect.
 - **Impact:** A real crash regression could ship if it happens to pass on retry.
-- **Likelihood (evidence-based):** Low — retries are capped at 3 and a deterministic crash still
+- **Likelihood (evidence-based):** Low, and **lower since 2026-08-18** — the retry is now scoped by
+  `uname -s` to the platform its justification names, so macOS gets exactly one attempt and this risk
+  no longer applies there at all. On Linux retries stay capped at 3 and a deterministic crash still
   fails all attempts.
-- **Evidence [Verified]:** scripts/run-pluginval.sh:147-176 (`run_one_pass`; retry only on exit ≥128, cap 3).
+- **Evidence [Verified]:** scripts/run-pluginval.sh:147-197 (`run_one_pass`; retry only on exit ≥128, cap 3).
 - **Mitigation:** Investigate any repeated crash rather than trusting the pass; keep the cap; a real
   assertion (exit <128) already fails immediately with no retry.
 

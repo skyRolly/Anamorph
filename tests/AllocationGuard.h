@@ -81,6 +81,22 @@
 #include <cstdlib>
 #include <new>
 
+// MSVC ANNOTATION PARITY. `vcruntime_new.h` declares the replaceable operators
+// with SAL annotations, and `/analyze` reports "Inconsistent annotation for
+// 'new': this instance has no annotations" when a replacement omits them --
+// which this guard did, producing six new code-scanning alerts on the ONE
+// platform where it is the sole realtime tier (RTSan does not run there).
+// The annotations carry no codegen; they tell the analyser what the function
+// returns, which is exactly what it was missing. Empty off MSVC.
+#if defined(_MSC_VER)
+  #include <sal.h>
+  #define ANAMORPH_GUARD_RET_NOTNULL(sz)   _Ret_notnull_ _Post_writable_byte_size_(sz)
+  #define ANAMORPH_GUARD_RET_MAYBENULL(sz) _Ret_maybenull_ _Post_writable_byte_size_(sz)
+#else
+  #define ANAMORPH_GUARD_RET_NOTNULL(sz)
+  #define ANAMORPH_GUARD_RET_MAYBENULL(sz)
+#endif
+
 #if defined(__has_feature)
   #if __has_feature(address_sanitizer)
     #define ANAMORPH_GUARD_ASAN 1
@@ -182,6 +198,7 @@ namespace anamorph::testing
 //  one side of the pair is what produces "Mismatched free() / delete" reports.
 // ---------------------------------------------------------------------------
 #if !defined(ANAMORPH_NO_ALLOC_GUARD)
+ANAMORPH_GUARD_RET_NOTNULL(n)
 void* operator new (std::size_t n)
 {
     if (anamorph::testing::guardArmed.load (std::memory_order_relaxed))
@@ -191,8 +208,10 @@ void* operator new (std::size_t n)
     return p;
 }
 
+ANAMORPH_GUARD_RET_NOTNULL(n)
 void* operator new[] (std::size_t n) { return ::operator new (n); }
 
+ANAMORPH_GUARD_RET_MAYBENULL(n)
 void* operator new (std::size_t n, const std::nothrow_t&) noexcept
 {
     if (anamorph::testing::guardArmed.load (std::memory_order_relaxed))
@@ -200,8 +219,17 @@ void* operator new (std::size_t n, const std::nothrow_t&) noexcept
     return std::malloc (n != 0 ? n : 1);
 }
 
+ANAMORPH_GUARD_RET_MAYBENULL(n)
 void* operator new[] (std::size_t n, const std::nothrow_t& t) noexcept { return ::operator new (n, t); }
 
+// Every form frees with `std::free`, matching the `std::malloc` above. GCC's
+// `-Wmismatched-new-delete` fires on this and is a FALSE POSITIVE by
+// construction rather than a shape worth changing: GCC attributes the block to
+// the replaced `operator new[]` and does not follow it through to the
+// `std::malloc` that actually produced the memory, so it reports `free` on
+// "new[] memory" no matter how the deallocators forward among themselves
+// (measured both ways). That is why the GCC warning gate's set excludes it --
+// see `scripts/gcc-warning-baseline.txt`.
 void operator delete (void* p) noexcept                 { std::free (p); }
 void operator delete[] (void* p) noexcept               { std::free (p); }
 void operator delete (void* p, std::size_t) noexcept    { std::free (p); }
@@ -249,6 +277,7 @@ namespace anamorph::testing
     }
 }
 
+ANAMORPH_GUARD_RET_NOTNULL(n)
 void* operator new (std::size_t n, std::align_val_t a)
 {
     if (anamorph::testing::guardArmed.load (std::memory_order_relaxed))
@@ -258,8 +287,10 @@ void* operator new (std::size_t n, std::align_val_t a)
     return p;
 }
 
+ANAMORPH_GUARD_RET_NOTNULL(n)
 void* operator new[] (std::size_t n, std::align_val_t a) { return ::operator new (n, a); }
 
+ANAMORPH_GUARD_RET_MAYBENULL(n)
 void* operator new (std::size_t n, std::align_val_t a, const std::nothrow_t&) noexcept
 {
     if (anamorph::testing::guardArmed.load (std::memory_order_relaxed))
@@ -267,6 +298,7 @@ void* operator new (std::size_t n, std::align_val_t a, const std::nothrow_t&) no
     return anamorph::testing::alignedAlloc (n, static_cast<std::size_t> (a));
 }
 
+ANAMORPH_GUARD_RET_MAYBENULL(n)
 void* operator new[] (std::size_t n, std::align_val_t a, const std::nothrow_t& t) noexcept
 {
     return ::operator new (n, a, t);

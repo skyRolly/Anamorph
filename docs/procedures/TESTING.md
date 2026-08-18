@@ -143,6 +143,49 @@ project's established practice; `docs/policies/TESTING_POLICY.md`). Use the exis
 `check(cond, "description")` harness and add the call in `main` (DSP behaviour →
 `tests/dsp_tests.cpp`; state/serialization/preset behaviour → `tests/state_tests.cpp`).
 
+## Opt-in targets (not built by default, not shipped)
+
+Three targets exist behind OFF-by-default options or outside CMake entirely. None of them enters a
+release build; each answers a question the two self-test suites structurally cannot.
+
+| Target | How to build | What it answers |
+|---|---|---|
+| `AnamorphBench` | `-DANAMORPH_BUILD_BENCH=ON`, Release | The `PERFORMANCE_BUDGET` §"required benchmark procedure" matrix — ns/sample and worst single block across sample rate, block size, algorithm, oversampling and multiband. |
+| `AnamorphFuzzState` | `-DANAMORPH_BUILD_FUZZ=ON` with Clang + `-fsanitize=address,undefined` | `setStateInformation` against inputs nobody wrote by hand. |
+| `tests/realtime_effects.cpp` | no target — `clang++ -fsyntax-only -Werror=function-effects` | Whether the JUCE-free leaf DSP is provably effect-clean at **compile** time, on branches no test executes. |
+
+```bash
+# Benchmark. It REFUSES to run (exit 2) if it cannot identify the CPU and
+# ANAMORPH_BENCH_CPU is unset -- PERFORMANCE_BUDGET constraint C2: a number
+# without its machine and method is not a measurement.
+cmake -B build-bench -G Ninja -DCMAKE_BUILD_TYPE=Release -DANAMORPH_BUILD_BENCH=ON
+cmake --build build-bench --target AnamorphBench
+ANAMORPH_BENCH_SECONDS=10 ANAMORPH_BENCH_REPS=5 \
+  ./build-bench/AnamorphBench_artefacts/Release/AnamorphBench
+
+# State fuzzing. A REJECTED blob is a pass; the oracle is the sanitizer.
+cmake -B build-fuzz -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+  -DCMAKE_C_COMPILER=clang-22 -DCMAKE_CXX_COMPILER=clang++-22 \
+  -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" \
+  -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" \
+  -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined" \
+  -DANAMORPH_BUILD_FUZZ=ON -DANAMORPH_BUILD_TESTS=OFF -DANAMORPH_BUILD_STANDALONE=OFF
+cmake --build build-fuzz --target AnamorphFuzzState
+ASAN_OPTIONS=detect_leaks=0 \
+  ./build-fuzz/AnamorphFuzzState tests/fuzz-corpus -max_total_time=90
+```
+
+`detect_leaks=0` on the fuzz run is required, not optional: the harness leaks JUCE's
+`ScopedJuceInitialiser_GUI` on purpose, because letting `shutdownJuce_GUI()` run under libFuzzer's
+`exit()` double-frees in `DeletedAtShutdown::deleteAll()` during `__run_exit_handlers`. Leak coverage
+for the same code is the `sanitizers` job's, which runs with `detect_leaks=1`.
+
+**CI builds all three and gates on two of them.** The benchmark is built and smoke-run but its
+*numbers* are not gated — measured run-to-run spread on an idle machine is 7.2% (median ns/sample)
+and 65.4% (worst block), so a threshold would be noise rather than signal; what the build catches is
+a harness that has silently stopped compiling against the engine it measures. The fuzz run and the
+compile-only effects check are hard gates.
+
 ## pluginval (VST3 + AU conformance)
 
 ```bash
@@ -196,8 +239,15 @@ a display). Evidence [Verified]: scripts/run-pluginval.sh / scripts/run-pluginva
 validation failure (exit < 128) as a failure immediately. On Linux it retries up to 3 times **only on
 a signal-crash** (exit ≥ 128) to absorb a use-after-free in **pluginval's own JUCE** X11
 `XEmbedComponent` (a `ConfigureNotify`→`callAsync` on rapid editor open/close), not a plugin defect —
-the plugin already drops its OpenGL child window on Linux (ADR-0011). Evidence [Verified]:
-scripts/run-pluginval.sh (`run_one_pass` retry).
+the plugin already drops its OpenGL child window on Linux (ADR-0011).
+
+**The retry is scoped to the platform its justification names.** Until 2026-08-18 the script applied
+the same three attempts on **macOS**, which shares none of that X11 machinery: there, a crash had two
+extra chances to pass and no documented flake to absorb, and this section already described the
+behaviour as Linux-only. `CRASH_RETRY_ATTEMPTS` is now set from `uname -s` — 3 on Linux, **1**
+everywhere else — and a single-attempt failure prints a distinct message so it cannot be misread as
+an exhausted retry. Evidence [Verified]: scripts/run-pluginval.sh (`run_one_pass`, and the `case
+"$(uname -s)"` above it).
 
 ## CI integration
 
@@ -258,7 +308,7 @@ See `CI_CD.md`. Evidence [Verified]: `.github/workflows/build.yml`.
 | A `check` assertion fails | DSP regression | the named test in `tests/dsp_tests.cpp`; compare against the invariant it guards (`docs/policies/DSP_POLICY.md`) |
 | A state-test `check` fails | serialization / parameter-surface regression | the named test in `tests/state_tests.cpp`; if the change is INTENTIONAL it needs the compatibility-policy process (ADR + registry update + `--write-snapshot`) |
 | pluginval exits < 128 | real validation failure | the pluginval log line; do **not** retry — it's a genuine defect |
-| pluginval exits ≥ 128 (crash) | the known X11 host flake | retried automatically; if it still fails after 3 tries, treat as a failure (`scripts/run-pluginval.sh:154-176`, `run_one_pass`) |
+| pluginval exits ≥ 128 (crash) | the known X11 host flake | retried automatically; if it still fails after 3 tries, treat as a failure (`scripts/run-pluginval.sh:171-197`, `run_one_pass`) |
 | `AnamorphTests`/`AnamorphStateTests` `not found` | not built yet | run `scripts/build.sh` first (`scripts/run-tests.sh:51-73`) |
 
 ## Gaps in the automated coverage (known, deliberate)
@@ -361,7 +411,7 @@ rather than deleted, because a gap that was real and is now covered is worth bei
   hand does not leave a plug-in behind in your real `~/Library`. One thing this deliberately did
   **not** do, so the remaining scope is not overstated:
   - It uses **pluginval**, not Apple's `auval` (`auval -v aufx Anmr RTec`, matching the
-    `PLUGIN_CODE` / `PLUGIN_MANUFACTURER_CODE` in `CMakeLists.txt:217-218`). pluginval hosts the AU
+    `PLUGIN_CODE` / `PLUGIN_MANUFACTURER_CODE` in `CMakeLists.txt:229-230`). pluginval hosts the AU
     through JUCE's `AudioUnitPluginFormat`, which is the same resolution path a JUCE-hosted DAW
     takes and the same test set the other two platforms are held to; `auval` is Apple's own
     conformance tool and tests things pluginval does not. Adding it is a further step, not a

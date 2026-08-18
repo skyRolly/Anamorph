@@ -132,7 +132,7 @@ The editor open/close tests can crash under pluginval on Linux due to a use-afte
 pointer). It is **not a defect in this plugin** (the plugin already drops its OpenGL child window on
 Linux, INC-006/ADR-0011) and is mitigated by a signal-only retry, but it cannot be fixed from this
 repository.
-- **Evidence [Verified]:** scripts/run-pluginval.sh:147-176 (`run_one_pass`, signal-only retry); ADR-0011. See FUTURE_RISKS RISK-004.
+- **Evidence [Verified]:** scripts/run-pluginval.sh:147-197 (`run_one_pass`, signal-only retry); ADR-0011. See FUTURE_RISKS RISK-004.
 
 ## KI-004 — No automated DAW/host-compatibility testing
 There is no in-repo test matrix across real DAWs; pluginval is the only conformance proxy. Host
@@ -472,7 +472,7 @@ only one granted).
   whatever UID the built VST3 carries. That is precisely why the change is recorded here and in
   ADR-0023 rather than left to surface itself.
 - **Evidence [Verified (code) / Verified — manual (new identity) / Unverified (old-session
-  effect)]:** CMakeLists.txt:217 (`PLUGIN_MANUFACTURER_CODE RTec`); ADR-0023 (`Accepted`
+  effect)]:** CMakeLists.txt:229 (`PLUGIN_MANUFACTURER_CODE RTec`); ADR-0023 (`Accepted`
   2026-07-30); CHANGELOG `[0.9.1]`. The **new** identity registering correctly was confirmed by the
   maintainer's Level-5 check on 2026-07-30 (host registration + `auval -v aufx Anmr RTec`) — a
   human sign-off, not headlessly reproducible. The **old-session** effect described above is

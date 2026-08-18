@@ -7,8 +7,11 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
-**review round that found the allocation guard was blinding the RealtimeSanitizer lane** (first
-below), then the
+**engineering-roadmap implementation round: the leaf-layer `-Wfunction-effects` check, the
+performance-benchmark harness, `setStateInformation` fuzzing, the GCC-only warning gate,
+LeakSanitizer promoted to a gate, and the pluginval crash-retry scoped to its justification**
+(first below), then the
+**review round that found the allocation guard was blinding the RealtimeSanitizer lane**, then the
 **allocation guard + static realtime lint completing ADR-0029's three tiers, and the
 release-blocking / THREAD_MODEL corrections** (first below), then the
 **realtime-enforcement strategy (ADR-0029): RealtimeSanitizer at the annotated audio entry point,
@@ -43,6 +46,79 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**Implementation round (2026-08-18): six approved roadmap items landed — selective realtime
+diagnostics, a benchmark harness, state fuzzing, a GCC-only warning gate, LeakSanitizer as a gate,
+and the pluginval crash-retry narrowed to its own justification. No new ADR: ADR-0029's evidence is
+extended in place and no decision in it is reopened.**
+
+**`-Wfunction-effects` was narrowed rather than reversed.** ADR-0029 refused it on the strength of a
+52-warning census over the annotated engine TU. Re-reading that census rather than restating it: all
+52 are *transitive through JUCE*, calls whose definitions the TU cannot see. They therefore appear
+only where JUCE appears, and the repository has a layer where it does not — `MidSide.h`,
+`LR4Xover.h`, `ScopeBuffer.h`, `Correlation.h`, `LevelMeters.h`. Measured over that layer the flag
+emits **0**, and it still fires precisely: a seeded call from the annotated driver to the
+non-annotated `anamorph::applyWidth` produces `error: function with 'nonblocking' attribute must not
+call non-'nonblocking' function 'anamorph::applyWidth'`. `tests/realtime_effects.cpp` is the driver;
+it is compiled `-fsyntax-only` with `-Werror=function-effects` as a seconds-long step in the
+`realtime` job, adds no target to the shipped build, and proves those bodies effect-clean *before*
+any test executes them — the one thing a runtime tool structurally cannot do, since it sees only the
+branches the suite takes.
+
+**The benchmark harness answers PERFORMANCE_BUDGET's own constraint C2**, "a number without its
+machine and method is not a measurement". `tests/bench.cpp` (behind `ANAMORPH_BUILD_BENCH=OFF`)
+refuses to run — exit 2 — when it cannot identify the CPU and `ANAMORPH_BENCH_CPU` is unset, rather
+than printing an unattributable number. It reports median ns/sample, worst-block µs, spread and
+percentage of one core across reference/idle, the four algorithms, four sample rates, four block
+sizes, oversampling engaged and the multiband path including the RISK-002 dragging split.
+**It is deliberately NOT a CI threshold gate, and that is a measurement rather than a preference**:
+across independent invocations on an otherwise idle machine the median ns/sample varied by **7.2%**
+and the worst-block figure by **65.4%**. A gate on the second number would be noise, and a gate on
+the first would sit inside its own variance. CI therefore builds it and smoke-runs it — which
+catches the real regression risk, a harness that stops compiling against the engine it measures —
+and the numbers are taken deliberately, on a named machine, into PERFORMANCE_BUDGET.
+
+**`setStateInformation` is the one entry point that parses bytes the plug-in did not write**, and
+every existing test of it was written after a human thought of the case. `tests/fuzz_state.cpp`
+drives it under libFuzzer with ASan + UBSan as the oracle: a rejected blob is a **pass**, because
+refusing malformed state is what the path is for. The corpus (`tests/fuzz-corpus/`, three entries) is
+generated from the committed XML fixtures in JUCE's `copyXmlToBinary` framing, so the fuzzer starts
+from inputs that already reach the parser rather than from noise. Two implementation facts are
+load-bearing and both were found by running it: `-fsanitize=fuzzer` must be **target-scoped**, since
+libFuzzer's `main` collides with CMake's compiler-probe program and configure fails at `project()`;
+and the JUCE initialiser must be **leaked deliberately**, because letting `shutdownJuce_GUI()` run
+under libFuzzer's `exit()` double-freed in `DeletedAtShutdown::deleteAll()` during
+`__run_exit_handlers` — the fuzzer found that on the empty input within 60 s, in the harness rather
+than in the product. After the fix: 5,351 execs, exit 0.
+
+**A GCC warning gate is not redundant beside the Clang one, because "larger set" is not "superset".**
+`juce_recommended_warning_flags` picks by compiler ID and Clang's set is the larger one, but Clang's
+`-Wshadow-all` structurally does not report a parameter or local shadowing a member outside a
+constructor, and Clang has no `-Wmisleading-indentation` at all. Three first-party sites in this tree
+are visible only to GCC and are recorded as accepted debt, not fixed — the gate exists so the next
+one fails the push that introduces it. The gated set is five flags; two candidates were measured and
+**rejected**: `-Wnull-dereference` (four unprovable post-inlining hits — the baseline shape that
+trains people to regenerate without reading) and `-Wmismatched-new-delete` (a false positive *by
+construction* on `tests/AllocationGuard.h`, verified both by funnelling deallocations through
+`::operator delete` and by calling `std::free` directly). The gate rides on `linux-lto-tests` rather
+than a job of its own because that job's two targets already compile every first-party translation
+unit; it costs one `tee`. Both directions were verified live: a seeded `-Wduplicated-branches` and a
+seeded `-Wshadow` in `tests/dsp_tests.cpp` failed the gate by name at exit 1, and the same run
+demonstrated the falling-count `::notice::` path on an incremental build.
+
+**LeakSanitizer stopped being suppressed.** The previous round had already retested the stated
+justification for `detect_leaks=0` and found it false — both suites run leak-clean. This round
+flipped the flag: a suppressed detector with nothing left to suppress is a gate the repository was
+paying for and not receiving, and a leak in a plug-in process is a leak in a host that stays open for
+hours. The `fuzz` job is the one place `detect_leaks=0` remains, for the deliberate initialiser leak
+above.
+
+**The pluginval crash retry was broader than the flake that justified it.** `run-pluginval.sh`
+retried a crashed pass three times on every platform, while the documented cause — the XEmbed race —
+is Linux/X11 only. On Windows and macOS that turned a genuine crash into two more chances to pass.
+The retry is now scoped by `uname -s`: three attempts on Linux, one everywhere else, with a distinct
+message so a single-attempt failure cannot be misread as an exhausted retry. The separately
+justified `.ps1` retry is untouched.
 
 **Review round (2026-08-18): the allocation guard was blinding the RealtimeSanitizer lane, and the
 static lint's scope was narrower than the policy it enforces. Six confirmed findings, maintainer
@@ -161,10 +237,17 @@ DSP suite with `-fsanitize=realtime` and runs it. Demonstrated both ways before 
 `process` fails the run at **exit 43**, naming `AnamorphEngine.cpp:664` through
 `juce_HeapBlock.h:356` — a useful diagnostic, not just a non-zero exit.
 
-**Four decisions in the ADR are refusals, each on measurement rather than taste.**
-`-Wfunction-effects` is NOT enabled: the annotated engine TU emits **52** warnings, dominated by
-JUCE calls whose definitions the TU cannot see (`Oversampling::reset` ×9, `FloatVectorOperations::copy`
+**Four decisions in the ADR are refusals, each on measurement rather than taste** — and the first of
+them has since been narrowed by a further measurement rather than reversed. `-Wfunction-effects` is
+NOT enabled **on the audio path**: the annotated engine TU emits **52** warnings, dominated by JUCE
+calls whose definitions the TU cannot see (`Oversampling::reset` ×9, `FloatVectorOperations::copy`
 ×6), and JUCE 9.0.1 carries **zero** annotations of its own — the warnings are about correct code.
+Every one of those 52 is transitive through JUCE, so they appear only where JUCE does: over the
+**JUCE-free leaf layer** the same flag emits **0**, and it still fires precisely (a seeded call to the
+non-annotated `anamorph::applyWidth` fails by name). It is therefore enabled there, as
+`-Werror=function-effects -fsyntax-only` over `tests/realtime_effects.cpp` in the `realtime` job —
+compile-only, seconds, no target added to the shipped build. That is the scoping recorded in
+ADR-0029 §3; the refusal for the engine TU stands unchanged.
 `-Wperf-constraint-implies-noexcept` is NOT enabled either, for the opposite reason: it fires on
 definitions whose effects imply `noexcept`, and the entry point is already `noexcept`, so it would
 gate on nothing. RTSan is NOT folded into the `sanitizers` job — the clang driver *rejects*
@@ -228,8 +311,11 @@ and can fail by SIGILL with no diagnostic text. `ASAN_OPTIONS` gains
 `detect_stack_use_after_return` is deliberately NOT written because it is clang-22's Linux default
 — demonstrated, not assumed — and restating a default is the copy that rots. The `detect_leaks=0`
 comment's factual half ("JUCE singleton teardown reports") was retested and is no longer true —
-both suites run leak-clean under `detect_leaks=1` — so the comment now records the measured fact
-and keeps the scoping as the maintainer's documented decision rather than a stale justification.
+both suites run leak-clean under `detect_leaks=1` — and the flag has now been **flipped to `1`**, so
+LeakSanitizer is a gate on this job rather than a suppressed detector with nothing left to suppress.
+A leak in a plug-in process is a leak in a host that stays open for hours, so a report here is to be
+investigated; the one place `detect_leaks=0` survives is the `fuzz` job, where the harness leaks
+JUCE's `ScopedJuceInitialiser_GUI` deliberately (see below).
 
 **The self-test suites had never executed link-time-optimized codegen, and the shipped binary is
 nothing else.** The plugin alone links `juce_recommended_lto_flags`; both console suites
@@ -523,7 +609,7 @@ happened. Another sits two lines from a sibling reference in the *same* historic
 already been protected, so a `--fix` would have rewritten half a paired record and frozen the other
 half. The discriminator that survives: **is the number the subject of the sentence, or a pointer to a
 thing?** Exactly one `CMakeLists.txt` citation in this document is the latter — "*it is*
-`CMakeLists.txt:314-323`", present tense, where re-anchoring preserves truth — and it is deliberately
+`CMakeLists.txt:326-335`", present tense, where re-anchoring preserves truth — and it is deliberately
 left live so the gate still demonstrably checks real evidence here.
 
 Verified by mutation rather than by reading: a line inserted into `CMakeLists.txt` above all of them,
@@ -548,7 +634,7 @@ Review found two anchors the previous round missed, both below its insertion poi
 to the new gate for the same reason: they are spelled as **bare continuations**
 (`` `path/to/file:188-199` … `:292-301` ``), which the parser only recognises in the
 `path:a,b,c` form. `ADR-0001`'s "tests link the core" pointed at `juce::juce_opengl` inside the
-*plugin*'s link block; it is `CMakeLists.txt:314-323`. `BUILD.md`'s compile-definition list cited
+*plugin*'s link block; it is `CMakeLists.txt:326-335`. `BUILD.md`'s compile-definition list cited
 `:277-284` while listing `ANAMORPH_BUILD_NUMBER` — a definition that range no longer contains, since
 scoping moved it to `:274-275`; widened to `:274-284`, deliberately as **one** anchor, because a
 citation whose anchor *count* changes lands in the "review by hand" branch no declaration can excuse.
