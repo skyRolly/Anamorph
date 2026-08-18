@@ -282,7 +282,15 @@ env:
 # So each job resolves the launcher instead of assuming it: the install step
 # writes `ANAMORPH_COMPILER_LAUNCHER` to $GITHUB_ENV -- `ccache` when it is
 # genuinely there, empty when it is not -- and the configure step passes that
-# through to `CMAKE_<LANG>_COMPILER_LAUNCHER`. An empty launcher is how CMake
+# through to `CMAKE_<LANG>_COMPILER_LAUNCHER`.
+#
+# ON LINUX THAT RULE NOW HAS ONE COPY, not seven:
+# `.github/actions/setup-linux-build` is a composite action carrying it, and the
+# seven Linux jobs call it with at most two inputs (a pinned Clang major, extra
+# apt packages). Its header says why. The two macOS jobs still write the block
+# out, because `brew` and `apt` are different enough that a shared action would
+# be a conditional pretending to be a step; the LINEAGE keys stay in this file
+# in every case, since those are the part that genuinely differs per job. An empty launcher is how CMake
 # spells "no launcher", so the fallback is an ordinary compiler invocation:
 # slower, never different. The statistics step is gated on the same variable so
 # it reports nothing rather than failing, and `--zero-stats` is explicitly
@@ -332,21 +340,10 @@ jobs:
       CCACHE_MAXSIZE: 500M
       CCACHE_COMPILERCHECK: content
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install build dependencies
-        run: |
-          chmod +x scripts/*.sh
-          ./scripts/setup-linux.sh
-          # ccache is an OPTIMIZATION, never a requirement -- see the
-          # compiler-cache block above the jobs. If it cannot be installed the
-          # job builds without a launcher: slower, never different.
-          if sudo apt-get install -y ccache && ccache --version; then
-            echo "ANAMORPH_COMPILER_LAUNCHER=ccache" >> "$GITHUB_ENV"
-          else
-            echo "::warning::ccache unavailable -- building without the compiler cache"
-            echo "ANAMORPH_COMPILER_LAUNCHER=" >> "$GITHUB_ENV"
-          fi
+        uses: ./.github/actions/setup-linux-build
 
       # SHARES A CACHE LINEAGE WITH `linux` -- same compiler, same Release
       # configuration, same `build` directory name, same targets. The two jobs
@@ -356,7 +353,7 @@ jobs:
       # the ONLY build on the same-repo PR path, so its build step is that
       # path's entire critical path.
       - name: Restore the compiler cache
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ github.workspace }}/.ccache
           key: ccache-ubuntu-gcc-release-${{ github.run_id }}
@@ -402,7 +399,7 @@ jobs:
       github.event_name != 'pull_request' ||
       github.event.pull_request.head.repo.full_name != github.repository
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Lint documentation structure
         run: |
           python3 scripts/check-docs.py --self-test
@@ -435,7 +432,7 @@ jobs:
       github.event_name != 'pull_request' ||
       github.event.pull_request.head.repo.full_name != github.repository
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # `check-citations.py` compares against a BASE REVISION, so the run
           # needs history rather than the default single-commit checkout.
@@ -558,27 +555,16 @@ jobs:
       CCACHE_MAXSIZE: 500M
       CCACHE_COMPILERCHECK: content
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install build dependencies
-        run: |
-          chmod +x scripts/*.sh
-          ./scripts/setup-linux.sh
-          # ccache is an OPTIMIZATION, never a requirement -- see the
-          # compiler-cache block above the jobs. If it cannot be installed the
-          # job builds without a launcher: slower, never different.
-          if sudo apt-get install -y ccache && ccache --version; then
-            echo "ANAMORPH_COMPILER_LAUNCHER=ccache" >> "$GITHUB_ENV"
-          else
-            echo "::warning::ccache unavailable -- building without the compiler cache"
-            echo "ANAMORPH_COMPILER_LAUNCHER=" >> "$GITHUB_ENV"
-          fi
+        uses: ./.github/actions/setup-linux-build
 
       # Shared lineage with `merge-check` -- see that job. This is the writer of
       # the two: it runs on every push, so the cache a PR restores is the one
       # the last push to the base branch left behind.
       - name: Restore the compiler cache
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ github.workspace }}/.ccache
           key: ccache-ubuntu-gcc-release-${{ github.run_id }}
@@ -780,7 +766,7 @@ jobs:
       # pluginval-only failure still yields beta artifacts as before.
       - name: Upload Linux artifacts
         if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.stage.outcome == 'success' }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: Anamorph-Linux
           path: dist/Anamorph-Linux
@@ -791,7 +777,7 @@ jobs:
       # step itself completed, which is what actually produced the .debug files.
       - name: Upload Linux debug symbols (crash symbolication)
         if: ${{ !cancelled() && steps.strip.outputs.debug_artifacts == 'true' }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: Anamorph-Linux-debug
           path: dist/Anamorph-Linux-debug
@@ -861,7 +847,7 @@ jobs:
       CCACHE_MAXSIZE: 500M
       CCACHE_COMPILERCHECK: content
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # The PINNED Clang, not the image's default `clang`. See the env block for
       # why: the warning baseline records per-(path, flag) counts, and which
@@ -874,19 +860,9 @@ jobs:
       # `ld.lld` the driver selects is settled by `check_linker_flag` at
       # configure time (see CMakeLists.txt).
       - name: Install build dependencies
-        run: |
-          chmod +x scripts/*.sh
-          ./scripts/setup-linux.sh
-          ./scripts/setup-llvm-apt.sh "${ANAMORPH_CLANG_VERSION}"
-          # ccache is an OPTIMIZATION, never a requirement -- see the
-          # compiler-cache block above the jobs. If it cannot be installed the
-          # job builds without a launcher: slower, never different.
-          if sudo apt-get install -y ccache && ccache --version; then
-            echo "ANAMORPH_COMPILER_LAUNCHER=ccache" >> "$GITHUB_ENV"
-          else
-            echo "::warning::ccache unavailable -- building without the compiler cache"
-            echo "ANAMORPH_COMPILER_LAUNCHER=" >> "$GITHUB_ENV"
-          fi
+        uses: ./.github/actions/setup-linux-build
+        with:
+          clang-version: ${{ env.ANAMORPH_CLANG_VERSION }}
 
       # Its OWN lineage, keyed on the pinned Clang major: the objects here are
       # produced by a different compiler and a different build directory from
@@ -897,7 +873,7 @@ jobs:
       # entries anyway (compiler_check=content), this just stops us shipping
       # them back and forth.
       - name: Restore the compiler cache
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ github.workspace }}/.ccache
           key: ccache-ubuntu-clang${{ env.ANAMORPH_CLANG_VERSION }}-${{ github.run_id }}
@@ -1056,7 +1032,7 @@ jobs:
       CCACHE_MAXSIZE: 800M
       CCACHE_COMPILERCHECK: content
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # The SAME pinned Clang major as `linux-clang` (see the env block). This job
       # has no baseline to protect, but the pin buys something concrete here too:
@@ -1069,27 +1045,17 @@ jobs:
       # named directly and a missing one fails loudly instead of silently taking
       # the fallback path (`set -e` is on).
       - name: Install build dependencies
-        run: |
-          chmod +x scripts/*.sh
-          ./scripts/setup-linux.sh
-          ./scripts/setup-llvm-apt.sh "${ANAMORPH_CLANG_VERSION}"
-          sudo apt-get install -y valgrind
-          # ccache is an OPTIMIZATION, never a requirement -- see the
-          # compiler-cache block above the jobs. If it cannot be installed the
-          # job builds without a launcher: slower, never different.
-          if sudo apt-get install -y ccache && ccache --version; then
-            echo "ANAMORPH_COMPILER_LAUNCHER=ccache" >> "$GITHUB_ENV"
-          else
-            echo "::warning::ccache unavailable -- building without the compiler cache"
-            echo "ANAMORPH_COMPILER_LAUNCHER=" >> "$GITHUB_ENV"
-          fi
+        uses: ./.github/actions/setup-linux-build
+        with:
+          clang-version: ${{ env.ANAMORPH_CLANG_VERSION }}
+          extra-packages: valgrind
 
       # Its own lineage, keyed on the pinned Clang major as `linux-clang`'s is:
       # sanitized objects carry -fsanitize=address,undefined,vptr in the command line
       # ccache hashes, so a shared lineage could not CONFUSE the two jobs -- it
       # would just have them evict each other, and a moved pin orphans both.
       - name: Restore the compiler cache
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ github.workspace }}/.ccache
           key: ccache-ubuntu-sanitizers-clang${{ env.ANAMORPH_CLANG_VERSION }}-${{ github.run_id }}
@@ -1215,7 +1181,7 @@ jobs:
       github.event_name != 'pull_request' ||
       github.event.pull_request.head.repo.full_name != github.repository
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Default Visual Studio generator (multi-config); MSVC is auto-detected.
       - name: Configure
@@ -1551,7 +1517,7 @@ jobs:
       # a pluginval-only failure still yields beta artifacts as before.
       - name: Upload Windows artifacts
         if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.stage_windows.outputs.public_ok == 'true' }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: Anamorph-Windows
           path: dist/Anamorph-Windows
@@ -1560,7 +1526,7 @@ jobs:
       # Same fail-closed gate as the customer artifact (tests + its own step).
       - name: Upload Windows installer
         if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.package_windows.outcome == 'success' }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: Anamorph-Windows-installer
           path: dist/Anamorph-*-Windows-Installer.exe
@@ -1571,7 +1537,7 @@ jobs:
       # retention never completed -- see the checkpoint note in the staging step.
       - name: Upload Windows debug symbols (crash symbolication)
         if: ${{ !cancelled() && steps.stage_windows.outputs.debug_artifacts == 'true' }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: Anamorph-Windows-debug
           path: dist/Anamorph-Windows-debug
@@ -1599,7 +1565,7 @@ jobs:
       CCACHE_MAXSIZE: 1G
       CCACHE_COMPILERCHECK: content
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install build tools
         run: |
@@ -1626,7 +1592,7 @@ jobs:
       # `lipo` assertion on both slices is the backstop that would catch it
       # regardless.
       - name: Restore the compiler cache
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ github.workspace }}/.ccache
           key: ccache-macos-universal-${{ github.run_id }}
@@ -2008,7 +1974,7 @@ jobs:
       # every Intel user off a run that proved the Intel slice misbehaves.
       - name: Upload macOS plugins (VST3 + AU + Standalone)
         if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.tests_x86_64.outcome == 'success' && steps.package.outcome == 'success' }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: Anamorph-macOS
           path: dist/Anamorph-macOS
@@ -2018,7 +1984,7 @@ jobs:
       # own step) -- the .pkg installs the same universal bundles.
       - name: Upload macOS installer
         if: ${{ !cancelled() && steps.tests.outcome == 'success' && steps.tests_x86_64.outcome == 'success' && steps.package_macos_pkg.outcome == 'success' }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: Anamorph-macOS-installer
           path: dist/Anamorph-*-macOS.pkg
@@ -2032,7 +1998,7 @@ jobs:
       # before a later codesign/verification failure are still preserved.
       - name: Upload macOS debug symbols (dSYMs, crash symbolication)
         if: ${{ !cancelled() && steps.package.outcome != 'skipped' && steps.package.outputs.debug_artifacts == 'true' }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: Anamorph-macOS-debug
           path: dist/Anamorph-macOS-debug
@@ -2144,7 +2110,7 @@ jobs:
       github.event_name != 'pull_request' ||
       github.event.pull_request.head.repo.full_name != github.repository
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # FAIL, DO NOT WARN, and run it before anything else is spent. A job whose
       # entire purpose is "execute on Intel" is worse than absent if it quietly
@@ -2195,7 +2161,7 @@ jobs:
       # by a different compiler on a different image from `macos`. Sharing that
       # job's lineage would transfer a cache in which nothing here can hit.
       - name: Restore the compiler cache
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ github.workspace }}/.ccache
           key: ccache-macos-intel-${{ github.run_id }}
@@ -2387,35 +2353,30 @@ jobs:
       CCACHE_MAXSIZE: 400M
       CCACHE_COMPILERCHECK: content
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # The PINNED g++ is named rather than inherited. On ubuntu-24.04 it is
+      # already the default compiler, so installing it explicitly COSTS nothing
+      # and BUYS the failure mode we want: if the pin and the image ever stop
+      # agreeing, apt says so in the first minute, loudly, instead of the
+      # warning gate exiting 2 twenty minutes later with a version mismatch.
+      # `extra-packages` is fail-closed for exactly that reason.
       - name: Install build dependencies
+        uses: ./.github/actions/setup-linux-build
+        with:
+          extra-packages: g++-${{ env.ANAMORPH_GCC_VERSION }}
+
+      # Asserted separately from the install so the log carries the version the
+      # baseline is compared against, not just the fact that a package resolved.
+      - name: Assert the pinned GCC is the one this job will use
         run: |
-          chmod +x scripts/*.sh
-          ./scripts/setup-linux.sh
-          # The PINNED g++, named rather than inherited. On ubuntu-24.04 this is
-          # already the default compiler, so the install is a no-op that COSTS
-          # nothing and BUYS the failure mode we want: if the pin and the image
-          # ever stop agreeing, apt says so here, loudly, instead of the warning
-          # gate exiting 2 twenty minutes later with a version mismatch.
-          # FAIL-CLOSED on purpose -- unlike ccache below, the compiler is the job.
-          sudo apt-get install -y "g++-${ANAMORPH_GCC_VERSION}"
           "g++-${ANAMORPH_GCC_VERSION}" --version
-          # ccache is an OPTIMIZATION, never a requirement -- see the
-          # compiler-cache block above the jobs. If it cannot be installed the
-          # job builds without a launcher: slower, never different.
-          if sudo apt-get install -y ccache && ccache --version; then
-            echo "ANAMORPH_COMPILER_LAUNCHER=ccache" >> "$GITHUB_ENV"
-          else
-            echo "::warning::ccache unavailable -- building without the compiler cache"
-            echo "ANAMORPH_COMPILER_LAUNCHER=" >> "$GITHUB_ENV"
-          fi
 
       # Its own lineage: `-flto` objects are GIMPLE bytecode under GCC, so they
       # share no cache entries with the `linux` job's native objects; a shared
       # lineage would only have the two evict each other.
       - name: Restore the compiler cache
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ github.workspace }}/.ccache
           key: ccache-ubuntu-gcc${{ env.ANAMORPH_GCC_VERSION }}-lto-${{ github.run_id }}
@@ -2567,28 +2528,18 @@ jobs:
       CCACHE_MAXSIZE: 400M
       CCACHE_COMPILERCHECK: content
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install build dependencies
-        run: |
-          chmod +x scripts/*.sh
-          ./scripts/setup-linux.sh
-          ./scripts/setup-llvm-apt.sh "${ANAMORPH_CLANG_VERSION}"
-          # ccache is an OPTIMIZATION, never a requirement -- see the
-          # compiler-cache block above the jobs. If it cannot be installed the
-          # job builds without a launcher: slower, never different.
-          if sudo apt-get install -y ccache && ccache --version; then
-            echo "ANAMORPH_COMPILER_LAUNCHER=ccache" >> "$GITHUB_ENV"
-          else
-            echo "::warning::ccache unavailable -- building without the compiler cache"
-            echo "ANAMORPH_COMPILER_LAUNCHER=" >> "$GITHUB_ENV"
-          fi
+        uses: ./.github/actions/setup-linux-build
+        with:
+          clang-version: ${{ env.ANAMORPH_CLANG_VERSION }}
 
       # Its own lineage, keyed on the pinned Clang major like the other two
       # Clang jobs: `-fsanitize=realtime` objects share no cache entries with
       # theirs, so a shared lineage would only have them evict each other.
       - name: Restore the compiler cache
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ github.workspace }}/.ccache
           key: ccache-ubuntu-realtime-clang${{ env.ANAMORPH_CLANG_VERSION }}-${{ github.run_id }}
@@ -2710,22 +2661,15 @@ jobs:
       CCACHE_MAXSIZE: 400M
       CCACHE_COMPILERCHECK: content
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install build dependencies
-        run: |
-          chmod +x scripts/*.sh
-          ./scripts/setup-linux.sh
-          ./scripts/setup-llvm-apt.sh "${ANAMORPH_CLANG_VERSION}"
-          if sudo apt-get install -y ccache && ccache --version; then
-            echo "ANAMORPH_COMPILER_LAUNCHER=ccache" >> "$GITHUB_ENV"
-          else
-            echo "::warning::ccache unavailable -- building without the compiler cache"
-            echo "ANAMORPH_COMPILER_LAUNCHER=" >> "$GITHUB_ENV"
-          fi
+        uses: ./.github/actions/setup-linux-build
+        with:
+          clang-version: ${{ env.ANAMORPH_CLANG_VERSION }}
 
       - name: Restore the compiler cache
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ github.workspace }}/.ccache
           key: ccache-ubuntu-fuzz-clang${{ env.ANAMORPH_CLANG_VERSION }}-${{ github.run_id }}
@@ -2771,7 +2715,7 @@ jobs:
       # a host chunk that reproduces the failure by being handed back.
       - name: Upload fuzz findings
         if: ${{ failure() }}
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: Anamorph-fuzz-findings
           path: fuzz-findings/

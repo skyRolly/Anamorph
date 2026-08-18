@@ -366,7 +366,8 @@ failures as green and has been removed). Evidence [Verified]: `.github/workflows
 
 Every job that uses the Ninja generator — `merge-check`, `linux`, `linux-clang`, `sanitizers`,
 `linux-lto-tests`, `realtime`, `macos`, `macos-intel` — compiles through **ccache**, restored from and saved to the GitHub Actions
-cache (`actions/cache@v6`).
+cache (`actions/cache`, SHA-pinned like every other action — see §Action refs are pinned to commit
+SHAs).
 
 **Why, measured rather than assumed.** `.ninja_log` splits a cold Linux Release build into
 **1409 CPU-seconds of compilation (75%) and 468 of LTO link (25%)**, and the compilation is
@@ -957,11 +958,59 @@ Separate from the build/validate pipeline, four security workflows/configs run a
 | `.github/workflows/codeql.yml` | CodeQL: `c-cpp` (manual build — VST3 + tests targets, Standalone off) + `actions`. Alerts filtered to repo-own code (`paths-ignore: build` excludes the FetchContent'd JUCE tree). Default query suite. | push/PR to `main` (docs-only changes skipped), weekly, dispatch |
 | `.github/workflows/msvc.yml` | MSVC `/analyze` (NativeRecommendedRules) → SARIF upload. Build step required (juceaide-generated files); JUCE under `build/_deps` treated as external. | push/PR to `main` path-filtered to `src/`, `tests/`, `CMakeLists.txt`; weekly; dispatch |
 | `.github/workflows/dependency-review.yml` | Dependency Review on PRs (GitHub Actions deps only — the graph does not index CMake FetchContent). Comments only on failure. | PR to `main` |
-| `.github/dependabot.yml` | Weekly `github-actions` version bumps in **two groups split by semver impact** — minor/patch in one PR (nearly all the volume: `github/codeql-action` alone releases every week or two), majors in another, so one major cannot block every safe bump behind it. Both groups keep `patterns: "*"`, which is what holds a multi-ref family (`codeql-action/{init,analyze,upload-sarif}` — three dependency names) together. `microsoft/msvc-code-analysis-action` is **ignored**: its SHA pin carries no tag, and an untagged pin is followed to the latest *commit*, not the latest release. `cooldown` is unset — Dependabot already withholds a new version for 3 days by default. Nothing else in this repository is a Dependabot ecosystem; `DEPENDENCY_POLICY.md` §Update mechanisms says what maintains each of the rest. | weekly |
+| `.github/dependabot.yml` | Weekly `github-actions` version bumps in **two groups split by semver impact** — minor/patch in one PR (most of the volume: the `github/codeql-action` trio releases every week or two, and since every ref became a SHA pin the `actions/*` point releases land here too), majors in another, so one major cannot block every safe bump behind it. Both groups keep `patterns: "*"`, which is what holds a multi-ref family (`codeql-action/{init,analyze,upload-sarif}` — three dependency names) together. `microsoft/msvc-code-analysis-action` is **ignored**: its SHA pin carries no tag, and an untagged pin is followed to the latest *commit*, not the latest release. `cooldown` is unset — Dependabot already withholds a new version for 3 days by default. Nothing else in this repository is a Dependabot ecosystem; `DEPENDENCY_POLICY.md` §Update mechanisms says what maintains each of the rest. | weekly |
 
 Both analysis workflows configure with `-DANAMORPH_BUILD_STANDALONE=OFF`: the Standalone format
 recompiles the same translation units as VST3, so analyzing it doubles cost for zero extra
 coverage. Evidence [Verified]: the four files above.
+
+### Action refs are pinned to commit SHAs
+
+Every `uses:` in every workflow names a **commit SHA**, with the version it corresponds to in a
+trailing comment (2026-08-18). Before that, the `actions/*` refs were bare majors — `@v7`, `@v6` —
+which are **mutable tags**: at the time of the change `actions/checkout@v7` and `v7.0.1` resolved to
+the same commit, and nothing but the tag owner's restraint kept them that way.
+
+The argument for pinning is not generic supply-chain hygiene, it is an **internal inconsistency**.
+This repository already pins JUCE to an immutable commit SHA, and `DEPENDENCY_POLICY.md` gives the
+reason in as many words: so the dependency cannot silently change under a re-pointed tag. JUCE is
+source that gets compiled and never sees a credential. An action is code that executes **on the
+runner with the job's token**. Pinning the weaker of the two and not the stronger was the gap.
+
+**The cost is real and is accepted deliberately.** A bare major is rewritten only when the major
+moves, so Dependabot's volume here used to be the `github/codeql-action` trio and essentially
+nothing else. A SHA pin is rewritten on **every** release, so `checkout`, `cache`, `upload-artifact`
+and `download-artifact` now produce updates too. The two update-type groups already in
+`.github/dependabot.yml` are what absorbs that: more dependencies move, but they move together
+within their semver class, so it is still at most two PRs a week. When reviewing one, **read the
+version comment, not just the SHA** — the comment is the only human-legible half, and a bump that
+changes the SHA without changing the comment is the shape to stop on.
+
+`microsoft/msvc-code-analysis-action` was already SHA-pinned and stays excluded from Dependabot, for
+the separate reason recorded in that file: its pin is *ahead* of the last release, so following it
+would swap a documented deliberate pin for an untagged upstream HEAD.
+
+### One composite action for the Linux setup
+
+Seven Linux jobs opened with the same three moves — `chmod +x scripts/*.sh`, `setup-linux.sh`, then
+a ccache install behind a fallback that must not fail the job. Four of them added one line for the
+pinned Clang, two added a package, and the ccache block itself was **byte-for-byte identical in six
+of the seven, comment included**.
+
+That is a correctness hazard rather than untidiness. The ccache fallback is a *policy* — "an
+optimization, never a requirement" — and a policy written out seven times is a policy that can hold
+in six places. The round that introduced `.github/actions/setup-linux-build` is itself the worked
+example: it had to add a compiler pin to exactly one of the seven copies.
+
+The action takes two inputs (`clang-version`, `extra-packages`), both fail-closed, because a job
+asks for those because it cannot work without them. What it deliberately does **not** absorb is the
+per-job ccache **lineage** — the `actions/cache` key — which stays in `build.yml` because that is
+the part genuinely different in every job and whose reasoning is *about* that job: which compiler
+produced the objects, which build directory, and which other job it may share entries with. Folding
+those into an input would turn seven readable explanations into one parameter nobody can read. The
+two macOS jobs also keep their own block: `brew` and `apt` differ enough that a shared action would
+be a conditional pretending to be a step. A `./`-prefixed local action is this repository rather
+than a dependency, so Dependabot ignores it by design.
 
 ## Reproducing CI locally
 

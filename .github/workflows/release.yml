@@ -52,7 +52,7 @@ jobs:
       version: ${{ steps.meta.outputs.version }}
       is-release: ${{ steps.meta.outputs.is-release }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Validate release metadata (tag ⇄ version ⇄ CHANGELOG)
         id: meta
@@ -143,10 +143,10 @@ jobs:
     permissions:
       contents: write   # create the draft release + upload assets (this job only)
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Download customer artifacts (from the build call in this run)
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           # The Anamorph-<OS> artifacts hold each platform's validated
           # staging tree as loose files; the release zips are archived from

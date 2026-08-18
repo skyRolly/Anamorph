@@ -1,0 +1,83 @@
+# ============================================================================
+#  Anamorph -- Linux build-dependency setup, as ONE composite action.
+#
+#  WHY THIS EXISTS. Seven jobs in `build.yml` opened with the same three moves:
+#  make the scripts executable, run `setup-linux.sh`, then install ccache
+#  behind a fallback that must NOT fail the job. The three that also need the
+#  pinned Clang, and the one that needs the pinned g++, differed by a single
+#  line each -- so six of the seven copies of the ccache block were byte-for-byte
+#  identical, comment included.
+#
+#  That is not merely repetitive, it is a correctness hazard with a worked
+#  example: the ccache fallback is a policy ("an optimization, never a
+#  requirement"), and a policy written out seven times is a policy that can hold
+#  in six places. The same round that added this action had to edit exactly one
+#  of the seven to add a compiler pin, which is the shape of the edit that gets
+#  applied to the wrong number of copies.
+#
+#  WHAT IT DELIBERATELY DOES NOT ABSORB. The per-job ccache LINEAGE (the
+#  `actions/cache` key) stays in `build.yml`, because it is the part that is
+#  genuinely different in every job and whose reasoning is about that job:
+#  which compiler produced the objects, which build directory, and which other
+#  job it may or may not share entries with. Folding those into an input would
+#  turn seven readable explanations into one parameter nobody can read.
+#
+#  NOT A DEPENDENCY. A `./`-prefixed local action is this repository, and
+#  Dependabot ignores it by design (`.github/dependabot.yml` says so for
+#  `release.yml`'s local `uses:` for the same reason). It needs `checkout` to
+#  have run, which every caller already does as its first step.
+# ============================================================================
+name: Set up the Linux build environment
+description: >-
+  Installs this project's Linux build dependencies, optionally a pinned Clang
+  and extra apt packages, and ccache behind a non-fatal fallback that publishes
+  ANAMORPH_COMPILER_LAUNCHER.
+
+inputs:
+  clang-version:
+    description: >-
+      Pinned Clang major to install from apt.llvm.org (compiler + lld +
+      libclang-rt). Empty means the job does not use Clang. FAIL-CLOSED when
+      set: the compiler is the job, unlike ccache below.
+    required: false
+    default: ""
+  extra-packages:
+    description: >-
+      Additional apt packages, space-separated (e.g. `valgrind`, `g++-13`).
+      FAIL-CLOSED for the same reason: a job asks for these because it cannot
+      do its work without them.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Install build dependencies
+      shell: bash
+      run: |
+        set -euo pipefail
+        chmod +x scripts/*.sh
+        ./scripts/setup-linux.sh
+
+        if [ -n "${{ inputs.clang-version }}" ]; then
+          ./scripts/setup-llvm-apt.sh "${{ inputs.clang-version }}"
+        fi
+
+        if [ -n "${{ inputs.extra-packages }}" ]; then
+          # Unquoted ON PURPOSE: the input is a space-separated package LIST and
+          # word-splitting is how it becomes one. It is workflow-authored text
+          # from this repository, never user input.
+          # shellcheck disable=SC2086
+          sudo apt-get install -y ${{ inputs.extra-packages }}
+        fi
+
+        # ccache is an OPTIMIZATION, never a requirement -- see the
+        # compiler-cache block above the jobs in build.yml. If it cannot be
+        # installed the job builds without a launcher: slower, never different.
+        # This is the ONE copy of that rule; it used to be seven.
+        if sudo apt-get install -y ccache && ccache --version; then
+          echo "ANAMORPH_COMPILER_LAUNCHER=ccache" >> "$GITHUB_ENV"
+        else
+          echo "::warning::ccache unavailable -- building without the compiler cache"
+          echo "ANAMORPH_COMPILER_LAUNCHER=" >> "$GITHUB_ENV"
+        fi
