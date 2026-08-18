@@ -2918,9 +2918,24 @@ static void testProcessIsAllocationFree()
     }
     check (live.newLive, "allocation guard: the operator-new counter is live");
     check (live.alignedNewLive, "allocation guard: the over-aligned new counter is live");
-    if (! live.mallocLive)
-        std::printf ("::warning::the malloc half of the allocation guard is not live in this "
-                     "build -- the raw-malloc allocation route is NOT asserted in this run.\n");
+
+    // TWO DIFFERENT THINGS, AND ONLY ONE OF THEM IS ACCEPTABLE. The malloc half
+    // is legitimately absent on MSVC and macOS (no glibc to interpose) and under
+    // ASan (its own interceptors own malloc); those builds say so and assert
+    // less, by design. But a build where the half IS compiled in and still does
+    // not observe its own probe is broken -- the interposition stopped working,
+    // or the optimizer removed the probe (which is what an unescaped
+    // malloc/free pair invites at -O2+, and `linux-lto-tests` compiles this at
+    // -O3 -flto). That case used to print the same warning as the legitimate
+    // one and skip the assertion, so the run stayed green having checked less
+    // than the log implied. It is now a failure.
+    if (live.mallocCompiledIn)
+        check (live.mallocLive, "allocation guard: the malloc-family counter is live "
+                                "(compiled in, so it must observe its own probe)");
+    else
+        std::printf ("::warning::the malloc half of the allocation guard is not compiled into "
+                     "this build (MSVC/macOS have no glibc to interpose; ASan owns malloc) -- "
+                     "the raw-malloc allocation route is NOT asserted in this run.\n");
 
     const double sr = 48000.0;
     const int block = 256;

@@ -84,7 +84,20 @@ FORBIDDEN = [
     (re.compile(r"\bnew\s+[A-Za-z_:<]"),           "heap allocation (`new`)"),
     (re.compile(r"\bdelete\b\s*(\[\s*\])?\s*[A-Za-z_(]"), "heap free (`delete`)"),
     (re.compile(r"\b(malloc|calloc|realloc|free)\s*\("), "C heap allocation"),
-    (re.compile(r"\.(resize|push_back|emplace_back|reserve)\s*\("), "container growth"),
+    # `make_unique`/`make_shared` ARE `new`, spelled so the `new` pattern above
+    # cannot see them -- and they are how this engine allocates its oversamplers
+    # (`AnamorphEngine.cpp`). A lint that catches `new T` but not
+    # `std::make_unique<T>` catches the spelling nobody uses.
+    (re.compile(r"\b(std::)?make_(unique|shared)\b"),
+                                                   "heap allocation (`make_unique`/`make_shared`)"),
+    # `.assign` is THE allocation idiom of this codebase, not a hypothetical
+    # one: every DSP module sizes its buffers with it in `prepare()`, and
+    # `REALTIME_SAFETY_AUDIT.md` names it as such ("All heap allocation is
+    # confined to `prepare()` (via `std::vector::assign` ...)"). The most
+    # probable realtime regression here is one of those lines being copied into
+    # a `reset()` or `process()` body, which is exactly what this entry sees.
+    (re.compile(r"\.(resize|push_back|emplace_back|reserve|assign|insert)\s*\("),
+                                                   "container growth"),
     (re.compile(r"\.setSize\s*\("),                "buffer resize (`setSize`)"),
     (re.compile(r"\b(std::)?(mutex|recursive_mutex|lock_guard|unique_lock|scoped_lock)\b"),
                                                    "lock"),
@@ -95,6 +108,18 @@ FORBIDDEN = [
                                                    "IO / sleep / subprocess"),
     (re.compile(r"\bjuce::(File|FileOutputStream|FileInputStream)\b"), "file IO"),
 ]
+
+
+def _is_digit_separator(text: str, i: int) -> bool:
+    """Is `text[i]` (an apostrophe) a C++14 digit separator rather than a quote?
+
+    A separator always sits BETWEEN two digits of one numeric token, which no
+    character literal can do: `'a'` has a quote on the outside of its content,
+    never a digit on both sides.
+    """
+    if i == 0 or i + 1 >= len(text):
+        return False
+    return text[i - 1].isalnum() and text[i + 1].isalnum()
 
 
 def strip_comments_and_strings(text: str) -> str:
@@ -120,18 +145,57 @@ def strip_comments_and_strings(text: str) -> str:
             if i < n:
                 out.append("  ")
                 i += 2
+        elif c == "R" and i + 1 < n and text[i + 1] == '"':
+            # RAW STRING LITERAL. Without this branch the plain-quote scan below
+            # stops at the first `"` inside the raw text -- so `R"(say "hi")"`
+            # would leave `hi")"` lexed as code, and a `new` after it read as a
+            # violation, or a real one swallowed. Neither shape exists in `src`
+            # today; the point is that arriving later must not silently change
+            # what the scanner sees.
+            j = text.find("(", i + 2)
+            delim = text[i + 2:j] if j != -1 else None
+            if delim is not None and "\n" not in delim:
+                close = ")" + delim + '"'
+                k = text.find(close, j + 1)
+                if k == -1:
+                    k = n
+                    end = n
+                else:
+                    end = k + len(close)
+                out.append("  " + " " * (j - (i + 2)) + " ")
+                for ch in text[j + 1:end]:
+                    out.append("\n" if ch == "\n" else " ")
+                i = end
+            else:
+                out.append(c)
+                i += 1
+        elif c == "'" and _is_digit_separator(text, i):
+            # DIGIT SEPARATOR, not a quote. `1'000` has no closing `'`, so
+            # treating it as a char literal blanks everything up to the next
+            # apostrophe ANYWHERE in the file -- potentially thousands of lines,
+            # silently. Emitting it as an ordinary character is correct: a
+            # separator is part of a numeric token, and numeric tokens contain
+            # nothing this lint looks for.
+            out.append(c)
+            i += 1
         elif c in "\"'":
             quote = c
             out.append(" ")
             i += 1
-            while i < n and text[i] != quote:
+            # BOUNDED TO THE LINE. A non-raw string or character literal cannot
+            # contain a bare newline, so an unterminated one is a lexing mistake
+            # rather than a long literal -- and blanking to the next quote in the
+            # file is how such a mistake turns into hidden violations. Stopping
+            # at the newline keeps the damage to one line and keeps the rest of
+            # the file readable.
+            while i < n and text[i] != quote and text[i] != "\n":
                 if text[i] == "\\" and i + 1 < n:
                     out.append("  ")
                     i += 2
                     continue
-                out.append("\n" if text[i] == "\n" else " ")
+                out.append(" ")
                 i += 1
-            if i < n:
+            if i < n and text[i] == quote:
                 out.append(" ")
                 i += 1
         else:
@@ -140,19 +204,91 @@ def strip_comments_and_strings(text: str) -> str:
     return "".join(out)
 
 
-def audio_bodies(clean: str):
-    """Yield (function_name, body_start_index, body_end_index) for audio-path
-    function DEFINITIONS in the cleaned text.
+# Names that are followed by `(` but are not calls. Without this the callee
+# scan below would try to resolve `if`, `for`, `switch` and friends.
+NOT_A_CALL = frozenset("""
+    if else for while do switch case return sizeof alignof new delete throw catch
+    try and or not static_cast const_cast dynamic_cast reinterpret_cast
+    decltype noexcept typeid operator template using namespace struct class enum
+    union public private protected virtual explicit inline constexpr consteval
+""".split())
 
-    A definition is a name followed by a parameter list and then `{` before any
-    `;` -- which distinguishes it from a declaration without needing a parser.
+# An identifier immediately followed by `(`, with whatever precedes it captured
+# so a member call (`velvet.updateWeights (...)`) can be told from a bare one.
+CALLEE = re.compile(r"(?:(\.|->|::)\s*)?\b([A-Za-z_]\w*)\s*\(")
+
+# NEVER FOLLOWED, and this is the mechanism that keeps allocation legal where the
+# Policy says it is legal. `prepare()` is REQUIRED to allocate; following a call
+# into it would report every one of those allocations. If an audio-path function
+# ever calls `prepare()` that is a real defect, but it is a different finding
+# from the one this lint makes and it is not silently invented here.
+NEVER_FOLLOW = frozenset({"prepare", "prepareToPlay", "releaseResources"})
+
+
+# Tokens that can legally precede a function NAME in a definition: the end of a
+# return type. Anything else -- an opening paren, a comma, an operator, a
+# control-flow keyword -- means the name is being USED, not defined.
+_IDENT_CHARS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
+
+
+def heads_a_definition(clean: str, at: int) -> bool:
+    """Is the identifier starting at `at` the NAME of a function definition?
+
+    THE `{`-BEFORE-`;` TEST ALONE IS NOT ENOUGH, and the closure below is what
+    made that matter. `if (isModAlgorithm (p.algorithm))` is followed by `{`
+    with no intervening `;`, so on that test alone a plain call inside an `if`
+    condition reads as a definition -- and the block that followed, which was
+    `prepare()`'s body, got attributed to it. Measured: 11 findings, every one of
+    them a legitimate `prepare()` allocation reported against a predicate.
+
+    The discriminator is what comes BEFORE the name:
+
+      * `::` -- a qualified definition (`void AnamorphEngine::process (`);
+      * `*` or `&` whose own predecessor ends a type (`juce::String& name (`);
+      * an identifier that is not a keyword -- the return type (`void f (`).
+
+    Everything else rejects, which covers the shapes a call takes: `(`, `,`,
+    `!`, `=`, `&&`, and `return`/`if`/`while` as the preceding word.
     """
-    for m in AUDIO_FN.finditer(clean):
+    j = at - 1
+    while j >= 0 and clean[j] in " \t\n":
+        j -= 1
+    if j < 0:
+        return False
+    if clean[j] == ":":
+        return j >= 1 and clean[j - 1] == ":"
+    if clean[j] in "*&":
+        # `Type* name (` and `Type& name (` are definitions; `a && name (` and
+        # `a & name (` are not. The difference is what precedes the sigil -- and
+        # a doubled sigil is always an operator.
+        if j >= 1 and clean[j - 1] in "*&":
+            return False
+        k = j - 1
+        while k >= 0 and clean[k] in " \t\n":
+            k -= 1
+        return k >= 0 and (clean[k] in _IDENT_CHARS or clean[k] == ">")
+    if clean[j] not in _IDENT_CHARS:
+        return False
+    k = j
+    while k >= 0 and clean[k] in _IDENT_CHARS:
+        k -= 1
+    return clean[k + 1:j + 1] not in NOT_A_CALL
+
+
+def _bodies(clean: str, name_re):
+    """Yield (name, body_start, body_end) for DEFINITIONS whose name matches.
+
+    A definition is a name that HEADS one (see `heads_a_definition`) followed by
+    a parameter list and then `{` before any `;`.
+    """
+    for m in name_re.finditer(clean):
         name = m.group(1)
-        # Qualified name check: skip call sites like `engine.process (buf)` by
-        # requiring the match to be preceded by a type/qualifier, not a `.`/`->`.
+        # Skip call sites like `engine.process (buf)`, then require the name to
+        # be in definition position at all.
         before = clean[max(0, m.start() - 2):m.start()]
         if before.endswith(".") or before.endswith("->"):
+            continue
+        if not heads_a_definition(clean, m.start()):
             continue
         j = clean.find("(", m.end())
         if j < 0:
@@ -186,12 +322,104 @@ def audio_bodies(clean: str):
         yield name, start, min(e + 1, len(clean))
 
 
+# Any identifier that heads a definition -- used to build the per-file index the
+# callee closure resolves against.
+#
+# The `(` is a LOOKAHEAD, not part of the match, and that is load-bearing rather
+# than stylistic: `_bodies` locates the parameter list with `find("(", m.end())`,
+# so a pattern that consumed the paren would send it looking for the NEXT one.
+# On a no-argument definition (`void AnamorphEngine::updateDerived()`) the next
+# paren is in an unrelated statement, and the body extracted from there is the
+# wrong one -- measured, as the reason `updateDerived` was missing from the first
+# version of this index while every function WITH parameters resolved fine.
+ANY_FN = re.compile(r"\b([A-Za-z_]\w*)\s*(?=\()")
+
+
+def audio_bodies(clean: str):
+    """The SEED set: definitions the Policy names directly."""
+    return _bodies(clean, AUDIO_FN)
+
+
+def definition_index(clean: str):
+    """{name: [(start, end), ...]} for every function DEFINED in this file.
+
+    Built once per file so the callee closure can ask "is this name something I
+    can actually see the body of?" without re-scanning.
+    """
+    index = {}
+    for name, start, end in _bodies(clean, ANY_FN):
+        if name in NOT_A_CALL:
+            continue
+        index.setdefault(name, []).append((start, end))
+    return index
+
+
+def callees(segment: str):
+    """Names called from `segment`, member calls included.
+
+    Deliberately name-only: resolving `velvet.updateWeights()` to a type needs a
+    parser, while asking "does THIS FILE define something called
+    `updateWeights`?" needs none and answers the question that matters -- the
+    helper is in the same file as its caller in every case this covers. A name
+    that resolves to nothing in this file is simply not followed.
+    """
+    out = set()
+    for m in CALLEE.finditer(segment):
+        qualifier, name = m.group(1), m.group(2)
+        if qualifier == "::":
+            continue                      # std::/juce:: -- not ours to follow
+        if name in NOT_A_CALL or name in NEVER_FOLLOW:
+            continue
+        out.add(name)
+    return out
+
+
+def reachable_bodies(clean: str):
+    """Yield (label, start, end) for every body the audio thread can enter.
+
+    THE SEEDS ARE NOT THE SCOPE. Before this closure existed, only functions
+    whose own NAME matched the Policy's list were scanned -- so a helper called
+    from `process()` was invisible purely because of what it was called.
+    `AnamorphEngine::updateDerived()` (run at the bottom of a switch duck) and
+    `VelvetNoise::updateWeights()` (run per block while the density glide moves)
+    are both exactly that: audio-thread code, in the same file as their caller,
+    never scanned. A hand-maintained list of extra names would have the same
+    defect one refactor later, so the reachable set is computed instead.
+
+    The walk is same-file and transitive, which is the honest scope: this lint
+    reads text, and a callee whose definition lives in another translation unit
+    is not text it has. Those are reached by the runtime tiers (RTSan, the
+    allocation guard) instead -- the three tiers of ADR-0029 cover different
+    blind spots on purpose.
+    """
+    index = definition_index(clean)
+    seen = set()
+    queue = []
+    for name, start, end in audio_bodies(clean):
+        if (start, end) in seen:
+            continue
+        seen.add((start, end))
+        queue.append((name, name, start, end))
+
+    while queue:
+        label, _name, start, end = queue.pop(0)
+        yield label, start, end
+        for callee in callees(clean[start:end]):
+            for cs, ce in index.get(callee, ()):
+                if (cs, ce) in seen:
+                    continue
+                seen.add((cs, ce))
+                # The label records HOW the audio thread gets here, so a finding
+                # in a helper names the path rather than just the helper.
+                queue.append((f"{label} -> {callee}", callee, cs, ce))
+
+
 def scan_text(text: str, path: str):
     """Return a list of (path, line, function, violation-class, source-line)."""
     clean = strip_comments_and_strings(text)
     raw_lines = text.splitlines()
     findings = []
-    for name, start, end in audio_bodies(clean):
+    for name, start, end in reachable_bodies(clean):
         segment = clean[start:end]
         base_line = clean.count("\n", 0, start) + 1
         for pattern, label in FORBIDDEN:
@@ -228,6 +456,46 @@ def scan_repo() -> int:
 MUST_FIRE = [
     ("new in process",
      "void Engine::process (Buf& b) noexcept { float* x = new float[4]; use(x); }"),
+    # ---- the allocation forms THIS codebase actually writes -----------------
+    # Each of these was invisible to the lint until 2026-08-18, which mattered
+    # because they are not exotic alternatives to `new` -- they are the only
+    # spellings the DSP modules and the engine use.
+    ("assign in process is how every DSP module allocates",
+     "void Engine::process (Buf& b) noexcept { scratch.assign (256, 0.0f); }"),
+    ("assign in reset -- the likeliest regression, a line copied out of prepare",
+     "void Engine::reset() noexcept { delayLine.assign (n, 0.0f); }"),
+    ("insert in process",
+     "void Engine::process (Buf& b) noexcept { pending.insert (pending.end(), 1); }"),
+    ("make_unique in process is `new` the `new` pattern cannot see",
+     "void Engine::process (Buf& b) noexcept { os2 = std::make_unique<Over> (2); }"),
+    ("make_shared in a module reset",
+     "void Mod::reset() noexcept { shared = std::make_shared<State>(); }"),
+    # ---- the CLOSURE: a helper is audio-path code even when its name is not --
+    ("a same-file helper called from process is scanned too",
+     "void Engine::updateDerived() { weights.assign (16, 0.0f); }\n"
+     "void Engine::process (Buf& b) noexcept { updateDerived(); }"),
+    ("...transitively, through a second hop",
+     "void Engine::innermost() { buf.resize (8); }\n"
+     "void Engine::middle() { innermost(); }\n"
+     "void Engine::process (Buf& b) noexcept { middle(); }"),
+    ("...and through a MEMBER call, which is how modules are reached",
+     "void Velvet::updateWeights() noexcept { w.assign (32, 0.0f); }\n"
+     "void Velvet::processBlock (Buf& b) noexcept { velvet.updateWeights(); }"),
+    ("...including a helper that takes no arguments at all",
+     "void Engine::noArgs() { v.reserve (64); }\n"
+     "void Engine::process (Buf& b) noexcept { noArgs(); }"),
+    # ---- the lexer, on the two shapes that would blank the WRONG SPAN -------
+    # These are deliberately MUST_FIRE rather than must-stay-silent, and that is
+    # the whole point: the danger from a mis-lexed quote is not a false finding,
+    # it is a REAL violation swallowed. Both constructs leave an unbalanced
+    # quote behind under a line-oriented scanner, which blanks everything to the
+    # next quote -- here, to end of input. The allocation after each one is what
+    # proves the scanner recovered. (Verified non-vacuous: run through the
+    # previous stripper both cases report zero.)
+    ("an unbalanced quote inside a raw string must not swallow the code after it",
+     'void Engine::process (Buf& b) noexcept { log (R"(")"); v.assign (4, 0.0f); }'),
+    ("a digit separator must not open a literal that swallows the code after it",
+     "void Engine::process (Buf& b) noexcept { const int k = 1'000; v.assign (k, 0.0f); }"),
     ("malloc in process",
      "void Engine::process (Buf& b) noexcept { void* p = malloc (64); }"),
     ("vector growth in process",
@@ -262,6 +530,29 @@ MUST_FIRE = [
 MUST_STAY_SILENT = [
     ("allocation in prepare is required by the policy",
      "void Engine::prepare (double sr, int n) { scratch.setSize (2, n); buf.resize (n); }"),
+    ("prepare stays excluded even when an audio body calls it -- NEVER_FOLLOW",
+     "void Engine::prepare (double sr, int n) { buf.assign (n, 0.0f); }\n"
+     "void Engine::process (Buf& b) noexcept { prepare (48000.0, 64); }"),
+    ("a helper reached only from prepare is not audio-path code",
+     "void Engine::sizeBuffers() { buf.assign (64, 0.0f); }\n"
+     "void Engine::prepare (double sr, int n) { sizeBuffers(); }"),
+    # THE FALSE-POSITIVE CLASS THE CLOSURE CREATED, and the reason
+    # `heads_a_definition` exists. `if (pred (x))` is followed by `{` with no
+    # intervening `;`, so on the brace test alone it reads as a definition --
+    # and the block that follows gets scanned as that "function's" body.
+    # Measured on the real tree before the fix: 11 findings, every one a
+    # legitimate prepare() allocation attributed to a predicate.
+    ("a call in an if-condition is not a definition, whatever follows it",
+     "void Engine::process (Buf& b) noexcept { if (isModAlgorithm (a)) { use(b); } }\n"
+     "void Engine::prepare (double sr, int n) { scratch.setSize (2, n); }"),
+    ("nor is a call in a return statement",
+     "bool Engine::process (Buf& b) noexcept { return isModAlgorithm (a); }\n"
+     "void Engine::prepare (double sr, int n) { buf.resize (n); }"),
+    ("nor is one behind a logical operator",
+     "void Engine::process (Buf& b) noexcept { if (x && isModAlgorithm (a)) { }; }\n"
+     "void Engine::prepare (double sr, int n) { buf.resize (n); }"),
+    ("the CONTENTS of a raw string are not code",
+     'void Engine::process (Buf& b) noexcept { log (R"(new float[4] and v.assign (1,2))"); }'),
     ("a .reset() CALL inside prepare is not a reset definition",
      "void Engine::prepare (double sr, int n) { widthSmooth.reset (sr, 0.05); os2->reset(); buf.resize (n); }"),
     ("a ->reset() call from an audio body is a call, not a scanned definition",

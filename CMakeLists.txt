@@ -119,8 +119,48 @@ else()
         -ffunction-sections -fdata-sections
         $<$<CONFIG:Release>:-g>)
     if(APPLE)
+        # ------------------------------------------------------------------
+        #  -object_path_lto: the one flag that makes macOS crash symbolication
+        #  EXIST. Not an optimisation, not a hardening flag -- a fix for a
+        #  contract this project claimed to meet and did not.
+        #
+        #  WHAT WAS BROKEN. `dsymutil` does not read DWARF out of the linked
+        #  binary; it reads the binary's DEBUG MAP (the `N_OSO` stabs), walks
+        #  back to each object file the linker consumed, and pulls the DWARF
+        #  from there. Under `-flto` (which `juce_recommended_lto_flags` puts
+        #  on the shipped plugin) ld64 does codegen itself and writes the
+        #  merged result to a TEMPORARY object, which it deletes when the link
+        #  finishes. The OSO entry then names a path that no longer exists, so
+        #  `dsymutil` warns "unable to open object file", exits 0, and emits a
+        #  dSYM with no usable DWARF -- which the packaging step correctly
+        #  discards. The net effect was that `Anamorph-macOS-debug` was never
+        #  produced, on the one platform whose users routinely hand a developer
+        #  an OS crash log. Linux and Windows were unaffected: `objcopy
+        #  --only-keep-debug` and MSVC's `/DEBUG` both read the LINKED image.
+        #
+        #  WHAT THIS CHANGES, precisely: where ld64 writes that temporary. The
+        #  bitcode, the codegen and the shipped bytes are untouched -- LTO is
+        #  still LTO, and this is emphatically NOT a workaround that turns it
+        #  off. The macOS jobs assert both halves after the build: that the
+        #  directory below is non-empty (so LTO really ran) and that a
+        #  UUID-matched dSYM with compile units came out (so the fix worked).
+        #
+        #  IT MUST BE A DIRECTORY, not a file. A universal build runs the
+        #  linker once per architecture; a single file path would have the
+        #  second slice overwrite the first, leaving one slice's OSO pointing
+        #  at the other slice's object. Given a directory, ld64 generates a
+        #  unique name per link invocation, so the two slices -- and the three
+        #  format targets that link separately -- coexist.
+        #
+        #  The directory is created at CONFIGURE time because ld64 does not
+        #  create it: a missing path makes the link fail rather than silently
+        #  fall back, which is the failure direction we want if this is ever
+        #  edited carelessly.
+        set(ANAMORPH_LTO_OBJECT_DIR "${CMAKE_BINARY_DIR}/lto-objects")
+        file(MAKE_DIRECTORY "${ANAMORPH_LTO_OBJECT_DIR}")
         target_link_options(AnamorphHardening INTERFACE
-            -Wl,-dead_strip)
+            -Wl,-dead_strip
+            "-Wl,-object_path_lto,${ANAMORPH_LTO_OBJECT_DIR}")
     else()
         target_link_options(AnamorphHardening INTERFACE
             -Wl,--gc-sections

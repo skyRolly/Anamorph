@@ -40,9 +40,20 @@
 //  translation unit can see; every JUCE call is opaque to it and warns. JUCE
 //  9.0.1 carries no annotations of its own (measured: zero occurrences in the
 //  pinned checkout), so annotating the call tree transitively produces dozens
-//  of warnings about correct code. ADR-0029 records the resulting rule: the
-//  annotation marks ENTRY POINTS for the runtime tool, and
-//  `-Wfunction-effects` stays off until the dependency can answer it.
+//  of warnings about correct code -- 52 from the engine TU alone. ADR-0029
+//  records the resulting rule: the annotation marks ENTRY POINTS for the
+//  runtime tool, and `-Wfunction-effects` stays off wherever JUCE is in the
+//  call graph. It is NOT off everywhere: over the JUCE-free leaf layer the same
+//  flag emits zero, so `tests/realtime_effects.cpp` compiles that layer under
+//  `-Werror=function-effects` in the `realtime` job (ADR-0029 SS3).
+//
+//  REPEAT THE MACRO ON THE OUT-OF-LINE DEFINITION, not only on the declaration.
+//  Clang merges effects across redeclarations, so a body reached only through
+//  the header's spelling is still enforced -- but that is a compiler behaviour
+//  to lean on rather than a property of the code, and
+//  `-Wfunction-effect-redeclarations` exists because Clang reserves the right
+//  to diagnose the split. Saying it in both places also means a reader of the
+//  .cpp can see that the body is under a contract.
 // ============================================================================
 
 #if defined(__has_cpp_attribute)

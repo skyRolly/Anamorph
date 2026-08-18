@@ -68,7 +68,7 @@ repository ever grows a real package manifest.
    §Proving a dependency bump is bit-identical).
 3. Re-verify the `RELEASE_COMPATIBILITY_CHECKLIST.md` (latency reporting, session reload) after a bump.
 4. Prefer the offline path (`-DANAMORPH_JUCE_PATH`) for reproducibility in restricted CI.
-5. `JUCE_*` compile flags in `CMakeLists.txt:295-300` (no webview, no curl, no splash, strict
+5. `JUCE_*` compile flags in `CMakeLists.txt:335-340` (no webview, no curl, no splash, strict
    ref-counted pointer) are part of the dependency contract; changing them is a build change.
 
 ## Compliance log

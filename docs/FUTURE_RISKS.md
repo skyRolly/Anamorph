@@ -95,7 +95,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 - **Impact:** Higher-than-necessary CPU in Simple mode and CPU spikes during fast split automation.
 - **Likelihood (evidence-based):** Medium — the cost is real and constant; whether it matters
   depends on host/SR/buffer, which are unmeasured.
-- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:1254 (`soloMonitor.process`, always-on); src/dsp/MultibandWidth.cpp (glide + fade paths);
+- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:1267 (`soloMonitor.process`, always-on); src/dsp/MultibandWidth.cpp (glide + fade paths);
   Devin PR #50 review (efficiency note); `docs/architecture/PERFORMANCE_BUDGET.md` (TODOs).
 - **Mitigation:** Formal profiling (PERFORMANCE_BUDGET numeric budgets remain TODO). The SoloMonitor
   settled-skip **shipped**: H1 (0.8.9) plus the Wave-3 gains-only cold gate, guarded by Test 33

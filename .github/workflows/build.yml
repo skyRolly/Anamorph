@@ -1696,6 +1696,35 @@ jobs:
         id: build
         run: cmake --build build --config Release
 
+      # LTO IS STILL LTO, ASSERTED RATHER THAN ASSUMED. `-object_path_lto`
+      # (CMakeLists.txt, AnamorphHardening) tells ld64 to keep the object it
+      # produces from the merged bitcode instead of deleting it -- which is the
+      # object `dsymutil` has to read. That means the directory below is a
+      # DIRECT witness to link-time optimisation having happened: ld64 writes
+      # into it only when it ran LTO codegen. An empty directory means either
+      # the flag stopped taking effect or LTO stopped happening, and both are
+      # failures -- the second doubly so, because turning LTO off is the
+      # workaround this fix exists to avoid.
+      #
+      # It runs BEFORE dsymutil so a broken link configuration is reported as
+      # itself rather than as "no usable dSYM" three steps later.
+      - name: Assert LTO ran and its objects were retained
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          set -e
+          DIR="build/lto-objects"
+          if [ ! -d "$DIR" ]; then
+            echo "::error::$DIR does not exist -- -object_path_lto was not applied to the link"
+            exit 1
+          fi
+          COUNT="$(find "$DIR" -type f | wc -l | tr -d ' ')"
+          echo "retained LTO objects: $COUNT"
+          find "$DIR" -type f -exec ls -l {} +
+          if [ "$COUNT" -eq 0 ]; then
+            echo "::error::no LTO object was retained. Either juce_recommended_lto_flags stopped applying -flto to the shipped targets, or the linker stopped honouring -object_path_lto. macOS crash symbolication depends on this; do NOT resolve it by disabling LTO."
+            exit 1
+          fi
+
       # Cached objects are real .o files at the paths the linker recorded, so
       # the packaging step's `dsymutil` walk is unaffected -- it reads the same
       # object files it always read, whoever compiled them.

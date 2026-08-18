@@ -124,15 +124,24 @@ edge above must not be read as release non-blocking.
   (b) the **evidence-anchor gate**: `docs/` carries 184 `file.cpp:NNN` citations, and an edit above
   one silently re-aims it. See [Evidence anchors](#evidence-anchors).
   (c) the **static realtime lint** (`check-realtime.py`, ADR-0029): the bodies of audio-path
-  functions in `src/dsp` are scanned for the `REALTIME_AUDIO_POLICY` forbidden list. It is the third
-  realtime tier and the only one that reads code the DSP suite never executes — RTSan and the
-  allocation guard are runtime tools, and the suite covers 93.4 % of lines / 79.9 % of branches in
-  `src/dsp`. Its scan root is `src` because the Policy's first named function,
+  functions are scanned for the `REALTIME_AUDIO_POLICY` forbidden list. Its scan root is **`src`**,
+  not `src/dsp`, because the Policy's first named function,
   `AnamorphAudioProcessor::processBlock`, is not under `src/dsp`; module `reset`/`softReset` bodies
-  are in scope for the same reason. Function-scoped deliberately: `prepare()` is *required* to allocate, so a file-wide
+  are in scope for the same reason. It is the third realtime tier and the only one that reads code
+  the DSP suite never executes — RTSan and the allocation guard are runtime tools, and the suite
+  covers 93.4 % of lines / 79.9 % of branches in `src/dsp`.
+  Function-scoped deliberately: `prepare()` is *required* to allocate, so a file-wide
   token scan would flag the eight legitimate `setSize` calls in `AnamorphEngine.cpp` and be switched
   off.
-  Each of the two runs its own `--self-test` **first**, in this job, immediately before the lint it
+  **The scanned set is the audio thread's REACHABLE set, not a list of names** (2026-08-18). The
+  Policy-named functions are the seeds; from each, every callee **defined in the same file** is
+  scanned too, transitively. Before that, a helper was invisible purely because of what it was
+  called — `AnamorphEngine::updateDerived()` (run at the bottom of a switch duck) and
+  `VelvetNoise::updateWeights()` (run per block while the density glide moves) are audio-thread code
+  that no version of a hand-maintained name list would have kept up with. 35 bodies became 61.
+  `prepare`/`prepareToPlay`/`releaseResources` are never followed, which is how allocation stays
+  legal where the Policy says it is legal.
+  Each of the three runs its own `--self-test` **first**, in this job, immediately before the lint it
   verifies — the same load-bearing move as `docs`, and required by `TESTING_POLICY.md` rule 4. The
   portability self-test is not the same check as `--compile-canary` in `linux-clang`: that one asks
   whether the pinned JUCE still *has* the hazard, this one whether the checker still *finds* it, and
@@ -452,7 +461,7 @@ path's entire critical path. `linux-clang` **and `sanitizers`** both key on the 
 raising the pin starts clean lineages instead of restoring entries no build can hit again — ccache
 hashes the compiler binary's own contents (`CCACHE_COMPILERCHECK=content`), so objects from the
 previous major are dead weight rather than wrong answers, but a restored cache full of them is still
-a restore that buys nothing. `linux-lto-tests` and `realtime` each have their own (`ccache-ubuntu-gcc-lto-`,
+a restore that buys nothing. `linux-lto-tests` and `realtime` each have their own (`ccache-ubuntu-gcc<major>-lto-`,
 `ccache-ubuntu-realtime-clang<major>-`) for the same
 kind of reason: under `-flto` GCC emits GIMPLE bytecode objects, so it shares no entries with
 `linux`'s native ones and a shared lineage would only have the two evict each other. `macos` and

@@ -81,6 +81,13 @@
 #include <cstdlib>
 #include <new>
 
+#if ! defined(_MSC_VER)
+  // posix_memalign is a POSIX declaration, not a std:: one -- <cstdlib> is not
+  // required to expose it. See alignedAlloc() for why it is used in preference
+  // to C11 aligned_alloc.
+  #include <stdlib.h>
+#endif
+
 // MSVC ANNOTATION PARITY. `vcruntime_new.h` declares the replaceable operators
 // with SAL annotations, and `/analyze` reports "Inconsistent annotation for
 // 'new': this instance has no annotations" when a replacement omits them --
@@ -132,8 +139,11 @@ namespace anamorph::testing
     inline std::atomic<bool>     guardArmed { false };
     inline std::atomic<long>     newCount   { 0 };
     inline std::atomic<long>     mallocCount{ 0 };
-    // Escape hatch for the self-check's aligned probe; see selfCheck().
-    inline void* volatile        alignedSink = nullptr;
+    // Escape hatch for the self-check's probes; see selfCheck(). A probe whose
+    // allocation the optimizer can prove unused is a probe the optimizer is
+    // allowed to delete, and a deleted probe reports its half DEAD while that
+    // half works perfectly.
+    inline void* volatile        probeSink = nullptr;
 
     inline void resetCounts() noexcept { newCount.store (0); mallocCount.store (0); }
 
@@ -147,25 +157,59 @@ namespace anamorph::testing
         Armed& operator= (const Armed&) = delete;
     };
 
-    struct SelfCheck { bool newLive; bool mallocLive; bool alignedNewLive; };
+    // `mallocCompiledIn` is a property of the BUILD, not of the run, and it is
+    // reported separately from `mallocLive` so the caller can tell the two
+    // apart. They fail for opposite reasons: not-compiled-in is the expected,
+    // documented state on MSVC, macOS and under ASan, while compiled-in-but-
+    // not-live means the interposition or the probe stopped working -- a defect
+    // that must fail rather than degrade to a warning.
+    struct SelfCheck { bool newLive; bool mallocLive; bool alignedNewLive; bool mallocCompiledIn; };
 
     // One known allocation of each kind, so "zero" downstream means "nothing
     // allocated" rather than "nothing was watching".
     inline SelfCheck selfCheck()
     {
-        SelfCheck r { false, false, false };
+      #if defined(ANAMORPH_GUARD_MALLOC)
+        SelfCheck r { false, false, false, true };
+      #else
+        SelfCheck r { false, false, false, false };
+      #endif
         {
             resetCounts();
             Armed arm;
             volatile auto* probe = new double[64];   // operator new[]
-            probe[0] = 1.0;
+            probe[0] = 1.0;                          // a volatile STORE into the
+                                                     // block: an observable use
+                                                     // the optimizer may not drop
             delete[] const_cast<double*> (probe);
             r.newLive = newCount.load() > 0;
         }
         {
+            // THE SAME ESCAPE THE OTHER TWO PROBES ALREADY HAD, and it was
+            // missing here. `malloc(4096)` immediately followed by `free` with
+            // nothing in between is the exact shape GCC's `-fallocation-dce`
+            // deletes at -O2 and above, and `linux-lto-tests` compiles this file
+            // at `-O3 -flto` where whole-program visibility makes that easier
+            // rather than harder.
+            //
+            // MEASURED, because the honest answer is more interesting than the
+            // expected one: on g++-13 at `-O3 -flto` the pair SURVIVES without
+            // this line. It survives for a reason that is incidental rather than
+            // reassuring -- under `ANAMORPH_GUARD_MALLOC` this very translation
+            // unit defines `malloc`, so the compiler stops treating the call as
+            // the builtin whose semantics allocation-DCE relies on. That is a
+            // property of the configuration where the malloc half exists at all,
+            // and it would evaporate the moment the interposer moved to its own
+            // TU or the compiler chose to reason about it differently.
+            //
+            // So this is hardening rather than a bug fix, and it costs one
+            // store. What it buys is that the probe no longer depends on an
+            // accident: publishing the pointer through a volatile sink makes the
+            // allocation observable, which no optimizer may discard.
             resetCounts();
             Armed arm;
             void* raw = std::malloc (4096);
+            probeSink = raw;
             if (raw != nullptr) std::free (raw);
             r.mallocLive = mallocCount.load() > 0;
         }
@@ -181,7 +225,7 @@ namespace anamorph::testing
             Armed arm;
             struct alignas (128) Wide { float v[16]; };
             auto* wide = new Wide;
-            alignedSink = wide;
+            probeSink = wide;
             delete wide;
             r.alignedNewLive = newCount.load() > 0;
         }
@@ -248,12 +292,29 @@ void operator delete[] (void* p, const std::nothrow_t&) noexcept { std::free (p)
 //  THE ALLOCATOR AND DEALLOCATOR MUST BE THE MATCHING PAIR, which is why this
 //  is not simply `std::malloc`: memory from `_aligned_malloc` MUST go back
 //  through `_aligned_free`, and mixing them is undefined behaviour rather than
-//  a leak. `aligned_alloc` blocks are ordinary `free` blocks, so the POSIX side
-//  pairs with `std::free` like the rest of the guard.
+//  a leak. `posix_memalign` blocks are ordinary `free` blocks, so the POSIX
+//  side pairs with `std::free` like the rest of the guard.
 //
-//  `aligned_alloc` also requires the size to be a multiple of the alignment
-//  (C11); the round-up below keeps that contract, since a caller asking for 4
-//  bytes at 64-byte alignment is legal C++ but not a legal `aligned_alloc` call.
+//  WHY `posix_memalign` AND NOT C11 `aligned_alloc`. This header is compiled
+//  into `AnamorphTests` on every platform, and both macOS jobs configure with
+//  `-DCMAKE_OSX_DEPLOYMENT_TARGET=10.13`. C11 `aligned_alloc` arrived in the
+//  macOS runtime in 10.15, and libc++ honours that availability window by not
+//  declaring `std::aligned_alloc` at all below it -- so the previous spelling
+//  was a compile error waiting on a toolchain whose libc++ still enforces the
+//  guard, on the two jobs that ship the macOS artifacts. `posix_memalign` has
+//  been in macOS since 10.6 and in glibc since 2.1.91, carries no availability
+//  attribute, and returns ordinary `free`-able memory, so it needs no change to
+//  `alignedFree` below. The deployment target is deliberately NOT raised to
+//  work around this: 10.13 is the compatibility claim
+//  (`docs/architecture/COMPATIBILITY_MATRIX.md`), and a test header is not the
+//  place to move it.
+//
+//  ALIGNMENT MUST BE A POWER OF TWO **AND** A MULTIPLE OF `sizeof(void*)` for
+//  `posix_memalign`; C++ over-aligned new only guarantees the first. In
+//  practice these operators are reached only when the alignment exceeds
+//  `__STDCPP_DEFAULT_NEW_ALIGNMENT__` (16 here), so the second holds already --
+//  the clamp below makes that a property of this function rather than of the
+//  caller, since an EINVAL return would present as a spurious `bad_alloc`.
 namespace anamorph::testing
 {
     inline void* alignedAlloc (std::size_t n, std::size_t align) noexcept
@@ -262,8 +323,10 @@ namespace anamorph::testing
       #if defined(_MSC_VER)
         return _aligned_malloc (n, align);
       #else
-        const std::size_t rounded = ((n + align - 1) / align) * align;
-        return std::aligned_alloc (align, rounded);
+        if (align < sizeof (void*)) align = sizeof (void*);
+        void* p = nullptr;
+        if (posix_memalign (&p, align, n) != 0) return nullptr;
+        return p;
       #endif
     }
 

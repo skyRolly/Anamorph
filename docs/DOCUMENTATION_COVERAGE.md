@@ -703,7 +703,7 @@ happened. Another sits two lines from a sibling reference in the *same* historic
 already been protected, so a `--fix` would have rewritten half a paired record and frozen the other
 half. The discriminator that survives: **is the number the subject of the sentence, or a pointer to a
 thing?** Exactly one `CMakeLists.txt` citation in this document is the latter — "*it is*
-`CMakeLists.txt:330-339`", present tense, where re-anchoring preserves truth — and it is deliberately
+`CMakeLists.txt:370-379`", present tense, where re-anchoring preserves truth — and it is deliberately
 left live so the gate still demonstrably checks real evidence here.
 
 Verified by mutation rather than by reading: a line inserted into `CMakeLists.txt` above all of them,
@@ -728,7 +728,7 @@ Review found two anchors the previous round missed, both below its insertion poi
 to the new gate for the same reason: they are spelled as **bare continuations**
 (`` `path/to/file:188-199` … `:292-301` ``), which the parser only recognises in the
 `path:a,b,c` form. `ADR-0001`'s "tests link the core" pointed at `juce::juce_opengl` inside the
-*plugin*'s link block; it is `CMakeLists.txt:330-339`. `BUILD.md`'s compile-definition list cited
+*plugin*'s link block; it is `CMakeLists.txt:370-379`. `BUILD.md`'s compile-definition list cited
 `:277-284` while listing `ANAMORPH_BUILD_NUMBER` — a definition that range no longer contains, since
 scoping moved it to `:274-275`; widened to `:274-284`, deliberately as **one** anchor, because a
 citation whose anchor *count* changes lands in the "review by hand" branch no declaration can excuse.

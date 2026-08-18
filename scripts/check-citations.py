@@ -238,7 +238,27 @@ ANCHOR = re.compile(r"(\d+)(?:-(\d+))?")
 # leaves a DICT, and the set difference below then raises `TypeError` instead of
 # reporting a clean run. The list going empty is the expected end state of every
 # entry here, so it must be the boring case.
-DELIBERATE_REAIMS = set([
+# EACH ENTRY IS `(document, anchor) -> what a reader should FIND there`, and
+# that value is not documentation: `verify_reaim_targets()` resolves the anchor
+# against the current file on every run and fails when the substring is absent.
+#
+# The value exists because a declaration here is the one construct in this file
+# that turns a check OFF. Until 2026-08-18 nothing checked the aim at all -- the
+# run printed "verify the aim by hand" and section 9 of the self-test asserted
+# only that the declared STRING appeared somewhere in its document, which is a
+# fact about the document rather than about the code it points at. Four anchors
+# declared in one round were computed before the workflow file settled; every one
+# of them pointed at unrelated lines, and every one was green, because the
+# declaration is precisely what stopped the comparison that would have caught it.
+# Two more were found within a minute of this check existing.
+#
+# Choose a substring a READER would recognise as the thing the sentence is
+# about -- `codesign --force --deep --sign -`, `macos-intel:`,
+# `ANAMORPH_BUILD_NUMBER` -- not a line's incidental characters. It survives
+# reformatting, which is the whole reason it is a substring and not a range.
+# `""` means "no stable token to name"; the run reports those as unverified
+# rather than accepting them silently, so they stay countable.
+DELIBERATE_REAIMS = {
     # EMPTY IS THE EXPECTED RESTING STATE. The sibling's list was NOT carried
     # over: each of its entries excuses one specific `<document>, <path>:<line>`
     # pair in ITS tree, so importing them here would exempt anchors that do not
@@ -282,12 +302,12 @@ DELIBERATE_REAIMS = set([
     # exactly the staleness section 9 of the self-test exists to catch, and it is
     # what caught it here: the entries were left behind by the first `--fix` and
     # the self-test failed until they followed.
-    ("docs/FUTURE_RISKS.md", "scripts/run-pluginval.sh:147-197"),
-    ("docs/POSTMORTEMS.md", "scripts/run-pluginval.sh:147-197"),
-    ("docs/architecture/COMPATIBILITY_MATRIX.md", "scripts/run-pluginval.sh:121"),
+    ("docs/FUTURE_RISKS.md", "scripts/run-pluginval.sh:147-197"): "run_one_pass",
+    ("docs/POSTMORTEMS.md", "scripts/run-pluginval.sh:147-197"): "run_one_pass",
+    ("docs/architecture/COMPATIBILITY_MATRIX.md", "scripts/run-pluginval.sh:121"): "pluginval",
     ("docs/architecture/design-decisions/ADR-0011-linux-x11-cpu-render.md",
-     "scripts/run-pluginval.sh:147-197"),
-    ("docs/procedures/BUILD.md", "scripts/setup-linux.sh:44-54"),
+     "scripts/run-pluginval.sh:147-197"): "run_one_pass",
+    ("docs/procedures/BUILD.md", "scripts/setup-linux.sh:44-54"): "apt-get",
     # ---------------------------------------------------------------------
     # v0.9.4 CI-performance round: `CMakeLists.txt` and
     # `.github/workflows/build.yml` joined `TRACKED` in the SAME change set that
@@ -317,8 +337,8 @@ DELIBERATE_REAIMS = set([
     # GOOD FOR ONE TRANSITION, like the block above: once the default branch
     # carries these spellings the run reports each as removable, and it says so
     # against the merge base rather than against a push predecessor.
-    ("docs/procedures/BUILD.md", "CMakeLists.txt:27, 321"),
-    ("docs/policies/RELEASE_POLICY.md", "CMakeLists.txt:14, 266-291"),
+    ("docs/procedures/BUILD.md", "CMakeLists.txt:27, 361"): "ANAMORPH_BUILD_TESTS",
+    ("docs/policies/RELEASE_POLICY.md", "CMakeLists.txt:14, 306-331"): "ANAMORPH_BUILD_NUMBER",
     # Same round, found by a second review pass: the compile-definition list
     # cites the block those definitions live in, and `ANAMORPH_BUILD_NUMBER`
     # left that block when it was scoped to one translation unit. `:277-284` is
@@ -328,7 +348,7 @@ DELIBERATE_REAIMS = set([
     # `set_source_files_properties` that now carries it -- ONE anchor still, not
     # two, because a citation whose anchor COUNT changes lands in the
     # "review by hand" branch that no declaration can excuse.
-    ("docs/procedures/BUILD.md", "CMakeLists.txt:290-300"),
+    ("docs/procedures/BUILD.md", "CMakeLists.txt:330-331"): "ANAMORPH_BUILD_NUMBER",
     # ---------------------------------------------------------------------
     # THE WORKFLOW ANCHORS WERE WRONG ON ARRIVAL, and the way they got there is
     # worth recording because this gate is the thing that should have caught it.
@@ -367,27 +387,35 @@ DELIBERATE_REAIMS = set([
     # comments grew by 27 lines above `windows:` (the UBSan census + ASan
     # runtime-option rationale), so everything from `windows:` down moved +27.
     # `--fix --base <push predecessor>` recomputed all five anchors from the
-    # file; each was then read back by hand at the new spelling. The
-    # declarations below carry the recomputed spellings for the same reason as
-    # last round: section 9 fails a declaration whose string its document no
-    # longer contains.
+    # file; each was then read back by hand at the new spelling.
+    #
+    # BOTH WERE MISAIMED TOO, and both are now single-line anchors rather than
+    # 400-line spans. `1544-2004` claimed "the `macos` job" and landed inside a
+    # PowerShell PDB helper in the `windows` job; `2062-2307` claimed
+    # "the `macos-intel` job" and landed on an artifact-upload line in `macos`.
+    # A span that large cannot be verified by reading it and moves whenever
+    # anything above it moves, so each now names the JOB HEADER -- one line, one
+    # unambiguous token (`macos:`, `macos-intel:`), which identifies the job more
+    # precisely than a range ever did and which `verify_reaim_targets` can check.
     ("docs/architecture/COMPATIBILITY_MATRIX.md",
-     ".github/workflows/build.yml:1544-2004"),
+     ".github/workflows/build.yml:1629"): "macos:",
     ("docs/architecture/COMPATIBILITY_MATRIX.md",
-     ".github/workflows/build.yml:2062-2307"),
-    # These two name the spellings the documents carry TODAY, and they did not
-    # always: they were first written with the intermediate values of the commit
-    # that introduced them, and the commit after it recomputed both anchors
-    # without updating the declarations. Nothing caught that, because a
-    # declaration is only consulted when a citation MISMATCHES, and against the
-    # tip of this branch these no longer mismatch -- so `--check --base HEAD`
-    # was green while `--check` against the MERGE BASE, which is what a push to
-    # the default branch actually compares, reported UNMAPPABLE and exited 1.
+     ".github/workflows/build.yml:2176"): "macos-intel:",
+    # THESE TWO WERE MISAIMED, and are corrected here. Both were recomputed
+    # early in the round that introduced them and never re-derived, so
+    # `build.yml:562, 1186, 1608` pointed at a composite-action `uses:` line, a
+    # comment inside the valgrind rationale and an `if-no-files-found:` key --
+    # while claiming to be the three per-OS Configure steps. `1775-1777` named
+    # the `Package macOS plugins` step header while claiming the three
+    # `codesign` calls. Re-derived against the current file and now carrying the
+    # expectation that keeps them honest.
+    #
     # A declaration naming a spelling that exists in no document is dead weight
     # at best and a red default branch at worst, so section 9 of `--self-test`
-    # now asserts every entry here is a string its document really contains.
-    ("docs/policies/RELEASE_POLICY.md", ".github/workflows/build.yml:562, 1186, 1608"),
-    ("docs/KNOWN_ISSUES.md", ".github/workflows/build.yml:1775-1777"),
+    # asserts every entry here is a string its document really contains -- and
+    # section 8c asserts it lands on what it claims.
+    ("docs/policies/RELEASE_POLICY.md", ".github/workflows/build.yml:578, 1213, 1693"): "ANAMORPH_BUILD_NUMBER",
+    ("docs/KNOWN_ISSUES.md", ".github/workflows/build.yml:1889-1891"): "codesign --force --deep --sign -",
     # THE ONE ANCHOR IN THE CLANG-22 ROUND THAT IS A RE-AIM RATHER THAN A
     # RE-ANCHOR, and the tool is right to refuse it. `DEPENDENCY_POLICY`'s Clang
     # row cites the `env:` block, whose lines both MOVED (+4) and CHANGED
@@ -400,7 +428,7 @@ DELIBERATE_REAIMS = set([
     # predecessor where it does exist. That is both escape hatches open at once
     # -- exactly the pair this file's header warns about, and the reason a local
     # green is not evidence until it is re-run against the base CI will use.
-    ("docs/policies/DEPENDENCY_POLICY.md", ".github/workflows/build.yml:107-109"),
+    ("docs/policies/DEPENDENCY_POLICY.md", ".github/workflows/build.yml:107-109"): "ANAMORPH_CLANG_VERSION",
     # PRE-EXISTING ROT CORRECTED, not fresh drift: these four anchors were
     # stale BEFORE origin/main (PluginProcessor/PluginEditor grew above them
     # long ago), so the tool -- which preserves aim-at-same-text relative to a
@@ -413,12 +441,87 @@ DELIBERATE_REAIMS = set([
     # un-gated in every BARE-filename evidence line (REALTIME_SAFETY_AUDIT.md's
     # table was the worked example -- its rows are now path-qualified so this
     # tool tracks them from here on).
-    ("docs/architecture/THREAD_MODEL.md", "src/PluginProcessor.cpp:117-185"),
-    ("docs/architecture/THREAD_MODEL.md", "src/PluginEditor.cpp:672"),
-    ("docs/policies/REALTIME_AUDIO_POLICY.md", "src/PluginProcessor.cpp:117-185"),
-    ("docs/policies/REALTIME_AUDIO_POLICY.md", "src/dsp/AnamorphEngine.cpp:28-113"),
-    ("docs/procedures/BUILD.md", "scripts/build.sh:19-54"),
-])
+    ("docs/architecture/THREAD_MODEL.md", "src/PluginProcessor.cpp:117-185"): "processBlock",
+    ("docs/architecture/THREAD_MODEL.md", "src/PluginEditor.cpp:672"): "startTimerHz (24)",
+    ("docs/policies/REALTIME_AUDIO_POLICY.md", "src/PluginProcessor.cpp:117-185"): "processBlock",
+    ("docs/policies/REALTIME_AUDIO_POLICY.md", "src/dsp/AnamorphEngine.cpp:28-113"): "prepare",
+    ("docs/procedures/BUILD.md", "scripts/build.sh:19-54"): "artefacts",
+    # ---------------------------------------------------------------------
+    # 2026-08-18, the macOS symbolication round. `AnamorphEngine::process` gained
+    # `ANAMORPH_NONBLOCKING` on its DEFINITION (it was on the declaration only),
+    # with the reasoning above it -- so the anchor's FIRST line is one of the
+    # lines that changed, which is the one shape `--fix` cannot map: the text it
+    # would search for is the text that was edited. Re-derived by hand against
+    # the definition (`:673`) and the closing brace of its body (`:1352`), and
+    # the expectation below is what makes that claim checkable from here on.
+    ("docs/architecture/DSP_GRAPH_REFERENCE.md",
+     "src/dsp/AnamorphEngine.cpp:673-1352"): "AnamorphEngine::process",
+    ("docs/architecture/SIGNAL_FLOW.md",
+     "src/dsp/AnamorphEngine.cpp:673-1352"): "AnamorphEngine::process",
+}
+
+
+def reaim_target_text(whole):
+    """The source lines a declared anchor actually points at, joined.
+
+    `whole` is the anchor as the document spells it (`path:12, 30-40`), so this
+    resolves exactly what a reader following the reference would land on --
+    which is the thing the declaration is making a claim about.
+    """
+    m = CITATION.match(whole)
+    if m is None:
+        return None
+    path = m.group("path")
+    try:
+        lines = read(path).split("\n")
+    except OSError:
+        return None
+    picked = []
+    for a, b in ANCHOR.findall(m.group("anchors")):
+        lo = int(a)
+        hi = int(b) if b else lo
+        for n in range(lo, hi + 1):
+            if 1 <= n <= len(lines):
+                picked.append(lines[n - 1])
+    return "\n".join(picked)
+
+
+def verify_reaim_targets():
+    """Check every declared re-aim still lands on what it claims to.
+
+    WHY THIS EXISTS. A `DELIBERATE_REAIMS` entry switches the drift comparison
+    OFF for one anchor -- that is its whole function, and it has to be, because
+    a deliberate re-aim is textually indistinguishable from drift. The cost was
+    that nothing then checked the aim at all: the tool printed "verify the aim by
+    hand, not by this tool" and moved on, and section 9 only asserted the
+    declared STRING appeared somewhere in its document. Four anchors were
+    declared in one round with line numbers computed before the file settled;
+    all four pointed at unrelated lines, and all four were green, because the
+    declaration is exactly what stopped anyone looking.
+
+    So a declaration now carries what the reader is supposed to FIND there, and
+    that claim is checked on every run against the current file. It is a
+    substring rather than a range comparison on purpose: the aim is "this
+    reference identifies the codesign calls", not "these are bytes 3-40", and a
+    substring survives the reformatting that line numbers do not.
+
+    An entry may declare `""` when there is genuinely no stable token to name --
+    a single line of ordinary code. That is reported, not silently accepted, so
+    the unverifiable ones stay countable.
+    """
+    problems, unverifiable = [], []
+    for (doc, whole), expect in sorted(DELIBERATE_REAIMS.items()):
+        if not expect:
+            unverifiable.append((doc, whole))
+            continue
+        target = reaim_target_text(whole)
+        if target is None:
+            problems.append((doc, whole, expect, "the cited file could not be read"))
+        elif expect not in target:
+            first = target.split("\n")[0].strip()[:70]
+            problems.append((doc, whole, expect,
+                             f"the cited lines start with: {first!r}"))
+    return problems, unverifiable
 
 
 def is_declared_reaim(doc, whole_base, whole_cur):
@@ -478,14 +581,25 @@ def invalidated_reaims(doc, text, rewritten, edits):
 
     The span is exact: the declared spelling occupies a known offset range in
     `text`, and the edit that replaced it is the one whose own range overlaps it.
+
+    EVERY occurrence is tried, not just the first. A document may spell the same
+    anchor twice -- `check-citations` itself records that case ("spelled 2x in
+    this document; all move together") -- and a rewrite can touch the second
+    while leaving the first alone. Stopping at `text.index(whole)` then found no
+    overlapping edit and printed the warning with no replacement, which is the
+    one thing this warning exists to provide. Weaker than suggesting the wrong
+    string, but the guarantee is supposed to be unconditional.
     """
     out = []
     for whole in sorted(w for (d, w) in DELIBERATE_REAIMS if d == doc):
         if whole not in text or whole in rewritten:
             continue
-        at = text.index(whole)
-        end = at + len(whole)
-        replacement = next((new for (a, b, new) in edits if a < end and at < b), None)
+        replacement = None
+        at = text.find(whole)
+        while at != -1 and replacement is None:
+            end = at + len(whole)
+            replacement = next((new for (a, b, new) in edits if a < end and at < b), None)
+            at = text.find(whole, at + 1)
         out.append((whole, replacement))
     return out
 
@@ -929,10 +1043,10 @@ def self_test():
     # --- 5. DECLARED RE-AIMS: good for one transition, then reported --------
     doc = "docs/EXAMPLE.md"
     old, new = "src/PluginProcessor.cpp:100", "src/PluginProcessor.cpp:200"
-    saved = set(DELIBERATE_REAIMS)
+    saved = dict(DELIBERATE_REAIMS)
     try:
         DELIBERATE_REAIMS.clear()
-        DELIBERATE_REAIMS.add((doc, new))
+        DELIBERATE_REAIMS[(doc, new)] = ""
         check("a declaration naming the current spelling is honoured",
               is_declared_reaim(doc, old, new), True)
         # THE ENTRY MUST NOT SURVIVE ITS OWN TRANSITION. Once the base carries
@@ -944,7 +1058,7 @@ def self_test():
         check("an unchanged spelling is drift, not a re-aim, even when declared",
               is_declared_reaim(doc, new, new), False)
         DELIBERATE_REAIMS.clear()
-        DELIBERATE_REAIMS.add((doc, old))
+        DELIBERATE_REAIMS[(doc, old)] = ""
         check("a declaration naming the base spelling is honoured too",
               is_declared_reaim(doc, old, new), True)
         DELIBERATE_REAIMS.clear()
@@ -1091,17 +1205,78 @@ def self_test():
     B_OLD, B_NEW = "synthetic/Two.txt:286-296", "synthetic/Two.txt:290-300"
     two = f"first {A_OLD} then {B_OLD} done"
     a1, a2 = two.index(A_OLD), two.index(B_OLD)
-    saved = set(DELIBERATE_REAIMS)
+    saved = dict(DELIBERATE_REAIMS)
     DELIBERATE_REAIMS.clear()
-    DELIBERATE_REAIMS.update({("docs/procedures/BUILD.md", B_OLD)})
+    DELIBERATE_REAIMS.update({("docs/procedures/BUILD.md", B_OLD): ""})
     check("with two same-path rewrites, the replacement is the one whose span matches",
           invalidated_reaims("docs/procedures/BUILD.md", two,
                              f"first {A_NEW} then {B_NEW} done",
                              [(a1, a1 + len(A_OLD), A_NEW),
                               (a2, a2 + len(B_OLD), B_NEW)]),
           [(B_OLD, B_NEW)])
+
+    # THE SAME SPELLING TWICE, with only the SECOND occurrence rewritten. A
+    # lookup that stops at the first occurrence finds no edit overlapping it and
+    # reports the entry dead with no replacement -- the one thing this warning
+    # exists to supply. `check-citations` already handles documents that spell an
+    # anchor more than once ("spelled 2x in this document; all move together"),
+    # so this is a shape the tree can produce, not a hypothetical.
+    twice = f"see {B_OLD} and again {B_OLD} here"
+    second = twice.rindex(B_OLD)
+    DELIBERATE_REAIMS.clear()
+    DELIBERATE_REAIMS.update({("docs/procedures/BUILD.md", B_OLD): ""})
+    check("a declaration spelled twice finds the replacement at the LATER occurrence",
+          invalidated_reaims("docs/procedures/BUILD.md", twice,
+                             f"see {B_NEW} and again {B_NEW} here",
+                             [(second, second + len(B_OLD), B_NEW)]),
+          [(B_OLD, B_NEW)])
     DELIBERATE_REAIMS.clear()
     DELIBERATE_REAIMS.update(saved)
+
+    # --- 8c. EVERY DECLARATION STILL LANDS ON WHAT IT CLAIMS ----------------
+    # A declaration switches the drift comparison OFF for its anchor. That is
+    # its purpose and it cannot be otherwise -- a deliberate re-aim is textually
+    # indistinguishable from drift. The consequence, until 2026-08-18, was that
+    # NOTHING checked the aim: the run printed "verify the aim by hand" and
+    # section 9 asserted only that the declared string appeared somewhere in its
+    # document. Four anchors declared in one round with line numbers computed
+    # before the file settled all pointed at unrelated lines and all stayed
+    # green, because the declaration was exactly what stopped anyone looking.
+    # Two MORE were found the moment this check existed.
+    #
+    # So the cases below drive the real resolver over the real declarations, and
+    # then over a deliberately wrong one.
+    real_problems, _unverifiable = verify_reaim_targets()
+    check("every declared re-aim in this tree lands on what it claims",
+          real_problems, [])
+
+    saved = dict(DELIBERATE_REAIMS)
+    try:
+        DELIBERATE_REAIMS.clear()
+        # A real file, a real line, an expectation that is NOT there.
+        DELIBERATE_REAIMS[("docs/EXAMPLE.md", "CMakeLists.txt:14")] = "this-is-not-on-line-14"
+        wrong, _ = verify_reaim_targets()
+        check("a declaration whose expectation is absent from the cited lines is reported",
+              len(wrong), 1)
+
+        DELIBERATE_REAIMS.clear()
+        DELIBERATE_REAIMS[("docs/EXAMPLE.md", "CMakeLists.txt:14")] = "project(Anamorph"
+        right, _ = verify_reaim_targets()
+        check("...and one whose expectation IS there is not", right, [])
+
+        DELIBERATE_REAIMS.clear()
+        DELIBERATE_REAIMS[("docs/EXAMPLE.md", "no/such/file.cpp:1")] = "anything"
+        missing, _ = verify_reaim_targets()
+        check("an unreadable cited file is a problem, not a pass", len(missing), 1)
+
+        DELIBERATE_REAIMS.clear()
+        DELIBERATE_REAIMS[("docs/EXAMPLE.md", "CMakeLists.txt:14")] = ""
+        none_declared, unver = verify_reaim_targets()
+        check("an entry declaring no expectation is reported as unverifiable, not clean",
+              (none_declared, len(unver)), ([], 1))
+    finally:
+        DELIBERATE_REAIMS.clear()
+        DELIBERATE_REAIMS.update(saved)
 
     # --- 9. EVERY DECLARATION NAMES A SPELLING ITS DOCUMENT REALLY CARRIES ---
     # A declaration excuses a mismatch, so it is consulted ONLY when one occurs.
@@ -1147,6 +1322,29 @@ def main():
 
     if args.self_test:
         return self_test()
+
+    # EVERY DECLARED RE-AIM IS CHECKED BEFORE ANYTHING ELSE, and it needs no base
+    # revision because it is not a question about drift: it asks whether each
+    # entry still lands on the thing it says it lands on, in the tree as it is
+    # now. This runs first so a misaimed declaration is reported as itself rather
+    # than as a silence somewhere downstream -- a declaration is the one
+    # construct in this file that turns a check OFF, so it is the one that most
+    # needs a check of its own.
+    reaim_problems, reaim_unverifiable = verify_reaim_targets()
+    for doc, whole in reaim_unverifiable:
+        print(f"check-citations: note — DELIBERATE_REAIMS entry {doc}: {whole} declares no "
+              f"expected content, so its aim is NOT verified. Give it a substring a reader "
+              f"following the reference should find.")
+    if reaim_problems:
+        for doc, whole, expect, why in reaim_problems:
+            print(f"::error::{doc}: the declared re-aim {whole} does not contain {expect!r} — "
+                  f"{why}", file=sys.stderr)
+        print(f"\ncheck-citations: {len(reaim_problems)} declared re-aim(s) point at something "
+              f"other than what they claim. A declaration switches the drift check OFF for its "
+              f"anchor, so a wrong one is invisible in every other way — re-derive the line "
+              f"numbers against the current file and fix BOTH the document and the declaration.",
+              file=sys.stderr)
+        return 2
 
     base_src, now_src = {}, {}
     for path in TRACKED:
@@ -1411,9 +1609,10 @@ def main():
     # honoured re-aim: `is_declared_reaim` returns true only when at least one of
     # the two spellings is literally in the set, so the "never silent" property
     # below survives the narrowing.
-    for (doc, whole) in sorted(used_reaims & DELIBERATE_REAIMS):
+    for (doc, whole) in sorted(used_reaims & DELIBERATE_REAIMS.keys()):
         print(f"check-citations: ACCEPTED re-aim {doc}: {whole} "
-              f"(declared in DELIBERATE_REAIMS — verify the aim by hand, not by this tool)")
+              f"(declared in DELIBERATE_REAIMS; its aim is checked against "
+              f"{DELIBERATE_REAIMS[(doc, whole)]!r} by verify_reaim_targets)")
     # "DELETE IT" IS ADVICE, so it is only given when it is SAFE, and the two
     # cases below were one message until 2026-08-14. An entry is unused against a
     # given base for two entirely different reasons:
@@ -1433,7 +1632,7 @@ def main():
     # in hand is the branch's MERGE BASE: an entry retired against the previous
     # push is very often still live against `main`, which is exactly how this
     # round's `PluginEditor.h:604` declaration was still doing real work.
-    for (doc, whole) in sorted(DELIBERATE_REAIMS - used_reaims):
+    for (doc, whole) in sorted(DELIBERATE_REAIMS.keys() - used_reaims):
         if whole in base_doc_cites.get(doc, set()):
             print(f"check-citations: note — DELIBERATE_REAIMS entry {doc}: {whole} was not "
                   f"needed against {args.base}, which already carries the re-aimed "
