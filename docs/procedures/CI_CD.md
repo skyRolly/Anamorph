@@ -382,7 +382,7 @@ SHAs).
 **1409 CPU-seconds of compilation (75%) and 468 of LTO link (25%)**, and the compilation is
 overwhelmingly JUCE: ~9k lines of first-party source against a framework that each of the three
 JUCE-linking targets compiles separately. JUCE is pinned to an immutable commit
-(`CMakeLists.txt:61-67`, ADR-0022/ADR-0026), so that 75% is byte-identical from run to run.
+(`CMakeLists.txt:65-71`, ADR-0022/ADR-0026), so that 75% is byte-identical from run to run.
 Measured on 4 cores — the runner's core count — the same build with a warm cache is **7m41s → 3m40s
 (−52%)**, at **137 direct hits / 6 misses**, and the residual is the LTO link, which no compiler
 cache touches. The `linux-clang` configuration, measured the same way against the **then-pinned Clang

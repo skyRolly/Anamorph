@@ -216,7 +216,7 @@ env:
 # compilation (75%) and 468 CPU-seconds of LTO link (25%), and the compilation
 # is almost all JUCE: 9k lines of first-party source against a framework that
 # every one of the three JUCE-linking targets compiles separately. JUCE is
-# pin-locked to an immutable commit (CMakeLists.txt:61-67, ADR-0022/0026), so
+# pin-locked to an immutable commit (CMakeLists.txt:65-71, ADR-0022/0026), so
 # that 75% is byte-identical from run to run and recompiling it every push is
 # the single largest piece of avoidable work in this pipeline.
 #

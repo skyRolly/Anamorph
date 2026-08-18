@@ -472,7 +472,7 @@ only one granted).
   whatever UID the built VST3 carries. That is precisely why the change is recorded here and in
   ADR-0023 rather than left to surface itself.
 - **Evidence [Verified (code) / Verified — manual (new identity) / Unverified (old-session
-  effect)]:** CMakeLists.txt:229 (`PLUGIN_MANUFACTURER_CODE RTec`); ADR-0023 (`Accepted`
+  effect)]:** CMakeLists.txt:233 (`PLUGIN_MANUFACTURER_CODE RTec`); ADR-0023 (`Accepted`
   2026-07-30); CHANGELOG `[0.9.1]`. The **new** identity registering correctly was confirmed by the
   maintainer's Level-5 check on 2026-07-30 (host registration + `auval -v aufx Anmr RTec`) — a
   human sign-off, not headlessly reproducible. The **old-session** effect described above is

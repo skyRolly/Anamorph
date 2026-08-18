@@ -74,7 +74,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 - **Likelihood (evidence-based):** Medium — dependencies eventually need security/feature updates;
   the pin defers but does not eliminate this. The SHA pin (v0.8.13 cycle) additionally removes the
   re-pointed-tag variant of the risk.
-- **Evidence [Verified]:** CMakeLists.txt:48-50 (exact commit); ADR-0011 (X11 in JUCE); `docs/policies/DEPENDENCY_POLICY.md`.
+- **Evidence [Verified]:** CMakeLists.txt:52-54 (exact commit); ADR-0011 (X11 in JUCE); `docs/policies/DEPENDENCY_POLICY.md`.
 - **Mitigation:** Treat any bump as a Build System change → ADR + Architecture Review; run full DSP
   tests + pluginval (3 OSes) + a manual audition + the RELEASE_COMPATIBILITY_CHECKLIST after. The
   8.0.14→9.0.0 bump additionally proved engine output **bit-identical** via a 32-scenario twin

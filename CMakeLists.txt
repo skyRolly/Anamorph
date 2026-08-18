@@ -38,6 +38,10 @@ option(ANAMORPH_BUILD_BENCH "Build AnamorphBench, the PERFORMANCE_BUDGET.md meas
 # supported way to build it; locally it needs a Clang toolchain and the caller
 # supplies `-fsanitize=fuzzer` through the usual flag variables.
 option(ANAMORPH_BUILD_FUZZ "Build AnamorphFuzzState, the setStateInformation fuzz target (OFF by default; needs Clang/libFuzzer)" OFF)
+# The DEPENDENCY_POLICY rule-2 instrument: build it against two JUCE checkouts
+# and diff the two outputs. OFF by default -- it is used at a dependency bump,
+# not on every build.
+option(ANAMORPH_BUILD_DSPDUMP "Build AnamorphDspDump, the DSP bit-identity harness for dependency bumps (OFF by default)" OFF)
 
 # Allow pointing at a local JUCE checkout to avoid network in restricted CI.
 #   -DANAMORPH_JUCE_PATH=/path/to/JUCE
@@ -408,6 +412,45 @@ if(ANAMORPH_BUILD_BENCH)
             AnamorphHardening
             juce::juce_recommended_config_flags
             juce::juce_recommended_lto_flags
+            juce::juce_recommended_warning_flags)
+endif()
+
+# ----------------------------------------------------------------------------
+#  AnamorphDspDump -- the DSP bit-identity harness DEPENDENCY_POLICY rule 2
+#  needs, committed.
+#
+#  The rule has always been "a JUCE bump must prove bit-identical engine
+#  output". Two bumps have proved it. Neither left the instrument behind: both
+#  used a scratchpad tool "per the xbench.cpp precedent". So the gate was
+#  permanent and the tool was disposable, and each bump rebuilt it -- which is
+#  how the 8.0.14 -> 9.0.0 run shipped a scenario set that left `algoAmount` at
+#  its identity default and hashed all four algorithms the same.
+#
+#  IT DOES NOT LINK juce_recommended_lto_flags, and that is the one deliberate
+#  difference from AnamorphBench next door. The bench must measure the shipped
+#  binary, so it carries the shipped flags. This tool must isolate ONE variable
+#  -- the dependency -- and LTO is a second one: it lets the linker's inlining
+#  decisions differ between two runs for reasons that have nothing to do with
+#  the JUCE version under test, turning a clean question into a noisy one.
+#
+#  Outside the ANAMORPH_BUILD_TESTS block, same reasoning as the bench above.
+# ----------------------------------------------------------------------------
+if(ANAMORPH_BUILD_DSPDUMP)
+    juce_add_console_app(AnamorphDspDump PRODUCT_NAME "AnamorphDspDump")
+    target_sources(AnamorphDspDump PRIVATE tests/dsp_dump.cpp)
+    target_include_directories(AnamorphDspDump PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_compile_definitions(AnamorphDspDump PUBLIC
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_STANDALONE_APPLICATION=1)
+    target_link_libraries(AnamorphDspDump
+        PRIVATE
+            AnamorphDSP
+            juce::juce_dsp
+            juce::juce_audio_basics
+        PUBLIC
+            AnamorphHardening
+            juce::juce_recommended_config_flags
             juce::juce_recommended_warning_flags)
 endif()
 

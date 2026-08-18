@@ -29,7 +29,7 @@ near-zero-cost addition.
 Evidence [Verified]:
 - Source: src/dsp/AnamorphEngine.h:39-40 ("Knows nothing about JUCE's plugin wrapper / APVTS")
 - Source: src/dsp/EngineParameters.h:3-17 (POD decoupling rationale)
-- Source: CMakeLists.txt:200-211 (`AnamorphDSP` INTERFACE library, depends only on juce_dsp)
+- Source: CMakeLists.txt:204-215 (`AnamorphDSP` INTERFACE library, depends only on juce_dsp)
 
 ## 2. The decoupling boundary: `EngineParameters`
 

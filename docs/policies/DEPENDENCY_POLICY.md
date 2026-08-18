@@ -6,7 +6,7 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
 
 | Dependency | Pin | Mechanism | Evidence |
 |---|---|---|---|
-| **JUCE** | **9.0.1**, pinned by **immutable commit SHA** `e18f7f506c0b96f2c738a0bcd7fe6467a5005ad8` | CMake `FetchContent` (`GIT_SHALLOW`), overridable via `-DANAMORPH_JUCE_PATH` | CMakeLists.txt:48-50, 59-67 |
+| **JUCE** | **9.0.1**, pinned by **immutable commit SHA** `e18f7f506c0b96f2c738a0bcd7fe6467a5005ad8` | CMake `FetchContent` (`GIT_SHALLOW`), overridable via `-DANAMORPH_JUCE_PATH` | CMakeLists.txt:52-54, 63-71 |
 | **pluginval** | latest release (download) | `scripts/run-pluginval.sh` | scripts/run-pluginval.sh:119-126 |
 | **C++ standard** | C++23 | `CMAKE_CXX_STANDARD 23`, extensions off (ADR-0027) | CMakeLists.txt:16-18 |
 | **Clang** (the Linux warning-gate + sanitizer jobs; **ships nothing**) | **major pinned — 22**, upstream stable (ADR-0028) | `ANAMORPH_CLANG_VERSION`, the single authority, consumed by both jobs' installs, their ccache lineages and `--clang-major`. Installed from **apt.llvm.org** by `scripts/setup-llvm-apt.sh` (Ubuntu's archives stop at 20 for noble), fail-closed. `scripts/clang-warning-baseline.txt` records the same major and the gate **refuses to run** on a mismatch | .github/workflows/build.yml:107-109 |
@@ -24,7 +24,7 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
   parameter system (APVTS), GUI, and plugin-format wrappers — an unpinned bump can silently change
   DSP behaviour, latency, the editor/X11 embedding path (the 0.8.5 incident lives in JUCE's X11
   host code), and the parameter/state ABI. The pin makes builds reproducible and keeps the audited
-  behaviour stable. Evidence [Verified]: CMakeLists.txt:48-50, 59-67; the X11 dependency is
+  behaviour stable. Evidence [Verified]: CMakeLists.txt:52-54, 63-71; the X11 dependency is
   documented in ADR-0011.
 
 ## Update mechanisms
@@ -57,10 +57,18 @@ repository ever grows a real package manifest.
 2. After any bump: full DSP self-tests + pluginval at the configured strictness
    (`ANAMORPH_PLUGINVAL_STRICTNESS` in `.github/workflows/build.yml`) in **both modes**
    (deterministic and `--randomise` ×3) on all three OSes, **and** a manual audition (Level 5) — a
-   JUCE change can move DSP/latency/editor behaviour invisibly to the headless gate.
+   JUCE change can move DSP/latency/editor behaviour invisibly to the headless gate. The
+   **bit-identity proof uses the committed harness**, `tests/dsp_dump.cpp`
+   (`-DANAMORPH_BUILD_DSPDUMP=ON`): build it against both JUCE checkouts with otherwise identical
+   flags and `diff` the two outputs. Every previous bump satisfied this rule with a scratchpad tool
+   that was thrown away afterwards, so the gate was permanent and the instrument was not — which is
+   how the 8.0.14 → 9.0.0 run first produced a scenario set that left `algoAmount` at its identity
+   default and hashed all four algorithms the same, reporting a confident nothing. The committed
+   harness checks itself for exactly that before printing anything (`docs/procedures/TESTING.md`
+   §Proving a dependency bump is bit-identical).
 3. Re-verify the `RELEASE_COMPATIBILITY_CHECKLIST.md` (latency reporting, session reload) after a bump.
 4. Prefer the offline path (`-DANAMORPH_JUCE_PATH`) for reproducibility in restricted CI.
-5. `JUCE_*` compile flags in `CMakeLists.txt:291-296` (no webview, no curl, no splash, strict
+5. `JUCE_*` compile flags in `CMakeLists.txt:295-300` (no webview, no curl, no splash, strict
    ref-counted pointer) are part of the dependency contract; changing them is a build change.
 
 ## Compliance log

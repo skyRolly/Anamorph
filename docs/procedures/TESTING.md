@@ -152,6 +152,7 @@ release build; each answers a question the two self-test suites structurally can
 |---|---|---|
 | `AnamorphBench` | `-DANAMORPH_BUILD_BENCH=ON`, Release | The `PERFORMANCE_BUDGET` §"required benchmark procedure" matrix — ns/sample and worst single block across sample rate, block size, algorithm, oversampling and multiband. |
 | `AnamorphFuzzState` | `-DANAMORPH_BUILD_FUZZ=ON` with Clang + `-fsanitize=address,undefined` | `setStateInformation` against inputs nobody wrote by hand. |
+| `AnamorphDspDump` | `-DANAMORPH_BUILD_DSPDUMP=ON`, Release | Whether a dependency bump changed engine output at all — §Proving a dependency bump is bit-identical. |
 | `tests/realtime_effects.cpp` | no target — `clang++ -fsyntax-only -Werror=function-effects` | Whether the JUCE-free leaf DSP is provably effect-clean at **compile** time, on branches no test executes. |
 
 ```bash
@@ -185,6 +186,55 @@ for the same code is the `sanitizers` job's, which runs with `detect_leaks=1`.
 and 65.4% (worst block), so a threshold would be noise rather than signal; what the build catches is
 a harness that has silently stopped compiling against the engine it measures. The fuzz run and the
 compile-only effects check are hard gates.
+
+## Proving a dependency bump is bit-identical
+
+`DEPENDENCY_POLICY.md` rule 2 makes bit-identical engine output the gate a JUCE bump must pass.
+`tests/dsp_dump.cpp` is the instrument, and it is **committed** — the two bumps that passed this rule
+before it existed each used a scratchpad tool that was then discarded, so the gate was permanent and
+the instrument was rebuilt from scratch every time.
+
+The tool prints one deterministic line per scenario: an FNV-1a hash over **every output byte** plus
+the engine's reported latency, across 32 scenarios (4 algorithms × 4 oversampling factors × M/S
+off/on) at 48 kHz / 512 samples, 120 blocks of fixed-seed noise then 120 of digital silence — the
+silence phase is what catches denormal and tail differences the noise phase hides.
+
+```bash
+# Build the SAME source against two JUCE checkouts, otherwise identical flags.
+for JUCE in /path/to/JUCE-old /path/to/JUCE-new; do
+  out="dump-$(basename "$JUCE")"
+  cmake -B "build-$out" -G Ninja -DCMAKE_BUILD_TYPE=Release \
+        -DANAMORPH_BUILD_DSPDUMP=ON -DANAMORPH_BUILD_TESTS=OFF \
+        -DANAMORPH_BUILD_STANDALONE=OFF -DANAMORPH_JUCE_PATH="$JUCE"
+  cmake --build "build-$out" --target AnamorphDspDump
+  "./build-$out/AnamorphDspDump_artefacts/Release/AnamorphDspDump" > "$out.txt"
+done
+diff dump-JUCE-old.txt dump-JUCE-new.txt && echo "bit-identical"
+```
+
+An empty diff is the proof. Any differing line names the exact scenario to investigate, and the
+latency column moving is its own finding — a reported-latency change is an AI-agent hard stop.
+
+**The tool checks itself before it reports, every run, not on request.** Two properties, because
+they fail independently: every scenario must be **repeatable** (the same scenario run twice hashes
+the same — otherwise every diff is noise) and all 32 must be **distinct from each other**
+(otherwise a diff is empty for the wrong reason). It exits **3** rather than printing a table it has
+not shown to be discriminating.
+
+That second check is not hypothetical. The first run of the original scratchpad tool left
+`algoAmount` at its `0` default, which is identity for the wet path, so the algorithms hashed the
+same as one another and the tool reported 32 matching hashes while never reaching the code under
+test. It was caught by a human noticing two rows that should differ did not. Setting `algoAmount`
+back to `0` in the committed harness today reproduces it exactly — 16 colliding scenario pairs,
+named, exit 3. **Fix the scenario set; never relax the check.**
+
+Two build choices are deliberate. It does **not** link `juce_recommended_lto_flags`, unlike
+`AnamorphBench` beside it: the bench must measure the shipped binary so it carries the shipped
+flags, while this tool must isolate one variable and LTO is a second one — link-time inlining can
+differ between two runs for reasons unrelated to the dependency under test. And nothing is stored:
+no committed golden hashes, because that would be the golden-master DSP baseline this repository
+deliberately rejects. The question is never "does this match a stored value" but "does build A match
+build B", and only a diff between two runs answers it.
 
 ## pluginval (VST3 + AU conformance)
 
@@ -411,7 +461,7 @@ rather than deleted, because a gap that was real and is now covered is worth bei
   hand does not leave a plug-in behind in your real `~/Library`. One thing this deliberately did
   **not** do, so the remaining scope is not overstated:
   - It uses **pluginval**, not Apple's `auval` (`auval -v aufx Anmr RTec`, matching the
-    `PLUGIN_CODE` / `PLUGIN_MANUFACTURER_CODE` in `CMakeLists.txt:229-230`). pluginval hosts the AU
+    `PLUGIN_CODE` / `PLUGIN_MANUFACTURER_CODE` in `CMakeLists.txt:233-234`). pluginval hosts the AU
     through JUCE's `AudioUnitPluginFormat`, which is the same resolution path a JUCE-hosted DAW
     takes and the same test set the other two platforms are held to; `auval` is Apple's own
     conformance tool and tests things pluginval does not. Adding it is a further step, not a
