@@ -100,6 +100,15 @@ None of these jobs is in a `needs:` chain, in either direction. A prose defect, 
 portability lint hit or a sanitizer finding fails the run without skipping a binary that is
 otherwise fine, and a red build does not skip them.
 
+**That is a statement about *this* workflow, and the release path is different.**
+`release.yml` calls `build.yml` as a single `build:` job and its `draft-release` job is
+`needs: [validate, build]`. A called workflow's aggregate result is what that edge observes, so on
+a release tag **every** job here — including `sanitizers`, `linux-lto-tests` and `realtime` — is
+release-blocking: a failure in any of them skips the draft release, even though the per-push
+artifacts were still uploaded. That follows `RELEASE_POLICY.md` §Artifacts ("the existing
+`build.yml` gates are reused unchanged") and is the intended behaviour; the absence of a `needs:`
+edge above must not be read as release non-blocking.
+
 ### What the non-packaging jobs are for
 
 - **docs** — structural Markdown lint over the whole document set (table integrity, relative links,
@@ -113,6 +122,13 @@ otherwise fine, and a red build does not skip them.
   `linux-clang` would not catch it. The tree is clean of it; the job is a regression guard.
   (b) the **evidence-anchor gate**: `docs/` carries 184 `file.cpp:NNN` citations, and an edit above
   one silently re-aims it. See [Evidence anchors](#evidence-anchors).
+  (c) the **static realtime lint** (`check-realtime.py`, ADR-0029): the bodies of audio-path
+  functions in `src/dsp` are scanned for the `REALTIME_AUDIO_POLICY` forbidden list. It is the third
+  realtime tier and the only one that reads code the DSP suite never executes — RTSan and the
+  allocation guard are runtime tools, and the suite covers 93.4 % of lines / 79.9 % of branches in
+  `src/dsp`. Function-scoped deliberately: `prepare()` is *required* to allocate, so a file-wide
+  token scan would flag the eight legitimate `setSize` calls in `AnamorphEngine.cpp` and be switched
+  off.
   Each of the two runs its own `--self-test` **first**, in this job, immediately before the lint it
   verifies — the same load-bearing move as `docs`, and required by `TESTING_POLICY.md` rule 4. The
   portability self-test is not the same check as `--compile-canary` in `linux-clang`: that one asks
@@ -186,6 +202,11 @@ otherwise fine, and a red build does not skip them.
   prove-it-can-fail discipline as the four lints' `--self-test`s. What is deliberately absent, and
   why, is ADR-0029: `-Wfunction-effects` measures 52 warnings from JUCE calls whose definitions the
   TU cannot see, and JUCE 9.0.1 carries no annotations of its own.
+  RTSan is the strongest of the three realtime tiers but the least portable — Clang, Linux/macOS
+  only. The **allocation guard** compiled into the DSP suite (Test 38) covers the shipped toolchains
+  it cannot reach, MSVC included, because `operator new` replacement is standard C++; it runs in
+  every job that builds that suite rather than in one of its own. The valgrind build compiles it out
+  (`-DANAMORPH_NO_ALLOC_GUARD`) and the test says so.
 - **linux-lto-tests** — both suites built and run with `-flto` on GCC Release (added 2026-08-18).
   The shipped plugin is the only target linking `juce::juce_recommended_lto_flags`, and the test
   targets deliberately do not (so the sanitizers job builds them cleanly and quickly) — which meant

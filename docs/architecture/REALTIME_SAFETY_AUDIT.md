@@ -41,15 +41,24 @@ This audit is no longer the only thing standing behind its own claims. `Anamorph
 carries `ANAMORPH_NONBLOCKING`, and the `realtime` CI job builds the DSP suite with
 `-fsanitize=realtime` and runs it on every push: any allocation, lock or blocking call reached from
 the engine's audio entry point aborts the job at the offending frame. Demonstrated both ways before
-it landed — the suite's whole 156-check matrix runs violation-free, and a seeded
+it landed — the suite's whole 159-check matrix runs violation-free, and a seeded
 `juce::AudioBuffer` allocation in `process` fails the run at exit 43, naming
 `AnamorphEngine.cpp:664` through `juce_HeapBlock.h:356`.
 
 **What that does and does not cover.** It is a runtime tool on Clang/Linux, so it sees exactly what
 the DSP suite executes and nothing the shipped MSVC/AppleClang binaries do differently. It does not
 retire the per-module reading below; it makes a regression in the *executed* paths fail loudly
-instead of surviving to a DAW. The cross-platform tier (an allocation guard compiled into the test
-binaries, plus a static lint) is scheduled in ADR-0029 §7 and is not yet implemented.
+instead of surviving to a DAW.
+
+**Two further tiers now cover what RTSan cannot** (both landed 2026-08-18, ADR-0029 §7):
+
+- the **allocation guard** compiled into the DSP suite (`tests/AllocationGuard.h`, Test 38) counts
+  `operator new` and malloc-family allocations while `process()` runs and asserts zero over 3,840
+  armed calls. `operator new` replacement is standard C++, so this tier reaches **MSVC**, which RTSan
+  never runs on. Both violation classes were seeded into the real `process()` and caught.
+- the **static lint** (`scripts/check-realtime.py`) scans audio-path bodies for the forbidden list
+  with no build at all, on every platform — the only tier that reads the branches the suite does not
+  execute (measured `src/dsp` coverage: 93.4 % of lines, 79.9 % of branches).
 
 ## Items needing a non-static check
 
@@ -68,7 +77,9 @@ mid-stream algorithm swaps, bypass crossfades and crossover drags — counted **
 new`/`malloc`-family calls on the audio path, *including through
 `juce::dsp::Oversampling::processSamplesUp/Down` at ×2/×4/×8*, while the same probe counted the
 expected `prepare()` allocations (102 `new` + 663 `malloc`-family) and caught both classes of
-seeded violation. The probe is session tooling, not a committed gate.
+seeded violation. **That probe is now a committed gate**: it became
+`tests/AllocationGuard.h` + Test 38, which runs the same counting over the same matrix in every job
+that builds the DSP suite (3,840 armed calls per run) rather than once in a session.
 
 **The TODO is now largely answered by a committed mechanism** (ADR-0029): the `realtime` job runs the
 DSP suite under RealtimeSanitizer on every push, and that suite exercises the oversampled path at
@@ -76,6 +87,7 @@ DSP suite under RealtimeSanitizer on every push, and that suite exercises the ov
 re-measured continuously rather than inferred, and any regression aborts the job at the JUCE frame
 that allocated. What keeps the TODO open rather than closed is scope, not doubt: RTSan runs on
 Clang/Linux only and sees only the paths the suite executes, so the same assertion for the shipped
-MSVC and AppleClang binaries still rests on construction. The other committed follow-up is
-`testWrapperProcessBlockAudioPath` (tests/state_tests.cpp — the wrapper path under the
-sanitizers/valgrind jobs).
+MSVC and AppleClang binaries still rests on construction — though the allocation guard's
+`operator new` half narrows even that, since it is standard C++ and compiles into the suite on
+every platform. The other committed follow-up is `testWrapperProcessBlockAudioPath`
+(tests/state_tests.cpp — the wrapper path under the sanitizers/valgrind jobs).

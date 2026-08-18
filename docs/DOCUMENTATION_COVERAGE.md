@@ -7,6 +7,8 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
+**allocation guard + static realtime lint completing ADR-0029's three tiers, and the
+release-blocking / THREAD_MODEL corrections** (first below), then the
 **realtime-enforcement strategy (ADR-0029): RealtimeSanitizer at the annotated audio entry point,
 its own CI lane behind a liveness canary, and the review-cleanup that preceded it** (first below),
 then the **engineering-capability audit: extended UBSan coverage, the LTO validation gap, the wrapper
@@ -39,6 +41,62 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**Allocation guard + static realtime lint (2026-08-18): ADR-0029's three tiers are complete. Plus
+two review corrections. No new ADR — the decision was already made and this is its implementation.**
+
+**The guard is the tier that reaches MSVC.** RTSan is the strongest realtime tool here and the least
+portable: Clang, Linux/macOS only, while the shipped Windows binary is MSVC's. `operator new`
+replacement is standard C++ on every conforming implementation, so `tests/AllocationGuard.h` +
+Test 38 count allocations while `process()` runs and assert zero over **3,840 armed calls** across
+the algorithm × oversampling × M/S matrix. The split between the two counters is load-bearing rather
+than cosmetic: measured on this project a single `prepare()` allocates **102** times through
+`operator new` and **663** through the malloc family, because JUCE's `AudioBuffer`/`HeapBlock` take
+the raw-malloc route — so an `operator new`-only guard would miss the allocation JUCE actually
+performs most. Both classes were seeded into the real `AnamorphEngine::process` and caught: a
+`juce::AudioBuffer` (`malloc=1`) and a `std::vector` growth (`new=1`), each failing the suite exit 1.
+
+**Two of ADR-0029's own predictions about the guard were wrong, and both are corrected in place.**
+(1) It anticipated a review-gated CMake change; none was needed — the guard is a header included by
+`dsp_tests.cpp`, and the one build that must exclude it does so through a compile flag on that job's
+existing configure line. (2) It attributed the valgrind hazard to `vgpreload` replacing the
+interposers. The real mechanism is that memcheck tracks which allocator produced each block and
+intercepts the `new`/`delete` and `malloc`/`free` families **separately**, so an `operator new`
+returning `std::malloc` memory reads as *"Mismatched free() / delete []"* on every later delete.
+That distinction mattered practically: a small standalone probe does **not** reproduce it and
+reported 0 errors, and only running the real JUCE-linked suite under the pipeline's exact invocation
+exposed it. The ASan hazard was confirmed as written.
+
+**Four configurations of the same suite, measured, because "no allocations" and "nothing was
+counting" print identically.** GCC Release and RTSan: both halves live, 0 allocations. ASan: malloc
+half compiled out (an exe-defined `malloc` fights ASan's allocator), `operator new` half still
+asserting. valgrind: the whole guard compiled out via `-DANAMORPH_NO_ALLOC_GUARD`, memcheck 0
+errors. Every inactive half is announced with a `::warning::` and the assertion skipped — never a
+silent pass.
+
+**The static lint earns its place by covering what neither runtime tier can.** RTSan and the guard
+are runtime tools: they see only the code the suite executes, and measured coverage of `src/dsp` is
+93.4 % of lines / 79.9 % of branches. `scripts/check-realtime.py` reads the branches the suite never
+takes, on every platform, with no build. It is **function-scoped**, and that is the whole design —
+the eight `setSize` calls in `AnamorphEngine.cpp` are all inside `prepare()`, where the policy
+*requires* allocation, so a file-wide token scan would flag legitimate code and be switched off.
+Comments and string literals are blanked before matching (both shapes exist in this tree: a
+"the new-cutoff bank" comment, and diagnostic strings). Self-test: 19 cases both directions; real
+tree: 23 files, **0 violations**; a `new` seeded into the real `process()` is reported at the exact
+line.
+
+**Review corrections in the same change set.** (1) `THREAD_MODEL.md` contradicted itself: its
+Threads-section evidence line had been corrected to `:672` / `:675-681` / `:295-309` while five
+other references still pointed at pre-growth locations (`:246-256` for the OpenGL gate, `:1151-1152`
+for `triggerRepaint`, `:616-622`, `:613,917-1003`, `:627-632`). All five re-derived from the source
+and verified line by line; the two table rows were path-qualified so the citation gate tracks them
+from here on. (2) The claim that the new lanes "cannot withhold an artifact" was **false for
+releases**: `release.yml` calls `build.yml` as one job and `draft-release` is
+`needs: [validate, build]`, so a called workflow's aggregate result is what that edge observes and
+any job here skips the draft release. The per-push artifact statement was true and is kept; the
+release scope is now stated beside it in `build.yml`, `CI_CD.md` and ADR-0029's Consequences. No
+workflow was redesigned — `RELEASE_POLICY.md` §Artifacts already says the `build.yml` gates are
+reused unchanged, so the behaviour was correct and only the wording was not.
 
 **Realtime-enforcement strategy, ADR-0029 (2026-08-18): the Priority-1 policy acquires its first
 mechanical detector. Plus the PR review cleanup that preceded it. `Accepted` on maintainer approval;

@@ -346,6 +346,12 @@ DELIBERATE_REAIMS = set([
     # costs the tool's opinion for that transition, so the hand-check it
     # substitutes for has to actually happen.
     #
+    # FOURTH recomputation (the allocation-guard / static-lint round): the
+    # release-blocking correction and the valgrind opt-out note grew the
+    # `sanitizers` job's comments by 35 lines above `windows:`, so everything
+    # from `windows:` down moved +35. Recomputed by `--fix` against the push
+    # predecessor and read back by hand at every boundary.
+    #
     # Third recomputation (the sanitizer-coverage round): the `sanitizers` job's
     # comments grew by 27 lines above `windows:` (the UBSan census + ASan
     # runtime-option rationale), so everything from `windows:` down moved +27.
@@ -355,9 +361,9 @@ DELIBERATE_REAIMS = set([
     # last round: section 9 fails a declaration whose string its document no
     # longer contains.
     ("docs/architecture/COMPATIBILITY_MATRIX.md",
-     ".github/workflows/build.yml:1509-1969"),
+     ".github/workflows/build.yml:1544-2004"),
     ("docs/architecture/COMPATIBILITY_MATRIX.md",
-     ".github/workflows/build.yml:2027-2272"),
+     ".github/workflows/build.yml:2062-2307"),
     # These two name the spellings the documents carry TODAY, and they did not
     # always: they were first written with the intermediate values of the commit
     # that introduced them, and the commit after it recomputed both anchors
@@ -369,8 +375,8 @@ DELIBERATE_REAIMS = set([
     # A declaration naming a spelling that exists in no document is dead weight
     # at best and a red default branch at worst, so section 9 of `--self-test`
     # now asserts every entry here is a string its document really contains.
-    ("docs/policies/RELEASE_POLICY.md", ".github/workflows/build.yml:546, 1151, 1573"),
-    ("docs/KNOWN_ISSUES.md", ".github/workflows/build.yml:1740-1742"),
+    ("docs/policies/RELEASE_POLICY.md", ".github/workflows/build.yml:562, 1186, 1608"),
+    ("docs/KNOWN_ISSUES.md", ".github/workflows/build.yml:1775-1777"),
     # THE ONE ANCHOR IN THE CLANG-22 ROUND THAT IS A RE-AIM RATHER THAN A
     # RE-ANCHOR, and the tool is right to refuse it. `DEPENDENCY_POLICY`'s Clang
     # row cites the `env:` block, whose lines both MOVED (+4) and CHANGED

@@ -13,6 +13,7 @@
 
 #include <juce_dsp/juce_dsp.h>
 #include <juce_data_structures/juce_data_structures.h>
+#include "AllocationGuard.h"
 #include "dsp/AnamorphEngine.h"
 #include "dsp/MidSide.h"
 #include "AbSlotIndex.h"
@@ -2889,6 +2890,97 @@ static void testMatchInjectRestore()
 }
 
 // ---------------------------------------------------------------------------
+static void testProcessIsAllocationFree()
+{
+    std::printf ("Test 38: the audio path allocates nothing (portable guard, ADR-0029)\n");
+    juce::ScopedNoDenormals noDenormals;
+
+    // PROVE THE COUNTERS WORK BEFORE TRUSTING A ZERO. Which halves are live is a
+    // property of the build, not of the engine (see AllocationGuard.h), so the
+    // guard is asked rather than assumed, and a dead half is announced.
+    const auto live = anamorph::testing::selfCheck();
+    std::printf ("  guard liveness: operator new %s, malloc family %s\n",
+                 live.newLive ? "LIVE" : "not live",
+                 live.mallocLive ? "LIVE" : "not live (expected under ASan)");
+    if (! live.newLive && ! live.mallocLive)
+    {
+        // The whole guard was compiled out -- the valgrind build does this
+        // deliberately (AllocationGuard.h explains why). Say so and assert
+        // nothing, rather than reporting a zero nothing was watching for.
+        std::printf ("::warning::the allocation guard is compiled out in this build "
+                     "(ANAMORPH_NO_ALLOC_GUARD) -- the audio-path allocation invariant is "
+                     "NOT asserted in this run. Every other job asserts it.\n");
+        return;
+    }
+    check (live.newLive, "allocation guard: the operator-new counter is live");
+    if (! live.mallocLive)
+        std::printf ("::warning::the malloc half of the allocation guard is not live in this "
+                     "build -- the raw-malloc allocation route is NOT asserted in this run.\n");
+
+    const double sr = 48000.0;
+    const int block = 256;
+
+    anamorph::AnamorphEngine engine;
+    engine.prepare (sr, block);
+
+    using namespace anamorph;
+    const Algorithm algos[] = { Algorithm::Haas, Algorithm::Velvet, Algorithm::Chorus, Algorithm::DimensionD };
+    const OversampleFactor os[] = { OversampleFactor::Off, OversampleFactor::x2, OversampleFactor::x4, OversampleFactor::x8 };
+
+    // The buffer is made ONCE, outside every armed region: constructing an
+    // AudioBuffer allocates, and that allocation belongs to the harness rather
+    // than to the engine (Test 2 builds one per block, which is fine there and
+    // would be counted here).
+    juce::AudioBuffer<float> buf (2, block);
+
+    long worstNew = 0, worstMalloc = 0;
+    int armedCalls = 0;
+
+    for (auto a : algos)
+        for (auto o : os)
+            for (int variant = 0; variant < 2; ++variant)
+            {
+                EngineParameters p;
+                p.algorithm = a;
+                p.oversample = o;
+                p.driveDb = 8.0f;
+                p.width = 1.6f;
+                p.mix = 0.8f;
+                p.msMode = (variant == 0);
+                p.mbEnable = true;
+                p.monoMakerEnable = true;
+                p.autoGainMatch = true;
+                engine.setParameters (p);
+                engine.reset();
+
+                for (int phase = 0; phase < 2; ++phase)
+                    for (int n = 0; n < 60; ++n)
+                    {
+                        if (phase == 0) fillNoise (buf, (unsigned) (n * 7 + 1));
+                        else            buf.clear();
+
+                        // setParameters is on the audio thread every block in the
+                        // real wrapper, so it is inside the armed region too.
+                        {
+                            anamorph::testing::resetCounts();
+                            anamorph::testing::Armed arm;
+                            engine.setParameters (p);
+                            engine.process (buf);
+                        }
+                        ++armedCalls;
+                        worstNew    = juce::jmax (worstNew,    anamorph::testing::newCount.load());
+                        worstMalloc = juce::jmax (worstMalloc, anamorph::testing::mallocCount.load());
+                    }
+            }
+
+    std::printf ("  %d armed process() calls; worst per call: new=%ld malloc=%ld\n",
+                 armedCalls, worstNew, worstMalloc);
+    check (worstNew == 0,    "no operator-new allocation on the audio path");
+    if (live.mallocLive)
+        check (worstMalloc == 0, "no malloc-family allocation on the audio path");
+}
+
+// ---------------------------------------------------------------------------
 int main()
 {
     std::printf ("=== Anamorph DSP self-tests ===\n");
@@ -2942,6 +3034,7 @@ int main()
     testMonoSumInputConditioning();
     testMsSoloInputIsolation();
     testMatchInjectRestore();
+    testProcessIsAllocationFree();
     testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);

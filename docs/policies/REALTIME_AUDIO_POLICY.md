@@ -44,6 +44,16 @@ Evidence [Verified]:
   Its bounds are stated in the ADR and are real: it is Clang/Linux+macOS only, it sees only what the
   suite executes, and the shipped Windows and macOS binaries are built by compilers it never runs on.
   A **liveness canary** in the same job proves the lane can fail before its silence is trusted.
+- **An allocation guard compiled into the DSP suite** (`tests/AllocationGuard.h`, Test 38) counts
+  `operator new` and malloc-family allocations while `process()` runs and asserts zero across the
+  whole algorithm × oversampling matrix. It exists because RTSan cannot reach every shipped
+  toolchain: `operator new` replacement is standard C++ and therefore works under **MSVC**, where
+  RTSan does not run. It proves its counters are live before reporting a zero, and any configuration
+  in which a half is inactive says so with a `::warning::` rather than passing silently.
+- **A static lint over audio-path bodies** (`scripts/check-realtime.py`, in `source-lint` with its
+  own `--self-test`). Both runtime tiers see only the code the suite executes; this one reads the
+  branches it never takes, on every platform, with no build. It is function-scoped — `prepare()` is
+  required to allocate, so only audio-path bodies are scanned.
 - Any change touching an audio path is reviewed against this list.
 - Buffer sizing must happen in `prepare()`. If a feature needs more scratch, grow it in
   `prepare()`, never in `process()`.

@@ -15,7 +15,7 @@ exits non-zero on any failed `check` or missing binary. Evidence [Verified]: scr
 
 ### What the tests cover
 
-`tests/dsp_tests.cpp` has **36 DSP tests** using a `check(cond, "what")` harness, covering: MS
+`tests/dsp_tests.cpp` has **37 DSP tests** using a `check(cond, "what")` harness, covering: MS
 round-trip (bit-exact), transparent default, true-bypass null + latency match, Mono Maker
 (post-Mix), Multiband mono-compat, Solo band selectivity + transparency, Level Match
 (unity/no-ratchet/silence-freeze/mix-coupling/multiband-unity), crossover automation safety,
@@ -72,7 +72,17 @@ content stays silent even at full Amount because the solo runs BEFORE the widene
 Level-Match injection consume paths (`testMatchInjectRestore`, Test 37, feedback #16/#23: both
 the un-ducked defensive consume and the forced-duck silent-bottom consume adopt the injected
 per-A/B-slot trim as a SEED — measured ≤ −4 dB displayed from a −6 dB injection — after which
-MEASURE re-converges as the design intends, with no level slam). It
+MEASURE re-converges as the design intends, with no level slam); and the audio-path allocation
+guard (`testProcessIsAllocationFree`, Test 38, ADR-0029): `tests/AllocationGuard.h` replaces
+`operator new`/`delete` and interposes the malloc family, arms the counters **only** around
+`process()` (allocation in `prepare()` is required by policy), and asserts zero across the same
+algorithm × oversampling × M/S matrix — 3,840 armed calls. It is the tier that reaches **MSVC**,
+where RealtimeSanitizer does not run, since `operator new` replacement is standard C++. The test
+**self-checks its counters first** and discloses any half that is not live: the malloc half is
+compiled out under ASan (an executable-defined `malloc` fights ASan's allocator) and the whole
+guard is compiled out for the valgrind build (`-DANAMORPH_NO_ALLOC_GUARD` — memcheck reports
+`Mismatched free() / delete []` when `operator new` hands back `std::malloc` memory), each with a
+`::warning::` rather than a silent pass. It
 additionally carries **one state-restoration robustness guard**,
 `testAbActiveClampOnCorruptState` — it drives a corrupted `<AB active="…">` blob through the same
 read+clamp the processor uses (`anamorph::clampAbSlotIndex`, `src/AbSlotIndex.h`) and asserts an
@@ -213,7 +223,7 @@ finding in one never skips a binary that is otherwise fine:
 | Job | Run it locally as |
 |---|---|
 | `docs` | `python3 scripts/check-docs.py --self-test && python3 scripts/check-docs.py` |
-| `source-lint` | `python3 scripts/check-portability.py --self-test` then the lint, then `python3 scripts/check-citations.py --self-test` then `--check --base <rev>` |
+| `source-lint` | `python3 scripts/check-portability.py --self-test` then the lint, `python3 scripts/check-realtime.py --self-test` then that lint, then `python3 scripts/check-citations.py --self-test` then `--check --base <rev>` |
 | `linux-clang` | see `CI_CD.md` §Reproducing CI locally (own `build-clang` tree) |
 | `sanitizers` | ASan+UBSan over both suites, then valgrind memcheck over both suites (the valgrind step sets `ANAMORPH_TESTS_NO_FTZ=1` — see below) |
 | `realtime` | `cmake -B build-rtsan -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C(XX)_COMPILER=clang(++)-<major> -DCMAKE_C(XX)_FLAGS="-fsanitize=realtime -fno-omit-frame-pointer" -DCMAKE_EXE_LINKER_FLAGS=-fsanitize=realtime`, build `AnamorphTests`, run it with **no `RTSAN_OPTIONS`** (ADR-0029 — `halt_on_error=false` would make it report and pass) |

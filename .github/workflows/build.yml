@@ -432,6 +432,22 @@ jobs:
       - name: Lint source portability (JUCE SIMD overload hazard)
         run: python3 scripts/check-portability.py
 
+      # THE STATIC HALF OF THE REALTIME STRATEGY (ADR-0029). RTSan and the
+      # allocation guard both enforce REALTIME_AUDIO_POLICY at RUNTIME and are
+      # strictly better where they apply -- they follow real calls through JUCE
+      # and through templates. They share one blind spot: a runtime tool sees
+      # only the code the suite EXECUTES, and the DSP suite covers 93.4% of
+      # lines / 79.9% of branches in `src/dsp`. This lint reads the branches the
+      # suite never takes, costs no build, and runs on every platform.
+      # Function-scoped on purpose: `prepare()` is REQUIRED to allocate, so a
+      # file-wide token scan would flag the eight legitimate `setSize` calls in
+      # `AnamorphEngine.cpp` and get switched off.
+      - name: Realtime lint self-test (the lint still fires, and still stays quiet)
+        run: python3 scripts/check-realtime.py --self-test
+
+      - name: Lint audio-path bodies (REALTIME_AUDIO_POLICY forbidden constructs)
+        run: python3 scripts/check-realtime.py
+
       # Same rule, and this checker needs it MOST: the other three only report,
       # while this one REWRITES governed documents under `--fix`. A defect here
       # does not merely fail to catch drift — it replaces a correct anchor with a
@@ -976,9 +992,18 @@ jobs:
   # halt_on_error=1 on UBSan so the first violation fails the job rather than
   # scrolling past.
   #
-  # NOT in any `needs:` chain and not a dependency of anything: it is slower than
-  # the build jobs and a sanitizer finding should not withhold a beta artifact
-  # that the behavioural gates passed.
+  # NOT in any `needs:` chain and not a dependency of anything INSIDE this
+  # workflow: it is slower than the build jobs, and a sanitizer finding should
+  # not withhold a per-push beta artifact that the behavioural gates passed --
+  # the packaging jobs upload theirs regardless of what happens here.
+  #
+  # THAT IS A STATEMENT ABOUT THIS WORKFLOW ONLY, and the release path differs.
+  # `release.yml` calls this whole workflow as ONE job (`build:`), and
+  # `draft-release` is `needs: [validate, build]` -- so a called workflow's
+  # aggregate result is what that edge sees, and a failure HERE does skip the
+  # draft release. That is the intended reading of RELEASE_POLICY's "the
+  # existing `build.yml` gates are reused unchanged", not an accident; do not
+  # infer release non-blocking from the absence of a `needs:` edge here.
   # -------------------------------------------------------------------------
   sanitizers:
     runs-on: ubuntu-latest
@@ -1103,9 +1128,19 @@ jobs:
       # pipeline (see the MemorySanitizer note above), so its exit code is the
       # gate: --error-exitcode makes a reported error fail the job, which is not
       # valgrind's default.
+      # `-DANAMORPH_NO_ALLOC_GUARD` compiles the audio-path allocation guard out of
+      # THIS build only. memcheck tracks which allocator produced each block and
+      # intercepts the new/delete and malloc/free families separately, so the
+      # guard's `operator new` -> `std::malloc` pairing reads as "Mismatched
+      # free() / delete / delete []" on every later delete -- measured against
+      # this exact suite, where it fails the step outright. The guard's own test
+      # detects that it is absent and says so with a `::warning::` instead of
+      # reporting a zero nothing was watching for; every other Linux job asserts
+      # the invariant normally. (ADR-0029 section 7.)
       - name: Configure + build both suites (unsanitized, for valgrind)
         run: |
           cmake -B build-vg -G Ninja -DCMAKE_BUILD_TYPE=Release -DANAMORPH_BUILD_STANDALONE=OFF \
+            -DCMAKE_CXX_FLAGS="-DANAMORPH_NO_ALLOC_GUARD" \
             -DCMAKE_C_COMPILER_LAUNCHER=${{ env.ANAMORPH_COMPILER_LAUNCHER }} -DCMAKE_CXX_COMPILER_LAUNCHER=${{ env.ANAMORPH_COMPILER_LAUNCHER }}
           cmake --build build-vg --target AnamorphTests AnamorphStateTests
 
@@ -2294,9 +2329,11 @@ jobs:
   # -- plain `-flto` runs its LTRANS stage serially, which is also true of the
   # shipped plugin link in the `linux` job).
   #
-  # NOT in any `needs:` chain, same as `sanitizers` and for the same reason: a
-  # validation finding should not withhold a beta artifact the behavioural
-  # gates passed.
+  # NOT in any `needs:` chain, same as `sanitizers` and with the same scope: a
+  # validation finding does not withhold the per-push beta artifact the
+  # behavioural gates passed. On the RELEASE path it does block, because
+  # `release.yml` depends on this workflow's aggregate result -- see the
+  # `sanitizers` comment above for the full topology.
   linux-lto-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -2387,7 +2424,9 @@ jobs:
   # (`-Wfunction-effects`, measured at 52 warnings from opaque JUCE calls) and
   # what comes next (the allocation guard, for the platforms RTSan cannot reach).
   #
-  # NOT in any `needs:` chain, matching `sanitizers` and `linux-lto-tests`.
+  # NOT in any `needs:` chain, matching `sanitizers` and `linux-lto-tests` --
+  # and, like them, still release-blocking through `release.yml`'s aggregate
+  # dependency on this workflow (see the `sanitizers` comment for the topology).
   realtime:
     runs-on: ubuntu-latest
     timeout-minutes: 30

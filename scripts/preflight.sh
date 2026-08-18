@@ -4,7 +4,7 @@
 #  command, before a push spends a CI round trip discovering the same thing.
 #
 #  WHAT THIS RUNS, in CI's own order (docs/procedures/CI_CD.md §Reproducing CI
-#  locally): the four lints with their --self-tests first (seconds, no build,
+#  locally): the five lints with their --self-tests first (seconds, no build,
 #  historically the most-tripped gates), then the built test suites when a
 #  built tree exists.
 #
@@ -33,6 +33,8 @@ python3 scripts/check-docs.py --self-test
 python3 scripts/check-docs.py
 python3 scripts/check-portability.py --self-test
 python3 scripts/check-portability.py
+python3 scripts/check-realtime.py --self-test
+python3 scripts/check-realtime.py
 python3 scripts/check-clang-warnings.py --self-test
 echo "note: the FULL clang-warning gate needs a clang build log (CI: linux-clang);"
 echo "      only its self-test ran here."

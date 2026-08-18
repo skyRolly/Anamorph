@@ -176,15 +176,39 @@ Their value is precisely where RTSan does not reach: the `operator new` half is 
 replaceable and therefore works under **MSVC**, and the static lint runs on every platform with no
 build at all.
 
-**They are deliberately NOT implemented in this change.** Both need decisions this ADR does not
-settle — the guard requires a CMake target-level change (a compile definition on `AnamorphTests`,
-which is a review-gated Build System change under `ARCHITECTURE_REVIEW_GATE.md`) and carries two
-demonstrated CI hazards that must be handled in its own change: an executable-defined `malloc`
-**segfaults** under ASan (so the malloc half must be preprocessed out there), and valgrind's
-`vgpreload` silently replaces the interposers, which would make the guard both dead and red in the
-`sanitizers` job's valgrind step. Landing them beside RTSan would mean three enforcement mechanisms
-arriving at once, each unproven in CI. **They are the next step of this strategy, not a rejected
-alternative** (§10).
+**Both were implemented in the change set immediately following this ADR** (2026-08-18, maintainer
+approval). The plan above survived contact with two corrections worth recording, because both
+change what a future reader should believe:
+
+- **No CMake change was needed after all.** The guard is a header included by `tests/dsp_tests.cpp`
+  (`tests/AllocationGuard.h`); the one build that must exclude it does so through a compile flag on
+  that job's existing configure line. So the review-gated Build System change this section
+  anticipated never arose.
+- **The valgrind hazard is real but was mischaracterised here.** It is not `vgpreload` replacing the
+  interposers: memcheck tracks which allocator produced each block and intercepts the `new`/`delete`
+  and `malloc`/`free` families **separately**, so an `operator new` that returns `std::malloc` memory
+  is reported as *"Mismatched free() / delete / delete []"* on every later delete. Measured against
+  the real JUCE-linked suite under the pipeline's exact invocation, where it fails the step. A small
+  standalone probe does **not** reproduce it — which is how the earlier characterisation arose, and
+  is why the note now names the binary that does. The resolution is the same either way: that build
+  compiles the guard out (`-DANAMORPH_NO_ALLOC_GUARD`) and the test discloses and skips.
+
+The ASan hazard was confirmed as written: an executable-defined `malloc` fights ASan's allocator, so
+the malloc half is preprocessed out there while the `operator new` half keeps asserting.
+
+**Measured coverage of the shipped guard**, across four configurations of the same suite:
+
+| configuration | `operator new` | malloc family | outcome |
+|---|---|---|---|
+| GCC Release (`linux`, `merge-check`) | live | live | 3,840 armed calls, 0 allocations |
+| Clang + RTSan (`realtime`) | live | live | 3,840 armed calls, 0 allocations |
+| Clang + ASan/UBSan (`sanitizers`) | live | compiled out, disclosed | 3,840 armed calls, 0 allocations |
+| GCC + valgrind (`sanitizers`) | compiled out, disclosed | compiled out | memcheck 0 errors |
+
+Both violation classes were seeded into the real `AnamorphEngine::process` and caught: a
+`juce::AudioBuffer` (the raw-malloc route JUCE actually uses — `worst per call: malloc=1`) and a
+`std::vector` growth (the `operator new` route, the half that works on MSVC — `new=1`). Each failed
+the suite with exit 1.
 
 ### 8. How the strategy evolves
 
@@ -213,9 +237,13 @@ already performs for its four lints.
 **In this change:** `RealtimeAnnotations.h`, the annotation on `AnamorphEngine::process`, the
 `realtime` CI job with its canary, and the documentation sync.
 
-**Explicitly the next step, in its own change:** the allocation guard and the static realtime lint of
-§7 — the guard first (it has the demonstrated evidence and the wider platform reach), behind the
-Build System review its CMake change requires.
+**Delivered in the immediately following change (2026-08-18):** the allocation guard
+(`tests/AllocationGuard.h` + `testProcessIsAllocationFree`) and the static realtime lint
+(`scripts/check-realtime.py`, in `source-lint` with its own `--self-test`), completing the three
+tiers. The static lint's role is narrow and deliberately so: it is the only tier that reads code the
+suite never executes (measured coverage of `src/dsp` is 93.4 % of lines / 79.9 % of branches), and it
+is function-scoped because `prepare()` is required to allocate — a file-wide token scan would flag
+the eight legitimate `setSize` calls in `AnamorphEngine.cpp` and be switched off.
 
 ## Consequences
 
@@ -226,8 +254,13 @@ Build System review its CMake change requires.
   it, because the interposition probe that produced that number is not a committed gate.
 - The repository accepts a Clang-only, Linux/macOS-only runtime gate as the first tier, with the
   cross-platform tier scheduled rather than shipped. That asymmetry is deliberate and is §7.
-- One more CI job on every push. It is not in any `needs:` chain, matching `sanitizers` and
-  `linux-lto-tests` — a realtime finding should not withhold a binary the behavioural gates passed.
+- One more CI job on every push. It is not in any `needs:` chain inside `build.yml`, matching
+  `sanitizers` and `linux-lto-tests` — a realtime finding does not withhold the per-push binary the
+  behavioural gates passed. **On the release path it does block**, and that is correct rather than
+  incidental: `release.yml` calls `build.yml` as one job and `draft-release` depends on its
+  aggregate result, which is what `RELEASE_POLICY.md` §Artifacts means by reusing the `build.yml`
+  gates unchanged. (Corrected 2026-08-18 from the original wording, which stated the non-blocking
+  half without its release-path scope; the decision is unchanged.)
 - No change to any shipped byte, any DSP behaviour, or any policy text. This ADR **amends no Policy**;
   it implements enforcement for one that already exists.
 
