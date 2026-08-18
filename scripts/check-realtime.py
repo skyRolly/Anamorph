@@ -21,17 +21,17 @@ suite never takes.
 
 WHY IT IS FUNCTION-SCOPED, which is the whole design
 ====================================================
-A file-wide token scan over `src/dsp` is unusable, and measurably so: the eight
+A file-wide token scan over `src` is unusable, and measurably so: the eight
 `setSize` calls in `AnamorphEngine.cpp` are all inside `prepare()`, where
 allocation is not merely allowed but REQUIRED (the policy's own wording: "Buffer
 sizing must happen in prepare()").  A lint that flags them is a lint that gets
 switched off.
 
-So the scan is bounded to the bodies of the functions that actually run on the
-audio thread, and `prepare`/`reset`-class functions are excluded by name.  Body
-extents come from brace matching after comments and string literals are removed,
-so a `//` mentioning "new" or a diagnostic string containing "malloc" cannot fire
--- both are real shapes in this tree.
+So the scan is bounded to the bodies of the functions the policy names, and
+`prepare` is out of scope simply by not being one of them -- there is no separate
+exemption list to drift.  Body extents come from brace matching after comments and
+string literals are removed, so a `//` mentioning "new" or a diagnostic string
+containing "malloc" cannot fire -- both are real shapes in this tree.
 
 WHAT IT DOES NOT CLAIM
 ======================
@@ -54,15 +54,29 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SCAN_DIRS = ["src/dsp"]
+# The policy binds `processBlock` / `AnamorphEngine::process` and every DSP
+# module's `process`/`reset` -- and `AnamorphAudioProcessor::processBlock` lives
+# in `src/`, not `src/dsp/`. Scanning `src` rather than `src/dsp` is what makes
+# the lint's scope the POLICY's scope; the function filter below is what keeps
+# the rest of `src` (editor, presets, parameters) out of the findings.
+SCAN_DIRS = ["src"]
 
-# Audio-path entry points. A function whose name matches one of these, and which
-# is not in EXEMPT_NAMES, has its body scanned.
+# THE POLICY-BOUND FUNCTION NAMES, and this list IS the scope: a function whose
+# definition matches one of these has its body scanned, and nothing else does.
+#
+# `reset` and `softReset` are here because REALTIME_AUDIO_POLICY binds "every DSP
+# module's `process`/`reset`" -- the engine calls `reset()` at the silent bottom
+# of a switch duck and on the NaN self-heal, and `LoudnessMatch::softReset()` from
+# `process` itself (AnamorphEngine.cpp:701), so all of them run on the audio
+# thread. REALTIME_SAFETY_AUDIT audits them for the same reason.
+#
+# `prepare` is NOT here, and that is the whole mechanism by which allocation
+# stays legal there -- the policy requires buffer sizing to happen in `prepare()`.
+# There is deliberately no separate exemption list: a name that is not in this
+# regex is never scanned, so a second list could only drift out of agreement with
+# the first. (An earlier revision carried one; every entry in it was unreachable.)
 AUDIO_FN = re.compile(r"\b(process|processBlock|processSample|applyInputConditioning|"
-                      r"processNonlinearRegion|pushBlock|publish)\b")
-
-# Allocation is required in these; REALTIME_AUDIO_POLICY says so explicitly.
-EXEMPT_NAMES = {"prepare", "reset", "initProcessing", "setSampleRate", "softReset"}
+                      r"processNonlinearRegion|pushBlock|publish|reset|softReset)\b")
 
 # (regex, human-readable violation class). Kept deliberately small: every entry
 # is a construct from the policy's forbidden list that can be written literally.
@@ -178,8 +192,6 @@ def scan_text(text: str, path: str):
     raw_lines = text.splitlines()
     findings = []
     for name, start, end in audio_bodies(clean):
-        if name in EXEMPT_NAMES:
-            continue
         segment = clean[start:end]
         base_line = clean.count("\n", 0, start) + 1
         for pattern, label in FORBIDDEN:
@@ -232,13 +244,28 @@ MUST_FIRE = [
      "void Engine::process (Buf& b) noexcept { std::thread t (work); }"),
     ("resize in a nested block of process",
      "void Engine::process (Buf& b) noexcept { if (x) { for (int i=0;i<n;++i) { v.resize (i); } } }"),
+    # The policy binds every DSP module's `reset` as well as its `process`, and
+    # an earlier revision of this lint exempted `reset` by name -- these two are
+    # the cases that would have caught that.
+    ("allocation in a module reset",
+     "void HaasProcessor::reset() noexcept { bufL.resize (n); }"),
+    ("lock in a module reset",
+     "void MonoMaker::reset() noexcept { std::lock_guard<std::mutex> g (m); }"),
+    ("allocation in LoudnessMatch::softReset (called from process)",
+     "void LoudnessMatch::softReset() noexcept { scratch = new double[8]; }"),
+    # `AnamorphAudioProcessor::processBlock` is the FIRST function the policy
+    # names and it lives in `src/`, not `src/dsp/`.
+    ("allocation in the wrapper processBlock",
+     "void AnamorphAudioProcessor::processBlock (juce::AudioBuffer<float>& b, juce::MidiBuffer&) { v.push_back (1.0f); }"),
 ]
 
 MUST_STAY_SILENT = [
     ("allocation in prepare is required by the policy",
      "void Engine::prepare (double sr, int n) { scratch.setSize (2, n); buf.resize (n); }"),
-    ("allocation in reset is permitted",
-     "void Engine::reset() { v.resize (8); }"),
+    ("a .reset() CALL inside prepare is not a reset definition",
+     "void Engine::prepare (double sr, int n) { widthSmooth.reset (sr, 0.05); os2->reset(); buf.resize (n); }"),
+    ("a ->reset() call from an audio body is a call, not a scanned definition",
+     "void Engine::process (Buf& b) noexcept { if (os2) os2->reset(); }"),
     ("the word new inside a comment in process",
      "void Engine::process (Buf& b) noexcept { /* the new-cutoff bank takes over */ active = 1 - active; }"),
     ("the word malloc inside a string literal in process",

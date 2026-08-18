@@ -2899,20 +2899,25 @@ static void testProcessIsAllocationFree()
     // property of the build, not of the engine (see AllocationGuard.h), so the
     // guard is asked rather than assumed, and a dead half is announced.
     const auto live = anamorph::testing::selfCheck();
-    std::printf ("  guard liveness: operator new %s, malloc family %s\n",
+    std::printf ("  guard liveness: operator new %s, aligned new %s, malloc family %s\n",
                  live.newLive ? "LIVE" : "not live",
+                 live.alignedNewLive ? "LIVE" : "not live",
                  live.mallocLive ? "LIVE" : "not live (expected under ASan)");
     if (! live.newLive && ! live.mallocLive)
     {
-        // The whole guard was compiled out -- the valgrind build does this
-        // deliberately (AllocationGuard.h explains why). Say so and assert
-        // nothing, rather than reporting a zero nothing was watching for.
+        // The whole guard was compiled out. Two builds do that deliberately --
+        // valgrind by flag, RealtimeSanitizer by self-detection, both explained
+        // in AllocationGuard.h. Say so and assert nothing, rather than reporting
+        // a zero nothing was watching for. Under RTSan the stronger detector is
+        // running in this same binary and covers the same violation class.
         std::printf ("::warning::the allocation guard is compiled out in this build "
-                     "(ANAMORPH_NO_ALLOC_GUARD) -- the audio-path allocation invariant is "
-                     "NOT asserted in this run. Every other job asserts it.\n");
+                     "(valgrind's -DANAMORPH_NO_ALLOC_GUARD, or RealtimeSanitizer, which "
+                     "the guard would otherwise blind) -- the audio-path allocation "
+                     "invariant is NOT asserted by Test 38 in this run.\n");
         return;
     }
     check (live.newLive, "allocation guard: the operator-new counter is live");
+    check (live.alignedNewLive, "allocation guard: the over-aligned new counter is live");
     if (! live.mallocLive)
         std::printf ("::warning::the malloc half of the allocation guard is not live in this "
                      "build -- the raw-malloc allocation route is NOT asserted in this run.\n");

@@ -49,11 +49,14 @@ Evidence [Verified]:
   whole algorithm × oversampling matrix. It exists because RTSan cannot reach every shipped
   toolchain: `operator new` replacement is standard C++ and therefore works under **MSVC**, where
   RTSan does not run. It proves its counters are live before reporting a zero, and any configuration
-  in which a half is inactive says so with a `::warning::` rather than passing silently.
+  in which a half is inactive says so with a `::warning::` rather than passing silently. It stands
+  down entirely under RealtimeSanitizer, where its interposers would otherwise shadow the
+  sanitizer's own allocation interceptors — RTSan is the stronger detector in that build.
 - **A static lint over audio-path bodies** (`scripts/check-realtime.py`, in `source-lint` with its
   own `--self-test`). Both runtime tiers see only the code the suite executes; this one reads the
-  branches it never takes, on every platform, with no build. It is function-scoped — `prepare()` is
-  required to allocate, so only audio-path bodies are scanned.
+  branches it never takes, on every platform, with no build. Its scope is this rule's scope: the
+  wrapper `processBlock`, `AnamorphEngine::process`, and every module's `reset`/`softReset`.
+  It is function-scoped — `prepare()` is required to allocate, so only the bound bodies are scanned.
 - Any change touching an audio path is reviewed against this list.
 - Buffer sizing must happen in `prepare()`. If a feature needs more scratch, grow it in
   `prepare()`, never in `process()`.

@@ -7,6 +7,8 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
+**review round that found the allocation guard was blinding the RealtimeSanitizer lane** (first
+below), then the
 **allocation guard + static realtime lint completing ADR-0029's three tiers, and the
 release-blocking / THREAD_MODEL corrections** (first below), then the
 **realtime-enforcement strategy (ADR-0029): RealtimeSanitizer at the annotated audio entry point,
@@ -41,6 +43,53 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**Review round (2026-08-18): the allocation guard was blinding the RealtimeSanitizer lane, and the
+static lint's scope was narrower than the policy it enforces. Six confirmed findings, maintainer
+approved; no new ADR — ADR-0029's evidence is corrected in place.**
+
+**The most serious finding is that one new tier disabled another.** RTSan detects allocations by
+intercepting the allocation entry points, and a definition in the program's own object files takes
+precedence over the interceptor in the sanitizer runtime archive. The guard's `malloc` — and its
+`operator new`, which routes through `std::malloc` — therefore reached glibc without ever passing
+RTSan. Measured on the real suite with one escaping `malloc` seeded into `AnamorphEngine::process`:
+guard compiled in → **RTSan reports 0, exit 1** (only the guard's own assertion); guard compiled out
+→ RTSan reports the malloc at `AnamorphEngine.cpp:668`, **exit 43**. The liveness canary could not
+have caught it, being compiled standalone without the guard: it kept proving the lane was live while
+the binary it vouches for had lost its allocation detection.
+
+Two measurement traps had to be cleared to see this at all, both the same class ADR-0029 §5 already
+documents. A first seeded `juce::AudioBuffer` looked like a successful detection, but the report
+named **`free`**, not `malloc` — the guard leaves `free` to RTSan, so the *deallocation* was caught
+while the allocation was invisible; only a seed that allocates without freeing inside `process`
+isolates the question. And a first "escaping" seed was **elided by the optimizer** (`objdump`: zero
+`malloc` call sites in the engine object), so it proved nothing until an `asm volatile` barrier kept
+it. The fix is `__has_feature(realtime_sanitizer)` in the guard itself rather than a flag on the
+job, so a local `-fsanitize=realtime` build cannot reintroduce the conflict by forgetting it.
+
+**The static lint enforced a narrower scope than the policy it cites.** The Policy binds
+"`processBlock` / `AnamorphEngine::process` and every DSP module's `process`/`reset`", but the lint
+scanned `src/dsp` only — omitting `AnamorphAudioProcessor::processBlock`, the first function named —
+and listed `reset` in an exemption set. That exemption was also *dead code*: the extractor only
+yields functions matching its audio-path regex, which never contained `reset`, so the eight module
+reset bodies were never scanned while a self-test case asserted that allocation there was permitted.
+Scope is now the Policy's scope (`src`, plus `reset`/`softReset` — the latter is called from
+`process` at `AnamorphEngine.cpp:701`), the exemption list is gone rather than fixed, and coverage
+went from **7 scanned bodies to 35**. The tree stays at 0 violations; seeded violations in a module
+`reset` and in the wrapper `processBlock` are both caught at the exact line.
+
+**Two smaller corrections.** The guard gained the **C++17 over-aligned** `operator new`/`delete`
+family, paired to `aligned_alloc`/`std::free` or `_aligned_malloc`/`_aligned_free` — the route that
+matters most on MSVC and macOS, where the malloc half never compiles in and JUCE's SIMD types are
+over-aligned. Its self-check probes it separately (a live plain `operator new` does not imply a live
+aligned one) and needed the same escape-the-optimizer treatment: `new`/`delete` of a non-escaping
+object is elidable under C++14 and was being elided at `-O3`, reporting the half dead while it
+worked. And the header's configuration table said the guard was live under valgrind while the
+paragraph below it and the workflow both said the opposite; the table was the stale half.
+
+**Counts re-derived from the binaries rather than from the review:** 37 DSP tests + the A/B guard,
+**160** checks (the aligned-liveness assertion is the 160th), 13 state tests, 900 checks. The RTSan
+build reports **156** — Test 38's assertions stand down there by design, which the run discloses.
 
 **Allocation guard + static realtime lint (2026-08-18): ADR-0029's three tiers are complete. Plus
 two review corrections. No new ADR — the decision was already made and this is its implementation.**
@@ -154,7 +203,7 @@ once, two unproven in CI, is how a gate gets switched off.
 acting: the CI job inventories in `CI_CD.md`, `TESTING.md` and `REPOSITORY_MAP.md` still said *four*
 non-packaging jobs (now **six**, with the matrix/table rows and the ccache-lineage note synced); the
 test counts in `REPOSITORY_MAP.md`, `RELEASE_HARDENING_PLAN.md` and `HANDOVER.md` still read
-33/12/140/894 (now **36/13/156/900**, taken from the registrations in `main()` and a real run);
+33/12/140/894 (**36/13/156/900** at that point in this change set, taken from the registrations in `main()` and a real run; Tests 38 and the aligned-guard check landed later in the same PR — the final figures are in the newest entry above);
 and the wrapper test's RMS diagnostic said "240 blocks" while the accumulator only runs in the
 120-block noise phase — corrected via a named `blocksPerPhase` constant so the literal cannot drift
 from the loop again. Historical records were deliberately left alone: ADR evidence sections,
@@ -204,7 +253,7 @@ line/branch coverage run (93.4% lines / 79.9% branches over src/dsp, with `monoS
 solo and the Level-Match injection consume paths at zero) are closed by Tests 35–37 — Test 37's
 first draft asserted a *frozen* injected trim and failed, which is how the actual contract
 (injection is a SEED the measurement re-converges from, `LoudnessMatch.h:63-69`) got asserted
-instead; the suites are now **156 + 900 checks** (were 140 + 894).
+instead; the suites stood at **156 + 900 checks** after that round (were 140 + 894).
 
 **The realtime documentation had rotted around code growth, and only the untracked spellings let
 it.** `REALTIME_SAFETY_AUDIT.md` cited `processBlock` at `PluginProcessor.cpp:64-131` (actual:

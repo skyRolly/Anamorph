@@ -41,9 +41,12 @@ This audit is no longer the only thing standing behind its own claims. `Anamorph
 carries `ANAMORPH_NONBLOCKING`, and the `realtime` CI job builds the DSP suite with
 `-fsanitize=realtime` and runs it on every push: any allocation, lock or blocking call reached from
 the engine's audio entry point aborts the job at the offending frame. Demonstrated both ways before
-it landed — the suite's whole 159-check matrix runs violation-free, and a seeded
-`juce::AudioBuffer` allocation in `process` fails the run at exit 43, naming
-`AnamorphEngine.cpp:664` through `juce_HeapBlock.h:356`.
+it landed — the suite runs violation-free under RTSan, and a seeded allocation in `process` fails
+the run at **exit 43** naming the offending frame. The RTSan build reports **156** of the suite's
+160 checks: Test 38's own assertions stand down there, because the allocation guard's interposers
+would otherwise shadow RTSan's allocation interceptors and blind the lane (measured; see
+`tests/AllocationGuard.h` and ADR-0029 §7). RTSan covers that violation class itself in that build,
+so nothing is lost.
 
 **What that does and does not cover.** It is a runtime tool on Clang/Linux, so it sees exactly what
 the DSP suite executes and nothing the shipped MSVC/AppleClang binaries do differently. It does not
@@ -55,7 +58,9 @@ instead of surviving to a DAW.
 - the **allocation guard** compiled into the DSP suite (`tests/AllocationGuard.h`, Test 38) counts
   `operator new` and malloc-family allocations while `process()` runs and asserts zero over 3,840
   armed calls. `operator new` replacement is standard C++, so this tier reaches **MSVC**, which RTSan
-  never runs on. Both violation classes were seeded into the real `process()` and caught.
+  never runs on. Both violation classes were seeded into the real `process()` and caught. It stands
+  down in the RTSan and valgrind builds by design (see above), which is why the two tiers are
+  complementary rather than redundant: each covers where the other cannot run.
 - the **static lint** (`scripts/check-realtime.py`) scans audio-path bodies for the forbidden list
   with no build at all, on every platform — the only tier that reads the branches the suite does not
   execute (measured `src/dsp` coverage: 93.4 % of lines, 79.9 % of branches).
@@ -78,8 +83,11 @@ new`/`malloc`-family calls on the audio path, *including through
 `juce::dsp::Oversampling::processSamplesUp/Down` at ×2/×4/×8*, while the same probe counted the
 expected `prepare()` allocations (102 `new` + 663 `malloc`-family) and caught both classes of
 seeded violation. **That probe is now a committed gate**: it became
-`tests/AllocationGuard.h` + Test 38, which runs the same counting over the same matrix in every job
-that builds the DSP suite (3,840 armed calls per run) rather than once in a session.
+`tests/AllocationGuard.h` + Test 38, which runs the same counting over the same matrix (3,840 armed
+calls per run) rather than once in a session. It asserts in every job that builds the DSP suite
+except the two where its interposers would fight another tool -- RTSan (it would shadow the
+sanitizer's allocation interceptors) and valgrind (memcheck reports the new/malloc pairing as a
+mismatched free) -- and in both of those it says so rather than reporting a zero nothing counted.
 
 **The TODO is now largely answered by a committed mechanism** (ADR-0029): the `realtime` job runs the
 DSP suite under RealtimeSanitizer on every push, and that suite exercises the oversampled path at

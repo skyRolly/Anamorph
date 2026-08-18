@@ -28,8 +28,8 @@
 //
 //    GCC / Clang Release      operator new live, malloc live
 //    ASan (+UBSan)            operator new live, malloc COMPILED OUT
-//    RealtimeSanitizer        operator new live, malloc live
-//    valgrind memcheck        operator new live, malloc live
+//    RealtimeSanitizer        WHOLE GUARD COMPILED OUT  (see below)
+//    valgrind memcheck        WHOLE GUARD COMPILED OUT  (see below)
 //
 //  The malloc half is compiled out under ASan deliberately: an
 //  executable-defined `malloc` fights ASan's own allocator and the process
@@ -40,17 +40,40 @@
 //  halves actually moved; the caller decides what to assert on that basis. A
 //  half that is not live is DISCLOSED and skipped, never silently passed.
 //
-//  VALGRIND IS THE ONE CONFIGURATION THAT MUST COMPILE THIS OUT, via
-//  `-DANAMORPH_NO_ALLOC_GUARD` on that job's build (the workflow passes it; no
-//  CMake structure change is involved). memcheck tracks which allocator produced
-//  each block and intercepts the `new`/`delete` and `malloc`/`free` families
-//  SEPARATELY, so an `operator new` that hands back `std::malloc` memory is
-//  reported as "Mismatched free() / delete / delete []" on every subsequent
-//  delete -- measured against the real JUCE-linked suite under the pipeline's
-//  exact invocation, where it fails the step outright. (A small standalone probe
-//  does NOT reproduce it, which is why this note names the binary that does.)
-//  With the guard compiled out, `selfCheck()` reports both halves not-live and
-//  the test discloses and skips rather than asserting a vacuous zero.
+//  TWO CONFIGURATIONS MUST COMPILE THE WHOLE GUARD OUT, for different reasons.
+//
+//  1. REALTIMESANITIZER, and this one is a CORRECTNESS requirement rather than
+//     a tidiness one. RTSan detects allocations by intercepting the allocation
+//     entry points; a definition in the program's own object files takes
+//     precedence over the interceptor in the sanitizer runtime archive, so the
+//     guard's `malloc` -- and its `operator new`, which routes through
+//     `std::malloc` -- reach glibc without ever passing RTSan. Measured on the
+//     real suite with one escaping `malloc` seeded into `AnamorphEngine::process`:
+//
+//         guard compiled in   RTSan reports 0, exit 1 (only the guard's assert)
+//         guard compiled out  RTSan reports the malloc at AnamorphEngine.cpp:668,
+//                             exit 43
+//
+//     Left in, the guard would BLIND the lane it shares a binary with -- and the
+//     liveness canary would not notice, because it is compiled standalone
+//     without the guard. Detected here with `__has_feature(realtime_sanitizer)`
+//     rather than by a flag on the job, so a local `-fsanitize=realtime` build
+//     cannot reintroduce the conflict by forgetting it. Nothing is lost: under
+//     RTSan the stronger detector is already present and covers allocations,
+//     locks and blocking calls with a symbolized stack.
+//
+//  2. VALGRIND, via `-DANAMORPH_NO_ALLOC_GUARD` on that job's build (memcheck
+//     leaves no compile-time marker to test, so this one is a flag; no CMake
+//     structure change is involved). memcheck tracks which allocator produced
+//     each block and intercepts the `new`/`delete` and `malloc`/`free` families
+//     SEPARATELY, so an `operator new` that hands back `std::malloc` memory is
+//     reported as "Mismatched free() / delete / delete []" on every subsequent
+//     delete -- measured against the real JUCE-linked suite under the pipeline's
+//     exact invocation, where it fails the step outright. (A small standalone probe
+//     does NOT reproduce it, which is why this note names the binary that does.)
+//
+//  In both, `selfCheck()` reports both halves not-live and the test discloses
+//  and skips rather than asserting a vacuous zero.
 // ============================================================================
 
 #include <atomic>
@@ -65,6 +88,16 @@
 #endif
 #if defined(__SANITIZE_ADDRESS__)
   #define ANAMORPH_GUARD_ASAN 1
+#endif
+
+// RealtimeSanitizer: the guard must stand down entirely, or it shadows RTSan's
+// own allocation interceptors and blinds the realtime lane (see the header note
+// above for the measurement). Self-detected rather than flag-driven so a local
+// `-fsanitize=realtime` build cannot reintroduce the conflict.
+#if defined(__has_feature)
+  #if __has_feature(realtime_sanitizer)
+    #define ANAMORPH_NO_ALLOC_GUARD 1
+  #endif
 #endif
 
 // The malloc half needs a way to reach the REAL allocator without recursing.
@@ -83,6 +116,8 @@ namespace anamorph::testing
     inline std::atomic<bool>     guardArmed { false };
     inline std::atomic<long>     newCount   { 0 };
     inline std::atomic<long>     mallocCount{ 0 };
+    // Escape hatch for the self-check's aligned probe; see selfCheck().
+    inline void* volatile        alignedSink = nullptr;
 
     inline void resetCounts() noexcept { newCount.store (0); mallocCount.store (0); }
 
@@ -96,13 +131,13 @@ namespace anamorph::testing
         Armed& operator= (const Armed&) = delete;
     };
 
-    struct SelfCheck { bool newLive; bool mallocLive; };
+    struct SelfCheck { bool newLive; bool mallocLive; bool alignedNewLive; };
 
     // One known allocation of each kind, so "zero" downstream means "nothing
     // allocated" rather than "nothing was watching".
     inline SelfCheck selfCheck()
     {
-        SelfCheck r { false, false };
+        SelfCheck r { false, false, false };
         {
             resetCounts();
             Armed arm;
@@ -117,6 +152,22 @@ namespace anamorph::testing
             void* raw = std::malloc (4096);
             if (raw != nullptr) std::free (raw);
             r.mallocLive = mallocCount.load() > 0;
+        }
+        {
+            // The over-aligned route is a SEPARATE set of replaceable operators,
+            // so a live plain `operator new` does not imply a live aligned one.
+            // The pointer ESCAPES through a volatile sink: C++14 permits eliding
+            // a new/delete pair the optimizer can see is unused, and at -O3 it
+            // does exactly that -- which would report this half dead while it
+            // works perfectly. Same reason `realtime_canary.cpp` escapes its
+            // allocation.
+            resetCounts();
+            Armed arm;
+            struct alignas (128) Wide { float v[16]; };
+            auto* wide = new Wide;
+            alignedSink = wide;
+            delete wide;
+            r.alignedNewLive = newCount.load() > 0;
         }
         resetCounts();
         return r;
@@ -157,6 +208,76 @@ void operator delete (void* p, std::size_t) noexcept    { std::free (p); }
 void operator delete[] (void* p, std::size_t) noexcept  { std::free (p); }
 void operator delete (void* p, const std::nothrow_t&) noexcept   { std::free (p); }
 void operator delete[] (void* p, const std::nothrow_t&) noexcept { std::free (p); }
+
+// --- C++17 over-aligned forms ------------------------------------------------
+//  These matter MOST where the malloc half is unavailable. On MSVC and macOS
+//  `ANAMORPH_GUARD_MALLOC` is never defined, so `operator new` replacement is
+//  the whole guard there -- and an over-aligned allocation that fell through to
+//  the default implementation would reach `aligned_alloc`/`_aligned_malloc`
+//  uncounted, in exactly the platform gap Test 38 exists to close. JUCE's SIMD
+//  types are over-aligned, so this is a route the audio path can plausibly take.
+//
+//  THE ALLOCATOR AND DEALLOCATOR MUST BE THE MATCHING PAIR, which is why this
+//  is not simply `std::malloc`: memory from `_aligned_malloc` MUST go back
+//  through `_aligned_free`, and mixing them is undefined behaviour rather than
+//  a leak. `aligned_alloc` blocks are ordinary `free` blocks, so the POSIX side
+//  pairs with `std::free` like the rest of the guard.
+//
+//  `aligned_alloc` also requires the size to be a multiple of the alignment
+//  (C11); the round-up below keeps that contract, since a caller asking for 4
+//  bytes at 64-byte alignment is legal C++ but not a legal `aligned_alloc` call.
+namespace anamorph::testing
+{
+    inline void* alignedAlloc (std::size_t n, std::size_t align) noexcept
+    {
+        if (n == 0) n = 1;
+      #if defined(_MSC_VER)
+        return _aligned_malloc (n, align);
+      #else
+        const std::size_t rounded = ((n + align - 1) / align) * align;
+        return std::aligned_alloc (align, rounded);
+      #endif
+    }
+
+    inline void alignedFree (void* p) noexcept
+    {
+      #if defined(_MSC_VER)
+        _aligned_free (p);
+      #else
+        std::free (p);
+      #endif
+    }
+}
+
+void* operator new (std::size_t n, std::align_val_t a)
+{
+    if (anamorph::testing::guardArmed.load (std::memory_order_relaxed))
+        anamorph::testing::newCount.fetch_add (1, std::memory_order_relaxed);
+    void* p = anamorph::testing::alignedAlloc (n, static_cast<std::size_t> (a));
+    if (p == nullptr) throw std::bad_alloc();
+    return p;
+}
+
+void* operator new[] (std::size_t n, std::align_val_t a) { return ::operator new (n, a); }
+
+void* operator new (std::size_t n, std::align_val_t a, const std::nothrow_t&) noexcept
+{
+    if (anamorph::testing::guardArmed.load (std::memory_order_relaxed))
+        anamorph::testing::newCount.fetch_add (1, std::memory_order_relaxed);
+    return anamorph::testing::alignedAlloc (n, static_cast<std::size_t> (a));
+}
+
+void* operator new[] (std::size_t n, std::align_val_t a, const std::nothrow_t& t) noexcept
+{
+    return ::operator new (n, a, t);
+}
+
+void operator delete (void* p, std::align_val_t) noexcept   { anamorph::testing::alignedFree (p); }
+void operator delete[] (void* p, std::align_val_t) noexcept { anamorph::testing::alignedFree (p); }
+void operator delete (void* p, std::size_t, std::align_val_t) noexcept   { anamorph::testing::alignedFree (p); }
+void operator delete[] (void* p, std::size_t, std::align_val_t) noexcept { anamorph::testing::alignedFree (p); }
+void operator delete (void* p, std::align_val_t, const std::nothrow_t&) noexcept   { anamorph::testing::alignedFree (p); }
+void operator delete[] (void* p, std::align_val_t, const std::nothrow_t&) noexcept { anamorph::testing::alignedFree (p); }
 #endif // !ANAMORPH_NO_ALLOC_GUARD
 
 #if defined(ANAMORPH_GUARD_MALLOC)

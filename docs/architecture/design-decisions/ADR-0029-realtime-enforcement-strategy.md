@@ -198,12 +198,38 @@ the malloc half is preprocessed out there while the `operator new` half keeps as
 
 **Measured coverage of the shipped guard**, across four configurations of the same suite:
 
-| configuration | `operator new` | malloc family | outcome |
+| configuration | `operator new` (plain + over-aligned) | malloc family | outcome |
 |---|---|---|---|
 | GCC Release (`linux`, `merge-check`) | live | live | 3,840 armed calls, 0 allocations |
-| Clang + RTSan (`realtime`) | live | live | 3,840 armed calls, 0 allocations |
 | Clang + ASan/UBSan (`sanitizers`) | live | compiled out, disclosed | 3,840 armed calls, 0 allocations |
+| Clang + RTSan (`realtime`) | compiled out, disclosed | compiled out | RTSan is the detector here — see below |
 | GCC + valgrind (`sanitizers`) | compiled out, disclosed | compiled out | memcheck 0 errors |
+
+**The RTSan row is a correction, and it is the important one.** The guard was originally compiled
+*in* under RTSan, and review found that this silently defeats the realtime lane: RTSan detects
+allocations by intercepting the allocation entry points, and a definition in the program's own
+object files takes precedence over the interceptor in the sanitizer runtime archive. The guard's
+`malloc` — and its `operator new`, which routes through `std::malloc` — therefore reached glibc
+without passing RTSan at all. Measured on the real suite with one escaping `malloc` seeded into
+`AnamorphEngine::process`:
+
+| | RTSan reports | exit |
+|---|---|---|
+| guard compiled in | **0** | 1 (only the guard's own assertion) |
+| guard compiled out | 1, naming `AnamorphEngine.cpp` | **43** |
+
+The liveness canary could not have caught this: it is compiled standalone without the guard, so it
+kept proving the lane was live while the binary it vouches for had lost its allocation detection.
+The guard now stands down under RTSan via `__has_feature(realtime_sanitizer)` — self-detected rather
+than flag-driven, so a local `-fsanitize=realtime` build cannot reintroduce the conflict by
+forgetting a flag. Nothing is lost: RTSan covers allocations, locks and blocking calls in that
+build, which is strictly more than the guard measured there.
+
+The guard also replaces the **C++17 over-aligned** `operator new`/`delete` family, matched to
+`aligned_alloc`/`std::free` (POSIX) or `_aligned_malloc`/`_aligned_free` (MSVC). That route matters
+most exactly where the malloc half is unavailable — MSVC and macOS — and JUCE's SIMD types are
+over-aligned, so it is reachable from the audio path. `selfCheck()` probes it separately, because a
+live plain `operator new` does not imply a live aligned one.
 
 Both violation classes were seeded into the real `AnamorphEngine::process` and caught: a
 `juce::AudioBuffer` (the raw-malloc route JUCE actually uses — `worst per call: malloc=1`) and a
@@ -244,6 +270,17 @@ tiers. The static lint's role is narrow and deliberately so: it is the only tier
 suite never executes (measured coverage of `src/dsp` is 93.4 % of lines / 79.9 % of branches), and it
 is function-scoped because `prepare()` is required to allocate — a file-wide token scan would flag
 the eight legitimate `setSize` calls in `AnamorphEngine.cpp` and be switched off.
+
+**Its scope is the Policy's scope**, corrected after review: the Policy binds "`processBlock` /
+`AnamorphEngine::process` and every DSP module's `process`/`reset`", so the lint scans `src` (not
+`src/dsp`, which omitted `AnamorphAudioProcessor::processBlock` — the first function the Policy
+names) and its function list includes `reset` and `softReset` (both run on the audio thread: the
+engine resets at the silent bottom of a switch duck and on the NaN self-heal, and calls
+`LoudnessMatch::softReset()` from `process` itself). An earlier revision exempted `reset` by name
+*and* never matched it in the first place, so eight module reset bodies went unscanned while a
+self-test case asserted that allocation there was permitted. Coverage went from 7 scanned bodies to
+35; the tree stays at 0 violations, and seeded violations in a module `reset` and in the wrapper
+`processBlock` are both caught.
 
 ## Consequences
 

@@ -126,7 +126,9 @@ edge above must not be read as release non-blocking.
   functions in `src/dsp` are scanned for the `REALTIME_AUDIO_POLICY` forbidden list. It is the third
   realtime tier and the only one that reads code the DSP suite never executes — RTSan and the
   allocation guard are runtime tools, and the suite covers 93.4 % of lines / 79.9 % of branches in
-  `src/dsp`. Function-scoped deliberately: `prepare()` is *required* to allocate, so a file-wide
+  `src/dsp`. Its scan root is `src` because the Policy's first named function,
+  `AnamorphAudioProcessor::processBlock`, is not under `src/dsp`; module `reset`/`softReset` bodies
+  are in scope for the same reason. Function-scoped deliberately: `prepare()` is *required* to allocate, so a file-wide
   token scan would flag the eight legitimate `setSize` calls in `AnamorphEngine.cpp` and be switched
   off.
   Each of the two runs its own `--self-test` **first**, in this job, immediately before the lint it
@@ -205,8 +207,10 @@ edge above must not be read as release non-blocking.
   RTSan is the strongest of the three realtime tiers but the least portable — Clang, Linux/macOS
   only. The **allocation guard** compiled into the DSP suite (Test 38) covers the shipped toolchains
   it cannot reach, MSVC included, because `operator new` replacement is standard C++; it runs in
-  every job that builds that suite rather than in one of its own. The valgrind build compiles it out
-  (`-DANAMORPH_NO_ALLOC_GUARD`) and the test says so.
+  the jobs that build that suite rather than in one of its own. Two builds compile it out and the
+  test says so in both: the valgrind build by flag (`-DANAMORPH_NO_ALLOC_GUARD`), and **this job**
+  by self-detection — the guard's interposers would otherwise shadow RTSan's allocation
+  interceptors and blind the lane (measured, ADR-0029 §7).
 - **linux-lto-tests** — both suites built and run with `-flto` on GCC Release (added 2026-08-18).
   The shipped plugin is the only target linking `juce::juce_recommended_lto_flags`, and the test
   targets deliberately do not (so the sanitizers job builds them cleanly and quickly) — which meant
