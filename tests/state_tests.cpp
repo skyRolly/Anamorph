@@ -1450,8 +1450,9 @@ static void testWrapperProcessBlockAudioPath()
 
     bool anyBad = false;
     double noiseSq = 0.0; long noiseCount = 0;
+    const int blocksPerPhase = 120;
     for (int phase = 0; phase < 2; ++phase)          // noise, then silence
-        for (int nb = 0; nb < 120; ++nb)
+        for (int nb = 0; nb < blocksPerPhase; ++nb)
         {
             if (phase == 0)
                 for (int ch = 0; ch < 2; ++ch)
@@ -1482,7 +1483,7 @@ static void testWrapperProcessBlockAudioPath()
         }
 
     const double noiseRms = std::sqrt (noiseSq / static_cast<double> (juce::jmax (1L, noiseCount)));
-    std::printf ("  noise-phase output RMS %.4f over %d blocks\n", noiseRms, 240);
+    std::printf ("  noise-phase output RMS %.4f over %d blocks\n", noiseRms, blocksPerPhase);
     // Liveness first: a silently-null path would make the invariant vacuous.
     check (noiseRms > 0.05, "wrapper audio path produces output (assertion is not vacuous)");
     check (! anyBad, "wrapper processBlock output free of NaN/Inf/denormals");

@@ -207,7 +207,7 @@ still the universal bundle from the `macos` job. Its first step **fails** the jo
 not `x86_64` or `sysctl.proc_translated` is not `0`, so it can never report a green Intel result
 from somewhere that is not Intel.
 
-Four further jobs run beside the build jobs, none in a `needs:` chain in either direction, so a
+Six further jobs run beside the build jobs, none in a `needs:` chain in either direction, so a
 finding in one never skips a binary that is otherwise fine:
 
 | Job | Run it locally as |
@@ -216,6 +216,8 @@ finding in one never skips a binary that is otherwise fine:
 | `source-lint` | `python3 scripts/check-portability.py --self-test` then the lint, then `python3 scripts/check-citations.py --self-test` then `--check --base <rev>` |
 | `linux-clang` | see `CI_CD.md` §Reproducing CI locally (own `build-clang` tree) |
 | `sanitizers` | ASan+UBSan over both suites, then valgrind memcheck over both suites (the valgrind step sets `ANAMORPH_TESTS_NO_FTZ=1` — see below) |
+| `realtime` | `cmake -B build-rtsan -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C(XX)_COMPILER=clang(++)-<major> -DCMAKE_C(XX)_FLAGS="-fsanitize=realtime -fno-omit-frame-pointer" -DCMAKE_EXE_LINKER_FLAGS=-fsanitize=realtime`, build `AnamorphTests`, run it with **no `RTSAN_OPTIONS`** (ADR-0029 — `halt_on_error=false` would make it report and pass) |
+| `linux-lto-tests` | `cmake -B build-lto -G Ninja -DCMAKE_BUILD_TYPE=Release -DANAMORPH_BUILD_STANDALONE=OFF -DCMAKE_C_FLAGS=-flto -DCMAKE_CXX_FLAGS=-flto -DCMAKE_EXE_LINKER_FLAGS=-flto`, build both test targets, run both — the suites against the shipped optimization class (see `CI_CD.md`) |
 
 **`ANAMORPH_TESTS_NO_FTZ=1` is for valgrind and nothing else.** The DSP suite treats a denormal in
 the engine output as a failure, which holds because the audio path runs under

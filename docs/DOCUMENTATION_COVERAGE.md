@@ -7,7 +7,9 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
-**engineering-capability audit: extended UBSan coverage, the LTO validation gap, the wrapper
+**realtime-enforcement strategy (ADR-0029): RealtimeSanitizer at the annotated audio entry point,
+its own CI lane behind a liveness canary, and the review-cleanup that preceded it** (first below),
+then the **engineering-capability audit: extended UBSan coverage, the LTO validation gap, the wrapper
 audio path + three DSP feature-coverage tests, `preflight.sh`, and the realtime-doc anchor rot**
 (first below), then the
 **dependency-update audit: Clang 18 → 22 (upstream stable, from apt.llvm.org) and the Dependabot
@@ -37,6 +39,69 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**Realtime-enforcement strategy, ADR-0029 (2026-08-18): the Priority-1 policy acquires its first
+mechanical detector. Plus the PR review cleanup that preceded it. `Accepted` on maintainer approval;
+amends no Policy — it implements enforcement for one that already existed.**
+
+**`REALTIME_AUDIO_POLICY` had no gate, and the tools already in the pipeline structurally cannot
+provide one.** ASan finds out-of-bounds and lifetime bugs, UBSan finds undefined behaviour, valgrind
+finds uninitialised reads; a `malloc` added to `AnamorphEngine::process` is, to every one of them, a
+perfectly correct allocation. RealtimeSanitizer is the only tool here that asks *where* it happened.
+`AnamorphEngine::process` now carries `ANAMORPH_NONBLOCKING` and the new `realtime` job builds the
+DSP suite with `-fsanitize=realtime` and runs it. Demonstrated both ways before landing: the whole
+156-check matrix runs violation-free (1.6 s), and a seeded `juce::AudioBuffer` allocation inside
+`process` fails the run at **exit 43**, naming `AnamorphEngine.cpp:664` through
+`juce_HeapBlock.h:356` — a useful diagnostic, not just a non-zero exit.
+
+**Four decisions in the ADR are refusals, each on measurement rather than taste.**
+`-Wfunction-effects` is NOT enabled: the annotated engine TU emits **52** warnings, dominated by
+JUCE calls whose definitions the TU cannot see (`Oversampling::reset` ×9, `FloatVectorOperations::copy`
+×6), and JUCE 9.0.1 carries **zero** annotations of its own — the warnings are about correct code.
+`-Wperf-constraint-implies-noexcept` is NOT enabled either, for the opposite reason: it fires on
+definitions whose effects imply `noexcept`, and the entry point is already `noexcept`, so it would
+gate on nothing. RTSan is NOT folded into the `sanitizers` job — the clang driver *rejects*
+`realtime` alongside `address`, `undefined`, that job's actual `address,undefined,vptr` set, or
+`thread`. And the lane sets **no `RTSAN_OPTIONS`**: `halt_on_error=false` makes the process print its
+violation reports and still exit **0**, which is the gate-that-cannot-fail this repository's testing
+policy is written against.
+
+**The annotation is byte-identical in object code, which is what let it touch a frozen audio path.**
+`src/dsp/AnamorphEngine.cpp` compiled by clang-22 at `-O3` with the project's flags produces the same
+object with the attribute live and with the macro emptied. The spelling had to be corrected against
+the compiler rather than from memory: it is a **type** attribute (after the parameter list), and the
+prefix form is a hard error — *"'clang::nonblocking' attribute cannot be applied to a declaration"*.
+The `__has_cpp_attribute` guard is what keeps GCC's `-Wattributes: scoped attribute directive
+ignored` (2 lines, measured on the raw spelling) out of the Clang warning gate.
+
+**The canary's first draft was defeated by its own error message, and running it caught that.**
+`TESTING_POLICY` rule 4 demands a lane prove it can fail. The canary commits a real *escaping*
+allocation — escaping because a non-escaping `malloc`/`free` pair is elided at `-O2` (measured: exit
+0 instrumented at `-O2`, exit 43 at `-O0`), so the obvious canary passes while the tool works
+perfectly. The workflow step then asserts a non-zero exit **and** the sanitizer's report. The first
+draft grepped for the bare word `RealtimeSanitizer`, which the canary's own failure text contained,
+so an uninstrumented build satisfied it — a dead lane reporting itself live. Found by running the
+step's logic against a deliberately uninstrumented build before the job ever ran in CI; the message
+no longer carries the token and the grep matches `ERROR: RealtimeSanitizer`.
+
+**The cross-platform tier is scheduled, not shipped, and the ADR says so.** The allocation guard
+(7,680 armed calls, zero allocations, both seeded classes caught) and the static realtime lint reach
+where RTSan cannot — the `operator new` half works under **MSVC**, which RTSan never covers. They
+are held back because the guard needs a CMake target-level change (review-gated Build System class)
+and carries two demonstrated CI hazards: an exe-defined `malloc` **segfaults** under ASan, and
+valgrind's `vgpreload` silently replaces the interposers. Landing three enforcement mechanisms at
+once, two unproven in CI, is how a gate gets switched off.
+
+**Review cleanup in the same change set.** Three findings, each verified against the tree before
+acting: the CI job inventories in `CI_CD.md`, `TESTING.md` and `REPOSITORY_MAP.md` still said *four*
+non-packaging jobs (now **six**, with the matrix/table rows and the ccache-lineage note synced); the
+test counts in `REPOSITORY_MAP.md`, `RELEASE_HARDENING_PLAN.md` and `HANDOVER.md` still read
+33/12/140/894 (now **36/13/156/900**, taken from the registrations in `main()` and a real run);
+and the wrapper test's RMS diagnostic said "240 blocks" while the accumulator only runs in the
+120-block noise phase — corrected via a named `blocksPerPhase` constant so the literal cannot drift
+from the loop again. Historical records were deliberately left alone: ADR evidence sections,
+`DEPENDENCY_POLICY`'s compliance log and `CI_CD.md`'s Clang-22 verification paragraph state what a
+past run measured, and those are append-only.
 
 **Engineering-capability audit (2026-08-18): extended UBSan coverage, the LTO validation gap,
 the wrapper audio path + three DSP feature-coverage tests, `preflight.sh`, and the realtime-doc

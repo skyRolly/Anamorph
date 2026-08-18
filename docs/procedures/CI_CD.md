@@ -79,7 +79,7 @@ Evidence [Verified]: release.yml.
 ## Build matrix
 
 Every push builds the full set of formats on all three desktop OSes — plus a **second macOS job
-that ships nothing and exists only to execute on Intel silicon** — alongside four non-packaging
+that ships nothing and exists only to execute on Intel silicon** — alongside six non-packaging
 jobs that guard classes the build matrix cannot see:
 
 | Job | Runner | Builds | pluginval |
@@ -93,6 +93,8 @@ jobs that guard classes the build matrix cannot see:
 | **windows** | `windows-latest` (MSVC, multi-config) | VST3 + Standalone (+ tests) | VST3, **both modes ×3** — **blocking** |
 | **macos** | `macos-latest` (Apple Silicon) | universal VST3 + AU + Standalone (+ tests) | **VST3 and AU**, both modes ×3 each — **blocking** |
 | **macos-intel** | `macos-15-intel` (**native Intel**) | thin x86_64 VST3 + AU (+ tests); Standalone off; **no packaging, no artifacts** | **VST3 and AU**, both modes ×3 each — **blocking** |
+| **linux-lto-tests** | `ubuntu-latest` | GCC `-flto`: both test targets only (Standalone off); **no packaging, no artifacts** | — (the suites against LTO codegen) |
+| **realtime** | `ubuntu-latest` | Clang `-fsanitize=realtime`: the DSP suite only (Standalone off); **no packaging, no artifacts** | — (the audio path under RealtimeSanitizer) |
 
 None of these jobs is in a `needs:` chain, in either direction. A prose defect, a
 portability lint hit or a sanitizer finding fails the run without skipping a binary that is
@@ -171,6 +173,19 @@ otherwise fine, and a red build does not skip them.
   anywhere else. (Pointing valgrind at the state suite alone was the alternative and was rejected:
   that suite passes under memcheck untouched, but it would leave the DSP suite with no
   uninitialised-read detector at all.)
+- **realtime** — the DSP suite built with **`-fsanitize=realtime`** and run (added 2026-08-18,
+  ADR-0029). It is the first mechanical detector for `REALTIME_AUDIO_POLICY`, the repository's
+  Priority-1 policy, which was previously enforced only by review and a hand-written audit: ASan,
+  UBSan and valgrind all treat a `malloc` added to `AnamorphEngine::process` as a perfectly correct
+  allocation, and RTSan is the only tool here that asks *where* it happened. It needs **its own job**
+  by driver restriction — clang rejects `-fsanitize=realtime` alongside `address`, `undefined`, this
+  pipeline's `address,undefined,vptr` set, or `thread`. The job sets **no `RTSAN_OPTIONS`** and that
+  is load-bearing: RTSan halts on the first violation by default, and `halt_on_error=false` makes the
+  process print its reports and still exit 0. A **liveness canary** (`tests/realtime_canary.cpp`)
+  compiles and runs first and the step fails unless it aborts *with* a sanitizer report — the same
+  prove-it-can-fail discipline as the four lints' `--self-test`s. What is deliberately absent, and
+  why, is ADR-0029: `-Wfunction-effects` measures 52 warnings from JUCE calls whose definitions the
+  TU cannot see, and JUCE 9.0.1 carries no annotations of its own.
 - **linux-lto-tests** — both suites built and run with `-flto` on GCC Release (added 2026-08-18).
   The shipped plugin is the only target linking `juce::juce_recommended_lto_flags`, and the test
   targets deliberately do not (so the sanitizers job builds them cleanly and quickly) — which meant
@@ -290,7 +305,7 @@ failures as green and has been removed). Evidence [Verified]: `.github/workflows
 ### The compiler cache
 
 Every job that uses the Ninja generator — `merge-check`, `linux`, `linux-clang`, `sanitizers`,
-`macos`, `macos-intel` — compiles through **ccache**, restored from and saved to the GitHub Actions
+`linux-lto-tests`, `realtime`, `macos`, `macos-intel` — compiles through **ccache**, restored from and saved to the GitHub Actions
 cache (`actions/cache@v6`).
 
 **Why, measured rather than assumed.** `.ninja_log` splits a cold Linux Release build into
@@ -367,7 +382,11 @@ path's entire critical path. `linux-clang` **and `sanitizers`** both key on the 
 raising the pin starts clean lineages instead of restoring entries no build can hit again — ccache
 hashes the compiler binary's own contents (`CCACHE_COMPILERCHECK=content`), so objects from the
 previous major are dead weight rather than wrong answers, but a restored cache full of them is still
-a restore that buys nothing. `macos` and `macos-intel` each have their own.
+a restore that buys nothing. `linux-lto-tests` and `realtime` each have their own (`ccache-ubuntu-gcc-lto-`,
+`ccache-ubuntu-realtime-clang<major>-`) for the same
+kind of reason: under `-flto` GCC emits GIMPLE bytecode objects, so it shares no entries with
+`linux`'s native ones and a shared lineage would only have the two evict each other. `macos` and
+`macos-intel` each have their own.
 
 **Not on Windows.** ccache's MSVC support requires `/Z7`-style embedded debug info, and this project
 compiles Release with `/Zi` precisely so the linker emits the PDB that ships as the

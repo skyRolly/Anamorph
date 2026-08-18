@@ -4,6 +4,7 @@
 #include <memory>
 
 #include "EngineParameters.h"
+#include "RealtimeAnnotations.h"
 #include "HaasProcessor.h"
 #include "VelvetNoise.h"
 #include "ChorusEngine.h"
@@ -57,7 +58,15 @@ public:
     void setTransportPlaying (bool isPlaying) noexcept { velvet.setTransportPlaying (isPlaying); }
 
     // Processes a STEREO buffer in place (the wrapper up-mixes mono -> stereo).
-    void process (juce::AudioBuffer<float>& buffer) noexcept;
+    //
+    // ANAMORPH_NONBLOCKING declares the REALTIME_AUDIO_POLICY contract -- no
+    // allocation, no lock, no blocking call -- in the type system, and is what
+    // the `realtime` CI job's RealtimeSanitizer build enforces at runtime from
+    // here down (ADR-0029). It is inert in every other build and on every other
+    // compiler; `RealtimeAnnotations.h` carries the guard and the reasoning.
+    // This is the engine's audio-thread ENTRY POINT: the whole DSP chain below
+    // it runs inside the enforced region, so one annotation covers all of it.
+    void process (juce::AudioBuffer<float>& buffer) noexcept ANAMORPH_NONBLOCKING;
 
     // PDC: latency added by the chain (oversampling only). Integer samples.
     int getLatencySamples() const noexcept;

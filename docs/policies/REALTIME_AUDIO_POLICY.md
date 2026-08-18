@@ -36,6 +36,14 @@ Evidence [Verified]:
 
 ## Enforcement
 
+- **RealtimeSanitizer, in CI, on every push** (ADR-0029). `AnamorphEngine::process` carries
+  `ANAMORPH_NONBLOCKING` (`src/dsp/RealtimeAnnotations.h`), and the `realtime` job builds the DSP
+  suite with `-fsanitize=realtime` and runs it: an allocation, lock or blocking call anywhere in the
+  chain aborts the job at the offending frame. This is the first mechanical detector for the rule
+  above — ASan, UBSan and valgrind all treat an audio-path allocation as perfectly correct code.
+  Its bounds are stated in the ADR and are real: it is Clang/Linux+macOS only, it sees only what the
+  suite executes, and the shipped Windows and macOS binaries are built by compilers it never runs on.
+  A **liveness canary** in the same job proves the lane can fail before its silence is trusted.
 - Any change touching an audio path is reviewed against this list.
 - Buffer sizing must happen in `prepare()`. If a feature needs more scratch, grow it in
   `prepare()`, never in `process()`.

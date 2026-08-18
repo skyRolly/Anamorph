@@ -2358,3 +2358,123 @@ jobs:
       - name: Compiler cache statistics
         if: ${{ !cancelled() && env.ANAMORPH_COMPILER_LAUNCHER != '' }}
         run: ccache --show-stats --verbose || true
+
+  # -------------------------------------------------------------------------
+  # RealtimeSanitizer (Linux). The first mechanical detector for
+  # REALTIME_AUDIO_POLICY -- the repository's Priority-1 policy, which until
+  # ADR-0029 was enforced only by review and a hand-written audit.
+  #
+  # WHAT IT CATCHES THAT NOTHING ELSE HERE DOES. ASan finds out-of-bounds and
+  # lifetime bugs, UBSan finds undefined behaviour, valgrind finds
+  # uninitialised reads. A `malloc` added to `AnamorphEngine::process` is, to
+  # every one of them, a perfectly correct allocation. RTSan is the only tool
+  # in this pipeline that asks WHERE it happened.
+  #
+  # ITS OWN JOB, and that is forced rather than chosen: the clang driver
+  # rejects `-fsanitize=realtime` combined with `address`, `undefined`, this
+  # pipeline's actual `address,undefined,vptr` set, or `thread` -- "invalid
+  # argument ... not allowed with ...". It cannot be folded into `sanitizers`.
+  #
+  # NO `RTSAN_OPTIONS` IS SET, and that is the load-bearing part of the gate.
+  # RTSan halts on the first violation BY DEFAULT (exit 43). The one setting
+  # that would quietly break this job is `halt_on_error=false`, under which the
+  # process prints its violation reports and still exits 0 -- a step that
+  # reports and passes. Do not add it here or to the job env.
+  #
+  # Only the DSP suite runs: it drives the audio path across the whole feature
+  # matrix, which is what a runtime tool's coverage is made of. ADR-0029 has
+  # the full strategy, including what is deliberately NOT here
+  # (`-Wfunction-effects`, measured at 52 warnings from opaque JUCE calls) and
+  # what comes next (the allocation guard, for the platforms RTSan cannot reach).
+  #
+  # NOT in any `needs:` chain, matching `sanitizers` and `linux-lto-tests`.
+  realtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name != github.repository
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 400M
+      CCACHE_COMPILERCHECK: content
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install build dependencies
+        run: |
+          chmod +x scripts/*.sh
+          ./scripts/setup-linux.sh
+          ./scripts/setup-llvm-apt.sh "${ANAMORPH_CLANG_VERSION}"
+          # ccache is an OPTIMIZATION, never a requirement -- see the
+          # compiler-cache block above the jobs. If it cannot be installed the
+          # job builds without a launcher: slower, never different.
+          if sudo apt-get install -y ccache && ccache --version; then
+            echo "ANAMORPH_COMPILER_LAUNCHER=ccache" >> "$GITHUB_ENV"
+          else
+            echo "::warning::ccache unavailable -- building without the compiler cache"
+            echo "ANAMORPH_COMPILER_LAUNCHER=" >> "$GITHUB_ENV"
+          fi
+
+      # Its own lineage, keyed on the pinned Clang major like the other two
+      # Clang jobs: `-fsanitize=realtime` objects share no cache entries with
+      # theirs, so a shared lineage would only have them evict each other.
+      - name: Restore the compiler cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-ubuntu-realtime-clang${{ env.ANAMORPH_CLANG_VERSION }}-${{ github.run_id }}
+          restore-keys: ccache-ubuntu-realtime-clang${{ env.ANAMORPH_CLANG_VERSION }}-
+
+      # THE LIVENESS PROOF, and it runs BEFORE the thing it vouches for
+      # (TESTING_POLICY rule 4, the same shape as the four lints' --self-tests).
+      # This job's entire output on a healthy tree is "no violations", which is
+      # also exactly what a job whose instrumentation stopped working prints.
+      # The canary commits a real, escaping allocation inside a nonblocking
+      # function: if THAT is not reported, the silence below means nothing.
+      # Both halves are asserted -- a non-zero exit AND the report itself, so a
+      # canary that died for some unrelated reason cannot pass for a live gate.
+      - name: RealtimeSanitizer liveness canary (the lane must be able to fail)
+        run: |
+          clang++-${{ env.ANAMORPH_CLANG_VERSION }} -std=c++23 -O2 -g \
+            -fsanitize=realtime tests/realtime_canary.cpp -o rtsan-canary
+          if ./rtsan-canary > rtsan-canary.log 2>&1; then
+            echo "::error::the RealtimeSanitizer canary exited 0 -- this lane is not instrumenting anything"
+            cat rtsan-canary.log
+            exit 1
+          fi
+          # The REPORT SIGNATURE, not a bare word: an earlier draft grepped for
+          # "RealtimeSanitizer", which the canary's own failure message also
+          # contained -- so an uninstrumented build satisfied this assertion.
+          if ! grep -q "ERROR: RealtimeSanitizer" rtsan-canary.log; then
+            echo "::error::the canary aborted, but not with a RealtimeSanitizer report"
+            cat rtsan-canary.log
+            exit 1
+          fi
+          echo "canary reported its seeded violation -- the lane is live"
+
+      - name: Configure (Clang, RealtimeSanitizer)
+        run: >
+          ccache --zero-stats || true &&
+          cmake -B build-rtsan -G Ninja
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DCMAKE_C_COMPILER=clang-${{ env.ANAMORPH_CLANG_VERSION }}
+          -DCMAKE_CXX_COMPILER=clang++-${{ env.ANAMORPH_CLANG_VERSION }}
+          -DCMAKE_C_FLAGS="-fsanitize=realtime -fno-omit-frame-pointer"
+          -DCMAKE_CXX_FLAGS="-fsanitize=realtime -fno-omit-frame-pointer"
+          -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=realtime"
+          -DCMAKE_C_COMPILER_LAUNCHER=${{ env.ANAMORPH_COMPILER_LAUNCHER }}
+          -DCMAKE_CXX_COMPILER_LAUNCHER=${{ env.ANAMORPH_COMPILER_LAUNCHER }}
+          -DANAMORPH_BUILD_STANDALONE=OFF
+          -DANAMORPH_BUILD_NUMBER=${{ github.run_number }}
+
+      - name: Build the DSP suite (RealtimeSanitizer)
+        run: cmake --build build-rtsan --target AnamorphTests
+
+      # No env: block on purpose -- see the RTSAN_OPTIONS note above.
+      - name: DSP self-tests under RealtimeSanitizer
+        run: ./build-rtsan/AnamorphTests_artefacts/RelWithDebInfo/AnamorphTests
+
+      - name: Compiler cache statistics
+        if: ${{ !cancelled() && env.ANAMORPH_COMPILER_LAUNCHER != '' }}
+        run: ccache --show-stats --verbose || true

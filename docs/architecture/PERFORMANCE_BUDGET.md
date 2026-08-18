@@ -226,6 +226,20 @@ timed region: the point is to measure the engine, not `AudioBuffer`'s constructo
 sources — add it behind an OFF-by-default option (mirroring `ANAMORPH_BUILD_TESTS`) so it never
 enters a release build.
 
+**A working implementation of this exact procedure already exists in the sibling product.**
+Anabasis carries `tests/bench.cpp` (354 lines) behind an `ANABASIS_BUILD_BENCH` option, and its
+header states it is "the DESIGN §9 benchmark procedure (**the one Anamorph only prescribes**)":
+same shape as this section — OFF by default, shipped-Release flags, an SR × block × OS × mode
+matrix, ns/sample plus worst single block, median of ≥5 runs, and the machine recorded beside the
+result. Adopting it here is a **normal engineering task, not an open design question** — the method
+below is already settled by this document. What it is blocked on is one thing, named so it is not
+rediscovered: the bench needs its own console target (`AnamorphDSP` is an INTERFACE library), which
+makes it a **CMake-structure change and therefore review-gated**
+(`docs/policies/ARCHITECTURE_REVIEW_GATE.md` §"Build System change"). Cross-product reuse is also a
+product-family decision rather than an ad-hoc copy. Both belong in that change, not in this
+document. Verified 2026-08-18 against `/home/user/Anabasis/tests/bench.cpp` and its
+`CMakeLists.txt` wiring.
+
 **Build it the way users get it.** `-DCMAKE_BUILD_TYPE=Release` only. The `AnamorphHardening`
 flags and `juce::juce_recommended_lto_flags` are part of the shipped configuration, so a bench
 that does not link them is measuring a different binary.
