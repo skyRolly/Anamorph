@@ -4,14 +4,20 @@
 #  command, before a push spends a CI round trip discovering the same thing.
 #
 #  WHAT THIS RUNS, in CI's own order (docs/procedures/CI_CD.md §Reproducing CI
-#  locally): the five lints with their --self-tests first (seconds, no build,
-#  historically the most-tripped gates), then the built test suites when a
-#  built tree exists.
+#  locally): the seven checkers with their --self-tests first (seconds, no
+#  build, historically the most-tripped gates), then the built test suites when
+#  a built tree exists.
 #
-#  WHAT THIS CANNOT RUN, said out loud rather than implied: the FULL Clang
-#  warning gate needs a fresh clang build log to classify (see
-#  check-clang-warnings.py); only its --self-test runs here. A green preflight
-#  is therefore "the lints and suites pass", not "CI will be green".
+#  WHAT THIS CANNOT RUN, said out loud rather than implied. Three of the seven
+#  need something a bare checkout does not have, and each says so instead of
+#  passing quietly:
+#    * the Clang warning gate needs a fresh clang build log to classify;
+#    * the GCC warning gate needs a gcc one, from the pinned major;
+#    * the Linux ABI floor needs the LINKED, STRIPPED artifacts.
+#  Their --self-tests run here, and the ABI floor additionally runs for real
+#  when a built VST3 is present, since that is the one of the three whose input
+#  an ordinary local Release build already produces. A green preflight is
+#  therefore "the checkers and suites pass", not "CI will be green".
 #
 #  THE CITATION GATE RUNS TWICE, against both bases that can disagree:
 #  `origin/main` (the local default and the PR merge-base case) and the
@@ -36,8 +42,26 @@ python3 scripts/check-portability.py
 python3 scripts/check-realtime.py --self-test
 python3 scripts/check-realtime.py
 python3 scripts/check-clang-warnings.py --self-test
-echo "note: the FULL clang-warning gate needs a clang build log (CI: linux-clang);"
-echo "      only its self-test ran here."
+python3 scripts/check-gcc-warnings.py --self-test
+echo "note: the FULL warning gates need a build log from the pinned compiler"
+echo "      (CI: linux-clang, linux-lto-tests); only their self-tests ran here."
+
+python3 scripts/check-linux-abi.py --self-test
+# The ONE of the three that can also run for real locally: an ordinary Release
+# build produces the artifact it reads. Skipped WITH A NOTE when absent, never
+# silently -- same rule as the suites below.
+ABI_SO="build/Anamorph_artefacts/Release/VST3/Anamorph.vst3/Contents/x86_64-linux/Anamorph.so"
+ABI_APP="build/Anamorph_artefacts/Release/Standalone/Anamorph"
+ABI_TARGETS=()
+[ -f "$ABI_SO" ]  && ABI_TARGETS+=("$ABI_SO")
+[ -f "$ABI_APP" ] && ABI_TARGETS+=("$ABI_APP")
+if [ ${#ABI_TARGETS[@]} -gt 0 ]; then
+    python3 scripts/check-linux-abi.py "${ABI_TARGETS[@]}"
+else
+    echo "note: no built Linux artifact -- the ABI floor check needs one; only its"
+    echo "      self-test ran here. CI runs it on the STRIPPED bytes, which a local"
+    echo "      build does not produce anyway."
+fi
 
 echo "== preflight: citation gate (both bases) =="
 python3 scripts/check-citations.py --self-test

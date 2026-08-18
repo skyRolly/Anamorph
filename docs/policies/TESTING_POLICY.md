@@ -76,8 +76,8 @@ blocking gate; `env.ANAMORPH_PLUGINVAL_STRICTNESS`; the macOS AU install + AU ga
 4. **A checker must prove it is live before its silence is trusted.** Every lint in the pipeline
    ships a `--self-test` that runs in the same job, immediately before the check itself —
    `check-docs.py`, `check-clang-warnings.py`, `check-gcc-warnings.py`, `check-portability.py`,
-   `check-citations.py` and `check-realtime.py`, all six. A checker that has stopped matching
-   anything is indistinguishable from a clean tree, and a
+   `check-citations.py`, `check-realtime.py` and `check-linux-abi.py`, all seven. A checker that has
+   stopped matching anything is indistinguishable from a clean tree, and a
    gate that cannot fail is indistinguishable from a gate that passes. Adding a lint without one is
    not adding a gate.
 

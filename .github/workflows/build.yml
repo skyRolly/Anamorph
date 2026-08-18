@@ -688,6 +688,31 @@ jobs:
       # coverage that does not exist. valgrind in `sanitizers` answers the same
       # question more thoroughly and far more slowly; this is the cheap one, on
       # every push.
+      # THE COMPATIBILITY CLAIM, MEASURED. A Linux binary records, per imported
+      # symbol, the oldest glibc/libstdc++ version providing it; the MAXIMUM of
+      # those is the oldest system the artifact can load on at all -- below it
+      # the dynamic loader refuses before a line of this project's code runs.
+      # Nothing chooses that number: it falls out of whatever the runner image
+      # ships. Until this step, nothing reported it either, so the project's
+      # Linux compatibility claim was "it builds on ubuntu-latest", which is a
+      # statement about CI rather than about users. It is GLIBC_2.38 today, which
+      # is Ubuntu 23.10+ -- the artifact does not load on Ubuntu 22.04 LTS, and
+      # that was decided by a runner-image move rather than by anyone here.
+      #
+      # It runs AFTER the strip, on the exact bytes users receive, and BEFORE
+      # pluginval, so a floor breach fails ahead of the twenty-minute gate. The
+      # self-test runs first for the usual reason (TESTING_POLICY rule 4).
+      # The floor lives in the script, and COMPATIBILITY_MATRIX defers to it
+      # rather than restating a number.
+      - name: ABI floor self-test (the checker still fires)
+        run: python3 scripts/check-linux-abi.py --self-test
+
+      - name: Assert the shipped Linux ABI floor
+        run: |
+          python3 scripts/check-linux-abi.py \
+            "build/Anamorph_artefacts/Release/VST3/Anamorph.vst3/Contents/x86_64-linux/Anamorph.so" \
+            "build/Anamorph_artefacts/Release/Standalone/Anamorph"
+
       - name: DSP + state self-tests
         id: tests
         env:

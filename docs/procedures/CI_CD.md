@@ -964,6 +964,25 @@ Both analysis workflows configure with `-DANAMORPH_BUILD_STANDALONE=OFF`: the St
 recompiles the same translation units as VST3, so analyzing it doubles cost for zero extra
 coverage. Evidence [Verified]: the four files above.
 
+### The Linux ABI floor
+
+The `linux` job asserts, on the **stripped** binaries and before pluginval, that the shipped VST3
+and Standalone stay within a declared glibc/libstdc++ floor. This is a compatibility claim the
+pipeline previously did not make: a Linux binary records the oldest version providing each imported
+symbol, and the maximum of those is the oldest system that can load it — below it the dynamic
+loader refuses before any of this project's code runs.
+
+Nothing chose that number. It is whatever `ubuntu-latest` shipped when the binaries were linked, and
+a runner-image move raises it **silently and retroactively** — the artifact stops loading on systems
+it loaded on last week, with no failure in CI and no line in any diff. Measured when the gate landed:
+`GLIBC_2.38` and `GLIBCXX_3.4.31`, i.e. Ubuntu 23.10+ and GCC 13+, so the artifact does **not** load
+on Ubuntu 22.04 LTS. That was not a decision; it was an image move nobody saw.
+
+The floor lives in `scripts/check-linux-abi.py` and `COMPATIBILITY_MATRIX.md` defers to it rather
+than restating a number. The gate does not attempt to *lower* the floor — that means an older
+toolchain or a sysroot, a release-topology decision rather than a CI tweak — it makes the run that
+raises it the run that fails, so raising it becomes deliberate and reviewable.
+
 ### Action refs are pinned to commit SHAs
 
 Every `uses:` in every workflow names a **commit SHA**, with the version it corresponds to in a
@@ -1020,9 +1039,12 @@ seconds and catch the most:
 ```bash
 python3 scripts/check-docs.py --self-test && python3 scripts/check-docs.py
 python3 scripts/check-portability.py --self-test && python3 scripts/check-portability.py
+python3 scripts/check-realtime.py --self-test && python3 scripts/check-realtime.py
 python3 scripts/check-citations.py --self-test
 python3 scripts/check-citations.py --check --base origin/main   # --fix re-anchors
-python3 scripts/check-clang-warnings.py --self-test
+python3 scripts/check-clang-warnings.py --self-test              # gate needs a clang build log
+python3 scripts/check-gcc-warnings.py --self-test                # gate needs a gcc build log
+python3 scripts/check-linux-abi.py --self-test                   # gate needs linked artifacts
 ```
 
 `check-citations.py` compares against **a** base, and which one matters: CI uses the previous push,
@@ -1031,8 +1053,10 @@ a document makes the tool fall back to ordinal pairing, which only judges base s
 present verbatim). Check **both** before concluding the gate is green.
 
 **`scripts/preflight.sh`** (added 2026-08-18) runs the whole lint block above in one command — all
-four lints with their self-tests, the citation gate against `origin/main` **and** the branch merge
-base, then `scripts/run-tests.sh` when a built tree exists at `./build` (skipped WITH A NOTE when
+**seven** checkers with their self-tests, the citation gate against `origin/main` **and** the branch
+merge base, the ABI floor for real when a local Release build is present (the one of the three
+build-dependent gates whose input an ordinary local build produces),
+then `scripts/run-tests.sh` when a built tree exists at `./build` (skipped WITH A NOTE when
 none does — never silently). Measured ~5 s on a built tree. It says out loud the one thing it
 cannot cover: the full Clang warning gate needs a clang build log, so only that lint's self-test
 runs locally.

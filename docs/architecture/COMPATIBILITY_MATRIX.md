@@ -17,10 +17,10 @@ Status taxonomy: **Verified** (provable from build/CI/code) · **Partially Verif
 
 | Platform | Status | Evidence |
 |---|---|---|
-| **Linux x86-64** | **Verified (blocking gate)** | CI builds VST3+Standalone; headless pluginval at the configured strictness (deterministic ×3 + randomise ×3) under xvfb — **blocking**. `.github/workflows/build.yml` |
+| **Linux x86-64** | **Verified (blocking gate)**, above a **declared ABI floor** | CI builds VST3+Standalone; headless pluginval at the configured strictness (deterministic ×3 + randomise ×3) under xvfb — **blocking**. The shipped binaries' glibc/libstdc++ floor is asserted on every push against the exact stripped bytes (`scripts/check-linux-abi.py`, which holds the number; this table deliberately quotes none). Distributions **below** that floor are not supported: the dynamic loader refuses the library before any of this project's code runs. `.github/workflows/build.yml` |
 | **Windows x86-64** | **Verified (blocking gate)** | MSVC build; pluginval at the configured strictness, deterministic ×3 + randomise ×3 — **blocking** (`run-pluginval.ps1`, no `continue-on-error`). `.github/workflows/build.yml` |
 | **macOS universal (arm64 + x86_64)** | **Verified (blocking gate)** | `CMAKE_OSX_ARCHITECTURES="arm64;x86_64"`, `lipo` verifies both slices; pluginval at the configured strictness, both modes ×3 — **blocking**. `.github/workflows/build.yml` |
-| **macOS x86_64 on native Intel silicon** | **Verified (blocking gate)** | Distinct from the row above, which is built and validated on an **Apple Silicon** runner and executes its x86_64 slice only under **Rosetta 2** (translated onto arm64 hardware). The `macos-intel` job builds thin `x86_64` on `macos-15-intel` and runs both self-test suites plus the full pluginval gate (VST3 and AU, both modes ×3) on a real Intel CPU, after asserting `uname -m == x86_64` and `sysctl.proc_translated == 0`. It ships nothing — the shipped bundle is still the universal one. .github/workflows/build.yml:2062-2307 (the `macos-intel` job), .github/workflows/build.yml:2007-2063 (its rationale block) |
+| **macOS x86_64 on native Intel silicon** | **Verified (blocking gate)** | Distinct from the row above, which is built and validated on an **Apple Silicon** runner and executes its x86_64 slice only under **Rosetta 2** (translated onto arm64 hardware). The `macos-intel` job builds thin `x86_64` on `macos-15-intel` and runs both self-test suites plus the full pluginval gate (VST3 and AU, both modes ×3) on a real Intel CPU, after asserting `uname -m == x86_64` and `sysctl.proc_translated == 0`. It ships nothing — the shipped bundle is still the universal one. .github/workflows/build.yml:2062-2307 (the `macos-intel` job), .github/workflows/build.yml:2032-2088 (its rationale block) |
 
 ## I/O layouts
 
@@ -54,3 +54,29 @@ without test evidence.`
 | pluginval | latest release (downloaded by script) | **Verified** | scripts/run-pluginval.sh:121 |
 
 See `docs/policies/DEPENDENCY_POLICY.md` for the JUCE version-lock reasoning.
+
+## Linux runtime ABI floor
+
+The Linux artifact's minimum system is not a choice this project made — it is whatever the runner
+image's glibc and libstdc++ happened to be when the binaries were linked. Every imported symbol
+carries the version that introduced it, and the **maximum** of those versions is the oldest system
+that can load the library at all: below it the dynamic loader fails with
+`version 'GLIBC_x.y' not found` before any of this project's code runs, so it is not a degraded
+experience, it is a plug-in that does not appear.
+
+`scripts/check-linux-abi.py` asserts that maximum against a declared floor on every push, in the
+`linux` job, **after** the strip step (so it reads the exact bytes users receive) and **before**
+pluginval (so a breach fails ahead of the twenty-minute gate). The number lives in that script and
+**this table deliberately does not restate it**, for the same reason nothing here restates the
+pluginval strictness: two copies of a number is one copy that goes stale.
+
+What the gate is for is the direction of travel. A runner-image move raises the floor silently and
+retroactively — the artifact simply stops loading on systems it loaded on last week, with no
+failure anywhere in CI and no line in any diff. This makes the run that raises it the run that
+fails. Raising the floor is then a deliberate act: change the constant in the same change, and say
+in the PR which systems it drops.
+
+Lowering the floor is a different and larger question — it means building against an older
+toolchain or a sysroot, which is a release-topology decision rather than a CI tweak. The gate does
+not attempt it and does not pretend to; it makes the cost visible so the decision can be taken
+knowingly.
