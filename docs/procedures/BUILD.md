@@ -55,7 +55,7 @@ Evidence [Verified]: scripts/build.sh:14-15.
 
 | Option | Default | Effect |
 |---|---|---|
-| `ANAMORPH_BUILD_TESTS` | ON | Build the `AnamorphTests` + `AnamorphStateTests` console apps (CMakeLists.txt:27, 317) |
+| `ANAMORPH_BUILD_TESTS` | ON | Build the `AnamorphTests` + `AnamorphStateTests` console apps (CMakeLists.txt:27, 321) |
 | `ANAMORPH_BUILD_STANDALONE` | ON | Add the Standalone target (CMakeLists.txt:28, 226-228) |
 | `ANAMORPH_JUCE_PATH` | "" | Use a local JUCE checkout instead of fetching (CMakeLists.txt:48, 59-61) |
 | `ANAMORPH_JUCE_TAG` | `e18f7f5…` (= tag 9.0.1) | JUCE git rev to fetch when no local path; `ANAMORPH_JUCE_VERSION` carries the readable version (CMakeLists.txt:52-54) |
@@ -103,4 +103,4 @@ Evidence [Verified]: scripts/setup-linux.sh:8-12.
 `JUCE_STRICT_REFCOUNTEDPOINTER=1`. `ANAMORPH_BUILD_NUMBER` is the one of these attached to the
 single translation unit that reads it rather than to the targets — its value changes every CI run,
 and a target-wide definition put that changing value on the command line of every TU.
-Evidence [Verified]: CMakeLists.txt:286-296.
+Evidence [Verified]: CMakeLists.txt:290-300.

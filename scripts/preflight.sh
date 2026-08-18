@@ -19,11 +19,15 @@
 #  an ordinary local Release build already produces. A green preflight is
 #  therefore "the checkers and suites pass", not "CI will be green".
 #
-#  THE CITATION GATE RUNS TWICE, against both bases that can disagree:
-#  `origin/main` (the local default and the PR merge-base case) and the
-#  branch's merge base with it (CI's push-predecessor comparison approximates
-#  this locally). Both escape hatches being open at once is how a stale anchor
-#  has shipped before -- CI_CD.md carries the full reasoning.
+#  THE CITATION GATE RUNS THREE TIMES, against every base that can disagree:
+#  `origin/main` (the local default and the PR merge-base case), the branch's
+#  merge base with it, and `HEAD~1` -- the PUSH PREDECESSOR, which is what CI
+#  actually compares and which the other two do NOT approximate once a branch
+#  has more than one commit. The third was added after it cost a red run: three
+#  anchors drifted from a commit earlier in the same branch, both `origin/main`
+#  bases already carried the re-aimed spelling, and preflight went green while
+#  `source-lint` did not. Several escape hatches open at once is how a stale
+#  anchor has shipped before -- CI_CD.md carries the full reasoning.
 #
 #  NO SILENT SKIPS. If there is no built tree the suites are SKIPPED WITH A
 #  NOTE, never silently -- a preflight that quietly did less than the reader
@@ -63,12 +67,28 @@ else
     echo "      build does not produce anyway."
 fi
 
-echo "== preflight: citation gate (both bases) =="
+echo "== preflight: citation gate (all three bases) =="
 python3 scripts/check-citations.py --self-test
 python3 scripts/check-citations.py --check --base origin/main
 MERGE_BASE="$(git merge-base origin/main HEAD 2>/dev/null || true)"
 if [ -n "$MERGE_BASE" ] && [ "$MERGE_BASE" != "$(git rev-parse origin/main 2>/dev/null)" ]; then
     python3 scripts/check-citations.py --check --base "$MERGE_BASE"
+fi
+
+# THE PUSH PREDECESSOR, which is the base CI ACTUALLY uses and which neither of
+# the two above approximates on a branch with more than one commit. `HEAD~1` is
+# what `github.event.before` will be for the next push -- and on a branch whose
+# merge base IS `origin/main`, both checks above compare against the same commit
+# and this is the only one that reads the change since the last push.
+#
+# Added because it cost a red run: three anchors into `CMakeLists.txt` drifted
+# from a commit earlier in the same branch, and both `origin/main` bases already
+# carried the re-aimed spelling, so preflight was green and `source-lint` was
+# not. That is a false green in the one script whose purpose is to prevent one.
+PREV="$(git rev-parse HEAD~1 2>/dev/null || true)"
+if [ -n "$PREV" ] && [ "$PREV" != "$MERGE_BASE" ]; then
+    echo "-- against the push predecessor ($PREV), which is what CI compares"
+    python3 scripts/check-citations.py --check --base "$PREV"
 fi
 
 echo "== preflight: test suites =="

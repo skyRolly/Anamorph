@@ -317,8 +317,8 @@ DELIBERATE_REAIMS = set([
     # GOOD FOR ONE TRANSITION, like the block above: once the default branch
     # carries these spellings the run reports each as removable, and it says so
     # against the merge base rather than against a push predecessor.
-    ("docs/procedures/BUILD.md", "CMakeLists.txt:27, 317"),
-    ("docs/policies/RELEASE_POLICY.md", "CMakeLists.txt:14, 262-287"),
+    ("docs/procedures/BUILD.md", "CMakeLists.txt:27, 321"),
+    ("docs/policies/RELEASE_POLICY.md", "CMakeLists.txt:14, 266-291"),
     # Same round, found by a second review pass: the compile-definition list
     # cites the block those definitions live in, and `ANAMORPH_BUILD_NUMBER`
     # left that block when it was scoped to one translation unit. `:277-284` is
@@ -328,7 +328,7 @@ DELIBERATE_REAIMS = set([
     # `set_source_files_properties` that now carries it -- ONE anchor still, not
     # two, because a citation whose anchor COUNT changes lands in the
     # "review by hand" branch that no declaration can excuse.
-    ("docs/procedures/BUILD.md", "CMakeLists.txt:286-296"),
+    ("docs/procedures/BUILD.md", "CMakeLists.txt:290-300"),
     # ---------------------------------------------------------------------
     # THE WORKFLOW ANCHORS WERE WRONG ON ARRIVAL, and the way they got there is
     # worth recording because this gate is the thing that should have caught it.
@@ -465,17 +465,28 @@ def invalidated_reaims(doc, text, rewritten, edits):
     Observed twice in one change set (2026-08-18), from edits to
     `run-pluginval.sh` and `CMakeLists.txt`.
 
-    The replacement is matched on the TRACKED PATH rather than positionally,
-    because `edits` is in span order and a document may carry several rewrites;
-    pairing them by index would confidently suggest the wrong one.
+    The replacement is matched by SPAN, not by index and not by tracked path.
+    Both weaker forms were tried and both suggest the wrong string:
+
+      * by index -- `edits` is in span order and has no positional relationship
+        to the sorted declaration list at all;
+      * by tracked path -- correct only while a document rewrites that path
+        ONCE. `docs/procedures/BUILD.md` carries two `CMakeLists.txt` anchors,
+        and the path form confidently offered the first one's replacement for
+        the second. Caught by this warning firing on real drift the same day it
+        was added, which is the argument for the warning as much as for the fix.
+
+    The span is exact: the declared spelling occupies a known offset range in
+    `text`, and the edit that replaced it is the one whose own range overlaps it.
     """
     out = []
     for whole in sorted(w for (d, w) in DELIBERATE_REAIMS if d == doc):
-        if whole in text and whole not in rewritten:
-            path = whole.split(":", 1)[0]
-            replacement = next((new for (_s, _e, new) in edits
-                                if new.split(":", 1)[0] == path), None)
-            out.append((whole, replacement))
+        if whole not in text or whole in rewritten:
+            continue
+        at = text.index(whole)
+        end = at + len(whole)
+        replacement = next((new for (a, b, new) in edits if a < end and at < b), None)
+        out.append((whole, replacement))
     return out
 
 
@@ -1048,30 +1059,49 @@ def self_test():
     path = declared.split(":", 1)[0]
     moved = f"{path}:900-950"
 
+    before = f"Evidence [Verified]: {declared} (the retry)."
+    at = before.index(declared)
     check("--fix reports a declaration its rewrite invalidates, with the replacement",
-          invalidated_reaims(doc,
-                             f"Evidence [Verified]: {declared} (the retry).",
+          invalidated_reaims(doc, before,
                              f"Evidence [Verified]: {moved} (the retry).",
-                             [(0, 0, moved)]),
+                             [(at, at + len(declared), moved)]),
           [(declared, moved)])
     check("...and stays silent when the declared spelling survives the rewrite",
-          invalidated_reaims(doc,
-                             f"Evidence [Verified]: {declared} (the retry).",
-                             f"Evidence [Verified]: {declared} (the retry).",
-                             [(0, 0, "src/PluginProcessor.cpp:1-2")]),
+          invalidated_reaims(doc, before, before, [(0, 5, "src/PluginProcessor.cpp:1-2")]),
           [])
     check("...and stays silent for a document that declares nothing",
-          invalidated_reaims("docs/NOT_DECLARED.md", declared, moved, [(0, 0, moved)]),
+          invalidated_reaims("docs/NOT_DECLARED.md", before, moved,
+                             [(at, at + len(declared), moved)]),
           [])
-    # The replacement is matched on the TRACKED PATH, not positionally: a
-    # document with several rewrites in one pass would otherwise be handed
-    # whichever edit happened to sort first.
-    check("the suggested replacement is the one for the same tracked path",
-          invalidated_reaims(doc,
-                             f"see {declared}",
-                             f"see {moved}",
-                             [(0, 0, "CMakeLists.txt:5-9"), (0, 0, moved)]),
-          [(declared, moved)])
+
+    # THE CASE THE FIRST IMPLEMENTATION GOT WRONG. It matched the replacement by
+    # TRACKED PATH, which is correct only while a document rewrites that path
+    # once. `docs/procedures/BUILD.md` carries two `CMakeLists.txt` anchors, and
+    # the path form offered the FIRST one's replacement for the SECOND -- on real
+    # drift, the same day the warning was added. Matching by span is exact.
+    #
+    # The strings below are SYNTHETIC on purpose -- `synthetic/Two.txt`, a path
+    # this repository does not have. The first draft of this case spelled them
+    # with the real `CMakeLists.txt` anchors it was modelled on, and a later
+    # bulk edit of the DELIBERATE_REAIMS table rewrote the test's own literals
+    # along with the table's, so the case declared one spelling and asserted
+    # another. A fixture that a search-and-replace over real data can reach is
+    # not a fixture.
+    A_OLD, A_NEW = "synthetic/Two.txt:27, 317", "synthetic/Two.txt:27, 321"
+    B_OLD, B_NEW = "synthetic/Two.txt:286-296", "synthetic/Two.txt:290-300"
+    two = f"first {A_OLD} then {B_OLD} done"
+    a1, a2 = two.index(A_OLD), two.index(B_OLD)
+    saved = set(DELIBERATE_REAIMS)
+    DELIBERATE_REAIMS.clear()
+    DELIBERATE_REAIMS.update({("docs/procedures/BUILD.md", B_OLD)})
+    check("with two same-path rewrites, the replacement is the one whose span matches",
+          invalidated_reaims("docs/procedures/BUILD.md", two,
+                             f"first {A_NEW} then {B_NEW} done",
+                             [(a1, a1 + len(A_OLD), A_NEW),
+                              (a2, a2 + len(B_OLD), B_NEW)]),
+          [(B_OLD, B_NEW)])
+    DELIBERATE_REAIMS.clear()
+    DELIBERATE_REAIMS.update(saved)
 
     # --- 9. EVERY DECLARATION NAMES A SPELLING ITS DOCUMENT REALLY CARRIES ---
     # A declaration excuses a mismatch, so it is consulted ONLY when one occurs.

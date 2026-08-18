@@ -1071,14 +1071,19 @@ python3 scripts/check-linux-abi.py --self-test                   # gate needs li
 ```
 
 `check-citations.py` compares against **a** base, and which one matters: CI uses the previous push,
-so a local run against `origin/main` can reach a different verdict (a differing citation *count* for
+so a local run against `origin/main` can reach a different verdict — and on a branch with more than
+one commit it routinely does, because an anchor that drifted from an *earlier commit on the branch*
+has already been re-anchored relative to `main` (a differing citation *count* for
 a document makes the tool fall back to ordinal pairing, which only judges base spellings still
 present verbatim). Check **both** before concluding the gate is green.
 
 **`scripts/preflight.sh`** (added 2026-08-18) runs the whole lint block above in one command — all
-**seven** checkers with their self-tests, the citation gate against `origin/main` **and** the branch
-merge base, the ABI floor for real when a local Release build is present (the one of the three
-build-dependent gates whose input an ordinary local build produces),
+**seven** checkers with their self-tests, the citation gate against **all three** bases that can
+disagree — `origin/main`, the branch merge base, and `HEAD~1`, the **push predecessor** CI actually
+compares (added 2026-08-18 after it cost a red run: three anchors drifted from an earlier commit on
+the same branch, both `origin/main` bases already carried the re-aimed spelling, and preflight went
+green while `source-lint` did not) — the ABI floor for real when a local Release build is present
+(the one of the three build-dependent gates whose input an ordinary local build produces),
 then `scripts/run-tests.sh` when a built tree exists at `./build` (skipped WITH A NOTE when
 none does — never silently). Measured ~5 s on a built tree. It says out loud the one thing it
 cannot cover: the full Clang warning gate needs a clang build log, so only that lint's self-test
