@@ -142,11 +142,24 @@ otherwise fine, and a red build does not skip them.
   *manifest* elsewhere: Linux hands back zero-filled pages and macOS does not, so an uninitialised
   read of DSP state is benign here and arbitrary there. MemorySanitizer is deliberately not used —
   it needs every dependency including JUCE instrumented, and an uninstrumented one produces false
-  positives rather than silence; memcheck answers the same question with no rebuild. valgrind runs
+  positives rather than silence; memcheck answers the same question with no rebuild. The UBSan list
+  is `undefined` plus `vptr` (C++ only — Clang 21 dropped it from the group, ADR-0028) plus five
+  groups outside `undefined`, added 2026-08-18 after a census run showed both suites execute ZERO
+  diagnostics under them: `float-divide-by-zero`, `implicit-conversion`, `unsigned-shift-base`,
+  `local-bounds` (trap-based — a hit can die by SIGILL with no diagnostic text), `nullability`. The
+  full `integer` group is **deliberately absent**: its `unsigned-integer-overflow` half flags legal,
+  intentional wraparound (JUCE string hash, `Random` LCG, tick arithmetic, libstdc++'s mersenne
+  twister — all census-measured) and would fail the job under `halt_on_error=1` on correct
+  third-party code. `ASAN_OPTIONS` adds `check_initialization_order=1:strict_init_order=1:`
+  `strict_string_checks=1` (measured clean on both suites). valgrind runs
   **both** suites because the read that would matter runs through the real wrapper `processBlock`,
-  which only `AnamorphStateTests` drives. `--error-exitcode=1` makes a finding fail the job (not
-  valgrind's default). `detect_leaks=0` — JUCE's singletons are torn down at exit in ways
-  LeakSanitizer reports and this is not a leak gate.
+  which only `AnamorphStateTests` drives (`testWrapperProcessBlockAudioPath` — before 2026-08-18 no
+  test in that suite called `processBlock` and this sentence was aspirational; the workflow comment
+  says so too). `--error-exitcode=1` makes a finding fail the job (not
+  valgrind's default). `detect_leaks=0` — the job is scoped as not-a-leak-gate; the old factual
+  justification (JUCE singleton teardown reports) was retested 2026-08-18 and no longer holds —
+  both suites run leak-clean under `detect_leaks=1` — so flipping it is a one-line maintainer
+  decision, recorded in the workflow comment.
   The valgrind step sets **`ANAMORPH_TESTS_NO_FTZ=1`**, which relaxes exactly one assertion and only
   under this tool. `juce::ScopedNoDenormals` sets the CPU's FTZ/DAZ bits so a denormal result is
   flushed to zero *in hardware*; valgrind emulates floating point and does not honour those bits, so
@@ -158,6 +171,14 @@ otherwise fine, and a red build does not skip them.
   anywhere else. (Pointing valgrind at the state suite alone was the alternative and was rejected:
   that suite passes under memcheck untouched, but it would leave the DSP suite with no
   uninitialised-read detector at all.)
+- **linux-lto-tests** — both suites built and run with `-flto` on GCC Release (added 2026-08-18).
+  The shipped plugin is the only target linking `juce::juce_recommended_lto_flags`, and the test
+  targets deliberately do not (so the sanitizers job builds them cleanly and quickly) — which meant
+  no behavioural assertion had ever executed link-time-optimized codegen while the binary users load
+  is exactly that. This job runs the identical `-flto` spelling through the CMake cache variables so
+  no CMake structure changes (a CMake-structure change is a gated Build System change); pluginval
+  still validates the shipped bytes for conformance, this job validates the numeric assertions under
+  the shipped optimization class. Not in any `needs:` chain, same reasoning as `sanitizers`.
 
 `MALLOC_PERTURB_=1` is set on the `linux` and `linux-clang` self-test steps: glibc then fills **fresh**
 heap with `0xFE` and **freed** heap with `0x01`, so an uninitialised read of audio state comes back as
@@ -818,6 +839,13 @@ python3 scripts/check-clang-warnings.py --self-test
 so a local run against `origin/main` can reach a different verdict (a differing citation *count* for
 a document makes the tool fall back to ordinal pairing, which only judges base spellings still
 present verbatim). Check **both** before concluding the gate is green.
+
+**`scripts/preflight.sh`** (added 2026-08-18) runs the whole lint block above in one command — all
+four lints with their self-tests, the citation gate against `origin/main` **and** the branch merge
+base, then `scripts/run-tests.sh` when a built tree exists at `./build` (skipped WITH A NOTE when
+none does — never silently). Measured ~5 s on a built tree. It says out loud the one thing it
+cannot cover: the full Clang warning gate needs a clang build log, so only that lint's self-test
+runs locally.
 
 Then the build and the release gate:
 

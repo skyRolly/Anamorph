@@ -15,7 +15,7 @@ exits non-zero on any failed `check` or missing binary. Evidence [Verified]: scr
 
 ### What the tests cover
 
-`tests/dsp_tests.cpp` has **33 DSP tests** using a `check(cond, "what")` harness, covering: MS
+`tests/dsp_tests.cpp` has **36 DSP tests** using a `check(cond, "what")` harness, covering: MS
 round-trip (bit-exact), transparent default, true-bypass null + latency match, Mono Maker
 (post-Mix), Multiband mono-compat, Solo band selectivity + transparency, Level Match
 (unity/no-ratchet/silence-freeze/mix-coupling/multiband-unity), crossover automation safety,
@@ -62,7 +62,17 @@ Amount settled at exactly 0 (under FTZ, as on the real audio thread) every block
 through **bit-untouched**, re-engaging on silent input must play back audio recorded WHILE
 parked (the delay lines must keep recording through the parked fast path — this fails if a
 future change stops the parked ring writes), and re-parking must return to bit-transparency
-once the wet glide drains. It
+once the wet glide drains; and three feature-coverage tests added after a 2026-08-18
+line/branch-coverage audit found these shipped stages had **zero** executions in either suite:
+mono-sum input conditioning (`testMonoSumInputConditioning`, Test 35: a pure-side tone is
+silenced, a mono tone passes at level with no side content, and mono-sum-off preserves the side
+control), M/S input solo (`testMsSoloInputIsolation`, Test 36: Mid solo passes mono / rejects
+side, Side solo passes side — and, the documented feedback-#15 property, Side solo on mono
+content stays silent even at full Amount because the solo runs BEFORE the widener), and the
+Level-Match injection consume paths (`testMatchInjectRestore`, Test 37, feedback #16/#23: both
+the un-ducked defensive consume and the forced-duck silent-bottom consume adopt the injected
+per-A/B-slot trim as a SEED — measured ≤ −4 dB displayed from a −6 dB injection — after which
+MEASURE re-converges as the design intends, with no level slam). It
 additionally carries **one state-restoration robustness guard**,
 `testAbActiveClampOnCorruptState` — it drives a corrupted `<AB active="…">` blob through the same
 read+clamp the processor uses (`anamorph::clampAbSlotIndex`, `src/AbSlotIndex.h`) and asserts an
@@ -71,7 +81,7 @@ preserved. Evidence [Verified]: tests/dsp_tests.cpp (`main` registers all tests)
 
 ### State-compatibility self-tests (v0.8.13 harness)
 
-`tests/state_tests.cpp` (**12 tests**, own console target `AnamorphStateTests`) automates the
+`tests/state_tests.cpp` (**13 tests**, own console target `AnamorphStateTests`) automates the
 COMPATIBILITY policy family against the **real `AnamorphAudioProcessor`** (the target compiles
 the plugin sources; the editor is linked but never instantiated — fully headless):
 serialized-schema shape (every `SERIALIZATION_REGISTRY.md` field), a **parameter-registry
@@ -99,7 +109,13 @@ in a SUB-folder of the preset folder, a preset whose file NAME `juce::File::isAb
 fallback; and in EVERY one of those
 eight paths — the seven that go through the reload helper plus the A/B slot check — the restored
 parameters are asserted bit-identical, because the identity is metadata and must never influence the
-sound).
+sound), and the **wrapper audio path** (`testWrapperProcessBlockAudioPath`, 2026-08-18: the real
+`processBlock` over a denormal-provoking noise→silence matrix with **no test-side FTZ arming**, so
+it regresses `processBlock`'s own `ScopedNoDenormals` — and it is the only test in either suite
+that drives the wrapper's audio path, which is what points the `sanitizers` job's ASan/UBSan and
+valgrind runs of this suite at the wrapper's parameter snapshotting and buffer handling; a
+liveness RMS check first proves the invariant is not vacuously green, and the
+`ANAMORPH_TESTS_NO_FTZ` escape relaxes only the denormal half, exactly as in the DSP suite).
 Evidence [Verified]: tests/state_tests.cpp; CMakeLists.txt (`AnamorphStateTests`).
 
 **Changing the parameter surface intentionally** (ADR + `PARAMETER_REGISTRY.md` update

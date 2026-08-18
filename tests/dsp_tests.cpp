@@ -2672,6 +2672,223 @@ static void testHaasParkedWarmHistory()
 }
 
 // ---------------------------------------------------------------------------
+static void testMonoSumInputConditioning()
+{
+    std::printf ("Test 35: Mono sum collapses the input to mono (stage-1 conditioning)\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0;
+    const int block = 256;
+    const double freq = 1000.0;
+
+    // Output RMS of channel 0 and of the side signal, after the discrete-switch
+    // duck has settled (monoSum is a discrete control, so it arrives ducked).
+    auto measure = [&] (bool monoSumOn, bool pureSideInput, double& outCh0, double& outSide)
+    {
+        anamorph::AnamorphEngine engine;
+        engine.prepare (sr, block);
+        anamorph::EngineParameters p;            // transparent defaults
+        p.monoSum = monoSumOn;
+        engine.setParameters (p);
+        engine.reset();
+
+        double phase = 0.0;
+        const double inc = 2.0 * 3.14159265358979 * freq / sr;
+        double sqCh0 = 0.0, sqSide = 0.0; int counted = 0;
+        for (int nb = 0; nb < 60; ++nb)
+        {
+            juce::AudioBuffer<float> buf (2, block);
+            for (int i = 0; i < block; ++i)
+            {
+                const float s = 0.5f * (float) std::sin (phase); phase += inc;
+                buf.setSample (0, i, s);
+                buf.setSample (1, i, pureSideInput ? -s : s);
+            }
+            engine.setParameters (p);
+            engine.process (buf);
+            if (nb >= 40)
+                for (int i = 0; i < block; ++i)
+                {
+                    const float l = buf.getSample (0, i), r = buf.getSample (1, i);
+                    sqCh0  += static_cast<double> (l) * static_cast<double> (l);
+                    const float side = 0.5f * (l - r);
+                    sqSide += static_cast<double> (side) * static_cast<double> (side);
+                    ++counted;
+                }
+        }
+        outCh0  = std::sqrt (sqCh0  / juce::jmax (1, counted));
+        outSide = std::sqrt (sqSide / juce::jmax (1, counted));
+    };
+
+    double ch0 = 0.0, side = 0.0;
+
+    // A pure-side tone sums to nothing: L + R == 0, so mono sum silences it.
+    measure (true, true, ch0, side);
+    std::printf ("  monoSum ON , side tone : ch0 %.4f side %.4f\n", ch0, side);
+    check (ch0 < 0.02, "mono sum silences a pure-side input");
+
+    // A mono tone passes at level, and the output carries no side content.
+    measure (true, false, ch0, side);
+    std::printf ("  monoSum ON , mono tone : ch0 %.4f side %.4f\n", ch0, side);
+    check (ch0 > 0.3,   "mono sum preserves a mono input at level");
+    check (side < 0.02, "mono sum output carries no side content");
+
+    // Control: with mono sum OFF the same side tone survives conditioning.
+    measure (false, true, ch0, side);
+    std::printf ("  monoSum OFF, side tone : ch0 %.4f side %.4f\n", ch0, side);
+    check (side > 0.3, "mono sum OFF preserves the side tone");
+}
+
+// ---------------------------------------------------------------------------
+static void testMsSoloInputIsolation()
+{
+    std::printf ("Test 36: M/S Solo isolates Mid/Side BEFORE the widening engine (#15)\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0;
+    const int block = 256;
+    const double freq = 1000.0;
+
+    // Output RMS (ch 0) for a solo mode + stimulus, with the widening amount as
+    // given -- solo is a discrete control, so measurement waits out the duck.
+    auto soloRms = [&] (anamorph::SoloMode mode, bool pureSideInput, float amount) -> double
+    {
+        anamorph::AnamorphEngine engine;
+        engine.prepare (sr, block);
+        anamorph::EngineParameters p;
+        p.solo = mode;
+        p.algoAmount = amount;                   // the #15 claim: raised Amount
+        if (amount > 0.0f) p.driveDb = 8.0f;     //   must not leak signal back in
+        engine.setParameters (p);
+        engine.reset();
+
+        double phase = 0.0;
+        const double inc = 2.0 * 3.14159265358979 * freq / sr;
+        double sq = 0.0; int counted = 0;
+        for (int nb = 0; nb < 70; ++nb)
+        {
+            juce::AudioBuffer<float> buf (2, block);
+            for (int i = 0; i < block; ++i)
+            {
+                const float s = 0.5f * (float) std::sin (phase); phase += inc;
+                buf.setSample (0, i, s);
+                buf.setSample (1, i, pureSideInput ? -s : s);
+            }
+            engine.setParameters (p);
+            engine.process (buf);
+            if (nb >= 45)
+                for (int i = 0; i < block; ++i)
+                {
+                    const float v = buf.getSample (0, i);
+                    sq += static_cast<double> (v) * static_cast<double> (v); ++counted;
+                }
+        }
+        return std::sqrt (sq / juce::jmax (1, counted));
+    };
+
+    using anamorph::SoloMode;
+    const double midOnMono   = soloRms (SoloMode::Mid,  false, 0.0f);
+    const double midOnSide   = soloRms (SoloMode::Mid,  true,  0.0f);
+    const double sideOnSide  = soloRms (SoloMode::Side, true,  0.0f);
+    const double sideOnMono  = soloRms (SoloMode::Side, false, 1.0f);
+    std::printf ("  Mid solo : mono %.4f side %.4f ; Side solo: side %.4f mono(amount=1) %.4f\n",
+                 midOnMono, midOnSide, sideOnSide, sideOnMono);
+
+    check (midOnMono  > 0.3,  "Mid solo passes mono content");
+    check (midOnSide  < 0.02, "Mid solo rejects pure-side content");
+    check (sideOnSide > 0.3,  "Side solo passes pure-side content");
+    // The documented property this stage exists for: solo runs BEFORE the
+    // widener, so soloing Side on mono content stays silent even at Amount 1.
+    check (sideOnMono < 0.02, "Side solo on mono content stays silent at full Amount");
+}
+
+// ---------------------------------------------------------------------------
+static void testMatchInjectRestore()
+{
+    std::printf ("Test 37: injected Level-Match trim is adopted on both consume paths (#23)\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0;
+    const int block = 256;
+
+    anamorph::AnamorphEngine engine;
+    engine.prepare (sr, block);
+    anamorph::EngineParameters p;                // transparent defaults
+    p.autoGainMatch = true;
+    engine.setParameters (p);
+    engine.reset();
+
+    double phase = 0.0;
+    const double inc = 2.0 * 3.14159265358979 * 1000.0 / sr;
+    auto runBlocks = [&] (int count) -> double   // returns RMS over the last 20 blocks
+    {
+        double sq = 0.0; int counted = 0;
+        for (int nb = 0; nb < count; ++nb)
+        {
+            juce::AudioBuffer<float> buf (2, block);
+            for (int i = 0; i < block; ++i)
+            {
+                const float s = 0.25f * (float) std::sin (phase); phase += inc;
+                buf.setSample (0, i, s); buf.setSample (1, i, s);
+            }
+            engine.setParameters (p);
+            engine.process (buf);
+            if (nb >= count - 20)
+                for (int i = 0; i < block; ++i)
+                {
+                    const float v = buf.getSample (0, i);
+                    sq += static_cast<double> (v) * static_cast<double> (v); ++counted;
+                }
+        }
+        return std::sqrt (sq / juce::jmax (1, counted));
+    };
+
+    // The injection is a SEED, not a freeze (LoudnessMatch.h:63-69, feedback
+    // #16/#23): setDisplayedGainDb restores the remembered value so the switch
+    // does not lurch, and MEASURE -- "the final authority" while audio plays --
+    // then re-converges smoothly FROM it. The assertions below test exactly
+    // that contract: the seed lands (both consume paths), and the measurement
+    // walks it back to the transparent chain's ~0 dB without a level slam.
+
+    // Settle the transparent chain with Level Match engaged: wet == dry, so the
+    // engine's own measured match should sit at ~0 dB.
+    const double amp0 = runBlocks (100);
+    check (std::abs (engine.getMatchGainDb()) < 1.0, "transparent chain measures ~0 dB match");
+    check (amp0 > 0.1, "steady tone present before injection");
+
+    // DEFENSIVE consume path (AnamorphEngine.cpp "arrived WITHOUT a forced
+    // duck"): the seed is adopted on the very next block rather than lost.
+    engine.injectMatchGainDb (-6.0f);
+    runBlocks (1);
+    const float seeded = engine.getMatchGainDb();
+    std::printf ("  un-ducked seed after 1 block: %.2f dB\n", (double) seeded);
+    check (seeded < -4.0f, "un-ducked injection seeds the displayed match trim");
+
+    const double ampBack = runBlocks (200);
+    const float back = engine.getMatchGainDb();
+    std::printf ("  re-converged after 200 blocks: %.2f dB\n", (double) back);
+    check (std::abs (back) < 1.0, "measurement re-converges from the seed (authority kept)");
+    check (ampBack / juce::jmax (1.0e-9, amp0) > 0.8, "steady level restored after re-convergence");
+
+    // FORCED path (the A/B slot-switch choreography, feedback #23): request the
+    // masking duck, inject the remembered trim, then hand over the (here:
+    // identical) parameters; the seed is adopted at the silent bottom.
+    engine.requestDuck();
+    engine.injectMatchGainDb (-6.0f);
+    engine.setParameters (p);
+    float lowest = 0.0f;
+    for (int nb = 0; nb < 40; ++nb)
+    {
+        runBlocks (1);
+        lowest = juce::jmin (lowest, engine.getMatchGainDb());
+    }
+    std::printf ("  forced-duck seed: lowest displayed over 40 blocks: %.2f dB\n", (double) lowest);
+    check (lowest < -4.0f, "forced-duck injection seeds the trim at the silent bottom");
+
+    const double ampEnd = runBlocks (200);
+    check (std::abs (engine.getMatchGainDb()) < 1.0,
+           "measurement re-converges after the forced-duck seed");
+    check (ampEnd / juce::jmax (1.0e-9, amp0) > 0.8, "steady level restored after the duck");
+}
+
+// ---------------------------------------------------------------------------
 int main()
 {
     std::printf ("=== Anamorph DSP self-tests ===\n");
@@ -2722,6 +2939,9 @@ int main()
     testHighRateCrossoverSnap();
     testSoloColdThroughDrag();
     testHaasParkedWarmHistory();
+    testMonoSumInputConditioning();
+    testMsSoloInputIsolation();
+    testMatchInjectRestore();
     testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);

@@ -10,8 +10,8 @@ Audit basis: full read of `src/dsp/**` and `src/PluginProcessor.cpp` (two indepe
 
 | Module | Audio-path status | Allocation (prepare only) | Evidence |
 |---|---|---|---|
-| `AnamorphAudioProcessor::processBlock` | **Verified** — `ScopedNoDenormals`; param snapshot is atomic loads; no alloc/lock/IO | n/a (engine.prepare) | PluginProcessor.cpp:64-131 |
-| `AnamorphEngine::process` | **Verified** — all scratch pre-sized; no alloc/lock/IO | prepare(): all buffers + oversamplers | AnamorphEngine.cpp:26-113 vs :472-899 |
+| `AnamorphAudioProcessor::processBlock` | **Verified** — `ScopedNoDenormals`; param snapshot is atomic loads; no alloc/lock/IO | n/a (engine.prepare) | src/PluginProcessor.cpp:117-185 |
+| `AnamorphEngine::process` | **Verified** — all scratch pre-sized; no alloc/lock/IO | prepare(): all buffers + oversamplers | src/dsp/AnamorphEngine.cpp:28-113 vs :660-1339 |
 | `MidSide` | **Verified** — pure arithmetic, `noexcept` | none | MidSide.h:21-42 |
 | `HaasProcessor` | **Verified** — `process`/`reset` use pre-sized vectors (`std::fill`, no resize) | prepare(): `bufL/bufR.assign` | HaasProcessor.cpp:15-22,46-63 |
 | `VelvetNoise` | **Verified** — no alloc/lock/IO; note O(64) per-sample loop + transport-stop `std::fill` (no alloc) | prepare(): `midHist.assign`, RNG construct | VelvetNoise.cpp:10-17,81-139 |
@@ -31,7 +31,7 @@ Audit basis: full read of `src/dsp/**` and `src/PluginProcessor.cpp` (two indepe
   `std::vector::assign` or `juce::dsp::*::prepare`).
 - **Non-finite guard:** an engine-wide per-sample NaN/Inf check replaces only non-finite
   samples with 0 and resets stateful nodes; it is not a level limiter and never alters valid
-  audio. Evidence: AnamorphEngine.cpp:847-870.
+  audio. Evidence: src/dsp/AnamorphEngine.cpp:1256-1290.
 - **`reset()` paths run `std::fill`/filter resets** but never allocate, and are invoked at safe
   points (prepare, host reset, the silent duck bottom, NaN self-heal).
 
@@ -43,4 +43,16 @@ upgrade the "no allocation inside JUCE's oversampler call" assumption from infer
 The plugin's own code is allocation-free on the audio path; JUCE internals are trusted by
 construction (initProcessing is called in prepare).`
 
-Source for the OS init: src/dsp/AnamorphEngine.cpp:49-51 (`initProcessing` at prepare).
+Source for the OS init: src/dsp/AnamorphEngine.cpp:51-53 (`initProcessing` at prepare).
+
+**Partially measured since 2026-08-18** (this entry does not close the TODO above): a dynamic
+allocation-interposition probe over the real engine + the pinned JUCE 9.0.1 — 32 configurations
+(4 algorithms × 4 oversampling factors × 2 M/S variants), 7,680 armed `process()` calls with
+mid-stream algorithm swaps, bypass crossfades and crossover drags — counted **zero** `operator
+new`/`malloc`-family calls on the audio path, *including through
+`juce::dsp::Oversampling::processSamplesUp/Down` at ×2/×4/×8*, while the same probe counted the
+expected `prepare()` allocations (102 `new` + 663 `malloc`-family) and caught both classes of
+seeded violation. The probe is session tooling, not a committed gate; the committed follow-ups
+are `testWrapperProcessBlockAudioPath` (tests/state_tests.cpp — the wrapper path under the
+sanitizers/valgrind jobs) and the RealtimeSanitizer decision that ADR-0028 reserves for its own
+ADR.

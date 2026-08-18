@@ -24,6 +24,10 @@
 //    9. Factory-id integrity: present, unique, and every one resolving.
 //   10. The preset indicator identity across a session reload, incl. every
 //       fallback -- and bit-identical parameters on every one of those paths.
+//   11. Wrapper audio path: the real processBlock over a denormal-provoking
+//       noise -> silence matrix, with NO test-side FTZ arming -- regresses
+//       processBlock's own ScopedNoDenormals and gives the sanitizer/valgrind
+//       runs of this suite a wrapper audio path to instrument.
 //
 //  Fixture workflow: an INTENTIONAL parameter/schema change (which requires an
 //  ADR + registry update per the compatibility policies) is recorded by
@@ -37,7 +41,9 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <random>
 #include <vector>
 
 namespace
@@ -1384,6 +1390,107 @@ static void testPresetIndicatorIdentityAcrossRestore()
 }
 
 // ---------------------------------------------------------------------------
+// 11. Wrapper audio path: the REAL AnamorphAudioProcessor::processBlock over a
+//     denormal-provoking noise -> silence matrix. This is the only test in
+//     either suite that drives the wrapper's audio path (the DSP suite drives
+//     the engine directly), so it is what points the sanitizers/valgrind runs
+//     of THIS suite at processBlock's own code -- parameter snapshotting,
+//     mono up-mix guards, transport handling and the ScopedNoDenormals guard.
+//
+//     Deliberately NO test-side juce::ScopedNoDenormals here: processBlock
+//     arms its own (src/PluginProcessor.cpp), and this test regresses exactly
+//     that -- were the guard ever lost, the silence phase would flush nothing
+//     and the denormal assertion below would fail on every native runner.
+//     The ANAMORPH_TESTS_NO_FTZ escape mirrors tests/dsp_tests.cpp `isBad`
+//     (see the full reasoning there): valgrind emulates FP without honouring
+//     the FTZ/DAZ bits, so under memcheck only the NaN/Inf half is asserted.
+static void testWrapperProcessBlockAudioPath()
+{
+    std::printf ("Wrapper audio path: real processBlock, NaN/Inf/denormal-free (own FTZ guard)\n");
+
+    const bool ftzUnavailable = []
+    {
+        const char* const v = std::getenv ("ANAMORPH_TESTS_NO_FTZ");
+        return v != nullptr && std::strcmp (v, "1") == 0;
+    }();
+    if (ftzUnavailable)
+        std::printf ("  ::warning::ANAMORPH_TESTS_NO_FTZ=1 -- the DENORMAL half of this "
+                     "test is NOT asserted in this run (NaN and Inf still are).\n");
+
+    AnamorphAudioProcessor proc;
+
+    // The DSP suite's denormal-provoking configuration (dsp_tests.cpp Test 2):
+    // drive 8 dB, width 1.6, Multiband + Level Match engaged -- set through the
+    // real APVTS in real units, so the wrapper's own snapshot code runs.
+    auto setReal = [&proc] (const char* id, float real)
+    {
+        auto* rp = dynamic_cast<juce::RangedAudioParameter*> (proc.getAPVTS().getParameter (id));
+        ++checks;
+        if (rp == nullptr)
+        {
+            ++failures;
+            std::printf ("  [FAIL] parameter missing for wrapper audio-path test: %s\n", id);
+            return;
+        }
+        rp->setValueNotifyingHost (rp->convertTo0to1 (real));
+    };
+    setReal ("drive",         8.0f);
+    setReal ("width",         1.6f);
+    setReal ("mbEnable",      1.0f);
+    setReal ("autoGainMatch", 1.0f);
+
+    const double sr = 48000.0;
+    const int block = 256;
+    proc.prepareToPlay (sr, block);
+
+    juce::AudioBuffer<float> buf (2, block);
+    juce::MidiBuffer midi;
+    std::mt19937 rng (98765);
+    std::uniform_real_distribution<float> dist (-0.7f, 0.7f);
+
+    bool anyBad = false;
+    double noiseSq = 0.0; long noiseCount = 0;
+    for (int phase = 0; phase < 2; ++phase)          // noise, then silence
+        for (int nb = 0; nb < 120; ++nb)
+        {
+            if (phase == 0)
+                for (int ch = 0; ch < 2; ++ch)
+                    for (int i = 0; i < block; ++i)
+                        buf.setSample (ch, i, dist (rng));
+            else
+                buf.clear();
+
+            midi.clear();
+            proc.processBlock (buf, midi);
+
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = 0; i < block; ++i)
+                {
+                    const float x = buf.getSample (ch, i);
+                    if (std::isnan (x) || std::isinf (x)) anyBad = true;
+                    else if (! ftzUnavailable)
+                    {
+                        const float a = std::abs (x);
+                        if (a > 0.0f && a < 1.17549435e-38f) anyBad = true; // denormal
+                    }
+                    if (phase == 0)
+                    {
+                        noiseSq += static_cast<double> (x) * static_cast<double> (x);
+                        ++noiseCount;
+                    }
+                }
+        }
+
+    const double noiseRms = std::sqrt (noiseSq / static_cast<double> (juce::jmax (1L, noiseCount)));
+    std::printf ("  noise-phase output RMS %.4f over %d blocks\n", noiseRms, 240);
+    // Liveness first: a silently-null path would make the invariant vacuous.
+    check (noiseRms > 0.05, "wrapper audio path produces output (assertion is not vacuous)");
+    check (! anyBad, "wrapper processBlock output free of NaN/Inf/denormals");
+
+    proc.releaseResources();
+}
+
+// ---------------------------------------------------------------------------
 int main (int argc, char* argv[])
 {
     juce::ScopedJuceInitialiser_GUI juceInit; // MessageManager for APVTS/processor on this thread
@@ -1411,6 +1518,7 @@ int main (int argc, char* argv[])
     testDuplicateNameFactoryVsUserPreset();
     testFactoryPresetIdIntegrity();
     testPresetIndicatorIdentityAcrossRestore();
+    testWrapperProcessBlockAudioPath();
 
     std::printf ("\n%d checks, %d failure(s)\n", checks, failures);
     return failures == 0 ? 0 : 1;

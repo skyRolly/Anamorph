@@ -7,8 +7,11 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
+**engineering-capability audit: extended UBSan coverage, the LTO validation gap, the wrapper
+audio path + three DSP feature-coverage tests, `preflight.sh`, and the realtime-doc anchor rot**
+(first below), then the
 **dependency-update audit: Clang 18 → 22 (upstream stable, from apt.llvm.org) and the Dependabot
-group split** (first below), then the
+group split** after it, then the
 **stale re-aim declaration, protected history, non-gating cache statistics** after it, then the
 **citation follow-up: two missed anchors and four that were wrong on arrival** after it, then
 the **citation-gate coverage for the build definition and the CI workflow** after it, then the
@@ -34,6 +37,81 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**Engineering-capability audit (2026-08-18): extended UBSan coverage, the LTO validation gap,
+the wrapper audio path + three DSP feature-coverage tests, `preflight.sh`, and the realtime-doc
+anchor rot. Six adopted improvements, every one demonstrated before landing; the RealtimeSanitizer
+decision stays reserved for its own ADR (ADR-0028), as do all CMake-structure changes (gated).**
+
+**The sanitizers job now checks five more UBSan groups, chosen by census rather than by list.**
+`-fsanitize=undefined` does not contain `float-divide-by-zero`, `implicit-conversion`,
+`unsigned-shift-base`, `local-bounds` or `nullability`; a census build with the candidates enabled
+ran both suites and measured **zero** diagnostics under all five, so they gate for free. The full
+`integer` group was measured too and is **deliberately absent**: its `unsigned-integer-overflow`
+half fired 8 times on legal, intentional wraparound (JUCE string hash, `Random` LCG, `Thread` tick
+arithmetic, libstdc++'s mersenne twister) and under `halt_on_error=1` would redden the job on
+correct third-party code. One sharp edge is written beside the flags: `local-bounds` is trap-based
+and can fail by SIGILL with no diagnostic text. `ASAN_OPTIONS` gains
+`check_initialization_order=1:strict_init_order=1:strict_string_checks=1` (measured clean);
+`detect_stack_use_after_return` is deliberately NOT written because it is clang-22's Linux default
+— demonstrated, not assumed — and restating a default is the copy that rots. The `detect_leaks=0`
+comment's factual half ("JUCE singleton teardown reports") was retested and is no longer true —
+both suites run leak-clean under `detect_leaks=1` — so the comment now records the measured fact
+and keeps the scoping as the maintainer's documented decision rather than a stale justification.
+
+**The self-test suites had never executed link-time-optimized codegen, and the shipped binary is
+nothing else.** The plugin alone links `juce_recommended_lto_flags`; both console suites
+deliberately do not. The new `linux-lto-tests` job builds and runs both suites with the identical
+plain `-flto` spelling on the same GCC that builds the shipped Linux artifact — via the CMake cache
+variables, because linking the JUCE interface target into the test targets would be a
+CMake-structure change and that class is review-gated (`ARCHITECTURE_REVIEW_GATE.md`). Demonstrated
+before landing: the LTO build of both suites passes locally (275 s on 4 cores; the state-suite LTO
+link dominates because plain `-flto` runs LTRANS serially — true of the shipped link too).
+
+**The state suite gained the wrapper audio path, which makes an existing workflow comment true.**
+`build.yml`'s valgrind rationale has long said the read that matters "runs through the real wrapper
+`processBlock` — which only AnamorphStateTests drives"; measured 2026-08-18, `grep -c processBlock
+tests/state_tests.cpp` was **0** — no test in either suite drove the wrapper's audio path, so the
+sentence was aspirational. `testWrapperProcessBlockAudioPath` now drives the real
+`AnamorphAudioProcessor::processBlock` over a denormal-provoking noise→silence matrix with **no
+test-side FTZ arming**, regressing `processBlock`'s own `ScopedNoDenormals` (the DSP suite's own
+denormal matrix arms FTZ in the harness, so it could never catch the wrapper losing its guard); a
+liveness RMS check proves the invariant is not vacuously green. Three DSP feature gaps found by a
+line/branch coverage run (93.4% lines / 79.9% branches over src/dsp, with `monoSum`, M/S input
+solo and the Level-Match injection consume paths at zero) are closed by Tests 35–37 — Test 37's
+first draft asserted a *frozen* injected trim and failed, which is how the actual contract
+(injection is a SEED the measurement re-converges from, `LoudnessMatch.h:63-69`) got asserted
+instead; the suites are now **156 + 900 checks** (were 140 + 894).
+
+**The realtime documentation had rotted around code growth, and only the untracked spellings let
+it.** `REALTIME_SAFETY_AUDIT.md` cited `processBlock` at `PluginProcessor.cpp:64-131` (actual:
+117-185), the engine at `:26-113 vs :472-899` (actual: 28-113 vs 660-1339) and the NaN self-heal
+at `:847-870` (actual: 1256-1290); `REALTIME_AUDIO_POLICY.md:34` and `THREAD_MODEL.md:16-17`
+carried the same class. Every corrected anchor was measured against the tree, the previously BARE
+filenames are now path-qualified so `check-citations.py` tracks them from here on, and the four
+already-tracked corrections are declared in `DELIBERATE_REAIMS` (the tool rightly refuses a
+re-aim it cannot map — its base text never moved; the aim was wrong, not drifted). The audit's
+JUCE-oversampler TODO stays open but now carries the first measurement: an interposition probe
+counted zero audio-path allocations through `Oversampling::processSamplesUp/Down` at ×2/×4/×8
+across 7,680 armed process calls, with the expected `prepare()` allocations (102 `new` + 663
+`malloc`) as the positive control.
+
+**`scripts/preflight.sh` exists because this branch kept paying a CI round trip for lint verdicts
+that cost 5 seconds locally.** It runs the four lints with their self-tests, the citation gate
+against BOTH bases that can disagree (`origin/main` and the branch merge base), and the built test
+suites — skipped WITH A NOTE when no built tree exists, never silently (the `build.sh` stale-binary
+lesson). Measured: 5.5 s end to end on a built tree. It states its own limit out loud: the full
+Clang warning gate needs a clang build log, so only that lint's self-test runs locally.
+
+**Anchor bookkeeping for this round, same discipline as the last two.** The `sanitizers` job's
+comments grew build.yml by 27 lines above `windows:` (the LTO job was appended at the END of the
+file precisely so nothing below it exists to shift); the five tracked build.yml anchors were
+recomputed by `--fix` against the push predecessor and read back by hand (`macos` `:1482-1942` →
+`:1509-1969`, its rationale `:1943-1999` → `:1970-2026`, `macos-intel` `:2000-2245` →
+`:2027-2272`, the codesign trio `:1713-1715` → `:1740-1742`, the per-OS Configure trio
+`:546,1124,1546` → `:546, 1151, 1573`), and the matching `DELIBERATE_REAIMS` declarations were
+updated in the same change — section 9 of `--self-test` failed 4 cases until they were, the third
+time that assertion has caught exactly this.
 
 **Dependency-update audit: Clang 18 → 22 (upstream stable, installed from apt.llvm.org), and
 Dependabot split into two semver groups (0.9.4, no version bump). No `src/`, `tests/`,

@@ -345,10 +345,19 @@ DELIBERATE_REAIMS = set([
     # The lesson is in the header already: a declaration buys ONE transition and
     # costs the tool's opinion for that transition, so the hand-check it
     # substitutes for has to actually happen.
+    #
+    # Third recomputation (the sanitizer-coverage round): the `sanitizers` job's
+    # comments grew by 27 lines above `windows:` (the UBSan census + ASan
+    # runtime-option rationale), so everything from `windows:` down moved +27.
+    # `--fix --base <push predecessor>` recomputed all five anchors from the
+    # file; each was then read back by hand at the new spelling. The
+    # declarations below carry the recomputed spellings for the same reason as
+    # last round: section 9 fails a declaration whose string its document no
+    # longer contains.
     ("docs/architecture/COMPATIBILITY_MATRIX.md",
-     ".github/workflows/build.yml:1482-1942"),
+     ".github/workflows/build.yml:1509-1969"),
     ("docs/architecture/COMPATIBILITY_MATRIX.md",
-     ".github/workflows/build.yml:2000-2245"),
+     ".github/workflows/build.yml:2027-2272"),
     # These two name the spellings the documents carry TODAY, and they did not
     # always: they were first written with the intermediate values of the commit
     # that introduced them, and the commit after it recomputed both anchors
@@ -360,8 +369,8 @@ DELIBERATE_REAIMS = set([
     # A declaration naming a spelling that exists in no document is dead weight
     # at best and a red default branch at worst, so section 9 of `--self-test`
     # now asserts every entry here is a string its document really contains.
-    ("docs/policies/RELEASE_POLICY.md", ".github/workflows/build.yml:546,1124,1546"),
-    ("docs/KNOWN_ISSUES.md", ".github/workflows/build.yml:1713-1715"),
+    ("docs/policies/RELEASE_POLICY.md", ".github/workflows/build.yml:546, 1151, 1573"),
+    ("docs/KNOWN_ISSUES.md", ".github/workflows/build.yml:1740-1742"),
     # THE ONE ANCHOR IN THE CLANG-22 ROUND THAT IS A RE-AIM RATHER THAN A
     # RE-ANCHOR, and the tool is right to refuse it. `DEPENDENCY_POLICY`'s Clang
     # row cites the `env:` block, whose lines both MOVED (+4) and CHANGED
@@ -375,6 +384,22 @@ DELIBERATE_REAIMS = set([
     # -- exactly the pair this file's header warns about, and the reason a local
     # green is not evidence until it is re-run against the base CI will use.
     ("docs/policies/DEPENDENCY_POLICY.md", ".github/workflows/build.yml:78-80"),
+    # PRE-EXISTING ROT CORRECTED, not fresh drift: these four anchors were
+    # stale BEFORE origin/main (PluginProcessor/PluginEditor grew above them
+    # long ago), so the tool -- which preserves aim-at-same-text relative to a
+    # base -- can only propose re-aiming them BACK at the rotten spellings.
+    # The corrected aims were measured against the working tree 2026-08-18:
+    # `processBlock` spans src/PluginProcessor.cpp:117-185 with
+    # `ScopedNoDenormals` at :119 (grep + body-end read); `prepare` spans
+    # src/dsp/AnamorphEngine.cpp:28-113 (awk over the body); the editor's 24 Hz
+    # timer starts at src/PluginEditor.cpp:672. The same rot class survives
+    # un-gated in every BARE-filename evidence line (REALTIME_SAFETY_AUDIT.md's
+    # table was the worked example -- its rows are now path-qualified so this
+    # tool tracks them from here on).
+    ("docs/architecture/THREAD_MODEL.md", "src/PluginProcessor.cpp:117-185"),
+    ("docs/architecture/THREAD_MODEL.md", "src/PluginEditor.cpp:672"),
+    ("docs/policies/REALTIME_AUDIO_POLICY.md", "src/PluginProcessor.cpp:117-185"),
+    ("docs/policies/REALTIME_AUDIO_POLICY.md", "src/dsp/AnamorphEngine.cpp:28-113"),
     ("docs/procedures/BUILD.md", "scripts/build.sh:19-54"),
 ])
 

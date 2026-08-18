@@ -8,15 +8,15 @@ Repository Governance Policy. Test acceptance levels and the release gate.
 |---|---|---|---|
 | **1** | Static analysis | Compiler warnings (recommended warning flags), **gated for first-party sources under Clang — no NEW warnings above `scripts/clang-warning-baseline.txt`**; CodeQL; MSVC `/analyze`; the source-portability and documentation lints | `juce::juce_recommended_warning_flags` (CMakeLists.txt:297,323,363); `scripts/check-clang-warnings.py` in the `linux-clang` job; `scripts/check-portability.py`, `scripts/check-docs.py`, `scripts/check-citations.py`; GitHub code scanning |
 | **1b** | Dynamic analysis | ASan + UBSan over both suites, then valgrind memcheck over both suites from an unsanitized build; `MALLOC_PERTURB_=1` on the per-push Linux self-tests (glibc fills fresh heap with `0xFE`, freed heap with `0x01` — the value is complemented for allocations, so it is **not** the fill byte) | `sanitizers` job in `.github/workflows/build.yml` |
-| **2** | Unit / behaviour | Deterministic DSP assertions + state/parameter compatibility (schema shape, registry snapshot, raw-exact round-trip, legacy migrations, corrupt-state robustness, preset round-trip) | `tests/dsp_tests.cpp` (33 DSP tests + 1 A/B clamp guard) + `tests/state_tests.cpp` (12 state-compatibility tests, `AnamorphStateTests`) |
+| **2** | Unit / behaviour | Deterministic DSP assertions + state/parameter compatibility (schema shape, registry snapshot, raw-exact round-trip, legacy migrations, corrupt-state robustness, preset round-trip) + the wrapper audio path (real `processBlock`, own-FTZ denormal guard) | `tests/dsp_tests.cpp` (36 DSP tests + 1 A/B clamp guard) + `tests/state_tests.cpp` (13 state-compatibility tests, `AnamorphStateTests`); both suites additionally execute LTO-built in the `linux-lto-tests` job, so the assertions also run against shipped-class codegen |
 | **3** | DSP validation | MS round-trip exact; no NaN/Inf/denormals across the algorithm × OS × feature matrix; latency==actual; bypass null; click-free transitions | `tests/dsp_tests.cpp` |
 | **4** | pluginval | **VST3 conformance on all three platforms, AU conformance on macOS** — and on macOS both formats are gated twice, once on Apple Silicon and once on **native Intel**; editor open/close under `xvfb` | `scripts/run-pluginval.sh <strictness> <mode> [vst3\|au]` |
 | **5** | Manual validation | Audio sound quality + GUI/OpenGL visual appearance (cannot be judged headlessly) | Load `.vst3` in a DAW |
 
 ## Hard release gate
 
-- **Level 2/3 self-tests must pass** (the headless gate, `scripts/run-tests.sh`): the 33 DSP
-  self-tests, the A/B state-restoration clamp guard, **and** the 12-test state-compatibility
+- **Level 2/3 self-tests must pass** (the headless gate, `scripts/run-tests.sh`): the 36 DSP
+  self-tests, the A/B state-restoration clamp guard, **and** the 13-test state-compatibility
   suite (`AnamorphStateTests` — both binaries are required; a missing one fails the gate, and an
   *ambiguous* one does too: exactly one match is required per binary, so a multi-config or stale
   build tree cannot let the gate report on a different configuration than the one just built).

@@ -13,8 +13,8 @@ are in `docs/policies/THREADING_POLICY.md` and `docs/policies/REALTIME_AUDIO_POL
 | **Worker / background** | none | No `std::thread`/`Thread`/`ThreadPool`. FFT runs on the GUI thread. |
 
 Evidence [Verified]:
-- Source: src/PluginProcessor.cpp:107-175 (`processBlock`), :109 `ScopedNoDenormals`
-- Source: src/PluginEditor.cpp:643 (24 Hz timer), :646-652 (VBlank), :267-281 (OpenGL gate)
+- Source: src/PluginProcessor.cpp:117-185 (`processBlock`), :119 `ScopedNoDenormals`
+- Source: src/PluginEditor.cpp:672 (24 Hz timer), :675-681 (VBlank), :295-309 (OpenGL gate)
 - Source: src/gui/Vectorscope.h:18-20 ("Nothing is ever drawn on the audio thread")
 
 ## OpenGL platform gate (0.8.5)

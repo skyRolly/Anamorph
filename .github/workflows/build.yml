@@ -966,9 +966,15 @@ jobs:
   # `processBlock` -- which only AnamorphStateTests drives. Pointing it at the DSP
   # suite alone would aim the detector away from the wrapper entirely.
   #
-  # detect_leaks=0: JUCE's singletons are torn down at exit in ways LeakSanitizer
-  # reports and this job is not a leak gate. halt_on_error=1 on UBSan so the first
-  # violation fails the job rather than scrolling past.
+  # detect_leaks=0: this job is scoped as not-a-leak-gate. The factual claim that
+  # used to sit here -- JUCE singleton teardown producing LeakSanitizer reports --
+  # was retested 2026-08-18 and is no longer true: both suites run leak-CLEAN
+  # under detect_leaks=1 with clang 22 / JUCE 9.0.1. The scoping is kept anyway
+  # because reversing a documented gate decision is the maintainer's call, and
+  # a future JUCE upgrade could reintroduce exit-order reports with no defect;
+  # flipping this to 1 is a one-line change if that gate is wanted.
+  # halt_on_error=1 on UBSan so the first violation fails the job rather than
+  # scrolling past.
   #
   # NOT in any `needs:` chain and not a dependency of anything: it is slower than
   # the build jobs and a sanitizer finding should not withhold a beta artifact
@@ -1040,6 +1046,22 @@ jobs:
       # the same `__ubsan` count with and without it). clang-22 accepts it there
       # silently, but the driver hard-errors on `vptr` + `-fno-rtti` even in C,
       # and this job fails CLOSED at configure time. ADR-0028 has the evidence.
+      #
+      # THE FIVE GROUPS AFTER `vptr` are outside `undefined` and were added after
+      # a measured census (2026-08-18, clang 22.1.8): both suites run ZERO
+      # diagnostics under all five, so they gate for free. The full `integer`
+      # group is DELIBERATELY absent -- its `unsigned-integer-overflow` half
+      # flags legal, intentional wraparound and the census caught exactly that:
+      # juce_String.cpp (hash multiply), juce_Random.cpp (LCG), juce_Thread.cpp
+      # (tick arithmetic) and libstdc++'s mersenne twister, which under
+      # `halt_on_error=1` would fail the job on correct third-party code. Its
+      # non-redundant siblings (`implicit-*`, `unsigned-shift-base`) are named
+      # individually instead; everything else in `integer` is already inside
+      # `undefined`. One sharp edge, demonstrated: `local-bounds` is TRAP-based
+      # -- a hit whose overlapping `array-bounds` check does not also fire dies
+      # by SIGILL with NO diagnostic text, so a red run here with a bare
+      # "Illegal instruction" needs a debugger on the failing binary, not a
+      # scroll through the log.
       - name: Configure (Clang, ASan + UBSan + vptr)
         run: >
           ccache --zero-stats || true &&
@@ -1047,9 +1069,9 @@ jobs:
           -DCMAKE_BUILD_TYPE=RelWithDebInfo
           -DCMAKE_C_COMPILER=clang-${{ env.ANAMORPH_CLANG_VERSION }}
           -DCMAKE_CXX_COMPILER=clang++-${{ env.ANAMORPH_CLANG_VERSION }}
-          -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
-          -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined,vptr -fno-omit-frame-pointer"
-          -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined,vptr"
+          -DCMAKE_C_FLAGS="-fsanitize=address,undefined,float-divide-by-zero,implicit-conversion,unsigned-shift-base,local-bounds,nullability -fno-omit-frame-pointer"
+          -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined,vptr,float-divide-by-zero,implicit-conversion,unsigned-shift-base,local-bounds,nullability -fno-omit-frame-pointer"
+          -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined,vptr,float-divide-by-zero,implicit-conversion,unsigned-shift-base,local-bounds,nullability"
           -DCMAKE_C_COMPILER_LAUNCHER=${{ env.ANAMORPH_COMPILER_LAUNCHER }}
           -DCMAKE_CXX_COMPILER_LAUNCHER=${{ env.ANAMORPH_COMPILER_LAUNCHER }}
           -DANAMORPH_BUILD_STANDALONE=OFF
@@ -1062,9 +1084,14 @@ jobs:
       - name: Build test targets (sanitized)
         run: cmake --build build-san --target AnamorphTests AnamorphStateTests
 
+      # The three ASan runtime checks after detect_leaks were measured clean on
+      # both suites (2026-08-18) and only ever tighten the gate.
+      # detect_stack_use_after_return is NOT listed: it is clang-22's Linux
+      # default (demonstrated -- an option-free run already reports it), and
+      # restating a default is the copy that rots when the default moves.
       - name: Self-tests under ASan + UBSan
         env:
-          ASAN_OPTIONS: detect_leaks=0
+          ASAN_OPTIONS: detect_leaks=0:check_initialization_order=1:strict_init_order=1:strict_string_checks=1
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
         run: |
           ./build-san/AnamorphTests_artefacts/RelWithDebInfo/AnamorphTests
@@ -2243,3 +2270,91 @@ jobs:
       - name: Remove the AU installed for validation
         if: ${{ !cancelled() && steps.au_install.outcome != 'skipped' }}
         run: rm -rf "$HOME/Library/Audio/Plug-Ins/Components/Anamorph.component"
+
+  # -------------------------------------------------------------------------
+  # LTO validation (Linux). The ONLY place any behavioural assertion runs
+  # against link-time-optimized codegen.
+  #
+  # The shipped plugin links `juce::juce_recommended_lto_flags` (plain `-flto`
+  # on GCC Release); both self-test suites DELIBERATELY do not (CMakeLists.txt
+  # keeps them un-LTO'd so the sanitizers job builds them cleanly and quickly).
+  # Until this job, that meant the 156 + 900 checks -- including every DSP
+  # numeric invariant -- had only ever executed non-LTO objects, while the
+  # binary users load is the LTO'd one; pluginval exercises those shipped bytes
+  # but asserts host conformance, not numerics. This job closes that gap: the
+  # same two suites, built with the same `-flto` spelling the shipped target
+  # gets, on the same GCC that builds the shipped Linux artifact.
+  #
+  # The flags arrive VIA THE CACHE VARIABLES on purpose. Linking
+  # `juce_recommended_lto_flags` into the test targets would say the same thing
+  # more directly, but that is a CMake-structure change and therefore a gated
+  # Build System change (ARCHITECTURE_REVIEW_GATE.md); this workflow-only form
+  # validates the identical flag with no repository decision spent. Measured on
+  # a 4-core machine: ~4.6 min cold (the AnamorphStateTests LTO link dominates
+  # -- plain `-flto` runs its LTRANS stage serially, which is also true of the
+  # shipped plugin link in the `linux` job).
+  #
+  # NOT in any `needs:` chain, same as `sanitizers` and for the same reason: a
+  # validation finding should not withhold a beta artifact the behavioural
+  # gates passed.
+  linux-lto-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name != github.repository
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 400M
+      CCACHE_COMPILERCHECK: content
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install build dependencies
+        run: |
+          chmod +x scripts/*.sh
+          ./scripts/setup-linux.sh
+          # ccache is an OPTIMIZATION, never a requirement -- see the
+          # compiler-cache block above the jobs. If it cannot be installed the
+          # job builds without a launcher: slower, never different.
+          if sudo apt-get install -y ccache && ccache --version; then
+            echo "ANAMORPH_COMPILER_LAUNCHER=ccache" >> "$GITHUB_ENV"
+          else
+            echo "::warning::ccache unavailable -- building without the compiler cache"
+            echo "ANAMORPH_COMPILER_LAUNCHER=" >> "$GITHUB_ENV"
+          fi
+
+      # Its own lineage: `-flto` objects are GIMPLE bytecode under GCC, so they
+      # share no cache entries with the `linux` job's native objects; a shared
+      # lineage would only have the two evict each other.
+      - name: Restore the compiler cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-ubuntu-gcc-lto-${{ github.run_id }}
+          restore-keys: ccache-ubuntu-gcc-lto-
+
+      - name: Configure (GCC, -flto on the test suites)
+        run: >
+          ccache --zero-stats || true &&
+          cmake -B build-lto -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_C_FLAGS="-flto"
+          -DCMAKE_CXX_FLAGS="-flto"
+          -DCMAKE_EXE_LINKER_FLAGS="-flto"
+          -DCMAKE_C_COMPILER_LAUNCHER=${{ env.ANAMORPH_COMPILER_LAUNCHER }}
+          -DCMAKE_CXX_COMPILER_LAUNCHER=${{ env.ANAMORPH_COMPILER_LAUNCHER }}
+          -DANAMORPH_BUILD_STANDALONE=OFF
+          -DANAMORPH_BUILD_NUMBER=${{ github.run_number }}
+
+      - name: Build test targets (LTO)
+        run: cmake --build build-lto --target AnamorphTests AnamorphStateTests
+
+      - name: Self-tests against LTO codegen
+        run: |
+          ./build-lto/AnamorphTests_artefacts/Release/AnamorphTests
+          ./build-lto/AnamorphStateTests_artefacts/Release/AnamorphStateTests
+
+      - name: Compiler cache statistics
+        if: ${{ !cancelled() && env.ANAMORPH_COMPILER_LAUNCHER != '' }}
+        run: ccache --show-stats --verbose || true
