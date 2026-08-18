@@ -244,9 +244,18 @@ edge above must not be read as release non-blocking.
   human thought of it first; this is the part that does not have to. A **rejected** blob is a pass,
   because refusing malformed state is what the path is for; the failure condition is a sanitizer
   report, not an assertion. It is **bounded** so it stays a gate rather than a background service: a
-  fixed `-max_total_time=90` seeded from the three committed corpus entries in `tests/fuzz-corpus/`
+  fixed `-max_total_time=90` from the three committed corpus entries in `tests/fuzz-corpus/`
   (real fixtures in JUCE's `copyXmlToBinary` framing, so the fuzzer starts from inputs that already
-  reach the parser). A crashing input is uploaded as `Anamorph-fuzz-findings` — libFuzzer writes the
+  reach the parser), under a **fixed `-seed`** — the same discipline `run-pluginval.sh` applies to
+  its deterministic mode, and for a sharper reason: this job is release-blocking through
+  `release.yml`'s aggregate dependency, and a release must not be able to fail on a lottery. The
+  honest limit is stated rather than papered over: `-max_total_time` is wall-clock, so a slower
+  runner executes fewer inputs and the *tail* of the exploration is machine-dependent (measured: 792
+  vs 807 executions across two identical local runs). `-runs=N` would be exactly reproducible but
+  would make the duration machine-dependent instead, and a release gate that can overrun its timeout
+  on a slow runner is the worse failure. So a finding is reproduced from the **uploaded artifact**,
+  never by re-running the fuzzer — the harness feeds its input to the real entry point unmodified,
+  so those bytes reproduce exactly, on any machine. A crashing input is uploaded as `Anamorph-fuzz-findings` — libFuzzer writes the
   exact reproducing bytes and the harness feeds its input to the real entry point unmodified, so the
   artifact is a host chunk that reproduces by being handed back. `detect_leaks=0` here is deliberate
   and is **not** a gap: the harness leaks exactly one object on purpose (JUCE's

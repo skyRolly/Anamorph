@@ -20,7 +20,7 @@ Status taxonomy: **Verified** (provable from build/CI/code) · **Partially Verif
 | **Linux x86-64** | **Verified (blocking gate)**, above a **declared ABI floor** | CI builds VST3+Standalone; headless pluginval at the configured strictness (deterministic ×3 + randomise ×3) under xvfb — **blocking**. The shipped binaries' glibc/libstdc++ floor is asserted on every push against the exact stripped bytes (`scripts/check-linux-abi.py`, which holds the number; this table deliberately quotes none). Distributions **below** that floor are not supported: the dynamic loader refuses the library before any of this project's code runs. `.github/workflows/build.yml` |
 | **Windows x86-64** | **Verified (blocking gate)** | MSVC build; pluginval at the configured strictness, deterministic ×3 + randomise ×3 — **blocking** (`run-pluginval.ps1`, no `continue-on-error`). `.github/workflows/build.yml` |
 | **macOS universal (arm64 + x86_64)** | **Verified (blocking gate)** | `CMAKE_OSX_ARCHITECTURES="arm64;x86_64"`, `lipo` verifies both slices; pluginval at the configured strictness, both modes ×3 — **blocking**. `.github/workflows/build.yml` |
-| **macOS x86_64 on native Intel silicon** | **Verified (blocking gate)** | Distinct from the row above, which is built and validated on an **Apple Silicon** runner and executes its x86_64 slice only under **Rosetta 2** (translated onto arm64 hardware). The `macos-intel` job builds thin `x86_64` on `macos-15-intel` and runs both self-test suites plus the full pluginval gate (VST3 and AU, both modes ×3) on a real Intel CPU, after asserting `uname -m == x86_64` and `sysctl.proc_translated == 0`. It ships nothing — the shipped bundle is still the universal one. .github/workflows/build.yml:2062-2307 (the `macos-intel` job), .github/workflows/build.yml:2032-2088 (its rationale block) |
+| **macOS x86_64 on native Intel silicon** | **Verified (blocking gate)** | Distinct from the row above, which is built and validated on an **Apple Silicon** runner and executes its x86_64 slice only under **Rosetta 2** (translated onto arm64 hardware). The `macos-intel` job builds thin `x86_64` on `macos-15-intel` and runs both self-test suites plus the full pluginval gate (VST3 and AU, both modes ×3) on a real Intel CPU, after asserting `uname -m == x86_64` and `sysctl.proc_translated == 0`. It ships nothing — the shipped bundle is still the universal one. .github/workflows/build.yml:2062-2307 (the `macos-intel` job), .github/workflows/build.yml:2090-2146 (its rationale block) |
 
 ## I/O layouts
 
@@ -54,6 +54,24 @@ without test evidence.`
 | pluginval | latest release (downloaded by script) | **Verified** | scripts/run-pluginval.sh:121 |
 
 See `docs/policies/DEPENDENCY_POLICY.md` for the JUCE version-lock reasoning.
+
+## Windows runtime requirement
+
+The shipped Windows binaries need the **Visual C++ redistributable for the MSVC ABI series they were
+built against**, and that series — not the exact toolset — is what a user has to have installed.
+`windows-latest` floats and MSVC is auto-detected, so until 2026-08-18 nothing in the pipeline said
+which toolchain produced a release: an image move changed the shipped compiler with no line in any
+diff, and a released `.vst3` could not be traced back to the compiler that made it.
+
+The `windows` job now reads the toolset out of the CMake cache, records it in the job summary, and
+**asserts the ABI series is 14.x**. The narrowness is the point: every 14.x toolset since VS2015 is
+binary compatible and needs the same redistributable, so gating on the full version would fail on
+ordinary compiler updates that change nothing a user can observe. A move *off* 14.x is the event
+that changes what users must install, and that is what fails.
+
+Reporting must not decide whether a release ships, so a cache it cannot read is a `::warning::` with
+the lines it looked at, never a failure — unlike the Linux floor below, which is about the artifact
+itself rather than about a record of it.
 
 ## Linux runtime ABI floor
 

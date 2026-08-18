@@ -1212,6 +1212,64 @@ jobs:
       - name: Configure
         run: cmake -B build -DANAMORPH_BUILD_NUMBER=${{ github.run_number }}
 
+      # WHICH TOOLCHAIN BUILT THE SHIPPED WINDOWS BINARY, recorded rather than
+      # assumed. `windows-latest` floats, MSVC is auto-detected, and nothing in
+      # this job said which toolset it resolved to -- so a released .vst3 could
+      # not be traced back to the compiler that produced it, and an image move
+      # changed the shipped toolchain with no line in any diff. This is the same
+      # class the `linux` job's ABI floor covers, and it is recorded here for the
+      # same reason: the number falls out of the image, so the run that changes
+      # it should be the run that says so.
+      #
+      # WHAT IS ASSERTED is deliberately narrow: the MSVC ABI SERIES (`14.x`),
+      # not the exact toolset. Every 14.x toolset since VS2015 is binary
+      # compatible and needs the same redistributable, so gating on the full
+      # version would fail on ordinary compiler updates that change nothing a
+      # user can observe -- the "gate that cries wolf" this pipeline is written
+      # against. A move OFF 14.x is the event that changes what users must have
+      # installed, and that is what fails here.
+      #
+      # The version comes from CMakeCache's linker path
+      # (`...\VC\Tools\MSVC\<version>\bin\...`), which the VS generator
+      # always writes -- no developer command prompt, no `vswhere`, no `dumpbin`.
+      - name: Record + assert the MSVC toolset
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cache = 'build/CMakeCache.txt'
+
+          # Two cache keys are tried because which of them carries a full path
+          # is a property of the GENERATOR, not of this project, and the VS
+          # generator is the one CMake documents least precisely here. Whichever
+          # yields a `...\VC\Tools\MSVC\<version>\...` component wins.
+          $version = $null
+          foreach ($key in 'CMAKE_CXX_COMPILER:FILEPATH', 'CMAKE_LINKER:FILEPATH') {
+            $hit = (Select-String -Path $cache -Pattern ('^' + [regex]::Escape($key)) | Select-Object -First 1)
+            if ($null -ne $hit -and $hit.Line -match 'MSVC[\\/]+([0-9]+(\.[0-9]+)+)') {
+              $version = $Matches[1]
+              break
+            }
+          }
+
+          if ($null -eq $version) {
+            # A WARNING, NOT A FAILURE. This step reports and asserts; it does
+            # not build or validate anything a user receives, and reddening the
+            # Windows release gate because a cache key moved would be a footnote
+            # deciding whether a release ships. The message names what to read.
+            Write-Host "::warning::Could not read an MSVC toolset version from $cache (looked at CMAKE_CXX_COMPILER and CMAKE_LINKER). The Windows toolchain is unrecorded for this run."
+            Select-String -Path $cache -Pattern 'CMAKE_(CXX_COMPILER|LINKER):FILEPATH='
+            exit 0
+          }
+
+          $series = $version.Split('.')[0]
+          Write-Host "MSVC toolset $version (ABI series $series.x)"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "MSVC toolset ``$version`` (ABI series ``$series.x``)"
+
+          if ($series -ne '14') {
+            Write-Host "::error::MSVC ABI series moved from 14.x to $series.x, which changes the Visual C++ redistributable users need. Confirm the new requirement, update COMPATIBILITY_MATRIX, and raise this assertion in the same change."
+            exit 1
+          }
+
       - name: Build (VST3 + Standalone + tests)
         id: build
         run: cmake --build build --config Release
@@ -2724,13 +2782,30 @@ jobs:
       - name: Build the fuzz target
         run: cmake --build build-fuzz --target AnamorphFuzzState
 
-      - name: Fuzz setStateInformation (bounded)
+      # `-seed` IS FIXED, and it is fixed for the same reason `run-pluginval.sh`
+      # fixes its own: this job is release-blocking through `release.yml`'s
+      # aggregate dependency, and a release must not be able to fail on a
+      # lottery. With the seed, the corpus and the budget all fixed, two runs of
+      # the same commit explore the same way.
+      #
+      # THE BUDGET IS THE HONEST LIMIT ON THAT and is not hidden: `-max_total_time`
+      # is wall-clock, so a slower runner executes fewer inputs and the tail of
+      # the exploration is machine-dependent. That is deliberate -- `-runs=N`
+      # would be exactly reproducible but would make the DURATION
+      # machine-dependent instead, and a release gate that can overrun its
+      # timeout on a slow runner is worse than one whose tail varies. The
+      # consequence is stated rather than papered over: a finding here is
+      # reproduced from the UPLOADED ARTIFACT, not by re-running the fuzzer.
+      # The harness feeds its input to the real entry point unmodified, so those
+      # bytes reproduce exactly, on any machine, forever.
+      - name: Fuzz setStateInformation (bounded, fixed seed)
         env:
           ASAN_OPTIONS: detect_leaks=0
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
         run: |
           mkdir -p fuzz-findings
           ./build-fuzz/AnamorphFuzzState tests/fuzz-corpus \
+            -seed=20260818 \
             -max_total_time=90 -rss_limit_mb=4096 -print_final_stats=1 \
             -artifact_prefix=fuzz-findings/
 
