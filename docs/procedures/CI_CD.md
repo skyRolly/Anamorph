@@ -866,6 +866,20 @@ pointed at in the base — the whole "an edit above shifted it" class. It cannot
 aimed at the wrong code to begin with; this repository's existing anchors are therefore *adopted*,
 not audited. A clean run means none of them **moved**.
 
+**`--fix` now reports the declarations it invalidates** (2026-08-18). A `DELIBERATE_REAIMS` entry is
+a claim about a *spelling*, and a re-anchor can quietly falsify it: the anchor an entry names drifts
+for an unrelated reason — an edit to the **cited** file — `--fix` re-anchors it correctly, and the
+entry is left naming a string the document no longer contains, excusing nothing. Section 9 of the
+self-test already fails on that, and that gate holds; what it could not do is tell the person who
+caused it. It runs in CI, minutes later, in a different job, and knows only that an entry is dead —
+while `--fix`, which killed it, is holding the replacement spelling. It now prints that spelling as
+a `::warning::` at the moment of the rewrite. Observed twice in one change set (edits to
+`run-pluginval.sh` and `CMakeLists.txt` moved anchors six entries named), and verified live
+end-to-end: shifting `run-pluginval.sh` by one line produced
+`update it to scripts/run-pluginval.sh:122`. A warning rather than an error, because `--fix`'s job
+is to repair drift and refusing to do it because a declaration will need an edit would leave **both**
+problems in place.
+
 **When you re-anchor deliberately** — moving an anchor onto the code it should always have named —
 the tool cannot distinguish that from drift, and the gate goes red on the commit that *fixed* it.
 Declare the pair in `DELIBERATE_REAIMS` in the **same change set** as the re-anchor, never in a

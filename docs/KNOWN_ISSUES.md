@@ -21,7 +21,10 @@ the full pluginval release gate against the AU as well as the VST3 (same strictn
 ×3, against the packaged bundle), so the coverage gap the entry recorded no longer exists. No
 issue was added by that round: the residual — the gate is **pluginval**, not `auval` — is
 recorded as scope in `docs/procedures/CI_CD.md` §"Known coverage limits" and as the narrowed
-RH-F3, not as a limitation of the product.
+RH-F3, not as a limitation of the product. The same version's **engineering-roadmap round** then
+added one: **KI-023**, the Linux glibc floor. It records a limitation that has been true since the
+CI image moved to Ubuntu 24.04 and was simply never measured — the round that measured it also
+gated it, so it can no longer rise unnoticed.
 Prior sync: **v0.9.3** (six GUI interaction fixes plus an equal-width Widen row — the Multiband add-split preview line, the
 unified pop-up dismissal shield, pop-up lifetime across a hidden, destroyed or backgrounded window,
 two menu-rendering fixes and the Tooltips on/off transition —
@@ -708,3 +711,28 @@ user *and* system plug-in folders lists Anamorph twice.
 - **Evidence [Verified]:** `packaging/macos/build-pkg.sh` (`build_component`);
   `docs/procedures/PACKAGING.md` §"macOS reinstall behaviour (idempotency)" §Not chased;
   `packaging/macos/INSTALL.txt`; INC-012 in `docs/POSTMORTEMS.md`.
+
+## KI-023 — the Linux build does not load on distributions older than its glibc floor
+
+The shipped Linux VST3 and Standalone are linked on the CI runner image, and a Linux binary records
+the oldest glibc/libstdc++ version that provides each imported symbol. The **maximum** of those is
+the oldest distribution the artifact can load on at all: below it the dynamic loader refuses with
+`version 'GLIBC_x.y' not found`, before any of this project's code runs — the plug-in does not
+appear in the host, rather than appearing and misbehaving.
+
+Measured 2026-08-18 on the artifact this repository ships: **GLIBC_2.38** and **GLIBCXX_3.4.31**,
+i.e. Ubuntu 23.10+ / Debian 13+ and GCC 13+. **Ubuntu 22.04 LTS ships glibc 2.35, so the plug-in
+does not load there.**
+
+- **Why it is not fixed here:** the floor was never chosen. It is whatever `ubuntu-latest` happened
+  to be when the binaries were linked, and it rose retroactively when that image moved to 24.04.
+  Lowering it means building against an older toolchain or a sysroot — a release-topology decision
+  (which image, which container, whether the release build stops sharing the CI image), not a CI
+  tweak. That decision has not been taken.
+- **What is fixed:** it is no longer invisible. `scripts/check-linux-abi.py` asserts the floor on
+  every push, on the **stripped** bytes and before pluginval, so the run that raises it is the run
+  that fails instead of a user's DAW. Raising it is now deliberate: change the declared constant in
+  the same change and name the systems it drops.
+- **Evidence [Verified]:** scripts/check-linux-abi.py (the declared floor and the gate);
+  `docs/architecture/COMPATIBILITY_MATRIX.md` §"Linux runtime ABI floor".
+

@@ -7,10 +7,13 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
-**engineering-roadmap implementation round: the leaf-layer `-Wfunction-effects` check, the
-performance-benchmark harness, `setStateInformation` fuzzing, the GCC-only warning gate,
-LeakSanitizer promoted to a gate, and the pluginval crash-retry scoped to its justification**
-(first below), then the
+**engineering-roadmap implementation round** (first below), covering in two batches: the leaf-layer
+`-Wfunction-effects` check, the performance-benchmark harness, `setStateInformation` fuzzing, the
+GCC-only warning gate, LeakSanitizer promoted to a gate, the pluginval crash-retry scoped to its
+justification, then commit-SHA pinning for every action, one composite action for the Linux setup,
+the **shipped Linux ABI floor**, the Windows toolchain record, the macOS symbolication contract
+corrected, the committed **DSP bit-identity harness**, and the citation gate reporting the
+declarations its own `--fix` invalidates — then the
 **review round that found the allocation guard was blinding the RealtimeSanitizer lane**, then the
 **allocation guard + static realtime lint completing ADR-0029's three tiers, and the
 release-blocking / THREAD_MODEL corrections** (first below), then the
@@ -119,6 +122,97 @@ is Linux/X11 only. On Windows and macOS that turned a genuine crash into two mor
 The retry is now scoped by `uname -s`: three attempts on Linux, one everywhere else, with a distinct
 message so a single-attempt failure cannot be misread as an exhausted retry. The separately
 justified `.ps1` retry is untouched.
+
+**Second batch of the same round (2026-08-18): supply-chain pinning, duplication that was a
+correctness hazard, two platform contracts that were claims rather than measurements, the
+dependency-bump instrument, and one measured refusal.**
+
+**Every action ref is now a commit SHA, and the argument is an internal inconsistency rather than
+generic hygiene.** This repository pins JUCE to an immutable commit SHA and `DEPENDENCY_POLICY`
+gives the reason in as many words — so the dependency cannot silently change under a re-pointed
+tag. JUCE is source that gets compiled and never sees a credential; an action is code that executes
+**on the runner with the job's token**. `actions/checkout@v7` was a mutable tag, resolving at the
+time of the change to the same commit as `v7.0.1` with nothing but the tag owner's restraint keeping
+it there. All 40 `uses:` across the five workflows now carry a SHA with the version in a trailing
+comment. The cost is stated in `.github/dependabot.yml` rather than discovered later: a bare major
+is rewritten only when the major moves, a SHA pin on every release, so four more `actions/*`
+dependencies now generate updates — absorbed by the update-type groups that were already there.
+
+**Seven copies of a policy is a policy that can hold in six places.** The Linux jobs each opened
+with `setup-linux.sh` plus a ccache install behind a fallback that must not fail the job, and six of
+the seven copies were byte-identical including the comment. `.github/actions/setup-linux-build`
+collapses them behind two fail-closed inputs. The worked example is this round itself: it had to add
+a compiler pin to exactly one of the seven. What the action deliberately does **not** absorb is the
+per-job cache lineage — that is the part genuinely different in every job, and folding seven
+readable explanations into one parameter would be worse than the duplication.
+
+**The Linux compatibility claim was a statement about CI, and is now a measurement.** A Linux binary
+records the oldest version providing each imported symbol; the maximum is the oldest system that can
+load it at all. Measured: **GLIBC_2.38** and **GLIBCXX_3.4.31** — Ubuntu 23.10+ and GCC 13+ — so the
+shipped VST3 does **not** load on Ubuntu 22.04 LTS. Nobody decided that; `ubuntu-latest` moving to
+24.04 did it, silently and retroactively, with no failure in CI and no line in any diff.
+`scripts/check-linux-abi.py` declares the floor and gates it after the strip and before pluginval.
+It does not attempt to *lower* the floor — that is an older toolchain or a sysroot, a release-topology
+decision — it makes the run that raises it the run that fails. Its self-test covers the ordering trap
+that makes the naive form wrong (2.38 outranks 2.9 numerically, not lexically) and treats "no version
+references found" as an error, since that is what a mis-invoked `objdump` looks like.
+
+**The Windows toolchain is recorded, and only its ABI series is asserted.** `windows-latest` floats
+and MSVC is auto-detected, so a released `.vst3` could not be traced to the compiler that made it.
+The assertion is deliberately narrow: every 14.x toolset since VS2015 is binary compatible and needs
+the same redistributable, so gating on the exact version would fail on updates that change nothing a
+user can observe. A cache the step cannot read is a `::warning::`, never a failure — a reporting step
+must not decide whether a release ships.
+
+**The macOS symbolication claim was false and is corrected.** `RELEASE_HARDENING_PLAN` read as
+though symbol retention closed on all three platforms and "symbolication now possible" lowered RH-R8
+to Low. True on Linux and Windows; on macOS not partially delivered but **never** delivered, because
+`juce_recommended_lto_flags` is linked into the shipped target and under Release+LTO the DWARF lives
+in ld64's temporary LTO object, deleted before `dsymutil` runs. The packaging step correctly discards
+the empty dSYM — it validates the OUTPUT, not the warning text — and skips the upload every run.
+macOS is the platform whose users most often submit an OS crash log. The fix is named precisely
+(`-Wl,-object_path_lto=<dir>`, which moves where a temporary is written and not what is linked) and
+left open rather than applied blind: it is a shipped-link change on the release job that cannot be
+validated anywhere but macOS.
+
+**`DEPENDENCY_POLICY` rule 2 finally has its instrument in the tree.** Bit-identical engine output
+is the gate a JUCE bump must pass; two bumps passed it, and neither left the tool behind. So the gate
+was permanent and the instrument disposable, and each bump rebuilt it — which is how the first run of
+the original scratchpad tool shipped a scenario set that left `algoAmount` at its identity default,
+hashed all four algorithms the same, and reported a confident nothing. `tests/dsp_dump.cpp` therefore
+checks its own scenarios every run and exits 3 rather than print a table it has not shown to be
+discriminating: all 32 must be repeatable **and** distinct. Verified both ways — 32 pass, two
+consecutive runs are byte-identical, and restoring `algoAmount = 0` reproduces the 2026 defect
+exactly (16 colliding pairs, named, exit 3). Nothing is stored: a committed set of expected hashes
+would be the golden-master baseline this repository rejects, and the question is never "does this
+match a stored value" but "does build A match build B".
+
+**The fuzz gate got a fixed seed, because it is release-blocking.** A release must not be able to
+fail on a lottery. The residual nondeterminism is documented instead of denied: `-max_total_time` is
+wall-clock, so the tail is machine-dependent (measured 792 vs 807 executions across two identical
+local runs), and `-runs=N` would trade that for a machine-dependent *duration*, which on a release
+gate is the worse failure. A finding is reproduced from the uploaded artifact, which is exact.
+
+**The citation gate now reports the declarations its own `--fix` invalidates.** A
+`DELIBERATE_REAIMS` entry is a claim about a spelling, and a re-anchor can falsify it when the anchor
+drifts for an unrelated reason. Section 9 of the self-test already fails on the result and that gate
+holds — but it fires in CI, minutes later, in a different job, knowing only that an entry is dead,
+while `--fix` killed it and is holding the replacement. Observed twice in this change set. Verified
+live: shifting `run-pluginval.sh` by one line produced the warning with
+`update it to scripts/run-pluginval.sh:122`.
+
+**One approved item was measured and NOT implemented, and the measurement is the reason.** Caching
+the JUCE checkout would save at most the JUCE clone's share of a **23–40 s** `Configure` step (two
+observed runs), against an `Install build dependencies` step that varied **92 s to 576 s** between
+those same two runs — the apt install is the dominant per-job cost by an order of magnitude, and the
+clone is a fraction of a step an order of magnitude smaller. The cost side is concrete rather than
+theoretical: ~100 MB per job across ~11 jobs is ~1.1 GB competing for the repository's 10 GB Actions
+cache quota with the ccache lineages that already save minutes each, and GitHub evicts
+least-recently-used. Spending a resource that saves minutes to buy seconds is a net loss, so the item
+is declined with its numbers rather than implemented for completeness. The apt step is the target the
+evidence actually points at, and reducing it means questioning build dependencies (the
+`libwebkit2gtk-4.1-dev` tree, given `JUCE_WEB_BROWSER=0`) — a release-relevant change that needs its
+own evaluation, not a footnote in a CI round.
 
 **Review round (2026-08-18): the allocation guard was blinding the RealtimeSanitizer lane, and the
 static lint's scope was narrower than the policy it enforces. Six confirmed findings, maintainer

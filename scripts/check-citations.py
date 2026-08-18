@@ -449,6 +449,36 @@ def is_declared_reaim(doc, whole_base, whole_cur):
     return any((doc, w) in DELIBERATE_REAIMS for w in (whole_base, whole_cur) if w)
 
 
+def invalidated_reaims(doc, text, rewritten, edits):
+    """Which DELIBERATE_REAIMS entries for `doc` this rewrite is about to kill.
+
+    Returns [(declared spelling, suggested replacement or None)].
+
+    A declaration is a claim about a SPELLING, and a re-anchor can invalidate it:
+    the anchor an entry names drifts for an unrelated reason -- an edit to the
+    CITED file -- `--fix` re-anchors it correctly, and the entry is left naming a
+    string the document no longer contains. Section 9 of the self-test calls that
+    a defect and fails on it, correctly. The problem is WHERE it fires: in CI,
+    minutes later, in another job, saying only that an entry is dead -- while the
+    tool that killed it knows the replacement.
+
+    Observed twice in one change set (2026-08-18), from edits to
+    `run-pluginval.sh` and `CMakeLists.txt`.
+
+    The replacement is matched on the TRACKED PATH rather than positionally,
+    because `edits` is in span order and a document may carry several rewrites;
+    pairing them by index would confidently suggest the wrong one.
+    """
+    out = []
+    for whole in sorted(w for (d, w) in DELIBERATE_REAIMS if d == doc):
+        if whole in text and whole not in rewritten:
+            path = whole.split(":", 1)[0]
+            replacement = next((new for (_s, _e, new) in edits
+                                if new.split(":", 1)[0] == path), None)
+            out.append((whole, replacement))
+    return out
+
+
 def classify(prefix, path):
     """The tracked path this citation names, or None if it is not ours.
 
@@ -1006,6 +1036,43 @@ def self_test():
     check("an example anchor is not claimed end to end",
           citations("Evidence anchors (`some/file.cpp:695-752`) are exact"), [])
 
+    # --- 8b. `--fix` REPORTS THE DECLARATIONS IT IS ABOUT TO INVALIDATE ------
+    # Section 9 below already fails on a dead declaration, and that gate holds.
+    # What it cannot do is tell the person who caused it: it runs in CI, minutes
+    # later, in a different job, and knows only that an entry is dead -- while
+    # `--fix`, which killed it, is holding the replacement spelling. These cases
+    # assert that half, in both directions, because a warning that fires on
+    # every rewrite would be as useless as one that never fires.
+    doc = "docs/FUTURE_RISKS.md"           # a real entry, so this cannot pass vacuously
+    declared = next(w for (d, w) in DELIBERATE_REAIMS if d == doc)
+    path = declared.split(":", 1)[0]
+    moved = f"{path}:900-950"
+
+    check("--fix reports a declaration its rewrite invalidates, with the replacement",
+          invalidated_reaims(doc,
+                             f"Evidence [Verified]: {declared} (the retry).",
+                             f"Evidence [Verified]: {moved} (the retry).",
+                             [(0, 0, moved)]),
+          [(declared, moved)])
+    check("...and stays silent when the declared spelling survives the rewrite",
+          invalidated_reaims(doc,
+                             f"Evidence [Verified]: {declared} (the retry).",
+                             f"Evidence [Verified]: {declared} (the retry).",
+                             [(0, 0, "src/PluginProcessor.cpp:1-2")]),
+          [])
+    check("...and stays silent for a document that declares nothing",
+          invalidated_reaims("docs/NOT_DECLARED.md", declared, moved, [(0, 0, moved)]),
+          [])
+    # The replacement is matched on the TRACKED PATH, not positionally: a
+    # document with several rewrites in one pass would otherwise be handed
+    # whichever edit happened to sort first.
+    check("the suggested replacement is the one for the same tracked path",
+          invalidated_reaims(doc,
+                             f"see {declared}",
+                             f"see {moved}",
+                             [(0, 0, "CMakeLists.txt:5-9"), (0, 0, moved)]),
+          [(declared, moved)])
+
     # --- 9. EVERY DECLARATION NAMES A SPELLING ITS DOCUMENT REALLY CARRIES ---
     # A declaration excuses a mismatch, so it is consulted ONLY when one occurs.
     # That makes a stale entry invisible from the branch it was written on: the
@@ -1238,8 +1305,36 @@ def main():
                 fixable += 1
 
         if args.fix and edits:
+            # WHAT THE REWRITE DOES TO THIS DOCUMENT'S OWN DECLARATIONS, checked
+            # here rather than left to the self-test.
+            #
+            # A `DELIBERATE_REAIMS` entry is a claim about a SPELLING, and the
+            # rewrite about to happen can invalidate that claim: the anchor an
+            # entry names drifts for an unrelated reason -- an edit to the CITED
+            # file -- `--fix` re-anchors it correctly, and the entry is left
+            # naming a string the document no longer contains. It then excuses
+            # nothing, which section 9 of the self-test calls a defect and fails
+            # on. That is a real gate and it holds; the problem is WHERE it
+            # fires. The self-test runs in CI, minutes later, in a different job,
+            # and says only that an entry is dead -- while the tool that killed
+            # it was this one, right here, and knows the replacement spelling.
+            #
+            # Observed twice in one change set (2026-08-18): edits to
+            # `run-pluginval.sh` and `CMakeLists.txt` moved anchors that six
+            # entries named. So the rewriter reports it itself, naming the new
+            # spelling to paste in. A ::warning:: rather than an error --
+            # `--fix`'s job is to repair drift, and refusing to do so because a
+            # declaration will need an edit would leave BOTH problems in place.
+            rewritten = apply_edits(text, edits)
+            for whole, replacement in invalidated_reaims(doc, text, rewritten, edits):
+                print(f"::warning::{doc}: this re-anchor invalidates the DELIBERATE_REAIMS "
+                      f"entry naming `{whole}`"
+                      + (f" -- update it to `{replacement}`" if replacement else "")
+                      + ". An entry naming a string no document contains excuses nothing, and "
+                        "the citation self-test fails on it.")
+
             with open(doc, "w", encoding="utf-8") as fh:
-                fh.write(apply_edits(text, edits))
+                fh.write(rewritten)
             # `now_src` IS THE WORKING TREE, and it stopped being so the moment a
             # TRACKED SOURCE joined the scanned set. The snapshot is taken once,
             # before this loop; a `--fix` that rewrites `src/PluginProcessor.cpp`
