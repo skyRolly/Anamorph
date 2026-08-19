@@ -79,7 +79,7 @@ serialization; keep the diff minimal; keep the pin immutable.
   one ADR-0022 left open for the 9.0 line, which is now signed off against 9.0.1.
 
 ## Related code
-- `CMakeLists.txt:49-54` (pin + banner comment), `:47-55` (FetchContent).
+- `CMakeLists.txt:49-54` (pin + banner comment), `:63-71` (FetchContent).
 
 Evidence:
 - Source [Verified]: CMakeLists.txt:52-54 (`ANAMORPH_JUCE_VERSION "9.0.1"`, SHA pin).

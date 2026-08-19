@@ -16,7 +16,7 @@ How to configure and build Anamorph. Headless, command-line only (CMake + JUCE; 
   the 9.0 line and the SHA pin, and ADR-0026 for the 9.0.1 bump.
 
 Evidence [Verified]: CMakeLists.txt:1 (`cmake_minimum_required(VERSION 3.22)`), :16-18 (C++23),
-:36-38 (JUCE 9.0.1 commit pin), :47-55 (FetchContent).
+:52-54 (JUCE 9.0.1 commit pin), :63-71 (FetchContent).
 
 ## Linux dependencies (Ubuntu)
 
@@ -103,4 +103,4 @@ Evidence [Verified]: scripts/setup-linux.sh:8-12.
 `JUCE_STRICT_REFCOUNTEDPOINTER=1`. `ANAMORPH_BUILD_NUMBER` is the one of these attached to the
 single translation unit that reads it rather than to the targets — its value changes every CI run,
 and a target-wide definition put that changing value on the command line of every TU.
-Evidence [Verified]: CMakeLists.txt:330-341.
+Evidence [Verified]: CMakeLists.txt:330-340.

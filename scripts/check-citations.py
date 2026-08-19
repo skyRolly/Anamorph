@@ -350,15 +350,28 @@ DELIBERATE_REAIMS = {
     # COUNT changes lands in the "review by hand" branch that no declaration can
     # excuse.
     #
-    # The spelling below is `:330-341` and the numbers moved twice getting
-    # there: the round that widened it wrote `origin/main`'s `:274-284`, and the
-    # round that grew `CMakeLists.txt` by 178 lines re-anchored the START but
+    # ONE TRANSITION ONLY, and for the narrowing rather than for the anchor.
+    # Against the MERGE BASE this citation needs no declaration at all: `:330-340`
+    # is exactly `origin/main`'s `:274-284` shifted by +56, so the line map
+    # computes it and the gate verifies it unaided. But CI also runs against the
+    # PREVIOUS PUSH, and that push carried `:330-341` -- one line wider, taking in
+    # the block's closing `)`. Narrowing it is a deliberate re-aim measured
+    # against that base, which is exactly what this list is for. DELETE THIS once
+    # the default branch carries `:330-340`; the run says so itself when that
+    # happens.
+    ("docs/procedures/BUILD.md", "CMakeLists.txt:330-340"): "ANAMORPH_BUILD_NUMBER",
+    # The entry that used to sit here is GONE, and its removal is the point. The numbers moved twice:
+    # the round that widened the anchor wrote `origin/main`'s `:274-284`, and the
+    # round that added 178 lines to `CMakeLists.txt` re-anchored the START but
     # narrowed the END to `:330-331` -- back to two lines, dropping seven of the
     # eight definitions the sentence enumerates, and still green here because
-    # line 331 carries the expected string. Re-derived 2026-08-19. The lesson is
-    # the one this block already teaches: an entry is a claim about a SPELLING,
-    # and prose that quotes old numbers beside it is a second copy that rots.
-    ("docs/procedures/BUILD.md", "CMakeLists.txt:330-341"): "ANAMORPH_BUILD_NUMBER",
+    # line 331 carries the expected string. Re-derived 2026-08-19 as `:330-340`,
+    # which is exactly `origin/main`'s `:274-284` shifted by +56 -- so it is
+    # ordinary drift the line map can compute, and it needs no declaration at
+    # all. (An intervening draft used `:330-341`, one line wider, taking in the
+    # block's closing `)`. That single line bought no evidence and cost a
+    # permanent exemption, which is a bad trade for the construct this file calls
+    # the one thing that turns a check OFF.)
     # ---------------------------------------------------------------------
     # THE WORKFLOW ANCHORS WERE WRONG ON ARRIVAL, and the way they got there is
     # worth recording because this gate is the thing that should have caught it.

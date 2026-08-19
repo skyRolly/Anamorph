@@ -67,7 +67,7 @@ serialization; keep the diff minimal; and make the pin immutable/reproducible.
   auditioning the later build covers this pin's editor surface as well as its successor's.
 
 ## Related code
-- `CMakeLists.txt:52-54` (pin), `:47-55` (FetchContent); `scripts/setup-linux.sh` (EGL).
+- `CMakeLists.txt:52-54` (pin), `:63-71` (FetchContent); `scripts/setup-linux.sh` (EGL).
 
 Evidence:
 - Source [Verified]: CMakeLists.txt:52-54 (SHA pin; `ANAMORPH_JUCE_VERSION`).

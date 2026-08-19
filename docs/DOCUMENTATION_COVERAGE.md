@@ -225,19 +225,40 @@ without replacing it would have traded a blocked repair for a corrupted document
 the repository that **writes**. The interlock is now per document, so the other fifteen are still
 repaired.
 
-**Six evidence anchors, not the three the review named.** `CMakeLists.txt` grew by 178 lines in this
-change set (+16 for base lines 29–105, +56 from base line 108 on), and the **bare continuation** form
-— `:NNN` following a `path:NNN` citation — is not tracked by `check-citations.py`, so those anchors
-moved with nothing watching. Sweeping every `CMakeLists.txt` reference in the docs rather than only
-the reported ones found two the review missed: `PRIVACY.md:22`'s `:92` (`/OPT:REF`, MSVC → `:108`)
-and `ADR-0023:151`'s `:218` (`PLUGIN_CODE` → `:274`). Corrected: `ADR-0001:31` `:314-323` → `:370-379`;
-`REPOSITORY_MAP.md:158` `:188`/`:214` → `:244`/`:270`; `PRIVACY.md:21` `:310-311`/`:348-349` →
-`:366-367`/`:404-405`; `PRIVACY.md:22` `:107`/`:92` → `:162`/`:108`; `ADR-0023:151` `:218` → `:274`.
-`BUILD.md:106` was re-anchored to `CMakeLists.txt:330-341`, restoring the coverage recorded below as
-deliberate — one anchor over *both* the `set_source_files_properties` pair and the
-`target_compile_definitions(Anamorph PUBLIC …)` block the sentence enumerates — and its
-`DELIBERATE_REAIMS` declaration moved with it, per the rule that a declaration must track its own
-anchor.
+**Ten evidence anchors, not the three the review named — and the first sweep found only six.**
+`CMakeLists.txt` took **178 insertions and one deletion** in this change set (net +177). The shift
+map is +16 for base lines 29–105, **+55 for base 106–107** — base 107 was *rewritten* into head
+162–163 rather than shifted, which is the one case a single figure cannot express — and +56 from base
+line 108 on. The **bare continuation** form (`:NNN` following a `path:NNN` citation) is not tracked
+by `check-citations.py`, so these moved with nothing watching; demonstrated by mutating two of them
+to `:900-901`, past the end of a 542-line file, and watching `--check` still exit 0 while mutating
+the tracked anchor on the line above failed it.
+
+Corrected: `ADR-0001:31` `:314-323` → `:370-379`; `REPOSITORY_MAP.md:158` `:188`/`:214` →
+`:244`/`:270`; `PRIVACY.md:21` `:310-311`/`:348-349` → `:366-367`/`:404-405`; `PRIVACY.md:22`
+`:107`/`:92` → `:162`/`:108`; `ADR-0023:151` `:218` → `:274`; `BUILD.md:19` `:36-38`/`:47-55` →
+`:52-54`/`:63-71`; `ADR-0022:70` and `ADR-0026:82` `:47-55` → `:63-71`. Three were named by the
+review, two more found by the first sweep (`PRIVACY.md`'s `:92`, `ADR-0023`'s `:218`), and **four by
+the second** — including two on `BUILD.md:19`, eighty-seven lines above the line the first sweep
+edited. That is the sharpest lesson available here: a sweep is worth only as much as its next pass,
+because the form being swept for is the one the gate cannot see.
+
+`BUILD.md:106` was re-anchored to the span that `origin/main`'s `:274-284` maps to under the +56
+shift, restoring the coverage recorded below as deliberate — one anchor over *both* the
+`set_source_files_properties` pair and the `target_compile_definitions(Anamorph PUBLIC …)` block the
+sentence enumerates. Because it is exactly that mapped span, the merge-base run computes and verifies
+it with **no declaration at all**, and the permanent `DELIBERATE_REAIMS` entry an intervening draft
+had added is deleted. An entry survives only for the one transition CI's *previous-push* base needs,
+since that push carried a span one line wider — the block's closing `)`, which bought no evidence.
+That one is marked for deletion as soon as the default branch catches up.
+
+**One statement, rather than an anchor, was made wrong by this PR.** `PRIVACY.md:21` claimed the
+webview/curl definitions cover "every target — the plug-in and both test binaries", citing three
+sites. The bench, DSP-dump and fuzz executables added in this change set each carry the same pair, so
+the sentence and its evidence now name all six. Two further citations are *incomplete* in the same
+way and deliberately left — `CODE_STYLE.md:10` and `TESTING_POLICY.md:9` cite three of six
+`juce_recommended_warning_flags` sites, but each cited line is correct and neither sentence claims to
+be exhaustive.
 
 **The continuation gap is left open deliberately.** Bringing these under the gate means the
 comma-list spelling (`CMakeLists.txt:335-336, 366-367, 404-405`), which the tool does accept — but
