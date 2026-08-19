@@ -64,9 +64,12 @@ extended in place and no decision in it is reopened.**
 52 are *transitive through JUCE*, calls whose definitions the TU cannot see. They therefore appear
 only where JUCE appears, and the repository has a layer where it does not — `MidSide.h`,
 `LR4Xover.h`, `ScopeBuffer.h`, `Correlation.h`, `LevelMeters.h`. Measured over that layer the flag
-emits **0**, and it still fires precisely: a seeded call from the annotated driver to the
-non-annotated `anamorph::applyWidth` produces `error: function with 'nonblocking' attribute must not
-call non-'nonblocking' function 'anamorph::applyWidth'`. `tests/realtime_effects.cpp` is the driver;
+emits **0**, and it still fires precisely: a seeded call from the annotated driver to a helper that
+grows a `std::vector` produces `error: function with 'nonblocking' attribute must not call
+non-'nonblocking' function '(anonymous namespace)::canaryAllocatingHelper'`. (This entry first named
+`anamorph::applyWidth` as the seeded call, which cannot be right — it is `inline` and visible, so its
+effects are inferred, and the driver calls it in the compile that must stay clean. What fails is the
+EFFECT, not the missing annotation.) `tests/realtime_effects.cpp` is the driver;
 it is compiled `-fsyntax-only` with `-Werror=function-effects` as a seconds-long step in the
 `realtime` job, adds no target to the shipped build, and proves those bodies effect-clean *before*
 any test executes them — the one thing a runtime tool structurally cannot do, since it sees only the
@@ -648,8 +651,10 @@ NOT enabled **on the audio path**: the annotated engine TU emits **52** warnings
 calls whose definitions the TU cannot see (`Oversampling::reset` ×9, `FloatVectorOperations::copy`
 ×6), and JUCE 9.0.1 carries **zero** annotations of its own — the warnings are about correct code.
 Every one of those 52 is transitive through JUCE, so they appear only where JUCE does: over the
-**JUCE-free leaf layer** the same flag emits **0**, and it still fires precisely (a seeded call to the
-non-annotated `anamorph::applyWidth` fails by name). It is therefore enabled there, as
+**JUCE-free leaf layer** the same flag emits **0**, and it still fires precisely (the seeded
+`ANAMORPH_EFFECTS_CANARY` call to an allocating helper fails by name; this entry first named
+`anamorph::applyWidth`, whose visible `inline` definition makes it inferred-clean instead). It is
+therefore enabled there, as
 `-Werror=function-effects -fsyntax-only` over `tests/realtime_effects.cpp` in the `realtime` job —
 compile-only, seconds, no target added to the shipped build. That is the scoping recorded in
 ADR-0029 §3; the refusal for the engine TU stands unchanged.

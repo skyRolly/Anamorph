@@ -373,6 +373,28 @@ DELIBERATE_REAIMS = {
     # permanent exemption, which is a bad trade for the construct this file calls
     # the one thing that turns a check OFF.)
     # ---------------------------------------------------------------------
+    # ADR-0009's NaN/Inf SELF-HEAL ANCHOR WAS WRONG BEFORE THIS GATE EXISTED, and
+    # both documents that cite the block proved it by disagreeing. The audit and
+    # the ADR each carried `AnamorphEngine.cpp:847-870` at the merge base; the
+    # audit was re-derived to the real self-heal earlier in this change set,
+    # while the ADR's copy was only SHIFTED -- to `:860-883`, which is input
+    # conditioning, the M/S solo branch and the `dryScratch` copy. Unrelated code,
+    # cited twice in the same file, for a decision about NaN handling.
+    #
+    # This is the "adopted as-is rather than audited" limit stated at the top of
+    # this list, arriving exactly as predicted: an anchor already misaimed at the
+    # base stays misaimed through `--fix`, because the tool detects MOVEMENT and
+    # this never moved -- it was wrong where it started. So it is a re-aim, not a
+    # re-anchor, and `--fix` cannot compute it.
+    #
+    # Re-derived 2026-08-19 as `:1269-1313`: the comment header, the branch-free
+    # non-finite detector, the zeroing pass, and the stateful reset. The reset is
+    # why the span runs to 1313 rather than stopping where the audit's does -- the
+    # ADR's own Consequences claim the plugin "self-heals instead of needing a
+    # Multiband off/on", and that sentence is about `multiband.reset()`.
+    ("docs/architecture/design-decisions/ADR-0009-nan-selfheal-nyquist-clamp.md",
+     "src/dsp/AnamorphEngine.cpp:1269-1313"): "Defensive NaN / Inf self-heal",
+    # ---------------------------------------------------------------------
     # THE WORKFLOW ANCHORS WERE WRONG ON ARRIVAL, and the way they got there is
     # worth recording because this gate is the thing that should have caught it.
     # They were computed part-way through the round that introduced them and

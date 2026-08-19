@@ -107,13 +107,20 @@ That rule has a boundary, and the boundary is measurable rather than a matter of
 warnings are *all* transitive — calls into JUCE whose definitions the translation unit cannot see —
 so they appear only where JUCE appears. Over the **leaf layer that includes no JUCE at all**
 (`MidSide.h`, `LR4Xover.h`, `ScopeBuffer.h`, `Correlation.h`, `LevelMeters.h`) the same flag emits
-**0** diagnostics, and it still fires precisely: a seeded call from the annotated driver to the
-non-annotated `anamorph::applyWidth` produces
+**0** diagnostics, and it still fires precisely: a seeded call from the annotated driver to a helper
+that grows a `std::vector` produces
 
 ```
 error: function with 'nonblocking' attribute must not call non-'nonblocking'
-function 'anamorph::applyWidth' [-Werror,-Wfunction-effects]
+function '(anonymous namespace)::canaryAllocatingHelper' [-Werror,-Wfunction-effects]
 ```
+
+**The missing annotation is not what fails, the EFFECT is** — a distinction this ADR originally got
+wrong by naming `anamorph::applyWidth` as the seeded call. Clang infers a callee's effects wherever
+it can see the definition, and `applyWidth` is unannotated, `inline` and *called by the driver
+itself*, so it is inferred nonblocking and diagnoses nothing. The gated compile contains that call
+and must stay clean; the seeded helper is a separate one, compiled only under
+`-DANAMORPH_EFFECTS_CANARY`.
 
 So the flag is enabled exactly where it is signal and stays off where it is noise. This is a
 **scoping decision inside the option-C choice, not a reversal of it**: `tests/realtime_effects.cpp`
@@ -379,8 +386,10 @@ Evidence [Verified]:
   `[[clang::nonblocking]]` under clang-22 and to nothing under g++-13.
 - **`-Wfunction-effects` census**: **52** warnings from the annotated engine TU, versus **0** over
   the JUCE-free leaf layer (`tests/realtime_effects.cpp`); the flag is in neither `-Wall` nor
-  `-Wextra`. The leaf-layer check is verified to still fire: a seeded call to the non-annotated
-  `anamorph::applyWidth` fails it by name.
+  `-Wextra`. The leaf-layer check is verified to still fire, in-job on every run: the
+  `-DANAMORPH_EFFECTS_CANARY` compile seeds a call to an allocating helper and must fail with a
+  `-Wfunction-effects` diagnostic. (Not to `anamorph::applyWidth`, which this ADR first named — it is
+  `inline` and visible, so its effects are inferred and the call is clean.)
 - **JUCE 9.0.1**: zero occurrences of `clang::nonblocking` / `clang::nonallocating` / `__rtsan` in
   the pinned checkout.
 - **The audio path under RTSan**, and **the lane failing on a seeded violation**: see the run

@@ -110,6 +110,58 @@ FORBIDDEN = [
 ]
 
 
+def _blank_template_args(region: str) -> str:
+    """Blank BALANCED `<...>` spans in a declarator tail, keeping its length.
+
+    `<` and `>` are the one bracket pair C++ overloads with operators, so they
+    cannot simply be counted like `(` and `[`: `a < b` would open a span that
+    never closes and would swallow every comma after it, turning this function's
+    false negative into a false positive. Balance is therefore REQUIRED before a
+    span counts -- an opener with no matching closer is left alone, so
+    `foo (a < b, []{ ... })` still reads as the argument list it is.
+
+    Two further conditions keep the match honest, both drawn from what actually
+    appears here: a `<` opens a span only after a NAME (`pair<`, `is_same_v<`,
+    and `>>` for a nested close), never after an operator or an open paren; and a
+    `>` that is the tail of `->` closes nothing, because a trailing return arrow
+    is the commonest thing in this region. Spans are matched at their own
+    bracket depth and dropped when that depth closes, so a `<` inside
+    `noexcept(...)` cannot pair with a `>` outside it.
+
+    Ambiguity that survives this is ambiguous in C++ too -- `a < b && c > d`
+    parses as a template-id without semantic analysis, which is why the language
+    needs `template` disambiguators. The shape does not occur in a declarator
+    tail.
+    """
+    out = list(region)
+    stack = []                      # (index of `<`, bracket depth it opened at)
+    depth = 0
+    for i, ch in enumerate(region):
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth -= 1
+            # A span cannot outlive the bracket group it opened in.
+            while stack and stack[-1][1] > depth:
+                stack.pop()
+        elif ch == "<":
+            if region[i + 1:i + 2] in ("<", "="):
+                continue            # `<<` / `<=`, an operator
+            j = i - 1
+            while j >= 0 and region[j].isspace():
+                j -= 1
+            if j >= 0 and (region[j].isalnum() or region[j] in "_>"):
+                stack.append((i, depth))
+        elif ch == ">":
+            if i > 0 and region[i - 1] == "-":
+                continue            # the `->` of a trailing return type
+            if stack and stack[-1][1] == depth:
+                opened, _ = stack.pop()
+                for k in range(opened, i + 1):
+                    out[k] = " "
+    return "".join(out)
+
+
 def _is_declarator_tail(clean: str, start: int, brace: int) -> bool:
     """Can `clean[start:brace]` sit between a parameter list's `)` and a body's `{`?
 
@@ -128,20 +180,28 @@ def _is_declarator_tail(clean: str, start: int, brace: int) -> bool:
     WHAT THE REGION MAY CONTAIN in a real definition: cv- and ref-qualifiers,
     `noexcept` (with or without an operand), attributes, effect macros such as
     `ANAMORPH_NONBLOCKING`, `override`/`final`, a trailing return type, a
-    `requires` clause -- and, for a constructor, a member-initialiser list. None
-    of those puts a COMMA at bracket depth zero except the initialiser list,
-    which always opens with `:`. An argument list is made of exactly that comma,
-    and a call whose `)` has already closed leaves the depth NEGATIVE.
+    `requires` clause -- and, for a constructor, a member-initialiser list. An
+    argument list is made of a comma at bracket depth zero, and a call whose `)`
+    has already closed leaves the depth NEGATIVE; either means this was never a
+    signature. A region opening with `:` is a constructor and is accepted whole.
 
-    So: a region opening with `:` is a constructor and is accepted whole;
-    otherwise a depth-zero comma or a depth going negative means this was never
-    a signature. Measured over `src/`: this rejects the `Options` pairing and
-    eight further call sites (`RangedAudioParameter`, `stereo`, `move`, `jmax` --
-    every one a base/member initialiser or a JUCE call, none of them defined in
-    this repository) while keeping every genuine definition, including the
+    TEMPLATE ARGUMENTS PUT A COMMA THERE TOO, which the first version of this
+    function denied -- it asserted that nothing legal in a declarator tail could,
+    and `<`/`>` were not counted toward depth at all. So
+    `-> std::pair<float,float>` and `requires std::is_same_v<T,int>` both read as
+    argument lists, and `_bodies` dropped the definition, its body and every
+    same-file callee reached only through it. Silently: a lint that discards a
+    function prints exactly what a clean tree prints. That is the false-negative
+    direction this checker exists to prevent, so the template spans are blanked
+    before the comma test rather than the claim being weakened.
+
+    Measured over `src/`: this rejects the `Options` pairing and eight further
+    call sites (`RangedAudioParameter`, `stereo`, `move`, `jmax` -- every one a
+    base/member initialiser or a JUCE call, none of them defined in this
+    repository) while keeping every genuine definition, including the
     276-character `AnamorphAudioProcessor` constructor.
     """
-    region = clean[start:brace]
+    region = _blank_template_args(clean[start:brace])
     if region.lstrip().startswith(":"):
         return True                       # constructor member-initialiser list
     depth = 0
@@ -652,6 +712,23 @@ MUST_FIRE = [
      "void Engine::process (Buf& b) noexcept\n"
      "// " + "z" * 500 + "\n"
      "{ v.assign (4, 0.0f); }"),
+    # ---- the DECLARATOR TAIL, on the commas that are not argument separators -
+    # `_is_declarator_tail` rejects a depth-zero comma because an argument list
+    # is made of one. Template arguments put a comma there too, which the first
+    # version denied -- `<`/`>` were not counted at all -- so these definitions
+    # were dropped whole, along with every same-file callee reached only through
+    # them, and the scan printed what a clean tree prints. MUST_FIRE for the same
+    # reason as the lexer cases: the symptom is a swallowed violation.
+    # (Verified non-vacuous: all three report zero through the previous version.)
+    ("a trailing return type's template comma must not discard the definition",
+     "auto Engine::process (Buf& b) noexcept -> std::pair<float,float>\n"
+     "{ v.assign (4, 0.0f); return {}; }"),
+    ("...nor a nested one",
+     "auto Engine::process (Buf& b) noexcept -> std::map<int,std::pair<float,float>>\n"
+     "{ v.assign (4, 0.0f); return {}; }"),
+    ("...nor a requires clause's",
+     "template <class T> void Engine::process (T& b) noexcept requires std::is_same_v<T,int>\n"
+     "{ v.assign (4, 0.0f); }"),
     ("malloc in process",
      "void Engine::process (Buf& b) noexcept { void* p = malloc (64); }"),
     ("vector growth in process",
@@ -697,6 +774,17 @@ MUST_STAY_SILENT = [
      "    menu.showMenuAsync (juce::PopupMenu::reset()\n"
      "                            .withTargetComponent (presetName),\n"
      "                        [this] (int r) { chooser = std::make_unique<Chooser> (r); });\n"
+     "}"),
+    # ...and blanking template arguments must not blunt that. An UNBALANCED `<`
+    # is a less-than, not a template opener: counting it would swallow every
+    # comma after it and hand the argument list back as a definition, which is
+    # the false positive the case above exists to catch, arriving through the fix
+    # for the false negative below it.
+    ("a less-than in an argument still leaves the argument list an argument list",
+     "void Editor::run()\n"
+     "{\n"
+     "    schedule (juce::Thing::reset(), a < b,\n"
+     "              [this] { cache.assign (128, 0.0f); });\n"
      "}"),
     ("allocation in prepare is required by the policy",
      "void Engine::prepare (double sr, int n) { scratch.setSize (2, n); buf.resize (n); }"),
@@ -803,6 +891,23 @@ def self_test() -> int:
         ("a member-initialiser list, commas and all", "\n    : Base (id),\n      member (c)\n", True),
         ("an argument separator is NOT a declarator tail", " , [this] (int r) ", False),
         ("...nor is a chained call after the paren already closed", ")\n .withTarget (x),\n ", False),
+        # TEMPLATE ARGUMENTS carry commas that are not argument separators. Both
+        # directions are pinned here because the discriminator is BALANCE: a
+        # matched `<...>` is a template-id and its commas are inert; a lone `<`
+        # is a less-than and everything after it is still an argument list.
+        ("a trailing return type's template comma", " -> std::pair<float,float> ", True),
+        ("...nested, closing with `>>`", " -> std::map<int,std::pair<float,float>> ", True),
+        ("...and a requires clause's", " noexcept requires std::is_same_v<T,int> ", True),
+        ("an UNBALANCED `<` is a less-than, so the comma still separates arguments",
+         " a < b, [this] (int r) ", False),
+        # The two conditions on a match, each pinned by the region that ONLY it
+        # rejects -- drop either and the span swallows the comma that makes this
+        # an argument list. Synthetic on purpose: they are discriminators for the
+        # parser's rules, not shapes anyone writes.
+        ("a `<` after `)` opens no span, so the comma survives", " (a) < b , c > ", False),
+        ("the `>` of `->` closes no span, so the comma survives", " a<b , c -> d ", False),
+        ("a `<` cannot pair with a `>` in a different bracket group",
+         " f(a < b) , g(c > d) ", False),
     ]:
         total += 1
         got = _is_declarator_tail(label + region + "{", len(label), len(label) + len(region))

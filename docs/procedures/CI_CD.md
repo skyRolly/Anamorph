@@ -223,8 +223,10 @@ edge above must not be read as release non-blocking.
   `ANAMORPH_NONBLOCKING` calls `MidSide`, `LR4Xover`, `ScopeBuffer`, `CorrelationMeter` and
   `LevelMeters` exactly as the audio path does, so the compiler proves those bodies effect-clean
   *before* any test runs them. That scope is the whole point and is measured, not assumed: over the
-  leaf layer the flag emits **0** diagnostics and still fires precisely (a seeded call to a
-  non-annotated `applyWidth` fails the step by name), while over `AnamorphEngine.cpp` it emits **52**
+  leaf layer the flag emits **0** diagnostics and still fires precisely (the seeded
+  `ANAMORPH_EFFECTS_CANARY` call to an allocating helper fails the step by name — *not* a call to
+  `applyWidth`, which this page named until 2026-08-19: it is `inline` and visible, so Clang infers
+  its effects and the driver's own call to it is clean), while over `AnamorphEngine.cpp` it emits **52**
   from JUCE calls whose definitions the TU cannot see — JUCE 9.0.1 carries no annotations of its own.
   So the flag is enabled exactly where it is signal and stays off where it is noise; ADR-0029 §3
   records both measurements and the boundary between them.

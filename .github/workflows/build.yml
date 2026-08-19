@@ -2817,8 +2817,11 @@ jobs:
       # of its own, so those are warnings about correct code (ADR-0029 records
       # the decision not to enable it build-wide). `tests/realtime_effects.cpp`
       # includes only the JUCE-free first-party leaves, where the signal is
-      # clean: measured 0 diagnostics on this tree, and a call to an
-      # unannotated helper seeded into `applyWidth` fails the compile.
+      # clean: measured 0 diagnostics on this tree, and the seeded
+      # `ANAMORPH_EFFECTS_CANARY` call to an ALLOCATING helper fails the compile.
+      # (Being unannotated is not what fails: Clang infers effects from a visible
+      # definition, so the driver's own call to the unannotated inline
+      # `anamorph::applyWidth` is inferred nonblocking and diagnoses nothing.)
       #
       # Runs AFTER configure because it needs the FetchContent'd JUCE headers
       # (`LR4Xover.h` includes `juce_dsp`). `-fsyntax-only`: no link, no run.

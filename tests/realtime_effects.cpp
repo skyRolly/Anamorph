@@ -26,9 +26,18 @@
 //  What IS clean is the layer below JUCE: this project's own header-only DSP
 //  leaves, whose bodies are pure arithmetic and pre-sized state. Measured: the
 //  driver below compiles with ZERO `-Wfunction-effects` warnings, while a call
-//  to an allocating helper inserted into it fails with
-//  "function with 'nonblocking' attribute must not call non-'nonblocking'
+//  to an ALLOCATING helper -- the `ANAMORPH_EFFECTS_CANARY` block below -- fails
+//  with "function with 'nonblocking' attribute must not call non-'nonblocking'
 //  function". Clean signal, and it fires -- which is the bar a gate has to pass.
+//
+//  WHAT MAKES THE CANARY FAIL IS THE EFFECT, NOT THE MISSING ANNOTATION, and the
+//  difference is visible in this very file. Clang INFERS a callee's effects
+//  wherever it can see the definition, so `anamorph::applyWidth` -- unannotated,
+//  `inline`, and called by the driver below -- is inferred nonblocking and
+//  diagnoses nothing. An earlier version of this note offered that call as the
+//  proof that the gate fires, which cannot be right: the gated compile contains
+//  it and must stay clean. The helper that fails is the one whose body actually
+//  blocks.
 //
 //  SCOPE, deliberately narrow: the JUCE-free first-party leaves only. Adding a
 //  header that calls into JUCE would reintroduce the 52-warning noise, so the
