@@ -31,7 +31,7 @@ Audit basis: full read of `src/dsp/**` and `src/PluginProcessor.cpp` (two indepe
   `std::vector::assign` or `juce::dsp::*::prepare`).
 - **Non-finite guard:** an engine-wide per-sample NaN/Inf check replaces only non-finite
   samples with 0 and resets stateful nodes; it is not a level limiter and never alters valid
-  audio. Evidence: src/dsp/AnamorphEngine.cpp:1269-1303.
+  audio. Evidence: src/dsp/AnamorphEngine.cpp:1269-1313.
 - **`reset()` paths run `std::fill`/filter resets** but never allocate, and are invoked at safe
   points (prepare, host reset, the silent duck bottom, NaN self-heal).
 

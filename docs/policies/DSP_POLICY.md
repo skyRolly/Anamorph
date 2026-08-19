@@ -45,7 +45,7 @@ architecture docs, and the ADRs. These must hold across releases.
    HaasProcessor/VelvetNoise/ChorusEngine headers; test `testTransparentDefault`.
 
 9. **Crossovers are Nyquist-clamped + ordered top-down; no output clipper; NaN/Inf self-heals.**
-   (ADR-0009) Evidence: MultibandWidth.cpp:55-71; AnamorphEngine.cpp:847-870; tests
+   (ADR-0009) Evidence: MultibandWidth.cpp:55-71; AnamorphEngine.cpp:1269-1313; tests
    `testCrossoverAutomationSafe`, `testNoBadSamples`.
 
 10. **Level Match measures the post-Mono-Maker output against A(dry)**, and is an absolute

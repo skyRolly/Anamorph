@@ -67,8 +67,8 @@ only where JUCE appears, and the repository has a layer where it does not — `M
 emits **0**, and it still fires precisely: a seeded call from the annotated driver to a helper that
 grows a `std::vector` produces `error: function with 'nonblocking' attribute must not call
 non-'nonblocking' function '(anonymous namespace)::canaryAllocatingHelper'`. (This entry first named
-`anamorph::applyWidth` as the seeded call, which cannot be right — it is `inline` and visible, so its
-effects are inferred, and the driver calls it in the compile that must stay clean. What fails is the
+`anamorph::applyWidth` as the seeded call, which cannot be right — its definition is visible in that
+TU, so its effects are inferred, and the driver calls it in the compile that must stay clean. What fails is the
 EFFECT, not the missing annotation.) `tests/realtime_effects.cpp` is the driver;
 it is compiled `-fsyntax-only` with `-Werror=function-effects` as a seconds-long step in the
 `realtime` job, adds no target to the shipped build, and proves those bodies effect-clean *before*

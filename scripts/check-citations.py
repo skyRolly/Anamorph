@@ -394,6 +394,17 @@ DELIBERATE_REAIMS = {
     # Multiband off/on", and that sentence is about `multiband.reset()`.
     ("docs/architecture/design-decisions/ADR-0009-nan-selfheal-nyquist-clamp.md",
      "src/dsp/AnamorphEngine.cpp:1269-1313"): "Defensive NaN / Inf self-heal",
+    # THE AUDIT'S COPY IS WIDENED TO MATCH, and needs a declaration only against
+    # the PREVIOUS PUSH. `REALTIME_SAFETY_AUDIT.md` was re-derived earlier in this
+    # change set to `:1269-1303`, which stops on the `if (nonFinite)` line -- so it
+    # excluded every one of the resets its own sentence claims ("replaces only
+    # non-finite samples with 0 AND RESETS STATEFUL NODES"). Against `origin/main`
+    # the line was a bare filename and therefore a new citation with nothing to
+    # drift from; against the previous push it is a deliberate widening. One
+    # spelling for one block, in both documents. DELETE THIS once the default
+    # branch carries `:1269-1313`.
+    ("docs/architecture/REALTIME_SAFETY_AUDIT.md",
+     "src/dsp/AnamorphEngine.cpp:1269-1313"): "Defensive NaN / Inf self-heal",
     # ---------------------------------------------------------------------
     # THE WORKFLOW ANCHORS WERE WRONG ON ARRIVAL, and the way they got there is
     # worth recording because this gate is the thing that should have caught it.

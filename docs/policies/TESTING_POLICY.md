@@ -97,7 +97,7 @@ blocking gate; `env.ANAMORPH_PLUGINVAL_STRICTNESS`; the macOS AU install + AU ga
 
    **A one-time verification is not a liveness proof, which is what the leaf-layer
    `-Werror=function-effects` step used to have.** It was checked once, by hand, against a seeded
-   call to a non-annotated function — and a clean compile then became its entire output. That is
+   allocating call — and a clean compile then became its entire output. That is
    the state this rule exists to forbid: Clang treats an unrecognised `-Werror=<name>` as a mere
    `-Wunknown-warning-option` **warning**, so the day the option is renamed or dropped the step
    keeps exiting 0 while checking nothing. Measured on the pinned Clang 22.1.8: with the option

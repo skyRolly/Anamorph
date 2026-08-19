@@ -117,8 +117,8 @@ function '(anonymous namespace)::canaryAllocatingHelper' [-Werror,-Wfunction-eff
 
 **The missing annotation is not what fails, the EFFECT is** — a distinction this ADR originally got
 wrong by naming `anamorph::applyWidth` as the seeded call. Clang infers a callee's effects wherever
-it can see the definition, and `applyWidth` is unannotated, `inline` and *called by the driver
-itself*, so it is inferred nonblocking and diagnoses nothing. The gated compile contains that call
+its DEFINITION is visible in the translation unit, and `applyWidth` is unannotated, header-defined
+and *called by the driver itself*, so it diagnoses nothing. The gated compile contains that call
 and must stay clean; the seeded helper is a separate one, compiled only under
 `-DANAMORPH_EFFECTS_CANARY`.
 
@@ -388,8 +388,8 @@ Evidence [Verified]:
   the JUCE-free leaf layer (`tests/realtime_effects.cpp`); the flag is in neither `-Wall` nor
   `-Wextra`. The leaf-layer check is verified to still fire, in-job on every run: the
   `-DANAMORPH_EFFECTS_CANARY` compile seeds a call to an allocating helper and must fail with a
-  `-Wfunction-effects` diagnostic. (Not to `anamorph::applyWidth`, which this ADR first named — it is
-  `inline` and visible, so its effects are inferred and the call is clean.)
+  `-Wfunction-effects` diagnostic. (Not to `anamorph::applyWidth`, which this ADR first named — its
+  definition is visible in that TU, so its effects are inferred and the call is clean.)
 - **JUCE 9.0.1**: zero occurrences of `clang::nonblocking` / `clang::nonallocating` / `__rtsan` in
   the pinned checkout.
 - **The audio path under RTSan**, and **the lane failing on a seeded violation**: see the run
