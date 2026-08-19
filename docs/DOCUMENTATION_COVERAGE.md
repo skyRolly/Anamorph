@@ -7,7 +7,8 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
-**gate-liveness round** (first below), then the
+**parser-and-evidence round** (first below), then the
+**gate-liveness round**, then the
 **environment-assertion placement round**, then the
 **follow-up review round**, then the
 **macOS-symbolication and review round**, then the
@@ -129,6 +130,56 @@ is Linux/X11 only. On Windows and macOS that turned a genuine crash into two mor
 The retry is now scoped by `uname -s`: three attempts on Linux, one everywhere else, with a distinct
 message so a single-attempt failure cannot be misread as an exhausted retry. The separately
 justified `.ps1` retry is untouched.
+
+**Parser-and-evidence round (2026-08-19): one silent false negative in the realtime lint, one
+architectural citation pointing at unrelated code, and one liveness claim that was never true.**
+
+**MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-19**, covering the two decisions in this round
+that the process asks a human to confirm: re-aiming ADR-0009's evidence to
+`src/dsp/AnamorphEngine.cpp:1269-1313` (a re-aim, not a re-anchor — the tool cannot compute it, so
+it is declared in `DELIBERATE_REAIMS` and its aim machine-checked against
+`Defensive NaN / Inf self-heal`), and restating the leaf-layer `-Werror=function-effects` gate's
+liveness evidence to name the mechanism the tree actually runs.
+
+**A definition whose signature carried a comma inside template arguments was discarded whole.**
+`_is_declarator_tail` rejects a depth-zero comma because an argument list is made of one, and `<`/`>`
+were not counted toward depth at all — so `-> std::pair<float,float>` and
+`requires std::is_same_v<T,int>` both read as argument lists, and `_bodies` dropped the definition,
+its body and every same-file callee reached only through it. Silently, which is the direction that
+matters: a lint that discards a function prints what a clean tree prints. Fixed by modelling the
+construct — balanced `<...>` spans are blanked before the comma test — with balance REQUIRED, because
+`<` is the one bracket C++ overloads with an operator and counting it unconditionally would turn the
+false negative into the false positive the `Options` case exists to catch. All seven rules of the
+resulting parser are mutation-pinned; independent verification found no false positive or negative
+across 3,264 files of JUCE, libstdc++-13 and LLVM-22, and the enforcement surface is unchanged (467
+index entries, 61 reachable spans, 44 files, 0 violations, zero files differing).
+
+**ADR-0009 cited unrelated code, and the documents that cite the same block disagreed.** Both the
+ADR and the audit carried `AnamorphEngine.cpp:847-870` at the merge base; the audit was re-derived
+earlier in this change set while the ADR's copy was only shifted, to `:860-883` — input conditioning,
+the M/S solo branch and the `dryScratch` copy. That is the "adopted as-is rather than audited" limit
+this repository states for its own citation gate, arriving as predicted: an anchor already misaimed
+at the base stays misaimed through `--fix`, because the tool detects MOVEMENT and this never moved.
+The span now runs to 1313 rather than stopping at the `if`, because the ADR's Consequences claim the
+plugin "self-heals instead of needing a Multiband off/on" and that sentence is about
+`multiband.reset()`. Four documents carried copies — `DSP_POLICY.md`, `DEVELOPMENT.md` and the audit
+alongside the ADR — and all four now spell it the same way.
+
+**The `applyWidth` liveness claim was false, in eight places.** ADR-0029, `ADR_INDEX`, `CI_CD`,
+`HANDOVER`, `TESTING_POLICY`, this file, the workflow comment and the effects TU said the gate is
+proven live by a seeded call to the non-annotated `anamorph::applyWidth` failing by name. Measured:
+that compile exits 0, and it could never have been otherwise — `applyWidth` is header-defined, so
+Clang infers its effects, and the driver calls it in the compile that must stay CLEAN. What fails is
+the EFFECT, not the missing annotation. The real proof is the `-DANAMORPH_EFFECTS_CANARY` call to a
+helper that grows a `std::vector`, and the quoted diagnostic is the one clang-22 emits. The gate
+itself was not touched: the mechanism was already right, only the evidence describing it was stale.
+
+**Known and deliberately left**, so the next reader does not re-derive it: the comment above
+`DELIBERATE_REAIMS` still argues the collection is spelled `set([...])` on purpose, which stopped
+being true when it became a dict keyed by `(document, anchor)`. Behaviour is unaffected — the
+consumers were converted to `.keys()` and the self-test covers them — so it is a stale comment rather
+than a defect, held out of a round scoped to correctness.
+
 
 **Gate-liveness round (2026-08-19): four enforcement mechanisms that could pass while checking
 nothing, and six evidence anchors the `CMakeLists.txt` growth left behind.**
