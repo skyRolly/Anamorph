@@ -26,7 +26,7 @@ This document is not legal advice.
 ### The one link in the interface
 
 The About screen shows a clickable link to `https://www.rolly.tech`
-(`src/PluginEditor.h:223`). It is an ordinary hyperlink: **Anamorph never opens it by itself.** If
+(`src/PluginEditor.h:362`). It is an ordinary hyperlink: **Anamorph never opens it by itself.** If
 you click it, your operating system opens the address in your default web browser, and from that
 point the ordinary privacy behaviour of your browser and that website applies — outside Anamorph's
 control and outside this document's scope.

@@ -221,6 +221,27 @@ re-**anchoring** them, needs the `DELIBERATE_REAIMS` declaration that distinguis
 nothing to do with hover; recording it here is what stops the paragraph above reading as though those
 three anchors were verified correct.
 
+**NOW CLOSED (2026-08-19), as its own standalone change.** The three documents cite
+**`src/PluginEditor.h:362`**, where `aboutLink` is actually declared, instead of `:223` — which is
+`return juce::TooltipWindow::getTipFor (c);` inside `GatedTooltipWindow`, the line `--fix` had
+carried the mis-aim onto from the merge base's `:213`. Only the number changed in each document; no
+wording, formatting or meaning was touched, and the correction is one anchor per file.
+
+It needed a declaration, and the reason is the mechanism recorded above rather than a guess: each of
+the three documents holds **exactly one** `src/PluginEditor.h` citation in both the base and the
+current tree, so the count guard does not fire, the pair IS compared, and the re-aim reads as drift.
+Measured: before the entries were written the run reported all three `DRIFTED … -> :223`, and `--fix`
+would have dragged every one of them back. `("EULA.md" | "PRIVACY.md" | "TRADEMARKS.md",
+"src/PluginEditor.h:362"): "aboutLink"` now covers them, and the substring is what keeps that
+off-switch honest: `verify_reaim_targets` resolves `:362` against the live header every run, and
+mutating one entry's substring to a value the line does not contain makes the run emit `::error::`
+and exit 2 — checked by doing it, then reverting. Re-running `--fix` afterwards leaves all three
+documents byte-identical.
+
+That is the whole change: three numbers and three declarations. The checker itself is unchanged
+apart from the added entries — no rule was relaxed, no path exempted, and the 63 unqualified
+references recorded earlier are still untouched.
+
 **Drift reported and corrected (C6):** `docs/KNOWN_ISSUES.md`'s summary table stopped at KI-022, so
 **KI-023 had a full entry but no table row** from the day it was filed (2026-08-18). Its row is added
 with the two new ones. Separately, and **not** acted on: `check-citations.py` now reports ~20
