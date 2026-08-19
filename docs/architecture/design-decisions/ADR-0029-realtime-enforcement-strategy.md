@@ -123,6 +123,18 @@ effect-clean before any test executes them — which is the one thing RTSan stru
 since a runtime tool sees only the branches the suite takes. It ships as a step in the `realtime`
 job, and adds neither a target to the shipped build nor a flag to any TU that links.
 
+**That step compiles the file twice** (2026-08-19), because a clean compile was its entire output
+and is also what a dead gate prints. Clang treats an unrecognised `-Werror=<name>` as a
+`-Wunknown-warning-option` *warning*, so a renamed or dropped `function-effects` would leave the step
+exiting 0 while checking nothing — measured on Clang 22.1.8: with the option misspelled, this TU
+carrying a real seeded violation compiles with status 0. The second compile adds
+`-DANAMORPH_EFFECTS_CANARY`, which seeds an allocating non-annotated helper and a call to it into the
+same file, and the step fails unless that compile fails *with* a `-Wfunction-effects` diagnostic.
+`-Werror=unknown-warning-option` on both compiles makes the renamed case fail by name; the canary
+covers the one it cannot, an option still accepted but no longer implemented. Seeding into the gated
+TU rather than a separate canary file is deliberate — it exercises the exact include set and flags
+the gate uses, and leaves nothing to drift out of step with them.
+
 `-Wperf-constraint-implies-noexcept`, which ADR-0028 paired with this decision, is also **not**
 enabled — but for the opposite reason: it is a no-op here. It fires on definitions whose function
 effects imply `noexcept`, and `AnamorphEngine::process` is *already* declared `noexcept`. Enabling it
@@ -245,6 +257,22 @@ The guard now stands down under RTSan via `__has_feature(realtime_sanitizer)` �
 than flag-driven, so a local `-fsanitize=realtime` build cannot reintroduce the conflict by
 forgetting a flag. Nothing is lost: RTSan covers allocations, locks and blocking calls in that
 build, which is strictly more than the guard measured there.
+
+**And that detection is now cross-checked, because on its own it was one unverified spelling holding
+up the whole lane** (2026-08-19). If `realtime_sanitizer` is ever renamed, removed, or absent from a
+future pinned Clang, `__has_feature` answers 0, the guard quietly compiles back in, and the table
+above reverts to its first row — reports 0, exit 1 — with nothing to say so. Verified on Clang
+22.1.8 that no other compiler-side marker exists: `-fsanitize=realtime` defines no preprocessor macro
+of its own, so the feature test is the only signal the compiler offers, and a check keyed on it would
+be checking itself.
+
+The second statement therefore comes from outside the compiler. The `realtime` job's
+`CMAKE_CXX_FLAGS` carry `-DANAMORPH_RTSAN_LANE=1` beside `-fsanitize=realtime` — one string, so they
+cannot drift apart — and `tests/AllocationGuard.h` `#error`s when the lane is declared but the guard
+did not stand down. The mutation this exists to catch fails the **build**, at its earliest moment,
+naming the reason. The reverse direction is deliberately not asserted: a local `-fsanitize=realtime`
+build without the flag is a normal thing to do and is already correct, since the feature test stands
+the guard down by itself.
 
 The guard also replaces the **C++17 over-aligned** `operator new`/`delete` family, matched to
 `aligned_alloc`/`std::free` (POSIX) or `_aligned_malloc`/`_aligned_free` (MSVC). That route matters

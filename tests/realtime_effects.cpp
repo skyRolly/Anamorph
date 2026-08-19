@@ -36,6 +36,23 @@
 //  (AnamorphEngine, the oversampled stages) stay covered by the runtime tiers.
 //
 //  It is compiled `-fsyntax-only` by the `realtime` job -- no link, no run.
+//
+//  IT IS COMPILED TWICE, and the second compile is the LIVENESS PROOF
+//  (`TESTING_POLICY.md` rule 4). A clean compile is this gate's entire output,
+//  and it is also exactly what a DEAD gate prints: Clang treats an unrecognised
+//  `-Werror=<name>` as a mere `-Wunknown-warning-option` WARNING, so the day
+//  `function-effects` is renamed or dropped, the step keeps exiting 0 while
+//  checking nothing. Measured on the pinned Clang 22.1.8: with the option
+//  misspelled, a translation unit carrying a REAL seeded violation compiles
+//  with exit status 0.
+//
+//  So the `realtime` job compiles this same file a second time with
+//  `-DANAMORPH_EFFECTS_CANARY`, which seeds the violation below, and asserts
+//  that compile FAILS with a `-Wfunction-effects` diagnostic -- the same shape
+//  as `tests/realtime_canary.cpp` proves the RTSan lane can fail. Seeding it
+//  into THIS file rather than a separate canary TU is deliberate: it proves the
+//  diagnostic on the exact translation unit, include set and flags the gate
+//  actually uses, and leaves nothing to drift out of step with them.
 // ============================================================================
 
 #include "dsp/MidSide.h"
@@ -45,8 +62,24 @@
 #include "dsp/LevelMeters.h"
 #include "dsp/RealtimeAnnotations.h"
 
+#if defined(ANAMORPH_EFFECTS_CANARY)
+  #include <vector>
+#endif
+
 namespace
 {
+#if defined(ANAMORPH_EFFECTS_CANARY)
+    // THE SEEDED VIOLATION, compiled only for the liveness proof. Not annotated
+    // and it allocates, so a `nonblocking` caller of it is exactly the defect
+    // `-Wfunction-effects` exists to report. `std::vector` is used rather than a
+    // bare `new` because a vector is what this project's DSP modules actually
+    // grow with, and because the diagnostic must come from the CALL GRAPH -- the
+    // helper's definition is visible, the allocation is one hop down.
+    std::vector<float> canarySink;
+
+    void canaryAllocatingHelper (int n) { canarySink.resize ((std::size_t) n); }
+#endif
+
     // The driver is annotated, so every leaf routine it calls must be inferable
     // as nonblocking. Clang walks the call graph from here.
     void leafAudioPath (float* l, float* r, int n,
@@ -71,6 +104,10 @@ namespace
         meters.publish();
         corr.publish();
         scope.pushBlock (l, r, n);
+
+#if defined(ANAMORPH_EFFECTS_CANARY)
+        canaryAllocatingHelper (n);   // the gate must report this, or it is dead
+#endif
     }
 }
 

@@ -123,6 +123,33 @@
   #endif
 #endif
 
+// ...AND THE DETECTION ABOVE IS ITSELF CHECKED, because on its own it is a
+// single unverified spelling holding up the whole realtime lane. If
+// `realtime_sanitizer` is ever renamed, removed, or absent from a future pinned
+// Clang, `__has_feature` answers 0, the guard quietly compiles back IN, its
+// definitions take precedence over RTSan's interceptors, and the lane reports
+// zero violations while detecting nothing -- the exact defect ADR-0029 documents
+// and the one shape this file's own measurement above was taken to prevent.
+// Nothing downstream would notice: the liveness canary is compiled standalone
+// WITHOUT this header, and `selfCheck()`'s disclosure would merely flip from
+// "compiled out" to "live", which no assertion reads either way.
+//
+// So the `realtime` job states the same fact a SECOND time, from outside the
+// compiler: `-DANAMORPH_RTSAN_LANE=1` sits on the same `CMAKE_CXX_FLAGS` string
+// as `-fsanitize=realtime`, and the two cannot drift apart without someone
+// editing that one line. The check below is deliberately NOT keyed on
+// `__has_feature` -- a test that consults the signal it is verifying proves
+// nothing. It compares the job's declaration against the outcome, so the
+// mutation this exists to catch (feature detection stops firing, guard comes
+// back) fails the BUILD, at the earliest possible moment, naming the reason.
+//
+// The reverse direction is deliberately not asserted: a local
+// `-fsanitize=realtime` build without the flag is a normal thing to do and is
+// already correct, because the feature test stands the guard down by itself.
+#if defined(ANAMORPH_RTSAN_LANE) && ! defined(ANAMORPH_NO_ALLOC_GUARD)
+  #error "ANAMORPH_RTSAN_LANE is set, so this build is the RealtimeSanitizer lane, but the allocation guard did NOT stand down -- __has_feature(realtime_sanitizer) did not fire. Left as-is the guard would shadow RTSan's allocation interceptors and the lane would report zero violations while detecting nothing (ADR-0029). Fix the feature detection above; do NOT silence this by removing the flag."
+#endif
+
 // The malloc half needs a way to reach the REAL allocator without recursing.
 // glibc exports `__libc_malloc` for exactly this; it is the mechanism this
 // guard is built on, and its absence is what makes the half unavailable rather

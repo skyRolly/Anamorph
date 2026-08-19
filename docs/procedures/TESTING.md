@@ -82,7 +82,13 @@ where RealtimeSanitizer does not run, since `operator new` replacement is standa
 compiled out under ASan (an executable-defined `malloc` fights ASan's allocator) and the whole
 guard is compiled out for the valgrind build (`-DANAMORPH_NO_ALLOC_GUARD` — memcheck reports
 `Mismatched free() / delete []` when `operator new` hands back `std::malloc` memory), each with a
-`::warning::` rather than a silent pass. It
+`::warning::` rather than a silent pass. Under RealtimeSanitizer the whole guard is compiled out
+too, and there it is a correctness requirement rather than a convenience — its interposers would
+shadow RTSan's own and blind that lane (ADR-0029 §7). That stand-down is detected by
+`__has_feature(realtime_sanitizer)` and **cross-checked from outside the compiler**: the
+`realtime` job also passes `-DANAMORPH_RTSAN_LANE=1`, and the header `#error`s if the lane is
+declared while the guard is still live, so a renamed or removed feature name fails the build
+instead of silently hollowing out the lane. It
 additionally carries **one state-restoration robustness guard**,
 `testAbActiveClampOnCorruptState` — it drives a corrupted `<AB active="…">` blob through the same
 read+clamp the processor uses (`anamorph::clampAbSlotIndex`, `src/AbSlotIndex.h`) and asserts an
@@ -153,7 +159,7 @@ release build; each answers a question the two self-test suites structurally can
 | `AnamorphBench` | `-DANAMORPH_BUILD_BENCH=ON`, Release | The `PERFORMANCE_BUDGET` §"required benchmark procedure" matrix — ns/sample and worst single block across sample rate, block size, algorithm, oversampling and multiband. |
 | `AnamorphFuzzState` | `-DANAMORPH_BUILD_FUZZ=ON` with Clang + `-fsanitize=address,undefined` | `setStateInformation` against inputs nobody wrote by hand. |
 | `AnamorphDspDump` | `-DANAMORPH_BUILD_DSPDUMP=ON`, Release | Whether a dependency bump changed engine output at all — §Proving a dependency bump is bit-identical. |
-| `tests/realtime_effects.cpp` | no target — `clang++ -fsyntax-only -Werror=function-effects` | Whether the JUCE-free leaf DSP is provably effect-clean at **compile** time, on branches no test executes. |
+| `tests/realtime_effects.cpp` | no target — `clang++ -fsyntax-only -Werror=unknown-warning-option -Werror=function-effects`, then the same command again with `-DANAMORPH_EFFECTS_CANARY`, which must FAIL | Whether the JUCE-free leaf DSP is provably effect-clean at **compile** time, on branches no test executes — and, through the second compile, whether the diagnostic proving it is still active at all. |
 
 ```bash
 # Benchmark. It REFUSES to run (exit 2) if it cannot identify the CPU and

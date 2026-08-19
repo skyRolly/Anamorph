@@ -7,7 +7,8 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
-**environment-assertion placement round** (first below), then the
+**gate-liveness round** (first below), then the
+**environment-assertion placement round**, then the
 **follow-up review round**, then the
 **macOS-symbolication and review round**, then the
 **engineering-roadmap implementation round**, covering in two batches: the leaf-layer
@@ -125,6 +126,85 @@ is Linux/X11 only. On Windows and macOS that turned a genuine crash into two mor
 The retry is now scoped by `uname -s`: three attempts on Linux, one everywhere else, with a distinct
 message so a single-attempt failure cannot be misread as an exhausted retry. The separately
 justified `.ps1` retry is untouched.
+
+**Gate-liveness round (2026-08-19): four enforcement mechanisms that could pass while checking
+nothing, and six evidence anchors the `CMakeLists.txt` growth left behind.**
+
+**MAINTAINER SIGN-OFF RECORDED HERE, both granted 2026-08-19.** (1) The macOS **retained-LTO-object**
+behaviour and the **placement and persistence of the LTO assertion** are confirmed against CI run
+**773** (push, `33333fe`): the `macos` job's step 7 `Assert LTO ran and its objects were retained`
+passed, and `Assert a validated dSYM was captured` ran last, after the installer and all three
+uploads. (2) The **one-time human verification of the `function-effects` warning's availability** is
+confirmed. Neither confirmation is a reason to leave a silent CI failure mode standing, and the
+durable mechanism below was added regardless — which is the point of recording them separately.
+
+**A gate whose only output is silence must be able to prove it can speak.** Four could not.
+
+- **The leaf-layer `-Werror=function-effects` step.** Clang treats an unrecognised `-Werror=<name>`
+  as a `-Wunknown-warning-option` *warning*, so a renamed or dropped option leaves the step exiting
+  0 while checking nothing. Measured on the pinned Clang 22.1.8: with the option misspelled,
+  `tests/realtime_effects.cpp` carrying a **real seeded violation** compiled with status **0**. It
+  is now compiled twice — the gate, then the same TU with `-DANAMORPH_EFFECTS_CANARY` seeding an
+  allocating non-annotated helper, asserted to fail *with* a `-Wfunction-effects` diagnostic — and
+  both compiles carry `-Werror=unknown-warning-option`. Neither half subsumes the other: the flag
+  catches a renamed option by name, the canary catches one still accepted but no longer implemented.
+  `TESTING_POLICY.md` rule 4's "one-time manual verification" wording for this gate is retired.
+- **The allocation guard's stand-down under RealtimeSanitizer.** `__has_feature(realtime_sanitizer)`
+  was a single unverified spelling holding up the whole lane; verified on Clang 22.1.8 that
+  `-fsanitize=realtime` defines **no** preprocessor macro of its own, so no non-circular check could
+  be built from the compiler alone. The `realtime` job now also passes `-DANAMORPH_RTSAN_LANE=1` on
+  the same flag string, and `tests/AllocationGuard.h` `#error`s if the lane is declared while the
+  guard is still live. Proven across all four quadrants of (RTSan on/off) × (flag on/off): only
+  flag-on + RTSan-off fails, which is exactly the mutation. ADR-0029 §7 records it.
+- **The Linux ABI floor, per declared family.** `check()` compared only the families a binary
+  actually referenced, so an **absent** family read as a satisfied one. Demonstrated on a real
+  C-only binary: the previous checker reported `within the declared floor (GLIBC_2.38,
+  GLIBCXX_3.4.31)` and exited **0** for a file importing no `GLIBCXX_*` at all. A missing declared
+  family is now an error, on the file's own stated reasoning that "no requirements found" must not
+  read as clean. Both shipped artifacts import both families, so the real gate is unchanged.
+- **The realtime lint's lexer and body extractor**, both silent false negatives rather than false
+  positives — the dangerous direction for a lint whose value is its silence. `_is_digit_separator`
+  tested only the two neighbouring characters, which is also the shape of the **opening** quote of an
+  encoded character literal (`L'a'`, `u8'a'`, `u'a'`, `U'a'`): the opener was emitted as code, the
+  closer read as an opener, and the rest of the line blanked. It now walks left to the start of the
+  token and requires a digit there. Separately, `_bodies` searched only 400 characters past the
+  closing parenthesis for the opening brace, and blanked comments **keep their length**, so a
+  definition with a long comment between `)` and `{` left the scanned set with no diagnostic; the
+  search is unbounded, with the same first-of-`{`-or-`;` rule that still rejects declarations.
+  Verified identical afterwards: **61 reachable body spans**, **44 files**, **0 violations**, zero
+  files differing.
+
+**The citation tool was disabling its own repair path.** `verify_reaim_targets()` ran first and
+returned 2 for *every* mode, so a drifted `DELIBERATE_REAIMS` declaration switched `--fix` off — the
+one mode that computes the replacement spelling the operator is then told to write by hand, and the
+mode the `invalidated_reaims` warning exists to run inside. Several declared anchors are single-line
+(`build.yml:1667` expecting `macos:`), so any insertion above one moves them. Measured on a worktree
+at `33333fe`: **one** inserted line made `--fix` exit 2 having rewritten nothing. The distinction is
+now by mode — the same one the rewriter already draws for invalidated declarations: `--check`
+verifies and stops; `--fix` warns, repairs, and still exits non-zero, because a declaration lives in
+the script and no document rewrite reaches it. Verification is not weakened: CI runs `--check` only.
+
+**Six evidence anchors, not the three the review named.** `CMakeLists.txt` grew by 178 lines in this
+change set (+16 for base lines 29–105, +56 from base line 108 on), and the **bare continuation** form
+— `:NNN` following a `path:NNN` citation — is not tracked by `check-citations.py`, so those anchors
+moved with nothing watching. Sweeping every `CMakeLists.txt` reference in the docs rather than only
+the reported ones found two the review missed: `PRIVACY.md:22`'s `:92` (`/OPT:REF`, MSVC → `:108`)
+and `ADR-0023:151`'s `:218` (`PLUGIN_CODE` → `:274`). Corrected: `ADR-0001:31` `:314-323` → `:370-379`;
+`REPOSITORY_MAP.md:158` `:188`/`:214` → `:244`/`:270`; `PRIVACY.md:21` `:310-311`/`:348-349` →
+`:366-367`/`:404-405`; `PRIVACY.md:22` `:107`/`:92` → `:162`/`:108`; `ADR-0023:151` `:218` → `:274`.
+`BUILD.md:106` was re-anchored to `CMakeLists.txt:330-341`, restoring the coverage recorded below as
+deliberate — one anchor over *both* the `set_source_files_properties` pair and the
+`target_compile_definitions(Anamorph PUBLIC …)` block the sentence enumerates — and its
+`DELIBERATE_REAIMS` declaration moved with it, per the rule that a declaration must track its own
+anchor.
+
+**The continuation gap is left open deliberately.** Bringing these under the gate means the
+comma-list spelling (`CMakeLists.txt:335-336, 366-367, 404-405`), which the tool does accept — but
+each continuation here carries its own annotation naming *which* line it is (`:162`
+(`-Wl,-dead_strip`, Apple), `:108` (`/OPT:REF`, MSVC)), and the comma-list form has nowhere to put
+them. Widening the recogniser to follow continuations is a change to the gate's scope rather than to
+this round's defect, and would newly track dozens of anchors across the tree at once. Recorded here
+so the next reader knows it was weighed rather than missed.
 
 **Environment-assertion placement round (2026-08-19): the same defect the macOS dSYM gate had, in the
 two assertions added beside it.**

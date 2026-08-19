@@ -95,6 +95,32 @@ def inspect(path: str):
 FLOORS = {"GLIBC": GLIBC_FLOOR, "GLIBCXX": GLIBCXX_FLOOR}
 
 
+def evaluate(highest):
+    """The verdict for ONE binary's parsed version references.
+
+    Returns `(over, missing)`: the declared families it requires MORE than the
+    floor of, and the declared families it does not reference AT ALL.
+
+    THE SECOND HALF IS NOT A FORMALITY. Comparing only the families a binary
+    happens to reference makes an ABSENT family read as a satisfied one, which
+    is the same "silence means clean" failure this file's `not highest` branch
+    already rejects -- only per family instead of per binary. A shipped artifact
+    that stopped referencing `GLIBCXX_*` entirely would have passed the
+    libstdc++ half of the gate vacuously, and the two things that produce that
+    are exactly the two the gate exists to notice: the wrong file being
+    inspected (a path that still resolves to SOME ELF with glibc references),
+    and a link-topology change such as `-static-libstdc++`. The second is a
+    legitimate way to lower the floor -- and precisely the "release-topology
+    decision" this file's header says must be deliberate and reviewed, not
+    absorbed silently by a gate that reports clean.
+    """
+    over = [(fam, FLOORS[fam], highest[fam])
+            for fam in FLOORS
+            if fam in highest and version_key(highest[fam]) > version_key(FLOORS[fam])]
+    missing = [fam for fam in FLOORS if fam not in highest]
+    return over, missing
+
+
 def check(paths) -> int:
     failures = []
     saw_any = False
@@ -115,10 +141,19 @@ def check(paths) -> int:
         saw_any = True
         summary = ", ".join(f"{fam}_{ver}" for fam, ver in sorted(highest.items()))
         print(f"  {path}: {summary}")
-        for fam, floor in FLOORS.items():
-            got = highest.get(fam)
-            if got is not None and version_key(got) > version_key(floor):
-                failures.append((path, fam, floor, got))
+        over, missing = evaluate(highest)
+        if missing:
+            print(f"::error::{path} references NO {'/'.join(missing)} symbol at all, so that "
+                  f"declared floor was not checked against anything.")
+            print(f"\ncheck-linux-abi: a declared ABI family is missing from a shipped binary.\n"
+                  f"This is not a pass: every artifact this gate inspects is a C++ binary linked\n"
+                  f"against the system libstdc++ and glibc, so an absent family means either the\n"
+                  f"wrong file was inspected, or the link topology changed (e.g.\n"
+                  f"-static-libstdc++). The second is a real way to lower the floor and a\n"
+                  f"deliberate release-topology decision -- make it in the same change as the\n"
+                  f"FLOORS above, and say in the PR what it changes for users.", file=sys.stderr)
+            return 2
+        failures.extend((path, fam, floor, got) for fam, floor, got in over)
 
     if not saw_any:
         print("check-linux-abi: no binaries were inspected.", file=sys.stderr)
@@ -194,6 +229,33 @@ Version References:
         print(f"self-test FAIL: floor comparison over={over} at={at} under={under}",
               file=sys.stderr)
         fails += 1
+
+    # THE VERDICT ITSELF, over the whole declared floor rather than one family
+    # at a time -- this is what `check()` calls, so it is what has to be tested.
+    # The missing-family cases are the point: until 2026-08-19 a family the
+    # binary did not reference was simply skipped, so the third case below
+    # reported CLEAN while half the declared floor went unexamined.
+    expect("a binary within both floors is clean and complete",
+           evaluate({"GLIBC": "2.35", "GLIBCXX": "3.4.30", "GCC": "3.3.1"}),
+           ([], []))
+    expect("exactly at both floors is still clean",
+           evaluate({"GLIBC": GLIBC_FLOOR, "GLIBCXX": GLIBCXX_FLOOR}),
+           ([], []))
+    expect("over one floor is reported for THAT family only",
+           evaluate({"GLIBC": "2.39", "GLIBCXX": GLIBCXX_FLOOR}),
+           ([("GLIBC", GLIBC_FLOOR, "2.39")], []))
+    expect("a MISSING libstdc++ family is reported, not skipped",
+           evaluate({"GLIBC": "2.35"}),
+           ([], ["GLIBCXX"]))
+    expect("...and a missing glibc family likewise",
+           evaluate({"GLIBCXX": "3.4.30"}),
+           ([], ["GLIBC"]))
+    expect("a missing family is reported even while another is over its floor",
+           evaluate({"GLIBC": "2.39"}),
+           ([("GLIBC", GLIBC_FLOOR, "2.39")], ["GLIBCXX"]))
+    expect("families with no declared floor neither satisfy nor break one",
+           evaluate({"GLIBC": "2.35", "GLIBCXX": "3.4.30", "CXXABI": "1.3.13"}),
+           ([], []))
 
     # The declared floors must themselves be parseable, or the gate compares
     # against nothing.

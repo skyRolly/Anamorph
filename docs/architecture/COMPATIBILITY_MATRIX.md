@@ -107,6 +107,16 @@ failure anywhere in CI and no line in any diff. This makes the run that raises i
 fails. Raising the floor is then a deliberate act: change the constant in the same change, and say
 in the PR which systems it drops.
 
+**Every declared family must be present, not merely within its floor.** Both inspected artifacts are
+C++ binaries linked against the system libstdc++ and glibc, so each must import both `GLIBC_*` and
+`GLIBCXX_*`. Comparing only the families a binary happens to reference made an *absent* one read as
+a satisfied one: an artifact that stopped importing `GLIBCXX_*` altogether passed the libstdc++ half
+of the floor vacuously. Since 2026-08-19 that is an error, because the two things which produce it
+are exactly the two the gate exists to notice — the wrong file being inspected, and a link-topology
+change such as `-static-libstdc++`. The second is a real way to lower the floor, and lowering it is
+the deliberate, reviewable decision described below rather than something a gate should absorb while
+reporting clean.
+
 Lowering the floor is a different and larger question — it means building against an older
 toolchain or a sysroot, which is a release-topology decision rather than a CI tweak. The gate does
 not attempt it and does not pretend to; it makes the cost visible so the decision can be taken

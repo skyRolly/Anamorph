@@ -148,7 +148,7 @@ did not observe (constraint C2/C7).
 
 ## Related code
 
-- `CMakeLists.txt:273` (`PLUGIN_MANUFACTURER_CODE RTec`), `:218` (`PLUGIN_CODE`, unchanged),
+- `CMakeLists.txt:273` (`PLUGIN_MANUFACTURER_CODE RTec`), `:274` (`PLUGIN_CODE`, unchanged),
   `:14` (version 0.9.1)
 
 Evidence [Verified (code) / Unverified (host behaviour)]:

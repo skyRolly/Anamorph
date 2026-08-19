@@ -348,7 +348,7 @@ DELIBERATE_REAIMS = {
     # `set_source_files_properties` that now carries it -- ONE anchor still, not
     # two, because a citation whose anchor COUNT changes lands in the
     # "review by hand" branch that no declaration can excuse.
-    ("docs/procedures/BUILD.md", "CMakeLists.txt:330-331"): "ANAMORPH_BUILD_NUMBER",
+    ("docs/procedures/BUILD.md", "CMakeLists.txt:330-341"): "ANAMORPH_BUILD_NUMBER",
     # ---------------------------------------------------------------------
     # THE WORKFLOW ANCHORS WERE WRONG ON ARRIVAL, and the way they got there is
     # worth recording because this gate is the thing that should have caught it.
@@ -484,6 +484,38 @@ def reaim_target_text(whole):
             if 1 <= n <= len(lines):
                 picked.append(lines[n - 1])
     return "\n".join(picked)
+
+
+def reaim_stops_the_run(problems, fixing: bool) -> bool:
+    """Is a misaimed declaration fatal HERE, or reported and carried past?
+
+    This is the whole of the repair-mode / verification-mode distinction, kept
+    as one testable expression because the shape of the bug it encodes is a
+    one-character regression: an unconditional `return 2`.
+
+    `--check` VERIFIES, so it stops -- a declaration switches the drift check
+    OFF for its anchor, and a wrong one is invisible in every other way. The CI
+    step runs `--check`, so that is where the release-blocking failure lives.
+
+    `--fix` REPAIRS, so it must NOT stop. Several declared anchors are
+    single-line, so any insertion above one moves it -- and that is precisely
+    the drift `--fix` exists to repair. Stopping here handed the operator a
+    "could not run" and no automated way out, and it also put the
+    `invalidated_reaims` warning -- which prints the replacement spelling during
+    a rewrite -- downstream of a return that always fired. Measured on a
+    worktree at 33333fe: one line inserted into `build.yml` made `--fix` exit 2
+    having rewritten nothing; carrying past it re-anchors the drift and still
+    exits 2, because `fix_exit_code` below keeps the run failing.
+    """
+    return bool(problems) and not fixing
+
+
+def fix_exit_code(unmappable: int, reaim_problems) -> int:
+    """`--fix` exits non-zero when it leaves work behind -- including a misaimed
+    declaration it CANNOT repair, because a declaration lives in this script and
+    no rewrite of a document reaches it. Letting `--fix` proceed past one must
+    not turn into `--fix` reporting success over one."""
+    return 2 if (unmappable or reaim_problems) else 0
 
 
 def verify_reaim_targets():
@@ -1278,6 +1310,31 @@ def self_test():
         DELIBERATE_REAIMS.clear()
         DELIBERATE_REAIMS.update(saved)
 
+    # --- 8d. THE AIM CHECK MUST NOT DISABLE THE REPAIR PATH ------------------
+    # Section 8c gave this tool a check on its own declarations. It was wired
+    # in ahead of everything else and returned 2 for EVERY mode, which made a
+    # drifted declaration switch `--fix` off -- the one mode that computes the
+    # replacement the operator is then told to write by hand. Measured on a
+    # worktree at 33333fe: inserting ONE line into `build.yml` moved three
+    # single-line declared anchors, and `--fix` exited 2 having rewritten
+    # nothing. With the split below it re-anchors the drift and still exits 2.
+    #
+    # Both halves are pinned, because either alone is a different bug: stopping
+    # `--fix` is the defect being fixed, and letting `--fix` report SUCCESS over
+    # a misaimed declaration would be a worse one.
+    P = [("docs/EXAMPLE.md", "CMakeLists.txt:14", "x", "why")]
+    check("--check STOPS on a misaimed declaration", reaim_stops_the_run(P, False), True)
+    check("--fix does NOT stop on one -- it is what repairs the drift that caused it",
+          reaim_stops_the_run(P, True), False)
+    check("no misaimed declaration, no stop (--check)", reaim_stops_the_run([], False), False)
+    check("no misaimed declaration, no stop (--fix)", reaim_stops_the_run([], True), False)
+    check("--fix that carried past a misaimed declaration still FAILS",
+          fix_exit_code(0, P), 2)
+    check("...and still fails when it also left unmappable citations",
+          fix_exit_code(3, P), 2)
+    check("a clean --fix succeeds", fix_exit_code(0, []), 0)
+    check("an unmappable citation alone still fails --fix", fix_exit_code(1, []), 2)
+
     # --- 9. EVERY DECLARATION NAMES A SPELLING ITS DOCUMENT REALLY CARRIES ---
     # A declaration excuses a mismatch, so it is consulted ONLY when one occurs.
     # That makes a stale entry invisible from the branch it was written on: the
@@ -1330,6 +1387,24 @@ def main():
     # than as a silence somewhere downstream -- a declaration is the one
     # construct in this file that turns a check OFF, so it is the one that most
     # needs a check of its own.
+    #
+    # IT MUST NOT DISABLE `--fix`, and until 2026-08-19 it did. Returning 2 here
+    # for EVERY mode meant that the one thing which repairs drift refused to run
+    # whenever a declaration had drifted -- and drifting is what these anchors
+    # do: several are single-line (`build.yml:1667` expecting `macos:`), so any
+    # insertion above one moves it. The operator was then told to re-anchor by
+    # hand the very thing `--fix` exists to compute, and the `invalidated_reaims`
+    # warning below -- whose entire job is to print the replacement spelling
+    # during a rewrite -- was unreachable, being downstream of this return.
+    #
+    # So the DISTINCTION IS BY MODE, and it is the same one the rewriter already
+    # draws a few hundred lines down for invalidated declarations: `--check`
+    # VERIFIES, so a misaimed declaration is an error and stops the run;
+    # `--fix` REPAIRS, so it says the same thing as a warning, does its work,
+    # and then still exits non-zero, because the declaration is in this script
+    # and no rewrite of a document can correct it. Nothing is weakened: the CI
+    # step runs `--check` (there is no `--fix` in any workflow), which is where
+    # the hard failure lives and where it stays.
     reaim_problems, reaim_unverifiable = verify_reaim_targets()
     for doc, whole in reaim_unverifiable:
         print(f"check-citations: note — DELIBERATE_REAIMS entry {doc}: {whole} declares no "
@@ -1337,14 +1412,24 @@ def main():
               f"following the reference should find.")
     if reaim_problems:
         for doc, whole, expect, why in reaim_problems:
-            print(f"::error::{doc}: the declared re-aim {whole} does not contain {expect!r} — "
-                  f"{why}", file=sys.stderr)
-        print(f"\ncheck-citations: {len(reaim_problems)} declared re-aim(s) point at something "
-              f"other than what they claim. A declaration switches the drift check OFF for its "
-              f"anchor, so a wrong one is invisible in every other way — re-derive the line "
-              f"numbers against the current file and fix BOTH the document and the declaration.",
-              file=sys.stderr)
-        return 2
+            if args.fix:
+                print(f"::warning::{doc}: the declared re-aim {whole} does not contain "
+                      f"{expect!r} — {why}")
+            else:
+                print(f"::error::{doc}: the declared re-aim {whole} does not contain "
+                      f"{expect!r} — {why}", file=sys.stderr)
+        if reaim_stops_the_run(reaim_problems, args.fix):
+            print(f"\ncheck-citations: {len(reaim_problems)} declared re-aim(s) point at "
+                  f"something other than what they claim. A declaration switches the drift "
+                  f"check OFF for its anchor, so a wrong one is invisible in every other way — "
+                  f"re-derive the line numbers against the current file and fix BOTH the "
+                  f"document and the declaration.", file=sys.stderr)
+            return 2
+        print(f"check-citations: {len(reaim_problems)} declared re-aim(s) point at something "
+              f"other than what they claim. Re-anchoring continues below — a declaration lives "
+              f"in this script, not in a document, so no rewrite can repair it and this run "
+              f"will still exit non-zero. Re-derive those line numbers against the current "
+              f"file afterwards.")
 
     base_src, now_src = {}, {}
     for path in TRACKED:
@@ -1652,7 +1737,14 @@ def main():
     if args.fix:
         print(f"\ncheck-citations: re-anchored {fixable} citation(s) across {checked} "
               f"checked anchor(s){tail}; {unmappable} need a human.")
-        return 2 if unmappable else 0
+        if reaim_problems:
+            # The repair ran, which is the point of letting it. It is still not a
+            # clean run: a misaimed declaration keeps a drift check switched off,
+            # and only an edit to this script can turn it back on.
+            print(f"check-citations: {len(reaim_problems)} declared re-aim(s) still point at "
+                  f"something other than what they claim — fix DELIBERATE_REAIMS, then re-run "
+                  f"--check.", file=sys.stderr)
+        return fix_exit_code(unmappable, reaim_problems)
 
     if drifted:
         print(f"\ncheck-citations: {drifted} citation(s) across {checked} checked "

@@ -113,13 +113,34 @@ FORBIDDEN = [
 def _is_digit_separator(text: str, i: int) -> bool:
     """Is `text[i]` (an apostrophe) a C++14 digit separator rather than a quote?
 
-    A separator always sits BETWEEN two digits of one numeric token, which no
-    character literal can do: `'a'` has a quote on the outside of its content,
-    never a digit on both sides.
+    A separator sits between two digits of ONE numeric token, and a numeric
+    token STARTS with a digit. Both halves of that sentence are load-bearing.
+
+    TESTING ONLY THE TWO NEIGHBOURS IS NOT ENOUGH, which is what this function
+    used to do. An ENCODED character literal -- `L'a'`, `u8'a'`, `u'a'`, `U'a'`
+    -- puts an alphanumeric on both sides of its OPENING quote too, so the
+    neighbours-only rule emitted that opener as ordinary code, then met the
+    CLOSING quote and read it as an opener, blanking the remainder of the line.
+    Whatever followed on that line -- including a real violation -- vanished
+    from the scan with no diagnostic. That is the same false-negative class the
+    raw-string branch above exists to prevent, arriving through the fix for the
+    other one.
+
+    Walking LEFT to the start of the token and requiring a DIGIT there
+    separates the two cases exactly: `1'000`, `0x1'F` and `1.000'5` begin with
+    a digit; an encoding prefix (`L`, `u`, `u8`, `U`) does not, and neither
+    does an identifier. `'` and `.` are part of the walk because a separator may
+    itself follow an earlier separator (`1'000'000`) or a decimal point
+    (`1.000'5`).
     """
     if i == 0 or i + 1 >= len(text):
         return False
-    return text[i - 1].isalnum() and text[i + 1].isalnum()
+    if not text[i + 1].isalnum():
+        return False
+    j = i - 1
+    while j >= 0 and (text[j].isalnum() or text[j] in "'."):
+        j -= 1
+    return j + 1 < i and text[j + 1].isdigit()
 
 
 def strip_comments_and_strings(text: str) -> str:
@@ -304,12 +325,25 @@ def _bodies(clean: str, name_re):
             k += 1
         if k >= len(clean):
             continue
-        rest = clean[k + 1:k + 400]
-        brace = rest.find("{")
-        semi = rest.find(";")
+        # WHICHEVER COMES FIRST DECIDES: `{` means a definition, `;` means a
+        # declaration. The search is deliberately UNBOUNDED. It used to stop
+        # 400 characters past the closing parenthesis, and that bound was a
+        # silent false negative waiting to happen: `strip_comments_and_strings`
+        # blanks a comment but PRESERVES its length, so a long comment or
+        # attribute block between `)` and `{` pushed the brace out of the window
+        # and the definition left the scanned set with no diagnostic -- in a
+        # lint whose entire output on a healthy tree is silence.
+        #
+        # Removing the bound cannot admit a declaration, because a declaration's
+        # `;` is still nearer than any later `{`, and it cannot be fooled by a
+        # `;` or `{` inside a comment or string: those are blanked to spaces
+        # before this runs. `find` on the whole remainder also avoids copying a
+        # slice per candidate.
+        brace = clean.find("{", k + 1)
+        semi = clean.find(";", k + 1)
         if brace < 0 or (0 <= semi < brace):
             continue                      # a declaration, not a definition
-        start = k + 1 + brace
+        start = brace
         depth, e = 0, start
         while e < len(clean):
             if clean[e] == "{":
@@ -496,6 +530,31 @@ MUST_FIRE = [
      'void Engine::process (Buf& b) noexcept { log (R"(")"); v.assign (4, 0.0f); }'),
     ("a digit separator must not open a literal that swallows the code after it",
      "void Engine::process (Buf& b) noexcept { const int k = 1'000; v.assign (k, 0.0f); }"),
+    # ...and the four ENCODED character literals, which have the same shape as a
+    # digit separator (alphanumeric on both sides of the opening quote) and were
+    # mis-read as one until 2026-08-19: the opener was emitted as code, the
+    # CLOSER was then taken for an opener, and the rest of the line -- the
+    # allocation below -- disappeared. Verified non-vacuous: through the previous
+    # `_is_digit_separator` all four report zero violations.
+    ("a wide character literal must not swallow the code after it",
+     "void Engine::process (Buf& b) noexcept { if (c == L'x') v.assign (4, 0.0f); }"),
+    ("...nor a UTF-8 one",
+     "void Engine::process (Buf& b) noexcept { if (c == u8'x') v.assign (4, 0.0f); }"),
+    ("...nor a UTF-16 one",
+     "void Engine::process (Buf& b) noexcept { if (c == u'x') v.assign (4, 0.0f); }"),
+    ("...nor a UTF-32 one",
+     "void Engine::process (Buf& b) noexcept { if (c == U'x') v.assign (4, 0.0f); }"),
+    # ---- the BODY EXTRACTOR, on the distance it used to give up at ----------
+    # The brace search stopped 400 characters past the closing parenthesis, and
+    # blanked comments keep their length, so a definition with a long comment
+    # between `)` and `{` silently left the scanned set. MUST_FIRE for the same
+    # reason as the lexer cases above: the symptom is a swallowed violation, not
+    # a false one. (Verified non-vacuous: with the 400-character window this
+    # case reports zero, and the same fixture with a SHORT comment reports one.)
+    ("a definition whose brace is far from its signature is still scanned",
+     "void Engine::process (Buf& b) noexcept\n"
+     "// " + "z" * 500 + "\n"
+     "{ v.assign (4, 0.0f); }"),
     ("malloc in process",
      "void Engine::process (Buf& b) noexcept { void* p = malloc (64); }"),
     ("vector growth in process",

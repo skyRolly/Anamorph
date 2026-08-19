@@ -228,6 +228,15 @@ edge above must not be read as release non-blocking.
   from JUCE calls whose definitions the TU cannot see — JUCE 9.0.1 carries no annotations of its own.
   So the flag is enabled exactly where it is signal and stays off where it is noise; ADR-0029 §3
   records both measurements and the boundary between them.
+  That TU is compiled **twice**, and the second compile is this gate's liveness proof: a clean
+  compile is its whole output, and an unrecognised `-Werror=<name>` is only a *warning* to Clang, so
+  a renamed or dropped `function-effects` would leave the step exiting 0 while checking nothing
+  (measured on Clang 22.1.8 — with the option misspelled, a TU carrying a real violation compiles
+  with status 0). The second compile adds `-DANAMORPH_EFFECTS_CANARY`, which seeds an allocating
+  non-annotated helper and a call to it into the same file, and the step fails unless that compile
+  fails *with* a `-Wfunction-effects` diagnostic. `-Werror=unknown-warning-option` on both compiles
+  makes the renamed case fail by name; the canary covers the case it cannot — an option still
+  accepted but no longer implemented.
   RTSan is the strongest of the three realtime tiers but the least portable — Clang, Linux/macOS
   only. The **allocation guard** compiled into the DSP suite (Test 38) covers the shipped toolchains
   it cannot reach, MSVC included, because `operator new` replacement is standard C++; it runs in
@@ -235,6 +244,14 @@ edge above must not be read as release non-blocking.
   test says so in both: the valgrind build by flag (`-DANAMORPH_NO_ALLOC_GUARD`), and **this job**
   by self-detection — the guard's interposers would otherwise shadow RTSan's allocation
   interceptors and blind the lane (measured, ADR-0029 §7).
+  That self-detection is a single spelling — `__has_feature(realtime_sanitizer)` — and since
+  2026-08-19 it is **cross-checked rather than trusted**: the job's `CMAKE_CXX_FLAGS` carry
+  `-DANAMORPH_RTSAN_LANE=1` beside `-fsanitize=realtime`, and `tests/AllocationGuard.h` `#error`s if
+  the lane is declared but the guard did not stand down. The two statements sit on one line and
+  cannot drift apart; the check is deliberately *not* keyed on the feature macro, because a test
+  that consults the signal it is verifying proves nothing. Without it, a renamed or removed feature
+  name would silently compile the guard back in and the lane would report zero violations while
+  detecting nothing — exiting 0 either way.
 - **linux-lto-tests** — both suites built and run with `-flto` on GCC Release (added 2026-08-18),
   and the **GCC-only first-party warning gate** (§The GCC warning baseline).
   The shipped plugin is the only target linking `juce::juce_recommended_lto_flags`, and the test

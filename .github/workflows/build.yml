@@ -2774,6 +2774,19 @@ jobs:
           fi
           echo "canary reported its seeded violation -- the lane is live"
 
+      # `-DANAMORPH_RTSAN_LANE=1` RIDES ON THE SAME FLAG STRING as
+      # `-fsanitize=realtime`, and that adjacency is the point: it is this job
+      # declaring, from outside the compiler, which lane it is.
+      # `tests/AllocationGuard.h` stands the allocation guard down under
+      # `__has_feature(realtime_sanitizer)` -- a single spelling that, if a
+      # future Clang renames or drops it, would silently compile the guard back
+      # in, where its allocation definitions take precedence over RTSan's
+      # interceptors and the lane detects NOTHING while still exiting 0
+      # (ADR-0029; the measurement is in that header). The header turns the two
+      # statements into a build-level invariant and #errors if they disagree, so
+      # that mutation fails the build instead of hollowing out the lane. Do not
+      # remove this define to make a build pass -- it is the check, not the
+      # cause.
       - name: Configure (Clang, RealtimeSanitizer)
         run: >
           ccache --zero-stats || true &&
@@ -2782,7 +2795,7 @@ jobs:
           -DCMAKE_C_COMPILER=clang-${{ env.ANAMORPH_CLANG_VERSION }}
           -DCMAKE_CXX_COMPILER=clang++-${{ env.ANAMORPH_CLANG_VERSION }}
           -DCMAKE_C_FLAGS="-fsanitize=realtime -fno-omit-frame-pointer"
-          -DCMAKE_CXX_FLAGS="-fsanitize=realtime -fno-omit-frame-pointer"
+          -DCMAKE_CXX_FLAGS="-fsanitize=realtime -fno-omit-frame-pointer -DANAMORPH_RTSAN_LANE=1"
           -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=realtime"
           -DCMAKE_C_COMPILER_LAUNCHER=${{ env.ANAMORPH_COMPILER_LAUNCHER }}
           -DCMAKE_CXX_COMPILER_LAUNCHER=${{ env.ANAMORPH_COMPILER_LAUNCHER }}
@@ -2807,12 +2820,54 @@ jobs:
       #
       # Runs AFTER configure because it needs the FetchContent'd JUCE headers
       # (`LR4Xover.h` includes `juce_dsp`). `-fsyntax-only`: no link, no run.
+      #
+      # TWO COMPILES, because a clean one proves nothing on its own. Clang
+      # treats an unrecognised `-Werror=<name>` as a `-Wunknown-warning-option`
+      # WARNING rather than an error, so if `function-effects` is ever renamed
+      # or dropped this step would keep exiting 0 while checking nothing --
+      # measured on the pinned Clang 22.1.8: with the option misspelled, a TU
+      # carrying a real seeded violation compiles with status 0. Every other
+      # gate in this workflow carries an in-job liveness proof (the RTSan
+      # canary, the four lints' `--self-test`s, the two warning gates' baseline
+      # comparisons); this is that proof for this one.
+      #
+      # `-Werror=unknown-warning-option` makes the RENAMED case fail directly
+      # and by name, and the canary compile below covers the case it cannot --
+      # an option Clang still accepts but no longer implements. Both are needed:
+      # neither subsumes the other.
+      #
+      # The canary is the SAME translation unit with `-DANAMORPH_EFFECTS_CANARY`
+      # seeding a call to an allocating, unannotated helper, so it exercises the
+      # real include set and the real flags rather than a toy beside them. The
+      # diagnostic is matched on its FLAG ATTRIBUTION (`-Wfunction-effects`),
+      # not on prose: a canary that failed to compile for some unrelated reason
+      # must not read as a live gate -- the same trap the RTSan canary above
+      # documents having fallen into once.
       - name: Realtime effect diagnostics (first-party leaf layer)
         run: |
           clang++-${{ env.ANAMORPH_CLANG_VERSION }} -std=c++23 -O2 \
             -I src -I src/dsp -I build-rtsan/_deps/juce-src/modules \
             -DJUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1 -DJUCE_STANDALONE_APPLICATION=1 \
+            -Werror=unknown-warning-option \
             -Werror=function-effects -fsyntax-only tests/realtime_effects.cpp
+
+          if clang++-${{ env.ANAMORPH_CLANG_VERSION }} -std=c++23 -O2 \
+               -I src -I src/dsp -I build-rtsan/_deps/juce-src/modules \
+               -DJUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1 -DJUCE_STANDALONE_APPLICATION=1 \
+               -DANAMORPH_EFFECTS_CANARY \
+               -Werror=unknown-warning-option \
+               -Werror=function-effects -fsyntax-only tests/realtime_effects.cpp \
+               > effects-canary.log 2>&1; then
+            echo "::error::the function-effects canary COMPILED -- a nonblocking function calling an allocating helper was not diagnosed, so this gate is checking nothing"
+            cat effects-canary.log
+            exit 1
+          fi
+          if ! grep -q -- "-Wfunction-effects" effects-canary.log; then
+            echo "::error::the function-effects canary failed, but not with a -Wfunction-effects diagnostic"
+            cat effects-canary.log
+            exit 1
+          fi
+          echo "canary reported its seeded violation -- the effects gate is live"
 
       - name: Build the DSP suite (RealtimeSanitizer)
         run: cmake --build build-rtsan --target AnamorphTests

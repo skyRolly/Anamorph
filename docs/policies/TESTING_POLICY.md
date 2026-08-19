@@ -92,9 +92,21 @@ blocking gate; `env.ANAMORPH_PLUGINVAL_STRICTNESS`; the macOS AU install + AU ga
    **The same rule applies to a gate that is not a lint.** The `realtime` job's liveness canary
    (`tests/realtime_canary.cpp`) and the two warning gates' baseline comparisons are checkers by
    another name, and each is proven able to fail: the canary must abort *with* a sanitizer report,
-   the leaf-layer `-Werror=function-effects` step was verified against a seeded call to a
-   non-annotated function, and both warning gates were verified against seeded first-party
-   diagnostics before being trusted to report a clean tree.
+   and both warning gates were verified against seeded first-party diagnostics before being trusted
+   to report a clean tree.
+
+   **A one-time verification is not a liveness proof, which is what the leaf-layer
+   `-Werror=function-effects` step used to have.** It was checked once, by hand, against a seeded
+   call to a non-annotated function — and a clean compile then became its entire output. That is
+   the state this rule exists to forbid: Clang treats an unrecognised `-Werror=<name>` as a mere
+   `-Wunknown-warning-option` **warning**, so the day the option is renamed or dropped the step
+   keeps exiting 0 while checking nothing. Measured on the pinned Clang 22.1.8: with the option
+   misspelled, a translation unit carrying a real seeded violation compiles with status 0. Since
+   2026-08-19 the step compiles `tests/realtime_effects.cpp` **twice** — once as the gate, once with
+   `-DANAMORPH_EFFECTS_CANARY`, which seeds the violation into that same TU and must FAIL with a
+   `-Wfunction-effects` diagnostic — and passes `-Werror=unknown-warning-option` so a renamed option
+   fails by name rather than by inference. Seeding into the gated TU rather than a separate file is
+   deliberate: it proves the diagnostic against the exact include set and flags the gate uses.
 
    **A premise check is not a self-test, and the two are not interchangeable.**
    `check-portability.py --compile-canary` compiles two translation units against the pinned JUCE to
