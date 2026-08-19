@@ -1137,6 +1137,31 @@ def self_test():
     except ValueError:
         check("overlapping spans are refused", "ValueError", "ValueError")
 
+    # SPANS ARE NOT CITATIONS, which is the pair of units the `--fix` summary
+    # used to subtract one from the other. A document that spells ONE citation
+    # twice yields one spelling with TWO spans, so the count-mismatch branch
+    # queues one edit per occurrence while counting one drifted citation -- and
+    # the withheld branch's `fixable -= len(edits)` then took 2 off a total that
+    # had gained 1, driving the closing "re-anchored N citation(s)" line
+    # NEGATIVE and over-reporting `withheld`. Built through the real parser
+    # rather than asserted about it, because the divergence is a property of
+    # what `citations()` returns for a repeated spelling, not of the arithmetic
+    # that consumes it.
+    twice = ("see `src/PluginProcessor.cpp:10-20` and again "
+             "`src/PluginProcessor.cpp:10-20` here.")
+    by_spelling = {}
+    for (whole, _t, span, _a) in citations(twice):
+        by_spelling.setdefault(whole, []).append(span)
+    check("one citation spelled twice is ONE spelling with TWO spans",
+          [(w, len(sp)) for w, sp in by_spelling.items()],
+          [("src/PluginProcessor.cpp:10-20", 2)])
+    # ...and both spans really do carry the same rewrite, which is WHY the
+    # branch queues one edit each rather than one for the citation.
+    rebuilt = "src/PluginProcessor.cpp:30-40"
+    moved = apply_edits(twice, [(a, b, rebuilt)
+                                for (a, b) in by_spelling["src/PluginProcessor.cpp:10-20"]])
+    check("both occurrences move together", moved.count(rebuilt), 2)
+
     # --- 5. DECLARED RE-AIMS: good for one transition, then reported --------
     doc = "docs/EXAMPLE.md"
     old, new = "src/PluginProcessor.cpp:100", "src/PluginProcessor.cpp:200"
@@ -1494,6 +1519,33 @@ def self_test():
     ]:
         check(f"call site intact: {label}", call in own_source, True)
 
+    # THE UNIT THE WITHHELD SUMMARY COUNTS IN, pinned the same way and for the
+    # same reason: reaching it needs a run that gets to the END of `--fix`, with
+    # a real base revision and a document to rewrite. The case above proves the
+    # two units diverge; these prove the branch still spends the right one.
+    # `len(edits)` is asserted ABSENT from both, because that spelling is the
+    # defect and it is the one a re-simplification would reintroduce.
+    for label, call in [
+        ("the withheld total gives back CITATIONS, not edit spans",
+         "fixable -= doc_fixable"),
+        ("...and `withheld` accumulates the same unit", "withheld += doc_fixable"),
+        ("...and the warning it prints counts that unit too",
+         "NOT re-anchored ({doc_fixable} citation(s) left "),
+    ]:
+        check(f"call site intact: {label}", call in own_source, True)
+    for gone in ("fixable -= len(edits)", "withheld += len(edits)",
+                 "NOT re-anchored ({len(edits)} citation(s) left "):
+        check(f"the span-count spelling is gone: {gone}", gone in own_source, False)
+    # ...and the counter has to be FED, which the three cases above cannot see:
+    # a `doc_fixable` that is never incremented subtracts nothing and reports
+    # nothing withheld, which is wrong in the other direction. Both drifted
+    # branches increment `fixable`, so both must increment its per-document
+    # counterpart. `doc_fixable += 1` CONTAINS `fixable += 1`, hence the
+    # subtraction. A third branch is expected to fail this and be added to it.
+    paired = own_source.count("doc_fixable += 1")
+    check("each drifted-citation increment has its per-document counterpart",
+          (own_source.count("fixable += 1") - paired, paired), (2, 2))
+
     # --- 9. EVERY DECLARATION NAMES A SPELLING ITS DOCUMENT REALLY CARRIES ---
     # A declaration excuses a mismatch, so it is consulted ONLY when one occurs.
     # That makes a stale entry invisible from the branch it was written on: the
@@ -1635,7 +1687,16 @@ def main():
         for c in cur_cites:
             by_path_cur.setdefault(c[1], []).append(c)
 
-        edits = []
+        # TWO UNITS, KEPT SIDE BY SIDE. `edits` counts SPANS and `doc_fixable`
+        # counts CITATIONS, and they are not the same number: a document that
+        # spells one citation twice queues one span per occurrence for one
+        # citation (the count-mismatch branch below, which prints "spelled 2x in
+        # this document; all move together"). The withheld branch has to give
+        # back what the loop added, in the unit it was added in -- it subtracted
+        # `len(edits)`, so a twice-spelled citation in a withheld document took 2
+        # off a total that had gained 1, and the closing "re-anchored N
+        # citation(s)" line could go NEGATIVE while `withheld` over-reported.
+        edits, doc_fixable = [], 0
         for tracked, olds in by_path_old.items():
             if tracked not in base_src:
                 continue
@@ -1712,6 +1773,7 @@ def main():
                     print(f"  DRIFTED {doc}: {whole_o} -> {rebuilt}")
                     edits += [(s, e, rebuilt) for (s, e) in spans]
                     fixable += 1
+                    doc_fixable += 1
                 print(f"check-citations: note — {doc} now has {len(curs)} `{tracked}` "
                       f"citation(s) where {args.base} had {len(olds)}; the added ones are "
                       f"not checkable against that base.")
@@ -1776,6 +1838,7 @@ def main():
                 print(f"  DRIFTED {doc}: {whole_c} -> {rebuilt}")
                 edits.append((span_c[0], span_c[1], rebuilt))
                 fixable += 1
+                doc_fixable += 1
 
         if args.fix and edits and doc in misaimed_docs:
             # THE INTERLOCK THE HARD STOP USED TO PROVIDE, kept at DOCUMENT
@@ -1795,16 +1858,18 @@ def main():
             #
             # Every OTHER document is still repaired, which is what makes this a
             # narrower interlock than the run-wide `return 2` it replaces.
-            print(f"::warning::{doc}: NOT re-anchored ({len(edits)} citation(s) left "
+            print(f"::warning::{doc}: NOT re-anchored ({doc_fixable} citation(s) left "
                   f"alone) because this document owns a misaimed DELIBERATE_REAIMS "
                   f"declaration. Re-deriving one anchor while its excused neighbour "
                   f"stays put is how a sentence ends up naming one line twice. Fix "
                   f"the declaration, then re-run --fix.")
             # NOT COUNTED AS RE-ANCHORED, because nothing was written. `fixable`
             # is incremented per DRIFTED citation above, which is right for
-            # `--check` (where it means "repairable") and wrong here.
-            fixable -= len(edits)
-            withheld += len(edits)
+            # `--check` (where it means "repairable") and wrong here. Give back
+            # CITATIONS, which is what was added -- `len(edits)` is spans, and
+            # the difference is every occurrence past the first.
+            fixable -= doc_fixable
+            withheld += doc_fixable
         elif args.fix and edits:
             # WHAT THE REWRITE DOES TO THIS DOCUMENT'S OWN DECLARATIONS, checked
             # here rather than left to the self-test.
