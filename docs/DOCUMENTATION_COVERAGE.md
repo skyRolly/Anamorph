@@ -7,7 +7,8 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
-**mismatched-new-delete round** (first below), then the
+**shared-action-input round** (first below), then the
+**mismatched-new-delete round**, then the
 **allocation-family round**, then the
 **lint-count round**, then the
 **policy-topology round**, then the
@@ -136,6 +137,50 @@ is Linux/X11 only. On Windows and macOS that turned a genuine crash into two mor
 The retry is now scoped by `uname -s`: three attempts on Linux, one everywhere else, with a distinct
 message so a single-attempt failure cannot be misread as an exhausted retry. The separately
 justified `.ps1` retry is untouched.
+
+**Shared-action-input round (2026-08-19): the composite action built shell source out of its own
+inputs, and the sanitizers comment quoted a count from two commits ago.**
+
+**MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-19**, for both corrections below. Confirmed
+before the work; recorded, not requested again. No approval is claimed for anything else in the
+review that produced them.
+
+**`${{ }}` is substituted into a `run:` body before bash sees it, so an input interpolated there is
+CODE.** `.github/actions/setup-linux-build/action.yml` pasted both of its inputs into the script:
+`"${{ inputs.clang-version }}"` and, unquoted, `${{ inputs.extra-packages }}`. Every one of the
+seven callers passes a literal or a workflow `env` constant, so nothing was exploitable — but the
+seven inline blocks this action replaced had no parameters at all, and the contract it now publishes
+accepts arbitrary text for a position that executes. Both inputs are now bound to the step's `env:`
+and read as `"$CLANG_VERSION"` / `$EXTRA_PACKAGES`. The package list stays UNQUOTED, deliberately and
+for the unchanged reason: word-splitting is how a space-separated list becomes several arguments.
+Unquoted there splits a value into words; interpolated into the script it was parsed as shell.
+
+Verified by executing the action's real script body against stub `setup-linux.sh`,
+`setup-llvm-apt.sh`, `sudo`, `apt-get` and `ccache`, once per caller shape: no inputs; clang only
+(`setup-llvm-apt.sh` receives the version as exactly ONE argument); clang + `valgrind`; `g++-13`
+only; and a three-word list, which still reaches `apt-get` as three arguments. The ccache fallback
+was exercised too — a failing `ccache` still yields the `::warning::`, an empty
+`ANAMORPH_COMPILER_LAUNCHER` and step exit 0. And the property itself, both ways: with
+`extra-packages` set to `valgrind; touch /tmp/PWNED`, the previous shape ran the `touch`, while the
+current shape hands the whole string to `apt-get` as arguments and executes nothing.
+
+**The sanitizers comment said 159, and 162 would have been wrong too.** It justifies `detect_leaks=1`
+with "both suites run leak-CLEAN, 159 + 900 checks" — a figure from when the DSP suite was 161. The
+suite is 162 now, but this job does not report 162: ASan owns `malloc`, so the allocation guard's
+malloc half is compiled out, Test 38 discloses that and skips its two malloc-family assertions.
+Measured by building with this job's own flag set (clang-22, the full seven-check UBSan list, vptr)
+and running both suites under `ASAN_OPTIONS=detect_leaks=1`: **160 + 900 checks, 0 failures, zero
+LeakSanitizer reports, exit 0**. The comment now says 160 — one character, deliberately: `build.yml`
+is a citation target, so adding the explanation inline would have shifted every anchor below it and
+turned a one-word correction into a re-anchoring round. The reason 160 is not 162 is recorded HERE
+instead, which is where this repository keeps the reasoning that would otherwise go stale in place:
+**ASan owns `malloc`, so the allocation guard's malloc half is compiled out, and Test 38 discloses
+that and skips its two malloc-family assertions.** A reader who later "corrects" 160 to 162 will
+find this entry.
+
+**Left alone, deliberately:** `build.yml:2520`'s "the 156 + 900 checks" is a past-tense statement
+about what had only ever run non-LTO before `linux-lto-tests` existed — history, correct as written,
+and not the sanitizers figure this round was asked to fix.
 
 **`-Wmismatched-new-delete` round (2026-08-19): the obvious fix was measured and does not work, so
 the exclusion stays and now carries its numbers.**

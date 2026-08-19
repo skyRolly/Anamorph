@@ -1036,7 +1036,7 @@ jobs:
   # detect_leaks=1 -- LeakSanitizer IS a gate here now (maintainer decision,
   # 2026-08-18). The claim that used to justify switching it off -- JUCE
   # singleton teardown producing spurious reports -- was retested and is simply
-  # not true on clang 22 / JUCE 9.0.1: both suites run leak-CLEAN, 159 + 900
+  # not true on clang 22 / JUCE 9.0.1: both suites run leak-CLEAN, 160 + 900
   # checks, zero LeakSanitizer reports. Leaving it off was costing real coverage
   # for a reason that had expired.
   #

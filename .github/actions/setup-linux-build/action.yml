@@ -54,21 +54,35 @@ runs:
   steps:
     - name: Install build dependencies
       shell: bash
+      # THE INPUTS ARRIVE AS ENVIRONMENT, NOT AS SCRIPT TEXT. `${{ }}` is
+      # substituted into the `run:` body BEFORE bash ever sees it, so an input
+      # interpolated there is source code and no amount of quoting inside the
+      # script can make it an argument. Every caller today passes a literal or a
+      # workflow `env` constant, so nothing is exploitable at this commit -- but
+      # the seven inline blocks this action replaced had no parameters at all,
+      # and the contract this file now publishes accepts arbitrary text for a
+      # position that executes. Binding them here and reading `$CLANG_VERSION` /
+      # `$EXTRA_PACKAGES` below makes the values DATA, which is the property the
+      # interface should have rather than one its callers happen to supply.
+      env:
+        CLANG_VERSION: ${{ inputs.clang-version }}
+        EXTRA_PACKAGES: ${{ inputs.extra-packages }}
       run: |
         set -euo pipefail
         chmod +x scripts/*.sh
         ./scripts/setup-linux.sh
 
-        if [ -n "${{ inputs.clang-version }}" ]; then
-          ./scripts/setup-llvm-apt.sh "${{ inputs.clang-version }}"
+        if [ -n "$CLANG_VERSION" ]; then
+          ./scripts/setup-llvm-apt.sh "$CLANG_VERSION"
         fi
 
-        if [ -n "${{ inputs.extra-packages }}" ]; then
-          # Unquoted ON PURPOSE: the input is a space-separated package LIST and
-          # word-splitting is how it becomes one. It is workflow-authored text
-          # from this repository, never user input.
+        if [ -n "$EXTRA_PACKAGES" ]; then
+          # Unquoted ON PURPOSE, and it is the one place that stays unquoted: the
+          # input is a space-separated package LIST and word-splitting is how it
+          # becomes several arguments. Unquoted here splits a VALUE into words;
+          # interpolated into the script it would have been parsed as shell.
           # shellcheck disable=SC2086
-          sudo apt-get install -y ${{ inputs.extra-packages }}
+          sudo apt-get install -y $EXTRA_PACKAGES
         fi
 
         # ccache is an OPTIMIZATION, never a requirement -- see the
