@@ -7,7 +7,8 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
-**allocation-family round** (first below), then the
+**mismatched-new-delete round** (first below), then the
+**allocation-family round**, then the
 **lint-count round**, then the
 **policy-topology round**, then the
 **armed-transition round**, then the
@@ -135,6 +136,46 @@ is Linux/X11 only. On Windows and macOS that turned a genuine crash into two mor
 The retry is now scoped by `uname -s`: three attempts on Linux, one everywhere else, with a distinct
 message so a single-attempt failure cannot be misread as an exhausted retry. The separately
 justified `.ps1` retry is untouched.
+
+**`-Wmismatched-new-delete` round (2026-08-19): the obvious fix was measured and does not work, so
+the exclusion stays and now carries its numbers.**
+
+**MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-19**, for re-examining the exclusion and for
+the documentation correction that came out of it. Confirmed before the work; recorded, not requested
+again. **No approval is claimed for a gate change, because none was made** — see below for why.
+
+**The objection is the right one to raise.** Every other accepted GCC-only diagnostic goes into
+`scripts/gcc-warning-baseline.txt` with a site count, so a NEW instance fails;
+`-Wmismatched-new-delete` is instead absent from `GATED_FLAGS`, which reads as a permanent hole for
+the sake of one false positive in `tests/AllocationGuard.h`. Baselining it (count 1, that file)
+would, on the face of it, keep the class gated everywhere else. Measured on gcc-13.3.0 / Ubuntu
+24.04 — the pair `linux-lto-tests` pins — with the flag appended to the gated set and the two gated
+targets built exactly as the baseline header prescribes, neither half of that holds.
+
+**Under `-flto` the flag emits nothing at all.** The whole two-target build produced **zero**
+`-Wmismatched-new-delete` lines, first-party and vendored alike. Not because the tree is clean: a
+genuine `free` on `new[]` memory **seeded** into `tests/dsp_tests.cpp` also produced zero, and so did
+a second seed in `tests/state_tests.cpp` called from `main()` so nothing could elide it
+(`AnamorphStateTests` relinked, zero hits, exit 0). The same dsp_tests seed in the same translation
+unit with `-flto` removed produces **3**. That lane compiles
+everything `-flto`, which is its reason to exist, so adding the flag to `GATED_FLAGS` would add a
+flag that cannot fire in the job that reads the log — the shape `TESTING_POLICY.md` rule 4 names as
+indistinguishable from a gate that passes, and worse than an exclusion that says so out loud.
+
+**And the attribution turns a per-file baseline into a mask.** Without `-flto` the diagnostic lands
+on the guard's deallocator — `tests/AllocationGuard.h:351:69`, `operator delete (void*,
+std::size_t)` — for the false positive AND for the seeded real mismatch alike, because that is where
+the `free` is. `scan()` deduplicates by `path:line:col`, so the two collapse to ONE site and a
+`1 -Wmismatched-new-delete tests/AllocationGuard.h` line would accept the real one. The property the
+baseline exists for — a new instance fails — is precisely what this flag cannot have per file.
+
+**So nothing was gated and nothing was baselined**, and the exclusion in
+`scripts/check-gcc-warnings.py` now carries both measurements rather than the one-line "false
+positive by construction" that invited the question. The only shape that would gate this class
+honestly is a non-LTO GCC compile of the same sources, which this pipeline does not have; adding one
+is a workflow decision rather than a flag-list edit, and is recorded here as the option rather than
+taken. The gated set, the baseline file, the self-test (17 cases, including the case that pins this
+flag as deliberately ungated) and the guard itself are unchanged.
 
 **Allocation-family round (2026-08-19): the guard's two counters were one counter twice, and three
 documents still carried the pre-Test-38 check count.**

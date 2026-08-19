@@ -42,12 +42,48 @@
 #    * `-Wmismatched-new-delete` is NOT gated, and this one is structural rather
 #      than a matter of taste. `tests/AllocationGuard.h` REPLACES the global
 #      `operator new`/`delete`; GCC attributes an allocation to the replaced
-#      `operator new[]` and does not follow it through to the `std::malloc` that
+#      `operator new[]` and does not follow it through to the allocator call that
 #      actually produced the memory, so it reports `free` on "new[] memory"
 #      however the deallocators forward among themselves — verified both ways,
 #      by funnelling every deallocation through `::operator delete` and by
 #      calling `std::free` directly. It is a false positive by construction on
 #      the one file whose entire purpose is replacing those operators.
+#
+#      RE-EXAMINED 2026-08-19, because "put it in the baseline like everything
+#      else" is the obvious objection and it is worth answering with numbers
+#      rather than with this paragraph. Baselining it does NOT keep the class
+#      gated elsewhere, and gating it here does not gate anything at all. Both
+#      halves measured on gcc-13.3.0 / Ubuntu 24.04 — this job's pinned pair —
+#      with the flag appended to the gated set and the two gated targets built
+#      exactly as the baseline header prescribes:
+#
+#        1. UNDER `-flto` THE FLAG EMITS NOTHING. The whole two-target build
+#           produced ZERO `-Wmismatched-new-delete` lines, first-party and
+#           vendored alike — and so did two builds with a genuine `free` on
+#           `new[]` memory SEEDED in: once into `tests/dsp_tests.cpp`, and once
+#           into `tests/state_tests.cpp` called from `main()` so nothing could
+#           elide it (`AnamorphStateTests` relinked, 0 hits, exit 0). The
+#           dsp_tests seed in the same translation unit with `-flto` removed
+#           produces 3. This job compiles
+#           everything `-flto`, which is the whole point of the lane, so adding
+#           the flag to GATED_FLAGS adds a flag that cannot fire in the job that
+#           reads the log — "a gate that cannot fail is indistinguishable from a
+#           gate that passes" (TESTING_POLICY rule 4), which is worse than an
+#           exclusion that says so.
+#        2. THE ATTRIBUTION MAKES A PER-FILE BASELINE A MASK. Without `-flto`
+#           the diagnostic lands on the guard's deallocator —
+#           `tests/AllocationGuard.h:351:69`, `operator delete (void*,
+#           std::size_t)` — for the false positive AND for the seeded real
+#           mismatch alike, because that is where the `free` is. `scan()`
+#           deduplicates by `path:line:col`, so both collapse to ONE site and a
+#           `1 -Wmismatched-new-delete tests/AllocationGuard.h` line would
+#           accept the real one. That is the "a NEW instance fails" property the
+#           baseline exists for, absent for this flag specifically.
+#
+#      So the exclusion stays, and it is an exclusion rather than a baseline
+#      entry on purpose. The only shape that would gate this class honestly is a
+#      NON-LTO GCC compile of the same sources, which is a lane this pipeline
+#      does not have; adding one is a workflow decision, not a flag list edit.
 #
 #  `-Wduplicated-cond`, `-Wduplicated-branches` and `-Wlogical-op` produce ZERO
 #  first-party hits today and are gated precisely because of that: they cost
