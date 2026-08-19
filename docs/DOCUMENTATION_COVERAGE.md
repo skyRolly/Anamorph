@@ -6,8 +6,11 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
-**shared-action-input round** (first below), then the
+Last updated: for the **0.9.4 change set** (2026-08-19, matching the CHANGELOG heading — re-dated
+from 2026-08-15 in the hover-occlusion round, which is the first user-visible change the version has
+taken since it was written) — the
+**hover-occlusion round** (first below), then the
+**shared-action-input round**, then the
 **mismatched-new-delete round**, then the
 **allocation-family round**, then the
 **lint-count round**, then the
@@ -61,6 +64,107 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**Hover-occlusion round (2026-08-19): a control covered by an open drop-down reported itself
+hovered. One predicate, two call sites, and the 0.9.4 heading re-dated to today because this is the
+first user-visible change the version has taken since it was written. No ADR: no decision is made or
+reopened — the geometric hover design stays exactly as it is and gains the one term it was missing.**
+
+**The root cause is that geometry cannot express occlusion, and this editor's hover is geometry on
+purpose.** Since v0.6.1 hover has been derived from the pointer's position rather than from
+mouseEnter/mouseExit, because those events fired unreliably and left highlights stuck on. That is
+still the right design and is untouched. But `Component::getMouseXYRelative()` is
+`getLocalPoint (nullptr, Desktop::getMousePositionFloat())` (`juce_Component.cpp:3233-3236`) — a pure
+coordinate transform with no hit test in it — so a control covered by a drop-down keeps containing
+the pointer exactly as before and lights while the pointer is provably on the menu.
+`cursorIsOverOpenPopup()` supplies the missing term, and it is geometry too: the pointer measured
+against the pop-up instead of against the control. Three mechanisms were considered and rejected with
+reasons recorded in the code — `isMouseOver`/`componentUnderMouse` (the enter/exit machinery v0.6.1
+moved away from, and a frozen cached flag off the message thread), `reallyContains` (a per-platform
+z-order syscall, 44 per vblank on the path the idle gate exists to keep quiet), and the process-global
+modal stack (it would make this editor's hover a function of another instance's menu, or of the
+host's dialogs — and per **KI-020** the sibling's control is genuinely clickable, so dimming it would
+be a *false negative* affordance, the worse direction).
+
+**The placement is the load-bearing part, and it is now written down where the next author will
+look.** Occlusion is ANDed into the ANSWER (`over`, `hov`) and never into the GATE (`mouseInside`,
+`comboCursorInside`). Folding it into the gate reads tidier and is wrong: `! mouseInside` is the
+shared prefix of both idle-gate early returns, so a gate that goes false the moment a menu opens
+seals the driver with `hovA` parked at 1.0 — converting a false highlight into a frozen one for the
+life of the menu. The rule and the reason are on `PopupShield` in `src/PluginEditor.h`, whose
+existing comment argued that raising the shield "cannot disturb hover" and treated that as a feature;
+that argument was true about enter/exit churn and silent about occlusion, and it now carries both
+halves. Its two code anchors had also rotted (`1331-1333`, `:1072-1073`) and are corrected.
+
+**Verified by measurement on the running editor, not by argument.** A throw-away harness — not
+committed; see the disclosure below — linked the real processor, instantiated the editor into a
+window on an `xvfb` display, warped the real pointer with `Desktop::setMousePosition`, and read the
+eased `"hovA"` property the LookAndFeel actually paints from. Same geometry, same probe point, three
+runs each side: with the pointer at the centre of an open combo list (`702,279 125×114`) the `Knob`
+underneath (`705,307 122×131`) read **0.990 → 0.000**. The combo that owns the list read ~0.02 both
+ways — it is not covered, because `getOptionsForComboBoxPopupMenu` deliberately opens the list flush
+*below* the box (`LookAndFeel.cpp:421-434`), so the pointer really is still on the box and its
+highlight is correct. Dismissing with the pointer unmoved returned the knob to **0.990**, so nothing
+is left stuck dark.
+
+**Both branches of the predicate were mutation-tested, and one of them changed what the comment says.**
+The preset menu never reaches the look-and-feel hook (its look-and-feel is null at construction), so
+it is found by the modal-child scan `dismissTrackedPopupMenus` already uses. With only factory
+presets that menu lands on the scope and covers no hover widget at all — the branch looked dead. With
+22 saved presets it is 690 px tall and covers the A/B control: branch disabled **0.990**, restored
+**0.000**. Load-bearing, and reachable by any user with a preset library. The un-settle in
+`refreshPopupShield` was mutation-tested the same way (**1.000 → 0.022** with it, **0.990 → 0.990**
+without) — but its first draft justified itself with a flick scenario that does not hold, since the
+gate only seals when the pointer is outside the editor and `over` is false there with or without
+occlusion. The comment now says what the mutation actually shows: it drains a **pre-existing** seal
+at the two moments a pop-up changes the hover picture, and does not fix that seal in general.
+
+**Two adjacent defects were found by the same measurement and deliberately left open**, each filed
+rather than folded in. **KI-024**: the Settings / About / Save Preset overlays occlude identically
+(measured **0.990** behind an open Settings panel) but need a *per-widget* test rather than this
+fix's per-frame one, because a backdrop covers everything except its own children — three overlays
+with their own child sets, plus the Persist-drag `reveal` mode. **KI-025**: the idle gate is a motion
+latch, so a pointer that leaves the editor inside one frame seals it on a still-lit control
+(measured **0.990**, persistent); pre-dates this change, unaffected by it, and fixing it means
+editing the sealing condition of the path that removed 68–87 % of the idle profile. Filing them is
+also why the placement rule above matters: this fix is the one that must not make KI-025 worse, and
+by construction it cannot.
+
+**Documentation synced:** `CHANGELOG.md` (`[0.9.4]` re-dated 2026-08-19, one **Fixed** entry
+prepended — no new `## ` heading, which `check-docs.py` rejects because the release workflow slices
+notes to the next `^## \[`); `README.md` §Project status; `HANDOVER.md`; `docs/procedures/TESTING.md`
+§"Gaps in the automated coverage" (the ADR-0025 rule-1 exception, four disclosures written fresh per
+§3); `docs/KNOWN_ISSUES.md` (KI-024, KI-025). Seven citation anchors in `EULA.md`, `PRIVACY.md`,
+`TRADEMARKS.md`, `KNOWN_ISSUES.md` and `THREAD_MODEL.md` were re-anchored by
+`check-citations.py --fix` after the line insertions, and one **untracked** prose reference the gate
+cannot see — `KNOWN_ISSUES.md`'s "declared PluginEditor.h:85", which my edit made point at a comment
+— was corrected by hand to `:178`.
+
+**Drift reported and corrected (C6):** `docs/KNOWN_ISSUES.md`'s summary table stopped at KI-022, so
+**KI-023 had a full entry but no table row** from the day it was filed (2026-08-18). Its row is added
+with the two new ones. Separately, and **not** acted on: `check-citations.py` now reports ~20
+`DELIBERATE_REAIMS` declarations as unnecessary against `origin/main`, because PR #113 merged and
+they described re-aims relative to the old merge base. They are notes, not failures, and pruning them
+is tooling hygiene for its own round rather than part of a hover fix.
+
+**A standing claim in the testing documentation is narrowed by evidence.** The INC-010 and v0.9.3
+gap entries both state that the *behavioural* half of editor testing — a driven message loop with
+synthetic pointer input — "remains out of reach". On Linux it is not: `xvfb` is already on the CI
+runner for pluginval, and the harness above drove the editor, opened menus and positioned the real
+pointer with no repository change at all. What is still owed is making it a **committed** target — a
+CMake target, an `xvfb` wrapper in `run-tests.sh`, and the same thing proven on the Windows and macOS
+runners, where no virtual display is configured. That is the harness change the INC-010 entry already
+says should land on its own merits, so it is recorded there as a measured correction rather than
+attempted here.
+
+**Sign-off status: NOT GRANTED — this round carries no maintainer approval.** Earlier rounds in this
+change set were accompanied by an explicit pre-granted confirmation recorded here; **this one was
+not**, and none is claimed. What is owed, per ADR-0025 §3 disclosure 2 and the visual-verification
+convention the v0.9.3 entries established, is a Level-5 check in a DAW on each platform: with each
+of the seven drop-downs and the preset menu open, confirm that a control the list covers goes dark,
+that the box which owns the list keeps its highlight and open bloom, that a control merely beside the
+list is unaffected, and that hover returns on dismissal — at 100 % and 150 % UI scale. The automated
+evidence above is Linux-only and was taken on a synthetic display.
 
 **Implementation round (2026-08-18): six approved roadmap items landed — selective realtime
 diagnostics, a benchmark harness, state fuzzing, a GCC-only warning gate, LeakSanitizer as a gate,

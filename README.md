@@ -17,7 +17,9 @@ only — it configures and builds entirely from the command line on a headless L
   evaluation, not to customers (see [Licensing](#licensing); internal record:
   [`docs/COMMERCIAL_STATUS.md`](docs/COMMERCIAL_STATUS.md)).
 - **0.9.4 is a maintenance release: JUCE 9.0.0 → 9.0.1, plus the move to the C++23 language
-  standard.** The only change to Anamorph's own source is one added `#include` (ADR-0027), and the
+  standard, and one interaction fix — a control covered by an open drop-down no longer lights up
+  as though you were pointing at it.** Apart from that fix, the only change to Anamorph's own
+  source is one added `#include` (ADR-0027), and the
   sound, reported latency, parameters and saved state are unchanged — proven by 32-scenario engine
   twin dumps that are bit-identical both across the two JUCE versions and across C++17 vs C++23,
   both self-test suites, and pluginval at strictness 10 in both modes. Building from source now

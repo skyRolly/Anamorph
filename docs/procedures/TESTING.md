@@ -459,6 +459,50 @@ rather than deleted, because a gap that was real and is now covered is worth bei
      pop-up is open must reach the shield and no control, and a measured menu must fit its longest
      item. Revisited when that harness lands.
 
+- **Hover occlusion under an open pop-up has no committed test.** A third
+  **`TESTING_POLICY` rule-1 exception under ADR-0025**, for the 0.9.4 fix that stops a control
+  covered by a drop-down reporting itself hovered (`cursorIsOverOpenPopup()`). The four disclosures,
+  written fresh per ADR-0025 §3 rather than deferred to the entry above:
+
+  1. *Why no reliable regression test exists.* It would have to live on the Level-2/3 surface, and
+     that surface has no editor object and no pointer: `tests/state_tests.cpp:6-8` records that it
+     "compiles the plugin sources — the editor is linked but never instantiated", and the defect is
+     a property of `Component::getMouseXYRelative()` — `getLocalPoint (nullptr,
+     Desktop::getMousePositionFloat())` (`juce_Component.cpp:3233-3236`) — so reproducing it needs a
+     **real OS cursor** over a **real menu window**, i.e. a display. Level 4 opens the editor but
+     pluginval drives a host we do not control and never opens a menu, let alone positions a pointer
+     inside one.
+  2. *What verification was performed instead.* Not a structural argument — a **measurement**, on
+     the running editor. A throw-away harness (not committed; see disclosure 4) linked the real
+     `AnamorphAudioProcessor`, instantiated the editor into a window on an `xvfb` display, warped the
+     real pointer with `Desktop::setMousePosition`, and read the eased `"hovA"` property the
+     LookAndFeel actually paints from. With the pointer at the centre of an open combo list
+     (menu `702,279 125×114`), the `Knob` underneath (`705,307 122×131`) read **0.990 before the fix
+     and 0.000 after**, three runs each, same geometry and same probe point; the combo that owns the
+     list read ~0.02 both ways, so the fix removes the false highlight without touching the true one.
+     Dismissing the list with the pointer unmoved returned the knob to **0.990**, so nothing is left
+     stuck dark. The preset-menu branch was **mutation-tested**: with the modal-child scan disabled
+     and a preset library large enough to make the menu 690 px tall, the A/B control underneath read
+     **0.990**; restored, **0.000** — so that branch is load-bearing, not defensive. The un-settle in
+     `refreshPopupShield` was mutation-tested the same way (**1.000 → 0.022** with it, **0.990 →
+     0.990** without).
+  3. *Where the gap is tracked.* Here, and from `CHANGELOG.md` `[0.9.4]` and `HANDOVER.md`. The two
+     defects the same measurement found and this change does **not** fix are filed as **KI-024**
+     (the Settings / About / Save-Preset overlays occlude identically and are not covered — measured
+     at hovA **0.990** behind an open Settings panel) and **KI-025** (the idle gate can seal on a
+     still-lit control when the pointer leaves the editor inside one frame — measured **0.990**).
+  4. *Whether infrastructure could close it.* **Yes — and this fix narrows the standing claim above,
+     which is worth recording rather than repeating.** The INC-010 and v0.9.3 entries both state that
+     the *behavioural* half — a driven message loop with synthetic pointer input — "remains out of
+     reach". Measured 2026-08-19, on Linux it is not: `xvfb` is already installed on the CI runner
+     for pluginval, and the harness above drove the editor, opened menus and positioned the pointer
+     with no repository change at all. What is still owed is making it a **committed** target — a
+     CMake target, an `xvfb` wrapper in `run-tests.sh`, and the same thing proven on the Windows and
+     macOS runners, where no equivalent virtual display is configured. That is a harness change to
+     land on its own merits with its own CI evidence, exactly as the INC-010 entry says, and not to
+     fold into a hover fix. Revisited when it lands; at that point this entry and the two above are
+     closed together, because the same harness reaches all three.
+
 - ~~**The AU is never validated automatically.**~~ **CLOSED.** The macOS job now runs the full
   pluginval gate against `Anamorph.component` as well as `Anamorph.vst3` — same strictness, both
   modes, ×3 each — so the build Logic Pro and GarageBand load passes the same format-conformance

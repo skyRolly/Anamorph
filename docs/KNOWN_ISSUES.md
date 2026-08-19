@@ -24,7 +24,15 @@ recorded as scope in `docs/procedures/CI_CD.md` §"Known coverage limits" and as
 RH-F3, not as a limitation of the product. The same version's **engineering-roadmap round** then
 added one: **KI-023**, the Linux glibc floor. It records a limitation that has been true since the
 CI image moved to Ubuntu 24.04 and was simply never measured — the round that measured it also
-gated it, so it can no longer rise unnoticed.
+gated it, so it can no longer rise unnoticed. The same version's **hover-occlusion round**
+(2026-08-19) added **two more**, both found by the measurement that verified the fix rather than by
+reading: **KI-024**, the Settings / About / Save Preset overlays occlude exactly as a drop-down does
+and are not covered by that fix, and **KI-025**, the micro-animation idle gate can seal on a control
+that is still lit. Neither is introduced by the fix — KI-025 pre-dates it and KI-024 is a different
+occluder — and each is left open deliberately, with its reasoning in its entry.
+**Drift corrected in the same round (`DOCUMENTATION_LIFECYCLE_POLICY` C6):** the summary table
+below stopped at KI-022, so **KI-023 had a full entry but no table row** since it was filed on
+2026-08-18. The row is added here alongside the two new ones; no other content changed.
 Prior sync: **v0.9.3** (six GUI interaction fixes plus an equal-width Widen row — the Multiband add-split preview line, the
 unified pop-up dismissal shield, pop-up lifetime across a hidden, destroyed or backgrounded window,
 two menu-rendering fixes and the Tooltips on/off transition —
@@ -97,6 +105,9 @@ JUCE 8.0.14; before that 0.8.8 for PR #54).
 | KI-020 | With **two or more Anamorph editors open at once**, the "a dismissing click activates nothing" guarantee holds only within the instance that owns the open pop-up: modality is process-global, so the re-delivered click can reach a *different* instance's control | Low | Confirmed (code path); pre-dates 0.9.3 and is not introduced by the shield. No in-bounds fix — see the entry |
 | KI-021 | **Linux**: a per-user install (the 0.9.3 default) does not remove an existing **system-wide** one, so both are on the DAW's scan path and its scan order decides which version loads — an update can look as if it did not apply | Low | Confirmed, **deliberate**: removing the system copy needs the elevation the per-user mode exists to avoid. The installer now **warns** when it finds one; removal is one `sudo ./uninstall.sh` |
 | KI-022 | **macOS**: components are non-relocatable since 0.9.3 (INC-012), so a bundle the user deliberately moved — to `~/Applications`, or a plug-in kept under `~/Library/Audio/Plug-Ins/…` — is left where it is and a fresh copy is installed at the standard location, leaving two copies with the same bundle identifier | Low | Confirmed, **deliberate trade** for INC-012: following a moved copy is exactly the behaviour that let an install silently write nowhere useful. Documented in the installer's `INSTALL.txt`; removal is manual |
+| KI-023 | **Linux**: the shipped binaries record the CI image's glibc/libstdc++ floor (measured GLIBC_2.38 / GLIBCXX_3.4.31), so they do not load at all on older distributions — Ubuntu 22.04 LTS included | Medium | Confirmed, **measured**; the floor was never chosen and is now asserted on every push so it cannot rise unnoticed. Lowering it is a release-topology decision, not taken |
+| KI-024 | The **Settings / About / Save Preset** overlays occlude the editor the same way a drop-down does, but the 0.9.4 hover fix does not cover them: a control behind an open panel still reports itself hovered and glows faintly through the dim | Low | Confirmed, **measured** (hovA 0.990 behind an open Settings panel). Needs a per-widget test rather than the pop-up fix's per-frame one — see the entry |
+| KI-025 | A control can be left **lit** if the pointer leaves the editor inside one display frame: the micro-animation idle gate is a motion latch and cannot tell "settled dark" from "settled lit" | Low | Confirmed, **measured** (hovA 0.990, persistent); pre-dates 0.9.4 and is unchanged by it. Partly mitigated — any pop-up opening drains it. Fixing it changes the idle gate's sealing condition — see the entry |
 
 ---
 
@@ -276,7 +287,7 @@ the JUCE focus/peer path REAPER takes).
   workaround for the *open* path: `focusSaveNameField()` grabs keyboard focus and, if the grab does
   not stick (the preset-menu's desktop window still owns OS focus at the callback instant, and JUCE
   aborts an internal focus move while `! peer->isFocused()`), it retries on later message-loop
-  passes up to four times (src/PluginEditor.cpp:1498-1506; declared PluginEditor.h:85). This shipped in
+  passes up to four times (src/PluginEditor.cpp:1567-1575; declared PluginEditor.h:178). This shipped in
   the v0.8.9 CHANGELOG "Fixed" entry ("The Save Preset name field reliably receives typing — Space
   included") and was **validated headless end-to-end**, i.e. against the JUCE wrapper, not against
   REAPER. The retry loop runs **only on dialog open** (`showSavePreset(true)` → `focusSaveNameField(4)`);
@@ -737,3 +748,60 @@ does not load there.**
 - **Evidence [Verified]:** scripts/check-linux-abi.py (the declared floor and the gate);
   `docs/architecture/COMPATIBILITY_MATRIX.md` §"Linux runtime ABI floor".
 
+
+## KI-024 — the Settings / About / Save Preset overlays do not suppress hover underneath
+
+0.9.4 stopped a control **covered by an open drop-down** reporting itself hovered
+(`CHANGELOG.md` `[0.9.4]`; `src/PluginEditor.cpp` `cursorIsOverOpenPopup()`). The same defect exists
+with a different occluder and is **not** covered by that fix: the Settings, About and Save Preset
+panels are `Backdrop` components, not pop-up menus. They cover the whole editor, they consume the
+click (`Backdrop::mouseDown` dismisses instead of passing it through), and every control behind them
+still contains the pointer geometrically — so it still lights.
+
+Measured 2026-08-19 on the running editor under `xvfb`: with the **Settings** panel open and the
+pointer moved over where the A/B control sits behind it, that control's eased `"hovA"` read
+**0.990** — full brightness — both before and after the 0.9.4 fix.
+
+- **What a tester sees:** a faint glow from a knob, switch or the A/B control showing through the
+  dimmed backdrop, on a control that cannot be clicked while the panel is open. The dim is ~80 %
+  opaque, so it is subtle rather than the plain wrong highlight the drop-down case produced.
+- **Why it is not fixed here:** it needs a **different shape of test**, not a wider version of the
+  same one. The drop-down fix asks one question per frame — "is the pointer inside a pop-up of
+  ours?" — because a menu occludes only what it covers. A backdrop covers everything *except its own
+  children*, and those children (`oversampleBox`, `uiScaleBox`, `scopePersistK`, `tooltipsToggle`,
+  `animToggle`, the Save Preset field and its two buttons) must keep hovering normally. So the test
+  becomes per-widget — "is this widget behind the overlay?" — across three overlays with their own
+  child sets, plus the `reveal` see-through mode the Persist drag puts the Settings backdrop into.
+  That is a separate change with its own verification, and it was not what was reported.
+- **Evidence [Verified]:** `src/PluginEditor.h` `Backdrop`; `src/PluginEditor.cpp`
+  `showSettings` / `showAbout`; the measurement above;
+  `docs/procedures/TESTING.md` §"Gaps in the automated coverage" (hover-occlusion entry).
+
+## KI-025 — a control can stay lit if the pointer leaves the editor inside one frame
+
+The micro-animation driver skips its pass when nothing can be moving — cursor outside the editor, no
+button held, no sweep open, and the previous pass moved nothing (`src/PluginEditor.cpp`
+`stepMicroAnims`, the S11 idle gate). `microSettled` is a **motion** latch: it reads the same with a
+control's `"hovA"` parked at 0.0 as at 1.0. So if the pointer goes from *on a control* to *outside
+the editor* within a single display frame, the gate closes on a control that is still fully lit, and
+nothing re-opens it until the pointer comes back.
+
+Measured 2026-08-19 under `xvfb`: a `Knob` at full hover, pointer warped outside the editor in one
+sample — `"hovA"` stayed at **0.990** indefinitely. Pre-dates 0.9.4 and is unchanged by it; the
+0.9.4 fix deliberately keeps its occlusion term out of the gate for exactly this reason (the
+placement rule on `PopupShield` in `src/PluginEditor.h`). A *gradual* exit leaves a ~0.02 residue
+instead, from the same latch reached inside the ease's dead band — visually nothing.
+
+- **What a tester sees:** rarely, a knob or switch left glowing after flicking the mouse quickly out
+  of the plug-in window. It clears as soon as the pointer re-enters. The likelier route is the host
+  hiding the editor while a control is hovered, since that also makes the editor's own
+  `isShowing()` false in one step.
+- **Partly mitigated already:** opening or closing any pop-up wakes the driver for one pass, which
+  drains the residue (measured **1.000 → 0.022**, against **0.990 → 0.990** with that line removed).
+  That is a mitigation at two specific moments, not a fix.
+- **Why it is not fixed here:** the fix is an edge detector on the gate's own `mouseInside` term, so
+  it changes the sealing condition of a path that exists to keep the idle editor quiet (it removed
+  68–87 % of the idle profile). That deserves its own change and its own before/after measurement,
+  and it is a different root cause from the occlusion defect 0.9.4 fixed.
+- **Evidence [Verified]:** `src/PluginEditor.cpp` `stepMicroAnims` (the two early returns) and
+  `microSettled = ! anyMotion`; the measurements above.

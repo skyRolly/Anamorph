@@ -1035,6 +1035,70 @@ void AnamorphAudioProcessorEditor::refreshPopupShield()
         popupShield.toFront (false);          // in front of the Settings/About backdrop too, and
                                               // BEFORE a parented menu is added (appended in front)
     popupShield.setInterceptsMouseClicks (wanted, false);
+
+    // Wake the micro-anim driver for one pass on both edges -- a pop-up appearing or vanishing is
+    // the one moment the hover picture changes without the cursor moving, so it is the moment the
+    // driver must be guaranteed to run. It sits after the `wanted == shieldRaised` return because
+    // only edges need it, and it is the :1441 precedent (un-settle re-opens the gate for one pass;
+    // the ease then keeps anyMotion true until it converges, so one nudge drains a whole transition).
+    //
+    // Be precise about what this is NOT: the occlusion term does not require it. Both S11 early
+    // returns are prefixed by `! mouseInside` (:1539, :1562), and with the cursor outside the editor
+    // `over` is already false with or without cursorIsOverOpenPopup() -- so a change of answer can
+    // never need a pass the gate is refusing to run. What it DOES buy is measured: microSettled is a
+    // MOTION latch (:1673), equally true with hovA parked at 0.0 and at 1.0, so a cursor that leaves
+    // the editor inside one 16.7 ms sample seals the gate on a widget still at full brightness.
+    // Opening a menu then drains that residue (measured 1.000 -> 0.022) where without this line it
+    // stays lit (0.990 -> 0.990). That seal is a separate, pre-existing defect and this does not fix
+    // it in general -- it only stops a pop-up being drawn over a stale highlight.
+    microSettled = false;
+}
+
+// Is the cursor inside a pop-up this editor has open? Then it is NOT over whatever this editor
+// draws underneath, and nothing under there may read as hovered (0.9.4).
+//
+// Hover here is derived GEOMETRICALLY -- getMouseXYRelative() is `getLocalPoint (nullptr,
+// Desktop::getMousePositionFloat())` (juce_Component.cpp:3233-3236), a pure coordinate transform of
+// the OS cursor with no hit test in it. That is the v0.6.1 stuck-hover fix and it is still the right
+// design, but a coordinate transform cannot represent occlusion: a drop-down is a separate desktop
+// window stacked on top, and the controls it covers keep containing the cursor exactly as before, so
+// they light up while the pointer is provably on the menu. This is the missing term, and it is the
+// ONLY thing here that consults anything but geometry -- it too is geometry, just measured against
+// the pop-up instead of against the control.
+//
+// Deliberately NOT Component::isMouseOver / componentUnderMouse / reallyContains: those are the
+// enter/exit machinery v0.6.1 moved away from, isMouseOver returns a frozen cached flag off the
+// message thread, and reallyContains ends in a per-platform z-order syscall -- 44 of them per vblank
+// on the path S11/H15 exists to keep quiet. And NOT the process-global modal stack: that would make
+// this editor's hover a function of another instance's menu, or of the host's own dialogs.
+//
+// Scope is exactly the pop-ups this editor owns, which is what `shieldRaised` already means, so the
+// idle cost is one bool test. Bounds are re-read per call, never cached: a menu that scrolls
+// re-bounds itself after construction (juce_PopupMenu.cpp resizeToBestWindowPos). Anything it cannot
+// find, it treats as absent -- the failure direction is normal hover, never a frozen one.
+bool AnamorphAudioProcessorEditor::cursorIsOverOpenPopup() const
+{
+    if (! shieldRaised)
+        return false;                         // nothing of ours is on screen; the common case
+
+    const auto cursorPos = juce::Desktop::getMousePosition();
+
+    // The drop-downs: free-standing desktop windows that reported through the look-and-feel.
+    for (const auto& w : openMenus)
+        if (auto* menuWindow = w.getComponent())
+            if (menuWindow->isShowing() && menuWindow->getScreenBounds().contains (cursorPos))
+                return true;
+
+    // The preset menu: never reaches that hook (its look-and-feel is null at construction), but
+    // INC-010 made it an editor CHILD, and "modal child of mine" identifies it exactly -- the same
+    // test dismissTrackedPopupMenus already uses at :1082-1084, for the same reason.
+    if (presetMenusOpen > 0)
+        for (auto* child : getChildren())
+            if (child->isCurrentlyModal (false) && child->isShowing()
+                && child->getScreenBounds().contains (cursorPos))
+                return true;
+
+    return false;
 }
 
 // A drop-down must not outlive the editor being taken off screen. JUCE already guarantees that for a
@@ -1272,10 +1336,15 @@ void AnamorphAudioProcessorEditor::timerCallback()
                                 && getLocalBounds().contains (getMouseXYRelative());
     if (comboCursorInside || comboHoverLit)
     {
+        // Occlusion is ANDed into the ANSWER, never into the pre-gate above -- see the placement
+        // rule on PopupShield in the header. refreshPopupShield() ran at the top of this tick, so
+        // `shieldRaised` (which the query short-circuits on) is already current.
+        const bool cursorOverPopup = cursorIsOverOpenPopup();
         bool anyLit = false;
         for (auto* box : allCombos)
         {
-            const bool hov = box->isShowing()
+            const bool hov = ! cursorOverPopup
+                           && box->isShowing()
                            && box->getLocalBounds().contains (box->getMouseXYRelative());
             if ((bool) box->getProperties().getWithDefault ("hov", false) != hov)
             {
@@ -1515,6 +1584,12 @@ void AnamorphAudioProcessorEditor::stepMicroAnims (double dt)
     // A press released OUTSIDE the plugin window leaves isMouseButtonDown() / "dragging" stale-
     // true until JUCE sees another event; ANDing the glow with the real state clears it. A fresh
     // query (not a cached flag) means a genuine press still lights instantly -- no onset lag.
+    // Occluding pop-up: asked ONCE per pass, and only here -- after both early returns, so the
+    // sealed idle path is provably unchanged, and before the loop, so all 44 widgets share the
+    // answer. It is ANDed into `over` below, never into `mouseInside` above; the placement rule and
+    // why it matters are on PopupShield in the header.
+    const bool cursorOverPopup = cursorIsOverOpenPopup();
+
     int realDownCached = -1;
     auto physicalButtonDown = [&realDownCached]
     {
@@ -1534,7 +1609,10 @@ void AnamorphAudioProcessorEditor::stepMicroAnims (double dt)
         // the cursor outside the editor no descendant can contain it, so the
         // editor-level test above stands in for the per-widget query (S11) --
         // the same result, 1 desktop mouse query per frame instead of 44.
+        // Containment is necessary but not sufficient: a control still contains the cursor while a
+        // drop-down covers it, so the pop-up term removes what geometry alone cannot (0.9.4).
         const bool over = mouseInside
+                        && ! cursorOverPopup
                         && c->isShowing()
                         && c->getLocalBounds().contains (c->getMouseXYRelative());
         float hovT = over ? 1.0f : 0.0f;

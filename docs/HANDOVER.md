@@ -46,12 +46,22 @@ LookAndFeel pointer and a raw `this`, which crashed on click after the editor wa
 presets are identified by an immutable internal id instead of by name so a same-named user preset
 is selectable in its own right, the Settings control `Window Size` is relabelled **UI Scale**, and
 the installer component titles are title-cased. Saved-state schema, parameter surface and DSP are
-untouched. **v0.9.4** (2026-08-15) now lands on top of v0.9.3 in
+untouched. **v0.9.4** (2026-08-19) now lands on top of v0.9.3 in
 turn: two **Changed** entries — the **JUCE 9.0.0 → 9.0.1** dependency upgrade (ADR-0026), with no
 `src/` change and no build-dependency change, and the **C++ standard 17 → 23** migration
 (ADR-0027), whose only `src/` change is one added `#include`. No build dependency moved for either
 and engine output is proven bit-identical across both axes — the two JUCE versions and C++17 vs
-C++23 — so 0.9.4 is state- and sound-identical to 0.9.3 as well.
+C++23 — so 0.9.4 is state- and sound-identical to 0.9.3 as well. One **editor-only** fix was added
+to 0.9.4 on 2026-08-19: a control covered by an open drop-down no longer reports itself hovered
+(`src/PluginEditor.cpp` `cursorIsOverOpenPopup()`), which touches no parameter, no serialized field
+and no DSP, so that identity is unaffected. It ships under the **ADR-0025** rule-1 exception —
+`docs/procedures/TESTING.md` §"Gaps in the automated coverage" carries the four disclosures, and
+that entry now records a **measured** correction to the standing claim that the behavioural half of
+editor interaction is out of reach: it was driven headlessly on Linux under `xvfb` for this fix.
+Two adjacent defects were measured and deliberately **not** fixed here — **KI-024** (the Settings /
+About / Save-Preset overlays occlude the same way and are not covered) and **KI-025** (the
+micro-animation idle gate can seal on a still-lit control when the pointer leaves the editor inside
+one frame).
 **The release in preparation is therefore v0.9.4** and that is the first annotated tag
 this project will cut. The rows below describe 0.9.4; the 0.9.3/0.9.2/0.9.1/0.9.0 detail is
 retained as history. `docs/COMMERCIAL_STATUS.md` still
