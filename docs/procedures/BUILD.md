@@ -16,7 +16,7 @@ How to configure and build Anamorph. Headless, command-line only (CMake + JUCE; 
   the 9.0 line and the SHA pin, and ADR-0026 for the 9.0.1 bump.
 
 Evidence [Verified]: CMakeLists.txt:1 (`cmake_minimum_required(VERSION 3.22)`), :16-18 (C++23),
-:36-38 (JUCE 9.0.1 commit pin), :47-55 (FetchContent).
+:52-54 (JUCE 9.0.1 commit pin), :63-71 (FetchContent).
 
 ## Linux dependencies (Ubuntu)
 
@@ -55,11 +55,11 @@ Evidence [Verified]: scripts/build.sh:14-15.
 
 | Option | Default | Effect |
 |---|---|---|
-| `ANAMORPH_BUILD_TESTS` | ON | Build the `AnamorphTests` + `AnamorphStateTests` console apps (CMakeLists.txt:27,305) |
-| `ANAMORPH_BUILD_STANDALONE` | ON | Add the Standalone target (CMakeLists.txt:28,210-212) |
-| `ANAMORPH_JUCE_PATH` | "" | Use a local JUCE checkout instead of fetching (CMakeLists.txt:32,43-45) |
-| `ANAMORPH_JUCE_TAG` | `e18f7f5…` (= tag 9.0.1) | JUCE git rev to fetch when no local path; `ANAMORPH_JUCE_VERSION` carries the readable version (CMakeLists.txt:36-38) |
-| `ANAMORPH_BUILD_NUMBER` | 0 | CI build/dev number shown in the About box (CMakeLists.txt:252) |
+| `ANAMORPH_BUILD_TESTS` | ON | Build the `AnamorphTests` + `AnamorphStateTests` console apps (CMakeLists.txt:27, 361) |
+| `ANAMORPH_BUILD_STANDALONE` | ON | Add the Standalone target (CMakeLists.txt:28, 266-268) |
+| `ANAMORPH_JUCE_PATH` | "" | Use a local JUCE checkout instead of fetching (CMakeLists.txt:48, 59-61) |
+| `ANAMORPH_JUCE_TAG` | `e18f7f5…` (= tag 9.0.1) | JUCE git rev to fetch when no local path; `ANAMORPH_JUCE_VERSION` carries the readable version (CMakeLists.txt:52-54) |
+| `ANAMORPH_BUILD_NUMBER` | 0 | CI build/dev number shown in the About box (CMakeLists.txt:308) |
 
 Offline build (no network) with a local JUCE:
 ```bash
@@ -69,7 +69,7 @@ cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DANAMORPH_JUCE_PATH=/path/to
 ## Formats produced
 
 `VST3` everywhere; `+ AU` additionally on macOS; `+ Standalone` when `ANAMORPH_BUILD_STANDALONE`
-is ON. Evidence [Verified]: CMakeLists.txt:206-212.
+is ON. Evidence [Verified]: CMakeLists.txt:262-268.
 
 ## Artifact paths
 
@@ -103,4 +103,4 @@ Evidence [Verified]: scripts/setup-linux.sh:8-12.
 `JUCE_STRICT_REFCOUNTEDPOINTER=1`. `ANAMORPH_BUILD_NUMBER` is the one of these attached to the
 single translation unit that reads it rather than to the targets — its value changes every CI run,
 and a target-wide definition put that changing value on the command line of every TU.
-Evidence [Verified]: CMakeLists.txt:274-284.
+Evidence [Verified]: CMakeLists.txt:330-340.

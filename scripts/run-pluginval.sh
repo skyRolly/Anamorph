@@ -150,10 +150,27 @@ esac
 #  that crash lives in pluginval's own JUCE, not in the plugin, so it can't be fixed
 #  from here. A real plugin defect crashes deterministically and still fails after the
 #  retries; a real test ASSERTION returns a non-signal exit code and fails immediately.
+#
+#  THE RETRY IS LINUX-ONLY, and that scoping is the point rather than an
+#  incidental detail. The flake above is X11/XEmbed -- a mechanism that does not
+#  exist on macOS, where this same script also runs (the `macos` and
+#  `macos-intel` jobs, VST3 and AU). Retrying a signal crash there would give a
+#  genuine crash three chances to disappear on a platform that has no known
+#  flake to excuse it, which is the opposite of what a release gate is for. On
+#  macOS a crash is a crash and fails the pass immediately.
+#
+#  (Windows has its own script and its own, different retry: `run-pluginval.ps1`
+#  retries because a GUI-subsystem process can return a null `$LASTEXITCODE`,
+#  which is an exit-code DETECTION problem rather than a crash it is excusing.
+#  That rationale is unrelated to this one and is left alone.)
 # ----------------------------------------------------------------------------
+case "$(uname -s)" in
+    Linux) CRASH_RETRY_ATTEMPTS=3 ;;   # the XEmbed flake documented above
+    *)     CRASH_RETRY_ATTEMPTS=1 ;;   # no known host-side flake: fail on the first crash
+esac
 run_one_pass() {
     local label="$1"
-    local attempts=3 attempt rc
+    local attempts="$CRASH_RETRY_ATTEMPTS" attempt rc
     for attempt in $(seq 1 "$attempts"); do
         set +e
         $RUN_PREFIX "$PLUGINVAL" --strictness-level "$STRICTNESS" "${MODE_ARGS[@]}" \
@@ -167,6 +184,10 @@ run_one_pass() {
         fi
         if [ "$rc" -lt 128 ]; then
             echo "pluginval: FAILED ($label) at strictness $STRICTNESS (exit $rc) -- real validation failure, not a crash."
+            return "$rc"
+        fi
+        if [ "$attempts" -eq 1 ]; then
+            echo "pluginval: CRASHED ($label, exit $rc) -- no crash-retry on this platform (the retry exists for the Linux X11/XEmbed flake only)."
             return "$rc"
         fi
         echo "pluginval: crashed ($label, exit $rc -- the known JUCE/X11 host-side XEmbed editor flake). Retry $attempt/$attempts."

@@ -7,8 +7,35 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
+**shared-action-input round** (first below), then the
+**mismatched-new-delete round**, then the
+**allocation-family round**, then the
+**lint-count round**, then the
+**policy-topology round**, then the
+**armed-transition round**, then the
+**reachability-and-runnability round**, then the
+**parser-and-evidence round**, then the
+**gate-liveness round**, then the
+**environment-assertion placement round**, then the
+**follow-up review round**, then the
+**macOS-symbolication and review round**, then the
+**engineering-roadmap implementation round**, covering in two batches: the leaf-layer
+`-Wfunction-effects` check, the performance-benchmark harness, `setStateInformation` fuzzing, the
+GCC-only warning gate, LeakSanitizer promoted to a gate, the pluginval crash-retry scoped to its
+justification, then commit-SHA pinning for every action, one composite action for the Linux setup,
+the **shipped Linux ABI floor**, the Windows toolchain record, the macOS symbolication contract
+corrected, the committed **DSP bit-identity harness**, and the citation gate reporting the
+declarations its own `--fix` invalidates — then the
+**review round that found the allocation guard was blinding the RealtimeSanitizer lane**, then the
+**allocation guard + static realtime lint completing ADR-0029's three tiers, and the
+release-blocking / THREAD_MODEL corrections** (first below), then the
+**realtime-enforcement strategy (ADR-0029): RealtimeSanitizer at the annotated audio entry point,
+its own CI lane behind a liveness canary, and the review-cleanup that preceded it** (first below),
+then the **engineering-capability audit: extended UBSan coverage, the LTO validation gap, the wrapper
+audio path + three DSP feature-coverage tests, `preflight.sh`, and the realtime-doc anchor rot**
+(first below), then the
 **dependency-update audit: Clang 18 → 22 (upstream stable, from apt.llvm.org) and the Dependabot
-group split** (first below), then the
+group split** after it, then the
 **stale re-aim declaration, protected history, non-gating cache statistics** after it, then the
 **citation follow-up: two missed anchors and four that were wrong on arrival** after it, then
 the **citation-gate coverage for the build definition and the CI workflow** after it, then the
@@ -34,6 +61,1106 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**Implementation round (2026-08-18): six approved roadmap items landed — selective realtime
+diagnostics, a benchmark harness, state fuzzing, a GCC-only warning gate, LeakSanitizer as a gate,
+and the pluginval crash-retry narrowed to its own justification. No new ADR: ADR-0029's evidence is
+extended in place and no decision in it is reopened.**
+
+**`-Wfunction-effects` was narrowed rather than reversed.** ADR-0029 refused it on the strength of a
+52-warning census over the annotated engine TU. Re-reading that census rather than restating it: all
+52 are *transitive through JUCE*, calls whose definitions the TU cannot see. They therefore appear
+only where JUCE appears, and the repository has a layer where it does not — `MidSide.h`,
+`LR4Xover.h`, `ScopeBuffer.h`, `Correlation.h`, `LevelMeters.h`. Measured over that layer the flag
+emits **0**, and it still fires precisely: a seeded call from the annotated driver to a helper that
+grows a `std::vector` produces `error: function with 'nonblocking' attribute must not call
+non-'nonblocking' function '(anonymous namespace)::canaryAllocatingHelper'`. (This entry first named
+`anamorph::applyWidth` as the seeded call, which cannot be right — its definition is visible in that
+TU, so its effects are inferred, and the driver calls it in the compile that must stay clean. What fails is the
+EFFECT, not the missing annotation.) `tests/realtime_effects.cpp` is the driver;
+it is compiled `-fsyntax-only` with `-Werror=function-effects` as a seconds-long step in the
+`realtime` job, adds no target to the shipped build, and proves those bodies effect-clean *before*
+any test executes them — the one thing a runtime tool structurally cannot do, since it sees only the
+branches the suite takes.
+
+**The benchmark harness answers PERFORMANCE_BUDGET's own constraint C2**, "a number without its
+machine and method is not a measurement". `tests/bench.cpp` (behind `ANAMORPH_BUILD_BENCH=OFF`)
+refuses to run — exit 2 — when it cannot identify the CPU and `ANAMORPH_BENCH_CPU` is unset, rather
+than printing an unattributable number. It reports median ns/sample, worst-block µs, spread and
+percentage of one core across reference/idle, the four algorithms, four sample rates, four block
+sizes, oversampling engaged and the multiband path including the RISK-002 dragging split.
+**It is deliberately NOT a CI threshold gate, and that is a measurement rather than a preference**:
+across independent invocations on an otherwise idle machine the median ns/sample varied by **7.2%**
+and the worst-block figure by **65.4%**. A gate on the second number would be noise, and a gate on
+the first would sit inside its own variance. CI therefore builds it and smoke-runs it — which
+catches the real regression risk, a harness that stops compiling against the engine it measures —
+and the numbers are taken deliberately, on a named machine, into PERFORMANCE_BUDGET.
+
+**`setStateInformation` is the one entry point that parses bytes the plug-in did not write**, and
+every existing test of it was written after a human thought of the case. `tests/fuzz_state.cpp`
+drives it under libFuzzer with ASan + UBSan as the oracle: a rejected blob is a **pass**, because
+refusing malformed state is what the path is for. The corpus (`tests/fuzz-corpus/`, three entries) is
+generated from the committed XML fixtures in JUCE's `copyXmlToBinary` framing, so the fuzzer starts
+from inputs that already reach the parser rather than from noise. Two implementation facts are
+load-bearing and both were found by running it: `-fsanitize=fuzzer` must be **target-scoped**, since
+libFuzzer's `main` collides with CMake's compiler-probe program and configure fails at `project()`;
+and the JUCE initialiser must be **leaked deliberately**, because letting `shutdownJuce_GUI()` run
+under libFuzzer's `exit()` double-freed in `DeletedAtShutdown::deleteAll()` during
+`__run_exit_handlers` — the fuzzer found that on the empty input within 60 s, in the harness rather
+than in the product. After the fix: 5,351 execs, exit 0.
+
+**A GCC warning gate is not redundant beside the Clang one, because "larger set" is not "superset".**
+`juce_recommended_warning_flags` picks by compiler ID and Clang's set is the larger one, but Clang's
+`-Wshadow-all` structurally does not report a parameter or local shadowing a member outside a
+constructor, and Clang has no `-Wmisleading-indentation` at all. Three first-party sites in this tree
+are visible only to GCC and are recorded as accepted debt, not fixed — the gate exists so the next
+one fails the push that introduces it. The gated set is five flags; two candidates were measured and
+**rejected**: `-Wnull-dereference` (four unprovable post-inlining hits — the baseline shape that
+trains people to regenerate without reading) and `-Wmismatched-new-delete` (a false positive *by
+construction* on `tests/AllocationGuard.h`, verified both by funnelling deallocations through
+`::operator delete` and by calling `std::free` directly). The gate rides on `linux-lto-tests` rather
+than a job of its own because that job's two targets already compile every first-party translation
+unit; it costs one `tee`. Both directions were verified live: a seeded `-Wduplicated-branches` and a
+seeded `-Wshadow` in `tests/dsp_tests.cpp` failed the gate by name at exit 1, and the same run
+demonstrated the falling-count `::notice::` path on an incremental build.
+
+**LeakSanitizer stopped being suppressed.** The previous round had already retested the stated
+justification for `detect_leaks=0` and found it false — both suites run leak-clean. This round
+flipped the flag: a suppressed detector with nothing left to suppress is a gate the repository was
+paying for and not receiving, and a leak in a plug-in process is a leak in a host that stays open for
+hours. The `fuzz` job is the one place `detect_leaks=0` remains, for the deliberate initialiser leak
+above.
+
+**The pluginval crash retry was broader than the flake that justified it.** `run-pluginval.sh`
+retried a crashed pass three times on every platform, while the documented cause — the XEmbed race —
+is Linux/X11 only. On Windows and macOS that turned a genuine crash into two more chances to pass.
+The retry is now scoped by `uname -s`: three attempts on Linux, one everywhere else, with a distinct
+message so a single-attempt failure cannot be misread as an exhausted retry. The separately
+justified `.ps1` retry is untouched.
+
+**Shared-action-input round (2026-08-19): the composite action built shell source out of its own
+inputs, and the sanitizers comment quoted a count from two commits ago.**
+
+**MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-19**, for both corrections below. Confirmed
+before the work; recorded, not requested again. No approval is claimed for anything else in the
+review that produced them.
+
+**`${{ }}` is substituted into a `run:` body before bash sees it, so an input interpolated there is
+CODE.** `.github/actions/setup-linux-build/action.yml` pasted both of its inputs into the script:
+`"${{ inputs.clang-version }}"` and, unquoted, `${{ inputs.extra-packages }}`. Every one of the
+seven callers passes a literal or a workflow `env` constant, so nothing was exploitable — but the
+seven inline blocks this action replaced had no parameters at all, and the contract it now publishes
+accepts arbitrary text for a position that executes. Both inputs are now bound to the step's `env:`
+and read as `"$CLANG_VERSION"` / `$EXTRA_PACKAGES`. The package list stays UNQUOTED, deliberately and
+for the unchanged reason: word-splitting is how a space-separated list becomes several arguments.
+Unquoted there splits a value into words; interpolated into the script it was parsed as shell.
+
+Verified by executing the action's real script body against stub `setup-linux.sh`,
+`setup-llvm-apt.sh`, `sudo`, `apt-get` and `ccache`, once per caller shape: no inputs; clang only
+(`setup-llvm-apt.sh` receives the version as exactly ONE argument); clang + `valgrind`; `g++-13`
+only; and a three-word list, which still reaches `apt-get` as three arguments. The ccache fallback
+was exercised too — a failing `ccache` still yields the `::warning::`, an empty
+`ANAMORPH_COMPILER_LAUNCHER` and step exit 0. And the property itself, both ways: with
+`extra-packages` set to `valgrind; touch /tmp/PWNED`, the previous shape ran the `touch`, while the
+current shape hands the whole string to `apt-get` as arguments and executes nothing.
+
+**The sanitizers comment said 159, and 162 would have been wrong too.** It justifies `detect_leaks=1`
+with "both suites run leak-CLEAN, 159 + 900 checks" — a figure from when the DSP suite was 161. The
+suite is 162 now, but this job does not report 162: ASan owns `malloc`, so the allocation guard's
+malloc half is compiled out, Test 38 discloses that and skips its two malloc-family assertions.
+Measured by building with this job's own flag set (clang-22, the full seven-check UBSan list, vptr)
+and running both suites under `ASAN_OPTIONS=detect_leaks=1`: **160 + 900 checks, 0 failures, zero
+LeakSanitizer reports, exit 0**. The comment now says 160 — one character, deliberately: `build.yml`
+is a citation target, so adding the explanation inline would have shifted every anchor below it and
+turned a one-word correction into a re-anchoring round. The reason 160 is not 162 is recorded HERE
+instead, which is where this repository keeps the reasoning that would otherwise go stale in place:
+**ASan owns `malloc`, so the allocation guard's malloc half is compiled out, and Test 38 discloses
+that and skips its two malloc-family assertions.** A reader who later "corrects" 160 to 162 will
+find this entry.
+
+**Left alone, deliberately:** `build.yml:2520`'s "the 156 + 900 checks" is a past-tense statement
+about what had only ever run non-LTO before `linux-lto-tests` existed — history, correct as written,
+and not the sanitizers figure this round was asked to fix.
+
+**`-Wmismatched-new-delete` round (2026-08-19): the obvious fix was measured and does not work, so
+the exclusion stays and now carries its numbers.**
+
+**MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-19**, for re-examining the exclusion and for
+the documentation correction that came out of it. Confirmed before the work; recorded, not requested
+again. **No approval is claimed for a gate change, because none was made** — see below for why.
+
+**The objection is the right one to raise.** Every other accepted GCC-only diagnostic goes into
+`scripts/gcc-warning-baseline.txt` with a site count, so a NEW instance fails;
+`-Wmismatched-new-delete` is instead absent from `GATED_FLAGS`, which reads as a permanent hole for
+the sake of one false positive in `tests/AllocationGuard.h`. Baselining it (count 1, that file)
+would, on the face of it, keep the class gated everywhere else. Measured on gcc-13.3.0 / Ubuntu
+24.04 — the pair `linux-lto-tests` pins — with the flag appended to the gated set and the two gated
+targets built exactly as the baseline header prescribes, neither half of that holds.
+
+**Under `-flto` the flag emits nothing at all.** The whole two-target build produced **zero**
+`-Wmismatched-new-delete` lines, first-party and vendored alike. Not because the tree is clean: a
+genuine `free` on `new[]` memory **seeded** into `tests/dsp_tests.cpp` also produced zero, and so did
+a second seed in `tests/state_tests.cpp` called from `main()` so nothing could elide it
+(`AnamorphStateTests` relinked, zero hits, exit 0). The same dsp_tests seed in the same translation
+unit with `-flto` removed produces **3**. That lane compiles
+everything `-flto`, which is its reason to exist, so adding the flag to `GATED_FLAGS` would add a
+flag that cannot fire in the job that reads the log — the shape `TESTING_POLICY.md` rule 4 names as
+indistinguishable from a gate that passes, and worse than an exclusion that says so out loud.
+
+**And the attribution turns a per-file baseline into a mask.** Without `-flto` the diagnostic lands
+on the guard's deallocator — `tests/AllocationGuard.h:351:69`, `operator delete (void*,
+std::size_t)` — for the false positive AND for the seeded real mismatch alike, because that is where
+the `free` is. `scan()` deduplicates by `path:line:col`, so the two collapse to ONE site and a
+`1 -Wmismatched-new-delete tests/AllocationGuard.h` line would accept the real one. The property the
+baseline exists for — a new instance fails — is precisely what this flag cannot have per file.
+
+**So nothing was gated and nothing was baselined**, and the exclusion in
+`scripts/check-gcc-warnings.py` now carries both measurements rather than the one-line "false
+positive by construction" that invited the question. The only shape that would gate this class
+honestly is a non-LTO GCC compile of the same sources, which this pipeline does not have; adding one
+is a workflow decision rather than a flag-list edit, and is recorded here as the option rather than
+taken. The gated set, the baseline file, the self-test (17 cases, including the case that pins this
+flag as deliberately ungated) and the guard itself are unchanged.
+
+**Allocation-family round (2026-08-19): the guard's two counters were one counter twice, and three
+documents still carried the pre-Test-38 check count.**
+
+**MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-19**, for both corrections in this round.
+Confirmed before the work; recorded, not requested again. No other approval is claimed by this entry.
+
+**`operator new` was counted twice.** It incremented `newCount` and then called `std::malloc` — and
+where `ANAMORPH_GUARD_MALLOC` is defined that name resolves to the interposer in the same
+translation unit, so `mallocCount` moved as well. Nothing asserted wrongly: Test 38 requires both
+counters to be zero, and `selfCheck()`'s probes read the counter each is about. What was wrong is
+what the run PRINTS. `new=N malloc=M` was not a split — every `new` appeared in both halves — and
+the per-`prepare()` figures the header and `REALTIME_SAFETY_AUDIT.md` quote could not be reproduced
+from the code that printed them. Measured: the same `prepare()` reported **102 new + 765 malloc**,
+the second being 663 + 102.
+
+Fixed with `rawAlloc`, which the two non-aligned `operator new` forms now call: `__libc_malloc`
+where the interposer exists, `std::malloc` everywhere else. That is the same real allocator the
+interposer itself forwards to, so the `new` route takes the identical path with one fewer counter on
+it, and its blocks stay ordinary glibc heap blocks that the unchanged `std::free` in every
+`operator delete` frees — the pairing the interposer already relied on. The over-aligned forms were
+already clean (`posix_memalign` is not interposed), and the malloc half's own liveness probe still
+calls `std::malloc` deliberately, because it exists to prove the interposer fires. **The documented
+split needed no edit: it was right and the code had drifted from it.** After the fix the same
+`prepare()` reports **102 new + 663 malloc**, exactly the figures both documents carry.
+
+**Verified in all three shapes and in both directions.** Compiled and run standalone: glibc
+(all three halves live, one `new` now moves `new` only — `new=1 malloc=0`, previously both), the
+ASan shape (malloc half compiled out and disclosed, `new` half live, unchanged), and
+`ANAMORPH_NO_ALLOC_GUARD` (everything stands down, unchanged) — so ASan, RealtimeSanitizer and
+valgrind are untouched by construction as well as by measurement. Detection is unweakened and now
+attributes correctly: a seeded `operator new` in `process` fails Test 38 reporting `new=1 malloc=0`,
+a seeded raw `malloc` fails it reporting `new=0 malloc=1`.
+
+**Three documents still said 160 checks.** `REALTIME_SAFETY_AUDIT.md`, `HANDOVER.md` and
+`RELEASE_HARDENING_PLAN.md` carried the count from before Test 38's assertions; the suite is at
+**162**. The audit's sentence carried one current number and one stale one — "**156** of the suite's
+160 checks" — and 156 is the RTSan figure, which is unchanged and was measured again here rather
+than inferred: built with the guard compiled out, the suite reports **156 checks, 0 failures** and
+Test 38 discloses and asserts nothing. 162 − 156 = 6 is Test 38's own assertions on the
+GCC-Linux configuration.
+
+**"37 DSP self-tests" was checked and is NOT stale**, which is why it was not touched. `main()`
+invokes 38 test functions; the last is the A/B state-restoration clamp guard, which every one of
+those sentences already counts separately. The printed roster reaches "Test 38" because
+`testBypassNullAndLatency` prints "Test 3+4" — one function, two numbers. 38 functions − the A/B
+guard = the 37 the documents claim. The `140 checks` figures in `DEPENDENCY_POLICY.md` and in
+ADR-0021/0022/0026/0027 are measurements at those revisions, not current-state claims, and are left.
+
+**Lint-count round (2026-08-19): the two places that still said four.**
+
+**MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-19**, for this documentation correction.
+Confirmed before the work; recorded, not requested again. No other approval is claimed by this entry.
+
+**The round below named this and left it; this round closes it.** `REPOSITORY_MAP.md`'s `scripts/`
+tree summary still read "plus the four CI lints (check-docs, check-portability, check-citations,
+check-clang-warnings — each with its own self-test)" while the same file's own table lists all seven
+and its `preflight.sh` row already says "the **seven** checkers"; `CI_CD.md` compared the RTSan
+canary to "the four lints' `--self-test`s". Both now say seven and the tree names all seven. The
+summary line is the first thing a new reader hits, which is why a count there is worth more than its
+size: `TESTING_POLICY.md` rule 4 enumerates seven, so a reader arriving through the map met the
+divergence before the policy.
+
+**Two more "four"s were checked and are correct, not stale.** `REPOSITORY_MAP.md`'s
+`check-citations.py` row says the gate governs "the four `scripts/`", and `TRACKED` does list exactly
+four — `build.sh`, `run-pluginval.sh`, `run-tests.sh`, `setup-linux.sh`. And ADR-0029 §9 says the
+canary "is the maintenance the repository already performs for its four lints", which was the state
+when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
+Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
+reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
+`.github/workflows/build.yml:2751` and `:2836`, this round being documentation-only.
+
+**Policy-topology round (2026-08-19): rule 4 described a placement three of its own seven checkers
+cannot have. One report investigated and closed with no change.**
+
+**MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-19**, for the documentation correction below —
+restating rule 4's placement requirement as the job and the order rather than adjacency. Confirmed
+before the work; recorded, not requested again. No other approval is claimed by this entry.
+
+**Rule 4 read as though all seven self-tests sit one step before their check.** They do not, and
+three of them structurally cannot: the two warning gates classify a BUILD LOG, so the build has to
+sit between the self-test and the gate, and `check-citations.py` compares against a BASE REVISION,
+so its self-test is its own step and the comparison follows in the step that resolves the base.
+Under the old wording the pipeline violated its own policy in three places while behaving exactly
+as intended. The rule now states what it actually requires — the self-test runs **in the same job as
+the check it vouches for, ahead of that job's use of the checker**, never in a different job,
+workflow or run — names the job each of the seven pairs lives in (`docs`; `source-lint` ×3;
+`linux-clang`; `linux-lto-tests`; `linux`), and says which four are adjacent and why the other three
+are not. The intent is untouched: a liveness proof somewhere else proves nothing about the run whose
+silence is being read.
+
+**Read off the workflow, not off the review.** The report asserted that
+`check-clang-warnings.py` and `check-gcc-warnings.py` "self-test in one job and gate in another".
+They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:959` and gates at
+`:983`, both in `linux-clang`; `check-gcc-warnings.py` self-tests at `:2626` and gates at `:2647`,
+both in `linux-lto-tests`. All seven pairs are same-job. What was genuinely wrong was "immediately
+before", not the job placement, and that is what changed.
+
+**One downstream copy followed, and only one.** `docs/procedures/CI_CD.md` restated the same
+"immediately before" claim for `source-lint`'s three lints, where it is true of two of them; leaving
+it would have left a Procedures document contradicting the Policy on the exact sentence being
+corrected, which the authority order in `SOURCE_OF_TRUTH.md` does not permit. Deliberately NOT
+followed: the `source-lint` comment at `.github/workflows/build.yml:441` carries the same phrasing
+about the citation self-test, and the `scripts/` tree summary in `REPOSITORY_MAP.md` still
+enumerates four lints where its own table lists seven. Both are real; neither is this round's
+subject, and the second is a stale COUNT rather than the placement claim.
+
+**The CI-target report was investigated and required no change.** It read the visible diff as adding
+only three `option()` declarations and asked whether `AnamorphFuzzState`, `AnamorphBench` and
+`AnamorphDspDump` resolve to anything. They do: `CMakeLists.txt:438-456`, `:478-495` and `:515-541`
+define them, the last including the target-scoped `-fsanitize=fuzzer` the workflow comment relies
+on. Verified by building rather than by reading — all three configure and compile from the same
+option and compiler flags CI passes (JUCE supplied from the already-fetched checkout rather than
+re-cloned): the benchmark builds and smoke-runs, `AnamorphFuzzState` builds under
+clang-22 + ASan/UBSan/libFuzzer and completes 1,161 runs over the committed corpus at exit 0, and
+the dump links. Two further premises of the
+report were checked and are also unfounded: no CI job builds `AnamorphDspDump` at all (it is the
+local instrument for a dependency bump, exactly as `TESTING.md` describes), and the `realtime` job's
+`-I build-rtsan/_deps/juce-src/modules` is correct because `ANAMORPH_JUCE_PATH` is a
+local-developer escape hatch that no workflow sets, so CI always takes the FetchContent path.
+
+**Armed-transition round (2026-08-19): the portable allocation gate proved the steady state and
+called it the switch.**
+
+**MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-19**, for the one point this round rests on:
+that Test 38's coverage of mid-stream configuration transitions was missing and had to be closed in
+the test rather than in its description. Confirmed before the work; recorded, not requested again.
+No other approval is claimed by this entry.
+
+**Test 38 never armed a parameter CHANGE.** The per-configuration `setParameters (p); reset();` ran
+*before* the block loop, and `reset()` flushes an in-flight duck straight to its target
+(`src/dsp/AnamorphEngine.cpp:138-145`) — so by the time the counters were armed the switch was over,
+`switchState` was `Normal`, and the `setParameters (p)` inside the armed region hit the steady-state
+no-change gate every time. The whole structural half of a switch lives in the adopt block
+(`src/dsp/AnamorphEngine.cpp:684-759`: algorithm tails cleared, the three oversamplers and the
+chorus reset on an oversampling-path change, the crossover cleared on a topology change) and it runs
+inside `process()`, at the silent bottom of the duck. So 3,840 armed calls proved the audio path
+allocation-free while nothing was changing, and `REALTIME_SAFETY_AUDIT.md` presented that gate as
+the committed form of a probe whose stated coverage was "mid-stream algorithm swaps". Measured, not
+inferred: one `std::vector` allocation seeded into the adopt block was **invisible** — 3,840 armed
+calls, worst `new` 0, run green.
+
+**Fixed by not applying the switch outside the armed region**, which is the whole change: the first
+armed block of each configuration performs the real transition from the previous one and the armed
+blocks after it carry the duck through its landing. Every configuration differs from its predecessor
+in at least `msMode`, so all 32 are genuine mid-stream switches, and no `reset()` between them is
+deliberate — a host does not get one either. The same seeded allocation now **fails** the test
+(worst `new` 2, worst `malloc` 2, exit 1). The guard, its diagnostics, the matrix, the 3,840 armed
+calls and every existing assertion are untouched.
+
+**A gate that can silently narrow again needs to say so**, per the repository's own rule that a
+checker must prove it is live. Test 38 now counts the switch landings it OBSERVES — `osEngaged`, and
+therefore the reported latency, is re-latched only in that adopt block — reads the latency across
+the armed scope alone rather than carried across configurations, and fails when the count is zero.
+Both halves are measured: restoring the pre-loop flush drops the count to 0 and fails the new check,
+and a *carried* comparison still reported 11 against that same flush, which is why the reading is
+scoped. The count is a floor rather than a census, and the difference is measured too: all 32
+configurations land, but the half-band polyphase IIR reports 4 samples at ×2 and 6 at both ×4 and
+×8, so the four ×4 → ×8 landings move no latency. 11 of the 15 latency-visible transitions are
+counted, across all four algorithms. Checks 161 → 162.
+
+**One document needed correcting and one deliberately did not.**
+`REALTIME_SAFETY_AUDIT.md` said the committed gate "runs the same counting over the same matrix" as
+a probe described as covering "mid-stream algorithm swaps, bypass crossfades and crossover drags";
+it now states what the gate arms, what it did not arm before this round, and what it still does not
+carry over — `bypass` and `mbBands` are fixed across its matrix, so bypass crossfades and crossover
+drags are the click-free-transition tests' and (on Linux/Clang) RTSan's. ADR-0029 §7 was re-read and
+left alone: its 7,680-call figure is the investigation probe's, attributed to the probe, and its
+coverage table already reads 3,840 armed calls per configuration of the suite. Neither number was
+wrong; only the claim about what the gate arms was.
+
+**Reachability-and-runnability round (2026-08-19): a documented command that could not do what the
+paragraph beneath it requires, a lint that could not see past a template, and a portability report
+that did not reproduce.**
+
+**NO NEW MAINTAINER SIGN-OFF IS RECORDED HERE.** The two decisions confirmed 2026-08-19 in the round
+directly below — the ADR-0009 re-aim and the restated leaf-layer liveness evidence — stand as
+recorded and are not reopened. Nothing in this round is a decision the process asks a human to
+confirm, so it claims no approval of its own.
+
+**The documented local fuzz command ran with leak detection ON.** `TESTING.md` set
+`ASAN_OPTIONS=detect_leaks=0` on a continued line and then put three comment lines between the
+continuation and the binary. A `\` before a comment line splices the two, so the logical line is
+`ASAN_OPTIONS=detect_leaks=0  # Note: ...` — an assignment with no command. The variable reaches
+nothing, the remaining comment lines are their own no-ops, and the fuzzer starts on the line after
+them with the environment untouched. Measured on text extracted from the document: the child process
+saw no `ASAN_OPTIONS` at all, at exit 0 — the same silence a correct run produces, which is why this
+survived. Five lines below, the same document calls `detect_leaks=0` "required, not optional" and
+gives the reason (`tests/fuzz_state.cpp` leaks `ScopedJuceInitialiser_GUI` deliberately, because
+letting `shutdownJuce_GUI()` run under libFuzzer's `exit()` double-frees in
+`DeletedAtShutdown::deleteAll()`), so the command as printed contradicted the paragraph explaining
+it and would end a local fuzz run in exactly the leak report the harness design accepts on purpose.
+The three comment lines moved above the command; re-extracted from the document, the child now
+receives `detect_leaks=0`. CI never had this defect — the `fuzz` job sets the variable through
+`env:`, not a command prefix — and the divergence between the two is what the fix removes.
+
+**A helper whose return type was a template was invisible to the realtime lint.**
+`heads_a_definition` decides whether a name heads a definition by what precedes it: `::`, a `*`/`&`
+that ends a type, or an identifier. A `>` was on neither list, so `std::vector<float> helper (` was
+rejected while `float helper (` a line above was accepted. The cost is not one missing definition, it
+is a missing SUBTREE: a name absent from `definition_index` is one `reachable_bodies` cannot follow
+into, so the helper's allocations and everything IT calls were both unscanned — and a lint that
+discards a function prints what a clean tree prints. Measured: `std::vector<float> helper (int n)
+{ v.assign (n, 0.0f); return v; }` called from an annotated `process` reports **0** findings before
+the fix and **1** after; the same helper returning `float` reported 1 throughout. Fixed by asking
+`_blank_template_args` — the balanced-span parser already in this file, whose seven rules are
+mutation-pinned — whether this `>` closes a template argument list, over a window that starts at the
+enclosing statement. Asking it rather than re-deriving it is the point: a second `<`/`>` parser here
+is a second one to keep in agreement, and the window is what keeps the answer about THIS declarator
+rather than a comparison a statement back. Enforcement surface after the change: **470** index names
+(was 467), **61 reachable spans — unchanged**, 44 files, 0 violations. The three newly indexed
+definitions are `logFreqRange`, `logFreqRangeCentred` (`src/PluginParameters.cpp`) and
+`LevelMeter::bar` (`src/gui/LevelMeter.h`), none of them audio-path reachable, so this widens what
+the lint CAN see without changing what it currently says. Pinned by two end-to-end cases and twelve
+`heads_a_definition` assertions (76 → 90 self-test cases), and every one of them is load-bearing:
+a bare `return True` for the branch fails eight, removing the branch fails six, dropping the
+statement window fails the previous-statement case, and dropping the "`<` opens only after a name"
+rule fails four. Stated rather than implied: on `src/` as it stands the naive `return True` also
+reports 470/61/0, because `_is_declarator_tail` independently rejects a comparison — a comparison's
+call sits inside an enclosing paren whose `)` drives the region depth negative before any `{`. The
+guard is not what keeps this tree quiet; it is what keeps "does this `>` close a template argument
+list" a question with one answer.
+
+**The `preflight.sh` Bash 3.2 report did not reproduce, and the script is unchanged.** The claim was
+that `${#ABI_TARGETS[@]}` (`scripts/preflight.sh:62`) aborts under `set -u` on macOS's `/bin/bash`
+when no local Linux Release build exists. Tested rather than reasoned about: GNU bash **3.2.57**, the
+exact patchlevel macOS ships, built here from the FSF tarball plus all 57 official patches, runs the
+block's real text through **both** branches at exit 0 and runs the whole of `preflight.sh` at exit 0
+(161 + 900 checks). `ABI_TARGETS=()` creates the variable, and 3.2's `array_length_reference` errors
+only when the variable is ABSENT — `var == 0 || array_p (var) == 0` — returning
+`array_num_elements` (0) for an empty one; confirmed both ways, since `${#NEVERSET[@]}` does abort
+there. The `set -u` hazard old Bash genuinely has is `"${arr[@]}"` on an empty array, and that
+expansion appears here only inside the `-gt 0` branch, where the array is non-empty by construction.
+A change with no defect behind it is a change that has to be maintained for nothing, so none was
+made.
+
+**Parser-and-evidence round (2026-08-19): one silent false negative in the realtime lint, one
+architectural citation pointing at unrelated code, and one liveness claim that was never true.**
+
+**MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-19**, covering the two decisions in this round
+that the process asks a human to confirm: re-aiming ADR-0009's evidence to
+`src/dsp/AnamorphEngine.cpp:1269-1313` (a re-aim, not a re-anchor — the tool cannot compute it, so
+it is declared in `DELIBERATE_REAIMS` and its aim machine-checked against
+`Defensive NaN / Inf self-heal`), and restating the leaf-layer `-Werror=function-effects` gate's
+liveness evidence to name the mechanism the tree actually runs.
+
+**A definition whose signature carried a comma inside template arguments was discarded whole.**
+`_is_declarator_tail` rejects a depth-zero comma because an argument list is made of one, and `<`/`>`
+were not counted toward depth at all — so `-> std::pair<float,float>` and
+`requires std::is_same_v<T,int>` both read as argument lists, and `_bodies` dropped the definition,
+its body and every same-file callee reached only through it. Silently, which is the direction that
+matters: a lint that discards a function prints what a clean tree prints. Fixed by modelling the
+construct — balanced `<...>` spans are blanked before the comma test — with balance REQUIRED, because
+`<` is the one bracket C++ overloads with an operator and counting it unconditionally would turn the
+false negative into the false positive the `Options` case exists to catch. All seven rules of the
+resulting parser are mutation-pinned; independent verification found no false positive or negative
+across 3,264 files of JUCE, libstdc++-13 and LLVM-22, and the enforcement surface is unchanged (467
+index entries, 61 reachable spans, 44 files, 0 violations, zero files differing).
+
+**ADR-0009 cited unrelated code, and the documents that cite the same block disagreed.** Both the
+ADR and the audit carried `AnamorphEngine.cpp:847-870` at the merge base; the audit was re-derived
+earlier in this change set while the ADR's copy was only shifted, to `:860-883` — input conditioning,
+the M/S solo branch and the `dryScratch` copy. That is the "adopted as-is rather than audited" limit
+this repository states for its own citation gate, arriving as predicted: an anchor already misaimed
+at the base stays misaimed through `--fix`, because the tool detects MOVEMENT and this never moved.
+The span now runs to 1313 rather than stopping at the `if`, because the ADR's Consequences claim the
+plugin "self-heals instead of needing a Multiband off/on" and that sentence is about
+`multiband.reset()`. Four documents carried copies — `DSP_POLICY.md`, `DEVELOPMENT.md` and the audit
+alongside the ADR — and all four now spell it the same way.
+
+**The `applyWidth` liveness claim was false, in eight places.** ADR-0029, `ADR_INDEX`, `CI_CD`,
+`HANDOVER`, `TESTING_POLICY`, this file, the workflow comment and the effects TU said the gate is
+proven live by a seeded call to the non-annotated `anamorph::applyWidth` failing by name. Measured:
+that compile exits 0, and it could never have been otherwise — `applyWidth` is header-defined, so
+Clang infers its effects, and the driver calls it in the compile that must stay CLEAN. What fails is
+the EFFECT, not the missing annotation. The real proof is the `-DANAMORPH_EFFECTS_CANARY` call to a
+helper that grows a `std::vector`, and the quoted diagnostic is the one clang-22 emits. The gate
+itself was not touched: the mechanism was already right, only the evidence describing it was stale.
+
+**Known and deliberately left**, so the next reader does not re-derive it: the comment above
+`DELIBERATE_REAIMS` still argues the collection is spelled `set([...])` on purpose, which stopped
+being true when it became a dict keyed by `(document, anchor)`. Behaviour is unaffected — the
+consumers were converted to `.keys()` and the self-test covers them — so it is a stale comment rather
+than a defect, held out of a round scoped to correctness.
+
+
+**Gate-liveness round (2026-08-19): four enforcement mechanisms that could pass while checking
+nothing, and six evidence anchors the `CMakeLists.txt` growth left behind.**
+
+**MAINTAINER SIGN-OFF RECORDED HERE, both granted 2026-08-19.** (1) The macOS **retained-LTO-object**
+behaviour and the **placement and persistence of the LTO assertion** are confirmed against CI run
+**773** (push, `33333fe`): the `macos` job's step 7 `Assert LTO ran and its objects were retained`
+passed, and `Assert a validated dSYM was captured` ran last, after the installer and all three
+uploads. (2) The **one-time human verification of the `function-effects` warning's availability** is
+confirmed. Neither confirmation is a reason to leave a silent CI failure mode standing, and the
+durable mechanism below was added regardless — which is the point of recording them separately.
+
+**A gate whose only output is silence must be able to prove it can speak.** Four could not.
+
+- **The leaf-layer `-Werror=function-effects` step.** Clang treats an unrecognised `-Werror=<name>`
+  as a `-Wunknown-warning-option` *warning*, so a renamed or dropped option leaves the step exiting
+  0 while checking nothing. Measured on the pinned Clang 22.1.8: with the option misspelled,
+  `tests/realtime_effects.cpp` carrying a **real seeded violation** compiled with status **0**. It
+  is now compiled twice — the gate, then the same TU with `-DANAMORPH_EFFECTS_CANARY` seeding an
+  allocating non-annotated helper, asserted to fail *with* a `-Wfunction-effects` diagnostic — and
+  both compiles carry `-Werror=unknown-warning-option`. **The canary is the coverage; the flag is
+  the diagnosis** — the first draft of this round had that as two independent halves, which is
+  measurably wrong: a name Clang no longer knows is also a diagnostic Clang no longer emits, so the
+  canary compiles clean and fails the step in the renamed case too. The flag earns its place by
+  failing on the *first* compile and naming the cause. The canary alone covers what the flag never
+  can — an option accepted but no longer implemented — plus three cases neither was claimed to
+  catch: a silently-empty `ANAMORPH_NONBLOCKING`, a `#pragma clang diagnostic ignored` planted in
+  the include set, and the driver compiled out. `TESTING_POLICY.md` rule 4's "one-time manual
+  verification" wording for this gate is retired.
+- **The allocation guard's stand-down under RealtimeSanitizer.** `__has_feature(realtime_sanitizer)`
+  was a single unverified spelling holding up the whole lane; verified on Clang 22.1.8 that
+  `-fsanitize=realtime` defines **no** preprocessor macro of its own, so no non-circular check could
+  be built from the compiler alone. The `realtime` job now also passes `-DANAMORPH_RTSAN_LANE=1` on
+  the same flag string, and `tests/AllocationGuard.h` `#error`s if the lane is declared while the
+  guard is still live. Proven on the mutation itself, not a proxy for it: with `-fsanitize=realtime`
+  genuinely ON and the feature spelling renamed, the build fails — which a circular check could not
+  do — while the same mutation against `33333fe` compiles silently. The four quadrants of
+  (RTSan on/off) × (flag on/off) behave as intended, only flag-on + RTSan-off failing, and the real
+  lane still builds and runs (`AnamorphTests` links, 156 checks, guard disclosed as compiled out).
+  ADR-0029 §7 records it.
+- **The Linux ABI floor, per declared family.** `check()` compared only the families a binary
+  actually referenced, so an **absent** family read as a satisfied one. Demonstrated on a real
+  C-only binary: the previous checker reported `within the declared floor (GLIBC_2.38,
+  GLIBCXX_3.4.31)` and exited **0** for a file importing no `GLIBCXX_*` at all, and likewise for a
+  real `-static-libstdc++` link. A missing declared family is now an error, on the file's own stated
+  reasoning that "no requirements found" must not read as clean. Both verdicts are **collected**
+  rather than returned from inside the loop: an early return stopped inspecting the remaining
+  binaries and discarded the over-floor findings already gathered, so a genuine breach in the
+  Standalone could be replaced by a missing-family message about the VST3 — the same
+  "withholding the evidence helps least" argument the `linux` job makes for running this step last,
+  applied inside the step. Both shipped artifacts import both families, so the real gate is
+  unchanged.
+- **The realtime lint's lexer and body extractor**, both silent false negatives rather than false
+  positives — the dangerous direction for a lint whose value is its silence. `_is_digit_separator`
+  tested only the two neighbouring characters, which is also the shape of the **opening** quote of an
+  encoded character literal (`L'a'`, `u8'a'`, `u'a'`, `U'a'`): the opener was emitted as code, the
+  closer read as an opener, and the rest of the line blanked. It now walks left to the start of the
+  token and requires that token to begin a **number** — not merely to begin with a digit, which was
+  the first attempt and swallowed leading-dot literals (`.5'0f`, `.000'001`, both ordinary C++ and
+  both exactly how a gain constant or a DSP tolerance gets written) in the same way. A stray
+  apostrophe with no partner on its line — `#error don't`, which the comment branches do not blank —
+  is likewise emitted as prose rather than opening a literal.
+  Separately, `_bodies` searched only 400 characters past the closing parenthesis for the opening
+  brace, and blanked comments **keep their length**, so a definition with a long comment between `)`
+  and `{` left the scanned set with no diagnostic. The search is unbounded now — but unbounded alone
+  traded the false negative for a false **positive**: with nothing stopping it, the `)` of a *call*
+  pairs with the `{` of a lambda in a later argument, which happens in this tree at
+  `src/PluginEditor.cpp` (`juce::PopupMenu::Options()`, brace 759 characters later, inert only
+  because `callees()` drops `::`-qualified names). So the region between `)` and `{` is now checked
+  for what it is: a declarator tail may carry qualifiers, `noexcept`, attributes, a trailing return
+  type or a member-initialiser list, but a comma at bracket depth zero — outside an initialiser list
+  — means an argument list, not a signature. That rejects 38 candidate positions under 17 names
+  (`abs`, `memcmp`, `jmax`, `std::move`, base-class initialisers, and the `Options` pairing). Two of
+  those names, `isPresetExcluded` and `getValue`, *are* first-party — what is rejected is a call to
+  them, and their real definitions stay indexed. (An earlier draft of this entry said "24 further
+  call sites, every one verified to have no first-party definition"; both figures were measured
+  loosely and the second framed the wrong property. The claim that matters is that no rejected
+  position is a definition.) Verified identical afterwards where it counts: **61 reachable body
+  spans**, **44 files**, **0 violations**, zero files differing from before the round.
+
+**The citation tool was disabling its own repair path.** `verify_reaim_targets()` ran first and
+returned 2 for *every* mode, so one drifted `DELIBERATE_REAIMS` declaration switched `--fix` off for
+the **whole run** — including every citation that had nothing to do with it. Declared anchors drift
+for the most ordinary of reasons: two are single lines in `build.yml`, so any insertion above one
+moves them. Measured on a worktree at `33333fe`, with one line inserted into `build.yml` and one into
+`AnamorphEngine.cpp`: `--fix` re-anchored **0** citations across **0** documents; after the fix, **31**
+across **16**. The distinction is now by mode — the same one the rewriter already draws for
+invalidated declarations: `--check` verifies and stops; `--fix` warns, repairs, and still exits
+non-zero, because a declaration lives in the script and no document rewrite reaches it. Verification
+is not weakened: CI runs `--check` only.
+
+**What `--fix` deliberately does NOT do**, recorded because the first draft of this round claimed
+more than it delivered. It cannot re-anchor the misaimed anchor *itself* while the declaration is
+live — `is_declared_reaim` excuses precisely that anchor from the comparison — so the replacement
+spelling is computed only for a declaration whose base and current spellings already agree. And the
+document that **owns** a misaimed declaration is now withheld from the rewrite entirely: re-deriving
+one anchor while its excused neighbour stays put produced a cell asserting that
+`build.yml:2266` was both the `macos-intel` job header *and* the last line of that job's rationale
+block. The run-wide hard stop had been acting as an interlock against exactly that; removing it
+without replacing it would have traded a blocked repair for a corrupted document, on the one lint in
+the repository that **writes**. The interlock is now per document, so the other fifteen are still
+repaired.
+
+**Ten evidence anchors, not the three the review named — and the first sweep found only six.**
+`CMakeLists.txt` took **178 insertions and one deletion** in this change set (net +177). The shift
+map is +16 for base lines 29–105, **+55 for base 106–107** — base 107 was *rewritten* into head
+162–163 rather than shifted, which is the one case a single figure cannot express — and +56 from base
+line 108 on. The **bare continuation** form (`:NNN` following a `path:NNN` citation) is not tracked
+by `check-citations.py`, so these moved with nothing watching; demonstrated by mutating two of them
+to `:900-901`, past the end of a 542-line file, and watching `--check` still exit 0 while mutating
+the tracked anchor on the line above failed it.
+
+Corrected: `ADR-0001:31` `:314-323` → `:370-379`; `REPOSITORY_MAP.md:158` `:188`/`:214` →
+`:244`/`:270`; `PRIVACY.md:21` `:310-311`/`:348-349` → `:366-367`/`:404-405`; `PRIVACY.md:22`
+`:107`/`:92` → `:162`/`:108`; `ADR-0023:151` `:218` → `:274`; `BUILD.md:19` `:36-38`/`:47-55` →
+`:52-54`/`:63-71`; `ADR-0022:70` and `ADR-0026:82` `:47-55` → `:63-71`. Three were named by the
+review, two more found by the first sweep (`PRIVACY.md`'s `:92`, `ADR-0023`'s `:218`), and **four by
+the second** — including two on `BUILD.md:19`, eighty-seven lines above the line the first sweep
+edited. That is the sharpest lesson available here: a sweep is worth only as much as its next pass,
+because the form being swept for is the one the gate cannot see.
+
+`BUILD.md:106` was re-anchored to the span that `origin/main`'s `:274-284` maps to under the +56
+shift, restoring the coverage recorded below as deliberate — one anchor over *both* the
+`set_source_files_properties` pair and the `target_compile_definitions(Anamorph PUBLIC …)` block the
+sentence enumerates. Because it is exactly that mapped span, the merge-base run computes and verifies
+it with **no declaration at all**, and the permanent `DELIBERATE_REAIMS` entry an intervening draft
+had added is deleted. An entry survives only for the one transition CI's *previous-push* base needs,
+since that push carried a span one line wider — the block's closing `)`, which bought no evidence.
+That one is marked for deletion as soon as the default branch catches up.
+
+**One statement, rather than an anchor, was made wrong by this PR.** `PRIVACY.md:21` claimed the
+webview/curl definitions cover "every target — the plug-in and both test binaries", citing three
+sites. The bench, DSP-dump and fuzz executables added in this change set each carry the same pair, so
+the sentence and its evidence now name all six. Two further citations are *incomplete* in the same
+way and deliberately left — `CODE_STYLE.md:10` and `TESTING_POLICY.md:9` cite three of six
+`juce_recommended_warning_flags` sites, but each cited line is correct and neither sentence claims to
+be exhaustive.
+
+**The continuation gap is left open deliberately.** Bringing these under the gate means the
+comma-list spelling (`CMakeLists.txt:335-336, 366-367, 404-405`), which the tool does accept — but
+each continuation here carries its own annotation naming *which* line it is (`:162`
+(`-Wl,-dead_strip`, Apple), `:108` (`/OPT:REF`, MSVC)), and the comma-list form has nowhere to put
+them. Widening the recogniser to follow continuations is a change to the gate's scope rather than to
+this round's defect, and would newly track dozens of anchors across the tree at once. Recorded here
+so the next reader knows it was weighed rather than missed.
+
+**Environment-assertion placement round (2026-08-19): the same defect the macOS dSYM gate had, in the
+two assertions added beside it.**
+
+**An assertion about the ENVIRONMENT must not cost the run its evidence.** The Linux ABI floor and
+the Windows MSVC toolset check were both added in the round that fixed exactly this shape for the
+macOS dSYM gate, and both were added with the shape unfixed. The Linux floor sat between the strip
+step and `DSP + state self-tests`, so a breach left `steps.tests` at `skipped` — and both Linux
+uploads gate on that being `success`. The Windows toolset check sat between `Configure` and `Build`,
+so a mismatch skipped the build, both suites, both pluginval gates, the installer and every upload.
+
+In both cases the trigger is a **runner-image move**, which is the case where withholding the
+evidence helps least: a silent image change would have produced a red run with no test results and
+nothing to install, i.e. no way to tell whether anything *else* was wrong at the same time.
+
+Both are now their job's **last step**, matching the macOS precedent. Neither is weakened: the
+bodies are byte-identical (verified by comparing every step's `run`/`shell`/`with`/`env` against the
+previous commit — zero differ), and release eligibility is untouched, because `release.yml` depends
+on this workflow's **aggregate** result, which a failed job decides wherever in the job it failed.
+Each is gated on the step whose output it reads rather than on "everything succeeded": the Linux
+floor on `strip` (it checks the stripped bytes, and a failed build leaves `strip` skipped anyway),
+the Windows toolset on `configure` (it reads `CMakeCache.txt`) — deliberately not on the build, so
+the toolset is still recorded when a build fails, which is when knowing the compiler is most useful.
+
+**Verified structurally rather than by reading the diff.** A script compared every job's `needs`,
+`if` and `runs-on` and every step's id/condition before and after: no job-level change anywhere, no
+step added or removed, every artifact-upload gate byte-identical, and the `macos` job not appearing
+in the comparison at all — its dSYM gate, its LTO assertion and the `-Wl,-object_path_lto`
+configuration are untouched. The moved Linux step was then executed from the workflow file itself:
+rc 0 against the real artifacts at the declared floor, rc 1 with the floor lowered to Ubuntu 22.04's
+2.35.
+
+One presentational consequence, not a separate change: moving the ABI block out from between the
+`MALLOC_PERTURB_` rationale and the `DSP + state self-tests` step it documents restored their
+adjacency.
+
+**Follow-up review round (2026-08-19): a mandatory gate placed where it could withhold the product,
+and a corpus that had quietly grown to 21× its documented size.**
+
+**A debug-symbol failure must not cost macOS users their build.** Making zero usable dSYMs an error
+was right; raising it *inside* the packaging step was not. The `exit 1` sat between the `strip -x`
+loop and the customer half of the same step — codesign, the copy into `dist/`, the universal-slice
+assertion and the entry-point check — so a symbol-capture regression would have left
+`dist/Anamorph-macOS` unpopulated, skipped the plug-in upload, the `.pkg` and the draft release.
+macOS users would have got **no build at all** rather than a build without symbols, which is the
+opposite of the invariant stated three lines above it in the same comment block: the customer
+pipeline is never blocked by debug-capture problems.
+
+The assertion is now the macOS job's **final step**. The packaging step records the count into
+`debug_artifacts` where it already did, at the moment it is known; the judgement happens after
+packaging, both pluginval gates, the installer and all three uploads. **Release eligibility is
+unchanged** — `release.yml` depends on this workflow's aggregate result, which a failed job decides
+regardless of where in the job it failed — so the gate is exactly as mandatory as before, and a red
+run now hands the reader the plug-in, the installer *and* the failure instead of nothing. Verified by
+extracting both shell bodies and running them: with `USABLE_DSYMS=0` the packaging step reaches the
+customer pipeline (rc 0) and writes `debug_artifacts=false`, and the new step exits 1 on `false` and
+0 on `true`.
+
+**The fuzz corpus was documented as three seeds and contained 65 files.** The documentation was
+right and the tree was wrong, which the naming makes unambiguous: three `*.bin` files named after the
+three legacy XML fixtures they derive from, and 62 files named after the SHA-1 of their contents —
+libFuzzer's own convention for inputs *it* discovered. `AnamorphFuzzState tests/fuzz-corpus` passes
+that directory as libFuzzer's first positional argument, which makes it the corpus libFuzzer reads
+seeds from **and writes discoveries into**. On a CI checkout that is harmless. Locally it writes into
+the working tree, and a `git add -A` committed them — in the very round whose documentation said the
+corpus held three.
+
+The 62 are removed and the root `.gitignore` tracks `tests/fuzz-corpus/*.bin` only, so a discovery cannot
+be committed by accident while a genuine new seed still can be, deliberately. The rule is at the root
+rather than in the directory because a `.gitignore` inside it is itself read as a corpus entry — measured,
+libFuzzer reported `files: 4` — which would leave the directory not matching the count every document
+states. Verified: a SHA-1-named file is ignored (`git check-ignore` names the rule), a `.bin` file is still
+offered as untracked, and the gate runs from `files: 3`. The
+three documents the review named keep their counts, which were correct; what they were missing is
+that the directory is a libFuzzer *output* as well as an input, so each now says so — including
+`TESTING.md`, whose local run command is the one that writes into a real working tree.
+
+**macOS-symbolication and review round (2026-08-18): the one platform contract the previous round
+could only correct is now closed, and three validation mechanisms were found to be checking less
+than they claimed.**
+
+**macOS crash symbolication exists.** The previous round could only correct the claim; this one
+fixes the thing. `dsymutil` does not read DWARF out of a linked binary — it reads the debug map,
+walks back to each object the linker consumed, and pulls DWARF from there. Under `-flto` ld64 does
+codegen itself, writes the merged result to a temporary object and deletes it at the end of the
+link, so the `N_OSO` entry named a path that was gone: `dsymutil` warned, exited 0, and emitted a
+dSYM with no usable DWARF, which the packaging step correctly discarded on **every** run.
+`-Wl,-object_path_lto` tells ld64 to keep that object. It changes where a temporary is written and
+nothing else — the bitcode, the codegen and the shipped bytes are untouched, and **LTO is still
+LTO**, which is not a detail: turning it off is the workaround this fix exists to avoid. A directory
+rather than a file, because a universal build links once per architecture and one path would have
+the second slice overwrite the first.
+
+**Verified on macOS, not in source.** The build now asserts the retained-object directory is
+non-empty before `dsymutil` runs — a direct witness that ld64 did LTO codegen, since it writes there
+only then. The landing run produced three UUID-matched dSYMs and a **53 MB `Anamorph-macOS-debug`
+artifact** where every previous run produced none. Zero usable dSYMs is now an **error** rather than
+a warning: while the zero was an expected property of the build a warning was right, and now that the
+build produces them a zero means something broke.
+
+**`tests/AllocationGuard.h` would not have compiled on macOS forever.** It calls the over-aligned
+allocator on every platform, and both macOS jobs configure with a 10.13 deployment target; C11
+`aligned_alloc` arrived in the macOS runtime at 10.15, and libc++ honours that window by not
+declaring `std::aligned_alloc` below it. `posix_memalign` has been there since 10.6, carries no
+availability attribute and returns ordinary `free`-able memory, so `alignedFree` is unchanged. The
+deployment target is deliberately **not** raised: 10.13 is the compatibility claim, and a test header
+is not the place to move it.
+
+**The realtime lint did not recognise this project's own allocations.** `.assign` is the idiom every
+DSP module uses — `REALTIME_SAFETY_AUDIT` names it as such — and `make_unique` is how the engine
+allocates its oversamplers. Neither was in the forbidden set, so the likeliest regression of all, a
+line copied out of `prepare()` into a `reset()` or `process()`, was invisible to the one tier that
+reads code the suites never execute.
+
+Its scope was narrower than its subject too. Only functions whose own NAME matched the Policy list
+were scanned, so `AnamorphEngine::updateDerived()` (run at the bottom of a switch duck) and
+`VelvetNoise::updateWeights()` (run per block while the density glide moves) were audio-thread code
+excluded by what they happened to be called. The scanned set is now the **reachable** set: seeds plus
+every callee defined in the same file, transitively. **35 bodies became 61**, still 0 violations. A
+hand-maintained list of extra names would have had the same defect one refactor later.
+
+That closure needed a real definition test, and building one found a defect in the old one: the
+`{`-before-`;` rule reads `if (isModAlgorithm (x)) {` as a definition, because a call in an `if`
+condition is also followed by a brace. Measured on the real tree, that attributed **11 legitimate
+`prepare()` allocations to a predicate**. The discriminator is what precedes the name.
+
+**The lexer could swallow a real violation.** A raw string literal and a C++14 digit separator each
+leave an unbalanced quote under a line-oriented scan, which blanks to the next quote anywhere in the
+file. The danger is not a false finding but a true one hidden, so both self-test cases are MUST_FIRE
+— an allocation placed after the construct, which must remain visible — and both were confirmed to
+report zero under the previous stripper before being accepted.
+
+**A DECLARED RE-AIM IS NOW A CHECKED CLAIM, and this is the round's most transferable lesson.**
+`DELIBERATE_REAIMS` switches the drift comparison off for one anchor. It must — a deliberate re-aim
+is textually indistinguishable from drift — but nothing then checked the aim, and the tool said so
+in as many words ("verify the aim by hand, not by this tool"). Four anchors declared in the previous
+round were computed before the workflow file settled and never re-derived: `build.yml:562, 1186,
+1608` claimed the three per-OS Configure steps and landed on a composite-action `uses:`, a comment
+inside the valgrind rationale and an `if-no-files-found:` key; `1775-1777` claimed the three
+`codesign` calls and landed on a step header; two 400-line spans claimed the `macos` and
+`macos-intel` jobs and landed in a PowerShell PDB helper and an artifact-upload line. All four were
+green, because the declaration is precisely what stopped the comparison that would have caught them.
+
+Each entry now records **what a reader should find there**, and `verify_reaim_targets` resolves the
+anchor against the current file on every run. It found **two more** misaimed anchors within a minute
+of existing — both `CMakeLists.txt` spans that the previous round had re-spelled mechanically. The
+two job spans became job HEADER lines: one line, one unambiguous token (`macos:`, `macos-intel:`),
+which identifies a job more precisely than a 400-line range ever did and is verifiable forever. A
+substring rather than a range because the claim is "this identifies the codesign calls", not "these
+are bytes 3-40", and a substring survives the reformatting that line numbers do not.
+
+**`ANAMORPH_NONBLOCKING` is now on the definition as well as the declaration.** Clang's
+redeclaration merge already carried the effect to the body — the seeded exit-43 catch proves it —
+but that is a compiler behaviour to lean on rather than a property of the code,
+`-Wfunction-effect-redeclarations` exists because Clang reserves the right to diagnose the split, and
+a reader of the `.cpp` saw no sign the body was under a contract.
+
+**Test 38 stopped degrading silently.** Its malloc probe now escapes through the volatile sink the
+other two probes already used. Measured honestly, that is hardening rather than a bug fix: on g++-13
+at `-O3 -flto` the unescaped pair survives, because this translation unit defines `malloc` and the
+compiler therefore stops treating the call as the builtin `-fallocation-dce` relies on — an accident
+of the configuration, not a guarantee. The substantive half is that the test now distinguishes "the
+malloc half is not **compiled in**" (legitimate on MSVC, macOS and under ASan: warn and assert less)
+from "compiled in and not observing its own probe" (broken: fail). Both printed the same warning
+before.
+
+**Second batch of the same round (2026-08-18): supply-chain pinning, duplication that was a
+correctness hazard, two platform contracts that were claims rather than measurements, the
+dependency-bump instrument, and one measured refusal.**
+
+**Every action ref is now a commit SHA, and the argument is an internal inconsistency rather than
+generic hygiene.** This repository pins JUCE to an immutable commit SHA and `DEPENDENCY_POLICY`
+gives the reason in as many words — so the dependency cannot silently change under a re-pointed
+tag. JUCE is source that gets compiled and never sees a credential; an action is code that executes
+**on the runner with the job's token**. `actions/checkout@v7` was a mutable tag, resolving at the
+time of the change to the same commit as `v7.0.1` with nothing but the tag owner's restraint keeping
+it there. All 40 `uses:` across the five workflows now carry a SHA with the version in a trailing
+comment. The cost is stated in `.github/dependabot.yml` rather than discovered later: a bare major
+is rewritten only when the major moves, a SHA pin on every release, so four more `actions/*`
+dependencies now generate updates — absorbed by the update-type groups that were already there.
+
+**Seven copies of a policy is a policy that can hold in six places.** The Linux jobs each opened
+with `setup-linux.sh` plus a ccache install behind a fallback that must not fail the job, and six of
+the seven copies were byte-identical including the comment. `.github/actions/setup-linux-build`
+collapses them behind two fail-closed inputs. The worked example is this round itself: it had to add
+a compiler pin to exactly one of the seven. What the action deliberately does **not** absorb is the
+per-job cache lineage — that is the part genuinely different in every job, and folding seven
+readable explanations into one parameter would be worse than the duplication.
+
+**The Linux compatibility claim was a statement about CI, and is now a measurement.** A Linux binary
+records the oldest version providing each imported symbol; the maximum is the oldest system that can
+load it at all. Measured: **GLIBC_2.38** and **GLIBCXX_3.4.31** — Ubuntu 23.10+ and GCC 13+ — so the
+shipped VST3 does **not** load on Ubuntu 22.04 LTS. Nobody decided that; `ubuntu-latest` moving to
+24.04 did it, silently and retroactively, with no failure in CI and no line in any diff.
+`scripts/check-linux-abi.py` declares the floor and gates it on what the strip produced, as the `linux`
+job's last step.
+It does not attempt to *lower* the floor — that is an older toolchain or a sysroot, a release-topology
+decision — it makes the run that raises it the run that fails. Its self-test covers the ordering trap
+that makes the naive form wrong (2.38 outranks 2.9 numerically, not lexically) and treats "no version
+references found" as an error, since that is what a mis-invoked `objdump` looks like.
+
+**The Windows toolchain is recorded, and only its ABI series is asserted.** `windows-latest` floats
+and MSVC is auto-detected, so a released `.vst3` could not be traced to the compiler that made it.
+The assertion is deliberately narrow: every 14.x toolset since VS2015 is binary compatible and needs
+the same redistributable, so gating on the exact version would fail on updates that change nothing a
+user can observe. A cache the step cannot read is a `::warning::`, never a failure — a reporting step
+must not decide whether a release ships.
+
+**The macOS symbolication claim was false and is corrected.** `RELEASE_HARDENING_PLAN` read as
+though symbol retention closed on all three platforms and "symbolication now possible" lowered RH-R8
+to Low. True on Linux and Windows; on macOS not partially delivered but **never** delivered, because
+`juce_recommended_lto_flags` is linked into the shipped target and under Release+LTO the DWARF lives
+in ld64's temporary LTO object, deleted before `dsymutil` runs. The packaging step correctly discards
+the empty dSYM — it validates the OUTPUT, not the warning text — and skips the upload every run.
+macOS is the platform whose users most often submit an OS crash log. The fix is named precisely
+(`-Wl,-object_path_lto=<dir>`, which moves where a temporary is written and not what is linked) and
+left open rather than applied blind: it is a shipped-link change on the release job that cannot be
+validated anywhere but macOS.
+
+**`DEPENDENCY_POLICY` rule 2 finally has its instrument in the tree.** Bit-identical engine output
+is the gate a JUCE bump must pass; two bumps passed it, and neither left the tool behind. So the gate
+was permanent and the instrument disposable, and each bump rebuilt it — which is how the first run of
+the original scratchpad tool shipped a scenario set that left `algoAmount` at its identity default,
+hashed all four algorithms the same, and reported a confident nothing. `tests/dsp_dump.cpp` therefore
+checks its own scenarios every run and exits 3 rather than print a table it has not shown to be
+discriminating: all 32 must be repeatable **and** distinct. Verified both ways — 32 pass, two
+consecutive runs are byte-identical, and restoring `algoAmount = 0` reproduces the 2026 defect
+exactly (16 colliding pairs, named, exit 3). Nothing is stored: a committed set of expected hashes
+would be the golden-master baseline this repository rejects, and the question is never "does this
+match a stored value" but "does build A match build B".
+
+**The fuzz gate got a fixed seed, because it is release-blocking.** A release must not be able to
+fail on a lottery. The residual nondeterminism is documented instead of denied: `-max_total_time` is
+wall-clock, so the tail is machine-dependent (measured 792 vs 807 executions across two identical
+local runs), and `-runs=N` would trade that for a machine-dependent *duration*, which on a release
+gate is the worse failure. A finding is reproduced from the uploaded artifact, which is exact.
+
+**The citation gate now reports the declarations its own `--fix` invalidates.** A
+`DELIBERATE_REAIMS` entry is a claim about a spelling, and a re-anchor can falsify it when the anchor
+drifts for an unrelated reason. Section 9 of the self-test already fails on the result and that gate
+holds — but it fires in CI, minutes later, in a different job, knowing only that an entry is dead,
+while `--fix` killed it and is holding the replacement. Observed twice in this change set. Verified
+live: shifting `run-pluginval.sh` by one line produced the warning with
+`update it to scripts/run-pluginval.sh:122`.
+
+**One approved item was measured and NOT implemented, and the measurement is the reason.** Caching
+the JUCE checkout would save at most the JUCE clone's share of a **23–40 s** `Configure` step (two
+observed runs), against an `Install build dependencies` step that varied **92 s to 576 s** between
+those same two runs — the apt install is the dominant per-job cost by an order of magnitude, and the
+clone is a fraction of a step an order of magnitude smaller. The cost side is concrete rather than
+theoretical: ~100 MB per job across ~11 jobs is ~1.1 GB competing for the repository's 10 GB Actions
+cache quota with the ccache lineages that already save minutes each, and GitHub evicts
+least-recently-used. Spending a resource that saves minutes to buy seconds is a net loss, so the item
+is declined with its numbers rather than implemented for completeness. The apt step is the target the
+evidence actually points at, and reducing it means questioning build dependencies (the
+`libwebkit2gtk-4.1-dev` tree, given `JUCE_WEB_BROWSER=0`) — a release-relevant change that needs its
+own evaluation, not a footnote in a CI round.
+
+**Review round (2026-08-18): the allocation guard was blinding the RealtimeSanitizer lane, and the
+static lint's scope was narrower than the policy it enforces. Six confirmed findings, maintainer
+approved; no new ADR — ADR-0029's evidence is corrected in place.**
+
+**The most serious finding is that one new tier disabled another.** RTSan detects allocations by
+intercepting the allocation entry points, and a definition in the program's own object files takes
+precedence over the interceptor in the sanitizer runtime archive. The guard's `malloc` — and its
+`operator new`, which routes through `std::malloc` — therefore reached glibc without ever passing
+RTSan. Measured on the real suite with one escaping `malloc` seeded into `AnamorphEngine::process`:
+guard compiled in → **RTSan reports 0, exit 1** (only the guard's own assertion); guard compiled out
+→ RTSan reports the malloc at `AnamorphEngine.cpp:668`, **exit 43**. The liveness canary could not
+have caught it, being compiled standalone without the guard: it kept proving the lane was live while
+the binary it vouches for had lost its allocation detection.
+
+Two measurement traps had to be cleared to see this at all, both the same class ADR-0029 §5 already
+documents. A first seeded `juce::AudioBuffer` looked like a successful detection, but the report
+named **`free`**, not `malloc` — the guard leaves `free` to RTSan, so the *deallocation* was caught
+while the allocation was invisible; only a seed that allocates without freeing inside `process`
+isolates the question. And a first "escaping" seed was **elided by the optimizer** (`objdump`: zero
+`malloc` call sites in the engine object), so it proved nothing until an `asm volatile` barrier kept
+it. The fix is `__has_feature(realtime_sanitizer)` in the guard itself rather than a flag on the
+job, so a local `-fsanitize=realtime` build cannot reintroduce the conflict by forgetting it.
+
+**The static lint enforced a narrower scope than the policy it cites.** The Policy binds
+"`processBlock` / `AnamorphEngine::process` and every DSP module's `process`/`reset`", but the lint
+scanned `src/dsp` only — omitting `AnamorphAudioProcessor::processBlock`, the first function named —
+and listed `reset` in an exemption set. That exemption was also *dead code*: the extractor only
+yields functions matching its audio-path regex, which never contained `reset`, so the eight module
+reset bodies were never scanned while a self-test case asserted that allocation there was permitted.
+Scope is now the Policy's scope (`src`, plus `reset`/`softReset` — the latter is called from
+`process` at `AnamorphEngine.cpp:701`), the exemption list is gone rather than fixed, and coverage
+went from **7 scanned bodies to 35**. The tree stays at 0 violations; seeded violations in a module
+`reset` and in the wrapper `processBlock` are both caught at the exact line.
+
+**Two smaller corrections.** The guard gained the **C++17 over-aligned** `operator new`/`delete`
+family, paired to `aligned_alloc`/`std::free` or `_aligned_malloc`/`_aligned_free` — the route that
+matters most on MSVC and macOS, where the malloc half never compiles in and JUCE's SIMD types are
+over-aligned. Its self-check probes it separately (a live plain `operator new` does not imply a live
+aligned one) and needed the same escape-the-optimizer treatment: `new`/`delete` of a non-escaping
+object is elidable under C++14 and was being elided at `-O3`, reporting the half dead while it
+worked. And the header's configuration table said the guard was live under valgrind while the
+paragraph below it and the workflow both said the opposite; the table was the stale half.
+
+**Counts re-derived from the binaries rather than from the review:** 37 DSP tests + the A/B guard,
+**160** checks (the aligned-liveness assertion is the 160th), 13 state tests, 900 checks. The RTSan
+build reports **156** — Test 38's assertions stand down there by design, which the run discloses.
+
+**Allocation guard + static realtime lint (2026-08-18): ADR-0029's three tiers are complete. Plus
+two review corrections. No new ADR — the decision was already made and this is its implementation.**
+
+**The guard is the tier that reaches MSVC.** RTSan is the strongest realtime tool here and the least
+portable: Clang, Linux/macOS only, while the shipped Windows binary is MSVC's. `operator new`
+replacement is standard C++ on every conforming implementation, so `tests/AllocationGuard.h` +
+Test 38 count allocations while `process()` runs and assert zero over **3,840 armed calls** across
+the algorithm × oversampling × M/S matrix. The split between the two counters is load-bearing rather
+than cosmetic: measured on this project a single `prepare()` allocates **102** times through
+`operator new` and **663** through the malloc family, because JUCE's `AudioBuffer`/`HeapBlock` take
+the raw-malloc route — so an `operator new`-only guard would miss the allocation JUCE actually
+performs most. Both classes were seeded into the real `AnamorphEngine::process` and caught: a
+`juce::AudioBuffer` (`malloc=1`) and a `std::vector` growth (`new=1`), each failing the suite exit 1.
+
+**Two of ADR-0029's own predictions about the guard were wrong, and both are corrected in place.**
+(1) It anticipated a review-gated CMake change; none was needed — the guard is a header included by
+`dsp_tests.cpp`, and the one build that must exclude it does so through a compile flag on that job's
+existing configure line. (2) It attributed the valgrind hazard to `vgpreload` replacing the
+interposers. The real mechanism is that memcheck tracks which allocator produced each block and
+intercepts the `new`/`delete` and `malloc`/`free` families **separately**, so an `operator new`
+returning `std::malloc` memory reads as *"Mismatched free() / delete []"* on every later delete.
+That distinction mattered practically: a small standalone probe does **not** reproduce it and
+reported 0 errors, and only running the real JUCE-linked suite under the pipeline's exact invocation
+exposed it. The ASan hazard was confirmed as written.
+
+**Four configurations of the same suite, measured, because "no allocations" and "nothing was
+counting" print identically.** GCC Release and RTSan: both halves live, 0 allocations. ASan: malloc
+half compiled out (an exe-defined `malloc` fights ASan's allocator), `operator new` half still
+asserting. valgrind: the whole guard compiled out via `-DANAMORPH_NO_ALLOC_GUARD`, memcheck 0
+errors. Every inactive half is announced with a `::warning::` and the assertion skipped — never a
+silent pass.
+
+**The static lint earns its place by covering what neither runtime tier can.** RTSan and the guard
+are runtime tools: they see only the code the suite executes, and measured coverage of `src/dsp` is
+93.4 % of lines / 79.9 % of branches. `scripts/check-realtime.py` reads the branches the suite never
+takes, on every platform, with no build. It is **function-scoped**, and that is the whole design —
+the eight `setSize` calls in `AnamorphEngine.cpp` are all inside `prepare()`, where the policy
+*requires* allocation, so a file-wide token scan would flag legitimate code and be switched off.
+Comments and string literals are blanked before matching (both shapes exist in this tree: a
+"the new-cutoff bank" comment, and diagnostic strings). Self-test: 19 cases both directions; real
+tree: 23 files, **0 violations**; a `new` seeded into the real `process()` is reported at the exact
+line.
+
+**Review corrections in the same change set.** (1) `THREAD_MODEL.md` contradicted itself: its
+Threads-section evidence line had been corrected to `:672` / `:675-681` / `:295-309` while five
+other references still pointed at pre-growth locations (`:246-256` for the OpenGL gate, `:1151-1152`
+for `triggerRepaint`, `:616-622`, `:613,917-1003`, `:627-632`). All five re-derived from the source
+and verified line by line; the two table rows were path-qualified so the citation gate tracks them
+from here on. (2) The claim that the new lanes "cannot withhold an artifact" was **false for
+releases**: `release.yml` calls `build.yml` as one job and `draft-release` is
+`needs: [validate, build]`, so a called workflow's aggregate result is what that edge observes and
+any job here skips the draft release. The per-push artifact statement was true and is kept; the
+release scope is now stated beside it in `build.yml`, `CI_CD.md` and ADR-0029's Consequences. No
+workflow was redesigned — `RELEASE_POLICY.md` §Artifacts already says the `build.yml` gates are
+reused unchanged, so the behaviour was correct and only the wording was not.
+
+**Realtime-enforcement strategy, ADR-0029 (2026-08-18): the Priority-1 policy acquires its first
+mechanical detector. Plus the PR review cleanup that preceded it. `Accepted` on maintainer approval;
+amends no Policy — it implements enforcement for one that already existed.**
+
+**`REALTIME_AUDIO_POLICY` had no gate, and the tools already in the pipeline structurally cannot
+provide one.** ASan finds out-of-bounds and lifetime bugs, UBSan finds undefined behaviour, valgrind
+finds uninitialised reads; a `malloc` added to `AnamorphEngine::process` is, to every one of them, a
+perfectly correct allocation. RealtimeSanitizer is the only tool here that asks *where* it happened.
+`AnamorphEngine::process` now carries `ANAMORPH_NONBLOCKING` and the new `realtime` job builds the
+DSP suite with `-fsanitize=realtime` and runs it. Demonstrated both ways before landing: the whole
+156-check matrix runs violation-free (1.6 s), and a seeded `juce::AudioBuffer` allocation inside
+`process` fails the run at **exit 43**, naming `AnamorphEngine.cpp:664` through
+`juce_HeapBlock.h:356` — a useful diagnostic, not just a non-zero exit.
+
+**Four decisions in the ADR are refusals, each on measurement rather than taste** — and the first of
+them has since been narrowed by a further measurement rather than reversed. `-Wfunction-effects` is
+NOT enabled **on the audio path**: the annotated engine TU emits **52** warnings, dominated by JUCE
+calls whose definitions the TU cannot see (`Oversampling::reset` ×9, `FloatVectorOperations::copy`
+×6), and JUCE 9.0.1 carries **zero** annotations of its own — the warnings are about correct code.
+Every one of those 52 is transitive through JUCE, so they appear only where JUCE does: over the
+**JUCE-free leaf layer** the same flag emits **0**, and it still fires precisely (the seeded
+`ANAMORPH_EFFECTS_CANARY` call to an allocating helper fails by name; this entry first named
+`anamorph::applyWidth`, whose visible `inline` definition makes it inferred-clean instead). It is
+therefore enabled there, as
+`-Werror=function-effects -fsyntax-only` over `tests/realtime_effects.cpp` in the `realtime` job —
+compile-only, seconds, no target added to the shipped build. That is the scoping recorded in
+ADR-0029 §3; the refusal for the engine TU stands unchanged.
+`-Wperf-constraint-implies-noexcept` is NOT enabled either, for the opposite reason: it fires on
+definitions whose effects imply `noexcept`, and the entry point is already `noexcept`, so it would
+gate on nothing. RTSan is NOT folded into the `sanitizers` job — the clang driver *rejects*
+`realtime` alongside `address`, `undefined`, that job's actual `address,undefined,vptr` set, or
+`thread`. And the lane sets **no `RTSAN_OPTIONS`**: `halt_on_error=false` makes the process print its
+violation reports and still exit **0**, which is the gate-that-cannot-fail this repository's testing
+policy is written against.
+
+**The annotation is byte-identical in object code, which is what let it touch a frozen audio path.**
+`src/dsp/AnamorphEngine.cpp` compiled by clang-22 at `-O3` with the project's flags produces the same
+object with the attribute live and with the macro emptied. The spelling had to be corrected against
+the compiler rather than from memory: it is a **type** attribute (after the parameter list), and the
+prefix form is a hard error — *"'clang::nonblocking' attribute cannot be applied to a declaration"*.
+The `__has_cpp_attribute` guard is what keeps GCC's `-Wattributes: scoped attribute directive
+ignored` (2 lines, measured on the raw spelling) out of the Clang warning gate.
+
+**The canary's first draft was defeated by its own error message, and running it caught that.**
+`TESTING_POLICY` rule 4 demands a lane prove it can fail. The canary commits a real *escaping*
+allocation — escaping because a non-escaping `malloc`/`free` pair is elided at `-O2` (measured: exit
+0 instrumented at `-O2`, exit 43 at `-O0`), so the obvious canary passes while the tool works
+perfectly. The workflow step then asserts a non-zero exit **and** the sanitizer's report. The first
+draft grepped for the bare word `RealtimeSanitizer`, which the canary's own failure text contained,
+so an uninstrumented build satisfied it — a dead lane reporting itself live. Found by running the
+step's logic against a deliberately uninstrumented build before the job ever ran in CI; the message
+no longer carries the token and the grep matches `ERROR: RealtimeSanitizer`.
+
+**The cross-platform tier is scheduled, not shipped, and the ADR says so.** The allocation guard
+(7,680 armed calls, zero allocations, both seeded classes caught) and the static realtime lint reach
+where RTSan cannot — the `operator new` half works under **MSVC**, which RTSan never covers. They
+are held back because the guard needs a CMake target-level change (review-gated Build System class)
+and carries two demonstrated CI hazards: an exe-defined `malloc` **segfaults** under ASan, and
+valgrind's `vgpreload` silently replaces the interposers. Landing three enforcement mechanisms at
+once, two unproven in CI, is how a gate gets switched off.
+
+**Review cleanup in the same change set.** Three findings, each verified against the tree before
+acting: the CI job inventories in `CI_CD.md`, `TESTING.md` and `REPOSITORY_MAP.md` still said *four*
+non-packaging jobs (now **six**, with the matrix/table rows and the ccache-lineage note synced); the
+test counts in `REPOSITORY_MAP.md`, `RELEASE_HARDENING_PLAN.md` and `HANDOVER.md` still read
+33/12/140/894 (**36/13/156/900** at that point in this change set, taken from the registrations in `main()` and a real run; Tests 38 and the aligned-guard check landed later in the same PR — the final figures are in the newest entry above);
+and the wrapper test's RMS diagnostic said "240 blocks" while the accumulator only runs in the
+120-block noise phase — corrected via a named `blocksPerPhase` constant so the literal cannot drift
+from the loop again. Historical records were deliberately left alone: ADR evidence sections,
+`DEPENDENCY_POLICY`'s compliance log and `CI_CD.md`'s Clang-22 verification paragraph state what a
+past run measured, and those are append-only.
+
+**Engineering-capability audit (2026-08-18): extended UBSan coverage, the LTO validation gap,
+the wrapper audio path + three DSP feature-coverage tests, `preflight.sh`, and the realtime-doc
+anchor rot. Six adopted improvements, every one demonstrated before landing; the RealtimeSanitizer
+decision stays reserved for its own ADR (ADR-0028), as do all CMake-structure changes (gated).**
+
+**The sanitizers job now checks five more UBSan groups, chosen by census rather than by list.**
+`-fsanitize=undefined` does not contain `float-divide-by-zero`, `implicit-conversion`,
+`unsigned-shift-base`, `local-bounds` or `nullability`; a census build with the candidates enabled
+ran both suites and measured **zero** diagnostics under all five, so they gate for free. The full
+`integer` group was measured too and is **deliberately absent**: its `unsigned-integer-overflow`
+half fired 8 times on legal, intentional wraparound (JUCE string hash, `Random` LCG, `Thread` tick
+arithmetic, libstdc++'s mersenne twister) and under `halt_on_error=1` would redden the job on
+correct third-party code. One sharp edge is written beside the flags: `local-bounds` is trap-based
+and can fail by SIGILL with no diagnostic text. `ASAN_OPTIONS` gains
+`check_initialization_order=1:strict_init_order=1:strict_string_checks=1` (measured clean);
+`detect_stack_use_after_return` is deliberately NOT written because it is clang-22's Linux default
+— demonstrated, not assumed — and restating a default is the copy that rots. The `detect_leaks=0`
+comment's factual half ("JUCE singleton teardown reports") was retested and is no longer true —
+both suites run leak-clean under `detect_leaks=1` — and the flag has now been **flipped to `1`**, so
+LeakSanitizer is a gate on this job rather than a suppressed detector with nothing left to suppress.
+A leak in a plug-in process is a leak in a host that stays open for hours, so a report here is to be
+investigated; the one place `detect_leaks=0` survives is the `fuzz` job, where the harness leaks
+JUCE's `ScopedJuceInitialiser_GUI` deliberately (see below).
+
+**The self-test suites had never executed link-time-optimized codegen, and the shipped binary is
+nothing else.** The plugin alone links `juce_recommended_lto_flags`; both console suites
+deliberately do not. The new `linux-lto-tests` job builds and runs both suites with the identical
+plain `-flto` spelling on the same GCC that builds the shipped Linux artifact — via the CMake cache
+variables, because linking the JUCE interface target into the test targets would be a
+CMake-structure change and that class is review-gated (`ARCHITECTURE_REVIEW_GATE.md`). Demonstrated
+before landing: the LTO build of both suites passes locally (275 s on 4 cores; the state-suite LTO
+link dominates because plain `-flto` runs LTRANS serially — true of the shipped link too).
+
+**The state suite gained the wrapper audio path, which makes an existing workflow comment true.**
+`build.yml`'s valgrind rationale has long said the read that matters "runs through the real wrapper
+`processBlock` — which only AnamorphStateTests drives"; measured 2026-08-18, `grep -c processBlock
+tests/state_tests.cpp` was **0** — no test in either suite drove the wrapper's audio path, so the
+sentence was aspirational. `testWrapperProcessBlockAudioPath` now drives the real
+`AnamorphAudioProcessor::processBlock` over a denormal-provoking noise→silence matrix with **no
+test-side FTZ arming**, regressing `processBlock`'s own `ScopedNoDenormals` (the DSP suite's own
+denormal matrix arms FTZ in the harness, so it could never catch the wrapper losing its guard); a
+liveness RMS check proves the invariant is not vacuously green. Three DSP feature gaps found by a
+line/branch coverage run (93.4% lines / 79.9% branches over src/dsp, with `monoSum`, M/S input
+solo and the Level-Match injection consume paths at zero) are closed by Tests 35–37 — Test 37's
+first draft asserted a *frozen* injected trim and failed, which is how the actual contract
+(injection is a SEED the measurement re-converges from, `LoudnessMatch.h:63-69`) got asserted
+instead; the suites stood at **156 + 900 checks** after that round (were 140 + 894).
+
+**The realtime documentation had rotted around code growth, and only the untracked spellings let
+it.** `REALTIME_SAFETY_AUDIT.md` cited `processBlock` at `PluginProcessor.cpp:64-131` (actual:
+117-185), the engine at `:26-113 vs :472-899` (actual: 28-113 vs 660-1339) and the NaN self-heal
+at `:847-870` (actual: 1256-1290); `REALTIME_AUDIO_POLICY.md:34` and `THREAD_MODEL.md:16-17`
+carried the same class. Every corrected anchor was measured against the tree, the previously BARE
+filenames are now path-qualified so `check-citations.py` tracks them from here on, and the four
+already-tracked corrections are declared in `DELIBERATE_REAIMS` (the tool rightly refuses a
+re-aim it cannot map — its base text never moved; the aim was wrong, not drifted). The audit's
+JUCE-oversampler TODO stays open but now carries the first measurement: an interposition probe
+counted zero audio-path allocations through `Oversampling::processSamplesUp/Down` at ×2/×4/×8
+across 7,680 armed process calls, with the expected `prepare()` allocations (102 `new` + 663
+`malloc`) as the positive control.
+
+**`scripts/preflight.sh` exists because this branch kept paying a CI round trip for lint verdicts
+that cost 5 seconds locally.** It runs the four lints with their self-tests, the citation gate
+against BOTH bases that can disagree (`origin/main` and the branch merge base), and the built test
+suites — skipped WITH A NOTE when no built tree exists, never silently (the `build.sh` stale-binary
+lesson). Measured: 5.5 s end to end on a built tree. It states its own limit out loud: the full
+Clang warning gate needs a clang build log, so only that lint's self-test runs locally.
+
+**Anchor bookkeeping for this round, same discipline as the last two.** The `sanitizers` job's
+comments grew build.yml by 27 lines above `windows:` (the LTO job was appended at the END of the
+file precisely so nothing below it exists to shift); the five tracked build.yml anchors were
+recomputed by `--fix` against the push predecessor and read back by hand (`macos` `:1482-1942` →
+`:1509-1969`, its rationale `:1943-1999` → `:1970-2026`, `macos-intel` `:2000-2245` →
+`:2027-2272`, the codesign trio `:1713-1715` → `:1740-1742`, the per-OS Configure trio
+`:546,1124,1546` → `:546, 1151, 1573`), and the matching `DELIBERATE_REAIMS` declarations were
+updated in the same change — section 9 of `--self-test` failed 4 cases until they were, the third
+time that assertion has caught exactly this.
 
 **Dependency-update audit: Clang 18 → 22 (upstream stable, installed from apt.llvm.org), and
 Dependabot split into two semver groups (0.9.4, no version bump). No `src/`, `tests/`,
@@ -273,7 +1400,7 @@ happened. Another sits two lines from a sibling reference in the *same* historic
 already been protected, so a `--fix` would have rewritten half a paired record and frozen the other
 half. The discriminator that survives: **is the number the subject of the sentence, or a pointer to a
 thing?** Exactly one `CMakeLists.txt` citation in this document is the latter — "*it is*
-`CMakeLists.txt:314-323`", present tense, where re-anchoring preserves truth — and it is deliberately
+`CMakeLists.txt:370-379`", present tense, where re-anchoring preserves truth — and it is deliberately
 left live so the gate still demonstrably checks real evidence here.
 
 Verified by mutation rather than by reading: a line inserted into `CMakeLists.txt` above all of them,
@@ -298,7 +1425,7 @@ Review found two anchors the previous round missed, both below its insertion poi
 to the new gate for the same reason: they are spelled as **bare continuations**
 (`` `path/to/file:188-199` … `:292-301` ``), which the parser only recognises in the
 `path:a,b,c` form. `ADR-0001`'s "tests link the core" pointed at `juce::juce_opengl` inside the
-*plugin*'s link block; it is `CMakeLists.txt:314-323`. `BUILD.md`'s compile-definition list cited
+*plugin*'s link block; it is `CMakeLists.txt:370-379`. `BUILD.md`'s compile-definition list cited
 `:277-284` while listing `ANAMORPH_BUILD_NUMBER` — a definition that range no longer contains, since
 scoping moved it to `:274-275`; widened to `:274-284`, deliberately as **one** anchor, because a
 citation whose anchor *count* changes lands in the "review by hand" branch no declaration can excuse.

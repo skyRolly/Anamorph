@@ -79,7 +79,7 @@ Evidence [Verified]: release.yml.
 ## Build matrix
 
 Every push builds the full set of formats on all three desktop OSes — plus a **second macOS job
-that ships nothing and exists only to execute on Intel silicon** — alongside four non-packaging
+that ships nothing and exists only to execute on Intel silicon** — alongside seven non-packaging
 jobs that guard classes the build matrix cannot see:
 
 | Job | Runner | Builds | pluginval |
@@ -93,10 +93,22 @@ jobs that guard classes the build matrix cannot see:
 | **windows** | `windows-latest` (MSVC, multi-config) | VST3 + Standalone (+ tests) | VST3, **both modes ×3** — **blocking** |
 | **macos** | `macos-latest` (Apple Silicon) | universal VST3 + AU + Standalone (+ tests) | **VST3 and AU**, both modes ×3 each — **blocking** |
 | **macos-intel** | `macos-15-intel` (**native Intel**) | thin x86_64 VST3 + AU (+ tests); Standalone off; **no packaging, no artifacts** | **VST3 and AU**, both modes ×3 each — **blocking** |
+| **linux-lto-tests** | `ubuntu-24.04` (**pinned image**, pinned `g++-13`) | GCC `-flto`: both test targets only (Standalone off); **no packaging, no artifacts** | — (the suites against LTO codegen, plus the GCC warning gate) |
+| **realtime** | `ubuntu-latest` | Clang `-fsanitize=realtime`: the DSP suite only (Standalone off); **no packaging, no artifacts** | — (the audio path under RealtimeSanitizer, plus the leaf-layer `-Wfunction-effects` check) |
+| **fuzz** | `ubuntu-latest` | Clang libFuzzer + ASan/UBSan: `AnamorphFuzzState` only (tests and Standalone off); **no packaging, no artifacts** | — (`setStateInformation` under libFuzzer) |
 
 None of these jobs is in a `needs:` chain, in either direction. A prose defect, a
 portability lint hit or a sanitizer finding fails the run without skipping a binary that is
 otherwise fine, and a red build does not skip them.
+
+**That is a statement about *this* workflow, and the release path is different.**
+`release.yml` calls `build.yml` as a single `build:` job and its `draft-release` job is
+`needs: [validate, build]`. A called workflow's aggregate result is what that edge observes, so on
+a release tag **every** job here — including `sanitizers`, `linux-lto-tests`, `realtime` and `fuzz` — is
+release-blocking: a failure in any of them skips the draft release, even though the per-push
+artifacts were still uploaded. That follows `RELEASE_POLICY.md` §Artifacts ("the existing
+`build.yml` gates are reused unchanged") and is the intended behaviour; the absence of a `needs:`
+edge above must not be read as release non-blocking.
 
 ### What the non-packaging jobs are for
 
@@ -111,8 +123,31 @@ otherwise fine, and a red build does not skip them.
   `linux-clang` would not catch it. The tree is clean of it; the job is a regression guard.
   (b) the **evidence-anchor gate**: `docs/` carries 184 `file.cpp:NNN` citations, and an edit above
   one silently re-aims it. See [Evidence anchors](#evidence-anchors).
-  Each of the two runs its own `--self-test` **first**, in this job, immediately before the lint it
-  verifies — the same load-bearing move as `docs`, and required by `TESTING_POLICY.md` rule 4. The
+  (c) the **static realtime lint** (`check-realtime.py`, ADR-0029): the bodies of audio-path
+  functions are scanned for the `REALTIME_AUDIO_POLICY` forbidden list. Its scan root is **`src`**,
+  not `src/dsp`, because the Policy's first named function,
+  `AnamorphAudioProcessor::processBlock`, is not under `src/dsp`; module `reset`/`softReset` bodies
+  are in scope for the same reason. It is the third realtime tier and the only one that reads code
+  the DSP suite never executes — RTSan and the allocation guard are runtime tools, and the suite
+  covers 93.4 % of lines / 79.9 % of branches in `src/dsp`.
+  Function-scoped deliberately: `prepare()` is *required* to allocate, so a file-wide
+  token scan would flag the eight legitimate `setSize` calls in `AnamorphEngine.cpp` and be switched
+  off.
+  **The scanned set is the audio thread's REACHABLE set, not a list of names** (2026-08-18). The
+  Policy-named functions are the seeds; from each, every callee **defined in the same file** is
+  scanned too, transitively. Before that, a helper was invisible purely because of what it was
+  called — `AnamorphEngine::updateDerived()` (run at the bottom of a switch duck) and
+  `VelvetNoise::updateWeights()` (run per block while the density glide moves) are audio-thread code
+  that no version of a hand-maintained name list would have kept up with. 35 bodies became 61.
+  `prepare`/`prepareToPlay`/`releaseResources` are never followed, which is how allocation stays
+  legal where the Policy says it is legal. The forbidden set also gained the forms this codebase
+  actually writes — `.assign`, `.insert`, `make_unique`, `make_shared` — which it had been missing:
+  `.assign` is the allocation idiom of every DSP module and `make_unique` is how the engine
+  allocates its oversamplers, so the likeliest regression was the one the lint could not see.
+  Each of the three runs its own `--self-test` **first**, in this job and ahead of the lint it
+  verifies — the step immediately before, for the two that can be; for `check-citations.py` its own
+  step ahead of the one that resolves the base revision and then compares, which is the job-and-order
+  form `TESTING_POLICY.md` rule 4 requires. The same load-bearing move as `docs`. The
   portability self-test is not the same check as `--compile-canary` in `linux-clang`: that one asks
   whether the pinned JUCE still *has* the hazard, this one whether the checker still *finds* it, and
   a green canary over a dead scanner reports a clean tree.
@@ -142,11 +177,27 @@ otherwise fine, and a red build does not skip them.
   *manifest* elsewhere: Linux hands back zero-filled pages and macOS does not, so an uninitialised
   read of DSP state is benign here and arbitrary there. MemorySanitizer is deliberately not used —
   it needs every dependency including JUCE instrumented, and an uninstrumented one produces false
-  positives rather than silence; memcheck answers the same question with no rebuild. valgrind runs
+  positives rather than silence; memcheck answers the same question with no rebuild. The UBSan list
+  is `undefined` plus `vptr` (C++ only — Clang 21 dropped it from the group, ADR-0028) plus five
+  groups outside `undefined`, added 2026-08-18 after a census run showed both suites execute ZERO
+  diagnostics under them: `float-divide-by-zero`, `implicit-conversion`, `unsigned-shift-base`,
+  `local-bounds` (trap-based — a hit can die by SIGILL with no diagnostic text), `nullability`. The
+  full `integer` group is **deliberately absent**: its `unsigned-integer-overflow` half flags legal,
+  intentional wraparound (JUCE string hash, `Random` LCG, tick arithmetic, libstdc++'s mersenne
+  twister — all census-measured) and would fail the job under `halt_on_error=1` on correct
+  third-party code. `ASAN_OPTIONS` adds `check_initialization_order=1:strict_init_order=1:`
+  `strict_string_checks=1` (measured clean on both suites). valgrind runs
   **both** suites because the read that would matter runs through the real wrapper `processBlock`,
-  which only `AnamorphStateTests` drives. `--error-exitcode=1` makes a finding fail the job (not
-  valgrind's default). `detect_leaks=0` — JUCE's singletons are torn down at exit in ways
-  LeakSanitizer reports and this is not a leak gate.
+  which only `AnamorphStateTests` drives (`testWrapperProcessBlockAudioPath` — before 2026-08-18 no
+  test in that suite called `processBlock` and this sentence was aspirational; the workflow comment
+  says so too). `--error-exitcode=1` makes a finding fail the job (not
+  valgrind's default). **`detect_leaks=1` — LeakSanitizer is a gate here now.** The old
+  justification for `0` (JUCE singleton teardown reports) was retested 2026-08-18 and no longer
+  held: both suites already ran leak-clean, so the flag was suppressing a detector that had nothing
+  to suppress. It was flipped in the same cycle. The consequence is the point of the change — a leak
+  introduced in an audio-plugin process is a leak in a host that stays open for hours — so a report
+  here is to be **investigated**, never answered by setting it back to `0`. (The `fuzz` job is the
+  one place that still runs with `detect_leaks=0`, for a specific and documented reason: see below.)
   The valgrind step sets **`ANAMORPH_TESTS_NO_FTZ=1`**, which relaxes exactly one assertion and only
   under this tool. `juce::ScopedNoDenormals` sets the CPU's FTZ/DAZ bits so a denormal result is
   flushed to zero *in hardware*; valgrind emulates floating point and does not honour those bits, so
@@ -158,6 +209,98 @@ otherwise fine, and a red build does not skip them.
   anywhere else. (Pointing valgrind at the state suite alone was the alternative and was rejected:
   that suite passes under memcheck untouched, but it would leave the DSP suite with no
   uninitialised-read detector at all.)
+- **realtime** — the DSP suite built with **`-fsanitize=realtime`** and run (added 2026-08-18,
+  ADR-0029). It is the first mechanical detector for `REALTIME_AUDIO_POLICY`, the repository's
+  Priority-1 policy, which was previously enforced only by review and a hand-written audit: ASan,
+  UBSan and valgrind all treat a `malloc` added to `AnamorphEngine::process` as a perfectly correct
+  allocation, and RTSan is the only tool here that asks *where* it happened. It needs **its own job**
+  by driver restriction — clang rejects `-fsanitize=realtime` alongside `address`, `undefined`, this
+  pipeline's `address,undefined,vptr` set, or `thread`. The job sets **no `RTSAN_OPTIONS`** and that
+  is load-bearing: RTSan halts on the first violation by default, and `halt_on_error=false` makes the
+  process print its reports and still exit 0. A **liveness canary** (`tests/realtime_canary.cpp`)
+  compiles and runs first and the step fails unless it aborts *with* a sanitizer report — the same
+  prove-it-can-fail discipline as the seven lints' `--self-test`s.
+  The job also runs **`-Werror=function-effects` over the JUCE-free leaf layer**
+  (`tests/realtime_effects.cpp`, `-fsyntax-only`, seconds): a driver function annotated
+  `ANAMORPH_NONBLOCKING` calls `MidSide`, `LR4Xover`, `ScopeBuffer`, `CorrelationMeter` and
+  `LevelMeters` exactly as the audio path does, so the compiler proves those bodies effect-clean
+  *before* any test runs them. That scope is the whole point and is measured, not assumed: over the
+  leaf layer the flag emits **0** diagnostics and still fires precisely (the seeded
+  `ANAMORPH_EFFECTS_CANARY` call to an allocating helper fails the step by name — *not* a call to
+  `applyWidth`, which this page named until 2026-08-19: its definition is visible in that TU, so
+  Clang infers its effects and the driver's own call to it is clean), while over `AnamorphEngine.cpp` it emits **52**
+  from JUCE calls whose definitions the TU cannot see — JUCE 9.0.1 carries no annotations of its own.
+  So the flag is enabled exactly where it is signal and stays off where it is noise; ADR-0029 §3
+  records both measurements and the boundary between them.
+  That TU is compiled **twice**, and the second compile is this gate's liveness proof: a clean
+  compile is its whole output, and an unrecognised `-Werror=<name>` is only a *warning* to Clang, so
+  a renamed or dropped `function-effects` would leave the step exiting 0 while checking nothing
+  (measured on Clang 22.1.8 — with the option misspelled, a TU carrying a real violation compiles
+  with status 0). The second compile adds `-DANAMORPH_EFFECTS_CANARY`, which seeds an allocating
+  non-annotated helper and a call to it into the same file, and the step fails unless that compile
+  fails *with* a `-Wfunction-effects` diagnostic. `-Werror=unknown-warning-option` on both compiles
+  makes the renamed case fail on the *first* compile and by name; the canary would catch that case
+  too — a name Clang no longer knows is a diagnostic it no longer emits — and additionally covers
+  the one the flag never can, an option still accepted but no longer implemented.
+  RTSan is the strongest of the three realtime tiers but the least portable — Clang, Linux/macOS
+  only. The **allocation guard** compiled into the DSP suite (Test 38) covers the shipped toolchains
+  it cannot reach, MSVC included, because `operator new` replacement is standard C++; it runs in
+  the jobs that build that suite rather than in one of its own. Two builds compile it out and the
+  test says so in both: the valgrind build by flag (`-DANAMORPH_NO_ALLOC_GUARD`), and **this job**
+  by self-detection — the guard's interposers would otherwise shadow RTSan's allocation
+  interceptors and blind the lane (measured, ADR-0029 §7).
+  That self-detection is a single spelling — `__has_feature(realtime_sanitizer)` — and since
+  2026-08-19 it is **cross-checked rather than trusted**: the job's `CMAKE_CXX_FLAGS` carry
+  `-DANAMORPH_RTSAN_LANE=1` beside `-fsanitize=realtime`, and `tests/AllocationGuard.h` `#error`s if
+  the lane is declared but the guard did not stand down. The two statements sit on one line and
+  cannot drift apart; the check is deliberately *not* keyed on the feature macro, because a test
+  that consults the signal it is verifying proves nothing. Without it, a renamed or removed feature
+  name would silently compile the guard back in and the lane would report a clean run with its
+  **allocation** detection switched off — lock and blocking-call interception survives, but
+  allocation is the class this suite exists to police, and on a healthy tree the run exits 0 either
+  way.
+- **linux-lto-tests** — both suites built and run with `-flto` on GCC Release (added 2026-08-18),
+  and the **GCC-only first-party warning gate** (§The GCC warning baseline).
+  The shipped plugin is the only target linking `juce::juce_recommended_lto_flags`, and the test
+  targets deliberately do not (so the sanitizers job builds them cleanly and quickly) — which meant
+  no behavioural assertion had ever executed link-time-optimized codegen while the binary users load
+  is exactly that. This job runs the identical `-flto` spelling through the CMake cache variables so
+  no CMake structure changes (a CMake-structure change is a gated Build System change); pluginval
+  still validates the shipped bytes for conformance, this job validates the numeric assertions under
+  the shipped optimization class. Not in any `needs:` chain, same reasoning as `sanitizers`.
+  It also carries the **GCC warning gate**, and carries it *here* rather than in a job of its own
+  because its two targets are already the whole first-party surface: `AnamorphStateTests` compiles
+  `${ANAMORPH_PLUGIN_SOURCES}` and both targets compile `src/dsp/*.cpp` through the `AnamorphDSP`
+  INTERFACE library, so the gate costs one `tee` and one Python invocation rather than a runner.
+- **fuzz** — `setStateInformation` under **libFuzzer**, with ASan + UBSan as the oracle (added
+  2026-08-18). This is the one entry point where the plug-in parses bytes it did not write: a session
+  saved by an older version, a preset from another machine, a host that truncated a chunk.
+  `AnamorphStateTests` already drives the *shaped* cases — three legacy fixtures, a garbage blob, an
+  out-of-range A/B index, unknown fields, a corrupt slot — and every one of them exists because a
+  human thought of it first; this is the part that does not have to. A **rejected** blob is a pass,
+  because refusing malformed state is what the path is for; the failure condition is a sanitizer
+  report, not an assertion. It is **bounded** so it stays a gate rather than a background service: a
+  fixed `-max_total_time=90` from the three committed corpus seeds in `tests/fuzz-corpus/`
+  (which libFuzzer also writes its own discoveries back into — harmless on a CI checkout, and
+  `.gitignore`d so a local run cannot commit them)
+  (real fixtures in JUCE's `copyXmlToBinary` framing, so the fuzzer starts from inputs that already
+  reach the parser), under a **fixed `-seed`** — the same discipline `run-pluginval.sh` applies to
+  its deterministic mode, and for a sharper reason: this job is release-blocking through
+  `release.yml`'s aggregate dependency, and a release must not be able to fail on a lottery. The
+  honest limit is stated rather than papered over: `-max_total_time` is wall-clock, so a slower
+  runner executes fewer inputs and the *tail* of the exploration is machine-dependent (measured: 792
+  vs 807 executions across two identical local runs). `-runs=N` would be exactly reproducible but
+  would make the duration machine-dependent instead, and a release gate that can overrun its timeout
+  on a slow runner is the worse failure. So a finding is reproduced from the **uploaded artifact**,
+  never by re-running the fuzzer — the harness feeds its input to the real entry point unmodified,
+  so those bytes reproduce exactly, on any machine. A crashing input is uploaded as `Anamorph-fuzz-findings` — libFuzzer writes the
+  exact reproducing bytes and the harness feeds its input to the real entry point unmodified, so the
+  artifact is a host chunk that reproduces by being handed back. `detect_leaks=0` here is deliberate
+  and is **not** a gap: the harness leaks exactly one object on purpose (JUCE's
+  `ScopedJuceInitialiser_GUI`), because letting `shutdownJuce_GUI()` run under libFuzzer's `exit()`
+  produced a double-free in `DeletedAtShutdown::deleteAll()` during `__run_exit_handlers` — measured,
+  on the empty input, within 60 s. Leak coverage for the same code lives in `sanitizers`, which now
+  runs with `detect_leaks=1`.
 
 `MALLOC_PERTURB_=1` is set on the `linux` and `linux-clang` self-test steps: glibc then fills **fresh**
 heap with `0xFE` and **freed** heap with `0x01`, so an uninitialised read of audio state comes back as
@@ -269,14 +412,15 @@ failures as green and has been removed). Evidence [Verified]: `.github/workflows
 ### The compiler cache
 
 Every job that uses the Ninja generator — `merge-check`, `linux`, `linux-clang`, `sanitizers`,
-`macos`, `macos-intel` — compiles through **ccache**, restored from and saved to the GitHub Actions
-cache (`actions/cache@v6`).
+`linux-lto-tests`, `realtime`, `macos`, `macos-intel` — compiles through **ccache**, restored from and saved to the GitHub Actions
+cache (`actions/cache`, SHA-pinned like every other action — see §Action refs are pinned to commit
+SHAs).
 
 **Why, measured rather than assumed.** `.ninja_log` splits a cold Linux Release build into
 **1409 CPU-seconds of compilation (75%) and 468 of LTO link (25%)**, and the compilation is
 overwhelmingly JUCE: ~9k lines of first-party source against a framework that each of the three
 JUCE-linking targets compiles separately. JUCE is pinned to an immutable commit
-(`CMakeLists.txt:49-55`, ADR-0022/ADR-0026), so that 75% is byte-identical from run to run.
+(`CMakeLists.txt:65-71`, ADR-0022/ADR-0026), so that 75% is byte-identical from run to run.
 Measured on 4 cores — the runner's core count — the same build with a warm cache is **7m41s → 3m40s
 (−52%)**, at **137 direct hits / 6 misses**, and the residual is the LTO link, which no compiler
 cache touches. The `linux-clang` configuration, measured the same way against the **then-pinned Clang
@@ -346,7 +490,11 @@ path's entire critical path. `linux-clang` **and `sanitizers`** both key on the 
 raising the pin starts clean lineages instead of restoring entries no build can hit again — ccache
 hashes the compiler binary's own contents (`CCACHE_COMPILERCHECK=content`), so objects from the
 previous major are dead weight rather than wrong answers, but a restored cache full of them is still
-a restore that buys nothing. `macos` and `macos-intel` each have their own.
+a restore that buys nothing. `linux-lto-tests` and `realtime` each have their own (`ccache-ubuntu-gcc<major>-lto-`,
+`ccache-ubuntu-realtime-clang<major>-`) for the same
+kind of reason: under `-flto` GCC emits GIMPLE bytecode objects, so it shares no entries with
+`linux`'s native ones and a shared lineage would only have the two evict each other. `macos` and
+`macos-intel` each have their own.
 
 **Not on Windows.** ccache's MSVC support requires `/Z7`-style embedded debug info, and this project
 compiles Release with `/Zi` precisely so the linker emits the PDB that ships as the
@@ -584,6 +732,68 @@ sanitizer host two majors behind upstream. ADR-0028 carries the decision, the op
 (including the intermediate 20 step and its mistaken reading of 21/22 availability), and the policy
 rule it enacts.
 
+### The GCC warning baseline
+
+A second warning gate looks redundant next to the first, because
+`juce_recommended_warning_flags` picks its set by **compiler ID** and Clang's set is strictly the
+larger one. It is not redundant, because *larger* is not *a superset*. GCC reports two classes Clang
+structurally does not:
+
+| Count | Flag | Path |
+|---|---|---|
+| 1 | `-Wshadow` | `src/PluginParameters.cpp` |
+| 1 | `-Wshadow` | `src/PluginProcessor.cpp` |
+| 1 | `-Wmisleading-indentation` | `src/dsp/AnamorphEngine.cpp` |
+
+Clang's `-Wshadow-all` does **not** report a parameter or local shadowing a member outside a
+constructor, and Clang has no equivalent of `-Wmisleading-indentation` at all. (`src/PluginProcessor.cpp`
+appears in *both* baselines under `-Wshadow`, for **different** sites — the counts are per `(path, flag)`,
+not per line, so that one shared filename is a coincidence rather than duplicated coverage.) All three
+sites are benign today and the gate does not ask for them to be fixed; it exists so the **next** one
+fails the push that introduces it, on the cheapest runner in the matrix.
+
+**The gated set is deliberately narrow, and the two exclusions are the interesting part.**
+`-Wshadow`, `-Wmisleading-indentation`, `-Wduplicated-cond`, `-Wduplicated-branches` and
+`-Wlogical-op` are in. The last three produce **zero** first-party hits today and are gated precisely
+because of that: they cost nothing now and guard classes only GCC can see. Two are out:
+
+- **`-Wnull-dereference`** produced four first-party hits, all of the "potential null pointer
+  dereference" kind GCC emits after inlining when it cannot prove a branch unreachable. A four-entry
+  baseline of unprovable warnings is the shape that trains people to regenerate a baseline without
+  reading it — and the baseline diff *is* the review. It is also the one flag in the candidate set
+  whose answer would depend on link-time inlining decisions in an `-flto` job.
+- **`-Wmismatched-new-delete`** is a false positive **by construction** here.
+  `tests/AllocationGuard.h` replaces the global `operator new`/`delete`; GCC attributes an
+  allocation to the replaced `operator new[]` and does not follow it through to the `std::malloc`
+  that actually produced the memory, so it reports `free` on "new[] memory" however the deallocators
+  forward among themselves — verified **both** ways, by funnelling every deallocation through
+  `::operator delete` and by calling `std::free` directly.
+
+The flags are **not restated in the workflow**: the configure step asks the script for them
+(`check-gcc-warnings.py --print-flags`), because a flag present in the build but unknown to the gate
+is a warning nobody counts, and a flag known to the gate but absent from the build is a baseline
+entry that can never be reproduced. None of the five affects codegen, so the LTO objects that job
+exists to test are byte-identical with and without them, and all five are **front-end** diagnostics,
+so `-flto` neither hides nor invents any of them.
+
+**The comparison, the file format and the failure semantics are the Clang gate's**, restated rather
+than imported so an edit aimed at one cannot break the other: structural path classification (resolve
+the path, reject anything under `_deps`, require `src/` or `tests/`), `(path, flag)` keys with a
+distinct-site count and no line numbers, a falling count as a `::notice::` and never a failure, an
+unparseable baseline as exit 2, and `scripts/gcc-warning-baseline.txt` as a debt list rather than a
+permission list.
+
+**The compiler is pinned, and so is the image.** `-Wmisleading-indentation`'s heuristic and
+`-Wshadow`'s treatment of members have both moved between GCC majors, so the counts mean nothing
+against another one; the baseline records `# gcc-major:` and the gate exits 2 rather than 1 when the
+two disagree. The *supply* is the opposite way round from Clang, though, and that changes the
+mechanism: the Clang pin is **ahead** of the image and installed from apt.llvm.org, while
+`ANAMORPH_GCC_VERSION: 13` is simply **what noble ships** (`g++` 13.3). There is nothing to install,
+and the only real risk is the image moving underneath the pin — which is why this job alone pins
+`runs-on: ubuntu-24.04` instead of `ubuntu-latest`. Naming the compiler without naming the image only
+moves the unpinned variable one level up; with both named, a `g++-13` that has left the archive fails
+at `apt` in the first minute rather than at the gate twenty minutes later.
+
 What the move cost the baseline was **measured, not assumed**, with clang-20 kept as the control: the
 same three targets built from one tree under 20 and 22 emit a `diff`-identical **52-instance** warning
 census, and `--write-baseline` at 22 reproduces all **7 entries / 14 sites** unchanged — so the only
@@ -694,6 +904,20 @@ pointed at in the base — the whole "an edit above shifted it" class. It cannot
 aimed at the wrong code to begin with; this repository's existing anchors are therefore *adopted*,
 not audited. A clean run means none of them **moved**.
 
+**`--fix` now reports the declarations it invalidates** (2026-08-18). A `DELIBERATE_REAIMS` entry is
+a claim about a *spelling*, and a re-anchor can quietly falsify it: the anchor an entry names drifts
+for an unrelated reason — an edit to the **cited** file — `--fix` re-anchors it correctly, and the
+entry is left naming a string the document no longer contains, excusing nothing. Section 9 of the
+self-test already fails on that, and that gate holds; what it could not do is tell the person who
+caused it. It runs in CI, minutes later, in a different job, and knows only that an entry is dead —
+while `--fix`, which killed it, is holding the replacement spelling. It now prints that spelling as
+a `::warning::` at the moment of the rewrite. Observed twice in one change set (edits to
+`run-pluginval.sh` and `CMakeLists.txt` moved anchors six entries named), and verified live
+end-to-end: shifting `run-pluginval.sh` by one line produced
+`update it to scripts/run-pluginval.sh:122`. A warning rather than an error, because `--fix`'s job
+is to repair drift and refusing to do it because a declaration will need an edit would leave **both**
+problems in place.
+
 **When you re-anchor deliberately** — moving an anchor onto the code it should always have named —
 the tool cannot distinguish that from drift, and the gate goes red on the commit that *fixed* it.
 Declare the pair in `DELIBERATE_REAIMS` in the **same change set** as the re-anchor, never in a
@@ -724,7 +948,7 @@ in the same change set. The v0.9.4 round's six entries are that case, and the bl
 | `Anamorph-Windows-debug` | `Anamorph.vst3.pdb`, `Anamorph.standalone.pdb` | error |
 | `Anamorph-macOS` | loose staged files: universal stripped `Anamorph.vst3` + `.component` (AU) + `.app` + `INSTALL.txt` | error |
 | `Anamorph-macOS-installer` | `Anamorph-<version>-macOS.pkg` (VST3 + AU + app components) | error |
-| `Anamorph-macOS-debug` | `Anamorph.vst3.dSYM`, `Anamorph.component.dSYM`, `Anamorph.app.dSYM` — **best-effort**: the upload step is skipped (with a CI warning) when Release+LTO yields no usable dSYM, so this artifact can be absent | error (when it runs) |
+| `Anamorph-macOS-debug` | `Anamorph.vst3.dSYM`, `Anamorph.component.dSYM`, `Anamorph.app.dSYM` — **produced on every run since 2026-08-18**. It used to be absent from every run: Release+LTO left the DWARF in ld64's temporary object, gone before `dsymutil`, so the validated-dSYM condition never held. `-Wl,-object_path_lto` retains that object; zero usable dSYMs is now an **error**, and each dSYM is still individually validated (DWARF payload, UUID match across slices, ≥1 compile unit) before it is kept | error |
 
 The `Anamorph-<OS>` artifacts hold **loose files** so a downloaded artifact extracts
 straight to the payload (no nested archive); the artifact transport drops Unix executable
@@ -795,11 +1019,78 @@ Separate from the build/validate pipeline, four security workflows/configs run a
 | `.github/workflows/codeql.yml` | CodeQL: `c-cpp` (manual build — VST3 + tests targets, Standalone off) + `actions`. Alerts filtered to repo-own code (`paths-ignore: build` excludes the FetchContent'd JUCE tree). Default query suite. | push/PR to `main` (docs-only changes skipped), weekly, dispatch |
 | `.github/workflows/msvc.yml` | MSVC `/analyze` (NativeRecommendedRules) → SARIF upload. Build step required (juceaide-generated files); JUCE under `build/_deps` treated as external. | push/PR to `main` path-filtered to `src/`, `tests/`, `CMakeLists.txt`; weekly; dispatch |
 | `.github/workflows/dependency-review.yml` | Dependency Review on PRs (GitHub Actions deps only — the graph does not index CMake FetchContent). Comments only on failure. | PR to `main` |
-| `.github/dependabot.yml` | Weekly `github-actions` version bumps in **two groups split by semver impact** — minor/patch in one PR (nearly all the volume: `github/codeql-action` alone releases every week or two), majors in another, so one major cannot block every safe bump behind it. Both groups keep `patterns: "*"`, which is what holds a multi-ref family (`codeql-action/{init,analyze,upload-sarif}` — three dependency names) together. `microsoft/msvc-code-analysis-action` is **ignored**: its SHA pin carries no tag, and an untagged pin is followed to the latest *commit*, not the latest release. `cooldown` is unset — Dependabot already withholds a new version for 3 days by default. Nothing else in this repository is a Dependabot ecosystem; `DEPENDENCY_POLICY.md` §Update mechanisms says what maintains each of the rest. | weekly |
+| `.github/dependabot.yml` | Weekly `github-actions` version bumps in **two groups split by semver impact** — minor/patch in one PR (most of the volume: the `github/codeql-action` trio releases every week or two, and since every ref became a SHA pin the `actions/*` point releases land here too), majors in another, so one major cannot block every safe bump behind it. Both groups keep `patterns: "*"`, which is what holds a multi-ref family (`codeql-action/{init,analyze,upload-sarif}` — three dependency names) together. `microsoft/msvc-code-analysis-action` is **ignored**: its SHA pin carries no tag, and an untagged pin is followed to the latest *commit*, not the latest release. `cooldown` is unset — Dependabot already withholds a new version for 3 days by default. Nothing else in this repository is a Dependabot ecosystem; `DEPENDENCY_POLICY.md` §Update mechanisms says what maintains each of the rest. | weekly |
 
 Both analysis workflows configure with `-DANAMORPH_BUILD_STANDALONE=OFF`: the Standalone format
 recompiles the same translation units as VST3, so analyzing it doubles cost for zero extra
 coverage. Evidence [Verified]: the four files above.
+
+### The Linux ABI floor
+
+The `linux` job asserts, on the **stripped** binaries and as its **last step**, that the shipped VST3
+and Standalone stay within a declared glibc/libstdc++ floor. This is a compatibility claim the
+pipeline previously did not make: a Linux binary records the oldest version providing each imported
+symbol, and the maximum of those is the oldest system that can load it — below it the dynamic
+loader refuses before any of this project's code runs.
+
+Nothing chose that number. It is whatever `ubuntu-latest` shipped when the binaries were linked, and
+a runner-image move raises it **silently and retroactively** — the artifact stops loading on systems
+it loaded on last week, with no failure in CI and no line in any diff. Measured when the gate landed:
+`GLIBC_2.38` and `GLIBCXX_3.4.31`, i.e. Ubuntu 23.10+ and GCC 13+, so the artifact does **not** load
+on Ubuntu 22.04 LTS. That was not a decision; it was an image move nobody saw.
+
+The floor lives in `scripts/check-linux-abi.py` and `COMPATIBILITY_MATRIX.md` defers to it rather
+than restating a number. The gate does not attempt to *lower* the floor — that means an older
+toolchain or a sysroot, a release-topology decision rather than a CI tweak — it makes the run that
+raises it the run that fails, so raising it becomes deliberate and reviewable.
+
+### Action refs are pinned to commit SHAs
+
+Every `uses:` in every workflow names a **commit SHA**, with the version it corresponds to in a
+trailing comment (2026-08-18). Before that, the `actions/*` refs were bare majors — `@v7`, `@v6` —
+which are **mutable tags**: at the time of the change `actions/checkout@v7` and `v7.0.1` resolved to
+the same commit, and nothing but the tag owner's restraint kept them that way.
+
+The argument for pinning is not generic supply-chain hygiene, it is an **internal inconsistency**.
+This repository already pins JUCE to an immutable commit SHA, and `DEPENDENCY_POLICY.md` gives the
+reason in as many words: so the dependency cannot silently change under a re-pointed tag. JUCE is
+source that gets compiled and never sees a credential. An action is code that executes **on the
+runner with the job's token**. Pinning the weaker of the two and not the stronger was the gap.
+
+**The cost is real and is accepted deliberately.** A bare major is rewritten only when the major
+moves, so Dependabot's volume here used to be the `github/codeql-action` trio and essentially
+nothing else. A SHA pin is rewritten on **every** release, so `checkout`, `cache`, `upload-artifact`
+and `download-artifact` now produce updates too. The two update-type groups already in
+`.github/dependabot.yml` are what absorbs that: more dependencies move, but they move together
+within their semver class, so it is still at most two PRs a week. When reviewing one, **read the
+version comment, not just the SHA** — the comment is the only human-legible half, and a bump that
+changes the SHA without changing the comment is the shape to stop on.
+
+`microsoft/msvc-code-analysis-action` was already SHA-pinned and stays excluded from Dependabot, for
+the separate reason recorded in that file: its pin is *ahead* of the last release, so following it
+would swap a documented deliberate pin for an untagged upstream HEAD.
+
+### One composite action for the Linux setup
+
+Seven Linux jobs opened with the same three moves — `chmod +x scripts/*.sh`, `setup-linux.sh`, then
+a ccache install behind a fallback that must not fail the job. Four of them added one line for the
+pinned Clang, two added a package, and the ccache block itself was **byte-for-byte identical in six
+of the seven, comment included**.
+
+That is a correctness hazard rather than untidiness. The ccache fallback is a *policy* — "an
+optimization, never a requirement" — and a policy written out seven times is a policy that can hold
+in six places. The round that introduced `.github/actions/setup-linux-build` is itself the worked
+example: it had to add a compiler pin to exactly one of the seven copies.
+
+The action takes two inputs (`clang-version`, `extra-packages`), both fail-closed, because a job
+asks for those because it cannot work without them. What it deliberately does **not** absorb is the
+per-job ccache **lineage** — the `actions/cache` key — which stays in `build.yml` because that is
+the part genuinely different in every job and whose reasoning is *about* that job: which compiler
+produced the objects, which build directory, and which other job it may share entries with. Folding
+those into an input would turn seven readable explanations into one parameter nobody can read. The
+two macOS jobs also keep their own block: `brew` and `apt` differ enough that a shared action would
+be a conditional pretending to be a step. A `./`-prefixed local action is this repository rather
+than a dependency, so Dependabot ignores it by design.
 
 ## Reproducing CI locally
 
@@ -809,15 +1100,32 @@ seconds and catch the most:
 ```bash
 python3 scripts/check-docs.py --self-test && python3 scripts/check-docs.py
 python3 scripts/check-portability.py --self-test && python3 scripts/check-portability.py
+python3 scripts/check-realtime.py --self-test && python3 scripts/check-realtime.py
 python3 scripts/check-citations.py --self-test
 python3 scripts/check-citations.py --check --base origin/main   # --fix re-anchors
-python3 scripts/check-clang-warnings.py --self-test
+python3 scripts/check-clang-warnings.py --self-test              # gate needs a clang build log
+python3 scripts/check-gcc-warnings.py --self-test                # gate needs a gcc build log
+python3 scripts/check-linux-abi.py --self-test                   # gate needs linked artifacts
 ```
 
 `check-citations.py` compares against **a** base, and which one matters: CI uses the previous push,
-so a local run against `origin/main` can reach a different verdict (a differing citation *count* for
+so a local run against `origin/main` can reach a different verdict — and on a branch with more than
+one commit it routinely does, because an anchor that drifted from an *earlier commit on the branch*
+has already been re-anchored relative to `main` (a differing citation *count* for
 a document makes the tool fall back to ordinal pairing, which only judges base spellings still
 present verbatim). Check **both** before concluding the gate is green.
+
+**`scripts/preflight.sh`** (added 2026-08-18) runs the whole lint block above in one command — all
+**seven** checkers with their self-tests, the citation gate against **all three** bases that can
+disagree — `origin/main`, the branch merge base, and `HEAD~1`, the **push predecessor** CI actually
+compares (added 2026-08-18 after it cost a red run: three anchors drifted from an earlier commit on
+the same branch, both `origin/main` bases already carried the re-aimed spelling, and preflight went
+green while `source-lint` did not) — the ABI floor for real when a local Release build is present
+(the one of the three build-dependent gates whose input an ordinary local build produces),
+then `scripts/run-tests.sh` when a built tree exists at `./build` (skipped WITH A NOTE when
+none does — never silently). Measured ~5 s on a built tree. It says out loud the one thing it
+cannot cover: the full Clang warning gate needs a clang build log, so only that lint's self-test
+runs locally.
 
 Then the build and the release gate:
 

@@ -15,7 +15,7 @@ exits non-zero on any failed `check` or missing binary. Evidence [Verified]: scr
 
 ### What the tests cover
 
-`tests/dsp_tests.cpp` has **33 DSP tests** using a `check(cond, "what")` harness, covering: MS
+`tests/dsp_tests.cpp` has **37 DSP tests** using a `check(cond, "what")` harness, covering: MS
 round-trip (bit-exact), transparent default, true-bypass null + latency match, Mono Maker
 (post-Mix), Multiband mono-compat, Solo band selectivity + transparency, Level Match
 (unity/no-ratchet/silence-freeze/mix-coupling/multiband-unity), crossover automation safety,
@@ -62,7 +62,33 @@ Amount settled at exactly 0 (under FTZ, as on the real audio thread) every block
 through **bit-untouched**, re-engaging on silent input must play back audio recorded WHILE
 parked (the delay lines must keep recording through the parked fast path — this fails if a
 future change stops the parked ring writes), and re-parking must return to bit-transparency
-once the wet glide drains. It
+once the wet glide drains; and three feature-coverage tests added after a 2026-08-18
+line/branch-coverage audit found these shipped stages had **zero** executions in either suite:
+mono-sum input conditioning (`testMonoSumInputConditioning`, Test 35: a pure-side tone is
+silenced, a mono tone passes at level with no side content, and mono-sum-off preserves the side
+control), M/S input solo (`testMsSoloInputIsolation`, Test 36: Mid solo passes mono / rejects
+side, Side solo passes side — and, the documented feedback-#15 property, Side solo on mono
+content stays silent even at full Amount because the solo runs BEFORE the widener), and the
+Level-Match injection consume paths (`testMatchInjectRestore`, Test 37, feedback #16/#23: both
+the un-ducked defensive consume and the forced-duck silent-bottom consume adopt the injected
+per-A/B-slot trim as a SEED — measured ≤ −4 dB displayed from a −6 dB injection — after which
+MEASURE re-converges as the design intends, with no level slam); and the audio-path allocation
+guard (`testProcessIsAllocationFree`, Test 38, ADR-0029): `tests/AllocationGuard.h` replaces
+`operator new`/`delete` and interposes the malloc family, arms the counters **only** around
+`process()` (allocation in `prepare()` is required by policy), and asserts zero across the same
+algorithm × oversampling × M/S matrix — 3,840 armed calls. It is the tier that reaches **MSVC**,
+where RealtimeSanitizer does not run, since `operator new` replacement is standard C++. The test
+**self-checks its counters first** and discloses any half that is not live: the malloc half is
+compiled out under ASan (an executable-defined `malloc` fights ASan's allocator) and the whole
+guard is compiled out for the valgrind build (`-DANAMORPH_NO_ALLOC_GUARD` — memcheck reports
+`Mismatched free() / delete []` when `operator new` hands back `std::malloc` memory), each with a
+`::warning::` rather than a silent pass. Under RealtimeSanitizer the whole guard is compiled out
+too, and there it is a correctness requirement rather than a convenience — its interposers would
+shadow RTSan's own and blind that lane (ADR-0029 §7). That stand-down is detected by
+`__has_feature(realtime_sanitizer)` and **cross-checked from outside the compiler**: the
+`realtime` job also passes `-DANAMORPH_RTSAN_LANE=1`, and the header `#error`s if the lane is
+declared while the guard is still live, so a renamed or removed feature name fails the build
+instead of silently hollowing out the lane. It
 additionally carries **one state-restoration robustness guard**,
 `testAbActiveClampOnCorruptState` — it drives a corrupted `<AB active="…">` blob through the same
 read+clamp the processor uses (`anamorph::clampAbSlotIndex`, `src/AbSlotIndex.h`) and asserts an
@@ -71,7 +97,7 @@ preserved. Evidence [Verified]: tests/dsp_tests.cpp (`main` registers all tests)
 
 ### State-compatibility self-tests (v0.8.13 harness)
 
-`tests/state_tests.cpp` (**12 tests**, own console target `AnamorphStateTests`) automates the
+`tests/state_tests.cpp` (**13 tests**, own console target `AnamorphStateTests`) automates the
 COMPATIBILITY policy family against the **real `AnamorphAudioProcessor`** (the target compiles
 the plugin sources; the editor is linked but never instantiated — fully headless):
 serialized-schema shape (every `SERIALIZATION_REGISTRY.md` field), a **parameter-registry
@@ -99,7 +125,13 @@ in a SUB-folder of the preset folder, a preset whose file NAME `juce::File::isAb
 fallback; and in EVERY one of those
 eight paths — the seven that go through the reload helper plus the A/B slot check — the restored
 parameters are asserted bit-identical, because the identity is metadata and must never influence the
-sound).
+sound), and the **wrapper audio path** (`testWrapperProcessBlockAudioPath`, 2026-08-18: the real
+`processBlock` over a denormal-provoking noise→silence matrix with **no test-side FTZ arming**, so
+it regresses `processBlock`'s own `ScopedNoDenormals` — and it is the only test in either suite
+that drives the wrapper's audio path, which is what points the `sanitizers` job's ASan/UBSan and
+valgrind runs of this suite at the wrapper's parameter snapshotting and buffer handling; a
+liveness RMS check first proves the invariant is not vacuously green, and the
+`ANAMORPH_TESTS_NO_FTZ` escape relaxes only the denormal half, exactly as in the DSP suite).
 Evidence [Verified]: tests/state_tests.cpp; CMakeLists.txt (`AnamorphStateTests`).
 
 **Changing the parameter surface intentionally** (ADR + `PARAMETER_REGISTRY.md` update
@@ -116,6 +148,106 @@ Bug fixes ship a regression test that **fails on the old code and passes on the 
 project's established practice; `docs/policies/TESTING_POLICY.md`). Use the existing
 `check(cond, "description")` harness and add the call in `main` (DSP behaviour →
 `tests/dsp_tests.cpp`; state/serialization/preset behaviour → `tests/state_tests.cpp`).
+
+## Opt-in targets (not built by default, not shipped)
+
+Three targets exist behind OFF-by-default options or outside CMake entirely. None of them enters a
+release build; each answers a question the two self-test suites structurally cannot.
+
+| Target | How to build | What it answers |
+|---|---|---|
+| `AnamorphBench` | `-DANAMORPH_BUILD_BENCH=ON`, Release | The `PERFORMANCE_BUDGET` §"required benchmark procedure" matrix — ns/sample and worst single block across sample rate, block size, algorithm, oversampling and multiband. |
+| `AnamorphFuzzState` | `-DANAMORPH_BUILD_FUZZ=ON` with Clang + `-fsanitize=address,undefined` | `setStateInformation` against inputs nobody wrote by hand. |
+| `AnamorphDspDump` | `-DANAMORPH_BUILD_DSPDUMP=ON`, Release | Whether a dependency bump changed engine output at all — §Proving a dependency bump is bit-identical. |
+| `tests/realtime_effects.cpp` | no target — `clang++ -fsyntax-only -Werror=unknown-warning-option -Werror=function-effects`, then the same command again with `-DANAMORPH_EFFECTS_CANARY`, which must FAIL | Whether the JUCE-free leaf DSP is provably effect-clean at **compile** time, on branches no test executes — and, through the second compile, whether the diagnostic proving it is still active at all. |
+
+```bash
+# Benchmark. It REFUSES to run (exit 2) if it cannot identify the CPU and
+# ANAMORPH_BENCH_CPU is unset -- PERFORMANCE_BUDGET constraint C2: a number
+# without its machine and method is not a measurement.
+cmake -B build-bench -G Ninja -DCMAKE_BUILD_TYPE=Release -DANAMORPH_BUILD_BENCH=ON
+cmake --build build-bench --target AnamorphBench
+ANAMORPH_BENCH_SECONDS=10 ANAMORPH_BENCH_REPS=5 \
+  ./build-bench/AnamorphBench_artefacts/Release/AnamorphBench
+
+# State fuzzing. A REJECTED blob is a pass; the oracle is the sanitizer.
+cmake -B build-fuzz -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+  -DCMAKE_C_COMPILER=clang-22 -DCMAKE_CXX_COMPILER=clang++-22 \
+  -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" \
+  -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" \
+  -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined" \
+  -DANAMORPH_BUILD_FUZZ=ON -DANAMORPH_BUILD_TESTS=OFF -DANAMORPH_BUILD_STANDALONE=OFF
+cmake --build build-fuzz --target AnamorphFuzzState
+# Note: libFuzzer SAVES new coverage-increasing inputs into the corpus
+# directory it is given. They are .gitignore'd (only the `*.bin` seeds
+# are tracked), so a local run cannot add them to a commit by accident.
+# The note sits ABOVE the command, not between its continuation and its
+# arguments: a `\` followed by a comment line splices the two into
+# `ASAN_OPTIONS=... # ...`, which sets nothing for anything, and the fuzzer
+# then runs on the next line with leak detection ON -- see below.
+ASAN_OPTIONS=detect_leaks=0 \
+  ./build-fuzz/AnamorphFuzzState tests/fuzz-corpus -max_total_time=90
+```
+
+`detect_leaks=0` on the fuzz run is required, not optional: the harness leaks JUCE's
+`ScopedJuceInitialiser_GUI` on purpose, because letting `shutdownJuce_GUI()` run under libFuzzer's
+`exit()` double-frees in `DeletedAtShutdown::deleteAll()` during `__run_exit_handlers`. Leak coverage
+for the same code is the `sanitizers` job's, which runs with `detect_leaks=1`.
+
+**CI builds all three and gates on two of them.** The benchmark is built and smoke-run but its
+*numbers* are not gated — measured run-to-run spread on an idle machine is 7.2% (median ns/sample)
+and 65.4% (worst block), so a threshold would be noise rather than signal; what the build catches is
+a harness that has silently stopped compiling against the engine it measures. The fuzz run and the
+compile-only effects check are hard gates.
+
+## Proving a dependency bump is bit-identical
+
+`DEPENDENCY_POLICY.md` rule 2 makes bit-identical engine output the gate a JUCE bump must pass.
+`tests/dsp_dump.cpp` is the instrument, and it is **committed** — the two bumps that passed this rule
+before it existed each used a scratchpad tool that was then discarded, so the gate was permanent and
+the instrument was rebuilt from scratch every time.
+
+The tool prints one deterministic line per scenario: an FNV-1a hash over **every output byte** plus
+the engine's reported latency, across 32 scenarios (4 algorithms × 4 oversampling factors × M/S
+off/on) at 48 kHz / 512 samples, 120 blocks of fixed-seed noise then 120 of digital silence — the
+silence phase is what catches denormal and tail differences the noise phase hides.
+
+```bash
+# Build the SAME source against two JUCE checkouts, otherwise identical flags.
+for JUCE in /path/to/JUCE-old /path/to/JUCE-new; do
+  out="dump-$(basename "$JUCE")"
+  cmake -B "build-$out" -G Ninja -DCMAKE_BUILD_TYPE=Release \
+        -DANAMORPH_BUILD_DSPDUMP=ON -DANAMORPH_BUILD_TESTS=OFF \
+        -DANAMORPH_BUILD_STANDALONE=OFF -DANAMORPH_JUCE_PATH="$JUCE"
+  cmake --build "build-$out" --target AnamorphDspDump
+  "./build-$out/AnamorphDspDump_artefacts/Release/AnamorphDspDump" > "$out.txt"
+done
+diff dump-JUCE-old.txt dump-JUCE-new.txt && echo "bit-identical"
+```
+
+An empty diff is the proof. Any differing line names the exact scenario to investigate, and the
+latency column moving is its own finding — a reported-latency change is an AI-agent hard stop.
+
+**The tool checks itself before it reports, every run, not on request.** Two properties, because
+they fail independently: every scenario must be **repeatable** (the same scenario run twice hashes
+the same — otherwise every diff is noise) and all 32 must be **distinct from each other**
+(otherwise a diff is empty for the wrong reason). It exits **3** rather than printing a table it has
+not shown to be discriminating.
+
+That second check is not hypothetical. The first run of the original scratchpad tool left
+`algoAmount` at its `0` default, which is identity for the wet path, so the algorithms hashed the
+same as one another and the tool reported 32 matching hashes while never reaching the code under
+test. It was caught by a human noticing two rows that should differ did not. Setting `algoAmount`
+back to `0` in the committed harness today reproduces it exactly — 16 colliding scenario pairs,
+named, exit 3. **Fix the scenario set; never relax the check.**
+
+Two build choices are deliberate. It does **not** link `juce_recommended_lto_flags`, unlike
+`AnamorphBench` beside it: the bench must measure the shipped binary so it carries the shipped
+flags, while this tool must isolate one variable and LTO is a second one — link-time inlining can
+differ between two runs for reasons unrelated to the dependency under test. And nothing is stored:
+no committed golden hashes, because that would be the golden-master DSP baseline this repository
+deliberately rejects. The question is never "does this match a stored value" but "does build A match
+build B", and only a diff between two runs answers it.
 
 ## pluginval (VST3 + AU conformance)
 
@@ -170,8 +302,15 @@ a display). Evidence [Verified]: scripts/run-pluginval.sh / scripts/run-pluginva
 validation failure (exit < 128) as a failure immediately. On Linux it retries up to 3 times **only on
 a signal-crash** (exit ≥ 128) to absorb a use-after-free in **pluginval's own JUCE** X11
 `XEmbedComponent` (a `ConfigureNotify`→`callAsync` on rapid editor open/close), not a plugin defect —
-the plugin already drops its OpenGL child window on Linux (ADR-0011). Evidence [Verified]:
-scripts/run-pluginval.sh (`run_one_pass` retry).
+the plugin already drops its OpenGL child window on Linux (ADR-0011).
+
+**The retry is scoped to the platform its justification names.** Until 2026-08-18 the script applied
+the same three attempts on **macOS**, which shares none of that X11 machinery: there, a crash had two
+extra chances to pass and no documented flake to absorb, and this section already described the
+behaviour as Linux-only. `CRASH_RETRY_ATTEMPTS` is now set from `uname -s` — 3 on Linux, **1**
+everywhere else — and a single-attempt failure prints a distinct message so it cannot be misread as
+an exhausted retry. Evidence [Verified]: scripts/run-pluginval.sh (`run_one_pass`, and the `case
+"$(uname -s)"` above it).
 
 ## CI integration
 
@@ -191,15 +330,17 @@ still the universal bundle from the `macos` job. Its first step **fails** the jo
 not `x86_64` or `sysctl.proc_translated` is not `0`, so it can never report a green Intel result
 from somewhere that is not Intel.
 
-Four further jobs run beside the build jobs, none in a `needs:` chain in either direction, so a
+Six further jobs run beside the build jobs, none in a `needs:` chain in either direction, so a
 finding in one never skips a binary that is otherwise fine:
 
 | Job | Run it locally as |
 |---|---|
 | `docs` | `python3 scripts/check-docs.py --self-test && python3 scripts/check-docs.py` |
-| `source-lint` | `python3 scripts/check-portability.py --self-test` then the lint, then `python3 scripts/check-citations.py --self-test` then `--check --base <rev>` |
+| `source-lint` | `python3 scripts/check-portability.py --self-test` then the lint, `python3 scripts/check-realtime.py --self-test` then that lint, then `python3 scripts/check-citations.py --self-test` then `--check --base <rev>` |
 | `linux-clang` | see `CI_CD.md` §Reproducing CI locally (own `build-clang` tree) |
 | `sanitizers` | ASan+UBSan over both suites, then valgrind memcheck over both suites (the valgrind step sets `ANAMORPH_TESTS_NO_FTZ=1` — see below) |
+| `realtime` | `cmake -B build-rtsan -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C(XX)_COMPILER=clang(++)-<major> -DCMAKE_C(XX)_FLAGS="-fsanitize=realtime -fno-omit-frame-pointer" -DCMAKE_EXE_LINKER_FLAGS=-fsanitize=realtime`, build `AnamorphTests`, run it with **no `RTSAN_OPTIONS`** (ADR-0029 — `halt_on_error=false` would make it report and pass) |
+| `linux-lto-tests` | `cmake -B build-lto -G Ninja -DCMAKE_BUILD_TYPE=Release -DANAMORPH_BUILD_STANDALONE=OFF -DCMAKE_C_FLAGS=-flto -DCMAKE_CXX_FLAGS=-flto -DCMAKE_EXE_LINKER_FLAGS=-flto`, build both test targets, run both — the suites against the shipped optimization class (see `CI_CD.md`) |
 
 **`ANAMORPH_TESTS_NO_FTZ=1` is for valgrind and nothing else.** The DSP suite treats a denormal in
 the engine output as a failure, which holds because the audio path runs under
@@ -230,7 +371,7 @@ See `CI_CD.md`. Evidence [Verified]: `.github/workflows/build.yml`.
 | A `check` assertion fails | DSP regression | the named test in `tests/dsp_tests.cpp`; compare against the invariant it guards (`docs/policies/DSP_POLICY.md`) |
 | A state-test `check` fails | serialization / parameter-surface regression | the named test in `tests/state_tests.cpp`; if the change is INTENTIONAL it needs the compatibility-policy process (ADR + registry update + `--write-snapshot`) |
 | pluginval exits < 128 | real validation failure | the pluginval log line; do **not** retry — it's a genuine defect |
-| pluginval exits ≥ 128 (crash) | the known X11 host flake | retried automatically; if it still fails after 3 tries, treat as a failure (`scripts/run-pluginval.sh:154-176`, `run_one_pass`) |
+| pluginval exits ≥ 128 (crash) | the known X11 host flake | retried automatically; if it still fails after 3 tries, treat as a failure (`scripts/run-pluginval.sh:171-197`, `run_one_pass`) |
 | `AnamorphTests`/`AnamorphStateTests` `not found` | not built yet | run `scripts/build.sh` first (`scripts/run-tests.sh:51-73`) |
 
 ## Gaps in the automated coverage (known, deliberate)
@@ -333,7 +474,7 @@ rather than deleted, because a gap that was real and is now covered is worth bei
   hand does not leave a plug-in behind in your real `~/Library`. One thing this deliberately did
   **not** do, so the remaining scope is not overstated:
   - It uses **pluginval**, not Apple's `auval` (`auval -v aufx Anmr RTec`, matching the
-    `PLUGIN_CODE` / `PLUGIN_MANUFACTURER_CODE` in `CMakeLists.txt:217-218`). pluginval hosts the AU
+    `PLUGIN_CODE` / `PLUGIN_MANUFACTURER_CODE` in `CMakeLists.txt:273-274`). pluginval hosts the AU
     through JUCE's `AudioUnitPluginFormat`, which is the same resolution path a JUCE-hosted DAW
     takes and the same test set the other two platforms are held to; `auval` is Apple's own
     conformance tool and tests things pluginval does not. Adding it is a further step, not a

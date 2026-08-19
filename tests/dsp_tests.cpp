@@ -13,6 +13,7 @@
 
 #include <juce_dsp/juce_dsp.h>
 #include <juce_data_structures/juce_data_structures.h>
+#include "AllocationGuard.h"
 #include "dsp/AnamorphEngine.h"
 #include "dsp/MidSide.h"
 #include "AbSlotIndex.h"
@@ -2672,6 +2673,383 @@ static void testHaasParkedWarmHistory()
 }
 
 // ---------------------------------------------------------------------------
+static void testMonoSumInputConditioning()
+{
+    std::printf ("Test 35: Mono sum collapses the input to mono (stage-1 conditioning)\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0;
+    const int block = 256;
+    const double freq = 1000.0;
+
+    // Output RMS of channel 0 and of the side signal, after the discrete-switch
+    // duck has settled (monoSum is a discrete control, so it arrives ducked).
+    auto measure = [&] (bool monoSumOn, bool pureSideInput, double& outCh0, double& outSide)
+    {
+        anamorph::AnamorphEngine engine;
+        engine.prepare (sr, block);
+        anamorph::EngineParameters p;            // transparent defaults
+        p.monoSum = monoSumOn;
+        engine.setParameters (p);
+        engine.reset();
+
+        double phase = 0.0;
+        const double inc = 2.0 * 3.14159265358979 * freq / sr;
+        double sqCh0 = 0.0, sqSide = 0.0; int counted = 0;
+        for (int nb = 0; nb < 60; ++nb)
+        {
+            juce::AudioBuffer<float> buf (2, block);
+            for (int i = 0; i < block; ++i)
+            {
+                const float s = 0.5f * (float) std::sin (phase); phase += inc;
+                buf.setSample (0, i, s);
+                buf.setSample (1, i, pureSideInput ? -s : s);
+            }
+            engine.setParameters (p);
+            engine.process (buf);
+            if (nb >= 40)
+                for (int i = 0; i < block; ++i)
+                {
+                    const float l = buf.getSample (0, i), r = buf.getSample (1, i);
+                    sqCh0  += static_cast<double> (l) * static_cast<double> (l);
+                    const float side = 0.5f * (l - r);
+                    sqSide += static_cast<double> (side) * static_cast<double> (side);
+                    ++counted;
+                }
+        }
+        outCh0  = std::sqrt (sqCh0  / juce::jmax (1, counted));
+        outSide = std::sqrt (sqSide / juce::jmax (1, counted));
+    };
+
+    double ch0 = 0.0, side = 0.0;
+
+    // A pure-side tone sums to nothing: L + R == 0, so mono sum silences it.
+    measure (true, true, ch0, side);
+    std::printf ("  monoSum ON , side tone : ch0 %.4f side %.4f\n", ch0, side);
+    check (ch0 < 0.02, "mono sum silences a pure-side input");
+
+    // A mono tone passes at level, and the output carries no side content.
+    measure (true, false, ch0, side);
+    std::printf ("  monoSum ON , mono tone : ch0 %.4f side %.4f\n", ch0, side);
+    check (ch0 > 0.3,   "mono sum preserves a mono input at level");
+    check (side < 0.02, "mono sum output carries no side content");
+
+    // Control: with mono sum OFF the same side tone survives conditioning.
+    measure (false, true, ch0, side);
+    std::printf ("  monoSum OFF, side tone : ch0 %.4f side %.4f\n", ch0, side);
+    check (side > 0.3, "mono sum OFF preserves the side tone");
+}
+
+// ---------------------------------------------------------------------------
+static void testMsSoloInputIsolation()
+{
+    std::printf ("Test 36: M/S Solo isolates Mid/Side BEFORE the widening engine (#15)\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0;
+    const int block = 256;
+    const double freq = 1000.0;
+
+    // Output RMS (ch 0) for a solo mode + stimulus, with the widening amount as
+    // given -- solo is a discrete control, so measurement waits out the duck.
+    auto soloRms = [&] (anamorph::SoloMode mode, bool pureSideInput, float amount) -> double
+    {
+        anamorph::AnamorphEngine engine;
+        engine.prepare (sr, block);
+        anamorph::EngineParameters p;
+        p.solo = mode;
+        p.algoAmount = amount;                   // the #15 claim: raised Amount
+        if (amount > 0.0f) p.driveDb = 8.0f;     //   must not leak signal back in
+        engine.setParameters (p);
+        engine.reset();
+
+        double phase = 0.0;
+        const double inc = 2.0 * 3.14159265358979 * freq / sr;
+        double sq = 0.0; int counted = 0;
+        for (int nb = 0; nb < 70; ++nb)
+        {
+            juce::AudioBuffer<float> buf (2, block);
+            for (int i = 0; i < block; ++i)
+            {
+                const float s = 0.5f * (float) std::sin (phase); phase += inc;
+                buf.setSample (0, i, s);
+                buf.setSample (1, i, pureSideInput ? -s : s);
+            }
+            engine.setParameters (p);
+            engine.process (buf);
+            if (nb >= 45)
+                for (int i = 0; i < block; ++i)
+                {
+                    const float v = buf.getSample (0, i);
+                    sq += static_cast<double> (v) * static_cast<double> (v); ++counted;
+                }
+        }
+        return std::sqrt (sq / juce::jmax (1, counted));
+    };
+
+    using anamorph::SoloMode;
+    const double midOnMono   = soloRms (SoloMode::Mid,  false, 0.0f);
+    const double midOnSide   = soloRms (SoloMode::Mid,  true,  0.0f);
+    const double sideOnSide  = soloRms (SoloMode::Side, true,  0.0f);
+    const double sideOnMono  = soloRms (SoloMode::Side, false, 1.0f);
+    std::printf ("  Mid solo : mono %.4f side %.4f ; Side solo: side %.4f mono(amount=1) %.4f\n",
+                 midOnMono, midOnSide, sideOnSide, sideOnMono);
+
+    check (midOnMono  > 0.3,  "Mid solo passes mono content");
+    check (midOnSide  < 0.02, "Mid solo rejects pure-side content");
+    check (sideOnSide > 0.3,  "Side solo passes pure-side content");
+    // The documented property this stage exists for: solo runs BEFORE the
+    // widener, so soloing Side on mono content stays silent even at Amount 1.
+    check (sideOnMono < 0.02, "Side solo on mono content stays silent at full Amount");
+}
+
+// ---------------------------------------------------------------------------
+static void testMatchInjectRestore()
+{
+    std::printf ("Test 37: injected Level-Match trim is adopted on both consume paths (#23)\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0;
+    const int block = 256;
+
+    anamorph::AnamorphEngine engine;
+    engine.prepare (sr, block);
+    anamorph::EngineParameters p;                // transparent defaults
+    p.autoGainMatch = true;
+    engine.setParameters (p);
+    engine.reset();
+
+    double phase = 0.0;
+    const double inc = 2.0 * 3.14159265358979 * 1000.0 / sr;
+    auto runBlocks = [&] (int count) -> double   // returns RMS over the last 20 blocks
+    {
+        double sq = 0.0; int counted = 0;
+        for (int nb = 0; nb < count; ++nb)
+        {
+            juce::AudioBuffer<float> buf (2, block);
+            for (int i = 0; i < block; ++i)
+            {
+                const float s = 0.25f * (float) std::sin (phase); phase += inc;
+                buf.setSample (0, i, s); buf.setSample (1, i, s);
+            }
+            engine.setParameters (p);
+            engine.process (buf);
+            if (nb >= count - 20)
+                for (int i = 0; i < block; ++i)
+                {
+                    const float v = buf.getSample (0, i);
+                    sq += static_cast<double> (v) * static_cast<double> (v); ++counted;
+                }
+        }
+        return std::sqrt (sq / juce::jmax (1, counted));
+    };
+
+    // The injection is a SEED, not a freeze (LoudnessMatch.h:63-69, feedback
+    // #16/#23): setDisplayedGainDb restores the remembered value so the switch
+    // does not lurch, and MEASURE -- "the final authority" while audio plays --
+    // then re-converges smoothly FROM it. The assertions below test exactly
+    // that contract: the seed lands (both consume paths), and the measurement
+    // walks it back to the transparent chain's ~0 dB without a level slam.
+
+    // Settle the transparent chain with Level Match engaged: wet == dry, so the
+    // engine's own measured match should sit at ~0 dB.
+    const double amp0 = runBlocks (100);
+    check (std::abs (engine.getMatchGainDb()) < 1.0, "transparent chain measures ~0 dB match");
+    check (amp0 > 0.1, "steady tone present before injection");
+
+    // DEFENSIVE consume path (AnamorphEngine.cpp "arrived WITHOUT a forced
+    // duck"): the seed is adopted on the very next block rather than lost.
+    engine.injectMatchGainDb (-6.0f);
+    runBlocks (1);
+    const float seeded = engine.getMatchGainDb();
+    std::printf ("  un-ducked seed after 1 block: %.2f dB\n", (double) seeded);
+    check (seeded < -4.0f, "un-ducked injection seeds the displayed match trim");
+
+    const double ampBack = runBlocks (200);
+    const float back = engine.getMatchGainDb();
+    std::printf ("  re-converged after 200 blocks: %.2f dB\n", (double) back);
+    check (std::abs (back) < 1.0, "measurement re-converges from the seed (authority kept)");
+    check (ampBack / juce::jmax (1.0e-9, amp0) > 0.8, "steady level restored after re-convergence");
+
+    // FORCED path (the A/B slot-switch choreography, feedback #23): request the
+    // masking duck, inject the remembered trim, then hand over the (here:
+    // identical) parameters; the seed is adopted at the silent bottom.
+    engine.requestDuck();
+    engine.injectMatchGainDb (-6.0f);
+    engine.setParameters (p);
+    float lowest = 0.0f;
+    for (int nb = 0; nb < 40; ++nb)
+    {
+        runBlocks (1);
+        lowest = juce::jmin (lowest, engine.getMatchGainDb());
+    }
+    std::printf ("  forced-duck seed: lowest displayed over 40 blocks: %.2f dB\n", (double) lowest);
+    check (lowest < -4.0f, "forced-duck injection seeds the trim at the silent bottom");
+
+    const double ampEnd = runBlocks (200);
+    check (std::abs (engine.getMatchGainDb()) < 1.0,
+           "measurement re-converges after the forced-duck seed");
+    check (ampEnd / juce::jmax (1.0e-9, amp0) > 0.8, "steady level restored after the duck");
+}
+
+// ---------------------------------------------------------------------------
+static void testProcessIsAllocationFree()
+{
+    std::printf ("Test 38: the audio path allocates nothing (portable guard, ADR-0029)\n");
+    juce::ScopedNoDenormals noDenormals;
+
+    // PROVE THE COUNTERS WORK BEFORE TRUSTING A ZERO. Which halves are live is a
+    // property of the build, not of the engine (see AllocationGuard.h), so the
+    // guard is asked rather than assumed, and a dead half is announced.
+    const auto live = anamorph::testing::selfCheck();
+    std::printf ("  guard liveness: operator new %s, aligned new %s, malloc family %s\n",
+                 live.newLive ? "LIVE" : "not live",
+                 live.alignedNewLive ? "LIVE" : "not live",
+                 live.mallocLive ? "LIVE" : "not live (expected under ASan)");
+    if (! live.newLive && ! live.mallocLive)
+    {
+        // The whole guard was compiled out. Two builds do that deliberately --
+        // valgrind by flag, RealtimeSanitizer by self-detection, both explained
+        // in AllocationGuard.h. Say so and assert nothing, rather than reporting
+        // a zero nothing was watching for. Under RTSan the stronger detector is
+        // running in this same binary and covers the same violation class.
+        std::printf ("::warning::the allocation guard is compiled out in this build "
+                     "(valgrind's -DANAMORPH_NO_ALLOC_GUARD, or RealtimeSanitizer, which "
+                     "the guard would otherwise blind) -- the audio-path allocation "
+                     "invariant is NOT asserted by Test 38 in this run.\n");
+        return;
+    }
+    check (live.newLive, "allocation guard: the operator-new counter is live");
+    check (live.alignedNewLive, "allocation guard: the over-aligned new counter is live");
+
+    // TWO DIFFERENT THINGS, AND ONLY ONE OF THEM IS ACCEPTABLE. The malloc half
+    // is legitimately absent on MSVC and macOS (no glibc to interpose) and under
+    // ASan (its own interceptors own malloc); those builds say so and assert
+    // less, by design. But a build where the half IS compiled in and still does
+    // not observe its own probe is broken -- the interposition stopped working,
+    // or the optimizer removed the probe (which is what an unescaped
+    // malloc/free pair invites at -O2+, and `linux-lto-tests` compiles this at
+    // -O3 -flto). That case used to print the same warning as the legitimate
+    // one and skip the assertion, so the run stayed green having checked less
+    // than the log implied. It is now a failure.
+    if (live.mallocCompiledIn)
+        check (live.mallocLive, "allocation guard: the malloc-family counter is live "
+                                "(compiled in, so it must observe its own probe)");
+    else
+        std::printf ("::warning::the malloc half of the allocation guard is not compiled into "
+                     "this build (MSVC/macOS have no glibc to interpose; ASan owns malloc) -- "
+                     "the raw-malloc allocation route is NOT asserted in this run.\n");
+
+    const double sr = 48000.0;
+    const int block = 256;
+
+    anamorph::AnamorphEngine engine;
+    engine.prepare (sr, block);
+
+    using namespace anamorph;
+    const Algorithm algos[] = { Algorithm::Haas, Algorithm::Velvet, Algorithm::Chorus, Algorithm::DimensionD };
+    const OversampleFactor os[] = { OversampleFactor::Off, OversampleFactor::x2, OversampleFactor::x4, OversampleFactor::x8 };
+
+    // The buffer is made ONCE, outside every armed region: constructing an
+    // AudioBuffer allocates, and that allocation belongs to the harness rather
+    // than to the engine (Test 2 builds one per block, which is fine there and
+    // would be counted here).
+    juce::AudioBuffer<float> buf (2, block);
+
+    long worstNew = 0, worstMalloc = 0;
+    int armedCalls = 0, armedSwitchLandings = 0;
+
+    for (auto a : algos)
+        for (auto o : os)
+            for (int variant = 0; variant < 2; ++variant)
+            {
+                EngineParameters p;
+                p.algorithm = a;
+                p.oversample = o;
+                p.driveDb = 8.0f;
+                p.width = 1.6f;
+                p.mix = 0.8f;
+                p.msMode = (variant == 0);
+                p.mbEnable = true;
+                p.monoMakerEnable = true;
+                p.autoGainMatch = true;
+                // THE SWITCH IS NOT APPLIED HERE, and that is the whole point of
+                // this loop rather than an oversight. Applying it outside and
+                // then repeating it inside -- which is what this test did until
+                // 2026-08-19 -- left every armed block in the steady-state
+                // no-change gate: `reset()` flushes an in-flight duck straight
+                // to its target (`AnamorphEngine.cpp:138-145`), so the armed
+                // region never once executed the block that ADOPTS a discrete
+                // change. That block is where the structural work is
+                // (`AnamorphEngine.cpp:684-759`: the algorithm tails cleared,
+                // the three oversamplers and the chorus reset on an OS path
+                // change, the crossover cleared on a topology change) and it
+                // runs INSIDE `process()`, at the silent bottom of the duck.
+                // Measured: an allocation seeded into it was invisible -- 3,840
+                // armed calls, worst new = 0, all checks green.
+                //
+                // Leaving `p` unapplied makes the first armed block of each
+                // configuration perform the real transition from the PREVIOUS
+                // one, and the armed blocks that follow carry the duck through
+                // its landing. Every configuration differs from its predecessor
+                // in at least `msMode`, so all 32 are genuine mid-stream
+                // switches; no `reset()` between them is deliberate, because a
+                // host does not get one either.
+
+                for (int phase = 0; phase < 2; ++phase)
+                    for (int n = 0; n < 60; ++n)
+                    {
+                        if (phase == 0) fillNoise (buf, (unsigned) (n * 7 + 1));
+                        else            buf.clear();
+
+                        // setParameters is on the audio thread every block in the
+                        // real wrapper, so it is inside the armed region too.
+                        const int latBefore = engine.getLatencySamples();
+                        {
+                            anamorph::testing::resetCounts();
+                            anamorph::testing::Armed arm;
+                            engine.setParameters (p);
+                            engine.process (buf);
+                        }
+                        ++armedCalls;
+                        // A LANDING THIS RUN ACTUALLY SAW, not one it assumes.
+                        // `osEngaged` -- and so the reported latency -- is
+                        // re-latched ONLY in that adopt block, so a change here
+                        // is proof the block executed while ARMED. Without it a
+                        // future edit could quietly restore the pre-loop flush
+                        // and leave this test measuring steady state again while
+                        // still printing a green zero.
+                        //
+                        // READ ACROSS THE ARMED SCOPE ONLY -- immediately before
+                        // it and immediately after -- never carried across
+                        // configurations. Carried, it counts a latency the
+                        // pre-loop flush moved OUTSIDE the scope, and the
+                        // assertion then passes on the very code it exists to
+                        // reject (measured: with the flush restored, a carried
+                        // comparison still reported 11).
+                        //
+                        // A FLOOR, NOT A CENSUS, and the difference is measured
+                        // rather than assumed: all 32 configuration changes land,
+                        // but the half-band polyphase IIR reports 4 samples at x2
+                        // and 6 at both x4 and x8, so the four x4 -> x8 landings
+                        // move no latency and are not counted. 11 of the 15
+                        // latency-visible transitions are, across all four
+                        // algorithms -- which is what this assertion needs.
+                        if (engine.getLatencySamples() != latBefore)
+                            ++armedSwitchLandings;
+                        worstNew    = juce::jmax (worstNew,    anamorph::testing::newCount.load());
+                        worstMalloc = juce::jmax (worstMalloc, anamorph::testing::mallocCount.load());
+                    }
+            }
+
+    std::printf ("  %d armed process() calls, %d of them landing an observable "
+                 "structural switch; worst per call: new=%ld malloc=%ld\n",
+                 armedCalls, armedSwitchLandings, worstNew, worstMalloc);
+    check (armedSwitchLandings > 0,
+           "the armed region lands structural switches, not steady state only");
+    check (worstNew == 0,    "no operator-new allocation on the audio path");
+    if (live.mallocLive)
+        check (worstMalloc == 0, "no malloc-family allocation on the audio path");
+}
+
+// ---------------------------------------------------------------------------
 int main()
 {
     std::printf ("=== Anamorph DSP self-tests ===\n");
@@ -2722,6 +3100,10 @@ int main()
     testHighRateCrossoverSnap();
     testSoloColdThroughDrag();
     testHaasParkedWarmHistory();
+    testMonoSumInputConditioning();
+    testMsSoloInputIsolation();
+    testMatchInjectRestore();
+    testProcessIsAllocationFree();
     testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);

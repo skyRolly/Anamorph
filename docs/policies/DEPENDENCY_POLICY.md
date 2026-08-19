@@ -6,13 +6,14 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
 
 | Dependency | Pin | Mechanism | Evidence |
 |---|---|---|---|
-| **JUCE** | **9.0.1**, pinned by **immutable commit SHA** `e18f7f506c0b96f2c738a0bcd7fe6467a5005ad8` | CMake `FetchContent` (`GIT_SHALLOW`), overridable via `-DANAMORPH_JUCE_PATH` | CMakeLists.txt:36-38,47-55 |
+| **JUCE** | **9.0.1**, pinned by **immutable commit SHA** `e18f7f506c0b96f2c738a0bcd7fe6467a5005ad8` | CMake `FetchContent` (`GIT_SHALLOW`), overridable via `-DANAMORPH_JUCE_PATH` | CMakeLists.txt:52-54, 63-71 |
 | **pluginval** | latest release (download) | `scripts/run-pluginval.sh` | scripts/run-pluginval.sh:119-126 |
 | **C++ standard** | C++23 | `CMAKE_CXX_STANDARD 23`, extensions off (ADR-0027) | CMakeLists.txt:16-18 |
-| **Clang** (the Linux warning-gate + sanitizer jobs; **ships nothing**) | **major pinned — 22**, upstream stable (ADR-0028) | `ANAMORPH_CLANG_VERSION`, the single authority, consumed by both jobs' installs, their ccache lineages and `--clang-major`. Installed from **apt.llvm.org** by `scripts/setup-llvm-apt.sh` (Ubuntu's archives stop at 20 for noble), fail-closed. `scripts/clang-warning-baseline.txt` records the same major and the gate **refuses to run** on a mismatch | .github/workflows/build.yml:78-80 |
+| **Clang** (the Linux warning-gate + sanitizer jobs; **ships nothing**) | **major pinned — 22**, upstream stable (ADR-0028) | `ANAMORPH_CLANG_VERSION`, the single authority, consumed by both jobs' installs, their ccache lineages and `--clang-major`. Installed from **apt.llvm.org** by `scripts/setup-llvm-apt.sh` (Ubuntu's archives stop at 20 for noble), fail-closed. `scripts/clang-warning-baseline.txt` records the same major and the gate **refuses to run** on a mismatch | .github/workflows/build.yml:107-109 |
+| **GCC** (the LTO + GCC-warning-gate job; **ships nothing from that job**, though the same major builds the shipped Linux artifact) | **major pinned — 13**, which is simply what `ubuntu-24.04` ships | `ANAMORPH_GCC_VERSION`, the single authority, consumed by that job's `apt` install, its ccache lineage and `--gcc-major`. Nothing to add to `apt` sources: the pin is *below* the image rather than ahead of it, which is why the **image** is pinned too (`runs-on: ubuntu-24.04`) — naming the compiler without naming the image only moves the unpinned variable one level up. `scripts/gcc-warning-baseline.txt` records the same major and the gate **refuses to run** on a mismatch | .github/workflows/build.yml:110 |
 | Linux system libs | distro packages | `scripts/setup-linux.sh` (ALSA, JACK, X11, FreeType, GTK/WebKit, mesa, **EGL — required by JUCE 9's Linux GL context path**, xvfb) | setup-linux.sh |
-| **GitHub Actions** | major tags (`@vN`), one exact patch (`codeql-action@v4.37.6`), one commit SHA | **Dependabot**, weekly, two semver-split groups | .github/dependabot.yml |
-| Runner images | floating `*-latest`, plus one deliberate pin (`macos-15-intel`, for native Intel) | GitHub's own image rollout | build.yml `runs-on:` |
+| **GitHub Actions** | **every ref pinned to a commit SHA**, with its version in a trailing comment | **Dependabot**, weekly, two semver-split groups (it reads and rewrites that comment) | .github/dependabot.yml |
+| Runner images | floating `*-latest`, plus two deliberate pins (`macos-15-intel`, for native Intel; `ubuntu-24.04` on `linux-lto-tests`, so the GCC warning baseline's reference compiler cannot move underneath it) | GitHub's own image rollout | build.yml `runs-on:` |
 
 ## Version-lock reasoning
 
@@ -23,7 +24,7 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
   parameter system (APVTS), GUI, and plugin-format wrappers — an unpinned bump can silently change
   DSP behaviour, latency, the editor/X11 embedding path (the 0.8.5 incident lives in JUCE's X11
   host code), and the parameter/state ABI. The pin makes builds reproducible and keeps the audited
-  behaviour stable. Evidence [Verified]: CMakeLists.txt:36-38,47-55; the X11 dependency is
+  behaviour stable. Evidence [Verified]: CMakeLists.txt:52-54, 63-71; the X11 dependency is
   documented in ADR-0011.
 
 ## Update mechanisms
@@ -34,7 +35,7 @@ automated PR would carry information a human could act on.
 
 | Category | Mechanism | Why |
 |---|---|---|
-| GitHub Actions refs | **Dependabot**, weekly, two groups split by semver impact | The only Dependabot ecosystem this repository has. Grouping is what keeps a multi-ref family (`codeql-action/{init,analyze,upload-sarif}`) moving together; splitting minor/patch from major is what stops one major blocking every safe bump. `microsoft/msvc-code-analysis-action` is excluded — see `.github/dependabot.yml` for the reason and `.github/workflows/msvc.yml` for the pin. |
+| GitHub Actions refs | **Dependabot**, weekly, two groups split by semver impact | The only Dependabot ecosystem this repository has. Every ref is a **commit SHA** with its version in a trailing comment (2026-08-18): a bare `@vN` is a mutable tag, and an action runs on the runner *with the job's credentials* — a privilege JUCE, which this project already pins by immutable SHA for the weaker reason, never has. The cost is accepted deliberately: a SHA pin is rewritten on every release rather than only on a major, so more dependencies move, which is what the update-type grouping absorbs. Grouping also keeps a multi-ref family (`codeql-action/{init,analyze,upload-sarif}`) moving together; splitting minor/patch from major is what stops one major blocking every safe bump. `microsoft/msvc-code-analysis-action` is excluded — see `.github/dependabot.yml` for the reason and `.github/workflows/msvc.yml` for the pin. |
 | **JUCE** | manual, ADR + Architecture Review (rules 1–5 below) | An unpinned bump can silently move DSP behaviour, latency, the editor/X11 path and the state ABI. The evidence a bump needs is a twin dump and a Level-5 audition, which no bot can produce. CMake is not a Dependabot ecosystem in any case, and Renovate has **no CMake manager at all** (its only C/C++ manager is Conan), so "automate it" is not an available option, only a hand-written regex would be. |
 | **Clang major** | manual, ADR-gated, and deliberately so — **re-tested after the move to apt.llvm.org, not inherited** | Still not expressible to Dependabot: it is a workflow `env:` value, and Dependabot parses no `env:` key in any ecosystem, nor any apt/deb one. Renovate *does* have a `deb` datasource and could point at an apt.llvm.org suite — so the honest reason is not "no tool can see it" but that **the PR could not be green**: `check-clang-warnings.py` exits 2 whenever the pin and the baseline's `# clang-major:` disagree, and reaching green means building with the new compiler and regenerating the site counts, which *is* the review. Every firing would also burn the full pluginval gate. The guard is the mechanism: it makes a stale pin a loud, specific failure instead of a silent comparison against another compiler's diagnostics. The human trigger is one page — `apt.llvm.org/llvm.sh`'s `CURRENT_LLVM_STABLE` — checked when upstream cuts a stable major, and a release candidate does not qualify. |
 | Runner images (`*-latest`) | GitHub's rollout, watched by hand | Nothing to update: the labels already float, and that is intended for every job except `macos-15-intel`. Dependabot does not touch `runs-on:`. Renovate extracts runner labels but then **skips** any that are not a numeric version, so `ubuntu-latest` is read and discarded; pinning the labels to get bot coverage would trade a real property (tracking GitHub's supported image) for a PR. |
@@ -56,10 +57,18 @@ repository ever grows a real package manifest.
 2. After any bump: full DSP self-tests + pluginval at the configured strictness
    (`ANAMORPH_PLUGINVAL_STRICTNESS` in `.github/workflows/build.yml`) in **both modes**
    (deterministic and `--randomise` ×3) on all three OSes, **and** a manual audition (Level 5) — a
-   JUCE change can move DSP/latency/editor behaviour invisibly to the headless gate.
+   JUCE change can move DSP/latency/editor behaviour invisibly to the headless gate. The
+   **bit-identity proof uses the committed harness**, `tests/dsp_dump.cpp`
+   (`-DANAMORPH_BUILD_DSPDUMP=ON`): build it against both JUCE checkouts with otherwise identical
+   flags and `diff` the two outputs. Every previous bump satisfied this rule with a scratchpad tool
+   that was thrown away afterwards, so the gate was permanent and the instrument was not — which is
+   how the 8.0.14 → 9.0.0 run first produced a scenario set that left `algoAmount` at its identity
+   default and hashed all four algorithms the same, reporting a confident nothing. The committed
+   harness checks itself for exactly that before printing anything (`docs/procedures/TESTING.md`
+   §Proving a dependency bump is bit-identical).
 3. Re-verify the `RELEASE_COMPATIBILITY_CHECKLIST.md` (latency reporting, session reload) after a bump.
 4. Prefer the offline path (`-DANAMORPH_JUCE_PATH`) for reproducibility in restricted CI.
-5. `JUCE_*` compile flags in `CMakeLists.txt:279-284` (no webview, no curl, no splash, strict
+5. `JUCE_*` compile flags in `CMakeLists.txt:335-340` (no webview, no curl, no splash, strict
    ref-counted pointer) are part of the dependency contract; changing them is a build change.
 
 ## Compliance log

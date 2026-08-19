@@ -45,3 +45,29 @@ _deps/
 # verification snippet (importlib against scripts/check-docs.py).
 __pycache__/
 *.py[cod]
+
+# THE FUZZ CORPUS IS AN INPUT THAT libFuzzer ALSO WRITES TO.
+#
+# `AnamorphFuzzState tests/fuzz-corpus` (the `fuzz` job, and the same command
+# docs/procedures/TESTING.md gives for running it locally) passes that directory
+# as libFuzzer's FIRST positional argument, which makes it the corpus libFuzzer
+# reads seeds from AND saves newly discovered coverage-increasing inputs into.
+# On a CI checkout that is harmless -- the tree is discarded. Locally it writes
+# into the working tree, and a `git add -A` then commits them: 62 such files were
+# committed that way in one round, alongside documentation in the same commit
+# saying the corpus held three seeds.
+#
+# So the committed corpus is exactly the SEEDS, spelled `*.bin` and named after
+# the fixture each derives from. libFuzzer names its own discoveries after the
+# SHA-1 of their contents, so the two are never confused by accident.
+#
+# THESE RULES LIVE HERE RATHER THAN IN THE DIRECTORY on purpose: a `.gitignore`
+# inside it would itself be read by libFuzzer as a corpus entry (measured: the
+# seed count went 3 -> 4), which is harmless but makes the directory stop
+# matching the count every document states.
+#
+# Adding a seed is deliberate: derive it from a tests/fixtures/*.xml in JUCE's
+# `copyXmlToBinary` framing, name it `<something>.bin`, and commit it. Anything
+# else appearing there is fuzzer output and is not tracked.
+tests/fuzz-corpus/*
+!tests/fuzz-corpus/*.bin

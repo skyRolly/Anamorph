@@ -21,7 +21,10 @@ the full pluginval release gate against the AU as well as the VST3 (same strictn
 ×3, against the packaged bundle), so the coverage gap the entry recorded no longer exists. No
 issue was added by that round: the residual — the gate is **pluginval**, not `auval` — is
 recorded as scope in `docs/procedures/CI_CD.md` §"Known coverage limits" and as the narrowed
-RH-F3, not as a limitation of the product.
+RH-F3, not as a limitation of the product. The same version's **engineering-roadmap round** then
+added one: **KI-023**, the Linux glibc floor. It records a limitation that has been true since the
+CI image moved to Ubuntu 24.04 and was simply never measured — the round that measured it also
+gated it, so it can no longer rise unnoticed.
 Prior sync: **v0.9.3** (six GUI interaction fixes plus an equal-width Widen row — the Multiband add-split preview line, the
 unified pop-up dismissal shield, pop-up lifetime across a hidden, destroyed or backgrounded window,
 two menu-rendering fixes and the Tooltips on/off transition —
@@ -104,7 +107,7 @@ is deferred to the silent duck bottom, where `mbStructuralChange` (which still i
 the fade-in instead of staying warm, partially defeating the 0.8.6 warm-bank design for that
 specific case. The reset is **masked by the duck (inaudible)**, so there is no user-visible defect;
 a stand-alone `mbEnable` toggle (the common case) is unaffected and stays warm.
-- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:676 (`mbStructuralChange` includes
+- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:689 (`mbStructuralChange` includes
   `pendingP.mbEnable != p.mbEnable`), :743 (reset on it). Raised in Devin review of PR #50
   (unresolved thread). See FUTURE_RISKS / ADR-0004 (warm-bank intent).
 - **Possible resolution:** remove `mbEnable` from `mbStructuralChange` so a concurrent toggle fades
@@ -121,7 +124,7 @@ consequences, both still open:
   *System Settings → Privacy & Security → Open Anyway*.
 
 Notarization (RH-PR-3) closes both.
-- **Evidence [Verified]:** .github/workflows/build.yml:1713-1715 (`codesign --force --deep --sign -`,
+- **Evidence [Verified]:** .github/workflows/build.yml:1949-1951 (`codesign --force --deep --sign -`,
   no notarization); packaging/macos/INSTALL.txt:4-10 (ad-hoc, not notarized), :34-41 (the
   Gatekeeper approval for the .pkg), :61-65 (the zip-route `xattr` step).
   See `docs/procedures/PACKAGING.md`.
@@ -132,7 +135,7 @@ The editor open/close tests can crash under pluginval on Linux due to a use-afte
 pointer). It is **not a defect in this plugin** (the plugin already drops its OpenGL child window on
 Linux, INC-006/ADR-0011) and is mitigated by a signal-only retry, but it cannot be fixed from this
 repository.
-- **Evidence [Verified]:** scripts/run-pluginval.sh:147-176 (`run_one_pass`, signal-only retry); ADR-0011. See FUTURE_RISKS RISK-004.
+- **Evidence [Verified]:** scripts/run-pluginval.sh:147-197 (`run_one_pass`, signal-only retry); ADR-0011. See FUTURE_RISKS RISK-004.
 
 ## KI-004 — No automated DAW/host-compatibility testing
 There is no in-repo test matrix across real DAWs; pluginval is the only conformance proxy. Host
@@ -472,7 +475,7 @@ only one granted).
   whatever UID the built VST3 carries. That is precisely why the change is recorded here and in
   ADR-0023 rather than left to surface itself.
 - **Evidence [Verified (code) / Verified — manual (new identity) / Unverified (old-session
-  effect)]:** CMakeLists.txt:217 (`PLUGIN_MANUFACTURER_CODE RTec`); ADR-0023 (`Accepted`
+  effect)]:** CMakeLists.txt:273 (`PLUGIN_MANUFACTURER_CODE RTec`); ADR-0023 (`Accepted`
   2026-07-30); CHANGELOG `[0.9.1]`. The **new** identity registering correctly was confirmed by the
   maintainer's Level-5 check on 2026-07-30 (host registration + `auval -v aufx Anmr RTec`) — a
   human sign-off, not headlessly reproducible. The **old-session** effect described above is
@@ -708,3 +711,29 @@ user *and* system plug-in folders lists Anamorph twice.
 - **Evidence [Verified]:** `packaging/macos/build-pkg.sh` (`build_component`);
   `docs/procedures/PACKAGING.md` §"macOS reinstall behaviour (idempotency)" §Not chased;
   `packaging/macos/INSTALL.txt`; INC-012 in `docs/POSTMORTEMS.md`.
+
+## KI-023 — the Linux build does not load on distributions older than its glibc floor
+
+The shipped Linux VST3 and Standalone are linked on the CI runner image, and a Linux binary records
+the oldest glibc/libstdc++ version that provides each imported symbol. The **maximum** of those is
+the oldest distribution the artifact can load on at all: below it the dynamic loader refuses with
+`version 'GLIBC_x.y' not found`, before any of this project's code runs — the plug-in does not
+appear in the host, rather than appearing and misbehaving.
+
+Measured 2026-08-18 on the artifact this repository ships: **GLIBC_2.38** and **GLIBCXX_3.4.31**,
+i.e. Ubuntu 23.10+ / Debian 13+ and GCC 13+. **Ubuntu 22.04 LTS ships glibc 2.35, so the plug-in
+does not load there.**
+
+- **Why it is not fixed here:** the floor was never chosen. It is whatever `ubuntu-latest` happened
+  to be when the binaries were linked, and it rose retroactively when that image moved to 24.04.
+  Lowering it means building against an older toolchain or a sysroot — a release-topology decision
+  (which image, which container, whether the release build stops sharing the CI image), not a CI
+  tweak. That decision has not been taken.
+- **What is fixed:** it is no longer invisible. `scripts/check-linux-abi.py` asserts the floor on
+  every push, on the **stripped** bytes and as the `linux` job's last step, so the run that raises it
+  is the run that fails instead of a user's DAW — while still producing the suites' results and the
+  artifacts, because the trigger is a runner-image move rather than anything in this tree. Raising it is now deliberate: change the declared constant in
+  the same change and name the systems it drops.
+- **Evidence [Verified]:** scripts/check-linux-abi.py (the declared floor and the gate);
+  `docs/architecture/COMPATIBILITY_MATRIX.md` §"Linux runtime ABI floor".
+

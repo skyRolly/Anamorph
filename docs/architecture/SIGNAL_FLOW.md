@@ -5,8 +5,8 @@ order guarantees. Reorder constraints are formalised in `DSP_GRAPH_REFERENCE.md`
 order itself is a binding invariant (`docs/policies/DSP_POLICY.md`).
 
 Evidence [Verified] for the entire chain:
-- Source: src/dsp/AnamorphEngine.cpp:660-1339 (`process`)
-- Source: src/dsp/AnamorphEngine.h:21-40 (chain header comment)
+- Source: src/dsp/AnamorphEngine.cpp:673-1352 (`process`)
+- Source: src/dsp/AnamorphEngine.h:22-41 (chain header comment)
 - Tests: tests/dsp_tests.cpp :: testMonoMakerPostMix, testSoloMonitor, testMultibandMonoCompat,
   testLevelMatchAndSolo, testNoClicksAcrossTransitions
 

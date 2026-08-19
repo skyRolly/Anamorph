@@ -8,7 +8,7 @@ architecture docs, and the ADRs. These must hold across releases.
 1. **The signal chain is strictly serial, in this fixed order** (see `SIGNAL_FLOW.md`):
    Input conditioning → Effect engine (Drive → algorithm → global Width → Multiband) →
    Dry/Wet Mix → Mono Maker → Output stage → Band Solo monitor → metering.
-   Evidence [Verified]: src/dsp/AnamorphEngine.cpp:583-896.
+   Evidence [Verified]: src/dsp/AnamorphEngine.cpp:583-909.
 
 2. **Mono Maker runs post-Mix, in place.** It collapses the lows of the *mixed* signal so the
    low end is mono at any Mix amount. (ADR-0006) Evidence: AnamorphEngine.cpp:761-766; test
@@ -45,7 +45,7 @@ architecture docs, and the ADRs. These must hold across releases.
    HaasProcessor/VelvetNoise/ChorusEngine headers; test `testTransparentDefault`.
 
 9. **Crossovers are Nyquist-clamped + ordered top-down; no output clipper; NaN/Inf self-heals.**
-   (ADR-0009) Evidence: MultibandWidth.cpp:55-71; AnamorphEngine.cpp:847-870; tests
+   (ADR-0009) Evidence: MultibandWidth.cpp:55-71; AnamorphEngine.cpp:1269-1313; tests
    `testCrossoverAutomationSafe`, `testNoBadSamples`.
 
 10. **Level Match measures the post-Mono-Maker output against A(dry)**, and is an absolute

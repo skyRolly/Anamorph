@@ -657,7 +657,20 @@ void AnamorphEngine::processNonlinearRegion (float* L, float* R, int n, double r
 }
 
 // ---------------------------------------------------------------------------
-void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept
+// ANAMORPH_NONBLOCKING IS REPEATED HERE, on the definition, and not only on the
+// declaration in the header. Clang merges function effects across
+// redeclarations, so the enforcement reached this body either way -- the
+// seeded-allocation run that aborts at exit 43 from inside it proves that. Two
+// things are wrong with relying on the merge. It is a compiler behaviour rather
+// than a property of this code, and `-Wfunction-effect-redeclarations` exists
+// precisely because Clang reserves the right to complain about the split; a
+// future major tightening it would surface a new first-party diagnostic in the
+// `linux-clang` warning gate, for a file that had not changed. And a reader of
+// this translation unit, which is where the DSP chain actually lives, saw no
+// sign that the body is under a realtime contract at all. The macro is inert on
+// every compiler that lacks the attribute and changes no codegen on the one that
+// has it (ADR-0029 Evidence), so saying it twice costs nothing.
+void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORPH_NONBLOCKING
 {
     const int n = buffer.getNumSamples();
     if (buffer.getNumChannels() < 2 || n <= 0) return;

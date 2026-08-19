@@ -43,7 +43,7 @@ itself (`PACKAGING.md`).
 
 `MAJOR.MINOR.PATCH`, pre-1.0 (< 1.0.0 = pre-release line); the version lives in
 `CMakeLists.txt` and the About box. Evidence [Verified]: CMakeLists.txt:14 (`project VERSION`),
-:186-192 (the versioning comment, `ANAMORPH_BUILD_NUMBER`, and the two version compile definitions).
+:306-331 (the versioning comment, `ANAMORPH_BUILD_NUMBER`, and the two version compile definitions).
 
 ## Tagging + release pipeline (RH-PR-8)
 

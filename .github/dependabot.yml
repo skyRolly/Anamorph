@@ -14,19 +14,35 @@
 # unpinned bump can silently move DSP behaviour/latency/state ABI) per that
 # policy and ARCHITECTURE_REVIEW_GATE.md.
 #
-# Action bumps are grouped, but in TWO groups split by semver impact rather than
-# the single `*` group this file used to carry:
+# EVERY action ref in this repository is pinned to a COMMIT SHA (2026-08-18),
+# with the version it corresponds to in a trailing comment -- Dependabot's own
+# convention, which it reads and rewrites. That was not the case before: the
+# `actions/*` refs were bare majors (`@v7`, `@v6`), which are MUTABLE tags. The
+# inconsistency this removes is internal rather than theoretical: JUCE is pinned
+# by immutable commit SHA precisely "so the dependency cannot silently change
+# under a re-pointed tag" (ADR-0022) -- and JUCE never sees a token, while every
+# one of these actions runs on the runner with the job's credentials. A repointed
+# `v7` was the more privileged hole of the two.
 #
-#   * minor/patch -- safe to judge on a green run. In this tree that is the
-#     `github/codeql-action` trio and nothing else, because a ref pinned at a
-#     bare major (`@v7`) is only ever rewritten when the MAJOR moves: Dependabot
-#     updates a ref in place and keeps its style, and there is no "newer tag"
-#     for a moving `v7`. The trio is pinned at an exact patch (`@v4.37.6`) and
-#     releases every week or two, so essentially all the volume is here.
+# THIS CHANGES WHAT DEPENDABOT DOES HERE, and the change is the intended cost.
+# A bare major is only ever rewritten when the MAJOR moves, so the previous
+# volume was essentially the `github/codeql-action` trio alone. A SHA pin is
+# rewritten on EVERY release, so `actions/checkout`, `actions/cache`,
+# `actions/upload-artifact` and `actions/download-artifact` now generate updates
+# too. The two groups below are what keeps that legible, and they are split by
+# semver impact rather than by the single `*` group this file used to carry:
+#
+#   * minor/patch -- safe to judge on a green run, and now most of the volume:
+#     the codeql-action trio (which releases every week or two) plus the
+#     `actions/*` point releases the SHA pins expose.
 #   * major -- can change an action's Node runtime, inputs or outputs. In one
 #     combined PR a single major blocks every safe bump behind it, and the whole
-#     9-job matrix re-runs whenever it is finally read; split, the patches land
-#     on green and the major gets the reading it needs.
+#     matrix re-runs whenever it is finally read; split, the patches land on
+#     green and the major gets the reading it needs.
+#
+# Read the version COMMENT, not just the SHA, when reviewing one of these: the
+# comment is the only human-legible half, and a bump that changes the SHA without
+# changing the comment is the shape to stop on.
 #
 # Both groups keep `patterns: "*"` DELIBERATELY: an action family spread over
 # several refs (`github/codeql-action/init`, `/analyze`, `/upload-sarif` --
@@ -35,9 +51,11 @@
 # update-type moves such a family together within its semver class; ungrouped
 # majors would not.
 #
-# Still at most two PRs a week. `cooldown` is deliberately unset: Dependabot
-# already withholds a new version for 3 days by default, and an explicit block
-# would only be restating that.
+# Still at most two PRs a week, because the split is by update-type rather than
+# by dependency -- more dependencies now move, but they move together within
+# their semver class. `cooldown` is deliberately unset: Dependabot already
+# withholds a new version for 3 days by default, and an explicit block would only
+# be restating that.
 version: 2
 updates:
   - package-ecosystem: "github-actions"

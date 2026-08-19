@@ -27,9 +27,9 @@ plugin wrapper, APVTS, parameter IDs, or any host**. This is what makes an AU/AA
 near-zero-cost addition.
 
 Evidence [Verified]:
-- Source: src/dsp/AnamorphEngine.h:38-39 ("Knows nothing about JUCE's plugin wrapper / APVTS")
+- Source: src/dsp/AnamorphEngine.h:39-40 ("Knows nothing about JUCE's plugin wrapper / APVTS")
 - Source: src/dsp/EngineParameters.h:3-17 (POD decoupling rationale)
-- Source: CMakeLists.txt:188-199 (`AnamorphDSP` INTERFACE library, depends only on juce_dsp)
+- Source: CMakeLists.txt:244-255 (`AnamorphDSP` INTERFACE library, depends only on juce_dsp)
 
 ## 2. The decoupling boundary: `EngineParameters`
 

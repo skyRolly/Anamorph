@@ -12,7 +12,7 @@ The short attribution notices that must accompany a binary distribution are repr
 ## How this inventory was produced
 
 Anamorph has exactly one declared dependency: **JUCE**, fetched by CMake `FetchContent` and
-pinned to an immutable commit (`CMakeLists.txt:36-38`; ADR-0022, ADR-0026). Every third-party component
+pinned to an immutable commit (`CMakeLists.txt:52-54`; ADR-0022, ADR-0026). Every third-party component
 below therefore arrives *inside the JUCE source tree* — nothing else is vendored, and no
 package manager is used.
 

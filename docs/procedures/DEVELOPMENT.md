@@ -56,7 +56,7 @@ reported-latency changes, ADR conflicts).
 - The audio thread is real-time (`docs/policies/REALTIME_AUDIO_POLICY.md`): do not add logging,
   allocation, or locks to `processBlock` / `AnamorphEngine::process`, even temporarily in a
   committed change.
-- A non-finite-sample self-heal exists in the engine (`AnamorphEngine.cpp:847-870`); if you see
+- A non-finite-sample self-heal exists in the engine (`AnamorphEngine.cpp:1269-1313`); if you see
   the DSP reset itself, a NaN/Inf was produced upstream — fix the source, not the guard.
 - On Linux the editor renders CPU-side (no OpenGL attach) by design (ADR-0011); GPU compositing
   paths only run on macOS/Windows.
