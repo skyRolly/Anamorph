@@ -160,15 +160,19 @@ on-open call is at **`:1953`** (not `:1483`), and KI-017's evidence line cited *
 Save-Preset field (not `:326-355`, which is the A/B-control setup) and **`:1942-1992`** for show +
 focus. Every one was verified by reading the lines, not by trusting the review's numbers.
 
-**No `DELIBERATE_REAIMS` declaration was required, and that is a fact about the gate worth
-recording.** The obvious assumption is that re-aiming a *tracked* anchor needs one. It does not
-here: the gate keys on the anchor's **spelling**, so changing the number makes the base spelling
-absent from the current document and the new one absent from the base — the run reports "2
-re-spelled or removed, beyond what this run can judge" and passes. Confirmed rather than assumed, by
-re-running `--fix` afterwards and diffing: it left all five corrections untouched, so there is
-nothing for a declaration to hold off. The declaration mechanism is for the case where the base
-spelling **survives** and `--fix` would drag the correction back every run; that is not this case,
-and adding an inert entry would only be reported as removable on the next run.
+**No `DELIBERATE_REAIMS` declaration was required for those five — but the reason first written
+here was WRONG, and the correction matters more than the conclusion.** It said the gate "keys on the
+anchor's spelling". It does not. Citations are grouped per `(document, tracked path)` and paired
+**positionally** (`zip(olds, curs)`), and when the two counts differ the run prints "now has N
+citation(s) where the base had M; the added ones are not checkable against that base" and `continue`s
+— skipping the content comparison for that whole group. `docs/KNOWN_ISSUES.md` went from two
+`src/PluginEditor.cpp` citations to five, so its group is **not compared at all**. Those five
+anchors are therefore **unchecked, not blessed**; `--fix` leaving them alone is what "not compared"
+looks like, not evidence that the gate approved them. That is inherent — a new anchor cannot be
+checked against a base that does not contain it — and it resolves itself once the default branch
+carries them, at which point the counts match again and they are protected like any other. Recording
+the real mechanism because the wrong one would have been used to justify skipping a declaration that
+*was* needed, which is exactly what happened next.
 
 **The shape problem is closed too, without losing the labels.** Two of these anchors were invisible
 not for want of the `src/` prefix but because prose sits between the path and the second anchor
@@ -184,6 +188,24 @@ nested tracked paths across eleven other documents (28 of them in this file, whe
 deliberate — the checker's own header forbids prose *examples* from using a tracked path, and this
 ledger quotes old anchor spellings as examples). That is a pre-existing structural condition, not
 something these rounds created, and closing it is its own change.
+
+**A third review pass found the same carried-mistake class in `PRIVACY.md`, and this one needed a
+declaration.** The row saying the Presets folder is created when the **Load Preset** dialog opens
+cited `src/PluginEditor.cpp:1455` at the merge base — the S11 generation pre-gate comment inside
+`stepMicroAnims`, about 383 lines short of the `:1838` that `dir.createDirectory()` sat on there.
+`--fix` carried it to `:1524`, still the same comment. Corrected to **`:1916`**, and written the way
+the checker's own header says new citations should be — with the symbol spelled beside the number
+(`dir.createDirectory()` in `showLoadPreset`), because that is the half a reader can check and the
+half that survives the next shift.
+
+**Unlike the `KNOWN_ISSUES.md` five, this one is caught by the gate, which is why it is declared.**
+`PRIVACY.md` still has exactly one `src/PluginEditor.cpp` citation, so the pair IS compared, the
+re-aim reads as drift, and `--fix` **reverted the correction on the first run** — measured, not
+predicted. `("PRIVACY.md", "src/PluginEditor.cpp:1916"): "createDirectory"` is therefore added to
+`DELIBERATE_REAIMS`. It is not an inert exemption: `verify_reaim_targets` resolves the anchor against
+the live file every run, and mutating the substring to a value the code does not contain makes the
+run fail with `::error::` and exit 2 — checked by doing it, then reverting. A declaration turns the
+drift check off for its anchor, so the aim check is the thing that keeps it honest.
 
 **Reported and deliberately NOT corrected — the About-link anchor in the three legal documents.**
 `EULA.md`, `PRIVACY.md` and `TRADEMARKS.md` cite where the product's one outbound hyperlink is
@@ -217,7 +239,8 @@ says should land on its own merits, so it is recorded there as a measured correc
 attempted here.
 
 **MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-19**, for the hover-occlusion fix and for the
-two citation-correction rounds the reviews of it produced. Confirmed after review; recorded, not
+three citation-correction rounds the reviews of it produced (the third added the `PRIVACY.md`
+re-aim and its `DELIBERATE_REAIMS` declaration). Confirmed after review; recorded, not
 requested again. It supersedes this entry's earlier "NOT GRANTED" status, which stood while the
 confirmation was genuinely outstanding. Scope is this change set only; no approval is claimed for
 the About-link re-aim left open below, or for anything else in the reviews that produced these
