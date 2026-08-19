@@ -1091,7 +1091,7 @@ bool AnamorphAudioProcessorEditor::cursorIsOverOpenPopup() const
 
     // The preset menu: never reaches that hook (its look-and-feel is null at construction), but
     // INC-010 made it an editor CHILD, and "modal child of mine" identifies it exactly -- the same
-    // test dismissTrackedPopupMenus already uses at :1082-1084, for the same reason.
+    // test dismissTrackedPopupMenus already uses at :1146-1148, for the same reason.
     if (presetMenusOpen > 0)
         for (auto* child : getChildren())
             if (child->isCurrentlyModal (false) && child->isShowing()

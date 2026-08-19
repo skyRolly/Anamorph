@@ -138,7 +138,29 @@ notes to the next `^## \[`); `README.md` §Project status; `HANDOVER.md`; `docs/
 `TRADEMARKS.md`, `KNOWN_ISSUES.md` and `THREAD_MODEL.md` were re-anchored by
 `check-citations.py --fix` after the line insertions, and one **untracked** prose reference the gate
 cannot see — `KNOWN_ISSUES.md`'s "declared PluginEditor.h:85", which my edit made point at a comment
-— was corrected by hand to `:178`.
+— was corrected by hand to `:178`. A **review pass** then found two more of the same untracked class
+and one pre-existing mis-aim, all three verified against the tree rather than taken on the review's
+word: this file's own new helper cited the modal-child test it copies at `:1082-1084` (the
+pre-insertion location — corrected to `:1146-1148`, the `for`/`if`/`exitModalState` block in
+`dismissTrackedPopupMenus`), and `POSTMORTEMS.md` INC-011 still made the identical geometric-hover
+claim as the header against `PluginEditor.cpp:1331-1333`, `:1072-1073` — the pair the header edit
+corrected. Both are now `src/`-qualified and therefore visible to the gate from here on; the second
+was invisible only because it lacked the `src/` prefix `TRACKED` matching requires, which the same
+document already uses for its five other source anchors.
+
+**Reported and deliberately NOT corrected — the About-link anchor in the three legal documents.**
+`EULA.md`, `PRIVACY.md` and `TRADEMARKS.md` cite where the product's one outbound hyperlink is
+declared, and `--fix` moved all three from `src/PluginEditor.h:213` to `:223` in this change set.
+That re-anchor is mechanically correct and **preserves a pre-existing mistake**: at the merge base
+`:213` already read `return juce::TooltipWindow::getTipFor (c);`, and `:223` reads the identical
+line today, while `aboutLink` actually lives at `src/PluginEditor.h:362`. So the rot predates this
+change and was faithfully carried, not created by it — precisely the failure mode
+`check-citations.py`'s own header describes ("it CANNOT tell you a citation was aimed at the wrong
+code to begin with… and it does so INVISIBLY, in a DRIFTED line that reads like a repair"). It is
+left for its own change because re-**aiming** three legal documents is a different act from
+re-**anchoring** them, needs the `DELIBERATE_REAIMS` declaration that distinguishes the two, and has
+nothing to do with hover; recording it here is what stops the paragraph above reading as though those
+three anchors were verified correct.
 
 **Drift reported and corrected (C6):** `docs/KNOWN_ISSUES.md`'s summary table stopped at KI-022, so
 **KI-023 had a full entry but no table row** from the day it was filed (2026-08-18). Its row is added
