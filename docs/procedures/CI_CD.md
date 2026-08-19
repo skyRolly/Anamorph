@@ -219,7 +219,7 @@ edge above must not be read as release non-blocking.
   is load-bearing: RTSan halts on the first violation by default, and `halt_on_error=false` makes the
   process print its reports and still exit 0. A **liveness canary** (`tests/realtime_canary.cpp`)
   compiles and runs first and the step fails unless it aborts *with* a sanitizer report — the same
-  prove-it-can-fail discipline as the four lints' `--self-test`s.
+  prove-it-can-fail discipline as the seven lints' `--self-test`s.
   The job also runs **`-Werror=function-effects` over the JUCE-free leaf layer**
   (`tests/realtime_effects.cpp`, `-fsyntax-only`, seconds): a driver function annotated
   `ANAMORPH_NONBLOCKING` calls `MidSide`, `LR4Xover`, `ScopeBuffer`, `CorrelationMeter` and

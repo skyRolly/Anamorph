@@ -35,9 +35,11 @@ Anamorph/
 │                           release-hardening/RH_PR2_INVESTIGATION.md — finalized decisions
 │                           graduate to ADRs; worklogs are the raw evidence trail).
 ├── scripts/                setup (incl. the pinned-Clang apt source) / build / test / pluginval,
-│                           plus the four CI lints
-│                           (check-docs, check-portability, check-citations,
-│                           check-clang-warnings — each with its own self-test).
+│                           plus the seven CI lints
+│                           (check-docs, check-portability, check-realtime,
+│                           check-citations, check-clang-warnings,
+│                           check-gcc-warnings, check-linux-abi — each with its
+│                           own self-test).
 ├── packaging/              Per-platform install notes + installer assets (linux/, windows/, macos/).
 ├── .github/                CI + security tooling: workflows/ (build + validate on 3 OSes with
 │                           retain-then-strip symbol pipeline; doc/source lints; Clang AND GCC

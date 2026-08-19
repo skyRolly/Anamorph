@@ -7,7 +7,8 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
-**policy-topology round** (first below), then the
+**lint-count round** (first below), then the
+**policy-topology round**, then the
 **armed-transition round**, then the
 **reachability-and-runnability round**, then the
 **parser-and-evidence round**, then the
@@ -133,6 +134,29 @@ is Linux/X11 only. On Windows and macOS that turned a genuine crash into two mor
 The retry is now scoped by `uname -s`: three attempts on Linux, one everywhere else, with a distinct
 message so a single-attempt failure cannot be misread as an exhausted retry. The separately
 justified `.ps1` retry is untouched.
+
+**Lint-count round (2026-08-19): the two places that still said four.**
+
+**MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-19**, for this documentation correction.
+Confirmed before the work; recorded, not requested again. No other approval is claimed by this entry.
+
+**The round below named this and left it; this round closes it.** `REPOSITORY_MAP.md`'s `scripts/`
+tree summary still read "plus the four CI lints (check-docs, check-portability, check-citations,
+check-clang-warnings — each with its own self-test)" while the same file's own table lists all seven
+and its `preflight.sh` row already says "the **seven** checkers"; `CI_CD.md` compared the RTSan
+canary to "the four lints' `--self-test`s". Both now say seven and the tree names all seven. The
+summary line is the first thing a new reader hits, which is why a count there is worth more than its
+size: `TESTING_POLICY.md` rule 4 enumerates seven, so a reader arriving through the map met the
+divergence before the policy.
+
+**Two more "four"s were checked and are correct, not stale.** `REPOSITORY_MAP.md`'s
+`check-citations.py` row says the gate governs "the four `scripts/`", and `TRACKED` does list exactly
+four — `build.sh`, `run-pluginval.sh`, `run-tests.sh`, `setup-linux.sh`. And ADR-0029 §9 says the
+canary "is the maintenance the repository already performs for its four lints", which was the state
+when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
+Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
+reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
+`.github/workflows/build.yml:2751` and `:2836`, this round being documentation-only.
 
 **Policy-topology round (2026-08-19): rule 4 described a placement three of its own seven checkers
 cannot have. One report investigated and closed with no change.**
