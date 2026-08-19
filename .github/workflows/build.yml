@@ -1799,14 +1799,26 @@ jobs:
       # dSYMs and a 53 MB `Anamorph-macOS-debug` artifact where there had
       # previously been none.
       #
-      # SO ZERO USABLE dSYMs IS NOW AN ERROR, not a warning. It was a warning
-      # while the zero was an expected property of the build; now that the build
+      # SO ZERO USABLE dSYMs IS AN ERROR, not a warning. It was a warning while
+      # the zero was an expected property of the build; now that the build
       # produces them, a zero means something broke -- and a silent regression to
       # "no symbolication" is exactly the state this fix ended. Per-bundle
       # discards remain warnings: one degenerate dSYM among three is a partial
-      # result worth reporting, not a reason to fail a release. The customer
-      # pipeline (strip -x -> codesign -> verify) is still never blocked by
-      # debug-capture problems.
+      # result worth reporting, not a reason to fail a release.
+      #
+      # THE ERROR IS RAISED AT THE END OF THE JOB, NOT HERE, and the distinction
+      # is the whole point. This step only RECORDS the count (`debug_artifacts`);
+      # the assertion is its own final step, after the customer pipeline and
+      # every upload have run. Raising it here aborted the step between the
+      # `strip -x` loop and the codesign/copy/`lipo`/`nm` half below it, so a
+      # debug-capture problem left `dist/Anamorph-macOS` unpopulated and skipped
+      # the plug-in upload, the installer and -- through `release.yml`'s
+      # aggregate `needs` -- the draft release. macOS users would have got no
+      # build at all rather than a build without symbols, which contradicts the
+      # rule this comment states: the customer pipeline (strip -x -> codesign ->
+      # verify) is never blocked by debug-capture problems. Deferring the
+      # assertion keeps BOTH properties: the artifacts are produced and uploaded,
+      # and the job still ends red so the release is blocked.
       - name: Package macOS plugins (VST3 + AU + Standalone)
         id: package
         # Same gate, same reason as the Windows staging step above: after a compile error
@@ -1883,14 +1895,17 @@ jobs:
             strip -x "$BIN"
           done
           if [ "$USABLE_DSYMS" -eq 0 ]; then
-            echo "::error::no usable dSYM was produced. Since -Wl,-object_path_lto landed this is a REGRESSION, not the expected Release+LTO outcome: ld64 keeps the LTO object dsymutil needs, and the step before this one asserted it did. Check that flag and the retained-object directory. Do NOT resolve this by disabling LTO."
-            exit 1
+            echo "::warning::no usable dSYM was produced -- the customer pipeline below continues, and the 'Assert a validated dSYM was captured' step at the end of this job will fail the run."
           fi
           # Written BEFORE codesign/copy/verification below so dSYMs captured
           # above still upload even if those later steps fail. (A strip
           # failure inside the loop above aborts earlier, leaving the flag
           # unwritten -- the -debug upload is then skipped along with the
           # failed job, which is the fail-closed default.)
+          #
+          # It is also what the end-of-job assertion reads, which is why that
+          # assertion can be deferred at all: the count is captured here, at the
+          # moment it is known, and judged after the customer artifacts are safe.
           echo "debug_artifacts=$([ "$USABLE_DSYMS" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
           # Ad-hoc codesign so macOS will load the bundles after quarantine removal.
           codesign --force --deep --sign - "$VST3"
@@ -2109,12 +2124,14 @@ jobs:
           path: dist/Anamorph-*-macOS.pkg
           if-no-files-found: error
 
-      # Uploaded only when at least one VALIDATED dSYM was captured (the
-      # best-effort policy above): with zero usable dSYMs the upload is
-      # skipped -- with a warning already emitted by the package step --
-      # instead of failing on an empty directory. The outputs flag is
-      # written before the abortable packaging steps, so dSYMs captured
-      # before a later codesign/verification failure are still preserved.
+      # Uploaded only when at least one VALIDATED dSYM was captured: with zero
+      # usable dSYMs the upload is skipped -- with a warning already emitted by
+      # the package step -- instead of failing on an empty directory with
+      # `if-no-files-found: error`, which would report the wrong cause. The
+      # missing dSYM is not tolerated by this skip; the step after this one
+      # fails the job for it. The outputs flag is written before the abortable
+      # packaging steps, so dSYMs captured before a later codesign/verification
+      # failure are still preserved.
       - name: Upload macOS debug symbols (dSYMs, crash symbolication)
         if: ${{ !cancelled() && steps.package.outcome != 'skipped' && steps.package.outputs.debug_artifacts == 'true' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -2122,6 +2139,34 @@ jobs:
           name: Anamorph-macOS-debug
           path: dist/Anamorph-macOS-debug
           if-no-files-found: error
+
+      # LAST STEP IN THE JOB, DELIBERATELY. macOS crash symbolication is a
+      # release contract (`RELEASE_HARDENING_PLAN.md`, RH-R8) and losing it must
+      # fail the run -- but it must not COST the run its artifacts on the way
+      # out. Everything that produces or validates a customer-facing byte has
+      # already happened by the time this runs: packaging, ad-hoc signing, the
+      # universal-slice and entry-point assertions, both pluginval gates, the
+      # `.pkg`, and all three uploads. So a symbol-capture regression yields
+      # exactly what the reader of a red run needs -- the plug-in, the installer
+      # and the failure -- instead of nothing.
+      #
+      # Failing here still blocks the release: `release.yml` depends on this
+      # workflow's AGGREGATE result (`needs: [validate, build]`), which a failed
+      # job decides regardless of where in the job it failed. Release eligibility
+      # is therefore unchanged by moving the assertion; only the artifacts'
+      # survival is.
+      #
+      # Gated on the packaging step having SUCCEEDED, because
+      # `debug_artifacts` is its output: if packaging failed or was skipped, that
+      # failure is the story and a second one here would only bury it.
+      - name: Assert a validated dSYM was captured
+        if: ${{ !cancelled() && steps.package.outcome == 'success' }}
+        run: |
+          if [ "${{ steps.package.outputs.debug_artifacts }}" != "true" ]; then
+            echo "::error::no usable dSYM was produced. Since -Wl,-object_path_lto landed this is a REGRESSION, not the expected Release+LTO outcome: ld64 keeps the LTO object dsymutil needs, and the 'Assert LTO ran' step earlier in this job confirmed it did. Check that flag and the retained-object directory. Do NOT resolve this by disabling LTO, and do NOT relax this assertion -- the customer artifacts for this run were built, validated and uploaded before this step ran."
+            exit 1
+          fi
+          echo "validated dSYM(s) captured and uploaded as Anamorph-macOS-debug"
 
   # ==========================================================================
   #  NATIVE INTEL macOS -- the one execution environment nothing else covers.

@@ -7,7 +7,8 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
-**macOS-symbolication and review round** (first below), then the
+**follow-up review round** (first below), then the
+**macOS-symbolication and review round**, then the
 **engineering-roadmap implementation round**, covering in two batches: the leaf-layer
 `-Wfunction-effects` check, the performance-benchmark harness, `setStateInformation` fuzzing, the
 GCC-only warning gate, LeakSanitizer promoted to a gate, the pluginval crash-retry scoped to its
@@ -123,6 +124,47 @@ is Linux/X11 only. On Windows and macOS that turned a genuine crash into two mor
 The retry is now scoped by `uname -s`: three attempts on Linux, one everywhere else, with a distinct
 message so a single-attempt failure cannot be misread as an exhausted retry. The separately
 justified `.ps1` retry is untouched.
+
+**Follow-up review round (2026-08-19): a mandatory gate placed where it could withhold the product,
+and a corpus that had quietly grown to 21× its documented size.**
+
+**A debug-symbol failure must not cost macOS users their build.** Making zero usable dSYMs an error
+was right; raising it *inside* the packaging step was not. The `exit 1` sat between the `strip -x`
+loop and the customer half of the same step — codesign, the copy into `dist/`, the universal-slice
+assertion and the entry-point check — so a symbol-capture regression would have left
+`dist/Anamorph-macOS` unpopulated, skipped the plug-in upload, the `.pkg` and the draft release.
+macOS users would have got **no build at all** rather than a build without symbols, which is the
+opposite of the invariant stated three lines above it in the same comment block: the customer
+pipeline is never blocked by debug-capture problems.
+
+The assertion is now the macOS job's **final step**. The packaging step records the count into
+`debug_artifacts` where it already did, at the moment it is known; the judgement happens after
+packaging, both pluginval gates, the installer and all three uploads. **Release eligibility is
+unchanged** — `release.yml` depends on this workflow's aggregate result, which a failed job decides
+regardless of where in the job it failed — so the gate is exactly as mandatory as before, and a red
+run now hands the reader the plug-in, the installer *and* the failure instead of nothing. Verified by
+extracting both shell bodies and running them: with `USABLE_DSYMS=0` the packaging step reaches the
+customer pipeline (rc 0) and writes `debug_artifacts=false`, and the new step exits 1 on `false` and
+0 on `true`.
+
+**The fuzz corpus was documented as three seeds and contained 65 files.** The documentation was
+right and the tree was wrong, which the naming makes unambiguous: three `*.bin` files named after the
+three legacy XML fixtures they derive from, and 62 files named after the SHA-1 of their contents —
+libFuzzer's own convention for inputs *it* discovered. `AnamorphFuzzState tests/fuzz-corpus` passes
+that directory as libFuzzer's first positional argument, which makes it the corpus libFuzzer reads
+seeds from **and writes discoveries into**. On a CI checkout that is harmless. Locally it writes into
+the working tree, and a `git add -A` committed them — in the very round whose documentation said the
+corpus held three.
+
+The 62 are removed and the root `.gitignore` tracks `tests/fuzz-corpus/*.bin` only, so a discovery cannot
+be committed by accident while a genuine new seed still can be, deliberately. The rule is at the root
+rather than in the directory because a `.gitignore` inside it is itself read as a corpus entry — measured,
+libFuzzer reported `files: 4` — which would leave the directory not matching the count every document
+states. Verified: a SHA-1-named file is ignored (`git check-ignore` names the rule), a `.bin` file is still
+offered as untracked, and the gate runs from `files: 3`. The
+three documents the review named keep their counts, which were correct; what they were missing is
+that the directory is a libFuzzer *output* as well as an input, so each now says so — including
+`TESTING.md`, whose local run command is the one that writes into a real working tree.
 
 **macOS-symbolication and review round (2026-08-18): the one platform contract the previous round
 could only correct is now closed, and three validation mechanisms were found to be checking less

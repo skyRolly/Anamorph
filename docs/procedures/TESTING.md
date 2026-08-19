@@ -173,6 +173,9 @@ cmake -B build-fuzz -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
   -DANAMORPH_BUILD_FUZZ=ON -DANAMORPH_BUILD_TESTS=OFF -DANAMORPH_BUILD_STANDALONE=OFF
 cmake --build build-fuzz --target AnamorphFuzzState
 ASAN_OPTIONS=detect_leaks=0 \
+  # Note: libFuzzer SAVES new coverage-increasing inputs into the corpus
+  # directory it is given. They are .gitignore'd (only the `*.bin` seeds
+  # are tracked), so a local run cannot add them to a commit by accident.
   ./build-fuzz/AnamorphFuzzState tests/fuzz-corpus -max_total_time=90
 ```
 

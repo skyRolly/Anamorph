@@ -256,7 +256,9 @@ edge above must not be read as release non-blocking.
   human thought of it first; this is the part that does not have to. A **rejected** blob is a pass,
   because refusing malformed state is what the path is for; the failure condition is a sanitizer
   report, not an assertion. It is **bounded** so it stays a gate rather than a background service: a
-  fixed `-max_total_time=90` from the three committed corpus entries in `tests/fuzz-corpus/`
+  fixed `-max_total_time=90` from the three committed corpus seeds in `tests/fuzz-corpus/`
+  (which libFuzzer also writes its own discoveries back into — harmless on a CI checkout, and
+  `.gitignore`d so a local run cannot commit them)
   (real fixtures in JUCE's `copyXmlToBinary` framing, so the fuzzer starts from inputs that already
   reach the parser), under a **fixed `-seed`** — the same discipline `run-pluginval.sh` applies to
   its deterministic mode, and for a sharper reason: this job is release-blocking through
