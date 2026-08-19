@@ -148,6 +148,43 @@ corrected. Both are now `src/`-qualified and therefore visible to the gate from 
 was invisible only because it lacked the `src/` prefix `TRACKED` matching requires, which the same
 document already uses for its five other source anchors.
 
+**A second review pass found that sweep was not exhaustive, and it was right.** "Two more of the
+same untracked class" was a count of what that pass happened to look at, not a search — three more
+sat in `KNOWN_ISSUES.md` alone, and one of them is the worse kind. **KI-009's `focusSaveNameField`
+citation was mis-aimed, then mechanically carried.** At the merge base it read
+`src/PluginEditor.cpp:1498-1506`, which was the `rIn`/`rOut`/`rAct`/`rOn`/`rPos` easing block in
+`stepMicroAnims` — not that function at all — and `--fix` moved it to `:1567-1575`, the same easing
+block after this change's insertions. Faithful, and still wrong. `focusSaveNameField` is at
+**`:1984-1992`**, and the two untracked references beside it were mis-aimed the same way: the
+on-open call is at **`:1953`** (not `:1483`), and KI-017's evidence line cited **`:363-373`** for the
+Save-Preset field (not `:326-355`, which is the A/B-control setup) and **`:1942-1992`** for show +
+focus. Every one was verified by reading the lines, not by trusting the review's numbers.
+
+**No `DELIBERATE_REAIMS` declaration was required, and that is a fact about the gate worth
+recording.** The obvious assumption is that re-aiming a *tracked* anchor needs one. It does not
+here: the gate keys on the anchor's **spelling**, so changing the number makes the base spelling
+absent from the current document and the new one absent from the base — the run reports "2
+re-spelled or removed, beyond what this run can judge" and passes. Confirmed rather than assumed, by
+re-running `--fix` afterwards and diffing: it left all five corrections untouched, so there is
+nothing for a declaration to hold off. The declaration mechanism is for the case where the base
+spelling **survives** and `--fix` would drag the correction back every run; that is not this case,
+and adding an inert entry would only be reported as removable on the next run.
+
+**The shape problem is closed too, without losing the labels.** Two of these anchors were invisible
+not for want of the `src/` prefix but because prose sits between the path and the second anchor
+(`…:363-373 (the field), :1942-1992 (show + focus)`), which the compound-anchor pattern does not
+match. Collapsing them to `path:a, b` would have made both visible at the cost of the per-anchor
+labels; repeating the path keeps both. `docs/KNOWN_ISSUES.md` now has **five** gate-visible
+`src/PluginEditor.cpp` citations where `origin/main` had two, and **zero** references to a nested
+tracked path that the gate cannot see.
+
+**Scope of the sweep, stated so the next reader does not over-read it.** Exhaustive for
+`docs/KNOWN_ISSUES.md`, measured. Repository-wide there are **63** further unqualified references to
+nested tracked paths across eleven other documents (28 of them in this file, where many are
+deliberate — the checker's own header forbids prose *examples* from using a tracked path, and this
+ledger quotes old anchor spellings as examples). That is a pre-existing structural condition, not
+something these rounds created, and closing it is its own change.
+
 **Reported and deliberately NOT corrected — the About-link anchor in the three legal documents.**
 `EULA.md`, `PRIVACY.md` and `TRADEMARKS.md` cite where the product's one outbound hyperlink is
 declared, and `--fix` moved all three from `src/PluginEditor.h:213` to `:223` in this change set.
@@ -179,14 +216,24 @@ runners, where no virtual display is configured. That is the harness change the 
 says should land on its own merits, so it is recorded there as a measured correction rather than
 attempted here.
 
-**Sign-off status: NOT GRANTED — this round carries no maintainer approval.** Earlier rounds in this
-change set were accompanied by an explicit pre-granted confirmation recorded here; **this one was
-not**, and none is claimed. What is owed, per ADR-0025 §3 disclosure 2 and the visual-verification
-convention the v0.9.3 entries established, is a Level-5 check in a DAW on each platform: with each
-of the seven drop-downs and the preset menu open, confirm that a control the list covers goes dark,
-that the box which owns the list keeps its highlight and open bloom, that a control merely beside the
-list is unaffected, and that hover returns on dismissal — at 100 % and 150 % UI scale. The automated
-evidence above is Linux-only and was taken on a synthetic display.
+**MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-19**, for the hover-occlusion fix and for the
+two citation-correction rounds the reviews of it produced. Confirmed after review; recorded, not
+requested again. It supersedes this entry's earlier "NOT GRANTED" status, which stood while the
+confirmation was genuinely outstanding. Scope is this change set only; no approval is claimed for
+the About-link re-aim left open below, or for anything else in the reviews that produced these
+rounds.
+
+**What the sign-off rests on, stated so the two are not confused.** It discharges ADR-0025 §3
+disclosure 2 the way the v0.9.3 entries did — on the reasoning, the root cause and the recorded
+evidence, which here is a **measurement**, not an argument: `hovA` 0.990 → 0.000 under an open combo
+list, 0.990 → 0.000 under a preset menu tall enough to reach the A/B control, and both branches
+mutation-tested. That evidence is **Linux-only and taken on a synthetic (`xvfb`) display**, and the
+sign-off does not convert it into a per-platform Level-5 DAW check, which is a different act and is
+not claimed as performed. The remaining visual confirmation — with each of the seven drop-downs and
+the preset menu open, that a covered control goes dark, that the box which owns the list keeps its
+highlight and open bloom, that a control merely beside the list is unaffected, and that hover
+returns on dismissal, at 100 % and 150 % UI scale — rides with the release's existing Level-5
+audition rather than standing as an open action item against this round.
 
 **Implementation round (2026-08-18): six approved roadmap items landed — selective realtime
 diagnostics, a benchmark harness, state fuzzing, a GCC-only warning gate, LeakSanitizer as a gate,
