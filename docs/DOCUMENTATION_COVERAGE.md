@@ -200,9 +200,13 @@ durable mechanism below was added regardless — which is the point of recording
   because `callees()` drops `::`-qualified names). So the region between `)` and `{` is now checked
   for what it is: a declarator tail may carry qualifiers, `noexcept`, attributes, a trailing return
   type or a member-initialiser list, but a comma at bracket depth zero — outside an initialiser list
-  — means an argument list, not a signature. That rejects the `Options` pairing and 24 further call
-  sites (`abs`, `memcmp`, `jmax`, `std::move`, base-class initialisers), every one verified to have
-  no first-party definition. Verified identical afterwards where it counts: **61 reachable body
+  — means an argument list, not a signature. That rejects 38 candidate positions under 17 names
+  (`abs`, `memcmp`, `jmax`, `std::move`, base-class initialisers, and the `Options` pairing). Two of
+  those names, `isPresetExcluded` and `getValue`, *are* first-party — what is rejected is a call to
+  them, and their real definitions stay indexed. (An earlier draft of this entry said "24 further
+  call sites, every one verified to have no first-party definition"; both figures were measured
+  loosely and the second framed the wrong property. The claim that matters is that no rejected
+  position is a definition.) Verified identical afterwards where it counts: **61 reachable body
   spans**, **44 files**, **0 violations**, zero files differing from before the round.
 
 **The citation tool was disabling its own repair path.** `verify_reaim_targets()` ran first and

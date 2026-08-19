@@ -120,18 +120,26 @@ def _blank_template_args(region: str) -> str:
     span counts -- an opener with no matching closer is left alone, so
     `foo (a < b, []{ ... })` still reads as the argument list it is.
 
-    Two further conditions keep the match honest, both drawn from what actually
-    appears here: a `<` opens a span only after a NAME (`pair<`, `is_same_v<`,
-    and `>>` for a nested close), never after an operator or an open paren; and a
-    `>` that is the tail of `->` closes nothing, because a trailing return arrow
-    is the commonest thing in this region. Spans are matched at their own
-    bracket depth and dropped when that depth closes, so a `<` inside
-    `noexcept(...)` cannot pair with a `>` outside it.
+    Four further conditions keep the match honest, all drawn from what actually
+    appears here. A `<` opens a span only after a NAME (`pair<`, `is_same_v<`,
+    `my_type_<`), never after an operator, a `)` or an open paren. `<<` and `<=`
+    are operators, not openers. A `>` that is the tail of `->` closes nothing,
+    because a trailing return arrow is the commonest thing in this region. And a
+    span closes only at the bracket depth it opened at, and is dropped when that
+    depth closes -- which is what keeps blanking BRACKET-BALANCED: in
+    `-> std::enable_if_t<(A > B), int>` the inner `>` sits one paren deeper, and
+    letting it close the outer span would blank that span's opening `(` and send
+    the region depth-negative, discarding a real SFINAE definition.
 
-    Ambiguity that survives this is ambiguous in C++ too -- `a < b && c > d`
-    parses as a template-id without semantic analysis, which is why the language
-    needs `template` disambiguators. The shape does not occur in a declarator
-    tail.
+    WHAT REMAINS AMBIGUOUS, stated because balance is a heuristic and not a
+    parse. Two adjacent relational arguments can satisfy it by accident:
+    `take (x < a, b > c ? ... )` blanks as though `< a, b >` were a template-id,
+    and the comma with it. That direction is a false POSITIVE -- noisy, not
+    silent -- and it needs a comparison on both sides of one comma plus no comma
+    after the `>`. It occurs nowhere in `src/`, JUCE, libstdc++ or LLVM (measured
+    over 3,264 files: every decision this function changes there is a genuine
+    declarator tail). C++ itself is ambiguous here for the same reason, which is
+    why the language has `template` disambiguators.
     """
     out = list(region)
     stack = []                      # (index of `<`, bracket depth it opened at)
@@ -150,7 +158,7 @@ def _blank_template_args(region: str) -> str:
             j = i - 1
             while j >= 0 and region[j].isspace():
                 j -= 1
-            if j >= 0 and (region[j].isalnum() or region[j] in "_>"):
+            if j >= 0 and (region[j].isalnum() or region[j] == "_"):
                 stack.append((i, depth))
         elif ch == ">":
             if i > 0 and region[i - 1] == "-":
@@ -195,11 +203,17 @@ def _is_declarator_tail(clean: str, start: int, brace: int) -> bool:
     direction this checker exists to prevent, so the template spans are blanked
     before the comma test rather than the claim being weakened.
 
-    Measured over `src/`: this rejects the `Options` pairing and eight further
-    call sites (`RangedAudioParameter`, `stereo`, `move`, `jmax` -- every one a
-    base/member initialiser or a JUCE call, none of them defined in this
-    repository) while keeping every genuine definition, including the
-    276-character `AnamorphAudioProcessor` constructor.
+    Measured over `src/`: this rejects 38 candidate positions under 17 names --
+    the `Options` pairing plus base/member initialisers and JUCE calls
+    (`RangedAudioParameter`, `stereo`, `move`, `jmax`, `abs`, `isfinite`, ...) --
+    while keeping every genuine definition, including the 276-character
+    `AnamorphAudioProcessor` constructor. Two of those names, `isPresetExcluded`
+    and `getValue`, ARE defined in this repository; what is rejected is a CALL to
+    them elsewhere, and their real definitions stay indexed. An earlier version of
+    this note said "eight further call sites ... none of them defined in this
+    repository" -- both halves were wrong, and the second mattered: the claim to
+    check is that no rejected position is a definition, not that no rejected name
+    is defined anywhere.
     """
     region = _blank_template_args(clean[start:brace])
     if region.lstrip().startswith(":"):
@@ -908,6 +922,16 @@ def self_test() -> int:
         ("the `>` of `->` closes no span, so the comma survives", " a<b , c -> d ", False),
         ("a `<` cannot pair with a `>` in a different bracket group",
          " f(a < b) , g(c > d) ", False),
+        ("`<=` is an operator, not a span opener", " a <= b , c > d ", False),
+        ("...and so is `<<`", " a << b , c > d ", False),
+        ("an identifier may END in `_`, so that is a name too", " -> my_type_<int,float> ", True),
+        # The span-depth rule, on the shape that is ONLY wrong without it: the
+        # inner `>` sits a paren deeper, so closing the outer span there would
+        # blank that span's opening `(` and drive the region depth-negative --
+        # discarding a real SFINAE definition, which is the exact false negative
+        # this round exists to remove.
+        ("a deeper `>` does not close the outer span, so the parens stay balanced",
+         " -> std::enable_if_t<(A > B), int> ", True),
     ]:
         total += 1
         got = _is_declarator_tail(label + region + "{", len(label), len(label) + len(region))
