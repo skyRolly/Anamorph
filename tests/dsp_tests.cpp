@@ -2954,7 +2954,7 @@ static void testProcessIsAllocationFree()
     juce::AudioBuffer<float> buf (2, block);
 
     long worstNew = 0, worstMalloc = 0;
-    int armedCalls = 0;
+    int armedCalls = 0, armedSwitchLandings = 0;
 
     for (auto a : algos)
         for (auto o : os)
@@ -2970,8 +2970,28 @@ static void testProcessIsAllocationFree()
                 p.mbEnable = true;
                 p.monoMakerEnable = true;
                 p.autoGainMatch = true;
-                engine.setParameters (p);
-                engine.reset();
+                // THE SWITCH IS NOT APPLIED HERE, and that is the whole point of
+                // this loop rather than an oversight. Applying it outside and
+                // then repeating it inside -- which is what this test did until
+                // 2026-08-19 -- left every armed block in the steady-state
+                // no-change gate: `reset()` flushes an in-flight duck straight
+                // to its target (`AnamorphEngine.cpp:138-145`), so the armed
+                // region never once executed the block that ADOPTS a discrete
+                // change. That block is where the structural work is
+                // (`AnamorphEngine.cpp:684-759`: the algorithm tails cleared,
+                // the three oversamplers and the chorus reset on an OS path
+                // change, the crossover cleared on a topology change) and it
+                // runs INSIDE `process()`, at the silent bottom of the duck.
+                // Measured: an allocation seeded into it was invisible -- 3,840
+                // armed calls, worst new = 0, all checks green.
+                //
+                // Leaving `p` unapplied makes the first armed block of each
+                // configuration perform the real transition from the PREVIOUS
+                // one, and the armed blocks that follow carry the duck through
+                // its landing. Every configuration differs from its predecessor
+                // in at least `msMode`, so all 32 are genuine mid-stream
+                // switches; no `reset()` between them is deliberate, because a
+                // host does not get one either.
 
                 for (int phase = 0; phase < 2; ++phase)
                     for (int n = 0; n < 60; ++n)
@@ -2981,6 +3001,7 @@ static void testProcessIsAllocationFree()
 
                         // setParameters is on the audio thread every block in the
                         // real wrapper, so it is inside the armed region too.
+                        const int latBefore = engine.getLatencySamples();
                         {
                             anamorph::testing::resetCounts();
                             anamorph::testing::Armed arm;
@@ -2988,13 +3009,41 @@ static void testProcessIsAllocationFree()
                             engine.process (buf);
                         }
                         ++armedCalls;
+                        // A LANDING THIS RUN ACTUALLY SAW, not one it assumes.
+                        // `osEngaged` -- and so the reported latency -- is
+                        // re-latched ONLY in that adopt block, so a change here
+                        // is proof the block executed while ARMED. Without it a
+                        // future edit could quietly restore the pre-loop flush
+                        // and leave this test measuring steady state again while
+                        // still printing a green zero.
+                        //
+                        // READ ACROSS THE ARMED SCOPE ONLY -- immediately before
+                        // it and immediately after -- never carried across
+                        // configurations. Carried, it counts a latency the
+                        // pre-loop flush moved OUTSIDE the scope, and the
+                        // assertion then passes on the very code it exists to
+                        // reject (measured: with the flush restored, a carried
+                        // comparison still reported 11).
+                        //
+                        // A FLOOR, NOT A CENSUS, and the difference is measured
+                        // rather than assumed: all 32 configuration changes land,
+                        // but the half-band polyphase IIR reports 4 samples at x2
+                        // and 6 at both x4 and x8, so the four x4 -> x8 landings
+                        // move no latency and are not counted. 11 of the 15
+                        // latency-visible transitions are, across all four
+                        // algorithms -- which is what this assertion needs.
+                        if (engine.getLatencySamples() != latBefore)
+                            ++armedSwitchLandings;
                         worstNew    = juce::jmax (worstNew,    anamorph::testing::newCount.load());
                         worstMalloc = juce::jmax (worstMalloc, anamorph::testing::mallocCount.load());
                     }
             }
 
-    std::printf ("  %d armed process() calls; worst per call: new=%ld malloc=%ld\n",
-                 armedCalls, worstNew, worstMalloc);
+    std::printf ("  %d armed process() calls, %d of them landing an observable "
+                 "structural switch; worst per call: new=%ld malloc=%ld\n",
+                 armedCalls, armedSwitchLandings, worstNew, worstMalloc);
+    check (armedSwitchLandings > 0,
+           "the armed region lands structural switches, not steady state only");
     check (worstNew == 0,    "no operator-new allocation on the audio path");
     if (live.mallocLive)
         check (worstMalloc == 0, "no malloc-family allocation on the audio path");

@@ -84,7 +84,23 @@ new`/`malloc`-family calls on the audio path, *including through
 expected `prepare()` allocations (102 `new` + 663 `malloc`-family) and caught both classes of
 seeded violation. **That probe is now a committed gate**: it became
 `tests/AllocationGuard.h` + Test 38, which runs the same counting over the same matrix (3,840 armed
-calls per run) rather than once in a session. It asserts in every job that builds the DSP suite
+calls per run) rather than once in a session.
+
+**The SWITCH is armed as well as the steady state, since 2026-08-19, and until then it was not.**
+Each of the 32 configurations is now applied *inside* the armed region, so the block that adopts a
+discrete change — `src/dsp/AnamorphEngine.cpp:684-759`: algorithm tails cleared, the three
+oversamplers and the chorus reset on an oversampling-path change, the crossover cleared on a
+topology change — runs with the counters watching. Before that the configuration was applied and
+then `reset()` *outside* the armed region, and `reset()` flushes an in-flight duck straight to its
+target (`src/dsp/AnamorphEngine.cpp:138-145`), so every armed block sat in the steady-state
+no-change gate and the gate proved the audio path allocation-free only while nothing was changing.
+Measured both ways with one allocation seeded into that adopt block: invisible then (3,840 armed
+calls, worst `new` 0, green), a failure now (worst `new` 2, worst `malloc` 2). The test also counts
+the landings it observes — reported latency is re-latched only in that block — and fails if the
+count is zero, so restoring the flush fails the run rather than quietly narrowing it. What the gate
+does **not** carry over from the probe is bypass crossfades and crossover drags: `bypass` and
+`mbBands` are fixed across its matrix. Those are covered by the click-free-transition tests in the
+same suite, and on Linux/Clang by RTSan running that suite. It asserts in every job that builds the DSP suite
 except the two where its interposers would fight another tool -- RTSan (it would shadow the
 sanitizer's allocation interceptors) and valgrind (memcheck reports the new/malloc pairing as a
 mismatched free) -- and in both of those it says so rather than reporting a zero nothing counted.

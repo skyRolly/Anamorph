@@ -7,7 +7,8 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
-**reachability-and-runnability round** (first below), then the
+**armed-transition round** (first below), then the
+**reachability-and-runnability round**, then the
 **parser-and-evidence round**, then the
 **gate-liveness round**, then the
 **environment-assertion placement round**, then the
@@ -131,6 +132,56 @@ is Linux/X11 only. On Windows and macOS that turned a genuine crash into two mor
 The retry is now scoped by `uname -s`: three attempts on Linux, one everywhere else, with a distinct
 message so a single-attempt failure cannot be misread as an exhausted retry. The separately
 justified `.ps1` retry is untouched.
+
+**Armed-transition round (2026-08-19): the portable allocation gate proved the steady state and
+called it the switch.**
+
+**MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-19**, for the one point this round rests on:
+that Test 38's coverage of mid-stream configuration transitions was missing and had to be closed in
+the test rather than in its description. Confirmed before the work; recorded, not requested again.
+No other approval is claimed by this entry.
+
+**Test 38 never armed a parameter CHANGE.** The per-configuration `setParameters (p); reset();` ran
+*before* the block loop, and `reset()` flushes an in-flight duck straight to its target
+(`src/dsp/AnamorphEngine.cpp:138-145`) — so by the time the counters were armed the switch was over,
+`switchState` was `Normal`, and the `setParameters (p)` inside the armed region hit the steady-state
+no-change gate every time. The whole structural half of a switch lives in the adopt block
+(`src/dsp/AnamorphEngine.cpp:684-759`: algorithm tails cleared, the three oversamplers and the
+chorus reset on an oversampling-path change, the crossover cleared on a topology change) and it runs
+inside `process()`, at the silent bottom of the duck. So 3,840 armed calls proved the audio path
+allocation-free while nothing was changing, and `REALTIME_SAFETY_AUDIT.md` presented that gate as
+the committed form of a probe whose stated coverage was "mid-stream algorithm swaps". Measured, not
+inferred: one `std::vector` allocation seeded into the adopt block was **invisible** — 3,840 armed
+calls, worst `new` 0, run green.
+
+**Fixed by not applying the switch outside the armed region**, which is the whole change: the first
+armed block of each configuration performs the real transition from the previous one and the armed
+blocks after it carry the duck through its landing. Every configuration differs from its predecessor
+in at least `msMode`, so all 32 are genuine mid-stream switches, and no `reset()` between them is
+deliberate — a host does not get one either. The same seeded allocation now **fails** the test
+(worst `new` 2, worst `malloc` 2, exit 1). The guard, its diagnostics, the matrix, the 3,840 armed
+calls and every existing assertion are untouched.
+
+**A gate that can silently narrow again needs to say so**, per the repository's own rule that a
+checker must prove it is live. Test 38 now counts the switch landings it OBSERVES — `osEngaged`, and
+therefore the reported latency, is re-latched only in that adopt block — reads the latency across
+the armed scope alone rather than carried across configurations, and fails when the count is zero.
+Both halves are measured: restoring the pre-loop flush drops the count to 0 and fails the new check,
+and a *carried* comparison still reported 11 against that same flush, which is why the reading is
+scoped. The count is a floor rather than a census, and the difference is measured too: all 32
+configurations land, but the half-band polyphase IIR reports 4 samples at ×2 and 6 at both ×4 and
+×8, so the four ×4 → ×8 landings move no latency. 11 of the 15 latency-visible transitions are
+counted, across all four algorithms. Checks 161 → 162.
+
+**One document needed correcting and one deliberately did not.**
+`REALTIME_SAFETY_AUDIT.md` said the committed gate "runs the same counting over the same matrix" as
+a probe described as covering "mid-stream algorithm swaps, bypass crossfades and crossover drags";
+it now states what the gate arms, what it did not arm before this round, and what it still does not
+carry over — `bypass` and `mbBands` are fixed across its matrix, so bypass crossfades and crossover
+drags are the click-free-transition tests' and (on Linux/Clang) RTSan's. ADR-0029 §7 was re-read and
+left alone: its 7,680-call figure is the investigation probe's, attributed to the probe, and its
+coverage table already reads 3,840 armed calls per configuration of the suite. Neither number was
+wrong; only the claim about what the gate arms was.
 
 **Reachability-and-runnability round (2026-08-19): a documented command that could not do what the
 paragraph beneath it requires, a lint that could not see past a template, and a portability report
