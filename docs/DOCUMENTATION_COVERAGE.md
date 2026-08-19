@@ -238,9 +238,69 @@ runners, where no virtual display is configured. That is the harness change the 
 says should land on its own merits, so it is recorded there as a measured correction rather than
 attempted here.
 
-**MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-19**, for the hover-occlusion fix and for the
+**A fourth review pass asked whether controls that fall back to JUCE's CACHED mouse-over state can
+stay lit under a menu. Investigated and measured: NO, and no code change is warranted.** The concern
+is well-formed — the fix's occlusion term reaches the geometric paths only, so anything drawing from
+an event-driven over-state would be outside it — but every step of the path turns out to be closed,
+and the two controls the review names are the two that cannot show it.
+
+**The fallbacks are `animOr(component, "hovA", <cached state>)`, and the fallback fires only when
+the property is ABSENT.** `registerAnimated` seeds `"hovA"` on every control it takes, so for a
+registered control the cached argument is evaluated and then discarded. Counted on the running
+editor rather than from the registration list: **43 of 45** controls carry the seeded property. The
+two that do not are `titleButton` and `aboutLink`, and neither can produce the reported symptom:
+
+  * **`titleButton` — the review's named example — has a DEAD fallback.** It carries componentID
+    `"ghost"`, and `drawButtonBackground` returns at `src/gui/LookAndFeel.cpp:369` — *before* the
+    `animOr (b, "hovA", highlighted)` on `:373` is reached. Its text path ends at
+    `LookAndFeel_V4::drawButtonText (g, b, false, false)`, which passes `highlighted` as a literal
+    `false`. So the control has no hover visual at all, registered or not; the argument the review
+    traces never reaches a pixel.
+  * **`aboutLink` has a live fallback but cannot be occluded by a menu.** It is the *only* child of
+    `aboutBackdrop` (`src/PluginEditor.cpp:568`), so it is on screen only while the About overlay
+    is. The editor's only menu-openers are `presetName.onClick` (`:350`) and the combo drop-downs —
+    all of them outside that overlay and covered by it while it is up, with `Backdrop::mouseDown`
+    eating the click. No pop-up menu can be open while `aboutLink` is visible.
+
+**Measured, not merely argued.** With a combo list open (`702,279 125×114`) and the pointer inside
+it, **zero** controls report `isMouseOver`, and **zero** buttons report `Button::isOver()` — the
+event-driven flag `drawButtonBackground` and `drawToggleButton` actually receive. Both mechanisms
+were checked because they are backed differently: `Component::isMouseOver` re-queries
+`getComponentUnderMouse()` on the message thread (the cached flag is used only off it,
+`juce_Component.cpp:3182-3196`), whereas `Button::isOver()` returns `buttonState != buttonNormal`
+(`juce_Button.cpp:327`), which enter/exit maintain. The one shape that could strand the latter — the
+pointer resting on the very control that opens the pop-up, so no `mouseExit` precedes modality — was
+driven directly: pointer parked on `presetName`, its menu opened with no pointer move, menu covering
+the pointer. `hovA` went **0.990 → 0.020** and the button reads correctly dark, because `presetName`
+is registered and the seeded property wins.
+
+**`SpectrumImager` and `ABControl` are covered too, by different mechanisms.** The imager's
+`panelHoverA` comes from `isMouseOverOrDragging(true)`, i.e. `componentUnderMouse` — measured
+**false** while the menu is open, because the raised shield is `toFront`ed over the editor and
+intercepts, so JUCE resolves the component under the pointer away from the imager on its own. Its
+index-based indices (`hoverHandle`/`hoverWidth`/`hoverDelete`/`hoverSolo`) are cleared by the
+`mouseExit` that necessarily precedes opening a pop-up, since every menu-opener is a click on a
+control outside the imager and nothing is modal at that instant. `ABControl` is registered, so its
+`hovered` member is only the `animOr` fallback and never reached — a point the review concedes.
+
+**The CHANGELOG sentence was re-checked against this and left as written.** "A control the menu
+covers stays dark" is accurate for every control a menu can actually cover: those are all in the
+registered 43. The two exceptions are not reachable by a menu, so the sentence is not broader than
+the predicate.
+
+**Left unchanged deliberately, and this is the smallest correct outcome.** Registering `titleButton`
+or `aboutLink` would add per-frame work for a control with no hover visual and a control no menu can
+reach, and would change what the About link looks like on hover for no defect. Touching
+`src/PluginEditor.cpp` at all would also shift the citation anchors corrected in the previous three
+rounds, several of which are new spellings the gate cannot re-map from the base — so a cosmetic edit
+here would silently re-rot them.
+
+**MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-19**, for the hover-occlusion fix, for the
 three citation-correction rounds the reviews of it produced (the third added the `PRIVACY.md`
-re-aim and its `DELIBERATE_REAIMS` declaration). Confirmed after review; recorded, not
+re-aim and its `DELIBERATE_REAIMS` declaration), and for the fourth round's finding that the
+cached-mouse-over fallbacks need no code change — the evidence for that conclusion is the paragraph
+above, and the sign-off covers the decision to leave them unchanged, not a claim that they were
+altered. Confirmed after review; recorded, not
 requested again. It supersedes this entry's earlier "NOT GRANTED" status, which stood while the
 confirmation was genuinely outstanding. Scope is this change set only; no approval is claimed for
 the About-link re-aim left open below, or for anything else in the reviews that produced these
