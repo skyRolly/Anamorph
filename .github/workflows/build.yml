@@ -2827,14 +2827,32 @@ jobs:
       # or dropped this step would keep exiting 0 while checking nothing --
       # measured on the pinned Clang 22.1.8: with the option misspelled, a TU
       # carrying a real seeded violation compiles with status 0. Every other
-      # gate in this workflow carries an in-job liveness proof (the RTSan
-      # canary, the four lints' `--self-test`s, the two warning gates' baseline
-      # comparisons); this is that proof for this one.
+      # SILENT CHECKER in this workflow carries an in-job liveness proof -- the
+      # RTSan canary, the four lints' `--self-test`s, the ABI-floor self-test,
+      # the two warning gates' baseline comparisons -- and this is that proof
+      # for this one. (Not every GATE has one: the ten pluginval steps do not,
+      # and `TESTING_POLICY.md` rule 4 does not ask them to.)
       #
-      # `-Werror=unknown-warning-option` makes the RENAMED case fail directly
-      # and by name, and the canary compile below covers the case it cannot --
-      # an option Clang still accepts but no longer implements. Both are needed:
-      # neither subsumes the other.
+      # THE CANARY IS THE COVERAGE; `-Werror=unknown-warning-option` IS THE
+      # DIAGNOSIS. Measured, because the first version of this comment claimed
+      # they were independent and they are not: a name Clang no longer knows is
+      # also a diagnostic Clang no longer emits, so the canary compiles clean and
+      # fails the step in that case too. The flag earns its place by failing on
+      # the FIRST compile and naming the cause, instead of leaving a reader to
+      # infer a rename from "the canary compiled". The canary alone still covers
+      # the case the flag never can -- an option accepted but no longer
+      # implemented -- plus three this comment did not originally claim: a
+      # silently-empty `ANAMORPH_NONBLOCKING` (it is `__has_cpp_attribute`
+      # guarded), a `#pragma clang diagnostic ignored` planted in the include
+      # set, and the driver being compiled out.
+      #
+      # ONE SIDE EFFECT OF THE FLAG, so it is not deleted in puzzlement later:
+      # it also promotes PRAGMA-sourced unknown warning groups to errors. Adding
+      # a first-party header to this TU that carries
+      # `#pragma clang diagnostic ignored "-Wsomething"` for a GCC-only or
+      # newer-Clang name will fail the step. JUCE's own suppressions are safe --
+      # `juce_CompilerWarnings.h` gates every one behind `__has_warning`, so the
+      # three names this Clang does not know expand to nothing.
       #
       # The canary is the SAME translation unit with `-DANAMORPH_EFFECTS_CANARY`
       # seeding a call to an allocating, unannotated helper, so it exercises the

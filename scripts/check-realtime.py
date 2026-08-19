@@ -110,6 +110,72 @@ FORBIDDEN = [
 ]
 
 
+def _is_declarator_tail(clean: str, start: int, brace: int) -> bool:
+    """Can `clean[start:brace]` sit between a parameter list's `)` and a body's `{`?
+
+    WHY THE BRACE SEARCH NEEDS THIS. Dropping the old 400-character window fixed
+    a false negative and opened a false POSITIVE in its place: with nothing
+    bounding the search, the `)` of a CALL can be paired with a `{` belonging to
+    a lambda in a LATER argument. That is not hypothetical -- it happens on this
+    tree, at `src/PluginEditor.cpp`, where `juce::PopupMenu::Options()` is
+    followed 759 characters later by the opening brace of the async preset-menu
+    callback. It is inert only because `callees()` drops `::`-qualified names,
+    which is one identifier away from reporting a message-thread callback as an
+    audio-path violation. The "a declaration's `;` comes first" argument, which
+    is true, says nothing about this case: a call's `;` comes AFTER the lambda,
+    not before it (measured there: `;` at 1093, `{` at 759).
+
+    WHAT THE REGION MAY CONTAIN in a real definition: cv- and ref-qualifiers,
+    `noexcept` (with or without an operand), attributes, effect macros such as
+    `ANAMORPH_NONBLOCKING`, `override`/`final`, a trailing return type, a
+    `requires` clause -- and, for a constructor, a member-initialiser list. None
+    of those puts a COMMA at bracket depth zero except the initialiser list,
+    which always opens with `:`. An argument list is made of exactly that comma,
+    and a call whose `)` has already closed leaves the depth NEGATIVE.
+
+    So: a region opening with `:` is a constructor and is accepted whole;
+    otherwise a depth-zero comma or a depth going negative means this was never
+    a signature. Measured over `src/`: this rejects the `Options` pairing and
+    eight further call sites (`RangedAudioParameter`, `stereo`, `move`, `jmax` --
+    every one a base/member initialiser or a JUCE call, none of them defined in
+    this repository) while keeping every genuine definition, including the
+    276-character `AnamorphAudioProcessor` constructor.
+    """
+    region = clean[start:brace]
+    if region.lstrip().startswith(":"):
+        return True                       # constructor member-initialiser list
+    depth = 0
+    for ch in region:
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth -= 1
+            if depth < 0:
+                return False              # the enclosing call already closed
+        elif ch == "," and depth == 0:
+            return False                  # an argument separator
+    return True
+
+
+def _closes_on_this_line(text: str, i: int) -> bool:
+    """Does the quote at `text[i]` have a matching one before the next newline?
+
+    A non-raw literal may not contain a bare newline, so a quote with no partner
+    on its own line is not opening a literal at all. Escapes are honoured so
+    `'\\''` and `'\\\\'` still find their real closer.
+    """
+    quote = text[i]
+    k, n = i + 1, len(text)
+    while k < n and text[k] != "\n":
+        if text[k] == "\\" and k + 1 < n:
+            k += 2
+            continue
+        if text[k] == quote:
+            return True
+        k += 1
+    return False
+
+
 def _is_digit_separator(text: str, i: int) -> bool:
     """Is `text[i]` (an apostrophe) a C++14 digit separator rather than a quote?
 
@@ -126,12 +192,20 @@ def _is_digit_separator(text: str, i: int) -> bool:
     raw-string branch above exists to prevent, arriving through the fix for the
     other one.
 
-    Walking LEFT to the start of the token and requiring a DIGIT there
-    separates the two cases exactly: `1'000`, `0x1'F` and `1.000'5` begin with
-    a digit; an encoding prefix (`L`, `u`, `u8`, `U`) does not, and neither
-    does an identifier. `'` and `.` are part of the walk because a separator may
-    itself follow an earlier separator (`1'000'000`) or a decimal point
-    (`1.000'5`).
+    Walking LEFT to the start of the token and requiring it to begin a NUMBER
+    separates the two cases: `1'000`, `0x1'F` and `1.000'5` do; an encoding
+    prefix (`L`, `u`, `u8`, `U`) does not, and neither does an identifier. `'`
+    and `.` are part of the walk because a separator may itself follow an
+    earlier separator (`1'000'000`) or a decimal point (`1.000'5`).
+
+    "BEGINS A NUMBER" IS NOT THE SAME AS "BEGINS WITH A DIGIT", and the first
+    version of this fix used the narrower test. A pp-number may also start with
+    a leading `.` -- `.5'0f` and `.000'001` are ordinary C++ (accepted by both
+    clang-22 and gcc-13 with `-Wall -Wextra -pedantic`) and are exactly the
+    spellings a DSP tolerance or a gain constant gets written in. Rejecting them
+    put the separator back through the quote branch and blanked the rest of the
+    line, which is the same swallowed-violation failure this function exists to
+    prevent, one token to the left.
     """
     if i == 0 or i + 1 >= len(text):
         return False
@@ -140,7 +214,12 @@ def _is_digit_separator(text: str, i: int) -> bool:
     j = i - 1
     while j >= 0 and (text[j].isalnum() or text[j] in "'."):
         j -= 1
-    return j + 1 < i and text[j + 1].isdigit()
+    start = j + 1
+    if start >= i:
+        return False
+    if text[start].isdigit():
+        return True
+    return text[start] == "." and start + 1 < i and text[start + 1].isdigit()
 
 
 def strip_comments_and_strings(text: str) -> str:
@@ -190,13 +269,25 @@ def strip_comments_and_strings(text: str) -> str:
             else:
                 out.append(c)
                 i += 1
-        elif c == "'" and _is_digit_separator(text, i):
-            # DIGIT SEPARATOR, not a quote. `1'000` has no closing `'`, so
-            # treating it as a char literal blanks everything up to the next
-            # apostrophe ANYWHERE in the file -- potentially thousands of lines,
-            # silently. Emitting it as an ordinary character is correct: a
-            # separator is part of a numeric token, and numeric tokens contain
-            # nothing this lint looks for.
+        elif c == "'" and (_is_digit_separator(text, i)
+                           or not _closes_on_this_line(text, i)):
+            # NOT A CHARACTER LITERAL, so it must not open one.
+            #
+            # Two ways to be sure of that. A DIGIT SEPARATOR (`1'000`) has no
+            # closing `'` at all, so reading it as a quote blanks everything up
+            # to the next apostrophe ANYWHERE in the file -- potentially
+            # thousands of lines, silently. And an apostrophe with NO CLOSING
+            # QUOTE ON ITS OWN LINE cannot be a character literal either, since
+            # a character literal may not contain a bare newline: it is prose,
+            # and prose reaches this scanner through `#error don't do this` and
+            # `#define` text, which the comment branches above do not blank.
+            # Treating that as an opener blanks the remainder of its line and
+            # hides whatever followed -- the same swallowed-violation class as
+            # the encoded-literal bug in `_is_digit_separator`.
+            #
+            # Emitting it as an ordinary character is correct either way: a
+            # separator is part of a numeric token, and neither numeric tokens
+            # nor English contractions contain anything this lint looks for.
             out.append(c)
             i += 1
         elif c in "\"'":
@@ -333,16 +424,12 @@ def _bodies(clean: str, name_re):
         # attribute block between `)` and `{` pushed the brace out of the window
         # and the definition left the scanned set with no diagnostic -- in a
         # lint whose entire output on a healthy tree is silence.
-        #
-        # Removing the bound cannot admit a declaration, because a declaration's
-        # `;` is still nearer than any later `{`, and it cannot be fooled by a
-        # `;` or `{` inside a comment or string: those are blanked to spaces
-        # before this runs. `find` on the whole remainder also avoids copying a
-        # slice per candidate.
         brace = clean.find("{", k + 1)
         semi = clean.find(";", k + 1)
         if brace < 0 or (0 <= semi < brace):
             continue                      # a declaration, not a definition
+        if not _is_declarator_tail(clean, k + 1, brace):
+            continue                      # an argument list, not a definition
         start = brace
         depth, e = 0, start
         while e < len(clean):
@@ -544,6 +631,16 @@ MUST_FIRE = [
      "void Engine::process (Buf& b) noexcept { if (c == u'x') v.assign (4, 0.0f); }"),
     ("...nor a UTF-32 one",
      "void Engine::process (Buf& b) noexcept { if (c == U'x') v.assign (4, 0.0f); }"),
+    # ...and the fix for those must not swallow a LEADING-DOT pp-number, which is
+    # what requiring a leading DIGIT rather than a leading NUMBER did. `.5'0f`
+    # and `.000'001` are ordinary C++ -- both compile clean under clang-22 and
+    # gcc-13 with `-Wall -Wextra -pedantic` -- and are exactly how a gain
+    # constant or a DSP tolerance gets written. (Non-vacuous against that
+    # intermediate: through it both report zero.)
+    ("a leading-dot float's digit separator must not swallow the line",
+     "void Engine::process (Buf& b) noexcept { const float k = .5'0f; v.assign (4, 0.0f); }"),
+    ("...including a small tolerance written the same way",
+     "void Engine::process (Buf& b) noexcept { const double e = .000'001; v.assign (e, 0.0f); }"),
     # ---- the BODY EXTRACTOR, on the distance it used to give up at ----------
     # The brace search stopped 400 characters past the closing parenthesis, and
     # blanked comments keep their length, so a definition with a long comment
@@ -587,6 +684,20 @@ MUST_FIRE = [
 ]
 
 MUST_STAY_SILENT = [
+    # THE FALSE-POSITIVE CLASS THE UNBOUNDED BRACE SEARCH CREATED, and the reason
+    # `_is_declarator_tail` exists. A call whose arguments include a lambda puts a
+    # `{` after its `)` with no `;` in between -- the lambda's `;` comes AFTER the
+    # brace, so the declaration test cannot see it. The shape below is the one in
+    # `src/PluginEditor.cpp` today (a chained builder, then an async callback),
+    # with the call renamed to an AUDIO_FN name to show what it costs: the
+    # callback runs on the MESSAGE thread and allocating there is correct.
+    ("a call with a lambda argument is not a definition of the called function",
+     "void Editor::showPresetMenu()\n"
+     "{\n"
+     "    menu.showMenuAsync (juce::PopupMenu::reset()\n"
+     "                            .withTargetComponent (presetName),\n"
+     "                        [this] (int r) { chooser = std::make_unique<Chooser> (r); });\n"
+     "}"),
     ("allocation in prepare is required by the policy",
      "void Engine::prepare (double sr, int n) { scratch.setSize (2, n); buf.resize (n); }"),
     ("prepare stays excluded even when an audio body calls it -- NEVER_FOLLOW",
@@ -652,6 +763,53 @@ def self_test() -> int:
     if strip_comments_and_strings('a // new\nb') .strip().splitlines()[0].strip() != "a":
         print("self-test FAIL: comment stripping", file=sys.stderr)
         failures += 1
+
+    # AN APOSTROPHE WITH NO PARTNER ON ITS LINE IS PROSE, NOT A LITERAL, and it
+    # reaches this scanner through preprocessor text the comment branches do not
+    # blank (`#error`, `#define`). Asserted at stripper level rather than through
+    # `scan_text` because the construct cannot carry code after it on the same
+    # line -- so there is no violation for it to swallow, only the line itself.
+    # Left unhandled it blanks that remainder, which is the same class as the
+    # encoded-literal bug even though nothing in `src/` triggers it today.
+    for label, src, must_keep in [
+        ("an unterminated apostrophe is prose", "#error don't do this", "do this"),
+        ("...and a real char literal is still blanked", "char c = 'a'; keep();", "keep()"),
+        ("...including an escaped-quote literal", "char q = '\\''; keep();", "keep()"),
+    ]:
+        total += 1
+        if must_keep not in strip_comments_and_strings(src):
+            print(f"self-test FAIL: {label} -> {strip_comments_and_strings(src)!r}",
+                  file=sys.stderr)
+            failures += 1
+    total += 1
+    if "'a'" in strip_comments_and_strings("char c = 'a'; keep();"):
+        print("self-test FAIL: a real char literal must still be blanked", file=sys.stderr)
+        failures += 1
+
+    # WHAT MAY SIT BETWEEN A PARAMETER LIST'S `)` AND A BODY'S `{`. Asserted
+    # directly, because the two halves fail in opposite directions and only one
+    # of them is observable through `scan_text`: accepting an argument list
+    # invents a body (a false POSITIVE, covered by the MUST_STAY_SILENT case
+    # above), while rejecting a member-initialiser list would drop a real
+    # constructor out of the scanned set -- silently, which is the failure this
+    # whole round is about. The tree's own 276-character `AnamorphAudioProcessor`
+    # constructor is the second case.
+    for label, region, want in [
+        ("cv/ref qualifiers and noexcept", " const noexcept ", True),
+        ("an effect macro", " noexcept ANAMORPH_NONBLOCKING ", True),
+        ("override/final", " const override final ", True),
+        ("a trailing return type", " -> float ", True),
+        ("an attribute", " [[nodiscard]] ", True),
+        ("a member-initialiser list, commas and all", "\n    : Base (id),\n      member (c)\n", True),
+        ("an argument separator is NOT a declarator tail", " , [this] (int r) ", False),
+        ("...nor is a chained call after the paren already closed", ")\n .withTarget (x),\n ", False),
+    ]:
+        total += 1
+        got = _is_declarator_tail(label + region + "{", len(label), len(label) + len(region))
+        if got != want:
+            print(f"self-test FAIL: declarator tail ({label}) -> {got}, want {want}",
+                  file=sys.stderr)
+            failures += 1
     if failures:
         print(f"check-realtime: {failures} of {total} self-test case(s) failed", file=sys.stderr)
         return 1

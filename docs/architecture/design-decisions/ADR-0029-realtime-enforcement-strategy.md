@@ -130,8 +130,10 @@ exiting 0 while checking nothing — measured on Clang 22.1.8: with the option m
 carrying a real seeded violation compiles with status 0. The second compile adds
 `-DANAMORPH_EFFECTS_CANARY`, which seeds an allocating non-annotated helper and a call to it into the
 same file, and the step fails unless that compile fails *with* a `-Wfunction-effects` diagnostic.
-`-Werror=unknown-warning-option` on both compiles makes the renamed case fail by name; the canary
-covers the one it cannot, an option still accepted but no longer implemented. Seeding into the gated
+`-Werror=unknown-warning-option` on both compiles makes the renamed case fail by name, on the first
+compile rather than the second. It is a diagnosability measure, not extra coverage: the canary catches
+that case unaided, and additionally the one the flag never can — an option still accepted but no longer
+implemented. Seeding into the gated
 TU rather than a separate canary file is deliberate — it exercises the exact include set and flags
 the gate uses, and leaves nothing to drift out of step with them.
 

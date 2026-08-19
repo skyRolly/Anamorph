@@ -21,7 +21,12 @@
 #  to 24.04 did to the artifact, silently, in some earlier run.
 #
 #  SO THE FLOOR IS DECLARED HERE AND GATED. The check fails when a shipped
-#  binary requires something NEWER than the floor below. It is not trying to
+#  binary requires something NEWER than the floor below -- and, equally, when it
+#  references one of the declared families NOT AT ALL, because comparing only the
+#  families a binary happens to import makes an ABSENT one read as a satisfied
+#  one. Both inspected artifacts are C++ binaries linked against the system
+#  libstdc++ and glibc, so an absent family means either the wrong file was
+#  inspected or the link topology changed. It is not trying to
 #  lower the floor -- lowering it means an older build image or a sysroot, which
 #  is a release-topology decision -- it is making the floor VISIBLE and making
 #  the run that raises it the run that fails, instead of a user's DAW.
@@ -44,7 +49,20 @@
 #  string comparison wrong (2.9 vs 2.38), a binary that is over the floor, one
 #  exactly at it, and output with no version references at all -- which must be
 #  an ERROR rather than a pass, because "no requirements found" is what a
-#  mis-invoked objdump looks like and it would otherwise read as clean.
+#  mis-invoked objdump looks like and it would otherwise read as clean. It also
+#  drives `evaluate()`, the whole-floor verdict, over a binary MISSING a declared
+#  family in each direction, over one that is both missing a family AND over
+#  another's floor, and over the ordering trap a second time -- inside the
+#  verdict rather than in `version_key` alone, since a raw string comparison
+#  there survives every other case.
+#
+#  EXIT CODES follow the sibling scripts: 0 clean; 1 a shipped binary is over a
+#  declared floor, which is a real artifact regression; 2 the check could not
+#  run -- self-test failure, unreadable file, no versioned dependencies at all,
+#  or a declared family absent. That last one is filed under 2 rather than 1
+#  deliberately: its likeliest cause is a path that no longer names the artifact,
+#  i.e. the gate did not measure what it was pointed at, and the other cause (a
+#  link-topology change) is indistinguishable from the symbol table alone.
 # ============================================================================
 
 import argparse
@@ -110,9 +128,9 @@ def evaluate(highest):
     are exactly the two the gate exists to notice: the wrong file being
     inspected (a path that still resolves to SOME ELF with glibc references),
     and a link-topology change such as `-static-libstdc++`. The second is a
-    legitimate way to lower the floor -- and precisely the "release-topology
-    decision" this file's header says must be deliberate and reviewed, not
-    absorbed silently by a gate that reports clean.
+    legitimate way to lower the floor, which this file's header calls a
+    release-topology decision -- not something a gate should absorb silently
+    while reporting clean.
     """
     over = [(fam, FLOORS[fam], highest[fam])
             for fam in FLOORS
@@ -123,6 +141,7 @@ def evaluate(highest):
 
 def check(paths) -> int:
     failures = []
+    absent = []
     saw_any = False
     for path in paths:
         try:
@@ -142,21 +161,41 @@ def check(paths) -> int:
         summary = ", ".join(f"{fam}_{ver}" for fam, ver in sorted(highest.items()))
         print(f"  {path}: {summary}")
         over, missing = evaluate(highest)
+        # BOTH VERDICTS ARE COLLECTED, NEVER RETURNED FROM INSIDE THE LOOP. An
+        # early return here would stop inspecting the REMAINING binaries and
+        # discard the over-floor findings already gathered -- so a genuine floor
+        # breach in the Standalone could be replaced by a missing-family message
+        # about the VST3, and the run would report neither the breach nor the
+        # artifact it was in. That is the same "withholding the evidence helps
+        # least" argument the `linux` job makes for running this step last, and
+        # it applies inside the step too.
         if missing:
-            print(f"::error::{path} references NO {'/'.join(missing)} symbol at all, so that "
-                  f"declared floor was not checked against anything.")
-            print(f"\ncheck-linux-abi: a declared ABI family is missing from a shipped binary.\n"
-                  f"This is not a pass: every artifact this gate inspects is a C++ binary linked\n"
-                  f"against the system libstdc++ and glibc, so an absent family means either the\n"
-                  f"wrong file was inspected, or the link topology changed (e.g.\n"
-                  f"-static-libstdc++). The second is a real way to lower the floor and a\n"
-                  f"deliberate release-topology decision -- make it in the same change as the\n"
-                  f"FLOORS above, and say in the PR what it changes for users.", file=sys.stderr)
-            return 2
+            absent.append((path, missing))
         failures.extend((path, fam, floor, got) for fam, floor, got in over)
 
     if not saw_any:
         print("check-linux-abi: no binaries were inspected.", file=sys.stderr)
+        return 2
+
+    if absent:
+        for path, missing in absent:
+            print(f"::error::{path} references NO {'/'.join(missing)} symbol at all, so that "
+                  f"declared floor was not checked against anything.")
+        # Reported alongside, not instead: a run can carry both, and the one that
+        # names a real breach is the one a reader needs.
+        for path, fam, floor, got in failures:
+            print(f"::error::{path} requires {fam}_{got}, above the declared floor "
+                  f"{fam}_{floor}.")
+        print("\ncheck-linux-abi: a declared ABI family is missing from a shipped binary.\n"
+              "This is not a pass: every artifact this gate inspects is a C++ binary linked\n"
+              "against the system libstdc++ and glibc, so an absent family means either the\n"
+              "wrong file was inspected, or the link topology changed (e.g.\n"
+              "-static-libstdc++). Filed as 2 rather than 1 because the first cause -- a path\n"
+              "that no longer names the artifact -- means the gate did not measure what it was\n"
+              "pointed at, and the two are indistinguishable from the symbol table alone.\n"
+              "The second is a real way to LOWER the floor, which this file's header calls a\n"
+              "release-topology decision: make it in the same change as the FLOORS above, and\n"
+              "say in the PR what it changes for users.", file=sys.stderr)
         return 2
 
     if failures:
@@ -233,8 +272,10 @@ Version References:
     # THE VERDICT ITSELF, over the whole declared floor rather than one family
     # at a time -- this is what `check()` calls, so it is what has to be tested.
     # The missing-family cases are the point: until 2026-08-19 a family the
-    # binary did not reference was simply skipped, so the third case below
-    # reported CLEAN while half the declared floor went unexamined.
+    # binary did not reference was simply skipped, so the case below labelled
+    # "a MISSING libstdc++ family is reported, not skipped" reported CLEAN while
+    # half the declared floor went unexamined. Named rather than numbered so the
+    # comment survives a reordering -- the same reason nothing here cites a line.
     expect("a binary within both floors is clean and complete",
            evaluate({"GLIBC": "2.35", "GLIBCXX": "3.4.30", "GCC": "3.3.1"}),
            ([], []))
@@ -253,6 +294,13 @@ Version References:
     expect("a missing family is reported even while another is over its floor",
            evaluate({"GLIBC": "2.39"}),
            ([("GLIBC", GLIBC_FLOOR, "2.39")], ["GLIBCXX"]))
+    # THE ORDERING TRAP AGAIN, INSIDE THE VERDICT. `version_key` is tested in
+    # isolation above, but swapping it for a raw string comparison *within*
+    # `evaluate` survives every other case here: `2.9` > `2.38` lexically, so a
+    # binary comfortably under the floor would be reported as over it.
+    expect("2.9 is under the 2.38 floor in the verdict too, not over it",
+           evaluate({"GLIBC": "2.9", "GLIBCXX": GLIBCXX_FLOOR}),
+           ([], []))
     expect("families with no declared floor neither satisfy nor break one",
            evaluate({"GLIBC": "2.35", "GLIBCXX": "3.4.30", "CXXABI": "1.3.13"}),
            ([], []))

@@ -146,9 +146,15 @@ durable mechanism below was added regardless — which is the point of recording
   `tests/realtime_effects.cpp` carrying a **real seeded violation** compiled with status **0**. It
   is now compiled twice — the gate, then the same TU with `-DANAMORPH_EFFECTS_CANARY` seeding an
   allocating non-annotated helper, asserted to fail *with* a `-Wfunction-effects` diagnostic — and
-  both compiles carry `-Werror=unknown-warning-option`. Neither half subsumes the other: the flag
-  catches a renamed option by name, the canary catches one still accepted but no longer implemented.
-  `TESTING_POLICY.md` rule 4's "one-time manual verification" wording for this gate is retired.
+  both compiles carry `-Werror=unknown-warning-option`. **The canary is the coverage; the flag is
+  the diagnosis** — the first draft of this round had that as two independent halves, which is
+  measurably wrong: a name Clang no longer knows is also a diagnostic Clang no longer emits, so the
+  canary compiles clean and fails the step in the renamed case too. The flag earns its place by
+  failing on the *first* compile and naming the cause. The canary alone covers what the flag never
+  can — an option accepted but no longer implemented — plus three cases neither was claimed to
+  catch: a silently-empty `ANAMORPH_NONBLOCKING`, a `#pragma clang diagnostic ignored` planted in
+  the include set, and the driver compiled out. `TESTING_POLICY.md` rule 4's "one-time manual
+  verification" wording for this gate is retired.
 - **The allocation guard's stand-down under RealtimeSanitizer.** `__has_feature(realtime_sanitizer)`
   was a single unverified spelling holding up the whole lane; verified on Clang 22.1.8 that
   `-fsanitize=realtime` defines **no** preprocessor macro of its own, so no non-circular check could
@@ -159,30 +165,61 @@ durable mechanism below was added regardless — which is the point of recording
 - **The Linux ABI floor, per declared family.** `check()` compared only the families a binary
   actually referenced, so an **absent** family read as a satisfied one. Demonstrated on a real
   C-only binary: the previous checker reported `within the declared floor (GLIBC_2.38,
-  GLIBCXX_3.4.31)` and exited **0** for a file importing no `GLIBCXX_*` at all. A missing declared
-  family is now an error, on the file's own stated reasoning that "no requirements found" must not
-  read as clean. Both shipped artifacts import both families, so the real gate is unchanged.
+  GLIBCXX_3.4.31)` and exited **0** for a file importing no `GLIBCXX_*` at all, and likewise for a
+  real `-static-libstdc++` link. A missing declared family is now an error, on the file's own stated
+  reasoning that "no requirements found" must not read as clean. Both verdicts are **collected**
+  rather than returned from inside the loop: an early return stopped inspecting the remaining
+  binaries and discarded the over-floor findings already gathered, so a genuine breach in the
+  Standalone could be replaced by a missing-family message about the VST3 — the same
+  "withholding the evidence helps least" argument the `linux` job makes for running this step last,
+  applied inside the step. Both shipped artifacts import both families, so the real gate is
+  unchanged.
 - **The realtime lint's lexer and body extractor**, both silent false negatives rather than false
   positives — the dangerous direction for a lint whose value is its silence. `_is_digit_separator`
   tested only the two neighbouring characters, which is also the shape of the **opening** quote of an
   encoded character literal (`L'a'`, `u8'a'`, `u'a'`, `U'a'`): the opener was emitted as code, the
   closer read as an opener, and the rest of the line blanked. It now walks left to the start of the
-  token and requires a digit there. Separately, `_bodies` searched only 400 characters past the
-  closing parenthesis for the opening brace, and blanked comments **keep their length**, so a
-  definition with a long comment between `)` and `{` left the scanned set with no diagnostic; the
-  search is unbounded, with the same first-of-`{`-or-`;` rule that still rejects declarations.
-  Verified identical afterwards: **61 reachable body spans**, **44 files**, **0 violations**, zero
-  files differing.
+  token and requires that token to begin a **number** — not merely to begin with a digit, which was
+  the first attempt and swallowed leading-dot literals (`.5'0f`, `.000'001`, both ordinary C++ and
+  both exactly how a gain constant or a DSP tolerance gets written) in the same way. A stray
+  apostrophe with no partner on its line — `#error don't`, which the comment branches do not blank —
+  is likewise emitted as prose rather than opening a literal.
+  Separately, `_bodies` searched only 400 characters past the closing parenthesis for the opening
+  brace, and blanked comments **keep their length**, so a definition with a long comment between `)`
+  and `{` left the scanned set with no diagnostic. The search is unbounded now — but unbounded alone
+  traded the false negative for a false **positive**: with nothing stopping it, the `)` of a *call*
+  pairs with the `{` of a lambda in a later argument, which happens in this tree at
+  `src/PluginEditor.cpp` (`juce::PopupMenu::Options()`, brace 759 characters later, inert only
+  because `callees()` drops `::`-qualified names). So the region between `)` and `{` is now checked
+  for what it is: a declarator tail may carry qualifiers, `noexcept`, attributes, a trailing return
+  type or a member-initialiser list, but a comma at bracket depth zero — outside an initialiser list
+  — means an argument list, not a signature. That rejects the `Options` pairing and 24 further call
+  sites (`abs`, `memcmp`, `jmax`, `std::move`, base-class initialisers), every one verified to have
+  no first-party definition. Verified identical afterwards where it counts: **61 reachable body
+  spans**, **44 files**, **0 violations**, zero files differing from before the round.
 
 **The citation tool was disabling its own repair path.** `verify_reaim_targets()` ran first and
-returned 2 for *every* mode, so a drifted `DELIBERATE_REAIMS` declaration switched `--fix` off — the
-one mode that computes the replacement spelling the operator is then told to write by hand, and the
-mode the `invalidated_reaims` warning exists to run inside. Several declared anchors are single-line
-(`build.yml:1667` expecting `macos:`), so any insertion above one moves them. Measured on a worktree
-at `33333fe`: **one** inserted line made `--fix` exit 2 having rewritten nothing. The distinction is
-now by mode — the same one the rewriter already draws for invalidated declarations: `--check`
-verifies and stops; `--fix` warns, repairs, and still exits non-zero, because a declaration lives in
-the script and no document rewrite reaches it. Verification is not weakened: CI runs `--check` only.
+returned 2 for *every* mode, so one drifted `DELIBERATE_REAIMS` declaration switched `--fix` off for
+the **whole run** — including every citation that had nothing to do with it. Declared anchors drift
+for the most ordinary of reasons: two are single lines in `build.yml`, so any insertion above one
+moves them. Measured on a worktree at `33333fe`, with one line inserted into `build.yml` and one into
+`AnamorphEngine.cpp`: `--fix` re-anchored **0** citations across **0** documents; after the fix, **31**
+across **16**. The distinction is now by mode — the same one the rewriter already draws for
+invalidated declarations: `--check` verifies and stops; `--fix` warns, repairs, and still exits
+non-zero, because a declaration lives in the script and no document rewrite reaches it. Verification
+is not weakened: CI runs `--check` only.
+
+**What `--fix` deliberately does NOT do**, recorded because the first draft of this round claimed
+more than it delivered. It cannot re-anchor the misaimed anchor *itself* while the declaration is
+live — `is_declared_reaim` excuses precisely that anchor from the comparison — so the replacement
+spelling is computed only for a declaration whose base and current spellings already agree. And the
+document that **owns** a misaimed declaration is now withheld from the rewrite entirely: re-deriving
+one anchor while its excused neighbour stays put produced a cell asserting that
+`build.yml:2266` was both the `macos-intel` job header *and* the last line of that job's rationale
+block. The run-wide hard stop had been acting as an interlock against exactly that; removing it
+without replacing it would have traded a blocked repair for a corrupted document, on the one lint in
+the repository that **writes**. The interlock is now per document, so the other fifteen are still
+repaired.
 
 **Six evidence anchors, not the three the review named.** `CMakeLists.txt` grew by 178 lines in this
 change set (+16 for base lines 29–105, +56 from base line 108 on), and the **bare continuation** form

@@ -235,8 +235,9 @@ edge above must not be read as release non-blocking.
   with status 0). The second compile adds `-DANAMORPH_EFFECTS_CANARY`, which seeds an allocating
   non-annotated helper and a call to it into the same file, and the step fails unless that compile
   fails *with* a `-Wfunction-effects` diagnostic. `-Werror=unknown-warning-option` on both compiles
-  makes the renamed case fail by name; the canary covers the case it cannot — an option still
-  accepted but no longer implemented.
+  makes the renamed case fail on the *first* compile and by name; the canary would catch that case
+  too — a name Clang no longer knows is a diagnostic it no longer emits — and additionally covers
+  the one the flag never can, an option still accepted but no longer implemented.
   RTSan is the strongest of the three realtime tiers but the least portable — Clang, Linux/macOS
   only. The **allocation guard** compiled into the DSP suite (Test 38) covers the shipped toolchains
   it cannot reach, MSVC included, because `operator new` replacement is standard C++; it runs in

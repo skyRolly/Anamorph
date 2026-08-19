@@ -341,13 +341,23 @@ DELIBERATE_REAIMS = {
     ("docs/policies/RELEASE_POLICY.md", "CMakeLists.txt:14, 306-331"): "ANAMORPH_BUILD_NUMBER",
     # Same round, found by a second review pass: the compile-definition list
     # cites the block those definitions live in, and `ANAMORPH_BUILD_NUMBER`
-    # left that block when it was scoped to one translation unit. `:277-284` is
-    # still the `target_compile_definitions(Anamorph PUBLIC ...)` block and no
-    # longer contains it, so the sentence listed a definition its own evidence
-    # disproved. Widened to `:274-284`, which starts at the
-    # `set_source_files_properties` that now carries it -- ONE anchor still, not
-    # two, because a citation whose anchor COUNT changes lands in the
-    # "review by hand" branch that no declaration can excuse.
+    # left that block when it was scoped to one translation unit. The
+    # `target_compile_definitions(Anamorph PUBLIC ...)` block alone no longer
+    # contains it, so the sentence listed a definition its own evidence
+    # disproved. The anchor was therefore WIDENED to start at the
+    # `set_source_files_properties` that now carries it and run to the end of
+    # that block -- ONE anchor still, not two, because a citation whose anchor
+    # COUNT changes lands in the "review by hand" branch that no declaration can
+    # excuse.
+    #
+    # The spelling below is `:330-341` and the numbers moved twice getting
+    # there: the round that widened it wrote `origin/main`'s `:274-284`, and the
+    # round that grew `CMakeLists.txt` by 178 lines re-anchored the START but
+    # narrowed the END to `:330-331` -- back to two lines, dropping seven of the
+    # eight definitions the sentence enumerates, and still green here because
+    # line 331 carries the expected string. Re-derived 2026-08-19. The lesson is
+    # the one this block already teaches: an entry is a claim about a SPELLING,
+    # and prose that quotes old numbers beside it is a second copy that rots.
     ("docs/procedures/BUILD.md", "CMakeLists.txt:330-341"): "ANAMORPH_BUILD_NUMBER",
     # ---------------------------------------------------------------------
     # THE WORKFLOW ANCHORS WERE WRONG ON ARRIVAL, and the way they got there is
@@ -497,15 +507,24 @@ def reaim_stops_the_run(problems, fixing: bool) -> bool:
     OFF for its anchor, and a wrong one is invisible in every other way. The CI
     step runs `--check`, so that is where the release-blocking failure lives.
 
-    `--fix` REPAIRS, so it must NOT stop. Several declared anchors are
-    single-line, so any insertion above one moves it -- and that is precisely
-    the drift `--fix` exists to repair. Stopping here handed the operator a
-    "could not run" and no automated way out, and it also put the
-    `invalidated_reaims` warning -- which prints the replacement spelling during
-    a rewrite -- downstream of a return that always fired. Measured on a
-    worktree at 33333fe: one line inserted into `build.yml` made `--fix` exit 2
-    having rewritten nothing; carrying past it re-anchors the drift and still
-    exits 2, because `fix_exit_code` below keeps the run failing.
+    `--fix` REPAIRS, so it must NOT stop. Declared anchors drift for the most
+    ordinary of reasons -- two of them are single lines in `build.yml`, so any
+    insertion above one moves them -- and stopping the whole run over that left
+    the operator a "could not run" and no automated way out for the OTHER
+    documents, whose drift `--fix` repairs perfectly well. Measured on a worktree
+    at 33333fe: one line inserted into `build.yml` misaimed three declared
+    entries, two of them single-line anchors, and `--fix` exited 2 having
+    rewritten nothing at all; carrying past it re-anchors the unrelated drift and
+    still exits 2, because `fix_exit_code` below keeps the run failing.
+
+    WHAT IT DOES NOT DO, stated because the first version of this comment claimed
+    otherwise: `--fix` cannot re-anchor the misaimed anchor ITSELF while its
+    declaration is live, because `is_declared_reaim` excuses exactly that anchor
+    from the comparison. The replacement spelling is computed only for a
+    declaration whose base and current spellings already agree. So the value here
+    is the rest of the run, not the anchor that caused it -- and the document
+    that OWNS a misaimed declaration is skipped entirely, see the interlock in
+    the rewrite branch below.
     """
     return bool(problems) and not fixing
 
@@ -1312,19 +1331,22 @@ def self_test():
 
     # --- 8d. THE AIM CHECK MUST NOT DISABLE THE REPAIR PATH ------------------
     # Section 8c gave this tool a check on its own declarations. It was wired
-    # in ahead of everything else and returned 2 for EVERY mode, which made a
-    # drifted declaration switch `--fix` off -- the one mode that computes the
-    # replacement the operator is then told to write by hand. Measured on a
-    # worktree at 33333fe: inserting ONE line into `build.yml` moved three
-    # single-line declared anchors, and `--fix` exited 2 having rewritten
-    # nothing. With the split below it re-anchors the drift and still exits 2.
+    # in ahead of everything else and returned 2 for EVERY mode, which stopped
+    # `--fix` from repairing the citations that had nothing to do with the
+    # declaration. Measured on a worktree at 33333fe: inserting ONE line into
+    # `build.yml` misaimed three declared entries, two of them single-line
+    # anchors, and `--fix` exited 2 having rewritten nothing at all. With the
+    # split below it re-anchors the unrelated drift and still exits 2.
     #
-    # Both halves are pinned, because either alone is a different bug: stopping
-    # `--fix` is the defect being fixed, and letting `--fix` report SUCCESS over
-    # a misaimed declaration would be a worse one.
+    # Three decisions come out of this, and they fail in different directions:
+    # stopping `--fix` is the defect being fixed; letting `--fix` report SUCCESS
+    # over a misaimed declaration would be a worse one; and rewriting a document
+    # that OWNS a misaimed declaration corrupts it. The cases below pin the first
+    # behaviourally and the other two at their call sites -- see the note there
+    # for why, and for what that does not cover.
     P = [("docs/EXAMPLE.md", "CMakeLists.txt:14", "x", "why")]
     check("--check STOPS on a misaimed declaration", reaim_stops_the_run(P, False), True)
-    check("--fix does NOT stop on one -- it is what repairs the drift that caused it",
+    check("--fix does NOT stop on one -- the rest of the run is still repairable",
           reaim_stops_the_run(P, True), False)
     check("no misaimed declaration, no stop (--check)", reaim_stops_the_run([], False), False)
     check("no misaimed declaration, no stop (--fix)", reaim_stops_the_run([], True), False)
@@ -1334,6 +1356,71 @@ def self_test():
           fix_exit_code(3, P), 2)
     check("a clean --fix succeeds", fix_exit_code(0, []), 0)
     check("an unmappable citation alone still fails --fix", fix_exit_code(1, []), 2)
+
+    # ...AND THE WIRING, not only the two helpers. Pinning the helpers alone left
+    # the actual defect reachable: restoring `if reaim_problems:` at the call
+    # site in `main()` -- the one-character regression this section is named for
+    # -- passed every case above. So the cases below drive `main()` itself,
+    # through a stubbed `verify_reaim_targets`, and assert the OUTCOME: `--check`
+    # stops before reading a base revision, `--fix` does not.
+    #
+    # The tell is which failure comes back. With no base revision reachable,
+    # `--fix` gets as far as `git show` and reports "nothing to check against";
+    # a run that stopped at the aim check never gets there and says so instead.
+    import io                       # local: the tool does not otherwise capture output
+    import contextlib
+    saved_argv = sys.argv[:]
+    saved_reaims = dict(DELIBERATE_REAIMS)
+    try:
+        def stub_verify():
+            return [("docs/EXAMPLE.md", "CMakeLists.txt:14", "x", "wrong on purpose")], []
+        real_verify = globals()["verify_reaim_targets"]
+        globals()["verify_reaim_targets"] = stub_verify
+        for mode, must_reach_base in (("--check", False), ("--fix", True)):
+            sys.argv = ["check-citations.py", mode, "--base", "no/such/revision"]
+            out, err = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                rc = main()
+            text = out.getvalue() + err.getvalue()
+            reached = "nothing to check against" in text
+            check(f"{mode}: rc is 2 over a misaimed declaration", rc, 2)
+            check(f"{mode}: {'reaches' if must_reach_base else 'stops before'} the base "
+                  f"revision", reached, must_reach_base)
+            check(f"{mode} reports the misaimed declaration as "
+                  f"{'a warning' if mode == '--fix' else 'an error'}",
+                  ("::warning::" in text) if mode == "--fix" else ("::error::" in text),
+                  True)
+    finally:
+        globals()["verify_reaim_targets"] = real_verify
+        sys.argv = saved_argv
+        DELIBERATE_REAIMS.clear()
+        DELIBERATE_REAIMS.update(saved_reaims)
+
+    # THE OTHER TWO DECISIONS ARE PINNED AT THEIR CALL SITES, and this is a
+    # weaker instrument than the cases above -- stated plainly rather than
+    # dressed up. Both need a run that reaches the END of `--fix`, which needs a
+    # real base revision and would REWRITE documents; `TESTING_POLICY` rule 4
+    # forbids a self-test that depends on a base revision, and a self-test that
+    # edits the tree would be worse than the defect. So what is asserted is that
+    # each decision is still consulted where it has to be. It catches the
+    # realistic regression -- someone re-simplifying the condition, which is how
+    # the original defect was written -- and it deliberately does not pretend to
+    # be behavioural. If a refactor renames these, this test is supposed to fail
+    # and be updated with them.
+    # SEARCHED IN `main()` ONLY, not in the whole file -- the strings below also
+    # appear a few lines up as the literals being searched FOR, so a whole-file
+    # search matches itself and passes however `main()` is mutated. (Caught by
+    # mutating this file and watching all three cases stay green.)
+    own_source = read(__file__).split("\ndef main(")[-1]
+    for label, call in [
+        ("--fix's exit code still asks fix_exit_code, so a run that warned cannot "
+         "report success", "return fix_exit_code(unmappable, reaim_problems)"),
+        ("the rewrite still skips a document that owns a misaimed declaration",
+         "if args.fix and edits and doc in misaimed_docs:"),
+        ("...and the mode split is still consulted rather than re-simplified",
+         "if reaim_stops_the_run(reaim_problems, args.fix):"),
+    ]:
+        check(f"call site intact: {label}", call in own_source, True)
 
     # --- 9. EVERY DECLARATION NAMES A SPELLING ITS DOCUMENT REALLY CARRIES ---
     # A declaration excuses a mismatch, so it is consulted ONLY when one occurs.
@@ -1391,11 +1478,11 @@ def main():
     # IT MUST NOT DISABLE `--fix`, and until 2026-08-19 it did. Returning 2 here
     # for EVERY mode meant that the one thing which repairs drift refused to run
     # whenever a declaration had drifted -- and drifting is what these anchors
-    # do: several are single-line (`build.yml:1667` expecting `macos:`), so any
-    # insertion above one moves it. The operator was then told to re-anchor by
-    # hand the very thing `--fix` exists to compute, and the `invalidated_reaims`
-    # warning below -- whose entire job is to print the replacement spelling
-    # during a rewrite -- was unreachable, being downstream of this return.
+    # do: two are single lines in `build.yml` (`:1667` expecting `macos:`), so
+    # any insertion above one moves them. The whole run then stopped, including
+    # the re-anchoring of every citation that had nothing to do with the
+    # declaration, and the `invalidated_reaims` warning below -- which prints a
+    # replacement spelling during a rewrite -- became unreachable along with it.
     #
     # So the DISTINCTION IS BY MODE, and it is the same one the rewriter already
     # draws a few hundred lines down for invalidated declarations: `--check`
@@ -1406,6 +1493,7 @@ def main():
     # step runs `--check` (there is no `--fix` in any workflow), which is where
     # the hard failure lives and where it stays.
     reaim_problems, reaim_unverifiable = verify_reaim_targets()
+    misaimed_docs = {doc for doc, _whole, _expect, _why in reaim_problems}
     for doc, whole in reaim_unverifiable:
         print(f"check-citations: note — DELIBERATE_REAIMS entry {doc}: {whole} declares no "
               f"expected content, so its aim is NOT verified. Give it a substring a reader "
@@ -1449,7 +1537,7 @@ def main():
 
     maps = {p: build_line_map(args.base, p) for p in base_src}
 
-    total = drifted = fixable = unmappable = unchecked = 0
+    total = drifted = fixable = unmappable = unchecked = withheld = 0
     used_reaims = set()
     base_doc_cites = {}                # doc -> the citation spellings the BASE carries
     for doc in doc_files():
@@ -1617,7 +1705,35 @@ def main():
                 edits.append((span_c[0], span_c[1], rebuilt))
                 fixable += 1
 
-        if args.fix and edits:
+        if args.fix and edits and doc in misaimed_docs:
+            # THE INTERLOCK THE HARD STOP USED TO PROVIDE, kept at DOCUMENT
+            # granularity instead of run granularity.
+            #
+            # Letting `--fix` past a misaimed declaration is the point of the
+            # mode split above, but it must not half-rewrite the one document
+            # whose declaration is known wrong. A declaration EXCUSES its anchor
+            # from the drift comparison, so while it is misaimed that anchor
+            # stays where it is while its neighbours in the same sentence move --
+            # and the cell ends up asserting two different things about one line.
+            # Observed: re-anchoring `build.yml:2209-2265 -> :2210-2266` beside
+            # the excused `:2266` left COMPATIBILITY_MATRIX claiming 2266 is both
+            # the `macos-intel` job header and the last line of its rationale
+            # block. This is the only lint in the repository that WRITES, so a
+            # defect here corrupts rather than merely misses.
+            #
+            # Every OTHER document is still repaired, which is what makes this a
+            # narrower interlock than the run-wide `return 2` it replaces.
+            print(f"::warning::{doc}: NOT re-anchored ({len(edits)} citation(s) left "
+                  f"alone) because this document owns a misaimed DELIBERATE_REAIMS "
+                  f"declaration. Re-deriving one anchor while its excused neighbour "
+                  f"stays put is how a sentence ends up naming one line twice. Fix "
+                  f"the declaration, then re-run --fix.")
+            # NOT COUNTED AS RE-ANCHORED, because nothing was written. `fixable`
+            # is incremented per DRIFTED citation above, which is right for
+            # `--check` (where it means "repairable") and wrong here.
+            fixable -= len(edits)
+            withheld += len(edits)
+        elif args.fix and edits:
             # WHAT THE REWRITE DOES TO THIS DOCUMENT'S OWN DECLARATIONS, checked
             # here rather than left to the self-test.
             #
@@ -1736,7 +1852,9 @@ def main():
 
     if args.fix:
         print(f"\ncheck-citations: re-anchored {fixable} citation(s) across {checked} "
-              f"checked anchor(s){tail}; {unmappable} need a human.")
+              f"checked anchor(s){tail}; {unmappable} need a human"
+              + (f"; {withheld} withheld from document(s) owning a misaimed declaration"
+                 if withheld else "") + ".")
         if reaim_problems:
             # The repair ran, which is the point of letting it. It is still not a
             # clean run: a misaimed declaration keeps a drift check switched off,

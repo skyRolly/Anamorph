@@ -69,12 +69,16 @@
 namespace
 {
 #if defined(ANAMORPH_EFFECTS_CANARY)
-    // THE SEEDED VIOLATION, compiled only for the liveness proof. Not annotated
-    // and it allocates, so a `nonblocking` caller of it is exactly the defect
-    // `-Wfunction-effects` exists to report. `std::vector` is used rather than a
-    // bare `new` because a vector is what this project's DSP modules actually
-    // grow with, and because the diagnostic must come from the CALL GRAPH -- the
-    // helper's definition is visible, the allocation is one hop down.
+    // THE SEEDED VIOLATION, compiled only for the liveness proof. Not annotated,
+    // and it grows a `std::vector` -- which is how this project's DSP modules
+    // actually allocate -- so a `nonblocking` caller of it is exactly the defect
+    // `-Wfunction-effects` exists to report. The diagnostic comes from the CALL
+    // GRAPH, which is this tier's whole reason to exist: the error is reported
+    // at the CALL below, and Clang's notes walk down from there through
+    // `vector::resize` and `_M_default_append`. The effect it finally names is
+    // "throws or catches exceptions" rather than the allocation itself -- both
+    // are blocking, both are what the attribute forbids, and the walk is the
+    // property being proven live.
     std::vector<float> canarySink;
 
     void canaryAllocatingHelper (int n) { canarySink.resize ((std::size_t) n); }
