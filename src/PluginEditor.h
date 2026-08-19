@@ -83,8 +83,18 @@ private:
     //      indices, ABControl::hovered) cannot be cleared, whatever the hit test resolves to.
     //   2. Every other hover visual here is derived GEOMETRICALLY, never from enter/exit:
     //      stepMicroAnims takes `over` from getMouseXYRelative() to drive hovA (PluginEditor.cpp:
-    //      1331-1333) and the combo "hov" flag does the same (:1072-1073). That is the v0.6.1
+    //      1614-1617) and the combo "hov" flag does the same (:1346-1348). That is the v0.6.1
     //      stuck-hover fix, and it makes hovA immune to componentUnderMouse churn by construction.
+    //      It also makes it blind to OCCLUSION, which is the other half and was missing until 0.9.4:
+    //      getMouseXYRelative is a pure coordinate transform (juce_Component.cpp:3233-3236), so a
+    //      control keeps containing the cursor while a drop-down is stacked over it and lit up with
+    //      the pointer provably on the menu. cursorIsOverOpenPopup() supplies the missing term.
+    //      THE PLACEMENT RULE, and it is load-bearing: occlusion is ANDed into the ANSWER (`over`,
+    //      `hov`) and NEVER into the GATE (`mouseInside` :1515, `comboCursorInside` :1335). Folding
+    //      it into either looks tidier and is wrong: `! mouseInside` is the shared prefix of both
+    //      S11 early returns (:1539, :1562), so a gate that goes false the moment a menu opens seals
+    //      the driver with hovA parked at 1.0 -- turning a false highlight into a frozen one for the
+    //      life of the menu. refreshPopupShield un-settles on the transition for the same reason.
     // Toggling interception rather than visibility is therefore about cost and side effects, not
     // hover: setInterceptsMouseClicks is pure flag assignment (juce_Component.cpp:1336-1341), where
     // setVisible would add a full-editor repaint() on every menu open plus a repaintParent() and a
@@ -240,6 +250,8 @@ private:
     int  presetMenusOpen = 0;
     void notePopupMenuOpened (juce::Component& menuWindow);
     void refreshPopupShield();   // prunes dead windows and shows/hides the shield
+    bool cursorIsOverOpenPopup() const;  // the cursor is inside a pop-up of ours, so it is NOT
+                                         // over whatever this editor draws underneath it
     void dismissTrackedPopupMenus();   // cancels every pop-up this editor owns, unconditionally
     void cancelInlineTextEdits();      // parks in-progress inline edits without applying them
     void dismissOrphanedPopupMenus();  // ... and the same, once one can no longer belong to us

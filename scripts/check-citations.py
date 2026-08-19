@@ -503,6 +503,27 @@ DELIBERATE_REAIMS = {
     ("docs/policies/REALTIME_AUDIO_POLICY.md", "src/dsp/AnamorphEngine.cpp:28-113"): "prepare",
     ("docs/procedures/BUILD.md", "scripts/build.sh:19-54"): "artefacts",
     # ---------------------------------------------------------------------
+    # 2026-08-19, the hover-occlusion round's review: PRIVACY.md's preset-directory
+    # anchor was aimed at the wrong code BEFORE this gate existed, which is the
+    # limitation stated at the top of this file rather than a failure of it. The
+    # sentence says the Presets folder is created when the Load Preset dialog opens;
+    # `dir.createDirectory()` is in `showLoadPreset`, but the anchor named the S11
+    # generation pre-gate comment in `stepMicroAnims` -- `:1455` at the merge base,
+    # ~383 lines short of the `:1838` the call sat on there. `--fix` then did exactly
+    # what it promises and carried the mistake to `:1524`, still the same comment.
+    #
+    # This is the case the list exists for, and it is worth being precise about WHY
+    # a declaration is needed here when the same round re-aimed five anchors in
+    # `docs/KNOWN_ISSUES.md` without one. Citations are paired per (document, path)
+    # by POSITION (`zip(olds, curs)`), and the count guard above skips a whole group
+    # when the counts differ. KNOWN_ISSUES went 2 -> 5, so its group is not compared
+    # at all -- those anchors are unchecked, not blessed. PRIVACY.md still has
+    # exactly one `src/PluginEditor.cpp` citation, so its pair IS compared, the
+    # re-aim reads as drift, and without this entry `--fix` reverts the correction
+    # on every run. Measured, not assumed: `--fix` reverted it once before this
+    # entry was written.
+    ("PRIVACY.md", "src/PluginEditor.cpp:1916"): "createDirectory",
+    # ---------------------------------------------------------------------
     # 2026-08-18, the macOS symbolication round. `AnamorphEngine::process` gained
     # `ANAMORPH_NONBLOCKING` on its DEFINITION (it was on the declaration only),
     # with the reasoning above it -- so the anchor's FIRST line is one of the

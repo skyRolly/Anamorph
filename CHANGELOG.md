@@ -13,8 +13,23 @@ Source. Until then every entry cites a commit SHA or a PR. Entries for the
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
-## [0.9.4] — 2026-08-15
+## [0.9.4] — 2026-08-19
 ### Fixed
+- **Controls under an open drop-down no longer light up as if you were pointing at them.** With a
+  menu open — any of the seven drop-downs, or the preset list — moving the pointer **onto the menu**
+  lit whatever sat underneath it: a knob's arc glow and pointer halo, a switch's pill, the A/B
+  racetrack. The pointer was on the menu, so the highlight was claiming something untrue, and the
+  control it pointed at could not be clicked anyway (a click there just dismisses the menu). The
+  cause is that hover here is worked out from the pointer's **position** rather than from mouse
+  enter/exit events — deliberately, since v0.6.1, because those events were unreliable and left
+  highlights stuck on. A position, though, cannot tell that something has been drawn on top of it,
+  so a covered control kept containing the pointer exactly as before. It is now also tested against
+  the open menu, and a control the menu covers stays dark. **Nothing else changes**: the box you
+  opened keeps its own highlight (the list opens flush *below* it, so the pointer really is still on
+  the box), a control merely *beside* the menu is unaffected, and hover returns the instant the menu
+  closes. Measured on the running editor rather than argued: with the pointer on an open list, the
+  knob beneath it went from fully lit to fully dark, and with a preset library large enough to make
+  the preset menu tall, so did the A/B control under that. [Verified]
 - **The macOS Audio Unit is now covered by the release gate.** `Anamorph.component` — the build
   Logic Pro and GarageBand load, and the only format they load — previously shipped having passed
   **no automated format-conformance validation at all**: the gate located and validated
