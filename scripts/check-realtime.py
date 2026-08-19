@@ -431,6 +431,8 @@ def heads_a_definition(clean: str, at: int) -> bool:
 
       * `::` -- a qualified definition (`void AnamorphEngine::process (`);
       * `*` or `&` whose own predecessor ends a type (`juce::String& name (`);
+      * a `>` that CLOSES A TEMPLATE ARGUMENT LIST -- a template-id ends a
+        return type as squarely as a name does (`std::vector<float> helper (`);
       * an identifier that is not a keyword -- the return type (`void f (`).
 
     Everything else rejects, which covers the shapes a call takes: `(`, `,`,
@@ -453,6 +455,28 @@ def heads_a_definition(clean: str, at: int) -> bool:
         while k >= 0 and clean[k] in " \t\n":
             k -= 1
         return k >= 0 and (clean[k] in _IDENT_CHARS or clean[k] == ">")
+    if clean[j] == ">":
+        # A TEMPLATE-ID ENDS A RETURN TYPE exactly as a plain identifier does,
+        # and `std::vector<float> helper (` was rejected here purely because the
+        # character before the name is `>` rather than a letter. The cost is not
+        # a missing definition, it is a missing SUBTREE: a name absent from
+        # `definition_index` is a name `reachable_bodies` cannot follow into, so
+        # every allocation in that helper -- and in everything it calls -- is
+        # invisible. `float helper (` a line above reports it; `std::vector<float>
+        # helper (` reports nothing.
+        #
+        # A bare `>` is also `a > b`, so the question is whether THIS `>` closes
+        # a template argument list. `_blank_template_args` already answers it
+        # under rules pinned above (balance required; `<` opens only after a
+        # name; `<<`/`<=` and the `>` of `->` are operators; a span closes only
+        # at its own bracket depth), so it is asked rather than re-implemented --
+        # a second `<`/`>` parser here is a second one to keep in agreement.
+        # The window starts at the enclosing statement so the answer is about
+        # this declarator and not a comparison several statements back, and a
+        # window that clips leaves the `>` unblanked, i.e. rejects: this widens
+        # what is scanned, never what is invented.
+        w = max(clean.rfind(c, 0, j) for c in ";{}") + 1
+        return _blank_template_args(clean[w:j + 1])[j - w] == " "
     if clean[j] not in _IDENT_CHARS:
         return False
     k = j
@@ -679,6 +703,22 @@ MUST_FIRE = [
     ("...including a helper that takes no arguments at all",
      "void Engine::noArgs() { v.reserve (64); }\n"
      "void Engine::process (Buf& b) noexcept { noArgs(); }"),
+    # ...and a helper whose RETURN TYPE IS A TEMPLATE, which was excluded from
+    # `definition_index` for no reason but the character before its name. The
+    # cost is a subtree, not a line: an unindexed name is one `reachable_bodies`
+    # cannot follow into, so the helper's allocations and everything it calls
+    # were both invisible -- and the same helper spelled `float helper (` was
+    # reported. Free functions only: a member (`std::vector<float> Engine::f (`)
+    # arrives through the `::` branch and was never affected. (Verified
+    # non-vacuous: both report zero through the previous version, which indexed
+    # `helper3` in the first fixture and not `helper`.)
+    ("a free helper whose return type is a template is still audio-path code",
+     "std::vector<float> helper (int n) { scratch.assign (n, 0.0f); return scratch; }\n"
+     "float helper3 (int n) { return (float) n; }\n"
+     "void Engine::process (Buf& b) noexcept { helper (4); helper3 (4); }"),
+    ("...including a nested template return type",
+     "std::map<int,std::vector<float>> gather (int n) { pending.insert (pending.end(), n); return {}; }\n"
+     "void Engine::process (Buf& b) noexcept { gather (4); }"),
     # ---- the lexer, on the two shapes that would blank the WRONG SPAN -------
     # These are deliberately MUST_FIRE rather than must-stay-silent, and that is
     # the whole point: the danger from a mis-lexed quote is not a false finding,
@@ -937,6 +977,38 @@ def self_test() -> int:
         got = _is_declarator_tail(label + region + "{", len(label), len(label) + len(region))
         if got != want:
             print(f"self-test FAIL: declarator tail ({label}) -> {got}, want {want}",
+                  file=sys.stderr)
+            failures += 1
+
+    # WHETHER A `>` BEFORE THE NAME ENDS A TYPE. Asserted directly for the same
+    # reason as the block above: only the accepting half is observable through
+    # `scan_text`, because `_is_declarator_tail` independently rejects the
+    # comparisons -- a comparison's call sits inside an enclosing paren, so its
+    # `)` drives the region depth negative before any `{`. Measured: replacing
+    # this branch with a bare `return True` changes nothing on `src/` (503
+    # definitions, 61 reachable bodies, 0 violations either way). So the guard
+    # is not what keeps the tree quiet today; it is what keeps the answer to
+    # "does this `>` close a template argument list" a single one, given by
+    # `_blank_template_args` under the rules pinned above.
+    for label, before, want in [
+        ("a template-id return type", "std::vector<float> ", True),
+        ("...nested, closing with `>>`", "std::map<int,std::vector<float>> ", True),
+        ("...with a deeper `>` inside it", "std::enable_if_t<(A > B), int> ", True),
+        ("...after a preceding definition's `}`", "void f() { }\n\nstd::vector<float> ", True),
+        ("a bare comparison ends no type", "peak > ", False),
+        ("...nor does a right shift", "bits >> ", False),
+        ("...nor the `>` of a member arrow", "cfg->", False),
+        ("`<=` opens no span, so its `>` closes none", "a <= b , c > ", False),
+        ("...and neither does `<<`", "a << b , c > ", False),
+        ("a `<` after `)` opens no span", "(a) < b , c > ", False),
+        ("a `<` cannot pair across bracket groups", "f(a < b) , g(c > ", False),
+        # The WINDOW: the span must be in this declarator, not a statement back.
+        ("a `<` in the PREVIOUS statement is out of reach", "x = a < b;\n    c > ", False),
+    ]:
+        total += 1
+        got = heads_a_definition(before + "name (", len(before))
+        if got != want:
+            print(f"self-test FAIL: definition head ({label}) -> {got}, want {want}",
                   file=sys.stderr)
             failures += 1
     if failures:

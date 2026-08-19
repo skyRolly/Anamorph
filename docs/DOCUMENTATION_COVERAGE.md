@@ -7,7 +7,8 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
-**parser-and-evidence round** (first below), then the
+**reachability-and-runnability round** (first below), then the
+**parser-and-evidence round**, then the
 **gate-liveness round**, then the
 **environment-assertion placement round**, then the
 **follow-up review round**, then the
@@ -130,6 +131,71 @@ is Linux/X11 only. On Windows and macOS that turned a genuine crash into two mor
 The retry is now scoped by `uname -s`: three attempts on Linux, one everywhere else, with a distinct
 message so a single-attempt failure cannot be misread as an exhausted retry. The separately
 justified `.ps1` retry is untouched.
+
+**Reachability-and-runnability round (2026-08-19): a documented command that could not do what the
+paragraph beneath it requires, a lint that could not see past a template, and a portability report
+that did not reproduce.**
+
+**NO NEW MAINTAINER SIGN-OFF IS RECORDED HERE.** The two decisions confirmed 2026-08-19 in the round
+directly below — the ADR-0009 re-aim and the restated leaf-layer liveness evidence — stand as
+recorded and are not reopened. Nothing in this round is a decision the process asks a human to
+confirm, so it claims no approval of its own.
+
+**The documented local fuzz command ran with leak detection ON.** `TESTING.md` set
+`ASAN_OPTIONS=detect_leaks=0` on a continued line and then put three comment lines between the
+continuation and the binary. A `\` before a comment line splices the two, so the logical line is
+`ASAN_OPTIONS=detect_leaks=0  # Note: ...` — an assignment with no command. The variable reaches
+nothing, the remaining comment lines are their own no-ops, and the fuzzer starts on the line after
+them with the environment untouched. Measured on text extracted from the document: the child process
+saw no `ASAN_OPTIONS` at all, at exit 0 — the same silence a correct run produces, which is why this
+survived. Five lines below, the same document calls `detect_leaks=0` "required, not optional" and
+gives the reason (`tests/fuzz_state.cpp` leaks `ScopedJuceInitialiser_GUI` deliberately, because
+letting `shutdownJuce_GUI()` run under libFuzzer's `exit()` double-frees in
+`DeletedAtShutdown::deleteAll()`), so the command as printed contradicted the paragraph explaining
+it and would end a local fuzz run in exactly the leak report the harness design accepts on purpose.
+The three comment lines moved above the command; re-extracted from the document, the child now
+receives `detect_leaks=0`. CI never had this defect — the `fuzz` job sets the variable through
+`env:`, not a command prefix — and the divergence between the two is what the fix removes.
+
+**A helper whose return type was a template was invisible to the realtime lint.**
+`heads_a_definition` decides whether a name heads a definition by what precedes it: `::`, a `*`/`&`
+that ends a type, or an identifier. A `>` was on neither list, so `std::vector<float> helper (` was
+rejected while `float helper (` a line above was accepted. The cost is not one missing definition, it
+is a missing SUBTREE: a name absent from `definition_index` is one `reachable_bodies` cannot follow
+into, so the helper's allocations and everything IT calls were both unscanned — and a lint that
+discards a function prints what a clean tree prints. Measured: `std::vector<float> helper (int n)
+{ v.assign (n, 0.0f); return v; }` called from an annotated `process` reports **0** findings before
+the fix and **1** after; the same helper returning `float` reported 1 throughout. Fixed by asking
+`_blank_template_args` — the balanced-span parser already in this file, whose seven rules are
+mutation-pinned — whether this `>` closes a template argument list, over a window that starts at the
+enclosing statement. Asking it rather than re-deriving it is the point: a second `<`/`>` parser here
+is a second one to keep in agreement, and the window is what keeps the answer about THIS declarator
+rather than a comparison a statement back. Enforcement surface after the change: **470** index names
+(was 467), **61 reachable spans — unchanged**, 44 files, 0 violations. The three newly indexed
+definitions are `logFreqRange`, `logFreqRangeCentred` (`src/PluginParameters.cpp`) and
+`LevelMeter::bar` (`src/gui/LevelMeter.h`), none of them audio-path reachable, so this widens what
+the lint CAN see without changing what it currently says. Pinned by two end-to-end cases and twelve
+`heads_a_definition` assertions (76 → 90 self-test cases), and every one of them is load-bearing:
+a bare `return True` for the branch fails eight, removing the branch fails six, dropping the
+statement window fails the previous-statement case, and dropping the "`<` opens only after a name"
+rule fails four. Stated rather than implied: on `src/` as it stands the naive `return True` also
+reports 470/61/0, because `_is_declarator_tail` independently rejects a comparison — a comparison's
+call sits inside an enclosing paren whose `)` drives the region depth negative before any `{`. The
+guard is not what keeps this tree quiet; it is what keeps "does this `>` close a template argument
+list" a question with one answer.
+
+**The `preflight.sh` Bash 3.2 report did not reproduce, and the script is unchanged.** The claim was
+that `${#ABI_TARGETS[@]}` (`scripts/preflight.sh:62`) aborts under `set -u` on macOS's `/bin/bash`
+when no local Linux Release build exists. Tested rather than reasoned about: GNU bash **3.2.57**, the
+exact patchlevel macOS ships, built here from the FSF tarball plus all 57 official patches, runs the
+block's real text through **both** branches at exit 0 and runs the whole of `preflight.sh` at exit 0
+(161 + 900 checks). `ABI_TARGETS=()` creates the variable, and 3.2's `array_length_reference` errors
+only when the variable is ABSENT — `var == 0 || array_p (var) == 0` — returning
+`array_num_elements` (0) for an empty one; confirmed both ways, since `${#NEVERSET[@]}` does abort
+there. The `set -u` hazard old Bash genuinely has is `"${arr[@]}"` on an empty array, and that
+expansion appears here only inside the `-gt 0` branch, where the array is non-empty by construction.
+A change with no defect behind it is a change that has to be maintained for nothing, so none was
+made.
 
 **Parser-and-evidence round (2026-08-19): one silent false negative in the realtime lint, one
 architectural citation pointing at unrelated code, and one liveness claim that was never true.**
