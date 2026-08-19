@@ -7,7 +7,8 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
-**armed-transition round** (first below), then the
+**policy-topology round** (first below), then the
+**armed-transition round**, then the
 **reachability-and-runnability round**, then the
 **parser-and-evidence round**, then the
 **gate-liveness round**, then the
@@ -132,6 +133,55 @@ is Linux/X11 only. On Windows and macOS that turned a genuine crash into two mor
 The retry is now scoped by `uname -s`: three attempts on Linux, one everywhere else, with a distinct
 message so a single-attempt failure cannot be misread as an exhausted retry. The separately
 justified `.ps1` retry is untouched.
+
+**Policy-topology round (2026-08-19): rule 4 described a placement three of its own seven checkers
+cannot have. One report investigated and closed with no change.**
+
+**MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-19**, for the documentation correction below —
+restating rule 4's placement requirement as the job and the order rather than adjacency. Confirmed
+before the work; recorded, not requested again. No other approval is claimed by this entry.
+
+**Rule 4 read as though all seven self-tests sit one step before their check.** They do not, and
+three of them structurally cannot: the two warning gates classify a BUILD LOG, so the build has to
+sit between the self-test and the gate, and `check-citations.py` compares against a BASE REVISION,
+so its self-test is its own step and the comparison follows in the step that resolves the base.
+Under the old wording the pipeline violated its own policy in three places while behaving exactly
+as intended. The rule now states what it actually requires — the self-test runs **in the same job as
+the check it vouches for, ahead of that job's use of the checker**, never in a different job,
+workflow or run — names the job each of the seven pairs lives in (`docs`; `source-lint` ×3;
+`linux-clang`; `linux-lto-tests`; `linux`), and says which four are adjacent and why the other three
+are not. The intent is untouched: a liveness proof somewhere else proves nothing about the run whose
+silence is being read.
+
+**Read off the workflow, not off the review.** The report asserted that
+`check-clang-warnings.py` and `check-gcc-warnings.py` "self-test in one job and gate in another".
+They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:959` and gates at
+`:983`, both in `linux-clang`; `check-gcc-warnings.py` self-tests at `:2626` and gates at `:2647`,
+both in `linux-lto-tests`. All seven pairs are same-job. What was genuinely wrong was "immediately
+before", not the job placement, and that is what changed.
+
+**One downstream copy followed, and only one.** `docs/procedures/CI_CD.md` restated the same
+"immediately before" claim for `source-lint`'s three lints, where it is true of two of them; leaving
+it would have left a Procedures document contradicting the Policy on the exact sentence being
+corrected, which the authority order in `SOURCE_OF_TRUTH.md` does not permit. Deliberately NOT
+followed: the `source-lint` comment at `.github/workflows/build.yml:441` carries the same phrasing
+about the citation self-test, and the `scripts/` tree summary in `REPOSITORY_MAP.md` still
+enumerates four lints where its own table lists seven. Both are real; neither is this round's
+subject, and the second is a stale COUNT rather than the placement claim.
+
+**The CI-target report was investigated and required no change.** It read the visible diff as adding
+only three `option()` declarations and asked whether `AnamorphFuzzState`, `AnamorphBench` and
+`AnamorphDspDump` resolve to anything. They do: `CMakeLists.txt:438-456`, `:478-495` and `:515-541`
+define them, the last including the target-scoped `-fsanitize=fuzzer` the workflow comment relies
+on. Verified by building rather than by reading — all three configure and compile from the same
+option and compiler flags CI passes (JUCE supplied from the already-fetched checkout rather than
+re-cloned): the benchmark builds and smoke-runs, `AnamorphFuzzState` builds under
+clang-22 + ASan/UBSan/libFuzzer and completes 1,161 runs over the committed corpus at exit 0, and
+the dump links. Two further premises of the
+report were checked and are also unfounded: no CI job builds `AnamorphDspDump` at all (it is the
+local instrument for a dependency bump, exactly as `TESTING.md` describes), and the `realtime` job's
+`-I build-rtsan/_deps/juce-src/modules` is correct because `ANAMORPH_JUCE_PATH` is a
+local-developer escape hatch that no workflow sets, so CI always takes the FetchContent path.
 
 **Armed-transition round (2026-08-19): the portable allocation gate proved the steady state and
 called it the switch.**

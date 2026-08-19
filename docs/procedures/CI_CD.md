@@ -144,8 +144,10 @@ edge above must not be read as release non-blocking.
   actually writes — `.assign`, `.insert`, `make_unique`, `make_shared` — which it had been missing:
   `.assign` is the allocation idiom of every DSP module and `make_unique` is how the engine
   allocates its oversamplers, so the likeliest regression was the one the lint could not see.
-  Each of the three runs its own `--self-test` **first**, in this job, immediately before the lint it
-  verifies — the same load-bearing move as `docs`, and required by `TESTING_POLICY.md` rule 4. The
+  Each of the three runs its own `--self-test` **first**, in this job and ahead of the lint it
+  verifies — the step immediately before, for the two that can be; for `check-citations.py` its own
+  step ahead of the one that resolves the base revision and then compares, which is the job-and-order
+  form `TESTING_POLICY.md` rule 4 requires. The same load-bearing move as `docs`. The
   portability self-test is not the same check as `--compile-canary` in `linux-clang`: that one asks
   whether the pinned JUCE still *has* the hazard, this one whether the checker still *finds* it, and
   a green canary over a dead scanner reports a clean tree.

@@ -74,12 +74,26 @@ blocking gate; `env.ANAMORPH_PLUGINVAL_STRICTNESS`; the macOS AU install + AU ga
    not a plugin defect) but never retries a real validation failure
    (`run_one_pass`, `scripts/run-pluginval.sh:171-197`).
 4. **A checker must prove it is live before its silence is trusted.** Every lint in the pipeline
-   ships a `--self-test` that runs in the same job, immediately before the check itself —
-   `check-docs.py`, `check-clang-warnings.py`, `check-gcc-warnings.py`, `check-portability.py`,
-   `check-citations.py`, `check-realtime.py` and `check-linux-abi.py`, all seven. A checker that has
-   stopped matching anything is indistinguishable from a clean tree, and a
-   gate that cannot fail is indistinguishable from a gate that passes. Adding a lint without one is
-   not adding a gate.
+   ships a `--self-test`, and it runs **in the same job as the check it vouches for, ahead of that
+   job's use of the checker** — never in a different job, a different workflow or an earlier run,
+   because a liveness proof somewhere else proves nothing about the run whose silence is being read.
+   All seven, with the job each pair lives in: `check-docs.py` (`docs`); `check-portability.py`,
+   `check-realtime.py` and `check-citations.py` (`source-lint`); `check-clang-warnings.py`
+   (`linux-clang`); `check-gcc-warnings.py` (`linux-lto-tests`); `check-linux-abi.py` (`linux`).
+   A checker that has stopped matching anything is indistinguishable from a clean tree, and a gate
+   that cannot fail is indistinguishable from a gate that passes. Adding a lint without one is not
+   adding a gate.
+
+   **The requirement is the job and the order, not adjacency**, and the distinction is stated
+   because three of the seven cannot be adjacent. Four are the step immediately before their check:
+   `check-docs.py`, `check-portability.py`, `check-realtime.py`, `check-linux-abi.py` (the last at
+   the end of `linux`, after the build it inspects). The other three are separated by the thing
+   their check needs, not by a relaxation of this rule: the two warning gates classify a **build
+   log**, so the build necessarily sits between the self-test and the gate — and
+   `check-gcc-warnings.py --print-flags` is load-bearing one step earlier still, in that job's
+   Configure, so a regression there surfaces as a configure failure rather than as a self-test
+   failure; and `check-citations.py` compares against a **base revision**, so its self-test is its
+   own step and the comparison follows in the step that resolves the base.
 
    **What a self-test must do.** Run the checker's own functions over synthetic input, in **both**
    directions: every "must fire" case is a defect the lint exists to catch, every "must stay silent"
