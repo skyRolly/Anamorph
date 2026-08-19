@@ -7,7 +7,8 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
-**lint-count round** (first below), then the
+**allocation-family round** (first below), then the
+**lint-count round**, then the
 **policy-topology round**, then the
 **armed-transition round**, then the
 **reachability-and-runnability round**, then the
@@ -134,6 +135,54 @@ is Linux/X11 only. On Windows and macOS that turned a genuine crash into two mor
 The retry is now scoped by `uname -s`: three attempts on Linux, one everywhere else, with a distinct
 message so a single-attempt failure cannot be misread as an exhausted retry. The separately
 justified `.ps1` retry is untouched.
+
+**Allocation-family round (2026-08-19): the guard's two counters were one counter twice, and three
+documents still carried the pre-Test-38 check count.**
+
+**MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-19**, for both corrections in this round.
+Confirmed before the work; recorded, not requested again. No other approval is claimed by this entry.
+
+**`operator new` was counted twice.** It incremented `newCount` and then called `std::malloc` — and
+where `ANAMORPH_GUARD_MALLOC` is defined that name resolves to the interposer in the same
+translation unit, so `mallocCount` moved as well. Nothing asserted wrongly: Test 38 requires both
+counters to be zero, and `selfCheck()`'s probes read the counter each is about. What was wrong is
+what the run PRINTS. `new=N malloc=M` was not a split — every `new` appeared in both halves — and
+the per-`prepare()` figures the header and `REALTIME_SAFETY_AUDIT.md` quote could not be reproduced
+from the code that printed them. Measured: the same `prepare()` reported **102 new + 765 malloc**,
+the second being 663 + 102.
+
+Fixed with `rawAlloc`, which the two non-aligned `operator new` forms now call: `__libc_malloc`
+where the interposer exists, `std::malloc` everywhere else. That is the same real allocator the
+interposer itself forwards to, so the `new` route takes the identical path with one fewer counter on
+it, and its blocks stay ordinary glibc heap blocks that the unchanged `std::free` in every
+`operator delete` frees — the pairing the interposer already relied on. The over-aligned forms were
+already clean (`posix_memalign` is not interposed), and the malloc half's own liveness probe still
+calls `std::malloc` deliberately, because it exists to prove the interposer fires. **The documented
+split needed no edit: it was right and the code had drifted from it.** After the fix the same
+`prepare()` reports **102 new + 663 malloc**, exactly the figures both documents carry.
+
+**Verified in all three shapes and in both directions.** Compiled and run standalone: glibc
+(all three halves live, one `new` now moves `new` only — `new=1 malloc=0`, previously both), the
+ASan shape (malloc half compiled out and disclosed, `new` half live, unchanged), and
+`ANAMORPH_NO_ALLOC_GUARD` (everything stands down, unchanged) — so ASan, RealtimeSanitizer and
+valgrind are untouched by construction as well as by measurement. Detection is unweakened and now
+attributes correctly: a seeded `operator new` in `process` fails Test 38 reporting `new=1 malloc=0`,
+a seeded raw `malloc` fails it reporting `new=0 malloc=1`.
+
+**Three documents still said 160 checks.** `REALTIME_SAFETY_AUDIT.md`, `HANDOVER.md` and
+`RELEASE_HARDENING_PLAN.md` carried the count from before Test 38's assertions; the suite is at
+**162**. The audit's sentence carried one current number and one stale one — "**156** of the suite's
+160 checks" — and 156 is the RTSan figure, which is unchanged and was measured again here rather
+than inferred: built with the guard compiled out, the suite reports **156 checks, 0 failures** and
+Test 38 discloses and asserts nothing. 162 − 156 = 6 is Test 38's own assertions on the
+GCC-Linux configuration.
+
+**"37 DSP self-tests" was checked and is NOT stale**, which is why it was not touched. `main()`
+invokes 38 test functions; the last is the A/B state-restoration clamp guard, which every one of
+those sentences already counts separately. The printed roster reaches "Test 38" because
+`testBypassNullAndLatency` prints "Test 3+4" — one function, two numbers. 38 functions − the A/B
+guard = the 37 the documents claim. The `140 checks` figures in `DEPENDENCY_POLICY.md` and in
+ADR-0021/0022/0026/0027 are measurements at those revisions, not current-state claims, and are left.
 
 **Lint-count round (2026-08-19): the two places that still said four.**
 

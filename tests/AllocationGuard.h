@@ -16,7 +16,13 @@
 //  the malloc family -- JUCE's `AudioBuffer`/`HeapBlock` take the raw-malloc
 //  route. So `operator new` alone would miss the allocation JUCE actually
 //  performs most, which is why the malloc half exists and why the guard reports
-//  the two counts separately rather than summing them.
+//  the two counts separately rather than summing them. THE TWO ARE ACTUALLY
+//  SEPARATE, which needed a fix rather than a claim: `operator new` used to
+//  forward to `std::malloc`, and where the malloc interposer exists that name
+//  resolves to the interposer in this same file -- so one `new` moved both
+//  counters and the same `prepare()` printed 102 and 765, the second figure
+//  being 663 + 102. `rawAlloc` (below) takes the `new` route past it, and the
+//  measurement above is reproducible from this code again.
 //
 //  ARMED ONLY AROUND `process()`. `prepare()` is *required* to allocate
 //  (REALTIME_AUDIO_POLICY permits it and the engine depends on it), so an
@@ -46,8 +52,8 @@
 //     a tidiness one. RTSan detects allocations by intercepting the allocation
 //     entry points; a definition in the program's own object files takes
 //     precedence over the interceptor in the sanitizer runtime archive, so the
-//     guard's `malloc` -- and its `operator new`, which routes through
-//     `std::malloc` -- reach glibc without ever passing RTSan. Measured on the
+//     guard's `malloc` -- and its `operator new`, which reaches the real
+//     allocator directly -- reach glibc without ever passing RTSan. Measured on the
 //     real suite with one escaping `malloc` seeded into `AnamorphEngine::process`:
 //
 //         guard compiled in   RTSan reports 0, exit 1 (only the guard's assert)
@@ -66,7 +72,7 @@
 //     leaves no compile-time marker to test, so this one is a flag; no CMake
 //     structure change is involved). memcheck tracks which allocator produced
 //     each block and intercepts the `new`/`delete` and `malloc`/`free` families
-//     SEPARATELY, so an `operator new` that hands back `std::malloc` memory is
+//     SEPARATELY, so an `operator new` that hands back malloc-family memory is
 //     reported as "Mismatched free() / delete / delete []" on every subsequent
 //     delete -- measured against the real JUCE-linked suite under the pipeline's
 //     exact invocation, where it fails the step outright. (A small standalone probe
@@ -182,6 +188,35 @@ namespace anamorph::testing
 
     inline void resetCounts() noexcept { newCount.store (0); mallocCount.store (0); }
 
+    // THE `new` ROUTE MUST NOT PASS THROUGH THIS GUARD'S OWN `malloc`, or the
+    // two counters stop being two routes. `operator new` forwarded to
+    // `std::malloc`, and where `ANAMORPH_GUARD_MALLOC` is defined that name
+    // resolves to the interposer a few hundred lines below -- in this same
+    // translation unit -- so ONE `new` incremented `newCount` AND
+    // `mallocCount`. Nothing asserted wrongly (Test 38 requires both to be
+    // zero), but the `new=N malloc=M` the run prints was not a split: every
+    // `new` appeared in both halves, and the per-`prepare()` figures quoted
+    // above and in `REALTIME_SAFETY_AUDIT.md` could not be reproduced from the
+    // code that printed them.
+    //
+    // `__libc_malloc` is the same real allocator the interposer itself forwards
+    // to, so this takes the identical route with one fewer counter on it, and
+    // its blocks are ordinary glibc heap blocks that the unchanged `std::free`
+    // in every `operator delete` still frees -- the pairing the interposer
+    // already relies on. Where the interposer does not exist (MSVC, macOS, and
+    // ASan, which owns `malloc` itself) `std::malloc` IS the real allocator and
+    // this is the same call it always was. The malloc half's own liveness probe
+    // in `selfCheck()` deliberately calls `std::malloc` and must keep doing so:
+    // it is there to prove the interposer fires.
+    inline void* rawAlloc (std::size_t n) noexcept
+    {
+      #if defined(ANAMORPH_GUARD_MALLOC)
+        return __libc_malloc (n);
+      #else
+        return std::malloc (n);
+      #endif
+    }
+
     // Scope guard: counts only while it is alive. Deliberately not nestable --
     // the audio path is entered from one place at a time in these tests.
     struct Armed
@@ -270,8 +305,9 @@ namespace anamorph::testing
 }
 
 // ---------------------------------------------------------------------------
-//  The interposers. `operator new` forwards to plain `std::malloc` and
-//  `operator delete` to `std::free`, which keeps the pair CONSISTENT -- that
+//  The interposers. `operator new` forwards to `rawAlloc` -- the real
+//  allocator, PAST this guard's own `malloc`, see there -- and `operator
+//  delete` to `std::free`, which keeps the pair CONSISTENT -- that
 //  consistency is what lets the guard run cleanly under valgrind memcheck
 //  (measured: 0 errors under the pipeline's exact invocation). Replacing only
 //  one side of the pair is what produces "Mismatched free() / delete" reports.
@@ -282,7 +318,7 @@ void* operator new (std::size_t n)
 {
     if (anamorph::testing::guardArmed.load (std::memory_order_relaxed))
         anamorph::testing::newCount.fetch_add (1, std::memory_order_relaxed);
-    void* p = std::malloc (n != 0 ? n : 1);
+    void* p = anamorph::testing::rawAlloc (n != 0 ? n : 1);
     if (p == nullptr) throw std::bad_alloc();
     return p;
 }
@@ -295,17 +331,18 @@ void* operator new (std::size_t n, const std::nothrow_t&) noexcept
 {
     if (anamorph::testing::guardArmed.load (std::memory_order_relaxed))
         anamorph::testing::newCount.fetch_add (1, std::memory_order_relaxed);
-    return std::malloc (n != 0 ? n : 1);
+    return anamorph::testing::rawAlloc (n != 0 ? n : 1);
 }
 
 ANAMORPH_GUARD_RET_MAYBENULL(n)
 void* operator new[] (std::size_t n, const std::nothrow_t& t) noexcept { return ::operator new (n, t); }
 
-// Every form frees with `std::free`, matching the `std::malloc` above. GCC's
+// Every form frees with `std::free`, matching the `rawAlloc` above -- its
+// blocks are ordinary glibc heap blocks whichever branch it took. GCC's
 // `-Wmismatched-new-delete` fires on this and is a FALSE POSITIVE by
 // construction rather than a shape worth changing: GCC attributes the block to
 // the replaced `operator new[]` and does not follow it through to the
-// `std::malloc` that actually produced the memory, so it reports `free` on
+// allocator call that actually produced the memory, so it reports `free` on
 // "new[] memory" no matter how the deallocators forward among themselves
 // (measured both ways). That is why the GCC warning gate's set excludes it --
 // see `scripts/gcc-warning-baseline.txt`.

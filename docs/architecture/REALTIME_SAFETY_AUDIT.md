@@ -43,7 +43,7 @@ carries `ANAMORPH_NONBLOCKING`, and the `realtime` CI job builds the DSP suite w
 the engine's audio entry point aborts the job at the offending frame. Demonstrated both ways before
 it landed — the suite runs violation-free under RTSan, and a seeded allocation in `process` fails
 the run at **exit 43** naming the offending frame. The RTSan build reports **156** of the suite's
-160 checks: Test 38's own assertions stand down there, because the allocation guard's interposers
+**162** checks: Test 38's own assertions stand down there, because the allocation guard's interposers
 would otherwise shadow RTSan's allocation interceptors and blind the lane (measured; see
 `tests/AllocationGuard.h` and ADR-0029 §7). RTSan covers that violation class itself in that build,
 so nothing is lost.
