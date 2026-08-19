@@ -1265,24 +1265,51 @@ def self_test():
     # `--fix`, which killed it, is holding the replacement spelling. These cases
     # assert that half, in both directions, because a warning that fires on
     # every rewrite would be as useless as one that never fires.
-    doc = "docs/FUTURE_RISKS.md"           # a real entry, so this cannot pass vacuously
-    declared = next(w for (d, w) in DELIBERATE_REAIMS if d == doc)
+    #
+    # THE FIXTURE IS SYNTHETIC AND IS INSTALLED OVER AN EMPTIED TABLE, for the
+    # same reason the span cases below are synthetic and one more besides. A
+    # declaration reaches its terminal state by being DELETED -- the header calls
+    # the list going empty "the expected end state of every entry here", and a
+    # run that finds one retired prints "delete it" -- so a fixture built by
+    # looking a REAL entry up stops being runnable on the day the tool's own
+    # advice is followed. This block used to open with
+    # `next(w for (d, w) in DELIBERATE_REAIMS if d == "docs/FUTURE_RISKS.md")`,
+    # and `next()` on an exhausted generator raises `StopIteration`: the whole
+    # self-test would die with a traceback rather than report a case, and the
+    # checker whose job is to prove it can still fail would be unrunnable for a
+    # reason that is not a defect. Emptying the table first is the second half:
+    # these cases then run in exactly that retired state on every run, so the
+    # coupling cannot come back unnoticed. `invalidated_reaims` is purely
+    # textual -- it reads no file -- so nothing here needs to exist on disk.
+    saved = dict(DELIBERATE_REAIMS)
+    DELIBERATE_REAIMS.clear()
+
+    doc = "docs/Synthetic.md"
+    declared = "synthetic/One.txt:147-197"
     path = declared.split(":", 1)[0]
     moved = f"{path}:900-950"
 
     before = f"Evidence [Verified]: {declared} (the retry)."
     at = before.index(declared)
+    edit = [(at, at + len(declared), moved)]
+    after = f"Evidence [Verified]: {moved} (the retry)."
+
+    # THE RETIRED STATE ITSELF, asserted before anything is declared: with the
+    # table empty there is nothing to invalidate, and the answer is an empty
+    # list rather than an exception. This is the state the block above is
+    # written to survive, named here so it is a case and not an assumption.
+    check("with every declaration retired, a rewrite invalidates nothing",
+          invalidated_reaims(doc, before, after, edit), [])
+
+    DELIBERATE_REAIMS[(doc, declared)] = "run_one_pass"
     check("--fix reports a declaration its rewrite invalidates, with the replacement",
-          invalidated_reaims(doc, before,
-                             f"Evidence [Verified]: {moved} (the retry).",
-                             [(at, at + len(declared), moved)]),
+          invalidated_reaims(doc, before, after, edit),
           [(declared, moved)])
     check("...and stays silent when the declared spelling survives the rewrite",
           invalidated_reaims(doc, before, before, [(0, 5, "src/PluginProcessor.cpp:1-2")]),
           [])
     check("...and stays silent for a document that declares nothing",
-          invalidated_reaims("docs/NOT_DECLARED.md", before, moved,
-                             [(at, at + len(declared), moved)]),
+          invalidated_reaims("docs/NOT_DECLARED.md", before, moved, edit),
           [])
 
     # THE CASE THE FIRST IMPLEMENTATION GOT WRONG. It matched the replacement by
@@ -1302,7 +1329,6 @@ def self_test():
     B_OLD, B_NEW = "synthetic/Two.txt:286-296", "synthetic/Two.txt:290-300"
     two = f"first {A_OLD} then {B_OLD} done"
     a1, a2 = two.index(A_OLD), two.index(B_OLD)
-    saved = dict(DELIBERATE_REAIMS)
     DELIBERATE_REAIMS.clear()
     DELIBERATE_REAIMS.update({("docs/procedures/BUILD.md", B_OLD): ""})
     check("with two same-path rewrites, the replacement is the one whose span matches",
