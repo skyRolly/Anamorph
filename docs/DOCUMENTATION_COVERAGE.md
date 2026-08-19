@@ -160,8 +160,12 @@ durable mechanism below was added regardless — which is the point of recording
   `-fsanitize=realtime` defines **no** preprocessor macro of its own, so no non-circular check could
   be built from the compiler alone. The `realtime` job now also passes `-DANAMORPH_RTSAN_LANE=1` on
   the same flag string, and `tests/AllocationGuard.h` `#error`s if the lane is declared while the
-  guard is still live. Proven across all four quadrants of (RTSan on/off) × (flag on/off): only
-  flag-on + RTSan-off fails, which is exactly the mutation. ADR-0029 §7 records it.
+  guard is still live. Proven on the mutation itself, not a proxy for it: with `-fsanitize=realtime`
+  genuinely ON and the feature spelling renamed, the build fails — which a circular check could not
+  do — while the same mutation against `33333fe` compiles silently. The four quadrants of
+  (RTSan on/off) × (flag on/off) behave as intended, only flag-on + RTSan-off failing, and the real
+  lane still builds and runs (`AnamorphTests` links, 156 checks, guard disclosed as compiled out).
+  ADR-0029 §7 records it.
 - **The Linux ABI floor, per declared family.** `check()` compared only the families a binary
   actually referenced, so an **absent** family read as a satisfied one. Demonstrated on a real
   C-only binary: the previous checker reported `within the declared floor (GLIBC_2.38,

@@ -127,12 +127,20 @@
 // single unverified spelling holding up the whole realtime lane. If
 // `realtime_sanitizer` is ever renamed, removed, or absent from a future pinned
 // Clang, `__has_feature` answers 0, the guard quietly compiles back IN, its
-// definitions take precedence over RTSan's interceptors, and the lane reports
-// zero violations while detecting nothing -- the exact defect ADR-0029 documents
-// and the one shape this file's own measurement above was taken to prevent.
-// Nothing downstream would notice: the liveness canary is compiled standalone
-// WITHOUT this header, and `selfCheck()`'s disclosure would merely flip from
-// "compiled out" to "live", which no assertion reads either way.
+// definitions take precedence over RTSan's interceptors, and the lane loses its
+// ALLOCATION detection -- the exact defect ADR-0029 documents and the one shape
+// this file's own measurement above was taken to prevent. (Only that class: RTSan
+// keeps intercepting locks and blocking calls, verified by seeding a
+// `pthread_mutex_lock` into an annotated function with the guard live. Allocation
+// is nonetheless the class this suite exists to police.)
+//
+// Nothing downstream would notice, and the reason is worse than silence. The
+// liveness canary is compiled standalone WITHOUT this header, so it keeps
+// passing. And `selfCheck()`'s disclosure would flip from "compiled out" to
+// "live" -- at which point Test 38 takes its LIVE branch and every one of its
+// three liveness assertions PASSES, because the guard genuinely works. It is
+// simply in the build where it must not be, reporting a green lane over an
+// allocation detector that is no longer running.
 //
 // So the `realtime` job states the same fact a SECOND time, from outside the
 // compiler: `-DANAMORPH_RTSAN_LANE=1` sits on the same `CMAKE_CXX_FLAGS` string
@@ -147,7 +155,7 @@
 // `-fsanitize=realtime` build without the flag is a normal thing to do and is
 // already correct, because the feature test stands the guard down by itself.
 #if defined(ANAMORPH_RTSAN_LANE) && ! defined(ANAMORPH_NO_ALLOC_GUARD)
-  #error "ANAMORPH_RTSAN_LANE is set, so this build is the RealtimeSanitizer lane, but the allocation guard did NOT stand down -- __has_feature(realtime_sanitizer) did not fire. Left as-is the guard would shadow RTSan's allocation interceptors and the lane would report zero violations while detecting nothing (ADR-0029). Fix the feature detection above; do NOT silence this by removing the flag."
+  #error "ANAMORPH_RTSAN_LANE is set, so this build declares itself the RealtimeSanitizer lane, but the allocation guard did NOT stand down. Two things produce this and both need checking: __has_feature(realtime_sanitizer) has stopped firing (renamed or removed in this Clang), or -fsanitize=realtime is no longer on this TU's command line while the -D still is -- they are two edits on one line in build.yml. Left as-is the guard shadows RTSan's allocation interceptors and the lane reports a clean run with its allocation detection switched off (ADR-0029 SS7). Fix whichever it is; do NOT silence this by removing the -D."
 #endif
 
 // The malloc half needs a way to reach the REAL allocator without recursing.

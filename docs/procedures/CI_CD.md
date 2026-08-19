@@ -251,8 +251,10 @@ edge above must not be read as release non-blocking.
   the lane is declared but the guard did not stand down. The two statements sit on one line and
   cannot drift apart; the check is deliberately *not* keyed on the feature macro, because a test
   that consults the signal it is verifying proves nothing. Without it, a renamed or removed feature
-  name would silently compile the guard back in and the lane would report zero violations while
-  detecting nothing — exiting 0 either way.
+  name would silently compile the guard back in and the lane would report a clean run with its
+  **allocation** detection switched off — lock and blocking-call interception survives, but
+  allocation is the class this suite exists to police, and on a healthy tree the run exits 0 either
+  way.
 - **linux-lto-tests** — both suites built and run with `-flto` on GCC Release (added 2026-08-18),
   and the **GCC-only first-party warning gate** (§The GCC warning baseline).
   The shipped plugin is the only target linking `juce::juce_recommended_lto_flags`, and the test

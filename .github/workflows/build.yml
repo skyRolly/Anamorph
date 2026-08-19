@@ -2781,12 +2781,14 @@ jobs:
       # `__has_feature(realtime_sanitizer)` -- a single spelling that, if a
       # future Clang renames or drops it, would silently compile the guard back
       # in, where its allocation definitions take precedence over RTSan's
-      # interceptors and the lane detects NOTHING while still exiting 0
-      # (ADR-0029; the measurement is in that header). The header turns the two
-      # statements into a build-level invariant and #errors if they disagree, so
-      # that mutation fails the build instead of hollowing out the lane. Do not
-      # remove this define to make a build pass -- it is the check, not the
-      # cause.
+      # interceptors and the lane loses its ALLOCATION detection while exiting 0
+      # on a healthy tree (ADR-0029 SS7; lock and blocking-call interception
+      # survives, and the header's seeded measurement exits 1 from the guard's
+      # own assert rather than 0 -- it is the UNSEEDED run that goes green over
+      # nothing). The header turns the two statements into a build-level
+      # invariant and #errors if they disagree, so that mutation fails the build
+      # instead of hollowing out the lane. Do not remove this define to make a
+      # build pass -- it is the check, not the cause.
       - name: Configure (Clang, RealtimeSanitizer)
         run: >
           ccache --zero-stats || true &&
