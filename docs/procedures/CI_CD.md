@@ -140,7 +140,10 @@ edge above must not be read as release non-blocking.
   `VelvetNoise::updateWeights()` (run per block while the density glide moves) are audio-thread code
   that no version of a hand-maintained name list would have kept up with. 35 bodies became 61.
   `prepare`/`prepareToPlay`/`releaseResources` are never followed, which is how allocation stays
-  legal where the Policy says it is legal.
+  legal where the Policy says it is legal. The forbidden set also gained the forms this codebase
+  actually writes — `.assign`, `.insert`, `make_unique`, `make_shared` — which it had been missing:
+  `.assign` is the allocation idiom of every DSP module and `make_unique` is how the engine
+  allocates its oversamplers, so the likeliest regression was the one the lint could not see.
   Each of the three runs its own `--self-test` **first**, in this job, immediately before the lint it
   verifies — the same load-bearing move as `docs`, and required by `TESTING_POLICY.md` rule 4. The
   portability self-test is not the same check as `--compile-canary` in `linux-clang`: that one asks
@@ -919,7 +922,7 @@ in the same change set. The v0.9.4 round's six entries are that case, and the bl
 | `Anamorph-Windows-debug` | `Anamorph.vst3.pdb`, `Anamorph.standalone.pdb` | error |
 | `Anamorph-macOS` | loose staged files: universal stripped `Anamorph.vst3` + `.component` (AU) + `.app` + `INSTALL.txt` | error |
 | `Anamorph-macOS-installer` | `Anamorph-<version>-macOS.pkg` (VST3 + AU + app components) | error |
-| `Anamorph-macOS-debug` | `Anamorph.vst3.dSYM`, `Anamorph.component.dSYM`, `Anamorph.app.dSYM` — **best-effort**: the upload step is skipped (with a CI warning) when Release+LTO yields no usable dSYM, so this artifact can be absent | error (when it runs) |
+| `Anamorph-macOS-debug` | `Anamorph.vst3.dSYM`, `Anamorph.component.dSYM`, `Anamorph.app.dSYM` — **produced on every run since 2026-08-18**. It used to be absent from every run: Release+LTO left the DWARF in ld64's temporary object, gone before `dsymutil`, so the validated-dSYM condition never held. `-Wl,-object_path_lto` retains that object; zero usable dSYMs is now an **error**, and each dSYM is still individually validated (DWARF payload, UUID match across slices, ≥1 compile unit) before it is kept | error |
 
 The `Anamorph-<OS>` artifacts hold **loose files** so a downloaded artifact extracts
 straight to the payload (no nested archive); the artifact transport drops Unix executable

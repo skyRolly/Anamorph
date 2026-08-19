@@ -7,7 +7,8 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
-**engineering-roadmap implementation round** (first below), covering in two batches: the leaf-layer
+**macOS-symbolication and review round** (first below), then the
+**engineering-roadmap implementation round**, covering in two batches: the leaf-layer
 `-Wfunction-effects` check, the performance-benchmark harness, `setStateInformation` fuzzing, the
 GCC-only warning gate, LeakSanitizer promoted to a gate, the pluginval crash-retry scoped to its
 justification, then commit-SHA pinning for every action, one composite action for the Linux setup,
@@ -122,6 +123,95 @@ is Linux/X11 only. On Windows and macOS that turned a genuine crash into two mor
 The retry is now scoped by `uname -s`: three attempts on Linux, one everywhere else, with a distinct
 message so a single-attempt failure cannot be misread as an exhausted retry. The separately
 justified `.ps1` retry is untouched.
+
+**macOS-symbolication and review round (2026-08-18): the one platform contract the previous round
+could only correct is now closed, and three validation mechanisms were found to be checking less
+than they claimed.**
+
+**macOS crash symbolication exists.** The previous round could only correct the claim; this one
+fixes the thing. `dsymutil` does not read DWARF out of a linked binary — it reads the debug map,
+walks back to each object the linker consumed, and pulls DWARF from there. Under `-flto` ld64 does
+codegen itself, writes the merged result to a temporary object and deletes it at the end of the
+link, so the `N_OSO` entry named a path that was gone: `dsymutil` warned, exited 0, and emitted a
+dSYM with no usable DWARF, which the packaging step correctly discarded on **every** run.
+`-Wl,-object_path_lto` tells ld64 to keep that object. It changes where a temporary is written and
+nothing else — the bitcode, the codegen and the shipped bytes are untouched, and **LTO is still
+LTO**, which is not a detail: turning it off is the workaround this fix exists to avoid. A directory
+rather than a file, because a universal build links once per architecture and one path would have
+the second slice overwrite the first.
+
+**Verified on macOS, not in source.** The build now asserts the retained-object directory is
+non-empty before `dsymutil` runs — a direct witness that ld64 did LTO codegen, since it writes there
+only then. The landing run produced three UUID-matched dSYMs and a **53 MB `Anamorph-macOS-debug`
+artifact** where every previous run produced none. Zero usable dSYMs is now an **error** rather than
+a warning: while the zero was an expected property of the build a warning was right, and now that the
+build produces them a zero means something broke.
+
+**`tests/AllocationGuard.h` would not have compiled on macOS forever.** It calls the over-aligned
+allocator on every platform, and both macOS jobs configure with a 10.13 deployment target; C11
+`aligned_alloc` arrived in the macOS runtime at 10.15, and libc++ honours that window by not
+declaring `std::aligned_alloc` below it. `posix_memalign` has been there since 10.6, carries no
+availability attribute and returns ordinary `free`-able memory, so `alignedFree` is unchanged. The
+deployment target is deliberately **not** raised: 10.13 is the compatibility claim, and a test header
+is not the place to move it.
+
+**The realtime lint did not recognise this project's own allocations.** `.assign` is the idiom every
+DSP module uses — `REALTIME_SAFETY_AUDIT` names it as such — and `make_unique` is how the engine
+allocates its oversamplers. Neither was in the forbidden set, so the likeliest regression of all, a
+line copied out of `prepare()` into a `reset()` or `process()`, was invisible to the one tier that
+reads code the suites never execute.
+
+Its scope was narrower than its subject too. Only functions whose own NAME matched the Policy list
+were scanned, so `AnamorphEngine::updateDerived()` (run at the bottom of a switch duck) and
+`VelvetNoise::updateWeights()` (run per block while the density glide moves) were audio-thread code
+excluded by what they happened to be called. The scanned set is now the **reachable** set: seeds plus
+every callee defined in the same file, transitively. **35 bodies became 61**, still 0 violations. A
+hand-maintained list of extra names would have had the same defect one refactor later.
+
+That closure needed a real definition test, and building one found a defect in the old one: the
+`{`-before-`;` rule reads `if (isModAlgorithm (x)) {` as a definition, because a call in an `if`
+condition is also followed by a brace. Measured on the real tree, that attributed **11 legitimate
+`prepare()` allocations to a predicate**. The discriminator is what precedes the name.
+
+**The lexer could swallow a real violation.** A raw string literal and a C++14 digit separator each
+leave an unbalanced quote under a line-oriented scan, which blanks to the next quote anywhere in the
+file. The danger is not a false finding but a true one hidden, so both self-test cases are MUST_FIRE
+— an allocation placed after the construct, which must remain visible — and both were confirmed to
+report zero under the previous stripper before being accepted.
+
+**A DECLARED RE-AIM IS NOW A CHECKED CLAIM, and this is the round's most transferable lesson.**
+`DELIBERATE_REAIMS` switches the drift comparison off for one anchor. It must — a deliberate re-aim
+is textually indistinguishable from drift — but nothing then checked the aim, and the tool said so
+in as many words ("verify the aim by hand, not by this tool"). Four anchors declared in the previous
+round were computed before the workflow file settled and never re-derived: `build.yml:562, 1186,
+1608` claimed the three per-OS Configure steps and landed on a composite-action `uses:`, a comment
+inside the valgrind rationale and an `if-no-files-found:` key; `1775-1777` claimed the three
+`codesign` calls and landed on a step header; two 400-line spans claimed the `macos` and
+`macos-intel` jobs and landed in a PowerShell PDB helper and an artifact-upload line. All four were
+green, because the declaration is precisely what stopped the comparison that would have caught them.
+
+Each entry now records **what a reader should find there**, and `verify_reaim_targets` resolves the
+anchor against the current file on every run. It found **two more** misaimed anchors within a minute
+of existing — both `CMakeLists.txt` spans that the previous round had re-spelled mechanically. The
+two job spans became job HEADER lines: one line, one unambiguous token (`macos:`, `macos-intel:`),
+which identifies a job more precisely than a 400-line range ever did and is verifiable forever. A
+substring rather than a range because the claim is "this identifies the codesign calls", not "these
+are bytes 3-40", and a substring survives the reformatting that line numbers do not.
+
+**`ANAMORPH_NONBLOCKING` is now on the definition as well as the declaration.** Clang's
+redeclaration merge already carried the effect to the body — the seeded exit-43 catch proves it —
+but that is a compiler behaviour to lean on rather than a property of the code,
+`-Wfunction-effect-redeclarations` exists because Clang reserves the right to diagnose the split, and
+a reader of the `.cpp` saw no sign the body was under a contract.
+
+**Test 38 stopped degrading silently.** Its malloc probe now escapes through the volatile sink the
+other two probes already used. Measured honestly, that is hardening rather than a bug fix: on g++-13
+at `-O3 -flto` the unescaped pair survives, because this translation unit defines `malloc` and the
+compiler therefore stops treating the call as the builtin `-fallocation-dce` relies on — an accident
+of the configuration, not a guarantee. The substantive half is that the test now distinguishes "the
+malloc half is not **compiled in**" (legitimate on MSVC, macOS and under ASan: warn and assert less)
+from "compiled in and not observing its own probe" (broken: fail). Both printed the same warning
+before.
 
 **Second batch of the same round (2026-08-18): supply-chain pinning, duplication that was a
 correctness hazard, two platform contracts that were claims rather than measurements, the

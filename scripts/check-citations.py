@@ -400,7 +400,7 @@ DELIBERATE_REAIMS = {
     ("docs/architecture/COMPATIBILITY_MATRIX.md",
      ".github/workflows/build.yml:1629"): "macos:",
     ("docs/architecture/COMPATIBILITY_MATRIX.md",
-     ".github/workflows/build.yml:2176"): "macos-intel:",
+     ".github/workflows/build.yml:2183"): "macos-intel:",
     # THESE TWO WERE MISAIMED, and are corrected here. Both were recomputed
     # early in the round that introduced them and never re-derived, so
     # `build.yml:562, 1186, 1608` pointed at a composite-action `uses:` line, a
@@ -415,7 +415,7 @@ DELIBERATE_REAIMS = {
     # asserts every entry here is a string its document really contains -- and
     # section 8c asserts it lands on what it claims.
     ("docs/policies/RELEASE_POLICY.md", ".github/workflows/build.yml:578, 1213, 1693"): "ANAMORPH_BUILD_NUMBER",
-    ("docs/KNOWN_ISSUES.md", ".github/workflows/build.yml:1889-1891"): "codesign --force --deep --sign -",
+    ("docs/KNOWN_ISSUES.md", ".github/workflows/build.yml:1896-1898"): "codesign --force --deep --sign -",
     # THE ONE ANCHOR IN THE CLANG-22 ROUND THAT IS A RE-AIM RATHER THAN A
     # RE-ANCHOR, and the tool is right to refuse it. `DEPENDENCY_POLICY`'s Clang
     # row cites the `env:` block, whose lines both MOVED (+4) and CHANGED
