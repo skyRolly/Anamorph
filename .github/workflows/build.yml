@@ -688,31 +688,6 @@ jobs:
       # coverage that does not exist. valgrind in `sanitizers` answers the same
       # question more thoroughly and far more slowly; this is the cheap one, on
       # every push.
-      # THE COMPATIBILITY CLAIM, MEASURED. A Linux binary records, per imported
-      # symbol, the oldest glibc/libstdc++ version providing it; the MAXIMUM of
-      # those is the oldest system the artifact can load on at all -- below it
-      # the dynamic loader refuses before a line of this project's code runs.
-      # Nothing chooses that number: it falls out of whatever the runner image
-      # ships. Until this step, nothing reported it either, so the project's
-      # Linux compatibility claim was "it builds on ubuntu-latest", which is a
-      # statement about CI rather than about users. It is GLIBC_2.38 today, which
-      # is Ubuntu 23.10+ -- the artifact does not load on Ubuntu 22.04 LTS, and
-      # that was decided by a runner-image move rather than by anyone here.
-      #
-      # It runs AFTER the strip, on the exact bytes users receive, and BEFORE
-      # pluginval, so a floor breach fails ahead of the twenty-minute gate. The
-      # self-test runs first for the usual reason (TESTING_POLICY rule 4).
-      # The floor lives in the script, and COMPATIBILITY_MATRIX defers to it
-      # rather than restating a number.
-      - name: ABI floor self-test (the checker still fires)
-        run: python3 scripts/check-linux-abi.py --self-test
-
-      - name: Assert the shipped Linux ABI floor
-        run: |
-          python3 scripts/check-linux-abi.py \
-            "build/Anamorph_artefacts/Release/VST3/Anamorph.vst3/Contents/x86_64-linux/Anamorph.so" \
-            "build/Anamorph_artefacts/Release/Standalone/Anamorph"
-
       - name: DSP + state self-tests
         id: tests
         env:
@@ -807,6 +782,51 @@ jobs:
           name: Anamorph-Linux-debug
           path: dist/Anamorph-Linux-debug
           if-no-files-found: error
+
+      # THE COMPATIBILITY CLAIM, MEASURED. A Linux binary records, per imported
+      # symbol, the oldest glibc/libstdc++ version providing it; the MAXIMUM of
+      # those is the oldest system the artifact can load on at all -- below it
+      # the dynamic loader refuses before a line of this project's code runs.
+      # Nothing chooses that number: it falls out of whatever the runner image
+      # ships. Until this step, nothing reported it either, so the project's
+      # Linux compatibility claim was "it builds on ubuntu-latest", which is a
+      # statement about CI rather than about users. It is GLIBC_2.38 today, which
+      # is Ubuntu 23.10+ -- the artifact does not load on Ubuntu 22.04 LTS, and
+      # that was decided by a runner-image move rather than by anyone here.
+      #
+      # LAST STEPS IN THE JOB, for the reason the `macos` dSYM assertion is: the
+      # floor is raised by the ENVIRONMENT, not by this repository's code. A
+      # runner-image move is precisely the trigger for which withholding the
+      # evidence is least useful -- and asserting between the strip and the
+      # self-tests did exactly that, because `steps.tests` would be 'skipped' and
+      # both uploads gate on it being 'success'. A silent image change would have
+      # produced a red run with no DSP/state result, no plug-in and no debug
+      # symbols: nothing to diagnose the very thing that broke. Now the suites
+      # run, pluginval runs, the artifacts are staged and uploaded, and THEN the
+      # floor is judged.
+      #
+      # IT IS NO LESS MANDATORY FOR BEING LAST. `release.yml` depends on this
+      # workflow's AGGREGATE result (`needs: [validate, build]`), which a failed
+      # job decides wherever in the job it failed, so release eligibility is
+      # unchanged -- only the artifacts' survival is. Nothing downstream reads
+      # these steps' outcome, so moving them weakens no other gate.
+      #
+      # Gated on the STRIP step, because that is whose output they read: the
+      # check is deliberately against the exact stripped bytes users receive, and
+      # if stripping failed those bytes do not exist. The self-test stays
+      # immediately before the check it verifies (TESTING_POLICY rule 4).
+      # The floor lives in the script, and COMPATIBILITY_MATRIX defers to it
+      # rather than restating a number.
+      - name: ABI floor self-test (the checker still fires)
+        if: ${{ !cancelled() && steps.strip.outcome == 'success' }}
+        run: python3 scripts/check-linux-abi.py --self-test
+
+      - name: Assert the shipped Linux ABI floor
+        if: ${{ !cancelled() && steps.strip.outcome == 'success' }}
+        run: |
+          python3 scripts/check-linux-abi.py \
+            "build/Anamorph_artefacts/Release/VST3/Anamorph.vst3/Contents/x86_64-linux/Anamorph.so" \
+            "build/Anamorph_artefacts/Release/Standalone/Anamorph"
 
   # -------------------------------------------------------------------------
   # Linux + Clang, and the first-party warning gate.
@@ -1210,65 +1230,8 @@ jobs:
 
       # Default Visual Studio generator (multi-config); MSVC is auto-detected.
       - name: Configure
+        id: configure
         run: cmake -B build -DANAMORPH_BUILD_NUMBER=${{ github.run_number }}
-
-      # WHICH TOOLCHAIN BUILT THE SHIPPED WINDOWS BINARY, recorded rather than
-      # assumed. `windows-latest` floats, MSVC is auto-detected, and nothing in
-      # this job said which toolset it resolved to -- so a released .vst3 could
-      # not be traced back to the compiler that produced it, and an image move
-      # changed the shipped toolchain with no line in any diff. This is the same
-      # class the `linux` job's ABI floor covers, and it is recorded here for the
-      # same reason: the number falls out of the image, so the run that changes
-      # it should be the run that says so.
-      #
-      # WHAT IS ASSERTED is deliberately narrow: the MSVC ABI SERIES (`14.x`),
-      # not the exact toolset. Every 14.x toolset since VS2015 is binary
-      # compatible and needs the same redistributable, so gating on the full
-      # version would fail on ordinary compiler updates that change nothing a
-      # user can observe -- the "gate that cries wolf" this pipeline is written
-      # against. A move OFF 14.x is the event that changes what users must have
-      # installed, and that is what fails here.
-      #
-      # The version comes from CMakeCache's linker path
-      # (`...\VC\Tools\MSVC\<version>\bin\...`), which the VS generator
-      # always writes -- no developer command prompt, no `vswhere`, no `dumpbin`.
-      - name: Record + assert the MSVC toolset
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $cache = 'build/CMakeCache.txt'
-
-          # Two cache keys are tried because which of them carries a full path
-          # is a property of the GENERATOR, not of this project, and the VS
-          # generator is the one CMake documents least precisely here. Whichever
-          # yields a `...\VC\Tools\MSVC\<version>\...` component wins.
-          $version = $null
-          foreach ($key in 'CMAKE_CXX_COMPILER:FILEPATH', 'CMAKE_LINKER:FILEPATH') {
-            $hit = (Select-String -Path $cache -Pattern ('^' + [regex]::Escape($key)) | Select-Object -First 1)
-            if ($null -ne $hit -and $hit.Line -match 'MSVC[\\/]+([0-9]+(\.[0-9]+)+)') {
-              $version = $Matches[1]
-              break
-            }
-          }
-
-          if ($null -eq $version) {
-            # A WARNING, NOT A FAILURE. This step reports and asserts; it does
-            # not build or validate anything a user receives, and reddening the
-            # Windows release gate because a cache key moved would be a footnote
-            # deciding whether a release ships. The message names what to read.
-            Write-Host "::warning::Could not read an MSVC toolset version from $cache (looked at CMAKE_CXX_COMPILER and CMAKE_LINKER). The Windows toolchain is unrecorded for this run."
-            Select-String -Path $cache -Pattern 'CMAKE_(CXX_COMPILER|LINKER):FILEPATH='
-            exit 0
-          }
-
-          $series = $version.Split('.')[0]
-          Write-Host "MSVC toolset $version (ABI series $series.x)"
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "MSVC toolset ``$version`` (ABI series ``$series.x``)"
-
-          if ($series -ne '14') {
-            Write-Host "::error::MSVC ABI series moved from 14.x to $series.x, which changes the Visual C++ redistributable users need. Confirm the new requirement, update COMPATIBILITY_MATRIX, and raise this assertion in the same change."
-            exit 1
-          }
 
       - name: Build (VST3 + Standalone + tests)
         id: build
@@ -1625,6 +1588,81 @@ jobs:
           name: Anamorph-Windows-debug
           path: dist/Anamorph-Windows-debug
           if-no-files-found: error
+
+      # WHICH TOOLCHAIN BUILT THE SHIPPED WINDOWS BINARY, recorded rather than
+      # assumed. `windows-latest` floats, MSVC is auto-detected, and nothing in
+      # this job said which toolset it resolved to -- so a released .vst3 could
+      # not be traced back to the compiler that produced it, and an image move
+      # changed the shipped toolchain with no line in any diff. This is the same
+      # class the `linux` job's ABI floor covers, and it is recorded here for the
+      # same reason: the number falls out of the image, so the run that changes
+      # it should be the run that says so.
+      #
+      # WHAT IS ASSERTED is deliberately narrow: the MSVC ABI SERIES (`14.x`),
+      # not the exact toolset. Every 14.x toolset since VS2015 is binary
+      # compatible and needs the same redistributable, so gating on the full
+      # version would fail on ordinary compiler updates that change nothing a
+      # user can observe -- the "gate that cries wolf" this pipeline is written
+      # against. A move OFF 14.x is the event that changes what users must have
+      # installed, and that is what fails here.
+      #
+      # LAST STEP IN THE JOB, and it used to sit between Configure and Build.
+      # There, a toolset mismatch skipped the entire Windows build, the two
+      # suites, both pluginval gates, the installer and every upload -- so the
+      # one event this step exists to detect, an image moving the compiler under
+      # us, would have destroyed the evidence needed to judge it. The assertion
+      # is unchanged and just as mandatory: `release.yml` depends on this
+      # workflow's AGGREGATE result, which a failed job decides wherever in the
+      # job it failed, so a mismatch is still release-blocking and can never
+      # become a silently successful build. Nothing downstream reads this step's
+      # outcome, so moving it weakens no other gate.
+      #
+      # Gated on CONFIGURE, because that is whose output it reads
+      # (`build/CMakeCache.txt`) -- and on configure alone rather than on the
+      # build, so the toolset is still recorded when a build fails, which is
+      # exactly when knowing the compiler is most useful.
+      #
+      # The version comes from CMakeCache's compiler/linker path
+      # (`...\VC\Tools\MSVC\<version>\bin\...`), which the VS generator
+      # always writes -- no developer command prompt, no `vswhere`, no `dumpbin`.
+      - name: Record + assert the MSVC toolset
+        if: ${{ !cancelled() && steps.configure.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cache = 'build/CMakeCache.txt'
+
+          # Two cache keys are tried because which of them carries a full path
+          # is a property of the GENERATOR, not of this project, and the VS
+          # generator is the one CMake documents least precisely here. Whichever
+          # yields a `...\VC\Tools\MSVC\<version>\...` component wins.
+          $version = $null
+          foreach ($key in 'CMAKE_CXX_COMPILER:FILEPATH', 'CMAKE_LINKER:FILEPATH') {
+            $hit = (Select-String -Path $cache -Pattern ('^' + [regex]::Escape($key)) | Select-Object -First 1)
+            if ($null -ne $hit -and $hit.Line -match 'MSVC[\\/]+([0-9]+(\.[0-9]+)+)') {
+              $version = $Matches[1]
+              break
+            }
+          }
+
+          if ($null -eq $version) {
+            # A WARNING, NOT A FAILURE. This step reports and asserts; it does
+            # not build or validate anything a user receives, and reddening the
+            # Windows release gate because a cache key moved would be a footnote
+            # deciding whether a release ships. The message names what to read.
+            Write-Host "::warning::Could not read an MSVC toolset version from $cache (looked at CMAKE_CXX_COMPILER and CMAKE_LINKER). The Windows toolchain is unrecorded for this run."
+            Select-String -Path $cache -Pattern 'CMAKE_(CXX_COMPILER|LINKER):FILEPATH='
+            exit 0
+          }
+
+          $series = $version.Split('.')[0]
+          Write-Host "MSVC toolset $version (ABI series $series.x)"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "MSVC toolset ``$version`` (ABI series ``$series.x``)"
+
+          if ($series -ne '14') {
+            Write-Host "::error::MSVC ABI series moved from 14.x to $series.x, which changes the Visual C++ redistributable users need. Confirm the new requirement, update COMPATIBILITY_MATRIX, and raise this assertion in the same change."
+            exit 1
+          }
 
   macos:
     # `macos-latest` (Apple Silicon) -- moved off the DEPRECATED `macos-14`

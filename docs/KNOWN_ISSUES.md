@@ -124,7 +124,7 @@ consequences, both still open:
   *System Settings → Privacy & Security → Open Anyway*.
 
 Notarization (RH-PR-3) closes both.
-- **Evidence [Verified]:** .github/workflows/build.yml:1911-1913 (`codesign --force --deep --sign -`,
+- **Evidence [Verified]:** .github/workflows/build.yml:1949-1951 (`codesign --force --deep --sign -`,
   no notarization); packaging/macos/INSTALL.txt:4-10 (ad-hoc, not notarized), :34-41 (the
   Gatekeeper approval for the .pkg), :61-65 (the zip-route `xattr` step).
   See `docs/procedures/PACKAGING.md`.
@@ -730,8 +730,9 @@ does not load there.**
   (which image, which container, whether the release build stops sharing the CI image), not a CI
   tweak. That decision has not been taken.
 - **What is fixed:** it is no longer invisible. `scripts/check-linux-abi.py` asserts the floor on
-  every push, on the **stripped** bytes and before pluginval, so the run that raises it is the run
-  that fails instead of a user's DAW. Raising it is now deliberate: change the declared constant in
+  every push, on the **stripped** bytes and as the `linux` job's last step, so the run that raises it
+  is the run that fails instead of a user's DAW — while still producing the suites' results and the
+  artifacts, because the trigger is a runner-image move rather than anything in this tree. Raising it is now deliberate: change the declared constant in
   the same change and name the systems it drops.
 - **Evidence [Verified]:** scripts/check-linux-abi.py (the declared floor and the gate);
   `docs/architecture/COMPATIBILITY_MATRIX.md` §"Linux runtime ABI floor".

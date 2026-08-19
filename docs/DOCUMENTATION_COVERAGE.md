@@ -7,7 +7,8 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.4 change set** (2026-08-15, matching the CHANGELOG heading) — the
-**follow-up review round** (first below), then the
+**environment-assertion placement round** (first below), then the
+**follow-up review round**, then the
 **macOS-symbolication and review round**, then the
 **engineering-roadmap implementation round**, covering in two batches: the leaf-layer
 `-Wfunction-effects` check, the performance-benchmark harness, `setStateInformation` fuzzing, the
@@ -124,6 +125,41 @@ is Linux/X11 only. On Windows and macOS that turned a genuine crash into two mor
 The retry is now scoped by `uname -s`: three attempts on Linux, one everywhere else, with a distinct
 message so a single-attempt failure cannot be misread as an exhausted retry. The separately
 justified `.ps1` retry is untouched.
+
+**Environment-assertion placement round (2026-08-19): the same defect the macOS dSYM gate had, in the
+two assertions added beside it.**
+
+**An assertion about the ENVIRONMENT must not cost the run its evidence.** The Linux ABI floor and
+the Windows MSVC toolset check were both added in the round that fixed exactly this shape for the
+macOS dSYM gate, and both were added with the shape unfixed. The Linux floor sat between the strip
+step and `DSP + state self-tests`, so a breach left `steps.tests` at `skipped` — and both Linux
+uploads gate on that being `success`. The Windows toolset check sat between `Configure` and `Build`,
+so a mismatch skipped the build, both suites, both pluginval gates, the installer and every upload.
+
+In both cases the trigger is a **runner-image move**, which is the case where withholding the
+evidence helps least: a silent image change would have produced a red run with no test results and
+nothing to install, i.e. no way to tell whether anything *else* was wrong at the same time.
+
+Both are now their job's **last step**, matching the macOS precedent. Neither is weakened: the
+bodies are byte-identical (verified by comparing every step's `run`/`shell`/`with`/`env` against the
+previous commit — zero differ), and release eligibility is untouched, because `release.yml` depends
+on this workflow's **aggregate** result, which a failed job decides wherever in the job it failed.
+Each is gated on the step whose output it reads rather than on "everything succeeded": the Linux
+floor on `strip` (it checks the stripped bytes, and a failed build leaves `strip` skipped anyway),
+the Windows toolset on `configure` (it reads `CMakeCache.txt`) — deliberately not on the build, so
+the toolset is still recorded when a build fails, which is when knowing the compiler is most useful.
+
+**Verified structurally rather than by reading the diff.** A script compared every job's `needs`,
+`if` and `runs-on` and every step's id/condition before and after: no job-level change anywhere, no
+step added or removed, every artifact-upload gate byte-identical, and the `macos` job not appearing
+in the comparison at all — its dSYM gate, its LTO assertion and the `-Wl,-object_path_lto`
+configuration are untouched. The moved Linux step was then executed from the workflow file itself:
+rc 0 against the real artifacts at the declared floor, rc 1 with the floor lowered to Ubuntu 22.04's
+2.35.
+
+One presentational consequence, not a separate change: moving the ABI block out from between the
+`MALLOC_PERTURB_` rationale and the `DSP + state self-tests` step it documents restored their
+adjacency.
 
 **Follow-up review round (2026-08-19): a mandatory gate placed where it could withhold the product,
 and a corpus that had quietly grown to 21× its documented size.**
@@ -283,7 +319,8 @@ records the oldest version providing each imported symbol; the maximum is the ol
 load it at all. Measured: **GLIBC_2.38** and **GLIBCXX_3.4.31** — Ubuntu 23.10+ and GCC 13+ — so the
 shipped VST3 does **not** load on Ubuntu 22.04 LTS. Nobody decided that; `ubuntu-latest` moving to
 24.04 did it, silently and retroactively, with no failure in CI and no line in any diff.
-`scripts/check-linux-abi.py` declares the floor and gates it after the strip and before pluginval.
+`scripts/check-linux-abi.py` declares the floor and gates it on what the strip produced, as the `linux`
+job's last step.
 It does not attempt to *lower* the floor — that is an older toolchain or a sysroot, a release-topology
 decision — it makes the run that raises it the run that fails. Its self-test covers the ordering trap
 that makes the naive form wrong (2.38 outranks 2.9 numerically, not lexically) and treats "no version

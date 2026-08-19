@@ -398,9 +398,9 @@ DELIBERATE_REAIMS = {
     # unambiguous token (`macos:`, `macos-intel:`), which identifies the job more
     # precisely than a range ever did and which `verify_reaim_targets` can check.
     ("docs/architecture/COMPATIBILITY_MATRIX.md",
-     ".github/workflows/build.yml:1629"): "macos:",
+     ".github/workflows/build.yml:1667"): "macos:",
     ("docs/architecture/COMPATIBILITY_MATRIX.md",
-     ".github/workflows/build.yml:2228"): "macos-intel:",
+     ".github/workflows/build.yml:2266"): "macos-intel:",
     # THESE TWO WERE MISAIMED, and are corrected here. Both were recomputed
     # early in the round that introduced them and never re-derived, so
     # `build.yml:562, 1186, 1608` pointed at a composite-action `uses:` line, a
@@ -414,8 +414,8 @@ DELIBERATE_REAIMS = {
     # at best and a red default branch at worst, so section 9 of `--self-test`
     # asserts every entry here is a string its document really contains -- and
     # section 8c asserts it lands on what it claims.
-    ("docs/policies/RELEASE_POLICY.md", ".github/workflows/build.yml:578, 1213, 1693"): "ANAMORPH_BUILD_NUMBER",
-    ("docs/KNOWN_ISSUES.md", ".github/workflows/build.yml:1911-1913"): "codesign --force --deep --sign -",
+    ("docs/policies/RELEASE_POLICY.md", ".github/workflows/build.yml:578, 1234, 1731"): "ANAMORPH_BUILD_NUMBER",
+    ("docs/KNOWN_ISSUES.md", ".github/workflows/build.yml:1949-1951"): "codesign --force --deep --sign -",
     # THE ONE ANCHOR IN THE CLANG-22 ROUND THAT IS A RE-AIM RATHER THAN A
     # RE-ANCHOR, and the tool is right to refuse it. `DEPENDENCY_POLICY`'s Clang
     # row cites the `env:` block, whose lines both MOVED (+4) and CHANGED

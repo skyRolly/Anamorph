@@ -1003,7 +1003,7 @@ coverage. Evidence [Verified]: the four files above.
 
 ### The Linux ABI floor
 
-The `linux` job asserts, on the **stripped** binaries and before pluginval, that the shipped VST3
+The `linux` job asserts, on the **stripped** binaries and as its **last step**, that the shipped VST3
 and Standalone stay within a declared glibc/libstdc++ floor. This is a compatibility claim the
 pipeline previously did not make: a Linux binary records the oldest version providing each imported
 symbol, and the maximum of those is the oldest system that can load it — below it the dynamic
