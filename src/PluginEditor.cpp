@@ -1039,14 +1039,14 @@ void AnamorphAudioProcessorEditor::refreshPopupShield()
     // Wake the micro-anim driver for one pass on both edges -- a pop-up appearing or vanishing is
     // the one moment the hover picture changes without the cursor moving, so it is the moment the
     // driver must be guaranteed to run. It sits after the `wanted == shieldRaised` return because
-    // only edges need it, and it is the :1441 precedent (un-settle re-opens the gate for one pass;
+    // only edges need it, and it is the :1488 precedent (un-settle re-opens the gate for one pass;
     // the ease then keeps anyMotion true until it converges, so one nudge drains a whole transition).
     //
     // Be precise about what this is NOT: the occlusion term does not require it. Both S11 early
-    // returns are prefixed by `! mouseInside` (:1539, :1562), and with the cursor outside the editor
+    // returns are prefixed by `! mouseInside` (:1596, :1620), and with the cursor outside the editor
     // `over` is already false with or without cursorIsOverOpenPopup() -- so a change of answer can
     // never need a pass the gate is refusing to run. What it DOES buy is measured: microSettled is a
-    // MOTION latch (:1673), equally true with hovA parked at 0.0 and at 1.0, so a cursor that leaves
+    // MOTION latch (:1758), equally true with hovA parked at 0.0 and at 1.0, so a cursor that leaves
     // the editor inside one 16.7 ms sample seals the gate on a widget still at full brightness.
     // Opening a menu then drains that residue (measured 1.000 -> 0.022) where without this line it
     // stays lit (0.990 -> 0.990). That seal is a separate, pre-existing defect and this does not fix
@@ -1091,7 +1091,7 @@ bool AnamorphAudioProcessorEditor::cursorIsOverOpenPopup() const
 
     // The preset menu: never reaches that hook (its look-and-feel is null at construction), but
     // INC-010 made it an editor CHILD, and "modal child of mine" identifies it exactly -- the same
-    // test dismissTrackedPopupMenus already uses at :1146-1148, for the same reason.
+    // test dismissTrackedPopupMenus already uses at :1191-1193, for the same reason.
     if (presetMenusOpen > 0)
         for (auto* child : getChildren())
             if (child->isCurrentlyModal (false) && child->isShowing()
@@ -1099,6 +1099,51 @@ bool AnamorphAudioProcessorEditor::cursorIsOverOpenPopup() const
                 return true;
 
     return false;
+}
+
+// The overlay panel the cursor is inside, or nullptr (KI-024).
+//
+// Same defect as the drop-down one and a different occluder, so it needs a different SHAPE of
+// answer. A pop-up is a window on top of the whole editor: if the cursor is in it, nothing this
+// editor draws is under the cursor, and one per-frame bool settles every widget. An overlay is an
+// editor CHILD that covers the editor *except its own contents* -- the Settings panel's own combos
+// and switches must keep hovering while a knob behind the dim must not -- so the per-frame part can
+// only find the overlay; `occludes()` finishes it per widget.
+//
+// WHAT COUNTS AS AN OVERLAY IS DERIVED, NOT LISTED, so a panel added later is covered without
+// touching this function. Three properties, and each of them is load-bearing:
+//   * an editor CHILD -- an overlay is drawn by this editor, which is what makes "except its own
+//     contents" expressible at all;
+//   * VISIBLE, and scanned FRONT-TO-BACK so the topmost one wins when two are up;
+//   * it TAKES THE POINTER: `getInterceptsMouseClicks`. This is the discriminator, and it is why
+//     `dimOverlay` is correctly NOT an overlay here. The Bypass dim paints over the editor at 40 %
+//     and is `setInterceptsMouseClicks (false, false)` (:557), so every control under it stays live
+//     and stays the thing the pointer is on -- suppressing its hover would be a regression, not a
+//     fix. It is also the one whose bounds are NOT the full editor (`withTrimmedTop (46)`, :2078),
+//     which is why this tests containment rather than assuming the geometries match.
+//
+// `popupShield` is skipped, and that exclusion is the reason this is not simply "anything that eats
+// the click". The shield paints NOTHING; it exists to absorb the dismissing click while a menu is
+// open. Treating it as an overlay would darken every control in the editor for the whole time any
+// menu is up -- including the box that owns the open list, and `presetName` under its own menu --
+// which is the coarse behaviour the 0.9.4 round measured, rejected and recorded. The occlusion a
+// menu really does cause is already answered, more precisely, by cursorIsOverOpenPopup().
+juce::Component* AnamorphAudioProcessorEditor::cursorOverlay() const
+{
+    const auto p = getMouseXYRelative();
+
+    for (int i = getNumChildComponents(); --i >= 0;)     // front-most first
+    {
+        auto* c = getChildComponent (i);
+        if (c == &popupShield || ! c->isVisible())
+            continue;
+
+        bool clicks = false, viaChildren = false;
+        c->getInterceptsMouseClicks (clicks, viaChildren);
+        if (clicks && c->getBounds().contains (p))
+            return c;
+    }
+    return nullptr;
 }
 
 // A drop-down must not outlive the editor being taken off screen. JUCE already guarantees that for a
@@ -1340,10 +1385,12 @@ void AnamorphAudioProcessorEditor::timerCallback()
         // rule on PopupShield in the header. refreshPopupShield() ran at the top of this tick, so
         // `shieldRaised` (which the query short-circuits on) is already current.
         const bool cursorOverPopup = cursorIsOverOpenPopup();
+        auto* const overlay = cursorOverlay();          // per widget below, not per frame (KI-024)
         bool anyLit = false;
         for (auto* box : allCombos)
         {
             const bool hov = ! cursorOverPopup
+                           && ! occludes (overlay, box)
                            && box->isShowing()
                            && box->getLocalBounds().contains (box->getMouseXYRelative());
             if ((bool) box->getProperties().getWithDefault ("hov", false) != hov)
@@ -1507,17 +1554,26 @@ void AnamorphAudioProcessorEditor::stepMicroAnims (double dt)
     // could interact or anything can still move. It is skipped ONLY when every
     // input is provably static: cursor outside the editor (all hover targets 0),
     // no mouse button held anywhere (no press/drag state), no sweep window open,
-    // the previous pass moved nothing, and no tracked slider value or toggle
-    // state changed since that pass -- the fingerprint below hashes them all
+    // the previous pass moved nothing AND left nothing lit, and no tracked slider
+    // value or toggle state changed since that pass -- the fingerprint below hashes them all
     // through the registration-cached pointers, so host automation, undo/redo
     // and session restores re-arm the full poll on the very same frame. Any
     // uncertainty fails open into polling.
+    //
+    // `microSettled` was the whole of "nothing can move" and was not enough (KI-025). It is a
+    // MOTION latch -- true whenever the last pass wrote nothing -- so it reads identically with a
+    // control's hovA parked at 0.0 and at 1.0. A cursor that left the editor inside one 16.7 ms
+    // sample therefore sealed the gate on a control still at FULL brightness, and nothing re-opened
+    // it until the cursor came back. `microLit` is the missing half: with the cursor outside and no
+    // button held, hovA and actA both REST at 0, so a non-zero one proves the editor is not yet in
+    // the state this gate is about to assume. It costs one compare per widget inside a loop that is
+    // already running, and it cannot keep the gate open by itself because stepVal now converges.
     const bool mouseInside = isShowing()
                           && getLocalBounds().contains (getMouseXYRelative());
 
     // Generation pre-gate (H15, Wave 2): with the cursor outside, no button held,
-    // no sweep and the previous pass settled, the ONLY thing that can still move a
-    // tracked widget is a value change -- and every path that can deliver one with
+    // no sweep and the previous pass settled AND dark, the ONLY thing that can still
+    // move a tracked widget is a value change -- and every path that can deliver one with
     // the mouse outside bumps a generation: host automation / undo / redo / preset
     // / A-B apply notify the sound-param listener (soundParamGen); host-automated
     // Bypass notifies the view watcher (viewParamGen); the two-way-bound Settings
@@ -1535,6 +1591,7 @@ void AnamorphAudioProcessorEditor::stepMicroAnims (double dt)
         && ! juce::Component::isMouseButtonDownAnywhere()
         && knobSweepTime <= 0.0
         && microSettled
+        && ! microLit
         && sGen == microSoundGen && vGen == microViewGen && iGen == microInternalGen)
         return;
     microSoundGen = sGen; microViewGen = vGen; microInternalGen = iGen;
@@ -1558,10 +1615,12 @@ void AnamorphAudioProcessorEditor::stepMicroAnims (double dt)
         && ! juce::Component::isMouseButtonDownAnywhere()
         && knobSweepTime <= 0.0
         && microSettled
+        && ! microLit
         && probe == microProbe)
         return;
     microProbe = probe;
     bool anyMotion = false;
+    bool anyLit    = false;
 
     // Exponential ease-out follows (non-linear, the curve the toggle slide used
     // and the user liked). Hover/press eased a touch more deliberately so the
@@ -1590,6 +1649,11 @@ void AnamorphAudioProcessorEditor::stepMicroAnims (double dt)
     // why it matters are on PopupShield in the header.
     const bool cursorOverPopup = cursorIsOverOpenPopup();
 
+    // Occluding overlay: found once per pass like the pop-up above, but it cannot be APPLIED once
+    // per pass -- an overlay covers the editor except its own contents, so the per-widget half is
+    // `occludes()` in the loop (KI-024).
+    auto* const overlay = cursorOverlay();
+
     int realDownCached = -1;
     auto physicalButtonDown = [&realDownCached]
     {
@@ -1613,6 +1677,7 @@ void AnamorphAudioProcessorEditor::stepMicroAnims (double dt)
         // drop-down covers it, so the pop-up term removes what geometry alone cannot (0.9.4).
         const bool over = mouseInside
                         && ! cursorOverPopup
+                        && ! occludes (overlay, c)
                         && c->isShowing()
                         && c->getLocalBounds().contains (c->getMouseXYRelative());
         float hovT = over ? 1.0f : 0.0f;
@@ -1622,12 +1687,22 @@ void AnamorphAudioProcessorEditor::stepMicroAnims (double dt)
         // so the default here is only a fallback; it must NOT be the target, or
         // the very first transition starts already-arrived and never plays -- the
         // bug that made the switch animation vanish last version (#1).
+        // IT MUST REACH THE TARGET, not merely approach it (KI-025). The old form returned false
+        // once the step fell under the write threshold, which stopped the write but left the value
+        // SHORT -- an exponential ease never arrives, so `hovA` parked at ~0.014 and reported itself
+        // settled. Invisible on its own, but "settled" is now half of the idle gate's seal test, and
+        // a value that is settled-but-not-zero would keep the gate open for ever and undo the very
+        // optimisation this change has to preserve. So a step too small to be worth easing LANDS on
+        // the target instead: one final write, then `curr == target` returns false for good. The
+        // ease is unchanged everywhere it is visible -- only the last ~1.4 % is snapped, and only
+        // once per transition.
         auto stepVal = [&props] (const juce::Identifier& key, float target, float up, float down) -> bool
         {
             const float curr = (float) (double) props.getWithDefault (key, 0.0);
+            if (juce::exactlyEqual (curr, target)) return false;    // already arrived; exact by design
             float next = curr + (target - curr) * (target > curr ? up : down);
             if (std::abs (next - target) < 0.004f) next = target;
-            if (std::abs (next - curr) < 0.0015f) return false;
+            if (std::abs (next - curr) < 0.0015f) next = target;    // too small to ease: land it
             props.set (key, juce::jlimit (0.0f, 1.0f, next));
             return true;
         };
@@ -1668,9 +1743,20 @@ void AnamorphAudioProcessorEditor::stepMicroAnims (double dt)
         if (onT  >= 0.0f) changed = stepVal (onA,  onT,  rOn,  rOn)  || changed;
         if (changed) c->repaint();
         anyMotion |= changed;
+
+        // Is anything still GLOWING? hovA and actA both rest at 0 once the cursor is outside and no
+        // button is held -- the two conditions the gate already requires -- so a non-zero one means
+        // the editor is not in the state the gate is about to assume it is in. `onA` is deliberately
+        // NOT counted: a switch that is ON rests at 1, and reading that as "lit" would keep the gate
+        // open for ever on any preset with a toggle enabled. `vpos` likewise rests at the knob's own
+        // position and is stepped separately above.
+        anyLit = anyLit
+              || (double) props.getWithDefault (hovA, 0.0) > 0.0
+              || (double) props.getWithDefault (actA, 0.0) > 0.0;
     }
 
     microSettled = ! anyMotion;
+    microLit     = anyLit;
 }
 
 // Whole-window scale (F4): the layout stays at its logical 940x720 and a plain

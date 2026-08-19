@@ -9,7 +9,8 @@ that documentation (Verified / Partially Verified / Unverified / Not Supported).
 Last updated: for the **0.9.4 change set** (2026-08-19, matching the CHANGELOG heading — re-dated
 from 2026-08-15 in the hover-occlusion round, which is the first user-visible change the version has
 taken since it was written) — the
-**hover-occlusion round** (first below), then the
+**overlay-occlusion and idle-latch round** (first below, closing KI-024 and KI-025), then the
+**hover-occlusion round**, then the
 **shared-action-input round**, then the
 **mismatched-new-delete round**, then the
 **allocation-family round**, then the
@@ -64,6 +65,91 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**Overlay-occlusion and idle-latch round (2026-08-19): KI-024 and KI-025 closed. One shared cause
+with two different second halves, both fixed on evidence and both mutation-tested. No ADR: no
+decision is made or reopened.**
+
+**KI-024's root cause is that "occluded" had been answered at the wrong granularity.** The 0.9.4
+pop-up term is one bool per frame, and that is right for a pop-up: it is a window over the WHOLE
+editor, so if the cursor is inside it nothing this editor draws is under the cursor. An overlay is
+not that shape. `Backdrop` is an editor CHILD that covers the editor *except its own contents* — the
+Settings panel's combos and switches must keep hovering while a knob behind the dim must not — so a
+single per-frame answer cannot express it. `cursorOverlay()` finds the overlay once per pass and
+`occludes (overlay, c)` finishes the question per widget, which is the granularity the case actually
+has.
+
+**What counts as an overlay is DERIVED, not listed, which is what makes it general.** Three
+properties, each load-bearing and each checked against the tree rather than assumed: a visible editor
+CHILD (an overlay is drawn by this editor, which is what makes "except its own contents"
+expressible); scanned front-to-back so the topmost wins when two are up; and it TAKES THE POINTER
+(`getInterceptsMouseClicks`). A panel added later is covered with no edit here. The interception test
+is the discriminator, and it is why `dimOverlay` is correctly not an overlay: the Bypass dim paints
+over the editor at 40 % but is `setInterceptsMouseClicks (false, false)`, so every control under it
+stays live and stays the thing the pointer is on — suppressing its hover would have been a
+regression, not a fix. It is also the only one of these whose bounds are NOT the full editor
+(`withTrimmedTop (46)`), which is exactly why the predicate tests containment instead of assuming the
+geometries match. `popupShield` is skipped, and that exclusion is why this is not simply "anything
+that eats the click": the shield paints nothing, and treating it as an overlay would darken the whole
+editor whenever any menu is open — the coarse behaviour the 0.9.4 round measured and rejected.
+
+**KI-025's root cause is that the idle gate's "nothing can move" test was only a MOTION latch.**
+`microSettled` is `! anyMotion` — true whenever the previous pass wrote nothing — so it reads
+identically with a control's `hovA` at 0.0 and at 1.0. The gate's own comment asserted "cursor
+outside the editor (all hover targets 0)", and the word doing the damage is *targets*: the target is
+0, but the VALUE only reaches 0 by being stepped, and the gate skipped the pass that would step it.
+A pointer that left the editor inside one sample therefore sealed the gate on a control at full
+brightness. `microLit` is the missing half: with the cursor outside and no button held, `hovA` and
+`actA` both rest at 0, so a non-zero one proves the editor is not yet in the state the gate is about
+to assume. `onA` is deliberately excluded — a switch that is ON rests at 1, and counting that as
+"lit" would hold the gate open on any preset with a toggle enabled.
+
+**The second half of the KI-025 fix is what makes the first half free, and this was measured rather
+than reasoned.** An exponential ease never arrives; `stepVal` stopped writing once the step fell
+under its threshold, leaving `hovA` parked around 0.014 and calling itself settled. Harmless while
+"settled" only gated repaints — fatal once it also gates the idle seal, because a
+settled-but-not-zero value would hold the gate open for ever. So `stepVal` now LANDS on the target
+when the step is too small to be worth easing: one final write, then it returns false for good. Only
+the last ~1.4 % is snapped, once per transition. Mutation-tested with the landing reverted and
+`microLit` kept: the residue returned AND the idle gate stopped sealing at all — **507 passes in 5 s
+with the pointer parked outside**, i.e. precisely the 68–87 %-of-idle-profile regression the H15/S11
+work exists to prevent. The two halves are one fix.
+
+**The two fixes interact in one place, and it is a benign one.** Opening an overlay changes the hover
+answer without the pointer moving — the same shape as a menu opening — so the driver must not be
+asleep at that moment. It cannot be: an overlay is opened by a click inside the editor, so
+`mouseInside` is true and the gate's first conjunct already forbids sealing; and if the pointer is
+outside instead, every `over` is false regardless. KI-025's fix makes that robust rather than
+incidental — the gate now also refuses to seal while anything is lit — so no extra un-settle was
+added for overlays, and `refreshPopupShield`'s existing one is left exactly as it was.
+
+**Performance: measured, not asserted, on the path the optimisation was written for.** A temporary
+counter on the full-pass path, five-second samples, baseline = `origin/main`:
+
+| state | before | after |
+|---|---|---|
+| pointer parked outside the editor | 0 passes/s | **0 passes/s** |
+| pointer resting on a control | 102.8/s | 102.2/s |
+| pointer outside again, straight after a hover | 0 passes/s | **0 passes/s** |
+
+The third row is the one that matters: it was already 0 before, because the gate sealed — on a
+control that was still glowing. It is still 0, now with the control dark. The optimisation is not
+merely preserved, it seals in exactly the same states; the added work is one compare per widget
+inside a loop that was already running, plus one child scan per pass while an overlay is open.
+
+**Verified behaviourally across the whole matrix, on the running editor under `xvfb`:** normal hover
+on and off; KI-025's one-sample exit, gradual exit and the editor being HIDDEN while a control is lit
+(all → 0.000, from 0.990/0.021/0.990); KI-024 for **all three** overlays — Settings, About and Save
+Preset — each checked three ways (a control behind is dark, a control INSIDE the overlay still
+hovers, and hover returns when the overlay closes); the Bypass dim leaving hover live; and the 0.9.4
+drop-down fix still holding. Three mutation runs pin each mechanism: removing `occludes()` fails all
+three overlays and nothing else; removing `microLit` fails three KI-025 cases including the plain
+"pointer off the editor" one and nothing else; reverting `stepVal`'s landing fails the residue cases
+and destroys the idle seal.
+
+**Sign-off status: NOT GRANTED for this round.** No maintainer confirmation was given for it and none
+is claimed. What is owed is the same Level-5 check the hover round records — the automated evidence
+here is Linux-only on a synthetic display — extended to the three overlays and to the Bypass dim.
 
 **Hover-occlusion round (2026-08-19): a control covered by an open drop-down reported itself
 hovered. One predicate, two call sites, and the 0.9.4 heading re-dated to today because this is the
@@ -152,7 +238,7 @@ document already uses for its five other source anchors.
 same untracked class" was a count of what that pass happened to look at, not a search — three more
 sat in `KNOWN_ISSUES.md` alone, and one of them is the worse kind. **KI-009's `focusSaveNameField`
 citation was mis-aimed, then mechanically carried.** At the merge base it read
-`src/PluginEditor.cpp:1498-1506`, which was the `rIn`/`rOut`/`rAct`/`rOn`/`rPos` easing block in
+`src/PluginEditor.cpp:1545-1553`, which was the `rIn`/`rOut`/`rAct`/`rOn`/`rPos` easing block in
 `stepMicroAnims` — not that function at all — and `--fix` moved it to `:1567-1575`, the same easing
 block after this change's insertions. Faithful, and still wrong. `focusSaveNameField` is at
 **`:1984-1992`**, and the two untracked references beside it were mis-aimed the same way: the
@@ -191,7 +277,7 @@ something these rounds created, and closing it is its own change.
 
 **A third review pass found the same carried-mistake class in `PRIVACY.md`, and this one needed a
 declaration.** The row saying the Presets folder is created when the **Load Preset** dialog opens
-cited `src/PluginEditor.cpp:1455` at the merge base — the S11 generation pre-gate comment inside
+cited `src/PluginEditor.cpp:1502` at the merge base — the S11 generation pre-gate comment inside
 `stepMicroAnims`, about 383 lines short of the `:1838` that `dir.createDirectory()` sat on there.
 `--fix` carried it to `:1524`, still the same comment. Corrected to **`:1916`**, and written the way
 the checker's own header says new citations should be — with the symbol spelled beside the number
@@ -201,7 +287,7 @@ half that survives the next shift.
 **Unlike the `KNOWN_ISSUES.md` five, this one is caught by the gate, which is why it is declared.**
 `PRIVACY.md` still has exactly one `src/PluginEditor.cpp` citation, so the pair IS compared, the
 re-aim reads as drift, and `--fix` **reverted the correction on the first run** — measured, not
-predicted. `("PRIVACY.md", "src/PluginEditor.cpp:1916"): "createDirectory"` is therefore added to
+predicted. `("PRIVACY.md", "src/PluginEditor.cpp:2002"): "createDirectory"` is therefore added to
 `DELIBERATE_REAIMS`. It is not an inert exemption: `verify_reaim_targets` resolves the anchor against
 the live file every run, and mutating the substring to a value the code does not contain makes the
 run fail with `::error::` and exit 2 — checked by doing it, then reverting. A declaration turns the
@@ -209,10 +295,10 @@ drift check off for its anchor, so the aim check is the thing that keeps it hone
 
 **Reported and deliberately NOT corrected — the About-link anchor in the three legal documents.**
 `EULA.md`, `PRIVACY.md` and `TRADEMARKS.md` cite where the product's one outbound hyperlink is
-declared, and `--fix` moved all three from `src/PluginEditor.h:213` to `:223` in this change set.
+declared, and `--fix` moved all three from `src/PluginEditor.h:220` to `:223` in this change set.
 That re-anchor is mechanically correct and **preserves a pre-existing mistake**: at the merge base
 `:213` already read `return juce::TooltipWindow::getTipFor (c);`, and `:223` reads the identical
-line today, while `aboutLink` actually lives at `src/PluginEditor.h:362`. So the rot predates this
+line today, while `aboutLink` actually lives at `src/PluginEditor.h:382`. So the rot predates this
 change and was faithfully carried, not created by it — precisely the failure mode
 `check-citations.py`'s own header describes ("it CANNOT tell you a citation was aimed at the wrong
 code to begin with… and it does so INVISIBLY, in a DRIFTED line that reads like a repair"). It is
@@ -222,7 +308,7 @@ nothing to do with hover; recording it here is what stops the paragraph above re
 three anchors were verified correct.
 
 **NOW CLOSED (2026-08-19), as its own standalone change.** The three documents cite
-**`src/PluginEditor.h:362`**, where `aboutLink` is actually declared, instead of `:223` — which is
+**`src/PluginEditor.h:382`**, where `aboutLink` is actually declared, instead of `:223` — which is
 `return juce::TooltipWindow::getTipFor (c);` inside `GatedTooltipWindow`, the line `--fix` had
 carried the mis-aim onto from the merge base's `:213`. Only the number changed in each document; no
 wording, formatting or meaning was touched, and the correction is one anchor per file.
@@ -232,7 +318,7 @@ the three documents holds **exactly one** `src/PluginEditor.h` citation in both 
 current tree, so the count guard does not fire, the pair IS compared, and the re-aim reads as drift.
 Measured: before the entries were written the run reported all three `DRIFTED … -> :223`, and `--fix`
 would have dragged every one of them back. `("EULA.md" | "PRIVACY.md" | "TRADEMARKS.md",
-"src/PluginEditor.h:362"): "aboutLink"` now covers them, and the substring is what keeps that
+"src/PluginEditor.h:382"): "aboutLink"` now covers them, and the substring is what keeps that
 off-switch honest: `verify_reaim_targets` resolves `:362` against the live header every run, and
 mutating one entry's substring to a value the line does not contain makes the run emit `::error::`
 and exit 2 — checked by doing it, then reverting. Re-running `--fix` afterwards leaves all three

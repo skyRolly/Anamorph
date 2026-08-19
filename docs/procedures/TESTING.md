@@ -487,10 +487,13 @@ rather than deleted, because a gap that was real and is now covered is worth bei
      `refreshPopupShield` was mutation-tested the same way (**1.000 → 0.022** with it, **0.990 →
      0.990** without).
   3. *Where the gap is tracked.* Here, and from `CHANGELOG.md` `[0.9.4]` and `HANDOVER.md`. The two
-     defects the same measurement found and this change does **not** fix are filed as **KI-024**
-     (the Settings / About / Save-Preset overlays occlude identically and are not covered — measured
-     at hovA **0.990** behind an open Settings panel) and **KI-025** (the idle gate can seal on a
-     still-lit control when the pointer leaves the editor inside one frame — measured **0.990**).
+     defects the same measurement found were filed as **KI-024** (the Settings / About / Save-Preset
+     overlays occlude identically — measured at hovA **0.990** behind an open Settings panel) and
+     **KI-025** (the idle gate could seal on a still-lit control when the pointer left the editor
+     inside one frame — measured **0.990**). **Both were fixed on 2026-08-19** and removed from
+     `KNOWN_ISSUES.md` per its fixed-item rule. Those fixes ship under this same exception and for
+     the same reason, and were verified the same way — the harness above, extended to every overlay,
+     plus three mutation runs and a before/after idle-pass measurement.
   4. *Whether infrastructure could close it.* **Yes — and this fix narrows the standing claim above,
      which is worth recording rather than repeating.** The INC-010 and v0.9.3 entries both state that
      the *behavioural* half — a driven message loop with synthetic pointer input — "remains out of

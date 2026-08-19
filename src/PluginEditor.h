@@ -83,18 +83,25 @@ private:
     //      indices, ABControl::hovered) cannot be cleared, whatever the hit test resolves to.
     //   2. Every other hover visual here is derived GEOMETRICALLY, never from enter/exit:
     //      stepMicroAnims takes `over` from getMouseXYRelative() to drive hovA (PluginEditor.cpp:
-    //      1614-1617) and the combo "hov" flag does the same (:1346-1348). That is the v0.6.1
+    //      1678-1682) and the combo "hov" flag does the same (:1392-1395). That is the v0.6.1
     //      stuck-hover fix, and it makes hovA immune to componentUnderMouse churn by construction.
     //      It also makes it blind to OCCLUSION, which is the other half and was missing until 0.9.4:
     //      getMouseXYRelative is a pure coordinate transform (juce_Component.cpp:3233-3236), so a
     //      control keeps containing the cursor while a drop-down is stacked over it and lit up with
-    //      the pointer provably on the menu. cursorIsOverOpenPopup() supplies the missing term.
+    //      the pointer provably on the menu. cursorIsOverOpenPopup() supplies the missing term, and
+    //      cursorOverlay()/occludes() the other one: a Backdrop covers the editor EXCEPT its own
+    //      contents, so unlike a pop-up it cannot be a single per-frame bool (KI-024).
     //      THE PLACEMENT RULE, and it is load-bearing: occlusion is ANDed into the ANSWER (`over`,
-    //      `hov`) and NEVER into the GATE (`mouseInside` :1515, `comboCursorInside` :1335). Folding
+    //      `hov`) and NEVER into the GATE (`mouseInside` :1571, `comboCursorInside` :1380). Folding
     //      it into either looks tidier and is wrong: `! mouseInside` is the shared prefix of both
-    //      S11 early returns (:1539, :1562), so a gate that goes false the moment a menu opens seals
+    //      S11 early returns (:1596, :1620), so a gate that goes false the moment a menu opens seals
     //      the driver with hovA parked at 1.0 -- turning a false highlight into a frozen one for the
     //      life of the menu. refreshPopupShield un-settles on the transition for the same reason.
+    //      That gate USED to be able to seal on a lit control by itself, from the other direction
+    //      (KI-025): `microSettled` only says the last pass moved nothing, which is as true at
+    //      hovA 1.0 as at 0.0. It now also asks `microLit`, and stepVal lands on its target instead
+    //      of approaching it for ever -- without that second half the first would never let the
+    //      gate seal again. Measured: idle stays at 0 passes/s with the cursor outside.
     // Toggling interception rather than visibility is therefore about cost and side effects, not
     // hover: setInterceptsMouseClicks is pure flag assignment (juce_Component.cpp:1336-1341), where
     // setVisible would add a full-editor repaint() on every menu open plus a repaintParent() and a
@@ -252,6 +259,19 @@ private:
     void refreshPopupShield();   // prunes dead windows and shows/hides the shield
     bool cursorIsOverOpenPopup() const;  // the cursor is inside a pop-up of ours, so it is NOT
                                          // over whatever this editor draws underneath it
+
+    // The overlay panel the cursor is inside, or nullptr. A pop-up is a window ON TOP of the
+    // editor; an overlay is a full-editor CHILD (Settings / About / Save Preset) that covers
+    // everything except its own contents -- so unlike the pop-up term this one cannot be a single
+    // per-frame answer, and `occludes()` below finishes the question per widget (KI-024).
+    juce::Component* cursorOverlay() const;
+
+    // Is `c` behind `overlay`? Its own descendants are not: an overlay covers the editor, not the
+    // panel it puts there, so a Settings control keeps hovering while a knob behind it does not.
+    static bool occludes (const juce::Component* overlay, const juce::Component* c) noexcept
+    {
+        return overlay != nullptr && overlay != c && ! overlay->isParentOf (c);
+    }
     void dismissTrackedPopupMenus();   // cancels every pop-up this editor owns, unconditionally
     void cancelInlineTextEdits();      // parks in-progress inline edits without applying them
     void dismissOrphanedPopupMenus();  // ... and the same, once one can no longer belong to us
@@ -427,6 +447,11 @@ private:
     juce::Array<AnimatedWidget> animated;
     juce::uint64 microProbe = 0;   // slider-value/toggle-state fingerprint of the last pass (S11)
     bool microSettled = false;     // the last pass moved nothing (S11)
+    // ...and the last pass left something LIT. microSettled alone is a MOTION latch: it reads the
+    // same with hovA parked at 0.0 and at 1.0, so on its own it let the idle gate seal on a control
+    // that was still glowing (KI-025). The resting value of hovA/actA with the cursor outside is 0,
+    // so "nothing is lit" is the missing half of "provably static".
+    bool microLit = false;
     // Generations the micro-anim poll last re-armed on (H15): sound params, view
     // params (Bypass) and the host-hidden InternalState. Init 0 vs the counters'
     // initial 1 -> the first frame always runs a full pass.

@@ -15,6 +15,22 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 
 ## [0.9.4] — 2026-08-19
 ### Fixed
+- **Controls under the Settings, About and Save Preset panels no longer light up either, and a
+  control can no longer stay lit after the pointer leaves.** Two follow-ons to the drop-down fix
+  below, with the same cause and two different second halves. The panels cover the editor but are
+  not menus, so the earlier fix did not reach them: a knob behind the dim still contained the
+  pointer and still glowed through it, on a control that a click would only dismiss the panel. What
+  counts as a covering panel is now **derived rather than listed** — a visible child of the editor
+  that takes the pointer away from what is behind it — so a panel added later is covered without
+  anyone remembering to add it, while the panel's *own* controls keep hovering normally and the
+  Bypass dim, which covers the editor but never takes the pointer, correctly leaves the controls
+  under it live. Separately, a control could stay glowing after the pointer left the plug-in window
+  in one movement: the idle check that keeps a still editor quiet asked "did anything move last
+  frame?", which reads the same whether a control is dark or fully lit, so it could go quiet on a
+  glowing one. It now also asks whether anything is *still* lit, and the fade is made to land on
+  zero instead of approaching it forever — without that second half the first would have kept the
+  editor busy permanently. **The idle cost is unchanged: measured 0 passes per second with the
+  pointer outside the window, before and after, including straight after a hover.** [Verified]
 - **Controls under an open drop-down no longer light up as if you were pointing at them.** With a
   menu open — any of the seven drop-downs, or the preset list — moving the pointer **onto the menu**
   lit whatever sat underneath it: a knob's arc glow and pointer halo, a switch's pill, the A/B
