@@ -165,13 +165,20 @@ build before the entry was written: `GLIBC_2.38, GLIBCXX_3.4.31`, matching the d
 exactly rather than being copied from the commit message.
 
 **Documentation synced with the code, per the lifecycle policy.**
-`docs/procedures/PACKAGING.md` had two statements the migration falsified — "Two invocations skip
-the prompt" (now three) and "an interrupted install leaves nothing that survives a deliberate
-uninstall" (now has one deliberate exception) — both corrected in place, with the trust rules for
-the two staging candidates written down beside them. `docs/REPOSITORY_MAP.md` names the new options
+`docs/procedures/PACKAGING.md` had three statements the migration falsified — "Two invocations skip
+the prompt" (now three), "before the probe and before the recovery paths that never probe" (the
+recovery scan probes now, since a parked bundle is adopted only from a candidate that passes the
+same filesystem test as a fresh one) and "an interrupted install leaves nothing that survives a
+deliberate uninstall" (now has one deliberate exception) — all three corrected in place, with the
+trust rules for the two staging candidates written down beside them. `docs/REPOSITORY_MAP.md` names the new options
 on the installer row. `INSTALL.txt`, which ships to users, documents them bilingually in the file's
 existing voice, including that `--system` with no terminal needs root or cached `sudo` because there
-is nothing to prompt on. Full `preflight.sh` green afterwards: seven checker self-tests, the
+is nothing to prompt on. `scripts/check-citations.py`'s `DELIBERATE_REAIMS` list is back to the
+empty resting state its own preamble describes: all 26 entries reported "not needed against
+origin/main" once PR #120 merged, and origin/main is this branch's merge base — the condition that
+note attaches to. A declaration is good for exactly one transition, so the self-test count moves
+135 → 109 (26 sections-8c/9 cases retire with the entries they checked) while the gate still
+verifies 342 anchors. Full `preflight.sh` green afterwards: seven checker self-tests, the
 citation gate across all three bases with no drift, the 162-check DSP suite and the 911-check state
 suite, plus the real ABI gate against the local build.
 
