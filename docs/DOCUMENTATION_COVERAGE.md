@@ -9,7 +9,8 @@ that documentation (Verified / Partially Verified / Unverified / Not Supported).
 Last updated: for the **0.9.4 change set** (2026-08-19, matching the CHANGELOG heading — re-dated
 from 2026-08-15 in the hover-occlusion round, which is the first user-visible change the version has
 taken since it was written) — the
-**overlay-occlusion and idle-latch round** (first below, closing KI-024 and KI-025), then the
+**animation-landing round** (first below), then the
+**overlay-occlusion and idle-latch round** (closing KI-024 and KI-025), then the
 **hover-occlusion round**, then the
 **shared-action-input round**, then the
 **mismatched-new-delete round**, then the
@@ -65,6 +66,130 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**Animation-landing round (2026-08-20): one line deleted from `stepVal`, one handover
+self-contradiction, one mis-aimed post-mortem anchor. Three review corrections and nothing else. No
+ADR: no decision is made or reopened, and the KI-025 requirement the round below rests on is a
+constraint the fix had to satisfy rather than something to trade against it.**
+
+**The defect is that the round below left TWO landing tests in `stepVal` where one was needed, and
+the one it ADDED measured the wrong quantity.** The test that actually lands the ease —
+`|next - target| < 0.004f` — predates KI-025 and measures DISTANCE. The line added beside it measured
+the STEP: `|next - curr| < 0.0015f`. A step is `distance × rate` and `rate` is `1 - exp(-dt/tau)`, so
+a step shrinks with the FRAME as well as with the remaining distance. The step test therefore fired
+at a distance of `0.0015 / rate` — 0.0143 at 60 Hz, 0.0278 at 120 Hz, and the *whole* remaining
+distance once `rate` reaches 0. `rate` is 0 when `dt` is 0, and `dt == 0` is reachable rather than
+hypothetical: the vblank value is clamped `jlimit (0.0, 0.05, t - lastFrameTime)`, which bounds it at
+the TOP only. On such a frame every animated property of every widget was snapped in one pass, so a
+hover glow, a press glow or a switch slide that had barely begun jumped to its end state.
+
+**The fix is the deletion of that one line, and what makes it sufficient is a property of the
+surviving test, not an assumption about frame times.** `|next - target| = |curr - target| × (1 - rate)`,
+so a shorter frame drives `(1 - rate)` toward 1 and makes the distance test STRICTER, never looser —
+the failure mode is structurally unreachable in that form. The jump it applies is under 0.004 of the
+0..1 range by construction, from at most 0.0122 away (the 50 ms clamp ceiling at the fastest tau,
+`0.004 / (1 - rate)`; exactly 0.004 at `dt == 0`). The comment above `stepVal` now carries that
+derivation, because the reason the surviving test is safe is the reason the deleted one was not.
+
+**Simulated at the numbers rather than argued, on all four rates (`rIn` 0.075, `rOut` 0.150,
+`rAct` 0.045, `rOn` 0.055).** The step form made the fade **frame-rate dependent** — 0.67 s on a
+60 Hz display against 0.44 s at 240 Hz — so it was never merely a `dt == 0` edge case; it was
+shortening every fade on every fast display. The pre-KI-025 form (`return false` when the step is
+small) leaves the residue KI-025 exists to remove, and that residue GROWS with refresh rate: 0.054 at
+240 Hz, 0.449 at 2000 Hz. Deletion gives 0.829–0.833 s at every rate from 30 to 2000 fps and exact
+convergence — 25 writes on `rIn`, 50 on `rOut`, 15 on `rAct`, 19 on `rOn` (`rAct` and `rOn` are
+byte-identical before and after, because on those taus the 0.004 test always fired first). A `dt == 0`
+frame mid-fade now leaves the value unchanged and still WRITES, which is what keeps `microSettled`
+false while a transition is in flight.
+
+**The write on a zero-length frame is deliberate and must stay, which is the one thing a future
+"optimisation" here would break.** A `next == curr -> return false` write-skip is the obvious way to
+suppress it, and it is wrong: returning false clears `changed`, hence `anyMotion`, hence
+`microSettled`, and `anyLit` deliberately does not count `onA` — so a single zero-length frame during
+a host-automated toggle slide would seal the idle gate on a half-slid switch and freeze it there. The
+prohibition and its reason are written above `stepVal`.
+
+**Mutation-tested in both directions.** Removing the surviving landing test entirely: the value is
+still 5.6e-45 after 50 000 000 frames — 833 333 s of animation at 60 Hz — so `microLit` never clears
+and the idle gate NEVER seals, which is precisely the S11/H15 regression KI-025's second half exists
+to prevent. Restoring the step test reproduces the snap at `dt == 0`. The two tests are not
+interchangeable and only one of them belongs here.
+
+**No CHANGELOG entry.** The step test was introduced and removed inside the same unreleased 0.9.4
+change set, so nothing user-visible ever shipped with it, and rule 2 (no invented history) is the
+governing one. The existing 0.9.4 wording — "the fade is made to land on zero instead of approaching
+it forever" — describes the surviving test and stays true as written.
+
+**The handover snapshot said both things.** The 0.9.4 operational-status row was edited to record
+KI-024 and KI-025 as closed, while the later half of the same table cell still read that they were
+"deliberately left open". Both halves were once true — the first hover round measured them and filed
+them, the round after it closed them — so the correction preserves that history rather than deleting
+it: the clause now reads that the round "measured two adjacent defects and filed rather than folded
+them in … and **the round after it closed both**, as described above; neither is open." `KNOWN_ISSUES.md`
+and `procedures/TESTING.md` were already consistent; only that row carried both claims.
+
+**Two anchors were re-aimed after reading the code they name, not by shifting numbers.** In
+`POSTMORTEMS.md` the geometric-hover incident cited the combo `hov` block as a bare `:1346-1348`,
+which today is the pop-up housekeeping calls; it is now spelled path-qualified against the block the
+sentence describes. The bare form is exactly why the gate had not caught it — a citation is only
+matched when it names its path from the repository root — so re-spelling it puts the anchor UNDER the
+gate for the first time. That takes the document's `src/PluginEditor.cpp` group from 2 to 3 citations,
+which makes the group non-comparable against `origin/main` for this run (the tool says so on stderr)
+rather than requiring a `DELIBERATE_REAIMS` entry: a declaration is needed only when a same-count
+group makes a correction read as drift and `--fix` reverts it. That was the case for `PRIVACY.md`'s
+`createDirectory` anchor and its entry is still required; it was re-derived against the current tree
+this round, and `verify_reaim_targets` resolves it live every run. The overlay comment's own anchors
+for `withTrimmedTop (46)` and for the `microSettled` motion latch were likewise re-read and corrected;
+those live in a `.cpp` comment, are not path-qualified, and so are the class of anchor no tool checks —
+they have to be re-read by hand every time the file moves, which is the standing cost of the bare form.
+
+**This round's own edits moved the file again, and that was caught by the gate rather than by
+memory.** Correcting a wrong numeric bound in the new comment added one line above every anchor below
+it; `--check` reported 5 drifted citations, `--fix` re-anchored them, and the two bare in-comment
+anchors plus the declared `PRIVACY.md` re-aim were corrected by hand. Final state: **338 anchors,
+`--check` rc=0.**
+
+**Nine informational findings were left unchanged, and none of them is a defect in the current tree.**
+Three are statements about future layouts or future pop-up kinds — that `cursorOverlay()` would treat a
+newly-added visible intercepting sibling drawn over a control as an overlay, that submenus and
+non-modal pop-ups are not handled, that the predicate is "any intercepting child" rather than "a panel"
+— and the review's own layout audit confirms no currently-reachable configuration has two visible
+intercepting siblings under one point. Narrowing the predicate to `Backdrop` or to full-editor bounds
+would be the future-proofing the round was told not to add, and would cost the generality KI-024 was
+required to have. Two are consistency notes with no behavioural difference today: `isVisible()` versus
+`isShowing()` in `cursorOverlay()` (for a direct child these differ only when the editor is not
+showing, and both call sites are already inert in that state) and the parented preset menu satisfying
+both the pop-up and the overlay predicate (the two terms are ANDed identically, so the answer is the
+same). One is the per-frame child scan cost, already measured at 0 idle passes per second with the
+pointer outside. One is the event-driven hover paths (`ABControl::hovered`, `SpectrumImager`), which a
+plain intercepting child resolves through real `mouseExit` delivery — unlike the modal menu case,
+which is why that reasoning had to be written down separately. One is the extra landing-frame write
+and repaint, which is the bounded, intended cost of reaching the target: one frame per transition per
+property, and the alternative is the write-skip rejected above. The last is a NaN hypothetical —
+`exactlyEqual` would be false, both threshold tests false, and the gate would never seal again — but
+`hovT`/`actT` are literal 0/1 and the rates are finite over the clamped `dt`, so nothing in the tree
+can produce it. It is a note about a pre-existing shape, not a regression this round introduced.
+
+**Validation actually run this round.** Full `preflight.sh` — the documentation and source lints, the
+citation gate against all three bases, the **162-check** DSP suite and the **900-check** state suite —
+**rc=0**. The behavioural matrix on the running editor under `xvfb`, relinked against the objects that
+run had just built: **ALL PASS (0 failed)** — normal hover on and off; KI-025's one-sample exit,
+gradual exit and hidden-editor exit all reaching 0.000; all three overlays checked three ways each;
+the Bypass dim still leaving hover live; the 0.9.4 drop-down occlusion still holding. The idle counter
+re-measured on a freshly instrumented build of the current source: **0 passes/s** with the pointer
+outside, 102.6/s resting on a control, **0 passes/s** immediately after a hover — the previous round's
+numbers exactly, so the longer landing (0.83 s against 0.67 s at 60 Hz) still finishes well inside the
+harness's settle window and the S11/H15 saving is untouched. **No platform matrix, no pluginval run
+and no Level-5 audition were performed for this round, and none is claimed** — the automated evidence
+here is Linux-only on a synthetic display, exactly as the round below records.
+
+**MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-20**, scoped to the three review corrections in
+this round and to nothing else: (1) removing the step-based landing test from `stepVal` and keeping
+the distance-based one, (2) the `HANDOVER.md` status-row contradiction, and (3) the re-aimed
+`POSTMORTEMS.md` / in-comment / `PRIVACY.md` citations with the declaration handling above. It does
+**not** cover any per-platform or Level-5 validation, and it does **not** discharge the Level-5 item
+the round below still owes — that entry's "NOT GRANTED" status is unchanged and is deliberately left
+standing.
 
 **Overlay-occlusion and idle-latch round (2026-08-19): KI-024 and KI-025 closed. One shared cause
 with two different second halves, both fixed on evidence and both mutation-tested. No ADR: no
@@ -287,7 +412,7 @@ half that survives the next shift.
 **Unlike the `KNOWN_ISSUES.md` five, this one is caught by the gate, which is why it is declared.**
 `PRIVACY.md` still has exactly one `src/PluginEditor.cpp` citation, so the pair IS compared, the
 re-aim reads as drift, and `--fix` **reverted the correction on the first run** — measured, not
-predicted. `("PRIVACY.md", "src/PluginEditor.cpp:2002"): "createDirectory"` is therefore added to
+predicted. `("PRIVACY.md", "src/PluginEditor.cpp:2016"): "createDirectory"` is therefore added to
 `DELIBERATE_REAIMS`. It is not an inert exemption: `verify_reaim_targets` resolves the anchor against
 the live file every run, and mutating the substring to a value the code does not contain makes the
 run fail with `::error::` and exit 2 — checked by doing it, then reverting. A declaration turns the

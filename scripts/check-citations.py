@@ -522,7 +522,7 @@ DELIBERATE_REAIMS = {
     # re-aim reads as drift, and without this entry `--fix` reverts the correction
     # on every run. Measured, not assumed: `--fix` reverted it once before this
     # entry was written.
-    ("PRIVACY.md", "src/PluginEditor.cpp:2002"): "createDirectory",
+    ("PRIVACY.md", "src/PluginEditor.cpp:2016"): "createDirectory",
     # ---------------------------------------------------------------------
     # 2026-08-19, the same class in the three LEGAL documents, and the last one
     # this branch carries. EULA, PRIVACY and TRADEMARKS each assert where the

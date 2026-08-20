@@ -1046,7 +1046,7 @@ void AnamorphAudioProcessorEditor::refreshPopupShield()
     // returns are prefixed by `! mouseInside` (:1596, :1620), and with the cursor outside the editor
     // `over` is already false with or without cursorIsOverOpenPopup() -- so a change of answer can
     // never need a pass the gate is refusing to run. What it DOES buy is measured: microSettled is a
-    // MOTION latch (:1758), equally true with hovA parked at 0.0 and at 1.0, so a cursor that leaves
+    // MOTION latch (:1772), equally true with hovA parked at 0.0 and at 1.0, so a cursor that leaves
     // the editor inside one 16.7 ms sample seals the gate on a widget still at full brightness.
     // Opening a menu then drains that residue (measured 1.000 -> 0.022) where without this line it
     // stays lit (0.990 -> 0.990). That seal is a separate, pre-existing defect and this does not fix
@@ -1119,7 +1119,7 @@ bool AnamorphAudioProcessorEditor::cursorIsOverOpenPopup() const
 //     `dimOverlay` is correctly NOT an overlay here. The Bypass dim paints over the editor at 40 %
 //     and is `setInterceptsMouseClicks (false, false)` (:557), so every control under it stays live
 //     and stays the thing the pointer is on -- suppressing its hover would be a regression, not a
-//     fix. It is also the one whose bounds are NOT the full editor (`withTrimmedTop (46)`, :2078),
+//     fix. It is also the one whose bounds are NOT the full editor (`withTrimmedTop (46)`, :2178),
 //     which is why this tests containment rather than assuming the geometries match.
 //
 // `popupShield` is skipped, and that exclusion is the reason this is not simply "anything that eats
@@ -1692,17 +1692,31 @@ void AnamorphAudioProcessorEditor::stepMicroAnims (double dt)
         // SHORT -- an exponential ease never arrives, so `hovA` parked at ~0.014 and reported itself
         // settled. Invisible on its own, but "settled" is now half of the idle gate's seal test, and
         // a value that is settled-but-not-zero would keep the gate open for ever and undo the very
-        // optimisation this change has to preserve. So a step too small to be worth easing LANDS on
-        // the target instead: one final write, then `curr == target` returns false for good. The
-        // ease is unchanged everywhere it is visible -- only the last ~1.4 % is snapped, and only
-        // once per transition.
+        // optimisation this change has to preserve. The landing test that does it was ALREADY here:
+        // `|next - target| < 0.004f`. What had to go is the second test beside it, which measured
+        // the STEP (`|next - curr| < 0.0015f`) -- a step is proportional to dt, so on a short frame
+        // every step is small and that test read "barely moved" as "nearly finished", landing a fade
+        // that had barely begun. At dt == 0 it snapped every property of every widget in one pass,
+        // and dt == 0 is reachable: the vblank clamps `jlimit (0.0, 0.05, ...)` at the TOP only.
+        // The surviving test cannot do that, because |next - target| = |curr - target| * (1 - rate):
+        // a shorter frame drives (1 - rate) toward 1 and makes it STRICTER, never looser: the jump is
+        // under 0.004 by construction, from at most 0.0122 away (dt at the 50 ms clamp, fastest tau,
+        // 0.004 / (1 - rate); 0.004 exactly at dt == 0). It also makes the fade frame-rate
+        // independent -- 0.83 s on a 30, 60, 120 or 240 Hz display, where the step form ran 0.67 s at
+        // 60 Hz and 0.44 s at 240 (measured).
+        //
+        // Do NOT add a `next == curr -> return false` write-skip for the dt == 0 case. Returning
+        // false clears `changed`, hence `anyMotion`, hence `microSettled` -- and `anyLit` below
+        // deliberately does not count `onA`, so one zero-length frame during a host-automated toggle
+        // slide would seal the idle gate on a half-slid switch and freeze it there. Writing the
+        // unchanged value costs one repaint on a frame that has no duration, and only while a
+        // transition is in flight; an arrived property returns on the line above.
         auto stepVal = [&props] (const juce::Identifier& key, float target, float up, float down) -> bool
         {
             const float curr = (float) (double) props.getWithDefault (key, 0.0);
             if (juce::exactlyEqual (curr, target)) return false;    // already arrived; exact by design
             float next = curr + (target - curr) * (target > curr ? up : down);
-            if (std::abs (next - target) < 0.004f) next = target;
-            if (std::abs (next - curr) < 0.0015f) next = target;    // too small to ease: land it
+            if (std::abs (next - target) < 0.004f) next = target;   // last sliver of DISTANCE: land it
             props.set (key, juce::jlimit (0.0f, 1.0f, next));
             return true;
         };
