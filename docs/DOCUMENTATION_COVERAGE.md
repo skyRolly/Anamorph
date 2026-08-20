@@ -9,7 +9,8 @@ that documentation (Verified / Partially Verified / Unverified / Not Supported).
 Last updated: for the **0.9.4 change set** (2026-08-19, matching the CHANGELOG heading — re-dated
 from 2026-08-15 in the hover-occlusion round, which is the first user-visible change the version has
 taken since it was written) — the
-**stale-anchor correction** (first below), then the
+**tooltip investigation, no fix shipped** (first below), then the
+**stale-anchor correction**, then the
 **animation-landing round**, then the
 **overlay-occlusion and idle-latch round** (closing KI-024 and KI-025), then the
 **hover-occlusion round**, then the
@@ -67,6 +68,64 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**Tooltip investigation (2026-08-20): TWO fixes reverted and NO third one shipped. This entry
+exists because a measurement contradicted the report and the right thing to do was to stop, not to
+patch a third time.** The tree is back to the behaviour `origin/main` has; nothing user-visible
+changes in this change set and `CHANGELOG.md` is untouched.
+
+**What was reverted.** (1) The *anchor-while-inside-the-box* fix — it treated the pointer entering
+the box as "the box put a component under the pointer" and held the tip. Measured over 45 scripted
+gestures it took the failures from 6 to 3, i.e. it helped but did not close the case. (2) The
+*wait-for-the-pointer-to-rest* fix — it took the same 45 gestures to 0, but it changed dwell
+behaviour, which is out of bounds, and it kept a tip alive whenever the cursor sat inside a
+remembered rectangle, which is the "tooltips sometimes stay visible after leaving the control"
+regression that was reported against it. Both reverts are ordinary `git revert` commits; the
+reasoning is kept here rather than deleted with the code.
+
+**What was instrumented, and it was JUCE itself rather than this tree.** A temporary trace inside the
+pinned `juce_TooltipWindow.cpp` and `detail/juce_MouseInputSourceImpl.h` (diagnosis only — both files
+are byte-identical to the pin in this change set) logged, per 123 ms tick: the component under the
+pointer, the tip it yields, `tipChanged`, every `updatePosition` with the box's old and new
+rectangles, every `mouseEnter` on the box, and every `setPeer` / `setComponentUnderMouse` transition
+with the position that produced it. Every `displayTipInternal` additionally logged the component
+under the pointer **at that instant** beside the text being displayed.
+
+**The finding that stopped the work: across 122 tooltip displays — 45 scripted gestures over 9
+Settings controls, a confined random walk restricted to one control and its own box, and a
+two-minute unconstrained walk — the text displayed was NEVER anything but the tooltip of the
+component under the pointer at that instant. Zero mismatches.** That is consistent with the code
+path: `newTip` is `getTipFor(newComp)` computed in the same tick, and `newComp` is
+`findComponentAt (livePosition, lastPeer)` — geometry inside one peer plus a platform stacking test.
+No branch of it can return a component the pointer is not over.
+
+**Two transitions were mapped in detail because they were the obvious suspects, and both came out
+clean.** Walking 1 px per tick *without ever leaving the UI Scale combo*, into the strip its own box
+overlaps: the box is entered, `setPeer` switches to the box's peer, `componentUnderMouse` becomes the
+box itself, `mouseEnter` hides the tip, the peer is destroyed, `componentUnderMouse` re-resolves to
+the combo's label, and the box is re-placed — measured `614,599` → `375,586`, flipping sides as the
+cursor crossed the display centre, and carrying the **correct** text across the whole sequence. The
+stale-position re-resolve after the peer is destroyed uses the last pointer state rather than the
+live position, which is a real staleness of a pixel at this speed; it was traced and it never
+selected a different control.
+
+**So the only mechanism the evidence supports is the one the FIRST investigation named**: the box is
+placed 12-16 px from the cursor (`AnamorphLookAndFeel::getTooltipBounds`), so it lands on top of
+neighbouring controls — measured, the UI Scale box covers the Oversampling combo and its label — and
+aiming at the box therefore puts the pointer over whatever the box covers. Every foreign tip observed
+in every run was that control's, with the pointer measurably on it. The reporter states the pointer
+is not on the other control and does not cross one, which contradicts the measurement, and no
+reproduction matching that description has been produced here.
+
+**What is NOT claimed.** That the reporter is mistaken. The measurements are Linux/X11 on a synthetic
+display at one UI scale, driven through `ComponentPeer::handleMouseEvent`; a real window manager,
+a HiDPI scale factor, a different UI Scale setting or a host-owned parent window all change the
+geometry and the event ordering, and any of them could expose a transition this harness cannot
+produce. What is claimed is narrower and firmer: **on the evidence available, no state transition in
+the tooltip machine displays text belonging to a component the pointer is not over**, and a third
+patch built on a guess about the remaining possibilities would be the third patch built on a guess.
+
+**Sign-off status: NOT GRANTED for this round, and nothing is owed** — no behaviour changed.
 
 **Stale-anchor correction (2026-08-20): one number, in this file's own About-link entry.** The
 About-link round re-aimed the three `DELIBERATE_REAIMS` declarations onto the header line where
