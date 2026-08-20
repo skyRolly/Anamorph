@@ -9,7 +9,8 @@ that documentation (Verified / Partially Verified / Unverified / Not Supported).
 Last updated: for the **0.9.4 change set** (2026-08-19, matching the CHANGELOG heading — re-dated
 from 2026-08-15 in the hover-occlusion round, which is the first user-visible change the version has
 taken since it was written) — the
-**animation-landing round** (first below), then the
+**stale-anchor correction** (first below), then the
+**animation-landing round**, then the
 **overlay-occlusion and idle-latch round** (closing KI-024 and KI-025), then the
 **hover-occlusion round**, then the
 **shared-action-input round**, then the
@@ -66,6 +67,15 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**Stale-anchor correction (2026-08-20): one number, in this file's own About-link entry.** The
+About-link round re-aimed the three `DELIBERATE_REAIMS` declarations onto the header line where
+`aboutLink` is declared and updated the prose around them, but the sentence describing what
+`verify_reaim_targets` resolves still named the old `:362`. It now names `:382`, the line the
+declarations carry and the line `aboutLink` occupies in the current header — read to confirm, not
+shifted. One character; no declaration, no source file and no other document touched.
+**MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-20**, for that single correction and nothing
+else. No platform, pluginval or Level-5 validation was performed for it and none is claimed.
 
 **Animation-landing round (2026-08-20): one line deleted from `stepVal`, one handover
 self-contradiction, one mis-aimed post-mortem anchor. Three review corrections and nothing else. No
@@ -444,7 +454,7 @@ current tree, so the count guard does not fire, the pair IS compared, and the re
 Measured: before the entries were written the run reported all three `DRIFTED … -> :223`, and `--fix`
 would have dragged every one of them back. `("EULA.md" | "PRIVACY.md" | "TRADEMARKS.md",
 "src/PluginEditor.h:382"): "aboutLink"` now covers them, and the substring is what keeps that
-off-switch honest: `verify_reaim_targets` resolves `:362` against the live header every run, and
+off-switch honest: `verify_reaim_targets` resolves `:382` against the live header every run, and
 mutating one entry's substring to a value the line does not contain makes the run emit `::error::`
 and exit 2 — checked by doing it, then reverting. Re-running `--fix` afterwards leaves all three
 documents byte-identical.
