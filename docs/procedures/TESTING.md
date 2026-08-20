@@ -560,8 +560,20 @@ rather than deleted, because a gap that was real and is now covered is worth bei
     inside the swap window, `SIGKILL` in the window followed by recovery on the next run (including
     a next run that itself fails), staging location on a normal layout and on a `~/.vst3` symlinked
     to a second filesystem, uninstall after an interrupted install, and the coexistence warning —
-    each against a control run of the previous script that ends with nothing installed. What that
-    run does **not** cover, and a real machine must: that a DAW actually finds
+    each against a control run of the previous script that ends with nothing installed. *Re-verified
+    2026-08-20 against a stubbed payload* for the options and the staging guards brought over from
+    the sibling product: `--help`, `--user`/`--system` non-interactively, both flags together and an
+    unrecognised option each exiting 1, a repeated flag accepted, `--user` under root refused by
+    both scripts; a `TERM` inside the copy and inside each of the two rename windows leaving either
+    the previous plug-in or the new one in place with no scratch left behind; a symlinked and a
+    foreign-owned candidate together stopping the run with both paths named and nothing installed;
+    a group-writable candidate refused, left untouched and fallen through; a parked copy restored by
+    the next install, reported rather than skipped when its directory is no longer usable, kept by a
+    plain uninstall and removed only by `--discard-parked`; and a system-wide install as root
+    naming the per-user copy it coexists with. `INT` was delivered as `TERM` because a job
+    backgrounded by a non-interactive shell inherits `SIGINT` ignored — a property of the harness,
+    not of the script, whose three signal traps are identical. What those
+    runs do **not** cover, and a real machine must: that a DAW actually finds
     `~/.vst3/Anamorph.vst3` after a per-user install.
   - **Windows installer:** unchanged in 0.9.3 beyond the two 0.9.2 casing corrections.
   **Could infrastructure close it:** yes, and cheaply for macOS — `installer -pkg … -target /`

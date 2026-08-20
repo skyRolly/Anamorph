@@ -82,6 +82,43 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   asserted per bundle. [Verified]
 
 ### Changed
+- **The Linux installer and uninstaller can now be told what to do instead of asking.**
+  `./install.sh --user` and `./install.sh --system` answer the question the script otherwise puts
+  on screen, which is the only way to choose when there is no terminal to ask on — a piped or
+  scripted run previously took the per-user default with no way to say otherwise, and the only
+  non-interactive route to a system-wide install was running the whole script under `sudo`.
+  `./uninstall.sh` takes the same two options. Passing both together is refused rather than
+  silently resolved (they differ in destination *and* in privilege), an unrecognised option stops
+  the run instead of being ignored, and `--user` is refused when the script is running as root,
+  because which home directory `$HOME` names under `sudo` depends on the sudoers configuration and
+  the install would land somewhere unpredictable. `-h` prints the usage. **With no options nothing
+  changes**: an interactive run still asks and defaults to your own account, a run with no terminal
+  still installs for the current user, and `sudo ./install.sh` still installs system-wide without
+  asking. Linux only. [Verified]
+- **A copy of your previous plug-in left behind by an interrupted install is now kept rather than
+  deleted, and the installer will not stage into a folder it cannot vouch for.** If an install is
+  stopped in the moment between setting the old version aside and putting the new one in place, the
+  old one is parked in the installer's own scratch folder and `./install.sh` puts it back — that is
+  the only thing that does. `./uninstall.sh` used to sweep it away as scratch; it now keeps it,
+  says where it is and prints the command that restores it, and deletes it only if you ask with
+  `./uninstall.sh --discard-parked`. Separately, the folder used to assemble the new version is now
+  accepted only when it is a real directory owned by the account doing the install and not writable
+  by anyone else — a symlink, someone else's directory or a world-writable one is refused by name
+  with the paths to inspect, rather than used. An install that cannot find a folder it trusts stops
+  without having changed anything. Linux only. [Verified]
+- **The Linux build now states which systems it runs on, and can no longer raise that bar
+  unnoticed.** The shipped Linux VST3 and Standalone record the glibc/libstdc++ versions of the
+  machine they were linked on, and a distribution older than those cannot load them at all — the
+  plug-in does not appear in your host, rather than appearing and misbehaving. That floor had never
+  been chosen: it was whatever the CI image happened to be, and it rose retroactively when that
+  image moved. Measured on the binaries this version ships: **GLIBC_2.38 and GLIBCXX_3.4.31 —
+  Ubuntu 23.10 / Debian 13 / GCC 13 or newer. Ubuntu 22.04 LTS ships glibc 2.35, so Anamorph does
+  not load there.** Nothing about the plug-in itself changed; what changed is that the requirement
+  is now written down (`docs/architecture/COMPATIBILITY_MATRIX.md` §"Linux runtime ABI floor") and
+  asserted on every build against the exact stripped bytes you receive, so a future toolchain move
+  that drops more systems fails the build rather than a user's DAW. Lowering the floor needs an
+  older toolchain or a sysroot and is a separate decision that has not been taken; tracked as
+  **KI-023**. Windows and macOS are unaffected. [Verified]
 - **Building Anamorph from source now needs a C++23 compiler** (was C++17). The project compiles
   at `CMAKE_CXX_STANDARD 23` with compiler extensions still off; CMake ≥ 3.22 and the JUCE 9.0.1
   pin are unchanged, and the released binaries are unaffected — this changes the build

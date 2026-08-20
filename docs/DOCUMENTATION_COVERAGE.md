@@ -9,7 +9,8 @@ that documentation (Verified / Partially Verified / Unverified / Not Supported).
 Last updated: for the **0.9.4 change set** (2026-08-20, matching the CHANGELOG heading — re-dated
 from 2026-08-15 in the hover-occlusion round and again on 2026-08-20, each time because the version
 took a further user-visible change) — the
-**tooltip source-of-truth round** (first below), then the
+**Linux installer migration and changelog-completeness audit** (first below), then the
+**tooltip source-of-truth round**, then the
 **tooltip investigation that shipped no fix**, then the
 **stale-anchor correction**, then the
 **animation-landing round**, then the
@@ -69,6 +70,110 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**Linux installer migration and changelog-completeness audit (2026-08-20): the sibling product's
+`install.sh` / `uninstall.sh` hardening brought into this repository, and the whole post-0.9.3
+change set re-read for user-visible items the CHANGELOG never received. No ADR: nothing is decided
+or reopened — the two-mode installer is this product's own design (0.9.3), and what moved is a
+strict superset of its behaviour with the defaults untouched.**
+
+**What moved, and why each half is user-visible.** Three groups, all Linux-only:
+
+  * **Explicit mode selection.** `--user` / `--system` on both scripts, `--discard-parked` on the
+    uninstaller, `-h` on both. The prompt is gated on `[ -t 0 ]`, so before this a piped or
+    provisioned run took the per-user default with no way to say otherwise, and the only
+    non-interactive route to a system-wide install was handing the WHOLE script to root — a
+    different transaction from answering `2`, which elevates one operation at a time through
+    `priv`. A contradictory pair is refused rather than resolved (they differ in destination *and*
+    in privilege), an unrecognised option stops the run, `--user` under root is refused because
+    `$HOME` under `sudo` depends on the sudoers configuration, and a repeated flag is not a
+    conflict.
+  * **The staging directory is now trusted or refused, never assumed.** A candidate is adopted only
+    when it is not a symlink, is owned by the identity whose writes land in the destination, and is
+    writable by nobody else; one this run creates is `chmod 700`ed explicitly so the next run can
+    adopt what this one made whatever the umask was. `choose_stage_dir` now RETURNS non-zero
+    instead of printing a candidate it has just judged unusable, and both call sites check it — a
+    fresh install is refused too, because staging is where the payload is assembled before the
+    rename that publishes it. `reconcile`'s tests are elevated (`$SUDO test -d`), which is what
+    lets the system-wide path — running as the invoking user — see the parked bundle inside a
+    root-owned 0700 directory at all.
+  * **A parked previous version is kept by an uninstall.** An install stopped inside the two-rename
+    window parks the working plug-in as `Anamorph.vst3.prev`; `install.sh` is the only thing that
+    puts it back. The uninstaller used to sweep it as scratch. It now keeps it, names it on
+    **stdout**, and prints the MODE-CORRECT restore command — a plain `./install.sh` defaults to
+    per-user and would never look in a system-wide staging directory. `--discard-parked` is the
+    opt-in that deletes it.
+
+**What deliberately did NOT move: the sibling's commentary.** Those files carry long
+incident-narrative comments — why `/var/tmp` was removed, what a wrong `-e` cost, which run
+reproduced which failure. They are correct and they are not for this audience: `install.sh` and
+`uninstall.sh` ship to USERS inside the Linux zip, and this repository's copies are written for the
+person running them. The reasoning that has to survive lives in `docs/procedures/PACKAGING.md` and
+in this file, which is where a maintainer looks; the scripts keep their operator-facing voice. This
+is a deliberate divergence from the sibling, recorded here so a later reader does not "restore" it.
+
+**The lint coupling this forced, and the note that predicted it.** `scripts/check-portability.py`
+holds installer and uninstaller to the same scratch-name set. Its `SCRATCH_NAME` regex omitted
+`\.probe` on an explicit premise — *this* repository's uninstaller removed every staging directory
+with one unconditional `rm -rf`, so nothing inside one could outlive it — and the comment ended:
+"IF this repository's uninstaller ever gains a path that preserves a staging directory, add
+`|\.probe\b` back in the SAME change." `--discard-parked` IS that path: the keep branch leaves the
+directory standing, so the `.probe` hard link is now the one scratch file that can survive an
+uninstall, and it is swept there by name. The regex gains `|\.probe\b` in this change, as
+instructed; `.probe` does not match inside `.anamorph-probe` (the preceding character is a hyphen),
+and the gate now reports the four names agreeing rather than three. The 120-case self-test is
+unchanged and passes.
+
+**Verified by running the scripts, not by reading them** (2026-08-20, stubbed payload, unprivileged
+account for the per-user paths and root for the system-wide one; recorded in
+`docs/procedures/TESTING.md`): `--help`; `--user`/`--system` non-interactively; both flags together
+and an unrecognised option each exiting 1; a repeated flag accepted; `--user` under root refused by
+both scripts; install → upgrade → uninstall round trips with **zero residue** each time; `TERM`
+inside the copy and inside each of the two rename windows leaving either the previous plug-in or
+the new one in place, never neither; a symlinked plus a foreign-owned candidate stopping the run
+with both paths named and NOTHING installed; a group-writable candidate refused, left untouched at
+its own mode, and fallen through to the second candidate; a parked copy restored by the next
+install, REPORTED rather than skipped when its directory is no longer usable, kept by a plain
+uninstall and removed only by `--discard-parked` (which also takes the `.probe`); and a system-wide
+install as root naming the per-user copy it coexists with, resolved through `SUDO_USER`. One
+honest limit: `INT` was delivered as `TERM`, because a job backgrounded by a non-interactive shell
+inherits `SIGINT` **ignored** — a property of the harness, not of the script, whose three signal
+traps are the same line.
+
+**The changelog-completeness half, and its one finding.** The audit ran over `a741aa9..HEAD` — the
+whole post-0.9.3 range, 95 non-merge commits — reading the diff of the user-visible surface
+(`src/`, `packaging/`, `CMakeLists.txt`, the release workflow) rather than the commit subjects. Most
+of that range is infrastructure that CHANGELOG_POLICY rule 3 excludes by construction: the citation
+and portability lints, ADR-0029's realtime enforcement, the Clang pin, the fuzz/bench/LSan lanes,
+the action SHA pinning. Three classes were checked and cleared rather than assumed:
+
+  * The four `-Wimplicit-int-float-conversion` fixes touch `VelvetNoise.cpp`, `LookAndFeel.cpp` and
+    the engine, and are **explicit casts of the same values** — no behaviour to report.
+  * `-Wl,-object_path_lto` and the dSYM work change where a temporary is written; the shipped bytes
+    are untouched and no release asset was added (`release.yml` is unchanged across the range).
+  * No macOS deployment target and no LTO setting changed — `juce_recommended_lto_flags` predates
+    this range.
+
+**One entry was genuinely missing: the Linux runtime ABI floor.** The shipped Linux binaries
+require **GLIBC_2.38 and GLIBCXX_3.4.31** — Ubuntu 23.10 / Debian 13 / GCC 13 — and therefore do
+**not load on Ubuntu 22.04 LTS** (glibc 2.35). That is a system requirement a Linux user must know
+before downloading, it was measured and gated during this version
+(`scripts/check-linux-abi.py`, KI-023, COMPATIBILITY_MATRIX §"Linux runtime ABI floor"), and the
+CHANGELOG said nothing about it. Added under `[0.9.4] Changed`, naming the floor, the distributions
+it excludes, and that lowering it has not been decided. Re-measured here against the local Release
+build before the entry was written: `GLIBC_2.38, GLIBCXX_3.4.31`, matching the declared constant
+exactly rather than being copied from the commit message.
+
+**Documentation synced with the code, per the lifecycle policy.**
+`docs/procedures/PACKAGING.md` had two statements the migration falsified — "Two invocations skip
+the prompt" (now three) and "an interrupted install leaves nothing that survives a deliberate
+uninstall" (now has one deliberate exception) — both corrected in place, with the trust rules for
+the two staging candidates written down beside them. `docs/REPOSITORY_MAP.md` names the new options
+on the installer row. `INSTALL.txt`, which ships to users, documents them bilingually in the file's
+existing voice, including that `--system` with no terminal needs root or cached `sudo` because there
+is nothing to prompt on. Full `preflight.sh` green afterwards: seven checker self-tests, the
+citation gate across all three bases with no drift, the 162-check DSP suite and the 911-check state
+suite, plus the real ABI gate against the local build.
 
 **Tooltip source-of-truth round (2026-08-20): the third attempt at this defect, and the first with
 a deterministic reproduction. The two earlier attempts are reverted (they are the two entries below
