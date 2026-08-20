@@ -31,11 +31,8 @@ and were not covered by that fix, and **KI-025**, the micro-animation idle gate 
 control that was still lit. **Both were fixed in the same version (2026-08-19) and are removed from
 this file per the fixed-item rule above** — the overlay case by a general per-widget occlusion test
 that derives what counts as an overlay instead of listing the three, and the idle gate by giving its
-"nothing can move" condition the second half it was missing. The same version's **tooltip-dwell
-round** (2026-08-20) then added **KI-026**: a control lying under the tooltip box cannot show its
-own hint while the pointer is inside the box — the deliberate half of the fix that stops a hint
-changing to a control the pointer only crossed. Net for 0.9.4 so far: **three issues added and two
-of them removed**, plus KI-023.
+"nothing can move" condition the second half it was missing. Net for 0.9.4 so far: **two issues
+added and the same two removed**, plus KI-023.
 **Drift corrected in the same round (`DOCUMENTATION_LIFECYCLE_POLICY` C6):** the summary table
 below stopped at KI-022, so **KI-023 had a full entry but no table row** since it was filed on
 2026-08-18. The row is added here alongside the two new ones; no other content changed.
@@ -112,7 +109,6 @@ JUCE 8.0.14; before that 0.8.8 for PR #54).
 | KI-021 | **Linux**: a per-user install (the 0.9.3 default) does not remove an existing **system-wide** one, so both are on the DAW's scan path and its scan order decides which version loads — an update can look as if it did not apply | Low | Confirmed, **deliberate**: removing the system copy needs the elevation the per-user mode exists to avoid. The installer now **warns** when it finds one; removal is one `sudo ./uninstall.sh` |
 | KI-022 | **macOS**: components are non-relocatable since 0.9.3 (INC-012), so a bundle the user deliberately moved — to `~/Applications`, or a plug-in kept under `~/Library/Audio/Plug-Ins/…` — is left where it is and a fresh copy is installed at the standard location, leaving two copies with the same bundle identifier | Low | Confirmed, **deliberate trade** for INC-012: following a moved copy is exactly the behaviour that let an install silently write nowhere useful. Documented in the installer's `INSTALL.txt`; removal is manual |
 | KI-023 | **Linux**: the shipped binaries record the CI image's glibc/libstdc++ floor (measured GLIBC_2.38 / GLIBCXX_3.4.31), so they do not load at all on older distributions — Ubuntu 22.04 LTS included | Medium | Confirmed, **measured**; the floor was never chosen and is now asserted on every push so it cannot rise unnoticed. Lowering it is a release-topology decision, not taken |
-| KI-026 | A control lying **under the tooltip box** cannot show its own hint while the pointer is inside the box, and a hint the pointer has just arrived at appears one tooltip tick (~123 ms) later than before, because a control must be the one the pointer came to REST on before it can take the hint | Low | Confirmed, **deliberate**: both are the cost of stopping a control the pointer merely crossed from claiming the hint mid-move (measured 6 failing gestures in 45 before, 0 after). Headless regression coverage in `AnamorphStateTests` |
 
 ---
 
@@ -292,7 +288,7 @@ the JUCE focus/peer path REAPER takes).
   workaround for the *open* path: `focusSaveNameField()` grabs keyboard focus and, if the grab does
   not stick (the preset-menu's desktop window still owns OS focus at the callback instant, and JUCE
   aborts an internal focus move while `! peer->isFocused()`), it retries on later message-loop
-  passes up to four times (src/PluginEditor.cpp:2084-2092; declared src/PluginEditor.h:265). This shipped in
+  passes up to four times (src/PluginEditor.cpp:2084-2092; declared src/PluginEditor.h:185). This shipped in
   the v0.8.9 CHANGELOG "Fixed" entry ("The Save Preset name field reliably receives typing — Space
   included") and was **validated headless end-to-end**, i.e. against the JUCE wrapper, not against
   REAPER. The retry loop runs **only on dialog open** (`showSavePreset(true)` → `focusSaveNameField(4)`);
@@ -752,44 +748,5 @@ does not load there.**
   the same change and name the systems it drops.
 - **Evidence [Verified]:** scripts/check-linux-abi.py (the declared floor and the gate);
   `docs/architecture/COMPATIBILITY_MATRIX.md` §"Linux runtime ABI floor".
-
-
-## KI-026 — a control under the tooltip box cannot show its own hint, and a new hint waits for the pointer to stop
-
-Both halves of this entry are the price of the 0.9.4 tooltip-dwell fix, and both are deliberate.
-
-JUCE picks the hint from `Desktop::getMainMouseSource().getComponentUnderMouse()` on a 123 ms tick,
-and once a hint is on screen — or was within the last 500 ms — it adopts a new component's hint
-**with no dwell at all** (`juce_TooltipWindow.cpp:242-249`). The 600 ms delay that normally stops a
-control you brush past from popping its hint does not apply in that window. Since the box is placed
-12-16 px from the cursor (`AnamorphLookAndFeel::getTooltipBounds`), reaching it means crossing
-whatever lies between, with the window open the whole way — so each of those controls owned the
-hint for a tick or two. 0.9.4 requires a control to be the one the pointer came to **rest** on
-before it can take the hint, and treats the box's own rectangle as a place where the pointer cannot
-be resting on what is underneath.
-
-- **Consequence 1 — a covered control cannot be hovered through the box.** While the pointer is
-  inside the box's rectangle the hint stays the one the pointer set off with. The control underneath
-  is still reachable from any direction that does not cross the box, and leaving the box and coming
-  back to it restores normal behaviour.
-- **Consequence 2 — a new hint waits for the pointer to stop.** Moving deliberately from one control
-  to another now shows the new hint one tooltip tick (~123 ms) after the pointer comes to rest,
-  rather than while it is still travelling. "At rest" carries a 2 px tolerance so that a hand
-  holding still counts as still.
-- **Why it is not fixed here:** the two gestures are the same gesture. "The pointer is heading for
-  the hint box" and "the pointer is heading for the control the box covers" put it at identical
-  positions over identical components; nothing in the event stream separates them. Anything that
-  lets the covered control claim the hint necessarily lets a crossed control claim it too — which is
-  the defect.
-- **One residual inside the residual:** the rectangle that is anchored is the one the pointer set
-  off toward. If the box steps aside and the pointer then chases it to its NEW position, that hop is
-  not anchored and the control under the new position can take the hint once the pointer rests
-  there. Chasing a hint box across successive hops is not a gesture the report describes and no
-  further state is spent on it.
-- **Evidence [Verified]:** `AnamorphAudioProcessorEditor`'s `TooltipAnchor` in `src/PluginEditor.h`
-  and its use in `GatedTooltipWindow::getTipFor`; headless regression coverage in
-  `tests/state_tests.cpp` ("Tooltip anchor"), mutation-tested in both directions. Behavioural
-  measurement on the running editor under `xvfb`: 45 gestures over 9 Settings controls, **6 wrong
-  hints before, 0 after** — see `docs/DOCUMENTATION_COVERAGE.md`, tooltip-dwell round.
 
 

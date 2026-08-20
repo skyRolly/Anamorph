@@ -6,11 +6,10 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.4 change set** (2026-08-20, matching the CHANGELOG heading — re-dated
-from 2026-08-15 in the hover-occlusion round and again here, each time because the version took a
-further user-visible change) — the
-**tooltip-dwell round** (first below), then the
-**stale-anchor correction**, then the
+Last updated: for the **0.9.4 change set** (2026-08-19, matching the CHANGELOG heading — re-dated
+from 2026-08-15 in the hover-occlusion round, which is the first user-visible change the version has
+taken since it was written) — the
+**stale-anchor correction** (first below), then the
 **animation-landing round**, then the
 **overlay-occlusion and idle-latch round** (closing KI-024 and KI-025), then the
 **hover-occlusion round**, then the
@@ -68,86 +67,6 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
-
-**Tooltip-dwell round (2026-08-20): a hint could become a neighbouring control's while the box
-moved out of the way. The round BEFORE this one misdiagnosed it, shipped a fix that measurably did
-not close it, and that fix is reverted here — the correction is recorded below rather than quietly
-overwritten. No ADR: no decision is made or reopened.**
-
-**The retracted explanation, and how it was retracted.** The previous round concluded that "moving
-the pointer onto the tooltip is geometrically moving onto whatever control the box covers, so JUCE
-correctly returns that control's tip", and anchored the tip while the cursor sat inside the box's
-rectangle. That is true of a pointer PARKED on a covered control, and it is not what the report
-described: the reporter said the wrong text appears *briefly*, during the move, and that one more
-pixel puts the right one back. A parked pointer does not behave that way. Re-measured with the
-gesture walked 1 px per tick instead of jumped: **6 of 45 gestures wrong on the base tree, 3 of 45
-still wrong with the previous fix applied.** The previous fix is reverted in this change set, and the
-sentence above is retracted rather than amended.
-
-**The confirmed cause is the DWELL, not the geometry — and it was confirmed by instrumenting JUCE
-itself rather than by reading it.** A temporary trace inside the pinned `juce_TooltipWindow.cpp`
-(diagnosis only; the file is byte-identical to the pin in this change set) logged every tick's
-`newComp`, `newTip`, `tipChanged`, and every `displayTipInternal` alongside the component actually
-under the pointer at that instant. Across 76 displays and a two-minute random walk, the text shown
-**always** matched the component under the pointer — **0 content mismatches**. So nothing stale is
-being painted, and the answer to "which component is providing the wrong text" is: the one the
-pointer is genuinely crossing at that tick.
-
-**What makes that a defect rather than tooltip physics is the missing dwell.** JUCE adopts a new
-component's tip *immediately* whenever a tip is on screen or was within the last 500 ms
-(`if (isVisible() || now < lastHideTime + 500)`, `juce_TooltipWindow.cpp:242-249`). The 600 ms delay
-that normally stops a control you brush past from popping its hint is skipped in that window. The box
-is placed 12-16 px from the cursor (`AnamorphLookAndFeel::getTooltipBounds`), so reaching it means
-crossing whatever lies between, and the pointer is inside the 500 ms window the entire way. Traced
-tick by tick on the running editor, walking from the Tooltips toggle to its own box: the Vectorscope
-Persist slider owns the tip for one or two ticks in transit, then the original returns. That is the
-report, exactly.
-
-**The fix is two rules, and each was measured to be necessary.** (1) **In transit nothing new is
-adopted** — a tip that is up stays up, a tip that is down stays down, and the control being crossed
-takes neither; adoption waits for the pointer to be at rest, which is what the 600 ms delay means and
-what the 500 ms window throws away. (2) **Inside the box's own rectangle the tip stays the one the
-pointer arrived with**, because coming to rest inside the box is "at rest" and rule (1) alone would
-let the covered control claim it. Mutation-tested separately on the 45-gesture matrix: **rule (1)
-removed → 2 wrong, rule (2) removed → 6 wrong (the untouched baseline), both present → 0 wrong.**
-
-**Why the previous attempt failed is now precisely known, and it is not a matter of degree.** It
-cleared its remembered rectangle the moment the tip hid, and its remembered tip the moment an empty
-answer came back. The real gesture crosses a gap where nothing owns a tooltip — between the control
-and the box — so both were already cleared by the time the pointer arrived. It worked only for a
-pointer teleported straight from the control into the box, which is what the probe of that round did.
-Here the rectangle and the tip deliberately OUTLIVE both events.
-
-**The policy is a pure value type, which is what makes it regression-testable at all.**
-`TooltipAnchor` takes a cursor position and the tip JUCE would naturally return, and answers with the
-tip that belongs on screen. No components, no JUCE state, no display — so the whole state machine is
-driven tick by tick in `AnamorphStateTests` ("Tooltip anchor", **19 checks**, suite 900 → 919). The
-test is itself mutation-tested: removing rule (1) fails 5 of its checks, removing rule (2) fails 4.
-That is the first behavioural half of an editor defect in this project to land with committed,
-displayless coverage rather than a disclosure — `procedures/TESTING.md` §"Gaps in the automated
-coverage" is updated to say so, and to keep the part that genuinely needs a pointer where it belongs.
-
-**Measured on the running editor under `xvfb`, the gesture the report describes.** 9 Settings
-controls x a 3x3 grid of targets inside each one's own hint box, walking 1 px per tick from the
-control to the target and holding: **45 gestures, 6 wrong hints before, 0 after.** Repositioning is
-preserved and was checked separately: moving onto the box still moves it (measured `654,595` →
-`459,585`) and it now carries the original text across the move.
-
-**The trade is filed as KI-026**, both halves of it: a control under the box cannot show its own hint
-until the pointer leaves the box, and a hint the pointer has just arrived at appears one tooltip tick
-(~123 ms) later than before, once the pointer stops. The two gestures the first half conflates are
-the same gesture — identical position, identical component — so anything that lets the covered
-control claim the hint lets a crossed control claim it too, which is the defect. A residual is
-recorded inside that entry: only the rectangle the pointer set off toward is anchored, so chasing the
-box across successive hops eventually adopts.
-
-**Version.** The fix lands in **0.9.4** and the CHANGELOG heading is re-dated **2026-08-20**.
-`HANDOVER.md`, `KNOWN_ISSUES.md` and `procedures/TESTING.md` are synced in this change set.
-
-**Sign-off status: NOT GRANTED for this round.** No maintainer confirmation was given for it and
-none is claimed. What is owed is the same Level-5 check the earlier editor rounds record — the
-behavioural evidence here is Linux-only on a synthetic display, though the policy itself is now
-covered headlessly on every platform the suite runs on.
 
 **Stale-anchor correction (2026-08-20): one number, in this file's own About-link entry.** The
 About-link round re-aimed the three `DELIBERATE_REAIMS` declarations onto the header line where
@@ -511,10 +430,10 @@ drift check off for its anchor, so the aim check is the thing that keeps it hone
 
 **Reported and deliberately NOT corrected — the About-link anchor in the three legal documents.**
 `EULA.md`, `PRIVACY.md` and `TRADEMARKS.md` cite where the product's one outbound hyperlink is
-declared, and `--fix` moved all three from `src/PluginEditor.h:300` to `:223` in this change set.
+declared, and `--fix` moved all three from `src/PluginEditor.h:220` to `:223` in this change set.
 That re-anchor is mechanically correct and **preserves a pre-existing mistake**: at the merge base
 `:213` already read `return juce::TooltipWindow::getTipFor (c);`, and `:223` reads the identical
-line today, while `aboutLink` actually lives at `src/PluginEditor.h:478`. So the rot predates this
+line today, while `aboutLink` actually lives at `src/PluginEditor.h:382`. So the rot predates this
 change and was faithfully carried, not created by it — precisely the failure mode
 `check-citations.py`'s own header describes ("it CANNOT tell you a citation was aimed at the wrong
 code to begin with… and it does so INVISIBLY, in a DRIFTED line that reads like a repair"). It is
@@ -524,7 +443,7 @@ nothing to do with hover; recording it here is what stops the paragraph above re
 three anchors were verified correct.
 
 **NOW CLOSED (2026-08-19), as its own standalone change.** The three documents cite
-**`src/PluginEditor.h:478`**, where `aboutLink` is actually declared, instead of `:223` — which is
+**`src/PluginEditor.h:382`**, where `aboutLink` is actually declared, instead of `:223` — which is
 `return juce::TooltipWindow::getTipFor (c);` inside `GatedTooltipWindow`, the line `--fix` had
 carried the mis-aim onto from the merge base's `:213`. Only the number changed in each document; no
 wording, formatting or meaning was touched, and the correction is one anchor per file.
@@ -534,7 +453,7 @@ the three documents holds **exactly one** `src/PluginEditor.h` citation in both 
 current tree, so the count guard does not fire, the pair IS compared, and the re-aim reads as drift.
 Measured: before the entries were written the run reported all three `DRIFTED … -> :223`, and `--fix`
 would have dragged every one of them back. `("EULA.md" | "PRIVACY.md" | "TRADEMARKS.md",
-"src/PluginEditor.h:478"): "aboutLink"` now covers them, and the substring is what keeps that
+"src/PluginEditor.h:382"): "aboutLink"` now covers them, and the substring is what keeps that
 off-switch honest: `verify_reaim_targets` resolves `:382` against the live header every run, and
 mutating one entry's substring to a value the line does not contain makes the run emit `::error::`
 and exit 2 — checked by doing it, then reverting. Re-running `--fix` afterwards leaves all three

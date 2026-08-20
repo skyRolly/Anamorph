@@ -38,7 +38,6 @@
 // ============================================================================
 
 #include "PluginProcessor.h"
-#include "PluginEditor.h"   // TooltipAnchor -- a pure value type, no editor is instantiated
 
 #include <cmath>
 #include <cstdio>
@@ -1493,111 +1492,6 @@ static void testWrapperProcessBlockAudioPath()
 }
 
 // ---------------------------------------------------------------------------
-// ============================================================================
-//  Tooltip anchor -- which tooltip text belongs on screen this tick.
-//
-//  Regression net for the 0.9.4 defect "the tooltip text briefly becomes a
-//  neighbouring control's while the box repositions". The mechanism is JUCE's:
-//  once a tip is up, or was up within the last 500 ms, a new component's tip is
-//  adopted with NO dwell (juce_TooltipWindow.cpp:242-249), so every control the
-//  pointer crosses on its way to the box claims the tip for a tick or two.
-//
-//  AnamorphAudioProcessorEditor::TooltipAnchor is a pure value type precisely so
-//  this can be driven here, with no display and no editor: the sequence below is
-//  the reported gesture, tick by tick, in the geometry it was measured in.
-// ============================================================================
-static void testTooltipAnchor()
-{
-    std::printf ("Tooltip anchor: the reported gesture, tick by tick\n");
-
-    using Anchor = TooltipAnchor;
-    const juce::String tipA = "Show these hover hints on every control.";
-    const juce::String tipB = "Vectorscope afterglow length";
-    const juce::Rectangle<int> box { 517, 689, 113, 39 };   // measured placement for tipA
-
-    // ---- the gesture the report describes -------------------------------------------------
-    {
-        Anchor a;
-        // 1. at rest on control A: its tip is adopted and the box is placed
-        a.answer ({ 642, 736 }, tipA);
-        check (a.answer ({ 642, 736 }, tipA) == tipA, "at rest on a control, its own tip is shown");
-        a.boxPlacedAt (box);
-
-        // 2. setting off for the box, still on A
-        check (a.answer ({ 640, 730 }, tipA) == tipA, "moving within the control keeps its tip");
-
-        // 3. crossing the gap between the control and the box: nothing owns a tip there
-        check (a.answer ({ 636, 720 }, {}).isEmpty(), "the gap drops the tip, exactly as before");
-
-        // 4. IN TRANSIT across a neighbouring control -- the defect this test exists for
-        check (a.answer ({ 634, 714 }, tipB).isEmpty(),
-               "a control merely crossed on the way does NOT claim the tip");
-        check (a.answer ({ 632, 710 }, tipB).isEmpty(),
-               "still crossing it: still no tip");
-
-        // 5. reaching the box: the tip the pointer set off with comes back
-        check (a.answer ({ 600, 700 }, tipB) == tipA,
-               "inside the box the ORIGINAL tip is restored, not the covered control's");
-
-        // 6. at rest inside the box, over the covered control
-        check (a.answer ({ 600, 700 }, tipB) == tipA, "at rest inside the box it stays the original");
-        check (a.answer ({ 599, 700 }, tipB) == tipA, "a one-pixel nudge inside the box does not swap it");
-    }
-
-    // ---- the behaviour that must NOT regress ----------------------------------------------
-    {
-        Anchor a;
-        a.answer ({ 100, 100 }, tipA);
-        check (a.answer ({ 100, 100 }, tipA) == tipA, "control A at rest");
-        // a deliberate move to another control, then a stop, still adopts B
-        check (a.answer ({ 200, 200 }, tipB) == tipA, "while still moving, B has not claimed it yet");
-        check (a.answer ({ 200, 200 }, tipB) == tipB, "coming to rest on B adopts B's tip");
-    }
-    {
-        Anchor a;                                   // leaving a control still dismisses
-        a.answer ({ 100, 100 }, tipA);
-        a.answer ({ 100, 100 }, tipA);
-        check (a.answer ({ 160, 160 }, {}).isEmpty(), "moving off a control drops its tip");
-    }
-    {
-        Anchor a;                                   // the rest tolerance is a tolerance, not zero
-        a.answer ({ 100, 100 }, tipA);
-        check (a.answer ({ 101, 101 }, tipA) == tipA, "a pixel of hand jitter still counts as at rest");
-        check (a.answer ({ 130, 130 }, tipB) == tipA, "a real move does not");
-    }
-    {
-        Anchor a;                                   // a new deliberate hover retires the old box
-        a.answer ({ 642, 736 }, tipA);
-        a.answer ({ 642, 736 }, tipA);
-        a.boxPlacedAt (box);
-        a.answer ({ 300, 300 }, tipB);              // moving
-        check (a.answer ({ 300, 300 }, tipB) == tipB, "at rest on a new control adopts it");
-        check (a.answer (box.getCentre(), tipB) == tipB,
-               "the retired box rectangle no longer anchors anything");
-    }
-    {
-        Anchor a;                                   // the box stepping aside must not re-arm
-        a.answer ({ 642, 736 }, tipA);
-        a.answer ({ 642, 736 }, tipA);
-        a.boxPlacedAt (box);
-        check (a.answer (box.getCentre(), tipB) == tipA, "inside the box");
-        a.boxPlacedAt ({ 200, 200, 113, 39 });      // JUCE re-places it away from the cursor
-        check (a.answer (box.getCentre(), tipB) == tipA,
-               "the moved-aside rectangle does not replace the one under the cursor");
-    }
-    {
-        Anchor a;                                   // reset() really clears it (the off-switch)
-        a.answer ({ 642, 736 }, tipA);
-        a.answer ({ 642, 736 }, tipA);
-        a.boxPlacedAt (box);
-        a.reset();
-        check (a.answer (box.getCentre(), tipB).isEmpty(),
-               "after reset the first answer at rest is the natural one, not a stale anchor");
-    }
-
-    std::printf ("\n");
-}
-
 int main (int argc, char* argv[])
 {
     juce::ScopedJuceInitialiser_GUI juceInit; // MessageManager for APVTS/processor on this thread
@@ -1626,7 +1520,6 @@ int main (int argc, char* argv[])
     testFactoryPresetIdIntegrity();
     testPresetIndicatorIdentityAcrossRestore();
     testWrapperProcessBlockAudioPath();
-    testTooltipAnchor();
 
     std::printf ("\n%d checks, %d failure(s)\n", checks, failures);
     return failures == 0 ? 0 : 1;

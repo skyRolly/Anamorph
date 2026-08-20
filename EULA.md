@@ -178,7 +178,7 @@ been chosen, and none is asserted here.*
 
 *`[OWNER/LEGAL DECISION]` — no legal or licensing contact address is recorded in this repository.
 The only contact detail present anywhere in the product is the About screen's link to
-`https://www.rolly.tech` (`src/PluginEditor.h:478`).*
+`https://www.rolly.tech` (`src/PluginEditor.h:382`).*
 
 ---
 
