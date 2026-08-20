@@ -6,11 +6,10 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.4 change set** (2026-08-20, matching the CHANGELOG heading — re-dated
-from 2026-08-15 in the hover-occlusion round and again here, each time because the version took a
-further user-visible change) — the
-**tooltip-anchor round** (first below), then the
-**stale-anchor correction**, then the
+Last updated: for the **0.9.4 change set** (2026-08-19, matching the CHANGELOG heading — re-dated
+from 2026-08-15 in the hover-occlusion round, which is the first user-visible change the version has
+taken since it was written) — the
+**stale-anchor correction** (first below), then the
 **animation-landing round**, then the
 **overlay-occlusion and idle-latch round** (closing KI-024 and KI-025), then the
 **hover-occlusion round**, then the
@@ -68,87 +67,6 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
-
-**Tooltip-anchor round (2026-08-20): the hint box could hand the tip to a control nobody pointed
-at. One override, one arming point, one accepted trade filed as KI-026. No ADR: no decision is made
-or reopened, and the 0.9.3 tooltip gate is untouched and re-verified.**
-
-**The root cause is one layer up from the hover family, and it is the same sentence.** The 0.9.4
-hover work fixed "a position cannot tell that something has been drawn on top of it" for the
-editor's own hover. JUCE's tooltip machine has the identical blind spot and nothing had touched it:
-it keys entirely on `Desktop::getMainMouseSource().getComponentUnderMouse()`, which knows nothing
-about the tip window. `AnamorphLookAndFeel::getTooltipBounds` places the box 12-16 px from the
-cursor -- mirroring JUCE's own placement -- so the box routinely lands on a NEIGHBOURING control.
-Measured on the running editor: the *UI Scale* hint at `648,595 254x39` covers the *Oversampling*
-combo (`484,574 312x23`) **and** its label. Moving the pointer onto the box is therefore,
-geometrically, moving it onto whatever the box covers, and JUCE answered with that control's tip.
-The box "jumping aside" and the text changing are **one** event -- a new tooltip for a different
-control, placed relative to the new cursor position -- not a reposition feature plus a bug. The
-tree has no reposition feature; that had to be reported rather than preserved.
-
-**It also arrived with no dwell, which is the part that reads as a defect rather than as tooltip
-physics.** The tip hides first, then `now < lastHideTime + 500` re-shows immediately
-(`juce_TooltipWindow.cpp:242-249`), so a control the pointer merely passed over got a tooltip
-without any of the 600 ms the delay exists to require.
-
-**The fix is an anchor in the ANSWER, on the CURSOR.** `GatedTooltipWindow::getTipFor` -- already
-overridden for the 0.9.3 off-switch -- now returns the tip that was already showing while the cursor
-is inside the rectangle the box occupies, or occupied a moment ago. JUCE then re-places that SAME
-tip relative to the new cursor position, which is exactly the behaviour the box moving is supposed
-to have: it gets out of the way and keeps its text. The substitution is narrow by construction --
-the base class is still asked on every non-anchored tick, so a button down, a modal block, a
-backgrounded process or a target with no tooltip all hide the tip as before.
-
-**The test is on the cursor rather than on the component because the two platforms hand the same
-gesture in differently, and both were measured.** X11 drops only the BUTTON masks for an
-ignore-clicks window (`juce_XWindowSystem_linux.cpp:1636-1642`), so the box keeps receiving
-enter/motion and becomes the component under the mouse itself; Windows and macOS pass the hit-test
-through and the covered control is found instead. Routing the probe both ways reproduced the swap
-both ways, so a `mouseEnter`-based fix would have been Linux-only.
-
-**One draft was killed by measurement, and the reason belongs in the record.** Suppressing JUCE's
-enter-hide -- the obvious way to make the box "stay put and just move" -- crashes. The hide is the
-only thing that stops `lastComponentUnderMouse` ever being the box itself, and that state makes
-`TooltipWindow::getDesktopScaleFactor()` recurse without bound through
-`Component::getApproximateScaleFactorForComponent()` (`juce_Component.cpp:1299-1310`,
-`juce_TooltipWindow.cpp:193-199`): stack overflow the instant the pointer touched the box. So the
-hide stays and the box still blinks for about one tooltip tick; what the anchor fixes is what comes
-back.
-
-**The arming point is the second half, and it is load-bearing.** Reading the rectangle only inside
-`getTipFor` leaves a hole exactly one tooltip tick (123 ms) wide, starting the moment a tip first
-appears -- the tick that shows the box runs `getTipFor` BEFORE the box exists. `moved()`/`resized()`
-arm it at `setBounds` time instead, and are skipped while anchoring, because adopting the
-moved-aside rectangle would drop the old one out from under the cursor and hand the tip straight
-back. Mutation-tested: with the arming removed, a pointer that reaches the box inside the tick that
-showed it gets **"Oversampling for the nonlinear stages..."** again -- the original defect, exactly
--- while the slow-move case still passes. Both directions measured.
-
-**Verified on the running editor under `xvfb`, reading the text the LookAndFeel actually paints**
-(a recording `drawTooltip` on a subclass of the real `AnamorphLookAndFeel`, so the geometry is
-unchanged). Slow move onto the box: **"Oversampling..." before, "UI scale..." after**, box moved
-from `648,595` to `446,548` and stable over ten ticks. Fast dive, reaching the box in the same 30 ms
-slot that showed it: same result, box back with the correct text after ~120 ms. The 0.9.3 gate
-re-checked from inside the anchored state -- Tooltips off with the pointer parked on the box hides
-it. The KI-024/KI-025 behavioural matrix re-run unchanged: **ALL PASS (0 failed)**.
-
-**The trade is filed rather than hidden: KI-026.** A control lying under the box cannot be hovered
-for its own hint until the pointer leaves the box. From the pointer alone that gesture is
-indistinguishable from the defect -- same position, same component -- so choosing either reading
-gives up the other, and the anchored one matches what the pointer was doing a moment earlier. Two
-residuals ride along in that entry: the one-tick blink above, and, on Linux/X11 only, a plug-in
-backgrounded with the pointer parked inside the box keeping its hint until the pointer moves out.
-
-**Version.** The fix lands in **0.9.4** and the CHANGELOG heading is re-dated **2026-08-20**, the
-second time this version has been re-dated and for the same reason both times: it took a further
-user-visible change. `HANDOVER.md`, `KNOWN_ISSUES.md` and `procedures/TESTING.md` §"Gaps in the
-automated coverage" are synced in this change set.
-
-**Sign-off status: NOT GRANTED for this round.** No maintainer confirmation was given for it and
-none is claimed. What is owed is the same Level-5 check the two hover rounds record -- the automated
-evidence here is Linux-only on a synthetic display -- extended to the tooltip on macOS and Windows,
-where the enter-free routing is argued from the JUCE and platform sources and from the arming path
-being exercised on Linux, but not measured end to end.
 
 **Stale-anchor correction (2026-08-20): one number, in this file's own About-link entry.** The
 About-link round re-aimed the three `DELIBERATE_REAIMS` declarations onto the header line where
@@ -515,7 +433,7 @@ drift check off for its anchor, so the aim check is the thing that keeps it hone
 declared, and `--fix` moved all three from `src/PluginEditor.h:220` to `:223` in this change set.
 That re-anchor is mechanically correct and **preserves a pre-existing mistake**: at the merge base
 `:213` already read `return juce::TooltipWindow::getTipFor (c);`, and `:223` reads the identical
-line today, while `aboutLink` actually lives at `src/PluginEditor.h:456`. So the rot predates this
+line today, while `aboutLink` actually lives at `src/PluginEditor.h:382`. So the rot predates this
 change and was faithfully carried, not created by it — precisely the failure mode
 `check-citations.py`'s own header describes ("it CANNOT tell you a citation was aimed at the wrong
 code to begin with… and it does so INVISIBLY, in a DRIFTED line that reads like a repair"). It is
@@ -525,7 +443,7 @@ nothing to do with hover; recording it here is what stops the paragraph above re
 three anchors were verified correct.
 
 **NOW CLOSED (2026-08-19), as its own standalone change.** The three documents cite
-**`src/PluginEditor.h:456`**, where `aboutLink` is actually declared, instead of `:223` — which is
+**`src/PluginEditor.h:382`**, where `aboutLink` is actually declared, instead of `:223` — which is
 `return juce::TooltipWindow::getTipFor (c);` inside `GatedTooltipWindow`, the line `--fix` had
 carried the mis-aim onto from the merge base's `:213`. Only the number changed in each document; no
 wording, formatting or meaning was touched, and the correction is one anchor per file.
@@ -535,7 +453,7 @@ the three documents holds **exactly one** `src/PluginEditor.h` citation in both 
 current tree, so the count guard does not fire, the pair IS compared, and the re-aim reads as drift.
 Measured: before the entries were written the run reported all three `DRIFTED … -> :223`, and `--fix`
 would have dragged every one of them back. `("EULA.md" | "PRIVACY.md" | "TRADEMARKS.md",
-"src/PluginEditor.h:456"): "aboutLink"` now covers them, and the substring is what keeps that
+"src/PluginEditor.h:382"): "aboutLink"` now covers them, and the substring is what keeps that
 off-switch honest: `verify_reaim_targets` resolves `:382` against the live header every run, and
 mutating one entry's substring to a value the line does not contain makes the run emit `::error::`
 and exit 2 — checked by doing it, then reverting. Re-running `--fix` afterwards leaves all three

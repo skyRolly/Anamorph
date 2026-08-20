@@ -224,85 +224,11 @@ private:
         // hide silently, since `tooltips.isEnabled()` would still compile and still return a bool,
         // just the wrong one. Empty => behave exactly like juce::TooltipWindow.
         std::function<bool()> tooltipsEnabled;
-
-        // THE BOX MUST NOT BE ABLE TO CHANGE WHAT THE POINTER IS ON. JUCE's tooltip state machine
-        // keys entirely on Desktop::getMainMouseSource().getComponentUnderMouse(), which knows
-        // nothing about the tip window: the box is placed 12-16 px from the cursor
-        // (AnamorphLookAndFeel::getTooltipBounds), so it routinely lands on top of a NEIGHBOURING
-        // control -- measured, the UI Scale tip covers the Oversampling combo AND its label. Moving
-        // the pointer onto the box is therefore, geometrically, moving it onto whatever the box
-        // covers, and JUCE answered with THAT control's tip. The box appeared to "jump aside" while
-        // the text changed to a control the user never pointed at -- one event, not two -- and it
-        // arrived with no dwell at all, because the tip hides first and `now < lastHideTime + 500`
-        // then re-shows immediately, skipping the 600 ms delay (juce_TooltipWindow.cpp:242-249).
-        //
-        // So while the cursor is inside the rectangle the box occupies -- or occupied a moment ago,
-        // before it was taken off the desktop -- keep answering with the tip that was already
-        // showing. JUCE then re-places that SAME tip relative to the new cursor position, which is
-        // the behaviour the box moving is supposed to have: it gets out of the way and keeps its
-        // text. The substitution is deliberately narrow. The base class is still asked on every
-        // non-anchored tick, so a mouse button down, a modal component blocking the target, a
-        // backgrounded process or a target with no tooltip all hide the tip exactly as before; the
-        // anchor only ever replaces one non-empty tip with the one the user asked for.
-        //
-        // The test is on the CURSOR, not on `c`, because the two platforms hand us a different `c`
-        // for the same gesture and both were measured: X11 drops only the BUTTON masks for an
-        // ignore-clicks window (juce_XWindowSystem_linux.cpp:1636-1642), so the box keeps receiving
-        // enter/motion and becomes the component under the mouse itself; Windows and macOS pass the
-        // hit-test through, so the covered control is found instead. One cursor test covers both.
-        //
-        // The trade this accepts, stated rather than discovered later: a control lying UNDER the
-        // box cannot be hovered for its own tip until the pointer leaves the box, because from the
-        // pointer alone that gesture is indistinguishable from the defect. It stays reachable from
-        // any direction that does not cross the box.
-        // NOTHING here suppresses JUCE's own enter-hide, and that is deliberate: the hide is
-        // load-bearing rather than cosmetic. It is the only thing that stops `lastComponentUnderMouse`
-        // ever being the box itself, and that state does not merely misbehave -- getDesktopScaleFactor()
-        // would call getApproximateScaleFactorForComponent() on a desktop component whose scale
-        // factor is that same function, i.e. unbounded recursion (juce_Component.cpp:1299-1310,
-        // juce_TooltipWindow.cpp:193-199). An earlier draft of this fix overrode mouseEnter to keep
-        // the box up and died of a stack overflow the instant the pointer touched it -- measured,
-        // not reasoned. The box therefore still blinks out for one tick here; what the anchor fixes
-        // is what comes BACK.
         juce::String getTipFor (juce::Component& c) override
         {
             if (tooltipsEnabled && ! tooltipsEnabled()) return {};
-
-            if (anchoredTip.isNotEmpty() && boxArea.contains (cursorPos()))
-            {
-                anchoring = true;
-                return anchoredTip;
-            }
-
-            anchoring = false;
-            const auto natural = juce::TooltipWindow::getTipFor (c);
-            boxArea     = isVisible() ? getScreenBounds() : juce::Rectangle<int>();
-            anchoredTip = natural;
-            return natural;
+            return juce::TooltipWindow::getTipFor (c);
         }
-
-        // Arm the rectangle where the box is PLACED, not one tick later. Reading it in getTipFor
-        // alone leaves a hole exactly one tooltip tick (123 ms) wide, starting the moment a tip
-        // first appears: the tick that shows the box runs getTipFor BEFORE the box exists, so a
-        // pointer that reaches it before the next tick finds nothing armed and takes the covered
-        // control's tip after all. setBounds() is where the box learns where it is, so that is
-        // where the anchor learns it too. Skipped while anchoring, because the re-place we asked
-        // for is the box moving ASIDE -- adopting its new rectangle would drop the old one out
-        // from under the cursor and hand the tip straight back to the control below.
-        void moved()   override { rememberBox(); }
-        void resized() override { rememberBox(); }
-
-    private:
-        void rememberBox() { if (! anchoring) boxArea = getScreenBounds(); }
-
-        static juce::Point<int> cursorPos()
-        { return juce::Desktop::getInstance().getMainMouseSource().getScreenPosition().roundToInt(); }
-
-        // Where the box is, or was when the pointer stepped onto it. Empty => not anchoring.
-        juce::Rectangle<int> boxArea;
-        // The last tip answered from a hover the USER made, i.e. with the cursor outside the box.
-        juce::String anchoredTip;
-        bool anchoring = false;
     };
     // 600 ms is the ONLY place the appear-delay is set; applyTooltipsEnabled never touches it.
     GatedTooltipWindow tooltips { nullptr, 600 };

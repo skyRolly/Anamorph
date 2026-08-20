@@ -13,17 +13,8 @@ Source. Until then every entry cites a commit SHA or a PR. Entries for the
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
-## [0.9.4] — 2026-08-20
+## [0.9.4] — 2026-08-19
 ### Fixed
-- **A tooltip you move the pointer onto no longer turns into a different control's tooltip.** The
-  hint box is drawn a dozen pixels from the pointer, so it routinely sits on top of a neighbouring
-  control — the *UI Scale* hint in Settings covers the *Oversampling* row above it. Moving onto the
-  box was therefore, as far as the plug-in could tell, moving onto whatever the box was covering:
-  the box appeared to jump aside and the text changed to a control you had never pointed at, with
-  none of the usual pause first. While the pointer is on the box, the hint now stays the one you
-  asked for; the box still steps out of the way, and moving off it anywhere else behaves as before.
-  One consequence worth knowing: a control lying **under** the box cannot be hovered for its own
-  hint until the pointer leaves the box — approach it from a direction that does not cross the box.
 - **Controls under the Settings, About and Save Preset panels no longer light up either, and a
   control can no longer stay lit after the pointer leaves.** Two follow-ons to the drop-down fix
   below, with the same cause and two different second halves. The panels cover the editor but are

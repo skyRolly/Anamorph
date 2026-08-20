@@ -493,16 +493,7 @@ rather than deleted, because a gap that was real and is now covered is worth bei
      inside one frame — measured **0.990**). **Both were fixed on 2026-08-19** and removed from
      `KNOWN_ISSUES.md` per its fixed-item rule. Those fixes ship under this same exception and for
      the same reason, and were verified the same way — the harness above, extended to every overlay,
-     plus three mutation runs and a before/after idle-pass measurement. The **tooltip anchor**
-     (2026-08-20) is the third fix under this exception and the third verified this way: the same
-     harness opened Settings, turned Tooltips on, dwelled on the *UI Scale* combo until the hint
-     appeared, and read the text the LookAndFeel actually paints through a recording
-     `drawTooltip`. Before, moving the pointer onto the hint box turned it into the *Oversampling*
-     hint and left it there; after, it stays the *UI Scale* hint and the box steps aside. Both
-     arming paths were mutation-tested — removing the `moved()`/`resized()` arming reproduces the
-     defect exactly, on a pointer that reaches the box inside the tick that showed it — and the
-     0.9.3 Tooltips-off gate was re-checked from inside the anchored state. The accepted trade is
-     **KI-026**.
+     plus three mutation runs and a before/after idle-pass measurement.
   4. *Whether infrastructure could close it.* **Yes — and this fix narrows the standing claim above,
      which is worth recording rather than repeating.** The INC-010 and v0.9.3 entries both state that
      the *behavioural* half — a driven message loop with synthetic pointer input — "remains out of
