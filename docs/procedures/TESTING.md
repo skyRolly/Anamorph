@@ -493,7 +493,15 @@ rather than deleted, because a gap that was real and is now covered is worth bei
      inside one frame — measured **0.990**). **Both were fixed on 2026-08-19** and removed from
      `KNOWN_ISSUES.md` per its fixed-item rule. Those fixes ship under this same exception and for
      the same reason, and were verified the same way — the harness above, extended to every overlay,
-     plus three mutation runs and a before/after idle-pass measurement.
+     plus three mutation runs and a before/after idle-pass measurement. The **tooltip-dwell** fix
+     (2026-08-20) is the third under this exception, and it is the first one that did **not** have
+     to stay here: its decision — which hint text belongs on screen this tick — is a pure value type
+     (`TooltipAnchor`), so the whole state machine is driven tick by tick in `AnamorphStateTests`
+     with no display at all, and mutation-tested there in both directions. What still needed the
+     `xvfb` harness is the part that genuinely needs a pointer: 45 gestures over 9 Settings controls,
+     walking 1 px per tick from each control onto its own hint box, **6 wrong hints before the fix
+     and 0 after**. That measurement also retired the previous round's explanation — see the note in
+     `docs/DOCUMENTATION_COVERAGE.md`.
   4. *Whether infrastructure could close it.* **Yes — and this fix narrows the standing claim above,
      which is worth recording rather than repeating.** The INC-010 and v0.9.3 entries both state that
      the *behavioural* half — a driven message loop with synthetic pointer input — "remains out of

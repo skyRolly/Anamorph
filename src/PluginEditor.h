@@ -12,6 +12,86 @@
 // ============================================================================
 //  AnamorphAudioProcessorEditor  (v0.3 UI pass)
 // ============================================================================
+// ---- Which tooltip text belongs on screen this tick ------------------------------------
+// Deliberately a pure value type: no components, no JUCE tooltip state, nothing that needs a
+// display. That is what lets the whole state machine be regression-tested headlessly in
+// AnamorphStateTests ("Tooltip anchor") instead of only under xvfb.
+//
+// THE DEFECT IT EXISTS FOR. JUCE picks the tip from
+// Desktop::getMainMouseSource().getComponentUnderMouse() on a 123 ms tick, and once a tip is up
+// -- or was up within the last 500 ms -- it adopts a new component's tip IMMEDIATELY, with no
+// dwell at all (`if (isVisible() || now < lastHideTime + 500)`, juce_TooltipWindow.cpp:242-249).
+// The 600 ms delay that normally stops a control you merely brush past from popping its hint
+// does not apply there. The box is also placed 12-16 px from the cursor
+// (AnamorphLookAndFeel::getTooltipBounds), so reaching it means crossing whatever lies between
+// -- and the pointer is inside that 500 ms window the whole way. Measured, walking 1 px per
+// tick from the Tooltips toggle to its own hint box: the Vectorscope Persist slider owns the
+// tip for one or two ticks in transit, then the original returns. That is the reported
+// "the text briefly becomes another control's, and one more pixel puts it back".
+//
+// TWO RULES, and each one was measured to be necessary:
+//   (1) IN TRANSIT, nothing new is adopted. A tip that is up stays up, a tip that is down stays
+//       down, and the control being crossed cannot claim either. Adoption waits until the
+//       pointer is at rest -- which is what the 600 ms delay means and what the 500 ms window
+//       throws away.
+//   (2) INSIDE THE BOX'S OWN RECTANGLE the tip stays the one the pointer arrived with. The box
+//       put that component under the pointer; the user aimed at the box. Rule (1) alone does
+//       not cover this: coming to rest inside the box is "at rest", so adoption would fire.
+//
+// The rectangle deliberately OUTLIVES the box being hidden. JUCE hides the tip the moment the
+// pointer touches the box on platforms whose ignore-clicks flag still selects pointer motion
+// (X11 drops only the button masks -- juce_XWindowSystem_linux.cpp:1636-1642), and `userTip`
+// likewise survives the gap between the control and the box, where there is no tip at all. An
+// earlier attempt at this fix cleared both on exactly those two events and therefore had
+// nothing left to anchor by the time the pointer arrived: measured 6 failing gestures out of 45
+// before it, 3 after. Both are why this is a rectangle and a string that persist, not a live
+// query of the window.
+struct TooltipAnchor
+{
+    // "At rest" with a tolerance, because a hand holding still still jitters a pixel. 2 px per
+    // 123 ms tick is ~16 px/s; the slowest deliberate drag measured here is ~50 px/s.
+    static constexpr int restPixels = 2;
+
+    juce::Rectangle<int> boxArea;    // where the box is, or was when the pointer set off for it
+    juce::String userTip;            // the tip of the control the pointer last RESTED on
+    juce::String shownTip;           // what the machine currently has on screen
+    juce::Point<int> lastCursor;
+    bool onBox = false;              // the last answer came from rule (2)
+
+    juce::String answer (juce::Point<int> cursor, const juce::String& natural)
+    {
+        const bool moving = cursor.getDistanceFrom (lastCursor) > restPixels;
+        lastCursor = cursor;
+
+        if (boxArea.contains (cursor))                                   // (2)
+        {
+            onBox = true;
+            return shownTip = userTip;
+        }
+
+        onBox = false;
+
+        if (moving && natural.isNotEmpty() && natural != shownTip)       // (1)
+            return shownTip;                                             // (unchanged)
+
+        if (! moving)
+        {
+            if (natural != userTip)
+                boxArea = {};        // a new deliberate hover; the old box stops mattering
+            userTip = natural;
+        }
+        return shownTip = natural;
+    }
+
+    // Called where the box learns its own geometry, so the rectangle is armed the instant the
+    // box is placed rather than a tick later. Skipped while rule (2) is answering: that
+    // re-placement IS the box stepping aside, and adopting its new rectangle would drop the old
+    // one out from under the cursor and hand the tip straight back to the control below.
+    void boxPlacedAt (juce::Rectangle<int> r) { if (! onBox) boxArea = r; }
+
+    void reset() { *this = {}; }
+};
+
 class AnamorphAudioProcessorEditor : public juce::AudioProcessorEditor,
                                      private juce::Timer,
                                      private juce::ComponentListener // pop-up windows, see PopupShield
@@ -224,11 +304,27 @@ private:
         // hide silently, since `tooltips.isEnabled()` would still compile and still return a bool,
         // just the wrong one. Empty => behave exactly like juce::TooltipWindow.
         std::function<bool()> tooltipsEnabled;
+
         juce::String getTipFor (juce::Component& c) override
         {
-            if (tooltipsEnabled && ! tooltipsEnabled()) return {};
-            return juce::TooltipWindow::getTipFor (c);
+            if (tooltipsEnabled && ! tooltipsEnabled())
+            {
+                anchor.reset();          // nothing may survive the off-switch
+                return {};
+            }
+
+            // The base class is still asked every tick, so a mouse button down, a modal component
+            // blocking the target, a backgrounded process or a target with no tooltip all reach the
+            // state machine exactly as before -- the anchor only ever decides WHICH non-empty tip.
+            return anchor.answer (juce::Desktop::getInstance().getMainMouseSource()
+                                      .getScreenPosition().roundToInt(),
+                                  juce::TooltipWindow::getTipFor (c));
         }
+
+        void moved()   override { anchor.boxPlacedAt (getScreenBounds()); }
+        void resized() override { anchor.boxPlacedAt (getScreenBounds()); }
+
+        TooltipAnchor anchor;
     };
     // 600 ms is the ONLY place the appear-delay is set; applyTooltipsEnabled never touches it.
     GatedTooltipWindow tooltips { nullptr, 600 };

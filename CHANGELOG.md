@@ -13,8 +13,21 @@ Source. Until then every entry cites a commit SHA or a PR. Entries for the
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
-## [0.9.4] — 2026-08-19
+## [0.9.4] — 2026-08-20
 ### Fixed
+- **A tooltip no longer flashes a neighbouring control's text while it moves out of your way.**
+  Move the pointer onto a hint that is already on screen and the box steps aside, as before — but
+  on the way there the pointer crosses whatever lies between it and the box, and each of those
+  controls used to claim the hint for a tick or two before the original came back. It looked like
+  the text changing at random during the move. The cause is the dwell: a hint that is on screen, or
+  was in the last half second, is normally replaced *immediately* when the pointer reaches another
+  control, so the half-second pause you would otherwise have to wait is skipped for anything you
+  merely pass over. A control now has to be the one you came to **rest** on before it can take the
+  hint, and the box's own area never counts as resting on what is underneath it. The hint you asked
+  for stays put while the box moves. Two consequences worth knowing: moving deliberately from one
+  control to another shows the new hint a tick later than before (about a tenth of a second, once
+  you stop), and a control lying under the box cannot show its own hint until the pointer leaves
+  the box.
 - **Controls under the Settings, About and Save Preset panels no longer light up either, and a
   control can no longer stay lit after the pointer leaves.** Two follow-ons to the drop-down fix
   below, with the same cause and two different second halves. The panels cover the editor but are
