@@ -529,18 +529,18 @@ DELIBERATE_REAIMS = {
     # product's ONE outbound link is declared, and each named `src/PluginEditor.h:213`
     # at the merge base -- inside `GatedTooltipWindow::getTipFor`, not the link.
     # `--fix` carried all three to `:223`, still that same `return
-    # juce::TooltipWindow::getTipFor (c);`. `aboutLink` is declared at `:382`.
+    # juce::TooltipWindow::getTipFor (c);`. `aboutLink` is declared at `:465`.
     #
     # Declared rather than silently renumbered because each document has exactly ONE
     # `src/PluginEditor.h` citation in both the base and the current tree, so the
     # count guard does not fire and the pair IS compared: without these three entries
     # the run reports DRIFTED and `--fix` drags all three back to `:223` every time.
     # The substring is what keeps that off-switch honest -- `verify_reaim_targets`
-    # resolves `:382` against the live header on every run, so if the declaration ever
+    # resolves `:465` against the live header on every run, so if the declaration ever
     # outlives the line it names, the run fails instead of quietly exempting it.
-    ("EULA.md", "src/PluginEditor.h:443"): "aboutLink",
-    ("PRIVACY.md", "src/PluginEditor.h:443"): "aboutLink",
-    ("TRADEMARKS.md", "src/PluginEditor.h:443"): "aboutLink",
+    ("EULA.md", "src/PluginEditor.h:465"): "aboutLink",
+    ("PRIVACY.md", "src/PluginEditor.h:465"): "aboutLink",
+    ("TRADEMARKS.md", "src/PluginEditor.h:465"): "aboutLink",
     # ---------------------------------------------------------------------
     # 2026-08-18, the macOS symbolication round. `AnamorphEngine::process` gained
     # `ANAMORPH_NONBLOCKING` on its DEFINITION (it was on the declaration only),

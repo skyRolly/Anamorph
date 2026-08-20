@@ -20,28 +20,44 @@
 //     newComp  = Desktop::getMainMouseSource().getComponentUnderMouse();   // the TEXT comes from here
 //     mousePos = Desktop::getMainMouseSource().getScreenPosition();        // the BOX POSITION from here
 //
-// `getComponentUnderMouse()` is a CACHE. Only a mouse EVENT refreshes it -- MouseInputSourceImpl
-// calls setComponentUnderMouse (findComponentAt (lastEventPosition, lastPeer)) and nothing else
-// writes it (juce_MouseInputSourceImpl.h:54-56, :247-270, :293-297). `getScreenPosition()` is LIVE:
-// it asks the OS on every call (getRawScreenPosition -> MouseInputSource::getCurrentRawMousePosition,
-// :96-101), and Desktop::getMousePosition() is exactly that same value.
+// The two are on DIFFERENT CLOCKS. `getScreenPosition()` is LIVE: it asks the OS on every call
+// (getRawScreenPosition -> MouseInputSource::getCurrentRawMousePosition,
+// juce_MouseInputSourceImpl.h:96-101), and Desktop::getMousePosition() is exactly that same value
+// (juce_Desktop.cpp:167-173). `getComponentUnderMouse()` is a CACHE
+// (juce_MouseInputSourceImpl.h:54-56), and the only thing that writes it is
 //
-// So whenever the cache disagrees with the live pointer -- because an event was coalesced or
-// delayed, or because the last event went to a window that has since been taken off the desktop,
-// which is precisely what happens when the pointer moves onto the tooltip box and JUCE hides it --
-// the box is placed WHERE THE POINTER REALLY IS and labelled with the tip of a control it is NOT
-// over. And because nothing but an event refreshes the cache, the wrong text STAYS until the
-// pointer moves again: one more pixel delivers an event and the correct tip returns. That is the
-// reported defect in full, including the persistence and the one-pixel recovery, and it is a
-// property of shared JUCE code rather than of any one platform.
+//     setComponentUnderMouse (findComponentAt (lastPointerState.position, lastPeer))
 //
-// Reproduced deterministically 5 times out of 5 by driving the two sources apart directly (see
-// docs/DOCUMENTATION_COVERAGE.md, tooltip source-of-truth round).
+// -- the LAST EVENT's position against the LAST peer (:247-270, :293-297).
+//
+// AND THAT WRITE IS NOT ONLY DRIVEN BY OS EVENTS, which is the part that ties the defect to
+// REPOSITIONING and was got wrong at first. `TooltipWindow::updatePosition` is `setBounds()` then
+// `setVisible (true)` (juce_TooltipWindow.cpp:92-96), and BOTH of those call
+// `Component::sendFakeMouseMove()` (juce_Component.cpp:1105 and :559) -> `triggerFakeMove()` ->
+// `handleAsyncUpdate()` -> `setPointerState (lastPointerState, ..., forceUpdate = true)`
+// (juce_MouseInputSourceImpl.h:453-462, :292-297). So EVERY show, move or hide of the box
+// re-derives "what is under the mouse" -- from the last event's position, never from the live one.
+//
+// That is the mechanism: the reposition itself rewrites the text's source at a position the
+// pointer has already left, while the box is placed where the pointer actually is. The box lands
+// where you are and is labelled with where you were, and since the rewrite is driven by the
+// tooltip's own geometry rather than by the mouse, nothing corrects it until the pointer moves
+// again -- one more pixel delivers an event and the right tip returns. Persistence and one-pixel
+// recovery both fall out of it, and none of it is platform-specific: it is shared JUCE code.
+//
+// Reproduced deterministically 5 times out of 5 by driving the two clocks apart directly, and 0/5
+// after this fix; confirmed on macOS by the reporter. What is NOT claimed is a traced account of
+// why the rewrite preferentially lands on the row ABOVE. See docs/DOCUMENTATION_COVERAGE.md
+// (tooltip source-of-truth round) for the geometric fit that accounts for all four observed
+// controls, and for the limits of it.
 //
 // THE FIX. Before trusting the cached component, check it against the LIVE pointer -- the same
-// position JUCE is about to place the box at. If it holds, nothing changes at all, which is the
-// overwhelmingly common case. If it does not, the cache is stale, and what is really under the
-// pointer is asked instead; a null answer means no tip, exactly as an empty tip does today.
+// position JUCE is about to place the box at. If it holds, the cached component is used exactly as
+// before, which is the overwhelmingly common case. If it does not, what is really under the pointer
+// is used instead; a null answer means no tip, exactly as an empty tip does today. Note this does
+// not repair JUCE's cache -- it cannot, the cache is private -- it re-derives the answer at the one
+// place this editor controls. That is sufficient because the tooltip is the only consumer of
+// getComponentUnderMouse() in this tree.
 //
 // Kept as a pure function of (cached component, live pointer, component really under it) so the
 // decision is regression-tested headlessly in AnamorphStateTests -- no display, no editor, no
@@ -282,6 +298,12 @@ private:
 
             // `c` is the CACHED component under the mouse; see TooltipSource above for why it can
             // disagree with where the pointer actually is, and why that shows another control's tip.
+            // The hit test is evaluated eagerly rather than only on disagreement: `choose` ignores
+            // it whenever the cache agrees, so the RESULT is unchanged in that case, but the walk
+            // does run. It is one coordinate transform and one tree descent per 123 ms tooltip tick
+            // on the message thread, measured to cost nothing that shows up in the idle profile,
+            // and keeping it a plain argument keeps `choose` a pure function of three values --
+            // which is what makes the decision testable without a display.
             const auto live = juce::Desktop::getMousePosition();
             auto* src = TooltipSource::choose (&c, live, componentAt ? componentAt (live) : nullptr);
 
