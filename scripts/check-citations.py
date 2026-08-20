@@ -538,9 +538,9 @@ DELIBERATE_REAIMS = {
     # The substring is what keeps that off-switch honest -- `verify_reaim_targets`
     # resolves `:382` against the live header on every run, so if the declaration ever
     # outlives the line it names, the run fails instead of quietly exempting it.
-    ("EULA.md", "src/PluginEditor.h:382"): "aboutLink",
-    ("PRIVACY.md", "src/PluginEditor.h:382"): "aboutLink",
-    ("TRADEMARKS.md", "src/PluginEditor.h:382"): "aboutLink",
+    ("EULA.md", "src/PluginEditor.h:456"): "aboutLink",
+    ("PRIVACY.md", "src/PluginEditor.h:456"): "aboutLink",
+    ("TRADEMARKS.md", "src/PluginEditor.h:456"): "aboutLink",
     # ---------------------------------------------------------------------
     # 2026-08-18, the macOS symbolication round. `AnamorphEngine::process` gained
     # `ANAMORPH_NONBLOCKING` on its DEFINITION (it was on the declaration only),

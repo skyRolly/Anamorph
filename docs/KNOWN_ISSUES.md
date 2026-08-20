@@ -31,8 +31,11 @@ and were not covered by that fix, and **KI-025**, the micro-animation idle gate 
 control that was still lit. **Both were fixed in the same version (2026-08-19) and are removed from
 this file per the fixed-item rule above** — the overlay case by a general per-widget occlusion test
 that derives what counts as an overlay instead of listing the three, and the idle gate by giving its
-"nothing can move" condition the second half it was missing. Net for 0.9.4 so far: **two issues
-added and the same two removed**, plus KI-023.
+"nothing can move" condition the second half it was missing. The same version's **tooltip-anchor
+round** (2026-08-20) then added **KI-026**: a control lying under the tooltip box cannot be hovered
+for its own hint until the pointer leaves the box — the deliberate trade taken to stop the box
+handing the tip to a control nobody pointed at. Net for 0.9.4 so far: **three issues added and two
+of them removed**, plus KI-023.
 **Drift corrected in the same round (`DOCUMENTATION_LIFECYCLE_POLICY` C6):** the summary table
 below stopped at KI-022, so **KI-023 had a full entry but no table row** since it was filed on
 2026-08-18. The row is added here alongside the two new ones; no other content changed.
@@ -109,6 +112,7 @@ JUCE 8.0.14; before that 0.8.8 for PR #54).
 | KI-021 | **Linux**: a per-user install (the 0.9.3 default) does not remove an existing **system-wide** one, so both are on the DAW's scan path and its scan order decides which version loads — an update can look as if it did not apply | Low | Confirmed, **deliberate**: removing the system copy needs the elevation the per-user mode exists to avoid. The installer now **warns** when it finds one; removal is one `sudo ./uninstall.sh` |
 | KI-022 | **macOS**: components are non-relocatable since 0.9.3 (INC-012), so a bundle the user deliberately moved — to `~/Applications`, or a plug-in kept under `~/Library/Audio/Plug-Ins/…` — is left where it is and a fresh copy is installed at the standard location, leaving two copies with the same bundle identifier | Low | Confirmed, **deliberate trade** for INC-012: following a moved copy is exactly the behaviour that let an install silently write nowhere useful. Documented in the installer's `INSTALL.txt`; removal is manual |
 | KI-023 | **Linux**: the shipped binaries record the CI image's glibc/libstdc++ floor (measured GLIBC_2.38 / GLIBCXX_3.4.31), so they do not load at all on older distributions — Ubuntu 22.04 LTS included | Medium | Confirmed, **measured**; the floor was never chosen and is now asserted on every push so it cannot rise unnoticed. Lowering it is a release-topology decision, not taken |
+| KI-026 | A control lying **under the tooltip box** cannot be hovered for its own hint until the pointer leaves the box: while the pointer is on the box the hint stays anchored to the control it was opened for | Low | Confirmed, **deliberate trade** — from the pointer alone this gesture is indistinguishable from the defect it fixes (the box handing the tip to a control nobody pointed at). The control is reachable from any direction that does not cross the box |
 
 ---
 
@@ -748,5 +752,45 @@ does not load there.**
   the same change and name the systems it drops.
 - **Evidence [Verified]:** scripts/check-linux-abi.py (the declared floor and the gate);
   `docs/architecture/COMPATIBILITY_MATRIX.md` §"Linux runtime ABI floor".
+
+
+## KI-026 — a control under the tooltip box cannot be hovered until the pointer leaves the box
+
+The hint box is placed 12-16 px from the pointer (`AnamorphLookAndFeel::getTooltipBounds`), so it
+routinely covers a neighbouring control — measured, the *UI Scale* hint in Settings covers the
+*Oversampling* combo and its label. JUCE decides which hint to show from
+`Desktop::getMainMouseSource().getComponentUnderMouse()`, which knows nothing about the box, so
+moving the pointer onto the box IS moving it onto whatever the box covers. Until 0.9.4 that meant
+the hint silently became the covered control's, with no dwell at all. 0.9.4 anchors the hint to the
+control the user actually pointed at for as long as the pointer stays inside the box's rectangle.
+
+The cost of that anchor is this entry: while the pointer is inside the box, the control underneath
+cannot present its own hint.
+
+- **Why it is not fixed here:** the two gestures are the same gesture. "The user moved onto the
+  hint box" and "the user moved onto the control the box happens to cover" put the pointer at the
+  identical screen position, over the identical component; nothing in the event stream separates
+  them. Choosing either one necessarily gives up the other, and the anchored reading is the one
+  that matches what the pointer was doing a moment earlier.
+- **Scope, and why it is Low:** the box is one control away from the pointer and covers a strip
+  roughly its own height, so a covered control stays reachable from any direction that does not
+  cross the box; leaving the box and returning also restores the normal reading. Hints are
+  informational — no click, no parameter and no state is affected, and clicks pass through the box
+  on all three platforms regardless (it is created `windowIgnoresMouseClicks`).
+- **Two related residuals, both pre-existing and both left as they are.** The box still blinks out
+  for about one tooltip tick when the pointer first touches it: JUCE hides it from a global
+  `mouseEnter` (`juce_TooltipWindow.cpp:74-78`), and that hide is load-bearing rather than
+  cosmetic — suppressing it lets `lastComponentUnderMouse` become the box itself, which makes
+  `TooltipWindow::getDesktopScaleFactor()` recurse without bound through
+  `Component::getApproximateScaleFactorForComponent()` (`juce_Component.cpp:1299-1310`) and abort
+  the process. Measured, by doing it. And on Linux/X11 only, where the box does receive pointer
+  events, a plug-in sent to the background with the pointer parked inside the box keeps its hint
+  until the pointer moves out — JUCE's own foreground suppression cannot be consulted for the box
+  itself, because the box is not a `TooltipClient` and an absent hint is indistinguishable there
+  from a suppressed one.
+- **Evidence [Verified]:** `src/PluginEditor.h`, `GatedTooltipWindow::getTipFor` and the
+  `moved()`/`resized()` arming beside it; `AnamorphLookAndFeel::getTooltipBounds`
+  in `src/gui/LookAndFeel.cpp`. Behaviour measured on the running editor under `xvfb` and
+  mutation-tested in both directions — see `docs/DOCUMENTATION_COVERAGE.md`, tooltip-anchor round.
 
 
