@@ -14,7 +14,7 @@ status or legal determination is asserted here.** Nothing in this document is le
 |---|---|---|
 | **Anamorph** | product name — `CMakeLists.txt:14, 276`, the plug-in's About screen, every artifact and installer | *`[OWNER/LEGAL DECISION]`* — whether the name is registered, pending or unregistered in any jurisdiction is **not recorded anywhere in this repository**. Use no ™ or ® symbol until that is settled. |
 | **RollyTech** | company name — `CMakeLists.txt:271` (`COMPANY_NAME`), the `NOTICE` copyright line, the preset directory path, the bundle identifier `com.rollytech.anamorph`, and since 0.9.1 the four-character manufacturer code **`RTec`** (`CMakeLists.txt:273`, ADR-0023) that every RollyTech plug-in shares | *`[OWNER/LEGAL DECISION]`* — same: no registration status is recorded. |
-| **`www.rolly.tech`** | About-screen link — `src/PluginEditor.h:362` | Domain, not a mark. |
+| **`www.rolly.tech`** | About-screen link — `src/PluginEditor.h:382` | Domain, not a mark. |
 
 Until the owner records a registration status, documentation must describe these as *names*, and
 must not print a ™ or ® symbol next to them — an unfounded registration symbol is itself a
