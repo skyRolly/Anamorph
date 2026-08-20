@@ -38,6 +38,7 @@
 // ============================================================================
 
 #include "PluginProcessor.h"
+#include "PluginEditor.h"   // TooltipSource -- a pure decision, no editor is instantiated
 
 #include <cmath>
 #include <cstdio>
@@ -1492,6 +1493,83 @@ static void testWrapperProcessBlockAudioPath()
 }
 
 // ---------------------------------------------------------------------------
+// ============================================================================
+//  Tooltip source of truth.
+//
+//  Regression net for the 0.9.4 defect "the tooltip text becomes a neighbouring
+//  control's while the box repositions, and stays wrong until the mouse moves
+//  one more pixel".
+//
+//  JUCE's tooltip tick mixes two sources: the TEXT comes from
+//  getComponentUnderMouse(), which is a CACHE refreshed only by mouse events,
+//  and the BOX POSITION from getScreenPosition(), which asks the OS live
+//  (juce_TooltipWindow.cpp:209/221/223). When they disagree the box is placed
+//  where the pointer really is and labelled with a control it is not over --
+//  and nothing but an event refreshes the cache, so it persists.
+//
+//  AnamorphAudioProcessorEditor's TooltipSource::choose is the reconciliation,
+//  kept pure so the decision runs here with no display, no editor and no
+//  tooltip window. The geometry below is the measured Settings layout.
+// ============================================================================
+static void testTooltipSourceOfTruth()
+{
+    std::printf ("Tooltip source of truth: the cached component vs the live pointer\n");
+
+    // The measured Settings-panel rows (screen coordinates from the reproduction).
+    struct Row { const char* name; juce::Rectangle<int> bounds; };
+    const Row oversampling { "Oversampling",       { 804, 630, 312, 23 } };
+    const Row uiScale      { "UI Scale",           { 804, 687, 312, 23 } };
+    const Row persist      { "Vectorscope Persist",{ 796, 743, 320, 24 } };
+
+    juce::Component cOvers, cScale, cPersist;
+    cOvers  .setBounds (oversampling.bounds);
+    cScale  .setBounds (uiScale.bounds);
+    cPersist.setBounds (persist.bounds);
+
+    const auto inScale = uiScale.bounds.getCentre();
+    const auto inOvers = oversampling.bounds.getCentre();
+
+    // --- the reported gesture -----------------------------------------------------------------
+    // The cache says Oversampling; the pointer is really on UI Scale. Before the fix the tooltip
+    // took the cached answer and displayed the Oversampling text over the UI Scale row.
+    check (TooltipSource::choose (&cOvers, inScale, &cScale) == &cScale,
+           "a stale cached component loses to what is really under the live pointer");
+    check (TooltipSource::choose (&cScale, inOvers, &cOvers) == &cOvers,
+           "and in the other direction too");
+    check (TooltipSource::choose (&cScale, persist.bounds.getCentre(), &cPersist)
+               == &cPersist,
+           "Vectorscope Persist: same");
+
+    // --- the behaviour that must NOT change ---------------------------------------------------
+    // The overwhelmingly common case: the cache agrees with the pointer, so nothing is overridden.
+    check (TooltipSource::choose (&cScale, inScale, &cScale) == &cScale,
+           "an agreeing cache is used unchanged");
+    check (TooltipSource::choose (&cScale, inScale, &cOvers) == &cScale,
+           "an agreeing cache WINS -- the live hit test never overrides a consistent answer");
+    check (TooltipSource::choose (&cScale, uiScale.bounds.getTopLeft(), &cOvers)
+               == &cScale,
+           "the top-left corner counts as inside the cached component");
+    check (TooltipSource::choose (&cScale, uiScale.bounds.getBottomRight(), &cPersist)
+               != &cScale,
+           "one pixel past the bottom-right does not");
+
+    // --- nothing under the pointer means NO tip, never a stale one -----------------------------
+    check (TooltipSource::choose (&cScale, { 10, 10 }, nullptr) == nullptr,
+           "a stale cache with nothing under the pointer yields no tooltip at all");
+    check (TooltipSource::choose (nullptr, inScale, &cScale) == &cScale,
+           "no cached component: the live one is used");
+    check (TooltipSource::choose (nullptr, inScale, nullptr) == nullptr,
+           "neither: no tooltip");
+
+    // --- leaving a control must still dismiss --------------------------------------------------
+    // The pointer moves off every row; the live hit test finds nothing, so the answer is nullptr,
+    // which the caller turns into an empty tip and JUCE turns into hideTip().
+    check (TooltipSource::choose (&cScale, { 804, 900 }, nullptr) == nullptr,
+           "moving off the control still drops the tip (no 'tooltip stays visible' regression)");
+
+    std::printf ("\n");
+}
+
 int main (int argc, char* argv[])
 {
     juce::ScopedJuceInitialiser_GUI juceInit; // MessageManager for APVTS/processor on this thread
@@ -1520,6 +1598,7 @@ int main (int argc, char* argv[])
     testFactoryPresetIdIntegrity();
     testPresetIndicatorIdentityAcrossRestore();
     testWrapperProcessBlockAudioPath();
+    testTooltipSourceOfTruth();
 
     std::printf ("\n%d checks, %d failure(s)\n", checks, failures);
     return failures == 0 ? 0 : 1;

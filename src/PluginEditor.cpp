@@ -260,6 +260,17 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     setLookAndFeel (&lnf);
     tooltips.setLookAndFeel (&lnf);
     tooltips.tooltipsEnabled = [this] { return tooltipsOn; }; // gate at the source; see GatedTooltipWindow
+    // The live hit test the tooltip needs to check JUCE's CACHED component-under-the-mouse
+    // against the pointer's real position -- see TooltipSource in PluginEditor.h. Deliberately
+    // this editor only: a point outside it belongs to some other window, and answering nullptr
+    // there means "no tip", which is the same thing JUCE does with a component it cannot use.
+    tooltips.componentAt = [this] (juce::Point<int> screenPos) -> juce::Component*
+    {
+        if (! isShowing())
+            return nullptr;
+        const auto local = getLocalPoint (nullptr, screenPos);
+        return getLocalBounds().contains (local) ? getComponentAt (local) : nullptr;
+    };
 
     // Pop-up dismissal shield (see PopupShield). Added once and left VISIBLE; it paints nothing and
     // only starts intercepting while a menu is on screen, so it never disturbs hover or the cursor.

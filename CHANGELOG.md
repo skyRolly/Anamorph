@@ -13,8 +13,20 @@ Source. Until then every entry cites a commit SHA or a PR. Entries for the
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
-## [0.9.4] — 2026-08-19
+## [0.9.4] — 2026-08-20
 ### Fixed
+- **A tooltip no longer shows the wrong control's text after it moves.** Hover a Settings control,
+  then move the pointer onto the hint box that appeared: the box steps aside as before, but its text
+  could change to a *neighbouring* control's — the *UI Scale* hint becoming the *Oversampling* one —
+  and stay wrong until you moved the mouse again, when it would snap back. The two halves of the
+  hint disagreed with each other: the text was taken from a remembered answer to "what is the
+  pointer on?", refreshed only when the mouse sends an event, while the box was placed at the
+  pointer's live position, read fresh every time. Move the pointer somewhere that produces no event
+  — onto the hint box, which is then taken off screen — and the remembered answer is left behind
+  while the box follows the pointer, so the box lands where you are and is labelled with where you
+  were. The remembered answer is now checked against the live pointer before it is used, and what
+  the pointer is really on is used when it disagrees. Nothing else about how hints appear,
+  disappear or move has changed.
 - **Controls under the Settings, About and Save Preset panels no longer light up either, and a
   control can no longer stay lit after the pointer leaves.** Two follow-ons to the drop-down fix
   below, with the same cause and two different second halves. The panels cover the editor but are

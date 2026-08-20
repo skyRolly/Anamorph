@@ -6,10 +6,12 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.4 change set** (2026-08-19, matching the CHANGELOG heading — re-dated
-from 2026-08-15 in the hover-occlusion round, which is the first user-visible change the version has
-taken since it was written) — the
-**stale-anchor correction** (first below), then the
+Last updated: for the **0.9.4 change set** (2026-08-20, matching the CHANGELOG heading — re-dated
+from 2026-08-15 in the hover-occlusion round and again on 2026-08-20, each time because the version
+took a further user-visible change) — the
+**tooltip source-of-truth round** (first below), then the
+**tooltip investigation that shipped no fix**, then the
+**stale-anchor correction**, then the
 **animation-landing round**, then the
 **overlay-occlusion and idle-latch round** (closing KI-024 and KI-025), then the
 **hover-occlusion round**, then the
@@ -68,12 +70,249 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
 
+**Tooltip source-of-truth round (2026-08-20): the third attempt at this defect, and the first with
+a deterministic reproduction. The two earlier attempts are reverted (they are the two entries below
+this one, retracted in place rather than deleted). Root cause is in shared JUCE code, not in this
+tree's geometry and not in dwell. No ADR: no decision is made or reopened.**
+
+**A user screenshot ended the guessing.** Cursor on the UI Scale combo; the hint box labelled with
+the OVERSAMPLING text; and the box sitting in the GAP between the two rows, covering neither
+control. That single frame refutes both earlier diagnoses at once — there is no covered control
+under the pointer (round one) and no control being crossed (round two). It also came with the
+asymmetry that turned out to be the tell: the defect reproduces on UI Scale, Vectorscope Persist and
+UI Animations but NOT on Oversampling, the topmost control, where the hint merely blinks and returns
+correct.
+
+**The cause is that JUCE's tooltip tick reads TWO DIFFERENT SOURCES OF TRUTH and mixes them.**
+`juce_TooltipWindow.cpp:209` takes the component from
+`Desktop::getMainMouseSource().getComponentUnderMouse()`, and `:221` derives the TEXT from it.
+`:223` takes the POSITION from `getScreenPosition()`, and `:239` places the box there. Those two are
+not the same clock:
+
+  * `getScreenPosition()` is **live**: `getRawScreenPosition()` calls
+    `MouseInputSource::getCurrentRawMousePosition()`, an OS query, on every call
+    (`juce_MouseInputSourceImpl.h:96-101`). `Desktop::getMousePosition()` is that same value
+    (`juce_Desktop.cpp:167-173`).
+  * `getComponentUnderMouse()` is a **cache** (`juce_MouseInputSourceImpl.h:54-56`), and the only
+    thing that writes it is
+    `setComponentUnderMouse (findComponentAt (lastPointerState.position, lastPeer))` — the LAST
+    EVENT's position against the LAST peer (`:247-270, :292-297`).
+
+**And that write is not driven only by OS events, which is the half that ties the defect to
+REPOSITIONING and which the first version of this entry got wrong.** `TooltipWindow::updatePosition`
+is `setBounds()` then `setVisible (true)` (`juce_TooltipWindow.cpp:92-96`), and BOTH of those call
+`Component::sendFakeMouseMove()` (`juce_Component.cpp:1105` and `:559`) → `triggerFakeMove()` →
+`handleAsyncUpdate()` → `setPointerState (lastPointerState, …, forceUpdate = true)`
+(`juce_MouseInputSourceImpl.h:453-462`), which re-runs the cache write at `:297`. **So every show,
+move or hide of the box re-derives "what is under the mouse" — from the last event's position, never
+from the live one.** The correction matters because the earlier wording ("nothing but an event
+refreshes the cache") is false as stated, and because it wrongly implied a *frozen* cache: a frozen
+cache cannot move the box at all, since `tipChanged` (`:227`) would be false and neither `showTip`
+gate (`:248`, `:254-256`) would open. The observed transition — box moves AND text changes — requires
+a cache **write**, and the reposition is what performs it.
+
+So the reposition rewrites the text's source at a position the pointer has already left, while the
+box is placed where the pointer actually is. The box lands where you are and is labelled with where
+you were; and because that rewrite is driven by the tooltip's own geometry rather than by the mouse,
+nothing corrects it until the pointer moves again — one more pixel delivers an event and the correct
+hint returns. Persistence and one-pixel recovery both fall out of it, and none of it is
+platform-specific: it is shared JUCE code.
+
+**Instrumented, not inferred.** A temporary trace inside the pinned `juce_TooltipWindow.cpp` and
+`detail/juce_MouseInputSourceImpl.h` (diagnosis only; both files are byte-identical to the pin in
+this change set) logged every mouse event with its peer, its peer-local position, the screen
+position `localToGlobal` produced, and the live OS pointer beside it. It caught the divergence
+directly: `[evt] local=(470,184) -> screen=(960,540) rawOS=(1426,1072)` — an event resolving the
+cache at one point while the pointer was 500 px away — followed by
+`[under] <null> -> Backdrop usingPos=(960,540) rawOS=(1426,1072)`.
+
+**Then reproduced deterministically, which is what the two earlier rounds never managed.** Drive the
+two sources apart on purpose: deliver a real mouse event over control A (so the cache says A), then
+move the OS pointer onto control B without delivering one. Five pairs across the Settings panel —
+Oversampling/UI Scale, UI Scale/Persist, Tooltips/UI Animations, UI Scale/Oversampling,
+Persist/Tooltips — **5 of 5 displayed the wrong control's text, persisted while the pointer was
+still, and recovered on the next event.** With the fix: **0 of 5.**
+
+**The asymmetry — why the row ABOVE — is a geometric FIT, not a traced proof, and is labelled as
+such.** What is established is that the rewrite happens at a position that is not the live pointer.
+What is not established is the exact macOS event sequence that makes that position land one row up;
+that would need a trace on macOS, which was not available here. What supports it is arithmetic that
+accounts for all four observed controls. The box is placed `h + 8` above the cursor
+(`AnamorphLookAndFeel::getTooltipBounds`, `src/gui/LookAndFeel.cpp:862-871`), so its top edge is a
+**tip-dependent** offset above the pointer, and the Settings rows are at editor-local
+`oversampleBox` 274–297, `uiScaleBox` 331–354, `scopePersistK` 387–411, `tooltipsToggle` 423–449,
+`animToggle` 455–481 (`src/PluginEditor.cpp:2201-2226`). Taking each control's centre and
+subtracting `h + 8` for a two-line tip lands inside **Oversampling** from UI Scale, inside **UI
+Scale** from Vectorscope Persist, on or within a pixel or two of **Tooltips** from UI Animations,
+and — from Oversampling — on `settingsTitle` (221–241), a plain `juce::Label` that never had
+`setTooltip` called, so the tip is EMPTY and JUCE hides and re-shows it with the correct text. That
+is precisely the exemption the reporter observed. Note the row pitch is **not** constant (57, 56,
+36, 32), so no single fixed displacement fits all four; a `h + 8` displacement does, because `h`
+varies with the tip. Suggestive, and consistent with everything observed — but a fit.
+
+**The fix validates the cache against the live pointer before trusting it.** `TooltipSource::choose`
+takes the cached component, the live pointer position — the same value JUCE is about to place the
+box at — and what is really under that position; it keeps the cached component when the pointer is
+inside it, and otherwise uses the live one. The editor supplies the live hit test as a lambda, next
+to the existing `tooltipsEnabled` gate. Whichever component wins, **the base class still answers for
+it**, so every suppression JUCE applies — a button down, a modal block, a backgrounded process, a
+target that is not a `TooltipClient` — reaches the state machine untouched. Nothing in dwell,
+timing, placement or the show/hide path is modified, and in the common case where cache and pointer
+agree the tooltip RESULT is identical to before.
+
+**Two things that claim is careful not to overstate.** First, the fix does **not repair** JUCE's
+cache — it cannot, `componentUnderMouse` is private — it re-derives the answer at the one place this
+editor controls, the tooltip's own `getTipFor`. That is sufficient here rather than merely
+sufficient-looking, because the tooltip is the **only** consumer of `getComponentUnderMouse()` in
+this tree (`grep -rn getComponentUnderMouse src/` finds nothing but this comment): the editor's own
+hover is geometric, derived from `getMouseXYRelative()`, and never reads the cache. A future
+consumer of that cache would inherit the hazard, and this note is where it should be looked up.
+Second, the live hit test is passed as an argument and therefore **evaluated on every tick**, not
+only on disagreement; `choose` ignores it when the cache agrees, so the answer is unchanged, but the
+walk does run — one coordinate transform and one tree descent per 123 ms tick, on the message thread.
+Keeping it a plain argument is what keeps `choose` a pure function of three values, which is what
+makes it testable with no display; the earlier phrase "bit-for-bit what it was" was true of the
+result and not of the work, and is corrected here.
+
+**Four questions the follow-up review asked, answered from the source.** *Why does the original
+defect preferentially select controls above?* — the geometric fit above, labelled as a fit. *How does
+`choose` prevent that transition?* — the wrong text can only be produced by asking a component that
+is not under the pointer; `choose` makes that unaskable, because the only two components it will
+ever hand to the base class are one that geometrically contains the live pointer and the one a live
+hit test at that same point returns. *Is it preventing an incorrect selection or masking a stale
+state?* — preventing the selection; it does not and cannot repair the cache, and the distinction is
+recorded above along with the fact that the tooltip is the only consumer of that cache here. *Are
+there remaining cases where the text can detach from the component that should own it?* — four, all
+narrow and all deliberate:
+
+  1. **A stale cache that still geometrically contains the live pointer is kept.** `choose` tests
+     containment, not topmost-ness, so a cache pointing at a container whose bounds still contain
+     the pointer is not corrected. In practice JUCE caches the deepest `findComponentAt` leaf, so
+     this needs the pointer to have moved from a container onto a smaller child-on-top with no
+     intervening event. Narrower than the defect fixed, and not a regression against the old
+     behaviour, which took the cache unconditionally.
+  2. **The live hit test only searches THIS editor** (`src/PluginEditor.cpp`, the `componentAt`
+     lambda). A live pointer over another window resolves to `nullptr`, i.e. no tip — correct, since
+     this tooltip belongs to this editor, but worth knowing it is a deliberate boundary rather than
+     an oversight.
+  3. **A control the box is drawn on top of still owns the tip when the pointer is genuinely on it.**
+     That is the separate geometric case the two reverted rounds chased; it is unchanged here and
+     out of scope by design.
+  4. **If `componentAt` were ever left unassigned**, `choose` would degrade to "no tip when the cache
+     is stale" rather than to the wrong tip — the safe direction, and one the headless suite pins
+     ("a stale cache with nothing under the pointer yields no tooltip at all"). It is assigned
+     unconditionally in the editor's constructor beside `tooltipsEnabled`, and the behavioural
+     harness could not reach 0/5 without it being live, so the wiring is exercised rather than
+     merely asserted.
+
+**Regression coverage is headless, because the decision was deliberately kept pure.**
+`TooltipSource::choose` takes no JUCE state and needs no display, so `AnamorphStateTests` drives it
+over the measured Settings geometry — the reported gesture in both directions, Vectorscope Persist,
+the agreeing-cache case that must NOT be overridden, both boundary pixels, all three null
+combinations, and the "moving off a control still drops the hint" case that guards against the
+regression the previous attempt shipped. 11 checks; suite **900 → 911**. Mutation-tested by reverting
+`choose` to "always trust the cache": **7 of the 11 checks fail and the behavioural reproduction goes
+back to 5 of 5 wrong.**
+
+**Everything else re-measured on the running editor under `xvfb`:** the KI-024/KI-025 behavioural
+matrix **ALL PASS (0 failed)**; the 45-gesture walk matrix **identical to the pre-fix baseline**
+(39 clean / 6, unchanged — those are the separate "the box covers a control and you park on it" case,
+which this fix deliberately does not touch); the in-control walk **0 wrong**.
+
+**Platform.** The reproduction was confirmed on macOS by the reporter. The cause is in shared JUCE
+code — the cache/live split is platform-independent — and the fix is in the shared path, with no
+platform conditional. What differs per platform is only how easily the two sources drift apart:
+macOS's event coalescing and the tooltip window's own peer teardown produce it readily, and it was
+reproducible here on Linux once driven directly. No platform-specific handling was added because no
+evidence called for any.
+
+**The two earlier attempts, retracted.** Round one anchored the tip while the cursor was inside the
+box (6 → 3 failing gestures; wrong cause). Round two required the pointer to be at rest before a new
+tip was adopted (0 failing gestures on that matrix, but it changed dwell — out of bounds — and kept
+hints alive whenever the cursor sat in a remembered rectangle, a real regression). Both are reverted
+and both entries stay below with their measurements intact.
+
+**Sign-off status: NOT GRANTED for this round.** No maintainer confirmation was given and none is
+claimed. What is owed is a Level-5 check of the gesture on macOS by the reporter, since the
+behavioural evidence here is Linux-only on a synthetic display; the decision itself is now covered
+headlessly on every platform the suite runs on.
+
+**Tooltip investigation (2026-08-20): TWO fixes reverted and NO third one shipped. This entry
+exists because a measurement contradicted the report and the right thing to do was to stop, not to
+patch a third time.** The tree is back to the behaviour `origin/main` has; nothing user-visible
+changes in this change set and `CHANGELOG.md` is untouched.
+
+**What was reverted.** (1) The *anchor-while-inside-the-box* fix — it treated the pointer entering
+the box as "the box put a component under the pointer" and held the tip. Measured over 45 scripted
+gestures it took the failures from 6 to 3, i.e. it helped but did not close the case. (2) The
+*wait-for-the-pointer-to-rest* fix — it took the same 45 gestures to 0, but it changed dwell
+behaviour, which is out of bounds, and it kept a tip alive whenever the cursor sat inside a
+remembered rectangle, which is the "tooltips sometimes stay visible after leaving the control"
+regression that was reported against it. Both reverts are ordinary `git revert` commits; the
+reasoning is kept here rather than deleted with the code.
+
+**What was instrumented, and it was JUCE itself rather than this tree.** A temporary trace inside the
+pinned `juce_TooltipWindow.cpp` and `detail/juce_MouseInputSourceImpl.h` (diagnosis only — both files
+are byte-identical to the pin in this change set) logged, per 123 ms tick: the component under the
+pointer, the tip it yields, `tipChanged`, every `updatePosition` with the box's old and new
+rectangles, every `mouseEnter` on the box, and every `setPeer` / `setComponentUnderMouse` transition
+with the position that produced it. Every `displayTipInternal` additionally logged the component
+under the pointer **at that instant** beside the text being displayed.
+
+**The finding that stopped the work: across 122 tooltip displays — 45 scripted gestures over 9
+Settings controls, a confined random walk restricted to one control and its own box, and a
+two-minute unconstrained walk — the text displayed was NEVER anything but the tooltip of the
+component under the pointer at that instant. Zero mismatches.**
+
+> **RETRACTED (2026-08-20, by the round above).** That check was a **tautology on the tree it ran
+> against**. Pre-fix, `juce_TooltipWindow.cpp:221` computes the text as
+> `getTipFor (*getComponentUnderMouse())` and `:239` displays it in the same tick with no message
+> pumping in between, so comparing the displayed text against the tooltip of
+> `getComponentUnderMouse()` compares a value with itself and can never fail. It measured nothing.
+> The invariant that CAN break is the one between `:221` (the cached component) and `:223` (the live
+> position), and that is what the round above measured instead. The 0/122 is left standing here only
+> so the mistake is legible; it is not evidence of anything.
+
+The reasoning it was used to support — "`newTip` is `getTipFor(newComp)` computed in the same tick,
+and `newComp` is `findComponentAt (livePosition, lastPeer)`, so no branch of it can return a
+component the pointer is not over" — carries the same error: `findComponentAt` is given
+`lastPointerState.position`, the LAST EVENT's position, not the live one.
+
+**Two transitions were mapped in detail because they were the obvious suspects, and both came out
+clean.** Walking 1 px per tick *without ever leaving the UI Scale combo*, into the strip its own box
+overlaps: the box is entered, `setPeer` switches to the box's peer, `componentUnderMouse` becomes the
+box itself, `mouseEnter` hides the tip, the peer is destroyed, `componentUnderMouse` re-resolves to
+the combo's label, and the box is re-placed — measured `614,599` → `375,586`, flipping sides as the
+cursor crossed the display centre, and carrying the **correct** text across the whole sequence. The
+stale-position re-resolve after the peer is destroyed uses the last pointer state rather than the
+live position, which is a real staleness of a pixel at this speed; it was traced and it never
+selected a different control.
+
+**So the only mechanism the evidence supports is the one the FIRST investigation named**: the box is
+placed 12-16 px from the cursor (`AnamorphLookAndFeel::getTooltipBounds`), so it lands on top of
+neighbouring controls — measured, the UI Scale box covers the Oversampling combo and its label — and
+aiming at the box therefore puts the pointer over whatever the box covers. Every foreign tip observed
+in every run was that control's, with the pointer measurably on it. The reporter states the pointer
+is not on the other control and does not cross one, which contradicts the measurement, and no
+reproduction matching that description has been produced here.
+
+**What is NOT claimed.** That the reporter is mistaken. The measurements are Linux/X11 on a synthetic
+display at one UI scale, driven through `ComponentPeer::handleMouseEvent`; a real window manager,
+a HiDPI scale factor, a different UI Scale setting or a host-owned parent window all change the
+geometry and the event ordering, and any of them could expose a transition this harness cannot
+produce. What is claimed is narrower and firmer: **on the evidence available, no state transition in
+the tooltip machine displays text belonging to a component the pointer is not over**, and a third
+patch built on a guess about the remaining possibilities would be the third patch built on a guess.
+
+**Sign-off status: NOT GRANTED for this round, and nothing is owed** — no behaviour changed.
+
 **Stale-anchor correction (2026-08-20): one number, in this file's own About-link entry.** The
 About-link round re-aimed the three `DELIBERATE_REAIMS` declarations onto the header line where
 `aboutLink` is declared and updated the prose around them, but the sentence describing what
-`verify_reaim_targets` resolves still named the old `:362`. It now names `:382`, the line the
-declarations carry and the line `aboutLink` occupies in the current header — read to confirm, not
-shifted. One character; no declaration, no source file and no other document touched.
+`verify_reaim_targets` resolves still named the old `:362`. It now names the line the declarations
+carry, which is the line `aboutLink` occupies in the current header — read to confirm, not shifted.
+(That number has moved again since, with the header; it is `:465` at the time of writing, and the
+declarations and the three legal documents move with it.) One character; no declaration, no source file and no other document touched.
 **MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-20**, for that single correction and nothing
 else. No platform, pluginval or Level-5 validation was performed for it and none is claimed.
 
@@ -373,7 +612,7 @@ document already uses for its five other source anchors.
 same untracked class" was a count of what that pass happened to look at, not a search — three more
 sat in `KNOWN_ISSUES.md` alone, and one of them is the worse kind. **KI-009's `focusSaveNameField`
 citation was mis-aimed, then mechanically carried.** At the merge base it read
-`src/PluginEditor.cpp:1545-1553`, which was the `rIn`/`rOut`/`rAct`/`rOn`/`rPos` easing block in
+`src/PluginEditor.cpp:1556-1564`, which was the `rIn`/`rOut`/`rAct`/`rOn`/`rPos` easing block in
 `stepMicroAnims` — not that function at all — and `--fix` moved it to `:1567-1575`, the same easing
 block after this change's insertions. Faithful, and still wrong. `focusSaveNameField` is at
 **`:1984-1992`**, and the two untracked references beside it were mis-aimed the same way: the
@@ -412,7 +651,7 @@ something these rounds created, and closing it is its own change.
 
 **A third review pass found the same carried-mistake class in `PRIVACY.md`, and this one needed a
 declaration.** The row saying the Presets folder is created when the **Load Preset** dialog opens
-cited `src/PluginEditor.cpp:1502` at the merge base — the S11 generation pre-gate comment inside
+cited `src/PluginEditor.cpp:1513` at the merge base — the S11 generation pre-gate comment inside
 `stepMicroAnims`, about 383 lines short of the `:1838` that `dir.createDirectory()` sat on there.
 `--fix` carried it to `:1524`, still the same comment. Corrected to **`:1916`**, and written the way
 the checker's own header says new citations should be — with the symbol spelled beside the number
@@ -422,7 +661,7 @@ half that survives the next shift.
 **Unlike the `KNOWN_ISSUES.md` five, this one is caught by the gate, which is why it is declared.**
 `PRIVACY.md` still has exactly one `src/PluginEditor.cpp` citation, so the pair IS compared, the
 re-aim reads as drift, and `--fix` **reverted the correction on the first run** — measured, not
-predicted. `("PRIVACY.md", "src/PluginEditor.cpp:2016"): "createDirectory"` is therefore added to
+predicted. `("PRIVACY.md", "src/PluginEditor.cpp:2027"): "createDirectory"` is therefore added to
 `DELIBERATE_REAIMS`. It is not an inert exemption: `verify_reaim_targets` resolves the anchor against
 the live file every run, and mutating the substring to a value the code does not contain makes the
 run fail with `::error::` and exit 2 — checked by doing it, then reverting. A declaration turns the
@@ -430,10 +669,10 @@ drift check off for its anchor, so the aim check is the thing that keeps it hone
 
 **Reported and deliberately NOT corrected — the About-link anchor in the three legal documents.**
 `EULA.md`, `PRIVACY.md` and `TRADEMARKS.md` cite where the product's one outbound hyperlink is
-declared, and `--fix` moved all three from `src/PluginEditor.h:220` to `:223` in this change set.
+declared, and `--fix` moved all three from `src/PluginEditor.h:283` to `:223` in this change set.
 That re-anchor is mechanically correct and **preserves a pre-existing mistake**: at the merge base
 `:213` already read `return juce::TooltipWindow::getTipFor (c);`, and `:223` reads the identical
-line today, while `aboutLink` actually lives at `src/PluginEditor.h:382`. So the rot predates this
+line today, while `aboutLink` actually lives at `src/PluginEditor.h:465`. So the rot predates this
 change and was faithfully carried, not created by it — precisely the failure mode
 `check-citations.py`'s own header describes ("it CANNOT tell you a citation was aimed at the wrong
 code to begin with… and it does so INVISIBLY, in a DRIFTED line that reads like a repair"). It is
@@ -443,7 +682,7 @@ nothing to do with hover; recording it here is what stops the paragraph above re
 three anchors were verified correct.
 
 **NOW CLOSED (2026-08-19), as its own standalone change.** The three documents cite
-**`src/PluginEditor.h:382`**, where `aboutLink` is actually declared, instead of `:223` — which is
+**`src/PluginEditor.h:465`**, where `aboutLink` is actually declared, instead of `:223` — which is
 `return juce::TooltipWindow::getTipFor (c);` inside `GatedTooltipWindow`, the line `--fix` had
 carried the mis-aim onto from the merge base's `:213`. Only the number changed in each document; no
 wording, formatting or meaning was touched, and the correction is one anchor per file.
@@ -453,8 +692,8 @@ the three documents holds **exactly one** `src/PluginEditor.h` citation in both 
 current tree, so the count guard does not fire, the pair IS compared, and the re-aim reads as drift.
 Measured: before the entries were written the run reported all three `DRIFTED … -> :223`, and `--fix`
 would have dragged every one of them back. `("EULA.md" | "PRIVACY.md" | "TRADEMARKS.md",
-"src/PluginEditor.h:382"): "aboutLink"` now covers them, and the substring is what keeps that
-off-switch honest: `verify_reaim_targets` resolves `:382` against the live header every run, and
+"src/PluginEditor.h:465"): "aboutLink"` now covers them, and the substring is what keeps that
+off-switch honest: `verify_reaim_targets` resolves `:465` against the live header every run, and
 mutating one entry's substring to a value the line does not contain makes the run emit `::error::`
 and exit 2 — checked by doing it, then reverting. Re-running `--fix` afterwards leaves all three
 documents byte-identical.
@@ -499,7 +738,7 @@ two that do not are `titleButton` and `aboutLink`, and neither can produce the r
     `false`. So the control has no hover visual at all, registered or not; the argument the review
     traces never reaches a pixel.
   * **`aboutLink` has a live fallback but cannot be occluded by a menu.** It is the *only* child of
-    `aboutBackdrop` (`src/PluginEditor.cpp:568`), so it is on screen only while the About overlay
+    `aboutBackdrop` (`src/PluginEditor.cpp:579`), so it is on screen only while the About overlay
     is. The editor's only menu-openers are `presetName.onClick` (`:350`) and the combo drop-downs —
     all of them outside that overlay and covered by it while it is up, with `Backdrop::mouseDown`
     eating the click. No pop-up menu can be open while `aboutLink` is visible.
