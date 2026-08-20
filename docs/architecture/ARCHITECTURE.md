@@ -72,7 +72,7 @@ Evidence [Verified]:
 - **No worker/background threads** (FFT runs on the GUI thread).
 
 Evidence [Verified]:
-- Source: src/PluginEditor.cpp:267-281 (OpenGL platform gate)
+- Source: src/PluginEditor.cpp:278-292 (OpenGL platform gate)
 - Source: src/dsp/ScopeBuffer.h:8-18 (lock-free SPSC)
 - Source: src/PluginProcessor.cpp:109 (`juce::ScopedNoDenormals`)
 

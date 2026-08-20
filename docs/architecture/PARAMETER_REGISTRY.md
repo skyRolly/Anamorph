@@ -111,7 +111,7 @@ way to hide a parameter). Serialized in `ANAMORPH_INTERNAL`; never in A/B/Undo/p
 - **※** Display label renamed `Window Size` → `UI Scale` in 0.9.2; the identifier `int_uiScale` is
   **unchanged**, as is the pre-0.8.4 legacy APVTS id `uiScale` its migration reads (the immutability
   invariant in action, same shape as the `Haas Side` → `Haas Focus` rename above). Evidence
-  [Verified]: src/PluginEditor.cpp:562; src/InternalState.h:34,:123.
+  [Verified]: src/PluginEditor.cpp:573; src/InternalState.h:34,:123.
 
 Evidence [Verified]: src/InternalState.h:31-55.
 

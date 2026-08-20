@@ -12,6 +12,53 @@
 // ============================================================================
 //  AnamorphAudioProcessorEditor  (v0.3 UI pass)
 // ============================================================================
+// ---- Which component should provide the tooltip text this tick -------------------------------
+//
+// THE DEFECT. JUCE's tooltip tick reads TWO DIFFERENT SOURCES OF TRUTH and mixes them
+// (juce_TooltipWindow.cpp:209, :221, :223):
+//
+//     newComp  = Desktop::getMainMouseSource().getComponentUnderMouse();   // the TEXT comes from here
+//     mousePos = Desktop::getMainMouseSource().getScreenPosition();        // the BOX POSITION from here
+//
+// `getComponentUnderMouse()` is a CACHE. Only a mouse EVENT refreshes it -- MouseInputSourceImpl
+// calls setComponentUnderMouse (findComponentAt (lastEventPosition, lastPeer)) and nothing else
+// writes it (juce_MouseInputSourceImpl.h:54-56, :247-270, :293-297). `getScreenPosition()` is LIVE:
+// it asks the OS on every call (getRawScreenPosition -> MouseInputSource::getCurrentRawMousePosition,
+// :96-101), and Desktop::getMousePosition() is exactly that same value.
+//
+// So whenever the cache disagrees with the live pointer -- because an event was coalesced or
+// delayed, or because the last event went to a window that has since been taken off the desktop,
+// which is precisely what happens when the pointer moves onto the tooltip box and JUCE hides it --
+// the box is placed WHERE THE POINTER REALLY IS and labelled with the tip of a control it is NOT
+// over. And because nothing but an event refreshes the cache, the wrong text STAYS until the
+// pointer moves again: one more pixel delivers an event and the correct tip returns. That is the
+// reported defect in full, including the persistence and the one-pixel recovery, and it is a
+// property of shared JUCE code rather than of any one platform.
+//
+// Reproduced deterministically 5 times out of 5 by driving the two sources apart directly (see
+// docs/DOCUMENTATION_COVERAGE.md, tooltip source-of-truth round).
+//
+// THE FIX. Before trusting the cached component, check it against the LIVE pointer -- the same
+// position JUCE is about to place the box at. If it holds, nothing changes at all, which is the
+// overwhelmingly common case. If it does not, the cache is stale, and what is really under the
+// pointer is asked instead; a null answer means no tip, exactly as an empty tip does today.
+//
+// Kept as a pure function of (cached component, live pointer, component really under it) so the
+// decision is regression-tested headlessly in AnamorphStateTests -- no display, no editor, no
+// tooltip window.
+struct TooltipSource
+{
+    static juce::Component* choose (juce::Component* cached,
+                                    juce::Point<int> livePointer,
+                                    juce::Component* underLivePointer) noexcept
+    {
+        if (cached != nullptr && cached->getScreenBounds().contains (livePointer))
+            return cached;
+
+        return underLivePointer;
+    }
+};
+
 class AnamorphAudioProcessorEditor : public juce::AudioProcessorEditor,
                                      private juce::Timer,
                                      private juce::ComponentListener // pop-up windows, see PopupShield
@@ -224,10 +271,24 @@ private:
         // hide silently, since `tooltips.isEnabled()` would still compile and still return a bool,
         // just the wrong one. Empty => behave exactly like juce::TooltipWindow.
         std::function<bool()> tooltipsEnabled;
+
+        // Live hit test, supplied by the editor. Empty => a stale cache yields no tip rather than
+        // the wrong one, which is the safe direction.
+        std::function<juce::Component*(juce::Point<int>)> componentAt;
+
         juce::String getTipFor (juce::Component& c) override
         {
             if (tooltipsEnabled && ! tooltipsEnabled()) return {};
-            return juce::TooltipWindow::getTipFor (c);
+
+            // `c` is the CACHED component under the mouse; see TooltipSource above for why it can
+            // disagree with where the pointer actually is, and why that shows another control's tip.
+            const auto live = juce::Desktop::getMousePosition();
+            auto* src = TooltipSource::choose (&c, live, componentAt ? componentAt (live) : nullptr);
+
+            // Whichever component wins, the BASE class answers for it, so every suppression JUCE
+            // applies -- a mouse button down, a modal component blocking the target, a backgrounded
+            // process, a target that is not a TooltipClient -- still reaches the state machine.
+            return src != nullptr ? juce::TooltipWindow::getTipFor (*src) : juce::String();
         }
     };
     // 600 ms is the ONLY place the appear-delay is set; applyTooltipsEnabled never touches it.
