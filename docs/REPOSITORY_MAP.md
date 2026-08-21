@@ -33,7 +33,12 @@ Anamorph/
 ├── worklogs/               Session-local investigation records for future agents (NOT
 │                           architecture docs; e.g. performance/WAVE3_INVESTIGATION.md,
 │                           release-hardening/RH_PR2_INVESTIGATION.md — finalized decisions
-│                           graduate to ADRs; worklogs are the raw evidence trail).
+│                           graduate to ADRs; worklogs are the raw evidence trail). One
+│                           worklog also has a rendered companion —
+│                           performance/PERF_AUDIT_v0.9.4_REPORT.html, a self-contained
+│                           page for reading the A7 audit and assigning from it. It is a
+│                           VIEW of the .md beside it, never a second source: the worklog
+│                           is what a later round reconciles against.
 ├── scripts/                setup (incl. the pinned-Clang apt source) / build / test / pluginval,
 │                           plus the seven CI lints
 │                           (check-docs, check-portability, check-realtime,

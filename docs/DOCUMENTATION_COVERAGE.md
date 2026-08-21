@@ -9,7 +9,8 @@ that documentation (Verified / Partially Verified / Unverified / Not Supported).
 Last updated: for the **0.9.4 change set** (2026-08-21, matching the CHANGELOG heading — re-dated
 from 2026-08-15 in the hover-occlusion round, on 2026-08-20, and again on 2026-08-21, each time
 because the version took a further user-visible change) — the
-**spent re-aim declaration sweep** (first below), then the
+**A7 performance audit** (first below), then the
+**spent re-aim declaration sweep**, then the
 **SIGNAL_FLOW anchor restoration**, then the
 **roadmap tail: instruments, the declined JUCE cache, gloss-checked anchors and the editor lifetime**, then the
 **post-merge drift sweep**, then the
@@ -75,6 +76,70 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**A7 performance audit (2026-08-22): the engine re-measured after six optimization waves, and one
+dominant cost found that the previous rounds recorded as absent — because they measured it in the one
+configuration where it is switched off. Investigation only; no product code changed.**
+
+**What the round produced.** `worklogs/performance/PERF_AUDIT_v0.9.4_INVESTIGATION.md` (the evidence
+trail and the roadmap) and `worklogs/performance/PERF_AUDIT_v0.9.4_REPORT.html` (a self-contained
+rendered companion for reading and assigning from). The HTML is a VIEW of the worklog, stated as such
+in both files and in `REPOSITORY_MAP.md`, because a second copy of a decision is a second thing to
+keep true.
+
+**Instructions, not nanoseconds, and the budget document is why.** It states that a shared cloud
+runner is not a wall-clock datum and that *"for attribution rather than totals, `valgrind
+--tool=callgrind` … gives instruction counts that are stable across machines"*. Every figure in this
+round is Ir, taken as the difference between a 3.0 s and a 1.0 s run so that process start, dynamic
+linking and `prepare()` cancel exactly. **No number from this round is promoted into the
+`PERFORMANCE_BUDGET.md` TODO rows**, and the round says so in three places — the container measured
+spread up to 34 % on the committed bench's own cells, which is the evidence for that sentence rather
+than a hypothetical.
+
+**The finding.** Wave 5 attributed small-buffer per-block cost and closed it — *"~4.5k Ir of fixed
+work per block… no single dominant item"*. That reproduces **exactly**, for the transparent default:
+3,581 Ir/block measured here. In the configuration a paying user runs it is **24,287 Ir/block, 6.8×
+larger**, and **20,369 of it (84 %) is `VelvetNoise::processBlock` alone**. The H5 tap-outer gather
+rebuilds a `decorrSamps`-long linear history image from the ring every block
+(`src/dsp/VelvetNoise.cpp:139-142`), independent of `numSamples` — 2,160 samples at 48 kHz, 8,640 at
+192 kHz. At 192 kHz / 32 it is **62.3 % of the whole engine**. The earlier closure missed it for a
+mechanical reason worth recording: the gather is gated on `currentAmount > 0.0f || targetAmount >
+0.0f` (`:132-135`), and the default `algoAmount` is 0 — **measuring per-block cost at the transparent
+default measures the one configuration in which the dominant per-block item is switched off.**
+
+**The fix was measured, not argued.** Implemented in a throwaway build outside the tree (§6.1 of the
+worklog): the retained tail of the history image is the previous block's image shifted by that
+block's length, so the masked ring walk becomes a `memmove` of the same floats behind a validity
+flag. Measured **−14.3 % of whole-engine cost at 48 kHz/32, −32.3 % at 192 kHz/32, −4.7 % at the
+128-sample common case**, and **bit-exact across 144 configurations** (9 scenarios × 4 block sizes ×
+4 sample rates, FNV-1a over every output sample of both channels, zero mismatches). Class A by
+measurement rather than by assertion — which is the standard the Wave 1–5 program set.
+
+**Cross-validated against Wave 4 rather than trusted.** Rescaling Wave 4's idle shares out of its
+own *"~14 % harness noise-fill"*: LevelMeters 26.3 % vs 28.6 % here, LoudnessMatch 27.7 % vs 30.7 %,
+Correlation 3.4 % vs 3.8 %. Two independent harnesses two rounds apart agreeing to a few points.
+
+**Two prices quoted for the first time, both maintainer decisions and neither reopened here.** A
+host-bypassed instance costs **101 % of an active one** (85.1M vs 84.0M Ir/s) because the Issue-2
+contract at `src/dsp/AnamorphEngine.cpp:790-796` keeps Measure + Predict running while bypassed, and
+`loudness.process()` is handed the *processed* signal (`:1137`). And **59.3 % of the transparent idle
+floor is metering and loudness analysis**, running with Level Match off and with no editor in
+existence. W3-7 and W3-8 rejected gating those for reasons that still hold; what was missing was the
+number, and the roadmap already names the queue position (*"one consolidated Review if idle-CPU ever
+matters commercially"*).
+
+**Eight candidates, one recommended.** Four were already disposed of in
+`worklogs/POST_v0.8.12_AUDIT_AND_ROADMAP.md` §4 and are re-confirmed rather than re-litigated —
+including the largest single consumer, the multiband LR4 bank at 41.7 % of the working reference,
+which stays blocked behind the same AVX2 ADR as W5-D. The GUI was measured too (one full editor
+repaint = 28.6M Ir, of which `Vectorscope::paint` itself is 2.9 % — the rest is JUCE's software
+rasterizer), with its three limits stated rather than implied: Linux software renderer only, a forced
+full repaint rather than the dirty-region steady state, and **the `juce::Timer`/`VBlankAttachment`
+tick path not measured at all**, so the Wave 1–4 idle-GUI claims are neither confirmed nor challenged.
+
+**Verification.** `check-docs` 103 files clean; `check-citations --self-test` 123 cases and `--check
+--base origin/main` green; full `scripts/preflight.sh` green. Only `REPOSITORY_MAP.md` and this file
+changed outside the two new worklog artifacts. [Verified]
 
 **Spent re-aim declaration sweep (2026-08-22): all eight `DELIBERATE_REAIMS` entries retired after
 the round that declared them merged. A declaration is good for exactly one transition; kept past it,
