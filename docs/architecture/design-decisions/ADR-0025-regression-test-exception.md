@@ -119,11 +119,14 @@ revisited and the test written; the entry is removed only when the gap is actual
 - `docs/policies/TESTING_POLICY.md` §Rules rule 1 (the amended rule)
 - `docs/procedures/TESTING.md` §"Gaps in the automated coverage (known, deliberate)" (the register)
 - `docs/POSTMORTEMS.md` INC-010 (the first invocation)
-- `tests/state_tests.cpp:6-8` — the harness comment recording that the editor is linked but never
-  instantiated, which is the surface boundary this ADR is about
+- `tests/state_tests.cpp:6-11` — the harness comment recording that the editor is constructed and
+  destroyed but never SHOWN, which is the surface boundary this ADR is about (it read "linked but
+  never instantiated" when this ADR was accepted; the boundary the ADR turns on — no pointer, no
+  display, nothing on screen — is unchanged)
 
 Evidence [Verified]:
-- Source: `tests/state_tests.cpp:6-8` (editor linked, never instantiated); `scripts/run-tests.sh`
+- Source: `tests/state_tests.cpp:6-11` (the editor is constructed and destroyed, never shown);
+  `scripts/run-tests.sh`
   (the two console targets are the whole Level-2/3 surface); `scripts/run-pluginval.sh` (Level 4
   drives a host the plug-in does not control).
 - Policy: `docs/policies/TESTING_POLICY.md` rule 1 as it stood before this ADR;

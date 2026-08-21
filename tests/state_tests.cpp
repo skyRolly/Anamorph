@@ -4,8 +4,11 @@
 //  Headless regression net for the COMPATIBILITY policy family
 //  (SESSION_COMPATIBILITY_POLICY / PARAMETER_COMPATIBILITY_POLICY): it
 //  exercises the REAL AnamorphAudioProcessor (this target compiles the plugin
-//  sources — the editor is linked but never instantiated), so every check runs
-//  the exact production serialization code paths.
+//  sources), so every check runs the exact production serialization code paths.
+//  Since 2026-08-21 it also CONSTRUCTS AND DESTROYS the real editor -- but never
+//  SHOWS it: no peer, no message loop, no interaction. A defect that needs a
+//  component on screen still has no surface here; a defect in the editor's
+//  construction or teardown now does.
 //
 //    1. Serialized schema shape: AnamorphRoot / ANAMORPH / ANAMORPH_INTERNAL /
 //       AB fields exist exactly as SERIALIZATION_REGISTRY.md records them.
@@ -38,7 +41,7 @@
 // ============================================================================
 
 #include "PluginProcessor.h"
-#include "PluginEditor.h"   // TooltipSource -- a pure decision, no editor is instantiated
+#include "PluginEditor.h"   // TooltipSource, and the editor lifetime test at the end
 
 #include <cmath>
 #include <cstdio>
@@ -1570,6 +1573,108 @@ static void testTooltipSourceOfTruth()
     std::printf ("\n");
 }
 
+// ============================================================================
+//  Editor construct / destroy -- the one lifetime this suite compiled and never
+//  ran.
+//
+//  WHAT WAS ALREADY TRUE. This target already compiles `PluginEditor.cpp` (it is
+//  in `ANAMORPH_PLUGIN_SOURCES`) and already links `juce_audio_utils`,
+//  `juce_dsp` and `juce_opengl`, because `createEditor()` references them. It
+//  had never CALLED it. So the editor constructor and destructor -- 68 direct
+//  children, three LookAndFeels, an `OpenGLContext` member, a `VBlankAttachment`
+//  and a `FrameClock` -- were the largest piece of first-party code in this
+//  repository that no instrument had ever executed.
+//
+//  WHY IT GOES HERE AND NOT IN A NEW TARGET. A new CMake target is a gated Build
+//  System change (`ARCHITECTURE_REVIEW_GATE.md`) and would have bought nothing:
+//  this binary already has every source and every module the editor needs. What
+//  it buys instead is the reason to do it at all -- `AnamorphStateTests` is
+//  already run under ASan+UBSan, under valgrind memcheck, against LTO codegen and
+//  on three platforms, so putting the editor's lifetime inside it puts that
+//  lifetime under all of them at once, at no CI cost beyond its own runtime.
+//
+//  NO WINDOW IS OPENED. The editor is constructed as a free-standing Component
+//  and never added to the desktop, so no peer is created and no display is
+//  touched -- asserted below rather than assumed, because "it worked headlessly"
+//  and "it quietly opened something" are indistinguishable in a passing run.
+//
+//  LINUX ONLY, DELIBERATELY, and this is a scoping decision rather than a
+//  discovery. It is verified headless on Linux with `DISPLAY` unset. It is NOT
+//  verified on Windows or macOS, this suite is a BLOCKING gate on all three, and
+//  `KNOWN_ISSUES.md` KI-007 already records that the GPU-less Windows CI runner
+//  cannot host editor GUI tests at all. Every instrument this test exists to
+//  feed -- ASan, UBSan, valgrind, LTO, RTSan -- runs on Linux, so the scoping
+//  costs none of the coverage and removes the whole risk of a headless
+//  construction failing a platform nobody measured. Widening it needs one green
+//  run on the other two, not an argument.
+// ============================================================================
+static void testEditorConstructDestroy()
+{
+    std::printf ("Editor lifetime: construct, lay out and destroy with no window\n");
+
+#if ! (JUCE_LINUX || JUCE_BSD)
+    std::printf ("  SKIPPED off Linux -- headless construction is unverified there "
+                 "(KI-007); every instrument this feeds is a Linux job.\n");
+#else
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+
+    // THE PREMISE, CHECKED LOUDLY AND FIRST. If `createEditor()` ever returns
+    // null or something else, every assertion below is vacuously true and the
+    // test reports a confident pass over nothing -- the exact vacuity
+    // TESTING_POLICY rule 4 exists to forbid.
+    auto* raw = proc.createEditor();
+    check (raw != nullptr, "createEditor() returns an editor");
+    auto* ed = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "...and it is an AnamorphAudioProcessorEditor");
+    if (ed == nullptr)
+    {
+        delete raw;
+        return;
+    }
+
+    // LAYOUT ACTUALLY RAN, and this is the liveness proof for everything after
+    // it: the constructor's `applyUiScale()` is what calls `setSize`, and its
+    // child components are built along the way, so a constructor that bailed
+    // early leaves a 0x0 component with no children and fails HERE rather than
+    // leaving the checks below quietly true of nothing.
+    //
+    // NON-DEGENERATE RATHER THAN EXACT, deliberately. `kWidth`/`kHeight` are
+    // private to the editor and widening them for a test would change the
+    // production class to suit its test; and pinning 940x720 as literals here
+    // would put the window size in a second place, which is the copy that rots.
+    // The measured size is PRINTED, so a human reading a run still sees it.
+    check (ed->getWidth() > 0 && ed->getHeight() > 0,
+           "the editor laid itself out with a real size");
+    check (ed->getNumChildComponents() > 0, "the editor built its child components");
+    std::printf ("  laid out %dx%d with %d direct children\n",
+                 ed->getWidth(), ed->getHeight(), ed->getNumChildComponents());
+
+    // NOTHING WAS SHOWN. A free-standing Component has no peer until something
+    // adds it to the desktop; asserting it stays null is what makes "headless"
+    // a property of this test rather than a hope about the environment.
+    check (ed->getPeer() == nullptr, "no window was opened (the editor has no peer)");
+
+    proc.editorBeingDeleted (ed);
+    delete ed;
+
+    // REPEATED, because a single construct/destroy exercises the paths but not
+    // the ORDER problems: a listener left attached, a LookAndFeel outliving its
+    // users, a VBlankAttachment surviving its component. Those show up on the
+    // second construction or in the sanitizer's report, not the first.
+    for (int i = 0; i < 4; ++i)
+    {
+        auto* again = dynamic_cast<AnamorphAudioProcessorEditor*> (proc.createEditor());
+        check (again != nullptr, "the editor can be rebuilt after being destroyed");
+        if (again == nullptr)
+            break;
+        proc.editorBeingDeleted (again);
+        delete again;
+    }
+    std::printf ("  constructed and destroyed 5 times, clean\n");
+#endif
+}
+
 int main (int argc, char* argv[])
 {
     juce::ScopedJuceInitialiser_GUI juceInit; // MessageManager for APVTS/processor on this thread
@@ -1599,6 +1704,7 @@ int main (int argc, char* argv[])
     testPresetIndicatorIdentityAcrossRestore();
     testWrapperProcessBlockAudioPath();
     testTooltipSourceOfTruth();
+    testEditorConstructDestroy();
 
     std::printf ("\n%d checks, %d failure(s)\n", checks, failures);
     return failures == 0 ? 0 : 1;

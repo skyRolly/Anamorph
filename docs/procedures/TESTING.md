@@ -97,9 +97,10 @@ preserved. Evidence [Verified]: tests/dsp_tests.cpp (`main` registers all tests)
 
 ### State-compatibility self-tests (v0.8.13 harness)
 
-`tests/state_tests.cpp` (**13 tests**, own console target `AnamorphStateTests`) automates the
+`tests/state_tests.cpp` (**15 tests**, own console target `AnamorphStateTests`) automates the
 COMPATIBILITY policy family against the **real `AnamorphAudioProcessor`** (the target compiles
-the plugin sources; the editor is linked but never instantiated — fully headless):
+the plugin sources; since 2026-08-21 it also constructs and destroys the real editor, headlessly
+and without ever showing it — no peer, no message loop, no interaction):
 serialized-schema shape (every `SERIALIZATION_REGISTRY.md` field), a **parameter-registry
 snapshot** (IDs/names/order/automation flags/step texts exact + range mappings probed at 5
 normalised points, vs `tests/fixtures/parameter_registry.snapshot`), a raw-exact
@@ -131,7 +132,23 @@ it regresses `processBlock`'s own `ScopedNoDenormals` — and it is the only tes
 that drives the wrapper's audio path, which is what points the `sanitizers` job's ASan/UBSan and
 valgrind runs of this suite at the wrapper's parameter snapshotting and buffer handling; a
 liveness RMS check first proves the invariant is not vacuously green, and the
-`ANAMORPH_TESTS_NO_FTZ` escape relaxes only the denormal half, exactly as in the DSP suite).
+`ANAMORPH_TESTS_NO_FTZ` escape relaxes only the denormal half, exactly as in the DSP suite),
+and the **editor lifetime** (`testEditorConstructDestroy`, 2026-08-21: `createEditor()` five times
+over, each laid out and destroyed through `editorBeingDeleted`, asserting the premise first — a
+non-null editor of the concrete type — then that layout ran and that **no peer was created**, so
+"headless" is a property the test proves rather than one the environment happens to supply).
+It needed no new target and no CMake change: this binary already compiled `PluginEditor.cpp` and
+already linked `juce_audio_utils`/`juce_dsp`/`juce_opengl`, because `createEditor()` references
+them — it had simply never been called. What that buys is the reason to do it here at all: this
+suite already runs under **ASan+UBSan+vptr, LeakSanitizer, valgrind memcheck and LTO codegen**, so
+the editor's constructor and destructor — 68 direct children, three LookAndFeels, an
+`OpenGLContext` member, a `VBlankAttachment` and a `FrameClock` — now run under all of them.
+Measured clean on the first exposure: 940×720, 68 children, five construct/destroy cycles, no
+sanitizer report. **Linux-only by construction** (`#if JUCE_LINUX || JUCE_BSD`): headless editor
+construction is unverified on Windows and macOS where this suite is also a blocking gate, and
+KI-007 records that the GPU-less Windows runner cannot host editor GUI tests at all — every
+instrument this test feeds is a Linux job, so the scoping costs no coverage. Widening it needs one
+green run on the other two, not an argument.
 Evidence [Verified]: tests/state_tests.cpp; CMakeLists.txt (`AnamorphStateTests`).
 
 **Changing the parameter surface intentionally** (ADR + `PARAMETER_REGISTRY.md` update
@@ -393,8 +410,9 @@ rather than deleted, because a gap that was real and is now covered is worth bei
   under ADR-0025**, and this entry is the register that ADR names. Its four required disclosures:
 
   1. *Why no reliable test exists.* The Level-2/3 surface is two console targets
-     (`scripts/run-tests.sh`), and `tests/state_tests.cpp:6-8` records that it "compiles the plugin
-     sources — the editor is linked but never instantiated". A defect that exists only while a
+     (`scripts/run-tests.sh`), and `tests/state_tests.cpp:6-11` records that it constructs and
+     destroys the editor but never SHOWS it — "no peer, no message loop, no interaction". A defect
+     that exists only while a
      **modal child is open and its owner is destroyed** — the 0.9.2 preset drop-down crash,
      **INC-010** — has no object to act on there. Level 4 does open and close the editor, but
      pluginval drives a host we do not control and never opens a menu first.
@@ -434,8 +452,8 @@ rather than deleted, because a gap that was real and is now covered is worth bei
   1. *Why no reliable test exists.* They need things the two console targets do not have — a real
      vblank tick plus pointer motion over a settled spectrum for the first, JUCE's modal machinery
      delivering a real mouse-down for the shield, and a rasteriser plus a font for the menu-width and
-     disabled-item rendering. The editor is linked but never instantiated
-     (`tests/state_tests.cpp:6-8`), and neither suite has a pointer or a display.
+     disabled-item rendering. The editor is constructed but never shown
+     (`tests/state_tests.cpp:6-11`), and neither suite has a pointer or a display.
   2. *What replaced it.* Every root cause was traced to specific lines — our own S2 repaint gate for
      the first, `juce_Component.cpp:2507-2544` and `juce_ModalComponentManager.cpp:81-89` in the
      pinned tree for the shield, and the mismatch between `getIdealPopupMenuItemSize` and
@@ -474,8 +492,8 @@ rather than deleted, because a gap that was real and is now covered is worth bei
   written fresh per ADR-0025 §3 rather than deferred to the entry above:
 
   1. *Why no reliable regression test exists.* It would have to live on the Level-2/3 surface, and
-     that surface has no editor object and no pointer: `tests/state_tests.cpp:6-8` records that it
-     "compiles the plugin sources — the editor is linked but never instantiated", and the defect is
+     that surface has no pointer and nothing on screen: `tests/state_tests.cpp:6-11` records that it
+     "constructs and destroys the editor but never shows it", and the defect is
      a property of `Component::getMouseXYRelative()` — `getLocalPoint (nullptr,
      Desktop::getMousePositionFloat())` (`juce_Component.cpp:3233-3236`) — so reproducing it needs a
      **real OS cursor** over a **real menu window**, i.e. a display. Level 4 opens the editor but

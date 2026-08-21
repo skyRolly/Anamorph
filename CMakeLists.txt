@@ -387,8 +387,12 @@ if(ANAMORPH_BUILD_TESTS)
     #  compiles-the-sources pattern as the AnamorphDSP INTERFACE lib; JUCE's
     #  shared-code target links its modules PRIVATE, so it cannot be reused
     #  here without restructuring the shipped build. The editor/GUI sources
-    #  are compiled (createEditor() references them) but never instantiated:
-    #  the tests run headlessly and open no window.
+    #  are compiled (createEditor() references them), and since 2026-08-21 the
+    #  suite also constructs and destroys the editor -- headlessly, opening no
+    #  window. No target or module change was needed for that: this target
+    #  already compiled PluginEditor.cpp and already linked juce_audio_utils,
+    #  juce_dsp and juce_opengl, which is why the editor lifetime test lives in
+    #  the existing suite rather than in a new (review-gated) target.
     # ------------------------------------------------------------------------
     juce_add_console_app(AnamorphStateTests PRODUCT_NAME "AnamorphStateTests")
     target_sources(AnamorphStateTests PRIVATE

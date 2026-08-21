@@ -357,6 +357,22 @@ DELIBERATE_REAIMS = {
         "applyAutoGain",
     ("docs/architecture/THREAD_MODEL.md", "src/gui/Vectorscope.h:21"):
         "Nothing is ever drawn on the audio thread",
+
+    # RE-AIMED 2026-08-21 by the editor-lifetime test, which rewrote the header
+    # comment those anchors cite. `tests/state_tests.cpp:6-8` said the editor was
+    # "linked but never instantiated"; it is now constructed and destroyed, and
+    # the sentence that carries the surface boundary these documents lean on --
+    # never SHOWN, no peer, no message loop, no interaction -- spans :6-11. The
+    # cited lines were edited, so `--fix` correctly declines to map them and each
+    # spelling is declared instead. One entry per (document, spelling): a
+    # document that spells the same anchor several times is one citation.
+    ("docs/POSTMORTEMS.md", "tests/state_tests.cpp:6-11"):
+        "no peer, no message loop, no interaction",
+    ("docs/architecture/design-decisions/ADR-0025-regression-test-exception.md",
+     "tests/state_tests.cpp:6-11"):
+        "no peer, no message loop, no interaction",
+    ("docs/procedures/TESTING.md", "tests/state_tests.cpp:6-11"):
+        "no peer, no message loop, no interaction",
 }
 
 # Documents whose GLOSSED citations are checked against the text they name.

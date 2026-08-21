@@ -494,7 +494,10 @@ directory means one FetchContent clone per build directory, and that job configu
 2026-08-21 the two secondary configures pass `-DANAMORPH_JUCE_PATH` at `build-lto/_deps/juce-src` —
 the tree this job downloaded minutes earlier, at the SHA `CMakeLists.txt` pins. Nothing is cached
 and nothing crosses runs; a missing directory fails `add_subdirectory` rather than silently
-re-fetching. `sanitizers` still fetches twice (`build-san`, `build-vg`) and the same treatment is
+re-fetching. One cost, stated: `ANAMORPH_JUCE_PATH` takes the `add_subdirectory` branch, so those
+two builds' JUCE `-I` paths move from their own `_deps` to `build-lto`'s — one cold ccache pass for
+`build-bench` and `build-dump`, then stable. They are throwaway liveness builds, so that is a fair
+trade for two fewer clones. `sanitizers` still fetches twice (`build-san`, `build-vg`) and the same treatment is
 available there; it was left alone because that lineage is shared between a sanitized and an
 unsanitized build and the change was not worth perturbing it without CI evidence.
 
