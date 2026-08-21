@@ -206,13 +206,15 @@ ScopeBuffer fixed at 16384 stereo frames). Requires measurement for a concrete f
 
 ## How to produce those numbers — required benchmark procedure
 
-The three TODOs above are open because **no repeatable benchmark is committed to this
-repository**: `scripts/` has no bench entry point, `tests/` measures correctness only, and every
-number quoted in the Wave 3-6 worklogs came from a *session-local* scratch harness that was never
-checked in (see e.g. `worklogs/performance/WAVE3_INVESTIGATION.md`). Anyone can therefore
-reproduce a measurement, but no two people will reproduce the *same* one. This section fixes the
-method so results are comparable across sessions and machines; it deliberately adds **no
-infrastructure** — closing RISK-002 needs measurements, not a framework.
+This section was written when **no repeatable benchmark was committed to this repository**:
+`scripts/` had no bench entry point, `tests/` measured correctness only, and every number quoted
+in the Wave 3-6 worklogs came from a *session-local* scratch harness that was never checked in
+(see e.g. `worklogs/performance/WAVE3_INVESTIGATION.md`). Anyone could therefore reproduce a
+measurement, but no two people would reproduce the *same* one. What follows fixes the method so
+results are comparable across sessions and machines; the section itself deliberately added **no
+infrastructure** — closing RISK-002 needs measurements, not a framework. **The harness landed
+afterwards and is described below**, so the three TODOs above are no longer open for want of one:
+the reason they are still open is given at the end of this section.
 
 **What to measure.** `anamorph::AnamorphEngine` alone, not the plug-in wrapper and not the GUI.
 It is a plain library target (`AnamorphDSP`, `CMakeLists.txt`) with no JUCE plug-in host required,

@@ -194,7 +194,10 @@ ASAN_OPTIONS=detect_leaks=0 \
 `exit()` double-frees in `DeletedAtShutdown::deleteAll()` during `__run_exit_handlers`. Leak coverage
 for the same code is the `sanitizers` job's, which runs with `detect_leaks=1`.
 
-**CI builds all three and gates on two of them.** The benchmark is built and smoke-run but its
+**CI builds three of these four and gates on two of them** — the benchmark, the fuzz target and
+the compile-only effects check. `AnamorphDspDump` is deliberately NOT among them: it is the local
+instrument for a dependency bump (§Proving a dependency bump is bit-identical), and nothing in CI
+bumps a dependency. The benchmark is built and smoke-run but its
 *numbers* are not gated — measured run-to-run spread on an idle machine is 7.2% (median ns/sample)
 and 65.4% (worst block), so a threshold would be noise rather than signal; what the build catches is
 a harness that has silently stopped compiling against the engine it measures. The fuzz run and the
@@ -331,16 +334,18 @@ not `x86_64` or `sysctl.proc_translated` is not `0`, so it can never report a gr
 from somewhere that is not Intel.
 
 Six further jobs run beside the build jobs, none in a `needs:` chain in either direction, so a
-finding in one never skips a binary that is otherwise fine:
+finding in one never skips a binary that is otherwise fine. (`merge-check` is not among them: its
+`if:` is the exact complement of every other job's, so it runs only on the same-repo pull-request
+event — where it is the only job that runs at all.)
 
 | Job | Run it locally as |
 |---|---|
 | `docs` | `python3 scripts/check-docs.py --self-test && python3 scripts/check-docs.py` |
 | `source-lint` | `python3 scripts/check-portability.py --self-test` then the lint, `python3 scripts/check-realtime.py --self-test` then that lint, then `python3 scripts/check-citations.py --self-test` then `--check --base <rev>` |
-| `linux-clang` | see `CI_CD.md` §Reproducing CI locally (own `build-clang` tree) |
 | `sanitizers` | ASan+UBSan over both suites, then valgrind memcheck over both suites (the valgrind step sets `ANAMORPH_TESTS_NO_FTZ=1` — see below) |
 | `realtime` | `cmake -B build-rtsan -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C(XX)_COMPILER=clang(++)-<major> -DCMAKE_C(XX)_FLAGS="-fsanitize=realtime -fno-omit-frame-pointer" -DCMAKE_EXE_LINKER_FLAGS=-fsanitize=realtime`, build `AnamorphTests`, run it with **no `RTSAN_OPTIONS`** (ADR-0029 — `halt_on_error=false` would make it report and pass) |
 | `linux-lto-tests` | `cmake -B build-lto -G Ninja -DCMAKE_BUILD_TYPE=Release -DANAMORPH_BUILD_STANDALONE=OFF -DCMAKE_C_FLAGS=-flto -DCMAKE_CXX_FLAGS=-flto -DCMAKE_EXE_LINKER_FLAGS=-flto`, build both test targets, run both — the suites against the shipped optimization class (see `CI_CD.md`) |
+| `fuzz` | the `AnamorphFuzzState` recipe under §"Opt-in targets" above, verbatim — the CI step adds only `-seed=20260818 -rss_limit_mb=4096 -print_final_stats=1` and an `-artifact_prefix` for the reproducer it uploads on a finding |
 
 **`ANAMORPH_TESTS_NO_FTZ=1` is for valgrind and nothing else.** The DSP suite treats a denormal in
 the engine output as a failure, which holds because the audio path runs under
