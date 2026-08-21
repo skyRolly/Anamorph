@@ -947,6 +947,60 @@ jobs:
             --build-dir "${GITHUB_WORKSPACE}/build" \
             --clang-major "${ANAMORPH_CLANG_VERSION}"
 
+  # -------------------------------------------------------------------------
+  # Sanitizers (Linux). The point of this job is to catch, ON LINUX, defects that
+  # only MANIFEST on another platform.
+  #
+  # Memory that Linux hands back zero-filled is arbitrary on macOS, so an
+  # uninitialised read of DSP state is benign here and poisonous there. That
+  # defect class is platform-INDEPENDENT even though its symptom is not, and
+  # tooling sees it regardless of which bytes the allocator happened to supply.
+  # This repository ships a realtime audio processor with per-block state across
+  # eight DSP stages and had no sanitizer coverage of any kind before this job.
+  #
+  # ASan+UBSan cover out-of-bounds, lifetime and undefined behaviour -- the last
+  # of which also matters because UB is what lets -O3 + LTO on a different target
+  # legally delete a guard. MemorySanitizer, the dedicated uninitialised-read
+  # tool, is deliberately NOT used: it requires every dependency including libc++
+  # and all of JUCE to be instrumented, and an uninstrumented dependency produces
+  # false positives rather than silence. valgrind memcheck answers the same
+  # question with no rebuild of anything, so it carries that half.
+  #
+  # valgrind runs BOTH suites. It is ~50x slower than native, and that cost is
+  # accepted because memcheck is the only uninitialised-read detector in the
+  # pipeline and the read that would matter runs through the real wrapper
+  # `processBlock` -- which only AnamorphStateTests drives. Pointing it at the DSP
+  # suite alone would aim the detector away from the wrapper entirely.
+  #
+  # detect_leaks=1 -- LeakSanitizer IS a gate here now (maintainer decision,
+  # 2026-08-18). The claim that used to justify switching it off -- JUCE
+  # singleton teardown producing spurious reports -- was retested and is simply
+  # not true on clang 22 / JUCE 9.0.1: both suites run leak-CLEAN, 160 + 900
+  # checks, zero LeakSanitizer reports. Leaving it off was costing real coverage
+  # for a reason that had expired.
+  #
+  # If a future JUCE upgrade reintroduces exit-order reports, the response is to
+  # investigate the report, not to reach for detect_leaks=0 again: a leak in the
+  # plug-in and a leak in a dependency's teardown look different in the stack,
+  # and this repository has no suppression file precisely so that the difference
+  # has to be looked at. (The `fuzz` job runs with detect_leaks=0 for a specific,
+  # documented reason of its own -- it leaks one JUCE initialiser on purpose.)
+  # halt_on_error=1 on UBSan so the first violation fails the job rather than
+  # scrolling past.
+  #
+  # NOT in any `needs:` chain and not a dependency of anything INSIDE this
+  # workflow: it is slower than the build jobs, and a sanitizer finding should
+  # not withhold a per-push beta artifact that the behavioural gates passed --
+  # the packaging jobs upload theirs regardless of what happens here.
+  #
+  # THAT IS A STATEMENT ABOUT THIS WORKFLOW ONLY, and the release path differs.
+  # `release.yml` calls this whole workflow as ONE job (`build:`), and
+  # `draft-release` is `needs: [validate, build]` -- so a called workflow's
+  # aggregate result is what that edge sees, and a failure HERE does skip the
+  # draft release. That is the intended reading of RELEASE_POLICY's "the
+  # existing `build.yml` gates are reused unchanged", not an accident; do not
+  # infer release non-blocking from the absence of a `needs:` edge here.
+  # -------------------------------------------------------------------------
   sanitizers:
     runs-on: ubuntu-latest
     timeout-minutes: 45

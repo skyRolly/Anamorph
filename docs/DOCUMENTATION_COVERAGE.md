@@ -9,7 +9,8 @@ that documentation (Verified / Partially Verified / Unverified / Not Supported).
 Last updated: for the **0.9.4 change set** (2026-08-21, matching the CHANGELOG heading — re-dated
 from 2026-08-15 in the hover-occlusion round, on 2026-08-20, and again on 2026-08-21, each time
 because the version took a further user-visible change) — the
-**Linux release toolchain move to Clang** (first below), then the
+**post-merge drift sweep** (first below), then the
+**Linux release toolchain move to Clang**, then the
 **Linux installer migration and changelog-completeness audit**, then the
 **tooltip source-of-truth round**, then the
 **tooltip investigation that shipped no fix**, then the
@@ -71,6 +72,76 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**Post-merge drift sweep (2026-08-21): four documents corrected against the tree, one deleted
+comment block restored, and the five spent re-aim declarations retired. No code, no gate and no
+release behaviour changed.**
+
+**What this round is.** A reconciliation of the standing engineering roadmap against `main@85697de`
+found most of it already shipped, and found that what remained was almost entirely documentation
+that had drifted from code which moved underneath it. Four findings share one cause: **a change
+corrects the paragraph it is about and leaves the summary that introduced it.** The largest was made
+by the immediately preceding commit.
+
+**`12c545d` deleted the `sanitizers` job's entire comment header, as collateral.** That header sat
+between the end of `linux-clang` and `sanitizers:`, so deleting the job took it too — the rationale
+for ASan+UBSan, for deliberately not using MSan, for running valgrind over *both* suites, for
+`detect_leaks=1` becoming a gate, and the topology paragraph that two other job headers still refer
+to by name ("see the `sanitizers` comment" at `linux-lto-tests` and at `realtime`). Two referrers,
+zero referent, through every green run since. **No gate could have caught it:** the citation gate
+anchors `file:line` references, and these are prose pointers naming a comment. Restored verbatim
+from `be99567`; every claim in it was re-checked against the current file first, and the figure it
+carries ("160 + 900 checks") is left alone as the dated 2026-08-18 measurement it is.
+
+**`THREAD_MODEL.md` disagreed with itself about where the threading mechanisms live.** The Threads
+section's evidence line put the VBlank attachment at `:675-681` and the OpenGL gate at `:295-309`,
+while the same document's §"OpenGL platform gate" and §"Timers / animation cadence" said `:306-320`
+and `:686-692`. The source settles it: the later two are right, and `:675-681` lands on
+`applyScopePersist()`…`applyUiScale()` — unrelated code. `src/PluginEditor.cpp` grew by eleven lines
+in `4fcc41c`, which re-aimed some of that document's anchors and not this line's. **Why the gate was
+silent, stated because it will be silent again:** it compares an anchor against a base and only
+examines anchors whose *target file* moved in the change set. A citation that was wrong before the
+base stays wrong and stays green — the limit its own header declares. Correcting it therefore needed
+no `DELIBERATE_REAIMS` entry either, for the same reason.
+
+**The state suite is 911 checks, not 900.** Measured, not inferred: `AnamorphStateTests` prints
+`911 checks, 0 failure(s)` and `AnamorphTests` prints `162 checks`, which is what `HANDOVER.md`
+already carried for the DSP side. Corrected in `HANDOVER.md` and `RELEASE_HARDENING_PLAN.md`, the
+two status-of-record documents. **Deliberately not touched:** `HANDOVER.md`'s ABI sentence, which
+names `GLIBC_2.38 / GLIBCXX_3.4.31` without `CXXABI`. It sits under a dated "validation surface added
+2026-08-18" heading and `CXXABI` was gated on 2026-08-21, so adding it there would falsify a record
+rather than repair one.
+
+**Three more `12c545d` residuals, all of the same shape.** `TESTING.md`'s job table told a developer
+how to reproduce `linux-clang`, a job that no longer exists, and had no row for `fuzz`, which does;
+its count of six was right, its membership was not. `TESTING.md`'s "CI builds all three" followed a
+four-row table whose three *targets* include `AnamorphDspDump`, which no CI job builds — the claim is
+true only of the benchmark, the fuzz target and the compile-only effects check, and it now names
+them. `REPOSITORY_MAP.md` said "seven non-packaging jobs" and listed six, omitting `merge-check`.
+`CI_CD.md` named the `linux`/`merge-check` cache lineage `ccache-ubuntu-gcc-release-` two sentences
+before saying those jobs key on the pinned Clang major, and listed `build-clang` among the per-job
+build directories.
+
+**`PERFORMANCE_BUDGET.md` contradicted itself inside one section.** §"How to produce those numbers"
+opened with "no repeatable benchmark is committed to this repository: `scripts/` has no bench entry
+point, `tests/` measures correctness only", and twenty lines later said "**The harness now exists:
+`tests/bench.cpp`**" and that the reason the TODO rows stay open "has changed". The opening is now
+written as the past it describes, with a forward pointer to the current reason. The document's
+header — "no benchmark/profiling *data* exists in the repository" — is left as written: it is still
+true, and it is the sentence the C2 constraint rests on.
+
+**Five spent re-aim declarations retired, and none added.** All five entries from the Clang
+release-toolchain round reported "not needed against `origin/main`" once PR #122 merged, and
+`origin/main` is this branch's merge base — the condition that note attaches to. A declaration is
+good for exactly one transition, so keeping one past its transition converts a one-shot exemption
+into a permanent hole. `DELIBERATE_REAIMS` is back at its documented empty resting state, and the
+comment there records why this round added none despite re-aiming two spans.
+
+**Line-number consequence, handled by the tool rather than by hand.** Restoring 54 comment lines
+above `sanitizers:` moved every `build.yml` anchor below it. `check-citations.py --fix` re-anchored
+six citations across `DOCUMENTATION_COVERAGE.md`, `KNOWN_ISSUES.md`, `COMPATIBILITY_MATRIX.md` and
+`RELEASE_POLICY.md`, reporting "0 need a human"; each new target was then read back and confirmed to
+land on the content its document names.
 
 **Linux release toolchain: Clang ships, GCC verifies (2026-08-21): the compiler that builds the
 Linux artifact stopped being the runner image's choice, and the ABI gate gained a family it had been
@@ -1210,7 +1281,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:2666` and `:2836`, this round being documentation-only.
+`.github/workflows/build.yml:2720` and `:2836`, this round being documentation-only.
 
 **Policy-topology round (2026-08-19): rule 4 described a placement three of its own seven checkers
 cannot have. One report investigated and closed with no change.**

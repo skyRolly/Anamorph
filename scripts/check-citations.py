@@ -291,28 +291,24 @@ DELIBERATE_REAIMS = {
     # entries: it described spellings the default branch now carries, and a
     # comment that outlives its code is the failure this repository is written
     # against.
-    # RE-AIMED 2026-08-21 by the GCC 13 -> 16.2.0 toolchain migration. The row
-    # cites the env line that carries the GCC pin; that line's VALUE changed in
-    # this change set, so the anchor is textually indistinguishable from drift
-    # and has to be declared. The expectation below is the token, not the
-    # number, so the entry cannot quietly survive onto some unrelated line.
-    ("docs/policies/DEPENDENCY_POLICY.md", ".github/workflows/build.yml:114"):
-        "ANAMORPH_GCC_VERSION",
-
-    # RE-AIMED 2026-08-21 by the setup-linux.sh profile split. The package list
-    # moved out of a literal `apt-get install` invocation and into two shell
-    # variables (`CORE_PACKAGES`, `FULL_EXTRA_PACKAGES`), so every anchor into it
-    # points at genuinely different text and is indistinguishable from drift.
-    # Each expectation names the PACKAGE or the block, never the line, so a
-    # declaration cannot quietly survive onto something unrelated.
-    ("docs/procedures/BUILD.md", "scripts/setup-linux.sh:66-74"):
-        "CORE_PACKAGES",
-    ("docs/procedures/TROUBLESHOOTING.md", "scripts/setup-linux.sh:73"):
-        "libwebkit2gtk-4.1-dev",
-    ("docs/procedures/TROUBLESHOOTING.md", "scripts/setup-linux.sh:18-20,72"):
-        "libegl-dev",
-    ("docs/procedures/TROUBLESHOOTING.md", "scripts/setup-linux.sh:85"):
-        "curl unzip",
+    #
+    # EMPTIED AGAIN 2026-08-21, for the same reason and by the same test. The
+    # five entries declared for the Clang release-toolchain round (PR #122) --
+    # one for the GCC pin's env line, four for the `setup-linux.sh` profile
+    # split -- every one of them reported "not needed against origin/main" once
+    # that PR merged, and origin/main is this branch's merge base, which is the
+    # condition that note attaches to. A declaration is good for exactly one
+    # transition (`is_declared_reaim`), so keeping one past its transition turns
+    # a one-shot exemption into a permanent hole.
+    #
+    # THIS ROUND ADDED NONE, and that is worth a sentence because it looks like
+    # it should have. It re-aimed two spans in `THREAD_MODEL.md` that had been
+    # pointing at the wrong code since before this gate existed -- but the file
+    # they cite, `src/PluginEditor.cpp`, does not change in this change set, and
+    # this gate only examines anchors whose TARGET moved. A citation corrected
+    # against a file the diff does not touch is invisible to it in BOTH
+    # directions: that is exactly why those two spans survived every green run,
+    # and why correcting them needs no declaration here.
 }
 
 

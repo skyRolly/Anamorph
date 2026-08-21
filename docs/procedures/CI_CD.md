@@ -477,11 +477,12 @@ the build because an About-box string had incremented. It is now attached to the
 unit that reads it (`CMakeLists.txt`, `set_source_files_properties` beside the version block;
 `src/PluginEditor.cpp` already carried the `#ifndef … "0"` fallback). Nothing else ever read it.
 A second property is inherited rather than created: each job's build directory name is fixed
-(`build`, `build-clang`, `build-san`, `build-vg`), which matters because FetchContent puts JUCE
+(`build`, `build-san`, `build-vg`, `build-lto`, `build-bench`, `build-rtsan`, `build-fuzz`), which
+matters because FetchContent puts JUCE
 *inside* the build directory, so its path is in the `-I` flags of every compile — the same tree
 built at two different directory names shares nothing.
 
-**Cache lineages.** `linux` and `merge-check` share one (`ccache-ubuntu-gcc-release-`): same
+**Cache lineages.** `linux` and `merge-check` share one (`ccache-ubuntu-clang<major>-release-`): same
 compiler, same configuration, same build directory name, and they never run in the same event, so a
 PR's `merge-check` restores what the last push to the base branch wrote. That is the whole reason
 `merge-check` is worth caching — it is the *only* build on the same-repo PR path and therefore that

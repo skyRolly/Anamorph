@@ -14,7 +14,7 @@ are in `docs/policies/THREADING_POLICY.md` and `docs/policies/REALTIME_AUDIO_POL
 
 Evidence [Verified]:
 - Source: src/PluginProcessor.cpp:117-185 (`processBlock`), :119 `ScopedNoDenormals`
-- Source: src/PluginEditor.cpp:683 (24 Hz timer), :675-681 (VBlank), :295-309 (OpenGL gate)
+- Source: src/PluginEditor.cpp:683 (24 Hz timer), :686-692 (VBlank), :306-320 (OpenGL gate)
 - Source: src/gui/Vectorscope.h:18-20 ("Nothing is ever drawn on the audio thread")
 
 ## OpenGL platform gate (0.8.5)
