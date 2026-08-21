@@ -194,10 +194,14 @@ ASAN_OPTIONS=detect_leaks=0 \
 `exit()` double-frees in `DeletedAtShutdown::deleteAll()` during `__run_exit_handlers`. Leak coverage
 for the same code is the `sanitizers` job's, which runs with `detect_leaks=1`.
 
-**CI builds three of these four and gates on two of them** — the benchmark, the fuzz target and
-the compile-only effects check. `AnamorphDspDump` is deliberately NOT among them: it is the local
-instrument for a dependency bump (§Proving a dependency bump is bit-identical), and nothing in CI
-bumps a dependency. The benchmark is built and smoke-run but its
+**CI now builds all four and gates on three of them.** The fuzz run and the compile-only effects
+check are hard gates on their output. `AnamorphDspDump` joined them on 2026-08-21 and is the third:
+`linux-lto-tests` runs it with `--self-check`, which asserts every scenario is repeatable and that
+they are distinct from each other, and exits 3 if not — so the gate is on the instrument's ability to
+discriminate, not on its hashes. Nothing in CI diffs those hashes and nothing stores them; that is
+still a human's step at bump time (§Proving a dependency bump is bit-identical). Until that date no
+job built this target at all, which made it the one committed harness with no protection against the
+rot its neighbour's CI step exists to prevent. The benchmark is built and smoke-run but its
 *numbers* are not gated — measured run-to-run spread on an idle machine is 7.2% (median ns/sample)
 and 65.4% (worst block), so a threshold would be noise rather than signal; what the build catches is
 a harness that has silently stopped compiling against the engine it measures. The fuzz run and the

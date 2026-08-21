@@ -87,12 +87,12 @@ jobs that guard classes the build matrix cannot see:
 | **merge-check** | `ubuntu-latest` + **pinned `clang`** | VST3 + Standalone + tests, from `refs/pull/N/merge` — **same-repo PRs only**, no packaging, no artifacts | — |
 | **docs** | `ubuntu-latest` | — (`scripts/check-docs.py --self-test` then the lint) | — |
 | **source-lint** | `ubuntu-latest` | — (each lint preceded by its own `--self-test`: `check-portability.py`, then `check-citations.py --check`) | — |
-| **linux** | `ubuntu-latest` + **pinned `clang`/`lld`** | **Clang: the shipped VST3 + Standalone (+ tests)**; also the portability canary and the first-party Clang warning gate | VST3, **both modes ×3** (deterministic + randomise) — **blocking** |
+| **linux** | `ubuntu-latest` + **pinned `clang`/`lld`** | **Clang: the shipped VST3 + Standalone (+ tests)**; also the portability canary, the first-party Clang warning gate, and a `-fsyntax-only` compile of the two opt-in instruments | VST3, **both modes ×3** (deterministic + randomise) — **blocking** |
 | **sanitizers** | `ubuntu-latest` | Clang ASan+UBSan build, plus an unsanitized build for valgrind | — |
 | **windows** | `windows-latest` (MSVC, multi-config) | VST3 + Standalone (+ tests) | VST3, **both modes ×3** — **blocking** |
 | **macos** | `macos-latest` (Apple Silicon) | universal VST3 + AU + Standalone (+ tests) | **VST3 and AU**, both modes ×3 each — **blocking** |
 | **macos-intel** | `macos-15-intel` (**native Intel**) | thin x86_64 VST3 + AU (+ tests); Standalone off; **no packaging, no artifacts** | **VST3 and AU**, both modes ×3 each — **blocking** |
-| **linux-lto-tests** | `ubuntu-latest` + **floating `gcc:16`** (major pinned, patch not) | GCC `-flto`: both test targets only (Standalone off); **no packaging, no artifacts** | — (the suites against LTO codegen, plus the GCC warning gate) |
+| **linux-lto-tests** | `ubuntu-latest` + **floating `gcc:16`** (major pinned, patch not) | GCC `-flto`: both test targets only (Standalone off); **no packaging, no artifacts** | — (the suites against LTO codegen, the GCC warning gate, and the two instruments' liveness builds) |
 | **realtime** | `ubuntu-latest` | Clang `-fsanitize=realtime`: the DSP suite only (Standalone off); **no packaging, no artifacts** | — (the audio path under RealtimeSanitizer, plus the leaf-layer `-Wfunction-effects` check) |
 | **fuzz** | `ubuntu-latest` | Clang libFuzzer + ASan/UBSan: `AnamorphFuzzState` only (tests and Standalone off); **no packaging, no artifacts** | — (`setStateInformation` under libFuzzer) |
 
@@ -259,7 +259,13 @@ edge above must not be read as release non-blocking.
   allocation is the class this suite exists to police, and on a healthy tree the run exits 0 either
   way.
 - **linux-lto-tests** — both suites built and run with `-flto` on GCC Release (added 2026-08-18),
-  and the **GCC-only first-party warning gate** (§The GCC warning baseline).
+  the **GCC-only first-party warning gate** (§The GCC warning baseline), and the liveness builds of
+  the two committed instruments: `AnamorphBench` (built and smoke-run, no timing asserted) and, since
+  2026-08-21, `AnamorphDspDump` (built and run with `--self-check`, which asserts its 32 scenarios are
+  repeatable and mutually distinct and exits 3 if not). Both are compiled here by the container's
+  **g++ 16**, not by the Clang that builds the shipped artifact — the `linux` job covers that half
+  with a `-fsyntax-only` compile of both translation units under the pinned Clang, so a Clang-only
+  break in either still fails a gate.
   The shipped plugin is the only target linking `juce::juce_recommended_lto_flags`, and the test
   targets deliberately do not (so the sanitizers job builds them cleanly and quickly) — which meant
   no behavioural assertion had ever executed link-time-optimized codegen while the binary users load
