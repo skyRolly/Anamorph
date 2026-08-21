@@ -1281,7 +1281,13 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:2720` and `:2836`, this round being documentation-only.
+`.github/workflows/build.yml:2720` and `:2805`, this round being documentation-only. The second
+number was `:2836` until now, and it was right when written — the phrasing sat there through
+`a925e79`. It went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because
+the bare spelling carries no path and `CITATION` requires one, so no run could see it. It is
+corrected but still bare: making it tracked changes a citation's ANCHOR COUNT, which this gate
+declines to map and which needs a `DELIBERATE_REAIMS` entry — a scope this round does not have.
+Recorded here as the concrete case for qualifying these anchors when that work is taken up.
 
 **Policy-topology round (2026-08-19): rule 4 described a placement three of its own seven checkers
 cannot have. One report investigated and closed with no change.**
