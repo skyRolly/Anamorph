@@ -9,7 +9,7 @@ that documentation (Verified / Partially Verified / Unverified / Not Supported).
 Last updated: for the **0.9.4 change set** (2026-08-21, matching the CHANGELOG heading — re-dated
 from 2026-08-15 in the hover-occlusion round, on 2026-08-20, and again on 2026-08-21, each time
 because the version took a further user-visible change) — the
-**GCC 16 toolchain migration** (first below), then the
+**Linux release toolchain move to Clang** (first below), then the
 **Linux installer migration and changelog-completeness audit**, then the
 **tooltip source-of-truth round**, then the
 **tooltip investigation that shipped no fix**, then the
@@ -72,40 +72,48 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
 
-**GCC 16 toolchain migration (2026-08-21): the Linux GCC toolchain moved 13.3 → 16.2.0 and stopped
-being the runner image's choice. ADR-0030 records the decision; the ABI gate gained a family it had
-been blind to.**
+**Linux release toolchain: Clang ships, GCC verifies (2026-08-21): the compiler that builds the
+Linux artifact stopped being the runner image's choice, and the ABI gate gained a family it had been
+blind to. ADR-0030 records the decision.**
 
-**What moved.** `ANAMORPH_GCC_VERSION` was 13 because that is `ubuntu-24.04`'s default `g++`, and
-the job that builds the shipped artifact named no compiler at all — so the bytes users install were
-compiled by whatever the image provided. The pin is now the official upstream toolchain image at
-**16.2.0, by digest**, on all three Linux GCC jobs (`linux`, `merge-check`, `linux-lto-tests`).
-There is no `apt` route to stable GCC 16: noble stops at `g++-14`, and the only `g++-16` in
-`ubuntu-toolchain-r/test` is a trunk snapshot, which ADR-0028's *upstream stable* rule excludes.
+**What moved.** The `linux` job named no compiler at all, so the shipped bytes were whatever `g++`
+`ubuntu-latest` supplied. They are now the pinned `clang-22`'s, linked by the matching `lld` that
+`setup-llvm-apt.sh` installs beside it — not a preference but what the `-flto` archive link requires,
+and the reason `CMakeLists.txt`'s lld block now governs the shipped link rather than a side job's.
+`merge-check` follows the same toolchain because it is the only build on the same-repo PR path.
+`linux-clang` — a second Release build with the same compiler — folded into `linux`; its two genuinely
+own steps (the portability canary and the first-party warning gate) moved with it, so **no check was
+lost**, and the gate runs after the artifact upload for the reason the ABI gate does.
 
-**The finding that made this more than a version bump.** `check-linux-abi.py` gated `GLIBC` and
-`GLIBCXX` only. Under GCC 16 both are unchanged — `GLIBC_2.38`, `GLIBCXX_3.4.31`, identical to the
-GCC 13 build, because symbol versions bind to what code uses rather than to the compiler — but the
-exception path pulls `__cxa_call_terminate@CXXABI_1.3.15`, first shipped in GCC 14. The gate would
-have reported a GCC 13 floor and passed an artifact needing a GCC 14 runtime. `CXXABI` is now
-declared and gated, the success message and `--print-floor` derive from `FLOORS` instead of naming
-two families literally, and the self-test grew the case that returned clean before the family
-existed. The practical floor moves Ubuntu 23.10 → Ubuntu 24.04 / Debian 13, both of which ship a
-GCC 14 libstdc++; 23.10 was EOL in July 2024, so no supported distribution is dropped.
+**GCC stayed, with a deliberately weaker pin than anything else here.** It is now the compatibility
+compiler and ships nothing, so `linux-lto-tests` tracks `gcc:16` — the floating major tag. A checker
+wants the newest stable 16.x automatically; a shipping toolchain must not. An image rather than `apt`
+for a concrete availability reason: no package source ships a *released* GCC 16 for any
+runner-available Ubuntu — noble stops at `g++-14`, and both `ubuntu-toolchain-r/test` and Ubuntu
+26.04 carry only pre-16.1 trunk snapshots.
 
-**Documents touched, and why each.** `CI_CD.md` (the pin-mechanism paragraph argued the opposite
-supply direction — apt vs image — and the job table named `g++-13`; the ABI section gained the
-CXXABI paragraph while its historical "measured when the gate landed" sentence was left alone),
-`DEPENDENCY_POLICY.md` (the GCC row described an `apt` pin below the image), `COMPATIBILITY_MATRIX.md`
-(said each artifact must import *both* families), `BUILD.md` (verified-on list), `REPOSITORY_MAP.md`
-(the job's one-line description), `CHANGELOG.md` (the 0.9.4 ABI entry stated the pre-migration
-floor, which would have shipped wrong), and `ADR_INDEX.md`. The `DEPENDENCY_POLICY.md` citation was
-re-aimed and declared in `DELIBERATE_REAIMS`, since the cited line's value is what this change set
-edited.
+**The finding that outlived its own step.** GCC 16 was pinned for the shipping build first, as an
+intermediate state inside this same unmerged change set. That step surfaced that
+`check-linux-abi.py` gated `GLIBC` and `GLIBCXX` only while the GCC 16 artifact's exception path
+pulled `__cxa_call_terminate@CXXABI_1.3.15` — a silent floor rise in an undeclared family. `CXXABI`
+is now gated permanently, at **GCC 13's `1.3.14`** rather than GCC 14's `1.3.15`, so the three
+families describe one runtime between them; the Clang artifact needs `1.3.9` and **the supported
+floor is unchanged at Ubuntu 23.10 / Debian 13**.
 
-**Not rewritten:** the worklogs, `KNOWN_ISSUES.md` and the ADR bodies that record `gcc 13.3.0` as
-the environment of a past measurement. Those are historical records; the migration does not make
-them false.
+**Documents touched, and why each.** `CI_CD.md` (the pin-mechanism paragraph argued a supply
+direction that no longer applies, the job table listed `linux-clang`, and the ABI section stated the
+interim Ubuntu 24.04 floor), `DEPENDENCY_POLICY.md` (both compiler rows, plus the ADR-0028 scope
+paragraph — its "ships nothing" reasoning was correct when written and is kept as it stood, with the
+change of scope stated after it), `COMPATIBILITY_MATRIX.md`, `BUILD.md`, `REPOSITORY_MAP.md`,
+`TESTING_POLICY.md`, `HANDOVER.md`, `CHANGELOG.md` (the 0.9.4 entry would otherwise have shipped both
+a wrong compiler and a wrong system requirement) and `ADR_INDEX.md`. Four workflow line citations in
+this file were re-derived and each verified to land on the invocation it names, rather than trusted
+because the gate stayed quiet.
+
+**Not rewritten:** the worklogs, `KNOWN_ISSUES.md`, the ccache timing table's `linux-clang` row and
+the ADR bodies recording `gcc 13.3.0` as a past measurement environment. Those are historical
+records; the migration does not make them false, and the timing row is labelled with the job's fate
+rather than deleted.
 
 **Linux installer migration and changelog-completeness audit (2026-08-20): the sibling product's
 `install.sh` / `uninstall.sh` hardening brought into this repository, and the whole post-0.9.3
@@ -1176,7 +1184,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:2810` and `:2836`, this round being documentation-only.
+`.github/workflows/build.yml:2655` and `:2836`, this round being documentation-only.
 
 **Policy-topology round (2026-08-19): rule 4 described a placement three of its own seven checkers
 cannot have. One report investigated and closed with no change.**
@@ -1199,16 +1207,18 @@ silence is being read.
 
 **Read off the workflow, not off the review.** The report asserted that
 `check-clang-warnings.py` and `check-gcc-warnings.py` "self-test in one job and gate in another".
-They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:1015` and gates at
-`:983`, both in `linux-clang`; `check-gcc-warnings.py` self-tests at `:2626` and gates at `:2647`,
-both in `linux-lto-tests`. All seven pairs are same-job. What was genuinely wrong was "immediately
+They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:630` and gates at
+`:944`, both in one job; `check-gcc-warnings.py` self-tests at `:2530` and gates at `:2551`,
+both in `linux-lto-tests`. All seven pairs are same-job. (The Clang pair was in `linux-clang` when
+this round ran; ADR-0030 folded that job into `linux`, moving both lines together and leaving the
+same-job property intact — which is the property the sentence is about.) What was genuinely wrong was "immediately
 before", not the job placement, and that is what changed.
 
 **One downstream copy followed, and only one.** `docs/procedures/CI_CD.md` restated the same
 "immediately before" claim for `source-lint`'s three lints, where it is true of two of them; leaving
 it would have left a Procedures document contradicting the Policy on the exact sentence being
 corrected, which the authority order in `SOURCE_OF_TRUTH.md` does not permit. Deliberately NOT
-followed: the `source-lint` comment at `.github/workflows/build.yml:475` carries the same phrasing
+followed: the `source-lint` comment at `.github/workflows/build.yml:454` carries the same phrasing
 about the citation self-test, and the `scripts/` tree summary in `REPOSITORY_MAP.md` still
 enumerates four lints where its own table lists seven. Both are real; neither is this round's
 subject, and the second is a stale COUNT rather than the placement claim.

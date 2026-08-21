@@ -296,7 +296,7 @@ DELIBERATE_REAIMS = {
     # this change set, so the anchor is textually indistinguishable from drift
     # and has to be declared. The expectation below is the token, not the
     # number, so the entry cannot quietly survive onto some unrelated line.
-    ("docs/policies/DEPENDENCY_POLICY.md", ".github/workflows/build.yml:124"):
+    ("docs/policies/DEPENDENCY_POLICY.md", ".github/workflows/build.yml:114"):
         "ANAMORPH_GCC_VERSION",
 }
 

@@ -82,19 +82,19 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   asserted per bundle. [Verified]
 
 ### Changed
-- **The Linux version is now built with GCC 16.2 (was GCC 13.3), and the compiler is pinned exactly
-  rather than inherited.** Until now the compiler that produced the Linux download was whichever one
-  the CI image happened to provide — nobody chose it, and it could change without a line in any
-  diff. It is now the official GCC 16.2.0 toolchain, pinned by content digest so it cannot be
-  repointed, and the same one is used by every Linux build in the project, including the check that
-  runs on each proposed change: what gets validated is now what gets shipped. **What this means for
-  you: the plug-in now needs Ubuntu 24.04 LTS / Debian 13 or newer, up from Ubuntu 23.10.** GCC 16's
-  exception-handling code calls into a part of the C++ runtime that first appeared in GCC 14, so the
-  older libstdc++ can no longer load it. Ubuntu 23.10 reached end of life in July 2024, so no
-  currently supported distribution loses the plug-in — and the check that asserts this had been
-  blind to that part of the runtime, which is why it is now covered too (see the entry above).
-  The audio the plug-in produces is unchanged: this is the same source built by a newer compiler.
-  [Verified]
+- **The Linux version is now built with Clang, and the compiler is chosen rather than inherited.**
+  Until now the compiler that produced the Linux download was whichever `g++` the CI image happened
+  to provide — nobody picked it, and it could change without a line in any diff. The Linux VST3 and
+  Standalone are now built with the pinned Clang 22 toolchain and linked with its matching LLD,
+  which is what the link-time optimisation the release build uses actually requires. The same
+  toolchain builds the check that runs on each proposed change, so what gets validated is what gets
+  shipped, and the stricter warning set Clang applies now covers the code on its way out the door
+  rather than in a side job. **GCC has not gone away**: it remains as a second compiler that every
+  change is still checked against, on the GCC 16 line, so code that only one of the two accepts
+  still fails the build. **The system requirement is unchanged — Ubuntu 23.10 / Debian 13 or newer**
+  (see the entry above; an interim step through GCC 16 during this release would have raised it to
+  Ubuntu 24.04, and building with Clang does not). Nothing about the audio changes: same source,
+  different compiler. [Verified]
 - **The Linux installer and uninstaller can now be told what to do instead of asking.**
   `./install.sh --user` and `./install.sh --system` answer the question the script otherwise puts
   on screen, which is the only way to choose when there is no terminal to ask on — a piped or
@@ -125,8 +125,8 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   plug-in does not appear in your host, rather than appearing and misbehaving. That floor had never
   been chosen: it was whatever the CI image happened to be, and it rose retroactively when that
   image moved. Measured on the binaries this version ships: **GLIBC_2.38, GLIBCXX_3.4.31 and
-  CXXABI_1.3.15 — Ubuntu 24.04 LTS / Debian 13 or newer. Ubuntu 22.04 LTS ships glibc 2.35, so
-  Anamorph does not load there.** Nothing about the plug-in itself changed; what changed is that the requirement
+  CXXABI_1.3.9, against a declared floor of Ubuntu 23.10 / Debian 13 or newer. Ubuntu 22.04 LTS
+  ships glibc 2.35, so Anamorph does not load there.** Nothing about the plug-in itself changed; what changed is that the requirement
   is now written down (`docs/architecture/COMPATIBILITY_MATRIX.md` §"Linux runtime ABI floor") and
   asserted on every build against the exact stripped bytes you receive, so a future toolchain move
   that drops more systems fails the build rather than a user's DAW. Lowering the floor needs an

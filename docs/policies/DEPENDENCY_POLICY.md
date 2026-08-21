@@ -9,11 +9,11 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
 | **JUCE** | **9.0.1**, pinned by **immutable commit SHA** `e18f7f506c0b96f2c738a0bcd7fe6467a5005ad8` | CMake `FetchContent` (`GIT_SHALLOW`), overridable via `-DANAMORPH_JUCE_PATH` | CMakeLists.txt:52-54, 63-71 |
 | **pluginval** | latest release (download) | `scripts/run-pluginval.sh` | scripts/run-pluginval.sh:119-126 |
 | **C++ standard** | C++23 | `CMAKE_CXX_STANDARD 23`, extensions off (ADR-0027) | CMakeLists.txt:16-18 |
-| **Clang** (the Linux warning-gate + sanitizer jobs; **ships nothing**) | **major pinned — 22**, upstream stable (ADR-0028) | `ANAMORPH_CLANG_VERSION`, the single authority, consumed by both jobs' installs, their ccache lineages and `--clang-major`. Installed from **apt.llvm.org** by `scripts/setup-llvm-apt.sh` (Ubuntu's archives stop at 20 for noble), fail-closed. `scripts/clang-warning-baseline.txt` records the same major and the gate **refuses to run** on a mismatch | .github/workflows/build.yml:121-123 |
-| **GCC** (the three Linux GCC jobs: `linux`, which **builds the shipped artifact**, plus `merge-check` and the LTO + GCC-warning-gate job) | **pinned — 16.2.0**, the latest stable GCC 16, supplied as the official upstream toolchain image **pinned by digest** | `ANAMORPH_GCC_VERSION` (major, consumed by the ccache lineage and `--gcc-major`) and `ANAMORPH_GCC_TOOLCHAIN` (full version) are the single authority. There is no `apt` package to pin: noble stops at `g++-14` and the only `g++-16` in `ubuntu-toolchain-r/test` is a trunk snapshot, which the ADR-0028 *upstream stable* rule excludes. The digest is spelled in each job because `jobs.<id>.container` cannot read `env`, and each job **asserts** `g++ -dumpfullversion` against `ANAMORPH_GCC_TOOLCHAIN` so the two spellings cannot drift. `scripts/gcc-warning-baseline.txt` records the same major and the gate **refuses to run** on a mismatch | .github/workflows/build.yml:124 |
+| **Clang** (the Linux **release** build `linux`, plus `merge-check`, the sanitizer, realtime and fuzz jobs) | **major pinned — 22**, upstream stable (ADR-0028; LLVM 22.1.8 is the current stable line, 23 is unreleased) | `ANAMORPH_CLANG_VERSION`, the single authority, consumed by every consuming job's install, their ccache lineages and `--clang-major`. Installed from **apt.llvm.org** by `scripts/setup-llvm-apt.sh`, which verifies the signing key by fingerprint and installs `clang-<n>`, `lld-<n>` and `libclang-rt-<n>-dev` together so the LTO link is version-matched by construction. **Since ADR-0030 this toolchain SHIPS the Linux artifact**, so a bump is no longer exempt from rules 2–3 | .github/workflows/build.yml:111-113 |
+| **GCC** (`linux-lto-tests` only — the **compatibility** compiler; **ships nothing**) | **major pinned — 16**, patch deliberately unpinned: the floating `gcc:16` tag resolves to the newest stable 16.x | `ANAMORPH_GCC_VERSION`, consumed by the ccache lineage, the major assertion and `--gcc-major`. Supplied as the official upstream toolchain image because **no package source ships a released GCC 16** for a runner-available Ubuntu — noble stops at `g++-14`, and both `ubuntu-toolchain-r/test` and Ubuntu 26.04 carry only pre-16.1 trunk snapshots. A checker wants patch updates automatically; a shipping toolchain must not, which is why this is the one weak pin here | .github/workflows/build.yml:114 |
 | Linux system libs | distro packages | `scripts/setup-linux.sh` (ALSA, JACK, X11, FreeType, GTK/WebKit, mesa, **EGL — required by JUCE 9's Linux GL context path**, xvfb) | setup-linux.sh |
 | **GitHub Actions** | **every ref pinned to a commit SHA**, with its version in a trailing comment | **Dependabot**, weekly, two semver-split groups (it reads and rewrites that comment) | .github/dependabot.yml |
-| Runner images | floating `*-latest`, plus two deliberate pins (`macos-15-intel`, for native Intel; `ubuntu-24.04` on `linux-lto-tests`, so the GCC warning baseline's reference compiler cannot move underneath it) | GitHub's own image rollout | build.yml `runs-on:` |
+| Runner images | floating `*-latest`, plus one deliberate pin (`macos-15-intel`, for native Intel). `linux-lto-tests` no longer pins its host: its compiler comes from a container, so the host image cannot move it | GitHub's own image rollout | build.yml `runs-on:` |
 
 ## Version-lock reasoning
 
@@ -76,11 +76,14 @@ repository ever grows a real package manifest.
 - **Clang major 18 → 22** (via 20 in the same unmerged change set) — recorded in **ADR-0028**
   (`Accepted` 2026-08-17; the versions-considered evaluation, the install mechanism and the revisit
   trigger live there, as does the correction of the first draft's claim that 21/22 had "no noble
-  publication"). Scope first, because it decides which rules apply: the pin is used by `linux-clang`
-  and `sanitizers` only, **neither of which uploads an artifact** — shipped Linux bytes are GCC's,
-  Windows' MSVC's, macOS's AppleClang's — so no shipped binary, reported latency or serialized state
-  is touched, and rules 2–3 (twin dump, Level-5 audition, compatibility re-verification) have nothing
-  to act on. Rule 1 **does** apply, and the ambiguity that made that a live question is now closed:
+  publication"). Scope first, because it decides which rules apply — **and this scope has
+  since changed**. When ADR-0028 was accepted the pin was used by `linux-clang` and `sanitizers`
+  only, **neither of which uploaded an artifact** — shipped Linux bytes were GCC's, Windows' MSVC's,
+  macOS's AppleClang's — so no shipped binary, reported latency or serialized state was touched, and
+  rules 2–3 (twin dump, Level-5 audition, compatibility re-verification) had nothing to act on. That
+  reasoning was correct for that change and is recorded as it stood. **ADR-0030 moved the Linux
+  release build to Clang**, so the next bump of this pin does touch shipped bytes and rules 2–3
+  apply to it. Rule 1 **does** apply, and the ambiguity that made that a live question is now closed:
   ADR-0028 amends `ARCHITECTURE_REVIEW_GATE.md` with the *who chooses the version* rule, under which a
   repository-pinned compiler is gated and a runner-supplied one cannot be. **Why 22:** it is
   upstream **stable** (22.1.8, 2026-07-10; 23.1.0 is still rc3), which apt.llvm.org itself asserts via

@@ -38,16 +38,23 @@
 #  quotes no pluginval strictness: the copy that rots is the one nobody edits.
 #
 #  WHY `CXXABI` IS GATED AND NOT ONLY `GLIBCXX`. Both come out of the same
-#  libstdc++, but they move on their own schedules, and for this artifact the
-#  binding one is no longer `GLIBCXX`. Measured when the Linux toolchain moved
-#  to GCC 16 (2026-08-21): the shipped VST3 asks for `GLIBCXX_3.4.31` -- GCC 13,
-#  unchanged from the GCC 13 build -- while its exception path pulls in
+#  libstdc++, but they move on their own schedules, and a compiler change can
+#  move one without the other. Measured while evaluating GCC 16 for the Linux
+#  build (2026-08-21): that artifact asked for `GLIBCXX_3.4.31` -- GCC 13,
+#  unchanged -- while its exception path pulled
 #  `__cxa_call_terminate@CXXABI_1.3.15`, which libstdc++ first shipped in GCC 14.
-#  The real requirement was therefore a GCC 14 runtime while the gate, reading
-#  `GLIBCXX` alone, still reported a GCC 13 floor and passed. A family the gate
-#  does not name cannot raise the floor loudly, so it raises it silently: that
-#  is the one failure mode this file exists to prevent, and it had reappeared in
-#  a family nobody had declared. `CXXABI` is declared here for that reason.
+#  Reading `GLIBCXX` alone, the gate would have reported a GCC 13 floor and
+#  passed an artifact needing a GCC 14 runtime. A family the gate does not name
+#  cannot raise the floor loudly, so it raises it silently: exactly what this
+#  file exists to prevent.
+#
+#  THE VALUE IS GCC 13's, not GCC 14's, so the three families describe ONE
+#  runtime between them. `GLIBCXX_3.4.31` and `CXXABI_1.3.14` are both what GCC
+#  13's libstdc++ provides; declaring 1.3.15 instead would quietly assert a GCC
+#  14 floor that the other two do not. The shipped artifact is built by Clang and
+#  needs `CXXABI_1.3.9`, comfortably under -- and a future move back to a GCC
+#  that emits 1.3.15 now FAILS this gate rather than passing it, which is the
+#  point.
 #
 #  WHY THE MAXIMUM AND NOT THE LIST. A binary legitimately references a dozen
 #  version tags -- GLIBC_2.2.5 through GLIBC_2.38 -- because each symbol names
@@ -87,7 +94,7 @@ import sys
 # ---------------------------------------------------------------------------
 GLIBC_FLOOR = "2.38"        # Ubuntu 23.10+, Debian 13+; excludes Ubuntu 22.04 LTS (2.35)
 GLIBCXX_FLOOR = "3.4.31"    # GCC 13+
-CXXABI_FLOOR = "1.3.15"     # GCC 14+; Ubuntu 24.04+, Debian 13+ (see below)
+CXXABI_FLOOR = "1.3.14"     # GCC 13+ -- the same runtime GLIBCXX_3.4.31 names
 
 VERREF = re.compile(r"^\s*0x[0-9a-f]+\s+0x[0-9a-f]+\s+\d+\s+(?P<tag>[A-Za-z_]+)_(?P<ver>[0-9][0-9.]*)\s*$")
 
