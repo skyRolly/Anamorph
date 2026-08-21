@@ -41,6 +41,15 @@ inputs:
       set: the compiler is the job, unlike ccache below.
     required: false
     default: ""
+  dependency-profile:
+    description: >-
+      Which `scripts/setup-linux.sh` profile to install: `full` (default) or
+      `headless`. `headless` installs what compiling and linking the JUCE
+      targets needs and drops the host toolchain, the pluginval fetch/display
+      pair and lld -- for a job that runs inside a toolchain container and
+      builds only the test targets. The lists live in that script, not here.
+    required: false
+    default: "full"
   extra-packages:
     description: >-
       Additional apt packages, space-separated (e.g. `valgrind`, `g++-13`).
@@ -65,12 +74,13 @@ runs:
       # `$EXTRA_PACKAGES` below makes the values DATA, which is the property the
       # interface should have rather than one its callers happen to supply.
       env:
+        DEPENDENCY_PROFILE: ${{ inputs.dependency-profile }}
         CLANG_VERSION: ${{ inputs.clang-version }}
         EXTRA_PACKAGES: ${{ inputs.extra-packages }}
       run: |
         set -euo pipefail
         chmod +x scripts/*.sh
-        ./scripts/setup-linux.sh
+        ./scripts/setup-linux.sh "$DEPENDENCY_PROFILE"
 
         if [ -n "$CLANG_VERSION" ]; then
           ./scripts/setup-llvm-apt.sh "$CLANG_VERSION"
@@ -82,14 +92,22 @@ runs:
           # becomes several arguments. Unquoted here splits a VALUE into words;
           # interpolated into the script it would have been parsed as shell.
           # shellcheck disable=SC2086
-          sudo apt-get install -y $EXTRA_PACKAGES
+          SUDO=""; [ "$(id -u)" -ne 0 ] && SUDO="sudo"
+          $SUDO apt-get install -y $EXTRA_PACKAGES
         fi
 
         # ccache is an OPTIMIZATION, never a requirement -- see the
         # compiler-cache block above the jobs in build.yml. If it cannot be
         # installed the job builds without a launcher: slower, never different.
         # This is the ONE copy of that rule; it used to be seven.
-        if sudo apt-get install -y ccache && ccache --version; then
+        # `$SUDO`, not a literal `sudo`: the GCC jobs run INSIDE the pinned
+        # toolchain container, which is root and ships no `sudo` at all. A
+        # literal `sudo` there is not a permission error but a missing command,
+        # so this `if` would take its else branch and the job would silently
+        # build with no compiler cache -- the graceful degradation firing for a
+        # reason that has nothing to do with ccache being unavailable.
+        SUDO=""; [ "$(id -u)" -ne 0 ] && SUDO="sudo"
+        if $SUDO apt-get install -y ccache && ccache --version; then
           echo "ANAMORPH_COMPILER_LAUNCHER=ccache" >> "$GITHUB_ENV"
         else
           echo "::warning::ccache unavailable -- building without the compiler cache"

@@ -4,7 +4,7 @@ How to configure and build Anamorph. Headless, command-line only (CMake + JUCE; 
 
 ## Toolchain
 
-- **CMake ≥ 3.22**, a **C++23** compiler, **Ninja** (recommended generator). Verified on GCC 13,
+- **CMake ≥ 3.22**, a **C++23** compiler, **Ninja** (recommended generator). Verified on Clang 22 (which builds the Linux release artifact, ADR-0030), GCC 16.2,
   AppleClang 21 (Xcode 26.6 — the `macos-latest` image, `macos-26-arm64`) and MSVC (VS 2022 on
   `windows-latest`); on MSVC, CMake requests C++23 as `/std:c++latest` (ADR-0027). The macOS
   figure moved with the CI runner: the C++23 migration was verified on the then-current
@@ -35,7 +35,8 @@ Three of these serve **pluginval**, not the build: `xvfb` (the editor tests need
 CLI is *not* implied by `libcurl4-openssl-dev`, which is only the development headers —
 GitHub-hosted runners preinstall both tools, so a missing one surfaces on a fresh machine or a
 minimal container rather than in CI.
-Evidence [Verified]: scripts/setup-linux.sh:44-54 (package list), :18-20 (the EGL note),
+Evidence [Verified]: scripts/setup-linux.sh:66-74 (the core package list), :83-88 (what the
+`full` profile adds), :18-20 (the EGL note),
 :13-17 (the curl/unzip note).
 
 ## Configure + build

@@ -26,8 +26,9 @@
 #
 #  FAIL-CLOSED, unlike the ccache install beside it. ccache is an optimization
 #  the jobs fall back from with a `::warning::`; the pinned Clang IS the job --
-#  `linux-clang` compares diagnostics against a baseline keyed on this major and
-#  `sanitizers` links `libclang-rt-<major>`. A partial install must stop the job,
+#  `linux` BUILDS THE SHIPPED ARTIFACT with it, compares diagnostics against a
+#  baseline keyed on this major, and links under `-flto` with the matching
+#  `lld-<major>`; `sanitizers` links `libclang-rt-<major>`. A partial install must stop the job,
 #  never let it quietly proceed with the image's default `clang`. So: `set -e`,
 #  every step checked, and `clang-<major> --version` asserted at the end. If
 #  apt.llvm.org is unreachable the job fails saying so, which is the honest
@@ -140,10 +141,13 @@ $SUDO apt-get update -y -o Acquire::Retries=3 \
     -o Dir::Etc::sourcelist="$SOURCE" -o Dir::Etc::sourceparts="-" \
     -o APT::Get::List-Cleanup="0"
 
-# All three, in one transaction, for BOTH Clang jobs. `linux-clang` does not
+# All three, in one transaction, for every Clang job. Only the sanitizer jobs
 # link a sanitizer runtime, but installing the same set from one code path is
-# worth more than the few seconds it saves there: two divergent package lists is
-# how one job ends up with a toolchain the other does not have.
+# worth more than the few seconds it saves elsewhere: two divergent package
+# lists is how one job ends up with a toolchain the other does not have.
+# `lld-${MAJOR}` is not optional for the release build -- `linux` links the
+# shipped plugin under `-flto`, which needs lld to resolve archive members the
+# single GNU ld scan passed over (CMakeLists.txt carries the full reasoning).
 $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y \
     "clang-${MAJOR}" "lld-${MAJOR}" "libclang-rt-${MAJOR}-dev"
 

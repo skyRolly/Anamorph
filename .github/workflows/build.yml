@@ -46,7 +46,7 @@ concurrency:
 # ---------------------------------------------------------------------------
 # THE CLANG MAJOR VERSION IS PINNED, and for the same one-place reason.
 #
-# `linux-clang` compares its diagnostics against `scripts/clang-warning-baseline.txt`,
+# `linux` compares its diagnostics against `scripts/clang-warning-baseline.txt`,
 # which records exact per-(path, flag) site counts. Which diagnostics Clang emits
 # is a property of the COMPILER VERSION -- `-Wshadow-field`, `-Wsign-conversion`
 # and `-Wunused-but-set-variable` all move between majors -- so an unpinned
@@ -76,19 +76,23 @@ concurrency:
 # flag list can be stated against a known major (see that job).
 #
 # ---------------------------------------------------------------------------
-# THE GCC MAJOR IS PINNED FOR THE SAME REASON, on the one job that gates GCC
-# diagnostics (`linux-lto-tests`, which also runs `check-gcc-warnings.py`).
+# THE LINUX ARTIFACT IS CLANG'S. `linux` builds the shipped VST3 and Standalone
+# with the pinned `clang-<n>` from apt.llvm.org, linked by the matching
+# `lld-<n>` that `setup-llvm-apt.sh` installs beside it -- which is not a
+# preference but a correctness requirement for the LTO archive link that
+# CMakeLists.txt's lld block sets out in full. `merge-check` uses the same
+# toolchain because it is the only build on the same-repo PR path.
 #
-# The argument is identical -- `scripts/gcc-warning-baseline.txt` records exact
-# per-(path, flag) site counts and refuses to run against another major -- but
-# the SUPPLY is the opposite way round, and that changes the mechanism. The
-# Clang pin is AHEAD of what the image ships, so it is installed from
-# apt.llvm.org. This pin is simply WHAT THE IMAGE SHIPS (noble's default `g++`
-# is 13.3), so there is nothing to install and the only real risk is the image
-# moving underneath it. That is why the job naming this pin also pins
-# `runs-on: ubuntu-24.04` rather than `ubuntu-latest`: naming the compiler
-# without naming the image only moves the unpinned variable one level up, and
-# a `g++-13` that has left the archive fails at apt rather than at the gate.
+# GCC IS THE COMPATIBILITY COMPILER and ships nothing. `linux-lto-tests` keeps
+# the tree honest under the other major toolchain and gates the two GCC-only
+# diagnostics below. Its pin is deliberately WEAKER than everything else here: a
+# floating `gcc:16` tag, major only, so patch releases arrive without a commit.
+# A checker wants the newest 16.x automatically; a shipping toolchain must not.
+# That job's own block explains why an image rather than `apt` -- in short, no
+# package source ships a RELEASED GCC 16 for any runner-available Ubuntu.
+#
+# `scripts/gcc-warning-baseline.txt` records the MAJOR and refuses to run
+# against another, which is exactly the granularity the floating tag preserves.
 #
 # WHY GCC AT ALL, next to a Clang gate whose default warning set is strictly
 # larger: "larger" is not "a superset". GCC sees two classes Clang structurally
@@ -107,7 +111,7 @@ concurrency:
 env:
   ANAMORPH_PLUGINVAL_STRICTNESS: 10
   ANAMORPH_CLANG_VERSION: 22
-  ANAMORPH_GCC_VERSION: 13
+  ANAMORPH_GCC_VERSION: 16
 
 # Every push builds the FULL set of formats on all three desktop OSes so beta
 # testers can install on any platform:
@@ -236,7 +240,7 @@ env:
 # ccache is not already providing.
 #
 # Two properties of this repository make it work, and both are load-bearing:
-#   * The build directory name is FIXED per job (`build`, `build-clang`,
+#   * The build directory name is FIXED per job (`build`, `build-lto`,
 #     `build-san`, `build-vg`). JUCE is fetched by FetchContent INTO the build
 #     directory, so its path appears in the -I flags of every compile; a build
 #     directory that changed name between runs would miss 100% of the time.
@@ -252,7 +256,7 @@ env:
 #     anything at all.
 #
 # Warnings survive a cache hit -- ccache replays the compiler's stderr verbatim,
-# caret lines and [-Wflag] included. That is not incidental here: `linux-clang`
+# caret lines and [-Wflag] included. That is not incidental here: `linux`
 # gates on the diagnostic text of its build, and a cache that swallowed warnings
 # would turn that gate green by deleting its input. Verified against the pinned
 # Clang before this was enabled.
@@ -342,10 +346,17 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # THE SAME PINNED CLANG AS `linux`, and for this job's whole reason to
+      # exist: it is the only build on the same-repo PR path, so if it compiled
+      # with the host's default compiler it would clear PRs against a toolchain
+      # the project does not ship -- and the first build with the shipped one
+      # would be the merge.
       - name: Install build dependencies
         uses: ./.github/actions/setup-linux-build
+        with:
+          clang-version: ${{ env.ANAMORPH_CLANG_VERSION }}
 
-      # SHARES A CACHE LINEAGE WITH `linux` -- same compiler, same Release
+      # SHARES A CACHE LINEAGE WITH `linux` -- same pinned Clang, same Release
       # configuration, same `build` directory name, same targets. The two jobs
       # never run in the same event (this one is same-repo-PR-only, that one is
       # everything else), so on a PR this restores the cache the last push to
@@ -356,13 +367,15 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ github.workspace }}/.ccache
-          key: ccache-ubuntu-gcc-release-${{ github.run_id }}
-          restore-keys: ccache-ubuntu-gcc-release-
+          key: ccache-ubuntu-clang${{ env.ANAMORPH_CLANG_VERSION }}-release-${{ github.run_id }}
+          restore-keys: ccache-ubuntu-clang${{ env.ANAMORPH_CLANG_VERSION }}-release-
 
       - name: Configure
         run: |
           ccache --zero-stats || true
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=clang-${{ env.ANAMORPH_CLANG_VERSION }} \
+            -DCMAKE_CXX_COMPILER=clang++-${{ env.ANAMORPH_CLANG_VERSION }} \
             -DCMAKE_C_COMPILER_LAUNCHER=${{ env.ANAMORPH_COMPILER_LAUNCHER }} -DCMAKE_CXX_COMPILER_LAUNCHER=${{ env.ANAMORPH_COMPILER_LAUNCHER }} \
             -DANAMORPH_BUILD_NUMBER=${{ github.run_number }}
 
@@ -446,7 +459,7 @@ jobs:
       # reaches no files or a coupling check that always agrees fails HERE rather
       # than reporting the tree clean.
       #
-      # It is NOT the same check as `--compile-canary` in `linux-clang`, and the
+      # It is NOT the same check as `--compile-canary` in `linux`, and the
       # two are not interchangeable. That one asks whether the PINNED JUCE still
       # has the hazard — a question about the dependency, answerable only where
       # JUCE is checked out. This asks whether the CHECKER still finds it. A
@@ -557,8 +570,15 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # THE PINNED CLANG BUILDS THE SHIPPED BYTES. `setup-llvm-apt.sh` verifies
+      # the apt.llvm.org signing key by fingerprint and installs `clang-<n>`,
+      # `lld-<n>` and `libclang-rt-<n>-dev` together, so the linker that resolves
+      # the LTO archive is version-matched to the compiler by construction --
+      # which is the property CMakeLists.txt's lld block depends on.
       - name: Install build dependencies
         uses: ./.github/actions/setup-linux-build
+        with:
+          clang-version: ${{ env.ANAMORPH_CLANG_VERSION }}
 
       # Shared lineage with `merge-check` -- see that job. This is the writer of
       # the two: it runs on every push, so the cache a PR restores is the one
@@ -567,19 +587,57 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ github.workspace }}/.ccache
-          key: ccache-ubuntu-gcc-release-${{ github.run_id }}
-          restore-keys: ccache-ubuntu-gcc-release-
+          # THE COMPILER IS IN THE KEY. `CCACHE_COMPILERCHECK: content` already
+          # makes a different compiler miss rather than collide, so this is
+          # about eviction, not correctness: a lineage shared between two
+          # compilers holds two full sets of objects in one 500M budget and the
+          # two evict each other. The major is spelled here so that changing the
+          # pin starts a clean lineage instead of thrashing the old one.
+          key: ccache-ubuntu-clang${{ env.ANAMORPH_CLANG_VERSION }}-release-${{ github.run_id }}
+          restore-keys: ccache-ubuntu-clang${{ env.ANAMORPH_CLANG_VERSION }}-release-
 
       - name: Configure
         run: |
           ccache --zero-stats || true
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=clang-${{ env.ANAMORPH_CLANG_VERSION }} \
+            -DCMAKE_CXX_COMPILER=clang++-${{ env.ANAMORPH_CLANG_VERSION }} \
             -DCMAKE_C_COMPILER_LAUNCHER=${{ env.ANAMORPH_COMPILER_LAUNCHER }} -DCMAKE_CXX_COMPILER_LAUNCHER=${{ env.ANAMORPH_COMPILER_LAUNCHER }} \
             -DANAMORPH_BUILD_NUMBER=${{ github.run_number }}
 
+      # ABSORBED FROM THE FORMER `linux-clang` JOB, which built the same targets
+      # with the same compiler in a second build directory purely because this
+      # job used to be GCC's. Now that the shipped build IS the Clang build,
+      # keeping both would have been one full Release compile of duplicated
+      # infrastructure -- so the two steps that were genuinely `linux-clang`'s
+      # own moved here instead.
+      #
+      # The canary belongs where the pinned JUCE is already on disk, which is
+      # this job now. It asserts the hazard `source-lint` guards is still real
+      # for the pinned revision -- deduced form must compile, explicit form must
+      # not -- so a JUCE bump that changes the SIMDRegister overload set fails
+      # here rather than silently turning the lint into a no-op.
+      - name: Portability compile canary (pinned JUCE still has the hazard)
+        run: >
+          python3 scripts/check-portability.py --compile-canary build/_deps/juce-src/modules
+          --cxx clang++-${{ env.ANAMORPH_CLANG_VERSION }}
+
+      # PROVE THE GATE IS LIVE BEFORE TRUSTING ITS SILENCE -- a checker that has
+      # stopped matching anything is indistinguishable from a clean tree. Run
+      # before the build so a broken classifier fails in seconds rather than
+      # after the full compile.
+      - name: Warning-gate self-test (the classifier still classifies)
+        run: python3 scripts/check-clang-warnings.py --self-test
+
+      # THE LOG IS KEPT because this job now carries the first-party warning
+      # gate that `linux-clang` used to run in a second, near-identical Clang
+      # build. The gate itself runs LATE, after the artifact upload -- see that
+      # step for why.
       - name: Build (VST3 + Standalone + tests)
         id: build
-        run: cmake --build build --config Release
+        run: |
+          set -o pipefail
+          cmake --build build --config Release 2>&1 | tee clang-build.log
 
       # A cache hit changes where the .o files came from, never what they
       # contain, so the link is fed identical input and the `strip` step below
@@ -683,7 +741,7 @@ jobs:
       # finite float, 255 gives zero, none gives NaN, Inf or a denormal. NaN
       # coverage is what the `sanitizers` job is for.
       #
-      # glibc-only, which is why it is set here and on `linux-clang` and NOT on
+      # glibc-only, which is why it is set here and on `linux` and NOT on
       # the macOS job, where libmalloc ignores it and the variable would read as
       # coverage that does not exist. valgrind in `sanitizers` answers the same
       # question more thoroughly and far more slowly; this is the cheap one, on
@@ -828,240 +886,67 @@ jobs:
             "build/Anamorph_artefacts/Release/VST3/Anamorph.vst3/Contents/x86_64-linux/Anamorph.so" \
             "build/Anamorph_artefacts/Release/Standalone/Anamorph"
 
-  # -------------------------------------------------------------------------
-  # Linux + Clang, and the first-party warning gate.
-  #
-  # PURPOSE, stated narrowly so it is not oversold: `juce_recommended_warning_flags`
-  # picks its set by COMPILER ID, and Clang's is strictly larger than GCC's --
-  # -Wshorten-64-to-32, -Wconditional-uninitialized, -Wsign-conversion,
-  # -Wcast-align, -Wshift-sign-overflow, -Wzero-as-null-pointer-constant,
-  # -Wimplicit-int-float-conversion. Every one of those diagnostics reached this
-  # project only from the macOS runner, several minutes into a universal build,
-  # or not at all when that job was red for an unrelated reason.
-  #
-  # THIS IS NOT HYPOTHETICAL HERE. The 2026-08-15 image move
-  # (macos-14/AppleClang 15 -> macos-latest/AppleClang 21) surfaced four
-  # PRE-EXISTING -Wimplicit-int-float-conversion sites in src/PluginEditor.cpp,
-  # src/gui/LookAndFeel.cpp and src/dsp/VelvetNoise.cpp that had been in the tree
-  # for months (CI_CD.md §Build matrix). Running Clang on the cheapest runner in
-  # the matrix surfaces that class on the push that introduces it.
-  #
-  # It does NOT catch the typedef-divergence class -- see `source-lint`. Two
-  # different gaps, two different guards; conflating them is how the second one
-  # gets dropped.
-  #
-  # Builds the two test targets AND the plugin. The test targets compile the
-  # entire first-party tree (ANAMORPH_PLUGIN_SOURCES is shared with
-  # AnamorphStateTests by construction, and AnamorphDSP is an INTERFACE library
-  # whose sources compile into every consumer), so warning coverage is complete
-  # from them alone. `Anamorph_VST3` is built anyway because it is the ONLY
-  # target that links `juce_recommended_lto_flags`: a defect the optimiser only
-  # acts on at -flto is invisible to every non-LTO artefact in this pipeline, and
-  # that is the configuration users install. The Standalone is off -- it
-  # recompiles the identical translation units.
-  #
-  # The gate is FIRST-PARTY warnings only, matched structurally by path.
-  # -Werror is not used and cannot be yet: JUCE's own module sources are compiled
-  # into our targets, so a blanket -Werror would gate on a dependency's warnings
-  # and get switched off at the first JUCE bump. Filtering by path gates exactly
-  # what we own.
-  #
-  # IT IS A NO-NEW-WARNINGS GATE, NOT A ZERO-WARNINGS ONE, and that is not a
-  # softening. The tree already carries 14 first-party Clang warning sites
-  # (-Wshadow-field, -Wshadow, -Wswitch-enum, -Wsign-conversion, -Wfloat-equal,
-  # -Wunused-but-set-variable, -Wmissing-prototypes), all of them older than this
-  # job; clearing them means renaming a member across the editor, adding cases to
-  # engine switches and changing float comparisons in DSP code -- source work that
-  # belongs in its own review under DSP_POLICY, not in a CI change. The two
-  # alternatives are worse: a job that lands RED teaches everyone to ignore it,
-  # and a job that cannot fail is not a gate. So the accepted set is pinned in
-  # `scripts/clang-warning-baseline.txt` (a debt list keyed on path+flag with a
-  # site count -- never on line numbers, which drift on unrelated edits) and
-  # ANYTHING ABOVE IT fails. A count that falls is a ::notice:: asking for the
-  # baseline to shrink, never a failure: the commit that fixes a warning must not
-  # be the commit that goes red.
-  # -------------------------------------------------------------------------
-  linux-clang:
-    runs-on: ubuntu-latest
-    timeout-minutes: 40
-    if: >-
-      github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name != github.repository
-    env:
-      CCACHE_DIR: ${{ github.workspace }}/.ccache
-      CCACHE_MAXSIZE: 500M
-      CCACHE_COMPILERCHECK: content
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      # The PINNED Clang, not the image's default `clang`. See the env block for
-      # why: the warning baseline records per-(path, flag) counts, and which
-      # diagnostics Clang emits moves between majors, so an unpinned compiler
-      # makes a runner-image bump indistinguishable from a source regression.
-      # The pinned major is newer than Ubuntu ships for this image, so it comes
-      # from apt.llvm.org via the script, which is FAIL-CLOSED on purpose (the
-      # compiler is the job, unlike the optional ccache below) and installs
-      # `lld-<n>` too, so the pinned toolchain is complete on the box; which
-      # `ld.lld` the driver selects is settled by `check_linker_flag` at
-      # configure time (see CMakeLists.txt).
-      - name: Install build dependencies
-        uses: ./.github/actions/setup-linux-build
-        with:
-          clang-version: ${{ env.ANAMORPH_CLANG_VERSION }}
-
-      # Its OWN lineage, keyed on the pinned Clang major: the objects here are
-      # produced by a different compiler and a different build directory from
-      # the GCC jobs, so nothing would hit across them and mixing the two
-      # lineages would only make each evict the other. ${ANAMORPH_CLANG_VERSION}
-      # is in the key so raising the pin starts a clean lineage rather than
-      # paying a full miss on an inherited one -- ccache would reject those
-      # entries anyway (compiler_check=content), this just stops us shipping
-      # them back and forth.
-      - name: Restore the compiler cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ${{ github.workspace }}/.ccache
-          key: ccache-ubuntu-clang${{ env.ANAMORPH_CLANG_VERSION }}-${{ github.run_id }}
-          restore-keys: ccache-ubuntu-clang${{ env.ANAMORPH_CLANG_VERSION }}-
-
-      - name: Configure (Clang)
-        run: >
-          ccache --zero-stats || true &&
-          cmake -B build-clang -G Ninja
-          -DCMAKE_BUILD_TYPE=Release
-          -DCMAKE_C_COMPILER=clang-${{ env.ANAMORPH_CLANG_VERSION }}
-          -DCMAKE_CXX_COMPILER=clang++-${{ env.ANAMORPH_CLANG_VERSION }}
-          -DCMAKE_C_COMPILER_LAUNCHER=${{ env.ANAMORPH_COMPILER_LAUNCHER }}
-          -DCMAKE_CXX_COMPILER_LAUNCHER=${{ env.ANAMORPH_COMPILER_LAUNCHER }}
-          -DANAMORPH_BUILD_STANDALONE=OFF
-          -DANAMORPH_BUILD_NUMBER=${{ github.run_number }}
-
-      # The canary belongs HERE rather than in source-lint: it needs the pinned
-      # JUCE on disk, which this job has already fetched. It asserts that the
-      # hazard source-lint guards is still real for the pinned revision -- the
-      # deduced form must compile and the explicit form must not. A JUCE bump
-      # that changes the SIMDRegister overload set fails this step instead of
-      # silently turning the lint into a no-op.
-      - name: Portability compile canary (pinned JUCE still has the hazard)
-        run: >
-          python3 scripts/check-portability.py --compile-canary build-clang/_deps/juce-src/modules
-          --cxx clang++-${{ env.ANAMORPH_CLANG_VERSION }}
-
-      # PROVE THE GATE IS LIVE BEFORE TRUSTING ITS SILENCE. This is the same move
-      # `check-docs.py --self-test` and `--compile-canary` make, for the same
-      # reason: a checker that has stopped matching anything is indistinguishable
-      # from a clean tree. The self-test feeds the classifier every path spelling
-      # this build could produce -- the absolute form CMake's Ninja generator
-      # emits today, the `../src/…` form a relative-path generator would, and the
-      # vendored shapes that must never count -- and fails the job if any is
-      # misclassified.
-      - name: Warning-gate self-test (the classifier still classifies)
-        run: python3 scripts/check-clang-warnings.py --self-test
-
-      - name: Build tests AND the plugin (Clang), gating on first-party warnings
-        id: build
+      # WHY A FIRST-PARTY CLANG WARNING GATE AT ALL, and why it lives on the
+      # shipping job now. `juce_recommended_warning_flags` picks its set by
+      # COMPILER ID, and Clang's is strictly larger than GCC's --
+      # -Wshorten-64-to-32, -Wconditional-uninitialized, -Wsign-conversion,
+      # -Wcast-align, -Wshift-sign-overflow, -Wzero-as-null-pointer-constant,
+      # -Wimplicit-int-float-conversion. While GCC built the artifact those
+      # diagnostics reached the project only from a second job, or from the
+      # macOS runner minutes into a universal build. NOT HYPOTHETICAL: the
+      # 2026-08-15 image move (macos-14/AppleClang 15 -> macos-latest/
+      # AppleClang 21) surfaced four PRE-EXISTING
+      # -Wimplicit-int-float-conversion sites in src/PluginEditor.cpp,
+      # src/gui/LookAndFeel.cpp and src/dsp/VelvetNoise.cpp that had been in the
+      # tree for months (CI_CD.md §Build matrix). They are now the SHIPPING
+      # compiler's diagnostics, emitted by the build that produces the artifact.
+      # It does NOT catch the typedef-divergence class -- see `source-lint`. Two
+      # different gaps, two different guards; conflating them is how the second
+      # one gets dropped.
+      #
+      # Coverage is complete from this job's targets: the test targets compile
+      # the entire first-party tree (ANAMORPH_PLUGIN_SOURCES is shared with
+      # AnamorphStateTests by construction, and AnamorphDSP is an INTERFACE
+      # library whose sources compile into every consumer), and `Anamorph_VST3`
+      # is the target that links `juce_recommended_lto_flags` -- a defect the
+      # optimiser only acts on at -flto is invisible to every non-LTO artefact,
+      # and -flto is what users install.
+      #
+      # IT IS A NO-NEW-WARNINGS GATE, NOT A ZERO-WARNINGS ONE, and that is not a
+      # softening. The tree already carries 14 first-party Clang warning sites
+      # (-Wshadow-field, -Wshadow, -Wswitch-enum, -Wsign-conversion,
+      # -Wfloat-equal, -Wunused-but-set-variable, -Wmissing-prototypes), all
+      # older than the gate; clearing them means renaming a member across the
+      # editor, adding cases to engine switches and changing float comparisons in
+      # DSP code -- source work that belongs in its own review under DSP_POLICY,
+      # not in a CI change. The two alternatives are worse: a job that lands RED
+      # teaches everyone to ignore it, and a job that cannot fail is not a gate.
+      # So the accepted set is pinned in `scripts/clang-warning-baseline.txt` (a
+      # debt list keyed on path+flag with a site count -- never on line numbers,
+      # which drift on unrelated edits) and ANYTHING ABOVE IT fails. A count that
+      # falls is a ::notice:: asking for the baseline to shrink, never a failure.
+      #
+      # THE FIRST-PARTY WARNING GATE, RUN LAST FOR THE REASON THE ABI GATE IS:
+      # a validation finding should not withhold the beta artifact that the
+      # behavioural gates already passed, so the upload happens above and this
+      # still fails the job. Classification is STRUCTURAL rather than textual --
+      # every diagnostic's path is resolved (absolute as-is, relative against
+      # the build dir the compiler ran in) and asked whether it lands under
+      # src/ or tests/ without passing through a `_deps` component. This build
+      # emits TWO spellings of one file (src/dsp/ScopeBuffer.h and
+      # src/gui/../dsp/ScopeBuffer.h) which the resolver folds into one baseline
+      # key and a text match would not. `--clang-major` is checked against the
+      # version recorded IN scripts/clang-warning-baseline.txt: a mismatch exits
+      # 2 ("the check could not run"), never 1 ("the tree regressed").
+      - name: Gate first-party Clang warnings
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
-          set -o pipefail
-          cmake --build build-clang --target AnamorphTests AnamorphStateTests Anamorph_VST3 2>&1 | tee clang-build.log
-          # The classification is STRUCTURAL, not textual: every diagnostic's
-          # path is resolved (absolute as-is, relative against the build dir the
-          # compiler ran in) and then asked whether the real path lands under
-          # src/ or tests/ without passing through a `_deps` component. An
-          # anchored `grep` on the absolute spelling would match here too, but it
-          # could only ever match ONE spelling of a path the build system is free
-          # to change, with no signal if that ever stopped being the spelling --
-          # and this build emits TWO spellings of one file today
-          # (src/dsp/ScopeBuffer.h and src/gui/../dsp/ScopeBuffer.h), which the
-          # resolver folds into one baseline key and a text match would not.
-          # The baseline defaults to scripts/clang-warning-baseline.txt.
-          # `--clang-major` is checked against the version recorded IN that file:
-          # the counts describe one compiler's diagnostics, so comparing them to
-          # another compiler's output is not a weaker check, it is a meaningless
-          # one. A mismatch exits 2 ("the check could not run") rather than 1
-          # ("the tree regressed"), because that is what it is.
-          # `scripts/check-clang-warnings.py` carries the reasoning in full.
           python3 scripts/check-clang-warnings.py \
             --log clang-build.log \
             --root "${GITHUB_WORKSPACE}" \
-            --build-dir "${GITHUB_WORKSPACE}/build-clang" \
+            --build-dir "${GITHUB_WORKSPACE}/build" \
             --clang-major "${ANAMORPH_CLANG_VERSION}"
 
-      # THE HIT RATE IS EVIDENCE HERE, not trivia. This job's gate reads the
-      # diagnostics its own build printed, and a cache hit reprints them from
-      # the cached stderr rather than recompiling. If a future ccache or flag
-      # change ever silenced replayed warnings, this job would go green by
-      # having lost its input -- so the run that first cached these objects and
-      # the runs that replay them must agree on the baseline, and both are
-      # visible in the log.
-      - name: Compiler cache statistics
-        if: ${{ !cancelled() && env.ANAMORPH_COMPILER_LAUNCHER != '' }}
-        run: ccache --show-stats --verbose || true
-
-      # Run the suites the Clang build produced, not just compile them: a
-      # miscompile is the thing a second toolchain is most useful for finding,
-      # and the binaries are already sitting there.
-      - name: DSP + state self-tests (Clang build)
-        id: tests
-        env:
-          MALLOC_PERTURB_: 1        # fresh heap = 0xFE; see the `linux` job's self-test step
-        run: |
-          ./build-clang/AnamorphTests_artefacts/Release/AnamorphTests
-          ./build-clang/AnamorphStateTests_artefacts/Release/AnamorphStateTests
-
-  # -------------------------------------------------------------------------
-  # Sanitizers (Linux). The point of this job is to catch, ON LINUX, defects that
-  # only MANIFEST on another platform.
-  #
-  # Memory that Linux hands back zero-filled is arbitrary on macOS, so an
-  # uninitialised read of DSP state is benign here and poisonous there. That
-  # defect class is platform-INDEPENDENT even though its symptom is not, and
-  # tooling sees it regardless of which bytes the allocator happened to supply.
-  # This repository ships a realtime audio processor with per-block state across
-  # eight DSP stages and had no sanitizer coverage of any kind before this job.
-  #
-  # ASan+UBSan cover out-of-bounds, lifetime and undefined behaviour -- the last
-  # of which also matters because UB is what lets -O3 + LTO on a different target
-  # legally delete a guard. MemorySanitizer, the dedicated uninitialised-read
-  # tool, is deliberately NOT used: it requires every dependency including libc++
-  # and all of JUCE to be instrumented, and an uninstrumented dependency produces
-  # false positives rather than silence. valgrind memcheck answers the same
-  # question with no rebuild of anything, so it carries that half.
-  #
-  # valgrind runs BOTH suites. It is ~50x slower than native, and that cost is
-  # accepted because memcheck is the only uninitialised-read detector in the
-  # pipeline and the read that would matter runs through the real wrapper
-  # `processBlock` -- which only AnamorphStateTests drives. Pointing it at the DSP
-  # suite alone would aim the detector away from the wrapper entirely.
-  #
-  # detect_leaks=1 -- LeakSanitizer IS a gate here now (maintainer decision,
-  # 2026-08-18). The claim that used to justify switching it off -- JUCE
-  # singleton teardown producing spurious reports -- was retested and is simply
-  # not true on clang 22 / JUCE 9.0.1: both suites run leak-CLEAN, 160 + 900
-  # checks, zero LeakSanitizer reports. Leaving it off was costing real coverage
-  # for a reason that had expired.
-  #
-  # If a future JUCE upgrade reintroduces exit-order reports, the response is to
-  # investigate the report, not to reach for detect_leaks=0 again: a leak in the
-  # plug-in and a leak in a dependency's teardown look different in the stack,
-  # and this repository has no suppression file precisely so that the difference
-  # has to be looked at. (The `fuzz` job runs with detect_leaks=0 for a specific,
-  # documented reason of its own -- it leaks one JUCE initialiser on purpose.)
-  # halt_on_error=1 on UBSan so the first violation fails the job rather than
-  # scrolling past.
-  #
-  # NOT in any `needs:` chain and not a dependency of anything INSIDE this
-  # workflow: it is slower than the build jobs, and a sanitizer finding should
-  # not withhold a per-push beta artifact that the behavioural gates passed --
-  # the packaging jobs upload theirs regardless of what happens here.
-  #
-  # THAT IS A STATEMENT ABOUT THIS WORKFLOW ONLY, and the release path differs.
-  # `release.yml` calls this whole workflow as ONE job (`build:`), and
-  # `draft-release` is `needs: [validate, build]` -- so a called workflow's
-  # aggregate result is what that edge sees, and a failure HERE does skip the
-  # draft release. That is the intended reading of RELEASE_POLICY's "the
-  # existing `build.yml` gates are reused unchanged", not an accident; do not
-  # infer release non-blocking from the absence of a `needs:` edge here.
-  # -------------------------------------------------------------------------
   sanitizers:
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -1079,7 +964,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # The SAME pinned Clang major as `linux-clang` (see the env block). This job
+      # The SAME pinned Clang major as `linux` (see the env block). This job
       # has no baseline to protect, but the pin buys something concrete here too:
       # clang's sanitizer runtime ships SEPARATELY from clang on Debian/Ubuntu,
       # and without it the link fails with "cannot find libclang_rt.asan-x86_64.a",
@@ -1095,7 +980,7 @@ jobs:
           clang-version: ${{ env.ANAMORPH_CLANG_VERSION }}
           extra-packages: valgrind
 
-      # Its own lineage, keyed on the pinned Clang major as `linux-clang`'s is:
+      # Its own lineage, keyed on the pinned Clang major as `linux`'s is:
       # sanitized objects carry -fsanitize=address,undefined,vptr in the command line
       # ccache hashes, so a shared lineage could not CONFUSE the two jobs -- it
       # would just have them evict each other, and a moved pin orphans both.
@@ -2522,7 +2407,7 @@ jobs:
   # binary users load is the LTO'd one; pluginval exercises those shipped bytes
   # but asserts host conformance, not numerics. This job closes that gap: the
   # same two suites, built with the same `-flto` spelling the shipped target
-  # gets, on the same GCC that builds the shipped Linux artifact.
+  # gets, under the compatibility compiler rather than the shipping one.
   #
   # The flags arrive VIA THE CACHE VARIABLES on purpose. Linking
   # `juce_recommended_lto_flags` into the test targets would say the same thing
@@ -2539,13 +2424,29 @@ jobs:
   # `release.yml` depends on this workflow's aggregate result -- see the
   # `sanitizers` comment above for the full topology.
   linux-lto-tests:
-    # PINNED, not `ubuntu-latest`: this job also gates GCC diagnostics against
-    # scripts/gcc-warning-baseline.txt, and that baseline describes ONE compiler
-    # (see ANAMORPH_GCC_VERSION in the env block above). An image move that
-    # changed the default `g++` would make a runner upgrade indistinguishable
-    # from a source regression -- the exact failure the Clang pin exists to
-    # prevent, reintroduced through the image instead of through the package.
-    runs-on: ubuntu-24.04
+    # GCC IS THE COMPATIBILITY COMPILER, NOT THE SHIPPING ONE. Clang builds the
+    # artifact (`linux`); this job exists so the tree keeps compiling, and its
+    # invariants keep holding, under the other major toolchain -- and so the two
+    # GCC-only diagnostics survive (see the gate block above the jobs).
+    #
+    # THE TAG FLOATS ON THE MAJOR, deliberately, and it is the one pin in this
+    # file that is not exact. `gcc:16` resolves to the newest 16.x the official
+    # image publishes, so patch releases arrive without a commit here -- which is
+    # what a compatibility checker wants and what a shipping toolchain must not
+    # have. Nothing downstream needs the patch: `gcc-warning-baseline.txt`
+    # records the MAJOR, and the step below asserts the major rather than a full
+    # version, so a 16.2 -> 16.3 move is silent and a 17 move is loud.
+    #
+    # WHY AN IMAGE AND NOT `apt`, which every other Linux toolchain here uses:
+    # no package source ships a stable GCC 16. Noble stops at `g++-14`; the only
+    # `g++-16` in `ubuntu-toolchain-r/test` is a trunk snapshot (`16-20260315`),
+    # and Ubuntu 26.04 carries the same class (`16-20260322`) -- both predate the
+    # 16.1 release and are exactly the "newest, not stable" that ADR-0028
+    # rejects. Stable 16.2.0 exists in apt only for an unreleased Ubuntu series.
+    # The official image is the only package-managed route to a RELEASED GCC 16.
+    runs-on: ubuntu-latest
+    container:
+      image: gcc:16
     timeout-minutes: 30
     if: >-
       github.event_name != 'pull_request' ||
@@ -2557,22 +2458,36 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # The PINNED g++ is named rather than inherited. On ubuntu-24.04 it is
-      # already the default compiler, so installing it explicitly COSTS nothing
-      # and BUYS the failure mode we want: if the pin and the image ever stop
-      # agreeing, apt says so in the first minute, loudly, instead of the
-      # warning gate exiting 2 twenty minutes later with a version mismatch.
-      # `extra-packages` is fail-closed for exactly that reason.
+      # No compiler in `extra-packages`: the container IS the compiler, so there
+      # is nothing to install and nothing that could resolve to a different one.
+      #
+      # `headless`, because this is the one job whose dependencies are NOT the
+      # ones a fresh Ubuntu machine needs. It builds two test targets and no GUI,
+      # so the pluginval fetch/display pair and lld are dead weight here -- and
+      # `build-essential` is worse than dead weight: it would install a
+      # distribution GCC over the top of the pinned one this container exists to
+      # provide. The profile also names `python3` explicitly, which matters here
+      # and nowhere else: the warning gate is a Python script, and this image
+      # carries an interpreter only transitively.
       - name: Install build dependencies
         uses: ./.github/actions/setup-linux-build
         with:
-          extra-packages: g++-${{ env.ANAMORPH_GCC_VERSION }}
+          dependency-profile: headless
 
-      # Asserted separately from the install so the log carries the version the
-      # baseline is compared against, not just the fact that a package resolved.
-      - name: Assert the pinned GCC is the one this job will use
+      # Asserted before the build so the log carries the version the baseline is
+      # compared against. The MAJOR only, matching what the tag pins and what the
+      # baseline records: a 16.2 -> 16.3 move must pass here, and a tag that ever
+      # resolved to 17 must fail here rather than twenty minutes later inside
+      # `check-gcc-warnings.py` with a baseline mismatch.
+      - name: Assert the container is the pinned GCC major
         run: |
-          "g++-${ANAMORPH_GCC_VERSION}" --version
+          set -eu
+          g++ --version | head -1
+          got="$(g++ -dumpversion)"
+          [ "${got%%.*}" = "${ANAMORPH_GCC_VERSION}" ] || {
+            echo "::error::container g++ is ${got}, env declares major ${ANAMORPH_GCC_VERSION}"
+            exit 1
+          }
 
       # Its own lineage: `-flto` objects are GIMPLE bytecode under GCC, so they
       # share no cache entries with the `linux` job's native objects; a shared
@@ -2606,8 +2521,8 @@ jobs:
           echo "Gated GCC-only warnings: ${GCC_WARNINGS}"
           cmake -B build-lto -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_C_COMPILER="gcc-${ANAMORPH_GCC_VERSION}" \
-            -DCMAKE_CXX_COMPILER="g++-${ANAMORPH_GCC_VERSION}" \
+            -DCMAKE_C_COMPILER=gcc \
+            -DCMAKE_CXX_COMPILER=g++ \
             -DCMAKE_C_FLAGS="-flto" \
             -DCMAKE_CXX_FLAGS="-flto ${GCC_WARNINGS}" \
             -DCMAKE_EXE_LINKER_FLAGS="-flto" \

@@ -13,7 +13,7 @@ Source. Until then every entry cites a commit SHA or a PR. Entries for the
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
-## [0.9.4] — 2026-08-20
+## [0.9.4] — 2026-08-21
 ### Fixed
 - **A tooltip no longer shows the wrong control's text after it moves.** Hover a Settings control,
   then move the pointer onto the hint box that appeared: the box steps aside as before, but its text
@@ -82,6 +82,19 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   asserted per bundle. [Verified]
 
 ### Changed
+- **The Linux version is now built with Clang, and the compiler is chosen rather than inherited.**
+  Until now the compiler that produced the Linux download was whichever `g++` the CI image happened
+  to provide — nobody picked it, and it could change without a line in any diff. The Linux VST3 and
+  Standalone are now built with the pinned Clang 22 toolchain and linked with its matching LLD,
+  which is what the link-time optimisation the release build uses actually requires. The same
+  toolchain builds the check that runs on each proposed change, so what gets validated is what gets
+  shipped, and the stricter warning set Clang applies now covers the code on its way out the door
+  rather than in a side job. **GCC has not gone away**: it remains as a second compiler that every
+  change is still checked against, on the GCC 16 line, so code that only one of the two accepts
+  still fails the build. **The system requirement is unchanged — Ubuntu 23.10 / Debian 13 or newer**
+  (see the entry above; an interim step through GCC 16 during this release would have raised it to
+  Ubuntu 24.04, and building with Clang does not). Nothing about the audio changes: same source,
+  different compiler. [Verified]
 - **The Linux installer and uninstaller can now be told what to do instead of asking.**
   `./install.sh --user` and `./install.sh --system` answer the question the script otherwise puts
   on screen, which is the only way to choose when there is no terminal to ask on — a piped or
@@ -111,9 +124,9 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   machine they were linked on, and a distribution older than those cannot load them at all — the
   plug-in does not appear in your host, rather than appearing and misbehaving. That floor had never
   been chosen: it was whatever the CI image happened to be, and it rose retroactively when that
-  image moved. Measured on the binaries this version ships: **GLIBC_2.38 and GLIBCXX_3.4.31 —
-  Ubuntu 23.10 / Debian 13 / GCC 13 or newer. Ubuntu 22.04 LTS ships glibc 2.35, so Anamorph does
-  not load there.** Nothing about the plug-in itself changed; what changed is that the requirement
+  image moved. Measured on the binaries this version ships: **GLIBC_2.38, GLIBCXX_3.4.31 and
+  CXXABI_1.3.9, against a declared floor of Ubuntu 23.10 / Debian 13 or newer. Ubuntu 22.04 LTS
+  ships glibc 2.35, so Anamorph does not load there.** Nothing about the plug-in itself changed; what changed is that the requirement
   is now written down (`docs/architecture/COMPATIBILITY_MATRIX.md` §"Linux runtime ABI floor") and
   asserted on every build against the exact stripped bytes you receive, so a future toolchain move
   that drops more systems fails the build rather than a user's DAW. Lowering the floor needs an

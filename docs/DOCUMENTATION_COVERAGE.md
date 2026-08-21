@@ -6,10 +6,11 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.4 change set** (2026-08-20, matching the CHANGELOG heading — re-dated
-from 2026-08-15 in the hover-occlusion round and again on 2026-08-20, each time because the version
-took a further user-visible change) — the
-**Linux installer migration and changelog-completeness audit** (first below), then the
+Last updated: for the **0.9.4 change set** (2026-08-21, matching the CHANGELOG heading — re-dated
+from 2026-08-15 in the hover-occlusion round, on 2026-08-20, and again on 2026-08-21, each time
+because the version took a further user-visible change) — the
+**Linux release toolchain move to Clang** (first below), then the
+**Linux installer migration and changelog-completeness audit**, then the
 **tooltip source-of-truth round**, then the
 **tooltip investigation that shipped no fix**, then the
 **stale-anchor correction**, then the
@@ -70,6 +71,75 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**Linux release toolchain: Clang ships, GCC verifies (2026-08-21): the compiler that builds the
+Linux artifact stopped being the runner image's choice, and the ABI gate gained a family it had been
+blind to. ADR-0030 records the decision.**
+
+**What moved.** The `linux` job named no compiler at all, so the shipped bytes were whatever `g++`
+`ubuntu-latest` supplied. They are now the pinned `clang-22`'s, linked by the matching `lld` that
+`setup-llvm-apt.sh` installs beside it — not a preference but what the `-flto` archive link requires,
+and the reason `CMakeLists.txt`'s lld block now governs the shipped link rather than a side job's.
+`merge-check` follows the same toolchain because it is the only build on the same-repo PR path.
+`linux-clang` — a second Release build with the same compiler — folded into `linux`; its two genuinely
+own steps (the portability canary and the first-party warning gate) moved with it, so **no check was
+lost**, and the gate runs after the artifact upload for the reason the ABI gate does.
+
+**GCC stayed, with a deliberately weaker pin than anything else here.** It is now the compatibility
+compiler and ships nothing, so `linux-lto-tests` tracks `gcc:16` — the floating major tag. A checker
+wants the newest stable 16.x automatically; a shipping toolchain must not. An image rather than `apt`
+for a concrete availability reason: no package source ships a *released* GCC 16 for any
+runner-available Ubuntu — noble stops at `g++-14`, and both `ubuntu-toolchain-r/test` and Ubuntu
+26.04 carry only pre-16.1 trunk snapshots.
+
+**The finding that outlived its own step.** GCC 16 was pinned for the shipping build first, as an
+intermediate state inside this same unmerged change set. That step surfaced that
+`check-linux-abi.py` gated `GLIBC` and `GLIBCXX` only while the GCC 16 artifact's exception path
+pulled `__cxa_call_terminate@CXXABI_1.3.15` — a silent floor rise in an undeclared family. `CXXABI`
+is now gated permanently, at **GCC 13's `1.3.14`** rather than GCC 14's `1.3.15`, so the three
+families describe one runtime between them; the Clang artifact needs `1.3.9` and **the supported
+floor is unchanged at Ubuntu 23.10 / Debian 13**.
+
+**Documents touched, and why each.** `CI_CD.md` (the pin-mechanism paragraph argued a supply
+direction that no longer applies, the job table listed `linux-clang`, and the ABI section stated the
+interim Ubuntu 24.04 floor), `DEPENDENCY_POLICY.md` (both compiler rows, plus the ADR-0028 scope
+paragraph — its "ships nothing" reasoning was correct when written and is kept as it stood, with the
+change of scope stated after it), `COMPATIBILITY_MATRIX.md`, `BUILD.md`, `REPOSITORY_MAP.md`,
+`TESTING_POLICY.md`, `HANDOVER.md`, `CHANGELOG.md` (the 0.9.4 entry would otherwise have shipped both
+a wrong compiler and a wrong system requirement) and `ADR_INDEX.md`. Four workflow line citations in
+this file were re-derived and each verified to land on the invocation it names, rather than trusted
+because the gate stayed quiet.
+
+**Not rewritten:** the worklogs, `KNOWN_ISSUES.md`, the ccache timing table's `linux-clang` row and
+the ADR bodies recording `gcc 13.3.0` as a past measurement environment. Those are historical
+records; the migration does not make them false, and the timing row is labelled with the job's fate
+rather than deleted.
+
+**Review follow-up, same change set (2026-08-21).** Three findings, all about the containerised GCC
+job rather than the release path:
+
+  * **The dependency list is now profiled instead of assumed.** `linux-lto-tests` runs inside a
+    Debian-based toolchain image but still called `setup-linux.sh`, whose list is written for a
+    fresh Ubuntu machine. `setup-linux.sh` now takes `full` (the default, unchanged for developers
+    and for every other job) or `headless`, and the container job asks for `headless`. The lists stay
+    in that one script — the workflow says *which* profile, never *what is in it*. Measured in the
+    real `gcc:16` image: the headless profile builds both LTO test targets and both suites pass
+    (162 + 911, 0 failures), with `build-essential`, `xvfb` and `lld` confirmed absent.
+    `build-essential` is the one that mattered — it would have installed a distribution GCC over the
+    pinned compiler the container exists to provide.
+  * **`python3` is named rather than inherited.** Every checker in `scripts/` is Python and the
+    Ubuntu images preinstall it, so nothing ever had to ask. The `gcc:16` image carries it only
+    through `python3-minimal`, pulled in by an unrelated layer — true today (measured: Python
+    3.13.5) and not a promise. Both profiles now install it explicitly.
+  * **The ABI floor parseability guard covers every declared family.** It named `GLIBC_FLOOR` and
+    `GLIBCXX_FLOOR` literally, so the `CXXABI` family added earlier in this change set fell outside
+    the only check that floor VALUES are versions at all. It now iterates `FLOORS`, so the next
+    family is covered on arrival, and it runs FIRST and returns on failure — an unparseable floor
+    used to raise out of an unrelated later case and report as a traceback instead of as the one
+    thing actually wrong. Verified by seeding a bad value into each of the three families in turn:
+    each produces its own named failure. Self-test 17 → **19 cases**.
+
+No floor value, cache key, compiler pin or release step changed.
 
 **Linux installer migration and changelog-completeness audit (2026-08-20): the sibling product's
 `install.sh` / `uninstall.sh` hardening brought into this repository, and the whole post-0.9.3
@@ -1140,7 +1210,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:2751` and `:2836`, this round being documentation-only.
+`.github/workflows/build.yml:2666` and `:2836`, this round being documentation-only.
 
 **Policy-topology round (2026-08-19): rule 4 described a placement three of its own seven checkers
 cannot have. One report investigated and closed with no change.**
@@ -1163,16 +1233,18 @@ silence is being read.
 
 **Read off the workflow, not off the review.** The report asserted that
 `check-clang-warnings.py` and `check-gcc-warnings.py` "self-test in one job and gate in another".
-They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:959` and gates at
-`:983`, both in `linux-clang`; `check-gcc-warnings.py` self-tests at `:2626` and gates at `:2647`,
-both in `linux-lto-tests`. All seven pairs are same-job. What was genuinely wrong was "immediately
+They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:630` and gates at
+`:944`, both in one job; `check-gcc-warnings.py` self-tests at `:2530` and gates at `:2551`,
+both in `linux-lto-tests`. All seven pairs are same-job. (The Clang pair was in `linux-clang` when
+this round ran; ADR-0030 folded that job into `linux`, moving both lines together and leaving the
+same-job property intact — which is the property the sentence is about.) What was genuinely wrong was "immediately
 before", not the job placement, and that is what changed.
 
 **One downstream copy followed, and only one.** `docs/procedures/CI_CD.md` restated the same
 "immediately before" claim for `source-lint`'s three lints, where it is true of two of them; leaving
 it would have left a Procedures document contradicting the Policy on the exact sentence being
 corrected, which the authority order in `SOURCE_OF_TRUTH.md` does not permit. Deliberately NOT
-followed: the `source-lint` comment at `.github/workflows/build.yml:441` carries the same phrasing
+followed: the `source-lint` comment at `.github/workflows/build.yml:454` carries the same phrasing
 about the citation self-test, and the `scripts/` tree summary in `REPOSITORY_MAP.md` still
 enumerates four lints where its own table lists seven. Both are real; neither is this round's
 subject, and the second is a stale COUNT rather than the placement claim.

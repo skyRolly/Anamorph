@@ -30,7 +30,7 @@
 #       --gcc-major <n> --write-baseline
 # and read the diff before committing it -- that diff is the entire review.
 #
-# gcc-major: 13
+# gcc-major: 16
 1	-Wmisleading-indentation	src/dsp/AnamorphEngine.cpp
 1	-Wshadow	src/PluginParameters.cpp
 1	-Wshadow	src/PluginProcessor.cpp

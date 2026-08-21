@@ -84,16 +84,15 @@ jobs that guard classes the build matrix cannot see:
 
 | Job | Runner | Builds | pluginval |
 |---|---|---|---|
-| **merge-check** | `ubuntu-latest` | VST3 + Standalone + tests, from `refs/pull/N/merge` — **same-repo PRs only**, no packaging, no artifacts | — |
+| **merge-check** | `ubuntu-latest` + **pinned `clang`** | VST3 + Standalone + tests, from `refs/pull/N/merge` — **same-repo PRs only**, no packaging, no artifacts | — |
 | **docs** | `ubuntu-latest` | — (`scripts/check-docs.py --self-test` then the lint) | — |
 | **source-lint** | `ubuntu-latest` | — (each lint preceded by its own `--self-test`: `check-portability.py`, then `check-citations.py --check`) | — |
-| **linux** | `ubuntu-latest` | VST3 + Standalone (+ tests) | VST3, **both modes ×3** (deterministic + randomise) — **blocking** |
-| **linux-clang** | `ubuntu-latest` | Clang: both test targets + `Anamorph_VST3` (Standalone off) | — (no packaging; the warning gate + both suites) |
+| **linux** | `ubuntu-latest` + **pinned `clang`/`lld`** | **Clang: the shipped VST3 + Standalone (+ tests)**; also the portability canary and the first-party Clang warning gate | VST3, **both modes ×3** (deterministic + randomise) — **blocking** |
 | **sanitizers** | `ubuntu-latest` | Clang ASan+UBSan build, plus an unsanitized build for valgrind | — |
 | **windows** | `windows-latest` (MSVC, multi-config) | VST3 + Standalone (+ tests) | VST3, **both modes ×3** — **blocking** |
 | **macos** | `macos-latest` (Apple Silicon) | universal VST3 + AU + Standalone (+ tests) | **VST3 and AU**, both modes ×3 each — **blocking** |
 | **macos-intel** | `macos-15-intel` (**native Intel**) | thin x86_64 VST3 + AU (+ tests); Standalone off; **no packaging, no artifacts** | **VST3 and AU**, both modes ×3 each — **blocking** |
-| **linux-lto-tests** | `ubuntu-24.04` (**pinned image**, pinned `g++-13`) | GCC `-flto`: both test targets only (Standalone off); **no packaging, no artifacts** | — (the suites against LTO codegen, plus the GCC warning gate) |
+| **linux-lto-tests** | `ubuntu-latest` + **floating `gcc:16`** (major pinned, patch not) | GCC `-flto`: both test targets only (Standalone off); **no packaging, no artifacts** | — (the suites against LTO codegen, plus the GCC warning gate) |
 | **realtime** | `ubuntu-latest` | Clang `-fsanitize=realtime`: the DSP suite only (Standalone off); **no packaging, no artifacts** | — (the audio path under RealtimeSanitizer, plus the leaf-layer `-Wfunction-effects` check) |
 | **fuzz** | `ubuntu-latest` | Clang libFuzzer + ASan/UBSan: `AnamorphFuzzState` only (tests and Standalone off); **no packaging, no artifacts** | — (`setStateInformation` under libFuzzer) |
 
@@ -120,7 +119,7 @@ edge above must not be read as release non-blocking.
   `juce::jmin/jmax/snapToZero` instantiates `dsp::SIMDRegister<T>`, which completes on Linux (where
   `size_t` IS `uint64_t`) and **fails to compile on macOS** (where it is not). The divergence is in
   the *typedef*, so no Linux compiler can see it — a lint is the only Linux-runnable guard, and
-  `linux-clang` would not catch it. The tree is clean of it; the job is a regression guard.
+  the Clang gate would not catch it. The tree is clean of it; the job is a regression guard.
   (b) the **evidence-anchor gate**: `docs/` carries 184 `file.cpp:NNN` citations, and an edit above
   one silently re-aims it. See [Evidence anchors](#evidence-anchors).
   (c) the **static realtime lint** (`check-realtime.py`, ADR-0029): the bodies of audio-path
@@ -148,10 +147,10 @@ edge above must not be read as release non-blocking.
   verifies — the step immediately before, for the two that can be; for `check-citations.py` its own
   step ahead of the one that resolves the base revision and then compares, which is the job-and-order
   form `TESTING_POLICY.md` rule 4 requires. The same load-bearing move as `docs`. The
-  portability self-test is not the same check as `--compile-canary` in `linux-clang`: that one asks
+  portability self-test is not the same check as `--compile-canary` in `linux`: that one asks
   whether the pinned JUCE still *has* the hazard, this one whether the checker still *finds* it, and
   a green canary over a dead scanner reports a clean tree.
-- **linux-clang** — `juce_recommended_warning_flags` picks its set by **compiler ID**, and Clang's is
+- **linux (the Clang warning gate)** — `juce_recommended_warning_flags` picks its set by **compiler ID**, and Clang's is
   strictly larger than GCC's (`-Wshorten-64-to-32`, `-Wconditional-uninitialized`,
   `-Wsign-conversion`, `-Wcast-align`, `-Wshift-sign-overflow`,
   `-Wzero-as-null-pointer-constant`, `-Wimplicit-int-float-conversion`). Every one of those reached
@@ -302,7 +301,7 @@ edge above must not be read as release non-blocking.
   on the empty input, within 60 s. Leak coverage for the same code lives in `sanitizers`, which now
   runs with `detect_leaks=1`.
 
-`MALLOC_PERTURB_=1` is set on the `linux` and `linux-clang` self-test steps: glibc then fills **fresh**
+`MALLOC_PERTURB_=1` is set on the `linux` self-test steps: glibc then fills **fresh**
 heap with `0xFE` and **freed** heap with `0x01`, so an uninitialised read of audio state comes back as
 ≈ `-1.69e38` — enormous *and* wrong-signed, which every level, null, transparency and click-free
 assertion in both suites fails on. It is the cheap version of the question valgrind answers slowly, on
@@ -411,7 +410,7 @@ failures as green and has been removed). Evidence [Verified]: `.github/workflows
 
 ### The compiler cache
 
-Every job that uses the Ninja generator — `merge-check`, `linux`, `linux-clang`, `sanitizers`,
+Every job that uses the Ninja generator — `merge-check`, `linux`, `sanitizers`,
 `linux-lto-tests`, `realtime`, `macos`, `macos-intel` — compiles through **ccache**, restored from and saved to the GitHub Actions
 cache (`actions/cache`, SHA-pinned like every other action — see §Action refs are pinned to commit
 SHAs).
@@ -423,7 +422,7 @@ JUCE-linking targets compiles separately. JUCE is pinned to an immutable commit
 (`CMakeLists.txt:65-71`, ADR-0022/ADR-0026), so that 75% is byte-identical from run to run.
 Measured on 4 cores — the runner's core count — the same build with a warm cache is **7m41s → 3m40s
 (−52%)**, at **137 direct hits / 6 misses**, and the residual is the LTO link, which no compiler
-cache touches. The `linux-clang` configuration, measured the same way against the **then-pinned Clang
+cache touches. The then-separate `linux-clang` configuration, measured the same way against the **then-pinned Clang
 18**, was **5m48s → 2m36s (−55%)** at **129 hits / 5 misses** (a figure from that measurement, not a
 claim about the current pin — the compiler has since moved to 22). Both were measured with the build number
 *deliberately changed between the two runs*, so they describe the CI case rather than a favourable
@@ -439,7 +438,7 @@ one.
 | `macos-intel` | 21m26s | 13m12s | 10m21s → 3m04s |
 | `sanitizers` | 15m07s | 6m38s | 12m14s → 3m31s (two builds) |
 | `linux` | 10m57s | 6m21s | 8m04s → 3m34s |
-| `linux-clang` | 9m38s | 4m13s | 7m58s → 2m29s |
+| `linux-clang` (job since folded into `linux`) | 9m38s | 4m13s | 7m58s → 2m29s |
 | `windows` (uncached) | 12m49s | 10m02s | runner variance only |
 
 Restoring a cache costs 2–4s and saving one 2–4s, against ~104 MB per lineage — negligible against
@@ -459,7 +458,7 @@ to a thin build or the reverse, and the `macos` job's existing `lipo` assertion 
 the backstop either way.
 
 **Warnings survive a hit.** ccache replays the compiler's stderr verbatim — caret lines and
-`[-Wflag]` included. That is load-bearing rather than incidental: `linux-clang` gates on the
+`[-Wflag]` included. That is load-bearing rather than incidental: `linux` gates on the
 diagnostic text of its own build (see "The Clang warning baseline"), and a cache that swallowed
 warnings would turn that gate green by deleting its input. Verified against the **then-pinned Clang
 18** before enabling, by running that job's real build and its real gate twice: cold and warm produced
@@ -486,7 +485,7 @@ built at two different directory names shares nothing.
 compiler, same configuration, same build directory name, and they never run in the same event, so a
 PR's `merge-check` restores what the last push to the base branch wrote. That is the whole reason
 `merge-check` is worth caching — it is the *only* build on the same-repo PR path and therefore that
-path's entire critical path. `linux-clang` **and `sanitizers`** both key on the pinned Clang major, so
+path's entire critical path. `linux`, `merge-check` **and `sanitizers`** all key on the pinned Clang major, so
 raising the pin starts clean lineages instead of restoring entries no build can hit again — ccache
 hashes the compiler binary's own contents (`CCACHE_COMPILERCHECK=content`), so objects from the
 previous major are dead weight rather than wrong answers, but a restored cache full of them is still
@@ -680,7 +679,7 @@ Evidence [Verified]: `.github/workflows/build.yml`.
 
 ### The Clang warning baseline
 
-`linux-clang` asserts **no new** first-party warnings, not **zero**. The tree already carries 14
+The Clang gate asserts **no new** first-party warnings, not **zero**. The tree already carries 14
 distinct first-party Clang warning sites, every one of them older than the job:
 
 | Count | Flag | Path |
@@ -713,7 +712,7 @@ a property of the major version — `-Wshadow-field`, `-Wsign-conversion` and
 about another. Left unpinned, the reference point was whatever `ubuntu-latest` resolved `clang` to
 that week, and a runner-image bump would have failed the gate on a push that changed nothing in the
 tree: the same defect the "never key on line numbers" rule exists to avoid, one level up.
-`ANAMORPH_CLANG_VERSION` in `build.yml` is the single authority for the major; `linux-clang` installs
+`ANAMORPH_CLANG_VERSION` in `build.yml` is the single authority for the major; each consuming job installs
 `clang-<n>`/`lld-<n>` and configures with `clang-<n>`/`clang++-<n>`; `sanitizers` uses the same major,
 which also lets it name `libclang-rt-<n>-dev` directly instead of scraping `clang --version` for it.
 The baseline records the major in a `# clang-major:` line and `--clang-major` **refuses to run** when
@@ -786,13 +785,21 @@ permission list.
 **The compiler is pinned, and so is the image.** `-Wmisleading-indentation`'s heuristic and
 `-Wshadow`'s treatment of members have both moved between GCC majors, so the counts mean nothing
 against another one; the baseline records `# gcc-major:` and the gate exits 2 rather than 1 when the
-two disagree. The *supply* is the opposite way round from Clang, though, and that changes the
-mechanism: the Clang pin is **ahead** of the image and installed from apt.llvm.org, while
-`ANAMORPH_GCC_VERSION: 13` is simply **what noble ships** (`g++` 13.3). There is nothing to install,
-and the only real risk is the image moving underneath the pin — which is why this job alone pins
-`runs-on: ubuntu-24.04` instead of `ubuntu-latest`. Naming the compiler without naming the image only
-moves the unpinned variable one level up; with both named, a `g++-13` that has left the archive fails
-at `apt` in the first minute rather than at the gate twenty minutes later.
+two disagree. The *supply* differs from Clang's, though, and that decides the
+mechanism. Clang comes from apt.llvm.org because upstream packages it there; the GNU project ships
+only source, leaving packaging to distributions. **No package source ships a released GCC 16 for any
+runner-available Ubuntu**: noble stops at `g++-14`; `ubuntu-toolchain-r/test` carries only a trunk
+snapshot (`16-20260315`) and Ubuntu 26.04 the same class (`16-20260322`), both predating the 16.1
+release; stable 16.2.0 exists in `apt` only for an unreleased Ubuntu series. Those snapshots are the
+"newest, not stable" that ADR-0028 rejected for Clang 23, so the mechanism is the **official upstream
+toolchain image** on `linux-lto-tests`.
+
+**The tag floats on the major, and that is deliberate.** `gcc:16` resolves to the newest 16.x the
+image publishes, so patch releases arrive without a commit here. This is the one weak pin in the
+file, and it is weak because GCC is now a *compatibility checker* rather than the shipping toolchain
+— a checker wants the newest 16.x automatically; a shipping toolchain must not. Nothing downstream
+needs the patch: `gcc-warning-baseline.txt` records the **major**, and the job asserts the major
+(`g++ -dumpversion`) rather than a full version, so 16.2 → 16.3 is silent and a 17 would be loud.
 
 What the move cost the baseline was **measured, not assumed**, with clang-20 kept as the control: the
 same three targets built from one tree under 20 and 22 emit a `diff`-identical **52-instance** warning
@@ -997,7 +1004,7 @@ Stated here rather than left to be rediscovered. None is a defect; each is a dec
   substitute a raw byte-string search for `GetPluginFactory`: matching the name anywhere in the file
   is not evidence that it is exported.
 - **`--skip-gui-tests` on Windows** skips one test category on one runner (KI-007, environmental).
-- **The `linux-clang` job is not `-Werror`** — see §Build matrix for why it cannot be yet, and
+- **The Clang warning gate is not `-Werror`** — see §Build matrix for why it cannot be yet, and
   [The Clang warning baseline](#the-clang-warning-baseline) for the 14 sites it currently accepts.
 - **The AU is validated by pluginval rather than `auval`.** The gate hosts the `.component` through
   JUCE's `AudioUnitPluginFormat` — the same resolution path a JUCE-hosted DAW takes, and the same
@@ -1038,6 +1045,20 @@ a runner-image move raises it **silently and retroactively** — the artifact st
 it loaded on last week, with no failure in CI and no line in any diff. Measured when the gate landed:
 `GLIBC_2.38` and `GLIBCXX_3.4.31`, i.e. Ubuntu 23.10+ and GCC 13+, so the artifact does **not** load
 on Ubuntu 22.04 LTS. That was not a decision; it was an image move nobody saw.
+
+The floor gained a third family, `CXXABI`, while GCC 16 was being evaluated for the Linux build
+(2026-08-21). `GLIBC` and `GLIBCXX` did not move under it — the GCC 16.2 artifact still asked for
+`GLIBC_2.38` and `GLIBCXX_3.4.31` — but its exception path pulled
+`__cxa_call_terminate@CXXABI_1.3.15`, which libstdc++ first shipped in **GCC 14**. Reading `GLIBCXX`
+alone, the gate would have reported a GCC 13 floor and passed an artifact needing a GCC 14 runtime.
+A family the gate does not name cannot raise the floor loudly, so it raises it silently — and that is
+the one failure mode this gate exists to prevent.
+
+**The declared value is GCC 13's, `CXXABI_1.3.14`**, so the three families describe one runtime
+between them rather than two. The shipped artifact is Clang's and needs only `CXXABI_1.3.9`,
+comfortably under; the supported floor therefore stays **Ubuntu 23.10 / Debian 13**, unchanged from
+before. A future move back to a compiler that emits `1.3.15` now *fails* this gate instead of passing
+it, which is the point of declaring the family at all.
 
 The floor lives in `scripts/check-linux-abi.py` and `COMPATIBILITY_MATRIX.md` defers to it rather
 than restating a number. The gate does not attempt to *lower* the floor — that means an older
@@ -1165,7 +1186,7 @@ lipo -archs build/Anamorph_artefacts/Release/VST3/Anamorph.vst3/Contents/MacOS/A
 scripts/run-tests.sh                       # unprefixed: the binaries are native here
 ```
 
-The `linux-clang` and `sanitizers` jobs use their own build trees so they never collide with the one
+The `sanitizers`, `realtime` and `fuzz` jobs use their own build trees so they never collide with the one
 above — `build-clang`, `build-san`, `build-vg`. All are covered by `.gitignore`'s `build*/`.
 
 ```bash
