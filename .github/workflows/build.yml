@@ -2686,11 +2686,32 @@ jobs:
       # half this cannot cover is covered where it belongs: `linux` compiles
       # both instruments `-fsyntax-only` under the pinned Clang, so a
       # Clang-only break still fails a gate.
+      #
+      # BOTH SECONDARY BUILDS REUSE THE JUCE THIS JOB ALREADY FETCHED, via the
+      # `ANAMORPH_JUCE_PATH` escape hatch CMakeLists.txt already carries. Each
+      # `cmake -B` otherwise runs its own FetchContent clone into its own
+      # `_deps`, so this job was fetching the same pinned commit THREE times.
+      # Nothing is cached and nothing crosses runs: the source is the tree this
+      # job downloaded minutes earlier, at the SHA the build definition pins, and
+      # a missing directory fails `add_subdirectory` loudly rather than silently
+      # re-fetching.
+      #
+      # A CROSS-RUN `actions/cache` FOR JUCE WAS MEASURED AND DECLINED, which is
+      # the roadmap item this closes. The clone is already `GIT_SHALLOW` at a
+      # pinned commit: a fetch of exactly that commit measured 5.0 s for a 120 MB
+      # tree. The cache it would be replaced by is 44 MB compressed and took
+      # 2.6 s to decompress and extract before any download -- so a cache HIT
+      # saves something like a second and a half, against eleven jobs whose
+      # runtimes are 6 to 21 minutes, while adding a key to maintain and a way
+      # for the release path to build against the wrong bytes. The waste worth
+      # removing was never the per-job clone; it was this job fetching the same
+      # commit three times in one run, which needs no cache at all.
       - name: Build + smoke-run the benchmark harness (no timing assertion)
         run: |
           cmake -B build-bench -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DANAMORPH_BUILD_BENCH=ON -DANAMORPH_BUILD_TESTS=OFF \
             -DANAMORPH_BUILD_STANDALONE=OFF \
+            -DANAMORPH_JUCE_PATH="${GITHUB_WORKSPACE}/build-lto/_deps/juce-src" \
             -DCMAKE_C_COMPILER_LAUNCHER=${{ env.ANAMORPH_COMPILER_LAUNCHER }} \
             -DCMAKE_CXX_COMPILER_LAUNCHER=${{ env.ANAMORPH_COMPILER_LAUNCHER }}
           cmake --build build-bench --target AnamorphBench
@@ -2731,6 +2752,7 @@ jobs:
           cmake -B build-dump -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DANAMORPH_BUILD_DSPDUMP=ON -DANAMORPH_BUILD_TESTS=OFF \
             -DANAMORPH_BUILD_STANDALONE=OFF \
+            -DANAMORPH_JUCE_PATH="${GITHUB_WORKSPACE}/build-lto/_deps/juce-src" \
             -DCMAKE_C_COMPILER_LAUNCHER=${{ env.ANAMORPH_COMPILER_LAUNCHER }} \
             -DCMAKE_CXX_COMPILER_LAUNCHER=${{ env.ANAMORPH_COMPILER_LAUNCHER }}
           cmake --build build-dump --target AnamorphDspDump

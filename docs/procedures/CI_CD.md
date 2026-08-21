@@ -483,10 +483,28 @@ the build because an About-box string had incremented. It is now attached to the
 unit that reads it (`CMakeLists.txt`, `set_source_files_properties` beside the version block;
 `src/PluginEditor.cpp` already carried the `#ifndef … "0"` fallback). Nothing else ever read it.
 A second property is inherited rather than created: each job's build directory name is fixed
-(`build`, `build-san`, `build-vg`, `build-lto`, `build-bench`, `build-rtsan`, `build-fuzz`), which
-matters because FetchContent puts JUCE
+(`build`, `build-san`, `build-vg`, `build-lto`, `build-bench`, `build-dump`, `build-rtsan`,
+`build-fuzz`), which matters because FetchContent puts JUCE
 *inside* the build directory, so its path is in the `-I` flags of every compile — the same tree
 built at two different directory names shares nothing.
+
+**That same property is why `linux-lto-tests` fetched JUCE three times.** One `cmake -B` per build
+directory means one FetchContent clone per build directory, and that job configures three
+(`build-lto`, then `build-bench` and `build-dump` for the two committed instruments). Since
+2026-08-21 the two secondary configures pass `-DANAMORPH_JUCE_PATH` at `build-lto/_deps/juce-src` —
+the tree this job downloaded minutes earlier, at the SHA `CMakeLists.txt` pins. Nothing is cached
+and nothing crosses runs; a missing directory fails `add_subdirectory` rather than silently
+re-fetching. `sanitizers` still fetches twice (`build-san`, `build-vg`) and the same treatment is
+available there; it was left alone because that lineage is shared between a sanitized and an
+unsanitized build and the change was not worth perturbing it without CI evidence.
+
+**A cross-run `actions/cache` for the JUCE checkout was measured and declined.** The clone is
+already `GIT_SHALLOW` at a pinned commit: fetching exactly that commit measured **5.0 s** for a
+120 MB tree, while the cache that would replace it is 44 MB compressed and took **2.6 s** to
+decompress and extract before any download. A cache hit therefore saves on the order of a second
+and a half per configure, against jobs that run 6 to 21 minutes — and buys a key to maintain plus a
+path by which the release build could link the wrong bytes. The waste worth removing was the
+duplicate fetch inside one job, which needs no cache.
 
 **Cache lineages.** `linux` and `merge-check` share one (`ccache-ubuntu-clang<major>-release-`): same
 compiler, same configuration, same build directory name, and they never run in the same event, so a
