@@ -333,47 +333,39 @@ DELIBERATE_REAIMS = {
     # (`:686-692`), and `CITATION` requires a path, so the parser never saw them
     # in either direction.
     #
-    # RE-AIMED 2026-08-21 by the round that added `GLOSS_CHECKED_DOCS`. These five
-    # are the anchors that check fired on the day it was written: all fully
-    # qualified, all parsed, all green at 342/342, and every one of them pointing
-    # at unrelated code. They are the measurement behind that mechanism rather
-    # than an argument for it.
+    # EMPTIED AGAIN 2026-08-22, and the eight entries retired here are the two
+    # rounds above: the five the `GLOSS_CHECKED_DOCS` round declared for its own
+    # corrections, and the three the editor-lifetime round declared when it
+    # rewrote the `state_tests.cpp` header those documents cite. Every one of them
+    # reported "not needed against origin/main", and origin/main IS this branch's
+    # merge base -- the condition that note attaches to, checked rather than
+    # assumed. Verified per entry: `git show origin/main:<doc>` already contains
+    # the re-aimed spelling, so there is no transition left for any of them to
+    # excuse.
     #
-    # A CORRECTION IS INDISTINGUISHABLE FROM DRIFT, which is what makes a
-    # declaration necessary here and is worth stating plainly: the drift test
-    # compares the text at the CURRENT anchor with the text the BASE anchor named,
-    # so moving an anchor onto the RIGHT code reads exactly like code moving under
-    # a right anchor. Without these, `--fix` proposes to undo all five -- observed,
-    # not inferred (`src/PluginProcessor.cpp:119 -> :109`).
+    # WHY A SPENT ENTRY IS NOT MERELY USELESS. `is_declared_reaim` returns False
+    # while base and current agree, so a spent entry is inert TODAY -- and returns
+    # True the moment the cited code actually moves, which is precisely when the
+    # gate is supposed to speak. Asked of the real function with an entry still
+    # present: `(base :21, cur :21) -> False`, `(base :21, cur :22) -> True`. A
+    # declaration kept past its transition is therefore not dead weight; it is a
+    # standing licence for that anchor's next genuine drift, in every document
+    # that names it. Removing them RESTORES drift checking rather than weakening
+    # it.
     #
-    # Each expectation is the symbol the document's own gloss names, so a
-    # declaration cannot quietly survive onto an unrelated line.
-    ("docs/architecture/ARCHITECTURE.md", "src/PluginProcessor.cpp:119"):
-        "ScopedNoDenormals",
-    ("docs/architecture/ARCHITECTURE.md", "src/PluginProcessor.cpp:86-96"):
-        "isBusesLayoutSupported",
-    ("docs/architecture/LATENCY_MODEL.md", "src/PluginProcessor.cpp:105-108"):
-        "updateLatency",
-    ("docs/architecture/PARAMETER_REFERENCE.md", "src/PluginProcessor.cpp:188-212"):
-        "applyAutoGain",
-    ("docs/architecture/THREAD_MODEL.md", "src/gui/Vectorscope.h:21"):
-        "Nothing is ever drawn on the audio thread",
-
-    # RE-AIMED 2026-08-21 by the editor-lifetime test, which rewrote the header
-    # comment those anchors cite. `tests/state_tests.cpp:6-8` said the editor was
-    # "linked but never instantiated"; it is now constructed and destroyed, and
-    # the sentence that carries the surface boundary these documents lean on --
-    # never SHOWN, no peer, no message loop, no interaction -- spans :6-11. The
-    # cited lines were edited, so `--fix` correctly declines to map them and each
-    # spelling is declared instead. One entry per (document, spelling): a
-    # document that spells the same anchor several times is one citation.
-    ("docs/POSTMORTEMS.md", "tests/state_tests.cpp:6-11"):
-        "no peer, no message loop, no interaction",
-    ("docs/architecture/design-decisions/ADR-0025-regression-test-exception.md",
-     "tests/state_tests.cpp:6-11"):
-        "no peer, no message loop, no interaction",
-    ("docs/procedures/TESTING.md", "tests/state_tests.cpp:6-11"):
-        "no peer, no message loop, no interaction",
+    # WHAT REMOVAL COSTS, stated because it is not nothing. `verify_reaim_targets`
+    # content-checks every entry on every run, so retiring one drops that
+    # assertion. For the five architecture anchors it drops nothing that matters:
+    # all five are in `GLOSS_CHECKED_DOCS` documents and carry the gloss the
+    # document itself writes, so the same claim is asserted permanently by a
+    # mechanism built to be permanent. For the three `tests/state_tests.cpp:6-11`
+    # anchors it does drop the only content check they had -- their documents
+    # (`POSTMORTEMS.md`, `TESTING.md`, ADR-0025) are not in that list, and opting
+    # them in would buy nothing today: measured, all three carry ZERO glossed
+    # citations, because those references are written as prose rather than as a
+    # parenthetical after the anchor. Getting them content-checked means rewriting
+    # the prose in three documents, which is a change about those documents and
+    # not about this table.
 }
 
 # Documents whose GLOSSED citations are checked against the text they name.
