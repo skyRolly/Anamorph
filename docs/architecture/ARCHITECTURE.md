@@ -74,7 +74,7 @@ Evidence [Verified]:
 Evidence [Verified]:
 - Source: src/PluginEditor.cpp:278-292 (OpenGL platform gate)
 - Source: src/dsp/ScopeBuffer.h:8-18 (lock-free SPSC)
-- Source: src/PluginProcessor.cpp:109 (`juce::ScopedNoDenormals`)
+- Source: src/PluginProcessor.cpp:119 (`juce::ScopedNoDenormals`)
 
 ## 5. I/O layouts
 
@@ -83,7 +83,7 @@ Evidence [Verified]:
 - Output is **always stereo**. **mono → mono is Not Supported** (deliberately rejected).
 
 Evidence [Verified]:
-- Source: src/PluginProcessor.cpp:33-43 (`isBusesLayoutSupported`), :77-78 (mono→stereo upmix)
+- Source: src/PluginProcessor.cpp:86-96 (`isBusesLayoutSupported`), :94-95 (mono→stereo upmix)
 
 ## 6. Cross-references
 

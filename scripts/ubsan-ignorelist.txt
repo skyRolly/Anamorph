@@ -1,0 +1,44 @@
+# UBSan instrumentation ignorelist -- ONE sub-check, in ONE tree.
+#
+# WHY IT EXISTS. The `sanitizers` job enables `implicit-conversion` on both the C
+# and C++ flags. That flag instruments EVERY translation unit the build compiles,
+# and this build compiles JUCE from source -- including the vendored third-party
+# code inside it (HarfBuzz, FreeType glue, zlib, png, flac). Those libraries use
+# narrowing assignment as ordinary idiom.
+#
+# WHAT MADE IT NECESSARY, rather than a precaution. The editor-lifetime test
+# (`tests/state_tests.cpp`) constructs the real editor, whose constructor calls
+# `refreshPresetDisplay()` -> `textWidth()` -> JUCE font shaping -> HarfBuzz. That
+# reaches `hb-face.cc`:
+#
+#     face->num_glyphs = -1;      // num_glyphs is `unsigned int`
+#
+# HarfBuzz's documented "not computed yet" sentinel, deliberate and benign, and
+# UBSan is correct that it narrows. It is not a defect and it is not this
+# project's code, so failing the sanitizer job on it would train people to read a
+# red `sanitizers` as noise -- which is the way a gate stops being read at all.
+#
+# THE SCOPE IS THE POINT, and it is as small as the mechanism allows:
+#
+#   * ONE SUB-CHECK. The `[implicit-conversion]` section header limits every rule
+#     below to that sanitizer. ASan, the rest of `undefined`, `vptr`,
+#     `float-divide-by-zero`, `unsigned-shift-base`, `local-bounds` and
+#     `nullability` still instrument the vendored tree in full.
+#   * ONE TREE. `juce-src` is where FetchContent puts the dependency
+#     (`<build-dir>/_deps/juce-src`) and where `ANAMORPH_JUCE_PATH` points a local
+#     checkout. No first-party path contains it, so no `src/` or `tests/` file can
+#     be exempted by accident.
+#
+# `DEPENDENCY_POLICY`/`TESTING_POLICY` step 4 of the sanitizer procedure --
+# "do not weaken the entire sanitizer suite merely because one third-party path is
+# noisy" -- is what this file implements rather than the two alternatives that
+# were available: dropping `implicit-conversion` from the flag set (weakens every
+# TU, first-party included) or not constructing the editor under sanitizers
+# (removes the coverage the test exists for).
+#
+# VERIFIED IN BOTH DIRECTIONS on the pinned clang-22, because an ignorelist that
+# silenced everything would look identical to one that works: with a narrowing
+# conversion seeded into BOTH a `juce-src` path and a first-party path, the
+# vendored one goes quiet and the first-party one still fails the run.
+[implicit-conversion]
+src:*juce-src/*

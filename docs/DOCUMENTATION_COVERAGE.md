@@ -9,7 +9,8 @@ that documentation (Verified / Partially Verified / Unverified / Not Supported).
 Last updated: for the **0.9.4 change set** (2026-08-21, matching the CHANGELOG heading — re-dated
 from 2026-08-15 in the hover-occlusion round, on 2026-08-20, and again on 2026-08-21, each time
 because the version took a further user-visible change) — the
-**post-merge drift sweep** (first below), then the
+**roadmap tail: instruments, the declined JUCE cache, gloss-checked anchors and the editor lifetime** (first below), then the
+**post-merge drift sweep**, then the
 **Linux release toolchain move to Clang**, then the
 **Linux installer migration and changelog-completeness audit**, then the
 **tooltip source-of-truth round**, then the
@@ -72,6 +73,94 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**Roadmap tail (2026-08-21): the two committed instruments got liveness steps, the proposed JUCE
+cache was measured and declined, citation anchors began asserting what they name, and the editor
+was constructed for the first time. Four items, one of them closed by NOT doing it.**
+
+**`AnamorphDspDump` had no CI build at all.** It is the `DEPENDENCY_POLICY` rule-2 gate for a JUCE
+bump, and it was the one committed harness with no protection against exactly the rot the bench's
+own CI step exists to prevent. `linux-lto-tests` now runs it with `--self-check` rather than a bare
+run, because the tool's own argument makes the stronger check the cheap one: a scenario set that
+collapses prints 32 confident and meaningless hashes, which is what the 8.0.14 → 9.0.0 run shipped.
+Measured here: 32 scenarios, all repeatable and all distinct. **Nothing is diffed in CI and no
+baseline is stored** — that would be the golden-master test this repository has rejected.
+
+**Both instruments were compiled only by GCC.** `linux-lto-tests` is a `gcc:16` container whose
+configure names no compiler, so `bench.cpp` and `dsp_dump.cpp` were the only first-party TUs no
+Clang job compiled — a Clang-only break in either reached no gate, and both sit behind
+OFF-by-default options, which is why it was easy to miss. `linux` now compiles both
+`-fsyntax-only` under the pinned Clang. Proved live in both directions locally; the first attempt
+at that proof seeded against the wrong `main` signature and "passed" while checking nothing, which
+is recorded because it is the failure mode the seeding was supposed to rule out.
+
+**The JUCE cache was declined on measurement, and that is the finding.** The roadmap asked for an
+`actions/cache` for "faster CI". The clone is already `GIT_SHALLOW` at a pinned commit: fetching
+exactly that commit measured **5.0 s** for a 120 MB tree, while the cache replacing it is 44 MB
+compressed and took **2.6 s** to decompress and extract before any download. A hit saves ~1.5 s
+against jobs running 6–21 minutes, and buys a key to maintain plus a path by which the release
+build could link bytes that are not the pinned ones. What the measurement found instead: one job
+was fetching the same commit **three times** in one run, one `cmake -B` per build directory. Both
+secondary configures now reuse `build-lto/_deps/juce-src` through the `ANAMORPH_JUCE_PATH` escape
+hatch — no cache, nothing crossing runs. `sanitizers` still fetches twice and is left alone, named
+so the omission is a decision.
+
+**Citation anchors now assert what they name — nine were pointing at unrelated code.** The gate has
+always compared an anchor against a BASE, so one already wrong at the base stays wrong and stays
+green; its header says so and this repository's anchors were "adopted, not audited". The
+expectation was already in the documents: the convention spells the symbol beside the line number,
+and nothing read it. `GLOSS` extracts it and `verify_glossed_anchors` asserts the token is in the
+cited lines, with no base revision. **A match, not a parse** — one backticked identifier or one
+double-quoted string, alone in the parentheses; `(24 Hz timer)` asserts nothing rather than having
+an assertion invented for it. **Opt-in by DOCUMENT, not by anchor**, for two reasons that were both
+verified rather than assumed: an anchor-keyed table would hold a copy of the line number `--fix`
+rewrites (the disease built into the cure — `invalidated_reaims` exists because that happened twice
+in one change set), and a permanent entry cannot live in `DELIBERATE_REAIMS` at all because
+`is_declared_reaim` reads that dict to turn the drift check OFF. Measured: 20 glossed citations
+across seven architecture documents, **5 firing, all genuine, 0 false positives**; repo-wide 10
+fire, 9 genuine and 1 false, which is why it is opt-in. All five corrected, each carrying a one-shot
+declaration because a correction is textually indistinguishable from drift — without them `--fix`
+proposes to undo all five, observed rather than inferred. Self-test 109 → 126 cases.
+
+**The editor was constructed for the first time, and it is clean.** `AnamorphStateTests` already
+compiled `PluginEditor.cpp` and already linked the GUI modules — `createEditor()` had simply never
+been called, so the editor's constructor and destructor were the largest piece of first-party code
+no instrument had executed. It now runs five construct/destroy cycles, headlessly, opening no
+window (the null peer is asserted, not assumed). **No new CMake target**, which is both the cheaper
+answer and the one that avoids a gated Build System change: the binary already had every source and
+module it needed. The value is what it inherits — this suite already runs under ASan+UBSan+vptr,
+LeakSanitizer, valgrind memcheck, LTO codegen and three platforms. Measured on first exposure:
+940×720, 68 direct children, five cycles, **0 failures and no sanitizer report** under
+`detect_leaks=1`. **Linux-only deliberately**: headless construction is unverified on Windows and
+macOS where this suite is a blocking gate, KI-007 records that the Windows runner cannot host editor
+GUI tests, and every instrument this feeds is a Linux job — so the scoping costs no coverage.
+
+**CI found what the local run could not: the editor reaches vendored HarfBuzz.** The `sanitizers`
+job went red on the first push. The local sanitizer run that preceded it used
+`address,undefined,vptr` and the job's real set is seven groups wider — `implicit-conversion` was
+never on locally, so the finding could not appear. Reproduced with the exact flags, then fixed:
+constructing the editor calls `refreshPresetDisplay()` → `textWidth()` → JUCE font shaping →
+`hb-face.cc`, where `face->num_glyphs = -1` assigns to an `unsigned` as HarfBuzz's documented
+"not computed yet" sentinel. UBSan is right that it narrows; it is vendored code and no project
+signal. `scripts/ubsan-ignorelist.txt` exempts **that one sub-check in that one tree** — the
+`[implicit-conversion]` section header keeps ASan, the rest of `undefined`, `vptr` and the four
+other groups instrumenting the vendored code in full, and `*juce-src/*` matches no first-party
+path. This is `TESTING_POLICY`'s sanitizer procedure step 3 taken rather than step 4 violated: the
+alternatives were dropping the flag build-wide or not constructing the editor under sanitizers.
+Verified in both directions on clang-22 in the real build — vendored silenced, a conversion seeded
+into `src/PluginProcessor.cpp` still fails the run at 920 checks → exit 1.
+
+**Counts corrected while there.** The state suite is **15 tests / 920 checks**; the documents said
+13 and 911. The test count was already stale by one before this round — the tooltip test was never
+counted — which is why it is stated here rather than quietly incremented.
+
+**Found and NOT fixed, reported rather than carried silently.** `SIGNAL_FLOW.md` — the
+DSP-signal-order document, a `CLAUDE.md` hard-stop class — carries one qualified anchor and **33
+bare ones, uniformly 13 lines stale**. Bare anchors carry no path and `CITATION` requires one, so no
+run has ever seen them. It is deliberately not in `GLOSS_CHECKED_DOCS`: adding it would report
+coverage of that evidence while 33 of its 35 anchors stayed invisible. Four more wrong anchors sit
+in ADR bodies (ADR-0001 `toEngine`, ADR-0002 `kVersion`, ADR-0007 `applyAutoGain`, ADR-0009
+`sanitize`); an ADR is a decision record and correcting its evidence is a separate judgement.
 
 **Post-merge drift sweep (2026-08-21): four documents corrected against the tree, one deleted
 comment block restored, and the five spent re-aim declarations retired. No code, no gate and no
@@ -1281,13 +1370,18 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:2720` and `:2805`, this round being documentation-only. The second
-number was `:2836` until now, and it was right when written — the phrasing sat there through
-`a925e79`. It went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because
-the bare spelling carries no path and `CITATION` requires one, so no run could see it. It is
-corrected but still bare: making it tracked changes a citation's ANCHOR COUNT, which this gate
-declines to map and which needs a `DELIBERATE_REAIMS` entry — a scope this round does not have.
-Recorded here as the concrete case for qualifying these anchors when that work is taken up.
+`.github/workflows/build.yml:2825` and `.github/workflows/build.yml:2910`, this round being
+documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
+was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
+then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
+anchor carries no path and `CITATION` requires one, so no run could see it. PR #123 corrected the
+number and left the spelling bare, reasoning that qualifying it would change one citation's ANCHOR
+COUNT and need a `DELIBERATE_REAIMS` entry. **It went stale again in the very next change set** —
+this one, which moved the phrasing to `:2888` while `--fix` moved its tracked companion and left
+the bare half behind, exactly as before. Written as a SECOND citation of the same path rather than
+as a second anchor on the first, the count of the existing citation is unchanged and the gate's
+note about an added citation is a note rather than a failure. Two rounds of evidence that the bare
+spelling is only safe for prose that must NOT be rewritten.
 
 **Policy-topology round (2026-08-19): rule 4 described a placement three of its own seven checkers
 cannot have. One report investigated and closed with no change.**
@@ -1328,7 +1422,7 @@ subject, and the second is a stale COUNT rather than the placement claim.
 
 **The CI-target report was investigated and required no change.** It read the visible diff as adding
 only three `option()` declarations and asked whether `AnamorphFuzzState`, `AnamorphBench` and
-`AnamorphDspDump` resolve to anything. They do: `CMakeLists.txt:438-456`, `:478-495` and `:515-541`
+`AnamorphDspDump` resolve to anything. They do: `CMakeLists.txt:442-460`, `:478-495` and `:515-541`
 define them, the last including the target-scoped `-fsanitize=fuzzer` the workflow comment relies
 on. Verified by building rather than by reading — all three configure and compile from the same
 option and compiler flags CI passes (JUCE supplied from the already-fetched checkout rather than
@@ -1643,7 +1737,7 @@ way and deliberately left — `CODE_STYLE.md:10` and `TESTING_POLICY.md:9` cite 
 be exhaustive.
 
 **The continuation gap is left open deliberately.** Bringing these under the gate means the
-comma-list spelling (`CMakeLists.txt:335-336, 366-367, 404-405`), which the tool does accept — but
+comma-list spelling (`CMakeLists.txt:335-336, 366-367, 408-409`), which the tool does accept — but
 each continuation here carries its own annotation naming *which* line it is (`:162`
 (`-Wl,-dead_strip`, Apple), `:108` (`/OPT:REF`, MSVC)), and the comma-list form has nowhere to put
 them. Widening the recogniser to follow continuations is a change to the gate's scope rather than to

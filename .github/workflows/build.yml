@@ -947,6 +947,40 @@ jobs:
             --build-dir "${GITHUB_WORKSPACE}/build" \
             --clang-major "${ANAMORPH_CLANG_VERSION}"
 
+      # THE TWO COMMITTED INSTRUMENTS, COMPILED BY THE COMPILER THAT SHIPS.
+      # `tests/bench.cpp` and `tests/dsp_dump.cpp` are built and run in
+      # `linux-lto-tests`, which is a `gcc:16` container -- so until this step
+      # they were the only first-party translation units in the tree that NO
+      # Clang job compiled, and a Clang-only break in either reached no gate at
+      # all. Neither is in a release build (both sit behind OFF-by-default
+      # options), which is exactly why the gap was easy to miss.
+      #
+      # `-fsyntax-only`: no codegen, no link, no run -- measured at ~2 s for the
+      # pair against the already-fetched JUCE headers, which is why this is a
+      # step here rather than two more CMake configures. The GCC side keeps the
+      # part this cannot do: `linux-lto-tests` LINKS and RUNS them.
+      #
+      # The defines mirror the two targets' own `target_compile_definitions`
+      # (CMakeLists.txt) rather than being invented here; `-I build/_deps/...`
+      # is the FetchContent'd JUCE this job already configured, the same source
+      # the portability canary reads.
+      #
+      # RUN LAST, for the reason the ABI gate and the warning gate are: a
+      # compile finding in an opt-in instrument must not withhold a beta
+      # artifact whose behavioural gates all passed.
+      - name: The opt-in instruments still compile under the shipped Clang
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          set -eu
+          for TU in tests/bench.cpp tests/dsp_dump.cpp; do
+            echo "clang -fsyntax-only $TU"
+            clang++-${{ env.ANAMORPH_CLANG_VERSION }} -std=c++23 -O2 \
+              -I src -I src/dsp -I build/_deps/juce-src/modules \
+              -DJUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1 -DJUCE_STANDALONE_APPLICATION=1 \
+              -DJUCE_WEB_BROWSER=0 -DJUCE_USE_CURL=0 \
+              -Werror=unknown-warning-option -fsyntax-only "$TU"
+          done
+
   # -------------------------------------------------------------------------
   # Sanitizers (Linux). The point of this job is to catch, ON LINUX, defects that
   # only MANIFEST on another platform.
@@ -1080,8 +1114,8 @@ jobs:
           -DCMAKE_BUILD_TYPE=RelWithDebInfo
           -DCMAKE_C_COMPILER=clang-${{ env.ANAMORPH_CLANG_VERSION }}
           -DCMAKE_CXX_COMPILER=clang++-${{ env.ANAMORPH_CLANG_VERSION }}
-          -DCMAKE_C_FLAGS="-fsanitize=address,undefined,float-divide-by-zero,implicit-conversion,unsigned-shift-base,local-bounds,nullability -fno-omit-frame-pointer"
-          -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined,vptr,float-divide-by-zero,implicit-conversion,unsigned-shift-base,local-bounds,nullability -fno-omit-frame-pointer"
+          -DCMAKE_C_FLAGS="-fsanitize=address,undefined,float-divide-by-zero,implicit-conversion,unsigned-shift-base,local-bounds,nullability -fsanitize-ignorelist=${{ github.workspace }}/scripts/ubsan-ignorelist.txt -fno-omit-frame-pointer"
+          -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined,vptr,float-divide-by-zero,implicit-conversion,unsigned-shift-base,local-bounds,nullability -fsanitize-ignorelist=${{ github.workspace }}/scripts/ubsan-ignorelist.txt -fno-omit-frame-pointer"
           -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined,vptr,float-divide-by-zero,implicit-conversion,unsigned-shift-base,local-bounds,nullability"
           -DCMAKE_C_COMPILER_LAUNCHER=${{ env.ANAMORPH_COMPILER_LAUNCHER }}
           -DCMAKE_CXX_COMPILER_LAUNCHER=${{ env.ANAMORPH_COMPILER_LAUNCHER }}
@@ -2639,19 +2673,90 @@ jobs:
       # lost. The real measurement is a deliberate local run at full length.
       #
       # It builds in THIS job because the bench links `juce_recommended_lto_flags`
-      # -- the shipped configuration the budget document requires it to measure --
-      # so the LTO lane is where that toolchain is already warm.
+      # -- the shipped optimization class the budget document requires it to
+      # measure -- so the LTO lane is where those flags are already in use.
+      #
+      # THE FLAGS ARE THE SHIPPED ONES; THE COMPILER IS NOT. This job runs in
+      # the `gcc:16` container and the configure below names no compiler, so the
+      # bench is compiled here by g++ 16 while the shipped Linux artifact is
+      # built by clang-22 in `linux`. That is deliberate -- what a benchmark
+      # needs held constant is the optimization class, and pinning it to the
+      # shipping compiler would mean building it where the release artifact is
+      # built and slowing that job for a harness that asserts no timing. The
+      # half this cannot cover is covered where it belongs: `linux` compiles
+      # both instruments `-fsyntax-only` under the pinned Clang, so a
+      # Clang-only break still fails a gate.
+      #
+      # BOTH SECONDARY BUILDS REUSE THE JUCE THIS JOB ALREADY FETCHED, via the
+      # `ANAMORPH_JUCE_PATH` escape hatch CMakeLists.txt already carries. Each
+      # `cmake -B` otherwise runs its own FetchContent clone into its own
+      # `_deps`, so this job was fetching the same pinned commit THREE times.
+      # Nothing is cached and nothing crosses runs: the source is the tree this
+      # job downloaded minutes earlier, at the SHA the build definition pins, and
+      # a missing directory fails `add_subdirectory` loudly rather than silently
+      # re-fetching.
+      #
+      # A CROSS-RUN `actions/cache` FOR JUCE WAS MEASURED AND DECLINED, which is
+      # the roadmap item this closes. The clone is already `GIT_SHALLOW` at a
+      # pinned commit: a fetch of exactly that commit measured 5.0 s for a 120 MB
+      # tree. The cache it would be replaced by is 44 MB compressed and took
+      # 2.6 s to decompress and extract before any download -- so a cache HIT
+      # saves something like a second and a half, against eleven jobs whose
+      # runtimes are 6 to 21 minutes, while adding a key to maintain and a way
+      # for the release path to build against the wrong bytes. The waste worth
+      # removing was never the per-job clone; it was this job fetching the same
+      # commit three times in one run, which needs no cache at all.
       - name: Build + smoke-run the benchmark harness (no timing assertion)
         run: |
           cmake -B build-bench -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DANAMORPH_BUILD_BENCH=ON -DANAMORPH_BUILD_TESTS=OFF \
             -DANAMORPH_BUILD_STANDALONE=OFF \
+            -DANAMORPH_JUCE_PATH="${GITHUB_WORKSPACE}/build-lto/_deps/juce-src" \
             -DCMAKE_C_COMPILER_LAUNCHER=${{ env.ANAMORPH_COMPILER_LAUNCHER }} \
             -DCMAKE_CXX_COMPILER_LAUNCHER=${{ env.ANAMORPH_COMPILER_LAUNCHER }}
           cmake --build build-bench --target AnamorphBench
           # Deliberately tiny: this proves the harness runs, not what it costs.
           ANAMORPH_BENCH_SECONDS=0.1 ANAMORPH_BENCH_REPS=1 \
             ./build-bench/AnamorphBench_artefacts/Release/AnamorphBench
+
+      # THE OTHER COMMITTED INSTRUMENT, AND THE ARGUMENT IS THE BENCH'S OWN.
+      # `AnamorphDspDump` is the DEPENDENCY_POLICY rule-2 gate for a JUCE bump,
+      # and until this step no job built it -- the one committed harness with no
+      # protection against exactly the rot the bench step above exists to
+      # prevent. Two bumps have already been proved with a scratchpad tool that
+      # was never committed; this one was committed so the third would not have
+      # to rebuild it, which only holds if it still compiles when that day comes.
+      #
+      # `--self-check` RATHER THAN A BARE RUN, and it is the stronger check.
+      # The tool's own argument is that a scenario set which collapses reports
+      # 32 confident and meaningless hashes -- which is what the 8.0.14 -> 9.0.0
+      # run shipped, with `algoAmount` left at its identity default so all four
+      # algorithms hashed alike. `--self-check` asserts every scenario is
+      # REPEATABLE and that they are DISTINCT from each other, and exits 3 if
+      # not. So this step proves the instrument still builds AND that it can
+      # still discriminate; a bare run would prove only the first.
+      #
+      # NO BASELINE AND NOTHING TO DIFF HERE, deliberately. The tool answers
+      # "does build A match build B", never "does this match a stored value" --
+      # committing expected hashes would be the golden-master DSP test this
+      # repository has rejected. The diff is a human's, at bump time,
+      # `docs/procedures/TESTING.md` §Proving a dependency bump is bit-identical.
+      #
+      # It does NOT carry `juce_recommended_lto_flags` (CMakeLists.txt says why:
+      # LTO is a second variable), so unlike the bench it is not measuring the
+      # shipped optimization class and its presence in this job is incidental
+      # rather than required -- it is here because this is where the other
+      # instrument's liveness step already lives.
+      - name: Build + self-check the DSP bit-identity harness
+        run: |
+          cmake -B build-dump -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DANAMORPH_BUILD_DSPDUMP=ON -DANAMORPH_BUILD_TESTS=OFF \
+            -DANAMORPH_BUILD_STANDALONE=OFF \
+            -DANAMORPH_JUCE_PATH="${GITHUB_WORKSPACE}/build-lto/_deps/juce-src" \
+            -DCMAKE_C_COMPILER_LAUNCHER=${{ env.ANAMORPH_COMPILER_LAUNCHER }} \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=${{ env.ANAMORPH_COMPILER_LAUNCHER }}
+          cmake --build build-dump --target AnamorphDspDump
+          ./build-dump/AnamorphDspDump_artefacts/Release/AnamorphDspDump --self-check
 
       - name: Compiler cache statistics
         if: ${{ !cancelled() && env.ANAMORPH_COMPILER_LAUNCHER != '' }}

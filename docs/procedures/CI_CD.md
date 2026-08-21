@@ -87,12 +87,12 @@ jobs that guard classes the build matrix cannot see:
 | **merge-check** | `ubuntu-latest` + **pinned `clang`** | VST3 + Standalone + tests, from `refs/pull/N/merge` — **same-repo PRs only**, no packaging, no artifacts | — |
 | **docs** | `ubuntu-latest` | — (`scripts/check-docs.py --self-test` then the lint) | — |
 | **source-lint** | `ubuntu-latest` | — (each lint preceded by its own `--self-test`: `check-portability.py`, then `check-citations.py --check`) | — |
-| **linux** | `ubuntu-latest` + **pinned `clang`/`lld`** | **Clang: the shipped VST3 + Standalone (+ tests)**; also the portability canary and the first-party Clang warning gate | VST3, **both modes ×3** (deterministic + randomise) — **blocking** |
+| **linux** | `ubuntu-latest` + **pinned `clang`/`lld`** | **Clang: the shipped VST3 + Standalone (+ tests)**; also the portability canary, the first-party Clang warning gate, and a `-fsyntax-only` compile of the two opt-in instruments | VST3, **both modes ×3** (deterministic + randomise) — **blocking** |
 | **sanitizers** | `ubuntu-latest` | Clang ASan+UBSan build, plus an unsanitized build for valgrind | — |
 | **windows** | `windows-latest` (MSVC, multi-config) | VST3 + Standalone (+ tests) | VST3, **both modes ×3** — **blocking** |
 | **macos** | `macos-latest` (Apple Silicon) | universal VST3 + AU + Standalone (+ tests) | **VST3 and AU**, both modes ×3 each — **blocking** |
 | **macos-intel** | `macos-15-intel` (**native Intel**) | thin x86_64 VST3 + AU (+ tests); Standalone off; **no packaging, no artifacts** | **VST3 and AU**, both modes ×3 each — **blocking** |
-| **linux-lto-tests** | `ubuntu-latest` + **floating `gcc:16`** (major pinned, patch not) | GCC `-flto`: both test targets only (Standalone off); **no packaging, no artifacts** | — (the suites against LTO codegen, plus the GCC warning gate) |
+| **linux-lto-tests** | `ubuntu-latest` + **floating `gcc:16`** (major pinned, patch not) | GCC `-flto`: both test targets only (Standalone off); **no packaging, no artifacts** | — (the suites against LTO codegen, the GCC warning gate, and the two instruments' liveness builds) |
 | **realtime** | `ubuntu-latest` | Clang `-fsanitize=realtime`: the DSP suite only (Standalone off); **no packaging, no artifacts** | — (the audio path under RealtimeSanitizer, plus the leaf-layer `-Wfunction-effects` check) |
 | **fuzz** | `ubuntu-latest` | Clang libFuzzer + ASan/UBSan: `AnamorphFuzzState` only (tests and Standalone off); **no packaging, no artifacts** | — (`setStateInformation` under libFuzzer) |
 
@@ -181,6 +181,18 @@ edge above must not be read as release non-blocking.
   groups outside `undefined`, added 2026-08-18 after a census run showed both suites execute ZERO
   diagnostics under them: `float-divide-by-zero`, `implicit-conversion`, `unsigned-shift-base`,
   `local-bounds` (trap-based — a hit can die by SIGILL with no diagnostic text), `nullability`. The
+  **`implicit-conversion` carries one scoped exemption** (`scripts/ubsan-ignorelist.txt`,
+  2026-08-21): the editor-lifetime test made the constructor shape text, which reaches vendored
+  HarfBuzz inside JUCE, where `hb-face.cc` assigns `-1` to an `unsigned` as its documented
+  "not computed yet" sentinel. UBSan is right that it narrows; it is not a defect and it is not
+  this project's code. The ignorelist is a clang `[implicit-conversion]` section over `*juce-src/*`
+  — **one sub-check, one tree**: every other sanitizer still instruments the vendored code in full,
+  and no first-party path can match. Verified in both directions on clang-22, since an ignorelist
+  that silenced everything would look identical to one that works: with a narrowing conversion
+  seeded into a `juce-src` path AND into `src/PluginProcessor.cpp`, the vendored one goes quiet and
+  the first-party one still fails the run. The alternatives were dropping `implicit-conversion`
+  outright (weakens every TU, first-party included) or not constructing the editor under sanitizers
+  (removes the coverage that test exists for). The
   full `integer` group is **deliberately absent**: its `unsigned-integer-overflow` half flags legal,
   intentional wraparound (JUCE string hash, `Random` LCG, tick arithmetic, libstdc++'s mersenne
   twister — all census-measured) and would fail the job under `halt_on_error=1` on correct
@@ -259,7 +271,13 @@ edge above must not be read as release non-blocking.
   allocation is the class this suite exists to police, and on a healthy tree the run exits 0 either
   way.
 - **linux-lto-tests** — both suites built and run with `-flto` on GCC Release (added 2026-08-18),
-  and the **GCC-only first-party warning gate** (§The GCC warning baseline).
+  the **GCC-only first-party warning gate** (§The GCC warning baseline), and the liveness builds of
+  the two committed instruments: `AnamorphBench` (built and smoke-run, no timing asserted) and, since
+  2026-08-21, `AnamorphDspDump` (built and run with `--self-check`, which asserts its 32 scenarios are
+  repeatable and mutually distinct and exits 3 if not). Both are compiled here by the container's
+  **g++ 16**, not by the Clang that builds the shipped artifact — the `linux` job covers that half
+  with a `-fsyntax-only` compile of both translation units under the pinned Clang, so a Clang-only
+  break in either still fails a gate.
   The shipped plugin is the only target linking `juce::juce_recommended_lto_flags`, and the test
   targets deliberately do not (so the sanitizers job builds them cleanly and quickly) — which meant
   no behavioural assertion had ever executed link-time-optimized codegen while the binary users load
@@ -477,10 +495,31 @@ the build because an About-box string had incremented. It is now attached to the
 unit that reads it (`CMakeLists.txt`, `set_source_files_properties` beside the version block;
 `src/PluginEditor.cpp` already carried the `#ifndef … "0"` fallback). Nothing else ever read it.
 A second property is inherited rather than created: each job's build directory name is fixed
-(`build`, `build-san`, `build-vg`, `build-lto`, `build-bench`, `build-rtsan`, `build-fuzz`), which
-matters because FetchContent puts JUCE
+(`build`, `build-san`, `build-vg`, `build-lto`, `build-bench`, `build-dump`, `build-rtsan`,
+`build-fuzz`), which matters because FetchContent puts JUCE
 *inside* the build directory, so its path is in the `-I` flags of every compile — the same tree
 built at two different directory names shares nothing.
+
+**That same property is why `linux-lto-tests` fetched JUCE three times.** One `cmake -B` per build
+directory means one FetchContent clone per build directory, and that job configures three
+(`build-lto`, then `build-bench` and `build-dump` for the two committed instruments). Since
+2026-08-21 the two secondary configures pass `-DANAMORPH_JUCE_PATH` at `build-lto/_deps/juce-src` —
+the tree this job downloaded minutes earlier, at the SHA `CMakeLists.txt` pins. Nothing is cached
+and nothing crosses runs; a missing directory fails `add_subdirectory` rather than silently
+re-fetching. One cost, stated: `ANAMORPH_JUCE_PATH` takes the `add_subdirectory` branch, so those
+two builds' JUCE `-I` paths move from their own `_deps` to `build-lto`'s — one cold ccache pass for
+`build-bench` and `build-dump`, then stable. They are throwaway liveness builds, so that is a fair
+trade for two fewer clones. `sanitizers` still fetches twice (`build-san`, `build-vg`) and the same treatment is
+available there; it was left alone because that lineage is shared between a sanitized and an
+unsanitized build and the change was not worth perturbing it without CI evidence.
+
+**A cross-run `actions/cache` for the JUCE checkout was measured and declined.** The clone is
+already `GIT_SHALLOW` at a pinned commit: fetching exactly that commit measured **5.0 s** for a
+120 MB tree, while the cache that would replace it is 44 MB compressed and took **2.6 s** to
+decompress and extract before any download. A cache hit therefore saves on the order of a second
+and a half per configure, against jobs that run 6 to 21 minutes — and buys a key to maintain plus a
+path by which the release build could link the wrong bytes. The waste worth removing was the
+duplicate fetch inside one job, which needs no cache.
 
 **Cache lineages.** `linux` and `merge-check` share one (`ccache-ubuntu-clang<major>-release-`): same
 compiler, same configuration, same build directory name, and they never run in the same event, so a
@@ -908,9 +947,34 @@ under-checking rather than failing on a question it cannot answer. On a **fork**
 `base.sha` through `git merge-base`.
 
 **What it can and cannot do.** It detects that a citation no longer points at the same *text* it
-pointed at in the base — the whole "an edit above shifted it" class. It cannot tell you an anchor was
-aimed at the wrong code to begin with; this repository's existing anchors are therefore *adopted*,
-not audited. A clean run means none of them **moved**.
+pointed at in the base — the whole "an edit above shifted it" class. On its own it cannot tell you an
+anchor was aimed at the wrong code to begin with, so anchors outside the set below are *adopted*,
+not audited, and a clean run means none of them **moved**.
+
+**Since 2026-08-21 that hole is closed for the anchors that say what they point at.** A citation
+written in this repository's own convention carries the symbol beside the line number —
+`` src/PluginProcessor.cpp:105-108 (`updateLatency`) `` — and the checker now reads that gloss and
+asserts the token is in the cited lines. It needs no base revision, because it is not a question
+about drift: it asks whether an anchor lands on what its own document says it lands on, in the tree
+as it is now. Exactly two gloss shapes are claimed — one backticked identifier, or one double-quoted
+source string, alone in the parentheses — so prose like `(24 Hz timer)` asserts nothing rather than
+having an assertion invented for it.
+
+It is **opt-in per document** (`GLOSS_CHECKED_DOCS`), and the list names documents rather than
+anchors so it holds no line numbers and cannot itself go stale. Seven architecture documents are in
+it. Measured when it was written: 20 glossed citations across them, **5 firing, all 5 genuine
+defects, 0 false positives** — anchors that were fully qualified, parsed, and green at 342/342 while
+pointing at unrelated code (`ScopedNoDenormals` cited 10 lines early, `isBusesLayoutSupported` 53,
+`applyAutoGain` 53, `updateLatency` 10, and a Vectorscope sentence cited at 18-20 that lives on 21).
+Repo-wide the same extraction fires 10 times, 9 genuine and 1 false, which is why it is opt-in.
+`--fix` deliberately does **not** repair one: it re-anchors by the line map, which would carry a
+wrong aim to a new line and change nothing about the aim.
+
+`docs/architecture/SIGNAL_FLOW.md` is deliberately **not** in the list, and that is a finding rather
+than an omission: it carries one qualified anchor and **33 bare ones**, uniformly 13 lines stale.
+Bare anchors carry no path, and the citation pattern requires one, so none of the 33 has ever been
+seen by this gate — in the document that records DSP signal order, a `CLAUDE.md` hard-stop class.
+Qualifying them is the work that earns it a place here.
 
 **`--fix` now reports the declarations it invalidates** (2026-08-18). A `DELIBERATE_REAIMS` entry is
 a claim about a *spelling*, and a re-anchor can quietly falsify it: the anchor an entry names drifts

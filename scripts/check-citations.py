@@ -226,6 +226,30 @@ CITATION = re.compile(
     r"(?P<anchors>\d+(?:-\d+)?(?:\s*,\s*\d+(?:-\d+)?)*)")
 ANCHOR = re.compile(r"(\d+)(?:-(\d+))?")
 
+# THE GLOSS: the half of a citation a READER checks, made checkable by the tool.
+#
+# This file's header already prescribes the convention -- "Spelling the SYMBOL
+# beside the line number is what makes the other half checkable by a reader, and
+# is the convention to write new citations in". Every citation in the documents
+# below already follows it. Nothing was reading it.
+#
+# The cost of not reading it was measured rather than argued: nine fully
+# qualified anchors in this repository point at unrelated code RIGHT NOW, and all
+# nine are green, because the drift test compares an anchor against a BASE and an
+# anchor that was already wrong at the base stays wrong and stays green. That
+# limit is stated at the top of this file. This closes it for the anchors that
+# say, in the document, what they are supposed to be pointing at.
+#
+# A MATCH, NOT A PARSE, deliberately -- the constraint this file is written under
+# is that it must not become a parser. Exactly two shapes are claimed, both
+# unambiguous: one backticked identifier, or one double-quoted source string,
+# alone inside the parentheses immediately after the anchor. Everything else is
+# declined, which is most of what the documents actually write: `(24 Hz timer)`,
+# `(VBlank)`, `(gate + rationale comment)` and `(mono->stereo upmix)` are prose
+# ABOUT the reference, not a claim about the text at it, and a tool that treated
+# them as one would be inventing an assertion the author did not make.
+GLOSS = re.compile(r"""\A[`]?\s*\((?:`([^`]+)`|"([^"]+)")\)""")
+
 # Citations this repository RE-AIMED on purpose: the anchor was pointing at the
 # wrong code and was moved onto the right code, which is indistinguishable from
 # drift by the base-text test and would otherwise fail the gate forever.
@@ -301,15 +325,92 @@ DELIBERATE_REAIMS = {
     # transition (`is_declared_reaim`), so keeping one past its transition turns
     # a one-shot exemption into a permanent hole.
     #
-    # THIS ROUND ADDED NONE, and that is worth a sentence because it looks like
-    # it should have. It re-aimed two spans in `THREAD_MODEL.md` that had been
-    # pointing at the wrong code since before this gate existed -- but the file
-    # they cite, `src/PluginEditor.cpp`, does not change in this change set, and
-    # this gate only examines anchors whose TARGET moved. A citation corrected
-    # against a file the diff does not touch is invisible to it in BOTH
-    # directions: that is exactly why those two spans survived every green run,
-    # and why correcting them needs no declaration here.
+    # THAT ROUND (PR #123) ADDED NONE, and the reason is worth keeping because it
+    # is the same mechanism the entries below exist for. It re-aimed two spans in
+    # `THREAD_MODEL.md` that had been pointing at the wrong code since before this
+    # gate existed, and needed no declaration -- because both were written BARE
+    # (`:686-692`), and `CITATION` requires a path, so the parser never saw them
+    # in either direction.
+    #
+    # RE-AIMED 2026-08-21 by the round that added `GLOSS_CHECKED_DOCS`. These five
+    # are the anchors that check fired on the day it was written: all fully
+    # qualified, all parsed, all green at 342/342, and every one of them pointing
+    # at unrelated code. They are the measurement behind that mechanism rather
+    # than an argument for it.
+    #
+    # A CORRECTION IS INDISTINGUISHABLE FROM DRIFT, which is what makes a
+    # declaration necessary here and is worth stating plainly: the drift test
+    # compares the text at the CURRENT anchor with the text the BASE anchor named,
+    # so moving an anchor onto the RIGHT code reads exactly like code moving under
+    # a right anchor. Without these, `--fix` proposes to undo all five -- observed,
+    # not inferred (`src/PluginProcessor.cpp:119 -> :109`).
+    #
+    # Each expectation is the symbol the document's own gloss names, so a
+    # declaration cannot quietly survive onto an unrelated line.
+    ("docs/architecture/ARCHITECTURE.md", "src/PluginProcessor.cpp:119"):
+        "ScopedNoDenormals",
+    ("docs/architecture/ARCHITECTURE.md", "src/PluginProcessor.cpp:86-96"):
+        "isBusesLayoutSupported",
+    ("docs/architecture/LATENCY_MODEL.md", "src/PluginProcessor.cpp:105-108"):
+        "updateLatency",
+    ("docs/architecture/PARAMETER_REFERENCE.md", "src/PluginProcessor.cpp:188-212"):
+        "applyAutoGain",
+    ("docs/architecture/THREAD_MODEL.md", "src/gui/Vectorscope.h:21"):
+        "Nothing is ever drawn on the audio thread",
+
+    # RE-AIMED 2026-08-21 by the editor-lifetime test, which rewrote the header
+    # comment those anchors cite. `tests/state_tests.cpp:6-8` said the editor was
+    # "linked but never instantiated"; it is now constructed and destroyed, and
+    # the sentence that carries the surface boundary these documents lean on --
+    # never SHOWN, no peer, no message loop, no interaction -- spans :6-11. The
+    # cited lines were edited, so `--fix` correctly declines to map them and each
+    # spelling is declared instead. One entry per (document, spelling): a
+    # document that spells the same anchor several times is one citation.
+    ("docs/POSTMORTEMS.md", "tests/state_tests.cpp:6-11"):
+        "no peer, no message loop, no interaction",
+    ("docs/architecture/design-decisions/ADR-0025-regression-test-exception.md",
+     "tests/state_tests.cpp:6-11"):
+        "no peer, no message loop, no interaction",
+    ("docs/procedures/TESTING.md", "tests/state_tests.cpp:6-11"):
+        "no peer, no message loop, no interaction",
 }
+
+# Documents whose GLOSSED citations are checked against the text they name.
+#
+# BESIDE `DELIBERATE_REAIMS` ON PURPOSE: that table turns a check OFF for one
+# anchor, this one turns a check ON for a document, and the two belong where a
+# reader meets them together.
+#
+# IT NAMES DOCUMENTS, NOT ANCHORS, and that is the whole reason it is safe to
+# keep. An anchor-keyed table would hold a copy of the line number `--fix`
+# rewrites -- the disease built into the cure, and not hypothetically:
+# `invalidated_reaims` below exists because exactly that happened twice in one
+# change set. A document name cannot go stale when code moves.
+#
+# WHY THESE SEVEN. They are the architecture set -- the documents whose evidence
+# lines a reader follows to check a claim about the system rather than about a
+# procedure. Measured over them: 20 glossed citations, 5 firing, all 5 genuine
+# defects, 0 false positives. Repo-wide the same extraction fires 10 times, 9
+# genuine and 1 false -- `RELEASE_PROCESS.md:45` cites `CMakeLists.txt:14`
+# (`project VERSION`), a prose gloss that happens to be backticked. That one
+# false positive is the reason this is an opt-in tuple and not the whole scan:
+# the noise rate is a property of how a given document writes its parentheticals,
+# so a document joins this list when someone has read its citations.
+#
+# NOT ADDED, and named so the omission is a decision: `docs/architecture/
+# SIGNAL_FLOW.md`. It carries one qualified anchor and 33 BARE ones, and adding
+# it would report coverage of the DSP-order evidence while 33 of its 35 anchors
+# stay invisible to this tool for the reason bare anchors always are -- `CITATION`
+# requires a path. Qualifying them is the work that earns its place here.
+GLOSS_CHECKED_DOCS = (
+    "docs/architecture/ARCHITECTURE.md",
+    "docs/architecture/LATENCY_MODEL.md",
+    "docs/architecture/PARAMETER_REFERENCE.md",
+    "docs/architecture/PARAMETER_REGISTRY.md",
+    "docs/architecture/SERIALIZATION_REGISTRY.md",
+    "docs/architecture/STATE_SERIALIZATION.md",
+    "docs/architecture/THREAD_MODEL.md",
+)
 
 
 
@@ -371,12 +472,16 @@ def reaim_stops_the_run(problems, fixing: bool) -> bool:
     return bool(problems) and not fixing
 
 
-def fix_exit_code(unmappable: int, reaim_problems) -> int:
+def fix_exit_code(unmappable: int, reaim_problems, gloss_problems=()) -> int:
     """`--fix` exits non-zero when it leaves work behind -- including a misaimed
     declaration it CANNOT repair, because a declaration lives in this script and
     no rewrite of a document reaches it. Letting `--fix` proceed past one must
-    not turn into `--fix` reporting success over one."""
-    return 2 if (unmappable or reaim_problems) else 0
+    not turn into `--fix` reporting success over one.
+
+    A MISAIMED GLOSS COUNTS THE SAME WAY and for a sharper reason: `--fix` moves
+    anchors by the line map, so running it over one carries the wrong aim to a
+    new line and changes nothing about the aim. The repair is a human's."""
+    return 2 if (unmappable or reaim_problems or gloss_problems) else 0
 
 
 def verify_reaim_targets():
@@ -415,6 +520,79 @@ def verify_reaim_targets():
             problems.append((doc, whole, expect,
                              f"the cited lines start with: {first!r}"))
     return problems, unverifiable
+
+
+def verify_glossed_anchors():
+    """Check every GLOSSED citation in an opted-in document lands on what it names.
+
+    The sibling of `verify_reaim_targets`, and deliberately built from the same
+    parts: the same `reaim_target_text` resolver, the same
+    `(doc, whole, expect, why)` problem tuple, the same "reads no base revision"
+    property. The difference is where the expectation comes from -- a declaration
+    in this file for that one, the DOCUMENT'S OWN PROSE for this one.
+
+    WHY THE DOCUMENT'S PROSE IS THE RIGHT SOURCE. An expectation written here
+    would be a second copy of a claim the document already makes, and the two
+    would drift from each other exactly as documents drift from code. The
+    parenthetical is not restating the anchor; it is the author saying what a
+    reader should find there. Reading it costs nothing and asserts precisely the
+    thing the line number is for.
+
+    THE `::` FALLBACK IS REQUIRED, not a convenience. A gloss written as a
+    qualified name (`StateSet::isValid`) will not appear in the source, which
+    spells only the last component at the definition site -- measured on three
+    citations, all of which fired falsely without this and none of which is
+    wrong. Testing the full gloss OR its last `::` component removed all three
+    and cost no true positive.
+
+    IT WEAKENS THE CLAIM AND THAT IS SAID OUT LOUD: this proves the token is
+    somewhere in the cited span, not that the span is the right span. On a wide
+    anchor that is a weak claim. It is still strictly stronger than the nothing
+    that was there before, and it is the strongest claim available without
+    turning a substring test into a parser.
+    """
+    problems = []
+    for doc in GLOSS_CHECKED_DOCS:
+        # `read()` returns the contents or RAISES -- it has no None path, so the
+        # guard this replaced was dead and a document deleted from the tree while
+        # still listed here would have come out as an uncaught traceback rather
+        # than as a finding. Caught the way `reaim_target_text` catches it, and
+        # reported in the same 4-tuple every other problem here uses.
+        try:
+            text = read(doc)
+        except OSError as exc:
+            problems.append((doc, "-", "-", f"the document could not be read ({exc.strerror})"))
+            continue
+        problems += glossed_problems_in(doc, text)
+    return problems
+
+
+def glossed_problems_in(doc, text):
+    """The per-document half, split out so the self-test can drive it.
+
+    Taking the TEXT rather than reading it is what lets section 8e exercise both
+    directions on synthetic input, the way every other section here does. A
+    self-test that could only run over the real tree would go quiet the day the
+    tree is clean -- which is the state this check is supposed to hold it in, so
+    that is exactly when it would stop proving anything.
+    """
+    problems = []
+    for whole, _tracked, span, _anchors in citations(text):
+        m = GLOSS.match(text[span[1]:span[1] + 200])
+        if not m:
+            continue
+        expect = m.group(1) or m.group(2)
+        target = reaim_target_text(whole)
+        if target is None:
+            problems.append((doc, whole, expect, "the cited file could not be read"))
+            continue
+        tail = expect.rsplit("::", 1)[-1]
+        if expect in target or tail in target:
+            continue
+        first = target.split("\n")[0].strip()[:70]
+        problems.append((doc, whole, expect,
+                         f"the cited lines start with: {first!r}"))
+    return problems
 
 
 def is_declared_reaim(doc, whole_base, whole_cur):
@@ -1222,6 +1400,77 @@ def self_test():
         DELIBERATE_REAIMS.clear()
         DELIBERATE_REAIMS.update(saved)
 
+    # --- 8e. A CITATION MUST CONTAIN WHAT IT SAYS IT CONTAINS ---------------
+    # The check that closes the "wrong at the base" hole. Section 8c proves a
+    # DECLARED expectation is verified; this proves the same for the expectation
+    # a document writes inline, which is the only one most anchors have.
+    #
+    # DRIVEN ON SYNTHETIC TEXT against a REAL cited file, the way section 8c is.
+    # A case that could only run over the real tree would go quiet the day the
+    # tree is clean -- and holding the tree clean is this check's whole purpose,
+    # so that is precisely when it would stop proving anything.
+    check("every glossed citation in the opted-in documents lands on what it names",
+          verify_glossed_anchors(), [])
+
+    def glossed(body):
+        return glossed_problems_in("docs/EXAMPLE.md", body)
+
+    # CMakeLists.txt:14 is `project(Anamorph VERSION ... )`.
+    check("a backticked gloss that IS on the cited line passes",
+          glossed("see CMakeLists.txt:14 (`project`)"), [])
+    check("...and one that is NOT there is reported",
+          len(glossed("see CMakeLists.txt:14 (`definitelyNotOnLine14`)")), 1)
+    check("a double-quoted gloss is read the same way",
+          glossed('see CMakeLists.txt:14 ("Anamorph VERSION")'), [])
+    check("...and fires when absent",
+          len(glossed('see CMakeLists.txt:14 ("not that string at all")')), 1)
+
+    # THE DECLINED SHAPES, which are most of what the documents write. A gloss
+    # this tool does not recognise must assert NOTHING -- inventing a claim the
+    # author did not make is the false-positive engine that gets a gate switched
+    # off, and `(24 Hz timer)` is prose ABOUT a reference, not a claim about the
+    # text at it.
+    check("a prose parenthetical asserts nothing", glossed("see CMakeLists.txt:14 (24 Hz timer)"), [])
+    check("...nor does a mixed one", glossed("see CMakeLists.txt:14 (`project` and more)"), [])
+    check("...nor does an absent one", glossed("see CMakeLists.txt:14 and then prose"), [])
+
+    # A qualified name is spelled with its scope in the document and without it
+    # at the definition site; testing the last `::` component is what keeps three
+    # correct citations from firing.
+    check("a `::`-qualified gloss is satisfied by its last component",
+          glossed("see CMakeLists.txt:14 (`Fictional::project`)"), [])
+    # OWNERSHIP RUNS FIRST: `citations()` yields only TRACKED paths, so a gloss on
+    # anything else is never looked at. Asserted as a case because "it did not
+    # fire" and "it was never examined" are indistinguishable in a passing run.
+    check("a gloss on an untracked path is not this tool's business",
+          glossed("see no/such/file.cpp:1 (`anything`)"), [])
+
+    # ...which is also why reaching the unreadable-file branch needs the path to
+    # be TRACKED and absent -- the state a deleted-but-still-cited file leaves
+    # behind. Constructed the way section 8c constructs a wrong declaration,
+    # rather than by deleting a file.
+    saved_tracked = TRACKED
+    try:
+        globals()["TRACKED"] = TRACKED + ("no/such/file.cpp",)
+        check("a cited file that cannot be read is a problem, not a pass",
+              len(glossed("see no/such/file.cpp:1 (`anything`)")), 1)
+    finally:
+        globals()["TRACKED"] = saved_tracked
+    check("...and TRACKED is restored afterwards", "no/such/file.cpp" in TRACKED, False)
+
+    # A LISTED DOCUMENT THAT IS GONE is a finding, not a traceback. `read()`
+    # returns contents or raises, so this branch is the only thing standing
+    # between a deleted-but-still-listed entry and an uncaught FileNotFoundError.
+    saved_docs = GLOSS_CHECKED_DOCS
+    try:
+        globals()["GLOSS_CHECKED_DOCS"] = GLOSS_CHECKED_DOCS + ("docs/NO_SUCH_DOC.md",)
+        check("a listed document that cannot be read is reported, not raised",
+              len(verify_glossed_anchors()), 1)
+    finally:
+        globals()["GLOSS_CHECKED_DOCS"] = saved_docs
+    check("...and the document list is restored afterwards",
+          "docs/NO_SUCH_DOC.md" in GLOSS_CHECKED_DOCS, False)
+
     # --- 8d. THE AIM CHECK MUST NOT DISABLE THE REPAIR PATH ------------------
     # Section 8c gave this tool a check on its own declarations. It was wired
     # in ahead of everything else and returned 2 for EVERY mode, which stopped
@@ -1307,7 +1556,7 @@ def self_test():
     own_source = read(__file__).split("\ndef main(")[-1]
     for label, call in [
         ("--fix's exit code still asks fix_exit_code, so a run that warned cannot "
-         "report success", "return fix_exit_code(unmappable, reaim_problems)"),
+         "report success", "return fix_exit_code(unmappable, reaim_problems, gloss_problems)"),
         ("the rewrite still skips a document that owns a misaimed declaration",
          "if args.fix and edits and doc in misaimed_docs:"),
         ("...and the mode split is still consulted rather than re-simplified",
@@ -1438,6 +1687,41 @@ def main():
               f"in this script, not in a document, so no rewrite can repair it and this run "
               f"will still exit non-zero. Re-derive those line numbers against the current "
               f"file afterwards.")
+
+    # THE GLOSSED ANCHORS, CHECKED THE SAME WAY AND FOR THE SAME REASON. Like a
+    # declared re-aim this needs no base revision, because it is not a question
+    # about drift: it asks whether an anchor lands on the thing its own document
+    # says it lands on, in the tree as it is now. That is the one question the
+    # drift test structurally cannot ask -- an anchor already wrong at the base
+    # stays wrong and stays green, which is stated at the top of this file and
+    # was true of nine anchors when this check was written.
+    #
+    # SAME MODE SPLIT, and it is `reaim_stops_the_run` itself rather than a copy
+    # of its condition: `--check` VERIFIES so it stops; `--fix` REPAIRS so it
+    # warns, continues and still exits non-zero. The reason `--fix` must not try
+    # to repair one is sharper here than for a declaration: `--fix` re-anchors by
+    # the LINE MAP, which faithfully carries a wrong aim to its new line. Moving
+    # an anchor that points at the wrong code leaves it pointing at the wrong
+    # code. Only a human who reads the gloss can re-derive it.
+    gloss_problems = verify_glossed_anchors()
+    if gloss_problems:
+        for doc, whole, expect, why in gloss_problems:
+            if args.fix:
+                print(f"::warning::{doc}: the citation {whole} names {expect!r}, "
+                      f"which is not there — {why}")
+            else:
+                print(f"::error::{doc}: the citation {whole} names {expect!r}, "
+                      f"which is not there — {why}", file=sys.stderr)
+        if reaim_stops_the_run(gloss_problems, args.fix):
+            print(f"\ncheck-citations: {len(gloss_problems)} citation(s) do not contain what "
+                  f"they say they contain. This is not drift and `--fix` cannot repair it — it "
+                  f"re-anchors by the line map, which would carry the wrong aim to a new line. "
+                  f"Re-derive each line number from the symbol its own document names.",
+                  file=sys.stderr)
+            return 2
+        print(f"check-citations: {len(gloss_problems)} citation(s) do not contain what they "
+              f"say they contain. Re-anchoring continues below, but those anchors are NOT "
+              f"repaired by it and this run will still exit non-zero.")
 
     base_src, now_src = {}, {}
     for path in TRACKED:
@@ -1795,7 +2079,7 @@ def main():
             print(f"check-citations: {len(reaim_problems)} declared re-aim(s) still point at "
                   f"something other than what they claim — fix DELIBERATE_REAIMS, then re-run "
                   f"--check.", file=sys.stderr)
-        return fix_exit_code(unmappable, reaim_problems)
+        return fix_exit_code(unmappable, reaim_problems, gloss_problems)
 
     if drifted:
         print(f"\ncheck-citations: {drifted} citation(s) across {checked} checked "
