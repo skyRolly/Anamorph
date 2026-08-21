@@ -234,10 +234,20 @@ ANCHOR = re.compile(r"(\d+)(?:-(\d+))?")
 # re-aim. An entry whose citation no longer differs from the base has done its
 # job (the base has caught up) and is reported as removable on the next run.
 #
-# Spelled `set([...])` rather than `{...}` on purpose: emptying a brace literal
-# leaves a DICT, and the set difference below then raises `TypeError` instead of
-# reporting a clean run. The list going empty is the expected end state of every
-# entry here, so it must be the boring case.
+# A DICT, and `{}` is its correct empty state. This paragraph used to say the
+# opposite -- that the structure was spelled `set([...])` rather than `{...}` on
+# purpose, because emptying a brace literal would leave a dict and the set
+# difference below would then raise `TypeError`. That was true when it was
+# written (2026-08-15) and stopped being true on 2026-08-18, when each entry
+# gained the expectation described just below: the same change turned `set([`
+# into `{` and routed both set operations through `.keys()` --
+# `used_reaims & DELIBERATE_REAIMS.keys()` and
+# `DELIBERATE_REAIMS.keys() - used_reaims`. `dict_keys` supports set algebra, so
+# both work empty and non-empty alike; only a RAW `dict - set` raises, and that
+# form appears nowhere in this file. What the paragraph was protecting still
+# holds -- this list going empty is the expected end state of every entry in it,
+# so it must be the boring case -- it is simply no longer the spelling that
+# protects it.
 # EACH ENTRY IS `(document, anchor) -> what a reader should FIND there`, and
 # that value is not documentation: `verify_reaim_targets()` resolves the anchor
 # against the current file on every run and fails when the substring is absent.
