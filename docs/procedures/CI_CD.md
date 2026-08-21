@@ -961,8 +961,9 @@ source string, alone in the parentheses — so prose like `(24 Hz timer)` assert
 having an assertion invented for it.
 
 It is **opt-in per document** (`GLOSS_CHECKED_DOCS`), and the list names documents rather than
-anchors so it holds no line numbers and cannot itself go stale. Seven architecture documents are in
-it. Measured when it was written: 20 glossed citations across them, **5 firing, all 5 genuine
+anchors so it holds no line numbers and cannot itself go stale. Eight architecture documents are in
+it, carrying 43 glossed citations. Measured when it was written (seven documents then): 20 glossed
+citations across them, **5 firing, all 5 genuine
 defects, 0 false positives** — anchors that were fully qualified, parsed, and green at 342/342 while
 pointing at unrelated code (`ScopedNoDenormals` cited 10 lines early, `isBusesLayoutSupported` 53,
 `applyAutoGain` 53, `updateLatency` 10, and a Vectorscope sentence cited at 18-20 that lives on 21).
@@ -970,11 +971,14 @@ Repo-wide the same extraction fires 10 times, 9 genuine and 1 false, which is wh
 `--fix` deliberately does **not** repair one: it re-anchors by the line map, which would carry a
 wrong aim to a new line and change nothing about the aim.
 
-`docs/architecture/SIGNAL_FLOW.md` is deliberately **not** in the list, and that is a finding rather
-than an omission: it carries one qualified anchor and **33 bare ones**, uniformly 13 lines stale.
-Bare anchors carry no path, and the citation pattern requires one, so none of the 33 has ever been
-seen by this gate — in the document that records DSP signal order, a `CLAUDE.md` hard-stop class.
-Qualifying them is the work that earns it a place here.
+`docs/architecture/SIGNAL_FLOW.md` **joined the list on 2026-08-22**, and how it got there is the
+argument for the whole mechanism. It carried two qualified anchors and **33 bare ones** that no run
+had ever seen — in the document that records DSP signal order, a `CLAUDE.md` hard-stop class. Sixteen
+of them sat inside an ASCII diagram, where a 26-character path would have destroyed the column
+alignment the diagram exists for; so the line numbers moved **out of the diagram** into a stage table
+beside it and came back path-qualified. The diagram kept the order and the symbol — what it is for,
+and what does not rot. The gate now sees **40 anchors there where it saw 2**, 23 of them glossed and
+content-checked.
 
 **`--fix` now reports the declarations it invalidates** (2026-08-18). A `DELIBERATE_REAIMS` entry is
 a claim about a *spelling*, and a re-anchor can quietly falsify it: the anchor an entry names drifts

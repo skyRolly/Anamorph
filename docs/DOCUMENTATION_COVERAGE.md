@@ -9,7 +9,8 @@ that documentation (Verified / Partially Verified / Unverified / Not Supported).
 Last updated: for the **0.9.4 change set** (2026-08-21, matching the CHANGELOG heading — re-dated
 from 2026-08-15 in the hover-occlusion round, on 2026-08-20, and again on 2026-08-21, each time
 because the version took a further user-visible change) — the
-**roadmap tail: instruments, the declined JUCE cache, gloss-checked anchors and the editor lifetime** (first below), then the
+**SIGNAL_FLOW anchor restoration** (first below), then the
+**roadmap tail: instruments, the declined JUCE cache, gloss-checked anchors and the editor lifetime**, then the
 **post-merge drift sweep**, then the
 **Linux release toolchain move to Clang**, then the
 **Linux installer migration and changelog-completeness audit**, then the
@@ -73,6 +74,51 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**SIGNAL_FLOW.md anchor restoration (2026-08-22): 33 references no gate had ever seen, verified one
+by one against the source, and the document restructured so they can be seen. The DSP-order
+document is now the best-covered architecture document in the repository rather than the worst.**
+
+**What was wrong.** `SIGNAL_FLOW.md` records the absolute processing order inside
+`AnamorphEngine::process` — a `CLAUDE.md` hard-stop class, since changing that order needs an ADR.
+It carried **35 references and the citation gate could see 2 of them.** The other 33 were written
+bare (`:1108`), and `CITATION` requires a path, so no run in the gate's history had ever resolved
+one. They were free to rot, and they had.
+
+**The "uniformly 13 lines stale" summary was wrong, which is why each was checked rather than
+shifted.** A Wave-4/5 performance round inserted 13 lines inside `process`, so anchors BELOW that
+point were +13 — but the ones above it were not, and three references were wrong in ways no shift
+would have fixed:
+
+| Reference | Was | Is | Why |
+|---|---|---|---|
+| duck fade times | `:70-71` | `:72-73` | polarity smoothers, not the `switchIncOut`/`switchIncIn` constants the sentence describes |
+| M/S decode | `:554-572` | `:554-567` | the range ran past the `if (p.msMode)` branch into the `else` (L/R domain) half |
+| solo-agnostic Multiband | `MultibandWidth.h:29-32` | `:43-45` | 29-32 is flat-reconstruction phase compensation; the SOLO-AGNOSTIC statement is at 43-45 |
+| oversampling gate | `:21-25` | `:21-25` | **correct already** — `osActiveFor`, above the insertion point. A uniform +13 would have BROKEN it |
+
+Two more ranges (`Dry/Wet Mix`, `Output stage`) had ends that already overshot into the next stage's
+comment banner and were tightened to the real section boundaries rather than shifted into a worse
+version of the same error.
+
+**Why the diagram lost its numbers.** Sixteen anchors sat in the ASCII block diagram, in an aligned
+column. A path-qualified anchor is 26 characters; sixteen of them would have destroyed the alignment
+that is the diagram's entire reason to exist. So the numbers moved OUT into a stage table beside it
+and came back qualified — **each number now exists exactly once**, which also rules out the failure
+this repository has hit twice: two copies of one line number drifting apart. The diagram kept the
+order and the symbol, neither of which rots.
+
+**No exception was added and no check was weakened.** `src/dsp/SoloMonitor.h` joined `TRACKED` (it is
+first-party architecture evidence, and its sibling `MultibandWidth.h` was already there), and
+`SIGNAL_FLOW.md` joined `GLOSS_CHECKED_DOCS`. Both are coverage INCREASES. The gate now sees **40
+anchors where it saw 2**, and **23 of them are glossed** — content-asserted against the symbol the
+document names, not merely watched for movement. All 35 citations were read back through the tool's
+own resolver and land on their intended target.
+
+**Limitation, stated rather than papered over.** A citation added in this change set has no
+counterpart at the base revision, so the gate reports "the added ones are not checkable against that
+base" for this run and checks all 32 from the next commit onward. That is the tool's honest
+behaviour on new citations, not a gap opened here.
 
 **Roadmap tail (2026-08-21): the two committed instruments got liveness steps, the proposed JUCE
 cache was measured and declined, citation anchors began asserting what they name, and the editor
