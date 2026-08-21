@@ -9,7 +9,8 @@ that documentation (Verified / Partially Verified / Unverified / Not Supported).
 Last updated: for the **0.9.4 change set** (2026-08-21, matching the CHANGELOG heading — re-dated
 from 2026-08-15 in the hover-occlusion round, on 2026-08-20, and again on 2026-08-21, each time
 because the version took a further user-visible change) — the
-**SIGNAL_FLOW anchor restoration** (first below), then the
+**spent re-aim declaration sweep** (first below), then the
+**SIGNAL_FLOW anchor restoration**, then the
 **roadmap tail: instruments, the declined JUCE cache, gloss-checked anchors and the editor lifetime**, then the
 **post-merge drift sweep**, then the
 **Linux release toolchain move to Clang**, then the
@@ -74,6 +75,62 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**Spent re-aim declaration sweep (2026-08-22): all eight `DELIBERATE_REAIMS` entries retired after
+the round that declared them merged. A declaration is good for exactly one transition; kept past it,
+it is a standing licence for that anchor's next genuine drift. Removing them RESTORES drift checking
+— a coverage increase, stated that way because a table shrinking to `{}` reads like the opposite.**
+
+**Data only. No code changed.** The table is back at the empty resting state its own header
+documents. `check-citations.py` is otherwise untouched: no regex, no mode, no exit-code path, and
+no check was disabled, narrowed or exempted.
+
+**Every entry was verified rather than assumed, in three independent ways.**
+
+| Check | Result |
+|---|---|
+| the tool's own removability note, `--check --base origin/main` | 8 of 8 reported "not needed against origin/main" |
+| the precondition that note attaches to — that base IS the branch's merge base | `git merge-base HEAD origin/main` = `origin/main` = `d44f004`, checked, not assumed |
+| the transition actually landed — `git show origin/main:<doc>` carries the re-aimed spelling | 8 of 8 |
+| `verify_reaim_targets()` — every declared aim still resolves | 0 misaimed, 0 unverifiable |
+
+**The hazard a spent entry creates, measured on the real function rather than argued.**
+`is_declared_reaim` returns `False` while the base and current spellings agree, so a spent entry is
+inert **today** — and returns `True` the moment the cited code actually moves, which is precisely
+when the gate is supposed to speak. Asked of the live function with an entry still present:
+`(base :21, cur :21) -> False`, `(base :21, cur :22) -> True`; with the entry removed, `False`.
+Keeping them would therefore have been the option that weakens validation.
+
+**Proof the removal hides nothing:** `--check --base origin/main` reports **380 anchors, exit 0**
+both with the entries and without them. An entry that was excusing something would have moved that
+count; identical totals are the direct evidence that all eight were already inert.
+
+**What removal costs, stated because it is not nothing.** `verify_reaim_targets` content-checks
+every entry on every run, so retiring one drops that assertion.
+
+* **Five lose nothing that matters.** The `ARCHITECTURE.md` ×2, `LATENCY_MODEL.md`,
+  `PARAMETER_REFERENCE.md` and `THREAD_MODEL.md` anchors are all in `GLOSS_CHECKED_DOCS` documents
+  and all carry the gloss the document itself writes — `juce::ScopedNoDenormals`,
+  `isBusesLayoutSupported`, `updateLatency`, `applyAutoGain`, "Nothing is ever drawn on the audio
+  thread". Each retired entry's expectation was that same symbol, so the identical claim is now
+  asserted by the permanent mechanism instead of the one-shot one, base-independently, on every run.
+* **Three do lose their only content check.** The `tests/state_tests.cpp:6-11` anchors in
+  `POSTMORTEMS.md`, `procedures/TESTING.md` and ADR-0025 are not in `GLOSS_CHECKED_DOCS`, and opting
+  those documents in would buy nothing today: measured, all three carry **zero** glossed citations,
+  because those references are written as prose rather than as a parenthetical after the anchor.
+  Getting them content-checked means rewriting prose in three documents — a change about those
+  documents, not about this table, and left as a follow-up rather than smuggled into a housekeeping
+  round. Drift checking on all three is unaffected and is now restored rather than excused.
+
+**Self-test 131 → 123 cases, and the drop is not lost coverage.** Section 9 emits **one case per
+`DELIBERATE_REAIMS` entry** ("entry is live: names a spelling its document really carries"), so an
+empty table has nothing to assert — 131 − 8 = 123, exactly. Every structural case is unchanged, and
+section 9 itself is intact and will emit again the next time an entry is declared.
+
+**Verification.** `check-citations --self-test` 123 cases; `--check --base origin/main` 380 anchors;
+`check-docs` 102 files clean; full `scripts/preflight.sh` green including both built suites
+(`AnamorphTests` 162 checks, `AnamorphStateTests` 911 checks, 0 failures). Nothing outside
+`scripts/check-citations.py` and this file is touched. [Verified]
 
 **SIGNAL_FLOW.md anchor restoration (2026-08-22): 33 references no gate had ever seen, verified one
 by one against the source, and the document restructured so they can be seen. The DSP-order
