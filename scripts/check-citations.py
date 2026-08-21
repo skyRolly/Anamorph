@@ -387,9 +387,9 @@ DELIBERATE_REAIMS = {
 # `invalidated_reaims` below exists because exactly that happened twice in one
 # change set. A document name cannot go stale when code moves.
 #
-# WHY THESE EIGHT. They are the architecture set -- the documents whose evidence
+# WHY THESE SEVEN. They are the architecture set -- the documents whose evidence
 # lines a reader follows to check a claim about the system rather than about a
-# procedure. Measured over them: 22 glossed citations, 5 firing, all 5 genuine
+# procedure. Measured over them: 20 glossed citations, 5 firing, all 5 genuine
 # defects, 0 false positives. Repo-wide the same extraction fires 10 times, 9
 # genuine and 1 false -- `RELEASE_PROCESS.md:45` cites `CMakeLists.txt:14`
 # (`project VERSION`), a prose gloss that happens to be backticked. That one
@@ -553,9 +553,15 @@ def verify_glossed_anchors():
     """
     problems = []
     for doc in GLOSS_CHECKED_DOCS:
-        text = read(doc)
-        if text is None:
-            problems.append((doc, "-", "-", "the document could not be read"))
+        # `read()` returns the contents or RAISES -- it has no None path, so the
+        # guard this replaced was dead and a document deleted from the tree while
+        # still listed here would have come out as an uncaught traceback rather
+        # than as a finding. Caught the way `reaim_target_text` catches it, and
+        # reported in the same 4-tuple every other problem here uses.
+        try:
+            text = read(doc)
+        except OSError as exc:
+            problems.append((doc, "-", "-", f"the document could not be read ({exc.strerror})"))
             continue
         problems += glossed_problems_in(doc, text)
     return problems
@@ -1451,6 +1457,19 @@ def self_test():
     finally:
         globals()["TRACKED"] = saved_tracked
     check("...and TRACKED is restored afterwards", "no/such/file.cpp" in TRACKED, False)
+
+    # A LISTED DOCUMENT THAT IS GONE is a finding, not a traceback. `read()`
+    # returns contents or raises, so this branch is the only thing standing
+    # between a deleted-but-still-listed entry and an uncaught FileNotFoundError.
+    saved_docs = GLOSS_CHECKED_DOCS
+    try:
+        globals()["GLOSS_CHECKED_DOCS"] = GLOSS_CHECKED_DOCS + ("docs/NO_SUCH_DOC.md",)
+        check("a listed document that cannot be read is reported, not raised",
+              len(verify_glossed_anchors()), 1)
+    finally:
+        globals()["GLOSS_CHECKED_DOCS"] = saved_docs
+    check("...and the document list is restored afterwards",
+          "docs/NO_SUCH_DOC.md" in GLOSS_CHECKED_DOCS, False)
 
     # --- 8d. THE AIM CHECK MUST NOT DISABLE THE REPAIR PATH ------------------
     # Section 8c gave this tool a check on its own declarations. It was wired

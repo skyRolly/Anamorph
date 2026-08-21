@@ -181,6 +181,18 @@ edge above must not be read as release non-blocking.
   groups outside `undefined`, added 2026-08-18 after a census run showed both suites execute ZERO
   diagnostics under them: `float-divide-by-zero`, `implicit-conversion`, `unsigned-shift-base`,
   `local-bounds` (trap-based — a hit can die by SIGILL with no diagnostic text), `nullability`. The
+  **`implicit-conversion` carries one scoped exemption** (`scripts/ubsan-ignorelist.txt`,
+  2026-08-21): the editor-lifetime test made the constructor shape text, which reaches vendored
+  HarfBuzz inside JUCE, where `hb-face.cc` assigns `-1` to an `unsigned` as its documented
+  "not computed yet" sentinel. UBSan is right that it narrows; it is not a defect and it is not
+  this project's code. The ignorelist is a clang `[implicit-conversion]` section over `*juce-src/*`
+  — **one sub-check, one tree**: every other sanitizer still instruments the vendored code in full,
+  and no first-party path can match. Verified in both directions on clang-22, since an ignorelist
+  that silenced everything would look identical to one that works: with a narrowing conversion
+  seeded into a `juce-src` path AND into `src/PluginProcessor.cpp`, the vendored one goes quiet and
+  the first-party one still fails the run. The alternatives were dropping `implicit-conversion`
+  outright (weakens every TU, first-party included) or not constructing the editor under sanitizers
+  (removes the coverage that test exists for). The
   full `integer` group is **deliberately absent**: its `unsigned-integer-overflow` half flags legal,
   intentional wraparound (JUCE string hash, `Random` LCG, tick arithmetic, libstdc++'s mersenne
   twister — all census-measured) and would fail the job under `halt_on_error=1` on correct
@@ -950,7 +962,7 @@ having an assertion invented for it.
 
 It is **opt-in per document** (`GLOSS_CHECKED_DOCS`), and the list names documents rather than
 anchors so it holds no line numbers and cannot itself go stale. Seven architecture documents are in
-it. Measured when it was written: 22 glossed citations across them, **5 firing, all 5 genuine
+it. Measured when it was written: 20 glossed citations across them, **5 firing, all 5 genuine
 defects, 0 false positives** — anchors that were fully qualified, parsed, and green at 342/342 while
 pointing at unrelated code (`ScopedNoDenormals` cited 10 lines early, `isBusesLayoutSupported` 53,
 `applyAutoGain` 53, `updateLatency` 10, and a Vectorscope sentence cited at 18-20 that lives on 21).

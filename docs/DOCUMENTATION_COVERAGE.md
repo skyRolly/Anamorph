@@ -116,7 +116,7 @@ an assertion invented for it. **Opt-in by DOCUMENT, not by anchor**, for two rea
 verified rather than assumed: an anchor-keyed table would hold a copy of the line number `--fix`
 rewrites (the disease built into the cure — `invalidated_reaims` exists because that happened twice
 in one change set), and a permanent entry cannot live in `DELIBERATE_REAIMS` at all because
-`is_declared_reaim` reads that dict to turn the drift check OFF. Measured: 22 glossed citations
+`is_declared_reaim` reads that dict to turn the drift check OFF. Measured: 20 glossed citations
 across seven architecture documents, **5 firing, all genuine, 0 false positives**; repo-wide 10
 fire, 9 genuine and 1 false, which is why it is opt-in. All five corrected, each carrying a one-shot
 declaration because a correction is textually indistinguishable from drift — without them `--fix`
@@ -134,6 +134,21 @@ LeakSanitizer, valgrind memcheck, LTO codegen and three platforms. Measured on f
 `detect_leaks=1`. **Linux-only deliberately**: headless construction is unverified on Windows and
 macOS where this suite is a blocking gate, KI-007 records that the Windows runner cannot host editor
 GUI tests, and every instrument this feeds is a Linux job — so the scoping costs no coverage.
+
+**CI found what the local run could not: the editor reaches vendored HarfBuzz.** The `sanitizers`
+job went red on the first push. The local sanitizer run that preceded it used
+`address,undefined,vptr` and the job's real set is seven groups wider — `implicit-conversion` was
+never on locally, so the finding could not appear. Reproduced with the exact flags, then fixed:
+constructing the editor calls `refreshPresetDisplay()` → `textWidth()` → JUCE font shaping →
+`hb-face.cc`, where `face->num_glyphs = -1` assigns to an `unsigned` as HarfBuzz's documented
+"not computed yet" sentinel. UBSan is right that it narrows; it is vendored code and no project
+signal. `scripts/ubsan-ignorelist.txt` exempts **that one sub-check in that one tree** — the
+`[implicit-conversion]` section header keeps ASan, the rest of `undefined`, `vptr` and the four
+other groups instrumenting the vendored code in full, and `*juce-src/*` matches no first-party
+path. This is `TESTING_POLICY`'s sanitizer procedure step 3 taken rather than step 4 violated: the
+alternatives were dropping the flag build-wide or not constructing the editor under sanitizers.
+Verified in both directions on clang-22 in the real build — vendored silenced, a conversion seeded
+into `src/PluginProcessor.cpp` still fails the run at 920 checks → exit 1.
 
 **Counts corrected while there.** The state suite is **15 tests / 920 checks**; the documents said
 13 and 911. The test count was already stale by one before this round — the tooltip test was never
