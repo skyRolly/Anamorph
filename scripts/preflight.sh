@@ -48,7 +48,7 @@ python3 scripts/check-realtime.py
 python3 scripts/check-clang-warnings.py --self-test
 python3 scripts/check-gcc-warnings.py --self-test
 echo "note: the FULL warning gates need a build log from the pinned compiler"
-echo "      (CI: linux-clang, linux-lto-tests); only their self-tests ran here."
+echo "      (CI: linux, linux-lto-tests); only their self-tests ran here."
 
 python3 scripts/check-linux-abi.py --self-test
 # The ONE of the three that can also run for real locally: an ordinary Release

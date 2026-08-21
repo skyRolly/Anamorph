@@ -298,6 +298,21 @@ DELIBERATE_REAIMS = {
     # number, so the entry cannot quietly survive onto some unrelated line.
     ("docs/policies/DEPENDENCY_POLICY.md", ".github/workflows/build.yml:114"):
         "ANAMORPH_GCC_VERSION",
+
+    # RE-AIMED 2026-08-21 by the setup-linux.sh profile split. The package list
+    # moved out of a literal `apt-get install` invocation and into two shell
+    # variables (`CORE_PACKAGES`, `FULL_EXTRA_PACKAGES`), so every anchor into it
+    # points at genuinely different text and is indistinguishable from drift.
+    # Each expectation names the PACKAGE or the block, never the line, so a
+    # declaration cannot quietly survive onto something unrelated.
+    ("docs/procedures/BUILD.md", "scripts/setup-linux.sh:66-74"):
+        "CORE_PACKAGES",
+    ("docs/procedures/TROUBLESHOOTING.md", "scripts/setup-linux.sh:73"):
+        "libwebkit2gtk-4.1-dev",
+    ("docs/procedures/TROUBLESHOOTING.md", "scripts/setup-linux.sh:18-20,72"):
+        "libegl-dev",
+    ("docs/procedures/TROUBLESHOOTING.md", "scripts/setup-linux.sh:85"):
+        "curl unzip",
 }
 
 

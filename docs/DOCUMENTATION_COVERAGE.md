@@ -115,6 +115,32 @@ the ADR bodies recording `gcc 13.3.0` as a past measurement environment. Those a
 records; the migration does not make them false, and the timing row is labelled with the job's fate
 rather than deleted.
 
+**Review follow-up, same change set (2026-08-21).** Three findings, all about the containerised GCC
+job rather than the release path:
+
+  * **The dependency list is now profiled instead of assumed.** `linux-lto-tests` runs inside a
+    Debian-based toolchain image but still called `setup-linux.sh`, whose list is written for a
+    fresh Ubuntu machine. `setup-linux.sh` now takes `full` (the default, unchanged for developers
+    and for every other job) or `headless`, and the container job asks for `headless`. The lists stay
+    in that one script — the workflow says *which* profile, never *what is in it*. Measured in the
+    real `gcc:16` image: the headless profile builds both LTO test targets and both suites pass
+    (162 + 911, 0 failures), with `build-essential`, `xvfb` and `lld` confirmed absent.
+    `build-essential` is the one that mattered — it would have installed a distribution GCC over the
+    pinned compiler the container exists to provide.
+  * **`python3` is named rather than inherited.** Every checker in `scripts/` is Python and the
+    Ubuntu images preinstall it, so nothing ever had to ask. The `gcc:16` image carries it only
+    through `python3-minimal`, pulled in by an unrelated layer — true today (measured: Python
+    3.13.5) and not a promise. Both profiles now install it explicitly.
+  * **The ABI floor parseability guard covers every declared family.** It named `GLIBC_FLOOR` and
+    `GLIBCXX_FLOOR` literally, so the `CXXABI` family added earlier in this change set fell outside
+    the only check that floor VALUES are versions at all. It now iterates `FLOORS`, so the next
+    family is covered on arrival, and it runs FIRST and returns on failure — an unparseable floor
+    used to raise out of an unrelated later case and report as a traceback instead of as the one
+    thing actually wrong. Verified by seeding a bad value into each of the three families in turn:
+    each produces its own named failure. Self-test 17 → **19 cases**.
+
+No floor value, cache key, compiler pin or release step changed.
+
 **Linux installer migration and changelog-completeness audit (2026-08-20): the sibling product's
 `install.sh` / `uninstall.sh` hardening brought into this repository, and the whole post-0.9.3
 change set re-read for user-visible items the CHANGELOG never received. No ADR: nothing is decided
@@ -1184,7 +1210,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:2655` and `:2836`, this round being documentation-only.
+`.github/workflows/build.yml:2666` and `:2836`, this round being documentation-only.
 
 **Policy-topology round (2026-08-19): rule 4 described a placement three of its own seven checkers
 cannot have. One report investigated and closed with no change.**

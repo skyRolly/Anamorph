@@ -2460,8 +2460,19 @@ jobs:
 
       # No compiler in `extra-packages`: the container IS the compiler, so there
       # is nothing to install and nothing that could resolve to a different one.
+      #
+      # `headless`, because this is the one job whose dependencies are NOT the
+      # ones a fresh Ubuntu machine needs. It builds two test targets and no GUI,
+      # so the pluginval fetch/display pair and lld are dead weight here -- and
+      # `build-essential` is worse than dead weight: it would install a
+      # distribution GCC over the top of the pinned one this container exists to
+      # provide. The profile also names `python3` explicitly, which matters here
+      # and nowhere else: the warning gate is a Python script, and this image
+      # carries an interpreter only transitively.
       - name: Install build dependencies
         uses: ./.github/actions/setup-linux-build
+        with:
+          dependency-profile: headless
 
       # Asserted before the build so the log carries the version the baseline is
       # compared against. The MAJOR only, matching what the tag pins and what the

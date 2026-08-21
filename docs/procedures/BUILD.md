@@ -35,7 +35,8 @@ Three of these serve **pluginval**, not the build: `xvfb` (the editor tests need
 CLI is *not* implied by `libcurl4-openssl-dev`, which is only the development headers —
 GitHub-hosted runners preinstall both tools, so a missing one surfaces on a fresh machine or a
 minimal container rather than in CI.
-Evidence [Verified]: scripts/setup-linux.sh:44-54 (package list), :18-20 (the EGL note),
+Evidence [Verified]: scripts/setup-linux.sh:66-74 (the core package list), :83-88 (what the
+`full` profile adds), :18-20 (the EGL note),
 :13-17 (the curl/unzip note).
 
 ## Configure + build

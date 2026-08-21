@@ -41,6 +41,15 @@ inputs:
       set: the compiler is the job, unlike ccache below.
     required: false
     default: ""
+  dependency-profile:
+    description: >-
+      Which `scripts/setup-linux.sh` profile to install: `full` (default) or
+      `headless`. `headless` installs what compiling and linking the JUCE
+      targets needs and drops the host toolchain, the pluginval fetch/display
+      pair and lld -- for a job that runs inside a toolchain container and
+      builds only the test targets. The lists live in that script, not here.
+    required: false
+    default: "full"
   extra-packages:
     description: >-
       Additional apt packages, space-separated (e.g. `valgrind`, `g++-13`).
@@ -65,12 +74,13 @@ runs:
       # `$EXTRA_PACKAGES` below makes the values DATA, which is the property the
       # interface should have rather than one its callers happen to supply.
       env:
+        DEPENDENCY_PROFILE: ${{ inputs.dependency-profile }}
         CLANG_VERSION: ${{ inputs.clang-version }}
         EXTRA_PACKAGES: ${{ inputs.extra-packages }}
       run: |
         set -euo pipefail
         chmod +x scripts/*.sh
-        ./scripts/setup-linux.sh
+        ./scripts/setup-linux.sh "$DEPENDENCY_PROFILE"
 
         if [ -n "$CLANG_VERSION" ]; then
           ./scripts/setup-llvm-apt.sh "$CLANG_VERSION"

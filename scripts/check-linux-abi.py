@@ -249,6 +249,38 @@ def check(paths) -> int:
 def self_test() -> int:
     fails = cases = 0
 
+    # FIRST, because every case below compares against these values: an
+    # unparseable floor reaching `evaluate()` raises out of an unrelated case and
+    # reports as a traceback rather than as the one thing that is actually wrong.
+    # The declared floors must themselves be parseable, or the gate compares
+    # against nothing. DRIVEN FROM `FLOORS`, not from the constants by name: this
+    # guard used to spell out GLIBC and GLIBCXX, so when `CXXABI` was declared it
+    # fell outside the only check that the floor VALUES are versions at all -- a
+    # family could have been added with an unparseable value and nothing here
+    # would have said so. Iterating the same dict the gate compares against means
+    # the next family is covered the moment it is declared, which is the property
+    # that was missing rather than the two families that happened to be listed.
+    #
+    # `AttributeError`/`TypeError` are caught beside `ValueError` because
+    # `version_key` reaches for `.split` first: a non-string floor raises before
+    # it ever gets to `int()`, and that should read as this case failing rather
+    # than as a traceback out of the self-test.
+    for _fam, _floor in FLOORS.items():
+        cases += 1
+        try:
+            version_key(_floor)
+        except (ValueError, AttributeError, TypeError):
+            print(f"self-test FAIL: declared floor {_fam}_{_floor!r} is not a version",
+                  file=sys.stderr)
+            fails += 1
+    if fails:
+        # RETURNED ON, not merely counted. Every case below compares against
+        # these values, so with one of them unparseable they do not report a
+        # second finding -- they raise out of `evaluate()` and bury the one line
+        # that says what is actually wrong.
+        print(f"check-linux-abi: {fails} of {cases} self-test case(s) failed", file=sys.stderr)
+        return 1
+
     def expect(label, got, want):
         nonlocal fails, cases
         cases += 1
@@ -352,14 +384,6 @@ Version References:
            evaluate({"GLIBC": "2.35", "GLIBCXX": "3.4.30"}),
            ([], ["CXXABI"]))
 
-    # The declared floors must themselves be parseable, or the gate compares
-    # against nothing.
-    cases += 1
-    try:
-        version_key(GLIBC_FLOOR), version_key(GLIBCXX_FLOOR)
-    except ValueError:
-        print("self-test FAIL: a declared floor is not a version", file=sys.stderr)
-        fails += 1
 
     if fails:
         print(f"check-linux-abi: {fails} of {cases} self-test case(s) failed", file=sys.stderr)

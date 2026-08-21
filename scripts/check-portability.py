@@ -482,7 +482,7 @@ def self_test() -> int:
     THE CANARY DOES NOT COVER THIS, and conflating the two is how the gap got
     here. `--compile-canary` asks "does the pinned JUCE still HAVE the hazard?"
     -- a question about the dependency, answerable only where JUCE is checked
-    out, which is why it runs in `linux-clang`. This asks "does the CHECKER
+    out, which is why it runs in `linux`. This asks "does the CHECKER
     still find it?" -- a question about 60 lines of regex and hand-written
     lexing in this file, answerable with nothing but Python, which is why it can
     run in `source-lint` immediately before the lint it verifies. A green canary
