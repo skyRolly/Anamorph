@@ -13,7 +13,7 @@ Source. Until then every entry cites a commit SHA or a PR. Entries for the
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
-## [0.9.4] — 2026-08-20
+## [0.9.4] — 2026-08-21
 ### Fixed
 - **A tooltip no longer shows the wrong control's text after it moves.** Hover a Settings control,
   then move the pointer onto the hint box that appeared: the box steps aside as before, but its text
@@ -82,6 +82,19 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   asserted per bundle. [Verified]
 
 ### Changed
+- **The Linux version is now built with GCC 16.2 (was GCC 13.3), and the compiler is pinned exactly
+  rather than inherited.** Until now the compiler that produced the Linux download was whichever one
+  the CI image happened to provide — nobody chose it, and it could change without a line in any
+  diff. It is now the official GCC 16.2.0 toolchain, pinned by content digest so it cannot be
+  repointed, and the same one is used by every Linux build in the project, including the check that
+  runs on each proposed change: what gets validated is now what gets shipped. **What this means for
+  you: the plug-in now needs Ubuntu 24.04 LTS / Debian 13 or newer, up from Ubuntu 23.10.** GCC 16's
+  exception-handling code calls into a part of the C++ runtime that first appeared in GCC 14, so the
+  older libstdc++ can no longer load it. Ubuntu 23.10 reached end of life in July 2024, so no
+  currently supported distribution loses the plug-in — and the check that asserts this had been
+  blind to that part of the runtime, which is why it is now covered too (see the entry above).
+  The audio the plug-in produces is unchanged: this is the same source built by a newer compiler.
+  [Verified]
 - **The Linux installer and uninstaller can now be told what to do instead of asking.**
   `./install.sh --user` and `./install.sh --system` answer the question the script otherwise puts
   on screen, which is the only way to choose when there is no terminal to ask on — a piped or
@@ -111,9 +124,9 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   machine they were linked on, and a distribution older than those cannot load them at all — the
   plug-in does not appear in your host, rather than appearing and misbehaving. That floor had never
   been chosen: it was whatever the CI image happened to be, and it rose retroactively when that
-  image moved. Measured on the binaries this version ships: **GLIBC_2.38 and GLIBCXX_3.4.31 —
-  Ubuntu 23.10 / Debian 13 / GCC 13 or newer. Ubuntu 22.04 LTS ships glibc 2.35, so Anamorph does
-  not load there.** Nothing about the plug-in itself changed; what changed is that the requirement
+  image moved. Measured on the binaries this version ships: **GLIBC_2.38, GLIBCXX_3.4.31 and
+  CXXABI_1.3.15 — Ubuntu 24.04 LTS / Debian 13 or newer. Ubuntu 22.04 LTS ships glibc 2.35, so
+  Anamorph does not load there.** Nothing about the plug-in itself changed; what changed is that the requirement
   is now written down (`docs/architecture/COMPATIBILITY_MATRIX.md` §"Linux runtime ABI floor") and
   asserted on every build against the exact stripped bytes you receive, so a future toolchain move
   that drops more systems fails the build rather than a user's DAW. Lowering the floor needs an

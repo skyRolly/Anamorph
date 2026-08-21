@@ -9,7 +9,7 @@ Status taxonomy: **Verified** (provable from build/CI/code) · **Partially Verif
 | Format | Status | Evidence |
 |---|---|---|
 | **VST3** | **Verified** | Built on Linux/Windows/macOS; primary target; pluginval gate. CMakeLists.txt:262; build.yml all jobs |
-| **AU (Audio Unit)** | **Verified (build + conformance)** / **Unverified (host)** | Built on macOS as `.component` (universal) and, since 0.9.4, put through the same blocking pluginval gate as the VST3 (both modes ×3, against the packaged bundle, after an install into `~/Library/Audio/Plug-Ins/Components/` + `AudioComponentRegistrar` restart) — and, since the `macos-intel` job, through that same gate a second time against a thin `x86_64` build on **native Intel** hardware. Still unverified against a *real* host: pluginval loads the AU through JUCE's `AudioUnitPluginFormat`, so Logic/GarageBand loading is not tested in repo, and `auval` is not run (`docs/procedures/CI_CD.md` §"Known coverage limits"). CMakeLists.txt:263-265; .github/workflows/build.yml:1667 (the `macos` job header) |
+| **AU (Audio Unit)** | **Verified (build + conformance)** / **Unverified (host)** | Built on macOS as `.component` (universal) and, since 0.9.4, put through the same blocking pluginval gate as the VST3 (both modes ×3, against the packaged bundle, after an install into `~/Library/Audio/Plug-Ins/Components/` + `AudioComponentRegistrar` restart) — and, since the `macos-intel` job, through that same gate a second time against a thin `x86_64` build on **native Intel** hardware. Still unverified against a *real* host: pluginval loads the AU through JUCE's `AudioUnitPluginFormat`, so Logic/GarageBand loading is not tested in repo, and `auval` is not run (`docs/procedures/CI_CD.md` §"Known coverage limits"). CMakeLists.txt:263-265; .github/workflows/build.yml:1723 (the `macos` job header) |
 | **Standalone** | **Verified** | Built on all three OSes. CMakeLists.txt:266-268 |
 | **AAX** | **Not Supported** | Out of scope: needs an Avid account + PACE/iLok signing. docs/policies/COMPATIBILITY_POLICY.md. (DSP core is wrapper-agnostic, so a future AAX wrapper is low-cost, but it is explicitly not built today.) |
 
@@ -20,7 +20,7 @@ Status taxonomy: **Verified** (provable from build/CI/code) · **Partially Verif
 | **Linux x86-64** | **Verified (blocking gate)**, above a **declared ABI floor** | CI builds VST3+Standalone; headless pluginval at the configured strictness (deterministic ×3 + randomise ×3) under xvfb — **blocking**. The shipped binaries' glibc/libstdc++ floor is asserted on every push against the exact stripped bytes (`scripts/check-linux-abi.py`, which holds the number; this table deliberately quotes none). Distributions **below** that floor are not supported: the dynamic loader refuses the library before any of this project's code runs. `.github/workflows/build.yml` |
 | **Windows x86-64** | **Verified (blocking gate)** | MSVC build; pluginval at the configured strictness, deterministic ×3 + randomise ×3 — **blocking** (`run-pluginval.ps1`, no `continue-on-error`). `.github/workflows/build.yml` |
 | **macOS universal (arm64 + x86_64)** | **Verified (blocking gate)** | `CMAKE_OSX_ARCHITECTURES="arm64;x86_64"`, `lipo` verifies both slices; pluginval at the configured strictness, both modes ×3 — **blocking**. `.github/workflows/build.yml` |
-| **macOS x86_64 on native Intel silicon** | **Verified (blocking gate)** | Distinct from the row above, which is built and validated on an **Apple Silicon** runner and executes its x86_64 slice only under **Rosetta 2** (translated onto arm64 hardware). The `macos-intel` job builds thin `x86_64` on `macos-15-intel` and runs both self-test suites plus the full pluginval gate (VST3 and AU, both modes ×3) on a real Intel CPU, after asserting `uname -m == x86_64` and `sysctl.proc_translated == 0`. It ships nothing — the shipped bundle is still the universal one. .github/workflows/build.yml:2266 (the `macos-intel` job header), .github/workflows/build.yml:2209-2265 (its rationale block) |
+| **macOS x86_64 on native Intel silicon** | **Verified (blocking gate)** | Distinct from the row above, which is built and validated on an **Apple Silicon** runner and executes its x86_64 slice only under **Rosetta 2** (translated onto arm64 hardware). The `macos-intel` job builds thin `x86_64` on `macos-15-intel` and runs both self-test suites plus the full pluginval gate (VST3 and AU, both modes ×3) on a real Intel CPU, after asserting `uname -m == x86_64` and `sysctl.proc_translated == 0`. It ships nothing — the shipped bundle is still the universal one. .github/workflows/build.yml:2322 (the `macos-intel` job header), .github/workflows/build.yml:2265-2321 (its rationale block) |
 
 ## I/O layouts
 
@@ -108,14 +108,22 @@ fails. Raising the floor is then a deliberate act: change the constant in the sa
 in the PR which systems it drops.
 
 **Every declared family must be present, not merely within its floor.** Both inspected artifacts are
-C++ binaries linked against the system libstdc++ and glibc, so each must import both `GLIBC_*` and
-`GLIBCXX_*`. Comparing only the families a binary happens to reference made an *absent* one read as
+C++ binaries linked against the system libstdc++ and glibc, so each must import every declared
+family — `GLIBC_*`, `GLIBCXX_*` and, since the GCC 16 migration, `CXXABI_*`. Comparing only the families a binary happens to reference made an *absent* one read as
 a satisfied one: an artifact that stopped importing `GLIBCXX_*` altogether passed the libstdc++ half
 of the floor vacuously. Since 2026-08-19 that is an error, because the two things which produce it
 are exactly the two the gate exists to notice — the wrong file being inspected, and a link-topology
 change such as `-static-libstdc++`. The second is a real way to lower the floor, and lowering it is
 the deliberate, reviewable decision described below rather than something a gate should absorb while
 reporting clean.
+
+**Why `CXXABI_*` is declared as well.** It and `GLIBCXX_*` both come out of libstdc++ but move on
+their own schedules, and for this artifact the binding one is no longer `GLIBCXX_*`. Measured when
+the Linux toolchain moved to GCC 16: the shipped VST3 still asks for the same `GLIBCXX_*` as the GCC
+13 build, while its exception path pulls a `CXXABI_*` symbol that libstdc++ first shipped a major
+later. A family the gate does not name cannot raise the floor loudly, so it raises it silently — the
+one failure mode this gate exists to prevent, reappearing in an undeclared family. The script holds
+the numbers; this table still quotes none.
 
 Lowering the floor is a different and larger question — it means building against an older
 toolchain or a sysroot, which is a release-topology decision rather than a CI tweak. The gate does

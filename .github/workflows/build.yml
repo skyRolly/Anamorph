@@ -76,19 +76,33 @@ concurrency:
 # flag list can be stated against a known major (see that job).
 #
 # ---------------------------------------------------------------------------
-# THE GCC MAJOR IS PINNED FOR THE SAME REASON, on the one job that gates GCC
-# diagnostics (`linux-lto-tests`, which also runs `check-gcc-warnings.py`).
+# THE GCC TOOLCHAIN IS PINNED FOR THE SAME REASON, and it governs BOTH Linux
+# GCC jobs: `linux`, which builds the artifact users install, and
+# `linux-lto-tests`, which gates GCC diagnostics via `check-gcc-warnings.py`.
 #
 # The argument is identical -- `scripts/gcc-warning-baseline.txt` records exact
 # per-(path, flag) site counts and refuses to run against another major -- but
-# the SUPPLY is the opposite way round, and that changes the mechanism. The
-# Clang pin is AHEAD of what the image ships, so it is installed from
-# apt.llvm.org. This pin is simply WHAT THE IMAGE SHIPS (noble's default `g++`
-# is 13.3), so there is nothing to install and the only real risk is the image
-# moving underneath it. That is why the job naming this pin also pins
-# `runs-on: ubuntu-24.04` rather than `ubuntu-latest`: naming the compiler
-# without naming the image only moves the unpinned variable one level up, and
-# a `g++-13` that has left the archive fails at apt rather than at the gate.
+# the SUPPLY differs from Clang's, and that decides the mechanism. Clang comes
+# from apt.llvm.org because upstream packages it there. The GNU project ships
+# no binaries at all: it releases source, and the distributions decide when to
+# package it. Ubuntu noble stops at `g++-14`, and the only `g++-16` anywhere in
+# `ubuntu-toolchain-r/test` is a dated TRUNK SNAPSHOT (`16-20260315`), which is
+# the "newest, not stable" that ADR-0028 already rejected for Clang 23. So the
+# pin cannot be an apt package without either abandoning the stable rule or
+# waiting on a distribution.
+#
+# It is therefore the OFFICIAL UPSTREAM TOOLCHAIN IMAGE, pinned BY DIGEST --
+# `gcc:16.2.0@sha256:...` on the two jobs below. A digest is a stronger pin than
+# any apt version: the tag can be repointed, the digest cannot, so "the compiler
+# moved underneath us" stops being a failure mode rather than merely a monitored
+# one. That is also why these jobs no longer need `runs-on: ubuntu-24.04` -- the
+# host image no longer supplies the compiler, so it is no longer the unpinned
+# variable that pinning the compiler was meant to catch.
+#
+# THE DIGEST IS SPELLED IN THE JOBS, NOT HERE, because `jobs.<id>.container`
+# cannot read workflow `env`. The version numbers below stay the single
+# authority and each job ASSERTS the container matches them before it builds, so
+# the duplication is checked at runtime rather than trusted.
 #
 # WHY GCC AT ALL, next to a Clang gate whose default warning set is strictly
 # larger: "larger" is not "a superset". GCC sees two classes Clang structurally
@@ -107,7 +121,8 @@ concurrency:
 env:
   ANAMORPH_PLUGINVAL_STRICTNESS: 10
   ANAMORPH_CLANG_VERSION: 22
-  ANAMORPH_GCC_VERSION: 13
+  ANAMORPH_GCC_VERSION: 16
+  ANAMORPH_GCC_TOOLCHAIN: "16.2.0"
 
 # Every push builds the FULL set of formats on all three desktop OSes so beta
 # testers can install on any platform:
@@ -331,6 +346,12 @@ jobs:
   # -------------------------------------------------------------------------
   merge-check:
     runs-on: ubuntu-latest
+    # THE SAME PINNED TOOLCHAIN AS `linux`, and for this job's whole reason to
+    # exist: it is the only build on the same-repo PR path, so if it compiled
+    # with the host's GCC it would clear PRs against a compiler the project does
+    # not ship -- and the first build with the shipped one would be the merge.
+    container:
+      image: gcc:16.2.0@sha256:8d466d9001805b81ecc280645889c368ae28e75724e7ecba03a0336deda0faac
     timeout-minutes: 30
     if: >-
       github.event_name == 'pull_request' &&
@@ -345,7 +366,20 @@ jobs:
       - name: Install build dependencies
         uses: ./.github/actions/setup-linux-build
 
-      # SHARES A CACHE LINEAGE WITH `linux` -- same compiler, same Release
+      # Same cross-check as the other two GCC jobs; see the GCC block above.
+      - name: Assert the container is the pinned GCC
+        run: |
+          set -eu
+          g++ --version | head -1
+          got="$(g++ -dumpfullversion)"
+          [ "$got" = "${ANAMORPH_GCC_TOOLCHAIN}" ] || {
+            echo "::error::container g++ is ${got}, env declares ${ANAMORPH_GCC_TOOLCHAIN}"
+            exit 1
+          }
+
+      # SHARES A CACHE LINEAGE WITH `linux` -- same pinned toolchain container
+      # (that is what keeps "same compiler" true now that the compiler is an
+      # image rather than the host's default), same Release
       # configuration, same `build` directory name, same targets. The two jobs
       # never run in the same event (this one is same-repo-PR-only, that one is
       # everything else), so on a PR this restores the cache the last push to
@@ -546,6 +580,12 @@ jobs:
 
   linux:
     runs-on: ubuntu-latest
+    # THE SHIPPED LINUX BYTES ARE THIS CONTAINER'S. `runs-on` still names the
+    # host that provides the runner, the caches and the artifact upload; the
+    # compiler comes from the digest-pinned image, so a host image move can no
+    # longer change what users install. See the GCC block above the jobs.
+    container:
+      image: gcc:16.2.0@sha256:8d466d9001805b81ecc280645889c368ae28e75724e7ecba03a0336deda0faac
     timeout-minutes: 40
     if: >-
       github.event_name != 'pull_request' ||
@@ -559,6 +599,22 @@ jobs:
 
       - name: Install build dependencies
         uses: ./.github/actions/setup-linux-build
+
+      # THE DIGEST ABOVE AND THE VERSION NUMBERS IN `env` ARE TWO SPELLINGS OF
+      # ONE PIN, and `jobs.<id>.container` cannot read `env` to derive one from
+      # the other. So they are cross-checked here instead of trusted: if the
+      # image is ever repointed without the env block following, this fails in
+      # the first minute with both numbers in the log, rather than producing an
+      # artifact built by a compiler nothing in this file names.
+      - name: Assert the container is the pinned GCC
+        run: |
+          set -eu
+          g++ --version | head -1
+          got="$(g++ -dumpfullversion)"
+          [ "$got" = "${ANAMORPH_GCC_TOOLCHAIN}" ] || {
+            echo "::error::container g++ is ${got}, env declares ${ANAMORPH_GCC_TOOLCHAIN}"
+            exit 1
+          }
 
       # Shared lineage with `merge-check` -- see that job. This is the writer of
       # the two: it runs on every push, so the cache a PR restores is the one
@@ -2539,13 +2595,14 @@ jobs:
   # `release.yml` depends on this workflow's aggregate result -- see the
   # `sanitizers` comment above for the full topology.
   linux-lto-tests:
-    # PINNED, not `ubuntu-latest`: this job also gates GCC diagnostics against
-    # scripts/gcc-warning-baseline.txt, and that baseline describes ONE compiler
-    # (see ANAMORPH_GCC_VERSION in the env block above). An image move that
-    # changed the default `g++` would make a runner upgrade indistinguishable
-    # from a source regression -- the exact failure the Clang pin exists to
-    # prevent, reintroduced through the image instead of through the package.
-    runs-on: ubuntu-24.04
+    # THE SAME DIGEST-PINNED TOOLCHAIN THE `linux` JOB SHIPS FROM, which is the
+    # property this job depends on twice over: `gcc-warning-baseline.txt`
+    # describes ONE compiler and refuses to run against another, and the whole
+    # point of the LTO suites is exercising the codegen users actually get. The
+    # host is no longer pinned because it no longer supplies the compiler.
+    runs-on: ubuntu-latest
+    container:
+      image: gcc:16.2.0@sha256:8d466d9001805b81ecc280645889c368ae28e75724e7ecba03a0336deda0faac
     timeout-minutes: 30
     if: >-
       github.event_name != 'pull_request' ||
@@ -2557,22 +2614,24 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # The PINNED g++ is named rather than inherited. On ubuntu-24.04 it is
-      # already the default compiler, so installing it explicitly COSTS nothing
-      # and BUYS the failure mode we want: if the pin and the image ever stop
-      # agreeing, apt says so in the first minute, loudly, instead of the
-      # warning gate exiting 2 twenty minutes later with a version mismatch.
-      # `extra-packages` is fail-closed for exactly that reason.
+      # No compiler in `extra-packages`: the container IS the compiler, so there
+      # is nothing to install and nothing that could resolve to a different one.
       - name: Install build dependencies
         uses: ./.github/actions/setup-linux-build
-        with:
-          extra-packages: g++-${{ env.ANAMORPH_GCC_VERSION }}
 
-      # Asserted separately from the install so the log carries the version the
-      # baseline is compared against, not just the fact that a package resolved.
-      - name: Assert the pinned GCC is the one this job will use
+      # Asserted before the build so the log carries the version the baseline is
+      # compared against. `--gcc-major` re-checks the major against the baseline
+      # later; this checks the FULL version against the digest's declared one,
+      # which is the half that a repointed image would break.
+      - name: Assert the container is the pinned GCC
         run: |
-          "g++-${ANAMORPH_GCC_VERSION}" --version
+          set -eu
+          g++ --version | head -1
+          got="$(g++ -dumpfullversion)"
+          [ "$got" = "${ANAMORPH_GCC_TOOLCHAIN}" ] || {
+            echo "::error::container g++ is ${got}, env declares ${ANAMORPH_GCC_TOOLCHAIN}"
+            exit 1
+          }
 
       # Its own lineage: `-flto` objects are GIMPLE bytecode under GCC, so they
       # share no cache entries with the `linux` job's native objects; a shared
@@ -2606,8 +2665,8 @@ jobs:
           echo "Gated GCC-only warnings: ${GCC_WARNINGS}"
           cmake -B build-lto -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_C_COMPILER="gcc-${ANAMORPH_GCC_VERSION}" \
-            -DCMAKE_CXX_COMPILER="g++-${ANAMORPH_GCC_VERSION}" \
+            -DCMAKE_C_COMPILER=gcc \
+            -DCMAKE_CXX_COMPILER=g++ \
             -DCMAKE_C_FLAGS="-flto" \
             -DCMAKE_CXX_FLAGS="-flto ${GCC_WARNINGS}" \
             -DCMAKE_EXE_LINKER_FLAGS="-flto" \

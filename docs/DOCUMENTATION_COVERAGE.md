@@ -6,10 +6,11 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.4 change set** (2026-08-20, matching the CHANGELOG heading — re-dated
-from 2026-08-15 in the hover-occlusion round and again on 2026-08-20, each time because the version
-took a further user-visible change) — the
-**Linux installer migration and changelog-completeness audit** (first below), then the
+Last updated: for the **0.9.4 change set** (2026-08-21, matching the CHANGELOG heading — re-dated
+from 2026-08-15 in the hover-occlusion round, on 2026-08-20, and again on 2026-08-21, each time
+because the version took a further user-visible change) — the
+**GCC 16 toolchain migration** (first below), then the
+**Linux installer migration and changelog-completeness audit**, then the
 **tooltip source-of-truth round**, then the
 **tooltip investigation that shipped no fix**, then the
 **stale-anchor correction**, then the
@@ -70,6 +71,41 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**GCC 16 toolchain migration (2026-08-21): the Linux GCC toolchain moved 13.3 → 16.2.0 and stopped
+being the runner image's choice. ADR-0030 records the decision; the ABI gate gained a family it had
+been blind to.**
+
+**What moved.** `ANAMORPH_GCC_VERSION` was 13 because that is `ubuntu-24.04`'s default `g++`, and
+the job that builds the shipped artifact named no compiler at all — so the bytes users install were
+compiled by whatever the image provided. The pin is now the official upstream toolchain image at
+**16.2.0, by digest**, on all three Linux GCC jobs (`linux`, `merge-check`, `linux-lto-tests`).
+There is no `apt` route to stable GCC 16: noble stops at `g++-14`, and the only `g++-16` in
+`ubuntu-toolchain-r/test` is a trunk snapshot, which ADR-0028's *upstream stable* rule excludes.
+
+**The finding that made this more than a version bump.** `check-linux-abi.py` gated `GLIBC` and
+`GLIBCXX` only. Under GCC 16 both are unchanged — `GLIBC_2.38`, `GLIBCXX_3.4.31`, identical to the
+GCC 13 build, because symbol versions bind to what code uses rather than to the compiler — but the
+exception path pulls `__cxa_call_terminate@CXXABI_1.3.15`, first shipped in GCC 14. The gate would
+have reported a GCC 13 floor and passed an artifact needing a GCC 14 runtime. `CXXABI` is now
+declared and gated, the success message and `--print-floor` derive from `FLOORS` instead of naming
+two families literally, and the self-test grew the case that returned clean before the family
+existed. The practical floor moves Ubuntu 23.10 → Ubuntu 24.04 / Debian 13, both of which ship a
+GCC 14 libstdc++; 23.10 was EOL in July 2024, so no supported distribution is dropped.
+
+**Documents touched, and why each.** `CI_CD.md` (the pin-mechanism paragraph argued the opposite
+supply direction — apt vs image — and the job table named `g++-13`; the ABI section gained the
+CXXABI paragraph while its historical "measured when the gate landed" sentence was left alone),
+`DEPENDENCY_POLICY.md` (the GCC row described an `apt` pin below the image), `COMPATIBILITY_MATRIX.md`
+(said each artifact must import *both* families), `BUILD.md` (verified-on list), `REPOSITORY_MAP.md`
+(the job's one-line description), `CHANGELOG.md` (the 0.9.4 ABI entry stated the pre-migration
+floor, which would have shipped wrong), and `ADR_INDEX.md`. The `DEPENDENCY_POLICY.md` citation was
+re-aimed and declared in `DELIBERATE_REAIMS`, since the cited line's value is what this change set
+edited.
+
+**Not rewritten:** the worklogs, `KNOWN_ISSUES.md` and the ADR bodies that record `gcc 13.3.0` as
+the environment of a past measurement. Those are historical records; the migration does not make
+them false.
 
 **Linux installer migration and changelog-completeness audit (2026-08-20): the sibling product's
 `install.sh` / `uninstall.sh` hardening brought into this repository, and the whole post-0.9.3
@@ -1140,7 +1176,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:2751` and `:2836`, this round being documentation-only.
+`.github/workflows/build.yml:2810` and `:2836`, this round being documentation-only.
 
 **Policy-topology round (2026-08-19): rule 4 described a placement three of its own seven checkers
 cannot have. One report investigated and closed with no change.**
@@ -1163,7 +1199,7 @@ silence is being read.
 
 **Read off the workflow, not off the review.** The report asserted that
 `check-clang-warnings.py` and `check-gcc-warnings.py` "self-test in one job and gate in another".
-They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:959` and gates at
+They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:1015` and gates at
 `:983`, both in `linux-clang`; `check-gcc-warnings.py` self-tests at `:2626` and gates at `:2647`,
 both in `linux-lto-tests`. All seven pairs are same-job. What was genuinely wrong was "immediately
 before", not the job placement, and that is what changed.
@@ -1172,7 +1208,7 @@ before", not the job placement, and that is what changed.
 "immediately before" claim for `source-lint`'s three lints, where it is true of two of them; leaving
 it would have left a Procedures document contradicting the Policy on the exact sentence being
 corrected, which the authority order in `SOURCE_OF_TRUTH.md` does not permit. Deliberately NOT
-followed: the `source-lint` comment at `.github/workflows/build.yml:441` carries the same phrasing
+followed: the `source-lint` comment at `.github/workflows/build.yml:475` carries the same phrasing
 about the citation self-test, and the `scripts/` tree summary in `REPOSITORY_MAP.md` still
 enumerates four lints where its own table lists seven. Both are real; neither is this round's
 subject, and the second is a stale COUNT rather than the placement claim.

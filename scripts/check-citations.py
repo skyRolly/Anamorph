@@ -291,7 +291,15 @@ DELIBERATE_REAIMS = {
     # entries: it described spellings the default branch now carries, and a
     # comment that outlives its code is the failure this repository is written
     # against.
+    # RE-AIMED 2026-08-21 by the GCC 13 -> 16.2.0 toolchain migration. The row
+    # cites the env line that carries the GCC pin; that line's VALUE changed in
+    # this change set, so the anchor is textually indistinguishable from drift
+    # and has to be declared. The expectation below is the token, not the
+    # number, so the entry cannot quietly survive onto some unrelated line.
+    ("docs/policies/DEPENDENCY_POLICY.md", ".github/workflows/build.yml:124"):
+        "ANAMORPH_GCC_VERSION",
 }
+
 
 
 def reaim_target_text(whole):

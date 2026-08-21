@@ -31,11 +31,23 @@
 #  is a release-topology decision -- it is making the floor VISIBLE and making
 #  the run that raises it the run that fails, instead of a user's DAW.
 #
-#  Raising the floor is therefore a deliberate, reviewable act: change the two
+#  Raising the floor is therefore a deliberate, reviewable act: change the
 #  constants below in the same change as whatever raised them, and say in the
 #  PR which systems just stopped being supported. `COMPATIBILITY_MATRIX.md`
 #  quotes no number of its own and defers here, for the same reason CLAUDE.md
 #  quotes no pluginval strictness: the copy that rots is the one nobody edits.
+#
+#  WHY `CXXABI` IS GATED AND NOT ONLY `GLIBCXX`. Both come out of the same
+#  libstdc++, but they move on their own schedules, and for this artifact the
+#  binding one is no longer `GLIBCXX`. Measured when the Linux toolchain moved
+#  to GCC 16 (2026-08-21): the shipped VST3 asks for `GLIBCXX_3.4.31` -- GCC 13,
+#  unchanged from the GCC 13 build -- while its exception path pulls in
+#  `__cxa_call_terminate@CXXABI_1.3.15`, which libstdc++ first shipped in GCC 14.
+#  The real requirement was therefore a GCC 14 runtime while the gate, reading
+#  `GLIBCXX` alone, still reported a GCC 13 floor and passed. A family the gate
+#  does not name cannot raise the floor loudly, so it raises it silently: that
+#  is the one failure mode this file exists to prevent, and it had reappeared in
+#  a family nobody had declared. `CXXABI` is declared here for that reason.
 #
 #  WHY THE MAXIMUM AND NOT THE LIST. A binary legitimately references a dozen
 #  version tags -- GLIBC_2.2.5 through GLIBC_2.38 -- because each symbol names
@@ -71,10 +83,11 @@ import subprocess
 import sys
 
 # ---------------------------------------------------------------------------
-#  THE FLOOR. One place. Raising either of these drops systems -- say which.
+#  THE FLOOR. One place. Raising any of these drops systems -- say which.
 # ---------------------------------------------------------------------------
 GLIBC_FLOOR = "2.38"        # Ubuntu 23.10+, Debian 13+; excludes Ubuntu 22.04 LTS (2.35)
 GLIBCXX_FLOOR = "3.4.31"    # GCC 13+
+CXXABI_FLOOR = "1.3.15"     # GCC 14+; Ubuntu 24.04+, Debian 13+ (see below)
 
 VERREF = re.compile(r"^\s*0x[0-9a-f]+\s+0x[0-9a-f]+\s+\d+\s+(?P<tag>[A-Za-z_]+)_(?P<ver>[0-9][0-9.]*)\s*$")
 
@@ -110,7 +123,12 @@ def inspect(path: str):
     return parse_version_refs(out)
 
 
-FLOORS = {"GLIBC": GLIBC_FLOOR, "GLIBCXX": GLIBCXX_FLOOR}
+FLOORS = {"GLIBC": GLIBC_FLOOR, "GLIBCXX": GLIBCXX_FLOOR, "CXXABI": CXXABI_FLOOR}
+
+
+def floor_summary() -> str:
+    """The declared floor, in declaration order, for human-facing messages."""
+    return ", ".join(f"{fam}_{ver}" for fam, ver in FLOORS.items())
 
 
 def evaluate(highest):
@@ -209,8 +227,12 @@ def check(paths) -> int:
               "that drops.", file=sys.stderr)
         return 1
 
+    # SPELLED FROM `FLOORS`, not from the constants by name: this line and the
+    # `--print-floor` one below both used to list two families literally, and
+    # when a third was declared they kept reporting the old pair -- a success
+    # message describing a floor the gate no longer enforces.
     print(f"check-linux-abi: within the declared floor "
-          f"(GLIBC_{GLIBC_FLOOR}, GLIBCXX_{GLIBCXX_FLOOR}).")
+          f"({floor_summary()}).")
     return 0
 
 
@@ -276,34 +298,52 @@ Version References:
     # "a MISSING libstdc++ family is reported, not skipped" reported CLEAN while
     # half the declared floor went unexamined. Named rather than numbered so the
     # comment survives a reordering -- the same reason nothing here cites a line.
-    expect("a binary within both floors is clean and complete",
-           evaluate({"GLIBC": "2.35", "GLIBCXX": "3.4.30", "GCC": "3.3.1"}),
+    expect("a binary within every floor is clean and complete",
+           evaluate({"GLIBC": "2.35", "GLIBCXX": "3.4.30", "CXXABI": "1.3.14",
+                     "GCC": "3.3.1"}),
            ([], []))
-    expect("exactly at both floors is still clean",
-           evaluate({"GLIBC": GLIBC_FLOOR, "GLIBCXX": GLIBCXX_FLOOR}),
+    expect("exactly at every floor is still clean",
+           evaluate({"GLIBC": GLIBC_FLOOR, "GLIBCXX": GLIBCXX_FLOOR,
+                     "CXXABI": CXXABI_FLOOR}),
            ([], []))
     expect("over one floor is reported for THAT family only",
-           evaluate({"GLIBC": "2.39", "GLIBCXX": GLIBCXX_FLOOR}),
+           evaluate({"GLIBC": "2.39", "GLIBCXX": GLIBCXX_FLOOR,
+                     "CXXABI": CXXABI_FLOOR}),
            ([("GLIBC", GLIBC_FLOOR, "2.39")], []))
     expect("a MISSING libstdc++ family is reported, not skipped",
-           evaluate({"GLIBC": "2.35"}),
+           evaluate({"GLIBC": "2.35", "CXXABI": "1.3.14"}),
            ([], ["GLIBCXX"]))
     expect("...and a missing glibc family likewise",
-           evaluate({"GLIBCXX": "3.4.30"}),
+           evaluate({"GLIBCXX": "3.4.30", "CXXABI": "1.3.14"}),
            ([], ["GLIBC"]))
     expect("a missing family is reported even while another is over its floor",
-           evaluate({"GLIBC": "2.39"}),
+           evaluate({"GLIBC": "2.39", "CXXABI": "1.3.14"}),
            ([("GLIBC", GLIBC_FLOOR, "2.39")], ["GLIBCXX"]))
     # THE ORDERING TRAP AGAIN, INSIDE THE VERDICT. `version_key` is tested in
     # isolation above, but swapping it for a raw string comparison *within*
     # `evaluate` survives every other case here: `2.9` > `2.38` lexically, so a
     # binary comfortably under the floor would be reported as over it.
     expect("2.9 is under the 2.38 floor in the verdict too, not over it",
-           evaluate({"GLIBC": "2.9", "GLIBCXX": GLIBCXX_FLOOR}),
+           evaluate({"GLIBC": "2.9", "GLIBCXX": GLIBCXX_FLOOR,
+                     "CXXABI": CXXABI_FLOOR}),
            ([], []))
     expect("families with no declared floor neither satisfy nor break one",
-           evaluate({"GLIBC": "2.35", "GLIBCXX": "3.4.30", "CXXABI": "1.3.13"}),
+           evaluate({"GLIBC": "2.35", "GLIBCXX": "3.4.30", "CXXABI": "1.3.13",
+                     "GCC": "3.3.1"}),
            ([], []))
+
+    # THE CASE THE GCC 16 MIGRATION ADDED, and the reason `CXXABI` is declared
+    # at all: a binary can sit exactly ON the libstdc++ floor by `GLIBCXX` and
+    # still require a newer libstdc++ through `CXXABI`. Before that family was
+    # declared this verdict was ([], []) -- clean -- for an artifact that would
+    # not load on the system the floor names.
+    expect("over the CXXABI floor is a breach even at the GLIBCXX floor",
+           evaluate({"GLIBC": GLIBC_FLOOR, "GLIBCXX": GLIBCXX_FLOOR,
+                     "CXXABI": "1.3.17"}),
+           ([("CXXABI", CXXABI_FLOOR, "1.3.17")], []))
+    expect("a MISSING CXXABI family is reported, not skipped",
+           evaluate({"GLIBC": "2.35", "GLIBCXX": "3.4.30"}),
+           ([], ["CXXABI"]))
 
     # The declared floors must themselves be parseable, or the gate compares
     # against nothing.
@@ -332,7 +372,7 @@ def main() -> int:
     if a.self_test:
         return self_test()
     if a.print_floor:
-        print(f"GLIBC_{GLIBC_FLOOR} GLIBCXX_{GLIBCXX_FLOOR}")
+        print(" ".join(f"{fam}_{ver}" for fam, ver in FLOORS.items()))
         return 0
     if not a.binaries:
         ap.error("give at least one binary, or --self-test / --print-floor")

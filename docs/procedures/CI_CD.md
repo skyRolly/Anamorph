@@ -93,7 +93,7 @@ jobs that guard classes the build matrix cannot see:
 | **windows** | `windows-latest` (MSVC, multi-config) | VST3 + Standalone (+ tests) | VST3, **both modes ×3** — **blocking** |
 | **macos** | `macos-latest` (Apple Silicon) | universal VST3 + AU + Standalone (+ tests) | **VST3 and AU**, both modes ×3 each — **blocking** |
 | **macos-intel** | `macos-15-intel` (**native Intel**) | thin x86_64 VST3 + AU (+ tests); Standalone off; **no packaging, no artifacts** | **VST3 and AU**, both modes ×3 each — **blocking** |
-| **linux-lto-tests** | `ubuntu-24.04` (**pinned image**, pinned `g++-13`) | GCC `-flto`: both test targets only (Standalone off); **no packaging, no artifacts** | — (the suites against LTO codegen, plus the GCC warning gate) |
+| **linux-lto-tests** | `ubuntu-latest` + **digest-pinned `gcc:16.2.0`** | GCC `-flto`: both test targets only (Standalone off); **no packaging, no artifacts** | — (the suites against LTO codegen, plus the GCC warning gate) |
 | **realtime** | `ubuntu-latest` | Clang `-fsanitize=realtime`: the DSP suite only (Standalone off); **no packaging, no artifacts** | — (the audio path under RealtimeSanitizer, plus the leaf-layer `-Wfunction-effects` check) |
 | **fuzz** | `ubuntu-latest` | Clang libFuzzer + ASan/UBSan: `AnamorphFuzzState` only (tests and Standalone off); **no packaging, no artifacts** | — (`setStateInformation` under libFuzzer) |
 
@@ -786,13 +786,16 @@ permission list.
 **The compiler is pinned, and so is the image.** `-Wmisleading-indentation`'s heuristic and
 `-Wshadow`'s treatment of members have both moved between GCC majors, so the counts mean nothing
 against another one; the baseline records `# gcc-major:` and the gate exits 2 rather than 1 when the
-two disagree. The *supply* is the opposite way round from Clang, though, and that changes the
-mechanism: the Clang pin is **ahead** of the image and installed from apt.llvm.org, while
-`ANAMORPH_GCC_VERSION: 13` is simply **what noble ships** (`g++` 13.3). There is nothing to install,
-and the only real risk is the image moving underneath the pin — which is why this job alone pins
-`runs-on: ubuntu-24.04` instead of `ubuntu-latest`. Naming the compiler without naming the image only
-moves the unpinned variable one level up; with both named, a `g++-13` that has left the archive fails
-at `apt` in the first minute rather than at the gate twenty minutes later.
+two disagree. The *supply* differs from Clang's, though, and that decides the
+mechanism. Clang comes from apt.llvm.org because upstream packages it there; the GNU project ships
+only source, leaving packaging to distributions. Noble stops at `g++-14`, and the only `g++-16` in
+`ubuntu-toolchain-r/test` is a dated **trunk snapshot** (`16-20260315`) — the "newest, not stable"
+that ADR-0028 already rejected for Clang 23. So the pin is the **official upstream toolchain image,
+pinned by digest**: `gcc:16.2.0@sha256:8d466d90…`, shared by all three Linux GCC jobs. A digest is a
+stronger pin than any `apt` version — a tag can be repointed, a digest cannot — which is why these
+jobs no longer pin `runs-on`: the host stopped supplying the compiler, so it stopped being the
+unpinned variable. The digest is spelled per job because `jobs.<id>.container` cannot read `env`, and
+each job asserts `g++ -dumpfullversion` against `ANAMORPH_GCC_TOOLCHAIN` so the two cannot drift.
 
 What the move cost the baseline was **measured, not assumed**, with clang-20 kept as the control: the
 same three targets built from one tree under 20 and 22 emit a `diff`-identical **52-instance** warning
@@ -1038,6 +1041,14 @@ a runner-image move raises it **silently and retroactively** — the artifact st
 it loaded on last week, with no failure in CI and no line in any diff. Measured when the gate landed:
 `GLIBC_2.38` and `GLIBCXX_3.4.31`, i.e. Ubuntu 23.10+ and GCC 13+, so the artifact does **not** load
 on Ubuntu 22.04 LTS. That was not a decision; it was an image move nobody saw.
+
+The floor gained a third family with the GCC 16 migration (2026-08-21). `GLIBC` and `GLIBCXX` did not
+move — the GCC 16.2 artifact still asks for `GLIBC_2.38` and `GLIBCXX_3.4.31` — but its exception
+path pulls `__cxa_call_terminate@CXXABI_1.3.15`, which libstdc++ first shipped in **GCC 14**. Reading
+`GLIBCXX` alone, the gate would have reported a GCC 13 floor and passed an artifact needing a GCC 14
+runtime, so `CXXABI_1.3.15` is now declared and gated alongside the other two. In practice that moves
+the libstdc++ requirement from Ubuntu 23.10 (EOL July 2024) to **Ubuntu 24.04+ / Debian 13+**, both of
+which ship a GCC 14 libstdc++; the `GLIBC` half of the floor is unchanged.
 
 The floor lives in `scripts/check-linux-abi.py` and `COMPATIBILITY_MATRIX.md` defers to it rather
 than restating a number. The gate does not attempt to *lower* the floor — that means an older
