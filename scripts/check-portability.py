@@ -317,31 +317,20 @@ def lint(root: Path) -> int:
 # remove exactly these, and nothing but a human reading both files has ever
 # enforced it.
 #
-# `\.probe` IS IN THE SIBLING'S SET AND IS DELIBERATELY ABSENT FROM THIS ONE.
-# The name is the same in both products; the uninstallers are not, and the
-# difference is exactly what decides whether the file can survive:
-#
-#   * `install.sh` creates `.probe` INSIDE the staging directory
-#     (`$_out/.probe`) as one end of a hard-link same-filesystem test, and
-#     removes it on every branch of that test. One can therefore only survive a
-#     hard kill in the window between the `touch` and the `rm`.
-#   * This repository's `uninstall.sh` removes each staging directory with a
-#     single unconditional `rm -rf`, so anything inside it — `.probe` included —
-#     goes with it. There is no path through that script which leaves a staging
-#     directory standing.
-#   * The SIBLING's uninstaller has one: `--discard-parked` is opt-in, so by
-#     default it KEEPS a `.vst3.prev` parked by an interrupted install, and to do
-#     that it must leave the directory around that copy in place. `.probe` is
-#     then the one scratch file that outlives the uninstall, which is why it is
-#     swept by name there and listed in the set here.
-#
-# Listing it anyway would be a false positive against a correct uninstaller — and
-# the reflex fix for a false positive is to switch the lint off, taking the three
-# real names with it. IF this repository's uninstaller ever gains a path that
-# preserves a staging directory, add `|\.probe\b` back in the SAME change.
+# `\.probe` is in the set and does NOT match inside `.anamorph-probe`, where the
+# character before `probe` is a hyphen. It earns its place as of the round that
+# brought `--discard-parked` over from the sibling: the same-filesystem test's
+# hard link is removed on every branch that test takes, so one survives only a
+# hard kill between the `touch` and the `rm` — and the uninstaller's
+# keep-the-parked-copy path is the single path that also leaves the directory
+# around it standing, which is the only way that file outlives an uninstall.
+# Before that path existed, every staging directory went with one unconditional
+# `rm -rf` and `.probe` could not survive; it was left out of this set for that
+# reason, and the note left here said to add it back in the same change that
+# introduced such a path. This is that change.
 # The reasoning lives HERE and only here: `uninstall.sh` ships to users inside
 # the Linux zip, so it carries no note about this lint, this file, or CI.
-SCRATCH_NAME = re.compile(r"\.anamorph-[a-z-]+|\.Anamorph\.new")
+SCRATCH_NAME = re.compile(r"\.anamorph-[a-z-]+|\.Anamorph\.new|\.probe\b")
 
 
 def scratch_names_agree(root: Path) -> int:

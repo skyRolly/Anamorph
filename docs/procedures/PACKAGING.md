@@ -53,10 +53,15 @@ gated steps (`package_windows` / `package_macos_pkg`), each with the version par
   | 2) system-wide | `/usr/lib/vst3` | `/usr/local/bin` | `sudo` per operation, never for the whole script |
 
   `~/.vst3` is the VST3 standard's per-user Linux folder and is a default scan path in
-  REAPER/Bitwig/Ardour, so the no-root route is the recommended one. Two invocations skip
+  REAPER/Bitwig/Ardour, so the no-root route is the recommended one. Three invocations skip
   the prompt: **as root** (`sudo ./install.sh`, the pre-0.9.3 documented form) it installs
-  system-wide unchanged — root has no meaningful per-user home — and with **no terminal on
-  stdin** it takes the default. Mode 2 fail-closes rather than degrading: no `sudo` on
+  system-wide unchanged — root has no meaningful per-user home — with **no terminal on
+  stdin** it takes the default, and **`--user` / `--system`** answer it explicitly, which is
+  the only way for a caller with no terminal to select mode 2 without handing the whole script
+  to root. The two flags together are an error, as is an unrecognised option, and `--user` under
+  root is refused (`$HOME` under `sudo` depends on the sudoers configuration, so the destination
+  would not be predictable); repeating one flag is not a conflict. `uninstall.sh` takes the same
+  two, plus `--discard-parked`. Mode 2 fail-closes rather than degrading: no `sudo` on
   `PATH` prints the "use a user installation instead" error and exits 1, and a failed elevated
   operation prints the permission-denied message and exits 1.
 
@@ -93,17 +98,36 @@ gated steps (`package_windows` / `package_macos_pkg`), each with the version par
   name *inside* the plug-in directory, same filesystem by construction. A false negative costs
   the scan-path property, never atomicity. The probe's link target is the only thing written
   into the scan directory, and `ln` refuses an existing target — so it is **removed up front on
-  every run**, before the probe and before the recovery paths that never probe. A marker left by
+  every run**, before any probe. A marker left by
   a run killed mid-probe is therefore litter, never a decision; without that clear it would fail
-  the probe on every later run and pin staging to the fallback permanently. The Standalone stages beside its own destination
+  the probe on every later run and pin staging to the fallback permanently. The recovery scan
+  probes as well: a parked bundle is adopted only from a candidate that passes the same
+  filesystem test as a fresh one, rather than on the inductive ground that whatever parked it
+  must already have passed. The Standalone stages beside its own destination
   (`.Anamorph.new`) because its directory may be on a different filesystem again, and a bin
   directory is not a scan path. Every commit is a same-filesystem rename, which also replaces a
   **running** Standalone that `cp` refuses with `Text file busy`.
 
+  **Which candidates are trusted.** Both staging locations are accepted only when the directory
+  is not a symlink, is owned by the identity whose writes land in the destination (root for a
+  system-wide install, the invoking user otherwise) and is writable by nobody else; the mode is
+  matched on its last two digits so a set-gid parent's `2700` reads like a plain `700`. One this
+  run creates is `chmod 700`ed explicitly, so the next run can adopt what this one made whatever
+  the umask was. If neither candidate passes, the run **stops without installing** and names both
+  paths — a fresh install included, because staging is where the payload is assembled before the
+  rename that publishes it. The recovery scan applies the same two tests and *says so* when a
+  parked bundle sits in a directory it can no longer use, since that is the one path on which the
+  interrupted-install guarantee does not hold.
+
   `uninstall.sh` mirrors the same two modes, so a per-user install is removed without root, and
   removes the installer's own scratch (both stage-directory locations, the probe marker and the
   staged Standalone) by exact name, so an interrupted install leaves nothing that survives a
-  deliberate uninstall.
+  deliberate uninstall — **with one deliberate exception**: a `Anamorph.vst3.prev` parked by an
+  interrupted install is **kept**, named on stdout together with the mode-correct `./install.sh`
+  that restores it (nothing else can), and removed only under `--discard-parked`. The `.probe`
+  hard link beside it is still swept, because that path is the only one leaving a stage directory
+  standing and so the only way that marker can outlive an uninstall; `scripts/check-portability.py`
+  holds installer and uninstaller to the same scratch-name set, `.probe` included.
 
   **Not chased** (the Linux counterpart of the macOS note below): a per-user install does not
   *remove* an existing system-wide one — that would need the elevation the mode exists to avoid

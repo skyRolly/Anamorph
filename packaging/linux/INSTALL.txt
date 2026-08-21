@@ -58,9 +58,29 @@ A) Installer installation (recommended) / 脚本安装(推荐)
   Running it as root (`sudo ./install.sh`) installs system-wide without asking.
   用 `sudo ./install.sh` 运行时直接进行系统级安装,不再询问。
 
+  To answer up front, e.g. from a script with no terminal to ask on / 在无终端的
+  脚本中直接指定安装位置:
+      ./install.sh --user       (current user / 当前用户)
+      ./install.sh --system     (all users; asks for your password when it needs it /
+                                 系统级,需要时会提示输入密码)
+
+  With no terminal there is nothing to prompt on, so --system then needs you to be
+  root already, or to have passwordless or still-cached sudo. Passing both options
+  together is an error rather than a silent choice. / 无终端时无法提示输入密码,因此
+  --system 需要您已经是 root,或已配置免密码 sudo,或 sudo 凭据仍在缓存中;同时传入
+  两个选项会报错,而不会静默选择其一。
+
   To remove later / 以后卸载:
       ./uninstall.sh          (same choice; per-user removal needs no root)
       sudo ./uninstall.sh     (system-wide)
+      ./uninstall.sh --user     (no terminal needed / 无需终端)
+      ./uninstall.sh --system   (no terminal needed / 无需终端)
+
+  If an interrupted install parked a copy of your previous Anamorph, the uninstaller
+  KEEPS it and says so; only './install.sh' puts it back, in the same mode it was
+  parked from. Add --discard-parked to delete it along with the rest. / 若此前的安装
+  被中断并暂存了旧版插件,卸载脚本会保留该副本并给出提示(只有 './install.sh' 能将其
+  恢复,且需使用与暂存时相同的安装模式);如需一并删除,请加 --discard-parked。
 
 --------------------------------------------------------------------
 B) Manual installation / 手动安装
