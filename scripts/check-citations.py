@@ -158,6 +158,7 @@ TRACKED = (
     "src/dsp/MultibandWidth.h",
     "src/dsp/ScopeBuffer.h",
     "src/dsp/SoloMonitor.cpp",
+    "src/dsp/SoloMonitor.h",
     "src/dsp/VelvetNoise.cpp",
     "src/gui/LookAndFeel.cpp",
     "src/gui/Vectorscope.h",
@@ -387,27 +388,36 @@ DELIBERATE_REAIMS = {
 # `invalidated_reaims` below exists because exactly that happened twice in one
 # change set. A document name cannot go stale when code moves.
 #
-# WHY THESE SEVEN. They are the architecture set -- the documents whose evidence
+# WHY THESE EIGHT. They are the architecture set -- the documents whose evidence
 # lines a reader follows to check a claim about the system rather than about a
-# procedure. Measured over them: 20 glossed citations, 5 firing, all 5 genuine
-# defects, 0 false positives. Repo-wide the same extraction fires 10 times, 9
+# procedure. They carry 43 glossed citations between them, and the tree is clean.
+# THE MEASUREMENT THAT PUT THEM HERE, over the seven listed when this was written:
+# 20 glossed citations, 5 firing, all 5 genuine defects, 0 false positives -- and
+# those 5 were corrected in the same change set, which is why the count of firing
+# anchors is 0 now and says nothing about whether the check works.
+# Repo-wide the same extraction fires 10 times, 9
 # genuine and 1 false -- `RELEASE_PROCESS.md:45` cites `CMakeLists.txt:14`
 # (`project VERSION`), a prose gloss that happens to be backticked. That one
 # false positive is the reason this is an opt-in tuple and not the whole scan:
 # the noise rate is a property of how a given document writes its parentheticals,
 # so a document joins this list when someone has read its citations.
 #
-# NOT ADDED, and named so the omission is a decision: `docs/architecture/
-# SIGNAL_FLOW.md`. It carries one qualified anchor and 33 BARE ones, and adding
-# it would report coverage of the DSP-order evidence while 33 of its 35 anchors
-# stay invisible to this tool for the reason bare anchors always are -- `CITATION`
-# requires a path. Qualifying them is the work that earns its place here.
+# `SIGNAL_FLOW.md` JOINED ON 2026-08-22, and how it got here is the argument for
+# the whole mechanism. It carried two qualified anchors and 33 BARE ones, all
+# invisible for the reason bare anchors always are -- `CITATION` requires a path --
+# in the document that records DSP signal order, a `CLAUDE.md` hard-stop class.
+# Sixteen of them sat inside an ASCII diagram where a full path would have
+# destroyed the alignment the diagram exists for, so the numbers moved OUT of the
+# diagram into a table beside it and came back qualified: 40 anchors the gate can
+# see, 23 of them glossed and content-checked. The diagram kept the order and the
+# symbol, which is what it is for and what does not rot.
 GLOSS_CHECKED_DOCS = (
     "docs/architecture/ARCHITECTURE.md",
     "docs/architecture/LATENCY_MODEL.md",
     "docs/architecture/PARAMETER_REFERENCE.md",
     "docs/architecture/PARAMETER_REGISTRY.md",
     "docs/architecture/SERIALIZATION_REGISTRY.md",
+    "docs/architecture/SIGNAL_FLOW.md",
     "docs/architecture/STATE_SERIALIZATION.md",
     "docs/architecture/THREAD_MODEL.md",
 )
