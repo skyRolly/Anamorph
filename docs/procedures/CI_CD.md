@@ -932,9 +932,34 @@ under-checking rather than failing on a question it cannot answer. On a **fork**
 `base.sha` through `git merge-base`.
 
 **What it can and cannot do.** It detects that a citation no longer points at the same *text* it
-pointed at in the base — the whole "an edit above shifted it" class. It cannot tell you an anchor was
-aimed at the wrong code to begin with; this repository's existing anchors are therefore *adopted*,
-not audited. A clean run means none of them **moved**.
+pointed at in the base — the whole "an edit above shifted it" class. On its own it cannot tell you an
+anchor was aimed at the wrong code to begin with, so anchors outside the set below are *adopted*,
+not audited, and a clean run means none of them **moved**.
+
+**Since 2026-08-21 that hole is closed for the anchors that say what they point at.** A citation
+written in this repository's own convention carries the symbol beside the line number —
+`` src/PluginProcessor.cpp:105-108 (`updateLatency`) `` — and the checker now reads that gloss and
+asserts the token is in the cited lines. It needs no base revision, because it is not a question
+about drift: it asks whether an anchor lands on what its own document says it lands on, in the tree
+as it is now. Exactly two gloss shapes are claimed — one backticked identifier, or one double-quoted
+source string, alone in the parentheses — so prose like `(24 Hz timer)` asserts nothing rather than
+having an assertion invented for it.
+
+It is **opt-in per document** (`GLOSS_CHECKED_DOCS`), and the list names documents rather than
+anchors so it holds no line numbers and cannot itself go stale. Seven architecture documents are in
+it. Measured when it was written: 22 glossed citations across them, **5 firing, all 5 genuine
+defects, 0 false positives** — anchors that were fully qualified, parsed, and green at 342/342 while
+pointing at unrelated code (`ScopedNoDenormals` cited 10 lines early, `isBusesLayoutSupported` 53,
+`applyAutoGain` 53, `updateLatency` 10, and a Vectorscope sentence cited at 18-20 that lives on 21).
+Repo-wide the same extraction fires 10 times, 9 genuine and 1 false, which is why it is opt-in.
+`--fix` deliberately does **not** repair one: it re-anchors by the line map, which would carry a
+wrong aim to a new line and change nothing about the aim.
+
+`docs/architecture/SIGNAL_FLOW.md` is deliberately **not** in the list, and that is a finding rather
+than an omission: it carries one qualified anchor and **33 bare ones**, uniformly 13 lines stale.
+Bare anchors carry no path, and the citation pattern requires one, so none of the 33 has ever been
+seen by this gate — in the document that records DSP signal order, a `CLAUDE.md` hard-stop class.
+Qualifying them is the work that earns it a place here.
 
 **`--fix` now reports the declarations it invalidates** (2026-08-18). A `DELIBERATE_REAIMS` entry is
 a claim about a *spelling*, and a re-anchor can quietly falsify it: the anchor an entry names drifts
