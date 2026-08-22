@@ -7,7 +7,8 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.5 change set** (2026-08-22, matching the CHANGELOG heading) — the
-**A7-2 investigation** (first below, no code), then the **A7-1 implementation round**. Under it, the **0.9.4 change set** is retained in full
+**PR #127 review round** (first below), then the **A7-2 investigation** (no code), then the
+**A7-1 implementation round**. Under it, the **0.9.4 change set** is retained in full
 (2026-08-21, matching its own CHANGELOG heading — re-dated
 from 2026-08-15 in the hover-occlusion round, on 2026-08-20, and again on 2026-08-21, each time
 because the version took a further user-visible change) — the
@@ -78,6 +79,54 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**PR #127 review round (2026-08-22): a real hole in the version-bump exemption, and a numbers pass
+that reconciled every check-count claim against the binaries rather than against arithmetic.**
+
+**The exemption had a second door, and it was open.** `VERSIONED_LINES` was consulted in the paired
+check path but not in the **count-mismatch** path — the branch reached when a document changes HOW
+MANY times it cites a file. Each path carried its own copy of "is this citation still right?", and
+only one of them grew the substitution. Consequence: a version bump landing in the same change set as
+an added citation of `CMakeLists.txt` reported line 14 as drifted and re-blocked the release the
+substitution exists to unblock. **Reproduced on the real tree before the fix** — one extra citation
+appended to `RELEASE_PROCESS.md` turned `--check` red with `UNMAPPABLE CMakeLists.txt:14` — and green
+after. The fix is one shared `anchor_still_right()` used by both paths, so the two cannot drift apart
+again; the duplication was the defect, not a symptom of it.
+
+**Proven not to have widened anything.** With the count mismatch AND a seeded drift on a
+*neighbouring* line of the same file (`CMakeLists.txt:276`, cited alongside `:14` in `TRADEMARKS.md`),
+the run still fails on that path — so the exemption still covers one declared line and nothing else.
+Self-test 131 → 135 cases: three behavioural cases driving `anchor_still_right` directly on synthetic
+sources (excused when the anchor did not move; a neighbouring line still compared; a MOVED anchor not
+excused even on the declared line) plus a structural case asserting both paths call the shared
+function. That structural case was **proven live** by re-inlining the old comparison, which fails it
+1-of-135. Its literals are split so the check cannot match its own source text — a self-matching
+source check counts itself and passes regardless of the code.
+
+**Check counts reconciled from the binaries.** The coverage entry below said "174 checks (Test 39
+adds 12)" while `HANDOVER.md` and the v0.9.5 worklog said 178 and 16; the worklog separately gave
+178 plain against 172 ASan and called that "two fewer". Both were stale rather than wrong-in-kind:
+Test 39 gained a fourth check per rate on review (the mixed-block-size run), and the ASan figure had
+not been re-measured since. Re-run, not re-derived: **plain 178 / ASan 176** for `AnamorphTests`,
+**920 / 920** for `AnamorphStateTests`, 0 failures and **0 sanitizer diagnostics** in every case. The
+delta is 2 and always was — Test 38's malloc half compiling out under ASan and saying so. The same
+pass corrected `RELEASE_HARDENING_PLAN.md` ("37 DSP self-tests … 162 checks") and
+`TESTING_POLICY.md` ("the 37 DSP self-tests"), both left behind when v0.9.5 added Test 39. Historical
+round entries in this file keep their own figures: they record what was true when they were written.
+
+**Test 39 now varies the block size**, which review identified as the case it was missing:
+`linHistSlide` carries the JUST-PROCESSED block's length, so consecutive gather blocks of differing
+length are what the slide arithmetic is about, and two runs each at a fixed size could both be
+correct with the offset confused for a constant. A third run cycles 32/128/64/256/32 — summing to
+512, so events still land on a block boundary and every neighbouring pair differs — and is
+bit-identical to the 512-sample reference at all four rates. Its comparison is on BITS rather than
+`==`: `-Wfloat-equal` is at zero in the Clang baseline, and a float `==` is the wrong predicate for a
+bit-identity claim anyway, calling +0 and −0 equal (which this module's own signed-zero algebra cares
+about) and NaN unequal to itself. That warning is what turned `linux` red; `source-lint` went red on
+a citation this round's own change set had invalidated, re-aimed by hand and declared for its one
+transition. **`VelvetNoise.cpp` itself was reviewed and left alone** — the invalidation-on-entry,
+the re-arm-on-gather-exit, the `reset()` ordering and the copy bounds were all confirmed sound.
+[Verified]
 
 **A7-2 investigation (2026-08-22): the roadmap's own proposal, prototyped and measured — and
 rejected on the measurement. No product code changed. The alternative it turned up is recommended,
@@ -183,9 +232,9 @@ same as a true park) and the path is still reached from a fresh `prepare()` with
 default, which is the state it was written for. The repair is Class B (it moves the sample at which
 the amount reaches zero), so it is filed as **A7-9** with its measurement rather than folded in.
 
-**Verification.** `AnamorphTests` 174 checks (162 before; Test 39 adds 12) and `AnamorphStateTests`
-920 checks, both 0 failures. Under ASan + UBSan + LSan with the `sanitizers` job's own flag set:
-172 and 920 checks, **0 sanitizer diagnostics** — run for `local-bounds`, which checks the new copy's
+**Verification.** `AnamorphTests` **178 checks** (162 before; Test 39 adds 16 — four checks at each
+of four sample rates) and `AnamorphStateTests` 920 checks, both 0 failures. Under ASan + UBSan + LSan
+with the `sanitizers` job's own flag set: **176** and 920 checks, **0 sanitizer diagnostics** — run for `local-bounds`, which checks the new copy's
 range with a tool rather than only with the argument in the source. `check-realtime` 44 files /
 0 violations, `check-portability` 52 / 0, `check-docs` 104 clean, `check-citations --self-test`
 130 cases and `--check --base origin/main` green, full `scripts/preflight.sh` green.

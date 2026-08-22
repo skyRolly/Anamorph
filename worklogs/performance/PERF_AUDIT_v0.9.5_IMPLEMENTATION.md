@@ -148,9 +148,9 @@ and `--check --base origin/main` green.
 
 **ASan + UBSan + LSan**, built with the `sanitizers` job's own flag set — `address,undefined,vptr,
 float-divide-by-zero,implicit-conversion,unsigned-shift-base,local-bounds,nullability` with the
-project ignorelist, `detect_leaks=1`, `halt_on_error=1`: `AnamorphTests` **172 checks, 0 failures**
-(two fewer than the plain build, which is the allocation guard reporting less under ASan exactly as
-Test 38 documents) and `AnamorphStateTests` **920 checks, 0 failures**, with **zero** sanitizer
+project ignorelist, `detect_leaks=1`, `halt_on_error=1`: `AnamorphTests` **176 checks, 0 failures**
+(two fewer than the plain build's 178, which is Test 38's malloc half compiling out under ASan and
+saying so — "malloc family not live (expected under ASan)" — exactly as that test documents) and `AnamorphStateTests` **920 checks, 0 failures**, with **zero** sanitizer
 diagnostics from either. The point of running them here is `local-bounds`: the new `std::copy`
 reads `[slide, slide + decorrSamps)` of a `prepare()`-sized buffer, and that range is now checked by
 a tool rather than only by the argument in §1.1.

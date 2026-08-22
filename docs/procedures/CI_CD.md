@@ -1003,7 +1003,11 @@ that — it excuses a changed SPELLING, and `is_declared_reaim` returns false wh
 spelling is unchanged, so an entry cannot outlive its transition. For a `VERSIONED_LINES`
 entry the base comparison is replaced by a permanent token check
 (`verify_versioned_lines()`, a hard failure in every mode), it is keyed by one exact
-`(path, line)` pair, and it applies only while the anchor has not moved. Added for the
+`(path, line)` pair, and it applies only while the anchor has not moved. Both check paths -- the
+paired one and the count-mismatch fallback reached when a document changes how many times it cites a
+file -- go through one shared `anchor_still_right()`, because when they each carried their own copy
+only one of them had the substitution, and a version bump landing beside an added citation was
+reported as drift. Added for the
 0.9.5 release, which was the first version bump after `CMakeLists.txt` came under the gate
 and which the gate blocked; `worklogs/performance/PERF_AUDIT_v0.9.5_IMPLEMENTATION.md` §4a.
 

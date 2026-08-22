@@ -421,6 +421,44 @@ VERSIONED_LINES = {
 }
 
 
+def anchor_still_right(tracked, base_src, now_src, a, b, a2, b2):
+    """Is this citation still pointing at what it pointed at? ONE decision.
+
+    BOTH check paths ask this question and they used to answer it separately.
+    The paired path (base and current spell the citation the same number of
+    times) grew the `VERSIONED_LINES` substitution; the count-mismatch path --
+    reached when a document changes HOW MANY times it cites a file -- kept a
+    bare text comparison, so a version bump landing in the same change set as a
+    new citation of `CMakeLists.txt` reported line 14 as drifted and re-blocked
+    the release the substitution exists to unblock. Reproduced before the fix:
+    one added citation in `RELEASE_PROCESS.md` turned `--check` red with
+    "UNMAPPABLE CMakeLists.txt:14".
+
+    The two paths differ only in what they compare against: the count-mismatch
+    path reaches citations whose SPELLING is unchanged, so it passes `a2 == a`.
+    Everything else -- including which lines are allowed to change content -- is
+    the same question and is now answered in one place, which is the property
+    that stops the two drifting apart again.
+
+    A `VERSIONED_LINES` entry substitutes "still contains its stable token" for
+    the base comparison, and only for an anchor that did NOT move; a re-aimed
+    anchor falls through to the ordinary drift path and still needs a
+    `DELIBERATE_REAIMS` declaration.
+    """
+    if (b is None) != (b2 is None):
+        return False
+    for lo, hi in ((a, a2), (b, b2)):
+        if lo is None:
+            continue
+        if lo == hi and (tracked, lo) in VERSIONED_LINES:
+            if VERSIONED_LINES[(tracked, lo)] in line_of(now_src[tracked], hi):
+                continue
+            return False
+        if line_of(base_src[tracked], lo) != line_of(now_src[tracked], hi):
+            return False
+    return True
+
+
 def verify_versioned_lines():
     """Every declared line still contains its stable token. No base revision.
 
@@ -1709,13 +1747,56 @@ def self_test():
               for k in VERSIONED_LINES), True)
 
     # AND IT APPLIES ONLY TO AN ANCHOR THAT DID NOT MOVE. The substitution sits
-    # behind `lo == hi` in `anchor_ok`, so a re-aimed anchor -- the case
+    # behind `lo == hi` in `anchor_still_right`, so a re-aimed anchor -- the case
     # `DELIBERATE_REAIMS` is for -- still goes through the base comparison. That
     # guard is the difference between "this line's content is allowed to change"
     # and "this line is not checked", and a rewrite that drops it would be
     # invisible on a clean tree.
+    # The literal is split so this line cannot match itself; a self-matching
+    # source check counts its own text and passes no matter what the code does.
     check("the versioned substitution is gated on the anchor not having moved",
-          read(__file__).count("if lo == hi and (tracked, lo) in VERSIONED_LINES:"), 2)
+          read(__file__).count("if lo == hi and (tracked, lo) in " + "VERSIONED_LINES:"), 1)
+
+    # BOTH CHECK PATHS ASK THE SAME QUESTION, and this is the case that proves
+    # it. `anchor_still_right` is driven directly on synthetic sources, the way
+    # section 8e drives `glossed_problems_in`, because the defect it fixes was
+    # invisible from the real tree: the count-mismatch path -- reached only when
+    # a document changes HOW MANY times it cites a file -- had its own bare text
+    # comparison, so a version bump landing in the same change set as an added
+    # citation reported `CMakeLists.txt:14` as drifted and re-blocked the
+    # release. Reproduced on the real tree before the fix, green after, and a
+    # drift on a NEIGHBOURING line of the same file still fails on that path.
+    saved_vl2 = dict(VERSIONED_LINES)
+    try:
+        VERSIONED_LINES.clear()
+        VERSIONED_LINES[("F", 1)] = "VERSION"
+        # `line_of` takes a LIST of lines, which is the shape both check paths
+        # hand it (`base_src`/`now_src` hold split sources).
+        base = {"F": ["project(X VERSION 1.0)", "name X"]}
+        now  = {"F": ["project(X VERSION 2.0)", "name X"]}
+        # The version line changed and the anchor did not: excused, on the same
+        # call shape the count-mismatch path uses (`a2 == a`).
+        check("a versioned line is excused when the anchor did not move",
+              anchor_still_right("F", base, now, 1, None, 1, None), True)
+        # A different line of the same file is NOT excused.
+        now2 = {"F": ["project(X VERSION 2.0)", "name Y"]}
+        check("a neighbouring line of the same file is still compared",
+              anchor_still_right("F", base, now2, 2, None, 2, None), False)
+        # A MOVED anchor is not excused either, even on the declared line.
+        base3 = {"F": ["a", "project(X VERSION 1.0)"]}
+        check("a moved anchor is not excused by the declaration",
+              anchor_still_right("F", base3, now, 2, None, 1, None), False)
+    finally:
+        VERSIONED_LINES.clear()
+        VERSIONED_LINES.update(saved_vl2)
+
+    # ONE FUNCTION, NOT TWO. The defect above existed because the two paths each
+    # carried their own copy of the decision and only one of them grew the
+    # substitution. Asserted structurally, because a future edit that re-inlines
+    # either copy would pass every behavioural case above on the day it landed.
+    own = read(__file__)
+    check("both check paths call the shared decision",
+          own.count("all(anchor_still" + "_right(tracked, base_src, now_src"), 2)
 
     # --- 9. EVERY DECLARATION NAMES A SPELLING ITS DOCUMENT REALLY CARRIES ---
     # A declaration excuses a mismatch, so it is consulted ONLY when one occurs.
@@ -1955,8 +2036,11 @@ def main():
                     if not spans:
                         unchecked += len(anchors_o)
                         continue
-                    if all(line_of(base_src[tracked], a) == line_of(now_src[tracked], a)
-                           and (b is None or line_of(base_src[tracked], b) == line_of(now_src[tracked], b))
+                    # The SAME decision the paired path makes below -- a
+                    # version-bumped line is excused here too. This branch sees
+                    # only unchanged spellings, so the anchors are their own
+                    # counterparts.
+                    if all(anchor_still_right(tracked, base_src, now_src, a, b, a, b)
                            for (a, b) in anchors_o):
                         continue
                     # Past this point the citation is DRIFTED and will be counted
@@ -2022,27 +2106,9 @@ def main():
                     continue
 
                 # Correct means: the text at the CURRENT anchors is the text the
-                # BASE anchors named -- EXCEPT on a line whose content is
-                # declared to change on its own schedule (`VERSIONED_LINES`),
-                # where "still contains its stable token" replaces the base
-                # comparison. That substitution applies only to an anchor that
-                # did not move; a re-aimed one falls through to the ordinary
-                # drift path below and still needs a declaration.
-                def anchor_ok(a, b, a2, b2):
-                    if (b is None) != (b2 is None):
-                        return False
-                    for lo, hi in ((a, a2), (b, b2)):
-                        if lo is None:
-                            continue
-                        if lo == hi and (tracked, lo) in VERSIONED_LINES:
-                            if VERSIONED_LINES[(tracked, lo)] in line_of(now_src[tracked], hi):
-                                continue
-                            return False
-                        if line_of(base_src[tracked], lo) != line_of(now_src[tracked], hi):
-                            return False
-                    return True
-
-                same = all(anchor_ok(a, b, a2, b2)
+                # BASE anchors named. `anchor_still_right` carries that rule and
+                # the `VERSIONED_LINES` substitution for both check paths.
+                same = all(anchor_still_right(tracked, base_src, now_src, a, b, a2, b2)
                            for (a, b), (a2, b2) in zip(anchors_o, anchors_c))
                 if same:
                     continue
