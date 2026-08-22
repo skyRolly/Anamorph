@@ -282,8 +282,8 @@ only on digital silence, bounded at **4.476e-36** across the rate range (Chorus 
 comments are drift reported and deliberately not edited this round — the correction rides with the
 A7-9 decision.
 
-**Verification.** `AnamorphTests` **178 checks** (162 before; Test 39 adds 16 — four checks at each
-of four sample rates) and `AnamorphStateTests` 920 checks, both 0 failures. Under ASan + UBSan + LSan
+**Verification.** `AnamorphTests` **178 checks** at the time of that round (162 before; Test 39 adds
+16 — four checks at each of four sample rates; **202 since Test 40**, below) and `AnamorphStateTests` 920 checks, both 0 failures. Under ASan + UBSan + LSan
 with the `sanitizers` job's own flag set: **176** and 920 checks, **0 sanitizer diagnostics** — run for `local-bounds`, which checks the new copy's
 range with a tool rather than only with the argument in the source. `check-realtime` 44 files /
 0 violations, `check-portability` 52 / 0, `check-docs` 104 clean, `check-citations --self-test`
@@ -5922,3 +5922,62 @@ HEAD `c605fbe` (JUCE 8.0.14).
 
 On any change, set this file's "Last updated" to the new HEAD and adjust the affected rows. A new
 module → add a row; a new doc → add to self-coverage; new perf/host data → upgrade the confidence.
+
+
+## A7-2T — the path-equivalence oracle (Test 40)
+
+**What was missing.** The A7-2 investigation recommended replacing Velvet's linear history image
+with a 1–3-run split read straight from the ring, and identified the defect class that rewrite is
+most likely to produce: a **uniform** error in the tap delay, every tap reading one sample too deep.
+That is a pure function of the sample stream, so it gives the same wrong answer at every block
+length — and Test 39's oracle compares the build under test *against itself* at different block
+lengths, with no reference implementation anywhere in it.
+
+**The correction this round made to its own record.** PR #128 stated that a seeded one-sample
+tap-delay error *passes* Test 39 at all four sample rates. That was measured on a session-local
+harness which reproduced Test 39's comparison but not its schedule, and reported as Test 39's
+result. Re-measured against the committed test, seeded in `src/dsp/VelvetNoise.cpp:190`:
+
+| build under test | Test 39 | first difference |
+|---|---|---|
+| seeded, Test 39 as committed | **FAIL** ×4 rates | block 215 — the transport stop |
+| seeded, transport-stop events removed | **FAIL** ×4 rates | block 247 — the moving density |
+| seeded, every path crossing removed | **PASS** ×4 rates | — |
+| seeded, Test 40 | **FAIL** 20 of 20 checks | sample 3 of block 0, every block size and rate |
+
+So Test 39 does catch this seed, but through its **schedule** rather than its oracle: detection
+depends on the run crossing from the gather to the per-sample loop, and a schedule that stayed on
+the gather would not see it. The oracle-level blindness is real; the claim that the committed test
+was blind was not.
+
+**The oracle, and why it costs no product change.** The module already holds two implementations of
+the same arithmetic. The gather's eligibility gate ends with `numSamples <= (int) accum.size()`
+(`src/dsp/VelvetNoise.cpp:147`) — a clause whose stated purpose is direct callers rather than the
+engine — and `accum` is sized from `prepare()`'s `maxBlockSize` alone. An instance prepared for a
+**smaller** block therefore runs the per-sample loop over the same audio, and everything else about
+it is identical: ring, tap positions and signs, weights, envelope/gate coefficients and stop step
+all derive from the sample rate and seed, never from the block size. `linHist`, `accum` and `midBlk`
+are the only block-sized state and the per-sample loop touches none of them. No test hook, no friend
+declaration, no `#ifdef`.
+
+**Coverage it adds beyond Test 39.** Block **4096**, which exceeds `decorrSamps` at 44.1 and 48 kHz
+(1985 and 2160) so that *every* tap splits into a ring run plus a same-block tail — Test 39's largest
+block is 512, so that regime was unreachable. And a **density-1.0** pass: at the 0.5 default exactly
+32 of 64 taps are active and they are the shallow half (`pos` spans 3–982 at 44.1 kHz against a
+1985-sample window), so the deep taps — where a ring read is likeliest to cross the ring origin —
+were exercised by nothing in the suite.
+
+**What is deliberately not asserted.** There is no output-observable way to prove from outside which
+path an instance took, because the two paths are required to produce identical bits — that is the
+property under test. Eligibility is established structurally instead: the targets are set *before*
+`prepare()`, which assigns `current := target` and calls `updateWeights()`, so the density glide is
+at its fixpoint and the amount engaged from the first block; the transport plays and never stops.
+Every clause of the gate holds for the gather instance on every block, and the last clause is
+provably false for the reference instance. The premise check (the gather must really decorrelate,
+measured on the second half of the run so the ring is past `reset()`'s zero-fill) is what stops the
+comparison being vacuously true.
+
+**Verification.** `AnamorphTests` **202 checks** (178 before; Test 40 adds 24 — six at each of four
+sample rates), 0 failures. `AnamorphStateTests` unchanged. `check-docs` clean;
+`check-citations --self-test` and `--check` green. No product code changed: `src/` is byte-identical
+to `main` in this round.

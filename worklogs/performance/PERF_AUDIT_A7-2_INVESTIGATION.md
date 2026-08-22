@@ -219,7 +219,10 @@ changes. If the maintainer un-gates it, §8 is the plan.
    body needs no change" was checked in the follow-up round and does not hold. Test 39's oracle is
    the build under test compared against itself, so it is blind to any defect that is not a function
    of block length — including the likeliest A7-2B defect, a uniform one-sample tap-delay error.
-   Seeded, that error passes Test 39 at all four sample rates. The oracle that catches it needs no
+   Seeded, that error is caught by Test 39 only through its SCHEDULE (at its transport stop, or with
+   that removed at its moving density); with every path crossing removed Test 39 passes on the
+   seeded build at all four rates, so its competence here is incidental and a schedule edit could
+   remove it. The oracle that catches it directly needs no
    product change: `prepare()` sizes `accum` from `maxBlockSize` and the gather gate requires
    `numSamples <= accum.size()`, so an instance prepared for a SMALLER block runs the per-sample
    loop over the same audio with an identical ring, tap set and coefficients — assert the two
@@ -242,8 +245,8 @@ changes. If the maintainer un-gates it, §8 is the plan.
 |---|---|
 | **A7-0** — bench on a named machine, fill the `PERFORMANCE_BUDGET.md` rows | **open**, and gating A7-2. RISK-002 open. |
 | **A7-1** | DONE (v0.9.5). |
-| **A7-2** | **investigated; not implemented.** Proposal (A) rejected on measurement; alternative (B) recommended and planned. Awaiting A7-0, **A7-2T** and a maintainer decision on the design substitution. |
-| **A7-2T** — commit the path-equivalence oracle (§8 step 6) | **open, and a prerequisite of A7-2B rather than a follow-up.** No product change, no A7-0 dependency. |
+| **A7-2** | **investigated; not implemented.** Proposal (A) rejected on measurement; alternative (B) recommended and planned. **A7-2T is now in the tree**; awaiting A7-0 and a maintainer decision on the design substitution. |
+| **A7-2T** — commit the path-equivalence oracle (§8 step 6) | **DONE.** `testVelvetGatherEqualsPerSampleLoop` (Test 40), 24 checks, proven live on a seeded one-sample tap-delay error (20 of 20 fail). A7-2B's remaining gate is A7-0. |
 | **A7-5** — multiband LR4 SIMD | open, blocked on an AVX2 ADR (with W5-D). The ADR should not be drafted until the universal binary's two slices are diffed — `PERF_AUDIT_A7-2_A7-5_A7-9_INVESTIGATION.md` Part II. |
 | A7-4 · A7-8 | maintainer decisions, unchanged. |
 | A7-3 · A7-6 · A7-7 | not scheduled, unchanged. |

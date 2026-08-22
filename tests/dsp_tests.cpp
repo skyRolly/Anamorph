@@ -3275,6 +3275,192 @@ static void testVelvetLinearImageInvariance()
 }
 
 
+static void testVelvetGatherEqualsPerSampleLoop()
+{
+    std::printf ("Test 40: Velvet's H5 gather is bit-identical to the per-sample loop (A7-2T)\n");
+
+    // WHAT THIS PROTECTS, AND WHAT TEST 39 DOES AND DOES NOT DO. Test 39
+    // compares the build under test AGAINST ITSELF at different block lengths.
+    // That is the right assertion for the A7-1 slide, whose failure mode is an
+    // image stale by the previous block's length -- but there is no reference
+    // implementation anywhere in it, so its ORACLE can only see defects whose
+    // extent is measured from the BLOCK start. A gather that computes a
+    // valid-but-wrong FIR -- every tap reading one sample too deep, say -- is a
+    // pure function of the sample stream: the same wrong answer at 32 samples
+    // and at 512.
+    //
+    // MEASURED IN BOTH DIRECTIONS, because the first version of this comment
+    // got it wrong and a seeded run corrected it. Test 39 DOES catch that seed
+    // as committed -- but through its SCHEDULE rather than its oracle. Its first
+    // difference lands at block 215, the transport stop; with the stop removed
+    // it lands at block 247, the moving density; with EVERY path crossing
+    // removed its two bit-identity comparisons pass at all four sample rates on
+    // the seeded build. So its detection of this class is a side effect of the
+    // schedule happening to cross from the gather to the per-sample loop, and a
+    // schedule that stayed on the gather -- or a defect that only bites where
+    // the crossings are not -- would go unseen. On the same seeded build this
+    // test fails 20 of its 20 equivalence checks, at sample 3 of block 0,
+    // independent of schedule. (PERF_AUDIT_A7-2_A7-5_A7-9_INVESTIGATION.md §3
+    // carries the four runs.)
+    //
+    // THE ORACLE, AND WHY IT NEEDS NO PRODUCT CHANGE. The module already
+    // contains two independent implementations of the same arithmetic: the H5
+    // block gather and the general per-sample loop, which H5's own contract says
+    // must agree for any block length. The gather's eligibility gate ends with
+    // `numSamples <= (int) accum.size()` (VelvetNoise.cpp:147) -- a guard whose
+    // stated purpose is direct callers rather than the engine -- and `accum` is
+    // sized from `prepare()`'s `maxBlockSize` alone. So an instance prepared for
+    // a SMALLER block runs the per-sample loop over the very same audio, and
+    // everything else about it is identical: the ring, the tap positions and
+    // signs, the weights, the envelope and gate coefficients and the stop step
+    // all derive from the sample rate and the seed, never from the block size
+    // (VelvetNoise.cpp:14-45). `linHist`, `accum` and `midBlk` are the only
+    // block-sized state, and the per-sample loop touches none of them.
+    //
+    // WHY THIS IS THE GATE FOR A7-2. A7-2B replaces the linear image with a
+    // 1-3-run split read straight from the ring. That rewrite is bit-identical
+    // when it is right and silently wrong-by-a-constant-delay when it is not,
+    // which is the one shape the existing suite cannot see. This test must be
+    // green BEFORE that change lands, not alongside it.
+    //
+    // WHAT IS NOT ASSERTED, said out loud. There is no output-observable way to
+    // prove from outside which path an instance took, because the two paths are
+    // required to produce identical bits -- that is the property under test. The
+    // eligibility is established structurally instead: the targets are set
+    // BEFORE `prepare()`, which assigns `currentAmount = targetAmount` and
+    // `currentDensity = targetDensity` and then calls `updateWeights()` (so
+    // `weightsDensity == currentDensity`), leaving the density glide at its
+    // fixpoint and the amount engaged from the very first block; the transport
+    // is playing and never stops, so `stopping` stays false. Every clause of the
+    // gate is therefore satisfied for the gather instance on every block, and
+    // its last clause is provably false for the reference instance. The premise
+    // check below is what stops the comparison being vacuously true of a module
+    // that decorrelated nothing.
+    juce::ScopedNoDenormals noDenormals; // FTZ, exactly like the real audio thread
+
+    auto sameBits = [] (float a, float b) noexcept
+    {
+        std::uint32_t ua, ub;
+        std::memcpy (&ua, &a, sizeof (ua));
+        std::memcpy (&ub, &b, sizeof (ub));
+        return ua == ub;
+    };
+
+    // 24576 = 768*32 = 192*128 = 48*512 = 6*4096, so every block size below
+    // divides the run exactly and both instances see the same block boundaries.
+    constexpr int kTotal = 24576;
+
+    for (const double sr : { 44100.0, 48000.0, 96000.0, 192000.0 })
+    {
+        // Deterministic stimulus, generated ONCE per rate and fed to both
+        // instances: a noise bed plus a tone, so the Mid history is broadband
+        // and a mis-indexed tap cannot land on a value that happens to match.
+        std::vector<float> inL ((size_t) kTotal), inR ((size_t) kTotal);
+        {
+            std::mt19937 rng (13579);
+            std::uniform_real_distribution<float> d (-0.5f, 0.5f);
+            for (int i = 0; i < kTotal; ++i)
+            {
+                const float tone = 0.3f * std::sin (2.0f * juce::MathConstants<float>::pi
+                                                    * 220.0f * (float) i / (float) sr);
+                inL[(size_t) i] = tone + d (rng);
+                inR[(size_t) i] = tone - d (rng);
+            }
+        }
+
+        // `prepBlock` is the ONLY difference between the two instances, and it
+        // is what selects the path: prepBlock >= runBlock gathers, prepBlock <
+        // runBlock cannot and falls through to the per-sample loop.
+        auto run = [&] (int prepBlock, int runBlock, float density)
+        {
+            anamorph::VelvetNoise v;
+            v.setDensity (density);
+            v.setAmount (0.8f);
+            v.prepare (sr, prepBlock);   // snaps current := target, builds the weights
+            v.setTransportPlaying (true);
+            v.reset();
+
+            std::vector<float> outL ((size_t) kTotal), outR ((size_t) kTotal);
+            std::vector<float> bufL ((size_t) runBlock), bufR ((size_t) runBlock);
+            for (int start = 0; start < kTotal; start += runBlock)
+            {
+                std::copy (inL.begin() + start, inL.begin() + start + runBlock, bufL.begin());
+                std::copy (inR.begin() + start, inR.begin() + start + runBlock, bufR.begin());
+                v.processBlock (bufL.data(), bufR.data(), runBlock);
+                std::copy (bufL.begin(), bufL.end(), outL.begin() + start);
+                std::copy (bufR.begin(), bufR.end(), outR.begin() + start);
+            }
+            return std::pair<std::vector<float>, std::vector<float>> { outL, outR };
+        };
+
+        auto compare = [&] (const char* what, int runBlock, float density)
+        {
+            const auto gathered  = run (runBlock,     runBlock, density); // gather path
+            const auto perSample = run (runBlock - 1, runBlock, density); // per-sample loop
+
+            int    firstDiff = -1;
+            double worst     = 0.0;
+            for (int i = 0; i < kTotal; ++i)
+            {
+                const bool same = sameBits (gathered.first [(size_t) i], perSample.first [(size_t) i])
+                               && sameBits (gathered.second[(size_t) i], perSample.second[(size_t) i]);
+                if (! same)
+                {
+                    worst = std::max (worst, (double) std::abs (gathered.first [(size_t) i] - perSample.first [(size_t) i]));
+                    worst = std::max (worst, (double) std::abs (gathered.second[(size_t) i] - perSample.second[(size_t) i]));
+                    if (firstDiff < 0) firstDiff = i;
+                }
+            }
+            check (firstDiff < 0, what);
+            if (firstDiff >= 0)
+                std::printf ("  [FAIL] %.0f Hz %s: first difference at sample %d "
+                             "(block %d of %d); worst |delta| %.3e\n",
+                             sr, what, firstDiff, firstDiff / runBlock, runBlock, worst);
+        };
+
+        // THE PREMISE, CHECKED FIRST so nothing below is vacuously true: the
+        // gather must actually have decorrelated something. A module that
+        // returned its input unchanged would satisfy every bit comparison
+        // perfectly (TESTING_POLICY rule 4). Measured on the second half of the
+        // run, so the ring is long past the zero-fill `reset()` leaves behind --
+        // a tap reading a wrong index into an all-zero ring still reads 0.0f,
+        // which is why the FIRST blocks after a reset cannot discriminate.
+        {
+            const auto engaged = run (512, 512, 0.5f);
+            float maxSideDelta = 0.0f;
+            for (int i = kTotal / 2; i < kTotal; ++i)
+            {
+                const float inSide  = (inL[(size_t) i]           - inR[(size_t) i])            * 0.5f;
+                const float outSide = (engaged.first[(size_t) i] - engaged.second[(size_t) i]) * 0.5f;
+                maxSideDelta = std::max (maxSideDelta, std::abs (outSide - inSide));
+            }
+            check (maxSideDelta > 1.0e-3f, "the gather really decorrelates (premise)");
+            std::printf ("  %6.0f Hz: gathered max |side change| = %.4f\n", sr, (double) maxSideDelta);
+        }
+
+        // SWEPT OVER BLOCK LENGTH, and the sweep is chosen for what it puts the
+        // tap arithmetic through rather than for tidiness. At 32 the ring
+        // portion covers the whole block for all but the shallowest taps; at
+        // 4096 the block exceeds `decorrSamps` at 44.1 and 48 kHz (1985 and
+        // 2160), so EVERY tap splits into a ring run plus a `midBlk` tail --
+        // the regime Test 39 cannot reach at all, since its largest block is
+        // 512. 512 and 128 sit between the two.
+        compare ("gather == per-sample loop at 32 samples",   32,   0.5f);
+        compare ("gather == per-sample loop at 128 samples",  128,  0.5f);
+        compare ("gather == per-sample loop at 512 samples",  512,  0.5f);
+        compare ("gather == per-sample loop at 4096 samples", 4096, 0.5f);
+
+        // AND AT FULL DENSITY, because density decides how many taps are active
+        // and WHICH: at the 0.5 default exactly 32 of the 64 taps run, and they
+        // are the SHALLOW half (pos spans 3-982 at 44.1 kHz against a 1985-sample
+        // window). The deep half -- where a ring read is likeliest to cross the
+        // ring origin -- is not exercised by any other configuration in this
+        // suite.
+        compare ("gather == per-sample loop at 512 samples, density 1.0", 512, 1.0f);
+    } // sample-rate sweep
+}
+
+
 int main()
 {
     std::printf ("=== Anamorph DSP self-tests ===\n");
@@ -3330,6 +3516,7 @@ int main()
     testMatchInjectRestore();
     testProcessIsAllocationFree();
     testVelvetLinearImageInvariance();
+    testVelvetGatherEqualsPerSampleLoop();
     testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);
