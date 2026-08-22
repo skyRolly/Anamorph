@@ -1,0 +1,860 @@
+<title>Anamorph A7 Decision Brief</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Semi+Condensed:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+/* ============================================================================
+   Palette is Anamorph's own (src/gui/LookAndFeel.h `namespace colours`) rather
+   than an invented one: the report is read next to the plug-in it measures.
+   Light theme is the same hues re-grounded for paper, not an inversion.
+   ========================================================================== */
+:root {
+  --ground:      #f5f7f9;
+  --panel:       #ffffff;
+  --raised:      #eef1f5;
+  --rule:        #d5dbe4;
+  --rule-soft:   #e5eaf0;
+  --ink:         #161b22;
+  --ink-dim:     #59636f;
+  --ink-faint:   #8b94a3;
+  --teal:        #0d8478;
+  --teal-soft:   #d3ede9;
+  --blue:        #2a63c4;
+  --blue-soft:   #dde6f8;
+  --amber:       #8a5c0b;
+  --amber-soft:  #f6e9cf;
+  --rose:        #a8352c;
+  --rose-soft:   #f7dedb;
+  --meter:       #0d8478;
+  --meter-track: #dfe5ec;
+  --shadow:      0 1px 2px rgba(20,28,40,.06), 0 8px 24px -14px rgba(20,28,40,.28);
+
+  --f-display: "Saira Semi Condensed", "Helvetica Neue", Arial, sans-serif;
+  --f-body:    "Source Serif 4", Georgia, "Times New Roman", serif;
+  --f-mono:    "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+
+  --measure: 68ch;
+  --wide: 1180px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground:      #0e1014;
+    --panel:       #161a21;
+    --raised:      #1d222b;
+    --rule:        #2a313d;
+    --rule-soft:   #1f242e;
+    --ink:         #d7dde6;
+    --ink-dim:     #97a1b0;
+    --ink-faint:   #6d7686;
+    --teal:        #35d0c0;
+    --teal-soft:   #12302f;
+    --blue:        #5aa6ff;
+    --blue-soft:   #12233a;
+    --amber:       #e0a94a;
+    --amber-soft:  #302512;
+    --rose:        #e0705a;
+    --rose-soft:   #331813;
+    --meter:       #35d0c0;
+    --meter-track: #232a35;
+    --shadow:      0 1px 0 rgba(255,255,255,.03), 0 10px 30px -18px rgba(0,0,0,.9);
+  }
+}
+:root[data-theme="dark"] {
+  --ground:      #0e1014;
+  --panel:       #161a21;
+  --raised:      #1d222b;
+  --rule:        #2a313d;
+  --rule-soft:   #1f242e;
+  --ink:         #d7dde6;
+  --ink-dim:     #97a1b0;
+  --ink-faint:   #6d7686;
+  --teal:        #35d0c0;
+  --teal-soft:   #12302f;
+  --blue:        #5aa6ff;
+  --blue-soft:   #12233a;
+  --amber:       #e0a94a;
+  --amber-soft:  #302512;
+  --rose:        #e0705a;
+  --rose-soft:   #331813;
+  --meter:       #35d0c0;
+  --meter-track: #232a35;
+  --shadow:      0 1px 0 rgba(255,255,255,.03), 0 10px 30px -18px rgba(0,0,0,.9);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--f-body);
+  font-size: 17px;
+  line-height: 1.62;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- shell ------------------------------------------------------------- */
+.wrap { max-width: var(--wide); margin: 0 auto; padding: 0 24px 96px; }
+.col  { max-width: var(--measure); }
+
+/* ---- masthead ---------------------------------------------------------- */
+.mast {
+  border-bottom: 1px solid var(--rule);
+  padding: 56px 0 28px;
+  display: flex; flex-direction: column; gap: 18px;
+}
+.eyebrow {
+  font-family: var(--f-display);
+  font-size: 12px; font-weight: 600;
+  letter-spacing: .17em; text-transform: uppercase;
+  color: var(--teal);
+  display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center;
+}
+.eyebrow .sep { color: var(--ink-faint); }
+h1 {
+  font-family: var(--f-display);
+  font-size: clamp(38px, 6.2vw, 62px);
+  font-weight: 700; line-height: 1.02; letter-spacing: -.012em;
+  margin: 0; text-wrap: balance;
+}
+.dek {
+  font-size: 20px; line-height: 1.5; color: var(--ink-dim);
+  max-width: 62ch; margin: 0; text-wrap: pretty;
+}
+.mast-meta {
+  font-family: var(--f-mono); font-size: 12.5px; color: var(--ink-faint);
+  display: flex; flex-wrap: wrap; gap: 6px 20px;
+}
+
+/* ---- section rhythm ---------------------------------------------------- */
+section { padding-top: 64px; scroll-margin-top: 60px; }
+h2 {
+  font-family: var(--f-display);
+  font-size: 13px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase;
+  color: var(--ink-dim);
+  margin: 0 0 8px; padding-bottom: 10px; border-bottom: 1px solid var(--rule);
+}
+h3 {
+  font-family: var(--f-display);
+  font-size: clamp(24px, 3.2vw, 31px); font-weight: 600; line-height: 1.14;
+  letter-spacing: -.008em; margin: 30px 0 12px; text-wrap: balance;
+}
+h4 {
+  font-family: var(--f-display);
+  font-size: 18px; font-weight: 600; margin: 26px 0 8px;
+}
+p { margin: 0 0 16px; }
+strong { font-weight: 600; }
+a { color: var(--blue); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+a:focus-visible, .navlink:focus-visible { outline: 2px solid var(--teal); outline-offset: 3px; border-radius: 2px; }
+code, .mono { font-family: var(--f-mono); font-size: .875em; }
+code {
+  background: var(--raised); border: 1px solid var(--rule-soft);
+  border-radius: 3px; padding: .08em .34em;
+}
+
+/* ---- nav rail ---------------------------------------------------------- */
+.nav {
+  position: sticky; top: 0; z-index: 20;
+  background: color-mix(in srgb, var(--ground) 92%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: -1px;
+}
+.nav-inner {
+  max-width: var(--wide); margin: 0 auto; padding: 0 24px;
+  display: flex; gap: 22px; overflow-x: auto; scrollbar-width: none;
+}
+.nav-inner::-webkit-scrollbar { display: none; }
+.navlink {
+  font-family: var(--f-display); font-size: 12px; font-weight: 600;
+  letter-spacing: .12em; text-transform: uppercase;
+  color: var(--ink-faint); text-decoration: none;
+  padding: 14px 0; white-space: nowrap; border-bottom: 2px solid transparent;
+}
+.navlink:hover { color: var(--teal); border-bottom-color: var(--teal); }
+
+/* ---- headline stats ---------------------------------------------------- */
+.stats {
+  display: grid; gap: 1px; background: var(--rule);
+  border: 1px solid var(--rule); border-radius: 6px; overflow: hidden;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  margin: 26px 0 8px;
+}
+.stat { background: var(--panel); padding: 20px 22px; display: flex; flex-direction: column; gap: 5px; }
+.stat-n {
+  font-family: var(--f-display); font-weight: 700;
+  font-size: 40px; line-height: 1; letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums;
+}
+.stat-n.pos { color: var(--teal); }
+.stat-n.neu { color: var(--ink); }
+.stat-n.warn { color: var(--amber); }
+.stat-l {
+  font-family: var(--f-display); font-size: 12px; font-weight: 600;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--ink-dim);
+}
+.stat-s { font-size: 14px; color: var(--ink-faint); line-height: 1.4; }
+
+/* ---- meter chart (the subject's own vernacular) ------------------------ */
+.meterset { margin: 24px 0 10px; display: flex; flex-direction: column; gap: 3px; }
+.mrow {
+  display: grid; grid-template-columns: minmax(160px, 232px) 1fr minmax(96px, auto);
+  gap: 14px; align-items: center;
+  padding: 7px 0; border-bottom: 1px solid var(--rule-soft);
+}
+.mrow:last-child { border-bottom: 0; }
+.mname { font-family: var(--f-display); font-size: 14.5px; font-weight: 500; line-height: 1.25; }
+.mname .sub { display: block; color: var(--ink-faint); font-size: 12px; font-weight: 400; }
+.mtrack {
+  position: relative; height: 15px; background: var(--meter-track);
+  border-radius: 2px; overflow: hidden;
+}
+.mfill {
+  height: 100%; background: var(--meter); border-radius: 2px 0 0 2px;
+  /* segmented, like the plug-in's own level meters */
+  -webkit-mask-image: repeating-linear-gradient(90deg, #000 0 5px, transparent 5px 7px);
+          mask-image: repeating-linear-gradient(90deg, #000 0 5px, transparent 5px 7px);
+}
+.mfill.alt   { background: var(--blue); }
+.mfill.warn  { background: var(--amber); }
+.mref {
+  position: absolute; top: -3px; bottom: -3px; width: 1px;
+  background: var(--ink-dim);
+}
+.mval {
+  font-family: var(--f-mono); font-size: 13px; font-variant-numeric: tabular-nums;
+  text-align: right; color: var(--ink-dim);
+}
+.mval b { color: var(--ink); font-weight: 600; }
+.mlegend {
+  font-family: var(--f-mono); font-size: 12px; color: var(--ink-faint);
+  margin-top: 10px;
+}
+
+/* ---- tables ------------------------------------------------------------ */
+.tscroll { overflow-x: auto; margin: 22px 0; border: 1px solid var(--rule); border-radius: 6px; }
+table { border-collapse: collapse; width: 100%; font-size: 14.5px; background: var(--panel); }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--rule-soft); vertical-align: top; }
+thead th {
+  font-family: var(--f-display); font-size: 11.5px; font-weight: 700;
+  letter-spacing: .11em; text-transform: uppercase; color: var(--ink-dim);
+  background: var(--raised); border-bottom: 1px solid var(--rule); white-space: nowrap;
+}
+tbody tr:last-child td { border-bottom: 0; }
+td.num, th.num { text-align: right; font-family: var(--f-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+td.hi { color: var(--teal); font-weight: 600; }
+tbody tr.accent td { background: color-mix(in srgb, var(--teal) 7%, var(--panel)); }
+
+/* ---- verdict chips ----------------------------------------------------- */
+.chip {
+  display: inline-block; font-family: var(--f-display);
+  font-size: 11px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase;
+  padding: 3px 9px; border-radius: 3px; white-space: nowrap;
+}
+.chip.now    { background: var(--teal);  color: var(--ground); }
+.chip.later  { background: var(--blue-soft);  color: var(--blue);  border: 1px solid color-mix(in srgb, var(--blue) 35%, transparent); }
+.chip.never  { background: transparent; color: var(--ink-faint); border: 1px solid var(--rule); }
+.chip.human  { background: var(--amber-soft); color: var(--amber); border: 1px solid color-mix(in srgb, var(--amber) 40%, transparent); }
+.chip.closed { background: var(--rose-soft); color: var(--rose); border: 1px solid color-mix(in srgb, var(--rose) 35%, transparent); }
+
+/* ---- callouts ---------------------------------------------------------- */
+.note {
+  border: 1px solid var(--rule); border-left: 3px solid var(--amber);
+  background: var(--panel); border-radius: 0 5px 5px 0;
+  padding: 16px 20px; margin: 22px 0; box-shadow: var(--shadow);
+}
+.note.teal { border-left-color: var(--teal); }
+.note.rose { border-left-color: var(--rose); }
+.note-h {
+  font-family: var(--f-display); font-size: 12px; font-weight: 700;
+  letter-spacing: .13em; text-transform: uppercase; color: var(--amber);
+  margin-bottom: 6px;
+}
+.note.teal .note-h { color: var(--teal); }
+.note.rose .note-h { color: var(--rose); }
+.note p:last-child { margin-bottom: 0; }
+
+/* ---- roadmap steps (a real sequence, so it is numbered) ---------------- */
+.steps { display: flex; flex-direction: column; gap: 16px; margin: 26px 0; counter-reset: step; }
+.step {
+  background: var(--panel); border: 1px solid var(--rule); border-radius: 6px;
+  padding: 20px 22px; box-shadow: var(--shadow);
+  display: grid; grid-template-columns: 46px 1fr; gap: 18px;
+}
+.step-n {
+  font-family: var(--f-mono); font-size: 12px; font-weight: 600;
+  color: var(--teal); padding-top: 3px; letter-spacing: .02em;
+}
+.step-h {
+  font-family: var(--f-display); font-size: 21px; font-weight: 600;
+  margin: 0 0 4px; display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline;
+}
+.step-body p { margin: 0 0 10px; font-size: 16px; }
+.step-body p:last-child { margin-bottom: 0; }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; font-size: 14.5px; margin-top: 12px; }
+.kv dt {
+  font-family: var(--f-display); font-size: 11.5px; font-weight: 700;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--ink-faint);
+  padding-top: 4px;
+}
+.kv dd { margin: 0; }
+
+/* ---- code -------------------------------------------------------------- */
+pre {
+  font-family: var(--f-mono); font-size: 13px; line-height: 1.6;
+  background: var(--raised); border: 1px solid var(--rule);
+  border-radius: 5px; padding: 14px 16px; overflow-x: auto; margin: 18px 0;
+}
+pre .cm { color: var(--ink-faint); }
+pre .kw { color: var(--blue); }
+
+/* ---- checklist --------------------------------------------------------- */
+.check { list-style: none; padding: 0; margin: 20px 0; display: flex; flex-direction: column; gap: 10px; }
+.check li {
+  display: grid; grid-template-columns: 22px 1fr; gap: 12px; align-items: start;
+  font-size: 16px; padding-bottom: 10px; border-bottom: 1px solid var(--rule-soft);
+}
+.check li:last-child { border-bottom: 0; }
+.box {
+  width: 15px; height: 15px; margin-top: 5px; border-radius: 2px;
+  border: 1.5px solid var(--ink-faint);
+}
+ul.plain { padding-left: 20px; margin: 0 0 16px; }
+ul.plain li { margin-bottom: 7px; }
+
+footer {
+  margin-top: 72px; padding-top: 22px; border-top: 1px solid var(--rule);
+  font-family: var(--f-mono); font-size: 12.5px; color: var(--ink-faint);
+  display: flex; flex-wrap: wrap; gap: 6px 24px;
+}
+
+@media (max-width: 640px) {
+  body { font-size: 16px; }
+  .mrow { grid-template-columns: 1fr; gap: 5px; }
+  .mval { text-align: left; }
+  .step { grid-template-columns: 1fr; gap: 8px; }
+  .kv { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+</style>
+
+<style>
+/* --- additions for this document: a decision ledger and a split diagram --- */
+.ledger { display: flex; flex-direction: column; gap: 14px; margin: 26px 0; }
+.dec {
+  background: var(--panel); border: 1px solid var(--rule); border-radius: 6px;
+  box-shadow: var(--shadow); padding: 18px 20px;
+  display: grid; grid-template-columns: 34px 1fr; gap: 16px;
+}
+.dec-n { font-family: var(--f-mono); font-size: 12px; font-weight: 600; color: var(--ink-faint); padding-top: 5px; }
+.dec-h { font-family: var(--f-display); font-size: 19px; font-weight: 600; margin: 0 0 6px;
+         display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; }
+.dec-body p { margin: 0 0 8px; font-size: 15.5px; }
+.dec-body p:last-child { margin-bottom: 0; }
+.chip.yes { background: var(--teal); color: var(--ground); }
+.chip.hold { background: var(--amber-soft); color: var(--amber); border: 1px solid color-mix(in srgb, var(--amber) 40%, transparent); }
+.chip.classb { background: var(--rose-soft); color: var(--rose); border: 1px solid color-mix(in srgb, var(--rose) 35%, transparent); }
+.chip.classa { background: var(--teal-soft); color: var(--teal); border: 1px solid color-mix(in srgb, var(--teal) 35%, transparent); }
+.fig { margin: 26px 0; border: 1px solid var(--rule); border-radius: 6px; background: var(--panel);
+       padding: 22px 20px 16px; box-shadow: var(--shadow); overflow-x: auto; }
+.fig figcaption { font-size: 14.5px; color: var(--ink-dim); margin-top: 14px; line-height: 1.5; }
+.fig svg { display: block; min-width: 560px; }
+.svg-lbl { font-family: "Saira Semi Condensed", sans-serif; font-size: 12px; font-weight: 600;
+           letter-spacing: .1em; text-transform: uppercase; fill: var(--ink-dim); }
+.svg-tick { font-family: "IBM Plex Mono", monospace; font-size: 10.5px; fill: var(--ink-faint); }
+.verdictbar { display: grid; gap: 1px; background: var(--rule); border: 1px solid var(--rule);
+              border-radius: 6px; overflow: hidden; grid-template-columns: repeat(auto-fit, minmax(240px,1fr)); margin: 26px 0; }
+.vb { background: var(--panel); padding: 18px 20px; }
+.vb-h { font-family: var(--f-display); font-size: 12px; font-weight: 700; letter-spacing: .13em;
+        text-transform: uppercase; color: var(--ink-dim); margin-bottom: 8px; }
+.vb-b { font-size: 15px; color: var(--ink); }
+.vb-b .big { font-family: var(--f-display); font-size: 27px; font-weight: 700; line-height: 1.1;
+             display: block; margin-bottom: 4px; font-variant-numeric: tabular-nums; }
+</style>
+
+<nav class="nav" aria-label="Sections">
+  <div class="nav-inner">
+    <a class="navlink" href="#summary">Summary</a>
+    <a class="navlink" href="#a72">A7-2 ring gather</a>
+    <a class="navlink" href="#a75">A7-5 AVX2</a>
+    <a class="navlink" href="#a79">A7-9 glide stall</a>
+    <a class="navlink" href="#decisions">Decisions</a>
+    <a class="navlink" href="#roadmap">Roadmap</a>
+  </div>
+</nav>
+
+<div class="wrap">
+
+<header class="mast">
+  <div class="eyebrow">
+    <span>Performance programme</span><span class="sep">/</span>
+    <span>Round A7</span><span class="sep">/</span>
+    <span>Investigation only</span><span class="sep">/</span>
+    <span>No product code changed</span>
+  </div>
+  <h1>Anamorph A7 Decision Brief</h1>
+  <p class="dek">Three items were investigated and none implemented. One is ready and needs a test
+  written before it, not after. One is a twenty-percent win that costs a frozen ADR property and an
+  ISA floor. One turned out not to be a single-module quirk at all — the same false premise is
+  holding up three shipped fast paths, and the CPU it silently costs is larger than everything else
+  on this roadmap combined.</p>
+  <div class="mast-meta">
+    <span>Method: callgrind Ir with startup subtraction</span>
+    <span>Base: main @ 100b98c (v0.9.5)</span>
+    <span>Worklog: worklogs/performance/PERF_AUDIT_A7-2_A7-5_A7-9_INVESTIGATION.md</span>
+  </div>
+</header>
+
+<!-- ===================================================================== -->
+<section id="summary">
+  <h2>What this round found</h2>
+
+  <div class="col">
+    <p>A7-0 was not attempted — it needs a physical benchmark machine this container is not.
+    <code>PERFORMANCE_BUDGET.md</code> rows stay empty and RISK-002 stays open. Everything below was
+    answerable without one.</p>
+  </div>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-n pos">0 / 180</div>
+      <div class="stat-l">A7-2B mismatches</div>
+      <div class="stat-s">Faithful prototype, bit-identical to the shipped engine — and to an
+      absolute oracle it did not have before.</div>
+    </div>
+    <div class="stat">
+      <div class="stat-n warn">4 / 4</div>
+      <div class="stat-l">Rates where Test 39 is blind</div>
+      <div class="stat-s">A seeded uniform tap-delay error passes the current test at every sample
+      rate. The proposed oracle fails at every one.</div>
+    </div>
+    <div class="stat">
+      <div class="stat-n warn">3 modules</div>
+      <div class="stat-l">Resting on a false premise</div>
+      <div class="stat-s">Velvet, Haas and Chorus all claim the glide “flushes to true zero”. It
+      does not, in any of them.</div>
+    </div>
+    <div class="stat">
+      <div class="stat-n neu">88.9%</div>
+      <div class="stat-l">Samples AVX2 changes</div>
+      <div class="stat-s">Enabling it activates FP contraction that the frozen baseline currently
+      leaves inert — and splits GCC from Clang.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<section id="a72">
+  <h2>A7-2 — gather straight from the ring</h2>
+  <h3>The design holds. The test that guards it does not.</h3>
+
+  <div class="col">
+    <p>Variant B deletes the linear history image entirely and reads each tap directly out of the
+    ring as one to three unit-stride runs. It was rebuilt this round <em>as the plan describes</em> —
+    the previous prototype still carried the image — and re-verified.</p>
+
+    <p>The correctness argument is stronger than the measurement. Every ring read can be hoisted
+    ahead of the per-sample loop because a read at sample <code>i</code> could only touch this
+    block's own write if <code>size &le; k-1</code>, and <code>k</code> is capped at
+    <code>decorrSamps-1</code>, which is smaller than the ring. And bit-exactness follows from the
+    split being along <code>i</code>, not along <code>t</code>: every accumulator still receives
+    exactly one add per tap, in ascending tap order, from the same zero-filled <code>+0</code>.</p>
+  </div>
+
+  <figure class="fig">
+    <svg viewBox="0 0 720 210" role="img" aria-label="The shipped design copies a linear image every block; variant B reads the ring directly as one to three runs.">
+      <text class="svg-lbl" x="0" y="14">Shipped — A7-1</text>
+      <rect x="0" y="26" width="300" height="26" rx="3" fill="var(--meter-track)"/>
+      <rect x="0" y="26" width="300" height="26" rx="3" fill="none" stroke="var(--rule)"/>
+      <text class="svg-tick" x="8" y="43">ring midHist</text>
+      <path d="M150 56 L150 74 M144 68 L150 76 L156 68" fill="none" stroke="var(--ink-faint)" stroke-width="1.4"/>
+      <text class="svg-tick" x="162" y="72">slide + append (copy)</text>
+      <rect x="0" y="80" width="230" height="26" rx="3" fill="var(--blue-soft)" stroke="var(--blue)"/>
+      <rect x="230" y="80" width="70" height="26" rx="3" fill="var(--raised)" stroke="var(--rule)"/>
+      <text class="svg-tick" x="8" y="97">carried tail (decorrSamps)</text>
+      <text class="svg-tick" x="238" y="97">this block</text>
+      <rect x="88" y="118" width="120" height="20" rx="2" fill="var(--teal)" opacity=".9"/>
+      <text class="svg-tick" x="0" y="133">tap t reads</text>
+      <text class="svg-lbl" x="400" y="14">Variant B</text>
+      <rect x="400" y="26" width="300" height="26" rx="3" fill="var(--meter-track)"/>
+      <rect x="400" y="26" width="300" height="26" rx="3" fill="none" stroke="var(--rule)"/>
+      <rect x="612" y="26" width="88" height="26" rx="3" fill="var(--teal)" opacity=".9"/>
+      <rect x="400" y="26" width="34" height="26" rx="3" fill="var(--teal)" opacity=".9"/>
+      <text class="svg-tick" x="440" y="43">ring midHist — read in place</text>
+      <text class="svg-tick" x="400" y="70">run 1 (to ring end)</text>
+      <text class="svg-tick" x="400" y="86">run 2 (after wrap)</text>
+      <rect x="400" y="98" width="150" height="26" rx="3" fill="var(--raised)" stroke="var(--rule)"/>
+      <text class="svg-tick" x="408" y="115">midBlk tail, i &ge; k</text>
+      <text class="svg-tick" x="400" y="148">no image · no copy · no cross-block flag</text>
+      <line x1="0" y1="176" x2="720" y2="176" stroke="var(--rule-soft)"/>
+      <text class="svg-tick" x="0" y="196">Both produce identical bits: the split is along i, not along t.</text>
+    </svg>
+    <figcaption>The image exists only to make each tap's read unit-stride — but the ring already is
+    unit-stride in <code>i</code>; it merely wraps. B keeps H5's streaming property and deletes the
+    structure H5 built to get it.</figcaption>
+  </figure>
+
+  <h4>Cost: the residual term stops scaling with sample rate</h4>
+
+  <div class="tscroll">
+    <table>
+      <thead><tr><th>Configuration</th><th class="num">Shipped Ir/block</th><th class="num">Variant B</th><th class="num">Delta</th><th class="num">Shipped Ir/sample</th><th class="num">B Ir/sample</th></tr></thead>
+      <tbody>
+        <tr><td>48 kHz / 32</td><td class="num">65,141.4</td><td class="num">57,758.9</td><td class="num hi">−11.3 %</td><td class="num">2,035.7</td><td class="num">1,805.0</td></tr>
+        <tr><td>48 kHz / 128</td><td class="num">220,223.6</td><td class="num">212,995.2</td><td class="num">−3.3 %</td><td class="num">1,720.5</td><td class="num">1,664.0</td></tr>
+        <tr><td>48 kHz / 512</td><td class="num">842,022.4</td><td class="num">835,344.9</td><td class="num">−0.8 %</td><td class="num">1,644.6</td><td class="num">1,631.5</td></tr>
+        <tr class="accent"><td>192 kHz / 32</td><td class="num">91,065.7</td><td class="num">57,784.2</td><td class="num hi">−36.5 %</td><td class="num">2,845.8</td><td class="num">1,805.8</td></tr>
+        <tr><td>192 kHz / 128</td><td class="num">246,145.8</td><td class="num">212,823.9</td><td class="num">−13.5 %</td><td class="num">1,923.0</td><td class="num">1,662.7</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="meterset">
+    <div class="mrow">
+      <div class="mname">Shipped, 48 kHz<span class="sub">fixed per-block term</span></div>
+      <div class="mtrack"><div class="mfill" style="width:32.9%"></div></div>
+      <div class="mval"><b>12,957</b> Ir</div>
+    </div>
+    <div class="mrow">
+      <div class="mname">Shipped, 192 kHz<span class="sub">fixed per-block term</span></div>
+      <div class="mtrack"><div class="mfill warn" style="width:100%"></div></div>
+      <div class="mval"><b>39,373</b> Ir</div>
+    </div>
+    <div class="mrow">
+      <div class="mname">Variant B, 48 kHz<span class="sub">fixed per-block term</span></div>
+      <div class="mtrack"><div class="mfill alt" style="width:14.1%"></div></div>
+      <div class="mval"><b>5,546</b> Ir</div>
+    </div>
+    <div class="mrow">
+      <div class="mname">Variant B, 192 kHz<span class="sub">fixed per-block term</span></div>
+      <div class="mtrack"><div class="mfill alt" style="width:15.5%"></div></div>
+      <div class="mval"><b>6,104</b> Ir</div>
+    </div>
+  </div>
+  <p class="mlegend">Fitted from the measured points. The shipped term is proportional to
+  <code>decorrSamps</code>, so it grows with the sample rate; B's does not. At block 32 the rate
+  penalty falls from 39.8 % to 0.04 %.</p>
+
+  <h4>The finding that changes the plan</h4>
+
+  <div class="note rose">
+    <div class="note-h">Test 39 cannot see the likeliest defect</div>
+    <p>Test 39 compares the build under test <em>against itself</em> at different block lengths.
+    There is no reference implementation in it. So a defect that is a pure function of the sample
+    stream — the same wrong answer at every block length — is invisible by construction. The
+    likeliest A7-2B defect is exactly that shape: a uniform one-sample error in the tap delay.</p>
+  </div>
+
+  <div class="tscroll">
+    <table>
+      <thead><tr><th>Build</th><th>Test 39 (512 == 32 == mixed)</th><th>Path-equivalence oracle (gather == per-sample loop)</th></tr></thead>
+      <tbody>
+        <tr><td>Shipped v0.9.5</td><td>pass ×4 rates</td><td>pass ×4 rates</td></tr>
+        <tr class="accent"><td><strong>Uniform +1 delay seeded</strong></td><td><strong>pass ×4 rates</strong></td><td class="hi"><strong>FAIL ×4 rates</strong></td></tr>
+        <tr><td>Variant B (faithful)</td><td>pass ×4 rates</td><td>pass ×4 rates</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note teal">
+    <div class="note-h">The oracle needs no product change</div>
+    <p><code>prepare()</code> sizes <code>accum</code> from <code>maxBlockSize</code>, and the gather
+    gate requires <code>numSamples &le; accum.size()</code>. An instance prepared for a
+    <em>smaller</em> block therefore runs the per-sample loop over the same audio, with an identical
+    ring, tap set and coefficients — those depend only on sample rate and seed. Assert the two
+    bit-identical. Verified clean over 44 cells on the shipped engine, and live against the seeded
+    defect.</p>
+  </div>
+
+  <h4>Two ways to write it wrong</h4>
+  <div class="tscroll">
+    <table>
+      <thead><tr><th>Trap</th><th>What it is</th><th>What the sanitizer gate does</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>ring run length taken as <code>k</code> rather than <code>min(k, numSamples)</code></td><td class="hi">ASan heap-buffer-overflow, named to the line</td></tr>
+        <tr class="accent"><td>2</td><td><code>midBlk.data() - k</code> as the tail's base pointer</td><td><strong>Nothing.</strong> Clean under ASan + UBSan + <code>local-bounds</code> + <code>pointer-overflow</code>; bit-correct output; silent UB</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>Trap 1 announces itself. Trap 2 must be excluded by construction — index the tail as
+  <code>midBlk[i - k]</code> with <code>i &ge; k</code> — because no gate will say it later.</p>
+</section>
+
+<!-- ===================================================================== -->
+<section id="a75">
+  <h2>A7-5 / W5-D — AVX2</h2>
+  <h3>A twenty-percent win that is not a compiler flag decision</h3>
+
+  <div class="col">
+    <p>There is no explicit SIMD anywhere in <code>src/</code> and no architecture flag anywhere in
+    the build — <code>-march</code>, <code>-mavx</code>, <code>-mfma</code>, <code>-ffast-math</code>,
+    <code>-ffp-contract</code>, <code>/arch:</code> and <code>/fp:</code> appear in zero of
+    <code>CMakeLists.txt</code>, the workflows and the scripts. The only mention is the record of
+    their deliberate absence: <em>“numerics-affecting flags are frozen”</em>
+    (<code>CMakeLists.txt:82-84</code>, citing ADR-0021).</p>
+  </div>
+
+  <div class="tscroll">
+    <table>
+      <thead><tr><th>Twin-dump comparison (32 scenarios)</th><th class="num">Scenarios differing</th></tr></thead>
+      <tbody>
+        <tr class="accent"><td>GCC 13 baseline vs Clang 18 baseline — frozen flags</td><td class="num hi">0 / 32</td></tr>
+        <tr><td>GCC baseline vs GCC <code>-march=haswell</code></td><td class="num">32 / 32</td></tr>
+        <tr><td>Clang baseline vs Clang <code>-march=haswell</code></td><td class="num">32 / 32</td></tr>
+        <tr><td>GCC haswell vs Clang haswell</td><td class="num">32 / 32</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="col">
+    <p>The mechanism is the decision. Both toolchains permit FP contraction by default, but the
+    frozen x86-64 baseline <strong>has no FMA instruction to contract into</strong> — so the default
+    is inert and the two compilers agree bit for bit. Enabling AVX2 activates it, and because GCC and
+    Clang contract differently, it simultaneously breaks the agreement between the two toolchains the
+    project builds with. <strong>The freeze is currently doing more than its own comment claims: it
+    is what makes the GCC-LTO job and the Clang jobs mutually verifying.</strong></p>
+  </div>
+
+  <div class="verdictbar">
+    <div class="vb"><div class="vb-h">What it costs</div><div class="vb-b">
+      <span class="big">2.384e-07</span>max abs delta, −123.8 dB below peak; 88.9 % of samples change.
+      Class B, in the same range as the accepted H3 <code>tanh</code> (3.5e-7).</div></div>
+    <div class="vb"><div class="vb-h">What it buys</div><div class="vb-b">
+      <span class="big">−25.8 %</span>whole-engine Ir/sample at 48 kHz / 128 (1,704.9 → 1,264.3).
+      Wall-clock, indicative only on this machine, agrees: −13.4 % to −22.8 %.</div></div>
+    <div class="vb"><div class="vb-h">What it forecloses</div><div class="vb-b">
+      <span class="big">2013</span>Haswell becomes a hard ISA floor. Older x86-64 machines go from
+      slower to <code>SIGILL</code> inside the host — a contract
+      <code>COMPATIBILITY_POLICY</code> does not currently state.</div></div>
+  </div>
+
+  <div class="note">
+    <div class="note-h">Run this before drafting the ADR</div>
+    <p>AArch64's base ISA includes <code>FMLA</code> unconditionally — there is no flag and no
+    baseline without it. Under the same contraction defaults, <strong>the compiler may already be
+    contracting on the arm64 slice of the shipped universal binary</strong>, which would mean the two
+    slices are already not bit-identical to each other. Nothing in the repository has ever checked.</p>
+    <p>The check is one job step and needs no new tooling: on the existing macOS runner, build
+    <code>AnamorphDspDump</code> once for <code>arm64</code> and once for <code>x86_64</code>, run
+    both (the x86_64 one under Rosetta, as the suites already are) and diff the 32 hashes. It is an
+    A-vs-B comparison of two builds — the only question the harness is allowed to answer — so it
+    needs no stored baseline. <strong>The answer changes what the ADR is deciding.</strong></p>
+  </div>
+
+  <div class="col">
+    <p><strong>Runtime dispatch is not the escape.</strong> It removes the compatibility cliff but
+    makes the numerics <em>worse</em>-defined: the same binary then produces different bits on
+    different CPUs, and every property built on bit-identity — the twin-dump bump gate, the
+    GCC/Clang cross-check, <code>AnamorphDspDump</code>'s entire reason to exist — becomes conditional
+    on the machine that ran it. A hand-written, explicitly FMA-free AVX2 kernel for the LR4 crossover
+    is the only variant that could stay Class A, and it is strictly more work than the flag for a
+    fraction of the gain.</p>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<section id="a79">
+  <h2>A7-9 — the glide that never reaches zero</h2>
+  <h3>Not one module. Three.</h3>
+
+  <div class="col">
+    <p>The glide is <code>a += k * (target - a)</code>. With a zero target that is
+    <code>a -= k*a</code>, and under the audio thread's <code>ScopedNoDenormals</code> the
+    <em>decrement</em> underflows before the state does: once <code>k*a</code> falls below
+    <code>FLT_MIN</code> it flushes to exactly zero and <code>a</code> stops moving. The fixed point
+    is absorbing — the next decrement is exactly <code>0.0</code>, forever. It is not a magic
+    constant but a closed form, <code>&asymp; FLT_MIN / k</code>, approached from below.</p>
+  </div>
+
+  <div class="tscroll">
+    <table>
+      <thead><tr><th>Module</th><th class="num">k</th><th class="num">Measured stall</th><th class="num">FLT_MIN / k</th><th>Gate</th></tr></thead>
+      <tbody>
+        <tr><td><code>VelvetNoise</code></td><td class="num">0.0015</td><td class="num">7.83374862e-36</td><td class="num">7.83662901e-36</td><td>value test</td></tr>
+        <tr><td><code>HaasProcessor</code></td><td class="num">0.001</td><td class="num">1.17487956e-35</td><td class="num">1.17549435e-35</td><td>value test</td></tr>
+        <tr><td><code>ChorusEngine</code></td><td class="num">1/480</td><td class="num">5.63638313e-36</td><td class="num">5.64237288e-36</td><td>value test</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note rose">
+    <div class="note-h">The same sentence, wrong in three places</div>
+    <p>All three parked fast paths justify themselves with the same claim — that the one-pole
+    <em>“flushes to true zero”</em> under <code>ScopedNoDenormals</code>
+    (<code>VelvetNoise.cpp:233-235</code>, <code>HaasProcessor.cpp:51-53</code>,
+    <code>ChorusEngine.cpp:73-74</code>). It does not. So all three fast paths are unreachable after a
+    user turns the control down; they are reached only from a fresh <code>prepare()</code> with the
+    control at its zero default — the state each was measured in.</p>
+    <p>The one gate in the same file that survives is Velvet's <em>density</em> gate, and the
+    difference is the whole lesson: it tests the <strong>fixpoint</strong>, so a stalled glide
+    satisfies it. The three amount gates test the <strong>value</strong>, so a stalled glide defeats
+    them.</p>
+  </div>
+
+  <h4>What the missed park costs</h4>
+  <div class="tscroll">
+    <table>
+      <thead><tr><th>Module</th><th>Configuration</th><th class="num">Parked Ir/block</th><th class="num">Stalled Ir/block</th><th class="num">Penalty</th></tr></thead>
+      <tbody>
+        <tr><td><code>VelvetNoise</code></td><td>48 kHz / 32</td><td class="num">1,600</td><td class="num">13,629</td><td class="num">+752 %</td></tr>
+        <tr><td><code>VelvetNoise</code></td><td>48 kHz / 128</td><td class="num">6,113</td><td class="num">25,421</td><td class="num">+316 %</td></tr>
+        <tr class="accent"><td><code>VelvetNoise</code></td><td>192 kHz / 32</td><td class="num">1,600</td><td class="num">39,549</td><td class="num hi">+2,372 %</td></tr>
+        <tr><td><code>HaasProcessor</code></td><td>48 kHz / 128</td><td class="num">2,778</td><td class="num">8,413</td><td class="num">+203 %</td></tr>
+        <tr><td><code>ChorusEngine</code></td><td>48 kHz / 128</td><td class="num">3,841</td><td class="num">18,061</td><td class="num">+370 %</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>For Velvet the consequence is worse than a skipped fast path: a stalled amount above zero
+  <em>satisfies</em> the H5 gather gate, so the engine sits on the most expensive path rather than
+  the cheapest. In whole-engine terms that is about 18 % at 48 kHz / 32 — <strong>larger than
+  everything A7-1 recovered, and larger than everything A7-2B would recover.</strong></p>
+
+  <h4>What a fix would change</h4>
+  <div class="tscroll">
+    <table>
+      <thead><tr><th>Module</th><th>Stimulus</th><th class="num">Differing samples</th><th class="num">Worst abs delta</th></tr></thead>
+      <tbody>
+        <tr><td><code>VelvetNoise</code></td><td>noise</td><td class="num hi">0 / 102,400</td><td class="num">0</td></tr>
+        <tr><td><code>HaasProcessor</code></td><td>noise</td><td class="num hi">0 / 102,400</td><td class="num">0</td></tr>
+        <tr><td><code>ChorusEngine</code></td><td>noise</td><td class="num hi">0 / 102,400</td><td class="num">0</td></tr>
+        <tr><td><code>VelvetNoise</code></td><td>digital silence</td><td class="num">1,876 / 102,400</td><td class="num">4.470e-37</td></tr>
+        <tr><td><code>HaasProcessor</code></td><td>digital silence</td><td class="num">51,195 / 102,400</td><td class="num">1.643e-36</td></tr>
+        <tr><td><code>ChorusEngine</code></td><td>digital silence</td><td class="num">51,759 / 102,400</td><td class="num">1.081e-36</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="col">
+    <p>Two instances, identically built and identically driven; afterwards one has its glide forced
+    to exact zero — precisely what a fix produces. On real signal the residual is exactly invisible:
+    the stalled amount multiplies into a product that itself flushes to zero. Differences appear only
+    on digital silence, where the dry term is <code>+0</code> and cannot absorb them. Worst case
+    across all three modules: <strong>1.643e-36, about −716 dBFS.</strong></p>
+
+    <p><strong>No Class-A fix exists</strong>, and that is not a failure of imagination — the residual
+    <em>is</em> the thing that distinguishes the two states, so removing it is what “fix” means. The
+    bound is roughly 26 orders of magnitude tighter than the tightest accepted Class-B precedent
+    (H4, 2.4e-10) and 32 tighter than the loosest (H11, 8.2e-4).</p>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<section id="decisions">
+  <h2>Decisions required</h2>
+
+  <div class="ledger">
+    <div class="dec">
+      <div class="dec-n">01</div>
+      <div class="dec-body">
+        <h3 class="dec-h">Approve A7-2B — delete the image, gather from the ring <span class="chip yes">Recommend yes</span><span class="chip classa">Class A</span></h3>
+        <p>Bit-identical over 180 configurations and against an absolute oracle; removes the residual
+        term's sample-rate dependence rather than amortising it. Triggers no architecture-review
+        category and conflicts with no Accepted ADR.</p>
+        <p><em>Why a green build cannot decide it:</em> the change is bit-identical, so nothing red
+        would ever indicate a fault — and the defect class most likely to slip through is one the
+        current suite provably cannot see.</p>
+      </div>
+    </div>
+
+    <div class="dec">
+      <div class="dec-n">02</div>
+      <div class="dec-body">
+        <h3 class="dec-h">Approve A7-2T as a prerequisite, not a follow-up <span class="chip yes">Recommend yes</span></h3>
+        <p>Commit the path-equivalence oracle <strong>before</strong> the gather is rewritten. No
+        product change, no dependency on A7-0 — it is implementable today.</p>
+        <p><em>The ordering is the safety property.</em> Landing B first leaves a window in which the
+        change with the highest chance of a silent, uniform arithmetic error is in the tree and the
+        only test competent to see one is not.</p>
+      </div>
+    </div>
+
+    <div class="dec">
+      <div class="dec-n">03</div>
+      <div class="dec-body">
+        <h3 class="dec-h">Approve the cross-slice experiment (A7-5E) <span class="chip yes">Recommend yes</span></h3>
+        <p>Diff the universal binary's arm64 and x86_64 slices with the harness that already exists.
+        One job step. It asks whether a property the product assumes is actually true, and it should
+        be answered before the AVX2 ADR is drafted rather than after.</p>
+      </div>
+    </div>
+
+    <div class="dec">
+      <div class="dec-n">04</div>
+      <div class="dec-body">
+        <h3 class="dec-h">Approve AVX2 in principle <span class="chip hold">Recommend: not yet</span><span class="chip classb">Class B</span></h3>
+        <p>About 20 % engine-wide — more than every A7 item combined — but it changes 88.9 % of output
+        samples, imposes an ISA compatibility floor with a <code>SIGILL</code> failure mode, and costs
+        the GCC/Clang bit-agreement cross-check. It amends a frozen ADR-0021 property, which
+        <code>CLAUDE.md</code> classes as a hard stop.</p>
+        <p>Blocked on decision 03 and on three sub-decisions: the acceptable error bound, the minimum
+        supported x86-64 ISA written into <code>COMPATIBILITY_POLICY</code>, and what replaces the
+        two-toolchain cross-check.</p>
+      </div>
+    </div>
+
+    <div class="dec">
+      <div class="dec-n">05</div>
+      <div class="dec-body">
+        <h3 class="dec-h">Approve A7-9, bounded at 1.643e-36 <span class="chip yes">Recommend yes</span><span class="chip classb">Class B — needs explicit approval</span></h3>
+        <p>The largest single item on the roadmap, and it is not a new optimization: it
+        <em>restores three already-shipped optimizations to the state in which they were measured</em>.
+        Inaudible by construction — zero differing samples on real signal.</p>
+        <p>Preferred repair: change the three gates from a value test to a fixpoint test, mirroring
+        the density gate three lines above Velvet's. Snapping the state is worse — it mutates DSP
+        state rather than choosing a path.</p>
+      </div>
+    </div>
+
+    <div class="dec">
+      <div class="dec-n">06</div>
+      <div class="dec-body">
+        <h3 class="dec-h">If 05 is declined, approve the comment correction alone <span class="chip yes">Recommend yes</span><span class="chip classa">Class A</span></h3>
+        <p>Three source comments assert a premise that is false. Documentation lifecycle policy does
+        not let a known-false justification stand in the source, and this brief is the drift report
+        that policy requires before an edit. Zero cost, no behaviour change.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<section id="roadmap">
+  <h2>Roadmap after this round</h2>
+
+  <div class="tscroll">
+    <table>
+      <thead><tr><th>Item</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr><td><strong>A7-0</strong> — bench on a named machine, fill the budget rows</td><td><span class="chip human">Blocked</span> Open, unchanged. Not attempted. RISK-002 unchanged; rows unpopulated.</td></tr>
+        <tr><td><strong>A7-1</strong> — VelvetNoise history slide</td><td><span class="chip never">Done</span> Shipped in v0.9.5 (PR #127).</td></tr>
+        <tr><td><strong>A7-2</strong> — residual per-block term</td><td><span class="chip later">Ready</span> Variant B recommended. Now gated on A7-0 <em>and</em> A7-2T.</td></tr>
+        <tr class="accent"><td><strong>A7-2T</strong> — commit the path-equivalence oracle</td><td><span class="chip now">Do first</span> New. No product change, no A7-0 dependency.</td></tr>
+        <tr><td><strong>A7-5 / W5-D</strong> — LR4 SIMD / AVX2</td><td><span class="chip human">Maintainer</span> Investigated; ADR not drafted. Blocked on A7-5E and decisions 1–3.</td></tr>
+        <tr class="accent"><td><strong>A7-5E</strong> — diff the universal binary's two slices</td><td><span class="chip now">Do first</span> New. One CI step, no new tooling.</td></tr>
+        <tr><td><strong>A7-9</strong> — the glide stalls above zero</td><td><span class="chip human">Maintainer</span> Widened from one module to three. Recommended, pending explicit Class-B approval.</td></tr>
+        <tr><td>A7-4 · A7-8</td><td><span class="chip human">Maintainer</span> Unchanged.</td></tr>
+        <tr><td>A7-3 · A7-6 · A7-7</td><td><span class="chip never">Not scheduled</span> Unchanged.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note teal">
+    <div class="note-h">What this round changed in the tree</div>
+    <p>No product code. No DSP code. No <code>PERFORMANCE_BUDGET.md</code> rows. No change to
+    RISK-002. Two worklog documents and this brief.</p>
+  </div>
+</section>
+
+<footer>
+  <span>Anamorph · performance programme · round A7</span>
+  <span>Investigation only — nothing implemented</span>
+  <span>Ir figures: callgrind, startup-subtracted</span>
+  <span>Wall-clock is indicative and is not a datum</span>
+</footer>
+
+</div>

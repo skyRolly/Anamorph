@@ -261,6 +261,23 @@ same as a true park) and the path is still reached from a fresh `prepare()` with
 default, which is the state it was written for. The repair is Class B (it moves the sample at which
 the amount reaches zero), so it is filed as **A7-9** with its measurement rather than folded in.
 
+**A7-9 is wider than that entry says, and the follow-up round measured how much.** The stall is not
+a `VelvetNoise` quirk but a closed form, `≈ FLT_MIN / k` for a glide of rate `k`, and **three**
+shipped parked fast paths rest on the same claim: `src/dsp/VelvetNoise.cpp:233-235`,
+`src/dsp/HaasProcessor.cpp:51-53` and `src/dsp/ChorusEngine.cpp:73-74` each say the one-pole flushes
+to true zero, and each gates on a **value** test that a stalled glide defeats. (Velvet's *density*
+gate, three lines above its amount gate, tests the **fixpoint** instead and is therefore immune —
+the same file carries both the defect and its remedy.) So none of the three parks is reachable after
+a user turns its control down. Measured: `HaasProcessor` stalls at `1.17487956e-35` and
+`ChorusEngine` at `5.63638313e-36`, and the missed park costs +203 % and +370 % of the parked module
+at 48 kHz / 128 — for Velvet, +752 % at 48 kHz / 32 and +2,372 % at 192 kHz / 32, because a stalled
+amount above zero also satisfies the H5 gather gate and puts the engine on its most expensive path.
+Still no audio effect on real signal (0 of 102,400 samples differ in all three); the residual shows
+only on digital silence, bounded at **1.643e-36**. Full evidence and the maintainer decision:
+`worklogs/performance/PERF_AUDIT_A7-2_A7-5_A7-9_INVESTIGATION.md` Part III. The two additional
+comments are drift reported and deliberately not edited this round — the correction rides with the
+A7-9 decision.
+
 **Verification.** `AnamorphTests` **178 checks** (162 before; Test 39 adds 16 — four checks at each
 of four sample rates) and `AnamorphStateTests` 920 checks, both 0 failures. Under ASan + UBSan + LSan
 with the `sanitizers` job's own flag set: **176** and 920 checks, **0 sanitizer diagnostics** — run for `local-bounds`, which checks the new copy's
