@@ -1837,22 +1837,34 @@ jobs:
             $2 "$exe" --self-check >/dev/null 2>&1 || { echo "  (--self-check FAILED for $1 -- hashes not trustworthy)"; return 1; }
             $2 "$exe" > "$3" 2>&1
           }
+          # RESULTS GO TO THE STEP SUMMARY AND TO ANNOTATIONS, not only to stdout.
+          # This job's log carries a very large dSYM warning flood, and a result
+          # buried behind it is a result nobody reads -- including the tooling
+          # that fetches logs by tail. `$GITHUB_STEP_SUMMARY` renders on the run
+          # page; `::notice::` is retrievable through the checks API.
+          say () { echo "$1"; echo "$1" >> "$GITHUB_STEP_SUMMARY"; }
           compare () {      # $1 = label, $2 = flags, $3 = tag
-            echo "=== $1 ==="
-            build_dump arm64  "$2" "bd-a-$3" || { echo "  arm64 build failed"; return 0; }
-            build_dump x86_64 "$2" "bd-x-$3" || { echo "  x86_64 build failed"; return 0; }
-            run_dump "bd-a-$3" ""             "d-a-$3.txt" || return 0
-            run_dump "bd-x-$3" "arch -x86_64" "d-x-$3.txt" || return 0
+            say ""; say "### $1"
+            build_dump arm64  "$2" "bd-a-$3" || { say "- arm64 build FAILED"; echo "::notice::A7-5E $3: arm64 build failed"; return 0; }
+            build_dump x86_64 "$2" "bd-x-$3" || { say "- x86_64 build FAILED"; echo "::notice::A7-5E $3: x86_64 build failed"; return 0; }
+            run_dump "bd-a-$3" ""             "d-a-$3.txt" || { say "- arm64 run FAILED"; return 0; }
+            run_dump "bd-x-$3" "arch -x86_64" "d-x-$3.txt" || { say "- x86_64 run FAILED"; return 0; }
+            local agree total
+            total=$(grep -c . "d-a-$3.txt" || echo 0)
             if diff -q "d-a-$3.txt" "d-x-$3.txt" >/dev/null; then
-              echo "  arm64 == x86_64 : IDENTICAL (all scenarios agree)"
+              say "- **arm64 == x86_64 — IDENTICAL** (all $total lines agree)"
+              echo "::notice::A7-5E $3: arm64 and x86_64 are IDENTICAL ($total lines)"
             else
               n=$(diff "d-a-$3.txt" "d-x-$3.txt" | grep -c '^<')
-              echo "  arm64 != x86_64 : $n scenario line(s) differ"
-              echo "  --- scenarios that AGREE ---"
+              agree=$(join -j1 <(sort "d-a-$3.txt") <(sort "d-x-$3.txt") 2>/dev/null | awk '$2==$4' | wc -l | tr -d ' ')
+              say "- **arm64 != x86_64** — $n line(s) differ, $agree scenario(s) agree"
+              echo "::notice::A7-5E $3: $n line(s) differ, $agree scenario(s) agree"
+              say ""; say "  scenarios that AGREE:"
               join -j1 <(sort "d-a-$3.txt") <(sort "d-x-$3.txt") 2>/dev/null \
-                | awk '$2==$4 {print "    " $1}' | head -40
+                | awk '$2==$4 {print "  - " $1}' | head -40 | tee -a "$GITHUB_STEP_SUMMARY"
             fi
           }
+          echo "## A7-5E — cross-slice numeric comparison (reporting only)" >> "$GITHUB_STEP_SUMMARY"
           compare "A7-5E part 1: shipped flags"            ""                   def
           compare "A7-5E part 2: -ffp-contract=off on both" "-ffp-contract=off" noc
           echo "=== end A7-5E (reporting only; this step never fails the job) ==="
