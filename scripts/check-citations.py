@@ -367,20 +367,6 @@ DELIBERATE_REAIMS = {
     # the prose in three documents, which is a change about those documents and
     # not about this table.
 
-    # RE-AIMED 2026-08-22 by the A7-2T round and MOVED AGAIN by A7-2B in the same
-    # round, which is why it names `:155` rather than `:148`. A7-2T's anchor was
-    # WRONG when it was written,
-    # not stale. The gather gate is a four-clause `if`, and the A7-2T round cited
-    # `:147` for its last clause when `:147` is the amount check and the clause is
-    # on `:148`. Review caught it; the tool could not, because it detects
-    # MOVEMENT and nothing moved -- `src/` is byte-identical to main across this
-    # whole change set. Correcting it is textually indistinguishable from drift
-    # (base `:147` and current `:148` name different text in the same unchanged
-    # file), so CI reports it against the branch's previous push and it is
-    # declared for its one transition. The expectation is the clause itself, so
-    # the run that excuses the comparison still asserts the aim.
-    ("docs/DOCUMENTATION_COVERAGE.md", "src/dsp/VelvetNoise.cpp:155"):
-        "numSamples <= (int) accum.size()",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the
