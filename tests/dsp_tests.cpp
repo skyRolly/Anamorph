@@ -3050,6 +3050,231 @@ static void testProcessIsAllocationFree()
 }
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+static void testVelvetLinearImageInvariance()
+{
+    std::printf ("Test 39: Velvet's H5 linear history image is block-length- and "
+                 "transition-safe (A7-1)\n");
+
+    // WHAT THIS PROTECTS. `VelvetNoise` builds a LINEAR image of its Mid history
+    // so each velvet tap reads one unit-stride run (H5, Wave 2). Since A7-1 that
+    // image is SLID forward from the previous block instead of re-gathered from
+    // the ring, which makes it cross-block state -- and cross-block state is only
+    // correct while every path that does NOT leave the image in its documented
+    // shape invalidates it. `processBlock` clears the offset on entry and only
+    // the gather path re-arms it, so the property below is what says that rule is
+    // actually being honoured, including by paths a later round adds.
+    //
+    // WHY BLOCK-LENGTH INVARIANCE IS THE RIGHT ASSERTION. Every piece of state in
+    // this module advances per SAMPLE -- the two glides, the presence env, the
+    // gate, the stop machine, the ring write -- and H5's own contract is that the
+    // gathered sum equals the per-sample loop's "for any block length". So the
+    // module's output is a function of the SAMPLE STREAM alone, and the same
+    // audio driven at 32 and at 512 samples must land on identical BITS. A stale
+    // image is stale by the previous block's length, so it perturbs the two runs
+    // differently and cannot survive this comparison -- which is precisely the
+    // failure mode the offset exists to prevent. It also re-asserts the older H5
+    // and Wave-5 contracts for free: both were written to be block-length
+    // agnostic and nothing was checking it.
+    juce::ScopedNoDenormals noDenormals; // FTZ, exactly like the real audio thread
+
+    // SWEPT OVER SAMPLE RATE because the image's length is `round(0.045 * sr)`
+    // -- 2160 samples at 48 kHz, 8640 at 192 kHz -- so the amount of history the
+    // slide carries, and the ring's wrap relative to it, are rate-dependent. A
+    // single-rate check would leave the 192 kHz case, where this cost mattered
+    // most, unasserted.
+    for (const double sr : { 44100.0, 48000.0, 96000.0, 192000.0 })
+    {
+    constexpr int    kBigBlock = 512;
+    constexpr int    kSmall    = 32;      // 512 % 32 == 0, so events land on a boundary in both
+    constexpr int    kBlocks   = 260;     // ~2.8 s: long enough for the amount glide to flush to 0
+    constexpr int    kTotal    = kBigBlock * kBlocks;
+
+    // Deterministic stimulus, generated ONCE and fed to both runs: a noise bed
+    // with a silent stretch (so the presence gate closes and re-opens) and a
+    // loud stretch (so it saturates). Both runs see the identical sample stream.
+    std::vector<float> inL ((size_t) kTotal), inR ((size_t) kTotal);
+    {
+        std::mt19937 rng (24680);
+        std::uniform_real_distribution<float> d (-0.6f, 0.6f);
+        for (int i = 0; i < kTotal; ++i)
+        {
+            const int blk = i / kBigBlock;
+            const float g = (blk >= 60 && blk < 90) ? 0.0f          // silent stretch
+                          : (blk >= 200 && blk < 220) ? 1.4f        // loud stretch
+                          : 1.0f;
+            const float tone = 0.25f * std::sin (2.0f * juce::MathConstants<float>::pi
+                                                 * 180.0f * (float) i / (float) sr);
+            inL[(size_t) i] = (tone + d (rng)) * g;
+            inR[(size_t) i] = (tone - d (rng)) * g;
+        }
+    }
+
+    // The event schedule, in BIG blocks so every event lands on a block boundary
+    // of both runs. Between them it walks every path in the module: the gather
+    // fast path, the parked fast path (amount flushed to exactly 0), the general
+    // per-sample loop (a moving density re-weights every sample) and the
+    // transport-stop fade, which flushes the ring mid-block.
+    struct Event { int atBigBlock; int kind; float value; };
+    enum { kAmount = 0, kDensity = 1, kTransport = 2 };
+    const Event events[] = {
+        {   0, kTransport, 1.0f }, {   0, kAmount, 1.0f  }, {   0, kDensity, 0.5f },
+        {  20, kAmount,    0.0f },                                   // park
+        { 190, kAmount,    0.8f },                                   // re-engage
+        { 215, kTransport, 0.0f },                                   // stop: fade + ring flush
+        { 225, kTransport, 1.0f },
+        { 235, kDensity,   0.9f },                                   // moving density
+    };
+
+    // A run is driven by a CYCLE of block sizes, repeated. A single-element cycle
+    // is the fixed-size case; a multi-element one puts consecutive gather blocks
+    // of DIFFERENT lengths next to each other, which is the case the slide
+    // arithmetic is really about -- `linHistSlide` carries the just-processed
+    // block's length, so a run whose blocks never change size can be correct
+    // with the offset confused for a constant. Every cycle here sums to
+    // `kBigBlock`, so each event still lands on a block boundary in every run.
+    auto run = [&] (std::initializer_list<int> cycle)
+    {
+        anamorph::VelvetNoise v;
+        v.prepare (sr, kBigBlock);   // sized for the LARGEST block in any run
+        v.reset();
+
+        std::vector<float> outL ((size_t) kTotal), outR ((size_t) kTotal);
+        std::vector<float> bufL ((size_t) kBigBlock), bufR ((size_t) kBigBlock);
+
+        const std::vector<int> sizes (cycle);
+        std::size_t next = 0;
+        for (int start = 0; start < kTotal; )
+        {
+            for (const auto& e : events)
+                if (e.atBigBlock * kBigBlock == start)
+                {
+                    if      (e.kind == kAmount)    v.setAmount (e.value);
+                    else if (e.kind == kDensity)   v.setDensity (e.value);
+                    else                           v.setTransportPlaying (e.value > 0.5f);
+                }
+
+            const int block = sizes[next++ % sizes.size()];
+            std::copy (inL.begin() + start, inL.begin() + start + block, bufL.begin());
+            std::copy (inR.begin() + start, inR.begin() + start + block, bufR.begin());
+            v.processBlock (bufL.data(), bufR.data(), block);
+            std::copy (bufL.begin(), bufL.begin() + block, outL.begin() + start);
+            std::copy (bufR.begin(), bufR.begin() + block, outR.begin() + start);
+            start += block;
+        }
+        return std::pair<std::vector<float>, std::vector<float>> { outL, outR };
+    };
+
+    const auto big     = run ({ kBigBlock });
+    const auto small   = run ({ kSmall });
+    // 32 + 128 + 64 + 256 + 32 = 512: four distinct sizes, every neighbouring
+    // pair different, and the cycle lands back on the event grid every time.
+    const auto varying = run ({ 32, 128, 64, 256, 32 });
+
+    // THE PREMISE, CHECKED FIRST so nothing below is vacuously true of silence:
+    // the engaged stretch must actually have decorrelated something. Without
+    // this a module that returned its input unchanged would pass the bit
+    // comparison perfectly (TESTING_POLICY rule 4).
+    float maxSideDelta = 0.0f;
+    for (int i = 10 * kBigBlock; i < 19 * kBigBlock; ++i)
+    {
+        const float inSide  = (inL[(size_t) i]        - inR[(size_t) i]) * 0.5f;
+        const float outSide = (big.first[(size_t) i] - big.second[(size_t) i]) * 0.5f;
+        maxSideDelta = std::max (maxSideDelta, std::abs (outSide - inSide));
+    }
+    check (maxSideDelta > 1.0e-3f, "the engaged stretch really decorrelates (premise)");
+    std::printf ("  %6.0f Hz: engaged stretch max |side change| = %.4f\n",
+                 sr, (double) maxSideDelta);
+
+    // THE INVARIANT, compared on BITS rather than with `==`. Two reasons, and the
+    // second is the substantive one: `-Wfloat-equal` is at zero in the Clang
+    // baseline and this file is first-party; and a float `==` is the wrong
+    // predicate for a bit-identity claim anyway -- it calls +0 and -0 equal
+    // (which the S5 signed-zero algebra in this very module cares about) and
+    // calls NaN unequal to itself.
+    auto sameBits = [] (float a, float b) noexcept
+    {
+        std::uint32_t ua, ub;
+        std::memcpy (&ua, &a, sizeof (ua));
+        std::memcpy (&ub, &b, sizeof (ub));
+        return ua == ub;
+    };
+
+    auto compare = [&] (const char* what,
+                        const std::pair<std::vector<float>, std::vector<float>>& other)
+    {
+        int    firstDiff = -1;
+        double worst     = 0.0;
+        for (int i = 0; i < kTotal; ++i)
+        {
+            const bool same = sameBits (big.first[(size_t) i],  other.first[(size_t) i])
+                           && sameBits (big.second[(size_t) i], other.second[(size_t) i]);
+            if (! same)
+            {
+                worst = std::max (worst, (double) std::abs (big.first[(size_t) i]  - other.first[(size_t) i]));
+                worst = std::max (worst, (double) std::abs (big.second[(size_t) i] - other.second[(size_t) i]));
+                if (firstDiff < 0) firstDiff = i;
+            }
+        }
+        check (firstDiff < 0, what);
+        if (firstDiff >= 0)
+            std::printf ("  [FAIL] %.0f Hz %s: first difference at sample %d (block %d of 512); "
+                         "worst |delta| %.3e\n", sr, what, firstDiff, firstDiff / kBigBlock, worst);
+    };
+
+    compare ("512-sample and 32-sample runs are bit-identical", small);
+    compare ("a run of MIXED block sizes is bit-identical to the 512-sample one", varying);
+
+    // A NON-GATHER PATH REALLY RAN, asserted rather than assumed. The image is
+    // only safe while every path that does not maintain it invalidates it, so a
+    // schedule that never left the gather path would leave that rule
+    // unexercised and the bit comparison above would pass on a build with no
+    // invalidation at all. The transport stop is the observable: it is
+    // implemented ONLY in the general per-sample loop, where it fades the wet
+    // out over ~4 ms and then FLUSHES the history and re-arms the presence gate
+    // -- so a window shortly after it must carry far less decorrelation than the
+    // engaged window, and the two are compared to each other rather than to a
+    // fixed number.
+    //
+    // THE BOUND IS MEASURED IN BOTH DIRECTIONS, which is what makes it a gate
+    // rather than a hopeful inequality. With the stop event: 15.4-25.2 % of the
+    // engaged figure across the four rates. With the stop event REMOVED and
+    // nothing else changed: 90.6-128.9 %. Half-way between them separates the
+    // two by more than 1.8x on either side. Proven live a second way as well:
+    // seeding "the general path leaves a stale image" makes the bit comparison
+    // above fail at exactly this block.
+    //
+    // WHAT IS NOT COVERED HERE, said out loud. The Wave-5 PARKED path is not
+    // reached by any schedule this test can write, and the reason is a property
+    // of the module rather than of the test: with a 0 target the amount one-pole
+    // is `a -= 0.0015f * a`, and under FTZ the DECREMENT underflows to zero
+    // while `a` is still ~7.8e-36, so the glide stalls just above zero instead of
+    // reaching it. `currentAmount > 0.0f` therefore stays true and the gather
+    // path keeps its eligibility. (Measured on the shipped code, pre-A7-1 and
+    // post- alike; PERF_AUDIT_v0.9.5_IMPLEMENTATION.md §5 carries it. The parked
+    // path is still reached from a fresh `prepare()` with Amount at its 0
+    // default, which is the state it was written for.) Its invalidation duty is
+    // held structurally instead: the offset is cleared on ENTRY to
+    // `processBlock`, so no path can arm it by omission.
+    const int stopAt   = 215 * kBigBlock;
+    const int postFrom = stopAt + (int) (0.005 * sr);   // after the ~4 ms tail fade
+    const int postTo   = stopAt + (int) (0.015 * sr);
+    float postStop = 0.0f;
+    for (int i = postFrom; i < postTo; ++i)
+    {
+        const float inSide  = (inL[(size_t) i]        - inR[(size_t) i]) * 0.5f;
+        const float outSide = (big.first[(size_t) i] - big.second[(size_t) i]) * 0.5f;
+        postStop = std::max (postStop, std::abs (outSide - inSide));
+    }
+    check (postStop < 0.5f * maxSideDelta,
+           "the transport stop flushes the wet (a non-gather path ran)");
+    std::printf ("  %6.0f Hz: post-stop |side change| = %.4f, %.1f%% of the engaged %.4f\n",
+                 sr, (double) postStop, 100.0 * (double) postStop / (double) maxSideDelta,
+                 (double) maxSideDelta);
+    } // sample-rate sweep
+}
+
+
 int main()
 {
     std::printf ("=== Anamorph DSP self-tests ===\n");
@@ -3104,6 +3329,7 @@ int main()
     testMsSoloInputIsolation();
     testMatchInjectRestore();
     testProcessIsAllocationFree();
+    testVelvetLinearImageInvariance();
     testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);

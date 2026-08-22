@@ -93,11 +93,20 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   hot path. Formal budget numbers are not yet committed (session-local Wave-3/4/5 callgrind
   measurements exist — drag scenarios −35…−50 % after Wave 3; see PERFORMANCE_BUDGET).
 - **Impact:** Higher-than-necessary CPU in Simple mode and CPU spikes during fast split automation.
-- **Likelihood (evidence-based):** Medium — the cost is real and constant; whether it matters
-  depends on host/SR/buffer, which are unmeasured.
+- **Likelihood (evidence-based):** Medium — the cost is real and constant. The A7 audit (2026-08-22)
+  measured the SR/buffer dependence that this row previously called unmeasured: the split **drag**
+  costs **+11.2 %** over the static 4-band state (93.3M vs 84.0M Ir/s, of which `__tan_fma` is
+  3.26 %), and nothing in either instrument shows a transient cliff. The multiband as a whole is
+  **52.4 %** of the working reference. What is still genuinely unmeasured is the part the row exists
+  for — the **instance count on a named machine** — because instruction counts cannot answer it and a
+  shared runner is not a wall-clock datum. **This risk therefore stays open**, and the audit says so
+  in its own §4.5 rather than claiming otherwise.
 - **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:1267 (`soloMonitor.process`, always-on); src/dsp/MultibandWidth.cpp (glide + fade paths);
-  Devin PR #50 review (efficiency note); `docs/architecture/PERFORMANCE_BUDGET.md` (TODOs).
-- **Mitigation:** Formal profiling (PERFORMANCE_BUDGET numeric budgets remain TODO). The SoloMonitor
+  Devin PR #50 review (efficiency note); `docs/architecture/PERFORMANCE_BUDGET.md` (TODOs);
+  `worklogs/performance/PERF_AUDIT_v0.9.4_INVESTIGATION.md` §3.1, §4.5.
+- **Mitigation:** Formal profiling (PERFORMANCE_BUDGET numeric budgets remain TODO — the harness and
+  procedure now exist and were exercised end to end by the A7 audit; what is missing is a named,
+  held-still machine to run them on, which is that audit's roadmap item 01). The SoloMonitor
   settled-skip **shipped**: H1 (0.8.9) plus the Wave-3 gains-only cold gate, guarded by Test 33
   (`testSoloColdThroughDrag`) — the settled passthrough now goes fully cold. Correctness is
   unaffected either way.

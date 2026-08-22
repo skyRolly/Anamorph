@@ -366,7 +366,122 @@ DELIBERATE_REAIMS = {
     # parenthetical after the anchor. Getting them content-checked means rewriting
     # the prose in three documents, which is a change about those documents and
     # not about this table.
+
+    # RE-AIMED 2026-08-22 by the A7-2 round, and it is the ordinary case this
+    # table exists for rather than anything new. The A7-1 change set cited
+    # `src/dsp/VelvetNoise.cpp:139-142` for the per-block ring walk; that same
+    # change set REPLACED those lines with the slide, so the anchor described
+    # code that no longer existed there and CI caught it against the branch's
+    # previous push. The walk survives as the first-block-after-invalidation
+    # branch, which is where the citation now points -- a correction, and a
+    # correction is textually indistinguishable from drift, so it is declared
+    # for its one transition. The expectation is the walk's own assignment.
+    ("docs/DOCUMENTATION_COVERAGE.md", "src/dsp/VelvetNoise.cpp:180-181"):
+        "linHist[(size_t) j] = midHist[",
 }
+
+# Lines whose CONTENT is expected to change on its own schedule, keyed by the
+# exact `(tracked path, line)` the citation names.
+#
+# WHY THIS EXISTS, and it was found the way these things are found: the first
+# version bump after `CMakeLists.txt` came under this gate FAILED it. Six
+# documents cite `CMakeLists.txt:14` -- the `project(Anamorph VERSION x.y.z ...)`
+# line -- and its text changes by definition on every release, so the base
+# comparison reports six drifted citations for a change that moved nothing. The
+# release procedure this repository documents (`RELEASE_PROCESS.md` step 1) was
+# therefore un-runnable while the gate was green on every other kind of change.
+#
+# WHY `DELIBERATE_REAIMS` CANNOT COVER IT. That table excuses a citation whose
+# SPELLING changed, and `is_declared_reaim` returns False when the base and
+# current spellings agree -- deliberately, so an entry cannot outlive its one
+# transition. This is the opposite case: the spelling is right, unchanged, and
+# will stay right; it is the cited LINE that was rewritten. There is no
+# transition for an entry to outlive, which is also why the mechanism has to be
+# separate rather than a loosened guard on the other one.
+#
+# WHAT IT COSTS, stated because it is not free. For a declared line the base
+# comparison -- "does this still say what it said?" -- is REPLACED by a
+# permanent content assertion: does the line still contain the stable token
+# named here. On `CMakeLists.txt:14` that token is the part a citation is really
+# about (`project(Anamorph VERSION`), and the part it is not about is exactly
+# the version. So the gate stops watching the version and keeps watching that
+# line 14 is still the project declaration. That is weaker than the base
+# comparison and stronger than an exemption, and unlike an exemption it is
+# checked on EVERY run by `verify_versioned_lines`, against the current file,
+# with no base revision involved.
+#
+# THREE THINGS KEEP IT NARROW. It is keyed by one exact line, not a file and not
+# a document, so it cannot spread. It applies only when the anchor did NOT move
+# -- a re-aimed anchor still goes through the ordinary drift path and still
+# needs a `DELIBERATE_REAIMS` declaration. And an entry whose token has gone
+# missing is a hard failure, not a warning, so a line that stops being what it
+# claims takes the build with it.
+VERSIONED_LINES = {
+    ("CMakeLists.txt", 14): "project(Anamorph VERSION",
+}
+
+
+def anchor_still_right(tracked, base_src, now_src, a, b, a2, b2):
+    """Is this citation still pointing at what it pointed at? ONE decision.
+
+    BOTH check paths ask this question and they used to answer it separately.
+    The paired path (base and current spell the citation the same number of
+    times) grew the `VERSIONED_LINES` substitution; the count-mismatch path --
+    reached when a document changes HOW MANY times it cites a file -- kept a
+    bare text comparison, so a version bump landing in the same change set as a
+    new citation of `CMakeLists.txt` reported line 14 as drifted and re-blocked
+    the release the substitution exists to unblock. Reproduced before the fix:
+    one added citation in `RELEASE_PROCESS.md` turned `--check` red with
+    "UNMAPPABLE CMakeLists.txt:14".
+
+    The two paths differ only in what they compare against: the count-mismatch
+    path reaches citations whose SPELLING is unchanged, so it passes `a2 == a`.
+    Everything else -- including which lines are allowed to change content -- is
+    the same question and is now answered in one place, which is the property
+    that stops the two drifting apart again.
+
+    A `VERSIONED_LINES` entry substitutes "still contains its stable token" for
+    the base comparison, and only for an anchor that did NOT move; a re-aimed
+    anchor falls through to the ordinary drift path and still needs a
+    `DELIBERATE_REAIMS` declaration.
+    """
+    if (b is None) != (b2 is None):
+        return False
+    for lo, hi in ((a, a2), (b, b2)):
+        if lo is None:
+            continue
+        if lo == hi and (tracked, lo) in VERSIONED_LINES:
+            if VERSIONED_LINES[(tracked, lo)] in line_of(now_src[tracked], hi):
+                continue
+            return False
+        if line_of(base_src[tracked], lo) != line_of(now_src[tracked], hi):
+            return False
+    return True
+
+
+def verify_versioned_lines():
+    """Every declared line still contains its stable token. No base revision.
+
+    The sibling of `verify_reaim_targets` and built from the same parts, for the
+    same reason: a declaration that turns a comparison off is only safe while
+    something else says it still names what it claims to name.
+    """
+    problems = []
+    for (path, line), token in sorted(VERSIONED_LINES.items()):
+        try:
+            text = read(path)
+        except OSError as exc:
+            problems.append((path, line, token, f"the file could not be read ({exc.strerror})"))
+            continue
+        lines = text.split("\n")
+        if line < 1 or line > len(lines):
+            problems.append((path, line, token, f"the file has only {len(lines)} lines"))
+            continue
+        if token not in lines[line - 1]:
+            problems.append((path, line, token,
+                             f"the line reads: {lines[line - 1].strip()[:70]!r}"))
+    return problems
+
 
 # Documents whose GLOSSED citations are checked against the text they name.
 #
@@ -1593,6 +1708,96 @@ def self_test():
     check("each drifted-citation increment has its per-document counterpart",
           (own_source.count("fixable += 1") - paired, paired), (2, 2))
 
+    # --- 8f. A VERSIONED LINE IS EXCUSED, AND ONLY THAT LINE -----------------
+    # `VERSIONED_LINES` turns the base comparison off for one exact line, which
+    # is the only construct in this file that can make a REAL difference in a
+    # tracked file invisible. So the four things that keep it narrow are checked
+    # here rather than trusted to the comment that describes them.
+    saved_vl = dict(VERSIONED_LINES)
+    try:
+        VERSIONED_LINES.clear()
+        VERSIONED_LINES[("CMakeLists.txt", 14)] = "project(Anamorph VERSION"
+        check("the declared line is live on the real tree", verify_versioned_lines(), [])
+
+        # It must FAIL when the line stops being what it claims -- otherwise the
+        # entry is an exemption rather than a substituted assertion.
+        VERSIONED_LINES.clear()
+        VERSIONED_LINES[("CMakeLists.txt", 14)] = "this-token-is-not-on-line-14"
+        check("a token that is not there is reported", len(verify_versioned_lines()), 1)
+
+        # Out-of-range and unreadable are findings, never tracebacks -- the same
+        # rule section 8c applies to the gloss list.
+        VERSIONED_LINES.clear()
+        VERSIONED_LINES[("CMakeLists.txt", 10 ** 7)] = "x"
+        check("a line past the end of the file is reported", len(verify_versioned_lines()), 1)
+        VERSIONED_LINES.clear()
+        VERSIONED_LINES[("no/such/file.txt", 1)] = "x"
+        check("an unreadable file is reported, not raised", len(verify_versioned_lines()), 1)
+    finally:
+        VERSIONED_LINES.clear()
+        VERSIONED_LINES.update(saved_vl)
+    check("...and the table is restored afterwards",
+          VERSIONED_LINES.get(("CMakeLists.txt", 14)), "project(Anamorph VERSION")
+
+    # THE SUBSTITUTION IS KEYED ON `(path, line)`, so a declaration for one line
+    # cannot excuse its neighbour. Asserted structurally, because the alternative
+    # -- a table keyed by file -- is the mistake this shape exists to avoid.
+    check("the table is keyed by a (path, line) pair, not by a path",
+          all(isinstance(k, tuple) and len(k) == 2 and isinstance(k[1], int)
+              for k in VERSIONED_LINES), True)
+
+    # AND IT APPLIES ONLY TO AN ANCHOR THAT DID NOT MOVE. The substitution sits
+    # behind `lo == hi` in `anchor_still_right`, so a re-aimed anchor -- the case
+    # `DELIBERATE_REAIMS` is for -- still goes through the base comparison. That
+    # guard is the difference between "this line's content is allowed to change"
+    # and "this line is not checked", and a rewrite that drops it would be
+    # invisible on a clean tree.
+    # The literal is split so this line cannot match itself; a self-matching
+    # source check counts its own text and passes no matter what the code does.
+    check("the versioned substitution is gated on the anchor not having moved",
+          read(__file__).count("if lo == hi and (tracked, lo) in " + "VERSIONED_LINES:"), 1)
+
+    # BOTH CHECK PATHS ASK THE SAME QUESTION, and this is the case that proves
+    # it. `anchor_still_right` is driven directly on synthetic sources, the way
+    # section 8e drives `glossed_problems_in`, because the defect it fixes was
+    # invisible from the real tree: the count-mismatch path -- reached only when
+    # a document changes HOW MANY times it cites a file -- had its own bare text
+    # comparison, so a version bump landing in the same change set as an added
+    # citation reported `CMakeLists.txt:14` as drifted and re-blocked the
+    # release. Reproduced on the real tree before the fix, green after, and a
+    # drift on a NEIGHBOURING line of the same file still fails on that path.
+    saved_vl2 = dict(VERSIONED_LINES)
+    try:
+        VERSIONED_LINES.clear()
+        VERSIONED_LINES[("F", 1)] = "VERSION"
+        # `line_of` takes a LIST of lines, which is the shape both check paths
+        # hand it (`base_src`/`now_src` hold split sources).
+        base = {"F": ["project(X VERSION 1.0)", "name X"]}
+        now  = {"F": ["project(X VERSION 2.0)", "name X"]}
+        # The version line changed and the anchor did not: excused, on the same
+        # call shape the count-mismatch path uses (`a2 == a`).
+        check("a versioned line is excused when the anchor did not move",
+              anchor_still_right("F", base, now, 1, None, 1, None), True)
+        # A different line of the same file is NOT excused.
+        now2 = {"F": ["project(X VERSION 2.0)", "name Y"]}
+        check("a neighbouring line of the same file is still compared",
+              anchor_still_right("F", base, now2, 2, None, 2, None), False)
+        # A MOVED anchor is not excused either, even on the declared line.
+        base3 = {"F": ["a", "project(X VERSION 1.0)"]}
+        check("a moved anchor is not excused by the declaration",
+              anchor_still_right("F", base3, now, 2, None, 1, None), False)
+    finally:
+        VERSIONED_LINES.clear()
+        VERSIONED_LINES.update(saved_vl2)
+
+    # ONE FUNCTION, NOT TWO. The defect above existed because the two paths each
+    # carried their own copy of the decision and only one of them grew the
+    # substitution. Asserted structurally, because a future edit that re-inlines
+    # either copy would pass every behavioural case above on the day it landed.
+    own = read(__file__)
+    check("both check paths call the shared decision",
+          own.count("all(anchor_still" + "_right(tracked, base_src, now_src"), 2)
+
     # --- 9. EVERY DECLARATION NAMES A SPELLING ITS DOCUMENT REALLY CARRIES ---
     # A declaration excuses a mismatch, so it is consulted ONLY when one occurs.
     # That makes a stale entry invisible from the branch it was written on: the
@@ -1725,6 +1930,24 @@ def main():
               f"say they contain. Re-anchoring continues below, but those anchors are NOT "
               f"repaired by it and this run will still exit non-zero.")
 
+    # A `VERSIONED_LINES` entry turns the base comparison off for one line, so
+    # the thing that keeps it honest -- that the line is still what it claims to
+    # be -- has to run before anything leans on it, and has to be a hard failure
+    # in every mode. Unlike a gloss this is not repairable by re-anchoring: the
+    # declaration names a line by number, and if that line is no longer the
+    # project declaration the fix is to move the declaration, which only a human
+    # reading both can do.
+    versioned_problems = verify_versioned_lines()
+    if versioned_problems:
+        for path, line, token, why in versioned_problems:
+            print(f"::error::VERSIONED_LINES {path}:{line} should contain {token!r} — {why}",
+                  file=sys.stderr)
+        print(f"\ncheck-citations: {len(versioned_problems)} declared versioned line(s) no "
+              f"longer contain the token they name. That declaration turns the base comparison "
+              f"off for that line, so it must not be left pointing somewhere else — re-derive "
+              f"the line number or delete the entry.", file=sys.stderr)
+        return 2
+
     base_src, now_src = {}, {}
     for path in TRACKED:
         if not os.path.exists(path):
@@ -1813,8 +2036,11 @@ def main():
                     if not spans:
                         unchecked += len(anchors_o)
                         continue
-                    if all(line_of(base_src[tracked], a) == line_of(now_src[tracked], a)
-                           and (b is None or line_of(base_src[tracked], b) == line_of(now_src[tracked], b))
+                    # The SAME decision the paired path makes below -- a
+                    # version-bumped line is excused here too. This branch sees
+                    # only unchanged spellings, so the anchors are their own
+                    # counterparts.
+                    if all(anchor_still_right(tracked, base_src, now_src, a, b, a, b)
                            for (a, b) in anchors_o):
                         continue
                     # Past this point the citation is DRIFTED and will be counted
@@ -1880,10 +2106,9 @@ def main():
                     continue
 
                 # Correct means: the text at the CURRENT anchors is the text the
-                # BASE anchors named.
-                same = all(line_of(base_src[tracked], a) == line_of(now_src[tracked], a2)
-                           and (b is None) == (b2 is None)
-                           and (b is None or line_of(base_src[tracked], b) == line_of(now_src[tracked], b2))
+                # BASE anchors named. `anchor_still_right` carries that rule and
+                # the `VERSIONED_LINES` substitution for both check paths.
+                same = all(anchor_still_right(tracked, base_src, now_src, a, b, a2, b2)
                            for (a, b), (a2, b2) in zip(anchors_o, anchors_c))
                 if same:
                     continue

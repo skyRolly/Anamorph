@@ -167,6 +167,24 @@ no benchmark/profiling data exists in the repository, and inventing numbers is p
   must stay warm for automation-driven engage) — not dead work. Net: ~0.5–1 % of
   floor available behind an AVX decision, deferred. Evidence [Verified]:
   worklogs/performance/FINAL_PASS_v0.8.11_INVESTIGATION.md.
+- **The Velvet decorrelation window is carried forward, not rebuilt per block (A7-1, 0.9.5).** The
+  H5 gather's linear history image was refilled from the ring on EVERY block by a walk of
+  `decorrSamps = round(0.045 * sr)` samples — 2160 at 48 kHz, 8640 at 192 kHz — independent of
+  `numSamples`. That made it a FIXED per-block cost that grows with the sample rate and is divided
+  by the block length, and it was the single largest per-block item in the engine: measured 20,369
+  of the engine's 24,287 Ir/block at 48 kHz (84 %), and **62.3 % of the whole engine at 192 kHz with
+  32-sample buffers**. The tail is now slid from the previous block's image (`std::copy` leftwards,
+  the same floats), guarded by an offset that `processBlock` clears on entry so every non-gather
+  path invalidates it by construction. Class A, and measured rather than argued: bit-identical on
+  the 32-scenario committed twin dump AND across 180 configurations (9 scenarios × 5 block sizes ×
+  4 sample rates). Engine cost: **−14.3 % at 48 kHz/32, −8.5 % at 48 kHz/64, −4.7 % at 48 kHz/128,
+  −2.5 % at 48 kHz/256, −7.5 % at 44.1 kHz/128, −8.7 % at 96 kHz/128, −32.3 % at 192 kHz/32,
+  −15.0 % at 192 kHz/128.** The per-block term fell 24,302 → 13,502 Ir at 48 kHz while the marginal
+  per-sample term stayed at 1596.6 Ir, which is the signature of a change confined to the refill.
+  Guarded by Test 39 (`testVelvetLinearImageInvariance`: the same audio at 512 and at 32 samples
+  must be bit-identical, at four sample rates), proven to fire on both a wrong slide and a missing
+  invalidation. Evidence [Verified]: src/dsp/VelvetNoise.cpp (the slide + its invariant comment);
+  worklogs/performance/PERF_AUDIT_v0.9.5_IMPLEMENTATION.md.
 - **VelvetNoise** has an O(maxTaps=64) sparse-FIR inner loop per sample, plus a full-buffer
   `std::fill` on the transport-stop completion (no alloc). As of 0.8.8 the surrounding per-sample
   work is gated without changing output: the 64-tap weight rebuild + `sqrt` normalisation runs only
@@ -263,6 +281,30 @@ shared cloud runner is precisely the "shared or thermally-throttled machine" thi
 not a datum, and the 65.4% worst-block spread measured on one is the evidence for that sentence
 rather than a hypothetical. Run the harness on a known desktop, record the CPU/OS/compiler beside
 every cell, and populate the rows in that change.
+
+**Attempted again 2026-08-22, after A7-1 shipped, and declined again on the same grounds — recorded
+so the next attempt does not repeat it.** The harness builds and runs end to end; what is missing is
+still only the machine. Four things disqualified the one available, and they are the checklist for
+the one that will not be:
+
+* **The CPU cannot be named.** `/proc/cpuinfo` reports `Intel(R) Xeon(R) Processor @ 2.80GHz` — a
+  masked virtual model string with no SKU. `AnamorphBench` prints it and therefore satisfies
+  constraint C2's letter while identifying no actual processor, which is the one failure mode C2
+  exists to prevent.
+* **It is a container** (`systemd-detect-virt` → `docker`), not a desktop.
+* **The clock cannot be seen or held.** No `cpufreq` is exposed, so neither the governor nor any
+  thermal or host-side throttling can be observed, let alone pinned.
+* **It is not idle.** Load average was 0.44 / 2.10 / 1.69 while the bench ran.
+
+The medians happened to be stable across three consecutive runs here (working reference 193.79 /
+193.31 / 194.09 ns/sample, 0.4 %), and that is **not** sufficient: the column RISK-002 needs is the
+worst single block, and it measured 104.0 / 128.5 / 118.2 µs across those same three runs — a
+**23.6 %** spread on the one figure the open question turns on.
+
+**One gap for whoever does run it:** `AnamorphBench` records the CPU string, the core count and the
+compiler, but not the OS version or the build configuration. This section asks for CPU/OS/compiler
+beside every cell, so those two must be written down by hand alongside the table (or the harness
+taught to print them) — otherwise the recorded datum is missing half of what makes it reproducible.
 
 **Build it the way users get it.** `-DCMAKE_BUILD_TYPE=Release` only. The `AnamorphHardening`
 flags and `juce::juce_recommended_lto_flags` are part of the shipped configuration, so a bench

@@ -15,7 +15,7 @@ exits non-zero on any failed `check` or missing binary. Evidence [Verified]: scr
 
 ### What the tests cover
 
-`tests/dsp_tests.cpp` has **37 DSP tests** using a `check(cond, "what")` harness, covering: MS
+`tests/dsp_tests.cpp` has **38 DSP tests** using a `check(cond, "what")` harness, covering: MS
 round-trip (bit-exact), transparent default, true-bypass null + latency match, Mono Maker
 (post-Mix), Multiband mono-compat, Solo band selectivity + transparency, Level Match
 (unity/no-ratchet/silence-freeze/mix-coupling/multiband-unity), crossover automation safety,
@@ -88,7 +88,32 @@ shadow RTSan's own and blind that lane (ADR-0029 §7). That stand-down is detect
 `__has_feature(realtime_sanitizer)` and **cross-checked from outside the compiler**: the
 `realtime` job also passes `-DANAMORPH_RTSAN_LANE=1`, and the header `#error`s if the lane is
 declared while the guard is still live, so a renamed or removed feature name fails the build
-instead of silently hollowing out the lane. It
+instead of silently hollowing out the lane.
+
+The newest DSP test is the **Velvet linear-image invariance guard**
+(`testVelvetLinearImageInvariance`, Test 39, A7-1 / 0.9.5). Since 0.9.5 `VelvetNoise` carries its
+H5 linear history image ACROSS blocks -- it is slid forward rather than re-gathered from the ring --
+so the image is cross-block state, and cross-block state is only correct while every path that does
+not maintain it invalidates it. The test drives the module through one fixed schedule (engage, park,
+re-engage, transport stop, moving density) at **44.1 / 48 / 96 / 192 kHz**, once in 512-sample
+blocks, once in 32-sample blocks and once through a **cycle of mixed sizes** (32, 128, 64, 256, 32 --
+summing to 512, so the events still land on a block boundary and every neighbouring pair differs),
+and requires all three to be **bit-identical**: every piece of state here advances per SAMPLE, so the
+output is a function of the sample stream alone, and a stale image -- stale by the previous block's
+length -- perturbs the runs differently and cannot survive the comparison. The mixed cycle is what
+exercises the slide arithmetic's real subject: `linHistSlide` carries the JUST-PROCESSED block's
+length, so a run whose blocks never change size could be correct with the offset confused for a
+constant. The comparison is made on BITS rather than with `==` -- `-Wfloat-equal` is at zero in the
+Clang baseline, and a float `==` is the wrong predicate for a bit-identity claim anyway, calling +0
+and -0 equal (which this module's own signed-zero algebra cares about) and NaN unequal to itself. The same test passes unchanged against the pre-0.9.5 engine, so it asserts a
+contract the module already had rather than one invented for the change. It **proves itself live**
+three ways: the engaged stretch must really decorrelate; the transport stop must really flush the
+wet (measured 15.4-25.2 % of the engaged figure with the stop, 90.6-128.9 % with the stop event
+removed, so the 50 % bound sits between two measured populations); and both defect classes were
+seeded and caught -- a wrong slide fails at sample 32, a missing invalidation at the stop block.
+`worklogs/performance/PERF_AUDIT_v0.9.5_IMPLEMENTATION.md` §2.2.
+
+The suite
 additionally carries **one state-restoration robustness guard**,
 `testAbActiveClampOnCorruptState` — it drives a corrupted `<AB active="…">` blob through the same
 read+clamp the processor uses (`anamorph::clampAbSlotIndex`, `src/AbSlotIndex.h`) and asserts an

@@ -1,0 +1,990 @@
+<title>Anamorph Engine Cost Audit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Semi+Condensed:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+/* ============================================================================
+   Palette is Anamorph's own (src/gui/LookAndFeel.h `namespace colours`) rather
+   than an invented one: the report is read next to the plug-in it measures.
+   Light theme is the same hues re-grounded for paper, not an inversion.
+   ========================================================================== */
+:root {
+  --ground:      #f5f7f9;
+  --panel:       #ffffff;
+  --raised:      #eef1f5;
+  --rule:        #d5dbe4;
+  --rule-soft:   #e5eaf0;
+  --ink:         #161b22;
+  --ink-dim:     #59636f;
+  --ink-faint:   #8b94a3;
+  --teal:        #0d8478;
+  --teal-soft:   #d3ede9;
+  --blue:        #2a63c4;
+  --blue-soft:   #dde6f8;
+  --amber:       #8a5c0b;
+  --amber-soft:  #f6e9cf;
+  --rose:        #a8352c;
+  --rose-soft:   #f7dedb;
+  --meter:       #0d8478;
+  --meter-track: #dfe5ec;
+  --shadow:      0 1px 2px rgba(20,28,40,.06), 0 8px 24px -14px rgba(20,28,40,.28);
+
+  --f-display: "Saira Semi Condensed", "Helvetica Neue", Arial, sans-serif;
+  --f-body:    "Source Serif 4", Georgia, "Times New Roman", serif;
+  --f-mono:    "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+
+  --measure: 68ch;
+  --wide: 1180px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground:      #0e1014;
+    --panel:       #161a21;
+    --raised:      #1d222b;
+    --rule:        #2a313d;
+    --rule-soft:   #1f242e;
+    --ink:         #d7dde6;
+    --ink-dim:     #97a1b0;
+    --ink-faint:   #6d7686;
+    --teal:        #35d0c0;
+    --teal-soft:   #12302f;
+    --blue:        #5aa6ff;
+    --blue-soft:   #12233a;
+    --amber:       #e0a94a;
+    --amber-soft:  #302512;
+    --rose:        #e0705a;
+    --rose-soft:   #331813;
+    --meter:       #35d0c0;
+    --meter-track: #232a35;
+    --shadow:      0 1px 0 rgba(255,255,255,.03), 0 10px 30px -18px rgba(0,0,0,.9);
+  }
+}
+:root[data-theme="dark"] {
+  --ground:      #0e1014;
+  --panel:       #161a21;
+  --raised:      #1d222b;
+  --rule:        #2a313d;
+  --rule-soft:   #1f242e;
+  --ink:         #d7dde6;
+  --ink-dim:     #97a1b0;
+  --ink-faint:   #6d7686;
+  --teal:        #35d0c0;
+  --teal-soft:   #12302f;
+  --blue:        #5aa6ff;
+  --blue-soft:   #12233a;
+  --amber:       #e0a94a;
+  --amber-soft:  #302512;
+  --rose:        #e0705a;
+  --rose-soft:   #331813;
+  --meter:       #35d0c0;
+  --meter-track: #232a35;
+  --shadow:      0 1px 0 rgba(255,255,255,.03), 0 10px 30px -18px rgba(0,0,0,.9);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--f-body);
+  font-size: 17px;
+  line-height: 1.62;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- shell ------------------------------------------------------------- */
+.wrap { max-width: var(--wide); margin: 0 auto; padding: 0 24px 96px; }
+.col  { max-width: var(--measure); }
+
+/* ---- masthead ---------------------------------------------------------- */
+.mast {
+  border-bottom: 1px solid var(--rule);
+  padding: 56px 0 28px;
+  display: flex; flex-direction: column; gap: 18px;
+}
+.eyebrow {
+  font-family: var(--f-display);
+  font-size: 12px; font-weight: 600;
+  letter-spacing: .17em; text-transform: uppercase;
+  color: var(--teal);
+  display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center;
+}
+.eyebrow .sep { color: var(--ink-faint); }
+h1 {
+  font-family: var(--f-display);
+  font-size: clamp(38px, 6.2vw, 62px);
+  font-weight: 700; line-height: 1.02; letter-spacing: -.012em;
+  margin: 0; text-wrap: balance;
+}
+.dek {
+  font-size: 20px; line-height: 1.5; color: var(--ink-dim);
+  max-width: 62ch; margin: 0; text-wrap: pretty;
+}
+.mast-meta {
+  font-family: var(--f-mono); font-size: 12.5px; color: var(--ink-faint);
+  display: flex; flex-wrap: wrap; gap: 6px 20px;
+}
+
+/* ---- section rhythm ---------------------------------------------------- */
+section { padding-top: 64px; scroll-margin-top: 60px; }
+h2 {
+  font-family: var(--f-display);
+  font-size: 13px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase;
+  color: var(--ink-dim);
+  margin: 0 0 8px; padding-bottom: 10px; border-bottom: 1px solid var(--rule);
+}
+h3 {
+  font-family: var(--f-display);
+  font-size: clamp(24px, 3.2vw, 31px); font-weight: 600; line-height: 1.14;
+  letter-spacing: -.008em; margin: 30px 0 12px; text-wrap: balance;
+}
+h4 {
+  font-family: var(--f-display);
+  font-size: 18px; font-weight: 600; margin: 26px 0 8px;
+}
+p { margin: 0 0 16px; }
+strong { font-weight: 600; }
+a { color: var(--blue); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+a:focus-visible, .navlink:focus-visible { outline: 2px solid var(--teal); outline-offset: 3px; border-radius: 2px; }
+code, .mono { font-family: var(--f-mono); font-size: .875em; }
+code {
+  background: var(--raised); border: 1px solid var(--rule-soft);
+  border-radius: 3px; padding: .08em .34em;
+}
+
+/* ---- nav rail ---------------------------------------------------------- */
+.nav {
+  position: sticky; top: 0; z-index: 20;
+  background: color-mix(in srgb, var(--ground) 92%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: -1px;
+}
+.nav-inner {
+  max-width: var(--wide); margin: 0 auto; padding: 0 24px;
+  display: flex; gap: 22px; overflow-x: auto; scrollbar-width: none;
+}
+.nav-inner::-webkit-scrollbar { display: none; }
+.navlink {
+  font-family: var(--f-display); font-size: 12px; font-weight: 600;
+  letter-spacing: .12em; text-transform: uppercase;
+  color: var(--ink-faint); text-decoration: none;
+  padding: 14px 0; white-space: nowrap; border-bottom: 2px solid transparent;
+}
+.navlink:hover { color: var(--teal); border-bottom-color: var(--teal); }
+
+/* ---- headline stats ---------------------------------------------------- */
+.stats {
+  display: grid; gap: 1px; background: var(--rule);
+  border: 1px solid var(--rule); border-radius: 6px; overflow: hidden;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  margin: 26px 0 8px;
+}
+.stat { background: var(--panel); padding: 20px 22px; display: flex; flex-direction: column; gap: 5px; }
+.stat-n {
+  font-family: var(--f-display); font-weight: 700;
+  font-size: 40px; line-height: 1; letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums;
+}
+.stat-n.pos { color: var(--teal); }
+.stat-n.neu { color: var(--ink); }
+.stat-n.warn { color: var(--amber); }
+.stat-l {
+  font-family: var(--f-display); font-size: 12px; font-weight: 600;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--ink-dim);
+}
+.stat-s { font-size: 14px; color: var(--ink-faint); line-height: 1.4; }
+
+/* ---- meter chart (the subject's own vernacular) ------------------------ */
+.meterset { margin: 24px 0 10px; display: flex; flex-direction: column; gap: 3px; }
+.mrow {
+  display: grid; grid-template-columns: minmax(160px, 232px) 1fr minmax(96px, auto);
+  gap: 14px; align-items: center;
+  padding: 7px 0; border-bottom: 1px solid var(--rule-soft);
+}
+.mrow:last-child { border-bottom: 0; }
+.mname { font-family: var(--f-display); font-size: 14.5px; font-weight: 500; line-height: 1.25; }
+.mname .sub { display: block; color: var(--ink-faint); font-size: 12px; font-weight: 400; }
+.mtrack {
+  position: relative; height: 15px; background: var(--meter-track);
+  border-radius: 2px; overflow: hidden;
+}
+.mfill {
+  height: 100%; background: var(--meter); border-radius: 2px 0 0 2px;
+  /* segmented, like the plug-in's own level meters */
+  -webkit-mask-image: repeating-linear-gradient(90deg, #000 0 5px, transparent 5px 7px);
+          mask-image: repeating-linear-gradient(90deg, #000 0 5px, transparent 5px 7px);
+}
+.mfill.alt   { background: var(--blue); }
+.mfill.warn  { background: var(--amber); }
+.mref {
+  position: absolute; top: -3px; bottom: -3px; width: 1px;
+  background: var(--ink-dim);
+}
+.mval {
+  font-family: var(--f-mono); font-size: 13px; font-variant-numeric: tabular-nums;
+  text-align: right; color: var(--ink-dim);
+}
+.mval b { color: var(--ink); font-weight: 600; }
+.mlegend {
+  font-family: var(--f-mono); font-size: 12px; color: var(--ink-faint);
+  margin-top: 10px;
+}
+
+/* ---- tables ------------------------------------------------------------ */
+.tscroll { overflow-x: auto; margin: 22px 0; border: 1px solid var(--rule); border-radius: 6px; }
+table { border-collapse: collapse; width: 100%; font-size: 14.5px; background: var(--panel); }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--rule-soft); vertical-align: top; }
+thead th {
+  font-family: var(--f-display); font-size: 11.5px; font-weight: 700;
+  letter-spacing: .11em; text-transform: uppercase; color: var(--ink-dim);
+  background: var(--raised); border-bottom: 1px solid var(--rule); white-space: nowrap;
+}
+tbody tr:last-child td { border-bottom: 0; }
+td.num, th.num { text-align: right; font-family: var(--f-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+td.hi { color: var(--teal); font-weight: 600; }
+tbody tr.accent td { background: color-mix(in srgb, var(--teal) 7%, var(--panel)); }
+
+/* ---- verdict chips ----------------------------------------------------- */
+.chip {
+  display: inline-block; font-family: var(--f-display);
+  font-size: 11px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase;
+  padding: 3px 9px; border-radius: 3px; white-space: nowrap;
+}
+.chip.now    { background: var(--teal);  color: var(--ground); }
+.chip.later  { background: var(--blue-soft);  color: var(--blue);  border: 1px solid color-mix(in srgb, var(--blue) 35%, transparent); }
+.chip.never  { background: transparent; color: var(--ink-faint); border: 1px solid var(--rule); }
+.chip.human  { background: var(--amber-soft); color: var(--amber); border: 1px solid color-mix(in srgb, var(--amber) 40%, transparent); }
+.chip.closed { background: var(--rose-soft); color: var(--rose); border: 1px solid color-mix(in srgb, var(--rose) 35%, transparent); }
+
+/* ---- callouts ---------------------------------------------------------- */
+.note {
+  border: 1px solid var(--rule); border-left: 3px solid var(--amber);
+  background: var(--panel); border-radius: 0 5px 5px 0;
+  padding: 16px 20px; margin: 22px 0; box-shadow: var(--shadow);
+}
+.note.teal { border-left-color: var(--teal); }
+.note.rose { border-left-color: var(--rose); }
+.note-h {
+  font-family: var(--f-display); font-size: 12px; font-weight: 700;
+  letter-spacing: .13em; text-transform: uppercase; color: var(--amber);
+  margin-bottom: 6px;
+}
+.note.teal .note-h { color: var(--teal); }
+.note.rose .note-h { color: var(--rose); }
+.note p:last-child { margin-bottom: 0; }
+
+/* ---- roadmap steps (a real sequence, so it is numbered) ---------------- */
+.steps { display: flex; flex-direction: column; gap: 16px; margin: 26px 0; counter-reset: step; }
+.step {
+  background: var(--panel); border: 1px solid var(--rule); border-radius: 6px;
+  padding: 20px 22px; box-shadow: var(--shadow);
+  display: grid; grid-template-columns: 46px 1fr; gap: 18px;
+}
+.step-n {
+  font-family: var(--f-mono); font-size: 12px; font-weight: 600;
+  color: var(--teal); padding-top: 3px; letter-spacing: .02em;
+}
+.step-h {
+  font-family: var(--f-display); font-size: 21px; font-weight: 600;
+  margin: 0 0 4px; display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline;
+}
+.step-body p { margin: 0 0 10px; font-size: 16px; }
+.step-body p:last-child { margin-bottom: 0; }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; font-size: 14.5px; margin-top: 12px; }
+.kv dt {
+  font-family: var(--f-display); font-size: 11.5px; font-weight: 700;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--ink-faint);
+  padding-top: 4px;
+}
+.kv dd { margin: 0; }
+
+/* ---- code -------------------------------------------------------------- */
+pre {
+  font-family: var(--f-mono); font-size: 13px; line-height: 1.6;
+  background: var(--raised); border: 1px solid var(--rule);
+  border-radius: 5px; padding: 14px 16px; overflow-x: auto; margin: 18px 0;
+}
+pre .cm { color: var(--ink-faint); }
+pre .kw { color: var(--blue); }
+
+/* ---- checklist --------------------------------------------------------- */
+.check { list-style: none; padding: 0; margin: 20px 0; display: flex; flex-direction: column; gap: 10px; }
+.check li {
+  display: grid; grid-template-columns: 22px 1fr; gap: 12px; align-items: start;
+  font-size: 16px; padding-bottom: 10px; border-bottom: 1px solid var(--rule-soft);
+}
+.check li:last-child { border-bottom: 0; }
+.box {
+  width: 15px; height: 15px; margin-top: 5px; border-radius: 2px;
+  border: 1.5px solid var(--ink-faint);
+}
+ul.plain { padding-left: 20px; margin: 0 0 16px; }
+ul.plain li { margin-bottom: 7px; }
+
+footer {
+  margin-top: 72px; padding-top: 22px; border-top: 1px solid var(--rule);
+  font-family: var(--f-mono); font-size: 12.5px; color: var(--ink-faint);
+  display: flex; flex-wrap: wrap; gap: 6px 24px;
+}
+
+@media (max-width: 640px) {
+  body { font-size: 16px; }
+  .mrow { grid-template-columns: 1fr; gap: 5px; }
+  .mval { text-align: left; }
+  .step { grid-template-columns: 1fr; gap: 8px; }
+  .kv { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+</style>
+
+<nav class="nav" aria-label="Sections">
+  <div class="nav-inner">
+    <a class="navlink" href="#summary">Summary</a>
+    <a class="navlink" href="#state">Current state</a>
+    <a class="navlink" href="#bottlenecks">Bottlenecks</a>
+    <a class="navlink" href="#candidates">Candidates</a>
+    <a class="navlink" href="#roadmap">Roadmap</a>
+    <a class="navlink" href="#risks">Risks</a>
+    <a class="navlink" href="#checklist">Checklist</a>
+  </div>
+</nav>
+
+<div class="wrap">
+
+<header class="mast">
+  <div class="eyebrow">
+    <span>Performance audit</span><span class="sep">/</span>
+    <span>Round A7</span><span class="sep">/</span>
+    <span>v0.9.4 audit</span><span class="sep">/</span>
+    <span>Item 1 shipped in v0.9.5</span>
+  </div>
+  <h1>Anamorph Engine Cost Audit</h1>
+  <p class="dek">Six optimization waves have already run. This round measured what is left, and found
+  one dominant cost that the previous rounds closed as absent — because they measured it in the one
+  configuration where it is switched off. That fix has since shipped in v0.9.5, and the product tree
+  reproduced every predicted figure to one decimal place.</p>
+  <div class="mast-meta">
+    <span>Method: callgrind instruction attribution + committed AnamorphBench</span>
+    <span>Machine: Intel Xeon @ 2.80&nbsp;GHz, 4 cores, gcc 13.3.0</span>
+    <span>Worklog: worklogs/performance/PERF_AUDIT_v0.9.4_INVESTIGATION.md</span>
+  </div>
+</header>
+
+<!-- ===================================================================== -->
+<section id="summary">
+  <h2>Executive summary</h2>
+
+  <div class="col">
+    <p>The engine is in good shape. The transparent idle floor costs <strong>455 instructions per
+    sample</strong> and a fully-engaged working configuration costs <strong>1,749</strong> — roughly
+    1&nbsp;% of one core per instance at 48&nbsp;kHz on the machine named above. Waves&nbsp;1–6 did
+    their job: every obvious gate is in place, and the two largest remaining consumers are structures
+    those waves already halved.</p>
+
+    <p>One finding changes the picture. <strong>VelvetNoise carries 20,369 instructions of fixed
+    per-block cost</strong> — 84&nbsp;% of the engine's entire per-block overhead — and it scales with
+    sample rate while being divided by block length. At 192&nbsp;kHz with 32-sample buffers it is
+    <strong>62&nbsp;% of the whole engine</strong>. A bit-exact fix was implemented in a throwaway
+    build, verified across 144 configurations, and measured.</p>
+  </div>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-n pos">−32%</div>
+      <div class="stat-l">Engine cost, 192 kHz / 32</div>
+      <div class="stat-s">Measured, from the one recommended change. −14.3&nbsp;% at 48&nbsp;kHz / 32.</div>
+    </div>
+    <div class="stat">
+      <div class="stat-n neu">144 / 144</div>
+      <div class="stat-l">Bit-exact configurations</div>
+      <div class="stat-s">Hash over every output sample. Class A by measurement, not by argument.</div>
+    </div>
+    <div class="stat">
+      <div class="stat-n warn">101%</div>
+      <div class="stat-l">Cost of a bypassed instance</div>
+      <div class="stat-s">Relative to an active one. Deliberate, documented — and never priced until now.</div>
+    </div>
+    <div class="stat">
+      <div class="stat-n pos">Shipped</div>
+      <div class="stat-l">A7-1, in v0.9.5</div>
+      <div class="stat-s">1 of 8 candidates was recommended; it landed, and the product tree matched the estimate exactly.</div>
+    </div>
+  </div>
+
+  <div class="col">
+    <h4>What to do</h4>
+    <ul class="plain">
+      <li><strong>A7-2 — <span class="chip human">Decision needed</span></strong> The follow-up this
+      report proposed was prototyped and measured, and the proposal turned out to be the weaker of two
+      options: it makes the average better and the worst block no better. The alternative is ready to
+      execute. See the roadmap below.</li>
+      <li><strong>A7-1 (the VelvetNoise history slide) — <span class="chip now">Shipped v0.9.5</span></strong>
+      One file, no hard-stop class, largest measured gain. The product tree reproduced every figure
+      below to one decimal place, the audio is bit-identical on the committed twin dump plus a
+      180-configuration sweep, and Test 39 now guards the new cross-block invariant.</li>
+      <li><strong>Run the bench on a real machine</strong> and fill the three
+      <code>PERFORMANCE_BUDGET.md</code> TODO rows. Zero code risk; it is what RISK-002 has been
+      waiting on.</li>
+      <li><strong>Do not reopen multiband, metering or bypass</strong> on this evidence. Each is
+      either already settled or a product decision — both are covered below.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<section id="state">
+  <h2>Current performance situation</h2>
+
+  <div class="col">
+    <p>Costs below are <strong>instructions retired per second of 48&nbsp;kHz stereo audio</strong>,
+    128-sample blocks, with process start and <code>prepare()</code> subtracted out. Instruction
+    counts are the unit because <code>PERFORMANCE_BUDGET.md</code> says so: a shared cloud runner is
+    not a wall-clock datum, but callgrind counts are stable across machines.</p>
+  </div>
+
+  <div class="meterset">
+    <div class="mrow">
+      <div class="mname">transparent defaults<span class="sub">every stage at identity</span></div>
+      <div class="mtrack"><div class="mfill" style="width:10.5%"></div><div class="mref" style="left:40.2%"></div></div>
+      <div class="mval"><b>21.9M</b> · 0.26×</div>
+    </div>
+    <div class="mrow">
+      <div class="mname">working, multiband off</div>
+      <div class="mtrack"><div class="mfill" style="width:19.2%"></div><div class="mref" style="left:40.2%"></div></div>
+      <div class="mval"><b>39.9M</b> · 0.48×</div>
+    </div>
+    <div class="mrow">
+      <div class="mname">Haas algorithm</div>
+      <div class="mtrack"><div class="mfill" style="width:35.2%"></div><div class="mref" style="left:40.2%"></div></div>
+      <div class="mval"><b>73.5M</b> · 0.88×</div>
+    </div>
+    <div class="mrow">
+      <div class="mname">Chorus algorithm</div>
+      <div class="mtrack"><div class="mfill" style="width:37.0%"></div><div class="mref" style="left:40.2%"></div></div>
+      <div class="mval"><b>77.2M</b> · 0.92×</div>
+    </div>
+    <div class="mrow">
+      <div class="mname">working reference<span class="sub">Velvet 0.6 · width 1.4 · mix 0.85 · 4-band MB · match on</span></div>
+      <div class="mtrack"><div class="mfill" style="width:40.2%"></div><div class="mref" style="left:40.2%"></div></div>
+      <div class="mval"><b>84.0M</b> · 1.00×</div>
+    </div>
+    <div class="mrow">
+      <div class="mname">bypass<span class="sub">host bypass parameter engaged</span></div>
+      <div class="mtrack"><div class="mfill warn" style="width:40.8%"></div><div class="mref" style="left:40.2%"></div></div>
+      <div class="mval"><b>85.1M</b> · 1.01×</div>
+    </div>
+    <div class="mrow">
+      <div class="mname">multiband split dragging<span class="sub">the RISK-002 hot path</span></div>
+      <div class="mtrack"><div class="mfill alt" style="width:44.7%"></div><div class="mref" style="left:40.2%"></div></div>
+      <div class="mval"><b>93.3M</b> · 1.11×</div>
+    </div>
+    <div class="mrow">
+      <div class="mname">Drive 8 dB, oversampling ×8</div>
+      <div class="mtrack"><div class="mfill alt" style="width:100%"></div><div class="mref" style="left:40.2%"></div></div>
+      <div class="mval"><b>208.6M</b> · 2.48×</div>
+    </div>
+    <div class="mlegend">Bars scale to the ×8 oversampling row. The hairline marks the working reference.</div>
+  </div>
+
+  <div class="col">
+    <h4>Where the working reference goes</h4>
+  </div>
+  <div class="tscroll">
+    <table>
+      <thead><tr><th>Site</th><th class="num">Ir / second</th><th class="num">Share</th></tr></thead>
+      <tbody>
+        <tr class="accent"><td><code>LR4Xover.h</code> in <code>MultibandWidth::processBlock</code></td><td class="num">34,992,000</td><td class="num hi">41.7%</td></tr>
+        <tr class="accent"><td><code>VelvetNoise::processBlock</code></td><td class="num">13,340,625</td><td class="num hi">15.9%</td></tr>
+        <tr><td><code>LoudnessMatch</code> (<code>.h</code> + <code>.cpp</code>)</td><td class="num">6,710,250</td><td class="num">8.0%</td></tr>
+        <tr><td><code>MultibandWidth.cpp</code> itself</td><td class="num">6,476,250</td><td class="num">7.7%</td></tr>
+        <tr><td><code>LevelMeters.h</code> — <code>StereoLevel::process</code> ×2</td><td class="num">6,251,250</td><td class="num">7.5%</td></tr>
+        <tr><td><code>AnamorphEngine.cpp</code> inline</td><td class="num">4,249,264</td><td class="num">5.1%</td></tr>
+        <tr><td><code>LR4Xover.h</code> in the engine (MonoMaker + SoloMonitor)</td><td class="num">3,939,000</td><td class="num">4.7%</td></tr>
+        <tr><td><code>MidSide.h</code> inside the multiband</td><td class="num">1,920,000</td><td class="num">2.3%</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="col">
+    <p>Multiband as a whole is <strong>52.4&nbsp;%</strong> of the working reference, confirmed
+    independently by the <span class="mono">working − mb-off</span> difference.</p>
+
+    <h4>Where the idle floor goes</h4>
+    <p><strong>59.3&nbsp;% of the transparent idle floor is metering and loudness analysis</strong>,
+    not audio processing: <code>LevelMeters.h</code> at 28.6&nbsp;% and <code>LoudnessMatch</code> at
+    30.7&nbsp;%. Running the same scenario with Level Match switched <em>off</em> produced a
+    byte-identical total — the analysis is unconditional by design.</p>
+  </div>
+
+  <div class="note teal">
+    <div class="note-h">Cross-validated against Wave 4</div>
+    <p>Wave 4 measured the same idle shares two rounds ago with a different harness
+    (<code>WAVE4_INVESTIGATION.md:56-59</code>), quoting them inclusive of “~14&nbsp;% harness
+    noise-fill”. Rescaled: LevelMeters 26.3&nbsp;% vs 28.6&nbsp;% here, LoudnessMatch 27.7&nbsp;% vs
+    30.7&nbsp;%, Correlation 3.4&nbsp;% vs 3.8&nbsp;%. Two independent instruments agreeing to a few
+    points is the reason to trust the numbers that follow.</p>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<section id="bottlenecks">
+  <h2>Bottleneck analysis</h2>
+
+  <h3>A closed question, reopened</h3>
+  <div class="col">
+    <p>Wave 5 attributed small-buffer per-block cost and closed it: <em>“+13–20&nbsp;%… ~4.5k Ir of
+    fixed work per block… <strong>no single dominant item</strong>”</em>. That closure was carried
+    into the roadmap.</p>
+    <p>Solving <span class="mono">cost(b) = A·48000 + B·(48000/b)</span> from the 32- and 256-sample
+    runs gives two very different answers depending on what the plug-in is set to:</p>
+  </div>
+
+  <div class="tscroll">
+    <table>
+      <thead><tr><th>Configuration</th><th class="num">Fixed per block</th><th class="num">Marginal per sample</th></tr></thead>
+      <tbody>
+        <tr><td>transparent defaults</td><td class="num">3,581 Ir</td><td class="num">464.9 Ir</td></tr>
+        <tr class="accent"><td>working — the algorithm actually engaged</td><td class="num hi">24,287 Ir</td><td class="num">1,558.6 Ir</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="col">
+    <p>Wave 5's figure reproduces exactly — <em>for the transparent default</em>. In the configuration
+    a paying user runs it is <strong>6.8× larger</strong>, and <strong>20,369&nbsp;Ir of it
+    (84&nbsp;%) is <code>VelvetNoise::processBlock</code> alone</strong>: very much a single dominant
+    item.</p>
+    <p>The reason the earlier closure missed it is mechanical, not careless. The H5 tap-outer gather
+    is gated on <code>currentAmount &gt; 0.0f || targetAmount &gt; 0.0f</code>
+    (<code>src/dsp/VelvetNoise.cpp:132-135</code>), and the default <code>algoAmount</code> is 0.
+    Measuring per-block cost at the transparent default measures the one configuration in which the
+    dominant per-block item is switched off.</p>
+
+    <h4>The mechanism</h4>
+    <p>The H5 fast path rebuilds its linear history image from the ring on every block:</p>
+  </div>
+
+<pre><span class="cm">// src/dsp/VelvetNoise.cpp:139-140</span>
+<span class="kw">for</span> (<span class="kw">int</span> j = 0; j &lt; decorrSamps; ++j)
+    linHist[(size_t) j] = midHist[(size_t) ((writePos - decorrSamps + j) &amp; histMask)];</pre>
+
+  <div class="col">
+    <p><code>decorrSamps = round(0.045 × sr)</code> — <strong>2,160 samples at 48&nbsp;kHz, 8,640 at
+    192&nbsp;kHz</strong> — and the loop does not depend on <code>numSamples</code>. Measured at
+    ≈&nbsp;9.4&nbsp;Ir per history sample, it therefore grows with the sample rate and is divided by
+    the block length.</p>
+  </div>
+
+  <div class="tscroll">
+    <table>
+      <thead><tr><th>Sample rate</th><th class="num">Block</th><th class="num">Engine Ir/sample</th><th class="num">VelvetNoise</th><th class="num">Share</th></tr></thead>
+      <tbody>
+        <tr><td>48 kHz</td><td class="num">32</td><td class="num">2,317.6</td><td class="num">755.3</td><td class="num">32.6%</td></tr>
+        <tr><td>48 kHz</td><td class="num">128</td><td class="num">1,749.1</td><td class="num">277.9</td><td class="num">15.9%</td></tr>
+        <tr class="accent"><td>192 kHz</td><td class="num">32</td><td class="num">4,140.2</td><td class="num">2,577.9</td><td class="num hi">62.3%</td></tr>
+        <tr><td>192 kHz</td><td class="num">128</td><td class="num">2,204.8</td><td class="num">733.6</td><td class="num">33.3%</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="col">
+    <p>Solved per configuration, the fixed term is 20,369&nbsp;Ir/block at 48&nbsp;kHz and 78,690 at
+    192&nbsp;kHz — 3.86× for a 4× rate, as the mechanism predicts — while the marginal term is
+    <strong>118.8&nbsp;Ir/sample at both</strong>. That invariance is the signature of a cost that
+    belongs entirely to the per-block refill.</p>
+    <p>H5 is still the right structure: it turned 64 random ring reads per sample into unit-stride
+    runs, and that win is real at 128 samples and above. What it also introduced is a per-block term
+    that overtakes the win as the buffer shrinks and the rate rises.</p>
+  </div>
+
+  <h3>Bypass costs marginally more than processing</h3>
+  <div class="col">
+    <p>A host-bypassed instance measured <strong>85.1M Ir/s against the working reference's
+    84.0M</strong>. The whole chain still runs and the bypass ring read-back is added on top.</p>
+    <p>This is not an oversight. <code>src/dsp/AnamorphEngine.cpp:790-796</code> states the contract:
+    the processing and the Level-Match analysis <em>always</em> run, so Measure and Predict keep
+    working while bypassed. <code>loudness.process()</code> is handed the <em>processed</em> signal
+    (<code>:1137</code>), so the chain cannot be skipped without freezing the Measure readout — the
+    exact live contract that W3-7 was rejected for breaking. And <code>pid::bypass</code> is
+    registered as the host bypass parameter, so it applies to every bypassed instance in a session.</p>
+  </div>
+
+  <h3>GUI paint: the cost is JUCE's rasterizer, not Anamorph's drawing</h3>
+  <div class="tscroll">
+    <table>
+      <thead><tr><th>Target</th><th class="num">Size</th><th class="num">Ir per repaint</th><th class="num">vs one second of DSP</th></tr></thead>
+      <tbody>
+        <tr><td>whole editor</td><td class="num">940×720</td><td class="num">28,613,806</td><td class="num">0.34×</td></tr>
+        <tr><td>Vectorscope</td><td class="num">574×574</td><td class="num">10,716,856</td><td class="num">0.13×</td></tr>
+        <tr><td>StereoMeter (correlation)</td><td class="num">574×26</td><td class="num">396,806</td><td class="num">0.005×</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="col">
+    <p>Inside the Vectorscope repaint, <code>Vectorscope::paint</code> itself is <strong>2.9&nbsp;%</strong>.
+    43.3&nbsp;% is the static-layer blit and 20.6&nbsp;% is the point cloud's solid fills. The H2/N2
+    caches are doing exactly what they were built to do; what is left is JUCE's software renderer
+    converting RGB→ARGB at roughly 14 instructions per pixel.</p>
+  </div>
+
+  <div class="note rose">
+    <div class="note-h">Three limits on the GUI numbers</div>
+    <p>These come from the <strong>Linux software renderer</strong>; macOS (CoreGraphics) and Windows
+    (Direct2D) rasterize differently, so the absolute figures do not transfer.
+    <code>paintEntireComponent</code> forces a full repaint — the resize case, not the steady state.
+    And the <code>juce::Timer</code> / <code>VBlankAttachment</code> tick path, where the Wave 1–4 idle
+    gates live, needs a message loop and was <strong>not measured</strong>: the “idle GUI cost ≈ 0”
+    claim is neither confirmed nor challenged by this round.</p>
+  </div>
+
+  <h3>RISK-002: no dropout-class transient found</h3>
+  <div class="col">
+    <p>The multiband split drag costs <strong>+11.2&nbsp;%</strong> over the static 4-band state, of
+    which <code>__tan_fma</code> is 3.26&nbsp;% — the per-sample coefficient recompute Wave 3 already
+    cut from 12 tan/sample to 3. Nothing in either instrument suggests a cliff.</p>
+    <p><strong>This does not close RISK-002.</strong> Closing it needs the wall-clock instance count on
+    a named, held-still machine — which is item 01 of the roadmap.</p>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<section id="candidates">
+  <h2>Optimization candidates</h2>
+
+  <div class="col">
+    <p>Each candidate is judged on measured cost, expected gain, DSP class (A = bit-exact, B =
+    output changes), whether it touches an <code>ARCHITECTURE_REVIEW_GATE</code> hard stop, and
+    whether the roadmap table already disposed of it.</p>
+  </div>
+
+  <div class="tscroll">
+    <table>
+      <thead><tr><th>ID</th><th>Candidate</th><th>Gain</th><th class="num">Class</th><th class="num">Risk</th><th>Verdict</th></tr></thead>
+      <tbody>
+        <tr class="accent">
+          <td class="mono">A7-1</td>
+          <td>Slide the H5 linear history instead of re-gathering it from the ring each block</td>
+          <td><strong>Measured</strong> −14.3&nbsp;% at 48k/32, −32.3&nbsp;% at 192k/32, −4.7&nbsp;% at 48k/128</td>
+          <td class="num">A — proven</td><td class="num">low</td>
+          <td><span class="chip now">Shipped v0.9.5</span></td>
+        </tr>
+        <tr>
+          <td class="mono">A7-2</td>
+          <td>Remove the residual per-block term — <strong>measured both ways</strong>: the proposed double-buffer, and a ring gather with no image</td>
+          <td>double-buffer −13.1&nbsp;% @48k/32 but the worst block is unchanged; ring gather −11.4&nbsp;% with <strong>no</strong> spike</td>
+          <td class="num">A — proven</td><td class="num">low</td>
+          <td><span class="chip human">Proposal rejected</span></td>
+        </tr>
+        <tr>
+          <td class="mono">A7-3</td>
+          <td>Reduce <code>decorrSamps</code>-proportional work at high sample rates generally</td>
+          <td>Subsumed by A7-1 / A7-2</td>
+          <td class="num">—</td><td class="num">—</td>
+          <td><span class="chip never">Not separately</span></td>
+        </tr>
+        <tr>
+          <td class="mono">A7-4</td>
+          <td>Skip the DSP chain when Bypass is settled at 1</td>
+          <td>~82&nbsp;% of a bypassed instance (bounded, not measured)</td>
+          <td class="num">breaks a readout contract</td><td class="num">high</td>
+          <td><span class="chip human">Maintainer call</span></td>
+        </tr>
+        <tr>
+          <td class="mono">A7-5</td>
+          <td>Multiband LR4 bank SIMD</td>
+          <td>Unmeasured; the 41.7&nbsp;% consumer</td>
+          <td class="num">A only without FMA</td><td class="num">high</td>
+          <td><span class="chip later">Blocked on AVX2 ADR</span></td>
+        </tr>
+        <tr>
+          <td class="mono">A7-6</td>
+          <td>Vectorscope static-layer blit format</td>
+          <td>Unmeasured off Linux</td>
+          <td class="num">A if pixel-identical</td><td class="num">medium</td>
+          <td><span class="chip never">Do not optimize</span></td>
+        </tr>
+        <tr>
+          <td class="mono">A7-7</td>
+          <td>Replace JUCE's polyphase oversampler (40.9&nbsp;% of the ×8 scenario)</td>
+          <td>Unmeasured</td>
+          <td class="num">B — different audio</td><td class="num">high</td>
+          <td><span class="chip never">Do not optimize</span></td>
+        </tr>
+        <tr>
+          <td class="mono">A7-8</td>
+          <td>Gate meters / loudness on editor state</td>
+          <td>59.3&nbsp;% of the idle floor (measured)</td>
+          <td class="num">—</td><td class="num">—</td>
+          <td><span class="chip closed">Already rejected</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>A7-1 — why it is the whole recommendation</h3>
+  <div class="col">
+    <p>The retained tail of <code>linHist</code> is, by construction, the previous block's
+    <code>linHist</code> shifted left by that block's length: the ring is written with exactly the
+    mids the image already holds. So the <code>decorrSamps</code>-long masked ring walk can be a
+    <code>memmove</code> of the same floats, guarded by a validity flag that the non-fast paths and
+    <code>reset()</code> clear.</p>
+    <p>It was implemented in a throwaway build and measured, because a bit-exactness claim has to be
+    earned:</p>
+  </div>
+
+  <div class="tscroll">
+    <table>
+      <thead><tr><th>Sample rate</th><th class="num">Block</th><th class="num">Before</th><th class="num">After</th><th class="num">Saved</th><th class="num">Engine</th></tr></thead>
+      <tbody>
+        <tr><td>48 kHz</td><td class="num">32</td><td class="num">2,356.0</td><td class="num">2,018.5</td><td class="num">337.5</td><td class="num hi">−14.3%</td></tr>
+        <tr><td>48 kHz</td><td class="num">64</td><td class="num">1,975.4</td><td class="num">1,807.2</td><td class="num">168.2</td><td class="num">−8.5%</td></tr>
+        <tr><td>48 kHz</td><td class="num">128</td><td class="num">1,787.3</td><td class="num">1,703.1</td><td class="num">84.1</td><td class="num">−4.7%</td></tr>
+        <tr><td>48 kHz</td><td class="num">256</td><td class="num">1,691.5</td><td class="num">1,649.5</td><td class="num">42.1</td><td class="num">−2.5%</td></tr>
+        <tr class="accent"><td>192 kHz</td><td class="num">32</td><td class="num">4,178.7</td><td class="num">2,829.7</td><td class="num">1,349.0</td><td class="num hi">−32.3%</td></tr>
+        <tr><td>192 kHz</td><td class="num">128</td><td class="num">2,242.9</td><td class="num">1,905.7</td><td class="num">337.2</td><td class="num">−15.0%</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="col">
+    <p><strong>Bit-exact across 144 configurations</strong> — 9 scenarios (working, multiband off,
+    Haas, Chorus, Dimension-D, oversampling ×8, defaults, bypass, split drag) × 4 block sizes × 4
+    sample rates, compared by an FNV-1a hash over every output sample of both channels. Zero
+    mismatches.</p>
+
+    <h4>What the product tree measured <span class="chip now">v0.9.5</span></h4>
+    <p>The shipped implementation is not the throwaway one: it clears the slide offset on
+    <em>entry</em> to <code>processBlock</code> rather than from an RAII guard on each non-gather
+    exit, so every other path — and every path a later round adds — leaves the image invalid by
+    construction. The numbers came out the same anyway.</p>
+    <p>Cost: about 20 lines in one file, two new members, one invalidation point in
+    <code>reset()</code>. It touches no parameter ID, no serialization schema, no thread model, no
+    signal order and no reported latency — <strong>no hard-stop class</strong>.</p>
+  </div>
+
+  <div class="note">
+    <div class="note-h">The strongest case against, stated because it is real</div>
+    <p>It adds a cross-block cache-validity invariant to a module whose fast path already carries a
+    five-clause eligibility gate. A future edit that takes the fast path without maintaining the flag
+    would read a stale history — silently, and only in the first block after the mistake. Mitigation:
+    clear the flag from a scope guard on every non-fast-path exit rather than by hand at each return,
+    and add a regression test asserting bit-equality between a run at block 32 and the same audio at
+    block 256.</p>
+  </div>
+
+  <h3>Why the biggest number is not the recommendation</h3>
+  <div class="col">
+    <p>Multiband is 41.7&nbsp;% of the working reference and the obvious target. It is not proposed,
+    for reasons already on the record:</p>
+    <ul class="plain">
+      <li>Wave 2 (H6) replaced JUCE's filter with a flat-state clone; Wave 3 cut the glide from 12
+      tan/sample to 3 and halved the allpass compensation.</li>
+      <li>What is left is a <strong>serial TPT recurrence</strong> — <span class="mono">s1→s2→s3→s4</span>
+      per sample — which cannot be vectorized across samples at all.</li>
+      <li>Vectorizing across <em>banks</em> is the W5-D shape, already prototyped at <strong>1.10×</strong>
+      under the frozen SSE2 flags. The real win needs <code>-march=haswell</code>+ — a numerics-frozen
+      build-contract change that would itself introduce FMA and break the bit-exactness the prototype
+      relies on.</li>
+      <li>The roadmap already files LR4 SIMD as <em>“Defer … only worth opening alongside the AVX2
+      decision.”</em></li>
+    </ul>
+    <p>Proposing it again without an AVX2 decision would be re-litigating a settled question.</p>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<section id="roadmap">
+  <h2>Recommended roadmap</h2>
+  <div class="col">
+    <p>Ordered by measured gain × confidence, divided by risk × cost. The numbering is a real
+    execution sequence: each item's dependencies are named, and later items are gated on what earlier
+    ones produce.</p>
+  </div>
+
+  <div class="steps">
+
+    <article class="step">
+      <div class="step-n">01</div>
+      <div class="step-body">
+        <h3 class="step-h">Close the PERFORMANCE_BUDGET numeric rows <span class="chip now">No code</span></h3>
+        <p>The harness exists, the procedure is written, and this round proved both work end to end.
+        What is missing is a machine. Run <code>AnamorphBench</code> on a named, otherwise-idle desktop
+        and paste the matrix in with CPU, OS and compiler beside it.</p>
+        <dl class="kv">
+          <dt>Depends on</dt><dd>A maintainer with a desktop. Nothing else.</dd>
+          <dt>Outcome</dt><dd>RISK-002 becomes answerable; three TODOs retire; every later claim gains a wall-clock reference point.</dd>
+          <dt>Do not</dt><dd>Populate those rows from this round's container numbers.</dd>
+        </dl>
+      </div>
+    </article>
+
+    <article class="step">
+      <div class="step-n">02</div>
+      <div class="step-body">
+        <h3 class="step-h">A7-1 — the VelvetNoise history slide <span class="chip now">Shipped v0.9.5</span></h3>
+        <p>Largest measured gain, Class A, one file, no hard-stop class, no policy conflict.</p>
+        <dl class="kv">
+          <dt>Depended on</dt><dd>Nothing.</dd>
+          <dt>Outcome, measured</dt><dd>−14.3&nbsp;% at 48&nbsp;kHz/32, −32.3&nbsp;% at 192&nbsp;kHz/32, −4.7&nbsp;% at the 128-sample common case, and −7.5&nbsp;% / −8.7&nbsp;% at 44.1 and 96&nbsp;kHz/128. Per-block fixed cost fell 24,302 → 13,502&nbsp;Ir while the marginal per-sample term stayed at 1596.6.</dd>
+          <dt>Gate — met</dt><dd>The <code>AnamorphDspDump</code> twin diff was re-run on the product tree (32 scenarios, identical) and Test 39 is the block-size-invariance test, swept over four sample rates and proven to fire on both a wrong slide and a missing invalidation.</dd>
+        </dl>
+      </div>
+    </article>
+
+    <article class="step">
+      <div class="step-n">03</div>
+      <div class="step-body">
+        <h3 class="step-h">A7-2 — remove the residual per-block term <span class="chip human">Investigated · proposal rejected</span></h3>
+        <p>A7-1 left a copy of <code>decorrSamps</code> floats per block — 13,502&nbsp;Ir at
+        48&nbsp;kHz, of which <strong>64&nbsp;% is that copy</strong> (88&nbsp;% at 192&nbsp;kHz); the
+        rest is per-block libm and meter work that is not this item's subject, and is its floor.
+        Two designs were prototyped and measured, both <strong>bit-exact over 180
+        configurations</strong>.</p>
+        <p><strong>The double-buffer proposed here is the weaker one.</strong> It is 1–2 points ahead
+        on average (−13.1&nbsp;% vs −11.4&nbsp;% at 48&nbsp;kHz/32) and loses on the number that
+        matters: it <em>amortises</em> the copy instead of removing it, so the worst block still pays
+        the full 8,704&nbsp;Ir — measured at one block in 81.6 at 48&nbsp;kHz/32 and
+        <strong>one in five</strong> at 512-sample blocks. A plug-in drops a buffer on its worst block,
+        not its average one. It also roughly doubles the history buffer and adds a second cross-block
+        invariant.</p>
+        <p><strong>Recommended instead: gather straight from the ring, with no linear image at all.</strong>
+        Each tap's read is 1–3 contiguous runs over the ring plus this block's own mids, so H5's
+        unit-stride property survives and the thing H5 built to get it goes away. −11.4&nbsp;% at
+        48&nbsp;kHz/32, −36.8&nbsp;% at 192&nbsp;kHz/32, <em>zero</em> compactions at every setting,
+        the buffer freed rather than grown, and both cross-block flags deleted rather than extended.</p>
+        <dl class="kv">
+          <dt>Status</dt><dd>Investigated, prototyped, measured. <strong>Not implemented.</strong> Item 01 is still unmet, and the recommended design is not the one this item scoped — both are the maintainer's call.</dd>
+          <dt>Evidence</dt><dd><code>worklogs/performance/PERF_AUDIT_A7-2_INVESTIGATION.md</code>, including a ready-to-execute plan.</dd>
+        </dl>
+      </div>
+    </article>
+
+    <article class="step">
+      <div class="step-n">04</div>
+      <div class="step-body">
+        <h3 class="step-h">A7-5 — multiband LR4 SIMD <span class="chip later">Blocked</span></h3>
+        <p>The largest remaining consumer, and structurally blocked. Not to be opened on its own.</p>
+        <dl class="kv">
+          <dt>Depends on</dt><dd>An AVX2 / <code>-march</code> ADR plus Architecture Review — a hard stop for the build contract and FMA divergence — taken jointly with W5-D so one decision serves both.</dd>
+          <dt>Outcome</dt><dd>Unknown until the ADR fixes the target ISA. Do not estimate before then.</dd>
+        </dl>
+      </div>
+    </article>
+
+  </div>
+
+  <div class="col">
+    <p><strong>Not scheduled:</strong> A7-3 (subsumed), A7-4 and A7-8 (product decisions — see below),
+    A7-6 (needs per-platform measurement first), A7-7 (Class B, replaces a shipped filter).</p>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<section id="risks">
+  <h2>Risks, trade-offs and decisions that are not engineering's</h2>
+
+  <h3>Two questions only the maintainer can answer</h3>
+  <div class="col">
+    <p>Both are quantified here for the first time. Neither has an engineering answer.</p>
+    <ol class="plain">
+      <li><strong>A bypassed instance costs 101&nbsp;% of an active one.</strong> The cause is the
+      documented Issue-2 contract that Measure and Predict keep running while bypassed. Is a live
+      Measure readout <em>while the plug-in is bypassed</em> worth a bypassed instance costing a full
+      one in a large session? Changing it is a live-contract change and belongs in the same
+      consolidated Architecture Review as W3-7.</li>
+      <li><strong>59.3&nbsp;% of the transparent idle floor is metering and loudness analysis</strong>,
+      running regardless of Level Match being off and regardless of whether an editor exists. W3-7 and
+      W3-8 rejected gating these for good reasons — a live Measure readout, and peaks that persist
+      while the editor is closed — and those reasons stand. What was missing was the price. The
+      roadmap already names the queue position: <em>“one consolidated Review if idle-CPU ever matters
+      commercially.”</em> This round supplies the number that makes that call decidable.</li>
+    </ol>
+  </div>
+
+  <h3>Prior dispositions this round re-confirms</h3>
+  <div class="col">
+    <p>Checked against the code and left alone. None is reopened.</p>
+    <ul class="plain">
+      <li><strong>W3-7 / W3-8</strong> — the contracts they protect are still in the code.</li>
+      <li><strong>W3-9</strong> (freeze the Velvet presence env while parked) — still load-bearing;
+      A7-1 deliberately touches neither the env/gate nor the history writes.</li>
+      <li><strong>W3-10</strong> (Width==1 identity gate) — still Class B: 15.5&nbsp;% of samples
+      differ by ~1 ULP.</li>
+      <li><strong>W3-12 residue</strong> (bypass read-back segmentation) — the read/write overlap
+      hazard is unchanged.</li>
+      <li><strong>W5-4 / W5-8</strong> — thread-model and change-tracking hazards unchanged.</li>
+      <li><strong>W5-D</strong> — the SSE2 ceiling is unchanged; nothing found here lowers it.</li>
+      <li><strong>All Wave-6 GPU rejects</strong> — this round measured the software renderer only and
+      produces no evidence that reopens any of them.</li>
+      <li><strong>LookAndFeel per-paint locals</strong> — still gesture-transient; the paint profile
+      confirms Anamorph's own drawing code is a rounding error next to JUCE's rasterizer.</li>
+    </ul>
+    <p><strong>W5-A</strong> is filed as <em>“revisit only on evidence of real small-buffer host
+    pain.”</em> This round produces small-buffer evidence — but it points at VelvetNoise, not at the
+    mix ring. W5-A stays deferred on its own terms.</p>
+  </div>
+
+  <h3>Limits of this round</h3>
+  <div class="col">
+    <ul class="plain">
+      <li><strong>No wall-clock datum.</strong> Shared container; every nanosecond figure is
+      indicative and none may be promoted into <code>PERFORMANCE_BUDGET.md</code>.</li>
+      <li><strong>The GUI tick path was not measured</strong> — only paint.</li>
+      <li><strong>Software renderer only.</strong> No GPU, no macOS or Windows rasterizer.</li>
+      <li><strong>A7-1's Class-A evidence was this round's</strong>, from a scratch build —
+      <strong>discharged in v0.9.5</strong>: regenerated on the product tree with the committed
+      <code>AnamorphDspDump</code> twin diff plus a 180-configuration sweep.</li>
+      <li><strong>One scenario shape.</strong> The working reference is <code>bench.cpp</code>'s; a
+      user on Chorus with multiband off has a different profile.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<section id="checklist">
+  <h2>Future optimization checklist</h2>
+  <div class="col">
+    <p>What this round would have caught earlier, written as the questions to ask next time.</p>
+  </div>
+
+  <ul class="check">
+    <li><span class="box"></span><div><strong>Measure in the configuration users run, not the default.</strong>
+    The default has every algorithm at identity, which switches off exactly the gated fast paths that
+    carry the cost. This round's central finding is a direct consequence of that mistake.</div></li>
+    <li><span class="box"></span><div><strong>Separate the per-block term from the per-sample term.</strong>
+    Two block sizes and a two-unknown solve is all it takes, and it exposes fixed costs that a single
+    block size hides in the average.</div></li>
+    <li><span class="box"></span><div><strong>Check every optimization that amortizes over block length
+    at the smallest block.</strong> A fast path that wins at 128 samples can lose at 32.</div></li>
+    <li><span class="box"></span><div><strong>Check every cost that scales with sample rate at 192 kHz.</strong>
+    Anything sized from <code>sr</code> — delay lines, decorrelation windows, history images — is four
+    times larger there than at the rate it was designed against.</div></li>
+    <li><span class="box"></span><div><strong>Subtract startup before quoting a share.</strong> Run the
+    same scenario at two durations and difference them; dynamic-linker and <code>prepare()</code> cost
+    otherwise inflates the idle profile by several percent.</div></li>
+    <li><span class="box"></span><div><strong>Prove bit-exactness by hashing output, not by argument.</strong>
+    A hash over every sample across the scenario × block × rate cross-product costs minutes and
+    converts a Class-A claim from an assertion into a measurement.</div></li>
+    <li><span class="box"></span><div><strong>Read the disposition table before proposing anything.</strong>
+    Four of this round's eight candidates were already settled. Re-litigating them wastes the one
+    reviewer who can decide.</div></li>
+    <li><span class="box"></span><div><strong>Price the contracts you cannot change.</strong> A rejected
+    optimization still deserves a number — without one, nobody can tell whether the contract is cheap
+    or is the whole idle floor.</div></li>
+  </ul>
+</section>
+
+<footer>
+  <span>Anamorph performance audit — round A7</span>
+  <span>Investigation only; no product code changed</span>
+  <span>Full method and evidence: worklogs/performance/PERF_AUDIT_v0.9.4_INVESTIGATION.md</span>
+</footer>
+
+</div>

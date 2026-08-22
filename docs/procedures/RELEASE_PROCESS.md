@@ -6,6 +6,11 @@ the hard compatibility gate is `RELEASE_COMPATIBILITY_CHECKLIST.md`.
 ## Pre-release checklist
 
 1. **Version bump** — update `project(Anamorph VERSION x.y.z ...)` in `CMakeLists.txt:14`.
+   The citation gate does not treat this as drift: that line is declared in
+   `VERSIONED_LINES` (`scripts/check-citations.py`), which replaces the base comparison
+   with a permanent check that the line still contains `project(Anamorph VERSION`. If the
+   line ever MOVES, the run fails and the declaration's line number must be re-derived —
+   `--fix` cannot do it, because the declaration is what turned the comparison off.
 2. **CHANGELOG** — add a dated, evidence-cited entry per `docs/policies/CHANGELOG_POLICY.md`
    (commit/PR reference; mark reconstructions).
 3. **Tests green** — `scripts/run-tests.sh` passes; `scripts/run-pluginval.sh 10` passes on Linux in

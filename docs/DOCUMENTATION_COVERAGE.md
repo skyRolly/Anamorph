@@ -6,10 +6,14 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.4 change set** (2026-08-21, matching the CHANGELOG heading — re-dated
+Last updated: for the **0.9.5 change set** (2026-08-22, matching the CHANGELOG heading) — the
+**A7-0 attempt** (first below, no code and no rows filled), then the **PR #127 review round**, then
+the **A7-2 investigation** (no code), then the **A7-1 implementation round**. Under it, the **0.9.4 change set** is retained in full
+(2026-08-21, matching its own CHANGELOG heading — re-dated
 from 2026-08-15 in the hover-occlusion round, on 2026-08-20, and again on 2026-08-21, each time
 because the version took a further user-visible change) — the
-**spent re-aim declaration sweep** (first below), then the
+**A7 performance audit**, then the
+**spent re-aim declaration sweep**, then the
 **SIGNAL_FLOW anchor restoration**, then the
 **roadmap tail: instruments, the declined JUCE cache, gloss-checked anchors and the editor lifetime**, then the
 **post-merge drift sweep**, then the
@@ -75,6 +79,262 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**A7-0 attempted and declined (2026-08-22): the budget rows stay TODO and RISK-002 stays open,
+because the one thing missing is still a machine. No rows filled, no code changed.**
+
+The harness builds and runs end to end after A7-1 — that half was never in doubt. The available
+machine was measured against what this section requires and fails it four ways, each checked rather
+than assumed: `/proc/cpuinfo` reports `Intel(R) Xeon(R) Processor @ 2.80GHz`, a **masked virtual
+model string with no SKU**, so `AnamorphBench` prints something that satisfies constraint C2's letter
+while identifying no actual processor — the one failure mode C2 exists to prevent;
+`systemd-detect-virt` reports **docker**, so it is a container and not a desktop; **no `cpufreq` is
+exposed**, so neither the governor nor host-side or thermal throttling can be observed, let alone
+pinned; and the **load average was 0.44 / 2.10 / 1.69** while the bench ran, so it was not idle.
+
+**Stable medians are not the test, and this run is why.** Across three consecutive invocations the
+working reference measured 193.79 / 193.31 / 194.09 ns/sample — 0.4 %, far better than the 7.2 %
+recorded when this was last attempted. The column RISK-002 actually turns on is the **worst single
+block**, and it measured 104.0 / 128.5 / 118.2 µs over those same three runs: a **23.6 % spread** on
+the one figure the open question needs. A tempting median would have bought a number that could not
+answer the question it was collected for.
+
+**One gap recorded for whoever does run it:** `AnamorphBench` prints the CPU string, the core count
+and the compiler, but not the OS version or the build configuration, while this section asks for
+CPU/OS/compiler beside every cell. Those two must be written down by hand alongside the table, or the
+harness taught to print them. Noted rather than fixed: the roadmap's next action is measurement, and
+changing the instrument is not measurement.
+
+`PERFORMANCE_BUDGET.md` carries the disqualification checklist at the paragraph that explains why the
+rows are still TODO, so the next attempt starts from it. **RISK-002 is unchanged** — its evidence
+row already records what the A7 audit measured and what it explicitly could not close. [Verified]
+
+**PR #127 review round (2026-08-22): a real hole in the version-bump exemption, and a numbers pass
+that reconciled every check-count claim against the binaries rather than against arithmetic.**
+
+**The exemption had a second door, and it was open.** `VERSIONED_LINES` was consulted in the paired
+check path but not in the **count-mismatch** path — the branch reached when a document changes HOW
+MANY times it cites a file. Each path carried its own copy of "is this citation still right?", and
+only one of them grew the substitution. Consequence: a version bump landing in the same change set as
+an added citation of `CMakeLists.txt` reported line 14 as drifted and re-blocked the release the
+substitution exists to unblock. **Reproduced on the real tree before the fix** — one extra citation
+appended to `RELEASE_PROCESS.md` turned `--check` red with `UNMAPPABLE CMakeLists.txt:14` — and green
+after. The fix is one shared `anchor_still_right()` used by both paths, so the two cannot drift apart
+again; the duplication was the defect, not a symptom of it.
+
+**Proven not to have widened anything.** With the count mismatch AND a seeded drift on a
+*neighbouring* line of the same file (`CMakeLists.txt:276`, cited alongside `:14` in `TRADEMARKS.md`),
+the run still fails on that path — so the exemption still covers one declared line and nothing else.
+Self-test 131 → 135 cases: three behavioural cases driving `anchor_still_right` directly on synthetic
+sources (excused when the anchor did not move; a neighbouring line still compared; a MOVED anchor not
+excused even on the declared line) plus a structural case asserting both paths call the shared
+function. That structural case was **proven live** by re-inlining the old comparison, which fails it
+1-of-135. Its literals are split so the check cannot match its own source text — a self-matching
+source check counts itself and passes regardless of the code.
+
+**Check counts reconciled from the binaries.** The coverage entry below said "174 checks (Test 39
+adds 12)" while `HANDOVER.md` and the v0.9.5 worklog said 178 and 16; the worklog separately gave
+178 plain against 172 ASan and called that "two fewer". Both were stale rather than wrong-in-kind:
+Test 39 gained a fourth check per rate on review (the mixed-block-size run), and the ASan figure had
+not been re-measured since. Re-run, not re-derived: **plain 178 / ASan 176** for `AnamorphTests`,
+**920 / 920** for `AnamorphStateTests`, 0 failures and **0 sanitizer diagnostics** in every case. The
+delta is 2 and always was — Test 38's malloc half compiling out under ASan and saying so. The same
+pass corrected `RELEASE_HARDENING_PLAN.md` ("37 DSP self-tests … 162 checks") and
+`TESTING_POLICY.md` ("the 37 DSP self-tests"), both left behind when v0.9.5 added Test 39. Historical
+round entries in this file keep their own figures: they record what was true when they were written.
+
+**Test 39 now varies the block size**, which review identified as the case it was missing:
+`linHistSlide` carries the JUST-PROCESSED block's length, so consecutive gather blocks of differing
+length are what the slide arithmetic is about, and two runs each at a fixed size could both be
+correct with the offset confused for a constant. A third run cycles 32/128/64/256/32 — summing to
+512, so events still land on a block boundary and every neighbouring pair differs — and is
+bit-identical to the 512-sample reference at all four rates. Its comparison is on BITS rather than
+`==`: `-Wfloat-equal` is at zero in the Clang baseline, and a float `==` is the wrong predicate for a
+bit-identity claim anyway, calling +0 and −0 equal (which this module's own signed-zero algebra cares
+about) and NaN unequal to itself. That warning is what turned `linux` red; `source-lint` went red on
+a citation this round's own change set had invalidated, re-aimed by hand and declared for its one
+transition. **`VelvetNoise.cpp` itself was reviewed and left alone** — the invalidation-on-entry,
+the re-arm-on-gather-exit, the `reset()` ordering and the copy bounds were all confirmed sound.
+[Verified]
+
+**A7-2 investigation (2026-08-22): the roadmap's own proposal, prototyped and measured — and
+rejected on the measurement. No product code changed. The alternative it turned up is recommended,
+planned, and deliberately not implemented.**
+
+**The residual term, attributed.** Of the 13,502 Ir/block A7-1 left at 48 kHz, **8,704 (64 %) is the
+`memcpy` of the slide** — 34,624 of 39,429 (88 %) at 192 kHz. The remainder is ~4,800 Ir/block,
+**identical at both sample rates**: per-block libm conversions in Level-Match and the meters, the
+engine's own bookkeeping, the meter publish. That is this item's floor, and it is not VelvetNoise's.
+
+**Two prototypes, both bit-exact over 180 configurations** (9 scenarios × 5 block sizes × 4 sample
+rates, FNV-1a over every output sample): the **double-buffer** the roadmap proposed (a cursor into an
+over-sized image, compacting when it runs out) and a **gather straight from the ring** with no linear
+image at all — for each tap, 1–3 contiguous runs over the ring plus this block's own mids, which
+keeps H5's unit-stride property while deleting the structure H5 built to get it.
+
+**The proposal is the weaker half of the fork, and the reason is measured.** It is 1–2 points ahead on
+average (−13.1 % vs −11.4 % at 48 kHz/32; −37.9 % vs −36.8 % at 192 kHz/32) and it **amortises the
+copy rather than removing it**, so the worst block still pays the full 8,704 Ir. Counted in the
+prototype over 4,000 gather blocks: one compaction in **81.6** blocks at 48 kHz/32, one in **20** at
+128, one in **five** at 512-sample blocks. A plug-in drops a buffer on its worst block, not its
+average one — so this trades a uniform per-block cost for a periodic full-size spike, which is the
+wrong shape for an audio thread even though the mean falls. It also roughly **doubles** the history
+buffer (+8.6 KB at 48 kHz, +34.5 KB at 192 kHz per instance) and adds a **second** cross-block
+invariant to a module that gained its first in v0.9.5. The ring gather compacts **zero** times at
+every setting, **frees** the buffer instead of growing it, and **deletes** both cross-block flags
+rather than extending them. Both remove the sample-rate dependence of the fixed term entirely: at
+32-sample blocks, 48 kHz and 192 kHz land on the same figure where the shipped engine differs by
+810 Ir/sample.
+
+**Why it stops at investigation, and neither reason is that the change is risky.** A7-2's own gate is
+**A7-0** — *"gated on A7-0's evidence that small buffers still hurt"* — and A7-0 has not been done:
+there is still no wall-clock datum from a named machine and RISK-002 is still open. Instruction
+counts are the right unit for comparing two implementations and the wrong one for deciding whether a
+user is dropping buffers. And the recommended change is **not the change that was scoped**: swapping
+a rewrite of the Wave-2 H5 gather kernel in for the proposed double-buffer, unprompted, in the same
+function v0.9.5 changed hours ago and before that release has had its audition, is what the
+architecture review gate exists to catch. `PERF_AUDIT_A7-2_INVESTIGATION.md` carries the evidence and
+a ready-to-execute plan; the A7 audit worklog and its HTML report are updated in place so the roadmap
+row reads "proposal rejected" rather than "consider later". [Verified]
+
+**A7-1 implementation, v0.9.5 (2026-08-22): the optimization the audit below sized now shipped, its
+evidence re-derived on the product tree, a permanent guard added for the cross-block state it
+introduces — and the release blocked by this repository's own citation gate, for a reason no release
+had met before.**
+
+**The change.** `VelvetNoise` was rebuilding its whole `round(0.045*sr)`-sample decorrelation window
+from the ring on EVERY block (`src/dsp/VelvetNoise.cpp`), independent of `numSamples` — a fixed
+per-block cost that grows with the sample rate. It is now slid forward from the previous block's
+image. **The shipped design is deliberately not the throwaway one** the audit measured: the offset is
+taken and cleared on ENTRY to `processBlock` and re-armed in exactly one place, so every other path —
+and every path a later round adds — leaves the image invalid *by construction*, rather than by an
+RAII guard a reader has to find. `reset()` clears it too, and that line is load-bearing: `reset()`
+runs between blocks, after the offset was armed.
+
+**The estimate held to one decimal place.** Product tree vs the audit's throwaway build: −14.3 % at
+48 kHz/32, −8.5 % at 48 kHz/64, −4.7 % at 48 kHz/128, −2.5 % at 48 kHz/256, −32.3 % at 192 kHz/32,
+−15.0 % at 192 kHz/128 — every figure the audit predicted, reproduced. Two rows it had not measured
+land where the model says they should (−7.5 % at 44.1 kHz/128, −8.7 % at 96 kHz/128). The per-block
+term fell **24,302 → 13,502 Ir** at 48 kHz while the marginal per-sample term stayed at **1596.6** —
+the arithmetic signature of a change confined to the refill, and worth more than the percentages
+because it says *where* the saving came from.
+
+**Class A, with the committed instrument as the primary evidence.** `AnamorphDspDump` — the
+DEPENDENCY_POLICY rule-2 twin harness — reports its 32 scenarios identical before and after, having
+first self-checked that all 32 are repeatable AND distinct, so the diff is a live comparison rather
+than 32 equal hashes proving nothing. Beside it: a **180-configuration** sweep (9 scenarios × 5 block
+sizes × 4 sample rates) hashed over every output sample of both channels, 0 mismatches; reported
+latency unchanged; no parameter, serialization or threading change.
+
+**Test 39 is the guard, and it proves itself rather than being trusted.** The same audio at 512 and
+at 32 samples must be bit-identical, at four sample rates. It **passes unchanged against the
+pre-0.9.5 engine**, so it asserts a contract the module already had and nothing was checking. It
+fires on both defect classes, seeded: a wrong slide fails at sample 32, a missing invalidation at the
+transport-stop block. Its own premises are asserted too — the engaged stretch must really
+decorrelate, and the transport stop must really flush the wet (15.4–25.2 % of the engaged figure with
+the stop, **90.6–128.9 % with the stop event removed**, so the 50 % bound sits between two measured
+populations instead of being a hopeful inequality).
+
+**THE CITATION GATE BLOCKED THE VERSION BUMP, and that was not a false alarm.** Six documents cite
+the `project(Anamorph VERSION x.y.z ...)` line, whose text changes by definition; the anchor never
+moves. Checked rather than assumed: the 0.9.3 → 0.9.4 bump (`3ebdf69`, 2026-08-14) predates
+`CMakeLists.txt` joining `TRACKED` (`129457e`, 2026-08-16), so `RELEASE_PROCESS.md` step 1 had been
+un-runnable under the gate since the day the gate started watching that file, and no release had
+exercised it. `DELIBERATE_REAIMS` cannot express it — `is_declared_reaim` returns False when the
+spelling is unchanged, deliberately, so an entry cannot outlive its one transition, and here there is
+no transition to outlive. `VERSIONED_LINES` was added for exactly this: keyed by one exact
+`(path, line)` pair, the base comparison **replaced** by a permanent token check, applying only while
+the anchor has not moved. Proven narrow rather than argued: a *neighbouring* cited line drifted in the
+same citation still fails; an anchor moved by an inserted line **exits 2** rather than excusing
+whatever is now on line 14; missing token, past-EOF and unreadable-file each report a finding rather
+than a traceback. Self-test 123 → 130 cases, including a structural check that the substitution stays
+gated on the anchor not having moved — the guard a later rewrite could drop invisibly on a clean tree.
+Recorded where it bites: `RELEASE_PROCESS.md` step 1, `CI_CD.md`, `REPOSITORY_MAP.md`.
+
+**One finding recorded and deliberately not acted on.** Proving Test 39 live turned up that the
+**Amount one-pole never reaches zero when turned down**: with a 0 target the update is
+`a -= 0.0015f * a`, and under FTZ the DECREMENT underflows first, so the glide stalls at
+`7.82561114e-36` and stays there. `currentAmount > 0.0f` therefore stays true and the Wave-5 PARKED
+fast path — whose own comment says the one-pole "flushes to true zero" — is unreachable after a user
+turns Amount down. No audio effect (the measured contribution is one ULP of the M/S round trip, the
+same as a true park) and the path is still reached from a fresh `prepare()` with Amount at its 0
+default, which is the state it was written for. The repair is Class B (it moves the sample at which
+the amount reaches zero), so it is filed as **A7-9** with its measurement rather than folded in.
+
+**Verification.** `AnamorphTests` **178 checks** (162 before; Test 39 adds 16 — four checks at each
+of four sample rates) and `AnamorphStateTests` 920 checks, both 0 failures. Under ASan + UBSan + LSan
+with the `sanitizers` job's own flag set: **176** and 920 checks, **0 sanitizer diagnostics** — run for `local-bounds`, which checks the new copy's
+range with a tool rather than only with the argument in the source. `check-realtime` 44 files /
+0 violations, `check-portability` 52 / 0, `check-docs` 104 clean, `check-citations --self-test`
+130 cases and `--check --base origin/main` green, full `scripts/preflight.sh` green.
+`worklogs/performance/PERF_AUDIT_v0.9.5_IMPLEMENTATION.md` is the round's record; the A7 audit below
+and its HTML report are updated in place to say A7-1 shipped rather than describing it as proposed.
+[Verified]
+
+**A7 performance audit (2026-08-22): the engine re-measured after six optimization waves, and one
+dominant cost found that the previous rounds recorded as absent — because they measured it in the one
+configuration where it is switched off. Investigation only; no product code changed.**
+
+**What the round produced.** `worklogs/performance/PERF_AUDIT_v0.9.4_INVESTIGATION.md` (the evidence
+trail and the roadmap) and `worklogs/performance/PERF_AUDIT_v0.9.4_REPORT.html` (a self-contained
+rendered companion for reading and assigning from). The HTML is a VIEW of the worklog, stated as such
+in both files and in `REPOSITORY_MAP.md`, because a second copy of a decision is a second thing to
+keep true.
+
+**Instructions, not nanoseconds, and the budget document is why.** It states that a shared cloud
+runner is not a wall-clock datum and that *"for attribution rather than totals, `valgrind
+--tool=callgrind` … gives instruction counts that are stable across machines"*. Every figure in this
+round is Ir, taken as the difference between a 3.0 s and a 1.0 s run so that process start, dynamic
+linking and `prepare()` cancel exactly. **No number from this round is promoted into the
+`PERFORMANCE_BUDGET.md` TODO rows**, and the round says so in three places — the container measured
+spread up to 34 % on the committed bench's own cells, which is the evidence for that sentence rather
+than a hypothetical.
+
+**The finding.** Wave 5 attributed small-buffer per-block cost and closed it — *"~4.5k Ir of fixed
+work per block… no single dominant item"*. That reproduces **exactly**, for the transparent default:
+3,581 Ir/block measured here. In the configuration a paying user runs it is **24,287 Ir/block, 6.8×
+larger**, and **20,369 of it (84 %) is `VelvetNoise::processBlock` alone**. The H5 tap-outer gather
+rebuilt a `decorrSamps`-long linear history image from the ring every block, independent of
+`numSamples` — 2,160 samples at 48 kHz, 8,640 at 192 kHz. That walk survives as the
+first-block-after-invalidation path (`src/dsp/VelvetNoise.cpp:180-181`), with the slide that replaced
+it directly above. At 192 kHz / 32 it is **62.3 % of the whole engine**. The earlier closure missed it for a
+mechanical reason worth recording: the gather is gated on `currentAmount > 0.0f || targetAmount >
+0.0f` (`:132-135`), and the default `algoAmount` is 0 — **measuring per-block cost at the transparent
+default measures the one configuration in which the dominant per-block item is switched off.**
+
+**The fix was measured, not argued.** Implemented in a throwaway build outside the tree (§6.1 of the
+worklog): the retained tail of the history image is the previous block's image shifted by that
+block's length, so the masked ring walk becomes a `memmove` of the same floats behind a validity
+flag. Measured **−14.3 % of whole-engine cost at 48 kHz/32, −32.3 % at 192 kHz/32, −4.7 % at the
+128-sample common case**, and **bit-exact across 144 configurations** (9 scenarios × 4 block sizes ×
+4 sample rates, FNV-1a over every output sample of both channels, zero mismatches). Class A by
+measurement rather than by assertion — which is the standard the Wave 1–5 program set.
+
+**Cross-validated against Wave 4 rather than trusted.** Rescaling Wave 4's idle shares out of its
+own *"~14 % harness noise-fill"*: LevelMeters 26.3 % vs 28.6 % here, LoudnessMatch 27.7 % vs 30.7 %,
+Correlation 3.4 % vs 3.8 %. Two independent harnesses two rounds apart agreeing to a few points.
+
+**Two prices quoted for the first time, both maintainer decisions and neither reopened here.** A
+host-bypassed instance costs **101 % of an active one** (85.1M vs 84.0M Ir/s) because the Issue-2
+contract at `src/dsp/AnamorphEngine.cpp:790-796` keeps Measure + Predict running while bypassed, and
+`loudness.process()` is handed the *processed* signal (`:1137`). And **59.3 % of the transparent idle
+floor is metering and loudness analysis**, running with Level Match off and with no editor in
+existence. W3-7 and W3-8 rejected gating those for reasons that still hold; what was missing was the
+number, and the roadmap already names the queue position (*"one consolidated Review if idle-CPU ever
+matters commercially"*).
+
+**Eight candidates, one recommended.** Four were already disposed of in
+`worklogs/POST_v0.8.12_AUDIT_AND_ROADMAP.md` §4 and are re-confirmed rather than re-litigated —
+including the largest single consumer, the multiband LR4 bank at 41.7 % of the working reference,
+which stays blocked behind the same AVX2 ADR as W5-D. The GUI was measured too (one full editor
+repaint = 28.6M Ir, of which `Vectorscope::paint` itself is 2.9 % — the rest is JUCE's software
+rasterizer), with its three limits stated rather than implied: Linux software renderer only, a forced
+full repaint rather than the dirty-region steady state, and **the `juce::Timer`/`VBlankAttachment`
+tick path not measured at all**, so the Wave 1–4 idle-GUI claims are neither confirmed nor challenged.
+
+**Verification.** `check-docs` 103 files clean; `check-citations --self-test` 123 cases and `--check
+--base origin/main` green; full `scripts/preflight.sh` green. Only `REPOSITORY_MAP.md` and this file
+changed outside the two new worklog artifacts. [Verified]
 
 **Spent re-aim declaration sweep (2026-08-22): all eight `DELIBERATE_REAIMS` entries retired after
 the round that declared them merged. A declaration is good for exactly one transition; kept past it,
