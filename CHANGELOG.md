@@ -15,6 +15,23 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 
 ## [0.9.5] — 2026-08-22
 ### Changed
+- **Faster on every Intel and AMD machine, with the sound unchanged — and a new minimum CPU
+  requirement on Linux and on the Intel half of the macOS build.** The plug-in is now compiled for
+  the AVX2 instruction set instead of the 2003-era baseline it had been using, which lets the
+  compiler work on four numbers at a time where it previously worked on two. Measured reduction in
+  the engine's total instruction count: **−17 %**. The audio is **bit-identical** — the same
+  32-scenario engine twin dump, and the same 180-configuration sweep, agree with the previous build
+  in every scenario — because fused multiply-add, the one part of AVX2 that would have changed the
+  arithmetic, is explicitly disabled. **The requirement:** an Intel Haswell (2013) or AMD Excavator
+  (2015) processor or newer. On an older processor the plug-in will not run, and the failure looks
+  like a crash in your DAW rather than a message, because the plug-in cannot report a problem with
+  instructions it never gets to execute. This affects **Linux** and the **Intel half of the macOS
+  build**; the Windows build and Apple Silicon Macs are unchanged and carry no new requirement.
+  Every Mac that can run macOS 15 already exceeds the requirement; a Mac old enough to be affected
+  would be running macOS 10.13–10.15. No parameter, preset, saved-state or latency change.
+  See ADR-0031 and `docs/policies/COMPATIBILITY_POLICY.md` ("Runtime compatibility: the x86-64 ISA
+  floor").
+  Evidence: PR #130. [Verified]
 - **Lower CPU with Velvet Noise selected at high sample rates, and the sound is unchanged.** The
   change above stopped Velvet Noise rebuilding its ~45 ms decorrelation window every block by
   carrying it forward instead; this one removes the private copy of the window altogether. The
@@ -41,6 +58,24 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   four sample rates and five buffer sizes, and the reported latency, parameters and saved state are
   untouched.
   Evidence: PR #127. [Verified]
+
+### Fixed
+- **Turning Widen down to zero now actually gives the CPU back.** Velvet Noise, Haas and the
+  Chorus / Dimension-D engine each have a cheap path for when their Amount is zero, and each was
+  entering it only on a freshly loaded plug-in — never after you turned the control down yourself.
+  The reason is that the smooth fade to zero never quite arrives: it approaches zero by a fixed
+  fraction each sample, and the step eventually becomes too small for the processor to represent, so
+  the level freezes a hair above zero and stays there. The test was "is it zero"; it is now "can it
+  still move", which is the question the shortcut actually depends on. In a session where you have
+  ever turned an algorithm's Amount down, that recovers roughly a fifth of the plug-in's work with
+  Velvet Noise selected, and comparable amounts for the other two. **What changes in the audio:**
+  on **digital silence only**, the frozen remainder used to leak an inaudible trace of the delay
+  line's contents — at most about 1.6e-35 of full scale, roughly −696 dB, some twenty-five orders of
+  magnitude below the quietest thing you have ever heard and thirty-four below the smallest step a
+  24-bit file can hold. That trace is now gone and silence is exactly silence. On any real signal the
+  output is **bit-for-bit identical**, before and after — verified over 102,400 samples per module at
+  every supported sample rate. No parameter, preset, saved-state or latency change.
+  Evidence: PR #130. [Verified]
 
 ## [0.9.4] — 2026-08-21
 ### Fixed

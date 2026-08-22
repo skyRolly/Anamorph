@@ -3469,6 +3469,175 @@ static void testVelvetGatherEqualsPerSampleLoop()
 }
 
 
+// ---------------------------------------------------------------------------
+static void testA79ParkedPathsReachableAfterStall()
+{
+    std::printf ("Test 41: A7-9 -- the parked fast paths are REACHED after an Amount ramp-down\n");
+
+    // WHAT THIS TEST EXISTS TO CATCH, and why the suite could not catch it for
+    // two waves. `VelvetNoise`, `HaasProcessor` and `ChorusEngine` each have a
+    // parked fast path for "Amount is 0". Every one of them was gated on the
+    // wet glide having reached EXACTLY 0 -- and it never does. With a 0 target
+    // the update is `a -= k*a`, and under FTZ the DECREMENT underflows before
+    // `a` does, so the glide stalls just under FLT_MIN/k and every later
+    // decrement is exactly 0. The gates therefore stayed false forever after a
+    // user turned Amount down, which is the ONLY route that reaches the state
+    // they were written for -- and nothing observed it, because on real signal
+    // `x + 1e-35*(d - x)` is bit-exactly `x`. A7-9 moves the gates to a FIXPOINT
+    // test ("can the glide still move") from a value test ("is it at zero").
+    //
+    // THE ORACLE IS A SECOND INSTANCE. `S` is driven the way a user drives it:
+    // engaged, then turned down and left to stall. `P` sees the identical input
+    // with Amount at 0 from `prepare()`, so it is genuinely parked (every module
+    // snaps current := target there). Both rings therefore hold the SAME history
+    // -- all three modules record the input, not their own output -- so any
+    // difference between them is the residual and nothing else.
+    //
+    // The three checks per module are three different claims:
+    //   * real signal -> EXACTLY equal. The "A7-9 changed no audible bit" claim.
+    //     It passes before AND after the fix; it is the guard that the change
+    //     stayed confined to path selection.
+    //   * silence -> within the stall ceiling. The Class-B budget (below).
+    //   * silence -> EXACTLY 0. This is the gate: it FAILS before the fix (the
+    //     stalled module emits the residual on digital silence, where the dry
+    //     term is +0 and cannot absorb it) and passes after. Verified to fire on
+    //     all three modules against the pre-A7-9 sources.
+    //
+    // THE BOUND IS DERIVED HERE, NOT QUOTED. The A7 investigation recorded
+    // 4.476e-36 as the worst-case residual; that figure is the maximum its own
+    // harness observed, and it is NOT a stimulus-independent bound -- this test,
+    // driving +/-0.7 noise, measures 7.145e-36 (Velvet, 48 kHz), 8.043e-36
+    // (Haas, 48 kHz) and 1.563e-35 (Chorus, 192 kHz) against the pre-fix
+    // sources: 3.5x the recorded figure. The residual is `a_stall * (wet term)`,
+    // so what actually bounds it is FLT_MIN/k, computed per module below, times
+    // the module's wet gain. The factor of 2 is headroom for that gain (Velvet's
+    // normalised tap sum measured 1.30x its input peak) -- this assertion is a
+    // regression guard against a residual orders of magnitude larger, and the
+    // PROOF that the fix removes it entirely is the exact-zero check, which is
+    // stronger than any bound.
+    //
+    // UNDER ANAMORPH_TESTS_NO_FTZ (valgrind) the stall does not happen at all --
+    // the glide walks down through the denormals to a true zero, which the run
+    // lengths below are long enough to reach -- so all three checks pass without
+    // discriminating. That is lost coverage, not a false pass, and it is the
+    // same trade the denormal invariant makes in `isBad`.
+    juce::ScopedNoDenormals noDenormals; // FTZ, exactly like the real audio thread
+
+    constexpr int   block         = 512;
+    constexpr int   engageBlocks  = 20;  // glide up: the module is genuinely wet
+    constexpr int   compareBlocks = 6;
+    const     float fltMin        = std::numeric_limits<float>::min();
+
+    std::mt19937 rng (0xA7900001u);
+    std::uniform_real_distribution<float> dist (-0.7f, 0.7f);
+
+    // `rampBlocks` must outlast the slowest glide at the rate under test. The
+    // stall needs ln(FLT_MIN)/ln(1-k) samples, which is ~155k for ChorusEngine
+    // at 192 kHz (k = 1/1920) -- the reason the 192 kHz pass below is longer.
+    auto exercise = [&] (const char* name, double sr, int rampBlocks, float stallCeiling,
+                         auto& S, auto& P, auto setAmt)
+    {
+        float maxSigDiff = 0.0f, maxSilDiff = 0.0f, maxSilAbs = 0.0f;
+        std::vector<float> sL ((size_t) block), sR ((size_t) block),
+                           pL ((size_t) block), pR ((size_t) block);
+
+        auto pump = [&] (int nBlocks, bool silence, bool measure)
+        {
+            for (int b = 0; b < nBlocks; ++b)
+            {
+                for (int i = 0; i < block; ++i)
+                {
+                    const float L = silence ? 0.0f : dist (rng);
+                    const float R = silence ? 0.0f : dist (rng);
+                    sL[(size_t) i] = pL[(size_t) i] = L;
+                    sR[(size_t) i] = pR[(size_t) i] = R;
+                }
+                S.processBlock (sL.data(), sR.data(), block);
+                P.processBlock (pL.data(), pR.data(), block);
+
+                if (! measure) continue;
+
+                for (int i = 0; i < block; ++i)
+                {
+                    const float dl = std::abs (sL[(size_t) i] - pL[(size_t) i]);
+                    const float dr = std::abs (sR[(size_t) i] - pR[(size_t) i]);
+                    if (silence)
+                    {
+                        maxSilDiff = std::max (maxSilDiff, std::max (dl, dr));
+                        maxSilAbs  = std::max (maxSilAbs,
+                                               std::max (std::abs (sL[(size_t) i]),
+                                                         std::abs (sR[(size_t) i])));
+                    }
+                    else
+                    {
+                        maxSigDiff = std::max (maxSigDiff, std::max (dl, dr));
+                    }
+                }
+            }
+        };
+
+        setAmt (S, 0.8f);                    // P keeps the 0 it was prepared with
+        pump (engageBlocks,  false, false);
+        setAmt (S, 0.0f);                    // the ramp-down that used to strand the gate
+        pump (rampBlocks,    false, false);
+        pump (compareBlocks, false, true);   // real signal
+        pump (compareBlocks, true,  true);   // digital silence, warm history
+
+        std::printf ("  %-13s %6.0f Hz  real-signal diff = %.6e  silence diff = %.6e  "
+                     "silence peak = %.6e  (ceiling %.3e)\n",
+                     name, sr, (double) maxSigDiff, (double) maxSilDiff,
+                     (double) maxSilAbs, (double) stallCeiling);
+
+        char msg[176];
+        std::snprintf (msg, sizeof msg,
+                       "%s @ %.0f Hz: stalled matches parked BIT-FOR-BIT on real signal", name, sr);
+        check (! (maxSigDiff > 0.0f), msg);
+        std::snprintf (msg, sizeof msg,
+                       "%s @ %.0f Hz: silence residual within the FLT_MIN/k stall ceiling", name, sr);
+        check (! (maxSilDiff > 2.0f * stallCeiling), msg);
+        std::snprintf (msg, sizeof msg,
+                       "%s @ %.0f Hz: parked path REACHED after the stall (silence is exactly 0)", name, sr);
+        check (! (maxSilAbs > 0.0f), msg);
+    };
+
+    {
+        const double sr = 48000.0;
+        anamorph::VelvetNoise S, P;              // targetAmount defaults to 0
+        S.prepare (sr, block); P.prepare (sr, block);
+        S.setTransportPlaying (true); P.setTransportPlaying (true);
+        S.reset(); P.reset();
+        exercise ("VelvetNoise", sr, 300, fltMin / 0.0015f, S, P,
+                  [] (anamorph::VelvetNoise& v, float a) { v.setAmount (a); });
+    }
+
+    {
+        const double sr = 48000.0;
+        anamorph::HaasProcessor S, P;            // amount defaults to 0
+        S.prepare (sr, block); P.prepare (sr, block);
+        S.setDelayMs (20.0f);  P.setDelayMs (20.0f);   // 960 samples of warm history
+        S.setSide (true);      P.setSide (true);
+        exercise ("HaasProcessor", sr, 300, fltMin / 0.001f, S, P,
+                  [] (anamorph::HaasProcessor& h, float a) { h.setAmount (a); });
+    }
+
+    // ChorusEngine at BOTH ends of the supported range. Its smoothing
+    // coefficient is the only rate-dependent one of the three -- wSmooth is
+    // 1/(0.01*workingRate) -- so the stall value, and with it the residual the
+    // fix removes, scales with the sample rate. 192 kHz is where the programme's
+    // worst case lives, which is exactly why it is asserted here and not
+    // extrapolated from the 48 kHz pass.
+    for (const double sr : { 48000.0, 192000.0 })
+    {
+        anamorph::ChorusEngine S, P;
+        S.setAmount (0.0f); P.setAmount (0.0f);  // amount defaults to 0.5 here
+        S.prepare (sr);     P.prepare (sr);
+        S.setWorkingRate (sr); P.setWorkingRate (sr);
+        exercise ("ChorusEngine", sr, sr > 100000.0 ? 460 : 300,
+                  fltMin * (float) (0.01 * sr), S, P,
+                  [] (anamorph::ChorusEngine& c, float a) { c.setAmount (a); });
+    }
+}
+
 int main()
 {
     std::printf ("=== Anamorph DSP self-tests ===\n");
@@ -3525,6 +3694,7 @@ int main()
     testProcessIsAllocationFree();
     testVelvetBlockLengthInvariance();
     testVelvetGatherEqualsPerSampleLoop();
+    testA79ParkedPathsReachableAfterStall();
     testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);

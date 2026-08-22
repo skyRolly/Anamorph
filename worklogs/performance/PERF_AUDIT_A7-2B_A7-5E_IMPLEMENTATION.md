@@ -379,6 +379,14 @@ what a fix produces. Every later difference is exactly the residual a fix would 
 | `ChorusEngine` | **0 / 102,400 differ** | 1.081e-36 | **4.476e-36** |
 
 **Bound over the supported range: 4.476e-36 (≈ −707 dBFS), set by `ChorusEngine` at 192 kHz.**
+
+> **CORRECTED 2026-08-22 during implementation.** That figure is the maximum *this harness* observed,
+> not a stimulus-independent bound. Driving ±0.7 noise, Test 41 measures **1.563e-35** (Chorus,
+> 192 kHz), 8.043e-36 (Haas, 48 kHz) and 7.145e-36 (Velvet, 48 kHz) against the pre-A7-9 sources —
+> 3.5× the figure above. What bounds the residual is `FLT_MIN/k` times the module's wet gain.
+> `PERF_AUDIT_A7-9_AVX2_IMPLEMENTATION.md` §4c. The direction of the change is unaffected: after
+> A7-9 the silence output is an **exact zero**, which is stronger than any bound.
+
 Unchanged by A7-2B. Inaudible by construction on real signal; the residual appears only where the
 dry term is `+0` and cannot absorb it.
 

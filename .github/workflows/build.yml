@@ -220,7 +220,7 @@ env:
 # compilation (75%) and 468 CPU-seconds of LTO link (25%), and the compilation
 # is almost all JUCE: 9k lines of first-party source against a framework that
 # every one of the three JUCE-linking targets compiles separately. JUCE is
-# pin-locked to an immutable commit (CMakeLists.txt:65-71, ADR-0022/0026), so
+# pin-locked to an immutable commit (CMakeLists.txt:78-84, ADR-0022/0026), so
 # that 75% is byte-identical from run to run and recompiling it every push is
 # the single largest piece of avoidable work in this pipeline.
 #
@@ -913,7 +913,7 @@ jobs:
       # and -flto is what users install.
       #
       # IT IS A NO-NEW-WARNINGS GATE, NOT A ZERO-WARNINGS ONE, and that is not a
-      # softening. The tree already carries 14 first-party Clang warning sites
+      # softening. The tree already carries 17 first-party Clang warning sites
       # (-Wshadow-field, -Wshadow, -Wswitch-enum, -Wsign-conversion,
       # -Wfloat-equal, -Wunused-but-set-variable, -Wmissing-prototypes), all
       # older than the gate; clearing them means renaming a member across the
@@ -1773,12 +1773,35 @@ jobs:
       # absent Rosetta exits 0 (image property, per above) so the uploads proceed
       # on a compilation-only Intel run with the ::warning:: as the record, and a
       # failed BUILD skips it, where `steps.tests` already blocks the upload.
+      # ADR-0031 ADDED A SECOND WAY THIS STEP CAN LOSE ITS COVERAGE, and it is
+      # the same class as the first: a property of the IMAGE, not of the product.
+      # The x86_64 slice is now compiled `-march=haswell`, and Rosetta 2 does not
+      # translate AVX2 unless the process asks for it (`ROSETTA_ADVERTISE_AVX`,
+      # macOS 15+); where it will not, the slice raises SIGILL under translation
+      # while being perfectly correct on real Intel hardware. So the capability is
+      # PROBED with a three-line AVX2 program built by the same compiler, before
+      # the suites run -- a probe that answers about this image rather than about
+      # a version number, exactly as `check_linker_flag` does for lld in
+      # CMakeLists. A probe that faults degrades to a ::warning::, like an absent
+      # Rosetta, because the blocking Intel gate is the `macos-intel` job on real
+      # `macos-15-intel` hardware; this step is the bonus half.
       - name: DSP + state self-tests, x86_64 slice under Rosetta
         id: tests_x86_64
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        env:
+          ROSETTA_ADVERTISE_AVX: 1
         run: |
           if ! arch -x86_64 /usr/bin/true 2>/dev/null; then
             echo "::warning::Rosetta 2 unavailable on this image -- the x86_64 slice was BUILT but NOT EXECUTED; Intel coverage for this run is compilation only"
+            exit 0
+          fi
+          printf '#include <immintrin.h>\nint main(void){__m256d a=_mm256_set1_pd(1.0);a=_mm256_add_pd(a,a);return (int)a[0]-2;}\n' > "$RUNNER_TEMP/avx2probe.c"
+          if ! cc -arch x86_64 -march=haswell -O0 "$RUNNER_TEMP/avx2probe.c" -o "$RUNNER_TEMP/avx2probe" 2>/dev/null; then
+            echo "::warning::could not build the AVX2 probe -- skipping the Rosetta run rather than guessing; Intel coverage for this run is compilation only (the blocking Intel gate is the macos-intel job)"
+            exit 0
+          fi
+          if ! arch -x86_64 "$RUNNER_TEMP/avx2probe" 2>/dev/null; then
+            echo "::warning::Rosetta 2 on this image does not execute AVX2 (ADR-0031 compiles the x86_64 slice -march=haswell) -- the slice was BUILT but NOT EXECUTED here; the blocking Intel gate is the macos-intel job on native hardware"
             exit 0
           fi
           ANAMORPH_TEST_RUNNER="arch -x86_64" ./scripts/run-tests.sh
@@ -2276,7 +2299,11 @@ jobs:
       # It therefore exits 0 on every path, including its own build failures.
       #
       # BOTH FLAG SETS, because the question has two halves. At DEFAULT flags it
-      # asks what the shipped binary does. With `-ffp-contract=off` on both
+      # asks what the shipped binary does -- which since ADR-0031 means the
+      # x86_64 slice at `-march=haswell -ffp-contract=off`. That does not move
+      # the recorded finding: the frozen baseline had no FMA instruction, so
+      # contraction was already impossible on x86-64 and the flag pins what was
+      # true by accident. Part 2 therefore still changes only the arm64 side. With `-ffp-contract=off` on both
       # sides it asks how much of any difference is FP contraction -- which
       # arm64 does unconditionally (FMLA is in its base ISA) and the frozen
       # x86-64 baseline cannot do at all. On Linux that split was total and
@@ -2290,10 +2317,23 @@ jobs:
       # collapsed scenario set reports 32 confident and meaningless hashes.
       - name: A7-5E — cross-slice numeric comparison (reporting only)
         continue-on-error: true
+        env:
+          ROSETTA_ADVERTISE_AVX: 1
         run: |
           set +e
           if ! arch -x86_64 /usr/bin/true 2>/dev/null; then
             echo "::warning::A7-5E: Rosetta 2 unavailable -- the x86_64 slice cannot be EXECUTED here, so the cross-slice comparison is skipped"
+            exit 0
+          fi
+          # ADR-0031: the x86_64 slice is now compiled -march=haswell, and Rosetta
+          # 2 does not translate AVX2 unless the process asks for it. Probe before
+          # building two dumps that could only SIGILL. The finding this job
+          # reports is CLOSED and recorded either way (A7_DECISION_PACKET
+          # Decision 3); the job is the standing re-check, not the evidence.
+          printf '#include <immintrin.h>\nint main(void){__m256d a=_mm256_set1_pd(1.0);a=_mm256_add_pd(a,a);return (int)a[0]-2;}\n' > "$RUNNER_TEMP/avx2probe.c"
+          if ! cc -arch x86_64 -march=haswell -O0 "$RUNNER_TEMP/avx2probe.c" -o "$RUNNER_TEMP/avx2probe" 2>/dev/null \
+             || ! arch -x86_64 "$RUNNER_TEMP/avx2probe" 2>/dev/null; then
+            echo "::warning::A7-5E: Rosetta 2 on this image does not execute AVX2 (ADR-0031 compiles the x86_64 slice -march=haswell) -- the cross-slice comparison is skipped"
             exit 0
           fi
           JUCE="${GITHUB_WORKSPACE}/build-juce/_deps/juce-src"

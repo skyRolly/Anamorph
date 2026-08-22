@@ -84,8 +84,18 @@ there too.
 
 **What you need.** A 64-bit machine — Windows x86-64, macOS (Apple Silicon or Intel; the
 build targets macOS 10.13 and later), or x86-64 Linux — and a VST3 or (on macOS) AU host.
-There is no 32-bit build. Anamorph adapts to whatever sample rate and buffer size your host
-uses; the standard 44.1–192 kHz range is what the DSP suite exercises. The plug-in makes no
+There is no 32-bit build.
+
+> **Intel and AMD processors: 2013 or newer.** From 0.9.5 the **Linux** build and the **Intel half
+> of the macOS build** need an Intel **Haswell** (2013) or AMD **Excavator** (2015) processor or
+> newer, which is what lets them use the AVX2 instructions the plug-in is now compiled for. On an
+> older processor the plug-in will not load, and it will look like a crash in your DAW rather than a
+> message — the plug-in cannot report a problem with instructions it never gets to run. **Apple
+> Silicon Macs and the Windows build are unaffected** and have no such requirement. In practice this
+> only reaches a Mac old enough to be running macOS 10.13–10.15: every Mac that can run a newer
+> macOS already exceeds it.
+
+Anamorph adapts to whatever sample rate and buffer size your host uses; the standard 44.1–192 kHz range is what the DSP suite exercises. The plug-in makes no
 network connections and needs no account or activation.
 
 ### 2.2 First launch

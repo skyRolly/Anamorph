@@ -6,7 +6,7 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
 
 | Dependency | Pin | Mechanism | Evidence |
 |---|---|---|---|
-| **JUCE** | **9.0.1**, pinned by **immutable commit SHA** `e18f7f506c0b96f2c738a0bcd7fe6467a5005ad8` | CMake `FetchContent` (`GIT_SHALLOW`), overridable via `-DANAMORPH_JUCE_PATH` | CMakeLists.txt:52-54, 63-71 |
+| **JUCE** | **9.0.1**, pinned by **immutable commit SHA** `e18f7f506c0b96f2c738a0bcd7fe6467a5005ad8` | CMake `FetchContent` (`GIT_SHALLOW`), overridable via `-DANAMORPH_JUCE_PATH` | CMakeLists.txt:65-67, 76-84 |
 | **pluginval** | latest release (download) | `scripts/run-pluginval.sh` | scripts/run-pluginval.sh:119-126 |
 | **C++ standard** | C++23 | `CMAKE_CXX_STANDARD 23`, extensions off (ADR-0027) | CMakeLists.txt:16-18 |
 | **Clang** (the Linux **release** build `linux`, plus `merge-check`, the sanitizer, realtime and fuzz jobs) | **major pinned — 22**, upstream stable (ADR-0028; LLVM 22.1.8 is the current stable line, 23 is unreleased) | `ANAMORPH_CLANG_VERSION`, the single authority, consumed by every consuming job's install, their ccache lineages and `--clang-major`. Installed from **apt.llvm.org** by `scripts/setup-llvm-apt.sh`, which verifies the signing key by fingerprint and installs `clang-<n>`, `lld-<n>` and `libclang-rt-<n>-dev` together so the LTO link is version-matched by construction. **Since ADR-0030 this toolchain SHIPS the Linux artifact**, so a bump is no longer exempt from rules 2–3 | .github/workflows/build.yml:111-113 |
@@ -24,7 +24,7 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
   parameter system (APVTS), GUI, and plugin-format wrappers — an unpinned bump can silently change
   DSP behaviour, latency, the editor/X11 embedding path (the 0.8.5 incident lives in JUCE's X11
   host code), and the parameter/state ABI. The pin makes builds reproducible and keeps the audited
-  behaviour stable. Evidence [Verified]: CMakeLists.txt:52-54, 63-71; the X11 dependency is
+  behaviour stable. Evidence [Verified]: CMakeLists.txt:65-67, 76-84; the X11 dependency is
   documented in ADR-0011.
 
 ## Update mechanisms
@@ -68,7 +68,7 @@ repository ever grows a real package manifest.
    §Proving a dependency bump is bit-identical).
 3. Re-verify the `RELEASE_COMPATIBILITY_CHECKLIST.md` (latency reporting, session reload) after a bump.
 4. Prefer the offline path (`-DANAMORPH_JUCE_PATH`) for reproducibility in restricted CI.
-5. `JUCE_*` compile flags in `CMakeLists.txt:335-340` (no webview, no curl, no splash, strict
+5. `JUCE_*` compile flags in `CMakeLists.txt:417-422` (no webview, no curl, no splash, strict
    ref-counted pointer) are part of the dependency contract; changing them is a build change.
 
 ## Compliance log

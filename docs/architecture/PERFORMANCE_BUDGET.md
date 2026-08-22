@@ -204,8 +204,53 @@ no benchmark/profiling data exists in the repository, and inventing numbers is p
   negative: **−0.2 % at 44.1 kHz/32 at the default density 0.5, +1.0 % at density 1.0** (64 active
   taps, where the per-tap preamble is paid 64 times against one small `std::copy`). The no-wrap fast
   path in the split is what holds that at 1 %: without it the same points measure +0.9 % and +3.0 %.
+  **That +1.0 % corner is ACCEPTED (maintainer decision, 2026-08-22) and A7-2B is not reverted** —
+  it is the lowest supported rate × the smallest block × maximum density, the default-density point
+  at the same rate and block is negative, and the alternative reintroduces the cross-block state
+  A7-2B deleted.
   Evidence [Verified]: src/dsp/VelvetNoise.cpp (the split + its no-aliasing argument);
-  worklogs/performance/PERF_AUDIT_A7-2_A7-5_A7-9_INVESTIGATION.md.
+  worklogs/performance/PERF_AUDIT_A7-2_A7-5_A7-9_INVESTIGATION.md;
+  worklogs/performance/A7_DECISION_PACKET.md (Decision 4).
+- **The three Amount-0 parked fast paths are actually REACHABLE (A7-9, 0.9.5).** `VelvetNoise`,
+  `HaasProcessor` and `ChorusEngine` each gate a cheap Amount-0 path on the wet glide having reached
+  **exactly** 0 — and it never does. With a 0 target the update is `a -= k*a`, and under the block's
+  `ScopedNoDenormals` the DECREMENT underflows before `a` does, so the glide stalls just under
+  `FLT_MIN/k` (7.837e-36 in Velvet, 1.175e-35 in Haas, rate-dependent in Chorus because
+  `wSmooth = 1/(0.01·sr)`) and every later decrement is exactly 0. The gates therefore stayed false
+  forever after a user turned Amount down — the ONLY route to the state they were written for — so
+  every Wave-4/Wave-5 parked-path claim held only for a session in which the control was never
+  touched. The three gates now test the **fixpoint** (`aNext == currentAmount`: can the glide still
+  move) instead of the **value**, which is the test `VelvetNoise` has always used for its density
+  glide; each keeps the pre-A7-9 condition as a second disjunct, so the gates can only ever admit
+  more than before. No DSP state is snapped, frozen or mutated, and re-engage is bit-identical.
+  Recovered, post-A7-2B: `ChorusEngine` **+14,220 Ir/block** (48 kHz/128), `HaasProcessor` **+5,635**,
+  `VelvetNoise` **+4,019** (48 kHz/32). **Class B**, on **digital silence only**: the stalled
+  multiplier leaked `a_stall × (wet term)` where the `+0` dry term could not absorb it — measured
+  1.563e-35 (Chorus, 192 kHz ≈ −696 dBFS), 8.043e-36 (Haas, 48 kHz), 7.145e-36 (Velvet, 48 kHz)
+  against the pre-fix sources, bounded by `FLT_MIN/k` times the module's wet gain. On real signal the
+  output is bit-identical (0 of 102,400 samples differ, every module, every rate), and after the fix
+  the silence output is an **exact zero**. Explicit maintainer approval recorded 2026-08-22. Guarded
+  by **Test 41**, proven to fail on all four cases against the pre-A7-9 sources; the committed twin
+  dump does NOT cover it (`tests/dsp_dump.cpp` holds `algoAmount` at 0.7 and never ramps down, which
+  is how the defect survived from Wave 4).
+  Evidence [Verified]: src/dsp/VelvetNoise.cpp, src/dsp/HaasProcessor.cpp, src/dsp/ChorusEngine.cpp
+  (the three gates); tests/dsp_tests.cpp (`testA79ParkedPathsReachableAfterStall`);
+  worklogs/performance/PERF_AUDIT_A7-9_AVX2_IMPLEMENTATION.md.
+- **The x86-64 build targets AVX2 (A7-5 / W5-D, 0.9.5, ADR-0031).** `-march=haswell
+  -ffp-contract=off` on the GCC/Clang x86-64 builds — Linux x86-64 and the macOS `x86_64` slice via
+  `-Xarch_x86_64`; arm64 and MSVC carry nothing. **−17.2 % engine-wide** (1704.9 → 1412.2 Ir/sample,
+  48 kHz/128, scenario `working`). **Class A**: 32/32 twin-dump scenarios identical to the baseline,
+  0 mismatches across 180 configurations, and **0 FMA instructions emitted** against 707 with
+  contraction left at its default — which is the whole reason it is Class A. The frozen baseline had
+  no FMA instruction at all, so the permissive `-ffp-contract=fast` default was inert; `-march`
+  introduces the instruction and `-ffp-contract=off` keeps it unused. The GCC/Clang cross-check
+  survives for the same reason. The cost is an **ISA floor** — Haswell (2013) / Excavator (2015),
+  `SIGILL` below it — recorded in `COMPATIBILITY_POLICY` before the flag landed. This is what
+  W5-D (the K-weighting lane-parallel bank, above) was deferred behind; it is now unblocked as a
+  Class-A candidate, and unscheduled.
+  Evidence [Verified]: CMakeLists.txt (the `AnamorphHardening` x86-64 baseline block);
+  docs/architecture/design-decisions/ADR-0031-x86-64-isa-baseline.md;
+  worklogs/performance/PERF_AUDIT_A7-2B_A7-5E_IMPLEMENTATION.md §6.
 - **VelvetNoise** has an O(maxTaps=64) sparse-FIR inner loop per sample, plus a full-buffer
   `std::fill` on the transport-stop completion (no alloc). As of 0.8.8 the surrounding per-sample
   work is gated without changing output: the 64-tap weight rebuild + `sqrt` normalisation runs only

@@ -69,32 +69,60 @@ void ChorusEngine::processBlock (float* left, float* right, int numSamples) noex
     // Smooth wet + depth per-sample so changing Amount/Depth/Mode never clicks.
     const float wSmooth = 1.0f / (float) std::max (1.0, 0.01 * workingRate); // ~10 ms
 
-    // A7-9: HOW THIS STATE IS REACHED, AND HOW IT IS NOT. It is reached from a
-    // fresh prepare() with Amount at its 0 default, which is the state this path
-    // was written for and measured in. It is NOT reached by turning Amount down:
-    // with a 0 target the update is `a -= wSmooth * a`, and under the block's
-    // ScopedNoDenormals the DECREMENT underflows before `a` does, so the glide
-    // stalls just below FLT_MIN/wSmooth and the next decrement is exactly 0.
-    // That threshold SCALES WITH THE SAMPLE RATE here, because wSmooth is
-    // 1/(0.01*workingRate): 5.64e-36 at 48 kHz, 2.26e-35 at 192 kHz. The
-    // `std::abs (currentWet) > 0.0f` test below therefore stays true and the
-    // full path runs instead. An earlier version of this comment claimed the
-    // one-pole "flushes to true zero"; it does not, and the difference is
-    // measured in worklogs/performance/PERF_AUDIT_A7-2_A7-5_A7-9_INVESTIGATION.md
-    // and re-verified in PERF_AUDIT_A7-2B_A7-5E_IMPLEMENTATION.md. Filed as A7-9
-    // (a Class-B repair, not yet approved); this comment is the A7-9C half.
+    // A7-9: WHY THIS IS A FIXPOINT TEST AND NOT A VALUE TEST. Turning Amount
+    // down does NOT bring `currentWet` to zero. With a 0 target the update is
+    // `a -= wSmooth * a`, and under the block's ScopedNoDenormals the DECREMENT
+    // underflows before `a` does, so the glide stalls just below
+    // FLT_MIN/wSmooth and every later decrement is exactly 0. That threshold
+    // SCALES WITH THE SAMPLE RATE here, alone among the three modules, because
+    // wSmooth is 1/(0.01*workingRate): 5.64e-36 at 48 kHz, 2.26e-35 at 192 kHz.
+    // A test for `currentWet == 0` therefore stayed FALSE forever after a
+    // ramp-down, and this path -- written for, and measured in, the fresh
+    // prepare() state -- was unreachable from the one route a user takes.
+    //
+    // The repair is to ask the question the path really depends on: not "is the
+    // glide at zero" but "can the glide still move". `wNext == currentWet` is
+    // that question, and it is decisive for a whole block rather than one
+    // sample, because wetTarget and wSmooth are both fixed across the block and
+    // the map is therefore idempotent -- the fixpoint is absorbing. It is the
+    // same test VelvetNoise has always used for its density glide.
+    //
+    // CLASS B, and no Class-A variant exists. Parked, both voices are an exact
+    // identity; stalled, each added `w*(d - x)` with a w just under
+    // FLT_MIN/wSmooth, which is bit-exactly x for any normal x and is NOT when
+    // x is +0. The residual therefore appears only on digital silence, and THIS
+    // module sets the programme-wide worst case for the rate-scaling reason
+    // above: 1.563e-35 measured at 192 kHz against the pre-fix sources
+    // (~ -696 dBFS), 0 of 102,400 samples different on real signal. After the
+    // fix the silence output is an exact zero rather than a smaller residual.
+    // Test 41 is the gate, at BOTH ends of the rate range, and is proven to fail
+    // without this change. Measured in
+    // worklogs/performance/PERF_AUDIT_A7-2_A7-5_A7-9_INVESTIGATION.md,
+    // re-verified in PERF_AUDIT_A7-2B_A7-5E_IMPLEMENTATION.md, implemented and
+    // (bound corrected) in PERF_AUDIT_A7-9_AVX2_IMPLEMENTATION.md §4c.
+    const float wNext = currentWet + wSmooth * (wetTarget - currentWet);
 
-    // Amount-0 idle fast path (H12, 0.8.9; the VelvetNoise S5 pattern): with the
-    // wet glide at exactly 0 and the target still 0, both voices are an exact
-    // identity -- out = in * 1 + wet * 0 -- so the LFO sins and the 2 (chorus)
-    // / 4 (Dimension-D) interpolated reads are pure waste. The reduced loop
-    // keeps every piece of state bit-identical for a later re-engage: the
-    // delay-line writes and write indices, the per-sample iterated phase
-    // accumulation (NOT closed-form, so the wrap sequence matches exactly)
-    // and the depth glide all advance exactly as before; currentWet stays an
-    // exact 0 either way (0 + w*(0-0) == 0). Only zero-contribution work is
-    // skipped. Exact compares, no epsilon.
-    if (! (std::abs (currentWet) > 0.0f) && ! (std::abs (wetTarget) > 0.0f))
+    // Amount-0 idle fast path (H12, 0.8.9; the VelvetNoise S5 pattern; gate
+    // repaired by A7-9): with the target at 0 and the wet glide unable to move
+    // off its current value, both voices contribute nothing this block -- out is
+    // exactly in * 1 + wet * 0 when wet is 0, and nothing the output can hold
+    // when wet is the stalled ~1e-35 -- so the LFO sins and the 2 (chorus) / 4
+    // (Dimension-D) interpolated reads are pure waste. The reduced loop keeps
+    // every piece of state bit-identical for a later re-engage: the delay-line
+    // writes and write indices, the per-sample iterated phase accumulation (NOT
+    // closed-form, so the wrap sequence matches exactly) and the depth glide all
+    // advance exactly as before; currentWet is left where it is, which is what
+    // the full path's tick would have produced too (0 + w*(0-0) == 0 when parked,
+    // and the fixpoint by definition when stalled). Only zero-contribution work
+    // is skipped.
+    //
+    // Exact compares, no epsilon. The second disjunct is the PRE-A7-9 entry
+    // condition kept verbatim, for the one input the fixpoint test does not
+    // subsume: a NaN target with currentWet already 0, where the old gate parked
+    // (identity, NaN never enters the state) and `wNext == currentWet` would
+    // not. The gate can only ever admit MORE than it did before A7-9.
+    if (! (std::abs (wetTarget) > 0.0f)
+        && (wNext == currentWet || ! (std::abs (currentWet) > 0.0f)))
     {
         for (int n = 0; n < numSamples; ++n)
         {

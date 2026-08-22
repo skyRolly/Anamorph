@@ -2,6 +2,11 @@
 
 **Status:** Accepted (Build System gate — human sign-off is the merge of the RH-PR-2 review,
 per `ARCHITECTURE_REVIEW_GATE.md`; same path as ADR-0012).
+**Amended by [ADR-0031](ADR-0031-x86-64-isa-baseline.md)** (2026-08-22): the "numerics-affecting
+flags are frozen" clause under *Decision → Untouched by decision* no longer holds unqualified. The
+GCC/Clang **x86-64** builds now carry `-march=haswell -ffp-contract=off` — measured Class A, 32/32
+twin-dump scenarios identical — and the freeze stands for everything else, `-O3`, LTO and the
+absence of `-ffast-math` included.
 
 ADR-0016..0020 are reserved by `RELEASE_HARDENING_PLAN.md` §8 for licensing/signing/installer
 decisions not yet made; this decision takes the next free number.
@@ -79,7 +84,9 @@ under the shipped flag configuration):
   packaging failure cannot ship a customer artifact; developer `-debug` artifacts and (on
   pluginval-only failures) beta artifacts remain available.
 - **Untouched by decision:** `-O3`, LTO (verified already active via
-  `juce::juce_recommended_lto_flags` on compile and final link), no `-ffast-math`; symbol
+  `juce::juce_recommended_lto_flags` on compile and final link), no `-ffast-math`; **`-march`
+  (amended by ADR-0031 — the x86-64 GCC/Clang builds now carry `-march=haswell -ffp-contract=off`;
+  everything else in this bullet still holds)**; symbol
   visibility (JUCE-owned, verified); RTTI stays on (typeinfo strings are accepted residue —
   `-fno-rtti` would be an ABI/behaviour risk for zero-day gain).
 

@@ -148,11 +148,11 @@ did not observe (constraint C2/C7).
 
 ## Related code
 
-- `CMakeLists.txt:273` (`PLUGIN_MANUFACTURER_CODE RTec`), `:274` (`PLUGIN_CODE`, unchanged),
+- `CMakeLists.txt:355` (`PLUGIN_MANUFACTURER_CODE RTec`), `:356` (`PLUGIN_CODE`, unchanged),
   `:14` (version 0.9.1)
 
 Evidence [Verified (code) / Unverified (host behaviour)]:
-- Source: CMakeLists.txt:271-276
+- Source: CMakeLists.txt:353-358
 - Changelog: `[0.9.1]`
 - Known issue: `docs/KNOWN_ISSUES.md` KI-016
 - Policy: `docs/policies/COMPATIBILITY_POLICY.md` (the exception this ADR satisfies),
