@@ -282,6 +282,30 @@ not a datum, and the 65.4% worst-block spread measured on one is the evidence fo
 rather than a hypothetical. Run the harness on a known desktop, record the CPU/OS/compiler beside
 every cell, and populate the rows in that change.
 
+**Attempted again 2026-08-22, after A7-1 shipped, and declined again on the same grounds — recorded
+so the next attempt does not repeat it.** The harness builds and runs end to end; what is missing is
+still only the machine. Four things disqualified the one available, and they are the checklist for
+the one that will not be:
+
+* **The CPU cannot be named.** `/proc/cpuinfo` reports `Intel(R) Xeon(R) Processor @ 2.80GHz` — a
+  masked virtual model string with no SKU. `AnamorphBench` prints it and therefore satisfies
+  constraint C2's letter while identifying no actual processor, which is the one failure mode C2
+  exists to prevent.
+* **It is a container** (`systemd-detect-virt` → `docker`), not a desktop.
+* **The clock cannot be seen or held.** No `cpufreq` is exposed, so neither the governor nor any
+  thermal or host-side throttling can be observed, let alone pinned.
+* **It is not idle.** Load average was 0.44 / 2.10 / 1.69 while the bench ran.
+
+The medians happened to be stable across three consecutive runs here (working reference 193.79 /
+193.31 / 194.09 ns/sample, 0.4 %), and that is **not** sufficient: the column RISK-002 needs is the
+worst single block, and it measured 104.0 / 128.5 / 118.2 µs across those same three runs — a
+**23.6 %** spread on the one figure the open question turns on.
+
+**One gap for whoever does run it:** `AnamorphBench` records the CPU string, the core count and the
+compiler, but not the OS version or the build configuration. This section asks for CPU/OS/compiler
+beside every cell, so those two must be written down by hand alongside the table (or the harness
+taught to print them) — otherwise the recorded datum is missing half of what makes it reproducible.
+
 **Build it the way users get it.** `-DCMAKE_BUILD_TYPE=Release` only. The `AnamorphHardening`
 flags and `juce::juce_recommended_lto_flags` are part of the shipped configuration, so a bench
 that does not link them is measuring a different binary.

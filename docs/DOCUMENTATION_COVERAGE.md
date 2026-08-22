@@ -7,8 +7,8 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.5 change set** (2026-08-22, matching the CHANGELOG heading) — the
-**PR #127 review round** (first below), then the **A7-2 investigation** (no code), then the
-**A7-1 implementation round**. Under it, the **0.9.4 change set** is retained in full
+**A7-0 attempt** (first below, no code and no rows filled), then the **PR #127 review round**, then
+the **A7-2 investigation** (no code), then the **A7-1 implementation round**. Under it, the **0.9.4 change set** is retained in full
 (2026-08-21, matching its own CHANGELOG heading — re-dated
 from 2026-08-15 in the hover-occlusion round, on 2026-08-20, and again on 2026-08-21, each time
 because the version took a further user-visible change) — the
@@ -79,6 +79,35 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**A7-0 attempted and declined (2026-08-22): the budget rows stay TODO and RISK-002 stays open,
+because the one thing missing is still a machine. No rows filled, no code changed.**
+
+The harness builds and runs end to end after A7-1 — that half was never in doubt. The available
+machine was measured against what this section requires and fails it four ways, each checked rather
+than assumed: `/proc/cpuinfo` reports `Intel(R) Xeon(R) Processor @ 2.80GHz`, a **masked virtual
+model string with no SKU**, so `AnamorphBench` prints something that satisfies constraint C2's letter
+while identifying no actual processor — the one failure mode C2 exists to prevent;
+`systemd-detect-virt` reports **docker**, so it is a container and not a desktop; **no `cpufreq` is
+exposed**, so neither the governor nor host-side or thermal throttling can be observed, let alone
+pinned; and the **load average was 0.44 / 2.10 / 1.69** while the bench ran, so it was not idle.
+
+**Stable medians are not the test, and this run is why.** Across three consecutive invocations the
+working reference measured 193.79 / 193.31 / 194.09 ns/sample — 0.4 %, far better than the 7.2 %
+recorded when this was last attempted. The column RISK-002 actually turns on is the **worst single
+block**, and it measured 104.0 / 128.5 / 118.2 µs over those same three runs: a **23.6 % spread** on
+the one figure the open question needs. A tempting median would have bought a number that could not
+answer the question it was collected for.
+
+**One gap recorded for whoever does run it:** `AnamorphBench` prints the CPU string, the core count
+and the compiler, but not the OS version or the build configuration, while this section asks for
+CPU/OS/compiler beside every cell. Those two must be written down by hand alongside the table, or the
+harness taught to print them. Noted rather than fixed: the roadmap's next action is measurement, and
+changing the instrument is not measurement.
+
+`PERFORMANCE_BUDGET.md` carries the disqualification checklist at the paragraph that explains why the
+rows are still TODO, so the next attempt starts from it. **RISK-002 is unchanged** — its evidence
+row already records what the A7 audit measured and what it explicitly could not close. [Verified]
 
 **PR #127 review round (2026-08-22): a real hole in the version-bump exemption, and a numbers pass
 that reconciled every check-count claim against the binaries rather than against arithmetic.**
