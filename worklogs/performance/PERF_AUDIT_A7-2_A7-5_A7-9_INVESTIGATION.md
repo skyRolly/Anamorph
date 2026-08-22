@@ -92,27 +92,45 @@ B costs 1,805.0 and 1,805.8 — a **0.04 %** rate penalty. A7-2B does not shrink
 much as **remove its sample-rate dependence**, which is the property that made small buffers at high
 rates the worst block in the first place.
 
-## 3. Test 39 is necessary but not sufficient — and this is proved, not argued
+## 3. Test 39's oracle is not sufficient — and the first version of this section overstated it
 
 Test 39 (`tests/dsp_tests.cpp:3054`, `testVelvetLinearImageInvariance`) compares **the build under
 test against itself** at different block lengths. There is no reference implementation anywhere in
-it. It therefore discriminates exactly one class of defect: corruption whose extent is measured from
-the block start. A defect that is a pure function of the sample stream — the same wrong answer at
-every block length — is invisible to it by construction.
+it. Its **oracle** therefore discriminates exactly one class of defect: corruption whose extent is
+measured from the block start. A defect that is a pure function of the sample stream — the same
+wrong answer at every block length — is invisible to that comparison by construction.
 
-That is not a theoretical gap. The single most likely A7-2B defect is a **uniform one-sample error
-in the tap delay**: both the ring run and the `midBlk` run derived from `writePos - k - 1` instead
-of `writePos - k`. It produces a valid-but-wrong FIR. Seeding exactly that into the shipped gather
-and running both oracles over the same audio:
+The most likely A7-2B defect is exactly that shape: a **uniform one-sample error in the tap delay**,
+both the ring run and the `midBlk` run derived from `writePos - k - 1` instead of `writePos - k`. It
+produces a valid-but-wrong FIR.
 
-| build | Test 39's oracle (512 == 32 == mixed) | path-equivalence oracle (gather == per-sample loop) |
+**CORRECTION.** The first version of this section reported that seeding that error leaves Test 39
+green at all four sample rates. That was measured on a session-local harness which reproduced Test
+39's *comparison* but not its *schedule* — the harness held amount and density constant with the
+transport always playing, so it never crossed between paths — and the result was reported as Test
+39's. Re-measured against the committed test, with the seed applied at
+`src/dsp/VelvetNoise.cpp:190` and the suite rebuilt each time:
+
+| build under test | Test 39's two bit-identity checks | first difference |
 |---|---|---|
-| shipped v0.9.5 | pass at 44.1 / 48 / 96 / 192 kHz | pass at all four |
-| **uniform +1 delay seeded** | **pass at all four** | **FAIL at all four** |
-| variant B (faithful) | pass at all four | pass at all four |
+| shipped v0.9.5 | pass ×4 rates | — |
+| **seeded, Test 39 as committed** | **FAIL ×4 rates** | block 215 — the transport stop |
+| **seeded, transport-stop events removed** | **FAIL ×4 rates** | block 247 — the moving density |
+| **seeded, every path crossing removed** | **pass ×4 rates** | — |
+| **seeded, Test 40 (§4)** | **FAIL, 20 of 20 checks** | sample 3 of block 0, every size and rate |
+| variant B (faithful) | pass ×4 rates | — |
 
-In the seeded build the per-sample-loop hash is **identical to the shipped engine's** at every rate,
-which is the proof that the loop is untouched and is a true reference for the gather.
+So the committed Test 39 **does** catch this seed — through its **schedule**, not its oracle. Its
+detection depends on the run crossing from the gather to the per-sample loop, which its schedule
+happens to do twice; with both crossings removed it passes on a build that is provably wrong. That
+makes it a guard whose competence over this defect class is incidental rather than designed, and one
+that a future schedule edit could silently remove. The oracle-level gap is real and is what §4
+closes; the claim that the committed test was blind was not, and is withdrawn.
+
+Note also which paths the schedule can and cannot cross: the park at block 20 does **not** cross,
+because of A7-9 — with a 0 target the amount one-pole stalls just above zero under FTZ, so the
+gather keeps its eligibility and the Wave-5 parked path is never reached. The two crossings are the
+transport stop and the moving density, and nothing else.
 
 ## 4. The oracle that closes it — reachable today, with no product change
 
@@ -545,8 +563,8 @@ bound stated; and the three source comments rewritten to say what is actually tr
 |---|---|
 | **A7-0** — bench on a named machine, fill the `PERFORMANCE_BUDGET.md` rows | **open, unchanged.** Not attempted. RISK-002 unchanged. Rows unpopulated. |
 | **A7-1** — VelvetNoise history slide | DONE (v0.9.5, PR #127). |
-| **A7-2** — residual per-block term | **investigated twice; not implemented.** Variant A rejected on measurement; **variant B recommended**, prototype re-verified faithfully. Now gated on **A7-0 *and* A7-2T**. |
-| **A7-2T** (new) — commit the path-equivalence oracle | **open, and it is now a prerequisite of A7-2B.** No product change; no A7-0 dependency; implementable today. |
+| **A7-2** — residual per-block term | **investigated twice; not implemented.** Variant A rejected on measurement; **variant B recommended**, prototype re-verified faithfully. A7-2T is now in the tree, so the remaining gate is **A7-0**. |
+| **A7-2T** — commit the path-equivalence oracle | **DONE.** `testVelvetGatherEqualsPerSampleLoop` (Test 40): 24 checks at 4 rates × blocks 32/128/512/4096 plus a density-1.0 pass; suite 178 → 202. Proven live on a seeded one-sample tap-delay error (20 of 20 fail, at sample 3 of block 0). No product change. |
 | **A7-5 / W5-D** — multiband LR4 SIMD / AVX2 | **investigated; not implemented; ADR not drafted.** Blocked on the §11 cross-slice experiment and on decisions 1–5. |
 | **A7-5E** (new) — diff the universal binary's two slices | **open.** One CI step, no new tooling, answers a question the product has never asked. |
 | **A7-9** — the amount glide stalls above zero | **investigated; widened from one module to three; recommended, pending explicit approval.** Class B, bound 4.476e-36 across the rate range. |
@@ -558,7 +576,7 @@ bound stated; and the three source comments rewritten to say what is actually tr
 | # | decision | recommendation | why it cannot be decided by a green build |
 |---|---|---|---|
 | **1** | Approve **A7-2B** (delete `linHist`, gather from the ring) | **Yes**, after A7-2T | Bit-identical, so nothing red would ever indicate a fault; the flagship defect class is one the current suite provably cannot see |
-| **2** | Approve **A7-2T** as a prerequisite, not a follow-up | **Yes** | Ordering *is* the safety property; landing the change first leaves a window where the only competent test does not exist |
+| **2** | ~~Approve **A7-2T** as a prerequisite~~ — **done**, Test 40 is in the tree | — | Landed first, as the ordering required |
 | **3** | Approve the **A7-5E** cross-slice experiment | **Yes** — cheap, and it should precede any ADR | It asks whether a property the product assumes is real |
 | **4** | Approve **AVX2 / A7-5** in principle | **Not yet** | ~20 % engine-wide, but a Class-B change to 88.9 % of samples, an ISA compatibility floor, and the loss of the GCC/Clang cross-check — an ADR-0021 amendment, a `CLAUDE.md` hard stop |
 | **5** | Approve **A7-9** as a Class-B change bounded at 4.476e-36 | **Yes, with explicit approval recorded** | Largest single item on the roadmap; changes output bits, so it cannot ride a green build |

@@ -15,7 +15,7 @@ exits non-zero on any failed `check` or missing binary. Evidence [Verified]: scr
 
 ### What the tests cover
 
-`tests/dsp_tests.cpp` has **38 DSP tests** using a `check(cond, "what")` harness, covering: MS
+`tests/dsp_tests.cpp` has **39 DSP tests** using a `check(cond, "what")` harness, covering: MS
 round-trip (bit-exact), transparent default, true-bypass null + latency match, Mono Maker
 (post-Mix), Multiband mono-compat, Solo band selectivity + transparency, Level Match
 (unity/no-ratchet/silence-freeze/mix-coupling/multiband-unity), crossover automation safety,
@@ -90,7 +90,28 @@ shadow RTSan's own and blind that lane (ADR-0029 §7). That stand-down is detect
 declared while the guard is still live, so a renamed or removed feature name fails the build
 instead of silently hollowing out the lane.
 
-The newest DSP test is the **Velvet linear-image invariance guard**
+The newest DSP test is the **Velvet gather/per-sample path-equivalence oracle**
+(`testVelvetGatherEqualsPerSampleLoop`, Test 40, A7-2T). It exists because the guard described next
+is a RELATIVE one: Test 39 compares the build under test against itself at different block lengths,
+so its oracle cannot see a defect that is a pure function of the sample stream -- a gather whose
+taps all read one sample too deep gives the same wrong answer at every block length. Test 40 supplies
+the missing ABSOLUTE reference, and needs no product change to do it: the module already contains two
+implementations of the same arithmetic, and the gather's eligibility gate ends with
+`numSamples <= (int) accum.size()` while `accum` is sized from `prepare()`'s `maxBlockSize` alone --
+so an instance prepared for a SMALLER block runs the per-sample loop over the same audio, with an
+identical ring, tap set, weights and coefficients (all derived from the sample rate and seed, never
+from the block size). The two must be **bit-identical**. Swept at **44.1 / 48 / 96 / 192 kHz** over
+block sizes **32 / 128 / 512 / 4096** plus a **density-1.0** pass: 4096 exceeds `decorrSamps` at 44.1
+and 48 kHz, so every tap splits into a ring run plus a same-block tail -- a regime Test 39 cannot
+reach, its largest block being 512 -- and density 1.0 activates all 64 taps, where the default 0.5
+activates only the shallow 32. It **proves itself live** on a seeded one-sample tap-delay error,
+which fails 20 of its 20 equivalence checks at sample 3 of block 0. The same seed is caught by Test 39
+too, but through that test's SCHEDULE rather than its oracle -- at block 215, its transport stop;
+with the stop removed, at block 247, its moving density; with every path crossing removed, not at all.
+**This test is the gate for A7-2**: the ring-gather rewrite is bit-identical when right and silently
+wrong-by-a-constant-delay when not, and it must not land before this is green.
+
+The DSP test before it is the **Velvet linear-image invariance guard**
 (`testVelvetLinearImageInvariance`, Test 39, A7-1 / 0.9.5). Since 0.9.5 `VelvetNoise` carries its
 H5 linear history image ACROSS blocks -- it is slid forward rather than re-gathered from the ring --
 so the image is cross-block state, and cross-block state is only correct while every path that does
