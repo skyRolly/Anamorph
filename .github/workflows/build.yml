@@ -1783,93 +1783,6 @@ jobs:
           fi
           ANAMORPH_TEST_RUNNER="arch -x86_64" ./scripts/run-tests.sh
 
-      # A7-5E: ARE THE TWO SLICES OF THE SHIPPED UNIVERSAL BINARY NUMERICALLY
-      # THE SAME? Nothing in this repository has ever asked. The suites assert
-      # behaviour and pluginval asserts conformance; neither compares the arm64
-      # and x86_64 halves to EACH OTHER, and `TESTING_POLICY` runs them three
-      # times for the denormal flush bits rather than for numerics.
-      #
-      # REPORTING ONLY, AND THAT IS A DELIBERATE CHOICE RATHER THAN TIMIDITY.
-      # A gate asserts a property the project has committed to. This one has
-      # not: no policy, ADR or doc claims cross-architecture bit identity, and
-      # a Linux measurement (GCC 13 + qemu-user, `PERF_AUDIT_A7-2B_A7-5E_
-      # IMPLEMENTATION.md` §5) already found the slices differ. Failing every
-      # macOS run on an unclaimed property would be inventing a contract by
-      # CI rather than deciding one. This step MEASURES so the decision can be
-      # made; whoever makes it can promote this to a gate in the same change.
-      # It therefore exits 0 on every path, including its own build failures.
-      #
-      # BOTH FLAG SETS, because the question has two halves. At DEFAULT flags it
-      # asks what the shipped binary does. With `-ffp-contract=off` on both
-      # sides it asks how much of any difference is FP contraction -- which
-      # arm64 does unconditionally (FMLA is in its base ISA) and the frozen
-      # x86-64 baseline cannot do at all. On Linux that split was total and
-      # clean: 32/32 differ at default, and with contraction off exactly the 8
-      # oversampling-x1 scenarios agree while all 24 at x2/x4/x8 still differ,
-      # the residual being libm-derived oversampling coefficients. Whether that
-      # pattern holds against APPLE's libm and Apple Clang is precisely what
-      # this step exists to find out.
-      #
-      # `--self-check` on every build, per the harness's own argument: a
-      # collapsed scenario set reports 32 confident and meaningless hashes.
-      - name: A7-5E — cross-slice numeric comparison (reporting only)
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        continue-on-error: true
-        run: |
-          set +e
-          if ! arch -x86_64 /usr/bin/true 2>/dev/null; then
-            echo "::warning::A7-5E: Rosetta 2 unavailable -- the x86_64 slice cannot be EXECUTED here, so the cross-slice comparison is skipped"
-            exit 0
-          fi
-          JUCE="${GITHUB_WORKSPACE}/build/_deps/juce-src"
-          build_dump () {   # $1 = arch, $2 = extra flags, $3 = build dir
-            cmake -B "$3" -G Ninja -DCMAKE_BUILD_TYPE=Release \
-              -DANAMORPH_BUILD_DSPDUMP=ON -DANAMORPH_BUILD_TESTS=OFF \
-              -DANAMORPH_BUILD_STANDALONE=OFF \
-              -DCMAKE_OSX_ARCHITECTURES="$1" -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13 \
-              -DCMAKE_CXX_FLAGS="$2" \
-              -DANAMORPH_JUCE_PATH="$JUCE" >/dev/null 2>&1 \
-            && cmake --build "$3" --target AnamorphDspDump >/dev/null 2>&1
-          }
-          run_dump () {     # $1 = build dir, $2 = runner prefix, $3 = output file
-            local exe; exe="$(find "$1" -name AnamorphDspDump -type f -perm -111 | head -1)"
-            [ -n "$exe" ] || { echo "  (no binary in $1)"; return 1; }
-            $2 "$exe" --self-check >/dev/null 2>&1 || { echo "  (--self-check FAILED for $1 -- hashes not trustworthy)"; return 1; }
-            $2 "$exe" > "$3" 2>&1
-          }
-          # RESULTS GO TO THE STEP SUMMARY AND TO ANNOTATIONS, not only to stdout.
-          # This job's log carries a very large dSYM warning flood, and a result
-          # buried behind it is a result nobody reads -- including the tooling
-          # that fetches logs by tail. `$GITHUB_STEP_SUMMARY` renders on the run
-          # page; `::notice::` is retrievable through the checks API.
-          say () { echo "$1"; echo "$1" >> "$GITHUB_STEP_SUMMARY"; }
-          compare () {      # $1 = label, $2 = flags, $3 = tag
-            say ""; say "### $1"
-            build_dump arm64  "$2" "bd-a-$3" || { say "- arm64 build FAILED"; echo "::notice::A7-5E $3: arm64 build failed"; return 0; }
-            build_dump x86_64 "$2" "bd-x-$3" || { say "- x86_64 build FAILED"; echo "::notice::A7-5E $3: x86_64 build failed"; return 0; }
-            run_dump "bd-a-$3" ""             "d-a-$3.txt" || { say "- arm64 run FAILED"; return 0; }
-            run_dump "bd-x-$3" "arch -x86_64" "d-x-$3.txt" || { say "- x86_64 run FAILED"; return 0; }
-            local agree total
-            total=$(grep -c . "d-a-$3.txt" || echo 0)
-            if diff -q "d-a-$3.txt" "d-x-$3.txt" >/dev/null; then
-              say "- **arm64 == x86_64 — IDENTICAL** (all $total lines agree)"
-              echo "::notice::A7-5E $3: arm64 and x86_64 are IDENTICAL ($total lines)"
-            else
-              n=$(diff "d-a-$3.txt" "d-x-$3.txt" | grep -c '^<')
-              agree=$(join -j1 <(sort "d-a-$3.txt") <(sort "d-x-$3.txt") 2>/dev/null | awk '$2==$4' | wc -l | tr -d ' ')
-              say "- **arm64 != x86_64** — $n line(s) differ, $agree scenario(s) agree"
-              echo "::notice::A7-5E $3: $n line(s) differ, $agree scenario(s) agree"
-              say ""; say "  scenarios that AGREE:"
-              join -j1 <(sort "d-a-$3.txt") <(sort "d-x-$3.txt") 2>/dev/null \
-                | awk '$2==$4 {print "  - " $1}' | head -40 | tee -a "$GITHUB_STEP_SUMMARY"
-            fi
-          }
-          echo "## A7-5E — cross-slice numeric comparison (reporting only)" >> "$GITHUB_STEP_SUMMARY"
-          compare "A7-5E part 1: shipped flags"            ""                   def
-          compare "A7-5E part 2: -ffp-contract=off on both" "-ffp-contract=off" noc
-          echo "=== end A7-5E (reporting only; this step never fails the job) ==="
-          exit 0
-
       # RH-PR-2 (ADR-0021): order matters -- 1) dsymutil captures a universal
       # dSYM per bundle (the only crash-symbolication source once stripped),
       # 2) strip -x removes local symbols, 3) codesign LAST (stripping after
@@ -2323,6 +2236,116 @@ jobs:
   #  translation units and nothing in this job validates it, which is the same
   #  reason `codeql.yml` and `msvc.yml` already turn it off.
   # ==========================================================================
+  # A7-5E LIVES IN ITS OWN JOB, and the reason is a lesson rather than a
+  # preference. It first ran inside the packaging `macos` job, produced correct
+  # numbers, and they were UNREADABLE: that job emits a dSYM warning flood of
+  # several hundred thousand lines afterwards, and every log-retrieval path caps
+  # out long before reaching back past it. A measurement nobody can read is not
+  # a measurement. Here the log is a few hundred lines and the answer is the
+  # last thing in it.
+  #
+  # It also belongs here on the merits: this is an experiment, not a release
+  # step, and it has no business inside the job that signs and uploads customer
+  # artifacts. Nothing depends on it and it gates nothing.
+  macos-crossslice:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name != github.repository
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Fetch JUCE (configure only)
+        run: cmake -B build-juce -G Ninja -DANAMORPH_BUILD_TESTS=OFF -DANAMORPH_BUILD_STANDALONE=OFF >/dev/null
+
+      # A7-5E: ARE THE TWO SLICES OF THE SHIPPED UNIVERSAL BINARY NUMERICALLY
+      # THE SAME? Nothing in this repository has ever asked. The suites assert
+      # behaviour and pluginval asserts conformance; neither compares the arm64
+      # and x86_64 halves to EACH OTHER, and `TESTING_POLICY` runs them three
+      # times for the denormal flush bits rather than for numerics.
+      #
+      # REPORTING ONLY, AND THAT IS A DELIBERATE CHOICE RATHER THAN TIMIDITY.
+      # A gate asserts a property the project has committed to. This one has
+      # not: no policy, ADR or doc claims cross-architecture bit identity, and
+      # a Linux measurement (GCC 13 + qemu-user, `PERF_AUDIT_A7-2B_A7-5E_
+      # IMPLEMENTATION.md` §5) already found the slices differ. Failing every
+      # macOS run on an unclaimed property would be inventing a contract by
+      # CI rather than deciding one. This step MEASURES so the decision can be
+      # made; whoever makes it can promote this to a gate in the same change.
+      # It therefore exits 0 on every path, including its own build failures.
+      #
+      # BOTH FLAG SETS, because the question has two halves. At DEFAULT flags it
+      # asks what the shipped binary does. With `-ffp-contract=off` on both
+      # sides it asks how much of any difference is FP contraction -- which
+      # arm64 does unconditionally (FMLA is in its base ISA) and the frozen
+      # x86-64 baseline cannot do at all. On Linux that split was total and
+      # clean: 32/32 differ at default, and with contraction off exactly the 8
+      # oversampling-x1 scenarios agree while all 24 at x2/x4/x8 still differ,
+      # the residual being libm-derived oversampling coefficients. Whether that
+      # pattern holds against APPLE's libm and Apple Clang is precisely what
+      # this step exists to find out.
+      #
+      # `--self-check` on every build, per the harness's own argument: a
+      # collapsed scenario set reports 32 confident and meaningless hashes.
+      - name: A7-5E — cross-slice numeric comparison (reporting only)
+        continue-on-error: true
+        run: |
+          set +e
+          if ! arch -x86_64 /usr/bin/true 2>/dev/null; then
+            echo "::warning::A7-5E: Rosetta 2 unavailable -- the x86_64 slice cannot be EXECUTED here, so the cross-slice comparison is skipped"
+            exit 0
+          fi
+          JUCE="${GITHUB_WORKSPACE}/build-juce/_deps/juce-src"
+          build_dump () {   # $1 = arch, $2 = extra flags, $3 = build dir
+            cmake -B "$3" -G Ninja -DCMAKE_BUILD_TYPE=Release \
+              -DANAMORPH_BUILD_DSPDUMP=ON -DANAMORPH_BUILD_TESTS=OFF \
+              -DANAMORPH_BUILD_STANDALONE=OFF \
+              -DCMAKE_OSX_ARCHITECTURES="$1" -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13 \
+              -DCMAKE_CXX_FLAGS="$2" \
+              -DANAMORPH_JUCE_PATH="$JUCE" >/dev/null 2>&1 \
+            && cmake --build "$3" --target AnamorphDspDump >/dev/null 2>&1
+          }
+          run_dump () {     # $1 = build dir, $2 = runner prefix, $3 = output file
+            local exe; exe="$(find "$1" -name AnamorphDspDump -type f -perm -111 | head -1)"
+            [ -n "$exe" ] || { echo "  (no binary in $1)"; return 1; }
+            $2 "$exe" --self-check >/dev/null 2>&1 || { echo "  (--self-check FAILED for $1 -- hashes not trustworthy)"; return 1; }
+            $2 "$exe" > "$3" 2>&1
+          }
+          # RESULTS GO TO THE STEP SUMMARY AND TO ANNOTATIONS, not only to stdout.
+          # This job's log carries a very large dSYM warning flood, and a result
+          # buried behind it is a result nobody reads -- including the tooling
+          # that fetches logs by tail. `$GITHUB_STEP_SUMMARY` renders on the run
+          # page; `::notice::` is retrievable through the checks API.
+          say () { echo "$1"; echo "$1" >> "$GITHUB_STEP_SUMMARY"; }
+          compare () {      # $1 = label, $2 = flags, $3 = tag
+            say ""; say "### $1"
+            build_dump arm64  "$2" "bd-a-$3" || { say "- arm64 build FAILED"; echo "::notice::A7-5E $3: arm64 build failed"; return 0; }
+            build_dump x86_64 "$2" "bd-x-$3" || { say "- x86_64 build FAILED"; echo "::notice::A7-5E $3: x86_64 build failed"; return 0; }
+            run_dump "bd-a-$3" ""             "d-a-$3.txt" || { say "- arm64 run FAILED"; return 0; }
+            run_dump "bd-x-$3" "arch -x86_64" "d-x-$3.txt" || { say "- x86_64 run FAILED"; return 0; }
+            local agree total
+            total=$(grep -c . "d-a-$3.txt" || echo 0)
+            if diff -q "d-a-$3.txt" "d-x-$3.txt" >/dev/null; then
+              say "- **arm64 == x86_64 — IDENTICAL** (all $total lines agree)"
+              echo "::notice::A7-5E $3: arm64 and x86_64 are IDENTICAL ($total lines)"
+            else
+              n=$(diff "d-a-$3.txt" "d-x-$3.txt" | grep -c '^<')
+              agree=$(join -j1 <(sort "d-a-$3.txt") <(sort "d-x-$3.txt") 2>/dev/null | awk '$2==$4' | wc -l | tr -d ' ')
+              say "- **arm64 != x86_64** — $n line(s) differ, $agree scenario(s) agree"
+              echo "::notice::A7-5E $3: $n line(s) differ, $agree scenario(s) agree"
+              say ""; say "  scenarios that AGREE:"
+              join -j1 <(sort "d-a-$3.txt") <(sort "d-x-$3.txt") 2>/dev/null \
+                | awk '$2==$4 {print "  - " $1}' | head -40 | tee -a "$GITHUB_STEP_SUMMARY"
+            fi
+          }
+          echo "## A7-5E — cross-slice numeric comparison (reporting only)" >> "$GITHUB_STEP_SUMMARY"
+          compare "A7-5E part 1: shipped flags"            ""                   def
+          compare "A7-5E part 2: -ffp-contract=off on both" "-ffp-contract=off" noc
+          echo "=== end A7-5E (reporting only; this step never fails the job) ==="
+          exit 0
+
+
   macos-intel:
     # PINNED BY NECESSITY, not by preference -- the one runner label in this
     # workflow that cannot float. Per `actions/runner-images`, `macos-latest`
