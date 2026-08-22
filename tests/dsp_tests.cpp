@@ -3307,7 +3307,7 @@ static void testVelvetGatherEqualsPerSampleLoop()
     // contains two independent implementations of the same arithmetic: the H5
     // block gather and the general per-sample loop, which H5's own contract says
     // must agree for any block length. The gather's eligibility gate ends with
-    // `numSamples <= (int) accum.size()` (VelvetNoise.cpp:147) -- a guard whose
+    // `numSamples <= (int) accum.size()` (VelvetNoise.cpp:148) -- a guard whose
     // stated purpose is direct callers rather than the engine -- and `accum` is
     // sized from `prepare()`'s `maxBlockSize` alone. So an instance prepared for
     // a SMALLER block runs the per-sample loop over the very same audio, and

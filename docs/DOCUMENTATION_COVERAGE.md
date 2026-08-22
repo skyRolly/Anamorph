@@ -5952,7 +5952,7 @@ was blind was not.
 
 **The oracle, and why it costs no product change.** The module already holds two implementations of
 the same arithmetic. The gather's eligibility gate ends with `numSamples <= (int) accum.size()`
-(`src/dsp/VelvetNoise.cpp:147`) — a clause whose stated purpose is direct callers rather than the
+(`src/dsp/VelvetNoise.cpp:148`) — a clause whose stated purpose is direct callers rather than the
 engine — and `accum` is sized from `prepare()`'s `maxBlockSize` alone. An instance prepared for a
 **smaller** block therefore runs the per-sample loop over the same audio, and everything else about
 it is identical: ring, tap positions and signs, weights, envelope/gate coefficients and stop step
