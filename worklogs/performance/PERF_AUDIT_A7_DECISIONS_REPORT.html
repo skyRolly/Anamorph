@@ -398,11 +398,10 @@ footer {
     <span>No product code changed</span>
   </div>
   <h1>Anamorph A7 Decision Brief</h1>
-  <p class="dek">Three items were investigated and none implemented. One is ready, and the test that
-  had to precede it is now in the tree. One is a twenty-percent win that costs a frozen ADR property
-  and an ISA floor. One turned out not to be a single-module quirk at all — the same false premise is
-  holding up three shipped fast paths, and the CPU it silently costs is larger than everything else
-  on this roadmap combined.</p>
+  <p class="dek">A7-2B has landed: the history image is gone and the gather reads the ring in place,
+  bit-identically, taking 37&nbsp;% off the worst block. The AVX2 question turned out to be two
+  questions, and two thirds of that win needs no bit to change. And the glide-stall item shrank by
+  89&nbsp;% the moment A7-2B made the path it is stuck on cheap.</p>
   <div class="mast-meta">
     <span>Method: callgrind Ir with startup subtraction</span>
     <span>Base: main @ 100b98c (v0.9.5)</span>
@@ -422,28 +421,28 @@ footer {
 
   <div class="stats">
     <div class="stat">
-      <div class="stat-n pos">0 / 180</div>
-      <div class="stat-l">A7-2B mismatches</div>
-      <div class="stat-s">Faithful prototype, bit-identical to the shipped engine — and to an
-      absolute oracle it did not have before.</div>
+      <div class="stat-n pos">−37.2%</div>
+      <div class="stat-l">A7-2B, 192 kHz / 32</div>
+      <div class="stat-s">Landed. Bit-identical on 32/32 dump scenarios and 180/180 configurations;
+      the per-block term no longer scales with sample rate.</div>
     </div>
     <div class="stat">
-      <div class="stat-n warn">20 / 20</div>
-      <div class="stat-l">Checks the new gate fires on</div>
-      <div class="stat-s">A seeded uniform tap-delay error fails every one of Test 40's equivalence
-      checks, at sample 3 of block 0. Test 39 catches it only where its schedule crosses paths.</div>
+      <div class="stat-n neu">308 vs 0</div>
+      <div class="stat-l">FMA instructions, arm64 vs x86-64</div>
+      <div class="stat-s">A7-5E: every DSP module contracts on the arm64 slice and none on the
+      frozen x86-64 baseline. The slices already differ.</div>
     </div>
     <div class="stat">
-      <div class="stat-n warn">3 modules</div>
-      <div class="stat-l">Resting on a false premise</div>
-      <div class="stat-s">Velvet, Haas and Chorus all claim the glide “flushes to true zero”. It
-      does not, in any of them.</div>
+      <div class="stat-n pos">66%</div>
+      <div class="stat-l">Of the AVX2 win that is Class A</div>
+      <div class="stat-s">Vectorization alone changes nothing; contraction changes everything.
+      −17.2&nbsp;% is available with no bit change.</div>
     </div>
     <div class="stat">
-      <div class="stat-n neu">88.9%</div>
-      <div class="stat-l">Samples AVX2 changes</div>
-      <div class="stat-s">Enabling it activates FP contraction that the frozen baseline currently
-      leaves inert — and splits GCC from Clang.</div>
+      <div class="stat-n warn">−89%</div>
+      <div class="stat-l">A7-9's Velvet cost, absorbed</div>
+      <div class="stat-s">37,951 → 4,032 Ir/block at 192 kHz/32. A7-9 is no longer the roadmap's
+      largest item; Chorus is now its biggest share.</div>
     </div>
   </div>
 </section>
