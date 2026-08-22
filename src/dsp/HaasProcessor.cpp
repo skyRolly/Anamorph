@@ -48,29 +48,56 @@ void HaasProcessor::processBlock (float* left, float* right, int numSamples) noe
     constexpr float smooth = 0.0005f; // glide delay changes to avoid zipper noise
     constexpr float aSmooth = 0.001f; // glide the wet amount (click-free, #1)
 
-    // A7-9: HOW THIS STATE IS REACHED, AND HOW IT IS NOT. It is reached from a
-    // fresh prepare() with Amount at its 0 default -- prepare() assigns
-    // currentAmount = targetAmount -- which is the state this path was written
-    // for and measured in. It is NOT reached by turning Amount down: with a 0
-    // target the update is `a -= 0.001f * a`, and under the block's
-    // ScopedNoDenormals the DECREMENT underflows before `a` does, so the glide
-    // stalls at ~FLT_MIN/0.001 = 1.17e-35 and the next decrement is exactly 0.
-    // The `std::abs (currentAmount) > 0.0f` test below therefore stays true and
-    // the full path runs instead. An earlier version of this comment claimed the
-    // one-pole "flushes to true zero"; it does not, and the difference is
-    // measured in worklogs/performance/PERF_AUDIT_A7-2_A7-5_A7-9_INVESTIGATION.md
-    // and re-verified in PERF_AUDIT_A7-2B_A7-5E_IMPLEMENTATION.md. Filed as A7-9
-    // (a Class-B repair, not yet approved); this comment is the A7-9C half.
+    // A7-9: WHY THIS IS A FIXPOINT TEST AND NOT A VALUE TEST. Turning Amount
+    // down does NOT bring `currentAmount` to zero. With a 0 target the update
+    // is `a -= 0.001f * a`, and under the block's ScopedNoDenormals the
+    // DECREMENT underflows before `a` does, so the glide stalls at
+    // ~FLT_MIN/0.001 = 1.17e-35 and every later decrement is exactly 0. A test
+    // for `currentAmount == 0` therefore stayed FALSE forever after a
+    // ramp-down, and this path -- written for, and measured in, the fresh
+    // prepare() state where prepare() assigns currentAmount = targetAmount --
+    // was unreachable from the one route a user actually takes.
+    //
+    // The repair is to ask the question the path really depends on: not "is the
+    // glide at zero" but "can the glide still move". `aNext == currentAmount`
+    // is that question, and it is decisive for a whole block rather than one
+    // sample, because `amount` is fixed across the block and the map is
+    // therefore idempotent -- the fixpoint is absorbing. It is the same test
+    // VelvetNoise has always used for its density glide.
+    //
+    // CLASS B, and no Class-A variant exists. Parked, the module is an exact
+    // identity; stalled, it added `a*(d - x)` with an a just under
+    // FLT_MIN/0.001 = 1.175e-35, which is bit-exactly x for any normal x and is
+    // NOT when x is +0. The residual therefore appears only on digital silence,
+    // where the dry term cannot absorb it: 8.043e-36 measured here against the
+    // pre-fix sources, 0 of 102,400 samples different on real signal. Removing
+    // it IS what the fix means -- it is exactly what distinguished the stalled
+    // state from the parked one, and after the fix the silence output is an
+    // exact zero rather than a smaller residual. Test 41 is the gate and is
+    // proven to fail without this change. Measured in
+    // worklogs/performance/PERF_AUDIT_A7-2_A7-5_A7-9_INVESTIGATION.md,
+    // re-verified in PERF_AUDIT_A7-2B_A7-5E_IMPLEMENTATION.md, implemented and
+    // (bound corrected) in PERF_AUDIT_A7-9_AVX2_IMPLEMENTATION.md §4c.
+    const float aNext = currentAmount + aSmooth * (amount - currentAmount);
 
-    // Parked fast path (Wave 4): with the wet glide at EXACTLY 0 and the target
-    // still 0, the blend x + 0*(d - x) is bit-exactly x for any finite d -- so
-    // the interpolated read and the blend
-    // are pure waste. The delay lines MUST keep recording (a re-engage reads
-    // the history written while parked -- the same reasoning that rejected the
-    // Velvet env freeze, W3-9) and the delay glide keeps tracking retargets, so
-    // only the read + blend are skipped. Exact compares, no epsilon: any
-    // non-zero amount takes the full path unchanged.
-    if (! (std::abs (amount) > 0.0f) && ! (std::abs (currentAmount) > 0.0f))
+    // Parked fast path (Wave 4; gate repaired by A7-9): with the target at 0 and
+    // the wet glide unable to move off its current value, the blend
+    // x + a*(d - x) contributes nothing this block -- exactly nothing when a is
+    // 0, and nothing the output can hold when a is the stalled ~1e-35 -- so the
+    // interpolated read and the blend are pure waste. The delay lines MUST keep
+    // recording (a re-engage reads the history written while parked -- the same
+    // reasoning that rejected the Velvet env freeze, W3-9) and the delay glide
+    // keeps tracking retargets, so only the read + blend are skipped. Skipping
+    // the amount tick is likewise a no-op: at the fixpoint it changes nothing,
+    // and it is the same value the full path would have used.
+    //
+    // Exact compares, no epsilon. The second disjunct is the PRE-A7-9 entry
+    // condition kept verbatim, for the one input the fixpoint test does not
+    // subsume: a NaN target with currentAmount already 0, where the old gate
+    // parked (identity, NaN never enters the state) and `aNext == currentAmount`
+    // would not. The gate can only ever admit MORE than it did before A7-9.
+    if (! (std::abs (amount) > 0.0f)
+        && (aNext == currentAmount || ! (std::abs (currentAmount) > 0.0f)))
     {
         for (int n = 0; n < numSamples; ++n)
         {

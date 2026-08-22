@@ -4,7 +4,17 @@
 in `POSTMORTEMS.md`, not here. Each entry is evidence-backed (constraint C7). When an item is
 fixed, remove it here and (if notable) add a `POSTMORTEMS.md` entry.
 
-Version-synced to **v0.9.4** (the JUCE 9.0.0 → 9.0.1 dependency upgrade, ADR-0026, plus the
+Version-synced to **v0.9.5** (the A7 performance programme). That round **added one issue**:
+**KI-026**, the x86-64 ISA floor. It is the first entry here recording a limitation that was
+*chosen* rather than discovered — ADR-0031 compiles the Linux binaries and the macOS `x86_64` slice
+`-march=haswell` for a measured −17.2 % of the engine's instruction count with the output
+bit-identical, and the price is that pre-2013 Intel / pre-2015 AMD hardware raises `SIGILL` inside
+the host. The three A7-9 gate repairs in the same version removed no entry and added none: the
+defect they fixed (three Amount-0 fast paths that were unreachable after a ramp-down) was never
+filed here, having been found by measurement in the same programme that fixed it. Net for 0.9.5:
+**one issue added, none removed.**
+
+Prior sync: **v0.9.4** (the JUCE 9.0.0 → 9.0.1 dependency upgrade, ADR-0026, plus the
 C++ standard 17 → 23 migration, ADR-0027 — **no issue added or removed**: the only `src/` change
 is one added `#include`, engine output bit-identical across both the two JUCE versions and
 C++17 vs C++23, and
@@ -109,6 +119,7 @@ JUCE 8.0.14; before that 0.8.8 for PR #54).
 | KI-021 | **Linux**: a per-user install (the 0.9.3 default) does not remove an existing **system-wide** one, so both are on the DAW's scan path and its scan order decides which version loads — an update can look as if it did not apply | Low | Confirmed, **deliberate**: removing the system copy needs the elevation the per-user mode exists to avoid. The installer now **warns** when it finds one; removal is one `sudo ./uninstall.sh` |
 | KI-022 | **macOS**: components are non-relocatable since 0.9.3 (INC-012), so a bundle the user deliberately moved — to `~/Applications`, or a plug-in kept under `~/Library/Audio/Plug-Ins/…` — is left where it is and a fresh copy is installed at the standard location, leaving two copies with the same bundle identifier | Low | Confirmed, **deliberate trade** for INC-012: following a moved copy is exactly the behaviour that let an install silently write nowhere useful. Documented in the installer's `INSTALL.txt`; removal is manual |
 | KI-023 | **Linux**: the shipped binaries record the CI image's glibc/libstdc++ floor (measured GLIBC_2.38 / GLIBCXX_3.4.31), so they do not load at all on older distributions — Ubuntu 22.04 LTS included | Medium | Confirmed, **measured**; the floor was never chosen and is now asserted on every push so it cannot rise unnoticed. Lowering it is a release-topology decision, not taken |
+| KI-026 | **Pre-2013 Intel / pre-2015 AMD CPUs**: from 0.9.5 the Linux binaries and the macOS `x86_64` slice are compiled `-march=haswell`, so on an older CPU the plug-in raises `SIGILL` **inside the host** — the DAW reports a crash, not an incompatible plug-in | Medium | Confirmed, **deliberate** (ADR-0031, −17.2 % engine cost, output bit-identical). Windows and Apple Silicon are unaffected. No in-product diagnosis is possible; the requirement is documented in the user guides |
 
 ---
 
@@ -136,7 +147,7 @@ consequences, both still open:
   *System Settings → Privacy & Security → Open Anyway*.
 
 Notarization (RH-PR-3) closes both.
-- **Evidence [Verified]:** .github/workflows/build.yml:1922-1924 (`codesign --force --deep --sign -`,
+- **Evidence [Verified]:** .github/workflows/build.yml:1945-1947 (`codesign --force --deep --sign -`,
   no notarization); packaging/macos/INSTALL.txt:4-10 (ad-hoc, not notarized), :34-41 (the
   Gatekeeper approval for the .pkg), :61-65 (the zip-route `xattr` step).
   See `docs/procedures/PACKAGING.md`.
@@ -487,7 +498,7 @@ only one granted).
   whatever UID the built VST3 carries. That is precisely why the change is recorded here and in
   ADR-0023 rather than left to surface itself.
 - **Evidence [Verified (code) / Verified — manual (new identity) / Unverified (old-session
-  effect)]:** CMakeLists.txt:273 (`PLUGIN_MANUFACTURER_CODE RTec`); ADR-0023 (`Accepted`
+  effect)]:** CMakeLists.txt:355 (`PLUGIN_MANUFACTURER_CODE RTec`); ADR-0023 (`Accepted`
   2026-07-30); CHANGELOG `[0.9.1]`. The **new** identity registering correctly was confirmed by the
   maintainer's Level-5 check on 2026-07-30 (host registration + `auval -v aufx Anmr RTec`) — a
   human sign-off, not headlessly reproducible. The **old-session** effect described above is
@@ -748,5 +759,36 @@ does not load there.**
   the same change and name the systems it drops.
 - **Evidence [Verified]:** scripts/check-linux-abi.py (the declared floor and the gate);
   `docs/architecture/COMPATIBILITY_MATRIX.md` §"Linux runtime ABI floor".
+
+## KI-026 — the x86-64 builds do not run on pre-Haswell Intel / pre-Excavator AMD CPUs
+
+From 0.9.5 the **Linux** binaries and the **`x86_64` slice of the macOS universal build** are
+compiled `-march=haswell` (ADR-0031), so the compiler may emit AVX2, FMA, BMI1/BMI2, F16C, LZCNT and
+MOVBE anywhere in the image. On an Intel CPU older than **Haswell (2013)** or an AMD CPU older than
+**Excavator (2015)**, the first such instruction raises `SIGILL` — an illegal-instruction fault
+**inside the host process**. The DAW reports a crash, or simply disappears; it does not report an
+incompatible plug-in.
+
+This is the mirror image of KI-023 in one respect and its opposite in another: like the ABI floor it
+is a hard requirement below which nothing this project wrote gets to run, and unlike the ABI floor it
+was **chosen**, with a measured benefit (−17.2 % of the engine's instruction count) and no change to
+a single output bit.
+
+- **Why the plug-in cannot say so itself:** the fault can be raised by code the dynamic loader runs
+  before any Anamorph entry point does — static initialisers are compiled under the same flags. A
+  `__builtin_cpu_supports` check would have to live in a separately compiled baseline translation
+  unit gating the entire plug-in, which is a different build design, not a message.
+- **Who is affected in practice:** on **macOS**, only a Mac old enough to be running macOS
+  10.13–10.15 (the deployment target is 10.13, and High Sierra reaches Macs back to 2009); every Mac
+  that can run a newer macOS already exceeds the floor. On **Linux**, the declared glibc/libstdc++
+  floor (KI-023) already implies a distribution far newer than 2013, so the binding constraint is the
+  hardware rather than the distribution. **Windows and Apple Silicon carry no such requirement** —
+  the MSVC build has no `/arch:` flag and is outside ADR-0031's scope.
+- **Recovery for someone affected:** none in-product. The requirement is stated in
+  `docs/user/INSTALLATION.md` and `docs/user/USER_MANUAL.md` §2 ("What you need") so it is visible
+  before install.
+- **Evidence [Verified]:** CMakeLists.txt (the `AnamorphHardening` x86-64 baseline block);
+  `docs/policies/COMPATIBILITY_POLICY.md` §"Runtime compatibility: the x86-64 ISA floor";
+  `docs/architecture/design-decisions/ADR-0031-x86-64-isa-baseline.md`.
 
 

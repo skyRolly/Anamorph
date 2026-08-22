@@ -507,6 +507,14 @@ Worst case across all three modules and all four rates: **4.476e-36 — `ChorusE
 about −707 dBFS.** (At 48 kHz alone it is 1.643e-36, set by `HaasProcessor`; quoting that as the
 bound would understate the high-rate case by 2.7×.)
 
+> **This table is the measurement this harness made, and it is left as it stands. It is NOT a
+> stimulus-independent bound**, which is how it was subsequently quoted. The residual is
+> `a_stall × (wet term)` and the wet term scales with whatever was in the delay lines when the
+> silence began; driving ±0.7 noise instead, Test 41 measures 1.563e-35 (Chorus, 192 kHz),
+> 8.043e-36 (Haas, 48 kHz) and 7.145e-36 (Velvet, 48 kHz) against the same pre-fix sources.
+> `PERF_AUDIT_A7-9_AVX2_IMPLEMENTATION.md` §4c carries the correction and the derived ceiling,
+> `FLT_MIN/k`.
+
 ## 18. Classification: Class B, and no Class-A fix exists
 
 Every candidate repair changes bits, and always by exactly the residual in §17:
