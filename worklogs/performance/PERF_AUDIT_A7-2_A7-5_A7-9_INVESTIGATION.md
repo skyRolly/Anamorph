@@ -386,18 +386,32 @@ fixed point is absorbing — the next decrement is exactly `0.0`, forever.
 The stall value is not a magic constant. It is **`≈ FLT_MIN / k`**, approached from below, with the
 last few ULPs depending on the trajectory:
 
-| module | `k` | measured stall | `FLT_MIN / k` | next decrement |
+| module | `k` | measured stall (48 kHz) | `FLT_MIN / k` | next decrement |
 |---|---:|---:|---:|---:|
-| `VelvetNoise` | 0.0015 | 7.83374862e-36 | 7.83662901e-36 | **0.0** |
-| `HaasProcessor` | 0.001 | 1.17487956e-35 | 1.17549435e-35 | **0.0** |
-| `ChorusEngine` | 1/480 | 5.63638313e-36 | 5.64237288e-36 | — |
+| `VelvetNoise` | 0.0015 — a constant | 7.83374862e-36 | 7.83662901e-36 | **0.0** |
+| `HaasProcessor` | 0.001 — a constant | 1.17487956e-35 | 1.17549435e-35 | **0.0** |
+| `ChorusEngine` | **`1/(0.01·sr)`** — 1/480 only at 48 kHz | 5.63638313e-36 | 5.64237288e-36 | — |
 
 (`docs/DOCUMENTATION_COVERAGE.md:254-262` records `7.82561114e-36` for VelvetNoise from a different
 ramp; both sit in the same sub-0.2 % band below `FLT_MIN/k`. The closed form is the durable
 statement, not any single landing point.)
 
-It is **rate-independent** — no `sr` appears in the recurrence — and start-independent to within that
-band.
+The recurrence itself contains no `sr`, so the stall depends on the sample rate exactly as far as
+`k` does — **and that differs by module.** `VelvetNoise` and `HaasProcessor` glide at compile-time
+constants (`aSmooth = 0.0015f` and `0.001f`), so their stall is genuinely rate-independent.
+`ChorusEngine` is the exception: `wSmooth = 1.0f / std::max (1.0, 0.01 * workingRate)`
+(`src/dsp/ChorusEngine.cpp:70`), so `k = 1/480` holds **only at 48 kHz** and the stall
+`FLT_MIN / k = FLT_MIN · 0.01 · sr` scales linearly with the rate. Measured across the range, with
+the ramp allowed to converge at each rate (convergence is per-sample, so a fixed block count is not
+a fixed ramp):
+
+| module | 44.1 kHz | 48 kHz | 96 kHz | 192 kHz | |
+|---|---:|---:|---:|---:|---|
+| `VelvetNoise` | 7.83374862e-36 | 7.83374862e-36 | 7.83374862e-36 | 7.83374862e-36 | flat |
+| `HaasProcessor` | 1.17487956e-35 | 1.17487956e-35 | 1.17487956e-35 | 1.17487956e-35 | flat |
+| `ChorusEngine` | 5.17668692e-36 | 5.63638313e-36 | 1.12767137e-35 | 2.25593495e-35 | **×4.00 over the range** |
+
+All three are start-independent to within the band above.
 
 ## 15. It is not one module. The same false premise is load-bearing in three
 
@@ -447,7 +461,7 @@ Two instances, identically constructed and identically driven through the same r
 has its glide state forced to exact zero — which is precisely what any fix would produce. Every
 later difference is therefore exactly the residual a fix would remove.
 
-| module | stimulus | differing samples | worst abs delta |
+| module | stimulus | differing samples (48 kHz) | worst abs delta (48 kHz) |
 |---|---|---:|---:|
 | `VelvetNoise` | noise | **0** / 102,400 | 0 |
 | `HaasProcessor` | noise | **0** / 102,400 | 0 |
@@ -456,10 +470,24 @@ later difference is therefore exactly the residual a fix would remove.
 | `HaasProcessor` | digital silence | 51,195 / 102,400 | 1.643e-36 |
 | `ChorusEngine` | digital silence | 51,759 / 102,400 | 1.081e-36 |
 
+The residual inherits §14's rate behaviour, so **the bound is not a single number**. Re-measured at
+each rate with a converged ramp:
+
+| module, digital silence | 44.1 kHz | 48 kHz | 96 kHz | 192 kHz |
+|---|---:|---:|---:|---:|
+| `VelvetNoise` | 4.443e-37 | 4.470e-37 | 3.736e-37 | 4.627e-37 |
+| `HaasProcessor` | 1.605e-36 | 1.643e-36 | 1.639e-36 | 1.644e-36 |
+| `ChorusEngine` | 1.003e-36 | 1.081e-36 | 2.224e-36 | **4.476e-36** |
+
+Velvet and Haas are flat; Chorus scales with `sr` and **overtakes Haas above 48 kHz**. The bound over
+the supported range is therefore set by Chorus at the highest rate, not by Haas at 48 kHz.
+
 On real signal the residual is **exactly invisible** — the stalled amount multiplies into a product
 that itself flushes to zero. The differences appear only on digital silence, where the dry term is
 `+0` and cannot absorb the residual, and only while the delay lines still hold pre-silence audio.
-Worst case across all three modules: **1.643e-36, about −716 dBFS.**
+Worst case across all three modules and all four rates: **4.476e-36 — `ChorusEngine` at 192 kHz,
+about −707 dBFS.** (At 48 kHz alone it is 1.643e-36, set by `HaasProcessor`; quoting that as the
+bound would understate the high-rate case by 2.7×.)
 
 ## 18. Classification: Class B, and no Class-A fix exists
 
@@ -474,7 +502,8 @@ Every candidate repair changes bits, and always by exactly the residual in §17:
   `x` for a normal `x`, and is not when `x` is `+0`.
 
 The residual **is** the thing that distinguishes the two states, so removing it is what "fix" means.
-**Class B, bounded at 1.643e-36.** For scale, that is ~26 orders of magnitude tighter than the
+**Class B, bounded at 4.476e-36** across the supported sample-rate range. For scale, that is ~26
+orders of magnitude tighter than the
 tightest accepted Class-B precedent (H4 dry-align, 2.4e-10) and ~32 tighter than the loosest (H11
 chorus LFO, 8.2e-4).
 
@@ -485,8 +514,8 @@ Do not implement without it.** The reasoning:
 
 * the benefit is the largest single item on the A7 roadmap (§16), and it is not a new optimization —
   it *restores three already-shipped optimizations to the state in which they were measured*;
-* the cost is bounded at 1.643e-36, inaudible by construction, and orders of magnitude inside
-  precedent;
+* the cost is bounded at 4.476e-36 across the rate range, inaudible by construction, and orders of
+  magnitude inside precedent;
 * it is also a documentation-integrity defect: three source comments state a premise that is false,
   and one of them (`VelvetNoise`) is already recorded as such in
   `docs/DOCUMENTATION_COVERAGE.md:254-262` while the other two are not recorded anywhere.
@@ -520,7 +549,7 @@ bound stated; and the three source comments rewritten to say what is actually tr
 | **A7-2T** (new) — commit the path-equivalence oracle | **open, and it is now a prerequisite of A7-2B.** No product change; no A7-0 dependency; implementable today. |
 | **A7-5 / W5-D** — multiband LR4 SIMD / AVX2 | **investigated; not implemented; ADR not drafted.** Blocked on the §11 cross-slice experiment and on decisions 1–5. |
 | **A7-5E** (new) — diff the universal binary's two slices | **open.** One CI step, no new tooling, answers a question the product has never asked. |
-| **A7-9** — the amount glide stalls above zero | **investigated; widened from one module to three; recommended, pending explicit approval.** Class B, bound 1.643e-36. |
+| **A7-9** — the amount glide stalls above zero | **investigated; widened from one module to three; recommended, pending explicit approval.** Class B, bound 4.476e-36 across the rate range. |
 | A7-4 · A7-8 | maintainer decisions, unchanged. |
 | A7-3 · A7-6 · A7-7 | not scheduled, unchanged. |
 
@@ -532,7 +561,7 @@ bound stated; and the three source comments rewritten to say what is actually tr
 | **2** | Approve **A7-2T** as a prerequisite, not a follow-up | **Yes** | Ordering *is* the safety property; landing the change first leaves a window where the only competent test does not exist |
 | **3** | Approve the **A7-5E** cross-slice experiment | **Yes** — cheap, and it should precede any ADR | It asks whether a property the product assumes is real |
 | **4** | Approve **AVX2 / A7-5** in principle | **Not yet** | ~20 % engine-wide, but a Class-B change to 88.9 % of samples, an ISA compatibility floor, and the loss of the GCC/Clang cross-check — an ADR-0021 amendment, a `CLAUDE.md` hard stop |
-| **5** | Approve **A7-9** as a Class-B change bounded at 1.643e-36 | **Yes, with explicit approval recorded** | Largest single item on the roadmap; changes output bits, so it cannot ride a green build |
+| **5** | Approve **A7-9** as a Class-B change bounded at 4.476e-36 | **Yes, with explicit approval recorded** | Largest single item on the roadmap; changes output bits, so it cannot ride a green build |
 | **6** | If 5 is declined, approve the **comment correction** alone | **Yes** | Three source comments assert a false premise; Class A, zero cost |
 
 **Nothing in this round changed product code, DSP code, `PERFORMANCE_BUDGET.md` rows, or RISK-002.**

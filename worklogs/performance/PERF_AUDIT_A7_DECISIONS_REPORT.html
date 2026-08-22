@@ -669,15 +669,21 @@ footer {
     <code>FLT_MIN</code> it flushes to exactly zero and <code>a</code> stops moving. The fixed point
     is absorbing — the next decrement is exactly <code>0.0</code>, forever. It is not a magic
     constant but a closed form, <code>&asymp; FLT_MIN / k</code>, approached from below.</p>
+
+    <p>The recurrence holds no <code>sr</code>, so the stall follows the sample rate exactly as far
+    as <code>k</code> does — and that differs by module. Velvet and Haas glide at compile-time
+    constants, so their stall really is rate-independent. <strong>Chorus is the exception</strong>:
+    <code>wSmooth = 1.0f / std::max(1.0, 0.01 * workingRate)</code>, so <code>1/480</code> holds only
+    at 48 kHz and the stall scales linearly with the rate.</p>
   </div>
 
   <div class="tscroll">
     <table>
-      <thead><tr><th>Module</th><th class="num">k</th><th class="num">Measured stall</th><th class="num">FLT_MIN / k</th><th>Gate</th></tr></thead>
+      <thead><tr><th>Module</th><th class="num">k</th><th class="num">Stall @ 48 kHz</th><th class="num">Stall @ 192 kHz</th><th>Rate behaviour</th></tr></thead>
       <tbody>
-        <tr><td><code>VelvetNoise</code></td><td class="num">0.0015</td><td class="num">7.83374862e-36</td><td class="num">7.83662901e-36</td><td>value test</td></tr>
-        <tr><td><code>HaasProcessor</code></td><td class="num">0.001</td><td class="num">1.17487956e-35</td><td class="num">1.17549435e-35</td><td>value test</td></tr>
-        <tr><td><code>ChorusEngine</code></td><td class="num">1/480</td><td class="num">5.63638313e-36</td><td class="num">5.64237288e-36</td><td>value test</td></tr>
+        <tr><td><code>VelvetNoise</code></td><td class="num">0.0015 <span class="mono">const</span></td><td class="num">7.83374862e-36</td><td class="num">7.83374862e-36</td><td>flat</td></tr>
+        <tr><td><code>HaasProcessor</code></td><td class="num">0.001 <span class="mono">const</span></td><td class="num">1.17487956e-35</td><td class="num">1.17487956e-35</td><td>flat</td></tr>
+        <tr class="accent"><td><code>ChorusEngine</code></td><td class="num">1/(0.01·sr)</td><td class="num">5.63638313e-36</td><td class="num">2.25593495e-35</td><td class="hi">scales ×4.00</td></tr>
       </tbody>
     </table>
   </div>
@@ -717,7 +723,7 @@ footer {
   <h4>What a fix would change</h4>
   <div class="tscroll">
     <table>
-      <thead><tr><th>Module</th><th>Stimulus</th><th class="num">Differing samples</th><th class="num">Worst abs delta</th></tr></thead>
+      <thead><tr><th>Module</th><th>Stimulus</th><th class="num">Differing samples <span class="mono">48 kHz</span></th><th class="num">Worst abs delta <span class="mono">48 kHz</span></th></tr></thead>
       <tbody>
         <tr><td><code>VelvetNoise</code></td><td>noise</td><td class="num hi">0 / 102,400</td><td class="num">0</td></tr>
         <tr><td><code>HaasProcessor</code></td><td>noise</td><td class="num hi">0 / 102,400</td><td class="num">0</td></tr>
@@ -729,12 +735,27 @@ footer {
     </table>
   </div>
 
+  <div class="tscroll">
+    <table>
+      <thead><tr><th>Worst abs delta, digital silence</th><th class="num">44.1 kHz</th><th class="num">48 kHz</th><th class="num">96 kHz</th><th class="num">192 kHz</th></tr></thead>
+      <tbody>
+        <tr><td><code>VelvetNoise</code></td><td class="num">4.443e-37</td><td class="num">4.470e-37</td><td class="num">3.736e-37</td><td class="num">4.627e-37</td></tr>
+        <tr><td><code>HaasProcessor</code></td><td class="num">1.605e-36</td><td class="num">1.643e-36</td><td class="num">1.639e-36</td><td class="num">1.644e-36</td></tr>
+        <tr class="accent"><td><code>ChorusEngine</code></td><td class="num">1.003e-36</td><td class="num">1.081e-36</td><td class="num">2.224e-36</td><td class="num hi">4.476e-36</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>The residual inherits the same rate behaviour, so the bound is not a single number: Velvet and
+  Haas are flat, and Chorus overtakes Haas above 48 kHz. <strong>The bound over the supported range
+  is set by Chorus at the highest rate</strong>, not by Haas at 48 kHz.</p>
+
   <div class="col">
     <p>Two instances, identically built and identically driven; afterwards one has its glide forced
     to exact zero — precisely what a fix produces. On real signal the residual is exactly invisible:
     the stalled amount multiplies into a product that itself flushes to zero. Differences appear only
     on digital silence, where the dry term is <code>+0</code> and cannot absorb them. Worst case
-    across all three modules: <strong>1.643e-36, about −716 dBFS.</strong></p>
+    across all three modules and all four rates: <strong>4.476e-36 — Chorus at 192 kHz, about
+    −707 dBFS.</strong></p>
 
     <p><strong>No Class-A fix exists</strong>, and that is not a failure of imagination — the residual
     <em>is</em> the thing that distinguishes the two states, so removing it is what “fix” means. The
@@ -800,7 +821,7 @@ footer {
     <div class="dec">
       <div class="dec-n">05</div>
       <div class="dec-body">
-        <h3 class="dec-h">Approve A7-9, bounded at 1.643e-36 <span class="chip yes">Recommend yes</span><span class="chip classb">Class B — needs explicit approval</span></h3>
+        <h3 class="dec-h">Approve A7-9, bounded at 4.476e-36 <span class="chip yes">Recommend yes</span><span class="chip classb">Class B — needs explicit approval</span></h3>
         <p>The largest single item on the roadmap, and it is not a new optimization: it
         <em>restores three already-shipped optimizations to the state in which they were measured</em>.
         Inaudible by construction — zero differing samples on real signal.</p>

@@ -269,11 +269,15 @@ to true zero, and each gates on a **value** test that a stalled glide defeats. (
 gate, three lines above its amount gate, tests the **fixpoint** instead and is therefore immune —
 the same file carries both the defect and its remedy.) So none of the three parks is reachable after
 a user turns its control down. Measured: `HaasProcessor` stalls at `1.17487956e-35` and
-`ChorusEngine` at `5.63638313e-36`, and the missed park costs +203 % and +370 % of the parked module
+`ChorusEngine` at `5.63638313e-36` **at 48 kHz** — Velvet's and Haas's coefficients are compile-time
+constants so their stall is rate-independent, while Chorus's `wSmooth` is `1/(0.01·sr)`
+(`src/dsp/ChorusEngine.cpp:70`) so its stall scales with the rate, reaching `2.25593495e-35` at
+192 kHz — and the missed park costs +203 % and +370 % of the parked module
 at 48 kHz / 128 — for Velvet, +752 % at 48 kHz / 32 and +2,372 % at 192 kHz / 32, because a stalled
 amount above zero also satisfies the H5 gather gate and puts the engine on its most expensive path.
 Still no audio effect on real signal (0 of 102,400 samples differ in all three); the residual shows
-only on digital silence, bounded at **1.643e-36**. Full evidence and the maintainer decision:
+only on digital silence, bounded at **4.476e-36** across the rate range (Chorus at 192 kHz;
+1.643e-36 at 48 kHz alone). Full evidence and the maintainer decision:
 `worklogs/performance/PERF_AUDIT_A7-2_A7-5_A7-9_INVESTIGATION.md` Part III. The two additional
 comments are drift reported and deliberately not edited this round — the correction rides with the
 A7-9 decision.
