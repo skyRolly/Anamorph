@@ -563,10 +563,10 @@ bound stated; and the three source comments rewritten to say what is actually tr
 |---|---|
 | **A7-0** — bench on a named machine, fill the `PERFORMANCE_BUDGET.md` rows | **open, unchanged.** Not attempted. RISK-002 unchanged. Rows unpopulated. |
 | **A7-1** — VelvetNoise history slide | DONE (v0.9.5, PR #127). |
-| **A7-2** — residual per-block term | **investigated twice; not implemented.** Variant A rejected on measurement; **variant B recommended**, prototype re-verified faithfully. A7-2T is now in the tree, so the remaining gate is **A7-0**. |
+| **A7-2** — residual per-block term | **IMPLEMENTED 2026-08-22** (`PERF_AUDIT_A7-2B_A7-5E_IMPLEMENTATION.md`). Previously: Variant A rejected on measurement; **variant B recommended**, prototype re-verified faithfully. A7-2T is now in the tree, so the remaining gate is **A7-0**. |
 | **A7-2T** — commit the path-equivalence oracle | **DONE.** `testVelvetGatherEqualsPerSampleLoop` (Test 40): 24 checks at 4 rates × blocks 32/128/512/4096 plus a density-1.0 pass; suite 178 → 202. Proven live on a seeded one-sample tap-delay error (20 of 20 fail, at sample 3 of block 0). No product change. |
 | **A7-5 / W5-D** — multiband LR4 SIMD / AVX2 | **investigated; not implemented; ADR not drafted.** Blocked on the §11 cross-slice experiment and on decisions 1–5. |
-| **A7-5E** (new) — diff the universal binary's two slices | **open.** One CI step, no new tooling, answers a question the product has never asked. |
+| **A7-5E** — diff the universal binary's two slices | **CONFIRMED BY EXECUTION 2026-08-22: 32/32 scenarios differ.** See `PERF_AUDIT_A7-2B_A7-5E_IMPLEMENTATION.md` §5. One CI step, no new tooling, answers a question the product has never asked. |
 | **A7-9** — the amount glide stalls above zero | **investigated; widened from one module to three; recommended, pending explicit approval.** Class B, bound 4.476e-36 across the rate range. |
 | A7-4 · A7-8 | maintainer decisions, unchanged. |
 | A7-3 · A7-6 · A7-7 | not scheduled, unchanged. |

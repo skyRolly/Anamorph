@@ -69,9 +69,23 @@ void ChorusEngine::processBlock (float* left, float* right, int numSamples) noex
     // Smooth wet + depth per-sample so changing Amount/Depth/Mode never clicks.
     const float wSmooth = 1.0f / (float) std::max (1.0, 0.01 * workingRate); // ~10 ms
 
+    // A7-9: HOW THIS STATE IS REACHED, AND HOW IT IS NOT. It is reached from a
+    // fresh prepare() with Amount at its 0 default, which is the state this path
+    // was written for and measured in. It is NOT reached by turning Amount down:
+    // with a 0 target the update is `a -= wSmooth * a`, and under the block's
+    // ScopedNoDenormals the DECREMENT underflows before `a` does, so the glide
+    // stalls just below FLT_MIN/wSmooth and the next decrement is exactly 0.
+    // That threshold SCALES WITH THE SAMPLE RATE here, because wSmooth is
+    // 1/(0.01*workingRate): 5.64e-36 at 48 kHz, 2.26e-35 at 192 kHz. The
+    // `std::abs (currentWet) > 0.0f` test below therefore stays true and the
+    // full path runs instead. An earlier version of this comment claimed the
+    // one-pole "flushes to true zero"; it does not, and the difference is
+    // measured in worklogs/performance/PERF_AUDIT_A7-2_A7-5_A7-9_INVESTIGATION.md
+    // and re-verified in PERF_AUDIT_A7-2B_A7-5E_IMPLEMENTATION.md. Filed as A7-9
+    // (a Class-B repair, not yet approved); this comment is the A7-9C half.
+
     // Amount-0 idle fast path (H12, 0.8.9; the VelvetNoise S5 pattern): with the
-    // wet glide settled at exactly 0 (it flushes to true 0 under the block's
-    // ScopedNoDenormals) and the target still 0, both voices are an exact
+    // wet glide at exactly 0 and the target still 0, both voices are an exact
     // identity -- out = in * 1 + wet * 0 -- so the LFO sins and the 2 (chorus)
     // / 4 (Dimension-D) interpolated reads are pure waste. The reduced loop
     // keeps every piece of state bit-identical for a later re-engage: the

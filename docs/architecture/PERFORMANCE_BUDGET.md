@@ -181,10 +181,31 @@ no benchmark/profiling data exists in the repository, and inventing numbers is p
   −2.5 % at 48 kHz/256, −7.5 % at 44.1 kHz/128, −8.7 % at 96 kHz/128, −32.3 % at 192 kHz/32,
   −15.0 % at 192 kHz/128.** The per-block term fell 24,302 → 13,502 Ir at 48 kHz while the marginal
   per-sample term stayed at 1596.6 Ir, which is the signature of a change confined to the refill.
-  Guarded by Test 39 (`testVelvetLinearImageInvariance`: the same audio at 512 and at 32 samples
+  Guarded by Test 39 (`testVelvetBlockLengthInvariance`: the same audio at 512 and at 32 samples
   must be bit-identical, at four sample rates), proven to fire on both a wrong slide and a missing
-  invalidation. Evidence [Verified]: src/dsp/VelvetNoise.cpp (the slide + its invariant comment);
-  worklogs/performance/PERF_AUDIT_v0.9.5_IMPLEMENTATION.md.
+  invalidation. Evidence [Verified]: worklogs/performance/PERF_AUDIT_v0.9.5_IMPLEMENTATION.md.
+  **SUPERSEDED BY A7-2B (next entry), which deleted the image and the slide together** — this entry
+  is kept because the measurement is the reason the next one was scoped.
+- **A7-2B (Velvet gather reads the ring in place)** removed the linear history image entirely. H5
+  built it so each tap could read one unit-stride run; but the ring is ALREADY unit-stride in `i`
+  and merely wraps, so each tap is now 1–3 unit-stride runs read straight from `midHist`, plus this
+  block's own Mids for the samples the ring does not hold yet. `linHist` and the A7-1 slide offset
+  are gone, and with them the module's only cross-block scratch state. Class A, measured on both
+  committed instruments: **32/32 twin-dump scenarios identical** and **0 mismatches across 180
+  configurations**, plus Test 40, which compares the gather against the per-sample loop directly.
+  Engine cost (callgrind Ir/block, startup-subtracted, scenario `working`): **−12.2 % at 48 kHz/32,
+  −3.3 % at 48 kHz/128, −0.8 % at 48 kHz/512, −37.2 % at 192 kHz/32, −13.5 % at 192 kHz/128,
+  −3.8 % at 192 kHz/512, −12.8 % at 96 kHz/64.** The fixed per-block term fell **12,957 → 5,546 Ir
+  at 48 kHz and 39,373 → 6,104 Ir at 192 kHz**, and the shape of that is the point: the A7-1 term
+  was proportional to `decorrSamps` and therefore grew with the sample rate, and A7-2B's does not —
+  at a 32-sample block the rate penalty from 48 to 192 kHz falls from **39.8 % to 0.04 %**.
+  **The measured trade, stated because it is real:** the win narrows as the rate falls, and at
+  **44.1 kHz** — where the image A7-1 slid was smallest — the change is neutral to slightly
+  negative: **−0.2 % at 44.1 kHz/32 at the default density 0.5, +1.0 % at density 1.0** (64 active
+  taps, where the per-tap preamble is paid 64 times against one small `std::copy`). The no-wrap fast
+  path in the split is what holds that at 1 %: without it the same points measure +0.9 % and +3.0 %.
+  Evidence [Verified]: src/dsp/VelvetNoise.cpp (the split + its no-aliasing argument);
+  worklogs/performance/PERF_AUDIT_A7-2_A7-5_A7-9_INVESTIGATION.md.
 - **VelvetNoise** has an O(maxTaps=64) sparse-FIR inner loop per sample, plus a full-buffer
   `std::fill` on the transport-stop completion (no alloc). As of 0.8.8 the surrounding per-sample
   work is gated without changing output: the 64-tap weight rebuild + `sqrt` normalisation runs only

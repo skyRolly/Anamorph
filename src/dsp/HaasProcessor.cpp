@@ -48,10 +48,23 @@ void HaasProcessor::processBlock (float* left, float* right, int numSamples) noe
     constexpr float smooth = 0.0005f; // glide delay changes to avoid zipper noise
     constexpr float aSmooth = 0.001f; // glide the wet amount (click-free, #1)
 
-    // Parked fast path (Wave 4): with the wet glide settled at EXACTLY 0 (the
-    // audio thread runs under ScopedNoDenormals, so the asymptotic amount tail
-    // flushes to true zero) and the target still 0, the blend x + 0*(d - x) is
-    // bit-exactly x for any finite d -- so the interpolated read and the blend
+    // A7-9: HOW THIS STATE IS REACHED, AND HOW IT IS NOT. It is reached from a
+    // fresh prepare() with Amount at its 0 default -- prepare() assigns
+    // currentAmount = targetAmount -- which is the state this path was written
+    // for and measured in. It is NOT reached by turning Amount down: with a 0
+    // target the update is `a -= 0.001f * a`, and under the block's
+    // ScopedNoDenormals the DECREMENT underflows before `a` does, so the glide
+    // stalls at ~FLT_MIN/0.001 = 1.17e-35 and the next decrement is exactly 0.
+    // The `std::abs (currentAmount) > 0.0f` test below therefore stays true and
+    // the full path runs instead. An earlier version of this comment claimed the
+    // one-pole "flushes to true zero"; it does not, and the difference is
+    // measured in worklogs/performance/PERF_AUDIT_A7-2_A7-5_A7-9_INVESTIGATION.md
+    // and re-verified in PERF_AUDIT_A7-2B_A7-5E_IMPLEMENTATION.md. Filed as A7-9
+    // (a Class-B repair, not yet approved); this comment is the A7-9C half.
+
+    // Parked fast path (Wave 4): with the wet glide at EXACTLY 0 and the target
+    // still 0, the blend x + 0*(d - x) is bit-exactly x for any finite d -- so
+    // the interpolated read and the blend
     // are pure waste. The delay lines MUST keep recording (a re-engage reads
     // the history written while parked -- the same reasoning that rejected the
     // Velvet env freeze, W3-9) and the delay glide keeps tracking retargets, so

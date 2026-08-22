@@ -111,17 +111,21 @@ with the stop removed, at block 247, its moving density; with every path crossin
 **This test is the gate for A7-2**: the ring-gather rewrite is bit-identical when right and silently
 wrong-by-a-constant-delay when not, and it must not land before this is green.
 
-The DSP test before it is the **Velvet linear-image invariance guard**
-(`testVelvetLinearImageInvariance`, Test 39, A7-1 / 0.9.5). Since 0.9.5 `VelvetNoise` carries its
-H5 linear history image ACROSS blocks -- it is slid forward rather than re-gathered from the ring --
-so the image is cross-block state, and cross-block state is only correct while every path that does
-not maintain it invalidates it. The test drives the module through one fixed schedule (engage, park,
+The DSP test before it is the **Velvet block-length invariance guard**
+(`testVelvetBlockLengthInvariance`, Test 39, A7-1 / 0.9.5; renamed under A7-2B). It was written when
+`VelvetNoise` carried its H5 linear history image ACROSS blocks -- slid forward rather than
+re-gathered -- which made the image cross-block state, correct only while every path that did not
+maintain it invalidated it. **A7-2B deleted the image and the slide**, so that state no longer
+exists; the test is kept unchanged because its assertion is about the module's contract rather than
+that mechanism, and it now guards the ring split's block-anchored arithmetic instead. The test
+drives the module through one fixed schedule (engage, park,
 re-engage, transport stop, moving density) at **44.1 / 48 / 96 / 192 kHz**, once in 512-sample
 blocks, once in 32-sample blocks and once through a **cycle of mixed sizes** (32, 128, 64, 256, 32 --
 summing to 512, so the events still land on a block boundary and every neighbouring pair differs),
 and requires all three to be **bit-identical**: every piece of state here advances per SAMPLE, so the
-output is a function of the sample stream alone, and a stale image -- stale by the previous block's
-length -- perturbs the runs differently and cannot survive the comparison. The mixed cycle is what
+output is a function of the sample stream alone, and any per-block bookkeeping that is wrong BY THE
+BLOCK LENGTH -- a stale slide offset then, a mis-split ring run now -- perturbs the runs differently
+and cannot survive the comparison. The mixed cycle is what
 exercises the slide arithmetic's real subject: `linHistSlide` carries the JUST-PROCESSED block's
 length, so a run whose blocks never change size could be correct with the offset confused for a
 constant. The comparison is made on BITS rather than with `==` -- `-Wfloat-equal` is at zero in the

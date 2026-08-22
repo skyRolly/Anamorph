@@ -61,22 +61,17 @@ private:
     int    writePos = 0;
     int    decorrSamps = 0;          // tap window length (samples), fixed at prepare
 
-    // H5 (Wave 2) tap-outer gather scratch, sized once in prepare (no RT alloc):
-    // linHist = [last decorrSamps of midHist | this block's mids] laid out linearly,
-    // so each tap reads one contiguous unit-stride run; accum holds the per-sample
-    // tap sums in the ORIGINAL t-ascending accumulation order (bit-exact).
-    std::vector<float> linHist, accum, midBlk;
-
-    // A7-1: how far `linHist` must SLIDE to serve the next block, or 0 for "no
-    // usable image, re-gather from the ring". It is the sample count of the last
-    // block that left the image in its `[tail | mids]` shape -- which is exactly
-    // how far `writePos` advanced since, so the next block's tail is this image
-    // read from that offset. `processBlock` clears it on entry and only the
-    // gather fast path re-arms it, so every other path (parked, general, stop
-    // fade) and every future path leaves it invalid WITHOUT having to remember
-    // to say so. `reset()` clears it too: that one runs between blocks, after
-    // the flag was armed, and flushes the ring the image mirrors.
-    int linHistSlide = 0;
+    // H5 (Wave 2) tap-outer gather scratch, sized once in prepare (no RT alloc).
+    // `midBlk` holds this block's Mids; `accum` holds the per-sample tap sums in
+    // the ORIGINAL t-ascending accumulation order (bit-exact).
+    //
+    // A7-2B DELETED THE LINEAR IMAGE. H5 built `linHist` = [last decorrSamps of
+    // midHist | this block's mids] so each tap could read one unit-stride run,
+    // and A7-1 then slid it forward instead of rebuilding it. But the ring is
+    // ALREADY unit-stride in `i`; it merely wraps. So `processBlock` now reads
+    // it in place as 1-3 runs per tap, which keeps H5's streaming property and
+    // removes both the image and the cross-block state that came with it.
+    std::vector<float> accum, midBlk;
 
     std::array<int,   maxTaps> pos {};   // tap delay (samples), fixed
     std::array<float, maxTaps> sign {};  // tap sign +/-1, fixed
