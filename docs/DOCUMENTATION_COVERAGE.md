@@ -7,7 +7,7 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.5 change set** (2026-08-22, matching the CHANGELOG heading) — the
-**A7-1 implementation round** (first below). Under it, the **0.9.4 change set** is retained in full
+**A7-2 investigation** (first below, no code), then the **A7-1 implementation round**. Under it, the **0.9.4 change set** is retained in full
 (2026-08-21, matching its own CHANGELOG heading — re-dated
 from 2026-08-15 in the hover-occlusion round, on 2026-08-20, and again on 2026-08-21, each time
 because the version took a further user-visible change) — the
@@ -78,6 +78,46 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**A7-2 investigation (2026-08-22): the roadmap's own proposal, prototyped and measured — and
+rejected on the measurement. No product code changed. The alternative it turned up is recommended,
+planned, and deliberately not implemented.**
+
+**The residual term, attributed.** Of the 13,502 Ir/block A7-1 left at 48 kHz, **8,704 (64 %) is the
+`memcpy` of the slide** — 34,624 of 39,429 (88 %) at 192 kHz. The remainder is ~4,800 Ir/block,
+**identical at both sample rates**: per-block libm conversions in Level-Match and the meters, the
+engine's own bookkeeping, the meter publish. That is this item's floor, and it is not VelvetNoise's.
+
+**Two prototypes, both bit-exact over 180 configurations** (9 scenarios × 5 block sizes × 4 sample
+rates, FNV-1a over every output sample): the **double-buffer** the roadmap proposed (a cursor into an
+over-sized image, compacting when it runs out) and a **gather straight from the ring** with no linear
+image at all — for each tap, 1–3 contiguous runs over the ring plus this block's own mids, which
+keeps H5's unit-stride property while deleting the structure H5 built to get it.
+
+**The proposal is the weaker half of the fork, and the reason is measured.** It is 1–2 points ahead on
+average (−13.1 % vs −11.4 % at 48 kHz/32; −37.9 % vs −36.8 % at 192 kHz/32) and it **amortises the
+copy rather than removing it**, so the worst block still pays the full 8,704 Ir. Counted in the
+prototype over 4,000 gather blocks: one compaction in **81.6** blocks at 48 kHz/32, one in **20** at
+128, one in **five** at 512-sample blocks. A plug-in drops a buffer on its worst block, not its
+average one — so this trades a uniform per-block cost for a periodic full-size spike, which is the
+wrong shape for an audio thread even though the mean falls. It also roughly **doubles** the history
+buffer (+8.6 KB at 48 kHz, +34.5 KB at 192 kHz per instance) and adds a **second** cross-block
+invariant to a module that gained its first in v0.9.5. The ring gather compacts **zero** times at
+every setting, **frees** the buffer instead of growing it, and **deletes** both cross-block flags
+rather than extending them. Both remove the sample-rate dependence of the fixed term entirely: at
+32-sample blocks, 48 kHz and 192 kHz land on the same figure where the shipped engine differs by
+810 Ir/sample.
+
+**Why it stops at investigation, and neither reason is that the change is risky.** A7-2's own gate is
+**A7-0** — *"gated on A7-0's evidence that small buffers still hurt"* — and A7-0 has not been done:
+there is still no wall-clock datum from a named machine and RISK-002 is still open. Instruction
+counts are the right unit for comparing two implementations and the wrong one for deciding whether a
+user is dropping buffers. And the recommended change is **not the change that was scoped**: swapping
+a rewrite of the Wave-2 H5 gather kernel in for the proposed double-buffer, unprompted, in the same
+function v0.9.5 changed hours ago and before that release has had its audition, is what the
+architecture review gate exists to catch. `PERF_AUDIT_A7-2_INVESTIGATION.md` carries the evidence and
+a ready-to-execute plan; the A7 audit worklog and its HTML report are updated in place so the roadmap
+row reads "proposal rejected" rather than "consider later". [Verified]
 
 **A7-1 implementation, v0.9.5 (2026-08-22): the optimization the audit below sized now shipped, its
 evidence re-derived on the product tree, a permanent guard added for the cross-block state it

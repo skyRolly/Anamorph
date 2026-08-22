@@ -252,7 +252,7 @@ roadmap table already disposed of it**.
 | ID | Candidate | Gain | Class | Risk | Verdict |
 |---|---|---|---|---|---|
 | **A7-1** | Slide the H5 linear history instead of re-gathering it from the ring every block | **measured −14.3 % at 48 k/32, −32.3 % at 192 k/32, −4.7 % at 48 k/128** | **A (proven)** | low | **[LANDED v0.9.5]** |
-| A7-2 | Remove the residual per-block term entirely (ring-free double-buffer history) | ~45 % of what A7-1 leaves; unmeasured | A (expected) | medium | **Consider later** |
+| A7-2 | Remove the residual per-block term entirely (ring-free double-buffer history) | ~45 % of what A7-1 leaves; unmeasured | A (expected) | medium | **[INVESTIGATED — proposal rejected, alternative recommended]** |
 | A7-3 | Reduce `decorrSamps`-proportional work at high sample rates generally | subsumed by A7-1/A7-2 | — | — | **Do not optimize separately** |
 | A7-4 | Skip the DSP chain when Bypass is settled at 1 | ~82 % of a bypassed instance (bounded, not measured) | A for audio, **breaks a live readout contract** | high | **Do not optimize** — maintainer decision (§9) |
 | A7-5 | Multiband LR4 bank SIMD | unmeasured | A only without FMA | high | **Consider later — blocked on the AVX2 ADR** |
@@ -385,7 +385,21 @@ block-size-invariance test added, or the Class-A claim is only this round's word
 **Met in v0.9.5:** the `AnamorphDspDump` twin diff was re-run on the product tree (32 scenarios,
 identical) and Test 39 is that block-size-invariance test, swept over four sample rates.
 
-### A7-2 — Remove the residual per-block term
+### A7-2 — Remove the residual per-block term — **[INVESTIGATED 2026-08-22]**
+
+**See [`PERF_AUDIT_A7-2_INVESTIGATION.md`](PERF_AUDIT_A7-2_INVESTIGATION.md). The direction proposed
+below is the one that should NOT be taken.** The residual term is 64 % memcpy at 48 kHz and 88 % at
+192 kHz; the rest (~4,800 Ir/block, identical at both rates) is per-block libm and meter work that is
+not this item's subject, so that is the floor. Two prototypes, both bit-exact over 180
+configurations: the double-buffer below (**−13.1 %** at 48 kHz/32, −37.9 % at 192 kHz/32) and a
+gather straight from the ring with no image at all (−11.4 % / −36.8 %). The double-buffer is 1–2
+points ahead on average and **loses on the number that matters**: it amortises the copy rather than
+removing it, so the worst block still pays the full 8,704 Ir — measured at one block in 81.6 at
+48 kHz/32 and **one in five** at 512-sample blocks. It also roughly doubles the history buffer and
+adds a second cross-block invariant, where the ring gather compacts zero times at every setting,
+frees the buffer, and deletes both cross-block flags. Not implemented this round: A7-0 is still
+unmet, and the recommended design is not the one scoped here.
+
 **Priority: after A7-1, and only if A7-0's numbers say small buffers still hurt.** A7-1 leaves a
 `memmove` of `decorrSamps` floats per block. A history kept as a linear double-buffer would remove it
 outright, but it restructures the module's storage rather than adding a fast path.

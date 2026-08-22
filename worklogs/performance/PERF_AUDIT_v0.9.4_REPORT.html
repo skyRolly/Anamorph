@@ -420,6 +420,10 @@ footer {
   <div class="col">
     <h4>What to do</h4>
     <ul class="plain">
+      <li><strong>A7-2 — <span class="chip human">Decision needed</span></strong> The follow-up this
+      report proposed was prototyped and measured, and the proposal turned out to be the weaker of two
+      options: it makes the average better and the worst block no better. The alternative is ready to
+      execute. See the roadmap below.</li>
       <li><strong>A7-1 (the VelvetNoise history slide) — <span class="chip now">Shipped v0.9.5</span></strong>
       One file, no hard-stop class, largest measured gain. The product tree reproduced every figure
       below to one decimal place, the audio is bit-identical on the committed twin dump plus a
@@ -673,10 +677,10 @@ footer {
         </tr>
         <tr>
           <td class="mono">A7-2</td>
-          <td>Remove the residual per-block term (ring-free double-buffer history)</td>
-          <td>~45&nbsp;% of what A7-1 leaves; unmeasured</td>
-          <td class="num">A expected</td><td class="num">medium</td>
-          <td><span class="chip later">Consider later</span></td>
+          <td>Remove the residual per-block term — <strong>measured both ways</strong>: the proposed double-buffer, and a ring gather with no image</td>
+          <td>double-buffer −13.1&nbsp;% @48k/32 but the worst block is unchanged; ring gather −11.4&nbsp;% with <strong>no</strong> spike</td>
+          <td class="num">A — proven</td><td class="num">low</td>
+          <td><span class="chip human">Proposal rejected</span></td>
         </tr>
         <tr>
           <td class="mono">A7-3</td>
@@ -837,14 +841,27 @@ footer {
     <article class="step">
       <div class="step-n">03</div>
       <div class="step-body">
-        <h3 class="step-h">A7-2 — remove the residual per-block term <span class="chip later">Conditional · next</span></h3>
-        <p>A7-1 leaves a copy of <code>decorrSamps</code> floats per block — measured at 13,502&nbsp;Ir
-        per block at 48&nbsp;kHz. A history
-        kept as a linear double-buffer would remove it outright, but that restructures the module's
-        storage rather than adding a fast path.</p>
+        <h3 class="step-h">A7-2 — remove the residual per-block term <span class="chip human">Investigated · proposal rejected</span></h3>
+        <p>A7-1 left a copy of <code>decorrSamps</code> floats per block — 13,502&nbsp;Ir at
+        48&nbsp;kHz, of which <strong>64&nbsp;% is that copy</strong> (88&nbsp;% at 192&nbsp;kHz); the
+        rest is per-block libm and meter work that is not this item's subject, and is its floor.
+        Two designs were prototyped and measured, both <strong>bit-exact over 180
+        configurations</strong>.</p>
+        <p><strong>The double-buffer proposed here is the weaker one.</strong> It is 1–2 points ahead
+        on average (−13.1&nbsp;% vs −11.4&nbsp;% at 48&nbsp;kHz/32) and loses on the number that
+        matters: it <em>amortises</em> the copy instead of removing it, so the worst block still pays
+        the full 8,704&nbsp;Ir — measured at one block in 81.6 at 48&nbsp;kHz/32 and
+        <strong>one in five</strong> at 512-sample blocks. A plug-in drops a buffer on its worst block,
+        not its average one. It also roughly doubles the history buffer and adds a second cross-block
+        invariant.</p>
+        <p><strong>Recommended instead: gather straight from the ring, with no linear image at all.</strong>
+        Each tap's read is 1–3 contiguous runs over the ring plus this block's own mids, so H5's
+        unit-stride property survives and the thing H5 built to get it goes away. −11.4&nbsp;% at
+        48&nbsp;kHz/32, −36.8&nbsp;% at 192&nbsp;kHz/32, <em>zero</em> compactions at every setting,
+        the buffer freed rather than grown, and both cross-block flags deleted rather than extended.</p>
         <dl class="kv">
-          <dt>Depends on</dt><dd>A7-1 landing first — it establishes the validity-flag invariant this builds on. And item 01, for evidence that the remainder still matters.</dd>
-          <dt>Outcome</dt><dd>The remaining ~45&nbsp;% of the original per-block term. Unmeasured — size it before scheduling.</dd>
+          <dt>Status</dt><dd>Investigated, prototyped, measured. <strong>Not implemented.</strong> Item 01 is still unmet, and the recommended design is not the one this item scoped — both are the maintainer's call.</dd>
+          <dt>Evidence</dt><dd><code>worklogs/performance/PERF_AUDIT_A7-2_INVESTIGATION.md</code>, including a ready-to-execute plan.</dd>
         </dl>
       </div>
     </article>
