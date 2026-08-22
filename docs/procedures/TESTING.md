@@ -96,10 +96,16 @@ H5 linear history image ACROSS blocks -- it is slid forward rather than re-gathe
 so the image is cross-block state, and cross-block state is only correct while every path that does
 not maintain it invalidates it. The test drives the module through one fixed schedule (engage, park,
 re-engage, transport stop, moving density) at **44.1 / 48 / 96 / 192 kHz**, once in 512-sample
-blocks and once in 32-sample blocks, and requires the two runs to be **bit-identical**: every piece
-of state here advances per SAMPLE, so the output is a function of the sample stream alone, and a
-stale image -- stale by the previous block's length -- perturbs the two runs differently and cannot
-survive the comparison. The same test passes unchanged against the pre-0.9.5 engine, so it asserts a
+blocks, once in 32-sample blocks and once through a **cycle of mixed sizes** (32, 128, 64, 256, 32 --
+summing to 512, so the events still land on a block boundary and every neighbouring pair differs),
+and requires all three to be **bit-identical**: every piece of state here advances per SAMPLE, so the
+output is a function of the sample stream alone, and a stale image -- stale by the previous block's
+length -- perturbs the runs differently and cannot survive the comparison. The mixed cycle is what
+exercises the slide arithmetic's real subject: `linHistSlide` carries the JUST-PROCESSED block's
+length, so a run whose blocks never change size could be correct with the offset confused for a
+constant. The comparison is made on BITS rather than with `==` -- `-Wfloat-equal` is at zero in the
+Clang baseline, and a float `==` is the wrong predicate for a bit-identity claim anyway, calling +0
+and -0 equal (which this module's own signed-zero algebra cares about) and NaN unequal to itself. The same test passes unchanged against the pre-0.9.5 engine, so it asserts a
 contract the module already had rather than one invented for the change. It **proves itself live**
 three ways: the engaged stretch must really decorrelate; the transport stop must really flush the
 wet (measured 15.4-25.2 % of the engaged figure with the stop, 90.6-128.9 % with the stop event

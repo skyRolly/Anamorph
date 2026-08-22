@@ -104,7 +104,16 @@ parameter ID, no serialization schema, no thread model and no DSP signal order e
 
 **Test 39** (`tests/dsp_tests.cpp`) drives the module through a fixed event schedule — engage, park,
 re-engage, transport stop, moving density — at **44.1, 48, 96 and 192 kHz**, once in 512-sample
-blocks and once in 32-sample blocks, and requires the two runs to be **bit-identical**.
+blocks, once in 32-sample blocks and once through a **cycle of mixed sizes** (32, 128, 64, 256, 32 —
+summing to 512, so the events still land on a block boundary and every neighbouring pair differs),
+and requires all three to be **bit-identical**.
+
+The mixed cycle was added on review and is the case that matters most: `linHistSlide` carries the
+JUST-PROCESSED block's length, so a run whose blocks never change size can be correct with the offset
+confused for a constant, and consecutive gather blocks of differing length are exactly what the slide
+arithmetic is about. Comparison is on BITS rather than `==` — `-Wfloat-equal` is at zero in the Clang
+baseline, and a float `==` is the wrong predicate for a bit-identity claim anyway: it calls +0 and −0
+equal, which this module's own signed-zero algebra cares about, and NaN unequal to itself.
 
 Block-length invariance is the right assertion because every piece of state in this module advances
 per sample, and H5's own contract is that the gathered sum equals the per-sample loop's "for any
@@ -131,7 +140,7 @@ figure, against **90.6–128.9 %** measured with the stop event removed and noth
 
 ### 2.3 Suites and lints
 
-`AnamorphTests` **174 checks, 0 failures** (162 before; Test 39 adds 12 — three checks × four sample
+`AnamorphTests` **178 checks, 0 failures** (162 before; Test 39 adds 16 — four checks × four sample
 rates). `AnamorphStateTests` **920 checks, 0 failures**. `check-realtime` 44 files / 0 violations —
 the new `std::copy` is a move over a `prepare()`-sized buffer, no allocation, no lock, no IO.
 `check-portability` 52 / 0. `check-docs` 104 files clean. `check-citations --self-test` 130 cases

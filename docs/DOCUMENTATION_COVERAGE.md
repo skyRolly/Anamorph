@@ -176,9 +176,10 @@ than a hypothetical.
 work per block… no single dominant item"*. That reproduces **exactly**, for the transparent default:
 3,581 Ir/block measured here. In the configuration a paying user runs it is **24,287 Ir/block, 6.8×
 larger**, and **20,369 of it (84 %) is `VelvetNoise::processBlock` alone**. The H5 tap-outer gather
-rebuilds a `decorrSamps`-long linear history image from the ring every block
-(`src/dsp/VelvetNoise.cpp:139-142`), independent of `numSamples` — 2,160 samples at 48 kHz, 8,640 at
-192 kHz. At 192 kHz / 32 it is **62.3 % of the whole engine**. The earlier closure missed it for a
+rebuilt a `decorrSamps`-long linear history image from the ring every block, independent of
+`numSamples` — 2,160 samples at 48 kHz, 8,640 at 192 kHz. That walk survives as the
+first-block-after-invalidation path (`src/dsp/VelvetNoise.cpp:180-181`), with the slide that replaced
+it directly above. At 192 kHz / 32 it is **62.3 % of the whole engine**. The earlier closure missed it for a
 mechanical reason worth recording: the gather is gated on `currentAmount > 0.0f || targetAmount >
 0.0f` (`:132-135`), and the default `algoAmount` is 0 — **measuring per-block cost at the transparent
 default measures the one configuration in which the dominant per-block item is switched off.**

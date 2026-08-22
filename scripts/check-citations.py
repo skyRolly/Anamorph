@@ -366,6 +366,18 @@ DELIBERATE_REAIMS = {
     # parenthetical after the anchor. Getting them content-checked means rewriting
     # the prose in three documents, which is a change about those documents and
     # not about this table.
+
+    # RE-AIMED 2026-08-22 by the A7-2 round, and it is the ordinary case this
+    # table exists for rather than anything new. The A7-1 change set cited
+    # `src/dsp/VelvetNoise.cpp:139-142` for the per-block ring walk; that same
+    # change set REPLACED those lines with the slide, so the anchor described
+    # code that no longer existed there and CI caught it against the branch's
+    # previous push. The walk survives as the first-block-after-invalidation
+    # branch, which is where the citation now points -- a correction, and a
+    # correction is textually indistinguishable from drift, so it is declared
+    # for its one transition. The expectation is the walk's own assignment.
+    ("docs/DOCUMENTATION_COVERAGE.md", "src/dsp/VelvetNoise.cpp:180-181"):
+        "linHist[(size_t) j] = midHist[",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the
@@ -1538,53 +1550,6 @@ def self_test():
     check("...and the document list is restored afterwards",
           "docs/NO_SUCH_DOC.md" in GLOSS_CHECKED_DOCS, False)
 
-    # --- 8e. A VERSIONED LINE IS EXCUSED, AND ONLY THAT LINE -----------------
-    # `VERSIONED_LINES` turns the base comparison off for one exact line, which
-    # is the only construct in this file that can make a REAL difference in a
-    # tracked file invisible. So the four things that keep it narrow are checked
-    # here rather than trusted to the comment that describes them.
-    saved_vl = dict(VERSIONED_LINES)
-    try:
-        VERSIONED_LINES.clear()
-        VERSIONED_LINES[("CMakeLists.txt", 14)] = "project(Anamorph VERSION"
-        check("the declared line is live on the real tree", verify_versioned_lines(), [])
-
-        # It must FAIL when the line stops being what it claims -- otherwise the
-        # entry is an exemption rather than a substituted assertion.
-        VERSIONED_LINES.clear()
-        VERSIONED_LINES[("CMakeLists.txt", 14)] = "this-token-is-not-on-line-14"
-        check("a token that is not there is reported", len(verify_versioned_lines()), 1)
-
-        # Out-of-range and unreadable are findings, never tracebacks -- the same
-        # rule section 8c applies to the gloss list.
-        VERSIONED_LINES.clear()
-        VERSIONED_LINES[("CMakeLists.txt", 10 ** 7)] = "x"
-        check("a line past the end of the file is reported", len(verify_versioned_lines()), 1)
-        VERSIONED_LINES.clear()
-        VERSIONED_LINES[("no/such/file.txt", 1)] = "x"
-        check("an unreadable file is reported, not raised", len(verify_versioned_lines()), 1)
-    finally:
-        VERSIONED_LINES.clear()
-        VERSIONED_LINES.update(saved_vl)
-    check("...and the table is restored afterwards",
-          VERSIONED_LINES.get(("CMakeLists.txt", 14)), "project(Anamorph VERSION")
-
-    # THE SUBSTITUTION IS KEYED ON `(path, line)`, so a declaration for one line
-    # cannot excuse its neighbour. Asserted structurally, because the alternative
-    # -- a table keyed by file -- is the mistake this shape exists to avoid.
-    check("the table is keyed by a (path, line) pair, not by a path",
-          all(isinstance(k, tuple) and len(k) == 2 and isinstance(k[1], int)
-              for k in VERSIONED_LINES), True)
-
-    # AND IT APPLIES ONLY TO AN ANCHOR THAT DID NOT MOVE. The substitution sits
-    # behind `lo == hi` in `anchor_ok`, so a re-aimed anchor -- the case
-    # `DELIBERATE_REAIMS` is for -- still goes through the base comparison. That
-    # guard is the difference between "this line's content is allowed to change"
-    # and "this line is not checked", and a rewrite that drops it would be
-    # invisible on a clean tree.
-    check("the versioned substitution is gated on the anchor not having moved",
-          read(__file__).count("if lo == hi and (tracked, lo) in VERSIONED_LINES:"), 2)
-
     # --- 8d. THE AIM CHECK MUST NOT DISABLE THE REPAIR PATH ------------------
     # Section 8c gave this tool a check on its own declarations. It was wired
     # in ahead of everything else and returned 2 for EVERY mode, which stopped
@@ -1704,6 +1669,53 @@ def self_test():
     paired = own_source.count("doc_fixable += 1")
     check("each drifted-citation increment has its per-document counterpart",
           (own_source.count("fixable += 1") - paired, paired), (2, 2))
+
+    # --- 8f. A VERSIONED LINE IS EXCUSED, AND ONLY THAT LINE -----------------
+    # `VERSIONED_LINES` turns the base comparison off for one exact line, which
+    # is the only construct in this file that can make a REAL difference in a
+    # tracked file invisible. So the four things that keep it narrow are checked
+    # here rather than trusted to the comment that describes them.
+    saved_vl = dict(VERSIONED_LINES)
+    try:
+        VERSIONED_LINES.clear()
+        VERSIONED_LINES[("CMakeLists.txt", 14)] = "project(Anamorph VERSION"
+        check("the declared line is live on the real tree", verify_versioned_lines(), [])
+
+        # It must FAIL when the line stops being what it claims -- otherwise the
+        # entry is an exemption rather than a substituted assertion.
+        VERSIONED_LINES.clear()
+        VERSIONED_LINES[("CMakeLists.txt", 14)] = "this-token-is-not-on-line-14"
+        check("a token that is not there is reported", len(verify_versioned_lines()), 1)
+
+        # Out-of-range and unreadable are findings, never tracebacks -- the same
+        # rule section 8c applies to the gloss list.
+        VERSIONED_LINES.clear()
+        VERSIONED_LINES[("CMakeLists.txt", 10 ** 7)] = "x"
+        check("a line past the end of the file is reported", len(verify_versioned_lines()), 1)
+        VERSIONED_LINES.clear()
+        VERSIONED_LINES[("no/such/file.txt", 1)] = "x"
+        check("an unreadable file is reported, not raised", len(verify_versioned_lines()), 1)
+    finally:
+        VERSIONED_LINES.clear()
+        VERSIONED_LINES.update(saved_vl)
+    check("...and the table is restored afterwards",
+          VERSIONED_LINES.get(("CMakeLists.txt", 14)), "project(Anamorph VERSION")
+
+    # THE SUBSTITUTION IS KEYED ON `(path, line)`, so a declaration for one line
+    # cannot excuse its neighbour. Asserted structurally, because the alternative
+    # -- a table keyed by file -- is the mistake this shape exists to avoid.
+    check("the table is keyed by a (path, line) pair, not by a path",
+          all(isinstance(k, tuple) and len(k) == 2 and isinstance(k[1], int)
+              for k in VERSIONED_LINES), True)
+
+    # AND IT APPLIES ONLY TO AN ANCHOR THAT DID NOT MOVE. The substitution sits
+    # behind `lo == hi` in `anchor_ok`, so a re-aimed anchor -- the case
+    # `DELIBERATE_REAIMS` is for -- still goes through the base comparison. That
+    # guard is the difference between "this line's content is allowed to change"
+    # and "this line is not checked", and a rewrite that drops it would be
+    # invisible on a clean tree.
+    check("the versioned substitution is gated on the anchor not having moved",
+          read(__file__).count("if lo == hi and (tracked, lo) in VERSIONED_LINES:"), 2)
 
     # --- 9. EVERY DECLARATION NAMES A SPELLING ITS DOCUMENT REALLY CARRIES ---
     # A declaration excuses a mismatch, so it is consulted ONLY when one occurs.

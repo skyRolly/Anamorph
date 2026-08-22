@@ -3126,16 +3126,25 @@ static void testVelvetLinearImageInvariance()
         { 235, kDensity,   0.9f },                                   // moving density
     };
 
-    auto run = [&] (int block)
+    // A run is driven by a CYCLE of block sizes, repeated. A single-element cycle
+    // is the fixed-size case; a multi-element one puts consecutive gather blocks
+    // of DIFFERENT lengths next to each other, which is the case the slide
+    // arithmetic is really about -- `linHistSlide` carries the just-processed
+    // block's length, so a run whose blocks never change size can be correct
+    // with the offset confused for a constant. Every cycle here sums to
+    // `kBigBlock`, so each event still lands on a block boundary in every run.
+    auto run = [&] (std::initializer_list<int> cycle)
     {
         anamorph::VelvetNoise v;
-        v.prepare (sr, kBigBlock);   // sized for the LARGER block in both runs
+        v.prepare (sr, kBigBlock);   // sized for the LARGEST block in any run
         v.reset();
 
         std::vector<float> outL ((size_t) kTotal), outR ((size_t) kTotal);
-        std::vector<float> bufL ((size_t) block), bufR ((size_t) block);
+        std::vector<float> bufL ((size_t) kBigBlock), bufR ((size_t) kBigBlock);
 
-        for (int start = 0; start < kTotal; start += block)
+        const std::vector<int> sizes (cycle);
+        std::size_t next = 0;
+        for (int start = 0; start < kTotal; )
         {
             for (const auto& e : events)
                 if (e.atBigBlock * kBigBlock == start)
@@ -3145,17 +3154,22 @@ static void testVelvetLinearImageInvariance()
                     else                           v.setTransportPlaying (e.value > 0.5f);
                 }
 
+            const int block = sizes[next++ % sizes.size()];
             std::copy (inL.begin() + start, inL.begin() + start + block, bufL.begin());
             std::copy (inR.begin() + start, inR.begin() + start + block, bufR.begin());
             v.processBlock (bufL.data(), bufR.data(), block);
-            std::copy (bufL.begin(), bufL.end(), outL.begin() + start);
-            std::copy (bufR.begin(), bufR.end(), outR.begin() + start);
+            std::copy (bufL.begin(), bufL.begin() + block, outL.begin() + start);
+            std::copy (bufR.begin(), bufR.begin() + block, outR.begin() + start);
+            start += block;
         }
         return std::pair<std::vector<float>, std::vector<float>> { outL, outR };
     };
 
-    const auto big   = run (kBigBlock);
-    const auto small = run (kSmall);
+    const auto big     = run ({ kBigBlock });
+    const auto small   = run ({ kSmall });
+    // 32 + 128 + 64 + 256 + 32 = 512: four distinct sizes, every neighbouring
+    // pair different, and the cycle lands back on the event grid every time.
+    const auto varying = run ({ 32, 128, 64, 256, 32 });
 
     // THE PREMISE, CHECKED FIRST so nothing below is vacuously true of silence:
     // the engaged stretch must actually have decorrelated something. Without
@@ -3172,24 +3186,44 @@ static void testVelvetLinearImageInvariance()
     std::printf ("  %6.0f Hz: engaged stretch max |side change| = %.4f\n",
                  sr, (double) maxSideDelta);
 
-    // THE INVARIANT.
-    int    firstDiff = -1;
-    double worst     = 0.0;
-    for (int i = 0; i < kTotal; ++i)
+    // THE INVARIANT, compared on BITS rather than with `==`. Two reasons, and the
+    // second is the substantive one: `-Wfloat-equal` is at zero in the Clang
+    // baseline and this file is first-party; and a float `==` is the wrong
+    // predicate for a bit-identity claim anyway -- it calls +0 and -0 equal
+    // (which the S5 signed-zero algebra in this very module cares about) and
+    // calls NaN unequal to itself.
+    auto sameBits = [] (float a, float b) noexcept
     {
-        const bool same = big.first[(size_t) i]  == small.first[(size_t) i]
-                       && big.second[(size_t) i] == small.second[(size_t) i];
-        if (! same)
+        std::uint32_t ua, ub;
+        std::memcpy (&ua, &a, sizeof (ua));
+        std::memcpy (&ub, &b, sizeof (ub));
+        return ua == ub;
+    };
+
+    auto compare = [&] (const char* what,
+                        const std::pair<std::vector<float>, std::vector<float>>& other)
+    {
+        int    firstDiff = -1;
+        double worst     = 0.0;
+        for (int i = 0; i < kTotal; ++i)
         {
-            worst = std::max (worst, (double) std::abs (big.first[(size_t) i] - small.first[(size_t) i]));
-            worst = std::max (worst, (double) std::abs (big.second[(size_t) i] - small.second[(size_t) i]));
-            if (firstDiff < 0) firstDiff = i;
+            const bool same = sameBits (big.first[(size_t) i],  other.first[(size_t) i])
+                           && sameBits (big.second[(size_t) i], other.second[(size_t) i]);
+            if (! same)
+            {
+                worst = std::max (worst, (double) std::abs (big.first[(size_t) i]  - other.first[(size_t) i]));
+                worst = std::max (worst, (double) std::abs (big.second[(size_t) i] - other.second[(size_t) i]));
+                if (firstDiff < 0) firstDiff = i;
+            }
         }
-    }
-    check (firstDiff < 0, "512-sample and 32-sample runs are bit-identical");
-    if (firstDiff >= 0)
-        std::printf ("  [FAIL] %.0f Hz: first difference at sample %d (block %d of 512); "
-                     "worst |delta| %.3e\n", sr, firstDiff, firstDiff / kBigBlock, worst);
+        check (firstDiff < 0, what);
+        if (firstDiff >= 0)
+            std::printf ("  [FAIL] %.0f Hz %s: first difference at sample %d (block %d of 512); "
+                         "worst |delta| %.3e\n", sr, what, firstDiff, firstDiff / kBigBlock, worst);
+    };
+
+    compare ("512-sample and 32-sample runs are bit-identical", small);
+    compare ("a run of MIXED block sizes is bit-identical to the 512-sample one", varying);
 
     // A NON-GATHER PATH REALLY RAN, asserted rather than assumed. The image is
     // only safe while every path that does not maintain it invalidates it, so a
