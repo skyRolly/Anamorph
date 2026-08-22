@@ -245,8 +245,8 @@ changes. If the maintainer un-gates it, §8 is the plan.
 |---|---|
 | **A7-0** — bench on a named machine, fill the `PERFORMANCE_BUDGET.md` rows | **open**, and gating A7-2. RISK-002 open. |
 | **A7-1** | DONE (v0.9.5). |
-| **A7-2** | **investigated; not implemented.** Proposal (A) rejected on measurement; alternative (B) recommended and planned. **A7-2T is now in the tree**; awaiting A7-0 and a maintainer decision on the design substitution. |
-| **A7-2T** — commit the path-equivalence oracle (§8 step 6) | **DONE.** `testVelvetGatherEqualsPerSampleLoop` (Test 40), 24 checks, proven live on a seeded one-sample tap-delay error (20 of 20 fail). A7-2B's remaining gate is A7-0. |
+| **A7-2** | **IMPLEMENTED 2026-08-22 as variant B** — see `PERF_AUDIT_A7-2B_A7-5E_IMPLEMENTATION.md`. Previously: Proposal (A) rejected on measurement; alternative (B) recommended and planned. **A7-2T is now in the tree**; awaiting A7-0 and a maintainer decision on the design substitution. |
+| **A7-2T** — commit the path-equivalence oracle (§8 step 6) | **DONE (PR #129), and spent: A7-2B landed against it.** `testVelvetGatherEqualsPerSampleLoop` (Test 40), 24 checks, proven live on a seeded one-sample tap-delay error (20 of 20 fail). A7-2B's remaining gate is A7-0. |
 | **A7-5** — multiband LR4 SIMD | open, blocked on an AVX2 ADR (with W5-D). The ADR should not be drafted until the universal binary's two slices are diffed — `PERF_AUDIT_A7-2_A7-5_A7-9_INVESTIGATION.md` Part II. |
 | A7-4 · A7-8 | maintainer decisions, unchanged. |
 | A7-3 · A7-6 · A7-7 | not scheduled, unchanged. |

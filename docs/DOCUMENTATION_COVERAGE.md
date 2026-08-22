@@ -263,7 +263,7 @@ the amount reaches zero), so it is filed as **A7-9** with its measurement rather
 
 **A7-9 is wider than that entry says, and the follow-up round measured how much.** The stall is not
 a `VelvetNoise` quirk but a closed form, `≈ FLT_MIN / k` for a glide of rate `k`, and **three**
-shipped parked fast paths rest on the same claim: `src/dsp/VelvetNoise.cpp:233-235`,
+shipped parked fast paths rest on the same claim: `src/dsp/VelvetNoise.cpp:229-231`,
 `src/dsp/HaasProcessor.cpp:51-53` and `src/dsp/ChorusEngine.cpp:73-74` each say the one-pole flushes
 to true zero, and each gates on a **value** test that a stalled glide defeats. (Velvet's *density*
 gate, three lines above its amount gate, tests the **fixpoint** instead and is therefore immune —
@@ -316,9 +316,10 @@ work per block… no single dominant item"*. That reproduces **exactly**, for th
 3,581 Ir/block measured here. In the configuration a paying user runs it is **24,287 Ir/block, 6.8×
 larger**, and **20,369 of it (84 %) is `VelvetNoise::processBlock` alone**. The H5 tap-outer gather
 rebuilt a `decorrSamps`-long linear history image from the ring every block, independent of
-`numSamples` — 2,160 samples at 48 kHz, 8,640 at 192 kHz. That walk survives as the
-first-block-after-invalidation path (`src/dsp/VelvetNoise.cpp:180-181`), with the slide that replaced
-it directly above. At 192 kHz / 32 it is **62.3 % of the whole engine**. The earlier closure missed it for a
+`numSamples` — 2,160 samples at 48 kHz, 8,640 at 192 kHz. That walk survived the A7-1 round as
+the first-block-after-invalidation path, with the slide that replaced it directly above; **A7-2B has
+since deleted both**, and the image with them — the ring is read in place, so there is no image to
+refill and nothing to carry across a block (see the A7-2B entry at the end of this document). At 192 kHz / 32 it is **62.3 % of the whole engine**. The earlier closure missed it for a
 mechanical reason worth recording: the gather is gated on `currentAmount > 0.0f || targetAmount >
 0.0f` (`:132-135`), and the default `algoAmount` is 0 — **measuring per-block cost at the transparent
 default measures the one configuration in which the dominant per-block item is switched off.**
@@ -5936,7 +5937,9 @@ lengths, with no reference implementation anywhere in it.
 **The correction this round made to its own record.** PR #128 stated that a seeded one-sample
 tap-delay error *passes* Test 39 at all four sample rates. That was measured on a session-local
 harness which reproduced Test 39's comparison but not its schedule, and reported as Test 39's
-result. Re-measured against the committed test, seeded in `src/dsp/VelvetNoise.cpp:190`:
+result. Re-measured against the committed test, with the seed applied to the gather's tap source
+pointer — the pre-A7-2B `linHist.data() + (decorrSamps - pos[t])` line, which A7-2B has since
+deleted along with the image, so it carries no line citation:
 
 | build under test | Test 39 | first difference |
 |---|---|---|
@@ -5952,7 +5955,7 @@ was blind was not.
 
 **The oracle, and why it costs no product change.** The module already holds two implementations of
 the same arithmetic. The gather's eligibility gate ends with `numSamples <= (int) accum.size()`
-(`src/dsp/VelvetNoise.cpp:148`) — a clause whose stated purpose is direct callers rather than the
+(`src/dsp/VelvetNoise.cpp:155`) — a clause whose stated purpose is direct callers rather than the
 engine — and `accum` is sized from `prepare()`'s `maxBlockSize` alone. An instance prepared for a
 **smaller** block therefore runs the per-sample loop over the same audio, and everything else about
 it is identical: ring, tap positions and signs, weights, envelope/gate coefficients and stop step
@@ -5981,3 +5984,66 @@ comparison being vacuously true.
 sample rates), 0 failures. `AnamorphStateTests` unchanged. `check-docs` clean;
 `check-citations --self-test` and `--check` green. No product code changed: `src/` is byte-identical
 to `main` in this round.
+
+## A7-2B implemented, A7-5E answered, A7-9 re-verified
+
+**A7-2B (Class A, measured).** `VelvetNoise` no longer builds a linear history image. H5 built it so
+each tap could read one unit-stride run and A7-1 slid it forward each block; but the ring is already
+unit-stride in `i` and merely wraps, so each tap now reads `midHist` in place as 1–3 unit-stride
+runs plus this block's own Mids. `linHist`, the `linHistSlide` offset, its clear-on-entry, its
+re-arm and its allocation are all deleted — **the module now carries no cross-block scratch state**,
+so the invalidation rule A7-1 had to defend no longer has anything to defend.
+
+Bit-identical on both committed instruments: **32/32 twin-dump scenarios** and **0 mismatches over
+180 configurations**, with Test 40 comparing the gather against the per-sample loop directly — the
+axis Test 39 cannot see, and the reason A7-2T had to land first. Engine cost **−12.2 % at
+48 kHz/32, −37.2 % at 192 kHz/32, −12.8 % at 96 kHz/64**; the fixed per-block term fell 12,957 →
+5,546 Ir at 48 kHz and **39,373 → 6,104 Ir at 192 kHz**. The shape is the result: A7-1's term was
+proportional to `decorrSamps` and grew with the sample rate, and this one does not — at a 32-sample
+block the 48→192 kHz penalty falls from **39.8 % to 0.04 %**.
+
+**One corner is worse and is recorded rather than left to be found:** at 44.1 kHz / 32 with Density
+at maximum the change is **+1.0 %**, because the image A7-1 slid is smallest at the lowest rate
+while the new per-tap preamble is rate-independent and paid once per active tap. A no-wrap fast path
+in the split holds it there — without it the same point measures +3.0 %, and the default-density
+point is −0.2 % rather than +0.9 %.
+
+Test 39 was **renamed** `testVelvetLinearImageInvariance` → `testVelvetBlockLengthInvariance` and its
+rationale rewritten: it was named for a structure this change deletes. The assertion is unchanged and
+still earns its place — it is about the module's contract rather than that mechanism — but a name
+that outlives its subject is the drift this repository is written against.
+
+**A7-5E — the cross-slice question, answered by inference.** The proposed experiment needed a macOS
+runner; this container is x86-64 Linux with no aarch64 emulator, so the question was decided in two
+measured halves instead. Cross-compiling the shipped DSP sources to aarch64 yields **308 FMA
+instructions across the eight modules against 0 on the frozen x86-64 baseline** — AArch64's base ISA
+has `FMLA` unconditionally, so `a*b+c` contracts with no flag, while x86-64 has no FMA for the same
+permissive default to use. And with the ISA held fixed at `-march=haswell`, **contraction alone
+changes 32/32 dump scenarios** while **vectorization alone changes nothing** (0/32, and 0 of 180
+configurations). So the two shipped slices already produce different DSP output, and the numerics
+contract is already architecture-dependent — ADR-0021's freeze protects the x86-64 side only.
+The claim rests on codegen inspection, not execution; the confirming one-step CI diff stays open.
+
+That separation **corrects the A7-5 investigation's attribution** — it named contraction as the
+mechanism without separating it from vectorization — and it changes the AVX2 decision's shape:
+**66 % of the win is Class A**, `-march=haswell -ffp-contract=off` measuring −17.2 % engine-wide
+with 32/32 and 180/180 identical, against −25.8 % for the Class-B variant. An earlier `-mfma`-only
+attempt is recorded as vacuous: GCC emitted 0 FMA instructions at that flag, so it reported
+IDENTICAL for the wrong reason.
+
+**A7-9 re-verified, and its economics changed.** The stall mechanism is unchanged (`≈ FLT_MIN / k`,
+value-test gates in all three modules, Chorus's threshold scaling with the rate), and the residual
+bound is unchanged at **4.476e-36**. But the cost of a missed park is the cost of the path the module
+is stuck on, and A7-2B made that path cheap: Velvet's penalty at 192 kHz/32 fell from **+2,372 % to
++252 %**, i.e. 37,951 → 4,032 Ir/block, an **89 % reduction**. A7-9 is therefore **no longer the
+largest item on the roadmap**, and the priority inside it has moved to `ChorusEngine` (+14,220
+Ir/block at 48 kHz/128, now the largest contributor). The three false "flushes to true zero" comments
+are filed separately as **A7-9C**: that correction is Class A, is required whether or not the
+optimization is approved, and should not wait on a numerics decision it does not need.
+
+**Verification.** `AnamorphTests` **202 checks** / 0 failures (Test 39 renamed, Test 40 unchanged);
+`AnamorphStateTests` 920 / 0; ASan + UBSan + `local-bounds` + `pointer-overflow` with
+`detect_leaks=1`: 200 checks, **0 diagnostics**; `AnamorphDspDump --self-check` passed; `check-docs`
+107 files clean; `check-citations` self-test and `--check` green. Wall-clock is quoted nowhere in
+this round: the same binary and workload measured 292 ms in the previous round and 196 ms in this
+one, so only Ir is treated as a datum.

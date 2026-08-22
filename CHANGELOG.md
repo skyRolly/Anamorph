@@ -15,6 +15,18 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 
 ## [0.9.5] — 2026-08-22
 ### Changed
+- **Lower CPU with Velvet Noise selected at high sample rates, and the sound is unchanged.** The
+  change above stopped Velvet Noise rebuilding its ~45 ms decorrelation window every block by
+  carrying it forward instead; this one removes the private copy of the window altogether. The
+  plug-in already keeps that audio in a circular buffer, and it now reads each decorrelation tap
+  straight out of it. What is left costs the same whatever the sample rate, where before it grew
+  with it: at a 32-sample buffer the penalty for running at 192 kHz instead of 48 kHz drops from
+  about 40 % to nothing measurable. Biggest effect at high rates and small buffers — about a third
+  less work at 192 kHz with a 32-sample buffer, about an eighth at 48 kHz — and at 44.1 kHz, where
+  there was least to save, it is a wash. Bit-identical output: the same 32-scenario dump and the
+  same 180 configurations as above, plus a new self-test that checks the fast path against the
+  plain one directly. No parameter, preset or latency change.
+  `worklogs/performance/PERF_AUDIT_A7-2_A7-5_A7-9_INVESTIGATION.md`.
 - **Lower CPU with Velvet Noise selected — most at small buffer sizes and high sample rates, and the
   sound is unchanged.** Velvet Noise builds its decorrelation from a ~45 ms window of recent audio.
   Every processing block it was rebuilding a private copy of that whole window from scratch, and the

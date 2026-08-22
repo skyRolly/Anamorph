@@ -47,9 +47,9 @@ void VelvetNoise::prepare (double sampleRate, int maxBlockSize, unsigned seed)
     // Transport-stop tail fade: ~4 ms, matching the engine's switch duck (#4).
     stopStep = 1.0f / (float) std::max (1.0, 0.004 * sr);
 
-    // H5 gather scratch (see processBlock): linear history + per-sample tap sums.
+    // H5 gather scratch (see processBlock): this block's Mids + per-sample tap
+    // sums. A7-2B removed the linear history image; the ring IS the history.
     const int maxN = std::max (1, maxBlockSize);
-    linHist.assign ((size_t) (decorrSamps + maxN), 0.0f);
     accum.assign ((size_t) maxN, 0.0f);
     midBlk.assign ((size_t) maxN, 0.0f);
 
@@ -59,10 +59,6 @@ void VelvetNoise::prepare (double sampleRate, int maxBlockSize, unsigned seed)
 
 void VelvetNoise::reset()
 {
-    // A7-1: the linear image mirrors the ring, and this flushes the ring. It
-    // runs BETWEEN blocks -- after `processBlock` armed the offset -- so the
-    // clear-on-entry rule does not cover it and this line is load-bearing.
-    linHistSlide = 0;
     std::fill (midHist.begin(), midHist.end(), 0.0f);
     writePos = 0;
     env = 0.0f;
@@ -100,29 +96,40 @@ void VelvetNoise::processBlock (float* left, float* right, int numSamples) noexc
     constexpr float dSmooth = 0.0015f; // glide density
     constexpr float aSmooth = 0.0015f; // glide wet amount
 
-    // A7-1, and the ordering is the safety property rather than a style choice:
-    // the slide offset is TAKEN and CLEARED here, before any path can run. The
-    // gather path below is the only place that re-arms it, so every other exit
-    // from this function -- parked, general, stop fade, and any path a later
-    // round adds -- leaves the image invalid by default. The alternative (clear
-    // it on each non-gather path) is one `return` away from a stale read that
-    // would show up only in the first block after the mistake.
-    const int slide = linHistSlide;
-    linHistSlide = 0;
-
-    // Tap-outer gather fast path (H5, Wave 2). The 64 random-index history
-    // reads per sample (45.6 % of the row's D1 read misses) become one
-    // contiguous unit-stride run per tap over a LINEAR image of the history:
-    // linHist = [last decorrSamps ring samples | this block's mids]. Sample i,
-    // tap t reads linHist[decorrSamps + i - pos[t]] -- exactly the value the
-    // ring read (writePos_i - pos[t]) & histMask sees in the loop below, for
-    // any block length (the ring's own writes this block only ever alias reads
-    // of this block's earlier mids, which the linear image also provides).
-    // Bit-exactness: accum[i] adds w*hist in the SAME ascending-t order the
-    // per-sample loop uses, starting from the same +0 (zero-fill first -- an
-    // assign-first form could flip the signed zero the S5 algebra relies on);
-    // the per-sample pass below then runs the identical envelope/glide/output
-    // arithmetic, only substituting the precomputed sum.
+    // Tap-outer gather fast path (H5, Wave 2; read straight from the ring since
+    // A7-2B). The 64 random-index history reads per sample (45.6 % of the row's
+    // D1 read misses) become CONTIGUOUS unit-stride runs per tap.
+    //
+    // WHERE TAP t's HISTORY LIVES. For sample i the per-sample loop below reads
+    // midHist[(writePos_i - pos[t]) & histMask]. While i < k (= pos[t]) that
+    // slot was written before this block began; from i >= k it is this block's
+    // own mid_{i-k}, which the ring does not hold yet and `midBlk` does. So the
+    // run splits at i == k: a RING portion of min(k, numSamples) samples
+    // starting at (writePos - k) & histMask, emitted as 1-2 runs bounded by the
+    // ring end, then a `midBlk` tail. Never more than 3 runs, all unit-stride.
+    //
+    // WHY THE RING MAY BE READ IN BULK, BEFORE THE PER-SAMPLE LOOP WRITES IT.
+    // The read at sample i could only collide with one of this block's own
+    // writes if (i - k) + ringSize <= i - 1, i.e. ringSize <= k - 1. prepare()
+    // clamps pos[] to [1, decorrSamps-1] and sizes the ring to at least
+    // decorrSamps + 5, so k < ringSize always and the collision is impossible at
+    // every block length and sample rate -- including numSamples greater than
+    // decorrSamps, and greater than the ring itself.
+    //
+    // TWO SPELLINGS ARE FORBIDDEN, both measured (PERF_AUDIT_A7-2_A7-5_A7-9):
+    // taking the ring run as `k` rather than min(k, numSamples) overruns
+    // `accum` on every small block (ASan catches it); basing the tail on
+    // `midBlk.data() - k` forms a pointer before the object, which is UB that
+    // ASan + UBSan + local-bounds + pointer-overflow together do NOT catch. The
+    // tail is indexed as midBlk[i - k] with i >= k for that reason.
+    //
+    // Bit-exactness: the split is along i, not along t, so accum[i] still adds
+    // w*hist in the SAME ascending-t order the per-sample loop uses, starting
+    // from the same +0 (zero-fill first -- an assign-first form could flip the
+    // signed zero the S5 algebra relies on); the per-sample pass below then runs
+    // the identical envelope/glide/output arithmetic, only substituting the
+    // precomputed sum. Guarded by Test 40, which compares this path against the
+    // per-sample loop directly (testVelvetGatherEqualsPerSampleLoop).
     // Eligibility (block-wise, per the Wave-2 design):
     //  * not stopping -- the stop fade flushes the ring mid-block; that path
     //    keeps the original loop verbatim (it can only assert between blocks);
@@ -150,47 +157,40 @@ void VelvetNoise::processBlock (float* left, float* right, int numSamples) noexc
         for (int i = 0; i < numSamples; ++i)
             midBlk[(size_t) i] = (left[i] + right[i]) * 0.5f;
 
-        // The tail this block needs is the PREVIOUS image, shifted (A7-1). That
-        // image held, at index k, the mid at ring position
-        // `writePos_prev - decorrSamps + k`; this block wants ring positions
-        // `writePos - decorrSamps .. writePos - 1`, and `writePos` advanced by
-        // exactly `slide` samples since (one per sample of that block). So the
-        // wanted tail is `[slide, slide + decorrSamps)` of the old image --
-        // `std::copy` leftwards, which is defined here because the destination
-        // is strictly before the source range whenever `slide > 0`.
-        //
-        // BIT-EXACT BY CONSTRUCTION, not by argument: it moves the same floats
-        // the ring walk would have re-read. Every entry it carries forward was
-        // either gathered from the ring by an earlier block or written into the
-        // image from `midBlk[i]` -- the same value the per-sample loop stored
-        // into `midHist[writePos]` for that sample.
-        //
-        // WHY IT IS WORTH A STATE FLAG. The walk it replaces is `decorrSamps`
-        // long and independent of `numSamples` -- 2160 samples at 48 kHz, 8640
-        // at 192 kHz -- so it was a fixed ~20k instructions per block at 48 kHz
-        // and ~79k at 192 kHz, dwarfing the per-sample work at small buffers
-        // (measured 62 % of the whole engine at 192 kHz / 32 samples). H5's
-        // unit-stride gather is unchanged and still the point; only its refill
-        // stopped being rebuilt from scratch each block.
-        // Evidence: worklogs/performance/PERF_AUDIT_v0.9.4_INVESTIGATION.md.
-        if (slide > 0)
-            std::copy (linHist.begin() + slide, linHist.begin() + slide + decorrSamps,
-                       linHist.begin());
-        else
-            for (int j = 0; j < decorrSamps; ++j)
-                linHist[(size_t) j] = midHist[(size_t) ((writePos - decorrSamps + j) & histMask)];
-
-        std::copy (midBlk.begin(), midBlk.begin() + numSamples,
-                   linHist.begin() + decorrSamps);
-
         std::fill (accum.begin(), accum.begin() + numSamples, 0.0f);
+        const float* const ring  = midHist.data();
+        const int          ringN = histMask + 1;
         for (int t = 0; t < activeTaps; ++t)
         {
-            const float  w   = weight[(size_t) t];
-            const float* src = linHist.data() + (decorrSamps - pos[(size_t) t]);
-            float*       acc = accum.data();
-            for (int i = 0; i < numSamples; ++i)
-                acc[i] += w * src[i];
+            const float w = weight[(size_t) t];
+            float*      acc = accum.data();
+            const int   k = pos[(size_t) t];
+
+            const int fromRing = std::min (k, numSamples);
+            const int r0 = (writePos - k) & histMask;
+            if (r0 + fromRing <= ringN)
+            {
+                // The common case: the ring portion does not cross the origin,
+                // so it is ONE run and the wrap bookkeeping is pure overhead.
+                const float* src = ring + r0;
+                for (int i = 0; i < fromRing; ++i)
+                    acc[i] += w * src[i];
+            }
+            else
+            {
+                int done = 0, r = r0;
+                while (done < fromRing)
+                {
+                    const int    run = std::min (fromRing - done, ringN - r);
+                    const float* src = ring + r;
+                    for (int i = 0; i < run; ++i)
+                        acc[done + i] += w * src[i];
+                    done += run;
+                    r = (r + run) & histMask;
+                }
+            }
+            for (int i = fromRing; i < numSamples; ++i)
+                acc[i] += w * midBlk[(size_t) (i - k)];
         }
 
         for (int i = 0; i < numSamples; ++i)
@@ -222,10 +222,6 @@ void VelvetNoise::processBlock (float* left, float* right, int numSamples) noexc
 
             writePos = (writePos + 1) & histMask;
         }
-        // The image is now `[tail | this block's mids]` and `writePos` advanced
-        // by `numSamples`, which is precisely the offset the next block needs.
-        // This is the ONE place that re-arms it (A7-1).
-        linHistSlide = numSamples;
         return;
     }
 

@@ -3051,31 +3051,37 @@ static void testProcessIsAllocationFree()
 
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
-static void testVelvetLinearImageInvariance()
+static void testVelvetBlockLengthInvariance()
 {
-    std::printf ("Test 39: Velvet's H5 linear history image is block-length- and "
-                 "transition-safe (A7-1)\n");
+    std::printf ("Test 39: Velvet's output is block-length- and transition-safe "
+                 "(A7-1, A7-2B)\n");
 
-    // WHAT THIS PROTECTS. `VelvetNoise` builds a LINEAR image of its Mid history
-    // so each velvet tap reads one unit-stride run (H5, Wave 2). Since A7-1 that
-    // image is SLID forward from the previous block instead of re-gathered from
-    // the ring, which makes it cross-block state -- and cross-block state is only
-    // correct while every path that does NOT leave the image in its documented
-    // shape invalidates it. `processBlock` clears the offset on entry and only
-    // the gather path re-arms it, so the property below is what says that rule is
-    // actually being honoured, including by paths a later round adds.
+    // WHAT THIS PROTECTS, AND WHY IT OUTLIVED THE THING IT WAS WRITTEN FOR.
+    // Written for A7-1, when `VelvetNoise` kept a LINEAR image of its Mid
+    // history and SLID it forward each block: that made the image cross-block
+    // state, correct only while every path that did not maintain it invalidated
+    // it. A7-2B has since deleted the image and the offset with it -- the ring
+    // is read in place, so there is no carried state left to go stale. The
+    // assertion below is unchanged and still earns its place, because it is
+    // about the MODULE's contract rather than about that one mechanism: it was
+    // green against the pre-A7-1 engine, it caught a wrong slide and a missing
+    // invalidation while the slide existed, and it now guards the ring split's
+    // block-anchored arithmetic. Test 40 is the complementary one -- it compares
+    // the gather against the per-sample loop, which is the axis this test cannot
+    // see. (The test is named for block-length invariance rather than for any
+    // implementation, precisely so the next mechanism does not orphan the name.)
     //
     // WHY BLOCK-LENGTH INVARIANCE IS THE RIGHT ASSERTION. Every piece of state in
     // this module advances per SAMPLE -- the two glides, the presence env, the
     // gate, the stop machine, the ring write -- and H5's own contract is that the
     // gathered sum equals the per-sample loop's "for any block length". So the
     // module's output is a function of the SAMPLE STREAM alone, and the same
-    // audio driven at 32 and at 512 samples must land on identical BITS. A stale
-    // image is stale by the previous block's length, so it perturbs the two runs
-    // differently and cannot survive this comparison -- which is precisely the
-    // failure mode the offset exists to prevent. It also re-asserts the older H5
-    // and Wave-5 contracts for free: both were written to be block-length
-    // agnostic and nothing was checking it.
+    // audio driven at 32 and at 512 samples must land on identical BITS. Any
+    // per-block bookkeeping that is wrong BY THE BLOCK LENGTH -- a stale slide
+    // offset while A7-1's image existed, a mis-split ring run now -- perturbs
+    // the two runs differently and cannot survive this comparison. It also
+    // re-asserts the older H5 and Wave-5 contracts for free: both were written
+    // to be block-length agnostic and nothing was checking it.
     juce::ScopedNoDenormals noDenormals; // FTZ, exactly like the real audio thread
 
     // SWEPT OVER SAMPLE RATE because the image's length is `round(0.045 * sr)`
@@ -3128,10 +3134,11 @@ static void testVelvetLinearImageInvariance()
 
     // A run is driven by a CYCLE of block sizes, repeated. A single-element cycle
     // is the fixed-size case; a multi-element one puts consecutive gather blocks
-    // of DIFFERENT lengths next to each other, which is the case the slide
-    // arithmetic is really about -- `linHistSlide` carries the just-processed
-    // block's length, so a run whose blocks never change size can be correct
-    // with the offset confused for a constant. Every cycle here sums to
+    // of DIFFERENT lengths next to each other. That was the case A7-1's slide
+    // arithmetic turned on -- the offset carried the just-processed block's
+    // length, so a run of equal-sized blocks could be correct with it confused
+    // for a constant -- and it is now what varies the ring split's run lengths
+    // and the phase of the wrap between neighbouring blocks. Every cycle here sums to
     // `kBigBlock`, so each event still lands on a block boundary in every run.
     auto run = [&] (std::initializer_list<int> cycle)
     {
@@ -3225,11 +3232,11 @@ static void testVelvetLinearImageInvariance()
     compare ("512-sample and 32-sample runs are bit-identical", small);
     compare ("a run of MIXED block sizes is bit-identical to the 512-sample one", varying);
 
-    // A NON-GATHER PATH REALLY RAN, asserted rather than assumed. The image is
-    // only safe while every path that does not maintain it invalidates it, so a
-    // schedule that never left the gather path would leave that rule
-    // unexercised and the bit comparison above would pass on a build with no
-    // invalidation at all. The transport stop is the observable: it is
+    // A NON-GATHER PATH REALLY RAN, asserted rather than assumed. A schedule
+    // that never left the gather path would compare two runs of the same one
+    // path and prove much less than it appears to; the mixed-path crossings are
+    // also what made this test able to see A7-2T's seeded delay error at all
+    // (Test 40 covers that axis properly). The transport stop is the observable: it is
     // implemented ONLY in the general per-sample loop, where it fades the wet
     // out over ~4 ms and then FLUSHES the history and re-arms the presence gate
     // -- so a window shortly after it must carry far less decorrelation than the
@@ -3307,21 +3314,22 @@ static void testVelvetGatherEqualsPerSampleLoop()
     // contains two independent implementations of the same arithmetic: the H5
     // block gather and the general per-sample loop, which H5's own contract says
     // must agree for any block length. The gather's eligibility gate ends with
-    // `numSamples <= (int) accum.size()` (VelvetNoise.cpp:148) -- a guard whose
+    // `numSamples <= (int) accum.size()` (VelvetNoise.cpp:155) -- a guard whose
     // stated purpose is direct callers rather than the engine -- and `accum` is
     // sized from `prepare()`'s `maxBlockSize` alone. So an instance prepared for
     // a SMALLER block runs the per-sample loop over the very same audio, and
     // everything else about it is identical: the ring, the tap positions and
     // signs, the weights, the envelope and gate coefficients and the stop step
     // all derive from the sample rate and the seed, never from the block size
-    // (VelvetNoise.cpp:14-45). `linHist`, `accum` and `midBlk` are the only
-    // block-sized state, and the per-sample loop touches none of them.
+    // (VelvetNoise.cpp:14-45). `accum` and `midBlk` are the only block-sized
+    // state, and the per-sample loop touches neither.
     //
-    // WHY THIS IS THE GATE FOR A7-2. A7-2B replaces the linear image with a
-    // 1-3-run split read straight from the ring. That rewrite is bit-identical
-    // when it is right and silently wrong-by-a-constant-delay when it is not,
-    // which is the one shape the existing suite cannot see. This test must be
-    // green BEFORE that change lands, not alongside it.
+    // WHY THIS IS THE GATE FOR A7-2, AND IT HAS NOW BEEN SPENT. A7-2B replaced
+    // the linear image with a 1-3-run split read straight from the ring. That
+    // rewrite is bit-identical when it is right and silently
+    // wrong-by-a-constant-delay when it is not, which is the one shape the rest
+    // of the suite cannot see. It landed against this test, and this test is
+    // what says the two paths still agree.
     //
     // WHAT IS NOT ASSERTED, said out loud. There is no output-observable way to
     // prove from outside which path an instance took, because the two paths are
@@ -3515,7 +3523,7 @@ int main()
     testMsSoloInputIsolation();
     testMatchInjectRestore();
     testProcessIsAllocationFree();
-    testVelvetLinearImageInvariance();
+    testVelvetBlockLengthInvariance();
     testVelvetGatherEqualsPerSampleLoop();
     testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)
 
