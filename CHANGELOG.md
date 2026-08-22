@@ -13,6 +13,23 @@ Source. Until then every entry cites a commit SHA or a PR. Entries for the
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
+## [0.9.5] — 2026-08-22
+### Changed
+- **Lower CPU with Velvet Noise selected — most at small buffer sizes and high sample rates, and the
+  sound is unchanged.** Velvet Noise builds its decorrelation from a ~45 ms window of recent audio.
+  Every processing block it was rebuilding a private copy of that whole window from scratch, and the
+  cost of doing so depends on the window — not on how much audio the block actually contains. So the
+  smaller your buffer, the more often you paid it; and the higher your sample rate, the bigger the
+  window and the more each one cost. At 192 kHz with a 32-sample buffer that rebuild had grown to
+  most of the plug-in's work. It now carries the window forward from the previous block instead of
+  rebuilding it. Measured reduction in the engine's total instruction count: **−14 % at 48 kHz with a
+  32-sample buffer, −32 % at 192 kHz with a 32-sample buffer, −8 % at 96 kHz / 128, −5 % at
+  48 kHz / 128, −2.5 % at 48 kHz / 256**. Nothing else changes: the audio is **bit-identical**,
+  proven by the 32-scenario engine twin dump and by a 180-configuration sweep across every algorithm,
+  four sample rates and five buffer sizes, and the reported latency, parameters and saved state are
+  untouched.
+  Evidence: PR #127. [Verified]
+
 ## [0.9.4] — 2026-08-21
 ### Fixed
 - **A tooltip no longer shows the wrong control's text after it moves.** Hover a Settings control,

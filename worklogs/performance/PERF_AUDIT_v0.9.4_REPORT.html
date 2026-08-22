@@ -361,13 +361,14 @@ footer {
   <div class="eyebrow">
     <span>Performance audit</span><span class="sep">/</span>
     <span>Round A7</span><span class="sep">/</span>
-    <span>v0.9.4</span><span class="sep">/</span>
-    <span>Investigation only — no product code changed</span>
+    <span>v0.9.4 audit</span><span class="sep">/</span>
+    <span>Item 1 shipped in v0.9.5</span>
   </div>
   <h1>Anamorph Engine Cost Audit</h1>
   <p class="dek">Six optimization waves have already run. This round measured what is left, and found
   one dominant cost that the previous rounds closed as absent — because they measured it in the one
-  configuration where it is switched off.</p>
+  configuration where it is switched off. That fix has since shipped in v0.9.5, and the product tree
+  reproduced every predicted figure to one decimal place.</p>
   <div class="mast-meta">
     <span>Method: callgrind instruction attribution + committed AnamorphBench</span>
     <span>Machine: Intel Xeon @ 2.80&nbsp;GHz, 4 cores, gcc 13.3.0</span>
@@ -410,17 +411,19 @@ footer {
       <div class="stat-s">Relative to an active one. Deliberate, documented — and never priced until now.</div>
     </div>
     <div class="stat">
-      <div class="stat-n neu">1 of 8</div>
-      <div class="stat-l">Candidates recommended</div>
-      <div class="stat-s">Three are already-settled questions; four need a decision this round cannot make.</div>
+      <div class="stat-n pos">Shipped</div>
+      <div class="stat-l">A7-1, in v0.9.5</div>
+      <div class="stat-s">1 of 8 candidates was recommended; it landed, and the product tree matched the estimate exactly.</div>
     </div>
   </div>
 
   <div class="col">
     <h4>What to do</h4>
     <ul class="plain">
-      <li><strong>Schedule A7-1</strong> (the VelvetNoise history slide). One file, ~20 lines, no
-      hard-stop class, largest measured gain.</li>
+      <li><strong>A7-1 (the VelvetNoise history slide) — <span class="chip now">Shipped v0.9.5</span></strong>
+      One file, no hard-stop class, largest measured gain. The product tree reproduced every figure
+      below to one decimal place, the audio is bit-identical on the committed twin dump plus a
+      180-configuration sweep, and Test 39 now guards the new cross-block invariant.</li>
       <li><strong>Run the bench on a real machine</strong> and fill the three
       <code>PERFORMANCE_BUDGET.md</code> TODO rows. Zero code risk; it is what RISK-002 has been
       waiting on.</li>
@@ -666,7 +669,7 @@ footer {
           <td>Slide the H5 linear history instead of re-gathering it from the ring each block</td>
           <td><strong>Measured</strong> −14.3&nbsp;% at 48k/32, −32.3&nbsp;% at 192k/32, −4.7&nbsp;% at 48k/128</td>
           <td class="num">A — proven</td><td class="num">low</td>
-          <td><span class="chip now">Optimize now</span></td>
+          <td><span class="chip now">Shipped v0.9.5</span></td>
         </tr>
         <tr>
           <td class="mono">A7-2</td>
@@ -736,7 +739,7 @@ footer {
     <table>
       <thead><tr><th>Sample rate</th><th class="num">Block</th><th class="num">Before</th><th class="num">After</th><th class="num">Saved</th><th class="num">Engine</th></tr></thead>
       <tbody>
-        <tr><td>48 kHz</td><td class="num">32</td><td class="num">2,356.0</td><td class="num">2,019.6</td><td class="num">336.5</td><td class="num hi">−14.3%</td></tr>
+        <tr><td>48 kHz</td><td class="num">32</td><td class="num">2,356.0</td><td class="num">2,018.5</td><td class="num">337.5</td><td class="num hi">−14.3%</td></tr>
         <tr><td>48 kHz</td><td class="num">64</td><td class="num">1,975.4</td><td class="num">1,807.2</td><td class="num">168.2</td><td class="num">−8.5%</td></tr>
         <tr><td>48 kHz</td><td class="num">128</td><td class="num">1,787.3</td><td class="num">1,703.1</td><td class="num">84.1</td><td class="num">−4.7%</td></tr>
         <tr><td>48 kHz</td><td class="num">256</td><td class="num">1,691.5</td><td class="num">1,649.5</td><td class="num">42.1</td><td class="num">−2.5%</td></tr>
@@ -751,6 +754,12 @@ footer {
     Haas, Chorus, Dimension-D, oversampling ×8, defaults, bypass, split drag) × 4 block sizes × 4
     sample rates, compared by an FNV-1a hash over every output sample of both channels. Zero
     mismatches.</p>
+
+    <h4>What the product tree measured <span class="chip now">v0.9.5</span></h4>
+    <p>The shipped implementation is not the throwaway one: it clears the slide offset on
+    <em>entry</em> to <code>processBlock</code> rather than from an RAII guard on each non-gather
+    exit, so every other path — and every path a later round adds — leaves the image invalid by
+    construction. The numbers came out the same anyway.</p>
     <p>Cost: about 20 lines in one file, two new members, one invalidation point in
     <code>reset()</code>. It touches no parameter ID, no serialization schema, no thread model, no
     signal order and no reported latency — <strong>no hard-stop class</strong>.</p>
@@ -815,13 +824,12 @@ footer {
     <article class="step">
       <div class="step-n">02</div>
       <div class="step-body">
-        <h3 class="step-h">A7-1 — the VelvetNoise history slide <span class="chip now">Highest code item</span></h3>
-        <p>Largest measured gain, Class A proven over 144 configurations, ~20 lines, one file, no
-        hard-stop class, no policy conflict.</p>
+        <h3 class="step-h">A7-1 — the VelvetNoise history slide <span class="chip now">Shipped v0.9.5</span></h3>
+        <p>Largest measured gain, Class A, one file, no hard-stop class, no policy conflict.</p>
         <dl class="kv">
-          <dt>Depends on</dt><dd>Nothing.</dd>
-          <dt>Outcome</dt><dd>Small-buffer and high-rate users get −14&nbsp;% to −32&nbsp;% of whole-engine cost; the 128-sample common case gets −4.7&nbsp;%. Per-block fixed cost falls from 24,287&nbsp;Ir to roughly 12,000.</dd>
-          <dt>Gate</dt><dd>The bit-equality evidence must be regenerated against the product tree and a block-size-invariance test added, or the Class-A claim is only this round's word.</dd>
+          <dt>Depended on</dt><dd>Nothing.</dd>
+          <dt>Outcome, measured</dt><dd>−14.3&nbsp;% at 48&nbsp;kHz/32, −32.3&nbsp;% at 192&nbsp;kHz/32, −4.7&nbsp;% at the 128-sample common case, and −7.5&nbsp;% / −8.7&nbsp;% at 44.1 and 96&nbsp;kHz/128. Per-block fixed cost fell 24,302 → 13,502&nbsp;Ir while the marginal per-sample term stayed at 1596.6.</dd>
+          <dt>Gate — met</dt><dd>The <code>AnamorphDspDump</code> twin diff was re-run on the product tree (32 scenarios, identical) and Test 39 is the block-size-invariance test, swept over four sample rates and proven to fire on both a wrong slide and a missing invalidation.</dd>
         </dl>
       </div>
     </article>
@@ -829,8 +837,9 @@ footer {
     <article class="step">
       <div class="step-n">03</div>
       <div class="step-body">
-        <h3 class="step-h">A7-2 — remove the residual per-block term <span class="chip later">Conditional</span></h3>
-        <p>A7-1 leaves a <code>memmove</code> of <code>decorrSamps</code> floats per block. A history
+        <h3 class="step-h">A7-2 — remove the residual per-block term <span class="chip later">Conditional · next</span></h3>
+        <p>A7-1 leaves a copy of <code>decorrSamps</code> floats per block — measured at 13,502&nbsp;Ir
+        per block at 48&nbsp;kHz. A history
         kept as a linear double-buffer would remove it outright, but that restructures the module's
         storage rather than adding a fast path.</p>
         <dl class="kv">
@@ -912,8 +921,9 @@ footer {
       indicative and none may be promoted into <code>PERFORMANCE_BUDGET.md</code>.</li>
       <li><strong>The GUI tick path was not measured</strong> — only paint.</li>
       <li><strong>Software renderer only.</strong> No GPU, no macOS or Windows rasterizer.</li>
-      <li><strong>A7-1's Class-A evidence is this round's</strong>, from a scratch build. It must be
-      regenerated against the product tree before the claim enters the repository.</li>
+      <li><strong>A7-1's Class-A evidence was this round's</strong>, from a scratch build —
+      <strong>discharged in v0.9.5</strong>: regenerated on the product tree with the committed
+      <code>AnamorphDspDump</code> twin diff plus a 180-configuration sweep.</li>
       <li><strong>One scenario shape.</strong> The working reference is <code>bench.cpp</code>'s; a
       user on Chorus with multiband off has a different profile.</li>
     </ul>

@@ -167,6 +167,24 @@ no benchmark/profiling data exists in the repository, and inventing numbers is p
   must stay warm for automation-driven engage) — not dead work. Net: ~0.5–1 % of
   floor available behind an AVX decision, deferred. Evidence [Verified]:
   worklogs/performance/FINAL_PASS_v0.8.11_INVESTIGATION.md.
+- **The Velvet decorrelation window is carried forward, not rebuilt per block (A7-1, 0.9.5).** The
+  H5 gather's linear history image was refilled from the ring on EVERY block by a walk of
+  `decorrSamps = round(0.045 * sr)` samples — 2160 at 48 kHz, 8640 at 192 kHz — independent of
+  `numSamples`. That made it a FIXED per-block cost that grows with the sample rate and is divided
+  by the block length, and it was the single largest per-block item in the engine: measured 20,369
+  of the engine's 24,287 Ir/block at 48 kHz (84 %), and **62.3 % of the whole engine at 192 kHz with
+  32-sample buffers**. The tail is now slid from the previous block's image (`std::copy` leftwards,
+  the same floats), guarded by an offset that `processBlock` clears on entry so every non-gather
+  path invalidates it by construction. Class A, and measured rather than argued: bit-identical on
+  the 32-scenario committed twin dump AND across 180 configurations (9 scenarios × 5 block sizes ×
+  4 sample rates). Engine cost: **−14.3 % at 48 kHz/32, −8.5 % at 48 kHz/64, −4.7 % at 48 kHz/128,
+  −2.5 % at 48 kHz/256, −7.5 % at 44.1 kHz/128, −8.7 % at 96 kHz/128, −32.3 % at 192 kHz/32,
+  −15.0 % at 192 kHz/128.** The per-block term fell 24,302 → 13,502 Ir at 48 kHz while the marginal
+  per-sample term stayed at 1596.6 Ir, which is the signature of a change confined to the refill.
+  Guarded by Test 39 (`testVelvetLinearImageInvariance`: the same audio at 512 and at 32 samples
+  must be bit-identical, at four sample rates), proven to fire on both a wrong slide and a missing
+  invalidation. Evidence [Verified]: src/dsp/VelvetNoise.cpp (the slide + its invariant comment);
+  worklogs/performance/PERF_AUDIT_v0.9.5_IMPLEMENTATION.md.
 - **VelvetNoise** has an O(maxTaps=64) sparse-FIR inner loop per sample, plus a full-buffer
   `std::fill` on the transport-stop completion (no alloc). As of 0.8.8 the surrounding per-sample
   work is gated without changing output: the 64-tap weight rebuild + `sqrt` normalisation runs only

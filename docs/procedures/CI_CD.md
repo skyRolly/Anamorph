@@ -996,6 +996,17 @@ problems in place.
 
 **When you re-anchor deliberately** — moving an anchor onto the code it should always have named —
 the tool cannot distinguish that from drift, and the gate goes red on the commit that *fixed* it.
+A line whose CONTENT changes on its own schedule is a different case and has its own table:
+`VERSIONED_LINES` covers `CMakeLists.txt:14`, the `project(... VERSION ...)` line, whose text
+changes at every release while the anchor never moves. `DELIBERATE_REAIMS` cannot express
+that — it excuses a changed SPELLING, and `is_declared_reaim` returns false when the
+spelling is unchanged, so an entry cannot outlive its transition. For a `VERSIONED_LINES`
+entry the base comparison is replaced by a permanent token check
+(`verify_versioned_lines()`, a hard failure in every mode), it is keyed by one exact
+`(path, line)` pair, and it applies only while the anchor has not moved. Added for the
+0.9.5 release, which was the first version bump after `CMakeLists.txt` came under the gate
+and which the gate blocked; `worklogs/performance/PERF_AUDIT_v0.9.5_IMPLEMENTATION.md` §4a.
+
 Declare the pair in `DELIBERATE_REAIMS` in the **same change set** as the re-anchor, never in a
 follow-up. The list is expected to return to empty: an entry stops matching once the
 base carries the corrected spelling, and the next run reports it as removable — act on that only

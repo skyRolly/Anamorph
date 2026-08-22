@@ -6,10 +6,12 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.4 change set** (2026-08-21, matching the CHANGELOG heading — re-dated
+Last updated: for the **0.9.5 change set** (2026-08-22, matching the CHANGELOG heading) — the
+**A7-1 implementation round** (first below). Under it, the **0.9.4 change set** is retained in full
+(2026-08-21, matching its own CHANGELOG heading — re-dated
 from 2026-08-15 in the hover-occlusion round, on 2026-08-20, and again on 2026-08-21, each time
 because the version took a further user-visible change) — the
-**A7 performance audit** (first below), then the
+**A7 performance audit**, then the
 **spent re-aim declaration sweep**, then the
 **SIGNAL_FLOW anchor restoration**, then the
 **roadmap tail: instruments, the declined JUCE cache, gloss-checked anchors and the editor lifetime**, then the
@@ -76,6 +78,80 @@ destroyed or backgrounded window, menu width, disabled menu items, Tooltips off)
 **packaging round** (Linux per-user install default; the macOS re-install defect INC-012), landed
 across seven rounds; the entries below run newest-first. Below them, the 0.9.2
 entry (2026-08-07) is retained in full.
+
+**A7-1 implementation, v0.9.5 (2026-08-22): the optimization the audit below sized now shipped, its
+evidence re-derived on the product tree, a permanent guard added for the cross-block state it
+introduces — and the release blocked by this repository's own citation gate, for a reason no release
+had met before.**
+
+**The change.** `VelvetNoise` was rebuilding its whole `round(0.045*sr)`-sample decorrelation window
+from the ring on EVERY block (`src/dsp/VelvetNoise.cpp`), independent of `numSamples` — a fixed
+per-block cost that grows with the sample rate. It is now slid forward from the previous block's
+image. **The shipped design is deliberately not the throwaway one** the audit measured: the offset is
+taken and cleared on ENTRY to `processBlock` and re-armed in exactly one place, so every other path —
+and every path a later round adds — leaves the image invalid *by construction*, rather than by an
+RAII guard a reader has to find. `reset()` clears it too, and that line is load-bearing: `reset()`
+runs between blocks, after the offset was armed.
+
+**The estimate held to one decimal place.** Product tree vs the audit's throwaway build: −14.3 % at
+48 kHz/32, −8.5 % at 48 kHz/64, −4.7 % at 48 kHz/128, −2.5 % at 48 kHz/256, −32.3 % at 192 kHz/32,
+−15.0 % at 192 kHz/128 — every figure the audit predicted, reproduced. Two rows it had not measured
+land where the model says they should (−7.5 % at 44.1 kHz/128, −8.7 % at 96 kHz/128). The per-block
+term fell **24,302 → 13,502 Ir** at 48 kHz while the marginal per-sample term stayed at **1596.6** —
+the arithmetic signature of a change confined to the refill, and worth more than the percentages
+because it says *where* the saving came from.
+
+**Class A, with the committed instrument as the primary evidence.** `AnamorphDspDump` — the
+DEPENDENCY_POLICY rule-2 twin harness — reports its 32 scenarios identical before and after, having
+first self-checked that all 32 are repeatable AND distinct, so the diff is a live comparison rather
+than 32 equal hashes proving nothing. Beside it: a **180-configuration** sweep (9 scenarios × 5 block
+sizes × 4 sample rates) hashed over every output sample of both channels, 0 mismatches; reported
+latency unchanged; no parameter, serialization or threading change.
+
+**Test 39 is the guard, and it proves itself rather than being trusted.** The same audio at 512 and
+at 32 samples must be bit-identical, at four sample rates. It **passes unchanged against the
+pre-0.9.5 engine**, so it asserts a contract the module already had and nothing was checking. It
+fires on both defect classes, seeded: a wrong slide fails at sample 32, a missing invalidation at the
+transport-stop block. Its own premises are asserted too — the engaged stretch must really
+decorrelate, and the transport stop must really flush the wet (15.4–25.2 % of the engaged figure with
+the stop, **90.6–128.9 % with the stop event removed**, so the 50 % bound sits between two measured
+populations instead of being a hopeful inequality).
+
+**THE CITATION GATE BLOCKED THE VERSION BUMP, and that was not a false alarm.** Six documents cite
+the `project(Anamorph VERSION x.y.z ...)` line, whose text changes by definition; the anchor never
+moves. Checked rather than assumed: the 0.9.3 → 0.9.4 bump (`3ebdf69`, 2026-08-14) predates
+`CMakeLists.txt` joining `TRACKED` (`129457e`, 2026-08-16), so `RELEASE_PROCESS.md` step 1 had been
+un-runnable under the gate since the day the gate started watching that file, and no release had
+exercised it. `DELIBERATE_REAIMS` cannot express it — `is_declared_reaim` returns False when the
+spelling is unchanged, deliberately, so an entry cannot outlive its one transition, and here there is
+no transition to outlive. `VERSIONED_LINES` was added for exactly this: keyed by one exact
+`(path, line)` pair, the base comparison **replaced** by a permanent token check, applying only while
+the anchor has not moved. Proven narrow rather than argued: a *neighbouring* cited line drifted in the
+same citation still fails; an anchor moved by an inserted line **exits 2** rather than excusing
+whatever is now on line 14; missing token, past-EOF and unreadable-file each report a finding rather
+than a traceback. Self-test 123 → 130 cases, including a structural check that the substitution stays
+gated on the anchor not having moved — the guard a later rewrite could drop invisibly on a clean tree.
+Recorded where it bites: `RELEASE_PROCESS.md` step 1, `CI_CD.md`, `REPOSITORY_MAP.md`.
+
+**One finding recorded and deliberately not acted on.** Proving Test 39 live turned up that the
+**Amount one-pole never reaches zero when turned down**: with a 0 target the update is
+`a -= 0.0015f * a`, and under FTZ the DECREMENT underflows first, so the glide stalls at
+`7.82561114e-36` and stays there. `currentAmount > 0.0f` therefore stays true and the Wave-5 PARKED
+fast path — whose own comment says the one-pole "flushes to true zero" — is unreachable after a user
+turns Amount down. No audio effect (the measured contribution is one ULP of the M/S round trip, the
+same as a true park) and the path is still reached from a fresh `prepare()` with Amount at its 0
+default, which is the state it was written for. The repair is Class B (it moves the sample at which
+the amount reaches zero), so it is filed as **A7-9** with its measurement rather than folded in.
+
+**Verification.** `AnamorphTests` 174 checks (162 before; Test 39 adds 12) and `AnamorphStateTests`
+920 checks, both 0 failures. Under ASan + UBSan + LSan with the `sanitizers` job's own flag set:
+172 and 920 checks, **0 sanitizer diagnostics** — run for `local-bounds`, which checks the new copy's
+range with a tool rather than only with the argument in the source. `check-realtime` 44 files /
+0 violations, `check-portability` 52 / 0, `check-docs` 104 clean, `check-citations --self-test`
+130 cases and `--check --base origin/main` green, full `scripts/preflight.sh` green.
+`worklogs/performance/PERF_AUDIT_v0.9.5_IMPLEMENTATION.md` is the round's record; the A7 audit below
+and its HTML report are updated in place to say A7-1 shipped rather than describing it as proposed.
+[Verified]
 
 **A7 performance audit (2026-08-22): the engine re-measured after six optimization waves, and one
 dominant cost found that the previous rounds recorded as absent — because they measured it in the one

@@ -59,6 +59,10 @@ void VelvetNoise::prepare (double sampleRate, int maxBlockSize, unsigned seed)
 
 void VelvetNoise::reset()
 {
+    // A7-1: the linear image mirrors the ring, and this flushes the ring. It
+    // runs BETWEEN blocks -- after `processBlock` armed the offset -- so the
+    // clear-on-entry rule does not cover it and this line is load-bearing.
+    linHistSlide = 0;
     std::fill (midHist.begin(), midHist.end(), 0.0f);
     writePos = 0;
     env = 0.0f;
@@ -95,6 +99,16 @@ void VelvetNoise::processBlock (float* left, float* right, int numSamples) noexc
 {
     constexpr float dSmooth = 0.0015f; // glide density
     constexpr float aSmooth = 0.0015f; // glide wet amount
+
+    // A7-1, and the ordering is the safety property rather than a style choice:
+    // the slide offset is TAKEN and CLEARED here, before any path can run. The
+    // gather path below is the only place that re-arms it, so every other exit
+    // from this function -- parked, general, stop fade, and any path a later
+    // round adds -- leaves the image invalid by default. The alternative (clear
+    // it on each non-gather path) is one `return` away from a stale read that
+    // would show up only in the first block after the mistake.
+    const int slide = linHistSlide;
+    linHistSlide = 0;
 
     // Tap-outer gather fast path (H5, Wave 2). The 64 random-index history
     // reads per sample (45.6 % of the row's D1 read misses) become one
@@ -136,8 +150,36 @@ void VelvetNoise::processBlock (float* left, float* right, int numSamples) noexc
         for (int i = 0; i < numSamples; ++i)
             midBlk[(size_t) i] = (left[i] + right[i]) * 0.5f;
 
-        for (int j = 0; j < decorrSamps; ++j)
-            linHist[(size_t) j] = midHist[(size_t) ((writePos - decorrSamps + j) & histMask)];
+        // The tail this block needs is the PREVIOUS image, shifted (A7-1). That
+        // image held, at index k, the mid at ring position
+        // `writePos_prev - decorrSamps + k`; this block wants ring positions
+        // `writePos - decorrSamps .. writePos - 1`, and `writePos` advanced by
+        // exactly `slide` samples since (one per sample of that block). So the
+        // wanted tail is `[slide, slide + decorrSamps)` of the old image --
+        // `std::copy` leftwards, which is defined here because the destination
+        // is strictly before the source range whenever `slide > 0`.
+        //
+        // BIT-EXACT BY CONSTRUCTION, not by argument: it moves the same floats
+        // the ring walk would have re-read. Every entry it carries forward was
+        // either gathered from the ring by an earlier block or written into the
+        // image from `midBlk[i]` -- the same value the per-sample loop stored
+        // into `midHist[writePos]` for that sample.
+        //
+        // WHY IT IS WORTH A STATE FLAG. The walk it replaces is `decorrSamps`
+        // long and independent of `numSamples` -- 2160 samples at 48 kHz, 8640
+        // at 192 kHz -- so it was a fixed ~20k instructions per block at 48 kHz
+        // and ~79k at 192 kHz, dwarfing the per-sample work at small buffers
+        // (measured 62 % of the whole engine at 192 kHz / 32 samples). H5's
+        // unit-stride gather is unchanged and still the point; only its refill
+        // stopped being rebuilt from scratch each block.
+        // Evidence: worklogs/performance/PERF_AUDIT_v0.9.4_INVESTIGATION.md.
+        if (slide > 0)
+            std::copy (linHist.begin() + slide, linHist.begin() + slide + decorrSamps,
+                       linHist.begin());
+        else
+            for (int j = 0; j < decorrSamps; ++j)
+                linHist[(size_t) j] = midHist[(size_t) ((writePos - decorrSamps + j) & histMask)];
+
         std::copy (midBlk.begin(), midBlk.begin() + numSamples,
                    linHist.begin() + decorrSamps);
 
@@ -180,6 +222,10 @@ void VelvetNoise::processBlock (float* left, float* right, int numSamples) noexc
 
             writePos = (writePos + 1) & histMask;
         }
+        // The image is now `[tail | this block's mids]` and `writePos` advanced
+        // by `numSamples`, which is precisely the offset the next block needs.
+        // This is the ONE place that re-arms it (A7-1).
+        linHistSlide = numSamples;
         return;
     }
 

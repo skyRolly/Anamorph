@@ -67,6 +67,17 @@ private:
     // tap sums in the ORIGINAL t-ascending accumulation order (bit-exact).
     std::vector<float> linHist, accum, midBlk;
 
+    // A7-1: how far `linHist` must SLIDE to serve the next block, or 0 for "no
+    // usable image, re-gather from the ring". It is the sample count of the last
+    // block that left the image in its `[tail | mids]` shape -- which is exactly
+    // how far `writePos` advanced since, so the next block's tail is this image
+    // read from that offset. `processBlock` clears it on entry and only the
+    // gather fast path re-arms it, so every other path (parked, general, stop
+    // fade) and every future path leaves it invalid WITHOUT having to remember
+    // to say so. `reset()` clears it too: that one runs between blocks, after
+    // the flag was armed, and flushes the ring the image mirrors.
+    int linHistSlide = 0;
+
     std::array<int,   maxTaps> pos {};   // tap delay (samples), fixed
     std::array<float, maxTaps> sign {};  // tap sign +/-1, fixed
     std::array<float, maxTaps> weight {};// continuous active weight per tap, tap sign pre-folded (ALG-4)

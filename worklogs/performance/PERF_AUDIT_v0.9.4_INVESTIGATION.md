@@ -1,8 +1,14 @@
 # Performance audit — v0.9.4 investigation round
 
-**Status: investigation complete, no product code changed.** One optimization was implemented in a
-throwaway build to *measure* it (§6.1) and is not in the tree. Everything below is a proposal for a
-maintainer to schedule.
+**Status: investigation complete. A7-1 has since SHIPPED in v0.9.5** — see
+[`PERF_AUDIT_v0.9.5_IMPLEMENTATION.md`](PERF_AUDIT_v0.9.5_IMPLEMENTATION.md) for the product-tree
+implementation, its regression guard and the re-derived evidence. This document is the investigation
+that sized and proposed it, and is kept as written except where a line would now be false: those are
+corrected in place and marked **[LANDED v0.9.5]**. Every other roadmap item below is still a
+proposal for a maintainer to schedule.
+
+**The estimate held.** The figures in §5.1 came from a throwaway build; the product tree reproduced
+every one of them to one decimal place (§5.1a).
 
 **Round ID prefix:** `A7-` (the seventh performance round; Waves 1–6 and the v0.8.11 final pass
 precede it). Read alongside `worklogs/POST_v0.8.12_AUDIT_AND_ROADMAP.md` §4, which is the
@@ -245,7 +251,7 @@ roadmap table already disposed of it**.
 
 | ID | Candidate | Gain | Class | Risk | Verdict |
 |---|---|---|---|---|---|
-| **A7-1** | Slide the H5 linear history instead of re-gathering it from the ring every block | **measured −14.3 % at 48 k/32, −32.3 % at 192 k/32, −4.7 % at 48 k/128** | **A (proven)** | low | **Optimize now** |
+| **A7-1** | Slide the H5 linear history instead of re-gathering it from the ring every block | **measured −14.3 % at 48 k/32, −32.3 % at 192 k/32, −4.7 % at 48 k/128** | **A (proven)** | low | **[LANDED v0.9.5]** |
 | A7-2 | Remove the residual per-block term entirely (ring-free double-buffer history) | ~45 % of what A7-1 leaves; unmeasured | A (expected) | medium | **Consider later** |
 | A7-3 | Reduce `decorrSamps`-proportional work at high sample rates generally | subsumed by A7-1/A7-2 | — | — | **Do not optimize separately** |
 | A7-4 | Skip the DSP chain when Bypass is settled at 1 | ~82 % of a bypassed instance (bounded, not measured) | A for audio, **breaks a live readout contract** | high | **Do not optimize** — maintainer decision (§9) |
@@ -261,7 +267,8 @@ that block's length: the ring is written with exactly the mids the image already
 `decorrSamps`-long masked ring walk can be a `memmove` of the same floats, guarded by a validity
 flag that the non-fast paths and `reset()` clear.
 
-**Implemented in a throwaway build and measured**, because a bit-exactness claim has to be earned:
+**Implemented in a throwaway build and measured**, because a bit-exactness claim has to be earned
+(and re-derived on the product tree before it shipped — §5.1a):
 
 | SR | block | before | after | saved | engine |
 |---|---|---|---|---|---|
@@ -275,6 +282,38 @@ flag that the non-fast paths and `reset()` clear.
 **Bit-exact across 144 configurations** — 9 scenarios (working, mb-off, Haas, Chorus, Dim-D, OS ×8,
 defaults, bypass, multiband drag) × 4 block sizes × 4 sample rates, compared by an FNV-1a hash over
 **every output sample of both channels**. Zero mismatches. Class A by measurement, not by argument.
+
+### 5.1a [LANDED v0.9.5] What the product tree measured
+
+The shipped implementation is not the throwaway one: it clears the slide offset on ENTRY to
+`processBlock` rather than from an RAII guard on each non-gather exit, so every other path — and
+every path a later round adds — leaves the image invalid by construction. The numbers came out the
+same anyway, which is the useful part:
+
+| SR | block | before | after | engine | estimate above |
+|---|---|---|---|---|---|
+| 48 kHz | 32 | 2356.0 | 2018.5 | **−14.3 %** | −14.3 % |
+| 48 kHz | 64 | 1975.4 | 1806.7 | −8.5 % | −8.5 % |
+| 48 kHz | 128 | 1787.3 | 1702.9 | −4.7 % | −4.7 % |
+| 48 kHz | 256 | 1691.5 | 1649.3 | −2.5 % | −2.5 % |
+| 192 kHz | 32 | 4178.7 | 2828.7 | **−32.3 %** | −32.3 % |
+| 192 kHz | 128 | 2242.9 | 1905.4 | −15.0 % | −15.0 % |
+
+Two rows the investigation did not measure fall where the model predicts, since the fixed term
+scales with `decorrSamps ∝ sr`: **−7.5 % at 44.1 kHz/128** and **−8.7 % at 96 kHz/128**. The
+per-block term fell **24,302 → 13,502 Ir** at 48 kHz while the marginal per-sample term stayed at
+**1596.6** — the arithmetic signature of a change confined to the refill.
+
+Bit-identity was re-derived on the product tree with the **committed** instrument as the primary
+evidence: `AnamorphDspDump` twin diff, 32 scenarios, identical (its own `--self-check` reporting all
+32 repeatable and distinct first), plus a 180-configuration sweep (9 scenarios × **5** block sizes ×
+4 sample rates) and Test 39 printing identical numbers against both engines. Reported latency
+unchanged.
+
+**Test 39** (`testVelvetLinearImageInvariance`) is the permanent guard the roadmap made a condition
+of landing, and it passes unchanged against the pre-0.9.5 engine, so it asserts a contract the
+module already had. Proven to fire on a wrong slide (sample 32) and on a missing invalidation
+(the transport-stop block).
 
 Cost: ~20 lines in one file, two new members, one invalidation point in `reset()`. It touches no
 parameter ID, no schema, no thread model, no signal order and no reported latency — **no hard-stop
@@ -335,14 +374,16 @@ question ("how many instances before a core") and retires three TODOs.
 wall-clock reference point.
 *Do **not*** populate those rows from this round's container numbers.
 
-### A7-1 — The VelvetNoise linear-history slide
-**Priority: highest code item.** Largest measured gain, Class A proven over 144 configurations,
+### A7-1 — The VelvetNoise linear-history slide — **[LANDED v0.9.5]**
+**Priority: highest code item.** Done; the gate below was met. Largest measured gain, Class A proven over 144 configurations,
 ~20 lines, one file, no hard-stop class, no policy conflict.
 *Depends on:* nothing.
 *Outcome:* small-buffer and high-sample-rate users get **−14 % to −32 %** of whole-engine cost; the
 128-sample common case gets −4.7 %. Per-block fixed cost falls from 24,287 Ir to roughly 12,000.
 *Gate:* the twin-dump bit-equality evidence must be regenerated against the real tree and a
 block-size-invariance test added, or the Class-A claim is only this round's word.
+**Met in v0.9.5:** the `AnamorphDspDump` twin diff was re-run on the product tree (32 scenarios,
+identical) and Test 39 is that block-size-invariance test, swept over four sample rates.
 
 ### A7-2 — Remove the residual per-block term
 **Priority: after A7-1, and only if A7-0's numbers say small buffers still hurt.** A7-1 leaves a
@@ -415,6 +456,6 @@ Both are quantified here for the first time. Neither has an engineering answer.
   neither confirmed nor challenged.
 * **Software renderer only.** No GPU, and no macOS/Windows rasterizer.
 * **A7-1's Class-A evidence is this round's**, generated by a scratch build. It must be regenerated
-  against the product tree before the claim enters the repository.
+  against the product tree before the claim enters the repository. **[LANDED v0.9.5 — done: §5.1a.]**
 * **One scenario shape.** The `working` reference is `bench.cpp`'s; a user on Chorus with multiband
   off has a different profile (§3.1 gives the spread).

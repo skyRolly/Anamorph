@@ -13,10 +13,19 @@ only — it configures and builds entirely from the command line on a headless L
 - Diamond **vectorscope**, correlation + L/R Peak/RMS meters; click-free transitions throughout.
 
 ## Project status
-- **Version 0.9.4** (pre-1.0), in the **internal-testing phase** — builds go to testers for
+- **Version 0.9.5** (pre-1.0), in the **internal-testing phase** — builds go to testers for
   evaluation, not to customers (see [Licensing](#licensing); internal record:
   [`docs/COMMERCIAL_STATUS.md`](docs/COMMERCIAL_STATUS.md)).
-- **0.9.4 is a maintenance release: JUCE 9.0.0 → 9.0.1, plus the move to the C++23 language
+- **0.9.5 is a performance release, and it changes nothing you can hear.** With Velvet Noise
+  selected, the plug-in was rebuilding its whole ~45 ms decorrelation window from scratch on every
+  processing block — a cost set by the window rather than by the block, so it hurt most where buffers
+  are small and sample rates are high. At 192 kHz with a 32-sample buffer it had grown to most of the
+  plug-in's work. The window is now carried forward instead of rebuilt: **−14 % of the engine's
+  instruction count at 48 kHz / 32 samples, −32 % at 192 kHz / 32, −5 % at the common 48 kHz / 128**.
+  The audio is **bit-identical** — proven by the 32-scenario engine twin dump and a 180-configuration
+  sweep over every algorithm, four sample rates and five buffer sizes — and reported latency,
+  parameters and saved state are untouched.
+- **0.9.4 was a maintenance release: JUCE 9.0.0 → 9.0.1, plus the move to the C++23 language
   standard, and one interaction fix — a control covered by an open drop-down no longer lights up
   as though you were pointing at it.** Apart from that fix, the only change to Anamorph's own
   source is one added `#include` (ADR-0027), and the
