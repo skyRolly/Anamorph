@@ -225,10 +225,22 @@ void VelvetNoise::processBlock (float* left, float* right, int numSamples) noexc
         return;
     }
 
+    // A7-9: HOW THIS STATE IS REACHED, AND HOW IT IS NOT. It is reached from a
+    // fresh prepare() with Amount at its 0 default -- prepare() assigns
+    // currentAmount = targetAmount -- which is the state this path was written
+    // for and measured in. It is NOT reached by turning Amount down: with a 0
+    // target the update is `a -= 0.0015f * a`, and under the block's
+    // ScopedNoDenormals the DECREMENT underflows before `a` does, so the glide
+    // stalls at ~FLT_MIN/0.0015 = 7.83e-36 and the next decrement is exactly 0.
+    // `currentAmount > 0.0f` therefore stays true and the gather gate above
+    // keeps its eligibility instead. An earlier version of this comment claimed
+    // the one-pole "flushes to true zero"; it does not, and the difference is
+    // measured in worklogs/performance/PERF_AUDIT_A7-2_A7-5_A7-9_INVESTIGATION.md
+    // and re-verified in PERF_AUDIT_A7-2B_A7-5E_IMPLEMENTATION.md. Filed as A7-9
+    // (a Class-B repair, not yet approved); this comment is the A7-9C half.
     // Parked fast path (Wave 5 -- the Haas-parked / W3-9-compliant shape). With
-    // the density glide at its fixpoint, the amount glide settled at exactly 0
-    // with a 0 target (its one-pole flushes to true zero under the block's
-    // ScopedNoDenormals) and no stop fade in flight, every skipped operation
+    // the density glide at its fixpoint, the amount glide at exactly 0 with a 0
+    // target, and no stop fade in flight, every skipped operation
     // below is provably a no-op this block: the density tick (fixpoint), the
     // weights compare (equal by the gate), the amount tick (0 += k*0), and the
     // stop machine (! stopping). What MUST keep running does: the presence

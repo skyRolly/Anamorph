@@ -26,7 +26,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   there was least to save, it is a wash. Bit-identical output: the same 32-scenario dump and the
   same 180 configurations as above, plus a new self-test that checks the fast path against the
   plain one directly. No parameter, preset or latency change.
-  `worklogs/performance/PERF_AUDIT_A7-2_A7-5_A7-9_INVESTIGATION.md`.
+  Evidence: PR #130. [Verified]
 - **Lower CPU with Velvet Noise selected — most at small buffer sizes and high sample rates, and the
   sound is unchanged.** Velvet Noise builds its decorrelation from a ~45 ms window of recent audio.
   Every processing block it was rebuilding a private copy of that whole window from scratch, and the

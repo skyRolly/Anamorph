@@ -263,9 +263,11 @@ the amount reaches zero), so it is filed as **A7-9** with its measurement rather
 
 **A7-9 is wider than that entry says, and the follow-up round measured how much.** The stall is not
 a `VelvetNoise` quirk but a closed form, `≈ FLT_MIN / k` for a glide of rate `k`, and **three**
-shipped parked fast paths rest on the same claim: `src/dsp/VelvetNoise.cpp:229-231`,
-`src/dsp/HaasProcessor.cpp:51-53` and `src/dsp/ChorusEngine.cpp:73-74` each say the one-pole flushes
-to true zero, and each gates on a **value** test that a stalled glide defeats. (Velvet's *density*
+shipped parked fast paths rested on the same claim — each said the one-pole flushes to true zero —
+and each gates on a **value** test that a stalled glide defeats. (**The three comments have since
+been corrected under A7-9C**, so the claim no longer appears in the source; each site now states the
+precondition without the false justification and records how the state is and is not reached. The
+gates are unchanged — that is the A7-9 decision, not this one.) (Velvet's *density*
 gate, three lines above its amount gate, tests the **fixpoint** instead and is therefore immune —
 the same file carries both the defect and its remedy.) So none of the three parks is reachable after
 a user turns its control down. Measured: `HaasProcessor` stalls at `1.17487956e-35` and
@@ -6047,3 +6049,52 @@ optimization is approved, and should not wait on a numerics decision it does not
 107 files clean; `check-citations` self-test and `--check` green. Wall-clock is quoted nowhere in
 this round: the same binary and workload measured 292 ms in the previous round and 196 ms in this
 one, so only Ir is treated as a datum.
+
+## A7-5E confirmed by execution · A7-9C landed
+
+**A7-5E is no longer an inference.** `qemu-user-static` and `g++-aarch64-linux-gnu` turned out to be
+installable here, so the previous round's codegen argument was replaced by a run of the **committed
+harness itself**: `tests/dsp_dump.cpp` unmodified, with its eight DSP translation units and four JUCE
+modules, cross-built for `aarch64-linux-gnu` and — from the same sources and flags — for `x86_64`,
+then both executed and their 32 scenario hashes diffed. Both pass `--self-check`, so both instruments
+are live.
+
+**At default flags the two architectures differ in 32 of 32 scenarios.** The decomposition is what
+makes it useful: aarch64 default vs aarch64 `-ffp-contract=off` differs in 32/32 (529 FMA
+instructions in the DSP objects at default, **0** with the flag), while x86-64 default vs x86-64
+`-ffp-contract=off` is **identical** — the frozen baseline has no FMA for the flag to affect. So
+contraction is real, active and architecture-intrinsic.
+
+**But a flag does not close the gap.** With contraction disabled on both sides, **24 of 32 scenarios
+still differ**, and the split is perfectly clean: **all 8 scenarios at oversampling ×1 agree; all 24
+at ×2/×4/×8 differ.** The residual is confined to the oversampling path, whose polyphase coefficients
+are derived at runtime through transcendental libm calls, and libm is a different implementation per
+architecture. Anamorph's own DSP is architecture-portable once contraction is off; JUCE's
+oversampling filter design is not.
+
+That **corrects a claim this programme made one round earlier** — that `-ffp-contract=off` would make
+the two shipped macOS slices bit-identical for the first time. It would not; it would do so only with
+oversampling off. Full cross-architecture identity would additionally require the oversampling
+coefficients to stop coming from libm, which is a far larger question than a compiler flag and is not
+proposed.
+
+**Limits, stated rather than glossed:** GCC 13 cross-compiler rather than Apple Clang, `qemu-user`
+rather than arm64 silicon, glibc rather than Apple libc. The contraction half is ISA-level and
+transfers; the oversampling half was measured against glibc and its magnitude on macOS is not known.
+The one-step macOS CI diff stays worth running — now as platform-exact confirmation of a measured
+result rather than as the experiment that decides the question.
+
+**A7-9C landed.** The three parked fast paths said their one-pole "flushes to true zero"; it does
+not. Each site now states the precondition without the false justification and records how the state
+is and is not reached — the closed form `≈ FLT_MIN / k`, that a fresh `prepare()` does reach the
+parked state and turning the control down does not, and for `ChorusEngine` that its threshold scales
+with the sample rate because `wSmooth` is `1/(0.01·sr)`. **The gates are deliberately untouched**:
+changing them is the Class-B A7-9 decision, and this correction is Class A and required whether or
+not that is approved. Verified behaviour-neutral — the 32-scenario twin dump is **identical** across
+the change.
+
+**Verification.** `AnamorphTests` 202/0, `AnamorphStateTests` 920/0, twin dump identical and
+`--self-check` passed, `check-docs` 107 clean, `check-citations` green, `check-realtime` 44/0,
+`check-portability` 52/0. The CHANGELOG entry added for A7-2B was also brought to the
+`CHANGELOG_POLICY` entry template, which requires an `Evidence:` source and a verification marker —
+it had neither.

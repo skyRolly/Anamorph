@@ -68,22 +68,78 @@ comparison tested nothing and reported IDENTICAL for the wrong reason.)
 
 ## 4. The A7-5E answer
 
-* **Do the shipped slices already produce different DSP results?** On the evidence above, **yes.**
-  The arm64 slice contracts in all eight DSP modules; contraction changes all 32 dump scenarios.
+* **Do the shipped slices already produce different DSP results?** **Yes — confirmed by executing
+  the committed harness on both architectures (§5): 32 of 32 scenarios differ.**
 * **Is the numerics contract already architecture-dependent?** **Yes**, and nothing in the
   repository states it or checks it. ADR-0021's freeze protects the x86-64 side only: it withholds
   the flags that would *give* x86-64 an FMA, while arm64 has one unconditionally and no flag is
   passed to stop it being used.
 * **Does this affect the AVX2 decision?** Substantially — see §6.
 
-## 5. Still open, and cheap
+## 5. CONFIRMED BY EXECUTION (2026-08-22, later the same round)
 
-The direct confirmation remains worth doing and is one CI step: on the existing macOS runner build
-`AnamorphDspDump` twice (`-DCMAKE_OSX_ARCHITECTURES=arm64`, then `x86_64`), run both on the same
-machine (the x86_64 one under Rosetta, as the suites already are) and diff the 32 hashes. It is an
-A-vs-B comparison of two builds, so it needs no stored baseline and does not become the golden-master
-test this repository has rejected. **A7-5E is answered by inference and remains unconfirmed by
-execution; this step is what closes it.**
+The inference above has been replaced by a run. `qemu-user-static` and `g++-aarch64-linux-gnu` were
+installed, and **the committed harness itself** — `tests/dsp_dump.cpp`, unmodified, with the eight
+DSP translation units and the four JUCE modules it needs — was cross-built for `aarch64-linux-gnu`
+and, from the same sources and the same flags, for `x86_64`. Both were then **executed** (the
+aarch64 one under `qemu-aarch64-static`) and their 32 scenario hashes diffed. Both pass
+`--self-check`, so both instruments are live: 32 scenarios, all repeatable and all distinct.
+
+| comparison | result |
+|---|---|
+| **aarch64 (default flags) vs x86-64 (default flags)** — the shipped configuration | **32 / 32 scenarios differ** |
+| aarch64 default vs aarch64 `-ffp-contract=off` | **32 / 32 differ** |
+| x86-64 default vs x86-64 `-ffp-contract=off` | **identical** |
+| aarch64 `-ffp-contract=off` vs x86-64 `-ffp-contract=off` | **24 / 32 still differ** |
+
+FMA instructions in the DSP objects alone (excluding static libc/libm): **529 on aarch64 at default
+flags, 0 with `-ffp-contract=off`, 0 on x86-64 either way.**
+
+**The answer to A7-5E is confirmed: the two architecture slices already produce different numerical
+results.** Two independent mechanisms produce that, and separating them is the part that matters:
+
+1. **FP contraction**, which is ISA-intrinsic — aarch64 has `FMLA` in its base ISA and contracts by
+   default; x86-64 without an FMA-bearing `-march` has nothing to contract into. Removable with a
+   flag.
+2. **Something else, which a flag does not remove** — 24 of 32 scenarios still differ with
+   contraction disabled on both sides.
+
+## 5a. What the residual 24 are, and it is a clean split
+
+| oversampling factor | scenarios agreeing across architectures with contraction off |
+|---|---|
+| ×1 | **8 of 8 — all agree** |
+| ×2, ×4, ×8 | **0 of 24 — all differ** |
+
+Every scenario that differs runs oversampling; every scenario at ×1 agrees. **The residual
+cross-architecture difference is confined to the oversampling path**, whose polyphase filter
+coefficients are derived at runtime through transcendental libm calls, and libm is a different
+implementation on each architecture. Anamorph's own DSP, at ×1, is architecture-portable once
+contraction is off — all eight scenarios agree bit for bit.
+
+**This corrects a claim made earlier in this same document.** §8 originally suggested that setting
+`-ffp-contract=off` "would make the two shipped macOS slices bit-identical to each other for the
+first time". That is **false**: it would do so only with oversampling off. Full cross-architecture
+identity additionally requires the oversampling coefficients to stop coming from libm — precomputing
+them, or deriving them in a way that does not vary by platform. That is a much larger question than
+a compiler flag and is **not** proposed here.
+
+## 5b. What this confirmation does and does not transfer
+
+**Transfers.** The contraction result is ISA-level and toolchain-independent: any AArch64 compiler
+contracts `a*b+c` into `FMLA` by default because the instruction is in the base ISA, and the frozen
+x86-64 baseline has no such instruction. The 32/32 difference at default flags is a property of the
+architectures, not of GCC or of qemu.
+
+**Does not transfer without a check.** The residual-24 result was measured against **glibc's** aarch64
+and x86-64 libm. The shipped macOS binary uses **Apple's** libm on both slices, which may or may not
+agree with itself across architectures. So "oversampling is the residual risk" is demonstrated here;
+its exact magnitude on macOS is not.
+
+**Environment limits, stated plainly.** GCC 13 cross-compiler rather than Apple Clang; `qemu-user`
+emulation rather than arm64 silicon; glibc rather than Apple libc. The one-step macOS CI diff
+described previously is therefore still worth running as the platform-exact confirmation — but it is
+now a confirmation of a measured result rather than the experiment that decides the question.
 
 ---
 
@@ -103,6 +159,22 @@ Because vectorization and contraction are separable, so is the benefit. Whole-en
 **66 % of the AVX2 win is available without changing a single output bit.** The earlier framing —
 "~20 % engine-wide, but a Class-B change to 88.9 % of samples" — was a single bundled option; it is
 actually two options with very different costs.
+
+## 6a. The two options, side by side
+
+| | **Option A — Class A** | **Option B — Class B** |
+|---|---|---|
+| flags | `-march=haswell -ffp-contract=off` | `-march=haswell` (contraction left at its default) |
+| **performance gain** | **−17.2 %** engine-wide (1704.9 → 1412.2 Ir/sample, 48 kHz/128, `working`) | **−25.8 %** (→ 1264.3 Ir/sample) |
+| **numerical impact** | **none.** 32/32 twin-dump scenarios identical; **0 mismatches across 180 configurations** | **88.9 % of samples change**; max delta 2.384e-07 (−123.8 dB), RMS 4.949e-08 (−137.5 dB) |
+| class | **A** (bit-exact) | **B** (in the accepted range: H3 `tanh` is 3.5e-7) |
+| **compatibility** | Haswell (2013) / Excavator (2015) becomes a hard ISA floor; failure mode on older CPUs is `SIGILL` inside the host | identical ISA floor |
+| GCC/Clang cross-check | **kept** — both toolchains stay bit-identical, because neither can contract | **lost** — the two diverge once contraction is live (32/32 in every pairing) |
+| **ADR changes required** | amend ADR-0021 to carry two numerics-affecting flags, one of which *pins* the numerics rather than moving them; add an ISA floor to `COMPATIBILITY_POLICY` | the same, plus an accepted error bound in `DSP_POLICY` and a replacement for the two-toolchain cross-check |
+| cross-architecture effect | removes the **contraction** half of the arm64/x86-64 difference (§5); does **not** remove the oversampling half | leaves x86-64 contracting too — which makes the slices *more* alike in mechanism but not bit-identical |
+
+**Neither option is recommended for implementation in this round.** The material above is what an ADR
+needs; the decision is §8.
 
 ## 7. What each option still costs
 
@@ -125,8 +197,9 @@ GCC job and the Clang jobs currently provide for free.
 2. **What is the minimum supported x86-64 ISA?** A user-visible contract with a `SIGILL` failure
    mode; it belongs in `COMPATIBILITY_POLICY` *before* any flag lands, not after.
 3. **Does `-ffp-contract=off` become the project's explicit numerics position on every platform?**
-   A7-5E's finding argues it should be considered on its own merits: setting it would make the two
-   shipped macOS slices bit-identical to each other for the first time, independently of AVX2.
+   Worth considering on its own merits — it removes the contraction half of the cross-architecture
+   difference — but §5a is the caveat: it does **not** by itself make the two slices bit-identical,
+   because the oversampling path differs for a reason a flag cannot reach.
 4. **Is losing the GCC/Clang bit-agreement acceptable** if option B is taken, and what replaces it?
 5. **Confirm A7-5E by execution** (§5) before the ADR is drafted.
 6. **Does ADR-0021 get amended, superseded, or scoped?** The new ADR must say which, and
@@ -306,6 +379,20 @@ approval question.
 **What approval is required.** Explicit maintainer approval for a Class-B change, recorded. No
 `ARCHITECTURE_REVIEW_GATE` category is triggered and no Accepted ADR is contradicted.
 
+## 18a. Decision-ready summary (A7-9)
+
+| question | answer, as measured |
+|---|---|
+| **Expected benefit after A7-2B** | `ChorusEngine` **+14,220 Ir/block** at 48 kHz/128; `HaasProcessor` **+5,635**; `VelvetNoise` **+4,019** at 48 kHz/32 and **+4,032** at 192 kHz/32. Velvet's share fell **89 %** because A7-2B made the path it is stuck on cheap and rate-independent. |
+| **Remaining affected modules** | All three, unchanged: `VelvetNoise`, `HaasProcessor`, `ChorusEngine`. Priority is now **Chorus first** — largest share, and the only one whose stall threshold scales with sample rate (`wSmooth = 1/(0.01·sr)`). |
+| **Numerical difference bounds** | **4.476e-36** worst case across 44.1–192 kHz (Chorus at 192 kHz), ≈ −707 dBFS. **0 of 102,400 samples differ on real signal** in all three modules at every rate measured; the residual appears only on digital silence, where the dry term is `+0` and cannot absorb it. |
+| **Class A or Class B?** | **Class B, and no Class-A variant exists.** The residual *is* what distinguishes the stalled state from the parked one, so removing it is what "fix" means. Parking only when the residual provably cannot change the output is not expressible as a block-level gate: `x + a*(d-x)` is bit-identical to `x` for a normal `x` and is not when `x` is `+0`. |
+| **Unresolved risks** | (a) The benefit is now modest relative to its Class-B cost — this is the main open judgement. (b) A fixpoint gate must be proved *live* by a test that shows the park is reached after a ramp-down; the current suite cannot distinguish a reachable fast path from an unreachable one, which is how this survived. (c) Chorus's rate-dependent coefficient is worth a maintainer's eye independently of the gate change. |
+| **What approval is required** | Explicit, recorded maintainer approval for a Class-B numerics change under `DSP_POLICY`. No `ARCHITECTURE_REVIEW_GATE` category is triggered; no Accepted ADR is contradicted; no parameter, serialization, threading, signal-order or latency change. |
+
+**Recommendation: approve, but at lower priority than before.** It was the roadmap's largest item on
+the pre-A7-2B numbers and is not any more. Nothing about its safety changed; its value did.
+
 ## 19. Remaining questions a maintainer decision needs to answer
 
 1. **Is 4.476e-36 acceptable**, given zero audible effect and the precedent range?
@@ -334,8 +421,12 @@ zero" (`VelvetNoise.cpp`, `HaasProcessor.cpp:51-53`, `ChorusEngine.cpp:73-74`).
 * If the optimization is **approved**, it will rewrite those comments regardless, and having them
   already true makes that diff about the gate rather than about the false premise.
 
-**Not done in this round** because the instruction was to make no DSP-file change beyond A7-2B; it
-is queued as **A7-9C** and needs only ordinary review.
+**DONE.** A7-9C landed in the follow-up round: all three comments now state the precondition
+without the false justification, and each records how the parked state is and is not reached —
+including the closed form of the stall and, for Chorus, that its threshold scales with the sample
+rate. Verified behaviour-neutral: the 32-scenario twin dump is **identical** across the comment
+change, both suites stay at 202/0 and 920/0, and `check-realtime` and `check-portability` are clean.
+The A7-9 gates themselves are untouched, which is the decision this does not pre-empt.
 
 ---
 
@@ -347,9 +438,9 @@ is queued as **A7-9C** and needs only ordinary review.
 | **A7-1** — Velvet history slide | DONE (v0.9.5), and **superseded by A7-2B**. |
 | **A7-2T** — path-equivalence oracle (Test 40) | DONE (PR #129). Spent as designed: A7-2B landed against it. |
 | **A7-2 / A7-2B** — residual per-block term | **DONE this round.** Class A on both instruments; −12.2 % at 48 kHz/32, −37.2 % at 192 kHz/32; rate dependence removed; one +1.0 % corner recorded. |
-| **A7-5E** — cross-slice experiment | **ANSWERED by inference** (Part I): the slices already differ. **Confirmation by execution still open** — one macOS CI step (§5). |
+| **A7-5E** — cross-slice experiment | **CONFIRMED BY EXECUTION** (§5): the committed harness, cross-built and run on both architectures, differs in **32/32** scenarios. Two mechanisms — contraction (flag-removable) and oversampling coefficients from libm (not). The macOS CI diff remains worth running as platform-exact confirmation, no longer as the deciding experiment. |
 | **A7-5 / W5-D** — AVX2 | **readiness advanced, not implemented.** Now two options, one of them Class A at −17.2 % (§6). Six decisions listed (§8). |
 | **A7-9** — the glide stall | **readiness complete; implementation pending explicit Class-B approval.** Cost re-measured and 89 % of the Velvet share absorbed by A7-2B (§16). |
-| **A7-9C** (new) — correct the three false comments | **open, Class A, unblocked.** Should not wait on the A7-9 decision (§20). |
+| **A7-9C** — correct the three false comments | **DONE** (§20). Class A, verified behaviour-neutral against the twin dump. |
 | A7-4 · A7-8 | maintainer decisions, unchanged. |
 | A7-3 · A7-6 · A7-7 | not scheduled, unchanged. |
