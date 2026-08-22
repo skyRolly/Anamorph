@@ -199,25 +199,52 @@ changes. If the maintainer un-gates it, §8 is the plan.
    zero-fill of `accum` untouched:
    * `k = pos[t]`; ring portion length `min(k, numSamples)` starting at `(writePos - k) & histMask`,
      emitted as runs bounded by the ring end; then `midBlk[i - k]` for `i >= k`.
+   * **Two spellings are forbidden, and the follow-up round verified why** (see
+     `PERF_AUDIT_A7-2_A7-5_A7-9_INVESTIGATION.md` §6). Taking the ring run length as `k` rather than
+     `min(k, numSamples)` is a heap overflow of `accum` on the normal path — ASan names the line, so
+     it would not ship, but it is the obvious way to write it. Basing the tail on
+     `midBlk.data() - k` forms a pointer before the start of the object: **no** diagnostic under
+     ASan + UBSan + `local-bounds` + `pointer-overflow`, bit-correct output, silent UB. Index the
+     tail as `midBlk[i - k]` with `i >= k`; nothing downstream will catch the alternative.
 3. **Keep** the eligibility gate exactly as it is — this changes how the gather reads, not when it
    runs.
-4. **Re-point** Test 39's comment at the split-run arithmetic; the test body needs no change, which
-   is itself the argument that it was the right test.
+4. **Re-point** Test 39's comment at the split-run arithmetic. ~~The test body needs no change,
+   which is itself the argument that it was the right test.~~ **Superseded by step 6** — the
+   follow-up round proved Test 39 blind to the likeliest A7-2B defect, so the body does need
+   company.
 5. **Evidence to regenerate before it lands**: `AnamorphDspDump` twin diff; the 180-configuration
    sweep; Test 39 at four rates × three block schedules; both suites under ASan+UBSan (`local-bounds`
    matters here — the run arithmetic is new); full preflight.
-6. **Expected outcome**, measured on the prototype: −11.4 % at 48 kHz/32, −3.3 % at 48 kHz/128,
+6. **A new committed test must land FIRST, not alongside (A7-2T).** Step 4's claim that "the test
+   body needs no change" was checked in the follow-up round and does not hold. Test 39's oracle is
+   the build under test compared against itself, so it is blind to any defect that is not a function
+   of block length — including the likeliest A7-2B defect, a uniform one-sample tap-delay error.
+   Seeded, that error passes Test 39 at all four sample rates. The oracle that catches it needs no
+   product change: `prepare()` sizes `accum` from `maxBlockSize` and the gather gate requires
+   `numSamples <= accum.size()`, so an instance prepared for a SMALLER block runs the per-sample
+   loop over the same audio with an identical ring, tap set and coefficients — assert the two
+   bit-identical. Verified live in both directions in
+   `PERF_AUDIT_A7-2_A7-5_A7-9_INVESTIGATION.md` §3–§4.
+7. **Extend Test 39's reach** with one block longer than `decorrSamps` (e.g. 44.1 kHz at 4096 — the
+   regime where every tap splits and none wraps, and an ordinary offline-bounce buffer) and one
+   density-1.0 pass (at the default 0.5 exactly 32 of 64 taps are active, and they are the shallow
+   half).
+8. **Expected outcome**, measured on the prototype: −11.4 % at 48 kHz/32, −3.3 % at 48 kHz/128,
    −36.8 % at 192 kHz/32, −13.7 % at 192 kHz/128; fixed per-block term 13,502 → 6,066 Ir at 48 kHz
-   with **no** compaction spike at any setting; `linHist` freed.
+   with **no** compaction spike at any setting; `linHist` freed. **Re-measured** on a faithful
+   prototype (the one measured here still carried `linHist`): −11.3 %, −3.3 %, −36.5 %, −13.5 %, and
+   the fixed term 12,957 → 5,546 Ir at 48 kHz — and, the point that table missed, 39,373 → 6,104 Ir
+   at 192 kHz. B does not shrink the residual term so much as remove its sample-rate dependence.
 
 ## 9. Roadmap status after this round
 
 | Item | Status |
 |---|---|
-| **A7-0** — bench on a named machine, fill the `PERFORMANCE_BUDGET.md` rows | **open**, and now gating A7-2 explicitly. RISK-002 open. |
+| **A7-0** — bench on a named machine, fill the `PERFORMANCE_BUDGET.md` rows | **open**, and gating A7-2. RISK-002 open. |
 | **A7-1** | DONE (v0.9.5). |
-| **A7-2** | **investigated; not implemented.** Proposal (A) rejected on measurement; alternative (B) recommended and planned. Awaiting A7-0 and a maintainer decision on the design substitution. |
-| **A7-5** — multiband LR4 SIMD | open, blocked on an AVX2 ADR (with W5-D). |
+| **A7-2** | **investigated; not implemented.** Proposal (A) rejected on measurement; alternative (B) recommended and planned. Awaiting A7-0, **A7-2T** and a maintainer decision on the design substitution. |
+| **A7-2T** — commit the path-equivalence oracle (§8 step 6) | **open, and a prerequisite of A7-2B rather than a follow-up.** No product change, no A7-0 dependency. |
+| **A7-5** — multiband LR4 SIMD | open, blocked on an AVX2 ADR (with W5-D). The ADR should not be drafted until the universal binary's two slices are diffed — `PERF_AUDIT_A7-2_A7-5_A7-9_INVESTIGATION.md` Part II. |
 | A7-4 · A7-8 | maintainer decisions, unchanged. |
 | A7-3 · A7-6 · A7-7 | not scheduled, unchanged. |
-| **A7-9** — the Amount glide stalls above zero under FTZ | open, Class B, evidence in the v0.9.5 worklog §5. |
+| **A7-9** — the Amount glide stalls above zero under FTZ | open, Class B. **Widened**: the same false premise is load-bearing in `HaasProcessor` and `ChorusEngine` too, and the missed park is the largest single item on this roadmap. Evidence in the v0.9.5 worklog §5 and `PERF_AUDIT_A7-2_A7-5_A7-9_INVESTIGATION.md` Part III. |
