@@ -2325,17 +2325,20 @@ jobs:
             run_dump "bd-a-$3" ""             "d-a-$3.txt" || { say "- arm64 run FAILED"; return 0; }
             run_dump "bd-x-$3" "arch -x86_64" "d-x-$3.txt" || { say "- x86_64 run FAILED"; return 0; }
             local agree total
+            # `grep -c .` and the join below both ignore blank lines: the dump
+            # writes a header/footer, and counting those as agreeing scenarios
+            # overstated the first run's result by one.
             total=$(grep -c . "d-a-$3.txt" || echo 0)
             if diff -q "d-a-$3.txt" "d-x-$3.txt" >/dev/null; then
               say "- **arm64 == x86_64 — IDENTICAL** (all $total lines agree)"
               echo "::notice::A7-5E $3: arm64 and x86_64 are IDENTICAL ($total lines)"
             else
               n=$(diff "d-a-$3.txt" "d-x-$3.txt" | grep -c '^<')
-              agree=$(join -j1 <(sort "d-a-$3.txt") <(sort "d-x-$3.txt") 2>/dev/null | awk '$2==$4' | wc -l | tr -d ' ')
+              agree=$(join -j1 <(grep . "d-a-$3.txt" | sort) <(grep . "d-x-$3.txt" | sort) 2>/dev/null | awk '$2==$4' | wc -l | tr -d ' ')
               say "- **arm64 != x86_64** — $n line(s) differ, $agree scenario(s) agree"
               echo "::notice::A7-5E $3: $n line(s) differ, $agree scenario(s) agree"
               say ""; say "  scenarios that AGREE:"
-              join -j1 <(sort "d-a-$3.txt") <(sort "d-x-$3.txt") 2>/dev/null \
+              join -j1 <(grep . "d-a-$3.txt" | sort) <(grep . "d-x-$3.txt" | sort) 2>/dev/null \
                 | awk '$2==$4 {print "  - " $1}' | head -40 | tee -a "$GITHUB_STEP_SUMMARY"
             fi
           }

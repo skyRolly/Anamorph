@@ -3,7 +3,9 @@
 **Date:** 2026-08-22 · **State:** A7-2B and A7-2T merged (PR #129, #130); A7-9 and AVX2 pending
 decision; A7-0 blocked.
 
-Everything below is measured, and every figure names the instrument that produced it. **Nothing in
+Everything below is measured, and every figure names the instrument that produced it. **A7-5E is
+closed as of this revision** — the cross-slice question was confirmed on real Apple Silicon, not
+inferred. **Nothing in
 this document has been implemented.** Ir figures are callgrind with startup subtraction (3.0 s run
 minus 1.0 s run, over 2.0 s). Wall-clock is quoted nowhere: on this container the same binary and
 workload measured 292 ms in one round and 196 ms in the next, which is why `PERFORMANCE_BUDGET.md`
@@ -78,11 +80,19 @@ approved, and is merged.
 A7-5E established that the shipped slices already differ. That raises a question the project has
 never had to answer, and answering it is a prerequisite for Decision 1 being coherent.
 
-**The finding, in two parts.** FP contraction is one cause and a flag removes it. The other cause is
-not flag-removable: with contraction disabled on both sides, the oversampling path still differs,
-because its polyphase coefficients are derived at runtime through transcendental libm calls and libm
-is a different implementation per architecture. On Linux the split was total — all 8 oversampling-×1
-scenarios agreed, all 24 at ×2/×4/×8 differed.
+**The finding, in two parts, now confirmed on the shipping toolchain.** The experiment has been run
+on an Apple Silicon runner with Apple Clang and Apple libm — the committed `AnamorphDspDump` built
+for both slices, the arm64 one native and the x86_64 one under Rosetta 2, 32 hashes diffed:
+
+| | shipped flags | `-ffp-contract=off` on both |
+|---|---|---|
+| **macOS, Apple Clang / Apple libm** | **32 of 32 differ** | **24 differ, 8 agree** |
+| Linux, GCC 13 / glibc / qemu | 32 of 32 differ | 24 differ, 8 agree |
+
+The 8 that agree are every scenario at oversampling ×1 and only those, by name, on both platforms.
+FP contraction is one cause and a flag removes it. The other is not flag-removable: the oversampling
+path's polyphase coefficients are derived at runtime through transcendental libm calls, and **Apple's
+libm does not agree with itself across Apple's own two architectures**.
 
 **Three positions are available:**
 
@@ -97,7 +107,9 @@ scenarios agreed, all 24 at ×2/×4/×8 differed.
    flag, and it is JUCE's code, not Anamorph's. **Not recommended without a concrete need.**
 
 **Recommendation: position 1 now, position 2 if and when Option B lands.** Position 3 should not be
-opened without a user-visible reason to.
+opened without a user-visible reason to — and note what §5c makes concrete: it is not merely large,
+it requires replacing JUCE's oversampling coefficient derivation, because the divergence is in
+Apple's own libm rather than in anything this project writes.
 
 ---
 
@@ -135,7 +147,7 @@ the cross-block state A7-2B deleted, for 1 % in one corner.
 | **A7-1** — Velvet history slide | **DONE** (v0.9.5), **superseded by A7-2B** | — |
 | **A7-2T** — path-equivalence oracle (Test 40) | **DONE** (PR #129). Spent as designed: A7-2B landed against it, and it is now the standing guard that the gather equals the per-sample loop. | — |
 | **A7-2B** — residual per-block term | **DONE** (PR #130). Class A on both committed instruments; −12.2 % at 48 kHz/32, −37.2 % at 192 kHz/32; rate dependence removed. | Decision 4 (accept the corner) |
-| **A7-5E** — cross-slice experiment | **ANSWERED.** Linux (GCC 13 + qemu-user + glibc): 32/32 differ; contraction alone accounts for 8 of 32 and the oversampling path for the rest. macOS platform-exact run: see below. | — |
+| **A7-5E** — cross-slice experiment | **CLOSED.** Confirmed by execution on the shipping toolchain (Apple Silicon, Apple Clang, Apple libm): **32/32 differ at shipped flags; 24 differ with contraction off, the 8 oversampling-×1 scenarios agreeing.** Identical to the Linux result in counts, split and scenario names. `macos-crossslice` in CI, reporting-only. | — |
 | **A7-5 / W5-D** — AVX2 | **NOT IMPLEMENTED.** Three costed options above. | Decision 1, and Decision 3 for coherence |
 | **A7-9** — the glide stall | **NOT IMPLEMENTED.** Readiness complete, re-verified post-A7-2B. | Decision 2 (explicit Class-B approval) |
 | **A7-9C** — correct the three false comments | **DONE** (PR #130). Class A, verified behaviour-neutral against the twin dump. | — |
@@ -144,7 +156,8 @@ the cross-block state A7-2B deleted, for 1 % in one corner.
 
 ## Recommended order
 
-1. **Decision 3, position 1** — costs nothing, and Decision 1 is incoherent without it.
+1. **Decision 3, position 1** — costs nothing, Decision 1 is incoherent without it, and A7-5E is now
+   closed so nothing is waiting on further measurement.
 2. **Decision 4** — accept or revert A7-2B's corner; it is already in `main`.
 3. **Decision 2** — A7-9, Chorus first, with the liveness test as a precondition.
 4. **Decision 1, Option B** — after the ISA floor is written into `COMPATIBILITY_POLICY`.

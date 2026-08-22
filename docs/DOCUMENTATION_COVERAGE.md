@@ -1757,7 +1757,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:2935` and `.github/workflows/build.yml:3020`, this round being
+`.github/workflows/build.yml:2938` and `.github/workflows/build.yml:3023`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -6098,3 +6098,39 @@ the change.
 `check-portability` 52/0. The CHANGELOG entry added for A7-2B was also brought to the
 `CHANGELOG_POLICY` entry template, which requires an `Evidence:` source and a verification marker —
 it had neither.
+
+## A7-5E closed — confirmed on the shipping toolchain
+
+The cross-slice question has been answered by execution on the hardware and toolchain that ship the
+product, not by inference. A CI job of its own, `macos-crossslice`, builds the committed
+`AnamorphDspDump` for `arm64` and for `x86_64` from the same sources and flags on an Apple Silicon
+runner, runs the arm64 slice natively and the x86_64 slice under Rosetta 2 (both passing
+`--self-check`), and diffs the 32 scenario hashes.
+
+**At shipped flags the two slices differ in 32 of 32 scenarios.** With `-ffp-contract=off` on both
+sides, 24 still differ and 8 agree — and the 8 are every scenario at oversampling ×1 and only those.
+That is the Linux measurement reproduced exactly: same counts, same split, same scenario names, now
+against Apple Clang and Apple's libm rather than GCC and glibc. So both mechanisms are properties of
+the architectures and of the libm boundary rather than of any one toolchain: contraction is
+flag-removable, and the oversampling path's runtime-derived polyphase coefficients are not, because
+**Apple's libm does not agree with itself across Apple's own two architectures**.
+
+**The job is reporting-only and gates nothing**, deliberately: no policy, ADR or document claims
+cross-architecture bit identity, so failing a run on it would invent a contract by CI rather than
+decide one. It exits 0 on every path. Whoever decides the contract can promote it to a gate in the
+same change, and it can be deleted outright once the question stops being interesting.
+
+**Two process notes worth keeping, because both cost a full CI cycle.** The experiment first ran
+inside the packaging `macos` job and produced correct numbers that were *unreadable*: that job emits
+a dSYM warning flood of several hundred thousand lines afterwards, and every log-retrieval path caps
+by character budget — 30,000 lines of tail reached ten seconds past the step's end. Routing the
+result to `$GITHUB_STEP_SUMMARY` and `::notice::` did not fix it either, since Actions job summaries
+are not exposed through the check-runs API. Moving the experiment to its own short-log job did, and
+it was the right structure anyway: an experiment has no business inside the job that signs and
+uploads customer artifacts. Separately, the first run's "scenarios agree" count included a blank
+header line and printed 1 and 9 where the true figures are 0 and 8; the counting now ignores blank
+lines, and the named scenarios were never affected.
+
+**Verification.** All jobs green on the confirming run: `linux`, `linux-lto-tests`, `sanitizers`,
+`realtime`, `fuzz`, `docs`, `source-lint`, `windows`, `macos` (pluginval VST3+AU, both modes ×3, plus
+the Rosetta suites), `macos-intel` (native Intel), and `macos-crossslice`.
