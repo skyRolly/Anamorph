@@ -238,10 +238,11 @@ void VelvetNoise::processBlock (float* left, float* right, int numSamples) noexc
     // measured in worklogs/performance/PERF_AUDIT_A7-2_A7-5_A7-9_INVESTIGATION.md
     // and re-verified in PERF_AUDIT_A7-2B_A7-5E_IMPLEMENTATION.md. Filed as A7-9
     // (a Class-B repair, not yet approved); this comment is the A7-9C half.
+
     // Parked fast path (Wave 5 -- the Haas-parked / W3-9-compliant shape). With
     // the density glide at its fixpoint, the amount glide at exactly 0 with a 0
-    // target, and no stop fade in flight, every skipped operation
-    // below is provably a no-op this block: the density tick (fixpoint), the
+    // target, and no stop fade in flight, every skipped operation below is
+    // provably a no-op this block: the density tick (fixpoint), the
     // weights compare (equal by the gate), the amount tick (0 += k*0), and the
     // stop machine (! stopping). What MUST keep running does: the presence
     // env/gate keep tracking the input so a re-engage opens with the correct

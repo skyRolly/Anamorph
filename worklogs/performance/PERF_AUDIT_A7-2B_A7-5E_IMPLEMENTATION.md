@@ -359,7 +359,7 @@ dry term is `+0` and cannot absorb it.
 
 **What would change.** Three gates change from a value test to a **fixpoint** test, mirroring the
 density gate that already sits three lines above Velvet's:
-`VelvetNoise.cpp:154` (amount), `HaasProcessor.cpp:71`, `ChorusEngine.cpp:94`. No state is mutated; only
+`VelvetNoise.cpp:154` (amount), `HaasProcessor.cpp:73`, `ChorusEngine.cpp:97`. No state is mutated; only
 which path runs. The alternative — snapping the glide state to zero — is worse: it mutates DSP state
 rather than choosing a path, and every consumer of `currentAmount` would need re-auditing.
 
@@ -407,8 +407,8 @@ the pre-A7-2B numbers and is not any more. Nothing about its safety changed; its
 ## 20. The comment corrections should be separate, and here is why
 
 Three source comments stated a premise that is measurably false — that the one-pole "flushes to true
-zero". A7-9C has since replaced each with a correction, at `VelvetNoise.cpp:228-252`,
-`HaasProcessor.cpp:51-70` and `ChorusEngine.cpp:72-93`; the line numbers here are those corrected
+zero". A7-9C has since replaced each with a correction, at `VelvetNoise.cpp:228-240`,
+`HaasProcessor.cpp:51-63` and `ChorusEngine.cpp:72-85`; the line numbers here are those corrected
 blocks, since the text they replaced no longer exists to cite.
 
 **Recommendation: correct the comments independently of the Class-B decision, and first.**
