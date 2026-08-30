@@ -171,7 +171,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 - **The Linux version is now built with Clang, and the compiler is chosen rather than inherited.**
   Until now the compiler that produced the Linux download was whichever `g++` the CI image happened
   to provide — nobody picked it, and it could change without a line in any diff. The Linux VST3 and
-  Standalone are now built with the pinned Clang toolchain and linked with its matching LLD,
+  Standalone are now built with the pinned Clang 22 toolchain and linked with its matching LLD,
   which is what the link-time optimisation the release build uses actually requires. The same
   toolchain builds the check that runs on each proposed change, so what gets validated is what gets
   shipped, and the stricter warning set Clang applies now covers the code on its way out the door

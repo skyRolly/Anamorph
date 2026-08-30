@@ -49,7 +49,7 @@
 //  and it is also exactly what a DEAD gate prints: Clang treats an unrecognised
 //  `-Werror=<name>` as a mere `-Wunknown-warning-option` WARNING, so the day
 //  `function-effects` is renamed or dropped, the step keeps exiting 0 while
-//  checking nothing. Measured on Clang 22.1.8, the pin at the time: with the option
+//  checking nothing. Measured on the pinned Clang 22.1.8: with the option
 //  misspelled, a translation unit carrying a REAL seeded violation compiles
 //  with exit status 0.
 //

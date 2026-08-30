@@ -380,22 +380,25 @@ DELIBERATE_REAIMS = {
     # :3124 -> :3166, :3209 -> :3251, updated together with the document per
     # the "fix BOTH" rule verify_reaim_targets enforces.
     # Re-derived AGAIN 2026-08-30 (ADR-0033): the Clang-pin rationale block at the
-    # head of build.yml gained one line, so everything below it moved by one --
-    # :3189 -> :3190, :3251 -> :3275 via :3274. Document and declaration updated
-    # together, same rule.
-    ("docs/DOCUMENTATION_COVERAGE.md", ".github/workflows/build.yml:3190"):
+    # head of build.yml grew twice inside one change set -- once for the attempted
+    # 23 move and once for the release-identity reasoning that replaced it -- so
+    # everything below moved: :3189 -> :3198 and :3251 -> :3283. Only the FINAL
+    # spelling is declared; an intermediate one nothing in the tree carries would
+    # be a declaration that can never be exercised, which is exactly the shape
+    # verify_reaim_targets exists to reject.
+    ("docs/DOCUMENTATION_COVERAGE.md", ".github/workflows/build.yml:3198"):
         "TESTING_POLICY rule 4",
     # DECLARED 2026-08-30 (ADR-0033). `DEPENDENCY_POLICY.md`'s Clang row cites the
-    # `env:` block that CARRIES the pin, so a pin bump changes the cited text by
-    # definition -- the `VERSIONED_LINES` case. That substitution only covers an
-    # anchor that did NOT move, and this one did (:111-113 -> :112-114, the
-    # rationale block above it having gained a line in the same change), so the
-    # ordinary drift path applies and this declaration is what the gate asks for.
+    # `env:` block that CARRIES the pin. The VALUE did not change this round --
+    # ADR-0033 evaluated 23 and held at 22 -- but the rationale block above the
+    # env key gained the release-identity reasoning, which moved the anchor
+    # (:111-113 -> :120-122). A moved anchor takes the ordinary drift path even
+    # when its text is unchanged, so this declaration is what the gate asks for.
     # The token is the pin itself: if the row ever stops citing the pin, this
     # fails hard rather than going quiet.
-    ("docs/policies/DEPENDENCY_POLICY.md", ".github/workflows/build.yml:112-114"):
-        "ANAMORPH_CLANG_VERSION: 23",
-    ("docs/DOCUMENTATION_COVERAGE.md", ".github/workflows/build.yml:3275"):
+    ("docs/policies/DEPENDENCY_POLICY.md", ".github/workflows/build.yml:120-122"):
+        "ANAMORPH_CLANG_VERSION: 22",
+    ("docs/DOCUMENTATION_COVERAGE.md", ".github/workflows/build.yml:3283"):
         "the four lints'",    #
     # DECLARED 2026-08-30, thirty-seven entries, for the SAME split-push shape a
     # third time -- and this time the gate caught the failure it exists for, so

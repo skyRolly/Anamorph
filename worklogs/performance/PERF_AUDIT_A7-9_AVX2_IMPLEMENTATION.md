@@ -191,9 +191,17 @@ magnitude larger would be caught while the headroom for the wet gain stays expli
 **None of this changes the decision, and the direction of the change is not in question.** The
 residual is what the fix REMOVES; post-A7-9 the silence output is **exactly zero**, which is stronger
 than any bound. Even at the corrected worst case, 1.563e-35 is ≈ −696 dBFS, ~25 orders of magnitude
-below the smallest accepted Class-B precedent (H4 dry-align, 2.4e-10) and ~34 below a 24-bit LSB. It
+below the smallest accepted Class-B precedent (H4 dry-align, 2.4e-10) and ~28 below a 24-bit LSB. It
 is flagged here because a bound that is quoted in a policy-adjacent document should be the one that
 is true, not the one that was convenient.
+
+> **Arithmetic corrected 2026-08-30.** The second figure read **~34** until this date. It is a ratio,
+> and the ratio is `2^-23 / 1.563e-35 = 7.63e27`, i.e. **~28** orders — 34.8 is
+> `log10(1 / 1.563e-35)`, the absolute exponent, which is not a comparison against anything. The
+> first figure is unaffected and was always right: `2.4e-10 / 1.563e-35 = 1.54e25`, ~25 orders. The
+> wrong number never propagated: the only other document that makes the 24-bit comparison at all is
+> `CHANGELOG.md` `[0.9.5]`, which already says twenty-eight. This is a fix to the source record, not
+> to anything that quoted it.
 
 ### 4d. What A7-9 did NOT do
 

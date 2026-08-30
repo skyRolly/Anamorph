@@ -27,7 +27,7 @@ The audit itself recorded the gap. Its §"Items needing a non-static check" aske
 assumption from inferred to measured."*
 
 Clang's **RealtimeSanitizer** (RTSan, `-fsanitize=realtime`) is the tool built for this question, and
-the pinned toolchain already ships it: `libclang_rt.rtsan-x86_64.a` is present in the pinned Clang
+the pinned toolchain already ships it: `libclang_rt.rtsan-x86_64.a` is present in the clang-22
 install that `scripts/setup-llvm-apt.sh` produces (ADR-0028).
 
 ## Problem
@@ -151,7 +151,7 @@ would gate on nothing.
 
 ### 4. The CI lane, and its failure semantics
 
-A new **`realtime`** job builds `AnamorphTests` only, with `-fsanitize=realtime` on the Clang
+A new **`realtime`** job builds `AnamorphTests` only, with `-fsanitize=realtime` on the clang-22
 toolchain the repository already pins, and runs it. Three properties are load-bearing:
 
 - **Its own build directory and its own ccache lineage** — forced by option C's driver restriction.

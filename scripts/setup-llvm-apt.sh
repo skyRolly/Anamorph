@@ -10,19 +10,24 @@
 #
 #  WHY THIS EXISTS AT ALL. Ubuntu's own archives stop at clang-20 for noble
 #  (24.04), which is what `ubuntu-latest` resolves to; 21 and 22 are published
-#  for 26.04 only. The upstream STABLE release is 23.x (23.1.0, 2026-08-25), and
-#  apt.llvm.org is where upstream ships it for noble -- the same source
-#  `apt.llvm.org/llvm.sh` uses. Staying on the stock archive would mean holding
-#  the warning gate, the sanitizer host and the SHIPPED Linux compiler three
-#  majors behind upstream because of a packaging boundary, which is a
-#  distribution fact about Ubuntu rather than a fact about this project.
+#  for 26.04 only. The pinned major is upstream STABLE, and apt.llvm.org is
+#  where upstream ships it for noble -- the same source `apt.llvm.org/llvm.sh`
+#  uses. Staying on the stock archive would mean holding the warning gate, the
+#  sanitizer host and the SHIPPED Linux compiler majors behind upstream because
+#  of a packaging boundary, which is a distribution fact about Ubuntu rather
+#  than a fact about this project.
 #
-#  `llvm.sh`'s own `CURRENT_LLVM_STABLE` is the cheap check for "what is stable",
-#  and it LAGS the release it reports: it still read 22 on 2026-08-30, five days
-#  after 23.1.0 shipped. It is a proxy, not the fact -- upstream's release
-#  announcement and the per-release docs under releases.llvm.org settle it, the
-#  same way ADR-0028 settled the earlier disagreement between that constant and
-#  the site's prose. ADR-0033 records the move to 23 and this lag.
+#  "STABLE" IS ASSERTED, NOT ASSUMED -- see RELEASE_IDENTITY below. apt.llvm.org
+#  publishes rolling BRANCH builds, so a suite named `-N` can carry a commit from
+#  BEFORE that major's release. Measured 2026-08-30: every `-23` suite (noble,
+#  resolute, bookworm, trixie) was built from the SAME commit `55feb0a3b6b7`
+#  (noble's package is `1:23.1.0~++20260818083557+55feb0a3b6b7`; the others
+#  differ only in build timestamp), 49 commits BEFORE the `llvmorg-23.1.0` tag
+#  (`ea7d852a`, 2026-08-25) -- a pre-release compiler under a released-looking
+#  version string. noble-22, by contrast, is built from `ca7933e47d3a`, which IS
+#  `llvmorg-22.1.8^{}`. The assertion below is what tells the two apart, and it
+#  is why a major with no recorded release identity cannot be installed at all.
+#  ADR-0033 carries the measurement and the decision it forced.
 #
 #  WHY NOT `llvm.sh`. That script decides the version itself from its own
 #  notion of stable, installs a broad toolchain, and can add more than one
@@ -64,6 +69,56 @@ case "$MAJOR" in
         exit 2
         ;;
 esac
+
+# ---------------------------------------------------------------------------
+#  RELEASE_IDENTITY -- what "upstream stable major N" actually IS, upstream.
+#
+#  One line per major this repository is willing to install:
+#     <major>) <full release version> <the llvmorg-<version> tag's COMMIT>
+#
+#  Why a commit and not just a version string. apt.llvm.org names its packages
+#  after the version the release BRANCH is sitting on, not after a tag, so a
+#  pre-release build of `release/23.x` is called `23.1.0~++<date>+<sha>` months
+#  or weeks before 23.1.0 exists. The version string alone therefore cannot tell
+#  a released compiler from a pre-release one -- but the `+<sha>` in it can, and
+#  `clang --version` prints it. The tag commits below come from
+#  `git ls-remote --tags https://github.com/llvm/llvm-project` (the
+#  `llvmorg-<v>^{}` peeled ref), which is upstream's own record.
+#
+#  FAIL-CLOSED ON AN UNRECORDED MAJOR, and that is the point rather than a
+#  side effect: bumping `ANAMORPH_CLANG_VERSION` to a major nobody has looked up
+#  stops here, with a message saying what to look up, instead of installing
+#  whatever the mirror happens to be building that week.
+#
+#  WHEN THIS FAILS ON A MAJOR THAT *IS* LISTED, the mirror has rebuilt the suite
+#  from a different commit. That is not a bug in this script: under the
+#  stable-only rule the compiler is no longer the release. Re-derive the identity
+#  from upstream, confirm the new commit is the tag (or a later RELEASE tag), and
+#  update the line here in the same change -- never widen the match.
+# ---------------------------------------------------------------------------
+release_identity() {
+    case "$1" in
+        22) echo "22.1.8 ca7933e47d3a3451d81e72ac174dcb5aa28b59d1" ;;
+        # 23 is deliberately ABSENT. `llvmorg-23.1.0^{}` is
+        # ea7d852a70e8bdfaf601d6626a760f9771b2c4b4 (2026-08-25), and no
+        # apt.llvm.org suite has been rebuilt from it -- see the header and
+        # ADR-0033. Adding the line before the mirror catches up would make this
+        # gate fail, which is the correct outcome and not a reason to widen it.
+        *)  return 1 ;;
+    esac
+}
+
+if ! IDENTITY="$(release_identity "$MAJOR")"; then
+    echo "setup-llvm-apt: no upstream release identity is recorded for clang-${MAJOR}." >&2
+    echo "setup-llvm-apt: this repository installs RELEASED compilers only, and apt.llvm.org" >&2
+    echo "setup-llvm-apt: publishes rolling branch builds that can predate a release by weeks." >&2
+    echo "setup-llvm-apt: record <version> and the llvmorg-<version> tag commit in" >&2
+    echo "setup-llvm-apt: release_identity() -- \`git ls-remote --tags https://github.com/llvm/llvm-project\`" >&2
+    echo "setup-llvm-apt: -- and only after checking the suite actually carries that commit." >&2
+    exit 2
+fi
+EXPECT_VERSION="${IDENTITY%% *}"
+EXPECT_COMMIT="${IDENTITY##* }"
 
 SUDO=""
 if [ "$(id -u)" -ne 0 ]; then SUDO="sudo"; fi
@@ -158,14 +213,49 @@ $SUDO apt-get update -y -o Acquire::Retries=3 \
 $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y \
     "clang-${MAJOR}" "lld-${MAJOR}" "libclang-rt-${MAJOR}-dev"
 
-# The assertion, not a courtesy print: if the suite resolved to something else,
-# or the install half-succeeded, the job stops here rather than at a confusing
-# baseline mismatch two steps later.
-"clang-${MAJOR}" --version
-"clang-${MAJOR}" --version | grep -qE "clang version ${MAJOR}\." || {
-    echo "setup-llvm-apt: clang-${MAJOR} reports a version that is not ${MAJOR}.x" >&2
-    exit 1
-}
+# THE ASSERTION, not a courtesy print, and it is an IDENTITY check rather than a
+# major check. If the suite resolved to something else, or the install
+# half-succeeded, or -- the case that made this necessary -- the mirror is
+# serving a pre-release build of the right major, the job stops HERE rather than
+# at a confusing baseline mismatch two steps later or, worse, in a shipped
+# artifact nobody re-checked.
+VERSION_LINE="$("clang-${MAJOR}" --version | head -1)"
+echo "setup-llvm-apt: ${VERSION_LINE}"
+
+# 1. The full release version, not just the major. `22.1.7` and `22.1.8` are
+#    both "22.x" and only one of them is what this repository recorded.
+case "$VERSION_LINE" in
+    *"clang version ${EXPECT_VERSION}"*) ;;
+    *)
+        echo "setup-llvm-apt: clang-${MAJOR} reports a version that is not ${EXPECT_VERSION}" >&2
+        echo "setup-llvm-apt:   got: ${VERSION_LINE}" >&2
+        exit 1
+        ;;
+esac
+
+# 2. The BUILD COMMIT, which is what separates the release from a branch build
+#    wearing the release's version number. apt.llvm.org spells it `+<sha>` inside
+#    the parenthetical; a distribution package that carries no `+<sha>` at all is
+#    release-versioned by construction and passes on step 1 alone, which is
+#    stated here rather than left as a silent gap.
+BUILD_COMMIT="$(printf '%s\n' "$VERSION_LINE" | sed -n 's/.*+\([0-9a-f]\{7,40\}\)[^0-9a-f].*/\1/p')"
+if [ -n "$BUILD_COMMIT" ]; then
+    case "$EXPECT_COMMIT" in
+        "${BUILD_COMMIT}"*) ;;
+        *)
+            echo "setup-llvm-apt: clang-${MAJOR} is NOT the ${EXPECT_VERSION} release build." >&2
+            echo "setup-llvm-apt:   built from: ${BUILD_COMMIT}" >&2
+            echo "setup-llvm-apt:   llvmorg-${EXPECT_VERSION} is: ${EXPECT_COMMIT}" >&2
+            echo "setup-llvm-apt: apt.llvm.org publishes rolling branch builds; this one is not the" >&2
+            echo "setup-llvm-apt: release. Shipping it would break the stable-only rule (ADR-0028," >&2
+            echo "setup-llvm-apt: ADR-0033). Do not widen this check to get green." >&2
+            exit 1
+            ;;
+    esac
+    echo "setup-llvm-apt: build commit ${BUILD_COMMIT} matches llvmorg-${EXPECT_VERSION}"
+else
+    echo "setup-llvm-apt: no build commit in the version string; release-versioned package assumed"
+fi
 command -v "ld.lld-${MAJOR}" >/dev/null 2>&1 || [ -x "/usr/lib/llvm-${MAJOR}/bin/ld.lld" ] || {
     echo "setup-llvm-apt: lld-${MAJOR} is missing; the LTO plugin link needs it" >&2
     exit 1
