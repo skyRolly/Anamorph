@@ -87,10 +87,16 @@ repository ever grows a real package manifest.
   not the version string on the package. **What landed instead** is the guard that makes the
   distinction machine-checkable: `setup-llvm-apt.sh` now carries an upstream **release identity**
   per major — the full version plus that release's `llvmorg-<version>` tag commit — refuses a major
-  it has no identity for (**exit 2**), and refuses an install whose `clang --version` build commit is
-  not the tag's (**exit 1**). Proven in all three directions on one machine: clang-22 passes (built
-  from `ca7933e47d3a`, which **is** `llvmorg-22.1.8^{}`); an unrecorded major exits 2; and clang-23
-  with the true 23.1.0 identity recorded exits 1 naming both commits. **Rules 2–3 have nothing to act
+  it has no identity for (**exit 2**), and reads the build commit from **four** sources — the
+  compiler's own `clang --version` and the installed version of each of the three packages. Every
+  source that carries a commit must agree, **at least one must carry one**, and it must be the tag's;
+  anything else is **exit 1**. The "at least one" rule is the fail-closed half: absence of metadata is
+  not evidence of a release, and the first implementation accepting it was a bypass, corrected in the
+  same round. `--self-test` drives that decision function with recorded strings and runs in
+  `source-lint` and `preflight.sh`. Proven on one machine: clang-22 passes with all four sources
+  agreeing on `ca7933e47d3a`, which **is** `llvmorg-22.1.8^{}`; an unrecorded major exits 2; clang-23
+  with the true 23.1.0 identity recorded exits 1 naming both commits; and the nine self-test cases
+  cover missing, conflicting and package-only identity. **Rules 2–3 have nothing to act
   on:** no shipping toolchain moved, so no twin dump, no Level-5 audition and no compatibility
   re-verification are owed by this entry — the same position ADR-0028 was in, for a different reason.
   The evidence gathered while 23 *was* on the table is kept in ADR-0033 because it is what the next

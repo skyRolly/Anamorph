@@ -788,8 +788,13 @@ intermediate 20 step and its mistaken reading of 21/22 availability).
 BRANCH builds, so a `-N` suite can serve a commit from before N's release under a version string that
 already reads like the release. `setup-llvm-apt.sh` therefore carries an upstream **release identity**
 per major — the full version plus the `llvmorg-<version>` tag's commit — refuses a major it has no
-identity for (exit 2), and refuses an install whose `clang --version` build commit is not that tag's
-(exit 1). noble-22 passes because it is built from `ca7933e47d3a`, which **is** `llvmorg-22.1.8^{}`.
+identity for (exit 2), and reads the build commit from **four** sources — `clang --version` and the
+installed version of each of the three packages. Every source carrying a commit must agree, at least
+one must carry one, and it must be that tag's; anything else is exit 1. A compiler whose `--version`
+omits the commit is therefore still verifiable from package metadata, and one for which **no** source
+carries it fails **closed** rather than passing on a version string. `--self-test` proves that decision
+function in `source-lint`. noble-22 passes because it is built from `ca7933e47d3a`, which **is**
+`llvmorg-22.1.8^{}`.
 **23 does not**: LLVM 23.1.0 released 2026-08-25 (tag commit `ea7d852a`), and on 2026-08-30 every
 apt.llvm.org `-23` suite — noble, resolute, bookworm, trixie — still carried
 the same commit `55feb0a3b6b7` (noble's package is

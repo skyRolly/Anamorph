@@ -510,6 +510,17 @@ jobs:
       - name: Citation-gate self-test (recognition, mapping and rewriting)
         run: python3 scripts/check-citations.py --self-test
 
+      # THE TOOLCHAIN INSTALLER'S VERIFIER, self-tested HERE rather than in the
+      # five jobs that install: its decision function needs no apt, no network
+      # and no compiler, so proving it live costs seconds in a lint job instead
+      # of five duplicated minutes in build jobs. The install path calls the same
+      # function with real evidence, so a dead verifier fails here rather than
+      # accepting whatever the mirror served. It covers the case that used to
+      # pass silently -- a compiler whose version looks right and whose identity
+      # cannot be established from any source (ADR-0033).
+      - name: Release-identity self-test (the toolchain verifier still refuses)
+        run: ./scripts/setup-llvm-apt.sh --self-test
+
       # Evidence anchors (`some/file.cpp:695-752`) are exact and
       # therefore fragile: an edit ABOVE one silently re-aims it at unrelated
       # code while the document keeps reading as though it were still correct.

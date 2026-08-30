@@ -1765,7 +1765,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3198` and `.github/workflows/build.yml:3283`, this round being
+`.github/workflows/build.yml:3209` and `.github/workflows/build.yml:3294`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -1799,7 +1799,7 @@ silence is being read.
 
 **Read off the workflow, not off the review.** The report asserted that
 `check-clang-warnings.py` and `check-gcc-warnings.py` "self-test in one job and gate in another".
-They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:639` and gates at
+They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:650` and gates at
 `:944`, both in one job; `check-gcc-warnings.py` self-tests at `:2530` and gates at `:2551`,
 both in `linux-lto-tests`. All seven pairs are same-job. (The Clang pair was in `linux-clang` when
 this round ran; ADR-0030 folded that job into `linux`, moving both lines together and leaving the
@@ -6396,8 +6396,13 @@ release-commit build for a pre-release branch build while believing it was movin
 major — the full version plus that release's `llvmorg-<version>` tag commit — and asserts both before
 the job proceeds: an **unrecorded major exits 2** (the property that would have caught the draft: a pin
 bump to a major nobody verified now stops before installing anything), and a **build commit that is not
-the tag's exits 1**, naming both. A package with no `+<sha>` is release-versioned by construction and
-passes on the version check alone, said in the script rather than left as a silent gap. The 23 line is
+the tag's exits 1**, naming both. The commit is read from **four** sources — `clang --version` and the
+installed version of each of the three packages — every source that carries one must agree, and if
+**none** carries one the install fails closed. That last rule is a correction inside the same round:
+the first implementation accepted a missing commit as "release-versioned by construction", which was a
+bypass rather than a lenience, and it is what a compiler with no `+<sha>` would have walked through.
+A `--self-test` drives the decision function with recorded strings and runs in `source-lint` and
+`preflight.sh`. The 23 line is
 deliberately absent, and says so at the point of absence. Proven in all three directions against the
 real packages: 22 passes printing the matching commit; an unrecorded major exits 2; 23 with its true
 identity recorded exits 1 naming `55feb0a3b6b7` against `ea7d852a`.

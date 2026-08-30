@@ -97,10 +97,22 @@ version and that release's `llvmorg-<version>` tag commit — and asserts both b
   the property that would have caught the first draft: bumping the pin to a major nobody had verified
   stops immediately instead of installing whatever the mirror was building that week.
 - **A recorded major whose installed build commit is not the tag's is refused (exit 1)**, naming both
-  commits. `clang --version`'s `+<sha>` is the only field that distinguishes a release build from a
-  branch build wearing the release's version number.
-- A package with no `+<sha>` at all (a distribution build) is release-versioned by construction and
-  passes on the version check alone — stated in the script rather than left as a silent gap.
+  commits. The build commit is the only field that distinguishes a release build from a branch build
+  wearing the release's version number.
+- **The commit is read from FOUR sources**, not one: `clang --version`, baked into the binary at
+  compile time, and the installed version of each of the three packages (`dpkg-query -W`), which is
+  dpkg's record of what apt unpacked after the `signed-by=` keyring validated the suite. They are
+  different artefacts, so requiring every source that carries a commit to **agree** catches a binary
+  swapped after install and a repackaged `.deb` alike — and a compiler whose own `--version` omits the
+  commit is still verifiable when the package metadata supplies one.
+- **If NO source carries a commit the install fails closed (exit 1).** *This ADR's first draft accepted
+  that case*, reasoning that a package without a `+<sha>` is "release-versioned by construction". That
+  was a verification bypass, not a lenience: absence of metadata is not evidence of a release, and a
+  version string alone is exactly what cannot separate `23.1.0` from `23.1.0~++…`, which is the defect
+  this whole ADR exists for. Corrected 2026-08-30 in the same round the reviewer found it.
+- **`--self-test` drives the decision function** with recorded strings — no apt, no network, no
+  compiler — and runs in `source-lint` and `preflight.sh`, so a dead verifier fails in a lint job
+  rather than accepting whatever the mirror served.
 
 The identity table records **22 only**. The 23 line is deliberately absent and says so at the point of
 absence: adding it before the mirror catches up would make the gate fail, which is the correct outcome

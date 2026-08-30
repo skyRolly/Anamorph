@@ -382,11 +382,12 @@ DELIBERATE_REAIMS = {
     # Re-derived AGAIN 2026-08-30 (ADR-0033): the Clang-pin rationale block at the
     # head of build.yml grew twice inside one change set -- once for the attempted
     # 23 move and once for the release-identity reasoning that replaced it -- so
-    # everything below moved: :3189 -> :3198 and :3251 -> :3283. Only the FINAL
-    # spelling is declared; an intermediate one nothing in the tree carries would
-    # be a declaration that can never be exercised, which is exactly the shape
-    # verify_reaim_targets exists to reject.
-    ("docs/DOCUMENTATION_COVERAGE.md", ".github/workflows/build.yml:3198"):
+    # everything below moved, and the release-identity self-test added to
+    # `source-lint` moved it once more: :3189 -> :3209 and :3251 -> :3294. Only
+    # the FINAL spelling is declared; an intermediate one nothing in the tree
+    # carries would be a declaration that can never be exercised, which is
+    # exactly the shape verify_reaim_targets exists to reject.
+    ("docs/DOCUMENTATION_COVERAGE.md", ".github/workflows/build.yml:3209"):
         "TESTING_POLICY rule 4",
     # DECLARED 2026-08-30 (ADR-0033). `DEPENDENCY_POLICY.md`'s Clang row cites the
     # `env:` block that CARRIES the pin. The VALUE did not change this round --
@@ -398,7 +399,7 @@ DELIBERATE_REAIMS = {
     # fails hard rather than going quiet.
     ("docs/policies/DEPENDENCY_POLICY.md", ".github/workflows/build.yml:120-122"):
         "ANAMORPH_CLANG_VERSION: 22",
-    ("docs/DOCUMENTATION_COVERAGE.md", ".github/workflows/build.yml:3283"):
+    ("docs/DOCUMENTATION_COVERAGE.md", ".github/workflows/build.yml:3294"):
         "the four lints'",    #
     # DECLARED 2026-08-30, thirty-seven entries, for the SAME split-push shape a
     # third time -- and this time the gate caught the failure it exists for, so
