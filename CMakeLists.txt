@@ -147,12 +147,41 @@ if(MSVC)
     #  ever having run on it -- one more reason it stays outside the validated
     #  set (COMPATIBILITY_MATRIX, toolchain section).
     # ------------------------------------------------------------------------
-    if(ANAMORPH_X86_ISA_BASELINE)
+    #  ARCHITECTURE GUARD. /arch:AVX2 is an x86 flag; ADR-0032 scopes it to
+    #  Windows x86-64 and nothing else. CMAKE_CXX_COMPILER_ARCHITECTURE_ID is
+    #  the right question to ask because it is the TARGET's identity, taken
+    #  from the compiler's own predefines (_M_X64/_M_AMD64 -> "x64",
+    #  _M_ARM64 -> "ARM64", _M_ARM64EC -> "ARM64EC", _M_IX86 -> "X86" --
+    #  CMakePlatformId.h.in), so it is right for BOTH generators: an ARM64
+    #  cross-build under the VS generator (-A ARM64) and an arm64 vcvarsall
+    #  shell under Ninja both report ARM64, where CMAKE_SYSTEM_PROCESSOR
+    #  reports the HOST and would hand an ARM64 target an x86 flag.
+    #
+    #  A POSITIVE match on x64, deliberately, rather than "not ARM64": an
+    #  architecture nobody has thought about yet gets NO flag, which is the
+    #  safe direction. ARM64EC and 32-bit X86 are excluded by the same
+    #  property -- ADR-0032 measured x86-64 and says nothing about either, and
+    #  the plug-in is 64-bit only regardless.
+    #
+    #  MISDETECTION FAILS CLOSED AND LOUD: if this ever stopped matching a
+    #  real x64 build, the flag would silently vanish -- so `windows-avx2-ab`
+    #  asserts /arch:AVX2 IS present in its shipped-configuration build files
+    #  before comparing, and fails INFRASTRUCTURE if it is not. The gate
+    #  cannot pass vacuously on a guard that stopped firing.
+    if(ANAMORPH_X86_ISA_BASELINE AND CMAKE_CXX_COMPILER_ARCHITECTURE_ID STREQUAL "x64")
         target_compile_options(AnamorphHardening INTERFACE /arch:AVX2)
-    else()
+        message(STATUS "Anamorph: x86-64 ISA baseline (ADR-0032) -- /arch:AVX2 (MSVC target ${CMAKE_CXX_COMPILER_ARCHITECTURE_ID})")
+    elseif(NOT ANAMORPH_X86_ISA_BASELINE AND CMAKE_CXX_COMPILER_ARCHITECTURE_ID STREQUAL "x64")
         message(WARNING
             "Anamorph: ANAMORPH_X86_ISA_BASELINE=OFF -- building WITHOUT the ADR-0032 /arch:AVX2 "
             "baseline. Comparison builds only; NOT the shipped configuration.")
+    else()
+        # Not an x86-64 MSVC target: ADR-0032 does not apply and no ISA flag is
+        # added. Windows ARM64 is Not Supported (COMPATIBILITY_MATRIX); this
+        # branch exists so that if such a target is ever introduced it starts
+        # from base ISA rather than silently inheriting an x86 baseline.
+        message(STATUS "Anamorph: no x86-64 ISA baseline -- MSVC target is "
+                       "'${CMAKE_CXX_COMPILER_ARCHITECTURE_ID}', outside ADR-0032's scope")
     endif()
 else()
     # -g (Release): adds debug sections only — GCC/Clang codegen is unchanged;
