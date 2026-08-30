@@ -17,6 +17,18 @@ shipped flags; 24/32 with contraction off, the 8 oversampling-×1 scenarios agre
 
 ---
 
+> **HOW TO READ THIS DOCUMENT NOW (status note, 2026-08-30).** §§1–10 are the audit as written on
+> 2026-08-22; the **R-round** sections at the end executed its recommendations and supersede several
+> of its audit-time statements. Every superseded statement below carries an inline
+> **[Superseded — R-round]** marker pointing at the current evidence; unmarked statements remain
+> current. The three registers, kept distinct throughout:
+>
+> | register | contents |
+> |---|---|
+> | **Current evidence** | `windows-avx2-ab` on MSVC 14.51.36231: A vs B (`/arch:AVX2` alone) **0/32 differ**, B vs C (`/fp:contract`) **32/32 differ** — replicated on a second run with the corrected parser. Clang 22.1.8 measured: 1007.8 Ir/sample shipped / 1253.4 baseline (−19.6 %); GCC 13.3: 1392.1 / 1705.9 (−18.4 %), the frozen-baseline figure reproducing the historical 1704.9 to 0.06 %. A7-5E unchanged at the ADR-0031 flags. |
+> | **Current adopted policy** | ADR-0031 flags on GCC/Clang x86-64 only (Linux + macOS `x86_64` slice); **MSVC carries no ISA flag** (option 5 stands); arm64 deliberately untouched (option 4); Linux/Windows arm64 **Not Supported**; clang-cl outside the validated set; cross-architecture bit identity not a goal. |
+> | **Open maintainer decisions** | Whether to extend ADR-0031 to MSVC (`/arch:AVX2`) — evidence-ready, prepared in `worklogs/performance/MSVC_AVX2_ADOPTION_PACKET.md`, **not enabled**. A7-0's named benchmark machine. Option C remains not taken. |
+
 ## 1. The headline, first
 
 **Exactly one optimization this repository *applies* is platform-conditional: ADR-0031's
@@ -82,10 +94,10 @@ Two rows deserve the emphasis:
 | Platform / toolchain | Optimizations present | Benefit measured here? | Behaviour validated here? |
 |---|---|---|---|
 | Linux x86-64, **GCC 13.3** (this container) | all | **YES — every headline figure**: A7-1 −14.3/−32.3 %, A7-2B −12.2/−37.2 %, A7-9's Ir/block recoveries, AVX2 −17.2 %; callgrind Ir with startup subtraction; "Intel Xeon @ 2.80 GHz, 4 cores, gcc 13.3.0, shared container" | locally: suites, twin dump, Test 41 fired pre-fix |
-| Linux x86-64, **Clang 22** (the *shipped* artifact) | all | **NO** — no headline Ir figure was ever produced from a Clang-22-built binary | fully: suites (`MALLOC_PERTURB_`), ASan/UBSan+vptr, RTSan, fuzz, pluginval ×3 ×2 modes on the stripped bytes, ABI floor |
+| Linux x86-64, **Clang 22** (the *shipped* artifact) | all | ~~NO — no headline Ir figure was ever produced from a Clang-22-built binary~~ **[Superseded — R-round, R-6]: now measured** — 1007.8 Ir/sample at shipped flags, 1253.4 at the frozen baseline (−19.6 %), same cell/instrument/container as the GCC figures | fully: suites (`MALLOC_PERTURB_`), ASan/UBSan+vptr, RTSan, fuzz, pluginval ×3 ×2 modes on the stripped bytes, ABI floor |
 | Linux x86-64, **GCC 16** (compat gate) | all | no | suites under LTO, dump `--self-check`, bench smoke |
 | Linux x86-64, distro GCC (valgrind step, CodeQL — unpinned) | all | no | valgrind memcheck over both suites (`ANAMORPH_TESTS_NO_FTZ=1`); CodeQL is compile-only |
-| **Windows x86-64, MSVC** | all except ADR-0031 | **NO — nothing was ever measured on Windows** | suites (both exes, fail-closed discovery), pluginval ×3 ×2 modes; **no bit-exactness instrument**: no CI job builds `AnamorphDspDump` on Windows |
+| **Windows x86-64, MSVC** | all except ADR-0031 | **NO Ir/benefit figure exists** (still true — no instruction-count instrument runs on Windows). ~~nothing was ever measured on Windows~~ **[Superseded — R-round, R-1]: numerically measured now** — the `windows-avx2-ab` A/B/C ran on toolset 14.51.36231 | suites (both exes, fail-closed discovery), pluginval ×3 ×2 modes; ~~no bit-exactness instrument: no CI job builds `AnamorphDspDump` on Windows~~ **[Superseded — R-round]: the `windows-avx2-ab` job builds and runs it three ways; A vs B 0/32 differ** |
 | **macOS x86_64**, AppleClang (universal slice; `macos-intel` thin deliberately carries a second, older AppleClang generation — both unpinned, from each image's Xcode) | all incl. ADR-0031 | no | suites under Rosetta 2 (AVX2-probed, warning-degradable) **and** on native Intel silicon (blocking, asserted `proc_translated == 0`); pluginval VST3+AU ×3 ×2 on native Intel; dump runs in `macos-crossslice` |
 | **macOS arm64**, AppleClang (unpinned, image Xcode) | all; FMLA contraction free | no (no callgrind on macOS; A7-0's named-machine blocker applies) | suites native, pluginval VST3+AU ×3 ×2, dump `--self-check` + cross-slice comparison |
 | clang-cl | — | — | **never exercised** — no CI job, no local configuration uses it |
@@ -93,7 +105,9 @@ Two rows deserve the emphasis:
 The unevenness the task suspected is real, and it lives in the **measurement** column, not the
 **presence** column: every benefit figure in the repository comes from one shared Linux x86-64
 container with GCC-13-built binaries, while the shipped Linux binary is Clang 22 and the other
-platforms have no instruction-count instrument at all. That is the already-recorded **A7-0 /
+platforms have no instruction-count instrument at all. **[Partially superseded — R-round]:** the
+Clang-22 half of that gap is closed (R-6 figures above); the no-Ir-instrument-off-Linux half
+remains true and is A7-0's standing blocker. That is the already-recorded **A7-0 /
 RISK-002** blocker (`PERFORMANCE_BUDGET.md` rows deliberately empty; wall-clock repudiated — 292 ms
 vs 196 ms for the same binary and workload in consecutive rounds), not a new gap. The AVX2 change is
 the least exposed to it: its Class-A property means the *behavioural* claim transfers to every
@@ -108,8 +122,8 @@ GCC/Clang x86-64 build bit-for-bit, and GCC-haswell vs Clang-haswell were measur
 | `ANAMORPH_X86_ISA_BASELINE` inert on MSVC (OFF changes nothing, warns nothing there) | **Structural** (no recorded decision — the option exists for GCC/Clang A/B re-verification and the ISA block simply lives in the other branch); worth knowing before anyone builds a Windows A/B on it — §5 |
 | **clang-cl** would get no ISA flags (takes the `if(MSVC)` branch) | **Structural** (no recorded decision; falls out of `if(MSVC)`); clang-cl is unused everywhere. Boundary condition worth recording: GNU-driver clang targeting the MSVC ABI (`clang++ --target=x86_64-pc-windows-msvc`) sets `MSVC=false` and **would** take the GCC/Clang branch and receive `-march=haswell` — an untested combination no toolchain currently exercises (F-6) |
 | No benefit figures off the one Linux container | **Known and recorded** (A7-0 / RISK-002), not new |
-| Headline Ir figures measured only on **GCC-13-built** binaries while the shipped Linux binary is **Clang 22** | **Accidental — and the one measurement gap closable without a named machine**: callgrind runs on this container regardless of which compiler built the binary; the named-machine blocker applies to wall-clock and to other OSes, not to this. R-6 |
-| No bit-exactness instrument on Windows | **Accidental/unrecorded** — a pre-existing absence that ADR-0031 option 5 *relies on* as evidence but nowhere *decides*; now the load-bearing blocker for any MSVC extension, and cheap to remove (§5, R-1) |
+| Headline Ir figures measured only on **GCC-13-built** binaries while the shipped Linux binary is **Clang 22** | **CLOSED by the R-round (R-6)** — measured on clang-22.1.8: 1007.8 Ir/sample shipped, −19.6 % AVX2 delta, methodology self-validated against the historical GCC figure to 0.06 % |
+| No bit-exactness instrument on Windows | **CLOSED by the R-round** — was accidental/unrecorded (ADR-0031 option 5 *relied on* the absence but nowhere *decided* it); the `windows-avx2-ab` job is that instrument now, and its first two runs measured A vs B 0/32 (§R-results) |
 | `juceaide` and the VST3 manifest helper compile outside `AnamorphHardening` | Accidental-but-harmless: configure-time host tooling, never shipped, compiles no `src/` code (V1's refutation, §8 F-5) |
 | **Linux arm64 / Windows arm64**: no builds | Out of scope **by omission, not by recorded decision** — no `COMPATIBILITY_MATRIX` row says "Not Supported" the way AAX and mono→mono are recorded as deliberate exclusions (§7, R-3) |
 | Linux CI jobs run AVX2 binaries with no capability probe (unlike both Rosetta steps) | Accepted residual: GitHub-hosted x86-64 runners are Haswell+; empirically green. A self-hosted pre-Haswell runner would SIGILL — noted, no action (F-7) |
@@ -148,9 +162,13 @@ only `/arch:` mention in a build file is the CMakeLists comment saying it is *no
    lanes. Per-lane elementwise promotion is bit-preserving; loop *reductions* need reassociation,
    which the `/fp:precise` doc text forbids unless bitwise-identical — but whether MSVC's vectorizer
    holds that line for every loop shape in this engine is **exactly the question only a twin dump can
-   answer**, which is ADR-0031 option 5's stated reason for requiring measurement. *(Unverified
-   beyond doc text; do not assume.)*
-4. **A Windows validation instrument is feasible and cheap** *(verified)*: `tests/dsp_dump.cpp` is
+   answer**, which is ADR-0031 option 5's stated reason for requiring measurement. *(Audit-time
+   status: unverified beyond doc text.)* **[Superseded — R-round]: answered empirically — the
+   `windows-avx2-ab` run on toolset 14.51.36231 measured A vs B 0/32, i.e. no reassociation moved a
+   bit for this instrument's coverage.**
+4. **A Windows validation instrument is feasible and cheap** *(verified — and since the R-round it
+   EXISTS: the reporting-only `windows-avx2-ab` job is exactly the step this item describes)*:
+   `tests/dsp_dump.cpp` is
    fully platform-neutral — no ifdefs, no threads, no clock, no environment reads; fixed-seed LCG
    stimulus, FNV-1a over raw output bytes, `printf` only; the target deliberately excludes LTO. A
    Windows CI step can configure twice (baseline vs `-DCMAKE_CXX_FLAGS="/arch:AVX2"` — necessary
@@ -171,8 +189,10 @@ only `/arch:` mention in a build file is the CMakeLists comment saying it is *no
    callgrind does not exist on Windows, wall-clock is repudiated project-wide, and A7-0's named-machine
    blocker applies with extra force. The honest statement is: benefit unquantified, mechanism shared.
 
-**Recommendation R-1 — defer the flag; build the instrument first.** The extension is *plausibly*
-Class A on VS2022 toolsets, but ADR-0031 option 5's logic still holds: it could only be assumed, not
+**Recommendation R-1 — defer the flag; build the instrument first.** **[Executed — R-round: the
+instrument is built and has run twice; §R-results carries the numbers. The flag remains deferred,
+which is this recommendation's second half, not a leftover.]** The extension is *plausibly*
+Class A on VS2022 toolsets, but ADR-0031 option 5's logic still held at audit time: it could only be assumed, not
 demonstrated. The cheap, decision-free first move is a **reporting-only Windows twin-dump A/B step**
 (the `macos-crossslice` pattern: build the dump at defaults and at `/arch:AVX2`, diff, print, exit 0).
 That converts "could not be demonstrated" into data for the price of one CI step and no product
@@ -283,13 +303,13 @@ macOS arm64 posture.
 
 | # | Recommendation | Action class | When |
 |---|---|---|---|
-| R-1 | **MSVC `/arch:AVX2`: defer the flag; add a reporting-only Windows twin-dump A/B step first** (the `macos-crossslice` pattern). Adoption afterwards requires its own ADR + the Windows ISA floor documented before the flag (the ADR-0031 ordering rule) | CI step (reporting-only), then a maintainer decision | instrument: next CI round · flag: maintainer |
-| R-2 | **arm64: no action** — contraction already live, width win architecturally absent, the equalizing flag affirmatively rejected (option 4) | none | — |
-| R-3 | Record **Linux/Windows arm64 as "Not Supported"** in `COMPATIBILITY_MATRIX` if the omission should become a decision | docs-only | maintainer |
-| R-3b | **clang-cl: exclude.** No build uses it; if one ever appears it is a *third* flag branch, not either existing one — it takes `if(MSVC)` yet accepts GCC-style flags via `/clang:` — and gets its own ADR then (F-6 records the GNU-driver boundary) | none now | if ever adopted |
-| R-4 | Correct the **A7-9 comment inaccuracies** (F-1, F-2): one architecture-note sentence in each of the three DSP files; rewrite Test 41's no-FTZ sentence to the measured subnormal-stall mechanism | Class-A comment fix (A7-9C precedent) | next code round |
-| R-5 | Add the **UCRT FMA3 dispatch caveat** (F-3) to `COMPATIBILITY_POLICY`'s Windows discussion next time that file is open | docs-only | opportunistic |
-| R-6 | Benefit figures remain single-toolchain (GCC-13-built binaries on the one container). A7-0 / RISK-002 still blocks wall-clock and other OSes — but **the Clang-22 Ir gap is closable here**: one callgrind round over Clang-22-built binaries on this container, same methodology, would either confirm the −17.2 % class figure on the shipped toolchain or record why it differs. Recommend as the next measurement round's first item | measurement round | next A7 pass |
+| R-1 | **MSVC `/arch:AVX2`: defer the flag; add a reporting-only Windows twin-dump A/B step first** (the `macos-crossslice` pattern). Adoption afterwards requires its own ADR + the Windows ISA floor documented before the flag (the ADR-0031 ordering rule) | **EXECUTED (R-round)** — `windows-avx2-ab` live, two runs, A vs B 0/32; adoption packet prepared (`MSVC_AVX2_ADOPTION_PACKET.md`) | **flag: still a maintainer decision** |
+| R-2 | **arm64: no action** — contraction already live, width win architecturally absent, the equalizing flag affirmatively rejected (option 4) | **CONFIRMED (R-round)** — nothing changed | — |
+| R-3 | Record **Linux/Windows arm64 as "Not Supported"** in `COMPATIBILITY_MATRIX` if the omission should become a decision | **EXECUTED (R-round)** — both rows added, AAX taxonomy | — |
+| R-3b | **clang-cl: exclude.** No build uses it; if one ever appears it is a *third* flag branch, not either existing one — it takes `if(MSVC)` yet accepts GCC-style flags via `/clang:` — and gets its own ADR then (F-6 records the GNU-driver boundary) | **EXECUTED (R-round)** — recorded in the matrix's toolchain-validation section + the CMakeLists scope comment | — |
+| R-4 | Correct the **A7-9 comment inaccuracies** (F-1, F-2): one architecture-note sentence in each of the three DSP files; rewrite Test 41's no-FTZ sentence to the measured subnormal-stall mechanism | **EXECUTED (R-round)** — all four files corrected, suites re-ran green | — |
+| R-5 | Add the **UCRT FMA3 dispatch caveat** (F-3) to `COMPATIBILITY_POLICY`'s Windows discussion next time that file is open | **EXECUTED (R-round)** — the policy's numerics section scopes Windows to the machine class | — |
+| R-6 | Benefit figures remain single-toolchain (GCC-13-built binaries on the one container). A7-0 / RISK-002 still blocks wall-clock and other OSes — but **the Clang-22 Ir gap is closable here** | **EXECUTED (R-round)** — measured: clang-22.1.8 shipped 1007.8 Ir/sample (−19.6 % AVX2 delta); GCC-13 frozen-baseline reproduced the historical figure to 0.06 % | — |
 
 ## 10. Evidence & confidence
 
@@ -306,8 +326,10 @@ unchanged). **Plausible (labelled):** exact toolset↔`_MSC_VER` mapping beyond 
 table; MSVC vectorizer reduction behaviour (doc text only — the open question R-1's instrument
 exists to close); per-expression FMLA fusion of the three glide updates in the *shipped* arm64 slice
 — every census is a cross-compile inference, and the exact-zero terminal state was measured through
-an x86 FMA analogue rather than disassembled from the shipped binary. **Not measured anywhere:** any benefit figure off the Linux container; any
-Windows numerical experiment.
+an x86 FMA analogue rather than disassembled from the shipped binary. **Not measured anywhere (audit-time):** any benefit figure off the Linux container; any
+Windows numerical experiment. **[Superseded — R-round]: the Windows numerical experiment now exists
+(`windows-avx2-ab`, two runs) and Clang-22 figures exist; still not measured anywhere: any Ir/benefit
+figure off this Linux container, which is A7-0's blocker, unchanged.**
 
 ---
 
@@ -460,7 +482,9 @@ decision.
 self-check verdict line to stdout ahead of the table, and the job's parser counted it as a 33rd
 "scenario" — it was the single "agreeing" row in the B-vs-C count (the log read "32 of 33 differ").
 The parser now requires the 16-hex hash field; the true figures are the table above. Same defect
-class as A7-5E's blank-line counting artifact, recorded for the same reason.
+class as A7-5E's blank-line counting artifact, recorded for the same reason. **The corrected parser's
+own run replicated the result: "IDENTICAL (all 32 scenarios agree)" for A vs B, 32/32 for B vs C —
+the same verdict from two runs on two toolset-identical images.**
 
 **Status: evidence READY FOR ADR; adoption remains DEFERRED.** Remaining blockers before any
 future MSVC `/arch:AVX2` adoption, unchanged from R-1 and now concrete:
@@ -476,3 +500,8 @@ future MSVC `/arch:AVX2` adoption, unchanged from R-1 and now concrete:
    adoption case rests on the shared mechanism (same hot loops, 256-bit lanes; −18…−20 % measured
    on GCC/Clang for the analogous change) plus this bit-identity demonstration, not on a Windows
    measurement.
+
+**Every change adoption would require is drafted, file by file, in
+`worklogs/performance/MSVC_AVX2_ADOPTION_PACKET.md` — nothing in it is applied.** The decision
+boundary is the maintainer's; the packet exists so that approving it is an act of review, not of
+archaeology.

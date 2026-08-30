@@ -6259,3 +6259,24 @@ passing and diagnosed to a minimal repro (**F-8**): GCC 13 emits value-exact FMA
 unsigned-int32→float lowering even under `-ffp-contract=off` — instruction selection, not
 contraction; dead code in shipped binaries; recorded so a future nonzero FMA census is diagnosed
 rather than read as a broken pin.
+
+## Consistency pass + the MSVC adoption packet (decision boundary held)
+
+The platform-coverage worklog and its report page carried audit-time statements the R-round had
+overtaken — "no bit-exactness instrument on Windows", "nothing was ever measured on Windows", the
+Clang-22 gap described as open, the vectorizer question as unanswered, R-1…R-6 as pending. Each is
+now struck-and-marked **[Superseded — R-round]** in place rather than silently rewritten, a status
+banner at the top separates the three registers (current evidence · current adopted policy · open
+maintainer decisions), and the §9/§6 recommendation tables carry executed statuses. The historical
+record is preserved; nothing current contradicts it. The corrected `windows-avx2-ab` parser's own
+run is recorded as replicating the verdict: **A vs B "IDENTICAL (all 32 scenarios agree)"** on
+toolset 14.51.36231.
+
+**`worklogs/performance/MSVC_AVX2_ADOPTION_PACKET.md`** prepares the one open decision without
+taking it: the verbatim draft ADR-0032, the exact `COMPATIBILITY_POLICY` / `COMPATIBILITY_MATRIX` /
+KI-026 / user-guide edits (documentation ordered before the flag, per the ADR-0031 rule), the exact
+`windows` job toolset ≥ 14.30 assertion, the exact promotion of `windows-avx2-ab` to a blocking
+A == B gate, and the CMakeLists change that makes `ANAMORPH_X86_ISA_BASELINE` govern MSVC too. It
+also writes the decline path, so rejecting costs one sentence. **Nothing in it is applied**: the
+shipped Windows build still compiles at MSVC defaults, ADR-0032 is not registered, and the packet's
+own header names `ADR_POLICY` and the Architecture Review Gate as the reason it stops there.

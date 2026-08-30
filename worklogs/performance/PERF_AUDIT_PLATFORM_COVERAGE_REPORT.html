@@ -82,6 +82,13 @@ td.opt{min-width:220px;color:var(--ink)}
     <span>13 evidence/verification passes + adversarial re-verification (2 claims refuted → findings)</span>
     <span>MSVC semantics checked against live Microsoft docs</span>
     <span>Worklog: worklogs/performance/PERF_AUDIT_PLATFORM_COVERAGE.md</span>
+    <span>Status 2026-08-30: §§1–6 are the audit-time record; superseded cells are struck and marked; §7 carries the current evidence</span>
+  </div>
+  <div class="note" style="margin-top:16px">
+    <h3>The three registers, kept apart</h3>
+    <p><strong>Current evidence:</strong> MSVC 14.51 A/B — <code>/arch:AVX2</code> alone 0/32 differ (two runs), contraction 32/32; Clang 22.1.8 measured 1007.8 Ir/sample (−19.6 % AVX2 delta); GCC-13 baseline reproduced the historical figure to 0.06 %.
+    <strong>Current adopted policy:</strong> ADR-0031 flags on GCC/Clang x86-64 only; MSVC carries no ISA flag; arm64 deliberately untouched; Linux/Win arm64 Not Supported; clang-cl outside the validated set.
+    <strong>Open maintainer decision:</strong> extend the baseline to MSVC — evidence-ready, fully prepared in <span class="mono">MSVC_AVX2_ADOPTION_PACKET.md</span>, <em>not enabled</em>.</p>
   </div>
 </header>
 
@@ -160,11 +167,11 @@ td.opt{min-width:220px;color:var(--ink)}
       <td><span class="chip c-good">every headline figure</span> — callgrind Ir, startup subtraction</td>
       <td>suites, twin dump, Test 41 proven to fire pre-fix</td></tr>
     <tr><td class="opt">Linux x86-64 · Clang 22 (the shipped artifact)</td><td>all</td>
-      <td><span class="chip c-bad">never</span> — no Ir figure from a Clang-22 binary</td>
+      <td><span class="chip c-good">measured (R-6)</span> — 1007.8 Ir/sample shipped, 1253.4 baseline, −19.6 %</td>
       <td>suites · ASan/UBSan · RTSan · fuzz · valgrind · pluginval ×3×2 on the stripped bytes · ABI floor</td></tr>
     <tr><td class="opt">Windows x86-64 · MSVC (toolset recorded per run, 14.x gated)</td><td>all except ADR-0031</td>
-      <td><span class="chip c-bad">never</span></td>
-      <td>both suites + pluginval ×3×2; <strong>no bit-exactness instrument</strong> — no job builds the dump</td></tr>
+      <td><span class="chip c-bad">no Ir figure</span> (still true — no instruction-count instrument); numerics <span class="chip c-good">measured (R-1)</span></td>
+      <td>both suites + pluginval ×3×2; <s>no bit-exactness instrument</s> <span class="chip c-good">windows-avx2-ab live — A vs B 0/32</span></td></tr>
     <tr><td class="opt">macOS x86_64 · AppleClang (universal slice + native-Intel thin)</td><td>all incl. ADR-0031</td>
       <td><span class="chip c-bad">never</span></td>
       <td>Rosetta 2 suites (AVX2-probed) · native-Intel suites + pluginval VST3+AU ×3×2 · cross-slice dump</td></tr>
@@ -184,8 +191,8 @@ td.opt{min-width:220px;color:var(--ink)}
     <tr><td>ADR-0031 flags absent on arm64</td><td><span class="chip c-dec">intentional</span></td><td>ADR-0031 option 4; policy: the cross-slice difference "is accepted and is not to be removed"</td></tr>
     <tr><td><code>ANAMORPH_X86_ISA_BASELINE</code> inert on MSVC; clang-cl takes the MSVC branch</td><td><span class="chip c-na">structural</span></td><td>falls out of <code>if(MSVC)</code>; no recorded decision</td></tr>
     <tr><td>No benefit figures off the one Linux container</td><td><span class="chip c-yes">known + recorded</span></td><td>A7-0 / RISK-002; wall-clock repudiated</td></tr>
-    <tr><td>Headline Ir figures only from GCC-13 binaries; shipped Linux is Clang 22</td><td><span class="chip c-bad">accidental</span></td><td>closable on this container — callgrind accepts either toolchain's binary (R-6)</td></tr>
-    <tr><td>No bit-exactness instrument on Windows</td><td><span class="chip c-bad">accidental / unrecorded</span></td><td>option 5 <em>relies on</em> the absence as evidence; nowhere <em>decides</em> it. Now the load-bearing MSVC blocker, and cheap to remove (R-1)</td></tr>
+    <tr><td>Headline Ir figures only from GCC-13 binaries; shipped Linux is Clang 22</td><td><span class="chip c-good">closed (R-6)</span></td><td>measured on clang-22.1.8; methodology self-validated to 0.06 % against the historical GCC figure</td></tr>
+    <tr><td>No bit-exactness instrument on Windows</td><td><span class="chip c-good">closed (R-1)</span></td><td>was accidental/unrecorded; <code>windows-avx2-ab</code> is that instrument now, and it measured 0/32 at <code>/arch:AVX2</code> alone</td></tr>
     <tr><td>Linux arm64 · Windows arm64: no builds</td><td><span class="chip c-bad">omission, not decision</span></td><td>no "Not Supported" row exists, unlike AAX / mono→mono (R-3)</td></tr>
     <tr><td>Linux CI executes AVX2 binaries unprobed</td><td><span class="chip c-yes">accepted residual</span></td><td>GitHub runners are Haswell+; empirically green (F-7)</td></tr>
   </table></div>
@@ -205,10 +212,12 @@ td.opt{min-width:220px;color:var(--ink)}
           contractions; <code>/fp:contract</code> is the new opt-in. So on 14.3x+ toolsets the flag is
           <em>expected</em> scalar-bit-exact — contraction off <strong>by default, not by pin</strong>,
           a materially weaker guarantee than the GCC/Clang pair.</li>
-        <li><strong>The open question is the vectorizer</strong> (reduction reassociation) — exactly
-          what only a twin dump can answer, which is option 5's stated ground.</li>
-        <li><strong>The instrument is feasible:</strong> <code>dsp_dump.cpp</code> is verified
-          platform-neutral; a Windows job can build it twice and diff 32 hashes as a same-machine A/B.</li>
+        <li><s><strong>The open question is the vectorizer</strong> (reduction reassociation)</s> —
+          <span class="chip c-good">answered (§7)</span>: 0/32 on toolset 14.51, no reassociation
+          moved a bit for this instrument's coverage.</li>
+        <li><strong>The instrument <s>is feasible</s> exists:</strong> <code>dsp_dump.cpp</code> is
+          verified platform-neutral, and <code>windows-avx2-ab</code> builds it three ways and diffs
+          the hashes as a same-machine A/B on every push (reporting-only).</li>
         <li><strong>Windows-only caveat:</strong> the x64 UCRT dispatches transcendentals by CPU at
           runtime (FMA3), so Windows output is already machine-class-dependent today — before any flag.</li>
       </ol>
@@ -267,12 +276,12 @@ td.opt{min-width:220px;color:var(--ink)}
   <h2><span class="no">6</span>Recommendations</h2>
   <div class="tblwrap"><table>
     <tr><th>#</th><th>Recommendation</th><th>Class</th><th>When</th></tr>
-    <tr><td class="mono">R-1</td><td><strong>MSVC: defer the flag; add a reporting-only Windows twin-dump A/B step first.</strong> Adoption needs its own ADR, the Windows ISA floor documented <em>before</em> the flag, a toolset ≥ 14.30 assertion, and the A/B promoted to a permanent blocking step — the toolset floats, so the Class-A properties can drift with the image</td><td>CI step, then maintainer decision</td><td>instrument next; flag when decided</td></tr>
-    <tr><td class="mono">R-2</td><td><strong>arm64: no action</strong> — contraction live, width win architecturally absent, the equalizing flag affirmatively rejected</td><td>none</td><td>—</td></tr>
-    <tr><td class="mono">R-3</td><td>Record Linux/Windows arm64 as <strong>Not Supported</strong> in the matrix if the omission should become a decision; <strong>clang-cl: exclude</strong> (a third flag branch if ever adopted, with its own ADR)</td><td>docs-only</td><td>maintainer</td></tr>
-    <tr><td class="mono">R-4</td><td>Correct the <strong>A7-9 comment inaccuracies</strong> (F-1, F-2): one architecture note per DSP file; rewrite Test 41's no-FTZ sentence to the measured subnormal-stall mechanism</td><td>Class-A comment fix</td><td>next code round</td></tr>
-    <tr><td class="mono">R-5</td><td>Add the <strong>UCRT FMA3 dispatch caveat</strong> (F-3) to the compatibility policy's Windows discussion when next open</td><td>docs-only</td><td>opportunistic</td></tr>
-    <tr><td class="mono">R-6</td><td><strong>The Clang-22 Ir gap is closable without a named machine:</strong> one callgrind round over Clang-22-built binaries on the same container, same methodology — first item of the next measurement pass</td><td>measurement</td><td>next A7 pass</td></tr>
+    <tr><td class="mono">R-1</td><td><strong>MSVC: defer the flag; add a reporting-only Windows twin-dump A/B step first.</strong> Adoption needs its own ADR, the Windows ISA floor documented <em>before</em> the flag, a toolset ≥ 14.30 assertion, and the A/B promoted to a permanent blocking step — the toolset floats, so the Class-A properties can drift with the image</td><td><span class="chip c-good">instrument executed (§7)</span>; adoption packet prepared</td><td><strong>flag: maintainer decision</strong></td></tr>
+    <tr><td class="mono">R-2</td><td><strong>arm64: no action</strong> — contraction live, width win architecturally absent, the equalizing flag affirmatively rejected</td><td><span class="chip c-good">confirmed (§7)</span></td><td>—</td></tr>
+    <tr><td class="mono">R-3</td><td>Record Linux/Windows arm64 as <strong>Not Supported</strong> in the matrix if the omission should become a decision; <strong>clang-cl: exclude</strong> (a third flag branch if ever adopted, with its own ADR)</td><td><span class="chip c-good">executed (§7)</span></td><td>—</td></tr>
+    <tr><td class="mono">R-4</td><td>Correct the <strong>A7-9 comment inaccuracies</strong> (F-1, F-2): one architecture note per DSP file; rewrite Test 41's no-FTZ sentence to the measured subnormal-stall mechanism</td><td><span class="chip c-good">executed (§7)</span></td><td>—</td></tr>
+    <tr><td class="mono">R-5</td><td>Add the <strong>UCRT FMA3 dispatch caveat</strong> (F-3) to the compatibility policy's Windows discussion when next open</td><td><span class="chip c-good">executed (§7)</span></td><td>—</td></tr>
+    <tr><td class="mono">R-6</td><td><strong>The Clang-22 Ir gap is closable without a named machine:</strong> one callgrind round over Clang-22-built binaries on the same container, same methodology — first item of the next measurement pass</td><td><span class="chip c-good">executed (§7)</span></td><td>—</td></tr>
   </table></div>
 </section>
 
@@ -301,7 +310,10 @@ td.opt{min-width:220px;color:var(--ink)}
       READY FOR ADR; adoption DEFERRED</strong> behind the five R-1 requirements (own ADR ·
       Windows ISA floor documented first · toolset ≥ 14.30 asserted · A/B promoted to a blocking
       gate · benefit stated as mechanism-shared, since no Windows Ir instrument exists). First-run
-      parser artifact (a 33rd phantom "scenario" from the dump's self-check line) found and fixed.</p>
+      parser artifact (a 33rd phantom "scenario" from the dump's self-check line) found and fixed —
+      the corrected parser's own run replicated the verdict. <strong>Every adoption change is
+      drafted file-by-file in <span class="mono">MSVC_AVX2_ADOPTION_PACKET.md</span>, including the
+      verbatim draft ADR-0032; nothing is applied.</strong></p>
     </div>
     <div class="panel">
       <h3>Clang 22 measured — the gap is closed</h3>
