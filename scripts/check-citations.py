@@ -366,7 +366,20 @@ DELIBERATE_REAIMS = {
     # parenthetical after the anchor. Getting them content-checked means rewriting
     # the prose in three documents, which is a change about those documents and
     # not about this table.
-
+    #
+    # DECLARED 2026-08-30, two entries, for a correction that was SPLIT ACROSS
+    # PUSHES -- the af4ef28 lesson repeated and re-learned. The windows-avx2-ab
+    # parser fix moved two build.yml lines and was pushed before `--fix` ran;
+    # the immediate follow-up carried the re-anchor alone, so CI (whose base is
+    # the branch's previous push, not origin/main) anchored to the BROKEN
+    # intermediate state and read the correction itself as drift, suggesting
+    # the re-aim be undone. Both entries name the CORRECTED spelling; both
+    # documents' anchors verify against origin/main. Retire on merge, per the
+    # table's standing rule.
+    ("docs/DOCUMENTATION_COVERAGE.md", ".github/workflows/build.yml:3124"):
+        "TESTING_POLICY rule 4",
+    ("docs/DOCUMENTATION_COVERAGE.md", ".github/workflows/build.yml:3209"):
+        "the four lints'",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the
