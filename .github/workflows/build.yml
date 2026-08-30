@@ -1795,7 +1795,7 @@ jobs:
             echo "::warning::Rosetta 2 unavailable on this image -- the x86_64 slice was BUILT but NOT EXECUTED; Intel coverage for this run is compilation only"
             exit 0
           fi
-          printf '#include <immintrin.h>\nint main(void){__m256d a=_mm256_set1_pd(1.0);a=_mm256_add_pd(a,a);return (int)a[0]-2;}\n' > "$RUNNER_TEMP/avx2probe.c"
+          printf '#include <immintrin.h>\nint main(void){__m256i a=_mm256_set1_epi32(1);a=_mm256_add_epi32(a,a);return _mm256_extract_epi32(a,0)-2;}\n' > "$RUNNER_TEMP/avx2probe.c"
           if ! cc -arch x86_64 -march=haswell -O0 "$RUNNER_TEMP/avx2probe.c" -o "$RUNNER_TEMP/avx2probe" 2>/dev/null; then
             echo "::warning::could not build the AVX2 probe -- skipping the Rosetta run rather than guessing; Intel coverage for this run is compilation only (the blocking Intel gate is the macos-intel job)"
             exit 0
@@ -2330,7 +2330,7 @@ jobs:
           # building two dumps that could only SIGILL. The finding this job
           # reports is CLOSED and recorded either way (A7_DECISION_PACKET
           # Decision 3); the job is the standing re-check, not the evidence.
-          printf '#include <immintrin.h>\nint main(void){__m256d a=_mm256_set1_pd(1.0);a=_mm256_add_pd(a,a);return (int)a[0]-2;}\n' > "$RUNNER_TEMP/avx2probe.c"
+          printf '#include <immintrin.h>\nint main(void){__m256i a=_mm256_set1_epi32(1);a=_mm256_add_epi32(a,a);return _mm256_extract_epi32(a,0)-2;}\n' > "$RUNNER_TEMP/avx2probe.c"
           if ! cc -arch x86_64 -march=haswell -O0 "$RUNNER_TEMP/avx2probe.c" -o "$RUNNER_TEMP/avx2probe" 2>/dev/null \
              || ! arch -x86_64 "$RUNNER_TEMP/avx2probe" 2>/dev/null; then
             echo "::warning::A7-5E: Rosetta 2 on this image does not execute AVX2 (ADR-0031 compiles the x86_64 slice -march=haswell) -- the cross-slice comparison is skipped"
@@ -2664,6 +2664,148 @@ jobs:
   # behavioural gates passed. On the RELEASE path it does block, because
   # `release.yml` depends on this workflow's aggregate result -- see the
   # `sanitizers` comment above for the full topology.
+  # ============================================================================
+  #  windows-avx2-ab -- the R-1 experiment from the platform-coverage audit
+  #  (worklogs/performance/PERF_AUDIT_PLATFORM_COVERAGE.md §5): WOULD /arch:AVX2
+  #  BE CLASS A ON MSVC, THE WAY -march=haswell -ffp-contract=off measured
+  #  Class A on GCC/Clang? ADR-0031 option 5 declined the flag precisely
+  #  because this could only be assumed, not demonstrated -- no bit-exactness
+  #  instrument had ever run on Windows. This job is that instrument.
+  #
+  #  REPORTING ONLY, for the same reason macos-crossslice is: no policy, ADR or
+  #  document claims anything about MSVC AVX2 numerics, so failing a run on the
+  #  answer would invent a contract by CI rather than decide one. It exits 0 on
+  #  every path, gates nothing, and DOES NOT touch the shipped Windows build --
+  #  the `windows` job's flags are unchanged, and this job uploads nothing.
+  #  Promotion to a blocking gate is an explicit future-adoption requirement
+  #  (R-1's list), taken by whoever writes the MSVC ADR, not by this job.
+  #
+  #  THREE BUILDS, because the question has two separable halves on MSVC just
+  #  as it did on GCC/Clang (A7-5E):
+  #    A  baseline            -- /arch default (SSE2), default /fp:precise
+  #    B  /arch:AVX2          -- contraction still governed by /fp:precise,
+  #                              which VS2022 (toolset 14.30+) documents as
+  #                              non-contracting by default
+  #    C  /arch:AVX2 /fp:contract -- contraction explicitly ON
+  #  A==B is the Class-A question (vectorizer + instruction selection at the
+  #  wider ISA); B vs C isolates the contraction effect alone. The toolset
+  #  version is recorded next to the result because BOTH properties are
+  #  toolset-version behaviours: on a pre-14.30 toolset /fp:precise could
+  #  contract by default and the A/B loses its meaning, so the job says which
+  #  side of that boundary it ran on rather than assuming.
+  #
+  #  The dump binary deliberately excludes LTO (its CMake target does), which
+  #  also sidesteps MSVC /GL object-compatibility concerns across the three
+  #  build dirs. ANAMORPH_X86_ISA_BASELINE is inert on MSVC, so the candidate
+  #  flags go through CMAKE_CXX_FLAGS -- target options carry no /arch to
+  #  conflict with. JUCE is fetched once (build A) and reused via
+  #  ANAMORPH_JUCE_PATH for B and C, the macos-crossslice pattern.
+  windows-avx2-ab:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name != github.repository
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: A/B/C twin dump -- MSVC baseline vs /arch:AVX2 vs /arch:AVX2 /fp:contract (reporting only)
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          # Never fail the job: every exit from this script is exit 0. The
+          # result is the step summary and the ::notice:: lines.
+          $ErrorActionPreference = 'Continue'
+          function Say([string]$m) { Write-Host $m; Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $m }
+          Say "## windows-avx2-ab -- MSVC /arch:AVX2 twin-dump A/B/C (reporting only)"
+
+          function Build-Dump([string]$dir, [string]$flags, [string]$jucePath) {
+            $args = @('-B', $dir, '-DANAMORPH_BUILD_DSPDUMP=ON', '-DANAMORPH_BUILD_TESTS=OFF',
+                      '-DANAMORPH_BUILD_STANDALONE=OFF')
+            if ($flags -ne '')    { $args += "-DCMAKE_CXX_FLAGS=$flags" }
+            if ($jucePath -ne '') { $args += "-DANAMORPH_JUCE_PATH=$jucePath" }
+            cmake @args | Out-Null
+            if ($LASTEXITCODE -ne 0) { return $false }
+            cmake --build $dir --config Release --target AnamorphDspDump | Out-Null
+            return ($LASTEXITCODE -eq 0)
+          }
+          function Run-Dump([string]$dir, [string]$out) {
+            $exe = Join-Path $dir 'AnamorphDspDump_artefacts/Release/AnamorphDspDump.exe'
+            if (-not (Test-Path $exe)) { return $false }
+            & $exe --self-check *> $null
+            if ($LASTEXITCODE -ne 0) { Say "- ``$dir``: --self-check FAILED -- hashes not trustworthy"; return $false }
+            & $exe > $out 2>&1
+            return ($LASTEXITCODE -eq 0)
+          }
+          function Read-Dump([string]$f) {
+            $m = @{}
+            foreach ($line in Get-Content $f) {
+              if ($line -and -not $line.StartsWith('#')) {
+                $p = ($line -split '\s+') | Where-Object { $_ }
+                if ($p.Count -ge 2) { $m[$p[0]] = $p[1] }
+              }
+            }
+            return $m
+          }
+          function Compare-Dumps([string]$label, $a, $b) {
+            $names = $a.Keys | Sort-Object
+            $diff = @(); $agree = @()
+            foreach ($n in $names) {
+              if ($a[$n] -eq $b[$n]) { $agree += $n } else { $diff += $n }
+            }
+            if ($diff.Count -eq 0) {
+              Say "- **$label -- IDENTICAL** (all $($names.Count) scenarios agree)"
+              Write-Host "::notice::windows-avx2-ab ${label}: IDENTICAL ($($names.Count) scenarios)"
+            } else {
+              Say "- **$label -- $($diff.Count) of $($names.Count) scenarios differ**"
+              Write-Host "::notice::windows-avx2-ab ${label}: $($diff.Count)/$($names.Count) scenarios differ"
+              Say "  differing: $($diff -join ', ')"
+            }
+            return $diff.Count
+          }
+
+          if (-not (Build-Dump 'build-a' '' '')) { Say '- build A (baseline) FAILED'; exit 0 }
+
+          # Toolset record: which side of the VS2022 (14.30) contraction-default
+          # boundary this run sits on. Same cache-key parse as the windows job.
+          $version = $null
+          foreach ($key in 'CMAKE_CXX_COMPILER:FILEPATH', 'CMAKE_LINKER:FILEPATH') {
+            $hit = (Select-String -Path 'build-a/CMakeCache.txt' -Pattern ('^' + [regex]::Escape($key)) | Select-Object -First 1)
+            if ($null -ne $hit -and $hit.Line -match 'MSVC[\/]+([0-9]+(\.[0-9]+)+)') { $version = $Matches[1]; break }
+          }
+          if ($null -eq $version) {
+            Say "- toolset: UNREADABLE from CMakeCache -- result below is unplaceable relative to the 14.30 boundary"
+          } else {
+            $minor = [int]($version.Split('.')[1])
+            $vs2022 = ($version.Split('.')[0] -eq '14' -and $minor -ge 30)
+            Say "- MSVC toolset **$version** -- VS2022+ non-contracting /fp:precise default applies: **$(if ($vs2022) {'YES'} else {'NO -- pre-14.30, /fp:precise may contract; A vs B is NOT a pure vectorizer comparison here'})**"
+          }
+          Say "- flags: A = MSVC defaults (/arch SSE2 baseline, /fp:precise) | B = ``/arch:AVX2`` | C = ``/arch:AVX2 /fp:contract``"
+
+          $juce = Join-Path $PWD 'build-a/_deps/juce-src'
+          if (-not (Test-Path $juce)) { $juce = '' }
+          if (-not (Build-Dump 'build-b' '/arch:AVX2' $juce))              { Say '- build B (/arch:AVX2) FAILED'; exit 0 }
+          if (-not (Build-Dump 'build-c' '/arch:AVX2 /fp:contract' $juce)) { Say '- build C (/arch:AVX2 /fp:contract) FAILED'; exit 0 }
+
+          if (-not (Run-Dump 'build-a' 'd-a.txt')) { Say '- run A FAILED'; exit 0 }
+          if (-not (Run-Dump 'build-b' 'd-b.txt')) { Say '- run B FAILED'; exit 0 }
+          if (-not (Run-Dump 'build-c' 'd-c.txt')) { Say '- run C FAILED'; exit 0 }
+
+          $A = Read-Dump 'd-a.txt'; $B = Read-Dump 'd-b.txt'; $C = Read-Dump 'd-c.txt'
+          Say ""
+          $ab = Compare-Dumps 'A vs B (the Class-A question: /arch:AVX2 at default /fp:precise)' $A $B
+          $bc = Compare-Dumps 'B vs C (contraction alone, at AVX2)' $B $C
+          $ac = Compare-Dumps 'A vs C (whole package, contraction on)' $A $C
+          Say ""
+          if ($ab -eq 0) {
+            Say "**Reading:** /arch:AVX2 alone left every scenario hash unchanged on this toolset -- the vectorizer/instruction-selection half is bit-preserving for this instrument's coverage, matching the GCC/Clang Class-A result. Contraction (B vs C: $bc) remains the bit-moving half."
+          } else {
+            Say "**Reading:** /arch:AVX2 alone moved $ab scenario(s) at default /fp:precise -- vectorizer- or selection-level, NOT contraction (that is B vs C: $bc). The Class-A assumption does NOT transfer to MSVC as-is."
+          }
+          Say ""
+          Say "_Reporting only. The shipped Windows build is untouched; adoption requires its own ADR, the Windows ISA floor documented first, a toolset >= 14.30 assertion, and this comparison promoted to a permanent blocking gate (R-1)._"
+          exit 0
+
   linux-lto-tests:
     # GCC IS THE COMPATIBILITY COMPILER, NOT THE SHIPPING ONE. Clang builds the
     # artifact (`linux`); this job exists so the tree keeps compiling, and its

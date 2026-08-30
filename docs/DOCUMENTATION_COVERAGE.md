@@ -127,7 +127,7 @@ after. The fix is one shared `anchor_still_right()` used by both paths, so the t
 again; the duplication was the defect, not a symptom of it.
 
 **Proven not to have widened anything.** With the count mismatch AND a seeded drift on a
-*neighbouring* line of the same file (`CMakeLists.txt:358`, cited alongside `:14` in `TRADEMARKS.md`),
+*neighbouring* line of the same file (`CMakeLists.txt:367`, cited alongside `:14` in `TRADEMARKS.md`),
 the run still fails on that path — so the exemption still covers one declared line and nothing else.
 Self-test 131 → 135 cases: three behavioural cases driving `anchor_still_right` directly on synthetic
 sources (excused when the anchor did not move; a neighbouring line still compared; a MOVED anchor not
@@ -1761,7 +1761,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:2978` and `.github/workflows/build.yml:3063`, this round being
+`.github/workflows/build.yml:3120` and `.github/workflows/build.yml:3205`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -1813,7 +1813,7 @@ subject, and the second is a stale COUNT rather than the placement claim.
 
 **The CI-target report was investigated and required no change.** It read the visible diff as adding
 only three `option()` declarations and asked whether `AnamorphFuzzState`, `AnamorphBench` and
-`AnamorphDspDump` resolve to anything. They do: `CMakeLists.txt:524-542`, `:560-577` and `:597-623`
+`AnamorphDspDump` resolve to anything. They do: `CMakeLists.txt:533-551`, `:560-577` and `:597-623`
 define them, the last including the target-scoped `-fsanitize=fuzzer` the workflow comment relies
 on. Verified by building rather than by reading — all three configure and compile from the same
 option and compiler flags CI passes (JUCE supplied from the already-fetched checkout rather than
@@ -2128,7 +2128,7 @@ way and deliberately left — `CODE_STYLE.md:10` and `TESTING_POLICY.md:9` cite 
 be exhaustive.
 
 **The continuation gap is left open deliberately.** Bringing these under the gate means the
-comma-list spelling (`CMakeLists.txt:417-418, 448-449, 490-491`), which the tool does accept — but
+comma-list spelling (`CMakeLists.txt:426-427, 457-458, 499-500`), which the tool does accept — but
 each continuation here carries its own annotation naming *which* line it is (`:162`
 (`-Wl,-dead_strip`, Apple), `:108` (`/OPT:REF`, MSVC)), and the comma-list form has nowhere to put
 them. Widening the recogniser to follow continuations is a change to the gate's scope rather than to
@@ -2883,7 +2883,7 @@ happened. Another sits two lines from a sibling reference in the *same* historic
 already been protected, so a `--fix` would have rewritten half a paired record and frozen the other
 half. The discriminator that survives: **is the number the subject of the sentence, or a pointer to a
 thing?** Exactly one `CMakeLists.txt` citation in this document is the latter — "*it is*
-`CMakeLists.txt:452-461`", present tense, where re-anchoring preserves truth — and it is deliberately
+`CMakeLists.txt:461-470`", present tense, where re-anchoring preserves truth — and it is deliberately
 left live so the gate still demonstrably checks real evidence here.
 
 Verified by mutation rather than by reading: a line inserted into `CMakeLists.txt` above all of them,
@@ -2908,7 +2908,7 @@ Review found two anchors the previous round missed, both below its insertion poi
 to the new gate for the same reason: they are spelled as **bare continuations**
 (`` `path/to/file:188-199` … `:292-301` ``), which the parser only recognises in the
 `path:a,b,c` form. `ADR-0001`'s "tests link the core" pointed at `juce::juce_opengl` inside the
-*plugin*'s link block; it is `CMakeLists.txt:452-461`. `BUILD.md`'s compile-definition list cited
+*plugin*'s link block; it is `CMakeLists.txt:461-470`. `BUILD.md`'s compile-definition list cited
 `:277-284` while listing `ANAMORPH_BUILD_NUMBER` — a definition that range no longer contains, since
 scoping moved it to `:274-275`; widened to `:274-284`, deliberately as **one** anchor, because a
 citation whose anchor *count* changes lands in the "review by hand" branch no declaration can excuse.
@@ -6232,3 +6232,30 @@ as accepted), `KNOWN_ISSUES` (**KI-026**, the first entry here recording a limit
 opt-out), `TESTING.md` + `TESTING_POLICY` + `README` (**39 → 40 DSP tests**, 202 → 214 checks),
 `USER_MANUAL` + `INSTALLATION` (the processor requirement, stated before install rather than after a
 crash), `CHANGELOG` (one **Changed** and one **Fixed**), `HANDOVER`.
+
+## The R-round: the audit's recommendations executed as evidence and documentation
+
+The platform-coverage audit's R-1…R-6 were executed with the standing decisions preserved — no
+shipped flag changed, no DSP behaviour changed, no platform policy reversed. Worklog:
+`worklogs/performance/PERF_AUDIT_PLATFORM_COVERAGE.md` §"The R-round".
+
+**The Windows instrument now exists** (R-1): the reporting-only `windows-avx2-ab` job A/B/Cs the
+twin dump against `/arch:AVX2` and `/arch:AVX2 /fp:contract`, records the MSVC toolset against the
+14.30 contraction boundary, and gates nothing — it converts ADR-0031 option 5's "could not be
+demonstrated" into data, while adoption still requires its own ADR. **The scope is now recorded**
+(R-3): `COMPATIBILITY_MATRIX` carries Not Supported rows for Linux arm64 and Windows arm64 and a
+toolchain-validation section placing clang-cl outside ADR-0031's demonstrated set; the
+`CMakeLists.txt` scope comment agrees. **The F-1/F-2 comment defects are corrected** (R-4): the
+three A7-9 blocks carry the three-terminal-state architecture note, and Test 41's no-FTZ paragraph
+now records its own prior error and the measured subnormal stall. **The UCRT FMA3 caveat is in the
+policy** (R-5), scoping Windows bit-identity to the machine class. **The Rosetta probe was found to
+be testing AVX1, not AVX2** — the review finding was re-verified rather than assumed addressed, and
+was real; both probes now execute `vpaddd ymm`. **The Clang-22 measurement gap is closed** (R-6):
+GCC-13 at the frozen baseline reproduced the historical figure to 0.06 % (1705.9 vs 1704.9
+Ir/sample), the AVX2 win holds on the shipped toolchain (−19.6 % on clang-22.1.8 vs −18.4 % on
+GCC 13.3 on the same tree), and the shipped Clang binary executes −27.6 % fewer instructions than
+the GCC binaries every historical figure came from — deltas transfer, absolutes do not. Found in
+passing and diagnosed to a minimal repro (**F-8**): GCC 13 emits value-exact FMA in its vectorized
+unsigned-int32→float lowering even under `-ffp-contract=off` — instruction selection, not
+contraction; dead code in shipped binaries; recorded so a future nonzero FMA census is diagnosed
+rather than read as a broken pin.

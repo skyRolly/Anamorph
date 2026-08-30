@@ -248,6 +248,17 @@ void VelvetNoise::processBlock (float* left, float* right, int numSamples) noexc
     // from the one route a user actually takes, and the gather gate above kept
     // its eligibility instead.
     //
+    // THE STALL VALUE ABOVE IS ONE CONFIGURATION'S, not a universal: it is the
+    // x86-64 baseline's, where ADR-0031 pins contraction off and FTZ is on.
+    // Measured elsewhere (platform-coverage audit, F-1): with FTZ OFF (valgrind;
+    // any platform without a flush mode) the DECREMENT underflows to zero while
+    // `a` is still a ~7e-43 SUBNORMAL, so the glide fixpoints there instead;
+    // under FMA CONTRACTION (arm64-class builds -- FMLA is base ISA; measured
+    // through an x86 FMA analogue) the fused decrement has no separately
+    // rounded intermediate and the glide walks to an EXACT 0. The fixpoint test
+    // parks correctly at all three terminal states -- the second disjunct
+    // covers the exact-zero one. PERF_AUDIT_PLATFORM_COVERAGE.md F-1.
+    //
     // The repair is to ask the question the path really depends on: not "is the
     // glide at zero" but "can the glide still move" -- the SAME test the density
     // glide three blocks above has always used, now applied to amount. It is

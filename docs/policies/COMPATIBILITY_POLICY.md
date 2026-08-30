@@ -121,6 +121,18 @@ at the same flags produce bit-identical output; that is what the `AnamorphDspDum
 asserts at a dependency bump (`DEPENDENCY_POLICY` rule 2), and it is what every Class-A claim in
 this repository means. **The twin-dump gate compares builds within one architecture only.**
 
+**One Windows-specific caveat narrows the "same architecture" half there.** The x64 UCRT selects
+FMA3 or non-FMA3 implementations of its transcendental functions **at process start, by CPU
+capability** — a documented Microsoft runtime behaviour, independent of any compile flag and
+predating ADR-0031 — and the engine calls CRT transcendentals at runtime (the per-block chorus LFO
+seed; the oversampling coefficient derivation at `prepare()`). So on Windows the same binary can
+produce different bits on machines of different CPU classes, and a Windows bit-identity claim is
+scoped to **the same machine class**, not just the same architecture. This is an existing property
+of the platform, not a consequence of (or argument about) any proposed `/arch:AVX2` build flag; the
+`windows-avx2-ab` experiment controls for it by comparing builds on one machine. On Linux and macOS
+no equivalent runtime dispatch is in play for this code, and the plain within-architecture statement
+stands unqualified.
+
 The `arm64` and `x86_64` slices of the shipped macOS universal binary do **not** produce identical
 bits. This is a measured property of the platforms, established by the A7-5E experiment on an Apple
 Silicon runner with Apple Clang and Apple libm, and reproduced independently on Linux with GCC 13,

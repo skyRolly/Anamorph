@@ -308,3 +308,127 @@ exists to close); per-expression FMLA fusion of the three glide updates in the *
 — every census is a cross-compile inference, and the exact-zero terminal state was measured through
 an x86 FMA analogue rather than disassembled from the shipped binary. **Not measured anywhere:** any benefit figure off the Linux container; any
 Windows numerical experiment.
+
+---
+
+# The R-round: what was executed against R-1…R-6 (2026-08-30)
+
+The maintainer approved executing the audit's recommendations as evidence-gathering and
+documentation work, with the standing decisions preserved. What landed, per item:
+
+## R-1 — the Windows MSVC A/B instrument exists (reporting-only)
+
+A new `windows-avx2-ab` CI job builds `AnamorphDspDump` **three** times on `windows-latest` —
+**A** at MSVC defaults (`/arch` SSE2 baseline, default `/fp:precise`), **B** at `/arch:AVX2`, **C**
+at `/arch:AVX2 /fp:contract` — self-checks each, and diffs the 32 scenario hashes pairwise. A==B is
+the Class-A question (vectorizer + instruction selection at the wider ISA; contraction documented
+off by default on VS2022 toolsets); B vs C isolates contraction alone. The job records the exact
+MSVC toolset from the CMake cache and states which side of the 14.30 boundary the run sits on
+rather than assuming; JUCE is fetched once and reused (the `macos-crossslice` pattern). It is
+**reporting-only by construction**: `continue-on-error`, every path exits 0, it uploads nothing,
+and the shipped `windows` job's flags are untouched. Promotion to a blocking gate is an explicit
+future-adoption requirement, not this job's doing. **The A/B/C result is read from the CI run and
+recorded in §R-results below** — this container is Linux and cannot execute MSVC; nothing here is
+fabricated.
+
+## R-2 — arm64: confirmed no action
+
+No code or flag change. The current documentation was re-read for overstatement and none needed
+correction beyond what this worklog's own §6 already carries (per-expression fusion labelled
+inference; the census a cross-compile).
+
+## R-3 — the scope is now recorded, not implied
+
+`COMPATIBILITY_MATRIX` gains two platform rows — **Linux arm64: Not Supported** and **Windows
+arm64: Not Supported** — using the deliberate-exclusion taxonomy AAX and mono→mono already use, and
+a new section, *"Toolchains the ISA baseline is (and is not) validated for"*, recording that
+**clang-cl is not a supported or validated ADR-0031 toolchain**, that the `if(MSVC)` branch must
+not be read as evidence about it (structural, not decided), and that a future clang-cl toolchain is
+a *third* case requiring its own investigation and ADR. The `CMakeLists.txt` scope comment was
+brought into agreement (its "no twin-dump instrument runs on Windows" clause was about to go stale
+— the instrument now exists — and it gained the clang-cl paragraph). No third compiler branch was
+created; no arm64 jobs were created.
+
+## R-4 — the F-1/F-2 comment corrections are in
+
+All three A7-9 blocks (`VelvetNoise.cpp`, `HaasProcessor.cpp`, `ChorusEngine.cpp`) now carry the
+same architecture note: the stall value each block quotes is **one configuration's** — the x86-64
+baseline's (contraction pinned off, FTZ on); with FTZ off the glide fixpoints at a **~7e-43
+subnormal** (the decrement underflows first); under FMA contraction (arm64-class builds, measured
+through an x86 FMA analogue) it walks to an **exact 0**; the fixpoint test parks correctly at all
+three terminal states, the second disjunct covering the exact-zero one. Test 41's false paragraph
+is rewritten to the measured mechanism and now *names its own prior error*: the earlier claim that
+without FTZ the glide "walks to a true zero" and the checks "pass without discriminating" is
+recorded as false — the glide stalls at the subnormal (measured 6.99e-43 for k = 0.001), the gate
+parks there, and the exact-zero check would still fire against pre-fix sources, so **no
+discrimination is lost without FTZ; only the stall value moves**. No gate logic, coefficient, or
+numerical behaviour changed; the suite re-ran green (214 + 920).
+
+## R-5 — the UCRT caveat is in the policy
+
+`COMPATIBILITY_POLICY` §"Numerical compatibility" now scopes the Windows half explicitly: the x64
+UCRT selects FMA3/non-FMA3 transcendental implementations **at process start by CPU capability**
+(documented Microsoft behaviour, independent of compile flags, predating ADR-0031), the engine
+calls CRT transcendentals at runtime, so a Windows bit-identity claim is scoped to **the same
+machine class** — an existing platform property, explicitly distinguished from the proposed
+`/arch:AVX2` flag, with the same-machine A/B noted as the control. No runtime dispatch was added
+and nothing about the numerical model changed.
+
+## Review-status verification — the probe WAS wrong, and is fixed
+
+The review finding at the `macos` Rosetta step was re-verified rather than assumed addressed, and
+it was **half-unaddressed**: the probe program used `_mm256_set1_pd`/`_mm256_add_pd`, which are
+**AVX1** — it proved 256-bit *float* execution, not AVX2. Both probes (the `macos` Rosetta suites
+step and `macos-crossslice`) now execute genuine AVX2 (`_mm256_set1_epi32` / `_mm256_add_epi32` /
+`_mm256_extract_epi32` — `vpbroadcastd`/`vpaddd ymm`/`vextracti128`, verified in the compiled
+probe's disassembly). The `CMakeLists.txt:193` note was informational; no change.
+
+## R-6 — the Clang measurement gap is closed, and the methodology validated itself
+
+Same cell, same instrument, same container. Harness: a session-scratch single-cell driver
+replicating `tests/bench.cpp`'s "working (reference)" cell **exactly** (same `EngineParameters`,
+same fixed-seed LCG + 220 Hz tone stimulus, 48 kHz / 128) minus the `chrono` reads; callgrind Ir
+with startup subtraction (3.0 s run minus 1.0 s run, over 2.0 s = 96,000 samples); machine
+"Intel(R) Xeon(R) Processor @ 2.10GHz", 4 cores, shared container. Compilers: the container's
+GCC 13.3.0 (the toolchain every historical figure came from) and **clang-22.1.8 from apt.llvm.org —
+the exact pinned major that builds the shipped Linux artifact** (`ANAMORPH_CLANG_VERSION: 22`),
+installed via `scripts/setup-llvm-apt.sh 22`. Both compilers, both flag states
+(`ANAMORPH_X86_ISA_BASELINE` ON = shipped, OFF = frozen pre-0.9.5 baseline), current tree:
+
+| toolchain / flags | 3.0 s Ir | 1.0 s Ir | Δ Ir | **Ir/sample** | AVX2 delta |
+|---|---:|---:|---:|---:|---:|
+| GCC 13.3, baseline OFF | 249,667,008 | 85,904,208 | 163,762,800 | **1705.9** | — |
+| GCC 13.3, shipped flags | 204,474,351 | 70,830,317 | 133,644,034 | **1392.1** | **−18.4 %** |
+| Clang 22.1.8, baseline OFF | 184,159,803 | 63,837,415 | 120,322,388 | **1253.4** | — |
+| Clang 22.1.8, shipped flags | 148,761,850 | 52,013,035 | 96,748,815 | **1007.8** | **−19.6 %** |
+
+Four results, in decreasing order of importance:
+
+1. **The methodology validated itself before saying anything new**: GCC-13 at the frozen baseline
+   measures **1705.9 Ir/sample against the historical 1704.9** — 0.06 % apart across a different
+   harness instance, a later tree (A7-9 included) and months of container drift. The instrument is
+   as machine-stable as `PERFORMANCE_BUDGET.md` claims.
+2. **The AVX2 win holds on the shipped toolchain**: −19.6 % on Clang 22 against −18.4 % on GCC 13
+   (−17.2 % historical, pre-A7-9 tree). The ADR-0031 benefit is not a GCC artifact.
+3. **The shipped Clang-22 binary is substantially leaner than the toolchain all historical figures
+   were measured on**: 1007.8 vs 1392.1 Ir/sample at shipped flags — **−27.6 %**. Every historical
+   Ir figure in this repository therefore *overstates* the shipped binary's instruction count by
+   roughly a third in absolute terms; the **deltas** (which is what every A7 decision was based on)
+   transfer, the absolutes do not. Historical GCC-13 figures are left untouched, as required.
+4. **Workload-level identity corroborated**: all four builds print an identical output checksum
+   over the 3.0 s render — consistent with Class A (flags) and the GCC/Clang bit-agreement, on
+   real engaged signal.
+
+### F-8 — found while validating: GCC 13 emits FMA under `-ffp-contract=off`, legitimately
+
+The GCC-13 shipped-flags scratch binary carried **4 `vfmadd132ps`** despite the pin — all inside
+JUCE's `AudioDataConverters` (dead code on the DSP path). Minimal repro: a vectorized
+**unsigned**-int32→float conversion (`s * (float) u32[i]`) — GCC 13 lowers u32→f32 through a
+split-halves idiom whose combine step (`hi·2¹⁶ + lo`, the multiply exact) it emits as FMA, with
+**bit-identical semantics fused or unfused**. This is instruction *selection*, not floating-point
+*contraction*; `-ffp-contract=off` governs only the latter, and Clang 22 lowers the same conversion
+FMA-free. The shipped binaries read 0 FMA because `--gc-sections` removes the unreferenced
+converters, and nothing in `src/` converts u32→float. **Consequence for verification practice**:
+the ADR-0031 FMA census is the load-bearing check and stays; a future nonzero census must be
+*diagnosed* (exact-idiom FMA is possible and harmless) rather than read as a broken pin — and the
+census's true guarantee is "no *contraction* FMA", demonstrated by the twin dump beside it.

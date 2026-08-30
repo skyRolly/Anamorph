@@ -7,7 +7,7 @@ read like the surrounding code.
 
 - **C++23**, no compiler extensions (`CMAKE_CXX_STANDARD 23`, `CMAKE_CXX_EXTENSIONS OFF`;
   raised from C++17 by ADR-0027).
-- Builds clean under `juce::juce_recommended_warning_flags` (CMakeLists.txt:435, 461, 505) — keep it warning-free.
+- Builds clean under `juce::juce_recommended_warning_flags` (CMakeLists.txt:444, 470, 514) — keep it warning-free.
 
 ## Naming (observed)
 

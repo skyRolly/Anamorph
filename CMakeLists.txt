@@ -166,8 +166,17 @@ else()
     #      difference and not the other -- ADR-0031 option 4).
     #    * MSVC -- nothing is added; this branch is the non-MSVC one anyway.
     #      /arch:AVX2 is NOT the equivalent pair (MSVC controls contraction
-    #      separately) and no twin-dump instrument runs on Windows, so the
-    #      Class-A property could not be demonstrated there (ADR-0031 option 5).
+    #      separately -- ADR-0031 option 5). The evidence a Windows decision
+    #      needs comes from the reporting-only `windows-avx2-ab` CI job, which
+    #      A/Bs the twin dump against /arch:AVX2; adopting the flag still takes
+    #      its own ADR, never an edit here alone.
+    #    * clang-cl -- would take the if(MSVC) branch (CMake sets MSVC=1 for
+    #      it) and so gets no ISA flags either. That is a STRUCTURAL outcome,
+    #      not a validated decision: clang-cl is used by no build, and if one
+    #      ever appears it is a THIRD case (MSVC branch, GCC-style flags via
+    #      /clang:) needing its own investigation and ADR -- see
+    #      COMPATIBILITY_MATRIX "Toolchains the ISA baseline is (and is not)
+    #      validated for".
     #
     #  -Xarch_x86_64 ON APPLE, ALWAYS -- including a thin x86_64 build, so the
     #  two cases stay one code path. A universal build runs the driver once per

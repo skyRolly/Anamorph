@@ -8,9 +8,9 @@ Status taxonomy: **Verified** (provable from build/CI/code) · **Partially Verif
 
 | Format | Status | Evidence |
 |---|---|---|
-| **VST3** | **Verified** | Built on Linux/Windows/macOS; primary target; pluginval gate. CMakeLists.txt:344; build.yml all jobs |
-| **AU (Audio Unit)** | **Verified (build + conformance)** / **Unverified (host)** | Built on macOS as `.component` (universal) and, since 0.9.4, put through the same blocking pluginval gate as the VST3 (both modes ×3, against the packaged bundle, after an install into `~/Library/Audio/Plug-Ins/Components/` + `AudioComponentRegistrar` restart) — and, since the `macos-intel` job, through that same gate a second time against a thin `x86_64` build on **native Intel** hardware. Still unverified against a *real* host: pluginval loads the AU through JUCE's `AudioUnitPluginFormat`, so Logic/GarageBand loading is not tested in repo, and `auval` is not run (`docs/procedures/CI_CD.md` §"Known coverage limits"). CMakeLists.txt:345-347; .github/workflows/build.yml:1640 (the `macos` job header) |
-| **Standalone** | **Verified** | Built on all three OSes. CMakeLists.txt:348-350 |
+| **VST3** | **Verified** | Built on Linux/Windows/macOS; primary target; pluginval gate. CMakeLists.txt:353; build.yml all jobs |
+| **AU (Audio Unit)** | **Verified (build + conformance)** / **Unverified (host)** | Built on macOS as `.component` (universal) and, since 0.9.4, put through the same blocking pluginval gate as the VST3 (both modes ×3, against the packaged bundle, after an install into `~/Library/Audio/Plug-Ins/Components/` + `AudioComponentRegistrar` restart) — and, since the `macos-intel` job, through that same gate a second time against a thin `x86_64` build on **native Intel** hardware. Still unverified against a *real* host: pluginval loads the AU through JUCE's `AudioUnitPluginFormat`, so Logic/GarageBand loading is not tested in repo, and `auval` is not run (`docs/procedures/CI_CD.md` §"Known coverage limits"). CMakeLists.txt:354-356; .github/workflows/build.yml:1640 (the `macos` job header) |
+| **Standalone** | **Verified** | Built on all three OSes. CMakeLists.txt:357-359 |
 | **AAX** | **Not Supported** | Out of scope: needs an Avid account + PACE/iLok signing. docs/policies/COMPATIBILITY_POLICY.md. (DSP core is wrapper-agnostic, so a future AAX wrapper is low-cost, but it is explicitly not built today.) |
 
 ## Platforms / architectures
@@ -21,6 +21,8 @@ Status taxonomy: **Verified** (provable from build/CI/code) · **Partially Verif
 | **Windows x86-64** | **Verified (blocking gate)**; **no ISA floor** — the MSVC build carries no `/arch:` flag and is outside ADR-0031's scope | MSVC build; pluginval at the configured strictness, deterministic ×3 + randomise ×3 — **blocking** (`run-pluginval.ps1`, no `continue-on-error`). `.github/workflows/build.yml` |
 | **macOS universal (arm64 + x86_64)** | **Verified (blocking gate)**; the `x86_64` slice is above a **declared ISA floor** (Haswell 2013 / Excavator 2015 — ADR-0031), the `arm64` slice above none | `CMAKE_OSX_ARCHITECTURES="arm64;x86_64"`, `lipo` verifies both slices; pluginval at the configured strictness, both modes ×3 — **blocking**. `.github/workflows/build.yml` |
 | **macOS x86_64 on native Intel silicon** | **Verified (blocking gate)** | Distinct from the row above, which is built and validated on an **Apple Silicon** runner and executes its x86_64 slice only under **Rosetta 2** (translated onto arm64 hardware). The `macos-intel` job builds thin `x86_64` on `macos-15-intel` and runs both self-test suites plus the full pluginval gate (VST3 and AU, both modes ×3) on a real Intel CPU, after asserting `uname -m == x86_64` and `sysctl.proc_translated == 0`. It ships nothing — the shipped bundle is still the universal one. .github/workflows/build.yml:2392 (the `macos-intel` job header), .github/workflows/build.yml:2205-2261 (its rationale block) |
+| **Linux arm64** | **Not Supported** | Deliberate exclusion, recorded per the platform-coverage audit (R-3): no CI job, no shipped artifact, no promise anywhere in the repository — the only Linux-aarch64 execution on record is the A7-5E qemu-user *experiment*, an instrument run inside a worklog. Not "unverified": out of scope by decision, the same taxonomy as AAX. Were it ever adopted, the ADR-0031 guards already behave correctly (the x86-64 regex fails, no x86 flags are applied, the build lands at AArch64 base ISA with FMLA contraction live — the macOS arm64 posture). worklogs/performance/PERF_AUDIT_PLATFORM_COVERAGE.md §7 |
+| **Windows arm64** | **Not Supported** | Deliberate exclusion, recorded per the platform-coverage audit (R-3): no ARM64 toolchain or cross target exists in any workflow, and the packaging text ships one x64-only Windows artifact. worklogs/performance/PERF_AUDIT_PLATFORM_COVERAGE.md §7 |
 
 ### CPU instruction-set floor (x86-64)
 
@@ -37,6 +39,19 @@ Note the interaction with the two macOS jobs: the `macos` job executes the `x86_
 degrades to a `::warning::` rather than reporting a product failure. The blocking Intel coverage is
 `macos-intel` on native `macos-15-intel` hardware, which is Haswell+ by Apple's own requirements for
 macOS 15.
+
+### Toolchains the ISA baseline is (and is not) validated for
+
+ADR-0031's Class-A claim is demonstrated for **GCC and Clang on x86-64** (including AppleClang for
+the macOS `x86_64` slice) — the toolchains the twin dump actually ran on. **clang-cl is NOT a
+supported or validated ADR-0031 toolchain**, and the build system's `if(MSVC)` branch must not be
+read as evidence about it: CMake sets `MSVC=1` for clang-cl, so it would take the MSVC branch and
+receive **no** ISA flags today — a structural outcome, not a recorded decision. If clang-cl is ever
+introduced it is a *third* case, not either existing one (it takes the MSVC branch yet accepts
+GCC-style flags via `/clang:`), and it requires its own numerical investigation and its own ADR
+rather than inheriting the MSVC decision. MSVC itself is excluded by recorded decision (ADR-0031
+option 5); the `windows-avx2-ab` CI job gathers the evidence a future MSVC ADR would need, and is
+reporting-only.
 
 ### Numerical identity across architectures
 

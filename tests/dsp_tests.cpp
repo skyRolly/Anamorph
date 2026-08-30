@@ -3516,11 +3516,18 @@ static void testA79ParkedPathsReachableAfterStall()
     // PROOF that the fix removes it entirely is the exact-zero check, which is
     // stronger than any bound.
     //
-    // UNDER ANAMORPH_TESTS_NO_FTZ (valgrind) the stall does not happen at all --
-    // the glide walks down through the denormals to a true zero, which the run
-    // lengths below are long enough to reach -- so all three checks pass without
-    // discriminating. That is lost coverage, not a false pass, and it is the
-    // same trade the denormal invariant makes in `isBad`.
+    // UNDER ANAMORPH_TESTS_NO_FTZ (valgrind) the stall still happens -- just
+    // lower. Without a flush mode the DECREMENT k*a underflows to zero once it
+    // drops below half the smallest subnormal, so the glide fixpoints at a
+    // ~7e-43 SUBNORMAL rather than at ~FLT_MIN/k (measured: 6.99e-43 for
+    // k = 0.001). An earlier version of this comment claimed the glide "walks
+    // down through the denormals to a true zero" and that the checks "pass
+    // without discriminating"; both halves are false (platform-coverage audit,
+    // F-2). The fixpoint gate parks at the subnormal, so post-fix silence is
+    // still exactly 0 and all three checks pass -- and against the PRE-fix
+    // sources the exact-zero check would still fire, because the old value
+    // test stays false at 7e-43. No discrimination is lost without FTZ; only
+    // the stall VALUE moves.
     juce::ScopedNoDenormals noDenormals; // FTZ, exactly like the real audio thread
 
     constexpr int   block         = 512;
