@@ -18,6 +18,13 @@ Formats per platform: Linux and Windows ship VST3 + Standalone; macOS ships
 VST3 + AU + Standalone. The plug-in is 64-bit only. macOS builds are universal
 (Apple Silicon + Intel).
 
+**Processor requirement (Intel/AMD).** The **Windows** build, the **Linux** build and the **Intel
+half of the macOS build** need an Intel **Haswell** (2013) or AMD **Excavator** (2015) processor or
+newer. On anything older the plug-in will not load and the failure looks like a DAW crash rather
+than a message. **Only Apple Silicon Macs carry no such requirement.** An affected Intel Mac will
+be one running macOS 10.13–10.15; an affected Windows PC is one whose processor predates 2013
+(Intel) / 2015 (AMD), regardless of its Windows version.
+
 **On Windows and macOS both routes install system-wide** (for all users of the machine),
 into the standard locations DAWs scan by default, so both need an administrator step.
 **On Linux the installer asks you** — the default is a **per-user** install into `~/.vst3`,

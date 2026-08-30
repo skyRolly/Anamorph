@@ -149,9 +149,21 @@ void VelvetNoise::processBlock (float* left, float* right, int numSamples) noexc
     // Shared by the H5 gather gate below and the Wave-5 parked gate after it.
     const bool densityAtFixpoint = dNext == currentDensity
                                 && currentDensity == weightsDensity;
+
+    // A7-9: the AMOUNT glide gets the same fixpoint treatment the density glide
+    // has always had, and for the same reason -- see the block above the parked
+    // path below for why a value test was wrong. `amountParked` is computed ONCE
+    // and used in both directions, so the gather gate and the parked gate stay
+    // exact complements of each other (within `! stopping && densityAtFixpoint`,
+    // which both share) and no state can be eligible for neither or for both.
+    const float aNext = currentAmount + aSmooth * (targetAmount - currentAmount);
+    const bool amountParked = ! (targetAmount > 0.0f)
+                           && (aNext == currentAmount
+                               || ! (currentAmount > 0.0f));
+
     if (! stopping
         && densityAtFixpoint
-        && (currentAmount > 0.0f || targetAmount > 0.0f)
+        && ! amountParked
         && numSamples <= (int) accum.size())
     {
         for (int i = 0; i < numSamples; ++i)
@@ -225,35 +237,77 @@ void VelvetNoise::processBlock (float* left, float* right, int numSamples) noexc
         return;
     }
 
-    // A7-9: HOW THIS STATE IS REACHED, AND HOW IT IS NOT. It is reached from a
-    // fresh prepare() with Amount at its 0 default -- prepare() assigns
-    // currentAmount = targetAmount -- which is the state this path was written
-    // for and measured in. It is NOT reached by turning Amount down: with a 0
-    // target the update is `a -= 0.0015f * a`, and under the block's
-    // ScopedNoDenormals the DECREMENT underflows before `a` does, so the glide
-    // stalls at ~FLT_MIN/0.0015 = 7.83e-36 and the next decrement is exactly 0.
-    // `currentAmount > 0.0f` therefore stays true and the gather gate above
-    // keeps its eligibility instead. An earlier version of this comment claimed
-    // the one-pole "flushes to true zero"; it does not, and the difference is
-    // measured in worklogs/performance/PERF_AUDIT_A7-2_A7-5_A7-9_INVESTIGATION.md
-    // and re-verified in PERF_AUDIT_A7-2B_A7-5E_IMPLEMENTATION.md. Filed as A7-9
-    // (a Class-B repair, not yet approved); this comment is the A7-9C half.
+    // A7-9: WHY `amountParked` IS A FIXPOINT TEST AND NOT A VALUE TEST. Turning
+    // Amount down does NOT bring `currentAmount` to zero. With a 0 target the
+    // update is `a -= 0.0015f * a`, and under the block's ScopedNoDenormals the
+    // DECREMENT underflows before `a` does, so the glide stalls at
+    // ~FLT_MIN/0.0015 = 7.83e-36 and every later decrement is exactly 0. A test
+    // for `currentAmount == 0` therefore stayed FALSE forever after a ramp-down:
+    // this path -- written for, and measured in, the fresh prepare() state,
+    // where prepare() assigns currentAmount = targetAmount -- was unreachable
+    // from the one route a user actually takes, and the gather gate above kept
+    // its eligibility instead.
+    //
+    // THE STALL VALUE ABOVE IS ONE CONFIGURATION'S, not a universal: it is the
+    // x86-64 baseline's, where ADR-0031 pins contraction off and FTZ is on.
+    // Measured elsewhere (platform-coverage audit, F-1): with FTZ OFF (valgrind;
+    // any platform without a flush mode) the DECREMENT underflows to zero while
+    // `a` is still a ~7e-43 SUBNORMAL, so the glide fixpoints there instead;
+    // under FMA CONTRACTION (arm64-class builds -- FMLA is base ISA; measured
+    // through an x86 FMA analogue) the fused decrement has no separately
+    // rounded intermediate and the glide walks to an EXACT 0. The fixpoint test
+    // parks correctly at all three terminal states -- the second disjunct
+    // covers the exact-zero one. PERF_AUDIT_PLATFORM_COVERAGE.md F-1.
+    //
+    // The repair is to ask the question the path really depends on: not "is the
+    // glide at zero" but "can the glide still move" -- the SAME test the density
+    // glide three blocks above has always used, now applied to amount. It is
+    // decisive for a whole block rather than one sample because the targets only
+    // move between blocks, so the map is idempotent and the fixpoint absorbing.
+    //
+    // CLASS B, and no Class-A variant exists. Parked, `decorr` is the exact
+    // signed zero the general loop produces; stalled, the general loop scaled
+    // the tap sum by a currentAmount just under FLT_MIN/0.0015 = 7.837e-36,
+    // which `side + decorr` absorbs bit-exactly once |side| clears ~2^24..2^25 *
+    // |decorr| (binade-dependent) -- NOT "for any normal side", as this
+    // comment once claimed. The
+    // residual therefore lands on the SILENCE-REGION sample class: an exactly-
+    // or near-zero side (mono content is the everyday member) whose mid history
+    // is recent enough to keep the -66 dBFS presence gate open. Measured
+    // against the pre-fix sources: 7.145e-36 on silence; up to 6.019e-36 on
+    // 1e-25..1e-37-amplitude mono tails, on BOTH channels (the residual rides
+    // side); 0 of 102,400 samples different on real signal, re-verified
+    // bit-exact at every tail amplitude down to 1e-20
+    // (PERF_AUDIT_A7-9_NEARSILENT_SCOPE.md). The programme-wide worst case is ChorusEngine's
+    // at 192 kHz, whose coefficient is the only rate-dependent one. After the
+    // fix the silence output is an exact zero rather than a smaller residual.
+    // Test 41 is the gate and is proven to fail without this change; Test 42
+    // pins the near-silent half the same way. Measured in
+    // worklogs/performance/PERF_AUDIT_A7-2_A7-5_A7-9_INVESTIGATION.md,
+    // re-verified in PERF_AUDIT_A7-2B_A7-5E_IMPLEMENTATION.md, implemented and
+    // (bound corrected) in PERF_AUDIT_A7-9_AVX2_IMPLEMENTATION.md §4c.
+    //
+    // The second disjunct in `amountParked` is the PRE-A7-9 entry condition kept
+    // verbatim, for the one input the fixpoint test does not subsume: a NaN
+    // amount with currentAmount already 0. The gate can only ever admit MORE
+    // than it did before A7-9.
 
     // Parked fast path (Wave 5 -- the Haas-parked / W3-9-compliant shape). With
-    // the density glide at its fixpoint, the amount glide at exactly 0 with a 0
-    // target, and no stop fade in flight, every skipped operation below is
-    // provably a no-op this block: the density tick (fixpoint), the
-    // weights compare (equal by the gate), the amount tick (0 += k*0), and the
-    // stop machine (! stopping). What MUST keep running does: the presence
-    // env/gate keep tracking the input so a re-engage opens with the correct
-    // state (the exact reasoning that REJECTED freezing them, W3-9), the
-    // history keeps recording for the same reason, and the output write-back
-    // keeps the full multiplier chain verbatim -- decorr stays the same signed
-    // zero the general loop produces (stopG omitted: it is exactly 1 here, the
-    // H5 precedent) -- so the MS round-trip lands on identical bits.
+    // the density glide at its fixpoint, the amount glide parked on a 0 target,
+    // and no stop fade in flight, every skipped operation below is provably a
+    // no-op this block: the density tick (fixpoint), the weights compare (equal
+    // by the gate), the amount tick (also a fixpoint -- 0 += k*0 when parked,
+    // and unchanged by definition when stalled), and the stop machine
+    // (! stopping). What MUST keep running does: the presence env/gate keep
+    // tracking the input so a re-engage opens with the correct state (the exact
+    // reasoning that REJECTED freezing them, W3-9), the history keeps recording
+    // for the same reason, and the output write-back keeps the full multiplier
+    // chain verbatim -- decorr stays the same signed zero the general loop
+    // produces for a parked amount (stopG omitted: it is exactly 1 here, the H5
+    // precedent) -- so the MS round-trip lands on identical bits.
     if (! stopping
         && densityAtFixpoint
-        && ! (currentAmount > 0.0f) && ! (targetAmount > 0.0f))
+        && amountParked)
     {
         for (int i = 0; i < numSamples; ++i)
         {

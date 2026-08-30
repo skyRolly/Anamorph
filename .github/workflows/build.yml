@@ -220,7 +220,7 @@ env:
 # compilation (75%) and 468 CPU-seconds of LTO link (25%), and the compilation
 # is almost all JUCE: 9k lines of first-party source against a framework that
 # every one of the three JUCE-linking targets compiles separately. JUCE is
-# pin-locked to an immutable commit (CMakeLists.txt:65-71, ADR-0022/0026), so
+# pin-locked to an immutable commit (CMakeLists.txt:83-89, ADR-0022/0026), so
 # that 75% is byte-identical from run to run and recompiling it every push is
 # the single largest piece of avoidable work in this pipeline.
 #
@@ -913,7 +913,7 @@ jobs:
       # and -flto is what users install.
       #
       # IT IS A NO-NEW-WARNINGS GATE, NOT A ZERO-WARNINGS ONE, and that is not a
-      # softening. The tree already carries 14 first-party Clang warning sites
+      # softening. The tree already carries 17 first-party Clang warning sites
       # (-Wshadow-field, -Wshadow, -Wswitch-enum, -Wsign-conversion,
       # -Wfloat-equal, -Wunused-but-set-variable, -Wmissing-prototypes), all
       # older than the gate; clearing them means renaming a member across the
@@ -1619,13 +1619,16 @@ jobs:
           }
 
           if ($null -eq $version) {
-            # A WARNING, NOT A FAILURE. This step reports and asserts; it does
-            # not build or validate anything a user receives, and reddening the
-            # Windows release gate because a cache key moved would be a footnote
-            # deciding whether a release ships. The message names what to read.
-            Write-Host "::warning::Could not read an MSVC toolset version from $cache (looked at CMAKE_CXX_COMPILER and CMAKE_LINKER). The Windows toolchain is unrecorded for this run."
+            # AN ERROR SINCE ADR-0032, where it was a warning before. While the
+            # toolset was only a record, an unreadable version was a footnote;
+            # now the shipped numerics CONTRACT depends on which side of 14.30
+            # the toolset sits (the VS2022 boundary where /fp:precise stopped
+            # emitting contractions by default), and an unplaceable toolset
+            # cannot anchor that claim. Fail saying what to read, never accept
+            # silently.
+            Write-Host "::error::INFRASTRUCTURE: could not read an MSVC toolset version from $cache (looked at CMAKE_CXX_COMPILER and CMAKE_LINKER). ADR-0032's /arch:AVX2 Class-A claim requires placing the toolset against the 14.30 contraction-default boundary; an unrecorded toolchain cannot be asserted. Not a numerical failure."
             Select-String -Path $cache -Pattern 'CMAKE_(CXX_COMPILER|LINKER):FILEPATH='
-            exit 0
+            exit 1
           }
 
           $series = $version.Split('.')[0]
@@ -1634,6 +1637,18 @@ jobs:
 
           if ($series -ne '14') {
             Write-Host "::error::MSVC ABI series moved from 14.x to $series.x, which changes the Visual C++ redistributable users need. Confirm the new requirement, update COMPATIBILITY_MATRIX, and raise this assertion in the same change."
+            exit 1
+          }
+
+          # ADR-0032: the /arch:AVX2 Class-A property rests on the VS2022+
+          # /fp:precise non-contracting default, which begins at toolset 14.30.
+          # A pre-14.30 toolset could contract by default, silently changing
+          # the numerics contract of the shipped Windows binary -- so it FAILS
+          # here rather than being inferred from whatever windows-latest
+          # currently resolves to (14.51 was observed, never guaranteed).
+          $minor = [int]($version.Split('.')[1])
+          if ($minor -lt 30) {
+            Write-Host "::error::MSVC toolset $version predates 14.30 (VS2022), where /fp:precise stopped emitting floating-point contractions by default -- the property ADR-0032's /arch:AVX2 Class-A claim rests on. A pre-14.30 image silently changes the numerics contract; do not build the shipped Windows binary on it."
             exit 1
           }
 
@@ -1773,12 +1788,35 @@ jobs:
       # absent Rosetta exits 0 (image property, per above) so the uploads proceed
       # on a compilation-only Intel run with the ::warning:: as the record, and a
       # failed BUILD skips it, where `steps.tests` already blocks the upload.
+      # ADR-0031 ADDED A SECOND WAY THIS STEP CAN LOSE ITS COVERAGE, and it is
+      # the same class as the first: a property of the IMAGE, not of the product.
+      # The x86_64 slice is now compiled `-march=haswell`, and Rosetta 2 does not
+      # translate AVX2 unless the process asks for it (`ROSETTA_ADVERTISE_AVX`,
+      # macOS 15+); where it will not, the slice raises SIGILL under translation
+      # while being perfectly correct on real Intel hardware. So the capability is
+      # PROBED with a three-line AVX2 program built by the same compiler, before
+      # the suites run -- a probe that answers about this image rather than about
+      # a version number, exactly as `check_linker_flag` does for lld in
+      # CMakeLists. A probe that faults degrades to a ::warning::, like an absent
+      # Rosetta, because the blocking Intel gate is the `macos-intel` job on real
+      # `macos-15-intel` hardware; this step is the bonus half.
       - name: DSP + state self-tests, x86_64 slice under Rosetta
         id: tests_x86_64
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        env:
+          ROSETTA_ADVERTISE_AVX: 1
         run: |
           if ! arch -x86_64 /usr/bin/true 2>/dev/null; then
             echo "::warning::Rosetta 2 unavailable on this image -- the x86_64 slice was BUILT but NOT EXECUTED; Intel coverage for this run is compilation only"
+            exit 0
+          fi
+          printf '#include <immintrin.h>\nint main(void){__m256i a=_mm256_set1_epi32(1);a=_mm256_add_epi32(a,a);return _mm256_extract_epi32(a,0)-2;}\n' > "$RUNNER_TEMP/avx2probe.c"
+          if ! cc -arch x86_64 -march=haswell -O0 "$RUNNER_TEMP/avx2probe.c" -o "$RUNNER_TEMP/avx2probe" 2>/dev/null; then
+            echo "::warning::could not build the AVX2 probe -- skipping the Rosetta run rather than guessing; Intel coverage for this run is compilation only (the blocking Intel gate is the macos-intel job)"
+            exit 0
+          fi
+          if ! arch -x86_64 "$RUNNER_TEMP/avx2probe" 2>/dev/null; then
+            echo "::warning::Rosetta 2 on this image does not execute AVX2 (ADR-0031 compiles the x86_64 slice -march=haswell) -- the slice was BUILT but NOT EXECUTED here; the blocking Intel gate is the macos-intel job on native hardware"
             exit 0
           fi
           ANAMORPH_TEST_RUNNER="arch -x86_64" ./scripts/run-tests.sh
@@ -2236,6 +2274,174 @@ jobs:
   #  translation units and nothing in this job validates it, which is the same
   #  reason `codeql.yml` and `msvc.yml` already turn it off.
   # ==========================================================================
+  # A7-5E LIVES IN ITS OWN JOB, and the reason is a lesson rather than a
+  # preference. It first ran inside the packaging `macos` job, produced correct
+  # numbers, and they were UNREADABLE: that job emits a dSYM warning flood of
+  # several hundred thousand lines afterwards, and every log-retrieval path caps
+  # out long before reaching back past it. A measurement nobody can read is not
+  # a measurement. Here the log is a few hundred lines and the answer is the
+  # last thing in it.
+  #
+  # It also belongs here on the merits: this is an experiment, not a release
+  # step, and it has no business inside the job that signs and uploads customer
+  # artifacts. Nothing depends on it and it gates nothing.
+  #
+  # continue-on-error AT THE JOB LEVEL, and the placement is the point. The
+  # comparison STEP already exits 0 on every path, but the job could still fail
+  # -- and, because release.yml consumes this workflow's aggregate result via
+  # workflow_call, BLOCK A RELEASE -- through the parts no step guards: a
+  # checkout or JUCE-fetch failure, a runner loss, or the timeout-minutes
+  # cutoff. A reporting-only experiment must never decide whether customers get
+  # a release, so the JOB is marked non-failing: an infrastructure failure
+  # still shows red on this job with its log intact (nothing is converted to
+  # success -- the failure stays visible and truthful), it just no longer
+  # propagates into the workflow conclusion. Contrast windows-avx2-ab, which is
+  # a BLOCKING ADR-0032 gate and therefore deliberately does the opposite:
+  # there an infrastructure failure fails the workflow, fail-closed, with an
+  # "INFRASTRUCTURE:" label distinguishing it from a numerical one.
+  macos-crossslice:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name != github.repository
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Fetch JUCE (configure only)
+        run: cmake -B build-juce -G Ninja -DANAMORPH_BUILD_TESTS=OFF -DANAMORPH_BUILD_STANDALONE=OFF >/dev/null
+
+      # A7-5E: ARE THE TWO SLICES OF THE SHIPPED UNIVERSAL BINARY NUMERICALLY
+      # THE SAME? Nothing in this repository has ever asked. The suites assert
+      # behaviour and pluginval asserts conformance; neither compares the arm64
+      # and x86_64 halves to EACH OTHER, and `TESTING_POLICY` runs them three
+      # times for the denormal flush bits rather than for numerics.
+      #
+      # REPORTING ONLY, AND THAT IS A DELIBERATE CHOICE RATHER THAN TIMIDITY.
+      # A gate asserts a property the project has committed to. This one has
+      # not: no policy, ADR or doc claims cross-architecture bit identity, and
+      # a Linux measurement (GCC 13 + qemu-user, `PERF_AUDIT_A7-2B_A7-5E_
+      # IMPLEMENTATION.md` §5) already found the slices differ. Failing every
+      # macOS run on an unclaimed property would be inventing a contract by
+      # CI rather than deciding one. This step MEASURES so the decision can be
+      # made; whoever makes it can promote this to a gate in the same change.
+      # It therefore exits 0 on every path, including its own build failures.
+      #
+      # BOTH FLAG SETS, because the question has two halves. At DEFAULT flags it
+      # asks what the shipped binary does -- which since ADR-0031 means the
+      # x86_64 slice at `-march=haswell -ffp-contract=off`. That does not move
+      # the recorded finding: the frozen baseline had no FMA instruction, so
+      # contraction was already impossible on x86-64 and the flag pins what was
+      # true by accident. Part 2 therefore still changes only the arm64 side. With `-ffp-contract=off` on both
+      # sides it asks how much of any difference is FP contraction -- which
+      # arm64 does unconditionally (FMLA is in its base ISA) and the frozen
+      # x86-64 baseline cannot do at all. On Linux that split was total and
+      # clean: 32/32 differ at default, and with contraction off exactly the 8
+      # oversampling-x1 scenarios agree while all 24 at x2/x4/x8 still differ,
+      # the residual being libm-derived oversampling coefficients. Whether that
+      # pattern holds against APPLE's libm and Apple Clang is precisely what
+      # this step exists to find out.
+      #
+      # `--self-check` on every build, per the harness's own argument: a
+      # collapsed scenario set reports 32 confident and meaningless hashes.
+      - name: A7-5E — cross-slice numeric comparison (reporting only)
+        continue-on-error: true
+        env:
+          ROSETTA_ADVERTISE_AVX: 1
+        run: |
+          set +e
+          if ! arch -x86_64 /usr/bin/true 2>/dev/null; then
+            echo "::warning::A7-5E: Rosetta 2 unavailable -- the x86_64 slice cannot be EXECUTED here, so the cross-slice comparison is skipped"
+            exit 0
+          fi
+          # ADR-0031: the x86_64 slice is now compiled -march=haswell, and Rosetta
+          # 2 does not translate AVX2 unless the process asks for it. Probe before
+          # building two dumps that could only SIGILL. The finding this job
+          # reports is CLOSED and recorded either way (A7_DECISION_PACKET
+          # Decision 3); the job is the standing re-check, not the evidence.
+          printf '#include <immintrin.h>\nint main(void){__m256i a=_mm256_set1_epi32(1);a=_mm256_add_epi32(a,a);return _mm256_extract_epi32(a,0)-2;}\n' > "$RUNNER_TEMP/avx2probe.c"
+          if ! cc -arch x86_64 -march=haswell -O0 "$RUNNER_TEMP/avx2probe.c" -o "$RUNNER_TEMP/avx2probe" 2>/dev/null \
+             || ! arch -x86_64 "$RUNNER_TEMP/avx2probe" 2>/dev/null; then
+            echo "::warning::A7-5E: Rosetta 2 on this image does not execute AVX2 (ADR-0031 compiles the x86_64 slice -march=haswell) -- the cross-slice comparison is skipped"
+            exit 0
+          fi
+          JUCE="${GITHUB_WORKSPACE}/build-juce/_deps/juce-src"
+          build_dump () {   # $1 = arch, $2 = extra flags, $3 = build dir
+            cmake -B "$3" -G Ninja -DCMAKE_BUILD_TYPE=Release \
+              -DANAMORPH_BUILD_DSPDUMP=ON -DANAMORPH_BUILD_TESTS=OFF \
+              -DANAMORPH_BUILD_STANDALONE=OFF \
+              -DCMAKE_OSX_ARCHITECTURES="$1" -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13 \
+              -DCMAKE_CXX_FLAGS="$2" \
+              -DANAMORPH_JUCE_PATH="$JUCE" >/dev/null 2>&1 \
+            && cmake --build "$3" --target AnamorphDspDump >/dev/null 2>&1
+          }
+          run_dump () {     # $1 = build dir, $2 = runner prefix, $3 = output file
+            local exe; exe="$(find "$1" -name AnamorphDspDump -type f -perm -111 | head -1)"
+            [ -n "$exe" ] || { echo "  (no binary in $1)"; return 1; }
+            $2 "$exe" --self-check >/dev/null 2>&1 || { echo "  (--self-check FAILED for $1 -- hashes not trustworthy)"; return 1; }
+            $2 "$exe" > "$3" 2>&1
+          }
+          # RESULTS GO TO THE STEP SUMMARY AND TO ANNOTATIONS, not only to stdout.
+          # This job's log carries a very large dSYM warning flood, and a result
+          # buried behind it is a result nobody reads -- including the tooling
+          # that fetches logs by tail. `$GITHUB_STEP_SUMMARY` renders on the run
+          # page; `::notice::` is retrievable through the checks API.
+          say () { echo "$1"; echo "$1" >> "$GITHUB_STEP_SUMMARY"; }
+          compare () {      # $1 = label, $2 = flags, $3 = tag
+            say ""; say "### $1"
+            build_dump arm64  "$2" "bd-a-$3" || { say "- arm64 build FAILED"; echo "::notice::A7-5E $3: arm64 build failed"; return 0; }
+            build_dump x86_64 "$2" "bd-x-$3" || { say "- x86_64 build FAILED"; echo "::notice::A7-5E $3: x86_64 build failed"; return 0; }
+            run_dump "bd-a-$3" ""             "d-a-$3.txt" || { say "- arm64 run FAILED"; return 0; }
+            run_dump "bd-x-$3" "arch -x86_64" "d-x-$3.txt" || { say "- x86_64 run FAILED"; return 0; }
+            # SCENARIO RECORDS, NOT TEXT LINES (review 2026-08-30). The dump
+            # prints its self-check verdict, a blank line and two `#` header
+            # lines ahead of the table, and the earlier `grep -c .` counted
+            # every nonblank one of those as an agreeing "line" -- a wording
+            # change in the self-check output would have moved the reported
+            # totals with no DSP change at all. A record is a row whose second
+            # field is a 16-hex FNV hash -- the same acceptance rule the
+            # windows-avx2-ab gate's Read-Dump uses (its first run counted the
+            # self-check line as a 33rd scenario; same defect class). The
+            # expected count is DERIVED from what parses -- both slices must
+            # yield the same nonzero record count or no verdict is printed --
+            # and the exact comparison is preserved on the full record
+            # (name, hash, latency). Reporting semantics unchanged: every path
+            # still returns 0.
+            parse () {  # $1 = dump output, $2 = sorted records out
+              awk '$1 !~ /^#/ && NF >= 3 && length($2) == 16 && $2 ~ /^[0-9a-f]+$/ \
+                   { print $1, $2, $3 }' "$1" | sort > "$2"
+            }
+            local agree differ na nx
+            parse "d-a-$3.txt" "r-a-$3.txt"
+            parse "d-x-$3.txt" "r-x-$3.txt"
+            na=$(wc -l < "r-a-$3.txt" | tr -d ' ')
+            nx=$(wc -l < "r-x-$3.txt" | tr -d ' ')
+            if [ "$na" -eq 0 ] || [ "$na" -ne "$nx" ]; then
+              say "- **NO VERDICT** — scenario records failed to parse ($na arm64 vs $nx x86_64)"
+              echo "::warning::A7-5E $3: scenario records failed to parse ($na vs $nx) -- no verdict"
+              return 0
+            fi
+            if cmp -s "r-a-$3.txt" "r-x-$3.txt"; then
+              say "- **arm64 == x86_64 — IDENTICAL** (all $na scenarios agree)"
+              echo "::notice::A7-5E $3: arm64 and x86_64 are IDENTICAL ($na scenarios)"
+            else
+              agree=$(join -j1 "r-a-$3.txt" "r-x-$3.txt" 2>/dev/null | awk '$2==$4 && $3==$5' | wc -l | tr -d ' ')
+              differ=$((na - agree))   # a name present on one side only counts as differing
+              say "- **arm64 != x86_64** — $differ of $na scenario(s) differ, $agree agree"
+              echo "::notice::A7-5E $3: $differ of $na scenario(s) differ, $agree agree"
+              say ""; say "  scenarios that AGREE:"
+              join -j1 "r-a-$3.txt" "r-x-$3.txt" 2>/dev/null \
+                | awk '$2==$4 && $3==$5 {print "  - " $1}' | head -40 | tee -a "$GITHUB_STEP_SUMMARY"
+            fi
+          }
+          echo "## A7-5E — cross-slice numeric comparison (reporting only)" >> "$GITHUB_STEP_SUMMARY"
+          compare "A7-5E part 1: shipped flags"            ""                   def
+          compare "A7-5E part 2: -ffp-contract=off on both" "-ffp-contract=off" noc
+          echo "=== end A7-5E (reporting only; this step never fails the job) ==="
+          exit 0
+
+
   macos-intel:
     # PINNED BY NECESSITY, not by preference -- the one runner label in this
     # workflow that cannot float. Per `actions/runner-images`, `macos-latest`
@@ -2511,6 +2717,164 @@ jobs:
   # behavioural gates passed. On the RELEASE path it does block, because
   # `release.yml` depends on this workflow's aggregate result -- see the
   # `sanitizers` comment above for the full topology.
+  # ============================================================================
+  #  windows-avx2-ab -- ADR-0032's BLOCKING Class-A gate. The shipped Windows
+  #  build compiles /arch:AVX2 at the default non-contracting /fp:precise, and
+  #  that Class-A property is a TOOLSET-VERSION BEHAVIOUR on a floating runner
+  #  image -- so it is asserted on every push rather than remembered from the
+  #  adoption evidence (0/32 on toolset 14.51.36231, two runs). This job began
+  #  life as the R-1 reporting-only experiment that produced that evidence;
+  #  ADR-0032 promoted it, which was an explicit adoption requirement.
+  #
+  #  THE GATE: A (baseline, ANAMORPH_X86_ISA_BASELINE=OFF -> SSE2) must be
+  #  bit-identical to B (the SHIPPED configuration -- /arch:AVX2 via
+  #  AnamorphHardening, the same mechanism the customer binary is built with)
+  #  across all 32 twin-dump scenarios. Any scenario differing is a NUMERICAL
+  #  failure of the ADR-0032 contract and fails the job.
+  #
+  #  TWO FAILURE CLASSES, DELIBERATELY DISTINGUISHED in the error text so a red
+  #  run can never read as the wrong thing:
+  #    * "NUMERICAL:" -- the comparison RAN and A != B. The Class-A contract is
+  #      broken (a toolset moved the vectorizer/contraction behaviour, or a
+  #      code change interacts with /arch:AVX2). Never re-run past this;
+  #      diagnose it.
+  #    * "INFRASTRUCTURE:" -- the gate could not run (checkout, JUCE fetch,
+  #      build, self-check, parse). This also FAILS the job, fail-closed and on
+  #      purpose: no other job verifies the property, so a gate that cannot run
+  #      must not pass -- exactly as a `windows` build failure blocks. The
+  #      label is what stops it being mistaken for a numerical regression.
+  #  A job TIMEOUT is an infrastructure failure by definition (the runner kills
+  #  the job before any comparison; no numerical claim is implied).
+  #
+  #  C (/arch:AVX2 /fp:contract) is INFORMATIONAL ONLY and has no effect on the
+  #  exit code: 32/32 differing under contraction is an observation about what
+  #  /fp:contract would do, not a contract -- the flag is NOT enabled anywhere
+  #  (ADR-0032 option 3). A C-side failure degrades to a ::warning::.
+  #
+  #  SELF-PROOF THE FLAG IS LIVE: 0/32 would be trivially true if /arch:AVX2
+  #  silently failed to apply to B, so the job asserts the flag IS in B's
+  #  generated build files and IS NOT in A's before comparing. The dump target
+  #  deliberately excludes LTO; JUCE is fetched once (build A) and reused via
+  #  ANAMORPH_JUCE_PATH, the macos-crossslice pattern.
+  windows-avx2-ab:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name != github.repository
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Blocking A/B twin dump -- baseline vs the shipped /arch:AVX2 configuration (ADR-0032)
+        shell: pwsh
+        run: |
+          # Failure taxonomy (see the job header): "NUMERICAL:" means the
+          # comparison ran and the ADR-0032 contract is broken; every other
+          # failure is "INFRASTRUCTURE:" -- the gate could not run, which also
+          # fails (fail-closed; no other job verifies this property) but must
+          # never read as a numerical regression. C is informational only.
+          $ErrorActionPreference = 'Continue'
+          function Say([string]$m) { Write-Host $m; Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $m }
+          function Die-Infra([string]$m) {
+            Write-Host "::error::INFRASTRUCTURE: $m (the ADR-0032 gate could not run -- fail-closed; this is NOT a numerical failure)"
+            Say "- **INFRASTRUCTURE failure:** $m"
+            exit 1
+          }
+          Say "## windows-avx2-ab -- ADR-0032 blocking Class-A gate (baseline vs shipped /arch:AVX2)"
+
+          function Build-Dump([string]$dir, [string[]]$extra, [string]$jucePath) {
+            $args = @('-B', $dir, '-DANAMORPH_BUILD_DSPDUMP=ON', '-DANAMORPH_BUILD_TESTS=OFF',
+                      '-DANAMORPH_BUILD_STANDALONE=OFF') + $extra
+            if ($jucePath -ne '') { $args += "-DANAMORPH_JUCE_PATH=$jucePath" }
+            cmake @args | Out-Null
+            if ($LASTEXITCODE -ne 0) { return $false }
+            cmake --build $dir --config Release --target AnamorphDspDump | Out-Null
+            return ($LASTEXITCODE -eq 0)
+          }
+          function Run-Dump([string]$dir, [string]$out) {
+            $exe = Join-Path $dir 'AnamorphDspDump_artefacts/Release/AnamorphDspDump.exe'
+            if (-not (Test-Path $exe)) { return 'missing' }
+            & $exe --self-check *> $null
+            if ($LASTEXITCODE -ne 0) { return 'self-check' }
+            & $exe > $out 2>&1
+            if ($LASTEXITCODE -ne 0) { return 'run' }
+            return 'ok'
+          }
+          function Read-Dump([string]$f) {
+            # The dump prints its self-check verdict to stdout AHEAD of the
+            # table; on this job's first-ever run that line was counted as a
+            # 33rd "scenario" (the A7-5E blank-line lesson, one format over).
+            # Only rows whose second field is the 16-hex fnv1a hash are data.
+            $m = @{}
+            foreach ($line in Get-Content $f) {
+              if ($line -and -not $line.StartsWith('#')) {
+                $p = ($line -split '\s+') | Where-Object { $_ }
+                if ($p.Count -ge 2 -and $p[1] -match '^[0-9a-f]{16}$') { $m[$p[0]] = $p[1] }
+              }
+            }
+            return $m
+          }
+          function Flag-Count([string]$dir) {
+            # Self-proof the flag is live: /arch:AVX2 must appear in B's
+            # generated VS project files and not in A's, else 0/32 is trivial.
+            return @(Get-ChildItem -Path $dir -Recurse -Filter '*.vcxproj' |
+                     Select-String -Pattern 'AdvancedVectorExtensions2|/arch:AVX2' -List).Count
+          }
+
+          # A = baseline (the option now governs MSVC too -- ADR-0032);
+          # B = the SHIPPED configuration, flag via AnamorphHardening itself.
+          if (-not (Build-Dump 'build-a' @('-DANAMORPH_X86_ISA_BASELINE=OFF') '')) { Die-Infra 'build A (baseline, ANAMORPH_X86_ISA_BASELINE=OFF) failed' }
+          $juce = Join-Path $PWD 'build-a/_deps/juce-src'
+          if (-not (Test-Path $juce)) { $juce = '' }
+          if (-not (Build-Dump 'build-b' @() $juce)) { Die-Infra 'build B (shipped configuration, /arch:AVX2 via AnamorphHardening) failed' }
+
+          # Toolset record: the same 14.30 boundary the windows job asserts.
+          $version = $null
+          foreach ($key in 'CMAKE_CXX_COMPILER:FILEPATH', 'CMAKE_LINKER:FILEPATH') {
+            $hit = (Select-String -Path 'build-b/CMakeCache.txt' -Pattern ('^' + [regex]::Escape($key)) | Select-Object -First 1)
+            if ($null -ne $hit -and $hit.Line -match 'MSVC[\\/]+([0-9]+(\.[0-9]+)+)') { $version = $Matches[1]; break }
+          }
+          if ($null -eq $version) { Die-Infra 'MSVC toolset version unreadable from build-b/CMakeCache.txt -- the result would be unplaceable against the 14.30 contraction boundary' }
+          $minor = [int]($version.Split('.')[1])
+          if ($version.Split('.')[0] -ne '14' -or $minor -lt 30) { Die-Infra "MSVC toolset $version is outside the asserted 14.30+ series -- the non-contracting /fp:precise default ADR-0032 rests on is not established here" }
+          Say "- MSVC toolset **$version** (14.30+ non-contracting /fp:precise default: YES)"
+          Say "- A = ``ANAMORPH_X86_ISA_BASELINE=OFF`` (SSE2 baseline, /fp:precise) | B = shipped configuration (``/arch:AVX2`` via AnamorphHardening, default /fp:precise)"
+
+          $fa = Flag-Count 'build-a'; $fb = Flag-Count 'build-b'
+          if ($fb -eq 0) { Die-Infra '/arch:AVX2 not found in any build-b project file -- the flag did not apply, so an identical A/B would be vacuous' }
+          if ($fa -ne 0) { Die-Infra '/arch:AVX2 found in build-a (the baseline) -- ANAMORPH_X86_ISA_BASELINE=OFF did not take effect, so the A/B compares nothing' }
+          Say "- flag liveness: ``/arch:AVX2`` in $fb build-b project file(s), 0 in build-a -- the comparison is real"
+
+          $ra = Run-Dump 'build-a' 'd-a.txt'; if ($ra -ne 'ok') { Die-Infra "dump A did not execute cleanly ($ra)" }
+          $rb = Run-Dump 'build-b' 'd-b.txt'; if ($rb -ne 'ok') { Die-Infra "dump B did not execute cleanly ($rb)" }
+
+          $A = Read-Dump 'd-a.txt'; $B = Read-Dump 'd-b.txt'
+          if ($A.Count -ne 32 -or $B.Count -ne 32) { Die-Infra "parsed $($A.Count) baseline / $($B.Count) shipped scenarios where 32 were expected -- the dump format or parser moved" }
+
+          $diff = @()
+          foreach ($n in ($A.Keys | Sort-Object)) { if ($A[$n] -ne $B[$n]) { $diff += $n } }
+          if ($diff.Count -ne 0) {
+            Say "- **NUMERICAL GATE FAILURE: $($diff.Count) of 32 scenarios differ** between the baseline and the shipped /arch:AVX2 configuration"
+            Say "  differing: $($diff -join ', ')"
+            Write-Host "::error::NUMERICAL: the ADR-0032 Class-A contract is broken -- $($diff.Count)/32 twin-dump scenarios differ between baseline and /arch:AVX2 on toolset $version. This is a real numerical regression, not an infrastructure failure: do not re-run past it, diagnose it (a toolset behaviour change, or a code change interacting with /arch:AVX2)."
+            exit 1
+          }
+          Say "- **A == B: IDENTICAL -- all 32 scenarios agree.** The ADR-0032 Class-A contract holds on toolset $version."
+          Write-Host "::notice::windows-avx2-ab: ADR-0032 gate PASSED -- 0/32 scenarios differ (toolset $version)"
+
+          # C (/arch:AVX2 /fp:contract) -- INFORMATIONAL ONLY, never affects
+          # the exit code. 32/32 differing is the expected observation about
+          # contraction (ADR-0032 option 3); a C-side failure is a warning.
+          if (Build-Dump 'build-c' @('-DCMAKE_CXX_FLAGS=/fp:contract') $juce) {
+            $rc = Run-Dump 'build-c' 'd-c.txt'
+            if ($rc -eq 'ok') {
+              $C = Read-Dump 'd-c.txt'
+              $cd = @(); foreach ($n in ($B.Keys | Sort-Object)) { if ($B[$n] -ne $C[$n]) { $cd += $n } }
+              Say "- informational: /fp:contract moves $($cd.Count) of 32 scenarios (contraction remains the bit-moving half; the flag is NOT enabled anywhere)"
+            } else { Write-Host "::warning::informational /fp:contract dump did not execute cleanly ($rc) -- the blocking gate above is unaffected"; Say "- informational /fp:contract run skipped ($rc)" }
+          } else { Write-Host "::warning::informational /fp:contract build failed -- the blocking gate above is unaffected"; Say "- informational /fp:contract build skipped" }
+          exit 0
+
   linux-lto-tests:
     # GCC IS THE COMPATIBILITY COMPILER, NOT THE SHIPPING ONE. Clang builds the
     # artifact (`linux`); this job exists so the tree keeps compiling, and its

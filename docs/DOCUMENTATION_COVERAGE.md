@@ -8,7 +8,11 @@ that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.5 change set** (2026-08-22, matching the CHANGELOG heading) — the
 **A7-0 attempt** (first below, no code and no rows filled), then the **PR #127 review round**, then
-the **A7-2 investigation** (no code), then the **A7-1 implementation round**. Under it, the **0.9.4 change set** is retained in full
+the **A7-2 investigation** (no code), then the **A7-1 implementation round**, then the
+**A7-2T oracle**, then **A7-2B + A7-5E + A7-9C**, then **A7-5E closed on the shipping toolchain**,
+then the **four A7 decisions implemented** (ADR-0031's x86-64 ISA baseline and its floor, the
+cross-architecture numerics contract, the A7-9 fixpoint gates with Test 41, A7-2B's corner accepted,
+and one recorded bound corrected) — **last in the file, newest last within the 0.9.5 set**. Under it, the **0.9.4 change set** is retained in full
 (2026-08-21, matching its own CHANGELOG heading — re-dated
 from 2026-08-15 in the hover-occlusion round, on 2026-08-20, and again on 2026-08-21, each time
 because the version took a further user-visible change) — the
@@ -123,7 +127,7 @@ after. The fix is one shared `anchor_still_right()` used by both paths, so the t
 again; the duplication was the defect, not a symptom of it.
 
 **Proven not to have widened anything.** With the count mismatch AND a seeded drift on a
-*neighbouring* line of the same file (`CMakeLists.txt:276`, cited alongside `:14` in `TRADEMARKS.md`),
+*neighbouring* line of the same file (`CMakeLists.txt:427`, cited alongside `:14` in `TRADEMARKS.md`),
 the run still fails on that path — so the exemption still covers one declared line and nothing else.
 Self-test 131 → 135 cases: three behavioural cases driving `anchor_still_right` directly on synthetic
 sources (excused when the anchor did not move; a neighbouring line still compared; a MOVED anchor not
@@ -279,7 +283,11 @@ at 48 kHz / 128 — for Velvet, +752 % at 48 kHz / 32 and +2,372 % at 192 kHz / 
 amount above zero also satisfies the H5 gather gate and puts the engine on its most expensive path.
 Still no audio effect on real signal (0 of 102,400 samples differ in all three); the residual shows
 only on digital silence, bounded at **4.476e-36** across the rate range (Chorus at 192 kHz;
-1.643e-36 at 48 kHz alone). Full evidence and the maintainer decision:
+1.643e-36 at 48 kHz alone). *(Two later corrections, both marked at their sources: the 4.476e-36
+figure was that harness's observed maximum, not a bound — Test 41 measures 3.5× more and derives
+`FLT_MIN/k` instead; and "only on digital silence" is too narrow — near-silent NONZERO samples
+below ≈ 2–4e-28 of full scale move too, measured 2026-08-30 in
+`PERF_AUDIT_A7-9_NEARSILENT_SCOPE.md`.)* Full evidence and the maintainer decision:
 `worklogs/performance/PERF_AUDIT_A7-2_A7-5_A7-9_INVESTIGATION.md` Part III. The two additional
 comments are drift reported and deliberately not edited this round — the correction rides with the
 A7-9 decision.
@@ -1757,7 +1765,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:2825` and `.github/workflows/build.yml:2910`, this round being
+`.github/workflows/build.yml:3189` and `.github/workflows/build.yml:3274`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -1809,7 +1817,7 @@ subject, and the second is a stale COUNT rather than the placement claim.
 
 **The CI-target report was investigated and required no change.** It read the visible diff as adding
 only three `option()` declarations and asked whether `AnamorphFuzzState`, `AnamorphBench` and
-`AnamorphDspDump` resolve to anything. They do: `CMakeLists.txt:442-460`, `:478-495` and `:515-541`
+`AnamorphDspDump` resolve to anything. They do: `CMakeLists.txt:593-611`, `:560-577` and `:597-623`
 define them, the last including the target-scoped `-fsanitize=fuzzer` the workflow comment relies
 on. Verified by building rather than by reading — all three configure and compile from the same
 option and compiler flags CI passes (JUCE supplied from the already-fetched checkout rather than
@@ -2124,7 +2132,7 @@ way and deliberately left — `CODE_STYLE.md:10` and `TESTING_POLICY.md:9` cite 
 be exhaustive.
 
 **The continuation gap is left open deliberately.** Bringing these under the gate means the
-comma-list spelling (`CMakeLists.txt:335-336, 366-367, 408-409`), which the tool does accept — but
+comma-list spelling (`CMakeLists.txt:486-487, 517-518, 559-560`), which the tool does accept — but
 each continuation here carries its own annotation naming *which* line it is (`:162`
 (`-Wl,-dead_strip`, Apple), `:108` (`/OPT:REF`, MSVC)), and the comma-list form has nowhere to put
 them. Widening the recogniser to follow continuations is a change to the gate's scope rather than to
@@ -2879,7 +2887,7 @@ happened. Another sits two lines from a sibling reference in the *same* historic
 already been protected, so a `--fix` would have rewritten half a paired record and frozen the other
 half. The discriminator that survives: **is the number the subject of the sentence, or a pointer to a
 thing?** Exactly one `CMakeLists.txt` citation in this document is the latter — "*it is*
-`CMakeLists.txt:370-379`", present tense, where re-anchoring preserves truth — and it is deliberately
+`CMakeLists.txt:521-530`", present tense, where re-anchoring preserves truth — and it is deliberately
 left live so the gate still demonstrably checks real evidence here.
 
 Verified by mutation rather than by reading: a line inserted into `CMakeLists.txt` above all of them,
@@ -2904,7 +2912,7 @@ Review found two anchors the previous round missed, both below its insertion poi
 to the new gate for the same reason: they are spelled as **bare continuations**
 (`` `path/to/file:188-199` … `:292-301` ``), which the parser only recognises in the
 `path:a,b,c` form. `ADR-0001`'s "tests link the core" pointed at `juce::juce_opengl` inside the
-*plugin*'s link block; it is `CMakeLists.txt:370-379`. `BUILD.md`'s compile-definition list cited
+*plugin*'s link block; it is `CMakeLists.txt:521-530`. `BUILD.md`'s compile-definition list cited
 `:277-284` while listing `ANAMORPH_BUILD_NUMBER` — a definition that range no longer contains, since
 scoping moved it to `:274-275`; widened to `:274-284`, deliberately as **one** anchor, because a
 citation whose anchor *count* changes lands in the "review by hand" branch no declaration can excuse.
@@ -5957,7 +5965,7 @@ was blind was not.
 
 **The oracle, and why it costs no product change.** The module already holds two implementations of
 the same arithmetic. The gather's eligibility gate ends with `numSamples <= (int) accum.size()`
-(`src/dsp/VelvetNoise.cpp:155`) — a clause whose stated purpose is direct callers rather than the
+(`src/dsp/VelvetNoise.cpp:167`) — a clause whose stated purpose is direct callers rather than the
 engine — and `accum` is sized from `prepare()`'s `maxBlockSize` alone. An instance prepared for a
 **smaller** block therefore runs the per-sample loop over the same audio, and everything else about
 it is identical: ring, tap positions and signs, weights, envelope/gate coefficients and stop step
@@ -6098,3 +6106,260 @@ the change.
 `check-portability` 52/0. The CHANGELOG entry added for A7-2B was also brought to the
 `CHANGELOG_POLICY` entry template, which requires an `Evidence:` source and a verification marker —
 it had neither.
+
+## A7-5E closed — confirmed on the shipping toolchain
+
+The cross-slice question has been answered by execution on the hardware and toolchain that ship the
+product, not by inference. A CI job of its own, `macos-crossslice`, builds the committed
+`AnamorphDspDump` for `arm64` and for `x86_64` from the same sources and flags on an Apple Silicon
+runner, runs the arm64 slice natively and the x86_64 slice under Rosetta 2 (both passing
+`--self-check`), and diffs the 32 scenario hashes.
+
+**At shipped flags the two slices differ in 32 of 32 scenarios.** With `-ffp-contract=off` on both
+sides, 24 still differ and 8 agree — and the 8 are every scenario at oversampling ×1 and only those.
+That is the Linux measurement reproduced exactly: same counts, same split, same scenario names, now
+against Apple Clang and Apple's libm rather than GCC and glibc. So both mechanisms are properties of
+the architectures and of the libm boundary rather than of any one toolchain: contraction is
+flag-removable, and the oversampling path's runtime-derived polyphase coefficients are not, because
+**Apple's libm does not agree with itself across Apple's own two architectures**.
+
+**The job is reporting-only and gates nothing**, deliberately: no policy, ADR or document claims
+cross-architecture bit identity, so failing a run on it would invent a contract by CI rather than
+decide one. It exits 0 on every path. Whoever decides the contract can promote it to a gate in the
+same change, and it can be deleted outright once the question stops being interesting.
+
+**Two process notes worth keeping, because both cost a full CI cycle.** The experiment first ran
+inside the packaging `macos` job and produced correct numbers that were *unreadable*: that job emits
+a dSYM warning flood of several hundred thousand lines afterwards, and every log-retrieval path caps
+by character budget — 30,000 lines of tail reached ten seconds past the step's end. Routing the
+result to `$GITHUB_STEP_SUMMARY` and `::notice::` did not fix it either, since Actions job summaries
+are not exposed through the check-runs API. Moving the experiment to its own short-log job did, and
+it was the right structure anyway: an experiment has no business inside the job that signs and
+uploads customer artifacts. Separately, the first run's "scenarios agree" count included a blank
+header line and printed 1 and 9 where the true figures are 0 and 8; the counting now ignores blank
+lines, and the named scenarios were never affected.
+
+**Verification.** All jobs green on the confirming run: `linux`, `linux-lto-tests`, `sanitizers`,
+`realtime`, `fuzz`, `docs`, `source-lint`, `windows`, `macos` (pluginval VST3+AU, both modes ×3, plus
+the Rosetta suites), `macos-intel` (native Intel), and `macos-crossslice`.
+
+## The four A7 decisions implemented — ADR-0031, the ISA floor, A7-9, and a bound corrected
+
+The investigation phase closed and all four approved items landed in one change set. Worklog:
+`worklogs/performance/PERF_AUDIT_A7-9_AVX2_IMPLEMENTATION.md`.
+
+**The order was forced by the approval and is worth recording as a pattern.** The compatibility
+documentation had to land *before* the flag it describes, so `COMPATIBILITY_POLICY` gained the ISA
+floor and the cross-architecture statement first, ADR-0031 recorded the decision and amended
+ADR-0021 second, and `CMakeLists.txt` carried `-march=haswell` last. A user-visible contract with a
+`SIGILL` failure mode documented after the fact is a period in which the product's supported
+hardware is whatever the build files happen to say.
+
+**ADR-0031 — the x86-64 ISA baseline.** `-march=haswell -ffp-contract=off`, on the GCC/Clang x86-64
+builds only: Linux x86-64 and the macOS `x86_64` slice via `-Xarch_x86_64`, with **arm64 and MSVC
+carrying nothing**, each for its own reason. arm64 has `FMLA` in its base ISA and contracts today, so
+`-ffp-contract=off` there would be a Class-B change to shipped arm64 numerics for no user-visible
+gain. MSVC's `/arch:AVX2` is not the equivalent pair — MSVC controls contraction separately — and no
+twin-dump instrument runs on Windows, so the Class-A property could not be *demonstrated* there,
+only assumed. Both exclusions are recorded in the ADR rather than left to be inferred from the
+CMake, because "the flags are not on this platform" reads as an oversight unless something says it
+is a decision.
+
+> **The MSVC half of that paragraph is SUPERSEDED — ADR-0032, Accepted 2026-08-30.** It described
+> ADR-0031's scope correctly and is kept for that, but MSVC no longer carries nothing: the Windows
+> x64 build compiles `/arch:AVX2`. The blocker was the *missing instrument*, not the flag — the
+> R-round built the Windows twin dump, it returned **0 of 32 scenarios moved** on toolset
+> 14.51.36231 across two runs, and the Class-A property is demonstrated on Windows rather than
+> assumed. "MSVC controls contraction separately" is what makes the flag safe there, not what blocks
+> it: `/fp` is left at the default non-contracting `/fp:precise`, and `/fp:contract` — which moves
+> 32 of 32 — stays off. The arm64 half stands unchanged. Every shipped x86-64 binary now carries an
+> AVX2 baseline; only Apple Silicon has no ISA floor.
+
+**Why the change is Class A, stated once so it is not re-derived.** The frozen SysV baseline has no
+FMA instruction at all, which is why the permissive `-ffp-contract=fast` default has been inert on
+this target for the project's whole life. `-march=haswell` introduces the instruction;
+`-ffp-contract=off` forbids its use. The flag does not move the numerics, it *states* what the
+missing instruction was enforcing by accident. Measured on this tree: **0 of 32 twin-dump scenarios
+differ from the baseline**, **0 FMA instructions emitted** (707 with contraction left at its
+default), **780 `%ymm` operands** so the flag is demonstrably doing work, −17.2 % engine-wide. The
+GCC/Clang cross-check survives for the same reason it is Class A: neither toolchain can contract.
+
+**A build option exists to turn it off, and that is deliberate.** `ANAMORPH_X86_ISA_BASELINE` (ON =
+shipped) was added because a Class-A claim is worth what re-verifying it costs, and the flags live on
+a target — CMake places target compile options *after* `CMAKE_CXX_FLAGS`, so a `-march` passed on the
+command line is the *earlier* one and loses. Without the switch, reproducing the frozen baseline for
+the `DEPENDENCY_POLICY` rule-2 twin dump means editing `CMakeLists.txt`, which is how a verification
+stops being run. Turning it off emits a `WARNING` naming what was given up; nothing in CI turns it
+off.
+
+**Two CI consequences, both from Rosetta 2, which does not translate AVX2 by default.** The `macos`
+job's Intel coverage and the `macos-crossslice` experiment both execute the `x86_64` slice under
+translation, and both would now `SIGILL`. Each sets `ROSETTA_ADVERTISE_AVX=1` and **probes** with a
+three-line AVX2 program built by the same compiler before running anything, degrading to a
+`::warning::` when the probe faults — the same shape as the existing "Rosetta unavailable" path, and
+for the same reason: it is a property of the image, not of the product. No gate is lost, because the
+blocking Intel coverage is `macos-intel` on native hardware, which is Haswell+ by Apple's own
+requirements for macOS 15. A7-5E's recorded finding is unaffected: part 1 now builds the x86_64 slice
+at the ADR-0031 pair, but contraction was already impossible there, so part 2 still changes only the
+arm64 side.
+
+**A7-9 — three gates, from a value test to a fixpoint test.** `VelvetNoise`, `HaasProcessor` and
+`ChorusEngine` each gated a cheap Amount-0 path on the wet glide reaching **exactly** 0, which under
+FTZ it never does: with a 0 target the update is `a -= k*a` and the DECREMENT underflows before `a`
+does, stalling the glide just under `FLT_MIN/k`. Every one of those paths was dead after a user
+turned Amount down — the only route to the state they were written for. The gates now ask whether the
+glide *can still move*, which is the test `VelvetNoise` has always used for its density glide three
+lines above the one that was wrong. `VelvetNoise` computes `amountParked` **once** and uses it in
+both directions, so its gather gate and its parked gate stay exact complements and no state can be
+eligible for neither or for both. Each gate keeps the pre-A7-9 condition as a second disjunct for the
+one input the fixpoint test does not subsume — a NaN target with the current value already 0 — so the
+gates can only ever admit more than before.
+
+**Test 41, and why the suite needed a new shape of test.** The oracle is a second instance of the
+same module: one driven the way a user drives it, one parked from `prepare()`, both fed identical
+input. All three modules record the *input* in their delay lines rather than their own output, so the
+rings match and any difference is the residual. Three claims, three checks: real signal exactly
+equal, silence within the derived `FLT_MIN/k` ceiling, and **silence exactly 0** — the last being the
+gate, which fails on all four cases against the pre-A7-9 sources. `ChorusEngine` runs at 48 kHz *and*
+192 kHz because its coefficient is the only rate-dependent one, so the worst case is asserted rather
+than extrapolated. The committed twin dump reports 0 of 32 scenarios different for A7-9, and that
+proves nothing: `tests/dsp_dump.cpp` holds `algoAmount` at 0.7 and never ramps down, which is exactly
+how the defect survived from Wave 4 to now.
+
+**A figure was corrected, and the correction is the point.** The investigation recorded 4.476e-36 as
+the A7-9 residual bound and the approval carried it forward as a requirement. It is the maximum *that
+harness* observed, not a stimulus-independent bound: driving ±0.7 noise, Test 41 measures 1.563e-35
+(Chorus, 192 kHz), 8.043e-36 (Haas, 48 kHz) and 7.145e-36 (Velvet, 48 kHz) against the same pre-fix
+sources — 3.5× the recorded figure. What actually bounds the residual is `FLT_MIN/k` times the
+module's wet gain, which is derived per module inside the test rather than quoted. The direction of
+the change is not in question — the residual is what the fix *removes*, and after it the silence
+output is an exact zero, which is stronger than any bound — but a number quoted in policy-adjacent
+documents should be the one that is true. Corrected in the decision packet and both A7 worklogs,
+with the investigation's own §17 table left as the historical measurement it is, under a forward
+reference.
+
+**Documentation synced.** `COMPATIBILITY_POLICY` (ISA floor + cross-architecture numerics),
+ADR-0031 + `ADR_INDEX` + the ADR-0021 amendment note, `COMPATIBILITY_MATRIX` (three platform rows
+plus two new sections), `PERFORMANCE_BUDGET` (the A7-9 and AVX2 entries, and A7-2B's corner recorded
+as accepted), `KNOWN_ISSUES` (**KI-026**, the first entry here recording a limitation that was
+*chosen* rather than discovered), `BUILD.md` (the baseline, the three ways to get it wrong, and the
+opt-out), `TESTING.md` + `TESTING_POLICY` + `README` (**39 → 40 DSP tests**, 202 → 214 checks),
+`USER_MANUAL` + `INSTALLATION` (the processor requirement, stated before install rather than after a
+crash), `CHANGELOG` (one **Changed** and one **Fixed**), `HANDOVER`.
+
+## The R-round: the audit's recommendations executed as evidence and documentation
+
+The platform-coverage audit's R-1…R-6 were executed with the standing decisions preserved — no
+shipped flag changed, no DSP behaviour changed, no platform policy reversed. Worklog:
+`worklogs/performance/PERF_AUDIT_PLATFORM_COVERAGE.md` §"The R-round". **The R-round left the
+decisions alone; the round after it did not — ADR-0032 accepted the MSVC evidence and adopted the
+flag. Where the paragraphs below describe an R-round state that ADR-0032 changed, the supersession
+is marked in place.**
+
+**The Windows instrument now exists** (R-1): the ~~reporting-only~~ `windows-avx2-ab` job A/B/Cs the
+twin dump against `/arch:AVX2` and `/arch:AVX2 /fp:contract`, records the MSVC toolset against the
+14.30 contraction boundary, and ~~gates nothing~~ — it converts ADR-0031 option 5's "could not be
+demonstrated" into data, while adoption still requires its own ADR. **[Superseded — ADR-0032,
+Accepted 2026-08-30: adoption got its ADR, and the job is now a BLOCKING gate — `continue-on-error`
+removed, a flag-liveness self-proof and a hard 32-scenario requirement added so it fails closed.
+The A vs B result it produced, 0/32 on toolset 14.51.36231 across two runs, is the evidence the ADR
+rests on. Note the contrast with `macos-crossslice` above, which remains reporting-only by design
+and gained job-level `continue-on-error` so that an infrastructure failure in a reporting experiment
+cannot block a release.]** **The scope is now recorded**
+(R-3): `COMPATIBILITY_MATRIX` carries Not Supported rows for Linux arm64 and Windows arm64 and a
+toolchain-validation section placing clang-cl outside ADR-0031's demonstrated set; the
+`CMakeLists.txt` scope comment agrees. **The F-1/F-2 comment defects are corrected** (R-4): the
+three A7-9 blocks carry the three-terminal-state architecture note, and Test 41's no-FTZ paragraph
+now records its own prior error and the measured subnormal stall. **The UCRT FMA3 caveat is in the
+policy** (R-5), scoping Windows bit-identity to the machine class. **The Rosetta probe was found to
+be testing AVX1, not AVX2** — the review finding was re-verified rather than assumed addressed, and
+was real; both probes now execute `vpaddd ymm`. **The Clang-22 measurement gap is closed** (R-6):
+GCC-13 at the frozen baseline reproduced the historical figure to 0.06 % (1705.9 vs 1704.9
+Ir/sample), the AVX2 win holds on the shipped toolchain (−19.6 % on clang-22.1.8 vs −18.4 % on
+GCC 13.3 on the same tree), and the shipped Clang binary executes −27.6 % fewer instructions than
+the GCC binaries every historical figure came from — deltas transfer, absolutes do not. Found in
+passing and diagnosed to a minimal repro (**F-8**): GCC 13 emits value-exact FMA in its vectorized
+unsigned-int32→float lowering even under `-ffp-contract=off` — instruction selection, not
+contraction; dead code in shipped binaries; recorded so a future nonzero FMA census is diagnosed
+rather than read as a broken pin.
+
+## Consistency pass + the MSVC adoption packet (decision boundary held)
+
+The platform-coverage worklog and its report page carried audit-time statements the R-round had
+overtaken — "no bit-exactness instrument on Windows", "nothing was ever measured on Windows", the
+Clang-22 gap described as open, the vectorizer question as unanswered, R-1…R-6 as pending. Each is
+now struck-and-marked **[Superseded — R-round]** in place rather than silently rewritten, a status
+banner at the top separates the three registers (current evidence · current adopted policy · open
+maintainer decisions), and the §9/§6 recommendation tables carry executed statuses. The historical
+record is preserved; nothing current contradicts it. The corrected `windows-avx2-ab` parser's own
+run is recorded as replicating the verdict: **A vs B "IDENTICAL (all 32 scenarios agree)"** on
+toolset 14.51.36231.
+
+**`worklogs/performance/MSVC_AVX2_ADOPTION_PACKET.md`** prepares the one open decision without
+taking it: the verbatim draft ADR-0032, the exact `COMPATIBILITY_POLICY` / `COMPATIBILITY_MATRIX` /
+KI-026 / user-guide edits (documentation ordered before the flag, per the ADR-0031 rule), the exact
+`windows` job toolset ≥ 14.30 assertion, the exact promotion of `windows-avx2-ab` to a blocking
+A == B gate, and the CMakeLists change that makes `ANAMORPH_X86_ISA_BASELINE` govern MSVC too. It
+also writes the decline path, so rejecting costs one sentence. **Nothing in it is applied**: the
+shipped Windows build still compiles at MSVC defaults, ADR-0032 is not registered, and the packet's
+own header names `ADR_POLICY` and the Architecture Review Gate as the reason it stops there.
+
+## ADR-0032: the MSVC `/arch:AVX2` adoption, applied on explicit approval
+
+The maintainer approved the prepared packet verbatim, and the whole chain landed in one change —
+documentation and flag together, per the ADR-0031 ordering rule. **ADR-0032** is registered
+Accepted (amending ADR-0031's option-5 deferral, which is cross-linked as superseded); the Windows
+build compiles **`/arch:AVX2` at the default non-contracting `/fp:precise`** with no `/fp` flag
+added and no runtime dispatch; `ANAMORPH_X86_ISA_BASELINE` now governs MSVC too (OFF drops the
+flag — the gate's baseline half uses exactly that). Floor documentation: `COMPATIBILITY_POLICY`'s
+Windows row rewritten to the same-floor state, `COMPATIBILITY_MATRIX`'s platform row / floor
+section / toolchain-validation section updated (clang-cl stays outside the validated set — it would
+now structurally *inherit* the flag, which the matrix records as one more reason it needs its own
+ADR), KI-026 widened to Windows, both user guides' Windows carve-outs removed, and a CHANGELOG
+entry that quotes no Windows performance figure because none exists.
+
+**Two CI semantics changed, in opposite directions and for stated reasons.** `windows-avx2-ab` is
+now a **blocking gate**: baseline (`ANAMORPH_X86_ISA_BASELINE=OFF`) vs the shipped configuration
+must agree on all 32 scenarios, with **"NUMERICAL:"** and **"INFRASTRUCTURE:"** failures distinctly
+labelled — both fail the job, fail-closed, because no other job verifies the property; the gate
+also self-proves the flag is live (present in B's project files, absent from A's) so 0/32 can never
+be vacuously true, and the `/fp:contract` build is informational only, its failures degrading to
+warnings. The `windows` job's toolset step asserts **≥ 14.30** (the VS2022 contraction-default
+boundary) and now **fails on an unreadable version** where it used to warn. In the opposite
+direction, `macos-crossslice` — reporting-only, gating nothing — carries **job-level
+`continue-on-error`**, closing the review finding that a checkout failure or timeout in a
+reporting experiment could block a release through `release.yml`'s aggregate result: its failures
+stay visible on the job, they just no longer propagate. The platform-coverage worklog, report page
+and adoption packet are updated to the adopted state, with the superseded audit-time statements
+marked rather than erased.
+
+## The A7-9 near-silent scope correction + the cross-slice record parser (2026-08-30)
+
+A review pass against `src/dsp/VelvetNoise.cpp:159` asked what happens to **near-silent NONZERO**
+input at the stalled fixpoints, and the measured answer corrected a claim every A7-9 record carried:
+"the residual appears only on digital silence" was this programme's *observation*, never a property.
+The absorption `x + residual == x` needs `|x| >= 2^24 × |residual|`; a twin-binary A/B against the
+actual pre-A7-9 sources (`c04096d^`, same flags, FTZ as shipped) measured tails at 1e-25…1e-37 of
+full scale with warm loud history differing by up to **1.204e-35** (Chorus, 192 kHz) inside each
+module's delay-history window — and every tail at 1e-20 and above bit-exact, which is the boundary
+the old "real signal" claim silently rested on. Under no-FTZ the window shrinks to ~6e-36 with
+subnormal-scale deltas, per F-1's stall model. Verdict: **expected behaviour, Class B stands, the
+scope wording was wrong** — corrected in the three DSP comment blocks, Test 41's comment,
+`CHANGELOG` `[0.9.5]`, `HANDOVER`, `PERFORMANCE_BUDGET`, `TESTING.md` (whose Test 41 paragraph was
+also still carrying the F-2-corrected no-FTZ falsehood; fixed against measurement), and dated
+markers on the three historical worklogs and the decision packet. **Test 42**
+(`testA79ParkedNearSilentIdentity`, +12 checks → **41 tests / 226 checks**) pins the accepted side —
+parked paths are bit-exact identity on 1e-30/1e-35 tails — and is proven to fire against the
+pre-fix sources in both FTZ postures (the two-amplitude design exists because the discriminating
+window is posture-dependent). No DSP code changed. Record:
+`worklogs/performance/PERF_AUDIT_A7-9_NEARSILENT_SCOPE.md`.
+
+The same review flagged the `macos-crossslice` job's counting: `grep -c .` counted every nonblank
+line — the dump's self-check verdict and `#` headers included — so a wording change could move the
+reported totals with no DSP change. The `compare` function now parses **scenario records** (a row
+whose second field is a 16-hex FNV hash — the `windows-avx2-ab` `Read-Dump` acceptance rule),
+derives the expected count from what parses (both slices must yield the same nonzero count or it
+prints **NO VERDICT** instead of a bogus total), and compares the full records exactly (name, hash,
+latency). Verified against real dump output: a reworded self-check line no longer changes the
+count; a single altered hash reports 1-of-32 with the agree list intact; an unparsable side yields
+no verdict. Reporting-only semantics unchanged — every path still exits 0.

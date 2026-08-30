@@ -89,6 +89,79 @@ carve-out is unavailable and condition 2 proper is unsatisfiable for it.
 
 Evidence [Verified]: src/PluginProcessor.cpp:327-396; src/InternalState.h:100-122.
 
+## Runtime compatibility: the x86-64 ISA floor
+
+The contract above is about **state**. This one is about the **CPU**, and it belongs in the same
+policy because a plug-in the host cannot execute is as broken to a user as a session that will not
+reload — worse, in fact, because the failure is not diagnosable from inside the plug-in.
+
+**The floor is Haswell (Intel, 2013) / Excavator (AMD, 2015) on every shipped x86-64 binary** —
+all three toolchains. GCC/Clang (the Linux x86-64 build and the `x86_64` slice of the macOS
+universal build) compile `-march=haswell -ffp-contract=off` (ADR-0031); MSVC (the Windows build)
+compiles `/arch:AVX2` at its default non-contracting `/fp:precise` (ADR-0032). Either way the
+compiler may emit AVX2, FMA, BMI, F16C, LZCNT and MOVBE anywhere in the image. Below that floor
+the binaries are **not supported**.
+
+| | |
+|---|---|
+| **Failure mode on an older CPU** | `SIGILL` — an illegal-instruction fault raised **inside the host process** at whatever point the first unsupported instruction is reached. The host reports a crash, or vanishes; it does not report an incompatible plug-in. |
+| **Why the plug-in cannot diagnose it** | The fault can be raised by code the dynamic loader runs before any Anamorph entry point does — static initialisers are compiled under the same flags. A `__builtin_cpu_supports` check would have to live in a separately compiled baseline translation unit gating the whole plug-in, which is a different build design, not a message. |
+| **Who is actually exposed** | **macOS, materially:** `CMAKE_OSX_DEPLOYMENT_TARGET` is 10.13, and High Sierra runs on Macs back to 2009 — Nehalem, Sandy Bridge and Ivy Bridge, all pre-Haswell. **Linux:** the declared glibc/libstdc++ ABI floor (`scripts/check-linux-abi.py`) already implies a distribution far newer than 2013, so in practice the ISA floor binds on hardware, not on distributions. **Windows:** any x64 machine with a pre-2013 Intel / pre-2015 AMD CPU — Windows 10/11 both install on such hardware, so the floor binds on hardware there too, surfacing as `STATUS_ILLEGAL_INSTRUCTION` (0xC000001D) at plug-in load. |
+| **Windows** | **The same floor, since ADR-0032.** The MSVC build compiles `/arch:AVX2` at the default (non-contracting) `/fp:precise`; `/fp:contract` is NOT enabled, and no runtime dispatch exists. The Class-A property this rests on (0/32 twin-dump scenarios moved by the flag, measured on toolset 14.51.36231 across two runs) is a toolset-version behaviour, so it is **asserted on every push**: the `windows` job requires toolset ≥ 14.30 — the boundary at which `/fp:precise` stopped contracting by default — and the `windows-avx2-ab` gate blocks on baseline == `/arch:AVX2`. No Windows performance figure exists; the benefit is mechanism-shared with the measured GCC/Clang result (−18.4 %/−19.6 % engine Ir/sample on Linux), never quoted as a Windows number. |
+| **arm64** | Not affected: no ISA flag is applied to the arm64 slice, and none is implied. |
+
+**Changing this floor is a compatibility change.** Raising it (a newer `-march`), extending it to a
+platform that does not carry one today, or lowering it, each requires an ADR and a row here — the
+same treatment as the ABI floor, and for the same reason: the user-visible consequence is a product
+that does not run.
+
+## Numerical compatibility: within an architecture, not across architectures
+
+**Numerical bit identity is guaranteed within the same architecture and build configuration, and
+not across different CPU architectures.** Two builds of the same source for the same architecture
+at the same flags produce bit-identical output; that is what the `AnamorphDspDump` twin-dump gate
+asserts at a dependency bump (`DEPENDENCY_POLICY` rule 2), and it is what every Class-A claim in
+this repository means. **The twin-dump gate compares builds within one architecture only.**
+
+**One Windows-specific caveat narrows the "same architecture" half there.** The x64 UCRT selects
+FMA3 or non-FMA3 implementations of its transcendental functions **at process start, by CPU
+capability** — a documented Microsoft runtime behaviour, independent of any compile flag and
+predating ADR-0031 — and the engine calls CRT transcendentals at runtime (the per-block chorus LFO
+seed; the oversampling coefficient derivation at `prepare()`). So on Windows the same binary can
+produce different bits on machines of different CPU classes, and a Windows bit-identity claim is
+scoped to **the same machine class**, not just the same architecture. This is an existing property
+of the platform, not a consequence of (or argument about) the `/arch:AVX2` build flag ADR-0032
+adopted; the `windows-avx2-ab` gate controls for it by comparing builds on one machine. On Linux and macOS
+no equivalent runtime dispatch is in play for this code, and the plain within-architecture statement
+stands unqualified.
+
+The `arm64` and `x86_64` slices of the shipped macOS universal binary do **not** produce identical
+bits. This is a measured property of the platforms, established by the A7-5E experiment on an Apple
+Silicon runner with Apple Clang and Apple libm, and reproduced independently on Linux with GCC 13,
+glibc and qemu-user — identical counts, identical split, identical scenario names
+(`worklogs/performance/PERF_AUDIT_A7-2B_A7-5E_IMPLEMENTATION.md` §5, §5c):
+
+| | shipped flags | contraction disabled on both slices |
+|---|---|---|
+| scenarios that differ, of 32 | **32** | **24** — the 8 that agree are every oversampling-×1 scenario and only those |
+
+Two mechanisms, only one of which a flag can reach:
+
+1. **FP contraction.** AArch64 has `FMLA` in its base ISA and contracts with no flag; the x86-64
+   baseline could not contract at all until ADR-0031, and now carries `-ffp-contract=off` so it
+   still does not. This half is flag-reachable and is *not* being equalised: disabling contraction
+   on arm64 would be a Class-B change to the shipped arm64 numerics, taken for no user-visible
+   reason.
+2. **Oversampling coefficients.** The polyphase coefficients are derived at runtime through
+   transcendental libm calls, and **Apple's libm does not agree with itself across Apple's own two
+   architectures**. No flag reaches this; removing it would mean replacing JUCE's oversampling
+   coefficient derivation with a pinned portable one.
+
+**This difference is accepted and is not to be removed.** Do not disable contraction on arm64 to
+close it, and do not replace JUCE's or libm's coefficient generation. Cross-architecture bit
+identity is **not a project goal**; if it ever becomes one it needs a user-visible reason, an ADR,
+and a row in the table above — not an incidental flag change.
+
 ## Subset policies
 
 - **Parameters:** `PARAMETER_COMPATIBILITY_POLICY.md` + ledger `PARAMETER_REGISTRY.md`.

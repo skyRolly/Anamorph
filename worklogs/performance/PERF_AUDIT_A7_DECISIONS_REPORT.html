@@ -410,6 +410,64 @@ footer {
 </header>
 
 <!-- ===================================================================== -->
+<section id="outcome">
+  <div class="note teal">
+    <div class="note-h">All four decisions were taken and implemented on 2026-08-22 — this brief is
+    now the record, not the request</div>
+    <p><strong>AVX2: Option B.</strong> <code>-march=haswell -ffp-contract=off</code> on the
+    GCC/Clang x86-64 builds only — Linux x86-64 and the macOS <code>x86_64</code> slice via
+    <code>-Xarch_x86_64</code>; arm64 and MSVC carry nothing. <strong>ADR-0031</strong>, which amends
+    ADR-0021's numerics freeze. −17.2&nbsp;% engine-wide, 32/32 twin-dump scenarios identical, 0 FMA
+    instructions emitted, GCC/Clang cross-check intact. Option C is not taken.</p>
+    <p><strong>Cross-architecture bit identity: position 1.</strong>
+    <code>COMPATIBILITY_POLICY</code> now states that bit identity holds within one architecture and
+    build configuration and not across architectures, that the twin-dump gate compares within an
+    architecture only, and that the arm64/x86_64 difference is <em>not to be removed</em>.</p>
+    <p><strong>A7-9: approved and implemented.</strong> Three gates moved from a value test to a
+    fixpoint test. The liveness risk this brief flagged is discharged by <strong>Test 41</strong>,
+    verified to fail on all four cases against the pre-A7-9 sources.</p>
+    <p><strong>A7-2B's +1.0&nbsp;% corner: accepted.</strong> Not reverted.</p>
+    <p>The <strong>ISA floor</strong> — Intel Haswell (2013) / AMD Excavator (2015), <code>SIGILL</code>
+    inside the host below it — went into <code>COMPATIBILITY_POLICY</code> <em>before</em> the flag
+    landed, as the approval required, and is filed as KI-026.</p>
+  </div>
+
+  <div class="note rose">
+    <div class="note-h">One figure in this brief is wrong: the A7-9 bound</div>
+    <p><strong>4.476e-36 is not a stimulus-independent bound.</strong> It is the maximum the
+    investigation's own harness observed. Driving ±0.7 noise — the amplitude the DSP suite uses —
+    Test 41 measures <strong>1.563e-35</strong> (Chorus, 192&nbsp;kHz), <strong>8.043e-36</strong>
+    (Haas, 48&nbsp;kHz) and <strong>7.145e-36</strong> (Velvet, 48&nbsp;kHz) against the same pre-fix
+    sources: <strong>3.5×</strong> the figure quoted below. The residual is
+    <code>a_stall × (wet term)</code>, so what bounds it is <code>FLT_MIN/k</code> times the module's
+    wet gain — derived per module inside the test rather than quoted.</p>
+    <p>The direction of the change is unaffected, and the decision does not move: the residual is
+    what the fix <em>removes</em>, and after it the silence output is an <strong>exact zero</strong>,
+    which is stronger than any bound. At the corrected worst case, 1.563e-35 is ≈&nbsp;−696&nbsp;dBFS
+    — some 25 orders of magnitude below the smallest accepted Class-B precedent. It is corrected here
+    because a number quoted in policy-adjacent documents should be the one that is true. Full account:
+    <code>worklogs/performance/PERF_AUDIT_A7-9_AVX2_IMPLEMENTATION.md</code> §4c.</p>
+  </div>
+
+  <div class="note rose">
+    <div class="note-h">A second correction (2026-08-30): the residual's scope is not "silence only"</div>
+    <p>Every "differences appear only on digital silence" statement in this brief is too narrow, and
+    so is the "zero differing samples on real signal" claim when read as unqualified: the absorption
+    <code>x + residual == x</code> holds only while <code>|x|</code> clears a binade-dependent
+    <code>2^24..2^25 × |residual|</code>. Driving <strong>near-silent NONZERO</strong> tails
+    (1e-25…1e-37 of full scale, warm loud history) against the same pre-fix sources measures exact
+    differences of up to <strong>1.204e-35</strong> (Chorus, 192&nbsp;kHz) inside each module's
+    delay-history window — and bit-exact output at every tail amplitude of 1e-20 and above. The
+    Class-B scope is therefore the <em>silence-region sample class</em>: digital silence plus
+    near-silent samples under ≈&nbsp;2–4e-28 of full scale with a louder delay history. The decision
+    is again unaffected — the residual is what the fix removes, and the parked paths are bit-exact
+    identity there — the decision card's Class-B chip below now carries the corrected scope.
+    Guarded by <strong>Test 42</strong>; measured in
+    <code>worklogs/performance/PERF_AUDIT_A7-9_NEARSILENT_SCOPE.md</code>.</p>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
 <section id="summary">
   <h2>What this round found</h2>
 
@@ -767,8 +825,12 @@ footer {
     <p>Two instances, identically built and identically driven; afterwards one has its glide forced
     to exact zero — precisely what a fix produces. On real signal the residual is exactly invisible:
     the stalled amount multiplies into a product that itself flushes to zero. Differences appear only
-    on digital silence, where the dry term is <code>+0</code> and cannot absorb them. Worst case
-    across all three modules and all four rates: <strong>4.476e-36 — Chorus at 192 kHz, about
+    on digital silence, where the dry term is <code>+0</code> and cannot absorb them
+    <em>(scope corrected 2026-08-30 — see the second rose note above: near-silent nonzero samples
+    below ≈&nbsp;2–4e-28 of full scale cannot absorb them either)</em>. Worst case
+    across all three modules and all four rates <em>as this harness measured it</em>
+    (see the correction at the top — driving ±0.7 noise it is 1.563e-35):
+    <strong>4.476e-36 — Chorus at 192 kHz, about
     −707 dBFS.</strong></p>
 
     <p><strong>No Class-A fix exists</strong>, and that is not a failure of imagination — the residual
@@ -836,10 +898,11 @@ footer {
     <div class="dec">
       <div class="dec-n">05</div>
       <div class="dec-body">
-        <h3 class="dec-h">Approve A7-9, bounded at 4.476e-36 <span class="chip yes">Recommend yes</span><span class="chip classb">Class B — needs explicit approval</span></h3>
+        <h3 class="dec-h">Approve A7-9 <span class="chip yes">APPROVED &amp; IMPLEMENTED 2026-08-22</span><span class="chip classb">Class B — silence region (scope corrected 2026-08-30)</span></h3>
         <p>The largest single item on the roadmap, and it is not a new optimization: it
         <em>restores three already-shipped optimizations to the state in which they were measured</em>.
-        Inaudible by construction — zero differing samples on real signal.</p>
+        Inaudible by construction — zero differing samples on ordinary real signal (near-silent
+        scope corrected 2026-08-30; see the rose note).</p>
         <p>Preferred repair: change the three gates from a value test to a fixpoint test, mirroring
         the density gate three lines above Velvet's. Snapping the state is worse — it mutates DSP
         state rather than choosing a path.</p>

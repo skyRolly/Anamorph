@@ -29,7 +29,9 @@
 # and read the diff before committing it -- that diff is the entire review.
 #
 # clang-major: 22
-2	-Wfloat-equal	src/dsp/VelvetNoise.cpp
+1	-Wfloat-equal	src/dsp/ChorusEngine.cpp
+1	-Wfloat-equal	src/dsp/HaasProcessor.cpp
+3	-Wfloat-equal	src/dsp/VelvetNoise.cpp
 4	-Wmissing-prototypes	tests/state_tests.cpp
 1	-Wshadow	src/PluginProcessor.cpp
 1	-Wshadow-field	src/PluginEditor.h

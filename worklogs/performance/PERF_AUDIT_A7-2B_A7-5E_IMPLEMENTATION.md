@@ -124,22 +124,49 @@ identity additionally requires the oversampling coefficients to stop coming from
 them, or deriving them in a way that does not vary by platform. That is a much larger question than
 a compiler flag and is **not** proposed here.
 
+## 5c. CONFIRMED ON macOS — the platform-exact run (2026-08-22)
+
+The Linux result has now been reproduced on the hardware and toolchain that
+actually ship it. `macos-crossslice` (a job of its own — see below) runs the committed
+`AnamorphDspDump` on an Apple Silicon runner: built for `arm64` and for `x86_64` from the same
+sources and flags, the arm64 slice executed natively and the x86_64 slice under Rosetta 2, both
+passing `--self-check`, and the 32 scenario hashes diffed.
+
+| comparison, **Apple Clang / Apple libm / real arm64** | result |
+|---|---|
+| **arm64 vs x86_64, shipped flags** | **32 of 32 scenarios differ** |
+| **arm64 vs x86_64, `-ffp-contract=off` on both** | **24 differ, 8 agree** |
+| the 8 that agree | `chorus-os1-lr/ms`, `dimd-os1-lr/ms`, `haas-os1-lr/ms`, `velvet-os1-lr/ms` — **every scenario at oversampling ×1, and only those** |
+
+**This is the Linux pattern exactly** — same counts, same split, same scenario names. The two
+mechanisms and their proportions are properties of the architectures and of the libm boundary, not
+of GCC, of glibc or of qemu:
+
+* FP contraction accounts for the difference in the 8 oversampling-×1 scenarios, and a flag removes
+  it;
+* the oversampling path accounts for the other 24, and a flag does not — its polyphase coefficients
+  are derived at runtime through transcendental libm calls, and **Apple's libm does not agree with
+  itself across its own two architectures** any more than glibc's does.
+
+**A7-5E is closed.** The shipped universal binary's two slices produce different DSP output today,
+confirmed by execution on the shipping toolchain. The Linux round's inference was correct in
+mechanism, proportion and detail.
+
+*(One reporting artifact, recorded because the first run's numbers were quoted from it: the step's
+"scenarios agree" count included a blank header line, so that run printed 1 and 9 where the true
+figures are 0 and 8. The counting is fixed; the 8 named scenarios were never affected.)*
+
 ## 5b. What this confirmation does and does not transfer
 
-**Transfers.** The contraction result is ISA-level and toolchain-independent: any AArch64 compiler
-contracts `a*b+c` into `FMLA` by default because the instruction is in the base ISA, and the frozen
-x86-64 baseline has no such instruction. The 32/32 difference at default flags is a property of the
-architectures, not of GCC or of qemu.
+**Both halves transferred, and §5c is the check that says so.** The contraction result is ISA-level:
+any AArch64 compiler contracts `a*b+c` into `FMLA` by default because the instruction is in the base
+ISA, and the frozen x86-64 baseline has no such instruction. The residual-24 result was measured
+first against glibc's libm and was explicitly flagged as not transferable without a check; the macOS
+run has since made that check and returned the same 24, the same 8, and the same scenario names.
 
-**Does not transfer without a check.** The residual-24 result was measured against **glibc's** aarch64
-and x86-64 libm. The shipped macOS binary uses **Apple's** libm on both slices, which may or may not
-agree with itself across architectures. So "oversampling is the residual risk" is demonstrated here;
-its exact magnitude on macOS is not.
-
-**Environment limits, stated plainly.** GCC 13 cross-compiler rather than Apple Clang; `qemu-user`
-emulation rather than arm64 silicon; glibc rather than Apple libc. The one-step macOS CI diff
-described previously is therefore still worth running as the platform-exact confirmation — but it is
-now a confirmation of a measured result rather than the experiment that decides the question.
+**What remains untested.** Only what neither environment covers: Windows/MSVC, and any future
+platform. The mechanism argument predicts the same shape wherever an FMA-bearing ISA meets a
+platform libm, but that is prediction, not measurement.
 
 ---
 
@@ -352,6 +379,18 @@ what a fix produces. Every later difference is exactly the residual a fix would 
 | `ChorusEngine` | **0 / 102,400 differ** | 1.081e-36 | **4.476e-36** |
 
 **Bound over the supported range: 4.476e-36 (≈ −707 dBFS), set by `ChorusEngine` at 192 kHz.**
+*(Both later corrections apply here too: the figure is this harness's observed maximum, not a bound
+— see the note under the same table in the investigation worklog — and the "noise input: 0 differ"
+column is scoped to ordinary amplitude; near-silent nonzero input differs inside the delay window,
+measured 2026-08-30 in `PERF_AUDIT_A7-9_NEARSILENT_SCOPE.md`.)*
+
+> **CORRECTED 2026-08-22 during implementation.** That figure is the maximum *this harness* observed,
+> not a stimulus-independent bound. Driving ±0.7 noise, Test 41 measures **1.563e-35** (Chorus,
+> 192 kHz), 8.043e-36 (Haas, 48 kHz) and 7.145e-36 (Velvet, 48 kHz) against the pre-A7-9 sources —
+> 3.5× the figure above. What bounds the residual is `FLT_MIN/k` times the module's wet gain.
+> `PERF_AUDIT_A7-9_AVX2_IMPLEMENTATION.md` §4c. The direction of the change is unaffected: after
+> A7-9 the silence output is an **exact zero**, which is stronger than any bound.
+
 Unchanged by A7-2B. Inaudible by construction on real signal; the residual appears only where the
 dry term is `+0` and cannot absorb it.
 
@@ -370,7 +409,9 @@ loosest (H11, 8.2e-4). Zero samples differ on real signal at any rate measured.
 **Why it is not Class A, and no Class-A variant exists.** The residual *is* what distinguishes the
 stalled state from the parked one, so removing it is what "fix" means. Parking only when the residual
 provably cannot change the output is not expressible as a block-level gate — `x + a*(d-x)` is
-bit-identical to `x` for a normal `x` and is not when `x` is `+0`.
+bit-identical to `x` for a normal `x` and is not when `x` is `+0`. *["For a normal x" corrected
+2026-08-30: bit-identical once `|x|` clears a binade-dependent `2^24..2^25 × |a*(d-x)|`, and NOT for
+near-silent normal `x` below that — `PERF_AUDIT_A7-9_NEARSILENT_SCOPE.md`.]*
 
 **Contract changes involved.** None to parameters, serialization, threading, signal order or
 reported latency. It is a **Class-B numerics change** under `DSP_POLICY`, which is the whole of the
@@ -385,8 +426,8 @@ approval question.
 |---|---|
 | **Expected benefit after A7-2B** | `ChorusEngine` **+14,220 Ir/block** at 48 kHz/128; `HaasProcessor` **+5,635**; `VelvetNoise` **+4,019** at 48 kHz/32 and **+4,032** at 192 kHz/32. Velvet's share fell **89 %** because A7-2B made the path it is stuck on cheap and rate-independent. |
 | **Remaining affected modules** | All three, unchanged: `VelvetNoise`, `HaasProcessor`, `ChorusEngine`. Priority is now **Chorus first** — largest share, and the only one whose stall threshold scales with sample rate (`wSmooth = 1/(0.01·sr)`). |
-| **Numerical difference bounds** | **4.476e-36** worst case across 44.1–192 kHz (Chorus at 192 kHz), ≈ −707 dBFS. **0 of 102,400 samples differ on real signal** in all three modules at every rate measured; the residual appears only on digital silence, where the dry term is `+0` and cannot absorb it. |
-| **Class A or Class B?** | **Class B, and no Class-A variant exists.** The residual *is* what distinguishes the stalled state from the parked one, so removing it is what "fix" means. Parking only when the residual provably cannot change the output is not expressible as a block-level gate: `x + a*(d-x)` is bit-identical to `x` for a normal `x` and is not when `x` is `+0`. |
+| **Numerical difference bounds** | **4.476e-36** worst case across 44.1–192 kHz (Chorus at 192 kHz), ≈ −707 dBFS. **0 of 102,400 samples differ on real signal** in all three modules at every rate measured; ~~the residual appears only on digital silence, where the dry term is `+0` and cannot absorb it~~ *[corrected 2026-08-30: wherever the dry term cannot absorb it — silence AND near-silent samples; `PERF_AUDIT_A7-9_NEARSILENT_SCOPE.md`]*. |
+| **Class A or Class B?** | **Class B, and no Class-A variant exists.** The residual *is* what distinguishes the stalled state from the parked one, so removing it is what "fix" means. Parking only when the residual provably cannot change the output is not expressible as a block-level gate: `x + a*(d-x)` is bit-identical to `x` for a normal `x` and is not when `x` is `+0` *[same 2026-08-30 correction as §18]*. |
 | **Unresolved risks** | (a) The benefit is now modest relative to its Class-B cost — this is the main open judgement. (b) A fixpoint gate must be proved *live* by a test that shows the park is reached after a ramp-down; the current suite cannot distinguish a reachable fast path from an unreachable one, which is how this survived. (c) Chorus's rate-dependent coefficient is worth a maintainer's eye independently of the gate change. |
 | **What approval is required** | Explicit, recorded maintainer approval for a Class-B numerics change under `DSP_POLICY`. No `ARCHITECTURE_REVIEW_GATE` category is triggered; no Accepted ADR is contradicted; no parameter, serialization, threading, signal-order or latency change. |
 

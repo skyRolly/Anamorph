@@ -366,21 +366,121 @@ DELIBERATE_REAIMS = {
     # parenthetical after the anchor. Getting them content-checked means rewriting
     # the prose in three documents, which is a change about those documents and
     # not about this table.
-
-    # RE-AIMED 2026-08-22 by the A7-2T round and MOVED AGAIN by A7-2B in the same
-    # round, which is why it names `:155` rather than `:148`. A7-2T's anchor was
-    # WRONG when it was written,
-    # not stale. The gather gate is a four-clause `if`, and the A7-2T round cited
-    # `:147` for its last clause when `:147` is the amount check and the clause is
-    # on `:148`. Review caught it; the tool could not, because it detects
-    # MOVEMENT and nothing moved -- `src/` is byte-identical to main across this
-    # whole change set. Correcting it is textually indistinguishable from drift
-    # (base `:147` and current `:148` name different text in the same unchanged
-    # file), so CI reports it against the branch's previous push and it is
-    # declared for its one transition. The expectation is the clause itself, so
-    # the run that excuses the comparison still asserts the aim.
-    ("docs/DOCUMENTATION_COVERAGE.md", "src/dsp/VelvetNoise.cpp:155"):
-        "numSamples <= (int) accum.size()",
+    #
+    # DECLARED 2026-08-30, two entries, for a correction that was SPLIT ACROSS
+    # PUSHES -- the af4ef28 lesson repeated and re-learned. The windows-avx2-ab
+    # parser fix moved two build.yml lines and was pushed before `--fix` ran;
+    # the immediate follow-up carried the re-anchor alone, so CI (whose base is
+    # the branch's previous push, not origin/main) anchored to the BROKEN
+    # intermediate state and read the correction itself as drift, suggesting
+    # the re-aim be undone. Both entries name the CORRECTED spelling; both
+    # documents' anchors verify against origin/main. Retire on merge, per the
+    # table's standing rule.
+    # Re-derived 2026-08-30 (the ADR-0032 gate rewrite moved build.yml again):
+    # :3124 -> :3166, :3209 -> :3251, updated together with the document per
+    # the "fix BOTH" rule verify_reaim_targets enforces.
+    ("docs/DOCUMENTATION_COVERAGE.md", ".github/workflows/build.yml:3189"):
+        "TESTING_POLICY rule 4",
+    ("docs/DOCUMENTATION_COVERAGE.md", ".github/workflows/build.yml:3274"):
+        "the four lints'",    #
+    # DECLARED 2026-08-30, thirty-seven entries, for the SAME split-push shape a
+    # third time -- and this time the gate caught the failure it exists for, so
+    # the record matters more than the entries. The ADR-0032 review fix added an
+    # architecture guard around `/arch:AVX2` in `CMakeLists.txt`, which grew the
+    # file by 29 lines and re-aimed every anchor below it. That push carried the
+    # CMake change WITHOUT running `--fix`, so `source-lint` went red on 39
+    # citations (run 33303108471) exactly as designed: the same-change-set rule
+    # in DOCUMENTATION_LIFECYCLE_POLICY was broken, and this gate is what makes
+    # that rule checkable rather than remembered.
+    #
+    # The follow-up (this change set) carries the re-anchor alone, so CI -- whose
+    # push-event base is the branch's PREVIOUS push, "one push of drift at a
+    # time" -- compares against the broken intermediate state and reads the
+    # CORRECTION as drift, suggesting it be undone. That is the case this table
+    # is for, and the reason every entry names the CORRECTED spelling.
+    #
+    # Each anchor was verified by resolving it against the current
+    # `CMakeLists.txt` and reading what a follower lands on: ARCHITECTURE.md and
+    # ADR-0001 land on `add_library(AnamorphDSP INTERFACE)`, ADR-0023 and
+    # KNOWN_ISSUES on the `RTec` manufacturer-code line, COMPATIBILITY_MATRIX on
+    # the three `ANAMORPH_FORMATS` lines, and so on -- so this is a repair of
+    # aims that the intermediate push had pointed at unrelated CMake, not a
+    # re-aim of correct ones. Against origin/main all 388 anchors are clean.
+    # Retire on merge, per the table's standing rule.
+    ('PRIVACY.md', 'CMakeLists.txt:486-487'):
+        'JUCE_WEB_BROWSER=0',
+    ('PRIVACY.md', 'CMakeLists.txt:317'):
+        '-Wl,--gc-sections',
+    ('PRIVACY.md', 'CMakeLists.txt:489-490'):
+        'JUCE_DISPLAY_SPLASH_SCREEN=0',
+    ('TRADEMARKS.md', 'CMakeLists.txt:14, 427'):
+        'PRODUCT_NAME',
+    ('TRADEMARKS.md', 'CMakeLists.txt:422'):
+        'RollyTech',
+    ('TRADEMARKS.md', 'CMakeLists.txt:424'):
+        'PLUGIN_MANUFACTURER_CODE RTec',
+    ('docs/DOCUMENTATION_COVERAGE.md', 'CMakeLists.txt:427'):
+        'PRODUCT_NAME',
+    ('docs/DOCUMENTATION_COVERAGE.md', 'CMakeLists.txt:593-611'):
+        'ANAMORPH_BUILD_BENCH',
+    ('docs/DOCUMENTATION_COVERAGE.md', 'CMakeLists.txt:486-487, 517-518, 559-560'):
+        'JUCE_WEB_BROWSER=0',
+    ('docs/DOCUMENTATION_COVERAGE.md', 'CMakeLists.txt:521-530'):
+        'target_link_libraries(AnamorphTests',
+    ('docs/HANDOVER.md', 'CMakeLists.txt:422'):
+        'RollyTech',
+    ('docs/KNOWN_ISSUES.md', 'CMakeLists.txt:424'):
+        'PLUGIN_MANUFACTURER_CODE RTec',
+    ('docs/REPOSITORY_MAP.md', 'CMakeLists.txt:114-384'):
+        'add_library(AnamorphHardening INTERFACE)',
+    ('docs/architecture/ARCHITECTURE.md', 'CMakeLists.txt:395-406'):
+        'add_library(AnamorphDSP INTERFACE)',
+    ('docs/architecture/COMPATIBILITY_MATRIX.md', 'CMakeLists.txt:413'):
+        'set(ANAMORPH_FORMATS VST3)',
+    ('docs/architecture/COMPATIBILITY_MATRIX.md', 'CMakeLists.txt:414-416'):
+        'list(APPEND ANAMORPH_FORMATS AU)',
+    ('docs/architecture/COMPATIBILITY_MATRIX.md', 'CMakeLists.txt:417-419'):
+        'list(APPEND ANAMORPH_FORMATS Standalone)',
+    ('docs/architecture/design-decisions/ADR-0001-format-agnostic-dsp-core.md', 'CMakeLists.txt:395-406'):
+        'add_library(AnamorphDSP INTERFACE)',
+    ('docs/architecture/design-decisions/ADR-0023-vendor-manufacturer-code.md', 'CMakeLists.txt:424'):
+        'PLUGIN_MANUFACTURER_CODE RTec',
+    ('docs/architecture/design-decisions/ADR-0023-vendor-manufacturer-code.md', 'CMakeLists.txt:422-427'):
+        'PLUGIN_MANUFACTURER_CODE RTec',
+    ('docs/policies/CODE_STYLE.md', 'CMakeLists.txt:504, 530, 574'):
+        'juce_recommended_warning_flags',
+    ('docs/policies/DEPENDENCY_POLICY.md', 'CMakeLists.txt:486-491'):
+        'JUCE_STRICT_REFCOUNTEDPOINTER=1',
+    ('docs/policies/RELEASE_POLICY.md', 'CMakeLists.txt:14, 457-482'):
+        'ANAMORPH_BUILD_NUMBER',
+    ('docs/policies/TESTING_POLICY.md', 'CMakeLists.txt:504, 530, 574'):
+        'juce_recommended_warning_flags',
+    ('docs/procedures/BUILD.md', 'CMakeLists.txt:27, 512'):
+        'ANAMORPH_BUILD_TESTS',
+    ('docs/procedures/BUILD.md', 'CMakeLists.txt:28, 417-419'):
+        'ANAMORPH_BUILD_STANDALONE',
+    ('docs/procedures/BUILD.md', 'CMakeLists.txt:459'):
+        'ANAMORPH_BUILD_NUMBER',
+    ('docs/procedures/BUILD.md', 'CMakeLists.txt:413-419'):
+        'set(ANAMORPH_FORMATS VST3)',
+    ('docs/procedures/BUILD.md', 'CMakeLists.txt:481-491'):
+        'set_source_files_properties(src/PluginEditor.cpp',
+    ('docs/procedures/PACKAGING.md', 'CMakeLists.txt:422'):
+        'RollyTech',
+    ('docs/procedures/PACKAGING.md', 'CMakeLists.txt:423'):
+        'com.rollytech.anamorph',
+    ('docs/procedures/PACKAGING.md', 'CMakeLists.txt:424'):
+        'PLUGIN_MANUFACTURER_CODE RTec',
+    ('docs/procedures/PACKAGING.md', 'CMakeLists.txt:425'):
+        'PLUGIN_CODE',
+    ('docs/procedures/PACKAGING.md', 'CMakeLists.txt:427'):
+        'PRODUCT_NAME',
+    ('docs/procedures/PACKAGING.md', 'CMakeLists.txt:434'):
+        'VST3_CATEGORIES',
+    ('docs/procedures/TESTING.md', 'CMakeLists.txt:424-425'):
+        'PLUGIN_MANUFACTURER_CODE RTec',
+    ('docs/procedures/TROUBLESHOOTING.md', 'CMakeLists.txt:395-406'):
+        'add_library(AnamorphDSP INTERFACE)',
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the

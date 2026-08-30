@@ -437,7 +437,7 @@ SHAs).
 **1409 CPU-seconds of compilation (75%) and 468 of LTO link (25%)**, and the compilation is
 overwhelmingly JUCE: ~9k lines of first-party source against a framework that each of the three
 JUCE-linking targets compiles separately. JUCE is pinned to an immutable commit
-(`CMakeLists.txt:65-71`, ADR-0022/ADR-0026), so that 75% is byte-identical from run to run.
+(`CMakeLists.txt:83-89`, ADR-0022/ADR-0026), so that 75% is byte-identical from run to run.
 Measured on 4 cores — the runner's core count — the same build with a warm cache is **7m41s → 3m40s
 (−52%)**, at **137 direct hits / 6 misses**, and the residual is the LTO link, which no compiler
 cache touches. The then-separate `linux-clang` configuration, measured the same way against the **then-pinned Clang
@@ -484,8 +484,10 @@ warnings would turn that gate green by deleting its input. Verified against the 
 14 accepted sites in 7 baseline entries* — with 129 of the 134 compilations served from cache on the
 warm run. Those three figures are from that measurement, under that compiler; the property they
 establish (replayed stderr is byte-identical to compiled stderr) is a ccache property and is not
-version-specific, and the *verdict* half still holds unchanged at Clang 22 — the accepted set is the
-same 14 sites in 7 entries.
+version-specific, and the *verdict* half still holds unchanged at Clang 22 — the accepted set was the
+same 14 sites in 7 entries. (It is **17 sites in 9 entries** since 0.9.5: A7-9's three fixpoint gates
+each compare two floats exactly, which is the point of them — `docs/architecture/PERFORMANCE_BUDGET.md`,
+the A7-9 entry.)
 
 **One repository property makes it work, and it had to be created.** `ANAMORPH_BUILD_NUMBER` is
 `${{ github.run_number }}` and therefore changes every run. It was a *target-wide* compile
@@ -719,12 +721,14 @@ Evidence [Verified]: `.github/workflows/build.yml`.
 
 ### The Clang warning baseline
 
-The Clang gate asserts **no new** first-party warnings, not **zero**. The tree already carries 14
-distinct first-party Clang warning sites, every one of them older than the job:
+The Clang gate asserts **no new** first-party warnings, not **zero**. The tree carries 17 distinct
+first-party Clang warning sites:
 
 | Count | Flag | Path |
 |---|---|---|
-| 2 | `-Wfloat-equal` | `src/dsp/VelvetNoise.cpp` |
+| 1 | `-Wfloat-equal` | `src/dsp/ChorusEngine.cpp` |
+| 1 | `-Wfloat-equal` | `src/dsp/HaasProcessor.cpp` |
+| 3 | `-Wfloat-equal` | `src/dsp/VelvetNoise.cpp` |
 | 4 | `-Wmissing-prototypes` | `tests/state_tests.cpp` |
 | 1 | `-Wshadow` | `src/PluginProcessor.cpp` |
 | 1 | `-Wshadow-field` | `src/PluginEditor.h` |
@@ -732,7 +736,16 @@ distinct first-party Clang warning sites, every one of them older than the job:
 | 3 | `-Wswitch-enum` | `src/dsp/AnamorphEngine.cpp` |
 | 1 | `-Wunused-but-set-variable` | `tests/dsp_tests.cpp` |
 
-Clearing them means renaming a member across the editor, adding cases to engine switches and
+Fourteen of them are older than the job. **Three are not, and they were added deliberately in 0.9.5**
+— the A7-9 fixpoint gates in the three DSP modules (`ChorusEngine`, `HaasProcessor`, and the third
+`VelvetNoise` site). Each is an exact `==` between two floats, which is precisely what the gate they
+implement asks: *can this glide still move?* An epsilon there would be the defect, not the fix — and
+`VelvetNoise` has carried the same idiom for its density glide since long before the gate existed,
+which is what the two pre-existing entries on that file are. `docs/architecture/PERFORMANCE_BUDGET.md`
+(the A7-9 entry) carries the reasoning; that is what "read the diff, and the diff is the review"
+means in practice for this file.
+
+Clearing the rest means renaming a member across the editor, adding cases to engine switches and
 changing float comparisons in DSP code — source work that belongs in its own review under
 `DSP_POLICY.md`, not in a CI change. The alternatives were both worse: a job that lands **red**
 teaches everyone to ignore it, and a job that **cannot fail** is not a gate. So the accepted set is
@@ -1089,7 +1102,7 @@ Stated here rather than left to be rediscovered. None is a defect; each is a dec
   is not evidence that it is exported.
 - **`--skip-gui-tests` on Windows** skips one test category on one runner (KI-007, environmental).
 - **The Clang warning gate is not `-Werror`** — see §Build matrix for why it cannot be yet, and
-  [The Clang warning baseline](#the-clang-warning-baseline) for the 14 sites it currently accepts.
+  [The Clang warning baseline](#the-clang-warning-baseline) for the 17 sites it currently accepts.
 - **The AU is validated by pluginval rather than `auval`.** The gate hosts the `.component` through
   JUCE's `AudioUnitPluginFormat` — the same resolution path a JUCE-hosted DAW takes, and the same
   test set the other two platforms are held to. Apple's `auval` (`auval -v aufx Anmr RTec`) is its

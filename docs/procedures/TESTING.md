@@ -15,7 +15,7 @@ exits non-zero on any failed `check` or missing binary. Evidence [Verified]: scr
 
 ### What the tests cover
 
-`tests/dsp_tests.cpp` has **39 DSP tests** using a `check(cond, "what")` harness, covering: MS
+`tests/dsp_tests.cpp` has **41 DSP tests** using a `check(cond, "what")` harness, covering: MS
 round-trip (bit-exact), transparent default, true-bypass null + latency match, Mono Maker
 (post-Mix), Multiband mono-compat, Solo band selectivity + transparency, Level Match
 (unity/no-ratchet/silence-freeze/mix-coupling/multiband-unity), crossover automation safety,
@@ -90,7 +90,46 @@ shadow RTSan's own and blind that lane (ADR-0029 §7). That stand-down is detect
 declared while the guard is still live, so a renamed or removed feature name fails the build
 instead of silently hollowing out the lane.
 
-The newest DSP test is the **Velvet gather/per-sample path-equivalence oracle**
+The newest DSP test is the **A7-9 near-silent parked-identity guard**
+(`testA79ParkedNearSilentIdentity`, Test 42). A 2026-08-30 review pass measured that the pre-A7-9
+stalled paths moved **near-silent NONZERO** input too — the absorption `x + residual == x` needs
+`|x| >= 2^24 * |residual|`, and tails at 1e-25…1e-37 of full scale with warm loud history differ
+from the parked paths by up to 1.204e-35 inside the delay-history window
+(`worklogs/performance/PERF_AUDIT_A7-9_NEARSILENT_SCOPE.md`). The test drives one instance to the
+stall the way a user does, re-warms the history, and asserts the parked output is **bit-exact
+identity** (`memcmp`) on 1e-30 and 1e-35 tails — two amplitudes because the discriminating window is
+posture-dependent (FTZ: both fire against the pre-fix sources; `ANAMORPH_TESTS_NO_FTZ`: the 1e-35
+tail fires) — plus a stimulus self-check so it cannot pass vacuously. Twelve checks, proven to fail
+against the pre-A7-9 sources on all four module/rate cases.
+
+The test before it is the **A7-9 parked-path liveness gate**
+(`testA79ParkedPathsReachableAfterStall`, Test 41). It answers a question this suite could not ask
+for two waves: *is a fast path ever actually reached?* `VelvetNoise`, `HaasProcessor` and
+`ChorusEngine` each carry a cheap Amount-0 path, and each was gated on the wet glide reaching
+**exactly** 0 — which under FTZ it never does, because with a 0 target the update is `a -= k*a` and
+the DECREMENT underflows before `a` does, stalling the glide just under `FLT_MIN/k`. Every one of
+those paths was therefore dead after a user turned Amount down, and nothing observed it, because on
+ordinary real signal `x + 1e-35*(d - x)` is bit-exactly `x` (Test 42 above covers the near-silent
+class where that absorption fails).
+
+The oracle is **a second instance of the same module**. `S` is driven the way a user drives it —
+engaged, then turned down and left to stall. `P` sees the identical input with Amount at 0 from
+`prepare()`, so it is genuinely parked. All three modules record the **input** in their delay lines
+rather than their own output, so the two rings hold identical history and any difference between the
+two outputs is the residual and nothing else. Three checks per case, each a different claim: real
+signal must be **exactly** equal (the "A7-9 changed no audible bit" guard, true before and after);
+digital silence must stay within the derived `FLT_MIN/k` stall ceiling; and digital silence must be
+**exactly 0** — which is the gate, and which **fails on all four cases against the pre-A7-9
+sources**. `ChorusEngine` is run at 48 kHz *and* 192 kHz because its smoothing coefficient is the
+only rate-dependent one of the three, so 192 kHz is where the worst case lives and it is asserted
+rather than extrapolated. Under `ANAMORPH_TESTS_NO_FTZ` the stall still
+occurs — at a ~7e-43 subnormal rather than ~`FLT_MIN/k` (an earlier version of this paragraph and of
+the test's own comment claimed the glide walks to a true zero there; both were corrected against
+measurement — platform-coverage audit F-2) — the fixpoint gate parks on it, and the exact-zero check
+would still fire against the pre-fix sources. No discrimination is lost without FTZ; only the stall
+value moves.
+
+The DSP test before it is the **Velvet gather/per-sample path-equivalence oracle**
 (`testVelvetGatherEqualsPerSampleLoop`, Test 40, A7-2T). It exists because the guard described next
 is a RELATIVE one: Test 39 compares the build under test against itself at different block lengths,
 so its oracle cannot see a defect that is a pure function of the sample stream -- a gather whose
@@ -111,7 +150,7 @@ with the stop removed, at block 247, its moving density; with every path crossin
 **This test is the gate for A7-2**: the ring-gather rewrite is bit-identical when right and silently
 wrong-by-a-constant-delay when not, and it must not land before this is green.
 
-The DSP test before it is the **Velvet block-length invariance guard**
+The DSP test before *that* is the **Velvet block-length invariance guard**
 (`testVelvetBlockLengthInvariance`, Test 39, A7-1 / 0.9.5; renamed under A7-2B). It was written when
 `VelvetNoise` carried its H5 linear history image ACROSS blocks -- slid forward rather than
 re-gathered -- which made the image cross-block state, correct only while every path that did not
@@ -598,7 +637,7 @@ rather than deleted, because a gap that was real and is now covered is worth bei
   hand does not leave a plug-in behind in your real `~/Library`. One thing this deliberately did
   **not** do, so the remaining scope is not overstated:
   - It uses **pluginval**, not Apple's `auval` (`auval -v aufx Anmr RTec`, matching the
-    `PLUGIN_CODE` / `PLUGIN_MANUFACTURER_CODE` in `CMakeLists.txt:273-274`). pluginval hosts the AU
+    `PLUGIN_CODE` / `PLUGIN_MANUFACTURER_CODE` in `CMakeLists.txt:424-425`). pluginval hosts the AU
     through JUCE's `AudioUnitPluginFormat`, which is the same resolution path a JUCE-hosted DAW
     takes and the same test set the other two platforms are held to; `auval` is Apple's own
     conformance tool and tests things pluginval does not. Adding it is a further step, not a

@@ -61,7 +61,7 @@ only — it configures and builds entirely from the command line on a headless L
   build report Anamorph as missing** — re-insert the plug-in and re-load the preset. Audio,
   parameters and presets are unchanged. ADR-0023 · [`KI-016`](docs/KNOWN_ISSUES.md).
 - Active development on a feature-branch → PR → `main` workflow.
-- Validation gate: **39 DSP self-tests** + the **15-test state-compatibility suite** + **pluginval strictness 10** (both modes ×3, blocking on all three CI platforms).
+- Validation gate: **41 DSP self-tests** + the **15-test state-compatibility suite** + **pluginval strictness 10** (both modes ×3, blocking on all three CI platforms).
 - A green build + pluginval pass is **"ready to audition,"** not final sign-off (audio/visual
   quality needs a DAW — see `docs/procedures/TESTING.md`).
 
@@ -73,6 +73,12 @@ only — it configures and builds entirely from the command line on a headless L
 - Full matrix + status: `docs/architecture/COMPATIBILITY_MATRIX.md`.
 
 ## Requirements
+- **Runtime, x86-64:** an Intel **Haswell** (2013) / AMD **Excavator** (2015) CPU or newer for
+  **every** x86-64 binary — the Linux build and the macOS `x86_64` slice, compiled
+  `-march=haswell` (ADR-0031), and the **Windows** build, compiled `/arch:AVX2` (ADR-0032).
+  Below that floor the failure is an illegal-instruction fault inside the host (`SIGILL`;
+  `STATUS_ILLEGAL_INSTRUCTION` on Windows). Only Apple Silicon carries no ISA floor.
+  `docs/policies/COMPATIBILITY_POLICY.md`.
 - **CMake ≥ 3.22**, a **C++23** compiler, **Ninja** (recommended). **JUCE 9.0.1** is fetched
   automatically (pinned to an immutable commit via CMake `FetchContent`) or pointed at a local
   checkout.
