@@ -148,8 +148,8 @@ did not observe (constraint C2/C7).
 
 ## Related code
 
-- `CMakeLists.txt:424` (`PLUGIN_MANUFACTURER_CODE RTec`), `:356` (`PLUGIN_CODE`, unchanged),
-  `:14` (version 0.9.1)
+- `CMakeLists.txt:424` (`PLUGIN_MANUFACTURER_CODE RTec`), `CMakeLists.txt:425`
+  (`PLUGIN_CODE`, unchanged by this ADR), `:14` (version 0.9.1)
 
 Evidence [Verified (code) / Unverified (host behaviour)]:
 - Source: CMakeLists.txt:422-427
