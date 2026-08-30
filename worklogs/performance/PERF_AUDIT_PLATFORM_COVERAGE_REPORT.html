@@ -1,0 +1,286 @@
+<title>Anamorph Platform Coverage</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root{
+  --ground:#f7f8f7; --panel:#ffffff; --panel2:#eef1ef; --ink:#1c2321; --ink-soft:#4c5a55; --ink-faint:#7b8883;
+  --rule:#d8dedb; --accent:#0e6e62; --accent-soft:#e0efec;
+  --dec:#8a6100; --dec-soft:#f4ead4; --na:#8a948f;
+  --bad:#a33d51; --bad-soft:#f6e3e7; --good:#22633a; --good-soft:#e2efe5;
+  --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  --disp:'Archivo',system-ui,-apple-system,'Segoe UI',sans-serif;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --ground:#101413; --panel:#171d1b; --panel2:#1e2624; --ink:#dde4e1; --ink-soft:#a4b1ab; --ink-faint:#71807a;
+  --rule:#2b3531; --accent:#3fb8a8; --accent-soft:#15302c;
+  --dec:#d9a13f; --dec-soft:#2e2413; --na:#71807a;
+  --bad:#e08093; --bad-soft:#33171d; --good:#7cc494; --good-soft:#14261a;
+}}
+:root[data-theme="dark"]{
+  --ground:#101413; --panel:#171d1b; --panel2:#1e2624; --ink:#dde4e1; --ink-soft:#a4b1ab; --ink-faint:#71807a;
+  --rule:#2b3531; --accent:#3fb8a8; --accent-soft:#15302c;
+  --dec:#d9a13f; --dec-soft:#2e2413; --na:#71807a;
+  --bad:#e08093; --bad-soft:#33171d; --good:#7cc494; --good-soft:#14261a;
+}
+*{box-sizing:border-box}
+body{background:var(--ground);color:var(--ink);font:15px/1.62 var(--disp);margin:0;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1060px;margin:0 auto;padding:40px 28px 88px}
+a{color:var(--accent)}
+code,.mono{font-family:var(--mono);font-size:.86em}
+h1{font-size:36px;font-weight:800;letter-spacing:-.02em;line-height:1.1;margin:0 0 10px;text-wrap:balance}
+h2{font-size:21px;font-weight:700;letter-spacing:-.01em;margin:52px 0 6px;text-wrap:balance}
+h2 .no{color:var(--accent);font-family:var(--mono);font-weight:600;font-size:14px;margin-right:8px}
+.dek{font-size:16.5px;color:var(--ink-soft);max-width:66ch;margin:0 0 18px}
+.meta{display:flex;flex-wrap:wrap;gap:8px 22px;font-family:var(--mono);font-size:12px;color:var(--ink-faint);border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);padding:10px 0;margin:22px 0 0}
+.lede{color:var(--ink-soft);max-width:74ch}
+.verdicts{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin:26px 0 0}
+.v{background:var(--panel);border:1px solid var(--rule);border-radius:8px;padding:14px 16px}
+.v .k{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+.v p{margin:0;font-size:13.5px;color:var(--ink-soft)}
+.v p strong{color:var(--ink)}
+.tblwrap{overflow-x:auto;background:var(--panel);border:1px solid var(--rule);border-radius:8px;margin-top:14px}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th{font-family:var(--mono);font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-faint);text-align:left;padding:10px 14px;border-bottom:1px solid var(--rule);white-space:nowrap}
+td{padding:9px 14px;border-bottom:1px solid var(--rule);vertical-align:top;font-variant-numeric:tabular-nums}
+tr:last-child td{border-bottom:none}
+td.opt{min-width:220px;color:var(--ink)}
+.chip{display:inline-block;font-family:var(--mono);font-size:11px;font-weight:600;padding:2px 9px;border-radius:99px;white-space:nowrap}
+.c-yes{background:var(--accent-soft);color:var(--accent)}
+.c-dec{background:var(--dec-soft);color:var(--dec)}
+.c-na{background:transparent;color:var(--na);border:1px dashed var(--rule)}
+.c-bad{background:var(--bad-soft);color:var(--bad)}
+.c-good{background:var(--good-soft);color:var(--good)}
+.legend{display:flex;flex-wrap:wrap;gap:14px;margin:14px 2px 0;font-size:12.5px;color:var(--ink-faint)}
+.note{background:var(--panel);border:1px solid var(--rule);border-left:3px solid var(--accent);border-radius:6px;padding:14px 18px;margin:18px 0;max-width:none}
+.note.bad{border-left-color:var(--bad)}
+.note h3{margin:0 0 6px;font-size:14.5px;font-weight:700}
+.note p{margin:0 0 8px;font-size:13.5px;color:var(--ink-soft)} .note p:last-child{margin:0}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:14px}
+@media(max-width:820px){.cols{grid-template-columns:1fr}}
+.panel{background:var(--panel);border:1px solid var(--rule);border-radius:8px;padding:18px 20px}
+.panel h3{margin:0 0 4px;font-size:16.5px;font-weight:700}
+.panel .sub{font-family:var(--mono);font-size:11px;color:var(--ink-faint);letter-spacing:.06em;text-transform:uppercase;margin-bottom:12px}
+.panel ol{margin:0;padding-left:20px}
+.panel li{margin-bottom:10px;font-size:13.5px;color:var(--ink-soft)}
+.panel li strong{color:var(--ink)}
+.f{border-bottom:1px solid var(--rule);padding:13px 2px}
+.f:last-child{border-bottom:none}
+.f .fk{font-family:var(--mono);font-weight:600;font-size:12px;margin-right:10px}
+.f.err .fk{color:var(--bad)} .f.info .fk{color:var(--accent)}
+.f p{display:inline;margin:0;font-size:13.5px;color:var(--ink-soft)}
+.f p strong{color:var(--ink)}
+.foot{margin-top:56px;border-top:1px solid var(--rule);padding-top:16px;font-size:12.5px;color:var(--ink-faint);max-width:80ch}
+@media (prefers-reduced-motion: no-preference){ .v,.panel{transition:border-color .15s} .v:hover,.panel:hover{border-color:var(--accent)} }
+</style>
+
+<div class="wrap">
+<header>
+  <h1>Anamorph Platform Coverage</h1>
+  <p class="dek">Which platforms and toolchains actually receive each performance optimization —
+  and where a gap is a decision, a structure, or an accident. Nothing was changed by this audit;
+  its recommendations are inputs to maintainer decisions.</p>
+  <div class="meta">
+    <span>13 evidence/verification passes + adversarial re-verification (2 claims refuted → findings)</span>
+    <span>MSVC semantics checked against live Microsoft docs</span>
+    <span>Worklog: worklogs/performance/PERF_AUDIT_PLATFORM_COVERAGE.md</span>
+  </div>
+</header>
+
+<section>
+  <div class="verdicts">
+    <div class="v"><div class="k">A7-2B · A7-9 · all waves</div>
+      <p><strong>Universal.</strong> Exhaustive grep: seven preprocessor hits in two files, none in any
+      DSP optimization. One portable C++ implementation on GCC, Clang, AppleClang and MSVC.</p></div>
+    <div class="v"><div class="k">AVX2 · ADR-0031</div>
+      <p><strong>The one platform-conditional item.</strong> GCC/Clang x86-64 only. MSVC out by
+      option 5, arm64 out by option 4 — every exclusion has a citable record.</p></div>
+    <div class="v"><div class="k">The real unevenness</div>
+      <p><strong>Measurement, not presence.</strong> Every benefit figure comes from GCC-13-built
+      binaries on one Linux container; the shipped Linux binary is Clang 22.</p></div>
+    <div class="v"><div class="k">Verdicts</div>
+      <p>MSVC: <strong>defer flag, add instrument first</strong>. arm64: <strong>no action</strong>
+      (contraction already live). Linux/Win arm64: not targets. clang-cl: exclude.</p></div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="no">1</span>Optimization × platform</h2>
+  <p class="lede">Legend anchors the whole audit: a gap is only "covered" or "uncovered" relative to
+  what the record says it should be.</p>
+  <div class="tblwrap"><table>
+    <tr><th>Optimization</th><th>Linux x86-64</th><th>Windows x86-64 · MSVC</th><th>macOS x86_64</th><th>macOS arm64</th><th>Linux / Win arm64</th></tr>
+    <tr><td class="opt">A7-2B ring gather (+ Test 40 oracle; A7-1 superseded)</td>
+      <td><span class="chip c-yes">present</span></td><td><span class="chip c-yes">present</span></td>
+      <td><span class="chip c-yes">present</span></td><td><span class="chip c-yes">present</span></td>
+      <td><span class="chip c-na">not a target</span></td></tr>
+    <tr><td class="opt">A7-9 fixpoint gates (Velvet · Haas · Chorus)</td>
+      <td><span class="chip c-yes">present</span></td><td><span class="chip c-yes">present</span></td>
+      <td><span class="chip c-yes">present</span></td><td><span class="chip c-yes">present</span></td>
+      <td><span class="chip c-na">not a target</span></td></tr>
+    <tr><td class="opt">A7-5 / ADR-0031 <code>-march=haswell -ffp-contract=off</code></td>
+      <td><span class="chip c-yes">present · GCC+Clang</span></td><td><span class="chip c-dec">decided out · opt. 5</span></td>
+      <td><span class="chip c-yes">present · -Xarch_x86_64</span></td><td><span class="chip c-dec">decided out · opt. 4</span></td>
+      <td><span class="chip c-na">not a target</span></td></tr>
+    <tr><td class="opt">Waves 1–5 DSP (H1 H3 H4 H5/ALG-4 H6 H8 H9 H10 H11 H12 H15 · LR4 sharing · parked family · NaN detector · <code>sameParameters</code> · W5-C …)</td>
+      <td><span class="chip c-yes">present</span></td><td><span class="chip c-yes">present</span></td>
+      <td><span class="chip c-yes">present</span></td><td><span class="chip c-yes">present</span></td>
+      <td><span class="chip c-na">not a target</span></td></tr>
+    <tr><td class="opt">GUI gates &amp; caches (S1/S2/S3 · static layers · FrameClock · Wave 6 …)</td>
+      <td><span class="chip c-yes">present · ADR-0011 CPU backend</span></td><td><span class="chip c-yes">present · GL</span></td>
+      <td><span class="chip c-yes">present · GL</span></td><td><span class="chip c-yes">present · GL</span></td>
+      <td><span class="chip c-na">not a target</span></td></tr>
+    <tr><td class="opt">Implicit FMA contraction (compiler-emergent, not applied by the repo)</td>
+      <td><span class="chip c-dec">pinned off — that is the Class-A mechanism</span></td>
+      <td><span class="chip c-dec">off by VS2022 default (a default, not a pin)</span></td>
+      <td><span class="chip c-dec">pinned off</span></td>
+      <td><span class="chip c-good">live, free — base-ISA FMLA</span></td>
+      <td><span class="chip c-na">—</span></td></tr>
+  </table></div>
+  <div class="legend">
+    <span><span class="chip c-yes">present</span>&nbsp; compiled in for that platform</span>
+    <span><span class="chip c-dec">decided out</span>&nbsp; deliberate, with a citable record</span>
+    <span><span class="chip c-na">not a target</span>&nbsp; no builds exist or are promised</span>
+  </div>
+  <div class="note">
+    <h3>The one place arm64 is ahead</h3>
+    <p>By every indicator on record the shipped arm64 slice contracts <code>a*b+c</code> into FMLA at
+    AppleClang's default — cross-compile census: 308 FMA instructions in the DSP TUs vs 0 on x86-64 —
+    so arm64 already has the fused-codegen benefit x86-64 deliberately forgoes for bit-identity.
+    Per-expression fusion in the shipped binary is inferred, not disassembled; labelled Plausible.</p>
+  </div>
+</section>
+
+<section>
+  <h2><span class="no">2</span>Present vs measured vs validated</h2>
+  <p class="lede">Conflating these three is how coverage looks uneven. Presence is near-uniform;
+  <strong>measurement is a single toolchain on a single container</strong>; validation is broad.</p>
+  <div class="tblwrap"><table>
+    <tr><th>Platform / toolchain</th><th>Optimizations present</th><th>Benefit measured here</th><th>Behaviour validated here</th></tr>
+    <tr><td class="opt">Linux x86-64 · GCC 13.3 (the measurement container)</td><td>all</td>
+      <td><span class="chip c-good">every headline figure</span> — callgrind Ir, startup subtraction</td>
+      <td>suites, twin dump, Test 41 proven to fire pre-fix</td></tr>
+    <tr><td class="opt">Linux x86-64 · Clang 22 (the shipped artifact)</td><td>all</td>
+      <td><span class="chip c-bad">never</span> — no Ir figure from a Clang-22 binary</td>
+      <td>suites · ASan/UBSan · RTSan · fuzz · valgrind · pluginval ×3×2 on the stripped bytes · ABI floor</td></tr>
+    <tr><td class="opt">Windows x86-64 · MSVC (toolset recorded per run, 14.x gated)</td><td>all except ADR-0031</td>
+      <td><span class="chip c-bad">never</span></td>
+      <td>both suites + pluginval ×3×2; <strong>no bit-exactness instrument</strong> — no job builds the dump</td></tr>
+    <tr><td class="opt">macOS x86_64 · AppleClang (universal slice + native-Intel thin)</td><td>all incl. ADR-0031</td>
+      <td><span class="chip c-bad">never</span></td>
+      <td>Rosetta 2 suites (AVX2-probed) · native-Intel suites + pluginval VST3+AU ×3×2 · cross-slice dump</td></tr>
+    <tr><td class="opt">macOS arm64 · AppleClang</td><td>all; FMLA contraction free</td>
+      <td><span class="chip c-bad">never</span> — no callgrind on macOS</td>
+      <td>native suites · pluginval VST3+AU ×3×2 · dump self-check + cross-slice</td></tr>
+    <tr><td class="opt">clang-cl</td><td>—</td><td><span class="chip c-na">—</span></td>
+      <td><span class="chip c-na">never exercised anywhere</span></td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h2><span class="no">3</span>Every gap, classified</h2>
+  <div class="tblwrap"><table>
+    <tr><th>Gap</th><th>Class</th><th>Record / ground</th></tr>
+    <tr><td>ADR-0031 flags absent on MSVC</td><td><span class="chip c-dec">intentional</span></td><td>ADR-0031 option 5; CMake comment; COMPATIBILITY_MATRIX Windows row</td></tr>
+    <tr><td>ADR-0031 flags absent on arm64</td><td><span class="chip c-dec">intentional</span></td><td>ADR-0031 option 4; policy: the cross-slice difference "is accepted and is not to be removed"</td></tr>
+    <tr><td><code>ANAMORPH_X86_ISA_BASELINE</code> inert on MSVC; clang-cl takes the MSVC branch</td><td><span class="chip c-na">structural</span></td><td>falls out of <code>if(MSVC)</code>; no recorded decision</td></tr>
+    <tr><td>No benefit figures off the one Linux container</td><td><span class="chip c-yes">known + recorded</span></td><td>A7-0 / RISK-002; wall-clock repudiated</td></tr>
+    <tr><td>Headline Ir figures only from GCC-13 binaries; shipped Linux is Clang 22</td><td><span class="chip c-bad">accidental</span></td><td>closable on this container — callgrind accepts either toolchain's binary (R-6)</td></tr>
+    <tr><td>No bit-exactness instrument on Windows</td><td><span class="chip c-bad">accidental / unrecorded</span></td><td>option 5 <em>relies on</em> the absence as evidence; nowhere <em>decides</em> it. Now the load-bearing MSVC blocker, and cheap to remove (R-1)</td></tr>
+    <tr><td>Linux arm64 · Windows arm64: no builds</td><td><span class="chip c-bad">omission, not decision</span></td><td>no "Not Supported" row exists, unlike AAX / mono→mono (R-3)</td></tr>
+    <tr><td>Linux CI executes AVX2 binaries unprobed</td><td><span class="chip c-yes">accepted residual</span></td><td>GitHub runners are Haswell+; empirically green (F-7)</td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h2><span class="no">4</span>The two special focuses</h2>
+  <div class="cols">
+    <div class="panel">
+      <h3>Windows MSVC and /arch:AVX2</h3>
+      <div class="sub">verified against live Microsoft documentation</div>
+      <ol>
+        <li><strong>Not assumed equivalent — and it isn't.</strong> <code>/arch:AVX2</code> enables
+          AVX2+FMA+BMI (a Haswell-congruent floor); contraction is governed separately by
+          <code>/fp</code>.</li>
+        <li><strong>The default changed in VS2022:</strong> <code>/fp:precise</code> no longer emits
+          contractions; <code>/fp:contract</code> is the new opt-in. So on 14.3x+ toolsets the flag is
+          <em>expected</em> scalar-bit-exact — contraction off <strong>by default, not by pin</strong>,
+          a materially weaker guarantee than the GCC/Clang pair.</li>
+        <li><strong>The open question is the vectorizer</strong> (reduction reassociation) — exactly
+          what only a twin dump can answer, which is option 5's stated ground.</li>
+        <li><strong>The instrument is feasible:</strong> <code>dsp_dump.cpp</code> is verified
+          platform-neutral; a Windows job can build it twice and diff 32 hashes as a same-machine A/B.</li>
+        <li><strong>Windows-only caveat:</strong> the x64 UCRT dispatches transcendentals by CPU at
+          runtime (FMA3), so Windows output is already machine-class-dependent today — before any flag.</li>
+      </ol>
+      <p style="margin:12px 0 0;font-size:13.5px"><span class="chip c-dec">R-1 · defer the flag — build the instrument first</span></p>
+    </div>
+    <div class="panel">
+      <h3>ARM64</h3>
+      <div class="sub">already covered, by the architecture itself</div>
+      <ol>
+        <li><strong>FMA contraction is live</strong> at AppleClang's default via base-ISA FMLA — the
+          codegen ADR-0031 declined on x86-64 to stay Class A.</li>
+        <li><strong>Vectorization needs no flag:</strong> NEON (128-bit) is unconditional; there is no
+          256-bit NEON and no SVE on Apple consumer silicon, so AVX2's width win has no arm64
+          analogue — architectural, not a hole.</li>
+        <li><strong>The one equalizing action is forbidden:</strong> <code>-ffp-contract=off</code> on
+          arm64 was option 4, rejected — Class-B on shipped numerics, closing only half the cross-slice
+          difference (24/32 scenarios differ via libm regardless).</li>
+      </ol>
+      <p style="margin:12px 0 0;font-size:13.5px"><span class="chip c-yes">R-2 · no action</span></p>
+      <p style="margin:10px 0 0;font-size:13px;color:var(--ink-soft)">A7-9's mechanism differs here —
+      the glide walks to an exact 0 instead of stalling — and the fixpoint gate parks correctly
+      regardless. What is x86-specific is the comments' account, not the code (F-1).</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="no">5</span>Findings the tree does not yet say</h2>
+  <div class="tblwrap" style="padding:4px 16px">
+    <div class="f err"><span class="fk">F-1</span><p><strong>The A7-9 stall has three platform-dependent
+      terminal states;</strong> the shipped comments describe only the x86 one (~FLT_MIN/k). FTZ-off
+      stalls at a ~7e-43 subnormal; contracted+flush walks to an exact 0. The fix parks correctly in
+      all four measured configurations — the comments are what is x86-specific.</p></div>
+    <div class="f err"><span class="fk">F-2</span><p><strong>Test 41's no-FTZ comment states a measured
+      falsehood</strong> — the glide does not walk "to a true zero" without FTZ, and the exact-zero
+      check would still fire pre-fix. Wrong in the conservative direction, but wrong.</p></div>
+    <div class="f info"><span class="fk">F-3</span><p><strong>Windows bit-identity is machine-class-dependent
+      today</strong> via the UCRT's runtime FMA3 transcendental dispatch — before any flag change, and a
+      nuance the compatibility documentation does not yet carry.</p></div>
+    <div class="f info"><span class="fk">F-4</span><p><strong>The gate/loop contraction-mismatch family has
+      four members, and one is not silence-confined:</strong> Velvet's density gate guards the gather on
+      engaged signal. Test 40 is the standing guard for exactly that divergence. Practice-impossible
+      <em>and</em> guarded — different strengths, both present.</p></div>
+    <div class="f info"><span class="fk">F-5</span><p><code>juceaide</code> and the VST3 manifest helper
+      compile outside <code>AnamorphHardening</code> — configure-time host tooling, never shipped.</p></div>
+    <div class="f info"><span class="fk">F-6</span><p>GNU-driver clang targeting the MSVC ABI would take
+      the GCC/Clang branch and receive <code>-march=haswell</code> against the MSVC ABI — latent,
+      exercised by no toolchain.</p></div>
+    <div class="f info"><span class="fk">F-7</span><p>Linux CI executes AVX2 binaries unprobed; a
+      pre-Haswell self-hosted runner would SIGILL in every job that executes engine binaries. The one
+      executed binary outside the hardening target (the bare-clang++ RTSan canary) would be unaffected.</p></div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="no">6</span>Recommendations</h2>
+  <div class="tblwrap"><table>
+    <tr><th>#</th><th>Recommendation</th><th>Class</th><th>When</th></tr>
+    <tr><td class="mono">R-1</td><td><strong>MSVC: defer the flag; add a reporting-only Windows twin-dump A/B step first.</strong> Adoption needs its own ADR, the Windows ISA floor documented <em>before</em> the flag, a toolset ≥ 14.30 assertion, and the A/B promoted to a permanent blocking step — the toolset floats, so the Class-A properties can drift with the image</td><td>CI step, then maintainer decision</td><td>instrument next; flag when decided</td></tr>
+    <tr><td class="mono">R-2</td><td><strong>arm64: no action</strong> — contraction live, width win architecturally absent, the equalizing flag affirmatively rejected</td><td>none</td><td>—</td></tr>
+    <tr><td class="mono">R-3</td><td>Record Linux/Windows arm64 as <strong>Not Supported</strong> in the matrix if the omission should become a decision; <strong>clang-cl: exclude</strong> (a third flag branch if ever adopted, with its own ADR)</td><td>docs-only</td><td>maintainer</td></tr>
+    <tr><td class="mono">R-4</td><td>Correct the <strong>A7-9 comment inaccuracies</strong> (F-1, F-2): one architecture note per DSP file; rewrite Test 41's no-FTZ sentence to the measured subnormal-stall mechanism</td><td>Class-A comment fix</td><td>next code round</td></tr>
+    <tr><td class="mono">R-5</td><td>Add the <strong>UCRT FMA3 dispatch caveat</strong> (F-3) to the compatibility policy's Windows discussion when next open</td><td>docs-only</td><td>opportunistic</td></tr>
+    <tr><td class="mono">R-6</td><td><strong>The Clang-22 Ir gap is closable without a named machine:</strong> one callgrind round over Clang-22-built binaries on the same container, same methodology — first item of the next measurement pass</td><td>measurement</td><td>next A7 pass</td></tr>
+  </table></div>
+</section>
+
+<p class="foot">Method: six evidence sweeps (build system · CI map · source conditionals · measurement
+provenance · MSVC · arm64) plus seven adversarial verifications run as independent agents against the
+tree, the JUCE checkout and live Microsoft documentation; two claims refuted and folded back as
+findings F-1/F-4-adjacent corrections; a three-lens critique pass (facts · logic · completeness, 22
+issues) applied before landing. Empirical anchor: the all-green CI run on <span class="mono">b63049c</span>
+— the first with the ADR-0031 flags live — including the crossslice log showing the AVX2 probe
+executing under Rosetta 2 and the A7-5E counts unchanged. Full evidence with file:line citations:
+<span class="mono">worklogs/performance/PERF_AUDIT_PLATFORM_COVERAGE.md</span>.</p>
+</div>
