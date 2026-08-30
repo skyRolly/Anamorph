@@ -2738,11 +2738,15 @@ jobs:
             return ($LASTEXITCODE -eq 0)
           }
           function Read-Dump([string]$f) {
+            # The dump prints its self-check verdict to stdout AHEAD of the
+            # table; on the first run of this job that line was counted as a
+            # 33rd "scenario" (the A7-5E blank-line lesson, one format over).
+            # Only rows whose second field is the 16-hex fnv1a hash are data.
             $m = @{}
             foreach ($line in Get-Content $f) {
               if ($line -and -not $line.StartsWith('#')) {
                 $p = ($line -split '\s+') | Where-Object { $_ }
-                if ($p.Count -ge 2) { $m[$p[0]] = $p[1] }
+                if ($p.Count -ge 2 -and $p[1] -match '^[0-9a-f]{16}$') { $m[$p[0]] = $p[1] }
               }
             }
             return $m

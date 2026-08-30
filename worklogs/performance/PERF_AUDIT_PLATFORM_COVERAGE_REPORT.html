@@ -96,9 +96,10 @@ td.opt{min-width:220px;color:var(--ink)}
     <div class="v"><div class="k">The real unevenness</div>
       <p><strong>Measurement, not presence.</strong> Every benefit figure comes from GCC-13-built
       binaries on one Linux container; the shipped Linux binary is Clang 22.</p></div>
-    <div class="v"><div class="k">Verdicts</div>
-      <p>MSVC: <strong>defer flag, add instrument first</strong>. arm64: <strong>no action</strong>
-      (contraction already live). Linux/Win arm64: not targets. clang-cl: exclude.</p></div>
+    <div class="v"><div class="k">Verdicts — updated by the R-round</div>
+      <p>MSVC: <strong>instrument built, evidence in — 0/32 differ at /arch:AVX2 alone</strong>;
+      adoption stays deferred. arm64: <strong>no action</strong>. Linux/Win arm64: now recorded
+      <strong>Not Supported</strong>. clang-cl: recorded excluded.</p></div>
   </div>
 </section>
 
@@ -211,7 +212,7 @@ td.opt{min-width:220px;color:var(--ink)}
         <li><strong>Windows-only caveat:</strong> the x64 UCRT dispatches transcendentals by CPU at
           runtime (FMA3), so Windows output is already machine-class-dependent today — before any flag.</li>
       </ol>
-      <p style="margin:12px 0 0;font-size:13.5px"><span class="chip c-dec">R-1 · defer the flag — build the instrument first</span></p>
+      <p style="margin:12px 0 0;font-size:13.5px"><span class="chip c-good">R-1 executed · instrument live, first result below</span> <span class="chip c-dec">adoption still deferred</span></p>
     </div>
     <div class="panel">
       <h3>ARM64</h3>
@@ -273,6 +274,67 @@ td.opt{min-width:220px;color:var(--ink)}
     <tr><td class="mono">R-5</td><td>Add the <strong>UCRT FMA3 dispatch caveat</strong> (F-3) to the compatibility policy's Windows discussion when next open</td><td>docs-only</td><td>opportunistic</td></tr>
     <tr><td class="mono">R-6</td><td><strong>The Clang-22 Ir gap is closable without a named machine:</strong> one callgrind round over Clang-22-built binaries on the same container, same methodology — first item of the next measurement pass</td><td>measurement</td><td>next A7 pass</td></tr>
   </table></div>
+</section>
+
+<section>
+  <h2><span class="no">7</span>The R-round: recommendations executed, results in</h2>
+  <p class="lede">All six recommendations were executed as evidence and documentation, with every
+  standing decision preserved — no shipped flag changed, no DSP behaviour changed.</p>
+
+  <div class="cols">
+    <div class="panel">
+      <h3>Windows A/B — the first real MSVC numbers</h3>
+      <div class="sub">windows-avx2-ab · reporting-only · toolset 14.51.36231</div>
+      <div class="tblwrap" style="margin-top:4px"><table>
+        <tr><th>comparison</th><th>result</th></tr>
+        <tr><td>A vs B — <code>/arch:AVX2</code> alone, default <code>/fp:precise</code></td>
+            <td><span class="chip c-good">IDENTICAL — 0 / 32 differ</span></td></tr>
+        <tr><td>B vs C — <code>/fp:contract</code> alone, at AVX2</td>
+            <td><span class="chip c-bad">32 / 32 differ</span></td></tr>
+        <tr><td>A vs C — whole package, contraction on</td>
+            <td><span class="chip c-bad">32 / 32 differ</span></td></tr>
+      </table></div>
+      <p style="margin:10px 0 0;font-size:13px;color:var(--ink-soft)">The exact shape of the
+      GCC/Clang result: the ISA extension is bit-preserving, contraction is the bit-moving half.
+      The vectorizer question is answered empirically — no reassociation under
+      <code>/fp:precise</code> on this toolset, for this instrument's coverage. <strong>Evidence
+      READY FOR ADR; adoption DEFERRED</strong> behind the five R-1 requirements (own ADR ·
+      Windows ISA floor documented first · toolset ≥ 14.30 asserted · A/B promoted to a blocking
+      gate · benefit stated as mechanism-shared, since no Windows Ir instrument exists). First-run
+      parser artifact (a 33rd phantom "scenario" from the dump's self-check line) found and fixed.</p>
+    </div>
+    <div class="panel">
+      <h3>Clang 22 measured — the gap is closed</h3>
+      <div class="sub">same cell, same container, callgrind Ir, startup-subtracted</div>
+      <div class="tblwrap" style="margin-top:4px"><table>
+        <tr><th>toolchain / flags</th><th>Ir/sample</th><th>AVX2 delta</th></tr>
+        <tr><td>GCC 13.3, frozen baseline</td><td class="mono">1705.9</td><td>—</td></tr>
+        <tr><td>GCC 13.3, shipped flags</td><td class="mono">1392.1</td><td class="mono">−18.4 %</td></tr>
+        <tr><td>Clang 22.1.8, frozen baseline</td><td class="mono">1253.4</td><td>—</td></tr>
+        <tr><td><strong>Clang 22.1.8, shipped flags</strong></td><td class="mono"><strong>1007.8</strong></td><td class="mono">−19.6 %</td></tr>
+      </table></div>
+      <p style="margin:10px 0 0;font-size:13px;color:var(--ink-soft)">The methodology validated
+      itself first: GCC-13 at the frozen baseline reproduced the historical 1704.9 to
+      <strong>0.06 %</strong>. The AVX2 win holds on the shipped toolchain, and the shipped Clang
+      binary executes <strong>−27.6 %</strong> fewer instructions than the GCC binaries every
+      historical figure came from — deltas transfer, absolutes do not. All four builds print an
+      identical output checksum. Found in passing (F-8): GCC 13 emits <em>value-exact</em> FMA in
+      its u32→f32 vector lowering even under <code>-ffp-contract=off</code> — instruction
+      selection, not contraction; dead code in shipped binaries; a future nonzero FMA census is to
+      be diagnosed, not read as a broken pin.</p>
+    </div>
+  </div>
+
+  <div class="note" style="margin-top:16px">
+    <h3>Also landed</h3>
+    <p>R-3: <strong>Linux arm64 and Windows arm64 are now recorded Not Supported</strong> in the
+    matrix, and clang-cl is recorded outside ADR-0031's validated set (a third case needing its own
+    ADR if ever adopted). R-4: the three A7-9 comment blocks and Test 41 now describe the measured
+    three-terminal-state behaviour (F-1/F-2 corrected; suites re-ran green). R-5: the UCRT FMA3
+    machine-class caveat is in the compatibility policy. Review re-verification: the Rosetta probe
+    was in fact testing <em>AVX1</em> — both probes now execute genuine AVX2
+    (<code>vpaddd ymm</code>).</p>
+  </div>
 </section>
 
 <p class="foot">Method: six evidence sweeps (build system · CI map · source conditionals · measurement

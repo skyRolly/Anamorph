@@ -432,3 +432,47 @@ converters, and nothing in `src/` converts u32→float. **Consequence for verifi
 the ADR-0031 FMA census is the load-bearing check and stays; a future nonzero census must be
 *diagnosed* (exact-idiom FMA is possible and harmless) rather than read as a broken pin — and the
 census's true guarantee is "no *contraction* FMA", demonstrated by the twin dump beside it.
+
+## R-results — the first `windows-avx2-ab` run (read from CI, not predicted)
+
+Run 33290956204 on `windows-latest`, job green in 6m 59s, alongside an otherwise all-green matrix
+(the fixed AVX2 probes included).
+
+| fact | value |
+|---|---|
+| MSVC toolset | **14.51.36231** (14.5x series; ≥ 14.30, so the job itself printed: "VS2022+ non-contracting `/fp:precise` default applies: **YES**") |
+| flags | A = MSVC defaults (SSE2 baseline, `/fp:precise`) · B = `/arch:AVX2` · C = `/arch:AVX2 /fp:contract` |
+| **A vs B — the Class-A question** | **IDENTICAL: 0 of 32 scenarios differ.** `/arch:AVX2` alone, at the default non-contracting `/fp:precise`, preserved every scenario hash |
+| **B vs C — contraction alone** | **32 of 32 scenarios differ** — every scenario, every oversampling factor, both channel modes |
+| A vs C | 32 of 32 differ (the whole package with contraction on) |
+
+**Reading.** The MSVC result has exactly the shape the GCC/Clang measurements had: at a fixed ISA,
+the ISA extension alone is bit-preserving (Linux: 0/32 for the flag pair; Windows: 0/32 for
+`/arch:AVX2` at the non-contracting default) and **contraction alone is the bit-moving half**
+(Linux `-march=haswell` contract-fast vs off: 32/32; Windows `/fp:contract`: 32/32). The open
+question the audit could not answer from documentation — whether MSVC's vectorizer would
+reassociate reductions under `/fp:precise` — is answered empirically for this instrument's
+coverage: **it did not**. The Class-A property is now *demonstrated* on MSVC, on this toolset,
+rather than assumed; ADR-0031 option 5's stated blocker is discharged as evidence, not as a
+decision.
+
+**One instrument defect on the first run, found and fixed the same day**: the dump prints its
+self-check verdict line to stdout ahead of the table, and the job's parser counted it as a 33rd
+"scenario" — it was the single "agreeing" row in the B-vs-C count (the log read "32 of 33 differ").
+The parser now requires the 16-hex hash field; the true figures are the table above. Same defect
+class as A7-5E's blank-line counting artifact, recorded for the same reason.
+
+**Status: evidence READY FOR ADR; adoption remains DEFERRED.** Remaining blockers before any
+future MSVC `/arch:AVX2` adoption, unchanged from R-1 and now concrete:
+
+1. A maintainer decision and its own ADR, superseding ADR-0031 option 5.
+2. The Windows ISA floor written into `COMPATIBILITY_POLICY` / `COMPATIBILITY_MATRIX` /
+   `KNOWN_ISSUES` / both user guides **before** the flag lands (the ADR-0031 ordering rule).
+3. A toolset ≥ 14.30 assertion in the `windows` job (today it gates only the 14.x series, which
+   would still admit pre-17.0 toolsets; this run's 14.51 was observed, not guaranteed).
+4. `windows-avx2-ab` promoted from reporting-only to a **permanent blocking gate**, because both
+   properties the Class-A claim rests on are toolset-version behaviours and the toolset floats.
+5. Honest framing of the benefit: **no Windows instruction-count instrument exists** — the
+   adoption case rests on the shared mechanism (same hot loops, 256-bit lanes; −18…−20 % measured
+   on GCC/Clang for the analogous change) plus this bit-identity demonstration, not on a Windows
+   measurement.
