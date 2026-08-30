@@ -1765,7 +1765,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3189` and `.github/workflows/build.yml:3274`, this round being
+`.github/workflows/build.yml:3190` and `.github/workflows/build.yml:3275`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -1799,7 +1799,7 @@ silence is being read.
 
 **Read off the workflow, not off the review.** The report asserted that
 `check-clang-warnings.py` and `check-gcc-warnings.py` "self-test in one job and gate in another".
-They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:630` and gates at
+They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:631` and gates at
 `:944`, both in one job; `check-gcc-warnings.py` self-tests at `:2530` and gates at `:2551`,
 both in `linux-lto-tests`. All seven pairs are same-job. (The Clang pair was in `linux-clang` when
 this round ran; ADR-0030 folded that job into `linux`, moving both lines together and leaving the
@@ -1810,7 +1810,7 @@ before", not the job placement, and that is what changed.
 "immediately before" claim for `source-lint`'s three lints, where it is true of two of them; leaving
 it would have left a Procedures document contradicting the Policy on the exact sentence being
 corrected, which the authority order in `SOURCE_OF_TRUTH.md` does not permit. Deliberately NOT
-followed: the `source-lint` comment at `.github/workflows/build.yml:454` carries the same phrasing
+followed: the `source-lint` comment at `.github/workflows/build.yml:455` carries the same phrasing
 about the citation self-test, and the `scripts/` tree summary in `REPOSITORY_MAP.md` still
 enumerates four lints where its own table lists seven. Both are real; neither is this round's
 subject, and the second is a stale COUNT rather than the placement claim.
@@ -6363,3 +6363,77 @@ prints **NO VERDICT** instead of a bogus total), and compares the full records e
 latency). Verified against real dump output: a reworded self-check line no longer changes the
 count; a single altered hash reports 1-of-32 with the agree list intact; an unparsable side yields
 no verdict. Reporting-only semantics unchanged — every path still exits 0.
+
+## ADR-0033: the Clang pin moves 22 → 23, the first bump that ships bytes (2026-08-30)
+
+`ANAMORPH_CLANG_VERSION` moves from **22** to **23** — ADR-0028's own revisit trigger, fired: LLVM
+**23.1.0** was released 2026-08-25, and ADR-0028's rule is *upstream stable*, not *newest*. Its
+option 5 rejected 23 on a fact (rc3, no final) that has since changed, not on a principle, so nothing
+in the rule is re-read. **ADR-0033** carries the value; ADR-0028's rule, its
+`ARCHITECTURE_REVIEW_GATE` amendment, its install mechanism and its `-fsanitize=vptr` restoration all
+stand, and ADR-0030's "stays 22" clause is superseded on the value alone.
+
+**What made this bump different from the last one is scope.** ADR-0028 governed detectors only —
+"neither Clang job uploads an artifact" was true then. ADR-0030 moved the shipped Linux VST3 and
+Standalone onto this toolchain, and `DEPENDENCY_POLICY.md`'s compliance log had already written down
+the consequence: *the next bump of this pin does touch shipped bytes and rules 2–3 apply to it*. So
+this round produced the evidence those rules ask for rather than reasoning about why they might not
+apply. **Rule 2:** `tests/dsp_dump.cpp` built from one source against one JUCE checkout with
+otherwise identical flags, differing only in the compiler — **32/32 scenarios bit-identical**, hashes
+over every output byte and the reported latencies, both `--self-check`s passing so the instrument is
+discriminating rather than agreeing vacuously; **226 DSP + 920 state checks** green on the Clang 23
+Release build, **224 + 920** under its ASan+UBSan+`vptr` build (224 because Test 38's malloc half is
+by design absent under ASan, which the test announces). **Rule 3:** latency reporting is inside that
+identical comparison, session reload is the state suite, and `check-linux-abi.py` returns the same
+`CXXABI_1.3.9` / `GLIBC_2.38` / `GLIBCXX_3.4.31` ADR-0030 measured at 22. The **Level-5 audition is
+outstanding and named as outstanding** — the twin dump leaves it nothing to discriminate in the
+engine, but it covers the editor path the dump does not reach.
+
+**The detectors were re-verified, not assumed.** The first-party warning census regenerated under
+clang-23 is `diff`-identical to the committed baseline — 9 entries / 17 sites, only `# clang-major:`
+moved, which is the fourth major in a row (18/20/22/23) to leave this tree's accepted set alone. The
+`-Werror=function-effects` liveness pair still behaves in both directions on 23 (clean compile
+passes, `-DANAMORPH_EFFECTS_CANARY` fails with a `-Wfunction-effects` attribution);
+`libclang_rt.rtsan-x86_64.a` is present in the 23 install; the UBSan ignorelist draws no
+special-case-list deprecation warning under Clang 23's new version-4 format; `clang++-23 -fuse-ld=lld`
+resolves to `/usr/lib/llvm-23/bin/ld.lld`, so the version-matched LTO pairing survives; and ASan's
+`detect_stack_use_after_return` default was re-read (`Current Value: true`) rather than left as a
+restated 22 fact, which is exactly what that comment says must not be allowed to rot.
+
+**The trigger check was itself wrong, and that is the finding worth keeping.** ADR-0028 named one
+cheap page — `apt.llvm.org/llvm.sh`'s `CURRENT_LLVM_STABLE` — as the revisit check. Read on
+2026-08-30 it still said **22**, five days after 23.1.0 shipped; apt.llvm.org's homepage still called
+23 the development branch, and no `llvm-toolchain-noble-24` suite existed. Both signals lag.
+llvm.org's *Latest LLVM Release* banner and the per-release documentation at
+`releases.llvm.org/23.1.0/` (HTTP 200; `24.1.0` is 404) settle it — the same way ADR-0028 settled the
+earlier disagreement between those two apt.llvm.org sources, on upstream's own tags.
+`DEPENDENCY_POLICY.md` §Update mechanisms now names upstream's release page as the trigger and keeps
+`CURRENT_LLVM_STABLE` as corroboration only.
+
+**One honest regression in a property, recorded rather than glossed.** The 22 pin rested on a
+**closed** branch — a frozen apt suite. `release/23.x` is **open**: point releases follow, and the
+snapshot noble-23 carried on 2026-08-30 was built 2026-08-18, *predating* the 23.1.0 tag whose
+version it already names. The guard is still major-granular, so a patch-level diagnostic shift inside
+23 fails the gate rather than passing silently, and a numerics shift would surface in the same twin
+dump this round used. `CI_CD.md` carries the full statement.
+
+**Two adjacent corrections rode along, both about the pin and both recorded in ADR-0033 rather than
+made silently.** `ARCHITECTURE_REVIEW_GATE.md` rule 1 still said the Clang pin is gated *"even though
+neither Clang job uploads an artifact"* — a clause ADR-0030 falsified; the rule is unchanged, its
+justification now says the pin was gated then as a repository decision and is additionally gated now
+because it builds the shipped artifact. And the `[0.9.4]` CHANGELOG entry and `HANDOVER`'s summary of
+it both spelled "Clang 22" while describing the *GCC → Clang* move, whose subject is the compiler and
+not its major; the number is dropped in both, so an untagged historical entry stops going stale on
+every pin move. No `CHANGELOG.md` entry for the bump itself: `CHANGELOG_POLICY.md` rule 3 is
+user-visible changes only, and the engine bytes, the ABI floor, the latency, the parameters and the
+serialized state are all unchanged.
+
+**The other pinned toolchains were audited in the same round and none moved.** GCC stays at the
+`gcc:16` major-only tag — 16.2 is the newest stable line (the image tag already resolves to 16.2.0)
+and GCC 17 is unreleased. The runner labels stay floating, which
+`ARCHITECTURE_REVIEW_GATE` rule 2 requires rather than permits, and the one deliberate label pin,
+`macos-15-intel`, stays 15 for the reason the job's own comment already gives: `macos-26-intel` would
+carry the same Xcode generation as `macos-latest` and collapse the second-AppleClang coverage that
+job exists for. JUCE stays at the 9.0.1 SHA (a framework, not a toolchain; its bump is rules 1–5 with
+its own audition), C++23 stays (C++26 is not final), and pluginval stays on `releases/latest`, the
+known gap RH-F6 already tracks.

@@ -24,9 +24,10 @@ decides whether a particular change is gated is **who chooses the version** — 
 on, and not whether that compiler's output ships:
 
 1. **A version this repository pins is gated.** The Linux `ANAMORPH_CLANG_VERSION` and
-   `CMAKE_CXX_STANDARD` are both this case, and both carry an ADR (0028, 0027). The Clang pin stays
-   gated even though neither Clang job uploads an artifact: the pin is a repository *decision*, and a
-   decision is what an ADR records.
+   `CMAKE_CXX_STANDARD` are both this case, and both carry an ADR (0028, 0027). The Clang pin was
+   gated even when no Clang job uploaded an artifact — the pin is a repository *decision*, and a
+   decision is what an ADR records; since ADR-0030 it also builds the shipped Linux artifact, so it is
+   now gated on both counts.
 2. **A version the runner image supplies is not gated, because it cannot be.** GitHub re-points
    `macos-latest` and `windows-latest` with no commit here, so AppleClang, MSVC, CMake and glibc can
    move with no pull request to review; a rule demanding review for those is one this repository is

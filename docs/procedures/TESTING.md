@@ -278,7 +278,7 @@ ANAMORPH_BENCH_SECONDS=10 ANAMORPH_BENCH_REPS=5 \
 
 # State fuzzing. A REJECTED blob is a pass; the oracle is the sanitizer.
 cmake -B build-fuzz -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-  -DCMAKE_C_COMPILER=clang-22 -DCMAKE_CXX_COMPILER=clang++-22 \
+  -DCMAKE_C_COMPILER=clang-23 -DCMAKE_CXX_COMPILER=clang++-23 \
   -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" \
   -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" \
   -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined" \

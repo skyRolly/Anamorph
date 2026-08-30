@@ -57,12 +57,13 @@ concurrency:
 # "never key on line numbers" rule was written to avoid, reintroduced one level
 # up.
 #
-# 22 is the CURRENT UPSTREAM STABLE major (22.1.8). Ubuntu's own archives stop at
-# 20 for noble, so it comes from apt.llvm.org -- upstream's own channel, added by
-# `scripts/setup-llvm-apt.sh`, which that script's header justifies in full.
-# Ubuntu's packaging boundary is a fact about Ubuntu, not about this project, so
-# it is not allowed to hold the warning gate two majors back. ADR-0028 decides
-# this; CI_CD.md records the measurements.
+# 23 is the CURRENT UPSTREAM STABLE major (23.1.0, released 2026-08-25). Ubuntu's
+# own archives stop at 20 for noble, so it comes from apt.llvm.org -- upstream's
+# own channel, added by `scripts/setup-llvm-apt.sh`, which that script's header
+# justifies in full. Ubuntu's packaging boundary is a fact about Ubuntu, not about
+# this project, so it is not allowed to hold the warning gate -- and, since
+# ADR-0030, the SHIPPED Linux compiler -- three majors back. ADR-0028 decides the
+# rule, ADR-0033 the move from 22 to 23; CI_CD.md records the measurements.
 #
 # The baseline RECORDS this number in its own header and
 # `check-clang-warnings.py` refuses to run when the two disagree: bumping the pin
@@ -110,7 +111,7 @@ concurrency:
 # ---------------------------------------------------------------------------
 env:
   ANAMORPH_PLUGINVAL_STRICTNESS: 10
-  ANAMORPH_CLANG_VERSION: 22
+  ANAMORPH_CLANG_VERSION: 23
   ANAMORPH_GCC_VERSION: 16
 
 # Every push builds the FULL set of formats on all three desktop OSes so beta
@@ -1131,9 +1132,9 @@ jobs:
 
       # The three ASan runtime checks after detect_leaks were measured clean on
       # both suites (2026-08-18) and only ever tighten the gate.
-      # detect_stack_use_after_return is NOT listed: it is clang-22's Linux
-      # default (demonstrated -- an option-free run already reports it), and
-      # restating a default is the copy that rots when the default moves.
+      # detect_stack_use_after_return is NOT listed: it is clang-23's Linux
+      # default (`ASAN_OPTIONS=help=1` reads "Current Value: true"; re-read at
+      # the 22 -> 23 bump, since a restated default is the copy that rots).
       - name: Self-tests under ASan + UBSan
         env:
           ASAN_OPTIONS: detect_leaks=1:check_initialization_order=1:strict_init_order=1:strict_string_checks=1
@@ -3043,7 +3044,7 @@ jobs:
       # THE FLAGS ARE THE SHIPPED ONES; THE COMPILER IS NOT. This job runs in
       # the `gcc:16` container and the configure below names no compiler, so the
       # bench is compiled here by g++ 16 while the shipped Linux artifact is
-      # built by clang-22 in `linux`. That is deliberate -- what a benchmark
+      # built by clang-23 in `linux`. That is deliberate -- what a benchmark
       # needs held constant is the optimization class, and pinning it to the
       # shipping compiler would mean building it where the release artifact is
       # built and slowing that job for a harness that asserts no timing. The
@@ -3268,8 +3269,8 @@ jobs:
       # treats an unrecognised `-Werror=<name>` as a `-Wunknown-warning-option`
       # WARNING rather than an error, so if `function-effects` is ever renamed
       # or dropped this step would keep exiting 0 while checking nothing --
-      # measured on the pinned Clang 22.1.8: with the option misspelled, a TU
-      # carrying a real seeded violation compiles with status 0. Every other
+      # measured on Clang 22.1.8, then the pin: with the option misspelled, a
+      # TU carrying a real seeded violation compiles with status 0. Every other
       # SILENT CHECKER in this workflow carries an in-job liveness proof -- the
       # RTSan canary, the four lints' `--self-test`s, the ABI-floor self-test,
       # the two warning gates' baseline comparisons -- and this is that proof

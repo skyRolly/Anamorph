@@ -379,9 +379,23 @@ DELIBERATE_REAIMS = {
     # Re-derived 2026-08-30 (the ADR-0032 gate rewrite moved build.yml again):
     # :3124 -> :3166, :3209 -> :3251, updated together with the document per
     # the "fix BOTH" rule verify_reaim_targets enforces.
-    ("docs/DOCUMENTATION_COVERAGE.md", ".github/workflows/build.yml:3189"):
+    # Re-derived AGAIN 2026-08-30 (ADR-0033): the Clang-pin rationale block at the
+    # head of build.yml gained one line, so everything below it moved by one --
+    # :3189 -> :3190, :3251 -> :3275 via :3274. Document and declaration updated
+    # together, same rule.
+    ("docs/DOCUMENTATION_COVERAGE.md", ".github/workflows/build.yml:3190"):
         "TESTING_POLICY rule 4",
-    ("docs/DOCUMENTATION_COVERAGE.md", ".github/workflows/build.yml:3274"):
+    # DECLARED 2026-08-30 (ADR-0033). `DEPENDENCY_POLICY.md`'s Clang row cites the
+    # `env:` block that CARRIES the pin, so a pin bump changes the cited text by
+    # definition -- the `VERSIONED_LINES` case. That substitution only covers an
+    # anchor that did NOT move, and this one did (:111-113 -> :112-114, the
+    # rationale block above it having gained a line in the same change), so the
+    # ordinary drift path applies and this declaration is what the gate asks for.
+    # The token is the pin itself: if the row ever stops citing the pin, this
+    # fails hard rather than going quiet.
+    ("docs/policies/DEPENDENCY_POLICY.md", ".github/workflows/build.yml:112-114"):
+        "ANAMORPH_CLANG_VERSION: 23",
+    ("docs/DOCUMENTATION_COVERAGE.md", ".github/workflows/build.yml:3275"):
         "the four lints'",    #
     # DECLARED 2026-08-30, thirty-seven entries, for the SAME split-push shape a
     # third time -- and this time the gate caught the failure it exists for, so

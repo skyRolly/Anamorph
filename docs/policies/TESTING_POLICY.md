@@ -114,7 +114,7 @@ blocking gate; `env.ANAMORPH_PLUGINVAL_STRICTNESS`; the macOS AU install + AU ga
    allocating call — and a clean compile then became its entire output. That is
    the state this rule exists to forbid: Clang treats an unrecognised `-Werror=<name>` as a mere
    `-Wunknown-warning-option` **warning**, so the day the option is renamed or dropped the step
-   keeps exiting 0 while checking nothing. Measured on the pinned Clang 22.1.8: with the option
+   keeps exiting 0 while checking nothing. Measured on Clang 22.1.8, the pin at the time: with the option
    misspelled, a translation unit carrying a real seeded violation compiles with status 0. Since
    2026-08-19 the step compiles `tests/realtime_effects.cpp` **twice** — once as the gate, once with
    `-DANAMORPH_EFFECTS_CANARY`, which seeds the violation into that same TU and must FAIL with a

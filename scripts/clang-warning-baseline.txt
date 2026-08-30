@@ -28,7 +28,7 @@
 #       --clang-major <n> --write-baseline
 # and read the diff before committing it -- that diff is the entire review.
 #
-# clang-major: 22
+# clang-major: 23
 1	-Wfloat-equal	src/dsp/ChorusEngine.cpp
 1	-Wfloat-equal	src/dsp/HaasProcessor.cpp
 3	-Wfloat-equal	src/dsp/VelvetNoise.cpp

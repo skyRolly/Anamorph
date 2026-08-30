@@ -10,12 +10,19 @@
 #
 #  WHY THIS EXISTS AT ALL. Ubuntu's own archives stop at clang-20 for noble
 #  (24.04), which is what `ubuntu-latest` resolves to; 21 and 22 are published
-#  for 26.04 only. The upstream STABLE release is 22.x, and apt.llvm.org is
-#  where upstream ships it for noble -- the same source `apt.llvm.org/llvm.sh`
-#  uses, whose own `CURRENT_LLVM_STABLE` reads 22. Staying on the stock archive
-#  would mean holding the warning gate and the sanitizer host two majors behind
-#  upstream because of a packaging boundary, which is a distribution fact about
-#  Ubuntu rather than a fact about this project.
+#  for 26.04 only. The upstream STABLE release is 23.x (23.1.0, 2026-08-25), and
+#  apt.llvm.org is where upstream ships it for noble -- the same source
+#  `apt.llvm.org/llvm.sh` uses. Staying on the stock archive would mean holding
+#  the warning gate, the sanitizer host and the SHIPPED Linux compiler three
+#  majors behind upstream because of a packaging boundary, which is a
+#  distribution fact about Ubuntu rather than a fact about this project.
+#
+#  `llvm.sh`'s own `CURRENT_LLVM_STABLE` is the cheap check for "what is stable",
+#  and it LAGS the release it reports: it still read 22 on 2026-08-30, five days
+#  after 23.1.0 shipped. It is a proxy, not the fact -- upstream's release
+#  announcement and the per-release docs under releases.llvm.org settle it, the
+#  same way ADR-0028 settled the earlier disagreement between that constant and
+#  the site's prose. ADR-0033 records the move to 23 and this lag.
 #
 #  WHY NOT `llvm.sh`. That script decides the version itself from its own
 #  notion of stable, installs a broad toolchain, and can add more than one

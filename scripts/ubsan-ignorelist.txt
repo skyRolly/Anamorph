@@ -36,9 +36,10 @@
 # TU, first-party included) or not constructing the editor under sanitizers
 # (removes the coverage the test exists for).
 #
-# VERIFIED IN BOTH DIRECTIONS on the pinned clang-22, because an ignorelist that
-# silenced everything would look identical to one that works: with a narrowing
-# conversion seeded into BOTH a `juce-src` path and a first-party path, the
-# vendored one goes quiet and the first-party one still fails the run.
+# VERIFIED IN BOTH DIRECTIONS on clang-22, the pin at the time, because an
+# ignorelist that silenced everything would look identical to one that works:
+# with a narrowing conversion seeded into BOTH a `juce-src` path and a
+# first-party path, the vendored one goes quiet and the first-party one still
+# fails the run.
 [implicit-conversion]
 src:*juce-src/*

@@ -13,7 +13,7 @@ Source. Until then every entry cites a commit SHA or a PR. Entries for the
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
-## [0.9.5] — 2026-08-22
+## [0.9.5] — 2026-08-30
 ### Changed
 - **The Windows build is now compiled for AVX2 too — same sound, and the same new minimum CPU
   requirement the Linux and Intel-macOS builds already carry.** The Windows plug-in now requires an
@@ -32,7 +32,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 - **Faster on every Intel and AMD machine, with the sound unchanged — and a new minimum CPU
   requirement on Linux and on the Intel half of the macOS build.** The plug-in is now compiled for
   the AVX2 instruction set instead of the 2003-era baseline it had been using, which lets the
-  compiler work on four numbers at a time where it previously worked on two. Measured reduction in
+  compiler work on twice as many numbers at a time as before. Measured reduction in
   the engine's total instruction count: **−17 %**. The audio is **bit-identical** — the same
   32-scenario engine twin dump, and the same 180-configuration sweep, agree with the previous build
   in every scenario — because fused multiply-add, the one part of AVX2 that would have changed the
@@ -49,14 +49,16 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   floor").
   Evidence: PR #130. [Verified]
 - **Lower CPU with Velvet Noise selected at high sample rates, and the sound is unchanged.** The
-  change above stopped Velvet Noise rebuilding its ~45 ms decorrelation window every block by
+  change below stopped Velvet Noise rebuilding its ~45 ms decorrelation window every block by
   carrying it forward instead; this one removes the private copy of the window altogether. The
   plug-in already keeps that audio in a circular buffer, and it now reads each decorrelation tap
   straight out of it. What is left costs the same whatever the sample rate, where before it grew
   with it: at a 32-sample buffer the penalty for running at 192 kHz instead of 48 kHz drops from
   about 40 % to nothing measurable. Biggest effect at high rates and small buffers — about a third
   less work at 192 kHz with a 32-sample buffer, about an eighth at 48 kHz — and at 44.1 kHz, where
-  there was least to save, it is a wash. Bit-identical output: the same 32-scenario dump and the
+  there was least to save, it is a wash: slightly better at the default Density, and about 1 % worse
+  in one corner (a 32-sample buffer with Density at maximum), which is accepted. Bit-identical
+  output: the same 32-scenario dump and the
   same 180 configurations as above, plus a new self-test that checks the fast path against the
   plain one directly. No parameter, preset or latency change.
   Evidence: PR #130. [Verified]
@@ -68,7 +70,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   window and the more each one cost. At 192 kHz with a 32-sample buffer that rebuild had grown to
   most of the plug-in's work. It now carries the window forward from the previous block instead of
   rebuilding it. Measured reduction in the engine's total instruction count: **−14 % at 48 kHz with a
-  32-sample buffer, −32 % at 192 kHz with a 32-sample buffer, −8 % at 96 kHz / 128, −5 % at
+  32-sample buffer, −32 % at 192 kHz with a 32-sample buffer, −9 % at 96 kHz / 128, −5 % at
   48 kHz / 128, −2.5 % at 48 kHz / 256**. Nothing else changes: the audio is **bit-identical**,
   proven by the 32-scenario engine twin dump and by a 180-configuration sweep across every algorithm,
   four sample rates and five buffer sizes, and the reported latency, parameters and saved state are
@@ -83,14 +85,15 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   fraction each sample, and the step eventually becomes too small for the processor to represent, so
   the level freezes a hair above zero and stays there. The test was "is it zero"; it is now "can it
   still move", which is the question the shortcut actually depends on. In a session where you have
-  ever turned an algorithm's Amount down, that recovers roughly a fifth of the plug-in's work with
-  Velvet Noise selected, and comparable amounts for the other two. **What changes in the audio:**
+  ever turned an algorithm's Amount down, that gives back the work the module was stuck doing —
+  most with the Chorus / Dimension-D engine, least with Velvet Noise, whose share the Velvet Noise
+  change above had already absorbed nearly all of. **What changes in the audio:**
   only in the **silence region** — digital silence, and signals more than roughly 550 dB below full
   scale — the frozen remainder used to leak an inaudible trace of the delay
   line's contents: at most about 1.6e-35 of full scale, roughly −696 dB, some twenty-five orders of
-  magnitude below the quietest thing you have ever heard and twenty-eight below the smallest step a
-  24-bit file can hold. That trace is now gone — silence is exactly silence, and near-silence passes
-  through untouched. On any real signal the
+  magnitude below the smallest difference this project has ever accepted as inaudible, and
+  twenty-eight below the smallest step a 24-bit file can hold. That trace is now gone — silence is
+  exactly silence, and near-silence passes through untouched. On any real signal the
   output is **bit-for-bit identical**, before and after — verified over 102,400 samples per module at
   every supported sample rate, and re-verified bit-for-bit at every probe level down to 400 dB below
   full scale. No parameter, preset, saved-state or latency change.
@@ -168,7 +171,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 - **The Linux version is now built with Clang, and the compiler is chosen rather than inherited.**
   Until now the compiler that produced the Linux download was whichever `g++` the CI image happened
   to provide — nobody picked it, and it could change without a line in any diff. The Linux VST3 and
-  Standalone are now built with the pinned Clang 22 toolchain and linked with its matching LLD,
+  Standalone are now built with the pinned Clang toolchain and linked with its matching LLD,
   which is what the link-time optimisation the release build uses actually requires. The same
   toolchain builds the check that runs on each proposed change, so what gets validated is what gets
   shipped, and the stricter warning set Clang applies now covers the code on its way out the door

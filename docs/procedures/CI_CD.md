@@ -442,7 +442,7 @@ Measured on 4 cores — the runner's core count — the same build with a warm c
 (−52%)**, at **137 direct hits / 6 misses**, and the residual is the LTO link, which no compiler
 cache touches. The then-separate `linux-clang` configuration, measured the same way against the **then-pinned Clang
 18**, was **5m48s → 2m36s (−55%)** at **129 hits / 5 misses** (a figure from that measurement, not a
-claim about the current pin — the compiler has since moved to 22). Both were measured with the build number
+claim about the current pin — the compiler has since moved to 23). Both were measured with the build number
 *deliberately changed between the two runs*, so they describe the CI case rather than a favourable
 one.
 
@@ -484,8 +484,10 @@ warnings would turn that gate green by deleting its input. Verified against the 
 14 accepted sites in 7 baseline entries* — with 129 of the 134 compilations served from cache on the
 warm run. Those three figures are from that measurement, under that compiler; the property they
 establish (replayed stderr is byte-identical to compiled stderr) is a ccache property and is not
-version-specific, and the *verdict* half still holds unchanged at Clang 22 — the accepted set was the
-same 14 sites in 7 entries. (It is **17 sites in 9 entries** since 0.9.5: A7-9's three fixpoint gates
+version-specific, and the *verdict* half still holds unchanged at Clang 23 — re-measured at the
+22 → 23 bump (ADR-0033), where the first-party set came back `diff`-identical to the committed
+baseline. (The accepted set was 14 sites in 7 entries then; it is **17 sites in 9 entries** since
+0.9.5: A7-9's three fixpoint gates
 each compare two floats exactly, which is the point of them — `docs/architecture/PERFORMANCE_BUDGET.md`,
 the A7-9 entry.)
 
@@ -773,16 +775,16 @@ the two disagree — exit 2, the code meaning *the check* could not run, not the
 regressed. An unrecorded version is refused for the same reason a wrong one is: it cannot be
 confirmed to describe this compiler. Bump the pin and re-baseline in the **same** change.
 
-**The pin is 22 — upstream stable — and it comes from apt.llvm.org.** The rule is *upstream stable*,
-not *newest* and not *whatever Ubuntu packages*: 22.1.8 was released 2026-07-10 and 22.x is the branch
-upstream shipped point releases on, while 23.1.0 is still at **rc3**. Ubuntu's own archives stop at
+**The pin is 23 — upstream stable — and it comes from apt.llvm.org.** The rule is *upstream stable*,
+not *newest* and not *whatever Ubuntu packages*: 23.1.0 was released 2026-08-25 and 23.x is the branch
+upstream now ships point releases on, while 22.x closed at 22.1.8. Ubuntu's own archives stop at
 `clang-20` for noble, which is what `ubuntu-latest` resolves to, so the toolchain is installed by
-`scripts/setup-llvm-apt.sh` from **apt.llvm.org** — upstream's own Debian/Ubuntu channel, whose
-`llvm.sh` asserts `CURRENT_LLVM_STABLE=22`. Ubuntu's packaging boundary is a fact about Ubuntu's
-release process, not about this project, and it is not allowed to hold the warning gate and the
-sanitizer host two majors behind upstream. ADR-0028 carries the decision, the options it rejected
-(including the intermediate 20 step and its mistaken reading of 21/22 availability), and the policy
-rule it enacts.
+`scripts/setup-llvm-apt.sh` from **apt.llvm.org** — upstream's own Debian/Ubuntu channel. Ubuntu's
+packaging boundary is a fact about Ubuntu's release process, not about this project, and it is not
+allowed to hold the warning gate, the sanitizer host and — since ADR-0030 — the shipped Linux compiler
+three majors behind upstream. ADR-0028 carries the rule and the options it rejected (including the
+intermediate 20 step and its mistaken reading of 21/22 availability); **ADR-0033** carries the move
+from 22 to 23 and the evidence for it.
 
 ### The GCC warning baseline
 
@@ -887,22 +889,27 @@ three *shipping* build jobs never touch it. The install is 15 packages / 155 MB 
 a 4-core box, against 14 / 113 MB / 10.9 s for clang-20 from the stock archive and a no-op for the
 preinstalled clang-18.
 
-**Reproducibility is weaker than the stock archive, and that is the real trade.** apt.llvm.org publishes
-*branch snapshots*, never the tagged `llvmorg-*` build — noble-22 is
-`1:22.1.8~++20260714014902+ca7933e47d3a-…`, the 22.x head just after 22.1.8, and the leading `~` makes
-it sort *below* a hypothetical `1:22.1.8-1`. Suites are rebuilt while their branch is open and freeze
-once it closes, and the pool keeps **only the current `.deb` per architecture** — which is also why an
+**Reproducibility is weaker than the stock archive, and that is the real trade — weaker at 23 than it
+was at 22.** apt.llvm.org publishes *branch snapshots*, never the tagged `llvmorg-*` build — noble-23 is
+`1:23.1.0~++20260818083557+55feb0a3b6b7-…`, a `release/23.x` head, and the leading `~` makes it sort
+*below* a hypothetical `1:23.1.0-1`. Suites are rebuilt while their branch is open and freeze once it
+closes, and the pool keeps **only the current `.deb` per architecture** — which is also why an
 exact-version pin is not merely unenforceable here but impossible: it would stop resolving the next time
-the suite is rebuilt. **22.x is closed** (22.1.8 is upstream's newest tag; 23 is the development
-branch), and the mirror shows it: noble-22's index is 18 days old where noble-23's is 2. So the pin
-rests on a frozen suite, not on a hope. The guard still covers only the major; a patch-level diagnostic
-shift inside 22 would surface as a gate failure, not a silent pass. One gain, too: apt.llvm.org
-publishes noble-22 for `amd64 arm64 s390x`, so a future `ubuntu-24.04-arm` Clang job could install it —
-`clang-20` from the stock archive (amd64/i386 only) could not.
+the suite is rebuilt. **23.x is OPEN, and that is the difference from the 22 pin**, which rested on a
+frozen suite: 23.1.0 shipped 2026-08-25, point releases follow on the same branch, and the snapshot
+noble-23 carried on 2026-08-30 was built 2026-08-18 — it *predates* the tag whose version it already
+names. So this pin rests on a moving suite rather than a frozen one, stated rather than glossed. The
+guard still covers only the major; a patch-level diagnostic shift inside 23 would surface as a gate
+failure, not a silent pass. The gain from the 22 evaluation survives: apt.llvm.org publishes noble-23
+for `amd64 arm64 s390x`, so a future `ubuntu-24.04-arm` Clang job could install it — `clang-20` from the
+stock archive (amd64/i386 only) could not.
 
-**If you re-check apt.llvm.org and it seems to disagree, read the script, not the prose.** The site's
-homepage still labels 21 stable / 22 qualification / 23 development, one cycle stale; `llvm.sh`'s
-`CURRENT_LLVM_STABLE=22` and upstream's own tags are the authority.
+**If you re-check apt.llvm.org and it seems to disagree, trust upstream's release page over
+apt.llvm.org's own bookkeeping.** On 2026-08-30 the site's homepage still called 23 the development
+branch and `llvm.sh` still read `CURRENT_LLVM_STABLE=22` — five days after 23.1.0 shipped, and with no
+`llvm-toolchain-noble-24` suite yet published. Both lag. llvm.org's *Latest LLVM Release* banner and the
+per-release documentation at `releases.llvm.org/<version>/` are the authority, which is the same
+resolution ADR-0028 reached when those two apt.llvm.org proxies disagreed with each other.
 
 **The one upstream default worth naming, because it is a silent one.** Clang ≥ 20 turns on distinct
 TBAA tags for incompatible pointers by default, which upstream says "may silently change code behavior
@@ -1287,8 +1294,8 @@ The `sanitizers`, `realtime` and `fuzz` jobs use their own build trees so they n
 above — `build-clang`, `build-san`, `build-vg`. All are covered by `.gitignore`'s `build*/`.
 
 ```bash
-CLANG=22   # ANAMORPH_CLANG_VERSION in .github/workflows/build.yml is the authority
-scripts/setup-llvm-apt.sh "$CLANG"   # Ubuntu has no clang-22 for noble; this is how CI gets it
+CLANG=23   # ANAMORPH_CLANG_VERSION in .github/workflows/build.yml is the authority
+scripts/setup-llvm-apt.sh "$CLANG"   # Ubuntu has no clang-23 for noble; this is how CI gets it
 cmake -B build-clang -G Ninja -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_C_COMPILER="clang-$CLANG" -DCMAKE_CXX_COMPILER="clang++-$CLANG" \
       -DANAMORPH_BUILD_STANDALONE=OFF

@@ -2,6 +2,11 @@
 
 **Status:** **Accepted** (Build System change — `ARCHITECTURE_REVIEW_GATE.md`; approved by the
 maintainer 2026-08-17, together with the policy amendment below.)
+**The VALUE is superseded by [ADR-0033](ADR-0033-clang-toolchain-pin-23.md)** (2026-08-30), on this
+ADR's own revisit trigger: LLVM 23.1.0 shipped 2026-08-25 and `ANAMORPH_CLANG_VERSION` is now **23**.
+Everything else here stands as recorded — the *upstream stable, by major* rule, the amendment to
+`ARCHITECTURE_REVIEW_GATE.md`, the install mechanism, the `-fsanitize=vptr` restoration, and every
+measurement and rejected option below, which are the 22 decision as it was taken.
 
 **Amends:** `docs/policies/ARCHITECTURE_REVIEW_GATE.md`, the **Build System change** item, with a
 *Compiler and toolchain versions* rule. Per `ADR_POLICY.md` rule 5 and `SOURCE_OF_TRUTH.md` ("An ADR

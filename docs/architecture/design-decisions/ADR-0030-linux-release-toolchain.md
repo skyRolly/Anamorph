@@ -51,9 +51,13 @@ not rescan, so symbols that only become referenced after cross-TU inlining becom
 references. `CMakeLists.txt` already probed for lld and already scoped that block to Clang — it now
 governs the shipped link rather than a validation job's.
 
-`ANAMORPH_CLANG_VERSION` stays **22**: LLVM 22.1.8 is the current stable line and 23 is unreleased
-(apt.llvm.org's `-23` repository carries `23.1.0~++` pre-release snapshots), so the existing pin was
-already *latest stable*, and the major-line pin takes the newest patch from that line automatically.
+`ANAMORPH_CLANG_VERSION` stayed **22** at this decision: LLVM 22.1.8 was then the current stable line
+and 23 unreleased (apt.llvm.org's `-23` repository carried `23.1.0~++` pre-release snapshots), so the
+existing pin was already *latest stable*, and the major-line pin takes the newest patch from that line
+automatically. **Superseded on the value only by [ADR-0033](ADR-0033-clang-toolchain-pin-23.md)**
+(2026-08-30): 23.1.0 shipped 2026-08-25 and the pin moved to 23. Everything else in this ADR — Clang
+ships the Linux artifact, GCC stays as the compatibility compiler, `linux-clang` folds into `linux` —
+is untouched.
 
 `merge-check` uses the same toolchain. It is the only build on the same-repo PR path; on a different
 compiler it would clear PRs against a toolchain the project does not ship.
