@@ -76,13 +76,14 @@ td.opt{min-width:220px;color:var(--ink)}
 <header>
   <h1>Anamorph Platform Coverage</h1>
   <p class="dek">Which platforms and toolchains actually receive each performance optimization —
-  and where a gap is a decision, a structure, or an accident. Nothing was changed by this audit;
-  its recommendations are inputs to maintainer decisions.</p>
+  and where a gap is a decision, a structure, or an accident. The audit itself changed nothing; its
+  recommendations went to the maintainer, and <strong>the MSVC one was accepted — ADR-0032 is live.</strong>
+  §8 carries the current state.</p>
   <div class="meta">
     <span>13 evidence/verification passes + adversarial re-verification (2 claims refuted → findings)</span>
     <span>MSVC semantics checked against live Microsoft docs</span>
     <span>Worklog: worklogs/performance/PERF_AUDIT_PLATFORM_COVERAGE.md</span>
-    <span>Status 2026-08-30: §§1–6 are the audit-time record; superseded cells are struck and marked; §7 carries the current evidence</span>
+    <span>Status 2026-08-30: §§1–6 are the audit-time record; superseded cells are struck and marked; §7 carries the R-round evidence; §8 is the current state</span>
   </div>
   <div class="note" style="margin-top:16px">
     <h3>The three registers, kept apart</h3>
@@ -97,9 +98,11 @@ td.opt{min-width:220px;color:var(--ink)}
     <div class="v"><div class="k">A7-2B · A7-9 · all waves</div>
       <p><strong>Universal.</strong> Exhaustive grep: seven preprocessor hits in two files, none in any
       DSP optimization. One portable C++ implementation on GCC, Clang, AppleClang and MSVC.</p></div>
-    <div class="v"><div class="k">AVX2 · ADR-0031</div>
-      <p><strong>The one platform-conditional item.</strong> GCC/Clang x86-64 only. MSVC out by
-      option 5, arm64 out by option 4 — every exclusion has a citable record.</p></div>
+    <div class="v"><div class="k">AVX2 · ADR-0031 + ADR-0032</div>
+      <p><strong>The one platform-conditional item.</strong> <s>GCC/Clang x86-64 only. MSVC out by
+      option 5</s> — <strong>superseded 2026-08-30:</strong> every x86-64 target now carries an AVX2
+      baseline, GCC/Clang by ADR-0031 and MSVC x64 by ADR-0032. arm64 stays out by option 4 — every
+      exclusion has a citable record.</p></div>
     <div class="v"><div class="k">The real unevenness</div>
       <p><strong>Measurement, not presence.</strong> Every benefit figure comes from GCC-13-built
       binaries on one Linux container; the shipped Linux binary is Clang 22.</p></div>
@@ -189,12 +192,12 @@ td.opt{min-width:220px;color:var(--ink)}
     <tr><th>Gap</th><th>Class</th><th>Record / ground</th></tr>
     <tr><td>ADR-0031 flags absent on MSVC</td><td><span class="chip c-good">superseded — ADR-0032</span></td><td>was intentional (option 5) until its evidence requirement was met; Windows now carries <code>/arch:AVX2</code> under its own ADR</td></tr>
     <tr><td>ADR-0031 flags absent on arm64</td><td><span class="chip c-dec">intentional</span></td><td>ADR-0031 option 4; policy: the cross-slice difference "is accepted and is not to be removed"</td></tr>
-    <tr><td><code>ANAMORPH_X86_ISA_BASELINE</code> inert on MSVC; clang-cl takes the MSVC branch</td><td><span class="chip c-na">structural</span></td><td>falls out of <code>if(MSVC)</code>; no recorded decision</td></tr>
+    <tr><td><s><code>ANAMORPH_X86_ISA_BASELINE</code> inert on MSVC</s>; clang-cl takes the MSVC branch</td><td><span class="chip c-good">half superseded — ADR-0032</span></td><td>the option now <strong>governs MSVC too</strong> (OFF drops <code>/arch:AVX2</code> and warns; the gate builds its baseline side with it), and the flag is guarded on <code>CMAKE_CXX_COMPILER_ARCHITECTURE_ID</code> = <code>x64</code> so ARM64/ARM64EC/X86 get nothing. clang-cl remains structural: it falls out of <code>if(MSVC)</code>, with no recorded decision and no build using it</td></tr>
     <tr><td>No benefit figures off the one Linux container</td><td><span class="chip c-yes">known + recorded</span></td><td>A7-0 / RISK-002; wall-clock repudiated</td></tr>
     <tr><td>Headline Ir figures only from GCC-13 binaries; shipped Linux is Clang 22</td><td><span class="chip c-good">closed (R-6)</span></td><td>measured on clang-22.1.8; methodology self-validated to 0.06 % against the historical GCC figure</td></tr>
     <tr><td>No bit-exactness instrument on Windows</td><td><span class="chip c-good">closed (R-1)</span></td><td>was accidental/unrecorded; <code>windows-avx2-ab</code> is that instrument now, and it measured 0/32 at <code>/arch:AVX2</code> alone</td></tr>
-    <tr><td>Linux arm64 · Windows arm64: no builds</td><td><span class="chip c-bad">omission, not decision</span></td><td>no "Not Supported" row exists, unlike AAX / mono→mono (R-3)</td></tr>
-    <tr><td>Linux CI executes AVX2 binaries unprobed</td><td><span class="chip c-yes">accepted residual</span></td><td>GitHub runners are Haswell+; empirically green (F-7)</td></tr>
+    <tr><td>Linux arm64 · Windows arm64: no builds</td><td><span class="chip c-good">closed (R-3)</span></td><td>was an omission, not a decision; both are now <strong>Not Supported</strong> rows in the matrix, on the AAX / mono→mono taxonomy</td></tr>
+    <tr><td><s>Linux</s> <strong>x86-64</strong> CI executes AVX2 binaries unprobed</td><td><span class="chip c-yes">accepted residual</span></td><td>GitHub runners are Haswell+; empirically green (F-7). <strong>Since ADR-0032 this covers the Windows jobs too</strong> — same residual, same reasoning</td></tr>
   </table></div>
 </section>
 
@@ -215,13 +218,15 @@ td.opt{min-width:220px;color:var(--ink)}
         <li><s><strong>The open question is the vectorizer</strong> (reduction reassociation)</s> —
           <span class="chip c-good">answered (§7)</span>: 0/32 on toolset 14.51, no reassociation
           moved a bit for this instrument's coverage.</li>
-        <li><strong>The instrument <s>is feasible</s> exists:</strong> <code>dsp_dump.cpp</code> is
-          verified platform-neutral, and <code>windows-avx2-ab</code> builds it three ways and diffs
-          the hashes as a same-machine A/B on every push (reporting-only).</li>
+        <li><strong>The instrument <s>is feasible</s> exists, and it <s>reports</s> gates:</strong>
+          <code>dsp_dump.cpp</code> is verified platform-neutral, and <code>windows-avx2-ab</code>
+          builds it three ways and diffs the hashes as a same-machine A/B on every push —
+          <strong>blocking since ADR-0032</strong>, with a flag-liveness self-proof and a hard
+          32-scenario requirement so it fails closed.</li>
         <li><strong>Windows-only caveat:</strong> the x64 UCRT dispatches transcendentals by CPU at
           runtime (FMA3), so Windows output is already machine-class-dependent today — before any flag.</li>
       </ol>
-      <p style="margin:12px 0 0;font-size:13.5px"><span class="chip c-good">R-1 executed · instrument live, first result below</span> <span class="chip c-dec">adoption still deferred</span></p>
+      <p style="margin:12px 0 0;font-size:13.5px"><span class="chip c-good">R-1 fully discharged · instrument live and blocking</span> <span class="chip c-good">ADOPTED — ADR-0032, 2026-08-30</span></p>
     </div>
     <div class="panel">
       <h3>ARM64</h3>
@@ -288,12 +293,16 @@ td.opt{min-width:220px;color:var(--ink)}
 <section>
   <h2><span class="no">7</span>The R-round: recommendations executed, results in</h2>
   <p class="lede">All six recommendations were executed as evidence and documentation, with every
-  standing decision preserved — no shipped flag changed, no DSP behaviour changed.</p>
+  standing decision preserved — <s>no shipped flag changed</s>, no DSP behaviour changed.
+  <strong>Superseded 2026-08-30:</strong> the R-round itself changed no shipped flag, but the
+  evidence it produced was accepted and <strong>ADR-0032 then changed one</strong> — MSVC x64 now
+  builds at <code>/arch:AVX2</code>. DSP behaviour is still unchanged: that is the whole point of
+  the 0/32 result.</p>
 
   <div class="cols">
     <div class="panel">
       <h3>Windows A/B — the first real MSVC numbers</h3>
-      <div class="sub">windows-avx2-ab · reporting-only · toolset 14.51.36231</div>
+      <div class="sub">windows-avx2-ab · blocking gate since ADR-0032 · toolset 14.51.36231</div>
       <div class="tblwrap" style="margin-top:4px"><table>
         <tr><th>comparison</th><th>result</th></tr>
         <tr><td>A vs B — <code>/arch:AVX2</code> alone, default <code>/fp:precise</code></td>
@@ -346,6 +355,27 @@ td.opt{min-width:220px;color:var(--ink)}
     was in fact testing <em>AVX1</em> — both probes now execute genuine AVX2
     (<code>vpaddd ymm</code>).</p>
   </div>
+</section>
+
+<section>
+  <h2><span class="no">8</span>Current state after ADR-0032 — the eight facts</h2>
+  <p class="lede">Everything above is a dated record, with superseded statements struck and marked
+  in place. These eight are the current state; where an earlier statement conflicts with one of
+  them, the statement here wins.</p>
+  <div class="tblwrap"><table>
+    <tr><th>#</th><th>Fact</th><th>Ground</th></tr>
+    <tr><td class="mono">1</td><td><strong>Every shipped x86-64 binary is an AVX2 binary.</strong> No x86-64 target is left at the old SSE2 floor</td><td>Linux + macOS <code>x86_64</code> slice by ADR-0031 (<code>-march=haswell -ffp-contract=off</code>); Windows by ADR-0032 (<code>/arch:AVX2</code>)</td></tr>
+    <tr><td class="mono">2</td><td><strong>The Windows flag is <code>/arch:AVX2</code> alone</strong>, at the default non-contracting <code>/fp:precise</code>. <code>/fp:contract</code> is not set and not proposed</td><td>contraction moves 32 of 32 scenarios — a whole-engine Class-B change</td></tr>
+    <tr><td class="mono">3</td><td><strong>The Class-A property on Windows is demonstrated, not assumed</strong></td><td><code>windows-avx2-ab</code>: A vs B <strong>0 of 32 differ</strong> on toolset 14.51.36231, replicated across two runs</td></tr>
+    <tr><td class="mono">4</td><td><strong><code>windows-avx2-ab</code> is a permanent blocking gate</strong>, not a reporting-only experiment</td><td><code>continue-on-error</code> removed; flag-liveness self-proof (present in build-b's project files, absent in build-a); exactly 32 parsed scenarios required — it fails closed, not vacuously</td></tr>
+    <tr><td class="mono">5</td><td><strong>The <code>windows</code> job asserts MSVC toolset ≥ 14.30</strong></td><td>the non-contracting <code>/fp:precise</code> default is a VS2022-and-later behaviour and the runner image floats; an unreadable version fails as infrastructure</td></tr>
+    <tr><td class="mono">6</td><td><strong>The Windows ISA floor is a documented user-visible contract</strong> — Haswell (2013) / Excavator (2015) or newer. <strong>Only Apple Silicon carries no ISA floor</strong></td><td>written <em>before</em> the flag landed, into README, <code>COMPATIBILITY_POLICY</code>, <code>COMPATIBILITY_MATRIX</code>, <code>KNOWN_ISSUES</code> (KI-026) and both user guides; failure is <code>STATUS_ILLEGAL_INSTRUCTION</code> inside the host</td></tr>
+    <tr><td class="mono">7</td><td><strong>The flag is scoped to the MSVC x64 target and nothing else.</strong> No runtime dispatch exists on any platform</td><td><code>CMAKE_CXX_COMPILER_ARCHITECTURE_ID STREQUAL "x64"</code> — a positive match, so ARM64, ARM64EC, X86 and any undetected architecture get no flag. arm64 untouched (ADR-0031 option 4); Linux/Win arm64 Not Supported; clang-cl outside both ADRs' validated sets</td></tr>
+    <tr><td class="mono">8</td><td><strong>The Windows benefit is mechanism-shared; no Windows figure is claimed</strong></td><td>no instruction-count instrument runs on Windows. The case is the same hot loops at 256-bit lanes plus the bit-identity demonstration, alongside −18…−20 % measured on GCC/Clang. That gap is A7-0 / RISK-002, unchanged</td></tr>
+  </table></div>
+  <p style="margin:14px 0 0;font-size:13.5px;color:var(--ink-soft)"><strong>No open maintainer
+  decision about MSVC AVX2 remains.</strong> What is still open is unrelated to it: A7-0's named
+  benchmark machine, and contraction (Option C / <code>/fp:contract</code>), taken on no platform.</p>
 </section>
 
 <p class="foot">Method: six evidence sweeps (build system · CI map · source conditionals · measurement

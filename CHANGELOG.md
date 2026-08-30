@@ -40,7 +40,9 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   (2015) processor or newer. On an older processor the plug-in will not run, and the failure looks
   like a crash in your DAW rather than a message, because the plug-in cannot report a problem with
   instructions it never gets to execute. This affects **Linux** and the **Intel half of the macOS
-  build**; the Windows build and Apple Silicon Macs are unchanged and carry no new requirement.
+  build**. Apple Silicon Macs are unchanged and carry no new requirement. *(This entry left the
+  Windows build alone; Windows acquired the same requirement separately under ADR-0032 — see the
+  AVX2 entry above, which is the current statement for Windows.)*
   Every Mac that can run macOS 15 already exceeds the requirement; a Mac old enough to be affected
   would be running macOS 10.13–10.15. No parameter, preset, saved-state or latency change.
   See ADR-0031 and `docs/policies/COMPATIBILITY_POLICY.md` ("Runtime compatibility: the x86-64 ISA

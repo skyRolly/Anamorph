@@ -8,6 +8,16 @@ The investigation phase is closed. This worklog records what was implemented aga
 approvals, what each item was verified with, and **one correction to a figure the investigation
 recorded** (§4c). Nothing outside the four approved items was changed.
 
+> **STATUS — PARTLY SUPERSEDED (2026-08-30).** This worklog is the record of the **2026-08-22**
+> round and is preserved as written. Every statement in it about **MSVC / Windows carrying no ISA
+> flag** was true of that round and is **no longer current**: **ADR-0032** (Accepted, 2026-08-29)
+> adopted `/arch:AVX2` for the MSVC x64 target, the Windows twin-dump instrument was built in the
+> R-round, and `windows-avx2-ab` is now a **blocking** CI gate. The superseded passages are marked
+> in place below (§2, §7) rather than rewritten. For current state read **ADR-0032**,
+> `docs/policies/COMPATIBILITY_POLICY.md`, and `PERF_AUDIT_PLATFORM_COVERAGE.md` §9. Nothing else in
+> this document — the A7-9 fixpoint work, the §4c figure correction, the A7-2B corner acceptance —
+> is affected.
+
 | approved item | status |
 |---|---|
 | **AVX2 Option B (Class A)** — `-march=haswell -ffp-contract=off` | **DONE**, ADR-0031 |
@@ -28,7 +38,8 @@ supported hardware is whatever the build files happen to say.
 
 ## 2. AVX2 Option B — what landed
 
-`AnamorphHardening` (the ADR-0021 INTERFACE target) now carries, **for GCC/Clang x86-64 only**:
+`AnamorphHardening` (the ADR-0021 INTERFACE target) now carries, **for GCC/Clang x86-64 only**
+*(historical — as of this round; the target has carried an MSVC x64 branch as well since ADR-0032)*:
 
 ```
 -march=haswell -ffp-contract=off
@@ -44,6 +55,13 @@ supported hardware is whatever the build files happen to say.
 - **MSVC**: nothing. `/arch:AVX2` is not the equivalent pair — MSVC controls contraction separately —
   and no twin-dump instrument runs on Windows, so the Class-A property could not be *demonstrated*
   there, only assumed (ADR-0031 option 5). Recorded as an open item in §7.
+  > **SUPERSEDED by ADR-0032 (2026-08-29).** The reasoning above is preserved as the ADR-0031-round
+  > record; its conclusion no longer holds. The blocker was the missing instrument, not the flag: the
+  > R-round built the Windows twin dump, it measured **0 of 32 scenarios moved** by `/arch:AVX2` on
+  > toolset 14.51.36231 across two runs, and the Class-A property is now *demonstrated* on Windows
+  > rather than assumed. MSVC x64 carries `/arch:AVX2` today, at the default non-contracting
+  > `/fp:precise` — the "MSVC controls contraction separately" observation is what makes that safe,
+  > not what blocks it. `/fp:contract` remains **off**; it moves 32 of 32 scenarios.
 
 Both are **compile** options. Under LTO the codegen happens at link time, but both toolchains stream
 the target CPU/feature set per function into the IR, so the compile-time `-march` governs what is
@@ -250,6 +268,11 @@ stale binary.
 
 1. **MSVC ISA baseline.** `/arch:AVX2` remains unset. It needs its own measurement, and the
    instrument that would produce it — a twin dump on Windows — does not exist. ADR-0031 option 5.
+   > **CLOSED — SUPERSEDED by ADR-0032 (2026-08-29).** Both halves of this item are now false. The
+   > instrument exists (`windows-avx2-ab`, a blocking gate); it produced the measurement (0/32
+   > scenarios moved, two runs, toolset 14.51.36231); and `/arch:AVX2` is **set** on the MSVC x64
+   > target. Kept here as the record of what was open at the close of the ADR-0031 round.
+
 2. **Option C (`-march=haswell` with contraction live).** 8.6 percentage points more, for a
    whole-engine Class-B change and the loss of the GCC/Clang cross-check. A separate decision, if ever.
 3. **A7-0.** Still blocked on a named benchmark machine; `PERFORMANCE_BUDGET.md` rows unfilled.

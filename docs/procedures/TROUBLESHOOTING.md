@@ -14,7 +14,7 @@ Diagnosing build, validation, and runtime problems. For the validation workflow 
 | `AnamorphTests not found` when testing | Not built, or tests disabled | `scripts/build.sh`; ensure `ANAMORPH_BUILD_TESTS=ON`. |
 | Wrong/old JUCE behaviour | Stale fetched JUCE | Confirm the pinned commit `e18f7f5…` = JUCE 9.0.1 (CMakeLists.txt:70-72); a JUCE bump is a Build System change (ARCHITECTURE_REVIEW_GATE, ADR-0022 / ADR-0026). |
 | Configure says `fetching JUCE 9.0.1 (<old rev>)` | `ANAMORPH_JUCE_TAG` is a CACHE variable — an existing `build/` keeps the OLD pin after a pull | Delete `build/` (or `cmake -B build -UANAMORPH_JUCE_TAG -UANAMORPH_JUCE_VERSION`) so the new pin takes effect; the configure banner prints version + rev precisely so a mismatch is visible. |
-| Linker errors mixing JUCE modules | DSP compiled as a STATIC lib | The DSP core is an **INTERFACE** lib by design (CMakeLists.txt:366-377) — keep it INTERFACE; do not pre-compile JUCE modules into a static lib. |
+| Linker errors mixing JUCE modules | DSP compiled as a STATIC lib | The DSP core is an **INTERFACE** lib by design (CMakeLists.txt:395-406) — keep it INTERFACE; do not pre-compile JUCE modules into a static lib. |
 
 ## Validation (pluginval)
 

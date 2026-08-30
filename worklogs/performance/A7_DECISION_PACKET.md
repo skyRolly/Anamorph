@@ -37,7 +37,9 @@ exist. All three rows below are the *whole* decision, not variations on one.
 | **cross-architecture effect** | none | removes the **contraction** component of the arm64/x86-64 difference; does **not** remove the oversampling component | leaves x86-64 contracting too — more alike in mechanism, still not bit-identical |
 
 **DECIDED 2026-08-22: Option B.** Implemented as ADR-0031, scoped to the GCC/Clang x86-64 builds
-(Linux x86-64 and the macOS `x86_64` slice via `-Xarch_x86_64`); arm64 and MSVC carry nothing. The
+(Linux x86-64 and the macOS `x86_64` slice via `-Xarch_x86_64`); arm64 and MSVC carry nothing.
+**[MSVC clause superseded — ADR-0032, Accepted 2026-08-30: MSVC x64 carries `/arch:AVX2`. arm64
+still carries nothing, by option 4.]** The
 ISA floor and the cross-architecture statement went into `COMPATIBILITY_POLICY` *before* the flag
 landed, as the approval required. Option C is not taken and remains a separate decision.
 
@@ -176,7 +178,7 @@ the cross-block state A7-2B deleted, for 1 % in one corner.
 | **A7-2T** — path-equivalence oracle (Test 40) | **DONE** (PR #129). Spent as designed: A7-2B landed against it, and it is now the standing guard that the gather equals the per-sample loop. | — |
 | **A7-2B** — residual per-block term | **DONE** (PR #130). Class A on both committed instruments; −12.2 % at 48 kHz/32, −37.2 % at 192 kHz/32; rate dependence removed. **Corner accepted 2026-08-22.** | — |
 | **A7-5E** — cross-slice experiment | **CLOSED.** Confirmed by execution on the shipping toolchain (Apple Silicon, Apple Clang, Apple libm): **32/32 differ at shipped flags; 24 differ with contraction off, the 8 oversampling-×1 scenarios agreeing.** Identical to the Linux result in counts, split and scenario names. `macos-crossslice` in CI, reporting-only. | — |
-| **A7-5 / W5-D** — AVX2 | **DONE — Option B** (ADR-0031, 2026-08-22): `-march=haswell -ffp-contract=off` on the GCC/Clang x86-64 builds only. −17.2 % engine-wide, 32/32 twin-dump identical, 0 FMA emitted, GCC/Clang cross-check intact. Option C not taken. | — |
+| **A7-5 / W5-D** — AVX2 | **DONE — Option B** (ADR-0031, 2026-08-22): `-march=haswell -ffp-contract=off` on the GCC/Clang x86-64 builds ~~only~~. −17.2 % engine-wide, 32/32 twin-dump identical, 0 FMA emitted, GCC/Clang cross-check intact. Option C not taken. **Extended 2026-08-30 by ADR-0032: `/arch:AVX2` on MSVC x64 at the default non-contracting `/fp:precise`, 0/32 twin-dump scenarios moved on toolset 14.51.36231 (two runs), blocking-gated per push. Every shipped x86-64 binary now has an AVX2 baseline; only Apple Silicon has no ISA floor.** | — |
 | **A7-9** — the glide stall | **DONE** (2026-08-22, explicit Class-B approval recorded). Three gates moved from a value test to a fixpoint test; no DSP state mutated. **Test 41** is the liveness gate and is proven to fail on all four cases against the pre-A7-9 sources. Bound corrected — Decision 2. | — |
 | **A7-9C** — correct the three false comments | **DONE** (PR #130). Class A, verified behaviour-neutral against the twin dump. | — |
 | A7-4 · A7-8 | maintainer decisions, unchanged | — |

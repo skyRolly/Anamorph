@@ -1,4 +1,4 @@
-# MSVC `/arch:AVX2` adoption packet — prepared changes, awaiting the maintainer's decision
+# MSVC `/arch:AVX2` adoption packet — APPROVED AND APPLIED *(prepared as "awaiting the maintainer's decision"; that wait is over)*
 
 **Date:** 2026-08-30 · **Status: APPROVED AND APPLIED (same day).** The maintainer explicitly
 approved the adoption ("APPROVE MSVC AVX2 ADOPTION. Apply the packet as prepared."), and every
@@ -7,10 +7,12 @@ section below is now in the tree: ADR-0032 is registered **Accepted**, the Windo
 the floor documentation landed in the same change. This document remains as the preparation record;
 where the applied form differs from a drafted detail, the tree and ADR-0032 are authoritative.
 
-**Why it stops here.** `ADR_POLICY.md` makes an ADR mandatory for a Build architecture change, and
+**Why it stopped here when it was written** *(historical — the boundary held, then the maintainer
+crossed it)*. `ADR_POLICY.md` makes an ADR mandatory for a Build architecture change, and
 `ARCHITECTURE_REVIEW_GATE.md` puts Build System changes behind human review. Registering ADR-0032
-and flipping flags without that approval would bypass both. The decision boundary is therefore the
-top of this file; everything below it is the prepared material.
+and flipping flags without that approval would bypass both. The decision boundary was therefore the
+top of this file; everything below it was the prepared material. **The approval was given, so
+everything below is now the applied material — read it as a record, not a proposal.**
 
 ---
 

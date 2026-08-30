@@ -127,7 +127,7 @@ after. The fix is one shared `anchor_still_right()` used by both paths, so the t
 again; the duplication was the defect, not a symptom of it.
 
 **Proven not to have widened anything.** With the count mismatch AND a seeded drift on a
-*neighbouring* line of the same file (`CMakeLists.txt:398`, cited alongside `:14` in `TRADEMARKS.md`),
+*neighbouring* line of the same file (`CMakeLists.txt:427`, cited alongside `:14` in `TRADEMARKS.md`),
 the run still fails on that path — so the exemption still covers one declared line and nothing else.
 Self-test 131 → 135 cases: three behavioural cases driving `anchor_still_right` directly on synthetic
 sources (excused when the anchor did not move; a neighbouring line still compared; a MOVED anchor not
@@ -1813,7 +1813,7 @@ subject, and the second is a stale COUNT rather than the placement claim.
 
 **The CI-target report was investigated and required no change.** It read the visible diff as adding
 only three `option()` declarations and asked whether `AnamorphFuzzState`, `AnamorphBench` and
-`AnamorphDspDump` resolve to anything. They do: `CMakeLists.txt:564-582`, `:560-577` and `:597-623`
+`AnamorphDspDump` resolve to anything. They do: `CMakeLists.txt:593-611`, `:560-577` and `:597-623`
 define them, the last including the target-scoped `-fsanitize=fuzzer` the workflow comment relies
 on. Verified by building rather than by reading — all three configure and compile from the same
 option and compiler flags CI passes (JUCE supplied from the already-fetched checkout rather than
@@ -2128,7 +2128,7 @@ way and deliberately left — `CODE_STYLE.md:10` and `TESTING_POLICY.md:9` cite 
 be exhaustive.
 
 **The continuation gap is left open deliberately.** Bringing these under the gate means the
-comma-list spelling (`CMakeLists.txt:457-458, 488-489, 530-531`), which the tool does accept — but
+comma-list spelling (`CMakeLists.txt:486-487, 517-518, 559-560`), which the tool does accept — but
 each continuation here carries its own annotation naming *which* line it is (`:162`
 (`-Wl,-dead_strip`, Apple), `:108` (`/OPT:REF`, MSVC)), and the comma-list form has nowhere to put
 them. Widening the recogniser to follow continuations is a change to the gate's scope rather than to
@@ -2883,7 +2883,7 @@ happened. Another sits two lines from a sibling reference in the *same* historic
 already been protected, so a `--fix` would have rewritten half a paired record and frozen the other
 half. The discriminator that survives: **is the number the subject of the sentence, or a pointer to a
 thing?** Exactly one `CMakeLists.txt` citation in this document is the latter — "*it is*
-`CMakeLists.txt:492-501`", present tense, where re-anchoring preserves truth — and it is deliberately
+`CMakeLists.txt:521-530`", present tense, where re-anchoring preserves truth — and it is deliberately
 left live so the gate still demonstrably checks real evidence here.
 
 Verified by mutation rather than by reading: a line inserted into `CMakeLists.txt` above all of them,
@@ -2908,7 +2908,7 @@ Review found two anchors the previous round missed, both below its insertion poi
 to the new gate for the same reason: they are spelled as **bare continuations**
 (`` `path/to/file:188-199` … `:292-301` ``), which the parser only recognises in the
 `path:a,b,c` form. `ADR-0001`'s "tests link the core" pointed at `juce::juce_opengl` inside the
-*plugin*'s link block; it is `CMakeLists.txt:492-501`. `BUILD.md`'s compile-definition list cited
+*plugin*'s link block; it is `CMakeLists.txt:521-530`. `BUILD.md`'s compile-definition list cited
 `:277-284` while listing `ANAMORPH_BUILD_NUMBER` — a definition that range no longer contains, since
 scoping moved it to `:274-275`; widened to `:274-284`, deliberately as **one** anchor, because a
 citation whose anchor *count* changes lands in the "review by hand" branch no declaration can excuse.
@@ -6161,6 +6161,16 @@ only assumed. Both exclusions are recorded in the ADR rather than left to be inf
 CMake, because "the flags are not on this platform" reads as an oversight unless something says it
 is a decision.
 
+> **The MSVC half of that paragraph is SUPERSEDED — ADR-0032, Accepted 2026-08-30.** It described
+> ADR-0031's scope correctly and is kept for that, but MSVC no longer carries nothing: the Windows
+> x64 build compiles `/arch:AVX2`. The blocker was the *missing instrument*, not the flag — the
+> R-round built the Windows twin dump, it returned **0 of 32 scenarios moved** on toolset
+> 14.51.36231 across two runs, and the Class-A property is demonstrated on Windows rather than
+> assumed. "MSVC controls contraction separately" is what makes the flag safe there, not what blocks
+> it: `/fp` is left at the default non-contracting `/fp:precise`, and `/fp:contract` — which moves
+> 32 of 32 — stays off. The arm64 half stands unchanged. Every shipped x86-64 binary now carries an
+> AVX2 baseline; only Apple Silicon has no ISA floor.
+
 **Why the change is Class A, stated once so it is not re-derived.** The frozen SysV baseline has no
 FMA instruction at all, which is why the permissive `-ffp-contract=fast` default has been inert on
 this target for the project's whole life. `-march=haswell` introduces the instruction;
@@ -6237,12 +6247,21 @@ crash), `CHANGELOG` (one **Changed** and one **Fixed**), `HANDOVER`.
 
 The platform-coverage audit's R-1…R-6 were executed with the standing decisions preserved — no
 shipped flag changed, no DSP behaviour changed, no platform policy reversed. Worklog:
-`worklogs/performance/PERF_AUDIT_PLATFORM_COVERAGE.md` §"The R-round".
+`worklogs/performance/PERF_AUDIT_PLATFORM_COVERAGE.md` §"The R-round". **The R-round left the
+decisions alone; the round after it did not — ADR-0032 accepted the MSVC evidence and adopted the
+flag. Where the paragraphs below describe an R-round state that ADR-0032 changed, the supersession
+is marked in place.**
 
-**The Windows instrument now exists** (R-1): the reporting-only `windows-avx2-ab` job A/B/Cs the
+**The Windows instrument now exists** (R-1): the ~~reporting-only~~ `windows-avx2-ab` job A/B/Cs the
 twin dump against `/arch:AVX2` and `/arch:AVX2 /fp:contract`, records the MSVC toolset against the
-14.30 contraction boundary, and gates nothing — it converts ADR-0031 option 5's "could not be
-demonstrated" into data, while adoption still requires its own ADR. **The scope is now recorded**
+14.30 contraction boundary, and ~~gates nothing~~ — it converts ADR-0031 option 5's "could not be
+demonstrated" into data, while adoption still requires its own ADR. **[Superseded — ADR-0032,
+Accepted 2026-08-30: adoption got its ADR, and the job is now a BLOCKING gate — `continue-on-error`
+removed, a flag-liveness self-proof and a hard 32-scenario requirement added so it fails closed.
+The A vs B result it produced, 0/32 on toolset 14.51.36231 across two runs, is the evidence the ADR
+rests on. Note the contrast with `macos-crossslice` above, which remains reporting-only by design
+and gained job-level `continue-on-error` so that an infrastructure failure in a reporting experiment
+cannot block a release.]** **The scope is now recorded**
 (R-3): `COMPATIBILITY_MATRIX` carries Not Supported rows for Linux arm64 and Windows arm64 and a
 toolchain-validation section placing clang-cl outside ADR-0031's demonstrated set; the
 `CMakeLists.txt` scope comment agrees. **The F-1/F-2 comment defects are corrected** (R-4): the

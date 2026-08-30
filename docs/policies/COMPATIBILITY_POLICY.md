@@ -130,8 +130,8 @@ predating ADR-0031 — and the engine calls CRT transcendentals at runtime (the 
 seed; the oversampling coefficient derivation at `prepare()`). So on Windows the same binary can
 produce different bits on machines of different CPU classes, and a Windows bit-identity claim is
 scoped to **the same machine class**, not just the same architecture. This is an existing property
-of the platform, not a consequence of (or argument about) any proposed `/arch:AVX2` build flag; the
-`windows-avx2-ab` experiment controls for it by comparing builds on one machine. On Linux and macOS
+of the platform, not a consequence of (or argument about) the `/arch:AVX2` build flag ADR-0032
+adopted; the `windows-avx2-ab` gate controls for it by comparing builds on one machine. On Linux and macOS
 no equivalent runtime dispatch is in play for this code, and the plain within-architecture statement
 stands unqualified.
 

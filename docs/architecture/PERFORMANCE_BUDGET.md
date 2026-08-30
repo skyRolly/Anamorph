@@ -238,7 +238,12 @@ no benchmark/profiling data exists in the repository, and inventing numbers is p
   worklogs/performance/PERF_AUDIT_A7-9_AVX2_IMPLEMENTATION.md.
 - **The x86-64 build targets AVX2 (A7-5 / W5-D, 0.9.5, ADR-0031).** `-march=haswell
   -ffp-contract=off` on the GCC/Clang x86-64 builds — Linux x86-64 and the macOS `x86_64` slice via
-  `-Xarch_x86_64`; arm64 and MSVC carry nothing. **−17.2 % engine-wide** (1704.9 → 1412.2 Ir/sample,
+  `-Xarch_x86_64`; arm64 carries nothing, deliberately (ADR-0031 option 4). ~~MSVC carries
+  nothing~~ **— superseded: since ADR-0032 (2026-08-30) the Windows/MSVC x64 build carries
+  `/arch:AVX2` at the default non-contracting `/fp:precise`, so every shipped x86-64 binary now has
+  an AVX2 baseline. No Windows Ir figure exists; the benefit there is stated as mechanism-shared.
+  The `−17.2 %` below is the Linux GCC-13 measurement and is not a Windows number.**
+  **−17.2 % engine-wide** (1704.9 → 1412.2 Ir/sample,
   48 kHz/128, scenario `working`). **Class A**: 32/32 twin-dump scenarios identical to the baseline,
   0 mismatches across 180 configurations, and **0 FMA instructions emitted** against 707 with
   contraction left at its default — which is the whole reason it is Class A. The frozen baseline had
