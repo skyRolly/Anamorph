@@ -127,7 +127,7 @@ after. The fix is one shared `anchor_still_right()` used by both paths, so the t
 again; the duplication was the defect, not a symptom of it.
 
 **Proven not to have widened anything.** With the count mismatch AND a seeded drift on a
-*neighbouring* line of the same file (`CMakeLists.txt:367`, cited alongside `:14` in `TRADEMARKS.md`),
+*neighbouring* line of the same file (`CMakeLists.txt:398`, cited alongside `:14` in `TRADEMARKS.md`),
 the run still fails on that path — so the exemption still covers one declared line and nothing else.
 Self-test 131 → 135 cases: three behavioural cases driving `anchor_still_right` directly on synthetic
 sources (excused when the anchor did not move; a neighbouring line still compared; a MOVED anchor not
@@ -1761,7 +1761,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3124` and `.github/workflows/build.yml:3209`, this round being
+`.github/workflows/build.yml:3166` and `.github/workflows/build.yml:3251`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -1813,7 +1813,7 @@ subject, and the second is a stale COUNT rather than the placement claim.
 
 **The CI-target report was investigated and required no change.** It read the visible diff as adding
 only three `option()` declarations and asked whether `AnamorphFuzzState`, `AnamorphBench` and
-`AnamorphDspDump` resolve to anything. They do: `CMakeLists.txt:533-551`, `:560-577` and `:597-623`
+`AnamorphDspDump` resolve to anything. They do: `CMakeLists.txt:564-582`, `:560-577` and `:597-623`
 define them, the last including the target-scoped `-fsanitize=fuzzer` the workflow comment relies
 on. Verified by building rather than by reading — all three configure and compile from the same
 option and compiler flags CI passes (JUCE supplied from the already-fetched checkout rather than
@@ -2128,7 +2128,7 @@ way and deliberately left — `CODE_STYLE.md:10` and `TESTING_POLICY.md:9` cite 
 be exhaustive.
 
 **The continuation gap is left open deliberately.** Bringing these under the gate means the
-comma-list spelling (`CMakeLists.txt:426-427, 457-458, 499-500`), which the tool does accept — but
+comma-list spelling (`CMakeLists.txt:457-458, 488-489, 530-531`), which the tool does accept — but
 each continuation here carries its own annotation naming *which* line it is (`:162`
 (`-Wl,-dead_strip`, Apple), `:108` (`/OPT:REF`, MSVC)), and the comma-list form has nowhere to put
 them. Widening the recogniser to follow continuations is a change to the gate's scope rather than to
@@ -2883,7 +2883,7 @@ happened. Another sits two lines from a sibling reference in the *same* historic
 already been protected, so a `--fix` would have rewritten half a paired record and frozen the other
 half. The discriminator that survives: **is the number the subject of the sentence, or a pointer to a
 thing?** Exactly one `CMakeLists.txt` citation in this document is the latter — "*it is*
-`CMakeLists.txt:461-470`", present tense, where re-anchoring preserves truth — and it is deliberately
+`CMakeLists.txt:492-501`", present tense, where re-anchoring preserves truth — and it is deliberately
 left live so the gate still demonstrably checks real evidence here.
 
 Verified by mutation rather than by reading: a line inserted into `CMakeLists.txt` above all of them,
@@ -2908,7 +2908,7 @@ Review found two anchors the previous round missed, both below its insertion poi
 to the new gate for the same reason: they are spelled as **bare continuations**
 (`` `path/to/file:188-199` … `:292-301` ``), which the parser only recognises in the
 `path:a,b,c` form. `ADR-0001`'s "tests link the core" pointed at `juce::juce_opengl` inside the
-*plugin*'s link block; it is `CMakeLists.txt:461-470`. `BUILD.md`'s compile-definition list cited
+*plugin*'s link block; it is `CMakeLists.txt:492-501`. `BUILD.md`'s compile-definition list cited
 `:277-284` while listing `ANAMORPH_BUILD_NUMBER` — a definition that range no longer contains, since
 scoping moved it to `:274-275`; widened to `:274-284`, deliberately as **one** anchor, because a
 citation whose anchor *count* changes lands in the "review by hand" branch no declaration can excuse.
@@ -6280,3 +6280,32 @@ A == B gate, and the CMakeLists change that makes `ANAMORPH_X86_ISA_BASELINE` go
 also writes the decline path, so rejecting costs one sentence. **Nothing in it is applied**: the
 shipped Windows build still compiles at MSVC defaults, ADR-0032 is not registered, and the packet's
 own header names `ADR_POLICY` and the Architecture Review Gate as the reason it stops there.
+
+## ADR-0032: the MSVC `/arch:AVX2` adoption, applied on explicit approval
+
+The maintainer approved the prepared packet verbatim, and the whole chain landed in one change —
+documentation and flag together, per the ADR-0031 ordering rule. **ADR-0032** is registered
+Accepted (amending ADR-0031's option-5 deferral, which is cross-linked as superseded); the Windows
+build compiles **`/arch:AVX2` at the default non-contracting `/fp:precise`** with no `/fp` flag
+added and no runtime dispatch; `ANAMORPH_X86_ISA_BASELINE` now governs MSVC too (OFF drops the
+flag — the gate's baseline half uses exactly that). Floor documentation: `COMPATIBILITY_POLICY`'s
+Windows row rewritten to the same-floor state, `COMPATIBILITY_MATRIX`'s platform row / floor
+section / toolchain-validation section updated (clang-cl stays outside the validated set — it would
+now structurally *inherit* the flag, which the matrix records as one more reason it needs its own
+ADR), KI-026 widened to Windows, both user guides' Windows carve-outs removed, and a CHANGELOG
+entry that quotes no Windows performance figure because none exists.
+
+**Two CI semantics changed, in opposite directions and for stated reasons.** `windows-avx2-ab` is
+now a **blocking gate**: baseline (`ANAMORPH_X86_ISA_BASELINE=OFF`) vs the shipped configuration
+must agree on all 32 scenarios, with **"NUMERICAL:"** and **"INFRASTRUCTURE:"** failures distinctly
+labelled — both fail the job, fail-closed, because no other job verifies the property; the gate
+also self-proves the flag is live (present in B's project files, absent from A's) so 0/32 can never
+be vacuously true, and the `/fp:contract` build is informational only, its failures degrading to
+warnings. The `windows` job's toolset step asserts **≥ 14.30** (the VS2022 contraction-default
+boundary) and now **fails on an unreadable version** where it used to warn. In the opposite
+direction, `macos-crossslice` — reporting-only, gating nothing — carries **job-level
+`continue-on-error`**, closing the review finding that a checkout failure or timeout in a
+reporting experiment could block a release through `release.yml`'s aggregate result: its failures
+stay visible on the job, they just no longer propagate. The platform-coverage worklog, report page
+and adoption packet are updated to the adopted state, with the superseded audit-time statements
+marked rather than erased.

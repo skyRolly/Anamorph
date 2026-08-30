@@ -87,8 +87,8 @@ td.opt{min-width:220px;color:var(--ink)}
   <div class="note" style="margin-top:16px">
     <h3>The three registers, kept apart</h3>
     <p><strong>Current evidence:</strong> MSVC 14.51 A/B — <code>/arch:AVX2</code> alone 0/32 differ (two runs), contraction 32/32; Clang 22.1.8 measured 1007.8 Ir/sample (−19.6 % AVX2 delta); GCC-13 baseline reproduced the historical figure to 0.06 %.
-    <strong>Current adopted policy:</strong> ADR-0031 flags on GCC/Clang x86-64 only; MSVC carries no ISA flag; arm64 deliberately untouched; Linux/Win arm64 Not Supported; clang-cl outside the validated set.
-    <strong>Open maintainer decision:</strong> extend the baseline to MSVC — evidence-ready, fully prepared in <span class="mono">MSVC_AVX2_ADOPTION_PACKET.md</span>, <em>not enabled</em>.</p>
+    <strong>Current adopted policy:</strong> every shipped x86-64 binary is AVX2 — ADR-0031 on GCC/Clang (Linux + macOS x86_64 slice) and, since <strong>ADR-0032 (Accepted 2026-08-30)</strong>, <code>/arch:AVX2</code> on Windows/MSVC at the non-contracting default, guarded per push by the toolset ≥ 14.30 assertion and the blocking gate; arm64 deliberately untouched; Linux/Win arm64 Not Supported; clang-cl outside the validated set of both ADRs; <code>/fp:contract</code> enabled nowhere.
+    <strong>Remaining open decisions:</strong> A7-0's named benchmark machine; contraction (Option C / <code>/fp:contract</code>) not taken on any platform. <em>No open decision about MSVC AVX2 itself remains.</em></p>
   </div>
 </header>
 
@@ -103,10 +103,10 @@ td.opt{min-width:220px;color:var(--ink)}
     <div class="v"><div class="k">The real unevenness</div>
       <p><strong>Measurement, not presence.</strong> Every benefit figure comes from GCC-13-built
       binaries on one Linux container; the shipped Linux binary is Clang 22.</p></div>
-    <div class="v"><div class="k">Verdicts — updated by the R-round</div>
-      <p>MSVC: <strong>instrument built, evidence in — 0/32 differ at /arch:AVX2 alone</strong>;
-      adoption stays deferred. arm64: <strong>no action</strong>. Linux/Win arm64: now recorded
-      <strong>Not Supported</strong>. clang-cl: recorded excluded.</p></div>
+    <div class="v"><div class="k">Verdicts — final</div>
+      <p>MSVC: <strong>ADOPTED (ADR-0032)</strong> on the 0/32 evidence — <code>/arch:AVX2</code>
+      live, blocking-gated per push. arm64: <strong>no action</strong>. Linux/Win arm64:
+      <strong>Not Supported</strong>. clang-cl: excluded from both ADRs' validated sets.</p></div>
   </div>
 </section>
 
@@ -124,8 +124,8 @@ td.opt{min-width:220px;color:var(--ink)}
       <td><span class="chip c-yes">present</span></td><td><span class="chip c-yes">present</span></td>
       <td><span class="chip c-yes">present</span></td><td><span class="chip c-yes">present</span></td>
       <td><span class="chip c-na">not a target</span></td></tr>
-    <tr><td class="opt">A7-5 / ADR-0031 <code>-march=haswell -ffp-contract=off</code></td>
-      <td><span class="chip c-yes">present · GCC+Clang</span></td><td><span class="chip c-dec">decided out · opt. 5</span></td>
+    <tr><td class="opt">ISA baseline — ADR-0031 (<code>-march=haswell -ffp-contract=off</code>) / ADR-0032 (<code>/arch:AVX2</code>)</td>
+      <td><span class="chip c-yes">present · GCC+Clang</span></td><td><span class="chip c-yes">present since ADR-0032 · blocking-gated</span> <s class="mono" style="font-size:11px">opt. 5</s></td>
       <td><span class="chip c-yes">present · -Xarch_x86_64</span></td><td><span class="chip c-dec">decided out · opt. 4</span></td>
       <td><span class="chip c-na">not a target</span></td></tr>
     <tr><td class="opt">Waves 1–5 DSP (H1 H3 H4 H5/ALG-4 H6 H8 H9 H10 H11 H12 H15 · LR4 sharing · parked family · NaN detector · <code>sameParameters</code> · W5-C …)</td>
@@ -138,7 +138,7 @@ td.opt{min-width:220px;color:var(--ink)}
       <td><span class="chip c-na">not a target</span></td></tr>
     <tr><td class="opt">Implicit FMA contraction (compiler-emergent, not applied by the repo)</td>
       <td><span class="chip c-dec">pinned off — that is the Class-A mechanism</span></td>
-      <td><span class="chip c-dec">off by VS2022 default (a default, not a pin)</span></td>
+      <td><span class="chip c-dec">off by VS2022 default — now asserted per push (toolset ≥ 14.30 gate + blocking A/B, ADR-0032)</span></td>
       <td><span class="chip c-dec">pinned off</span></td>
       <td><span class="chip c-good">live, free — base-ISA FMLA</span></td>
       <td><span class="chip c-na">—</span></td></tr>
@@ -169,7 +169,7 @@ td.opt{min-width:220px;color:var(--ink)}
     <tr><td class="opt">Linux x86-64 · Clang 22 (the shipped artifact)</td><td>all</td>
       <td><span class="chip c-good">measured (R-6)</span> — 1007.8 Ir/sample shipped, 1253.4 baseline, −19.6 %</td>
       <td>suites · ASan/UBSan · RTSan · fuzz · valgrind · pluginval ×3×2 on the stripped bytes · ABI floor</td></tr>
-    <tr><td class="opt">Windows x86-64 · MSVC (toolset recorded per run, 14.x gated)</td><td>all except ADR-0031</td>
+    <tr><td class="opt">Windows x86-64 · MSVC (toolset recorded per run; ≥ 14.30 asserted since ADR-0032)</td><td>all — incl. the ISA baseline via ADR-0032</td>
       <td><span class="chip c-bad">no Ir figure</span> (still true — no instruction-count instrument); numerics <span class="chip c-good">measured (R-1)</span></td>
       <td>both suites + pluginval ×3×2; <s>no bit-exactness instrument</s> <span class="chip c-good">windows-avx2-ab live — A vs B 0/32</span></td></tr>
     <tr><td class="opt">macOS x86_64 · AppleClang (universal slice + native-Intel thin)</td><td>all incl. ADR-0031</td>
@@ -187,7 +187,7 @@ td.opt{min-width:220px;color:var(--ink)}
   <h2><span class="no">3</span>Every gap, classified</h2>
   <div class="tblwrap"><table>
     <tr><th>Gap</th><th>Class</th><th>Record / ground</th></tr>
-    <tr><td>ADR-0031 flags absent on MSVC</td><td><span class="chip c-dec">intentional</span></td><td>ADR-0031 option 5; CMake comment; COMPATIBILITY_MATRIX Windows row</td></tr>
+    <tr><td>ADR-0031 flags absent on MSVC</td><td><span class="chip c-good">superseded — ADR-0032</span></td><td>was intentional (option 5) until its evidence requirement was met; Windows now carries <code>/arch:AVX2</code> under its own ADR</td></tr>
     <tr><td>ADR-0031 flags absent on arm64</td><td><span class="chip c-dec">intentional</span></td><td>ADR-0031 option 4; policy: the cross-slice difference "is accepted and is not to be removed"</td></tr>
     <tr><td><code>ANAMORPH_X86_ISA_BASELINE</code> inert on MSVC; clang-cl takes the MSVC branch</td><td><span class="chip c-na">structural</span></td><td>falls out of <code>if(MSVC)</code>; no recorded decision</td></tr>
     <tr><td>No benefit figures off the one Linux container</td><td><span class="chip c-yes">known + recorded</span></td><td>A7-0 / RISK-002; wall-clock repudiated</td></tr>
@@ -276,7 +276,7 @@ td.opt{min-width:220px;color:var(--ink)}
   <h2><span class="no">6</span>Recommendations</h2>
   <div class="tblwrap"><table>
     <tr><th>#</th><th>Recommendation</th><th>Class</th><th>When</th></tr>
-    <tr><td class="mono">R-1</td><td><strong>MSVC: defer the flag; add a reporting-only Windows twin-dump A/B step first.</strong> Adoption needs its own ADR, the Windows ISA floor documented <em>before</em> the flag, a toolset ≥ 14.30 assertion, and the A/B promoted to a permanent blocking step — the toolset floats, so the Class-A properties can drift with the image</td><td><span class="chip c-good">instrument executed (§7)</span>; adoption packet prepared</td><td><strong>flag: maintainer decision</strong></td></tr>
+    <tr><td class="mono">R-1</td><td><strong>MSVC: defer the flag; add a reporting-only Windows twin-dump A/B step first.</strong> Adoption needs its own ADR, the Windows ISA floor documented <em>before</em> the flag, a toolset ≥ 14.30 assertion, and the A/B promoted to a permanent blocking step — the toolset floats, so the Class-A properties can drift with the image</td><td><span class="chip c-good">fully executed — ADR-0032 Accepted, flag live, gate blocking</span></td><td>—</td></tr>
     <tr><td class="mono">R-2</td><td><strong>arm64: no action</strong> — contraction live, width win architecturally absent, the equalizing flag affirmatively rejected</td><td><span class="chip c-good">confirmed (§7)</span></td><td>—</td></tr>
     <tr><td class="mono">R-3</td><td>Record Linux/Windows arm64 as <strong>Not Supported</strong> in the matrix if the omission should become a decision; <strong>clang-cl: exclude</strong> (a third flag branch if ever adopted, with its own ADR)</td><td><span class="chip c-good">executed (§7)</span></td><td>—</td></tr>
     <tr><td class="mono">R-4</td><td>Correct the <strong>A7-9 comment inaccuracies</strong> (F-1, F-2): one architecture note per DSP file; rewrite Test 41's no-FTZ sentence to the measured subnormal-stall mechanism</td><td><span class="chip c-good">executed (§7)</span></td><td>—</td></tr>
@@ -306,14 +306,13 @@ td.opt{min-width:220px;color:var(--ink)}
       <p style="margin:10px 0 0;font-size:13px;color:var(--ink-soft)">The exact shape of the
       GCC/Clang result: the ISA extension is bit-preserving, contraction is the bit-moving half.
       The vectorizer question is answered empirically — no reassociation under
-      <code>/fp:precise</code> on this toolset, for this instrument's coverage. <strong>Evidence
-      READY FOR ADR; adoption DEFERRED</strong> behind the five R-1 requirements (own ADR ·
-      Windows ISA floor documented first · toolset ≥ 14.30 asserted · A/B promoted to a blocking
-      gate · benefit stated as mechanism-shared, since no Windows Ir instrument exists). First-run
-      parser artifact (a 33rd phantom "scenario" from the dump's self-check line) found and fixed —
-      the corrected parser's own run replicated the verdict. <strong>Every adoption change is
-      drafted file-by-file in <span class="mono">MSVC_AVX2_ADOPTION_PACKET.md</span>, including the
-      verbatim draft ADR-0032; nothing is applied.</strong></p>
+      <code>/fp:precise</code> on this toolset, for this instrument's coverage.
+      <strong>ADOPTED — ADR-0032 Accepted 2026-08-30</strong>, with all five R-1 requirements
+      landed: the ADR, the Windows ISA floor documented in the same change, the toolset ≥ 14.30
+      assertion (unreadable versions now fail), the A/B promoted to a blocking gate with numerical
+      vs infrastructure failures distinctly labelled, and the benefit stated as mechanism-shared
+      (no Windows Ir instrument exists). First-run parser artifact found and fixed; the corrected
+      parser replicated the verdict.</p>
     </div>
     <div class="panel">
       <h3>Clang 22 measured — the gap is closed</h3>

@@ -56,11 +56,11 @@ Evidence [Verified]: scripts/build.sh:14-15.
 
 | Option | Default | Effect |
 |---|---|---|
-| `ANAMORPH_BUILD_TESTS` | ON | Build the `AnamorphTests` + `AnamorphStateTests` console apps (CMakeLists.txt:27, 452) |
-| `ANAMORPH_BUILD_STANDALONE` | ON | Add the Standalone target (CMakeLists.txt:28, 357-359) |
-| `ANAMORPH_JUCE_PATH` | "" | Use a local JUCE checkout instead of fetching (CMakeLists.txt:61, 72-74) |
-| `ANAMORPH_JUCE_TAG` | `e18f7f5…` (= tag 9.0.1) | JUCE git rev to fetch when no local path; `ANAMORPH_JUCE_VERSION` carries the readable version (CMakeLists.txt:65-67) |
-| `ANAMORPH_BUILD_NUMBER` | 0 | CI build/dev number shown in the About box (CMakeLists.txt:399) |
+| `ANAMORPH_BUILD_TESTS` | ON | Build the `AnamorphTests` + `AnamorphStateTests` console apps (CMakeLists.txt:27, 483) |
+| `ANAMORPH_BUILD_STANDALONE` | ON | Add the Standalone target (CMakeLists.txt:28, 388-390) |
+| `ANAMORPH_JUCE_PATH` | "" | Use a local JUCE checkout instead of fetching (CMakeLists.txt:66, 77-79) |
+| `ANAMORPH_JUCE_TAG` | `e18f7f5…` (= tag 9.0.1) | JUCE git rev to fetch when no local path; `ANAMORPH_JUCE_VERSION` carries the readable version (CMakeLists.txt:70-72) |
+| `ANAMORPH_BUILD_NUMBER` | 0 | CI build/dev number shown in the About box (CMakeLists.txt:430) |
 
 Offline build (no network) with a local JUCE:
 ```bash
@@ -70,7 +70,7 @@ cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DANAMORPH_JUCE_PATH=/path/to
 ## Formats produced
 
 `VST3` everywhere; `+ AU` additionally on macOS; `+ Standalone` when `ANAMORPH_BUILD_STANDALONE`
-is ON. Evidence [Verified]: CMakeLists.txt:353-359.
+is ON. Evidence [Verified]: CMakeLists.txt:384-390.
 
 ## Artifact paths
 
@@ -89,13 +89,18 @@ Evidence [Verified]: scripts/build.sh:19-54; .github/workflows/build.yml (build/
 out of the box. Stripping (with debug-info retention as separate `Anamorph-<OS>-debug`
 artifacts) happens only in CI packaging; see `docs/procedures/CI_CD.md` / `PACKAGING.md`.
 
-## The x86-64 instruction-set baseline (ADR-0031)
+## The x86-64 instruction-set baseline (ADR-0031, ADR-0032)
 
-`AnamorphHardening` adds, **for GCC/Clang x86-64 targets only**:
+`AnamorphHardening` adds, for GCC/Clang x86-64 targets:
 
 ```
 -march=haswell -ffp-contract=off
 ```
+
+and, since ADR-0032, for MSVC: **`/arch:AVX2`** at the default (non-contracting) `/fp:precise` —
+deliberately with no `/fp` flag; the VS2022+ non-contracting default is the decision, and it is
+asserted per push by the `windows` job's toolset ≥ 14.30 gate and the blocking `windows-avx2-ab`
+A/B rather than trusted.
 
 so a local Release build on an x86-64 Linux or Intel Mac needs an **Intel Haswell (2013) / AMD
 Excavator (2015)** CPU or newer — the same floor the shipped binaries carry. A configure on such a
@@ -107,7 +112,8 @@ Three things about this are easy to get wrong when editing `CMakeLists.txt`:
   instruction the frozen baseline did not have; `-ffp-contract=off` forbids its use, which is the
   only reason the change is bit-exact. Dropping the second flag moves 88.9 % of output samples and
   costs the GCC/Clang cross-check.
-- **arm64 and MSVC get nothing**, deliberately (ADR-0031 options 4 and 5). On Apple the flags are
+- **arm64 gets nothing**, deliberately (ADR-0031 option 4); MSVC's flag is ADR-0032's, not a
+  variant of the GCC/Clang pair. On Apple the flags are
   passed as `-Xarch_x86_64` so a universal build reaches only the `x86_64` slice; an unqualified
   `-march=haswell` is handed to the arm64 driver invocation as well and fails the build.
 - **They are compile options, not link options.** Under LTO the codegen happens at link time, but
@@ -119,8 +125,10 @@ rule-2 twin dump needs, since a Class-A claim has to be checked both ways — co
 **`-DANAMORPH_X86_ISA_BASELINE=OFF`**, which emits a `WARNING` naming what was given up.
 `-DCMAKE_CXX_FLAGS="-march=x86-64"` does **not** work: the flags live on the `AnamorphHardening`
 target, and CMake places target compile options *after* `CMAKE_CXX_FLAGS` on the command line, so
-the target's `-march=haswell` is the later one and wins. A build with the option OFF is ~17 % slower
-and is not the shipped configuration; nothing in CI turns it off.
+the target's `-march=haswell` is the later one and wins. Since ADR-0032 the option governs MSVC
+too (`OFF` drops `/arch:AVX2`), which is exactly how the `windows-avx2-ab` blocking gate builds its
+baseline side. A build with the option OFF is measurably slower and is not the shipped
+configuration; nothing in CI turns it off outside that gate's baseline half.
 
 Evidence [Verified]: CMakeLists.txt (the `AnamorphHardening` x86-64 baseline block);
 `docs/policies/COMPATIBILITY_POLICY.md` ("Runtime compatibility: the x86-64 ISA floor").
@@ -140,4 +148,4 @@ Evidence [Verified]: scripts/setup-linux.sh:8-12.
 `JUCE_STRICT_REFCOUNTEDPOINTER=1`. `ANAMORPH_BUILD_NUMBER` is the one of these attached to the
 single translation unit that reads it rather than to the targets — its value changes every CI run,
 and a target-wide definition put that changing value on the command line of every TU.
-Evidence [Verified]: CMakeLists.txt:421-431.
+Evidence [Verified]: CMakeLists.txt:452-462.

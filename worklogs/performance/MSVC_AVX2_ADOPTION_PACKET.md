@@ -1,10 +1,11 @@
 # MSVC `/arch:AVX2` adoption packet — prepared changes, awaiting the maintainer's decision
 
-**Date:** 2026-08-30 · **Status: PREPARED, NOT APPLIED.** Nothing in this document is enabled.
-The shipped Windows build still compiles at the MSVC defaults (SSE2 baseline, `/fp:precise`), the
-`windows-avx2-ab` job is still reporting-only, and ADR-0031 option 5 still governs. This packet
-exists so that, if the maintainer approves extending the x86-64 ISA baseline to Windows, landing
-it is an act of review rather than of reconstruction — and so that rejecting it costs one sentence.
+**Date:** 2026-08-30 · **Status: APPROVED AND APPLIED (same day).** The maintainer explicitly
+approved the adoption ("APPROVE MSVC AVX2 ADOPTION. Apply the packet as prepared."), and every
+section below is now in the tree: ADR-0032 is registered **Accepted**, the Windows build compiles
+`/arch:AVX2`, the toolset ≥ 14.30 assertion and the blocking `windows-avx2-ab` gate are live, and
+the floor documentation landed in the same change. This document remains as the preparation record;
+where the applied form differs from a drafted detail, the tree and ADR-0032 are authoritative.
 
 **Why it stops here.** `ADR_POLICY.md` makes an ADR mandatory for a Build architecture change, and
 `ARCHITECTURE_REVIEW_GATE.md` puts Build System changes behind human review. Registering ADR-0032

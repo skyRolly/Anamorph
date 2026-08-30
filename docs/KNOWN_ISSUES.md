@@ -119,7 +119,7 @@ JUCE 8.0.14; before that 0.8.8 for PR #54).
 | KI-021 | **Linux**: a per-user install (the 0.9.3 default) does not remove an existing **system-wide** one, so both are on the DAW's scan path and its scan order decides which version loads — an update can look as if it did not apply | Low | Confirmed, **deliberate**: removing the system copy needs the elevation the per-user mode exists to avoid. The installer now **warns** when it finds one; removal is one `sudo ./uninstall.sh` |
 | KI-022 | **macOS**: components are non-relocatable since 0.9.3 (INC-012), so a bundle the user deliberately moved — to `~/Applications`, or a plug-in kept under `~/Library/Audio/Plug-Ins/…` — is left where it is and a fresh copy is installed at the standard location, leaving two copies with the same bundle identifier | Low | Confirmed, **deliberate trade** for INC-012: following a moved copy is exactly the behaviour that let an install silently write nowhere useful. Documented in the installer's `INSTALL.txt`; removal is manual |
 | KI-023 | **Linux**: the shipped binaries record the CI image's glibc/libstdc++ floor (measured GLIBC_2.38 / GLIBCXX_3.4.31), so they do not load at all on older distributions — Ubuntu 22.04 LTS included | Medium | Confirmed, **measured**; the floor was never chosen and is now asserted on every push so it cannot rise unnoticed. Lowering it is a release-topology decision, not taken |
-| KI-026 | **Pre-2013 Intel / pre-2015 AMD CPUs**: from 0.9.5 the Linux binaries and the macOS `x86_64` slice are compiled `-march=haswell`, so on an older CPU the plug-in raises `SIGILL` **inside the host** — the DAW reports a crash, not an incompatible plug-in | Medium | Confirmed, **deliberate** (ADR-0031, −17.2 % engine cost, output bit-identical). Windows and Apple Silicon are unaffected. No in-product diagnosis is possible; the requirement is documented in the user guides |
+| KI-026 | **Pre-2013 Intel / pre-2015 AMD CPUs**: every shipped x86-64 binary is compiled for AVX2 — Linux and the macOS `x86_64` slice at `-march=haswell` (ADR-0031, 0.9.5), Windows at `/arch:AVX2` (ADR-0032) — so on an older CPU the plug-in raises an illegal-instruction fault **inside the host** (`SIGILL`; `STATUS_ILLEGAL_INSTRUCTION` on Windows). The DAW reports a crash, not an incompatible plug-in | Medium | Confirmed, **deliberate** (ADR-0031/0032; output bit-identical, verified per push on Windows by the blocking A/B gate). Only Apple Silicon is unaffected. No in-product diagnosis is possible; the requirement is documented in the user guides |
 
 ---
 
@@ -147,7 +147,7 @@ consequences, both still open:
   *System Settings → Privacy & Security → Open Anyway*.
 
 Notarization (RH-PR-3) closes both.
-- **Evidence [Verified]:** .github/workflows/build.yml:1945-1947 (`codesign --force --deep --sign -`,
+- **Evidence [Verified]:** .github/workflows/build.yml:1960-1962 (`codesign --force --deep --sign -`,
   no notarization); packaging/macos/INSTALL.txt:4-10 (ad-hoc, not notarized), :34-41 (the
   Gatekeeper approval for the .pkg), :61-65 (the zip-route `xattr` step).
   See `docs/procedures/PACKAGING.md`.
@@ -498,7 +498,7 @@ only one granted).
   whatever UID the built VST3 carries. That is precisely why the change is recorded here and in
   ADR-0023 rather than left to surface itself.
 - **Evidence [Verified (code) / Verified — manual (new identity) / Unverified (old-session
-  effect)]:** CMakeLists.txt:364 (`PLUGIN_MANUFACTURER_CODE RTec`); ADR-0023 (`Accepted`
+  effect)]:** CMakeLists.txt:395 (`PLUGIN_MANUFACTURER_CODE RTec`); ADR-0023 (`Accepted`
   2026-07-30); CHANGELOG `[0.9.1]`. The **new** identity registering correctly was confirmed by the
   maintainer's Level-5 check on 2026-07-30 (host registration + `auval -v aufx Anmr RTec`) — a
   human sign-off, not headlessly reproducible. The **old-session** effect described above is
@@ -762,9 +762,10 @@ does not load there.**
 
 ## KI-026 — the x86-64 builds do not run on pre-Haswell Intel / pre-Excavator AMD CPUs
 
-From 0.9.5 the **Linux** binaries and the **`x86_64` slice of the macOS universal build** are
-compiled `-march=haswell` (ADR-0031), so the compiler may emit AVX2, FMA, BMI1/BMI2, F16C, LZCNT and
-MOVBE anywhere in the image. On an Intel CPU older than **Haswell (2013)** or an AMD CPU older than
+Every shipped x86-64 binary is compiled for AVX2: from 0.9.5 the **Linux** binaries and the
+**`x86_64` slice of the macOS universal build** at `-march=haswell` (ADR-0031), and the **Windows**
+build at `/arch:AVX2` (ADR-0032). Either way the compiler may emit AVX2, FMA, BMI1/BMI2, F16C,
+LZCNT and MOVBE anywhere in the image. On an Intel CPU older than **Haswell (2013)** or an AMD CPU older than
 **Excavator (2015)**, the first such instruction raises `SIGILL` — an illegal-instruction fault
 **inside the host process**. The DAW reports a crash, or simply disappears; it does not report an
 incompatible plug-in.
@@ -782,13 +783,17 @@ a single output bit.
   10.13–10.15 (the deployment target is 10.13, and High Sierra reaches Macs back to 2009); every Mac
   that can run a newer macOS already exceeds the floor. On **Linux**, the declared glibc/libstdc++
   floor (KI-023) already implies a distribution far newer than 2013, so the binding constraint is the
-  hardware rather than the distribution. **Windows and Apple Silicon carry no such requirement** —
-  the MSVC build has no `/arch:` flag and is outside ADR-0031's scope.
+  hardware rather than the distribution. On **Windows**, any x64 machine with a pre-2013 Intel /
+  pre-2015 AMD CPU — Windows 10/11 install on such hardware, so the floor binds on hardware there
+  too, surfacing as `STATUS_ILLEGAL_INSTRUCTION` (0xC000001D) at plug-in load. **Only Apple Silicon
+  carries no such requirement.**
 - **Recovery for someone affected:** none in-product. The requirement is stated in
   `docs/user/INSTALLATION.md` and `docs/user/USER_MANUAL.md` §2 ("What you need") so it is visible
   before install.
-- **Evidence [Verified]:** CMakeLists.txt (the `AnamorphHardening` x86-64 baseline block);
-  `docs/policies/COMPATIBILITY_POLICY.md` §"Runtime compatibility: the x86-64 ISA floor";
-  `docs/architecture/design-decisions/ADR-0031-x86-64-isa-baseline.md`.
+- **Evidence [Verified]:** CMakeLists.txt (the `AnamorphHardening` x86-64 baseline block, both
+  branches); `docs/policies/COMPATIBILITY_POLICY.md` §"Runtime compatibility: the x86-64 ISA floor";
+  `docs/architecture/design-decisions/ADR-0031-x86-64-isa-baseline.md`;
+  `docs/architecture/design-decisions/ADR-0032-msvc-avx2-baseline.md` (the Windows half, with the
+  per-push blocking A/B gate).
 
 

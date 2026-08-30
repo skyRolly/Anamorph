@@ -38,19 +38,24 @@ option(ANAMORPH_BUILD_BENCH "Build AnamorphBench, the PERFORMANCE_BUDGET.md meas
 # supported way to build it; locally it needs a Clang toolchain and the caller
 # supplies `-fsanitize=fuzzer` through the usual flag variables.
 option(ANAMORPH_BUILD_FUZZ "Build AnamorphFuzzState, the setStateInformation fuzz target (OFF by default; needs Clang/libFuzzer)" OFF)
-# ADR-0031's x86-64 ISA baseline, ON by default: the shipped configuration.
+# The x86-64 ISA baseline (ADR-0031 for GCC/Clang, ADR-0032 for MSVC), ON by
+# default: the shipped configuration on every x86-64 toolchain.
 #
 # IT EXISTS TO BE TURNED OFF FOR A COMPARISON, not as a supported way to ship.
-# ADR-0031 is Class A, and a Class-A claim is only worth what re-verifying it
+# Both ADRs are Class A, and a Class-A claim is only worth what re-verifying it
 # costs -- the twin dump has to be built BOTH ways, and the flags live on a
 # target, so a `-march` in CMAKE_CXX_FLAGS is placed BEFORE them on the command
 # line and loses. Without this switch, reproducing the frozen baseline means
 # editing this file, which is exactly how a verification stops being run.
-# The DEPENDENCY_POLICY rule-2 workflow needs it at every JUCE bump.
+# The DEPENDENCY_POLICY rule-2 workflow needs it at every JUCE bump, and the
+# `windows-avx2-ab` BLOCKING gate builds its baseline side with it on every
+# push -- OFF is no longer inert on MSVC (it was, before ADR-0032).
 #
-# A build with this OFF runs on pre-Haswell x86-64 and is ~17 % slower; it is
-# NOT the shipped configuration and nothing in CI turns it off.
-option(ANAMORPH_X86_ISA_BASELINE "x86-64: compile -march=haswell -ffp-contract=off (ADR-0031; ON = the shipped configuration)" ON)
+# A build with this OFF runs on pre-Haswell x86-64 and is measurably slower
+# (~17 % engine Ir on GCC/Clang; mechanism-shared on MSVC, unmeasured); it is
+# NOT the shipped configuration and nothing in CI turns it off outside that
+# gate's baseline half.
+option(ANAMORPH_X86_ISA_BASELINE "x86-64: compile -march=haswell -ffp-contract=off (GCC/Clang, ADR-0031) / /arch:AVX2 (MSVC, ADR-0032); ON = the shipped configuration" ON)
 # The DEPENDENCY_POLICY rule-2 instrument: build it against two JUCE checkouts
 # and diff the two outputs. OFF by default -- it is used at a dependency bump,
 # not on every build.
@@ -122,6 +127,33 @@ if(MSVC)
     target_link_options(AnamorphHardening INTERFACE
         /guard:cf /DYNAMICBASE /NXCOMPAT
         $<$<CONFIG:Release>:/DEBUG /OPT:REF /OPT:ICF>)
+
+    # ------------------------------------------------------------------------
+    #  x86-64 ISA baseline, the Windows half (ADR-0032). /arch:AVX2 at the
+    #  DEFAULT /fp:precise -- deliberately NO /fp flag: VS2022+ (toolset 14.30+)
+    #  documents /fp:precise as non-contracting by default, which is what makes
+    #  this Class A. Measured on toolset 14.51.36231, two runs: 0/32 twin-dump
+    #  scenarios moved by this flag alone; 32/32 moved by /fp:contract, which
+    #  is why /fp:contract is NOT enabled and enabling it is a new ADR.
+    #
+    #  A default is not a pin, so the claim is ASSERTED rather than trusted:
+    #  the `windows` job fails below toolset 14.30 (and on an unreadable
+    #  version), and the `windows-avx2-ab` gate blocks on baseline == this
+    #  configuration, every push. The same ISA floor as the GCC/Clang side
+    #  (Haswell/Excavator; STATUS_ILLEGAL_INSTRUCTION inside the host below
+    #  it) -- COMPATIBILITY_POLICY "Runtime compatibility" is the authority.
+    #
+    #  clang-cl would inherit this flag through if(MSVC) without any twin dump
+    #  ever having run on it -- one more reason it stays outside the validated
+    #  set (COMPATIBILITY_MATRIX, toolchain section).
+    # ------------------------------------------------------------------------
+    if(ANAMORPH_X86_ISA_BASELINE)
+        target_compile_options(AnamorphHardening INTERFACE /arch:AVX2)
+    else()
+        message(WARNING
+            "Anamorph: ANAMORPH_X86_ISA_BASELINE=OFF -- building WITHOUT the ADR-0032 /arch:AVX2 "
+            "baseline. Comparison builds only; NOT the shipped configuration.")
+    endif()
 else()
     # -g (Release): adds debug sections only — GCC/Clang codegen is unchanged;
     #   CI extracts them (objcopy --only-keep-debug / dsymutil) and strips the
@@ -164,19 +196,18 @@ else()
     #      would be a Class-B change to shipped arm64 numerics for no
     #      user-visible gain (it would close one half of the arm64/x86-64
     #      difference and not the other -- ADR-0031 option 4).
-    #    * MSVC -- nothing is added; this branch is the non-MSVC one anyway.
-    #      /arch:AVX2 is NOT the equivalent pair (MSVC controls contraction
-    #      separately -- ADR-0031 option 5). The evidence a Windows decision
-    #      needs comes from the reporting-only `windows-avx2-ab` CI job, which
-    #      A/Bs the twin dump against /arch:AVX2; adopting the flag still takes
-    #      its own ADR, never an edit here alone.
+    #    * MSVC -- handled in the if(MSVC) branch above, under ADR-0032:
+    #      /arch:AVX2 at the default non-contracting /fp:precise, guarded by
+    #      the same ANAMORPH_X86_ISA_BASELINE option and asserted per push by
+    #      the windows job's toolset gate and the blocking windows-avx2-ab
+    #      A/B. The -march/-ffp-contract pair below remains GCC/Clang-only.
     #    * clang-cl -- would take the if(MSVC) branch (CMake sets MSVC=1 for
-    #      it) and so gets no ISA flags either. That is a STRUCTURAL outcome,
-    #      not a validated decision: clang-cl is used by no build, and if one
-    #      ever appears it is a THIRD case (MSVC branch, GCC-style flags via
-    #      /clang:) needing its own investigation and ADR -- see
-    #      COMPATIBILITY_MATRIX "Toolchains the ISA baseline is (and is not)
-    #      validated for".
+    #      it) and so now structurally INHERITS /arch:AVX2 despite no twin dump
+    #      ever having run on it. That is a STRUCTURAL outcome, not a validated
+    #      decision: clang-cl is used by no build, and if one ever appears it
+    #      is a THIRD case (MSVC branch, GCC-style flags via /clang:) needing
+    #      its own investigation and ADR -- see COMPATIBILITY_MATRIX
+    #      "Toolchains the ISA baseline is (and is not) validated for".
     #
     #  -Xarch_x86_64 ON APPLE, ALWAYS -- including a thin x86_64 build, so the
     #  two cases stay one code path. A universal build runs the driver once per

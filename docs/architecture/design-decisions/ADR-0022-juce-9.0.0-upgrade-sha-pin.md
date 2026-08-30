@@ -27,7 +27,7 @@ serialization; keep the diff minimal; and make the pin immutable/reproducible.
 - `ANAMORPH_JUCE_TAG` → **`f8f8864172464b9adf9eba6101e1f784838d1597`** (the commit of upstream
   tag `9.0.0`, verified via `git ls-remote` + checkout log "JUCE version 9.0.0"); the new
   `ANAMORPH_JUCE_VERSION="9.0.0"` cache variable carries the human-readable version and both are
-  printed by the configure banner (`CMakeLists.txt:65-67, 76-84`). GitHub serves shallow
+  printed by the configure banner (`CMakeLists.txt:70-72, 81-89`). GitHub serves shallow
   fetch-by-SHA (verified), so `GIT_SHALLOW` is retained.
 - `scripts/setup-linux.sh` adds **`libegl-dev`**: JUCE 9 creates Linux GL contexts via **EGL
   instead of GLX** (module metadata `linuxPackages: egl gl`), so EGL is a Linux build dependency
@@ -67,10 +67,10 @@ serialization; keep the diff minimal; and make the pin immutable/reproducible.
   auditioning the later build covers this pin's editor surface as well as its successor's.
 
 ## Related code
-- `CMakeLists.txt:65-67` (pin), `:76-84` (FetchContent); `scripts/setup-linux.sh` (EGL).
+- `CMakeLists.txt:70-72` (pin), `:76-84` (FetchContent); `scripts/setup-linux.sh` (EGL).
 
 Evidence:
-- Source [Verified]: CMakeLists.txt:65-67 (SHA pin; `ANAMORPH_JUCE_VERSION`).
+- Source [Verified]: CMakeLists.txt:70-72 (SHA pin; `ANAMORPH_JUCE_VERSION`).
 - Upstream [Verified]: `git ls-remote` tag `9.0.0` → `f8f8864…`; JUCE `BREAKING_CHANGES.md`
   ("Version 9.0.0" section) and `CHANGE_LIST.md` reviewed at that commit.
 - Twin dump [Verified]: `worklogs/JUCE9_MIGRATION_v0.8.13.md` §3 (32/32 hashes + latencies

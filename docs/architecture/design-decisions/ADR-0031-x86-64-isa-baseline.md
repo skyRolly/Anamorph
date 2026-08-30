@@ -2,6 +2,10 @@
 
 **Status:** Accepted (Build System change — maintainer approval 2026-08-22, selecting Option B of
 `worklogs/performance/A7_DECISION_PACKET.md` Decision 1 and position 1 of its Decision 3).
+**Option 5's MSVC deferral is superseded by [ADR-0032](ADR-0032-msvc-avx2-baseline.md)**
+(2026-08-30): the instrument option 5 said was missing was built, measured 0/32 scenarios moved by
+`/arch:AVX2` alone on toolset 14.51.36231, and the Windows build now carries the flag under its own
+ADR. Everything else in this ADR stands, including option 4's arm64 exclusion.
 
 **Amends ADR-0021.** ADR-0021 recorded, under "Untouched by decision", that numerics-affecting
 compiler flags are frozen. That clause is amended here — narrowly, and for the x86-64 GCC/Clang

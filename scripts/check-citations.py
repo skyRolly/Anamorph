@@ -376,9 +376,12 @@ DELIBERATE_REAIMS = {
     # the re-aim be undone. Both entries name the CORRECTED spelling; both
     # documents' anchors verify against origin/main. Retire on merge, per the
     # table's standing rule.
-    ("docs/DOCUMENTATION_COVERAGE.md", ".github/workflows/build.yml:3124"):
+    # Re-derived 2026-08-30 (the ADR-0032 gate rewrite moved build.yml again):
+    # :3124 -> :3166, :3209 -> :3251, updated together with the document per
+    # the "fix BOTH" rule verify_reaim_targets enforces.
+    ("docs/DOCUMENTATION_COVERAGE.md", ".github/workflows/build.yml:3166"):
         "TESTING_POLICY rule 4",
-    ("docs/DOCUMENTATION_COVERAGE.md", ".github/workflows/build.yml:3209"):
+    ("docs/DOCUMENTATION_COVERAGE.md", ".github/workflows/build.yml:3251"):
         "the four lints'",
 }
 

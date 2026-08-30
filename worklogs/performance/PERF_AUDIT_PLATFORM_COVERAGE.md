@@ -26,8 +26,8 @@ shipped flags; 24/32 with contraction off, the 8 oversampling-×1 scenarios agre
 > | register | contents |
 > |---|---|
 > | **Current evidence** | `windows-avx2-ab` on MSVC 14.51.36231: A vs B (`/arch:AVX2` alone) **0/32 differ**, B vs C (`/fp:contract`) **32/32 differ** — replicated on a second run with the corrected parser. Clang 22.1.8 measured: 1007.8 Ir/sample shipped / 1253.4 baseline (−19.6 %); GCC 13.3: 1392.1 / 1705.9 (−18.4 %), the frozen-baseline figure reproducing the historical 1704.9 to 0.06 %. A7-5E unchanged at the ADR-0031 flags. |
-> | **Current adopted policy** | ADR-0031 flags on GCC/Clang x86-64 only (Linux + macOS `x86_64` slice); **MSVC carries no ISA flag** (option 5 stands); arm64 deliberately untouched (option 4); Linux/Windows arm64 **Not Supported**; clang-cl outside the validated set; cross-architecture bit identity not a goal. |
-> | **Open maintainer decisions** | Whether to extend ADR-0031 to MSVC (`/arch:AVX2`) — evidence-ready, prepared in `worklogs/performance/MSVC_AVX2_ADOPTION_PACKET.md`, **not enabled**. A7-0's named benchmark machine. Option C remains not taken. |
+> | **Current adopted policy** | **Every shipped x86-64 binary is AVX2**: ADR-0031 flags on GCC/Clang (Linux + macOS `x86_64` slice) and, **since ADR-0032 (approved 2026-08-30), `/arch:AVX2` on Windows/MSVC** at the default non-contracting `/fp:precise`, guarded per push by the toolset ≥ 14.30 assertion and the blocking `windows-avx2-ab` gate. arm64 deliberately untouched (option 4); Linux/Windows arm64 **Not Supported**; clang-cl outside the validated set of both ADRs; `/fp:contract` not enabled; no runtime dispatch; cross-architecture bit identity not a goal. |
+> | **Open maintainer decisions** | ~~Whether to extend ADR-0031 to MSVC~~ **[Decided — ADR-0032 Accepted 2026-08-30; the packet is applied]**. Remaining: A7-0's named benchmark machine; Option C (contraction) not taken on any platform. **No open decision about MSVC AVX2 itself remains.** |
 
 ## 1. The headline, first
 
@@ -63,7 +63,7 @@ target (no builds exist) · n/a not applicable.
 |---|---|---|---|---|---|
 | **A7-2B** ring gather (+ A7-2T Test 40, A7-1 superseded) | ✅ | ✅ | ✅ | ✅ | ▢ |
 | **A7-9** fixpoint gates (Velvet/Haas/Chorus) | ✅ | ✅ | ✅ | ✅ | ▢ |
-| **A7-5 / ADR-0031** `-march=haswell -ffp-contract=off` | ✅ GCC+Clang | ⛔ ADR-0031 option 5 | ✅ via `-Xarch_x86_64` | ⛔ ADR-0031 option 4 | ▢ |
+| **A7-5 ISA baseline** — ADR-0031 (`-march=haswell -ffp-contract=off`) / ADR-0032 (`/arch:AVX2`) | ✅ GCC+Clang | ~~⛔ option 5~~ **✅ since ADR-0032 (2026-08-30), blocking-gated** | ✅ via `-Xarch_x86_64` | ⛔ ADR-0031 option 4 | ▢ |
 | Wave 1–2: H1, H3 tanh kernel, H4, H5/ALG-4, H6, H8, H9, H10, H11, H12, H15 | ✅ | ✅ | ✅ | ✅ | ▢ |
 | Wave 3: shared LR4 coefficients, allpass telescope | ✅ | ✅ | ✅ | ✅ | ▢ |
 | Wave 4–5: parked-path family (H12 is Wave 1; Haas is Wave 4; Velvet is Wave 5), NaN detector, segmented scope/bypass ring fills, meter-publish caching, Level-Match memoisation, `sameParameters`, W5-C hoist | ✅ | ✅ | ✅ | ✅ | ▢ |
@@ -119,7 +119,7 @@ GCC/Clang x86-64 build bit-for-bit, and GCC-haswell vs Clang-haswell were measur
 |---|---|---|
 | ADR-0031 flags absent on **MSVC** | **Intentional** | ADR-0031 option 5 ("on evidence grounds rather than on merit"); `CMakeLists.txt` comment at the MSVC exclusion; `COMPATIBILITY_MATRIX` Windows row ("no ISA floor… outside ADR-0031's scope") |
 | ADR-0031 flags absent on **arm64** | **Intentional** | ADR-0031 option 4; `COMPATIBILITY_POLICY` adds a standing prohibition: the cross-slice difference "is accepted and is not to be removed" |
-| `ANAMORPH_X86_ISA_BASELINE` inert on MSVC (OFF changes nothing, warns nothing there) | **Structural** (no recorded decision — the option exists for GCC/Clang A/B re-verification and the ISA block simply lives in the other branch); worth knowing before anyone builds a Windows A/B on it — §5 |
+| `ANAMORPH_X86_ISA_BASELINE` inert on MSVC (OFF changes nothing, warns nothing there) | **Structural** at audit time. **[Superseded — ADR-0032]: the option now governs MSVC too** (OFF drops `/arch:AVX2`; the blocking gate builds its baseline side with it) |
 | **clang-cl** would get no ISA flags (takes the `if(MSVC)` branch) | **Structural** (no recorded decision; falls out of `if(MSVC)`); clang-cl is unused everywhere. Boundary condition worth recording: GNU-driver clang targeting the MSVC ABI (`clang++ --target=x86_64-pc-windows-msvc`) sets `MSVC=false` and **would** take the GCC/Clang branch and receive `-march=haswell` — an untested combination no toolchain currently exercises (F-6) |
 | No benefit figures off the one Linux container | **Known and recorded** (A7-0 / RISK-002), not new |
 | Headline Ir figures measured only on **GCC-13-built** binaries while the shipped Linux binary is **Clang 22** | **CLOSED by the R-round (R-6)** — measured on clang-22.1.8: 1007.8 Ir/sample shipped, −19.6 % AVX2 delta, methodology self-validated against the historical GCC figure to 0.06 % |
@@ -172,7 +172,8 @@ only `/arch:` mention in a build file is the CMakeLists comment saying it is *no
    fully platform-neutral — no ifdefs, no threads, no clock, no environment reads; fixed-seed LCG
    stimulus, FNV-1a over raw output bytes, `printf` only; the target deliberately excludes LTO. A
    Windows CI step can configure twice (baseline vs `-DCMAKE_CXX_FLAGS="/arch:AVX2"` — necessary
-   because `ANAMORPH_X86_ISA_BASELINE` is inert on MSVC) and diff the 32 hashes as a **same-machine
+   because `ANAMORPH_X86_ISA_BASELINE` was inert on MSVC at audit time — since ADR-0032 the option
+   governs MSVC and the gate's baseline side uses it) and diff the 32 hashes as a **same-machine
    A/B**, which is precisely the scope `COMPATIBILITY_POLICY` gives bit-identity claims. No
    cross-platform identity is required or implied.
 5. **A Windows-specific caveat the x86-64 GCC/Clang side does not have** *(doc-verified)*: the x64

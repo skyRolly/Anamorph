@@ -95,17 +95,19 @@ The contract above is about **state**. This one is about the **CPU**, and it bel
 policy because a plug-in the host cannot execute is as broken to a user as a session that will not
 reload — worse, in fact, because the failure is not diagnosable from inside the plug-in.
 
-**The floor is Haswell (Intel, 2013) / Excavator (AMD, 2015)** on the x86-64 binaries produced by
-GCC and Clang: the Linux x86-64 build and the `x86_64` slice of the macOS universal build. Those
-are compiled `-march=haswell`, so the compiler may emit AVX2, FMA, BMI1/BMI2, F16C, LZCNT and MOVBE
-anywhere in the image (ADR-0031). Below that floor the binaries are **not supported**.
+**The floor is Haswell (Intel, 2013) / Excavator (AMD, 2015) on every shipped x86-64 binary** —
+all three toolchains. GCC/Clang (the Linux x86-64 build and the `x86_64` slice of the macOS
+universal build) compile `-march=haswell -ffp-contract=off` (ADR-0031); MSVC (the Windows build)
+compiles `/arch:AVX2` at its default non-contracting `/fp:precise` (ADR-0032). Either way the
+compiler may emit AVX2, FMA, BMI, F16C, LZCNT and MOVBE anywhere in the image. Below that floor
+the binaries are **not supported**.
 
 | | |
 |---|---|
 | **Failure mode on an older CPU** | `SIGILL` — an illegal-instruction fault raised **inside the host process** at whatever point the first unsupported instruction is reached. The host reports a crash, or vanishes; it does not report an incompatible plug-in. |
 | **Why the plug-in cannot diagnose it** | The fault can be raised by code the dynamic loader runs before any Anamorph entry point does — static initialisers are compiled under the same flags. A `__builtin_cpu_supports` check would have to live in a separately compiled baseline translation unit gating the whole plug-in, which is a different build design, not a message. |
-| **Who is actually exposed** | **macOS, materially:** `CMAKE_OSX_DEPLOYMENT_TARGET` is 10.13, and High Sierra runs on Macs back to 2009 — Nehalem, Sandy Bridge and Ivy Bridge, all pre-Haswell. **Linux:** the declared glibc/libstdc++ ABI floor (`scripts/check-linux-abi.py`) already implies a distribution far newer than 2013, so in practice the ISA floor binds on hardware, not on distributions. |
-| **Windows** | **No ISA floor beyond the MSVC default.** The MSVC build carries no `/arch:` flag and is unchanged by ADR-0031, which is scoped to the flag pair that was measured. Extending it to MSVC needs its own measurement — `/arch:AVX2` alone is not the equivalent of `-march=haswell -ffp-contract=off`, because MSVC controls contraction separately and no twin-dump instrument runs on Windows today. |
+| **Who is actually exposed** | **macOS, materially:** `CMAKE_OSX_DEPLOYMENT_TARGET` is 10.13, and High Sierra runs on Macs back to 2009 — Nehalem, Sandy Bridge and Ivy Bridge, all pre-Haswell. **Linux:** the declared glibc/libstdc++ ABI floor (`scripts/check-linux-abi.py`) already implies a distribution far newer than 2013, so in practice the ISA floor binds on hardware, not on distributions. **Windows:** any x64 machine with a pre-2013 Intel / pre-2015 AMD CPU — Windows 10/11 both install on such hardware, so the floor binds on hardware there too, surfacing as `STATUS_ILLEGAL_INSTRUCTION` (0xC000001D) at plug-in load. |
+| **Windows** | **The same floor, since ADR-0032.** The MSVC build compiles `/arch:AVX2` at the default (non-contracting) `/fp:precise`; `/fp:contract` is NOT enabled, and no runtime dispatch exists. The Class-A property this rests on (0/32 twin-dump scenarios moved by the flag, measured on toolset 14.51.36231 across two runs) is a toolset-version behaviour, so it is **asserted on every push**: the `windows` job requires toolset ≥ 14.30 — the boundary at which `/fp:precise` stopped contracting by default — and the `windows-avx2-ab` gate blocks on baseline == `/arch:AVX2`. No Windows performance figure exists; the benefit is mechanism-shared with the measured GCC/Clang result (−18.4 %/−19.6 % engine Ir/sample on Linux), never quoted as a Windows number. |
 | **arm64** | Not affected: no ISA flag is applied to the arm64 slice, and none is implied. |
 
 **Changing this floor is a compatibility change.** Raising it (a newer `-march`), extending it to a

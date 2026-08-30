@@ -15,6 +15,20 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 
 ## [0.9.5] — 2026-08-22
 ### Changed
+- **The Windows build is now compiled for AVX2 too — same sound, and the same new minimum CPU
+  requirement the Linux and Intel-macOS builds already carry.** The Windows plug-in now requires an
+  Intel Haswell (2013) or AMD Excavator (2015) processor or newer; on an older PC it will not load,
+  and the failure looks like a crash in your DAW rather than a message, whatever the Windows
+  version. The audio is **bit-identical**: on the Windows compiler, turning AVX2 on moved **none of
+  the 32 scenarios** in the engine comparison harness — measured twice before the change was
+  adopted, and now re-checked automatically on every build, which will refuse to ship if that ever
+  stops being true. The one part of AVX2 that would change the arithmetic (fused multiply-add) is
+  left off, exactly as on the other platforms. The speed benefit is the same mechanism measured on
+  Linux (about a fifth off the engine's instruction count there); no Windows-specific figure exists
+  because no comparable instrument runs on Windows, and none is claimed. Only Apple Silicon Macs
+  now carry no processor requirement. See ADR-0032 and
+  `docs/policies/COMPATIBILITY_POLICY.md` ("Runtime compatibility: the x86-64 ISA floor").
+  Evidence: PR #131. [Verified]
 - **Faster on every Intel and AMD machine, with the sound unchanged — and a new minimum CPU
   requirement on Linux and on the Intel half of the macOS build.** The plug-in is now compiled for
   the AVX2 instruction set instead of the 2003-era baseline it had been using, which lets the
