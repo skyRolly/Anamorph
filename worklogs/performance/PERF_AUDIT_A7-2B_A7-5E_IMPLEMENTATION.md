@@ -379,6 +379,10 @@ what a fix produces. Every later difference is exactly the residual a fix would 
 | `ChorusEngine` | **0 / 102,400 differ** | 1.081e-36 | **4.476e-36** |
 
 **Bound over the supported range: 4.476e-36 (≈ −707 dBFS), set by `ChorusEngine` at 192 kHz.**
+*(Both later corrections apply here too: the figure is this harness's observed maximum, not a bound
+— see the note under the same table in the investigation worklog — and the "noise input: 0 differ"
+column is scoped to ordinary amplitude; near-silent nonzero input differs inside the delay window,
+measured 2026-08-30 in `PERF_AUDIT_A7-9_NEARSILENT_SCOPE.md`.)*
 
 > **CORRECTED 2026-08-22 during implementation.** That figure is the maximum *this harness* observed,
 > not a stimulus-independent bound. Driving ±0.7 noise, Test 41 measures **1.563e-35** (Chorus,
@@ -405,7 +409,9 @@ loosest (H11, 8.2e-4). Zero samples differ on real signal at any rate measured.
 **Why it is not Class A, and no Class-A variant exists.** The residual *is* what distinguishes the
 stalled state from the parked one, so removing it is what "fix" means. Parking only when the residual
 provably cannot change the output is not expressible as a block-level gate — `x + a*(d-x)` is
-bit-identical to `x` for a normal `x` and is not when `x` is `+0`.
+bit-identical to `x` for a normal `x` and is not when `x` is `+0`. *["For a normal x" corrected
+2026-08-30: bit-identical once `|x|` clears a binade-dependent `2^24..2^25 × |a*(d-x)|`, and NOT for
+near-silent normal `x` below that — `PERF_AUDIT_A7-9_NEARSILENT_SCOPE.md`.]*
 
 **Contract changes involved.** None to parameters, serialization, threading, signal order or
 reported latency. It is a **Class-B numerics change** under `DSP_POLICY`, which is the whole of the
@@ -420,8 +426,8 @@ approval question.
 |---|---|
 | **Expected benefit after A7-2B** | `ChorusEngine` **+14,220 Ir/block** at 48 kHz/128; `HaasProcessor` **+5,635**; `VelvetNoise` **+4,019** at 48 kHz/32 and **+4,032** at 192 kHz/32. Velvet's share fell **89 %** because A7-2B made the path it is stuck on cheap and rate-independent. |
 | **Remaining affected modules** | All three, unchanged: `VelvetNoise`, `HaasProcessor`, `ChorusEngine`. Priority is now **Chorus first** — largest share, and the only one whose stall threshold scales with sample rate (`wSmooth = 1/(0.01·sr)`). |
-| **Numerical difference bounds** | **4.476e-36** worst case across 44.1–192 kHz (Chorus at 192 kHz), ≈ −707 dBFS. **0 of 102,400 samples differ on real signal** in all three modules at every rate measured; the residual appears only on digital silence, where the dry term is `+0` and cannot absorb it. |
-| **Class A or Class B?** | **Class B, and no Class-A variant exists.** The residual *is* what distinguishes the stalled state from the parked one, so removing it is what "fix" means. Parking only when the residual provably cannot change the output is not expressible as a block-level gate: `x + a*(d-x)` is bit-identical to `x` for a normal `x` and is not when `x` is `+0`. |
+| **Numerical difference bounds** | **4.476e-36** worst case across 44.1–192 kHz (Chorus at 192 kHz), ≈ −707 dBFS. **0 of 102,400 samples differ on real signal** in all three modules at every rate measured; ~~the residual appears only on digital silence, where the dry term is `+0` and cannot absorb it~~ *[corrected 2026-08-30: wherever the dry term cannot absorb it — silence AND near-silent samples; `PERF_AUDIT_A7-9_NEARSILENT_SCOPE.md`]*. |
+| **Class A or Class B?** | **Class B, and no Class-A variant exists.** The residual *is* what distinguishes the stalled state from the parked one, so removing it is what "fix" means. Parking only when the residual provably cannot change the output is not expressible as a block-level gate: `x + a*(d-x)` is bit-identical to `x` for a normal `x` and is not when `x` is `+0` *[same 2026-08-30 correction as §18]*. |
 | **Unresolved risks** | (a) The benefit is now modest relative to its Class-B cost — this is the main open judgement. (b) A fixpoint gate must be proved *live* by a test that shows the park is reached after a ramp-down; the current suite cannot distinguish a reachable fast path from an unreachable one, which is how this survived. (c) Chorus's rate-dependent coefficient is worth a maintainer's eye independently of the gate change. |
 | **What approval is required** | Explicit, recorded maintainer approval for a Class-B numerics change under `DSP_POLICY`. No `ARCHITECTURE_REVIEW_GATE` category is triggered; no Accepted ADR is contradicted; no parameter, serialization, threading, signal-order or latency change. |
 

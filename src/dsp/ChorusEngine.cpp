@@ -100,14 +100,19 @@ void ChorusEngine::processBlock (float* left, float* right, int numSamples) noex
     //
     // CLASS B, and no Class-A variant exists. Parked, both voices are an exact
     // identity; stalled, each added `w*(d - x)` with a w just under
-    // FLT_MIN/wSmooth, which is bit-exactly x for any normal x and is NOT when
-    // x is +0. The residual therefore appears only on digital silence, and THIS
-    // module sets the programme-wide worst case for the rate-scaling reason
-    // above: 1.563e-35 measured at 192 kHz against the pre-fix sources
-    // (~ -696 dBFS), 0 of 102,400 samples different on real signal. After the
+    // FLT_MIN/wSmooth, which the sum absorbs bit-exactly once
+    // |x| clears ~2^24..2^25 * |w*(d - x)| (the boundary shifts within each
+    // binade) -- NOT "for any normal x", as this comment once claimed. The residual therefore lands on the SILENCE-REGION sample
+    // class: digital silence and near-silent samples under ~4e-28 of full
+    // scale co-occurring with a louder delay history -- and THIS module sets
+    // the programme-wide worst case for the rate-scaling reason above:
+    // 1.563e-35 measured at 192 kHz on silence against the pre-fix sources
+    // (~ -696 dBFS), 1.204e-35 on 1e-25..1e-37-amplitude tails, 0 of 102,400
+    // samples different on real signal, re-verified bit-exact at every tail
+    // amplitude down to 1e-20 (PERF_AUDIT_A7-9_NEARSILENT_SCOPE.md). After the
     // fix the silence output is an exact zero rather than a smaller residual.
     // Test 41 is the gate, at BOTH ends of the rate range, and is proven to fail
-    // without this change. Measured in
+    // without this change; Test 42 pins the near-silent half the same way. Measured in
     // worklogs/performance/PERF_AUDIT_A7-2_A7-5_A7-9_INVESTIGATION.md,
     // re-verified in PERF_AUDIT_A7-2B_A7-5E_IMPLEMENTATION.md, implemented and
     // (bound corrected) in PERF_AUDIT_A7-9_AVX2_IMPLEMENTATION.md §4c.

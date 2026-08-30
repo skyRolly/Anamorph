@@ -379,9 +379,9 @@ DELIBERATE_REAIMS = {
     # Re-derived 2026-08-30 (the ADR-0032 gate rewrite moved build.yml again):
     # :3124 -> :3166, :3209 -> :3251, updated together with the document per
     # the "fix BOTH" rule verify_reaim_targets enforces.
-    ("docs/DOCUMENTATION_COVERAGE.md", ".github/workflows/build.yml:3166"):
+    ("docs/DOCUMENTATION_COVERAGE.md", ".github/workflows/build.yml:3189"):
         "TESTING_POLICY rule 4",
-    ("docs/DOCUMENTATION_COVERAGE.md", ".github/workflows/build.yml:3251"):
+    ("docs/DOCUMENTATION_COVERAGE.md", ".github/workflows/build.yml:3274"):
         "the four lints'",    #
     # DECLARED 2026-08-30, thirty-seven entries, for the SAME split-push shape a
     # third time -- and this time the gate caught the failure it exists for, so

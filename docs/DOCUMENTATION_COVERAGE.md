@@ -283,7 +283,11 @@ at 48 kHz / 128 — for Velvet, +752 % at 48 kHz / 32 and +2,372 % at 192 kHz / 
 amount above zero also satisfies the H5 gather gate and puts the engine on its most expensive path.
 Still no audio effect on real signal (0 of 102,400 samples differ in all three); the residual shows
 only on digital silence, bounded at **4.476e-36** across the rate range (Chorus at 192 kHz;
-1.643e-36 at 48 kHz alone). Full evidence and the maintainer decision:
+1.643e-36 at 48 kHz alone). *(Two later corrections, both marked at their sources: the 4.476e-36
+figure was that harness's observed maximum, not a bound — Test 41 measures 3.5× more and derives
+`FLT_MIN/k` instead; and "only on digital silence" is too narrow — near-silent NONZERO samples
+below ≈ 2–4e-28 of full scale move too, measured 2026-08-30 in
+`PERF_AUDIT_A7-9_NEARSILENT_SCOPE.md`.)* Full evidence and the maintainer decision:
 `worklogs/performance/PERF_AUDIT_A7-2_A7-5_A7-9_INVESTIGATION.md` Part III. The two additional
 comments are drift reported and deliberately not edited this round — the correction rides with the
 A7-9 decision.
@@ -1761,7 +1765,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3166` and `.github/workflows/build.yml:3251`, this round being
+`.github/workflows/build.yml:3189` and `.github/workflows/build.yml:3274`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -6328,3 +6332,34 @@ reporting experiment could block a release through `release.yml`'s aggregate res
 stay visible on the job, they just no longer propagate. The platform-coverage worklog, report page
 and adoption packet are updated to the adopted state, with the superseded audit-time statements
 marked rather than erased.
+
+## The A7-9 near-silent scope correction + the cross-slice record parser (2026-08-30)
+
+A review pass against `src/dsp/VelvetNoise.cpp:159` asked what happens to **near-silent NONZERO**
+input at the stalled fixpoints, and the measured answer corrected a claim every A7-9 record carried:
+"the residual appears only on digital silence" was this programme's *observation*, never a property.
+The absorption `x + residual == x` needs `|x| >= 2^24 × |residual|`; a twin-binary A/B against the
+actual pre-A7-9 sources (`c04096d^`, same flags, FTZ as shipped) measured tails at 1e-25…1e-37 of
+full scale with warm loud history differing by up to **1.204e-35** (Chorus, 192 kHz) inside each
+module's delay-history window — and every tail at 1e-20 and above bit-exact, which is the boundary
+the old "real signal" claim silently rested on. Under no-FTZ the window shrinks to ~6e-36 with
+subnormal-scale deltas, per F-1's stall model. Verdict: **expected behaviour, Class B stands, the
+scope wording was wrong** — corrected in the three DSP comment blocks, Test 41's comment,
+`CHANGELOG` `[0.9.5]`, `HANDOVER`, `PERFORMANCE_BUDGET`, `TESTING.md` (whose Test 41 paragraph was
+also still carrying the F-2-corrected no-FTZ falsehood; fixed against measurement), and dated
+markers on the three historical worklogs and the decision packet. **Test 42**
+(`testA79ParkedNearSilentIdentity`, +12 checks → **41 tests / 226 checks**) pins the accepted side —
+parked paths are bit-exact identity on 1e-30/1e-35 tails — and is proven to fire against the
+pre-fix sources in both FTZ postures (the two-amplitude design exists because the discriminating
+window is posture-dependent). No DSP code changed. Record:
+`worklogs/performance/PERF_AUDIT_A7-9_NEARSILENT_SCOPE.md`.
+
+The same review flagged the `macos-crossslice` job's counting: `grep -c .` counted every nonblank
+line — the dump's self-check verdict and `#` headers included — so a wording change could move the
+reported totals with no DSP change. The `compare` function now parses **scenario records** (a row
+whose second field is a 16-hex FNV hash — the `windows-avx2-ab` `Read-Dump` acceptance rule),
+derives the expected count from what parses (both slices must yield the same nonzero count or it
+prints **NO VERDICT** instead of a bogus total), and compares the full records exactly (name, hash,
+latency). Verified against real dump output: a reworded self-check line no longer changes the
+count; a single altered hash reports 1-of-32 with the agree list intact; an unparsable side yields
+no verdict. Reporting-only semantics unchanged — every path still exits 0.

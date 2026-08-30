@@ -268,13 +268,21 @@ void VelvetNoise::processBlock (float* left, float* right, int numSamples) noexc
     // CLASS B, and no Class-A variant exists. Parked, `decorr` is the exact
     // signed zero the general loop produces; stalled, the general loop scaled
     // the tap sum by a currentAmount just under FLT_MIN/0.0015 = 7.837e-36,
-    // which `side + decorr` absorbs bit-exactly for any normal side and does NOT
-    // when side is +0. The residual therefore appears only on digital silence:
-    // 7.145e-36 measured here against the pre-fix sources, 0 of 102,400 samples
-    // different on real signal. The programme-wide worst case is ChorusEngine's
+    // which `side + decorr` absorbs bit-exactly once |side| clears ~2^24..2^25 *
+    // |decorr| (binade-dependent) -- NOT "for any normal side", as this
+    // comment once claimed. The
+    // residual therefore lands on the SILENCE-REGION sample class: an exactly-
+    // or near-zero side (mono content is the everyday member) whose mid history
+    // is recent enough to keep the -66 dBFS presence gate open. Measured
+    // against the pre-fix sources: 7.145e-36 on silence; up to 6.019e-36 on
+    // 1e-25..1e-37-amplitude mono tails, on BOTH channels (the residual rides
+    // side); 0 of 102,400 samples different on real signal, re-verified
+    // bit-exact at every tail amplitude down to 1e-20
+    // (PERF_AUDIT_A7-9_NEARSILENT_SCOPE.md). The programme-wide worst case is ChorusEngine's
     // at 192 kHz, whose coefficient is the only rate-dependent one. After the
     // fix the silence output is an exact zero rather than a smaller residual.
-    // Test 41 is the gate and is proven to fail without this change. Measured in
+    // Test 41 is the gate and is proven to fail without this change; Test 42
+    // pins the near-silent half the same way. Measured in
     // worklogs/performance/PERF_AUDIT_A7-2_A7-5_A7-9_INVESTIGATION.md,
     // re-verified in PERF_AUDIT_A7-2B_A7-5E_IMPLEMENTATION.md, implemented and
     // (bound corrected) in PERF_AUDIT_A7-9_AVX2_IMPLEMENTATION.md §4c.

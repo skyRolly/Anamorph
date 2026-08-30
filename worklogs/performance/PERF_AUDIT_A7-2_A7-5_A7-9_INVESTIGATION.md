@@ -503,6 +503,14 @@ the supported range is therefore set by Chorus at the highest rate, not by Haas 
 On real signal the residual is **exactly invisible** — the stalled amount multiplies into a product
 that itself flushes to zero. The differences appear only on digital silence, where the dry term is
 `+0` and cannot absorb the residual, and only while the delay lines still hold pre-silence audio.
+> **[Scope corrected 2026-08-30.]** "Only on digital silence" was this harness's observation, not a
+> property: its stimulus never probed between ±0.7 noise and exact zeros. Driving near-silent
+> NONZERO tails against the pre-fix sources shows the same residual landing on any sample too small
+> to absorb it (`|x| < 2^24 × |residual|` — first differences at 1e-25 of full scale, saturating
+> below 1e-28), confined to the same delay-history window.
+> `PERF_AUDIT_A7-9_NEARSILENT_SCOPE.md` carries the measurement; the sentence above stands as the
+> record of what this round knew.
+
 Worst case across all three modules and all four rates: **4.476e-36 — `ChorusEngine` at 192 kHz,
 about −707 dBFS.** (At 48 kHz alone it is 1.643e-36, set by `HaasProcessor`; quoting that as the
 bound would understate the high-rate case by 2.7×.)
@@ -525,7 +533,9 @@ Every candidate repair changes bits, and always by exactly the residual in §17:
   "the multiplier is exactly `+0`", which a stalled amount makes false;
 * **park only when the residual provably cannot change the output** — not expressible as a
   block-level gate, because it depends on the per-sample dry value: `x + a*(d-x)` is bit-identical to
-  `x` for a normal `x`, and is not when `x` is `+0`.
+  `x` for a normal `x`, and is not when `x` is `+0`. *["For a normal x" corrected 2026-08-30, as at
+  §17: it holds once `|x|` clears a binade-dependent `2^24..2^25 × |a*(d-x)|` and fails for
+  near-silent normal `x` below that — `PERF_AUDIT_A7-9_NEARSILENT_SCOPE.md`.]*
 
 The residual **is** the thing that distinguishes the two states, so removing it is what "fix" means.
 **Class B, bounded at 4.476e-36** across the supported sample-rate range. For scale, that is ~26

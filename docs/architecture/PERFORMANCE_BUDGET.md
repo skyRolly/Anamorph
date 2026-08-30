@@ -224,13 +224,19 @@ no benchmark/profiling data exists in the repository, and inventing numbers is p
   glide; each keeps the pre-A7-9 condition as a second disjunct, so the gates can only ever admit
   more than before. No DSP state is snapped, frozen or mutated, and re-engage is bit-identical.
   Recovered, post-A7-2B: `ChorusEngine` **+14,220 Ir/block** (48 kHz/128), `HaasProcessor` **+5,635**,
-  `VelvetNoise` **+4,019** (48 kHz/32). **Class B**, on **digital silence only**: the stalled
-  multiplier leaked `a_stall × (wet term)` where the `+0` dry term could not absorb it — measured
+  `VelvetNoise` **+4,019** (48 kHz/32). **Class B**, on the **silence-region sample class** — digital silence, plus near-silent
+  samples (≲ 2–4e-28 of full scale under FTZ) co-occurring with a louder delay history; a
+  2026-08-30 measurement corrected the earlier "digital silence only" wording
+  (`PERF_AUDIT_A7-9_NEARSILENT_SCOPE.md`): the stalled
+  multiplier leaked `a_stall × (wet term)` wherever the dry term could not absorb it — measured
   1.563e-35 (Chorus, 192 kHz ≈ −696 dBFS), 8.043e-36 (Haas, 48 kHz), 7.145e-36 (Velvet, 48 kHz)
-  against the pre-fix sources, bounded by `FLT_MIN/k` times the module's wet gain. On real signal the
-  output is bit-identical (0 of 102,400 samples differ, every module, every rate), and after the fix
+  on silence against the pre-fix sources, up to 1.204e-35 on near-silent tails, bounded by
+  `FLT_MIN/k` times the module's wet gain. On real signal the
+  output is bit-identical (0 of 102,400 samples differ, every module, every rate — re-verified
+  bit-exact at every tail amplitude down to 1e-20), and after the fix
   the silence output is an **exact zero**. Explicit maintainer approval recorded 2026-08-22. Guarded
-  by **Test 41**, proven to fail on all four cases against the pre-A7-9 sources; the committed twin
+  by **Test 41**, proven to fail on all four cases against the pre-A7-9 sources, and **Test 42**
+  (near-silent parked identity, likewise fire-proven); the committed twin
   dump does NOT cover it (`tests/dsp_dump.cpp` holds `algoAmount` at 0.7 and never ramps down, which
   is how the defect survived from Wave 4).
   Evidence [Verified]: src/dsp/VelvetNoise.cpp, src/dsp/HaasProcessor.cpp, src/dsp/ChorusEngine.cpp

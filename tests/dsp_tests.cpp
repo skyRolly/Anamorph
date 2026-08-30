@@ -3482,8 +3482,10 @@ static void testA79ParkedPathsReachableAfterStall()
     // `a` does, so the glide stalls just under FLT_MIN/k and every later
     // decrement is exactly 0. The gates therefore stayed false forever after a
     // user turned Amount down, which is the ONLY route that reaches the state
-    // they were written for -- and nothing observed it, because on real signal
-    // `x + 1e-35*(d - x)` is bit-exactly `x`. A7-9 moves the gates to a FIXPOINT
+    // they were written for -- and nothing observed it, because on ordinary
+    // real signal `x + 1e-35*(d - x)` is bit-exactly `x` (the absorption needs
+    // |x| >= 2^24 * |residual|; Test 42 covers the near-silent class where it
+    // fails). A7-9 moves the gates to a FIXPOINT
     // test ("can the glide still move") from a value test ("is it at zero").
     //
     // THE ORACLE IS A SECOND INSTANCE. `S` is driven the way a user drives it:
@@ -3645,6 +3647,149 @@ static void testA79ParkedPathsReachableAfterStall()
     }
 }
 
+// ---------------------------------------------------------------------------
+static void testA79ParkedNearSilentIdentity()
+{
+    std::printf ("Test 42: A7-9 -- parked paths are BIT-EXACT identity on near-silent NONZERO input\n");
+
+    // WHY THIS TEST EXISTS WHEN TEST 41 ALREADY COMPARES STALLED TO PARKED.
+    // Test 41's stimulus is +/-0.7 noise and digital silence -- nothing in
+    // between -- and the "on real signal `x + 1e-35*(d - x)` is bit-exactly
+    // `x`" claim it rests on is amplitude-scoped: the addition absorbs the
+    // stalled residual only while |x| >= 2^24 * |residual|. A 2026-08-30
+    // review pass asked what happens to near-silent NONZERO input, and the
+    // measured answer (worklogs/performance/PERF_AUDIT_A7-9_NEARSILENT_SCOPE.md)
+    // is that the pre-A7-9 stalled paths DID move it: driving the pre-fix
+    // sources against the current ones, tails at 1e-25..1e-37 amplitude with
+    // warm loud history differ by up to 1.204e-35 (Chorus, 192 kHz) inside the
+    // delay-history window, while every tail at 1e-20 and above is bit-exact.
+    // The residual the fix removes therefore lands not on "digital silence
+    // only" but on any sample too small to absorb it -- silence is just the
+    // everyday member of that class. This test pins the ACCEPTED side of that
+    // scope correction: after A7-9, the parked paths are exact identity on
+    // those tails (HaasProcessor and ChorusEngine leave the buffers untouched;
+    // VelvetNoise reproduces its usual MS round-trip, which is bit-exact for
+    // the mono stimulus used here). Against the pre-A7-9 sources these
+    // assertions fail inside the delay-history window -- the residual is
+    // exactly what the old path added there.
+    //
+    // TWO TAIL AMPLITUDES, because the discriminating window is posture-
+    // dependent (platform-coverage audit F-1): under FTZ the glide stalls just
+    // under FLT_MIN/k, so the window is |x| <~ 2^24 * FLT_MIN/k ~ 1e-28; under
+    // ANAMORPH_TESTS_NO_FTZ the stall is a ~7e-43 subnormal and only the
+    // 1e-35 tail still discriminates (measured, loud history in both cases:
+    // 242..550 samples differ per module against the pre-fix sources at 1e-35
+    // without FTZ; none at 1e-30). Each tail therefore starts from a re-warmed
+    // loud history. The identity assertion itself is posture-independent --
+    // parked is parked.
+    //
+    // THE TAIL AVOIDS SUBNORMAL INPUT SAMPLES deliberately: under DAZ the
+    // VelvetNoise MS round-trip reads a subnormal as zero and reconstructs +0,
+    // so subnormal INPUT bits do not survive its parked path (they never did --
+    // the engaged loop does the identical arithmetic). That is mix-path
+    // behaviour outside this test's claim, so tail samples are snapped away
+    // from (0, FLT_MIN) and the identity stays a statement about the parked
+    // gates alone.
+    juce::ScopedNoDenormals noDenormals; // FTZ, exactly like the real audio thread
+
+    constexpr int   block        = 512;
+    constexpr int   engageBlocks = 20;
+    constexpr int   tailBlocks   = 8;    // covers every delay-history window (<= 3.2k samples)
+    const     float fltMin       = std::numeric_limits<float>::min();
+
+    std::mt19937 rng (0xA7900002u);
+    std::uniform_real_distribution<float> dist (-0.7f, 0.7f);
+
+    auto exercise = [&] (const char* name, double sr, int rampBlocks,
+                         auto& M, auto setAmt)
+    {
+        std::vector<float> inL ((size_t) block), inR ((size_t) block),
+                           L ((size_t) block), R ((size_t) block);
+
+        // Mono stimulus throughout: VelvetNoise's parked path reconstructs
+        // L/R from mid/side, and with side == +0 that round-trip is bit-exact.
+        auto pump = [&] (int nBlocks, float amp, bool assertIdentity, int* probes)
+        {
+            bool identical = true;
+            for (int b = 0; b < nBlocks; ++b)
+            {
+                for (int i = 0; i < block; ++i)
+                {
+                    // The snap keys off the UNSCALED draw: at the 1e-35 tail the
+                    // scaling multiply itself underflows (FTZ flushes it to +/-0
+                    // before the magnitude test can see a subnormal), and a -0.0
+                    // built that way is the same DAZ-erased class as a subnormal
+                    // -- the MS round-trip canonicalizes it to +0 (see above).
+                    const float draw = dist (rng);
+                    float v = draw * (amp / 0.7f);
+                    if (std::abs (draw) > 0.0f && std::abs (v) < fltMin)
+                        v = draw > 0.0f ? fltMin : -fltMin; // no subnormal/flushed input
+                    inL[(size_t) i] = inR[(size_t) i] = v;
+                    if (probes != nullptr && std::abs (v) > 0.0f && std::abs (v) < 1e-30f)
+                        ++*probes;
+                }
+                L = inL; R = inR;
+                M.processBlock (L.data(), R.data(), block);
+                if (assertIdentity
+                    && (std::memcmp (L.data(), inL.data(), sizeof (float) * (size_t) block) != 0
+                     || std::memcmp (R.data(), inR.data(), sizeof (float) * (size_t) block) != 0))
+                    identical = false;
+            }
+            return identical;
+        };
+
+        setAmt (M, 0.8f);
+        pump (engageBlocks, 0.5f, false, nullptr);   // charge the delay histories
+        setAmt (M, 0.0f);
+        pump (rampBlocks, 0.5f, false, nullptr);     // ramp down; the glide stalls
+
+        int  probes = 0;
+        char msg[160];
+        const bool id30 = pump (tailBlocks, 1e-30f, true, &probes);
+        // Re-warm the delay histories before the second tail: 8 blocks of
+        // 1e-30 content have flushed the loud material through every delay
+        // line, and a residual scaled by a 1e-30-magnitude delayed sample
+        // underflows to nothing -- the 1e-35 tail would discriminate against
+        // the pre-fix sources only by luck. The glide stays parked throughout
+        // (the target is still 0; recording input is exactly what the parked
+        // paths do), so each tail probes a warm-history window.
+        pump (engageBlocks, 0.5f, false, nullptr);
+        std::snprintf (msg, sizeof msg,
+                       "%s @ %.0f Hz: 1e-30 tail with warm history is BIT-EXACT identity", name, sr);
+        check (id30, msg);
+        const bool id35 = pump (tailBlocks, 1e-35f, true, &probes);
+        std::snprintf (msg, sizeof msg,
+                       "%s @ %.0f Hz: 1e-35 tail with warm history is BIT-EXACT identity", name, sr);
+        check (id35, msg);
+        std::snprintf (msg, sizeof msg,
+                       "%s @ %.0f Hz: the tails actually probed the residual window (nonzero < 1e-30)",
+                       name, sr);
+        check (probes > 0, msg);
+    };
+
+    {
+        const double sr = 48000.0;
+        anamorph::VelvetNoise v;
+        v.prepare (sr, block); v.setTransportPlaying (true); v.reset();
+        exercise ("VelvetNoise", sr, 300, v,
+                  [] (anamorph::VelvetNoise& m, float a) { m.setAmount (a); });
+    }
+    {
+        const double sr = 48000.0;
+        anamorph::HaasProcessor h;
+        h.prepare (sr, block); h.setDelayMs (20.0f); h.setSide (true);
+        exercise ("HaasProcessor", sr, 300, h,
+                  [] (anamorph::HaasProcessor& m, float a) { m.setAmount (a); });
+    }
+    for (const double sr : { 48000.0, 192000.0 })
+    {
+        anamorph::ChorusEngine c;
+        c.setAmount (0.0f); c.prepare (sr); c.setWorkingRate (sr);
+        exercise ("ChorusEngine", sr, sr > 100000.0 ? 460 : 300, c,
+                  [] (anamorph::ChorusEngine& m, float a) { m.setAmount (a); });
+    }
+}
+
 int main()
 {
     std::printf ("=== Anamorph DSP self-tests ===\n");
@@ -3702,6 +3847,7 @@ int main()
     testVelvetBlockLengthInvariance();
     testVelvetGatherEqualsPerSampleLoop();
     testA79ParkedPathsReachableAfterStall();
+    testA79ParkedNearSilentIdentity();
     testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);

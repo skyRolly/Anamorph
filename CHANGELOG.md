@@ -85,12 +85,15 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   still move", which is the question the shortcut actually depends on. In a session where you have
   ever turned an algorithm's Amount down, that recovers roughly a fifth of the plug-in's work with
   Velvet Noise selected, and comparable amounts for the other two. **What changes in the audio:**
-  on **digital silence only**, the frozen remainder used to leak an inaudible trace of the delay
-  line's contents — at most about 1.6e-35 of full scale, roughly −696 dB, some twenty-five orders of
-  magnitude below the quietest thing you have ever heard and thirty-four below the smallest step a
-  24-bit file can hold. That trace is now gone and silence is exactly silence. On any real signal the
+  only in the **silence region** — digital silence, and signals more than roughly 550 dB below full
+  scale — the frozen remainder used to leak an inaudible trace of the delay
+  line's contents: at most about 1.6e-35 of full scale, roughly −696 dB, some twenty-five orders of
+  magnitude below the quietest thing you have ever heard and twenty-eight below the smallest step a
+  24-bit file can hold. That trace is now gone — silence is exactly silence, and near-silence passes
+  through untouched. On any real signal the
   output is **bit-for-bit identical**, before and after — verified over 102,400 samples per module at
-  every supported sample rate. No parameter, preset, saved-state or latency change.
+  every supported sample rate, and re-verified bit-for-bit at every probe level down to 400 dB below
+  full scale. No parameter, preset, saved-state or latency change.
   Evidence: PR #130. [Verified]
 
 ## [0.9.4] — 2026-08-21

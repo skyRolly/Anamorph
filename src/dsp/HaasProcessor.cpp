@@ -78,14 +78,21 @@ void HaasProcessor::processBlock (float* left, float* right, int numSamples) noe
     //
     // CLASS B, and no Class-A variant exists. Parked, the module is an exact
     // identity; stalled, it added `a*(d - x)` with an a just under
-    // FLT_MIN/0.001 = 1.175e-35, which is bit-exactly x for any normal x and is
-    // NOT when x is +0. The residual therefore appears only on digital silence,
-    // where the dry term cannot absorb it: 8.043e-36 measured here against the
-    // pre-fix sources, 0 of 102,400 samples different on real signal. Removing
+    // FLT_MIN/0.001 = 1.175e-35, which the sum absorbs bit-exactly once
+    // |x| clears ~2^24..2^25 * |a*(d - x)| (the boundary shifts within each
+    // binade) -- NOT "for any normal x", as this comment once claimed. The residual therefore lands on the SILENCE-REGION sample
+    // class: digital silence (the everyday member -- a +0 dry term absorbs
+    // nothing) and near-silent samples under ~2e-28 of full scale co-occurring
+    // with a louder delay history. Measured against the pre-fix sources:
+    // 8.043e-36 on silence; up to 6.019e-36 on 1e-25..1e-37-amplitude tails,
+    // confined to the delayed side inside the delay window; 0 of 102,400
+    // samples different on real signal, re-verified bit-exact at every tail
+    // amplitude down to 1e-20 (PERF_AUDIT_A7-9_NEARSILENT_SCOPE.md). Removing
     // it IS what the fix means -- it is exactly what distinguished the stalled
     // state from the parked one, and after the fix the silence output is an
     // exact zero rather than a smaller residual. Test 41 is the gate and is
-    // proven to fail without this change. Measured in
+    // proven to fail without this change; Test 42 pins the near-silent half
+    // (parked identity on 1e-30/1e-35 tails, proven to fire likewise). Measured in
     // worklogs/performance/PERF_AUDIT_A7-2_A7-5_A7-9_INVESTIGATION.md,
     // re-verified in PERF_AUDIT_A7-2B_A7-5E_IMPLEMENTATION.md, implemented and
     // (bound corrected) in PERF_AUDIT_A7-9_AVX2_IMPLEMENTATION.md §4c.
