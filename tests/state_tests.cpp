@@ -1733,6 +1733,118 @@ static void testEditorConstructDestroy()
 }
 
 // ---------------------------------------------------------------------------
+// 17. A NON-FINITE value in a session must never become parameter state.
+//
+//     `nan` is ordinary text to JUCE's number parser (juce_CharacterFunctions.h
+//     accepts it), so a hand-edited or corrupted session can carry
+//     <PARAM id="width" value="nan"/>. Nothing on the restore path used to
+//     reject it: apvts.replaceState() itself pushes @value through
+//     setDenormalisedValue -> setValueNotifyingHost, whose approximatelyEqual
+//     guard is false for NaN, and reassertParameters' own write gate
+//     (|norm - current| > 1e-6) is likewise false for NaN, so it neither
+//     injected nor repaired it. The preset path (PresetManager::applySoundTree)
+//     had no gate at all.
+//
+//     The consequence is not cosmetic. A NaN continuous parameter latches its
+//     smoother target, every output sample goes non-finite, and ADR-0009's
+//     sample-level self-heal then zeroes the block and resets the engine on
+//     EVERY block: permanent silence, with a plausible-looking UI. It also
+//     round-trips -- getStateInformation writes `nan` straight back out -- so
+//     reopening the project reproduces it.
+static void testNonFiniteParameterInStateIsRejected()
+{
+    std::printf ("State test 17: a non-finite value in a session is rejected, not adopted\n");
+
+    // Author a normal session, then poison one parameter's serialized value.
+    juce::MemoryBlock poisoned;
+    {
+        AnamorphAudioProcessor authoring;
+        authoring.prepareToPlay (48000.0, 256);
+        setRaw (authoring, pid::width, 0.8f);
+        juce::MemoryBlock clean;
+        authoring.getStateInformation (clean);
+
+        auto xml = BlobCodec::unwrap (clean);
+        check (xml != nullptr, "authored session decodes for poisoning");
+        if (xml == nullptr) return;
+
+        bool poisonedOne = false;
+        if (auto* params = xml->getChildByName ("ANAMORPH"))
+            for (auto* param : params->getChildIterator())
+                if (param->getStringAttribute ("id") == pid::width)
+                {
+                    param->setAttribute ("value", "nan");
+                    param->removeAttribute ("raw"); // the exact-raw path is separately covered below
+                    poisonedOne = true;
+                }
+        check (poisonedOne, "the session carries a width PARAM to poison");
+        poisoned = BlobCodec::wrap (*xml);
+    }
+
+    AnamorphAudioProcessor proc;
+    proc.setStateInformation (poisoned.getData(), (int) poisoned.getSize());
+
+    const float restored = rawOf (proc, pid::width);
+    std::printf ("  width after restoring value=\"nan\": %f\n", restored);
+    check (std::isfinite (restored), "a non-finite serialized value does not become parameter state");
+
+    // ...and the audio path stays alive: the failure mode this guards is not a
+    // wrong number, it is permanent silence.
+    proc.prepareToPlay (48000.0, 256);
+    juce::AudioBuffer<float> buf (2, 256);
+    juce::MidiBuffer midi;
+    std::mt19937 rng (13579);
+    std::uniform_real_distribution<float> dist (-0.7f, 0.7f);
+    double peak = 0.0;
+    bool allFinite = true;
+    for (int nb = 0; nb < 8; ++nb)
+    {
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = 0; i < 256; ++i)
+                buf.setSample (ch, i, dist (rng));
+        proc.processBlock (buf, midi);
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = 0; i < 256; ++i)
+            {
+                const float s = buf.getSample (ch, i);
+                if (! std::isfinite (s)) allFinite = false;
+                peak = juce::jmax (peak, std::abs ((double) s));
+            }
+    }
+    std::printf ("  output peak over 8 blocks: %.6f\n", peak);
+    check (allFinite, "output stays finite after a poisoned restore");
+    check (peak > 0.01, "the plug-in still passes audio (a NaN parameter used to silence it)");
+
+    // The same poison in a PRESET FILE takes a different code path
+    // (PresetManager::applySoundTree), which had no gate of its own. Driven
+    // end to end through the real loader, on a real file.
+    {
+        AnamorphAudioProcessor viaPreset;
+        viaPreset.prepareToPlay (48000.0, 256);
+        auto& pm = viaPreset.getPresets();
+
+        const auto presetFile = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                                    .getChildFile ("anamorph_nonfinite_probe.anamorph");
+        presetFile.deleteFile();
+
+        auto tree = juce::ValueTree ("ANAMORPH");
+        auto node = juce::ValueTree ("PARAM");
+        node.setProperty ("id", pid::width, nullptr);
+        node.setProperty ("value", "nan", nullptr);
+        tree.appendChild (node, nullptr);
+        if (auto xml = tree.createXml())
+            check (xml->writeTo (presetFile), "poisoned preset file written");
+
+        check (pm.loadFile (presetFile), "the poisoned preset file loads (it is well-formed XML)");
+        std::printf ("  width after loading a preset with value=\"nan\": %f\n",
+                     rawOf (viaPreset, pid::width));
+        check (std::isfinite (rawOf (viaPreset, pid::width)),
+               "a non-finite value in a preset file does not become parameter state");
+        presetFile.deleteFile();
+    }
+}
+
+// ---------------------------------------------------------------------------
 // 16. FIRST ACTIVATION: a session the host restored BEFORE it activated the
 //     plug-in must be audible correctly from the very first sample.
 //
@@ -1968,6 +2080,7 @@ int main (int argc, char* argv[])
     testPresetIndicatorIdentityAcrossRestore();
     testWrapperProcessBlockAudioPath();
     testFirstActivationUsesRestoredState();
+    testNonFiniteParameterInStateIsRejected();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

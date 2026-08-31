@@ -1301,8 +1301,16 @@ void AnamorphAudioProcessorEditor::dismissOrphanedPopupMenus()
     // the strength of a sweep that covered only PluginEditor.{h,cpp}. Two inline text edits in src/
     // treat losing focus as "the user clicked away" and APPLY what is in the box -- right for a
     // click, wrong for a release the editor decides on because the user is no longer looking. Park
-    // both first, with the Escape outcome rather than the Return one, so leaving the application can
-    // never write a half-typed value.
+    // both first, with the Escape outcome rather than the Return one, so leaving the application
+    // cannot write a half-typed value THROUGH THIS PATH.
+    // Scope, corrected 2026-08-31 (ER-GUI-02) -- the promise is narrower than the earlier
+    // "can never" read: this is the only call site of cancelInlineTextEdits(), and it sits behind
+    // the switchedAway branch, which is itself behind this function's "no pop-up open -> return"
+    // guard and is inert on Linux/X11 (KI-019's write-once foreground latch) and in out-of-process
+    // hosting. Narrowing the wording is deliberate and the code is NOT to be widened to match the
+    // old claim: a general "leaving the application never writes a half-typed value" guarantee is
+    // not reachable at this layer, and the published documents (CHANGELOG [0.9.3], TESTING.md)
+    // already describe the behaviour correctly.
     if (switchedAway)
     {
         cancelInlineTextEdits();

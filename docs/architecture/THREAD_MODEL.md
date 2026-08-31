@@ -13,7 +13,7 @@ are in `docs/policies/THREADING_POLICY.md` and `docs/policies/REALTIME_AUDIO_POL
 | **Worker / background** | none | No `std::thread`/`Thread`/`ThreadPool`. FFT runs on the GUI thread. |
 
 Evidence [Verified]:
-- Source: src/PluginProcessor.cpp:134-202 (`processBlock`), :119 `ScopedNoDenormals`
+- Source: src/PluginProcessor.cpp:136-204 (`processBlock`), :119 `ScopedNoDenormals`
 - Source: src/PluginEditor.cpp:683 (24 Hz timer), :686-692 (VBlank), :306-320 (OpenGL gate)
 - Source: src/gui/Vectorscope.h:21 ("Nothing is ever drawn on the audio thread")
 
@@ -35,7 +35,7 @@ path — visually identical. macOS/Windows keep GPU compositing.
 
 Evidence [Verified]:
 - Source: src/PluginEditor.cpp:306-320 (gate + rationale comment)
-- Source: src/PluginEditor.cpp:1805-1806 (`triggerRepaint` guarded by `isAttached()`)
+- Source: src/PluginEditor.cpp:1813-1814 (`triggerRepaint` guarded by `isAttached()`)
 - Partially Verified (history): CHANGELOG.md [0.8.5]; commit c924ff8
 - See `design-decisions/ADR-0011-linux-x11-cpu-render.md` for the decision record.
 
@@ -44,7 +44,7 @@ Evidence [Verified]:
 | Mechanism | Rate | Work | Source |
 |---|---|---|---|
 | `VBlankAttachment meterVBlank` | per display frame (dt clamped ≤ 0.05 s) | meter-reveal + micro-anims easing | src/PluginEditor.cpp:686-692 |
-| Editor `juce::Timer` | 24 Hz | view-state sync, preset display, `pollUndoCoalesce()`, undo/redo enable, match-gain readout | src/PluginEditor.cpp:683, 1339-1501 |
+| Editor `juce::Timer` | 24 Hz | view-state sync, preset display, `pollUndoCoalesce()`, undo/redo enable, match-gain readout | src/PluginEditor.cpp:683, 1347-1509 |
 | `Vectorscope` `FrameClock` | display-rate, capped ~120 Hz | `repaint()` | Vectorscope.cpp; FrameClock.h |
 | `LevelMeter` `FrameClock` | display-rate, capped ~120 Hz (shown only) | `repaint()` | LevelMeter.cpp; FrameClock.h |
 | `StereoMeter` `FrameClock` | display-rate, capped ~120 Hz (shown only) | dt-corrected smooth + `repaint()` | CorrelationMeter.cpp; FrameClock.h |

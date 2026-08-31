@@ -2,6 +2,8 @@
 #include "PluginEditor.h"
 #include "AbSlotIndex.h"
 
+#include <cmath>   // std::isfinite -- the non-finite guards on the restore paths
+
 AnamorphAudioProcessor::AnamorphAudioProcessor()
     : AudioProcessor (BusesProperties()
         .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
@@ -307,12 +309,22 @@ juce::ValueTree AnamorphAudioProcessor::copyStateWithRawValues()
     return tree;
 }
 
-// Synchronously force every parameter to its restored value, from the just-restored tree:
-//  1. A wholesale apvts.replaceState() does not reliably push every parameter's value through to
-//     its cached/atomic getValue() synchronously (some params kept their PRE-restore value).
-//  2. APVTS stores the DENORMALISED (snapped) value; for discrete params the saved "raw" attribute
+// Synchronously force every parameter to its restored value, from the just-restored tree.
+//
+// CORRECTED 2026-08-31 (ER-STATE-04) after checking the pinned JUCE 9.0.1 rather than
+// re-asserting the original reasoning. What replaceState actually does, and what it leaves:
+//  1. `apvts.replaceState()` DOES propagate: assigning `state` fires valueTreeRedirected ->
+//     updateParameterConnectionsToChildTrees -> setDenormalisedValue -> setValueNotifyingHost,
+//     so for every PARAM node PRESENT in the new tree the parameter, the DSP atomic, the
+//     editor's attachments and the host all move. The older claim here -- that it "swaps only
+//     the tree" -- was wrong. What it does NOT cover is the residual this function exists for:
+//     (a) parameters whose PARAM node is ABSENT from the restored tree are not visited at all
+//     (they keep the previous project's value -- ER-STATE-01, hence the default branch below),
+//     and (b) it reads only @value.
+//  2. @value is the DENORMALISED (snapped) value; for discrete params the saved "raw" attribute
 //     (see getStateInformation) carries the EXACT normalised getValue() pluginval set, so the
-//     round-trip is bit-faithful and passes its 0.1 raw-value tolerance.
+//     round-trip is bit-faithful and passes its 0.1 raw-value tolerance. replaceState cannot
+//     use it, so restoring exactly is this function's job.
 // Prefer "raw" (exact); fall back to the denormalised "value" for legacy sessions that lack it.
 // Idempotent: parameters already at the target value are left untouched.
 //
@@ -322,10 +334,14 @@ juce::ValueTree AnamorphAudioProcessor::copyStateWithRawValues()
 // by some DAWs as an automation write, so we must NOT notify the host. setValueNotifyingHost is
 // setValue + sendValueChangedMessageToListeners, and the latter reaches the host via the parameter's
 // owner-listener, so it can't be used. Instead update getValue() with setValue() and write the raw
-// atomic the audio thread reads (getRawParameterValue) DIRECTLY -- replaceState swaps only the tree,
-// it does not propagate to parameters/atomics. Trade-off: an editor open DURING a host restore does
-// not live-update its sliders (rare -- this plugin exposes no host programs; the audio + getValue()
-// are correct and the sliders sync on editor open); undo/redo/A-B keep the full notifyHost=true path.
+// atomic the audio thread reads (getRawParameterValue) DIRECTLY.
+// NOTE what that does and does not buy (also corrected 2026-08-31): replaceState has ALREADY
+// notified the host for every PARAM node whose denormalised value moved, so this flag suppresses
+// notification only for THIS pass's residual corrections -- it cannot make the whole restore
+// silent, and it never could. By the same token the earlier "trade-off" recorded here was wrong:
+// an open editor DOES track the restore, through the same attachments replaceState drives; only
+// these residual corrections are invisible to it, and they resolve on the next editor sync.
+// undo/redo/A-B keep the full notifyHost=true path.
 void AnamorphAudioProcessor::reassertParameters (const juce::ValueTree& restoredApvtsTree, bool notifyHost)
 {
     if (! restoredApvtsTree.isValid()) return;
@@ -335,7 +351,29 @@ void AnamorphAudioProcessor::reassertParameters (const juce::ValueTree& restored
     // Idempotent single-parameter apply, shared by both branches below.
     auto applyNorm = [&] (juce::RangedAudioParameter* rp, float norm)
     {
-        if (std::abs (norm - rp->getValue()) > 1.0e-6f)
+        // A serialized value is text, and `nan` is text JUCE's number parser
+        // accepts, so a hand-edited or corrupted session can carry
+        // <PARAM value="nan"/>. It must never become parameter state: a
+        // non-finite continuous parameter latches its smoother target, every
+        // output sample goes non-finite, and ADR-0009's sample-level self-heal
+        // then zeroes the block and resets the engine on EVERY block --
+        // permanent silence, which `getStateInformation` writes straight back
+        // out so the next project load reproduces it. The parameter default is
+        // the same answer an ABSENT node already gets just below.
+        //
+        // This runs AFTER apvts.replaceState(), which is the actual ingress:
+        // JUCE pushes @value through setDenormalisedValue -> setValueNotifyingHost
+        // and its own approximatelyEqual guard is false for NaN. So this is a
+        // REPAIR, not just a filter, and it is the one place that sees every
+        // parameter on every restore path.
+        if (! std::isfinite (norm))
+            norm = rp->getDefaultValue();
+
+        // Written as a negated <= so that a NaN on EITHER side counts as
+        // "differs" and gets repaired. The plain `> 1e-6` this replaced is
+        // false when either operand is NaN, which is exactly how a poisoned
+        // parameter used to survive the pass meant to fix it.
+        if (! (std::abs (norm - rp->getValue()) <= 1.0e-6f))
         {
             if (notifyHost)
                 rp->setValueNotifyingHost (norm);

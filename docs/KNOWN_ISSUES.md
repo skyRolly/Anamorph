@@ -4,8 +4,17 @@
 in `POSTMORTEMS.md`, not here. Each entry is evidence-backed (constraint C7). When an item is
 fixed, remove it here and (if notable) add a `POSTMORTEMS.md` entry.
 
-Version-synced to **v0.9.6** (the round-1 engineering-review fixes). That round **added one
-issue**: **KI-027**, the audio-thread latency re-report under host automation of Drive/Algorithm —
+Version-synced to **v0.9.6** (the standing engineering review, rounds 1 and 2). **Round 2 added
+one issue** — **KI-028**, a lost mouse release leaving the value box's host gesture open, found by
+reviewing round 1's own fix — and **corrected KI-027 on four points** after re-verifying it against
+the pinned JUCE: the expensive branch needs oversampling to have been selected by hand (it is not a
+host parameter and defaults to Off), its rate is bounded at one dispatch per parameter per block,
+the priority inversion is mitigated by `PTHREAD_PRIO_INHERIT` on Linux/macOS but not on Windows,
+and **two of the candidate fixes recorded for D-1 are refuted** (the editor's 24 Hz poll does not
+exist with the editor closed; an `AsyncUpdater` reproduces the same `postMessage`). Round 2 also
+fixed a defect that was never filed here because it was found and fixed in the same round: a
+non-finite value in a session or preset (`value="nan"`) was adopted as parameter state and silenced
+the plug-in permanently. Round 1 **added one issue**: **KI-027**, the audio-thread latency re-report under host automation of Drive/Algorithm —
 a confirmed defect whose fix (deferring the notification off the audio thread) is a
 threading-model change gated on Architecture Review, so it is filed here rather than silently
 fixed; the same finding exposed drift between `docs/architecture/LATENCY_MODEL.md` ("the message
@@ -132,6 +141,7 @@ JUCE 8.0.14; before that 0.8.8 for PR #54).
 | KI-021 | **Linux**: a per-user install (the 0.9.3 default) does not remove an existing **system-wide** one, so both are on the DAW's scan path and its scan order decides which version loads — an update can look as if it did not apply | Low | Confirmed, **deliberate**: removing the system copy needs the elevation the per-user mode exists to avoid. The installer now **warns** when it finds one; removal is one `sudo ./uninstall.sh` |
 | KI-022 | **macOS**: components are non-relocatable since 0.9.3 (INC-012), so a bundle the user deliberately moved — to `~/Applications`, or a plug-in kept under `~/Library/Audio/Plug-Ins/…` — is left where it is and a fresh copy is installed at the standard location, leaving two copies with the same bundle identifier | Low | Confirmed, **deliberate trade** for INC-012: following a moved copy is exactly the behaviour that let an install silently write nowhere useful. Documented in the installer's `INSTALL.txt`; removal is manual |
 | KI-023 | **Linux**: the shipped binaries record the CI image's glibc/libstdc++ floor (measured GLIBC_2.38 / GLIBCXX_3.4.31), so they do not load at all on older distributions — Ubuntu 22.04 LTS included | Medium | Confirmed, **measured**; the floor was never chosen and is now asserted on every push so it cannot rise unnoticed. Lowering it is a release-topology decision, not taken |
+| KI-028 | A value-box drag whose mouse RELEASE is lost (released outside the window, or the macOS cached-modifier case of KI-013) leaves the host change gesture that 0.9.6 added to that path OPEN. The editor's 24 Hz release-outside reconcile clears the box's visual `dragging` flag but cannot reach the gesture, which is an RAII member of a type local to `LookAndFeel.cpp`. While it is open, `pollUndoCoalesce` refuses to commit (its "never commit mid-gesture" guard), so NO further edit becomes an undo step until the next value-box press closes it; a host recording touch/latch automation also sees the lane still held | Low | Confirmed (code path, round 2). Introduced by the 0.9.6 fix for the gesture-LESS drag (KI-010's third path) — strictly better than the prior state, which had no gesture and so no undo step at all. Not fixed blind: the two candidate designs (a ValueBox-owned timer using the reconcile's own predicate, or a type-erased release hook the editor can call) are a design decision, recorded in the engineering-review roadmap |
 | KI-027 | Host **automation** of Drive or Algorithm delivers the APVTS parameter callback on the **audio thread**, and when the reported latency actually changes (oversampling engaged and the drive engage-threshold crossed, or the algorithm class switched) the `setLatencySamples` notification chain takes multiple locks and, in the JUCE Linux wrapper, appends to a heap array and `write()`s the message-queue fd — inside `processBlock`. A concurrent GUI edit of the same parameter adds a priority-inversion window (the message thread holds the parameter's listener lock through the host's synchronous `restartComponent`) | Medium | Confirmed (full chain traced in the pinned JUCE 9.0.1, ER-RT-01, two independent verifications); **fix gated** — moving latency-notification delivery off the audio thread is a threading-model change (Architecture Review Gate), awaiting maintainer sign-off; the latency VALUE and its safe-point latch are unaffected |
 | KI-026 | **Pre-2013 Intel / pre-2015 AMD CPUs**: every shipped x86-64 binary is compiled for AVX2 — Linux and the macOS `x86_64` slice at `-march=haswell` (ADR-0031, 0.9.5), Windows at `/arch:AVX2` (ADR-0032) — so on an older CPU the plug-in raises an illegal-instruction fault **inside the host** (`SIGILL`; `STATUS_ILLEGAL_INSTRUCTION` on Windows). The DAW reports a crash, not an incompatible plug-in | Medium | Confirmed, **deliberate** (ADR-0031/0032; output bit-identical **for the twin dump's 32-scenario engaged steady-state matrix**, verified per push on Windows by the blocking A/B gate — the instrument's coverage boundary is recorded in `docs/procedures/TESTING.md` §Gaps). Only Apple Silicon is unaffected. No in-product diagnosis is possible; the requirement is documented in the user guides |
 
@@ -313,13 +323,13 @@ the JUCE focus/peer path REAPER takes).
   workaround for the *open* path: `focusSaveNameField()` grabs keyboard focus and, if the grab does
   not stick (the preset-menu's desktop window still owns OS focus at the callback instant, and JUCE
   aborts an internal focus move while `! peer->isFocused()`), it retries on later message-loop
-  passes up to four times (src/PluginEditor.cpp:2095-2103; declared src/PluginEditor.h:248). This shipped in
+  passes up to four times (src/PluginEditor.cpp:2103-2111; declared src/PluginEditor.h:248). This shipped in
   the v0.8.9 CHANGELOG "Fixed" entry ("The Save Preset name field reliably receives typing — Space
   included") and was **validated headless end-to-end**, i.e. against the JUCE wrapper, not against
   REAPER. The retry loop runs **only on dialog open** (`showSavePreset(true)` → `focusSaveNameField(4)`);
   there is **no focus re-acquisition after a later focus loss** — no `focusLost` handler,
   `mouseDown`-grab, or `setMouseClickGrabsKeyboardFocus` override on `saveNameEditor` (repo-wide:
-  the only focus calls are src/PluginEditor.cpp:2064 (the on-open call) / src/PluginEditor.cpp:2095-2103 (`focusSaveNameField` itself) and the unrelated SpectrumImager freq editor).
+  the only focus calls are src/PluginEditor.cpp:2072 (the on-open call) / src/PluginEditor.cpp:2103-2111 (`focusSaveNameField` itself) and the unrelated SpectrumImager freq editor).
   A click on the field then relies on JUCE's default click-to-focus, which is subject to the same
   `peer->isFocused()` abort if REAPER holds OS focus on the plugin's parent window — consistent with
   "clicking the text does not reactivate editing until the dialog is reopened". This is a strong
@@ -588,7 +598,7 @@ keys fine":
   (REAPER-specific, the field stops receiving keys at all); this is a *repeat* problem that occurs
   with focus working correctly, in every host, on macOS.
 - **Evidence [Verified (code path) / Unverified (the macOS-side attribution)]:**
-  src/PluginEditor.cpp:374-384 (the field), src/PluginEditor.cpp:2053-2103 (show + focus);
+  src/PluginEditor.cpp:374-384 (the field), src/PluginEditor.cpp:2061-2111 (show + focus);
   `juce_NSViewComponentPeer_mac.mm:1655-1668, 2396-2435`; `juce_ComponentPeer.cpp:291-301`. The
   JUCE trace is verified line by line against the pinned commit; the attribution to the macOS
   text-input layer is inferred from the symptom signature (letters **and** digits suppressed,
@@ -824,7 +834,7 @@ a single output bit.
 adversarial verifications against the pinned JUCE 9.0.1 tree).**
 
 The processor registers itself as the APVTS listener for `pid::drive` and `pid::algorithm`
-(`src/PluginProcessor.cpp:18-19`), and `parameterChanged` → `updateLatency()` →
+(`src/PluginProcessor.cpp:20-21`), and `parameterChanged` → `updateLatency()` →
 `setLatencySamples()` runs **synchronously on whatever thread changes the parameter**. Under VST3
 host automation that thread is the audio thread (`JuceVST3Component::process` →
 `processParameterChanges` → `setValueAndNotifyIfChanged`), and JUCE dispatches parameter listeners
@@ -834,24 +844,40 @@ APVTS `LockedListeners` mutex).
 - **When it costs nothing:** `setLatencySamples` fires `updateHostDisplay` only when the reported
   value actually CHANGES — so the common case (automation that does not cross the oversampling
   engage threshold, or oversampling off) takes the two listener locks and returns.
-- **When it fires:** with oversampling selected, a Drive automation lane crossing the engage
+- **What it needs first (round-2 correction, narrowing this entry):** oversampling is **not a host
+  parameter at all** — it lives in `InternalState` (`int_oversample`, default `1` = "Off (1x)") and
+  no automation lane can move it. At factory defaults `predictLatency` is identically 0, so the
+  expensive branch is **unreachable** until the user has deliberately selected 2x/4x/8x in
+  Settings. This is a precondition the original filing did not state.
+- **When it fires:** with oversampling so selected, a Drive automation lane crossing the engage
   threshold (Drive defaults to 0 dB, so any upward lane crosses it on its first ramp), or an
   Algorithm lane switching between the linear and Chorus/Dimension-D classes, triggers the
   wrapper's `audioProcessorChanged` → `ComponentRestarter`: on the audio thread that is
   `triggerAsyncUpdate` → (Linux) `InternalMessageQueue::postMessage` = a `ScopedLock`, a
   `ReferenceCountedArray::add` (heap), and a `write()` syscall — inside `process()`. The
-  AsyncUpdater CAS collapses repeats, so this is once per engage/disengage crossing.
+  AsyncUpdater CAS collapses repeats *within one message-loop period*, so the typical rate is once per engage/disengage crossing and the worst-case BOUND is once per block for a lane chattering across the threshold. VST3 delivers at most one listener dispatch per parameter per block, so nothing is faster than that.
 - **The worse variant:** a message-thread edit of the same parameter holds the parameter's
   `listenerLock` while synchronously calling the host's `restartComponent(kLatencyChanged)`
   (unbounded host work); concurrent audio-thread automation of that parameter then blocks on the
-  same lock — a real dropout mechanism, needing the GUI + automation coincidence.
+  same lock — a real dropout mechanism, needing the GUI + automation coincidence. **Milder than
+  filed on two of three platforms** (round-2 correction): `juce::CriticalSection` enables
+  `PTHREAD_PRIO_INHERIT` on Linux and macOS, which mitigates — though does not bound — the
+  inversion; Windows uses a plain `CRITICAL_SECTION` with no priority inheritance. The blocked
+  window is bounded by the host's own `restartComponent` work.
 - **Why it is filed rather than fixed:** the value chain is correct (the LATCHED latency and its
   silent-bottom safe points are untouched — see `docs/architecture/LATENCY_MODEL.md`); the defect
-  is *delivery thread* only. Any fix (defer to the message thread via the editor's existing
-  24 Hz poll, an `AsyncUpdater`, or an atomic flag) changes the threading model of
-  latency notification — an **Architecture Review Gate** item (`AI_AGENT_POLICY.md` hard stop)
-  requiring maintainer sign-off. The candidate fix is recorded in the engineering-review
-  programme worklog (`worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md`, decision D-1).
+  is *delivery thread* only. Any fix changes the threading model of latency notification — an
+  **Architecture Review Gate** item (`AI_AGENT_POLICY.md` hard stop) requiring maintainer sign-off.
+  **Round 2 refuted two of the candidates originally listed here.** Deferring to the editor's
+  24 Hz poll is not viable: that timer is the only message-thread tick in `src/`
+  (`src/PluginEditor.cpp` `startTimerHz (24)`) and does not exist with the editor closed, so a
+  closed-editor render would never tell the host about a latency change at all — a worse,
+  user-visible defect. An `AsyncUpdater` is not a fix either: its trigger reproduces the very
+  `postMessage` (lock + possible reallocation + `write()`) that is the cost, removing only the
+  inversion. The surviving design, and what D-1 now asks the maintainer to approve, is: keep the
+  synchronous call when `juce::MessageManager::existsAndIsCurrentThread()`, and otherwise set one
+  relaxed atomic flag consumed by a processor-owned ~20 Hz `juce::Timer`. See
+  `worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md`, decision D-1.
 - **Documented-model drift (reported per C6, corrected only in the code comment):**
   `docs/architecture/LATENCY_MODEL.md:43-45` states "the message thread updates PDC", while
   `docs/architecture/THREAD_MODEL.md:74` itself concedes value callbacks arrive on the audio
@@ -862,7 +888,42 @@ APVTS `LockedListeners` mutex).
   in `setParameters`' own body either — `check-realtime.py` now seeds `setParameters`/`toEngine`
   (with self-test liveness), closing the static half; RTSan still enforces only from the
   `process` annotation down.
-- **Evidence [Verified]:** src/PluginProcessor.cpp:18-19, :105-121; pinned JUCE
+- **Evidence [Verified]:** src/PluginProcessor.cpp:20-21, :117-134; pinned JUCE
   `juce_audio_plugin_client_VST3.cpp:3563/:3591/:3537`, `juce_AudioProcessorParameter.cpp:110-121`,
   `juce_AudioProcessorValueTreeState.cpp:148-203`, `juce_AudioProcessor.cpp:415-436`,
   `juce_VST3Common.h:1642-1653`, `juce_Messaging_linux.cpp:79-96`.
+
+## KI-028 — a lost mouse release during a value-box drag leaves the host gesture open
+
+**Filed 2026-08-31 (engineering-review round 2, finding ER-GUI-04).** A residual of the round-1
+fix for KI-010's third gesture-less path, found by reviewing that fix rather than by a report.
+
+Since 0.9.6 the knob value box holds a `juce::Slider::ScopedDragNotification` for the duration of
+the press (`src/gui/LookAndFeel.cpp`, `ValueBox::mouseDown`/`mouseUp`), which is what gives a
+value-box drag its Undo step and its host touch/latch bracket. The gesture is closed by `mouseUp`.
+
+**When `mouseUp` never arrives** — the press is released outside the plug-in window, or the macOS
+cached-modifier case of KI-013 — the gesture stays open. The editor already reconciles the *visual*
+half of exactly this situation (`src/PluginEditor.cpp`, the release-outside block clears the
+`dragging` property on every animated widget), but it cannot close the gesture: `ValueBox` is
+declared in an unnamed namespace inside `LookAndFeel.cpp`, so nothing outside that file can name
+it, and the notification is an RAII member.
+
+- **Consequence while it is open:** `pollUndoCoalesce` returns early on its "a user gesture is in
+  progress → never commit mid-gesture" guard, so **no edit becomes an undo step** until the next
+  value-box press (whose `mouseDown` assignment destroys the stale notification and closes it). A
+  host recording touch/latch automation likewise sees the lane still held.
+- **Why it is not a regression in the ordinary sense:** before 0.9.6 that drag opened no gesture at
+  all and produced no undo step ever. This is a narrower failure of a strictly better behaviour.
+- **Why it is filed rather than fixed here:** the two candidate designs are a decision, not a
+  detail. (1) Give `ValueBox` its own timer that closes the gesture when
+  `ModifierKeys::getCurrentModifiersRealtime()` says the button is really up — self-contained, and
+  inert on macOS for the same KI-013 reason the editor's reconcile is. (2) Have the box publish a
+  type-erased "release" hook the editor's existing reconcile can call — fixes macOS too, but adds a
+  cross-file lifetime contract. Round 3 picks one.
+- **Evidence [Verified]:** src/gui/LookAndFeel.cpp (`ValueBox::mouseDown` creating the
+  notification, `mouseUp` releasing it); src/PluginEditor.cpp (the release-outside reconcile,
+  which clears `dragging` and cannot see the notification); src/PluginProcessor.cpp
+  (`parameterGestureChanged` counting `openGestures`, `pollUndoCoalesce`'s mid-gesture guard);
+  pinned JUCE `juce_Slider.cpp` (`ScopedDragNotification` sends drag start/end from its
+  constructor/destructor).

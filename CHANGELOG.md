@@ -15,6 +15,16 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 
 ## [0.9.6] — 2026-08-31
 ### Fixed
+- **A damaged project or preset file can no longer leave the plug-in permanently silent.** If a
+  saved value had been corrupted into "not a number" — by a hand edit, a bad transfer or a failing
+  disk — the plug-in adopted it, and from that point produced **no sound at all** for the rest of
+  the session, with the controls still showing plausible numbers. Worse, saving wrote the bad value
+  straight back out, so reopening the project reproduced the silence. Such a value is now rejected
+  on load and the affected control falls back to its default, exactly as it already did for a
+  setting the file does not contain at all — on both the project-state and preset-file paths.
+  Regression coverage: State test 17, which restores a poisoned session, then plays audio through
+  the real plug-in and requires it to be audible.
+  Evidence: PR #134. [Verified]
 - **Inserting the plug-in, or opening a project, no longer dips the sound for the first moment.**
   Every time the plug-in was activated — a fresh insert on a playing track, a project reload, a
   sample-rate or buffer-size change — the audio faded down to near-silence and back over roughly

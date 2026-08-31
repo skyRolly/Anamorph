@@ -341,19 +341,34 @@ DELIBERATE_REAIMS = {
     # carries the re-aimed spellings.
     ("docs/architecture/SERIALIZATION_REGISTRY.md",
      "src/PluginProcessor.cpp:688-692",
-     "src/PluginProcessor.cpp:753-754"): "legacyKey",
+     "src/PluginProcessor.cpp:791-792"): "legacyKey",
     ("docs/policies/COMPATIBILITY_POLICY.md",
      "src/PluginProcessor.cpp:327-396",
-     "src/PluginProcessor.cpp:655-806"): "setStateInformation",
+     "src/PluginProcessor.cpp:693-844"): "setStateInformation",
     # 2026-08-31 (round 2): prepareToPlay grew by the priming call, shifting every
     # line below it. RISK-007's read-side citation names setStateInformation, so it was
     # re-derived from that symbol rather than mapped mechanically -- the mechanical
     # map would have carried the span past the function's own signature. (The
     # write-side reference beside it is a bare `:line` shorthand, which the gate
     # does not track as an anchor, so it needs no declaration.)
+    # The same three anchors also moved relative to the PUSH PREDECESSOR (a
+    # different base than origin/main, and the one CI compares). Same symbols,
+    # same re-derivation; both bases are declared until this branch merges.
+    ("docs/architecture/SERIALIZATION_REGISTRY.md",
+     "src/PluginProcessor.cpp:743-744",
+     "src/PluginProcessor.cpp:791-792"): "legacyKey",
+    ("docs/policies/COMPATIBILITY_POLICY.md",
+     "src/PluginProcessor.cpp:645-796",
+     "src/PluginProcessor.cpp:693-844"): "setStateInformation",
+    ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
+     "src/PluginProcessor.cpp:318, 380-383",
+     "src/PluginProcessor.cpp:379,473-476"): "setValueNotifyingHost",
+    ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
+     "src/PluginProcessor.cpp:311,345-348",
+     "src/PluginProcessor.cpp:379,473-476"): "setValueNotifyingHost",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:610-749",
-     "src/PluginProcessor.cpp:655-806"): "setStateInformation",
+     "src/PluginProcessor.cpp:693-844"): "setStateInformation",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the

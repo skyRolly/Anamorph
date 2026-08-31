@@ -145,8 +145,8 @@ env:
 # step that PRODUCES what it consumes -- never a bare `!cancelled()`, and not
 # always `build`: on Linux the pluginval gates validate the STRIPPED bytes, so
 # there the producer is `strip` (which subsumes `build`, having no `if:` of its
-# own). Windows and macOS have no such intermediate step, so `build` is the
-# producer there.
+# own). On macOS the gates run AFTER packaging, so there the producer is
+# `package`; Windows validates the build tree, so `build` is the producer there.
 #
 # ON macOS THE AU IS VALIDATED TOO, and only there -- it is the one format that
 # exists on exactly one platform, and it is the only format Logic and GarageBand
@@ -154,13 +154,13 @@ env:
 # three OSes, so the format most of this product's macOS users actually run
 # shipped having passed no automated validation at all.
 #
-# ASYMMETRY, stated rather than glossed: ONLY LINUX validates the shipped bytes.
-# Its strip step runs BEFORE pluginval, so the gate sees exactly what users get.
-# On macOS `strip -x` + ad-hoc codesign happen in the packaging step AFTER
-# pluginval, and on Windows the public copy is produced after validation too --
-# so on those two platforms a defect introduced BY stripping or signing would
-# ship unvalidated. Reordering is not free (macOS must codesign last, or the seal
-# breaks), so it is recorded in docs/procedures/CI_CD.md rather than guessed at.
+# ASYMMETRY, stated rather than glossed -- and NARROWED on 2026-08-15, which this
+# header failed to record until 2026-08-31. Linux validates the stripped bytes
+# (its strip step runs BEFORE pluginval) and macOS now validates the PACKAGED
+# bundle from dist/ -- stripped, ad-hoc signed and slice-verified -- so on both
+# the gate sees what users get. WINDOWS is now the only one left: its public copy
+# is produced after validation, so a defect introduced by staging alone would
+# ship unvalidated. Scope: this file's macOS gate steps, docs/procedures/CI_CD.md.
 #
 # Symbol handling (RH-PR-2, ADR-0021): every platform generates full debug
 # info, retains it as a separate *-debug artifact (split .debug / PDB / dSYM)

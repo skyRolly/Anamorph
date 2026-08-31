@@ -1,5 +1,7 @@
 #include "PresetManager.h"
 
+#include <cmath>   // std::isfinite -- the non-finite guards on the restore paths
+
 namespace anamorph
 {
 
@@ -192,9 +194,19 @@ void PresetManager::applySoundTree (const juce::ValueTree& state)
             {
                 auto child = state.getChildWithProperty ("id", wid->paramID);
                 if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p))
-                    rp->setValueNotifyingHost (child.isValid()
+                {
+                    // A preset file is user-editable text and `nan` parses, so the
+                    // value is only adopted when it is finite -- otherwise the
+                    // parameter default applies, exactly as it does for a missing
+                    // child. A non-finite parameter silences the plug-in for the
+                    // rest of the session (see reassertParameters for the full
+                    // mechanism); the session path is guarded there.
+                    const float fromFile = child.isValid()
                         ? rp->convertTo0to1 ((float) (double) child.getProperty ("value"))
-                        : rp->getDefaultValue());
+                        : rp->getDefaultValue();
+                    rp->setValueNotifyingHost (std::isfinite (fromFile) ? fromFile
+                                                                        : rp->getDefaultValue());
+                }
             }
     resetSolo();
 }
