@@ -484,8 +484,10 @@ warnings would turn that gate green by deleting its input. Verified against the 
 14 accepted sites in 7 baseline entries* — with 129 of the 134 compilations served from cache on the
 warm run. Those three figures are from that measurement, under that compiler; the property they
 establish (replayed stderr is byte-identical to compiled stderr) is a ccache property and is not
-version-specific, and the *verdict* half still holds unchanged at Clang 22 — the accepted set was the
-same 14 sites in 7 entries. (It is **17 sites in 9 entries** since 0.9.5: A7-9's three fixpoint gates
+version-specific, and the *verdict* half still holds unchanged at Clang 22 — and, measured during
+ADR-0033's evaluation, at Clang 23 as well: the first-party set came back `diff`-identical under both.
+(The accepted set was 14 sites in 7 entries then; it is **17 sites in 9 entries** since
+0.9.5: A7-9's three fixpoint gates
 each compare two floats exactly, which is the point of them — `docs/architecture/PERFORMANCE_BUDGET.md`,
 the A7-9 entry.)
 
@@ -774,15 +776,32 @@ regressed. An unrecorded version is refused for the same reason a wrong one is: 
 confirmed to describe this compiler. Bump the pin and re-baseline in the **same** change.
 
 **The pin is 22 — upstream stable — and it comes from apt.llvm.org.** The rule is *upstream stable*,
-not *newest* and not *whatever Ubuntu packages*: 22.1.8 was released 2026-07-10 and 22.x is the branch
-upstream shipped point releases on, while 23.1.0 is still at **rc3**. Ubuntu's own archives stop at
-`clang-20` for noble, which is what `ubuntu-latest` resolves to, so the toolchain is installed by
-`scripts/setup-llvm-apt.sh` from **apt.llvm.org** — upstream's own Debian/Ubuntu channel, whose
-`llvm.sh` asserts `CURRENT_LLVM_STABLE=22`. Ubuntu's packaging boundary is a fact about Ubuntu's
-release process, not about this project, and it is not allowed to hold the warning gate and the
-sanitizer host two majors behind upstream. ADR-0028 carries the decision, the options it rejected
-(including the intermediate 20 step and its mistaken reading of 21/22 availability), and the policy
-rule it enacts.
+not *newest* and not *whatever Ubuntu packages*. Ubuntu's own archives stop at `clang-20` for noble,
+which is what `ubuntu-latest` resolves to, so the toolchain is installed by
+`scripts/setup-llvm-apt.sh` from **apt.llvm.org** — upstream's own Debian/Ubuntu channel. Ubuntu's
+packaging boundary is a fact about Ubuntu's release process, not about this project, and it is not
+allowed to hold the warning gate, the sanitizer host and — since ADR-0030 — the shipped Linux compiler
+majors behind upstream. ADR-0028 carries the rule and the options it rejected (including the
+intermediate 20 step and its mistaken reading of 21/22 availability).
+
+**"Upstream stable" is now ASSERTED, and 23 is what forced that.** apt.llvm.org publishes rolling
+BRANCH builds, so a `-N` suite can serve a commit from before N's release under a version string that
+already reads like the release. `setup-llvm-apt.sh` therefore carries an upstream **release identity**
+per major — the full version plus the `llvmorg-<version>` tag's commit — refuses a major it has no
+identity for (exit 2), and reads the build commit from **four** sources — `clang --version` and the
+installed version of each of the three packages. Every source carrying a commit must agree, at least
+one must carry one, and it must be that tag's; anything else is exit 1. A compiler whose `--version`
+omits the commit is therefore still verifiable from package metadata, and one for which **no** source
+carries it fails **closed** rather than passing on a version string. `--self-test` proves that decision
+function in `source-lint`. noble-22 passes because it is built from `ca7933e47d3a`, which **is**
+`llvmorg-22.1.8^{}`.
+**23 does not**: LLVM 23.1.0 released 2026-08-25 (tag commit `ea7d852a`), and on 2026-08-30 every
+apt.llvm.org `-23` suite — noble, resolute, bookworm, trixie — still carried
+the same commit `55feb0a3b6b7` (noble's package is
+`1:23.1.0~++20260818083557+55feb0a3b6b7`; the rest differ only in build timestamp), built 2026-08-18 —
+**49 commits before** that
+tag, while no Ubuntu series publishes `clang-23` at all. **ADR-0033** carries the measurement, the
+deferral and the single condition that lifts it.
 
 ### The GCC warning baseline
 
@@ -887,28 +906,38 @@ three *shipping* build jobs never touch it. The install is 15 packages / 155 MB 
 a 4-core box, against 14 / 113 MB / 10.9 s for clang-20 from the stock archive and a no-op for the
 preinstalled clang-18.
 
-**Reproducibility is weaker than the stock archive, and that is the real trade.** apt.llvm.org publishes
-*branch snapshots*, never the tagged `llvmorg-*` build — noble-22 is
-`1:22.1.8~++20260714014902+ca7933e47d3a-…`, the 22.x head just after 22.1.8, and the leading `~` makes
-it sort *below* a hypothetical `1:22.1.8-1`. Suites are rebuilt while their branch is open and freeze
-once it closes, and the pool keeps **only the current `.deb` per architecture** — which is also why an
-exact-version pin is not merely unenforceable here but impossible: it would stop resolving the next time
-the suite is rebuilt. **22.x is closed** (22.1.8 is upstream's newest tag; 23 is the development
-branch), and the mirror shows it: noble-22's index is 18 days old where noble-23's is 2. So the pin
-rests on a frozen suite, not on a hope. The guard still covers only the major; a patch-level diagnostic
-shift inside 22 would surface as a gate failure, not a silent pass. One gain, too: apt.llvm.org
-publishes noble-22 for `amd64 arm64 s390x`, so a future `ubuntu-24.04-arm` Clang job could install it —
-`clang-20` from the stock archive (amd64/i386 only) could not.
+**Reproducibility is weaker than the stock archive, and that is the real trade.** apt.llvm.org
+publishes *branch builds*, and the version string alone does not say which commit — noble-22 is
+`1:22.1.8~++20260714014902+ca7933e47d3a-…` and the leading `~` makes it sort *below* a hypothetical
+`1:22.1.8-1`. Suites are rebuilt while their branch is open and freeze once it closes, and the pool
+keeps **only the current `.deb` per architecture** — which is also why an exact *package-version* pin
+is not merely unenforceable here but impossible: it would stop resolving the next time the suite is
+rebuilt. What IS pinnable is the compiler's own identity, and since ADR-0033 that is what the install
+asserts: `ca7933e47d3a` is `llvmorg-22.1.8^{}`, so this suite serves the **release commit**, not merely
+a build of its branch. **22.x is closed** (22.1.8 is upstream's newest 22 tag), and the mirror shows
+it: noble-22's index has not moved since 2026-07-30. So the pin rests on a frozen suite carrying a
+released compiler, and a rebuild from any other commit fails the install rather than passing silently.
+One gain, too: apt.llvm.org publishes noble-22 for `amd64 arm64 s390x`, so a future
+`ubuntu-24.04-arm` Clang job could install it — `clang-20` from the stock archive (amd64/i386 only)
+could not.
 
-**If you re-check apt.llvm.org and it seems to disagree, read the script, not the prose.** The site's
-homepage still labels 21 stable / 22 qualification / 23 development, one cycle stale; `llvm.sh`'s
-`CURRENT_LLVM_STABLE=22` and upstream's own tags are the authority.
+**If you re-check apt.llvm.org and it seems to disagree, trust upstream's release page over
+apt.llvm.org's own bookkeeping — and trust the PACKAGE over both.** On 2026-08-30 the site's homepage
+still called 23 the development branch and `llvm.sh` still read `CURRENT_LLVM_STABLE=22`, five days
+after 23.1.0 shipped, with no `llvm-toolchain-noble-24` suite published. Both lag, so llvm.org's
+*Latest LLVM Release* banner and the per-release documentation at `releases.llvm.org/<version>/` decide
+what upstream stable IS — the same resolution ADR-0028 reached when those two apt.llvm.org proxies
+disagreed with each other. But "a release exists" and "this mirror serves it" are different questions,
+and ADR-0033 is the round that learned to ask the second one: the `.deb`'s embedded build commit is the
+only source that answers it, and it is now asserted at install time.
 
 **The one upstream default worth naming, because it is a silent one.** Clang ≥ 20 turns on distinct
 TBAA tags for incompatible pointers by default, which upstream says "may silently change code behavior
-for code containing strict-aliasing violations" (`-fno-pointer-tbaa` disables it). This job is not a
-shipping compiler — the Linux artefact is GCC's — but it is a *detector*, so a codegen change here is
-worth having looked at rather than assumed away: both suites pass under the clang-22 Release build
+for code containing strict-aliasing violations" (`-fno-pointer-tbaa` disables it). *When this was
+written* the job was not a shipping compiler — the Linux artefact was GCC's — but it was a *detector*,
+so a codegen change here was worth having looked at rather than assumed away. **Since ADR-0030 the
+clause no longer holds and the concern is larger, not smaller: this compiler ships the Linux
+artefact.** The measurement below stands as taken: both suites pass under the clang-22 Release build
 (140 + 894) and again under its ASan+UBSan+vptr build with `halt_on_error=1`, and the diagnostic set
 did not move. The ABI changes in 20, 21 and 22 (Itanium construction-vtable mangling; larger records
 returned in memory; the MSVC-ABI destructor change) cannot reach this pipeline: every job builds its
@@ -1013,7 +1042,13 @@ A line whose CONTENT changes on its own schedule is a different case and has its
 `VERSIONED_LINES` covers `CMakeLists.txt:14`, the `project(... VERSION ...)` line, whose text
 changes at every release while the anchor never moves. `DELIBERATE_REAIMS` cannot express
 that — it excuses a changed SPELLING, and `is_declared_reaim` returns false when the
-spelling is unchanged, so an entry cannot outlive its transition. For a `VERSIONED_LINES`
+spelling is unchanged. **That refusal alone did not stop an entry outliving its transition,
+and until 2026-08-30 this paragraph said it did.** The table was keyed on ONE spelling matched
+against either side of the change, so once the base caught up, every later movement of that anchor
+arrived as `declared → something new` and was excused by a declaration written for a transition that
+had already merged — silently, when the declared span was wide enough that the aim-check still found
+its token. The key is now the **transition**, `(document, base anchor, current anchor)`, so a
+declaration authorises one movement and stops matching the moment either end differs. For a `VERSIONED_LINES`
 entry the base comparison is replaced by a permanent token check
 (`verify_versioned_lines()`, a hard failure in every mode), it is keyed by one exact
 `(path, line)` pair, and it applies only while the anchor has not moved. Both check paths -- the

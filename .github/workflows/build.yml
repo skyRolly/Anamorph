@@ -57,12 +57,21 @@ concurrency:
 # "never key on line numbers" rule was written to avoid, reintroduced one level
 # up.
 #
-# 22 is the CURRENT UPSTREAM STABLE major (22.1.8). Ubuntu's own archives stop at
-# 20 for noble, so it comes from apt.llvm.org -- upstream's own channel, added by
-# `scripts/setup-llvm-apt.sh`, which that script's header justifies in full.
-# Ubuntu's packaging boundary is a fact about Ubuntu, not about this project, so
-# it is not allowed to hold the warning gate two majors back. ADR-0028 decides
-# this; CI_CD.md records the measurements.
+# 22 IS AN UPSTREAM STABLE RELEASE, and since ADR-0033 that is ASSERTED rather
+# than assumed: `setup-llvm-apt.sh` refuses to install a major whose upstream
+# release identity it does not carry, and refuses the install if the compiler's
+# build commit is not that release's tag commit. noble-22 is built from
+# `ca7933e47d3a`, which IS `llvmorg-22.1.8^{}`. Ubuntu's own archives stop at 20
+# for noble, so it comes from apt.llvm.org -- upstream's own channel, added by
+# that script, which its header justifies in full. Ubuntu's packaging boundary is
+# a fact about Ubuntu, not about this project, so it is not allowed to hold the
+# warning gate -- and, since ADR-0030, the SHIPPED Linux compiler -- majors back.
+#
+# 23 IS NOT ADOPTED, and the reason is mechanical rather than editorial: LLVM
+# 23.1.0 released 2026-08-25, but every apt.llvm.org `-23` suite still carries a
+# build from 49 commits BEFORE that tag. ADR-0033 records the measurement, the
+# blocker and the condition that lifts it; ADR-0028 decides the rule; CI_CD.md
+# records the measurements.
 #
 # The baseline RECORDS this number in its own header and
 # `check-clang-warnings.py` refuses to run when the two disagree: bumping the pin
@@ -500,6 +509,17 @@ jobs:
       # clean tree.
       - name: Citation-gate self-test (recognition, mapping and rewriting)
         run: python3 scripts/check-citations.py --self-test
+
+      # THE TOOLCHAIN INSTALLER'S VERIFIER, self-tested HERE rather than in the
+      # five jobs that install: its decision function needs no apt, no network
+      # and no compiler, so proving it live costs seconds in a lint job instead
+      # of five duplicated minutes in build jobs. The install path calls the same
+      # function with real evidence, so a dead verifier fails here rather than
+      # accepting whatever the mirror served. It covers the case that used to
+      # pass silently -- a compiler whose version looks right and whose identity
+      # cannot be established from any source (ADR-0033).
+      - name: Release-identity self-test (the toolchain verifier still refuses)
+        run: ./scripts/setup-llvm-apt.sh --self-test
 
       # Evidence anchors (`some/file.cpp:695-752`) are exact and
       # therefore fragile: an edit ABOVE one silently re-aims it at unrelated
@@ -1131,9 +1151,9 @@ jobs:
 
       # The three ASan runtime checks after detect_leaks were measured clean on
       # both suites (2026-08-18) and only ever tighten the gate.
-      # detect_stack_use_after_return is NOT listed: it is clang-22's Linux
-      # default (demonstrated -- an option-free run already reports it), and
-      # restating a default is the copy that rots when the default moves.
+      # detect_stack_use_after_return is NOT listed: it is the pinned Clang's
+      # Linux default (`ASAN_OPTIONS=help=1` reads "Current Value: true", re-read
+      # on both 22 and 23; a restated default is the copy that rots).
       - name: Self-tests under ASan + UBSan
         env:
           ASAN_OPTIONS: detect_leaks=1:check_initialization_order=1:strict_init_order=1:strict_string_checks=1

@@ -2,6 +2,13 @@
 
 **Status:** **Accepted** (Build System change — `ARCHITECTURE_REVIEW_GATE.md`; approved by the
 maintainer 2026-08-17, together with the policy amendment below.)
+**This decision stands, and its value is unchanged at 22.**
+[ADR-0033](ADR-0033-clang-toolchain-pin-23.md) (2026-08-30) fired this ADR's revisit trigger when LLVM
+23.1.0 shipped, **evaluated 23 and did not take it** — no apt.llvm.org suite carries the release
+build — so `ANAMORPH_CLANG_VERSION` remains **22**. ADR-0033 *amends* this ADR in one place only, and
+strengthens rather than replaces it: the install now asserts that the compiler is the recorded
+`llvmorg-<version>` release build, not merely that its major matches. Everything below stands as
+recorded.
 
 **Amends:** `docs/policies/ARCHITECTURE_REVIEW_GATE.md`, the **Build System change** item, with a
 *Compiler and toolchain versions* rule. Per `ADR_POLICY.md` rule 5 and `SOURCE_OF_TRUTH.md` ("An ADR
@@ -152,13 +159,23 @@ candidate.
 - **Reproducibility is at major granularity, and the floating part is now a snapshot string** —
   stated rather than glossed, because it is genuinely weaker than the stock archive's
   release-versioned packages. apt.llvm.org publishes *branch snapshots*, never the tagged
-  `llvmorg-*` build: noble-22 is `1:22.1.8~++20260714014902+ca7933e47d3a-…`, the 22.x head just after
-  22.1.8, and the `~` makes it sort **below** a hypothetical `1:22.1.8-1`. Suites are rebuilt while
-  their branch is open and freeze when it closes. **22.x is closed** (22.1.8 is upstream's newest tag;
-  23 is the development branch), which the mirror corroborates — noble-22's index is 18 days old while
-  noble-23's is 2 — so this suite is in its frozen state rather than merely expected to be. The guard
-  covers the major; a patch-level diagnostic shift within 22 would surface as a gate failure, not a
-  silent pass.
+  `llvmorg-*` build: noble-22 is `1:22.1.8~++20260714014902+ca7933e47d3a-…`, taken here to be the 22.x
+  head just after 22.1.8, and the `~` makes it sort **below** a hypothetical `1:22.1.8-1`. Suites are
+  rebuilt while their branch is open and freeze when it closes. **22.x is closed** (22.1.8 is
+  upstream's newest tag; 23 is the development branch), which the mirror corroborates — noble-22's
+  index is 18 days old while noble-23's is 2 — so this suite is in its frozen state rather than merely
+  expected to be. The guard covers the major; a patch-level diagnostic shift within 22 would surface as
+  a gate failure, not a silent pass.
+
+  > **Corrected 2026-08-30 (ADR-0033), recorded rather than removed.** Two clauses above are wrong in
+  > the same way, and the error was in this ADR's favour. apt.llvm.org publishes *branch* builds, but
+  > "never the tagged `llvmorg-*` build" does not follow: `ca7933e47d3a` **is**
+  > `llvmorg-22.1.8^{}`, so this suite serves the release **commit** itself, and the pin was stronger
+  > than this bullet claimed. The same reading applied to `-23` is what made the reverse error
+  > possible — a `23.1.0~++` package was taken for a release-grade build when it was 49 commits short
+  > of `llvmorg-23.1.0`. The build commit inside `clang --version` is the only thing that separates the
+  > two, and `setup-llvm-apt.sh` now asserts it. The paragraph is left as written because the
+  > *conclusion* it supports — major granularity, no exact package-version pin — still holds.
 - **Install cost, per Clang job:** 15 packages, 155 MB, **17.8 s** measured on a 4-core box, plus one
   scoped `apt-get update`. For comparison, clang-20 from the stock archive was 14 packages / 113 MB /
   10.9 s, and clang-18 was preinstalled on the image.

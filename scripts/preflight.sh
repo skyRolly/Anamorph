@@ -47,6 +47,12 @@ python3 scripts/check-realtime.py --self-test
 python3 scripts/check-realtime.py
 python3 scripts/check-clang-warnings.py --self-test
 python3 scripts/check-gcc-warnings.py --self-test
+# The toolchain installer's release-identity verifier. Its --self-test drives the
+# SAME decision function the install path calls, with recorded strings, so it
+# needs no apt, no network and no installed compiler -- including the case that
+# used to pass silently: a compiler whose version looks right and whose identity
+# cannot be established at all.
+./scripts/setup-llvm-apt.sh --self-test
 echo "note: the FULL warning gates need a build log from the pinned compiler"
 echo "      (CI: linux, linux-lto-tests); only their self-tests ran here."
 

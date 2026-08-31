@@ -1765,7 +1765,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3189` and `.github/workflows/build.yml:3274`, this round being
+`.github/workflows/build.yml:3209` and `.github/workflows/build.yml:3294`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -1799,7 +1799,7 @@ silence is being read.
 
 **Read off the workflow, not off the review.** The report asserted that
 `check-clang-warnings.py` and `check-gcc-warnings.py` "self-test in one job and gate in another".
-They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:630` and gates at
+They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:650` and gates at
 `:944`, both in one job; `check-gcc-warnings.py` self-tests at `:2530` and gates at `:2551`,
 both in `linux-lto-tests`. All seven pairs are same-job. (The Clang pair was in `linux-clang` when
 this round ran; ADR-0030 folded that job into `linux`, moving both lines together and leaving the
@@ -1810,7 +1810,7 @@ before", not the job placement, and that is what changed.
 "immediately before" claim for `source-lint`'s three lints, where it is true of two of them; leaving
 it would have left a Procedures document contradicting the Policy on the exact sentence being
 corrected, which the authority order in `SOURCE_OF_TRUTH.md` does not permit. Deliberately NOT
-followed: the `source-lint` comment at `.github/workflows/build.yml:454` carries the same phrasing
+followed: the `source-lint` comment at `.github/workflows/build.yml:463` carries the same phrasing
 about the citation self-test, and the `scripts/` tree summary in `REPOSITORY_MAP.md` still
 enumerates four lints where its own table lists seven. Both are real; neither is this round's
 subject, and the second is a stale COUNT rather than the placement claim.
@@ -6363,3 +6363,129 @@ prints **NO VERDICT** instead of a bogus total), and compares the full records e
 latency). Verified against real dump output: a reworded self-check line no longer changes the
 count; a single altered hash reports 1-of-32 with the agree list intact; an unparsable side yields
 no verdict. Reporting-only semantics unchanged — every path still exits 0.
+
+## ADR-0033: LLVM 23 evaluated and NOT adopted; "stable" becomes an assertion (2026-08-30)
+
+ADR-0028's revisit trigger fired — LLVM **23.1.0** released 2026-08-25 — and the move to 23 was
+prepared, measured, and then **stopped on availability**. `ANAMORPH_CLANG_VERSION` stays **22**.
+ADR-0033 supersedes nothing; it **amends** ADR-0028 with the assertion that closes the gap the attempt
+exposed, and ADR-0028 and ADR-0030 keep their values and their `Accepted` status unchanged.
+
+**The gap, stated as a question the old rule could not ask.** ADR-0028 enforced *upstream stable* by
+checking the **major**, because nothing then suggested the two could come apart. They can:
+apt.llvm.org publishes rolling **branch** builds, so a `-N` suite serves whatever commit of
+`release/N.x` it last built, under a version string that already reads like N's release. *"A release
+exists"* and *"this mirror serves it"* are different questions, and only the second decides what
+compiles the shipped bytes.
+
+**The measurement.** `llvmorg-23.1.0^{}` is `ea7d852a70e8bdfaf601d6626a760f9771b2c4b4`, committed
+2026-08-25T19:15:21Z. Every apt.llvm.org `-23` suite — noble, resolute, bookworm and trixie, all
+indexed 2026-08-18 — was built from the same commit `55feb0a3b6b7` (noble's package is
+`1:23.1.0~++20260818083557+55feb0a3b6b7`; the others differ only in build timestamp), a commit that is an
+**ancestor of the tag by 49 commits**. No Ubuntu series publishes `clang-23` at all (Launchpad: 22
+reaches `1:22.1.6-1ubuntu2` in stonking; 23 is unpublished; noble stops at `clang-20`). Upstream's own
+release binaries could not be checked — GitHub non-git HTTP returns 403 through this environment's
+proxy — so their availability is recorded as **unevaluated**, not assumed.
+
+**The control is what made it decisive.** noble-22 serves
+`1:22.1.8~++20260714014902+ca7933e47d3a`, and `ca7933e47d3a` **is** `llvmorg-22.1.8^{}`. The 22 pin has
+been a build of the release **commit** all along. So the withdrawn draft would have traded a
+release-commit build for a pre-release branch build while believing it was moving stable → stable.
+
+**What landed instead.** `scripts/setup-llvm-apt.sh` carries an upstream **release identity** per
+major — the full version plus that release's `llvmorg-<version>` tag commit — and asserts both before
+the job proceeds: an **unrecorded major exits 2** (the property that would have caught the draft: a pin
+bump to a major nobody verified now stops before installing anything), and a **build commit that is not
+the tag's exits 1**, naming both. The commit is read from **four** sources — `clang --version` and the
+installed version of each of the three packages — every source that carries one must agree, and if
+**none** carries one the install fails closed. That last rule is a correction inside the same round:
+the first implementation accepted a missing commit as "release-versioned by construction", which was a
+bypass rather than a lenience, and it is what a compiler with no `+<sha>` would have walked through.
+A `--self-test` drives the decision function with recorded strings and runs in `source-lint` and
+`preflight.sh`. The 23 line is
+deliberately absent, and says so at the point of absence. Proven in all three directions against the
+real packages: 22 passes printing the matching commit; an unrecorded major exits 2; 23 with its true
+identity recorded exits 1 naming `55feb0a3b6b7` against `ea7d852a`.
+
+**Two documents were corrected by this round rather than by opinion.** ADR-0028's reproducibility
+bullet said apt.llvm.org publishes *"branch snapshots, never the tagged `llvmorg-*` build"* — wrong,
+and wrong in this project's favour, since `ca7933e47d3a` is the tag. It is left in place with a dated
+correction note, because that belief is precisely what made the reverse error possible on `-23`. And
+`DEPENDENCY_POLICY.md` §Update mechanisms, whose trigger was already corrected from
+`CURRENT_LLVM_STABLE` (it lagged the release by five days) to upstream's release page, now also carries
+the second question: a release existing is not a release being installable.
+
+**Rules 2–3 have nothing to act on.** No shipping toolchain moved, so no twin dump, no Level-5 audition
+and no compatibility re-verification are owed — ADR-0028's position, reached for a different reason.
+The evidence gathered while 23 was on the table (32/32 twin-dump scenarios bit-identical, a
+`diff`-identical first-party warning census, 226+920 and 224+920 checks green, an unmoved ABI floor,
+and the RTSan/libFuzzer/lld/function-effects detectors all live on 23) is kept in ADR-0033 because it
+is where the next attempt starts — and it is explicitly **not** a licence to adopt, having been taken
+against the pre-release build the release is 49 commits ahead of.
+
+**The condition that lifts the block is single and checkable:** an apt.llvm.org `-23` suite rebuilt
+from `ea7d852a`, or from a later 23.x release tag. Then the identity line is added, the pin moves, and
+the assertion proves the move instead of the reader trusting it.
+
+## The `DELIBERATE_REAIMS` lifecycle: a declaration is a transition, not an anchor (2026-08-30)
+
+An INVESTIGATE finding on `scripts/check-citations.py` — *"these entries only cover intermediate
+pushes; after merge, later anchor movement can activate them and silence genuine drift"* —
+**reproduced, including the silent case.**
+
+**What the lifecycle actually was.** The table was keyed `(document, anchor)` and
+`is_declared_reaim(doc, base, cur)` returned true when **either** spelling was declared, guarded only
+by a refusal when `base == cur`. That guard retires an entry for the *no-movement* case, which is
+what its comment claimed and what the procedure docs repeated. It does nothing for the case that
+matters: once the base revision carries the declared spelling, every later movement of that anchor
+arrives as `declared → something new`, matches through the **base** arm, and is excused by a
+declaration written for a transition that merged weeks earlier.
+
+**Reproduced against the live table**, not a model:
+
+```
+is_declared_reaim(D, A, B)  -> True    # the declared transition
+is_declared_reaim(D, B, B)  -> False   # after merge, nothing moved
+is_declared_reaim(D, B, C)  -> True    # a LATER, undeclared movement — the finding
+is_declared_reaim(D, C, B)  -> True    # and the reverse
+```
+
+**And the second gate did not catch it.** `verify_reaim_targets` resolves the declared anchor and
+requires its token, which usually turns the stale case red — but on `docs/REPOSITORY_MAP.md`'s
+`CMakeLists.txt:114-384`, a 270-line span, the token stays inside the span through almost any edit.
+So `114-384 → 120-390` was excused **and** the aim-check passed: real drift suppressed with no output
+at all. That is the case that makes this a defect rather than a message-quality problem.
+
+**The fix is the key.** `DELIBERATE_REAIMS` is now `(document, BASE anchor, CURRENT anchor) → expected
+token`. A declaration authorises exactly one movement and stops matching the moment either end
+differs — the brief's *"expire naturally once its declared transition is no longer the transition
+being verified"*, expressed as the lookup itself rather than as a second rule bolted beside it. The
+`base == current` refusal is kept as a belt-and-braces check on a malformed key. `verify_reaim_targets`
+resolves the **current** end (the base end names a revision this tree is not, so resolving it would
+fail every correct declaration), and the self-test now asserts which end is resolved. Two
+simplifications fall out: `used_reaims` holds the same 3-tuple the table is keyed on, so the
+"record both spellings" workaround and the reason the report had to intersect both disappear.
+
+**The table is now empty, and that is a measurement rather than a cleanup.** It held 40 entries;
+emptying it left `--check` green against **every** base this repository compares — `origin/main`, the
+branch merge base (the same commit here) and `HEAD~1`, which is what CI passes as
+`github.event.before`. 37 were reported by the tool itself as *"not needed against origin/main, which
+already carries the re-aimed spelling"* against a base that IS the merge base, which is precisely the
+retirement condition it documents; the other 3 were written earlier in this branch and re-anchored out
+of existence by `--fix` in the commit that created them. None was load-bearing. They are retired
+rather than converted because converting would have meant inventing base spellings for transitions
+that merged weeks ago.
+
+**Regression coverage, in the self-test that runs in `source-lint`.** Section 5 now drives the real
+`is_declared_reaim` through the declared transition (accepted), a later `B → C` (refused — the
+finding), the reverse `C → B` (refused — the hole a "current spelling only" key would have left), an
+unrelated anchor in the same document (still checked), the post-merge no-movement case, a declaration
+for a *different* transition (does not excuse this one), an undeclared re-spelling, and another
+document's declaration. Section 8c gained a case asserting that `verify_reaim_targets` resolves the
+current end and not the base end. `--self-test` passes 138 cases; the drop from 174 is the 40 retired
+entries' per-entry liveness checks.
+
+**One current-state claim was wrong in the docs and is corrected:** `CI_CD.md` stated that because
+`is_declared_reaim` returns false when the spelling is unchanged, *"an entry cannot outlive its
+transition"*. That is the belief the finding disproved, and it is now recorded as such beside the
+rule that makes it true.
