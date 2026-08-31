@@ -788,11 +788,23 @@ namespace
     {
         double downProp = 0.0;
 
+        // Host change gesture held for the whole press, exactly as the knob's own
+        // drag does (Slider begins its gesture on mouseDown too): without it the
+        // setValue()s below reach SliderParameterAttachment as gesture-LESS writes,
+        // which the undo coalescer deliberately folds into the committed baseline
+        // (ADR-0008) -- so a value-box drag produced no Undo step and a host
+        // recording touch/latch automation saw values move outside any gesture.
+        // This was a third instance of the KI-010 class (which records only the
+        // typed-entry and imager-wheel paths); unlike the typed path, a drag is a
+        // natural single gesture, so KI-010's deferred UX questions do not apply.
+        std::unique_ptr<juce::Slider::ScopedDragNotification> dragGesture;
+
         void mouseDown (const juce::MouseEvent& e) override
         {
             if (auto* s = rotaryParent (getParentComponent()); s != nullptr && e.getNumberOfClicks() < 2 && ! isBeingEdited())
             {
                 downProp = s->valueToProportionOfLength (s->getValue());
+                dragGesture = std::make_unique<juce::Slider::ScopedDragNotification> (*s);
                 s->getProperties().set ("dragging", true); // knob shows press feedback (#10)
                 s->repaint();
             }
@@ -800,6 +812,7 @@ namespace
         }
         void mouseUp (const juce::MouseEvent& e) override
         {
+            dragGesture.reset(); // close the host gesture before anything else reacts
             if (auto* s = dynamic_cast<juce::Slider*> (getParentComponent()))
             {
                 s->getProperties().set ("dragging", false);

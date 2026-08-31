@@ -49,6 +49,17 @@ public:
     // Publish current values for the GUI (call once per block, audio thread).
     void publish() noexcept
     {
+        // Self-heal (ADR-0009, decision bullet 3 -- the rule LevelMeters::sanitize
+        // already applies): one non-finite sample that reaches this tap drives an
+        // accumulator to Inf, and the next finite block turns it NaN (Inf - Inf),
+        // after which the one-poles never recover and the meter publishes NaN
+        // until re-prepare. The engine's self-heal runs BEFORE the bypass
+        // crossfade, which can re-introduce raw non-finite input this tap then
+        // integrates -- so the guard must live here. Flush any non-finite
+        // accumulator back to 0, the meter's documented idle value (#1).
+        sanitize (lrFast); sanitize (llFast); sanitize (rrFast);
+        sanitize (lrSlow); sanitize (llSlow); sanitize (rrSlow);
+
         fast.store (correlation (lrFast, llFast, rrFast), std::memory_order_relaxed);
         slow.store (correlation (lrSlow, llSlow, rrSlow), std::memory_order_relaxed);
 
@@ -74,6 +85,8 @@ private:
         const double tau = ms * 0.001;
         return (float) (1.0 - std::exp (-1.0 / (tau * sr)));
     }
+
+    static void sanitize (float& v) noexcept { if (! std::isfinite (v)) v = 0.0f; } // recover a NaN-latched accumulator
 
     static float correlation (float lr, float ll, float rr) noexcept
     {

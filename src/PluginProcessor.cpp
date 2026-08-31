@@ -109,8 +109,15 @@ void AnamorphAudioProcessor::updateLatency()
 
 void AnamorphAudioProcessor::parameterChanged (const juce::String&, float)
 {
-    // Recompute PDC on the message thread without touching the audio-thread
-    // engine state (predictLatency is const and race-free).
+    // Recompute PDC without touching the audio-thread engine state
+    // (predictLatency is const and race-free). NOTE: this runs on whatever
+    // thread changed the parameter -- under VST3 host AUTOMATION of
+    // drive/algorithm that is the AUDIO thread, and when the reported latency
+    // actually changes, setLatencySamples' notification chain takes locks and
+    // (on a real change) allocates + write()s in the wrapper. Recorded as
+    // KI-027; the fix (deferring off-thread delivery) is a threading-model
+    // change gated on Architecture Review, so the comment states the fact
+    // rather than the earlier "on the message thread" assumption.
     updateLatency();
 }
 
@@ -314,28 +321,56 @@ void AnamorphAudioProcessor::reassertParameters (const juce::ValueTree& restored
     if (! restoredApvtsTree.isValid()) return;
 
     bool silentSoundChange = false;
+
+    // Idempotent single-parameter apply, shared by both branches below.
+    auto applyNorm = [&] (juce::RangedAudioParameter* rp, float norm)
+    {
+        if (std::abs (norm - rp->getValue()) > 1.0e-6f)
+        {
+            if (notifyHost)
+                rp->setValueNotifyingHost (norm);
+            else
+            {
+                rp->setValue (norm); // getValue() only -- no host / listener notification
+                if (auto* atom = apvts.getRawParameterValue (rp->paramID))
+                    atom->store (rp->convertFrom0to1 (norm)); // DSP value (snapped denormalised)
+                if (! pid::isViewParam (rp->paramID))
+                    silentSoundChange = true;
+            }
+        }
+    };
+
     for (auto* p : getParameters())
         if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p))
+        {
             if (auto node = restoredApvtsTree.getChildWithProperty ("id", rp->paramID); node.isValid())
             {
                 const float norm = node.hasProperty ("raw")
                     ? juce::jlimit (0.0f, 1.0f, (float) node.getProperty ("raw"))
                     : juce::jlimit (0.0f, 1.0f, rp->convertTo0to1 ((float) node.getProperty ("value",
                                                                    rp->convertFrom0to1 (rp->getValue()))));
-                if (std::abs (norm - rp->getValue()) > 1.0e-6f)
-                {
-                    if (notifyHost)
-                        rp->setValueNotifyingHost (norm);
-                    else
-                    {
-                        rp->setValue (norm); // getValue() only -- no host / listener notification
-                        if (auto* atom = apvts.getRawParameterValue (rp->paramID))
-                            atom->store (rp->convertFrom0to1 (norm)); // DSP value (snapped denormalised)
-                        if (! pid::isViewParam (rp->paramID))
-                            silentSoundChange = true;
-                    }
-                }
+                applyNorm (rp, norm);
             }
+            else
+            {
+                // No PARAM node for this parameter in the restored blob (an older
+                // session predating it, or a partial host chunk): apply the
+                // parameter DEFAULT, exactly as the preset path already does for a
+                // missing child (PresetManager::applySoundTree) and as
+                // SESSION_COMPATIBILITY_POLICY rule 2 / SERIALIZATION_REGISTRY
+                // ("Default: per-parameter defaults") record. Without this, a
+                // REUSED live instance kept the PREVIOUS project's value for
+                // every absent parameter -- the cross-project-leak class the
+                // slot/identity fields already guard against (readSlot's
+                // reset-first rule), left open for the parameter values
+                // themselves. View params are unaffected where rule 5 applies:
+                // applyStatePreservingView re-overrides them after this call.
+                // Fresh instances are already at defaults, so this is a no-op
+                // there (and for every complete, current-schema blob, which
+                // always carries all PARAM nodes).
+                applyNorm (rp, rp->getDefaultValue());
+            }
+        }
 
     // The notifyHost=false path (host session restore) applies values via
     // setValue(), which does NOT fire parameterValueChanged -- so the listener
@@ -654,7 +689,8 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
             // out-of-range "active"; abSlot[]/abUndo[] are size-2, so an unclamped index would be
             // an out-of-bounds access (anamorph::kNumAbSlots). Valid states (0/1) are unchanged.
             abActive = anamorph::clampAbSlotIndex ((int) ab.getProperty ("active", 0));
-            auto readSlot = [&ab] (StateSet& dst, const char* pk, const char* nk, const char* bk,
+            auto readSlot = [&ab, expectedType = apvts.state.getType()]
+                            (StateSet& dst, const char* pk, const char* nk, const char* bk,
                                    const char* sk, const char* fk, const char* uk,
                                    const char* legacyKey)
             {
@@ -685,16 +721,27 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
                 dst.selection = readSelection (ab, sk, fk, uk);
                 dst.name      = ab.getProperty (nk).toString();
                 dst.baseline  = ab.getProperty (bk).toString();
+                // Accept a parsed payload only when it is an APVTS tree of the
+                // live type ("ANAMORPH"). A parsable-but-foreign-typed payload
+                // is corrupt state exactly like an unparsable one -- and worse
+                // if admitted: applying that slot would replaceState() the
+                // foreign type into the live APVTS (JUCE has no type check
+                // either), after which every later save writes a foreign-typed
+                // params child that a fresh instance's restore (which looks up
+                // getChildWithName(apvts.state.getType())) silently skips --
+                // delayed, silent loss of all 36 parameters. Wrong type ->
+                // the slot stays invalid and abEnsureInit re-seeds it, the
+                // same recovery the unparsable case already gets.
+                auto adoptIfAnamorph = [&] (const juce::String& xml)
+                {
+                    if (auto x = juce::parseXML (xml))
+                        if (auto t = juce::ValueTree::fromXml (*x); t.hasType (expectedType))
+                            dst.params = t;
+                };
                 if (ab.hasProperty (pk))
-                {
-                    if (auto x = juce::parseXML (ab.getProperty (pk).toString()))
-                        dst.params = juce::ValueTree::fromXml (*x);
-                }
+                    adoptIfAnamorph (ab.getProperty (pk).toString());
                 else if (ab.hasProperty (legacyKey)) // pre-0.6.4 slots: params only
-                {
-                    if (auto x = juce::parseXML (ab.getProperty (legacyKey).toString()))
-                        dst.params = juce::ValueTree::fromXml (*x);
-                }
+                    adoptIfAnamorph (ab.getProperty (legacyKey).toString());
             };
             readSlot (abSlot[0], "slotAParams", "slotAName", "slotABase",
                       "slotASource", "slotAFactoryId", "slotAUserFile", "slotA");

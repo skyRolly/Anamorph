@@ -332,6 +332,19 @@ DELIBERATE_REAIMS = {
     # each had completed its one transition, and under the key below a completed
     # transition can no longer match anything. Leaving them would have meant
     # inventing base spellings for transitions that merged weeks ago.
+    #
+    # 2026-08-31 (engineering-review round 1): two hand re-aims. The 0.9.6
+    # fixes edited `reassertParameters` (ER-STATE-01 grew it) and `readSlot`
+    # (ER-STATE-02's type guard), i.e. the cited lines themselves, so --fix
+    # reported both UNMAPPABLE and the new spellings were re-derived from the
+    # symbols the documents name. Both retire on merge, when origin/main
+    # carries the re-aimed spellings.
+    ("docs/architecture/SERIALIZATION_REGISTRY.md",
+     "src/PluginProcessor.cpp:688-692",
+     "src/PluginProcessor.cpp:743-744"): "legacyKey",
+    ("docs/policies/COMPATIBILITY_POLICY.md",
+     "src/PluginProcessor.cpp:327-396",
+     "src/PluginProcessor.cpp:645-796"): "setStateInformation",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the

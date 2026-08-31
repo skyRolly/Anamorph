@@ -484,6 +484,26 @@ static void testLegacyV02BareApvts()
     check (juce::exactlyEqual (chorusRate->getValue(), chorusRate->getDefaultValue()),
            "param absent from legacy session stays at default");
 
+    // ...and on a REUSED live instance the same rule must hold by RESET, not by
+    // luck: before ER-STATE-01 the restore skipped absent PARAM nodes entirely,
+    // so a parameter the blob does not carry KEPT the previous project's value
+    // (the fresh-instance check above was vacuously green -- a just-constructed
+    // processor is already at defaults). SESSION_COMPATIBILITY_POLICY rule 2 and
+    // SERIALIZATION_REGISTRY ("Default: per-parameter defaults") record the
+    // intended semantics; the preset path (applySoundTree) always had them.
+    {
+        auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p.getAPVTS().getParameter ("chorusRate"));
+        rp->setValueNotifyingHost (1.0f);            // the "previous project" leaves a non-default value
+        if (applyXmlFixture (p, "legacy_v0_2_bare_apvts.xml"))
+        {
+            check (juce::exactlyEqual (rp->getValue(), rp->getDefaultValue()),
+                   "param absent from legacy session RESETS to default on a reused live instance");
+            checkNear ((double) rawOf (p, "chorusRate"),
+                       (double) rp->getDefaultValue(), 1.0e-6,
+                       "...and the DSP atomic follows the reset");
+        }
+    }
+
     // The bare path predates InternalState AND its legacy APVTS params: the
     // host-hidden settings stay at their defaults.
     check ((int) p.getInternal().copyState()["int_oversample"] == 1,
@@ -720,6 +740,41 @@ static void testCorruptAndForeignState()
         auto resaved = stateTreeOf (p);
         auto slotA = juce::ValueTree::fromXml (resaved.getChildWithName ("AB")["slotAParams"].toString());
         check (slotA.isValid(), "corrupt slot XML recovers to a valid slot on re-save");
+    }
+
+    // Parsable-but-WRONG-TYPED slot payload (ER-STATE-02): must get the same
+    // recovery as the unparsable one (slot invalid -> re-seeded), never applied.
+    // Before the readSlot type guard, applying such a slot replaceState()'d the
+    // foreign type into the live APVTS; every later save then wrote a
+    // foreign-typed params child that a fresh instance's restore silently
+    // skipped -- delayed, silent loss of all parameters.
+    {
+        AnamorphAudioProcessor q;
+        q.prepareToPlay (48000.0, 512);
+        juce::XmlElement root ("AnamorphRoot");
+        auto* an  = root.createNewChildElement ("ANAMORPH");
+        auto* prm = an->createNewChildElement ("PARAM");
+        prm->setAttribute ("id", "drive");
+        prm->setAttribute ("value", 12.0);
+        auto* ab = root.createNewChildElement ("AB");
+        ab->setAttribute ("active", 0);
+        ab->setAttribute ("slotBParams", "<Foo/>");
+        const auto blob = BlobCodec::wrap (root);
+        q.setStateInformation (blob.getData(), (int) blob.getSize());
+
+        q.abSwitchTo (1); // the wrong-typed slot must have been re-seeded, not adopted
+
+        auto resaved = stateTreeOf (q);
+        check (resaved.getChildWithName ("ANAMORPH").isValid(),
+               "APVTS keeps its ANAMORPH type after applying a wrong-typed slot");
+
+        AnamorphAudioProcessor fresh;
+        fresh.prepareToPlay (48000.0, 512);
+        juce::MemoryBlock mb;
+        q.getStateInformation (mb);
+        fresh.setStateInformation (mb.getData(), (int) mb.getSize());
+        checkNear ((double) rawOf (fresh, "drive"), 0.5, 1.0e-6,
+                   "a session saved after the wrong-typed slot apply still restores its parameters");
     }
 }
 

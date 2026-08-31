@@ -110,6 +110,18 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
 
     updateDerived();
     reset();
+
+    // Settle every continuous smoother at the target updateDerived() just armed
+    // from the live snapshot p. Without this, the neutral constants written
+    // above are the smoothers' CURRENT values, so the first ~5-20 ms after
+    // every prepareToPlay of a non-default session GLIDE from neutral (a Mix=0
+    // session opened wet, Output Gain -24 dB opened hot, inverted polarity
+    // ramped through +1) -- violating DSP_POLICY invariants 7/8 in the first
+    // blocks. prepare() has just cleared all delay/filter state, so snapping
+    // is inaudible; the two blend crossfades were already settled from p above
+    // (the same treatment the continuous set was missing). matchGainSmooth is
+    // deliberately excluded by snapSmoothers (its own glide/injection).
+    snapSmoothers();
 }
 
 void AnamorphEngine::reset()
@@ -674,6 +686,27 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
 {
     const int n = buffer.getNumSamples();
     if (buffer.getNumChannels() < 2 || n <= 0) return;
+
+    // A host that exceeds the prepared maximum block size (JUCE documents this
+    // host class as real: prepareToPlay's samplesPerBlock is "a strong hint",
+    // to be handled defensively) would overrun every maxBlock-sized scratch
+    // buffer below and the oversamplers' initProcessing size. Split such a
+    // block into <= maxBlock slices: each slice takes the identical path a
+    // conforming host block takes, so behaviour for in-contract hosts is
+    // bit-unchanged (single slice), and out-of-contract hosts get correct
+    // audio instead of a heap overflow. Stack views only -- no allocation
+    // (AudioBuffer's preallocated-pointer constructor, 2 <= 32 channels).
+    if (n > maxBlock)
+    {
+        for (int start = 0; start < n; start += maxBlock)
+        {
+            float* slicePtrs[2] = { buffer.getWritePointer (0) + start,
+                                    buffer.getWritePointer (1) + start };
+            juce::AudioBuffer<float> slice (slicePtrs, 2, juce::jmin (maxBlock, n - start));
+            process (slice); // depth-1 recursion: every slice is <= maxBlock
+        }
+        return;
+    }
 
     float* L = buffer.getWritePointer (0);
     float* R = buffer.getWritePointer (1);

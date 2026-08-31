@@ -75,8 +75,18 @@ SCAN_DIRS = ["src"]
 # There is deliberately no separate exemption list: a name that is not in this
 # regex is never scanned, so a second list could only drift out of agreement with
 # the first. (An earlier revision carried one; every entry in it was unreachable.)
+# `setParameters` and `toEngine` are here because `processBlock` calls both on
+# the audio thread EVERY BLOCK (PluginProcessor.cpp) but each lives in a file
+# the same-file walk cannot follow from that seed -- so before 2026-08-31 a
+# lock/sleep/IO added to `AnamorphEngine::setParameters` passed every tier:
+# RTSan never enforces it (the annotation sits on `process`, and `setParameters`
+# is not below it), and Test 38 arms it but counts only the allocation classes
+# (ER-RT-02; a seeded no-alloc `std::mutex` + `lock_guard` was measured
+# invisible). Seeding the names scans their bodies -- and their own same-file
+# closures -- directly.
 AUDIO_FN = re.compile(r"\b(process|processBlock|processSample|applyInputConditioning|"
-                      r"processNonlinearRegion|pushBlock|publish|reset|softReset)\b")
+                      r"processNonlinearRegion|pushBlock|publish|reset|softReset|"
+                      r"setParameters|toEngine)\b")
 
 # (regex, human-readable violation class). Kept deliberately small: every entry
 # is a construct from the policy's forbidden list that can be written literally.
@@ -607,9 +617,13 @@ def reachable_bodies(clean: str):
 
     The walk is same-file and transitive, which is the honest scope: this lint
     reads text, and a callee whose definition lives in another translation unit
-    is not text it has. Those are reached by the runtime tiers (RTSan, the
-    allocation guard) instead -- the three tiers of ADR-0029 cover different
-    blind spots on purpose.
+    is not text it has. For the ALLOCATION classes those are reached by the
+    runtime tiers (RTSan, the allocation guard) instead -- the three tiers of
+    ADR-0029 cover different blind spots on purpose. For the NON-allocation
+    classes (lock/blocking/sleep/IO) a cross-file callee is covered only if its
+    name is itself an AUDIO_FN seed: that is why `setParameters`/`toEngine` are
+    seeded (ER-RT-02) -- RTSan enforces only from the `process` annotation down,
+    and the allocation guard counts only `new`/`malloc`.
     """
     index = definition_index(clean)
     seen = set()
@@ -675,6 +689,21 @@ def scan_repo() -> int:
 MUST_FIRE = [
     ("new in process",
      "void Engine::process (Buf& b) noexcept { float* x = new float[4]; use(x); }"),
+    # ---- ER-RT-02: the per-block parameter path is a seed of its own --------
+    # `AnamorphEngine::setParameters` runs on the audio thread every block but
+    # is NOT below `process` in the call graph, so RTSan never sees it, and the
+    # allocation guard counts only `new`/`malloc` there. A no-allocation lock in
+    # it passed every tier until the name was seeded. The lock is the exact
+    # construct measured invisible before the fix.
+    ("a lock in setParameters -- the measured pre-fix hole",
+     "void AnamorphEngine::setParameters (const EngineParameters& in) noexcept"
+     " { std::lock_guard<std::mutex> g (m); }"),
+    ("a same-file helper called from setParameters is scanned too",
+     "void Engine::applyDuck() { usleep (100); }\n"
+     "void AnamorphEngine::setParameters (const EngineParameters& in) noexcept { applyDuck(); }"),
+    ("blocking IO in toEngine -- the wrapper's other cross-file per-block callee",
+     "anamorph::EngineParameters PluginParameters::toEngine (int os) const"
+     " { std::fprintf (f, \"x\"); return {}; }"),
     # ---- the allocation forms THIS codebase actually writes -----------------
     # Each of these was invisible to the lint until 2026-08-18, which mattered
     # because they are not exotic alternatives to `new` -- they are the only

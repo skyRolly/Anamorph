@@ -128,34 +128,49 @@ static void testNoBadSamples()
         for (auto o : os)
             for (int variant = 0; variant < 2; ++variant)
             {
-                EngineParameters p;
-                p.algorithm = a;
-                p.oversample = o;
-                p.driveDb = 8.0f;
-                p.width = 1.6f;
-                p.mix = 0.8f;
-                p.msMode = (variant == 0);
-                p.mbEnable = true;
-                p.monoMakerEnable = true;
-                p.autoGainMatch = true;
-                engine.setParameters (p);
-                engine.reset();
-
-                // Process many blocks of noise, then many blocks of silence
-                // (silence is where denormals would otherwise creep in).
-                for (int phase = 0; phase < 2; ++phase)
+                // Dimension-D: sweep all four voicings -- the only automated
+                // execution this voice's ENGAGED synthesis otherwise gets is the
+                // assertion-free dsp_dump. Other algorithms ignore dimMode.
+                const int dimModes = (a == Algorithm::DimensionD) ? 4 : 1;
+                for (int dm = 1; dm <= dimModes; ++dm)
                 {
-                    for (int n = 0; n < 200; ++n)
-                    {
-                        juce::AudioBuffer<float> buf (2, block);
-                        if (phase == 0) fillNoise (buf, (unsigned) (n * 7 + 1));
-                        else            buf.clear();
-                        engine.setParameters (p);
-                        engine.process (buf);
+                    EngineParameters p;
+                    p.algorithm = a;
+                    p.oversample = o;
+                    p.driveDb = 8.0f;
+                    p.width = 1.6f;
+                    p.mix = 0.8f;
+                    // ENGAGED wet path. algoAmount defaults to 0 == identity, at
+                    // which all three modules take their parked fast paths and the
+                    // whole algorithm axis of this matrix asserts nothing over the
+                    // wet synthesis code -- the same algoAmount=0 vacuity class
+                    // dsp_dump.cpp:12-27 records for the dump. Engaged here, the
+                    // invariant finally covers what the axis names.
+                    p.algoAmount = 0.7f;
+                    p.dimMode = dm;
+                    p.msMode = (variant == 0);
+                    p.mbEnable = true;
+                    p.monoMakerEnable = true;
+                    p.autoGainMatch = true;
+                    engine.setParameters (p);
+                    engine.reset();
 
-                        for (int ch = 0; ch < 2; ++ch)
-                            for (int i = 0; i < block; ++i)
-                                if (isBad (buf.getSample (ch, i))) anyBad = true;
+                    // Process many blocks of noise, then many blocks of silence
+                    // (silence is where denormals would otherwise creep in).
+                    for (int phase = 0; phase < 2; ++phase)
+                    {
+                        for (int n = 0; n < 200; ++n)
+                        {
+                            juce::AudioBuffer<float> buf (2, block);
+                            if (phase == 0) fillNoise (buf, (unsigned) (n * 7 + 1));
+                            else            buf.clear();
+                            engine.setParameters (p);
+                            engine.process (buf);
+
+                            for (int ch = 0; ch < 2; ++ch)
+                                for (int i = 0; i < block; ++i)
+                                    if (isBad (buf.getSample (ch, i))) anyBad = true;
+                        }
                     }
                 }
             }
@@ -2966,6 +2981,12 @@ static void testProcessIsAllocationFree()
                 p.driveDb = 8.0f;
                 p.width = 1.6f;
                 p.mix = 0.8f;
+                // ENGAGED wet path (same reason as Test 2): at the algoAmount=0
+                // default all three modules park and the allocation invariant is
+                // never asserted over the engaged wet synthesis code at any OS
+                // factor. 0.7 puts the algorithm axis of this matrix under the
+                // guard for real.
+                p.algoAmount = 0.7f;
                 p.msMode = (variant == 0);
                 p.mbEnable = true;
                 p.monoMakerEnable = true;
@@ -3790,6 +3811,317 @@ static void testA79ParkedNearSilentIdentity()
     }
 }
 
+// ---------------------------------------------------------------------------
+// Regression for the engineering-review finding ER-DSP-01: AnamorphEngine::process
+// trusted prepareToPlay's maxBlockSize absolutely, so a host block larger than the
+// prepared maximum overran every maxBlock-sized scratch buffer (release-build heap
+// overflow; JUCE documents this host class as real and says to defend against it).
+// The guard chunks such a block into <= maxBlock slices. This test pins BOTH
+// halves of the contract: the oversized call must be safe (under ASan the old
+// code faults here), and it must be bit-exact against the same audio pushed
+// through a twin engine in conforming slices of the same sizes.
+static void testOversizedBlockChunked()
+{
+    std::printf ("Test 43: a block beyond the prepared maximum is chunked, bit-exact vs sliced twin\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0;
+    const int prepared = 512;
+    const int big = 4 * prepared + 37; // deliberately not a multiple of the slice
+
+    using namespace anamorph;
+    EngineParameters p;
+    p.algorithm  = Algorithm::Chorus;
+    p.oversample = OversampleFactor::x2; // oversamplers sized for `prepared` too
+    p.algoAmount = 0.7f;
+    p.driveDb    = 8.0f;
+    p.width      = 1.6f;
+    p.mix        = 0.8f;
+    p.mbEnable   = true;
+    p.monoMakerEnable = true;
+
+    AnamorphEngine whole, sliced;
+    whole.prepare (sr, prepared);  sliced.prepare (sr, prepared);
+    whole.setParameters (p);       sliced.setParameters (p);
+    whole.reset();                 sliced.reset();
+
+    bool identical = true, allFinite = true;
+    for (int nb = 0; nb < 6; ++nb)
+    {
+        juce::AudioBuffer<float> a (2, big), b (2, big);
+        if (nb < 5) { fillNoise (a, (unsigned) (nb * 11 + 3)); }
+        else        { a.clear(); }               // one silent oversized block too
+        for (int ch = 0; ch < 2; ++ch)
+            b.copyFrom (ch, 0, a, ch, 0, big);
+
+        whole.setParameters (p);
+        whole.process (a); // guard splits internally: (512, 512, 512, 512, 37)
+
+        // Reference: the identical slice sequence fed as conforming host blocks.
+        for (int start = 0; start < big; start += prepared)
+        {
+            const int len = juce::jmin (prepared, big - start);
+            float* ptrs[2] = { b.getWritePointer (0) + start, b.getWritePointer (1) + start };
+            juce::AudioBuffer<float> slice (ptrs, 2, len);
+            sliced.setParameters (p);
+            sliced.process (slice);
+        }
+
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = 0; i < big; ++i)
+            {
+                const float va = a.getSample (ch, i);
+                if (! std::isfinite (va)) allFinite = false;
+                if (va != b.getSample (ch, i)) identical = false;
+            }
+    }
+    check (allFinite, "oversized-block output is finite (no scratch overrun)");
+    check (identical, "oversized-block output bit-matches the conforming-slice twin");
+}
+
+// ---------------------------------------------------------------------------
+// Regression for ER-DSP-02: prepare() stomped the continuous smoothers to
+// neutral constants and re-armed their targets from the live snapshot WITHOUT
+// settling them, so the first ~5-20 ms after every prepareToPlay of a
+// non-default session GLIDED from neutral (a Mix=0 session opened wet, Output
+// Gain -24 dB opened hot, inverted polarity ramped through +1) -- violating the
+// DSP_POLICY invariant-7 bit-exact null in the first blocks. prepare() now
+// snaps the smoothers to their just-armed targets (inaudible: all delay/filter
+// state was just cleared).
+static void testPrepareSettlesSmoothers()
+{
+    std::printf ("Test 44: re-prepare keeps a Mix=0 session bit-null from sample 0\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0;
+    const int block = 256;
+
+    using namespace anamorph;
+    EngineParameters p;              // OS off -> zero latency, dry == input
+    p.algorithm  = Algorithm::Velvet;
+    p.algoAmount = 0.7f;             // wet path engaged and audibly different...
+    p.driveDb    = 8.0f;
+    p.mix        = 0.0f;             // ...but Mix=0 must be a bit-exact null (ADR-0005)
+
+    AnamorphEngine engine;
+    engine.prepare (sr, block);
+    engine.setParameters (p);
+    engine.reset();
+    for (int nb = 0; nb < 40; ++nb)  // settle the initial discrete adoption
+    {
+        juce::AudioBuffer<float> buf (2, block);
+        fillNoise (buf, (unsigned) (nb + 1));
+        engine.setParameters (p);
+        engine.process (buf);
+    }
+
+    // The host re-activates: prepareToPlay again, same spec. Before the fix,
+    // mixSmooth's CURRENT value was the stomped neutral 1.0 gliding to 0 --
+    // the first ~20 ms played WET.
+    engine.prepare (sr, block);
+
+    juce::AudioBuffer<float> buf (2, block), ref (2, block);
+    fillNoise (buf, 77u);
+    for (int ch = 0; ch < 2; ++ch)
+        ref.copyFrom (ch, 0, buf, ch, 0, block);
+    engine.setParameters (p);
+    engine.process (buf);
+
+    bool nullFromSampleZero = true;
+    for (int ch = 0; ch < 2; ++ch)
+        for (int i = 0; i < block; ++i)
+            if (buf.getSample (ch, i) != ref.getSample (ch, i)) nullFromSampleZero = false;
+    check (nullFromSampleZero, "first block after re-prepare is a bit-exact Mix=0 null");
+}
+
+// ---------------------------------------------------------------------------
+// Regression for ER-DSP-04: CorrelationMeter had no NaN/Inf guard (ADR-0009
+// decision bullet 3 was implemented only in LevelMeters). One non-finite sample
+// reaching the tap drove an accumulator to Inf; the next finite sample turned it
+// NaN (Inf - Inf), and the unguarded one-poles latched NaN until re-prepare --
+// the INC-004 defect class, left open in the sibling meter. publish() now
+// flushes non-finite accumulators back to 0 (the documented idle value).
+static void testCorrelationMeterRecoversFromNaN()
+{
+    std::printf ("Test 45: correlation meter self-heals after a non-finite sample\n");
+    anamorph::CorrelationMeter m;
+    m.prepare (48000.0);
+
+    for (int i = 0; i < 4800; ++i) m.process (0.5f, 0.45f);
+    m.publish();
+    check (m.getFast() > 0.9f, "correlated input reads near +1 before the poisoning");
+
+    m.process (std::numeric_limits<float>::infinity(), 0.5f); // one bad sample
+    m.publish();
+    // Recovery restarts the flushed accumulators from 0 while the unpoisoned one
+    // keeps its history, so give the 120 ms fast one-poles ~4 time constants to
+    // re-converge before asserting the tracked value.
+    for (int i = 0; i < 24000; ++i) m.process (0.5f, -0.5f);  // finite, anti-phase
+    m.publish();
+
+    const bool finite = std::isfinite (m.getFast()) && std::isfinite (m.getSlow())
+                     && std::isfinite (m.getBalance()) && std::isfinite (m.getEnergy());
+    check (finite, "all published values finite after a non-finite sample");
+    check (m.getFast() < -0.9f, "meter recovered and tracks the anti-phase input");
+}
+
+// ---------------------------------------------------------------------------
+// Regression for ER-TST-04: the stage-1 input-conditioning block (channelMode,
+// swapLR, inputBalance, polarity) and the character parameters (chorusRate,
+// chorusDepth, dimMode) had ZERO behavioural coverage -- a swapped-channel,
+// inverted-polarity or reversed-balance regression passed every gate, and the
+// character params were exercised by no assertion-bearing test even at module
+// level. Part A pins conditioning semantics on the transparent-default chain
+// (invariant 8: output == conditioned input). Part B pins that each character
+// parameter actually changes the engaged output (the dsp_dump self-check
+// pattern, brought into the assertion-bearing suite).
+static void testInputConditioningAndCharacterParams()
+{
+    std::printf ("Test 46: input-conditioning semantics + character-parameter discrimination\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0;
+    const int block = 256;
+
+    using namespace anamorph;
+
+    // ---- Part A: conditioning on the transparent-default chain ----
+    // Feed L = 1 kHz tone, R = 2.7 kHz tone (distinct content per channel),
+    // settle 40 blocks (discrete conditioning arrives under the duck; the
+    // continuous smoothers finish well inside that), measure RMS over 20 more.
+    auto measure = [&] (auto configure, double& rms0, double& rms1)
+    {
+        AnamorphEngine engine;
+        engine.prepare (sr, block);
+        EngineParameters p; // transparent defaults
+        configure (p);
+        engine.setParameters (p);
+        engine.reset();
+
+        double ph0 = 0.0, ph1 = 0.0;
+        const double inc0 = 2.0 * 3.14159265358979 * 1000.0 / sr;
+        const double inc1 = 2.0 * 3.14159265358979 * 2700.0 / sr;
+        double sq0 = 0.0, sq1 = 0.0; int counted = 0;
+        for (int nb = 0; nb < 60; ++nb)
+        {
+            juce::AudioBuffer<float> buf (2, block);
+            for (int i = 0; i < block; ++i)
+            {
+                buf.setSample (0, i, 0.5f * (float) std::sin (ph0)); ph0 += inc0;
+                buf.setSample (1, i, 0.5f * (float) std::sin (ph1)); ph1 += inc1;
+            }
+            engine.setParameters (p);
+            engine.process (buf);
+            if (nb >= 40)
+                for (int i = 0; i < block; ++i)
+                {
+                    const double l = buf.getSample (0, i), r = buf.getSample (1, i);
+                    sq0 += l * l; sq1 += r * r; ++counted;
+                }
+        }
+        rms0 = std::sqrt (sq0 / juce::jmax (1, counted));
+        rms1 = std::sqrt (sq1 / juce::jmax (1, counted));
+    };
+
+    double rms0 = 0.0, rms1 = 0.0;
+
+    measure ([] (EngineParameters& p) { p.channelMode = ChannelMode::LeftOnly; }, rms0, rms1);
+    check (rms0 > 0.3 && rms1 < 0.02, "LeftOnly keeps L and kills R");
+
+    measure ([] (EngineParameters& p) { p.channelMode = ChannelMode::RightOnly; }, rms0, rms1);
+    check (rms1 > 0.3 && rms0 < 0.02, "RightOnly keeps R and kills L");
+
+    measure ([] (EngineParameters& p) { p.swapLR = true; p.channelMode = ChannelMode::LeftOnly; }, rms0, rms1);
+    // conditioning order: the kill happens BEFORE the swap, so L's tone lands on R
+    check (rms0 < 0.02 && rms1 > 0.3, "swapLR routes the kept channel to the other side");
+
+    measure ([] (EngineParameters& p) { p.inputBalance = 1.0f; }, rms0, rms1);
+    check (rms0 < 0.02 && rms1 > 0.3, "inputBalance +1 fully attenuates the far (left) side");
+
+    measure ([] (EngineParameters& p) { p.inputBalance = -1.0f; }, rms0, rms1);
+    check (rms1 < 0.02 && rms0 > 0.3, "inputBalance -1 fully attenuates the far (right) side");
+
+    // Polarity: identical mono tone on both channels; after the 5 ms ramp the
+    // smoothed sign is EXACTLY -1 / +1, and the default chain is bit-transparent,
+    // so the settled output must be the exact negation on the flipped channel.
+    {
+        AnamorphEngine engine;
+        engine.prepare (sr, block);
+        EngineParameters p;
+        p.polarityL = true;
+        engine.setParameters (p);
+        engine.reset();
+        double ph = 0.0; const double inc = 2.0 * 3.14159265358979 * 1000.0 / sr;
+        bool exactFlip = true;
+        for (int nb = 0; nb < 60; ++nb)
+        {
+            juce::AudioBuffer<float> buf (2, block), in (2, block);
+            for (int i = 0; i < block; ++i)
+            {
+                const float s = 0.5f * (float) std::sin (ph); ph += inc;
+                buf.setSample (0, i, s); buf.setSample (1, i, s);
+                in.setSample (0, i, s);  in.setSample (1, i, s);
+            }
+            engine.setParameters (p);
+            engine.process (buf);
+            if (nb >= 40)
+                for (int i = 0; i < block; ++i)
+                {
+                    if (buf.getSample (0, i) != -in.getSample (0, i)) exactFlip = false;
+                    if (buf.getSample (1, i) !=  in.getSample (1, i)) exactFlip = false;
+                }
+        }
+        check (exactFlip, "polarityL settles to an exact per-channel sign flip");
+    }
+
+    // ---- Part B: character parameters must change the engaged output ----
+    // Two engines in lockstep on identical noise; sum |a-b| over the settled
+    // tail. A dead character parameter reads ~0 here and fails.
+    auto engagedDiff = [&] (auto configA, auto configB)
+    {
+        AnamorphEngine ea, eb;
+        ea.prepare (sr, block); eb.prepare (sr, block);
+        EngineParameters pa, pb;
+        pa.algoAmount = pb.algoAmount = 0.7f;
+        pa.mix = pb.mix = 0.8f;
+        configA (pa); configB (pb);
+        ea.setParameters (pa); eb.setParameters (pb);
+        ea.reset(); eb.reset();
+        double diff = 0.0;
+        for (int nb = 0; nb < 40; ++nb)
+        {
+            juce::AudioBuffer<float> a (2, block), b (2, block);
+            fillNoise (a, (unsigned) (nb * 13 + 5));
+            for (int ch = 0; ch < 2; ++ch) b.copyFrom (ch, 0, a, ch, 0, block);
+            ea.setParameters (pa); ea.process (a);
+            eb.setParameters (pb); eb.process (b);
+            if (nb >= 20)
+                for (int ch = 0; ch < 2; ++ch)
+                    for (int i = 0; i < block; ++i)
+                        diff += std::abs ((double) a.getSample (ch, i) - (double) b.getSample (ch, i));
+        }
+        return diff;
+    };
+
+    const double dRate = engagedDiff (
+        [] (EngineParameters& p) { p.algorithm = Algorithm::Chorus; p.chorusRate = 0.2f; },
+        [] (EngineParameters& p) { p.algorithm = Algorithm::Chorus; p.chorusRate = 2.0f; });
+    check (dRate > 1.0e-3, "chorusRate audibly changes the engaged Chorus output");
+
+    const double dDepth = engagedDiff (
+        [] (EngineParameters& p) { p.algorithm = Algorithm::Chorus; p.chorusDepth = 0.15f; },
+        [] (EngineParameters& p) { p.algorithm = Algorithm::Chorus; p.chorusDepth = 0.9f; });
+    check (dDepth > 1.0e-3, "chorusDepth audibly changes the engaged Chorus output");
+
+    bool dimAllDistinct = true;
+    for (int m1 = 1; m1 <= 4 && dimAllDistinct; ++m1)
+        for (int m2 = m1 + 1; m2 <= 4 && dimAllDistinct; ++m2)
+        {
+            const double d = engagedDiff (
+                [m1] (EngineParameters& p) { p.algorithm = Algorithm::DimensionD; p.dimMode = m1; },
+                [m2] (EngineParameters& p) { p.algorithm = Algorithm::DimensionD; p.dimMode = m2; });
+            if (! (d > 1.0e-3)) dimAllDistinct = false;
+        }
+    check (dimAllDistinct, "all four Dimension-D voicings are pairwise distinct engaged");
+}
+
 int main()
 {
     std::printf ("=== Anamorph DSP self-tests ===\n");
@@ -3848,6 +4180,10 @@ int main()
     testVelvetGatherEqualsPerSampleLoop();
     testA79ParkedPathsReachableAfterStall();
     testA79ParkedNearSilentIdentity();
+    testOversizedBlockChunked();
+    testPrepareSettlesSmoothers();
+    testCorrelationMeterRecoversFromNaN();
+    testInputConditioningAndCharacterParams();
     testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);
