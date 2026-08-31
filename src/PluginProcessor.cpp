@@ -732,9 +732,9 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
                 // delayed, silent loss of all 36 parameters. Wrong type ->
                 // the slot stays invalid and abEnsureInit re-seeds it, the
                 // same recovery the unparsable case already gets.
-                auto adoptIfAnamorph = [&] (const juce::String& xml)
+                auto adoptIfAnamorph = [&] (const juce::String& slotPayload)
                 {
-                    if (auto x = juce::parseXML (xml))
+                    if (auto x = juce::parseXML (slotPayload))
                         if (auto t = juce::ValueTree::fromXml (*x); t.hasType (expectedType))
                             dst.params = t;
                 };

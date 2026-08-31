@@ -3839,7 +3839,14 @@ static void testOversizedBlockChunked()
     p.mbEnable   = true;
     p.monoMakerEnable = true;
 
-    AnamorphEngine whole, sliced;
+    // Heap, not stack: sizeof(AnamorphEngine) is 138,576 bytes (measured under
+    // the pinned Clang 22), so a pair of them is a ~271 KB frame -- the largest
+    // in this suite, and what MSVC's PREfast flags on the Windows analysis job.
+    // The engines' own behaviour is identical either way.
+    auto wholePtr = std::make_unique<AnamorphEngine>();
+    auto slicedPtr = std::make_unique<AnamorphEngine>();
+    auto& whole = *wholePtr;
+    auto& sliced = *slicedPtr;
     whole.prepare (sr, prepared);  sliced.prepare (sr, prepared);
     whole.setParameters (p);       sliced.setParameters (p);
     whole.reset();                 sliced.reset();
@@ -3871,7 +3878,10 @@ static void testOversizedBlockChunked()
             {
                 const float va = a.getSample (ch, i);
                 if (! std::isfinite (va)) allFinite = false;
-                if (va != b.getSample (ch, i)) identical = false;
+                // Exact equality is the assertion here (bit-identity against the
+                // sliced twin), so it goes through JUCE's designated helper
+                // rather than a bare `!=` the -Wfloat-equal gate would flag.
+                if (! juce::exactlyEqual (va, b.getSample (ch, i))) identical = false;
             }
     }
     check (allFinite, "oversized-block output is finite (no scratch overrun)");
@@ -3928,7 +3938,8 @@ static void testPrepareSettlesSmoothers()
     bool nullFromSampleZero = true;
     for (int ch = 0; ch < 2; ++ch)
         for (int i = 0; i < block; ++i)
-            if (buf.getSample (ch, i) != ref.getSample (ch, i)) nullFromSampleZero = false;
+            if (! juce::exactlyEqual (buf.getSample (ch, i), ref.getSample (ch, i)))
+                nullFromSampleZero = false;
     check (nullFromSampleZero, "first block after re-prepare is a bit-exact Mix=0 null");
 }
 
@@ -4064,8 +4075,8 @@ static void testInputConditioningAndCharacterParams()
             if (nb >= 40)
                 for (int i = 0; i < block; ++i)
                 {
-                    if (buf.getSample (0, i) != -in.getSample (0, i)) exactFlip = false;
-                    if (buf.getSample (1, i) !=  in.getSample (1, i)) exactFlip = false;
+                    if (! juce::exactlyEqual (buf.getSample (0, i), -in.getSample (0, i))) exactFlip = false;
+                    if (! juce::exactlyEqual (buf.getSample (1, i),  in.getSample (1, i))) exactFlip = false;
                 }
         }
         check (exactFlip, "polarityL settles to an exact per-channel sign flip");
@@ -4076,7 +4087,10 @@ static void testInputConditioningAndCharacterParams()
     // tail. A dead character parameter reads ~0 here and fails.
     auto engagedDiff = [&] (auto configA, auto configB)
     {
-        AnamorphEngine ea, eb;
+        auto eaPtr = std::make_unique<AnamorphEngine>(); // 135 KB each -- see Test 43
+        auto ebPtr = std::make_unique<AnamorphEngine>();
+        auto& ea = *eaPtr;
+        auto& eb = *ebPtr;
         ea.prepare (sr, block); eb.prepare (sr, block);
         EngineParameters pa, pb;
         pa.algoAmount = pb.algoAmount = 0.7f;
