@@ -46,7 +46,9 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <atomic>
 #include <cstring>
+#include <thread>
 #include <random>
 #include <vector>
 
@@ -1730,9 +1732,216 @@ static void testEditorConstructDestroy()
 #endif
 }
 
+// ---------------------------------------------------------------------------
+// 16. FIRST ACTIVATION: a session the host restored BEFORE it activated the
+//     plug-in must be audible correctly from the very first sample.
+//
+//     This is the ordinary VST3/AU order -- the host creates the instance,
+//     hands it the project's state, and only then calls setActive /
+//     prepareToPlay -- and it is the one order no other test drove. Until the
+//     round-2 fix, prepareToPlay called engine.prepare() BEFORE pushing the
+//     restored parameters in, so the engine settled on EngineParameters'
+//     defaults and then RAMPED to the restored values over the first ~20 ms.
+//     A restored Mix=0 session therefore opened WET for that moment, which is
+//     the DSP_POLICY invariant-7 null failing exactly where nobody was looking.
+//
+//     WHAT MAKES IT UNIVERSAL, and what this test actually measures: the
+//     engine's own struct defaults and the snapshot the wrapper builds from the
+//     parameters disagree on a DISCRETE field even for a brand-new instance.
+//     `dimMode` is the always-active one: the APVTS choice defaults to index 1
+//     and ParamPointers::toEngine maps choice->mode as index + 1, so the very
+//     first snapshot says 2 while EngineParameters::dimMode is 1. (In ADVANCED
+//     sessions `mbEnable` adds a second: APVTS default true, struct default
+//     false. The rest of the Advanced block is gated off in Simple mode and
+//     keeps the struct defaults by design.) A discrete difference is exactly
+//     what setParameters' click-free switch machine reacts to: an ordinary
+//     duck -- ~6 ms fade to SILENCE, adopt at the bottom, ~28 ms fade back in.
+//     That fired on EVERY activation, restored session or not, so a plug-in
+//     newly inserted on a playing track dipped for ~34 ms before it settled.
+//
+//     The assertion is therefore about level, not bit-identity (the default
+//     chain is phase-shifted by the multiband allpasses, so it is deliberately
+//     NOT a sample-for-sample null): a steady sine in must come out at steady
+//     level from the start. A duck shows up as a near-zero block, which no
+//     tolerance can hide. Driven through the REAL wrapper, since the defect
+//     lived in the wrapper's call order.
+static void testFirstActivationUsesRestoredState()
+{
+    std::printf ("State test 16: activation does not duck (engine primed with the live state)\n");
+
+    constexpr int    kBlock = 256;
+    constexpr double kSr    = 48000.0;
+
+    // Per-block RMS of a steady 1 kHz sine driven through a freshly activated
+    // processor. Block 0 is reported but excluded from the verdict: the
+    // crossover filters legitimately charge from rest there, which is a
+    // startup transient of the filters, not a duck of the output stage.
+    auto earlyLevelRatio = [&] (AnamorphAudioProcessor& proc, const char* label)
+    {
+        proc.prepareToPlay (kSr, kBlock);
+        juce::MidiBuffer midi;
+        double phase = 0.0;
+        const double inc = 2.0 * 3.14159265358979 * 1000.0 / kSr;
+
+        std::vector<double> rms;
+        for (int nb = 0; nb < 40; ++nb)
+        {
+            juce::AudioBuffer<float> buf (2, kBlock);
+            for (int i = 0; i < kBlock; ++i)
+            {
+                const float s = 0.5f * (float) std::sin (phase); phase += inc;
+                buf.setSample (0, i, s);
+                buf.setSample (1, i, s);
+            }
+            proc.processBlock (buf, midi);
+            double sq = 0.0;
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = 0; i < kBlock; ++i)
+                    sq += (double) buf.getSample (ch, i) * (double) buf.getSample (ch, i);
+            rms.push_back (std::sqrt (sq / (2.0 * kBlock)));
+        }
+
+        const double settled = rms.back();
+        double minEarly = rms[1];
+        for (int nb = 1; nb < 12; ++nb) minEarly = juce::jmin (minEarly, rms[(size_t) nb]);
+        std::printf ("  %s: block0 %.4f, min(blocks 1-11) %.4f, settled %.4f\n",
+                     label, rms[0], minEarly, settled);
+        const double norm = settled > 1.0e-6 ? settled : 1.0;
+        return std::pair<double, double> { rms[0] / norm, minEarly / norm };
+    };
+
+    // (a) A plug-in newly inserted on a playing track -- no restore at all.
+    {
+        AnamorphAudioProcessor fresh;
+        const auto [block0, minEarly] = earlyLevelRatio (fresh, "fresh instance ");
+        juce::ignoreUnused (block0); // block 0 charges the default multiband filters
+        check (minEarly > 0.85, "a newly activated instance does not duck its first ~60 ms");
+    }
+
+    // (b) The reviewed case: the host restores a NON-DEFAULT session, then
+    //     activates. The widening amount stays at 0 ON PURPOSE -- an engaged
+    //     delay-based algorithm fills its lines from silence over the first
+    //     tens of ms, which is a real and correct startup transient of the
+    //     effect and would mask the defect being measured. What is restored
+    //     instead is one DISCRETE field the engine's defaults disagree with
+    //     (algorithm: Dim-D, not Velvet -- so the switch machine would duck)
+    //     and one CONTINUOUS field with an unmistakable level signature
+    //     (Output Gain -12 dB -- so an un-primed smoother would open ~4x too
+    //     loud and ramp down). One scenario, both halves of the defect.
+    {
+        juce::MemoryBlock project;
+        {
+            AnamorphAudioProcessor authoring;
+            authoring.prepareToPlay (kSr, kBlock);
+            // ADVANCED on: ParamPointers::toEngine gates the whole input /
+            // multiband / output block behind it, so in Simple mode the engine
+            // would keep its struct defaults for Output Gain and the rest and
+            // this scenario would assert nothing.
+            setRaw (authoring, pid::advancedMode, 1.0f);
+            setRaw (authoring, pid::mbEnable,     0.0f);  // off; APVTS default is on
+            setRaw (authoring, pid::algorithm,    1.0f);  // Dim-D, not the default Velvet
+            setRaw (authoring, pid::outputGain,   0.25f); // -12 dB of the -24..+24 range
+            authoring.getStateInformation (project);
+        }
+
+        AnamorphAudioProcessor proc;
+        proc.setStateInformation (project.getData(), (int) project.getSize()); // restore FIRST
+        // Reported so a failure separates "the restore did not arrive" from
+        // "the restore arrived and activation did not honour it".
+        std::printf ("  restored raw: outputGain %.4f algorithm %.4f mbEnable %.4f\n",
+                     rawOf (proc, pid::outputGain), rawOf (proc, pid::algorithm),
+                     rawOf (proc, pid::mbEnable));
+        const auto [block0, minEarly] = earlyLevelRatio (proc, "restored session");
+        check (minEarly > 0.85, "a restored session is at level from the first blocks, not ducked in");
+        // The continuous half: with multiband off and the wet path parked there is
+        // no filter charge and no delay fill, so the VERY first block must already
+        // carry the restored -12 dB Output Gain. An un-primed smoother starts at
+        // unity and ramps down, which reads here as a block0 roughly 4x settled.
+        check (block0 > 0.9 && block0 < 1.1,
+               "the first block already carries the restored Output Gain (no ramp from unity)");
+        check (proc.getLatencySamples() == 0, "restored session reports zero latency (oversampling off)");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// RISK-007 probe: are host state calls on a NON-MAIN thread actually racing the
+// message thread's reads?  (engineering-review R2-2, evidence for decision D-2)
+//
+// NOT part of the suite and never run by it: this deliberately drives the exact
+// interaction the risk describes, so if the race is real the probe's own
+// execution is undefined behaviour. It exists to be run UNDER ThreadSanitizer,
+// where the question has a mechanical answer, and only when asked for by name:
+//     AnamorphStateTests --state-thread-probe
+//
+// Thread A models a host that calls setState/getState off its UI thread (the
+// macOS AU autosave shape -- no AU spec forbids it, and the JUCE AU wrapper
+// passes both straight through on the caller's thread). The MAIN thread models
+// what the open editor's 24 Hz timerCallback does every tick: refreshPresetDisplay
+// reads PresetManager::currentName()/isDirty(), then pollUndoCoalesce() runs and
+// canUndo()/canRedo() read the A/B undo stacks (src/PluginEditor.cpp
+// timerCallback + refreshPresetDisplay).
+//
+// A TSan report names the racing pair; SILENCE is equally informative, and is
+// the only thing that would refute the finding.
+static int runStateThreadProbe()
+{
+    std::printf ("RISK-007 probe: host state thread vs message-thread reads\n");
+    std::printf ("  (run under ThreadSanitizer; a report here is the finding, silence refutes it)\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+
+    // Give the probe real metadata to race over: a named preset, then an edit so
+    // the dirty baseline and the undo stack are both populated.
+    proc.getPresets().load (1);
+    setRaw (proc, "width", 0.42f);
+    proc.pollUndoCoalesce();
+
+    juce::MemoryBlock blob;
+    proc.getStateInformation (blob);
+
+    constexpr int kIterations = 400;
+    std::atomic<bool> go { false };
+
+    std::thread hostStateThread ([&]
+    {
+        while (! go.load (std::memory_order_acquire)) { /* spin to widen the window */ }
+        for (int i = 0; i < kIterations; ++i)
+        {
+            proc.setStateInformation (blob.getData(), (int) blob.getSize());
+            juce::MemoryBlock out;
+            proc.getStateInformation (out);
+        }
+    });
+
+    go.store (true, std::memory_order_release);
+    for (int i = 0; i < kIterations; ++i)
+    {
+        // Exactly the editor tick's reads, in the editor's order.
+        auto& pm = proc.getPresets();
+        const juce::String liveName = pm.currentName();
+        const bool liveDirty = pm.isDirty();
+        proc.pollUndoCoalesce();
+        const bool u = proc.canUndo(), r = proc.canRedo();
+        const int  slot = proc.abActiveSlot();
+        // Consume the reads so no compiler can delete them.
+        if (liveName.isEmpty() && liveDirty && u && r && slot < 0)
+            std::printf ("  (unreachable, keeps the reads live)\n");
+    }
+
+    hostStateThread.join();
+    std::printf ("  probe finished: %d state-call iterations against %d editor ticks\n",
+                 kIterations, kIterations);
+    std::printf ("  verdict comes from the sanitizer, not from this exit code\n");
+    return 0;
+}
+
 int main (int argc, char* argv[])
 {
     juce::ScopedJuceInitialiser_GUI juceInit; // MessageManager for APVTS/processor on this thread
+
+    if (argc > 1 && std::strcmp (argv[1], "--state-thread-probe") == 0)
+        return runStateThreadProbe();
 
     const bool writeSnapshot = argc > 1 && std::strcmp (argv[1], "--write-snapshot") == 0;
 
@@ -1758,6 +1967,7 @@ int main (int argc, char* argv[])
     testFactoryPresetIdIntegrity();
     testPresetIndicatorIdentityAcrossRestore();
     testWrapperProcessBlockAudioPath();
+    testFirstActivationUsesRestoredState();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

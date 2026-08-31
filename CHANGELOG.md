@@ -15,6 +15,21 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 
 ## [0.9.6] — 2026-08-31
 ### Fixed
+- **Inserting the plug-in, or opening a project, no longer dips the sound for the first moment.**
+  Every time the plug-in was activated — a fresh insert on a playing track, a project reload, a
+  sample-rate or buffer-size change — the audio faded down to near-silence and back over roughly
+  the first 35 ms before settling. Measured on a steady tone: the level fell to **0.4 % of normal**
+  and took about six blocks to recover. The cause was internal: the engine was set up *before* it
+  was told the current settings, so its first look at them registered as a settings change and
+  triggered the click-free mute that a real settings change is supposed to get. It is now told the
+  settings first, so it starts up already in the right state.
+  Evidence: PR #134. [Verified]
+- **A project reopened with non-default settings now plays at the right level from the first
+  sample.** Because of the same ordering problem, controls such as Output Gain started from their
+  default and slid to the saved value over the first ~20 ms — a session saved at −12 dB opened
+  about 2.4× too loud for that instant. Regression coverage for both halves is in the state suite
+  (State test 16), which measures the level of the first blocks against the settled level.
+  Evidence: PR #134. [Verified]
 - **Reopening a project no longer plays the first split-second with the wrong settings.** After
   every host re-activation (a sample-rate or buffer-size change, or rendering with a fresh
   instance), the first ~5–20 ms glided from built-in neutral values to the session's actual ones —

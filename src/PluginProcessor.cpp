@@ -97,8 +97,18 @@ bool AnamorphAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts)
 
 void AnamorphAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
+    // ORDER IS LOAD-BEARING. engine.prepare() settles the whole engine from the
+    // engine's OWN snapshot, so that snapshot must be current before it runs --
+    // priming first is what makes a session the host restored BEFORE activation
+    // (the ordinary VST3/AU order: setState, then setActive/prepareToPlay) come
+    // up correct from the first sample instead of ramping to it. The trailing
+    // setParameters is the ordinary steady-state entry and now finds nothing to
+    // do -- its bitwise no-change gate skips it -- but it stays as the single
+    // path by which live parameters ever reach the engine.
+    const auto e = params.toEngine (internal.oversampleIndex());
+    engine.primeParameters (e);
     engine.prepare (sampleRate, samplesPerBlock);
-    engine.setParameters (params.toEngine (internal.oversampleIndex()));
+    engine.setParameters (e);
     updateLatency();
 }
 

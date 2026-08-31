@@ -199,8 +199,8 @@ mitigation. Do not invent risks to fill the template.
 ## RISK-007 — State calls on a non-main host thread (unguarded Anamorph-owned tail)
 - **Risk:** `getStateInformation`/`setStateInformation` mutate non-atomic message-thread-read
   state with no lock or marshalling — `internal.restoreState`, `abSlot`/`abActive`/`abUndo`,
-  `presets.setMeta`/`adoptRestoredState`, `syncCommitted` (src/PluginProcessor.cpp:610-749 read
-  side, :578-608 write side; the APVTS half is internally locked by JUCE). A host that calls
+  `presets.setMeta`/`adoptRestoredState`, `syncCommitted` (src/PluginProcessor.cpp:655-806 read
+  side, :623-653 write side; the APVTS half is internally locked by JUCE). A host that calls
   state functions off its UI thread while the editor's 24 Hz timer is running races
   `juce::String`/`std::vector`/`ValueTree` state — torn-read UB, crash-class.
 - **Impact:** Crash or corrupted preset/undo metadata during a project recall or autosave in
@@ -215,8 +215,24 @@ mitigation. Do not invent risks to fill the template.
 - **Evidence [Verified]:** engineering-review round 1 (ER-RT-03/ER-STATE-05, adversarially
   verified against the pinned JUCE 9.0.1 and VST3 SDK trees);
   `worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Round 1.
+  **MEASURED in round 2 (R2-2), and the races are real.** `AnamorphStateTests
+  --state-thread-probe` (tests/state_tests.cpp) drives the modelled interaction —
+  one thread calling `setStateInformation`/`getStateInformation`, the main thread
+  performing the editor tick's reads — under ThreadSanitizer. It reports **four
+  distinct data races**, exactly on the members round 1 predicted:
+  1. `abActive` — written by `setStateInformation` (src/PluginProcessor.cpp),
+     read by `canUndo()` (src/PluginProcessor.h);
+  2. and 3. the `abUndo` vector's internals — `UndoStacks::operator=`
+     (src/PluginProcessor.h) against the main thread's iteration/`empty()`;
+  4. a `juce::String` reference-count exchange (`juce::Atomic<char*>::exchange`)
+     — the PresetManager metadata assignment against `juce::String`'s copy
+     constructor on the reading thread.
+  So the *code* question is settled: IF a host makes these calls off the main
+  thread while an editor is open, this is undefined behaviour, not a theoretical
+  concern. What remains open is only the *host* question (see Likelihood).
 - **Mitigation:** Recorded here rather than fixed because any lock/hop guard is a
   threading-model change — an Architecture Review Gate item needing maintainer sign-off
+  (decision **D-2**; the round-2 measurement above is the evidence it was waiting on)
   (`docs/policies/THREADING_POLICY.md`; the communication tables there and in
   `docs/architecture/THREAD_MODEL.md` deliberately omit state calls, which this entry now
   documents as an assumption, not an oversight). Candidate fix if approved: a narrow mutex over

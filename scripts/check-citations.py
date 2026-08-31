@@ -341,10 +341,19 @@ DELIBERATE_REAIMS = {
     # carries the re-aimed spellings.
     ("docs/architecture/SERIALIZATION_REGISTRY.md",
      "src/PluginProcessor.cpp:688-692",
-     "src/PluginProcessor.cpp:743-744"): "legacyKey",
+     "src/PluginProcessor.cpp:753-754"): "legacyKey",
     ("docs/policies/COMPATIBILITY_POLICY.md",
      "src/PluginProcessor.cpp:327-396",
-     "src/PluginProcessor.cpp:645-796"): "setStateInformation",
+     "src/PluginProcessor.cpp:655-806"): "setStateInformation",
+    # 2026-08-31 (round 2): prepareToPlay grew by the priming call, shifting every
+    # line below it. RISK-007's read-side citation names setStateInformation, so it was
+    # re-derived from that symbol rather than mapped mechanically -- the mechanical
+    # map would have carried the span past the function's own signature. (The
+    # write-side reference beside it is a bare `:line` shorthand, which the gate
+    # does not track as an anchor, so it needs no declaration.)
+    ("docs/FUTURE_RISKS.md",
+     "src/PluginProcessor.cpp:610-749",
+     "src/PluginProcessor.cpp:655-806"): "setStateInformation",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the

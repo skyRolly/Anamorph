@@ -40,7 +40,7 @@ Format-agnostic DSP orchestrator. Driven only by `EngineParameters`.
 | `injectMatchGainDb` | `void (float) noexcept` | A/B per-slot Level-Match restore (atomic). |
 | `requestDuck` | `void () noexcept` | Force a masking duck around a bulk param swap (atomic). |
 
-Evidence [Verified]: src/dsp/AnamorphEngine.h:45-93.
+Evidence [Verified]: src/dsp/AnamorphEngine.h:45-113.
 
 ## `ParamPointers` / layout — `src/PluginParameters.h`
 

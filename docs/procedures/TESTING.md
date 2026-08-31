@@ -186,7 +186,14 @@ preserved. Evidence [Verified]: tests/dsp_tests.cpp (`main` registers all tests)
 
 ### State-compatibility self-tests (v0.8.13 harness)
 
-`tests/state_tests.cpp` (**15 tests**, own console target `AnamorphStateTests`) automates the
+`tests/state_tests.cpp` additionally carries a **ThreadSanitizer probe that the suite never
+runs**: `AnamorphStateTests --state-thread-probe` drives host `setState`/`getState` calls from a
+second thread against the editor tick's reads on the main thread — the interaction RISK-007
+describes. It is gated behind that flag precisely because, if the risk is real, running it IS
+undefined behaviour; it exists to be run under TSan, where the question has a mechanical answer.
+Round 2 ran it and it reported four data races (`docs/FUTURE_RISKS.md` RISK-007).
+
+`tests/state_tests.cpp` (**16 tests**, own console target `AnamorphStateTests`) automates the
 COMPATIBILITY policy family against the **real `AnamorphAudioProcessor`** (the target compiles
 the plugin sources; since 2026-08-21 it also constructs and destroys the real editor, headlessly
 and without ever showing it — no peer, no message loop, no interaction):

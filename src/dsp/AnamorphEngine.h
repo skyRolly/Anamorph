@@ -47,6 +47,26 @@ public:
     void prepare (double sampleRate, int maxBlockSize);
     void reset();
 
+    // Adopt a snapshot WHOLESALE -- no duck, no ramp, nothing deferred -- for
+    // the one case where that is the correct thing to do: before prepare(),
+    // when the engine is not yet producing audio.
+    //
+    // prepare() settles the entire engine FROM `p`: it reads p.bypass and
+    // p.mbEnable directly, then runs updateDerived() and (since the round-1
+    // review) snapSmoothers() from it. So prepare()'s contract is "`p` is
+    // already what the host wants" -- and prepareToPlay used to break that
+    // contract by calling prepare() BEFORE pushing the current parameters in.
+    // On a FIRST activation the engine therefore came up settled at
+    // EngineParameters' defaults and then ramped ~20 ms to the values the host
+    // had already restored: a Mix=0 session opened wet, an inverted polarity
+    // ramped through +1. Priming first is what makes prepare() mean "come up
+    // in the state the host has given us".
+    //
+    // NOT a substitute for setParameters once audio is flowing: adopting
+    // discrete controls without the duck is exactly the click setParameters'
+    // switch machine exists to prevent.
+    void primeParameters (const EngineParameters& np) noexcept { p = np; pendingP = np; }
+
     // Adopts a new parameter snapshot. Continuous controls update immediately
     // (they are all smoothed); a change to any DISCRETE control (algorithm,
     // routing, bypass, ...) is deferred behind a short raised-cosine duck so the
