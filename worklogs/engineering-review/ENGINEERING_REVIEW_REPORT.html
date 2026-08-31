@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Anamorph Engineering Review</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root{
+  --ground:#f7f8f7; --panel:#ffffff; --panel2:#eef1ef; --ink:#1c2321; --ink-soft:#4c5a55; --ink-faint:#7b8883;
+  --rule:#d8dedb; --accent:#0e6e62; --accent-soft:#e0efec;
+  --dec:#8a6100; --dec-soft:#f4ead4; --na:#8a948f;
+  --bad:#a33d51; --bad-soft:#f6e3e7; --good:#22633a; --good-soft:#e2efe5;
+  --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  --disp:'Archivo',system-ui,-apple-system,'Segoe UI',sans-serif;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --ground:#101413; --panel:#171d1b; --panel2:#1e2624; --ink:#dde4e1; --ink-soft:#a4b1ab; --ink-faint:#71807a;
+  --rule:#2b3531; --accent:#3fb8a8; --accent-soft:#15302c;
+  --dec:#d9a13f; --dec-soft:#2e2413; --na:#71807a;
+  --bad:#e08093; --bad-soft:#33171d; --good:#7cc494; --good-soft:#14261a;
+}}
+:root[data-theme="dark"]{
+  --ground:#101413; --panel:#171d1b; --panel2:#1e2624; --ink:#dde4e1; --ink-soft:#a4b1ab; --ink-faint:#71807a;
+  --rule:#2b3531; --accent:#3fb8a8; --accent-soft:#15302c;
+  --dec:#d9a13f; --dec-soft:#2e2413; --na:#71807a;
+  --bad:#e08093; --bad-soft:#33171d; --good:#7cc494; --good-soft:#14261a;
+}
+*{box-sizing:border-box}
+body{background:var(--ground);color:var(--ink);font:15px/1.62 var(--disp);margin:0;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1120px;margin:0 auto;padding:40px 28px 88px}
+a{color:var(--accent)}
+code,.mono{font-family:var(--mono);font-size:.86em}
+h1{font-size:36px;font-weight:800;letter-spacing:-.02em;line-height:1.1;margin:0 0 10px;text-wrap:balance}
+h2{font-size:21px;font-weight:700;letter-spacing:-.01em;margin:52px 0 6px;text-wrap:balance}
+h2 .no{color:var(--accent);font-family:var(--mono);font-weight:600;font-size:14px;margin-right:8px}
+h3{font-size:16px;font-weight:700;margin:26px 0 4px}
+.dek{font-size:16.5px;color:var(--ink-soft);max-width:70ch;margin:0 0 18px}
+.meta{display:flex;flex-wrap:wrap;gap:8px 22px;font-family:var(--mono);font-size:12px;color:var(--ink-faint);border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);padding:10px 0;margin:22px 0 0}
+.lede{color:var(--ink-soft);max-width:76ch}
+.verdicts{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin:26px 0 0}
+.v{background:var(--panel);border:1px solid var(--rule);border-radius:8px;padding:14px 16px}
+.v .k{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+.v p{margin:0;font-size:13.5px;color:var(--ink-soft)}
+.v p strong{color:var(--ink)}
+.tblwrap{overflow-x:auto;background:var(--panel);border:1px solid var(--rule);border-radius:8px;margin-top:14px}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th{font-family:var(--mono);font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-faint);text-align:left;padding:10px 14px;border-bottom:1px solid var(--rule);white-space:nowrap}
+td{padding:9px 14px;border-bottom:1px solid var(--rule);vertical-align:top;font-variant-numeric:tabular-nums}
+tr:last-child td{border-bottom:none}
+.chip{display:inline-block;font-family:var(--mono);font-size:11px;font-weight:600;padding:2px 9px;border-radius:99px;white-space:nowrap}
+.c-fixed{background:var(--good-soft);color:var(--good)}
+.c-filed{background:var(--dec-soft);color:var(--dec)}
+.c-doc{background:var(--accent-soft);color:var(--accent)}
+.c-open{background:var(--bad-soft);color:var(--bad)}
+.c-ref{background:transparent;color:var(--na);border:1px dashed var(--rule)}
+.c-def{background:var(--panel2);color:var(--ink-soft)}
+.sev-h{color:var(--bad);font-weight:600}
+.sev-m{color:var(--dec);font-weight:600}
+.sev-l{color:var(--ink-faint)}
+ul{padding-left:22px}
+li{margin:5px 0}
+.note{background:var(--panel);border:1px solid var(--rule);border-left:3px solid var(--accent);border-radius:6px;padding:12px 16px;margin:14px 0;font-size:13.5px;color:var(--ink-soft)}
+.note strong{color:var(--ink)}
+.dec-card{background:var(--panel);border:1px solid var(--rule);border-left:3px solid var(--dec);border-radius:6px;padding:14px 18px;margin:12px 0}
+.dec-card h3{margin:0 0 6px}
+.dec-card p{margin:6px 0;font-size:13.5px;color:var(--ink-soft)}
+.check{list-style:none;padding-left:0}
+.check li{padding-left:26px;position:relative}
+.check li::before{content:"";position:absolute;left:2px;top:6px;width:12px;height:12px;border-radius:3px;border:1.5px solid var(--rule)}
+.check li.done::before{background:var(--good-soft);border-color:var(--good)}
+.check li.done::after{content:"✓";position:absolute;left:4px;top:1px;font-size:11px;color:var(--good);font-weight:700}
+.small{font-size:12.5px;color:var(--ink-faint)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Anamorph Engineering Review</h1>
+<p class="dek">The standing review programme's live dashboard: what has been investigated, found,
+ruled out, fixed, deferred — and what should happen next. A rendered <em>view</em> of
+<code>ENGINEERING_REVIEW_PROGRAMME.md</code> beside it; the worklog is the source of truth a later
+round reconciles against.</p>
+<div class="meta">
+  <span>ROUND 1 · 2026-08-31</span>
+  <span>TREE: main @ e8f4422 → v0.9.6</span>
+  <span>STATUS: round 1 complete — 4 maintainer decisions pending</span>
+  <span>NEXT: round 2 per roadmap</span>
+</div>
+
+<h2><span class="no">§1</span>Executive status</h2>
+<p class="lede">Round 1 swept the whole repository with eight adversarially-verified lenses.
+<strong>17 findings confirmed</strong> (2 refuted, ~75 areas ruled out as sound). Ten were fixed in
+the round with regression coverage; two are confirmed defects whose fixes are Architecture-Review-Gate
+items and are <strong>filed, not fixed</strong> (KI-027, RISK-007). The headline results:</p>
+<div class="verdicts">
+  <div class="v"><div class="k">Worst latent defect</div><p><strong>ER-RT-01 / KI-027</strong> — host automation of Drive/Algorithm re-reports latency <em>from the audio thread</em> (locks; heap + <code>write()</code> on a real change). Confirmed twice against pinned JUCE. Fix awaits D-1.</p></div>
+  <div class="v"><div class="k">Worst test hole (fixed)</div><p><strong>ER-TST-01</strong> — the flagship NaN/allocation matrices ran with the wet path <em>parked</em>; Dimension-D engaged was tested by nothing. Both matrices now run engaged; all green.</p></div>
+  <div class="v"><div class="k">Worst robustness hole (fixed)</div><p><strong>ER-DSP-01</strong> — an oversized host block was a release-build heap overflow. Now chunked, bit-exact for conforming hosts (Test 43).</p></div>
+  <div class="v"><div class="k">Release blocker surfaced</div><p><strong>ER-DOC-01</strong> — the Level-5 audition was recorded as cleared "against the build that ships" for a superseded build. Restated OPEN for v0.9.6 (D-3).</p></div>
+</div>
+<p class="note"><strong>Validation at end of round:</strong> DSP suite 45 tests + guard / 241 checks,
+state suite 15 tests / 924 checks, realtime lint 93 self-test cases + clean scan, preflight and all
+eight checker self-tests green, citation gate green on all bases. No <code>src/</code> change shipped
+unvalidated.</p>
+
+<h2><span class="no">§2</span>Findings register</h2>
+<p class="lede">Every confirmed finding, its verified status and current disposition. IDs are stable
+across rounds; evidence in full in the worklog and the cited files.</p>
+<div class="tblwrap"><table>
+<tr><th>ID</th><th>Category</th><th>Finding</th><th>Sev</th><th>Confidence</th><th>Disposition</th></tr>
+<tr><td class="mono">ER-DSP-01</td><td>DSP robustness</td><td>No <code>maxBlock</code> clamp in <code>process()</code>: oversized host block overran every scratch buffer (heap overflow; JUCE documents the host class). Evidence: AnamorphEngine.cpp scratch sizing vs entry guard.</td><td class="sev-h">High→Med</td><td>Confirmed ×2</td><td><span class="chip c-fixed">FIXED r1</span> chunk guard + Test 43</td></tr>
+<tr><td class="mono">ER-DSP-02</td><td>DSP correctness</td><td><code>prepare()</code> stomped smoothers to neutral and never snapped to the re-armed targets: first ~5–20 ms after every prepareToPlay glided wrong (Mix-0 opened wet; −24 dB opened hot). Internal inconsistency: the two blends <em>were</em> settled from p.</td><td class="sev-m">Med</td><td>Confirmed</td><td><span class="chip c-fixed">FIXED r1</span> snap + Test 44</td></tr>
+<tr><td class="mono">ER-DSP-04</td><td>DSP / metering</td><td>CorrelationMeter violated ADR-0009 bullet 3 (no NaN guard; sibling LevelMeters has one — INC-004 class). Escape path: bypass crossfade re-injects raw non-finite input after the self-heal.</td><td class="sev-m">Med</td><td>Confirmed</td><td><span class="chip c-fixed">FIXED r1</span> sanitize + Test 45</td></tr>
+<tr><td class="mono">ER-RT-01</td><td>RT safety</td><td>APVTS listener for drive/algorithm runs <code>setLatencySamples</code> on the automation (audio) thread: ≥3 CriticalSections; heap append + <code>write()</code> on an engage-threshold crossing; priority-inversion variant via the host's synchronous <code>restartComponent</code>.</td><td class="sev-h">High</td><td>Confirmed ×2</td><td><span class="chip c-filed">FILED KI-027</span> gate item → D-1</td></tr>
+<tr><td class="mono">ER-RT-02</td><td>Gate coverage</td><td><code>setParameters</code>/<code>toEngine</code> bodies (audio-thread, every block) outside every tier for lock/blocking/IO classes. Verification <em>narrowed</em> the original claim: updateDerived/snapSmoothers were already covered by the lint's same-file closure.</td><td class="sev-m">Med</td><td>Confirmed (narrowed)</td><td><span class="chip c-fixed">FIXED r1</span> lint seeds + 3 self-tests</td></tr>
+<tr><td class="mono">ER-RT-03<br>ER-STATE-05</td><td>Threading / state</td><td>State calls mutate message-thread state unguarded. Narrowed by verification: VST3 annotates <code>[UI-thread]</code> and JUCE hosting locks around restore — the real exposure is macOS AU off-main autosave.</td><td class="sev-m">Med</td><td>Confirmed (narrowed)</td><td><span class="chip c-filed">FILED RISK-007</span> + policy note → D-2</td></tr>
+<tr><td class="mono">ER-STATE-01</td><td>Serialization</td><td>Absent PARAM nodes kept the previous project's values on a reused live instance — SESSION_COMPATIBILITY rule 2 held only vacuously (fresh instances). Preset path always had the rule.</td><td class="sev-m">Med</td><td>Confirmed</td><td><span class="chip c-fixed">FIXED r1</span> defaults + state test</td></tr>
+<tr><td class="mono">ER-STATE-02</td><td>Serialization</td><td>Wrong-typed A/B slot payload re-typed the live APVTS on apply → later saves silently restore zero parameters in a fresh instance (delayed silent data loss).</td><td class="sev-m">Med</td><td>Confirmed</td><td><span class="chip c-fixed">FIXED r1</span> type check + e2e test</td></tr>
+<tr><td class="mono">ER-GUI-01</td><td>GUI / undo</td><td>Value-box drag was a third gesture-less edit path (no Undo step, outside host touch/latch); KI-010 claimed the list complete.</td><td class="sev-l">Low</td><td>Confirmed</td><td><span class="chip c-fixed">FIXED r1</span> gesture + KI-010 note</td></tr>
+<tr><td class="mono">ER-TST-01</td><td>Test vacuity</td><td>Tests 2/38 ran the 4-algorithm matrix with <code>algoAmount=0</code> — parked fast paths; neither invariant ever asserted over engaged wet synthesis; Dimension-D + dimMode engaged by no assertion-bearing test. The recorded dump-vacuity class, unapplied to the acceptance suite.</td><td class="sev-h">High</td><td>Confirmed ×2</td><td><span class="chip c-fixed">FIXED r1</span> engaged matrices + dim sweep</td></tr>
+<tr><td class="mono">ER-TST-02</td><td>Gate scope</td><td>Twin-dump bit-identity (and the blocking ADR-0032 gate) hashes engaged steady state only; blind axes (duck/adopt, crossfades, solo, xover glide, NaN-heal) were named nowhere.</td><td class="sev-m">Med</td><td>Confirmed</td><td><span class="chip c-doc">DOCUMENTED r1</span> TESTING.md §Gaps + KI-026</td></tr>
+<tr><td class="mono">ER-TST-04</td><td>Coverage gap</td><td>channelMode/swapLR/inputBalance/polarity and chorusRate/chorusDepth/dimMode: zero behavioural coverage (chorus family zero even at module level).</td><td class="sev-m">Med</td><td>Confirmed</td><td><span class="chip c-fixed">FIXED r1</span> Test 46</td></tr>
+<tr><td class="mono">ER-CI-01</td><td>CI gate</td><td><code>run-pluginval.ps1</code> retried genuine Win32-exception crashes 3×/pass (~80% pass rate for a 1-in-3 crasher over 6 passes); its null-exit justification was retired by the KI-007 fix.</td><td class="sev-m">Med</td><td>Confirmed</td><td><span class="chip c-fixed">FIXED r1</span> crash = verdict; retry = launch only</td></tr>
+<tr><td class="mono">ER-DOC-01</td><td>Release docs</td><td>v0.9.5 renumbering incomplete across 7 documents; Level-5 precondition asserted for a superseded build; stale open-KI enumeration. A recorded-recurring defect class (0.9.0→0.9.1 precedent).</td><td class="sev-h">High</td><td>Confirmed ×2</td><td><span class="chip c-fixed">FIXED r1</span> in the 0.9.6 sweep → D-3</td></tr>
+<tr><td class="mono">ER-DOC-02</td><td>Shipped legal doc</td><td><code>NOTICE</code> declared JUCE 9.0.0/f8f8864; product ships 9.0.1/e18f7f5. Omitted from the 9.0.1 bump's doc-sync list.</td><td class="sev-m">Med</td><td>Confirmed</td><td><span class="chip c-fixed">FIXED r1</span> + bump checklist</td></tr>
+<tr><td class="mono">ER-DOC-03</td><td>Procedure docs</td><td>CI_CD.md job inventory omitted <code>macos-crossslice</code> and the <em>release-blocking</em> <code>windows-avx2-ab</code>; "seven non-packaging jobs" stale.</td><td class="sev-m">Med</td><td>Confirmed</td><td><span class="chip c-fixed">FIXED r1</span> rows + carve-out</td></tr>
+<tr><td class="mono">ER-DEP-01</td><td>Attribution</td><td><code>NOTICE</code> omitted AudioUnitSDK (Apache-2.0, macOS AU binary) while carrying SheenBidi under the same licence — omission, not decision.</td><td class="sev-m">Med</td><td>Confirmed</td><td><span class="chip c-fixed">FIXED r1</span> section added</td></tr>
+<tr><td class="mono">ER-DEP-05</td><td>Supply chain</td><td>One action pin missing the trailing version comment the Dependabot review convention anchors on.</td><td class="sev-l">Low</td><td>Confirmed</td><td><span class="chip c-fixed">FIXED r1</span></td></tr>
+</table></div>
+
+<h3>Low-severity / unverified notes carried on the roadmap</h3>
+<div class="tblwrap"><table>
+<tr><th>ID</th><th>Note</th><th>Status</th></tr>
+<tr><td class="mono">ER-STATE-03 / ER-DEP-03</td><td>NaN parameter value in a session/preset survives every clamp (jlimit and NormalisableRange are NaN-transparent; JUCE parses "nan"); persistent NaN parameter state, bounded blast radius, one formal-UB float→int cast.</td><td><span class="chip c-open">ROUND 2 · R2-1</span></td></tr>
+<tr><td class="mono">ER-STATE-04</td><td>Restore-path comment claims replaceState doesn't propagate/notify — the pinned JUCE says otherwise. Verify, then correct comment.</td><td><span class="chip c-open">ROUND 2 · R2-5</span></td></tr>
+<tr><td class="mono">ER-CI-02/03/04</td><td>Comment drift in build.yml header ("ONLY LINUX validates shipped bytes"), codeql.yml (unpinned compiler claim), check-gcc-warnings header (stale pinned pair) — batched to pay the citation re-anchor cost once.</td><td><span class="chip c-open">ROUND 2 · R2-3</span></td></tr>
+<tr><td class="mono">ER-CI-05</td><td>release.yml annotated-tag check misreports a transient fetch failure as "not an annotated tag".</td><td><span class="chip c-open">ROUND 2 · R2-3b</span></td></tr>
+<tr><td class="mono">ER-DEP-04</td><td><code>-DANAMORPH_JUCE_PATH</code> bypasses the SHA pin with no revision check; recommended for "reproducibility". Configure-time WARNING proposed.</td><td><span class="chip c-open">ROUND 2 · R2-4</span></td></tr>
+<tr><td class="mono">ER-GUI-02/03</td><td>cancelInlineTextEdits fires only from one branch (the 0.9.3 guarantee is narrower than stated); KI-013's inertness also latches audio-affecting hold state.</td><td><span class="chip c-open">ROUND 2 · R2-5</span></td></tr>
+<tr><td class="mono">ER-DSP-05</td><td>Chorus LFO float phase accumulation degrades/stalls beyond the tested envelope (192 kHz × 8 OS at 0.05 Hz).</td><td><span class="chip c-def">DEFERRED</span></td></tr>
+<tr><td class="mono">ER-DEP-06</td><td>Malformed preset files fail silently; non-numeric values become 0 not default. UI copy is maintainer-owned (C8).</td><td><span class="chip c-def">DEFERRED</span></td></tr>
+</table></div>
+
+<h2><span class="no">§3</span>Completed work (round 1)</h2>
+<ul>
+  <li><strong>Engine</strong> — oversized-block chunk guard (<code>AnamorphEngine.cpp</code>); post-prepare smoother snap; CorrelationMeter sanitize. All three with dedicated regression tests (43/44/45); conforming-host behaviour bit-unchanged by construction and by test.</li>
+  <li><strong>State</strong> — absent-PARAM defaults on reused instances; wrong-typed slot payload rejection. State suite 920 → 924 checks; SERIALIZATION_REGISTRY annotated.</li>
+  <li><strong>GUI</strong> — value-box drag now holds a host change gesture (undo + automation parity with knob drags).</li>
+  <li><strong>Tests</strong> — Tests 2/38 engaged (<code>algoAmount 0.7</code>, dimMode sweep); Test 46 conditioning + character-parameter coverage. DSP suite 226 → 241 checks, all green — the engaged paths were clean and are now pinned per push.</li>
+  <li><strong>Tooling/CI</strong> — <code>check-realtime.py</code> seeds <code>setParameters</code>/<code>toEngine</code> (self-test 90 → 93); <code>run-pluginval.ps1</code> crash-retry scoping; action-pin comment.</li>
+  <li><strong>Docs</strong> — v0.9.6 renumbering sweep (7 files); NOTICE pin + AudioUnitSDK section; CI_CD/REPOSITORY_MAP job inventory; twin-dump coverage boundary (TESTING.md §Gaps + KI-026); KI-010 correction; KI-027 + RISK-007 filings; THREADING_POLICY state-call assumption; count syncs (README/HANDOVER/TESTING/REPOSITORY_MAP/RELEASE_HARDENING_PLAN); FUTURE_RISKS 0.9.5+0.9.6 sync notes.</li>
+  <li><strong>Version</strong> — 0.9.6 with a six-entry Fixed CHANGELOG section (evidence: PR #134).</li>
+</ul>
+
+<h2><span class="no">§4</span>Rejected / refuted / deferred</h2>
+<ul>
+  <li><span class="chip c-ref">REFUTED</span> <strong>ER-DSP-03</strong> — block-boundary silence dwell of the ordinary discrete duck: real mechanism, but documented product behaviour since [0.8.10] (CHANGELOG describes exactly this shape). Do not re-raise without new evidence.</li>
+  <li><span class="chip c-ref">REFUTED</span> <strong>ER-TST-03</strong> — "fuzzer can't reach XML through zlib framing": the framing premise is false in the pinned JUCE (plain UTF-8 XML, no deflate) and in every JUCE this product ever used.</li>
+  <li><span class="chip c-def">DEFERRED</span> <strong>ER-DSP-05</strong> (outside the supported envelope), <strong>ER-DEP-06</strong> (needs maintainer-owned UI copy), twin-dump transition scenarios (<strong>R2-6</strong>, only on maintainer request — hash churn cost).</li>
+  <li><span class="chip c-ref">PRIOR ART</span> ~20 encountered issues were already recorded (KI/RISK/worklogs) and were not re-filed — list in the worklog §Already-known.</li>
+</ul>
+
+<h2><span class="no">§5</span>Open investigations</h2>
+<ul>
+  <li><strong>R2-1 NaN parameter ingress</strong> (ER-STATE-03/ER-DEP-03): guard + state test + fuzz seed. What remains to establish: none — mechanism verified; this is implementation.</li>
+  <li><strong>R2-2 TSan state-call harness</strong>: two threads (state loop vs message-thread activity) against the real processor; establishes whether RISK-007's races are observable before D-2 is decided.</li>
+  <li><strong>ER-STATE-04</strong>: whether reassertParameters' rationale comment misstates pinned-JUCE behaviour (verify before editing).</li>
+  <li><strong>ER-GUI-02/03</strong>: exact scope of the 0.9.3 half-typed-value guarantee; KI-013 impact escalation wording.</li>
+</ul>
+
+<h2><span class="no">§6</span>Decisions needed from the maintainer</h2>
+<div class="dec-card"><h3>D-1 — KI-027: move latency-notification delivery off the audio thread?</h3>
+<p><strong>Defect (confirmed ×2):</strong> automation of Drive/Algorithm delivers the APVTS callback on the audio thread; on an oversampling engage/disengage crossing the JUCE chain takes locks, allocates and <code>write()</code>s inside <code>processBlock</code>; a concurrent GUI edit adds a priority-inversion window.</p>
+<p><strong>Candidate fix:</strong> in <code>parameterChanged</code>, when not on the message thread, set an atomic flag consumed by the editor's existing 24 Hz poll (plus a processor-side AsyncUpdater fallback for editor-closed sessions); message-thread calls keep the synchronous path. Latency VALUE and safe-point latch unchanged — only delivery timing moves, by at most one poll tick.</p>
+<p><strong>Why gated:</strong> threading-model + latency-delivery change — two hard-stop categories. Also reconciles the LATENCY_MODEL/THREAD_MODEL drift recorded in KI-027.</p></div>
+<div class="dec-card"><h3>D-2 — RISK-007: guard off-main-thread state calls, or accept as documented?</h3>
+<p><strong>Exposure:</strong> macOS AU autosave path only, in practice (VST3 forbids it; JUCE hosts lock around it). Options: (a) accept + keep documented (done in r1); (b) narrow mutex over the state-set members; (c) callAsync marshalling of the metadata tail. Recommendation: run R2-2 (TSan) first; decide on measurements.</p></div>
+<div class="dec-card"><h3>D-3 — Level-5 audition for v0.9.6</h3>
+<p>RELEASE_POLICY precondition 7 is per-version. The 2026-08-15 audition covered v0.9.4; since then the x86-64 machine code changed everywhere (ADR-0031/0032) and 0.9.6 changed audible behaviour in the defective windows. A DAW session by a human is required; nothing in CI can stand in for it (TESTING_POLICY Level 5). Until then HANDOVER lists the tag as blocked by three human items (licence, checklist, audition).</p></div>
+<div class="dec-card"><h3>D-4 — Version handling of this round</h3>
+<p>The round shipped as <strong>v0.9.6</strong> (dated CHANGELOG section, renumbered first-tag references) per the repository's established pattern — every user-visible change set gets a version and no tag has ever been cut. Override if you want it folded differently; the 0.9.5 section's dated record was left untouched either way.</p></div>
+
+<h2><span class="no">§7</span>Roadmap</h2>
+<div class="tblwrap"><table>
+<tr><th>Rank</th><th>Item</th><th>Class</th><th>Why / expected benefit</th><th>Cost</th><th>Risk</th></tr>
+<tr><td>1</td><td class="mono">R2-1 NaN param ingress guard</td><td>Correctness</td><td>Closes the last verified non-finite ingress (session/preset → parameter atomics); small, testable</td><td>S</td><td>Low (restore-path adjacent — state suite re-run)</td></tr>
+<tr><td>2</td><td class="mono">R2-2 TSan state-call harness</td><td>Investigation</td><td>Converts RISK-007 from reasoning to measurement; feeds D-2</td><td>S–M</td><td>None (test-only)</td></tr>
+<tr><td>3</td><td class="mono">D-1 implementation (if approved)</td><td>RT correctness</td><td>Removes the one confirmed lock/alloc/syscall path on the audio thread</td><td>M</td><td>Gated; delivery-timing change only</td></tr>
+<tr><td>4</td><td class="mono">R2-3/3b CI comment-drift batch</td><td>Docs/CI</td><td>Three stale load-bearing comments + one misreported failure mode; batched for one citation re-anchor</td><td>S</td><td>Low</td></tr>
+<tr><td>5</td><td class="mono">R2-4 JUCE_PATH revision warning</td><td>Supply chain</td><td>Closes the one unverified acquisition route at the moment it matters (manual bumps)</td><td>S</td><td>Must stay WARNING (twin-dump uses old trees)</td></tr>
+<tr><td>6</td><td class="mono">R2-5 GUI notes + ER-STATE-04</td><td>Polish</td><td>Registry accuracy; low user impact</td><td>S</td><td>Low</td></tr>
+<tr><td>7</td><td class="mono">R2-6 twin-dump transition scenarios</td><td>Gate scope</td><td>Widens the bit-identity surface into the §Gaps blind axes — on request only</td><td>M</td><td>Hash churn on every toolset move</td></tr>
+</table></div>
+<p class="small">Ranking follows the programme's priority order: correctness → user-facing → release risk → engineering weakness → performance → polish. No performance candidates this round: the A7 programme's measured register (`PERF_AUDIT_PLATFORM_COVERAGE.md` §8, RISK-002) already holds the known opportunities, and no new measured evidence emerged to promote one.</p>
+
+<h2><span class="no">§8</span>Checklist</h2>
+<ul class="check">
+  <li class="done">Round-1 baseline validation recorded (preflight 23.4 s, all gates green)</li>
+  <li class="done">Broad sweep: 8 lenses, adversarial verification, negative-results map</li>
+  <li class="done">10 fixes implemented + regression tests (Tests 43–46, 2 state tests, 3 lint self-tests)</li>
+  <li class="done">KI-027 + RISK-007 filed with full traces</li>
+  <li class="done">Doc drift sweep + v0.9.6 + CHANGELOG</li>
+  <li class="done">Worklog + this dashboard committed</li>
+  <li class="done">End-of-round validation green (241 + 924 checks)</li>
+  <li>D-1 decided (latency delivery thread)</li>
+  <li>D-2 decided (state-call guard) — after R2-2</li>
+  <li>D-3 Level-5 audition performed for the shipping build</li>
+  <li>D-4 version handling confirmed</li>
+  <li>Round 2 executed per §7</li>
+</ul>
+
+<p class="small" style="margin-top:48px">Maintained by the engineering-review programme. Update rule:
+whenever findings, decisions, implementations or the roadmap materially change, update
+<code>ENGINEERING_REVIEW_PROGRAMME.md</code> first, re-render the change here, and commit both in the
+same change set. Historical rounds stay in the worklog; this page always shows current state with
+per-round attribution.</p>
+
+</div>
+</body>
+</html>
