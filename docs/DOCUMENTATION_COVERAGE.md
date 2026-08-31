@@ -6426,3 +6426,66 @@ against the pre-release build the release is 49 commits ahead of.
 **The condition that lifts the block is single and checkable:** an apt.llvm.org `-23` suite rebuilt
 from `ea7d852a`, or from a later 23.x release tag. Then the identity line is added, the pin moves, and
 the assertion proves the move instead of the reader trusting it.
+
+## The `DELIBERATE_REAIMS` lifecycle: a declaration is a transition, not an anchor (2026-08-30)
+
+An INVESTIGATE finding on `scripts/check-citations.py` — *"these entries only cover intermediate
+pushes; after merge, later anchor movement can activate them and silence genuine drift"* —
+**reproduced, including the silent case.**
+
+**What the lifecycle actually was.** The table was keyed `(document, anchor)` and
+`is_declared_reaim(doc, base, cur)` returned true when **either** spelling was declared, guarded only
+by a refusal when `base == cur`. That guard retires an entry for the *no-movement* case, which is
+what its comment claimed and what the procedure docs repeated. It does nothing for the case that
+matters: once the base revision carries the declared spelling, every later movement of that anchor
+arrives as `declared → something new`, matches through the **base** arm, and is excused by a
+declaration written for a transition that merged weeks earlier.
+
+**Reproduced against the live table**, not a model:
+
+```
+is_declared_reaim(D, A, B)  -> True    # the declared transition
+is_declared_reaim(D, B, B)  -> False   # after merge, nothing moved
+is_declared_reaim(D, B, C)  -> True    # a LATER, undeclared movement — the finding
+is_declared_reaim(D, C, B)  -> True    # and the reverse
+```
+
+**And the second gate did not catch it.** `verify_reaim_targets` resolves the declared anchor and
+requires its token, which usually turns the stale case red — but on `docs/REPOSITORY_MAP.md`'s
+`CMakeLists.txt:114-384`, a 270-line span, the token stays inside the span through almost any edit.
+So `114-384 → 120-390` was excused **and** the aim-check passed: real drift suppressed with no output
+at all. That is the case that makes this a defect rather than a message-quality problem.
+
+**The fix is the key.** `DELIBERATE_REAIMS` is now `(document, BASE anchor, CURRENT anchor) → expected
+token`. A declaration authorises exactly one movement and stops matching the moment either end
+differs — the brief's *"expire naturally once its declared transition is no longer the transition
+being verified"*, expressed as the lookup itself rather than as a second rule bolted beside it. The
+`base == current` refusal is kept as a belt-and-braces check on a malformed key. `verify_reaim_targets`
+resolves the **current** end (the base end names a revision this tree is not, so resolving it would
+fail every correct declaration), and the self-test now asserts which end is resolved. Two
+simplifications fall out: `used_reaims` holds the same 3-tuple the table is keyed on, so the
+"record both spellings" workaround and the reason the report had to intersect both disappear.
+
+**The table is now empty, and that is a measurement rather than a cleanup.** It held 40 entries;
+emptying it left `--check` green against **every** base this repository compares — `origin/main`, the
+branch merge base (the same commit here) and `HEAD~1`, which is what CI passes as
+`github.event.before`. 37 were reported by the tool itself as *"not needed against origin/main, which
+already carries the re-aimed spelling"* against a base that IS the merge base, which is precisely the
+retirement condition it documents; the other 3 were written earlier in this branch and re-anchored out
+of existence by `--fix` in the commit that created them. None was load-bearing. They are retired
+rather than converted because converting would have meant inventing base spellings for transitions
+that merged weeks ago.
+
+**Regression coverage, in the self-test that runs in `source-lint`.** Section 5 now drives the real
+`is_declared_reaim` through the declared transition (accepted), a later `B → C` (refused — the
+finding), the reverse `C → B` (refused — the hole a "current spelling only" key would have left), an
+unrelated anchor in the same document (still checked), the post-merge no-movement case, a declaration
+for a *different* transition (does not excuse this one), an undeclared re-spelling, and another
+document's declaration. Section 8c gained a case asserting that `verify_reaim_targets` resolves the
+current end and not the base end. `--self-test` passes 138 cases; the drop from 174 is the 40 retired
+entries' per-entry liveness checks.
+
+**One current-state claim was wrong in the docs and is corrected:** `CI_CD.md` stated that because
+`is_declared_reaim` returns false when the spelling is unchanged, *"an entry cannot outlive its
+transition"*. That is the belief the finding disproved, and it is now recorded as such beside the
+rule that makes it true.

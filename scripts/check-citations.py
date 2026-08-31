@@ -273,9 +273,31 @@ GLOSS = re.compile(r"""\A[`]?\s*\((?:`([^`]+)`|"([^"]+)")\)""")
 # holds -- this list going empty is the expected end state of every entry in it,
 # so it must be the boring case -- it is simply no longer the spelling that
 # protects it.
-# EACH ENTRY IS `(document, anchor) -> what a reader should FIND there`, and
-# that value is not documentation: `verify_reaim_targets()` resolves the anchor
-# against the current file on every run and fails when the substring is absent.
+# EACH ENTRY IS `(document, BASE anchor, CURRENT anchor) -> what a reader should
+# FIND there`. The key is the TRANSITION, not the anchor, and that is the whole
+# lifecycle: a declaration authorises one deliberate movement, from one spelling
+# to one other spelling, and stops matching the moment either end differs.
+#
+# IT WAS KEYED ON A SINGLE SPELLING UNTIL 2026-08-30, matched against EITHER side
+# of the change, and that made every entry a permanent exemption for its anchor
+# rather than for its transition. Demonstrated on this repository's own table
+# before the change: `docs/REPOSITORY_MAP.md` declared `CMakeLists.txt:114-384`
+# for a transition that had long since merged, and
+# `is_declared_reaim(doc, "CMakeLists.txt:114-384", "CMakeLists.txt:120-390")`
+# still returned True -- a later, undeclared movement of that anchor, silenced.
+# The `verify_reaim_targets` aim-check did NOT catch it either, because the
+# declared span is 270 lines wide and still contained its token. Silent
+# suppression of real drift, by a declaration written for something else.
+#
+# The `base == current` guard that used to be the only lifecycle rule stays, but
+# it is now a belt-and-braces refusal rather than the mechanism: a key naming the
+# same spelling twice is a declaration that nothing moved, which is not a re-aim.
+#
+# The VALUE is not documentation: `verify_reaim_targets()` resolves the CURRENT
+# anchor against the current file on every run and fails when the substring is
+# absent. It resolves the current one because that is the spelling the document
+# now carries; the base spelling names a revision, not this tree, and asking this
+# tree to contain it would fail every well-formed declaration.
 #
 # The value exists because a declaration here is the one construct in this file
 # that turns a check OFF. Until 2026-08-18 nothing checked the aim at all -- the
@@ -294,211 +316,22 @@ GLOSS = re.compile(r"""\A[`]?\s*\((?:`([^`]+)`|"([^"]+)")\)""")
 # `""` means "no stable token to name"; the run reports those as unverified
 # rather than accepting them silently, so they stay countable.
 DELIBERATE_REAIMS = {
-    # EMPTY IS THE EXPECTED RESTING STATE. The sibling's list was NOT carried
-    # over: each of its entries excuses one specific `<document>, <path>:<line>`
-    # pair in ITS tree, so importing them here would exempt anchors that do not
-    # exist in this repository and would silently narrow the gate on the day one
-    # of those spellings ever coincided.
+    # EMPTY IS THE EXPECTED RESTING STATE, and this table reached it on
+    # 2026-08-30 when the key became a TRANSITION. It held 40 entries the moment
+    # before; none of them was doing any work. Measured against every base this
+    # repository ever compares -- `origin/main`, the branch merge base (the same
+    # commit) and `HEAD~1`, which is what CI passes as `github.event.before` --
+    # emptying the table left all three green with zero drift. 37 were reported
+    # by the tool itself as "not needed against origin/main, which already
+    # carries the re-aimed spelling", against a base that IS the branch's merge
+    # base, which is exactly the retirement condition the note below states. The
+    # other 3 were written earlier in this same branch and were re-anchored out
+    # of existence by `--fix` in the commit that created them.
     #
-    # This repository's anchors are ADOPTED AS-IS rather than audited: the tool
-    # detects MOVEMENT, not wrongness, so a citation that was aimed at the wrong
-    # code before this gate existed stays wrong and stays green. That limit is
-    # stated in the header and is not a reason to delay the gate -- it closes the
-    # drift class, which is the one that grows on its own.
-    #
-    # EMPTIED 2026-08-20, back to that resting state. All 26 entries had been
-    # declared for the rounds named in this file's history and every one of them
-    # reported "not needed against origin/main" once PR #120 merged -- and
-    # origin/main is this branch's merge base, which is the condition that note
-    # attaches to. A declaration is good for exactly one transition
-    # (`is_declared_reaim`), so keeping them past it would turn 26 one-shot
-    # exemptions into permanent ones. The per-entry reasoning left with the
-    # entries: it described spellings the default branch now carries, and a
-    # comment that outlives its code is the failure this repository is written
-    # against.
-    #
-    # EMPTIED AGAIN 2026-08-21, for the same reason and by the same test. The
-    # five entries declared for the Clang release-toolchain round (PR #122) --
-    # one for the GCC pin's env line, four for the `setup-linux.sh` profile
-    # split -- every one of them reported "not needed against origin/main" once
-    # that PR merged, and origin/main is this branch's merge base, which is the
-    # condition that note attaches to. A declaration is good for exactly one
-    # transition (`is_declared_reaim`), so keeping one past its transition turns
-    # a one-shot exemption into a permanent hole.
-    #
-    # THAT ROUND (PR #123) ADDED NONE, and the reason is worth keeping because it
-    # is the same mechanism the entries below exist for. It re-aimed two spans in
-    # `THREAD_MODEL.md` that had been pointing at the wrong code since before this
-    # gate existed, and needed no declaration -- because both were written BARE
-    # (`:686-692`), and `CITATION` requires a path, so the parser never saw them
-    # in either direction.
-    #
-    # EMPTIED AGAIN 2026-08-22, and the eight entries retired here are the two
-    # rounds above: the five the `GLOSS_CHECKED_DOCS` round declared for its own
-    # corrections, and the three the editor-lifetime round declared when it
-    # rewrote the `state_tests.cpp` header those documents cite. Every one of them
-    # reported "not needed against origin/main", and origin/main IS this branch's
-    # merge base -- the condition that note attaches to, checked rather than
-    # assumed. Verified per entry: `git show origin/main:<doc>` already contains
-    # the re-aimed spelling, so there is no transition left for any of them to
-    # excuse.
-    #
-    # WHY A SPENT ENTRY IS NOT MERELY USELESS. `is_declared_reaim` returns False
-    # while base and current agree, so a spent entry is inert TODAY -- and returns
-    # True the moment the cited code actually moves, which is precisely when the
-    # gate is supposed to speak. Asked of the real function with an entry still
-    # present: `(base :21, cur :21) -> False`, `(base :21, cur :22) -> True`. A
-    # declaration kept past its transition is therefore not dead weight; it is a
-    # standing licence for that anchor's next genuine drift, in every document
-    # that names it. Removing them RESTORES drift checking rather than weakening
-    # it.
-    #
-    # WHAT REMOVAL COSTS, stated because it is not nothing. `verify_reaim_targets`
-    # content-checks every entry on every run, so retiring one drops that
-    # assertion. For the five architecture anchors it drops nothing that matters:
-    # all five are in `GLOSS_CHECKED_DOCS` documents and carry the gloss the
-    # document itself writes, so the same claim is asserted permanently by a
-    # mechanism built to be permanent. For the three `tests/state_tests.cpp:6-11`
-    # anchors it does drop the only content check they had -- their documents
-    # (`POSTMORTEMS.md`, `TESTING.md`, ADR-0025) are not in that list, and opting
-    # them in would buy nothing today: measured, all three carry ZERO glossed
-    # citations, because those references are written as prose rather than as a
-    # parenthetical after the anchor. Getting them content-checked means rewriting
-    # the prose in three documents, which is a change about those documents and
-    # not about this table.
-    #
-    # DECLARED 2026-08-30, two entries, for a correction that was SPLIT ACROSS
-    # PUSHES -- the af4ef28 lesson repeated and re-learned. The windows-avx2-ab
-    # parser fix moved two build.yml lines and was pushed before `--fix` ran;
-    # the immediate follow-up carried the re-anchor alone, so CI (whose base is
-    # the branch's previous push, not origin/main) anchored to the BROKEN
-    # intermediate state and read the correction itself as drift, suggesting
-    # the re-aim be undone. Both entries name the CORRECTED spelling; both
-    # documents' anchors verify against origin/main. Retire on merge, per the
-    # table's standing rule.
-    # Re-derived 2026-08-30 (the ADR-0032 gate rewrite moved build.yml again):
-    # :3124 -> :3166, :3209 -> :3251, updated together with the document per
-    # the "fix BOTH" rule verify_reaim_targets enforces.
-    # Re-derived AGAIN 2026-08-30 (ADR-0033): the Clang-pin rationale block at the
-    # head of build.yml grew twice inside one change set -- once for the attempted
-    # 23 move and once for the release-identity reasoning that replaced it -- so
-    # everything below moved, and the release-identity self-test added to
-    # `source-lint` moved it once more: :3189 -> :3209 and :3251 -> :3294. Only
-    # the FINAL spelling is declared; an intermediate one nothing in the tree
-    # carries would be a declaration that can never be exercised, which is
-    # exactly the shape verify_reaim_targets exists to reject.
-    ("docs/DOCUMENTATION_COVERAGE.md", ".github/workflows/build.yml:3209"):
-        "TESTING_POLICY rule 4",
-    # DECLARED 2026-08-30 (ADR-0033). `DEPENDENCY_POLICY.md`'s Clang row cites the
-    # `env:` block that CARRIES the pin. The VALUE did not change this round --
-    # ADR-0033 evaluated 23 and held at 22 -- but the rationale block above the
-    # env key gained the release-identity reasoning, which moved the anchor
-    # (:111-113 -> :120-122). A moved anchor takes the ordinary drift path even
-    # when its text is unchanged, so this declaration is what the gate asks for.
-    # The token is the pin itself: if the row ever stops citing the pin, this
-    # fails hard rather than going quiet.
-    ("docs/policies/DEPENDENCY_POLICY.md", ".github/workflows/build.yml:120-122"):
-        "ANAMORPH_CLANG_VERSION: 22",
-    ("docs/DOCUMENTATION_COVERAGE.md", ".github/workflows/build.yml:3294"):
-        "the four lints'",    #
-    # DECLARED 2026-08-30, thirty-seven entries, for the SAME split-push shape a
-    # third time -- and this time the gate caught the failure it exists for, so
-    # the record matters more than the entries. The ADR-0032 review fix added an
-    # architecture guard around `/arch:AVX2` in `CMakeLists.txt`, which grew the
-    # file by 29 lines and re-aimed every anchor below it. That push carried the
-    # CMake change WITHOUT running `--fix`, so `source-lint` went red on 39
-    # citations (run 33303108471) exactly as designed: the same-change-set rule
-    # in DOCUMENTATION_LIFECYCLE_POLICY was broken, and this gate is what makes
-    # that rule checkable rather than remembered.
-    #
-    # The follow-up (this change set) carries the re-anchor alone, so CI -- whose
-    # push-event base is the branch's PREVIOUS push, "one push of drift at a
-    # time" -- compares against the broken intermediate state and reads the
-    # CORRECTION as drift, suggesting it be undone. That is the case this table
-    # is for, and the reason every entry names the CORRECTED spelling.
-    #
-    # Each anchor was verified by resolving it against the current
-    # `CMakeLists.txt` and reading what a follower lands on: ARCHITECTURE.md and
-    # ADR-0001 land on `add_library(AnamorphDSP INTERFACE)`, ADR-0023 and
-    # KNOWN_ISSUES on the `RTec` manufacturer-code line, COMPATIBILITY_MATRIX on
-    # the three `ANAMORPH_FORMATS` lines, and so on -- so this is a repair of
-    # aims that the intermediate push had pointed at unrelated CMake, not a
-    # re-aim of correct ones. Against origin/main all 388 anchors are clean.
-    # Retire on merge, per the table's standing rule.
-    ('PRIVACY.md', 'CMakeLists.txt:486-487'):
-        'JUCE_WEB_BROWSER=0',
-    ('PRIVACY.md', 'CMakeLists.txt:317'):
-        '-Wl,--gc-sections',
-    ('PRIVACY.md', 'CMakeLists.txt:489-490'):
-        'JUCE_DISPLAY_SPLASH_SCREEN=0',
-    ('TRADEMARKS.md', 'CMakeLists.txt:14, 427'):
-        'PRODUCT_NAME',
-    ('TRADEMARKS.md', 'CMakeLists.txt:422'):
-        'RollyTech',
-    ('TRADEMARKS.md', 'CMakeLists.txt:424'):
-        'PLUGIN_MANUFACTURER_CODE RTec',
-    ('docs/DOCUMENTATION_COVERAGE.md', 'CMakeLists.txt:427'):
-        'PRODUCT_NAME',
-    ('docs/DOCUMENTATION_COVERAGE.md', 'CMakeLists.txt:593-611'):
-        'ANAMORPH_BUILD_BENCH',
-    ('docs/DOCUMENTATION_COVERAGE.md', 'CMakeLists.txt:486-487, 517-518, 559-560'):
-        'JUCE_WEB_BROWSER=0',
-    ('docs/DOCUMENTATION_COVERAGE.md', 'CMakeLists.txt:521-530'):
-        'target_link_libraries(AnamorphTests',
-    ('docs/HANDOVER.md', 'CMakeLists.txt:422'):
-        'RollyTech',
-    ('docs/KNOWN_ISSUES.md', 'CMakeLists.txt:424'):
-        'PLUGIN_MANUFACTURER_CODE RTec',
-    ('docs/REPOSITORY_MAP.md', 'CMakeLists.txt:114-384'):
-        'add_library(AnamorphHardening INTERFACE)',
-    ('docs/architecture/ARCHITECTURE.md', 'CMakeLists.txt:395-406'):
-        'add_library(AnamorphDSP INTERFACE)',
-    ('docs/architecture/COMPATIBILITY_MATRIX.md', 'CMakeLists.txt:413'):
-        'set(ANAMORPH_FORMATS VST3)',
-    ('docs/architecture/COMPATIBILITY_MATRIX.md', 'CMakeLists.txt:414-416'):
-        'list(APPEND ANAMORPH_FORMATS AU)',
-    ('docs/architecture/COMPATIBILITY_MATRIX.md', 'CMakeLists.txt:417-419'):
-        'list(APPEND ANAMORPH_FORMATS Standalone)',
-    ('docs/architecture/design-decisions/ADR-0001-format-agnostic-dsp-core.md', 'CMakeLists.txt:395-406'):
-        'add_library(AnamorphDSP INTERFACE)',
-    ('docs/architecture/design-decisions/ADR-0023-vendor-manufacturer-code.md', 'CMakeLists.txt:424'):
-        'PLUGIN_MANUFACTURER_CODE RTec',
-    ('docs/architecture/design-decisions/ADR-0023-vendor-manufacturer-code.md', 'CMakeLists.txt:422-427'):
-        'PLUGIN_MANUFACTURER_CODE RTec',
-    ('docs/policies/CODE_STYLE.md', 'CMakeLists.txt:504, 530, 574'):
-        'juce_recommended_warning_flags',
-    ('docs/policies/DEPENDENCY_POLICY.md', 'CMakeLists.txt:486-491'):
-        'JUCE_STRICT_REFCOUNTEDPOINTER=1',
-    ('docs/policies/RELEASE_POLICY.md', 'CMakeLists.txt:14, 457-482'):
-        'ANAMORPH_BUILD_NUMBER',
-    ('docs/policies/TESTING_POLICY.md', 'CMakeLists.txt:504, 530, 574'):
-        'juce_recommended_warning_flags',
-    ('docs/procedures/BUILD.md', 'CMakeLists.txt:27, 512'):
-        'ANAMORPH_BUILD_TESTS',
-    ('docs/procedures/BUILD.md', 'CMakeLists.txt:28, 417-419'):
-        'ANAMORPH_BUILD_STANDALONE',
-    ('docs/procedures/BUILD.md', 'CMakeLists.txt:459'):
-        'ANAMORPH_BUILD_NUMBER',
-    ('docs/procedures/BUILD.md', 'CMakeLists.txt:413-419'):
-        'set(ANAMORPH_FORMATS VST3)',
-    ('docs/procedures/BUILD.md', 'CMakeLists.txt:481-491'):
-        'set_source_files_properties(src/PluginEditor.cpp',
-    ('docs/procedures/PACKAGING.md', 'CMakeLists.txt:422'):
-        'RollyTech',
-    ('docs/procedures/PACKAGING.md', 'CMakeLists.txt:423'):
-        'com.rollytech.anamorph',
-    ('docs/procedures/PACKAGING.md', 'CMakeLists.txt:424'):
-        'PLUGIN_MANUFACTURER_CODE RTec',
-    ('docs/procedures/PACKAGING.md', 'CMakeLists.txt:425'):
-        'PLUGIN_CODE',
-    ('docs/procedures/PACKAGING.md', 'CMakeLists.txt:427'):
-        'PRODUCT_NAME',
-    ('docs/procedures/PACKAGING.md', 'CMakeLists.txt:434'):
-        'VST3_CATEGORIES',
-    ('docs/procedures/TESTING.md', 'CMakeLists.txt:424-425'):
-        'PLUGIN_MANUFACTURER_CODE RTec',
-    ('docs/procedures/TROUBLESHOOTING.md', 'CMakeLists.txt:395-406'):
-        'add_library(AnamorphDSP INTERFACE)',
+    # They are not deleted to make a problem go away; they are deleted because
+    # each had completed its one transition, and under the key below a completed
+    # transition can no longer match anything. Leaving them would have meant
+    # inventing base spellings for transitions that merged weeks ago.
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the
@@ -746,7 +579,11 @@ def verify_reaim_targets():
     the unverifiable ones stay countable.
     """
     problems, unverifiable = [], []
-    for (doc, whole), expect in sorted(DELIBERATE_REAIMS.items()):
+    # THE CURRENT SPELLING IS THE ONE RESOLVED. The base spelling in the key
+    # names a revision this tree is not; resolving it here would fail every
+    # well-formed declaration, since a re-aim exists precisely because the two
+    # differ.
+    for (doc, _whole_base, whole), expect in sorted(DELIBERATE_REAIMS.items()):
         if not expect:
             unverifiable.append((doc, whole))
             continue
@@ -836,29 +673,31 @@ def glossed_problems_in(doc, text):
 def is_declared_reaim(doc, whole_base, whole_cur):
     """Does a declaration excuse this citation's mismatch?
 
-    TWO conditions, and the second is what stops the list becoming a set of
-    permanent exemptions:
+    THE DECLARATION NAMES A TRANSITION, so this is one lookup of the pair. A
+    declaration written for `A -> B` excuses `A -> B` and nothing else: not
+    `B -> C`, not `C -> B`, not the same anchor moving again next year for an
+    unrelated reason.
 
-      1. Either spelling is declared. Which side of the change a declaration
-         names should not decide whether it works — the two check paths had
-         drifted apart on exactly that, one testing the current spelling and the
-         other the base one, so a declaration written for one branch was inert in
-         the other and nothing said so.
-      2. THE SPELLING ACTUALLY CHANGED. A re-aim moves an anchor, so it always
-         changes the spelling. If base and current read the same, this diff did
-         not re-aim anything and a mismatch is ordinary drift — the exact case a
-         spelling-keyed declaration would otherwise silence forever. Without this
-         the entry survived its own transition: once the base carried the
-         re-aimed spelling, `1766 == 1766` kept matching and the next commit that
-         moved that code had its drift swallowed by a declaration written for
-         something else.
+    WHY THAT IS THE RULE AND NOT "either spelling is declared", which is what
+    this function did until 2026-08-30. Keying on one spelling and matching it
+    against either side made the entry a permanent exemption for its ANCHOR. Once
+    the base revision caught up and carried the declared spelling, every
+    subsequent movement of that anchor arrived as `declared -> something new` and
+    was excused by an entry written for a transition that had already merged.
+    Reproduced on the live table before the change (see the header): a 270-line
+    declared span was still excusing movements years after its own transition,
+    and the aim-check could not see it because the token had not left the span.
 
-    So a declaration is good for exactly one transition, and the run after it
-    reports the entry as removable.
+    The `base == current` refusal is kept even though a well-formed transition
+    key can no longer trip it. A key naming one spelling twice would be a
+    declaration that nothing moved, which is not a re-aim but ordinary drift, and
+    the cheapest place to say so is here rather than in review.
     """
     if whole_base == whole_cur:
         return False
-    return any((doc, w) in DELIBERATE_REAIMS for w in (whole_base, whole_cur) if w)
+    if not whole_base or not whole_cur:
+        return False
+    return (doc, whole_base, whole_cur) in DELIBERATE_REAIMS
 
 
 def invalidated_reaims(doc, text, rewritten, edits):
@@ -900,7 +739,10 @@ def invalidated_reaims(doc, text, rewritten, edits):
     string, but the guarantee is supposed to be unconditional.
     """
     out = []
-    for whole in sorted(w for (d, w) in DELIBERATE_REAIMS if d == doc):
+    # The CURRENT spelling of each of this document's declared transitions --
+    # the one the document actually contains and the rewrite can therefore
+    # invalidate.
+    for whole in sorted(cur for (d, _base, cur) in DELIBERATE_REAIMS if d == doc):
         if whole not in text or whole in rewritten:
             continue
         replacement = None
@@ -1374,32 +1216,61 @@ def self_test():
                                 for (a, b) in by_spelling["src/PluginProcessor.cpp:10-20"]])
     check("both occurrences move together", moved.count(rebuilt), 2)
 
-    # --- 5. DECLARED RE-AIMS: good for one transition, then reported --------
+    # --- 5. DECLARED RE-AIMS: one transition, and ONLY that transition ------
+    #
+    # THE REGRESSION THIS SECTION EXISTS FOR (2026-08-30). The table was keyed on
+    # a single spelling matched against EITHER side of the change, which made a
+    # declaration a permanent exemption for its ANCHOR: once the base caught up,
+    # every later movement arrived as `declared -> something new` and was excused
+    # by an entry written for a transition that had already merged. Case 3 below
+    # is that exact shape and returned True before the key became the pair.
     doc = "docs/EXAMPLE.md"
-    old, new = "src/PluginProcessor.cpp:100", "src/PluginProcessor.cpp:200"
+    a1, b1 = "src/PluginProcessor.cpp:100", "src/PluginProcessor.cpp:200"
+    c1 = "src/PluginProcessor.cpp:300"
+    other = "src/AnotherFile.cpp:10"
     saved = dict(DELIBERATE_REAIMS)
     try:
         DELIBERATE_REAIMS.clear()
-        DELIBERATE_REAIMS[(doc, new)] = ""
-        check("a declaration naming the current spelling is honoured",
-              is_declared_reaim(doc, old, new), True)
-        # THE ENTRY MUST NOT SURVIVE ITS OWN TRANSITION. Once the base carries
-        # the re-aimed spelling, `200 == 200` kept matching and swallowed the
-        # drift of every later commit that moved that code. The declaration is
-        # left naming `new` here ON PURPOSE: with the guard removed this case
-        # returns True, which is what makes it a test of the guard rather than
-        # of the set lookup.
+        DELIBERATE_REAIMS[(doc, a1, b1)] = ""
+
+        # 1. THE DECLARED TRANSITION IS ACCEPTED.
+        check("the declared transition A -> B is honoured",
+              is_declared_reaim(doc, a1, b1), True)
+
+        # 2. THE SAME ANCHOR, MOVING AGAIN LATER, IS NOT. The declaration named
+        #    A -> B; B -> C is a different movement and nobody authorised it.
+        check("a later movement B -> C is NOT excused by the A -> B declaration",
+              is_declared_reaim(doc, b1, c1), False)
+
+        # 3. NOR IS THE REVERSE. A movement that lands back ON the declared
+        #    spelling is still a movement the declaration does not name — the
+        #    hole a "current spelling only" key would have left open.
+        check("a later movement C -> B is NOT excused either",
+              is_declared_reaim(doc, c1, b1), False)
+
+        # 4. AND NOT A DIFFERENT ANCHOR IN THE SAME DOCUMENT.
+        check("an unrelated anchor in the same document stays checked",
+              is_declared_reaim(doc, other, "src/AnotherFile.cpp:20"), False)
+
+        # 5. THE ENTRY MUST NOT SURVIVE ITS OWN TRANSITION. Once the base carries
+        #    the re-aimed spelling there is no movement left to excuse, and the
+        #    equal-spelling refusal says so before the lookup is even reached.
         check("an unchanged spelling is drift, not a re-aim, even when declared",
-              is_declared_reaim(doc, new, new), False)
+              is_declared_reaim(doc, b1, b1), False)
+
+        # 6. HALF A TRANSITION IS NOT A TRANSITION. Declaring only one end used
+        #    to be the whole entry; it must now match nothing on its own.
         DELIBERATE_REAIMS.clear()
-        DELIBERATE_REAIMS[(doc, old)] = ""
-        check("a declaration naming the base spelling is honoured too",
-              is_declared_reaim(doc, old, new), True)
+        DELIBERATE_REAIMS[(doc, b1, c1)] = ""
+        check("a declaration for B -> C does not excuse A -> B",
+              is_declared_reaim(doc, a1, b1), False)
+
         DELIBERATE_REAIMS.clear()
         check("an undeclared re-spelling is drift",
-              is_declared_reaim(doc, old, new), False)
+              is_declared_reaim(doc, a1, b1), False)
+        DELIBERATE_REAIMS[(doc, a1, b1)] = ""
         check("a declaration for another document does not apply",
-              is_declared_reaim("docs/OTHER.md", old, new), False)
+              is_declared_reaim("docs/OTHER.md", a1, b1), False)
     finally:
         DELIBERATE_REAIMS.clear()
         DELIBERATE_REAIMS.update(saved)
@@ -1538,7 +1409,9 @@ def self_test():
     check("with every declaration retired, a rewrite invalidates nothing",
           invalidated_reaims(doc, before, after, edit), [])
 
-    DELIBERATE_REAIMS[(doc, declared)] = "run_one_pass"
+    # A transition whose CURRENT end is the spelling this document carries --
+    # that end is what a rewrite can invalidate.
+    DELIBERATE_REAIMS[(doc, f"{path}:1-2", declared)] = "run_one_pass"
     check("--fix reports a declaration its rewrite invalidates, with the replacement",
           invalidated_reaims(doc, before, after, edit),
           [(declared, moved)])
@@ -1567,7 +1440,8 @@ def self_test():
     two = f"first {A_OLD} then {B_OLD} done"
     a1, a2 = two.index(A_OLD), two.index(B_OLD)
     DELIBERATE_REAIMS.clear()
-    DELIBERATE_REAIMS.update({("docs/procedures/BUILD.md", B_OLD): ""})
+    DELIBERATE_REAIMS.update({("docs/procedures/BUILD.md",
+                              "synthetic/Two.txt:1", B_OLD): ""})
     check("with two same-path rewrites, the replacement is the one whose span matches",
           invalidated_reaims("docs/procedures/BUILD.md", two,
                              f"first {A_NEW} then {B_NEW} done",
@@ -1584,7 +1458,8 @@ def self_test():
     twice = f"see {B_OLD} and again {B_OLD} here"
     second = twice.rindex(B_OLD)
     DELIBERATE_REAIMS.clear()
-    DELIBERATE_REAIMS.update({("docs/procedures/BUILD.md", B_OLD): ""})
+    DELIBERATE_REAIMS.update({("docs/procedures/BUILD.md",
+                              "synthetic/Two.txt:1", B_OLD): ""})
     check("a declaration spelled twice finds the replacement at the LATER occurrence",
           invalidated_reaims("docs/procedures/BUILD.md", twice,
                              f"see {B_NEW} and again {B_NEW} here",
@@ -1614,26 +1489,42 @@ def self_test():
     try:
         DELIBERATE_REAIMS.clear()
         # A real file, a real line, an expectation that is NOT there.
-        DELIBERATE_REAIMS[("docs/EXAMPLE.md", "CMakeLists.txt:14")] = "this-is-not-on-line-14"
+        DELIBERATE_REAIMS[("docs/EXAMPLE.md", "CMakeLists.txt:1", "CMakeLists.txt:14")] = \
+            "this-is-not-on-line-14"
         wrong, _ = verify_reaim_targets()
         check("a declaration whose expectation is absent from the cited lines is reported",
               len(wrong), 1)
 
         DELIBERATE_REAIMS.clear()
-        DELIBERATE_REAIMS[("docs/EXAMPLE.md", "CMakeLists.txt:14")] = "project(Anamorph"
+        DELIBERATE_REAIMS[("docs/EXAMPLE.md", "CMakeLists.txt:1", "CMakeLists.txt:14")] = \
+            "project(Anamorph"
         right, _ = verify_reaim_targets()
         check("...and one whose expectation IS there is not", right, [])
 
         DELIBERATE_REAIMS.clear()
-        DELIBERATE_REAIMS[("docs/EXAMPLE.md", "no/such/file.cpp:1")] = "anything"
+        DELIBERATE_REAIMS[("docs/EXAMPLE.md", "no/such/file.cpp:9", "no/such/file.cpp:1")] = \
+            "anything"
         missing, _ = verify_reaim_targets()
         check("an unreadable cited file is a problem, not a pass", len(missing), 1)
 
         DELIBERATE_REAIMS.clear()
-        DELIBERATE_REAIMS[("docs/EXAMPLE.md", "CMakeLists.txt:14")] = ""
+        DELIBERATE_REAIMS[("docs/EXAMPLE.md", "CMakeLists.txt:1", "CMakeLists.txt:14")] = ""
         none_declared, unver = verify_reaim_targets()
         check("an entry declaring no expectation is reported as unverifiable, not clean",
               (none_declared, len(unver)), ([], 1))
+
+        # WHICH END IS RESOLVED, asserted rather than assumed. The base end names
+        # a revision this tree is not, so resolving it would fail every correct
+        # declaration: here the CURRENT end carries the token and the base end
+        # does not, and the entry must come back clean.
+        DELIBERATE_REAIMS.clear()
+        # `CMakeLists.txt:1` is `cmake_minimum_required(...)` and `:14` is the
+        # `project(...)` line, so the token below is on the CURRENT end only.
+        DELIBERATE_REAIMS[("docs/EXAMPLE.md", "CMakeLists.txt:14", "CMakeLists.txt:1")] = \
+            "cmake_minimum"
+        end_choice, _ = verify_reaim_targets()
+        check("verify_reaim_targets resolves the CURRENT end, not the base end",
+              end_choice, [])
     finally:
         DELIBERATE_REAIMS.clear()
         DELIBERATE_REAIMS.update(saved)
@@ -1931,12 +1822,15 @@ def self_test():
     # contains cannot be excusing anything, so it is always a defect -- either
     # the anchor moved on and the entry should have moved with it, or the entry
     # outlived its transition and should be deleted.
-    for doc, whole in sorted(DELIBERATE_REAIMS):
+    for doc, _whole_base, whole in sorted(DELIBERATE_REAIMS):
         try:
             body = read(doc)
         except OSError:
             check(f"DELIBERATE_REAIMS names a readable document ({doc})", False, True)
             continue
+        # The CURRENT spelling is the one the document must contain; the base
+        # spelling belongs to a revision, and requiring it here would fail every
+        # correct declaration.
         check(f"DELIBERATE_REAIMS entry is live: {doc} :: {whole}",
               whole in body, True)
 
@@ -2235,16 +2129,14 @@ def main():
                     continue
 
                 if is_declared_reaim(doc, whole_o, whole_c):
-                    # BOTH spellings, because the declaration may have been
-                    # written with either (that is what `is_declared_reaim`
-                    # accepts). Recording only the current one left an entry
-                    # declared with the BASE spelling honoured here and then
-                    # ALSO listed in `DELIBERATE_REAIMS - used_reaims`, which
-                    # prints "was not needed … delete it" — advice that, taken,
-                    # re-breaks the gate. Latent today (every entry happens to be
-                    # a current spelling) and cheaper to close than to remember.
-                    used_reaims.add((doc, whole_c))
-                    used_reaims.add((doc, whole_o))
+                    # THE TRANSITION, which is now literally the key. This used
+                    # to add both spellings separately, to paper over a lookup
+                    # that accepted either side; the report below then had to
+                    # intersect with the declaration set to avoid announcing the
+                    # undeclared half. Keying on the pair removes both problems
+                    # at once — what is recorded here is exactly what was
+                    # declared, so `used_reaims` and the table are the same shape.
+                    used_reaims.add((doc, whole_o, whole_c))
                     continue
 
                 mapped, movable = [], True
@@ -2366,19 +2258,18 @@ def main():
     # A declared re-aim is never silent: it is announced when it is honoured, and
     # announced again when it has stopped being needed, so the list cannot quietly
     # become a set of permanent exemptions.
-    # INTERSECTED, because `used_reaims` deliberately holds BOTH spellings of an
-    # honoured re-aim (see the `is_declared_reaim` branch) and only one of them is
-    # a declaration. Reporting the set raw announced the UNDECLARED spelling too,
-    # so a run printed twice as many accepted re-aims as `DELIBERATE_REAIMS` has
-    # entries — a tool whose subject is documents saying exactly what they mean,
-    # not saying exactly what it means. The intersection is never empty for an
-    # honoured re-aim: `is_declared_reaim` returns true only when at least one of
-    # the two spellings is literally in the set, so the "never silent" property
-    # below survives the narrowing.
-    for (doc, whole) in sorted(used_reaims & DELIBERATE_REAIMS.keys()):
-        print(f"check-citations: ACCEPTED re-aim {doc}: {whole} "
-              f"(declared in DELIBERATE_REAIMS; its aim is checked against "
-              f"{DELIBERATE_REAIMS[(doc, whole)]!r} by verify_reaim_targets)")
+    # STILL INTERSECTED, though the reason has changed. `used_reaims` now holds
+    # the same 3-tuple the table is keyed on, so the two sets cannot disagree in
+    # shape; the intersection is kept because it makes that invariant explicit at
+    # the one place a mismatch would print a lie. (It used to be load-bearing:
+    # `used_reaims` held BOTH spellings of an honoured re-aim, and reporting it
+    # raw announced the undeclared half, printing twice as many accepted re-aims
+    # as the table has entries.)
+    for (doc, whole_o, whole_c) in sorted(used_reaims & DELIBERATE_REAIMS.keys()):
+        print(f"check-citations: ACCEPTED re-aim {doc}: {whole_o} -> {whole_c} "
+              f"(declared in DELIBERATE_REAIMS for THAT transition only; its aim is "
+              f"checked against {DELIBERATE_REAIMS[(doc, whole_o, whole_c)]!r} by "
+              f"verify_reaim_targets)")
     # "DELETE IT" IS ADVICE, so it is only given when it is SAFE, and the two
     # cases below were one message until 2026-08-14. An entry is unused against a
     # given base for two entirely different reasons:
@@ -2398,16 +2289,18 @@ def main():
     # in hand is the branch's MERGE BASE: an entry retired against the previous
     # push is very often still live against `main`, which is exactly how this
     # round's `PluginEditor.h:604` declaration was still doing real work.
-    for (doc, whole) in sorted(DELIBERATE_REAIMS.keys() - used_reaims):
-        if whole in base_doc_cites.get(doc, set()):
-            print(f"check-citations: note — DELIBERATE_REAIMS entry {doc}: {whole} was not "
-                  f"needed against {args.base}, which already carries the re-aimed "
-                  f"spelling. Safe to delete ONLY if that base is the branch's merge "
-                  f"base; re-run against that before removing it.")
+    for (doc, whole_o, whole_c) in sorted(DELIBERATE_REAIMS.keys() - used_reaims):
+        if whole_c in base_doc_cites.get(doc, set()):
+            print(f"check-citations: note — DELIBERATE_REAIMS entry {doc}: "
+                  f"{whole_o} -> {whole_c} was not needed against {args.base}, which "
+                  f"already carries the re-aimed spelling. Its transition is behind that "
+                  f"base and can never match from there again. Safe to delete ONLY if "
+                  f"that base is the branch's merge base; re-run against that first.")
         else:
-            print(f"check-citations: note — DELIBERATE_REAIMS entry {doc}: {whole} was not "
-                  f"exercised against {args.base}, which does not carry the re-aimed "
-                  f"spelling either — the entry belongs to a different base. Keep it.")
+            print(f"check-citations: note — DELIBERATE_REAIMS entry {doc}: "
+                  f"{whole_o} -> {whole_c} was not exercised against {args.base}, which "
+                  f"carries neither spelling — the entry belongs to a different base. "
+                  f"Keep it.")
 
     # Every number below counts base ANCHORS, and `unchecked` is stated rather
     # than netted off, because the difference between "17 verified" and "17

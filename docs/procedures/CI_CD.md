@@ -1042,7 +1042,13 @@ A line whose CONTENT changes on its own schedule is a different case and has its
 `VERSIONED_LINES` covers `CMakeLists.txt:14`, the `project(... VERSION ...)` line, whose text
 changes at every release while the anchor never moves. `DELIBERATE_REAIMS` cannot express
 that — it excuses a changed SPELLING, and `is_declared_reaim` returns false when the
-spelling is unchanged, so an entry cannot outlive its transition. For a `VERSIONED_LINES`
+spelling is unchanged. **That refusal alone did not stop an entry outliving its transition,
+and until 2026-08-30 this paragraph said it did.** The table was keyed on ONE spelling matched
+against either side of the change, so once the base caught up, every later movement of that anchor
+arrived as `declared → something new` and was excused by a declaration written for a transition that
+had already merged — silently, when the declared span was wide enough that the aim-check still found
+its token. The key is now the **transition**, `(document, base anchor, current anchor)`, so a
+declaration authorises one movement and stops matching the moment either end differs. For a `VERSIONED_LINES`
 entry the base comparison is replaced by a permanent token check
 (`verify_versioned_lines()`, a hard failure in every mode), it is keyed by one exact
 `(path, line)` pair, and it applies only while the anchor has not moved. Both check paths -- the
