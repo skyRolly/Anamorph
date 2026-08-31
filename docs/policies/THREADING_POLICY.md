@@ -30,6 +30,21 @@ Audio · Message/GUI · OpenGL render (macOS/Windows only) · (no worker threads
   never mutate, so multiple message-thread read sites are safe).
 - PDC/latency must be recomputed on the **message thread** via the `const`, race-free
   `predictLatency` — never by mutating audio-thread state from the message thread.
+  **Known violation (2026-08-31): KI-027** — under VST3 host automation of Drive/Algorithm the
+  APVTS listener delivers `parameterChanged` → `setLatencySamples` on the **audio** thread; the
+  fix is a threading-model change awaiting Architecture Review, so the defect is registered
+  rather than the rule silently relaxed.
+
+## Host state calls: a documented assumption, not a covered path
+
+The tables above are exhaustive for the paths the plug-in *creates*. Host-driven
+`getStateInformation`/`setStateInformation` are additionally **assumed to arrive on the message
+thread**: their Anamorph-owned tail (A/B slots, preset metadata, `InternalState`, undo
+signatures) is non-atomic message-thread state with no lock or marshalling. On VST3 the pinned
+SDK annotates both calls `[UI-thread]` (JUCE debug-asserts it for `setState`), so the assumption
+is the format contract; on the **macOS AU** no spec forbids off-main-thread
+`SaveState`/`RestoreState`, and that unguarded exposure is tracked as **RISK-007**
+(`docs/FUTURE_RISKS.md`) — any lock/hop guard is itself an Architecture-Review-Gate change.
 
 ## Atomic usage rules
 
@@ -44,8 +59,8 @@ Audio · Message/GUI · OpenGL render (macOS/Windows only) · (no worker threads
   message thread (`docs/architecture/design-decisions/ADR-0011`).
 
 Evidence [Verified]:
-- Source: src/dsp/ScopeBuffer.h:28-80; src/dsp/LevelMeters.h:125-198; src/dsp/Correlation.h:50-95;
-  src/PluginProcessor.cpp:52-62,128; src/InternalState.h:67-72,125-134
+- Source: src/dsp/ScopeBuffer.h:28-80; src/dsp/LevelMeters.h:125-198; src/dsp/Correlation.h:50-108;
+  src/PluginProcessor.cpp:52-62, 135; src/InternalState.h:67-72,125-134
 
 ## Enforcement
 

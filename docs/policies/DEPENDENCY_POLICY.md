@@ -66,7 +66,11 @@ repository ever grows a real package manifest.
    default and hashed all four algorithms the same, reporting a confident nothing. The committed
    harness checks itself for exactly that before printing anything (`docs/procedures/TESTING.md`
    §Proving a dependency bump is bit-identical).
-3. Re-verify the `RELEASE_COMPATIBILITY_CHECKLIST.md` (latency reporting, session reload) after a bump.
+3. Re-verify the `RELEASE_COMPATIBILITY_CHECKLIST.md` (latency reporting, session reload) after a bump —
+   **and the two shipped attribution documents**: `THIRD_PARTY_LICENSES.md` *and* `NOTICE` both state
+   the pinned JUCE version/commit, and both must move with the pin. (Added 2026-08-31: the 9.0.0 → 9.0.1
+   bump's doc-sync list named only THIRD_PARTY_LICENSES + TRADEMARKS, so `NOTICE` shipped a wrong
+   pin line for a full version — ER-DOC-02.)
 4. Prefer the offline path (`-DANAMORPH_JUCE_PATH`) for reproducibility in restricted CI.
 5. `JUCE_*` compile flags in `CMakeLists.txt:486-491` (no webview, no curl, no splash, strict
    ref-counted pointer) are part of the dependency contract; changing them is a build change.

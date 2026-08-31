@@ -8,8 +8,8 @@ restating them; where this file and the record it cites disagree, the cited reco
 (`SOURCE_OF_TRUTH.md`).
 
 Last reviewed: **2026-07-26** (substance unchanged since). The release then in preparation was
-v0.9.0; none of v0.9.0, v0.9.1, v0.9.2 or v0.9.3 was tagged, and the release in preparation is now
-**v0.9.4** (the JUCE 9.0.0 → 9.0.1 dependency upgrade on top of the 0.9.3 GUI interaction fixes). Nothing in this document — the product model, the
+v0.9.0; none of v0.9.0 through v0.9.5 was tagged, and the release in preparation is now
+**v0.9.6** (the engineering-review fixes on top of the 0.9.5 A7 performance programme). Nothing in this document — the product model, the
 distribution model, or the open owner/legal decisions — is affected by that renumbering, so the
 review date stands and moves only when the substance does.
 
@@ -27,7 +27,7 @@ review date stands and moves only when the substance does.
 
 ## 2. Current phase — internal testing
 
-The current pre-1.0 build (**v0.9.4**; see `docs/HANDOVER.md`) is being prepared for
+The current pre-1.0 build (**v0.9.6**; see `docs/HANDOVER.md`) is being prepared for
 **internal / beta testing**, not for sale.
 
 - Builds reach testers as per-push CI artifacts today; the **GitHub Release** route is implemented
@@ -112,11 +112,14 @@ Both lists must be empty:
 
 **Owner/legal** — §4 items 1, 2, 3, 4 (and 6, 7 for the markets concerned).
 
-**Engineering / process** — the `RELEASE_POLICY.md` precondition still open for v0.9.4, tracked in
+**Engineering / process** — two `RELEASE_POLICY.md` preconditions are open for v0.9.6, tracked in
 `docs/HANDOVER.md` §Release Status: `RELEASE_COMPATIBILITY_CHECKLIST.md` has never been completed
-for this release. The other two cleared on 2026-08-15 — every ADR is now `Accepted`, and the
-Level-5 manual audition was performed against the shipping v0.9.4 / JUCE 9.0.1 build. Signing and notarization (`RH-PR-3`/`RH-PR-5`) are not release-blocking but are
-user-visible.
+for this release, and the **Level-5 manual audition is open again** — it was performed on
+2026-08-15 against the then-shipping v0.9.4 / JUCE 9.0.1 build, but the shipping build is now
+v0.9.6, whose machine code changed on every x86-64 platform (ADR-0031/0032 AVX2) and whose
+engine gained the 0.9.6 fixes; the audition is per-version and no carry-forward was decided
+(engineering-review finding ER-DOC-01). Every ADR remains `Accepted`. Signing and notarization
+(`RH-PR-3`/`RH-PR-5`) are not release-blocking but are user-visible.
 
 ---
 

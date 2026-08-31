@@ -3,7 +3,16 @@
 Potential technical risks. Each is evidence-based (constraint C7) — no invented risks. ADRs and
 postmortems may reference these IDs to close the loop. Severity: Low / Medium / High / Critical.
 
-Version-synced to **v0.9.4** (the JUCE 9.0.0 → 9.0.1 dependency upgrade, ADR-0026 — **no new
+Version-synced to **v0.9.6** (the round-1 engineering-review fixes — **one new entry, RISK-007**:
+the off-main-thread state-call exposure, found by the review's thread-safety lens and recorded
+here because the guard that would close it is itself an Architecture-Review-Gate item. The same
+sync corrects two pieces of drift per `DOCUMENTATION_LIFECYCLE_POLICY` C6: this header **was
+never synced for v0.9.5** — the A7 performance round changed no risk, which is exactly what a
+sync note should have said, and this note now says it — and RISK-003/RISK-004 below are updated:
+RISK-003's planned first tag is renumbered to the current release in preparation, and RISK-004's
+Windows analog is **fixed**, `run-pluginval.ps1` no longer retrying real crashes, so that risk
+is Linux-scoped again as its 2026-08-18 note intended).
+Prior sync: **v0.9.4** (the JUCE 9.0.0 → 9.0.1 dependency upgrade, ADR-0026 — **no new
 risk**: RISK-001 is the risk this change is an instance of, and its mitigation was executed in
 full (twin-dump bit-identity, both suites, pluginval strictness 10 in both modes, identical
 warning set); no source, no build dependency, no serialized state, parameter or DSP behaviour
@@ -18,7 +27,7 @@ jobs already use, its toolchain-drift exposure is the same shape as ADR-0027's M
 `docs/procedures/CI_CD.md`. The four `-Wimplicit-int-float-conversion` diagnostics that move
 surfaced are **fixed** — an explicit `(float)` cast per site, with the three translation units
 verified to compile to byte-identical machine code, so no risk attaches to them either.
-RISK-003's mitigation now names **v0.9.4** as the first
+RISK-003's mitigation now names the release in preparation as the first
 tag — v0.9.3 was written up but, like 0.9.0-0.9.2 before it, never cut). Prior sync: **v0.9.3** (six GUI interaction fixes plus an equal-width Widen row: the Multiband add-split preview line, the
 unified pop-up dismissal shield, pop-up lifetime across a hidden editor / background application,
 menu width, disabled menu items and the Tooltips on/off transition
@@ -60,6 +69,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 | RISK-004 | pluginval signal-only retry could mask a real future editor crash | Medium | Low |
 | RISK-005 | Manual-only audio/visual + host validation lets regressions ship green | Medium | Medium |
 | RISK-006 | Undeclared licensing: no `LICENSE`/EULA, and the commercial JUCE licence required by the closed-source model is not yet obtained | High | High (already true) |
+| RISK-007 | State calls on a non-main host thread race message-thread state (AU autosave; out-of-spec VST3 hosts) | Medium | Low |
 
 ---
 
@@ -101,7 +111,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   for — the **instance count on a named machine** — because instruction counts cannot answer it and a
   shared runner is not a wall-clock datum. **This risk therefore stays open**, and the audit says so
   in its own §4.5 rather than claiming otherwise.
-- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:1267 (`soloMonitor.process`, always-on); src/dsp/MultibandWidth.cpp (glide + fade paths);
+- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:1300 (`soloMonitor.process`, always-on); src/dsp/MultibandWidth.cpp (glide + fade paths);
   Devin PR #50 review (efficiency note); `docs/architecture/PERFORMANCE_BUDGET.md` (TODOs);
   `worklogs/performance/PERF_AUDIT_v0.9.4_INVESTIGATION.md` §3.1, §4.5.
 - **Mitigation:** Formal profiling (PERFORMANCE_BUDGET numeric budgets remain TODO — the harness and
@@ -121,7 +131,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 - **Mitigation:** **Infrastructure shipped (RH-PR-8, v0.8.13 cycle):** annotated `vX.Y.Z` tag
   convention + tag-triggered `release.yml` (fail-closed tag⇄version⇄CHANGELOG validation →
   reused `build.yml` gates → draft GitHub Release with versioned artifacts + SHA-256 sums +
-  manifest). The risk **closes when the first release tag is cut** (planned: **v0.9.4** — 0.9.0, 0.9.1, 0.9.2 and 0.9.3 were each written up but never tagged); until
+  manifest). The risk **closes when the first release tag is cut** (planned: **v0.9.6** — 0.9.0 through 0.9.5 were each written up but never tagged); until
   then, cite commit SHAs. Historical entries keep SHA evidence permanently.
 
 ## RISK-004 — pluginval signal-only retry masking a real crash
@@ -132,8 +142,13 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 - **Likelihood (evidence-based):** Low, and **lower since 2026-08-18** — the retry is now scoped by
   `uname -s` to the platform its justification names, so macOS gets exactly one attempt and this risk
   no longer applies there at all. On Linux retries stay capped at 3 and a deterministic crash still
-  fails all attempts.
-- **Evidence [Verified]:** scripts/run-pluginval.sh:147-197 (`run_one_pass`; retry only on exit ≥128, cap 3).
+  fails all attempts. **Windows no longer carries an analog since 2026-08-31** (ER-CI-01): after
+  the KI-007 WaitForExit fix retired the null-exit-code detection problem, `run-pluginval.ps1`'s
+  3-attempt loop had been left excusing exclusively genuine Win32-exception crashes; it now fails
+  a real abnormal exit immediately and retries only a failed *launch* — so this risk is
+  Linux-scoped again, as the 2026-08-18 note intended.
+- **Evidence [Verified]:** scripts/run-pluginval.sh:147-198 (`run_one_pass`; retry only on exit ≥128, cap 3);
+  scripts/run-pluginval.ps1 (verdict block: crash → immediate failure, retry only on `$null`).
 - **Mitigation:** Investigate any repeated crash rather than trusting the pass; keep the cap; a real
   assertion (exit <128) already fails immediately with no retry.
 
@@ -180,3 +195,30 @@ mitigation. Do not invent risks to fill the template.
   closes when the commercial JUCE licence is obtained and a `LICENSE` (plus an EULA, if the
   product is sold) is added. Until then, cite this risk rather than assuming any particular
   terms.
+
+## RISK-007 — State calls on a non-main host thread (unguarded Anamorph-owned tail)
+- **Risk:** `getStateInformation`/`setStateInformation` mutate non-atomic message-thread-read
+  state with no lock or marshalling — `internal.restoreState`, `abSlot`/`abActive`/`abUndo`,
+  `presets.setMeta`/`adoptRestoredState`, `syncCommitted` (src/PluginProcessor.cpp:610-749 read
+  side, :578-608 write side; the APVTS half is internally locked by JUCE). A host that calls
+  state functions off its UI thread while the editor's 24 Hz timer is running races
+  `juce::String`/`std::vector`/`ValueTree` state — torn-read UB, crash-class.
+- **Impact:** Crash or corrupted preset/undo metadata during a project recall or autosave in
+  such a host, with an editor open.
+- **Likelihood (evidence-based):** Low. On VST3 (the sole Windows/Linux format) the pinned SDK
+  annotates both `getState` and `setState` `[UI-thread]` (ivstcomponent.h:198-204) and JUCE
+  debug-asserts it for `setState`, so a race needs an out-of-spec host; JUCE hosting (and thus
+  pluginval, strictness 10) wraps restore in `MessageManagerLock`, so the release gate
+  structurally cannot produce the window. The genuinely unguarded exposure is the **macOS AU**
+  build, where no spec forbids off-main-thread `SaveState`/`RestoreState` (host autosave is the
+  real-world case) and the JUCE AU wrapper passes both straight through on the caller's thread.
+- **Evidence [Verified]:** engineering-review round 1 (ER-RT-03/ER-STATE-05, adversarially
+  verified against the pinned JUCE 9.0.1 and VST3 SDK trees);
+  `worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Round 1.
+- **Mitigation:** Recorded here rather than fixed because any lock/hop guard is a
+  threading-model change — an Architecture Review Gate item needing maintainer sign-off
+  (`docs/policies/THREADING_POLICY.md`; the communication tables there and in
+  `docs/architecture/THREAD_MODEL.md` deliberately omit state calls, which this entry now
+  documents as an assumption, not an oversight). Candidate fix if approved: a narrow mutex over
+  the state-set members, or `callAsync` marshalling of the metadata/undo tail. A TSan
+  two-thread harness is the cheapest next investigation.

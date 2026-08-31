@@ -39,12 +39,12 @@ Bypass, Multiband Enable, and Band Solo are therefore deliberately **excluded** 
   instantaneous `mbEnable` reintroduced a click — fixed by always running it, mask-gated).
 
 ## Related code
-- `src/dsp/AnamorphEngine.cpp:158-185` (`discreteDiffers`, exclusions), `:480-562` (switch machine)
+- `src/dsp/AnamorphEngine.cpp:170-197` (`discreteDiffers`, exclusions), `:480-562` (switch machine)
 - `:819-829` (raised-cosine duck), `:872-888` (`bypassBlend`), `:655-707` (`mbEnableBlend`)
 - `:831-845` (SoloMonitor every-block); `src/dsp/SoloMonitor.cpp:59-109`
 
 Evidence [Verified]:
-- Source: src/dsp/AnamorphEngine.cpp:158-185, 832-901; src/dsp/SoloMonitor.cpp:59-109
+- Source: src/dsp/AnamorphEngine.cpp:170-197, 865-934; src/dsp/SoloMonitor.cpp:59-109
 - Tests: testNoClicksAcrossTransitions, testSoloNoGhostInSilence, testBypassCrossfadeClickFree,
   testMultibandEnableCrossfadeClickFree, testSoloMultibandEnableClickFree
 - History [Partially Verified]: CHANGELOG.md [0.8.1], [0.8.6], [0.8.7]

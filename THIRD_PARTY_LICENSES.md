@@ -106,8 +106,10 @@ file along:
   documentation and/or other materials provided with the distribution."* The third clause also
   forbids using the Xiph.Org Foundation name to endorse the product.
 - **HarfBuzz** requires the copyright notice and its two disclaimer paragraphs to appear in all
-  copies; **SheenBidi**'s Apache-2.0 terms require the licence and attribution notices to be
-  carried along.
+  copies; **SheenBidi**'s and **AudioUnitSDK**'s Apache-2.0 terms require the licence and
+  attribution notices to be carried along (AudioUnitSDK reaches the macOS AU binary only; its
+  `NOTICE` section was added 2026-08-31 — engineering-review finding ER-DEP-01, which caught the
+  two same-licence components getting opposite treatment).
 
 - **FreeType** (FTL) does not mandate a specific form, but §"Legal Terms" asks distributors to
   credit it and supplies the wording — *"Portions of this software are copyright © &lt;year&gt; The

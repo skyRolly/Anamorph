@@ -6,12 +6,52 @@ their **commit SHA + date** as the Evidence Source (per `docs/policies/CHANGELOG
 The annotated-tag convention and the tag-triggered release pipeline exist
 (`docs/procedures/RELEASE_PROCESS.md` §Tagging), but **no tag has been cut yet**: `[0.9.0]` was
 written as a release entry and then superseded before it was tagged, so the first annotated
-`vX.Y.Z` tag will be **v0.9.4** (0.9.0, 0.9.1, 0.9.2 and 0.9.3 were each written up and superseded
+`vX.Y.Z` tag will be **v0.9.6** (0.9.0 through 0.9.5 were each written up and superseded
 before tagging),
 and from that tag onward the tag is also a citable Evidence
 Source. Until then every entry cites a commit SHA or a PR. Entries for the
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
+
+## [0.9.6] — 2026-08-31
+### Fixed
+- **Reopening a project no longer plays the first split-second with the wrong settings.** After
+  every host re-activation (a sample-rate or buffer-size change, or rendering with a fresh
+  instance), the first ~5–20 ms glided from built-in neutral values to the session's actual ones —
+  a Mix 0 session opened briefly wet, a −24 dB Output Gain opened briefly hot, an inverted
+  polarity ramped through positive. The engine now lands on the session's values from the very
+  first sample. Regression test: a Mix 0 session must be a bit-exact null from sample 0 after
+  re-activation (Test 44).
+  Evidence: PR #134. [Verified]
+- **A host that delivers a larger audio block than it promised can no longer crash the plug-in.**
+  The engine trusted the host's declared maximum block size absolutely; a block beyond it
+  overran internal buffers (a memory-corruption crash in the DAW). Oversized blocks are now
+  split internally into contract-sized slices — bit-identical audio for every host that keeps
+  its promise, correct audio instead of a crash for one that does not (Test 43).
+  Evidence: PR #134. [Verified]
+- **The correlation meter can no longer freeze for the rest of the session.** One non-finite
+  sample reaching the meter through the Bypass crossfade could latch the phase/balance pointers
+  permanently (the same defect class fixed for the level meters in 0.8.x, INC-004). The
+  correlation meter now self-heals the way the level meters do (Test 45).
+  Evidence: PR #134. [Verified]
+- **Loading an old session into an already-used plug-in instance now resets settings the old
+  session predates.** Settings absent from an old session's data kept the *previous* project's
+  values instead of their defaults — the documented default rule was applied by fresh instances
+  only by luck (they already sit at defaults). Absent settings now reset to their defaults, as
+  presets always did.
+  Evidence: PR #134. [Verified]
+- **A corrupted A/B slot in a session file can no longer silently lose every setting on a later
+  save.** A slot payload that parsed but was not Anamorph data corrupted the internal state
+  container when applied; every save from then on wrote settings a fresh instance silently
+  skipped on load. Such a payload is now discarded and the slot re-seeded, exactly like an
+  unparsable one.
+  Evidence: PR #134. [Verified]
+- **Dragging a knob's number readout now registers with Undo and with host automation
+  recording.** The vertical drag on the value box changed the parameter without opening a host
+  change gesture, so it produced no Undo step and recorded outside touch/latch automation —
+  a third instance of the KI-010 class, now closed for the drag path (typed entry and the
+  imager's mouse wheel remain as recorded in KI-010).
+  Evidence: PR #134. [Verified]
 
 ## [0.9.5] — 2026-08-30
 ### Changed

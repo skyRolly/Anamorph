@@ -4,7 +4,20 @@
 in `POSTMORTEMS.md`, not here. Each entry is evidence-backed (constraint C7). When an item is
 fixed, remove it here and (if notable) add a `POSTMORTEMS.md` entry.
 
-Version-synced to **v0.9.5** (the A7 performance programme). That round **added one issue**:
+Version-synced to **v0.9.6** (the round-1 engineering-review fixes). That round **added one
+issue**: **KI-027**, the audio-thread latency re-report under host automation of Drive/Algorithm —
+a confirmed defect whose fix (deferring the notification off the audio thread) is a
+threading-model change gated on Architecture Review, so it is filed here rather than silently
+fixed; the same finding exposed drift between `docs/architecture/LATENCY_MODEL.md` ("the message
+thread updates PDC") and the actual JUCE listener dispatch, which the entry records. The round
+**removed none**, and its six fixed defects (the post-prepare glide, the oversized-block
+overrun, the correlation-meter NaN latch, the absent-PARAM restore leak, the wrong-typed A/B
+slot corruption, the gesture-less value-box drag) were never filed here — found and fixed in the
+same round, per the same rule the A7-9 note below applies. KI-010 gained a dated correction (a
+third gesture-less path existed and is fixed); KI-026's status line now carries the twin-dump
+scope qualifier. Net for 0.9.6: **one issue added, none removed.**
+
+Prior sync: **v0.9.5** (the A7 performance programme). That round **added one issue**:
 **KI-026**, the x86-64 ISA floor. It is the first entry here recording a limitation that was
 *chosen* rather than discovered — ADR-0031 compiles the Linux binaries and the macOS `x86_64` slice
 `-march=haswell` for a measured −17.2 % of the engine's instruction count with the output
@@ -119,7 +132,8 @@ JUCE 8.0.14; before that 0.8.8 for PR #54).
 | KI-021 | **Linux**: a per-user install (the 0.9.3 default) does not remove an existing **system-wide** one, so both are on the DAW's scan path and its scan order decides which version loads — an update can look as if it did not apply | Low | Confirmed, **deliberate**: removing the system copy needs the elevation the per-user mode exists to avoid. The installer now **warns** when it finds one; removal is one `sudo ./uninstall.sh` |
 | KI-022 | **macOS**: components are non-relocatable since 0.9.3 (INC-012), so a bundle the user deliberately moved — to `~/Applications`, or a plug-in kept under `~/Library/Audio/Plug-Ins/…` — is left where it is and a fresh copy is installed at the standard location, leaving two copies with the same bundle identifier | Low | Confirmed, **deliberate trade** for INC-012: following a moved copy is exactly the behaviour that let an install silently write nowhere useful. Documented in the installer's `INSTALL.txt`; removal is manual |
 | KI-023 | **Linux**: the shipped binaries record the CI image's glibc/libstdc++ floor (measured GLIBC_2.38 / GLIBCXX_3.4.31), so they do not load at all on older distributions — Ubuntu 22.04 LTS included | Medium | Confirmed, **measured**; the floor was never chosen and is now asserted on every push so it cannot rise unnoticed. Lowering it is a release-topology decision, not taken |
-| KI-026 | **Pre-2013 Intel / pre-2015 AMD CPUs**: every shipped x86-64 binary is compiled for AVX2 — Linux and the macOS `x86_64` slice at `-march=haswell` (ADR-0031, 0.9.5), Windows at `/arch:AVX2` (ADR-0032) — so on an older CPU the plug-in raises an illegal-instruction fault **inside the host** (`SIGILL`; `STATUS_ILLEGAL_INSTRUCTION` on Windows). The DAW reports a crash, not an incompatible plug-in | Medium | Confirmed, **deliberate** (ADR-0031/0032; output bit-identical, verified per push on Windows by the blocking A/B gate). Only Apple Silicon is unaffected. No in-product diagnosis is possible; the requirement is documented in the user guides |
+| KI-027 | Host **automation** of Drive or Algorithm delivers the APVTS parameter callback on the **audio thread**, and when the reported latency actually changes (oversampling engaged and the drive engage-threshold crossed, or the algorithm class switched) the `setLatencySamples` notification chain takes multiple locks and, in the JUCE Linux wrapper, appends to a heap array and `write()`s the message-queue fd — inside `processBlock`. A concurrent GUI edit of the same parameter adds a priority-inversion window (the message thread holds the parameter's listener lock through the host's synchronous `restartComponent`) | Medium | Confirmed (full chain traced in the pinned JUCE 9.0.1, ER-RT-01, two independent verifications); **fix gated** — moving latency-notification delivery off the audio thread is a threading-model change (Architecture Review Gate), awaiting maintainer sign-off; the latency VALUE and its safe-point latch are unaffected |
+| KI-026 | **Pre-2013 Intel / pre-2015 AMD CPUs**: every shipped x86-64 binary is compiled for AVX2 — Linux and the macOS `x86_64` slice at `-march=haswell` (ADR-0031, 0.9.5), Windows at `/arch:AVX2` (ADR-0032) — so on an older CPU the plug-in raises an illegal-instruction fault **inside the host** (`SIGILL`; `STATUS_ILLEGAL_INSTRUCTION` on Windows). The DAW reports a crash, not an incompatible plug-in | Medium | Confirmed, **deliberate** (ADR-0031/0032; output bit-identical **for the twin dump's 32-scenario engaged steady-state matrix**, verified per push on Windows by the blocking A/B gate — the instrument's coverage boundary is recorded in `docs/procedures/TESTING.md` §Gaps). Only Apple Silicon is unaffected. No in-product diagnosis is possible; the requirement is documented in the user guides |
 
 ---
 
@@ -130,7 +144,7 @@ is deferred to the silent duck bottom, where `mbStructuralChange` (which still i
 the fade-in instead of staying warm, partially defeating the 0.8.6 warm-bank design for that
 specific case. The reset is **masked by the duck (inaudible)**, so there is no user-visible defect;
 a stand-alone `mbEnable` toggle (the common case) is unaffected and stays warm.
-- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:689 (`mbStructuralChange` includes
+- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:722 (`mbStructuralChange` includes
   `pendingP.mbEnable != p.mbEnable`), :743 (reset on it). Raised in Devin review of PR #50
   (unresolved thread). See FUTURE_RISKS / ADR-0004 (warm-bank intent).
 - **Possible resolution:** remove `mbEnable` from `mbStructuralChange` so a concurrent toggle fades
@@ -158,7 +172,7 @@ The editor open/close tests can crash under pluginval on Linux due to a use-afte
 pointer). It is **not a defect in this plugin** (the plugin already drops its OpenGL child window on
 Linux, INC-006/ADR-0011) and is mitigated by a signal-only retry, but it cannot be fixed from this
 repository.
-- **Evidence [Verified]:** scripts/run-pluginval.sh:147-197 (`run_one_pass`, signal-only retry); ADR-0011. See FUTURE_RISKS RISK-004.
+- **Evidence [Verified]:** scripts/run-pluginval.sh:147-198 (`run_one_pass`, signal-only retry); ADR-0011. See FUTURE_RISKS RISK-004.
 
 ## KI-004 — No automated DAW/host-compatibility testing
 There is no in-repo test matrix across real DAWs; pluginval is the only conformance proxy. Host
@@ -341,7 +355,13 @@ with the focus-driven `knobSweepTime` easing).
   notification, which the attachment turns into a gesture); every click/drag/reset edit inside the
   imager is undoable too (verified: they run through `beginGesture`/`endGesture` or ride a
   concurrent gesture's coalesced snapshot). Only the imager's wheel path and the text-box path
-  are gesture-less.
+  are gesture-less. **Correction (2026-08-31, ER-GUI-01):** that completeness claim missed a
+  third path of the same class — the value box's **vertical drag** (`ValueBox::mouseDrag` →
+  `setValue(sendNotificationSync)` with no drag notification, the advertised "#28 drag the
+  value" interaction). Unlike the typed path, a drag is a natural single gesture with none of
+  the deferred UX questions below, so it was **fixed the same day**: the box now holds a
+  `juce::Slider::ScopedDragNotification` across the press, exactly as a knob drag does. The
+  sentence above is complete again for what remains open.
 - **Scope:** editor-only; automation/preset/serialization unaffected (the value itself lands
   correctly and marks the preset dirty). Severity **Low**.
 - **Evidence [Verified, code path]:** src/PluginEditor.h (`Knob::doReset` gesture wrap + comment);
@@ -797,3 +817,52 @@ a single output bit.
   per-push blocking A/B gate).
 
 
+
+## KI-027 — latency re-report runs on the audio thread under host automation
+
+**Filed 2026-08-31 (engineering-review round 1, finding ER-RT-01; confirmed by two independent
+adversarial verifications against the pinned JUCE 9.0.1 tree).**
+
+The processor registers itself as the APVTS listener for `pid::drive` and `pid::algorithm`
+(`src/PluginProcessor.cpp:18-19`), and `parameterChanged` → `updateLatency()` →
+`setLatencySamples()` runs **synchronously on whatever thread changes the parameter**. Under VST3
+host automation that thread is the audio thread (`JuceVST3Component::process` →
+`processParameterChanges` → `setValueAndNotifyIfChanged`), and JUCE dispatches parameter listeners
+inline on the calling thread under two CriticalSections (the parameter's `listenerLock` and the
+APVTS `LockedListeners` mutex).
+
+- **When it costs nothing:** `setLatencySamples` fires `updateHostDisplay` only when the reported
+  value actually CHANGES — so the common case (automation that does not cross the oversampling
+  engage threshold, or oversampling off) takes the two listener locks and returns.
+- **When it fires:** with oversampling selected, a Drive automation lane crossing the engage
+  threshold (Drive defaults to 0 dB, so any upward lane crosses it on its first ramp), or an
+  Algorithm lane switching between the linear and Chorus/Dimension-D classes, triggers the
+  wrapper's `audioProcessorChanged` → `ComponentRestarter`: on the audio thread that is
+  `triggerAsyncUpdate` → (Linux) `InternalMessageQueue::postMessage` = a `ScopedLock`, a
+  `ReferenceCountedArray::add` (heap), and a `write()` syscall — inside `process()`. The
+  AsyncUpdater CAS collapses repeats, so this is once per engage/disengage crossing.
+- **The worse variant:** a message-thread edit of the same parameter holds the parameter's
+  `listenerLock` while synchronously calling the host's `restartComponent(kLatencyChanged)`
+  (unbounded host work); concurrent audio-thread automation of that parameter then blocks on the
+  same lock — a real dropout mechanism, needing the GUI + automation coincidence.
+- **Why it is filed rather than fixed:** the value chain is correct (the LATCHED latency and its
+  silent-bottom safe points are untouched — see `docs/architecture/LATENCY_MODEL.md`); the defect
+  is *delivery thread* only. Any fix (defer to the message thread via the editor's existing
+  24 Hz poll, an `AsyncUpdater`, or an atomic flag) changes the threading model of
+  latency notification — an **Architecture Review Gate** item (`AI_AGENT_POLICY.md` hard stop)
+  requiring maintainer sign-off. The candidate fix is recorded in the engineering-review
+  programme worklog (`worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md`, decision D-1).
+- **Documented-model drift (reported per C6, corrected only in the code comment):**
+  `docs/architecture/LATENCY_MODEL.md:43-45` states "the message thread updates PDC", while
+  `docs/architecture/THREAD_MODEL.md:74` itself concedes value callbacks arrive on the audio
+  thread under automation; the comment above `parameterChanged` repeated the message-thread
+  assumption and now states the fact instead. The two architecture docs are left for the gated
+  fix to reconcile, whichever way the maintainer decides.
+- **Enforcement-scope note (ER-RT-02, fixed the same day):** no tier could have caught this class
+  in `setParameters`' own body either — `check-realtime.py` now seeds `setParameters`/`toEngine`
+  (with self-test liveness), closing the static half; RTSan still enforces only from the
+  `process` annotation down.
+- **Evidence [Verified]:** src/PluginProcessor.cpp:18-19, :105-121; pinned JUCE
+  `juce_audio_plugin_client_VST3.cpp:3563/:3591/:3537`, `juce_AudioProcessorParameter.cpp:110-121`,
+  `juce_AudioProcessorValueTreeState.cpp:148-203`, `juce_AudioProcessor.cpp:415-436`,
+  `juce_VST3Common.h:1642-1653`, `juce_Messaging_linux.cpp:79-96`.

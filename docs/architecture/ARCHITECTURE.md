@@ -39,7 +39,7 @@ parameter ID.
 
 Evidence [Verified]:
 - Source: src/PluginParameters.cpp:326-389 (`toEngine`)
-- Source: src/PluginProcessor.cpp:169-174 (per-block snapshot → `engine.setParameters` → `engine.process`)
+- Source: src/PluginProcessor.cpp:176-181 (per-block snapshot → `engine.setParameters` → `engine.process`)
 
 ## 3. Module inventory
 
@@ -74,7 +74,7 @@ Evidence [Verified]:
 Evidence [Verified]:
 - Source: src/PluginEditor.cpp:278-292 (OpenGL platform gate)
 - Source: src/dsp/ScopeBuffer.h:8-18 (lock-free SPSC)
-- Source: src/PluginProcessor.cpp:119 (`juce::ScopedNoDenormals`)
+- Source: src/PluginProcessor.cpp:126 (`juce::ScopedNoDenormals`)
 
 ## 5. I/O layouts
 

@@ -6,13 +6,28 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.5 change set** (2026-08-22, matching the CHANGELOG heading) — the
+Last updated: for the **0.9.6 change set** (2026-08-31, matching the CHANGELOG heading) — the
+**engineering-review round 1** (the programme's first sweep: six engine/state/GUI fixes with
+Tests 43–46 and two state regressions, the engaged Test 2/38 matrices, the KI-027 and RISK-007
+filings, the v0.9.6 renumbering sweep, the NOTICE pin + AudioUnitSDK section, the CI_CD job
+inventory, and the new `worklogs/engineering-review/` programme worklog + live HTML dashboard).
+**Header correction (C6, 2026-08-31):** this line previously said "for the 0.9.5 change set
+(2026-08-22, matching the CHANGELOG heading)" while the CHANGELOG's `[0.9.5]` heading had been
+re-dated to 2026-08-30 and the file's own body already carried five later 0.9.5-set rounds the
+header never enumerated — the **platform-coverage audit + MSVC adoption rounds** (ADR-0032, the
+blocking Windows A/B gate), the **[0.9.5] changelog audit** (date + six corrections), the
+**toolchain hold** (ADR-0033: Clang stays 22, release identity asserted), the
+**missing-metadata verification bypass closure** (`setup-llvm-apt.sh --self-test`), and the
+**citation-exemption lifecycle re-key** (`DELIBERATE_REAIMS` transition-scoped). Those rounds'
+entries are in the body below; only this header had gone stale.
+Prior: the **0.9.5 change set** — the
 **A7-0 attempt** (first below, no code and no rows filled), then the **PR #127 review round**, then
 the **A7-2 investigation** (no code), then the **A7-1 implementation round**, then the
 **A7-2T oracle**, then **A7-2B + A7-5E + A7-9C**, then **A7-5E closed on the shipping toolchain**,
 then the **four A7 decisions implemented** (ADR-0031's x86-64 ISA baseline and its floor, the
 cross-architecture numerics contract, the A7-9 fixpoint gates with Test 41, A7-2B's corner accepted,
-and one recorded bound corrected) — **last in the file, newest last within the 0.9.5 set**. Under it, the **0.9.4 change set** is retained in full
+and one recorded bound corrected), then the five header-missed rounds above — **newest last within
+each set**. Under it, the **0.9.4 change set** is retained in full
 (2026-08-21, matching its own CHANGELOG heading — re-dated
 from 2026-08-15 in the hover-occlusion round, on 2026-08-20, and again on 2026-08-21, each time
 because the version took a further user-visible change) — the
@@ -348,7 +363,7 @@ Correlation 3.4 % vs 3.8 %. Two independent harnesses two rounds apart agreeing 
 
 **Two prices quoted for the first time, both maintainer decisions and neither reopened here.** A
 host-bypassed instance costs **101 % of an active one** (85.1M vs 84.0M Ir/s) because the Issue-2
-contract at `src/dsp/AnamorphEngine.cpp:790-796` keeps Measure + Predict running while bypassed, and
+contract at `src/dsp/AnamorphEngine.cpp:823-829` keeps Measure + Predict running while bypassed, and
 `loudness.process()` is handed the *processed* signal (`:1137`). And **59.3 % of the transparent idle
 floor is metering and loudness analysis**, running with Level Match off and with no editor in
 existence. W3-7 and W3-8 rejected gating those for reasons that still hold; what was missing was the
@@ -875,7 +890,7 @@ such.** What is established is that the rewrite happens at a position that is no
 What is not established is the exact macOS event sequence that makes that position land one row up;
 that would need a trace on macOS, which was not available here. What supports it is arithmetic that
 accounts for all four observed controls. The box is placed `h + 8` above the cursor
-(`AnamorphLookAndFeel::getTooltipBounds`, `src/gui/LookAndFeel.cpp:862-871`), so its top edge is a
+(`AnamorphLookAndFeel::getTooltipBounds`, `src/gui/LookAndFeel.cpp:875-884`), so its top edge is a
 **tip-dependent** offset above the pointer, and the Settings rows are at editor-local
 `oversampleBox` 274–297, `uiScaleBox` 331–354, `scopePersistK` 387–411, `tooltipsToggle` 423–449,
 `animToggle` 455–481 (`src/PluginEditor.cpp:2201-2226`). Taking each control's centre and
@@ -1839,10 +1854,10 @@ No other approval is claimed by this entry.
 
 **Test 38 never armed a parameter CHANGE.** The per-configuration `setParameters (p); reset();` ran
 *before* the block loop, and `reset()` flushes an in-flight duck straight to its target
-(`src/dsp/AnamorphEngine.cpp:138-145`) — so by the time the counters were armed the switch was over,
+(`src/dsp/AnamorphEngine.cpp:150-157`) — so by the time the counters were armed the switch was over,
 `switchState` was `Normal`, and the `setParameters (p)` inside the armed region hit the steady-state
 no-change gate every time. The whole structural half of a switch lives in the adopt block
-(`src/dsp/AnamorphEngine.cpp:684-759`: algorithm tails cleared, the three oversamplers and the
+(`src/dsp/AnamorphEngine.cpp:717-792`: algorithm tails cleared, the three oversamplers and the
 chorus reset on an oversampling-path change, the crossover cleared on a topology change) and it runs
 inside `process()`, at the silent bottom of the duck. So 3,840 armed calls proved the audio path
 allocation-free while nothing was changing, and `REALTIME_SAFETY_AUDIT.md` presented that gate as
@@ -1949,7 +1964,7 @@ architectural citation pointing at unrelated code, and one liveness claim that w
 
 **MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-19**, covering the two decisions in this round
 that the process asks a human to confirm: re-aiming ADR-0009's evidence to
-`src/dsp/AnamorphEngine.cpp:1269-1313` (a re-aim, not a re-anchor — the tool cannot compute it, so
+`src/dsp/AnamorphEngine.cpp:1302-1346` (a re-aim, not a re-anchor — the tool cannot compute it, so
 it is declared in `DELIBERATE_REAIMS` and its aim machine-checked against
 `Defensive NaN / Inf self-heal`), and restating the leaf-layer `-Werror=function-effects` gate's
 liveness evidence to name the mechanism the tree actually runs.
@@ -6489,3 +6504,83 @@ entries' per-entry liveness checks.
 `is_declared_reaim` returns false when the spelling is unchanged, *"an entry cannot outlive its
 transition"*. That is the belief the finding disproved, and it is now recorded as such beside the
 rule that makes it true.
+
+---
+
+## Engineering-review programme, round 1 (2026-08-31, the 0.9.6 change set)
+
+**What the round is.** The first pass of the standing engineering-review programme: a broad,
+adversarially-verified sweep of the whole repository (8 lenses; 17 findings confirmed, 2 refuted,
+~75 areas ruled out), a fix-now set implemented with regression coverage, two gate-blocked defects
+FILED instead of fixed, and a persistent programme record created. Records:
+`worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` (the worklog of record) with
+`ENGINEERING_REVIEW_REPORT.html` beside it (the live dashboard — a VIEW of the worklog, updated
+and re-committed whenever the programme state materially changes; same companion rule as the
+performance reports).
+
+**Code changes and their doc syncs (trigger map applied):**
+- `src/dsp/AnamorphEngine.cpp` (chunk guard ER-DSP-01, prepare-snap ER-DSP-02),
+  `src/dsp/Correlation.h` (sanitize ER-DSP-04) → CHANGELOG `[0.9.6]` (three Fixed entries),
+  Tests 43–45, HANDOVER Test/Version rows. No stage-order, latency-value, parameter or
+  serialization change — no ADR needed (behaviour changes only in the defective windows; the
+  Mix-0 null and identity invariants are what the fixes RESTORE).
+- `src/PluginProcessor.cpp` (absent-PARAM defaults ER-STATE-01, slot type guard ER-STATE-02,
+  the KI-027 comment correction) → `SERIALIZATION_REGISTRY.md` (two dated annotations; the
+  serialized SCHEMA is untouched — restore semantics for absent/corrupt payloads now match the
+  registry's own recorded rules), two state-suite regressions, CHANGELOG (two Fixed entries).
+- `src/gui/LookAndFeel.cpp` (ValueBox gesture ER-GUI-01) → KI-010 dated correction, CHANGELOG,
+  USER_MANUAL left as-is (its wording is now accurate again).
+- `tests/dsp_tests.cpp` (engaged matrices ER-TST-01 + Tests 43–46), `tests/state_tests.cpp`
+  (two regressions) → TESTING.md counts, README:64, HANDOVER Test row, REPOSITORY_MAP test rows,
+  RELEASE_HARDENING_PLAN QA row (45 tests / 241 checks; 15 tests / 924 checks).
+- `scripts/check-realtime.py` (AUDIO_FN seeds ER-RT-02) → REALTIME_AUDIO_POLICY scoping sentence
+  (the "anywhere in the chain" claim now states the annotated-entry boundary and the lint/guard
+  complements).
+- `scripts/run-pluginval.ps1` + `run-pluginval.sh` comment (ER-CI-01) → TESTING.md §Signal-only
+  retry (Windows paragraph), FUTURE_RISKS RISK-004 (Windows analog closed).
+- `.github/workflows/build.yml` one-line pin comment (ER-DEP-05).
+
+**Registry filings (defects found, fixes gated):** KI-027 (audio-thread latency re-report,
+ER-RT-01 — table row + full entry; the LATENCY_MODEL/THREAD_MODEL drift is recorded IN the entry
+per C6 and deliberately left in the two architecture docs for the gated fix to reconcile) and
+RISK-007 (off-main-thread state calls, ER-RT-03/ER-STATE-05 — plus THREADING_POLICY's new §Host
+state calls, and a dated KNOWN-VIOLATION cross-reference under its PDC rule).
+
+**Version renumbering (ER-DOC-01) and the 0.9.6 bump:** `CMakeLists.txt:14` → 0.9.6; CHANGELOG
+`[0.9.6] — 2026-08-31` (six Fixed entries, evidence PR #134); the forward-looking "release in
+preparation / first tag" claims renumbered in HANDOVER (:76 and the Branch/Release/Blockers rows),
+CHANGELOG:9, CHANGELOG_POLICY:12, RELEASE_PROCESS (§Tagging commands + :112), COMMERCIAL_STATUS
+(:11-12/:30/:115-118), FUTURE_RISKS (RISK-003), RELEASE_HARDENING_PLAN (:29/:46/:300/:346 + the QA
+row counts). The **Level-5 precondition is restated OPEN** wherever it was asserted "against the
+build that ships" (HANDOVER:91, COMMERCIAL_STATUS §5) — the 2026-08-15 audition covered v0.9.4,
+the shipping build is now v0.9.6, and no carry-forward was ever decided; this is maintainer
+decision D-3, not something a doc edit can clear. HANDOVER's open-KI enumeration completed
+(KI-018–KI-023, KI-026 were missing). Historical v0.9.4 narrative (HANDOVER:49/:89/:94/:102,
+worklog filenames, FUTURE_RISKS prior-sync chain) deliberately untouched — Class B.
+
+**Shipped-attribution corrections:** NOTICE:24 pin line 9.0.0/f8f8864 → 9.0.1/e18f7f5
+(ER-DOC-02; NOTICE added to DEPENDENCY_POLICY's bump re-verification list so the next bump cannot
+miss it) and a new NOTICE AudioUnitSDK Apache-2.0 section (ER-DEP-01; © 2000-2021 Apple Inc.,
+read from the pinned tree's `AudioUnitSDK/LICENSE.txt` and the `@copyright` header;
+THIRD_PARTY_LICENSES §mandatory-notices names it beside SheenBidi).
+
+**Other Class-A drift corrected:** CI_CD.md §Build matrix (nine non-packaging jobs; rows for
+`macos-crossslice` reporting-only and `windows-avx2-ab` blocking; the release-blocking paragraph's
+carve-out), REPOSITORY_MAP build.yml row (same two jobs) and its worklogs entry (the "ONE worklog
+has a rendered companion" sentence — three existed before this round, four now; corrected with a
+dated note), REPOSITORY_MAP test-count rows (37→45 DSP, 13→15 state), TESTING.md:18 (41→45),
+TESTING.md's twin-dump bullet ("session-local and not committed" — false since 2026-08-18,
+ER-TST-05), a new TESTING.md §Gaps entry writing down the twin-dump's coverage boundary
+(ER-TST-02) with the KI-026 status line now carrying the scope qualifier, FUTURE_RISKS' missing
+0.9.5 sync note (ER-DOC-04, corrected inside the new 0.9.6 sync note), and this file's own stale
+"Last updated" header (ER-DOC-05, corrected in place at the top).
+
+**New documents:** `worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` +
+`ENGINEERING_REVIEW_REPORT.html`. Registered per the documentation-only trigger: REPOSITORY_MAP's
+`worklogs/` entry describes companions generically and now names this one; `SOURCE_OF_TRUTH.md`
+and README §Documentation class tables are unchanged because worklogs are already a classified
+directory there (the KEYNOTE_SCRIPT precedent at :5289 applies); self-coverage is this entry.
+
+**Refuted findings recorded (not drift, prior art):** ER-DSP-03 (the duck's block-boundary dwell
+is the documented [0.8.10] behaviour) and ER-TST-03 (JUCE state chunks are plain XML, not
+deflate — the fuzzer reaches the parser). [Verified]

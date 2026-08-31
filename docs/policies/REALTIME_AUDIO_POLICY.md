@@ -31,7 +31,7 @@ blocking waits · filesystem IO · network IO · `sleep` · C++ exceptions throw
 audio path; all allocation confined to `prepare()`. Full audit: `docs/architecture/REALTIME_SAFETY_AUDIT.md`.
 
 Evidence [Verified]:
-- Source: src/PluginProcessor.cpp:117-185 (`processBlock`; `ScopedNoDenormals` at :119), src/dsp/AnamorphEngine.cpp:28-113 (prepare allocations) vs :660-1339 (alloc-free process)
+- Source: src/PluginProcessor.cpp:124-192 (`processBlock`; `ScopedNoDenormals` at :119), src/dsp/AnamorphEngine.cpp:28-125 (prepare allocations) vs :660-1339 (alloc-free process)
 - Audit: docs/architecture/REALTIME_SAFETY_AUDIT.md
 
 ## Enforcement
@@ -39,7 +39,11 @@ Evidence [Verified]:
 - **RealtimeSanitizer, in CI, on every push** (ADR-0029). `AnamorphEngine::process` carries
   `ANAMORPH_NONBLOCKING` (`src/dsp/RealtimeAnnotations.h`), and the `realtime` job builds the DSP
   suite with `-fsanitize=realtime` and runs it: an allocation, lock or blocking call anywhere in the
-  chain aborts the job at the offending frame. This is the first mechanical detector for the rule
+  chain **below the annotated `process` entry** aborts the job at the offending frame. The
+  per-block wrapper path *above* it (`processBlock` → `PluginParameters::toEngine` →
+  `AnamorphEngine::setParameters`) is outside RTSan's enforcement; its non-allocation classes are
+  gated by `check-realtime.py`, which seeds those names directly (ER-RT-02, 2026-08-31), and its
+  allocations by Test 38's armed guard. This is the first mechanical detector for the rule
   above — ASan, UBSan and valgrind all treat an audio-path allocation as perfectly correct code.
   Its bounds are stated in the ADR and are real: it is Clang/Linux+macOS only, it sees only what the
   suite executes, and the shipped Windows and macOS binaries are built by compilers it never runs on.

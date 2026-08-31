@@ -15,7 +15,7 @@ exits non-zero on any failed `check` or missing binary. Evidence [Verified]: scr
 
 ### What the tests cover
 
-`tests/dsp_tests.cpp` has **41 DSP tests** using a `check(cond, "what")` harness, covering: MS
+`tests/dsp_tests.cpp` has **45 DSP tests** using a `check(cond, "what")` harness, covering: MS
 round-trip (bit-exact), transparent default, true-bypass null + latency match, Mono Maker
 (post-Mix), Multiband mono-compat, Solo band selectivity + transparency, Level Match
 (unity/no-ratchet/silence-freeze/mix-coupling/multiband-unity), crossover automation safety,
@@ -411,19 +411,27 @@ a display). Evidence [Verified]: scripts/run-pluginval.sh / scripts/run-pluginva
 
 ### Signal-only retry (known X11 host flake)
 
-`run-pluginval.sh` (and `run-pluginval.ps1` on Windows, without the X11-specific retry) treats a real
+`run-pluginval.sh` treats a real
 validation failure (exit < 128) as a failure immediately. On Linux it retries up to 3 times **only on
 a signal-crash** (exit ≥ 128) to absorb a use-after-free in **pluginval's own JUCE** X11
 `XEmbedComponent` (a `ConfigureNotify`→`callAsync` on rapid editor open/close), not a plugin defect —
-the plugin already drops its OpenGL child window on Linux (ADR-0011).
+the plugin already drops its OpenGL child window on Linux (ADR-0011). On Windows,
+`run-pluginval.ps1` fails immediately on a real validation failure **and, since 2026-08-31, on a
+real abnormal termination too** (a negative / ≥256 exit code, i.e. a Win32 exception of a launched
+validator): until then its loop still gave every crash up to 3 tries per pass — a retry originally
+justified by the null-`$LASTEXITCODE` detection problem that the KI-007 `WaitForExit` fix had
+already retired, leaving it excusing exclusively genuine crashes on a platform with no documented
+flake (ER-CI-01). Its 3-attempt loop now covers only a `$null` exit code, which after that fix can
+mean nothing but "the process never launched" — a setup fault, not a verdict.
 
 **The retry is scoped to the platform its justification names.** Until 2026-08-18 the script applied
 the same three attempts on **macOS**, which shares none of that X11 machinery: there, a crash had two
 extra chances to pass and no documented flake to absorb, and this section already described the
 behaviour as Linux-only. `CRASH_RETRY_ATTEMPTS` is now set from `uname -s` — 3 on Linux, **1**
 everywhere else — and a single-attempt failure prints a distinct message so it cannot be misread as
-an exhausted retry. Evidence [Verified]: scripts/run-pluginval.sh (`run_one_pass`, and the `case
-"$(uname -s)"` above it).
+an exhausted retry. The 2026-08-31 Windows change above completes the same scoping for the third
+platform. Evidence [Verified]: scripts/run-pluginval.sh (`run_one_pass`, and the `case
+"$(uname -s)"` above it); scripts/run-pluginval.ps1 (verdict block).
 
 ## CI integration
 
@@ -486,7 +494,7 @@ See `CI_CD.md`. Evidence [Verified]: `.github/workflows/build.yml`.
 | A `check` assertion fails | DSP regression | the named test in `tests/dsp_tests.cpp`; compare against the invariant it guards (`docs/policies/DSP_POLICY.md`) |
 | A state-test `check` fails | serialization / parameter-surface regression | the named test in `tests/state_tests.cpp`; if the change is INTENTIONAL it needs the compatibility-policy process (ADR + registry update + `--write-snapshot`) |
 | pluginval exits < 128 | real validation failure | the pluginval log line; do **not** retry — it's a genuine defect |
-| pluginval exits ≥ 128 (crash) | the known X11 host flake | retried automatically; if it still fails after 3 tries, treat as a failure (`scripts/run-pluginval.sh:171-197`, `run_one_pass`) |
+| pluginval exits ≥ 128 (crash) | the known X11 host flake | retried automatically; if it still fails after 3 tries, treat as a failure (`scripts/run-pluginval.sh:172-198`, `run_one_pass`) |
 | `AnamorphTests`/`AnamorphStateTests` `not found` | not built yet | run `scripts/build.sh` first (`scripts/run-tests.sh:51-73`) |
 
 ## Gaps in the automated coverage (known, deliberate)
@@ -650,8 +658,24 @@ rather than deleted, because a gap that was real and is now covered is worth bei
   right tool for "did this change alter the sound" is the **twin dump** — build the engine before
   and after, run the same scenario matrix through both, compare hashes and reported latencies —
   which is what the JUCE 9 migration used across 32 scenarios
-  (`worklogs/JUCE9_MIGRATION_v0.8.13.md`). That harness is session-local and not committed, so the
-  method must currently be re-created per investigation.
+  (`worklogs/JUCE9_MIGRATION_v0.8.13.md`). That harness has been **committed** since the
+  2026-08-18 round as `tests/dsp_dump.cpp` (§"Proving a dependency bump is bit-identical" above)
+  — this bullet said "session-local and not committed" for five rounds after that stopped being
+  true (ER-TST-05); the method no longer needs re-creating per investigation.
+
+- **The twin dump hashes a fixed engaged steady-state matrix, and everything outside it is
+  outside the bit-identity claim.** Each of the 32 scenarios applies one parameter set, calls
+  `reset()` (which flushes any in-flight switch duck), and hashes 240 settled blocks — so the
+  compared surface includes the continuous-smoother glides, the M/S conditioning loop, and all
+  four algorithm modules engaged, but **excludes** the switch-duck/adopt machinery, the Bypass
+  and Multiband-Enable crossfades and their off paths, M/S solo, `SoloMonitor`'s band-pass, the
+  L/R-domain conditioning branch, the crossover glide, the full-wet idle path, and the NaN-heal
+  pass — all first-party float code compiled under the same ISA flags. On GCC/Clang the
+  contraction risk in those blind paths is closed binary-wide by ADR-0031's 0-FMA objdump
+  census; on MSVC it rests on documented `/fp:precise` semantics plus the toolset ≥ 14.30
+  assertion, not on measurement. ADR-0032 hedges with "for this instrument's coverage"; this
+  entry is where that boundary is actually written down (ER-TST-02, 2026-08-31). Extending the
+  matrix with transition scenarios is a recorded round-2 candidate, not a commitment.
 
 - **No gate ever installs anything.** CI builds the packages and inspects them — the Inno Setup
   exe, the expanded `.pkg` (component identifiers, `customize="allow"`, non-relocatable

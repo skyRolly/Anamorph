@@ -72,7 +72,7 @@ blocking gate; `env.ANAMORPH_PLUGINVAL_STRICTNESS`; the macOS AU install + AU ga
    in `DSP_POLICY.md`).
 3. The pluginval **signal-only retry** is permitted (it works around a host-side JUCE/X11 crash,
    not a plugin defect) but never retries a real validation failure
-   (`run_one_pass`, `scripts/run-pluginval.sh:171-197`).
+   (`run_one_pass`, `scripts/run-pluginval.sh:172-198`).
 4. **A checker must prove it is live before its silence is trusted.** Every lint in the pipeline
    ships a `--self-test`, and it runs **in the same job as the check it vouches for, ahead of that
    job's use of the checker** — never in a different job, a different workflow or an earlier run,

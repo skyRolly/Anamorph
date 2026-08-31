@@ -79,7 +79,7 @@ Evidence [Verified]: release.yml.
 ## Build matrix
 
 Every push builds the full set of formats on all three desktop OSes — plus a **second macOS job
-that ships nothing and exists only to execute on Intel silicon** — alongside seven non-packaging
+that ships nothing and exists only to execute on Intel silicon** — alongside nine non-packaging
 jobs that guard classes the build matrix cannot see:
 
 | Job | Runner | Builds | pluginval |
@@ -92,6 +92,8 @@ jobs that guard classes the build matrix cannot see:
 | **windows** | `windows-latest` (MSVC, multi-config) | VST3 + Standalone (+ tests) | VST3, **both modes ×3** — **blocking** |
 | **macos** | `macos-latest` (Apple Silicon) | universal VST3 + AU + Standalone (+ tests) | **VST3 and AU**, both modes ×3 each — **blocking** |
 | **macos-intel** | `macos-15-intel` (**native Intel**) | thin x86_64 VST3 + AU (+ tests); Standalone off; **no packaging, no artifacts** | **VST3 and AU**, both modes ×3 each — **blocking** |
+| **macos-crossslice** | `macos-latest` (Apple Silicon) | the twin-dump instrument for both universal slices (arm64 native + x86_64 under Rosetta); **no packaging, no artifacts; job-level `continue-on-error` — reporting-only by design** (a cross-architecture comparison is Class B, not a gate; ADR-0031 §Consequences) | — |
+| **windows-avx2-ab** | `windows-latest` (MSVC) | two twin-dump builds — baseline vs `/arch:AVX2` — diffed hash-for-hash; **no packaging, no artifacts**; **BLOCKING** (the ADR-0032 per-push Class-A assertion: any of the 32 scenarios moving fails the push, with NUMERICAL vs INFRASTRUCTURE failures distinctly labelled) | — |
 | **linux-lto-tests** | `ubuntu-latest` + **floating `gcc:16`** (major pinned, patch not) | GCC `-flto`: both test targets only (Standalone off); **no packaging, no artifacts** | — (the suites against LTO codegen, the GCC warning gate, and the two instruments' liveness builds) |
 | **realtime** | `ubuntu-latest` | Clang `-fsanitize=realtime`: the DSP suite only (Standalone off); **no packaging, no artifacts** | — (the audio path under RealtimeSanitizer, plus the leaf-layer `-Wfunction-effects` check) |
 | **fuzz** | `ubuntu-latest` | Clang libFuzzer + ASan/UBSan: `AnamorphFuzzState` only (tests and Standalone off); **no packaging, no artifacts** | — (`setStateInformation` under libFuzzer) |
@@ -103,9 +105,12 @@ otherwise fine, and a red build does not skip them.
 **That is a statement about *this* workflow, and the release path is different.**
 `release.yml` calls `build.yml` as a single `build:` job and its `draft-release` job is
 `needs: [validate, build]`. A called workflow's aggregate result is what that edge observes, so on
-a release tag **every** job here — including `sanitizers`, `linux-lto-tests`, `realtime` and `fuzz` — is
+a release tag **every** job here — including `sanitizers`, `linux-lto-tests`, `realtime`, `fuzz`
+and `windows-avx2-ab` — is
 release-blocking: a failure in any of them skips the draft release, even though the per-push
-artifacts were still uploaded. That follows `RELEASE_POLICY.md` §Artifacts ("the existing
+artifacts were still uploaded. The one exception is `macos-crossslice`, whose **job-level
+`continue-on-error`** makes it reporting-only on every trigger, release tags included — the
+deliberate ADR-0031 Class-B scoping, not a gap. That follows `RELEASE_POLICY.md` §Artifacts ("the existing
 `build.yml` gates are reused unchanged") and is the intended behaviour; the absence of a `needs:`
 edge above must not be read as release non-blocking.
 
