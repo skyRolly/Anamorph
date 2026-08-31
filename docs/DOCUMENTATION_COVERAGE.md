@@ -6584,3 +6584,66 @@ directory there (the KEYNOTE_SCRIPT precedent at :5289 applies); self-coverage i
 **Refuted findings recorded (not drift, prior art):** ER-DSP-03 (the duck's block-boundary dwell
 is the documented [0.8.10] behaviour) and ER-TST-03 (JUCE state chunks are plain XML, not
 deflate — the fuzzer reaches the parser). [Verified]
+
+---
+
+## Engineering-review programme, round 2 (2026-08-31, still the 0.9.6 change set)
+
+**What the round is.** CI recovery plus the carried round-1 roadmap: two warning-gate blockers
+fixed at source, three confirmed defects fixed with regression coverage, RISK-007 measured rather
+than reasoned about, decision D-1 materially corrected, and one new issue filed. Records:
+`worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Round 2 with the dashboard
+`ENGINEERING_REVIEW_REPORT.html` beside it, both updated in this change set.
+
+**Code changes and their doc syncs (trigger map applied):**
+- `src/dsp/AnamorphEngine.h` (`primeParameters`) + `src/PluginProcessor.cpp` (`prepareToPlay`
+  ordering) → CHANGELOG `[0.9.6]` (two Fixed entries: the activation duck and the restored-level
+  ramp), State test 16, HANDOVER Version + Test rows, and the count sweep below. No stage-order,
+  latency-value, parameter or serialization change — the fix RESTORES the intended settled state,
+  so no ADR is triggered.
+- `src/PluginProcessor.cpp` (`reassertParameters`: non-finite guard + the inverted write gate) and
+  `src/PresetManager.cpp` (`applySoundTree` fallback) → CHANGELOG (one Fixed entry), State test 17.
+  The serialized SCHEMA is untouched: this changes what a MALFORMED value restores to, which
+  `SERIALIZATION_REGISTRY.md` already specifies as "per-parameter defaults" for the absent case.
+- `tests/state_tests.cpp` (State tests 16 and 17, and the `--state-thread-probe` instrument) →
+  `docs/procedures/TESTING.md` (the probe documented beside the state-suite description; test count
+  15 → 16 → 17), REPOSITORY_MAP test rows, README:64, TESTING_POLICY, RELEASE_HARDENING_PLAN QA row
+  (45 / 241; 17 tests / 936 checks). The probe is documented as never run by the suite.
+- `tests/dsp_tests.cpp` (`juce::exactlyEqual` at four sites; two engine pairs moved to the heap) and
+  `src/PluginProcessor.cpp` (lambda parameter renamed) → no doc trigger: neither changes behaviour,
+  and CHANGELOG_POLICY rule 3 excludes them.
+- `scripts/check-gcc-warnings.py`, `.github/workflows/{build,codeql,release}.yml` → the comment and
+  diagnostic corrections listed below; `GATED_FLAGS` and every gate's behaviour are unchanged except
+  release.yml's tag check, which now distinguishes an infrastructure failure from a verdict (both
+  still exit 1).
+
+**Registry changes:** **KI-028** filed (the value-box gesture leaked by a lost release — a residual
+of round 1's own fix, with both candidate designs recorded); **KI-027 corrected on four points**
+after re-verification (the expensive branch needs oversampling selected by hand, since it is not a
+host parameter and defaults to Off; the rate is bounded at one dispatch per parameter per block;
+`PTHREAD_PRIO_INHERIT` mitigates the inversion on POSIX but not Windows; and two of D-1's candidate
+fixes are refuted); **RISK-007** gains the TSan measurement (four named races) and the D-2 pointer.
+`KNOWN_ISSUES.md`'s version-sync header now covers both rounds.
+
+**Class-A drift corrected, each verified before editing:** the `reassertParameters` rationale
+comment (ER-STATE-04 — `replaceState` does propagate, so the comment now states the real residual
+the function exists for, preserving its necessity); one `PluginEditor.cpp` comment clause that
+over-claimed the 0.9.3 half-typed-value guarantee (ER-GUI-02 — narrowed, code deliberately NOT
+widened, and the published documents were already correct); `build.yml`'s header block, which
+described the pre-2026-08-15 macOS ordering and contradicted both its own in-job comment and
+`CI_CD.md` (ER-CI-02 — rewritten line-count-neutral so no citation moved); `codeql.yml`'s toolchain
+claim and its "src/ + tests/" coverage claim (ER-CI-03 / ER-CI-06 — comments corrected, the compiler
+deliberately not pinned since that would be a Build System change for no analysis benefit);
+`check-gcc-warnings.py`'s "this job's pinned pair" label (ER-CI-04 — scoped to the compiler it was
+measured on, with re-measurement a round-3 item); `release.yml`'s annotated-tag diagnostic
+(ER-CI-05). Round 1's own batching rationale for the CI items is also corrected in the worklog: only
+`build.yml` is citation-tracked of the four files.
+
+**Citation re-anchoring.** `prepareToPlay` and the `<cmath>` includes shifted every anchor below
+them in `PluginProcessor.cpp`; 51 citations were re-anchored mechanically by `--fix` and five were
+re-derived BY SYMBOL because the cited lines themselves changed — `setStateInformation`,
+`getStateInformation`, `readSlot`'s legacy-key fallback, and ADR-0010's two sites. Each is declared
+in `DELIBERATE_REAIMS` as a transition, and three carry a second entry for the push-predecessor base
+(a different base than `origin/main`, and the one CI compares). The self-test's liveness check
+caught one bogus declaration — a bare `:line` shorthand the gate does not track as an anchor — which
+was removed rather than worked around. [Verified]

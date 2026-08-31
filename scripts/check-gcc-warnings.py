@@ -53,7 +53,15 @@
 #      else" is the obvious objection and it is worth answering with numbers
 #      rather than with this paragraph. Baselining it does NOT keep the class
 #      gated elsewhere, and gating it here does not gate anything at all. Both
-#      halves measured on gcc-13.3.0 / Ubuntu 24.04 — this job's pinned pair —
+#      halves measured on gcc-13.3.0 / Ubuntu 24.04 — the lane's compiler AT
+#      THE TIME, not today's: the job has since moved to the floating `gcc:16`
+#      container (ANAMORPH_GCC_VERSION in build.yml), so the EMPIRICAL leg below
+#      is a measurement on a compiler this lane no longer runs (ER-CI-04,
+#      2026-08-31). The exclusion still stands on its STRUCTURAL leg — the flag
+#      cannot attribute a first-party site under `-flto`, and AllocationGuard.h
+#      is the one file whose purpose is replacing those operators — and the
+#      gated set is deliberately unchanged here. Re-measuring under gcc-16 is a
+#      round-3 item, not a blocker —
 #      with the flag appended to the gated set and the two gated targets built
 #      exactly as the baseline header prescribes:
 #

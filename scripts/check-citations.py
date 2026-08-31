@@ -354,6 +354,9 @@ DELIBERATE_REAIMS = {
     # The same three anchors also moved relative to the PUSH PREDECESSOR (a
     # different base than origin/main, and the one CI compares). Same symbols,
     # same re-derivation; both bases are declared until this branch merges.
+    ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
+     "src/PluginProcessor.cpp:328, 390-393",
+     "src/PluginProcessor.cpp:379,473-476"): "setValueNotifyingHost",
     ("docs/architecture/SERIALIZATION_REGISTRY.md",
      "src/PluginProcessor.cpp:743-744",
      "src/PluginProcessor.cpp:791-792"): "legacyKey",

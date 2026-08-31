@@ -82,33 +82,47 @@ ruled out, fixed, deferred — and what should happen next. A rendered <em>view<
 <code>ENGINEERING_REVIEW_PROGRAMME.md</code> beside it; the worklog is the source of truth a later
 round reconciles against.</p>
 <div class="meta">
-  <span>ROUND 1 · 2026-08-31</span>
+  <span>ROUNDS 1–2 · 2026-08-31</span>
   <span>TREE: main @ e8f4422 → v0.9.6</span>
-  <span>STATUS: round 1 complete — 4 maintainer decisions pending</span>
-  <span>NEXT: round 2 per roadmap</span>
+  <span>STATUS: round 2 complete — CI green, 3 decisions pending</span>
+  <span>NEXT: round 3 — KI-028, then D-1 if approved</span>
 </div>
 
 <h2><span class="no">§1</span>Executive status</h2>
-<p class="lede">Round 1 swept the whole repository with eight adversarially-verified lenses.
-<strong>17 findings confirmed</strong> (2 refuted, ~75 areas ruled out as sound). Ten were fixed in
-the round with regression coverage; two are confirmed defects whose fixes are Architecture-Review-Gate
-items and are <strong>filed, not fixed</strong> (KI-027, RISK-007). The headline results:</p>
+<p class="lede"><strong>Round 2</strong> recovered CI, fixed three confirmed defects — two of
+which made the plug-in inaudible or wrong in ordinary use — measured RISK-007 rather than reasoning
+about it, and <strong>corrected decision D-1 by refuting two of its own candidate fixes</strong>.
+Round 1's sweep (eight adversarially-verified lenses, 17 findings confirmed, 2 refuted, ~75 areas
+ruled out) remains the baseline below. The headline results:</p>
+<div class="verdicts">
+  <div class="v"><div class="k">R2 · worst defect found</div><p><strong>Every activation ducked.</strong> The engine was prepared before it was told the current settings, so its first look at them read as a settings change and got the click-free mute. Measured at <strong>0.4 % of level</strong> for ~35 ms on every insert and every project load. Fixed; State test 16.</p></div>
+  <div class="v"><div class="k">R2 · worst latent defect</div><p><strong>A corrupt value silenced the plug-in permanently.</strong> <code>value="nan"</code> in a session or preset was adopted, output peak measured <strong>0.000000</strong>, and saving wrote it back out. Fixed at both ingress points; State test 17.</p></div>
+  <div class="v"><div class="k">R2 · RISK-007 measured</div><p>The TSan probe reports <strong>four real data races</strong> on exactly the members round 1 predicted. The code half of D-2 is settled; only the host question remains.</p></div>
+  <div class="v"><div class="k">R2 · D-1 corrected</div><p>Two of D-1's candidate fixes are <strong>refuted</strong>: the editor poll does not exist with the editor closed, and an <code>AsyncUpdater</code> reproduces the same syscall. Reachability is also lower than filed.</p></div>
+</div>
+<h3>Round 1 headlines (unchanged)</h3>
 <div class="verdicts">
   <div class="v"><div class="k">Worst latent defect</div><p><strong>ER-RT-01 / KI-027</strong> — host automation of Drive/Algorithm re-reports latency <em>from the audio thread</em> (locks; heap + <code>write()</code> on a real change). Confirmed twice against pinned JUCE. Fix awaits D-1.</p></div>
   <div class="v"><div class="k">Worst test hole (fixed)</div><p><strong>ER-TST-01</strong> — the flagship NaN/allocation matrices ran with the wet path <em>parked</em>; Dimension-D engaged was tested by nothing. Both matrices now run engaged; all green.</p></div>
   <div class="v"><div class="k">Worst robustness hole (fixed)</div><p><strong>ER-DSP-01</strong> — an oversized host block was a release-build heap overflow. Now chunked, bit-exact for conforming hosts (Test 43).</p></div>
   <div class="v"><div class="k">Release blocker surfaced</div><p><strong>ER-DOC-01</strong> — the Level-5 audition was recorded as cleared "against the build that ships" for a superseded build. Restated OPEN for v0.9.6 (D-3).</p></div>
 </div>
-<p class="note"><strong>Validation at end of round:</strong> DSP suite 45 tests + guard / 241 checks,
-state suite 15 tests / 924 checks, realtime lint 93 self-test cases + clean scan, preflight and all
-eight checker self-tests green, citation gate green on all bases. No <code>src/</code> change shipped
-unvalidated.</p>
+<p class="note"><strong>Validation at end of round 2:</strong> <code>preflight.sh</code> exit 0 —
+DSP suite 45 tests / 241 checks, state suite <strong>17 tests / 936 checks</strong>, citation self-test
+145 cases green against all three bases, realtime lint 93 cases + clean scan, every checker self-test
+green. The pinned clang-22 gate reports no NEW first-party warnings and the GCC shadow count is back
+to its baselined 1. No <code>src/</code> change shipped unvalidated.</p>
 
 <h2><span class="no">§2</span>Findings register</h2>
 <p class="lede">Every confirmed finding, its verified status and current disposition. IDs are stable
 across rounds; evidence in full in the worklog and the cited files.</p>
 <div class="tblwrap"><table>
 <tr><th>ID</th><th>Category</th><th>Finding</th><th>Sev</th><th>Confidence</th><th>Disposition</th></tr>
+<tr><td class="mono">ER-DSP-06<br><span class="small">round 2</span></td><td>DSP / activation</td><td><code>prepareToPlay</code> prepared the engine BEFORE giving it the current parameters, breaking <code>prepare()</code>'s "p is current" contract. The engine's struct defaults disagree with the wrapper's first snapshot on a discrete field (<code>dimMode</code>: APVTS choice 1 → mode 2 vs struct 1), so the click-free switch machine ducked on EVERY activation; continuous controls additionally ramped from defaults.</td><td class="sev-h">High</td><td>Measured</td><td><span class="chip c-fixed">FIXED r2</span> <code>primeParameters()</code> + State test 16</td></tr>
+<tr><td class="mono">ER-STATE-03<br><span class="small">round 2</span></td><td>State / robustness</td><td><code>value="nan"</code> in a session or preset became parameter state and silenced the plug-in permanently (self-heal zeroes every block), persisting through save. Round 1's assumed <code>raw="nan"</code> trigger is <strong>refuted</strong>; the real ingress is JUCE's own <code>replaceState</code> plus an unguarded <code>applySoundTree</code>.</td><td class="sev-h">High</td><td>Measured</td><td><span class="chip c-fixed">FIXED r2</span> two guards + State test 17</td></tr>
+<tr><td class="mono">ER-GUI-04<br><span class="small">round 2</span></td><td>GUI / undo</td><td>Round 1's own value-box gesture fix leaks an open host gesture when the mouse release is lost; while open, <code>pollUndoCoalesce</code> commits no undo step. The editor's reconcile clears the visual flag but cannot reach an RAII member of a file-local type.</td><td class="sev-l">Low</td><td>Confirmed</td><td><span class="chip c-filed">FILED KI-028</span> two designs → round 3</td></tr>
+<tr><td class="mono">CI gates<br><span class="small">round 2</span></td><td>CI blocker</td><td>Round 1 turned both warning gates red: one lambda parameter shadowing an enclosing local (seen by Clang and GCC), and four bare <code>!=</code> float comparisons in new tests.</td><td class="sev-h">Blocker</td><td>Reproduced</td><td><span class="chip c-fixed">FIXED r2</span> at source; no baseline widened</td></tr>
+<tr><td class="mono">ER-CI-02..06<br>ER-STATE-04<br>ER-GUI-02<br><span class="small">round 2</span></td><td>Docs / diagnostics</td><td>Seven verified corrections: build.yml's header contradicted its own in-job comment and CI_CD.md; codeql.yml claimed a toolchain and a coverage scope it does not have; the GCC exclusion's measurement label named a retired compiler; release.yml reported a fetch failure as a bad tag; the <code>reassertParameters</code> rationale mis-stated what <code>replaceState</code> does; one GUI comment over-claimed.</td><td class="sev-m">Med</td><td>Verified first</td><td><span class="chip c-doc">CORRECTED r2</span></td></tr>
 <tr><td class="mono">ER-DSP-01</td><td>DSP robustness</td><td>No <code>maxBlock</code> clamp in <code>process()</code>: oversized host block overran every scratch buffer (heap overflow; JUCE documents the host class). Evidence: AnamorphEngine.cpp scratch sizing vs entry guard.</td><td class="sev-h">High→Med</td><td>Confirmed ×2</td><td><span class="chip c-fixed">FIXED r1</span> chunk guard + Test 43</td></tr>
 <tr><td class="mono">ER-DSP-02</td><td>DSP correctness</td><td><code>prepare()</code> stomped smoothers to neutral and never snapped to the re-armed targets: first ~5–20 ms after every prepareToPlay glided wrong (Mix-0 opened wet; −24 dB opened hot). Internal inconsistency: the two blends <em>were</em> settled from p.</td><td class="sev-m">Med</td><td>Confirmed</td><td><span class="chip c-fixed">FIXED r1</span> snap + Test 44</td></tr>
 <tr><td class="mono">ER-DSP-04</td><td>DSP / metering</td><td>CorrelationMeter violated ADR-0009 bullet 3 (no NaN guard; sibling LevelMeters has one — INC-004 class). Escape path: bypass crossfade re-injects raw non-finite input after the self-heal.</td><td class="sev-m">Med</td><td>Confirmed</td><td><span class="chip c-fixed">FIXED r1</span> sanitize + Test 45</td></tr>
@@ -142,7 +156,17 @@ across rounds; evidence in full in the worklog and the cited files.</p>
 <tr><td class="mono">ER-DEP-06</td><td>Malformed preset files fail silently; non-numeric values become 0 not default. UI copy is maintainer-owned (C8).</td><td><span class="chip c-def">DEFERRED</span></td></tr>
 </table></div>
 
-<h2><span class="no">§3</span>Completed work (round 1)</h2>
+<h2><span class="no">§3</span>Completed work</h2>
+<h3>Round 2</h3>
+<ul>
+  <li><strong>CI recovered</strong> — both warning gates fixed at source (lambda parameter renamed; four exact float comparisons moved to <code>juce::exactlyEqual</code>). Neither baseline widened. Also heap-allocated the engines in the two new tests that put a <em>pair</em> of 135 KB objects on the stack (<code>sizeof(AnamorphEngine)</code> measured at 138,576 bytes), which is what MSVC's PREfast flagged.</li>
+  <li><strong>Engine</strong> — <code>primeParameters()</code> and the <code>prepareToPlay</code> ordering fix, ending the duck on every activation and the ramp-from-defaults on every restored session.</li>
+  <li><strong>State</strong> — non-finite values rejected on both the session and preset paths, with the write gate inverted so a NaN is <em>repaired</em> rather than skipped.</li>
+  <li><strong>Instrument</strong> — the committed TSan state-thread probe, plus its documentation in TESTING.md; RISK-007 now records the four measured races.</li>
+  <li><strong>Corrections</strong> — seven verified comment/diagnostic fixes (build.yml header, codeql.yml toolchain + coverage, the GCC exclusion label, release.yml's tag diagnostic, the <code>reassertParameters</code> rationale, one GUI over-claim), KI-027 corrected on four points, KI-028 filed.</li>
+  <li><strong>Tests</strong> — state suite 924 → <strong>936</strong> checks (State tests 16 and 17), both proven to fail without their fixes.</li>
+</ul>
+<h3>Round 1</h3>
 <ul>
   <li><strong>Engine</strong> — oversized-block chunk guard (<code>AnamorphEngine.cpp</code>); post-prepare smoother snap; CorrelationMeter sanitize. All three with dedicated regression tests (43/44/45); conforming-host behaviour bit-unchanged by construction and by test.</li>
   <li><strong>State</strong> — absent-PARAM defaults on reused instances; wrong-typed slot payload rejection. State suite 920 → 924 checks; SERIALIZATION_REGISTRY annotated.</li>
@@ -163,19 +187,21 @@ across rounds; evidence in full in the worklog and the cited files.</p>
 
 <h2><span class="no">§5</span>Open investigations</h2>
 <ul>
-  <li><strong>R2-1 NaN parameter ingress</strong> (ER-STATE-03/ER-DEP-03): guard + state test + fuzz seed. What remains to establish: none — mechanism verified; this is implementation.</li>
-  <li><strong>R2-2 TSan state-call harness</strong>: two threads (state loop vs message-thread activity) against the real processor; establishes whether RISK-007's races are observable before D-2 is decided.</li>
-  <li><strong>ER-STATE-04</strong>: whether reassertParameters' rationale comment misstates pinned-JUCE behaviour (verify before editing).</li>
-  <li><strong>ER-GUI-02/03</strong>: exact scope of the 0.9.3 half-typed-value guarantee; KI-013 impact escalation wording.</li>
+  <li><strong>KI-028 design choice</strong> — a ValueBox-owned timer using the reconcile's own predicate (self-contained, inert on macOS for the KI-013 reason), or a type-erased release hook the editor's existing reconcile can call (fixes macOS, adds a cross-file lifetime contract). Round 3 decides.</li>
+  <li><strong>ER-CI-04 re-measurement</strong> — the <code>-Wmismatched-new-delete</code> exclusion's empirical leg was measured on gcc-13.3.0; the lane now runs the floating <code>gcc:16</code> container. The structural leg still carries the exclusion.</li>
+  <li><strong>ER-STATE-04.5</strong> — after a restore that omits a PARAM node, the live tree keeps that node without a <code>value</code>, so the next save writes <code>id</code> + <code>raw</code> only. Restores correctly today via the <code>raw</code> path; the question is whether that is what the saved blob should contain.</li>
+  <li><strong>Round-2 adversarial sweep of the round-1 diff</strong> — in flight at the time of writing; anything it finds lands in round 3.</li>
 </ul>
 
 <h2><span class="no">§6</span>Decisions needed from the maintainer</h2>
-<div class="dec-card"><h3>D-1 — KI-027: move latency-notification delivery off the audio thread?</h3>
-<p><strong>Defect (confirmed ×2):</strong> automation of Drive/Algorithm delivers the APVTS callback on the audio thread; on an oversampling engage/disengage crossing the JUCE chain takes locks, allocates and <code>write()</code>s inside <code>processBlock</code>; a concurrent GUI edit adds a priority-inversion window.</p>
-<p><strong>Candidate fix:</strong> in <code>parameterChanged</code>, when not on the message thread, set an atomic flag consumed by the editor's existing 24 Hz poll (plus a processor-side AsyncUpdater fallback for editor-closed sessions); message-thread calls keep the synchronous path. Latency VALUE and safe-point latch unchanged — only delivery timing moves, by at most one poll tick.</p>
-<p><strong>Why gated:</strong> threading-model + latency-delivery change — two hard-stop categories. Also reconciles the LATENCY_MODEL/THREAD_MODEL drift recorded in KI-027.</p></div>
-<div class="dec-card"><h3>D-2 — RISK-007: guard off-main-thread state calls, or accept as documented?</h3>
-<p><strong>Exposure:</strong> macOS AU autosave path only, in practice (VST3 forbids it; JUCE hosts lock around it). Options: (a) accept + keep documented (done in r1); (b) narrow mutex over the state-set members; (c) callAsync marshalling of the metadata tail. Recommendation: run R2-2 (TSan) first; decide on measurements.</p></div>
+<div class="dec-card"><h3>D-1 — KI-027: move latency-notification delivery off the audio thread? <span class="chip c-open">REVISED r2</span></h3>
+<p><strong>Defect (unchanged, re-verified):</strong> automation of Drive/Algorithm delivers the APVTS callback on the audio thread; when reported latency actually changes, the JUCE chain takes locks, allocates and <code>write()</code>s inside <code>processBlock</code>.</p>
+<p><strong>Round 2 narrows it.</strong> Oversampling is <em>not</em> a host parameter — it lives in <code>InternalState</code> and defaults to Off — so at factory defaults reported latency is identically 0 and the expensive branch is <strong>unreachable</strong> until a user selects 2x/4x/8x in Settings. The rate is bounded at one dispatch per parameter per block. The priority inversion is mitigated by <code>PTHREAD_PRIO_INHERIT</code> on Linux/macOS, but not on Windows.</p>
+<p><strong>Two candidates are refuted.</strong> The editor's 24 Hz poll is the only message-thread tick in <code>src/</code> and does not exist with the editor closed — a closed-editor render would never learn the new latency, which is worse than the defect. An <code>AsyncUpdater</code> reproduces the same <code>postMessage</code> (lock + possible reallocation + <code>write()</code>) on the audio thread.</p>
+<p><strong>What you are approving:</strong> keep the synchronous call when <code>MessageManager::existsAndIsCurrentThread()</code>, otherwise set one relaxed atomic flag consumed by a processor-owned ~20 Hz <code>juce::Timer</code>. Cost: the host learns a latency change up to one tick later. Gate: threading model + latency delivery.</p></div>
+<div class="dec-card"><h3>D-2 — RISK-007: guard off-main-thread state calls, or accept as documented? <span class="chip c-fixed">EVIDENCE COMPLETE</span></h3>
+<p><strong>The measurement asked for in round 1 is done.</strong> <code>AnamorphStateTests --state-thread-probe</code> under ThreadSanitizer reports <strong>four data races</strong>: <code>abActive</code> (written by <code>setStateInformation</code>, read by <code>canUndo()</code>), the <code>abUndo</code> vector's internals twice, and a <code>juce::String</code> refcount exchange against a String copy. So if a host makes these calls off the main thread while an editor is open, this is undefined behaviour — not a theoretical concern.</p>
+<p><strong>What remains is only the host question:</strong> VST3 annotates both calls <code>[UI-thread]</code> and JUCE hosts lock around them, so the exposure is the macOS AU autosave path. Options unchanged: (a) accept and keep documented; (b) a narrow mutex over the state-set members; (c) <code>callAsync</code> marshalling of the metadata tail. (b) and (c) are threading-model changes.</p></div>
 <div class="dec-card"><h3>D-3 — Level-5 audition for v0.9.6</h3>
 <p>RELEASE_POLICY precondition 7 is per-version. The 2026-08-15 audition covered v0.9.4; since then the x86-64 machine code changed everywhere (ADR-0031/0032) and 0.9.6 changed audible behaviour in the defective windows. A DAW session by a human is required; nothing in CI can stand in for it (TESTING_POLICY Level 5). Until then HANDOVER lists the tag as blocked by three human items (licence, checklist, audition).</p></div>
 <div class="dec-card"><h3>D-4 — Version handling of this round</h3>
@@ -184,30 +210,40 @@ across rounds; evidence in full in the worklog and the cited files.</p>
 <h2><span class="no">§7</span>Roadmap</h2>
 <div class="tblwrap"><table>
 <tr><th>Rank</th><th>Item</th><th>Class</th><th>Why / expected benefit</th><th>Cost</th><th>Risk</th></tr>
-<tr><td>1</td><td class="mono">R2-1 NaN param ingress guard</td><td>Correctness</td><td>Closes the last verified non-finite ingress (session/preset → parameter atomics); small, testable</td><td>S</td><td>Low (restore-path adjacent — state suite re-run)</td></tr>
-<tr><td>2</td><td class="mono">R2-2 TSan state-call harness</td><td>Investigation</td><td>Converts RISK-007 from reasoning to measurement; feeds D-2</td><td>S–M</td><td>None (test-only)</td></tr>
-<tr><td>3</td><td class="mono">D-1 implementation (if approved)</td><td>RT correctness</td><td>Removes the one confirmed lock/alloc/syscall path on the audio thread</td><td>M</td><td>Gated; delivery-timing change only</td></tr>
-<tr><td>4</td><td class="mono">R2-3/3b CI comment-drift batch</td><td>Docs/CI</td><td>Three stale load-bearing comments + one misreported failure mode; batched for one citation re-anchor</td><td>S</td><td>Low</td></tr>
-<tr><td>5</td><td class="mono">R2-4 JUCE_PATH revision warning</td><td>Supply chain</td><td>Closes the one unverified acquisition route at the moment it matters (manual bumps)</td><td>S</td><td>Must stay WARNING (twin-dump uses old trees)</td></tr>
-<tr><td>6</td><td class="mono">R2-5 GUI notes + ER-STATE-04</td><td>Polish</td><td>Registry accuracy; low user impact</td><td>S</td><td>Low</td></tr>
-<tr><td>7</td><td class="mono">R2-6 twin-dump transition scenarios</td><td>Gate scope</td><td>Widens the bit-identity surface into the §Gaps blind axes — on request only</td><td>M</td><td>Hash churn on every toolset move</td></tr>
+<tr><td>1</td><td class="mono">KI-028 leaked value-box gesture</td><td>Correctness</td><td>Degrades undo after a lost release, and it is a residual of our own round-1 fix. Two candidate designs; round 3 picks one</td><td>S–M</td><td>Low; one design is inert on macOS for the KI-013 reason</td></tr>
+<tr><td>2</td><td class="mono">D-1 implementation (if approved)</td><td>RT correctness</td><td>Removes the one confirmed lock/alloc/syscall path on the audio thread. The surviving design is now identified</td><td>M</td><td>Gated; changes only WHEN the host is told</td></tr>
+<tr><td>3</td><td class="mono">D-2 decision (evidence complete)</td><td>Threading</td><td>The TSan measurement is done; only the host-behaviour question remains</td><td>—</td><td>Gated</td></tr>
+<tr><td>4</td><td class="mono">ER-CI-04 re-measurement under gcc:16</td><td>CI hygiene</td><td>Puts the warning exclusion's empirical leg back on the compiler the lane actually runs; the structural leg already carries it</td><td>S</td><td>Low</td></tr>
+<tr><td>5</td><td class="mono">ER-STATE-04.5</td><td>Serialization</td><td>After a restore omitting a PARAM node, the next save persists <code>id</code> + <code>raw</code> without <code>value</code>. Not a defect today; worth deciding deliberately</td><td>S</td><td>Touches saved-blob contents → gated if changed</td></tr>
+<tr><td>6</td><td class="mono">R2-6 twin-dump transition scenarios</td><td>Gate scope</td><td>Widens bit-identity into the documented blind axes — on maintainer request only</td><td>M</td><td>Hash churn on every toolset move</td></tr>
 </table></div>
-<p class="small">Ranking follows the programme's priority order: correctness → user-facing → release risk → engineering weakness → performance → polish. No performance candidates this round: the A7 programme's measured register (`PERF_AUDIT_PLATFORM_COVERAGE.md` §8, RISK-002) already holds the known opportunities, and no new measured evidence emerged to promote one.</p>
+<p class="small">Round 1's R2-1 (NaN ingress) and R2-2 (TSan) are <strong>done</strong>; R2-3/3b/3c
+(the CI comment batch and release diagnostic) and R2-5 (ER-STATE-04, ER-GUI-02/03) are <strong>done</strong>.
+Still no performance candidates: the A7 register holds the known opportunities and no new measured
+evidence emerged to promote one. Ranking follows the programme's order — correctness → user-facing
+→ release risk → engineering weakness → performance → polish.</p>
 
 <h2><span class="no">§8</span>Checklist</h2>
+<h3>Round 1</h3>
 <ul class="check">
-  <li class="done">Round-1 baseline validation recorded (preflight 23.4 s, all gates green)</li>
-  <li class="done">Broad sweep: 8 lenses, adversarial verification, negative-results map</li>
-  <li class="done">10 fixes implemented + regression tests (Tests 43–46, 2 state tests, 3 lint self-tests)</li>
-  <li class="done">KI-027 + RISK-007 filed with full traces</li>
-  <li class="done">Doc drift sweep + v0.9.6 + CHANGELOG</li>
-  <li class="done">Worklog + this dashboard committed</li>
-  <li class="done">End-of-round validation green (241 + 924 checks)</li>
-  <li>D-1 decided (latency delivery thread)</li>
-  <li>D-2 decided (state-call guard) — after R2-2</li>
-  <li>D-3 Level-5 audition performed for the shipping build</li>
-  <li>D-4 version handling confirmed</li>
-  <li>Round 2 executed per §7</li>
+  <li class="done">Baseline validation; 8-lens sweep with adversarial verification</li>
+  <li class="done">10 fixes + regression tests; KI-027 and RISK-007 filed</li>
+  <li class="done">Doc drift sweep, v0.9.6, worklog + dashboard</li>
+</ul>
+<h3>Round 2</h3>
+<ul class="check">
+  <li class="done">CI warning gates fixed at source — no baseline widened</li>
+  <li class="done">First-activation defect root-caused and fixed (proven to fail without the fix)</li>
+  <li class="done">NaN ingress: mechanism corrected, both paths guarded, regression-tested</li>
+  <li class="done">RISK-007 measured under TSan; instrument committed</li>
+  <li class="done">D-1 re-evaluated — two candidates refuted, no implementation</li>
+  <li class="done">Seven verified comment/diagnostic corrections</li>
+  <li class="done">KI-028 filed with both candidate designs</li>
+  <li class="done">Worklog + this dashboard updated and committed</li>
+  <li>D-1 decided (surviving design)</li>
+  <li>D-2 decided — code half now measured</li>
+  <li>D-3 Level-5 audition for the shipping build</li>
+  <li>Round 3 executed per §7</li>
 </ul>
 
 <p class="small" style="margin-top:48px">Maintained by the engineering-review programme. Update rule:

@@ -29,6 +29,180 @@ entries and CHANGELOG notes cite.
 
 ---
 
+## Round 2 — 2026-08-31 — CI recovery, the activation defect, and two confirmed silences
+
+**Entry state:** round 1 merged to the branch; CI **red** on two warning gates; five carried
+roadmap items; three maintainer decisions open. **Exit state:** CI gates fixed at source, three
+confirmed defects fixed with regression coverage, RISK-007 measured, D-1 materially corrected,
+one new issue filed.
+
+### What was fixed
+
+| ID | What | Evidence that it was real |
+|---|---|---|
+| CI gates | `-Wshadow-uncaptured-local` (Clang) / `-Wshadow` (GCC) from round 1's `adoptIfAnamorph` lambda shadowing `xml`; four `-Wfloat-equal` from bare `!=` on floats in Tests 43/44/46 | The gate output itself. Fixed at source, **no baseline widened**: the lambda parameter renamed, the comparisons moved to `juce::exactlyEqual` (JUCE's helper for deliberate exact comparison, already the idiom in `state_tests.cpp`). Re-verified with a pinned clang-22 rebuild (no NEW warnings, 17 accepted sites) and a GCC rebuild (1 shadow site in `PluginProcessor.cpp`, the pre-existing baselined one, down from 2) |
+| **ER-DSP-06** (new) | **Every activation ducked the audio to near-silence for ~35 ms**, and a restored session additionally opened at the wrong level for ~20 ms | Measured through the real wrapper, before and after. Before: min block RMS / settled = **0.0014** (fresh instance) and **0.0011** (restored), first block **2.4×** too loud. After: 0.982 / 0.983 / 1.000. State test 16 |
+| **ER-STATE-03** | **A `value="nan"` in a session or preset silenced the plug-in permanently**, and round-tripped through save | Measured: output peak **0.000000** over 8 blocks before the fix, 0.699720 after. State test 17, which also drives the preset path through a real poisoned file |
+| ER-STATE-04, ER-GUI-02, ER-CI-02/03/04/05/06 | Seven verified comment/diagnostic corrections | Each checked against the pinned JUCE or the actual workflow before editing; see below |
+
+### ER-DSP-06 — the root cause was an ordering contract, not the reported symptom
+
+The review item said `snapSmoothers()` "may capture stale engine defaults". That is the symptom.
+`AnamorphEngine::prepare()` settles the **whole** engine from its own snapshot `p` — it reads
+`p.bypass` and `p.mbEnable` directly, then runs `updateDerived()` and `snapSmoothers()` from it —
+so prepare()'s contract is *"`p` is already what the host wants"*. `prepareToPlay` called
+`prepare()` first and pushed the parameters in afterwards, breaking that contract on every
+activation.
+
+The consequence was **universal, not restricted to restored sessions**, and this is the part the
+report did not contain: the engine's struct defaults and the snapshot the wrapper builds disagree
+on a discrete field even for a brand-new instance. `dimMode` is the always-active one — the APVTS
+choice defaults to index 1 and `toEngine` maps choice→mode as `index + 1`, so the first snapshot
+says 2 while `EngineParameters::dimMode` is 1. (Advanced sessions add `mbEnable`: APVTS `true`,
+struct `false`. The rest of the Advanced block is gated off in Simple mode and keeps the struct
+defaults by design — `toEngine`'s `if (advanced)`.) A discrete difference is exactly what the
+click-free switch machine reacts to, so **every** activation got the ~6 ms fade to silence +
+~28 ms fade back in that a real settings change deserves.
+
+Fix: `AnamorphEngine::primeParameters()` — adopt a snapshot wholesale, no duck, no ramp — called
+from `prepareToPlay` before `prepare()`. Valid precisely because nothing is audible yet, and
+documented as **not** a substitute for `setParameters` once audio flows. Two false starts are
+recorded here because they cost time and would cost it again: an assertion that `Mix=0` must be a
+bit-exact null through the processor is wrong when the multiband allpasses are engaged (the
+phase-matched dry is not the input), and a level assertion on an engaged Dim-D session measures
+the algorithm's delay lines filling from empty, which is correct behaviour, not a duck.
+
+### ER-STATE-03 — round 1's mechanism was half wrong
+
+- **REFUTED:** `raw="nan"` never reaches the parameter. `reassertParameters`' write gate
+  `|norm - current| > 1e-6` is **false** when either side is NaN, so the raw branch is dead on NaN
+  — it neither injected the value nor repaired it.
+- **CONFIRMED, different ingress:** JUCE's own `apvts.replaceState()` →
+  `updateParameterConnectionsToChildTrees` → `setDenormalisedValue` → `setValueNotifyingHost`
+  reads `@value`, and its `approximatelyEqual` guard is likewise false for NaN. Second, fully
+  independent ingress: `PresetManager::applySoundTree`, which had no gate at all.
+- **Impact is not cosmetic:** a NaN continuous parameter latches its smoother target, every output
+  sample goes non-finite, and ADR-0009's *sample-level* self-heal then zeroes the block and resets
+  the engine on every block — permanent silence with plausible-looking controls, persisted by
+  `getStateInformation` writing `nan` straight back out.
+- **Fix:** two guards, because the families are disjoint. `reassertParameters` substitutes the
+  parameter default for a non-finite value **and** its gate becomes a negated `<=`, so a NaN on
+  either side counts as "differs" and is repaired rather than skipped — that inversion is what
+  makes it a repair of `replaceState`'s damage rather than a filter. `applySoundTree` takes the
+  fallback it already uses for an absent child.
+
+### R2-2 — RISK-007 is now measured
+
+`AnamorphStateTests --state-thread-probe` (committed; never run by the suite, because if the risk
+is real then running it *is* the undefined behaviour) drives host `setState`/`getState` from one
+thread against the editor tick's reads on the main thread. Under ThreadSanitizer it reports **four
+data races**, on exactly the members round 1 reasoned about: `abActive` (write in
+`setStateInformation` vs read in `canUndo()`), the `abUndo` vector's internals twice
+(`UndoStacks::operator=` vs the main thread's `empty()`), and a `juce::String` reference-count
+exchange against a `String` copy. **The code half of D-2 is settled**; what remains is the host
+question (VST3 forbids it; the macOS AU does not).
+
+### D-1 corrected — two of its candidate fixes are refuted
+
+Re-verification narrowed KI-027 on three axes and broke two options:
+
+- **Reachability is lower than filed.** Oversampling is **not a host parameter** — it lives in
+  `InternalState` (`int_oversample`, default "Off") and no automation lane can move it. At factory
+  defaults `predictLatency` is identically 0, so the expensive branch is unreachable until the user
+  has selected 2x/4x/8x by hand.
+- **Rate is bounded:** VST3 delivers at most one listener dispatch per parameter per block.
+- **The inversion is milder on POSIX:** `juce::CriticalSection` enables `PTHREAD_PRIO_INHERIT` on
+  Linux/macOS; Windows has none.
+- **REFUTED — the editor's 24 Hz poll.** It is the only message-thread tick in `src/`
+  (`PluginEditor.cpp` `startTimerHz (24)`, verified by grep) and does not exist with the editor
+  closed, so a closed-editor render would never learn about a latency change at all — a worse,
+  user-visible defect than the one being fixed.
+- **REFUTED — an `AsyncUpdater`.** Its trigger reproduces the same `postMessage` (lock + possible
+  reallocation + `write()`) on the audio thread; it removes only the inversion.
+- **Surviving design, and what D-1 now asks for:** keep the synchronous call when
+  `juce::MessageManager::existsAndIsCurrentThread()`, otherwise set one relaxed atomic flag
+  consumed by a processor-owned ~20 Hz `juce::Timer`.
+
+### New finding, filed not fixed
+
+**KI-028 (ER-GUI-04)** — round 1's own value-box gesture fix leaks an open host gesture when the
+mouse release is lost. The editor's release-outside reconcile clears the visual `dragging` flag but
+cannot reach the `ScopedDragNotification`: `ValueBox` lives in an unnamed namespace inside
+`LookAndFeel.cpp`. While the gesture is open `pollUndoCoalesce` commits **no** undo step. Strictly
+better than the pre-0.9.6 state (no gesture at all, so no undo step ever), and the two candidate
+designs are a decision, so round 3 picks one.
+
+### Verified corrections (checked before editing, none behavioural)
+
+- **ER-STATE-04 — CONFIRMED and worse than filed.** The comment claimed `replaceState` "swaps only
+  the tree". In the pinned JUCE it propagates to the parameters, the DSP atomic, the editor's
+  attachments **and** the host. The comment now states the real residual `reassertParameters`
+  exists for (absent PARAM nodes; exact `raw` vs snapped `value`), so the function's necessity
+  survives the correction instead of being undermined by it. Its "trade-off" clause was wrong too:
+  an open editor *does* track a host restore.
+- **ER-GUI-02 — CONFIRMED on reachability, but the published docs were already right.** The
+  over-claim was one clause of one code comment (`cancelInlineTextEdits` has a single call site,
+  behind three gates, inert on X11). Wording narrowed; the code deliberately **not** widened — a
+  general "leaving the application never writes a half-typed value" guarantee is not reachable at
+  that layer.
+- **ER-CI-02 — worse than filed.** `build.yml`'s header still described the pre-2026-08-15 macOS
+  ordering and contradicted both its own in-job comment and `CI_CD.md`. Rewritten line-count-neutral
+  (2→2, 7→7) so no citation moved. Windows is now the only platform validating pre-staging.
+- **ER-CI-03 / ER-CI-06** — `codeql.yml` builds with the runner's distribution g++ while claiming to
+  match the Linux job (pinned Clang since ADR-0030), and its header over-stated coverage as
+  "src/ + tests/" when only `tests/dsp_tests.cpp` is compiled. Comments corrected; the compiler is
+  deliberately not pinned (CodeQL's alert set comes from its extractor, and pinning would be a
+  Build System change for no analysis benefit).
+- **ER-CI-04** — `check-gcc-warnings.py`'s exclusion label still called gcc-13.3.0 "this job's
+  pinned pair" after the move to the floating `gcc:16` container. The exclusion still stands on its
+  structural leg; the empirical leg is now scoped to the compiler it was measured on, with
+  re-measurement a round-3 item. `GATED_FLAGS` unchanged.
+- **ER-CI-05** — `release.yml` reported a transient tag fetch failure as "not an annotated tag",
+  telling the maintainer to re-create a tag that was almost certainly fine. Infrastructure failure
+  and verdict now say different things; both still exit 1.
+- **Also corrected:** round 1's own batching rationale for the CI items ("build.yml line shifts
+  re-anchor many citations") was over-cautious — only `build.yml` is citation-tracked of the four
+  files, and its correction was written line-count-neutral.
+
+### Validation at the end of round 2
+
+`preflight.sh` exit 0. DSP suite **45 tests / 241 checks**; state suite **17 tests / 936 checks**
+(924 → 936: State tests 16 and 17). Citation self-test **145 cases**, gate green against all three
+bases. `check-realtime` 93 self-test cases + clean scan; `check-gcc-warnings` self-test 17;
+`check-docs`, `check-portability`, `check-linux-abi`, `setup-llvm-apt` all green. Pinned clang-22
+warning gate: no NEW first-party warnings.
+
+### Round-3 roadmap (revised by what round 2 learned)
+
+1. **KI-028** — pick one of the two designs for the leaked value-box gesture and implement it.
+   Highest-priority code item: it degrades undo, and it is a residual of our own fix.
+2. **D-1 implementation**, if the maintainer approves the surviving design.
+3. **R2-6 / twin-dump transition scenarios** — unchanged from round 1, still on request only.
+4. **ER-CI-04 re-measurement** under `gcc:16`, to put the exclusion's empirical leg back on the
+   compiler the lane actually runs.
+5. **ER-STATE-04.5 (new, informational)** — after a restore that omits a PARAM node, the live tree
+   keeps that node without a `value` property, so the next save persists `id` + `raw` only. Not a
+   defect today (the `raw` path restores it); worth deciding deliberately.
+6. Deferred, unchanged: ER-DSP-05 (chorus LFO phase beyond the tested envelope), ER-DEP-06 (silent
+   preset-load failure UX — maintainer-owned copy).
+
+### Checklist (round 2)
+
+- [x] CI warning gates fixed at source, no baseline widened
+- [x] First-activation defect root-caused, fixed, regression-tested (proven to fail without the fix)
+- [x] R2-1 NaN ingress: mechanism corrected, both ingresses guarded, regression-tested
+- [x] R2-2 TSan: RISK-007 measured, instrument committed
+- [x] D-1 re-evaluated; two candidates refuted; no implementation
+- [x] ER-STATE-04 / ER-GUI-02 / ER-CI-02..06 verified then corrected
+- [x] KI-028 filed with both candidate designs
+- [x] Worklog + dashboard updated and committed
+- [ ] D-1 decided (surviving design)
+- [ ] D-2 decided — the code half is now measured
+- [ ] D-3 Level-5 audition for the shipping build
+- [ ] Round 3 executed
+
+---
+
 ## Round 1 — 2026-08-31 — baseline + broad sweep
 
 **Tree at start:** `main` @ `e8f4422` (post-PR #133: toolchain identity work). Branch
