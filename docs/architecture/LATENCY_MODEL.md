@@ -61,8 +61,11 @@ binary (requires running the plugin; not statically provable here).`
     buys. The store is **release** and the consumers **acquire**, so a consumed request also
     publishes the parameter write that raised it — under `relaxed` on both sides there is no such
     edge, which x86-64's store ordering hides and the AArch64 targets do not. Both are
-    correct-by-construction: the window is nanoseconds wide and State test 27 passes with and
-    without them, which that test says out loud rather than implying coverage it lacks.
+    correct-by-construction: the window is nanoseconds wide and no external mechanism can place a
+    request inside it, so State test 27 does not discriminate them and says so. What that test DOES
+    pin, deterministically since round 12, is the adjacent invariant — a request that lands while a
+    delivery is running survives to the next tick — using `setLatencySamples`' synchronous listener
+    notification as a barrier: a build that clears after delivering fails it.
 - **The host may therefore learn of a latency change up to one timer interval (50 ms) after the
   parameter moved.** This is the deliberate cost of keeping locks, allocation and a syscall off the
   audio thread; the VALUE reported is always the one the live state predicts, only its delivery is

@@ -29,6 +29,133 @@ entries and CHANGELOG notes cite.
 
 ---
 
+## Round 12 — 2026-09-01 — undefined behaviour in the legacy Settings path, a deterministic latency test, and ER-STATE-13 on AArch64
+
+### ER-STATE-17 — CONFIRMED and FIXED — malformed legacy Settings hit an undefined conversion
+
+**Reproduced first**, through the real v0.2 restore, with `--legacy-settings-probe`. Round 11's
+ER-STATE-15 work is what exposed this: it routed more inputs into `migrateFromLegacyApvts`, whose
+`(int)` cast is undefined for NaN, ±infinity and out-of-range doubles ([conv.fpint]) — and JUCE's
+own text parser **accepts "nan" and "inf" as numbers** (`juce_CharacterFunctions.h:254-273`), so
+those reach the cast rather than being rejected as text.
+
+Measured on x86-64, per input, in the tree after restore:
+
+| `value=` | `int_oversample` after migration | consequence |
+|---|---|---|
+| `"nan"`, `"inf"`, `"-inf"`, `"1e39"`, `"-1e39"` | **−2147483647** | impossible ComboBox id (domain 1..4), **re-saved with the session** |
+| `"2147483647"` | **−2147483648** | a *second* UB — signed overflow in the `+ 1` |
+| `"7"` | 8 | finite but out of domain |
+| `"abc"`, `""`, `"0x10"` | 1 | already safe (parse → 0) |
+
+`scopePersist` was worse: NaN, ±inf and out-of-range values passed through **unclamped** into a
+0..1 field. And the corruption was platform-dependent — AArch64 saturates the same inputs
+differently (NaN → 0, positive overflow → INT_MAX, which the `+ 1` then overflows).
+
+**Fix** (`src/InternalState.h`): each legacy value now passes the *same* usability predicate the
+session and preset paths already share (`SerializedNumber.h` — plain decimal text, finite after the
+float narrowing), so anything malformed means the field's **default**, exactly as an absent node
+does; and the choice indices are clamped into the ComboBox domain **in double, before** the integer
+conversion, so that conversion is defined for every input the lambda can return and the `+ 1`
+cannot overflow. A finite out-of-domain value lands on the nearest valid choice, which is what
+`NormalisableRange` does for an out-of-range parameter. No serialization format change.
+
+**Regression coverage: State test 28** — 88 checks over both legacy shapes (the bare v0.2 tree and
+the pre-0.8.4 `AnamorphRoot`), asserting for each field that the tree value is in domain, that the
+DSP atomic agrees with the tree, and that a re-save writes the repaired value. **Verified
+discriminating: 49 checks fail without the fix**, 0 with it. Valid legacy migration is unchanged —
+State tests 5 and 6 pass untouched.
+
+### ER-STATE-14 — the latency regression gap is now closed DETERMINISTICALLY
+
+Round 11 said out loud that its stress leg did not discriminate the fix. It now does, without a
+test hook in production code and without sleeps standing in for synchronisation.
+
+The barrier is one the **product already provides**: `AudioProcessor::setLatencySamples()` notifies
+its `AudioProcessorListener`s synchronously, from inside the call, whenever the reported value
+changes (pinned JUCE 9.0.1, `juce_AudioProcessor.cpp:415-436`), and the listener lock is released
+before each callback (`:425-429`), so a listener may block. A test listener holds delivery #1 open
+while a real off-message thread makes request #2 *inside* it. The interleaving is forced, not hoped
+for: delivery starts → another thread requests → delivery completes → the second request must still
+be served.
+
+**Measured both ways, three runs each.** Against a `clear-AFTER-deliver` build the leg fails
+deterministically — `delivery #1 -> 4 with request #2 made inside it; next tick -> 4 (expected 0)`,
+3/3. Against the shipped code it passes 3/3.
+
+**What it still does not reach**, stated so nobody reads green here as more than it is: the
+round-11 double-clear window itself lay between `timerCallback`'s `exchange(0)` and the second
+`store(0)` the old `updateLatency()` did at its entry — two adjacent atomics on one thread with no
+call between them. No external mechanism can place a request there, so the pre-round-11 code passes
+this leg too. That fix, and the `relaxed`→release/acquire change beside it, rest on inspection.
+
+The two waits are bounded polls for the processor's own 20 Hz timer (deadline 40 periods), not
+sleeps: the outcome is fixed the moment the request is or is not in the flag.
+
+### D-1 record consistency — TWO documents were stale, corrected
+
+No production change (D-1 is approved and implemented; not reopened). The check found the record
+had **not** kept up:
+
+- `KNOWN_ISSUES.md`'s KI-027 row still read *"**fix gated** — … awaiting maintainer sign-off"*, and
+  the entry was still OPEN, three rounds after the approval landed. Row struck through and marked
+  RESOLVED under D-1, with a dated banner over the detail section keeping the round-1/2 diagnosis
+  as the record.
+- `THREADING_POLICY.md` still listed KI-027 as a *"Known violation … awaiting Architecture
+  Review"*. Rewritten: the rule now holds by construction, with the mechanism named.
+
+### ER-RT-05 — verified accurate for the fourth consecutive round, no change
+
+`AUDIO_FN` is a manual registry and the script says so; `REALTIME_AUDIO_POLICY`,
+`REALTIME_SAFETY_AUDIT`, `CI_CD` and ADR-0029 all describe the same-file closure correctly and none
+claims automatic cross-file discovery. No document changed.
+
+### ER-STATE-13 on AArch64 — conclusion UNCHANGED, code untouched
+
+Cross-built `AnamorphTests` for `aarch64-linux-gnu` and ran it under `qemu-aarch64-static`. The full
+DSP suite passes there: **245 checks, 0 failures**. The engine-level twin probe
+(`--match-inject-probe`, contaminated engine vs control engine, same material, injection exactly as
+`abSwitchTo` performs it) was run on both architectures over six scenarios.
+
+| scenario | x86-64 | AArch64 |
+|---|---|---|
+| transparent chain, settled, inject +9 | 8.263 dB | **8.263 dB** |
+| engaged chain, settled, inject +9 | 9.017 dB | **9.017 dB** |
+| engaged chain, no settle (worst case), inject +9 | 10.734 dB | **10.734 dB** |
+| fixture chain, settled, inject the REAL stale −1.0 | 0.225 dB | **0.225 dB** |
+| fixture chain, settled, inject +9 | 9.014 dB | **9.014 dB** |
+| large-delta chain, inject −1.0 | 0.133 dB | **0.133 dB** |
+
+Identical to three decimals in every scenario; the single difference anywhere in the output is one
+ULP of an RMS accumulation at one block (0.78801 vs 0.78802), which is float summation order, not
+behaviour. `std::atomic<float>::is_always_lock_free = 1` and `sizeof(float[2]) = 8, alignof = 4` on
+both, so no layout, initialisation-order or atomics difference is available to expose anything.
+`abMatchGain` is still not serialized on either architecture, and no reader observes it before
+`abEnsureInit()` — it is not part of `StateSet` at all; `abSwitchTo` reads it directly, after
+`abApplySlot`.
+
+**Disposition: unchanged, no production change**, per the brief's condition that only a real
+AArch64-specific impact would justify one. There is none.
+
+**One refinement to record, and it is architecture-independent.** Round 9 called the stale value
+"inert" from a processor-level measurement. The engine-level twin probe is the more sensitive
+instrument and shows the transient is roughly **proportional to |stale − settled-at-injection|**,
+decaying as the loudness measurement reasserts: ~9.7 dB of delta gives 8-10 dB, ~0.27 dB of delta
+gives 0.225 dB. Round 9's "indistinguishable" holds for the case it measured — the residual sits
+under that probe's RMS noise floor — but "inert" was too strong as a general statement. The
+mechanism is real, bounded by the delta, and self-correcting; it is still not worth a fix, and the
+value that *should* be written remains undocumented, which is why round 9 declined to choose one.
+
+**A misread of my own was caught here too.** The processor probe printed that an A→B switch
+"SWITCHED OFF" Level Match "because the harness never flushed the tree". Wrong on the cause:
+`currentStateSet()` → `copyStateWithRawValues()` writes a fresh `@raw` for every PARAM from the live
+parameter and `reassertParameters` reads `@raw` first, so the slot snapshot is faithful. The stale
+`@value` in the tree is real but not what the slot carries, and Match going off in that minimal case
+is correct A/B behaviour — slot B still held the construction snapshot, which predates the enable.
+Corrected in the probe's output and comment.
+
+---
+
 ## Round 11 — 2026-09-01 — two of three restore issues fixed, one refuted, and the changelog audited
 
 Three reported items and a full staleness audit of the `[0.9.6]` release notes. **Two fixed, one

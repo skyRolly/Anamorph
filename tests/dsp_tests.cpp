@@ -4343,8 +4343,107 @@ static void testInputConditioningAndCharacterParams()
     check (dimAllDistinct, "all four Dimension-D voicings are pairwise distinct engaged");
 }
 
-int main()
+
+// ---------------------------------------------------------------------------
+//  Opt-in probe (round 12, ER-STATE-13 on AArch64): the ENGINE half of the
+//  per-slot Level-Match question, so it can be cross-built with nothing but
+//  AnamorphDSP and run under qemu. Matched counterfactual, same design as round
+//  9's --legacy-match-probe: two engines with identical parameters and identical
+//  noise streams; one receives a stale injected match at its switch, the other
+//  does not. Everything ISA-dependent in the mechanism is exercised here -- the
+//  relaxed atomic hand-off of the injected value, its consumption at the silent
+//  bottom of the duck, the smoother, and the loudness re-measure that supersedes
+//  it. Prints; asserts nothing.
+// ---------------------------------------------------------------------------
+static int runMatchInjectProbe()
 {
+#if defined(__aarch64__)
+    const char* isa = "AArch64";
+#elif defined(__x86_64__)
+    const char* isa = "x86-64";
+#else
+    const char* isa = "other";
+#endif
+    std::printf ("Level-Match injection probe -- ISA %s\n", isa);
+    std::printf ("  std::atomic<float>::is_always_lock_free = %d, sizeof(float[2]) = %d, alignof = %d\n",
+                 (int) std::atomic<float>::is_always_lock_free, (int) sizeof (float[2]), (int) alignof (float[2]));
+
+    constexpr double sr = 48000.0; constexpr int bs = 512;
+    auto fill = [] (juce::AudioBuffer<float>& b, juce::Random& r)
+    {
+        for (int ch = 0; ch < b.getNumChannels(); ++ch)
+            for (int i = 0; i < b.getNumSamples(); ++i)
+                b.setSample (ch, i, (r.nextFloat() * 2.0f - 1.0f) * 0.25f);
+    };
+    auto rms = [] (const juce::AudioBuffer<float>& b)
+    {
+        double acc = 0.0;
+        for (int ch = 0; ch < b.getNumChannels(); ++ch)
+            for (int i = 0; i < b.getNumSamples(); ++i) { const double v = b.getSample (ch, i); acc += v * v; }
+        return std::sqrt (acc / (double) (b.getNumChannels() * b.getNumSamples()));
+    };
+
+    auto scenario = [&] (int settleBlocks, int chain, float stale, const char* label)
+    {
+        anamorph::AnamorphEngine c, k;                 // c = contaminated, k = control
+        anamorph::EngineParameters p;
+        p.autoGainMatch = true;
+        p.width = chain == 0 ? 1.9f : 1.5f;
+        if (chain == 1) { p.driveDb = 6.0f; p.algoAmount = 0.5f; }
+        if (chain == 2)                                // the v0.2 FIXTURE chain round 9 restored, field for field
+        {
+            p.driveDb = 6.0f; p.algorithm = static_cast<anamorph::Algorithm> (2); p.width = 1.5f;
+            p.mix = 0.8f; p.haasDelayMs = 20.0f; p.outputGainDb = -3.0f;
+        }
+        if (chain == 3)                                // a chain that SETTLES far from the stale value:
+        {                                              // reproduces the processor probe's ~6 dB delta
+            p.driveDb = 18.0f; p.algorithm = static_cast<anamorph::Algorithm> (2); p.width = 2.0f;
+            p.mix = 1.0f; p.algoAmount = 1.0f;
+        }
+        c.prepare (sr, bs); k.prepare (sr, bs);
+        c.primeParameters (p); k.primeParameters (p);
+        juce::Random rc (20260901), rk (20260901);     // identical streams
+        juce::AudioBuffer<float> bc (2, bs), bk (2, bs);
+        for (int i = 0; i < settleBlocks; ++i)
+        {
+            fill (bc, rc); c.setParameters (p); c.process (bc);
+            fill (bk, rk); k.setParameters (p); k.process (bk);
+        }
+        const float settledC = c.getMatchGainDb(), settledK = k.getMatchGainDb();
+        c.requestDuck(); c.injectMatchGainDb (stale);  // exactly what abSwitchTo does with abMatchGain[slot]
+        k.requestDuck();
+        std::printf ("\n  --- %s: settled match c %+.3f / k %+.3f dB; inject %+.1f dB into c at the switch ---\n",
+                     label, settledC, settledK, stale);
+        std::printf ("  blk |  match c   match k  |  rms c     rms k    | ratio dB\n");
+        double worstAfterDuck = 0.0; int injectSeenAt = -1;
+        for (int i = 1; i <= 12; ++i)
+        {
+            fill (bc, rc); c.setParameters (p); c.process (bc);
+            fill (bk, rk); k.setParameters (p); k.process (bk);
+            const double rc_ = rms (bc), rk_ = rms (bk);
+            const double ratioDb = 20.0 * std::log10 (juce::jmax (1.0e-12, rc_) / juce::jmax (1.0e-12, rk_));
+            if (injectSeenAt < 0 && std::abs (c.getMatchGainDb() - stale) < 2.0f) injectSeenAt = i;
+            if (i >= 5) worstAfterDuck = juce::jmax (worstAfterDuck, std::abs (ratioDb));
+            std::printf ("  %3d | %+8.3f  %+8.3f  | %.5f  %.5f  | %+7.3f\n",
+                         i, c.getMatchGainDb(), k.getMatchGainDb(), rc_, rk_, ratioDb);
+        }
+        std::printf ("  injected value visible in c's match at block %d (%s); worst |ratio| after the duck (blocks 5-12): %.3f dB\n",
+                     injectSeenAt, injectSeenAt > 0 ? "mechanism REAL" : "never surfaced", worstAfterDuck);
+    };
+    scenario (80, 0, +9.0f, "TRANSPARENT chain, settled; inject +9");
+    scenario (80, 1, +9.0f, "ENGAGED chain (drive 6, amount 0.5, width 1.5), settled; inject +9");
+    scenario (1,  1, +9.0f, "ENGAGED chain, WORST CASE (no settle); inject +9");
+    scenario (80, 2, -1.0f, "FIXTURE chain (drive 6, algo 2, width 1.5, mix 0.8, out -3), settled; inject the REAL stale value -1.0");
+    scenario (80, 2, +9.0f, "FIXTURE chain, settled; inject +9 (is it the chain or the magnitude?)");
+    scenario (80, 3, -1.0f, "LARGE-DELTA chain (settles far from the stale value); inject the REAL stale -1.0");
+    return 0;
+}
+
+int main (int argc, char* argv[])
+{
+    if (argc > 1 && std::strcmp (argv[1], "--match-inject-probe") == 0)
+        return runMatchInjectProbe();
+
     std::printf ("=== Anamorph DSP self-tests ===\n");
 
     // A RELAXED RUN MUST SAY SO, in the same run whose result it changes. The

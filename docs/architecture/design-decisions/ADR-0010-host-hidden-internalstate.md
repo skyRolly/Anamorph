@@ -32,9 +32,9 @@ parameters.
 - This is the one precedent for removing IDs from the APVTS surface; it was done *with* migration.
 
 ## Related code
-- `src/InternalState.h:10-138` (whole class), `:100-122` (migration)
+- `src/InternalState.h:12-175` (whole class), `:100-122` (migration)
 - `src/PluginParameters.cpp:183-190` (rationale comment); `src/PluginProcessor.cpp:489,624-627`
 
 Evidence [Verified]:
-- Source: src/InternalState.h:10-138; src/PluginProcessor.cpp:443-582
+- Source: src/InternalState.h:12-175; src/PluginProcessor.cpp:443-582
 - History [Partially Verified]: CHANGELOG.md [0.8.4]; commit 6bd158b

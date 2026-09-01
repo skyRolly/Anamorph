@@ -142,7 +142,7 @@ JUCE 8.0.14; before that 0.8.8 for PR #54).
 | KI-022 | **macOS**: components are non-relocatable since 0.9.3 (INC-012), so a bundle the user deliberately moved — to `~/Applications`, or a plug-in kept under `~/Library/Audio/Plug-Ins/…` — is left where it is and a fresh copy is installed at the standard location, leaving two copies with the same bundle identifier | Low | Confirmed, **deliberate trade** for INC-012: following a moved copy is exactly the behaviour that let an install silently write nowhere useful. Documented in the installer's `INSTALL.txt`; removal is manual |
 | KI-023 | **Linux**: the shipped binaries record the CI image's glibc/libstdc++ floor (measured GLIBC_2.38 / GLIBCXX_3.4.31), so they do not load at all on older distributions — Ubuntu 22.04 LTS included | Medium | Confirmed, **measured**; the floor was never chosen and is now asserted on every push so it cannot rise unnoticed. Lowering it is a release-topology decision, not taken |
 | KI-028 | ~~A value-box drag whose mouse RELEASE is never delivered leaves the host change gesture OPEN~~ | — | **RESOLVED 2026-09-01 (round 4).** Linux/Windows were fixed in round 3 by the `anamorph::gui::DragGestureOwner` sweep; the macOS residual was never the sweep but its TRIGGER, which asked JUCE for the button state and got a cached copy (KI-013). `anamorph::gui::anyPhysicalMouseButtonDown()` now calls `+[NSEvent pressedMouseButtons]` on macOS and forwards to JUCE elsewhere. State tests 21 and 23; the macOS-discriminating assertion is `#if JUCE_MAC` and is verified by the macOS CI job, which runs this suite |
-| KI-027 | Host **automation** of Drive or Algorithm delivers the APVTS parameter callback on the **audio thread**, and when the reported latency actually changes (oversampling engaged and the drive engage-threshold crossed, or the algorithm class switched) the `setLatencySamples` notification chain takes multiple locks and, in the JUCE Linux wrapper, appends to a heap array and `write()`s the message-queue fd — inside `processBlock`. A concurrent GUI edit of the same parameter adds a priority-inversion window (the message thread holds the parameter's listener lock through the host's synchronous `restartComponent`) | Medium | Confirmed (full chain traced in the pinned JUCE 9.0.1, ER-RT-01, two independent verifications); **fix gated** — moving latency-notification delivery off the audio thread is a threading-model change (Architecture Review Gate), awaiting maintainer sign-off; the latency VALUE and its safe-point latch are unaffected |
+| KI-027 | ~~Host **automation** of Drive or Algorithm delivers the APVTS parameter callback on the **audio thread**, and when the reported latency actually changes (oversampling engaged and the drive engage-threshold crossed, or the algorithm class switched) the `setLatencySamples` notification chain takes multiple locks and, in the JUCE Linux wrapper, appends to a heap array and `write()`s the message-queue fd — inside `processBlock`. A concurrent GUI edit of the same parameter adds a priority-inversion window (the message thread holds the parameter's listener lock through the host's synchronous `restartComponent`)~~ | — | **RESOLVED 2026-09-01 (round 4, decision D-1 — APPROVED by the maintainer and implemented).** The chain was confirmed as filed (ER-RT-01, two independent verifications) and the fix is the one the gate was asked to approve: `requestLatencyUpdate()` keeps delivery synchronous on the message thread and, from any other thread, does one atomic store that a **processor-owned** 20 Hz timer serves on the message thread — no editor polling, no `AsyncUpdater`. Round 11 closed a double-clear window in that path (ER-STATE-14) and round 12 added a deterministic barrier test for requests landing mid-delivery. State tests 22 and 27; `docs/architecture/LATENCY_MODEL.md`. This row had gone stale — it still read "fix gated … awaiting maintainer sign-off" for three rounds after the approval landed; corrected in round 12 |
 | KI-026 | **Pre-2013 Intel / pre-2015 AMD CPUs**: every shipped x86-64 binary is compiled for AVX2 — Linux and the macOS `x86_64` slice at `-march=haswell` (ADR-0031, 0.9.5), Windows at `/arch:AVX2` (ADR-0032) — so on an older CPU the plug-in raises an illegal-instruction fault **inside the host** (`SIGILL`; `STATUS_ILLEGAL_INSTRUCTION` on Windows). The DAW reports a crash, not an incompatible plug-in | Medium | Confirmed, **deliberate** (ADR-0031/0032; output bit-identical **for the twin dump's 32-scenario engaged steady-state matrix**, verified per push on Windows by the blocking A/B gate — the instrument's coverage boundary is recorded in `docs/procedures/TESTING.md` §Gaps). Only Apple Silicon is unaffected. No in-product diagnosis is possible; the requirement is documented in the user guides |
 
 ---
@@ -214,7 +214,7 @@ session state, and is fully isolated from the pluginval state-restoration work.
   cannot judge GUI appearance (TESTING_POLICY Level 5), so a **Linux visual re-test by the maintainer**
   is needed to fully close this; until then it stays listed here rather than moved to POSTMORTEMS.
 - **Evidence:** src/gui/LookAndFeel.cpp `drawTooltip` (the alpha-gated corner fill); 0.8.7 Linux
-  feedback. Cosmetic, low-impact: tooltips are **off by default** (src/InternalState.h:51).
+  feedback. Cosmetic, low-impact: tooltips are **off by default** (src/InternalState.h:53).
 
 ## KI-007 — Windows CI: pluginval script did not wait for pluginval (garbled output + false pass/fail)
 The Windows pluginval step produced **interleaved/garbled console output** and reported both false
@@ -837,6 +837,15 @@ a single output bit.
 
 
 ## KI-027 — latency re-report runs on the audio thread under host automation
+
+> **RESOLVED 2026-09-01 (engineering-review round 4, decision D-1).** The maintainer **approved** the threading-model
+> change this entry filed for Architecture Review, and it is **implemented**: `requestLatencyUpdate()`
+> (`src/PluginProcessor.cpp`) delivers synchronously on the message thread and, anywhere else, stores one
+> atomic request that a processor-owned 20 Hz timer serves on the message thread, editor open or not. The two
+> candidate fixes refuted in round 2 (editor polling, `AsyncUpdater`) stayed refuted. Everything below is the
+> round-1/2 diagnosis, kept as the record; the "awaiting sign-off" language in it is historical. The
+> architecture docs it says were "left for the gated fix to reconcile" were reconciled by round 4
+> (`LATENCY_MODEL.md` §delivery thread) and this banner (`THREADING_POLICY.md` rule, round 12).
 
 **Filed 2026-08-31 (engineering-review round 1, finding ER-RT-01; confirmed by two independent
 adversarial verifications against the pinned JUCE 9.0.1 tree).**

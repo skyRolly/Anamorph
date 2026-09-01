@@ -82,7 +82,7 @@ rows above run at is `ANAMORPH_PLUGINVAL_STRICTNESS` in `.github/workflows/build
 
 | Host | Status | Note |
 |---|---|---|
-| REAPER | **Unverified** | Referenced for its parameter-listing behaviour (drove the 0.8.4 InternalState design) and as the suggested audition host; not a tested compatibility claim. docs/procedures/TESTING.md; src/InternalState.h:15-18 |
+| REAPER | **Unverified** | Referenced for its parameter-listing behaviour (drove the 0.8.4 InternalState design) and as the suggested audition host; not a tested compatibility claim. docs/procedures/TESTING.md; src/InternalState.h:17-20 |
 | Ableton Live, Logic Pro, GarageBand, Cubase, Pro Tools, Studio One, Bitwig, etc. | **Unverified** | No evidence in repo. AU build targets Logic/GarageBand but host-load is untested here. |
 
 `TODO: populate a real-DAW host matrix from manual validation (requires a machine with audio +

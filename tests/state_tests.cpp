@@ -3639,96 +3639,101 @@ static void testRestoreIntegrityGuards()
     std::printf ("State test 27: restore/latency integrity (ER-STATE-14/15/16)\n");
 
     // === ER-STATE-14 ========================================================
-    // WHAT THIS DOES AND DOES NOT PROVE, stated because measuring it is easy to get
-    // wrong and this leg got it wrong twice before settling.
+    // DETERMINISTIC. The second request is made INSIDE the delivery, from a real
+    // off-message thread, at a barrier the PRODUCT provides: AudioProcessor::
+    // setLatencySamples() notifies its AudioProcessorListeners synchronously, from
+    // within the call, whenever the reported value changes (pinned JUCE 9.0.1,
+    // juce_AudioProcessor.cpp:415-436), and the listener lock is released before
+    // each callback (getListenerLocked, :425-429), so a listener may block. That
+    // is exactly the sequence the review asked for -- delivery starts, another
+    // thread requests, delivery completes, the second request must still be
+    // observed and delivered -- with no test hook in production code and no
+    // timing race: the interleaving is FORCED, not hoped for.
     //
-    // It DOES pin the D-1 invariant end to end: after off-thread parameter moves
-    // interleaved with timer ticks, the latency the host holds equals the latency
-    // the settled state predicts. That is the contract the whole request/timer
-    // machinery exists to keep, and it is a real regression guard for it.
+    // WHAT IT DOES AND DOES NOT PROVE, stated exactly. It pins the invariant
+    // "a request that lands while a delivery is running survives to the next
+    // tick": a build that clears the flag AFTER delivering fails it (measured --
+    // see the round-12 worklog), so a future refactor of that shape cannot land
+    // green. It does NOT reach the round-11 double-clear window itself: that lay
+    // between timerCallback's exchange(0) and the second store(0) the old
+    // updateLatency() performed at its ENTRY -- two adjacent atomics on one thread
+    // with no call between them -- and no external mechanism can place a request
+    // there. The pre-round-11 code therefore passes this leg too; that fix rests
+    // on inspection, and this comment exists so nobody reads green here as proof
+    // of it. Neither half of that fix was measurable on x86-64 either way.
     //
-    // It does NOT discriminate either half of the round-11 fix. Both were measured
-    // against this leg on x86-64 and it passes with and without them: the
-    // double-clear window (between timerCallback's exchange and the second clear
-    // updateLatency used to perform) is nanoseconds wide and needs a request to land
-    // inside it, which nothing here can schedule; and the relaxed->release/acquire
-    // change is invisible under x86-64's store ordering, which is exactly why it
-    // matters on the AArch64 targets that ship. Both fixes rest on inspection, and
-    // this comment exists so nobody later reads a green run here as proof of them.
-    //
-    // Two harness defects were found while establishing that, both of which made
-    // earlier versions of this leg lie. (1) It compared 0 with 0 -- latency only
-    // moves with drive when oversampling is ON, hence the setValue(2) below, and
-    // hence the explicit non-vacuity check. (2) It "quiesced" with a tight loop of
-    // callPendingTimersSynchronously(), which fires NOTHING against a 20 Hz timer
-    // because the countdown is never due; the sleeps below are what make the ticks
-    // real. Before that was found, this leg failed intermittently and the failure
-    // was nearly attributed to the product.
+    // The waits below are bounded polls for the processor's own 20 Hz timer, not
+    // sleeps that stand in for synchronisation: the outcome is fixed the moment
+    // the request is or is not in the flag, and the deadline (40 timer periods)
+    // only bounds how long a FAILING run takes to report. A tight loop of
+    // callPendingTimersSynchronously() would fire nothing -- the countdown is
+    // never due -- which is the harness defect the round-11 version of this leg
+    // had before it was found.
     {
+        struct Barrier final : public juce::AudioProcessorListener
+        {
+            std::atomic<bool> armed { false }, inDelivery { false }, requested { false };
+            std::atomic<int>  fired { 0 };
+            void audioProcessorParameterChanged (juce::AudioProcessor*, int, float) override {}
+            void audioProcessorChanged (juce::AudioProcessor*, const ChangeDetails& d) override
+            {
+                if (! d.latencyChanged || ! armed.exchange (false)) return;
+                fired.fetch_add (1);
+                inDelivery.store (true);                       // delivery has started...
+                while (! requested.load()) std::this_thread::yield();   // ...hold it open until the request lands
+            }
+        };
+
         AnamorphAudioProcessor p;
-        p.getInternal().oversampleValue().setValue (2);   // 1-based combo id: 2x
+        p.getInternal().oversampleValue().setValue (2);        // 1-based combo id: 2x -- latency moves with drive
         p.prepareToPlay (48000.0, 512);
         auto* drive = p.getAPVTS().getParameter (pid::drive);
+        drive->setValueNotifyingHost (0.0f); p.prepareToPlay (48000.0, 512);
+        const int lowLat  = p.getLatencySamples();
+        drive->setValueNotifyingHost (1.0f); p.prepareToPlay (48000.0, 512);
+        const int highLat = p.getLatencySamples();
+        drive->setValueNotifyingHost (0.0f); p.prepareToPlay (48000.0, 512);   // back to low; host holds lowLat
+        check (lowLat != highLat, "non-vacuity: the reported latency actually moves with drive here");
 
-        // A worker thread stands in for the audio thread: it is not the message
-        // thread, so requestLatencyUpdate() takes the deferred branch.
-        std::atomic<bool> stop { false };
-        std::atomic<int>  moves { 0 };
+        auto waitForReported = [&p] (int expected, int deadlineMs)
+        {
+            for (int elapsed = 0; elapsed < deadlineMs; elapsed += 5)
+            {
+                juce::Timer::callPendingTimersSynchronously();
+                if (p.getLatencySamples() == expected) return true;
+                std::this_thread::sleep_for (std::chrono::milliseconds (5));
+            }
+            return p.getLatencySamples() == expected;
+        };
+
+        Barrier barrier;
+        p.addListener (&barrier);
+        barrier.armed.store (true);
+
         std::thread worker ([&]
         {
-            for (int i = 0; i < 400 && ! stop.load(); ++i)
-            {
-                drive->setValueNotifyingHost ((i & 1) ? 1.0f : 0.0f);
-                moves.fetch_add (1);
-                std::this_thread::yield();
-            }
+            // Request #1, off the message thread: drive -> 1 raises the flag.
+            drive->setValueNotifyingHost (1.0f);
+            // Wait until the timer's delivery of #1 has STARTED (the barrier holds it open)...
+            while (! barrier.inDelivery.load()) std::this_thread::yield();
+            // ...and make request #2 from inside that window: drive -> 0 raises the flag again.
+            drive->setValueNotifyingHost (0.0f);
+            barrier.requested.store (true);
         });
 
-        // Tick the timer while the worker runs, exactly as the real 20 Hz timer does.
-        for (int k = 0; k < 400; ++k)
-        {
-            juce::Timer::callPendingTimersSynchronously();
-            std::this_thread::yield();
-        }
-        stop.store (true);
+        // Serve request #1 on the message thread. This is the delivery the barrier sits in.
+        const bool firstDelivered = waitForReported (highLat, 2000);
         worker.join();
+        check (barrier.fired.load() == 1, "the barrier fired exactly once, inside delivery #1");
+        check (firstDelivered, "delivery #1 completed with the value it read (highLat)");
 
-        // Quiesce by TICKING ONLY. Deliberately no final message-thread write: that
-        // would deliver synchronously and REPAIR a lost request, which is how the
-        // first version of this leg let the defect through half the time. Whatever
-        // value the worker left, the flag protocol's guarantee is that after the
-        // requests drain, the host holds what the current state predicts.
-        // The processor's timer runs at 20 Hz, so a tight loop of
-        // callPendingTimersSynchronously() fires NOTHING -- the countdown is not due.
-        // Sleep past the period between ticks, or this loop only looks like quiescing.
-        for (int k = 0; k < 6; ++k)
-        {
-            std::this_thread::sleep_for (std::chrono::milliseconds (60));
-            juce::Timer::callPendingTimersSynchronously();
-        }
-
-        const int reported  = p.getLatencySamples();
-        p.prepareToPlay (48000.0, 512);          // recompute from the settled state
-        const int predicted = p.getLatencySamples();
-
-        // Non-vacuity: this comparison is only worth making if the two CAN differ.
-        // Drive at 0 with 2x oversampling predicts a different figure than drive at
-        // 1, so the yardstick has range -- without this the assertion below would
-        // pass by comparing 0 with 0, which is exactly how the first version of this
-        // leg was green for the wrong reason.
-        drive->setValueNotifyingHost (0.0f);
-        p.prepareToPlay (48000.0, 512);
-        const int atZero = p.getLatencySamples();
-        drive->setValueNotifyingHost (1.0f);
-        p.prepareToPlay (48000.0, 512);
-        const int atOne = p.getLatencySamples();
-        std::printf ("  after %d off-thread moves: reported %d, final state predicts %d"
-                     " (drive 0 -> %d, drive 1 -> %d)\n",
-                     moves.load(), reported, predicted, atZero, atOne);
-        check (atZero != atOne,
-               "non-vacuity: the reported latency actually moves with drive here");
-        check (reported == predicted,
-               "a request landing during delivery is not lost (reported == predicted)");
+        // Request #2 landed DURING delivery #1. It must still be pending, and the
+        // next tick must serve it -- nothing else on the message thread will.
+        const bool secondDelivered = waitForReported (lowLat, 2000);
+        std::printf ("  delivery #1 -> %d with request #2 made inside it; next tick -> %d (expected %d)\n",
+                     highLat, p.getLatencySamples(), lowLat);
+        check (secondDelivered, "a request made DURING a delivery survives it and is served by the next tick");
+        p.removeListener (&barrier);
     }
 
     // === ER-STATE-15 ========================================================
@@ -3857,6 +3862,141 @@ static void testRestoreIntegrityGuards()
                    "a VALID slot still restores its own sound");
         checkStr (dst.getPresets().currentName(), "Kept Name",
                   "...and its own preset name -- valid sessions are byte-compatible");
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  State test 28 -- a malformed host-hidden Setting in a legacy session resolves
+//  to a VALID setting, deterministically (ER-STATE-17).
+//
+//  migrateFromLegacyApvts read each legacy PARAM value straight into an `(int)`
+//  conversion. JUCE's parser accepts "nan" and "inf" as numbers, so a v0.2
+//  session carrying one reached that conversion, which is undefined behaviour
+//  for NaN, infinity and out-of-range values. Measured through the real restore
+//  on x86-64 before the fix: every such value became -2147483647 in the tree,
+//  re-saved with the session as an impossible ComboBox id; "2147483647" wrapped
+//  to INT_MIN through a second UB (signed overflow in the `+ 1`); a finite but
+//  out-of-domain "7" produced id 8; "abc" silently made UI Scale "XS" instead of
+//  its default; and scopePersist passed NaN, +/-inf and out-of-range values
+//  straight through to the slider. AArch64 saturates instead, so the corruption
+//  was platform-dependent as well as undefined.
+//
+//  The contract this pins: malformed / non-finite -> the field's DEFAULT (the
+//  same answer an absent node gets, through the same SerializedNumber predicate
+//  the session and preset paths use); finite but out of domain -> CLAMPED to the
+//  nearest valid choice; valid -> unchanged. Both legacy shapes are covered: the
+//  v0.2 bare-APVTS root, and a pre-0.8.4 AnamorphRoot with no ANAMORPH_INTERNAL
+//  child, which calls the same migration.
+// ---------------------------------------------------------------------------
+static void testMalformedLegacySettingsResolveToValid()
+{
+    std::printf ("State test 28: malformed legacy Settings resolve to a valid setting (ER-STATE-17)\n");
+
+    auto restoreV02 = [] (AnamorphAudioProcessor& p, const char* id, const char* value)
+    {
+        juce::String xml;
+        xml << "<ANAMORPH><PARAM id=\"width\" value=\"1.5\"/>"
+            << "<PARAM id=\"" << id << "\" value=\"" << value << "\"/></ANAMORPH>";
+        auto parsed = juce::parseXML (xml);
+        const auto blob = BlobCodec::wrap (*parsed);
+        p.setStateInformation (blob.getData(), (int) blob.getSize());
+    };
+    auto internalOf = [] (AnamorphAudioProcessor& p) { return p.getInternal().copyState(); };
+    auto reSavedInt = [] (AnamorphAudioProcessor& p, const char* field)
+    {
+        juce::MemoryBlock mb; p.getStateInformation (mb);
+        auto xml = BlobCodec::unwrap (mb);
+        return (int) juce::ValueTree::fromXml (*xml).getChildWithName ("ANAMORPH_INTERNAL").getProperty (field);
+    };
+
+    // --- oversample: default index 0 -> id 1; domain ids 1..4 --------------------
+    struct IntCase { const char* text; int expectId; const char* why; };
+    const IntCase osCases[] = {
+        { "nan",        1, "NaN -> default"                      },
+        { "inf",        1, "+inf -> default"                     },
+        { "-inf",       1, "-inf -> default"                     },
+        { "1e39",       1, "overflows float -> default"          },
+        { "-1e39",      1, "negative overflow -> default"        },
+        { "abc",        1, "not a number -> default"             },
+        { "",           1, "empty -> default"                    },
+        { "0x10",       1, "hex text -> default"                 },
+        { "7",          4, "finite, out of domain -> clamped"    },
+        { "2147483647", 4, "INT_MAX -> clamped, no wrap"         },
+        { "-3",         1, "finite, below domain -> clamped"     },
+        { "1.0",        2, "valid index 1 -> id 2 (unchanged)"   },
+        { "3",          4, "valid index 3 -> id 4 (unchanged)"   },
+    };
+    for (const auto& c : osCases)
+    {
+        AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+        restoreV02 (p, "oversample", c.text);
+        const int id = (int) internalOf (p)[anamorph::iid::oversample];
+        check (id == c.expectId, (juce::String ("oversample=\"") + c.text + "\" -> id " + juce::String (c.expectId)
+                                  + " (" + c.why + "); got " + juce::String (id)).toRawUTF8());
+        check (id >= 1 && id <= 4, "...and the id is inside the combo's domain");
+        check (p.getInternal().oversampleIndex() == id - 1, "...and the DSP atomic agrees with the tree");
+        check (reSavedInt (p, "int_oversample") == id, "...and a re-save writes that valid id, not garbage");
+    }
+
+    // --- uiScale: default index 2 -> id 3; domain ids 1..5 -----------------------
+    const IntCase uiCases[] = {
+        { "nan",        3, "NaN -> default"                      },
+        { "inf",        3, "+inf -> default"                     },
+        { "-1e39",      3, "negative overflow -> default"        },
+        { "abc",        3, "not a number -> default (was XS)"    },
+        { "",           3, "empty -> default (was XS)"           },
+        { "7",          5, "finite, out of domain -> clamped"    },
+        { "2147483647", 5, "INT_MAX -> clamped, no wrap"         },
+        { "1.0",        2, "valid index 1 -> id 2 (unchanged)"   },
+        { "4",          5, "valid index 4 -> id 5 (unchanged)"   },
+    };
+    for (const auto& c : uiCases)
+    {
+        AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+        restoreV02 (p, "uiScale", c.text);
+        const int id = (int) internalOf (p)[anamorph::iid::uiScale];
+        check (id == c.expectId, (juce::String ("uiScale=\"") + c.text + "\" -> id " + juce::String (c.expectId)
+                                  + " (" + c.why + "); got " + juce::String (id)).toRawUTF8());
+        check (p.getInternal().uiScaleIndex() == id - 1, "...and uiScaleIndex() agrees with the tree");
+    }
+
+    // --- scopePersist: default 0.5; domain 0..1 ----------------------------------
+    struct DblCase { const char* text; double expect; const char* why; };
+    const DblCase spCases[] = {
+        { "nan",  0.5,  "NaN -> default"                 },
+        { "inf",  0.5,  "+inf -> default"                },
+        { "-inf", 0.5,  "-inf -> default"                },
+        { "1e39", 0.5,  "overflows float -> default"     },
+        { "abc",  0.5,  "not a number -> default (was 0)"},
+        { "-1",   0.0,  "below domain -> clamped"        },
+        { "5",    1.0,  "above domain -> clamped"        },
+        { "0.25", 0.25, "valid -> unchanged"             },
+    };
+    for (const auto& c : spCases)
+    {
+        AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+        restoreV02 (p, "scopePersist", c.text);
+        const double d = (double) internalOf (p)[anamorph::iid::scopePersist];
+        checkNear (d, c.expect, 1.0e-9, (juce::String ("scopePersist=\"") + c.text + "\" (" + c.why + ")").toRawUTF8());
+        check (std::isfinite ((double) p.getInternal().scopePersist()), "...and the consumer never sees a non-finite value");
+    }
+
+    // --- the OTHER legacy shape that runs the same migration: a pre-0.8.4
+    //     AnamorphRoot whose sound child carries the setting and which has no
+    //     ANAMORPH_INTERNAL child. Same predicate, same answer.
+    {
+        AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+        juce::String xml;
+        xml << "<AnamorphRoot presetName=\"x\"><ANAMORPH>"
+            << "<PARAM id=\"width\" value=\"1.5\"/><PARAM id=\"uiScale\" value=\"nan\"/>"
+            << "<PARAM id=\"oversample\" value=\"1e39\"/></ANAMORPH></AnamorphRoot>";
+        auto parsed = juce::parseXML (xml);
+        const auto blob = BlobCodec::wrap (*parsed);
+        p.setStateInformation (blob.getData(), (int) blob.getSize());
+        check ((int) internalOf (p)[anamorph::iid::uiScale] == 3,
+               "pre-0.8.4 AnamorphRoot path: uiScale=\"nan\" -> default id 3");
+        check ((int) internalOf (p)[anamorph::iid::oversample] == 1,
+               "pre-0.8.4 AnamorphRoot path: oversample=\"1e39\" -> default id 1");
     }
 }
 
@@ -4231,6 +4371,148 @@ static int runLegacyMatchGainProbe()
         worstCase (true,  "with prev project");
         worstCase (false, "fresh (control)");
     }
+
+    // --- ROUND 12: is Level Match still ON after the switch? It must be, or every
+    // "inert" reading above measured an engine that was not applying the gain at
+    // all. Recorded here because the first reading of this looked alarming and was
+    // MISREAD: the value tree's @value for autoGainMatch is stale (JUCE flushes it
+    // from its own 10 Hz timer, which this harness never fires), so the print below
+    // shows tree 0.0 against live 1.0. That is not what the slot carries.
+    // currentStateSet() -> copyStateWithRawValues() writes a fresh @raw for every
+    // PARAM from the LIVE parameter, and reassertParameters reads @raw first, so
+    // the snapshot is faithful. Match going off in the minimal case below is
+    // correct A/B behaviour, not a flush defect: slot B still holds the
+    // construction snapshot, which predates enabling Match.
+    std::printf ("\n  --- round 12: does the switch keep Level Match ON? ---\n");
+    {
+        AnamorphAudioProcessor z; z.prepareToPlay (sr, bs);
+        setRaw (z, "autoGainMatch", 1.0f);
+        auto raw = [&] { return z.getAPVTS().getRawParameterValue (pid::autoGainMatch)->load(); };
+        const float treeBefore = (float) (double) z.getAPVTS().state.getChildWithProperty ("id", pid::autoGainMatch).getProperty ("value");
+        std::printf ("      before any switch: live param %.1f, VALUE TREE says %.1f\n", raw(), treeBefore);
+        z.abSwitchTo (1);
+        std::printf ("      after A->B:        live param %.1f  <- %s\n", raw(),
+                     raw() > 0.5f ? "still on"
+                                  : "off, CORRECTLY: slot B predates the Match enable (not a flush defect -- @raw is fresh)");
+    }
+
+    // --- ROUND 12: the matched counterfactual again, with Level Match carried BY
+    // THE RESTORED SESSION so the reseeded slots carry it (the tree has it, so no
+    // flush is needed) -- the state a real host is in.
+    std::printf ("\n  --- round 12: matched counterfactual with autoGainMatch baked into the restored session ---\n");
+    {
+        AnamorphAudioProcessor z; z.prepareToPlay (sr, bs);
+        juce::Random r (77000);
+        setRaw (z, "autoGainMatch", 1.0f);
+        setRaw (z, "width", 0.95f); runBlocks (z, 60, r);
+        z.abSwitchTo (1);
+        setRaw (z, "width", 0.05f); runBlocks (z, 60, r);
+        const float prevB = z.getEngine().getMatchGainDb();
+        z.abSwitchTo (0); runBlocks (z, 20, r);
+
+        juce::String xml = "<ANAMORPH><PARAM id=\"drive\" value=\"6.0\"/><PARAM id=\"algorithm\" value=\"2.0\"/>"
+                           "<PARAM id=\"width\" value=\"1.5\"/><PARAM id=\"mix\" value=\"0.8\"/>"
+                           "<PARAM id=\"haasDelay\" value=\"20.0\"/><PARAM id=\"outputGain\" value=\"-3.0\"/>"
+                           "<PARAM id=\"autoGainMatch\" value=\"1\"/></ANAMORPH>";
+        auto parsed = juce::parseXML (xml); const auto blob = BlobCodec::wrap (*parsed);
+        z.setStateInformation (blob.getData(), (int) blob.getSize());
+        runBlocks (z, 80, r);
+        const float restored = z.getEngine().getMatchGainDb();
+        std::printf ("      previous project's B match %+.3f dB; restored-material match %+.3f dB; live autoGainMatch %.1f\n",
+                     prevB, restored, z.getAPVTS().getRawParameterValue (pid::autoGainMatch)->load());
+
+        auto envelope = [&] (int to, const char* label)
+        {
+            juce::AudioBuffer<float> buf (2, bs); juce::MidiBuffer midi;
+            z.abSwitchTo (to);
+            std::printf ("      %-16s autoGainMatch after switch %.1f | RMS:", label,
+                         z.getAPVTS().getRawParameterValue (pid::autoGainMatch)->load());
+            for (int k = 0; k < 10; ++k)
+            {
+                fillNoise (buf, r); z.processBlock (buf, midi);
+                double acc = 0.0;
+                for (int ch = 0; ch < 2; ++ch) for (int i = 0; i < bs; ++i) { const double v = buf.getSample (ch, i); acc += v * v; }
+                std::printf (" %.4f", std::sqrt (acc / (double) (2 * bs)));
+            }
+            std::printf ("  | match now %+.3f\n", z.getEngine().getMatchGainDb());
+        };
+        envelope (1, "CONTAMINATED");   // injects prevB into material measuring `restored`
+        runBlocks (z, 40, r);
+        envelope (0, "(decontaminate)");
+        runBlocks (z, 40, r);
+        envelope (1, "CLEAN CONTROL");
+    }
+    return 0;
+}
+
+
+static const juce::Identifier& iid_oversample()   { return anamorph::iid::oversample; }
+static const juce::Identifier& iid_uiScale()      { return anamorph::iid::uiScale; }
+static const juce::Identifier& iid_scopePersist() { return anamorph::iid::scopePersist; }
+
+// ---------------------------------------------------------------------------
+//  Opt-in probe: what does a MALFORMED host-hidden setting in a v0.2 session
+//  become after migrateFromLegacyApvts? Reproduction before disposition.
+//  Prints the migrated tree value (as text and as int/double), the clamped
+//  consumers, and what a re-save then writes back out.
+// ---------------------------------------------------------------------------
+static int runLegacySettingsProbe()
+{
+    std::printf ("malformed legacy Settings probe (v0.2 -> migrateFromLegacyApvts)\n");
+    std::printf ("===============================================================\n\n");
+
+    auto restoreV02 = [] (AnamorphAudioProcessor& p, const char* id, const char* value)
+    {
+        juce::String xml;
+        xml << "<ANAMORPH><PARAM id=\"width\" value=\"1.5\"/>"
+            << "<PARAM id=\"" << id << "\" value=\"" << value << "\"/></ANAMORPH>";
+        auto parsed = juce::parseXML (xml);
+        const auto blob = BlobCodec::wrap (*parsed);
+        p.setStateInformation (blob.getData(), (int) blob.getSize());
+    };
+    auto savedText = [] (AnamorphAudioProcessor& p, const char* field)
+    {
+        juce::MemoryBlock mb; p.getStateInformation (mb);
+        auto xml  = BlobCodec::unwrap (mb);
+        auto root = juce::ValueTree::fromXml (*xml);
+        return root.getChildWithName ("ANAMORPH_INTERNAL").getProperty (field).toString();
+    };
+
+    const char* cases[] = { "nan", "inf", "-inf", "1e39", "-1e39", "abc", "", "0x10", "7", "2147483647", "1.0" };
+
+    std::printf ("  %-12s | %-24s | %-13s | %-10s | %s\n", "oversample=", "int_oversample (tree)", "osIndex()", "re-saved", "note");
+    for (auto* c : cases)
+    {
+        AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+        restoreV02 (p, "oversample", c);
+        const auto v = p.getInternal().copyState()[iid_oversample()];
+        std::printf ("  %-12s | %-24s | %-13d | %-10s | %s\n", juce::String ("\"" + juce::String (c) + "\"").toRawUTF8(),
+                     (v.toString() + "  (int " + juce::String ((int) v) + ")").toRawUTF8(),
+                     p.getInternal().oversampleIndex(), savedText (p, "int_oversample").toRawUTF8(),
+                     ((int) v >= 1 && (int) v <= 4) ? "valid combo id" : "INVALID combo id (1..4)");
+    }
+    std::printf ("\n  %-12s | %-24s | %-13s | %s\n", "uiScale=", "int_uiScale (tree)", "uiScaleIndex()", "note");
+    for (auto* c : cases)
+    {
+        AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+        restoreV02 (p, "uiScale", c);
+        const auto v = p.getInternal().copyState()[iid_uiScale()];
+        std::printf ("  %-12s | %-24s | %-13d | %s\n", juce::String ("\"" + juce::String (c) + "\"").toRawUTF8(),
+                     (v.toString() + "  (int " + juce::String ((int) v) + ")").toRawUTF8(),
+                     p.getInternal().uiScaleIndex(),
+                     ((int) v >= 1 && (int) v <= 5) ? "valid combo id" : "INVALID combo id (1..5)");
+    }
+    const char* dcases[] = { "nan", "inf", "-inf", "-1", "5", "abc", "1e39", "0.25" };
+    std::printf ("\n  %-12s | %-20s | %-14s | %s\n", "scopePersist=", "tree (double)", "scopePersist()", "note");
+    for (auto* c : dcases)
+    {
+        AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+        restoreV02 (p, "scopePersist", c);
+        const double d = (double) p.getInternal().copyState()[iid_scopePersist()];
+        std::printf ("  %-12s | %-20.6g | %-14.6g | %s\n", juce::String ("\"" + juce::String (c) + "\"").toRawUTF8(),
+                     d, (double) p.getInternal().scopePersist(),
+                     (std::isfinite (d) && d >= 0.0 && d <= 1.0) ? "in 0..1" : "OUT of 0..1 / non-finite");
+    }
     return 0;
 }
 
@@ -4258,6 +4540,9 @@ int main (int argc, char* argv[])
 
     if (argc > 1 && std::strcmp (argv[1], "--legacy-match-probe") == 0)
         return runLegacyMatchGainProbe();
+
+    if (argc > 1 && std::strcmp (argv[1], "--legacy-settings-probe") == 0)
+        return runLegacySettingsProbe();
 
     const bool writeSnapshot = argc > 1 && std::strcmp (argv[1], "--write-snapshot") == 0;
 
@@ -4295,6 +4580,7 @@ int main (int argc, char* argv[])
     testCrossVersionFieldCapture();
     testLegacyRestoreResetsAbSlots();
     testRestoreIntegrityGuards();
+    testMalformedLegacySettingsResolveToValid();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

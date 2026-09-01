@@ -30,10 +30,13 @@ Audio · Message/GUI · OpenGL render (macOS/Windows only) · (no worker threads
   never mutate, so multiple message-thread read sites are safe).
 - PDC/latency must be recomputed on the **message thread** via the `const`, race-free
   `predictLatency` — never by mutating audio-thread state from the message thread.
-  **Known violation (2026-08-31): KI-027** — under VST3 host automation of Drive/Algorithm the
-  APVTS listener delivers `parameterChanged` → `setLatencySamples` on the **audio** thread; the
-  fix is a threading-model change awaiting Architecture Review, so the defect is registered
-  rather than the rule silently relaxed.
+  **KI-027 (filed 2026-08-31, RESOLVED 2026-09-01 under decision D-1, approved by the maintainer):**
+  under VST3 host automation of Drive/Algorithm the APVTS listener delivers `parameterChanged` on
+  the **audio** thread, and it used to call `setLatencySamples` from there. It now calls
+  `requestLatencyUpdate()`, which delivers synchronously only when the caller IS the message
+  thread and otherwise stores one atomic request that a processor-owned 20 Hz timer serves on the
+  message thread — so the rule above holds by construction rather than by assumption
+  (`docs/architecture/LATENCY_MODEL.md`; State tests 22 and 27).
 
 ## Host state calls: a documented assumption, not a covered path
 
@@ -60,7 +63,7 @@ is the format contract; on the **macOS AU** no spec forbids off-main-thread
 
 Evidence [Verified]:
 - Source: src/dsp/ScopeBuffer.h:28-80; src/dsp/LevelMeters.h:125-198; src/dsp/Correlation.h:50-108;
-  src/PluginProcessor.cpp:59-77, 226; src/InternalState.h:67-72,125-134
+  src/PluginProcessor.cpp:59-77, 226; src/InternalState.h:69-74, 162-171
 
 ## Enforcement
 

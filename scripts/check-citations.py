@@ -358,6 +358,21 @@ DELIBERATE_REAIMS = {
     ("docs/architecture/LATENCY_MODEL.md",
      "src/PluginProcessor.cpp:131-137",
      "src/PluginProcessor.cpp:131-154"): "updateLatency",
+    # 2026-09-01 (round 12): the ER-STATE-17 guard EDITED the cited lines inside
+    # migrateFromLegacyApvts, so --fix reports these UNMAPPABLE rather than moving
+    # them. Each end was re-derived by reading the span: origin/main's :60
+    # (oversampleValue), :95 (restoreState's id loop), :100 (its trailing comment)
+    # and :122 (the oversample setProperty in the migration) are now :62, :97, :102
+    # and :159. All retire on merge.
+    ("docs/architecture/API_REFERENCE.md",
+     "src/InternalState.h:60-122",
+     "src/InternalState.h:62-159"): "oversampleValue",
+    ("docs/architecture/PARAMETER_REGISTRY.md",
+     "src/InternalState.h:95-122",
+     "src/InternalState.h:97-159"): "migrateFromLegacyApvts",
+    ("docs/policies/COMPATIBILITY_POLICY.md",
+     "src/InternalState.h:100-122",
+     "src/InternalState.h:102-159"): "migrateFromLegacyApvts",
     ("docs/architecture/API_REFERENCE.md",
      "src/PluginProcessor.h:20-79",
      "src/PluginProcessor.h:20-80"): "AnamorphAudioProcessor",

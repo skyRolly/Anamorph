@@ -10,7 +10,7 @@ Field-level ledger of everything written to session state. Companion to
 > is handled (a default), so older sessions still load.
 
 Evidence [Verified]: backward-compat paths at src/PluginProcessor.cpp:914-917 (pre-0.8.4 `migrateFromLegacyApvts`), :652-693 (pre-0.6.4 `readSlot`), :700-705 (v0.2 bare APVTS);
-src/InternalState.h:92-128.
+src/InternalState.h:94-165.
 
 ## `AnamorphRoot` properties
 
@@ -32,6 +32,8 @@ reuses one instance across `setStateInformation` calls, so the live name is the 
 unconditionally, and only `setStateInformation` (which can see `hasProperty`) resolves absence.
 Source: src/PresetManager.h:103-108 (`defaultName`); src/PresetManager.cpp:365-376
 (`adoptRestoredState`).
+
+**A malformed legacy Setting resolves to a valid setting, deterministically** (2026-09-01, ER-STATE-17). Pre-0.8.4 sessions carry Oversampling, UI Scale and Scope Persistence as APVTS `PARAM`s that `InternalState::migrateFromLegacyApvts` converts. Each value now passes the same usability predicate as the session and preset paths (`SerializedNumber.h`: plain decimal text, finite after float narrowing) — anything else means the field's **default**, exactly as an absent node does — and the choice indices are clamped into the ComboBox domain (`oversample` ids 1..4, `uiScale` 1..5; `scopePersist` to 0..1) in double **before** the integer conversion, so that conversion is defined for every input and the `+ 1` cannot overflow. Before this the value went straight into `(int)`, which is undefined for NaN, ±inf and out-of-range doubles, and JUCE's parser accepts "nan"/"inf": measured on x86-64 every such value became −2147483647 in the tree and was written back out on the next save; "2147483647" wrapped to INT_MIN through a second UB; AArch64 saturated the same inputs differently. Valid legacy values convert exactly as before (State tests 5 and 6 unchanged); State test 28 pins 88 cases over both legacy shapes. Source: src/InternalState.h:107-158.
 
 **A recognised root with no sound child is not a restore either** (2026-09-01, ER-STATE-15). An
 `AnamorphRoot` whose `ANAMORPH` child is absent restores no parameter at all, so `setStateInformation`
@@ -131,7 +133,7 @@ Source: src/PluginProcessor.cpp `getStateInformation` / `setStateInformation` / 
 
 **‡** Sessions saved **before** 0.8.4 have no `ANAMORPH_INTERNAL` child; these values are
 recovered from the legacy APVTS PARAM nodes by `migrateFromLegacyApvts` (choice indices are
-0-based legacy → 1-based ComboBox). Evidence [Verified]: src/InternalState.h:106-128;
+0-based legacy → 1-based ComboBox). Evidence [Verified]: src/InternalState.h:108-165;
 [Partially Verified] introduced-0.8.4: CHANGELOG.md [0.8.4].
 
 ## `AB` child

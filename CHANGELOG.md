@@ -15,6 +15,18 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 
 ## [0.9.6] — 2026-09-01
 ### Fixed
+- **A damaged setting in a very old project can no longer leave a Settings menu blank or spread
+  garbage into the project on the next save.** Projects saved by versions before 0.8.4 carry
+  Oversampling, UI Scale and Scope Persistence as ordinary parameters that are converted on load.
+  A damaged value there — "nan", "inf", a number too large to store, or text that is not a number
+  at all — went through a conversion with no defined result: on Intel it became an impossible
+  menu id (−2147483647) that the Oversampling or UI Scale menu could not display and that was
+  then written back into the project, while on Apple Silicon the same file produced different
+  values, and Scope Persistence accepted NaN or infinity outright. Such values now resolve to the
+  setting's default (a number outside the menu's range lands on the nearest valid choice), on
+  every platform, and a valid old project converts exactly as before.
+  Regression coverage: State test 28.
+  Evidence: PR #134. [Verified]
 - **A damaged project file can no longer relabel the sound you already had.** A project file that
   claimed to be an Anamorph session but carried no sound data at all — truncated, hand-edited, or
   written by a future version — restored nothing, yet the plug-in still took the file's preset name,

@@ -227,15 +227,31 @@ of the switch duck and is superseded by the live loudness measurement before the
 Keep the probe with the finding it refuted: it is what a later round re-measures instead of
 re-deriving.
 
-State test 27's first leg carries a warning worth repeating here, because it cost a round to learn
-twice: `juce::Timer::callPendingTimersSynchronously()` in a tight loop fires **nothing** against a
-20 Hz timer — the countdown is never due — so a "quiesce" loop written that way does less than it
-looks like it does and produces intermittent failures that look like product defects. Sleep past the
-period between ticks. The same leg also documents that it does NOT discriminate the round-11 latency
-fix (it passes with and without on x86-64); it is a D-1 invariant guard, not a guard for that
-window.
+State test 27's first leg is **deterministic** since round 12, and it says exactly what it proves.
+It uses a barrier the product itself provides: `AudioProcessor::setLatencySamples()` notifies its
+`AudioProcessorListener`s synchronously, from inside the call, whenever the reported value changes
+(pinned JUCE 9.0.1, `juce_AudioProcessor.cpp:415-436`), and the listener lock is released before
+each callback — so a test listener can hold a delivery open while a real off-message thread makes
+a second request *inside* it, with no test hook in production code and no timing race. A build that
+clears the request flag AFTER delivering fails it (measured in round 12: `next tick -> 4, expected
+0`); the pre-round-11 double-clear window — two adjacent atomics on one thread with no call
+between them — is **not reachable** by any external mechanism, so that fix rests on inspection and
+the leg's comment says so. The two waits are bounded polls for the processor's own 20 Hz timer
+(deadline 40 periods), not sleeps standing in for synchronisation: the outcome is fixed the moment
+the request is or is not in the flag. Two harness lessons from its earlier versions are kept in the
+comment — comparing 0 with 0 (latency only moves with Drive when oversampling is on), and a tight
+`callPendingTimersSynchronously()` loop, which fires nothing against a 20 Hz timer.
 
-`tests/state_tests.cpp` (**27 tests**, own console target `AnamorphStateTests`) automates the
+`AnamorphStateTests --legacy-settings-probe` is the fifth opt-in instrument and the evidence behind
+State test 28: it feeds malformed host-hidden Settings ("nan", "inf", "1e39", "abc", "7", …) through
+the real v0.2 restore and prints what `migrateFromLegacyApvts` put in the tree, what the clamped
+consumers saw, and what a re-save then wrote. Pre-fix on x86-64 every non-finite value became
+−2147483647 (an impossible ComboBox id, persisted on save), "2147483647" wrapped to INT_MIN, and
+scopePersist passed NaN/±inf/out-of-range straight through. The DSP suite gained a sibling,
+`AnamorphTests --match-inject-probe`, the engine-only half of the ER-STATE-13 question, written so
+it cross-builds with nothing but AnamorphDSP and runs under `qemu-aarch64-static`.
+
+`tests/state_tests.cpp` (**28 tests**, own console target `AnamorphStateTests`) automates the
 COMPATIBILITY policy family against the **real `AnamorphAudioProcessor`** (the target compiles
 the plugin sources; since 2026-08-21 it also constructs and destroys the real editor, headlessly
 and without ever showing it — no peer, no message loop, no interaction):

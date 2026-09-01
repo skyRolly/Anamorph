@@ -1,7 +1,9 @@
 #pragma once
 
 #include <juce_data_structures/juce_data_structures.h>
+#include "SerializedNumber.h"
 #include <atomic>
+#include <cmath>
 #include <functional>
 
 namespace anamorph
@@ -107,21 +109,56 @@ public:
     {
         if (! apvtsState.isValid()) return;
 
+        // A legacy PARAM value is used only when it is a USABLE serialized number --
+        // the same predicate the session and preset restore paths apply
+        // (SerializedNumber.h, ER-STATE-05): plain decimal text, finite after
+        // parsing. Anything else means the field's default, exactly as an absent
+        // node does. This is not cosmetic: JUCE's text parser accepts "nan" and
+        // "inf" as numbers, and the `(int)` conversion below of a NaN, an infinity
+        // or an out-of-range double is UNDEFINED BEHAVIOUR (C++ [conv.fpint]).
+        // Measured through the real v0.2 restore before this guard existed, on
+        // x86-64: every such value became -2147483647 in the tree -- an impossible
+        // ComboBox id, saved back out with the session on the next save -- and
+        // "2147483647" wrapped to INT_MIN through a second UB, signed overflow in
+        // the `+ 1`. On AArch64 the same inputs saturate differently (NaN -> 0,
+        // +overflow -> INT_MAX, which the `+ 1` then overflows), so the corruption
+        // was also platform-dependent. State test 28 pins every case.
         auto legacy = [&apvtsState] (juce::StringRef id, double fallback) -> double
         {
             for (int i = 0; i < apvtsState.getNumChildren(); ++i)
             {
                 auto c = apvtsState.getChild (i);
                 if (c.hasType ("PARAM") && c.getProperty ("id").toString() == id)
-                    return (double) c.getProperty ("value", fallback);
+                {
+                    const auto prop = c.getProperty ("value");
+                    if (prop.isVoid()) return fallback;
+                    if (prop.isString()
+                         && ! looksLikePlainNumber (prop.toString().trim().toRawUTF8()))
+                        return fallback;                              // "abc", "", "0x10", "inf", "nan"
+                    const double v = (double) prop;
+                    // Usability is judged on the float narrowing, as the other two
+                    // paths judge it, so "1e39" (finite as a double, infinite as the
+                    // float these values were) resolves the same way everywhere.
+                    if (! isUsableSerializedValue ((float) v)) return fallback;
+                    return v;
+                }
             }
             return fallback;
         };
 
         // Choice params stored a 0-based index; the ComboBox IDs here are 1-based.
-        tree.setProperty (iid::oversample,   (int) legacy ("oversample", 0.0) + 1, nullptr);
-        tree.setProperty (iid::uiScale,      (int) legacy ("uiScale",    2.0) + 1, nullptr);
-        tree.setProperty (iid::scopePersist, legacy ("scopePersist", 0.5),         nullptr);
+        // Clamp into the combo's domain IN DOUBLE, before the integer conversion:
+        // the conversion is then of a value in [0, count-1], defined for every
+        // input this lambda can return, and the `+ 1` cannot overflow. A finite
+        // out-of-domain value ("7") lands on the nearest valid choice, which is
+        // what NormalisableRange does for an out-of-range parameter.
+        auto comboId = [] (double index0, int count) -> int
+        {
+            return (int) juce::jlimit (0.0, (double) (count - 1), index0) + 1;
+        };
+        tree.setProperty (iid::oversample,   comboId (legacy ("oversample", 0.0), 4), nullptr); // ids 1..4
+        tree.setProperty (iid::uiScale,      comboId (legacy ("uiScale",    2.0), 5), nullptr); // ids 1..5
+        tree.setProperty (iid::scopePersist, juce::jlimit (0.0, 1.0, legacy ("scopePersist", 0.5)), nullptr);
         tree.setProperty (iid::metersOn,     legacy ("metersOn",   0.0) > 0.5,     nullptr);
         tree.setProperty (iid::tooltipsOn,   legacy ("tooltipsOn", 0.0) > 0.5,     nullptr);
         tree.setProperty (iid::uiAnimations, legacy ("uiAnimations", 1.0) > 0.5,   nullptr);

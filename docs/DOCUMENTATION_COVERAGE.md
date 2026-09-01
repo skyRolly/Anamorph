@@ -19,8 +19,10 @@ evidence, and the test-count sweep); **round 8** (the legacy A/B contamination d
 and fixed, an obsolete macOS scope comment corrected, and the realtime-lint boundary re-measured and
 left alone); **round 9** (the per-slot Level-Match residual refuted on impact — mechanism real,
 no code changed); **round 10** (the release notes reconciled with the KI-013 outcome, and the
-two duplicated knob-readout Undo entries consolidated); and **round 11** (two restore fixes, one
-refutation, and a full audit of the [0.9.6] changelog).
+two duplicated knob-readout Undo entries consolidated); **round 11** (two restore fixes, one
+refutation, and a full audit of the [0.9.6] changelog); and **round 12** (undefined behaviour in the
+legacy-Settings conversion fixed, the latency regression test made deterministic, and ER-STATE-13
+re-run on AArch64 with no change).
 **Header correction (round 7, 2026-09-01):** this line enumerated round 1 alone while the body
 carried six later rounds, and dated the change set 2026-08-31 while the CHANGELOG `[0.9.6]` heading
 had been re-dated to 2026-09-01 — the same drift the C6 correction below was written about,
@@ -6953,3 +6955,47 @@ so five anchors were re-derived BY SYMBOL — `legacyKey`, `readSlot`, `StateSet
 `setValueNotifyingHost` and `updateLatency` — and the `setStateInformation` span, unchanged at
 878-1111 but with edited content, needed its declarations retargeted. `DELIBERATE_REAIMS` carries
 each for both bases. [Verified]
+
+
+## Engineering-review programme, round 12 — legacy-Settings UB, a deterministic latency test, and ER-STATE-13 on AArch64 (2026-09-01, still the 0.9.6 change set)
+
+**What the round is.** One confirmed production defect fixed, one regression-test gap closed
+deterministically, two stale decision records corrected, and an AArch64 investigation that changed
+nothing. Records: `worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Round 12.
+
+**Code changes and their doc syncs (trigger map applied):**
+- `src/InternalState.h` (`migrateFromLegacyApvts`: the shared usability predicate on every legacy
+  value, and domain clamping in double before the integer conversion — ER-STATE-17) → CHANGELOG
+  `[0.9.6]` (one Fixed entry; the corruption was user-visible — an unselectable Settings menu, and
+  the bad value persisted on the next save), `docs/architecture/SERIALIZATION_REGISTRY.md` (a new
+  paragraph stating the rule and the measured pre-fix behaviour on both architectures), State test
+  28, and the count sweep below. **No serialization field added, removed or renamed**, and valid
+  legacy sessions migrate exactly as before (State tests 5 and 6 unchanged).
+- `tests/state_tests.cpp` — State test 28; State test 27's first leg rewritten as a deterministic
+  barrier test; `--legacy-settings-probe` added → `docs/procedures/TESTING.md` (both instruments
+  documented, with the pre-fix numbers), `docs/architecture/LATENCY_MODEL.md` (the round-11 bullet's
+  claim about what the test proves, corrected now that it discriminates).
+- `tests/dsp_tests.cpp` — `--match-inject-probe`, written to cross-build against AnamorphDSP alone
+  so it runs under `qemu-aarch64-static` → `docs/procedures/TESTING.md`.
+
+**Stale records corrected (no production change).** `docs/KNOWN_ISSUES.md`'s KI-027 row still read
+"fix gated … awaiting maintainer sign-off" and the entry was still open, three rounds after D-1 was
+approved and implemented; `docs/policies/THREADING_POLICY.md` still listed it as a known violation
+awaiting Architecture Review. Both corrected, with the round-1/2 diagnosis kept under a dated
+banner rather than rewritten.
+
+**ER-STATE-13 on AArch64: no change.** Six scenarios, both architectures, identical to three
+decimals; same atomics (`is_always_lock_free = 1`) and same layout. Recorded with one
+architecture-independent refinement: the stale-value transient is proportional to the gap between
+the stale value and the settled measurement at injection, and self-corrects, so round 9's "inert"
+was too strong for the general case even though its own measurement stands.
+
+**Counts.** The state suite is **28 tests / 1201 checks** (was 27 / 1111); the DSP suite is unchanged
+at 47 + the A/B clamp guard / 245. The `[0.9.6]` Fixed count is **20**. Swept through
+`TESTING_POLICY.md`, `TESTING.md`, `README.md`, `REPOSITORY_MAP.md`, `RELEASE_HARDENING_PLAN.md`
+and `HANDOVER.md`.
+
+**Citation re-anchoring.** The ER-STATE-17 guard edited cited lines inside `migrateFromLegacyApvts`,
+so three anchors into `src/InternalState.h` were re-derived BY SYMBOL (`oversampleValue`,
+`migrateFromLegacyApvts` ×2) and declared in `DELIBERATE_REAIMS` for both bases; eleven more moved
+mechanically. [Verified]
