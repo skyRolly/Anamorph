@@ -84,21 +84,24 @@ round reconciles against.</p>
 <div class="meta">
   <span>ROUNDS 1–2 · 2026-08-31</span>
   <span>TREE: main @ e8f4422 → v0.9.6</span>
-  <span>STATUS: round 2 complete — CI green, 3 decisions pending</span>
+  <span>STATUS: round 2 complete — 5 fixed, 2 refuted, 3 decisions pending</span>
   <span>NEXT: round 3 — KI-028, then D-1 if approved</span>
 </div>
 
 <h2><span class="no">§1</span>Executive status</h2>
-<p class="lede"><strong>Round 2</strong> recovered CI, fixed three confirmed defects — two of
+<p class="lede"><strong>Round 2</strong> recovered CI, fixed five confirmed defects — two of
 which made the plug-in inaudible or wrong in ordinary use — measured RISK-007 rather than reasoning
-about it, and <strong>corrected decision D-1 by refuting two of its own candidate fixes</strong>.
-Round 1's sweep (eight adversarially-verified lenses, 17 findings confirmed, 2 refuted, ~75 areas
-ruled out) remains the baseline below. The headline results:</p>
+about it, <strong>corrected decision D-1 by refuting two of its own candidate fixes</strong>, and
+<strong>refuted a round-1 finding of its own</strong> by running the code path instead of reading
+it. Round 1's sweep (eight adversarially-verified lenses, 17 findings confirmed, 2 refuted, ~75
+areas ruled out) remains the baseline below. The headline results:</p>
 <div class="verdicts">
   <div class="v"><div class="k">R2 · worst defect found</div><p><strong>Every activation ducked.</strong> The engine was prepared before it was told the current settings, so its first look at them read as a settings change and got the click-free mute. Measured at <strong>0.4 % of level</strong> for ~35 ms on every insert and every project load. Fixed; State test 16.</p></div>
   <div class="v"><div class="k">R2 · worst latent defect</div><p><strong>A corrupt value silenced the plug-in permanently.</strong> <code>value="nan"</code> in a session or preset was adopted, output peak measured <strong>0.000000</strong>, and saving wrote it back out. Fixed at both ingress points; State test 17.</p></div>
   <div class="v"><div class="k">R2 · RISK-007 measured</div><p>The TSan probe reports <strong>four real data races</strong> on exactly the members round 1 predicted. The code half of D-2 is settled; only the host question remains.</p></div>
   <div class="v"><div class="k">R2 · D-1 corrected</div><p>Two of D-1's candidate fixes are <strong>refuted</strong>: the editor poll does not exist with the editor closed, and an <code>AsyncUpdater</code> reproduces the same syscall. Reachability is also lower than filed.</p></div>
+  <div class="v"><div class="k">R2 · our own finding refuted</div><p><strong>ER-STATE-01 (round 1) was wrong.</strong> A probe of <code>apvts.replaceState()</code> in isolation shows it already resets absent PARAM nodes to their defaults <em>with</em> host notification. Round 1 reasoned from <code>reassertParameters</code> and never ran the other half. Six documents corrected; the shipped code kept as a backstop.</p></div>
+  <div class="v"><div class="k">R2 · the real leak</div><p>The leak class ER-STATE-01 mis-attributed <em>does</em> exist — in the <strong>host-hidden Settings</strong>. A 0.2-era session restored into a reused instance kept the previous project's Oversampling, UI Scale, Persistence, Meters, Tooltips and Animations. Fixed as ER-STATE-08.</p></div>
 </div>
 <h3>Round 1 headlines (unchanged)</h3>
 <div class="verdicts">
@@ -108,10 +111,14 @@ ruled out) remains the baseline below. The headline results:</p>
   <div class="v"><div class="k">Release blocker surfaced</div><p><strong>ER-DOC-01</strong> — the Level-5 audition was recorded as cleared "against the build that ships" for a superseded build. Restated OPEN for v0.9.6 (D-3).</p></div>
 </div>
 <p class="note"><strong>Validation at end of round 2:</strong> <code>preflight.sh</code> exit 0 —
-DSP suite 45 tests / 241 checks, state suite <strong>17 tests / 936 checks</strong>, citation self-test
+DSP suite 45 tests / 241 checks, state suite <strong>18 tests / 941 checks</strong>, citation self-test
 145 cases green against all three bases, realtime lint 93 cases + clean scan, every checker self-test
 green. The pinned clang-22 gate reports no NEW first-party warnings and the GCC shadow count is back
-to its baselined 1. No <code>src/</code> change shipped unvalidated.</p>
+to its baselined 1. No <code>src/</code> change shipped unvalidated. Two opt-in probes sit beside the
+suite and are not run by default: <code>--state-thread-probe</code> (RISK-007, verdict from the
+sanitizer) and <code>--latency-restore-probe</code> (ER-STATE-07, which <em>measures and prints</em>
+rather than asserting — the reported latency is an Architecture-Review-Gate category, so the probe
+must not encode an expectation of its own).</p>
 
 <h2><span class="no">§2</span>Findings register</h2>
 <p class="lede">Every confirmed finding, its verified status and current disposition. IDs are stable
@@ -120,6 +127,8 @@ across rounds; evidence in full in the worklog and the cited files.</p>
 <tr><th>ID</th><th>Category</th><th>Finding</th><th>Sev</th><th>Confidence</th><th>Disposition</th></tr>
 <tr><td class="mono">ER-DSP-06<br><span class="small">round 2</span></td><td>DSP / activation</td><td><code>prepareToPlay</code> prepared the engine BEFORE giving it the current parameters, breaking <code>prepare()</code>'s "p is current" contract. The engine's struct defaults disagree with the wrapper's first snapshot on a discrete field (<code>dimMode</code>: APVTS choice 1 → mode 2 vs struct 1), so the click-free switch machine ducked on EVERY activation; continuous controls additionally ramped from defaults.</td><td class="sev-h">High</td><td>Measured</td><td><span class="chip c-fixed">FIXED r2</span> <code>primeParameters()</code> + State test 16</td></tr>
 <tr><td class="mono">ER-STATE-03<br><span class="small">round 2</span></td><td>State / robustness</td><td><code>value="nan"</code> in a session or preset became parameter state and silenced the plug-in permanently (self-heal zeroes every block), persisting through save. Round 1's assumed <code>raw="nan"</code> trigger is <strong>refuted</strong>; the real ingress is JUCE's own <code>replaceState</code> plus an unguarded <code>applySoundTree</code>.</td><td class="sev-h">High</td><td>Measured</td><td><span class="chip c-fixed">FIXED r2</span> two guards + State test 17</td></tr>
+<tr><td class="mono">ER-STATE-08<br><span class="small">round 2</span></td><td>State / cross-project leak</td><td>A v0.2 bare-APVTS session restored into a <strong>reused</strong> instance never touched <code>InternalState</code>: all six host-hidden Settings kept the previous project's values. The <code>AnamorphRoot</code> branch migrates them for every pre-0.8.4 session; the v0.2 branch one <code>else if</code> below did not, though a v0.2 session is older still. Found only after making State test 4's InternalState assertion non-vacuous (it had been checking a value nobody moved — filed as ER-TST-05 too).</td><td class="sev-m">Med</td><td>Measured</td><td><span class="chip c-fixed">FIXED r2</span> <code>migrateFromLegacyApvts</code> + de-vacuumed State test 4</td></tr>
+<tr><td class="mono">ER-STATE-06<br><span class="small">round 2</span></td><td>State / presets</td><td><code>applySoundTree</code> asked <code>child.isValid()</code> when the question is whether the file carries a <em>value</em>. A <code>&lt;PARAM id="width"/&gt;</code> left by a truncated write read as <code>var()</code> → <code>0.0</code> → the range <strong>minimum</strong>; Width runs 0–2 with default 1.0, so the result is a silent full mono collapse. The session path never had the bug — JUCE's own <code>setNewState</code> reads <code>getProperty("value", denormalisedDefault)</code>.</td><td class="sev-m">Med</td><td>Measured</td><td><span class="chip c-fixed">FIXED r2</span> <code>hasProperty("value")</code> + State test 18</td></tr>
 <tr><td class="mono">ER-GUI-04<br><span class="small">round 2</span></td><td>GUI / undo</td><td>Round 1's own value-box gesture fix leaks an open host gesture when the mouse release is lost; while open, <code>pollUndoCoalesce</code> commits no undo step. The editor's reconcile clears the visual flag but cannot reach an RAII member of a file-local type.</td><td class="sev-l">Low</td><td>Confirmed</td><td><span class="chip c-filed">FILED KI-028</span> two designs → round 3</td></tr>
 <tr><td class="mono">CI gates<br><span class="small">round 2</span></td><td>CI blocker</td><td>Round 1 turned both warning gates red: one lambda parameter shadowing an enclosing local (seen by Clang and GCC), and four bare <code>!=</code> float comparisons in new tests.</td><td class="sev-h">Blocker</td><td>Reproduced</td><td><span class="chip c-fixed">FIXED r2</span> at source; no baseline widened</td></tr>
 <tr><td class="mono">ER-CI-02..06<br>ER-STATE-04<br>ER-GUI-02<br><span class="small">round 2</span></td><td>Docs / diagnostics</td><td>Seven verified corrections: build.yml's header contradicted its own in-job comment and CI_CD.md; codeql.yml claimed a toolchain and a coverage scope it does not have; the GCC exclusion's measurement label named a retired compiler; release.yml reported a fetch failure as a bad tag; the <code>reassertParameters</code> rationale mis-stated what <code>replaceState</code> does; one GUI comment over-claimed.</td><td class="sev-m">Med</td><td>Verified first</td><td><span class="chip c-doc">CORRECTED r2</span></td></tr>
@@ -129,7 +138,7 @@ across rounds; evidence in full in the worklog and the cited files.</p>
 <tr><td class="mono">ER-RT-01</td><td>RT safety</td><td>APVTS listener for drive/algorithm runs <code>setLatencySamples</code> on the automation (audio) thread: ≥3 CriticalSections; heap append + <code>write()</code> on an engage-threshold crossing; priority-inversion variant via the host's synchronous <code>restartComponent</code>.</td><td class="sev-h">High</td><td>Confirmed ×2</td><td><span class="chip c-filed">FILED KI-027</span> gate item → D-1</td></tr>
 <tr><td class="mono">ER-RT-02</td><td>Gate coverage</td><td><code>setParameters</code>/<code>toEngine</code> bodies (audio-thread, every block) outside every tier for lock/blocking/IO classes. Verification <em>narrowed</em> the original claim: updateDerived/snapSmoothers were already covered by the lint's same-file closure.</td><td class="sev-m">Med</td><td>Confirmed (narrowed)</td><td><span class="chip c-fixed">FIXED r1</span> lint seeds + 3 self-tests</td></tr>
 <tr><td class="mono">ER-RT-03<br>ER-STATE-05</td><td>Threading / state</td><td>State calls mutate message-thread state unguarded. Narrowed by verification: VST3 annotates <code>[UI-thread]</code> and JUCE hosting locks around restore — the real exposure is macOS AU off-main autosave.</td><td class="sev-m">Med</td><td>Confirmed (narrowed)</td><td><span class="chip c-filed">FILED RISK-007</span> + policy note → D-2</td></tr>
-<tr><td class="mono">ER-STATE-01</td><td>Serialization</td><td>Absent PARAM nodes kept the previous project's values on a reused live instance — SESSION_COMPATIBILITY rule 2 held only vacuously (fresh instances). Preset path always had the rule.</td><td class="sev-m">Med</td><td>Confirmed</td><td><span class="chip c-fixed">FIXED r1</span> defaults + state test</td></tr>
+<tr><td class="mono">ER-STATE-01</td><td>Serialization</td><td>Absent PARAM nodes kept the previous project's values on a reused live instance — SESSION_COMPATIBILITY rule 2 held only vacuously (fresh instances). Preset path always had the rule. <strong>Premise refuted in round 2</strong> (§4): <code>replaceState</code> already resets absent nodes, with host notification.</td><td class="sev-m">Med</td><td>Refuted r2</td><td><span class="chip c-open">SUPERSEDED</span> code kept as a backstop; 6 documents corrected</td></tr>
 <tr><td class="mono">ER-STATE-02</td><td>Serialization</td><td>Wrong-typed A/B slot payload re-typed the live APVTS on apply → later saves silently restore zero parameters in a fresh instance (delayed silent data loss).</td><td class="sev-m">Med</td><td>Confirmed</td><td><span class="chip c-fixed">FIXED r1</span> type check + e2e test</td></tr>
 <tr><td class="mono">ER-GUI-01</td><td>GUI / undo</td><td>Value-box drag was a third gesture-less edit path (no Undo step, outside host touch/latch); KI-010 claimed the list complete.</td><td class="sev-l">Low</td><td>Confirmed</td><td><span class="chip c-fixed">FIXED r1</span> gesture + KI-010 note</td></tr>
 <tr><td class="mono">ER-TST-01</td><td>Test vacuity</td><td>Tests 2/38 ran the 4-algorithm matrix with <code>algoAmount=0</code> — parked fast paths; neither invariant ever asserted over engaged wet synthesis; Dimension-D + dimMode engaged by no assertion-bearing test. The recorded dump-vacuity class, unapplied to the acceptance suite.</td><td class="sev-h">High</td><td>Confirmed ×2</td><td><span class="chip c-fixed">FIXED r1</span> engaged matrices + dim sweep</td></tr>
@@ -153,7 +162,7 @@ across rounds; evidence in full in the worklog and the cited files.</p>
 <tr><td class="mono">ER-DEP-04</td><td><code>-DANAMORPH_JUCE_PATH</code> bypasses the SHA pin with no revision check; recommended for "reproducibility". Configure-time WARNING proposed.</td><td><span class="chip c-open">ROUND 2 · R2-4</span></td></tr>
 <tr><td class="mono">ER-GUI-02/03</td><td>cancelInlineTextEdits fires only from one branch (the 0.9.3 guarantee is narrower than stated); KI-013's inertness also latches audio-affecting hold state.</td><td><span class="chip c-open">ROUND 2 · R2-5</span></td></tr>
 <tr><td class="mono">ER-DSP-05</td><td>Chorus LFO float phase accumulation degrades/stalls beyond the tested envelope (192 kHz × 8 OS at 0.05 Hz).</td><td><span class="chip c-def">DEFERRED</span></td></tr>
-<tr><td class="mono">ER-DEP-06</td><td>Malformed preset files fail silently; non-numeric values become 0 not default. UI copy is maintainer-owned (C8).</td><td><span class="chip c-def">DEFERRED</span></td></tr>
+<tr><td class="mono">ER-DEP-06</td><td>Malformed preset files fail silently; non-numeric values become 0 not default. UI copy is maintainer-owned (C8). <strong>Round 2 split it:</strong> the <em>value-less</em> half was a distinct, measurable defect and is fixed (ER-STATE-06). What remains is a present-but-unparsable value (<code>value="abc"</code> → <code>0.0</code>, which is finite, so the NaN guard does not catch it) — telling that apart from a legitimate <code>0</code> needs the raw text, not the <code>var</code>. Code-read prediction, <em>not yet measured</em>; round 3.</td><td><span class="chip c-def">DEFERRED</span> (narrowed)</td></tr>
 </table></div>
 
 <h2><span class="no">§3</span>Completed work</h2>
@@ -164,7 +173,9 @@ across rounds; evidence in full in the worklog and the cited files.</p>
   <li><strong>State</strong> — non-finite values rejected on both the session and preset paths, with the write gate inverted so a NaN is <em>repaired</em> rather than skipped.</li>
   <li><strong>Instrument</strong> — the committed TSan state-thread probe, plus its documentation in TESTING.md; RISK-007 now records the four measured races.</li>
   <li><strong>Corrections</strong> — seven verified comment/diagnostic fixes (build.yml header, codeql.yml toolchain + coverage, the GCC exclusion label, release.yml's tag diagnostic, the <code>reassertParameters</code> rationale, one GUI over-claim), KI-027 corrected on four points, KI-028 filed.</li>
-  <li><strong>Tests</strong> — state suite 924 → <strong>936</strong> checks (State tests 16 and 17), both proven to fail without their fixes.</li>
+  <li><strong>State (adversarial sweep)</strong> — the v0.2 restore now migrates the host-hidden Settings instead of leaving the previous project's (ER-STATE-08), and a preset entry with no saved value means "default" rather than the range minimum (ER-STATE-06).</li>
+  <li><strong>Self-correction</strong> — round 1's ER-STATE-01 premise refuted by probing <code>replaceState</code> in isolation; the claim was repeated in six places (two code comments, SERIALIZATION_REGISTRY, the CHANGELOG entry, a state-test comment, the worklog table) and all six are corrected. The shipped default branch is kept and re-described as a backstop; the user-facing CHANGELOG entry is replaced by the leak we actually fixed.</li>
+  <li><strong>Tests</strong> — state suite 924 → <strong>941</strong> checks (State tests 16, 17, 18, plus State test 4's two InternalState assertions made non-vacuous), each proven to fail without its fix.</li>
 </ul>
 <h3>Round 1</h3>
 <ul>
@@ -181,6 +192,8 @@ across rounds; evidence in full in the worklog and the cited files.</p>
 <ul>
   <li><span class="chip c-ref">REFUTED</span> <strong>ER-DSP-03</strong> — block-boundary silence dwell of the ordinary discrete duck: real mechanism, but documented product behaviour since [0.8.10] (CHANGELOG describes exactly this shape). Do not re-raise without new evidence.</li>
   <li><span class="chip c-ref">REFUTED</span> <strong>ER-TST-03</strong> — "fuzzer can't reach XML through zlib framing": the framing premise is false in the pinned JUCE (plain UTF-8 XML, no deflate) and in every JUCE this product ever used.</li>
+  <li><span class="chip c-ref">REFUTED r2</span> <strong>ER-STATE-07</strong> — "a restore that moves Drive or Algorithm through the absent-node default branch leaves the host holding a stale reported latency". The <em>mechanism</em> checks out (probe step 0: a bare <code>setValue(0)</code> on Drive leaves the report at 4 samples), but the restore reports correctly on both a first and a second load. Step 0b isolates why: <code>apvts.replaceState()</code> alone takes Drive to its default and the latency 4 → 0, because <code>updateParameterConnectionsToChildTrees</code> <em>appends</em> an empty PARAM node for every adapter the new tree lacks, and that append fires <code>valueTreeChildAdded</code> → <code>setNewState</code> → <code>setDenormalisedValue(getProperty("value", denormalisedDefault))</code> → <code>setValueNotifyingHost</code>. No gate item, no decision. Filed here rather than dropped, because it is also what refuted ER-STATE-01.</li>
+  <li><span class="chip c-ref">REFUTED r2</span> <strong>ER-STATE-01</strong> (round 1) — same evidence. Absent PARAM nodes were never skipped; the reset was JUCE's all along. The shipped backstop stays (one comparison, same answer, no dependence on that JUCE internal), but every document that asserted the mechanism is corrected. The lesson for later rounds: round 1 reasoned about <code>reassertParameters</code> without ever running <code>replaceState</code> on its own.</li>
   <li><span class="chip c-def">DEFERRED</span> <strong>ER-DSP-05</strong> (outside the supported envelope), <strong>ER-DEP-06</strong> (needs maintainer-owned UI copy), twin-dump transition scenarios (<strong>R2-6</strong>, only on maintainer request — hash churn cost).</li>
   <li><span class="chip c-ref">PRIOR ART</span> ~20 encountered issues were already recorded (KI/RISK/worklogs) and were not re-filed — list in the worklog §Already-known.</li>
 </ul>
@@ -214,8 +227,9 @@ across rounds; evidence in full in the worklog and the cited files.</p>
 <tr><td>2</td><td class="mono">D-1 implementation (if approved)</td><td>RT correctness</td><td>Removes the one confirmed lock/alloc/syscall path on the audio thread. The surviving design is now identified</td><td>M</td><td>Gated; changes only WHEN the host is told</td></tr>
 <tr><td>3</td><td class="mono">D-2 decision (evidence complete)</td><td>Threading</td><td>The TSan measurement is done; only the host-behaviour question remains</td><td>—</td><td>Gated</td></tr>
 <tr><td>4</td><td class="mono">ER-CI-04 re-measurement under gcc:16</td><td>CI hygiene</td><td>Puts the warning exclusion's empirical leg back on the compiler the lane actually runs; the structural leg already carries it</td><td>S</td><td>Low</td></tr>
-<tr><td>5</td><td class="mono">ER-STATE-04.5</td><td>Serialization</td><td>After a restore omitting a PARAM node, the next save persists <code>id</code> + <code>raw</code> without <code>value</code>. Not a defect today; worth deciding deliberately</td><td>S</td><td>Touches saved-blob contents → gated if changed</td></tr>
-<tr><td>6</td><td class="mono">R2-6 twin-dump transition scenarios</td><td>Gate scope</td><td>Widens bit-identity into the documented blind axes — on maintainer request only</td><td>M</td><td>Hash churn on every toolset move</td></tr>
+<tr><td>5</td><td class="mono">ER-DEP-06 residual</td><td>State / presets</td><td>A present-but-unparsable preset value (<code>value="abc"</code>) still lands on the range minimum — <code>0.0</code> is finite, so the NaN guard misses it, and the <code>var</code> cannot tell it from a legitimate <code>0</code>. Predicted from the code, not yet measured: measure first</td><td>S</td><td>Low; same shape as the ER-STATE-06 fix</td></tr>
+<tr><td>6</td><td class="mono">ER-STATE-04.5</td><td>Serialization</td><td>After a restore omitting a PARAM node, the next save can persist <code>id</code> + <code>raw</code> without <code>value</code> — confined (round-2 measurement) to the case where that parameter was already at its default. Not a defect today; worth deciding deliberately</td><td>S</td><td>Touches saved-blob contents → gated if changed</td></tr>
+<tr><td>7</td><td class="mono">R2-6 twin-dump transition scenarios</td><td>Gate scope</td><td>Widens bit-identity into the documented blind axes — on maintainer request only</td><td>M</td><td>Hash churn on every toolset move</td></tr>
 </table></div>
 <p class="small">Round 1's R2-1 (NaN ingress) and R2-2 (TSan) are <strong>done</strong>; R2-3/3b/3c
 (the CI comment batch and release diagnostic) and R2-5 (ER-STATE-04, ER-GUI-02/03) are <strong>done</strong>.
@@ -239,6 +253,8 @@ evidence emerged to promote one. Ranking follows the programme's order — corre
   <li class="done">D-1 re-evaluated — two candidates refuted, no implementation</li>
   <li class="done">Seven verified comment/diagnostic corrections</li>
   <li class="done">KI-028 filed with both candidate designs</li>
+  <li class="done">Adversarial sweep of the restore surface — ER-STATE-06 and ER-STATE-08 fixed with regression coverage, ER-STATE-07 refuted by measurement</li>
+  <li class="done">Round 1's ER-STATE-01 premise corrected in all six places it was asserted</li>
   <li class="done">Worklog + this dashboard updated and committed</li>
   <li>D-1 decided (surviving design)</li>
   <li>D-2 decided — code half now measured</li>

@@ -487,12 +487,14 @@ static void testLegacyV02BareApvts()
            "param absent from legacy session stays at default");
 
     // ...and on a REUSED live instance the same rule must hold by RESET, not by
-    // luck: before ER-STATE-01 the restore skipped absent PARAM nodes entirely,
-    // so a parameter the blob does not carry KEPT the previous project's value
-    // (the fresh-instance check above was vacuously green -- a just-constructed
-    // processor is already at defaults). SESSION_COMPATIBILITY_POLICY rule 2 and
-    // SERIALIZATION_REGISTRY ("Default: per-parameter defaults") record the
-    // intended semantics; the preset path (applySoundTree) always had them.
+    // luck: the fresh-instance check above is vacuously green, because a
+    // just-constructed processor is already at defaults. SESSION_COMPATIBILITY_POLICY
+    // rule 2 and SERIALIZATION_REGISTRY ("Default: per-parameter defaults") record the
+    // semantics this asserts. (Round 1 read the restore as SKIPPING absent nodes and
+    // added a default branch to reassertParameters for it; round 2 measured
+    // apvts.replaceState on its own -- --latency-restore-probe step 0b -- and found it
+    // already resets them, so the branch is a backstop and this check covers both.
+    // The assertion is the contract either way, which is why it stands unchanged.)
     {
         auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p.getAPVTS().getParameter ("chorusRate"));
         rp->setValueNotifyingHost (1.0f);            // the "previous project" leaves a non-default value
@@ -508,8 +510,20 @@ static void testLegacyV02BareApvts()
 
     // The bare path predates InternalState AND its legacy APVTS params: the
     // host-hidden settings stay at their defaults.
-    check ((int) p.getInternal().copyState()["int_oversample"] == 1,
-           "InternalState stays default for a v0.2 session");
+    // ...and on a REUSED live instance that must hold by RESET, not by luck. This
+    // assertion used to be checked on an InternalState nobody had touched, so it
+    // passed because the value had never left its default -- the same vacuity
+    // ER-TST-01 found in the DSP matrices (round 1). Dirty it first, exactly as
+    // the parameter half above dirties chorusRate (ER-TST-05 / ER-STATE-08).
+    p.getInternal().oversampleValue().setValue (3);   // "previous project" = 4x
+    p.getInternal().uiScaleValue().setValue (5);      // ...and a non-default UI scale
+    if (applyXmlFixture (p, "legacy_v0_2_bare_apvts.xml"))
+    {
+        check ((int) p.getInternal().copyState()["int_oversample"] == 1,
+               "InternalState RESETS to default for a v0.2 session on a reused instance");
+        check ((int) p.getInternal().copyState()["int_uiScale"] == 3,
+               "...and every host-hidden setting resets, not just the one that is read back");
+    }
     checkStr (p.getPresets().currentName(), "Default", "preset name falls back to Default");
     check (! p.getPresets().isDirty(), "restored v0.2 state adopts a clean baseline");
 }
@@ -1845,6 +1859,62 @@ static void testNonFiniteParameterInStateIsRejected()
 }
 
 // ---------------------------------------------------------------------------
+// 18. A PARAM node that carries NO `value` means "not in this file", i.e. the
+//     parameter default -- not zero.
+//
+//     Same surface as test 17 and the same reason it is reachable: a preset is
+//     user-editable text, and a truncated write or a hand edit can leave
+//     <PARAM id="width"/> behind. applySoundTree keyed its "did the file carry
+//     this parameter?" question off child.isValid() alone, so a value-less node
+//     read as `var()` -> (double) 0.0 -> convertTo0to1(0.0): the range MINIMUM,
+//     silently, for every parameter whose node lost its value.
+//
+//     Width is the sharp case -- range 0..2 with default 1.0 -- so the failure
+//     is not a nudge but a full mono collapse, applied without any error the
+//     user could see. The rule this restores is the one the surrounding code
+//     already states for a missing child, and the one readSlot follows for the
+//     A/B slots: absent means default.
+static void testValuelessParamMeansDefault()
+{
+    std::printf ("State test 18: a PARAM with no value means default, not zero\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 256);
+    auto& pm = proc.getPresets();
+
+    // Normalised throughout: rawOf/setRaw speak AudioProcessorParameter's 0..1.
+    // Width's default is the range MIDPOINT (0..2, default 1), which is what
+    // makes it a clean probe -- 0.0 is a value the file could plausibly mean,
+    // and it is nowhere near the default.
+    auto* widthParam = proc.getAPVTS().getParameter (pid::width);
+    check (widthParam != nullptr, "width parameter exists");
+    if (widthParam == nullptr) return;
+    const float expected = widthParam->getDefaultValue();
+
+    // Move it away from the default first, so "came back to default" cannot be
+    // confused with "was never touched".
+    setRaw (proc, pid::width, 0.95f);
+
+    const auto presetFile = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                                .getChildFile ("anamorph_valueless_probe.anamorph");
+    presetFile.deleteFile();
+
+    auto tree = juce::ValueTree ("ANAMORPH");
+    auto node = juce::ValueTree ("PARAM");
+    node.setProperty ("id", pid::width, nullptr); // id but NO value -- the truncated-write shape
+    tree.appendChild (node, nullptr);
+    if (auto xml = tree.createXml())
+        check (xml->writeTo (presetFile), "value-less preset file written");
+
+    check (pm.loadFile (presetFile), "the value-less preset file loads (it is well-formed XML)");
+    const float after = rawOf (proc, pid::width);
+    std::printf ("  width after loading a preset with a value-less PARAM: %f\n", after);
+    check (juce::approximatelyEqual (after, expected),
+           "a value-less PARAM restores the default, not the range minimum");
+    presetFile.deleteFile();
+}
+
+// ---------------------------------------------------------------------------
 // 16. FIRST ACTIVATION: a session the host restored BEFORE it activated the
 //     plug-in must be audible correctly from the very first sample.
 //
@@ -2048,12 +2118,152 @@ static int runStateThreadProbe()
     return 0;
 }
 
+// ---------------------------------------------------------------------------
+// ER-STATE-07 probe: does the reported latency follow a restore that moved
+// Drive or Algorithm through the ABSENT-node (default) path?
+//
+// MEASURES, does not assert. The reported latency is an
+// ARCHITECTURE_REVIEW_GATE hard-stop category, so this probe exists to put a
+// number on the finding for the maintainer decision -- it must not encode
+// either the current behaviour or a proposed one as an expectation.
+//
+// The mechanism: for a PARAM node PRESENT in the blob, apvts.replaceState()
+// drives setValueNotifyingHost, whose listener chain reaches
+// AnamorphAudioProcessor::parameterChanged -> updateLatency(). For an ABSENT
+// node, reassertParameters' default branch applies the value with setValue()
+// plus a direct atomic store, neither of which notifies -- so nothing
+// re-reports. predictLatency short-circuits to 0 unless oversampling is on, so
+// the probe turns oversampling on first; it also holds oversampling EQUAL
+// across the two states, because a changed oversampling fires InternalState's
+// own callback and would mask the gap.
+static int runLatencyRestoreProbe()
+{
+    std::printf ("ER-STATE-07 probe: reported latency after an absent-node restore\n");
+
+    // Step 0 -- isolate the MECHANISM, with no state machinery in the way: does a
+    // bare setValue() (what reassertParameters' notifyHost=false path uses) reach
+    // the apvts.addParameterListener chain that ends in updateLatency()? A restore
+    // has too many other things in it to answer that on its own.
+    {
+        AnamorphAudioProcessor iso;
+        iso.getInternal().oversampleValue().setValue (2); // 2x -- predictLatency is 0 when OS is Off
+        iso.prepareToPlay (48000.0, 256);
+        setRaw (iso, pid::drive, 0.6f);
+        const int withDrive = iso.getLatencySamples();
+        if (auto* rp = iso.getAPVTS().getParameter (pid::drive))
+            rp->setValue (0.0f); // NOT setValueNotifyingHost
+        std::printf ("  step 0: latency %d with drive, %d after a bare setValue(0) -> setValue %s\n",
+                     withDrive, iso.getLatencySamples(),
+                     iso.getLatencySamples() == withDrive ? "does NOT re-report"
+                                                          : "DOES re-report");
+    }
+
+    // Step 0b -- what does apvts.replaceState() ALONE do to a parameter whose PARAM
+    // node is absent from the new tree? This is ER-STATE-01's premise, and nothing
+    // short of running it answers it: reassertParameters' default branch would
+    // otherwise hide the answer behind its own (identical) correction.
+    {
+        AnamorphAudioProcessor iso;
+        iso.getInternal().oversampleValue().setValue (2);
+        iso.prepareToPlay (48000.0, 256);
+        setRaw (iso, pid::drive, 0.6f);
+        const int latencyWithDrive = iso.getLatencySamples();
+
+        auto stripped = iso.getAPVTS().copyState();
+        stripped.removeChild (stripped.getChildWithProperty ("id", pid::drive), nullptr);
+        iso.getAPVTS().replaceState (stripped); // NO reassertParameters anywhere near this
+
+        std::printf ("  step 0b: replaceState with no drive node -> drive raw %.3f (default %.3f),"
+                     " latency %d -> %d\n",
+                     rawOf (iso, pid::drive),
+                     iso.getAPVTS().getParameter (pid::drive)->getDefaultValue(),
+                     latencyWithDrive, iso.getLatencySamples());
+    }
+
+    // Author a session at Drive > 0 with oversampling ON, then delete the drive
+    // PARAM node -- the partial-blob shape reassertParameters' default branch exists for.
+    juce::MemoryBlock partial;
+    {
+        AnamorphAudioProcessor authoring;
+        authoring.getInternal().oversampleValue().setValue (2); // 1-based ComboBox id: 2x
+        authoring.prepareToPlay (48000.0, 256);
+        setRaw (authoring, pid::drive, 0.6f);
+
+        juce::MemoryBlock whole;
+        authoring.getStateInformation (whole);
+        auto xml = BlobCodec::unwrap (whole);
+        if (xml == nullptr) { std::printf ("  authored session did not decode\n"); return 1; }
+
+        bool removedOne = false;
+        if (auto* paramsXml = xml->getChildByName ("ANAMORPH"))
+            if (auto* driveNode = paramsXml->getChildByAttribute ("id", pid::drive))
+            {
+                paramsXml->removeChildElement (driveNode, true);
+                removedOne = true;
+            }
+        if (! removedOne) { std::printf ("  no drive PARAM node to remove\n"); return 1; }
+        partial = BlobCodec::wrap (*xml);
+        std::printf ("  authored: drive raw %.3f, oversampling 2x, drive PARAM node removed\n",
+                     rawOf (authoring, pid::drive));
+    }
+
+    AnamorphAudioProcessor live;
+    live.getInternal().oversampleValue().setValue (2); // SAME as the blob: no callback to mask the gap
+    live.prepareToPlay (48000.0, 256);
+    setRaw (live, pid::drive, 0.6f);
+    const int before = live.getLatencySamples();
+
+    live.setStateInformation (partial.getData(), (int) partial.getSize());
+
+    const int reported = live.getLatencySamples();
+    // updateLatency() is exactly what prepareToPlay ends with, so a re-prepare
+    // yields the number the restored state is entitled to, through public API only.
+    live.prepareToPlay (48000.0, 256);
+    const int predicted = live.getLatencySamples();
+    std::printf ("  drive raw after restore: %.3f (default branch applied)\n", rawOf (live, pid::drive));
+    std::printf ("  latency before restore: %d\n", before);
+    std::printf ("  latency reported to the host after restore: %d\n", reported);
+    std::printf ("  latency the restored state actually predicts: %d\n", predicted);
+    std::printf ("  %s\n", reported == predicted
+                               ? "scenario A: the report followed the restore"
+                               : "scenario A: the host is told a latency the restored state does not have");
+
+    // Scenario B -- the same restore, but on an instance whose InternalState has
+    // ALREADY been through one restore. Step 0 showed the parameter write itself
+    // cannot re-report, so anything that corrected scenario A came from elsewhere in
+    // setStateInformation: InternalState's oversample callback. On a FIRST restore
+    // the live tree holds an int and the blob a round-tripped string, so
+    // ValueTree::setProperty sees a difference and fires the callback even though the
+    // oversampling did not change. Restoring twice removes that type mismatch, which
+    // is also the ordinary case -- a host reloading project after project.
+    AnamorphAudioProcessor twice;
+    twice.getInternal().oversampleValue().setValue (2);
+    twice.prepareToPlay (48000.0, 256);
+    twice.setStateInformation (partial.getData(), (int) partial.getSize()); // settle the property TYPES
+    setRaw (twice, pid::drive, 0.6f);                                       // back to a latency-bearing state
+    const int beforeB = twice.getLatencySamples();
+    twice.setStateInformation (partial.getData(), (int) partial.getSize());
+    const int reportedB = twice.getLatencySamples();
+    twice.prepareToPlay (48000.0, 256);
+    const int predictedB = twice.getLatencySamples();
+    std::printf ("  scenario B (second restore): before %d, reported %d, actually predicts %d\n",
+                 beforeB, reportedB, predictedB);
+    std::printf ("  %s\n", reportedB == predictedB
+                               ? "REFUTED: the report follows the restore on both paths"
+                               : "CONFIRMED: the host is told a latency the restored state does not have");
+    std::printf ("  a re-prepare corrects it; this is the restore-into-a-live-instance case\n");
+    return 0;
+}
+
 int main (int argc, char* argv[])
 {
     juce::ScopedJuceInitialiser_GUI juceInit; // MessageManager for APVTS/processor on this thread
 
     if (argc > 1 && std::strcmp (argv[1], "--state-thread-probe") == 0)
         return runStateThreadProbe();
+
+    if (argc > 1 && std::strcmp (argv[1], "--latency-restore-probe") == 0)
+        return runLatencyRestoreProbe();
 
     const bool writeSnapshot = argc > 1 && std::strcmp (argv[1], "--write-snapshot") == 0;
 
@@ -2081,6 +2291,7 @@ int main (int argc, char* argv[])
     testWrapperProcessBlockAudioPath();
     testFirstActivationUsesRestoredState();
     testNonFiniteParameterInStateIsRejected();
+    testValuelessParamMeansDefault();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

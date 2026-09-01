@@ -25,6 +25,14 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Regression coverage: State test 17, which restores a poisoned session, then plays audio through
   the real plug-in and requires it to be audible.
   Evidence: PR #134. [Verified]
+- **A preset file with a truncated entry no longer silently zeroes that control.** If an entry in a
+  preset lost its saved number — a truncated write, a hand edit — the control was set to the
+  *bottom* of its range rather than left at its default. For Width, whose range runs 0–200 % around
+  a 100 % default, that collapsed the image to mono with nothing on screen to explain it. An entry
+  with no value now means "not in this file", which is what a missing entry already meant, and the
+  control keeps its default. Nothing the plug-in itself saves is affected — it always writes the
+  value. Regression coverage: State test 18.
+  Evidence: PR #134. [Verified]
 - **Inserting the plug-in, or opening a project, no longer dips the sound for the first moment.**
   Every time the plug-in was activated — a fresh insert on a playing track, a project reload, a
   sample-rate or buffer-size change — the audio faded down to near-silence and back over roughly
@@ -59,11 +67,12 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   permanently (the same defect class fixed for the level meters in 0.8.x, INC-004). The
   correlation meter now self-heals the way the level meters do (Test 45).
   Evidence: PR #134. [Verified]
-- **Loading an old session into an already-used plug-in instance now resets settings the old
-  session predates.** Settings absent from an old session's data kept the *previous* project's
-  values instead of their defaults — the documented default rule was applied by fresh instances
-  only by luck (they already sit at defaults). Absent settings now reset to their defaults, as
-  presets always did.
+- **Loading a very old (0.2-era) session into an already-used plug-in instance now resets the
+  Settings panel.** Oversampling, UI Scale, Scope Persistence, Show Meters, Tooltips and UI
+  Animations are not stored in a session that old, and the load path never touched them — so they
+  silently kept the *previous* project's values. All six now reset to their defaults, matching what
+  a session from any later version already did. Regression coverage: State test 4, which sets those
+  values first so the check cannot pass by their never having moved.
   Evidence: PR #134. [Verified]
 - **A corrupted A/B slot in a session file can no longer silently lose every setting on a later
   save.** A slot payload that parsed but was not Anamorph data corrupted the internal state

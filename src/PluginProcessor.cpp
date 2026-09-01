@@ -318,9 +318,18 @@ juce::ValueTree AnamorphAudioProcessor::copyStateWithRawValues()
 //     so for every PARAM node PRESENT in the new tree the parameter, the DSP atomic, the
 //     editor's attachments and the host all move. The older claim here -- that it "swaps only
 //     the tree" -- was wrong. What it does NOT cover is the residual this function exists for:
-//     (a) parameters whose PARAM node is ABSENT from the restored tree are not visited at all
-//     (they keep the previous project's value -- ER-STATE-01, hence the default branch below),
-//     and (b) it reads only @value.
+//     it reads only @value.
+//  1b. CORRECTED AGAIN 2026-08-31 (ER-STATE-07), by running it rather than reasoning about it:
+//     ABSENT nodes are covered by replaceState too, which round 1 (ER-STATE-01) got wrong in the
+//     opposite direction. updateParameterConnectionsToChildTrees clears every adapter's tree,
+//     re-points the ones the new state carries, then APPENDS a fresh empty PARAM node for each
+//     adapter left over -- and that appendChild fires the APVTS's own valueTreeChildAdded ->
+//     setNewState -> setDenormalisedValue(getProperty("value", denormalisedDefault)). The node
+//     has no @value, so the parameter is set to its DEFAULT, through setValueNotifyingHost:
+//     host, editor and the drive/algorithm latency listeners all included. So the default branch
+//     below is a redundant, idempotent backstop, not the thing that makes rule 2 hold; it is
+//     kept because it costs one comparison per absent parameter and does not depend on that
+//     JUCE internal staying as it is. Measured with --latency-restore-probe step 0b.
 //  2. @value is the DENORMALISED (snapped) value; for discrete params the saved "raw" attribute
 //     (see getStateInformation) carries the EXACT normalised getValue() pluginval set, so the
 //     round-trip is bit-faithful and passes its 0.1 raw-value tolerance. replaceState cannot
@@ -406,16 +415,17 @@ void AnamorphAudioProcessor::reassertParameters (const juce::ValueTree& restored
                 // parameter DEFAULT, exactly as the preset path already does for a
                 // missing child (PresetManager::applySoundTree) and as
                 // SESSION_COMPATIBILITY_POLICY rule 2 / SERIALIZATION_REGISTRY
-                // ("Default: per-parameter defaults") record. Without this, a
-                // REUSED live instance kept the PREVIOUS project's value for
-                // every absent parameter -- the cross-project-leak class the
-                // slot/identity fields already guard against (readSlot's
-                // reset-first rule), left open for the parameter values
-                // themselves. View params are unaffected where rule 5 applies:
-                // applyStatePreservingView re-overrides them after this call.
-                // Fresh instances are already at defaults, so this is a no-op
-                // there (and for every complete, current-schema blob, which
-                // always carries all PARAM nodes).
+                // ("Default: per-parameter defaults") record.
+                //
+                // A BACKSTOP, not the mechanism -- see 1b above. replaceState has
+                // already applied this same default via its appended-node path, so
+                // by the time this runs the parameter is at it and applyNorm's gate
+                // is false. Round 1 claimed a reused live instance kept the previous
+                // project's value here; measurement (--latency-restore-probe step 0b)
+                // refuted that. Kept anyway: it is one comparison, it is the same
+                // answer, and it does not rely on a JUCE internal. View params are
+                // unaffected where rule 5 applies: applyStatePreservingView
+                // re-overrides them after this call.
                 applyNorm (rp, rp->getDefaultValue());
             }
         }
@@ -802,6 +812,16 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
         auto legacy = juce::ValueTree::fromXml (*xml);
         apvts.replaceState (legacy);
         reassertParameters (legacy, /*notifyHost*/ false); // legacy host restore: no host-notify
+
+        // A v0.2 session is older than 0.8.4, so it can only carry the host-hidden Settings the
+        // way pre-0.8.4 sessions do: as APVTS params, or not at all. Same call the AnamorphRoot
+        // branch makes for that vintage -- and needed for the same reason readSlot resets the A/B
+        // slots first: `internal` is a processor member a host restores into repeatedly on ONE
+        // live instance, so without this the previous project's Oversampling, UI Scale,
+        // Persistence, Meters, Tooltips and Animations stay in force underneath a v0.2 sound.
+        // migrateFromLegacyApvts writes all six unconditionally, so absent ones reset to default
+        // rather than being inherited.
+        internal.migrateFromLegacyApvts (legacy);
     }
     else
     {

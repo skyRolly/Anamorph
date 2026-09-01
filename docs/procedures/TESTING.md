@@ -193,7 +193,20 @@ describes. It is gated behind that flag precisely because, if the risk is real, 
 undefined behaviour; it exists to be run under TSan, where the question has a mechanical answer.
 Round 2 ran it and it reported four data races (`docs/FUTURE_RISKS.md` RISK-007).
 
-`tests/state_tests.cpp` (**16 tests**, own console target `AnamorphStateTests`) automates the
+A second opt-in instrument sits beside it: `AnamorphStateTests --latency-restore-probe`. It
+**measures and prints** — it asserts nothing and returns 0 either way — because what it examines is
+the reported latency, an `ARCHITECTURE_REVIEW_GATE.md` hard-stop category, so a probe that encoded
+an expectation would be legislating one. It answers whether a restore that moves Drive or Algorithm
+through the absent-PARAM path leaves the host holding a stale latency. Round 2's answer: no.
+Step 0 shows a bare `setValue()` does not re-report (4 samples before and after), and step 0b shows
+why that does not matter — `apvts.replaceState()` on its own takes Drive to its default and the
+latency 4 → 0, because `updateParameterConnectionsToChildTrees` appends an empty `PARAM` node for
+every adapter the new tree lacks, and that append reaches `setValueNotifyingHost` through the
+APVTS's own `valueTreeChildAdded`. Keep the probe with the finding it refuted (ER-STATE-07, and
+with it round 1's ER-STATE-01): a later JUCE bump can change that internal, and this is what would
+catch it.
+
+`tests/state_tests.cpp` (**18 tests**, own console target `AnamorphStateTests`) automates the
 COMPATIBILITY policy family against the **real `AnamorphAudioProcessor`** (the target compiles
 the plugin sources; since 2026-08-21 it also constructs and destroys the real editor, headlessly
 and without ever showing it — no peer, no message loop, no interaction):

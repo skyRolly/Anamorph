@@ -6605,10 +6605,29 @@ than reasoned about, decision D-1 materially corrected, and one new issue filed.
   `src/PresetManager.cpp` (`applySoundTree` fallback) → CHANGELOG (one Fixed entry), State test 17.
   The serialized SCHEMA is untouched: this changes what a MALFORMED value restores to, which
   `SERIALIZATION_REGISTRY.md` already specifies as "per-parameter defaults" for the absent case.
-- `tests/state_tests.cpp` (State tests 16 and 17, and the `--state-thread-probe` instrument) →
-  `docs/procedures/TESTING.md` (the probe documented beside the state-suite description; test count
-  15 → 16 → 17), REPOSITORY_MAP test rows, README:64, TESTING_POLICY, RELEASE_HARDENING_PLAN QA row
-  (45 / 241; 17 tests / 936 checks). The probe is documented as never run by the suite.
+- `tests/state_tests.cpp` (State tests 16, 17 and 18, State test 4's de-vacuumed InternalState
+  assertions, and the `--state-thread-probe` + `--latency-restore-probe` instruments) →
+  `docs/procedures/TESTING.md` (both probes documented beside the state-suite description; test count
+  15 → 16 → 17 → 18), REPOSITORY_MAP test rows, README:64, TESTING_POLICY, RELEASE_HARDENING_PLAN QA
+  row, HANDOVER Test row (45 / 241; 18 tests / 941 checks). Neither probe is run by the suite; the
+  latency one asserts nothing at all, because the reported latency is a gate category.
+- `src/PluginProcessor.cpp` (v0.2 branch of `setStateInformation` now calls
+  `internal.migrateFromLegacyApvts`, ER-STATE-08) → CHANGELOG (one Fixed entry, replacing round 1's
+  absent-PARAM entry — see below), State test 4. No schema change: this reaches an EXISTING
+  migration from a branch that was skipping it.
+- `src/PresetManager.cpp` (`applySoundTree` keys presence off `hasProperty("value")`, ER-STATE-06) →
+  CHANGELOG (one Fixed entry), State test 18. The serialized schema is untouched; this changes what
+  a value-less node restores to, which `SERIALIZATION_REGISTRY.md` already specifies as the
+  per-parameter default for the absent case.
+- **Correction (ER-STATE-07 / ER-STATE-01, 2026-08-31).** Round 1 recorded that
+  `reassertParameters`' default branch is what makes absent PARAM nodes reset on a reused live
+  instance. Measurement (`--latency-restore-probe` step 0b) refuted that: `apvts.replaceState`
+  already does it, with host notification. Corrected in `src/PluginProcessor.cpp` (two comments),
+  `docs/architecture/SERIALIZATION_REGISTRY.md` (the `<ANAMORPH>` row), CHANGELOG (the user-facing
+  entry replaced by ER-STATE-08's, which is the real instance of that leak class),
+  `tests/state_tests.cpp` (the State test 4 comment; the assertion itself stands — it pins the
+  contract regardless of which layer satisfies it) and the programme worklog. The shipped code is
+  kept as a backstop.
 - `tests/dsp_tests.cpp` (`juce::exactlyEqual` at four sites; two engine pairs moved to the heap) and
   `src/PluginProcessor.cpp` (lambda parameter renamed) → no doc trigger: neither changes behaviour,
   and CHANGELOG_POLICY rule 3 excludes them.

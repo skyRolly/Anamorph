@@ -201,7 +201,15 @@ void PresetManager::applySoundTree (const juce::ValueTree& state)
                     // child. A non-finite parameter silences the plug-in for the
                     // rest of the session (see reassertParameters for the full
                     // mechanism); the session path is guarded there.
-                    const float fromFile = child.isValid()
+                    //
+                    // The presence test is on the PROPERTY, not just the node: a
+                    // <PARAM id="width"/> that lost its value to a truncated write or
+                    // a hand edit reads back as var() -> 0.0 -> the range MINIMUM,
+                    // which for width (0..2, default 1) is a silent mono collapse.
+                    // "Absent means default" has to hold for a value-less node too --
+                    // the writer is apvts.copyState().createXml(), which always emits
+                    // `value`, so nothing this plug-in saves takes the new branch.
+                    const float fromFile = child.hasProperty ("value")
                         ? rp->convertTo0to1 ((float) (double) child.getProperty ("value"))
                         : rp->getDefaultValue();
                     rp->setValueNotifyingHost (std::isfinite (fromFile) ? fromFile

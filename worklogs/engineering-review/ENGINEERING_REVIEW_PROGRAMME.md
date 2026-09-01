@@ -32,9 +32,10 @@ entries and CHANGELOG notes cite.
 ## Round 2 — 2026-08-31 — CI recovery, the activation defect, and two confirmed silences
 
 **Entry state:** round 1 merged to the branch; CI **red** on two warning gates; five carried
-roadmap items; three maintainer decisions open. **Exit state:** CI gates fixed at source, three
+roadmap items; three maintainer decisions open. **Exit state:** CI gates fixed at source, **five**
 confirmed defects fixed with regression coverage, RISK-007 measured, D-1 materially corrected,
-one new issue filed.
+one new issue filed, and one round-1 finding refuted by measurement — with every document that
+repeated its premise corrected.
 
 ### What was fixed
 
@@ -43,6 +44,8 @@ one new issue filed.
 | CI gates | `-Wshadow-uncaptured-local` (Clang) / `-Wshadow` (GCC) from round 1's `adoptIfAnamorph` lambda shadowing `xml`; four `-Wfloat-equal` from bare `!=` on floats in Tests 43/44/46 | The gate output itself. Fixed at source, **no baseline widened**: the lambda parameter renamed, the comparisons moved to `juce::exactlyEqual` (JUCE's helper for deliberate exact comparison, already the idiom in `state_tests.cpp`). Re-verified with a pinned clang-22 rebuild (no NEW warnings, 17 accepted sites) and a GCC rebuild (1 shadow site in `PluginProcessor.cpp`, the pre-existing baselined one, down from 2) |
 | **ER-DSP-06** (new) | **Every activation ducked the audio to near-silence for ~35 ms**, and a restored session additionally opened at the wrong level for ~20 ms | Measured through the real wrapper, before and after. Before: min block RMS / settled = **0.0014** (fresh instance) and **0.0011** (restored), first block **2.4×** too loud. After: 0.982 / 0.983 / 1.000. State test 16 |
 | **ER-STATE-03** | **A `value="nan"` in a session or preset silenced the plug-in permanently**, and round-tripped through save | Measured: output peak **0.000000** over 8 blocks before the fix, 0.699720 after. State test 17, which also drives the preset path through a real poisoned file |
+| **ER-STATE-08** | **A v0.2 session restored into a reused instance kept the previous project's host-hidden Settings** — all six of them | State test 4's InternalState assertion was vacuous; made non-vacuous (Oversampling 4x, non-default UI Scale set first) it fails **twice** before the fix and passes after |
+| **ER-STATE-06** | **A preset entry with no saved value set that control to its range MINIMUM**, not its default — a silent mono collapse for Width | Measured through the real `loadFile` on a real file: width normalised **0.000** before, 0.500 (the default) after. State test 18 |
 | ER-STATE-04, ER-GUI-02, ER-CI-02/03/04/05/06 | Seven verified comment/diagnostic corrections | Each checked against the pinned JUCE or the actual workflow before editing; see below |
 
 ### ER-DSP-06 — the root cause was an ordering contract, not the reported symptom
@@ -164,10 +167,67 @@ designs are a decision, so round 3 picks one.
   re-anchor many citations") was over-cautious — only `build.yml` is citation-tracked of the four
   files, and its correction was written line-count-neutral.
 
+### Adversarial sweep of the state-restore surface — three findings, and a correction to round 1
+
+The sweep concentrated where round 1 and round 2 had both been editing (session/preset restore),
+on the principle that our own recent changes are the least-reviewed code in the tree.
+
+**ER-STATE-08 — CONFIRMED, FIXED.** A v0.2 bare-APVTS session restored into a **reused** instance
+left all six host-hidden Settings (Oversampling, UI Scale, Scope Persistence, Show Meters,
+Tooltips, UI Animations) at the *previous project's* values. The `AnamorphRoot` branch of
+`setStateInformation` migrates them (`internal.migrateFromLegacyApvts`) for every pre-0.8.4
+session; the v0.2 branch one `else if` below never touched `internal` at all — and a v0.2 session
+is older still, so it is the same vintage the migration exists for. Fixed with the same call.
+Confirmed by measurement, not reading: State test 4's InternalState assertion was **vacuous** (it
+checked a value nobody had moved), so it was made non-vacuous first — Oversampling set to 4x and
+UI Scale to a non-default — and it then failed twice before the fix and passes after. Filed as
+ER-TST-05 as well, since the vacuity is a test defect in its own right (same class as round 1's
+ER-TST-01).
+
+**ER-STATE-06 — CONFIRMED, FIXED.** `PresetManager::applySoundTree` asked `child.isValid()` when
+the question is whether the file carries a *value*. A `<PARAM id="width"/>` that lost its value to
+a truncated write read back as `var()` → `(double) 0.0` → `convertTo0to1(0.0)`, i.e. the range
+**minimum**. Width runs 0–2 with default 1.0, so the observed result is a silent full mono
+collapse. Measured: width normalised **0.000** before the fix, 0.500 (the default) after; State
+test 18 drives it through the real `loadFile` on a real file. The gate is now
+`child.hasProperty("value")`. No compatibility cost — the writer is
+`apvts.copyState().createXml()`, which always emits `value`. Note the asymmetry this closes: the
+*session* path never had the bug, because JUCE's own `setNewState` reads
+`getProperty("value", denormalisedDefault)`.
+
+**ER-STATE-07 — REFUTED by measurement, and it took round 1's ER-STATE-01 with it.** The
+hypothesis: `reassertParameters`' absent-node default branch applies values with `setValue()` plus
+a direct atomic store, neither of which notifies — so a restore that moves Drive or Algorithm
+through that branch would leave the host holding a stale reported latency (a hard-stop category,
+hence filed as gated rather than fixed). Step 0 of the new `--latency-restore-probe` confirms the
+*mechanism*: a bare `setValue(0)` on Drive leaves the reported latency at 4 samples. But the full
+restore reports correctly, in both a first restore and a second one. Step 0b isolates why:
+`apvts.replaceState()` **on its own**, with `reassertParameters` nowhere near it, takes Drive from
+0.600 to its default and the latency from 4 to 0. The route is inside APVTS —
+`updateParameterConnectionsToChildTrees` clears every adapter's tree, re-points those the new
+state carries, then *appends* an empty `PARAM` node for each adapter left over; that `appendChild`
+fires the APVTS's own `valueTreeChildAdded` → `setNewState` →
+`setDenormalisedValue(getProperty("value", denormalisedDefault))` → `setValueNotifyingHost`.
+Absent nodes are therefore reset to their defaults **with** full notification, which is exactly
+what ER-STATE-01 claimed did not happen.
+
+Consequences, all applied this round: ER-STATE-07 is closed as refuted (no gate item, no decision
+needed); round 1's default branch is **kept but re-described** as a redundant idempotent backstop
+in both code comments; `SERIALIZATION_REGISTRY.md`'s row now attributes the rule to
+`replaceState`; the `[0.9.6]` CHANGELOG entry that claimed a user-visible parameter fix is
+replaced by the one real instance of the leak class we actually fixed (ER-STATE-08's Settings); and
+State test 4's assertion is left standing, with its comment corrected — it pins the contract
+regardless of which layer satisfies it. Round 1's severity call was wrong in a specific way worth
+remembering: it reasoned from `reassertParameters` alone and never ran `replaceState` in isolation.
+
 ### Validation at the end of round 2
 
-`preflight.sh` exit 0. DSP suite **45 tests / 241 checks**; state suite **17 tests / 936 checks**
-(924 → 936: State tests 16 and 17). Citation self-test **145 cases**, gate green against all three
+`preflight.sh` exit 0. DSP suite **45 tests / 241 checks**; state suite **18 tests / 941 checks**
+(924 → 941: State tests 16, 17 and 18, plus the two de-vacuumed InternalState assertions in State
+test 4). Two opt-in probes beside the suite, neither run by default: `--state-thread-probe`
+(RISK-007, verdict from the sanitizer) and `--latency-restore-probe` (ER-STATE-07, measures and
+reports rather than asserting — the reported latency is a hard-stop category, so the probe must
+not encode any expectation). Citation self-test **145 cases**, gate green against all three
 bases. `check-realtime` 93 self-test cases + clean scan; `check-gcc-warnings` self-test 17;
 `check-docs`, `check-portability`, `check-linux-abi`, `setup-llvm-apt` all green. Pinned clang-22
 warning gate: no NEW first-party warnings.
@@ -180,9 +240,13 @@ warning gate: no NEW first-party warnings.
 3. **R2-6 / twin-dump transition scenarios** — unchanged from round 1, still on request only.
 4. **ER-CI-04 re-measurement** under `gcc:16`, to put the exclusion's empirical leg back on the
    compiler the lane actually runs.
-5. **ER-STATE-04.5 (new, informational)** — after a restore that omits a PARAM node, the live tree
-   keeps that node without a `value` property, so the next save persists `id` + `raw` only. Not a
-   defect today (the `raw` path restores it); worth deciding deliberately.
+5. **ER-STATE-04.5 (informational, mechanism now measured)** — after a restore that omits a PARAM
+   node, the live tree keeps the node APVTS appended for it. Sharpened by the ER-STATE-07 probe:
+   the node gets a `value` whenever the parameter actually moved (the flush follows
+   `setValueNotifyingHost`), so this is confined to the case where the absent parameter was
+   *already* at its default — `setDenormalisedValue` early-returns, `needsUpdate` stays false, and
+   the next save persists `id` + `raw` only. Not a defect today (the `raw` path restores it);
+   worth deciding deliberately.
 6. Deferred, unchanged: ER-DSP-05 (chorus LFO phase beyond the tested envelope), ER-DEP-06 (silent
    preset-load failure UX — maintainer-owned copy).
 
@@ -195,6 +259,10 @@ warning gate: no NEW first-party warnings.
 - [x] D-1 re-evaluated; two candidates refuted; no implementation
 - [x] ER-STATE-04 / ER-GUI-02 / ER-CI-02..06 verified then corrected
 - [x] KI-028 filed with both candidate designs
+- [x] Adversarial sweep of the restore surface: ER-STATE-06 + ER-STATE-08 fixed with regression
+      coverage, ER-STATE-07 refuted by measurement
+- [x] Round 1's ER-STATE-01 premise corrected everywhere it was asserted (code ×2, registry,
+      CHANGELOG, state-test comment, this worklog)
 - [x] Worklog + dashboard updated and committed
 - [ ] D-1 decided (surviving design)
 - [ ] D-2 decided — the code half is now measured
@@ -227,7 +295,7 @@ tooling false-positive; it added 6 findings (1 medium).
 | ER-RT-01 | Host automation of Drive/Algorithm re-reports latency from the audio thread: ≥3 locks; on a real latency change heap append + `write()` in the Linux wrapper; plus a priority-inversion variant | High | **FILED as KI-027** — the fix is a threading-model change (Architecture Review Gate hard stop) → maintainer decision **D-1**. Code comment corrected; LATENCY_MODEL/THREAD_MODEL drift recorded in the entry |
 | ER-RT-02 | Enforcement-scope hole (narrowed by verification): `setParameters`' own body (and `toEngine`) outside every tier for lock/blocking/IO classes — RTSan never sees them, the lint never seeded them, Test 38 counts allocations only | Med | **FIXED**: `check-realtime.py` seeds `setParameters`+`toEngine` (+3 self-test cases, 90→93); docstring + REALTIME_AUDIO_POLICY scoping corrected. Verifier proved `updateDerived`/`snapSmoothers` were already covered by the same-file closure — the original claim over-reached there |
 | ER-RT-03 / ER-STATE-05 | get/setStateInformation mutate message-thread state unguarded; real exposure = macOS AU off-main autosave (VST3 annotates `[UI-thread]`; JUCE hosting/pluginval structurally cannot produce the window) | Med (hyp→confirmed-narrowed) | **FILED as RISK-007** + THREADING_POLICY §Host state calls (assumption documented). TSan two-thread harness = round-2 investigation; any guard is gate-item → **D-2** |
-| ER-STATE-01 | PARAM nodes absent from a restored session keep the previous project's values on a REUSED live instance (policy rule 2 held only vacuously, on fresh instances) | Med | **FIXED**: `reassertParameters` applies `getDefaultValue()` for absent nodes (both notify paths; view params still re-overridden by `applyStatePreservingView`); state-suite regression on the v0.2 fixture; SERIALIZATION_REGISTRY row annotated |
+| ER-STATE-01 | PARAM nodes absent from a restored session keep the previous project's values on a REUSED live instance (policy rule 2 held only vacuously, on fresh instances) | Med | **~~FIXED~~ → PREMISE REFUTED in round 2 (ER-STATE-07 probe step 0b).** `apvts.replaceState` already resets absent nodes to their defaults, with host notification. The shipped default branch in `reassertParameters` is a redundant, idempotent backstop — kept, but it is not what makes rule 2 hold. Code comments, SERIALIZATION_REGISTRY and the CHANGELOG entry corrected in round 2; the state-suite assertion stands (it pins the contract, whoever satisfies it). The genuine instance of this leak class was in the **host-hidden Settings**, found and fixed in round 2 as ER-STATE-08 |
 | ER-STATE-02 | Parsable-but-wrong-typed A/B slot payload re-types the live APVTS on apply → every later save silently loses all 36 parameters for a fresh instance | Med | **FIXED**: `readSlot` accepts only `apvts.state.getType()` (wrong type = unparsable = slot re-seeded); end-to-end state regression (restore → `abSwitchTo` → re-save → fresh-instance restore); registry sentence extended |
 | ER-GUI-01 | Value-box vertical drag is a third gesture-less edit path — no Undo step, no host change gesture; KI-010 claimed the list complete | Low | **FIXED**: `ScopedDragNotification` held across the ValueBox press (knob-drag parity); KI-010 dated correction |
 | ER-TST-01 | Tests 2 & 38 ran the whole algorithm×OS matrix with `algoAmount` at its 0 identity default — the engaged wet synthesis of all four algorithms outside both the NaN/denormal and allocation invariants; Dimension-D engaged by NO assertion-bearing test | High | **FIXED**: both matrices at `algoAmount 0.7`; Test 2 sweeps dimMode 1–4 for Dimension-D. Result: all green — the engaged paths were clean, now they are *proven* clean per push |
