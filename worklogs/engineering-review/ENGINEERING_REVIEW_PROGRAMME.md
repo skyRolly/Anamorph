@@ -46,7 +46,8 @@ repeated its premise corrected.
 | **ER-STATE-03** | **A `value="nan"` in a session or preset silenced the plug-in permanently**, and round-tripped through save | Measured: output peak **0.000000** over 8 blocks before the fix, 0.699720 after. State test 17, which also drives the preset path through a real poisoned file |
 | **ER-STATE-08** | **A v0.2 session restored into a reused instance kept the previous project's host-hidden Settings** — all six of them | State test 4's InternalState assertion was vacuous; made non-vacuous (Oversampling 4x, non-default UI Scale set first) it fails **twice** before the fix and passes after |
 | **ER-STATE-06** | **A preset entry with no saved value set that control to its range MINIMUM**, not its default — a silent mono collapse for Width | Measured through the real `loadFile` on a real file: width normalised **0.000** before, 0.500 (the default) after. State test 18 |
-| ER-STATE-04, ER-GUI-02, ER-CI-02/03/04/05/06 | Seven verified comment/diagnostic corrections | Each checked against the pinned JUCE or the actual workflow before editing; see below |
+| **ER-DSP-07** | **`reset()` never cleared `pendingForced`**, so a forced duck in flight at a host re-prepare latched it true — and the Level-Match consumer at the end of `process()` runs only `if (! pendingForced)` | Test 47 injects −6 dB after a re-prepare mid-forced-duck: **0.000 dB** adopted before the fix (silently dropped), −5.868 dB after |
+| ER-STATE-04, ER-GUI-02, ER-CI-02/03/04/05/06, ER-DOC-04 | Eight verified comment/diagnostic corrections | Each checked against the pinned JUCE or the actual workflow before editing; see below |
 
 ### ER-DSP-06 — the root cause was an ordering contract, not the reported symptom
 
@@ -220,9 +221,55 @@ State test 4's assertion is left standing, with its comment corrected — it pin
 regardless of which layer satisfies it. Round 1's severity call was wrong in a specific way worth
 remembering: it reasoned from `reassertParameters` alone and never ran `replaceState` in isolation.
 
+### Round-2 investigation workflow — reconciled after the round closed
+
+The parallel investigation sweep launched at the start of round 2 returned after the round's
+manual work was already committed. Reconciling it against what shipped: it **independently
+reproduced** ER-STATE-06, ER-STATE-07 and ER-STATE-08 with the same dispositions, and its
+ER-DSP-06R reaches the same root cause this round did — the ordering contract in `prepareToPlay`,
+not `snapSmoothers` "capturing stale defaults" — which is worth recording because two independent
+derivations agreeing is the strongest evidence this round produced. Three items were genuinely new:
+
+**ER-DSP-07 — raised as `likely`, now CONFIRMED by measurement, FIXED.** `AnamorphEngine::reset()`
+flushes the duck state group — it adopts `pendingP`, then clears `pendingAlgoReset`, `switchState`,
+`switchPhase`, `dryDuck` and `dryDuckLat` — but missed `pendingForced`, the sixth member. A FORCED
+duck (A/B, preset, undo — `requestDuck`) still fading when the host re-prepares therefore left the
+flag latched true underneath a `Normal` switchState. The sweep called the consequence "a masked,
+inaudible extra reset at the next duck bottom"; the sharper one is at the END of `process()`, where
+the defensive Level-Match consumer runs only `if (! pendingForced)` — so an injected trim is never
+adopted at all. Measured, not argued: Test 47 injects −6 dB after a re-prepare mid-forced-duck and
+reads the displayed match gain back. Before the fix **0.000 dB** (dropped); after, −5.868 dB
+(adopted, then drifting — the injection is a seed, not a freeze, as Test 37 already documents,
+which is why the assertion tests adoption rather than exactness). One line in `reset()`.
+
+One correction to that finding as filed: it predicted the window would **broaden** under the
+ER-DSP-06 reorder, because "a duckRequest pending at prepareToPlay would be consumed by the new
+pre-prepare `setParameters` and then leak past reset()". That does not apply to what shipped. The
+sweep was reasoning about the candidate fix it proposed — swapping the two statements — whereas the
+implemented fix uses `primeParameters`, which assigns `p`/`pendingP` directly and never touches
+`duckRequest`. A request posted before `prepareToPlay` is still consumed by the POST-prepare
+`setParameters`, which begins a fresh, coherent forced duck. The underlying omission in `reset()`
+was real on its own and predates both.
+
+**ER-DOC-04 — CONFIRMED, corrected.** `PluginParameters.cpp`'s closing comment asserted that
+"EngineParameters' member initialisers already hold those neutral defaults". True for the
+advanced-gated fields it sits under, silently untrue for `dimMode`, which is assigned OUTSIDE the
+gate and whose snapshot default (choice index 1 + 1 = 2) disagrees with the struct's 1. That is the
+disagreement that made ER-DSP-06's duck universal rather than restore-only, and it was documented
+nowhere. The comment now scopes its claim and names both disagreements (`dimMode` ungated and
+consequential, `mbEnable` gated and therefore intended), with the explicit note that neither is
+fixed by changing a default — the two sets of values mean different things.
+
+**ER-RT-04 — informational, resolved as a side effect.** On first activation the host was told
+`predictLatency(restored state)` while the engine still ran the default `osEngaged` latch, so
+reported PDC and actual engine latency disagreed for the duration of the spurious duck. The
+ER-DSP-06 fix closes the window that carried it; recorded so a later round does not re-raise it as
+new. No separate action, and no reported-latency change: the fix removes a transient disagreement
+rather than altering what is reported.
+
 ### Validation at the end of round 2
 
-`preflight.sh` exit 0. DSP suite **45 tests / 241 checks**; state suite **18 tests / 941 checks**
+`preflight.sh` exit 0. DSP suite **46 tests / 242 checks** (Test 47, ER-DSP-07); state suite **18 tests / 941 checks**
 (924 → 941: State tests 16, 17 and 18, plus the two de-vacuumed InternalState assertions in State
 test 4). Two opt-in probes beside the suite, neither run by default: `--state-thread-probe`
 (RISK-007, verdict from the sanitizer) and `--latency-restore-probe` (ER-STATE-07, measures and
@@ -263,6 +310,9 @@ warning gate: no NEW first-party warnings.
       coverage, ER-STATE-07 refuted by measurement
 - [x] Round 1's ER-STATE-01 premise corrected everywhere it was asserted (code ×2, registry,
       CHANGELOG, state-test comment, this worklog)
+- [x] Investigation-workflow results reconciled after the round closed: ER-DSP-07 confirmed by
+      measurement and fixed, ER-DOC-04 corrected, ER-RT-04 recorded as resolved-by-side-effect,
+      and its "broadened by the reorder" clause refuted against the shipped fix
 - [x] Worklog + dashboard updated and committed
 - [ ] D-1 decided (surviving design)
 - [ ] D-2 decided — the code half is now measured

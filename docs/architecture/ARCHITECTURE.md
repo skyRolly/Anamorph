@@ -38,7 +38,7 @@ The wrapper reads the APVTS atomics once per block and fills an `EngineParameter
 parameter ID.
 
 Evidence [Verified]:
-- Source: src/PluginParameters.cpp:326-389 (`toEngine`)
+- Source: src/PluginParameters.cpp:326-406 (`toEngine`)
 - Source: src/PluginProcessor.cpp:188-193 (per-block snapshot → `engine.setParameters` → `engine.process`)
 
 ## 3. Module inventory

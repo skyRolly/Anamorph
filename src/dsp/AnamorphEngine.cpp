@@ -158,6 +158,14 @@ void AnamorphEngine::reset()
     switchPhase = 1.0f;
     dryDuck = false;
     dryDuckLat = 0;
+    // ...and the forced-duck flag, which belongs to the same group and was the one
+    // member this flush used to miss (ER-DSP-07). A FORCED duck still fading when the
+    // host re-prepares would otherwise leave it latched true underneath a Normal
+    // switchState -- and the Level-Match consumer at the end of process() runs only
+    // `if (! pendingForced)`, so an injected trim was dropped for the rest of the
+    // session rather than adopted (#23). Clearing it here is what makes the flushed
+    // state actually steady: the duck it described has just been resolved above.
+    pendingForced = false;
     bypassBlend.setCurrentAndTargetValue (p.bypass ? 1.0f : 0.0f); // settle the crossfade
     mbEnableBlend.setCurrentAndTargetValue (p.mbEnable ? 1.0f : 0.0f); // settle the multiband crossfade
     mbRunning = p.mbEnable; // reset() above cleaned the bank: warm iff multiband is on

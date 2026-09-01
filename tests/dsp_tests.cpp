@@ -1287,6 +1287,76 @@ static void testSoloMultibandEnableClickFree()
 //  drive the SAME corrupted "AB" ValueTree through the SAME read+clamp expression
 //  the processor uses (anamorph::clampAbSlotIndex). This fails on the pre-fix code
 //  (unclamped (int)getProperty would yield 2/3/-1) and passes on the fix.
+// ---------------------------------------------------------------------------
+// 47. reset() must flush the WHOLE duck state group, pendingForced included.
+//
+//     reset() exists so that a host re-prepare lands in a clean steady state: it
+//     adopts pendingP, then clears pendingAlgoReset, switchState, switchPhase,
+//     dryDuck and dryDuckLat. `pendingForced` is the one member of that group it
+//     used to miss, so a FORCED duck (A/B, preset, undo -- requestDuck) that was
+//     still fading when the host changed sample rate or buffer size left the flag
+//     latched true underneath a Normal switchState.
+//
+//     The observable consequence is not the extra reset at the next duck bottom,
+//     which is masked by silence -- it is the defensive Level-Match consumer at
+//     the end of process(), which runs only `if (! pendingForced)`. With the flag
+//     stuck, an injected trim is never adopted: the A/B slot's remembered Level
+//     Match is silently dropped for the rest of the session, or until some later
+//     duck happens to reach its bottom. That is the #23 behaviour this engine has
+//     a whole injection path to guarantee.
+//
+//     ER-DSP-07, raised by the round-2 investigation sweep.
+static void testResetClearsPendingForcedDuck()
+{
+    std::printf ("Test 47: reset() clears the forced-duck flag (ER-DSP-07)\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0;
+    const int block = 64;                     // short blocks: stay INSIDE the ~6 ms fade-out
+
+    anamorph::AnamorphEngine engine;
+    engine.prepare (sr, block);
+    anamorph::EngineParameters p;             // transparent defaults
+    p.autoGainMatch = true;
+    engine.setParameters (p);
+
+    auto runBlock = [&] (const anamorph::EngineParameters& np)
+    {
+        juce::AudioBuffer<float> buf (2, block);
+        for (int i = 0; i < block; ++i) { buf.setSample (0, i, 0.2f); buf.setSample (1, i, 0.2f); }
+        engine.setParameters (np);
+        engine.process (buf);
+    };
+
+    // Start a FORCED duck and leave it mid-fade: one 64-sample block is ~1.3 ms
+    // against a ~6 ms fade-out, so the bottom is not reached and pendingForced is
+    // still set when the host re-prepares.
+    auto swapped = p;
+    swapped.algorithm = anamorph::Algorithm::Chorus;   // a discrete change to carry the swap
+    engine.requestDuck();
+    runBlock (swapped);
+
+    // The host changes sample rate / buffer size mid-duck.
+    engine.prepare (sr, block);
+    engine.setParameters (swapped);
+
+    // Now the A/B layer restores a remembered Level-Match trim. No duck is in
+    // flight any more, so the defensive consumer at the end of process() is the
+    // path that must adopt it.
+    const float before = engine.getMatchGainDb();
+    engine.injectMatchGainDb (-6.0f);
+    runBlock (swapped);
+    const float after = engine.getMatchGainDb();
+
+    std::printf ("  match gain: %.3f dB before injection, %.3f dB after one block\n",
+                 before, after);
+    // The injection is a SEED, not a freeze (Test 37's comment, LoudnessMatch.h,
+    // feedback #16/#23), so the displayed value keeps moving after it is adopted --
+    // the assertion is that it was adopted AT ALL. Dropped reads as exactly `before`;
+    // adopted lands near the injected -6 dB and drifts from there.
+    check (after < before - 5.0f,
+           "an injected Level-Match trim is adopted after a re-prepare mid-forced-duck");
+}
+
 static void testAbActiveClampOnCorruptState()
 {
     std::printf ("State test: A/B active-slot clamp on corrupted state\n");
@@ -4198,6 +4268,7 @@ int main()
     testPrepareSettlesSmoothers();
     testCorrelationMeterRecoversFromNaN();
     testInputConditioningAndCharacterParams();
+    testResetClearsPendingForcedDuck();
     testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);

@@ -74,6 +74,14 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   a session from any later version already did. Regression coverage: State test 4, which sets those
   values first so the check cannot pass by their never having moved.
   Evidence: PR #134. [Verified]
+- **An A/B or preset switch no longer loses its remembered Level Match when the host changes sample
+  rate at that instant.** The short mute that masks an A/B, preset or Undo switch left an internal
+  flag set if the host re-initialised the plug-in while it was still fading — a sample-rate or
+  buffer-size change landing inside those ~30 ms. From then on the remembered Level Match trim for
+  that slot was silently dropped rather than applied, so the switch played at the wrong level for
+  the rest of the session. Measured: an injected −6 dB trim was adopted as 0.0 dB before the fix.
+  Regression coverage: Test 47.
+  Evidence: PR #134. [Verified]
 - **A corrupted A/B slot in a session file can no longer silently lose every setting on a later
   save.** A slot payload that parsed but was not Anamorph data corrupted the internal state
   container when applied; every save from then on wrote settings a fresh instance silently

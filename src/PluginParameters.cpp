@@ -384,6 +384,23 @@ anamorph::EngineParameters ParamPointers::toEngine (int oversampleIndex) const
     // else: Advanced-only modules behave as defaults (bypassed) while their knob
     // values stay put in the tree, so re-enabling Advanced restores them (#1).
     // EngineParameters' member initialisers already hold those neutral defaults.
+    //
+    // That claim covers the ADVANCED-GATED fields above and nothing else, and two
+    // fields differ from the struct's initialiser in ways worth naming here rather
+    // than leaving to be rediscovered (ER-DOC-04):
+    //   * `dimMode` is set OUTSIDE the gate, and this snapshot's default is 2 (choice
+    //     index 1 + 1) against `EngineParameters::dimMode = 1`. It is in
+    //     `discreteDiffers`, so that one-field disagreement is enough to read as a
+    //     settings change -- which is what made ER-DSP-06's spurious duck fire on
+    //     EVERY instance, restored session or not, until `prepareToPlay` was made to
+    //     prime the engine from this snapshot before preparing it.
+    //   * `mbEnable` differs too (APVTS default true vs struct false), but it IS
+    //     gated, so in Simple mode the struct default is what the engine sees --
+    //     which is the intended behaviour, not a mismatch.
+    // Neither is a defect to fix by changing a default: the APVTS values are the
+    // product's documented defaults, and the struct's are the engine's neutral
+    // no-parameters-yet state. They are simply not the same thing, and the wrapper
+    // must never let the engine settle on the second when the first is available.
 
     return e;
 }
