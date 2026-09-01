@@ -55,6 +55,97 @@ each, briefed to attack the citations, the mechanism and the probe's vacuity; th
 compiled and RUN, and the classification comes from what they print — not from what the
 investigation predicted.
 
+**Outcome: 5 confirmed and fixed, 2 refuted, 2 boundaries measured.** Every probe below was written
+by the round, compiled, and run; three of them had to be rewritten after their first run because
+they were VACUOUS, and those rewrites are recorded rather than tidied away — they are the round's
+most transferable result.
+
+### What was fixed
+
+| ID | What | Evidence that it was real |
+|---|---|---|
+| **KI-028 / ER-GUI-04** (P1) | **A value-box press whose release is never delivered holds a host gesture open**, and `pollUndoCoalesce` commits nothing while `openGestures > 0` | State test 21, with a POSITIVE CONTROL first (a deliberately unclosed gesture → `canUndo = 0`, proving the yardstick can fail). Un-released press → `canUndo = 0`; after the reconcile → `1`. Disabling the fix reproduces 2 failures |
+| **ER-DEP-06 residual** (P2) | **An unparsable value pins the control to its range MINIMUM** — `"abc"`, `""`, `"0x10"`, on BOTH the preset and session paths | Measured per parameter through the real loaders: width normalised **0.000000** against a 0.500000 default, on every parameter type. State test 19 |
+| **ER-STATE-09** (P4, new) | **An infinity pins the control to a range ENDPOINT**, defeating the round-2 non-finite guard entirely | `inf` / `1e39` / `1e400` → **1.000000** (maximum); `-inf` / `-1e400` → **0.000000** (minimum); `nan` → **1.000000** on the SKEWED `monoMakerFreq`. State test 19 |
+| **ER-STATE-10** (P3, new) | **A repaired parameter never reached the saved state**: the restore repaired the live value and then wrote the corruption straight back out | Measured: after restoring `value="nan"`, the live APVTS node still read `"nan"` and the re-saved blob read `value="nan" raw="0.5"`. State test 20 |
+| **ER-DSP-08** (P8, new) | **A duck requested while inactive fires on activation**, collapsing the stereo image for 32 ms of the first audio | Measured against a control engine driven through the identical sequence: side-energy ratio **0.002780** at block 5, **24 blocks (32.0 ms)** off level. Test 48 |
+
+### P2 + P4 are one defect, and the round-2 guard was in the wrong place
+
+Round 2 added a `std::isfinite` check to both restore paths and both these findings walk straight
+past it, for the same reason: **the check ran on the CONVERTED value.** `convertTo0to1` clamps, and
+so does the `juce::jlimit` on the session path's `raw` branch, so an infinity arrives at the
+finiteness test already laundered into a perfectly finite range endpoint. The guard could only ever
+catch the one case that survives conversion as NaN — which is why it looked like it worked, and why
+it silently failed on `monoMakerFreq`, whose skew turns NaN into 1.0.
+
+The fix moves the test to the INPUT and puts it in one place: `src/SerializedNumber.h`, in the
+spirit of `AbSlotIndex.h` — one restore invariant, dependency-free core, guarded directly (26 cases,
+run standalone before it was wired in). Both paths call the same predicate, so a malformed value
+cannot mean one thing in a preset and another in a session, which is exactly how they drifted apart
+before. The text rule is deliberately stricter than any general parser: it accepts the plain decimal
+shape JUCE's writer emits and rejects everything else, which is what makes `"0x10"` a rejection
+rather than 16 — a strtod-family parser would accept hex floats, `inf` and `nan` as legitimate
+numbers, and those are precisely the inputs the guard exists to refuse.
+
+### Three probes were vacuous on their first run — the round's most transferable result
+
+1. **P8 measured 1.000000 and looked REFUTED.** A forced duck is dry-**filled**, not silenced, so on
+   a transparent chain the fill IS the output and a level probe cannot see the duck at all. Rewritten
+   with the widener engaged and measuring SIDE energy, it showed the collapse immediately.
+2. **The rewrite was still vacuous:** a 1 kHz tone through the default 12 ms Haas delay is exactly
+   12 periods, so the channels re-align and the side energy is identically zero — a numerology
+   accident. Deterministic noise has no such coincidence at any delay, and the defect appeared.
+3. **The KI-028 probe had no positive control.** "No leak" and "the yardstick is blind" print the
+   same thing. Adding a deliberately unclosed gesture first is what made every later leg mean
+   something — and it is what let the round REFUTE the adversarial claim below rather than accept it.
+
+### Refuted
+
+- **ER-STATE-04.5 (P5) — REFUTED.** The `id`+`raw`-without-`value` shape does not occur. Measured
+  both arms (the omitted parameter at its default and off it) and both save
+  `@value="1.0" @raw="0.5"`. Round 2's recorded partial answer — that the shape appears when the
+  parameter was already at its default — was wrong, and so was this round's own prediction: the
+  closing `flushParameterValuesToValueTree()` in `updateParameterConnectionsToChildTrees` writes for
+  every adapter regardless. **No gate item and no decision remain.**
+- **"Editor teardown also leaks the gesture" — REFUTED.** The adversarial pass argued from
+  `PluginEditor.h` member order (Knobs at :432-435, `sliderAtts` at :482, so `~sliderAtts` runs
+  first and removes the attachment listener before `~ValueBox` fires `sendDragEnd`) that closing the
+  editor mid-drag leaks `openGestures` into the processor, which outlives it. The order is real; the
+  consequence is not. Measured: `canUndo = 1` after destroying the editor mid-press. The RAII close
+  still lands. Guarded as leg (5) of State test 21 so the refutation cannot quietly rot.
+
+### Boundaries measured rather than argued
+
+- **ER-CI-04 (P6).** The `-Wmismatched-new-delete` exclusion's two empirical legs **reproduce
+  unchanged from gcc-13.3.0 through gcc-15.2.0**: under `-flto` the flag emits nothing — not even
+  for a genuine `std::free`-on-`new[]` mismatch seeded in, so it still cannot fail in the lane that
+  reads the log — and without LTO the false positive and that seeded real mismatch are both
+  attributed to `AllocationGuard.h:350:69`, so a per-file baseline would still mask a real bug.
+  **gcc-16 itself remains UNMEASURED and is recorded as such**: it is PPA-only here and installing a
+  toolchain to measure it is the maintainer's call. The exact container command is now in the
+  script, with the result that would retire the exclusion. **Exclusion KEPT; no baseline widened.**
+- **ER-RT-05 (P7, new).** The realtime lint's same-file boundary is real. It is also currently
+  EMPTY, and that is now a number rather than a claim: of 83 FORBIDDEN-class matches across `src/`,
+  every one in a DSP translation unit the audio thread reaches cross-file — VelvetNoise (3),
+  ChorusEngine (2), HaasProcessor (2) — is `container growth` inside that module's own `prepare()`,
+  where allocation is required by policy and which is not audio-thread code. The other 76 are in the
+  wrapper, preset manager and GUI, which the audio thread never enters. **Documented, not parsed:**
+  the cost of a cross-translation-unit walk is a real parser and the measured benefit is zero. The
+  docstring now records the census and the shape that would make the gap non-empty.
+
+### Decision required before merge
+
+**D-4 — the P2/P3/P4 fixes change malformed-value recovery and saved-state contents.** The brief is
+explicit that any such change needs `ARCHITECTURE_REVIEW_GATE` approval **before merge**, so they are
+implemented on the branch and flagged here rather than treated as ordinary fixes. What changes: a
+malformed or non-finite serialized value now restores the parameter DEFAULT instead of a range
+endpoint, and a repaired value is written into the live tree so the next save carries it. No schema
+field is added, removed or renamed; no well-formed file loads differently; the serialized shape is
+untouched. `SERIALIZATION_REGISTRY.md` already specifies "per-parameter defaults" for the absent
+case, and this makes the malformed case agree with it. **Not merged pending sign-off.**
+
+
 ---
 
 ## Round 2 — 2026-08-31 — CI recovery, the activation defect, and two confirmed silences

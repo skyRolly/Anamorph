@@ -141,7 +141,7 @@ JUCE 8.0.14; before that 0.8.8 for PR #54).
 | KI-021 | **Linux**: a per-user install (the 0.9.3 default) does not remove an existing **system-wide** one, so both are on the DAW's scan path and its scan order decides which version loads — an update can look as if it did not apply | Low | Confirmed, **deliberate**: removing the system copy needs the elevation the per-user mode exists to avoid. The installer now **warns** when it finds one; removal is one `sudo ./uninstall.sh` |
 | KI-022 | **macOS**: components are non-relocatable since 0.9.3 (INC-012), so a bundle the user deliberately moved — to `~/Applications`, or a plug-in kept under `~/Library/Audio/Plug-Ins/…` — is left where it is and a fresh copy is installed at the standard location, leaving two copies with the same bundle identifier | Low | Confirmed, **deliberate trade** for INC-012: following a moved copy is exactly the behaviour that let an install silently write nowhere useful. Documented in the installer's `INSTALL.txt`; removal is manual |
 | KI-023 | **Linux**: the shipped binaries record the CI image's glibc/libstdc++ floor (measured GLIBC_2.38 / GLIBCXX_3.4.31), so they do not load at all on older distributions — Ubuntu 22.04 LTS included | Medium | Confirmed, **measured**; the floor was never chosen and is now asserted on every push so it cannot rise unnoticed. Lowering it is a release-topology decision, not taken |
-| KI-028 | A value-box drag whose mouse RELEASE is lost (released outside the window, or the macOS cached-modifier case of KI-013) leaves the host change gesture that 0.9.6 added to that path OPEN. The editor's 24 Hz release-outside reconcile clears the box's visual `dragging` flag but cannot reach the gesture, which is an RAII member of a type local to `LookAndFeel.cpp`. While it is open, `pollUndoCoalesce` refuses to commit (its "never commit mid-gesture" guard), so NO further edit becomes an undo step until the next value-box press closes it; a host recording touch/latch automation also sees the lane still held | Low | Confirmed (code path, round 2). Introduced by the 0.9.6 fix for the gesture-LESS drag (KI-010's third path) — strictly better than the prior state, which had no gesture and so no undo step at all. Not fixed blind: the two candidate designs (a ValueBox-owned timer using the reconcile's own predicate, or a type-erased release hook the editor can call) are a design decision, recorded in the engineering-review roadmap |
+| KI-028 | **macOS only since 2026-09-01.** A value-box drag whose mouse RELEASE is never delivered leaves the host change gesture OPEN, and while it is open `pollUndoCoalesce` refuses to commit, so further edits fold into one coarse step instead of their own; a host recording touch/latch automation also sees the lane still held | Low | **Linux/Windows: FIXED** (round 3). The editor's release-outside reconcile now closes the gesture as well as the visual flag, through `anamorph::gui::DragGestureOwner` — a named handle to the value box, which lives in an unnamed namespace in `LookAndFeel.cpp`. Measured with a positive control: an unreleased press leaves `canUndo()` false, the sweep restores it, a normal press/release is unaffected, and the sweep is idempotent (State test 21). **macOS residual**: the reconcile's predicate needs the REAL button state, and JUCE's realtime query returns cached state there (KI-013), so the sweep never runs. That half needs a different signal, not a different sweep. Also measured and REFUTED in round 3: destroying the editor mid-press does NOT leak the gesture — the RAII close lands despite `sliderAtts` destructing before the knobs (guarded as leg 5 of State test 21) |
 | KI-027 | Host **automation** of Drive or Algorithm delivers the APVTS parameter callback on the **audio thread**, and when the reported latency actually changes (oversampling engaged and the drive engage-threshold crossed, or the algorithm class switched) the `setLatencySamples` notification chain takes multiple locks and, in the JUCE Linux wrapper, appends to a heap array and `write()`s the message-queue fd — inside `processBlock`. A concurrent GUI edit of the same parameter adds a priority-inversion window (the message thread holds the parameter's listener lock through the host's synchronous `restartComponent`) | Medium | Confirmed (full chain traced in the pinned JUCE 9.0.1, ER-RT-01, two independent verifications); **fix gated** — moving latency-notification delivery off the audio thread is a threading-model change (Architecture Review Gate), awaiting maintainer sign-off; the latency VALUE and its safe-point latch are unaffected |
 | KI-026 | **Pre-2013 Intel / pre-2015 AMD CPUs**: every shipped x86-64 binary is compiled for AVX2 — Linux and the macOS `x86_64` slice at `-march=haswell` (ADR-0031, 0.9.5), Windows at `/arch:AVX2` (ADR-0032) — so on an older CPU the plug-in raises an illegal-instruction fault **inside the host** (`SIGILL`; `STATUS_ILLEGAL_INSTRUCTION` on Windows). The DAW reports a crash, not an incompatible plug-in | Medium | Confirmed, **deliberate** (ADR-0031/0032; output bit-identical **for the twin dump's 32-scenario engaged steady-state matrix**, verified per push on Windows by the blocking A/B gate — the instrument's coverage boundary is recorded in `docs/procedures/TESTING.md` §Gaps). Only Apple Silicon is unaffected. No in-product diagnosis is possible; the requirement is documented in the user guides |
 
@@ -323,13 +323,13 @@ the JUCE focus/peer path REAPER takes).
   workaround for the *open* path: `focusSaveNameField()` grabs keyboard focus and, if the grab does
   not stick (the preset-menu's desktop window still owns OS focus at the callback instant, and JUCE
   aborts an internal focus move while `! peer->isFocused()`), it retries on later message-loop
-  passes up to four times (src/PluginEditor.cpp:2103-2111; declared src/PluginEditor.h:248). This shipped in
+  passes up to four times (src/PluginEditor.cpp:2132-2140; declared src/PluginEditor.h:257). This shipped in
   the v0.8.9 CHANGELOG "Fixed" entry ("The Save Preset name field reliably receives typing — Space
   included") and was **validated headless end-to-end**, i.e. against the JUCE wrapper, not against
   REAPER. The retry loop runs **only on dialog open** (`showSavePreset(true)` → `focusSaveNameField(4)`);
   there is **no focus re-acquisition after a later focus loss** — no `focusLost` handler,
   `mouseDown`-grab, or `setMouseClickGrabsKeyboardFocus` override on `saveNameEditor` (repo-wide:
-  the only focus calls are src/PluginEditor.cpp:2072 (the on-open call) / src/PluginEditor.cpp:2103-2111 (`focusSaveNameField` itself) and the unrelated SpectrumImager freq editor).
+  the only focus calls are src/PluginEditor.cpp:2101 (the on-open call) / src/PluginEditor.cpp:2132-2140 (`focusSaveNameField` itself) and the unrelated SpectrumImager freq editor).
   A click on the field then relies on JUCE's default click-to-focus, which is subject to the same
   `peer->isFocused()` abort if REAPER holds OS focus on the plugin's parent window — consistent with
   "clicking the text does not reactivate editing until the dialog is reopened". This is a strong
@@ -598,7 +598,7 @@ keys fine":
   (REAPER-specific, the field stops receiving keys at all); this is a *repeat* problem that occurs
   with focus working correctly, in every host, on macOS.
 - **Evidence [Verified (code path) / Unverified (the macOS-side attribution)]:**
-  src/PluginEditor.cpp:374-384 (the field), src/PluginEditor.cpp:2061-2111 (show + focus);
+  src/PluginEditor.cpp:374-384 (the field), src/PluginEditor.cpp:2090-2140 (show + focus);
   `juce_NSViewComponentPeer_mac.mm:1655-1668, 2396-2435`; `juce_ComponentPeer.cpp:291-301`. The
   JUCE trace is verified line by line against the pinned commit; the attribution to the macOS
   text-input layer is inferred from the symptom signature (letters **and** digits suppressed,
@@ -834,7 +834,7 @@ a single output bit.
 adversarial verifications against the pinned JUCE 9.0.1 tree).**
 
 The processor registers itself as the APVTS listener for `pid::drive` and `pid::algorithm`
-(`src/PluginProcessor.cpp:20-21`), and `parameterChanged` → `updateLatency()` →
+(`src/PluginProcessor.cpp:21-22`), and `parameterChanged` → `updateLatency()` →
 `setLatencySamples()` runs **synchronously on whatever thread changes the parameter**. Under VST3
 host automation that thread is the audio thread (`JuceVST3Component::process` →
 `processParameterChanges` → `setValueAndNotifyIfChanged`), and JUCE dispatches parameter listeners
@@ -888,12 +888,31 @@ APVTS `LockedListeners` mutex).
   in `setParameters`' own body either — `check-realtime.py` now seeds `setParameters`/`toEngine`
   (with self-test liveness), closing the static half; RTSan still enforces only from the
   `process` annotation down.
-- **Evidence [Verified]:** src/PluginProcessor.cpp:20-21, :117-134; pinned JUCE
+- **Evidence [Verified]:** src/PluginProcessor.cpp:21-22, :117-134; pinned JUCE
   `juce_audio_plugin_client_VST3.cpp:3563/:3591/:3537`, `juce_AudioProcessorParameter.cpp:110-121`,
   `juce_AudioProcessorValueTreeState.cpp:148-203`, `juce_AudioProcessor.cpp:415-436`,
   `juce_VST3Common.h:1642-1653`, `juce_Messaging_linux.cpp:79-96`.
 
 ## KI-028 — a lost mouse release during a value-box drag leaves the host gesture open
+
+> **NARROWED TO macOS, 2026-09-01 (engineering-review round 3).** The Linux and Windows halves are
+> FIXED. `anamorph::gui::DragGestureOwner` (`src/gui/LookAndFeel.h`) gives the editor a named handle
+> to the value box, and `AnamorphAudioProcessorEditor::abortAbandonedDragGestures()` closes the
+> gesture in the same reconcile pass that already cleared the visual flag. State test 21 measures it
+> with a positive control first, so "no leak" cannot be confused with a blind check.
+>
+> Round 3 also established which abandonment paths actually EXIST, rather than assuming. Of six
+> candidates, five are closed by JUCE itself — it synthesises the missing release on the next event
+> that reaches the peer, and a component's own destruction fires the RAII close. The survivor is a
+> release the OS delivers to no JUCE peer at all. Measured and REFUTED: destroying the editor
+> mid-press does NOT leak, despite `sliderAtts` being declared after the knobs and so destructing
+> first; the RAII close still lands (guarded as leg 5 of the same test).
+>
+> **The macOS residual is why this entry stays open.** The reconcile's predicate needs the REAL
+> button state, and JUCE's realtime modifier query returns cached state on macOS — the same
+> mechanism as KI-013. The sweep therefore never runs there. That half needs a different signal, not
+> a different sweep, and is not a matter of choosing the other candidate design: both designs
+> considered in round 2 shared this predicate.
 
 **Filed 2026-08-31 (engineering-review round 2, finding ER-GUI-04).** A residual of the round-1
 fix for KI-010's third gesture-less path, found by reviewing that fix rather than by a report.

@@ -1357,6 +1357,141 @@ static void testResetClearsPendingForcedDuck()
            "an injected Level-Match trim is adopted after a re-prepare mid-forced-duck");
 }
 
+// ---------------------------------------------------------------------------
+// 48. A duck REQUESTED while the engine is inactive must not fire on activation.
+//
+//     ER-DSP-06 residual, raised by the round-3 brief: "do not assume the
+//     ER-DSP-06 fix covers every duck lifetime transition."
+//
+//     The lifetime in question: requestDuck() stores into the `duckRequest`
+//     atomic, and the ONLY consumer is setParameters' `duckRequest.exchange(0)`.
+//     Neither primeParameters (which assigns p/pendingP wholesale) nor prepare()
+//     -> reset() touches it. So a request raised while no audio is flowing --
+//     the user hits A/B, loads a preset or undoes with the transport stopped --
+//     survives the whole activation and is consumed by the POST-prepare
+//     setParameters that prepareToPlay ends with.
+//
+//     And forceDuck SHORT-CIRCUITS the discreteDiffers test (see setParameters'
+//     switchState == Normal branch), so the duck fires even though primeParameters
+//     has already made np == p. The swap it exists to mask happened silently while
+//     nothing was audible; there is nothing left to mask. The result is the
+//     ER-DSP-06 shape again in a different transition: the first ~34 ms of audio
+//     after activation attenuated for no reason.
+//
+//     Measured against a control engine driven through the identical sequence
+//     WITHOUT the pending request, so the comparison isolates the request and
+//     nothing else.
+static void testPendingDuckDoesNotSurviveActivation()
+{
+    std::printf ("Test 48: a duck requested while inactive does not fire on activation (ER-DSP-06 residual)\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0;
+    const int block = 64;                     // 1.33 ms: ~26 blocks span the ~34 ms duck
+    const int blocks = 32;
+
+    // The widener must be ENGAGED, and this is the whole reason: a FORCED duck is
+    // DRY-FILLED, not silenced (beginForcedDuck sets dryDuck when the latency is
+    // unchanged, and stage 5 then blends toward the delay-aligned raw input). On a
+    // transparent chain the fill IS the output, so a level probe reads 1.0000
+    // whether or not the duck fired -- vacuous. Engaged, the discriminator is
+    // sharp: the processed output carries SIDE content that the mono dry fill does
+    // not, so the image collapses for exactly the duck's lifetime.
+    //
+    // The stimulus is deterministic NOISE, not a tone, and that is deliberate: a
+    // 1 kHz tone through the default 12 ms Haas delay is exactly 12 periods, so the
+    // channels re-align and the side energy is identically zero -- a numerology
+    // accident that silently makes the measurement vacuous. Noise has no such
+    // coincidence at any delay.
+    anamorph::EngineParameters p;
+    p.algorithm  = anamorph::Algorithm::Haas;
+    p.algoAmount = 0.7f;
+    p.outputGainDb = 0.0f;
+
+    // The wrapper's activation sequence, verbatim from prepareToPlay:
+    //   primeParameters(e); prepare(...); setParameters(e); updateLatency();
+    auto activate = [&] (anamorph::AnamorphEngine& e)
+    {
+        e.primeParameters (p);
+        e.prepare (sr, block);
+        e.setParameters (p);
+    };
+
+    // One deterministic stimulus, replayed identically to both engines.
+    auto fill = [block] (juce::AudioBuffer<float>& buf, std::mt19937& rng)
+    {
+        std::uniform_real_distribution<float> dist (-0.35f, 0.35f);
+        for (int i = 0; i < block; ++i)
+        {
+            const float sv = dist (rng);       // MONO in: all side content is the widener's
+            buf.setSample (0, i, sv); buf.setSample (1, i, sv);
+        }
+    };
+
+    anamorph::AnamorphEngine ducked, control;
+    for (auto* e : { &ducked, &control })
+    {
+        activate (*e);
+        std::mt19937 rng (24601);              // same warm-up sequence for both
+        juce::AudioBuffer<float> warm (2, block);
+        for (int nb = 0; nb < 60; ++nb)        // settle the Haas delay lines and every smoother
+        {
+            fill (warm, rng);
+            e->setParameters (p);
+            e->process (warm);
+        }
+    }
+
+    // THE ONLY DIFFERENCE between the two engines: one carries a duck request
+    // raised while no audio was flowing -- the user hitting A/B, loading a preset
+    // or undoing with the transport stopped. Then both are re-activated with no
+    // blocks processed in between, exactly the sequence the brief specifies.
+    ducked.requestDuck();
+    activate (ducked);
+    activate (control);
+
+    auto sideRms = [block] (const juce::AudioBuffer<float>& buf)
+    {
+        double sq = 0.0;
+        for (int i = 0; i < block; ++i)
+        {
+            const double sv = 0.5 * (buf.getSample (0, i) - buf.getSample (1, i));
+            sq += sv * sv;
+        }
+        return std::sqrt (sq / block);
+    };
+
+    std::mt19937 rngA (98765), rngB (98765);   // identical post-activation stimulus
+    double worstRatio = 1.0e9, settledSide = 0.0;
+    int worstBlock = -1, blocksOffLevel = 0;
+
+    for (int nb = 0; nb < blocks; ++nb)
+    {
+        juce::AudioBuffer<float> a (2, block), b (2, block);
+        fill (a, rngA); fill (b, rngB);
+        ducked.setParameters (p);  ducked.process (a);
+        control.setParameters (p); control.process (b);
+
+        const double sa = sideRms (a), sb = sideRms (b);
+        if (nb >= blocks - 8) settledSide = juce::jmax (settledSide, sb);
+        const double ratio = (sb > 1.0e-9) ? sa / sb : 1.0;
+        if (ratio < worstRatio) { worstRatio = ratio; worstBlock = nb; }
+        if (std::abs (ratio - 1.0) > 0.02) ++blocksOffLevel;
+    }
+
+    // Non-vacuity gate: if the CONTROL carries no side energy the ratio above is a
+    // ratio of two nothings and proves nothing either way.
+    std::printf ("  control side RMS (settled) = %.6f\n", settledSide);
+    check (settledSide > 0.01, "the engaged widener produces side content for the probe to measure");
+
+    std::printf ("  worst block %d: ducked/control SIDE RMS = %.6f; blocks off level by >2%%: %d (%.1f ms)\n",
+                 worstBlock, worstRatio, blocksOffLevel,
+                 blocksOffLevel * 1000.0 * block / sr);
+    check (worstRatio > 0.98,
+           "a duck requested while inactive does not collapse the image after activation");
+    check (blocksOffLevel == 0,
+           "...and no block after activation differs from the un-requested control");
+}
+
 static void testAbActiveClampOnCorruptState()
 {
     std::printf ("State test: A/B active-slot clamp on corrupted state\n");
@@ -4269,6 +4404,7 @@ int main()
     testCorrelationMeterRecoversFromNaN();
     testInputConditioningAndCharacterParams();
     testResetClearsPendingForcedDuck();
+    testPendingDuckDoesNotSurviveActivation();
     testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);

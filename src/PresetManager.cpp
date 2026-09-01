@@ -1,5 +1,6 @@
 #include "PresetManager.h"
 
+#include "SerializedNumber.h"   // the shared malformed-value predicate (both restore paths)
 #include <cmath>   // std::isfinite -- the non-finite guards on the restore paths
 
 namespace anamorph
@@ -186,6 +187,29 @@ void PresetManager::applyDefaults()
 
 // Apply the sound params stored in an APVTS-style tree (missing ones fall back
 // to their defaults, so older preset files stay loadable).
+namespace
+{
+    // Shared with AnamorphAudioProcessor::reassertParameters (session state) via
+    // anamorph::looksLikePlainNumber -- one predicate, two restore paths, so a
+    // malformed value cannot mean different things depending on where it came from.
+    // Returns false for "no usable value here", which every caller answers with the
+    // parameter default -- the same answer an absent node already gets, and the one
+    // SERIALIZATION_REGISTRY.md records.
+    bool readSerializedValue (const juce::var& prop, float& out)
+    {
+        if (prop.isVoid()) return false;
+        if (prop.isString())
+        {
+            const auto text = prop.toString().trim();   // tolerate a hand edit's spaces
+            if (! anamorph::looksLikePlainNumber (text.toRawUTF8())) return false;
+        }
+        const float v = (float) (double) prop;
+        if (! anamorph::isUsableSerializedValue (v)) return false;   // nan, +/-inf, 1e39
+        out = v;
+        return true;
+    }
+}
+
 void PresetManager::applySoundTree (const juce::ValueTree& state)
 {
     for (auto* p : apvts.processor.getParameters())
@@ -209,11 +233,16 @@ void PresetManager::applySoundTree (const juce::ValueTree& state)
                     // "Absent means default" has to hold for a value-less node too --
                     // the writer is apvts.copyState().createXml(), which always emits
                     // `value`, so nothing this plug-in saves takes the new branch.
-                    const float fromFile = child.hasProperty ("value")
-                        ? rp->convertTo0to1 ((float) (double) child.getProperty ("value"))
-                        : rp->getDefaultValue();
-                    rp->setValueNotifyingHost (std::isfinite (fromFile) ? fromFile
-                                                                        : rp->getDefaultValue());
+                    // The guard runs on the INPUT, before convertTo0to1, because the
+                    // conversion clamps: an infinity arrives at a finiteness test
+                    // already laundered into a finite range ENDPOINT. anamorph::
+                    // SerializedNumber.h carries the measured table and the rule; the
+                    // session path applies the same predicate so the two cannot drift.
+                    float plain = 0.0f;
+                    const bool usable = readSerializedValue (child.getProperty ("value"), plain);
+                    const float fromFile = usable ? rp->convertTo0to1 (plain)
+                                                  : rp->getDefaultValue();
+                    rp->setValueNotifyingHost (fromFile);
                 }
             }
     resetSolo();

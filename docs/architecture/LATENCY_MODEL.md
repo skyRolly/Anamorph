@@ -45,7 +45,7 @@ binary (requires running the plugin; not statically provable here).`
 - The OS engagement is **latched** (changes only at `reset` or the silent duck bottom), so
   latency never changes mid-block; an OS-path change is routed through the duck.
 
-Evidence [Verified]: src/PluginProcessor.cpp:117-120 (`updateLatency`), :110-115 (`parameterChanged`); src/dsp/AnamorphEngine.cpp:216-221,
+Evidence [Verified]: src/PluginProcessor.cpp:118-121 (`updateLatency`), :110-115 (`parameterChanged`); src/dsp/AnamorphEngine.cpp:216-221,
 :293-329, :494-509.
 
 ## INVARIANT (binding)

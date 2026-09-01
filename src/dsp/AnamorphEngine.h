@@ -65,7 +65,22 @@ public:
     // NOT a substitute for setParameters once audio is flowing: adopting
     // discrete controls without the duck is exactly the click setParameters'
     // switch machine exists to prevent.
-    void primeParameters (const EngineParameters& np) noexcept { p = np; pendingP = np; }
+    // Clearing duckRequest is part of the adoption, not an extra: this function's
+    // whole meaning is "no duck, no ramp, nothing deferred", and a pending request
+    // is something deferred. It describes a swap (A/B, preset, undo) the user made
+    // while nothing was audible -- which THIS call has just performed, silently and
+    // in full. Leaving it set means the post-prepare setParameters consumes it and
+    // opens a forced duck whose swap already happened, so it masks nothing and
+    // merely dry-fills over the first ~32 ms of audio (measured: the engaged
+    // widener's side energy collapses to 0.003 of the settled level for 24 blocks
+    // -- Test 48, the ER-DSP-06 activation residual). forceDuck short-circuits the
+    // discreteDiffers test, so np == p does not save us.
+    void primeParameters (const EngineParameters& np) noexcept
+    {
+        p = np;
+        pendingP = np;
+        duckRequest.store (0, std::memory_order_relaxed);
+    }
 
     // Adopts a new parameter snapshot. Continuous controls update immediately
     // (they are all smoothed); a change to any DISCRETE control (algorithm,

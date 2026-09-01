@@ -15,6 +15,40 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 
 ## [0.9.6] — 2026-08-31
 ### Fixed
+- **A knob's number readout no longer breaks Undo if you release the mouse outside the plug-in
+  window.** Pressing a value readout opens a host edit gesture that is closed on release. When the
+  release happened over the host or the desktop, the operating system delivered it to nothing and
+  the gesture stayed open — after which nothing you did became its own Undo step until the gesture
+  eventually closed. The editor's existing stuck-press reconcile now closes the gesture as well as
+  the visual press state. Regression coverage: State test 21, which proves an unreleased press
+  blocks Undo, that the reconcile restores it, that a normal press/release is unaffected, and that
+  the sweep can run repeatedly without closing a gesture twice.
+  Known limit: this reconcile is inert on macOS for the reason recorded as KI-013, so the macOS half
+  of the issue remains open.
+  Evidence: PR #134. [Verified]
+- **A damaged value in a project or preset can no longer jam a control to the end of its range.**
+  Round 0.9.6's earlier fix rejected "not a number" but not the rest of the family: text that is not
+  a number at all ("abc", an empty value, "0x10") set the control to the BOTTOM of its range, and an
+  infinity — written as "inf", or as an ordinary-looking number too large to store, like 1e39 — set
+  it to the TOP. For Width that is a mono collapse and a hard-wide image respectively, from a file
+  that looks fine. The cause was that the check ran after the value had been fitted to the control's
+  range, and fitting clamps, so an infinity arrived already looking like a legitimate end-of-range
+  value. Damaged values are now identified before that, on both the project and preset paths, and
+  the control falls back to its default. Regression coverage: State test 19.
+  Evidence: PR #134. [Verified]
+- **Repairing a damaged project no longer leaves the damage in the file.** When a corrupted value
+  was rejected on load, the control was repaired but the project data was not, so the next save
+  wrote the bad value straight back out. This build reloaded such a file correctly anyway, so the
+  symptom was invisible here — but the file stayed damaged for anything else that reads it,
+  including older versions of the plug-in. The repair now reaches the saved data.
+  Regression coverage: State test 20.
+  Evidence: PR #134. [Verified]
+- **Switching A/B or loading a preset while playback is stopped no longer dims the first moment of
+  sound.** The short masking fade those switches use was left pending and then fired when playback
+  resumed — long after the change it was meant to mask had already been applied silently. Measured
+  on an engaged widener: the stereo image collapsed to 0.3 % of its settled width for the first
+  32 ms. Regression coverage: Test 48.
+  Evidence: PR #134. [Verified]
 - **A damaged project or preset file can no longer leave the plug-in permanently silent.** If a
   saved value had been corrupted into "not a number" — by a hand edit, a bad transfer or a failing
   disk — the plug-in adopted it, and from that point produced **no sound at all** for the rest of

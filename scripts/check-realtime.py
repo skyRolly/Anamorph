@@ -624,6 +624,24 @@ def reachable_bodies(clean: str):
     name is itself an AUDIO_FN seed: that is why `setParameters`/`toEngine` are
     seeded (ER-RT-02) -- RTSan enforces only from the `process` annotation down,
     and the allocation guard counts only `new`/`malloc`.
+
+    HOW BIG IS THAT GAP, MEASURED 2026-09-01 (round 3, ER-RT-05). The boundary
+    above is a statement of scope; this is the number behind it, so a later round
+    re-measures rather than re-argues. Across `src/` there are 83 FORBIDDEN-class
+    matches in 12 files. Every one that sits in a DSP translation unit the audio
+    thread can reach cross-file -- VelvetNoise.cpp (3), ChorusEngine.cpp (2),
+    HaasProcessor.cpp (2) -- is `container growth` inside that module's own
+    `prepare()`, where allocation is REQUIRED by policy (ADR-0029) and is not
+    audio-thread code at all. The remaining 76 are in the wrapper, the preset
+    manager and the GUI, none of which the audio thread enters.
+
+    So the cross-file gap is REAL and currently EMPTY: it hides no violation
+    today. That is why this closure is deliberately not extended into a
+    cross-translation-unit walk -- the cost is a real parser, the measured
+    benefit is zero, and the runtime tiers cover the same ground from the other
+    side. Re-run the census when a DSP module gains a non-prepare() helper that
+    the engine calls per block; that is the shape that would make the gap
+    non-empty.
     """
     index = definition_index(clean)
     seen = set()

@@ -890,10 +890,10 @@ such.** What is established is that the rewrite happens at a position that is no
 What is not established is the exact macOS event sequence that makes that position land one row up;
 that would need a trace on macOS, which was not available here. What supports it is arithmetic that
 accounts for all four observed controls. The box is placed `h + 8` above the cursor
-(`AnamorphLookAndFeel::getTooltipBounds`, `src/gui/LookAndFeel.cpp:875-884`), so its top edge is a
+(`AnamorphLookAndFeel::getTooltipBounds`, `src/gui/LookAndFeel.cpp:885-894`), so its top edge is a
 **tip-dependent** offset above the pointer, and the Settings rows are at editor-local
 `oversampleBox` 274–297, `uiScaleBox` 331–354, `scopePersistK` 387–411, `tooltipsToggle` 423–449,
-`animToggle` 455–481 (`src/PluginEditor.cpp:2209-2234`). Taking each control's centre and
+`animToggle` 455–481 (`src/PluginEditor.cpp:2238-2263`). Taking each control's centre and
 subtracting `h + 8` for a two-line tip lands inside **Oversampling** from UI Scale, inside **UI
 Scale** from Vectorscope Persist, on or within a pixel or two of **Tooltips** from UI Animations,
 and — from Oversampling — on `settingsTitle` (221–241), a plain `juce::Label` that never had
@@ -1364,7 +1364,7 @@ document already uses for its five other source anchors.
 same untracked class" was a count of what that pass happened to look at, not a search — three more
 sat in `KNOWN_ISSUES.md` alone, and one of them is the worse kind. **KI-009's `focusSaveNameField`
 citation was mis-aimed, then mechanically carried.** At the merge base it read
-`src/PluginEditor.cpp:1564-1572`, which was the `rIn`/`rOut`/`rAct`/`rOn`/`rPos` easing block in
+`src/PluginEditor.cpp:1593-1601`, which was the `rIn`/`rOut`/`rAct`/`rOn`/`rPos` easing block in
 `stepMicroAnims` — not that function at all — and `--fix` moved it to `:1567-1575`, the same easing
 block after this change's insertions. Faithful, and still wrong. `focusSaveNameField` is at
 **`:1984-1992`**, and the two untracked references beside it were mis-aimed the same way: the
@@ -1403,7 +1403,7 @@ something these rounds created, and closing it is its own change.
 
 **A third review pass found the same carried-mistake class in `PRIVACY.md`, and this one needed a
 declaration.** The row saying the Presets folder is created when the **Load Preset** dialog opens
-cited `src/PluginEditor.cpp:1521` at the merge base — the S11 generation pre-gate comment inside
+cited `src/PluginEditor.cpp:1550` at the merge base — the S11 generation pre-gate comment inside
 `stepMicroAnims`, about 383 lines short of the `:1838` that `dir.createDirectory()` sat on there.
 `--fix` carried it to `:1524`, still the same comment. Corrected to **`:1916`**, and written the way
 the checker's own header says new citations should be — with the symbol spelled beside the number
@@ -1413,7 +1413,7 @@ half that survives the next shift.
 **Unlike the `KNOWN_ISSUES.md` five, this one is caught by the gate, which is why it is declared.**
 `PRIVACY.md` still has exactly one `src/PluginEditor.cpp` citation, so the pair IS compared, the
 re-aim reads as drift, and `--fix` **reverted the correction on the first run** — measured, not
-predicted. `("PRIVACY.md", "src/PluginEditor.cpp:2035"): "createDirectory"` is therefore added to
+predicted. `("PRIVACY.md", "src/PluginEditor.cpp:2064"): "createDirectory"` is therefore added to
 `DELIBERATE_REAIMS`. It is not an inert exemption: `verify_reaim_targets` resolves the anchor against
 the live file every run, and mutating the substring to a value the code does not contain makes the
 run fail with `::error::` and exit 2 — checked by doing it, then reverting. A declaration turns the
@@ -1421,10 +1421,10 @@ drift check off for its anchor, so the aim check is the thing that keeps it hone
 
 **Reported and deliberately NOT corrected — the About-link anchor in the three legal documents.**
 `EULA.md`, `PRIVACY.md` and `TRADEMARKS.md` cite where the product's one outbound hyperlink is
-declared, and `--fix` moved all three from `src/PluginEditor.h:283` to `:223` in this change set.
+declared, and `--fix` moved all three from `src/PluginEditor.h:292` to `:223` in this change set.
 That re-anchor is mechanically correct and **preserves a pre-existing mistake**: at the merge base
 `:213` already read `return juce::TooltipWindow::getTipFor (c);`, and `:223` reads the identical
-line today, while `aboutLink` actually lives at `src/PluginEditor.h:465`. So the rot predates this
+line today, while `aboutLink` actually lives at `src/PluginEditor.h:474`. So the rot predates this
 change and was faithfully carried, not created by it — precisely the failure mode
 `check-citations.py`'s own header describes ("it CANNOT tell you a citation was aimed at the wrong
 code to begin with… and it does so INVISIBLY, in a DRIFTED line that reads like a repair"). It is
@@ -1434,7 +1434,7 @@ nothing to do with hover; recording it here is what stops the paragraph above re
 three anchors were verified correct.
 
 **NOW CLOSED (2026-08-19), as its own standalone change.** The three documents cite
-**`src/PluginEditor.h:465`**, where `aboutLink` is actually declared, instead of `:223` — which is
+**`src/PluginEditor.h:474`**, where `aboutLink` is actually declared, instead of `:223` — which is
 `return juce::TooltipWindow::getTipFor (c);` inside `GatedTooltipWindow`, the line `--fix` had
 carried the mis-aim onto from the merge base's `:213`. Only the number changed in each document; no
 wording, formatting or meaning was touched, and the correction is one anchor per file.
@@ -1444,7 +1444,7 @@ the three documents holds **exactly one** `src/PluginEditor.h` citation in both 
 current tree, so the count guard does not fire, the pair IS compared, and the re-aim reads as drift.
 Measured: before the entries were written the run reported all three `DRIFTED … -> :223`, and `--fix`
 would have dragged every one of them back. `("EULA.md" | "PRIVACY.md" | "TRADEMARKS.md",
-"src/PluginEditor.h:465"): "aboutLink"` now covers them, and the substring is what keeps that
+"src/PluginEditor.h:474"): "aboutLink"` now covers them, and the substring is what keeps that
 off-switch honest: `verify_reaim_targets` resolves `:465` against the live header every run, and
 mutating one entry's substring to a value the line does not contain makes the run emit `::error::`
 and exit 2 — checked by doing it, then reverting. Re-running `--fix` afterwards leaves all three
@@ -6605,6 +6605,18 @@ than reasoned about, decision D-1 materially corrected, and one new issue filed.
   `src/PresetManager.cpp` (`applySoundTree` fallback) → CHANGELOG (one Fixed entry), State test 17.
   The serialized SCHEMA is untouched: this changes what a MALFORMED value restores to, which
   `SERIALIZATION_REGISTRY.md` already specifies as "per-parameter defaults" for the absent case.
+- **Round 3 (2026-09-01).** `src/SerializedNumber.h` (new shared malformed-value predicate),
+  `src/PresetManager.cpp` + `src/PluginProcessor.cpp` (both restore paths call it; the repair now
+  reaches the live tree), `src/dsp/AnamorphEngine.h` (`primeParameters` clears `duckRequest`),
+  `src/gui/LookAndFeel.h` + `.cpp` and `src/PluginEditor.h` + `.cpp` (`DragGestureOwner` and the
+  abandoned-gesture sweep) -> CHANGELOG (four Fixed entries), KNOWN_ISSUES (KI-028 narrowed to a
+  macOS residual, with the refuted editor-teardown path recorded), `scripts/check-gcc-warnings.py`
+  (ER-CI-04 re-measurement 13.3.0-15.2.0 plus the gcc-16 command), `scripts/check-realtime.py`
+  (ER-RT-05 cross-file census), README / TESTING / TESTING_POLICY / REPOSITORY_MAP /
+  RELEASE_HARDENING_PLAN / HANDOVER counts (47 / 245; 21 tests / 1040 checks), and Tests 48 and
+  State tests 19-21. **GATED:** the malformed-value and repair-serialization changes alter
+  malformed-value recovery and saved-state contents, so they need ARCHITECTURE_REVIEW_GATE approval
+  before merge (worklog D-4). No schema field is added, removed or renamed.
 - `tests/state_tests.cpp` (State tests 16, 17 and 18, State test 4's de-vacuumed InternalState
   assertions, and the `--state-thread-probe` + `--latency-restore-probe` instruments) →
   `docs/procedures/TESTING.md` (both probes documented beside the state-suite description; test count

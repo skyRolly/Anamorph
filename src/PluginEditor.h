@@ -92,6 +92,15 @@ public:
     // it never hit this).
     void setScaleFactor (float newScale) override;
 
+    // Close any host change gesture a value box is still holding from a press
+    // whose release was never delivered (KI-028). Called from the release-outside
+    // reconcile on the editor timer, under the predicate that already decides a
+    // button is logically down but physically up. Public and separately callable
+    // so the sweep can be tested without synthesising OS-level button state --
+    // the predicate itself is pre-existing, shipped since v0.8.12, and its macOS
+    // limitation is recorded as KI-013.
+    void abortAbandonedDragGestures();
+
 private:
     using SliderAttachment   = juce::AudioProcessorValueTreeState::SliderAttachment;
     using ButtonAttachment   = juce::AudioProcessorValueTreeState::ButtonAttachment;

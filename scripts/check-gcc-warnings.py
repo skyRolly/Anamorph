@@ -60,8 +60,39 @@
 #      2026-08-31). The exclusion still stands on its STRUCTURAL leg — the flag
 #      cannot attribute a first-party site under `-flto`, and AllocationGuard.h
 #      is the one file whose purpose is replacing those operators — and the
-#      gated set is deliberately unchanged here. Re-measuring under gcc-16 is a
-#      round-3 item, not a blocker —
+#      gated set is deliberately unchanged here.
+#
+#      RE-MEASURED 2026-09-01 (round 3), on every gcc available: BOTH empirical
+#      halves reproduce UNCHANGED from 13.3.0 through 15.2.0. Method — a TU that
+#      includes this guard, runs selfCheck(), and SEEDS a genuine mismatch
+#      (`std::free` on `new double[64]`), compiled `-O2 -Wall -Wextra
+#      -Wmismatched-new-delete` with and without `-flto`:
+#
+#        -flto      : 0 hits on 13.3.0 AND 15.2.0 — the seeded REAL mismatch is
+#                     not reported either, so the flag still cannot fail in the
+#                     lane that reads the log.
+#        no -flto   : 4 hits on both, and the false positive and the seeded real
+#                     mismatch are BOTH attributed to AllocationGuard.h:350:69,
+#                     so a per-file baseline would still mask a real bug.
+#
+#      gcc-16 itself remains UNMEASURED and is stated as such rather than
+#      assumed: it is PPA-only in the environments available to this programme,
+#      and installing a toolchain to measure it is the maintainer's call. The
+#      exact reproduction, for whoever runs it:
+#
+#        docker run --rm -v "$PWD:/w" -w /w gcc:16 bash -c '
+#          printf "%s\n" "#include \"AllocationGuard.h\"" "#include <cstdlib>" \
+#            "void u(){auto s=anamorph::testing::selfCheck();(void)s;" \
+#            "double*a=new double[64];delete[] a;" \
+#            "double*b=new double[64];std::free(b);}" "int main(){u();}" > /tmp/ag.cpp
+#          for f in "" "-flto"; do
+#            g++ -std=c++23 -O2 $f -Wall -Wextra -Wmismatched-new-delete \
+#                -Itests /tmp/ag.cpp -o /dev/null 2>&1 |
+#              grep -c -- -Wmismatched-new-delete
+#          done'
+#
+#      Expected if nothing changed: 4 then 0. A NON-ZERO second number is the
+#      only result that would retire the exclusion's first empirical leg —
 #      with the flag appended to the gated set and the two gated targets built
 #      exactly as the baseline header prescribes:
 #

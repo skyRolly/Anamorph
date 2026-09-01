@@ -1344,6 +1344,40 @@ void AnamorphAudioProcessorEditor::showSettings (bool show)
 }
 
 // ----------------------------------------------------------------------------
+// The value box behind a knob holds a host change GESTURE open for the whole
+// press (LookAndFeel.cpp, ValueBox). If the release is never delivered -- the
+// button let go over the host window or the desktop, where the OS routes it to
+// no JUCE peer -- the gesture stays open and pollUndoCoalesce commits nothing
+// while openGestures > 0, so the next edits fold into one coarse undo step
+// instead of their own. Measured before this existed: after an undelivered
+// release, a complete separate edit left canUndo() false.
+//
+// Clearing the paint flag was already done here; it was never enough, because
+// `animated` holds the SLIDER and the gesture lives one level down in a type
+// local to LookAndFeel.cpp. anamorph::gui::DragGestureOwner is the named handle
+// that closes that gap. Both are done in one pass so a stuck press cannot leave
+// the glow and the gesture in different states.
+//
+// SCOPE, recorded rather than papered over: the caller's predicate is inert on
+// macOS -- JUCE's realtime modifier query returns cached button state there, so
+// the "physically up" half is never observed (KI-013). This closes the Linux and
+// Windows halves of KI-028 and narrows the entry to a macOS residual; it does not
+// close it. The macOS half needs a different signal, not a different sweep.
+void AnamorphAudioProcessorEditor::abortAbandonedDragGestures()
+{
+    for (const auto& w : animated)
+    {
+        if ((bool) w.comp->getProperties().getWithDefault ("dragging", false))
+        {
+            w.comp->getProperties().set ("dragging", false);
+            w.comp->repaint();
+        }
+        for (int i = 0; i < w.comp->getNumChildComponents(); ++i)
+            if (auto* owner = dynamic_cast<anamorph::gui::DragGestureOwner*> (w.comp->getChildComponent (i)))
+                owner->abortDragGesture();
+    }
+}
+
 void AnamorphAudioProcessorEditor::timerCallback()
 {
     // Backstop for the pop-up shield, scoped to `openMenus`: componentBeingDeleted already lowers
@@ -1488,12 +1522,7 @@ void AnamorphAudioProcessorEditor::timerCallback()
     if (juce::Component::isMouseButtonDownAnywhere()
         && ! juce::ModifierKeys::getCurrentModifiersRealtime().isAnyMouseButtonDown())
     {
-        for (const auto& w : animated)
-            if ((bool) w.comp->getProperties().getWithDefault ("dragging", false))
-            {
-                w.comp->getProperties().set ("dragging", false);
-                w.comp->repaint();
-            }
+        abortAbandonedDragGestures();
         persistDragging = false;
         if (imager) imager->cancelActiveDrag();
         // Wake the micro-anim driver for one pass so the stale press GLOW (actA) eases out.

@@ -2255,6 +2255,747 @@ static int runLatencyRestoreProbe()
     return 0;
 }
 
+// ---------------------------------------------------------------------------
+// 19. A malformed serialized value means the parameter DEFAULT -- on BOTH paths.
+//
+//     Round 2 closed two special cases of this (an absent node, and `value="nan"`
+//     on an UNSKEWED range). Round 3 measured the rest of the space and found the
+//     guard was in the wrong place: it tested the value AFTER
+//     RangedAudioParameter::convertTo0to1, and that conversion CLAMPS, so every
+//     infinity arrived at std::isfinite already laundered into a finite range
+//     ENDPOINT. Measured on the pre-fix build, through the real loaders:
+//
+//        value="inf" / "1e39" / "1e400"  -> normalised 1.0  (range MAXIMUM)
+//        value="-inf" / "-1e400"         -> normalised 0.0  (range MINIMUM)
+//        value="abc" / "" / "0x10"       -> normalised 0.0  (range MINIMUM)
+//        value="nan" on a SKEWED range   -> normalised 1.0  (range MAXIMUM)
+//
+//     For Width (0..2, default 1.0) the first row is a hard-wide image and the
+//     third a mono collapse, from a file the user cannot see is wrong. The guard
+//     now runs on the INPUT (anamorph::SerializedNumber.h) and both restore paths
+//     share the predicate, so a malformed value cannot mean one thing in a preset
+//     and another in a session.
+static void testMalformedValuesRestoreDefaults()
+{
+    std::printf ("State test 19: a malformed serialized value restores the default, both paths\n");
+
+    const char* poisons[] = { "abc", "", "0x10", "nan", "inf", "-inf", "1e39", "1e400", "-1e400" };
+    // Chosen to span the shapes that behaved DIFFERENTLY before the fix: a linear
+    // range, a skewed one (where NaN reached the maximum), and the two custom
+    // RangedAudioParameter subclasses.
+    const char* ids[] = { pid::width, pid::monoMakerFreq, pid::chorusRate, pid::algorithm };
+
+    for (const char* id : ids)
+        for (const char* poison : poisons)
+        {
+            AnamorphAudioProcessor proc;
+            proc.prepareToPlay (48000.0, 256);
+            auto* rp = proc.getAPVTS().getParameter (id);
+            if (rp == nullptr) { check (false, "probe parameter exists"); continue; }
+            const float def = rp->getDefaultValue();
+
+            // Move it OFF the default first: "landed on the default" must not be
+            // confusable with "was never touched" -- the vacuity that hid ER-STATE-08.
+            rp->setValueNotifyingHost (def > 0.5f ? 0.1f : 0.9f);
+
+            const auto f = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                               .getChildFile ("anamorph_malformed_probe.anamorph");
+            f.deleteFile();
+            auto tree = juce::ValueTree ("ANAMORPH");
+            auto node = juce::ValueTree ("PARAM");
+            node.setProperty ("id", id, nullptr);
+            node.setProperty ("value", juce::String (poison), nullptr);
+            tree.appendChild (node, nullptr);
+            if (auto xml = tree.createXml()) xml->writeTo (f);
+            const bool loaded = proc.getPresets().loadFile (f);
+            f.deleteFile();
+
+            check (loaded, "the malformed preset file loads (it is well-formed XML)");
+            check (juce::approximatelyEqual (rp->getValue(), def),
+                   "preset path: a malformed value restores the parameter default");
+        }
+
+    // The SESSION path must give the same answers, or the two drift apart again.
+    for (const char* poison : { "abc", "", "0x10", "nan", "inf", "1e400", "-1e400" })
+    {
+        juce::MemoryBlock poisoned;
+        {
+            AnamorphAudioProcessor authoring;
+            authoring.prepareToPlay (48000.0, 256);
+            juce::MemoryBlock clean;
+            authoring.getStateInformation (clean);
+            auto xml = BlobCodec::unwrap (clean);
+            if (xml == nullptr) { check (false, "authored session decodes"); continue; }
+            if (auto* params = xml->getChildByName ("ANAMORPH"))
+                if (auto* w = params->getChildByAttribute ("id", pid::width))
+                {
+                    w->setAttribute ("value", poison);
+                    w->removeAttribute ("raw");     // force the @value branch
+                }
+            poisoned = BlobCodec::wrap (*xml);
+        }
+        AnamorphAudioProcessor proc;
+        proc.prepareToPlay (48000.0, 256);
+        setRaw (proc, pid::width, 0.9f);            // off the default first
+        proc.setStateInformation (poisoned.getData(), (int) poisoned.getSize());
+        check (juce::approximatelyEqual (rawOf (proc, pid::width),
+                                         proc.getAPVTS().getParameter (pid::width)->getDefaultValue()),
+               "session path: a malformed value restores the parameter default");
+    }
+
+    // The `raw` branch launders infinity through juce::jlimit the same way, so it
+    // needs its own coverage -- it is the branch a current-schema session takes.
+    {
+        juce::MemoryBlock poisoned;
+        {
+            AnamorphAudioProcessor authoring;
+            authoring.prepareToPlay (48000.0, 256);
+            juce::MemoryBlock clean;
+            authoring.getStateInformation (clean);
+            auto xml = BlobCodec::unwrap (clean);
+            if (xml != nullptr)
+                if (auto* params = xml->getChildByName ("ANAMORPH"))
+                    if (auto* w = params->getChildByAttribute ("id", pid::width))
+                        w->setAttribute ("raw", "inf");
+            poisoned = BlobCodec::wrap (*xml);
+        }
+        AnamorphAudioProcessor proc;
+        proc.prepareToPlay (48000.0, 256);
+        setRaw (proc, pid::width, 0.9f);
+        proc.setStateInformation (poisoned.getData(), (int) poisoned.getSize());
+        std::printf ("  width after restoring raw=\"inf\": %f\n", rawOf (proc, pid::width));
+        check (rawOf (proc, pid::width) < 0.99f,
+               "a non-finite `raw` does not pin the parameter to its range maximum");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 20. A repaired parameter must reach the SAVED state, not just the live one.
+//
+//     The repair in reassertParameters' notifyHost=false branch writes the
+//     parameter (setValue) and the DSP atomic directly, and deliberately notifies
+//     nobody -- a parameter-change callback during the host's own state load can
+//     read as an automation write in some DAWs. But JUCE flushes a parameter into
+//     the ValueTree only when the adapter's `needsUpdate` is set, and that is set
+//     by parameterValueChanged, which setValue() does not fire. So the repair was
+//     invisible to serialization: measured before the fix, a session carrying
+//     value="nan" restored correctly and then SAVED value="nan" straight back out.
+//
+//     This build reloads that file correctly anyway, because `raw` is re-stamped
+//     on every save and is preferred on restore. The defect is in what the FILE
+//     says -- which is the durable artefact, and what a build with no `raw` path
+//     reads as NaN.
+static void testRepairReachesSavedState()
+{
+    std::printf ("State test 20: a repaired parameter reaches the saved state (not just the live one)\n");
+
+    juce::MemoryBlock poisoned;
+    {
+        AnamorphAudioProcessor authoring;
+        authoring.prepareToPlay (48000.0, 256);
+        juce::MemoryBlock clean;
+        authoring.getStateInformation (clean);
+        auto xml = BlobCodec::unwrap (clean);
+        check (xml != nullptr, "authored session decodes for poisoning");
+        if (xml == nullptr) return;
+        bool poisonedOne = false;
+        if (auto* params = xml->getChildByName ("ANAMORPH"))
+            if (auto* w = params->getChildByAttribute ("id", pid::width))
+            {
+                w->setAttribute ("value", "nan");
+                w->removeAttribute ("raw");
+                poisonedOne = true;
+            }
+        check (poisonedOne, "the session carries a width PARAM to poison");
+        poisoned = BlobCodec::wrap (*xml);
+    }
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 256);
+    proc.setStateInformation (poisoned.getData(), (int) poisoned.getSize());
+
+    auto* rp = proc.getAPVTS().getParameter (pid::width);
+    check (juce::approximatelyEqual (rp->getValue(), rp->getDefaultValue()),
+           "the corrupt value was repaired in the live parameter");
+
+    // The live tree, which is what copyState() serialises from.
+    auto live = proc.getAPVTS().state.getChildWithProperty ("id", pid::width);
+    check (live.isValid(), "the live APVTS still carries a width node");
+    const double liveValue = live.getProperty ("value").toString().getDoubleValue();
+    std::printf ("  live APVTS @value after repair = \"%s\"\n",
+                 live.getProperty ("value").toString().toRawUTF8());
+    check (std::isfinite (liveValue), "the repair reached the live APVTS tree");
+
+    // And the saved artefact.
+    juce::MemoryBlock saved;
+    proc.getStateInformation (saved);
+    auto savedXml = BlobCodec::unwrap (saved);
+    check (savedXml != nullptr, "the re-saved session decodes");
+    if (savedXml == nullptr) return;
+    auto* w = savedXml->getChildByName ("ANAMORPH") != nullptr
+                  ? savedXml->getChildByName ("ANAMORPH")->getChildByAttribute ("id", pid::width)
+                  : nullptr;
+    check (w != nullptr, "the re-saved session carries a width node");
+    if (w == nullptr) return;
+    std::printf ("  saved @value = \"%s\"  @raw = \"%s\"\n",
+                 w->getStringAttribute ("value").toRawUTF8(),
+                 w->hasAttribute ("raw") ? w->getStringAttribute ("raw").toRawUTF8() : "(absent)");
+    check (std::isfinite (w->getStringAttribute ("value").getDoubleValue()),
+           "the corruption does not survive into the next saved state");
+}
+
+// ---------------------------------------------------------------------------
+// 21. KI-028: a value-box press whose release is never delivered must not hold a
+//     host gesture open for the rest of the session.
+//
+//     ValueBox opens a juce::Slider::ScopedDragNotification on mouseDown and
+//     closes it on mouseUp, so a drag is one undo step and one host touch/latch
+//     span. Round 3 measured which abandonment paths actually exist: of six
+//     candidates, five are closed by JUCE itself (it synthesises the release on
+//     the next event that reaches the peer, or the component's own destruction
+//     fires the RAII close). The one that survives is a release the OS delivers
+//     to no JUCE peer at all -- let go over the host window or the desktop.
+//
+//     Measured before the fix, with a positive control proving the yardstick can
+//     fail: an unreleased press left canUndo() FALSE after a complete, balanced,
+//     unrelated edit. Also measured, and REFUTED: destroying the editor mid-press
+//     does NOT leak, despite sliderAtts being declared after the Knobs and so
+//     destructing first -- the RAII close still lands.
+//
+//     SCOPE: the editor predicate that triggers the sweep is inert on macOS
+//     (KI-013), so this closes the Linux and Windows halves and narrows KI-028 to
+//     a macOS residual. The sweep is tested directly rather than through that
+//     predicate, because synthesising OS-level button state headlessly is not
+//     possible -- and the predicate is pre-existing, shipped, and separately
+//     recorded.
+static void testAbandonedValueBoxGestureIsReclaimed()
+{
+    std::printf ("State test 21: an abandoned value-box press does not block undo (KI-028)\n");
+#if ! (JUCE_LINUX || JUCE_BSD)
+    std::printf ("  SKIPPED off Linux -- headless editor construction is unverified there (KI-007)\n");
+#else
+    auto editYieldsUndoStep = [] (AnamorphAudioProcessor& proc, const char* id, float norm)
+    {
+        auto* rp = proc.getAPVTS().getParameter (id);
+        rp->beginChangeGesture();
+        rp->setValueNotifyingHost (norm);
+        rp->endChangeGesture();
+        proc.pollUndoCoalesce();
+        return proc.canUndo();
+    };
+
+    // THE YARDSTICK MUST BE ABLE TO FAIL, or every assertion below is vacuous.
+    {
+        AnamorphAudioProcessor proc;
+        proc.prepareToPlay (48000.0, 512);
+        auto* held = proc.getAPVTS().getParameter (pid::width);
+        held->beginChangeGesture();                   // opened, never closed
+        check (! editYieldsUndoStep (proc, pid::mix, 0.31f),
+               "positive control: an open gesture really does block the undo commit");
+        held->endChangeGesture();
+    }
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto* raw = proc.createEditor();
+    auto* ed = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "editor constructs for the gesture probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    juce::Slider* slider = nullptr;
+    juce::Label*  box    = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        if (slider != nullptr) return;
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* kid = c->getChildComponent (i);
+            if (auto* sl = dynamic_cast<juce::Slider*> (kid))
+                for (int j = 0; j < sl->getNumChildComponents(); ++j)
+                    if (auto* lb = dynamic_cast<juce::Label*> (sl->getChildComponent (j)))
+                    { slider = sl; box = lb; break; }
+            if (slider == nullptr) walk (kid);
+            else return;
+        }
+    };
+    walk (ed);
+    check (slider != nullptr && box != nullptr, "a knob with a value box exists to press");
+    if (slider == nullptr || box == nullptr) { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    const juce::MouseEvent me (juce::Desktop::getInstance().getMainMouseSource(),
+                               { 4.0f, 4.0f }, juce::ModifierKeys::leftButtonModifier,
+                               1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                               box, box, juce::Time::getCurrentTime(),
+                               { 4.0f, 4.0f }, juce::Time::getCurrentTime(), 1, false);
+
+    // (1) The press really does open a gesture -- checked, not assumed.
+    box->mouseDown (me);
+    check ((bool) slider->getProperties().getWithDefault ("dragging", false),
+           "the press registers on the knob");
+    check (! editYieldsUndoStep (proc, pid::mix, 0.31f),
+           "an un-released press holds the gesture open (this is KI-028)");
+
+    // (2) The reconcile reclaims it.
+    ed->abortAbandonedDragGestures();
+    check (! (bool) slider->getProperties().getWithDefault ("dragging", true),
+           "the reconcile clears the press feedback");
+    check (editYieldsUndoStep (proc, pid::mix, 0.44f),
+           "...and undo works again after the abandoned gesture is reclaimed");
+
+    // (3) Idempotent: the reconcile runs every tick, so a second call must be inert.
+    ed->abortAbandonedDragGestures();
+    check (editYieldsUndoStep (proc, pid::mix, 0.55f),
+           "the sweep is idempotent -- a second pass does not close a gesture twice");
+
+    // (4) A NORMAL drag is unchanged: press, drag, release, one undo step.
+    {
+        box->mouseDown (me);
+        const juce::MouseEvent up (juce::Desktop::getInstance().getMainMouseSource(),
+                                   { 4.0f, 9.0f }, juce::ModifierKeys(),
+                                   1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                   box, box, juce::Time::getCurrentTime(),
+                                   { 4.0f, 4.0f }, juce::Time::getCurrentTime(), 1, true);
+        // Label::mouseUp is protected; Component::mouseUp is public and virtual, so
+        // the call goes through the base pointer and still dispatches to ValueBox.
+        static_cast<juce::Component*> (box)->mouseUp (up);
+        check (! (bool) slider->getProperties().getWithDefault ("dragging", true),
+               "a normal release still clears the press feedback");
+        check (editYieldsUndoStep (proc, pid::mix, 0.66f),
+               "a normal press/release leaves undo working (no regression)");
+    }
+
+    // (5) Editor teardown mid-press: measured NOT to leak, recorded so the
+    //     refutation is guarded rather than remembered.
+    {
+        AnamorphAudioProcessor proc2;
+        proc2.prepareToPlay (48000.0, 512);
+        auto* raw2 = proc2.createEditor();
+        if (auto* ed2 = dynamic_cast<AnamorphAudioProcessorEditor*> (raw2))
+        {
+            juce::Slider* sl2 = nullptr; juce::Label* bx2 = nullptr;
+            std::function<void (juce::Component*)> walk2 = [&] (juce::Component* c)
+            {
+                if (sl2 != nullptr) return;
+                for (int i = 0; i < c->getNumChildComponents(); ++i)
+                {
+                    auto* kid = c->getChildComponent (i);
+                    if (auto* sl = dynamic_cast<juce::Slider*> (kid))
+                        for (int j = 0; j < sl->getNumChildComponents(); ++j)
+                            if (auto* lb = dynamic_cast<juce::Label*> (sl->getChildComponent (j)))
+                            { sl2 = sl; bx2 = lb; break; }
+                    if (sl2 == nullptr) walk2 (kid); else return;
+                }
+            };
+            walk2 (ed2);
+            if (bx2 != nullptr)
+            {
+                const juce::MouseEvent me2 (juce::Desktop::getInstance().getMainMouseSource(),
+                                            { 4.0f, 4.0f }, juce::ModifierKeys::leftButtonModifier,
+                                            1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                            bx2, bx2, juce::Time::getCurrentTime(),
+                                            { 4.0f, 4.0f }, juce::Time::getCurrentTime(), 1, false);
+                bx2->mouseDown (me2);
+            }
+            proc2.editorBeingDeleted (ed2);
+            delete ed2;
+            check (editYieldsUndoStep (proc2, pid::mix, 0.31f),
+                   "destroying the editor mid-press closes the gesture (the RAII close lands)");
+        }
+        else delete raw2;
+    }
+
+    proc.editorBeingDeleted (ed);
+    delete ed;
+#endif
+}
+
+// ---------------------------------------------------------------------------
+// Round-3 diagnostic probe (opt-in, asserts NOTHING).
+//
+//     Covers priorities 2-5 of the round-3 brief in one pass. It PRINTS measured
+//     values rather than asserting them, because at the time it was written all
+//     four were HYPOTHESES, and the round's rule is that classification comes from
+//     what a probe prints -- never from what an investigation predicted. Anything
+//     it confirms is then promoted to a real assertion in the suite proper.
+static int runPresetSemanticsProbe()
+{
+    std::printf ("Round-3 probe: preset / restore value semantics\n\n");
+
+    // -- P2/P4 step 1: what JUCE's own parser actually does with each poison. ---
+    // Read, do not recall: juce::ValueTree::fromXml stores XML attributes as
+    // String vars, so this is exactly the conversion applySoundTree performs.
+    std::printf ("A. juce::var conversion of raw attribute text\n");
+    const char* texts[] = { "abc", "12abc", "", "  1.5  ", "1e999", "0x10",
+                            "0", "0.0", "-0", "0e0", ".5", "+1",
+                            "nan", "inf", "-inf", "1e39", "1e400", "-1e400", "1e38" };
+    for (const char* t : texts)
+    {
+        const juce::var v { juce::String (t) };
+        const double d = (double) v;
+        const float f = (float) d;
+        std::printf ("   %-8s isString=%d  (double)=%-14g (float)=%-14g finite(f)=%d\n",
+                     (juce::String ("\"") + t + "\"").toRawUTF8(),
+                     (int) v.isString(), d, (double) f, (int) std::isfinite (f));
+    }
+
+    // -- P2/P4 step 2: what the real PRESET path does with each poison. --------
+    // Driven end to end through PresetManager::loadFile on a real file, because
+    // applySoundTree is private and a hand-rolled re-derivation would prove
+    // nothing about the shipped path.
+    std::printf ("\nB. preset path (real loadFile), per parameter and poison\n");
+    struct Target { const char* id; const char* label; };
+    const Target targets[] = {
+        { pid::width,         "width (0..2, def 1, linear)" },
+        { pid::monoMakerFreq, "monoMakerFreq (skewed)" },
+        { pid::chorusRate,    "chorusRate (skewed 0.4)" },
+        { pid::algorithm,     "algorithm (RawChoice)" },
+        { pid::monoMakerOn,   "monoMakerOn (RawBool)" },
+    };
+    const char* poisons[] = { "abc", "", "0x10", "nan", "inf", "-inf", "1e39", "1e400", "-1e400" };
+
+    for (const auto& tg : targets)
+    {
+        AnamorphAudioProcessor probeProc;
+        auto* rp = probeProc.getAPVTS().getParameter (tg.id);
+        if (rp == nullptr) { std::printf ("   %s: NO SUCH PARAMETER\n", tg.id); continue; }
+        const float def = rp->getDefaultValue();
+        std::printf ("   %-30s default(norm) = %.6f\n", tg.label, def);
+
+        for (const char* poison : poisons)
+        {
+            AnamorphAudioProcessor proc;
+            proc.prepareToPlay (48000.0, 256);
+            auto* rp2 = proc.getAPVTS().getParameter (tg.id);
+            // Move it OFF the default first, so "landed on the default" cannot be
+            // confused with "was never touched" -- the vacuity that hid ER-STATE-08.
+            rp2->setValueNotifyingHost (def > 0.5f ? 0.1f : 0.9f);
+            const float before = rp2->getValue();
+
+            const auto f = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                               .getChildFile ("anamorph_r3_probe.anamorph");
+            f.deleteFile();
+            auto tree = juce::ValueTree ("ANAMORPH");
+            auto node = juce::ValueTree ("PARAM");
+            node.setProperty ("id", tg.id, nullptr);
+            node.setProperty ("value", juce::String (poison), nullptr);
+            tree.appendChild (node, nullptr);
+            bool wrote = false;
+            if (auto xml = tree.createXml()) wrote = xml->writeTo (f);
+            const bool loaded = wrote && proc.getPresets().loadFile (f);
+            const float after = rp2->getValue();
+            f.deleteFile();
+
+            const char* verdict = ! loaded ? "LOAD FAILED"
+                                : (std::abs (after - def) < 1.0e-6f) ? "-> default (guard held)"
+                                : (after < 1.0e-6f)                  ? "-> RANGE MINIMUM"
+                                : (after > 1.0f - 1.0e-6f)           ? "-> RANGE MAXIMUM"
+                                                                     : "-> other";
+            std::printf ("      value=%-8s before %.4f  after %.6f   %s\n",
+                         (juce::String ("\"") + poison + "\"").toRawUTF8(),
+                         before, after, verdict);
+        }
+    }
+
+    // -- P2 step 3: the SESSION path, same poison, for comparison. -------------
+    // The two paths must not drift: whatever the answer is, it should be the same.
+    std::printf ("\nC. session path (real setStateInformation), width\n");
+    for (const char* poison : { "abc", "", "0x10", "nan", "inf", "1e400" })
+    {
+        juce::MemoryBlock poisoned;
+        {
+            AnamorphAudioProcessor authoring;
+            authoring.prepareToPlay (48000.0, 256);
+            juce::MemoryBlock clean;
+            authoring.getStateInformation (clean);
+            auto xml = BlobCodec::unwrap (clean);
+            if (xml == nullptr) { std::printf ("   unwrap failed\n"); continue; }
+            if (auto* params = xml->getChildByName ("ANAMORPH"))
+                if (auto* w = params->getChildByAttribute ("id", pid::width))
+                {
+                    w->setAttribute ("value", poison);
+                    w->removeAttribute ("raw");   // force the @value path
+                }
+            poisoned = BlobCodec::wrap (*xml);
+        }
+        AnamorphAudioProcessor proc;
+        proc.prepareToPlay (48000.0, 256);
+        setRaw (proc, pid::width, 0.9f);          // off the default first
+        proc.setStateInformation (poisoned.getData(), (int) poisoned.getSize());
+        std::printf ("      value=%-8s -> width norm %.6f (default 0.500000)\n",
+                     (juce::String ("\"") + poison + "\"").toRawUTF8(),
+                     rawOf (proc, pid::width));
+    }
+
+    // -- P3: does a REPAIR reach the saved blob? ------------------------------
+    // Load corrupt -> restore -> save -> inspect -> reload -> compare, exactly the
+    // sequence the brief specifies.
+    std::printf ("\nD. state repair serialization consistency (P3)\n");
+    {
+        juce::MemoryBlock poisoned;
+        {
+            AnamorphAudioProcessor authoring;
+            authoring.prepareToPlay (48000.0, 256);
+            juce::MemoryBlock clean;
+            authoring.getStateInformation (clean);
+            auto xml = BlobCodec::unwrap (clean);
+            if (auto* params = xml->getChildByName ("ANAMORPH"))
+                if (auto* w = params->getChildByAttribute ("id", pid::width))
+                {
+                    w->setAttribute ("value", "nan");
+                    w->removeAttribute ("raw");
+                }
+            poisoned = BlobCodec::wrap (*xml);
+        }
+        AnamorphAudioProcessor proc;
+        proc.prepareToPlay (48000.0, 256);
+        proc.setStateInformation (poisoned.getData(), (int) poisoned.getSize());
+        std::printf ("      after restore: width norm = %.6f (repaired to default 0.500000?)\n",
+                     rawOf (proc, pid::width));
+
+        // (a) the LIVE tree
+        auto live = proc.getAPVTS().state.getChildWithProperty ("id", pid::width);
+        std::printf ("      live APVTS node @value = \"%s\"  @raw = \"%s\"\n",
+                     live.getProperty ("value").toString().toRawUTF8(),
+                     live.hasProperty ("raw") ? live.getProperty ("raw").toString().toRawUTF8() : "(absent)");
+
+        // (d) the SAVED blob
+        juce::MemoryBlock saved;
+        proc.getStateInformation (saved);
+        if (auto xml = BlobCodec::unwrap (saved))
+            if (auto* params = xml->getChildByName ("ANAMORPH"))
+                if (auto* w = params->getChildByAttribute ("id", pid::width))
+                    std::printf ("      SAVED node @value = \"%s\"  @raw = \"%s\"\n",
+                                 w->getStringAttribute ("value").toRawUTF8(),
+                                 w->hasAttribute ("raw") ? w->getStringAttribute ("raw").toRawUTF8() : "(absent)");
+
+        // reload into a fresh instance
+        AnamorphAudioProcessor fresh;
+        fresh.prepareToPlay (48000.0, 256);
+        fresh.setStateInformation (saved.getData(), (int) saved.getSize());
+        std::printf ("      reloaded into a fresh instance: width norm = %.6f\n",
+                     rawOf (fresh, pid::width));
+    }
+
+    // -- P5: ER-STATE-04.5, the id+raw-without-value shape. -------------------
+    std::printf ("\nE. ER-STATE-04.5: what the next save writes for an omitted PARAM (P5)\n");
+    for (bool atDefault : { true, false })
+    {
+        juce::MemoryBlock partial;
+        {
+            AnamorphAudioProcessor authoring;
+            authoring.prepareToPlay (48000.0, 256);
+            juce::MemoryBlock whole;
+            authoring.getStateInformation (whole);
+            auto xml = BlobCodec::unwrap (whole);
+            if (auto* params = xml->getChildByName ("ANAMORPH"))
+                if (auto* w = params->getChildByAttribute ("id", pid::width))
+                    params->removeChildElement (w, true);
+            partial = BlobCodec::wrap (*xml);
+        }
+        AnamorphAudioProcessor proc;
+        proc.prepareToPlay (48000.0, 256);
+        auto* rp = proc.getAPVTS().getParameter (pid::width);
+        rp->setValueNotifyingHost (atDefault ? rp->getDefaultValue() : 0.9f);
+        proc.setStateInformation (partial.getData(), (int) partial.getSize());
+
+        juce::MemoryBlock saved;
+        proc.getStateInformation (saved);
+        std::printf ("      live was %s: ", atDefault ? "AT default   " : "OFF default  ");
+        if (auto xml = BlobCodec::unwrap (saved))
+            if (auto* params = xml->getChildByName ("ANAMORPH"))
+            {
+                auto* w = params->getChildByAttribute ("id", pid::width);
+                if (w == nullptr) { std::printf ("saved node ABSENT entirely\n"); continue; }
+                std::printf ("saved @value = %-10s @raw = %s\n",
+                             w->hasAttribute ("value")
+                                 ? (juce::String ("\"") + w->getStringAttribute ("value") + "\"").toRawUTF8()
+                                 : "(ABSENT)",
+                             w->hasAttribute ("raw")
+                                 ? (juce::String ("\"") + w->getStringAttribute ("raw") + "\"").toRawUTF8()
+                                 : "(ABSENT)");
+            }
+    }
+
+    std::printf ("\nprobe complete (no assertions -- classification is the lead's)\n");
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
+// Round-3 KI-028 probe (opt-in, PRINTS, asserts only its own non-vacuity).
+//
+//     Measures the two things the round-3 adversarial pass disputed about KI-028:
+//       (1) whether destroying the editor mid-value-box-drag leaks the host
+//           gesture into the PROCESSOR, which outlives the editor -- a path the
+//           original filing declared SAFE on the grounds that ~ValueBox fires
+//           ~ScopedDragNotification. The dispute: PluginEditor.h declares the
+//           Knobs at :432-435 and `sliderAtts` at :482, and members destruct in
+//           REVERSE declaration order, so ~sliderAtts runs FIRST and
+//           SliderParameterAttachment's destructor removes itself as a Slider
+//           listener. By the time ~ValueBox fires sendDragEnd there may be no
+//           listener left to hear it, and endChangeGesture never runs.
+//       (2) whether openGestures self-heals, which decides KI-028's severity.
+static int runValueBoxGestureProbe()
+{
+    std::printf ("Round-3 probe: value-box gesture lifetime (KI-028)\n");
+#if ! (JUCE_LINUX || JUCE_BSD)
+    std::printf ("  SKIPPED off Linux -- headless editor construction is unverified there (KI-007)\n");
+    return 0;
+#else
+    // A complete, balanced edit through the processor: this is the yardstick.
+    // If openGestures is clean it produces exactly one undo step.
+    auto editYieldsUndoStep = [] (AnamorphAudioProcessor& proc, const char* id, float norm)
+    {
+        auto* rp = proc.getAPVTS().getParameter (id);
+        rp->beginChangeGesture();
+        rp->setValueNotifyingHost (norm);
+        rp->endChangeGesture();
+        proc.pollUndoCoalesce();
+        return proc.canUndo();
+    };
+
+    // -- POSITIVE CONTROL: a deliberately leaked gesture. Without this leg every
+    //    "no leak" result below is unfalsifiable -- it would read the same if
+    //    canUndo() simply never went false. This proves the yardstick can fail.
+    {
+        AnamorphAudioProcessor proc;
+        proc.prepareToPlay (48000.0, 512);
+        auto* held = proc.getAPVTS().getParameter (pid::width);
+        held->beginChangeGesture();               // opened and never closed
+        const bool undoWorks = editYieldsUndoStep (proc, pid::mix, 0.31f);
+        std::printf ("  POSITIVE CONTROL (a gesture opened and never closed): canUndo = %d%s\n",
+                     (int) undoWorks, undoWorks ? "  <-- YARDSTICK IS BLIND" : "  (yardstick detects a leak)");
+        held->endChangeGesture();
+    }
+
+    // -- control: no drag at all. Establishes that the yardstick works. --------
+    {
+        AnamorphAudioProcessor proc;
+        proc.prepareToPlay (48000.0, 512);
+        auto* raw = proc.createEditor();
+        auto* ed = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+        if (ed == nullptr) { delete raw; std::printf ("  editor did not construct\n"); return 1; }
+        proc.editorBeingDeleted (ed);
+        delete ed;
+        std::printf ("  control (editor opened and closed, no drag): canUndo after a full edit = %d\n",
+                     (int) editYieldsUndoStep (proc, pid::mix, 0.31f));
+    }
+
+    // -- leg 1: press a value box, then destroy the editor mid-press. ---------
+    {
+        AnamorphAudioProcessor proc;
+        proc.prepareToPlay (48000.0, 512);
+        auto* raw = proc.createEditor();
+        auto* ed = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+        if (ed == nullptr) { delete raw; std::printf ("  editor did not construct\n"); return 1; }
+
+        // Find a rotary slider that actually owns a value-box Label child.
+        juce::Slider* slider = nullptr;
+        juce::Label*  box    = nullptr;
+        std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+        {
+            if (slider != nullptr) return;
+            for (int i = 0; i < c->getNumChildComponents(); ++i)
+            {
+                auto* kid = c->getChildComponent (i);
+                if (auto* sl = dynamic_cast<juce::Slider*> (kid))
+                    for (int j = 0; j < sl->getNumChildComponents(); ++j)
+                        if (auto* lb = dynamic_cast<juce::Label*> (sl->getChildComponent (j)))
+                        { slider = sl; box = lb; break; }
+                if (slider == nullptr) walk (kid);
+                else return;
+            }
+        };
+        walk (ed);
+        std::printf ("  found a slider with a value box: %d\n", (int) (slider != nullptr && box != nullptr));
+        if (slider == nullptr || box == nullptr)
+        {
+            proc.editorBeingDeleted (ed); delete ed;
+            std::printf ("  PROBE CANNOT RUN -- no value box found\n");
+            return 1;
+        }
+
+        // Synthesise the press the ValueBox reacts to. This is the real virtual,
+        // so the real ScopedDragNotification is created and really is owned by the
+        // ValueBox -- which is what makes the destruction-order question live.
+        const juce::MouseEvent me (juce::Desktop::getInstance().getMainMouseSource(),
+                                   { 4.0f, 4.0f }, juce::ModifierKeys::leftButtonModifier,
+                                   1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                   box, box, juce::Time::getCurrentTime(),
+                                   { 4.0f, 4.0f }, juce::Time::getCurrentTime(), 1, false);
+        box->mouseDown (me);
+        std::printf ("  after mouseDown on the value box: slider \"dragging\" = %d\n",
+                     (int) (bool) slider->getProperties().getWithDefault ("dragging", false));
+
+        // ...and tear the editor down while the press is still open.
+        proc.editorBeingDeleted (ed);
+        delete ed;
+
+        const bool undoWorks = editYieldsUndoStep (proc, pid::mix, 0.31f);
+        std::printf ("  LEG 1 editor destroyed mid-press: canUndo after a full edit = %d%s\n",
+                     (int) undoWorks,
+                     undoWorks ? "  (no leak)" : "  <-- GESTURE LEAKED INTO THE PROCESSOR");
+
+        // -- leg 2: does it self-heal? syncCommitted / undo / redo / preset load
+        //    all force openGestures back to 0 per the adversarial pass.
+        if (! undoWorks)
+        {
+            proc.getPresets().load (1);       // a preset load records its own step
+            const bool healed = editYieldsUndoStep (proc, pid::mix, 0.62f);
+            std::printf ("  LEG 2 after a preset load: canUndo = %d%s\n", (int) healed,
+                         healed ? "  (self-heals)" : "  (still stuck)");
+        }
+    }
+
+    // -- leg 3: THE ACTUAL KI-028 SHAPE -- the release is lost while the editor
+    //    is still alive and the ValueBox still holds its ScopedDragNotification.
+    //    This is the one path the round-3 investigation found survives; legs 1-2
+    //    exist to test the disputed claim that editor teardown is another.
+    {
+        AnamorphAudioProcessor proc;
+        proc.prepareToPlay (48000.0, 512);
+        auto* raw = proc.createEditor();
+        auto* ed = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+        if (ed == nullptr) { delete raw; return 1; }
+
+        juce::Slider* slider = nullptr;
+        juce::Label*  box    = nullptr;
+        std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+        {
+            if (slider != nullptr) return;
+            for (int i = 0; i < c->getNumChildComponents(); ++i)
+            {
+                auto* kid = c->getChildComponent (i);
+                if (auto* sl = dynamic_cast<juce::Slider*> (kid))
+                    for (int j = 0; j < sl->getNumChildComponents(); ++j)
+                        if (auto* lb = dynamic_cast<juce::Label*> (sl->getChildComponent (j)))
+                        { slider = sl; box = lb; break; }
+                if (slider == nullptr) walk (kid);
+                else return;
+            }
+        };
+        walk (ed);
+        if (slider != nullptr && box != nullptr)
+        {
+            const juce::MouseEvent me (juce::Desktop::getInstance().getMainMouseSource(),
+                                       { 4.0f, 4.0f }, juce::ModifierKeys::leftButtonModifier,
+                                       1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                       box, box, juce::Time::getCurrentTime(),
+                                       { 4.0f, 4.0f }, juce::Time::getCurrentTime(), 1, false);
+            box->mouseDown (me);                       // ...and NO mouseUp ever arrives
+            const bool undoWorks = editYieldsUndoStep (proc, pid::mix, 0.31f);
+            std::printf ("  LEG 3 press never released, editor alive: canUndo after a full edit = %d%s\n",
+                         (int) undoWorks,
+                         undoWorks ? "  (no leak)" : "  <-- KI-028: undo blocked while the gesture is open");
+        }
+        proc.editorBeingDeleted (ed);
+        delete ed;
+    }
+
+    std::printf ("\nprobe complete\n");
+    return 0;
+#endif
+}
+
 int main (int argc, char* argv[])
 {
     juce::ScopedJuceInitialiser_GUI juceInit; // MessageManager for APVTS/processor on this thread
@@ -2264,6 +3005,12 @@ int main (int argc, char* argv[])
 
     if (argc > 1 && std::strcmp (argv[1], "--latency-restore-probe") == 0)
         return runLatencyRestoreProbe();
+
+    if (argc > 1 && std::strcmp (argv[1], "--preset-semantics-probe") == 0)
+        return runPresetSemanticsProbe();
+
+    if (argc > 1 && std::strcmp (argv[1], "--valuebox-gesture-probe") == 0)
+        return runValueBoxGestureProbe();
 
     const bool writeSnapshot = argc > 1 && std::strcmp (argv[1], "--write-snapshot") == 0;
 
@@ -2292,6 +3039,9 @@ int main (int argc, char* argv[])
     testFirstActivationUsesRestoredState();
     testNonFiniteParameterInStateIsRejected();
     testValuelessParamMeansDefault();
+    testMalformedValuesRestoreDefaults();
+    testRepairReachesSavedState();
+    testAbandonedValueBoxGestureIsReclaimed();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

@@ -1,6 +1,7 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include "AbSlotIndex.h"
+#include "SerializedNumber.h"   // the shared malformed-value predicate (both restore paths)
 
 #include <cmath>   // std::isfinite -- the non-finite guards on the restore paths
 
@@ -309,6 +310,28 @@ juce::ValueTree AnamorphAudioProcessor::copyStateWithRawValues()
     return tree;
 }
 
+namespace
+{
+    // The same predicate the preset path uses (PresetManager.cpp), so a malformed
+    // serialized value cannot mean one thing in a session and another in a preset.
+    // False means "no usable number here"; every caller answers that with the
+    // parameter default, which is what SERIALIZATION_REGISTRY.md already records
+    // for an absent node.
+    bool readSerializedValue (const juce::var& prop, float& out)
+    {
+        if (prop.isVoid()) return false;
+        if (prop.isString())
+        {
+            const auto text = prop.toString().trim();
+            if (! anamorph::looksLikePlainNumber (text.toRawUTF8())) return false;
+        }
+        const float v = (float) (double) prop;
+        if (! anamorph::isUsableSerializedValue (v)) return false;
+        out = v;
+        return true;
+    }
+}
+
 // Synchronously force every parameter to its restored value, from the just-restored tree.
 //
 // CORRECTED 2026-08-31 (ER-STATE-04) after checking the pinned JUCE 9.0.1 rather than
@@ -391,6 +414,31 @@ void AnamorphAudioProcessor::reassertParameters (const juce::ValueTree& restored
                 rp->setValue (norm); // getValue() only -- no host / listener notification
                 if (auto* atom = apvts.getRawParameterValue (rp->paramID))
                     atom->store (rp->convertFrom0to1 (norm)); // DSP value (snapped denormalised)
+
+                // ...and the TREE, which neither of the two writes above reaches.
+                // Measured before this line existed: a session carrying
+                // value="nan" restored correctly (parameter and DSP atomic both
+                // repaired to the default) and then SAVED value="nan" straight
+                // back out. The reason is JUCE's flush gate -- copyState() writes
+                // a node only when the adapter's `needsUpdate` is set, and that is
+                // set by parameterValueChanged, which setValue() deliberately does
+                // not fire. So the repair was invisible to serialization and the
+                // corruption outlived it in every subsequent save.
+                //
+                // Writing the repaired value here is a no-op for the adapter: it
+                // fires valueTreePropertyChanged -> setNewState ->
+                // setDenormalisedValue, whose approximatelyEqual early-return sees
+                // the value the atomic above already holds and stops. Nothing is
+                // re-notified and nothing recurses; only the serialized text moves.
+                //
+                // This build reloads such a session correctly either way, because
+                // `raw` is re-stamped on every save and reassertParameters prefers
+                // it -- so the visible defect is confined to what the FILE says.
+                // That is still worth repairing: the file is the durable artefact,
+                // it is what an older build (which has no `raw` path) would read as
+                // NaN, and it is what any other reader of @value would get.
+                if (auto node = apvts.state.getChildWithProperty ("id", rp->paramID); node.isValid())
+                    node.setProperty ("value", rp->convertFrom0to1 (norm), nullptr);
                 if (! pid::isViewParam (rp->paramID))
                     silentSoundChange = true;
             }
@@ -402,10 +450,25 @@ void AnamorphAudioProcessor::reassertParameters (const juce::ValueTree& restored
         {
             if (auto node = restoredApvtsTree.getChildWithProperty ("id", rp->paramID); node.isValid())
             {
-                const float norm = node.hasProperty ("raw")
-                    ? juce::jlimit (0.0f, 1.0f, (float) node.getProperty ("raw"))
-                    : juce::jlimit (0.0f, 1.0f, rp->convertTo0to1 ((float) node.getProperty ("value",
-                                                                   rp->convertFrom0to1 (rp->getValue()))));
+                // Both branches validate the INPUT before any clamp or conversion,
+                // for the reason anamorph::SerializedNumber.h records with the
+                // measured table: jlimit and convertTo0to1 both CLAMP, so an
+                // infinity reaching either one comes out as a finite range
+                // ENDPOINT and every later finiteness test passes. Measured on the
+                // shipped build through this exact path: value="inf" pinned width
+                // to 1.000000 (maximum) and value="abc" to 0.000000 (minimum).
+                // A property that is not a usable number means the parameter
+                // default -- the same answer the absent-node branch below gives.
+                float serialized = 0.0f;
+                const bool haveRaw = node.hasProperty ("raw")
+                                     && readSerializedValue (node.getProperty ("raw"), serialized);
+                float norm;
+                if (haveRaw)
+                    norm = juce::jlimit (0.0f, 1.0f, serialized);
+                else if (readSerializedValue (node.getProperty ("value"), serialized))
+                    norm = juce::jlimit (0.0f, 1.0f, rp->convertTo0to1 (serialized));
+                else
+                    norm = rp->getDefaultValue();
                 applyNorm (rp, norm);
             }
             else

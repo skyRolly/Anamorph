@@ -784,7 +784,7 @@ namespace
         return disp;
     }
 
-    struct ValueBox : public juce::Label
+    struct ValueBox : public juce::Label, public DragGestureOwner
     {
         double downProp = 0.0;
 
@@ -812,13 +812,23 @@ namespace
         }
         void mouseUp (const juce::MouseEvent& e) override
         {
-            dragGesture.reset(); // close the host gesture before anything else reacts
+            abortDragGesture(); // close the host gesture before anything else reacts
+            juce::Label::mouseUp (e);
+        }
+
+        // The release that never came (KI-028). Identical to what mouseUp does,
+        // minus the Label forwarding there is no event to forward -- deliberately
+        // ONE body, so an abandoned press and a real one cannot diverge. Idempotent:
+        // resetting a null unique_ptr is a no-op and the property write is a store,
+        // so the editor's reconcile may call this on every tick.
+        void abortDragGesture() override
+        {
+            dragGesture.reset();
             if (auto* s = dynamic_cast<juce::Slider*> (getParentComponent()))
             {
                 s->getProperties().set ("dragging", false);
                 s->repaint();
             }
-            juce::Label::mouseUp (e);
         }
         void mouseDrag (const juce::MouseEvent& e) override
         {
