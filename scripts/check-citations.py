@@ -339,12 +339,24 @@ DELIBERATE_REAIMS = {
     # reported both UNMAPPABLE and the new spellings were re-derived from the
     # symbols the documents name. Both retire on merge, when origin/main
     # carries the re-aimed spellings.
+    # 2026-09-01 (engineering-review round 4): two more hand re-aims, both because
+    # the CITED LINES THEMSELVES were edited by approved work. D-1 added a
+    # `private juce::Timer` base to the AnamorphAudioProcessor declaration, and the
+    # KI-028 macOS fix added an APPLE-only source to the plugin source list, so
+    # --fix reported both UNMAPPABLE and the new spellings were re-derived by
+    # reading the spans. Both retire on merge.
+    ("docs/architecture/API_REFERENCE.md",
+     "src/PluginProcessor.h:20-79",
+     "src/PluginProcessor.h:20-80"): "AnamorphAudioProcessor",
+    ("docs/policies/RELEASE_POLICY.md",
+     "CMakeLists.txt:14, 457-482",
+     "CMakeLists.txt:14, 467-492"): "ANAMORPH_BUILD_NUMBER",
     ("docs/architecture/SERIALIZATION_REGISTRY.md",
      "src/PluginProcessor.cpp:688-692",
-     "src/PluginProcessor.cpp:864-865"): "legacyKey",
+     "src/PluginProcessor.cpp:906-907"): "legacyKey",
     ("docs/policies/COMPATIBILITY_POLICY.md",
      "src/PluginProcessor.cpp:327-396",
-     "src/PluginProcessor.cpp:766-927"): "setStateInformation",
+     "src/PluginProcessor.cpp:808-994"): "setStateInformation",
     # 2026-08-31 (round 2): prepareToPlay grew by the priming call, shifting every
     # line below it. RISK-007's read-side citation names setStateInformation, so it was
     # re-derived from that symbol rather than mapped mechanically -- the mechanical
@@ -356,22 +368,22 @@ DELIBERATE_REAIMS = {
     # same re-derivation; both bases are declared until this branch merges.
     ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
      "src/PluginProcessor.cpp:328, 390-393",
-     "src/PluginProcessor.cpp:411,546-549"): "setValueNotifyingHost",
+     "src/PluginProcessor.cpp:453,588-591"): "setValueNotifyingHost",
     ("docs/architecture/SERIALIZATION_REGISTRY.md",
      "src/PluginProcessor.cpp:743-744",
-     "src/PluginProcessor.cpp:864-865"): "legacyKey",
+     "src/PluginProcessor.cpp:906-907"): "legacyKey",
     ("docs/policies/COMPATIBILITY_POLICY.md",
      "src/PluginProcessor.cpp:645-796",
-     "src/PluginProcessor.cpp:766-927"): "setStateInformation",
+     "src/PluginProcessor.cpp:808-994"): "setStateInformation",
     ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
      "src/PluginProcessor.cpp:318, 380-383",
-     "src/PluginProcessor.cpp:411,546-549"): "setValueNotifyingHost",
+     "src/PluginProcessor.cpp:453,588-591"): "setValueNotifyingHost",
     ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
      "src/PluginProcessor.cpp:311,345-348",
-     "src/PluginProcessor.cpp:411,546-549"): "setValueNotifyingHost",
+     "src/PluginProcessor.cpp:453,588-591"): "setValueNotifyingHost",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:610-749",
-     "src/PluginProcessor.cpp:766-927"): "setStateInformation",
+     "src/PluginProcessor.cpp:808-994"): "setStateInformation",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the

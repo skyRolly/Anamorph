@@ -893,7 +893,7 @@ accounts for all four observed controls. The box is placed `h + 8` above the cur
 (`AnamorphLookAndFeel::getTooltipBounds`, `src/gui/LookAndFeel.cpp:885-894`), so its top edge is a
 **tip-dependent** offset above the pointer, and the Settings rows are at editor-local
 `oversampleBox` 274–297, `uiScaleBox` 331–354, `scopePersistK` 387–411, `tooltipsToggle` 423–449,
-`animToggle` 455–481 (`src/PluginEditor.cpp:2238-2263`). Taking each control's centre and
+`animToggle` 455–481 (`src/PluginEditor.cpp:2245-2270`). Taking each control's centre and
 subtracting `h + 8` for a two-line tip lands inside **Oversampling** from UI Scale, inside **UI
 Scale** from Vectorscope Persist, on or within a pixel or two of **Tooltips** from UI Animations,
 and — from Oversampling — on `settingsTitle` (221–241), a plain `juce::Label` that never had
@@ -1364,7 +1364,7 @@ document already uses for its five other source anchors.
 same untracked class" was a count of what that pass happened to look at, not a search — three more
 sat in `KNOWN_ISSUES.md` alone, and one of them is the worse kind. **KI-009's `focusSaveNameField`
 citation was mis-aimed, then mechanically carried.** At the merge base it read
-`src/PluginEditor.cpp:1593-1601`, which was the `rIn`/`rOut`/`rAct`/`rOn`/`rPos` easing block in
+`src/PluginEditor.cpp:1600-1608`, which was the `rIn`/`rOut`/`rAct`/`rOn`/`rPos` easing block in
 `stepMicroAnims` — not that function at all — and `--fix` moved it to `:1567-1575`, the same easing
 block after this change's insertions. Faithful, and still wrong. `focusSaveNameField` is at
 **`:1984-1992`**, and the two untracked references beside it were mis-aimed the same way: the
@@ -1403,7 +1403,7 @@ something these rounds created, and closing it is its own change.
 
 **A third review pass found the same carried-mistake class in `PRIVACY.md`, and this one needed a
 declaration.** The row saying the Presets folder is created when the **Load Preset** dialog opens
-cited `src/PluginEditor.cpp:1550` at the merge base — the S11 generation pre-gate comment inside
+cited `src/PluginEditor.cpp:1557` at the merge base — the S11 generation pre-gate comment inside
 `stepMicroAnims`, about 383 lines short of the `:1838` that `dir.createDirectory()` sat on there.
 `--fix` carried it to `:1524`, still the same comment. Corrected to **`:1916`**, and written the way
 the checker's own header says new citations should be — with the symbol spelled beside the number
@@ -1413,7 +1413,7 @@ half that survives the next shift.
 **Unlike the `KNOWN_ISSUES.md` five, this one is caught by the gate, which is why it is declared.**
 `PRIVACY.md` still has exactly one `src/PluginEditor.cpp` citation, so the pair IS compared, the
 re-aim reads as drift, and `--fix` **reverted the correction on the first run** — measured, not
-predicted. `("PRIVACY.md", "src/PluginEditor.cpp:2064"): "createDirectory"` is therefore added to
+predicted. `("PRIVACY.md", "src/PluginEditor.cpp:2071"): "createDirectory"` is therefore added to
 `DELIBERATE_REAIMS`. It is not an inert exemption: `verify_reaim_targets` resolves the anchor against
 the live file every run, and mutating the substring to a value the code does not contain makes the
 run fail with `::error::` and exit 2 — checked by doing it, then reverting. A declaration turns the
@@ -1490,7 +1490,7 @@ two that do not are `titleButton` and `aboutLink`, and neither can produce the r
     `false`. So the control has no hover visual at all, registered or not; the argument the review
     traces never reaches a pixel.
   * **`aboutLink` has a live fallback but cannot be occluded by a menu.** It is the *only* child of
-    `aboutBackdrop` (`src/PluginEditor.cpp:579`), so it is on screen only while the About overlay
+    `aboutBackdrop` (`src/PluginEditor.cpp:580`), so it is on screen only while the About overlay
     is. The editor's only menu-openers are `presetName.onClick` (`:350`) and the combo drop-downs —
     all of them outside that overlay and covered by it while it is up, with `Backdrop::mouseDown`
     eating the click. No pop-up menu can be open while `aboutLink` is visible.
@@ -1832,7 +1832,7 @@ subject, and the second is a stale COUNT rather than the placement claim.
 
 **The CI-target report was investigated and required no change.** It read the visible diff as adding
 only three `option()` declarations and asked whether `AnamorphFuzzState`, `AnamorphBench` and
-`AnamorphDspDump` resolve to anything. They do: `CMakeLists.txt:593-611`, `:560-577` and `:597-623`
+`AnamorphDspDump` resolve to anything. They do: `CMakeLists.txt:603-621`, `:560-577` and `:597-623`
 define them, the last including the target-scoped `-fsanitize=fuzzer` the workflow comment relies
 on. Verified by building rather than by reading — all three configure and compile from the same
 option and compiler flags CI passes (JUCE supplied from the already-fetched checkout rather than
@@ -2147,7 +2147,7 @@ way and deliberately left — `CODE_STYLE.md:10` and `TESTING_POLICY.md:9` cite 
 be exhaustive.
 
 **The continuation gap is left open deliberately.** Bringing these under the gate means the
-comma-list spelling (`CMakeLists.txt:486-487, 517-518, 559-560`), which the tool does accept — but
+comma-list spelling (`CMakeLists.txt:496-497, 527-528, 569-570`), which the tool does accept — but
 each continuation here carries its own annotation naming *which* line it is (`:162`
 (`-Wl,-dead_strip`, Apple), `:108` (`/OPT:REF`, MSVC)), and the comma-list form has nowhere to put
 them. Widening the recogniser to follow continuations is a change to the gate's scope rather than to
@@ -2902,7 +2902,7 @@ happened. Another sits two lines from a sibling reference in the *same* historic
 already been protected, so a `--fix` would have rewritten half a paired record and frozen the other
 half. The discriminator that survives: **is the number the subject of the sentence, or a pointer to a
 thing?** Exactly one `CMakeLists.txt` citation in this document is the latter — "*it is*
-`CMakeLists.txt:521-530`", present tense, where re-anchoring preserves truth — and it is deliberately
+`CMakeLists.txt:531-540`", present tense, where re-anchoring preserves truth — and it is deliberately
 left live so the gate still demonstrably checks real evidence here.
 
 Verified by mutation rather than by reading: a line inserted into `CMakeLists.txt` above all of them,
@@ -2927,7 +2927,7 @@ Review found two anchors the previous round missed, both below its insertion poi
 to the new gate for the same reason: they are spelled as **bare continuations**
 (`` `path/to/file:188-199` … `:292-301` ``), which the parser only recognises in the
 `path:a,b,c` form. `ADR-0001`'s "tests link the core" pointed at `juce::juce_opengl` inside the
-*plugin*'s link block; it is `CMakeLists.txt:521-530`. `BUILD.md`'s compile-definition list cited
+*plugin*'s link block; it is `CMakeLists.txt:531-540`. `BUILD.md`'s compile-definition list cited
 `:277-284` while listing `ANAMORPH_BUILD_NUMBER` — a definition that range no longer contains, since
 scoping moved it to `:274-275`; widened to `:274-284`, deliberately as **one** anchor, because a
 citation whose anchor *count* changes lands in the "review by hand" branch no declaration can excuse.
@@ -4109,8 +4109,8 @@ spells out the conversion the compiler was already performing:
 
 | Site | Before | After |
 |---|---|---|
-| `src/PluginEditor.cpp:245` | `roundToInt (inner.getWidth() * 0.40f)` | `roundToInt ((float) inner.getWidth() * 0.40f)` |
-| `src/PluginEditor.cpp:246` | `roundToInt (getWidth() * 0.40f)` | `roundToInt ((float) getWidth() * 0.40f)` |
+| `src/PluginEditor.cpp:246` | `roundToInt (inner.getWidth() * 0.40f)` | `roundToInt ((float) inner.getWidth() * 0.40f)` |
+| `src/PluginEditor.cpp:247` | `roundToInt (getWidth() * 0.40f)` | `roundToInt ((float) getWidth() * 0.40f)` |
 | `src/gui/LookAndFeel.cpp:262` | `x0 + k * (barW + gap)` | `x0 + (float) k * (barW + gap)` |
 | `src/dsp/VelvetNoise.cpp:30` | `std::round (m * cell + …)` | `std::round ((float) m * cell + …)` |
 
@@ -4192,7 +4192,7 @@ macOS job, not assumed. Linux and Windows were unaffected and green in the same 
 the two runs, normalised, gives 15 → 19 distinct sites and 108 → 126 instances: nothing
 disappeared, no category changed, and the whole delta is
 **`-Wimplicit-int-float-conversion` at four pre-existing sites** —
-`src/PluginEditor.cpp:245,246` (`getWidth() * 0.40f`), `src/gui/LookAndFeel.cpp:262`
+`src/PluginEditor.cpp:246, 247` (`getWidth() * 0.40f`), `src/gui/LookAndFeel.cpp:262`
 (`k * (barW + gap)`) and `src/dsp/VelvetNoise.cpp:30` (`m * cell`), each an `int` widened inside a
 float expression. **Recorded, not fixed here** — the source was unchanged by this change, so these
 were new diagnostics on old code, and Level 1 is not part of the `TESTING_POLICY` hard release
@@ -6605,6 +6605,18 @@ than reasoned about, decision D-1 materially corrected, and one new issue filed.
   `src/PresetManager.cpp` (`applySoundTree` fallback) → CHANGELOG (one Fixed entry), State test 17.
   The serialized SCHEMA is untouched: this changes what a MALFORMED value restores to, which
   `SERIALIZATION_REGISTRY.md` already specifies as "per-parameter defaults" for the absent case.
+- **Round 4 (2026-09-01).** `src/PluginProcessor.{h,cpp}` (D-1: `requestLatencyUpdate`, the
+  processor-owned 20 Hz timer, and the restore-time re-report), `src/gui/PhysicalMouseButtons.{h,cpp}`
+  + `_mac.mm` and `src/PluginEditor.{h,cpp}` (the macOS physical-button query feeding both editor
+  predicates), `CMakeLists.txt` (the Apple-only `.mm`) -> CHANGELOG (three Fixed entries),
+  KNOWN_ISSUES (**KI-028 and KI-013 both RESOLVED**), `docs/architecture/LATENCY_MODEL.md` (the
+  delivery-thread rule and the up-to-50 ms deferral, plus the restore re-report),
+  `scripts/check-gcc-warnings.py` (ER-CI-04 gcc-16 measurement, closing the round-3 gap), README /
+  TESTING / TESTING_POLICY / REPOSITORY_MAP / RELEASE_HARDENING_PLAN / HANDOVER counts (47 / 245;
+  24 tests / 1057 checks), and State tests 22-24. D-4's Architecture-Review gate is **APPROVED**, so
+  the round-3 malformed-value and repair-serialization changes are cleared to merge; no schema field
+  was added, removed or renamed and no well-formed file loads differently. D-2 is DEFERRED with no
+  code change; D-3 remains a release blocker.
 - **Round 3 (2026-09-01).** `src/SerializedNumber.h` (new shared malformed-value predicate),
   `src/PresetManager.cpp` + `src/PluginProcessor.cpp` (both restore paths call it; the repair now
   reaches the live tree), `src/dsp/AnamorphEngine.h` (`primeParameters` clears `duckRequest`),

@@ -21,7 +21,7 @@ The VST3/Standalone wrapper (`: juce::AudioProcessor, private APVTS::Listener`).
 | `setSoloPreview` / `clearSoloPreview` | `void (int) / void ()` noexcept | Momentary solo audition (atomic, non-undoable). |
 | `abSwitchTo` / `abCopyToOther` / `abActiveSlot` | A/B API | A/B compare living in the processor (survives editor close). |
 
-Evidence [Verified]: src/PluginProcessor.h:20-79.
+Evidence [Verified]: src/PluginProcessor.h:20-80.
 
 ## `AnamorphEngine` — `src/dsp/AnamorphEngine.h`
 

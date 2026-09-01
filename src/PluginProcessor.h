@@ -17,7 +17,8 @@
 // ============================================================================
 class AnamorphAudioProcessor : public juce::AudioProcessor,
                                private juce::AudioProcessorValueTreeState::Listener,
-                               private juce::AudioProcessorParameter::Listener // sound-param gestures (undo)
+                               private juce::AudioProcessorParameter::Listener, // sound-param gestures (undo)
+                               private juce::Timer // D-1: off-thread latency delivery (KI-027)
 {
 public:
     AnamorphAudioProcessor();
@@ -101,6 +102,26 @@ private:
     }
     void parameterGestureChanged (int parameterIndex, bool gestureIsStarting) override;
     void updateLatency();
+
+    // D-1 (KI-027), approved 2026-09-01. Route EVERY latency re-report through
+    // here rather than calling updateLatency() directly from a listener: under
+    // VST3 host automation of drive/algorithm, `parameterChanged` runs on the
+    // AUDIO thread, and setLatencySamples' notification chain takes locks and --
+    // on a real change -- allocates and write()s in the wrapper. On the message
+    // thread the update stays synchronous, so nothing about the common path
+    // changes; anywhere else it becomes a request the timer below consumes.
+    void requestLatencyUpdate();
+
+    // Consumes a deferred request at ~20 Hz on the message thread. The host can
+    // therefore learn about a latency change up to one interval (50 ms) after the
+    // parameter moved -- documented in LATENCY_MODEL.md, and acceptable because
+    // the alternative is a lock and an allocation on the audio thread.
+    void timerCallback() override;
+
+    // Set by requestLatencyUpdate() from a non-message thread; cleared by the
+    // timer and by updateLatency() itself (so prepareToPlay's direct call, which
+    // supersedes any pending request, does not leave a stale one behind).
+    std::atomic<int> latencyUpdateRequest { 0 };
 
     // A/B helpers (preserve the shared view/Settings params across a slot apply)
     void abEnsureInit();

@@ -1,4 +1,5 @@
 #include "PluginEditor.h"
+#include "gui/PhysicalMouseButtons.h"
 #include <cmath>
 #include <cstring>
 
@@ -1519,8 +1520,14 @@ void AnamorphAudioProcessorEditor::timerCallback()
     // the drag state we own: clear the knob value-box "dragging" flag, drop the Persist-bar drag,
     // and cancel a stuck Multiband drag. During a real drag the button is genuinely down, so this
     // block is inert.
+    // The second half asks the OS, not JUCE's cache. On macOS JUCE's realtime
+    // query refreshes only the KEYBOARD flags and returns cached mouse buttons,
+    // so this predicate used to be permanently false there -- KI-013, and the
+    // reason KI-028's sweep below never ran on macOS.
+    // anamorph::gui::anyPhysicalMouseButtonDown() forwards to JUCE everywhere it
+    // is already authoritative and calls +[NSEvent pressedMouseButtons] on macOS.
     if (juce::Component::isMouseButtonDownAnywhere()
-        && ! juce::ModifierKeys::getCurrentModifiersRealtime().isAnyMouseButtonDown())
+        && ! anamorph::gui::anyPhysicalMouseButtonDown())
     {
         abortAbandonedDragGestures();
         persistDragging = false;
@@ -1706,7 +1713,7 @@ void AnamorphAudioProcessorEditor::stepMicroAnims (double dt)
     auto physicalButtonDown = [&realDownCached]
     {
         if (realDownCached < 0)
-            realDownCached = juce::ModifierKeys::getCurrentModifiersRealtime().isAnyMouseButtonDown() ? 1 : 0;
+            realDownCached = anamorph::gui::anyPhysicalMouseButtonDown() ? 1 : 0;
         return realDownCached == 1;
     };
 

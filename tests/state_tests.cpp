@@ -41,7 +41,8 @@
 // ============================================================================
 
 #include "PluginProcessor.h"
-#include "PluginEditor.h"   // TooltipSource, and the editor lifetime test at the end
+#include "PluginEditor.h"
+#include "gui/PhysicalMouseButtons.h"   // TooltipSource, and the editor lifetime test at the end
 
 #include <cmath>
 #include <cstdio>
@@ -2821,6 +2822,167 @@ static int runPresetSemanticsProbe()
 }
 
 // ---------------------------------------------------------------------------
+// 22. D-1 / KI-027: a latency re-report from a NON-message thread must not be
+//     delivered on that thread.
+//
+//     Computing the number was never the problem -- predictLatency is const and
+//     race-free. DELIVERING it was: setLatencySamples' notification chain takes
+//     at least three CriticalSections and, on a real change, appends to a heap
+//     container and write()s a pipe in the Linux wrapper. Under VST3 host
+//     automation of drive/algorithm the caller is the AUDIO thread.
+//
+//     The approved design keeps the message thread synchronous (so every UI edit,
+//     preset load and undo is instantaneous, and this test's own control leg
+//     proves that) and turns anything else into a relaxed atomic request that a
+//     processor-owned 20 Hz timer consumes.
+//
+//     What this test can and cannot show, stated plainly: it drives the real
+//     listener from a real second thread and asserts the delivery is DEFERRED
+//     there and lands later. It does not prove the absence of a lock inside
+//     JUCE's chain -- that is what the RTSan lane and the allocation guard are
+//     for. Deferral is the property this change is responsible for.
+static void testLatencyDeliveryIsDeferredOffMessageThread()
+{
+    std::printf ("State test 22: an off-thread latency change is deferred, not delivered (D-1)\n");
+
+    AnamorphAudioProcessor proc;
+    // Oversampling ON: predictLatency short-circuits to 0 when it is Off, so
+    // without this every measurement below would be 0 == 0 and vacuous.
+    proc.getInternal().oversampleValue().setValue (2);   // 1-based combo id: 2x
+    proc.prepareToPlay (48000.0, 256);
+
+    auto* drive = proc.getAPVTS().getParameter (pid::drive);
+    check (drive != nullptr, "the drive parameter exists");
+    if (drive == nullptr) return;
+
+    const int quiet = proc.getLatencySamples();
+    std::printf ("  latency at drive 0: %d\n", quiet);
+
+    // CONTROL LEG -- the message thread stays synchronous. If this regressed to
+    // deferred, every UI edit would lag a timer tick and the test below would
+    // still pass, so the control is what keeps it honest.
+    drive->setValueNotifyingHost (0.6f);
+    const int afterOnThread = proc.getLatencySamples();
+    std::printf ("  after a message-thread change: %d (expected immediate)\n", afterOnThread);
+    check (afterOnThread != quiet, "a message-thread change still reports latency SYNCHRONOUSLY");
+
+    // ...and the non-vacuity gate for the whole test: drive must actually move
+    // the reported latency, or "deferred" below is indistinguishable from
+    // "nothing ever happens".
+    const int loud = afterOnThread;
+    check (loud != quiet, "drive genuinely changes the reported latency at 2x oversampling");
+
+    // THE REAL CASE: the same listener, driven from another thread.
+    drive->setValueNotifyingHost (0.0f);
+    juce::Timer::callPendingTimersSynchronously();
+    check (proc.getLatencySamples() == quiet, "reset to the quiet latency before the off-thread leg");
+
+    std::atomic<bool> done { false };
+    std::thread automation ([&]
+    {
+        // Exactly what a VST3 host's automation does on the audio thread: move the
+        // parameter, which fires the APVTS listener on THIS thread.
+        drive->setValueNotifyingHost (0.6f);
+        done.store (true, std::memory_order_release);
+    });
+    automation.join();
+    check (done.load (std::memory_order_acquire), "the off-thread parameter write completed");
+
+    const int immediatelyAfter = proc.getLatencySamples();
+    std::printf ("  immediately after an OFF-thread change: %d (was %d)\n", immediatelyAfter, quiet);
+    check (immediatelyAfter == quiet,
+           "an off-thread change does NOT deliver the latency on that thread");
+
+    // ...and the timer picks it up. 20 Hz => one interval is 50 ms; allow a few
+    // so a loaded CI box cannot make this flaky, and MEASURE what it actually took.
+    const auto startMs = juce::Time::getMillisecondCounterHiRes();
+    int settled = immediatelyAfter;
+    for (int i = 0; i < 40 && settled == quiet; ++i)
+    {
+        juce::Thread::sleep (10);
+        juce::Timer::callPendingTimersSynchronously();
+        settled = proc.getLatencySamples();
+    }
+    const auto elapsedMs = juce::Time::getMillisecondCounterHiRes() - startMs;
+    std::printf ("  delivered by the timer after %.0f ms: %d\n", elapsedMs, settled);
+    check (settled == loud, "the deferred latency is delivered, and delivers the CORRECT value");
+    check (elapsedMs < 400.0, "delivery happens within a few timer intervals, not eventually");
+}
+
+// ---------------------------------------------------------------------------
+// 23. KI-028 / KI-013 macOS residual: the abandoned-gesture sweep's trigger must
+//     read the PHYSICAL button state, not JUCE's cached one.
+//
+//     Round 3 closed KI-028 on Linux and Windows and left a macOS residual. The
+//     residual was never the sweep -- Option B's hook reaches the value box on
+//     every platform. It was the TRIGGER. The editor gates the sweep on
+//     "JUCE thinks a button is down AND it is physically up", and in the pinned
+//     JUCE 9.0.1 the macOS realtime query refreshes only the keyboard flags
+//     (juce_NSViewComponentPeer_mac.mm:302-307) and returns cached mouse buttons.
+//     A release delivered to no JUCE peer never clears that cache, so the second
+//     half was permanently false and the sweep could not run. That is KI-013.
+//
+//     This test recreates that exact condition on EVERY platform: it tells JUCE a
+//     button is held while none physically is, then requires the physical query to
+//     disagree with the cache. On macOS that passes only because
+//     anyPhysicalMouseButtonDown() now calls +[NSEvent pressedMouseButtons]; a
+//     regression to the cached path fails it there. The macOS job runs this suite
+//     (`scripts/run-tests.sh`), so that is where the macOS half is actually
+//     verified -- it cannot be verified on the Linux box that wrote it, and this
+//     comment is here so nobody later mistakes a Linux pass for macOS evidence.
+static void testPhysicalButtonQueryIgnoresCachedState()
+{
+    std::printf ("State test 23: the abandoned-gesture trigger reads PHYSICAL buttons (KI-013/KI-028)\n");
+
+    const auto saved = juce::ModifierKeys::currentModifiers;
+
+    // LIVENESS, on every platform: with nothing cached and nothing held, the
+    // helper must be callable and say "up". Without this the platform legs below
+    // could pass by the function being broken in the convenient direction.
+    juce::ModifierKeys::currentModifiers = juce::ModifierKeys();
+    check (! anamorph::gui::anyPhysicalMouseButtonDown(),
+           "with nothing held and nothing cached, the physical query says up");
+    check (! juce::Component::isMouseButtonDownAnywhere(),
+           "...and so does the cached view");
+
+    // THE KI-013 CONDITION: JUCE believes a button is down; the hardware disagrees.
+    juce::ModifierKeys::currentModifiers = juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier);
+    const bool cachedSaysDown   = juce::Component::isMouseButtonDownAnywhere();
+    const bool physicalSaysDown = anamorph::gui::anyPhysicalMouseButtonDown();
+    std::printf ("  cached=%d physical=%d\n", (int) cachedSaysDown, (int) physicalSaysDown);
+    check (cachedSaysDown, "the cached view reports the button JUCE was told about");
+
+#if JUCE_MAC
+    // THE FIX, ASSERTED WHERE IT APPLIES. +[NSEvent pressedMouseButtons] is a
+    // global hardware query that does not care what events this process received,
+    // so it must contradict the cache here. Before this change the macOS answer
+    // came from ModifierKeys::currentModifiers and this check would fail --
+    // which is exactly why KI-028's sweep never ran on macOS.
+    check (! physicalSaysDown,
+           "macOS: the physical query is not fooled by JUCE's cached button state");
+    check (cachedSaysDown && ! physicalSaysDown,
+           "macOS: the abandoned-gesture sweep gate fires for a release JUCE never saw");
+#else
+    // OFF macOS THIS CANNOT DISCRIMINATE, and saying so is the point. JUCE
+    // installs getNativeRealtimeModifiers from a live ComponentPeer
+    // (juce_Windowing_linux.cpp:67); this suite is headless and has none, so
+    // ComponentPeer::getCurrentModifiersRealtime falls back to the cache and the
+    // helper -- a deliberate pure forward on these platforms -- returns it too.
+    // In a real host the peer exists and the query is genuinely physical, which
+    // is why the Linux/Windows half of KI-028 works in production and why round
+    // 3's State test 21 drives the sweep directly instead of through this gate.
+    // Assert the FORWARDING IDENTITY instead: that is the whole contract here.
+    check (physicalSaysDown
+             == juce::ModifierKeys::getCurrentModifiersRealtime().isAnyMouseButtonDown(),
+           "off macOS the helper forwards to JUCE's realtime query exactly");
+    std::printf ("  (headless, no peer: JUCE's realtime query is the cache here, so this leg\n"
+                 "   checks the forward, not the hardware -- the discriminating check is macOS-only)\n");
+#endif
+
+    juce::ModifierKeys::currentModifiers = saved;
+}
+
+// ---------------------------------------------------------------------------
 // Round-3 KI-028 probe (opt-in, PRINTS, asserts only its own non-vacuity).
 //
 //     Measures the two things the round-3 adversarial pass disputed about KI-028:
@@ -2996,6 +3158,193 @@ static int runValueBoxGestureProbe()
 #endif
 }
 
+// ---------------------------------------------------------------------------
+// 24. A restore must leave the host holding the RESTORED state's latency.
+//
+//     Two things in setStateInformation move a latency-bearing parameter without
+//     the latency listener hearing the final value. apvts.replaceState adopts
+//     whatever @value says -- and it CONVERTS BY CLAMPING, so a poisoned
+//     value="inf" for drive lands at the range maximum and re-reports a latency
+//     for it. reassertParameters then repairs that value with setValue() plus a
+//     direct atomic store, notifying nobody on purpose.
+//
+//     THE SECOND RESTORE IS THE ONE THAT MATTERS, and this is why the test looks
+//     the way it does. On a FIRST restore the answer comes out right by accident:
+//     the live InternalState holds an int where the round-tripped blob holds a
+//     string, ValueTree::setProperty sees a difference, fires
+//     onOversampleChanged, and recomputes the latency after the repair -- the
+//     same var-type coincidence recorded for ER-STATE-07. Restoring twice settles
+//     the types, removes the coincidence, and exposes the defect. A test that
+//     only did one restore would have reported this as refuted; the round-4 probe
+//     did exactly that, twice, before the second-restore leg was added.
+//
+//     Measured before the fix: reported 4, restored state predicts 0.
+static void testRestoreReportsTheRestoredLatency()
+{
+    std::printf ("State test 24: a restore reports the RESTORED state's latency\n");
+
+    juce::MemoryBlock poisoned;
+    {
+        AnamorphAudioProcessor authoring;
+        // Oversampling on: predictLatency short-circuits to 0 when it is Off, so
+        // without this every number below is 0 and the test proves nothing.
+        authoring.getInternal().oversampleValue().setValue (2);
+        authoring.prepareToPlay (48000.0, 256);
+        juce::MemoryBlock clean;
+        authoring.getStateInformation (clean);
+        auto xml = BlobCodec::unwrap (clean);
+        check (xml != nullptr, "authored session decodes for poisoning");
+        if (xml == nullptr) return;
+        bool poisonedOne = false;
+        if (auto* params = xml->getChildByName ("ANAMORPH"))
+            if (auto* d = params->getChildByAttribute ("id", pid::drive))
+            {
+                d->setAttribute ("value", "inf");
+                d->removeAttribute ("raw");
+                poisonedOne = true;
+            }
+        check (poisonedOne, "the session carries a drive PARAM to poison");
+        poisoned = BlobCodec::wrap (*xml);
+    }
+
+    AnamorphAudioProcessor proc;
+    proc.getInternal().oversampleValue().setValue (2);
+    proc.prepareToPlay (48000.0, 256);
+
+    // NON-VACUITY: drive must actually be able to move the reported latency here,
+    // or "reported == predicted" below is 0 == 0 and means nothing.
+    proc.getAPVTS().getParameter (pid::drive)->setValueNotifyingHost (1.0f);
+    juce::Timer::callPendingTimersSynchronously();
+    const int loud = proc.getLatencySamples();
+    check (loud != 0, "drive at maximum reports a non-zero latency at 2x oversampling");
+
+    proc.setStateInformation (poisoned.getData(), (int) poisoned.getSize()); // settle property types
+    proc.getAPVTS().getParameter (pid::drive)->setValueNotifyingHost (1.0f); // back to latency-bearing
+    juce::Timer::callPendingTimersSynchronously();
+    check (proc.getLatencySamples() == loud, "re-armed at the latency-bearing state");
+
+    // The restore under test: types now agree, so nothing recomputes by accident.
+    proc.setStateInformation (poisoned.getData(), (int) poisoned.getSize());
+    juce::Timer::callPendingTimersSynchronously();
+    const int reported = proc.getLatencySamples();
+
+    // The number the restored state is entitled to, through public API only:
+    // prepareToPlay ends with the same latency update.
+    proc.prepareToPlay (48000.0, 256);
+    const int predicted = proc.getLatencySamples();
+
+    std::printf ("  second restore: reported %d, restored state predicts %d\n", reported, predicted);
+    check (reported == predicted,
+           "the host is not left holding the poisoned value's latency after a repair");
+}
+
+// Round-4 probe: does a malformed restore leave a STALE reported latency?
+static int runRestoreLatencyProbe()
+{
+    std::printf ("Round-4 probe: reported latency after a malformed restore\n");
+
+    // Author a session whose algorithm is poisoned to "inf". JUCE's own
+    // replaceState adopts it BEFORE reassertParameters gets a chance to repair,
+    // and replaceState notifies -- so the host hears a latency for a state the
+    // plug-in is about to reject.
+    juce::MemoryBlock poisoned;
+    {
+        AnamorphAudioProcessor authoring;
+        authoring.getInternal().oversampleValue().setValue (2); // 2x: latency is nonzero at all
+        authoring.prepareToPlay (48000.0, 256);
+        juce::MemoryBlock clean;
+        authoring.getStateInformation (clean);
+        auto xml = BlobCodec::unwrap (clean);
+        if (xml == nullptr) { std::printf ("  unwrap failed\n"); return 1; }
+        if (auto* params = xml->getChildByName ("ANAMORPH"))
+            if (auto* a = params->getChildByAttribute ("id", pid::drive))
+            {
+                a->setAttribute ("value", "inf");
+                a->removeAttribute ("raw");
+            }
+        poisoned = BlobCodec::wrap (*xml);
+    }
+
+    AnamorphAudioProcessor proc;
+    proc.getInternal().oversampleValue().setValue (2);
+    proc.prepareToPlay (48000.0, 256);
+    std::printf ("  before restore: drive norm %.6f, reported latency %d\n",
+                 rawOf (proc, pid::drive), proc.getLatencySamples());
+
+    proc.setStateInformation (poisoned.getData(), (int) poisoned.getSize());
+    std::printf ("  IMMEDIATELY after setStateInformation: drive norm %.6f, latency %d\n",
+                 rawOf (proc, pid::drive), proc.getLatencySamples());
+    // What the poisoned value WOULD have predicted, for comparison: drive at max.
+    {
+        AnamorphAudioProcessor ref;
+        ref.getInternal().oversampleValue().setValue (2);
+        ref.prepareToPlay (48000.0, 256);
+        ref.getAPVTS().getParameter (pid::drive)->setValueNotifyingHost (1.0f);
+        std::printf ("  (a drive-at-max instance reports latency %d, so the two ARE distinguishable)\n",
+                     ref.getLatencySamples());
+    }
+    // Isolate JUCE: does replaceState ALONE adopt the poison and re-report?
+    // If it does, the transient exists and only the final report is repaired; if
+    // it does not, there was never a bad report to be stale.
+    {
+        AnamorphAudioProcessor iso;
+        iso.getInternal().oversampleValue().setValue (2);
+        iso.prepareToPlay (48000.0, 256);
+        auto tree = iso.getAPVTS().copyState();
+        if (auto node = tree.getChildWithProperty ("id", pid::drive); node.isValid())
+        {
+            node.setProperty ("value", "inf", nullptr);
+            node.removeProperty ("raw", nullptr);
+        }
+        iso.getAPVTS().replaceState (tree);   // NO reassertParameters anywhere near this
+        std::printf ("  replaceState alone with value=\"inf\": drive norm %.6f, latency %d\n",
+                     rawOf (iso, pid::drive), iso.getLatencySamples());
+    }
+
+    juce::Timer::callPendingTimersSynchronously();
+
+    const float algoAfter = rawOf (proc, pid::drive);
+    const int reported = proc.getLatencySamples();
+    // The number the FINAL state is entitled to: a re-prepare recomputes it.
+    proc.prepareToPlay (48000.0, 256);
+    const int truth = proc.getLatencySamples();
+
+    std::printf ("  after restore : drive norm %.6f (default %.6f)\n",
+                 algoAfter, proc.getAPVTS().getParameter (pid::drive)->getDefaultValue());
+    std::printf ("  reported to the host: %d ; the restored state actually predicts: %d\n",
+                 reported, truth);
+    std::printf ("  %s\n", reported == truth
+                     ? "first restore: the report follows the repair"
+                     : "first restore: CONFIRMED stale");
+
+    // SECOND RESTORE, same blob. Round 2 established that the correct answer on a
+    // FIRST restore can be an accident: the live InternalState holds an int while
+    // the blob carries a round-tripped string, so ValueTree::setProperty sees a
+    // difference, fires onOversampleChanged and recomputes the latency AFTER the
+    // repair. Restoring twice settles the property types and removes that
+    // coincidence -- which is also the ordinary case, a host loading project
+    // after project into one instance.
+    {
+        AnamorphAudioProcessor twice;
+        twice.getInternal().oversampleValue().setValue (2);
+        twice.prepareToPlay (48000.0, 256);
+        twice.setStateInformation (poisoned.getData(), (int) poisoned.getSize()); // settle types
+        twice.getAPVTS().getParameter (pid::drive)->setValueNotifyingHost (1.0f); // back to a latency-bearing state
+        juce::Timer::callPendingTimersSynchronously();
+        const int beforeB = twice.getLatencySamples();
+        twice.setStateInformation (poisoned.getData(), (int) poisoned.getSize());
+        juce::Timer::callPendingTimersSynchronously();
+        const int reportedB = twice.getLatencySamples();
+        twice.prepareToPlay (48000.0, 256);
+        const int truthB = twice.getLatencySamples();
+        std::printf ("  SECOND restore: before %d, reported %d, actually predicts %d -- %s\n",
+                     beforeB, reportedB, truthB,
+                     reportedB == truthB ? "report follows the repair"
+                                         : "CONFIRMED: stale reported latency");
+    }
+    return 0;
+}
+
 int main (int argc, char* argv[])
 {
     juce::ScopedJuceInitialiser_GUI juceInit; // MessageManager for APVTS/processor on this thread
@@ -3011,6 +3360,9 @@ int main (int argc, char* argv[])
 
     if (argc > 1 && std::strcmp (argv[1], "--valuebox-gesture-probe") == 0)
         return runValueBoxGestureProbe();
+
+    if (argc > 1 && std::strcmp (argv[1], "--restore-latency-probe") == 0)
+        return runRestoreLatencyProbe();
 
     const bool writeSnapshot = argc > 1 && std::strcmp (argv[1], "--write-snapshot") == 0;
 
@@ -3042,6 +3394,9 @@ int main (int argc, char* argv[])
     testMalformedValuesRestoreDefaults();
     testRepairReachesSavedState();
     testAbandonedValueBoxGestureIsReclaimed();
+    testLatencyDeliveryIsDeferredOffMessageThread();
+    testPhysicalButtonQueryIgnoresCachedState();
+    testRestoreReportsTheRestoredLatency();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

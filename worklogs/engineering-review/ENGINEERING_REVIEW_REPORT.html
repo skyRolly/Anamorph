@@ -82,14 +82,26 @@ ruled out, fixed, deferred — and what should happen next. A rendered <em>view<
 <code>ENGINEERING_REVIEW_PROGRAMME.md</code> beside it; the worklog is the source of truth a later
 round reconciles against.</p>
 <div class="meta">
-  <span>ROUNDS 1–3 · 2026-08-31 → 09-01</span>
+  <span>ROUNDS 1–4 · 2026-08-31 → 09-01</span>
   <span>TREE: main @ e8f4422 → v0.9.6</span>
-  <span>STATUS: round 3 complete — 5 fixed, 2 refuted, 4 decisions pending</span>
-  <span>NEXT: D-4 sign-off, then D-1/D-2 if approved</span>
+  <span>STATUS: round 4 complete — CI green, KI-028 + KI-013 closed, D-2/D-3 open</span>
+  <span>NEXT: D-3 Level-5 audition (release blocker); D-2 on host evidence</span>
 </div>
 
 <h2><span class="no">§1</span>Executive status</h2>
-<p class="lede"><strong>Round 3</strong> was not an audit. It ran a fixed priority list against one
+<p class="lede"><strong>Round 4</strong> executed the maintainer's approved plan rather than
+investigating: <strong>D-4 approved and verified, KI-028 Option B carried to completion, D-1
+implemented, D-2 deferred without code, D-3 tracked</strong>. It also cleared a CI gate the previous
+round had turned red. The round's substantive result is that a finding carried forward as "verify
+this did not regress" turned out to be a <em>live defect</em> — and two correctly-built probes
+refuted it before a third found it.</p>
+<div class="verdicts">
+  <div class="v"><div class="k">R4 · CI gate green</div><p>Two <code>-Wunused-lambda-capture</code> sites in round 3's own Test 48 — both capturing a constant expression that is never odr-used. Reproduced locally on the <strong>pinned clang-22</strong> with the real compile command, fixed at source, re-run clean. <strong>Baseline untouched</strong>; nothing suppressed.</p></div>
+  <div class="v"><div class="k">R4 · D-1 shipped</div><p>Latency delivery no longer happens on the audio thread. Message-thread edits stay <strong>immediate</strong> (0→4); an off-thread change is <strong>deferred</strong> and the processor-owned 20 Hz timer delivers the correct value in <strong>10 ms</strong>. Reverting the routing reproduces the defect.</p></div>
+  <div class="v"><div class="k">R4 · the residual was the trigger</div><p>KI-028's macOS half was never the sweep — Option B's hook works everywhere. macOS <code>getNativeRealtimeModifiers</code> refreshes only the <em>keyboard</em> flags. The fix calls <code>+[NSEvent pressedMouseButtons]</code>, the API JUCE itself uses 1500 lines below but never wires in. <strong>KI-013 closes with it.</strong></p></div>
+  <div class="v"><div class="k">R4 · refuted twice, then confirmed</div><p>The carried stale-latency bug is <strong>real</strong>. Probe 1 compared 0 with 0. Probe 2 had a working control and still said refuted. Probe 3 restored <em>twice</em> — and the defect appeared, because the first restore is correct only by a var-type accident. <strong>Measured: host told 4, state predicts 0.</strong></p></div>
+</div>
+<p class="lede" style="margin-top:26px"><strong>Round 3</strong> was not an audit. It ran a fixed priority list against one
 rule — nothing is CONFIRMED without reproduction, a failing probe, or a measured number — and closed
 seven items: <strong>five confirmed and fixed, two refuted, two boundaries measured</strong> rather
 than argued. The rule earned its keep three times: three probes were VACUOUS on their first run and
@@ -123,7 +135,7 @@ areas ruled out) remains the baseline below. The headline results:</p>
   <div class="v"><div class="k">Release blocker surfaced</div><p><strong>ER-DOC-01</strong> — the Level-5 audition was recorded as cleared "against the build that ships" for a superseded build. Restated OPEN for v0.9.6 (D-3).</p></div>
 </div>
 <p class="note"><strong>Validation at end of round 2:</strong> <code>preflight.sh</code> exit 0 —
-DSP suite <strong>47 tests / 245 checks</strong>, state suite <strong>21 tests / 1040 checks</strong>, citation self-test
+DSP suite <strong>47 tests / 245 checks</strong>, state suite <strong>24 tests / 1057 checks</strong>, citation self-test
 145 cases green against all three bases, realtime lint 93 cases + clean scan, every checker self-test
 green. The pinned clang-22 gate reports no NEW first-party warnings and the GCC shadow count is back
 to its baselined 1. No <code>src/</code> change shipped unvalidated. Two opt-in probes sit beside the
@@ -141,6 +153,9 @@ across rounds; evidence in full in the worklog and the cited files.</p>
 <tr><td class="mono">ER-STATE-03<br><span class="small">round 2</span></td><td>State / robustness</td><td><code>value="nan"</code> in a session or preset became parameter state and silenced the plug-in permanently (self-heal zeroes every block), persisting through save. Round 1's assumed <code>raw="nan"</code> trigger is <strong>refuted</strong>; the real ingress is JUCE's own <code>replaceState</code> plus an unguarded <code>applySoundTree</code>.</td><td class="sev-h">High</td><td>Measured</td><td><span class="chip c-fixed">FIXED r2</span> two guards + State test 17</td></tr>
 <tr><td class="mono">ER-STATE-08<br><span class="small">round 2</span></td><td>State / cross-project leak</td><td>A v0.2 bare-APVTS session restored into a <strong>reused</strong> instance never touched <code>InternalState</code>: all six host-hidden Settings kept the previous project's values. The <code>AnamorphRoot</code> branch migrates them for every pre-0.8.4 session; the v0.2 branch one <code>else if</code> below did not, though a v0.2 session is older still. Found only after making State test 4's InternalState assertion non-vacuous (it had been checking a value nobody moved — filed as ER-TST-05 too).</td><td class="sev-m">Med</td><td>Measured</td><td><span class="chip c-fixed">FIXED r2</span> <code>migrateFromLegacyApvts</code> + de-vacuumed State test 4</td></tr>
 <tr><td class="mono">ER-STATE-06<br><span class="small">round 2</span></td><td>State / presets</td><td><code>applySoundTree</code> asked <code>child.isValid()</code> when the question is whether the file carries a <em>value</em>. A <code>&lt;PARAM id="width"/&gt;</code> left by a truncated write read as <code>var()</code> → <code>0.0</code> → the range <strong>minimum</strong>; Width runs 0–2 with default 1.0, so the result is a silent full mono collapse. The session path never had the bug — JUCE's own <code>setNewState</code> reads <code>getProperty("value", denormalisedDefault)</code>.</td><td class="sev-m">Med</td><td>Measured</td><td><span class="chip c-fixed">FIXED r2</span> <code>hasProperty("value")</code> + State test 18</td></tr>
+<tr><td class="mono">D-1 / KI-027<br><span class="small">round 4</span></td><td>RT safety</td><td>Latency DELIVERY ran on whatever thread moved the parameter — the audio thread under VST3 automation of Drive/Algorithm. <code>setLatencySamples</code> takes ≥3 CriticalSections and, on a real change, allocates and <code>write()</code>s in the wrapper. Now: synchronous on the message thread, a relaxed atomic store anywhere else, consumed by a processor-owned 20 Hz timer.</td><td class="sev-h">High</td><td>Measured</td><td><span class="chip c-fixed">FIXED r4</span> State test 22 · host may learn up to 50 ms later (documented)</td></tr>
+<tr><td class="mono">KI-028 macOS<br>KI-013<br><span class="small">round 4</span></td><td>GUI / undo</td><td>The macOS residual was the sweep's TRIGGER, not its design: JUCE's macOS realtime query refreshes only the keyboard flags and returns cached mouse buttons, so "logically down AND physically up" was permanently false. Now reads <code>+[NSEvent pressedMouseButtons]</code> through one helper feeding BOTH editor predicates, so the gesture and the press-glow cannot disagree.</td><td class="sev-l">Low</td><td>Measured</td><td><span class="chip c-fixed">BOTH RESOLVED r4</span> State test 23 · macOS-discriminating leg verified by the macOS CI job</td></tr>
+<tr><td class="mono">ER-STATE-11<br><span class="small">round 4</span></td><td>Serialization / latency</td><td>Carried forward as "verify no regression", found to be a live defect. <code>replaceState</code> adopts a malformed value by CLAMPING it to a range endpoint and re-reports a latency for it; <code>reassertParameters</code> then repairs it with <code>setValue()</code> plus an atomic store, notifying nobody. The host keeps the rejected value's number. Hidden on a FIRST restore by the same var-type coincidence recorded for ER-STATE-07.</td><td class="sev-m">Med</td><td>Measured</td><td><span class="chip c-fixed">FIXED r4</span> reported 4 vs predicted 0 → equal; State test 24</td></tr>
 <tr><td class="mono">KI-028<br>ER-GUI-04<br><span class="small">round 3</span></td><td>GUI / undo</td><td>A value-box press whose release the OS delivers to no JUCE peer leaves the host gesture open, and <code>pollUndoCoalesce</code> commits nothing while <code>openGestures &gt; 0</code>. Round 3 established which abandonment paths exist at all: five of six are closed by JUCE itself. Measured and <strong>refuted</strong>: destroying the editor mid-press does NOT leak, despite <code>sliderAtts</code> destructing before the knobs.</td><td class="sev-l">Low</td><td>Measured</td><td><span class="chip c-fixed">FIXED r3</span> Linux/Windows; <span class="chip c-open">macOS residual</span> (KI-013)</td></tr>
 <tr><td class="mono">ER-DEP-06 res.<br>ER-STATE-09<br><span class="small">round 3</span></td><td>State / robustness</td><td>The round-2 non-finite guard tested the CONVERTED value, and both <code>convertTo0to1</code> and the session path's <code>jlimit</code> CLAMP — so an infinity reached the finiteness test as a finite range ENDPOINT. Measured: <code>"inf"</code>/<code>"1e39"</code>/<code>"1e400"</code> → maximum, <code>"-inf"</code> → minimum, <code>"abc"</code>/<code>""</code>/<code>"0x10"</code> → minimum, and <code>"nan"</code> → maximum on the skewed <code>monoMakerFreq</code>.</td><td class="sev-m">Med</td><td>Measured</td><td><span class="chip c-fixed">FIXED r3</span> shared input-side predicate + State test 19 · <span class="chip c-filed">D-4</span></td></tr>
 <tr><td class="mono">ER-STATE-10<br><span class="small">round 3</span></td><td>Serialization</td><td>A repaired parameter reached the parameter and the DSP atomic but not the TREE, because JUCE flushes a node only when <code>needsUpdate</code> is set and <code>setValue()</code> deliberately does not fire it. The corruption was written back out on every save.</td><td class="sev-m">Med</td><td>Measured</td><td><span class="chip c-fixed">FIXED r3</span> + State test 20 · <span class="chip c-filed">D-4</span></td></tr>
@@ -228,17 +243,18 @@ across rounds; evidence in full in the worklog and the cited files.</p>
 </ul>
 
 <h2><span class="no">§6</span>Decisions needed from the maintainer</h2>
-<div class="dec-card"><h3>D-1 — KI-027: move latency-notification delivery off the audio thread? <span class="chip c-open">REVISED r2</span></h3>
+<div class="dec-card"><h3>D-1 — KI-027: move latency-notification delivery off the audio thread <span class="chip c-fixed">APPROVED &amp; IMPLEMENTED r4</span></h3>
 <p><strong>Defect (unchanged, re-verified):</strong> automation of Drive/Algorithm delivers the APVTS callback on the audio thread; when reported latency actually changes, the JUCE chain takes locks, allocates and <code>write()</code>s inside <code>processBlock</code>.</p>
 <p><strong>Round 2 narrows it.</strong> Oversampling is <em>not</em> a host parameter — it lives in <code>InternalState</code> and defaults to Off — so at factory defaults reported latency is identically 0 and the expensive branch is <strong>unreachable</strong> until a user selects 2x/4x/8x in Settings. The rate is bounded at one dispatch per parameter per block. The priority inversion is mitigated by <code>PTHREAD_PRIO_INHERIT</code> on Linux/macOS, but not on Windows.</p>
 <p><strong>Two candidates are refuted.</strong> The editor's 24 Hz poll is the only message-thread tick in <code>src/</code> and does not exist with the editor closed — a closed-editor render would never learn the new latency, which is worse than the defect. An <code>AsyncUpdater</code> reproduces the same <code>postMessage</code> (lock + possible reallocation + <code>write()</code>) on the audio thread.</p>
 <p><strong>What you are approving:</strong> keep the synchronous call when <code>MessageManager::existsAndIsCurrentThread()</code>, otherwise set one relaxed atomic flag consumed by a processor-owned ~20 Hz <code>juce::Timer</code>. Cost: the host learns a latency change up to one tick later. Gate: threading model + latency delivery.</p></div>
-<div class="dec-card"><h3>D-2 — RISK-007: guard off-main-thread state calls, or accept as documented? <span class="chip c-fixed">EVIDENCE COMPLETE</span></h3>
+<div class="dec-card"><h3>D-2 — RISK-007: guard off-main-thread state calls, or accept as documented? <span class="chip c-open">DEFERRED r4 — no code change</span></h3>
 <p><strong>The measurement asked for in round 1 is done.</strong> <code>AnamorphStateTests --state-thread-probe</code> under ThreadSanitizer reports <strong>four data races</strong>: <code>abActive</code> (written by <code>setStateInformation</code>, read by <code>canUndo()</code>), the <code>abUndo</code> vector's internals twice, and a <code>juce::String</code> refcount exchange against a String copy. So if a host makes these calls off the main thread while an editor is open, this is undefined behaviour — not a theoretical concern.</p>
 <p><strong>What remains is only the host question:</strong> VST3 annotates both calls <code>[UI-thread]</code> and JUCE hosts lock around them, so the exposure is the macOS AU autosave path. Options unchanged: (a) accept and keep documented; (b) a narrow mutex over the state-set members; (c) <code>callAsync</code> marshalling of the metadata tail. (b) and (c) are threading-model changes.</p></div>
-<div class="dec-card"><h3>D-4 — malformed-value recovery and repair serialization (round 3) <span class="chip c-open">NEEDS SIGN-OFF</span></h3>
+<div class="dec-card"><h3>D-4 — malformed-value recovery and repair serialization <span class="chip c-fixed">APPROVED r4</span></h3>
 <p>The round-3 P2/P3/P4 fixes change what a MALFORMED serialized value restores to (a range endpoint → the parameter default) and make a repaired value reach the saved state. The brief requires <code>ARCHITECTURE_REVIEW_GATE</code> approval before merge for any change affecting malformed-value recovery, legacy migration, or saved-state compatibility, so they are implemented on the branch and flagged rather than treated as ordinary fixes.</p>
 <p><strong>What does NOT change:</strong> no schema field added, removed or renamed; no well-formed file loads differently; the serialized shape is untouched. <code>SERIALIZATION_REGISTRY.md</code> already specifies "per-parameter defaults" for the ABSENT case — this makes the MALFORMED case agree with it instead of silently choosing an endpoint.</p></div>
+<p><strong>Deferred by the maintainer, 2026-09-01.</strong> No mutex, no <code>callAsync</code>, no state-architecture change; exposure is host-determined and that is what the deferral turns on. The measured TSan findings stand and remain valid: the <code>abActive</code> race, the <code>abUndo</code> vector races and the <code>juce::String</code> refcount race.</p></div>
 <div class="dec-card"><h3>D-3 — Level-5 audition for v0.9.6</h3>
 <p>RELEASE_POLICY precondition 7 is per-version. The 2026-08-15 audition covered v0.9.4; since then the x86-64 machine code changed everywhere (ADR-0031/0032) and 0.9.6 changed audible behaviour in the defective windows. A DAW session by a human is required; nothing in CI can stand in for it (TESTING_POLICY Level 5). Until then HANDOVER lists the tag as blocked by three human items (licence, checklist, audition).</p></div>
 <div class="dec-card"><h3>D-4 — Version handling of this round</h3>
@@ -290,7 +306,17 @@ evidence emerged to promote one. Ranking follows the programme's order — corre
   <li class="done">ER-CI-04 re-measured on every available gcc; gcc-16 left honestly unmeasured with the exact command recorded</li>
   <li class="done">Realtime lint boundary measured (83 matches, cross-file gap empty) and documented rather than parsed</li>
   <li class="done">Activation duck lifetime residual confirmed and fixed</li>
-  <li>D-4 signed off (malformed-value recovery + repair serialization)</li>
+  <li class="done">D-4 signed off (malformed-value recovery + repair serialization)</li>
+</ul>
+<h3>Round 4</h3>
+<ul class="check">
+  <li class="done">CI gate fixed at source — two dead lambda captures removed, baseline untouched, verified on the pinned clang-22</li>
+  <li class="done">D-1 implemented and measured; deferral proven, correct value delivered, control leg guards the synchronous path</li>
+  <li class="done">KI-028 macOS residual closed at its real cause (the trigger, not the sweep); KI-013 resolved with it</li>
+  <li class="done">Carried stale-latency finding confirmed after two probes wrongly refuted it, and fixed</li>
+  <li class="done">ER-CI-04 gcc-16 measured; exclusion kept on evidence, no baseline widened</li>
+  <li class="done">D-2 recorded as deferred with no code change; ER-STATE-04.5 not reopened; lint boundary left documented</li>
+  <li>D-3 Level-5 audition against the final shipping build (release blocker)</li>
   <li class="done">Worklog + this dashboard updated and committed</li>
   <li>D-1 decided (surviving design)</li>
   <li>D-2 decided — code half now measured</li>

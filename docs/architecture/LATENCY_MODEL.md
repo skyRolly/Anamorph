@@ -40,12 +40,31 @@ binary (requires running the plugin; not statically provable here).`
 ## Host compensation behaviour
 
 - The wrapper reports latency via `setLatencySamples(predictLatency(...))`.
-- `predictLatency` is `const` and race-free, so the **message thread** updates PDC (on Drive /
-  Algorithm / Oversampling change) without touching audio-thread state.
+- `predictLatency` is `const` and race-free, so COMPUTING the number never touches audio-thread
+  state. **DELIVERING it is the part with a thread requirement** (D-1, approved 2026-09-01):
+  `setLatencySamples`' notification chain takes at least three `CriticalSection`s and, when the
+  reported value actually changes, appends to a heap container and `write()`s a pipe in the Linux
+  wrapper. Under VST3 host automation of Drive / Algorithm the caller is the **audio thread**
+  (KI-027), so every re-report is routed through `requestLatencyUpdate()`:
+  - on the **message thread** it stays fully synchronous — UI edits, preset loads, undo/redo and
+    `prepareToPlay` are unchanged and instantaneous;
+  - anywhere else the caller does one relaxed atomic store and returns, and a **processor-owned**
+    20 Hz timer performs the delivery. The timer belongs to the processor, not the editor, so it
+    runs with no editor open.
+- **The host may therefore learn of a latency change up to one timer interval (50 ms) after the
+  parameter moved.** This is the deliberate cost of keeping locks, allocation and a syscall off the
+  audio thread; the VALUE reported is always the one the live state predicts, only its delivery is
+  deferred. Regression coverage: State test 22.
+- **A restore re-derives the report from the final state.** `setStateInformation` ends with a
+  latency request because two things inside it can move a latency-bearing parameter without the
+  listener hearing the final value: `apvts.replaceState` adopts a malformed `@value` by CLAMPING it
+  to a range endpoint (and re-reports for it), and `reassertParameters` then repairs it with
+  `setValue()` plus a direct atomic store, notifying nobody by design. Regression coverage: State
+  test 24.
 - The OS engagement is **latched** (changes only at `reset` or the silent duck bottom), so
   latency never changes mid-block; an OS-path change is routed through the duck.
 
-Evidence [Verified]: src/PluginProcessor.cpp:118-121 (`updateLatency`), :110-115 (`parameterChanged`); src/dsp/AnamorphEngine.cpp:216-221,
+Evidence [Verified]: src/PluginProcessor.cpp:131-137 (`updateLatency`), :110-115 (`parameterChanged`); src/dsp/AnamorphEngine.cpp:216-221,
 :293-329, :494-509.
 
 ## INVARIANT (binding)

@@ -75,10 +75,25 @@
 #                     mismatch are BOTH attributed to AllocationGuard.h:350:69,
 #                     so a per-file baseline would still mask a real bug.
 #
-#      gcc-16 itself remains UNMEASURED and is stated as such rather than
-#      assumed: it is PPA-only in the environments available to this programme,
-#      and installing a toolchain to measure it is the maintainer's call. The
-#      exact reproduction, for whoever runs it:
+#      MEASURED ON gcc-16 2026-09-01 (round 4), closing the item round 3 left
+#      open. Toolchain: g++-16 (Ubuntu 16-20260315-1ubuntu1~24~ppa1) 16.0.1
+#      experimental, trunk r16-8100. Same TU, same flags:
+#
+#        -flto      : 0 hits -- unchanged from 13.3.0 and 15.2.0, and the seeded
+#                     REAL mismatch is still not reported, so the flag STILL
+#                     cannot fail in the lane that reads the log.
+#        no -flto   : 6 hits (13.3.0 and 15.2.0 both give 4 -- gcc-16 diagnoses
+#                     more of the same construct), and AllocationGuard.h:350:69
+#                     is STILL among the sites, so the false positive and the
+#                     seeded real mismatch still collapse to one path:line:col
+#                     and a per-file baseline would still mask a real bug.
+#
+#      Conclusion unchanged on the lane's actual compiler: BOTH empirical legs
+#      hold, the structural leg is compiler-independent, the exclusion stays and
+#      no baseline is widened. The rise 4 -> 6 is recorded because it is the kind
+#      of drift a future round should re-measure rather than re-argue.
+#
+#      The reproduction, for re-running it on a later gcc:
 #
 #        docker run --rm -v "$PWD:/w" -w /w gcc:16 bash -c '
 #          printf "%s\n" "#include \"AllocationGuard.h\"" "#include <cstdlib>" \
@@ -91,8 +106,8 @@
 #              grep -c -- -Wmismatched-new-delete
 #          done'
 #
-#      Expected if nothing changed: 4 then 0. A NON-ZERO second number is the
-#      only result that would retire the exclusion's first empirical leg —
+#      Expected on gcc-16: 6 then 0 (4 then 0 on 13-15). A NON-ZERO second number
+#      is the only result that would retire the exclusion's first empirical leg —
 #      with the flag appended to the gated set and the two gated targets built
 #      exactly as the baseline header prescribes:
 #

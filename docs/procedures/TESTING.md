@@ -206,7 +206,7 @@ APVTS's own `valueTreeChildAdded`. Keep the probe with the finding it refuted (E
 with it round 1's ER-STATE-01): a later JUCE bump can change that internal, and this is what would
 catch it.
 
-`tests/state_tests.cpp` (**21 tests**, own console target `AnamorphStateTests`) automates the
+`tests/state_tests.cpp` (**24 tests**, own console target `AnamorphStateTests`) automates the
 COMPATIBILITY policy family against the **real `AnamorphAudioProcessor`** (the target compiles
 the plugin sources; since 2026-08-21 it also constructs and destroys the real editor, headlessly
 and without ever showing it — no peer, no message loop, no interaction):

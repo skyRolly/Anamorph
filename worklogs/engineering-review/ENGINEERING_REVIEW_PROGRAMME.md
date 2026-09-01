@@ -29,6 +29,105 @@ entries and CHANGELOG notes cite.
 
 ---
 
+## Round 4 — 2026-09-01 — executing the approved plan
+
+**Entry state:** round 3 closed. CI **red** on one gate — two `-Wunused-lambda-capture` sites in
+round 3's own Test 48. Four maintainer decisions arrived: **D-4 APPROVED**, **KI-028 Option B
+APPROVED**, **D-1 APPROVED**, **D-2 DEFERRED**, **D-3 tracked**. This round executes them; it is
+not an audit and raised no new lens.
+
+**Exit state:** CI gate fixed at source with the baseline untouched, D-1 implemented and measured,
+the KI-028 macOS residual closed at its real cause, one carried finding CONFIRMED and fixed after
+two probe attempts wrongly refuted it, and ER-CI-04's gcc-16 measurement finally taken.
+
+### What was fixed
+
+| ID | What | Evidence |
+|---|---|---|
+| **CI gate** | Two `-Wunused-lambda-capture` sites in Test 48: both lambdas captured `block`, a constant expression that is never odr-used, so the captures were dead | Reproduced locally with the pinned **clang-22** on the real compile command (same two sites, same flag), fixed by deleting the captures, re-run: **0 warnings**. Baseline unchanged; nothing suppressed or excluded |
+| **D-1 / KI-027** | Latency delivery from the audio thread — `setLatencySamples` takes ≥3 CriticalSections and, on a real change, allocates and `write()`s in the wrapper | State test 22. Message-thread change stays **immediate** (0→4); an off-thread change is **deferred** (stays 0) and the 20 Hz timer delivers the **correct** value 4 after **10 ms**. Reverting the routing reproduces the defect: latency 4 delivered on the automation thread |
+| **KI-028 macOS residual** | The residual was never the sweep — Option B's hook reaches the value box on every platform. It was the **trigger** | Pinned JUCE 9.0.1 read, not recalled: macOS `getNativeRealtimeModifiers` (`juce_NSViewComponentPeer_mac.mm:302-307`) refreshes only the **keyboard** flags and returns cached mouse buttons. The fix calls `+[NSEvent pressedMouseButtons]` — the API JUCE itself uses 1500 lines below (`:1867`) but never wires in. State test 23 |
+| **Stale latency after a malformed restore** (carried bug 1) | `replaceState` adopts a poisoned value by CLAMPING it to a range endpoint and re-reports a latency for it; `reassertParameters` then repairs it with `setValue()` + an atomic store, notifying nobody. The host keeps the poisoned number | State test 24. Measured: reported **4**, restored state predicts **0** |
+| **ER-CI-04** | gcc-16 measurement, open since round 3 | Run on g++-16 16.0.1 (trunk r16-8100): `-flto` **0 hits** (the seeded REAL mismatch still unreported), no-LTO **6 hits** (4 on 13.3/15.2) with `AllocationGuard.h:350:69` still collapsing the false positive and the real one. Exclusion KEPT; no baseline widened |
+
+### The carried latency bug was refuted twice before it was confirmed
+
+This is the round's methodological result and it is the round-2/round-3 lesson recurring in a new
+place, so it is recorded rather than smoothed over.
+
+- **Attempt 1** poisoned `algorithm`. Refuted — but vacuously: the poisoned value and the repaired
+  default both yield latency 0, so the probe compared 0 with 0.
+- **Attempt 2** poisoned `drive`, whose maximum genuinely differs. Still refuted, and this time with
+  a working non-vacuity control (a drive-at-max instance reports 4). The measurement was sound; the
+  conclusion was still wrong.
+- **Attempt 3** added a SECOND restore, and the defect appeared immediately: reported 4 against a
+  predicted 0. The first restore is correct **by accident** — the live `InternalState` holds an int
+  where the round-tripped blob holds a string, so `ValueTree::setProperty` sees a difference, fires
+  `onOversampleChanged`, and recomputes the latency after the repair. That is the same var-type
+  coincidence recorded for ER-STATE-07 in round 2. Settle the types and the coincidence is gone.
+
+The standing rule this adds to the programme: **a probe that exercises a path only once cannot see a
+defect that a first pass masks.** State test 24 therefore restores twice on purpose, and says so.
+
+### D-1 — what the design does and does not buy
+
+On the message thread nothing is deferred, so every UI edit, preset load and undo re-reports latency
+instantly; State test 22's control leg asserts exactly that, because a regression to
+"always deferred" would otherwise pass the main assertion silently. Off the message thread the audio
+thread performs one relaxed atomic store and returns, and a **processor-owned** 20 Hz timer delivers
+— processor-owned because the refuted editor-polling candidate does not exist when the editor is
+closed. The cost, documented rather than hidden: the host can learn of a latency change **up to one
+timer interval (50 ms) later** than the parameter moved.
+
+Scope, stated plainly: the test proves DEFERRAL, which is the property this change is responsible
+for. It does not prove the absence of a lock inside JUCE's own notification chain — that is what the
+RTSan lane and the allocation guard cover, from the other side.
+
+### KI-028 — the residual was in the trigger, not the design
+
+Round 3 implemented the hook and recorded that both candidate designs shared a predicate KI-013
+makes inert on macOS. That remained true, so implementing Option B again would have changed nothing:
+the fix had to be the predicate. `anamorph::gui::anyPhysicalMouseButtonDown()` forwards to JUCE
+everywhere JUCE is already authoritative (X11 queries the pointer, Windows calls
+`GetAsyncKeyState`) and calls AppKit on macOS. It feeds **both** editor predicates — the sweep gate
+and the press-glow — because closing the gesture while the knob still looked pressed would be a
+worse mixed state than the defect. That also closes KI-013's glow half as a direct consequence.
+
+**Where the macOS half is actually verified, and where it is not.** State test 23's discriminating
+assertion is `#if JUCE_MAC`, and the macOS CI job runs this suite (`scripts/run-tests.sh`), so that
+is the evidence. It cannot be verified on the Linux box that wrote it, and the test says so in
+place: off macOS, JUCE installs its realtime hook from a live `ComponentPeer`
+(`juce_Windowing_linux.cpp:67`), this suite is headless and has none, so the query falls back to the
+cache and cannot discriminate. That leg asserts the forwarding identity instead. **The first version
+of this test asserted the disagreement unconditionally and failed on Linux** — a platform-divergent
+test that would have turned the Linux job red.
+
+### Decisions recorded, not implemented
+
+- **D-2 (RISK-007) — DEFERRED by the maintainer. No code changed.** The measured TSan findings stand
+  and remain valid: the `abActive` race, the `abUndo` vector races and the `juce::String` refcount
+  race. No mutex, no `callAsync`, no state-architecture change. Exposure is host-determined, which is
+  what the deferral turns on.
+- **D-3 — release blocker, tracked only.** The Level-5 audition must be a human DAW session against
+  the FINAL shipping build. The 2026-08-15 audition covered v0.9.4 and is invalid: ADR-0031/0032
+  changed the x86-64 machine code everywhere, and 0.9.6 changed audible behaviour in the defective
+  windows.
+- **ER-STATE-04.5 — not reopened.** Refuted in round 3 (the `id`+`raw`-without-`value` shape does not
+  occur); no new evidence appeared.
+- **Cross-file lint boundary — unchanged.** Round 3 measured it (83 forbidden-class matches, every
+  cross-file DSP one inside `prepare()`) and documented it in the script. Not redesigned.
+
+### D-4 — approved, and the round-3 implementation verified against the approval
+
+The approval clears the gate round 3 flagged. Re-verified by measurement rather than assumed: every
+malformed shape now restores the parameter DEFAULT on both paths (`"abc"`, `""`, `"0x10"`, `"nan"`,
+`"inf"`, `"-inf"`, `"1e39"`, `"1e400"`, `"-1e400"` — all nine, on width, monoMakerFreq, chorusRate,
+algorithm and monoMakerOn), and a repair reaches the parameter, the DSP atomic **and** the
+serialized tree. The compatibility rules the approval preserves all hold: no schema field added,
+removed or renamed, and no well-formed file loads differently.
+
+---
+
 ## Round 3 — 2026-09-01 — closing the residuals: measurement before remediation
 
 **Entry state:** rounds 1 and 2 CLOSED. Baseline `main @ e8f4422` → v0.9.6 on

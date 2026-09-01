@@ -1417,7 +1417,9 @@ static void testPendingDuckDoesNotSurviveActivation()
     };
 
     // One deterministic stimulus, replayed identically to both engines.
-    auto fill = [block] (juce::AudioBuffer<float>& buf, std::mt19937& rng)
+    // `block` is a constant expression, so reading it is not an odr-use and the
+    // capture would be dead (clang's -Wunused-lambda-capture).
+    auto fill = [] (juce::AudioBuffer<float>& buf, std::mt19937& rng)
     {
         std::uniform_real_distribution<float> dist (-0.35f, 0.35f);
         for (int i = 0; i < block; ++i)
@@ -1449,7 +1451,7 @@ static void testPendingDuckDoesNotSurviveActivation()
     activate (ducked);
     activate (control);
 
-    auto sideRms = [block] (const juce::AudioBuffer<float>& buf)
+    auto sideRms = [] (const juce::AudioBuffer<float>& buf)   // `block` is constexpr; see above
     {
         double sq = 0.0;
         for (int i = 0; i < block; ++i)

@@ -15,6 +15,28 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 
 ## [0.9.6] — 2026-08-31
 ### Fixed
+- **Automating Drive or Widen Algorithm no longer does housekeeping on the audio thread.** When a
+  host automated either control, the plug-in re-reported its latency from whichever thread moved the
+  parameter — the audio thread, during playback. That report takes locks and, when the latency
+  actually changes, allocates memory and writes to a pipe: all things that can cause a dropout in a
+  realtime context. The report now happens on the plug-in's own message thread instead. Editing in
+  the UI, loading a preset and undoing are unchanged and still update instantly; only a change
+  arriving from elsewhere is handed over, and the host may learn of it up to 50 ms later.
+  Regression coverage: State test 22.
+  Evidence: PR #134. [Verified]
+- **A knob's number readout no longer breaks Undo on macOS.** The fix shipped earlier in 0.9.6
+  closed this on Linux and Windows, but not on macOS: deciding that a press had been abandoned
+  needs the *real* mouse-button state, and on macOS the plug-in was reading a cached copy that a
+  release outside the window never updates. It now asks the operating system directly. The same
+  change also fixes a knob staying visually "pressed" after such a release on macOS.
+  Regression coverage: State test 23.
+  Evidence: PR #134. [Verified]
+- **Reopening a damaged project no longer leaves the host compensating for the wrong delay.** When a
+  corrupted value was rejected on load, the control was repaired but the delay already reported to
+  the host was not — so the host kept aligning tracks for a setting the plug-in had discarded, until
+  the next reactivation. Measured with oversampling on: the host was told 4 samples for a state that
+  needs 0. Regression coverage: State test 24.
+  Evidence: PR #134. [Verified]
 - **A knob's number readout no longer breaks Undo if you release the mouse outside the plug-in
   window.** Pressing a value readout opens a host edit gesture that is closed on release. When the
   release happened over the host or the desktop, the operating system delivered it to nothing and
@@ -1509,7 +1531,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 ## [0.8.5] — 2026-06-28
 ### Fixed
 - Linux editor crash under rapid open/close (OpenGL/X11 `XEmbedComponent` use-after-free): the
-  editor now renders CPU-side on Linux/BSD (visually identical). Evidence: commit `c924ff8`. [Partially Verified] / code [Verified] (`src/PluginEditor.cpp:246-256`).
+  editor now renders CPU-side on Linux/BSD (visually identical). Evidence: commit `c924ff8`. [Partially Verified] / code [Verified] (`src/PluginEditor.cpp:247-257`).
 
 ## [0.8.4] — 2026-06-27
 ### Changed

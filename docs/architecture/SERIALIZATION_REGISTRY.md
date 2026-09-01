@@ -9,7 +9,7 @@ Field-level ledger of everything written to session state. Companion to
 > migration support (a read path for the old field). Adding a field is allowed only if absence
 > is handled (a default), so older sessions still load.
 
-Evidence [Verified]: backward-compat paths at src/PluginProcessor.cpp:784-787 (pre-0.8.4 `migrateFromLegacyApvts`), :652-693 (pre-0.6.4 `readSlot`), :700-705 (v0.2 bare APVTS);
+Evidence [Verified]: backward-compat paths at src/PluginProcessor.cpp:826-829 (pre-0.8.4 `migrateFromLegacyApvts`), :652-693 (pre-0.6.4 `readSlot`), :700-705 (v0.2 bare APVTS);
 src/InternalState.h:92-128.
 
 ## `AnamorphRoot` properties
@@ -19,7 +19,7 @@ src/InternalState.h:92-128.
 | `presetName` | String | ≥0.6 (Unverified exact) | No | No | `PresetManager::defaultName()` — **absent ≠ empty**, see below |
 | `presetBaseline` | String | 0.6.x (#6) [Partially Verified] | No | No | `adoptRestoredState` clean baseline |
 
-Source: src/PluginProcessor.cpp:733-734 (write), :633-642 (read), :727-741 (adoption).
+Source: src/PluginProcessor.cpp:775-776 (write), :633-642 (read), :727-741 (adoption).
 
 **`presetName`: absent and empty are different answers.** The property is *absent* only in a session
 that predates it (< 0.6); it resolves to `PresetManager::defaultName()`, whose name-fallback tick is
@@ -39,7 +39,7 @@ forward-version root) matches neither, so no parameter, Settings value or A/B sl
 the function **returns before the adoption block**: preset name, identity, checkmark and dirty
 baseline all stay exactly as they were. That is the same answer the guard at the top already gives a
 blob `getXmlFromBinary` cannot parse — input we do not recognise never becomes state. Source:
-src/PluginProcessor.cpp:874-900 (the else-branch), :607 (the unparsable-blob guard).
+src/PluginProcessor.cpp:916-942 (the else-branch), :607 (the unparsable-blob guard).
 
 ### The preset **indicator identity** (0.9.2, ADR-0024 as amended)
 
@@ -80,7 +80,7 @@ a removed factory id, a deleted or moved user preset — ticks **nothing**; it n
 same-named preset. Source: src/PresetManager.h:54-76 (`Selection`), :78-94 (`SelectionFields`,
 `encodeSelection` / `decodeSelection`);
 src/PresetManager.cpp:382-435 (`encodeSelection` / `decodeSelection`);
-src/PluginProcessor.cpp:706-727 (`writeSelection`/`readSelection`), :585 (root write),
+src/PluginProcessor.cpp:748-769 (`writeSelection`/`readSelection`), :585 (root write),
 :594 / :598 (per-slot write), :638 (root read), :680 (per-slot read).
 
 ## `ANAMORPH` child (APVTS)
@@ -160,8 +160,8 @@ path that runs every time — construction, where both slots are invalid — the
 indistinguishable, since slot A has just been seeded from the same live state. They diverged only
 when slot A was valid and slot B was not, i.e. an `AB` node whose `slotBParams` alone was missing or
 unparsable: slot B came back as a **duplicate of slot A** rather than as the state just restored, and
-a later save wrote that duplicate out. Source: src/PluginProcessor.cpp:808-864
-(`readSlot`), :490-508 (`abEnsureInit`); src/PluginProcessor.h:113-126 (`StateSet::isValid`).
+a later save wrote that duplicate out. Source: src/PluginProcessor.cpp:850-906
+(`readSlot`), :490-508 (`abEnsureInit`); src/PluginProcessor.h:134-147 (`StateSet::isValid`).
 
 An empty `slotABase` / `slotBBase` means **"no baseline was recorded"**, which is *not* the same as
 "modified". Only a pre-0.6.4 slot can produce it — every in-memory producer fills it — and
@@ -173,7 +173,7 @@ the top bar would render a bare ` *` — a modified-marker against a preset the 
 src/PresetManager.cpp:365-376 (`adoptRestoredState`, the root-side rule).
 
 **◊** Pre-0.6.4 sessions stored params-only under `slotA`/`slotB`; `readSlot` migrates them.
-Evidence [Verified]: src/PluginProcessor.cpp:864-865 (the legacy-key fallback inside `readSlot`, :740-793);
+Evidence [Verified]: src/PluginProcessor.cpp:906-907 (the legacy-key fallback inside `readSlot`, :740-793);
 the per-slot identity is written at :594 / :598 and read at :680.
 
 ## Legacy root formats (read-only compatibility)
@@ -182,7 +182,7 @@ the per-slot identity is written at :594 / :598 and read at :680.
 |---|---|---|
 | v0.2 bare APVTS tree | `xml->hasTagName(apvts.state.getType())` | `apvts.replaceState` |
 
-Source: src/PluginProcessor.cpp:868-873.
+Source: src/PluginProcessor.cpp:910-915.
 
 ## Notes
 

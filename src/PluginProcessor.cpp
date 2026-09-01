@@ -20,7 +20,11 @@ AnamorphAudioProcessor::AnamorphAudioProcessor()
     // parameter (it lives in InternalState), so its PDC update is driven by a callback.
     apvts.addParameterListener (pid::drive,      this);
     apvts.addParameterListener (pid::algorithm,  this);
-    internal.onOversampleChanged = [this] { updateLatency(); };
+    // Same route as parameterChanged, for the same reason: this fires from
+    // InternalState property changes, and one of those paths is
+    // setStateInformation, which a macOS AU host may call off the main thread
+    // (RISK-007). On the message thread it stays synchronous.
+    internal.onOversampleChanged = [this] { requestLatencyUpdate(); };
 
     // Observe begin/end GESTURES on the SOUND params so a whole drag folds into ONE undo step and
     // host automation (which never opens a gesture) is excluded from undo. View params are skipped.
@@ -59,10 +63,19 @@ AnamorphAudioProcessor::AnamorphAudioProcessor()
     // path made "B == open state" depend on whether the host called getStateInformation early). The
     // switch/apply logic is unchanged; this only fixes WHEN the initial snapshot is taken.
     abEnsureInit();
+
+    // D-1: the consumer for deferred latency requests. Owned by the PROCESSOR so
+    // it runs with no editor open -- the reason the editor-polling candidate was
+    // refuted. Guarded because a harness may construct the processor with no
+    // MessageManager; there, every caller is trivially "not the message thread",
+    // and prepareToPlay's own updateLatency() still clears any pending request.
+    if (juce::MessageManager::getInstanceWithoutCreating() != nullptr)
+        startTimerHz (20);
 }
 
 AnamorphAudioProcessor::~AnamorphAudioProcessor()
 {
+    stopTimer(); // D-1: before any member the callback touches goes away
     apvts.removeParameterListener (pid::drive,      this);
     apvts.removeParameterListener (pid::algorithm,  this);
     // Symmetric with the constructor: every parameter that got a listener there loses
@@ -117,21 +130,50 @@ void AnamorphAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
 
 void AnamorphAudioProcessor::updateLatency()
 {
+    // Message thread only, by construction: every caller either IS the message
+    // thread or reached here through requestLatencyUpdate()/timerCallback().
+    latencyUpdateRequest.store (0, std::memory_order_relaxed);
     setLatencySamples (engine.predictLatency (params.toEngine (internal.oversampleIndex())));
+}
+
+// D-1 (KI-027) -- approved 2026-09-01, implemented here.
+//
+// `predictLatency` is const and race-free, so COMPUTING the number was never the
+// problem. DELIVERING it was: setLatencySamples' notification chain takes at
+// least three CriticalSections and, when the reported value actually changes,
+// appends to a heap container and write()s a pipe in the Linux wrapper. Under
+// VST3 host automation of drive/algorithm the caller is the AUDIO thread, so that
+// is a lock, an allocation and a syscall in a realtime context -- with a
+// priority-inversion variant when the host's restartComponent is synchronous.
+//
+// Two candidate fixes were refuted in round 2 and must not come back: polling
+// from the editor does not exist when the editor is closed, and an AsyncUpdater
+// reproduces the same message-posting syscall from the audio thread.
+//
+// What survives is a request flag plus a timer the PROCESSOR owns, so it runs
+// whether or not an editor exists. On the message thread nothing is deferred at
+// all, which keeps every UI edit, preset load and undo instantaneous; off it, the
+// audio thread does one relaxed atomic store and returns.
+void AnamorphAudioProcessor::requestLatencyUpdate()
+{
+    if (juce::MessageManager::existsAndIsCurrentThread())
+        updateLatency();
+    else
+        latencyUpdateRequest.store (1, std::memory_order_relaxed);
+}
+
+void AnamorphAudioProcessor::timerCallback()
+{
+    if (latencyUpdateRequest.exchange (0, std::memory_order_relaxed) != 0)
+        updateLatency();
 }
 
 void AnamorphAudioProcessor::parameterChanged (const juce::String&, float)
 {
-    // Recompute PDC without touching the audio-thread engine state
-    // (predictLatency is const and race-free). NOTE: this runs on whatever
-    // thread changed the parameter -- under VST3 host AUTOMATION of
-    // drive/algorithm that is the AUDIO thread, and when the reported latency
-    // actually changes, setLatencySamples' notification chain takes locks and
-    // (on a real change) allocates + write()s in the wrapper. Recorded as
-    // KI-027; the fix (deferring off-thread delivery) is a threading-model
-    // change gated on Architecture Review, so the comment states the fact
-    // rather than the earlier "on the message thread" assumption.
-    updateLatency();
+    // Drive / Algorithm move the reported PDC. This is the call that used to run
+    // setLatencySamples on whatever thread moved the parameter -- see
+    // requestLatencyUpdate for why that mattered and what replaced it.
+    requestLatencyUpdate();
 }
 
 void AnamorphAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
@@ -924,6 +966,31 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
     else              presets.adoptRestoredState (adoptedName, restoredSelection);
 
     syncCommitted();
+
+    // Re-derive the reported latency from the state that ACTUALLY ended up live.
+    //
+    // Two things above can move a latency-bearing parameter without any listener
+    // hearing the final value. `apvts.replaceState` adopts whatever @value says --
+    // including a malformed one, which it converts by CLAMPING, so a poisoned
+    // drive lands at the range maximum and re-reports a latency for it. Then
+    // `reassertParameters` repairs that value with setValue() plus a direct
+    // atomic store, deliberately notifying nobody (a parameter-change callback
+    // during a host state load reads as an automation write in some DAWs). The
+    // repair is therefore invisible to the latency listener, and the host is left
+    // holding the poisoned value's number.
+    //
+    // Measured before this line existed: restoring a session with drive
+    // value="inf" left the host told 4 samples while the repaired state predicts
+    // 0. It did NOT show up on a FIRST restore, because InternalState's own
+    // property types differ from the round-tripped blob's on that pass, which
+    // fires onOversampleChanged and recomputes by luck -- the same var-type
+    // coincidence recorded for ER-STATE-07. On the second restore the types agree,
+    // the coincidence is gone, and the staleness persists.
+    //
+    // Unconditional on purpose: a restore is exactly the moment the reported
+    // latency has to match the live state, and correctness here must not depend
+    // on which of the paths above happened to notify.
+    requestLatencyUpdate();
 }
 
 // ----------------------------------------------------------------------------

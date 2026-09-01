@@ -39,7 +39,7 @@ parameter ID.
 
 Evidence [Verified]:
 - Source: src/PluginParameters.cpp:326-406 (`toEngine`)
-- Source: src/PluginProcessor.cpp:189-194 (per-block snapshot → `engine.setParameters` → `engine.process`)
+- Source: src/PluginProcessor.cpp:231-236 (per-block snapshot → `engine.setParameters` → `engine.process`)
 
 ## 3. Module inventory
 
@@ -72,9 +72,9 @@ Evidence [Verified]:
 - **No worker/background threads** (FFT runs on the GUI thread).
 
 Evidence [Verified]:
-- Source: src/PluginEditor.cpp:278-292 (OpenGL platform gate)
+- Source: src/PluginEditor.cpp:279-293 (OpenGL platform gate)
 - Source: src/dsp/ScopeBuffer.h:8-18 (lock-free SPSC)
-- Source: src/PluginProcessor.cpp:139 (`juce::ScopedNoDenormals`)
+- Source: src/PluginProcessor.cpp:181 (`juce::ScopedNoDenormals`)
 
 ## 5. I/O layouts
 
@@ -83,7 +83,7 @@ Evidence [Verified]:
 - Output is **always stereo**. **mono → mono is Not Supported** (deliberately rejected).
 
 Evidence [Verified]:
-- Source: src/PluginProcessor.cpp:89-99 (`isBusesLayoutSupported`), :94-95 (mono→stereo upmix)
+- Source: src/PluginProcessor.cpp:102-112 (`isBusesLayoutSupported`), :94-95 (mono→stereo upmix)
 
 ## 6. Cross-references
 

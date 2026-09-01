@@ -72,7 +72,7 @@ repository ever grows a real package manifest.
    bump's doc-sync list named only THIRD_PARTY_LICENSES + TRADEMARKS, so `NOTICE` shipped a wrong
    pin line for a full version — ER-DOC-02.)
 4. Prefer the offline path (`-DANAMORPH_JUCE_PATH`) for reproducibility in restricted CI.
-5. `JUCE_*` compile flags in `CMakeLists.txt:486-491` (no webview, no curl, no splash, strict
+5. `JUCE_*` compile flags in `CMakeLists.txt:496-501` (no webview, no curl, no splash, strict
    ref-counted pointer) are part of the dependency contract; changing them is a build change.
 
 ## Compliance log
