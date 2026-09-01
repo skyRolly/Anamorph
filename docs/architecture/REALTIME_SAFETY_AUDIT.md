@@ -63,7 +63,12 @@ instead of surviving to a DAW.
   complementary rather than redundant: each covers where the other cannot run.
 - the **static lint** (`scripts/check-realtime.py`) scans audio-path bodies for the forbidden list
   with no build at all, on every platform — the only tier that reads the branches the suite does not
-  execute (measured `src/dsp` coverage: 93.4 % of lines, 79.9 % of branches).
+  execute (measured `src/dsp` coverage: 93.4 % of lines, 79.9 % of branches). Its reach is the
+  **same-file transitive closure** of the audio-path seeds, not a whole-program one: a callee
+  defined in another translation unit is covered only if its own name is a seed. That is why this
+  tier is listed alongside the runtime two rather than in place of them — the script's docstring
+  carries the measured census of what the gap currently contains (nothing flaggable: every
+  cross-file DSP match sits in that module's `prepare()`).
 
 ## Items needing a non-static check
 

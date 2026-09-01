@@ -90,8 +90,38 @@
 #
 #      Conclusion unchanged on the lane's actual compiler: BOTH empirical legs
 #      hold, the structural leg is compiler-independent, the exclusion stays and
-#      no baseline is widened. The rise 4 -> 6 is recorded because it is the kind
-#      of drift a future round should re-measure rather than re-argue.
+#      no baseline is widened.
+#
+#      ROUND-5 CORRECTION to the "4 -> 6" note above. Those counts are from the
+#      SYNTHETIC probe TU, which deliberately SEEDS a genuine mismatch; they do
+#      not describe this repository's code and the rise does not generalise.
+#      Measured on the REAL `tests/dsp_tests.cpp`, same flags:
+#
+#                        no -flto      -flto
+#          g++-15          78            0
+#          g++-16          69            0
+#
+#      i.e. on the actual file gcc-16 emits FEWER, not more, and the LTO answer
+#      -- the only one the gate reads -- is 0 on every compiler measured (13, 15,
+#      16). The delta between compilers is diagnostic-attribution drift over the
+#      replaced operators, not a change in what the code allocates.
+#
+#      WHY THIS IS NOT AN RT-SAFETY FINDING, checked rather than assumed:
+#        * `tests/AllocationGuard.h` is included by `tests/dsp_tests.cpp` ALONE.
+#          It appears nowhere in `src/` and nowhere in CMakeLists.txt, so it is
+#          never compiled into the VST3, the AU or the Standalone. No shipped
+#          binary contains the replaced operators this diagnostic fires on.
+#        * `-Wmismatched-new-delete` is a STATIC pairing diagnostic. It counts
+#          new/delete attribution, not runtime allocations, so a hit count is not
+#          evidence about the audio path either way.
+#        * The runtime question has its own answer, and it is measured: Test 38
+#          arms real counters around `process()` across the algorithm x
+#          oversampling x M/S matrix -- 3,840 armed calls, worst per call
+#          new=0 malloc=0, with all three guard halves reporting LIVE first so
+#          the zero is not vacuous.
+#      Disposition: instrumentation-only, no-LTO-only, test-binary-only.
+#      Documented and LOWERED IN PRIORITY per the round-5 decision rule. No
+#      allocation-policy change, no suppression, no baseline change.
 #
 #      The reproduction, for re-running it on a later gcc:
 #

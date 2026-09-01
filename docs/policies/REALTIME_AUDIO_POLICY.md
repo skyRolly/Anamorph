@@ -59,8 +59,18 @@ Evidence [Verified]:
 - **A static lint over audio-path bodies** (`scripts/check-realtime.py`, in `source-lint` with its
   own `--self-test`). Both runtime tiers see only the code the suite executes; this one reads the
   branches it never takes, on every platform, with no build. Its scope is this rule's scope: the
-  wrapper `processBlock`, `AnamorphEngine::process`, and every module's `reset`/`softReset`.
-  It is function-scoped — `prepare()` is required to allocate, so only the bound bodies are scanned.
+  wrapper `processBlock`, `AnamorphEngine::process`, every module's `reset`/`softReset`, and —
+  since ER-RT-02 — `setParameters`/`toEngine`, which the audio thread also enters every block.
+  It is function-scoped — `prepare()` is required to allocate, so a file-wide scan would flag the
+  legitimate sizing there. Scoped does NOT mean "seeds only": the lint computes the transitive set
+  of bodies those seeds reach, so a helper is scanned because it is CALLED from an audio path, not
+  because of what it is named.
+  **That closure is same-file.** A callee whose definition lives in another translation unit is not
+  text this lint has, and it is covered only if its own name is a seed. The boundary is deliberate
+  and is not a redesign candidate: `scripts/check-realtime.py` carries the round-3 census showing
+  the cross-file gap currently holds no violation (every forbidden-class match in a DSP unit the
+  audio thread reaches cross-file sits in that module's own `prepare()`), and the two RUNTIME tiers
+  cover the same ground from the other side. Re-measure that census before assuming it still holds.
 - Any change touching an audio path is reviewed against this list.
 - Buffer sizing must happen in `prepare()`. If a feature needs more scratch, grow it in
   `prepare()`, never in `process()`.

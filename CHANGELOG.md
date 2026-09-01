@@ -13,7 +13,7 @@ Source. Until then every entry cites a commit SHA or a PR. Entries for the
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
-## [0.9.6] — 2026-08-31
+## [0.9.6] — 2026-09-01
 ### Fixed
 - **Automating Drive or Widen Algorithm no longer does housekeeping on the audio thread.** When a
   host automated either control, the plug-in re-reported its latency from whichever thread moved the

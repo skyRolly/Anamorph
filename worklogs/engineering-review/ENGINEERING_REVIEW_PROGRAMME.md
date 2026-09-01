@@ -29,6 +29,137 @@ entries and CHANGELOG notes cite.
 
 ---
 
+## Round 5 — 2026-09-01 — release finalisation for v0.9.6
+
+**Entry state:** round 4 pushed at `f572479`; CI green; D-1, D-4 and KI-028 all closed. Two review
+items to process, a documentation drift sweep, a testing-methodology rule to record, and the
+release blocker.
+
+**Exit state:** both review items dispositioned by measurement, three documentation corrections
+made, the state-mutation cycling rule recorded as `TESTING_POLICY` rule 3a, and the Level-5
+audition **specified but NOT performed** — see below, because that is the one thing this round was
+asked for that it cannot supply.
+
+### D-3 — NOT DONE, and it cannot be done from here
+
+**The Level-5 audition is unperformed and v0.9.6 remains blocked on it.** This round did not
+discharge it and no record in this repository should suggest otherwise.
+
+The reason is definitional, not circumstantial. `RELEASE_POLICY.md` precondition 7 calls Level 5
+"**the human sign-off**"; `TESTING_POLICY.md` says it "cannot gate CI" and that a green build plus
+a pluginval pass is "**ready to audition, not shipped**". It requires a person, a DAW, audio output
+and ears. This programme runs in a headless Linux container with no DAW and no audio device, and an
+audition record not produced by a human listening is not a Level-5 record whatever it contains.
+Writing a DAW name, an OS and a "result" into the checklist would have satisfied the round's
+reporting format and corrupted the one gate that exists precisely because CI cannot see what it
+covers. It was not done.
+
+**What was done instead, because it is the part that CAN be done from here:** the audition had
+never been *specified*. Precondition 7 said it was required and nothing said what to listen to, so
+its scope lived in whoever remembered the release. `docs/procedures/LEVEL5_AUDITION.md` now derives
+that scope from the `[0.9.6]` change set — twelve items in five groups (activation/restore, A/B and
+undo, latency and automation, damaged-state recovery, metering and host matrix), each naming the
+specific failure it looks for, plus the record format and an explicit "partial is a legitimate
+record; partial described as complete is not" rule. It also states why the 2026-08-15 v0.9.4
+audition does not carry over: ADR-0031/0032 changed the x86-64 machine code everywhere, and 0.9.6
+changed audible behaviour in exactly the windows that were previously defective.
+
+Item 7 of that protocol is called out for macOS specifically — the value-box release-outside path
+was the last platform fixed (round 4), and its fix uses an AppKit-only query whose discriminating
+test is `#if JUCE_MAC`. Automated coverage there comes from the macOS CI job; the *audible* half
+has never been auditioned on any platform.
+
+### Review item 1 — cross-file lint coverage: DOCUMENTED, code unchanged
+
+The instruction was to verify the documentation states the boundary and to correct only a document
+that falsely implies full cross-file coverage. Round 3 had put the measured census in
+`scripts/check-realtime.py`'s own docstring, but two documents describing the lint had drifted:
+
+- **`docs/policies/REALTIME_AUDIO_POLICY.md`** said "only the bound bodies are scanned". That is
+  **factually stale**, and had been since round 1: the lint computes the transitive set of bodies
+  the seeds reach, so a helper is scanned because it is CALLED from an audio path, not because of
+  its name. The sentence also predated ER-RT-02's `setParameters`/`toEngine` seeds. Corrected, and
+  the same clause now states that the closure is **same-file** and that a cross-file callee is
+  covered only if its own name is a seed.
+- **`docs/architecture/REALTIME_SAFETY_AUDIT.md`** described the tier as scanning "audio-path
+  bodies" without qualification — in the one document whose job is to say what is and is not
+  covered, that reads as whole-program. One clause added naming the same-file boundary.
+
+No code changed; the lint was not redesigned. Both corrections point at the script's census rather
+than restating a number that would go stale.
+
+### Review item 2 — AllocationGuard on gcc-16: DOCUMENTED, priority lowered
+
+The review carried round 4's "4 hits → 6 hits" observation. **That premise is wrong, and this round
+corrected it at source.** Those counts came from the round-4 *synthetic probe TU*, which
+deliberately seeds a genuine `std::free`-on-`new[]` mismatch; they describe that scaffold, not this
+repository's code. Measured on the **real `tests/dsp_tests.cpp`**, same flags:
+
+| | no `-flto` | `-flto` |
+|---|---|---|
+| g++-15 | 78 | 0 |
+| g++-16 | **69** | 0 |
+
+On the actual file gcc-16 emits **fewer**, not more, so the "rise" does not exist outside the
+probe. Working through the review's three questions:
+
+1. **Cause** — diagnostic-attribution drift across compiler majors over the guard's *replaced*
+   global operators. Not a constexpr difference, not a sanitizer interaction (none is involved),
+   and not a change in what the code allocates. GCC attributes an allocation to the replaced
+   `operator new[]` and cannot follow it to the real allocator, which is the false-positive-by-
+   construction the exclusion has always rested on.
+2. **Where it occurs** — no-LTO only. Under `-flto` the count is **0 on every compiler measured
+   (13.3, 15.2, 16)**, and the gate job builds `-flto`. It cannot reach a shipped binary at all:
+   `tests/AllocationGuard.h` is included by `tests/dsp_tests.cpp` **alone** — it appears nowhere in
+   `src/` and nowhere in `CMakeLists.txt`, so the VST3, AU and Standalone never contain the
+   replaced operators this diagnostic fires on.
+3. **Do the hits mean runtime allocation** — no. `-Wmismatched-new-delete` is a *static* pairing
+   diagnostic; a hit count is not evidence about the audio path in either direction. The runtime
+   question has its own measured answer: **Test 38 arms real counters around `process()` across the
+   algorithm x oversampling x M/S matrix — 3,840 armed calls, worst per call new=0 malloc=0**, with
+   all three guard halves reporting LIVE first so the zero is not vacuous.
+
+By the review's own decision rule — "if this only affects no-LTO instrumentation/tests and release
+builds are clean: document and lower priority" — this is instrumentation-only, no-LTO-only,
+test-binary-only. **Documented in `scripts/check-gcc-warnings.py` and lowered.** No allocation-policy
+change, no RT finding filed, no suppression, no baseline widened.
+
+### Testing methodology — TESTING_POLICY rule 3a
+
+Round 4's lesson is now a rule rather than a story: a state-mutation test must **cycle**, not just
+transition — `A -> B -> C -> B`, and `valid -> invalid -> valid -> invalid` where malformed
+recovery is involved — across `setStateInformation`, preset loading, parameter migration and the
+restore paths. The rule records *why* it was bought: ER-STATE-11 was probed twice and refuted both
+times, the second time with a working non-vacuity control, because a first restore is correct by
+accident (the live `InternalState` holds an int where a round-tripped blob holds a string, so the
+oversample callback fires and recomputes what the repair left stale). ER-STATE-07 fell to the same
+shape a round earlier. It is written as a coverage-DESIGN rule, explicitly not a mandate to add
+tests to paths already covered — this round added none.
+
+### Documentation drift sweep — three corrections, all evidenced
+
+1. `CHANGELOG.md` `[0.9.6]` dated **2026-08-31 → 2026-09-01**, the release date, matching where
+   rounds 3-5 actually landed.
+2. `docs/HANDOVER.md` roadmap row stated the Level-5 audition "was performed 2026-08-15 against the
+   shipping v0.9.4 build" with nothing marking it superseded. Now says it is **INVALID for v0.9.6**
+   and why, pointing at the new protocol. (The `Known Blockers` row already listed the "re-opened
+   Level-5 audition" correctly and was left alone.)
+3. The two lint-coverage corrections above.
+
+**Deliberately not touched:** `docs/DOCUMENTATION_COVERAGE.md`'s account of the 2026-08-15 audition
+discharging ADR-0026/ADR-0022 for the JUCE 9.0 line. That is a true historical record of what that
+audition did for that build, and the brief's rule is that history stays history.
+
+### Decisions carried unchanged
+
+**D-2 remains DEFERRED** — no mutex, no `callAsync`, no state-architecture change, no code touched.
+The measured races stand as recorded: `abActive`, the `abUndo` vectors, the `juce::String` refcount.
+**D-4 remains APPROVED and implemented.** **ER-STATE-04.5 not reopened**; the saved blob format is
+untouched. The fifteen informational review items were verified as already-true statements about
+the tree and required no change.
+
+---
+
 ## Round 4 — 2026-09-01 — executing the approved plan
 
 **Entry state:** round 3 closed. CI **red** on one gate — two `-Wunused-lambda-capture` sites in

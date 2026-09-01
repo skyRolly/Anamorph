@@ -73,6 +73,30 @@ blocking gate; `env.ANAMORPH_PLUGINVAL_STRICTNESS`; the macOS AU install + AU ga
 3. The pluginval **signal-only retry** is permitted (it works around a host-side JUCE/X11 crash,
    not a plugin defect) but never retries a real validation failure
    (`run_one_pass`, `scripts/run-pluginval.sh:172-198`).
+
+3a. **A state-mutation test must CYCLE, not just transition.** A single `A -> B` pass can leave a
+   defect invisible, because the first pass through a state path can be made correct by conditions
+   that will not exist on the second. Cover the return leg and the repeat:
+
+       A -> B -> C -> B          (does the cached view of B survive a detour?)
+       valid -> invalid -> valid -> invalid   (where malformed recovery is involved)
+
+   Apply to `setStateInformation`, preset loading, parameter migration and the restore paths.
+
+   **This rule was bought with two wrong answers, which is why it is a rule and not advice.** The
+   round-4 stale-latency defect (ER-STATE-11) was probed twice and REFUTED both times — the second
+   time with a working non-vacuity control — because a first restore happens to be correct by
+   accident: the live `InternalState` holds an int where a round-tripped blob holds a string, so
+   `ValueTree::setProperty` sees a difference, fires the oversample callback and recomputes what
+   the repair had silently left stale. Settle the property types with a second restore and the
+   coincidence is gone and the defect appears. The same shape sank an earlier round: ER-STATE-07's
+   first-restore result was correct for exactly the same reason. A test that exercises such a path
+   once is not testing it; it is testing the coincidence. State test 24 restores twice on purpose
+   and says so in place.
+
+   This is a coverage-DESIGN rule, not a mandate to add tests: it governs how a state-path test is
+   shaped when one is written, and it does not by itself require new tests for paths already
+   covered.
 4. **A checker must prove it is live before its silence is trusted.** Every lint in the pipeline
    ships a `--self-test`, and it runs **in the same job as the check it vouches for, ahead of that
    job's use of the checker** — never in a different job, a different workflow or an earlier run,
