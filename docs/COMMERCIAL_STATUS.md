@@ -112,13 +112,14 @@ Both lists must be empty:
 
 **Owner/legal** — §4 items 1, 2, 3, 4 (and 6, 7 for the markets concerned).
 
-**Engineering / process** — two `RELEASE_POLICY.md` preconditions are open for v0.9.6, tracked in
+**Engineering / process** — **one** `RELEASE_POLICY.md` precondition is open for v0.9.6, tracked in
 `docs/HANDOVER.md` §Release Status: `RELEASE_COMPATIBILITY_CHECKLIST.md` has never been completed
-for this release, and the **Level-5 manual audition is open again** — it was performed on
-2026-08-15 against the then-shipping v0.9.4 / JUCE 9.0.1 build, but the shipping build is now
-v0.9.6, whose machine code changed on every x86-64 platform (ADR-0031/0032 AVX2) and whose
-engine gained the 0.9.6 fixes; the audition is per-version and no carry-forward was decided
-(engineering-review finding ER-DOC-01). Every ADR remains `Accepted`. Signing and notarization
+for this release. The **Level-5 manual audition is CLOSED**: the 2026-08-15 audition covered the
+then-shipping v0.9.4 / JUCE 9.0.1 build and did not carry over (the machine code changed on every
+x86-64 platform under ADR-0031/0032, and the engine gained the 0.9.6 fixes — ER-DOC-01), so it was
+re-run, and **the maintainer performed it against the final v0.9.6 build and it PASSED** (recorded
+2026-09-01; `docs/procedures/LEVEL5_AUDITION.md` §Recorded auditions, where the fields the report
+did not supply are marked NOT RECORDED rather than inferred). Every ADR remains `Accepted`. Signing and notarization
 (`RH-PR-3`/`RH-PR-5`) are not release-blocking but are user-visible.
 
 ---

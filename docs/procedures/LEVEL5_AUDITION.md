@@ -90,6 +90,45 @@ release checklist. Record, at minimum:
 An audition that exercised only part of the scope is recorded as **partial**, naming what was
 covered. Partial is a legitimate and useful record; a partial audition described as complete is not.
 
+## Recorded auditions
+
+Newest first. A row here is a human's account of listening to a build; nothing else may create one.
+
+### v0.9.6 — **PASS**
+
+**Recorded 2026-09-01** from the maintainer's report that the audition was completed and passed
+against the final v0.9.6 build. The maintainer is the human who performed it, and that attestation
+is the Level-5 evidence — precondition 7 asks for a person's judgement, not for a machine-checkable
+artifact.
+
+| Field | Value |
+|---|---|
+| Verdict | **PASS** |
+| Build | The final v0.9.6 build (as stated by the maintainer) |
+| Performed by | The maintainer |
+| Audition date | **NOT RECORDED** |
+| DAW + version | **NOT RECORDED** |
+| OS + CPU architecture | **NOT RECORDED** |
+| Plugin format (VST3 / AU / Standalone) | **NOT RECORDED** |
+| Session used | **NOT RECORDED** |
+| Per-item outcome (groups A–E) | **NOT RECORDED** |
+| Exact artifact / commit identity | **NOT RECORDED** |
+
+**The NOT RECORDED rows are deliberate and must not be filled in by anyone who was not there.**
+They are marked rather than omitted so a later reader can see the record's granularity: this is a
+verdict-level record, not an item-level one. Nobody transcribing it — human or agent — should
+infer a DAW, an OS, a format or a per-item result from the protocol above; the protocol says what
+*should* be exercised, not what *was*.
+
+**Consequence for correspondence-to-build.** Because no artifact or commit identity was supplied,
+the correspondence between what was auditioned and the final v0.9.6 build rests on the maintainer's
+statement rather than on anything checkable in this repository. That is sufficient for precondition
+7, which is a human sign-off by definition. It is recorded here so the basis of the claim is
+visible.
+
+**For the next release:** capturing the table above at audition time costs a minute and makes the
+record self-supporting. The blank rows here are the argument for doing that.
+
 Evidence [Verified]: docs/policies/RELEASE_POLICY.md (precondition 7);
 docs/policies/TESTING_POLICY.md (Level 5); docs/procedures/RELEASE_PROCESS.md §7; CHANGELOG.md
 `[0.9.6]`.

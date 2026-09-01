@@ -29,6 +29,53 @@ entries and CHANGELOG notes cite.
 
 ---
 
+## Round 6 — 2026-09-01 — D-3 recorded: the Level-5 audition PASSED
+
+**D-3 is CLOSED. The Level-5 audition was completed by the maintainer against the final v0.9.6
+build and PASSED.** That discharges `RELEASE_POLICY.md` precondition 7. **v0.9.6 is no longer
+blocked by D-3**; every statement in this programme that said otherwise is superseded by this
+section, and the round-5 text has been marked accordingly.
+
+The full record is `docs/procedures/LEVEL5_AUDITION.md` §Recorded auditions.
+
+### What the record contains, and what it does not
+
+The maintainer's report supplies the verdict (**PASS**), the build (**the final v0.9.6 build**) and
+the performer (**the maintainer**). It does not supply the audition date, the DAW, the OS or CPU
+architecture, the plugin format, the session used, the per-item outcomes for protocol groups A–E,
+or an exact artifact/commit identity.
+
+**Those seven fields are recorded as NOT RECORDED and were left blank deliberately.** Round 5 wrote
+the audition protocol and its record table; it would have been trivial — and wrong — to fill those
+rows in from the protocol, because the protocol says what *should* be exercised, not what *was*.
+Inventing them would produce a record that reads as item-level evidence while resting on nothing,
+which is a worse failure than an honestly partial record. Anyone extending this record later must
+have been present at the audition.
+
+### Correspondence to the final build — what was actually verified
+
+The instruction for this round was to verify the recorded evidence corresponds to the final v0.9.6
+build. Stated precisely: **no artifact or commit identity was supplied, so that correspondence rests
+on the maintainer's attestation rather than on anything checkable in this repository.** That is
+sufficient for precondition 7, which is a human sign-off by definition and not a machine-checkable
+artifact — but the basis of the claim is recorded rather than glossed, so a later reader can see
+which parts are attested and which are verified.
+
+What this repository *can* confirm, and does: the tree carries no other v0.9.6 audition record, so
+this is the only one, and there is no competing or superseding account to reconcile it against.
+
+### Carried forward for the next release
+
+Capturing the record table at audition time costs a minute and makes the record self-supporting.
+The blank rows in the v0.9.6 entry are the argument for doing that, and the note is in the protocol.
+
+### Remaining tag blockers
+
+Two, not three: **the missing licence (KI-015)** and **the compatibility checklist**. Neither is
+fixable by code. D-3 is closed.
+
+---
+
 ## Round 5 — 2026-09-01 — release finalisation for v0.9.6
 
 **Entry state:** round 4 pushed at `f572479`; CI green; D-1, D-4 and KI-028 all closed. Two review
@@ -37,13 +84,18 @@ release blocker.
 
 **Exit state:** both review items dispositioned by measurement, three documentation corrections
 made, the state-mutation cycling rule recorded as `TESTING_POLICY` rule 3a, and the Level-5
-audition **specified but NOT performed** — see below, because that is the one thing this round was
-asked for that it cannot supply.
+audition **specified** (and performed by the maintainer shortly afterwards — round 6).
 
-### D-3 — NOT DONE, and it cannot be done from here
+### D-3 — not done *by this round*; subsequently PERFORMED and PASSED
 
-**The Level-5 audition is unperformed and v0.9.6 remains blocked on it.** This round did not
-discharge it and no record in this repository should suggest otherwise.
+> **SUPERSEDED 2026-09-01 (round 6).** The maintainer completed the Level-5 audition against the
+> final v0.9.6 build and it **PASSED**. D-3 is closed and **v0.9.6 is not blocked by it**. The
+> account below is kept because its reasoning is still correct about what *this programme* can and
+> cannot supply — it was never a claim that the audition would not happen, only that an automated
+> agent cannot be the one to perform it. Record: `docs/procedures/LEVEL5_AUDITION.md`.
+
+**At the time of round 5 the audition was unperformed.** That round did not discharge it and did not
+claim to.
 
 The reason is definitional, not circumstantial. `RELEASE_POLICY.md` precondition 7 calls Level 5
 "**the human sign-off**"; `TESTING_POLICY.md` says it "cannot gate CI" and that a green build plus
@@ -770,7 +822,7 @@ green after re-anchoring (see the round's commits).
 - **D-2 (RISK-007):** whether to add a narrow guard (mutex over the state-set members, or
   callAsync marshalling of the metadata tail) for off-main-thread state calls, or accept the
   AU exposure as documented. Also gated. Round 2 can run the TSan harness first (recommended).
-- **D-3 (Level-5 audition):** precondition 7 is open for v0.9.6 — the 2026-08-15 audition
+- **D-3 (Level-5 audition):** **[CLOSED 2026-09-01 — PERFORMED BY THE MAINTAINER, PASSED; see round 6.]** As recorded at the time: precondition 7 is open for v0.9.6 — the 2026-08-15 audition
   covered v0.9.4; since then every x86-64 binary's machine code changed (ADR-0031/0032) and
   0.9.6 changed engine behaviour in the defective windows (prepare-settle, oversized blocks).
   Needs a human DAW session; cannot be automated (TESTING_POLICY Level 5).
