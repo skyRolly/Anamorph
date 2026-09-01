@@ -113,8 +113,13 @@ Both lists must be empty:
 **Owner/legal** — §4 items 1, 2, 3, 4 (and 6, 7 for the markets concerned).
 
 **Engineering / process** — **one** `RELEASE_POLICY.md` precondition is open for v0.9.6, tracked in
-`docs/HANDOVER.md` §Release Status: `RELEASE_COMPATIBILITY_CHECKLIST.md` has never been completed
-for this release. The **Level-5 manual audition is CLOSED**: the 2026-08-15 audition covered the
+`docs/HANDOVER.md` §Release Status: `RELEASE_COMPATIBILITY_CHECKLIST.md` is **not fully checked**.
+It is no longer uncompleted, though — as of **2026-09-01** it stands at **six of eight boxes checked
+with measured evidence** (that file's §Completion record and §Evidence appendix name what was run for
+each). The two that remain — **Host matrix verified** and **Automation playback verified** — are
+blocked on a DAW, not on analysis, and are deliberately not ticked from the Level-5 audition: that
+record's per-item outcomes are NOT RECORDED, so ticking them from it would infer per-item results
+from a verdict-level record. Precondition 2 requires *every* item, so the gate is still open. The **Level-5 manual audition is CLOSED**: the 2026-08-15 audition covered the
 then-shipping v0.9.4 / JUCE 9.0.1 build and did not carry over (the machine code changed on every
 x86-64 platform under ADR-0031/0032, and the engine gained the 0.9.6 fixes — ER-DOC-01), so it was
 re-run, and **the maintainer performed it against the final v0.9.6 build and it PASSED** (recorded

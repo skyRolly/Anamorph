@@ -29,6 +29,89 @@ entries and CHANGELOG notes cite.
 
 ---
 
+## Round 7 — 2026-09-01 — the compatibility checklist completed as far as a headless environment can
+
+**`RELEASE_POLICY.md` precondition 2 was the second of the two remaining tag blockers, and it has
+NARROWED, not closed.** `docs/procedures/RELEASE_COMPATIBILITY_CHECKLIST.md` now stands at **six of
+eight boxes checked with measured evidence**, recorded in that file's §Completion record with an
+§Evidence appendix naming what was run for each. Precondition 2 requires *every* item, so the gate
+is still open — but what is left is a DAW session, not analysis, and this section says exactly which
+two and why they were not ticked.
+
+| # | Item | v0.9.6 | Evidence |
+|---|---|---|---|
+| 1 | Parameter IDs unchanged | **PASS** | State test 2; `tests/fixtures/parameter_registry.snapshot` byte-identical to `origin/main`, last touched `d6bdb13` |
+| 2 | Serialization schema verified | **PASS** | State tests 1, 3 + legacy fixtures 4/5/6 |
+| 3 | Presets migrated | **PASS** | State tests 8, 10, 11; the "sound identical" half via the Level-5 audition (round 6) |
+| 4 | Pluginval passed (both modes) | **PASS** | run HERE under `xvfb`, not inferred from CI |
+| 5 | Host matrix verified | **OPEN** | needs a DAW |
+| 6 | Latency reporting verified | **PASS** | `AnamorphTests` Test 3+4, plus State tests 22 and 24 |
+| 7 | Automation playback verified | **OPEN** | needs a host |
+| 8 | Session reload verified | **PASS** | State test 25 against a real v0.9.5 field capture |
+
+### Item 8 stopped being a reconstruction
+
+The checklist had carried a caveat since v0.8.13: the three legacy fixtures are *reconstructions*
+built by current code, so they can only contain what today's understanding says an old format held.
+A fixture written by the current binary cannot answer "does vN read what vN−1 wrote" — it answers
+"does vN agree with itself", which is a weaker question wearing the same clothes.
+
+So the previous version's binary was rebuilt and asked. The tree at `2c5e760^` (v0.9.5) was
+extracted with `git archive`, its `tests/state_tests.cpp` given an `--emit-session` hook, and
+`AnamorphStateTests` built against the same JUCE pin. That binary WROTE
+`tests/fixtures/field_capture_v0_9_5.session` (10,629 bytes) and a `.manifest` recording what it
+believed the state was, B slot included. **State test 25** loads the capture into v0.9.6 and asserts
+against the manifest, not against v0.9.6's own round-trip.
+
+All four things item 8 names reproduce exactly: sound (5 parameters), preset name (`Gentle Width`),
+dirty-star (set), and **both** A/B slots — and the two slots hold different values, so the B leg is
+not vacuous. This is the only fixture in the tree that was not built by current code.
+
+### Item 4 was run, not inherited
+
+Pluginval was executed in this environment under `xvfb` against the built VST3, at the strictness
+read from `ANAMORPH_PLUGINVAL_STRICTNESS` in `.github/workflows/build.yml` rather than from any
+number restated in a document: `scripts/run-pluginval.sh <n> deterministic vst3` and
+`scripts/run-pluginval.sh <n> randomise vst3`, both three passes, both exit 0. The macOS AU and
+Windows gates run in CI and are not restated as if they had been run here.
+
+### Why 5 and 7 were NOT ticked from the Level-5 audition
+
+The audition (round 6) exercised a DAW and PASSED, and its protocol group C covers automation of
+Drive and Algorithm. Ticking items 5 and 7 from it would nonetheless be **inferring per-item results
+from a verdict-level record** — that record's per-item outcomes are explicitly NOT RECORDED, which
+is the same blank set round 6 refused to fill in from the protocol. Refusing to invent them in round
+6 and then reading them back out in round 7 would be the same fabrication taking one extra step.
+Either the maintainer confirms those groups were exercised, or the two items are run on their own.
+
+### Documents synced
+
+`docs/procedures/RELEASE_COMPATIBILITY_CHECKLIST.md` (completion record, per-item ticks, evidence
+appendix), `docs/HANDOVER.md` (Release Status, Known Blockers, Roadmap and Test rows),
+`docs/COMMERCIAL_STATUS.md` §6 — which said the checklist "has never been completed for this
+release" and now states the six/eight position and why the last two are open —
+`docs/REPOSITORY_MAP.md` (the state-suite and `tests/fixtures/` rows), and the test-count sweep
+below.
+
+**Counts corrected, measured not inferred:** the state suite is **25 tests / 1077 checks** (was
+recorded as 24 / 1057) and the DSP suite **47 tests + the A/B clamp guard / 245 checks**.
+`TESTING_POLICY.md` was the worst drifted — its Level-2 row still said *41 DSP tests* and *15
+state-compatibility tests*, and its hard-release-gate paragraph *41* and *24-test*. Also corrected:
+`README.md`, `docs/procedures/TESTING.md`, `docs/REPOSITORY_MAP.md`,
+`docs/architecture/RELEASE_HARDENING_PLAN.md` and `docs/HANDOVER.md`.
+
+No CHANGELOG entry: a test addition and a checklist completion are not user-visible
+(`CHANGELOG_POLICY.md` rule 3). No code under `src/` changed in this round, so no
+ARCHITECTURE_REVIEW_GATE category is touched.
+
+### Remaining tag blockers
+
+**One and a half.** The **missing licence (KI-015)** is untouched and remains wholly an owner/legal
+action. The **compatibility checklist** is down to its two host-dependent boxes. Neither is fixable
+by code.
+
+---
+
 ## Round 6 — 2026-09-01 — D-3 recorded: the Level-5 audition PASSED
 
 **D-3 is CLOSED. The Level-5 audition was completed by the maintainer against the final v0.9.6
@@ -72,7 +155,8 @@ The blank rows in the v0.9.6 entry are the argument for doing that, and the note
 ### Remaining tag blockers
 
 Two, not three: **the missing licence (KI-015)** and **the compatibility checklist**. Neither is
-fixable by code. D-3 is closed.
+fixable by code. D-3 is closed. *(Superseded in part by round 7: the checklist is now six of eight
+boxes, with only the two host-dependent ones open.)*
 
 ---
 

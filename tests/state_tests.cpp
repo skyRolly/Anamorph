@@ -2983,6 +2983,115 @@ static void testPhysicalButtonQueryIgnoresCachedState()
 }
 
 // ---------------------------------------------------------------------------
+// 25. CROSS-VERSION FIELD CAPTURE: a session written by the PREVIOUS version's
+//     binary must reproduce exactly in this one.
+//
+//     RELEASE_COMPATIBILITY_CHECKLIST §"Session reload verified" asks for a
+//     session saved by vN-1 and loaded by vN, and records that the existing
+//     legacy fixtures cannot discharge it because they are RECONSTRUCTIONS of old
+//     formats hand-built by the current code, not captures written by an older
+//     binary (worklogs/STATE_HARNESS_v0.8.13.md §5). That is a real distinction:
+//     a reconstruction can only contain what today's understanding says the old
+//     format held, so it cannot catch a field the old binary actually wrote
+//     differently.
+//
+//     `tests/fixtures/field_capture_v0_9_5.session` is the missing thing: 10,629
+//     bytes produced by the v0.9.5 binary itself (the tree at 2c5e760^, the commit
+//     before the 0.9.6 bump), built from that source with its own JUCE pin. Beside
+//     it, `.manifest` records what THAT binary believed the state was, including
+//     the B slot it had to switch to in order to read. The assertions below
+//     compare against those numbers, so this test asks "does v0.9.6 reproduce what
+//     v0.9.5 had", not "does v0.9.6 agree with itself".
+//
+//     Covers all four things the checklist item names: sound, preset name,
+//     dirty-star, and both A/B slots.
+static void testCrossVersionFieldCapture()
+{
+    std::printf ("State test 25: a v0.9.5-written session reproduces exactly (cross-version capture)\n");
+
+    const auto blob = fixtureDir().getChildFile ("field_capture_v0_9_5.session");
+    const auto manifestFile = fixtureDir().getChildFile ("field_capture_v0_9_5.session.manifest");
+    check (blob.existsAsFile(), "the v0.9.5 field capture is present");
+    check (manifestFile.existsAsFile(), "...and so is its manifest");
+    if (! blob.existsAsFile() || ! manifestFile.existsAsFile()) return;
+
+    // Parse the emitter's own record. Anything missing is a broken fixture, not a
+    // pass -- the check() calls below would otherwise compare against 0.0.
+    juce::StringPairArray expected;
+    juce::StringArray slotA, slotB;
+    for (const auto& lineRef : juce::StringArray::fromLines (manifestFile.loadFileAsString()))
+    {
+        const auto line = lineRef.trim();
+        if (line.isEmpty()) continue;
+        if (line.startsWith ("slotA ")) slotA = juce::StringArray::fromTokens (line.substring (6), " ", "");
+        else if (line.startsWith ("slotB ")) slotB = juce::StringArray::fromTokens (line.substring (6), " ", "");
+        else if (line.contains ("=")) expected.set (line.upToFirstOccurrenceOf ("=", false, false),
+                                                    line.fromFirstOccurrenceOf ("=", false, false));
+    }
+    check (expected["emitter"] == "v0.9.5", "the manifest was written by the v0.9.5 binary");
+    check (slotA.size() == 5 && slotB.size() == 5, "the manifest carries both slots' values");
+    if (slotA.size() != 5 || slotB.size() != 5) return;
+
+    auto valueOf = [] (const juce::StringArray& fields, const juce::String& key) -> float
+    {
+        for (const auto& f : fields)
+            if (f.startsWith (key + "="))
+                return f.fromFirstOccurrenceOf ("=", false, false).getFloatValue();
+        return -1.0f;
+    };
+
+    auto blobData = juce::MemoryBlock();
+    check (blob.loadFileAsData (blobData), "the capture loads from disk");
+    check (blobData.getSize() > 1000, "the capture is a real session blob, not a stub");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    proc.setStateInformation (blobData.getData(), (int) blobData.getSize());
+    juce::Timer::callPendingTimersSynchronously();
+
+    // (1) SOUND -- the active slot's parameters.
+    struct P { const char* id; const char* key; };
+    const P params[] = { { pid::width, "width" }, { pid::mix, "mix" },
+                         { pid::amount, "amount" }, { pid::algorithm, "algo" },
+                         { pid::outputGain, "outGain" } };
+    for (const auto& pr : params)
+    {
+        const float want = valueOf (slotA, pr.key);
+        const float got  = rawOf (proc, pr.id);
+        std::printf ("  slotA %-8s v0.9.5 %.6f -> v0.9.6 %.6f\n", pr.key, want, got);
+        checkNear ((double) got, (double) want, 1.0e-5,
+                   "the active slot's sound reproduces from the v0.9.5 capture");
+    }
+
+    // (2) PRESET NAME and (3) DIRTY-STAR.
+    std::printf ("  preset name: \"%s\" (v0.9.5: \"%s\"), dirty %d (v0.9.5: %s)\n",
+                 proc.getPresets().currentName().toRawUTF8(),
+                 expected["presetName"].toRawUTF8(),
+                 (int) proc.getPresets().isDirty(), expected["dirty"].toRawUTF8());
+    check (proc.getPresets().currentName() == expected["presetName"],
+           "the preset name reproduces from the v0.9.5 capture");
+    check ((int) proc.getPresets().isDirty() == expected["dirty"].getIntValue(),
+           "the dirty-star reproduces from the v0.9.5 capture");
+    check (proc.abActiveSlot() == expected["activeSlot"].getIntValue(),
+           "the active A/B slot reproduces from the v0.9.5 capture");
+
+    // (4) BOTH A/B SLOTS -- switch to B and compare against what v0.9.5 had there.
+    //     Non-vacuity: the two slots must actually DIFFER in the manifest, or this
+    //     leg would pass on a build that ignored the B slot entirely.
+    check (! juce::approximatelyEqual (valueOf (slotA, "width"), valueOf (slotB, "width")),
+           "the capture's two slots really do differ (the B leg is not vacuous)");
+    proc.abSwitchTo (1);
+    for (const auto& pr : params)
+    {
+        const float want = valueOf (slotB, pr.key);
+        const float got  = rawOf (proc, pr.id);
+        std::printf ("  slotB %-8s v0.9.5 %.6f -> v0.9.6 %.6f\n", pr.key, want, got);
+        checkNear ((double) got, (double) want, 1.0e-5,
+                   "the B slot reproduces from the v0.9.5 capture");
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Round-3 KI-028 probe (opt-in, PRINTS, asserts only its own non-vacuity).
 //
 //     Measures the two things the round-3 adversarial pass disputed about KI-028:
@@ -3397,6 +3506,7 @@ int main (int argc, char* argv[])
     testLatencyDeliveryIsDeferredOffMessageThread();
     testPhysicalButtonQueryIgnoresCachedState();
     testRestoreReportsTheRestoredLatency();
+    testCrossVersionFieldCapture();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

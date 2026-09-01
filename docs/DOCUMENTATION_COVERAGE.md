@@ -6,11 +6,21 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.6 change set** (2026-08-31, matching the CHANGELOG heading) — the
-**engineering-review round 1** (the programme's first sweep: six engine/state/GUI fixes with
-Tests 43–46 and two state regressions, the engaged Test 2/38 matrices, the KI-027 and RISK-007
-filings, the v0.9.6 renumbering sweep, the NOTICE pin + AudioUnitSDK section, the CI_CD job
-inventory, and the new `worklogs/engineering-review/` programme worklog + live HTML dashboard).
+Last updated: for the **0.9.6 change set** (2026-09-01, matching the CHANGELOG heading) — the
+**engineering-review programme, rounds 1 through 7**, newest last in the body: round 1 (the
+programme's first sweep: six engine/state/GUI fixes with Tests 43–46 and two state regressions,
+the engaged Test 2/38 matrices, the KI-027 and RISK-007 filings, the v0.9.6 renumbering sweep, the
+NOTICE pin + AudioUnitSDK section, the CI_CD job inventory, and the new
+`worklogs/engineering-review/` programme worklog + live HTML dashboard); round 2 (CI recovery and
+two restore defects, whose section also carries the **rounds 3 and 4** bullets); **rounds 5 and 6**
+(the Level-5 audition specified, then recorded as PASSED — entered late, in round 7, and labelled
+as such); and **round 7** (the compatibility checklist taken to six of eight boxes with measured
+evidence, and the test-count sweep).
+**Header correction (round 7, 2026-09-01):** this line enumerated round 1 alone while the body
+carried six later rounds, and dated the change set 2026-08-31 while the CHANGELOG `[0.9.6]` heading
+had been re-dated to 2026-09-01 — the same drift the C6 correction below was written about,
+recurring. Rounds 5 and 6 had additionally skipped this file entirely; their entry says so rather
+than pretending it was written at the time.
 **Header correction (C6, 2026-08-31):** this line previously said "for the 0.9.5 change set
 (2026-08-22, matching the CHANGELOG heading)" while the CHANGELOG's `[0.9.5]` heading had been
 re-dated to 2026-08-30 and the file's own body already carried five later 0.9.5-set rounds the
@@ -6690,3 +6700,81 @@ in `DELIBERATE_REAIMS` as a transition, and three carry a second entry for the p
 (a different base than `origin/main`, and the one CI compares). The self-test's liveness check
 caught one bogus declaration — a bare `:line` shorthand the gate does not track as an anchor — which
 was removed rather than worked around. [Verified]
+
+
+## Engineering-review programme, rounds 5 and 6 — the Level-5 audition specified, then recorded (2026-09-01, still the 0.9.6 change set) — ENTERED LATE
+
+**Recorded retroactively in round 7.** Rounds 5 (`ba34d64`) and 6 (`9063b49`) both changed
+documentation and neither updated this file, which is the sync
+`DOCUMENTATION_LIFECYCLE_POLICY.md` requires. The gap is stated rather than back-dated: the
+entry below is written in round 7 from those two commits' diffs, and the rounds themselves are
+recorded in `worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Round 5 / §Round 6.
+
+**Round 5 — release finalisation.** NEW document `docs/procedures/LEVEL5_AUDITION.md`: the Level-5
+manual audition had never been written down, so its scope lived in whoever remembered the release.
+It now exists as a twelve-item protocol in five groups, **derived from the CHANGELOG `[0.9.6]`
+entries** rather than invented, with an invalidation rule and a record format. Synced with it:
+`docs/procedures/RELEASE_PROCESS.md` and `docs/REPOSITORY_MAP.md` (the new procedure listed),
+`docs/HANDOVER.md` and `CHANGELOG.md`. Two review items were dispositioned by measurement, not
+argument, and both changed a document: `scripts/check-realtime.py` gained the cross-file lint
+coverage boundary and `docs/policies/REALTIME_AUDIO_POLICY.md` +
+`docs/architecture/REALTIME_SAFETY_AUDIT.md` record what the lint does and does not see;
+`scripts/check-gcc-warnings.py` carries the AllocationGuard/gcc-16 result — `-Wmismatched-new-delete`
+is a **static pairing diagnostic, not an allocation counter**, so `AllocationGuard.h`'s replaced
+global operators are a false positive by construction. `docs/policies/TESTING_POLICY.md` gained rule
+3a, the state-mutation stress-pattern rule.
+
+**Round 6 — D-3 recorded.** The maintainer performed the audition against the final v0.9.6 build and
+it **PASSED**, discharging `RELEASE_POLICY.md` precondition 7. Recorded in
+`LEVEL5_AUDITION.md` §Recorded auditions, and synced to `docs/HANDOVER.md` (Release Status, Known
+Blockers, Roadmap), `docs/COMMERCIAL_STATUS.md` §6 and
+`docs/architecture/RELEASE_HARDENING_PLAN.md` (QA-gate row). **Seven fields of that record —
+audition date, DAW, OS/architecture, plugin format, session, per-item outcomes for groups A–E, and
+the exact artifact identity — are marked NOT RECORDED and were left blank deliberately**, because
+the protocol says what *should* be exercised, not what *was*. The correspondence between what was
+auditioned and the final build rests on the maintainer's attestation, no artifact identity having
+been supplied; that basis is written down rather than glossed. [Verified]
+
+## Engineering-review programme, round 7 — the compatibility checklist completed to 6/8 (2026-09-01, still the 0.9.6 change set)
+
+**What the round is.** `RELEASE_POLICY.md` precondition 2 — the hard compatibility gate — went from
+never completed for this release to **six of eight boxes checked with measured evidence**. Records:
+`worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Round 7 and the dashboard beside it,
+both updated in this change set.
+
+**No `src/` change.** The round adds one test and one fixture pair and syncs documents; no
+ARCHITECTURE_REVIEW_GATE category is touched, and `CHANGELOG_POLICY.md` rule 3 excludes both a test
+addition and a checklist completion from the CHANGELOG.
+
+**Changes and their doc syncs (trigger map applied):**
+- `tests/state_tests.cpp` (State test 25, the cross-version field capture) and
+  `tests/fixtures/field_capture_v0_9_5.session` + `.manifest` (NEW) →
+  `docs/procedures/RELEASE_COMPATIBILITY_CHECKLIST.md` (item 8 ticked, its "reconstruction, not
+  field capture" caveat closed, evidence appendix), `docs/REPOSITORY_MAP.md` (the state-suite row
+  and the `tests/fixtures/` row, which now distinguishes the one fixture that is **not** a
+  reconstruction), and the count sweep below. The fixture was WRITTEN by a v0.9.5 binary rebuilt
+  from the tree at `2c5e760^` — the three legacy XMLs are built by current code and can only contain
+  what today's understanding says an old format held; this one cannot.
+- `docs/procedures/RELEASE_COMPATIBILITY_CHECKLIST.md` (§Completion record, per-item PASS/OPEN
+  prefixes, §Evidence for the v0.9.6 completion) → `docs/HANDOVER.md` (Release Status, Known
+  Blockers and Roadmap rows: "three preconditions" → two, and "has never been completed" → the 6/8
+  position), `docs/COMMERCIAL_STATUS.md` §6 (same correction; it had been the last document still
+  asserting the checklist was uncompleted).
+
+**Counts corrected, measured not inferred.** The state suite is **25 tests / 1077 checks** and the
+DSP suite **47 tests + the A/B clamp guard / 245 checks**. `docs/policies/TESTING_POLICY.md` was the
+worst drifted — its Level-2 row still read *41 DSP tests* and *15 state-compatibility tests*, and its
+hard-release-gate paragraph *41* and *24-test*, so the policy that defines the gate understated the
+gate by ten tests. Also corrected: `README.md:64`, `docs/procedures/TESTING.md` (state-suite
+description), `docs/REPOSITORY_MAP.md`, `docs/architecture/RELEASE_HARDENING_PLAN.md` (QA-gate row)
+and `docs/HANDOVER.md` (Test Status row). Two stale release-mechanics facts in the HANDOVER Release
+Status row were corrected while there, both verified first: the tag-order sentence still named
+`git tag -a v0.9.4` where the same row already says the tag is `v0.9.6`, and it still cited the
+`[0.9.4]`-era re-dating deadline of 2026-08-19 where the CHANGELOG `[0.9.6]` heading is dated
+2026-09-01.
+
+**What was deliberately NOT recorded.** Checklist items 5 (Host matrix) and 7 (Automation playback)
+stay **OPEN**. The Level-5 audition exercised a DAW and its protocol group C covers automation, but
+that record's per-item outcomes are marked NOT RECORDED — so ticking either item from it would infer
+item-level results from a verdict-level record. Round 6 refused to fill those rows in from the
+protocol; reading them back out here would be the same fabrication one step removed. [Verified]
