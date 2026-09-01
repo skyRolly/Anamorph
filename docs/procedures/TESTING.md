@@ -215,6 +215,18 @@ sound: YES` (raw width 0.10 against a restored 0.75) and, with the previous proj
 B, `first switch after the restore reads A: 0.90 -> CONFIRMED stale`. Kept beside the test for the
 same reason as the two above: the test asserts the rule, the probe shows the magnitude.
 
+`AnamorphStateTests --legacy-match-probe` is the fourth, and like `--latency-restore-probe` it
+**measures and prints without asserting** — because what it examines was REFUTED on impact, so a
+probe that encoded an expectation would be pinning a non-defect. It asks whether the per-slot
+Level-Match gains (`abMatchGain[]`, never reset on any restore path and never serialized) reach the
+output after a restore that carries no A/B data. Round 9's answer: the stale figure IS injected
+(engine match −7.10 → −2.18 dB on the block it lands, tracking the previous project's B), but the
+output level does not move — matched same-instance counterfactual, fresh-instance control and a
+worst-case switch with no settle are all indistinguishable. The injection lands at the silent bottom
+of the switch duck and is superseded by the live loudness measurement before the fade-in completes.
+Keep the probe with the finding it refuted: it is what a later round re-measures instead of
+re-deriving.
+
 `tests/state_tests.cpp` (**26 tests**, own console target `AnamorphStateTests`) automates the
 COMPATIBILITY policy family against the **real `AnamorphAudioProcessor`** (the target compiles
 the plugin sources; since 2026-08-21 it also constructs and destroys the real editor, headlessly

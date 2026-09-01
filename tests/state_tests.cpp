@@ -3711,6 +3711,281 @@ static int runLegacyAbProbe()
     return 0;
 }
 
+// ---------------------------------------------------------------------------
+//  Opt-in probe: does a restore that carries no A/B data leave the PREVIOUS
+//  project's per-slot Level-Match gains in place, and does the first slot
+//  switch after it move the OUTPUT LEVEL? Reproduction before disposition.
+// ---------------------------------------------------------------------------
+static int runLegacyMatchGainProbe()
+{
+    std::printf ("legacy per-slot Level-Match contamination probe\n");
+    std::printf ("==============================================\n\n");
+
+    constexpr double sr = 48000.0;
+    constexpr int    bs = 512;
+
+    // Deterministic noise, so the loudness measurement has something real to
+    // converge on and the two slots' matches are genuinely measured, not injected.
+    auto fillNoise = [] (juce::AudioBuffer<float>& b, juce::Random& rng)
+    {
+        for (int ch = 0; ch < b.getNumChannels(); ++ch)
+            for (int i = 0; i < b.getNumSamples(); ++i)
+                b.setSample (ch, i, (rng.nextFloat() * 2.0f - 1.0f) * 0.25f);
+    };
+    auto runBlocks = [&] (AnamorphAudioProcessor& p, int nBlocks, juce::Random& rng)
+    {
+        juce::AudioBuffer<float> buf (2, bs);
+        juce::MidiBuffer midi;
+        for (int k = 0; k < nBlocks; ++k)
+        {
+            fillNoise (buf, rng);
+            p.processBlock (buf, midi);
+        }
+    };
+    auto rmsOf = [&] (AnamorphAudioProcessor& p, int nBlocks, juce::Random& rng)
+    {
+        juce::AudioBuffer<float> buf (2, bs);
+        juce::MidiBuffer midi;
+        double acc = 0.0; int n = 0;
+        for (int k = 0; k < nBlocks; ++k)
+        {
+            fillNoise (buf, rng);
+            p.processBlock (buf, midi);
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = 0; i < bs; ++i) { const double s = buf.getSample (ch, i); acc += s * s; ++n; }
+        }
+        return std::sqrt (acc / (double) juce::jmax (1, n));
+    };
+
+    AnamorphAudioProcessor p;
+    p.prepareToPlay (sr, bs);
+    juce::Random rng (20260901);
+
+    setRaw (p, "autoGainMatch", 1.0f);   // Level Match ON -- the gate the gain is applied behind
+
+    // --- The "previous project": two slots whose measured matches genuinely differ.
+    setRaw (p, "width", 0.95f);          // a wide setting -> one match figure
+    runBlocks (p, 60, rng);
+    const float prevMatchA = p.getEngine().getMatchGainDb();
+    p.abSwitchTo (1);                    // stores A's match, moves to B
+    setRaw (p, "width", 0.05f);          // a narrow setting -> a different one
+    runBlocks (p, 60, rng);
+    const float prevMatchB = p.getEngine().getMatchGainDb();
+    p.abSwitchTo (0);                    // stores B's match, back to A
+    runBlocks (p, 20, rng);
+    std::printf ("  previous project: measured match A %.3f dB, B %.3f dB (delta %.3f dB)\n",
+                 prevMatchA, prevMatchB, prevMatchB - prevMatchA);
+    if (std::abs (prevMatchB - prevMatchA) < 0.5f)
+    {
+        std::printf ("  the two slots' matches are NOT distinguishable -- probe would be vacuous\n");
+        return 1;
+    }
+
+    // --- Restore a session with NO A/B data into the SAME instance.
+    if (! applyXmlFixture (p, "legacy_v0_2_bare_apvts.xml"))
+        return 1;
+    setRaw (p, "autoGainMatch", 1.0f);   // the v0.2 fixture predates the param; keep the gate open
+    runBlocks (p, 60, rng);
+    const float afterRestore = p.getEngine().getMatchGainDb();
+    std::printf ("  after the v0.2 restore + settle: engine match %.3f dB\n", afterRestore);
+
+    // --- The first A/B switch after the restore. The injection is consumed INSIDE
+    // processBlock (at the silent bottom of the switch duck, ~6 ms out + 28 ms in),
+    // so reading getMatchGainDb() before any block has run reads the pre-switch
+    // loudness value and sees nothing -- the first version of this probe did
+    // exactly that and reported "not the stale value" for a stale value that WAS
+    // there. Print the trajectory instead of a single sample.
+    p.abSwitchTo (1);
+    std::printf ("  first switch to B -- engine match after N blocks:\n");
+    float atBlock4 = 0.0f;
+    for (int k = 1; k <= 8; ++k)
+    {
+        runBlocks (p, 1, rng);
+        const float m = p.getEngine().getMatchGainDb();
+        if (k == 4) atBlock4 = m;
+        std::printf ("      %d block(s): %.3f dB\n", k, m);
+    }
+    std::printf ("  stale previous-project B match was %.3f dB; restored-state match was %.3f dB\n",
+                 prevMatchB, afterRestore);
+    std::printf ("  => %s\n",
+                 std::abs (atBlock4 - prevMatchB) < 0.05f
+                     ? "CONFIRMED: the stale previous-project value was injected"
+                     : "the injected value is not the stale one");
+
+    // --- Output level, with the switch DUCK excluded. abSwitchTo requests a duck
+    // (~34 ms = 3.2 blocks at 512/48k), so an RMS window that starts at the switch
+    // measures the duck, not the match gain -- the first version of this probe did
+    // that too and reported a -2.60 dB "level change" that was the fade. Compare a
+    // settled window instead, against a CONTROL instance that restored the same
+    // session with no previous project behind it.
+    const double contaminated = rmsOf (p, 20, rng);
+
+    AnamorphAudioProcessor q;                 // control: no previous project
+    q.prepareToPlay (sr, bs);
+    juce::Random rngQ (20260901);
+    setRaw (q, "autoGainMatch", 1.0f);
+    if (! applyXmlFixture (q, "legacy_v0_2_bare_apvts.xml"))
+        return 1;
+    setRaw (q, "autoGainMatch", 1.0f);
+    runBlocks (q, 60, rngQ);
+    q.abSwitchTo (1);
+    runBlocks (q, 8, rngQ);
+    const double control = rmsOf (q, 20, rngQ);
+
+    std::printf ("  settled output RMS after the switch: contaminated %.6f, control %.6f"
+                 " (ratio %.4f, %.2f dB)\n",
+                 contaminated, control, contaminated / control,
+                 20.0 * std::log10 (juce::jmax (1.0e-12, contaminated / control)));
+    std::printf ("  control instance's match after its switch: %.3f dB\n",
+                 q.getEngine().getMatchGainDb());
+
+    // --- DISCRIMINATION. The readings above show a jump at block 2 but cannot say
+    // WHOSE value it is, because the loudness module re-measures on top of the
+    // injection within the same block. Two changes make it decisive: switch under
+    // SILENCE, so the measurement has nothing to move toward, and run the whole
+    // scenario twice with DIFFERENT previous-project B settings. If the value read
+    // after the switch tracks the previous project's B across both runs, it is that
+    // value being injected and nothing else.
+    std::printf ("\n  --- discrimination: silent switch, two different previous-project Bs ---\n");
+    auto runScenario = [&] (float prevBWidth, const char* label)
+    {
+        AnamorphAudioProcessor z;
+        z.prepareToPlay (sr, bs);
+        juce::Random r (4242);
+        setRaw (z, "autoGainMatch", 1.0f);
+        setRaw (z, "width", 0.95f);
+        runBlocks (z, 60, r);
+        z.abSwitchTo (1);
+        setRaw (z, "width", prevBWidth);
+        runBlocks (z, 60, r);
+        const float bMatch = z.getEngine().getMatchGainDb();
+        z.abSwitchTo (0);
+        runBlocks (z, 20, r);
+
+        if (! applyXmlFixture (z, "legacy_v0_2_bare_apvts.xml")) return;
+        setRaw (z, "autoGainMatch", 1.0f);
+        runBlocks (z, 60, r);
+        const float restored = z.getEngine().getMatchGainDb();
+
+        // Silence from here: nothing for the loudness module to re-measure toward.
+        juce::AudioBuffer<float> quiet (2, bs);
+        juce::MidiBuffer midi;
+        z.abSwitchTo (1);
+        std::printf ("      %-22s prev-project B %+.3f dB | restored %+.3f dB | per-block:",
+                     label, bMatch, restored);
+        float peak = restored;
+        for (int k = 0; k < 6; ++k)
+        {
+            quiet.clear(); z.processBlock (quiet, midi);
+            const float m = z.getEngine().getMatchGainDb();
+            std::printf (" %+.3f", m);
+            if (std::abs (m - restored) > std::abs (peak - restored)) peak = m;
+        }
+        std::printf ("\n      %-22s the excursion peak is %+.3f dB -> %s\n", "",
+                     peak,
+                     std::abs (peak - bMatch) < 0.10f ? "== the STALE previous-project B"
+                   : std::abs (peak - restored) < 0.10f ? "== the restored state"
+                                                        : "neither");
+    };
+    runScenario (0.05f, "narrow previous B:");
+    runScenario (0.60f, "mid previous B:");
+
+    // --- MATCHED COUNTERFACTUAL, same instance, same audio history. After round 8's
+    // fix a no-A/B restore leaves BOTH slots holding the restored state, so an
+    // A->B switch applies IDENTICAL parameters -- the only thing that differs
+    // between the slots is the injected match gain. And A->B->A decontaminates the
+    // array by construction (each switch stores the CURRENT match into the slot it
+    // leaves), so a later A->B on the same instance is the clean control. That
+    // removes every confound the comparisons above carry: same instance, same
+    // loudness history, same parameters, one variable.
+    std::printf ("\n  --- matched counterfactual on one instance (params identical across the switch) ---\n");
+    {
+        AnamorphAudioProcessor z;
+        z.prepareToPlay (sr, bs);
+        juce::Random r (77000);
+        setRaw (z, "autoGainMatch", 1.0f);
+        setRaw (z, "width", 0.95f);
+        runBlocks (z, 60, r);
+        z.abSwitchTo (1);
+        setRaw (z, "width", 0.05f);
+        runBlocks (z, 60, r);
+        z.abSwitchTo (0);
+        runBlocks (z, 20, r);
+        if (! applyXmlFixture (z, "legacy_v0_2_bare_apvts.xml")) return 1;
+        setRaw (z, "autoGainMatch", 1.0f);
+        runBlocks (z, 80, r);
+
+        auto envelopeAfterSwitch = [&] (int to, const char* label)
+        {
+            juce::AudioBuffer<float> buf (2, bs);
+            juce::MidiBuffer midi;
+            z.abSwitchTo (to);
+            std::printf ("      %-16s per-block output RMS:", label);
+            for (int k = 0; k < 10; ++k)
+            {
+                fillNoise (buf, r);
+                z.processBlock (buf, midi);
+                double acc = 0.0;
+                for (int ch = 0; ch < 2; ++ch)
+                    for (int i = 0; i < bs; ++i) { const double v = buf.getSample (ch, i); acc += v * v; }
+                std::printf (" %.4f", std::sqrt (acc / (double) (2 * bs)));
+            }
+            std::printf ("\n");
+        };
+        envelopeAfterSwitch (1, "CONTAMINATED");   // injects the previous project's B
+        runBlocks (z, 40, r);
+        envelopeAfterSwitch (0, "(decontaminate)");
+        runBlocks (z, 40, r);
+        envelopeAfterSwitch (1, "CLEAN CONTROL");  // same switch, array now decontaminated
+    }
+
+    // --- WORST CASE: switch IMMEDIATELY after the restore, before the loudness
+    // module has measured anything on the restored settings. That is the one
+    // configuration in which the injected value could persist rather than being
+    // superseded -- if the running measurement has not yet converged, there is
+    // nothing to overwrite it with. If the level does not move here either, the
+    // stale value is inert everywhere.
+    std::printf ("\n  --- worst case: switch with NO settle after the restore ---\n");
+    {
+        auto worstCase = [&] (bool withPreviousProject, const char* label)
+        {
+            AnamorphAudioProcessor z;
+            z.prepareToPlay (sr, bs);
+            juce::Random r (31337);
+            setRaw (z, "autoGainMatch", 1.0f);
+            if (withPreviousProject)
+            {
+                setRaw (z, "width", 0.95f);
+                runBlocks (z, 60, r);
+                z.abSwitchTo (1);
+                setRaw (z, "width", 0.05f);
+                runBlocks (z, 60, r);
+                z.abSwitchTo (0);
+                runBlocks (z, 20, r);
+            }
+            if (! applyXmlFixture (z, "legacy_v0_2_bare_apvts.xml")) return;
+            setRaw (z, "autoGainMatch", 1.0f);
+            z.abSwitchTo (1);                       // no settle at all
+            juce::AudioBuffer<float> buf (2, bs);
+            juce::MidiBuffer midi;
+            std::printf ("      %-18s RMS:", label);
+            for (int k = 0; k < 12; ++k)
+            {
+                fillNoise (buf, r);
+                z.processBlock (buf, midi);
+                double acc = 0.0;
+                for (int ch = 0; ch < 2; ++ch)
+                    for (int i = 0; i < bs; ++i) { const double v = buf.getSample (ch, i); acc += v * v; }
+                std::printf (" %.4f", std::sqrt (acc / (double) (2 * bs)));
+            }
+            std::printf ("   match %+.3f dB\n", z.getEngine().getMatchGainDb());
+        };
+        worstCase (true,  "with prev project");
+        worstCase (false, "fresh (control)");
+    }
+    return 0;
+}
+
 int main (int argc, char* argv[])
 {
     juce::ScopedJuceInitialiser_GUI juceInit; // MessageManager for APVTS/processor on this thread
@@ -3732,6 +4007,9 @@ int main (int argc, char* argv[])
 
     if (argc > 1 && std::strcmp (argv[1], "--legacy-ab-probe") == 0)
         return runLegacyAbProbe();
+
+    if (argc > 1 && std::strcmp (argv[1], "--legacy-match-probe") == 0)
+        return runLegacyMatchGainProbe();
 
     const bool writeSnapshot = argc > 1 && std::strcmp (argv[1], "--write-snapshot") == 0;
 

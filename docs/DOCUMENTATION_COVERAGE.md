@@ -15,9 +15,10 @@ NOTICE pin + AudioUnitSDK section, the CI_CD job inventory, and the new
 two restore defects, whose section also carries the **rounds 3 and 4** bullets); **rounds 5 and 6**
 (the Level-5 audition specified, then recorded as PASSED — entered late, in round 7, and labelled
 as such); **round 7** (the compatibility checklist taken to six of eight boxes with measured
-evidence, and the test-count sweep); and **round 8** (the legacy A/B contamination defect confirmed
+evidence, and the test-count sweep); **round 8** (the legacy A/B contamination defect confirmed
 and fixed, an obsolete macOS scope comment corrected, and the realtime-lint boundary re-measured and
-left alone).
+left alone); and **round 9** (the per-slot Level-Match residual refuted on impact — mechanism real,
+no code changed).
 **Header correction (round 7, 2026-09-01):** this line enumerated round 1 alone while the body
 carried six later rounds, and dated the change set 2026-08-31 while the CHANGELOG `[0.9.6]` heading
 had been re-dated to 2026-09-01 — the same drift the C6 correction below was written about,
@@ -6829,3 +6830,36 @@ both the `origin/main` and push-predecessor bases. One over-correction was caugh
 `readSlot` span was hand-derived when `--fix` could map it mechanically, which made the anchor drift
 against its own base; the mechanical map is authoritative wherever it applies, and hand derivation is
 for the anchors it reports unmappable. [Verified]
+
+
+## Engineering-review programme, round 9 — the Level-Match residual refuted on impact (2026-09-01, still the 0.9.6 change set)
+
+**What the round is.** A reported per-slot Level-Match contamination bug, investigated to a
+disposition and **not fixed**, because its mechanism is real and its impact is not. Records:
+`worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Round 9 and the dashboard.
+
+**No `src/` change, so no trigger fires from the code side.** The only tree change is the
+`--legacy-match-probe` instrument in `tests/state_tests.cpp` and its description in
+`docs/procedures/TESTING.md`. Suite counts are unchanged (**26 tests / 1096 checks**): the probe is
+opt-in and the suite never runs it, so no count document needed touching. No CHANGELOG entry — no
+user-visible behaviour changed (`CHANGELOG_POLICY.md` rule 3).
+
+**What was established, and why it did not become a fix.** `abMatchGain[2]` is written and read only
+in `abSwitchTo`, initialised in the header, and **never reset on any path and never serialized** —
+so the `AB`-present restore leaves it as stale as the no-A/B one, and a fix scoped to
+`abResetToDefaults` would close a third of the class while appearing complete. The injected figure
+is measurably the previous project's, but the output level does not move under a matched
+same-instance counterfactual (identical parameters across the switch, so the injection is the only
+variable), a fresh-instance control, or the worst case of switching before the loudness module has
+converged. The mechanism: the injection lands at the silent bottom of the switch duck and
+`setParameters` re-targets from the live measurement every block. Level Match is a continuously
+re-derived measurement, not stored state. The residual is a readout excursion of ≈65–85 ms.
+Additionally, the value that *should* be written is undocumented — `abMatchGain` appears in no
+registry, ADR or policy, unlike round 8's fix, whose semantics `SERIALIZATION_REGISTRY.md` already
+specified — so choosing one would be legislating rather than conforming.
+
+**ER-RT-05 re-verified, nothing changed.** Same boundary, same four accurate documents, census
+re-measured at **83 matches across 12 files**, identical to rounds 3 and 8. Recorded with it: the
+first re-measurement returned 205/29 because it ran the regexes over raw text instead of applying
+the script's own `strip_comments_and_strings` — caught and re-run before being reported, since a
+census is only comparable to one run the same way. [Verified]

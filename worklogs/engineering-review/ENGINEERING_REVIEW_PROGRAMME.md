@@ -29,6 +29,100 @@ entries and CHANGELOG notes cite.
 
 ---
 
+## Round 9 — 2026-09-01 — the per-slot Level-Match residual: mechanism real, impact refuted
+
+**No code changed this round.** The reported bug's mechanism exists; its reported IMPACT does not,
+and the measurements that establish that are below. The review's own decision rule made this the
+answer rather than a judgement call: CONFIRMED requires stale state **and** a first-switch output
+level change. The first holds. The second is refuted by three independent measurements.
+
+### ER-STATE-13 — REFUTED on impact; the stale state is real but inert
+
+**The stale state is real, and wider than the report says.** `abMatchGain[2]` is written and read in
+exactly one place — `abSwitchTo` (`src/PluginProcessor.cpp:762`, `:765`) — initialised in the header
+(`:203`) and **never reset on any path and never serialized**. So `abResetToDefaults` not covering it
+is not a gap peculiar to the no-A/B path: the `AB`-PRESENT restore leaves it equally stale, because
+there is no `slotAMatch`/`slotBMatch` field in the format at all. Any fix scoped to
+`abResetToDefaults` would close a third of the class while looking complete.
+
+**The reported impact does not occur.** `abSwitchTo` does inject the previous project's figure —
+the probe shows the engine's match gain jumping from the restored −7.10 dB to −2.18 dB on the block
+the injection lands, tracking the previous project's B across two runs (prev-B −1.045 → peak
+−2.181; prev-B −1.782 → peak −2.798, a 0.62 dB response to a 0.74 dB change). But the **output level
+does not move**:
+
+| measurement | contaminated | control | verdict |
+|---|---|---|---|
+| matched counterfactual, one instance, identical params across the switch (per-block RMS, blocks 4–10) | 0.3553 0.3631 0.3623 0.3607 0.3676 0.3603 0.3596 | 0.3592 0.3653 0.3639 0.3624 0.3642 0.3617 0.3711 | indistinguishable |
+| fresh-instance control, settled window | 0.361551 | 0.366076 | −0.11 dB, within run-to-run spread |
+| **worst case** — switch with NO settle, before loudness has converged | 0.3577 0.3743 0.3671 0.3705 … match −6.180 dB | 0.3578 0.3548 0.3715 0.3699 … match −6.116 dB | indistinguishable |
+
+The matched counterfactual is the decisive one and is only possible *because* of round 8: with both
+slots now holding the restored state, an A→B switch applies **identical parameters**, so the
+injected match gain is the single variable. A→B→A also decontaminates the array by construction
+(each switch stores the CURRENT match into the slot it leaves), so a later A→B on the same instance
+is a clean control with the same instance, same loudness history and same parameters.
+
+**Why it is inert**, stated mechanically rather than as a guess: the injection lands at the **silent
+bottom of the switch duck** (`AnamorphEngine.cpp:782`, `~6 ms` fade-out), where the output is muted;
+and `setParameters` re-targets `matchGainSmooth` from `loudness.getMatchGainDb()` **every block**
+(`:529`), so the live measurement supersedes the injected figure before the 28 ms fade-in completes.
+Level Match is a continuously re-derived measurement, not stored state — which is exactly why
+overwriting it briefly changes nothing that reaches the output.
+
+**The one real residual** is a **readout excursion**: `loudness.setDisplayedGainDb(inj)` moves the
+figure the editor displays (`PluginProcessor.cpp:256`), measured at −7.10 → −2.18 dB, converging back
+within 6–8 blocks (≈65–85 ms at 512/48 k). Sub-100 ms, during and just after a switch the user
+initiated, on a readout that is visibly a live meter.
+
+**Why no code change**, beyond "not CONFIRMED under the rule":
+1. **The correct value is not documented.** Reset to `0.0f` (the construction default) or seed from
+   the live `engine.getMatchGainDb()` (the `abEnsureInit` analogue)? `abMatchGain` appears in no
+   registry, no ADR and no policy — unlike round 8's fix, whose semantics `SERIALIZATION_REGISTRY.md`
+   already specified in as many words. Choosing here would be legislating, not conforming.
+2. **A scoped fix would misrepresent the class.** The member is stale after *every* restore, not
+   just this one.
+3. **Nothing observable would change.** By the mechanism above, both candidate values are superseded
+   by the running measurement before any audio at full level passes through — which is what the
+   worst-case leg measures.
+
+Recorded here so a later round re-measures rather than re-derives. Instrument:
+`AnamorphStateTests --legacy-match-probe`, kept in the tree with its per-block trajectories.
+
+**Two probe defects were found and fixed before the numbers above were trusted.** The first version
+read `getMatchGainDb()` immediately after `abSwitchTo` and reported "not the stale value" — the
+injection is consumed inside `processBlock`, which had not run, so it was reading the pre-switch
+value. The second measured output RMS in a window starting at the switch and reported a −2.60 dB
+"level change" that was the switch duck's 34 ms fade. Both are the vacuity class this programme
+keeps hitting: a probe that answers a different question than the one asked.
+
+### ER-RT-05 — DOCUMENTED, unchanged (re-verified)
+
+Re-checked at the review's new line (`scripts/check-realtime.py:87`, the `AUDIO_FN` seed list — the
+same construct round 8 examined at `:107`, moved by that round's own edits). The four documents that
+describe the boundary still describe it correctly and none implies automatic cross-file coverage.
+Census re-measured: **83 FORBIDDEN-class matches across 12 files**, with VelvetNoise 3, ChorusEngine
+2, HaasProcessor 2 — identical to rounds 3 and 8. No code, no documentation change.
+
+*A methodology slip worth recording:* the first re-measurement this round returned **205 matches in
+29 files**, because it ran the forbidden-class regexes over raw text instead of applying the
+script's own `strip_comments_and_strings` first. Same tree, different method — caught and re-run
+before it was reported. A census is only comparable to a prior census run the same way.
+
+### Informational items — fourteen checked, no contradiction
+
+Each cited line was resolved against the current tree rather than accepted: `:157` is
+`requestLatencyUpdate`, `:408` the restore-notify rationale, `:443` the negated finiteness test,
+`:495`/`:504`/`:516` the malformed-value repair region, `:921` the legacy slot type guard. The DSP,
+GUI and CI items are unchanged since the rounds that established them. No contradiction found.
+
+### Settled decisions
+
+D-2 not reopened; D-3 remains the maintainer's completed audition (PASS); D-1 and D-4 remain
+implemented; KI-028 and KI-013 remain RESOLVED; round 8's ER-STATE-12 fix is untouched.
+
+---
+
 ## Round 8 — 2026-09-01 — one confirmed defect, one obsolete comment, one boundary left alone
 
 Follow-up on a supplied review. Three actionable items, three different dispositions, and the
