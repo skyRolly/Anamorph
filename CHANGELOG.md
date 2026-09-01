@@ -34,29 +34,24 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   arriving from elsewhere is handed over, and the host may learn of it up to 50 ms later.
   Regression coverage: State test 22.
   Evidence: PR #134. [Verified]
-- **A knob's number readout no longer breaks Undo on macOS.** The fix shipped earlier in 0.9.6
-  closed this on Linux and Windows, but not on macOS: deciding that a press had been abandoned
-  needs the *real* mouse-button state, and on macOS the plug-in was reading a cached copy that a
-  release outside the window never updates. It now asks the operating system directly. The same
-  change also fixes a knob staying visually "pressed" after such a release on macOS.
-  Regression coverage: State test 23.
+- **A knob's number readout no longer breaks Undo when you release the mouse outside the plug-in
+  window — on all three platforms.** Pressing a value readout opens a host edit gesture that is
+  closed on release. When the release happened over the host or the desktop, the operating system
+  delivered it to nothing and the gesture stayed open — after which nothing you did became its own
+  Undo step until the gesture eventually closed. The editor's stuck-press reconcile now closes the
+  gesture as well as the visual press state; on macOS it also asks the operating system for the
+  *real* mouse-button state instead of a cached copy that such a release never updates, so the
+  reconcile is effective there too. That second half additionally closes a long-standing macOS
+  annoyance present since 0.8.12: a knob could stay visually "pressed" after a release outside the
+  window. Regression coverage: State tests 21 and 23 — 21 proves an unreleased press blocks Undo,
+  that the reconcile restores it, that a normal press/release is unaffected, and that the sweep can
+  run repeatedly without closing a gesture twice; 23 pins the macOS half.
   Evidence: PR #134. [Verified]
 - **Reopening a damaged project no longer leaves the host compensating for the wrong delay.** When a
   corrupted value was rejected on load, the control was repaired but the delay already reported to
   the host was not — so the host kept aligning tracks for a setting the plug-in had discarded, until
   the next reactivation. Measured with oversampling on: the host was told 4 samples for a state that
   needs 0. Regression coverage: State test 24.
-  Evidence: PR #134. [Verified]
-- **A knob's number readout no longer breaks Undo if you release the mouse outside the plug-in
-  window.** Pressing a value readout opens a host edit gesture that is closed on release. When the
-  release happened over the host or the desktop, the operating system delivered it to nothing and
-  the gesture stayed open — after which nothing you did became its own Undo step until the gesture
-  eventually closed. The editor's existing stuck-press reconcile now closes the gesture as well as
-  the visual press state. Regression coverage: State test 21, which proves an unreleased press
-  blocks Undo, that the reconcile restores it, that a normal press/release is unaffected, and that
-  the sweep can run repeatedly without closing a gesture twice.
-  Known limit: this reconcile is inert on macOS for the reason recorded as KI-013, so the macOS half
-  of the issue remains open.
   Evidence: PR #134. [Verified]
 - **A damaged value in a project or preset can no longer jam a control to the end of its range.**
   Round 0.9.6's earlier fix rejected "not a number" but not the rest of the family: text that is not

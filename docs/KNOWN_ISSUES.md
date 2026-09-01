@@ -450,22 +450,30 @@ product trade: *a small amount of controlled FM is preferable to obvious interac
 
 ## KI-013 — macOS: release outside the window can still leave a control stuck "pressed"
 
-- **Problem:** v0.8.12 reconciles stuck pressed/drag state against the real OS mouse-button state
-  when a mouse-up lands outside the plugin window (CHANGELOG `[0.8.12]`). On macOS the mechanism is
-  **inert**: JUCE 8.0.14's `ModifierKeys::getCurrentModifiersRealtime()` refreshes only *keyboard*
-  modifiers there and returns the *cached* mouse-button flags (it never queries
-  `[NSEvent pressedMouseButtons]`), so the "cached-down && realtime-up" gate can never fire. macOS
-  behaviour is therefore unchanged from pre-0.8.12: a lost outside release can leave a control
-  visually pressed until the cursor re-enters and the next real event resynchronizes.
+> **RESOLVED 2026-09-01 (engineering-review round 4).** Everything below describes the state up to
+> that round and is kept as the diagnosis; it is no longer current. The fix is the one the last
+> bullet asks for: `anamorph::gui::anyPhysicalMouseButtonDown()` calls
+> `+[NSEvent pressedMouseButtons]` on macOS and forwards to JUCE elsewhere, and both editor
+> predicates — the abandoned-gesture sweep gate and the press glow — read it, so the two cannot
+> disagree. See the registry row above and State test 23 (`#if JUCE_MAC`, run by the macOS CI job).
+
+- **Problem (up to round 4):** v0.8.12 reconciles stuck pressed/drag state against the real OS
+  mouse-button state when a mouse-up lands outside the plugin window (CHANGELOG `[0.8.12]`). On
+  macOS the mechanism was **inert**: JUCE 8.0.14's `ModifierKeys::getCurrentModifiersRealtime()`
+  refreshes only *keyboard* modifiers there and returns the *cached* mouse-button flags (it never
+  queries `[NSEvent pressedMouseButtons]`), so the "cached-down && realtime-up" gate could never
+  fire. macOS behaviour was therefore unchanged from pre-0.8.12: a lost outside release could leave
+  a control visually pressed until the cursor re-entered and the next real event resynchronized.
 - **Mitigating factor:** AppKit delivers the mouse-up to the window that captured the mouse-down,
   so lost releases are rare on macOS in the first place; recovery on cursor re-entry is intact.
 - **Evidence [Verified]:** JUCE 8.0.14 (FetchContent) `juce_NSViewComponentPeer_mac.mm` (realtime query
   returns cached mouse flags; **re-verified unchanged in JUCE 9.0.0** during the ADR-0022 bump and
   again in **9.0.1** during ADR-0026, where the file is byte-identical — still
   keyboard-modifiers-only); `worklogs/MOUSE_RELEASE_STATE_FIX_v0.8.12.md` §2 (platform caveat);
-  CHANGELOG `[0.8.12]` ("Effective on Windows and Linux"). Fixable only via a JUCE-side change or a
-  platform-specific `pressedMouseButtons` query (would need its own review). Severity **Low**,
-  external (JUCE platform implementation).
+  CHANGELOG `[0.8.12]` ("Effective on Windows and Linux"). Recorded here as fixable only via a
+  JUCE-side change or a platform-specific `pressedMouseButtons` query — **the latter is what round 4
+  did**, in `src/gui/PhysicalMouseButtons_mac.mm`. Severity was **Low**, external (JUCE platform
+  implementation).
 
 *(KI-014 "The macOS AU is shipped but never validated automatically" — RESOLVED in v0.9.4: the
 macOS CI job now runs the full pluginval release gate against the AU as well as the VST3, at the
@@ -908,11 +916,17 @@ APVTS `LockedListeners` mutex).
 > mid-press does NOT leak, despite `sliderAtts` being declared after the knobs and so destructing
 > first; the RAII close still lands (guarded as leg 5 of the same test).
 >
-> **The macOS residual is why this entry stays open.** The reconcile's predicate needs the REAL
-> button state, and JUCE's realtime modifier query returns cached state on macOS — the same
-> mechanism as KI-013. The sweep therefore never runs there. That half needs a different signal, not
-> a different sweep, and is not a matter of choosing the other candidate design: both designs
-> considered in round 2 shared this predicate.
+> **The macOS residual was why this entry stayed open** at the end of round 3. The reconcile's
+> predicate needs the REAL button state, and JUCE's realtime modifier query returns cached state on
+> macOS — the same mechanism as KI-013 — so the sweep never ran there. That half needed a different
+> signal, not a different sweep, and was not a matter of choosing the other candidate design: both
+> designs considered in round 2 shared this predicate.
+>
+> **CLOSED 2026-09-01 (round 4).** That different signal is
+> `anamorph::gui::anyPhysicalMouseButtonDown()` (`+[NSEvent pressedMouseButtons]` on macOS,
+> forwarding to JUCE elsewhere), which both editor predicates now read. The entry is RESOLVED — see
+> the registry row — and everything below this banner is the round-2/3 diagnosis, kept as the
+> record rather than rewritten.
 
 **Filed 2026-08-31 (engineering-review round 2, finding ER-GUI-04).** A residual of the round-1
 fix for KI-010's third gesture-less path, found by reviewing that fix rather than by a report.

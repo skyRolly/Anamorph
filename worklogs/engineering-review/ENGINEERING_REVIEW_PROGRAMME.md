@@ -29,6 +29,76 @@ entries and CHANGELOG notes cite.
 
 ---
 
+## Round 10 — 2026-09-01 — release notes reconciled with the KI-013 outcome
+
+**Documentation only; no code touched.** A reported contradiction between the `[0.9.6]` release
+notes and KI-013's RESOLVED status turned out to be one of **three** sites still describing the
+pre-round-4 world, not one.
+
+### The contradiction, and the two the report did not name
+
+Round 4 closed KI-013 and KI-028 by giving both editor predicates a real button signal
+(`anyPhysicalMouseButtonDown()` → `+[NSEvent pressedMouseButtons]`; `PluginEditor.cpp:1533` and
+`:1719`). Round 8 corrected the source comments. Three documents were still saying otherwise:
+
+1. **`CHANGELOG.md`** — *"Known limit: this reconcile is inert on macOS … so the macOS half of the
+   issue remains open."* The reported one. Removed.
+2. **`docs/KNOWN_ISSUES.md`, the KI-013 detail section** — written entirely in the present tense
+   ("On macOS the mechanism **is** inert", "macOS behaviour **is** therefore unchanged"), and its
+   closing bullet offered as a hypothetical the very fix that shipped: *"Fixable only via a
+   JUCE-side change or a platform-specific `pressedMouseButtons` query (would need its own review)."*
+   The registry row two hundred lines above already said RESOLVED. Given a dated RESOLVED banner and
+   moved to past tense; the closing bullet now says that is what round 4 did.
+3. **`docs/KNOWN_ISSUES.md`, the KI-028 detail section** — its round-3 banner still read *"The macOS
+   residual is why this entry stays open."* Given a `CLOSED 2026-09-01 (round 4)` banner beneath it.
+
+Both KNOWN_ISSUES sections keep their original diagnosis text under an explicit "everything below is
+the round-2/3 record" banner rather than being rewritten — the programme's rule is not to rewrite
+historical records, and the diagnosis is why the fix was findable.
+
+**Deliberately NOT changed**, because they are accurate history rather than live claims:
+`docs/KNOWN_ISSUES.md:97` (a dated v0.8.12 version-sync header recording KI-013 as *added* at that
+release — true then), the dated round entries in `DOCUMENTATION_COVERAGE.md`, and the round-3/4
+sections of this worklog and the older audit worklogs.
+
+### The two Undo entries were duplicated, and one of them implied macOS was broken
+
+`[0.9.6]` carried both *"…no longer breaks Undo on macOS"* and *"…no longer breaks Undo if you
+release the mouse outside the plug-in window"*. They are **one bug path fixed in two stages within
+one unreleased version**: round 3's sweep closed Linux and Windows, round 4's signal closed macOS.
+A user upgrading from 0.9.5 never saw the intermediate state, so presenting it as two fixes — one of
+them platform-qualified — implies macOS was separately broken in a shipped build. It was not.
+
+Consolidated into a single entry describing the final state on all three platforms. **The one half
+that genuinely shipped broken is preserved**: a knob staying visually "pressed" after a release
+outside the window on macOS is KI-013, present since v0.8.12, and the merged entry still names it.
+Both regression tests stay cited (State tests 21 and 23).
+
+The `[0.9.6]` Fixed count goes 19 → 18, which happens to restore `HANDOVER.md`'s "eighteen Fixed
+entries" to accuracy — that line had gone stale by one when round 8 added the ER-STATE-12 entry.
+Checked rather than assumed: the section now counts 18.
+
+The third readout entry — *"Dragging a knob's number readout now registers with Undo and with host
+automation recording"* (round 1, the drag path opening no gesture at all) — is a different defect
+and is left alone.
+
+### ER-RT-05 — verified accurate for the third consecutive round, no change
+
+Re-checked at `scripts/check-realtime.py:87`. The two facts to confirm both hold:
+**AUDIO_FN is a manual registry** — the script says so in as many words (*"this list IS the scope"*),
+and records why `setParameters`/`toEngine` were hand-added: `processBlock` calls both every block but
+each lives in a file the same-file walk cannot reach from that seed. **Cross-file callees are not
+auto-discovered** — `REALTIME_AUDIO_POLICY.md`: *"A callee whose definition lives in another
+translation unit is not text this lint has, and it is covered only if its own name is a seed."*
+`REALTIME_SAFETY_AUDIT.md`: *"the same-file transitive closure … not a whole-program one."*
+`CI_CD.md` and ADR-0029 agree. No document claims complete automatic cross-file coverage.
+
+Verified in rounds 8, 9 and 10 with no change required each time. Recorded here so a fourth round
+can cite this rather than re-derive it: the boundary is stable, the documents are accurate, and the
+census (83 matches / 12 files) has not moved since round 3.
+
+---
+
 ## Round 9 — 2026-09-01 — the per-slot Level-Match residual: mechanism real, impact refuted
 
 **No code changed this round.** The reported bug's mechanism exists; its reported IMPACT does not,

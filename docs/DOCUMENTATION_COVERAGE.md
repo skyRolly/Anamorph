@@ -17,8 +17,9 @@ two restore defects, whose section also carries the **rounds 3 and 4** bullets);
 as such); **round 7** (the compatibility checklist taken to six of eight boxes with measured
 evidence, and the test-count sweep); **round 8** (the legacy A/B contamination defect confirmed
 and fixed, an obsolete macOS scope comment corrected, and the realtime-lint boundary re-measured and
-left alone); and **round 9** (the per-slot Level-Match residual refuted on impact — mechanism real,
-no code changed).
+left alone); **round 9** (the per-slot Level-Match residual refuted on impact — mechanism real,
+no code changed); and **round 10** (the release notes reconciled with the KI-013 outcome, and the
+two duplicated knob-readout Undo entries consolidated).
 **Header correction (round 7, 2026-09-01):** this line enumerated round 1 alone while the body
 carried six later rounds, and dated the change set 2026-08-31 while the CHANGELOG `[0.9.6]` heading
 had been re-dated to 2026-09-01 — the same drift the C6 correction below was written about,
@@ -6863,3 +6864,44 @@ re-measured at **83 matches across 12 files**, identical to rounds 3 and 8. Reco
 first re-measurement returned 205/29 because it ran the regexes over raw text instead of applying
 the script's own `strip_comments_and_strings` — caught and re-run before being reported, since a
 census is only comparable to one run the same way. [Verified]
+
+
+## Engineering-review programme, round 10 — release notes reconciled with the KI-013 outcome (2026-09-01, still the 0.9.6 change set)
+
+**What the round is.** Documentation only, no code. A reported contradiction between the `[0.9.6]`
+release notes and KI-013's RESOLVED status was one of three sites still describing the pre-round-4
+world. Records: `worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Round 10.
+
+**Corrected:**
+- `CHANGELOG.md` — the *"Known limit: this reconcile is inert on macOS … so the macOS half of the
+  issue remains open"* sentence, flatly contradicted by round 4 and by `KNOWN_ISSUES.md`'s own
+  registry rows. Removed as part of the consolidation below.
+- `docs/KNOWN_ISSUES.md`, KI-013 detail section — present-tense throughout while the registry row
+  said RESOLVED, and its closing bullet offered as a hypothetical the fix that shipped (*"Fixable
+  only via a JUCE-side change or a platform-specific `pressedMouseButtons` query"*). Given a dated
+  RESOLVED banner, moved to past tense, closing bullet corrected to say round 4 did exactly that.
+- `docs/KNOWN_ISSUES.md`, KI-028 detail section — the round-3 banner still read *"The macOS residual
+  is why this entry stays open."* Given a `CLOSED 2026-09-01 (round 4)` banner.
+
+Both KNOWN_ISSUES sections keep their diagnosis text under an explicit "everything below is the
+round-2/3 record" banner rather than being rewritten, per the no-rewriting-history rule.
+
+**Consolidated.** `[0.9.6]` carried two Fixed entries for one bug path — round 3's sweep (Linux and
+Windows) and round 4's signal (macOS) — both inside one unreleased version, so no user ever saw the
+intermediate state and presenting them separately implied macOS had shipped broken. Merged into one
+entry describing the final state on all three platforms, preserving the half that *did* ship broken
+(the stuck visual press on macOS, KI-013, present since v0.8.12) and both regression-test citations
+(State tests 21 and 23). The Fixed count goes 19 → 18, which restores `docs/HANDOVER.md`'s
+"eighteen Fixed entries" to accuracy — that line had gone stale by one when round 8 added its entry.
+Counted, not assumed.
+
+**Deliberately not changed**, being accurate history rather than live claims: `KNOWN_ISSUES.md:97`
+(the dated v0.8.12 version-sync header recording KI-013 as *added* at that release), the dated round
+entries in this file, and the round-3/4 sections of the programme worklog and older audit worklogs.
+The third readout entry — the round-1 fix for the drag path opening no gesture at all — is a
+different defect and was left alone.
+
+**ER-RT-05 verified again, no change.** Third consecutive round. AUDIO_FN is a manual registry and
+the script says so; `REALTIME_AUDIO_POLICY.md`, `REALTIME_SAFETY_AUDIT.md`, `CI_CD.md` and ADR-0029
+all describe the same-file boundary correctly, and none claims automatic cross-file discovery.
+Recorded as stable so a later round cites this rather than re-deriving it. [Verified]
