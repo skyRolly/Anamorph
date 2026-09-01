@@ -29,6 +29,34 @@ entries and CHANGELOG notes cite.
 
 ---
 
+## Round 3 — 2026-09-01 — closing the residuals: measurement before remediation
+
+**Entry state:** rounds 1 and 2 CLOSED. Baseline `main @ e8f4422` → v0.9.6 on
+`claude/anamorph-ci-workflow-8iu7yk`; DSP **46 tests / 242 checks**, state **18 tests / 941
+checks**, `preflight.sh` exit 0, citation self-test green, realtime lint green, pinned clang-22
+gate reporting no new first-party warnings, GCC baseline unchanged. Three maintainer decisions
+carried (D-1, D-2, D-3), all evidence-complete and none implementable without a decision.
+
+**This round is not an audit.** It has a fixed priority order and a fixed discipline, both set by
+the maintainer: close remaining measured correctness risks, resolve deferred hypotheses, complete
+selected engineering gates, and keep this worklog matching executable reality.
+
+**The discipline, restated because rounds 1 and 2 each violated it once.** Reading code and
+inferring a mechanism is NOT a confirmed defect. ER-STATE-01 (round 1) and ER-STATE-07 (round 2)
+were both derived from careful reading of a real code path and both turned out not to occur —
+`apvts.replaceState` was already doing the thing they claimed was missing. Round 3 therefore
+classifies nothing as CONFIRMED without reproduction, a failing probe, or a measured number, and
+every investigation below states in advance what its probe prints if the mechanism is real and
+what it prints if the mechanism is absent, so that a wrong prediction is itself a usable result.
+
+**Method for this round.** Eight parallel investigation lenses, one per prioritised item, each
+required to produce an executable probe rather than a conclusion; then an adversarial pass over
+each, briefed to attack the citations, the mechanism and the probe's vacuity; then the probes are
+compiled and RUN, and the classification comes from what they print — not from what the
+investigation predicted.
+
+---
+
 ## Round 2 — 2026-08-31 — CI recovery, the activation defect, and two confirmed silences
 
 **Entry state:** round 1 merged to the branch; CI **red** on two warning gates; five carried
