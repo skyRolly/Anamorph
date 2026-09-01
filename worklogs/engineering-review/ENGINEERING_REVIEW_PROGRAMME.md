@@ -29,6 +29,55 @@ entries and CHANGELOG notes cite.
 
 ---
 
+## Round 13 — 2026-09-01 — ER-STATE-17 verified on the real pre-0.8.4 fixture; the compatibility gate closes on attestation
+
+### ER-STATE-17 — the fix verified against the genuine legacy file, not a synthetic shape
+
+Round 12's State test 28 exercised the pre-0.8.4 `AnamorphRoot` shape with a hand-built root. It
+now also takes the repository's **real frozen fixture** — `tests/fixtures/legacy_pre_0_8_4_view_params.xml`,
+the file State test 6 guards, with its `My Vocal` preset, its two A/B slots and no
+`ANAMORPH_INTERNAL` child — and mutates it **in place**: only the six Settings `PARAM` values are
+replaced; width, mix, the preset name and baseline and both slots stay byte-for-byte what the file
+carries. Three restores:
+
+| restore | Settings in the file | expected | surroundings |
+|---|---|---|---|
+| untouched | `2.0 / 1.0 / 0.25 / 0 / 1 / 1` | State test 6's values, re-asserted: ids 3 / 2, 0.25, false / true / true | intact |
+| every Setting malformed | `nan / 1e39 / inf / abc / nan / -inf` | defaults: ids 1 / 3, 0.5, false / **false** / true | intact |
+| finite, outside every domain | `7 / 7 / 5` | clamped: ids 4 / 5, 1.0 | intact |
+
+"Intact" is asserted, not assumed: width 0.8 and mix 0.65 restore, the preset name is `My Vocal`,
+the active slot is 0, slot B's name survives a re-save, the re-saved Settings ids are in domain, and
+the DSP atomic agrees with the tree. The one value that *changes* under the malformed restore —
+`tooltipsOn`, true in the file, false after `"nan"` — is the documented rule (malformed → the
+field's default), stated in the check's own label so it cannot be mistaken for a regression.
+
+**Verified discriminating on the real file too:** the real-fixture legs fail without the fix and
+pass with it; the untouched restore passes either way, which is the point — the fix moves nothing
+that was valid.
+
+### Compatibility checklist items 5 and 7 — CLOSED on the maintainer's attestation
+
+The maintainer has confirmed **Host matrix verified** and **Automation playback verified** as
+completed and verified. Rounds 7–10 declined to tick these from the Level-5 audition record, whose
+per-item outcomes are NOT RECORDED, and said what would close them: *"Either the maintainer confirms
+those groups were exercised, or the two items are run on their own."* This is the maintainer
+confirming.
+
+Recorded the way round 6 recorded the audition — the verdict, the date and the performer — with
+the fields the confirmation did not supply (hosts, operating systems, plug-in formats, automation
+lanes) marked **NOT RECORDED** rather than inferred from `COMPATIBILITY_MATRIX.md` or from the
+audition protocol. Nothing was performed in this environment, which is headless; nothing is claimed
+to have been.
+
+**Consequence.** `RELEASE_POLICY.md` precondition 2 is satisfied; the checklist is **eight of eight**
+(six measured, two attested). The engineering/process precondition list for v0.9.6 is now empty.
+**One tag blocker remains — the missing licence, KI-015** — and it is an owner/legal action.
+`HANDOVER.md` (Release Status, Known Blockers, Roadmap, the tag-order sentence) and
+`COMMERCIAL_STATUS.md` §6 say so.
+
+---
+
 ## Round 12 — 2026-09-01 — undefined behaviour in the legacy Settings path, a deterministic latency test, and ER-STATE-13 on AArch64
 
 ### ER-STATE-17 — CONFIRMED and FIXED — malformed legacy Settings hit an undefined conversion

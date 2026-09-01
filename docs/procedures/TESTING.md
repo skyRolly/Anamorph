@@ -247,7 +247,10 @@ State test 28: it feeds malformed host-hidden Settings ("nan", "inf", "1e39", "a
 the real v0.2 restore and prints what `migrateFromLegacyApvts` put in the tree, what the clamped
 consumers saw, and what a re-save then wrote. Pre-fix on x86-64 every non-finite value became
 −2147483647 (an impossible ComboBox id, persisted on save), "2147483647" wrapped to INT_MIN, and
-scopePersist passed NaN/±inf/out-of-range straight through. The DSP suite gained a sibling,
+scopePersist passed NaN/±inf/out-of-range straight through. Round 13 extended State test 28 to the
+repository's real frozen pre-0.8.4 fixture (`legacy_pre_0_8_4_view_params.xml`), mutated in place — only
+the six Settings values replaced, the surrounding session (width, mix, `My Vocal`, both slots) asserted
+intact on every restore — so the guard runs on the genuine legacy file and not only a synthetic shape. The DSP suite gained a sibling,
 `AnamorphTests --match-inject-probe`, the engine-only half of the ER-STATE-13 question, written so
 it cross-builds with nothing but AnamorphDSP and runs under `qemu-aarch64-static`.
 

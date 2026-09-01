@@ -82,14 +82,26 @@ ruled out, fixed, deferred — and what should happen next. A rendered <em>view<
 <code>ENGINEERING_REVIEW_PROGRAMME.md</code> beside it; the worklog is the source of truth a later
 round reconciles against.</p>
 <div class="meta">
-  <span>ROUNDS 1–12 · 2026-08-31 → 09-01</span>
+  <span>ROUNDS 1–13 · 2026-08-31 → 09-01</span>
   <span>TREE: main @ e8f4422 → v0.9.6</span>
-  <span>STATUS: legacy-Settings UB fixed; latency test now deterministic; checklist 6/8</span>
-  <span>NEXT: licence (KI-015) + a DAW for checklist items 5 &amp; 7, then tag v0.9.6</span>
+  <span>STATUS: compatibility checklist 8/8 (6 measured, 2 attested); ONE tag blocker left — KI-015</span>
+  <span>NEXT: licence (KI-015), then tag v0.9.6</span>
 </div>
 
 <h2><span class="no">§1</span>Executive status</h2>
-<p class="lede"><strong>Round 12 fixed undefined behaviour on the legacy-Settings restore path, closed
+<p class="lede"><strong>Round 13: the compatibility gate is closed and one tag blocker remains.</strong>
+The maintainer confirmed Host matrix and Automation playback as completed and verified; they are
+recorded on that attestation with the unsupplied details marked NOT RECORDED, exactly as the Level-5
+audition was. Round 12's legacy-Settings fix was also verified against the repository's <em>real</em>
+frozen pre-0.8.4 fixture, mutated in place.</p>
+<div class="verdicts">
+  <div class="v"><div class="k">Checklist · 8 of 8</div><p>Six measured (parameter IDs, schema, presets, pluginval both modes, latency, session reload against a real v0.9.5 field capture). Two attested by the maintainer on 2026-09-01. <code>RELEASE_POLICY</code> precondition 2 satisfied.</p></div>
+  <div class="v"><div class="k">Recorded, not inferred</div><p>Rounds 7–10 refused to tick items 5 and 7 from the audition record and named what would close them: the maintainer confirming. That happened. Verdict, date and performer are recorded; hosts, OS, formats and automation lanes were not supplied and say NOT RECORDED.</p></div>
+  <div class="v"><div class="k">ER-STATE-17 · real fixture</div><p><code>legacy_pre_0_8_4_view_params.xml</code> mutated in place — only the six Settings values replaced; <code>My Vocal</code>, both slots, width and mix untouched and asserted intact. Malformed → defaults, out-of-domain → clamped, untouched → State test 6's exact values. Fails without the fix, passes with it.</p></div>
+  <div class="v"><div class="k">What remains</div><p><strong>KI-015, the missing licence.</strong> An owner/legal action; nothing on the engineering side blocks <code>git tag -a v0.9.6</code>.</p></div>
+</div>
+
+<p class="lede" style="margin-top:26px"><strong>Round 12 fixed undefined behaviour on the legacy-Settings restore path, closed
 the latency regression gap deterministically, and settled ER-STATE-13 on AArch64 — where nothing
 changed.</strong> Round 11's own ER-STATE-15 work is what exposed the UB, by routing more inputs into
 a conversion that was never guarded.</p>
@@ -424,6 +436,13 @@ evidence emerged to promote one. Ranking follows the programme's order — corre
   <li class="done">Drift sweep: CHANGELOG date, HANDOVER audition claim; history left intact</li>
   <li class="done">D-3 performed by the maintainer against the v0.9.6 build — <strong>PASSED</strong></li>
 </ul>
+<h3>Round 13</h3>
+<ul class="roadmap">
+  <li class="done">ER-STATE-17 verified on the real frozen pre-0.8.4 fixture, mutated in place; surroundings asserted intact; discriminating</li>
+  <li class="done">Checklist items 5 and 7 recorded PASS on the maintainer's attestation, unsupplied fields NOT RECORDED</li>
+  <li class="done">HANDOVER, COMMERCIAL_STATUS §6 and the tag-order sentence: one blocker remains (KI-015)</li>
+</ul>
+
 <h3>Round 12</h3>
 <ul class="roadmap">
   <li class="done">ER-STATE-17 — undefined <code>(int)</code> conversion of malformed legacy Settings fixed at source; State test 28 (49 checks discriminating)</li>

@@ -3998,6 +3998,111 @@ static void testMalformedLegacySettingsResolveToValid()
         check ((int) internalOf (p)[anamorph::iid::oversample] == 1,
                "pre-0.8.4 AnamorphRoot path: oversample=\"1e39\" -> default id 1");
     }
+
+    // --- the REAL frozen pre-0.8.4 fixture, mutated IN PLACE. Only the six
+    //     Settings PARAM values are replaced; width, mix, the preset name and
+    //     baseline and both A/B slots stay exactly what the fixture carries. This
+    //     proves the repair on the genuine legacy shape -- the file State test 6
+    //     guards -- and that it disturbs nothing around it. Three restores: the
+    //     file untouched (State test 6's values re-asserted here so this leg is
+    //     self-contained), malformed text in every Setting, and finite values
+    //     outside every domain.
+    {
+        auto loadFixtureRoot = []
+        {
+            auto xml = juce::parseXML (fixtureDir().getChildFile ("legacy_pre_0_8_4_view_params.xml"));
+            return xml != nullptr ? juce::ValueTree::fromXml (*xml) : juce::ValueTree();
+        };
+        auto setSetting = [] (juce::ValueTree& root, const char* id, const char* text)
+        {
+            auto sound = root.getChildWithName ("ANAMORPH");
+            for (int i = 0; i < sound.getNumChildren(); ++i)
+            {
+                auto c = sound.getChild (i);
+                if (c.hasType ("PARAM") && c.getProperty ("id").toString() == id)
+                    c.setProperty ("value", juce::String (text), nullptr);
+            }
+        };
+        auto restoreRoot = [] (AnamorphAudioProcessor& p, const juce::ValueTree& root)
+        {
+            const auto blob = BlobCodec::wrap (*root.createXml());
+            p.setStateInformation (blob.getData(), (int) blob.getSize());
+        };
+        auto surroundingsIntact = [] (AnamorphAudioProcessor& p, const char* leg)
+        {
+            const juce::String tag (leg);
+            auto* w = dynamic_cast<juce::RangedAudioParameter*> (p.getAPVTS().getParameter ("width"));
+            auto* m = dynamic_cast<juce::RangedAudioParameter*> (p.getAPVTS().getParameter ("mix"));
+            checkNear ((double) w->getValue(), (double) w->convertTo0to1 (0.8f),  1.0e-6, (tag + ": width 0.8 still restores").toRawUTF8());
+            checkNear ((double) m->getValue(), (double) m->convertTo0to1 (0.65f), 1.0e-6, (tag + ": mix 0.65 still restores").toRawUTF8());
+            checkStr (p.getPresets().currentName(), "My Vocal", (tag + ": preset name still restores").toRawUTF8());
+            check (p.abActiveSlot() == 0, (tag + ": active slot still restores").toRawUTF8());
+            juce::MemoryBlock mb; p.getStateInformation (mb);
+            auto saved = juce::ValueTree::fromXml (*BlobCodec::unwrap (mb));
+            checkStr (saved.getChildWithName ("AB")["slotBName"].toString(), "Slot B Preset",
+                      (tag + ": slot B name still survives a re-save").toRawUTF8());
+            const auto savedInternal = saved.getChildWithName ("ANAMORPH_INTERNAL");
+            const int os = (int) savedInternal[anamorph::iid::oversample], ui = (int) savedInternal[anamorph::iid::uiScale];
+            check (os >= 1 && os <= 4 && ui >= 1 && ui <= 5, (tag + ": re-save writes in-domain Settings ids").toRawUTF8());
+        };
+
+        auto root = loadFixtureRoot();
+        check (root.isValid() && root.hasType ("AnamorphRoot")
+                 && ! root.getChildWithName ("ANAMORPH_INTERNAL").isValid(),
+               "real fixture: is an AnamorphRoot with NO ANAMORPH_INTERNAL child (the pre-0.8.4 shape)");
+        if (root.isValid())
+        {
+            // (a) untouched -- the fix must not move valid migration on the real file
+            {
+                AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+                restoreRoot (p, root);
+                auto t = internalOf (p);
+                check ((int)  t[anamorph::iid::oversample] == 3,   "real fixture untouched: oversample idx 2 -> id 3");
+                check ((int)  t[anamorph::iid::uiScale]    == 2,   "real fixture untouched: uiScale idx 1 -> id 2");
+                checkNear ((double) t[anamorph::iid::scopePersist], 0.25, 1.0e-9, "real fixture untouched: scopePersist 0.25");
+                check ((bool) t[anamorph::iid::metersOn]   == false, "real fixture untouched: metersOn false");
+                check ((bool) t[anamorph::iid::tooltipsOn] == true,  "real fixture untouched: tooltipsOn true");
+                check ((bool) t[anamorph::iid::uiAnimations] == true, "real fixture untouched: uiAnimations true");
+                surroundingsIntact (p, "real fixture untouched");
+            }
+            // (b) every Setting malformed, in place
+            {
+                auto bad = root.createCopy();
+                setSetting (bad, "oversample",   "nan");
+                setSetting (bad, "uiScale",      "1e39");
+                setSetting (bad, "scopePersist", "inf");
+                setSetting (bad, "metersOn",     "abc");
+                setSetting (bad, "tooltipsOn",   "nan");
+                setSetting (bad, "uiAnimations", "-inf");
+                AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+                restoreRoot (p, bad);
+                auto t = internalOf (p);
+                check ((int)  t[anamorph::iid::oversample] == 1,   "real fixture, oversample=\"nan\"    -> default id 1");
+                check ((int)  t[anamorph::iid::uiScale]    == 3,   "real fixture, uiScale=\"1e39\"      -> default id 3");
+                checkNear ((double) t[anamorph::iid::scopePersist], 0.5, 1.0e-9, "real fixture, scopePersist=\"inf\" -> default 0.5");
+                check ((bool) t[anamorph::iid::metersOn]   == false, "real fixture, metersOn=\"abc\"     -> default false");
+                check ((bool) t[anamorph::iid::tooltipsOn] == false, "real fixture, tooltipsOn=\"nan\"   -> default false (was true in the file)");
+                check ((bool) t[anamorph::iid::uiAnimations] == true, "real fixture, uiAnimations=\"-inf\" -> default true");
+                check (p.getInternal().oversampleIndex() == 0, "real fixture, malformed: the DSP atomic agrees with the tree");
+                surroundingsIntact (p, "real fixture, malformed Settings");
+            }
+            // (c) finite but outside every domain, in place
+            {
+                auto far = root.createCopy();
+                setSetting (far, "oversample",   "7");
+                setSetting (far, "uiScale",      "7");
+                setSetting (far, "scopePersist", "5");
+                AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+                restoreRoot (p, far);
+                auto t = internalOf (p);
+                check ((int)  t[anamorph::iid::oversample] == 4,   "real fixture, oversample=\"7\"  -> clamped to id 4");
+                check ((int)  t[anamorph::iid::uiScale]    == 5,   "real fixture, uiScale=\"7\"     -> clamped to id 5");
+                checkNear ((double) t[anamorph::iid::scopePersist], 1.0, 1.0e-9, "real fixture, scopePersist=\"5\" -> clamped to 1.0");
+                check (p.getInternal().oversampleIndex() == 3, "real fixture, clamped: the DSP atomic agrees with the tree");
+                surroundingsIntact (p, "real fixture, out-of-domain Settings");
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

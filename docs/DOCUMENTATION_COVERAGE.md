@@ -22,7 +22,9 @@ no code changed); **round 10** (the release notes reconciled with the KI-013 out
 two duplicated knob-readout Undo entries consolidated); **round 11** (two restore fixes, one
 refutation, and a full audit of the [0.9.6] changelog); and **round 12** (undefined behaviour in the
 legacy-Settings conversion fixed, the latency regression test made deterministic, and ER-STATE-13
-re-run on AArch64 with no change).
+re-run on AArch64 with no change); and **round 13** (ER-STATE-17 verified on the real frozen
+pre-0.8.4 fixture, and compatibility-checklist items 5 and 7 recorded on the maintainer's
+attestation, closing the gate).
 **Header correction (round 7, 2026-09-01):** this line enumerated round 1 alone while the body
 carried six later rounds, and dated the change set 2026-08-31 while the CHANGELOG `[0.9.6]` heading
 had been re-dated to 2026-09-01 — the same drift the C6 correction below was written about,
@@ -6999,3 +7001,32 @@ and `HANDOVER.md`.
 so three anchors into `src/InternalState.h` were re-derived BY SYMBOL (`oversampleValue`,
 `migrateFromLegacyApvts` ×2) and declared in `DELIBERATE_REAIMS` for both bases; eleven more moved
 mechanically. [Verified]
+
+
+## Engineering-review programme, round 13 — ER-STATE-17 on the real fixture; the compatibility gate closes (2026-09-01, still the 0.9.6 change set)
+
+**What the round is.** Round 12's legacy-Settings fix verified against the repository's real frozen
+pre-0.8.4 fixture rather than a synthetic shape, and compatibility-checklist items 5 and 7 recorded
+on the maintainer's attestation. Records: `worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md`
+§Round 13 and the dashboard.
+
+**Code changes and their doc syncs.** `tests/state_tests.cpp` only — State test 28 gains three
+restores of `tests/fixtures/legacy_pre_0_8_4_view_params.xml` mutated in place (untouched, every
+Setting malformed, every Setting out of domain), each asserting the surrounding session intact →
+`docs/procedures/TESTING.md`, `docs/architecture/SERIALIZATION_REGISTRY.md` (the ER-STATE-17
+paragraph's coverage sentence), and the counts below. Verified discriminating on the real file: the
+mutated legs fail without the fix; the untouched leg passes either way, which is the point. No
+`src/` change.
+
+**Checklist items 5 and 7 — recorded on attestation, not inferred.** `docs/procedures/RELEASE_COMPATIBILITY_CHECKLIST.md`
+(completion record 8/8, items ticked, evidence entries), `docs/HANDOVER.md` (Release Status: one
+precondition left; Known Blockers; Roadmap; the tag-order sentence) and `docs/COMMERCIAL_STATUS.md`
+§6 (engineering/process list empty). The record carries what the maintainer supplied — verdict,
+date, performer — and marks hosts, operating systems, plug-in formats and automation lanes NOT
+RECORDED, the same rule the Level-5 audition record follows. `RELEASE_POLICY` precondition 2 is
+satisfied; the one remaining tag blocker is KI-015.
+
+**Counts.** The state suite is **28 tests / 1237 checks** (was 28 / 1201); the DSP suite is
+unchanged at 47 + the A/B clamp guard / 245. Swept through `RELEASE_HARDENING_PLAN.md` and
+`HANDOVER.md`; the test count itself did not change, so the six documents that carry it were not
+touched. [Verified]

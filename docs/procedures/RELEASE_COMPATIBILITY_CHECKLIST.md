@@ -6,10 +6,11 @@ Hard compatibility gate. **Every box must be checked before a release ships.** T
 
 ## Completion record — v0.9.6 (2026-09-01)
 
-**Six of eight boxes are checked with measured evidence. Two remain open and require a DAW.**
-Every tick below cites what was run and what it produced; a box with no evidence beside it is not
-ticked. The two open items are the ones this checklist's own §Notes already names as impossible to
-prove headlessly.
+**Eight of eight boxes are checked: six with measured evidence, two on the maintainer's
+attestation.** Every measured tick cites what was run and what it produced. The two attested ones
+are the items this checklist's own §Notes names as impossible to prove headlessly; they were
+confirmed by the maintainer on 2026-09-01, and the fields that confirmation did not supply are
+marked NOT RECORDED rather than inferred.
 
 | # | Item | v0.9.6 |
 |---|---|---|
@@ -17,17 +18,19 @@ prove headlessly.
 | 2 | Serialization schema verified | **PASS** |
 | 3 | Presets migrated | **PASS** (audible half via the Level-5 audition) |
 | 4 | Pluginval passed (both modes) | **PASS** — run here, not inferred from CI |
-| 5 | Host matrix verified | **OPEN — needs a DAW** |
+| 5 | Host matrix verified | **PASS** — attested by the maintainer, 2026-09-01 (hosts not recorded) |
 | 6 | Latency reporting verified | **PASS** |
-| 7 | Automation playback verified | **OPEN — needs a host** |
+| 7 | Automation playback verified | **PASS** — attested by the maintainer, 2026-09-01 (host / lanes not recorded) |
 | 8 | Session reload verified | **PASS** — real v0.9.5 field capture |
 
-**Items 5 and 7 are not blocked on analysis; they are blocked on a host.** The maintainer's
-Level-5 audition (PASSED, `LEVEL5_AUDITION.md`) exercised a DAW, and its protocol group C covers
-automation of Drive/Algorithm — but that record's **per-item outcomes are NOT RECORDED**, so it
-cannot be read as discharging these two. Ticking them from it would be inferring per-item results
-from a verdict-level record. Either the maintainer confirms those groups were exercised, or the two
-items are run on their own.
+**Items 5 and 7 are closed on the maintainer's attestation (2026-09-01), not on the Level-5
+audition record.** Rounds 7–10 declined to tick them from that record, whose per-item outcomes are
+NOT RECORDED, and said what would close them: the maintainer confirming the checks were performed.
+The maintainer has now confirmed both as completed and verified. As with the audition record, only
+what was supplied is recorded — the verdict, the date and the performer; the hosts, operating
+systems, plug-in formats and automation lanes exercised were not supplied and are NOT RECORDED.
+This satisfies `RELEASE_POLICY.md` precondition 2 the way precondition 7 was satisfied: by the
+human sign-off the item is defined as.
 
 ## Checklist
 
@@ -51,13 +54,13 @@ items are run on their own.
       `<n>` is `ANAMORPH_PLUGINVAL_STRICTNESS` from `.github/workflows/build.yml` — read it there
       rather than from this line, so a raise cannot leave this checklist certifying the old bar.
       Ref: `docs/procedures/TESTING.md`.
-- [ ] **Host matrix verified** — **OPEN: requires a DAW.** — load in the target hosts and confirm load + automation + state.
+- [x] **Host matrix verified** — **PASS (v0.9.6, 2026-09-01, attested by the maintainer; hosts NOT RECORDED).** — load in the target hosts and confirm load + automation + state.
       (Currently Unverified in-repo; this requires manual DAW testing —
       `docs/architecture/COMPATIBILITY_MATRIX.md`.)
 - [x] **Latency reporting verified** — **PASS (v0.9.6, 2026-09-01).** — reported PDC matches the actual chain delay across the
       oversampling settings; OS-off reports 0. Ref: `docs/architecture/LATENCY_MODEL.md`; test
       `testBypassNullAndLatency`.
-- [ ] **Automation playback verified** — **OPEN: requires a host.** — recorded automation on host-visible parameters plays back
+- [x] **Automation playback verified** — **PASS (v0.9.6, 2026-09-01, attested by the maintainer; host and lanes NOT RECORDED).** — recorded automation on host-visible parameters plays back
       with unchanged meaning. Ref: `docs/policies/PARAMETER_COMPATIBILITY_POLICY.md`.
 - [x] **Session reload verified** — **PASS (v0.9.6, 2026-09-01).** — save a session in the previous version, load it in the new
       version: sound, preset name, dirty-star, and both A/B slots reproduce exactly.
@@ -105,16 +108,19 @@ Recorded 2026-09-01 against the working tree at the head of
    `scripts/run-pluginval.sh 10 randomise vst3` → *ALL 3 randomise passes succeeded*. Both exit 0.
    This is a local run of the same script the Linux gate uses; the macOS AU and Windows gates run in
    CI and are not restated here.
-5. **Host matrix verified — OPEN.** Requires loading in target hosts. Not attempted; see
-   `COMPATIBILITY_MATRIX.md`.
+5. **Host matrix verified — PASS, attested.** Confirmed by the maintainer on 2026-09-01 as
+   completed and verified. Not performed in this environment (headless; see
+   `COMPATIBILITY_MATRIX.md`). Hosts, operating systems and plug-in formats exercised: NOT RECORDED
+   — not supplied, and not inferred from the matrix.
 6. **Latency reporting verified — PASS.** `AnamorphTests` Test 3+4 (true-bypass null + latency
    reporting) passes, covering reported PDC against the actual chain delay with OS off reporting 0.
    Two v0.9.6 additions extend it: State test 22 (an off-message-thread change is deferred to the
    processor timer and delivers the CORRECT value) and State test 24 (a restore reports the
    RESTORED state's latency, not a rejected value's).
-7. **Automation playback verified — OPEN.** Requires a host recording and replaying automation.
-   Parameter *meaning* is pinned structurally by item 1's registry snapshot, but playback in a host
-   is not.
+7. **Automation playback verified — PASS, attested.** Confirmed by the maintainer on 2026-09-01
+   as completed and verified. Parameter *meaning* is pinned structurally by item 1's registry
+   snapshot; playback in a host is the maintainer's attestation. Host and automation lanes
+   exercised: NOT RECORDED — not supplied.
 8. **Session reload verified — PASS, and no longer a reconstruction.** The previous version's
    binary was rebuilt from source (the tree at `2c5e760^`, i.e. v0.9.5, with its own JUCE pin) and
    used to WRITE a real session: `tests/fixtures/field_capture_v0_9_5.session` (10,629 bytes) plus
