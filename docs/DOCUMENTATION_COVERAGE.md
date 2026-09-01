@@ -14,8 +14,10 @@ NOTICE pin + AudioUnitSDK section, the CI_CD job inventory, and the new
 `worklogs/engineering-review/` programme worklog + live HTML dashboard); round 2 (CI recovery and
 two restore defects, whose section also carries the **rounds 3 and 4** bullets); **rounds 5 and 6**
 (the Level-5 audition specified, then recorded as PASSED — entered late, in round 7, and labelled
-as such); and **round 7** (the compatibility checklist taken to six of eight boxes with measured
-evidence, and the test-count sweep).
+as such); **round 7** (the compatibility checklist taken to six of eight boxes with measured
+evidence, and the test-count sweep); and **round 8** (the legacy A/B contamination defect confirmed
+and fixed, an obsolete macOS scope comment corrected, and the realtime-lint boundary re-measured and
+left alone).
 **Header correction (round 7, 2026-09-01):** this line enumerated round 1 alone while the body
 carried six later rounds, and dated the change set 2026-08-31 while the CHANGELOG `[0.9.6]` heading
 had been re-dated to 2026-09-01 — the same drift the C6 correction below was written about,
@@ -903,7 +905,7 @@ accounts for all four observed controls. The box is placed `h + 8` above the cur
 (`AnamorphLookAndFeel::getTooltipBounds`, `src/gui/LookAndFeel.cpp:885-894`), so its top edge is a
 **tip-dependent** offset above the pointer, and the Settings rows are at editor-local
 `oversampleBox` 274–297, `uiScaleBox` 331–354, `scopePersistK` 387–411, `tooltipsToggle` 423–449,
-`animToggle` 455–481 (`src/PluginEditor.cpp:2245-2270`). Taking each control's centre and
+`animToggle` 455–481 (`src/PluginEditor.cpp:2248-2273`). Taking each control's centre and
 subtracting `h + 8` for a two-line tip lands inside **Oversampling** from UI Scale, inside **UI
 Scale** from Vectorscope Persist, on or within a pixel or two of **Tooltips** from UI Animations,
 and — from Oversampling — on `settingsTitle` (221–241), a plain `juce::Label` that never had
@@ -1374,7 +1376,7 @@ document already uses for its five other source anchors.
 same untracked class" was a count of what that pass happened to look at, not a search — three more
 sat in `KNOWN_ISSUES.md` alone, and one of them is the worse kind. **KI-009's `focusSaveNameField`
 citation was mis-aimed, then mechanically carried.** At the merge base it read
-`src/PluginEditor.cpp:1600-1608`, which was the `rIn`/`rOut`/`rAct`/`rOn`/`rPos` easing block in
+`src/PluginEditor.cpp:1603-1611`, which was the `rIn`/`rOut`/`rAct`/`rOn`/`rPos` easing block in
 `stepMicroAnims` — not that function at all — and `--fix` moved it to `:1567-1575`, the same easing
 block after this change's insertions. Faithful, and still wrong. `focusSaveNameField` is at
 **`:1984-1992`**, and the two untracked references beside it were mis-aimed the same way: the
@@ -1413,7 +1415,7 @@ something these rounds created, and closing it is its own change.
 
 **A third review pass found the same carried-mistake class in `PRIVACY.md`, and this one needed a
 declaration.** The row saying the Presets folder is created when the **Load Preset** dialog opens
-cited `src/PluginEditor.cpp:1557` at the merge base — the S11 generation pre-gate comment inside
+cited `src/PluginEditor.cpp:1560` at the merge base — the S11 generation pre-gate comment inside
 `stepMicroAnims`, about 383 lines short of the `:1838` that `dir.createDirectory()` sat on there.
 `--fix` carried it to `:1524`, still the same comment. Corrected to **`:1916`**, and written the way
 the checker's own header says new citations should be — with the symbol spelled beside the number
@@ -1423,7 +1425,7 @@ half that survives the next shift.
 **Unlike the `KNOWN_ISSUES.md` five, this one is caught by the gate, which is why it is declared.**
 `PRIVACY.md` still has exactly one `src/PluginEditor.cpp` citation, so the pair IS compared, the
 re-aim reads as drift, and `--fix` **reverted the correction on the first run** — measured, not
-predicted. `("PRIVACY.md", "src/PluginEditor.cpp:2071"): "createDirectory"` is therefore added to
+predicted. `("PRIVACY.md", "src/PluginEditor.cpp:2074"): "createDirectory"` is therefore added to
 `DELIBERATE_REAIMS`. It is not an inert exemption: `verify_reaim_targets` resolves the anchor against
 the live file every run, and mutating the substring to a value the code does not contain makes the
 run fail with `::error::` and exit 2 — checked by doing it, then reverting. A declaration turns the
@@ -1431,10 +1433,10 @@ drift check off for its anchor, so the aim check is the thing that keeps it hone
 
 **Reported and deliberately NOT corrected — the About-link anchor in the three legal documents.**
 `EULA.md`, `PRIVACY.md` and `TRADEMARKS.md` cite where the product's one outbound hyperlink is
-declared, and `--fix` moved all three from `src/PluginEditor.h:292` to `:223` in this change set.
+declared, and `--fix` moved all three from `src/PluginEditor.h:293` to `:223` in this change set.
 That re-anchor is mechanically correct and **preserves a pre-existing mistake**: at the merge base
 `:213` already read `return juce::TooltipWindow::getTipFor (c);`, and `:223` reads the identical
-line today, while `aboutLink` actually lives at `src/PluginEditor.h:474`. So the rot predates this
+line today, while `aboutLink` actually lives at `src/PluginEditor.h:475`. So the rot predates this
 change and was faithfully carried, not created by it — precisely the failure mode
 `check-citations.py`'s own header describes ("it CANNOT tell you a citation was aimed at the wrong
 code to begin with… and it does so INVISIBLY, in a DRIFTED line that reads like a repair"). It is
@@ -1444,7 +1446,7 @@ nothing to do with hover; recording it here is what stops the paragraph above re
 three anchors were verified correct.
 
 **NOW CLOSED (2026-08-19), as its own standalone change.** The three documents cite
-**`src/PluginEditor.h:474`**, where `aboutLink` is actually declared, instead of `:223` — which is
+**`src/PluginEditor.h:475`**, where `aboutLink` is actually declared, instead of `:223` — which is
 `return juce::TooltipWindow::getTipFor (c);` inside `GatedTooltipWindow`, the line `--fix` had
 carried the mis-aim onto from the merge base's `:213`. Only the number changed in each document; no
 wording, formatting or meaning was touched, and the correction is one anchor per file.
@@ -1454,7 +1456,7 @@ the three documents holds **exactly one** `src/PluginEditor.h` citation in both 
 current tree, so the count guard does not fire, the pair IS compared, and the re-aim reads as drift.
 Measured: before the entries were written the run reported all three `DRIFTED … -> :223`, and `--fix`
 would have dragged every one of them back. `("EULA.md" | "PRIVACY.md" | "TRADEMARKS.md",
-"src/PluginEditor.h:474"): "aboutLink"` now covers them, and the substring is what keeps that
+"src/PluginEditor.h:475"): "aboutLink"` now covers them, and the substring is what keeps that
 off-switch honest: `verify_reaim_targets` resolves `:465` against the live header every run, and
 mutating one entry's substring to a value the line does not contain makes the run emit `::error::`
 and exit 2 — checked by doing it, then reverting. Re-running `--fix` afterwards leaves all three
@@ -6778,3 +6780,52 @@ stay **OPEN**. The Level-5 audition exercised a DAW and its protocol group C cov
 that record's per-item outcomes are marked NOT RECORDED — so ticking either item from it would infer
 item-level results from a verdict-level record. Round 6 refused to fill those rows in from the
 protocol; reading them back out here would be the same fabrication one step removed. [Verified]
+
+
+## Engineering-review programme, round 8 — the legacy A/B contamination fix (2026-09-01, still the 0.9.6 change set)
+
+**What the round is.** A supplied review's three actionable items, dispositioned by execution:
+one CONFIRMED defect fixed, one obsolete comment rewritten, one enforcement boundary left alone.
+Records: `worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Round 8 and the dashboard.
+
+**Code changes and their doc syncs (trigger map applied):**
+- `src/PluginProcessor.{h,cpp}` (`abResetToDefaults()`, called from the v0.2 branch and from the
+  new `AB`-absent branch of `setStateInformation`) → CHANGELOG `[0.9.6]` (one Fixed entry — it IS
+  user-visible: pressing A or B after loading an old session recalled the previous project's
+  sound), `docs/architecture/SERIALIZATION_REGISTRY.md` (a new paragraph under the `AB` child
+  extending the existing "absent means the default" rule to a blob that carries no `AB` node at
+  all), State test 26, and the count sweep below. **No ARCHITECTURE_REVIEW_GATE category is
+  touched and no compatibility decision was required**: no schema field is added, removed or
+  renamed; the semantics applied are the ones the registry's `AB` table already records (`active`
+  → 0, slot params → "lazily initialised from current"); and every blob that carries an `AB` node
+  restores exactly as before, which State test 26 leg 5 pins from the other direction.
+- `src/PluginEditor.cpp` + `src/PluginEditor.h` (the obsolete "the caller's predicate is inert on
+  macOS / narrows KI-028 to a macOS residual" scope comment) → no other document: `KNOWN_ISSUES.md`
+  already carries KI-028 and KI-013 as RESOLVED, and the source was the only place still saying
+  otherwise. Comment-only, no behaviour change, so CHANGELOG_POLICY rule 3 excludes it.
+- `tests/state_tests.cpp` (State test 26 + the `--legacy-ab-probe` instrument) →
+  `docs/procedures/TESTING.md` (the probe documented beside the two existing opt-in instruments,
+  with the pre-fix numbers that are the evidence behind the test), `docs/REPOSITORY_MAP.md`, and
+  the counts.
+
+**Nothing changed for ER-RT-05.** The cross-file lint boundary is described accurately in all four
+places that describe it (`REALTIME_AUDIO_POLICY.md`, `REALTIME_SAFETY_AUDIT.md`, `CI_CD.md`,
+ADR-0029) — none implies whole-program or automatic cross-file coverage — so there was nothing to
+correct. The policy's own instruction to re-measure the census before relying on it was followed:
+**83 FORBIDDEN-class matches across 12 files**, identical to the round-3 record, with the three
+cross-file-reachable DSP units unchanged and every match still inside that module's `prepare()`.
+
+**Counts.** The state suite is **26 tests / 1096 checks** (was 25 / 1077); the DSP suite is
+unchanged at 47 + the A/B clamp guard / 245. Swept through `docs/policies/TESTING_POLICY.md`,
+`docs/procedures/TESTING.md`, `README.md`, `docs/REPOSITORY_MAP.md`,
+`docs/architecture/RELEASE_HARDENING_PLAN.md` and `docs/HANDOVER.md`.
+
+**Citation re-anchoring.** `abResetToDefaults` and the two new call sites shifted every anchor below
+them in `PluginProcessor.cpp` and `PluginProcessor.h`; 33 citations were re-anchored by `--fix`
+across the two bases, and **three were re-derived BY SYMBOL** because the cited lines themselves
+moved past what they named — `legacyKey` (the pre-0.6.4 fallback inside `readSlot`),
+`StateSet::isValid`, and `setStateInformation`, whose span is declared in `DELIBERATE_REAIMS` for
+both the `origin/main` and push-predecessor bases. One over-correction was caught and undone: the
+`readSlot` span was hand-derived when `--fix` could map it mechanically, which made the anchor drift
+against its own base; the mechanical map is authoritative wherever it applies, and hand derivation is
+for the anchors it reports unmappable. [Verified]

@@ -127,6 +127,12 @@ private:
     void abEnsureInit();
     void abApplySlot (int slot);
 
+    // The restore-side counterpart to abEnsureInit(): drop both slots and the
+    // active index back to their documented defaults, for a blob that carries no
+    // A/B data at all. See the definition for why this exists separately from
+    // readSlot's per-slot reset.
+    void abResetToDefaults() noexcept;
+
     // A complete "state set" (#6): the sound parameters PLUS the preset metadata
     // (base name + clean baseline signature) that determines the displayed name
     // and dirty-star. Every undo entry and every A/B slot stores one of these, so

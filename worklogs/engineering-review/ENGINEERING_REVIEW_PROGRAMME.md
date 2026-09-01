@@ -29,6 +29,121 @@ entries and CHANGELOG notes cite.
 
 ---
 
+## Round 8 — 2026-09-01 — one confirmed defect, one obsolete comment, one boundary left alone
+
+Follow-up on a supplied review. Three actionable items, three different dispositions, and the
+dispositions were decided by running things rather than by reading them.
+
+### ER-STATE-12 — CONFIRMED — a restore with no A/B data keeps the previous project's slots
+
+**Reproduced first, on the current tree, before any code was touched.** The instrument is
+`AnamorphStateTests --legacy-ab-probe`: seed a "previous project" with distinguishable A and B
+sounds (raw width 0.90 / 0.10), restore a v0.2 session into the SAME instance, then switch slots
+and read back.
+
+| leg | pre-fix | post-fix |
+|---|---|---|
+| v0.2 restore, then switch to B | **0.10** — the previous project's B | 0.75 — the restored state |
+| v0.2 restore with the previous project left active on B, first switch reads A | **0.90** — its A; and `active` came back as **1**, its index | 0.75; `active` = 0 |
+| `AnamorphRoot` with its `AB` child stripped, then switch to B | **0.10** | 0.90 — the restored state |
+| FRESH instance, v0.2 restore, switch to B | **0.5** — the Default snapshot | 0.75 |
+
+Both slots are demonstrated stale, not just the one the review named, and so is the active index.
+The restored value differs from both previous-project values, which the probe asserts before
+reading anything — otherwise every row above could agree while carrying stale state.
+
+**The fresh-instance leg refuted its own premise.** It was written expecting a vacuous pass: the
+slots "start invalid", so nothing should need resetting. It failed at 0.5. The constructor calls
+`abEnsureInit()` EAGERLY — deliberately, so B is not born as a copy of an already-edited A — so by
+the time any restore arrives both slots are already valid, holding the open/Default state. A fresh
+instance was therefore affected too, with the construction snapshot in the previous project's
+place. The comment that had described this as the easy leg was corrected, not the measurement.
+
+**Root cause.** `readSlot` already enforces the right rule — "absent means the default, not whatever
+the previous session left here" — but it is *called from inside the `AB` node's branch*, so it can
+only reach a blob that HAS that node. Two restore paths carry no A/B data and never reached it: an
+`AnamorphRoot` with no `AB` child (every field in the `AB` table is "Required: No", so the node is
+optional) and the v0.2 bare-APVTS branch, which predates the feature entirely. `abSlot[]` and
+`abActive` are processor members, and a host restores into one live instance repeatedly.
+
+**Ownership and lifetime** (review step 7): `abSlot[2]` and `abActive` are members of
+`AnamorphAudioProcessor` — lifetime of the INSTANCE, meaning per-SESSION. That mismatch is the
+whole defect; every other restore-side member in this function is already reset for the same reason
+(`internal` via `migrateFromLegacyApvts`, the preset name, the baseline, the undo stacks).
+
+**How other paths handle it** (step 8): the `AB`-present path resets the whole slot before
+overlaying, and takes `active` from the node with a default of 0. Construction seeds both slots from
+the live state. Only the two paths above did nothing.
+
+**Which semantics are correct** (step 9) — and this was NOT inferred from the code. The repository
+already specifies it. `SERIALIZATION_REGISTRY.md`'s `AB` table gives `active` a default of **0** and
+the slot params a default of **"lazily initialised from current"**, and the prose beside it states
+the rule in as many words: *"absent must mean the default rather than 'whatever the previous session
+left' — and that has to hold for the slot as a WHOLE, not field by field."* So the answer is
+**deterministic reseed**, not "clear" and not "migrate" (there is nothing to migrate: v0.2 carries
+no A/B data). No new compatibility decision is required and no architecture gate is triggered — this
+restores conformance to a contract already recorded, changes no schema field, and leaves every blob
+that carries an `AB` node restoring exactly as before.
+
+**The fix.** `abResetToDefaults()` — six lines beside `abEnsureInit()` — invalidates both slots and
+sets `abActive = 0`, called from the two paths that carry no A/B data. INVALIDATING rather than
+seeding is what makes it correct at that point in the restore: `abEnsureInit()` re-seeds from
+`currentStateSet()` at first use, which is after the restore has finished, so the slots come back
+holding the state that was just restored rather than a snapshot taken mid-restore.
+
+**Regression coverage: State test 26**, five legs — v0.2/reused/B, v0.2/reused/A (reached by leaving
+the previous project active on B, since switching away from a slot stores the live state into it and
+would otherwise hide contamination), fresh instance, `AB`-stripped root, and a fifth leg that pins
+the *other* direction: a root that DOES carry an `AB` node still restores both slots' own sounds, so
+the reset cannot be erasing legitimate data. Verified to FAIL without the fix: **8 checks**, naming
+both slots, the active index and the fresh-instance case.
+
+### ER-GUI-04 — CONFIRMED stale, comment only
+
+`PluginEditor.cpp`'s SCOPE paragraph still said the caller's predicate is *inert on macOS* and that
+KI-028 was *narrowed to a macOS residual* it "does not close". Round 4 closed it:
+`anamorph::gui::anyPhysicalMouseButtonDown()` reads `+[NSEvent pressedMouseButtons]`, and
+`KNOWN_ISSUES.md` carries KI-028 and KI-013 as **RESOLVED**. Rewritten to say what is true now.
+`PluginEditor.h`'s doc comment for the same function carried the same claim in the same tense and
+was corrected with it — same claim, same function, not an unrelated comment. No behaviour change;
+the two sites that already described the fix correctly (`PluginEditor.cpp` at the predicate,
+`PhysicalMouseButtons.h`) were left alone, since they were already in the past tense.
+
+### ER-RT-05 — DOCUMENTED, no change
+
+The cross-file lint boundary is real and the documentation already states it, in both places, in
+terms that cannot be read as full-program coverage: `REALTIME_AUDIO_POLICY.md` — *"**That closure is
+same-file.** A callee whose definition lives in another translation unit is not text this lint
+has"*; `REALTIME_SAFETY_AUDIT.md` — *"the **same-file transitive closure** of the audio-path seeds,
+not a whole-program one"*; `CI_CD.md` — *"every callee **defined in the same file** is scanned too,
+transitively"*; ADR-0029 likewise. Nothing found that implies automatic cross-file coverage, so
+there was nothing to correct and no code was touched.
+
+The policy instructs re-measuring the census before relying on it, so it was re-measured rather than
+assumed: **83 FORBIDDEN-class matches across 12 files**, identical to the round-3 record, with the
+three cross-file-reachable DSP units unchanged (VelvetNoise 3, ChorusEngine 2, HaasProcessor 2) and
+every one of those still inside that module's own `prepare()`. The gap is still real and still
+empty. `abResetToDefaults` adds no forbidden-class construct and is not audio-thread code.
+
+### Informational items — checked, one contradiction found
+
+The fourteen informational items were checked against the current tree, not accepted on the
+review's word. Thirteen hold. The one flagged as conditional — `LookAndFeel.cpp:813`, "no code
+change required *unless the implementation and comment are found to contradict one another*" —
+carries no macOS claim at all in that region, so there is no contradiction there; the stale claim
+was one level up, in the editor, and is ER-GUI-04 above. The note under
+`PluginProcessor.cpp:898` ("this does NOT prove A/B slot state is reset correctly") was exactly
+right, and ER-STATE-12 is what it was pointing at.
+
+### Settled decisions, re-verified untouched
+
+D-2 not reopened; D-3 remains the maintainer's completed audition (PASS); D-1 and D-4 remain
+approved and implemented; KI-028 and KI-013 remain RESOLVED. No warning baseline widened — the
+warning set is byte-identical before and after this round's source changes, checked by building
+both ways.
+
+---
+
 ## Round 7 — 2026-09-01 — the compatibility checklist completed as far as a headless environment can
 
 **`RELEASE_POLICY.md` precondition 2 was the second of the two remaining tag blockers, and it has

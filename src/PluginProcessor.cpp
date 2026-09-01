@@ -710,6 +710,40 @@ void AnamorphAudioProcessor::abEnsureInit()
             slot = currentStateSet();
 }
 
+// The restore-side counterpart to abEnsureInit(). `readSlot` already enforces
+// "absent means the default, not whatever the previous session left here", but it
+// can only enforce it for a blob that HAS an `AB` node -- it is called from inside
+// that node's branch. Two restore paths carry no A/B data at all and so never
+// reached it: an `AnamorphRoot` with no `AB` child, and a v0.2 bare-APVTS session,
+// which predates the A/B feature entirely. On a REUSED instance (hosts restore into
+// one live processor repeatedly) both left `abSlot[]` and `abActive` holding the
+// PREVIOUS project's values, so the next A/B switch recalled the previous project's
+// sound underneath the restored one. Measured before this existed: after a v0.2
+// restore, switching to B played the previous project's B (raw width 0.10 against a
+// restored 0.75), and with the previous project left active on B the first switch
+// read its A (0.90) and its `active` index survived too -- `--legacy-ab-probe`.
+//
+// A FRESH instance was not exempt, which measurement showed and reading did not: the
+// constructor calls abEnsureInit() eagerly (so B is not born as a copy of an
+// already-edited A), so both slots are already VALID when a restore arrives. Without
+// this the slots kept the open/Default snapshot instead of the restored session --
+// the same defect with construction in the previous project's place (State test 26
+// leg 3, which failed at 0.5 against a restored 0.75).
+//
+// Both defaults are the ones SERIALIZATION_REGISTRY.md's `AB` table already records:
+// `active` -> 0, and the slot params -> "lazily initialised from current", which an
+// INVALID StateSet is how this processor spells (StateSet::isValid() is
+// params.isValid()). Invalidating rather than seeding is what makes this correct at
+// this point in the restore: abEnsureInit() re-seeds from currentStateSet() at first
+// use, which is after the restore has finished, so both slots come back holding the
+// state that was just restored rather than a snapshot taken mid-restore.
+void AnamorphAudioProcessor::abResetToDefaults() noexcept
+{
+    for (auto& slot : abSlot)
+        slot = {};
+    abActive = 0;
+}
+
 void AnamorphAudioProcessor::abApplySlot (int slot)
 {
     // Read the WHOLE target state set: params (keeping the shared view params) AND
@@ -911,6 +945,15 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
             readSlot (abSlot[1], "slotBParams", "slotBName", "slotBBase",
                       "slotBSource", "slotBFactoryId", "slotBUserFile", "slotB");
         }
+        else
+        {
+            // No `AB` node: the whole block above is skipped, so nothing had reset
+            // the slots or the active index. `AB` is optional (registry: every field
+            // in it is "Required: No"), and a root without one is exactly the
+            // "absent" case readSlot's rule is written for -- it just cannot reach
+            // it from in there. Same answer, applied to the slot set as a whole.
+            abResetToDefaults();
+        }
     }
     else if (xml->hasTagName (apvts.state.getType())) // backward-compat (v0.2)
     {
@@ -927,6 +970,14 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
         // migrateFromLegacyApvts writes all six unconditionally, so absent ones reset to default
         // rather than being inherited.
         internal.migrateFromLegacyApvts (legacy);
+
+        // ...and the A/B slots need the same treatment for the same reason, which
+        // fixing `internal` does NOT also fix: they are a separate pair of processor
+        // members, and a v0.2 session predates the A/B feature, so it can carry no
+        // slot data to overwrite them with. Without this the previous project's A
+        // and B sounds stayed loaded underneath a v0.2 restore and came back on the
+        // next slot switch.
+        abResetToDefaults();
     }
     else
     {

@@ -15,6 +15,16 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 
 ## [0.9.6] — 2026-09-01
 ### Fixed
+- **Loading an old session no longer leaves the previous project's A and B sounds loaded.** When a
+  session that carries no A/B data was opened into a plug-in instance that had already been used —
+  which is what a host does, since it reuses one instance across projects — the A and B compare
+  slots kept whatever the previous project had put there. The session's own sound loaded correctly,
+  but pressing A or B afterwards recalled a sound from the project before it. Affected sessions
+  saved by v0.2 (which predates the A/B feature) and any session whose A/B block is absent. Both
+  slots and the active-slot marker now come back from the session that was actually loaded; a
+  session that does carry A/B data is unaffected and still restores both slots as saved.
+  Regression coverage: State test 26.
+  Evidence: PR #134. [Verified]
 - **Automating Drive or Widen Algorithm no longer does housekeeping on the audio thread.** When a
   host automated either control, the plug-in re-reported its latency from whichever thread moved the
   parameter — the audio thread, during playback. That report takes locks and, when the latency

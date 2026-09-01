@@ -1359,11 +1359,14 @@ void AnamorphAudioProcessorEditor::showSettings (bool show)
 // that closes that gap. Both are done in one pass so a stuck press cannot leave
 // the glow and the gesture in different states.
 //
-// SCOPE, recorded rather than papered over: the caller's predicate is inert on
-// macOS -- JUCE's realtime modifier query returns cached button state there, so
-// the "physically up" half is never observed (KI-013). This closes the Linux and
-// Windows halves of KI-028 and narrows the entry to a macOS residual; it does not
-// close it. The macOS half needs a different signal, not a different sweep.
+// SCOPE: all three platforms. The macOS residual this paragraph used to record --
+// the caller's predicate being inert there, because JUCE's realtime modifier query
+// returns cached button state (KI-013) -- was closed in round 4 by giving the
+// predicate a different SIGNAL rather than a different sweep:
+// anamorph::gui::anyPhysicalMouseButtonDown() reads +[NSEvent pressedMouseButtons]
+// on macOS and forwards to JUCE elsewhere. KI-028 and KI-013 are both RESOLVED
+// (docs/KNOWN_ISSUES.md); State test 23 pins the macOS half, under #if JUCE_MAC
+// and run by the macOS CI job.
 void AnamorphAudioProcessorEditor::abortAbandonedDragGestures()
 {
     for (const auto& w : animated)

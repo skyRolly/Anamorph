@@ -206,7 +206,16 @@ APVTS's own `valueTreeChildAdded`. Keep the probe with the finding it refuted (E
 with it round 1's ER-STATE-01): a later JUCE bump can change that internal, and this is what would
 catch it.
 
-`tests/state_tests.cpp` (**25 tests**, own console target `AnamorphStateTests`) automates the
+`AnamorphStateTests --legacy-ab-probe` is the third opt-in instrument, and the one whose printed
+numbers are the evidence behind State test 26. It seeds a "previous project" with distinguishable A
+and B sounds, restores a session that carries no A/B data into the SAME instance, then switches
+slots and prints what comes back — measuring the contamination rather than asserting the contract,
+so a later reader can see the sizes. Pre-fix it printed `slot B carries the PREVIOUS project's
+sound: YES` (raw width 0.10 against a restored 0.75) and, with the previous project left active on
+B, `first switch after the restore reads A: 0.90 -> CONFIRMED stale`. Kept beside the test for the
+same reason as the two above: the test asserts the rule, the probe shows the magnitude.
+
+`tests/state_tests.cpp` (**26 tests**, own console target `AnamorphStateTests`) automates the
 COMPATIBILITY policy family against the **real `AnamorphAudioProcessor`** (the target compiles
 the plugin sources; since 2026-08-21 it also constructs and destroys the real editor, headlessly
 and without ever showing it — no peer, no message loop, no interaction):

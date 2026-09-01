@@ -3454,6 +3454,263 @@ static int runRestoreLatencyProbe()
     return 0;
 }
 
+// ---------------------------------------------------------------------------
+//  State test 26 -- a restore that carries no A/B data must not leave the
+//  PREVIOUS project's slots loaded (ER-STATE-12).
+//
+//  `readSlot` already enforces "absent means the default, not whatever the
+//  previous session left here", but only for a blob that HAS an `AB` node, since
+//  that is the branch it is called from. Two restore paths carry no A/B data at
+//  all -- an `AnamorphRoot` with no `AB` child, and a v0.2 bare-APVTS session,
+//  which predates the feature -- and both left `abSlot[]` and `abActive` holding
+//  the previous project's values on a REUSED instance. Measured before the fix:
+//  after a v0.2 restore, switching to B played the previous project's B (raw
+//  width 0.10 against a restored 0.75), and with the previous project left active
+//  on B the first switch read its A (0.90) and its active index survived too.
+//
+//  Non-vacuity is asserted, not assumed: the two previous-project slots must
+//  differ from EACH OTHER and the restored value must differ from BOTH, or the
+//  readbacks below could pass while carrying stale state.
+// ---------------------------------------------------------------------------
+static void testLegacyRestoreResetsAbSlots()
+{
+    std::printf ("State test 26: a restore with no A/B data resets both slots (ER-STATE-12)\n");
+
+    constexpr float kPrevA = 0.90f;   // the "previous project" A sound
+    constexpr float kPrevB = 0.10f;   // ...and its B sound, clearly different
+    constexpr float kTol   = 0.02f;
+
+    // Load the previous project's two distinguishable sounds into one instance and
+    // leave it on `stayOn`, which decides which slot the first post-restore switch
+    // reads: switching AWAY from a slot stores the live (restored) state into it,
+    // so only the slot we do NOT start on can show contamination on the first move.
+    auto seedPreviousProject = [] (AnamorphAudioProcessor& p, int stayOn)
+    {
+        p.prepareToPlay (48000.0, 512);
+        setRaw (p, "width", kPrevA);
+        p.abSwitchTo (1);
+        setRaw (p, "width", kPrevB);
+        if (stayOn == 0) p.abSwitchTo (0);
+    };
+
+    // --- Leg 1: v0.2 bare APVTS, reused instance, first switch reads B.
+    {
+        AnamorphAudioProcessor p;
+        seedPreviousProject (p, 0);
+        if (! applyXmlFixture (p, "legacy_v0_2_bare_apvts.xml"))
+            return;
+
+        const float restored = rawOf (p, "width");
+        check (std::abs (kPrevA - kPrevB) > kTol,
+               "the previous project's A and B are distinguishable (non-vacuity)");
+        check (std::abs (restored - kPrevA) > kTol && std::abs (restored - kPrevB) > kTol,
+               "the restored v0.2 value differs from BOTH previous slots (non-vacuity)");
+        std::printf ("  previous project A %.4f / B %.4f; v0.2 restores %.4f\n",
+                     kPrevA, kPrevB, restored);
+
+        check (p.abActiveSlot() == 0, "a session with no AB data restores the default active slot");
+        p.abSwitchTo (1);
+        const float b = rawOf (p, "width");
+        checkNear ((double) b, (double) restored, 1.0e-4,
+                   "slot B holds the RESTORED state, not the previous project's B");
+        check (std::abs (b - kPrevB) > kTol, "...and specifically not the previous project's B value");
+        p.abSwitchTo (0);
+        checkNear ((double) rawOf (p, "width"), (double) restored, 1.0e-4,
+                   "slot A holds the RESTORED state after switching back");
+    }
+
+    // --- Leg 2: same, but the previous project is left active on B, so the first
+    // switch after the restore is the one that reads A. Without this leg slot A is
+    // never actually observed -- leg 1's switch to B overwrites A on the way out.
+    {
+        AnamorphAudioProcessor p;
+        seedPreviousProject (p, 1);
+        check (p.abActiveSlot() == 1, "precondition: the previous project is active on B");
+        if (! applyXmlFixture (p, "legacy_v0_2_bare_apvts.xml"))
+            return;
+
+        const float restored = rawOf (p, "width");
+        check (p.abActiveSlot() == 0,
+               "the previous project's ACTIVE INDEX does not survive either");
+        p.abSwitchTo (1);                       // 0 -> 1 so the next move reads A afresh
+        p.abSwitchTo (0);
+        const float a = rawOf (p, "width");
+        checkNear ((double) a, (double) restored, 1.0e-4,
+                   "slot A holds the RESTORED state, not the previous project's A");
+        check (std::abs (a - kPrevA) > kTol, "...and specifically not the previous project's A value");
+    }
+
+    // --- Leg 3: a FRESH instance. This was written expecting a vacuous pass -- the
+    // slots "start invalid", so nothing should need resetting -- and MEASUREMENT
+    // refuted that: pre-fix it failed with 0.5, the Default width. The constructor
+    // calls abEnsureInit() EAGERLY (so B is not born as a copy of an already-edited
+    // A), so by the time any restore arrives both slots are already valid, holding
+    // the open/Default state. A v0.2 restore then left slot B on Default rather than
+    // on the restored session -- the same defect with the construction snapshot in
+    // the previous project's place. Kept, and no longer described as the easy leg.
+    {
+        AnamorphAudioProcessor fresh;
+        fresh.prepareToPlay (48000.0, 512);
+        if (! applyXmlFixture (fresh, "legacy_v0_2_bare_apvts.xml"))
+            return;
+        const float restored = rawOf (fresh, "width");
+        check (std::abs (restored - fresh.getAPVTS().getParameter ("width")->getDefaultValue()) > kTol,
+               "non-vacuity: the restored value differs from the Default the slots were seeded with");
+        fresh.abSwitchTo (1);
+        checkNear ((double) rawOf (fresh, "width"), (double) restored, 1.0e-4,
+                   "fresh instance: slot B is seeded from the restored state, not from construction");
+    }
+
+    // --- Leg 4: an AnamorphRoot with no `AB` child -- the same class of path, on
+    // the CURRENT format. `AB` is optional (every field in it is "Required: No").
+    {
+        AnamorphAudioProcessor p;
+        seedPreviousProject (p, 0);
+        juce::MemoryBlock mb;
+        p.getStateInformation (mb);
+        auto xml = BlobCodec::unwrap (mb);
+        check (xml != nullptr, "a current-format save round-trips through the blob codec");
+        if (xml == nullptr) return;
+        auto root = juce::ValueTree::fromXml (*xml);
+        check (root.getChildWithName ("AB").isValid(),
+               "precondition: a current save DOES carry an AB child (so leg 4 is a real strip)");
+        root.removeChild (root.getChildWithName ("AB"), nullptr);
+
+        setRaw (p, "width", 0.55f);             // a third, distinct live value
+        const auto stripped = BlobCodec::wrap (*root.createXml());
+        p.setStateInformation (stripped.getData(), (int) stripped.getSize());
+        const float restored = rawOf (p, "width");
+        check (std::abs (restored - kPrevB) > kTol,
+               "non-vacuity: the AB-less root restores something other than the previous B");
+        p.abSwitchTo (1);
+        const float b = rawOf (p, "width");
+        checkNear ((double) b, (double) restored, 1.0e-4,
+                   "AB-less root: slot B holds the RESTORED state");
+        check (std::abs (b - kPrevB) > kTol, "...and not the previous project's B value");
+    }
+
+    // --- Leg 5: the fix must NOT erase legitimate A/B data. A root that DOES carry
+    // an AB node still restores both slots' own sounds.
+    {
+        AnamorphAudioProcessor src;
+        src.prepareToPlay (48000.0, 512);
+        setRaw (src, "width", 0.80f);
+        src.abSwitchTo (1);
+        setRaw (src, "width", 0.20f);
+        src.abSwitchTo (0);                     // A = 0.80, B = 0.20, active = A
+        juce::MemoryBlock saved;
+        src.getStateInformation (saved);
+
+        AnamorphAudioProcessor dst;             // a REUSED instance with other content
+        seedPreviousProject (dst, 0);
+        dst.setStateInformation (saved.getData(), (int) saved.getSize());
+        checkNear ((double) rawOf (dst, "width"), 0.80, 1.0e-4,
+                   "a root WITH an AB node still restores slot A's own sound");
+        dst.abSwitchTo (1);
+        checkNear ((double) rawOf (dst, "width"), 0.20, 1.0e-4,
+                   "...and slot B's, so the reset did not erase carried A/B data");
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  Opt-in probe: does a legacy restore on a REUSED instance leave the previous
+//  project's A/B slots in place? Reproduction BEFORE any disposition.
+// ---------------------------------------------------------------------------
+static int runLegacyAbProbe()
+{
+    std::printf ("legacy A/B contamination probe\n");
+    std::printf ("=============================\n\n");
+
+    auto widthOf = [] (AnamorphAudioProcessor& p) { return rawOf (p, "width"); };
+
+    // --- Step 1: the "previous project", with DISTINGUISHABLE A and B sounds.
+    AnamorphAudioProcessor p;
+    p.prepareToPlay (48000.0, 512);
+
+    setRaw (p, "width", 0.90f);                 // slot A sound
+    p.abSwitchTo (1);                           // stores A, moves to B
+    setRaw (p, "width", 0.10f);                 // slot B sound -- clearly different
+    p.abSwitchTo (0);                           // back to A
+    std::printf ("  previous project: A width raw %.4f, B width raw %.4f (active %d)\n",
+                 widthOf (p), 0.10f, p.abActiveSlot());
+    const float prevA = 0.90f, prevB = 0.10f;
+
+    // --- Step 2: restore a v0.2 session into the SAME instance.
+    if (! applyXmlFixture (p, "legacy_v0_2_bare_apvts.xml"))
+        return 1;
+    const float restored = widthOf (p);
+    std::printf ("  after the v0.2 restore: live width raw %.4f (active %d)\n",
+                 restored, p.abActiveSlot());
+
+    // The fixture's width is 1.5 (denormalised); confirm it is distinguishable
+    // from BOTH previous-project slot values, or the probe cannot see anything.
+    const bool distinguishable = std::abs (restored - prevA) > 0.02f
+                              && std::abs (restored - prevB) > 0.02f;
+    std::printf ("  restored value distinguishable from both previous slots: %s\n",
+                 distinguishable ? "yes" : "NO -- probe would be vacuous");
+    if (! distinguishable) return 1;
+
+    // --- Step 3: switch slots and read back.
+    p.abSwitchTo (1);
+    const float afterToB = widthOf (p);
+    std::printf ("  after switching to B: width raw %.4f\n", afterToB);
+    p.abSwitchTo (0);
+    const float afterToA = widthOf (p);
+    std::printf ("  after switching back to A: width raw %.4f\n", afterToA);
+
+    const bool bStale = std::abs (afterToB - prevB) < 0.02f;
+    const bool aStale = std::abs (afterToA - prevA) < 0.02f;
+    std::printf ("\n  slot B carries the PREVIOUS project's sound: %s\n", bStale ? "YES" : "no");
+    std::printf ("  slot A carries the PREVIOUS project's sound: %s\n", aStale ? "YES" : "no");
+    std::printf ("  => %s\n", (bStale || aStale) ? "CONFIRMED: stale prior-project A/B state"
+                                                 : "REFUTED: slots follow the restore");
+
+    // --- Step 3b: the same question for slot A. Switching to B above STORED the
+    // restored state into A, so step 3 can never see a stale A. Reach it by leaving
+    // the previous project active on B, so the first switch after the restore is the
+    // one that reads A.
+    {
+        AnamorphAudioProcessor r;
+        r.prepareToPlay (48000.0, 512);
+        setRaw (r, "width", 0.90f);            // A
+        r.abSwitchTo (1);
+        setRaw (r, "width", 0.10f);            // B -- and STAY on B
+        if (! applyXmlFixture (r, "legacy_v0_2_bare_apvts.xml"))
+            return 1;
+        std::printf ("\n  previous project left active on B; after restore active = %d,"
+                     " live width raw %.4f\n", r.abActiveSlot(), widthOf (r));
+        r.abSwitchTo (0);
+        const float rA = widthOf (r);
+        std::printf ("  first switch after the restore reads A: width raw %.4f -> %s\n", rA,
+                     std::abs (rA - prevA) < 0.02f ? "CONFIRMED stale" : "follows the restore");
+    }
+
+    // --- Step 4: the same question for an AnamorphRoot session with NO AB child.
+    std::printf ("\n  --- AnamorphRoot with no AB child (same class of path) ---\n");
+    AnamorphAudioProcessor q;
+    q.prepareToPlay (48000.0, 512);
+    setRaw (q, "width", 0.90f);
+    q.abSwitchTo (1);
+    setRaw (q, "width", 0.10f);
+    q.abSwitchTo (0);
+
+    // Build a current-format blob, then strip its AB child.
+    juce::MemoryBlock mb;
+    q.getStateInformation (mb);
+    auto xml = BlobCodec::unwrap (mb);
+    auto root = juce::ValueTree::fromXml (*xml);
+    root.removeChild (root.getChildWithName ("AB"), nullptr);
+    setRaw (q, "width", 0.55f);                  // make the live value differ again
+    juce::MemoryBlock stripped = BlobCodec::wrap (*root.createXml());
+    q.setStateInformation (stripped.getData(), (int) stripped.getSize());
+    std::printf ("  after restoring an AB-less root: live width raw %.4f\n", widthOf (q));
+    q.abSwitchTo (1);
+    const float qB = widthOf (q);
+    std::printf ("  after switching to B: width raw %.4f -> %s\n", qB,
+                 std::abs (qB - prevB) < 0.02f ? "CONFIRMED stale" : "follows the restore");
+    return 0;
+}
+
 int main (int argc, char* argv[])
 {
     juce::ScopedJuceInitialiser_GUI juceInit; // MessageManager for APVTS/processor on this thread
@@ -3472,6 +3729,9 @@ int main (int argc, char* argv[])
 
     if (argc > 1 && std::strcmp (argv[1], "--restore-latency-probe") == 0)
         return runRestoreLatencyProbe();
+
+    if (argc > 1 && std::strcmp (argv[1], "--legacy-ab-probe") == 0)
+        return runLegacyAbProbe();
 
     const bool writeSnapshot = argc > 1 && std::strcmp (argv[1], "--write-snapshot") == 0;
 
@@ -3507,6 +3767,7 @@ int main (int argc, char* argv[])
     testPhysicalButtonQueryIgnoresCachedState();
     testRestoreReportsTheRestoredLatency();
     testCrossVersionFieldCapture();
+    testLegacyRestoreResetsAbSlots();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

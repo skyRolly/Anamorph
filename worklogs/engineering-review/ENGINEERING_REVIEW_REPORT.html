@@ -82,14 +82,28 @@ ruled out, fixed, deferred — and what should happen next. A rendered <em>view<
 <code>ENGINEERING_REVIEW_PROGRAMME.md</code> beside it; the worklog is the source of truth a later
 round reconciles against.</p>
 <div class="meta">
-  <span>ROUNDS 1–7 · 2026-08-31 → 09-01</span>
+  <span>ROUNDS 1–8 · 2026-08-31 → 09-01</span>
   <span>TREE: main @ e8f4422 → v0.9.6</span>
-  <span>STATUS: checklist 6/8 with evidence; 1½ non-code tag blockers remain</span>
+  <span>STATUS: ER-STATE-12 fixed; checklist 6/8; 1½ non-code tag blockers remain</span>
   <span>NEXT: licence (KI-015) + a DAW for checklist items 5 &amp; 7, then tag v0.9.6</span>
 </div>
 
 <h2><span class="no">§1</span>Executive status</h2>
-<p class="lede"><strong>Round 7 took the compatibility checklist from never-completed to six of
+<p class="lede"><strong>Round 8 confirmed and fixed one real defect: a session carrying no A/B data
+left the previous project's A and B sounds loaded.</strong> A host reuses one plug-in instance
+across projects, and two restore paths — a v0.2 session, and any <code>AnamorphRoot</code> whose
+<code>AB</code> child is absent — never reset the slots, so the session's own sound loaded correctly
+and then pressing A or B recalled a sound from the project before it. Reproduced before anything was
+changed, fixed in six lines, and pinned by a five-leg regression test that fails 8 checks without
+the fix.</p>
+<div class="verdicts">
+  <div class="v"><div class="k">ER-STATE-12 · CONFIRMED → FIXED</div><p>Measured, not argued: after a v0.2 restore, switching to B played the previous project's B (raw width <strong>0.10</strong> against a restored 0.75); with the previous project left active on B, the first switch read its A (<strong>0.90</strong>) and its <code>active</code> index survived as well. Both slots, and the index.</p></div>
+  <div class="v"><div class="k">The fresh-instance leg refuted its own premise</div><p>Written expecting a vacuous pass — the slots "start invalid" — and it <em>failed at 0.5</em>. The constructor seeds both slots EAGERLY, so by the time a restore arrives they are already valid, holding the open/Default state. A fresh instance was affected too. The comment was corrected; the measurement stood.</p></div>
+  <div class="v"><div class="k">Semantics taken from the registry, not the code</div><p><code>SERIALIZATION_REGISTRY.md</code> already gives <code>active</code> a default of 0 and the slot params "lazily initialised from current", and states the rule outright. So: deterministic reseed — not clear, not migrate. No schema change, no architecture gate, and a blob that carries an <code>AB</code> node restores exactly as before (leg 5 pins that direction).</p></div>
+  <div class="v"><div class="k">ER-RT-05 · DOCUMENTED, nothing changed</div><p>All four documents already describe the lint's same-file closure in terms that cannot be read as whole-program coverage. The census was re-measured rather than assumed: <strong>83 matches across 12 files</strong>, identical to round 3, every cross-file-reachable DSP match still inside that module's <code>prepare()</code>.</p></div>
+</div>
+
+<p class="lede" style="margin-top:26px"><strong>Round 7 took the compatibility checklist from never-completed to six of
 eight boxes, every tick carrying measured evidence.</strong> <code>RELEASE_POLICY</code>
 precondition 2 requires <em>every</em> item, so the gate is still open — but what remains is a DAW
 session, not analysis: <strong>Host matrix</strong> and <strong>Automation playback</strong>. The
@@ -367,6 +381,15 @@ evidence emerged to promote one. Ranking follows the programme's order — corre
   <li class="done">Drift sweep: CHANGELOG date, HANDOVER audition claim; history left intact</li>
   <li class="done">D-3 performed by the maintainer against the v0.9.6 build — <strong>PASSED</strong></li>
 </ul>
+<h3>Round 8</h3>
+<ul class="roadmap">
+  <li class="done">ER-STATE-12 reproduced on the current tree, then fixed with <code>abResetToDefaults()</code> on the two paths that carry no A/B data</li>
+  <li class="done">State test 26 — five legs, both slots, the active index, fresh AND reused instance; verified to fail 8 checks without the fix</li>
+  <li class="done">ER-GUI-04 — the obsolete "inert on macOS / macOS residual" scope comment rewritten in two places (KI-028/KI-013 are RESOLVED)</li>
+  <li class="done">ER-RT-05 — boundary documented accurately already; census re-measured at 83/12, unchanged; no code or doc change</li>
+  <li class="done">Fourteen informational items re-checked against the tree; thirteen hold, the fourteenth pointed at ER-GUI-04</li>
+</ul>
+
 <h3>Round 7</h3>
 <ul class="roadmap">
   <li class="done">Compatibility checklist: 6 of 8 boxes checked with measured evidence, completion record + evidence appendix written</li>
