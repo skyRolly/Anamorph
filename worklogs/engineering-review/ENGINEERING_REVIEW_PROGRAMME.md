@@ -29,6 +29,96 @@ entries and CHANGELOG notes cite.
 
 ---
 
+## Round 11 — 2026-09-01 — two of three restore issues fixed, one refuted, and the changelog audited
+
+Three reported items and a full staleness audit of the `[0.9.6]` release notes. **Two fixed, one
+refuted by measurement, and one changelog entry corrected — my own, from round 8.**
+
+### ER-STATE-14 — latency request lost between two clears — FIXED (by inspection, not by test)
+
+`timerCallback` cleared the flag with `exchange(0)` and then called `updateLatency()`, which cleared
+it a **second** time. Anything the audio thread stored between those two clears was dropped — and a
+dropped request is a *permanently* stale reported latency, because the store is unacknowledged and
+nothing re-raises it until the next unrelated move or a re-prepare.
+
+Fix: split out `deliverLatency()` (delivery only, never touches the flag). `timerCallback`'s
+`exchange` IS its clear, so it calls that; `updateLatency()` stays clear-then-deliver for the
+message-thread and `prepareToPlay` callers. Requests landing *during* a delivery now survive to the
+next tick, which is what clearing before reading buys. The store also became **release** and the
+consumers **acquire**: the flag is not the payload — the parameter write that raised it is — and
+under `relaxed` on both sides there is no happens-before edge between them, so a consumer may see
+the flag without seeing the value. x86-64's store ordering hides that; the AArch64 targets do not.
+
+**What the test proves, stated exactly.** State test 27's first leg pins the D-1 invariant end to
+end (after off-thread automation drains, the host holds what the settled state predicts) and is a
+real regression guard for the machinery. It does **not** discriminate either half of this fix:
+both were measured against it on x86-64 and it passes with and without them. Both rest on
+inspection, and the test says so in its own comment rather than implying coverage it lacks.
+
+Two harness defects were found while establishing that, and both had made earlier versions lie.
+The leg first compared **0 with 0** — latency only moves with drive when oversampling is on. Then it
+"quiesced" with a tight loop of `callPendingTimersSynchronously()`, which fires **nothing** against
+a 20 Hz timer because the countdown is never due; that produced intermittent failures which were
+very nearly attributed to the product. A first version had also masked the defect entirely by
+ending with a message-thread write, which delivers synchronously and repairs a lost request.
+
+### ER-STATE-15 — a root with no sound child adopted metadata anyway — FIXED
+
+An `AnamorphRoot` whose `ANAMORPH` child is absent restores **no parameter at all**, yet the
+function fell through to the adoption block: preset name, indicator tick, dirty baseline and the
+host-hidden Settings were all taken from it. The result described a session that had never loaded,
+over a sound that had not changed.
+
+That is the failure the foreign-root branch at the bottom of the same function already returns to
+avoid, and the registry states the rule for both — *"input we do not recognise never becomes
+state"*. A root missing its only sound-bearing child is that case wearing a recognised tag. It now
+returns. `getStateInformation` appends the child unconditionally, so **no session this plug-in has
+ever written reaches the new branch** and no valid session changes behaviour.
+
+Verified discriminating: reverting the guard fails three checks of State test 27 (the preset name
+adopted as "Incoming Name" over the live "Live Name", the Settings adopted, the identity adopted).
+
+One existing test had to be repaired rather than the fix weakened: State test 7's out-of-range
+`active` guard built its blob from an `AB` node **alone**, which is now not a restore, so the clamp
+was no longer reached. It now builds the root from a genuine save, keeping the clamp on the path a
+real out-of-range blob takes.
+
+### ER-STATE-16 — rejected slot keeps its metadata — REFUTED
+
+Implemented, measured, reverted. Gating `readSlot`'s name/baseline/identity reads on
+`dst.params.isValid()` **changes no test outcome**, because the premise does not hold:
+`StateSet::isValid()` is `params.isValid()`, so a rejected payload leaves the slot invalid, and
+`abEnsureInit()` assigns `slot = currentStateSet()` — the **whole struct, metadata included**, not
+just the params. Every reader of `abSlot[]` (`abSwitchTo`, `abCopyToOther`, `getStateInformation`)
+calls `abEnsureInit` first, so the values `readSlot` wrote are unreachable.
+
+The legs stay in State test 27, relabelled a **contract pin** rather than a regression guard — they
+pass either way, and saying so is the difference between coverage and the appearance of it. The
+reasoning is recorded in `SERIALIZATION_REGISTRY.md` beside the `AB` child so the question is not
+reopened a third time.
+
+### The `[0.9.6]` changelog audit — 18 entries, one defect, in my own entry
+
+Every entry was checked against the tree by an independent reader, and each staleness claim was then
+put to an adversarial refuter. **16 accurate. One claim refuted on verify** (entry 16's "preset" in
+the headline: the engine has one forced-duck entry point and cannot distinguish A/B from preset from
+undo, and the product's own comments name the class in the same words — a wording preference, not an
+overclaim). **One confirmed, and it was mine.**
+
+Entry 1 — the round-8 A/B fix — attributed the bug entirely to instance reuse: *"opened into a
+plug-in instance that had already been used — which is what a host does"*. Round 8's own measurement
+says otherwise, in a comment I wrote: the constructor calls `abEnsureInit()` **eagerly**, so a
+**fresh** instance was affected too, keeping the open/Default snapshot instead of the restored
+session (State test 26 leg 3, which failed at 0.5 against a restored 0.75). The omission misled in
+the practical direction — a user opening a project cold would read the reuse clause and conclude
+they were unaffected. Rewritten to name both cases.
+
+That is the second time this programme has caught a claim of mine that the evidence in the same
+change set contradicted. The pattern in both: the headline was written from the reproduction I ran
+first, and not revised when a later leg widened the finding.
+
+---
+
 ## Round 10 — 2026-09-01 — release notes reconciled with the KI-013 outcome
 
 **Documentation only; no code touched.** A reported contradiction between the `[0.9.6]` release

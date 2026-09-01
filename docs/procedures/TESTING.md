@@ -227,7 +227,15 @@ of the switch duck and is superseded by the live loudness measurement before the
 Keep the probe with the finding it refuted: it is what a later round re-measures instead of
 re-deriving.
 
-`tests/state_tests.cpp` (**26 tests**, own console target `AnamorphStateTests`) automates the
+State test 27's first leg carries a warning worth repeating here, because it cost a round to learn
+twice: `juce::Timer::callPendingTimersSynchronously()` in a tight loop fires **nothing** against a
+20 Hz timer — the countdown is never due — so a "quiesce" loop written that way does less than it
+looks like it does and produces intermittent failures that look like product defects. Sleep past the
+period between ticks. The same leg also documents that it does NOT discriminate the round-11 latency
+fix (it passes with and without on x86-64); it is a D-1 invariant guard, not a guard for that
+window.
+
+`tests/state_tests.cpp` (**27 tests**, own console target `AnamorphStateTests`) automates the
 COMPATIBILITY policy family against the **real `AnamorphAudioProcessor`** (the target compiles
 the plugin sources; since 2026-08-21 it also constructs and destroys the real editor, headlessly
 and without ever showing it — no peer, no message loop, no interaction):

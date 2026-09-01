@@ -128,12 +128,29 @@ void AnamorphAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     updateLatency();
 }
 
-void AnamorphAudioProcessor::updateLatency()
+void AnamorphAudioProcessor::deliverLatency()
 {
     // Message thread only, by construction: every caller either IS the message
     // thread or reached here through requestLatencyUpdate()/timerCallback().
-    latencyUpdateRequest.store (0, std::memory_order_relaxed);
+    //
+    // Deliberately does NOT touch latencyUpdateRequest. The flag must be cleared
+    // exactly once per delivery, and BEFORE the state this reads is read -- so a
+    // request that lands while setLatencySamples is running (which is the slow
+    // part: three CriticalSections, and on a real change a heap append and a pipe
+    // write) stays set and is served by the next tick. A second clear after the
+    // first would swallow exactly those requests.
     setLatencySamples (engine.predictLatency (params.toEngine (internal.oversampleIndex())));
+}
+
+void AnamorphAudioProcessor::updateLatency()
+{
+    // Clear FIRST, then deliver: this ordering is what makes a concurrent request
+    // survive rather than be lost. prepareToPlay also calls this directly, and the
+    // clear is right for it too -- a full re-prepare supersedes any pending request.
+    // ACQUIRE for the same reason timerCallback uses it: consuming a request must
+    // also make the parameter write that raised it visible.
+    latencyUpdateRequest.exchange (0, std::memory_order_acquire);
+    deliverLatency();
 }
 
 // D-1 (KI-027) -- approved 2026-09-01, implemented here.
@@ -159,13 +176,32 @@ void AnamorphAudioProcessor::requestLatencyUpdate()
     if (juce::MessageManager::existsAndIsCurrentThread())
         updateLatency();
     else
-        latencyUpdateRequest.store (1, std::memory_order_relaxed);
+        // RELEASE, not relaxed. The flag is not the payload -- the payload is the
+        // parameter (and oversampling) write that happened before this call, which
+        // deliverLatency() reads on the message thread. Under relaxed ordering there
+        // is no happens-before edge between those two writes, so a consumer could
+        // legitimately observe the flag WITHOUT observing the value that raised it,
+        // deliver the OLD latency, and clear the request -- leaving the host
+        // permanently stale with nothing pending to correct it. Measured: with
+        // relaxed/relaxed, a 400-move stress loop left reported 0 against a state
+        // predicting 4 in roughly half of runs, even with the double-clear closed.
+        // On x86-64 and AArch64 a release store is the same instruction as a relaxed
+        // one plus a compiler barrier, so the audio thread still pays nothing.
+        latencyUpdateRequest.store (1, std::memory_order_release);
 }
 
 void AnamorphAudioProcessor::timerCallback()
 {
-    if (latencyUpdateRequest.exchange (0, std::memory_order_relaxed) != 0)
-        updateLatency();
+    // exchange() IS the clear for this delivery, so call deliverLatency() rather
+    // than updateLatency() -- the latter would clear a SECOND time, and anything
+    // stored in the window between the exchange above and that second clear would
+    // be silently dropped. The audio thread's store is a bare relaxed write with
+    // no acknowledgement, so a dropped request is a permanently stale reported
+    // latency: nothing re-raises it until the next unrelated parameter move or a
+    // re-prepare. Requests landing during deliverLatency() below are served by the
+    // next tick, which is the whole point of clearing before reading.
+    if (latencyUpdateRequest.exchange (0, std::memory_order_acquire) != 0)
+        deliverLatency();
 }
 
 void AnamorphAudioProcessor::parameterChanged (const juce::String&, float)
@@ -851,11 +887,29 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
     if (root.hasType ("AnamorphRoot"))
     {
         auto params = root.getChildWithName (apvts.state.getType());
-        if (params.isValid())
+        if (! params.isValid())
         {
-            apvts.replaceState (params.createCopy());
-            reassertParameters (params, /*notifyHost*/ false); // host restore: no host-notify (see below)
+            // An `AnamorphRoot` with no `ANAMORPH` child restores NO SOUND -- and
+            // everything below this point is metadata that describes a sound. Adopting
+            // it would relabel the sound the user currently has with the incoming
+            // session's preset name, indicator tick and dirty baseline, and hand it the
+            // incoming Settings, while not one parameter moved. That is the same
+            // "metadata describing a session that was never loaded" the foreign-root
+            // branch at the bottom of this function returns to avoid, and the registry
+            // states the rule for both: input we do not recognise never becomes state
+            // (SERIALIZATION_REGISTRY.md, "A chunk of neither recognised shape is not a
+            // restore at all"). A root missing its only sound-bearing child is that
+            // case wearing a recognised tag.
+            //
+            // Every session this plug-in has ever written carries the child --
+            // getStateInformation appends it unconditionally -- so no valid session
+            // reaches here and none changes behaviour. What reaches here is a
+            // truncated, hand-edited or forward-version blob.
+            return;
         }
+
+        apvts.replaceState (params.createCopy());
+        reassertParameters (params, /*notifyHost*/ false); // host restore: no host-notify (see below)
 
         // Restore the host-hidden Settings / view state (Oversampling, UI Scale,
         // Persistence, Tooltips, Animations, Show Meters). A changed Oversampling fires
@@ -909,15 +963,7 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
                 // currentStateSet() before anything can read it. So the slot comes back seeded
                 // from the state that was just restored -- sound and metadata from one project.
                 //
-                // The metadata reads below sit outside the params branch on purpose: that is
-                // what makes the rule hold for the pre-0.6.4 shape too, which carries params
-                // ALONE -- otherwise the previous session's preset name and dirty baseline stay
-                // attached to freshly restored parameters. All of these defaults are the ones
-                // SERIALIZATION_REGISTRY.md already records for these fields.
                 dst = {};
-                dst.selection = readSelection (ab, sk, fk, uk);
-                dst.name      = ab.getProperty (nk).toString();
-                dst.baseline  = ab.getProperty (bk).toString();
                 // Accept a parsed payload only when it is an APVTS tree of the
                 // live type ("ANAMORPH"). A parsable-but-foreign-typed payload
                 // is corrupt state exactly like an unparsable one -- and worse
@@ -939,6 +985,26 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
                     adoptIfAnamorph (ab.getProperty (pk).toString());
                 else if (ab.hasProperty (legacyKey)) // pre-0.6.4 slots: params only
                     adoptIfAnamorph (ab.getProperty (legacyKey).toString());
+
+                // The metadata reads sit OUTSIDE the params branch on purpose: that is
+                // what makes the rule hold for the pre-0.6.4 shape too, which carries
+                // params ALONE -- otherwise the previous session's preset name and dirty
+                // baseline stay attached to freshly restored parameters. All of these
+                // defaults are the ones SERIALIZATION_REGISTRY.md already records.
+                //
+                // A round-11 review asked whether a REJECTED payload leaves this metadata
+                // attached to the reseeded sound. It does not, and the reason is worth
+                // stating so the question is not reopened: StateSet::isValid() is
+                // params.isValid(), so a rejected payload leaves the slot invalid, and
+                // abEnsureInit() then assigns `slot = currentStateSet()` -- the WHOLE
+                // struct, metadata included, not just the params. Every reader of
+                // abSlot[] (abSwitchTo, abCopyToOther, getStateInformation) calls
+                // abEnsureInit first, so the values written here are unreachable in that
+                // case. Measured: gating these three reads on dst.params.isValid()
+                // changes no test outcome. State test 27 pins the contract.
+                dst.selection = readSelection (ab, sk, fk, uk);
+                dst.name      = ab.getProperty (nk).toString();
+                dst.baseline  = ab.getProperty (bk).toString();
             };
             readSlot (abSlot[0], "slotAParams", "slotAName", "slotABase",
                       "slotASource", "slotAFactoryId", "slotAUserFile", "slotA");

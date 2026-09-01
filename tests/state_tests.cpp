@@ -713,12 +713,22 @@ static void testCorruptAndForeignState()
 
     // Out-of-range A/B active (hand-edited / forward-version blob) clamps —
     // the end-to-end guard over anamorph::clampAbSlotIndex.
+    //
+    // The root must carry a REAL sound child. It used to be built from an `AB`
+    // node alone, which since ER-STATE-15 is not a restore at all (a root with no
+    // `ANAMORPH` child restores no sound, so nothing below it is adopted) — so the
+    // clamp was no longer reached and this guard would have passed vacuously or
+    // failed for the wrong reason. Building the root from a genuine save keeps the
+    // clamp on the path a real out-of-range blob takes.
     auto restoreWithActive = [&p] (const char* active)
     {
-        juce::XmlElement root ("AnamorphRoot");
-        auto* ab = root.createNewChildElement ("AB");
-        ab->setAttribute ("active", active);
-        const auto blob = BlobCodec::wrap (root);
+        juce::MemoryBlock live;
+        p.getStateInformation (live);
+        auto xml = BlobCodec::unwrap (live);
+        auto root = juce::ValueTree::fromXml (*xml);
+        auto ab = root.getChildWithName ("AB");
+        ab.setProperty ("active", juce::String (active), nullptr);
+        const auto blob = BlobCodec::wrap (*root.createXml());
         p.setStateInformation (blob.getData(), (int) blob.getSize());
         return p.abActiveSlot();
     };
@@ -3613,6 +3623,244 @@ static void testLegacyRestoreResetsAbSlots()
 }
 
 // ---------------------------------------------------------------------------
+//  State test 27 -- three restore/latency integrity guards (round 11).
+//
+//  ER-STATE-14  a latency request that lands while a delivery is running must
+//               not be swallowed by a second clear of the request flag.
+//  ER-STATE-15  an `AnamorphRoot` with no `ANAMORPH` sound child restores no
+//               sound, so it must adopt no metadata and no Settings either.
+//  ER-STATE-16  an A/B slot whose payload is REJECTED must not keep that
+//               payload's name, baseline or indicator identity: the slot is
+//               reseeded from the restored state, and its label has to describe
+//               that same state.
+// ---------------------------------------------------------------------------
+static void testRestoreIntegrityGuards()
+{
+    std::printf ("State test 27: restore/latency integrity (ER-STATE-14/15/16)\n");
+
+    // === ER-STATE-14 ========================================================
+    // WHAT THIS DOES AND DOES NOT PROVE, stated because measuring it is easy to get
+    // wrong and this leg got it wrong twice before settling.
+    //
+    // It DOES pin the D-1 invariant end to end: after off-thread parameter moves
+    // interleaved with timer ticks, the latency the host holds equals the latency
+    // the settled state predicts. That is the contract the whole request/timer
+    // machinery exists to keep, and it is a real regression guard for it.
+    //
+    // It does NOT discriminate either half of the round-11 fix. Both were measured
+    // against this leg on x86-64 and it passes with and without them: the
+    // double-clear window (between timerCallback's exchange and the second clear
+    // updateLatency used to perform) is nanoseconds wide and needs a request to land
+    // inside it, which nothing here can schedule; and the relaxed->release/acquire
+    // change is invisible under x86-64's store ordering, which is exactly why it
+    // matters on the AArch64 targets that ship. Both fixes rest on inspection, and
+    // this comment exists so nobody later reads a green run here as proof of them.
+    //
+    // Two harness defects were found while establishing that, both of which made
+    // earlier versions of this leg lie. (1) It compared 0 with 0 -- latency only
+    // moves with drive when oversampling is ON, hence the setValue(2) below, and
+    // hence the explicit non-vacuity check. (2) It "quiesced" with a tight loop of
+    // callPendingTimersSynchronously(), which fires NOTHING against a 20 Hz timer
+    // because the countdown is never due; the sleeps below are what make the ticks
+    // real. Before that was found, this leg failed intermittently and the failure
+    // was nearly attributed to the product.
+    {
+        AnamorphAudioProcessor p;
+        p.getInternal().oversampleValue().setValue (2);   // 1-based combo id: 2x
+        p.prepareToPlay (48000.0, 512);
+        auto* drive = p.getAPVTS().getParameter (pid::drive);
+
+        // A worker thread stands in for the audio thread: it is not the message
+        // thread, so requestLatencyUpdate() takes the deferred branch.
+        std::atomic<bool> stop { false };
+        std::atomic<int>  moves { 0 };
+        std::thread worker ([&]
+        {
+            for (int i = 0; i < 400 && ! stop.load(); ++i)
+            {
+                drive->setValueNotifyingHost ((i & 1) ? 1.0f : 0.0f);
+                moves.fetch_add (1);
+                std::this_thread::yield();
+            }
+        });
+
+        // Tick the timer while the worker runs, exactly as the real 20 Hz timer does.
+        for (int k = 0; k < 400; ++k)
+        {
+            juce::Timer::callPendingTimersSynchronously();
+            std::this_thread::yield();
+        }
+        stop.store (true);
+        worker.join();
+
+        // Quiesce by TICKING ONLY. Deliberately no final message-thread write: that
+        // would deliver synchronously and REPAIR a lost request, which is how the
+        // first version of this leg let the defect through half the time. Whatever
+        // value the worker left, the flag protocol's guarantee is that after the
+        // requests drain, the host holds what the current state predicts.
+        // The processor's timer runs at 20 Hz, so a tight loop of
+        // callPendingTimersSynchronously() fires NOTHING -- the countdown is not due.
+        // Sleep past the period between ticks, or this loop only looks like quiescing.
+        for (int k = 0; k < 6; ++k)
+        {
+            std::this_thread::sleep_for (std::chrono::milliseconds (60));
+            juce::Timer::callPendingTimersSynchronously();
+        }
+
+        const int reported  = p.getLatencySamples();
+        p.prepareToPlay (48000.0, 512);          // recompute from the settled state
+        const int predicted = p.getLatencySamples();
+
+        // Non-vacuity: this comparison is only worth making if the two CAN differ.
+        // Drive at 0 with 2x oversampling predicts a different figure than drive at
+        // 1, so the yardstick has range -- without this the assertion below would
+        // pass by comparing 0 with 0, which is exactly how the first version of this
+        // leg was green for the wrong reason.
+        drive->setValueNotifyingHost (0.0f);
+        p.prepareToPlay (48000.0, 512);
+        const int atZero = p.getLatencySamples();
+        drive->setValueNotifyingHost (1.0f);
+        p.prepareToPlay (48000.0, 512);
+        const int atOne = p.getLatencySamples();
+        std::printf ("  after %d off-thread moves: reported %d, final state predicts %d"
+                     " (drive 0 -> %d, drive 1 -> %d)\n",
+                     moves.load(), reported, predicted, atZero, atOne);
+        check (atZero != atOne,
+               "non-vacuity: the reported latency actually moves with drive here");
+        check (reported == predicted,
+               "a request landing during delivery is not lost (reported == predicted)");
+    }
+
+    // === ER-STATE-15 ========================================================
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+
+        // Give the live instance a distinguishable identity and sound, so anything
+        // adopted from the headless blob is visible.
+        setRaw (p, "width", 0.77f);
+        p.getInternal().oversampleValue().setValue (3);      // non-default Settings
+        p.getPresets().setMeta ("Live Name", "live-baseline", anamorph::PresetManager::Selection{});
+        const float  liveWidth = rawOf (p, "width");
+        const auto   liveName  = p.getPresets().currentName();
+        const int    liveOs    = (int) p.getInternal().copyState()["int_oversample"];
+
+        // A root that LOOKS like ours but carries no sound child, and whose
+        // metadata is deliberately different from the live instance's.
+        juce::ValueTree root ("AnamorphRoot");
+        root.setProperty ("presetName", "Incoming Name", nullptr);
+        root.setProperty ("presetBaseline", "incoming-baseline", nullptr);
+        root.setProperty ("presetSource", "factory", nullptr);
+        root.setProperty ("presetFactoryId", "some-factory-id", nullptr);
+        juce::ValueTree internalNode ("ANAMORPH_INTERNAL");
+        internalNode.setProperty ("int_oversample", 1, nullptr);   // would reset Settings
+        root.appendChild (internalNode, nullptr);
+        check (! root.getChildWithName (p.getAPVTS().state.getType()).isValid(),
+               "precondition: the blob really has no ANAMORPH sound child");
+
+        const auto blob = BlobCodec::wrap (*root.createXml());
+        p.setStateInformation (blob.getData(), (int) blob.getSize());
+
+        checkNear ((double) rawOf (p, "width"), (double) liveWidth, 1.0e-6,
+                   "no sound child: the live sound is untouched");
+        checkStr (p.getPresets().currentName(), liveName,
+                  "...and the preset NAME is not adopted from a session that restored nothing");
+        check ((int) p.getInternal().copyState()["int_oversample"] == liveOs,
+               "...and the host-hidden Settings are not adopted either");
+        check (p.getPresets().selection().kind == anamorph::PresetManager::Selection::Kind::unknown
+                   || p.getPresets().selection().factoryId != "some-factory-id",
+               "...and the indicator identity is not adopted");
+    }
+
+    // === ER-STATE-16 -- REFUTED, kept as a contract pin ======================
+    // The review reported that a slot whose sound is rejected keeps that payload's
+    // name, baseline and identity. Measured: it does not. StateSet::isValid() is
+    // params.isValid(), so a rejected payload leaves the slot invalid, and
+    // abEnsureInit() assigns `slot = currentStateSet()` -- the WHOLE struct, metadata
+    // included. Every reader of abSlot[] calls abEnsureInit first, so the metadata
+    // readSlot wrote is unreachable. Gating those reads on params.isValid() was
+    // implemented, measured to change no test outcome, and reverted.
+    //
+    // These legs pass either way, which is why they are labelled a CONTRACT PIN and
+    // not a regression guard: they assert that the rejected slot's sound and label
+    // describe the same state, wherever in the code that ends up being satisfied.
+    {
+        // Build a real save, then corrupt ONLY slot B's payload while leaving its
+        // name/baseline/identity intact -- the exact shape the review described.
+        AnamorphAudioProcessor src;
+        src.prepareToPlay (48000.0, 512);
+        setRaw (src, "width", 0.20f);
+        src.abSwitchTo (1);
+        src.getPresets().setMeta ("Slot B Preset", "slotb-baseline", anamorph::PresetManager::Selection{});
+        setRaw (src, "width", 0.85f);
+        src.abSwitchTo (0);
+        setRaw (src, "width", 0.30f);
+        src.getPresets().setMeta ("Slot A Preset", "slota-baseline", anamorph::PresetManager::Selection{});
+
+        juce::MemoryBlock saved;
+        src.getStateInformation (saved);
+        auto xml  = BlobCodec::unwrap (saved);
+        auto root = juce::ValueTree::fromXml (*xml);
+        auto ab   = root.getChildWithName ("AB");
+        check (ab.isValid() && ab.getProperty ("slotBName").toString().isNotEmpty(),
+               "precondition: slot B carries a non-empty name to be contaminated by");
+        const auto rejectedName = ab.getProperty ("slotBName").toString();
+
+        ab.setProperty ("slotBParams", "<<< not xml at all >>>", nullptr);   // REJECTED payload
+        // slotBName / slotBBase / slotBSource are left exactly as saved.
+
+        AnamorphAudioProcessor dst;
+        dst.prepareToPlay (48000.0, 512);
+        const auto blob = BlobCodec::wrap (*root.createXml());
+        dst.setStateInformation (blob.getData(), (int) blob.getSize());
+
+        const float restoredWidth = rawOf (dst, "width");
+        const auto  restoredName  = dst.getPresets().currentName();
+        check (restoredName != rejectedName,
+               "precondition: the rejected slot's name differs from the restored one (non-vacuity)");
+        // Captured BEFORE the switch. The restored session here carries a synthetic
+        // baseline string that is not a real signature, so the restored state is
+        // legitimately dirty; the invariant that matters is that switching into the
+        // reseeded slot does not move it, not that it is clean.
+        const bool dirtyBeforeSwitch = dst.getPresets().isDirty();
+
+        // Switching to the rejected slot must show the RESEEDED state -- both its
+        // sound and its label.
+        dst.abSwitchTo (1);
+        checkNear ((double) rawOf (dst, "width"), (double) restoredWidth, 1.0e-4,
+                   "rejected slot: the SOUND is reseeded from the restored state");
+        checkStr (dst.getPresets().currentName(), restoredName,
+                  "...and the NAME describes that same state, not the rejected payload's");
+        check (dst.getPresets().currentName() != rejectedName,
+               "...specifically, the rejected payload's preset name did not survive");
+        check (dst.getPresets().isDirty() == dirtyBeforeSwitch,
+               "...and switching to it does not CHANGE the dirty-star (no stranger's baseline)");
+    }
+
+    // === ER-STATE-16, the other direction: a VALID slot is unaffected ========
+    {
+        AnamorphAudioProcessor src;
+        src.prepareToPlay (48000.0, 512);
+        setRaw (src, "width", 0.20f);
+        src.abSwitchTo (1);
+        src.getPresets().setMeta ("Kept Name", "kept-baseline", anamorph::PresetManager::Selection{});
+        setRaw (src, "width", 0.85f);
+        src.abSwitchTo (0);
+        juce::MemoryBlock saved;
+        src.getStateInformation (saved);
+
+        AnamorphAudioProcessor dst;
+        dst.prepareToPlay (48000.0, 512);
+        dst.setStateInformation (saved.getData(), (int) saved.getSize());
+        dst.abSwitchTo (1);
+        checkNear ((double) rawOf (dst, "width"), 0.85, 1.0e-4,
+                   "a VALID slot still restores its own sound");
+        checkStr (dst.getPresets().currentName(), "Kept Name",
+                  "...and its own preset name -- valid sessions are byte-compatible");
+    }
+}
+
+// ---------------------------------------------------------------------------
 //  Opt-in probe: does a legacy restore on a REUSED instance leave the previous
 //  project's A/B slots in place? Reproduction BEFORE any disposition.
 // ---------------------------------------------------------------------------
@@ -4046,6 +4294,7 @@ int main (int argc, char* argv[])
     testRestoreReportsTheRestoredLatency();
     testCrossVersionFieldCapture();
     testLegacyRestoreResetsAbSlots();
+    testRestoreIntegrityGuards();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

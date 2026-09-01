@@ -18,8 +18,9 @@ as such); **round 7** (the compatibility checklist taken to six of eight boxes w
 evidence, and the test-count sweep); **round 8** (the legacy A/B contamination defect confirmed
 and fixed, an obsolete macOS scope comment corrected, and the realtime-lint boundary re-measured and
 left alone); **round 9** (the per-slot Level-Match residual refuted on impact — mechanism real,
-no code changed); and **round 10** (the release notes reconciled with the KI-013 outcome, and the
-two duplicated knob-readout Undo entries consolidated).
+no code changed); **round 10** (the release notes reconciled with the KI-013 outcome, and the
+two duplicated knob-readout Undo entries consolidated); and **round 11** (two restore fixes, one
+refutation, and a full audit of the [0.9.6] changelog).
 **Header correction (round 7, 2026-09-01):** this line enumerated round 1 alone while the body
 carried six later rounds, and dated the change set 2026-08-31 while the CHANGELOG `[0.9.6]` heading
 had been re-dated to 2026-09-01 — the same drift the C6 correction below was written about,
@@ -6905,3 +6906,50 @@ different defect and was left alone.
 the script says so; `REALTIME_AUDIO_POLICY.md`, `REALTIME_SAFETY_AUDIT.md`, `CI_CD.md` and ADR-0029
 all describe the same-file boundary correctly, and none claims automatic cross-file discovery.
 Recorded as stable so a later round cites this rather than re-deriving it. [Verified]
+
+
+## Engineering-review programme, round 11 — two restore fixes, one refutation, and a changelog audit (2026-09-01, still the 0.9.6 change set)
+
+**What the round is.** Three reported restore/latency items plus a full staleness audit of the
+`[0.9.6]` release notes. Records: `worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md`
+§Round 11 and the dashboard.
+
+**Code changes and their doc syncs (trigger map applied):**
+- `src/PluginProcessor.{h,cpp}` — `deliverLatency()` split out so the request flag is cleared exactly
+  once per delivery, and the flag's ordering raised from `relaxed` to release/acquire (ER-STATE-14)
+  → `docs/architecture/LATENCY_MODEL.md` (a new bullet stating the clear-once rule, why a dropped
+  request is permanently stale, and that the fix rests on inspection rather than on the test), State
+  test 27. No CHANGELOG entry: no user-visible behaviour changed on the platforms measured.
+- `src/PluginProcessor.cpp` — an `AnamorphRoot` with no `ANAMORPH` child now returns before the
+  adoption block (ER-STATE-15) → CHANGELOG `[0.9.6]` (one Fixed entry: a damaged file could relabel
+  the sound you already had), `docs/architecture/SERIALIZATION_REGISTRY.md` (a new paragraph beside
+  the existing "a chunk of neither recognised shape is not a restore at all", which states the same
+  principle this branch was missing), State test 27. No schema field added, removed or renamed, and
+  `getStateInformation` writes the child unconditionally, so no session the plug-in has written
+  reaches the branch.
+- `tests/state_tests.cpp` — State test 27, and a repair to State test 7: its out-of-range `active`
+  guard built a root from an `AB` node alone, which ER-STATE-15 makes not-a-restore, so the clamp
+  was no longer reached. Rebuilt from a genuine save. → `docs/procedures/TESTING.md`,
+  `docs/REPOSITORY_MAP.md`, and the counts below.
+
+**Reverted after measurement (ER-STATE-16).** Gating `readSlot`'s metadata reads on
+`params.isValid()` was implemented and changed no test outcome: `abEnsureInit()` assigns the whole
+`StateSet`, metadata included, and every reader calls it first. The reasoning is recorded in
+`SERIALIZATION_REGISTRY.md` beside the `AB` child so a later round re-reads rather than re-derives.
+
+**Changelog audit.** All 18 `[0.9.6]` entries were verified against the tree independently, and each
+staleness claim put to an adversarial refuter. 16 accurate; one refuted on verify; **one confirmed,
+in round 8's own entry** — it attributed the A/B contamination entirely to instance reuse while its
+own State test 26 leg 3 measured a *fresh* instance failing at 0.5 against a restored 0.75.
+Rewritten to name both cases.
+
+**Counts.** The state suite is **27 tests / 1111 checks** (was 26 / 1096); the DSP suite is unchanged
+at 47 + the A/B clamp guard / 245. The `[0.9.6]` Fixed count is **19**. Swept through
+`docs/policies/TESTING_POLICY.md`, `docs/procedures/TESTING.md`, `README.md`,
+`docs/REPOSITORY_MAP.md`, `docs/architecture/RELEASE_HARDENING_PLAN.md` and `docs/HANDOVER.md`.
+
+**Citation re-anchoring.** The two source fixes edited cited lines rather than merely shifting them,
+so five anchors were re-derived BY SYMBOL — `legacyKey`, `readSlot`, `StateSet::isValid`,
+`setValueNotifyingHost` and `updateLatency` — and the `setStateInformation` span, unchanged at
+878-1111 but with edited content, needed its declarations retargeted. `DELIBERATE_REAIMS` carries
+each for both bases. [Verified]

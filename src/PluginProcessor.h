@@ -103,6 +103,11 @@ private:
     void parameterGestureChanged (int parameterIndex, bool gestureIsStarting) override;
     void updateLatency();
 
+    // The delivery half of updateLatency(), WITHOUT touching latencyUpdateRequest.
+    // Separated because clearing the flag twice for one delivery is what loses a
+    // concurrent request -- see timerCallback().
+    void deliverLatency();
+
     // D-1 (KI-027), approved 2026-09-01. Route EVERY latency re-report through
     // here rather than calling updateLatency() directly from a listener: under
     // VST3 host automation of drive/algorithm, `parameterChanged` runs on the
@@ -121,6 +126,9 @@ private:
     // Set by requestLatencyUpdate() from a non-message thread; cleared by the
     // timer and by updateLatency() itself (so prepareToPlay's direct call, which
     // supersedes any pending request, does not leave a stale one behind).
+    // Written with RELEASE off the message thread and consumed with ACQUIRE, so a
+    // consumed request also publishes the parameter write that raised it. Relaxed on
+    // both sides was measurably lossy -- see requestLatencyUpdate().
     std::atomic<int> latencyUpdateRequest { 0 };
 
     // A/B helpers (preserve the shared view/Settings params across a slot apply)

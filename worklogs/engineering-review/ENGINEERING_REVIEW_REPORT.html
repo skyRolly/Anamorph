@@ -82,14 +82,24 @@ ruled out, fixed, deferred — and what should happen next. A rendered <em>view<
 <code>ENGINEERING_REVIEW_PROGRAMME.md</code> beside it; the worklog is the source of truth a later
 round reconciles against.</p>
 <div class="meta">
-  <span>ROUNDS 1–10 · 2026-08-31 → 09-01</span>
+  <span>ROUNDS 1–11 · 2026-08-31 → 09-01</span>
   <span>TREE: main @ e8f4422 → v0.9.6</span>
-  <span>STATUS: release notes reconciled with KI-013; checklist 6/8; 1½ non-code tag blockers remain</span>
+  <span>STATUS: 2 restore fixes + changelog audited; checklist 6/8; 1½ non-code tag blockers remain</span>
   <span>NEXT: licence (KI-015) + a DAW for checklist items 5 &amp; 7, then tag v0.9.6</span>
 </div>
 
 <h2><span class="no">§1</span>Executive status</h2>
-<p class="lede"><strong>Round 10 reconciled the release notes with the KI-013 outcome — three stale
+<p class="lede"><strong>Round 11: two of three reported restore issues fixed, the third refuted by
+measurement, and all 18 <code>[0.9.6]</code> changelog entries audited.</strong> The audit's one
+confirmed defect was in an entry this programme wrote itself two rounds ago.</p>
+<div class="verdicts">
+  <div class="v"><div class="k">ER-STATE-15 · FIXED</div><p>An <code>AnamorphRoot</code> with no <code>ANAMORPH</code> child restores no parameter at all, yet took the file's preset name, indicator tick, dirty baseline and Settings — metadata describing a session that never loaded. It now returns, exactly as the foreign-root branch already did. Reverting the guard fails three checks; <code>getStateInformation</code> always writes the child, so no real session changes behaviour.</p></div>
+  <div class="v"><div class="k">ER-STATE-14 · FIXED, honestly scoped</div><p><code>timerCallback</code> cleared the request flag, then <code>updateLatency()</code> cleared it again — anything stored between the two was dropped, and a dropped request is a <em>permanently</em> stale reported latency. Split into <code>deliverLatency()</code>, plus release/acquire so a consumed request publishes the write that raised it. <strong>The test does not discriminate either half</strong> (both pass with and without on x86-64) and says so rather than implying coverage.</p></div>
+  <div class="v"><div class="k">ER-STATE-16 · REFUTED</div><p>Implemented, measured, reverted: gating the slot metadata reads changes no test outcome. <code>abEnsureInit()</code> assigns the <em>whole</em> StateSet — metadata included — so the rejected payload's label is already unreachable. Legs kept, relabelled a contract pin.</p></div>
+  <div class="v"><div class="k">The audit found my own entry</div><p>16 of 18 accurate; one claim refuted on verify. The confirmed one is round 8's: it blamed instance reuse, while its own test leg 3 measured a <em>fresh</em> instance failing at 0.5 against a restored 0.75. Second time this programme has caught a headline of mine that a later leg had widened.</p></div>
+</div>
+
+<p class="lede" style="margin-top:26px"><strong>Round 10 reconciled the release notes with the KI-013 outcome — three stale
 sites, not the one reported.</strong> Round 4 closed KI-013 and KI-028; round 8 fixed the source
 comments; three documents were still describing the pre-round-4 world. Documentation only.</p>
 <div class="verdicts">
@@ -403,6 +413,15 @@ evidence emerged to promote one. Ranking follows the programme's order — corre
   <li class="done">Drift sweep: CHANGELOG date, HANDOVER audition claim; history left intact</li>
   <li class="done">D-3 performed by the maintainer against the v0.9.6 build — <strong>PASSED</strong></li>
 </ul>
+<h3>Round 11</h3>
+<ul class="roadmap">
+  <li class="done">ER-STATE-15 — a recognised root with no sound child is no longer a restore; State test 27 discriminates it</li>
+  <li class="done">ER-STATE-14 — <code>deliverLatency()</code> split so the flag is cleared once, plus release/acquire for the AArch64 targets</li>
+  <li class="done">ER-STATE-16 — refuted by measurement and reverted; reasoning recorded in the registry so it is not reopened</li>
+  <li class="done">All 18 <code>[0.9.6]</code> entries audited with adversarial verification: 16 accurate, 1 refuted, 1 corrected</li>
+  <li class="done">State test 7's clamp guard repaired — it relied on an input the product now rejects for an unrelated reason</li>
+</ul>
+
 <h3>Round 10</h3>
 <ul class="roadmap">
   <li class="done">CHANGELOG "Known limit … macOS half remains open" removed — contradicted KI-013 RESOLVED</li>

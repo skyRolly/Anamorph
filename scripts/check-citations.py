@@ -345,6 +345,19 @@ DELIBERATE_REAIMS = {
     # KI-028 macOS fix added an APPLE-only source to the plugin source list, so
     # --fix reported both UNMAPPABLE and the new spellings were re-derived by
     # reading the spans. Both retire on merge.
+    # 2026-09-01 (engineering-review round 11): three more hand re-aims. The
+    # ER-STATE-14 latency split and the ER-STATE-15 sound-child guard EDITED the
+    # cited lines themselves, so --fix reports them UNMAPPABLE rather than moving
+    # them. Each was re-derived by reading the span for its named symbol:
+    # setStateInformation still starts at :878 and now ends at :1111 (the guard is
+    # inside it, so the span is unchanged and only its content moved);
+    # updateLatency moved down past the new deliverLatency. All retire on merge.
+    ("docs/architecture/LATENCY_MODEL.md",
+     "src/PluginProcessor.cpp:105-108",
+     "src/PluginProcessor.cpp:131-154"): "updateLatency",
+    ("docs/architecture/LATENCY_MODEL.md",
+     "src/PluginProcessor.cpp:131-137",
+     "src/PluginProcessor.cpp:131-154"): "updateLatency",
     ("docs/architecture/API_REFERENCE.md",
      "src/PluginProcessor.h:20-79",
      "src/PluginProcessor.h:20-80"): "AnamorphAudioProcessor",
@@ -353,10 +366,10 @@ DELIBERATE_REAIMS = {
      "CMakeLists.txt:14, 467-492"): "ANAMORPH_BUILD_NUMBER",
     ("docs/architecture/SERIALIZATION_REGISTRY.md",
      "src/PluginProcessor.cpp:688-692",
-     "src/PluginProcessor.cpp:940-941"): "legacyKey",
+     "src/PluginProcessor.cpp:986-987"): "legacyKey",
     ("docs/policies/COMPATIBILITY_POLICY.md",
      "src/PluginProcessor.cpp:327-396",
-     "src/PluginProcessor.cpp:842-1045"): "setStateInformation",
+     "src/PluginProcessor.cpp:878-1111"): "setStateInformation",
     # 2026-08-31 (round 2): prepareToPlay grew by the priming call, shifting every
     # line below it. RISK-007's read-side citation names setStateInformation, so it was
     # re-derived from that symbol rather than mapped mechanically -- the mechanical
@@ -368,22 +381,22 @@ DELIBERATE_REAIMS = {
     # same re-derivation; both bases are declared until this branch merges.
     ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
      "src/PluginProcessor.cpp:328, 390-393",
-     "src/PluginProcessor.cpp:453,588-591"): "setValueNotifyingHost",
+     "src/PluginProcessor.cpp:489,624-627"): "setValueNotifyingHost",
     ("docs/architecture/SERIALIZATION_REGISTRY.md",
      "src/PluginProcessor.cpp:743-744",
-     "src/PluginProcessor.cpp:940-941"): "legacyKey",
+     "src/PluginProcessor.cpp:986-987"): "legacyKey",
     ("docs/policies/COMPATIBILITY_POLICY.md",
      "src/PluginProcessor.cpp:645-796",
-     "src/PluginProcessor.cpp:842-1045"): "setStateInformation",
+     "src/PluginProcessor.cpp:878-1111"): "setStateInformation",
     ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
      "src/PluginProcessor.cpp:318, 380-383",
-     "src/PluginProcessor.cpp:453,588-591"): "setValueNotifyingHost",
+     "src/PluginProcessor.cpp:489,624-627"): "setValueNotifyingHost",
     ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
      "src/PluginProcessor.cpp:311,345-348",
-     "src/PluginProcessor.cpp:453,588-591"): "setValueNotifyingHost",
+     "src/PluginProcessor.cpp:489,624-627"): "setValueNotifyingHost",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:610-749",
-     "src/PluginProcessor.cpp:842-1045"): "setStateInformation",
+     "src/PluginProcessor.cpp:878-1111"): "setStateInformation",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the

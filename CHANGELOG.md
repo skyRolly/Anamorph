@@ -15,15 +15,23 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 
 ## [0.9.6] — 2026-09-01
 ### Fixed
-- **Loading an old session no longer leaves the previous project's A and B sounds loaded.** When a
-  session that carries no A/B data was opened into a plug-in instance that had already been used —
-  which is what a host does, since it reuses one instance across projects — the A and B compare
-  slots kept whatever the previous project had put there. The session's own sound loaded correctly,
-  but pressing A or B afterwards recalled a sound from the project before it. Affected sessions
-  saved by v0.2 (which predates the A/B feature) and any session whose A/B block is absent. Both
-  slots and the active-slot marker now come back from the session that was actually loaded; a
-  session that does carry A/B data is unaffected and still restores both slots as saved.
-  Regression coverage: State test 26.
+- **A damaged project file can no longer relabel the sound you already had.** A project file that
+  claimed to be an Anamorph session but carried no sound data at all — truncated, hand-edited, or
+  written by a future version — restored nothing, yet the plug-in still took the file's preset name,
+  its highlighted preset row, its modified-marker and its Settings. The result described a session
+  that had never loaded, over a sound that had not changed. Such a file is now ignored completely,
+  which is what the plug-in already did for a file it did not recognise at all.
+  Regression coverage: State test 27.
+  Evidence: PR #134. [Verified]
+- **Loading an old session no longer leaves the wrong sound in the A and B slots.** When a session
+  that carries no A/B data was loaded, the A and B compare slots kept whatever was already in them
+  instead of the session being opened. On an instance the host had reused across projects that was
+  the *previous project's* A and B sounds; on a freshly inserted instance it was the plug-in's
+  opening Default. Either way the session's own sound loaded correctly and then pressing A or B
+  recalled something else. Affected sessions saved by v0.2 (which predates the A/B feature) and any
+  session whose A/B block is absent. Both slots and the active-slot marker now come back from the
+  session that was actually loaded; a session that does carry A/B data is unaffected and still
+  restores both slots as saved. Regression coverage: State test 26.
   Evidence: PR #134. [Verified]
 - **Automating Drive or Widen Algorithm no longer does housekeeping on the audio thread.** When a
   host automated either control, the plug-in re-reported its latency from whichever thread moved the

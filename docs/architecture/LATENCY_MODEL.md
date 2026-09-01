@@ -48,9 +48,21 @@ binary (requires running the plugin; not statically provable here).`
   (KI-027), so every re-report is routed through `requestLatencyUpdate()`:
   - on the **message thread** it stays fully synchronous — UI edits, preset loads, undo/redo and
     `prepareToPlay` are unchanged and instantaneous;
-  - anywhere else the caller does one relaxed atomic store and returns, and a **processor-owned**
-    20 Hz timer performs the delivery. The timer belongs to the processor, not the editor, so it
-    runs with no editor open.
+  - anywhere else the caller does one atomic store and returns, and a **processor-owned** 20 Hz
+    timer performs the delivery. The timer belongs to the processor, not the editor, so it runs
+    with no editor open.
+  - **The request flag is cleared exactly once per delivery, and before the state it publishes is
+    read** (2026-09-01, ER-STATE-14). `timerCallback`'s `exchange(0)` IS that clear, so it calls
+    `deliverLatency()` — the delivery half, which does not touch the flag — rather than
+    `updateLatency()`, which clears again; anything stored between those two clears was dropped, and
+    a dropped request is a permanently stale reported latency, since the audio thread's store is
+    unacknowledged and nothing re-raises it until the next unrelated move or a re-prepare. Requests
+    landing DURING a delivery survive and are served by the next tick, which is what clearing first
+    buys. The store is **release** and the consumers **acquire**, so a consumed request also
+    publishes the parameter write that raised it — under `relaxed` on both sides there is no such
+    edge, which x86-64's store ordering hides and the AArch64 targets do not. Both are
+    correct-by-construction: the window is nanoseconds wide and State test 27 passes with and
+    without them, which that test says out loud rather than implying coverage it lacks.
 - **The host may therefore learn of a latency change up to one timer interval (50 ms) after the
   parameter moved.** This is the deliberate cost of keeping locks, allocation and a syscall off the
   audio thread; the VALUE reported is always the one the live state predicts, only its delivery is
@@ -64,7 +76,7 @@ binary (requires running the plugin; not statically provable here).`
 - The OS engagement is **latched** (changes only at `reset` or the silent duck bottom), so
   latency never changes mid-block; an OS-path change is routed through the duck.
 
-Evidence [Verified]: src/PluginProcessor.cpp:131-137 (`updateLatency`), :110-115 (`parameterChanged`); src/dsp/AnamorphEngine.cpp:216-221,
+Evidence [Verified]: src/PluginProcessor.cpp:131-154 (`deliverLatency` + `updateLatency`), :110-115 (`parameterChanged`); src/dsp/AnamorphEngine.cpp:216-221,
 :293-329, :494-509.
 
 ## INVARIANT (binding)
