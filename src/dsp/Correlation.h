@@ -64,8 +64,46 @@ public:
         slow.store (correlation (lrSlow, llSlow, rrSlow), std::memory_order_relaxed);
 
         // L/R energy balance in [-1 (L) .. +1 (R)] for the bottom meter (#9).
+        //
+        // OVERFLOW GUARD (ER-DSP-11), and a DIFFERENT operation from ER-DSP-10's:
+        // that one is the phase meter's `ll * rr` PRODUCT inside correlation();
+        // this one is the balance's `ll + rr` SUM, and fixing the product did
+        // nothing for the sum. Both accumulators are finite here (sanitize has
+        // just run) and non-negative by construction, but a float ADD of two
+        // mean-square values still leaves float once their sum passes FLT_MAX --
+        // for equal channels from steady input above 1.30438174e19, and for
+        // unequal ones anywhere the pair sums past it, up to the 1.84467435e19
+        // where the per-sample square itself would stop being finite.
+        //
+        // WHAT IT COST, and why "finite" was never the test. The NUMERATOR does
+        // not overflow -- `rr - ll` lies in [-ll, rr] for non-negative operands,
+        // so it stays finite and carries the whole imbalance -- and `+Inf` sails
+        // past the 1e-12 small-signal guard below. So the division was
+        // finite/+Inf, which is a perfectly well-formed 0: the meter reported
+        // PERFECTLY CENTRED for a badly lopsided pair. MEASURED at
+        // l = 1.8e19, r = 1.0e19: llSlow 3.23707947e38, rrSlow 9.98539635e37,
+        // numerator -2.23853994e38 (finite), sum +Inf (exactly 4.2356191e38 in
+        // double, against FLT_MAX 3.40282347e38), published balance -0.0 where
+        // the true figure is -0.5285036. A pair whose sum stays under FLT_MAX is
+        // unaffected and always was: at l = 1.8e19, r = 0.2e19 the sum is
+        // 3.277e38 and the meter already read -0.9756 correctly, which is what
+        // shows the defect is the OVERFLOW and not the level.
+        //
+        // The recovery is the sum, in double, on that overflow alone: two finite
+        // floats sum to at most ~6.8e38, nowhere near DBL_MAX, and the quotient
+        // is then bounded by 1 in magnitude because |rr - ll| <= rr + ll. The
+        // float expression below is untouched character for character and the
+        // double path is unreachable while the sum is finite, so every ordinary
+        // reading is bit-for-bit what it always was.
         const float sum = llSlow + rrSlow;
-        float bal = sum > 1.0e-12f ? (rrSlow - llSlow) / sum : 0.0f;
+        float bal;
+        if (! std::isfinite (sum))
+        {
+            const double d = (double) llSlow + (double) rrSlow;   // >= FLT_MAX here, never 0
+            bal = (float) ((double) (rrSlow - llSlow) / d);
+        }
+        else
+            bal = sum > 1.0e-12f ? (rrSlow - llSlow) / sum : 0.0f;
         bal = bal < -1.0f ? -1.0f : (bal > 1.0f ? 1.0f : bal);
         balance.store (bal, std::memory_order_relaxed);
 

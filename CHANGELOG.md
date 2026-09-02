@@ -15,6 +15,20 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 
 ## [0.9.6] — 2026-09-01
 ### Fixed
+- **At extreme levels the L/R balance meter no longer shows a lopsided signal as perfectly
+  centred.** The balance meter reads how the energy is split between left and right. It works from
+  the two channels' running energies added together, and above roughly 1.3e19 in sample value — far
+  beyond anything you would mix, but ordinary numbers to the plug-in, and reachable when Bypass is
+  passing a broken upstream signal through untouched — that addition ran out of range internally.
+  Each channel's own energy was still fine and the difference between them was still fine; only
+  their **sum** was not, and dividing by it collapsed the reading to **0 — dead centre** — for a
+  signal that was in fact heavily weighted to one side. Nothing sounded different; only the meter
+  lied, and it lied in the most misleading direction. The addition now stays in range, so the meter
+  reports the real split at any level, and a genuinely centred signal still reads centred. Every
+  reading at ordinary levels is bit-for-bit identical to before, and the phase-correlation display
+  and the existing recovery from genuinely invalid audio are both unchanged. Regression coverage:
+  DSP test 51.
+  Evidence: PR #134. [Verified]
 - **Extremely loud but still-valid audio no longer makes the phase meter read the wrong thing.**
   The correlation display shows how alike the two channels are: +1 for a mono signal, 0 for
   unrelated channels, −1 for anti-phase. It works from the running energy of each channel, and

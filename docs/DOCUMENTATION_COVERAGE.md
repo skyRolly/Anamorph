@@ -7,7 +7,7 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.6 change set** (2026-09-01, matching the CHANGELOG heading) — the
-**engineering-review programme, rounds 1 through 22**, newest last in the body: round 1 (the
+**engineering-review programme, rounds 1 through 23**, newest last in the body: round 1 (the
 programme's first sweep: six engine/state/GUI fixes with Tests 43–46 and two state regressions,
 the engaged Test 2/38 matrices, the KI-027 and RISK-007 filings, the v0.9.6 renumbering sweep, the
 NOTICE pin + AudioUnitSDK section, the CI_CD job inventory, and the new
@@ -42,7 +42,9 @@ meter's own `ll * rr` overflowing in float on extreme-but-finite audio, so a per
 signal read as fully decorrelated — fixed at that operation, with the state race re-measured and
 again found to be the deferred D-2 risk); and **round 22** (the `docs` CI gate, red on a line of
 this file that began with a pipe character, and the filtered-preflight habit that let it reach the
-push — both fixed, no production change).
+push — both fixed, no production change); and **round 23** (the balance meter's own `ll + rr`
+overflow, a different operation from round 21's `ll * rr`, which published dead centre for a badly
+lopsided pair — fixed, with round 21's mistaken note about it corrected in place).
 **Header correction (round 7, 2026-09-01):** this line enumerated round 1 alone while the body
 carried six later rounds, and dated the change set 2026-08-31 while the CHANGELOG `[0.9.6]` heading
 had been re-dated to 2026-09-01 — the same drift the C6 correction below was written about,
@@ -7367,6 +7369,12 @@ denominator overflow — which is the distinction the defect lived in), `docs/pr
 magnitude of ≈ 1.3e19, three orders beyond the regime that breaks the phase reading, and there
 `energy = +Inf` still reads "playing" and `balance = 0` still reads "centred", which is correct for
 an equal-energy pair. No demonstrated defect; not changed.
+**Corrected in round 23 (ER-DSP-11):** the `energy` half stands — its only consumer is a `< 6e-9`
+silence predicate, which `+Inf` answers correctly — but the `balance` half was wrong. "Balance = 0
+still reads centred" holds only for channels that really are equal, and the meter exists for the
+case where they are not: an overflowing sum published `-0.0` for a 1.8e19/1.0e19 pair whose true
+balance is −0.53. Reproduced and fixed in round 23; this entry is left as written, with the error
+named rather than edited away.
 
 **Counts.** The DSP suite is **49 tests + the A/B clamp guard / 269 checks** (was 48 / 256; Test 50
 adds 13). The state suite is unchanged at **33 tests / 1431 checks**. The `[0.9.6]` Fixed count is
@@ -7418,3 +7426,61 @@ supersedes them — the disposition round 19 chose deliberately, and not rewritt
 **Counts.** Unchanged: the DSP suite is 49 tests + the A/B clamp guard / 269 checks and the state
 suite 33 tests / 1431 checks; the `[0.9.6]` Fixed count stays 28 — nothing user-visible changed.
 [Verified]
+
+## Engineering-review programme, round 23 — the balance meter's own overflow (2026-09-02, still the 0.9.6 change set)
+
+**What the round is.** One DSP correctness fix, in the same file and regime as round 21's but at a
+**different operation**. Records: `worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md`
+§Round 23.
+
+**ER-DSP-11 — extreme but FINITE levels erased the channel imbalance.** Reproduced before any
+change: at `l = 1.8e19`, `r = 1.0e19` the meter published a balance of **−0.0** — perfectly centred —
+for a pair whose true balance is **−0.5283**, and the mirrored input published **+0.0** for **+0.5283**.
+Every value the existing guard can see is finite: the per-sample squares (3.24000014e38,
+9.99999968e37), both accumulators (`llSlow` 3.23707947e38, `rrSlow` 9.98539635e37) and even the
+numerator `rrSlow − llSlow` (−2.23853994e38, carrying the whole imbalance). The only overflow is
+`llSlow + rrSlow`, a float **add**, which is +Inf where the exact double sum is 4.2356191e38 against
+`FLT_MAX` 3.40282347e38 — and `+Inf` sails past the 1e-12 small-signal guard, so the division is
+`finite / +Inf`, a well-formed **0**. Threshold: input above **1.30438174e19** for equal channels,
+anywhere an unequal pair sums past `FLT_MAX`, up to the **1.84467435e19** at which `l*l` would itself
+stop being finite. Fixed by redoing the **sum** in double on that overflow alone.
+
+**Kept distinct from the two neighbouring contracts, deliberately.** It is not ER-DSP-10 — that is
+the phase meter's `ll * rr` **product** in `correlation()`, and the round-21 build reproduces this
+defect at full strength, so fixing the product did nothing for the sum. It is not the Test 45 poison
+class either — every accumulator is finite and `sanitize()` never fires, which Test 51 asserts rather
+than assumes. Test 45 owns the poisoned accumulator, Test 50 the product, Test 51 the sum.
+
+**Normal range preserved bit-for-bit, and scale invariance restored across the edge — both measured.**
+Pre- and post-fix expressions compared over **19,671,802** randomised finite-sum energy pairs
+spanning 1e-40 to 1e38: **zero differing bit patterns**. At a fixed 3:1 energy ratio the true balance
+is −0.5 at every scale; the pre-fix build holds −0.5 up to `s = 8.5e37` and drops to −0.0 at
+`s = 8.6e37`, the first point where the sum stops being finite, while the fixed build holds −0.5
+across the whole sweep.
+
+**A round-21 record corrected rather than rewritten.** Round 21 inspected this same sum and wrote
+that `balance = 0` "still means centred, which is what an equal-energy pair should read". The
+threshold was right and the conclusion was wrong — it holds only when the channels really ARE equal,
+which is the one case a balance meter is not for. Both copies of that note (the round-21 worklog
+section and its entry in this file) now carry the correction beside them, kept as written with the
+error named rather than edited away. The `energy` half of the same note stands, and this round
+grounded it: its only consumer is `gui/CorrelationMeter.cpp`'s `< 6e-9` silence predicate, which
+`+Inf` answers correctly as "not silent".
+
+**Documents touched:** `CHANGELOG.md` (one Fixed entry), `docs/architecture/DSP_ALGORITHMS.md` (the
+`CorrelationMeter` section now carries all three non-finite contracts and says which test owns each),
+`docs/procedures/TESTING.md` (Test 51 and the DSP test count), `docs/policies/TESTING_POLICY.md`,
+`README.md`, `docs/architecture/RELEASE_HARDENING_PLAN.md`, `docs/HANDOVER.md` (counts and the
+version row), this file, the programme worklog and the dashboard.
+
+**Carried unchanged, with no duplicate finding filed.** D-2 / RISK-007 stays deferred — this round
+produced no new evidence, `src/PluginProcessor.cpp` and `.h` are still unchanged since round 16, and
+the only source touched is a static computation inside `publish()` with no shared state. RISK-008
+keeps its real-host REAPER result and its host-specific residual; **no host test was performed**.
+ER-STATE-21 FIXED, drag recovery REFUTED, D-1 approved and implemented, the cross-file realtime-lint
+boundary unchanged.
+
+**Counts.** The DSP suite is **50 tests + the A/B clamp guard / 282 checks** (was 49 / 269; Test 51
+adds 12). The state suite is unchanged at **33 tests / 1431 checks**. The `[0.9.6]` Fixed count is
+**29**. Measured, not inferred: `AnamorphTests` prints `282 checks, 0 failures` and
+`AnamorphStateTests` prints `1431 checks, 0 failure(s)`. [Verified]

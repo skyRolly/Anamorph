@@ -15,7 +15,7 @@ exits non-zero on any failed `check` or missing binary. Evidence [Verified]: scr
 
 ### What the tests cover
 
-`tests/dsp_tests.cpp` has **49 DSP tests** using a `check(cond, "what")` harness, covering: MS
+`tests/dsp_tests.cpp` has **50 DSP tests** using a `check(cond, "what")` harness, covering: MS
 round-trip (bit-exact), transparent default, true-bypass null + latency match, Mono Maker
 (post-Mix), Multiband mono-compat, Solo band selectivity + transparency, Level Match
 (unity/no-ratchet/silence-freeze/mix-coupling/multiband-unity), crossover automation safety,
@@ -177,7 +177,34 @@ removed, so the 50 % bound sits between two measured populations); and both defe
 seeded and caught -- a wrong slide fails at sample 32, a missing invalidation at the stop block.
 `worklogs/performance/PERF_AUDIT_v0.9.5_IMPLEMENTATION.md` §2.2.
 
-The newest DSP test is the **extreme-finite phase-meter guard**
+The newest DSP test is the **extreme-finite balance guard**
+(`testCorrelationBalanceExtremeFiniteInput`, Test 51, ER-DSP-11, round 23). It is the sibling of
+Test 50 and is deliberately kept independent of it: that one owns the phase meter's `ll * rr`
+**product**, this one the balance's `ll + rr` **sum**, and fixing the product did nothing for the
+sum. Both accumulators stay finite, the numerator `rr - ll` cannot overflow either (it lies in
+`[-ll, rr]` for non-negative operands), but the float sum leaves float past `FLT_MAX` and
+`finite / +Inf` is a well-formed **0** — so a badly lopsided pair published **perfectly centred**.
+
+**Built around the overflow edge, not around large values.** `1.8e19 / 0.2e19` is *more* lopsided
+than `1.8e19 / 1.0e19` and read correctly in both builds, because its energies sum to 3.277e38 and
+stay under `FLT_MAX`; the test asserts that case unchanged, which is what proves level is not the
+variable. The defect legs assert the **value**, both directions — `-0.5285` and `+0.5285` against
+the double reference — because `-0.0` is finite, is symmetric with `+0.0`, and is the exact wrong
+answer, so neither "is it finite" nor "is it symmetric" would have caught it. **12 checks**: three
+normal-range controls at three distinct values (balanced reads centred, L-louder and R-louder read
+their true figures — so "always 0", "always non-zero" and "always one-sided" each fail one), a
+premise leg (a perfectly correlated extreme pair must still read +1, proving `sanitize` never fired
+and the accumulators are healthy), the two extreme unequal legs, an exact sign-flip symmetry check,
+the balanced-extreme leg that must stay centred, the non-overflowing lopsided discriminator, an
+**ER-DSP-10-intact** leg, and the Test 45 poison contract. **2 of the 12 fail against the pre-fix
+build, 0 after.** Normal-range behaviour is additionally verified bit-for-bit outside the suite:
+pre- and post-fix compared over 19,671,802 randomised finite-sum energy pairs spanning 1e-40 to
+1e38, **zero differing bit patterns**; and scale invariance was swept across the edge itself — at a
+fixed 3:1 energy ratio the true balance is −0.5 throughout, and the pre-fix build holds −0.5 up to
+`s = 8.5e37` then drops to −0.0 the moment the sum stops being finite, while the fixed build holds
+−0.5 across the whole sweep.
+
+The DSP test before that is the **extreme-finite phase-meter guard**
 (`testCorrelationMeterExtremeFiniteInput`, Test 50, ER-DSP-10, round 21). **It is not Test 45's
 class and the two must not be merged.** There a NON-finite sample poisons an accumulator and
 `publish()`'s `sanitize()` is the cure; here every value that guard can see is FINITE — the samples,

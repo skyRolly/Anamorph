@@ -82,14 +82,26 @@ ruled out, fixed, deferred — and what should happen next. A rendered <em>view<
 <code>ENGINEERING_REVIEW_PROGRAMME.md</code> beside it; the worklog is the source of truth a later
 round reconciles against.</p>
 <div class="meta">
-  <span>ROUNDS 1–22 · 2026-08-31 → 09-02</span>
+  <span>ROUNDS 1–23 · 2026-08-31 → 09-02</span>
   <span>TREE: main @ e8f4422 → v0.9.6</span>
-  <span>STATUS: the docs gate is green again; no production change this round; ONE tag blocker left — KI-015</span>
+  <span>STATUS: the balance meter survives extreme-but-finite levels; ONE tag blocker left — KI-015</span>
   <span>NEXT: licence (KI-015), then tag v0.9.6</span>
 </div>
 
 <h2><span class="no">§1</span>Executive status</h2>
-<p class="lede"><strong>Round 22: the <code>docs</code> gate went red, and the more interesting defect is
+<p class="lede"><strong>Round 23: the other overflow in the same class &mdash; and round 21's own note
+about it was wrong.</strong> Same file, same regime, <em>different operation</em>: the phase meter divides
+by a <strong>product</strong>, the balance meter by a <strong>sum</strong>, and fixing the product did nothing
+for the sum. An unequal pair at extreme level published <strong>dead centre</strong>.</p>
+<div class="verdicts">
+  <div class="v"><div class="k">ER-DSP-11 &middot; FIXED at the overflowing add</div><p><code>ll + rr</code> is a float ADD of two mean-square values, so it leaves float once the sum passes <code>FLT_MAX</code> &mdash; from steady input above <strong>1.30438174e19</strong> for equal channels, anywhere an unequal pair sums past it. Two things made it silent: the numerator <code>rr &minus; ll</code> CANNOT overflow (it lies in <code>[&minus;ll, rr]</code>), so the imbalance survived intact; and <code>+Inf</code> sailed past the 1e-12 small-signal guard, leaving <code>finite / +Inf</code> &mdash; a well-formed <strong>0</strong>. Measured at 1.8e19&thinsp;/&thinsp;1.0e19: published <strong>&minus;0.0</strong> against a true <strong>&minus;0.5285</strong>. Only the sum is redone in double, only on that overflow.</p></div>
+  <div class="v"><div class="k">Not ER-DSP-10, and not Test 45</div><p>The round-21 build reproduces this at full strength &mdash; the product fix does nothing for the sum. And every accumulator here is finite, so <code>sanitize()</code> never fires; Test 51 asserts that premise rather than assuming it, by requiring a perfectly correlated extreme pair to still read +1. Three independent contracts, three independent tests: 45 poison, 50 product, 51 sum.</p></div>
+  <div class="v"><div class="k">Round 21's note, corrected in place</div><p>Round 21 inspected this very sum and concluded "<code>balance = 0</code> still means centred, which is what an equal-energy pair should read". The threshold was right; the conclusion held only for channels that really ARE equal &mdash; the one case a balance meter is not for. Both copies of that note now carry the correction beside them, kept as written with the error named rather than edited away.</p></div>
+  <div class="v"><div class="k">Test 51 &middot; on the edge, not on the level</div><p>1.8e19&thinsp;/&thinsp;0.2e19 is MORE lopsided and reads correctly in both builds &mdash; its sum is 3.277e38, under <code>FLT_MAX</code> &mdash; so level is demonstrably not the variable. The defect legs assert the VALUE in both directions, because <code>&minus;0.0</code> is finite AND symmetric with <code>+0.0</code>: neither test would have caught it. <strong>2 of 12 checks fail pre-fix.</strong></p></div>
+  <div class="v"><div class="k">Normal range, measured twice</div><p>Bit-for-bit over <strong>19,671,802</strong> randomised finite-sum energy pairs from 1e-40 to 1e38: zero differing bit patterns. And scale invariance swept across the edge &mdash; at a fixed 3:1 ratio the true balance is &minus;0.5 at every scale; the pre-fix build holds it to <code>s = 8.5e37</code> and drops to &minus;0.0 at 8.6e37, the first point where the sum stops being finite. The fixed build holds &minus;0.5 throughout.</p></div>
+</div>
+
+<p class="lede" style="margin-top:26px"><strong>Round 22: the <code>docs</code> gate went red, and the more interesting defect is
 why the previous round did not notice.</strong> The documentation fault is one line; the validation
 fault is a habit that opened three hatches at once. <strong>No production code changed, and none was
 justified.</strong></p>
@@ -549,6 +561,18 @@ evidence emerged to promote one. Ranking follows the programme's order — corre
   <li class="done">Drift sweep: CHANGELOG date, HANDOVER audition claim; history left intact</li>
   <li class="done">D-3 performed by the maintainer against the v0.9.6 build — <strong>PASSED</strong></li>
 </ul>
+<h3>Round 23</h3>
+<ul class="roadmap">
+  <li class="done">ER-DSP-11 FIXED — the balance's <code>ll + rr</code> float ADD overflowed while both energies AND their difference stayed finite; only the sum is redone in double, only on that overflow</li>
+  <li class="done">Reproduced first: 1.8e19/1.0e19 published −0 against a true −0.5283; full step-by-step trace recorded, showing the numerator finite at −2.2385e38 and the sum +Inf</li>
+  <li class="done">Established as distinct from ER-DSP-10 (product, not sum — the round-21 build reproduces it) and from Test 45 (accumulators finite, sanitize never fires)</li>
+  <li class="done">DSP Test 51 (12 checks) — edge-based discriminator, both directions asserted by value, three normal-range controls, ER-DSP-10-intact leg, poison-contract leg; 2 fail pre-fix</li>
+  <li class="done">Normal range bit-for-bit over 19,671,802 randomised pairs; scale invariance swept across the overflow edge</li>
+  <li class="done">Round 21's "balance = 0 still means centred" note corrected in place in both copies, kept as written with the error named</li>
+  <li class="done"><code>energy</code> re-inspected and left alone — this time by tracing its only consumer, a <code>&lt; 6e-9</code> silence predicate that <code>+Inf</code> answers correctly</li>
+  <li class="done">D-2 deferred with no new evidence; RISK-008 carried unchanged with no host test</li>
+</ul>
+
 <h3>Round 22</h3>
 <ul class="roadmap">
   <li class="done">ER-CI-06 FIXED — <code>DOCUMENTATION_COVERAGE.md:7365</code> began a line with <code>|</code>, which Markdown reads as a table row; reflowed, gate untouched</li>

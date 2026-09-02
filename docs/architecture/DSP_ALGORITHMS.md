@@ -170,8 +170,27 @@ its NaN/Inf self-heal is explicitly not a level limiter and this tap sees the mo
 `correlation()` now detects that one overflow and recomputes only the denominator in double, where
 the product of two finite floats is exact (48 significand bits into 53) and at most ~1.16e77. The
 ordinary range is **bit-for-bit unchanged** — the float expression is untouched and the double path
-is unreachable unless `ll · rr` is already +Inf (ER-DSP-10, Test 50). Evidence [Verified]:
-src/dsp/Correlation.h:91-141.
+is unreachable unless `ll · rr` is already +Inf (ER-DSP-10, Test 50).
+
+**A third contract, and a different operation: the BALANCE's sum** (ER-DSP-11, Test 51). Fixing the
+phase denominator did nothing for this one, because `publish()`'s L/R balance divides by
+`ll + rr` — a float **add**, not a product. Two finite mean-square values leave float once their sum
+passes `FLT_MAX`: from steady input above **1.30438174e19** for equal channels, and anywhere an
+unequal pair sums past it, up to the **1.84467435e19** at which the per-sample square would itself
+stop being finite. The numerator `rr − ll` never overflows — it lies in `[−ll, rr]` for non-negative
+operands — so it stayed finite and carried the whole imbalance, `+Inf` sailed past the same 1e-12
+small-signal guard, and `finite / +Inf` is a well-formed **0**: the meter published **perfectly
+centred for a badly lopsided pair**. Measured at l = 1.8e19, r = 1.0e19 — `llSlow` 3.23707947e38,
+`rrSlow` 9.98539635e37, numerator −2.23853994e38, sum +Inf (4.2356191e38 in double) — published
+balance **−0.0** against a true **−0.5285**. The sum alone is redone in double on that overflow;
+a pair whose sum stays under `FLT_MAX` is untouched and always read correctly, which is why the more
+lopsided 1.8e19/0.2e19 (sum 3.277e38) was right before the fix and is unchanged by it.
+
+The three contracts are independent, and so are their regression tests: **Test 45** owns the
+poisoned accumulator, **Test 50** the phase denominator, **Test 51** the balance sum. The published
+`energy` (`llFast + rrFast`) can also reach +Inf in this regime and is deliberately left alone —
+traced to its only consumer, a `< 6e-9` silence predicate in `gui/CorrelationMeter.cpp`, which
+`+Inf` answers correctly as "not silent". Evidence [Verified]: src/dsp/Correlation.h:129-179.
 
 ## LevelMeters — `src/dsp/LevelMeters.h`
 

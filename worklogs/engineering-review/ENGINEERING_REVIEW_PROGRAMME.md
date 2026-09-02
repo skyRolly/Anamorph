@@ -29,6 +29,124 @@ entries and CHANGELOG notes cite.
 
 ---
 
+## Round 23 — 2026-09-02 — the other overflow in the same class: an unequal pair read as dead centre
+
+One fix. It is in the same file and the same regime as round 21's, and it is a **different
+operation** — which is exactly why round 21 did not catch it, and why round 21's own note about it
+was wrong. That note is corrected in place above rather than edited away.
+
+### ER-DSP-11 — FIXED — a finite `ll + rr` overflow erased the channel imbalance
+
+**Reproduced first, with the module's own code.** `CorrelationMeter`, 48 kHz, settled over 400,000
+samples (~50 time constants of the 600 ms slow pole):
+
+| input `l` / `r` | published balance | true balance | verdict |
+|---|---|---|---|
+| 0.5 / 0.5 | 0 | 0 | correct |
+| 0.5 / 0.25 | −0.6 | −0.6 | correct |
+| 0.25 / 0.5 | +0.6 | +0.6 | correct |
+| 1.0e9 / 0.5e9 | −0.6 | −0.6 | correct |
+| 1.5e19 / 1.5e19 | 0 | 0 | correct (equal channels) |
+| **1.8e19 / 1.0e19** | **−0** | **−0.528302** | a heavily L-weighted pair read as DEAD CENTRE |
+| **1.0e19 / 1.8e19** | **0** | **+0.528302** | the mirror, same failure |
+| 1.8e19 / 0.2e19 | −0.975616 | −0.975610 | correct — and this is the discriminator |
+
+**The complete arithmetic path, instrumented** (`l = 1.8e19`, `r = 1.0e19`):
+
+| step | value | finite? |
+|---|---|---|
+| per-sample squares `l*l`, `r*r` | 3.24000014e38, 9.99999968e37 | yes |
+| accumulators `llSlow`, `rrSlow` | 3.23707947e38, 9.98539635e37 | **yes — `sanitize()` ACCEPTS, never fires** |
+| numerator `rrSlow - llSlow` | −2.23853994e38 | **yes — the imbalance is intact here** |
+| **`llSlow + rrSlow` (float add)** | **+Inf** (exactly 4.2356191e38 in double, vs `FLT_MAX` 3.40282347e38) | **NO ← the overflow, and the only one** |
+| guard `sum > 1.0e-12f` | **true** — does not fire | — |
+| `num / sum` | **−0** | yes |
+| the same expression in double | **−0.528503598** | yes |
+
+**Root cause.** `ll` and `rr` are mean-square values, so each scales as the square of the input. The
+balance divides by their **sum**, and a float add of two finite mean-squares leaves float once the
+sum passes `FLT_MAX`: from steady input above **1.30438174e19** for equal channels, and anywhere an
+unequal pair sums past it, up to the **1.84467435e19** at which `l*l` would itself stop being
+finite. Two things then conspire to make the failure silent rather than loud: the numerator cannot
+overflow — `rr − ll` lies in `[−ll, rr]` for non-negative operands, so it stays finite and carries
+the *whole* imbalance — and `+Inf` sails past the 1e-12 small-signal guard, leaving `finite / +Inf`,
+which is a perfectly well-formed **0**. Zero is the meter's value for "perfectly centred".
+
+**This is NOT ER-DSP-10, and the two must not be merged.** That defect is the phase meter's
+`ll * rr` PRODUCT inside `correlation()`; this is the balance's `ll + rr` SUM in `publish()`. Fixing
+the product did nothing for the sum — verified, because the round-21 build reproduces this defect at
+full strength. Nor is it the Test 45 poison class: every accumulator here is finite and `sanitize()`
+never fires, which the regression asserts rather than assumes.
+
+**The fix, at the overflowing operation and nowhere else.**
+
+```cpp
+const float sum = llSlow + rrSlow;
+float bal;
+if (! std::isfinite (sum))
+{
+    const double d = (double) llSlow + (double) rrSlow;   // >= FLT_MAX here, never 0
+    bal = (float) ((double) (rrSlow - llSlow) / d);
+}
+else
+    bal = sum > 1.0e-12f ? (rrSlow - llSlow) / sum : 0.0f;
+```
+
+Only the **sum** moves to double, only when the float sum is non-finite. Two finite floats sum to at
+most ~6.8e38, nowhere near `DBL_MAX`; the quotient is then bounded by 1 in magnitude because
+`|rr − ll| ≤ rr + ll` for non-negative operands, and the existing clamp stays as the backstop. The
+float expression is untouched character for character and the double path is unreachable while the
+sum is finite.
+
+**Normal range preserved bit-for-bit, measured not asserted.** Pre- and post-fix expressions
+compared over **19,671,802** randomised finite-sum energy pairs spanning `ll`/`rr` from 1e-40 to
+1e38: **zero differing bit patterns.**
+
+**Scale invariance restored, swept across the edge itself.** At a fixed 3:1 energy ratio the true
+balance is −0.5 at every scale. The pre-fix build holds −0.5 up to `s = 8.5e37` and drops to **−0.0**
+at `s = 8.6e37`, the first point where the sum stops being finite; the fixed build holds −0.5 across
+the whole sweep. That is the defect and its repair in one measurement.
+
+**Regression: DSP Test 51, 12 checks, built on the overflow edge rather than on level.** The
+discriminator is `1.8e19 / 0.2e19`: *more* lopsided than the failing pair, sum 3.277e38 (under
+`FLT_MAX`), and correct in **both** builds — so level is demonstrably not the variable, and a fix
+that merely rejected loud audio would fail it. The defect legs assert the **value** in both
+directions, because `−0.0` is finite *and* symmetric with `+0.0`: neither "is it finite" nor "does
+swapping the channels flip the sign" would have caught this, and both of those checks pass against
+the broken build. Three normal-range controls at three distinct values kill the degenerate fixes —
+"always 0" fails the unequal legs, "always non-zero" fails the balanced leg, "always one-sided"
+fails one direction. A premise leg asserts the accumulators are healthy (a perfectly correlated
+extreme pair must still read +1, which a flushed accumulator could not), an **ER-DSP-10-intact** leg
+re-checks the phase reading at Test 50's own input, and a final leg re-asserts Test 45's poison
+contract. **2 of the 12 fail against the pre-fix build, 0 after.**
+
+**`energy` inspected again and left alone, this time by tracing its consumer rather than by
+assertion.** `llFast + rrFast` also reaches +Inf in this regime, and its only reader is
+`gui/CorrelationMeter.cpp`'s `source.getEnergy() < 6.0e-9f` silence predicate — `+Inf < 6e-9` is
+false, so the meter is correctly "not silent", the target is then the (now truthful) balance or the
+(finite) correlation, and the glide arithmetic never sees the infinity. No demonstrated defect, and
+this time the claim rests on the consumer.
+
+### The round-21 record, corrected in place
+
+Round 21 inspected this same sum and wrote that `balance = 0` "still means centred, which is what an
+equal-energy pair should read". The threshold in that note was right; the conclusion was wrong, and
+wrong in the way that matters — it holds only when the channels really ARE equal, which is the one
+case a balance meter is not for. Both copies of that note (the round-21 worklog section above and its
+`DOCUMENTATION_COVERAGE.md` entry) now carry the correction beside them, kept as written with the
+error named rather than edited away.
+
+### Carried unchanged
+
+- **D-2 / RISK-007** — deferred. This round produced no new evidence: `src/PluginProcessor.cpp` and
+  `.h` are still unchanged since round 16, and the only source touched here is a static balance
+  computation inside `publish()` with no shared state. No probe was re-run because nothing in the
+  concurrency surface moved, and no duplicate finding was filed.
+- **RISK-008** — real-host validated for REAPER; host-specific residual unverified. **No host test
+  performed**, and no production change.
+- **ER-STATE-21** FIXED · **drag recovery** REFUTED · **D-1** approved and implemented ·
+  **cross-file realtime lint** boundary unchanged (47 files, 0 violations, self-test 93).
+
 ## Round 22 — 2026-09-02 — the `docs` gate went red on a line that began with a pipe, and on a filtered preflight
 
 A CI round. **No production code changed, and none was justified.** One real documentation defect,
@@ -223,6 +341,14 @@ beyond the regime that breaks the phase reading, and at that point `energy = +In
 "playing" and `balance = 0` still means "centred", which is what an equal-energy pair should read.
 Different regime, different meter, no demonstrated defect — recorded here so a later round has the
 map rather than re-deriving it.
+
+> **Corrected by round 23 (ER-DSP-11), and the paragraph is kept as written rather than edited.**
+> The `energy` half holds: its only consumer is a `< 6e-9` silence predicate, which `+Inf` answers
+> correctly. The `balance` half was wrong, and wrong in the way that matters — "balance = 0 still
+> means centred" is true only when the channels really ARE equal, which is the one case the meter
+> is not for. For an UNEQUAL pair the overflowing sum erased the imbalance: 1.8e19/1.0e19 published
+> `-0.0` where the true figure is −0.5285. The map this paragraph offered was accurate about the
+> threshold and wrong about the consequence.
 
 ### ER-STATE-23 (re-raised) — ENTIRELY COVERED BY THE DEFERRED D-2 / RISK-007 — no production change
 

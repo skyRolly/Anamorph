@@ -4302,6 +4302,132 @@ static void testCorrelationMeterExtremeFiniteInput()
 }
 
 // ---------------------------------------------------------------------------
+// Regression for ER-DSP-11: extreme but FINITE levels erased the channel
+// imbalance. A DIFFERENT operation from Test 50's, and the two contracts are
+// kept independent on purpose. Test 50 is the phase meter's `ll * rr` PRODUCT
+// inside correlation(); this is the balance's `ll + rr` SUM in publish(), and
+// fixing the product did nothing for the sum.
+//
+// The mechanism, all of it downstream of a guard that never fires: both
+// accumulators are finite (so `sanitize` accepts them), the NUMERATOR `rr - ll`
+// cannot overflow either -- it lies in [-ll, rr] for non-negative operands, so
+// it stays finite and carries the whole imbalance -- but the float SUM leaves
+// float once it passes FLT_MAX, `+Inf` sails past the 1e-12 small-signal guard,
+// and finite/+Inf is a perfectly well-formed 0. The meter reported PERFECTLY
+// CENTRED for a badly lopsided pair.
+//
+// THE TEST IS BUILT AROUND THE OVERFLOW EDGE, not around "big numbers", because
+// only that makes it a proof of the mechanism: 1.8e19/0.2e19 is MORE lopsided
+// than 1.8e19/1.0e19 and reads correctly in BOTH builds, because its energies
+// sum to 3.277e38 and stay under FLT_MAX. Level is not the variable; the
+// overflow is.
+static void testCorrelationBalanceExtremeFiniteInput()
+{
+    std::printf ("Test 51: extreme finite levels do not erase the channel balance (ER-DSP-11)\n");
+
+    constexpr int kSettle = 400000;          // ~50 time constants of the 600 ms slow pole
+
+    struct Read { float balance, fast, energy; };
+    auto steady = [] (float l, float r) -> Read
+    {
+        anamorph::CorrelationMeter m;
+        m.prepare (48000.0);
+        for (int i = 0; i < kSettle; ++i) m.process (l, r);
+        m.publish();
+        return { m.getBalance(), m.getFast(), m.getEnergy() };
+    };
+    // The mathematical expectation, from the same inputs, in double.
+    auto expected = [] (float l, float r)
+    {
+        const double ll = (double) l * (double) l, rr = (double) r * (double) r;
+        return (rr - ll) / (rr + ll);
+    };
+
+    // ---- normal-range controls: three distinct values, so a degenerate fix dies ----
+    // "always 0" fails the unequal legs, "always non-zero" fails the balanced leg,
+    // "always one-sided" fails whichever direction it is not.
+    const Read nBal  = steady (0.5f,  0.5f);
+    const Read nLeft = steady (0.5f,  0.25f);   // L louder -> negative
+    const Read nRight= steady (0.25f, 0.5f);    // R louder -> positive
+    std::printf ("  normal: balanced %.4f | L louder %.4f | R louder %.4f\n",
+                 (double) nBal.balance, (double) nLeft.balance, (double) nRight.balance);
+    check (std::abs (nBal.balance) < 1.0e-4f, "control: balanced normal-range input reads centred");
+    check (std::abs (nLeft.balance  - (float) expected (0.5f, 0.25f)) < 1.0e-3f,
+           "control: unequal normal-range input reads its true balance (L louder)");
+    check (std::abs (nRight.balance - (float) expected (0.25f, 0.5f)) < 1.0e-3f,
+           "control: unequal normal-range input reads its true balance (R louder)");
+
+    // ---- the premise: at extreme levels the accumulators are still HEALTHY ----
+    // `sanitize` flushes a poisoned accumulator to 0, and correlation() of zeros
+    // is 0. These inputs are perfectly correlated (r = k*l), so a +1 reading is
+    // proof that nothing was flushed -- and it is also Test 50's contract still
+    // holding at this level, which this test must not disturb.
+    const Read xUneq = steady (1.8e19f, 1.0e19f);       // ll+rr = 4.236e38 -> OVERFLOWS
+    check (xUneq.fast > 0.99f,
+           "premise: the accumulators are healthy at extreme level (correlated input still reads +1)");
+    check (xUneq.energy > 0.0f, "premise: the meter is not reporting silence (sanitize never fired)");
+
+    // ---- the defect: an overflowing SUM erased the imbalance ----
+    std::printf ("  extreme unequal 1.8e19/1.0e19 -> balance %.6f (expected %.6f)\n",
+                 (double) xUneq.balance, expected (1.8e19f, 1.0e19f));
+    check (std::abs (xUneq.balance - (float) expected (1.8e19f, 1.0e19f)) < 2.0e-3f,
+           "extreme unequal channels report their TRUE balance, not centred");
+    // Not merely non-zero, and not merely finite: -0.0 is both finite and the
+    // exact wrong answer, so the value itself is the assertion above. This one
+    // refuses the degenerate "push extreme readings to an endpoint" fix.
+    check (std::abs (xUneq.balance) < 0.9f,
+           "...and is the real figure, not a clamped endpoint");
+
+    // Mirrored: the other direction is asserted on its own VALUE as well as on
+    // the symmetry, because the symmetry alone is satisfied by the defect (-0.0
+    // and +0.0 mirror each other perfectly).
+    const Read xMirror = steady (1.0e19f, 1.8e19f);
+    std::printf ("  extreme unequal 1.0e19/1.8e19 -> balance %.6f (expected %.6f)\n",
+                 (double) xMirror.balance, expected (1.0e19f, 1.8e19f));
+    check (std::abs (xMirror.balance - (float) expected (1.0e19f, 1.8e19f)) < 2.0e-3f,
+           "the R-louder extreme pair reports its TRUE balance too");
+    check (std::abs (xMirror.balance + xUneq.balance) < 1.0e-6f,
+           "swapping L and R flips the balance sign exactly");
+
+    // ---- balanced extreme input must STILL read centred ----
+    const Read xBal = steady (1.5e19f, 1.5e19f);        // ll+rr = 4.5e38 -> also OVERFLOWS
+    std::printf ("  extreme balanced 1.5e19/1.5e19 -> balance %.6f\n", (double) xBal.balance);
+    check (std::abs (xBal.balance) < 1.0e-4f, "extreme BALANCED input still reads centred");
+
+    // ---- the discriminator: MORE lopsided, but the sum does not overflow ----
+    // 1.8e19/0.2e19 sums to 3.277e38, under FLT_MAX, and read correctly even
+    // before the fix. If this leg ever changes, the fix has reached beyond the
+    // overflow it was written for.
+    const Read xSafe = steady (1.8e19f, 0.2e19f);
+    std::printf ("  extreme unequal 1.8e19/0.2e19 (sum does NOT overflow) -> balance %.6f (expected %.6f)\n",
+                 (double) xSafe.balance, expected (1.8e19f, 0.2e19f));
+    check (std::abs (xSafe.balance - (float) expected (1.8e19f, 0.2e19f)) < 2.0e-3f,
+           "a MORE lopsided pair whose sum stays finite is unchanged (level is not the variable)");
+
+    // ---- ER-DSP-10 remains intact: its own contract, asserted here too ----
+    {
+        anamorph::CorrelationMeter m;
+        m.prepare (48000.0);
+        for (int i = 0; i < 200000; ++i) m.process (1.0e10f, 1.0e10f);   // Test 50's case
+        m.publish();
+        check (m.getFast() > 0.99f && m.getSlow() > 0.99f,
+               "ER-DSP-10 intact: the phase meter still reads +1 where ll*rr overflows");
+    }
+
+    // ---- the poison contract (Test 45's) is untouched by this fix ----
+    {
+        anamorph::CorrelationMeter m;
+        m.prepare (48000.0);
+        for (int i = 0; i < 4800; ++i) m.process (0.5f, 0.25f);
+        m.process (std::numeric_limits<float>::infinity(), 0.5f);
+        m.publish();
+        const bool allFinite = std::isfinite (m.getFast()) && std::isfinite (m.getSlow())
+                            && std::isfinite (m.getBalance()) && std::isfinite (m.getEnergy());
+        check (allFinite, "a genuinely non-finite sample still self-heals (poison contract preserved)");
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Regression for ER-TST-04: the stage-1 input-conditioning block (channelMode,
 // swapLR, inputBalance, polarity) and the character parameters (chorusRate,
 // chorusDepth, dimMode) had ZERO behavioural coverage -- a swapped-channel,
@@ -4854,6 +4980,7 @@ int main (int argc, char* argv[])
     testPrepareSettlesSmoothers();
     testCorrelationMeterRecoversFromNaN();
     testCorrelationMeterExtremeFiniteInput();
+    testCorrelationBalanceExtremeFiniteInput();
     testInputConditioningAndCharacterParams();
     testRestoredModulesDoNotGlideIn();
     testResetClearsPendingForcedDuck();
