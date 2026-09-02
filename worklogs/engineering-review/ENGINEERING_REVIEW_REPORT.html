@@ -82,7 +82,7 @@ ruled out, fixed, deferred — and what should happen next. A rendered <em>view<
 <code>ENGINEERING_REVIEW_PROGRAMME.md</code> beside it; the worklog is the source of truth a later
 round reconciles against.</p>
 <div class="meta">
-  <span>ROUNDS 1–24 · 2026-08-31 → 09-02</span>
+  <span>ROUNDS 1–25 · 2026-08-31 → 09-03</span>
   <span>TREE: main @ e8f4422 → v0.9.6</span>
   <span>STATUS: last actionable Review Bug closed; D-2, RISK-008 and KI-015 remain open by decision</span>
   <span>NEXT: licence (KI-015), then tag v0.9.6</span>
@@ -574,6 +574,15 @@ evidence emerged to promote one. Ranking follows the programme's order — corre
   <li class="done">Drift sweep: CHANGELOG date, HANDOVER audition claim; history left intact</li>
   <li class="done">D-3 performed by the maintainer against the v0.9.6 build — <strong>PASSED</strong></li>
 </ul>
+<h3>Round 25</h3>
+<ul class="roadmap">
+  <li class="done">Documentation only — <code>[0.9.6]</code> release date to <strong>2026-09-03</strong>; no source, test, workflow or baseline touched</li>
+  <li class="done">ER-DSP-11 and ER-DSP-10 no longer claim the arithmetic "stays in range" — both fixes RECOVER IN DOUBLE when the overflow happens, and the phase entry named the wrong operation (the two energies' PRODUCT, not "that energy calculation")</li>
+  <li class="done">The foreign-preset entry's present-tense "both accept any file you point them at" corrected — false after round 24</li>
+  <li class="done">Intra-section contradiction found and fixed: round 17's "the stored value itself is untouched" is contradicted by round 18's Policy B entry higher in the same section, which repairs and persists <code>int_scopePersist</code></li>
+  <li class="done">Every cited test number re-checked against the tree; measured figures cross-checked against the worklog and HANDOVER; D-2, RISK-008 and KI-015 correctly absent from the Change Log</li>
+</ul>
+
 <h3>Round 24</h3>
 <ul class="roadmap">
   <li class="done">ER-STATE-24 FIXED — both preset loaders now refuse a document whose root is not <code>ANAMORPH</code>, exactly as they refuse an unparsable one</li>

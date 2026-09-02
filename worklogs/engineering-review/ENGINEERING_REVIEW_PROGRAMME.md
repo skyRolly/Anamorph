@@ -29,6 +29,37 @@ entries and CHANGELOG notes cite.
 
 ---
 
+## Round 25 — 2026-09-03 — a minimal `[0.9.6]` Change Log correction pass
+
+**Documentation only. No source, test, workflow, CMake or baseline file changed.** The release date
+moves to **2026-09-03** and four wording claims are corrected, each because the current
+implementation contradicts them.
+
+| entry | claim | why it was wrong |
+|---|---|---|
+| ER-DSP-11 (balance) | "The addition now stays in range" | the float `llSlow + rrSlow` **still overflows**; round 23 recovers the denominator in double on that overflow. Now: "When that addition does run out of range, the split is now worked out at higher precision instead" |
+| ER-DSP-10 (phase) | "that energy calculation ran out of range" | each energy stays finite; it is their **product** `ll * rr` that overflows. Now: "the two energies multiplied together ran out of range internally, though each of them on its own was still fine" |
+| ER-DSP-10 (phase) | "The calculation now stays in range" | same overstatement as ER-DSP-11's. Now: "That multiplication is now worked out at higher precision when it runs out of range" |
+| ER-STATE-24 (foreign preset) | "both accept any file you point them at" | present tense, and after round 24 they do **not** accept any file. Now: "both let you point them at any file on your machine" — true before and after, and unambiguous |
+
+**A fourth correction the audit turned up, and the only one not named in the brief.** The round-17
+Scope Persistence entry ended "the stored value itself is untouched". That was true when written and
+is now contradicted **by an entry higher in the same section**: round 18's Policy B repairs
+`int_scopePersist` during restore and persists the repaired value (`InternalState::restoreState`
+writes `repairedValue(...)` for every Setting, and that tree is what the next save emits). Corrected
+to "the stored value is repaired separately, by the Settings repair described above" — the consumer
+guard this entry is about is unchanged, only the sentence about the file.
+
+**Audited and left alone.** Every test number the section cites resolves in the current tree (DSP 43,
+44, 45, 47, 48, 49, 50, 51; State 4, 16-24, 26-34). The measured figures cross-check against the
+worklog and `HANDOVER.md` (A/B Level-Match −1.040 / −2.438 dB; the activation duck's 0.4 %; Test 48's
+0.003 of settled; Test 47's −6 dB adopted as 0.0; the round-20 fade ratios 0.17 / 0.09 / 0.29 / 0.39
+/ 0.35). The 1.3e19 and 4.3e9 thresholds are correct as stated — for the balance sum at least one
+channel must reach ~1.3e19, since two channels below it cannot sum past `FLT_MAX`. Historical
+figures were checked for contradiction, not re-measured. **D-2 / RISK-007, RISK-008 and KI-015 are
+absent from the Change Log and stay absent**: none is a fixed, user-visible change, and the section
+has no Known Issues structure that would require them.
+
 ## Round 24 — 2026-09-02 — a foreign preset was loaded as if it were ours
 
 One fix, closing the last actionable Review Bug. The finding was real, and the mechanism is one step

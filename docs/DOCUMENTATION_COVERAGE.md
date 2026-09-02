@@ -7,7 +7,7 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.6 change set** (2026-09-01, matching the CHANGELOG heading) — the
-**engineering-review programme, rounds 1 through 24**, newest last in the body: round 1 (the
+**engineering-review programme, rounds 1 through 25**, newest last in the body: round 1 (the
 programme's first sweep: six engine/state/GUI fixes with Tests 43–46 and two state regressions,
 the engaged Test 2/38 matrices, the KI-027 and RISK-007 filings, the v0.9.6 renumbering sweep, the
 NOTICE pin + AudioUnitSDK section, the CI_CD job inventory, and the new
@@ -47,7 +47,8 @@ overflow, a different operation from round 21's `ll * rr`, which published dead 
 lopsided pair — fixed, with round 21's mistaken note about it corrected in place); and **round 24**
 (a valid preset from another plug-in loaded as if it were ours — adopting what it named and
 defaulting the rest, with both loaders reporting success — closed by a root-type acceptance test
-shared by both loaders).
+shared by both loaders); and **round 25** (a minimal `[0.9.6]` Change Log correction pass — the
+release date, and five wording claims the current implementation contradicts).
 **Header correction (round 7, 2026-09-01):** this line enumerated round 1 alone while the body
 carried six later rounds, and dated the change set 2026-08-31 while the CHANGELOG `[0.9.6]` heading
 had been re-dated to 2026-09-01 — the same drift the C6 correction below was written about,
@@ -7541,3 +7542,30 @@ host-specific residual; **no host test was performed**.
 DSP suite is unchanged at **50 tests + the A/B clamp guard / 282 checks**. The `[0.9.6]` Fixed count
 is **30**. Measured, not inferred: `AnamorphStateTests` prints `1460 checks, 0 failure(s)` and
 `AnamorphTests` prints `282 checks, 0 failures`. [Verified]
+
+## Engineering-review programme, round 25 — a minimal `[0.9.6]` Change Log correction (2026-09-03)
+
+**Documentation only; no source, test, workflow, CMake or baseline file changed.** Records:
+`worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Round 25.
+
+The `[0.9.6]` release date moves to **2026-09-03**, and four claims are corrected because the current
+implementation contradicts them: ER-DSP-11's "the addition now stays in range" and ER-DSP-10's "the
+calculation now stays in range" both described the fixes as preventing an overflow when what they
+actually do is **recover in double when the overflow happens**; ER-DSP-10's "that energy calculation
+ran out of range" named the wrong operation (each energy stays finite — it is their **product** that
+overflows); and the foreign-preset entry's "both accept any file you point them at" was present-tense
+and false after round 24.
+
+**A fifth correction the audit turned up, and an intra-section contradiction rather than a drift.**
+The round-17 Scope Persistence entry ended "the stored value itself is untouched" — true when
+written, and contradicted by round 18's Policy B entry *higher in the same section*, which repairs
+`int_scopePersist` on restore and persists the repaired value. Corrected to point at that repair.
+The consumer-side guard the entry is about is unchanged.
+
+**Audited and left alone:** every test number the section cites resolves in the current tree, and the
+measured figures cross-check against the worklog and `HANDOVER.md`. Historical figures were checked
+for contradiction, not re-measured. D-2 / RISK-007, RISK-008 and KI-015 remain absent from the
+Change Log — none is a fixed user-visible change, and the section carries no Known Issues structure.
+
+**Counts.** Unchanged: DSP 50 tests + the A/B clamp guard / 282 checks, state 33 tests / 1460 checks,
+`[0.9.6]` Fixed count 30. [Verified]

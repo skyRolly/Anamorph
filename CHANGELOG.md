@@ -13,14 +13,14 @@ Source. Until then every entry cites a commit SHA or a PR. Entries for the
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
-## [0.9.6] — 2026-09-01
+## [0.9.6] — 2026-09-03
 ### Fixed
 - **Loading a preset that is not an Anamorph preset no longer wipes your sound.** "Load Preset…"
-  and the preset menu both accept any file you point them at. If that file was a valid XML preset
-  from *another* plug-in, it was treated as one of ours: any parameter whose name happened to match
-  took the other plug-in's value, every parameter it did not mention was reset to its default, and
-  the load reported success — so a foreign preset silently replaced the sound you were working on,
-  and the only way back was Undo. A preset file now has to actually be an Anamorph preset. Anything
+  and the preset menu both let you point them at any file on your machine. If that file was a valid
+  XML preset from *another* plug-in, it was treated as one of ours: any parameter whose name
+  happened to match took the other plug-in's value, every parameter it did not mention was reset to
+  its default, and the load reported success — so a foreign preset silently replaced the sound you
+  were working on, and the only way back was Undo. A preset file now has to actually be an Anamorph preset. Anything
   else is refused before it can touch anything: the sound, the preset name and the menu tick all
   stay exactly as they were, the same way a corrupted file has always been refused. Loading real
   Anamorph presets is unchanged, including older ones that do not carry every parameter — those
@@ -35,10 +35,11 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Each channel's own energy was still fine and the difference between them was still fine; only
   their **sum** was not, and dividing by it collapsed the reading to **0 — dead centre** — for a
   signal that was in fact heavily weighted to one side. Nothing sounded different; only the meter
-  lied, and it lied in the most misleading direction. The addition now stays in range, so the meter
-  reports the real split at any level, and a genuinely centred signal still reads centred. Every
-  reading at ordinary levels is bit-for-bit identical to before, and the phase-correlation display
-  and the existing recovery from genuinely invalid audio are both unchanged. Regression coverage:
+  lied, and it lied in the most misleading direction. When that addition does run out of range, the
+  split is now worked out at higher precision instead, so the meter reports the real split at any
+  level, and a genuinely centred signal still reads centred. Every reading at ordinary levels is
+  bit-for-bit identical to before, and the phase-correlation display and the existing recovery from
+  genuinely invalid audio are both unchanged. Regression coverage:
   DSP test 51.
   Evidence: PR #134. [Verified]
 - **Extremely loud but still-valid audio no longer makes the phase meter read the wrong thing.**
@@ -46,13 +47,14 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   unrelated channels, −1 for anti-phase. It works from the running energy of each channel, and
   above roughly 4.3 billion in sample value — far above anything you would mix, but ordinary
   numbers as far as the plug-in is concerned, and reachable when Bypass is passing a broken upstream
-  signal through untouched — that energy calculation ran out of range internally. The reading then
-  collapsed to **0, "unrelated"** — for a signal that was in fact perfectly mono — and an anti-phase
-  signal read 0 instead of −1. Nothing sounded different; only the meter lied, and it lied in the
-  most misleading direction. The calculation now stays in range, so the meter reads the same value
-  at any level, which is what a correlation display is supposed to do. Every reading at ordinary
-  levels is bit-for-bit identical to before, and the existing recovery from genuinely invalid audio
-  is unchanged. Regression coverage: DSP test 50.
+  signal through untouched — the two energies multiplied together ran out of range internally,
+  though each of them on its own was still fine. The reading then collapsed to **0, "unrelated"** —
+  for a signal that was in fact perfectly mono — and an anti-phase signal read 0 instead of −1.
+  Nothing sounded different; only the meter lied, and it lied in the
+  most misleading direction. That multiplication is now worked out at higher precision when it runs
+  out of range, so the meter reads the same value at any level, which is what a correlation display
+  is supposed to do. Every reading at ordinary levels is bit-for-bit identical to before, and the
+  existing recovery from genuinely invalid audio is unchanged. Regression coverage: DSP test 50.
   Evidence: PR #134. [Verified]
 - **A project no longer fades into its own effects when it opens.** Haas, Velvet Noise, Chorus /
   Dimension-D and the Mono Maker crossover each glide their settings rather than jumping, so that
@@ -99,7 +101,8 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   them is written in a way that a not-a-number slips straight through, and opening the Settings
   panel did not repair either. The vectorscope now falls back to its default afterglow for any such
   value, exactly as the meters already do for a damaged audio sample. Ordinary projects are
-  unaffected, and the stored value itself is untouched. Regression coverage: State test 32.
+  unaffected; the stored value is repaired separately, by the Settings repair described above.
+  Regression coverage: State test 32.
   Evidence: PR #134. [Verified]
 - **Opening a project that has no A/B data no longer carries the previous project's Level Match
   amount into the first A/B switch.** The amount Level Match had settled on is remembered per A/B
