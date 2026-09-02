@@ -10,7 +10,7 @@ Field-level ledger of everything written to session state. Companion to
 > is handled (a default), so older sessions still load.
 
 Evidence [Verified]: backward-compat paths at src/PluginProcessor.cpp:962-965 (pre-0.8.4 `migrateFromLegacyApvts`), :652-693 (pre-0.6.4 `readSlot`), :700-705 (v0.2 bare APVTS);
-src/InternalState.h:182-271.
+src/InternalState.h:197-286.
 
 ## `AnamorphRoot` properties
 
@@ -33,7 +33,7 @@ unconditionally, and only `setStateInformation` (which can see `hasProperty`) re
 Source: src/PresetManager.h:103-108 (`defaultName`); src/PresetManager.cpp:365-376
 (`adoptRestoredState`).
 
-**A malformed legacy Setting resolves to a valid setting, deterministically** (2026-09-01, ER-STATE-17). Pre-0.8.4 sessions carry Oversampling, UI Scale and Scope Persistence as APVTS `PARAM`s that `InternalState::migrateFromLegacyApvts` converts. Each value now passes the same usability predicate as the session and preset paths (`SerializedNumber.h`: plain decimal text, finite after float narrowing) — anything else means the field's **default**, exactly as an absent node does — and the choice indices are clamped into the ComboBox domain (`oversample` ids 1..4, `uiScale` 1..5; `scopePersist` to 0..1) in double **before** the integer conversion, so that conversion is defined for every input and the `+ 1` cannot overflow. Before this the value went straight into `(int)`, which is undefined for NaN, ±inf and out-of-range doubles, and JUCE's parser accepts "nan"/"inf": measured on x86-64 every such value became −2147483647 in the tree and was written back out on the next save; "2147483647" wrapped to INT_MIN through a second UB; AArch64 saturated the same inputs differently. Valid legacy values convert exactly as before (State tests 5 and 6 unchanged); State test 28 pins 88 synthetic cases over both legacy shapes, plus 36 on the real frozen pre-0.8.4 fixture mutated in place with its surrounding session asserted intact (round 13). Source: src/InternalState.h:219-264.
+**A malformed legacy Setting resolves to a valid setting, deterministically** (2026-09-01, ER-STATE-17). Pre-0.8.4 sessions carry Oversampling, UI Scale and Scope Persistence as APVTS `PARAM`s that `InternalState::migrateFromLegacyApvts` converts. Each value now passes the same usability predicate as the session and preset paths (`SerializedNumber.h`: plain decimal text, finite after float narrowing) — anything else means the field's **default**, exactly as an absent node does — and the choice indices are clamped into the ComboBox domain (`oversample` ids 1..4, `uiScale` 1..5; `scopePersist` to 0..1) in double **before** the integer conversion, so that conversion is defined for every input and the `+ 1` cannot overflow. Before this the value went straight into `(int)`, which is undefined for NaN, ±inf and out-of-range doubles, and JUCE's parser accepts "nan"/"inf": measured on x86-64 every such value became −2147483647 in the tree and was written back out on the next save; "2147483647" wrapped to INT_MIN through a second UB; AArch64 saturated the same inputs differently. Valid legacy values convert exactly as before (State tests 5 and 6 unchanged); State test 28 pins 88 synthetic cases over both legacy shapes, plus 36 on the real frozen pre-0.8.4 fixture mutated in place with its surrounding session asserted intact (round 13). Source: src/InternalState.h:234-279.
 
 **A recognised root with no sound child is not a restore either** (2026-09-01, ER-STATE-15). An
 `AnamorphRoot` whose `ANAMORPH` child is absent restores no parameter at all, so `setStateInformation`
@@ -141,7 +141,7 @@ loop wrote unconditionally (`--partial-settings-probe`): a modern session omitti
 inherited the previous project's value in **6 cases out of 6**, while the pre-0.8.4/v0.2 path —
 `migrateFromLegacyApvts`, which has always written all six — inherited in **0**. A session that
 carries the field is unaffected. State test 29 pins all four cases (omitted, explicitly present,
-legacy, malformed). Source: src/InternalState.h:177-213.
+legacy, malformed). Source: src/InternalState.h:192-228.
 
 **‡** Sessions saved **before** 0.8.4 have no `ANAMORPH_INTERNAL` child; these values are
 recovered from the legacy APVTS PARAM nodes by `migrateFromLegacyApvts` (choice indices are
@@ -170,9 +170,9 @@ an ABSENT field keeps taking its documented default, which is a separate rule an
 | `int_oversample` | preserved | clamp to the nearest id in 1..4 | default `1` |
 | `int_uiScale` | preserved | clamp to the nearest id in 1..5 | default `3` |
 | `int_scopePersist` | preserved | clamp into 0..1 | default `0.5` |
-| `int_metersOn` | preserved | non-zero is `true` | default `false` |
-| `int_tooltipsOn` | preserved | non-zero is `true` | default `false` |
-| `int_uiAnimations` | preserved | non-zero is `true` | default `true` |
+| `int_metersOn` | preserved | default `false` † | default `false` |
+| `int_tooltipsOn` | preserved | default `false` † | default `false` |
+| `int_uiAnimations` | preserved | default `true` † | default `true` |
 
 "Usable as a number" is the repository's existing predicate (`SerializedNumber.h`), the same one the
 legacy migration asks — one copy, shared, rather than the two that had drifted apart before. A
@@ -181,10 +181,24 @@ every input reaching it (the discipline ER-STATE-17 established for the same `[c
 and a fractional id resolves by truncation after the clamp, which is what the ComboBox already did
 with it. **No schema change and no property renamed** — only the value a damaged file resolves to,
 and the fact that the resolution is now durable instead of re-decided on every load. Measured across
-30 cases: 22 invalid values repaired and persisted, 8 valid values preserved unchanged (State test
-33; 62 checks fail against the pre-policy build).
+39 cases: 29 invalid values repaired and persisted, 10 valid values preserved unchanged (State test
+33; **83 of its checks fail against the pre-policy build** — re-measured at the 39-case size after
+round 20 extended it; the figure at its original 30-case size was 62).
 
-0-based legacy → 1-based ComboBox). Evidence [Verified]: src/InternalState.h:220-271;
+**†** A boolean's domain is `{0, 1}` and nothing else — corrected 2026-09-02, round 20, ER-STATE-22.
+The first implementation of this policy resolved a boolean as `v != 0.0`, which is the C coercion,
+not a domain: `-1`, `-2` and `7` are all outside the two spellings this plug-in's own writer emits
+(`juce::var(bool)` reaches XML as "0" or "1"), yet each of them SWITCHED THE SETTING ON, and the
+policy then persisted that as a genuine `true`. The asymmetry is what gives the rule away: `0` was
+the only value in the whole real line that could not turn a setting on. A value outside `{0, 1}` is
+damage exactly as an out-of-domain ComboBox id is, and the policy's own words — a present-but-
+invalid value is repaired to a deterministic valid value — resolve it to the field's documented
+default, which is also what an ABSENT field resolves to. Booleans are the one Kind with no
+"nearest valid value" to clamp toward, so the default is the whole finite-out-of-domain rule for
+them; the ComboBox and unit-range fields keep their clamps unchanged. Nine cases were added to
+State test 33 for this (30 → 39); **12 of its checks fail against the `v != 0.0` build.**
+
+0-based legacy → 1-based ComboBox). Evidence [Verified]: src/InternalState.h:235-286;
 [Partially Verified] introduced-0.8.4: CHANGELOG.md [0.8.4].
 
 ## `AB` child

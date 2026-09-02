@@ -15,6 +15,29 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 
 ## [0.9.6] — 2026-09-01
 ### Fixed
+- **A project no longer fades into its own effects when it opens.** Haas, Velvet Noise, Chorus /
+  Dimension-D and the Mono Maker crossover each glide their settings rather than jumping, so that
+  moving a control while the music plays never clicks. On a project *opening*, that glide was
+  starting from the wrong place: the effects were told the project's settings only after they had
+  already been set up, so the first fraction of a second played the previous settings sliding into
+  the saved ones instead of the saved ones outright. Measured over the first block against the
+  settled sound, the effects opened at 0.17 (Haas), 0.09 (Velvet Noise), 0.29 (Chorus), 0.39
+  (Dimension-D) and 0.35 (Mono Maker crossover) of where the project said they should be, arriving
+  over roughly the next 10–100 ms. Each of them now opens already at the saved setting. Moving a
+  control while playing still glides exactly as before — only the moment a project opens changed.
+  Regression coverage: DSP test 49, which includes a control proving live moves still glide.
+  Evidence: PR #134. [Verified]
+- **A damaged on/off Setting in a project file can no longer switch a feature on that the project
+  never asked for.** Three Settings are simple on/off switches (Show Meters, Tooltips, UI
+  Animations) and are written to the project as `0` or `1`. When the Settings repair described in
+  the next entry met a damaged value that still read as a number — `-1`, `-2`, `7` — it treated
+  anything other than zero as "on", so a corrupted file could turn a feature on, and the repair
+  then wrote that back as a genuine `1`. Only an exact `0` or `1` is now accepted; anything else
+  is damage and takes that switch's documented default (Show Meters off, Tooltips off, UI
+  Animations on), which is the same value the project would get if it did not carry the setting at
+  all. Valid `0`/`1` values are
+  preserved exactly as before. Regression coverage: State test 33.
+  Evidence: PR #134. [Verified]
 - **A damaged Settings value in a project file is now repaired when the project opens, and the
   repaired value is what gets saved.** The six Settings (Oversampling, UI Scale, Scope Persistence,
   Show Meters, Tooltips, UI Animations) are stored with the project. If one was damaged — hand-edited,
@@ -27,17 +50,6 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   carrying the damage forward. Projects with valid settings are unaffected, and a project that simply
   does not carry a setting still gets that setting's default exactly as before. Regression coverage:
   State test 33.
-  Evidence: PR #134. [Verified]
-- **A damaged Scope Persistence value in a project file can no longer put the vectorscope's afterglow
-  into an undefined state.** The Settings panel's Scope Persistence is stored with the project as a
-  number from 0 to 1. A project whose stored value was damaged (hand-edited, or corrupted in
-  transit) to `nan`, or to any *negative* number, produced a not-a-number afterglow length inside
-  the vectorscope: negative values became one on the way in, because the display curve raises the
-  stored value to a fractional power. Neither was caught, because the clamp that should have caught
-  them is written in a way that a not-a-number slips straight through, and opening the Settings
-  panel did not repair either. The vectorscope now falls back to its default afterglow for any such
-  value, exactly as the meters already do for a damaged audio sample. Ordinary projects are
-  unaffected, and the stored value itself is untouched. Regression coverage: State test 32.
   Evidence: PR #134. [Verified]
 - **A damaged Scope Persistence value in a project file can no longer put the vectorscope's afterglow
   into an undefined state.** The Settings panel's Scope Persistence is stored with the project as a

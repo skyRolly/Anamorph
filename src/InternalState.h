@@ -130,7 +130,22 @@ public:
         {
             case Kind::comboId:   return juce::var ((int) juce::jlimit (1.0, (double) s.choiceCount, v));
             case Kind::unitRange: return juce::var (juce::jlimit (0.0, 1.0, v));
-            case Kind::boolean:   return juce::var (v != 0.0);
+            // A boolean has exactly TWO valid serialized spellings, and they are the
+            // two this plug-in's own writer emits: `juce::var(bool)` reaches XML as
+            // "0" or "1". Anything else that happens to parse as a number is a
+            // MALFORMED value, not a truthy one, and takes the documented default --
+            // which is what the approved policy means by "do not allow arbitrary
+            // malformed numeric coercion to define durable state" (ER-STATE-22,
+            // round 20). Before this, the rule was `v != 0.0`, so a corrupted "-1"
+            // or "-2" silently ENABLED a setting the file never asked for, and the
+            // repair then persisted that as a real `true`. Note the asymmetry it
+            // produced: "0" is the only value that could not turn a setting on.
+            // `exactlyEqual` rather than `==`: the comparison IS the intent here
+            // (the domain is two exact values), and it is how this repository
+            // states that without widening the -Wfloat-equal gate.
+            case Kind::boolean:   if (juce::exactlyEqual (v, 0.0)) return juce::var (false);
+                                  if (juce::exactlyEqual (v, 1.0)) return juce::var (true);
+                                  return s.defaultValue;
         }
         return s.defaultValue;
     }

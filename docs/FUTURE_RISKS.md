@@ -121,7 +121,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   for — the **instance count on a named machine** — because instruction counts cannot answer it and a
   shared runner is not a wall-clock datum. **This risk therefore stays open**, and the audit says so
   in its own §4.5 rather than claiming otherwise.
-- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:1310 (`soloMonitor.process`, always-on); src/dsp/MultibandWidth.cpp (glide + fade paths);
+- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:1333 (`soloMonitor.process`, always-on); src/dsp/MultibandWidth.cpp (glide + fade paths);
   Devin PR #50 review (efficiency note); `docs/architecture/PERFORMANCE_BUDGET.md` (TODOs);
   `worklogs/performance/PERF_AUDIT_v0.9.4_INVESTIGATION.md` §3.1, §4.5.
 - **Mitigation:** Formal profiling (PERFORMANCE_BUDGET numeric budgets remain TODO — the harness and
@@ -267,6 +267,24 @@ mitigation. Do not invent risks to fill the template.
   before, silence after). The state-call tail this entry tracks is unchanged and still gated on
   D-2; an off-message-thread prepare against an OPEN editor's reads of engine state is this
   entry's exposure and is covered by it, not by round 15.
+- **Round 20 (2026-09-02, ER-STATE-23): re-raised, measured, and found to be entirely this entry —
+  no new bug, and no production change.** The finding was that the D-1 latency atomics "do not
+  synchronize concurrent restore, prepare, A/B, preset, or engine state". They do not, and were
+  never meant to: `latencyUpdateRequest` carries the latency REQUEST and nothing else, so reading
+  it as a general state barrier is a category error rather than a defect. The question worth
+  answering is what the underlying states actually do, and it splits three ways. **The restore /
+  A/B / preset tail is exactly what this entry already records** — the same four TSan reports, on
+  the same members, gated on the same D-2 decision. **The ENGINE's plain state does not race at
+  all**: `setStateInformation` never writes it, the A/B and preset paths reach the engine only
+  through atomics (`injectMatchGainDb`, `requestDuck`), and the two writers that remain —
+  `prepareToPlay` and `processBlock` — are mutually excluded by the host contract on VST3 and by
+  JUCE's own AU callback lock. **The one pairing D-2's recorded scope does not name** — restore on
+  one host thread, `prepareToPlay` on another, editor tick reading — was measured for this round
+  with a new probe (`AnamorphStateTests --state-prepare-race-probe` under TSan, three threads):
+  **the same four reports and no new ones.** Recorded as covered by the deferred D-2 decision.
+  Nothing was added to suppress the report — no mutex, no `callAsync`, no `AsyncUpdater`, no
+  state-architecture redesign — because doing so would pre-empt D-2, which is the maintainer's
+  call, and would silence the very evidence D-2 is waiting on.
 
 ## RISK-008 — A Linux VST3 host that provides its run loop only through `IPlugFrame` starves the plug-in's message queue while the editor is closed
 - **Risk:** the pinned JUCE Linux VST3 wrapper services the plug-in's JUCE messages — every

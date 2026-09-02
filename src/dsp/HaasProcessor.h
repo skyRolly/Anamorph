@@ -23,6 +23,14 @@ public:
     void setSide (bool right) noexcept  { delayRight = right; }
     void setAmount (float a) noexcept   { amount = a; } // 0 = identity (dry)
 
+    // Land every smoothed value on its target with no glide. Called by the engine
+    // at the END of prepare(), once the restored snapshot has been pushed in --
+    // this module's own prepare() snaps too, but it necessarily runs BEFORE those
+    // targets exist, so on a restored session it snapped to the previous values
+    // (ER-DSP-09, round 20). NOT called from reset(): a duck-bottom reset keeps
+    // its existing behaviour, and live edits keep smoothing normally.
+    void snapToTargets() noexcept { currentSamples = targetSamples; currentAmount = amount; }
+
     void processBlock (float* left, float* right, int numSamples) noexcept;
 
 private:

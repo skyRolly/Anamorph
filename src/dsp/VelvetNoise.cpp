@@ -33,8 +33,7 @@ void VelvetNoise::prepare (double sampleRate, int maxBlockSize, unsigned seed)
         sign[(size_t) m] = (uni (rng) < 0.5f) ? -1.0f : 1.0f;
     }
 
-    currentDensity = targetDensity;
-    currentAmount  = targetAmount;
+    snapToTargets();
     // Presence follower (fast attack, slow release) -> drives the gate's on/off.
     // Reverted to the previous, gentler timings: the faster gate tried last round
     // fluttered during decays and made the pause burst worse, not better (#5).

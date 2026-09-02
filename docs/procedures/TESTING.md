@@ -15,7 +15,7 @@ exits non-zero on any failed `check` or missing binary. Evidence [Verified]: scr
 
 ### What the tests cover
 
-`tests/dsp_tests.cpp` has **47 DSP tests** using a `check(cond, "what")` harness, covering: MS
+`tests/dsp_tests.cpp` has **48 DSP tests** using a `check(cond, "what")` harness, covering: MS
 round-trip (bit-exact), transparent default, true-bypass null + latency match, Mono Maker
 (post-Mix), Multiband mono-compat, Solo band selectivity + transparency, Level Match
 (unity/no-ratchet/silence-freeze/mix-coupling/multiband-unity), crossover automation safety,
@@ -177,6 +177,30 @@ removed, so the 50 % bound sits between two measured populations); and both defe
 seeded and caught -- a wrong slide fails at sample 32, a missing invalidation at the stop block.
 `worklogs/performance/PERF_AUDIT_v0.9.5_IMPLEMENTATION.md` §2.2.
 
+The newest DSP test is the **restored-session settling guard**
+(`testRestoredModulesDoNotGlideIn`, Test 49, ER-DSP-09, round 20). It pins the contract that
+`AnamorphEngine::prepare` now states: a restored non-default session must OPEN in its own sound, not
+glide into it over the first 10-100 ms. Each subject is compared against a REFERENCE of the same
+module settled on the same targets, so the assertion is "these two are the same signal" rather than
+a level threshold — the subject is exact (a snap assigns the target), and the whole residual belongs
+to the reference, whose settled-by-silence legs approach their targets asymptotically at ~1e-8 after
+200 blocks. The 1e-5 bound therefore sits four orders above the reference's own noise and four
+orders below the defect, which moves the first block by ~0.2 of full scale. **Eleven checks**: a leg
+per module (Haas, Velvet, Mono Maker, Chorus), each with a non-vacuity check that the module really
+acts on the input so an "identical" verdict cannot be identical silence; an ENGINE leg; and a
+live-smoothing control.
+
+**The engine leg is the one that discriminates, and it exists because the first version of this test
+did not.** The four module legs call `snapToTargets()` themselves, so they pass whether or not
+`AnamorphEngine::prepare` calls it — verified by deleting the engine's four calls and watching the
+test stay green. The engine leg drives the real `prepare` → `setParameters` → `process` path and
+fails without them. It uses the **Mono Maker** deliberately: it is the one affected module with no
+delay line, so a fresh instance's empty history cannot be mistaken for the glide the test is about
+(and it is an ADVANCED-mode control, so the leg enables advanced mode or `toEngine` never maps it).
+The **live-smoothing control** is the counterpart requirement from the same round: a parameter moved
+AFTER prepare must still glide, so it asserts the first block after the move is *audibly different*
+from the settled result — a fix that simply disabled smoothing fails it.
+
 The suite
 additionally carries **one state-restoration robustness guard**,
 `testAbActiveClampOnCorruptState` — it drives a corrupted `<AB active="…">` blob through the same
@@ -314,14 +338,26 @@ constructs the real editor and reads the persistence back off the scope componen
 fail without the guard, 0 with it.**
 
 **Round 18 implemented the maintainer's answer to the contract question** — Policy B, repair during
-restore and persist the repaired value. **State test 33** is that policy's contract: thirty cases
-across all six settings and every malformed class (out-of-domain, fractional id, non-numeric text,
+restore and persist the repaired value. **State test 33** is that policy's contract: thirty-nine
+cases across all six settings and every malformed class (out-of-domain, fractional id, non-numeric text,
 `nan`, `inf`, `1e39`, boolean-shaped junk), each asserted three ways — the live value is the repaired
 one, the malformed text is GONE from the next save, and reloading that save reads the same value
-back. **Eight of the thirty are valid-value controls**, which is what stops a fix that merely resets
-everything to defaults from passing, and a final leg pins ABSENT as a separate rule that still takes
-the documented default (ER-STATE-18). **62 checks fail against the pre-policy build, 0 after.** The
+back. **Ten of the thirty-nine are valid-value controls**, which is what stops a fix that merely
+resets everything to defaults from passing, and a final leg pins ABSENT as a separate rule that still takes
+the documented default (ER-STATE-18). **83 checks fail against the pre-policy build, 0 after.** The
 probe above now shows the repaired behaviour rather than the verbatim one.
+
+**Round 20 took it from thirty to thirty-nine cases, for the half of the policy the first
+implementation got wrong** (ER-STATE-22). Policy B was implemented with `v != 0.0` for the three
+boolean settings — the C coercion rather than the field's domain — so a corrupted `-1`, `-2`, `2`
+or `0.5` SWITCHED THE SETTING ON and the repair then persisted that as a genuine `true`; `0` was the
+only value on the whole real line that could not. Nine cases were added (`-1`, `-2`, `0.5` and `2`
+across the boolean fields) and **one existing case's expectation was corrected**: `int_metersOn` =
+`"2"` was written down as resolving to `true`, which is the defect stated as an expectation rather
+than caught. The boolean rows now carry **six** of the ten valid-value controls — including
+`int_uiAnimations` = `"0"`, so that a fix which simply forced every boolean to its default cannot
+pass. **12 of the suite's checks fail against the `v != 0.0` build**, and they are the whole delta:
+nothing outside the boolean rows moves.
 
 `AnamorphStateTests --risk008-probe` is the ninth opt-in instrument and is **synthetic by
 construction, labelled as such in its own output**. It answers what a pending D-1 latency request
@@ -351,6 +387,30 @@ the state-isolation contract stated directly and cancels the matcher's feed-forw
 exactly. It also performs the host's ordinary post-restore activation, without which the reused
 instance's leftover audio in its delay lines flushes through and moves the reading 0.052 dB —
 engine history rather than A/B state.
+
+`AnamorphStateTests --restore-fade-probe` is the tenth opt-in instrument and, like
+`--modern-settings-probe`, **measures and asserts nothing**. It drives the ordinary host order —
+restore a non-default session into a fresh instance, THEN activate — and prints each module's
+per-block deviation from the input over twelve blocks, so a module that opens at its restored target
+reads the same in block 1 as in block 12. It is the magnitude behind ER-DSP-09 in the product's own
+terms. **Its ratio deliberately does not separate two causes**, and the probe says so in its own
+header: a smoother gliding from the wrong start (the defect) and empty delay-line / filter history
+filling up (not a defect — `prepare` clears that history by contract, and Haas's own 28 ms line is
+longer than the block the first point covers). So the ratio RISES when the fix lands without
+reaching 1.0 — measured block1/block12 before → after: Haas 0.17 → 0.72, Velvet 0.09 → 0.18,
+Chorus 0.29 → 0.68, Dimension-D 0.39 → 0.90, Mono Maker 0.35 → 0.58 — and a ratio below 1.0 here
+is not by itself evidence of a defect. **DSP Test 49 is the discriminating instrument**, because its
+reference cancels the history term exactly.
+
+`AnamorphStateTests --state-prepare-race-probe` is the eleventh, and the third TSan probe the suite
+never runs (`--state-thread-probe` and `--reprepare-race-probe` are the others; if the race is real
+the probe's own execution is undefined behaviour, which is why it is opt-in). It answers the one
+thread pairing D-2's recorded scope does not mention: a host calling `setStateInformation` on one
+thread and `prepareToPlay` on another while the editor tick reads. **The verdict is the REPORT SET**,
+compared against the four `--state-thread-probe` already measures — `abActive`, the `abUndo` vector
+twice, and a `juce::String` refcount exchange. Measured round 20: the same four reports and no
+others, which is what classified ER-STATE-23 as already covered by D-2 rather than a new bug
+(`docs/FUTURE_RISKS.md` RISK-007).
 
 `tests/state_tests.cpp` (**33 tests**, own console target `AnamorphStateTests`) automates the
 COMPATIBILITY policy family against the **real `AnamorphAudioProcessor`** (the target compiles

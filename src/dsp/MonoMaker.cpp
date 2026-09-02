@@ -9,12 +9,17 @@ void MonoMaker::prepare (double sampleRate, int maxBlock)
     sr = sampleRate;
     juce::ignoreUnused (maxBlock); // LR4Xover state is flat, not block-sized
     xover.prepare (sampleRate);
-    currentFreq = targetFreq;
-    xover.setCutoffFrequency (currentFreq);
+    snapToTargets();
     // Per-sample multiplicative slew cap (~8 octaves/sec): a fast Freq drag can no
     // longer sweep the IIR quickly enough to chirp / pitch-shift (feedback #9).
     glideCoeff = std::exp2 (8.0f / (float) sr);
     reset();
+}
+
+void MonoMaker::snapToTargets() noexcept
+{
+    currentFreq = targetFreq;
+    xover.setCutoffFrequency (currentFreq);
 }
 
 void MonoMaker::reset()

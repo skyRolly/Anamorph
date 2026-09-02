@@ -33,7 +33,7 @@ allpass ripple cancels. "Apply" locks the measured gain into Output Gain as a fi
 
 ## Related code
 - `src/dsp/LoudnessMatch.cpp:15-43` (K-weighting), `:74-95` (predict), `:131-156` (measure/hold)
-- `src/dsp/AnamorphEngine.cpp:824-857` (A(dry) ref + silence-edge snap)
+- `src/dsp/AnamorphEngine.cpp:847-880` (A(dry) ref + silence-edge snap)
 - `src/PluginProcessor.cpp:256-278` (`applyAutoGain`)
 
 Evidence [Verified]:

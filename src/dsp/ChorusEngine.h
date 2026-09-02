@@ -32,6 +32,15 @@ public:
     void prepare (double maxWorkingRate);
     void reset();
 
+    // See HaasProcessor::snapToTargets -- same contract, same reason (ER-DSP-09).
+    // Two-part, because the two smoothed values are not both knowable here: the
+    // wet blend's target IS `amount`, so it snaps immediately; the modulation
+    // depth's target is expressed in SAMPLES at the working rate, and the working
+    // rate is handed in per block (setWorkingRate) rather than at prepare, so the
+    // snap is deferred one step and consumed by the next processBlock -- which is
+    // the only place that expression exists, so it stays in one place.
+    void snapToTargets() noexcept { currentWet = amount; snapDepthPending = true; }
+
     void setWorkingRate (double sr) noexcept { workingRate = sr; }
     void setVoice (Voice v) noexcept         { voice = v; }
     void setRate (float hz) noexcept          { rateHz = hz; }
@@ -62,6 +71,7 @@ private:
     float  phase = 0.0f;        // 0..1 LFO phase
     float  currentWet = 0.0f;   // smoothed wet blend (click-free)
     float  currentDepth = 0.0f; // smoothed modulation depth (samples)
+    bool   snapDepthPending = false; // snapToTargets() asked for a depth snap (ER-DSP-09)
 };
 
 } // namespace anamorph

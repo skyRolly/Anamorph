@@ -124,6 +124,29 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
     // (the same treatment the continuous set was missing). matchGainSmooth is
     // deliberately excluded by snapSmoothers (its own glide/injection).
     snapSmoothers();
+
+    // ...and the same treatment for the MODULES' own internal smoothers, which
+    // snapSmoothers does not reach (ER-DSP-09, round 20). Each of these modules
+    // already snaps in its OWN prepare() -- but that necessarily ran further up
+    // this function, BEFORE updateDerived() pushed the restored snapshot in, so it
+    // snapped to whatever targets existed beforehand: a fresh instance's defaults,
+    // or the previous session's on a reused one. reset() above then re-zeroed the
+    // chorus blend outright. The result was that a restored non-default session
+    // GLIDED into its own sound over the first ~10-100 ms instead of opening in
+    // it. Measured before this line existed (--restore-fade-probe, first block vs
+    // the twelfth): Haas 0.17, Velvet 0.09, Chorus 0.29, Dimension-D 0.39 and the
+    // Mono Maker crossover 0.35 of their settled values.
+    //
+    // Placed HERE, not inside reset() and not inside snapSmoothers(): reset() also
+    // runs at the silent bottom of a switch duck and on the NaN self-heal, and
+    // snapSmoothers() is called from that duck path too (see the switch handler),
+    // so folding this in would change how live edits settle. prepare() is the one
+    // moment where snapping is unambiguously right -- all delay and filter state
+    // has just been cleared, so there is nothing for a glide to protect.
+    haas.snapToTargets();
+    velvet.snapToTargets();
+    chorus.snapToTargets();
+    monoMaker.snapToTargets();
 }
 
 void AnamorphEngine::reset()

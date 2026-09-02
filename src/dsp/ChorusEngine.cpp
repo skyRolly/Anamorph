@@ -66,6 +66,16 @@ void ChorusEngine::processBlock (float* left, float* right, int numSamples) noex
     // amount 0 == identity for BOTH voices (spec feedback #3).
     const float wetTarget = amount;
 
+    // A prepare-time snap that could not be completed until the working rate was
+    // known (ER-DSP-09): land the depth on its target before any smoothing runs,
+    // so a restored session's modulation starts at its stored depth instead of
+    // ramping up from zero. One-shot; ordinary blocks never take it.
+    if (snapDepthPending)
+    {
+        currentDepth = depthSampsTarget;
+        snapDepthPending = false;
+    }
+
     // Smooth wet + depth per-sample so changing Amount/Depth/Mode never clicks.
     const float wSmooth = 1.0f / (float) std::max (1.0, 0.01 * workingRate); // ~10 ms
 

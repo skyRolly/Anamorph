@@ -29,6 +29,130 @@ entries and CHANGELOG notes cite.
 
 ---
 
+## Round 20 — 2026-09-02 — a restored session stops fading in; a malformed boolean stops switching things on
+
+Two fixes and one disposition. Both fixes are at the source of the defect, not at the point where it
+becomes visible.
+
+### ER-DSP-09 — FIXED — a restored non-default session opened by GLIDING into its own sound
+
+**Reproduced first, with the product's own signal.** `AnamorphStateTests --restore-fade-probe` saves
+a real non-default session, restores it into a FRESH instance in the ordinary host order (state,
+then activate) and prints each module's per-block deviation over twelve blocks. Before the fix, the
+first block sat at **0.17** (Haas), **0.09** (Velvet), **0.29** (Chorus), **0.39** (Dimension-D) and
+**0.35** (Mono Maker crossover) of the settled figure, arriving over the next ~10–100 ms. The user
+statement of that is the one in the CHANGELOG: opening a project played the *previous* settings
+sliding into the saved ones.
+
+**Root cause, at the ordering rather than the symptom.** `AnamorphEngine::prepare()` runs
+`module.prepare()` for each module, and each module's own `prepare()` already snaps its smoothers.
+But `updateDerived()` — which installs the restored snapshot's targets — runs *after* that, so
+every module snapped to whatever targets existed BEFORE the restored session was pushed in: a fresh
+instance's defaults, or the previous session's on a reused one. `reset()` then re-zeroed the chorus
+blend outright. The engine's own `snapSmoothers()`, added in round 2 for exactly this class, does
+not reach inside the modules.
+
+**The fix is four calls at the end of `prepare()`**, after `snapSmoothers()`, plus the
+`snapToTargets()` each module needed to expose:
+
+| module | what it had to land | note |
+|---|---|---|
+| `HaasProcessor` | `currentSamples`, `currentAmount` | header-inline, mirrors its own prepare |
+| `VelvetNoise` | `currentDensity`, `currentAmount` | its `prepare()` now CALLS this, so the two cannot disagree |
+| `MonoMaker` | `currentFreq` + the crossover cutoff | same; the cutoff must be pushed into the filter, not just stored |
+| `ChorusEngine` | `currentWet` now, `currentDepth` deferred | the depth target is in SAMPLES at the working rate, and the working rate arrives per block (`setWorkingRate`), so a one-shot `snapDepthPending` is consumed at the top of the next `processBlock` — the only place that expression exists |
+
+**Where it is NOT placed, and why.** Not in `reset()` and not in `snapSmoothers()`: both also run at
+the silent bottom of a switch duck and on the NaN self-heal, so folding the snap in would change how
+LIVE edits settle — the opposite of the requirement. `prepare()` is the one moment where snapping is
+unambiguously right, because all delay and filter state has just been cleared and there is nothing
+for a glide to protect.
+
+**Regression: DSP Test 49** (11 checks). Each subject is compared against a REFERENCE of the same
+module settled on the same targets, so the claim is "these are the same signal" rather than a level
+threshold; the whole residual belongs to the reference's asymptotic settling (~1e-8 at 200 blocks),
+four orders under the 1e-5 bound and eight under the ~0.2-of-full-scale defect.
+
+**The test's first version was not discriminating, and that is the round's methodological note.**
+The four module legs call `snapToTargets()` themselves, so they passed with the engine's four calls
+DELETED — verified by deleting them. The added **engine leg** drives the real
+`prepare` → `setParameters` → `process` path and fails without them. It uses the Mono Maker
+deliberately: the one affected module with no delay line, so an empty history cannot be mistaken for
+the glide under test (and it is an ADVANCED-mode control, so the leg must enable advanced mode or
+`toEngine` never maps it at all). A **live-smoothing control** closes the other half of the
+requirement: a parameter moved AFTER prepare must still glide, and a fix that simply disabled
+smoothing fails it.
+
+**The probe's verdict line was corrected in the same round.** Its ratio sees two things at once —
+a smoother gliding from the wrong start (the defect) and empty delay-line/filter history filling up
+(not a defect; `prepare` clears that by contract, and Haas's own 28 ms line outlasts the block the
+first point covers). So the ratio rises when the fix lands without reaching 1.0 (0.17→0.72,
+0.09→0.18, 0.29→0.68, 0.39→0.90, 0.35→0.58), and the probe now says so instead of reporting
+"NOT settled" as a verdict. Test 49 is the discriminating instrument; the probe is the magnitude.
+
+### ER-STATE-22 — FIXED — a malformed numeric boolean SWITCHED A SETTING ON, durably
+
+An implementation correction to the already-approved ER-STATE-21 policy, not a new policy decision.
+
+Round 18 implemented Policy B with `v != 0.0` for the three boolean settings. That is the C
+coercion, not the field's domain: a boolean has exactly two valid serialized spellings, `0` and `1`,
+which are the two this plug-in's own writer emits (`juce::var(bool)` reaches XML as "0"/"1"). Under
+`v != 0.0` a corrupted `-1`, `-2`, `2` or `0.5` **enabled a setting the file never asked for**, and
+the repair then persisted that as a genuine `true`. The asymmetry gives the rule away: `0` was the
+only value on the whole real line that could not turn a setting on.
+
+The repair now resolves anything outside `{0, 1}` to the field's documented default — `metersOn`
+false, `tooltipsOn` false, `uiAnimations` true — which is also what an ABSENT field resolves to.
+Booleans are the one `Kind` with no nearest-valid-value to clamp toward, so the default IS their
+finite-out-of-domain rule; the ComboBox and unit-range clamps are untouched. The comparison uses
+`juce::exactlyEqual` — the repository's idiom for an intentional exact compare — so the
+`-Wfloat-equal` gate is not widened.
+
+**Regression: State test 33, 30 → 39 cases.** Nine added (`-1`, `-2`, `0.5`, `2` across the three
+boolean fields) and **one existing expectation corrected**: `int_metersOn` = `"2"` had been written
+down as resolving to `true`, i.e. the defect recorded as an expectation rather than caught. The
+boolean rows now carry six of the ten valid-value controls, including `int_uiAnimations` = `"0"`, so
+a fix that merely forced every boolean to its default cannot pass. **12 checks fail against the
+`v != 0.0` build**, and they are the whole delta — nothing outside the boolean rows moves. Against
+the pre-policy (round-17) build the extended test fails **83** of its checks, re-measured at the new
+size (it was 62 at thirty cases).
+
+### ER-STATE-23 — NO PRODUCTION CHANGE — entirely covered by the existing deferred D-2 decision
+
+The finding: the D-1 latency atomics "do not synchronize concurrent restore, prepare, A/B, preset,
+or engine state". They do not, and were never meant to — `latencyUpdateRequest` carries the latency
+REQUEST and nothing else — so the premise is a category error rather than a defect. The question
+worth answering is what those states actually do, and it splits three ways.
+
+1. **The restore / A/B / preset tail is exactly RISK-007.** `--state-thread-probe` under TSan
+   reports the same four races the register already records: `abActive`, the `abUndo` vector twice,
+   and a `juce::String` refcount exchange. Known, measured, deferred under D-2.
+2. **The ENGINE's plain state does not race at all.** `setStateInformation` never writes it; the A/B
+   and preset paths reach the engine only through atomics (`injectMatchGainDb`, `requestDuck`); the
+   two writers that remain — `prepareToPlay` and `processBlock` — are mutually excluded by the host
+   contract on VST3 and by JUCE's own AU callback lock.
+3. **The one pairing D-2's recorded scope does not name** — restore on one host thread,
+   `prepareToPlay` on another, editor tick reading — was measured for this round with a new probe,
+   `AnamorphStateTests --state-prepare-race-probe` (three threads, under TSan). Result: **the same
+   four reports and no new ones.**
+
+Classified **known deferred D-2 risk**, recorded in `FUTURE_RISKS.md` RISK-007. **Nothing was added
+to suppress the report** — no mutex, no `callAsync`, no `AsyncUpdater`, no state-architecture
+redesign: that would pre-empt a decision that is the maintainer's, and would silence the evidence
+D-2 is waiting on.
+
+### RISK-008 — carried unchanged
+
+No host test was performed this round, and none was permitted: the real-host half is the
+maintainer's REAPER result from round 19, and the register entry already records it with its limits.
+
+### Also corrected while in the files
+
+- `CHANGELOG.md` carried the round-17 Scope-Persistence entry **twice**, verbatim — a double-apply
+  from that round's batch. One copy removed; no wording changed.
+- `docs/architecture/API_REFERENCE.md`'s `AnamorphEngine::prepare` row now states the snap contract
+  the code has, rather than "allocates; resets".
+
 ## Round 19 — 2026-09-02 — RISK-008 gets its real-host half; the settled set audited for consistency
 
 A disposition round. **No production code changed, and none was justified.**

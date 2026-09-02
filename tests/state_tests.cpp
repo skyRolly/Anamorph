@@ -151,6 +151,21 @@ namespace
             param->setValueNotifyingHost (raw);
     }
 
+    // setRaw's "raw" is the NORMALISED 0..1 value (getValue/setValueNotifyingHost).
+    // This is the denormalised sibling: pass the value in the parameter's own units
+    // (28 ms, 400 Hz, choice index 2) and let the range do the conversion.
+    void setPlain (AnamorphAudioProcessor& p, const char* id, float plain)
+    {
+        if (auto* param = dynamic_cast<juce::RangedAudioParameter*> (p.getAPVTS().getParameter (id)))
+            param->setValueNotifyingHost (param->convertTo0to1 (plain));
+    }
+    float plainOf (AnamorphAudioProcessor& p, const char* id)
+    {
+        if (auto* param = dynamic_cast<juce::RangedAudioParameter*> (p.getAPVTS().getParameter (id)))
+            return param->convertFrom0to1 (param->getValue());
+        return -1.0f;
+    }
+
     // Deterministic per-index raw value that lands BETWEEN discrete steps for
     // most discrete parameters, exercising the exact-raw ("raw" attribute)
     // round-trip rather than only snapped values.
@@ -5598,12 +5613,25 @@ static void testModernSettingsAreRepairedOnRestore()
         { "int_metersOn",     "1",     1.0,  true  },   // control
         { "int_metersOn",     "0",     0.0,  true  },   // control
         { "int_metersOn",     "abc",   0.0,  false },   // malformed -> default false
-        { "int_metersOn",     "2",     1.0,  false },   // number-shaped -> non-zero is true
+        // A boolean has exactly two valid spellings, "0" and "1" -- the two this
+        // plug-in's own writer emits. Every other number is MALFORMED and takes the
+        // documented default; it does not get coerced to true (ER-STATE-22). The
+        // negative cases are the ones that used to silently ENABLE a setting.
+        { "int_metersOn",     "2",     0.0,  false },
+        { "int_metersOn",     "-1",    0.0,  false },
+        { "int_metersOn",     "-2",    0.0,  false },
+        { "int_metersOn",     "0.5",   0.0,  false },
         { "int_tooltipsOn",   "1",     1.0,  true  },   // control
+        { "int_tooltipsOn",   "0",     0.0,  true  },   // control
         { "int_tooltipsOn",   "maybe", 0.0,  false },
+        { "int_tooltipsOn",   "-1",    0.0,  false },
+        { "int_tooltipsOn",   "-0.5",  0.0,  false },
         { "int_uiAnimations", "0",     0.0,  true  },   // control: OFF must survive
+        { "int_uiAnimations", "1",     1.0,  true  },   // control
         { "int_uiAnimations", "abc",   1.0,  false },   // malformed -> default true
-        { "int_uiAnimations", "-1",    1.0,  false },   // number-shaped -> non-zero is true
+        { "int_uiAnimations", "-1",    1.0,  false },   // ...and so does a negative
+        { "int_uiAnimations", "-2",    1.0,  false },
+        { "int_uiAnimations", "2",     1.0,  false }
     };
 
     auto internalTextOf = [] (const juce::MemoryBlock& blob, const char* field)
@@ -5777,6 +5805,219 @@ static int runRisk008Probe()
     return 0;
 }
 
+// ---------------------------------------------------------------------------
+//  Restore fade-in probe (round 20): does a NON-DEFAULT restored session reach
+//  its settled sound from the first sample, or glide into it?
+//
+//  MEASURES, ASSERTS NOTHING. Drives the ordinary host order -- restore, THEN
+//  activate -- on a fresh instance, and prints the per-block deviation of the
+//  output from the input. A module that is already at its restored target
+//  deviates by the same amount in block 1 as in block 12; one that glides in
+//  from its default starts near zero and climbs.
+//
+//  WHAT THE RATIO DOES AND DOES NOT SEPARATE. Two different things hold block 1
+//  below the settled level, and this metric sees their sum:
+//    (a) a SMOOTHER gliding from the wrong start -- the ER-DSP-09 defect, fixed;
+//    (b) empty DELAY-LINE and FILTER history filling up -- not a defect at all.
+//        prepare() clears that history by contract, and Haas's own 28 ms line is
+//        longer than the 512-sample block this metric's first point covers.
+//  So the ratio RISES when the fix lands but does not reach 1.0, and a ratio
+//  below 1.0 here is not by itself evidence of a defect. Measured block1/block12,
+//  before -> after the four engine snapToTargets() calls: Haas 0.17 -> 0.72,
+//  Velvet 0.09 -> 0.18, Chorus 0.29 -> 0.68, Dimension-D 0.39 -> 0.90, Mono Maker
+//  0.35 -> 0.58. (Velvet moves least because its presence follower and sparse-tap
+//  history dominate its own first block; that settling is (b), and is unchanged.)
+//  The DISCRIMINATING instrument is DSP Test 49, which compares each module
+//  against a REFERENCE settled on the same targets and so cancels (b) exactly.
+//  This probe is the magnitude, in the product's own terms; the test is the rule.
+// ---------------------------------------------------------------------------
+static int runRestoreFadeProbe()
+{
+    std::printf ("restored-session fade-in probe (round 20)\n");
+    std::printf ("=========================================\n\n");
+
+    constexpr double sr = 48000.0;
+    constexpr int    bs = 512;
+    constexpr int    kBlocks = 12;
+
+    struct Case { const char* name; int algo; const char* extraId; float extraRaw; bool monoCase; };
+    const Case cases[] = {
+        { "Haas",        0, pid::haasDelay,     28.0f, false },
+        { "Velvet",      1, pid::velvetDensity,  0.9f, false },
+        { "Chorus",      2, pid::chorusDepth,    0.9f, false },
+        { "Dimension-D", 3, pid::chorusDepth,    0.9f, false },
+        // Downward, and only one octave: the crossover glides at 8 octaves/second,
+        // so 120 -> 60 completes in ~125 ms (about 12 blocks) and is visible here.
+        // A 90 Hz tone sits BELOW the default 120 (mono'd, little side energy) and
+        // ABOVE the restored 60 (stereo, full side energy), so a glide shows as
+        // side energy CLIMBING out of the first block instead of starting high.
+        { "Mono Maker",  0, pid::monoMakerFreq,  60.0f, true  },
+    };
+
+    for (const auto& c : cases)
+    {
+        // A real non-default session, saved by one instance...
+        juce::MemoryBlock blob;
+        {
+            AnamorphAudioProcessor src;
+            src.prepareToPlay (sr, bs);
+            setPlain (src, pid::algorithm, (float) c.algo);
+            setPlain (src, pid::mix, 1.0f);
+            setPlain (src, c.extraId, c.extraRaw);
+            // Mono Maker is an ADVANCED-mode control: `toEngine` only maps it when
+            // advancedMode is on, so without this the module never runs at all.
+            if (c.monoCase) { setPlain (src, pid::advancedMode, 1.0f);
+                              setPlain (src, pid::monoMakerOn, 1.0f); setPlain (src, pid::amount, 0.0f); }
+            else            { setPlain (src, pid::amount, 1.0f); }
+            src.getStateInformation (blob);
+        }
+
+        // ...restored into a FRESH one in the ordinary host order: state, then activate.
+        AnamorphAudioProcessor p;
+        p.setStateInformation (blob.getData(), (int) blob.getSize());
+        p.prepareToPlay (sr, bs);
+
+        std::printf ("  [restored: algorithm=%.0f amount=%.3f mix=%.3f %s=%.3f monoOn=%.0f]\n",
+                     plainOf (p, pid::algorithm), plainOf (p, pid::amount), plainOf (p, pid::mix),
+                     c.extraId, plainOf (p, c.extraId), plainOf (p, pid::monoMakerOn));
+
+        juce::Random rng (20260902);
+        juce::AudioBuffer<float> buf (2, bs), dry (2, bs);
+        juce::MidiBuffer midi;
+        std::printf ("  %-12s per-block %s:\n", c.name,
+                     c.monoCase ? "SIDE energy rms(L-R) (a widening crossover glide makes it fall)"
+                                : "deviation rms(out-in) (a fading effect makes it rise)");
+        double first = 0.0, last = 0.0;
+        for (int k = 1; k <= kBlocks; ++k)
+        {
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = 0; i < bs; ++i)
+                {
+                    // Decorrelated per channel so the Mono Maker case has real side energy,
+                    // with a low-frequency component the 120..400 Hz crossover moves over.
+                    const double t = (double) i / sr;
+                    const double toneHz = c.monoCase ? 90.0 : 220.0;
+                    const float v = (float) (0.30 * std::sin (2.0 * 3.14159265 * toneHz * t
+                                                              + (ch == 1 ? 1.1 : 0.0))
+                                           + (c.monoCase ? 0.0 : 0.15)
+                                             * (rng.nextFloat() * 2.0f - 1.0f));
+                    buf.setSample (ch, i, v);
+                    dry.setSample (ch, i, v);
+                }
+            p.processBlock (buf, midi);
+
+            double acc = 0.0;
+            int n = 0;
+            for (int i = 0; i < bs; ++i)
+            {
+                if (c.monoCase)
+                {
+                    const double d = (double) buf.getSample (0, i) - (double) buf.getSample (1, i);
+                    acc += d * d; ++n;
+                }
+                else
+                {
+                    // BOTH channels: Haas delays only one side by construction, so a
+                    // single-channel metric is blind to it.
+                    for (int ch = 0; ch < 2; ++ch)
+                    {
+                        const double d = (double) buf.getSample (ch, i) - (double) dry.getSample (ch, i);
+                        acc += d * d; ++n;
+                    }
+                }
+            }
+            const double v = std::sqrt (acc / (double) juce::jmax (1, n));
+            if (k == 1) first = v;
+            if (k == kBlocks) last = v;
+            std::printf ("      block %2d: %.6f\n", k, v);
+        }
+        const double ratio = last > 1.0e-9 ? first / last : 0.0;
+        std::printf ("    => block1 / block%d = %.4f  %s\n\n", kBlocks, ratio,
+                     ratio > 0.90 && ratio < 1.10
+                       ? "(first block already at the settled level)"
+                       : "(first block below settled -- smoother glide and/or history fill;\n"
+                         "       see the header: this metric does not separate the two)");
+    }
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
+//  ER-STATE-23 probe (round 20): does pairing RESTORE with PREPARE add any race
+//  beyond the four RISK-007/D-2 already records?
+//
+//  The review finding says the latency atomics "do not synchronize concurrent
+//  restore, prepare, A/B, preset, or engine state". They do not, and were never
+//  meant to -- they carry the latency REQUEST and nothing else. The real question
+//  is whether those other states race, and whether that is anything D-2 has not
+//  already recorded and deferred. This probe answers the one pairing D-2's scope
+//  does NOT mention: a host calling `setStateInformation` and `prepareToPlay`
+//  from two different threads while the editor tick reads.
+//
+//  Run under ThreadSanitizer. The verdict is the REPORT SET, compared against the
+//  four D-2 already measured (`--state-thread-probe`): abActive, the abUndo
+//  vector twice, and a juce::String refcount exchange. Anything else is new.
+//  Like its sibling, if the race is real this probe's own execution is undefined
+//  behaviour, which is why it is opt-in and never part of the suite.
+// ---------------------------------------------------------------------------
+static int runStatePrepareRaceProbe()
+{
+    std::printf ("ER-STATE-23 probe: restore + prepare + editor reads, three threads\n");
+    std::printf ("  (run under ThreadSanitizer; compare the report set against the four D-2 records)\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    proc.getPresets().load (1);
+    setRaw (proc, "width", 0.42f);
+    proc.pollUndoCoalesce();
+
+    juce::MemoryBlock blob;
+    proc.getStateInformation (blob);
+
+    constexpr int kIterations = 300;
+    std::atomic<bool> go { false };
+
+    // Host thread A: state calls off the main thread (the AU autosave shape).
+    std::thread stateThread ([&]
+    {
+        while (! go.load (std::memory_order_acquire)) { }
+        for (int i = 0; i < kIterations; ++i)
+        {
+            proc.setStateInformation (blob.getData(), (int) blob.getSize());
+            juce::MemoryBlock out;
+            proc.getStateInformation (out);
+        }
+    });
+
+    // Host thread B: activation off the main thread, alternating the spec so each
+    // call really re-prepares the engine rather than being a no-op.
+    std::thread prepareThread ([&]
+    {
+        while (! go.load (std::memory_order_acquire)) { }
+        for (int i = 0; i < kIterations; ++i)
+            proc.prepareToPlay ((i & 1) ? 44100.0 : 48000.0, (i & 1) ? 256 : 512);
+    });
+
+    go.store (true, std::memory_order_release);
+    for (int i = 0; i < kIterations; ++i)
+    {
+        auto& pm = proc.getPresets();
+        const juce::String liveName = pm.currentName();
+        const bool liveDirty = pm.isDirty();
+        proc.pollUndoCoalesce();
+        const bool u = proc.canUndo(), r = proc.canRedo();
+        const int  slot = proc.abActiveSlot();
+        if (liveName.isEmpty() && liveDirty && u && r && slot < 0)
+            std::printf ("  (unreachable, keeps the reads live)\n");
+    }
+
+    stateThread.join();
+    prepareThread.join();
+    std::printf ("  probe finished: %d restore + %d prepare iterations against %d editor ticks\n",
+                 kIterations, kIterations, kIterations);
+    std::printf ("  verdict comes from the sanitizer's report SET, not from this exit code\n");
+    return 0;
+}
+
 int main (int argc, char* argv[])
 {
     juce::ScopedJuceInitialiser_GUI juceInit; // MessageManager for APVTS/processor on this thread
@@ -5816,6 +6057,12 @@ int main (int argc, char* argv[])
 
     if (argc > 1 && std::strcmp (argv[1], "--risk008-probe") == 0)
         return runRisk008Probe();
+
+    if (argc > 1 && std::strcmp (argv[1], "--restore-fade-probe") == 0)
+        return runRestoreFadeProbe();
+
+    if (argc > 1 && std::strcmp (argv[1], "--state-prepare-race-probe") == 0)
+        return runStatePrepareRaceProbe();
 
     const bool writeSnapshot = argc > 1 && std::strcmp (argv[1], "--write-snapshot") == 0;
 

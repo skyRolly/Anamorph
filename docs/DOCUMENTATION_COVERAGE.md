@@ -7,7 +7,7 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.6 change set** (2026-09-01, matching the CHANGELOG heading) — the
-**engineering-review programme, rounds 1 through 7**, newest last in the body: round 1 (the
+**engineering-review programme, rounds 1 through 20**, newest last in the body: round 1 (the
 programme's first sweep: six engine/state/GUI fixes with Tests 43–46 and two state regressions,
 the engaged Test 2/38 matrices, the KI-027 and RISK-007 filings, the v0.9.6 renumbering sweep, the
 NOTICE pin + AudioUnitSDK section, the CI_CD job inventory, and the new
@@ -35,7 +35,9 @@ with complete evidence, and the drag-recovery finding refuted); and **round 18**
 recovery policy implemented and ER-STATE-21 closed, and RISK-008 investigated to a class-B
 classification); and **round 19** (the maintainer's real-host REAPER result recorded against
 RISK-008, its disposition finalised, and the settled set audited for consistency — no production
-change).
+change); and **round 20** (a restored session's modules gliding into their own sound, and a
+malformed numeric boolean switching a setting on — both fixed at their source, with the state race
+outside the latency fields classified as the already-deferred D-2 risk).
 **Header correction (round 7, 2026-09-01):** this line enumerated round 1 alone while the body
 carried six later rounds, and dated the change set 2026-08-31 while the CHANGELOG `[0.9.6]` heading
 had been re-dated to 2026-09-01 — the same drift the C6 correction below was written about,
@@ -322,7 +324,7 @@ the same file carries both the defect and its remedy.) So none of the three park
 a user turns its control down. Measured: `HaasProcessor` stalls at `1.17487956e-35` and
 `ChorusEngine` at `5.63638313e-36` **at 48 kHz** — Velvet's and Haas's coefficients are compile-time
 constants so their stall is rate-independent, while Chorus's `wSmooth` is `1/(0.01·sr)`
-(`src/dsp/ChorusEngine.cpp:70`) so its stall scales with the rate, reaching `2.25593495e-35` at
+(`src/dsp/ChorusEngine.cpp:80`) so its stall scales with the rate, reaching `2.25593495e-35` at
 192 kHz — and the missed park costs +203 % and +370 % of the parked module
 at 48 kHz / 128 — for Velvet, +752 % at 48 kHz / 32 and +2,372 % at 192 kHz / 32, because a stalled
 amount above zero also satisfies the H5 gather gate and puts the engine on its most expensive path.
@@ -393,7 +395,7 @@ Correlation 3.4 % vs 3.8 %. Two independent harnesses two rounds apart agreeing 
 
 **Two prices quoted for the first time, both maintainer decisions and neither reopened here.** A
 host-bypassed instance costs **101 % of an active one** (85.1M vs 84.0M Ir/s) because the Issue-2
-contract at `src/dsp/AnamorphEngine.cpp:833-839` keeps Measure + Predict running while bypassed, and
+contract at `src/dsp/AnamorphEngine.cpp:856-862` keeps Measure + Predict running while bypassed, and
 `loudness.process()` is handed the *processed* signal (`:1137`). And **59.3 % of the transparent idle
 floor is metering and loudness analysis**, running with Level Match off and with no editor in
 existence. W3-7 and W3-8 rejected gating those for reasons that still hold; what was missing was the
@@ -1884,10 +1886,10 @@ No other approval is claimed by this entry.
 
 **Test 38 never armed a parameter CHANGE.** The per-configuration `setParameters (p); reset();` ran
 *before* the block loop, and `reset()` flushes an in-flight duck straight to its target
-(`src/dsp/AnamorphEngine.cpp:152-159`) — so by the time the counters were armed the switch was over,
+(`src/dsp/AnamorphEngine.cpp:175-182`) — so by the time the counters were armed the switch was over,
 `switchState` was `Normal`, and the `setParameters (p)` inside the armed region hit the steady-state
 no-change gate every time. The whole structural half of a switch lives in the adopt block
-(`src/dsp/AnamorphEngine.cpp:727-802`: algorithm tails cleared, the three oversamplers and the
+(`src/dsp/AnamorphEngine.cpp:750-825`: algorithm tails cleared, the three oversamplers and the
 chorus reset on an oversampling-path change, the crossover cleared on a topology change) and it runs
 inside `process()`, at the silent bottom of the duck. So 3,840 armed calls proved the audio path
 allocation-free while nothing was changing, and `REALTIME_SAFETY_AUDIT.md` presented that gate as
@@ -1994,7 +1996,7 @@ architectural citation pointing at unrelated code, and one liveness claim that w
 
 **MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-19**, covering the two decisions in this round
 that the process asks a human to confirm: re-aiming ADR-0009's evidence to
-`src/dsp/AnamorphEngine.cpp:1312-1356` (a re-aim, not a re-anchor — the tool cannot compute it, so
+`src/dsp/AnamorphEngine.cpp:1335-1379` (a re-aim, not a re-anchor — the tool cannot compute it, so
 it is declared in `DELIBERATE_REAIMS` and its aim machine-checked against
 `Defensive NaN / Inf self-heal`), and restating the leaf-layer `-Werror=function-effects` gate's
 liveness evidence to name the mechanism the tree actually runs.
@@ -6010,7 +6012,7 @@ was blind was not.
 
 **The oracle, and why it costs no product change.** The module already holds two implementations of
 the same arithmetic. The gather's eligibility gate ends with `numSamples <= (int) accum.size()`
-(`src/dsp/VelvetNoise.cpp:167`) — a clause whose stated purpose is direct callers rather than the
+(`src/dsp/VelvetNoise.cpp:166`) — a clause whose stated purpose is direct callers rather than the
 engine — and `accum` is sized from `prepare()`'s `maxBlockSize` alone. An instance prepared for a
 **smaller** block therefore runs the per-sample loop over the same audio, and everything else about
 it is identical: ring, tap positions and signs, weights, envelope/gate coefficients and stop step
@@ -6380,7 +6382,7 @@ marked rather than erased.
 
 ## The A7-9 near-silent scope correction + the cross-slice record parser (2026-08-30)
 
-A review pass against `src/dsp/VelvetNoise.cpp:159` asked what happens to **near-silent NONZERO**
+A review pass against `src/dsp/VelvetNoise.cpp:158` asked what happens to **near-silent NONZERO**
 input at the stalled fixpoints, and the measured answer corrected a claim every A7-9 record carried:
 "the residual appears only on digital silence" was this programme's *observation*, never a property.
 The absorption `x + residual == x` needs `|x| >= 2^24 × |residual|`; a twin-binary A/B against the
@@ -7260,3 +7262,59 @@ implemented, D-2 deferred, KI-015 still the single release blocker.
 
 **Counts.** Unchanged: the state suite is 33 tests / 1406 checks and the DSP suite 47 + the A/B clamp
 guard / 245. The `[0.9.6]` Fixed count is unchanged at 25 — nothing user-visible changed. [Verified]
+
+## Engineering-review programme, round 20 — the restored-session glide and the malformed boolean (2026-09-02, still the 0.9.6 change set)
+
+**What the round is.** Two production fixes and one disposition. Records:
+`worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Round 20.
+
+**ER-DSP-09 — a restored non-default session GLIDED into its own sound.** Reproduced with the
+product's own signal before anything was changed (`AnamorphStateTests --restore-fade-probe`): block 1
+against the settled figure read 0.17 (Haas), 0.09 (Velvet), 0.29 (Chorus), 0.39 (Dimension-D), 0.35
+(Mono Maker crossover). Cause: each module's own `prepare()` snaps its smoothers, but it runs before
+`updateDerived()` installs the restored snapshot, and `reset()` then re-zeroed the chorus blend.
+Fixed at that ordering — four `snapToTargets()` calls at the END of `AnamorphEngine::prepare()`,
+deliberately not in `reset()` or `snapSmoothers()`, which also run at a switch duck's silent bottom,
+so live edits keep smoothing unchanged. `ChorusEngine`'s depth snap is deferred one block because its
+target is expressed in samples at the per-block working rate.
+
+**ER-STATE-22 — a malformed numeric boolean switched a setting ON, durably.** An implementation
+correction to the approved ER-STATE-21 policy, not a new decision: `v != 0.0` is the C coercion, not
+the field's domain, so `-1`, `-2`, `2` and `0.5` all resolved to `true` and the repair persisted
+that; `0` was the only value on the real line that could not turn a setting on. Anything outside
+`{0, 1}` now takes the documented default. `juce::exactlyEqual` is used for the two exact compares,
+so the `-Wfloat-equal` gate is not widened.
+
+**ER-STATE-23 — no production change.** Classified as entirely covered by the deferred D-2 decision.
+The latency atomics carry the latency request and nothing else, so the finding's premise is a
+category error; the restore/A-B/preset tail is RISK-007's four already-measured races; the engine's
+plain state has no concurrent writer; and the one thread pairing D-2's scope does not name was
+measured for this round (`--state-prepare-race-probe`, three threads under TSan) and produced the
+same four reports and no new ones. Nothing was added to suppress the report.
+
+**Documents touched:** `CHANGELOG.md` (two Fixed entries; and the round-17 Scope-Persistence entry,
+which a double-apply in that round had left in the file **twice**, verbatim — one copy removed, no
+wording changed), `docs/architecture/SERIALIZATION_REGISTRY.md` (the three boolean rows of the
+recovery table, plus a footnote recording why a boolean's domain is `{0, 1}` and the re-measured
+pre-policy failure count), `docs/architecture/API_REFERENCE.md` (the `AnamorphEngine::prepare` row
+now states the snap contract instead of "allocates; resets"), `docs/FUTURE_RISKS.md` (a round-20
+bullet under RISK-007 recording the ER-STATE-23 disposition and its three-way split),
+`docs/procedures/TESTING.md` (Test 49, the State test 33 extension, and the two new probes as the
+tenth and eleventh opt-in instruments), `docs/policies/TESTING_POLICY.md`, `README.md`,
+`docs/architecture/RELEASE_HARDENING_PLAN.md`, `docs/HANDOVER.md` (counts and the version row), the
+programme worklog and the dashboard.
+
+**One test-instrument correction, recorded rather than quietly applied.** `--restore-fade-probe`
+printed "NOT settled: the module glides in" as a verdict. Its ratio cannot support that after the
+fix: it sees a smoother glide AND empty delay-line/filter history filling up, and the second is not
+a defect — `prepare` clears that history by contract, and Haas's own 28 ms line outlasts the block
+the first point covers. So the ratio rises without reaching 1.0 (0.17→0.72, 0.09→0.18, 0.29→0.68,
+0.39→0.90, 0.35→0.58) and the probe now says which two causes it does not separate. DSP Test 49 is
+the discriminating instrument, because its reference cancels the history term exactly.
+
+**Counts.** The DSP suite is **48 tests + the A/B clamp guard / 256 checks** (was 47 / 245; Test 49
+adds 11). The state suite is **33 tests / 1431 checks** (was 1406; State test 33 went from thirty
+cases to thirty-nine). The `[0.9.6]` Fixed count is **27** — two added this round,
+and the duplicate removal means the file's bullet count and its distinct-entry count now agree.
+Measured, not inferred: `AnamorphTests` prints `256 checks, 0 failures` and `AnamorphStateTests`
+prints `1431 checks, 0 failure(s)`. [Verified]

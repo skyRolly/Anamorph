@@ -4439,6 +4439,236 @@ static int runMatchInjectProbe()
     return 0;
 }
 
+// ---------------------------------------------------------------------------
+//  Test 49 -- a restored non-default session must not GLIDE into its own sound.
+//
+//  ER-DSP-09 (round 20). Every one of these modules already snaps its internal
+//  smoothed values to their targets inside its OWN prepare(). The defect was
+//  ordering: `AnamorphEngine::prepare()` prepares the modules FIRST and only then
+//  runs `updateDerived()`, which is what installs the restored snapshot's targets
+//  -- so each module snapped to whatever targets existed beforehand (a fresh
+//  instance's defaults, or the previous session's on a reused one), and the
+//  engine's own `reset()` then re-zeroed the chorus blend outright. A restored
+//  session therefore opened at its DEFAULTS and glided into its stored sound.
+//
+//  HOW THIS ISOLATES THE GLIDE FROM THINGS THAT ARE NOT BUGS. A delay-based
+//  module starting from cleared state necessarily produces less wet signal in its
+//  first milliseconds -- the delay line holds silence and no fix can invent past
+//  audio -- so an end-to-end "first block vs settled" ratio conflates that with
+//  the parameter glide. Each leg here instead compares the subject against a
+//  REFERENCE whose delay/filter state is identically cleared and differs ONLY in
+//  having its smoothed values already at target, so the comparison sees the glide
+//  and nothing else. For three of the four the reference is the module's own
+//  correct path (targets set BEFORE prepare); the chorus zeroes its blend in
+//  reset() regardless of order, so its reference is settled by running silence
+//  with the LFO rate at zero -- which leaves phase at 0 and the delay line full of
+//  the same silence, keeping the two bit-comparable.
+// ---------------------------------------------------------------------------
+static void testRestoredModulesDoNotGlideIn()
+{
+    std::printf ("Test 49: a restored non-default session opens at its own sound (ER-DSP-09)\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0;
+    constexpr int n = 512;   // constexpr, so the lambdas below need no capture
+
+    auto burst = [] (juce::AudioBuffer<float>& b, unsigned seed)
+    {
+        b.setSize (2, n, false, false, true);
+        juce::Random rng ((int) seed);
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = 0; i < n; ++i)
+                b.setSample (ch, i, (rng.nextFloat() * 2.0f - 1.0f) * 0.25f);
+    };
+    auto maxDiff = [] (const juce::AudioBuffer<float>& a, const juce::AudioBuffer<float>& b)
+    {
+        float d = 0.0f;
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = 0; i < n; ++i)
+                d = juce::jmax (d, std::abs (a.getSample (ch, i) - b.getSample (ch, i)));
+        return d;
+    };
+    // Non-vacuity: the module must actually DO something to this input, or an
+    // "identical" verdict would be identical silence.
+    auto isLive = [] (const juce::AudioBuffer<float>& out, const juce::AudioBuffer<float>& in)
+    {
+        float d = 0.0f;
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = 0; i < n; ++i)
+                d = juce::jmax (d, std::abs (out.getSample (ch, i) - in.getSample (ch, i)));
+        return d > 1.0e-4f;
+    };
+
+    // TOLERANCES. The subject is EXACT -- snapToTargets assigns the target -- so any
+    // residual belongs to the REFERENCE, whose settled-by-silence legs approach their
+    // targets asymptotically (a one-pole never quite arrives). Measured at 200 blocks
+    // the residual is ~1e-8; the 1e-5 bound leaves four orders of headroom over it and
+    // still sits four orders BELOW the defect it must catch, which moves the first
+    // block by ~0.2 of full scale.
+    juce::AudioBuffer<float> dry; burst (dry, 4242u);
+    auto copyOf = [&dry] { juce::AudioBuffer<float> c; c.makeCopyOf (dry); return c; };
+
+    // --- Haas -------------------------------------------------------------
+    {
+        // The reference cannot simply set the targets before prepare here:
+        // setDelayMs scales by the module's OWN sample rate, which is still the
+        // 44.1 kHz default until prepare runs, so a pre-prepare delay would be
+        // 28 ms at the wrong rate. Settle it with silence instead -- Haas has no
+        // LFO, so the delay line ends up holding the same zeros the subject's
+        // cleared one does and the two stay bit-comparable.
+        anamorph::HaasProcessor ref, sub;
+        ref.prepare (sr, n);
+        ref.setDelayMs (28.0f); ref.setSide (true); ref.setAmount (1.0f);
+        ref.reset();   // snaps currentSamples exactly, so only the amount is left to settle
+        {
+            juce::AudioBuffer<float> quiet (2, n);
+            for (int k = 0; k < 200; ++k)   // see the tolerance note below
+            {
+                quiet.clear();
+                ref.processBlock (quiet.getWritePointer (0), quiet.getWritePointer (1), n);
+            }
+        }
+        sub.prepare (sr, n);                                              // the engine's order
+        sub.setDelayMs (28.0f); sub.setSide (true); sub.setAmount (1.0f);
+        sub.reset();
+        sub.snapToTargets();
+
+        auto a = copyOf(), b = copyOf();
+        ref.processBlock (a.getWritePointer (0), a.getWritePointer (1), n);
+        sub.processBlock (b.getWritePointer (0), b.getWritePointer (1), n);
+        check (isLive (a, dry), "Haas: the reference really processes this input (non-vacuity)");
+        check (maxDiff (a, b) < 1.0e-5f, "Haas: a restored amount opens settled, not gliding");
+    }
+
+    // --- Velvet -----------------------------------------------------------
+    {
+        anamorph::VelvetNoise ref, sub;
+        ref.setDensity (0.9f); ref.setAmount (1.0f);
+        ref.prepare (sr, n);
+        sub.prepare (sr, n);
+        sub.setDensity (0.9f); sub.setAmount (1.0f);
+        sub.reset();
+        sub.snapToTargets();
+
+        auto a = copyOf(), b = copyOf();
+        ref.processBlock (a.getWritePointer (0), a.getWritePointer (1), n);
+        sub.processBlock (b.getWritePointer (0), b.getWritePointer (1), n);
+        check (isLive (a, dry), "Velvet: the reference really processes this input (non-vacuity)");
+        check (maxDiff (a, b) < 1.0e-6f, "Velvet: a restored density/amount opens settled");
+    }
+
+    // --- Mono Maker -------------------------------------------------------
+    {
+        anamorph::MonoMaker ref, sub;
+        ref.setFrequency (60.0f);
+        ref.prepare (sr, n);
+        sub.prepare (sr, n);
+        sub.setFrequency (60.0f);
+        sub.reset();
+        sub.snapToTargets();
+
+        auto a = copyOf(), b = copyOf();
+        ref.process (a.getWritePointer (0), a.getWritePointer (1), n);
+        sub.process (b.getWritePointer (0), b.getWritePointer (1), n);
+        check (isLive (a, dry), "Mono Maker: the reference really processes this input (non-vacuity)");
+        check (maxDiff (a, b) < 1.0e-6f, "Mono Maker: a restored crossover opens at its frequency");
+    }
+
+    // --- Chorus -----------------------------------------------------------
+    {
+        anamorph::ChorusEngine ref, sub;
+        auto arm = [sr] (anamorph::ChorusEngine& c)
+        {
+            c.setWorkingRate (sr);
+            c.setVoice (anamorph::ChorusEngine::Voice::Chorus);
+            c.setRate (0.0f);          // LFO parked: phase stays 0 in both instances
+            c.setDepth (0.9f);
+            c.setAmount (1.0f);
+        };
+        ref.prepare (sr); arm (ref);
+        // Settle the reference's wet blend by running silence. The delay line ends
+        // up holding the same zeros the subject's cleared one does, and with the
+        // rate parked the phase is 0 in both -- so the only surviving difference
+        // is the blend this test is about.
+        {
+            juce::AudioBuffer<float> quiet (2, n);
+            for (int k = 0; k < 200; ++k)   // see the tolerance note below
+            {
+                quiet.clear();
+                ref.processBlock (quiet.getWritePointer (0), quiet.getWritePointer (1), n);
+            }
+        }
+        sub.prepare (sr); arm (sub);
+        sub.reset();
+        sub.snapToTargets();
+
+        auto a = copyOf(), b = copyOf();
+        ref.processBlock (a.getWritePointer (0), a.getWritePointer (1), n);
+        sub.processBlock (b.getWritePointer (0), b.getWritePointer (1), n);
+        check (isLive (a, dry), "Chorus: the reference really processes this input (non-vacuity)");
+        check (maxDiff (a, b) < 1.0e-5f, "Chorus: a restored wet blend opens settled, not fading in");
+    }
+
+    // --- The ENGINE actually performs the snap -----------------------------
+    // The four legs above pin each module's own contract; on their own they would
+    // still pass if AnamorphEngine::prepare() never called snapToTargets at all
+    // (verified: it did). This leg closes that gap, and it uses the Mono Maker
+    // because it is the one affected module with NO delay line -- a crossover is
+    // pure filter state, zero in both instances -- so an engine-level comparison
+    // is free of the delay-fill difference that makes the other three unusable
+    // here (a cleared delay line holds silence, and no fix can invent past audio).
+    {
+        anamorph::EngineParameters e;      // a "restored" non-default snapshot
+        e.monoMakerEnable = true;
+        e.monoMakerFreq   = 60.0f;         // the default is 120: a full octave away
+        e.algoAmount      = 0.0f;          // widener identity, so only the crossover acts
+        e.mix             = 1.0f;
+
+        anamorph::AnamorphEngine ref, sub;
+        ref.primeParameters (e);
+        ref.prepare (sr, n);
+        ref.setParameters (e);
+        {   // settle the crossover glide on silence: filter state stays at zero,
+            // so the reference ends up in exactly the state the subject starts in
+            // apart from the frequency this leg is about.
+            juce::AudioBuffer<float> quiet (2, n);
+            for (int k = 0; k < 200; ++k) { quiet.clear(); ref.process (quiet); }
+        }
+        sub.primeParameters (e);
+        sub.prepare (sr, n);
+        sub.setParameters (e);             // the real activation path, nothing else
+
+        juce::AudioBuffer<float> a, b;
+        a.makeCopyOf (dry); b.makeCopyOf (dry);
+        ref.process (a);
+        sub.process (b);
+        check (isLive (a, dry), "engine: the Mono Maker really acts on this input (non-vacuity)");
+        check (maxDiff (a, b) < 1.0e-5f,
+               "engine: prepare() leaves the restored crossover settled, not gliding");
+    }
+
+    // --- CONTROL: ordinary live edits after prepare STILL smooth -----------
+    // The fix must not have turned the smoothers off. A parameter moved AFTER
+    // preparation has to ramp, which is what keeps edits click-free.
+    {
+        anamorph::HaasProcessor h;
+        h.setDelayMs (28.0f); h.setSide (true); h.setAmount (0.0f);
+        h.prepare (sr, n);                       // settled at amount 0 == identity
+        h.setAmount (1.0f);                      // a LIVE edit, no prepare, no snap
+
+        auto first = copyOf();
+        h.processBlock (first.getWritePointer (0), first.getWritePointer (1), n);
+        auto settled = copyOf();
+        for (int k = 0; k < 20; ++k)             // let the live edit finish ramping
+        {
+            juce::AudioBuffer<float> quiet (2, n); quiet.clear();
+            h.processBlock (quiet.getWritePointer (0), quiet.getWritePointer (1), n);
+        }
+        h.processBlock (settled.getWritePointer (0), settled.getWritePointer (1), n);
+        check (maxDiff (first, settled) > 1.0e-4f,
+               "CONTROL: a live amount edit after prepare still RAMPS (smoothing intact)");
+    }
+}
+
 int main (int argc, char* argv[])
 {
     if (argc > 1 && std::strcmp (argv[1], "--match-inject-probe") == 0)
@@ -4504,6 +4734,7 @@ int main (int argc, char* argv[])
     testPrepareSettlesSmoothers();
     testCorrelationMeterRecoversFromNaN();
     testInputConditioningAndCharacterParams();
+    testRestoredModulesDoNotGlideIn();
     testResetClearsPendingForcedDuck();
     testPendingDuckDoesNotSurviveActivation();
     testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)
