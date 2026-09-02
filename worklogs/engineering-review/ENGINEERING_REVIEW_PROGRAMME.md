@@ -29,6 +29,121 @@ entries and CHANGELOG notes cite.
 
 ---
 
+## Round 27 — 2026-09-03 — a repair that changed nothing on screen was not written to the file
+
+One fix. It completes ER-STATE-21's durability contract for the APVTS parameter family rather than
+redesigning it.
+
+### ER-STATE-25 — FIXED — the serialized repair was gated on the LIVE value moving
+
+**Reproduced before any change.** `channelMode`, `<PARAM value="abc"/>` with `raw` removed, restored
+into a fresh instance:
+
+| | pre-fix | post-fix |
+|---|---|---|
+| live parameter | default (correct) | default (correct) |
+| live APVTS `@value` | **`"abc"`** | `"0.0"` |
+| the re-saved session's `@value` | **`"abc"`** | `"0.0"` |
+| after a SECOND poison → restore → save cycle | **`"abc"`** | `"0.0"` |
+
+The live value was never the problem, which is why "restore → parameter == default" passes on the
+broken build and cannot be the assertion a test rests on.
+
+**Root cause, exactly.** `applyNorm`'s tree write-back sat inside
+
+```cpp
+if (! (std::abs (norm - rp->getValue()) <= 1.0e-6f))   // src/PluginProcessor.cpp:522
+```
+
+so the durability of a repair depended on an unrelated fact: whether the corrupt file happened to
+resolve to the value already loaded. **It usually does.** `apvts.replaceState` runs first and pushes
+`@value` through JUCE's own parser, where unusable text reads as the denormalised **0**; `applyNorm`
+then computes `norm` = the parameter **default**, because `SerializedNumber` refuses the same text.
+So the gate is false precisely when `convertTo0to1(0) == getDefaultValue()` — true of every
+parameter whose range starts at its default (Drive 0..24 dB default 0, Amount 0..1 default 0,
+Channel Mode's first choice, …). The finding's own summary is exact.
+
+**Which categories share it — checked, not assumed.**
+
+| input | pre-fix | shares the defect? |
+|---|---|---|
+| `value="nan"` | gate TRUE (NaN makes the comparison false, so `!` is true) | no — this is State test 20's case, and why it passed |
+| `value="abc"` where the default coincides | gate false | **yes** |
+| `raw="-7"` (usable, out of range) | clamps to the value in force, gate false | **yes** — measured, `raw` stayed `"-7"` |
+| valid text equal to the default | gate false, and correctly so | no — nothing to repair |
+| stepped parameter snapping `"0.4"` | gate may fire | no — snapping is the parameter doing its job on a legitimate value |
+
+**The fix: separate "the input was repaired" from "the live value moved".**
+
+```cpp
+const bool valueMoves = ! (std::abs (norm - rp->getValue()) <= 1.0e-6f);
+if (valueMoves) { ...setValue / atomic, exactly as before... }
+
+if (repaired)                                  // NOT conditional on valueMoves
+    if (auto node = apvts.state.getChildWithProperty ("id", rp->paramID); node.isValid())
+    {
+        node.setProperty ("value", rp->convertFrom0to1 (norm), nullptr);
+        if (node.hasProperty ("raw")) node.setProperty ("raw", norm, nullptr);
+    }
+```
+
+`repaired` is decided by the caller **on the INPUT, before any clamp hides the evidence**: text that
+is not a usable number, or a usable one outside the field's range (`raw` is normalised, so 0..1; a
+`value` is checked against `getNormalisableRange()`). The non-finite guard inside `applyNorm` sets it
+too. Snapping deliberately does not.
+
+**Why this preserves valid unchanged values.** The condition is the *provenance* of the value, not
+its equality with anything, so a genuinely valid `"0.000000"` on a default-valued parameter takes no
+branch at all and its text is left byte-identical — asserted as a control leg. This is the
+alternative to the "always rewrite every parameter" behaviour the round warned against, and it keeps
+the existing fast path intact.
+
+**Why both attributes.** `raw` is re-stamped from the live parameter by `copyStateWithRawValues` on
+every save, so a corrupt `raw` cannot reach a *file* — but it can sit in the live tree, which A/B
+slots and undo snapshots copy and which the next restore **prefers** over `value`. Writing both on
+repair makes the live tree canonical at the moment of the repair rather than at the next save.
+
+**No new notification.** The tree write fires `valueTreePropertyChanged → setNewState →
+setDenormalisedValue`, whose `approximatelyEqual` early-return sees the value the parameter already
+holds and stops — no host notification, no gesture, no recursion. That is what lets it run outside
+the value-moved branch without becoming a host-visible edit, and `silentSoundChange` stays gated on
+the value actually moving.
+
+**Regression: State test 36, 30 checks, 11 failing pre-fix.** It asserts on the serialized artefact —
+the live tree `copyState()` reads and the bytes `getStateInformation` emits — and runs the full
+poison → restore → save → reload cycle **twice**, so corruption cannot survive one cycle and return
+on the next. The victim parameter is **searched for** by the arithmetic precondition
+(`convertTo0to1(0) == getDefaultValue()`) rather than hard-coded, so the test survives a range
+change. Three boundary legs: a valid default-valued text stays exactly as written, an out-of-range
+`raw` is rewritten canonically, and a malformed `raw` beside a valid `value` still falls back to the
+value (§6's contract, unchanged).
+
+### The focused audit found the defect at exactly one site
+
+Every other user of the same repair mechanism was read:
+
+| site | verdict |
+|---|---|
+| `InternalState::restoreState` (`repairedValue`) | writes **every** Setting unconditionally — no equality gate, so ER-STATE-21's Policy B was already durable |
+| `PresetManager::applySoundTree` (`readSerializedValue`) | applies through `setValueNotifyingHost`, which fires the adapter's flush, so `copyState()` sees it; and a preset file on disk is not the plug-in's to rewrite |
+| `migrateFromLegacyApvts` | writes the clamped value unconditionally |
+| `readSlot` (A/B) | accepts or rejects a whole tree; no per-field gate |
+
+No second instance, so nothing else was touched.
+
+### No new race class
+
+The change adds no shared state and no new thread pairing — one extra `ValueTree::setProperty` on
+the restore path, which already writes that tree. Nothing for D-2 to absorb; its four measured race
+classes stand, deferred.
+
+### Carried unchanged
+
+ER-STATE-21 FIXED (contract completed, not redesigned) · ER-STATE-24 and ER-GUI-06 FIXED and
+untouched · ER-DSP-10, ER-DSP-11 FIXED · drag recovery REFUTED · D-1 approved and implemented ·
+D-2 / RISK-007 deferred · RISK-008 real-host validated for REAPER with its residual, **no host test
+performed** · cross-file realtime-lint boundary unchanged.
+
 ## Round 26 — 2026-09-03 — a preset the plug-in refused still ducked the audio
 
 One fix, closing the last actionable Review Bug. It is the other half of round 24: that round made a

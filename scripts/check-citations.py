@@ -316,6 +316,11 @@ GLOSS = re.compile(r"""\A[`]?\s*\((?:`([^`]+)`|"([^"]+)")\)""")
 # `""` means "no stable token to name"; the run reports those as unverified
 # rather than accepting them silently, so they stay countable.
 DELIBERATE_REAIMS = {
+    # 2026-09-03 (round 27): ER-STATE-25 split applyNorm's value-move gate from the
+    # serialized repair, growing reassertParameters, so the spans below it moved by
+    # 52. Same symbols, re-derived by reading: the ADR-0010 sites :535 and :712-715,
+    # the legacyKey fallback :1121-1122, setStateInformation :991-1246. Only the
+    # TARGET side moved.
     # 2026-09-03 (round 26): ER-GUI-06 added the duck-ownership comment to the
     # PresetManager hook wiring in the constructor, so every span below it moved
     # by 13. Same symbols, re-derived by reading the new spans: deliverLatency +
@@ -478,22 +483,22 @@ DELIBERATE_REAIMS = {
      "CMakeLists.txt:14, 467-492"): "ANAMORPH_BUILD_NUMBER",
     ("docs/architecture/SERIALIZATION_REGISTRY.md",
      "src/PluginProcessor.cpp:688-692",
-     "src/PluginProcessor.cpp:1069-1070"): "legacyKey",
+     "src/PluginProcessor.cpp:1121-1122"): "legacyKey",
     ("docs/architecture/SERIALIZATION_REGISTRY.md",
      "src/PluginProcessor.cpp:1009-1010",
-     "src/PluginProcessor.cpp:1069-1070"): "legacyKey",
+     "src/PluginProcessor.cpp:1121-1122"): "legacyKey",
     ("docs/architecture/SERIALIZATION_REGISTRY.md",
      "src/PluginProcessor.cpp:986-987",
-     "src/PluginProcessor.cpp:1069-1070"): "legacyKey",
+     "src/PluginProcessor.cpp:1121-1122"): "legacyKey",
     ("docs/policies/COMPATIBILITY_POLICY.md",
      "src/PluginProcessor.cpp:327-396",
-     "src/PluginProcessor.cpp:939-1194"): "setStateInformation",
+     "src/PluginProcessor.cpp:991-1246"): "setStateInformation",
     ("docs/policies/COMPATIBILITY_POLICY.md",
      "src/PluginProcessor.cpp:901-1134",
-     "src/PluginProcessor.cpp:939-1194"): "setStateInformation",
+     "src/PluginProcessor.cpp:991-1246"): "setStateInformation",
     ("docs/policies/COMPATIBILITY_POLICY.md",
      "src/PluginProcessor.cpp:878-1111",
-     "src/PluginProcessor.cpp:939-1194"): "setStateInformation",
+     "src/PluginProcessor.cpp:991-1246"): "setStateInformation",
     # 2026-08-31 (round 2): prepareToPlay grew by the priming call, shifting every
     # line below it. RISK-007's read-side citation names setStateInformation, so it was
     # re-derived from that symbol rather than mapped mechanically -- the mechanical
@@ -505,31 +510,31 @@ DELIBERATE_REAIMS = {
     # same re-derivation; both bases are declared until this branch merges.
     ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
      "src/PluginProcessor.cpp:328, 390-393",
-     "src/PluginProcessor.cpp:525,660-663"): "setValueNotifyingHost",
+     "src/PluginProcessor.cpp:535,712-715"): "setValueNotifyingHost",
     ("docs/architecture/SERIALIZATION_REGISTRY.md",
      "src/PluginProcessor.cpp:743-744",
-     "src/PluginProcessor.cpp:1069-1070"): "legacyKey",
+     "src/PluginProcessor.cpp:1121-1122"): "legacyKey",
     ("docs/policies/COMPATIBILITY_POLICY.md",
      "src/PluginProcessor.cpp:645-796",
-     "src/PluginProcessor.cpp:939-1194"): "setStateInformation",
+     "src/PluginProcessor.cpp:991-1246"): "setStateInformation",
     ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
      "src/PluginProcessor.cpp:318, 380-383",
-     "src/PluginProcessor.cpp:525,660-663"): "setValueNotifyingHost",
+     "src/PluginProcessor.cpp:535,712-715"): "setValueNotifyingHost",
     ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
      "src/PluginProcessor.cpp:489,624-627",
-     "src/PluginProcessor.cpp:525,660-663"): "setValueNotifyingHost",
+     "src/PluginProcessor.cpp:535,712-715"): "setValueNotifyingHost",
     ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
      "src/PluginProcessor.cpp:311,345-348",
-     "src/PluginProcessor.cpp:525,660-663"): "setValueNotifyingHost",
+     "src/PluginProcessor.cpp:535,712-715"): "setValueNotifyingHost",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:901-1134",
-     "src/PluginProcessor.cpp:939-1194"): "setStateInformation",
+     "src/PluginProcessor.cpp:991-1246"): "setStateInformation",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:878-1111",
-     "src/PluginProcessor.cpp:939-1194"): "setStateInformation",
+     "src/PluginProcessor.cpp:991-1246"): "setStateInformation",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:610-749",
-     "src/PluginProcessor.cpp:939-1194"): "setStateInformation",
+     "src/PluginProcessor.cpp:991-1246"): "setStateInformation",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the

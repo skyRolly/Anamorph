@@ -495,7 +495,12 @@ void AnamorphAudioProcessor::reassertParameters (const juce::ValueTree& restored
     bool silentSoundChange = false;
 
     // Idempotent single-parameter apply, shared by both branches below.
-    auto applyNorm = [&] (juce::RangedAudioParameter* rp, float norm)
+    // `repaired` says the SERIALIZED representation was not the one now in force --
+    // the text was unusable, or it was a usable number outside the parameter's
+    // range. It is deliberately separate from "the live value moved", because the
+    // two are independent and conflating them is the ER-STATE-25 defect: a file
+    // can be corrupt AND resolve to the value already loaded.
+    auto applyNorm = [&] (juce::RangedAudioParameter* rp, float norm, bool repaired = false)
     {
         // A serialized value is text, and `nan` is text JUCE's number parser
         // accepts, so a hand-edited or corrupted session can carry
@@ -513,13 +518,18 @@ void AnamorphAudioProcessor::reassertParameters (const juce::ValueTree& restored
         // REPAIR, not just a filter, and it is the one place that sees every
         // parameter on every restore path.
         if (! std::isfinite (norm))
+        {
             norm = rp->getDefaultValue();
+            repaired = true;   // ...and the file still spells the non-finite value
+        }
 
         // Written as a negated <= so that a NaN on EITHER side counts as
         // "differs" and gets repaired. The plain `> 1e-6` this replaced is
         // false when either operand is NaN, which is exactly how a poisoned
         // parameter used to survive the pass meant to fix it.
-        if (! (std::abs (norm - rp->getValue()) <= 1.0e-6f))
+        const bool valueMoves = ! (std::abs (norm - rp->getValue()) <= 1.0e-6f);
+
+        if (valueMoves)
         {
             if (notifyHost)
                 rp->setValueNotifyingHost (norm);
@@ -528,35 +538,60 @@ void AnamorphAudioProcessor::reassertParameters (const juce::ValueTree& restored
                 rp->setValue (norm); // getValue() only -- no host / listener notification
                 if (auto* atom = apvts.getRawParameterValue (rp->paramID))
                     atom->store (rp->convertFrom0to1 (norm)); // DSP value (snapped denormalised)
-
-                // ...and the TREE, which neither of the two writes above reaches.
-                // Measured before this line existed: a session carrying
-                // value="nan" restored correctly (parameter and DSP atomic both
-                // repaired to the default) and then SAVED value="nan" straight
-                // back out. The reason is JUCE's flush gate -- copyState() writes
-                // a node only when the adapter's `needsUpdate` is set, and that is
-                // set by parameterValueChanged, which setValue() deliberately does
-                // not fire. So the repair was invisible to serialization and the
-                // corruption outlived it in every subsequent save.
-                //
-                // Writing the repaired value here is a no-op for the adapter: it
-                // fires valueTreePropertyChanged -> setNewState ->
-                // setDenormalisedValue, whose approximatelyEqual early-return sees
-                // the value the atomic above already holds and stops. Nothing is
-                // re-notified and nothing recurses; only the serialized text moves.
-                //
-                // This build reloads such a session correctly either way, because
-                // `raw` is re-stamped on every save and reassertParameters prefers
-                // it -- so the visible defect is confined to what the FILE says.
-                // That is still worth repairing: the file is the durable artefact,
-                // it is what an older build (which has no `raw` path) would read as
-                // NaN, and it is what any other reader of @value would get.
-                if (auto node = apvts.state.getChildWithProperty ("id", rp->paramID); node.isValid())
-                    node.setProperty ("value", rp->convertFrom0to1 (norm), nullptr);
-                if (! pid::isViewParam (rp->paramID))
-                    silentSoundChange = true;
             }
+            if (! notifyHost && ! pid::isViewParam (rp->paramID))
+                silentSoundChange = true;
         }
+
+        // THE SERIALIZED REPAIR IS NOT CONDITIONAL ON THE VALUE MOVING (ER-STATE-25).
+        // It used to sit inside the branch above, which made the durability of a
+        // repair depend on an unrelated fact -- whether the corrupt file happened
+        // to resolve to the value already in force. It often does: unusable text
+        // reads as the denormalised 0 through JUCE's parser, and `norm` is then the
+        // parameter DEFAULT, so for every parameter whose range starts at its
+        // default (Drive 0..24 dB default 0, Amount 0..1 default 0, Channel Mode's
+        // first choice, ...) the two coincide and the gate was false. Measured on
+        // the shipped build: a session carrying value="abc" for `channelMode`
+        // restored correctly, left "abc" in the LIVE APVTS tree, and SAVED "abc"
+        // straight back out -- twice over, so the corruption survived a full
+        // save/reload cycle and was still there on the next one (State test 36).
+        // The same held for a usable-but-out-of-range raw="-7", which clamps to the
+        // value in force and left "-7" in the tree.
+        //
+        // ...and the TREE, which neither of the two writes above reaches.
+        // Measured before this write existed at all: a session carrying
+        // value="nan" restored correctly (parameter and DSP atomic both repaired to
+        // the default) and then SAVED value="nan" straight back out. The reason is
+        // JUCE's flush gate -- copyState() writes a node only when the adapter's
+        // `needsUpdate` is set, and that is set by parameterValueChanged, which
+        // setValue() deliberately does not fire. So the repair was invisible to
+        // serialization and the corruption outlived it in every subsequent save.
+        //
+        // Writing the repaired value here is a no-op for the adapter: it fires
+        // valueTreePropertyChanged -> setNewState -> setDenormalisedValue, whose
+        // approximatelyEqual early-return sees the value the parameter already
+        // holds and stops. Nothing is re-notified, no gesture is opened and nothing
+        // recurses; only the serialized text moves. That is what lets this run
+        // outside the value-moved branch without becoming a host-visible edit.
+        //
+        // BOTH attributes, when the node carries them. `raw` is re-stamped from the
+        // live parameter on every save, so a corrupt `raw` cannot reach a FILE --
+        // but it can and did sit in the live tree, which is what A/B slots and undo
+        // snapshots copy, and which the next restore would prefer over `value`.
+        //
+        // This build reloads such a session correctly either way, because `raw` is
+        // re-stamped on every save and reassertParameters prefers it -- so the
+        // visible defect is confined to what the FILE says. That is still worth
+        // repairing: the file is the durable artefact, it is what an older build
+        // (which has no `raw` path) would read, and it is what any other reader of
+        // @value would get.
+        if (repaired)
+            if (auto node = apvts.state.getChildWithProperty ("id", rp->paramID); node.isValid())
+            {
+                node.setProperty ("value", rp->convertFrom0to1 (norm), nullptr);
+                if (node.hasProperty ("raw"))
+                    node.setProperty ("raw", norm, nullptr);
+            }
     };
 
     for (auto* p : getParameters())
@@ -577,13 +612,30 @@ void AnamorphAudioProcessor::reassertParameters (const juce::ValueTree& restored
                 const bool haveRaw = node.hasProperty ("raw")
                                      && readSerializedValue (node.getProperty ("raw"), serialized);
                 float norm;
+                // `repaired` is decided on the INPUT, before any clamp hides the
+                // evidence: text that is not a usable number at all, or a usable one
+                // outside the field's range. Snapping is NOT repair -- a stepped
+                // parameter moving "0.4" to its nearest step is the parameter doing
+                // its job on a legitimate value, and rewriting for that would be the
+                // "always rewrite" behaviour this deliberately avoids.
+                bool repaired;
                 if (haveRaw)
-                    norm = juce::jlimit (0.0f, 1.0f, serialized);
+                {
+                    norm = juce::jlimit (0.0f, 1.0f, serialized);   // `raw` is normalised: 0..1
+                    repaired = serialized < 0.0f || serialized > 1.0f;
+                }
                 else if (readSerializedValue (node.getProperty ("value"), serialized))
+                {
                     norm = juce::jlimit (0.0f, 1.0f, rp->convertTo0to1 (serialized));
+                    const auto& r = rp->getNormalisableRange();
+                    repaired = serialized < r.start || serialized > r.end;
+                }
                 else
+                {
                     norm = rp->getDefaultValue();
-                applyNorm (rp, norm);
+                    repaired = true;                                 // unusable text
+                }
+                applyNorm (rp, norm, repaired);
             }
             else
             {

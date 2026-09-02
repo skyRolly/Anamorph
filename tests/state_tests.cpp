@@ -5460,6 +5460,211 @@ static int runModernSettingsProbe()
 //  all. The guard stays as the backstop that decision asks for, and this test
 //  stays discriminating because it drives `setPersistence` directly.
 // ---------------------------------------------------------------------------
+//  State test 36 -- a repair whose value happens to MATCH the live one must
+//  still reach the persisted state (ER-STATE-25).
+//
+//  State test 20 already pins "a repaired parameter reaches the saved state",
+//  but it poisons with `nan`, and NaN makes `applyNorm`'s gate
+//  `! (|norm - getValue()| <= 1e-6)` true on the comparison alone -- so it
+//  exercises the repair path and never the gate's other side. This test takes
+//  that other side: malformed text whose repair lands on the value the
+//  parameter ALREADY holds.
+//
+//  THE PRECONDITION IS ARITHMETIC, NOT A GUESS, and the test searches for a
+//  parameter that satisfies it rather than hard-coding one. `apvts.replaceState`
+//  runs first and pushes @value through JUCE's own parser, where unusable text
+//  reads as the denormalised 0; `applyNorm` then computes `norm` = the parameter
+//  DEFAULT, because SerializedNumber refuses the same text. So the gate is false
+//  -- and the tree write-back skipped -- exactly when
+//      convertTo0to1 (0) == getDefaultValue()
+//  which is true of every parameter whose range starts at its default (Drive
+//  0..24 dB default 0, Amount 0..1 default 0, ...).
+//
+//  WHAT MAKES IT A PERSISTENCE TEST RATHER THAN A VACUOUS ONE. "restore ->
+//  parameter == default" passes BEFORE the fix: the live value was never the
+//  problem. The assertions that matter are on the serialized artefact -- the
+//  live APVTS tree that copyState() reads, and the bytes getStateInformation
+//  actually emits.
+static void testDefaultValuedCorruptionIsRepairedInState()
+{
+    std::printf ("State test 36: a repair equal to the live value still reaches the saved state (ER-STATE-25)\n");
+
+    AnamorphAudioProcessor probe;
+    probe.prepareToPlay (48000.0, 256);
+
+    // Find a parameter for which malformed text and the default coincide.
+    juce::String victim;
+    for (auto* p : probe.getParameters())
+        if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p))
+            if (! pid::isViewParam (rp->paramID)
+                && std::abs (rp->convertTo0to1 (0.0f) - rp->getDefaultValue()) <= 1.0e-6f)
+            { victim = rp->paramID; break; }
+    check (victim.isNotEmpty(),
+           "a parameter exists whose default coincides with what malformed text normalises to");
+    if (victim.isEmpty()) return;
+    std::printf ("  victim parameter: %s (default normalised %.6f)\n", victim.toRawUTF8(),
+                 (double) probe.getAPVTS().getParameter (victim)->getDefaultValue());
+
+    const char* kPoison = "abc";   // unusable text: not a number in any reading
+
+    // Build a session whose victim PARAM carries the poison and no `raw`, so the
+    // `value` path is the one under test (the raw fallback keeps its own contract
+    // and is exercised by State tests 19/20 -- untouched here).
+    auto poisonSession = [&] (const juce::MemoryBlock& clean, const char* poison)
+    {
+        auto xml = BlobCodec::unwrap (clean);
+        check (xml != nullptr, "session decodes for poisoning");
+        bool done = false;
+        if (xml != nullptr)
+            if (auto* params = xml->getChildByName ("ANAMORPH"))
+                if (auto* n = params->getChildByAttribute ("id", victim))
+                { n->setAttribute ("value", poison); n->removeAttribute ("raw"); done = true; }
+        check (done, "the session carries the victim PARAM to poison");
+        return xml != nullptr ? BlobCodec::wrap (*xml) : juce::MemoryBlock();
+    };
+    // What a state blob says for the victim's @value, as TEXT -- the durable artefact.
+    auto savedText = [&] (const juce::MemoryBlock& blob)
+    {
+        auto xml = BlobCodec::unwrap (blob);
+        if (xml != nullptr)
+            if (auto* params = xml->getChildByName ("ANAMORPH"))
+                if (auto* n = params->getChildByAttribute ("id", victim))
+                    return n->getStringAttribute ("value");
+        return juce::String ("<missing>");
+    };
+
+    juce::MemoryBlock clean;
+    { AnamorphAudioProcessor authoring; authoring.prepareToPlay (48000.0, 256);
+      authoring.getStateInformation (clean); }
+
+    // ---- the core case, run TWICE so the corruption cannot survive one cycle
+    //      and return on the next (the repository's repeated-restore discipline) ----
+    juce::MemoryBlock resaved;
+    for (int cycle = 0; cycle < 2; ++cycle)
+    {
+        const auto poisoned = poisonSession (cycle == 0 ? clean : resaved, kPoison);
+        checkStr (savedText (poisoned), juce::String (kPoison),
+                  "the input session really does carry the malformed text");
+
+        AnamorphAudioProcessor proc;
+        proc.prepareToPlay (48000.0, 256);
+        proc.setStateInformation (poisoned.getData(), (int) poisoned.getSize());
+
+        auto* rp = proc.getAPVTS().getParameter (victim);
+        // (1) The LIVE value -- correct before the fix too, which is why it cannot
+        //     be the assertion this test rests on.
+        check (rp != nullptr && juce::approximatelyEqual (rp->getValue(), rp->getDefaultValue()),
+               "the live parameter holds the repaired value");
+
+        // (2) The LIVE TREE, which is what copyState() serialises from.
+        auto live = proc.getAPVTS().state.getChildWithProperty ("id", victim);
+        check (live.isValid(), "the live APVTS still carries the victim node");
+        const juce::String liveText = live.getProperty ("value").toString();
+        std::printf ("  cycle %d: live APVTS @value after restore = \"%s\"\n", cycle, liveText.toRawUTF8());
+        check (liveText != kPoison, "the malformed text is GONE from the live APVTS tree");
+        check (anamorph::looksLikePlainNumber (liveText.toRawUTF8()),
+               "...and what replaced it is a plain number");
+
+        // (3) The SAVED ARTEFACT -- the durable thing an older build would read.
+        proc.getStateInformation (resaved);
+        const juce::String outText = savedText (resaved);
+        std::printf ("  cycle %d: saved @value = \"%s\"\n", cycle, outText.toRawUTF8());
+        check (outText != kPoison, "the next save does NOT re-emit the malformed text");
+        check (anamorph::looksLikePlainNumber (outText.toRawUTF8()),
+               "...it emits a plain number");
+
+        // (4) Reloading that save reproduces the value and stays canonical.
+        AnamorphAudioProcessor back;
+        back.prepareToPlay (48000.0, 256);
+        back.setStateInformation (resaved.getData(), (int) resaved.getSize());
+        auto* rb = back.getAPVTS().getParameter (victim);
+        check (rb != nullptr && juce::approximatelyEqual (rb->getValue(), rp->getDefaultValue()),
+               "reloading the repaired save reads the same value back");
+        check (savedText (resaved) != kPoison, "and the malformed text does not reappear");
+    }
+
+    // ---- B. a GENUINELY valid value that happens to equal the default must not
+    //         be treated as a repair: its text stays exactly as written ----
+    {
+        auto* rp0 = probe.getAPVTS().getParameter (victim);
+        const juce::String canonical (rp0->convertFrom0to1 (rp0->getDefaultValue()), 6);
+        auto xml = BlobCodec::unwrap (clean);
+        bool done = false;
+        if (xml != nullptr)
+            if (auto* params = xml->getChildByName ("ANAMORPH"))
+                if (auto* n = params->getChildByAttribute ("id", victim))
+                { n->setAttribute ("value", canonical); n->removeAttribute ("raw"); done = true; }
+        check (done, "the control session carries the victim PARAM");
+        const auto validBlob = xml != nullptr ? BlobCodec::wrap (*xml) : juce::MemoryBlock();
+
+        AnamorphAudioProcessor proc;
+        proc.prepareToPlay (48000.0, 256);
+        proc.setStateInformation (validBlob.getData(), (int) validBlob.getSize());
+        auto live = proc.getAPVTS().state.getChildWithProperty ("id", victim);
+        std::printf ("  control: valid \"%s\" restored as \"%s\"\n", canonical.toRawUTF8(),
+                     live.getProperty ("value").toString().toRawUTF8());
+        checkStr (live.getProperty ("value").toString(), canonical,
+                  "a VALID value equal to the default is left exactly as written (no needless rewrite)");
+    }
+
+    // ---- B2. the CLAMP category, measured rather than assumed (round 27 asked
+    //          which categories share the defect): a USABLE `raw` outside 0..1 is
+    //          clamped, so the value the file spells is not the value in force.
+    {
+        auto* rp0 = probe.getAPVTS().getParameter (victim);
+        auto xml = BlobCodec::unwrap (clean);
+        if (xml != nullptr)
+            if (auto* params = xml->getChildByName ("ANAMORPH"))
+                if (auto* n = params->getChildByAttribute ("id", victim))
+                    n->setAttribute ("raw", "-7");     // usable, far below 0 -> clamps to 0 == default
+        const auto blob = xml != nullptr ? BlobCodec::wrap (*xml) : juce::MemoryBlock();
+        AnamorphAudioProcessor proc;
+        proc.prepareToPlay (48000.0, 256);
+        proc.setStateInformation (blob.getData(), (int) blob.getSize());
+        auto live = proc.getAPVTS().state.getChildWithProperty ("id", victim);
+        std::printf ("  clamp category: raw=\"-7\" -> live @raw \"%s\", normalised %.6f\n",
+                     live.getProperty ("raw").toString().toRawUTF8(),
+                     (double) proc.getAPVTS().getParameter (victim)->getValue());
+        check (std::abs (proc.getAPVTS().getParameter (victim)->getValue() - rp0->getDefaultValue()) <= 1.0e-6f,
+               "an out-of-range `raw` clamps to the value in force");
+        // ...and, being out of range, is corruption in its own right: the tree must
+        // not keep it just because the clamp landed on the value already loaded.
+        checkStr (live.getProperty ("raw").toString(), juce::String ("0.0"),
+                  "an out-of-range `raw` is rewritten canonically even when the value does not move");
+    }
+
+    // ---- C. the raw/value fallback contract is untouched: a bad `raw` beside a
+    //         valid `value` must still restore the VALUE, not the default ----
+    {
+        auto* rp0 = probe.getAPVTS().getParameter (victim);
+        const float target = rp0->convertFrom0to1 (0.75f);      // deliberately NOT the default
+        auto xml = BlobCodec::unwrap (clean);
+        bool done = false;
+        if (xml != nullptr)
+            if (auto* params = xml->getChildByName ("ANAMORPH"))
+                if (auto* n = params->getChildByAttribute ("id", victim))
+                { n->setAttribute ("value", juce::String (target, 6));
+                  n->setAttribute ("raw", "abc"); done = true; }
+        check (done, "the fallback session carries the victim PARAM");
+        const auto blob = xml != nullptr ? BlobCodec::wrap (*xml) : juce::MemoryBlock();
+
+        AnamorphAudioProcessor proc;
+        proc.prepareToPlay (48000.0, 256);
+        proc.setStateInformation (blob.getData(), (int) blob.getSize());
+        auto* rb = proc.getAPVTS().getParameter (victim);
+        // Expect what the PARAMETER makes of that plain value, not 0.75 itself: a
+        // choice/stepped victim snaps, and the claim here is "the value survived",
+        // not "no quantisation happened".
+        const float want = rp0->convertTo0to1 (target);
+        std::printf ("  raw/value fallback: bad raw + value=%.6f -> normalised %.6f (want %.6f)\n",
+                     (double) target, (double) rb->getValue(), (double) want);
+        check (std::abs (rb->getValue() - want) < 1.0e-3f,
+               "a malformed `raw` still falls back to the valid `value` (contract unchanged)");
+        check (std::abs (want - rp0->getDefaultValue()) > 1.0e-3f,
+               "non-vacuity: that fallback value is NOT the default, so the leg can fail");
+    }
+}
+// ---------------------------------------------------------------------------
 //  State test 35 -- a REJECTED preset load must have no audio side effect
 //  (ER-GUI-06).
 //
@@ -6495,6 +6700,7 @@ int main (int argc, char* argv[])
     testMalformedScopePersistStaysFinite();
     testForeignPresetDoesNotResetSound();
     testRejectedPresetDoesNotDuck();
+    testDefaultValuedCorruptionIsRepairedInState();
     testModernSettingsAreRepairedOnRestore();
     testMalformedLegacySettingsResolveToValid();
     testTooltipSourceOfTruth();

@@ -441,6 +441,22 @@ exactly. It also performs the host's ordinary post-restore activation, without w
 instance's leftover audio in its delay lines flushes through and moves the reading 0.052 dB —
 engine history rather than A/B state.
 
+**State test 36 pins the durability half of the repair contract** (ER-STATE-25, round 27). State
+test 20 already covers "a repaired parameter reaches the saved state", but it poisons with `nan`,
+which makes `applyNorm`'s `! (|norm - getValue()| <= 1e-6)` gate true **on the comparison alone** —
+so it exercises the repair path and never the gate's other side. This test takes that other side:
+malformed text whose repair lands on the value the parameter already holds. **The precondition is
+arithmetic, and the test searches for a qualifying parameter rather than hard-coding one** —
+`replaceState` reads unusable text as the denormalised 0, `applyNorm` resolves it to the default, so
+the gate is false exactly when `convertTo0to1(0) == getDefaultValue()`. It asserts on the
+**serialized artefact**, not the runtime value, because "restore → parameter == default" passes
+before the fix: the live APVTS tree that `copyState()` reads, and the bytes `getStateInformation`
+emits. The whole poison→restore→save→reload cycle runs **twice**, so corruption cannot survive one
+cycle and return on the next. Three legs guard the boundaries: a genuinely valid value equal to the
+default must be left **exactly as written** (no needless rewrite), an out-of-range `raw` must be
+rewritten canonically too, and a malformed `raw` beside a valid `value` must still fall back to the
+value. **11 of its 30 checks fail against the pre-fix build, 0 after.**
+
 **State test 35 pins the other half of a refused load: it must have no AUDIO side effect**
 (ER-GUI-06, round 26). Round 24 made a foreign preset a no-op for STATE; the editor was still
 raising the masking duck *before* asking the manager to load, so a load the manager then refused
@@ -500,7 +516,7 @@ twice, and a `juce::String` refcount exchange. Measured round 20: the same four 
 others, which is what classified ER-STATE-23 as already covered by D-2 rather than a new bug
 (`docs/FUTURE_RISKS.md` RISK-007).
 
-`tests/state_tests.cpp` (**34 tests**, own console target `AnamorphStateTests`) automates the
+`tests/state_tests.cpp` (**35 tests**, own console target `AnamorphStateTests`) automates the
 COMPATIBILITY policy family against the **real `AnamorphAudioProcessor`** (the target compiles
 the plugin sources; since 2026-08-21 it also constructs and destroys the real editor, headlessly
 and without ever showing it — no peer, no message loop, no interaction):

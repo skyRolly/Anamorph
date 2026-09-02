@@ -15,6 +15,17 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 
 ## [0.9.6] — 2026-09-03
 ### Fixed
+- **A damaged value in a project file is now cleaned out of the file even when it happens to read as
+  the setting you already had.** Opening a project with a damaged control value repairs it, and the
+  repair is written back so the next save cleans the file. But the write-back only happened when the
+  repair actually *changed* something on screen — and damaged text usually reads as zero, which for
+  any control whose range starts at its default (Drive, Amount, Channel Mode and others) *is* the
+  value already loaded. Nothing looked wrong, so nothing was rewritten, and the damaged text stayed
+  in the file through every later save — where an older version of the plug-in, which reads that
+  field rather than the newer one beside it, would still find it. The file is now cleaned whenever
+  the value it carries was damaged, whether or not the repair changes what you hear. Values that are
+  genuinely valid are left exactly as they were written. Regression coverage: State test 36.
+  Evidence: PR #134. [Verified]
 - **A preset the plug-in refuses no longer dips the audio.** Loading a preset briefly ducks the
   sound so the change is never heard as a click — the right thing when a preset actually loads. But
   the dip was set up the moment you *asked* for a preset, before the plug-in had looked at the file.

@@ -7,7 +7,7 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.6 change set** (2026-09-01, matching the CHANGELOG heading) — the
-**engineering-review programme, rounds 1 through 26**, newest last in the body: round 1 (the
+**engineering-review programme, rounds 1 through 27**, newest last in the body: round 1 (the
 programme's first sweep: six engine/state/GUI fixes with Tests 43–46 and two state regressions,
 the engaged Test 2/38 matrices, the KI-027 and RISK-007 filings, the v0.9.6 renumbering sweep, the
 NOTICE pin + AudioUnitSDK section, the CI_CD job inventory, and the new
@@ -50,7 +50,9 @@ defaulting the rest, with both loaders reporting success — closed by a root-ty
 shared by both loaders); and **round 25** (a minimal `[0.9.6]` Change Log correction pass — the
 release date, and five wording claims the current implementation contradicts); and **round 26**
 (the audio half of round 24 — a preset the plug-in REFUSED still ducked the audio, because the
-editor raised the masking duck before the load could refuse).
+editor raised the masking duck before the load could refuse); and **round 27** (a malformed value
+whose repair equalled the value already loaded was never written back, so the damage stayed in the
+file through every later save).
 **Header correction (round 7, 2026-09-01):** this line enumerated round 1 alone while the body
 carried six later rounds, and dated the change set 2026-08-31 while the CHANGELOG `[0.9.6]` heading
 had been re-dated to 2026-09-01 — the same drift the C6 correction below was written about,
@@ -7606,4 +7608,48 @@ duplicate finding was filed.
 counted from `main`'s registered test functions. The DSP suite is unchanged at **50 tests + the A/B
 clamp guard / 282 checks**. The `[0.9.6]` Fixed count is **31**. Measured, not inferred:
 `AnamorphStateTests` prints `1476 checks, 0 failure(s)` and `AnamorphTests` prints
+`282 checks, 0 failures`. [Verified]
+
+## Engineering-review programme, round 27 — a repair that changed nothing was not persisted (2026-09-03)
+
+**What the round is.** One fix, completing ER-STATE-21's durability contract for the APVTS parameter
+family. Records: `worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Round 27.
+
+**ER-STATE-25 — the serialized repair was gated on the live value moving.** `applyNorm`'s write-back
+into the live tree sat inside `if (! (|norm - getValue()| <= 1e-6))`, so the durability of a repair
+depended on an unrelated fact — and the two coincide often. `apvts.replaceState` reads unusable text
+as the denormalised 0 through JUCE's parser, and the repair resolves to the parameter **default**, so
+the gate is false exactly when `convertTo0to1(0) == getDefaultValue()`: true of every parameter whose
+range starts at its default. Measured: `value="abc"` on `channelMode` restored correctly, left
+`"abc"` in the live APVTS **and** in the re-saved session, and was still there after a second full
+poison → restore → save cycle. The same held for a usable-but-out-of-range `raw="-7"`.
+
+**Fixed by separating "the input was repaired" from "the live value moved".** `repaired` is decided
+by the caller on the INPUT, before any clamp hides the evidence, and drives the tree write alone; the
+`setValue`/atomic work stays gated on the value moving, so nothing new is notified and no gesture is
+opened. A genuinely valid value equal to the default takes no branch and its text is left
+byte-identical — which is what distinguishes this from the "always rewrite every parameter"
+behaviour the round warned against. Both `value` and `raw` are rewritten on repair, because a corrupt
+`raw` cannot reach a file (it is re-stamped on save) but can sit in the live tree that A/B slots and
+undo snapshots copy.
+
+**The focused audit found exactly one site.** `InternalState::restoreState` writes every Setting
+unconditionally, so Policy B was already durable; `PresetManager::applySoundTree` applies through
+`setValueNotifyingHost`, which the APVTS adapter flushes; `migrateFromLegacyApvts` writes
+unconditionally; `readSlot` accepts or rejects whole trees. Nothing else was changed.
+
+**Documents touched:** `CHANGELOG.md` (one Fixed entry), `docs/architecture/SERIALIZATION_REGISTRY.md`
+(the repair-durability rule, which previously implied that an unchanged live value meant no
+write-back was needed), `docs/procedures/TESTING.md` (State test 36 and the suite count),
+`docs/policies/TESTING_POLICY.md`, `README.md`, `docs/architecture/RELEASE_HARDENING_PLAN.md`,
+`docs/HANDOVER.md`, this file, the programme worklog and the dashboard. **Unchanged:** every other
+architecture document, all workflows, both baselines.
+
+**No new race class:** one extra `ValueTree::setProperty` on a restore path that already writes that
+tree; no new shared state and no new thread pairing.
+
+**Counts.** The state suite is **35 tests / 1506 checks** (was 34 / 1476; State test 36 adds 30),
+counted from `main`'s registered test functions. The DSP suite is unchanged at **50 tests + the A/B
+clamp guard / 282 checks**. The `[0.9.6]` Fixed count is **32**. Measured, not inferred:
+`AnamorphStateTests` prints `1506 checks, 0 failure(s)` and `AnamorphTests` prints
 `282 checks, 0 failures`. [Verified]

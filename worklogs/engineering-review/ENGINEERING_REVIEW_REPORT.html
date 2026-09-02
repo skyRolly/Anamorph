@@ -82,14 +82,26 @@ ruled out, fixed, deferred — and what should happen next. A rendered <em>view<
 <code>ENGINEERING_REVIEW_PROGRAMME.md</code> beside it; the worklog is the source of truth a later
 round reconciles against.</p>
 <div class="meta">
-  <span>ROUNDS 1–26 · 2026-08-31 → 09-03</span>
+  <span>ROUNDS 1–27 · 2026-08-31 → 09-03</span>
   <span>TREE: main @ e8f4422 → v0.9.6</span>
-  <span>STATUS: a refused preset is now a full no-op, audio included; D-2, RISK-008 and KI-015 remain open by decision</span>
+  <span>STATUS: malformed state is now repaired durably even when the repair changes nothing; D-2, RISK-008 and KI-015 remain open by decision</span>
   <span>NEXT: licence (KI-015), then tag v0.9.6</span>
 </div>
 
 <h2><span class="no">§1</span>Executive status</h2>
-<p class="lede"><strong>Round 26: the other half of round 24 &mdash; a preset the plug-in REFUSED still
+<p class="lede"><strong>Round 27: a repair that changed nothing on screen was never written to the
+file.</strong> The live value was always correct &mdash; which is why "restore &rarr; parameter == default"
+passes on the broken build and cannot be the assertion a test rests on. The damage stayed in the
+serialized state, where an older build reads it.</p>
+<div class="verdicts">
+  <div class="v"><div class="k">ER-STATE-25 &middot; FIXED by separating two questions</div><p>The tree write-back sat inside <code>if (! (|norm - getValue()| &lt;= 1e-6))</code>, so the durability of a repair depended on whether the corrupt file happened to resolve to the value already loaded. <strong>It usually does</strong>: <code>replaceState</code> reads unusable text as the denormalised 0, so the repair is the DEFAULT &mdash; and the gate is false for every parameter whose range starts at its default. Measured: <code>value="abc"</code> on <code>channelMode</code> left <code>"abc"</code> in the live tree AND in the re-saved session, twice over.</p></div>
+  <div class="v"><div class="k">Provenance, not equality</div><p>The write-back is now conditioned on <em>the input having been repaired</em> &mdash; text that is not a usable number, or a usable one outside the field's range, decided BEFORE any clamp hides the evidence. A genuinely valid value that merely happens to equal the default takes no branch and its text is left byte-identical. Snapping is not repair. That is the alternative to "always rewrite every parameter".</p></div>
+  <div class="v"><div class="k">Which categories actually share it</div><p>Checked rather than assumed. <code>value="nan"</code> does NOT &mdash; NaN makes the comparison false, so the gate fires, which is why State test 20 passed all along. <code>value="abc"</code> where the default coincides DOES. A usable-but-out-of-range <code>raw="-7"</code> DOES, and was measured leaving <code>"-7"</code> behind. Valid text and stepped snapping do not.</p></div>
+  <div class="v"><div class="k">State test 36 &middot; on the artefact, not the runtime</div><p>Asserts the live tree <code>copyState()</code> reads and the bytes <code>getStateInformation</code> emits, and runs poison &rarr; restore &rarr; save &rarr; reload <strong>twice</strong>. The victim parameter is SEARCHED for by the arithmetic precondition rather than hard-coded. Three boundary legs guard valid values, the clamp category and the <code>raw</code>&rarr;<code>value</code> fallback. <strong>11 of 30 checks fail pre-fix.</strong></p></div>
+  <div class="v"><div class="k">The audit found one site, not a family</div><p><code>InternalState::restoreState</code> already writes every Setting unconditionally, so ER-STATE-21's Policy B was durable all along; <code>applySoundTree</code> goes through <code>setValueNotifyingHost</code>, which the adapter flushes; the legacy migration and the A/B slot reader have no per-field gate. Nothing else was touched.</p></div>
+</div>
+
+<p class="lede" style="margin-top:26px"><strong>Round 26: the other half of round 24 &mdash; a preset the plug-in REFUSED still
 ducked the audio.</strong> Round 24 made a foreign preset a no-op for state. The editor was still raising
 the masking duck before asking the manager to load, so a file the manager then refused dry-filled ~32 ms
 to mask a swap that never happened.</p>
@@ -586,6 +598,16 @@ evidence emerged to promote one. Ranking follows the programme's order — corre
   <li class="done">Drift sweep: CHANGELOG date, HANDOVER audition claim; history left intact</li>
   <li class="done">D-3 performed by the maintainer against the v0.9.6 build — <strong>PASSED</strong></li>
 </ul>
+<h3>Round 27</h3>
+<ul class="roadmap">
+  <li class="done">ER-STATE-25 FIXED — the serialized repair no longer depends on the live value moving; it is conditioned on the INPUT having been repaired</li>
+  <li class="done">Reproduced on the artefact: <code>value="abc"</code> survived restore, the live tree and the next save — and a second full cycle</li>
+  <li class="done">Categories checked individually: <code>nan</code> does not share the defect (the gate fires), unusable text and out-of-range <code>raw</code> do, valid text and snapping do not</li>
+  <li class="done">Both attributes rewritten on repair, so the live tree A/B slots and undo snapshots copy is canonical too; no notification, no gesture, no host-visible edit</li>
+  <li class="done">State test 36 (30 checks) — searched precondition, twice-round cycle, three boundary legs; 11 fail pre-fix</li>
+  <li class="done">Focused audit of the sibling repair sites found no second instance; no new race class</li>
+</ul>
+
 <h3>Round 26</h3>
 <ul class="roadmap">
   <li class="done">ER-GUI-06 FIXED — the masking duck moved from the three editor call sites to the load path's own <code>onAboutToLoad</code> boundary</li>
