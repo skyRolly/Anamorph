@@ -29,6 +29,146 @@ entries and CHANGELOG notes cite.
 
 ---
 
+## Round 21 — 2026-09-02 — the phase meter's own arithmetic overflowed on extreme-but-finite audio
+
+One fix and one re-measurement. The fix is numerical, at the exact operation that overflows.
+
+### ER-DSP-10 — FIXED — extreme BUT FINITE audio made the phase meter read "fully decorrelated"
+
+**Reproduced before anything was changed**, with the module's own code and no test harness in the
+way. `CorrelationMeter`, 48 kHz, settled over 200,000 samples of a steady value:
+
+| input `l = r` | published `fast` | published `slow` | verdict |
+|---|---|---|---|
+| 0.5 | 1 | 1 | correct |
+| 1.0e9 | 1 | 1 | correct |
+| 4.0e9 | 1 | 1 | correct |
+| **1.0e10** | **0** | **0** | a perfectly correlated MONO signal read as fully decorrelated |
+| 1.0e10 / −1.0e10 | **−0** | **−0** | anti-phase read as decorrelated, not −1 |
+| 1.8e19 | **0** | **0** | as above |
+
+**The complete arithmetic path, instrumented at every step** (`l = r = 1e10`):
+
+| step | value | finite? |
+|---|---|---|
+| input samples | 1e10 | yes |
+| per-sample products `l*r`, `l*l`, `r*r` | 1.00000002e20 | yes |
+| accumulators `lrFast`, `llFast`, `rrFast` | 9.99746693e19 | **yes — so `sanitize()` ACCEPTS them and never fires** |
+| `ll * rr` (float) | **+Inf** | **NO — the overflow, and the only one** |
+| `std::sqrt(ll * rr)` | +Inf | no |
+| `denom < 1.0e-12f` | **false** — so the small-signal guard does not catch it | — |
+| `lr / denom` | **0** | yes |
+| the same expression in double | **1** | yes |
+
+**Root cause, stated precisely.** `ll` and `rr` are *mean-square* values, so they scale as the
+SQUARE of the input; their product scales as the fourth power. `float` runs out at
+`FLT_MAX = 3.40282347e38`, so the product overflows once `ll = rr` exceeds
+`√FLT_MAX = 1.84467435e19`, i.e. from steady input above **|l| = 4.29496723e9**. Nothing before that
+point is non-finite, which is exactly why the existing guard is no help: `sanitize()` is the
+recovery for a poisoned ACCUMULATOR (ER-DSP-04, Test 45) and the accumulators here are healthy. And
+the failure is silent rather than loud — `+Inf` sails past the `< 1e-12` small-signal floor and
+`lr / +Inf` is a perfectly finite **0.0**, which is both a plausible-looking meter reading and the
+exact opposite of the truth.
+
+**Reachability is not hypothetical.** The tap runs on the monitored output
+(`AnamorphEngine::process`, the metering tap), and the engine's NaN/Inf self-heal says of itself, in
+the source, "This is NOT a level limiter: it touches ONLY non-finite samples, so valid audio
+(however loud) is passed through untouched". Under Bypass the tap additionally sees the host's raw
+buffer, which is why the sanitize guard had to live in `publish()` in the first place.
+
+**The fix, at the overflowing operation and nowhere else.**
+
+```cpp
+if (! std::isfinite (ll * rr))
+{
+    const double d = std::sqrt ((double) ll * (double) rr);
+    const double c = (double) lr / d;
+    return c < -1.0 ? -1.0f : (c > 1.0 ? 1.0f : (float) c);
+}
+// ...the original float expression, untouched...
+```
+
+**Why double, and why only inside the branch (requirement 14).** The double product of two finite
+floats is *exact* — a float significand is 24 bits, so a double holds their 48-bit product with no
+rounding — and at most ~1.16e77, which needs no case analysis at all. The float-only alternative,
+re-associating as `sqrt(ll)*sqrt(rr)`, was **measured** rather than assumed: sweeping every
+representable pair in float's top binade against `FLT_MAX` and against itself (2 × 8,388,608 pairs)
+it never overflows, largest exact product 3.402823264e38 against `FLT_MAX` 3.402823466e38. So it
+would also have worked — but its safety rests on which way a correctly rounded `sqrt` happens to
+land near the top of the range, which is a worse thing to depend on than an exact product, and it
+costs a second `sqrt`. Putting the double *inside* the branch is what keeps the promise that
+matters: the ordinary range never reaches it.
+
+**Normal range preserved bit-for-bit, measured not asserted.** The pre-fix and post-fix expressions
+were compared over **19,995,466** randomised finite-product triples, `ll`/`rr` log-uniform from
+1e-40 to 1e19 with `lr` swept across ±1.2·√(ll·rr): **zero differing bit patterns.** By construction
+too — the float expression is unchanged character for character and the branch is unreachable unless
+`ll * rr` is already +Inf.
+
+**Regression: DSP Test 50, 13 checks, built on the threshold rather than on large values.** 4.0e9 and
+5.0e9 are one binade apart and differ in exactly one respect — whether `ll * rr` overflows — and both
+must read +1. The pre-fix build prints the mechanism in one line:
+`correlated mono: 4.0e9 -> fast 1.0000 | 5.0e9 -> fast 0.0000`. The premise is asserted rather than
+assumed: `getEnergy()` (which IS `llFast + rrFast`) must read finite and > 1e19, so a flushed
+accumulator would fail the setup leg and the test could not be mistaken for Test 45's. A
+scale-invariance leg requires 0.5 and 1.0e10 to agree to 1e-6 — the contract the overflow actually
+violated. **Three normal-range controls** refuse the degenerate fix, including a decorrelated input
+that must read ~0, which "always return +1" cannot pass; and a final leg re-asserts Test 45's poison
+contract so the new branch cannot have rescued a genuinely non-finite sample instead of healing it.
+**6 of the 13 fail against the pre-fix build, 0 after.**
+
+**Inspected and deliberately left alone.** `balance` and `energy` use `llSlow + rrSlow` and
+`llFast + rrFast`, which are SUMS, not products: they overflow only above |l| ≈ 1.3e19, three orders
+beyond the regime that breaks the phase reading, and at that point `energy = +Inf` still means
+"playing" and `balance = 0` still means "centred", which is what an equal-energy pair should read.
+Different regime, different meter, no demonstrated defect — recorded here so a later round has the
+map rather than re-deriving it.
+
+### ER-STATE-23 (re-raised) — ENTIRELY COVERED BY THE DEFERRED D-2 / RISK-007 — no production change
+
+The same finding as round 20's item 3, at the same source line, with one sentence added: "the
+documented macOS AU race remains open." That sentence is RISK-007's own Likelihood bullet restated —
+the macOS AU is where the exposure is genuinely unguarded — not new evidence.
+
+**What was checked this round rather than carried over.**
+
+1. **The surface has not moved.** `src/PluginProcessor.cpp` and `src/PluginProcessor.h` are unchanged
+   since round 16; the code the finding names is byte-identical to what round 20 measured. Round
+   20's own changes were in `InternalState.h` (called from the restore, same thread) and in the DSP
+   modules (engine plain state, whose writers are `prepareToPlay` and `processBlock`); this round's
+   change is inside a *static, stateless* function.
+2. **The probes were re-run under ThreadSanitizer on the current tree**, not cited from last round.
+
+| probe | reports |
+|---|---|
+| `--state-thread-probe` | `juce_Atomic.h:82` ×1, `PluginProcessor.cpp:990` ×1, `PluginProcessor.h:184` ×2 |
+| `--state-prepare-race-probe` (restore ‖ `prepareToPlay` ‖ editor tick) | **the same four, no others** |
+| `--reprepare-race-probe` | **silent** — ER-STATE-19 / D-1 remains closed |
+
+**One-to-one correlation with what RISK-007 already records**, member by member:
+
+| # | shared state | writer | reader | already in the register? |
+|---|---|---|---|---|
+| 1 | `abActive` (`src/PluginProcessor.cpp:990`) | `setStateInformation` | `canUndo()` | yes |
+| 2, 3 | `abUndo[]` vector internals (`src/PluginProcessor.h:184`) | `UndoStacks::operator=` | main-thread iteration / `empty()` | yes |
+| 4 | `juce::String` refcount (`juce_Atomic.h:82`) | PresetManager metadata assignment | `juce::String` copy ctor | yes |
+
+**The premise, once more, is a category error.** `latencyUpdateRequest` has exactly three touch
+points in the whole tree — one release-store on the request side and two acquire-exchanges on the
+delivery side — and it publishes one bit: "a latency update is pending". No restore, A/B, preset or
+engine state is written before that store for a reader to acquire through it, so "the atomic latency
+values do not synchronize concurrent restore / prepare / A-B / preset / engine state" is a true
+statement about a mechanism that never claimed to.
+
+**Classification: entirely covered by deferred D-2 / RISK-007.** No mutex, no `callAsync`, no
+`AsyncUpdater`, no state-architecture change; D-2 stays deferred and unreopened. Recorded as a
+re-measurement under the existing RISK-007 entry rather than as a second finding.
+
+### RISK-008 — carried unchanged
+
+No host test performed, and none permitted. The real-host half remains the maintainer's Linux +
+REAPER result from round 19, recorded with its limits.
+
 ## Round 20 — 2026-09-02 — a restored session stops fading in; a malformed boolean stops switching things on
 
 Two fixes and one disposition. Both fixes are at the source of the defect, not at the point where it

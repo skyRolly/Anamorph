@@ -158,6 +158,21 @@ Two parallel one-pole smoothers (fast 120 ms / slow 600 ms) of `l·r`, `l·l`, `
 correlation `c = lr/√(ll·rr)` clamped ±1; also publishes L/R balance and fast energy. Silent/idle
 reads 0 (decorrelated), not +1. Audio writes `publish()`, GUI reads via relaxed atomics.
 
+**Two separate non-finite contracts, and they must not be confused.** `publish()`'s `sanitize()`
+flushes any accumulator that has gone non-finite back to 0 — the recovery for a genuinely
+non-finite INPUT sample (ADR-0009 bullet 3, ER-DSP-04, Test 45). It says nothing about the
+denominator, because the denominator is computed after it: `ll · rr` is a **float** multiply of two
+mean-square values, so two finite accumulators above √FLT_MAX ≈ 1.844e19 produce +Inf, and
+`lr / +Inf` is 0. The damage was silent — a **perfectly correlated** mono signal published 0.0,
+"fully decorrelated", and its anti-phase twin −0.0 instead of −1 — and it needed no non-finite
+input at all: finite samples above ≈ 4.295e9 are enough, which the engine passes through because
+its NaN/Inf self-heal is explicitly not a level limiter and this tap sees the monitored output.
+`correlation()` now detects that one overflow and recomputes only the denominator in double, where
+the product of two finite floats is exact (48 significand bits into 53) and at most ~1.16e77. The
+ordinary range is **bit-for-bit unchanged** — the float expression is untouched and the double path
+is unreachable unless `ll · rr` is already +Inf (ER-DSP-10, Test 50). Evidence [Verified]:
+src/dsp/Correlation.h:91-141.
+
 ## LevelMeters — `src/dsp/LevelMeters.h`
 
 Per channel: dim **peak** envelope (instant attack, ~300 ms release), bright **RMS** body

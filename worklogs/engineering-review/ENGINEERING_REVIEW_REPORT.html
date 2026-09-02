@@ -82,14 +82,27 @@ ruled out, fixed, deferred — and what should happen next. A rendered <em>view<
 <code>ENGINEERING_REVIEW_PROGRAMME.md</code> beside it; the worklog is the source of truth a later
 round reconciles against.</p>
 <div class="meta">
-  <span>ROUNDS 1–20 · 2026-08-31 → 09-02</span>
+  <span>ROUNDS 1–21 · 2026-08-31 → 09-02</span>
   <span>TREE: main @ e8f4422 → v0.9.6</span>
-  <span>STATUS: restored sessions open at their own sound; malformed booleans no longer switch settings on; ONE tag blocker left — KI-015</span>
+  <span>STATUS: the phase meter survives extreme-but-finite audio; ONE tag blocker left — KI-015</span>
   <span>NEXT: licence (KI-015), then tag v0.9.6</span>
 </div>
 
 <h2><span class="no">§1</span>Executive status</h2>
-<p class="lede"><strong>Round 20: two defects fixed at their source, and one review finding shown to be
+<p class="lede"><strong>Round 21: the phase meter's own arithmetic overflowed, and it failed silently
+rather than loudly.</strong> Nothing non-finite is involved: the samples are finite, the products are
+finite, and all six accumulators are finite, so the meter's existing NaN guard accepts the whole state
+and never fires. The overflow is one step later &mdash; <code>ll&nbsp;*&nbsp;rr</code>, a float multiply of two
+mean-square values &mdash; and its result is not a visible NaN but a plausible <strong>0.0</strong>.</p>
+<div class="verdicts">
+  <div class="v"><div class="k">ER-DSP-10 &middot; FIXED at the overflowing operation</div><p>Mean-square values scale as the square of the input, so their product scales as the fourth power and leaves float above &radic;FLT_MAX&nbsp;=&nbsp;1.845e19 &mdash; from steady input above <strong>|l| = 4.295e9</strong>. <code>sqrt(+Inf)</code> is <code>+Inf</code>, <code>+Inf</code> is not below the 1e-12 small-signal floor, and <code>lr / +Inf</code> is <strong>0</strong>. Measured at 1e10: a PERFECTLY CORRELATED mono signal published 0.0 &mdash; "fully decorrelated" &mdash; and anti-phase published &minus;0.0 instead of &minus;1. Only the denominator, and only on that overflow, is now recomputed in double.</p></div>
+  <div class="v"><div class="k">Not the Test&nbsp;45 class</div><p>That defect is a NON-finite sample poisoning an accumulator, and <code>publish()</code>'s <code>sanitize()</code> is its cure. Here the accumulators are healthy &mdash; 9.997e19, finite &mdash; so the guard never fires and the damage is entirely downstream of it. Test&nbsp;50 asserts that premise rather than assuming it: <code>getEnergy()</code> IS the accumulator state, and must read finite and &gt;&nbsp;1e19.</p></div>
+  <div class="v"><div class="k">Normal range bit-for-bit, measured</div><p>The float expression is untouched and the double path is unreachable unless the product is already <code>+Inf</code>. Verified differentially against the pre-fix expression over <strong>19,995,466</strong> randomised finite-product triples spanning 1e-40 to 1e19: <strong>zero differing bit patterns</strong>. The float-only alternative <code>sqrt(ll)*sqrt(rr)</code> was swept too (2&nbsp;&times;&nbsp;8,388,608 top-binade pairs, none overflowing) and rejected for depending on how a rounded <code>sqrt</code> lands rather than on an exact product.</p></div>
+  <div class="v"><div class="k">Test 50 &middot; built on the threshold, not on big numbers</div><p>4.0e9 and 5.0e9 are one binade apart and differ in exactly one respect. Pre-fix the suite prints <code>4.0e9 -&gt; fast 1.0000 | 5.0e9 -&gt; fast 0.0000</code>. A scale-invariance leg pins the contract the overflow violated; three normal-range controls &mdash; including a decorrelated input that must read ~0 &mdash; refuse "always return +1". <strong>6 of 13 checks fail pre-fix, 0 after.</strong></p></div>
+  <div class="v"><div class="k">ER-STATE-23 re-raised &middot; still D-2</div><p>Same finding, same source line, one added sentence that restates RISK-007's own Likelihood bullet. Checked rather than carried over: <code>PluginProcessor.cpp/.h</code> are unchanged since round&nbsp;16, and the probes were RE-RUN under TSan on the current tree &mdash; the same four races, no others, and <code>--reprepare-race-probe</code> still silent. Each report maps one-to-one onto a row the register already carries. No production change; D-2 stays deferred.</p></div>
+</div>
+
+<p class="lede" style="margin-top:26px"><strong>Round 20: two defects fixed at their source, and one review finding shown to be
 something the register already carries.</strong> A restored non-default session was <em>gliding</em> into
 its own sound over the first 10&ndash;100&nbsp;ms, because each module snapped its smoothers before the
 restored snapshot was pushed in. And the approved Settings-recovery policy was resolving a malformed
@@ -524,6 +537,17 @@ evidence emerged to promote one. Ranking follows the programme's order — corre
   <li class="done">Drift sweep: CHANGELOG date, HANDOVER audition claim; history left intact</li>
   <li class="done">D-3 performed by the maintainer against the v0.9.6 build — <strong>PASSED</strong></li>
 </ul>
+<h3>Round 21</h3>
+<ul class="roadmap">
+  <li class="done">ER-DSP-10 FIXED — <code>correlation()</code> detects the <code>ll * rr</code> float overflow and recomputes only the denominator in double, where the product of two finite floats is exact</li>
+  <li class="done">Reproduced first with the module's own code: 1e10 correlated → 0, anti-phase → −0, against a double reference of 1; full step-by-step trace recorded, showing every value up to the multiply is finite</li>
+  <li class="done">DSP Test 50 (13 checks) — threshold-based (4.0e9 vs 5.0e9), scale-invariance leg, three normal-range controls, poison-contract leg; 6 fail pre-fix</li>
+  <li class="done">Normal range proven bit-for-bit over 19,995,466 randomised triples; the float-only alternative swept and rejected with its measurement recorded</li>
+  <li class="done">ER-STATE-23 re-raised and re-measured under TSan on the current tree — same four reports, none new, <code>--reprepare-race-probe</code> silent; classified as entirely covered by deferred D-2 / RISK-007, no production change</li>
+  <li class="done"><code>balance</code> / <code>energy</code> inspected: sums, not products, overflowing three orders further out and to meaningful values — no defect, recorded as the map for a later round</li>
+  <li class="done">RISK-008 carried unchanged; no host test performed</li>
+</ul>
+
 <h3>Round 20</h3>
 <ul class="roadmap">
   <li class="done">ER-DSP-09 FIXED — <code>snapToTargets()</code> on Haas / Velvet / Chorus / Mono Maker, called at the end of <code>AnamorphEngine::prepare()</code>; chorus depth deferred one block because its target is in samples at the per-block working rate</li>

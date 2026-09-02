@@ -78,7 +78,7 @@ reads of engine state is RISK-007's exposure class and is recorded there, not cl
   message thread (`docs/architecture/design-decisions/ADR-0011`).
 
 Evidence [Verified]:
-- Source: src/dsp/ScopeBuffer.h:28-80; src/dsp/LevelMeters.h:125-198; src/dsp/Correlation.h:50-108;
+- Source: src/dsp/ScopeBuffer.h:28-80; src/dsp/LevelMeters.h:125-198; src/dsp/Correlation.h:50-152;
   src/PluginProcessor.cpp:59-77, 249; src/InternalState.h:172-177, 283-292
 
 ## Enforcement

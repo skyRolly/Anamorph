@@ -90,6 +90,50 @@ private:
 
     static float correlation (float lr, float ll, float rr) noexcept
     {
+        // OVERFLOW GUARD (ER-DSP-10). Everything arriving here is FINITE --
+        // publish() has just sanitized the six accumulators -- and `ll`/`rr` are
+        // non-negative by construction (one-poles of squares, started at 0). None
+        // of that stops their PRODUCT from overflowing: `ll * rr` is a float
+        // multiply, so two mean-square values above ~1.844e19 (sqrt(FLT_MAX))
+        // give +Inf. That is reachable from finite input samples above
+        // ~4.295e9 -- the engine's NaN/Inf self-heal is explicitly NOT a level
+        // limiter, and under Bypass this tap sees the host's raw buffer -- and
+        // the damage is silent rather than loud: sqrt(+Inf) is +Inf, +Inf is not
+        // < 1e-12 so the small-signal guard below does not fire, and `lr / +Inf`
+        // is 0. MEASURED at l = r = 1e10: all three accumulators land on
+        // 9.997e19, every one of them finite; `ll * rr` is +Inf; the meter
+        // publishes 0.0 -- "fully decorrelated" -- for a PERFECTLY CORRELATED
+        // mono signal whose true correlation is +1 (anti-phase publishes -0.0
+        // instead of -1). The same arithmetic in double gives 1.
+        //
+        // WHY THE BRANCH, AND WHY DOUBLE ONLY INSIDE IT. `ll * rr` is the exact
+        // operation that overflows, and it is the only one: `lr` is finite, and
+        // once the denominator is right the division and the clamp are
+        // exact-range. Double makes the recovery UNCONDITIONALLY safe with no
+        // case analysis: the product of two finite floats is at most ~1.16e77,
+        // and it carries NO ROUNDING AT ALL -- a float significand is 24 bits,
+        // so a double holds their 48-bit product exactly -- which is why this
+        // needs no argument about how any intermediate rounds. The obvious
+        // float-only alternative, re-associating as sqrt(ll)*sqrt(rr), is in
+        // fact also safe here (swept: every representable pair in float's top
+        // binade against FLT_MAX and against itself, 2 x 8388608 pairs, none
+        // overflowing, largest exact product 3.402823264e38 against FLT_MAX
+        // 3.402823466e38) -- but that safety rests on which way a correctly
+        // rounded sqrt happens to land near the top of the range, which is a
+        // worse thing to depend on than an exact product, and it would cost a
+        // second sqrt. Confining the double to the taken-only-on-overflow branch
+        // is what keeps the ordinary range BIT-FOR-BIT unchanged: the expression
+        // below is the original, character for character, and no normal-range
+        // value reaches the double path. Verified differentially against the
+        // pre-fix expression over 19,995,466 randomised finite-product triples
+        // spanning ll/rr from 1e-40 to 1e19: ZERO differing bit patterns.
+        if (! std::isfinite (ll * rr))
+        {
+            const double d = std::sqrt ((double) ll * (double) rr);
+            const double c = (double) lr / d;   // d >= 1.844e19 here, so |c| is small
+            return c < -1.0 ? -1.0f : (c > 1.0 ? 1.0f : (float) c);
+        }
+
         const float denom = std::sqrt (ll * rr);
         if (denom < 1.0e-12f) return 0.0f;
         float c = lr / denom;

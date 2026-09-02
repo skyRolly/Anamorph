@@ -285,6 +285,22 @@ mitigation. Do not invent risks to fill the template.
   Nothing was added to suppress the report — no mutex, no `callAsync`, no `AsyncUpdater`, no
   state-architecture redesign — because doing so would pre-empt D-2, which is the maintainer's
   call, and would silence the very evidence D-2 is waiting on.
+- **Round 21 (2026-09-02, ER-STATE-23 re-raised): re-measured on the current tree, same four
+  reports, still no production change.** The finding arrived again, at the same source line
+  (`setStateInformation`, `src/PluginProcessor.cpp:926`) and with the same wording plus one added
+  sentence — "the documented macOS AU race remains open" — which is this entry's own Likelihood
+  bullet restated, not new evidence. Two things were checked rather than assumed. First, the
+  concurrency surface has not moved: `src/PluginProcessor.cpp` and `src/PluginProcessor.h` are
+  unchanged since round 16, so the code the finding names is byte-identical to what round 20
+  measured. Second, the probes were re-run under ThreadSanitizer against the current build:
+  `--state-thread-probe` and `--state-prepare-race-probe` each report **the same four races and no
+  others**, and `--reprepare-race-probe` is **silent**, so ER-STATE-19/D-1 also remains closed. Each
+  report maps one-to-one onto a row already recorded above — `abActive`, written at
+  `src/PluginProcessor.cpp:990`, against `canUndo()`; the `abUndo` vector's internals twice, via
+  `UndoStacks::operator=` (`src/PluginProcessor.h:184`) against the reader's iteration; and the
+  `juce::String` refcount exchange, `juce::String`'s copy constructor against the metadata
+  assignment. Nothing new, and again no mutex, `callAsync`, `AsyncUpdater` or state-architecture
+  change.
 
 ## RISK-008 — A Linux VST3 host that provides its run loop only through `IPlugFrame` starves the plug-in's message queue while the editor is closed
 - **Risk:** the pinned JUCE Linux VST3 wrapper services the plug-in's JUCE messages — every

@@ -4182,6 +4182,126 @@ static void testCorrelationMeterRecoversFromNaN()
 }
 
 // ---------------------------------------------------------------------------
+// Regression for ER-DSP-10: EXTREME BUT FINITE audio broke the phase meter.
+//
+// This is NOT the Test 45 class and the two must not be confused. There, a
+// NON-FINITE sample poisoned an accumulator and `publish()`'s sanitize is the
+// cure. Here every value the guard can see is FINITE -- the samples, the three
+// per-sample products, and all six accumulators -- so sanitize accepts the whole
+// state and never fires; the overflow happens AFTER it, inside `correlation()`,
+// where `ll * rr` is a float multiply of two mean-square values. Above
+// sqrt(FLT_MAX) ~ 1.844e19 that product is +Inf, sqrt(+Inf) is +Inf, +Inf is not
+// below the 1e-12 small-signal floor, and `lr / +Inf` is 0 -- so a PERFECTLY
+// CORRELATED mono signal published 0.0, "fully decorrelated", and its anti-phase
+// twin published -0.0 instead of -1.
+//
+// THE TEST IS BUILT AROUND THE THRESHOLD, not around "big numbers", because that
+// is what makes it a proof of the mechanism: 4.0e9 and 5.0e9 are one binade
+// apart and differ in exactly one respect -- whether ll * rr overflows -- and
+// the pre-fix build reads +1.000 at the first and 0.000 at the second.
+static void testCorrelationMeterExtremeFiniteInput()
+{
+    std::printf ("Test 50: extreme finite input does not break the phase meter (ER-DSP-10)\n");
+
+    // Long enough for the 600 ms slow one-pole to converge at 48 kHz.
+    constexpr int kSettle = 200000;
+
+    struct Read { float fast, slow, energy, balance; };
+    auto steady = [] (float l, float r) -> Read
+    {
+        anamorph::CorrelationMeter m;
+        m.prepare (48000.0);
+        for (int i = 0; i < kSettle; ++i) m.process (l, r);
+        m.publish();
+        return { m.getFast(), m.getSlow(), m.getEnergy(), m.getBalance() };
+    };
+
+    // ---- the mechanism: one binade either side of the overflow threshold ----
+    // sqrt(FLT_MAX) = 1.84467435e19, so ll = rr = l^2 overflows their product
+    // once |l| > 4.29496723e9. Both amplitudes below are finite, both produce
+    // finite per-sample products, and both leave every accumulator finite.
+    const Read below = steady (4.0e9f, 4.0e9f);   // ll*rr = 2.559e38, finite
+    const Read above = steady (5.0e9f, 5.0e9f);   // ll*rr = +Inf
+    std::printf ("  correlated mono: 4.0e9 -> fast %.4f | 5.0e9 -> fast %.4f (threshold |l| = 4.295e9)\n",
+                 (double) below.fast, (double) above.fast);
+
+    // The accumulators are finite on BOTH sides -- this is what separates this
+    // defect from the Test 45 poison class, and it is asserted rather than
+    // assumed. `energy` is llFast + rrFast, i.e. the accumulator state itself:
+    // if sanitize had fired it would read 0, and it reads ~5e19 / ~7.8e19.
+    check (std::isfinite (above.energy) && above.energy > 1.0e19f,
+           "extreme finite input leaves the accumulators FINITE and non-zero (sanitize never fires)");
+
+    // Below the threshold the meter was always right -- so amplitude alone is
+    // not the complaint, and a fix that merely rejected loud audio fails here.
+    check (below.fast > 0.99f && below.slow > 0.99f,
+           "just BELOW the overflow threshold, correlated mono already read +1");
+
+    // Above it, the pre-fix build reads 0.0 for a perfectly correlated signal.
+    check (above.fast > 0.99f, "just ABOVE it, correlated mono still reads +1 (fast)");
+    check (above.slow > 0.99f, "just ABOVE it, correlated mono still reads +1 (slow)");
+
+    // Not merely finite: 0.0 IS finite, and 0.0 is the exact wrong answer.
+    check (! (std::abs (above.fast) < 0.5f),
+           "the extreme reading is not the decorrelated 0.0 the overflow produced");
+
+    // ---- the sign survives too: -0.0 is finite, and is not -1 ----
+    const Read anti = steady (1.0e10f, -1.0e10f);
+    std::printf ("  anti-phase 1.0e10 -> fast %.4f slow %.4f\n", (double) anti.fast, (double) anti.slow);
+    check (anti.fast < -0.99f && anti.slow < -0.99f,
+           "extreme finite anti-phase reads -1, not the -0.0 the overflow produced");
+
+    // ---- the contract the overflow violated, stated directly ----
+    // Correlation is SCALE-INVARIANT: the same waveform at any amplitude is the
+    // same correlation. Two amplitudes eleven orders apart must agree.
+    const Read quiet = steady (0.5f, 0.5f);
+    const Read loud  = steady (1.0e10f, 1.0e10f);
+    check (std::abs (quiet.fast - loud.fast) < 1.0e-6f,
+           "correlation is scale-invariant: 0.5 and 1.0e10 agree to 1e-6");
+
+    // A correlated pair at DIFFERENT extreme amplitudes is still correlated
+    // (r = 0.3 l), and its balance must still describe the real imbalance.
+    const Read uneven = steady (1.0e10f, 3.0e9f);
+    check (uneven.fast > 0.99f, "extreme finite, unequal but correlated, still reads +1");
+    check (uneven.balance < -0.5f, "and the L/R balance still reports the real imbalance");
+
+    // ---- normal-range control: ordinary behaviour is unchanged ----
+    // Not a formality. Every assertion above is satisfied by "always return +1",
+    // and these three are what refuse it.
+    const Read ctlCorr = steady (0.5f, 0.45f);
+    const Read ctlAnti = steady (0.5f, -0.5f);
+    check (ctlCorr.fast > 0.99f,  "control: ordinary correlated input still reads +1");
+    check (ctlAnti.fast < -0.99f, "control: ordinary anti-phase input still reads -1");
+
+    // Decorrelated control -- alternating L-only / R-only frames have zero
+    // cross-product and non-zero energy in both channels, so the meter must sit
+    // near 0. This is the assertion "always +1" cannot pass.
+    {
+        anamorph::CorrelationMeter m;
+        m.prepare (48000.0);
+        for (int i = 0; i < kSettle; ++i)
+            m.process ((i & 1) ? 0.5f : 0.0f, (i & 1) ? 0.0f : 0.5f);
+        m.publish();
+        std::printf ("  decorrelated control -> fast %.4f\n", (double) m.getFast());
+        check (std::abs (m.getFast()) < 0.1f, "control: decorrelated input still reads ~0");
+    }
+
+    // ---- the poison contract (Test 45's) is untouched by this fix ----
+    // A genuinely NON-finite sample must still flush the accumulator to the
+    // documented idle value rather than be rescued by the new branch.
+    {
+        anamorph::CorrelationMeter m;
+        m.prepare (48000.0);
+        for (int i = 0; i < 4800; ++i) m.process (0.5f, 0.5f);
+        m.process (std::numeric_limits<float>::infinity(), 0.5f);
+        m.publish();
+        const bool allFinite = std::isfinite (m.getFast()) && std::isfinite (m.getSlow())
+                            && std::isfinite (m.getBalance()) && std::isfinite (m.getEnergy());
+        check (allFinite, "a genuinely non-finite sample still self-heals (poison contract preserved)");
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Regression for ER-TST-04: the stage-1 input-conditioning block (channelMode,
 // swapLR, inputBalance, polarity) and the character parameters (chorusRate,
 // chorusDepth, dimMode) had ZERO behavioural coverage -- a swapped-channel,
@@ -4733,6 +4853,7 @@ int main (int argc, char* argv[])
     testOversizedBlockChunked();
     testPrepareSettlesSmoothers();
     testCorrelationMeterRecoversFromNaN();
+    testCorrelationMeterExtremeFiniteInput();
     testInputConditioningAndCharacterParams();
     testRestoredModulesDoNotGlideIn();
     testResetClearsPendingForcedDuck();

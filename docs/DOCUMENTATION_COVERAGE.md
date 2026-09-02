@@ -7,7 +7,7 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.6 change set** (2026-09-01, matching the CHANGELOG heading) — the
-**engineering-review programme, rounds 1 through 20**, newest last in the body: round 1 (the
+**engineering-review programme, rounds 1 through 21**, newest last in the body: round 1 (the
 programme's first sweep: six engine/state/GUI fixes with Tests 43–46 and two state regressions,
 the engaged Test 2/38 matrices, the KI-027 and RISK-007 filings, the v0.9.6 renumbering sweep, the
 NOTICE pin + AudioUnitSDK section, the CI_CD job inventory, and the new
@@ -37,7 +37,10 @@ classification); and **round 19** (the maintainer's real-host REAPER result reco
 RISK-008, its disposition finalised, and the settled set audited for consistency — no production
 change); and **round 20** (a restored session's modules gliding into their own sound, and a
 malformed numeric boolean switching a setting on — both fixed at their source, with the state race
-outside the latency fields classified as the already-deferred D-2 risk).
+outside the latency fields classified as the already-deferred D-2 risk); and **round 21** (the phase
+meter's own `ll * rr` overflowing in float on extreme-but-finite audio, so a perfectly correlated
+signal read as fully decorrelated — fixed at that operation, with the state race re-measured and
+again found to be the deferred D-2 risk).
 **Header correction (round 7, 2026-09-01):** this line enumerated round 1 alone while the body
 carried six later rounds, and dated the change set 2026-08-31 while the CHANGELOG `[0.9.6]` heading
 had been re-dated to 2026-09-01 — the same drift the C6 correction below was written about,
@@ -7318,3 +7321,52 @@ cases to thirty-nine). The `[0.9.6]` Fixed count is **27** — two added this ro
 and the duplicate removal means the file's bullet count and its distinct-entry count now agree.
 Measured, not inferred: `AnamorphTests` prints `256 checks, 0 failures` and `AnamorphStateTests`
 prints `1431 checks, 0 failure(s)`. [Verified]
+
+## Engineering-review programme, round 21 — the phase meter's overflow on extreme-but-finite audio (2026-09-02, still the 0.9.6 change set)
+
+**What the round is.** One DSP correctness fix and one re-measurement. Records:
+`worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Round 21.
+
+**ER-DSP-10 — extreme BUT FINITE audio made the phase meter read "fully decorrelated".** Reproduced
+before any change, with the module's own code: at `l = r = 1e10` the meter published **0** for a
+perfectly correlated mono signal (**−0** for its anti-phase twin) where the same arithmetic in double
+gives **1**. Every value the existing guard can see is finite — samples 1e10, per-sample products
+1.00000002e20, all six accumulators 9.99746693e19 — so `publish()`'s `sanitize()` accepts the state
+and never fires. The overflow is one step later and is the only one: `ll * rr` is a **float** multiply
+of two mean-square values, which leaves float above `√FLT_MAX = 1.84467435e19`, i.e. from steady input
+above `|l| = 4.29496723e9`. `sqrt(+Inf)` is `+Inf`, `+Inf` is not below the 1e-12 small-signal floor,
+and `lr / +Inf` is a perfectly finite **0.0**. Fixed at that operation: on that overflow alone, the
+denominator is recomputed in double, where the product of two finite floats is exact (48 significand
+bits into 53) and at most ~1.16e77.
+
+**The normal range is bit-for-bit unchanged, and that was measured rather than asserted.** The
+pre-fix and post-fix expressions were compared over **19,995,466** randomised finite-product triples
+spanning `ll`/`rr` from 1e-40 to 1e19: **zero differing bit patterns**. The float-only alternative
+(`sqrt(ll)*sqrt(rr)`) was swept as well — every representable top-binade pair against `FLT_MAX` and
+against itself, 2 × 8,388,608 pairs, none overflowing — and rejected in favour of the exact double
+product, with that measurement recorded in the source comment rather than an unsupported claim.
+
+**ER-STATE-23 re-raised — no disposition change, so no new finding was created.** Per this file's own
+rule against duplicate records, the re-measurement was appended to the existing `RISK-007` entry
+rather than filed again. `src/PluginProcessor.cpp` and `.h` are unchanged since round 16, and the
+three TSan probes were re-run on the current build: `--state-thread-probe` and
+`--state-prepare-race-probe` report the same four races and no others, `--reprepare-race-probe` is
+silent. Each report maps one-to-one onto a row the register already carries.
+
+**Documents touched:** `CHANGELOG.md` (one Fixed entry), `docs/architecture/DSP_ALGORITHMS.md` (the
+`CorrelationMeter` section now separates the two non-finite contracts — accumulator poisoning versus
+denominator overflow — which is the distinction the defect lived in), `docs/procedures/TESTING.md`
+(Test 50, and the DSP test count), `docs/FUTURE_RISKS.md` (a round-21 bullet under RISK-007),
+`docs/policies/TESTING_POLICY.md`, `README.md`, `docs/architecture/RELEASE_HARDENING_PLAN.md`,
+`docs/HANDOVER.md` (counts and the version row), the programme worklog and the dashboard.
+
+**Inspected and left alone, recorded so it is not re-derived:** `balance` and `energy` are built from
+`llSlow + rrSlow` and `llFast + rrFast` — SUMS, not products — so they overflow only above
+|l| ≈ 1.3e19, three orders beyond the regime that breaks the phase reading, and there `energy = +Inf`
+still reads "playing" and `balance = 0` still reads "centred", which is correct for an equal-energy
+pair. No demonstrated defect; not changed.
+
+**Counts.** The DSP suite is **49 tests + the A/B clamp guard / 269 checks** (was 48 / 256; Test 50
+adds 13). The state suite is unchanged at **33 tests / 1431 checks**. The `[0.9.6]` Fixed count is
+**28**. Measured, not inferred: `AnamorphTests` prints `269 checks, 0 failures` and
+`AnamorphStateTests` prints `1431 checks, 0 failure(s)`. [Verified]

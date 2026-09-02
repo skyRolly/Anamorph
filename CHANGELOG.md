@@ -15,6 +15,19 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 
 ## [0.9.6] — 2026-09-01
 ### Fixed
+- **Extremely loud but still-valid audio no longer makes the phase meter read the wrong thing.**
+  The correlation display shows how alike the two channels are: +1 for a mono signal, 0 for
+  unrelated channels, −1 for anti-phase. It works from the running energy of each channel, and
+  above roughly 4.3 billion in sample value — far above anything you would mix, but ordinary
+  numbers as far as the plug-in is concerned, and reachable when Bypass is passing a broken upstream
+  signal through untouched — that energy calculation ran out of range internally. The reading then
+  collapsed to **0, "unrelated"** — for a signal that was in fact perfectly mono — and an anti-phase
+  signal read 0 instead of −1. Nothing sounded different; only the meter lied, and it lied in the
+  most misleading direction. The calculation now stays in range, so the meter reads the same value
+  at any level, which is what a correlation display is supposed to do. Every reading at ordinary
+  levels is bit-for-bit identical to before, and the existing recovery from genuinely invalid audio
+  is unchanged. Regression coverage: DSP test 50.
+  Evidence: PR #134. [Verified]
 - **A project no longer fades into its own effects when it opens.** Haas, Velvet Noise, Chorus /
   Dimension-D and the Mono Maker crossover each glide their settings rather than jumping, so that
   moving a control while the music plays never clicks. On a project *opening*, that glide was

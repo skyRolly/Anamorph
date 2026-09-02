@@ -15,7 +15,7 @@ exits non-zero on any failed `check` or missing binary. Evidence [Verified]: scr
 
 ### What the tests cover
 
-`tests/dsp_tests.cpp` has **48 DSP tests** using a `check(cond, "what")` harness, covering: MS
+`tests/dsp_tests.cpp` has **49 DSP tests** using a `check(cond, "what")` harness, covering: MS
 round-trip (bit-exact), transparent default, true-bypass null + latency match, Mono Maker
 (post-Mix), Multiband mono-compat, Solo band selectivity + transparency, Level Match
 (unity/no-ratchet/silence-freeze/mix-coupling/multiband-unity), crossover automation safety,
@@ -177,7 +177,33 @@ removed, so the 50 % bound sits between two measured populations); and both defe
 seeded and caught -- a wrong slide fails at sample 32, a missing invalidation at the stop block.
 `worklogs/performance/PERF_AUDIT_v0.9.5_IMPLEMENTATION.md` §2.2.
 
-The newest DSP test is the **restored-session settling guard**
+The newest DSP test is the **extreme-finite phase-meter guard**
+(`testCorrelationMeterExtremeFiniteInput`, Test 50, ER-DSP-10, round 21). **It is not Test 45's
+class and the two must not be merged.** There a NON-finite sample poisons an accumulator and
+`publish()`'s `sanitize()` is the cure; here every value that guard can see is FINITE — the samples,
+the three per-sample products and all six accumulators — so it never fires, and the overflow happens
+*after* it, inside `correlation()`, where `ll * rr` is a float multiply. The test asserts that
+premise rather than assuming it: `getEnergy()` (which IS `llFast + rrFast`) must read finite and
+`> 1e19`, so a flushed accumulator would fail the leg that establishes the setup.
+
+**It is built around the threshold, not around "big numbers", and that is what makes it a proof of
+the mechanism.** √FLT_MAX ≈ 1.844e19, so the product overflows once `|l| > 4.295e9`. The test drives
+correlated mono at **4.0e9** and at **5.0e9** — one binade apart, differing in exactly one respect —
+and requires +1 from both. The pre-fix build prints `4.0e9 -> fast 1.0000 | 5.0e9 -> fast 0.0000`.
+Beyond that: extreme anti-phase must read −1 rather than the −0.0 the overflow produced (−0.0 is
+finite, which is why "assert the result is finite" would have been no test at all); a **scale
+invariance** leg requires 0.5 and 1.0e10 to agree to 1e-6, which is the contract the overflow
+actually violated; and an unequal-but-correlated extreme pair must still read +1 with a truthful L/R
+balance. **Three normal-range controls** refuse the degenerate fix — ordinary correlated reads +1,
+ordinary anti-phase reads −1, and a decorrelated input (alternating L-only/R-only frames) reads ~0,
+which "always return +1" cannot pass — and a final leg re-asserts the Test 45 poison contract, so
+the new branch cannot have rescued a genuinely non-finite sample instead of healing it.
+**13 checks; 6 of them fail against the pre-fix build, 0 after.** The normal range is additionally
+verified bit-for-bit outside the suite: the pre- and post-fix expressions were compared over
+19,995,466 randomised finite-product triples spanning `ll`/`rr` from 1e-40 to 1e19 with **zero
+differing bit patterns**.
+
+The DSP test before that is the **restored-session settling guard**
 (`testRestoredModulesDoNotGlideIn`, Test 49, ER-DSP-09, round 20). It pins the contract that
 `AnamorphEngine::prepare` now states: a restored non-default session must OPEN in its own sound, not
 glide into it over the first 10-100 ms. Each subject is compared against a REFERENCE of the same
