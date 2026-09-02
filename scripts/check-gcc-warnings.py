@@ -53,7 +53,91 @@
 #      else" is the obvious objection and it is worth answering with numbers
 #      rather than with this paragraph. Baselining it does NOT keep the class
 #      gated elsewhere, and gating it here does not gate anything at all. Both
-#      halves measured on gcc-13.3.0 / Ubuntu 24.04 — this job's pinned pair —
+#      halves measured on gcc-13.3.0 / Ubuntu 24.04 — the lane's compiler AT
+#      THE TIME, not today's: the job has since moved to the floating `gcc:16`
+#      container (ANAMORPH_GCC_VERSION in build.yml), so the EMPIRICAL leg below
+#      is a measurement on a compiler this lane no longer runs (ER-CI-04,
+#      2026-08-31). The exclusion still stands on its STRUCTURAL leg — the flag
+#      cannot attribute a first-party site under `-flto`, and AllocationGuard.h
+#      is the one file whose purpose is replacing those operators — and the
+#      gated set is deliberately unchanged here.
+#
+#      RE-MEASURED 2026-09-01 (round 3), on every gcc available: BOTH empirical
+#      halves reproduce UNCHANGED from 13.3.0 through 15.2.0. Method — a TU that
+#      includes this guard, runs selfCheck(), and SEEDS a genuine mismatch
+#      (`std::free` on `new double[64]`), compiled `-O2 -Wall -Wextra
+#      -Wmismatched-new-delete` with and without `-flto`:
+#
+#        -flto      : 0 hits on 13.3.0 AND 15.2.0 — the seeded REAL mismatch is
+#                     not reported either, so the flag still cannot fail in the
+#                     lane that reads the log.
+#        no -flto   : 4 hits on both, and the false positive and the seeded real
+#                     mismatch are BOTH attributed to AllocationGuard.h:350:69,
+#                     so a per-file baseline would still mask a real bug.
+#
+#      MEASURED ON gcc-16 2026-09-01 (round 4), closing the item round 3 left
+#      open. Toolchain: g++-16 (Ubuntu 16-20260315-1ubuntu1~24~ppa1) 16.0.1
+#      experimental, trunk r16-8100. Same TU, same flags:
+#
+#        -flto      : 0 hits -- unchanged from 13.3.0 and 15.2.0, and the seeded
+#                     REAL mismatch is still not reported, so the flag STILL
+#                     cannot fail in the lane that reads the log.
+#        no -flto   : 6 hits (13.3.0 and 15.2.0 both give 4 -- gcc-16 diagnoses
+#                     more of the same construct), and AllocationGuard.h:350:69
+#                     is STILL among the sites, so the false positive and the
+#                     seeded real mismatch still collapse to one path:line:col
+#                     and a per-file baseline would still mask a real bug.
+#
+#      Conclusion unchanged on the lane's actual compiler: BOTH empirical legs
+#      hold, the structural leg is compiler-independent, the exclusion stays and
+#      no baseline is widened.
+#
+#      ROUND-5 CORRECTION to the "4 -> 6" note above. Those counts are from the
+#      SYNTHETIC probe TU, which deliberately SEEDS a genuine mismatch; they do
+#      not describe this repository's code and the rise does not generalise.
+#      Measured on the REAL `tests/dsp_tests.cpp`, same flags:
+#
+#                        no -flto      -flto
+#          g++-15          78            0
+#          g++-16          69            0
+#
+#      i.e. on the actual file gcc-16 emits FEWER, not more, and the LTO answer
+#      -- the only one the gate reads -- is 0 on every compiler measured (13, 15,
+#      16). The delta between compilers is diagnostic-attribution drift over the
+#      replaced operators, not a change in what the code allocates.
+#
+#      WHY THIS IS NOT AN RT-SAFETY FINDING, checked rather than assumed:
+#        * `tests/AllocationGuard.h` is included by `tests/dsp_tests.cpp` ALONE.
+#          It appears nowhere in `src/` and nowhere in CMakeLists.txt, so it is
+#          never compiled into the VST3, the AU or the Standalone. No shipped
+#          binary contains the replaced operators this diagnostic fires on.
+#        * `-Wmismatched-new-delete` is a STATIC pairing diagnostic. It counts
+#          new/delete attribution, not runtime allocations, so a hit count is not
+#          evidence about the audio path either way.
+#        * The runtime question has its own answer, and it is measured: Test 38
+#          arms real counters around `process()` across the algorithm x
+#          oversampling x M/S matrix -- 3,840 armed calls, worst per call
+#          new=0 malloc=0, with all three guard halves reporting LIVE first so
+#          the zero is not vacuous.
+#      Disposition: instrumentation-only, no-LTO-only, test-binary-only.
+#      Documented and LOWERED IN PRIORITY per the round-5 decision rule. No
+#      allocation-policy change, no suppression, no baseline change.
+#
+#      The reproduction, for re-running it on a later gcc:
+#
+#        docker run --rm -v "$PWD:/w" -w /w gcc:16 bash -c '
+#          printf "%s\n" "#include \"AllocationGuard.h\"" "#include <cstdlib>" \
+#            "void u(){auto s=anamorph::testing::selfCheck();(void)s;" \
+#            "double*a=new double[64];delete[] a;" \
+#            "double*b=new double[64];std::free(b);}" "int main(){u();}" > /tmp/ag.cpp
+#          for f in "" "-flto"; do
+#            g++ -std=c++23 -O2 $f -Wall -Wextra -Wmismatched-new-delete \
+#                -Itests /tmp/ag.cpp -o /dev/null 2>&1 |
+#              grep -c -- -Wmismatched-new-delete
+#          done'
+#
+#      Expected on gcc-16: 6 then 0 (4 then 0 on 13-15). A NON-ZERO second number
+#      is the only result that would retire the exclusion's first empirical leg —
 #      with the flag appended to the gated set and the two gated targets built
 #      exactly as the baseline header prescribes:
 #

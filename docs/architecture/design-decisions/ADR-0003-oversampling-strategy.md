@@ -30,11 +30,11 @@ latency never changes mid-block; an OS-path change is routed through the duck.
 - Chorus buffers are sized for the max (8×) rate so an OS-factor change never reallocates.
 
 ## Related code
-- `src/dsp/AnamorphEngine.cpp:14-23` (engagement), `:42-54` (IIR + integer latency)
+- `src/dsp/AnamorphEngine.cpp:14-23` (engagement), `:42-56` (IIR + integer latency)
 - `:293-329` (latched OS + latency), `:494-509` (OS-path change routed through duck)
 - `src/dsp/ChorusEngine.cpp:14-19` (buffers sized for max rate)
 
 Evidence [Verified]:
-- Source: src/dsp/AnamorphEngine.cpp:14-23,42-54,293-329
+- Source: src/dsp/AnamorphEngine.cpp:14-23, 42-56, 338-374
 - Test: tests/dsp_tests.cpp :: testBypassNullAndLatency
 - History [Partially Verified]: docs/architecture/LATENCY_MODEL.md

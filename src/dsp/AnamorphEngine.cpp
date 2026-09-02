@@ -51,9 +51,9 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
     os2->initProcessing ((size_t) maxBlock);
     os4->initProcessing ((size_t) maxBlock);
     os8->initProcessing ((size_t) maxBlock);
-    latency2 = (int) std::round (os2->getLatencyInSamples());
-    latency4 = (int) std::round (os4->getLatencyInSamples());
-    latency8 = (int) std::round (os8->getLatencyInSamples());
+    latency2.store ((int) std::round (os2->getLatencyInSamples()), std::memory_order_relaxed);
+    latency4.store ((int) std::round (os4->getLatencyInSamples()), std::memory_order_relaxed);
+    latency8.store ((int) std::round (os8->getLatencyInSamples()), std::memory_order_relaxed);
 
     // --- smoothers ---
     const double ramp = 0.02; // 20 ms
@@ -81,7 +81,9 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
     driveBlendSmooth.setCurrentAndTargetValue (0.0f);
 
     // --- dry-path delay (aligns dry to the wet OS latency) ---
-    const int maxLat = juce::jmax (latency2, latency4, latency8);
+    const int maxLat = juce::jmax (latency2.load (std::memory_order_relaxed),
+                                   latency4.load (std::memory_order_relaxed),
+                                   latency8.load (std::memory_order_relaxed));
     dryDelayBuffer.setSize (2, maxLat + maxBlock + 1);
     dryDelayBuffer.clear();
     dryDelayWrite = 0;
@@ -110,6 +112,41 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
 
     updateDerived();
     reset();
+
+    // Settle every continuous smoother at the target updateDerived() just armed
+    // from the live snapshot p. Without this, the neutral constants written
+    // above are the smoothers' CURRENT values, so the first ~5-20 ms after
+    // every prepareToPlay of a non-default session GLIDE from neutral (a Mix=0
+    // session opened wet, Output Gain -24 dB opened hot, inverted polarity
+    // ramped through +1) -- violating DSP_POLICY invariants 7/8 in the first
+    // blocks. prepare() has just cleared all delay/filter state, so snapping
+    // is inaudible; the two blend crossfades were already settled from p above
+    // (the same treatment the continuous set was missing). matchGainSmooth is
+    // deliberately excluded by snapSmoothers (its own glide/injection).
+    snapSmoothers();
+
+    // ...and the same treatment for the MODULES' own internal smoothers, which
+    // snapSmoothers does not reach (ER-DSP-09, round 20). Each of these modules
+    // already snaps in its OWN prepare() -- but that necessarily ran further up
+    // this function, BEFORE updateDerived() pushed the restored snapshot in, so it
+    // snapped to whatever targets existed beforehand: a fresh instance's defaults,
+    // or the previous session's on a reused one. reset() above then re-zeroed the
+    // chorus blend outright. The result was that a restored non-default session
+    // GLIDED into its own sound over the first ~10-100 ms instead of opening in
+    // it. Measured before this line existed (--restore-fade-probe, first block vs
+    // the twelfth): Haas 0.17, Velvet 0.09, Chorus 0.29, Dimension-D 0.39 and the
+    // Mono Maker crossover 0.35 of their settled values.
+    //
+    // Placed HERE, not inside reset() and not inside snapSmoothers(): reset() also
+    // runs at the silent bottom of a switch duck and on the NaN self-heal, and
+    // snapSmoothers() is called from that duck path too (see the switch handler),
+    // so folding this in would change how live edits settle. prepare() is the one
+    // moment where snapping is unambiguously right -- all delay and filter state
+    // has just been cleared, so there is nothing for a glide to protect.
+    haas.snapToTargets();
+    velvet.snapToTargets();
+    chorus.snapToTargets();
+    monoMaker.snapToTargets();
 }
 
 void AnamorphEngine::reset()
@@ -146,6 +183,14 @@ void AnamorphEngine::reset()
     switchPhase = 1.0f;
     dryDuck = false;
     dryDuckLat = 0;
+    // ...and the forced-duck flag, which belongs to the same group and was the one
+    // member this flush used to miss (ER-DSP-07). A FORCED duck still fading when the
+    // host re-prepares would otherwise leave it latched true underneath a Normal
+    // switchState -- and the Level-Match consumer at the end of process() runs only
+    // `if (! pendingForced)`, so an injected trim was dropped for the rest of the
+    // session rather than adopted (#23). Clearing it here is what makes the flushed
+    // state actually steady: the duck it described has just been resolved above.
+    pendingForced = false;
     bypassBlend.setCurrentAndTargetValue (p.bypass ? 1.0f : 0.0f); // settle the crossfade
     mbEnableBlend.setCurrentAndTargetValue (p.mbEnable ? 1.0f : 0.0f); // settle the multiband crossfade
     mbRunning = p.mbEnable; // reset() above cleaned the bank: warm iff multiband is on
@@ -433,9 +478,9 @@ int AnamorphEngine::getLatencySamples() const noexcept
     if (! osEngaged) return 0;
     switch (p.oversample)
     {
-        case OversampleFactor::x2: return latency2;
-        case OversampleFactor::x4: return latency4;
-        case OversampleFactor::x8: return latency8;
+        case OversampleFactor::x2: return latency2.load (std::memory_order_relaxed);
+        case OversampleFactor::x4: return latency4.load (std::memory_order_relaxed);
+        case OversampleFactor::x8: return latency8.load (std::memory_order_relaxed);
         default:                   return 0;
     }
 }
@@ -446,9 +491,9 @@ int AnamorphEngine::predictLatency (const EngineParameters& e) const noexcept
     if (! (e.driveDb > 0.01f || isModAlgorithm (e.algorithm))) return 0;
     switch (e.oversample)
     {
-        case OversampleFactor::x2: return latency2;
-        case OversampleFactor::x4: return latency4;
-        case OversampleFactor::x8: return latency8;
+        case OversampleFactor::x2: return latency2.load (std::memory_order_relaxed);
+        case OversampleFactor::x4: return latency4.load (std::memory_order_relaxed);
+        case OversampleFactor::x8: return latency8.load (std::memory_order_relaxed);
         default:                   return 0;
     }
 }
@@ -674,6 +719,27 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
 {
     const int n = buffer.getNumSamples();
     if (buffer.getNumChannels() < 2 || n <= 0) return;
+
+    // A host that exceeds the prepared maximum block size (JUCE documents this
+    // host class as real: prepareToPlay's samplesPerBlock is "a strong hint",
+    // to be handled defensively) would overrun every maxBlock-sized scratch
+    // buffer below and the oversamplers' initProcessing size. Split such a
+    // block into <= maxBlock slices: each slice takes the identical path a
+    // conforming host block takes, so behaviour for in-contract hosts is
+    // bit-unchanged (single slice), and out-of-contract hosts get correct
+    // audio instead of a heap overflow. Stack views only -- no allocation
+    // (AudioBuffer's preallocated-pointer constructor, 2 <= 32 channels).
+    if (n > maxBlock)
+    {
+        for (int start = 0; start < n; start += maxBlock)
+        {
+            float* slicePtrs[2] = { buffer.getWritePointer (0) + start,
+                                    buffer.getWritePointer (1) + start };
+            juce::AudioBuffer<float> slice (slicePtrs, 2, juce::jmin (maxBlock, n - start));
+            process (slice); // depth-1 recursion: every slice is <= maxBlock
+        }
+        return;
+    }
 
     float* L = buffer.getWritePointer (0);
     float* R = buffer.getWritePointer (1);

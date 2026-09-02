@@ -1,6 +1,9 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include "AbSlotIndex.h"
+#include "SerializedNumber.h"   // the shared malformed-value predicate (both restore paths)
+
+#include <cmath>   // std::isfinite -- the non-finite guards on the restore paths
 
 AnamorphAudioProcessor::AnamorphAudioProcessor()
     : AudioProcessor (BusesProperties()
@@ -17,7 +20,11 @@ AnamorphAudioProcessor::AnamorphAudioProcessor()
     // parameter (it lives in InternalState), so its PDC update is driven by a callback.
     apvts.addParameterListener (pid::drive,      this);
     apvts.addParameterListener (pid::algorithm,  this);
-    internal.onOversampleChanged = [this] { updateLatency(); };
+    // Same route as parameterChanged, for the same reason: this fires from
+    // InternalState property changes, and one of those paths is
+    // setStateInformation, which a macOS AU host may call off the main thread
+    // (RISK-007). On the message thread it stays synchronous.
+    internal.onOversampleChanged = [this] { requestLatencyUpdate(); };
 
     // Observe begin/end GESTURES on the SOUND params so a whole drag folds into ONE undo step and
     // host automation (which never opens a gesture) is excluded from undo. View params are skipped.
@@ -33,7 +40,20 @@ AnamorphAudioProcessor::AnamorphAudioProcessor()
     // A preset load opens NO gesture, so the gesture-gated coalescer would fold it into the baseline
     // without an undo step (host-automation path). Bracket every load: flush any settled edit first,
     // then record exactly ONE undo step for the switch, so a preset change is undoable (ADR-0008).
-    presets.onAboutToLoad = [this] { pollUndoCoalesce(); };
+    // ...and RAISE THE MASKING DUCK HERE, not at the call site (ER-GUI-06). This hook is the
+    // load path's own "it is definitely happening" boundary: PresetManager fires it after every
+    // check that can refuse -- the missing factory id, the unparsable file, and since ER-STATE-24
+    // the foreign root -- and BEFORE the first parameter moves. Both properties matter. The
+    // editor used to call requestDuck() before asking the manager to load, so a load the manager
+    // then REFUSED still left a request pending, and the next audio block dry-filled ~32 ms to
+    // mask a swap that never happened (measured: an engaged widener's side energy at 0.4549 of
+    // the control's, State test 35) -- the same "duck whose swap already happened" fault
+    // AnamorphEngine::primeParameters documents for the activation route. Moving the request in
+    // here rather than adding a success flag to the callers fixes all three call sites at once
+    // (the menu, Load Preset..., and the prev/next buttons via step()), cannot drift between the
+    // two loaders, and keeps the ordering the duck depends on: still raised before any
+    // setValueNotifyingHost, so the swap is still heard only at the silent bottom.
+    presets.onAboutToLoad = [this] { pollUndoCoalesce(); engine.requestDuck(); };
     presets.onLoaded      = [this] { commitPresetSwitchUndoStep(); };
     // A save changes no parameter, so nothing else would ever refresh `committed` off the
     // pre-save preset -- and the next undo would restore that stale name/identity/baseline.
@@ -56,10 +76,19 @@ AnamorphAudioProcessor::AnamorphAudioProcessor()
     // path made "B == open state" depend on whether the host called getStateInformation early). The
     // switch/apply logic is unchanged; this only fixes WHEN the initial snapshot is taken.
     abEnsureInit();
+
+    // D-1: the consumer for deferred latency requests. Owned by the PROCESSOR so
+    // it runs with no editor open -- the reason the editor-polling candidate was
+    // refuted. Guarded because a harness may construct the processor with no
+    // MessageManager; there, requestLatencyUpdate() delivers synchronously instead,
+    // because with no timer a stored request would never be served.
+    if (juce::MessageManager::getInstanceWithoutCreating() != nullptr)
+        startTimerHz (20);
 }
 
 AnamorphAudioProcessor::~AnamorphAudioProcessor()
 {
+    stopTimer(); // D-1: before any member the callback touches goes away
     apvts.removeParameterListener (pid::drive,      this);
     apvts.removeParameterListener (pid::algorithm,  this);
     // Symmetric with the constructor: every parameter that got a listener there loses
@@ -97,21 +126,126 @@ bool AnamorphAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts)
 
 void AnamorphAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
+    // ORDER IS LOAD-BEARING. engine.prepare() settles the whole engine from the
+    // engine's OWN snapshot, so that snapshot must be current before it runs --
+    // priming first is what makes a session the host restored BEFORE activation
+    // (the ordinary VST3/AU order: setState, then setActive/prepareToPlay) come
+    // up correct from the first sample instead of ramping to it. The trailing
+    // setParameters is the ordinary steady-state entry and now finds nothing to
+    // do -- its bitwise no-change gate skips it -- but it stays as the single
+    // path by which live parameters ever reach the engine.
+    const auto e = params.toEngine (internal.oversampleIndex());
+    engine.primeParameters (e);
     engine.prepare (sampleRate, samplesPerBlock);
-    engine.setParameters (params.toEngine (internal.oversampleIndex()));
-    updateLatency();
+    engine.setParameters (e);
+
+    // Through D-1's request path, NOT updateLatency() directly (round 15,
+    // ER-STATE-19). On the message thread -- every in-spec VST3 activation, the
+    // standalone, pluginval -- this is the same synchronous delivery as before.
+    // But a host may prepare on some other thread: JUCE's own Linux VST3 wrapper
+    // services the plug-in's messages (this timer included) from a background
+    // thread until the host registers an IRunLoop, and never hands over if it
+    // never does; FL Studio's Patcher is known to ignore setActive's [UI-thread]
+    // annotation; nothing pins an AU Initialize to main. A direct call from
+    // such a thread wrote AudioProcessor::latencySamples and walked the listener
+    // chain concurrently with timerCallback() doing the same on the message
+    // thread, and let that tick read latency2/4/8 while engine.prepare() above
+    // was rewriting them -- two data races ThreadSanitizer reports on the
+    // pre-round-15 code (--reprepare-race-probe), with a reachable ending in
+    // which the timer's older number lands last and nothing is pending to
+    // correct it. Requesting instead makes the message thread the ONLY writer,
+    // and the release store below orders this prepare's latencies before the
+    // tick that reports them. State test 30.
+    requestLatencyUpdate();
+}
+
+void AnamorphAudioProcessor::deliverLatency()
+{
+    // Message thread only, by construction: every caller either IS the message
+    // thread or reached here through requestLatencyUpdate()/timerCallback().
+    //
+    // Deliberately does NOT touch latencyUpdateRequest. The flag must be cleared
+    // exactly once per delivery, and BEFORE the state this reads is read -- so a
+    // request that lands while setLatencySamples is running (which is the slow
+    // part: three CriticalSections, and on a real change a heap append and a pipe
+    // write) stays set and is served by the next tick. A second clear after the
+    // first would swallow exactly those requests.
+    setLatencySamples (engine.predictLatency (params.toEngine (internal.oversampleIndex())));
 }
 
 void AnamorphAudioProcessor::updateLatency()
 {
-    setLatencySamples (engine.predictLatency (params.toEngine (internal.oversampleIndex())));
+    // Clear FIRST, then deliver: this ordering is what makes a concurrent request
+    // survive rather than be lost. A message-thread prepareToPlay reaches here
+    // through requestLatencyUpdate(), and the clear is right for it too -- a full
+    // re-prepare supersedes any pending request.
+    // ACQUIRE for the same reason timerCallback uses it: consuming a request must
+    // also make the parameter write that raised it visible.
+    latencyUpdateRequest.exchange (0, std::memory_order_acquire);
+    deliverLatency();
+}
+
+// D-1 (KI-027) -- approved 2026-09-01, implemented here.
+//
+// `predictLatency` is const and race-free, so COMPUTING the number was never the
+// problem. DELIVERING it was: setLatencySamples' notification chain takes at
+// least three CriticalSections and, when the reported value actually changes,
+// appends to a heap container and write()s a pipe in the Linux wrapper. Under
+// VST3 host automation of drive/algorithm the caller is the AUDIO thread, so that
+// is a lock, an allocation and a syscall in a realtime context -- with a
+// priority-inversion variant when the host's restartComponent is synchronous.
+//
+// Two candidate fixes were refuted in round 2 and must not come back: polling
+// from the editor does not exist when the editor is closed, and an AsyncUpdater
+// reproduces the same message-posting syscall from the audio thread.
+//
+// What survives is a request flag plus a timer the PROCESSOR owns, so it runs
+// whether or not an editor exists. On the message thread nothing is deferred at
+// all, which keeps every UI edit, preset load and undo instantaneous; off it, the
+// audio thread does one relaxed atomic store and returns.
+void AnamorphAudioProcessor::requestLatencyUpdate()
+{
+    // Synchronous on the message thread -- and when no MessageManager exists at
+    // all (a harness; see the constructor's timer guard), since then there is no
+    // timer to serve a request and a stored one would never be delivered.
+    if (juce::MessageManager::existsAndIsCurrentThread()
+        || juce::MessageManager::getInstanceWithoutCreating() == nullptr)
+        updateLatency();
+    else
+        // RELEASE, not relaxed. The flag is not the payload -- the payload is the
+        // parameter (and oversampling) write that happened before this call, which
+        // deliverLatency() reads on the message thread. Under relaxed ordering there
+        // is no happens-before edge between those two writes, so a consumer could
+        // legitimately observe the flag WITHOUT observing the value that raised it,
+        // deliver the OLD latency, and clear the request -- leaving the host
+        // permanently stale with nothing pending to correct it. Measured: with
+        // relaxed/relaxed, a 400-move stress loop left reported 0 against a state
+        // predicting 4 in roughly half of runs, even with the double-clear closed.
+        // On x86-64 and AArch64 a release store is the same instruction as a relaxed
+        // one plus a compiler barrier, so the audio thread still pays nothing.
+        latencyUpdateRequest.store (1, std::memory_order_release);
+}
+
+void AnamorphAudioProcessor::timerCallback()
+{
+    // exchange() IS the clear for this delivery, so call deliverLatency() rather
+    // than updateLatency() -- the latter would clear a SECOND time, and anything
+    // stored in the window between the exchange above and that second clear would
+    // be silently dropped. The audio thread's store is a bare relaxed write with
+    // no acknowledgement, so a dropped request is a permanently stale reported
+    // latency: nothing re-raises it until the next unrelated parameter move or a
+    // re-prepare. Requests landing during deliverLatency() below are served by the
+    // next tick, which is the whole point of clearing before reading.
+    if (latencyUpdateRequest.exchange (0, std::memory_order_acquire) != 0)
+        deliverLatency();
 }
 
 void AnamorphAudioProcessor::parameterChanged (const juce::String&, float)
 {
-    // Recompute PDC on the message thread without touching the audio-thread
-    // engine state (predictLatency is const and race-free).
-    updateLatency();
+    // Drive / Algorithm move the reported PDC. This is the call that used to run
+    // setLatencySamples on whatever thread moved the parameter -- see
+    // requestLatencyUpdate for why that mattered and what replaced it.
+    requestLatencyUpdate();
 }
 
 void AnamorphAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
@@ -290,12 +424,53 @@ juce::ValueTree AnamorphAudioProcessor::copyStateWithRawValues()
     return tree;
 }
 
-// Synchronously force every parameter to its restored value, from the just-restored tree:
-//  1. A wholesale apvts.replaceState() does not reliably push every parameter's value through to
-//     its cached/atomic getValue() synchronously (some params kept their PRE-restore value).
-//  2. APVTS stores the DENORMALISED (snapped) value; for discrete params the saved "raw" attribute
+namespace
+{
+    // The same predicate the preset path uses (PresetManager.cpp), so a malformed
+    // serialized value cannot mean one thing in a session and another in a preset.
+    // False means "no usable number here"; every caller answers that with the
+    // parameter default, which is what SERIALIZATION_REGISTRY.md already records
+    // for an absent node.
+    bool readSerializedValue (const juce::var& prop, float& out)
+    {
+        if (prop.isVoid()) return false;
+        if (prop.isString())
+        {
+            const auto text = prop.toString().trim();
+            if (! anamorph::looksLikePlainNumber (text.toRawUTF8())) return false;
+        }
+        const float v = (float) (double) prop;
+        if (! anamorph::isUsableSerializedValue (v)) return false;
+        out = v;
+        return true;
+    }
+}
+
+// Synchronously force every parameter to its restored value, from the just-restored tree.
+//
+// CORRECTED 2026-08-31 (ER-STATE-04) after checking the pinned JUCE 9.0.1 rather than
+// re-asserting the original reasoning. What replaceState actually does, and what it leaves:
+//  1. `apvts.replaceState()` DOES propagate: assigning `state` fires valueTreeRedirected ->
+//     updateParameterConnectionsToChildTrees -> setDenormalisedValue -> setValueNotifyingHost,
+//     so for every PARAM node PRESENT in the new tree the parameter, the DSP atomic, the
+//     editor's attachments and the host all move. The older claim here -- that it "swaps only
+//     the tree" -- was wrong. What it does NOT cover is the residual this function exists for:
+//     it reads only @value.
+//  1b. CORRECTED AGAIN 2026-08-31 (ER-STATE-07), by running it rather than reasoning about it:
+//     ABSENT nodes are covered by replaceState too, which round 1 (ER-STATE-01) got wrong in the
+//     opposite direction. updateParameterConnectionsToChildTrees clears every adapter's tree,
+//     re-points the ones the new state carries, then APPENDS a fresh empty PARAM node for each
+//     adapter left over -- and that appendChild fires the APVTS's own valueTreeChildAdded ->
+//     setNewState -> setDenormalisedValue(getProperty("value", denormalisedDefault)). The node
+//     has no @value, so the parameter is set to its DEFAULT, through setValueNotifyingHost:
+//     host, editor and the drive/algorithm latency listeners all included. So the default branch
+//     below is a redundant, idempotent backstop, not the thing that makes rule 2 hold; it is
+//     kept because it costs one comparison per absent parameter and does not depend on that
+//     JUCE internal staying as it is. Measured with --latency-restore-probe step 0b.
+//  2. @value is the DENORMALISED (snapped) value; for discrete params the saved "raw" attribute
 //     (see getStateInformation) carries the EXACT normalised getValue() pluginval set, so the
-//     round-trip is bit-faithful and passes its 0.1 raw-value tolerance.
+//     round-trip is bit-faithful and passes its 0.1 raw-value tolerance. replaceState cannot
+//     use it, so restoring exactly is this function's job.
 // Prefer "raw" (exact); fall back to the denormalised "value" for legacy sessions that lack it.
 // Idempotent: parameters already at the target value are left untouched.
 //
@@ -305,37 +480,184 @@ juce::ValueTree AnamorphAudioProcessor::copyStateWithRawValues()
 // by some DAWs as an automation write, so we must NOT notify the host. setValueNotifyingHost is
 // setValue + sendValueChangedMessageToListeners, and the latter reaches the host via the parameter's
 // owner-listener, so it can't be used. Instead update getValue() with setValue() and write the raw
-// atomic the audio thread reads (getRawParameterValue) DIRECTLY -- replaceState swaps only the tree,
-// it does not propagate to parameters/atomics. Trade-off: an editor open DURING a host restore does
-// not live-update its sliders (rare -- this plugin exposes no host programs; the audio + getValue()
-// are correct and the sliders sync on editor open); undo/redo/A-B keep the full notifyHost=true path.
+// atomic the audio thread reads (getRawParameterValue) DIRECTLY.
+// NOTE what that does and does not buy (also corrected 2026-08-31): replaceState has ALREADY
+// notified the host for every PARAM node whose denormalised value moved, so this flag suppresses
+// notification only for THIS pass's residual corrections -- it cannot make the whole restore
+// silent, and it never could. By the same token the earlier "trade-off" recorded here was wrong:
+// an open editor DOES track the restore, through the same attachments replaceState drives; only
+// these residual corrections are invisible to it, and they resolve on the next editor sync.
+// undo/redo/A-B keep the full notifyHost=true path.
 void AnamorphAudioProcessor::reassertParameters (const juce::ValueTree& restoredApvtsTree, bool notifyHost)
 {
     if (! restoredApvtsTree.isValid()) return;
 
     bool silentSoundChange = false;
+
+    // Idempotent single-parameter apply, shared by both branches below.
+    // `repaired` says the SERIALIZED representation was not the one now in force --
+    // the text was unusable, or it was a usable number outside the parameter's
+    // range. It is deliberately separate from "the live value moved", because the
+    // two are independent and conflating them is the ER-STATE-25 defect: a file
+    // can be corrupt AND resolve to the value already loaded.
+    auto applyNorm = [&] (juce::RangedAudioParameter* rp, float norm, bool repaired = false)
+    {
+        // A serialized value is text, and `nan` is text JUCE's number parser
+        // accepts, so a hand-edited or corrupted session can carry
+        // <PARAM value="nan"/>. It must never become parameter state: a
+        // non-finite continuous parameter latches its smoother target, every
+        // output sample goes non-finite, and ADR-0009's sample-level self-heal
+        // then zeroes the block and resets the engine on EVERY block --
+        // permanent silence, which `getStateInformation` writes straight back
+        // out so the next project load reproduces it. The parameter default is
+        // the same answer an ABSENT node already gets just below.
+        //
+        // This runs AFTER apvts.replaceState(), which is the actual ingress:
+        // JUCE pushes @value through setDenormalisedValue -> setValueNotifyingHost
+        // and its own approximatelyEqual guard is false for NaN. So this is a
+        // REPAIR, not just a filter, and it is the one place that sees every
+        // parameter on every restore path.
+        if (! std::isfinite (norm))
+        {
+            norm = rp->getDefaultValue();
+            repaired = true;   // ...and the file still spells the non-finite value
+        }
+
+        // Written as a negated <= so that a NaN on EITHER side counts as
+        // "differs" and gets repaired. The plain `> 1e-6` this replaced is
+        // false when either operand is NaN, which is exactly how a poisoned
+        // parameter used to survive the pass meant to fix it.
+        const bool valueMoves = ! (std::abs (norm - rp->getValue()) <= 1.0e-6f);
+
+        if (valueMoves)
+        {
+            if (notifyHost)
+                rp->setValueNotifyingHost (norm);
+            else
+            {
+                rp->setValue (norm); // getValue() only -- no host / listener notification
+                if (auto* atom = apvts.getRawParameterValue (rp->paramID))
+                    atom->store (rp->convertFrom0to1 (norm)); // DSP value (snapped denormalised)
+            }
+            if (! notifyHost && ! pid::isViewParam (rp->paramID))
+                silentSoundChange = true;
+        }
+
+        // THE SERIALIZED REPAIR IS NOT CONDITIONAL ON THE VALUE MOVING (ER-STATE-25).
+        // It used to sit inside the branch above, which made the durability of a
+        // repair depend on an unrelated fact -- whether the corrupt file happened
+        // to resolve to the value already in force. It often does: unusable text
+        // reads as the denormalised 0 through JUCE's parser, and `norm` is then the
+        // parameter DEFAULT, so for every parameter whose range starts at its
+        // default (Drive 0..24 dB default 0, Amount 0..1 default 0, Channel Mode's
+        // first choice, ...) the two coincide and the gate was false. Measured on
+        // the shipped build: a session carrying value="abc" for `channelMode`
+        // restored correctly, left "abc" in the LIVE APVTS tree, and SAVED "abc"
+        // straight back out -- twice over, so the corruption survived a full
+        // save/reload cycle and was still there on the next one (State test 36).
+        // The same held for a usable-but-out-of-range raw="-7", which clamps to the
+        // value in force and left "-7" in the tree.
+        //
+        // ...and the TREE, which neither of the two writes above reaches.
+        // Measured before this write existed at all: a session carrying
+        // value="nan" restored correctly (parameter and DSP atomic both repaired to
+        // the default) and then SAVED value="nan" straight back out. The reason is
+        // JUCE's flush gate -- copyState() writes a node only when the adapter's
+        // `needsUpdate` is set, and that is set by parameterValueChanged, which
+        // setValue() deliberately does not fire. So the repair was invisible to
+        // serialization and the corruption outlived it in every subsequent save.
+        //
+        // Writing the repaired value here is a no-op for the adapter: it fires
+        // valueTreePropertyChanged -> setNewState -> setDenormalisedValue, whose
+        // approximatelyEqual early-return sees the value the parameter already
+        // holds and stops. Nothing is re-notified, no gesture is opened and nothing
+        // recurses; only the serialized text moves. That is what lets this run
+        // outside the value-moved branch without becoming a host-visible edit.
+        //
+        // BOTH attributes, when the node carries them. `raw` is re-stamped from the
+        // live parameter on every save, so a corrupt `raw` cannot reach a FILE --
+        // but it can and did sit in the live tree, which is what A/B slots and undo
+        // snapshots copy, and which the next restore would prefer over `value`.
+        //
+        // This build reloads such a session correctly either way, because `raw` is
+        // re-stamped on every save and reassertParameters prefers it -- so the
+        // visible defect is confined to what the FILE says. That is still worth
+        // repairing: the file is the durable artefact, it is what an older build
+        // (which has no `raw` path) would read, and it is what any other reader of
+        // @value would get.
+        if (repaired)
+            if (auto node = apvts.state.getChildWithProperty ("id", rp->paramID); node.isValid())
+            {
+                node.setProperty ("value", rp->convertFrom0to1 (norm), nullptr);
+                if (node.hasProperty ("raw"))
+                    node.setProperty ("raw", norm, nullptr);
+            }
+    };
+
     for (auto* p : getParameters())
         if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p))
+        {
             if (auto node = restoredApvtsTree.getChildWithProperty ("id", rp->paramID); node.isValid())
             {
-                const float norm = node.hasProperty ("raw")
-                    ? juce::jlimit (0.0f, 1.0f, (float) node.getProperty ("raw"))
-                    : juce::jlimit (0.0f, 1.0f, rp->convertTo0to1 ((float) node.getProperty ("value",
-                                                                   rp->convertFrom0to1 (rp->getValue()))));
-                if (std::abs (norm - rp->getValue()) > 1.0e-6f)
+                // Both branches validate the INPUT before any clamp or conversion,
+                // for the reason anamorph::SerializedNumber.h records with the
+                // measured table: jlimit and convertTo0to1 both CLAMP, so an
+                // infinity reaching either one comes out as a finite range
+                // ENDPOINT and every later finiteness test passes. Measured on the
+                // shipped build through this exact path: value="inf" pinned width
+                // to 1.000000 (maximum) and value="abc" to 0.000000 (minimum).
+                // A property that is not a usable number means the parameter
+                // default -- the same answer the absent-node branch below gives.
+                float serialized = 0.0f;
+                const bool haveRaw = node.hasProperty ("raw")
+                                     && readSerializedValue (node.getProperty ("raw"), serialized);
+                float norm;
+                // `repaired` is decided on the INPUT, before any clamp hides the
+                // evidence: text that is not a usable number at all, or a usable one
+                // outside the field's range. Snapping is NOT repair -- a stepped
+                // parameter moving "0.4" to its nearest step is the parameter doing
+                // its job on a legitimate value, and rewriting for that would be the
+                // "always rewrite" behaviour this deliberately avoids.
+                bool repaired;
+                if (haveRaw)
                 {
-                    if (notifyHost)
-                        rp->setValueNotifyingHost (norm);
-                    else
-                    {
-                        rp->setValue (norm); // getValue() only -- no host / listener notification
-                        if (auto* atom = apvts.getRawParameterValue (rp->paramID))
-                            atom->store (rp->convertFrom0to1 (norm)); // DSP value (snapped denormalised)
-                        if (! pid::isViewParam (rp->paramID))
-                            silentSoundChange = true;
-                    }
+                    norm = juce::jlimit (0.0f, 1.0f, serialized);   // `raw` is normalised: 0..1
+                    repaired = serialized < 0.0f || serialized > 1.0f;
                 }
+                else if (readSerializedValue (node.getProperty ("value"), serialized))
+                {
+                    norm = juce::jlimit (0.0f, 1.0f, rp->convertTo0to1 (serialized));
+                    const auto& r = rp->getNormalisableRange();
+                    repaired = serialized < r.start || serialized > r.end;
+                }
+                else
+                {
+                    norm = rp->getDefaultValue();
+                    repaired = true;                                 // unusable text
+                }
+                applyNorm (rp, norm, repaired);
             }
+            else
+            {
+                // No PARAM node for this parameter in the restored blob (an older
+                // session predating it, or a partial host chunk): apply the
+                // parameter DEFAULT, exactly as the preset path already does for a
+                // missing child (PresetManager::applySoundTree) and as
+                // SESSION_COMPATIBILITY_POLICY rule 2 / SERIALIZATION_REGISTRY
+                // ("Default: per-parameter defaults") record.
+                //
+                // A BACKSTOP, not the mechanism -- see 1b above. replaceState has
+                // already applied this same default via its appended-node path, so
+                // by the time this runs the parameter is at it and applyNorm's gate
+                // is false. Round 1 claimed a reused live instance kept the previous
+                // project's value here; measurement (--latency-restore-probe step 0b)
+                // refuted that. Kept anyway: it is one comparison, it is the same
+                // answer, and it does not rely on a JUCE internal. View params are
+                // unaffected where rule 5 applies: applyStatePreservingView
+                // re-overrides them after this call.
+                applyNorm (rp, rp->getDefaultValue());
+            }
+        }
 
     // The notifyHost=false path (host session restore) applies values via
     // setValue(), which does NOT fire parameterValueChanged -- so the listener
@@ -512,6 +834,65 @@ void AnamorphAudioProcessor::abEnsureInit()
             slot = currentStateSet();
 }
 
+// The restore-side counterpart to abEnsureInit(). `readSlot` already enforces
+// "absent means the default, not whatever the previous session left here", but it
+// can only enforce it for a blob that HAS an `AB` node -- it is called from inside
+// that node's branch. Two restore paths carry no A/B data at all and so never
+// reached it: an `AnamorphRoot` with no `AB` child, and a v0.2 bare-APVTS session,
+// which predates the A/B feature entirely. On a REUSED instance (hosts restore into
+// one live processor repeatedly) both left `abSlot[]` and `abActive` holding the
+// PREVIOUS project's values, so the next A/B switch recalled the previous project's
+// sound underneath the restored one. Measured before this existed: after a v0.2
+// restore, switching to B played the previous project's B (raw width 0.10 against a
+// restored 0.75), and with the previous project left active on B the first switch
+// read its A (0.90) and its `active` index survived too -- `--legacy-ab-probe`.
+//
+// A FRESH instance was not exempt, which measurement showed and reading did not: the
+// constructor calls abEnsureInit() eagerly (so B is not born as a copy of an
+// already-edited A), so both slots are already VALID when a restore arrives. Without
+// this the slots kept the open/Default snapshot instead of the restored session --
+// the same defect with construction in the previous project's place (State test 26
+// leg 3, which failed at 0.5 against a restored 0.75).
+//
+// Both defaults are the ones SERIALIZATION_REGISTRY.md's `AB` table already records:
+// `active` -> 0, and the slot params -> "lazily initialised from current", which an
+// INVALID StateSet is how this processor spells (StateSet::isValid() is
+// params.isValid()). Invalidating rather than seeding is what makes this correct at
+// this point in the restore: abEnsureInit() re-seeds from currentStateSet() at first
+// use, which is after the restore has finished, so both slots come back holding the
+// state that was just restored rather than a snapshot taken mid-restore.
+void AnamorphAudioProcessor::abResetToDefaults() noexcept
+{
+    for (auto& slot : abSlot)
+        slot = {};
+    abActive = 0;
+    // The remembered per-slot Level-Match gains are part of "the slot set", and they
+    // are the one piece of it that is NOT serialized (#23): they are a runtime cache
+    // of what the matcher had settled on when each slot was last left. Leaving them
+    // behind therefore leaked the PREVIOUS project's gains across a restore that
+    // reset everything around them, and the first A/B switch injected one --
+    // `abSwitchTo` ends with `engine.injectMatchGainDb (abMatchGain[slot])`, which
+    // at the silent bottom of the switch duck calls `loudness.setDisplayedGainDb`
+    // and snaps `matchGainSmooth`, so the new project's matcher re-converged from
+    // the old project's figure and the readout showed it (round 16, ER-STATE-20).
+    //
+    // 0.0f is not a chosen sentinel but the member's own initialiser, which is what
+    // makes this exactly the fresh-instance path: a never-switched instance injects
+    // 0 dB on its first switch too (0 dB clears the `> kNoInject` guard, so it is
+    // APPLIED as unity rather than skipped). A restore with no A/B data now leaves
+    // this instance in the state a fresh one would be in, which is the whole rule
+    // the four members above already follow.
+    //
+    // NOT a change to what a session carrying valid A/B data does: that path does
+    // not come through here, and there is nothing there to preserve either way --
+    // the cache has never been serialized, so a valid restore has always left the
+    // matcher to re-measure. Round 9 measured the AUDIBLE effect of an injected
+    // stale value and found it inert (`--legacy-match-probe`); that conclusion is
+    // unchanged and is not what this fixes. What this fixes is the state.
+    for (auto& g : abMatchGain)
+        g = 0.0f;
+}
+
 void AnamorphAudioProcessor::abApplySlot (int slot)
 {
     // Read the WHOLE target state set: params (keeping the shared view params) AND
@@ -619,11 +1000,29 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
     if (root.hasType ("AnamorphRoot"))
     {
         auto params = root.getChildWithName (apvts.state.getType());
-        if (params.isValid())
+        if (! params.isValid())
         {
-            apvts.replaceState (params.createCopy());
-            reassertParameters (params, /*notifyHost*/ false); // host restore: no host-notify (see below)
+            // An `AnamorphRoot` with no `ANAMORPH` child restores NO SOUND -- and
+            // everything below this point is metadata that describes a sound. Adopting
+            // it would relabel the sound the user currently has with the incoming
+            // session's preset name, indicator tick and dirty baseline, and hand it the
+            // incoming Settings, while not one parameter moved. That is the same
+            // "metadata describing a session that was never loaded" the foreign-root
+            // branch at the bottom of this function returns to avoid, and the registry
+            // states the rule for both: input we do not recognise never becomes state
+            // (SERIALIZATION_REGISTRY.md, "A chunk of neither recognised shape is not a
+            // restore at all"). A root missing its only sound-bearing child is that
+            // case wearing a recognised tag.
+            //
+            // Every session this plug-in has ever written carries the child --
+            // getStateInformation appends it unconditionally -- so no valid session
+            // reaches here and none changes behaviour. What reaches here is a
+            // truncated, hand-edited or forward-version blob.
+            return;
         }
+
+        apvts.replaceState (params.createCopy());
+        reassertParameters (params, /*notifyHost*/ false); // host restore: no host-notify (see below)
 
         // Restore the host-hidden Settings / view state (Oversampling, UI Scale,
         // Persistence, Tooltips, Animations, Show Meters). A changed Oversampling fires
@@ -654,7 +1053,9 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
             // out-of-range "active"; abSlot[]/abUndo[] are size-2, so an unclamped index would be
             // an out-of-bounds access (anamorph::kNumAbSlots). Valid states (0/1) are unchanged.
             abActive = anamorph::clampAbSlotIndex ((int) ab.getProperty ("active", 0));
-            auto readSlot = [&ab] (StateSet& dst, const char* pk, const char* nk, const char* bk,
+            auto readSlot = [&ab, expectedType = apvts.state.getType()]
+                            (StateSet& dst, float& matchDst,
+                                   const char* pk, const char* nk, const char* bk,
                                    const char* sk, const char* fk, const char* uk,
                                    const char* legacyKey)
             {
@@ -676,30 +1077,83 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
                 // currentStateSet() before anything can read it. So the slot comes back seeded
                 // from the state that was just restored -- sound and metadata from one project.
                 //
-                // The metadata reads below sit outside the params branch on purpose: that is
-                // what makes the rule hold for the pre-0.6.4 shape too, which carries params
-                // ALONE -- otherwise the previous session's preset name and dirty baseline stay
-                // attached to freshly restored parameters. All of these defaults are the ones
-                // SERIALIZATION_REGISTRY.md already records for these fields.
                 dst = {};
+                // The slot's remembered Level-Match gain resets with it (round 16,
+                // ER-STATE-20). It is the one part of a slot that is never serialized --
+                // a runtime cache of what the matcher had settled on when the slot was
+                // last left -- so there is nothing here to overlay it with, and leaving
+                // it alone is what let the PREVIOUS project's figure survive into this
+                // session's first switch (`abSwitchTo` ends with
+                // `engine.injectMatchGainDb (abMatchGain[slot])`). It belongs on this
+                // side of the reset rather than only in abResetToDefaults() because an
+                // `AB` node that EXISTS but carries no usable payload never reaches that
+                // function -- and with `active` = 1 such a node exposes slot A, the one
+                // entry the first switch does not overwrite before reading. Measured:
+                // with the reset confined to abResetToDefaults, State test 31 leg 3
+                // still injected the previous project's -2.405 dB.
+                //
+                // Unconditional, like `dst = {}` above: a slot restored from a real
+                // payload has no remembered match in the file either, so 0 dB -- the
+                // member's initialiser, and what a fresh instance injects -- is the
+                // right answer for a valid slot too. That is exactly the rule the
+                // paragraph above states for the slot as a whole, applied to its last
+                // field, and it is what makes a reused instance match a fresh one.
+                matchDst = 0.0f;
+                // Accept a parsed payload only when it is an APVTS tree of the
+                // live type ("ANAMORPH"). A parsable-but-foreign-typed payload
+                // is corrupt state exactly like an unparsable one -- and worse
+                // if admitted: applying that slot would replaceState() the
+                // foreign type into the live APVTS (JUCE has no type check
+                // either), after which every later save writes a foreign-typed
+                // params child that a fresh instance's restore (which looks up
+                // getChildWithName(apvts.state.getType())) silently skips --
+                // delayed, silent loss of all 36 parameters. Wrong type ->
+                // the slot stays invalid and abEnsureInit re-seeds it, the
+                // same recovery the unparsable case already gets.
+                auto adoptIfAnamorph = [&] (const juce::String& slotPayload)
+                {
+                    if (auto x = juce::parseXML (slotPayload))
+                        if (auto t = juce::ValueTree::fromXml (*x); t.hasType (expectedType))
+                            dst.params = t;
+                };
+                if (ab.hasProperty (pk))
+                    adoptIfAnamorph (ab.getProperty (pk).toString());
+                else if (ab.hasProperty (legacyKey)) // pre-0.6.4 slots: params only
+                    adoptIfAnamorph (ab.getProperty (legacyKey).toString());
+
+                // The metadata reads sit OUTSIDE the params branch on purpose: that is
+                // what makes the rule hold for the pre-0.6.4 shape too, which carries
+                // params ALONE -- otherwise the previous session's preset name and dirty
+                // baseline stay attached to freshly restored parameters. All of these
+                // defaults are the ones SERIALIZATION_REGISTRY.md already records.
+                //
+                // A round-11 review asked whether a REJECTED payload leaves this metadata
+                // attached to the reseeded sound. It does not, and the reason is worth
+                // stating so the question is not reopened: StateSet::isValid() is
+                // params.isValid(), so a rejected payload leaves the slot invalid, and
+                // abEnsureInit() then assigns `slot = currentStateSet()` -- the WHOLE
+                // struct, metadata included, not just the params. Every reader of
+                // abSlot[] (abSwitchTo, abCopyToOther, getStateInformation) calls
+                // abEnsureInit first, so the values written here are unreachable in that
+                // case. Measured: gating these three reads on dst.params.isValid()
+                // changes no test outcome. State test 27 pins the contract.
                 dst.selection = readSelection (ab, sk, fk, uk);
                 dst.name      = ab.getProperty (nk).toString();
                 dst.baseline  = ab.getProperty (bk).toString();
-                if (ab.hasProperty (pk))
-                {
-                    if (auto x = juce::parseXML (ab.getProperty (pk).toString()))
-                        dst.params = juce::ValueTree::fromXml (*x);
-                }
-                else if (ab.hasProperty (legacyKey)) // pre-0.6.4 slots: params only
-                {
-                    if (auto x = juce::parseXML (ab.getProperty (legacyKey).toString()))
-                        dst.params = juce::ValueTree::fromXml (*x);
-                }
             };
-            readSlot (abSlot[0], "slotAParams", "slotAName", "slotABase",
+            readSlot (abSlot[0], abMatchGain[0], "slotAParams", "slotAName", "slotABase",
                       "slotASource", "slotAFactoryId", "slotAUserFile", "slotA");
-            readSlot (abSlot[1], "slotBParams", "slotBName", "slotBBase",
+            readSlot (abSlot[1], abMatchGain[1], "slotBParams", "slotBName", "slotBBase",
                       "slotBSource", "slotBFactoryId", "slotBUserFile", "slotB");
+        }
+        else
+        {
+            // No `AB` node: the whole block above is skipped, so nothing had reset
+            // the slots or the active index. `AB` is optional (registry: every field
+            // in it is "Required: No"), and a root without one is exactly the
+            // "absent" case readSlot's rule is written for -- it just cannot reach
+            // it from in there. Same answer, applied to the slot set as a whole.
+            abResetToDefaults();
         }
     }
     else if (xml->hasTagName (apvts.state.getType())) // backward-compat (v0.2)
@@ -707,6 +1161,24 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
         auto legacy = juce::ValueTree::fromXml (*xml);
         apvts.replaceState (legacy);
         reassertParameters (legacy, /*notifyHost*/ false); // legacy host restore: no host-notify
+
+        // A v0.2 session is older than 0.8.4, so it can only carry the host-hidden Settings the
+        // way pre-0.8.4 sessions do: as APVTS params, or not at all. Same call the AnamorphRoot
+        // branch makes for that vintage -- and needed for the same reason readSlot resets the A/B
+        // slots first: `internal` is a processor member a host restores into repeatedly on ONE
+        // live instance, so without this the previous project's Oversampling, UI Scale,
+        // Persistence, Meters, Tooltips and Animations stay in force underneath a v0.2 sound.
+        // migrateFromLegacyApvts writes all six unconditionally, so absent ones reset to default
+        // rather than being inherited.
+        internal.migrateFromLegacyApvts (legacy);
+
+        // ...and the A/B slots need the same treatment for the same reason, which
+        // fixing `internal` does NOT also fix: they are a separate pair of processor
+        // members, and a v0.2 session predates the A/B feature, so it can carry no
+        // slot data to overwrite them with. Without this the previous project's A
+        // and B sounds stayed loaded underneath a v0.2 restore and came back on the
+        // next slot switch.
+        abResetToDefaults();
     }
     else
     {
@@ -746,6 +1218,31 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
     else              presets.adoptRestoredState (adoptedName, restoredSelection);
 
     syncCommitted();
+
+    // Re-derive the reported latency from the state that ACTUALLY ended up live.
+    //
+    // Two things above can move a latency-bearing parameter without any listener
+    // hearing the final value. `apvts.replaceState` adopts whatever @value says --
+    // including a malformed one, which it converts by CLAMPING, so a poisoned
+    // drive lands at the range maximum and re-reports a latency for it. Then
+    // `reassertParameters` repairs that value with setValue() plus a direct
+    // atomic store, deliberately notifying nobody (a parameter-change callback
+    // during a host state load reads as an automation write in some DAWs). The
+    // repair is therefore invisible to the latency listener, and the host is left
+    // holding the poisoned value's number.
+    //
+    // Measured before this line existed: restoring a session with drive
+    // value="inf" left the host told 4 samples while the repaired state predicts
+    // 0. It did NOT show up on a FIRST restore, because InternalState's own
+    // property types differ from the round-tripped blob's on that pass, which
+    // fires onOversampleChanged and recomputes by luck -- the same var-type
+    // coincidence recorded for ER-STATE-07. On the second restore the types agree,
+    // the coincidence is gone, and the staleness persists.
+    //
+    // Unconditional on purpose: a restore is exactly the moment the reported
+    // latency has to match the live state, and correctness here must not depend
+    // on which of the paths above happened to notify.
+    requestLatencyUpdate();
 }
 
 // ----------------------------------------------------------------------------

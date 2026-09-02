@@ -206,4 +206,32 @@ public:
     }
 };
 
+// ----------------------------------------------------------------------------
+//  A control that holds a host change GESTURE open across a mouse press, and can
+//  be told to abandon it.
+//
+//  The value box behind every knob opens a juce::Slider::ScopedDragNotification
+//  on mouseDown and closes it on mouseUp, so a drag records one undo step and
+//  one host touch/latch span (ADR-0008, KI-010's class). If the release never
+//  arrives -- released over the host window or the desktop, where the OS
+//  delivers it to no JUCE peer at all -- the gesture stays open, and
+//  pollUndoCoalesce commits nothing while openGestures > 0.
+//
+//  The editor already runs a release-outside reconcile on its timer and already
+//  computes the "a button is logically down but physically up" predicate once
+//  per tick. This interface is the only thing it was missing: a NAMED way to
+//  reach a control that lives in an unnamed namespace in LookAndFeel.cpp. No
+//  pointer is retained between ticks and the editor cannot outlive its own
+//  descendants, so the call needs no lifetime contract beyond ordinary
+//  parent-child ownership.
+// ----------------------------------------------------------------------------
+struct DragGestureOwner
+{
+    virtual ~DragGestureOwner() = default;
+
+    // Close any gesture this control is holding, as if the release had arrived.
+    // Must be idempotent: the reconcile calls it on every candidate, every tick.
+    virtual void abortDragGesture() = 0;
+};
+
 } // namespace anamorph::gui

@@ -11,7 +11,7 @@ cmake_minimum_required(VERSION 3.22)
 #     cmake --build build --config Release
 # ============================================================================
 
-project(Anamorph VERSION 0.9.5 LANGUAGES C CXX)
+project(Anamorph VERSION 0.9.6 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -448,7 +448,17 @@ set(ANAMORPH_PLUGIN_SOURCES
     src/gui/CorrelationMeter.cpp
     src/gui/LevelMeter.cpp
     src/gui/SpectrumImager.cpp
+    src/gui/PhysicalMouseButtons.cpp
 )
+
+# The macOS half of the physical-mouse-button query is Objective-C++ (it calls
+# +[NSEvent pressedMouseButtons], the one API that reports buttons this process
+# never received events for -- see src/gui/PhysicalMouseButtons.h). Added only on
+# Apple; the .cpp beside it compiles to nothing there and carries the portable
+# forward everywhere else, so exactly one definition exists on every platform.
+if(APPLE)
+    list(APPEND ANAMORPH_PLUGIN_SOURCES src/gui/PhysicalMouseButtons_mac.mm)
+endif()
 
 target_sources(Anamorph PRIVATE ${ANAMORPH_PLUGIN_SOURCES})
 

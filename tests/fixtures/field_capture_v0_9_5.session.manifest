@@ -1,0 +1,6 @@
+emitter=v0.9.5
+activeSlot=0
+presetName=Gentle Width
+dirty=1
+slotA width=0.812500 mix=1.000000 amount=0.300000 algo=0.333333 outGain=0.500000
+slotB width=0.250000 mix=0.900000 amount=0.111000 algo=0.333333 outGain=0.500000

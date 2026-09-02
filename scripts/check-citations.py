@@ -316,6 +316,32 @@ GLOSS = re.compile(r"""\A[`]?\s*\((?:`([^`]+)`|"([^"]+)")\)""")
 # `""` means "no stable token to name"; the run reports those as unverified
 # rather than accepting them silently, so they stay countable.
 DELIBERATE_REAIMS = {
+    # 2026-09-03 (round 27): ER-STATE-25 split applyNorm's value-move gate from the
+    # serialized repair, growing reassertParameters, so the spans below it moved by
+    # 52. Same symbols, re-derived by reading: the ADR-0010 sites :535 and :712-715,
+    # the legacyKey fallback :1121-1122, setStateInformation :991-1246. Only the
+    # TARGET side moved.
+    # 2026-09-03 (round 26): ER-GUI-06 added the duck-ownership comment to the
+    # PresetManager hook wiring in the constructor, so every span below it moved
+    # by 13. Same symbols, re-derived by reading the new spans: deliverLatency +
+    # updateLatency :162-186, the legacyKey fallback :1069-1070, and the ADR-0010
+    # sites :525 and :660-663, and setStateInformation :939-1194. Only the TARGET
+    # side of existing transitions moved;
+    # ADR-0024's hook anchor is the one whose CITED LINES were themselves edited --
+    # the comment went in between `onAboutToLoad` and the span's start -- so --fix
+    # reports it UNMAPPABLE rather than moving it, exactly as it did for the round
+    # 11/15/16 edits. Re-derived by reading: the hook block now runs :56-67, still
+    # ending on `onSaved`. Retires on merge.
+    # Keyed on ORIGIN/MAIN's spelling (:36-47), not on HEAD's -- the transition this
+    # branch performs is main -> here, and the branch already moved this anchor once
+    # before (round 4's D-1 timer base, :36-47 -> :43-54).
+    ("docs/architecture/design-decisions/ADR-0024-preset-identity.md",
+     "src/PluginProcessor.cpp:36-47",
+     "src/PluginProcessor.cpp:56-67"): "onSaved",
+    ("docs/architecture/design-decisions/ADR-0024-preset-identity.md",
+     "src/PluginProcessor.cpp:43-54",
+     "src/PluginProcessor.cpp:56-67"): "onSaved",
+    # no entry added or retired.
     # EMPTY IS THE EXPECTED RESTING STATE, and this table reached it on
     # 2026-08-30 when the key became a TRANSITION. It held 40 entries the moment
     # before; none of them was doing any work. Measured against every base this
@@ -332,6 +358,183 @@ DELIBERATE_REAIMS = {
     # each had completed its one transition, and under the key below a completed
     # transition can no longer match anything. Leaving them would have meant
     # inventing base spellings for transitions that merged weeks ago.
+    #
+    # 2026-08-31 (engineering-review round 1): two hand re-aims. The 0.9.6
+    # fixes edited `reassertParameters` (ER-STATE-01 grew it) and `readSlot`
+    # (ER-STATE-02's type guard), i.e. the cited lines themselves, so --fix
+    # reported both UNMAPPABLE and the new spellings were re-derived from the
+    # symbols the documents name. Both retire on merge, when origin/main
+    # carries the re-aimed spellings.
+    # 2026-09-01 (engineering-review round 4): two more hand re-aims, both because
+    # the CITED LINES THEMSELVES were edited by approved work. D-1 added a
+    # `private juce::Timer` base to the AnamorphAudioProcessor declaration, and the
+    # KI-028 macOS fix added an APPLE-only source to the plugin source list, so
+    # --fix reported both UNMAPPABLE and the new spellings were re-derived by
+    # reading the spans. Both retire on merge.
+    # 2026-09-01 (engineering-review round 11): three more hand re-aims. The
+    # ER-STATE-14 latency split and the ER-STATE-15 sound-child guard EDITED the
+    # cited lines themselves, so --fix reports them UNMAPPABLE rather than moving
+    # them. Each was re-derived by reading the span for its named symbol:
+    # setStateInformation still starts at :878 and now ends at :1111 (the guard is
+    # inside it, so the span is unchanged and only its content moved);
+    # updateLatency moved down past the new deliverLatency. All retire on merge.
+    # 2026-09-02 (round 15): ER-STATE-19 grew prepareToPlay by its D-1 comment and
+    # requestLatencyUpdate by its no-MessageManager branch, so every span below
+    # them moved again; the same symbols, re-derived by reading the spans
+    # (deliverLatency+updateLatency now :149-173, setStateInformation :901-1134,
+    # the legacyKey adoption :1009-1010, the ADR-0010 sites :512 and :647-650).
+    # 2026-09-02 (round 16): ER-STATE-20 added the per-slot match reset inside
+    # `readSlot`, growing it by its explanatory comment, so the spans below it moved
+    # again -- same symbols, re-derived by reading them: the legacyKey fallback is now
+    # :1056-1057, setStateInformation :926-1181, readSlot :991-1078. Each earlier
+    # transition keeps its own base key and gains one for the push predecessor.
+    # Each earlier transition keeps its origin/main key and gains a HEAD~1 key,
+    # since CI compares against the push predecessor. All retire on merge.
+    # Round 15 also EDITED the engine's latency lines themselves (the three
+    # `latencyN = ...` assignments became relaxed stores, and the jmax below them
+    # wrapped onto three lines), so the spans that cite them are UNMAPPABLE and
+    # were re-derived by reading: the oversampler block is now :42-56, the three
+    # stores :54-56, and everything below :84 sits two lines lower.
+    ("docs/architecture/LATENCY_MODEL.md",
+     "src/dsp/AnamorphEngine.cpp:42-54",
+     "src/dsp/AnamorphEngine.cpp:42-56"): "latency2",
+    ("docs/architecture/LATENCY_MODEL.md",
+     "src/dsp/AnamorphEngine.cpp:52-54",
+     "src/dsp/AnamorphEngine.cpp:54-56"): "latency2",
+    ("docs/architecture/design-decisions/ADR-0003-oversampling-strategy.md",
+     "src/dsp/AnamorphEngine.cpp:14-23, 42-54, 313-349",
+     "src/dsp/AnamorphEngine.cpp:14-23, 42-56, 338-374"): "isModAlgorithm",
+    ("docs/architecture/design-decisions/ADR-0003-oversampling-strategy.md",
+     "src/dsp/AnamorphEngine.cpp:14-23,42-54,293-329",
+     "src/dsp/AnamorphEngine.cpp:14-23, 42-56, 338-374"): "isModAlgorithm",
+    ("docs/architecture/LATENCY_MODEL.md",
+     "src/PluginProcessor.cpp:105-108",
+     "src/PluginProcessor.cpp:162-186"): "updateLatency",
+    ("docs/architecture/LATENCY_MODEL.md",
+     "src/PluginProcessor.cpp:131-137",
+     "src/PluginProcessor.cpp:162-186"): "updateLatency",
+    ("docs/architecture/LATENCY_MODEL.md",
+     "src/PluginProcessor.cpp:131-154",
+     "src/PluginProcessor.cpp:162-186"): "updateLatency",
+    # 2026-09-01 (round 12): the ER-STATE-17 guard EDITED the cited lines inside
+    # migrateFromLegacyApvts, so --fix reports these UNMAPPABLE rather than moving
+    # them. Each end was re-derived by reading the span: origin/main's :60
+    # (oversampleValue), :95 (restoreState's id loop), :100 (its trailing comment)
+    # and :122 (the oversample setProperty in the migration) are now :62, :97, :102
+    # and :159. All retire on merge.
+    # 2026-09-01 (round 14): the ER-STATE-18 settings() table replaced the
+    # constructor's six hand-written setProperty lines, so this anchor's target
+    # text no longer exists. Re-derived by symbol: the tooltips default is now the
+    # `iid::tooltipsOn` row of that table. Retires on merge.
+    # 2026-09-02 (round 18): ER-STATE-21's Policy B added the DOMAIN to the settings()
+    # table, growing it; the same symbol, re-derived by reading the new span.
+    ("docs/KNOWN_ISSUES.md",
+     "src/InternalState.h:57-64",
+     "src/InternalState.h:68-75"): "tooltipsOn",
+    # 2026-09-02 (round 18): Policy B grew settings() (the DOMAIN joins the default)
+    # and added usableNumber/repairedValue above the migration, so every span below
+    # them moved; the same symbols, re-derived by reading the new spans.
+    ("docs/KNOWN_ISSUES.md",
+     "src/InternalState.h:57-64",
+     "src/InternalState.h:68-75"): "tooltipsOn",
+    # 2026-09-02 (round 20): ER-STATE-22 added two exact-compare lines to
+    # `repairedValue` and its comment, and ER-DSP-09 added the four module
+    # `snapToTargets()` calls plus their rationale at the end of
+    # `AnamorphEngine::prepare()`, so every span below each of them moved again.
+    # Same symbols, re-derived by reading the new spans: `oversampleValue`
+    # :165-280, `migrateFromLegacyApvts` :197-286 and :229-280, `isModAlgorithm`
+    # :338-374. Only the TARGET side of each existing transition changed -- no
+    # entry was added or retired, because no new document started drifting.
+    ("docs/KNOWN_ISSUES.md",
+     "src/InternalState.h:57-64",
+     "src/InternalState.h:68-75"): "tooltipsOn",
+    ("docs/architecture/API_REFERENCE.md",
+     "src/InternalState.h:80-191",
+     "src/InternalState.h:165-280"): "oversampleValue",
+    ("docs/architecture/PARAMETER_REGISTRY.md",
+     "src/InternalState.h:112-197",
+     "src/InternalState.h:197-286"): "migrateFromLegacyApvts",
+    ("docs/policies/COMPATIBILITY_POLICY.md",
+     "src/InternalState.h:134-191",
+     "src/InternalState.h:229-280"): "migrateFromLegacyApvts",
+    ("docs/KNOWN_ISSUES.md",
+     "src/InternalState.h:51",
+     "src/InternalState.h:68-75"): "tooltipsOn",
+    ("docs/KNOWN_ISSUES.md",
+     "src/InternalState.h:53",
+     "src/InternalState.h:68-75"): "tooltipsOn",
+    ("docs/architecture/API_REFERENCE.md",
+     "src/InternalState.h:60-122",
+     "src/InternalState.h:165-280"): "oversampleValue",
+    ("docs/architecture/PARAMETER_REGISTRY.md",
+     "src/InternalState.h:95-122",
+     "src/InternalState.h:197-286"): "migrateFromLegacyApvts",
+    ("docs/architecture/PARAMETER_REGISTRY.md",
+     "src/InternalState.h:97-159",
+     "src/InternalState.h:197-286"): "migrateFromLegacyApvts",
+    ("docs/policies/COMPATIBILITY_POLICY.md",
+     "src/InternalState.h:100-122",
+     "src/InternalState.h:229-280"): "migrateFromLegacyApvts",
+    ("docs/architecture/API_REFERENCE.md",
+     "src/PluginProcessor.h:20-79",
+     "src/PluginProcessor.h:20-80"): "AnamorphAudioProcessor",
+    ("docs/policies/RELEASE_POLICY.md",
+     "CMakeLists.txt:14, 457-482",
+     "CMakeLists.txt:14, 467-492"): "ANAMORPH_BUILD_NUMBER",
+    ("docs/architecture/SERIALIZATION_REGISTRY.md",
+     "src/PluginProcessor.cpp:688-692",
+     "src/PluginProcessor.cpp:1121-1122"): "legacyKey",
+    ("docs/architecture/SERIALIZATION_REGISTRY.md",
+     "src/PluginProcessor.cpp:1009-1010",
+     "src/PluginProcessor.cpp:1121-1122"): "legacyKey",
+    ("docs/architecture/SERIALIZATION_REGISTRY.md",
+     "src/PluginProcessor.cpp:986-987",
+     "src/PluginProcessor.cpp:1121-1122"): "legacyKey",
+    ("docs/policies/COMPATIBILITY_POLICY.md",
+     "src/PluginProcessor.cpp:327-396",
+     "src/PluginProcessor.cpp:991-1246"): "setStateInformation",
+    ("docs/policies/COMPATIBILITY_POLICY.md",
+     "src/PluginProcessor.cpp:901-1134",
+     "src/PluginProcessor.cpp:991-1246"): "setStateInformation",
+    ("docs/policies/COMPATIBILITY_POLICY.md",
+     "src/PluginProcessor.cpp:878-1111",
+     "src/PluginProcessor.cpp:991-1246"): "setStateInformation",
+    # 2026-08-31 (round 2): prepareToPlay grew by the priming call, shifting every
+    # line below it. RISK-007's read-side citation names setStateInformation, so it was
+    # re-derived from that symbol rather than mapped mechanically -- the mechanical
+    # map would have carried the span past the function's own signature. (The
+    # write-side reference beside it is a bare `:line` shorthand, which the gate
+    # does not track as an anchor, so it needs no declaration.)
+    # The same three anchors also moved relative to the PUSH PREDECESSOR (a
+    # different base than origin/main, and the one CI compares). Same symbols,
+    # same re-derivation; both bases are declared until this branch merges.
+    ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
+     "src/PluginProcessor.cpp:328, 390-393",
+     "src/PluginProcessor.cpp:535,712-715"): "setValueNotifyingHost",
+    ("docs/architecture/SERIALIZATION_REGISTRY.md",
+     "src/PluginProcessor.cpp:743-744",
+     "src/PluginProcessor.cpp:1121-1122"): "legacyKey",
+    ("docs/policies/COMPATIBILITY_POLICY.md",
+     "src/PluginProcessor.cpp:645-796",
+     "src/PluginProcessor.cpp:991-1246"): "setStateInformation",
+    ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
+     "src/PluginProcessor.cpp:318, 380-383",
+     "src/PluginProcessor.cpp:535,712-715"): "setValueNotifyingHost",
+    ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
+     "src/PluginProcessor.cpp:489,624-627",
+     "src/PluginProcessor.cpp:535,712-715"): "setValueNotifyingHost",
+    ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
+     "src/PluginProcessor.cpp:311,345-348",
+     "src/PluginProcessor.cpp:535,712-715"): "setValueNotifyingHost",
+    ("docs/FUTURE_RISKS.md",
+     "src/PluginProcessor.cpp:901-1134",
+     "src/PluginProcessor.cpp:991-1246"): "setStateInformation",
+    ("docs/FUTURE_RISKS.md",
+     "src/PluginProcessor.cpp:878-1111",
+     "src/PluginProcessor.cpp:991-1246"): "setStateInformation",
+    ("docs/FUTURE_RISKS.md",
+     "src/PluginProcessor.cpp:610-749",
+     "src/PluginProcessor.cpp:991-1246"): "setStateInformation",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the

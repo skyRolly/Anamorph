@@ -6,13 +6,75 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.5 change set** (2026-08-22, matching the CHANGELOG heading) — the
+Last updated: for the **0.9.6 change set** (2026-09-01, matching the CHANGELOG heading) — the
+**engineering-review programme, rounds 1 through 27**, newest last in the body: round 1 (the
+programme's first sweep: six engine/state/GUI fixes with Tests 43–46 and two state regressions,
+the engaged Test 2/38 matrices, the KI-027 and RISK-007 filings, the v0.9.6 renumbering sweep, the
+NOTICE pin + AudioUnitSDK section, the CI_CD job inventory, and the new
+`worklogs/engineering-review/` programme worklog + live HTML dashboard); round 2 (CI recovery and
+two restore defects, whose section also carries the **rounds 3 and 4** bullets); **rounds 5 and 6**
+(the Level-5 audition specified, then recorded as PASSED — entered late, in round 7, and labelled
+as such); **round 7** (the compatibility checklist taken to six of eight boxes with measured
+evidence, and the test-count sweep); **round 8** (the legacy A/B contamination defect confirmed
+and fixed, an obsolete macOS scope comment corrected, and the realtime-lint boundary re-measured and
+left alone); **round 9** (the per-slot Level-Match residual refuted on impact — mechanism real,
+no code changed); **round 10** (the release notes reconciled with the KI-013 outcome, and the
+two duplicated knob-readout Undo entries consolidated); **round 11** (two restore fixes, one
+refutation, and a full audit of the [0.9.6] changelog); and **round 12** (undefined behaviour in the
+legacy-Settings conversion fixed, the latency regression test made deterministic, and ER-STATE-13
+re-run on AArch64 with no change); and **round 13** (ER-STATE-17 verified on the real frozen
+pre-0.8.4 fixture, and compatibility-checklist items 5 and 7 recorded on the maintainer's
+attestation, closing the gate); **round 14** (partial modern Settings inheriting the previous
+project, confirmed and fixed on the opposite path from the one reported); and **round 15** (the
+off-message-thread re-prepare latency race confirmed under ThreadSanitizer and closed inside D-1,
+with one new risk recorded); and **round 16** (the previous project's per-slot A/B Level-Match gains
+surviving a restore, confirmed and fixed on two paths, with the modern-Settings validation question
+investigated and deliberately left to a contract decision); and **round 17** (that investigation
+finished at the consumers: one concrete undefined conversion fixed, the contract question deferred
+with complete evidence, and the drag-recovery finding refuted); and **round 18** (the maintainer's
+recovery policy implemented and ER-STATE-21 closed, and RISK-008 investigated to a class-B
+classification); and **round 19** (the maintainer's real-host REAPER result recorded against
+RISK-008, its disposition finalised, and the settled set audited for consistency — no production
+change); and **round 20** (a restored session's modules gliding into their own sound, and a
+malformed numeric boolean switching a setting on — both fixed at their source, with the state race
+outside the latency fields classified as the already-deferred D-2 risk); and **round 21** (the phase
+meter's own `ll * rr` overflowing in float on extreme-but-finite audio, so a perfectly correlated
+signal read as fully decorrelated — fixed at that operation, with the state race re-measured and
+again found to be the deferred D-2 risk); and **round 22** (the `docs` CI gate, red on a line of
+this file that began with a pipe character, and the filtered-preflight habit that let it reach the
+push — both fixed, no production change); and **round 23** (the balance meter's own `ll + rr`
+overflow, a different operation from round 21's `ll * rr`, which published dead centre for a badly
+lopsided pair — fixed, with round 21's mistaken note about it corrected in place); and **round 24**
+(a valid preset from another plug-in loaded as if it were ours — adopting what it named and
+defaulting the rest, with both loaders reporting success — closed by a root-type acceptance test
+shared by both loaders); and **round 25** (a minimal `[0.9.6]` Change Log correction pass — the
+release date, and five wording claims the current implementation contradicts); and **round 26**
+(the audio half of round 24 — a preset the plug-in REFUSED still ducked the audio, because the
+editor raised the masking duck before the load could refuse); and **round 27** (a malformed value
+whose repair equalled the value already loaded was never written back, so the damage stayed in the
+file through every later save).
+**Header correction (round 7, 2026-09-01):** this line enumerated round 1 alone while the body
+carried six later rounds, and dated the change set 2026-08-31 while the CHANGELOG `[0.9.6]` heading
+had been re-dated to 2026-09-01 — the same drift the C6 correction below was written about,
+recurring. Rounds 5 and 6 had additionally skipped this file entirely; their entry says so rather
+than pretending it was written at the time.
+**Header correction (C6, 2026-08-31):** this line previously said "for the 0.9.5 change set
+(2026-08-22, matching the CHANGELOG heading)" while the CHANGELOG's `[0.9.5]` heading had been
+re-dated to 2026-08-30 and the file's own body already carried five later 0.9.5-set rounds the
+header never enumerated — the **platform-coverage audit + MSVC adoption rounds** (ADR-0032, the
+blocking Windows A/B gate), the **[0.9.5] changelog audit** (date + six corrections), the
+**toolchain hold** (ADR-0033: Clang stays 22, release identity asserted), the
+**missing-metadata verification bypass closure** (`setup-llvm-apt.sh --self-test`), and the
+**citation-exemption lifecycle re-key** (`DELIBERATE_REAIMS` transition-scoped). Those rounds'
+entries are in the body below; only this header had gone stale.
+Prior: the **0.9.5 change set** — the
 **A7-0 attempt** (first below, no code and no rows filled), then the **PR #127 review round**, then
 the **A7-2 investigation** (no code), then the **A7-1 implementation round**, then the
 **A7-2T oracle**, then **A7-2B + A7-5E + A7-9C**, then **A7-5E closed on the shipping toolchain**,
 then the **four A7 decisions implemented** (ADR-0031's x86-64 ISA baseline and its floor, the
 cross-architecture numerics contract, the A7-9 fixpoint gates with Test 41, A7-2B's corner accepted,
-and one recorded bound corrected) — **last in the file, newest last within the 0.9.5 set**. Under it, the **0.9.4 change set** is retained in full
+and one recorded bound corrected), then the five header-missed rounds above — **newest last within
+each set**. Under it, the **0.9.4 change set** is retained in full
 (2026-08-21, matching its own CHANGELOG heading — re-dated
 from 2026-08-15 in the hover-occlusion round, on 2026-08-20, and again on 2026-08-21, each time
 because the version took a further user-visible change) — the
@@ -277,7 +339,7 @@ the same file carries both the defect and its remedy.) So none of the three park
 a user turns its control down. Measured: `HaasProcessor` stalls at `1.17487956e-35` and
 `ChorusEngine` at `5.63638313e-36` **at 48 kHz** — Velvet's and Haas's coefficients are compile-time
 constants so their stall is rate-independent, while Chorus's `wSmooth` is `1/(0.01·sr)`
-(`src/dsp/ChorusEngine.cpp:70`) so its stall scales with the rate, reaching `2.25593495e-35` at
+(`src/dsp/ChorusEngine.cpp:80`) so its stall scales with the rate, reaching `2.25593495e-35` at
 192 kHz — and the missed park costs +203 % and +370 % of the parked module
 at 48 kHz / 128 — for Velvet, +752 % at 48 kHz / 32 and +2,372 % at 192 kHz / 32, because a stalled
 amount above zero also satisfies the H5 gather gate and puts the engine on its most expensive path.
@@ -348,7 +410,7 @@ Correlation 3.4 % vs 3.8 %. Two independent harnesses two rounds apart agreeing 
 
 **Two prices quoted for the first time, both maintainer decisions and neither reopened here.** A
 host-bypassed instance costs **101 % of an active one** (85.1M vs 84.0M Ir/s) because the Issue-2
-contract at `src/dsp/AnamorphEngine.cpp:790-796` keeps Measure + Predict running while bypassed, and
+contract at `src/dsp/AnamorphEngine.cpp:856-862` keeps Measure + Predict running while bypassed, and
 `loudness.process()` is handed the *processed* signal (`:1137`). And **59.3 % of the transparent idle
 floor is metering and loudness analysis**, running with Level Match off and with no editor in
 existence. W3-7 and W3-8 rejected gating those for reasons that still hold; what was missing was the
@@ -875,10 +937,10 @@ such.** What is established is that the rewrite happens at a position that is no
 What is not established is the exact macOS event sequence that makes that position land one row up;
 that would need a trace on macOS, which was not available here. What supports it is arithmetic that
 accounts for all four observed controls. The box is placed `h + 8` above the cursor
-(`AnamorphLookAndFeel::getTooltipBounds`, `src/gui/LookAndFeel.cpp:862-871`), so its top edge is a
+(`AnamorphLookAndFeel::getTooltipBounds`, `src/gui/LookAndFeel.cpp:885-894`), so its top edge is a
 **tip-dependent** offset above the pointer, and the Settings rows are at editor-local
 `oversampleBox` 274–297, `uiScaleBox` 331–354, `scopePersistK` 387–411, `tooltipsToggle` 423–449,
-`animToggle` 455–481 (`src/PluginEditor.cpp:2201-2226`). Taking each control's centre and
+`animToggle` 455–481 (`src/PluginEditor.cpp:2253-2278`). Taking each control's centre and
 subtracting `h + 8` for a two-line tip lands inside **Oversampling** from UI Scale, inside **UI
 Scale** from Vectorscope Persist, on or within a pixel or two of **Tooltips** from UI Animations,
 and — from Oversampling — on `settingsTitle` (221–241), a plain `juce::Label` that never had
@@ -1349,7 +1411,7 @@ document already uses for its five other source anchors.
 same untracked class" was a count of what that pass happened to look at, not a search — three more
 sat in `KNOWN_ISSUES.md` alone, and one of them is the worse kind. **KI-009's `focusSaveNameField`
 citation was mis-aimed, then mechanically carried.** At the merge base it read
-`src/PluginEditor.cpp:1556-1564`, which was the `rIn`/`rOut`/`rAct`/`rOn`/`rPos` easing block in
+`src/PluginEditor.cpp:1606-1614`, which was the `rIn`/`rOut`/`rAct`/`rOn`/`rPos` easing block in
 `stepMicroAnims` — not that function at all — and `--fix` moved it to `:1567-1575`, the same easing
 block after this change's insertions. Faithful, and still wrong. `focusSaveNameField` is at
 **`:1984-1992`**, and the two untracked references beside it were mis-aimed the same way: the
@@ -1388,7 +1450,7 @@ something these rounds created, and closing it is its own change.
 
 **A third review pass found the same carried-mistake class in `PRIVACY.md`, and this one needed a
 declaration.** The row saying the Presets folder is created when the **Load Preset** dialog opens
-cited `src/PluginEditor.cpp:1513` at the merge base — the S11 generation pre-gate comment inside
+cited `src/PluginEditor.cpp:1563` at the merge base — the S11 generation pre-gate comment inside
 `stepMicroAnims`, about 383 lines short of the `:1838` that `dir.createDirectory()` sat on there.
 `--fix` carried it to `:1524`, still the same comment. Corrected to **`:1916`**, and written the way
 the checker's own header says new citations should be — with the symbol spelled beside the number
@@ -1398,7 +1460,7 @@ half that survives the next shift.
 **Unlike the `KNOWN_ISSUES.md` five, this one is caught by the gate, which is why it is declared.**
 `PRIVACY.md` still has exactly one `src/PluginEditor.cpp` citation, so the pair IS compared, the
 re-aim reads as drift, and `--fix` **reverted the correction on the first run** — measured, not
-predicted. `("PRIVACY.md", "src/PluginEditor.cpp:2027"): "createDirectory"` is therefore added to
+predicted. `("PRIVACY.md", "src/PluginEditor.cpp:2077"): "createDirectory"` is therefore added to
 `DELIBERATE_REAIMS`. It is not an inert exemption: `verify_reaim_targets` resolves the anchor against
 the live file every run, and mutating the substring to a value the code does not contain makes the
 run fail with `::error::` and exit 2 — checked by doing it, then reverting. A declaration turns the
@@ -1406,10 +1468,10 @@ drift check off for its anchor, so the aim check is the thing that keeps it hone
 
 **Reported and deliberately NOT corrected — the About-link anchor in the three legal documents.**
 `EULA.md`, `PRIVACY.md` and `TRADEMARKS.md` cite where the product's one outbound hyperlink is
-declared, and `--fix` moved all three from `src/PluginEditor.h:283` to `:223` in this change set.
+declared, and `--fix` moved all three from `src/PluginEditor.h:293` to `:223` in this change set.
 That re-anchor is mechanically correct and **preserves a pre-existing mistake**: at the merge base
 `:213` already read `return juce::TooltipWindow::getTipFor (c);`, and `:223` reads the identical
-line today, while `aboutLink` actually lives at `src/PluginEditor.h:465`. So the rot predates this
+line today, while `aboutLink` actually lives at `src/PluginEditor.h:475`. So the rot predates this
 change and was faithfully carried, not created by it — precisely the failure mode
 `check-citations.py`'s own header describes ("it CANNOT tell you a citation was aimed at the wrong
 code to begin with… and it does so INVISIBLY, in a DRIFTED line that reads like a repair"). It is
@@ -1419,7 +1481,7 @@ nothing to do with hover; recording it here is what stops the paragraph above re
 three anchors were verified correct.
 
 **NOW CLOSED (2026-08-19), as its own standalone change.** The three documents cite
-**`src/PluginEditor.h:465`**, where `aboutLink` is actually declared, instead of `:223` — which is
+**`src/PluginEditor.h:475`**, where `aboutLink` is actually declared, instead of `:223` — which is
 `return juce::TooltipWindow::getTipFor (c);` inside `GatedTooltipWindow`, the line `--fix` had
 carried the mis-aim onto from the merge base's `:213`. Only the number changed in each document; no
 wording, formatting or meaning was touched, and the correction is one anchor per file.
@@ -1429,7 +1491,7 @@ the three documents holds **exactly one** `src/PluginEditor.h` citation in both 
 current tree, so the count guard does not fire, the pair IS compared, and the re-aim reads as drift.
 Measured: before the entries were written the run reported all three `DRIFTED … -> :223`, and `--fix`
 would have dragged every one of them back. `("EULA.md" | "PRIVACY.md" | "TRADEMARKS.md",
-"src/PluginEditor.h:465"): "aboutLink"` now covers them, and the substring is what keeps that
+"src/PluginEditor.h:475"): "aboutLink"` now covers them, and the substring is what keeps that
 off-switch honest: `verify_reaim_targets` resolves `:465` against the live header every run, and
 mutating one entry's substring to a value the line does not contain makes the run emit `::error::`
 and exit 2 — checked by doing it, then reverting. Re-running `--fix` afterwards leaves all three
@@ -1475,7 +1537,7 @@ two that do not are `titleButton` and `aboutLink`, and neither can produce the r
     `false`. So the control has no hover visual at all, registered or not; the argument the review
     traces never reaches a pixel.
   * **`aboutLink` has a live fallback but cannot be occluded by a menu.** It is the *only* child of
-    `aboutBackdrop` (`src/PluginEditor.cpp:579`), so it is on screen only while the About overlay
+    `aboutBackdrop` (`src/PluginEditor.cpp:583`), so it is on screen only while the About overlay
     is. The editor's only menu-openers are `presetName.onClick` (`:350`) and the combo drop-downs —
     all of them outside that overlay and covered by it while it is up, with `Backdrop::mouseDown`
     eating the click. No pop-up menu can be open while `aboutLink` is visible.
@@ -1817,7 +1879,7 @@ subject, and the second is a stale COUNT rather than the placement claim.
 
 **The CI-target report was investigated and required no change.** It read the visible diff as adding
 only three `option()` declarations and asked whether `AnamorphFuzzState`, `AnamorphBench` and
-`AnamorphDspDump` resolve to anything. They do: `CMakeLists.txt:593-611`, `:560-577` and `:597-623`
+`AnamorphDspDump` resolve to anything. They do: `CMakeLists.txt:603-621`, `:560-577` and `:597-623`
 define them, the last including the target-scoped `-fsanitize=fuzzer` the workflow comment relies
 on. Verified by building rather than by reading — all three configure and compile from the same
 option and compiler flags CI passes (JUCE supplied from the already-fetched checkout rather than
@@ -1839,10 +1901,10 @@ No other approval is claimed by this entry.
 
 **Test 38 never armed a parameter CHANGE.** The per-configuration `setParameters (p); reset();` ran
 *before* the block loop, and `reset()` flushes an in-flight duck straight to its target
-(`src/dsp/AnamorphEngine.cpp:138-145`) — so by the time the counters were armed the switch was over,
+(`src/dsp/AnamorphEngine.cpp:175-182`) — so by the time the counters were armed the switch was over,
 `switchState` was `Normal`, and the `setParameters (p)` inside the armed region hit the steady-state
 no-change gate every time. The whole structural half of a switch lives in the adopt block
-(`src/dsp/AnamorphEngine.cpp:684-759`: algorithm tails cleared, the three oversamplers and the
+(`src/dsp/AnamorphEngine.cpp:750-825`: algorithm tails cleared, the three oversamplers and the
 chorus reset on an oversampling-path change, the crossover cleared on a topology change) and it runs
 inside `process()`, at the silent bottom of the duck. So 3,840 armed calls proved the audio path
 allocation-free while nothing was changing, and `REALTIME_SAFETY_AUDIT.md` presented that gate as
@@ -1949,7 +2011,7 @@ architectural citation pointing at unrelated code, and one liveness claim that w
 
 **MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-19**, covering the two decisions in this round
 that the process asks a human to confirm: re-aiming ADR-0009's evidence to
-`src/dsp/AnamorphEngine.cpp:1269-1313` (a re-aim, not a re-anchor — the tool cannot compute it, so
+`src/dsp/AnamorphEngine.cpp:1335-1379` (a re-aim, not a re-anchor — the tool cannot compute it, so
 it is declared in `DELIBERATE_REAIMS` and its aim machine-checked against
 `Defensive NaN / Inf self-heal`), and restating the leaf-layer `-Werror=function-effects` gate's
 liveness evidence to name the mechanism the tree actually runs.
@@ -2132,7 +2194,7 @@ way and deliberately left — `CODE_STYLE.md:10` and `TESTING_POLICY.md:9` cite 
 be exhaustive.
 
 **The continuation gap is left open deliberately.** Bringing these under the gate means the
-comma-list spelling (`CMakeLists.txt:486-487, 517-518, 559-560`), which the tool does accept — but
+comma-list spelling (`CMakeLists.txt:496-497, 527-528, 569-570`), which the tool does accept — but
 each continuation here carries its own annotation naming *which* line it is (`:162`
 (`-Wl,-dead_strip`, Apple), `:108` (`/OPT:REF`, MSVC)), and the comma-list form has nowhere to put
 them. Widening the recogniser to follow continuations is a change to the gate's scope rather than to
@@ -2887,7 +2949,7 @@ happened. Another sits two lines from a sibling reference in the *same* historic
 already been protected, so a `--fix` would have rewritten half a paired record and frozen the other
 half. The discriminator that survives: **is the number the subject of the sentence, or a pointer to a
 thing?** Exactly one `CMakeLists.txt` citation in this document is the latter — "*it is*
-`CMakeLists.txt:521-530`", present tense, where re-anchoring preserves truth — and it is deliberately
+`CMakeLists.txt:531-540`", present tense, where re-anchoring preserves truth — and it is deliberately
 left live so the gate still demonstrably checks real evidence here.
 
 Verified by mutation rather than by reading: a line inserted into `CMakeLists.txt` above all of them,
@@ -2912,7 +2974,7 @@ Review found two anchors the previous round missed, both below its insertion poi
 to the new gate for the same reason: they are spelled as **bare continuations**
 (`` `path/to/file:188-199` … `:292-301` ``), which the parser only recognises in the
 `path:a,b,c` form. `ADR-0001`'s "tests link the core" pointed at `juce::juce_opengl` inside the
-*plugin*'s link block; it is `CMakeLists.txt:521-530`. `BUILD.md`'s compile-definition list cited
+*plugin*'s link block; it is `CMakeLists.txt:531-540`. `BUILD.md`'s compile-definition list cited
 `:277-284` while listing `ANAMORPH_BUILD_NUMBER` — a definition that range no longer contains, since
 scoping moved it to `:274-275`; widened to `:274-284`, deliberately as **one** anchor, because a
 citation whose anchor *count* changes lands in the "review by hand" branch no declaration can excuse.
@@ -4094,8 +4156,8 @@ spells out the conversion the compiler was already performing:
 
 | Site | Before | After |
 |---|---|---|
-| `src/PluginEditor.cpp:245` | `roundToInt (inner.getWidth() * 0.40f)` | `roundToInt ((float) inner.getWidth() * 0.40f)` |
-| `src/PluginEditor.cpp:246` | `roundToInt (getWidth() * 0.40f)` | `roundToInt ((float) getWidth() * 0.40f)` |
+| `src/PluginEditor.cpp:246` | `roundToInt (inner.getWidth() * 0.40f)` | `roundToInt ((float) inner.getWidth() * 0.40f)` |
+| `src/PluginEditor.cpp:247` | `roundToInt (getWidth() * 0.40f)` | `roundToInt ((float) getWidth() * 0.40f)` |
 | `src/gui/LookAndFeel.cpp:262` | `x0 + k * (barW + gap)` | `x0 + (float) k * (barW + gap)` |
 | `src/dsp/VelvetNoise.cpp:30` | `std::round (m * cell + …)` | `std::round ((float) m * cell + …)` |
 
@@ -4177,7 +4239,7 @@ macOS job, not assumed. Linux and Windows were unaffected and green in the same 
 the two runs, normalised, gives 15 → 19 distinct sites and 108 → 126 instances: nothing
 disappeared, no category changed, and the whole delta is
 **`-Wimplicit-int-float-conversion` at four pre-existing sites** —
-`src/PluginEditor.cpp:245,246` (`getWidth() * 0.40f`), `src/gui/LookAndFeel.cpp:262`
+`src/PluginEditor.cpp:246, 247` (`getWidth() * 0.40f`), `src/gui/LookAndFeel.cpp:262`
 (`k * (barW + gap)`) and `src/dsp/VelvetNoise.cpp:30` (`m * cell`), each an `int` widened inside a
 float expression. **Recorded, not fixed here** — the source was unchanged by this change, so these
 were new diagnostics on old code, and Level 1 is not part of the `TESTING_POLICY` hard release
@@ -5965,7 +6027,7 @@ was blind was not.
 
 **The oracle, and why it costs no product change.** The module already holds two implementations of
 the same arithmetic. The gather's eligibility gate ends with `numSamples <= (int) accum.size()`
-(`src/dsp/VelvetNoise.cpp:167`) — a clause whose stated purpose is direct callers rather than the
+(`src/dsp/VelvetNoise.cpp:166`) — a clause whose stated purpose is direct callers rather than the
 engine — and `accum` is sized from `prepare()`'s `maxBlockSize` alone. An instance prepared for a
 **smaller** block therefore runs the per-sample loop over the same audio, and everything else about
 it is identical: ring, tap positions and signs, weights, envelope/gate coefficients and stop step
@@ -6335,7 +6397,7 @@ marked rather than erased.
 
 ## The A7-9 near-silent scope correction + the cross-slice record parser (2026-08-30)
 
-A review pass against `src/dsp/VelvetNoise.cpp:159` asked what happens to **near-silent NONZERO**
+A review pass against `src/dsp/VelvetNoise.cpp:158` asked what happens to **near-silent NONZERO**
 input at the stalled fixpoints, and the measured answer corrected a claim every A7-9 record carried:
 "the residual appears only on digital silence" was this programme's *observation*, never a property.
 The absorption `x + residual == x` needs `|x| >= 2^24 × |residual|`; a twin-binary A/B against the
@@ -6489,3 +6551,1105 @@ entries' per-entry liveness checks.
 `is_declared_reaim` returns false when the spelling is unchanged, *"an entry cannot outlive its
 transition"*. That is the belief the finding disproved, and it is now recorded as such beside the
 rule that makes it true.
+
+---
+
+## Engineering-review programme, round 1 (2026-08-31, the 0.9.6 change set)
+
+**What the round is.** The first pass of the standing engineering-review programme: a broad,
+adversarially-verified sweep of the whole repository (8 lenses; 17 findings confirmed, 2 refuted,
+~75 areas ruled out), a fix-now set implemented with regression coverage, two gate-blocked defects
+FILED instead of fixed, and a persistent programme record created. Records:
+`worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` (the worklog of record) with
+`ENGINEERING_REVIEW_REPORT.html` beside it (the live dashboard — a VIEW of the worklog, updated
+and re-committed whenever the programme state materially changes; same companion rule as the
+performance reports).
+
+**Code changes and their doc syncs (trigger map applied):**
+- `src/dsp/AnamorphEngine.cpp` (chunk guard ER-DSP-01, prepare-snap ER-DSP-02),
+  `src/dsp/Correlation.h` (sanitize ER-DSP-04) → CHANGELOG `[0.9.6]` (three Fixed entries),
+  Tests 43–45, HANDOVER Test/Version rows. No stage-order, latency-value, parameter or
+  serialization change — no ADR needed (behaviour changes only in the defective windows; the
+  Mix-0 null and identity invariants are what the fixes RESTORE).
+- `src/PluginProcessor.cpp` (absent-PARAM defaults ER-STATE-01, slot type guard ER-STATE-02,
+  the KI-027 comment correction) → `SERIALIZATION_REGISTRY.md` (two dated annotations; the
+  serialized SCHEMA is untouched — restore semantics for absent/corrupt payloads now match the
+  registry's own recorded rules), two state-suite regressions, CHANGELOG (two Fixed entries).
+- `src/gui/LookAndFeel.cpp` (ValueBox gesture ER-GUI-01) → KI-010 dated correction, CHANGELOG,
+  USER_MANUAL left as-is (its wording is now accurate again).
+- `tests/dsp_tests.cpp` (engaged matrices ER-TST-01 + Tests 43–46), `tests/state_tests.cpp`
+  (two regressions) → TESTING.md counts, README:64, HANDOVER Test row, REPOSITORY_MAP test rows,
+  RELEASE_HARDENING_PLAN QA row (45 tests / 241 checks; 15 tests / 924 checks).
+- `scripts/check-realtime.py` (AUDIO_FN seeds ER-RT-02) → REALTIME_AUDIO_POLICY scoping sentence
+  (the "anywhere in the chain" claim now states the annotated-entry boundary and the lint/guard
+  complements).
+- `scripts/run-pluginval.ps1` + `run-pluginval.sh` comment (ER-CI-01) → TESTING.md §Signal-only
+  retry (Windows paragraph), FUTURE_RISKS RISK-004 (Windows analog closed).
+- `.github/workflows/build.yml` one-line pin comment (ER-DEP-05).
+
+**Registry filings (defects found, fixes gated):** KI-027 (audio-thread latency re-report,
+ER-RT-01 — table row + full entry; the LATENCY_MODEL/THREAD_MODEL drift is recorded IN the entry
+per C6 and deliberately left in the two architecture docs for the gated fix to reconcile) and
+RISK-007 (off-main-thread state calls, ER-RT-03/ER-STATE-05 — plus THREADING_POLICY's new §Host
+state calls, and a dated KNOWN-VIOLATION cross-reference under its PDC rule).
+
+**Version renumbering (ER-DOC-01) and the 0.9.6 bump:** `CMakeLists.txt:14` → 0.9.6; CHANGELOG
+`[0.9.6] — 2026-08-31` (six Fixed entries, evidence PR #134); the forward-looking "release in
+preparation / first tag" claims renumbered in HANDOVER (:76 and the Branch/Release/Blockers rows),
+CHANGELOG:9, CHANGELOG_POLICY:12, RELEASE_PROCESS (§Tagging commands + :112), COMMERCIAL_STATUS
+(:11-12/:30/:115-118), FUTURE_RISKS (RISK-003), RELEASE_HARDENING_PLAN (:29/:46/:300/:346 + the QA
+row counts). The **Level-5 precondition is restated OPEN** wherever it was asserted "against the
+build that ships" (HANDOVER:91, COMMERCIAL_STATUS §5) — the 2026-08-15 audition covered v0.9.4,
+the shipping build is now v0.9.6, and no carry-forward was ever decided; this is maintainer
+decision D-3, not something a doc edit can clear. HANDOVER's open-KI enumeration completed
+(KI-018–KI-023, KI-026 were missing). Historical v0.9.4 narrative (HANDOVER:49/:89/:94/:102,
+worklog filenames, FUTURE_RISKS prior-sync chain) deliberately untouched — Class B.
+
+**Shipped-attribution corrections:** NOTICE:24 pin line 9.0.0/f8f8864 → 9.0.1/e18f7f5
+(ER-DOC-02; NOTICE added to DEPENDENCY_POLICY's bump re-verification list so the next bump cannot
+miss it) and a new NOTICE AudioUnitSDK Apache-2.0 section (ER-DEP-01; © 2000-2021 Apple Inc.,
+read from the pinned tree's `AudioUnitSDK/LICENSE.txt` and the `@copyright` header;
+THIRD_PARTY_LICENSES §mandatory-notices names it beside SheenBidi).
+
+**Other Class-A drift corrected:** CI_CD.md §Build matrix (nine non-packaging jobs; rows for
+`macos-crossslice` reporting-only and `windows-avx2-ab` blocking; the release-blocking paragraph's
+carve-out), REPOSITORY_MAP build.yml row (same two jobs) and its worklogs entry (the "ONE worklog
+has a rendered companion" sentence — three existed before this round, four now; corrected with a
+dated note), REPOSITORY_MAP test-count rows (37→45 DSP, 13→15 state), TESTING.md:18 (41→45),
+TESTING.md's twin-dump bullet ("session-local and not committed" — false since 2026-08-18,
+ER-TST-05), a new TESTING.md §Gaps entry writing down the twin-dump's coverage boundary
+(ER-TST-02) with the KI-026 status line now carrying the scope qualifier, FUTURE_RISKS' missing
+0.9.5 sync note (ER-DOC-04, corrected inside the new 0.9.6 sync note), and this file's own stale
+"Last updated" header (ER-DOC-05, corrected in place at the top).
+
+**New documents:** `worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` +
+`ENGINEERING_REVIEW_REPORT.html`. Registered per the documentation-only trigger: REPOSITORY_MAP's
+`worklogs/` entry describes companions generically and now names this one; `SOURCE_OF_TRUTH.md`
+and README §Documentation class tables are unchanged because worklogs are already a classified
+directory there (the KEYNOTE_SCRIPT precedent at :5289 applies); self-coverage is this entry.
+
+**Refuted findings recorded (not drift, prior art):** ER-DSP-03 (the duck's block-boundary dwell
+is the documented [0.8.10] behaviour) and ER-TST-03 (JUCE state chunks are plain XML, not
+deflate — the fuzzer reaches the parser). [Verified]
+
+---
+
+## Engineering-review programme, round 2 (2026-08-31, still the 0.9.6 change set)
+
+**What the round is.** CI recovery plus the carried round-1 roadmap: two warning-gate blockers
+fixed at source, three confirmed defects fixed with regression coverage, RISK-007 measured rather
+than reasoned about, decision D-1 materially corrected, and one new issue filed. Records:
+`worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Round 2 with the dashboard
+`ENGINEERING_REVIEW_REPORT.html` beside it, both updated in this change set.
+
+**Code changes and their doc syncs (trigger map applied):**
+- `src/dsp/AnamorphEngine.h` (`primeParameters`) + `src/PluginProcessor.cpp` (`prepareToPlay`
+  ordering) → CHANGELOG `[0.9.6]` (two Fixed entries: the activation duck and the restored-level
+  ramp), State test 16, HANDOVER Version + Test rows, and the count sweep below. No stage-order,
+  latency-value, parameter or serialization change — the fix RESTORES the intended settled state,
+  so no ADR is triggered.
+- `src/PluginProcessor.cpp` (`reassertParameters`: non-finite guard + the inverted write gate) and
+  `src/PresetManager.cpp` (`applySoundTree` fallback) → CHANGELOG (one Fixed entry), State test 17.
+  The serialized SCHEMA is untouched: this changes what a MALFORMED value restores to, which
+  `SERIALIZATION_REGISTRY.md` already specifies as "per-parameter defaults" for the absent case.
+- **Round 4 (2026-09-01).** `src/PluginProcessor.{h,cpp}` (D-1: `requestLatencyUpdate`, the
+  processor-owned 20 Hz timer, and the restore-time re-report), `src/gui/PhysicalMouseButtons.{h,cpp}`
+  + `_mac.mm` and `src/PluginEditor.{h,cpp}` (the macOS physical-button query feeding both editor
+  predicates), `CMakeLists.txt` (the Apple-only `.mm`) -> CHANGELOG (three Fixed entries),
+  KNOWN_ISSUES (**KI-028 and KI-013 both RESOLVED**), `docs/architecture/LATENCY_MODEL.md` (the
+  delivery-thread rule and the up-to-50 ms deferral, plus the restore re-report),
+  `scripts/check-gcc-warnings.py` (ER-CI-04 gcc-16 measurement, closing the round-3 gap), README /
+  TESTING / TESTING_POLICY / REPOSITORY_MAP / RELEASE_HARDENING_PLAN / HANDOVER counts (47 / 245;
+  24 tests / 1057 checks), and State tests 22-24. D-4's Architecture-Review gate is **APPROVED**, so
+  the round-3 malformed-value and repair-serialization changes are cleared to merge; no schema field
+  was added, removed or renamed and no well-formed file loads differently. D-2 is DEFERRED with no
+  code change; D-3 remains a release blocker.
+- **Round 3 (2026-09-01).** `src/SerializedNumber.h` (new shared malformed-value predicate),
+  `src/PresetManager.cpp` + `src/PluginProcessor.cpp` (both restore paths call it; the repair now
+  reaches the live tree), `src/dsp/AnamorphEngine.h` (`primeParameters` clears `duckRequest`),
+  `src/gui/LookAndFeel.h` + `.cpp` and `src/PluginEditor.h` + `.cpp` (`DragGestureOwner` and the
+  abandoned-gesture sweep) -> CHANGELOG (four Fixed entries), KNOWN_ISSUES (KI-028 narrowed to a
+  macOS residual, with the refuted editor-teardown path recorded), `scripts/check-gcc-warnings.py`
+  (ER-CI-04 re-measurement 13.3.0-15.2.0 plus the gcc-16 command), `scripts/check-realtime.py`
+  (ER-RT-05 cross-file census), README / TESTING / TESTING_POLICY / REPOSITORY_MAP /
+  RELEASE_HARDENING_PLAN / HANDOVER counts (47 / 245; 21 tests / 1040 checks), and Tests 48 and
+  State tests 19-21. **GATED:** the malformed-value and repair-serialization changes alter
+  malformed-value recovery and saved-state contents, so they need ARCHITECTURE_REVIEW_GATE approval
+  before merge (worklog D-4). No schema field is added, removed or renamed.
+- `tests/state_tests.cpp` (State tests 16, 17 and 18, State test 4's de-vacuumed InternalState
+  assertions, and the `--state-thread-probe` + `--latency-restore-probe` instruments) →
+  `docs/procedures/TESTING.md` (both probes documented beside the state-suite description; test count
+  15 → 16 → 17 → 18), REPOSITORY_MAP test rows, README:64, TESTING_POLICY, RELEASE_HARDENING_PLAN QA
+  row, HANDOVER Test row (45 / 241; 18 tests / 941 checks). Neither probe is run by the suite; the
+  latency one asserts nothing at all, because the reported latency is a gate category.
+- `src/PluginProcessor.cpp` (v0.2 branch of `setStateInformation` now calls
+  `internal.migrateFromLegacyApvts`, ER-STATE-08) → CHANGELOG (one Fixed entry, replacing round 1's
+  absent-PARAM entry — see below), State test 4. No schema change: this reaches an EXISTING
+  migration from a branch that was skipping it.
+- `src/PresetManager.cpp` (`applySoundTree` keys presence off `hasProperty("value")`, ER-STATE-06) →
+  CHANGELOG (one Fixed entry), State test 18. The serialized schema is untouched; this changes what
+  a value-less node restores to, which `SERIALIZATION_REGISTRY.md` already specifies as the
+  per-parameter default for the absent case.
+- **Correction (ER-STATE-07 / ER-STATE-01, 2026-08-31).** Round 1 recorded that
+  `reassertParameters`' default branch is what makes absent PARAM nodes reset on a reused live
+  instance. Measurement (`--latency-restore-probe` step 0b) refuted that: `apvts.replaceState`
+  already does it, with host notification. Corrected in `src/PluginProcessor.cpp` (two comments),
+  `docs/architecture/SERIALIZATION_REGISTRY.md` (the `<ANAMORPH>` row), CHANGELOG (the user-facing
+  entry replaced by ER-STATE-08's, which is the real instance of that leak class),
+  `tests/state_tests.cpp` (the State test 4 comment; the assertion itself stands — it pins the
+  contract regardless of which layer satisfies it) and the programme worklog. The shipped code is
+  kept as a backstop.
+- `tests/dsp_tests.cpp` (`juce::exactlyEqual` at four sites; two engine pairs moved to the heap) and
+  `src/PluginProcessor.cpp` (lambda parameter renamed) → no doc trigger: neither changes behaviour,
+  and CHANGELOG_POLICY rule 3 excludes them.
+- `scripts/check-gcc-warnings.py`, `.github/workflows/{build,codeql,release}.yml` → the comment and
+  diagnostic corrections listed below; `GATED_FLAGS` and every gate's behaviour are unchanged except
+  release.yml's tag check, which now distinguishes an infrastructure failure from a verdict (both
+  still exit 1).
+
+**Registry changes:** **KI-028** filed (the value-box gesture leaked by a lost release — a residual
+of round 1's own fix, with both candidate designs recorded); **KI-027 corrected on four points**
+after re-verification (the expensive branch needs oversampling selected by hand, since it is not a
+host parameter and defaults to Off; the rate is bounded at one dispatch per parameter per block;
+`PTHREAD_PRIO_INHERIT` mitigates the inversion on POSIX but not Windows; and two of D-1's candidate
+fixes are refuted); **RISK-007** gains the TSan measurement (four named races) and the D-2 pointer.
+`KNOWN_ISSUES.md`'s version-sync header now covers both rounds.
+
+**Class-A drift corrected, each verified before editing:** the `reassertParameters` rationale
+comment (ER-STATE-04 — `replaceState` does propagate, so the comment now states the real residual
+the function exists for, preserving its necessity); one `PluginEditor.cpp` comment clause that
+over-claimed the 0.9.3 half-typed-value guarantee (ER-GUI-02 — narrowed, code deliberately NOT
+widened, and the published documents were already correct); `build.yml`'s header block, which
+described the pre-2026-08-15 macOS ordering and contradicted both its own in-job comment and
+`CI_CD.md` (ER-CI-02 — rewritten line-count-neutral so no citation moved); `codeql.yml`'s toolchain
+claim and its "src/ + tests/" coverage claim (ER-CI-03 / ER-CI-06 — comments corrected, the compiler
+deliberately not pinned since that would be a Build System change for no analysis benefit);
+`check-gcc-warnings.py`'s "this job's pinned pair" label (ER-CI-04 — scoped to the compiler it was
+measured on, with re-measurement a round-3 item); `release.yml`'s annotated-tag diagnostic
+(ER-CI-05). Round 1's own batching rationale for the CI items is also corrected in the worklog: only
+`build.yml` is citation-tracked of the four files.
+
+**Citation re-anchoring.** `prepareToPlay` and the `<cmath>` includes shifted every anchor below
+them in `PluginProcessor.cpp`; 51 citations were re-anchored mechanically by `--fix` and five were
+re-derived BY SYMBOL because the cited lines themselves changed — `setStateInformation`,
+`getStateInformation`, `readSlot`'s legacy-key fallback, and ADR-0010's two sites. Each is declared
+in `DELIBERATE_REAIMS` as a transition, and three carry a second entry for the push-predecessor base
+(a different base than `origin/main`, and the one CI compares). The self-test's liveness check
+caught one bogus declaration — a bare `:line` shorthand the gate does not track as an anchor — which
+was removed rather than worked around. [Verified]
+
+
+## Engineering-review programme, rounds 5 and 6 — the Level-5 audition specified, then recorded (2026-09-01, still the 0.9.6 change set) — ENTERED LATE
+
+**Recorded retroactively in round 7.** Rounds 5 (`ba34d64`) and 6 (`9063b49`) both changed
+documentation and neither updated this file, which is the sync
+`DOCUMENTATION_LIFECYCLE_POLICY.md` requires. The gap is stated rather than back-dated: the
+entry below is written in round 7 from those two commits' diffs, and the rounds themselves are
+recorded in `worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Round 5 / §Round 6.
+
+**Round 5 — release finalisation.** NEW document `docs/procedures/LEVEL5_AUDITION.md`: the Level-5
+manual audition had never been written down, so its scope lived in whoever remembered the release.
+It now exists as a twelve-item protocol in five groups, **derived from the CHANGELOG `[0.9.6]`
+entries** rather than invented, with an invalidation rule and a record format. Synced with it:
+`docs/procedures/RELEASE_PROCESS.md` and `docs/REPOSITORY_MAP.md` (the new procedure listed),
+`docs/HANDOVER.md` and `CHANGELOG.md`. Two review items were dispositioned by measurement, not
+argument, and both changed a document: `scripts/check-realtime.py` gained the cross-file lint
+coverage boundary and `docs/policies/REALTIME_AUDIO_POLICY.md` +
+`docs/architecture/REALTIME_SAFETY_AUDIT.md` record what the lint does and does not see;
+`scripts/check-gcc-warnings.py` carries the AllocationGuard/gcc-16 result — `-Wmismatched-new-delete`
+is a **static pairing diagnostic, not an allocation counter**, so `AllocationGuard.h`'s replaced
+global operators are a false positive by construction. `docs/policies/TESTING_POLICY.md` gained rule
+3a, the state-mutation stress-pattern rule.
+
+**Round 6 — D-3 recorded.** The maintainer performed the audition against the final v0.9.6 build and
+it **PASSED**, discharging `RELEASE_POLICY.md` precondition 7. Recorded in
+`LEVEL5_AUDITION.md` §Recorded auditions, and synced to `docs/HANDOVER.md` (Release Status, Known
+Blockers, Roadmap), `docs/COMMERCIAL_STATUS.md` §6 and
+`docs/architecture/RELEASE_HARDENING_PLAN.md` (QA-gate row). **Seven fields of that record —
+audition date, DAW, OS/architecture, plugin format, session, per-item outcomes for groups A–E, and
+the exact artifact identity — are marked NOT RECORDED and were left blank deliberately**, because
+the protocol says what *should* be exercised, not what *was*. The correspondence between what was
+auditioned and the final build rests on the maintainer's attestation, no artifact identity having
+been supplied; that basis is written down rather than glossed. [Verified]
+
+## Engineering-review programme, round 7 — the compatibility checklist completed to 6/8 (2026-09-01, still the 0.9.6 change set)
+
+**What the round is.** `RELEASE_POLICY.md` precondition 2 — the hard compatibility gate — went from
+never completed for this release to **six of eight boxes checked with measured evidence**. Records:
+`worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Round 7 and the dashboard beside it,
+both updated in this change set.
+
+**No `src/` change.** The round adds one test and one fixture pair and syncs documents; no
+ARCHITECTURE_REVIEW_GATE category is touched, and `CHANGELOG_POLICY.md` rule 3 excludes both a test
+addition and a checklist completion from the CHANGELOG.
+
+**Changes and their doc syncs (trigger map applied):**
+- `tests/state_tests.cpp` (State test 25, the cross-version field capture) and
+  `tests/fixtures/field_capture_v0_9_5.session` + `.manifest` (NEW) →
+  `docs/procedures/RELEASE_COMPATIBILITY_CHECKLIST.md` (item 8 ticked, its "reconstruction, not
+  field capture" caveat closed, evidence appendix), `docs/REPOSITORY_MAP.md` (the state-suite row
+  and the `tests/fixtures/` row, which now distinguishes the one fixture that is **not** a
+  reconstruction), and the count sweep below. The fixture was WRITTEN by a v0.9.5 binary rebuilt
+  from the tree at `2c5e760^` — the three legacy XMLs are built by current code and can only contain
+  what today's understanding says an old format held; this one cannot.
+- `docs/procedures/RELEASE_COMPATIBILITY_CHECKLIST.md` (§Completion record, per-item PASS/OPEN
+  prefixes, §Evidence for the v0.9.6 completion) → `docs/HANDOVER.md` (Release Status, Known
+  Blockers and Roadmap rows: "three preconditions" → two, and "has never been completed" → the 6/8
+  position), `docs/COMMERCIAL_STATUS.md` §6 (same correction; it had been the last document still
+  asserting the checklist was uncompleted).
+
+**Counts corrected, measured not inferred.** The state suite is **25 tests / 1077 checks** and the
+DSP suite **47 tests + the A/B clamp guard / 245 checks**. `docs/policies/TESTING_POLICY.md` was the
+worst drifted — its Level-2 row still read *41 DSP tests* and *15 state-compatibility tests*, and its
+hard-release-gate paragraph *41* and *24-test*, so the policy that defines the gate understated the
+gate by ten tests. Also corrected: `README.md:64`, `docs/procedures/TESTING.md` (state-suite
+description), `docs/REPOSITORY_MAP.md`, `docs/architecture/RELEASE_HARDENING_PLAN.md` (QA-gate row)
+and `docs/HANDOVER.md` (Test Status row). Two stale release-mechanics facts in the HANDOVER Release
+Status row were corrected while there, both verified first: the tag-order sentence still named
+`git tag -a v0.9.4` where the same row already says the tag is `v0.9.6`, and it still cited the
+`[0.9.4]`-era re-dating deadline of 2026-08-19 where the CHANGELOG `[0.9.6]` heading is dated
+2026-09-01.
+
+**What was deliberately NOT recorded.** Checklist items 5 (Host matrix) and 7 (Automation playback)
+stay **OPEN**. The Level-5 audition exercised a DAW and its protocol group C covers automation, but
+that record's per-item outcomes are marked NOT RECORDED — so ticking either item from it would infer
+item-level results from a verdict-level record. Round 6 refused to fill those rows in from the
+protocol; reading them back out here would be the same fabrication one step removed. [Verified]
+
+
+## Engineering-review programme, round 8 — the legacy A/B contamination fix (2026-09-01, still the 0.9.6 change set)
+
+**What the round is.** A supplied review's three actionable items, dispositioned by execution:
+one CONFIRMED defect fixed, one obsolete comment rewritten, one enforcement boundary left alone.
+Records: `worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Round 8 and the dashboard.
+
+**Code changes and their doc syncs (trigger map applied):**
+- `src/PluginProcessor.{h,cpp}` (`abResetToDefaults()`, called from the v0.2 branch and from the
+  new `AB`-absent branch of `setStateInformation`) → CHANGELOG `[0.9.6]` (one Fixed entry — it IS
+  user-visible: pressing A or B after loading an old session recalled the previous project's
+  sound), `docs/architecture/SERIALIZATION_REGISTRY.md` (a new paragraph under the `AB` child
+  extending the existing "absent means the default" rule to a blob that carries no `AB` node at
+  all), State test 26, and the count sweep below. **No ARCHITECTURE_REVIEW_GATE category is
+  touched and no compatibility decision was required**: no schema field is added, removed or
+  renamed; the semantics applied are the ones the registry's `AB` table already records (`active`
+  → 0, slot params → "lazily initialised from current"); and every blob that carries an `AB` node
+  restores exactly as before, which State test 26 leg 5 pins from the other direction.
+- `src/PluginEditor.cpp` + `src/PluginEditor.h` (the obsolete "the caller's predicate is inert on
+  macOS / narrows KI-028 to a macOS residual" scope comment) → no other document: `KNOWN_ISSUES.md`
+  already carries KI-028 and KI-013 as RESOLVED, and the source was the only place still saying
+  otherwise. Comment-only, no behaviour change, so CHANGELOG_POLICY rule 3 excludes it.
+- `tests/state_tests.cpp` (State test 26 + the `--legacy-ab-probe` instrument) →
+  `docs/procedures/TESTING.md` (the probe documented beside the two existing opt-in instruments,
+  with the pre-fix numbers that are the evidence behind the test), `docs/REPOSITORY_MAP.md`, and
+  the counts.
+
+**Nothing changed for ER-RT-05.** The cross-file lint boundary is described accurately in all four
+places that describe it (`REALTIME_AUDIO_POLICY.md`, `REALTIME_SAFETY_AUDIT.md`, `CI_CD.md`,
+ADR-0029) — none implies whole-program or automatic cross-file coverage — so there was nothing to
+correct. The policy's own instruction to re-measure the census before relying on it was followed:
+**83 FORBIDDEN-class matches across 12 files**, identical to the round-3 record, with the three
+cross-file-reachable DSP units unchanged and every match still inside that module's `prepare()`.
+
+**Counts.** The state suite is **26 tests / 1096 checks** (was 25 / 1077); the DSP suite is
+unchanged at 47 + the A/B clamp guard / 245. Swept through `docs/policies/TESTING_POLICY.md`,
+`docs/procedures/TESTING.md`, `README.md`, `docs/REPOSITORY_MAP.md`,
+`docs/architecture/RELEASE_HARDENING_PLAN.md` and `docs/HANDOVER.md`.
+
+**Citation re-anchoring.** `abResetToDefaults` and the two new call sites shifted every anchor below
+them in `PluginProcessor.cpp` and `PluginProcessor.h`; 33 citations were re-anchored by `--fix`
+across the two bases, and **three were re-derived BY SYMBOL** because the cited lines themselves
+moved past what they named — `legacyKey` (the pre-0.6.4 fallback inside `readSlot`),
+`StateSet::isValid`, and `setStateInformation`, whose span is declared in `DELIBERATE_REAIMS` for
+both the `origin/main` and push-predecessor bases. One over-correction was caught and undone: the
+`readSlot` span was hand-derived when `--fix` could map it mechanically, which made the anchor drift
+against its own base; the mechanical map is authoritative wherever it applies, and hand derivation is
+for the anchors it reports unmappable. [Verified]
+
+
+## Engineering-review programme, round 9 — the Level-Match residual refuted on impact (2026-09-01, still the 0.9.6 change set)
+
+**What the round is.** A reported per-slot Level-Match contamination bug, investigated to a
+disposition and **not fixed**, because its mechanism is real and its impact is not. Records:
+`worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Round 9 and the dashboard.
+
+**No `src/` change, so no trigger fires from the code side.** The only tree change is the
+`--legacy-match-probe` instrument in `tests/state_tests.cpp` and its description in
+`docs/procedures/TESTING.md`. Suite counts are unchanged (**26 tests / 1096 checks**): the probe is
+opt-in and the suite never runs it, so no count document needed touching. No CHANGELOG entry — no
+user-visible behaviour changed (`CHANGELOG_POLICY.md` rule 3).
+
+**What was established, and why it did not become a fix.** `abMatchGain[2]` is written and read only
+in `abSwitchTo`, initialised in the header, and **never reset on any path and never serialized** —
+so the `AB`-present restore leaves it as stale as the no-A/B one, and a fix scoped to
+`abResetToDefaults` would close a third of the class while appearing complete. The injected figure
+is measurably the previous project's, but the output level does not move under a matched
+same-instance counterfactual (identical parameters across the switch, so the injection is the only
+variable), a fresh-instance control, or the worst case of switching before the loudness module has
+converged. The mechanism: the injection lands at the silent bottom of the switch duck and
+`setParameters` re-targets from the live measurement every block. Level Match is a continuously
+re-derived measurement, not stored state. The residual is a readout excursion of ≈65–85 ms.
+Additionally, the value that *should* be written is undocumented — `abMatchGain` appears in no
+registry, ADR or policy, unlike round 8's fix, whose semantics `SERIALIZATION_REGISTRY.md` already
+specified — so choosing one would be legislating rather than conforming.
+
+**ER-RT-05 re-verified, nothing changed.** Same boundary, same four accurate documents, census
+re-measured at **83 matches across 12 files**, identical to rounds 3 and 8. Recorded with it: the
+first re-measurement returned 205/29 because it ran the regexes over raw text instead of applying
+the script's own `strip_comments_and_strings` — caught and re-run before being reported, since a
+census is only comparable to one run the same way. [Verified]
+
+
+## Engineering-review programme, round 10 — release notes reconciled with the KI-013 outcome (2026-09-01, still the 0.9.6 change set)
+
+**What the round is.** Documentation only, no code. A reported contradiction between the `[0.9.6]`
+release notes and KI-013's RESOLVED status was one of three sites still describing the pre-round-4
+world. Records: `worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Round 10.
+
+**Corrected:**
+- `CHANGELOG.md` — the *"Known limit: this reconcile is inert on macOS … so the macOS half of the
+  issue remains open"* sentence, flatly contradicted by round 4 and by `KNOWN_ISSUES.md`'s own
+  registry rows. Removed as part of the consolidation below.
+- `docs/KNOWN_ISSUES.md`, KI-013 detail section — present-tense throughout while the registry row
+  said RESOLVED, and its closing bullet offered as a hypothetical the fix that shipped (*"Fixable
+  only via a JUCE-side change or a platform-specific `pressedMouseButtons` query"*). Given a dated
+  RESOLVED banner, moved to past tense, closing bullet corrected to say round 4 did exactly that.
+- `docs/KNOWN_ISSUES.md`, KI-028 detail section — the round-3 banner still read *"The macOS residual
+  is why this entry stays open."* Given a `CLOSED 2026-09-01 (round 4)` banner.
+
+Both KNOWN_ISSUES sections keep their diagnosis text under an explicit "everything below is the
+round-2/3 record" banner rather than being rewritten, per the no-rewriting-history rule.
+
+**Consolidated.** `[0.9.6]` carried two Fixed entries for one bug path — round 3's sweep (Linux and
+Windows) and round 4's signal (macOS) — both inside one unreleased version, so no user ever saw the
+intermediate state and presenting them separately implied macOS had shipped broken. Merged into one
+entry describing the final state on all three platforms, preserving the half that *did* ship broken
+(the stuck visual press on macOS, KI-013, present since v0.8.12) and both regression-test citations
+(State tests 21 and 23). The Fixed count goes 19 → 18, which restores `docs/HANDOVER.md`'s
+"eighteen Fixed entries" to accuracy — that line had gone stale by one when round 8 added its entry.
+Counted, not assumed.
+
+**Deliberately not changed**, being accurate history rather than live claims: `KNOWN_ISSUES.md:97`
+(the dated v0.8.12 version-sync header recording KI-013 as *added* at that release), the dated round
+entries in this file, and the round-3/4 sections of the programme worklog and older audit worklogs.
+The third readout entry — the round-1 fix for the drag path opening no gesture at all — is a
+different defect and was left alone.
+
+**ER-RT-05 verified again, no change.** Third consecutive round. AUDIO_FN is a manual registry and
+the script says so; `REALTIME_AUDIO_POLICY.md`, `REALTIME_SAFETY_AUDIT.md`, `CI_CD.md` and ADR-0029
+all describe the same-file boundary correctly, and none claims automatic cross-file discovery.
+Recorded as stable so a later round cites this rather than re-deriving it. [Verified]
+
+
+## Engineering-review programme, round 11 — two restore fixes, one refutation, and a changelog audit (2026-09-01, still the 0.9.6 change set)
+
+**What the round is.** Three reported restore/latency items plus a full staleness audit of the
+`[0.9.6]` release notes. Records: `worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md`
+§Round 11 and the dashboard.
+
+**Code changes and their doc syncs (trigger map applied):**
+- `src/PluginProcessor.{h,cpp}` — `deliverLatency()` split out so the request flag is cleared exactly
+  once per delivery, and the flag's ordering raised from `relaxed` to release/acquire (ER-STATE-14)
+  → `docs/architecture/LATENCY_MODEL.md` (a new bullet stating the clear-once rule, why a dropped
+  request is permanently stale, and that the fix rests on inspection rather than on the test), State
+  test 27. No CHANGELOG entry: no user-visible behaviour changed on the platforms measured.
+- `src/PluginProcessor.cpp` — an `AnamorphRoot` with no `ANAMORPH` child now returns before the
+  adoption block (ER-STATE-15) → CHANGELOG `[0.9.6]` (one Fixed entry: a damaged file could relabel
+  the sound you already had), `docs/architecture/SERIALIZATION_REGISTRY.md` (a new paragraph beside
+  the existing "a chunk of neither recognised shape is not a restore at all", which states the same
+  principle this branch was missing), State test 27. No schema field added, removed or renamed, and
+  `getStateInformation` writes the child unconditionally, so no session the plug-in has written
+  reaches the branch.
+- `tests/state_tests.cpp` — State test 27, and a repair to State test 7: its out-of-range `active`
+  guard built a root from an `AB` node alone, which ER-STATE-15 makes not-a-restore, so the clamp
+  was no longer reached. Rebuilt from a genuine save. → `docs/procedures/TESTING.md`,
+  `docs/REPOSITORY_MAP.md`, and the counts below.
+
+**Reverted after measurement (ER-STATE-16).** Gating `readSlot`'s metadata reads on
+`params.isValid()` was implemented and changed no test outcome: `abEnsureInit()` assigns the whole
+`StateSet`, metadata included, and every reader calls it first. The reasoning is recorded in
+`SERIALIZATION_REGISTRY.md` beside the `AB` child so a later round re-reads rather than re-derives.
+
+**Changelog audit.** All 18 `[0.9.6]` entries were verified against the tree independently, and each
+staleness claim put to an adversarial refuter. 16 accurate; one refuted on verify; **one confirmed,
+in round 8's own entry** — it attributed the A/B contamination entirely to instance reuse while its
+own State test 26 leg 3 measured a *fresh* instance failing at 0.5 against a restored 0.75.
+Rewritten to name both cases.
+
+**Counts.** The state suite is **27 tests / 1111 checks** (was 26 / 1096); the DSP suite is unchanged
+at 47 + the A/B clamp guard / 245. The `[0.9.6]` Fixed count is **19**. Swept through
+`docs/policies/TESTING_POLICY.md`, `docs/procedures/TESTING.md`, `README.md`,
+`docs/REPOSITORY_MAP.md`, `docs/architecture/RELEASE_HARDENING_PLAN.md` and `docs/HANDOVER.md`.
+
+**Citation re-anchoring.** The two source fixes edited cited lines rather than merely shifting them,
+so five anchors were re-derived BY SYMBOL — `legacyKey`, `readSlot`, `StateSet::isValid`,
+`setValueNotifyingHost` and `updateLatency` — and the `setStateInformation` span, unchanged at
+878-1111 but with edited content, needed its declarations retargeted. `DELIBERATE_REAIMS` carries
+each for both bases. [Verified]
+
+
+## Engineering-review programme, round 12 — legacy-Settings UB, a deterministic latency test, and ER-STATE-13 on AArch64 (2026-09-01, still the 0.9.6 change set)
+
+**What the round is.** One confirmed production defect fixed, one regression-test gap closed
+deterministically, two stale decision records corrected, and an AArch64 investigation that changed
+nothing. Records: `worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Round 12.
+
+**Code changes and their doc syncs (trigger map applied):**
+- `src/InternalState.h` (`migrateFromLegacyApvts`: the shared usability predicate on every legacy
+  value, and domain clamping in double before the integer conversion — ER-STATE-17) → CHANGELOG
+  `[0.9.6]` (one Fixed entry; the corruption was user-visible — an unselectable Settings menu, and
+  the bad value persisted on the next save), `docs/architecture/SERIALIZATION_REGISTRY.md` (a new
+  paragraph stating the rule and the measured pre-fix behaviour on both architectures), State test
+  28, and the count sweep below. **No serialization field added, removed or renamed**, and valid
+  legacy sessions migrate exactly as before (State tests 5 and 6 unchanged).
+- `tests/state_tests.cpp` — State test 28; State test 27's first leg rewritten as a deterministic
+  barrier test; `--legacy-settings-probe` added → `docs/procedures/TESTING.md` (both instruments
+  documented, with the pre-fix numbers), `docs/architecture/LATENCY_MODEL.md` (the round-11 bullet's
+  claim about what the test proves, corrected now that it discriminates).
+- `tests/dsp_tests.cpp` — `--match-inject-probe`, written to cross-build against AnamorphDSP alone
+  so it runs under `qemu-aarch64-static` → `docs/procedures/TESTING.md`.
+
+**Stale records corrected (no production change).** `docs/KNOWN_ISSUES.md`'s KI-027 row still read
+"fix gated … awaiting maintainer sign-off" and the entry was still open, three rounds after D-1 was
+approved and implemented; `docs/policies/THREADING_POLICY.md` still listed it as a known violation
+awaiting Architecture Review. Both corrected, with the round-1/2 diagnosis kept under a dated
+banner rather than rewritten.
+
+**ER-STATE-13 on AArch64: no change.** Six scenarios, both architectures, identical to three
+decimals; same atomics (`is_always_lock_free = 1`) and same layout. Recorded with one
+architecture-independent refinement: the stale-value transient is proportional to the gap between
+the stale value and the settled measurement at injection, and self-corrects, so round 9's "inert"
+was too strong for the general case even though its own measurement stands.
+
+**Counts.** The state suite is **28 tests / 1201 checks** (was 27 / 1111); the DSP suite is unchanged
+at 47 + the A/B clamp guard / 245. The `[0.9.6]` Fixed count is **20**. Swept through
+`TESTING_POLICY.md`, `TESTING.md`, `README.md`, `REPOSITORY_MAP.md`, `RELEASE_HARDENING_PLAN.md`
+and `HANDOVER.md`.
+
+**Citation re-anchoring.** The ER-STATE-17 guard edited cited lines inside `migrateFromLegacyApvts`,
+so three anchors into `src/InternalState.h` were re-derived BY SYMBOL (`oversampleValue`,
+`migrateFromLegacyApvts` ×2) and declared in `DELIBERATE_REAIMS` for both bases; eleven more moved
+mechanically. [Verified]
+
+
+## Engineering-review programme, round 13 — ER-STATE-17 on the real fixture; the compatibility gate closes (2026-09-01, still the 0.9.6 change set)
+
+**What the round is.** Round 12's legacy-Settings fix verified against the repository's real frozen
+pre-0.8.4 fixture rather than a synthetic shape, and compatibility-checklist items 5 and 7 recorded
+on the maintainer's attestation. Records: `worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md`
+§Round 13 and the dashboard.
+
+**Code changes and their doc syncs.** `tests/state_tests.cpp` only — State test 28 gains three
+restores of `tests/fixtures/legacy_pre_0_8_4_view_params.xml` mutated in place (untouched, every
+Setting malformed, every Setting out of domain), each asserting the surrounding session intact →
+`docs/procedures/TESTING.md`, `docs/architecture/SERIALIZATION_REGISTRY.md` (the ER-STATE-17
+paragraph's coverage sentence), and the counts below. Verified discriminating on the real file: the
+mutated legs fail without the fix; the untouched leg passes either way, which is the point. No
+`src/` change.
+
+**Checklist items 5 and 7 — recorded on attestation, not inferred.** `docs/procedures/RELEASE_COMPATIBILITY_CHECKLIST.md`
+(completion record 8/8, items ticked, evidence entries), `docs/HANDOVER.md` (Release Status: one
+precondition left; Known Blockers; Roadmap; the tag-order sentence) and `docs/COMMERCIAL_STATUS.md`
+§6 (engineering/process list empty). The record carries what the maintainer supplied — verdict,
+date, performer — and marks hosts, operating systems, plug-in formats and automation lanes NOT
+RECORDED, the same rule the Level-5 audition record follows. `RELEASE_POLICY` precondition 2 is
+satisfied; the one remaining tag blocker is KI-015.
+
+**Counts.** The state suite is **28 tests / 1237 checks** (was 28 / 1201); the DSP suite is
+unchanged at 47 + the A/B clamp guard / 245. Swept through `RELEASE_HARDENING_PLAN.md` and
+`HANDOVER.md`; the test count itself did not change, so the six documents that carry it were not
+touched. [Verified]
+
+
+## Engineering-review programme, round 14 — partial modern Settings inherited the previous project (2026-09-01, still the 0.9.6 change set)
+
+**What the round is.** One confirmed state-isolation defect fixed, and two investigation-only items
+verified with no change. Records: `worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md`
+§Round 14.
+
+**Code change and its doc syncs (trigger map applied):**
+- `src/InternalState.h` (`restoreState` writes all six host-hidden Settings unconditionally, absent
+  → the documented default; the six defaults consolidated into one `settings()` table the
+  constructor also seeds from — ER-STATE-18) → CHANGELOG `[0.9.6]` (one Fixed entry; the leak was
+  user-visible and persisted on the next save), `docs/architecture/SERIALIZATION_REGISTRY.md` (a new
+  paragraph stating that "Required: No" means the Default is APPLIED, with the 6-of-6 vs 0-of-6
+  measurement), State test 29, `docs/procedures/TESTING.md` (the probe), and the count sweep below.
+  **No serialization field added, removed or renamed**, and a session that carries a field restores
+  it exactly as before.
+
+**Where the finding was, versus where it was filed.** The review located it in
+`migrateFromLegacyApvts` (`PluginProcessor.cpp:1038`, the v0.2 branch). Measurement put it the other
+way round: the modern path inherited 6 of 6, the legacy path 0 of 6. The legacy function has always
+written all six unconditionally. Recorded in both the worklog and the probe's own output so the two
+paths cannot be confused again. It is also **not** a contradiction with the informational item
+"missing nodes use normalized defaults" — that covers `applyNorm` and APVTS parameters, a different
+subsystem.
+
+**Verified and NOT acted on:** a malformed value on the modern Settings path carries no undefined
+conversion (`syncAtomics` clamps through `jlimit`; `juce::var`→`int` on a string is a safe parse, not
+the float cast that made the legacy path undefined in round 12).
+
+**Investigation-only items, both unchanged.** ER-RT-05: the realtime-lint boundary is described
+correctly in all four documents and none claims automatic cross-file discovery — fifth consecutive
+round verified. D-1: the approval is recorded correctly in KI-027's row, its detail banner,
+`THREADING_POLICY.md` and `LATENCY_MODEL.md`; round 12 fixed the two that had been stale and nothing
+has regressed. The attribution is role-level ("the maintainer"), the same convention as every other
+gate sign-off here; that is noted, not independently verified.
+
+**Counts.** The state suite is **29 tests / 1270 checks** (was 28 / 1237); the DSP suite is unchanged
+at 47 + the A/B clamp guard / 245. The `[0.9.6]` Fixed count is **21**. Swept through
+`TESTING_POLICY.md`, `TESTING.md`, `README.md`, `REPOSITORY_MAP.md`, `RELEASE_HARDENING_PLAN.md`
+and `HANDOVER.md`. [Verified]
+
+## Engineering-review programme, round 15 — the off-message-thread re-prepare race (2026-09-02, still the 0.9.6 change set)
+
+**What the round is.** One concurrency defect confirmed under ThreadSanitizer and fixed inside the
+approved D-1 architecture; two investigation-only items verified with no change; one new risk
+recorded. Records: `worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Round 15.
+
+**Code change and its doc syncs (trigger map applied):**
+- `src/PluginProcessor.cpp/.h` (`prepareToPlay` calls `requestLatencyUpdate()` instead of
+  `updateLatency()`; `requestLatencyUpdate()` also delivers synchronously when no `MessageManager`
+  exists) and `src/dsp/AnamorphEngine.cpp/.h` (`latency2/4/8` become relaxed `std::atomic<int>`)
+  — ER-STATE-19 → CHANGELOG `[0.9.6]` (one Fixed entry; a host could be left holding a stale
+  latency), `docs/architecture/LATENCY_MODEL.md` (the D-1 section: which hosts prepare off the
+  message thread, what the race was, the 50 ms cost applied to activation),
+  `docs/policies/THREADING_POLICY.md` (the D-1 row added to the communication table; the round-15
+  extension; the atomic-usage rule for the flag and the engine figures; `prepareToPlay` added to
+  the host-call assumption), `docs/architecture/THREAD_MODEL.md` (the D-1 row — the table had never
+  carried it), `docs/KNOWN_ISSUES.md` (KI-027 banner and row), `docs/FUTURE_RISKS.md` (RISK-007
+  round-15 note narrowing the pluginval argument to VST3; **new RISK-008**),
+  `docs/architecture/API_REFERENCE.md` (`prepareToPlay` row), State test 30 and the
+  `--reprepare-race-probe` (`docs/procedures/TESTING.md`), and the count sweep below.
+  **No serialization change, no parameter change, no reported-latency VALUE change** — only the
+  thread on which one caller delivers it, which is the decision D-1 already made.
+
+**Threading-model note.** No new communication path and no new ordering: the flag and its
+release/acquire pair are D-1's, approved in round 4; `prepareToPlay` is one more producer on it,
+and `latency2/4/8` are the payload it publishes (relaxed, no ordering role). Recorded here because
+`THREADING_POLICY.md` says a new shared-state path or ordering is a gate item — this is neither,
+and the worklog says why.
+
+**Drift found and corrected:** the `THREAD_MODEL.md` and `THREADING_POLICY.md` communication tables
+omitted the D-1 path entirely; `HANDOVER.md`'s Test-Status row still read 28 / 1237 after round
+14's sweep claimed to have updated it; RISK-007's "pluginval structurally cannot produce the
+window" held for VST3 `setState` only.
+
+**Investigation-only items, both unchanged.** ER-RT-05: sixth consecutive verification; the new
+relaxed loads in `getLatencySamples()` are not a forbidden class and `prepare()` stays out of
+scope. D-1: the approval record is correct in all four places; this round extends the mechanism
+and does not touch the decision.
+
+**Counts.** The state suite is **30 tests / 1278 checks** (was 29 / 1270); the DSP suite is unchanged
+at 47 + the A/B clamp guard / 245. The `[0.9.6]` Fixed count is **22**. Swept through
+`TESTING_POLICY.md`, `TESTING.md`, `README.md`, `REPOSITORY_MAP.md`, `RELEASE_HARDENING_PLAN.md`
+and `HANDOVER.md` (both rows this time). [Verified]
+
+## Engineering-review programme, round 16 — the previous project's A/B Level-Match gains (2026-09-02, still the 0.9.6 change set)
+
+**What the round is.** One confirmed session-isolation defect fixed on two paths, one investigation
+closed with evidence and no code change, and two record checks. Records:
+`worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Round 16.
+
+**Code change and its doc syncs (trigger map applied):**
+- `src/PluginProcessor.cpp/.h` (`abResetToDefaults()` and `readSlot` now reset `abMatchGain[]`
+  alongside the slot they reset — ER-STATE-20) → CHANGELOG `[0.9.6]` (one Fixed entry; the leak was
+  user-visible in the Level Match readout and in what the matcher re-converged from),
+  `docs/architecture/SERIALIZATION_REGISTRY.md` (a new paragraph in the `AB` section: the per-slot
+  match gain is part of the slot and resets with it, with the measured figures and the reason it is
+  the one field nothing overwrote), State test 31, `docs/procedures/TESTING.md` (the test's
+  observation method and the new probe), and the count sweep below. **No serialization field added,
+  removed or renamed** — the cache has never been in the format — and a session that carries valid
+  A/B data restores exactly as before.
+
+**Why the fix is in two places.** The finding named `abResetToDefaults`, which covers the two restore
+paths with no `AB` node. Tracing found a third: an `AB` node that exists but carries no usable slot
+payload resets its slots inside `readSlot` and never reaches that function. Confined to the named
+function the fix still leaked −2.405 dB on that path, which is also the only one that exposes slot A.
+
+**Investigation recorded, no production change (ER-STATE-21).** Malformed *modern* host-hidden
+Settings, 19 inputs measured through `--modern-settings-probe`: no crash, no undefined behaviour,
+and every DSP-facing read clamped at source. 19 of 19 persist into the next save, 8 leave an
+out-of-domain ComboBox id and 3 a non-finite scope persistence; opening the editor repairs 4.
+Ingress is a hand-edited or corrupted file only. What a malformed *present* value should mean is a
+serialization-contract decision the `ANAMORPH_INTERNAL` table does not state — it states defaults for
+ABSENCE — so it is filed rather than invented. Documented in `TESTING.md` and the worklog.
+
+**Counts.** The state suite is **31 tests / 1301 checks** (was 30 / 1278); the DSP suite is unchanged
+at 47 + the A/B clamp guard / 245. The `[0.9.6]` Fixed count is **23**. Swept through
+`TESTING_POLICY.md`, `TESTING.md`, `README.md`, `REPOSITORY_MAP.md`, `RELEASE_HARDENING_PLAN.md`
+and `HANDOVER.md`. [Verified]
+
+## Engineering-review programme, round 17 — malformed Settings followed to their consumers (2026-09-02, still the 0.9.6 change set)
+
+**What the round is.** Two investigations resolved. One produced a concrete defect with a minimal
+fix; the other is refuted. Records: `worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md`
+§Round 17.
+
+**Code change and its doc syncs (trigger map applied):**
+- `src/gui/Vectorscope.h` (`setPersistence` substitutes the default for a non-finite input, closing a
+  reachable `(int)`-of-NaN in `windowFrames()`; a `getPersistence()` accessor added so the guard is
+  testable through the real editor — ER-STATE-21) → CHANGELOG `[0.9.6]` (one Fixed entry; a damaged
+  stored value drove an undefined afterglow length), `docs/architecture/SERIALIZATION_REGISTRY.md`
+  (a new `ANAMORPH_INTERNAL` paragraph recording the malformed-value measurement, the fixed
+  consequence, and the still-open contract question), State test 32, `docs/procedures/TESTING.md`
+  (the probe's second table and the test), and the count sweep below. **No serialization change**,
+  and the stored value itself is untouched.
+
+**Why the fix is at the consumer and not at the restore.** Sanitising in `restoreState` would define
+what a malformed *present* value MEANS, which is the contract question the round was asked to
+resolve with evidence rather than invent. The guard sits where the "0..1" promise is declared, is
+correct for every caller, and leaves the contract decision to the maintainer.
+
+**Refuted, no change (ER-GUI-05).** The abandoned-gesture sweep's direct-child traversal cannot strand
+a gesture: `ValueBox` opens one only through `rotaryParent (getParentComponent())`, so a wrapper would
+stop the gesture existing rather than hide it, and State test 21 already asserts the press registers
+before testing the reconcile. All thirteen sliders are registered and JUCE parents every value box
+directly. Documentation was not misstated, so none changed.
+
+**Counts.** The state suite is **32 tests / 1323 checks** (was 31 / 1301); the DSP suite is unchanged
+at 47 + the A/B clamp guard / 245. The `[0.9.6]` Fixed count is **24**. Swept through
+`TESTING_POLICY.md`, `TESTING.md`, `README.md`, `REPOSITORY_MAP.md`, `RELEASE_HARDENING_PLAN.md`
+and `HANDOVER.md`. [Verified]
+
+## Engineering-review programme, round 18 — the approved Settings recovery policy (2026-09-02, still the 0.9.6 change set)
+
+**What the round is.** One maintainer-approved production change implemented and closed, and one risk
+investigated to a classification with no code change. Records:
+`worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Round 18.
+
+**Code change and its doc syncs (trigger map applied):**
+- `src/InternalState.h` (the `settings()` table carries each field's DOMAIN beside its default;
+  `usableNumber()` is the shared number predicate the legacy migration now also calls instead of its
+  own duplicate; `repairedValue()` resolves a present-but-invalid value and `restoreState` writes it
+  back — ER-STATE-21, "Policy B") → CHANGELOG `[0.9.6]` (one Fixed entry; a damaged setting is
+  repaired on open and the repair is what gets saved), `docs/architecture/SERIALIZATION_REGISTRY.md`
+  (the decision recorded verbatim with the per-field resolution table, replacing the open question —
+  and a duplicated paragraph from a round-17 partial edit collapsed), State test 33,
+  `docs/procedures/TESTING.md`, and the count sweep below. **No schema change, no property renamed**,
+  and a valid session restores exactly as before.
+
+**Why the repair is at restore and not at the reads.** That is the decision: the alternative
+("clamp at the read") leaves the damage in the file to be re-interpreted on every load. Round 17's
+finiteness guard at `Vectorscope::setPersistence` is kept as the defensive backstop the decision asks
+for, not removed.
+
+**RISK-008, class B, no production change.** The mechanism is confirmed from the pinned wrapper —
+`messageThread->start()` exists in exactly one place, the `EventHandler` destructor at unload, while
+`stop()` runs whenever a host run loop registers — and its cost is measured by a clearly-labelled
+synthetic probe: a request is deferred, not dropped, and the host is stale for exactly the unserviced
+window. No Linux VST3 host was obtainable, so no host-visible failure was demonstrated and the
+classification stops short of actionable. `docs/FUTURE_RISKS.md` records the evidence and the
+limitation; D-1 is untouched.
+
+**Counts.** The state suite is **33 tests / 1406 checks** (was 32 / 1323); the DSP suite is unchanged
+at 47 + the A/B clamp guard / 245. The `[0.9.6]` Fixed count is **25**. Swept through
+`TESTING_POLICY.md`, `TESTING.md`, `README.md`, `REPOSITORY_MAP.md`, `RELEASE_HARDENING_PLAN.md`
+and `HANDOVER.md`. [Verified]
+
+## Engineering-review programme, round 19 — RISK-008's real-host half (2026-09-02, still the 0.9.6 change set)
+
+**What the round is.** A disposition and documentation round. **No production code changed, and none
+was justified.** Records: `worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Round 19.
+
+**Evidence recorded.** The maintainer ran the predicted-failure workflow on a real host — Linux,
+REAPER, the real Anamorph VST3 — and the reported latency updated with the Anamorph editor both open
+and closed. That is the observable RISK-008 predicts would fail with the editor closed. Recorded as
+manual real-host evidence and kept distinct from the round-18 synthetic probe, which measures the
+cost of an unserviced queue rather than whether any host produces one.
+
+**Documents touched:** `docs/FUTURE_RISKS.md` (the RISK-008 register row's likelihood moved from
+Unknown to Low; the likelihood bullet rewritten; the real-host result and its limits added; round
+18's "no host available" note marked superseded rather than deleted; the mitigation's pending host
+census replaced by its first data point; a round-19 line in the sync header),
+`docs/procedures/TESTING.md` (the probe's scope note now points at the real-host half),
+`tests/state_tests.cpp` (the probe's own printed EVIDENCE LIMIT line, a `printf` only — no test
+logic, no count change), the programme worklog and the dashboard.
+
+**Limitation recorded exactly, not glossed.** The repository contains no evidence of how REAPER
+supplies `Linux::IRunLoop`; every REAPER reference in the tree concerns unrelated matters. The route
+is therefore not established and not guessed at, and no Linux-wide claim is made — the residual is
+every other Linux VST3 host, and it does not justify a production change.
+
+**Settled set audited against the live documents** (registries, policies, procedures, architecture,
+README, HANDOVER — not the worklog, which is historical by construction): ER-STATE-21 FIXED, drag
+recovery REFUTED, the realtime-lint boundary accurate for a ninth consecutive round, D-1 approved and
+implemented, D-2 deferred, KI-015 still the single release blocker.
+
+**Counts.** Unchanged: the state suite is 33 tests / 1406 checks and the DSP suite 47 + the A/B clamp
+guard / 245. The `[0.9.6]` Fixed count is unchanged at 25 — nothing user-visible changed. [Verified]
+
+## Engineering-review programme, round 20 — the restored-session glide and the malformed boolean (2026-09-02, still the 0.9.6 change set)
+
+**What the round is.** Two production fixes and one disposition. Records:
+`worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Round 20.
+
+**ER-DSP-09 — a restored non-default session GLIDED into its own sound.** Reproduced with the
+product's own signal before anything was changed (`AnamorphStateTests --restore-fade-probe`): block 1
+against the settled figure read 0.17 (Haas), 0.09 (Velvet), 0.29 (Chorus), 0.39 (Dimension-D), 0.35
+(Mono Maker crossover). Cause: each module's own `prepare()` snaps its smoothers, but it runs before
+`updateDerived()` installs the restored snapshot, and `reset()` then re-zeroed the chorus blend.
+Fixed at that ordering — four `snapToTargets()` calls at the END of `AnamorphEngine::prepare()`,
+deliberately not in `reset()` or `snapSmoothers()`, which also run at a switch duck's silent bottom,
+so live edits keep smoothing unchanged. `ChorusEngine`'s depth snap is deferred one block because its
+target is expressed in samples at the per-block working rate.
+
+**ER-STATE-22 — a malformed numeric boolean switched a setting ON, durably.** An implementation
+correction to the approved ER-STATE-21 policy, not a new decision: `v != 0.0` is the C coercion, not
+the field's domain, so `-1`, `-2`, `2` and `0.5` all resolved to `true` and the repair persisted
+that; `0` was the only value on the real line that could not turn a setting on. Anything outside
+`{0, 1}` now takes the documented default. `juce::exactlyEqual` is used for the two exact compares,
+so the `-Wfloat-equal` gate is not widened.
+
+**ER-STATE-23 — no production change.** Classified as entirely covered by the deferred D-2 decision.
+The latency atomics carry the latency request and nothing else, so the finding's premise is a
+category error; the restore/A-B/preset tail is RISK-007's four already-measured races; the engine's
+plain state has no concurrent writer; and the one thread pairing D-2's scope does not name was
+measured for this round (`--state-prepare-race-probe`, three threads under TSan) and produced the
+same four reports and no new ones. Nothing was added to suppress the report.
+
+**Documents touched:** `CHANGELOG.md` (two Fixed entries; and the round-17 Scope-Persistence entry,
+which a double-apply in that round had left in the file **twice**, verbatim — one copy removed, no
+wording changed), `docs/architecture/SERIALIZATION_REGISTRY.md` (the three boolean rows of the
+recovery table, plus a footnote recording why a boolean's domain is `{0, 1}` and the re-measured
+pre-policy failure count), `docs/architecture/API_REFERENCE.md` (the `AnamorphEngine::prepare` row
+now states the snap contract instead of "allocates; resets"), `docs/FUTURE_RISKS.md` (a round-20
+bullet under RISK-007 recording the ER-STATE-23 disposition and its three-way split),
+`docs/procedures/TESTING.md` (Test 49, the State test 33 extension, and the two new probes as the
+tenth and eleventh opt-in instruments), `docs/policies/TESTING_POLICY.md`, `README.md`,
+`docs/architecture/RELEASE_HARDENING_PLAN.md`, `docs/HANDOVER.md` (counts and the version row), the
+programme worklog and the dashboard.
+
+**One test-instrument correction, recorded rather than quietly applied.** `--restore-fade-probe`
+printed "NOT settled: the module glides in" as a verdict. Its ratio cannot support that after the
+fix: it sees a smoother glide AND empty delay-line/filter history filling up, and the second is not
+a defect — `prepare` clears that history by contract, and Haas's own 28 ms line outlasts the block
+the first point covers. So the ratio rises without reaching 1.0 (0.17→0.72, 0.09→0.18, 0.29→0.68,
+0.39→0.90, 0.35→0.58) and the probe now says which two causes it does not separate. DSP Test 49 is
+the discriminating instrument, because its reference cancels the history term exactly.
+
+**Counts.** The DSP suite is **48 tests + the A/B clamp guard / 256 checks** (was 47 / 245; Test 49
+adds 11). The state suite is **33 tests / 1431 checks** (was 1406; State test 33 went from thirty
+cases to thirty-nine). The `[0.9.6]` Fixed count is **27** — two added this round,
+and the duplicate removal means the file's bullet count and its distinct-entry count now agree.
+Measured, not inferred: `AnamorphTests` prints `256 checks, 0 failures` and `AnamorphStateTests`
+prints `1431 checks, 0 failure(s)`. [Verified]
+
+## Engineering-review programme, round 21 — the phase meter's overflow on extreme-but-finite audio (2026-09-02, still the 0.9.6 change set)
+
+**What the round is.** One DSP correctness fix and one re-measurement. Records:
+`worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Round 21.
+
+**ER-DSP-10 — extreme BUT FINITE audio made the phase meter read "fully decorrelated".** Reproduced
+before any change, with the module's own code: at `l = r = 1e10` the meter published **0** for a
+perfectly correlated mono signal (**−0** for its anti-phase twin) where the same arithmetic in double
+gives **1**. Every value the existing guard can see is finite — samples 1e10, per-sample products
+1.00000002e20, all six accumulators 9.99746693e19 — so `publish()`'s `sanitize()` accepts the state
+and never fires. The overflow is one step later and is the only one: `ll * rr` is a **float** multiply
+of two mean-square values, which leaves float above `√FLT_MAX = 1.84467435e19`, i.e. from steady input
+above `|l| = 4.29496723e9`. `sqrt(+Inf)` is `+Inf`, `+Inf` is not below the 1e-12 small-signal floor,
+and `lr / +Inf` is a perfectly finite **0.0**. Fixed at that operation: on that overflow alone, the
+denominator is recomputed in double, where the product of two finite floats is exact (48 significand
+bits into 53) and at most ~1.16e77.
+
+**The normal range is bit-for-bit unchanged, and that was measured rather than asserted.** The
+pre-fix and post-fix expressions were compared over **19,995,466** randomised finite-product triples
+spanning `ll`/`rr` from 1e-40 to 1e19: **zero differing bit patterns**. The float-only alternative
+(`sqrt(ll)*sqrt(rr)`) was swept as well — every representable top-binade pair against `FLT_MAX` and
+against itself, 2 × 8,388,608 pairs, none overflowing — and rejected in favour of the exact double
+product, with that measurement recorded in the source comment rather than an unsupported claim.
+
+**ER-STATE-23 re-raised — no disposition change, so no new finding was created.** Per this file's own
+rule against duplicate records, the re-measurement was appended to the existing `RISK-007` entry
+rather than filed again. `src/PluginProcessor.cpp` and `.h` are unchanged since round 16, and the
+three TSan probes were re-run on the current build: `--state-thread-probe` and
+`--state-prepare-race-probe` report the same four races and no others, `--reprepare-race-probe` is
+silent. Each report maps one-to-one onto a row the register already carries.
+
+**Documents touched:** `CHANGELOG.md` (one Fixed entry), `docs/architecture/DSP_ALGORITHMS.md` (the
+`CorrelationMeter` section now separates the two non-finite contracts — accumulator poisoning versus
+denominator overflow — which is the distinction the defect lived in), `docs/procedures/TESTING.md`
+(Test 50, and the DSP test count), `docs/FUTURE_RISKS.md` (a round-21 bullet under RISK-007),
+`docs/policies/TESTING_POLICY.md`, `README.md`, `docs/architecture/RELEASE_HARDENING_PLAN.md`,
+`docs/HANDOVER.md` (counts and the version row), the programme worklog and the dashboard.
+
+**Inspected and left alone, recorded so it is not re-derived:** `balance` and `energy` are built from
+`llSlow + rrSlow` and `llFast + rrFast` — SUMS, not products — so they overflow only above an input
+magnitude of ≈ 1.3e19, three orders beyond the regime that breaks the phase reading, and there
+`energy = +Inf` still reads "playing" and `balance = 0` still reads "centred", which is correct for
+an equal-energy pair. No demonstrated defect; not changed.
+**Corrected in round 23 (ER-DSP-11):** the `energy` half stands — its only consumer is a `< 6e-9`
+silence predicate, which `+Inf` answers correctly — but the `balance` half was wrong. "Balance = 0
+still reads centred" holds only for channels that really are equal, and the meter exists for the
+case where they are not: an overflowing sum published `-0.0` for a 1.8e19/1.0e19 pair whose true
+balance is −0.53. Reproduced and fixed in round 23; this entry is left as written, with the error
+named rather than edited away.
+
+**Counts.** The DSP suite is **49 tests + the A/B clamp guard / 269 checks** (was 48 / 256; Test 50
+adds 13). The state suite is unchanged at **33 tests / 1431 checks**. The `[0.9.6]` Fixed count is
+**28**. Measured, not inferred: `AnamorphTests` prints `269 checks, 0 failures` and
+`AnamorphStateTests` prints `1431 checks, 0 failure(s)`. [Verified]
+
+## Engineering-review programme, round 22 — the `docs` gate, and the filtered preflight that hid it (2026-09-02, still the 0.9.6 change set)
+
+**What the round is.** A CI round. **No production code changed, and none was justified.** Records:
+`worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Round 22.
+
+**ER-CI-06 — the `docs` job failed on this file.** Step "Lint documentation structure",
+`docs/DOCUMENTATION_COVERAGE.md:7365`: *"table fragment with no header/separator (1 pipe line(s))
+-- a block was inserted mid-table, or the separator row is missing"*, `check-docs: 1 finding(s)
+across 117 file(s)`, exit 1. Round 21's entry had wrapped the absolute-value notation for an input
+magnitude onto the START of a line, and a line beginning with a pipe character is a table row in
+Markdown — so the checker was right and a renderer would have mis-parsed it too. Reflowed to name
+the quantity in words instead. **The gate was not touched, no exclusion widened, no workflow
+changed**, and a repo-wide sweep found no second instance.
+
+**Classified with evidence, not by assumption.** It reproduces on a bare local checkout at exit 1,
+so it is repository content — not a stale run, not an environment difference, not citation drift,
+not a workflow fault. The passing `Build & Validate` run on the same commit is the `pull_request`
+event, in which `docs` is **skipped** together with eleven other jobs; only the `push` run executes
+the matrix, so a green PR run is not evidence about `docs`.
+
+**ER-CI-07 — why round 21 reported a green preflight while this was failing.** `scripts/preflight.sh`
+is `set -euo pipefail` and `check-docs.py` is its **second** command, so that invocation aborted
+there and every later stage — the portability and realtime lints, the four warning-gate self-tests,
+the ABI floor, the citation gate on all three bases, both suites — **never ran**. It read as green
+because the run was piped through a `grep` whose pattern could not match the finding's wording,
+which also replaced the script's exit status with grep's, under an unconditional trailing `echo`.
+The round-21 report's other validation lines stand, because those checks were also run as separate
+direct commands; its "preflight" line does not.
+
+**Documents touched:** this file (the round-21 reflow, and this entry), `scripts/preflight.sh` (a
+header paragraph beside its existing "NO SILENT SKIPS" rule: the script fails fast, so a non-zero
+exit means the stages below it are an unknown result, and a filtered view of its output is not a
+result), `docs/procedures/CI_CD.md` (the same rule in §preflight, with the run that cost it), the
+programme worklog and the dashboard. **No source file, no test, no workflow, no baseline.**
+
+**Settled-record sweep — nothing to correct.** ER-DSP-10 FIXED, ER-STATE-21 FIXED under Policy B,
+drag recovery REFUTED and presented as open nowhere, D-1 approved and implemented, D-2 / RISK-007
+deferred with round 21's re-measurement recorded, RISK-008 carrying its real-host REAPER result with
+the host-specific residual stated. The three surviving "no host available" strings are explicitly
+dated round-18 history or scoped to the review harness, sitting beneath the round-19 bullet that
+supersedes them — the disposition round 19 chose deliberately, and not rewritten here.
+
+**Counts.** Unchanged: the DSP suite is 49 tests + the A/B clamp guard / 269 checks and the state
+suite 33 tests / 1431 checks; the `[0.9.6]` Fixed count stays 28 — nothing user-visible changed.
+[Verified]
+
+## Engineering-review programme, round 23 — the balance meter's own overflow (2026-09-02, still the 0.9.6 change set)
+
+**What the round is.** One DSP correctness fix, in the same file and regime as round 21's but at a
+**different operation**. Records: `worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md`
+§Round 23.
+
+**ER-DSP-11 — extreme but FINITE levels erased the channel imbalance.** Reproduced before any
+change: at `l = 1.8e19`, `r = 1.0e19` the meter published a balance of **−0.0** — perfectly centred —
+for a pair whose true balance is **−0.5283**, and the mirrored input published **+0.0** for **+0.5283**.
+Every value the existing guard can see is finite: the per-sample squares (3.24000014e38,
+9.99999968e37), both accumulators (`llSlow` 3.23707947e38, `rrSlow` 9.98539635e37) and even the
+numerator `rrSlow − llSlow` (−2.23853994e38, carrying the whole imbalance). The only overflow is
+`llSlow + rrSlow`, a float **add**, which is +Inf where the exact double sum is 4.2356191e38 against
+`FLT_MAX` 3.40282347e38 — and `+Inf` sails past the 1e-12 small-signal guard, so the division is
+`finite / +Inf`, a well-formed **0**. Threshold: input above **1.30438174e19** for equal channels,
+anywhere an unequal pair sums past `FLT_MAX`, up to the **1.84467435e19** at which `l*l` would itself
+stop being finite. Fixed by redoing the **sum** in double on that overflow alone.
+
+**Kept distinct from the two neighbouring contracts, deliberately.** It is not ER-DSP-10 — that is
+the phase meter's `ll * rr` **product** in `correlation()`, and the round-21 build reproduces this
+defect at full strength, so fixing the product did nothing for the sum. It is not the Test 45 poison
+class either — every accumulator is finite and `sanitize()` never fires, which Test 51 asserts rather
+than assumes. Test 45 owns the poisoned accumulator, Test 50 the product, Test 51 the sum.
+
+**Normal range preserved bit-for-bit, and scale invariance restored across the edge — both measured.**
+Pre- and post-fix expressions compared over **19,671,802** randomised finite-sum energy pairs
+spanning 1e-40 to 1e38: **zero differing bit patterns**. At a fixed 3:1 energy ratio the true balance
+is −0.5 at every scale; the pre-fix build holds −0.5 up to `s = 8.5e37` and drops to −0.0 at
+`s = 8.6e37`, the first point where the sum stops being finite, while the fixed build holds −0.5
+across the whole sweep.
+
+**A round-21 record corrected rather than rewritten.** Round 21 inspected this same sum and wrote
+that `balance = 0` "still means centred, which is what an equal-energy pair should read". The
+threshold was right and the conclusion was wrong — it holds only when the channels really ARE equal,
+which is the one case a balance meter is not for. Both copies of that note (the round-21 worklog
+section and its entry in this file) now carry the correction beside them, kept as written with the
+error named rather than edited away. The `energy` half of the same note stands, and this round
+grounded it: its only consumer is `gui/CorrelationMeter.cpp`'s `< 6e-9` silence predicate, which
+`+Inf` answers correctly as "not silent".
+
+**Documents touched:** `CHANGELOG.md` (one Fixed entry), `docs/architecture/DSP_ALGORITHMS.md` (the
+`CorrelationMeter` section now carries all three non-finite contracts and says which test owns each),
+`docs/procedures/TESTING.md` (Test 51 and the DSP test count), `docs/policies/TESTING_POLICY.md`,
+`README.md`, `docs/architecture/RELEASE_HARDENING_PLAN.md`, `docs/HANDOVER.md` (counts and the
+version row), this file, the programme worklog and the dashboard.
+
+**Carried unchanged, with no duplicate finding filed.** D-2 / RISK-007 stays deferred — this round
+produced no new evidence, `src/PluginProcessor.cpp` and `.h` are still unchanged since round 16, and
+the only source touched is a static computation inside `publish()` with no shared state. RISK-008
+keeps its real-host REAPER result and its host-specific residual; **no host test was performed**.
+ER-STATE-21 FIXED, drag recovery REFUTED, D-1 approved and implemented, the cross-file realtime-lint
+boundary unchanged.
+
+**Counts.** The DSP suite is **50 tests + the A/B clamp guard / 282 checks** (was 49 / 269; Test 51
+adds 12). The state suite is unchanged at **33 tests / 1431 checks**. The `[0.9.6]` Fixed count is
+**29**. Measured, not inferred: `AnamorphTests` prints `282 checks, 0 failures` and
+`AnamorphStateTests` prints `1431 checks, 0 failure(s)`. [Verified]
+
+## Engineering-review programme, round 24 — the foreign-preset acceptance test (2026-09-02, still the 0.9.6 change set)
+
+**What the round is.** One fix, closing the last actionable Review Bug. Records:
+`worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Round 24.
+
+**ER-STATE-24 — a valid preset from another plug-in replaced the current sound.** Reproduced before
+any change, against a five-parameter non-default sound and a well-formed `<SomeOtherPluginPreset>`
+carrying two `PARAM` children with our own `id` spellings: `loadFile` returned **true**, `drive` and
+`width` took **the foreign file's values** (0.0396 and 0.0250 normalised, from 0.95 and 0.05 plain),
+and `algorithm`, `monoMakerFreq` and `chorusRate` were reset to their defaults. **The review's
+wording covered half the mechanism**: `applySoundTree` resolves each parameter with
+`getChildWithProperty ("id", …)`, which searches by property and ignores the root, so a foreign
+document both adopts what it names and defaults what it does not. Neither loader validated the root;
+the only validation on the path guarded the value *inside* a matched child.
+
+**The contract was taken from the repository, not invented.** ER-STATE-02 already settled the same
+question for A/B slot payloads — `readSlot`'s `adoptIfAnamorph` accepts only `apvts.state.getType()`
+and refuses a foreign-typed tree precisely as it refuses an unparsable one. Applied here:
+`loadFile` returns `false`, `load(index)` is a clean no-op, and sound, preset name and menu tick are
+all untouched. **No new preset API, and no maintainer decision was needed.**
+
+**One shared choke point.** Both loaders already did parse → null-check → apply, so the acceptance
+test *replaces* the null check inside one new private helper, `PresetManager::parseSoundFile`. In
+`load(int)` it resolves before `onAboutToLoad()`, which is where that function's own comment already
+requires every failure to land. The check cannot live in `applySoundTree`: that function looks
+parameters up by property and so genuinely cannot tell a foreign tree from ours, and it returns
+`void`, so it could not report the rejection to `loadFile`'s `bool`. Its declaration now states the
+precondition rather than carrying an unreachable second check.
+
+**Documents touched:** `CHANGELOG.md` (one Fixed entry), `docs/architecture/SERIALIZATION_REGISTRY.md`
+(the `ANAMORPH` section now records the preset file's root as its acceptance test, with the measured
+failure and the ER-STATE-02 precedent), `docs/procedures/TESTING.md` (State test 34 and the suite
+count), `docs/policies/TESTING_POLICY.md`, `README.md`,
+`docs/architecture/RELEASE_HARDENING_PLAN.md`, `docs/HANDOVER.md`, this file, the programme worklog
+and the dashboard. **Unchanged:** every other architecture document, all workflows, both warning
+baselines.
+
+**A count correction, measured rather than carried.** The state suite's *test* count was one ahead in
+every document. Counted from `main`'s registered test functions: **32 at `HEAD`** against a
+documented 33, so State test 34's arrival makes the true figure **33**, not 34 — corrected in five
+documents with the counting method recorded beside it in `HANDOVER.md`. The *check* count was never
+wrong.
+
+**No new race class.** The change is a file parse and a type test on the message thread, in a `const`
+helper with no shared state, and `applySoundTree`'s behaviour for accepted trees is byte-identical.
+No probe was re-run and **no duplicate D-2 finding was filed**; D-2 / RISK-007 stays deferred with
+its four measured race classes unchanged. RISK-008 keeps its real-host REAPER result and its
+host-specific residual; **no host test was performed**.
+
+**Counts.** The state suite is **33 tests / 1460 checks** (was 32 / 1431; State test 34 adds 29). The
+DSP suite is unchanged at **50 tests + the A/B clamp guard / 282 checks**. The `[0.9.6]` Fixed count
+is **30**. Measured, not inferred: `AnamorphStateTests` prints `1460 checks, 0 failure(s)` and
+`AnamorphTests` prints `282 checks, 0 failures`. [Verified]
+
+## Engineering-review programme, round 25 — a minimal `[0.9.6]` Change Log correction (2026-09-03)
+
+**Documentation only; no source, test, workflow, CMake or baseline file changed.** Records:
+`worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Round 25.
+
+The `[0.9.6]` release date moves to **2026-09-03**, and four claims are corrected because the current
+implementation contradicts them: ER-DSP-11's "the addition now stays in range" and ER-DSP-10's "the
+calculation now stays in range" both described the fixes as preventing an overflow when what they
+actually do is **recover in double when the overflow happens**; ER-DSP-10's "that energy calculation
+ran out of range" named the wrong operation (each energy stays finite — it is their **product** that
+overflows); and the foreign-preset entry's "both accept any file you point them at" was present-tense
+and false after round 24.
+
+**A fifth correction the audit turned up, and an intra-section contradiction rather than a drift.**
+The round-17 Scope Persistence entry ended "the stored value itself is untouched" — true when
+written, and contradicted by round 18's Policy B entry *higher in the same section*, which repairs
+`int_scopePersist` on restore and persists the repaired value. Corrected to point at that repair.
+The consumer-side guard the entry is about is unchanged.
+
+**Audited and left alone:** every test number the section cites resolves in the current tree, and the
+measured figures cross-check against the worklog and `HANDOVER.md`. Historical figures were checked
+for contradiction, not re-measured. D-2 / RISK-007, RISK-008 and KI-015 remain absent from the
+Change Log — none is a fixed user-visible change, and the section carries no Known Issues structure.
+
+**Counts.** Unchanged: DSP 50 tests + the A/B clamp guard / 282 checks, state 33 tests / 1460 checks,
+`[0.9.6]` Fixed count 30. [Verified]
+
+## Engineering-review programme, round 26 — a refused preset still ducked the audio (2026-09-03)
+
+**What the round is.** One fix, the audio half of round 24's state fix. Records:
+`worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Round 26.
+
+**ER-GUI-06 — the duck was raised by the caller, before the load could refuse.** Reproduced through
+the real editor's production `onClick`: an engaged widener on a mono stimulus, Next-preset clicked so
+`step(+1)` lands on a foreign-rooted row that `parseSoundFile` refuses — the next block's side RMS
+read **0.201786** against a **0.443549** un-clicked control, **0.4549** of settled, for a load that
+applied nothing. All three editor call sites raised `requestDuck()` before asking the manager to
+load, and `PresetManager::load` returns `void`, so the menu site could not have checked the outcome
+even in principle.
+
+**Fixed by moving the request to the load path's own success boundary** — the processor's
+`PresetManager::onAboutToLoad` hook, which is both after every check that can refuse and before the
+first `setValueNotifyingHost` — and deleting it from the three call sites. Raising it *after* a
+successful load was rejected as an alternative: it would leave a window in which an audio block hears
+the swapped parameters unmasked, weakening a guarantee this round was required to preserve.
+
+**Documents touched:** `CHANGELOG.md` (one Fixed entry), `docs/architecture/SIGNAL_FLOW.md` (the
+forced-bulk-swap bullet now states who raises a forced duck and when — the contract was implicit
+before, which is how it came to be wrong), `docs/procedures/TESTING.md` (State test 35 and the suite
+count), `docs/policies/TESTING_POLICY.md`, `README.md`,
+`docs/architecture/RELEASE_HARDENING_PLAN.md`, `docs/HANDOVER.md`, this file, the programme worklog
+and the dashboard. **Unchanged:** every other architecture document, all workflows, both baselines.
+
+**No new race class.** `requestDuck` is a relaxed atomic store moved between two message-thread
+functions; no new shared state and no new thread pairing, so nothing was added to D-2's scope and no
+duplicate finding was filed.
+
+**Counts.** The state suite is **34 tests / 1476 checks** (was 33 / 1460; State test 35 adds 16),
+counted from `main`'s registered test functions. The DSP suite is unchanged at **50 tests + the A/B
+clamp guard / 282 checks**. The `[0.9.6]` Fixed count is **31**. Measured, not inferred:
+`AnamorphStateTests` prints `1476 checks, 0 failure(s)` and `AnamorphTests` prints
+`282 checks, 0 failures`. [Verified]
+
+## Engineering-review programme, round 27 — a repair that changed nothing was not persisted (2026-09-03)
+
+**What the round is.** One fix, completing ER-STATE-21's durability contract for the APVTS parameter
+family. Records: `worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Round 27.
+
+**ER-STATE-25 — the serialized repair was gated on the live value moving.** `applyNorm`'s write-back
+into the live tree sat inside `if (! (|norm - getValue()| <= 1e-6))`, so the durability of a repair
+depended on an unrelated fact — and the two coincide often. `apvts.replaceState` reads unusable text
+as the denormalised 0 through JUCE's parser, and the repair resolves to the parameter **default**, so
+the gate is false exactly when `convertTo0to1(0) == getDefaultValue()`: true of every parameter whose
+range starts at its default. Measured: `value="abc"` on `channelMode` restored correctly, left
+`"abc"` in the live APVTS **and** in the re-saved session, and was still there after a second full
+poison → restore → save cycle. The same held for a usable-but-out-of-range `raw="-7"`.
+
+**Fixed by separating "the input was repaired" from "the live value moved".** `repaired` is decided
+by the caller on the INPUT, before any clamp hides the evidence, and drives the tree write alone; the
+`setValue`/atomic work stays gated on the value moving, so nothing new is notified and no gesture is
+opened. A genuinely valid value equal to the default takes no branch and its text is left
+byte-identical — which is what distinguishes this from the "always rewrite every parameter"
+behaviour the round warned against. Both `value` and `raw` are rewritten on repair, because a corrupt
+`raw` cannot reach a file (it is re-stamped on save) but can sit in the live tree that A/B slots and
+undo snapshots copy.
+
+**The focused audit found exactly one site.** `InternalState::restoreState` writes every Setting
+unconditionally, so Policy B was already durable; `PresetManager::applySoundTree` applies through
+`setValueNotifyingHost`, which the APVTS adapter flushes; `migrateFromLegacyApvts` writes
+unconditionally; `readSlot` accepts or rejects whole trees. Nothing else was changed.
+
+**Documents touched:** `CHANGELOG.md` (one Fixed entry), `docs/architecture/SERIALIZATION_REGISTRY.md`
+(the repair-durability rule, which previously implied that an unchanged live value meant no
+write-back was needed), `docs/procedures/TESTING.md` (State test 36 and the suite count),
+`docs/policies/TESTING_POLICY.md`, `README.md`, `docs/architecture/RELEASE_HARDENING_PLAN.md`,
+`docs/HANDOVER.md`, this file, the programme worklog and the dashboard. **Unchanged:** every other
+architecture document, all workflows, both baselines.
+
+**No new race class:** one extra `ValueTree::setProperty` on a restore path that already writes that
+tree; no new shared state and no new thread pairing.
+
+**Counts.** The state suite is **35 tests / 1506 checks** (was 34 / 1476; State test 36 adds 30),
+counted from `main`'s registered test functions. The DSP suite is unchanged at **50 tests + the A/B
+clamp guard / 282 checks**. The `[0.9.6]` Fixed count is **32**. Measured, not inferred:
+`AnamorphStateTests` prints `1506 checks, 0 failure(s)` and `AnamorphTests` prints
+`282 checks, 0 failures`. [Verified]

@@ -15,7 +15,7 @@ exits non-zero on any failed `check` or missing binary. Evidence [Verified]: scr
 
 ### What the tests cover
 
-`tests/dsp_tests.cpp` has **41 DSP tests** using a `check(cond, "what")` harness, covering: MS
+`tests/dsp_tests.cpp` has **50 DSP tests** using a `check(cond, "what")` harness, covering: MS
 round-trip (bit-exact), transparent default, true-bypass null + latency match, Mono Maker
 (post-Mix), Multiband mono-compat, Solo band selectivity + transparency, Level Match
 (unity/no-ratchet/silence-freeze/mix-coupling/multiband-unity), crossover automation safety,
@@ -177,6 +177,83 @@ removed, so the 50 % bound sits between two measured populations); and both defe
 seeded and caught -- a wrong slide fails at sample 32, a missing invalidation at the stop block.
 `worklogs/performance/PERF_AUDIT_v0.9.5_IMPLEMENTATION.md` §2.2.
 
+The newest DSP test is the **extreme-finite balance guard**
+(`testCorrelationBalanceExtremeFiniteInput`, Test 51, ER-DSP-11, round 23). It is the sibling of
+Test 50 and is deliberately kept independent of it: that one owns the phase meter's `ll * rr`
+**product**, this one the balance's `ll + rr` **sum**, and fixing the product did nothing for the
+sum. Both accumulators stay finite, the numerator `rr - ll` cannot overflow either (it lies in
+`[-ll, rr]` for non-negative operands), but the float sum leaves float past `FLT_MAX` and
+`finite / +Inf` is a well-formed **0** — so a badly lopsided pair published **perfectly centred**.
+
+**Built around the overflow edge, not around large values.** `1.8e19 / 0.2e19` is *more* lopsided
+than `1.8e19 / 1.0e19` and read correctly in both builds, because its energies sum to 3.277e38 and
+stay under `FLT_MAX`; the test asserts that case unchanged, which is what proves level is not the
+variable. The defect legs assert the **value**, both directions — `-0.5285` and `+0.5285` against
+the double reference — because `-0.0` is finite, is symmetric with `+0.0`, and is the exact wrong
+answer, so neither "is it finite" nor "is it symmetric" would have caught it. **12 checks**: three
+normal-range controls at three distinct values (balanced reads centred, L-louder and R-louder read
+their true figures — so "always 0", "always non-zero" and "always one-sided" each fail one), a
+premise leg (a perfectly correlated extreme pair must still read +1, proving `sanitize` never fired
+and the accumulators are healthy), the two extreme unequal legs, an exact sign-flip symmetry check,
+the balanced-extreme leg that must stay centred, the non-overflowing lopsided discriminator, an
+**ER-DSP-10-intact** leg, and the Test 45 poison contract. **2 of the 12 fail against the pre-fix
+build, 0 after.** Normal-range behaviour is additionally verified bit-for-bit outside the suite:
+pre- and post-fix compared over 19,671,802 randomised finite-sum energy pairs spanning 1e-40 to
+1e38, **zero differing bit patterns**; and scale invariance was swept across the edge itself — at a
+fixed 3:1 energy ratio the true balance is −0.5 throughout, and the pre-fix build holds −0.5 up to
+`s = 8.5e37` then drops to −0.0 the moment the sum stops being finite, while the fixed build holds
+−0.5 across the whole sweep.
+
+The DSP test before that is the **extreme-finite phase-meter guard**
+(`testCorrelationMeterExtremeFiniteInput`, Test 50, ER-DSP-10, round 21). **It is not Test 45's
+class and the two must not be merged.** There a NON-finite sample poisons an accumulator and
+`publish()`'s `sanitize()` is the cure; here every value that guard can see is FINITE — the samples,
+the three per-sample products and all six accumulators — so it never fires, and the overflow happens
+*after* it, inside `correlation()`, where `ll * rr` is a float multiply. The test asserts that
+premise rather than assuming it: `getEnergy()` (which IS `llFast + rrFast`) must read finite and
+`> 1e19`, so a flushed accumulator would fail the leg that establishes the setup.
+
+**It is built around the threshold, not around "big numbers", and that is what makes it a proof of
+the mechanism.** √FLT_MAX ≈ 1.844e19, so the product overflows once `|l| > 4.295e9`. The test drives
+correlated mono at **4.0e9** and at **5.0e9** — one binade apart, differing in exactly one respect —
+and requires +1 from both. The pre-fix build prints `4.0e9 -> fast 1.0000 | 5.0e9 -> fast 0.0000`.
+Beyond that: extreme anti-phase must read −1 rather than the −0.0 the overflow produced (−0.0 is
+finite, which is why "assert the result is finite" would have been no test at all); a **scale
+invariance** leg requires 0.5 and 1.0e10 to agree to 1e-6, which is the contract the overflow
+actually violated; and an unequal-but-correlated extreme pair must still read +1 with a truthful L/R
+balance. **Three normal-range controls** refuse the degenerate fix — ordinary correlated reads +1,
+ordinary anti-phase reads −1, and a decorrelated input (alternating L-only/R-only frames) reads ~0,
+which "always return +1" cannot pass — and a final leg re-asserts the Test 45 poison contract, so
+the new branch cannot have rescued a genuinely non-finite sample instead of healing it.
+**13 checks; 6 of them fail against the pre-fix build, 0 after.** The normal range is additionally
+verified bit-for-bit outside the suite: the pre- and post-fix expressions were compared over
+19,995,466 randomised finite-product triples spanning `ll`/`rr` from 1e-40 to 1e19 with **zero
+differing bit patterns**.
+
+The DSP test before that is the **restored-session settling guard**
+(`testRestoredModulesDoNotGlideIn`, Test 49, ER-DSP-09, round 20). It pins the contract that
+`AnamorphEngine::prepare` now states: a restored non-default session must OPEN in its own sound, not
+glide into it over the first 10-100 ms. Each subject is compared against a REFERENCE of the same
+module settled on the same targets, so the assertion is "these two are the same signal" rather than
+a level threshold — the subject is exact (a snap assigns the target), and the whole residual belongs
+to the reference, whose settled-by-silence legs approach their targets asymptotically at ~1e-8 after
+200 blocks. The 1e-5 bound therefore sits four orders above the reference's own noise and four
+orders below the defect, which moves the first block by ~0.2 of full scale. **Eleven checks**: a leg
+per module (Haas, Velvet, Mono Maker, Chorus), each with a non-vacuity check that the module really
+acts on the input so an "identical" verdict cannot be identical silence; an ENGINE leg; and a
+live-smoothing control.
+
+**The engine leg is the one that discriminates, and it exists because the first version of this test
+did not.** The four module legs call `snapToTargets()` themselves, so they pass whether or not
+`AnamorphEngine::prepare` calls it — verified by deleting the engine's four calls and watching the
+test stay green. The engine leg drives the real `prepare` → `setParameters` → `process` path and
+fails without them. It uses the **Mono Maker** deliberately: it is the one affected module with no
+delay line, so a fresh instance's empty history cannot be mistaken for the glide the test is about
+(and it is an ADVANCED-mode control, so the leg enables advanced mode or `toEngine` never maps it).
+The **live-smoothing control** is the counterpart requirement from the same round: a parameter moved
+AFTER prepare must still glide, so it asserts the first block after the move is *audibly different*
+from the settled result — a fix that simply disabled smoothing fails it.
+
 The suite
 additionally carries **one state-restoration robustness guard**,
 `testAbActiveClampOnCorruptState` — it drives a corrupted `<AB active="…">` blob through the same
@@ -186,7 +263,260 @@ preserved. Evidence [Verified]: tests/dsp_tests.cpp (`main` registers all tests)
 
 ### State-compatibility self-tests (v0.8.13 harness)
 
-`tests/state_tests.cpp` (**15 tests**, own console target `AnamorphStateTests`) automates the
+`tests/state_tests.cpp` additionally carries a **ThreadSanitizer probe that the suite never
+runs**: `AnamorphStateTests --state-thread-probe` drives host `setState`/`getState` calls from a
+second thread against the editor tick's reads on the main thread — the interaction RISK-007
+describes. It is gated behind that flag precisely because, if the risk is real, running it IS
+undefined behaviour; it exists to be run under TSan, where the question has a mechanical answer.
+Round 2 ran it and it reported four data races (`docs/FUTURE_RISKS.md` RISK-007).
+
+A second opt-in instrument sits beside it: `AnamorphStateTests --latency-restore-probe`. It
+**measures and prints** — it asserts nothing and returns 0 either way — because what it examines is
+the reported latency, an `ARCHITECTURE_REVIEW_GATE.md` hard-stop category, so a probe that encoded
+an expectation would be legislating one. It answers whether a restore that moves Drive or Algorithm
+through the absent-PARAM path leaves the host holding a stale latency. Round 2's answer: no.
+Step 0 shows a bare `setValue()` does not re-report (4 samples before and after), and step 0b shows
+why that does not matter — `apvts.replaceState()` on its own takes Drive to its default and the
+latency 4 → 0, because `updateParameterConnectionsToChildTrees` appends an empty `PARAM` node for
+every adapter the new tree lacks, and that append reaches `setValueNotifyingHost` through the
+APVTS's own `valueTreeChildAdded`. Keep the probe with the finding it refuted (ER-STATE-07, and
+with it round 1's ER-STATE-01): a later JUCE bump can change that internal, and this is what would
+catch it.
+
+`AnamorphStateTests --legacy-ab-probe` is the third opt-in instrument, and the one whose printed
+numbers are the evidence behind State test 26. It seeds a "previous project" with distinguishable A
+and B sounds, restores a session that carries no A/B data into the SAME instance, then switches
+slots and prints what comes back — measuring the contamination rather than asserting the contract,
+so a later reader can see the sizes. Pre-fix it printed `slot B carries the PREVIOUS project's
+sound: YES` (raw width 0.10 against a restored 0.75) and, with the previous project left active on
+B, `first switch after the restore reads A: 0.90 -> CONFIRMED stale`. Kept beside the test for the
+same reason as the two above: the test asserts the rule, the probe shows the magnitude.
+
+`AnamorphStateTests --legacy-match-probe` is the fourth, and like `--latency-restore-probe` it
+**measures and prints without asserting** — because what it examines was REFUTED on impact, so a
+probe that encoded an expectation would be pinning a non-defect. It asks whether the per-slot
+Level-Match gains (`abMatchGain[]`, never reset on any restore path and never serialized) reach the
+output after a restore that carries no A/B data. Round 9's answer: the stale figure IS injected
+(engine match −7.10 → −2.18 dB on the block it lands, tracking the previous project's B), but the
+output level does not move — matched same-instance counterfactual, fresh-instance control and a
+worst-case switch with no settle are all indistinguishable. The injection lands at the silent bottom
+of the switch duck and is superseded by the live loudness measurement before the fade-in completes.
+Keep the probe with the finding it refuted: it is what a later round re-measures instead of
+re-deriving.
+
+State test 27's first leg is **deterministic** since round 12, and it says exactly what it proves.
+It uses a barrier the product itself provides: `AudioProcessor::setLatencySamples()` notifies its
+`AudioProcessorListener`s synchronously, from inside the call, whenever the reported value changes
+(pinned JUCE 9.0.1, `juce_AudioProcessor.cpp:415-436`), and the listener lock is released before
+each callback — so a test listener can hold a delivery open while a real off-message thread makes
+a second request *inside* it, with no test hook in production code and no timing race. A build that
+clears the request flag AFTER delivering fails it (measured in round 12: `next tick -> 4, expected
+0`); the pre-round-11 double-clear window — two adjacent atomics on one thread with no call
+between them — is **not reachable** by any external mechanism, so that fix rests on inspection and
+the leg's comment says so. The two waits are bounded polls for the processor's own 20 Hz timer
+(deadline 40 periods), not sleeps standing in for synchronisation: the outcome is fixed the moment
+the request is or is not in the flag. Two harness lessons from its earlier versions are kept in the
+comment — comparing 0 with 0 (latency only moves with Drive when oversampling is on), and a tight
+`callPendingTimersSynchronously()` loop, which fires nothing against a 20 Hz timer.
+
+`AnamorphStateTests --legacy-settings-probe` is the fifth opt-in instrument and the evidence behind
+State test 28: it feeds malformed host-hidden Settings ("nan", "inf", "1e39", "abc", "7", …) through
+the real v0.2 restore and prints what `migrateFromLegacyApvts` put in the tree, what the clamped
+consumers saw, and what a re-save then wrote. Pre-fix on x86-64 every non-finite value became
+−2147483647 (an impossible ComboBox id, persisted on save), "2147483647" wrapped to INT_MIN, and
+scopePersist passed NaN/±inf/out-of-range straight through. Round 13 extended State test 28 to the
+repository's real frozen pre-0.8.4 fixture (`legacy_pre_0_8_4_view_params.xml`), mutated in place — only
+the six Settings values replaced, the surrounding session (width, mix, `My Vocal`, both slots) asserted
+intact on every restore — so the guard runs on the genuine legacy file and not only a synthetic shape. The DSP suite gained a sibling,
+`AnamorphTests --match-inject-probe`, the engine-only half of the ER-STATE-13 question, written so
+it cross-builds with nothing but AnamorphDSP and runs under `qemu-aarch64-static`.
+
+`AnamorphStateTests --partial-settings-probe` is the sixth opt-in instrument and the evidence
+behind State test 29. It asks whether a MODERN session that omits one host-hidden Setting leaves the
+previous project's value in force on a reused instance, and it deliberately reports the modern and
+legacy paths side by side — because the review that raised the finding located it in
+`migrateFromLegacyApvts`, and the measurement put it the other way round: **6 of 6 fields inherited
+on the modern path, 0 of 6 on the legacy one**. Keep the two columns; they are what stops the two
+paths being confused again.
+
+`AnamorphStateTests --reprepare-race-probe` is the seventh, and like `--state-thread-probe` it is
+built to run under ThreadSanitizer: a thread that is not the message thread moves Drive and then
+re-prepares the processor, 200 times over, while the main thread does only what the real message
+thread would — serve the processor's own 20 Hz latency timer. On the pre-round-15 code TSan names
+the two races the review predicted — `AnamorphEngine::prepare` writing `latency2` against
+`predictLatency` reading it from `timerCallback`, and `AudioProcessor::setLatencySamples` reached
+from both threads — and the plain build counts 3,980 of 4,000 deliveries running on the host's
+thread; after the fix both are zero and TSan is silent over the probe and the whole suite. The
+value-level symptom (the host left holding the older number) was **not observed** in 4,000
+iterations: it needs the timer's compare-and-store to straddle the host's, and only an instance's
+first prepare can change the number at all, so the probe reports the counts and asserts nothing.
+State test 30 pins the invariant that closes the class deterministically instead — no delivery from
+the preparing thread, the report unchanged after the join, and the tick then serving the PREPARED
+value, equal to a message-thread prepare's.
+
+`AnamorphStateTests --modern-settings-probe` is the eighth opt-in instrument, and like
+`--latency-restore-probe` it **measures and asserts nothing**: what it examines is the recovery
+semantics for a malformed MODERN host-hidden Setting, which no document stated when it was written
+(`SERIALIZATION_REGISTRY.md` has stated them since round 18), so a probe
+that encoded an expectation would be legislating one. It writes nineteen malformed values — out of
+domain, non-numeric, `nan`, `inf`, `1e39`, coerced booleans — one at a time into a genuine modern
+save's `ANAMORPH_INTERNAL` node, restores each, and reports the tree value, every consumer, whether
+the next save persists it, and whether opening the real editor repairs it. Round 16's answer, in
+full: **no crash and no undefined behaviour on any of the nineteen** (the legacy path's undefined
+`(int)` conversion has no modern counterpart — `juce::var`→`int` on a string is a safe parse), and
+**every DSP-facing read is clamped at source** (`oversampleIndex` through `jlimit(0,3)`,
+`uiScaleIndex` through `jlimit(0,4)`), so nothing can index out of range whatever the tree holds.
+What the probe does show is that the value itself is kept verbatim: **19 of 19 persist into the next
+save**, eight leave an out-of-domain ComboBox id in the tree, and three leave a **non-finite** scope
+persistence — `scopePersist()` being the one consumer with no clamp at its read. Opening the editor
+repairs four of them (the Slider's range constrains a too-high or overflowing persistence; the
+ComboBox coerces a fractional id) and leaves the rest, including `nan`. The ingress is bounded and
+worth stating with the result: the modern values are written by the constructor's defaults table,
+`restoreState`, the clamped `migrateFromLegacyApvts`, and the Settings widgets — all of which
+produce valid values — so a malformed modern value can only arrive from a hand-edited or corrupted
+file. **No production code was changed on this evidence** (round 16, ER-STATE-21): defining what a
+malformed *present* value should mean is a serialization-contract decision, and the registry's
+`ANAMORPH_INTERNAL` table currently states defaults for ABSENT only.
+
+**Round 17 followed the one unclamped consumer to its end, and found a defect there.** The probe
+gained a second table that models the real editor chain for `scopePersist` — Value to Slider, then
+`applyScopePersist`'s `pow(v, 0.737f)`, then `Vectorscope::setPersistence`'s `jlimit`, then
+`windowFrames()`'s `jmap` and its `(int)` conversion. Two of seven inputs arrive at that conversion
+non-finite: `"nan"`, which travels intact because `juce::jlimit` returns its argument when neither
+comparison is true; and any NEGATIVE value, which is finite in the file and becomes a NaN at the
+`pow`. `(int)` of a non-finite float is undefined, the same class round 12 closed on the legacy
+path. Fixed at the consumer, where the invariant is declared, and pinned by **State test 32**: a
+unit leg over the real `Vectorscope`, and an end-to-end leg that restores four malformed sessions,
+constructs the real editor and reads the persistence back off the scope component itself. **7 checks
+fail without the guard, 0 with it.**
+
+**Round 18 implemented the maintainer's answer to the contract question** — Policy B, repair during
+restore and persist the repaired value. **State test 33** is that policy's contract: thirty-nine
+cases across all six settings and every malformed class (out-of-domain, fractional id, non-numeric text,
+`nan`, `inf`, `1e39`, boolean-shaped junk), each asserted three ways — the live value is the repaired
+one, the malformed text is GONE from the next save, and reloading that save reads the same value
+back. **Ten of the thirty-nine are valid-value controls**, which is what stops a fix that merely
+resets everything to defaults from passing, and a final leg pins ABSENT as a separate rule that still takes
+the documented default (ER-STATE-18). **83 checks fail against the pre-policy build, 0 after.** The
+probe above now shows the repaired behaviour rather than the verbatim one.
+
+**Round 20 took it from thirty to thirty-nine cases, for the half of the policy the first
+implementation got wrong** (ER-STATE-22). Policy B was implemented with `v != 0.0` for the three
+boolean settings — the C coercion rather than the field's domain — so a corrupted `-1`, `-2`, `2`
+or `0.5` SWITCHED THE SETTING ON and the repair then persisted that as a genuine `true`; `0` was the
+only value on the whole real line that could not. Nine cases were added (`-1`, `-2`, `0.5` and `2`
+across the boolean fields) and **one existing case's expectation was corrected**: `int_metersOn` =
+`"2"` was written down as resolving to `true`, which is the defect stated as an expectation rather
+than caught. The boolean rows now carry **six** of the ten valid-value controls — including
+`int_uiAnimations` = `"0"`, so that a fix which simply forced every boolean to its default cannot
+pass. **12 of the suite's checks fail against the `v != 0.0` build**, and they are the whole delta:
+nothing outside the boolean rows moves.
+
+`AnamorphStateTests --risk008-probe` is the ninth opt-in instrument and is **synthetic by
+construction, labelled as such in its own output**. It answers what a pending D-1 latency request
+costs when nothing is servicing the JUCE message queue — the state a Linux VST3 host leaves behind
+when it supplies `IRunLoop` only through `IPlugFrame` and the editor closes. The CAUSE is established
+by reading the pinned wrapper, not by running a host: none was available in the review
+environment. (The missing half arrived separately — the maintainer ran the predicted-failure
+workflow on Linux in REAPER with the real VST3, and the latency updated with the editor both open
+and closed; `docs/FUTURE_RISKS.md` RISK-008 carries that result and its limits. The probe is
+unchanged by it: what it measures is the COST of an unserviced queue, not whether a host produces
+one.) The CONSEQUENCE is exact,
+because `juce::Timer` delivers only by posting a message for the message thread to run, so a console
+harness that does not pump IS an unserviced queue — the same reason State tests 27, 30 and 31 have to
+pump explicitly. Measured: across a 1000 ms unserviced window the reported latency does not move, and
+22 ms after servicing resumes the request is delivered in full. It **asserts nothing and returns 0**,
+and no sleep stands in for synchronisation: the negative phase asserts a state that cannot become
+true later without servicing, and its deadline only bounds the run.
+
+`AnamorphStateTests --legacy-match-probe` gained a companion in State test 31 rather than a new
+probe: the per-slot Level-Match memory (ER-STATE-20) is observed through the product's own
+behaviour. Two properties make that exact rather than a tolerance game — after a restore with no
+A/B data both slots are re-seeded from the SAME restored state, so the switch is parameter-neutral,
+and `LoudnessMatch` holds its published value on silence by documented design — so a switch
+performed over silent blocks leaves `getMatchGainDb()` reading the injected value verbatim. The
+test restores each blob into a reused instance AND a fresh one and requires them to agree, which is
+the state-isolation contract stated directly and cancels the matcher's feed-forward predict term
+exactly. It also performs the host's ordinary post-restore activation, without which the reused
+instance's leftover audio in its delay lines flushes through and moves the reading 0.052 dB —
+engine history rather than A/B state.
+
+**State test 36 pins the durability half of the repair contract** (ER-STATE-25, round 27). State
+test 20 already covers "a repaired parameter reaches the saved state", but it poisons with `nan`,
+which makes `applyNorm`'s `! (|norm - getValue()| <= 1e-6)` gate true **on the comparison alone** —
+so it exercises the repair path and never the gate's other side. This test takes that other side:
+malformed text whose repair lands on the value the parameter already holds. **The precondition is
+arithmetic, and the test searches for a qualifying parameter rather than hard-coding one** —
+`replaceState` reads unusable text as the denormalised 0, `applyNorm` resolves it to the default, so
+the gate is false exactly when `convertTo0to1(0) == getDefaultValue()`. It asserts on the
+**serialized artefact**, not the runtime value, because "restore → parameter == default" passes
+before the fix: the live APVTS tree that `copyState()` reads, and the bytes `getStateInformation`
+emits. The whole poison→restore→save→reload cycle runs **twice**, so corruption cannot survive one
+cycle and return on the next. Three legs guard the boundaries: a genuinely valid value equal to the
+default must be left **exactly as written** (no needless rewrite), an out-of-range `raw` must be
+rewritten canonically too, and a malformed `raw` beside a valid `value` must still fall back to the
+value. **11 of its 30 checks fail against the pre-fix build, 0 after.**
+
+**State test 35 pins the other half of a refused load: it must have no AUDIO side effect**
+(ER-GUI-06, round 26). Round 24 made a foreign preset a no-op for STATE; the editor was still
+raising the masking duck *before* asking the manager to load, so a load the manager then refused
+still dry-filled the next ~32 ms. **The test drives the real editor**, because the defect was in the
+editor's ordering and nothing below it could see the bug: `presetPrev`/`presetNext` carry
+`setComponentID ("presetnav")` and differ by button text, so the child walk reaches the production
+`onClick`. The harness writes two preset files whose names put the foreign row immediately after a
+valid one — asserted, not assumed — loads the valid one so `currentIndex()` points at it, and then
+clicks Next so `step(+1)` lands on the foreign row and is refused. **The observable is Test 48's**:
+a MONO stimulus into an engaged widener, so every trace of side energy in the output is the
+widener's own and a duck's dry fill collapses it; twin processors are driven identically and
+compared to each other rather than to a threshold. **Both directions are asserted**, which is what
+stops "delete the duck" from passing: a refused step must leave the next block *identical* to the
+un-clicked control (to 1e-9), and a successful `loadFile` must still collapse it. A malformed file
+takes the same no-side-effect path. **2 of its 16 checks fail against the pre-fix build, 0 after** —
+measured side RMS 0.201786 against a 0.443549 control before, 0.443549 against 0.443549 after.
+
+**State test 34 pins the preset loaders' acceptance test** (ER-STATE-24, round 24). A `.anamorph`
+file is an `<ANAMORPH>` root, and a document with any other root is refused by **both** loaders
+exactly as an unparsable one is — `loadFile` returns `false`, `load(index)` is a clean no-op, and
+neither the sound nor the preset identity moves. The test is built so a reset cannot hide: the
+sentinel is **five** parameters at values each asserted to differ from that parameter's own default
+(the failure mode *is* "everything becomes its default", so a one-parameter probe could pass by
+coincidence), and preservation is compared **exactly**, against what the parameters actually hold
+after being set rather than against the literals requested — a stepped parameter quantises what it
+stores, and the claim is preservation, not equality with a literal. The foreign document carries
+`PARAM` children with *our* `id` spellings, so the rejection cannot be attributed to unrecognisable
+children, and the log prints the before/after values so the failure mode is legible rather than
+inferred from a boolean. Both loaders are exercised — the OS-chooser path and the menu path, the
+latter after a `refresh()` that is asserted to have listed the file — and the whole rule is re-run
+from a **second** distinct sound, per the repository's repeated-state-mutation discipline. Three
+legs guard what must NOT change: malformed XML keeps its existing rejection, a valid `<ANAMORPH>`
+root with only one `PARAM` still adopts that one and still defaults the rest, and a full valid
+preset still round-trips. **6 of its 29 checks fail against the pre-fix build, 0 after.**
+
+`AnamorphStateTests --restore-fade-probe` is the tenth opt-in instrument and, like
+`--modern-settings-probe`, **measures and asserts nothing**. It drives the ordinary host order —
+restore a non-default session into a fresh instance, THEN activate — and prints each module's
+per-block deviation from the input over twelve blocks, so a module that opens at its restored target
+reads the same in block 1 as in block 12. It is the magnitude behind ER-DSP-09 in the product's own
+terms. **Its ratio deliberately does not separate two causes**, and the probe says so in its own
+header: a smoother gliding from the wrong start (the defect) and empty delay-line / filter history
+filling up (not a defect — `prepare` clears that history by contract, and Haas's own 28 ms line is
+longer than the block the first point covers). So the ratio RISES when the fix lands without
+reaching 1.0 — measured block1/block12 before → after: Haas 0.17 → 0.72, Velvet 0.09 → 0.18,
+Chorus 0.29 → 0.68, Dimension-D 0.39 → 0.90, Mono Maker 0.35 → 0.58 — and a ratio below 1.0 here
+is not by itself evidence of a defect. **DSP Test 49 is the discriminating instrument**, because its
+reference cancels the history term exactly.
+
+`AnamorphStateTests --state-prepare-race-probe` is the eleventh, and the third TSan probe the suite
+never runs (`--state-thread-probe` and `--reprepare-race-probe` are the others; if the race is real
+the probe's own execution is undefined behaviour, which is why it is opt-in). It answers the one
+thread pairing D-2's recorded scope does not mention: a host calling `setStateInformation` on one
+thread and `prepareToPlay` on another while the editor tick reads. **The verdict is the REPORT SET**,
+compared against the four `--state-thread-probe` already measures — `abActive`, the `abUndo` vector
+twice, and a `juce::String` refcount exchange. Measured round 20: the same four reports and no
+others, which is what classified ER-STATE-23 as already covered by D-2 rather than a new bug
+(`docs/FUTURE_RISKS.md` RISK-007).
+
+`tests/state_tests.cpp` (**35 tests**, own console target `AnamorphStateTests`) automates the
 COMPATIBILITY policy family against the **real `AnamorphAudioProcessor`** (the target compiles
 the plugin sources; since 2026-08-21 it also constructs and destroys the real editor, headlessly
 and without ever showing it — no peer, no message loop, no interaction):
@@ -411,19 +741,27 @@ a display). Evidence [Verified]: scripts/run-pluginval.sh / scripts/run-pluginva
 
 ### Signal-only retry (known X11 host flake)
 
-`run-pluginval.sh` (and `run-pluginval.ps1` on Windows, without the X11-specific retry) treats a real
+`run-pluginval.sh` treats a real
 validation failure (exit < 128) as a failure immediately. On Linux it retries up to 3 times **only on
 a signal-crash** (exit ≥ 128) to absorb a use-after-free in **pluginval's own JUCE** X11
 `XEmbedComponent` (a `ConfigureNotify`→`callAsync` on rapid editor open/close), not a plugin defect —
-the plugin already drops its OpenGL child window on Linux (ADR-0011).
+the plugin already drops its OpenGL child window on Linux (ADR-0011). On Windows,
+`run-pluginval.ps1` fails immediately on a real validation failure **and, since 2026-08-31, on a
+real abnormal termination too** (a negative / ≥256 exit code, i.e. a Win32 exception of a launched
+validator): until then its loop still gave every crash up to 3 tries per pass — a retry originally
+justified by the null-`$LASTEXITCODE` detection problem that the KI-007 `WaitForExit` fix had
+already retired, leaving it excusing exclusively genuine crashes on a platform with no documented
+flake (ER-CI-01). Its 3-attempt loop now covers only a `$null` exit code, which after that fix can
+mean nothing but "the process never launched" — a setup fault, not a verdict.
 
 **The retry is scoped to the platform its justification names.** Until 2026-08-18 the script applied
 the same three attempts on **macOS**, which shares none of that X11 machinery: there, a crash had two
 extra chances to pass and no documented flake to absorb, and this section already described the
 behaviour as Linux-only. `CRASH_RETRY_ATTEMPTS` is now set from `uname -s` — 3 on Linux, **1**
 everywhere else — and a single-attempt failure prints a distinct message so it cannot be misread as
-an exhausted retry. Evidence [Verified]: scripts/run-pluginval.sh (`run_one_pass`, and the `case
-"$(uname -s)"` above it).
+an exhausted retry. The 2026-08-31 Windows change above completes the same scoping for the third
+platform. Evidence [Verified]: scripts/run-pluginval.sh (`run_one_pass`, and the `case
+"$(uname -s)"` above it); scripts/run-pluginval.ps1 (verdict block).
 
 ## CI integration
 
@@ -486,7 +824,7 @@ See `CI_CD.md`. Evidence [Verified]: `.github/workflows/build.yml`.
 | A `check` assertion fails | DSP regression | the named test in `tests/dsp_tests.cpp`; compare against the invariant it guards (`docs/policies/DSP_POLICY.md`) |
 | A state-test `check` fails | serialization / parameter-surface regression | the named test in `tests/state_tests.cpp`; if the change is INTENTIONAL it needs the compatibility-policy process (ADR + registry update + `--write-snapshot`) |
 | pluginval exits < 128 | real validation failure | the pluginval log line; do **not** retry — it's a genuine defect |
-| pluginval exits ≥ 128 (crash) | the known X11 host flake | retried automatically; if it still fails after 3 tries, treat as a failure (`scripts/run-pluginval.sh:171-197`, `run_one_pass`) |
+| pluginval exits ≥ 128 (crash) | the known X11 host flake | retried automatically; if it still fails after 3 tries, treat as a failure (`scripts/run-pluginval.sh:172-198`, `run_one_pass`) |
 | `AnamorphTests`/`AnamorphStateTests` `not found` | not built yet | run `scripts/build.sh` first (`scripts/run-tests.sh:51-73`) |
 
 ## Gaps in the automated coverage (known, deliberate)
@@ -650,8 +988,24 @@ rather than deleted, because a gap that was real and is now covered is worth bei
   right tool for "did this change alter the sound" is the **twin dump** — build the engine before
   and after, run the same scenario matrix through both, compare hashes and reported latencies —
   which is what the JUCE 9 migration used across 32 scenarios
-  (`worklogs/JUCE9_MIGRATION_v0.8.13.md`). That harness is session-local and not committed, so the
-  method must currently be re-created per investigation.
+  (`worklogs/JUCE9_MIGRATION_v0.8.13.md`). That harness has been **committed** since the
+  2026-08-18 round as `tests/dsp_dump.cpp` (§"Proving a dependency bump is bit-identical" above)
+  — this bullet said "session-local and not committed" for five rounds after that stopped being
+  true (ER-TST-05); the method no longer needs re-creating per investigation.
+
+- **The twin dump hashes a fixed engaged steady-state matrix, and everything outside it is
+  outside the bit-identity claim.** Each of the 32 scenarios applies one parameter set, calls
+  `reset()` (which flushes any in-flight switch duck), and hashes 240 settled blocks — so the
+  compared surface includes the continuous-smoother glides, the M/S conditioning loop, and all
+  four algorithm modules engaged, but **excludes** the switch-duck/adopt machinery, the Bypass
+  and Multiband-Enable crossfades and their off paths, M/S solo, `SoloMonitor`'s band-pass, the
+  L/R-domain conditioning branch, the crossover glide, the full-wet idle path, and the NaN-heal
+  pass — all first-party float code compiled under the same ISA flags. On GCC/Clang the
+  contraction risk in those blind paths is closed binary-wide by ADR-0031's 0-FMA objdump
+  census; on MSVC it rests on documented `/fp:precise` semantics plus the toolset ≥ 14.30
+  assertion, not on measurement. ADR-0032 hedges with "for this instrument's coverage"; this
+  entry is where that boundary is actually written down (ER-TST-02, 2026-08-31). Extending the
+  matrix with transition scenarios is a recorded round-2 candidate, not a commitment.
 
 - **No gate ever installs anything.** CI builds the packages and inspects them — the Inno Setup
   exe, the expanded `.pkg` (component identifiers, `customize="allow"`, non-relocatable

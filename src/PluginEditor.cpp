@@ -1,4 +1,5 @@
 #include "PluginEditor.h"
+#include "gui/PhysicalMouseButtons.h"
 #include <cmath>
 #include <cstring>
 
@@ -356,8 +357,11 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     presetPrev.setTooltip ("Previous preset");
     presetNext.setTooltip ("Next preset");
     presetName.setTooltip ("Presets"); // short, no period (#12)
-    presetPrev.onClick = [this] { processor.getEngine().requestDuck(); processor.getPresets().step (-1); knobSweepTime = 0.45; refreshPresetDisplay(); };
-    presetNext.onClick = [this] { processor.getEngine().requestDuck(); processor.getPresets().step (+1); knobSweepTime = 0.45; refreshPresetDisplay(); };
+    // No requestDuck() here: the load path raises it from onAboutToLoad, which fires only once a
+    // load has passed every check (ER-GUI-06). step() can land on a row whose file is unreadable
+    // or not ours, and ducking for that refusal masked nothing while dry-filling real audio.
+    presetPrev.onClick = [this] { processor.getPresets().step (-1); knobSweepTime = 0.45; refreshPresetDisplay(); };
+    presetNext.onClick = [this] { processor.getPresets().step (+1); knobSweepTime = 0.45; refreshPresetDisplay(); };
     presetName.onClick = [this] { showPresetMenu(); };
     addAndMakeVisible (presetPrev);
     addAndMakeVisible (presetNext);
@@ -1301,8 +1305,16 @@ void AnamorphAudioProcessorEditor::dismissOrphanedPopupMenus()
     // the strength of a sweep that covered only PluginEditor.{h,cpp}. Two inline text edits in src/
     // treat losing focus as "the user clicked away" and APPLY what is in the box -- right for a
     // click, wrong for a release the editor decides on because the user is no longer looking. Park
-    // both first, with the Escape outcome rather than the Return one, so leaving the application can
-    // never write a half-typed value.
+    // both first, with the Escape outcome rather than the Return one, so leaving the application
+    // cannot write a half-typed value THROUGH THIS PATH.
+    // Scope, corrected 2026-08-31 (ER-GUI-02) -- the promise is narrower than the earlier
+    // "can never" read: this is the only call site of cancelInlineTextEdits(), and it sits behind
+    // the switchedAway branch, which is itself behind this function's "no pop-up open -> return"
+    // guard and is inert on Linux/X11 (KI-019's write-once foreground latch) and in out-of-process
+    // hosting. Narrowing the wording is deliberate and the code is NOT to be widened to match the
+    // old claim: a general "leaving the application never writes a half-typed value" guarantee is
+    // not reachable at this layer, and the published documents (CHANGELOG [0.9.3], TESTING.md)
+    // already describe the behaviour correctly.
     if (switchedAway)
     {
         cancelInlineTextEdits();
@@ -1336,6 +1348,43 @@ void AnamorphAudioProcessorEditor::showSettings (bool show)
 }
 
 // ----------------------------------------------------------------------------
+// The value box behind a knob holds a host change GESTURE open for the whole
+// press (LookAndFeel.cpp, ValueBox). If the release is never delivered -- the
+// button let go over the host window or the desktop, where the OS routes it to
+// no JUCE peer -- the gesture stays open and pollUndoCoalesce commits nothing
+// while openGestures > 0, so the next edits fold into one coarse undo step
+// instead of their own. Measured before this existed: after an undelivered
+// release, a complete separate edit left canUndo() false.
+//
+// Clearing the paint flag was already done here; it was never enough, because
+// `animated` holds the SLIDER and the gesture lives one level down in a type
+// local to LookAndFeel.cpp. anamorph::gui::DragGestureOwner is the named handle
+// that closes that gap. Both are done in one pass so a stuck press cannot leave
+// the glow and the gesture in different states.
+//
+// SCOPE: all three platforms. The macOS residual this paragraph used to record --
+// the caller's predicate being inert there, because JUCE's realtime modifier query
+// returns cached button state (KI-013) -- was closed in round 4 by giving the
+// predicate a different SIGNAL rather than a different sweep:
+// anamorph::gui::anyPhysicalMouseButtonDown() reads +[NSEvent pressedMouseButtons]
+// on macOS and forwards to JUCE elsewhere. KI-028 and KI-013 are both RESOLVED
+// (docs/KNOWN_ISSUES.md); State test 23 pins the macOS half, under #if JUCE_MAC
+// and run by the macOS CI job.
+void AnamorphAudioProcessorEditor::abortAbandonedDragGestures()
+{
+    for (const auto& w : animated)
+    {
+        if ((bool) w.comp->getProperties().getWithDefault ("dragging", false))
+        {
+            w.comp->getProperties().set ("dragging", false);
+            w.comp->repaint();
+        }
+        for (int i = 0; i < w.comp->getNumChildComponents(); ++i)
+            if (auto* owner = dynamic_cast<anamorph::gui::DragGestureOwner*> (w.comp->getChildComponent (i)))
+                owner->abortDragGesture();
+    }
+}
+
 void AnamorphAudioProcessorEditor::timerCallback()
 {
     // Backstop for the pop-up shield, scoped to `openMenus`: componentBeingDeleted already lowers
@@ -1477,15 +1526,16 @@ void AnamorphAudioProcessorEditor::timerCallback()
     // the drag state we own: clear the knob value-box "dragging" flag, drop the Persist-bar drag,
     // and cancel a stuck Multiband drag. During a real drag the button is genuinely down, so this
     // block is inert.
+    // The second half asks the OS, not JUCE's cache. On macOS JUCE's realtime
+    // query refreshes only the KEYBOARD flags and returns cached mouse buttons,
+    // so this predicate used to be permanently false there -- KI-013, and the
+    // reason KI-028's sweep below never ran on macOS.
+    // anamorph::gui::anyPhysicalMouseButtonDown() forwards to JUCE everywhere it
+    // is already authoritative and calls +[NSEvent pressedMouseButtons] on macOS.
     if (juce::Component::isMouseButtonDownAnywhere()
-        && ! juce::ModifierKeys::getCurrentModifiersRealtime().isAnyMouseButtonDown())
+        && ! anamorph::gui::anyPhysicalMouseButtonDown())
     {
-        for (const auto& w : animated)
-            if ((bool) w.comp->getProperties().getWithDefault ("dragging", false))
-            {
-                w.comp->getProperties().set ("dragging", false);
-                w.comp->repaint();
-            }
+        abortAbandonedDragGestures();
         persistDragging = false;
         if (imager) imager->cancelActiveDrag();
         // Wake the micro-anim driver for one pass so the stale press GLOW (actA) eases out.
@@ -1669,7 +1719,7 @@ void AnamorphAudioProcessorEditor::stepMicroAnims (double dt)
     auto physicalButtonDown = [&realDownCached]
     {
         if (realDownCached < 0)
-            realDownCached = juce::ModifierKeys::getCurrentModifiersRealtime().isAnyMouseButtonDown() ? 1 : 0;
+            realDownCached = anamorph::gui::anyPhysicalMouseButtonDown() ? 1 : 0;
         return realDownCached == 1;
     };
 
@@ -2014,8 +2064,8 @@ void AnamorphAudioProcessorEditor::showPresetMenu()
             if (r == 0 || safeThis == nullptr) return;
             if (r == 10001) { safeThis->showSavePreset (true); return; }
             if (r == 10002) { safeThis->showLoadPreset(); return; }
-            safeThis->processor.getEngine().requestDuck();   // mask the level jump (#1, 0.6.4)
-            safeThis->processor.getPresets().load (r - 1);
+            safeThis->processor.getPresets().load (r - 1);   // the load path masks the level jump
+                                                             // itself, and only if it loads (ER-GUI-06)
             safeThis->knobSweepTime = 0.45; // sweep the knobs to the preset (#3)
             safeThis->refreshPresetDisplay();
         });
@@ -2040,7 +2090,9 @@ void AnamorphAudioProcessorEditor::showLoadPreset()
             const auto file = fc.getResult();
             if (file.existsAsFile())
             {
-                safeThis->processor.getEngine().requestDuck(); // mask the level jump (#1, 0.6.4)
+                // The chooser reaches any file on the machine, so this is the path most likely to
+                // be handed a foreign preset -- and the one where a duck for a refused load was
+                // most visible. The masking now comes from the load path itself (ER-GUI-06).
                 if (safeThis->processor.getPresets().loadFile (file))
                 {
                     safeThis->knobSweepTime = 0.45; // sweep the knobs to the preset (#3)

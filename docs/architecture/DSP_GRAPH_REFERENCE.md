@@ -4,7 +4,7 @@ Node dependency topology of the serial DSP chain. Purpose: prevent unsafe reorde
 node may only be moved if **Can Reorder? = Yes** and the move preserves every invariant in
 `SIGNAL_FLOW.md`. Any "No" reorder requires an ADR + Architecture Review.
 
-Evidence [Verified]: src/dsp/AnamorphEngine.cpp:673-1352 (`process`).
+Evidence [Verified]: src/dsp/AnamorphEngine.cpp:718-1418 (`process`).
 
 ## Topology table
 
@@ -59,5 +59,5 @@ Test 29).
 `MultibandWidth` and `SoloMonitor` share the identical
 Nyquist-safe clamp `[20, max(1000, 0.45·sr)]` + 1.1× top-down ordering.
 
-Evidence [Verified]: src/dsp/MonoMaker.h:39; MultibandWidth.cpp (fade trigger +
+Evidence [Verified]: src/dsp/MonoMaker.h:43; MultibandWidth.cpp (fade trigger +
 `setBankCutoffs`); SoloMonitor.cpp (same pattern).

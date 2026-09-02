@@ -70,9 +70,9 @@ configuration**. `docs/policies/COMPATIBILITY_POLICY.md` ("Numerical compatibili
 
 | Layout | Status | Evidence |
 |---|---|---|
-| stereo → stereo | **Verified** | src/PluginProcessor.cpp:7-8 (bus declaration), :76-86 (`isBusesLayoutSupported`); test `testTransparentDefault` |
-| mono → stereo | **Verified** | src/PluginProcessor.cpp:84-85 (mono input accepted), :120-121 (mono duplicated to both channels) |
-| **mono → mono** | **Not Supported** | Deliberately rejected: output is always stereo. src/PluginProcessor.cpp:81-82 |
+| stereo → stereo | **Verified** | src/PluginProcessor.cpp:10-11 (bus declaration), :76-86 (`isBusesLayoutSupported`); test `testTransparentDefault` |
+| mono → stereo | **Verified** | src/PluginProcessor.cpp:113-114 (mono input accepted), :120-121 (mono duplicated to both channels) |
+| **mono → mono** | **Not Supported** | Deliberately rejected: output is always stereo. src/PluginProcessor.cpp:110-111 |
 
 ## DAW hosts
 
@@ -82,7 +82,7 @@ rows above run at is `ANAMORPH_PLUGINVAL_STRICTNESS` in `.github/workflows/build
 
 | Host | Status | Note |
 |---|---|---|
-| REAPER | **Unverified** | Referenced for its parameter-listing behaviour (drove the 0.8.4 InternalState design) and as the suggested audition host; not a tested compatibility claim. docs/procedures/TESTING.md; src/InternalState.h:15-18 |
+| REAPER | **Unverified** | Referenced for its parameter-listing behaviour (drove the 0.8.4 InternalState design) and as the suggested audition host; not a tested compatibility claim. docs/procedures/TESTING.md; src/InternalState.h:18-21 |
 | Ableton Live, Logic Pro, GarageBand, Cubase, Pro Tools, Studio One, Bitwig, etc. | **Unverified** | No evidence in repo. AU build targets Logic/GarageBand but host-load is untested here. |
 
 `TODO: populate a real-DAW host matrix from manual validation (requires a machine with audio +

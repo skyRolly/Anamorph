@@ -79,7 +79,7 @@ Evidence [Verified]: release.yml.
 ## Build matrix
 
 Every push builds the full set of formats on all three desktop OSes — plus a **second macOS job
-that ships nothing and exists only to execute on Intel silicon** — alongside seven non-packaging
+that ships nothing and exists only to execute on Intel silicon** — alongside nine non-packaging
 jobs that guard classes the build matrix cannot see:
 
 | Job | Runner | Builds | pluginval |
@@ -92,6 +92,8 @@ jobs that guard classes the build matrix cannot see:
 | **windows** | `windows-latest` (MSVC, multi-config) | VST3 + Standalone (+ tests) | VST3, **both modes ×3** — **blocking** |
 | **macos** | `macos-latest` (Apple Silicon) | universal VST3 + AU + Standalone (+ tests) | **VST3 and AU**, both modes ×3 each — **blocking** |
 | **macos-intel** | `macos-15-intel` (**native Intel**) | thin x86_64 VST3 + AU (+ tests); Standalone off; **no packaging, no artifacts** | **VST3 and AU**, both modes ×3 each — **blocking** |
+| **macos-crossslice** | `macos-latest` (Apple Silicon) | the twin-dump instrument for both universal slices (arm64 native + x86_64 under Rosetta); **no packaging, no artifacts; job-level `continue-on-error` — reporting-only by design** (a cross-architecture comparison is Class B, not a gate; ADR-0031 §Consequences) | — |
+| **windows-avx2-ab** | `windows-latest` (MSVC) | two twin-dump builds — baseline vs `/arch:AVX2` — diffed hash-for-hash; **no packaging, no artifacts**; **BLOCKING** (the ADR-0032 per-push Class-A assertion: any of the 32 scenarios moving fails the push, with NUMERICAL vs INFRASTRUCTURE failures distinctly labelled) | — |
 | **linux-lto-tests** | `ubuntu-latest` + **floating `gcc:16`** (major pinned, patch not) | GCC `-flto`: both test targets only (Standalone off); **no packaging, no artifacts** | — (the suites against LTO codegen, the GCC warning gate, and the two instruments' liveness builds) |
 | **realtime** | `ubuntu-latest` | Clang `-fsanitize=realtime`: the DSP suite only (Standalone off); **no packaging, no artifacts** | — (the audio path under RealtimeSanitizer, plus the leaf-layer `-Wfunction-effects` check) |
 | **fuzz** | `ubuntu-latest` | Clang libFuzzer + ASan/UBSan: `AnamorphFuzzState` only (tests and Standalone off); **no packaging, no artifacts** | — (`setStateInformation` under libFuzzer) |
@@ -103,9 +105,12 @@ otherwise fine, and a red build does not skip them.
 **That is a statement about *this* workflow, and the release path is different.**
 `release.yml` calls `build.yml` as a single `build:` job and its `draft-release` job is
 `needs: [validate, build]`. A called workflow's aggregate result is what that edge observes, so on
-a release tag **every** job here — including `sanitizers`, `linux-lto-tests`, `realtime` and `fuzz` — is
+a release tag **every** job here — including `sanitizers`, `linux-lto-tests`, `realtime`, `fuzz`
+and `windows-avx2-ab` — is
 release-blocking: a failure in any of them skips the draft release, even though the per-push
-artifacts were still uploaded. That follows `RELEASE_POLICY.md` §Artifacts ("the existing
+artifacts were still uploaded. The one exception is `macos-crossslice`, whose **job-level
+`continue-on-error`** makes it reporting-only on every trigger, release tags included — the
+deliberate ADR-0031 Class-B scoping, not a gap. That follows `RELEASE_POLICY.md` §Artifacts ("the existing
 `build.yml` gates are reused unchanged") and is the intended behaviour; the absence of a `needs:`
 edge above must not be read as release non-blocking.
 
@@ -407,7 +412,7 @@ toolchain, so the move took the macOS compiler with it — **AppleClang
 15.0.0.15000309 (Xcode 15.4) → 21.0.0.21000101 (Xcode 26.6)**, image `macos-26-arm64`
 `20260728.0273.1`. `CMAKE_OSX_DEPLOYMENT_TARGET=10.13` is still accepted and both slices still
 build. One measured consequence: AppleClang 21 raised
-**`-Wimplicit-int-float-conversion` at four pre-existing sites** — `src/PluginEditor.cpp:245,246`,
+**`-Wimplicit-int-float-conversion` at four pre-existing sites** — `src/PluginEditor.cpp:246, 247`,
 `src/gui/LookAndFeel.cpp:262` and `src/dsp/VelvetNoise.cpp:30`, each an `int` widened inside a
 float expression (108 → 126 warning instances on that first job). No warning disappeared and no
 other category appeared. **All four were then fixed** in the follow-up change: each `int` operand
@@ -995,7 +1000,7 @@ not audited, and a clean run means none of them **moved**.
 
 **Since 2026-08-21 that hole is closed for the anchors that say what they point at.** A citation
 written in this repository's own convention carries the symbol beside the line number —
-`` src/PluginProcessor.cpp:105-108 (`updateLatency`) `` — and the checker now reads that gloss and
+`` src/PluginProcessor.cpp:176-186 (`updateLatency`) `` — and the checker now reads that gloss and
 asserts the token is in the cited lines. It needs no base revision, because it is not a question
 about drift: it asks whether an anchor lands on what its own document says it lands on, in the tree
 as it is now. Exactly two gloss shapes are claimed — one backticked identifier, or one double-quoted
@@ -1279,6 +1284,15 @@ then `scripts/run-tests.sh` when a built tree exists at `./build` (skipped WITH 
 none does — never silently). Measured ~5 s on a built tree. It says out loud the one thing it
 cannot cover: the full Clang warning gate needs a clang build log, so only that lint's self-test
 runs locally.
+
+**Read its exit status, not a filtered view of its output.** The script is `set -euo pipefail`, so
+the FIRST failing checker ends the run and everything after it never executes — a non-zero exit is
+not "one finding in an otherwise green preflight", it is an *unknown* result for every later stage.
+Piping the run through `grep` substitutes grep's status for the script's and can swallow a finding
+whose wording the pattern did not anticipate. Recorded because it cost a red run (round 21,
+2026-09-02): `check-docs` — preflight's **second** command — was failing on a `DOCUMENTATION_COVERAGE`
+line that began with a `|` character, the filtered view showed nothing, the round reported a green
+preflight, and the `docs` job went red on the push.
 
 Then the build and the release gate:
 

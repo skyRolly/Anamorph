@@ -6,17 +6,17 @@ Repository Governance Policy. Test acceptance levels and the release gate.
 
 | Level | Name | What | Where |
 |---|---|---|---|
-| **1** | Static analysis | Compiler warnings (recommended warning flags), **gated for first-party sources under Clang — no NEW warnings above `scripts/clang-warning-baseline.txt`**; CodeQL; MSVC `/analyze`; the source-portability and documentation lints | `juce::juce_recommended_warning_flags` (CMakeLists.txt:504, 530, 574); `scripts/check-clang-warnings.py` in the `linux` job (the Linux release build); `scripts/check-portability.py`, `scripts/check-docs.py`, `scripts/check-citations.py`, `scripts/check-realtime.py` (audio-path bodies vs the `REALTIME_AUDIO_POLICY` forbidden list); GitHub code scanning |
+| **1** | Static analysis | Compiler warnings (recommended warning flags), **gated for first-party sources under Clang — no NEW warnings above `scripts/clang-warning-baseline.txt`**; CodeQL; MSVC `/analyze`; the source-portability and documentation lints | `juce::juce_recommended_warning_flags` (CMakeLists.txt:514, 540, 584); `scripts/check-clang-warnings.py` in the `linux` job (the Linux release build); `scripts/check-portability.py`, `scripts/check-docs.py`, `scripts/check-citations.py`, `scripts/check-realtime.py` (audio-path bodies vs the `REALTIME_AUDIO_POLICY` forbidden list); GitHub code scanning |
 | **1b** | Dynamic analysis | ASan + UBSan over both suites, then valgrind memcheck over both suites from an unsanitized build; **RealtimeSanitizer over the DSP suite** in its own lane (ADR-0029 — the driver forbids combining it with the others), behind a liveness canary, enforcing `REALTIME_AUDIO_POLICY` on the annotated audio entry point; the **allocation guard** compiled into the DSP suite (Test 38 — `operator new` + malloc-family counters armed only around `process()`, self-checked for liveness, and the tier that reaches MSVC where RTSan cannot); `MALLOC_PERTURB_=1` on the per-push Linux self-tests (glibc fills fresh heap with `0xFE`, freed heap with `0x01` — the value is complemented for allocations, so it is **not** the fill byte) | `sanitizers` and `realtime` jobs in `.github/workflows/build.yml` |
-| **2** | Unit / behaviour | Deterministic DSP assertions + state/parameter compatibility (schema shape, registry snapshot, raw-exact round-trip, legacy migrations, corrupt-state robustness, preset round-trip) + the wrapper audio path (real `processBlock`, own-FTZ denormal guard) | `tests/dsp_tests.cpp` (41 DSP tests + 1 A/B clamp guard) + `tests/state_tests.cpp` (15 state-compatibility tests, `AnamorphStateTests`); both suites additionally execute LTO-built in the `linux-lto-tests` job, so the assertions also run against shipped-class codegen |
+| **2** | Unit / behaviour | Deterministic DSP assertions + state/parameter compatibility (schema shape, registry snapshot, raw-exact round-trip, legacy migrations, corrupt-state robustness, preset round-trip) + the wrapper audio path (real `processBlock`, own-FTZ denormal guard) | `tests/dsp_tests.cpp` (47 DSP tests + 1 A/B clamp guard) + `tests/state_tests.cpp` (33 state-compatibility tests, `AnamorphStateTests`); both suites additionally execute LTO-built in the `linux-lto-tests` job, so the assertions also run against shipped-class codegen |
 | **3** | DSP validation | MS round-trip exact; no NaN/Inf/denormals across the algorithm × OS × feature matrix; latency==actual; bypass null; click-free transitions | `tests/dsp_tests.cpp` |
 | **4** | pluginval | **VST3 conformance on all three platforms, AU conformance on macOS** — and on macOS both formats are gated twice, once on Apple Silicon and once on **native Intel**; editor open/close under `xvfb` | `scripts/run-pluginval.sh <strictness> <mode> [vst3\|au]` |
 | **5** | Manual validation | Audio sound quality + GUI/OpenGL visual appearance (cannot be judged headlessly) | Load `.vst3` in a DAW |
 
 ## Hard release gate
 
-- **Level 2/3 self-tests must pass** (the headless gate, `scripts/run-tests.sh`): the 41 DSP
-  self-tests, the A/B state-restoration clamp guard, **and** the 15-test state-compatibility
+- **Level 2/3 self-tests must pass** (the headless gate, `scripts/run-tests.sh`): the 50 DSP
+  self-tests, the A/B state-restoration clamp guard, **and** the 35-test state-compatibility
   suite (`AnamorphStateTests` — both binaries are required; a missing one fails the gate, and an
   *ambiguous* one does too: exactly one match is required per binary, so a multi-config or stale
   build tree cannot let the gate report on a different configuration than the one just built).
@@ -72,7 +72,31 @@ blocking gate; `env.ANAMORPH_PLUGINVAL_STRICTNESS`; the macOS AU install + AU ga
    in `DSP_POLICY.md`).
 3. The pluginval **signal-only retry** is permitted (it works around a host-side JUCE/X11 crash,
    not a plugin defect) but never retries a real validation failure
-   (`run_one_pass`, `scripts/run-pluginval.sh:171-197`).
+   (`run_one_pass`, `scripts/run-pluginval.sh:172-198`).
+
+3a. **A state-mutation test must CYCLE, not just transition.** A single `A -> B` pass can leave a
+   defect invisible, because the first pass through a state path can be made correct by conditions
+   that will not exist on the second. Cover the return leg and the repeat:
+
+       A -> B -> C -> B          (does the cached view of B survive a detour?)
+       valid -> invalid -> valid -> invalid   (where malformed recovery is involved)
+
+   Apply to `setStateInformation`, preset loading, parameter migration and the restore paths.
+
+   **This rule was bought with two wrong answers, which is why it is a rule and not advice.** The
+   round-4 stale-latency defect (ER-STATE-11) was probed twice and REFUTED both times — the second
+   time with a working non-vacuity control — because a first restore happens to be correct by
+   accident: the live `InternalState` holds an int where a round-tripped blob holds a string, so
+   `ValueTree::setProperty` sees a difference, fires the oversample callback and recomputes what
+   the repair had silently left stale. Settle the property types with a second restore and the
+   coincidence is gone and the defect appears. The same shape sank an earlier round: ER-STATE-07's
+   first-restore result was correct for exactly the same reason. A test that exercises such a path
+   once is not testing it; it is testing the coincidence. State test 24 restores twice on purpose
+   and says so in place.
+
+   This is a coverage-DESIGN rule, not a mandate to add tests: it governs how a state-path test is
+   shaped when one is written, and it does not by itself require new tests for paths already
+   covered.
 4. **A checker must prove it is live before its silence is trusted.** Every lint in the pipeline
    ships a `--self-test`, and it runs **in the same job as the check it vouches for, ahead of that
    job's use of the checker** — never in a different job, a different workflow or an earlier run,

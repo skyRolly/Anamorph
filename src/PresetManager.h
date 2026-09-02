@@ -192,6 +192,14 @@ public:
 
 private:
     void applyDefaults();
+    // Parse a preset file into its sound tree, or return an INVALID tree if the
+    // file is not an Anamorph preset. Both loaders resolve through this, so the
+    // root-type rule cannot hold on one path and not the other (ER-STATE-24).
+    juce::ValueTree parseSoundFile (const juce::File&) const;
+    // PRECONDITION: `state` has already been accepted by parseSoundFile. This
+    // function cannot tell a foreign tree from ours -- it looks parameters up by
+    // the `id` PROPERTY, which matches under any root -- so the type check has
+    // to happen before it, not inside it.
     void applySoundTree (const juce::ValueTree& state);
     void resetSolo();                                // force the per-band solo off (#9)
     juce::String soundSig() const;

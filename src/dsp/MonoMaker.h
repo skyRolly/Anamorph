@@ -31,6 +31,10 @@ public:
     void prepare (double sampleRate, int maxBlock);
     void reset();
 
+    // See HaasProcessor::snapToTargets -- same contract, same reason. prepare()
+    // calls this at its end (ER-DSP-09).
+    void snapToTargets() noexcept;
+
     // Clamp Nyquist-safe (defensive, consistent with the multiband crossovers): the
     // param range already tops out at 500 Hz, but never feed the LR filter a cutoff
     // that could approach Nyquist and destabilise its coefficients (0.8.2).

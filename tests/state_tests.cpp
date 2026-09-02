@@ -41,14 +41,19 @@
 // ============================================================================
 
 #include "PluginProcessor.h"
-#include "PluginEditor.h"   // TooltipSource, and the editor lifetime test at the end
+#include "PluginEditor.h"
+#include "gui/PhysicalMouseButtons.h"   // TooltipSource, and the editor lifetime test at the end
 
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <atomic>
 #include <cstring>
+#include <thread>
 #include <random>
 #include <vector>
+#include <functional>
+#include <limits>
 
 namespace
 {
@@ -144,6 +149,21 @@ namespace
     {
         if (auto* param = p.getAPVTS().getParameter (id))
             param->setValueNotifyingHost (raw);
+    }
+
+    // setRaw's "raw" is the NORMALISED 0..1 value (getValue/setValueNotifyingHost).
+    // This is the denormalised sibling: pass the value in the parameter's own units
+    // (28 ms, 400 Hz, choice index 2) and let the range do the conversion.
+    void setPlain (AnamorphAudioProcessor& p, const char* id, float plain)
+    {
+        if (auto* param = dynamic_cast<juce::RangedAudioParameter*> (p.getAPVTS().getParameter (id)))
+            param->setValueNotifyingHost (param->convertTo0to1 (plain));
+    }
+    float plainOf (AnamorphAudioProcessor& p, const char* id)
+    {
+        if (auto* param = dynamic_cast<juce::RangedAudioParameter*> (p.getAPVTS().getParameter (id)))
+            return param->convertFrom0to1 (param->getValue());
+        return -1.0f;
     }
 
     // Deterministic per-index raw value that lands BETWEEN discrete steps for
@@ -484,10 +504,44 @@ static void testLegacyV02BareApvts()
     check (juce::exactlyEqual (chorusRate->getValue(), chorusRate->getDefaultValue()),
            "param absent from legacy session stays at default");
 
+    // ...and on a REUSED live instance the same rule must hold by RESET, not by
+    // luck: the fresh-instance check above is vacuously green, because a
+    // just-constructed processor is already at defaults. SESSION_COMPATIBILITY_POLICY
+    // rule 2 and SERIALIZATION_REGISTRY ("Default: per-parameter defaults") record the
+    // semantics this asserts. (Round 1 read the restore as SKIPPING absent nodes and
+    // added a default branch to reassertParameters for it; round 2 measured
+    // apvts.replaceState on its own -- --latency-restore-probe step 0b -- and found it
+    // already resets them, so the branch is a backstop and this check covers both.
+    // The assertion is the contract either way, which is why it stands unchanged.)
+    {
+        auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p.getAPVTS().getParameter ("chorusRate"));
+        rp->setValueNotifyingHost (1.0f);            // the "previous project" leaves a non-default value
+        if (applyXmlFixture (p, "legacy_v0_2_bare_apvts.xml"))
+        {
+            check (juce::exactlyEqual (rp->getValue(), rp->getDefaultValue()),
+                   "param absent from legacy session RESETS to default on a reused live instance");
+            checkNear ((double) rawOf (p, "chorusRate"),
+                       (double) rp->getDefaultValue(), 1.0e-6,
+                       "...and the DSP atomic follows the reset");
+        }
+    }
+
     // The bare path predates InternalState AND its legacy APVTS params: the
     // host-hidden settings stay at their defaults.
-    check ((int) p.getInternal().copyState()["int_oversample"] == 1,
-           "InternalState stays default for a v0.2 session");
+    // ...and on a REUSED live instance that must hold by RESET, not by luck. This
+    // assertion used to be checked on an InternalState nobody had touched, so it
+    // passed because the value had never left its default -- the same vacuity
+    // ER-TST-01 found in the DSP matrices (round 1). Dirty it first, exactly as
+    // the parameter half above dirties chorusRate (ER-TST-05 / ER-STATE-08).
+    p.getInternal().oversampleValue().setValue (3);   // "previous project" = 4x
+    p.getInternal().uiScaleValue().setValue (5);      // ...and a non-default UI scale
+    if (applyXmlFixture (p, "legacy_v0_2_bare_apvts.xml"))
+    {
+        check ((int) p.getInternal().copyState()["int_oversample"] == 1,
+               "InternalState RESETS to default for a v0.2 session on a reused instance");
+        check ((int) p.getInternal().copyState()["int_uiScale"] == 3,
+               "...and every host-hidden setting resets, not just the one that is read back");
+    }
     checkStr (p.getPresets().currentName(), "Default", "preset name falls back to Default");
     check (! p.getPresets().isDirty(), "restored v0.2 state adopts a clean baseline");
 }
@@ -676,12 +730,22 @@ static void testCorruptAndForeignState()
 
     // Out-of-range A/B active (hand-edited / forward-version blob) clamps —
     // the end-to-end guard over anamorph::clampAbSlotIndex.
+    //
+    // The root must carry a REAL sound child. It used to be built from an `AB`
+    // node alone, which since ER-STATE-15 is not a restore at all (a root with no
+    // `ANAMORPH` child restores no sound, so nothing below it is adopted) — so the
+    // clamp was no longer reached and this guard would have passed vacuously or
+    // failed for the wrong reason. Building the root from a genuine save keeps the
+    // clamp on the path a real out-of-range blob takes.
     auto restoreWithActive = [&p] (const char* active)
     {
-        juce::XmlElement root ("AnamorphRoot");
-        auto* ab = root.createNewChildElement ("AB");
-        ab->setAttribute ("active", active);
-        const auto blob = BlobCodec::wrap (root);
+        juce::MemoryBlock live;
+        p.getStateInformation (live);
+        auto xml = BlobCodec::unwrap (live);
+        auto root = juce::ValueTree::fromXml (*xml);
+        auto ab = root.getChildWithName ("AB");
+        ab.setProperty ("active", juce::String (active), nullptr);
+        const auto blob = BlobCodec::wrap (*root.createXml());
         p.setStateInformation (blob.getData(), (int) blob.getSize());
         return p.abActiveSlot();
     };
@@ -720,6 +784,41 @@ static void testCorruptAndForeignState()
         auto resaved = stateTreeOf (p);
         auto slotA = juce::ValueTree::fromXml (resaved.getChildWithName ("AB")["slotAParams"].toString());
         check (slotA.isValid(), "corrupt slot XML recovers to a valid slot on re-save");
+    }
+
+    // Parsable-but-WRONG-TYPED slot payload (ER-STATE-02): must get the same
+    // recovery as the unparsable one (slot invalid -> re-seeded), never applied.
+    // Before the readSlot type guard, applying such a slot replaceState()'d the
+    // foreign type into the live APVTS; every later save then wrote a
+    // foreign-typed params child that a fresh instance's restore silently
+    // skipped -- delayed, silent loss of all parameters.
+    {
+        AnamorphAudioProcessor q;
+        q.prepareToPlay (48000.0, 512);
+        juce::XmlElement root ("AnamorphRoot");
+        auto* an  = root.createNewChildElement ("ANAMORPH");
+        auto* prm = an->createNewChildElement ("PARAM");
+        prm->setAttribute ("id", "drive");
+        prm->setAttribute ("value", 12.0);
+        auto* ab = root.createNewChildElement ("AB");
+        ab->setAttribute ("active", 0);
+        ab->setAttribute ("slotBParams", "<Foo/>");
+        const auto blob = BlobCodec::wrap (root);
+        q.setStateInformation (blob.getData(), (int) blob.getSize());
+
+        q.abSwitchTo (1); // the wrong-typed slot must have been re-seeded, not adopted
+
+        auto resaved = stateTreeOf (q);
+        check (resaved.getChildWithName ("ANAMORPH").isValid(),
+               "APVTS keeps its ANAMORPH type after applying a wrong-typed slot");
+
+        AnamorphAudioProcessor fresh;
+        fresh.prepareToPlay (48000.0, 512);
+        juce::MemoryBlock mb;
+        q.getStateInformation (mb);
+        fresh.setStateInformation (mb.getData(), (int) mb.getSize());
+        checkNear ((double) rawOf (fresh, "drive"), 0.5, 1.0e-6,
+                   "a session saved after the wrong-typed slot apply still restores its parameters");
     }
 }
 
@@ -1675,9 +1774,4889 @@ static void testEditorConstructDestroy()
 #endif
 }
 
+// ---------------------------------------------------------------------------
+// 17. A NON-FINITE value in a session must never become parameter state.
+//
+//     `nan` is ordinary text to JUCE's number parser (juce_CharacterFunctions.h
+//     accepts it), so a hand-edited or corrupted session can carry
+//     <PARAM id="width" value="nan"/>. Nothing on the restore path used to
+//     reject it: apvts.replaceState() itself pushes @value through
+//     setDenormalisedValue -> setValueNotifyingHost, whose approximatelyEqual
+//     guard is false for NaN, and reassertParameters' own write gate
+//     (|norm - current| > 1e-6) is likewise false for NaN, so it neither
+//     injected nor repaired it. The preset path (PresetManager::applySoundTree)
+//     had no gate at all.
+//
+//     The consequence is not cosmetic. A NaN continuous parameter latches its
+//     smoother target, every output sample goes non-finite, and ADR-0009's
+//     sample-level self-heal then zeroes the block and resets the engine on
+//     EVERY block: permanent silence, with a plausible-looking UI. It also
+//     round-trips -- getStateInformation writes `nan` straight back out -- so
+//     reopening the project reproduces it.
+static void testNonFiniteParameterInStateIsRejected()
+{
+    std::printf ("State test 17: a non-finite value in a session is rejected, not adopted\n");
+
+    // Author a normal session, then poison one parameter's serialized value.
+    juce::MemoryBlock poisoned;
+    {
+        AnamorphAudioProcessor authoring;
+        authoring.prepareToPlay (48000.0, 256);
+        setRaw (authoring, pid::width, 0.8f);
+        juce::MemoryBlock clean;
+        authoring.getStateInformation (clean);
+
+        auto xml = BlobCodec::unwrap (clean);
+        check (xml != nullptr, "authored session decodes for poisoning");
+        if (xml == nullptr) return;
+
+        bool poisonedOne = false;
+        if (auto* params = xml->getChildByName ("ANAMORPH"))
+            for (auto* param : params->getChildIterator())
+                if (param->getStringAttribute ("id") == pid::width)
+                {
+                    param->setAttribute ("value", "nan");
+                    param->removeAttribute ("raw"); // the exact-raw path is separately covered below
+                    poisonedOne = true;
+                }
+        check (poisonedOne, "the session carries a width PARAM to poison");
+        poisoned = BlobCodec::wrap (*xml);
+    }
+
+    AnamorphAudioProcessor proc;
+    proc.setStateInformation (poisoned.getData(), (int) poisoned.getSize());
+
+    const float restored = rawOf (proc, pid::width);
+    std::printf ("  width after restoring value=\"nan\": %f\n", restored);
+    check (std::isfinite (restored), "a non-finite serialized value does not become parameter state");
+
+    // ...and the audio path stays alive: the failure mode this guards is not a
+    // wrong number, it is permanent silence.
+    proc.prepareToPlay (48000.0, 256);
+    juce::AudioBuffer<float> buf (2, 256);
+    juce::MidiBuffer midi;
+    std::mt19937 rng (13579);
+    std::uniform_real_distribution<float> dist (-0.7f, 0.7f);
+    double peak = 0.0;
+    bool allFinite = true;
+    for (int nb = 0; nb < 8; ++nb)
+    {
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = 0; i < 256; ++i)
+                buf.setSample (ch, i, dist (rng));
+        proc.processBlock (buf, midi);
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = 0; i < 256; ++i)
+            {
+                const float s = buf.getSample (ch, i);
+                if (! std::isfinite (s)) allFinite = false;
+                peak = juce::jmax (peak, std::abs ((double) s));
+            }
+    }
+    std::printf ("  output peak over 8 blocks: %.6f\n", peak);
+    check (allFinite, "output stays finite after a poisoned restore");
+    check (peak > 0.01, "the plug-in still passes audio (a NaN parameter used to silence it)");
+
+    // The same poison in a PRESET FILE takes a different code path
+    // (PresetManager::applySoundTree), which had no gate of its own. Driven
+    // end to end through the real loader, on a real file.
+    {
+        AnamorphAudioProcessor viaPreset;
+        viaPreset.prepareToPlay (48000.0, 256);
+        auto& pm = viaPreset.getPresets();
+
+        const auto presetFile = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                                    .getChildFile ("anamorph_nonfinite_probe.anamorph");
+        presetFile.deleteFile();
+
+        auto tree = juce::ValueTree ("ANAMORPH");
+        auto node = juce::ValueTree ("PARAM");
+        node.setProperty ("id", pid::width, nullptr);
+        node.setProperty ("value", "nan", nullptr);
+        tree.appendChild (node, nullptr);
+        if (auto xml = tree.createXml())
+            check (xml->writeTo (presetFile), "poisoned preset file written");
+
+        check (pm.loadFile (presetFile), "the poisoned preset file loads (it is well-formed XML)");
+        std::printf ("  width after loading a preset with value=\"nan\": %f\n",
+                     rawOf (viaPreset, pid::width));
+        check (std::isfinite (rawOf (viaPreset, pid::width)),
+               "a non-finite value in a preset file does not become parameter state");
+        presetFile.deleteFile();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 18. A PARAM node that carries NO `value` means "not in this file", i.e. the
+//     parameter default -- not zero.
+//
+//     Same surface as test 17 and the same reason it is reachable: a preset is
+//     user-editable text, and a truncated write or a hand edit can leave
+//     <PARAM id="width"/> behind. applySoundTree keyed its "did the file carry
+//     this parameter?" question off child.isValid() alone, so a value-less node
+//     read as `var()` -> (double) 0.0 -> convertTo0to1(0.0): the range MINIMUM,
+//     silently, for every parameter whose node lost its value.
+//
+//     Width is the sharp case -- range 0..2 with default 1.0 -- so the failure
+//     is not a nudge but a full mono collapse, applied without any error the
+//     user could see. The rule this restores is the one the surrounding code
+//     already states for a missing child, and the one readSlot follows for the
+//     A/B slots: absent means default.
+static void testValuelessParamMeansDefault()
+{
+    std::printf ("State test 18: a PARAM with no value means default, not zero\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 256);
+    auto& pm = proc.getPresets();
+
+    // Normalised throughout: rawOf/setRaw speak AudioProcessorParameter's 0..1.
+    // Width's default is the range MIDPOINT (0..2, default 1), which is what
+    // makes it a clean probe -- 0.0 is a value the file could plausibly mean,
+    // and it is nowhere near the default.
+    auto* widthParam = proc.getAPVTS().getParameter (pid::width);
+    check (widthParam != nullptr, "width parameter exists");
+    if (widthParam == nullptr) return;
+    const float expected = widthParam->getDefaultValue();
+
+    // Move it away from the default first, so "came back to default" cannot be
+    // confused with "was never touched".
+    setRaw (proc, pid::width, 0.95f);
+
+    const auto presetFile = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                                .getChildFile ("anamorph_valueless_probe.anamorph");
+    presetFile.deleteFile();
+
+    auto tree = juce::ValueTree ("ANAMORPH");
+    auto node = juce::ValueTree ("PARAM");
+    node.setProperty ("id", pid::width, nullptr); // id but NO value -- the truncated-write shape
+    tree.appendChild (node, nullptr);
+    if (auto xml = tree.createXml())
+        check (xml->writeTo (presetFile), "value-less preset file written");
+
+    check (pm.loadFile (presetFile), "the value-less preset file loads (it is well-formed XML)");
+    const float after = rawOf (proc, pid::width);
+    std::printf ("  width after loading a preset with a value-less PARAM: %f\n", after);
+    check (juce::approximatelyEqual (after, expected),
+           "a value-less PARAM restores the default, not the range minimum");
+    presetFile.deleteFile();
+}
+
+// ---------------------------------------------------------------------------
+// 16. FIRST ACTIVATION: a session the host restored BEFORE it activated the
+//     plug-in must be audible correctly from the very first sample.
+//
+//     This is the ordinary VST3/AU order -- the host creates the instance,
+//     hands it the project's state, and only then calls setActive /
+//     prepareToPlay -- and it is the one order no other test drove. Until the
+//     round-2 fix, prepareToPlay called engine.prepare() BEFORE pushing the
+//     restored parameters in, so the engine settled on EngineParameters'
+//     defaults and then RAMPED to the restored values over the first ~20 ms.
+//     A restored Mix=0 session therefore opened WET for that moment, which is
+//     the DSP_POLICY invariant-7 null failing exactly where nobody was looking.
+//
+//     WHAT MAKES IT UNIVERSAL, and what this test actually measures: the
+//     engine's own struct defaults and the snapshot the wrapper builds from the
+//     parameters disagree on a DISCRETE field even for a brand-new instance.
+//     `dimMode` is the always-active one: the APVTS choice defaults to index 1
+//     and ParamPointers::toEngine maps choice->mode as index + 1, so the very
+//     first snapshot says 2 while EngineParameters::dimMode is 1. (In ADVANCED
+//     sessions `mbEnable` adds a second: APVTS default true, struct default
+//     false. The rest of the Advanced block is gated off in Simple mode and
+//     keeps the struct defaults by design.) A discrete difference is exactly
+//     what setParameters' click-free switch machine reacts to: an ordinary
+//     duck -- ~6 ms fade to SILENCE, adopt at the bottom, ~28 ms fade back in.
+//     That fired on EVERY activation, restored session or not, so a plug-in
+//     newly inserted on a playing track dipped for ~34 ms before it settled.
+//
+//     The assertion is therefore about level, not bit-identity (the default
+//     chain is phase-shifted by the multiband allpasses, so it is deliberately
+//     NOT a sample-for-sample null): a steady sine in must come out at steady
+//     level from the start. A duck shows up as a near-zero block, which no
+//     tolerance can hide. Driven through the REAL wrapper, since the defect
+//     lived in the wrapper's call order.
+static void testFirstActivationUsesRestoredState()
+{
+    std::printf ("State test 16: activation does not duck (engine primed with the live state)\n");
+
+    constexpr int    kBlock = 256;
+    constexpr double kSr    = 48000.0;
+
+    // Per-block RMS of a steady 1 kHz sine driven through a freshly activated
+    // processor. Block 0 is reported but excluded from the verdict: the
+    // crossover filters legitimately charge from rest there, which is a
+    // startup transient of the filters, not a duck of the output stage.
+    auto earlyLevelRatio = [&] (AnamorphAudioProcessor& proc, const char* label)
+    {
+        proc.prepareToPlay (kSr, kBlock);
+        juce::MidiBuffer midi;
+        double phase = 0.0;
+        const double inc = 2.0 * 3.14159265358979 * 1000.0 / kSr;
+
+        std::vector<double> rms;
+        for (int nb = 0; nb < 40; ++nb)
+        {
+            juce::AudioBuffer<float> buf (2, kBlock);
+            for (int i = 0; i < kBlock; ++i)
+            {
+                const float s = 0.5f * (float) std::sin (phase); phase += inc;
+                buf.setSample (0, i, s);
+                buf.setSample (1, i, s);
+            }
+            proc.processBlock (buf, midi);
+            double sq = 0.0;
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = 0; i < kBlock; ++i)
+                    sq += (double) buf.getSample (ch, i) * (double) buf.getSample (ch, i);
+            rms.push_back (std::sqrt (sq / (2.0 * kBlock)));
+        }
+
+        const double settled = rms.back();
+        double minEarly = rms[1];
+        for (int nb = 1; nb < 12; ++nb) minEarly = juce::jmin (minEarly, rms[(size_t) nb]);
+        std::printf ("  %s: block0 %.4f, min(blocks 1-11) %.4f, settled %.4f\n",
+                     label, rms[0], minEarly, settled);
+        const double norm = settled > 1.0e-6 ? settled : 1.0;
+        return std::pair<double, double> { rms[0] / norm, minEarly / norm };
+    };
+
+    // (a) A plug-in newly inserted on a playing track -- no restore at all.
+    {
+        AnamorphAudioProcessor fresh;
+        const auto [block0, minEarly] = earlyLevelRatio (fresh, "fresh instance ");
+        juce::ignoreUnused (block0); // block 0 charges the default multiband filters
+        check (minEarly > 0.85, "a newly activated instance does not duck its first ~60 ms");
+    }
+
+    // (b) The reviewed case: the host restores a NON-DEFAULT session, then
+    //     activates. The widening amount stays at 0 ON PURPOSE -- an engaged
+    //     delay-based algorithm fills its lines from silence over the first
+    //     tens of ms, which is a real and correct startup transient of the
+    //     effect and would mask the defect being measured. What is restored
+    //     instead is one DISCRETE field the engine's defaults disagree with
+    //     (algorithm: Dim-D, not Velvet -- so the switch machine would duck)
+    //     and one CONTINUOUS field with an unmistakable level signature
+    //     (Output Gain -12 dB -- so an un-primed smoother would open ~4x too
+    //     loud and ramp down). One scenario, both halves of the defect.
+    {
+        juce::MemoryBlock project;
+        {
+            AnamorphAudioProcessor authoring;
+            authoring.prepareToPlay (kSr, kBlock);
+            // ADVANCED on: ParamPointers::toEngine gates the whole input /
+            // multiband / output block behind it, so in Simple mode the engine
+            // would keep its struct defaults for Output Gain and the rest and
+            // this scenario would assert nothing.
+            setRaw (authoring, pid::advancedMode, 1.0f);
+            setRaw (authoring, pid::mbEnable,     0.0f);  // off; APVTS default is on
+            setRaw (authoring, pid::algorithm,    1.0f);  // Dim-D, not the default Velvet
+            setRaw (authoring, pid::outputGain,   0.25f); // -12 dB of the -24..+24 range
+            authoring.getStateInformation (project);
+        }
+
+        AnamorphAudioProcessor proc;
+        proc.setStateInformation (project.getData(), (int) project.getSize()); // restore FIRST
+        // Reported so a failure separates "the restore did not arrive" from
+        // "the restore arrived and activation did not honour it".
+        std::printf ("  restored raw: outputGain %.4f algorithm %.4f mbEnable %.4f\n",
+                     rawOf (proc, pid::outputGain), rawOf (proc, pid::algorithm),
+                     rawOf (proc, pid::mbEnable));
+        const auto [block0, minEarly] = earlyLevelRatio (proc, "restored session");
+        check (minEarly > 0.85, "a restored session is at level from the first blocks, not ducked in");
+        // The continuous half: with multiband off and the wet path parked there is
+        // no filter charge and no delay fill, so the VERY first block must already
+        // carry the restored -12 dB Output Gain. An un-primed smoother starts at
+        // unity and ramps down, which reads here as a block0 roughly 4x settled.
+        check (block0 > 0.9 && block0 < 1.1,
+               "the first block already carries the restored Output Gain (no ramp from unity)");
+        check (proc.getLatencySamples() == 0, "restored session reports zero latency (oversampling off)");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// RISK-007 probe: are host state calls on a NON-MAIN thread actually racing the
+// message thread's reads?  (engineering-review R2-2, evidence for decision D-2)
+//
+// NOT part of the suite and never run by it: this deliberately drives the exact
+// interaction the risk describes, so if the race is real the probe's own
+// execution is undefined behaviour. It exists to be run UNDER ThreadSanitizer,
+// where the question has a mechanical answer, and only when asked for by name:
+//     AnamorphStateTests --state-thread-probe
+//
+// Thread A models a host that calls setState/getState off its UI thread (the
+// macOS AU autosave shape -- no AU spec forbids it, and the JUCE AU wrapper
+// passes both straight through on the caller's thread). The MAIN thread models
+// what the open editor's 24 Hz timerCallback does every tick: refreshPresetDisplay
+// reads PresetManager::currentName()/isDirty(), then pollUndoCoalesce() runs and
+// canUndo()/canRedo() read the A/B undo stacks (src/PluginEditor.cpp
+// timerCallback + refreshPresetDisplay).
+//
+// A TSan report names the racing pair; SILENCE is equally informative, and is
+// the only thing that would refute the finding.
+static int runStateThreadProbe()
+{
+    std::printf ("RISK-007 probe: host state thread vs message-thread reads\n");
+    std::printf ("  (run under ThreadSanitizer; a report here is the finding, silence refutes it)\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+
+    // Give the probe real metadata to race over: a named preset, then an edit so
+    // the dirty baseline and the undo stack are both populated.
+    proc.getPresets().load (1);
+    setRaw (proc, "width", 0.42f);
+    proc.pollUndoCoalesce();
+
+    juce::MemoryBlock blob;
+    proc.getStateInformation (blob);
+
+    constexpr int kIterations = 400;
+    std::atomic<bool> go { false };
+
+    std::thread hostStateThread ([&]
+    {
+        while (! go.load (std::memory_order_acquire)) { /* spin to widen the window */ }
+        for (int i = 0; i < kIterations; ++i)
+        {
+            proc.setStateInformation (blob.getData(), (int) blob.getSize());
+            juce::MemoryBlock out;
+            proc.getStateInformation (out);
+        }
+    });
+
+    go.store (true, std::memory_order_release);
+    for (int i = 0; i < kIterations; ++i)
+    {
+        // Exactly the editor tick's reads, in the editor's order.
+        auto& pm = proc.getPresets();
+        const juce::String liveName = pm.currentName();
+        const bool liveDirty = pm.isDirty();
+        proc.pollUndoCoalesce();
+        const bool u = proc.canUndo(), r = proc.canRedo();
+        const int  slot = proc.abActiveSlot();
+        // Consume the reads so no compiler can delete them.
+        if (liveName.isEmpty() && liveDirty && u && r && slot < 0)
+            std::printf ("  (unreachable, keeps the reads live)\n");
+    }
+
+    hostStateThread.join();
+    std::printf ("  probe finished: %d state-call iterations against %d editor ticks\n",
+                 kIterations, kIterations);
+    std::printf ("  verdict comes from the sanitizer, not from this exit code\n");
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
+// ER-STATE-07 probe: does the reported latency follow a restore that moved
+// Drive or Algorithm through the ABSENT-node (default) path?
+//
+// MEASURES, does not assert. The reported latency is an
+// ARCHITECTURE_REVIEW_GATE hard-stop category, so this probe exists to put a
+// number on the finding for the maintainer decision -- it must not encode
+// either the current behaviour or a proposed one as an expectation.
+//
+// The mechanism: for a PARAM node PRESENT in the blob, apvts.replaceState()
+// drives setValueNotifyingHost, whose listener chain reaches
+// AnamorphAudioProcessor::parameterChanged -> updateLatency(). For an ABSENT
+// node, reassertParameters' default branch applies the value with setValue()
+// plus a direct atomic store, neither of which notifies -- so nothing
+// re-reports. predictLatency short-circuits to 0 unless oversampling is on, so
+// the probe turns oversampling on first; it also holds oversampling EQUAL
+// across the two states, because a changed oversampling fires InternalState's
+// own callback and would mask the gap.
+static int runLatencyRestoreProbe()
+{
+    std::printf ("ER-STATE-07 probe: reported latency after an absent-node restore\n");
+
+    // Step 0 -- isolate the MECHANISM, with no state machinery in the way: does a
+    // bare setValue() (what reassertParameters' notifyHost=false path uses) reach
+    // the apvts.addParameterListener chain that ends in updateLatency()? A restore
+    // has too many other things in it to answer that on its own.
+    {
+        AnamorphAudioProcessor iso;
+        iso.getInternal().oversampleValue().setValue (2); // 2x -- predictLatency is 0 when OS is Off
+        iso.prepareToPlay (48000.0, 256);
+        setRaw (iso, pid::drive, 0.6f);
+        const int withDrive = iso.getLatencySamples();
+        if (auto* rp = iso.getAPVTS().getParameter (pid::drive))
+            rp->setValue (0.0f); // NOT setValueNotifyingHost
+        std::printf ("  step 0: latency %d with drive, %d after a bare setValue(0) -> setValue %s\n",
+                     withDrive, iso.getLatencySamples(),
+                     iso.getLatencySamples() == withDrive ? "does NOT re-report"
+                                                          : "DOES re-report");
+    }
+
+    // Step 0b -- what does apvts.replaceState() ALONE do to a parameter whose PARAM
+    // node is absent from the new tree? This is ER-STATE-01's premise, and nothing
+    // short of running it answers it: reassertParameters' default branch would
+    // otherwise hide the answer behind its own (identical) correction.
+    {
+        AnamorphAudioProcessor iso;
+        iso.getInternal().oversampleValue().setValue (2);
+        iso.prepareToPlay (48000.0, 256);
+        setRaw (iso, pid::drive, 0.6f);
+        const int latencyWithDrive = iso.getLatencySamples();
+
+        auto stripped = iso.getAPVTS().copyState();
+        stripped.removeChild (stripped.getChildWithProperty ("id", pid::drive), nullptr);
+        iso.getAPVTS().replaceState (stripped); // NO reassertParameters anywhere near this
+
+        std::printf ("  step 0b: replaceState with no drive node -> drive raw %.3f (default %.3f),"
+                     " latency %d -> %d\n",
+                     rawOf (iso, pid::drive),
+                     iso.getAPVTS().getParameter (pid::drive)->getDefaultValue(),
+                     latencyWithDrive, iso.getLatencySamples());
+    }
+
+    // Author a session at Drive > 0 with oversampling ON, then delete the drive
+    // PARAM node -- the partial-blob shape reassertParameters' default branch exists for.
+    juce::MemoryBlock partial;
+    {
+        AnamorphAudioProcessor authoring;
+        authoring.getInternal().oversampleValue().setValue (2); // 1-based ComboBox id: 2x
+        authoring.prepareToPlay (48000.0, 256);
+        setRaw (authoring, pid::drive, 0.6f);
+
+        juce::MemoryBlock whole;
+        authoring.getStateInformation (whole);
+        auto xml = BlobCodec::unwrap (whole);
+        if (xml == nullptr) { std::printf ("  authored session did not decode\n"); return 1; }
+
+        bool removedOne = false;
+        if (auto* paramsXml = xml->getChildByName ("ANAMORPH"))
+            if (auto* driveNode = paramsXml->getChildByAttribute ("id", pid::drive))
+            {
+                paramsXml->removeChildElement (driveNode, true);
+                removedOne = true;
+            }
+        if (! removedOne) { std::printf ("  no drive PARAM node to remove\n"); return 1; }
+        partial = BlobCodec::wrap (*xml);
+        std::printf ("  authored: drive raw %.3f, oversampling 2x, drive PARAM node removed\n",
+                     rawOf (authoring, pid::drive));
+    }
+
+    AnamorphAudioProcessor live;
+    live.getInternal().oversampleValue().setValue (2); // SAME as the blob: no callback to mask the gap
+    live.prepareToPlay (48000.0, 256);
+    setRaw (live, pid::drive, 0.6f);
+    const int before = live.getLatencySamples();
+
+    live.setStateInformation (partial.getData(), (int) partial.getSize());
+
+    const int reported = live.getLatencySamples();
+    // updateLatency() is exactly what prepareToPlay ends with, so a re-prepare
+    // yields the number the restored state is entitled to, through public API only.
+    live.prepareToPlay (48000.0, 256);
+    const int predicted = live.getLatencySamples();
+    std::printf ("  drive raw after restore: %.3f (default branch applied)\n", rawOf (live, pid::drive));
+    std::printf ("  latency before restore: %d\n", before);
+    std::printf ("  latency reported to the host after restore: %d\n", reported);
+    std::printf ("  latency the restored state actually predicts: %d\n", predicted);
+    std::printf ("  %s\n", reported == predicted
+                               ? "scenario A: the report followed the restore"
+                               : "scenario A: the host is told a latency the restored state does not have");
+
+    // Scenario B -- the same restore, but on an instance whose InternalState has
+    // ALREADY been through one restore. Step 0 showed the parameter write itself
+    // cannot re-report, so anything that corrected scenario A came from elsewhere in
+    // setStateInformation: InternalState's oversample callback. On a FIRST restore
+    // the live tree holds an int and the blob a round-tripped string, so
+    // ValueTree::setProperty sees a difference and fires the callback even though the
+    // oversampling did not change. Restoring twice removes that type mismatch, which
+    // is also the ordinary case -- a host reloading project after project.
+    AnamorphAudioProcessor twice;
+    twice.getInternal().oversampleValue().setValue (2);
+    twice.prepareToPlay (48000.0, 256);
+    twice.setStateInformation (partial.getData(), (int) partial.getSize()); // settle the property TYPES
+    setRaw (twice, pid::drive, 0.6f);                                       // back to a latency-bearing state
+    const int beforeB = twice.getLatencySamples();
+    twice.setStateInformation (partial.getData(), (int) partial.getSize());
+    const int reportedB = twice.getLatencySamples();
+    twice.prepareToPlay (48000.0, 256);
+    const int predictedB = twice.getLatencySamples();
+    std::printf ("  scenario B (second restore): before %d, reported %d, actually predicts %d\n",
+                 beforeB, reportedB, predictedB);
+    std::printf ("  %s\n", reportedB == predictedB
+                               ? "REFUTED: the report follows the restore on both paths"
+                               : "CONFIRMED: the host is told a latency the restored state does not have");
+    std::printf ("  a re-prepare corrects it; this is the restore-into-a-live-instance case\n");
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
+// 19. A malformed serialized value means the parameter DEFAULT -- on BOTH paths.
+//
+//     Round 2 closed two special cases of this (an absent node, and `value="nan"`
+//     on an UNSKEWED range). Round 3 measured the rest of the space and found the
+//     guard was in the wrong place: it tested the value AFTER
+//     RangedAudioParameter::convertTo0to1, and that conversion CLAMPS, so every
+//     infinity arrived at std::isfinite already laundered into a finite range
+//     ENDPOINT. Measured on the pre-fix build, through the real loaders:
+//
+//        value="inf" / "1e39" / "1e400"  -> normalised 1.0  (range MAXIMUM)
+//        value="-inf" / "-1e400"         -> normalised 0.0  (range MINIMUM)
+//        value="abc" / "" / "0x10"       -> normalised 0.0  (range MINIMUM)
+//        value="nan" on a SKEWED range   -> normalised 1.0  (range MAXIMUM)
+//
+//     For Width (0..2, default 1.0) the first row is a hard-wide image and the
+//     third a mono collapse, from a file the user cannot see is wrong. The guard
+//     now runs on the INPUT (anamorph::SerializedNumber.h) and both restore paths
+//     share the predicate, so a malformed value cannot mean one thing in a preset
+//     and another in a session.
+static void testMalformedValuesRestoreDefaults()
+{
+    std::printf ("State test 19: a malformed serialized value restores the default, both paths\n");
+
+    const char* poisons[] = { "abc", "", "0x10", "nan", "inf", "-inf", "1e39", "1e400", "-1e400" };
+    // Chosen to span the shapes that behaved DIFFERENTLY before the fix: a linear
+    // range, a skewed one (where NaN reached the maximum), and the two custom
+    // RangedAudioParameter subclasses.
+    const char* ids[] = { pid::width, pid::monoMakerFreq, pid::chorusRate, pid::algorithm };
+
+    for (const char* id : ids)
+        for (const char* poison : poisons)
+        {
+            AnamorphAudioProcessor proc;
+            proc.prepareToPlay (48000.0, 256);
+            auto* rp = proc.getAPVTS().getParameter (id);
+            if (rp == nullptr) { check (false, "probe parameter exists"); continue; }
+            const float def = rp->getDefaultValue();
+
+            // Move it OFF the default first: "landed on the default" must not be
+            // confusable with "was never touched" -- the vacuity that hid ER-STATE-08.
+            rp->setValueNotifyingHost (def > 0.5f ? 0.1f : 0.9f);
+
+            const auto f = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                               .getChildFile ("anamorph_malformed_probe.anamorph");
+            f.deleteFile();
+            auto tree = juce::ValueTree ("ANAMORPH");
+            auto node = juce::ValueTree ("PARAM");
+            node.setProperty ("id", id, nullptr);
+            node.setProperty ("value", juce::String (poison), nullptr);
+            tree.appendChild (node, nullptr);
+            if (auto xml = tree.createXml()) xml->writeTo (f);
+            const bool loaded = proc.getPresets().loadFile (f);
+            f.deleteFile();
+
+            check (loaded, "the malformed preset file loads (it is well-formed XML)");
+            check (juce::approximatelyEqual (rp->getValue(), def),
+                   "preset path: a malformed value restores the parameter default");
+        }
+
+    // The SESSION path must give the same answers, or the two drift apart again.
+    for (const char* poison : { "abc", "", "0x10", "nan", "inf", "1e400", "-1e400" })
+    {
+        juce::MemoryBlock poisoned;
+        {
+            AnamorphAudioProcessor authoring;
+            authoring.prepareToPlay (48000.0, 256);
+            juce::MemoryBlock clean;
+            authoring.getStateInformation (clean);
+            auto xml = BlobCodec::unwrap (clean);
+            if (xml == nullptr) { check (false, "authored session decodes"); continue; }
+            if (auto* params = xml->getChildByName ("ANAMORPH"))
+                if (auto* w = params->getChildByAttribute ("id", pid::width))
+                {
+                    w->setAttribute ("value", poison);
+                    w->removeAttribute ("raw");     // force the @value branch
+                }
+            poisoned = BlobCodec::wrap (*xml);
+        }
+        AnamorphAudioProcessor proc;
+        proc.prepareToPlay (48000.0, 256);
+        setRaw (proc, pid::width, 0.9f);            // off the default first
+        proc.setStateInformation (poisoned.getData(), (int) poisoned.getSize());
+        check (juce::approximatelyEqual (rawOf (proc, pid::width),
+                                         proc.getAPVTS().getParameter (pid::width)->getDefaultValue()),
+               "session path: a malformed value restores the parameter default");
+    }
+
+    // The `raw` branch launders infinity through juce::jlimit the same way, so it
+    // needs its own coverage -- it is the branch a current-schema session takes.
+    {
+        juce::MemoryBlock poisoned;
+        {
+            AnamorphAudioProcessor authoring;
+            authoring.prepareToPlay (48000.0, 256);
+            juce::MemoryBlock clean;
+            authoring.getStateInformation (clean);
+            auto xml = BlobCodec::unwrap (clean);
+            if (xml != nullptr)
+                if (auto* params = xml->getChildByName ("ANAMORPH"))
+                    if (auto* w = params->getChildByAttribute ("id", pid::width))
+                        w->setAttribute ("raw", "inf");
+            poisoned = BlobCodec::wrap (*xml);
+        }
+        AnamorphAudioProcessor proc;
+        proc.prepareToPlay (48000.0, 256);
+        setRaw (proc, pid::width, 0.9f);
+        proc.setStateInformation (poisoned.getData(), (int) poisoned.getSize());
+        std::printf ("  width after restoring raw=\"inf\": %f\n", rawOf (proc, pid::width));
+        check (rawOf (proc, pid::width) < 0.99f,
+               "a non-finite `raw` does not pin the parameter to its range maximum");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 20. A repaired parameter must reach the SAVED state, not just the live one.
+//
+//     The repair in reassertParameters' notifyHost=false branch writes the
+//     parameter (setValue) and the DSP atomic directly, and deliberately notifies
+//     nobody -- a parameter-change callback during the host's own state load can
+//     read as an automation write in some DAWs. But JUCE flushes a parameter into
+//     the ValueTree only when the adapter's `needsUpdate` is set, and that is set
+//     by parameterValueChanged, which setValue() does not fire. So the repair was
+//     invisible to serialization: measured before the fix, a session carrying
+//     value="nan" restored correctly and then SAVED value="nan" straight back out.
+//
+//     This build reloads that file correctly anyway, because `raw` is re-stamped
+//     on every save and is preferred on restore. The defect is in what the FILE
+//     says -- which is the durable artefact, and what a build with no `raw` path
+//     reads as NaN.
+static void testRepairReachesSavedState()
+{
+    std::printf ("State test 20: a repaired parameter reaches the saved state (not just the live one)\n");
+
+    juce::MemoryBlock poisoned;
+    {
+        AnamorphAudioProcessor authoring;
+        authoring.prepareToPlay (48000.0, 256);
+        juce::MemoryBlock clean;
+        authoring.getStateInformation (clean);
+        auto xml = BlobCodec::unwrap (clean);
+        check (xml != nullptr, "authored session decodes for poisoning");
+        if (xml == nullptr) return;
+        bool poisonedOne = false;
+        if (auto* params = xml->getChildByName ("ANAMORPH"))
+            if (auto* w = params->getChildByAttribute ("id", pid::width))
+            {
+                w->setAttribute ("value", "nan");
+                w->removeAttribute ("raw");
+                poisonedOne = true;
+            }
+        check (poisonedOne, "the session carries a width PARAM to poison");
+        poisoned = BlobCodec::wrap (*xml);
+    }
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 256);
+    proc.setStateInformation (poisoned.getData(), (int) poisoned.getSize());
+
+    auto* rp = proc.getAPVTS().getParameter (pid::width);
+    check (juce::approximatelyEqual (rp->getValue(), rp->getDefaultValue()),
+           "the corrupt value was repaired in the live parameter");
+
+    // The live tree, which is what copyState() serialises from.
+    auto live = proc.getAPVTS().state.getChildWithProperty ("id", pid::width);
+    check (live.isValid(), "the live APVTS still carries a width node");
+    const double liveValue = live.getProperty ("value").toString().getDoubleValue();
+    std::printf ("  live APVTS @value after repair = \"%s\"\n",
+                 live.getProperty ("value").toString().toRawUTF8());
+    check (std::isfinite (liveValue), "the repair reached the live APVTS tree");
+
+    // And the saved artefact.
+    juce::MemoryBlock saved;
+    proc.getStateInformation (saved);
+    auto savedXml = BlobCodec::unwrap (saved);
+    check (savedXml != nullptr, "the re-saved session decodes");
+    if (savedXml == nullptr) return;
+    auto* w = savedXml->getChildByName ("ANAMORPH") != nullptr
+                  ? savedXml->getChildByName ("ANAMORPH")->getChildByAttribute ("id", pid::width)
+                  : nullptr;
+    check (w != nullptr, "the re-saved session carries a width node");
+    if (w == nullptr) return;
+    std::printf ("  saved @value = \"%s\"  @raw = \"%s\"\n",
+                 w->getStringAttribute ("value").toRawUTF8(),
+                 w->hasAttribute ("raw") ? w->getStringAttribute ("raw").toRawUTF8() : "(absent)");
+    check (std::isfinite (w->getStringAttribute ("value").getDoubleValue()),
+           "the corruption does not survive into the next saved state");
+}
+
+// ---------------------------------------------------------------------------
+// 21. KI-028: a value-box press whose release is never delivered must not hold a
+//     host gesture open for the rest of the session.
+//
+//     ValueBox opens a juce::Slider::ScopedDragNotification on mouseDown and
+//     closes it on mouseUp, so a drag is one undo step and one host touch/latch
+//     span. Round 3 measured which abandonment paths actually exist: of six
+//     candidates, five are closed by JUCE itself (it synthesises the release on
+//     the next event that reaches the peer, or the component's own destruction
+//     fires the RAII close). The one that survives is a release the OS delivers
+//     to no JUCE peer at all -- let go over the host window or the desktop.
+//
+//     Measured before the fix, with a positive control proving the yardstick can
+//     fail: an unreleased press left canUndo() FALSE after a complete, balanced,
+//     unrelated edit. Also measured, and REFUTED: destroying the editor mid-press
+//     does NOT leak, despite sliderAtts being declared after the Knobs and so
+//     destructing first -- the RAII close still lands.
+//
+//     SCOPE: the editor predicate that triggers the sweep is inert on macOS
+//     (KI-013), so this closes the Linux and Windows halves and narrows KI-028 to
+//     a macOS residual. The sweep is tested directly rather than through that
+//     predicate, because synthesising OS-level button state headlessly is not
+//     possible -- and the predicate is pre-existing, shipped, and separately
+//     recorded.
+static void testAbandonedValueBoxGestureIsReclaimed()
+{
+    std::printf ("State test 21: an abandoned value-box press does not block undo (KI-028)\n");
+#if ! (JUCE_LINUX || JUCE_BSD)
+    std::printf ("  SKIPPED off Linux -- headless editor construction is unverified there (KI-007)\n");
+#else
+    auto editYieldsUndoStep = [] (AnamorphAudioProcessor& proc, const char* id, float norm)
+    {
+        auto* rp = proc.getAPVTS().getParameter (id);
+        rp->beginChangeGesture();
+        rp->setValueNotifyingHost (norm);
+        rp->endChangeGesture();
+        proc.pollUndoCoalesce();
+        return proc.canUndo();
+    };
+
+    // THE YARDSTICK MUST BE ABLE TO FAIL, or every assertion below is vacuous.
+    {
+        AnamorphAudioProcessor proc;
+        proc.prepareToPlay (48000.0, 512);
+        auto* held = proc.getAPVTS().getParameter (pid::width);
+        held->beginChangeGesture();                   // opened, never closed
+        check (! editYieldsUndoStep (proc, pid::mix, 0.31f),
+               "positive control: an open gesture really does block the undo commit");
+        held->endChangeGesture();
+    }
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto* raw = proc.createEditor();
+    auto* ed = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "editor constructs for the gesture probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    juce::Slider* slider = nullptr;
+    juce::Label*  box    = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        if (slider != nullptr) return;
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* kid = c->getChildComponent (i);
+            if (auto* sl = dynamic_cast<juce::Slider*> (kid))
+                for (int j = 0; j < sl->getNumChildComponents(); ++j)
+                    if (auto* lb = dynamic_cast<juce::Label*> (sl->getChildComponent (j)))
+                    { slider = sl; box = lb; break; }
+            if (slider == nullptr) walk (kid);
+            else return;
+        }
+    };
+    walk (ed);
+    check (slider != nullptr && box != nullptr, "a knob with a value box exists to press");
+    if (slider == nullptr || box == nullptr) { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    const juce::MouseEvent me (juce::Desktop::getInstance().getMainMouseSource(),
+                               { 4.0f, 4.0f }, juce::ModifierKeys::leftButtonModifier,
+                               1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                               box, box, juce::Time::getCurrentTime(),
+                               { 4.0f, 4.0f }, juce::Time::getCurrentTime(), 1, false);
+
+    // (1) The press really does open a gesture -- checked, not assumed.
+    box->mouseDown (me);
+    check ((bool) slider->getProperties().getWithDefault ("dragging", false),
+           "the press registers on the knob");
+    check (! editYieldsUndoStep (proc, pid::mix, 0.31f),
+           "an un-released press holds the gesture open (this is KI-028)");
+
+    // (2) The reconcile reclaims it.
+    ed->abortAbandonedDragGestures();
+    check (! (bool) slider->getProperties().getWithDefault ("dragging", true),
+           "the reconcile clears the press feedback");
+    check (editYieldsUndoStep (proc, pid::mix, 0.44f),
+           "...and undo works again after the abandoned gesture is reclaimed");
+
+    // (3) Idempotent: the reconcile runs every tick, so a second call must be inert.
+    ed->abortAbandonedDragGestures();
+    check (editYieldsUndoStep (proc, pid::mix, 0.55f),
+           "the sweep is idempotent -- a second pass does not close a gesture twice");
+
+    // (4) A NORMAL drag is unchanged: press, drag, release, one undo step.
+    {
+        box->mouseDown (me);
+        const juce::MouseEvent up (juce::Desktop::getInstance().getMainMouseSource(),
+                                   { 4.0f, 9.0f }, juce::ModifierKeys(),
+                                   1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                   box, box, juce::Time::getCurrentTime(),
+                                   { 4.0f, 4.0f }, juce::Time::getCurrentTime(), 1, true);
+        // Label::mouseUp is protected; Component::mouseUp is public and virtual, so
+        // the call goes through the base pointer and still dispatches to ValueBox.
+        static_cast<juce::Component*> (box)->mouseUp (up);
+        check (! (bool) slider->getProperties().getWithDefault ("dragging", true),
+               "a normal release still clears the press feedback");
+        check (editYieldsUndoStep (proc, pid::mix, 0.66f),
+               "a normal press/release leaves undo working (no regression)");
+    }
+
+    // (5) Editor teardown mid-press: measured NOT to leak, recorded so the
+    //     refutation is guarded rather than remembered.
+    {
+        AnamorphAudioProcessor proc2;
+        proc2.prepareToPlay (48000.0, 512);
+        auto* raw2 = proc2.createEditor();
+        if (auto* ed2 = dynamic_cast<AnamorphAudioProcessorEditor*> (raw2))
+        {
+            juce::Slider* sl2 = nullptr; juce::Label* bx2 = nullptr;
+            std::function<void (juce::Component*)> walk2 = [&] (juce::Component* c)
+            {
+                if (sl2 != nullptr) return;
+                for (int i = 0; i < c->getNumChildComponents(); ++i)
+                {
+                    auto* kid = c->getChildComponent (i);
+                    if (auto* sl = dynamic_cast<juce::Slider*> (kid))
+                        for (int j = 0; j < sl->getNumChildComponents(); ++j)
+                            if (auto* lb = dynamic_cast<juce::Label*> (sl->getChildComponent (j)))
+                            { sl2 = sl; bx2 = lb; break; }
+                    if (sl2 == nullptr) walk2 (kid); else return;
+                }
+            };
+            walk2 (ed2);
+            if (bx2 != nullptr)
+            {
+                const juce::MouseEvent me2 (juce::Desktop::getInstance().getMainMouseSource(),
+                                            { 4.0f, 4.0f }, juce::ModifierKeys::leftButtonModifier,
+                                            1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                            bx2, bx2, juce::Time::getCurrentTime(),
+                                            { 4.0f, 4.0f }, juce::Time::getCurrentTime(), 1, false);
+                bx2->mouseDown (me2);
+            }
+            proc2.editorBeingDeleted (ed2);
+            delete ed2;
+            check (editYieldsUndoStep (proc2, pid::mix, 0.31f),
+                   "destroying the editor mid-press closes the gesture (the RAII close lands)");
+        }
+        else delete raw2;
+    }
+
+    proc.editorBeingDeleted (ed);
+    delete ed;
+#endif
+}
+
+// ---------------------------------------------------------------------------
+// Round-3 diagnostic probe (opt-in, asserts NOTHING).
+//
+//     Covers priorities 2-5 of the round-3 brief in one pass. It PRINTS measured
+//     values rather than asserting them, because at the time it was written all
+//     four were HYPOTHESES, and the round's rule is that classification comes from
+//     what a probe prints -- never from what an investigation predicted. Anything
+//     it confirms is then promoted to a real assertion in the suite proper.
+static int runPresetSemanticsProbe()
+{
+    std::printf ("Round-3 probe: preset / restore value semantics\n\n");
+
+    // -- P2/P4 step 1: what JUCE's own parser actually does with each poison. ---
+    // Read, do not recall: juce::ValueTree::fromXml stores XML attributes as
+    // String vars, so this is exactly the conversion applySoundTree performs.
+    std::printf ("A. juce::var conversion of raw attribute text\n");
+    const char* texts[] = { "abc", "12abc", "", "  1.5  ", "1e999", "0x10",
+                            "0", "0.0", "-0", "0e0", ".5", "+1",
+                            "nan", "inf", "-inf", "1e39", "1e400", "-1e400", "1e38" };
+    for (const char* t : texts)
+    {
+        const juce::var v { juce::String (t) };
+        const double d = (double) v;
+        const float f = (float) d;
+        std::printf ("   %-8s isString=%d  (double)=%-14g (float)=%-14g finite(f)=%d\n",
+                     (juce::String ("\"") + t + "\"").toRawUTF8(),
+                     (int) v.isString(), d, (double) f, (int) std::isfinite (f));
+    }
+
+    // -- P2/P4 step 2: what the real PRESET path does with each poison. --------
+    // Driven end to end through PresetManager::loadFile on a real file, because
+    // applySoundTree is private and a hand-rolled re-derivation would prove
+    // nothing about the shipped path.
+    std::printf ("\nB. preset path (real loadFile), per parameter and poison\n");
+    struct Target { const char* id; const char* label; };
+    const Target targets[] = {
+        { pid::width,         "width (0..2, def 1, linear)" },
+        { pid::monoMakerFreq, "monoMakerFreq (skewed)" },
+        { pid::chorusRate,    "chorusRate (skewed 0.4)" },
+        { pid::algorithm,     "algorithm (RawChoice)" },
+        { pid::monoMakerOn,   "monoMakerOn (RawBool)" },
+    };
+    const char* poisons[] = { "abc", "", "0x10", "nan", "inf", "-inf", "1e39", "1e400", "-1e400" };
+
+    for (const auto& tg : targets)
+    {
+        AnamorphAudioProcessor probeProc;
+        auto* rp = probeProc.getAPVTS().getParameter (tg.id);
+        if (rp == nullptr) { std::printf ("   %s: NO SUCH PARAMETER\n", tg.id); continue; }
+        const float def = rp->getDefaultValue();
+        std::printf ("   %-30s default(norm) = %.6f\n", tg.label, def);
+
+        for (const char* poison : poisons)
+        {
+            AnamorphAudioProcessor proc;
+            proc.prepareToPlay (48000.0, 256);
+            auto* rp2 = proc.getAPVTS().getParameter (tg.id);
+            // Move it OFF the default first, so "landed on the default" cannot be
+            // confused with "was never touched" -- the vacuity that hid ER-STATE-08.
+            rp2->setValueNotifyingHost (def > 0.5f ? 0.1f : 0.9f);
+            const float before = rp2->getValue();
+
+            const auto f = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                               .getChildFile ("anamorph_r3_probe.anamorph");
+            f.deleteFile();
+            auto tree = juce::ValueTree ("ANAMORPH");
+            auto node = juce::ValueTree ("PARAM");
+            node.setProperty ("id", tg.id, nullptr);
+            node.setProperty ("value", juce::String (poison), nullptr);
+            tree.appendChild (node, nullptr);
+            bool wrote = false;
+            if (auto xml = tree.createXml()) wrote = xml->writeTo (f);
+            const bool loaded = wrote && proc.getPresets().loadFile (f);
+            const float after = rp2->getValue();
+            f.deleteFile();
+
+            const char* verdict = ! loaded ? "LOAD FAILED"
+                                : (std::abs (after - def) < 1.0e-6f) ? "-> default (guard held)"
+                                : (after < 1.0e-6f)                  ? "-> RANGE MINIMUM"
+                                : (after > 1.0f - 1.0e-6f)           ? "-> RANGE MAXIMUM"
+                                                                     : "-> other";
+            std::printf ("      value=%-8s before %.4f  after %.6f   %s\n",
+                         (juce::String ("\"") + poison + "\"").toRawUTF8(),
+                         before, after, verdict);
+        }
+    }
+
+    // -- P2 step 3: the SESSION path, same poison, for comparison. -------------
+    // The two paths must not drift: whatever the answer is, it should be the same.
+    std::printf ("\nC. session path (real setStateInformation), width\n");
+    for (const char* poison : { "abc", "", "0x10", "nan", "inf", "1e400" })
+    {
+        juce::MemoryBlock poisoned;
+        {
+            AnamorphAudioProcessor authoring;
+            authoring.prepareToPlay (48000.0, 256);
+            juce::MemoryBlock clean;
+            authoring.getStateInformation (clean);
+            auto xml = BlobCodec::unwrap (clean);
+            if (xml == nullptr) { std::printf ("   unwrap failed\n"); continue; }
+            if (auto* params = xml->getChildByName ("ANAMORPH"))
+                if (auto* w = params->getChildByAttribute ("id", pid::width))
+                {
+                    w->setAttribute ("value", poison);
+                    w->removeAttribute ("raw");   // force the @value path
+                }
+            poisoned = BlobCodec::wrap (*xml);
+        }
+        AnamorphAudioProcessor proc;
+        proc.prepareToPlay (48000.0, 256);
+        setRaw (proc, pid::width, 0.9f);          // off the default first
+        proc.setStateInformation (poisoned.getData(), (int) poisoned.getSize());
+        std::printf ("      value=%-8s -> width norm %.6f (default 0.500000)\n",
+                     (juce::String ("\"") + poison + "\"").toRawUTF8(),
+                     rawOf (proc, pid::width));
+    }
+
+    // -- P3: does a REPAIR reach the saved blob? ------------------------------
+    // Load corrupt -> restore -> save -> inspect -> reload -> compare, exactly the
+    // sequence the brief specifies.
+    std::printf ("\nD. state repair serialization consistency (P3)\n");
+    {
+        juce::MemoryBlock poisoned;
+        {
+            AnamorphAudioProcessor authoring;
+            authoring.prepareToPlay (48000.0, 256);
+            juce::MemoryBlock clean;
+            authoring.getStateInformation (clean);
+            auto xml = BlobCodec::unwrap (clean);
+            if (auto* params = xml->getChildByName ("ANAMORPH"))
+                if (auto* w = params->getChildByAttribute ("id", pid::width))
+                {
+                    w->setAttribute ("value", "nan");
+                    w->removeAttribute ("raw");
+                }
+            poisoned = BlobCodec::wrap (*xml);
+        }
+        AnamorphAudioProcessor proc;
+        proc.prepareToPlay (48000.0, 256);
+        proc.setStateInformation (poisoned.getData(), (int) poisoned.getSize());
+        std::printf ("      after restore: width norm = %.6f (repaired to default 0.500000?)\n",
+                     rawOf (proc, pid::width));
+
+        // (a) the LIVE tree
+        auto live = proc.getAPVTS().state.getChildWithProperty ("id", pid::width);
+        std::printf ("      live APVTS node @value = \"%s\"  @raw = \"%s\"\n",
+                     live.getProperty ("value").toString().toRawUTF8(),
+                     live.hasProperty ("raw") ? live.getProperty ("raw").toString().toRawUTF8() : "(absent)");
+
+        // (d) the SAVED blob
+        juce::MemoryBlock saved;
+        proc.getStateInformation (saved);
+        if (auto xml = BlobCodec::unwrap (saved))
+            if (auto* params = xml->getChildByName ("ANAMORPH"))
+                if (auto* w = params->getChildByAttribute ("id", pid::width))
+                    std::printf ("      SAVED node @value = \"%s\"  @raw = \"%s\"\n",
+                                 w->getStringAttribute ("value").toRawUTF8(),
+                                 w->hasAttribute ("raw") ? w->getStringAttribute ("raw").toRawUTF8() : "(absent)");
+
+        // reload into a fresh instance
+        AnamorphAudioProcessor fresh;
+        fresh.prepareToPlay (48000.0, 256);
+        fresh.setStateInformation (saved.getData(), (int) saved.getSize());
+        std::printf ("      reloaded into a fresh instance: width norm = %.6f\n",
+                     rawOf (fresh, pid::width));
+    }
+
+    // -- P5: ER-STATE-04.5, the id+raw-without-value shape. -------------------
+    std::printf ("\nE. ER-STATE-04.5: what the next save writes for an omitted PARAM (P5)\n");
+    for (bool atDefault : { true, false })
+    {
+        juce::MemoryBlock partial;
+        {
+            AnamorphAudioProcessor authoring;
+            authoring.prepareToPlay (48000.0, 256);
+            juce::MemoryBlock whole;
+            authoring.getStateInformation (whole);
+            auto xml = BlobCodec::unwrap (whole);
+            if (auto* params = xml->getChildByName ("ANAMORPH"))
+                if (auto* w = params->getChildByAttribute ("id", pid::width))
+                    params->removeChildElement (w, true);
+            partial = BlobCodec::wrap (*xml);
+        }
+        AnamorphAudioProcessor proc;
+        proc.prepareToPlay (48000.0, 256);
+        auto* rp = proc.getAPVTS().getParameter (pid::width);
+        rp->setValueNotifyingHost (atDefault ? rp->getDefaultValue() : 0.9f);
+        proc.setStateInformation (partial.getData(), (int) partial.getSize());
+
+        juce::MemoryBlock saved;
+        proc.getStateInformation (saved);
+        std::printf ("      live was %s: ", atDefault ? "AT default   " : "OFF default  ");
+        if (auto xml = BlobCodec::unwrap (saved))
+            if (auto* params = xml->getChildByName ("ANAMORPH"))
+            {
+                auto* w = params->getChildByAttribute ("id", pid::width);
+                if (w == nullptr) { std::printf ("saved node ABSENT entirely\n"); continue; }
+                std::printf ("saved @value = %-10s @raw = %s\n",
+                             w->hasAttribute ("value")
+                                 ? (juce::String ("\"") + w->getStringAttribute ("value") + "\"").toRawUTF8()
+                                 : "(ABSENT)",
+                             w->hasAttribute ("raw")
+                                 ? (juce::String ("\"") + w->getStringAttribute ("raw") + "\"").toRawUTF8()
+                                 : "(ABSENT)");
+            }
+    }
+
+    std::printf ("\nprobe complete (no assertions -- classification is the lead's)\n");
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
+// 22. D-1 / KI-027: a latency re-report from a NON-message thread must not be
+//     delivered on that thread.
+//
+//     Computing the number was never the problem -- predictLatency is const and
+//     race-free. DELIVERING it was: setLatencySamples' notification chain takes
+//     at least three CriticalSections and, on a real change, appends to a heap
+//     container and write()s a pipe in the Linux wrapper. Under VST3 host
+//     automation of drive/algorithm the caller is the AUDIO thread.
+//
+//     The approved design keeps the message thread synchronous (so every UI edit,
+//     preset load and undo is instantaneous, and this test's own control leg
+//     proves that) and turns anything else into a relaxed atomic request that a
+//     processor-owned 20 Hz timer consumes.
+//
+//     What this test can and cannot show, stated plainly: it drives the real
+//     listener from a real second thread and asserts the delivery is DEFERRED
+//     there and lands later. It does not prove the absence of a lock inside
+//     JUCE's chain -- that is what the RTSan lane and the allocation guard are
+//     for. Deferral is the property this change is responsible for.
+static void testLatencyDeliveryIsDeferredOffMessageThread()
+{
+    std::printf ("State test 22: an off-thread latency change is deferred, not delivered (D-1)\n");
+
+    AnamorphAudioProcessor proc;
+    // Oversampling ON: predictLatency short-circuits to 0 when it is Off, so
+    // without this every measurement below would be 0 == 0 and vacuous.
+    proc.getInternal().oversampleValue().setValue (2);   // 1-based combo id: 2x
+    proc.prepareToPlay (48000.0, 256);
+
+    auto* drive = proc.getAPVTS().getParameter (pid::drive);
+    check (drive != nullptr, "the drive parameter exists");
+    if (drive == nullptr) return;
+
+    const int quiet = proc.getLatencySamples();
+    std::printf ("  latency at drive 0: %d\n", quiet);
+
+    // CONTROL LEG -- the message thread stays synchronous. If this regressed to
+    // deferred, every UI edit would lag a timer tick and the test below would
+    // still pass, so the control is what keeps it honest.
+    drive->setValueNotifyingHost (0.6f);
+    const int afterOnThread = proc.getLatencySamples();
+    std::printf ("  after a message-thread change: %d (expected immediate)\n", afterOnThread);
+    check (afterOnThread != quiet, "a message-thread change still reports latency SYNCHRONOUSLY");
+
+    // ...and the non-vacuity gate for the whole test: drive must actually move
+    // the reported latency, or "deferred" below is indistinguishable from
+    // "nothing ever happens".
+    const int loud = afterOnThread;
+    check (loud != quiet, "drive genuinely changes the reported latency at 2x oversampling");
+
+    // THE REAL CASE: the same listener, driven from another thread.
+    drive->setValueNotifyingHost (0.0f);
+    juce::Timer::callPendingTimersSynchronously();
+    check (proc.getLatencySamples() == quiet, "reset to the quiet latency before the off-thread leg");
+
+    std::atomic<bool> done { false };
+    std::thread automation ([&]
+    {
+        // Exactly what a VST3 host's automation does on the audio thread: move the
+        // parameter, which fires the APVTS listener on THIS thread.
+        drive->setValueNotifyingHost (0.6f);
+        done.store (true, std::memory_order_release);
+    });
+    automation.join();
+    check (done.load (std::memory_order_acquire), "the off-thread parameter write completed");
+
+    const int immediatelyAfter = proc.getLatencySamples();
+    std::printf ("  immediately after an OFF-thread change: %d (was %d)\n", immediatelyAfter, quiet);
+    check (immediatelyAfter == quiet,
+           "an off-thread change does NOT deliver the latency on that thread");
+
+    // ...and the timer picks it up. 20 Hz => one interval is 50 ms; allow a few
+    // so a loaded CI box cannot make this flaky, and MEASURE what it actually took.
+    const auto startMs = juce::Time::getMillisecondCounterHiRes();
+    int settled = immediatelyAfter;
+    for (int i = 0; i < 40 && settled == quiet; ++i)
+    {
+        juce::Thread::sleep (10);
+        juce::Timer::callPendingTimersSynchronously();
+        settled = proc.getLatencySamples();
+    }
+    const auto elapsedMs = juce::Time::getMillisecondCounterHiRes() - startMs;
+    std::printf ("  delivered by the timer after %.0f ms: %d\n", elapsedMs, settled);
+    check (settled == loud, "the deferred latency is delivered, and delivers the CORRECT value");
+    check (elapsedMs < 400.0, "delivery happens within a few timer intervals, not eventually");
+}
+
+// ---------------------------------------------------------------------------
+// 23. KI-028 / KI-013 macOS residual: the abandoned-gesture sweep's trigger must
+//     read the PHYSICAL button state, not JUCE's cached one.
+//
+//     Round 3 closed KI-028 on Linux and Windows and left a macOS residual. The
+//     residual was never the sweep -- Option B's hook reaches the value box on
+//     every platform. It was the TRIGGER. The editor gates the sweep on
+//     "JUCE thinks a button is down AND it is physically up", and in the pinned
+//     JUCE 9.0.1 the macOS realtime query refreshes only the keyboard flags
+//     (juce_NSViewComponentPeer_mac.mm:302-307) and returns cached mouse buttons.
+//     A release delivered to no JUCE peer never clears that cache, so the second
+//     half was permanently false and the sweep could not run. That is KI-013.
+//
+//     This test recreates that exact condition on EVERY platform: it tells JUCE a
+//     button is held while none physically is, then requires the physical query to
+//     disagree with the cache. On macOS that passes only because
+//     anyPhysicalMouseButtonDown() now calls +[NSEvent pressedMouseButtons]; a
+//     regression to the cached path fails it there. The macOS job runs this suite
+//     (`scripts/run-tests.sh`), so that is where the macOS half is actually
+//     verified -- it cannot be verified on the Linux box that wrote it, and this
+//     comment is here so nobody later mistakes a Linux pass for macOS evidence.
+static void testPhysicalButtonQueryIgnoresCachedState()
+{
+    std::printf ("State test 23: the abandoned-gesture trigger reads PHYSICAL buttons (KI-013/KI-028)\n");
+
+    const auto saved = juce::ModifierKeys::currentModifiers;
+
+    // LIVENESS, on every platform: with nothing cached and nothing held, the
+    // helper must be callable and say "up". Without this the platform legs below
+    // could pass by the function being broken in the convenient direction.
+    juce::ModifierKeys::currentModifiers = juce::ModifierKeys();
+    check (! anamorph::gui::anyPhysicalMouseButtonDown(),
+           "with nothing held and nothing cached, the physical query says up");
+    check (! juce::Component::isMouseButtonDownAnywhere(),
+           "...and so does the cached view");
+
+    // THE KI-013 CONDITION: JUCE believes a button is down; the hardware disagrees.
+    juce::ModifierKeys::currentModifiers = juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier);
+    const bool cachedSaysDown   = juce::Component::isMouseButtonDownAnywhere();
+    const bool physicalSaysDown = anamorph::gui::anyPhysicalMouseButtonDown();
+    std::printf ("  cached=%d physical=%d\n", (int) cachedSaysDown, (int) physicalSaysDown);
+    check (cachedSaysDown, "the cached view reports the button JUCE was told about");
+
+#if JUCE_MAC
+    // THE FIX, ASSERTED WHERE IT APPLIES. +[NSEvent pressedMouseButtons] is a
+    // global hardware query that does not care what events this process received,
+    // so it must contradict the cache here. Before this change the macOS answer
+    // came from ModifierKeys::currentModifiers and this check would fail --
+    // which is exactly why KI-028's sweep never ran on macOS.
+    check (! physicalSaysDown,
+           "macOS: the physical query is not fooled by JUCE's cached button state");
+    check (cachedSaysDown && ! physicalSaysDown,
+           "macOS: the abandoned-gesture sweep gate fires for a release JUCE never saw");
+#else
+    // OFF macOS THIS CANNOT DISCRIMINATE, and saying so is the point. JUCE
+    // installs getNativeRealtimeModifiers from a live ComponentPeer
+    // (juce_Windowing_linux.cpp:67); this suite is headless and has none, so
+    // ComponentPeer::getCurrentModifiersRealtime falls back to the cache and the
+    // helper -- a deliberate pure forward on these platforms -- returns it too.
+    // In a real host the peer exists and the query is genuinely physical, which
+    // is why the Linux/Windows half of KI-028 works in production and why round
+    // 3's State test 21 drives the sweep directly instead of through this gate.
+    // Assert the FORWARDING IDENTITY instead: that is the whole contract here.
+    check (physicalSaysDown
+             == juce::ModifierKeys::getCurrentModifiersRealtime().isAnyMouseButtonDown(),
+           "off macOS the helper forwards to JUCE's realtime query exactly");
+    std::printf ("  (headless, no peer: JUCE's realtime query is the cache here, so this leg\n"
+                 "   checks the forward, not the hardware -- the discriminating check is macOS-only)\n");
+#endif
+
+    juce::ModifierKeys::currentModifiers = saved;
+}
+
+// ---------------------------------------------------------------------------
+// 25. CROSS-VERSION FIELD CAPTURE: a session written by the PREVIOUS version's
+//     binary must reproduce exactly in this one.
+//
+//     RELEASE_COMPATIBILITY_CHECKLIST §"Session reload verified" asks for a
+//     session saved by vN-1 and loaded by vN, and records that the existing
+//     legacy fixtures cannot discharge it because they are RECONSTRUCTIONS of old
+//     formats hand-built by the current code, not captures written by an older
+//     binary (worklogs/STATE_HARNESS_v0.8.13.md §5). That is a real distinction:
+//     a reconstruction can only contain what today's understanding says the old
+//     format held, so it cannot catch a field the old binary actually wrote
+//     differently.
+//
+//     `tests/fixtures/field_capture_v0_9_5.session` is the missing thing: 10,629
+//     bytes produced by the v0.9.5 binary itself (the tree at 2c5e760^, the commit
+//     before the 0.9.6 bump), built from that source with its own JUCE pin. Beside
+//     it, `.manifest` records what THAT binary believed the state was, including
+//     the B slot it had to switch to in order to read. The assertions below
+//     compare against those numbers, so this test asks "does v0.9.6 reproduce what
+//     v0.9.5 had", not "does v0.9.6 agree with itself".
+//
+//     Covers all four things the checklist item names: sound, preset name,
+//     dirty-star, and both A/B slots.
+static void testCrossVersionFieldCapture()
+{
+    std::printf ("State test 25: a v0.9.5-written session reproduces exactly (cross-version capture)\n");
+
+    const auto blob = fixtureDir().getChildFile ("field_capture_v0_9_5.session");
+    const auto manifestFile = fixtureDir().getChildFile ("field_capture_v0_9_5.session.manifest");
+    check (blob.existsAsFile(), "the v0.9.5 field capture is present");
+    check (manifestFile.existsAsFile(), "...and so is its manifest");
+    if (! blob.existsAsFile() || ! manifestFile.existsAsFile()) return;
+
+    // Parse the emitter's own record. Anything missing is a broken fixture, not a
+    // pass -- the check() calls below would otherwise compare against 0.0.
+    juce::StringPairArray expected;
+    juce::StringArray slotA, slotB;
+    for (const auto& lineRef : juce::StringArray::fromLines (manifestFile.loadFileAsString()))
+    {
+        const auto line = lineRef.trim();
+        if (line.isEmpty()) continue;
+        if (line.startsWith ("slotA ")) slotA = juce::StringArray::fromTokens (line.substring (6), " ", "");
+        else if (line.startsWith ("slotB ")) slotB = juce::StringArray::fromTokens (line.substring (6), " ", "");
+        else if (line.contains ("=")) expected.set (line.upToFirstOccurrenceOf ("=", false, false),
+                                                    line.fromFirstOccurrenceOf ("=", false, false));
+    }
+    check (expected["emitter"] == "v0.9.5", "the manifest was written by the v0.9.5 binary");
+    check (slotA.size() == 5 && slotB.size() == 5, "the manifest carries both slots' values");
+    if (slotA.size() != 5 || slotB.size() != 5) return;
+
+    auto valueOf = [] (const juce::StringArray& fields, const juce::String& key) -> float
+    {
+        for (const auto& f : fields)
+            if (f.startsWith (key + "="))
+                return f.fromFirstOccurrenceOf ("=", false, false).getFloatValue();
+        return -1.0f;
+    };
+
+    auto blobData = juce::MemoryBlock();
+    check (blob.loadFileAsData (blobData), "the capture loads from disk");
+    check (blobData.getSize() > 1000, "the capture is a real session blob, not a stub");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    proc.setStateInformation (blobData.getData(), (int) blobData.getSize());
+    juce::Timer::callPendingTimersSynchronously();
+
+    // (1) SOUND -- the active slot's parameters.
+    struct P { const char* id; const char* key; };
+    const P params[] = { { pid::width, "width" }, { pid::mix, "mix" },
+                         { pid::amount, "amount" }, { pid::algorithm, "algo" },
+                         { pid::outputGain, "outGain" } };
+    for (const auto& pr : params)
+    {
+        const float want = valueOf (slotA, pr.key);
+        const float got  = rawOf (proc, pr.id);
+        std::printf ("  slotA %-8s v0.9.5 %.6f -> v0.9.6 %.6f\n", pr.key, want, got);
+        checkNear ((double) got, (double) want, 1.0e-5,
+                   "the active slot's sound reproduces from the v0.9.5 capture");
+    }
+
+    // (2) PRESET NAME and (3) DIRTY-STAR.
+    std::printf ("  preset name: \"%s\" (v0.9.5: \"%s\"), dirty %d (v0.9.5: %s)\n",
+                 proc.getPresets().currentName().toRawUTF8(),
+                 expected["presetName"].toRawUTF8(),
+                 (int) proc.getPresets().isDirty(), expected["dirty"].toRawUTF8());
+    check (proc.getPresets().currentName() == expected["presetName"],
+           "the preset name reproduces from the v0.9.5 capture");
+    check ((int) proc.getPresets().isDirty() == expected["dirty"].getIntValue(),
+           "the dirty-star reproduces from the v0.9.5 capture");
+    check (proc.abActiveSlot() == expected["activeSlot"].getIntValue(),
+           "the active A/B slot reproduces from the v0.9.5 capture");
+
+    // (4) BOTH A/B SLOTS -- switch to B and compare against what v0.9.5 had there.
+    //     Non-vacuity: the two slots must actually DIFFER in the manifest, or this
+    //     leg would pass on a build that ignored the B slot entirely.
+    check (! juce::approximatelyEqual (valueOf (slotA, "width"), valueOf (slotB, "width")),
+           "the capture's two slots really do differ (the B leg is not vacuous)");
+    proc.abSwitchTo (1);
+    for (const auto& pr : params)
+    {
+        const float want = valueOf (slotB, pr.key);
+        const float got  = rawOf (proc, pr.id);
+        std::printf ("  slotB %-8s v0.9.5 %.6f -> v0.9.6 %.6f\n", pr.key, want, got);
+        checkNear ((double) got, (double) want, 1.0e-5,
+                   "the B slot reproduces from the v0.9.5 capture");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Round-3 KI-028 probe (opt-in, PRINTS, asserts only its own non-vacuity).
+//
+//     Measures the two things the round-3 adversarial pass disputed about KI-028:
+//       (1) whether destroying the editor mid-value-box-drag leaks the host
+//           gesture into the PROCESSOR, which outlives the editor -- a path the
+//           original filing declared SAFE on the grounds that ~ValueBox fires
+//           ~ScopedDragNotification. The dispute: PluginEditor.h declares the
+//           Knobs at :432-435 and `sliderAtts` at :482, and members destruct in
+//           REVERSE declaration order, so ~sliderAtts runs FIRST and
+//           SliderParameterAttachment's destructor removes itself as a Slider
+//           listener. By the time ~ValueBox fires sendDragEnd there may be no
+//           listener left to hear it, and endChangeGesture never runs.
+//       (2) whether openGestures self-heals, which decides KI-028's severity.
+static int runValueBoxGestureProbe()
+{
+    std::printf ("Round-3 probe: value-box gesture lifetime (KI-028)\n");
+#if ! (JUCE_LINUX || JUCE_BSD)
+    std::printf ("  SKIPPED off Linux -- headless editor construction is unverified there (KI-007)\n");
+    return 0;
+#else
+    // A complete, balanced edit through the processor: this is the yardstick.
+    // If openGestures is clean it produces exactly one undo step.
+    auto editYieldsUndoStep = [] (AnamorphAudioProcessor& proc, const char* id, float norm)
+    {
+        auto* rp = proc.getAPVTS().getParameter (id);
+        rp->beginChangeGesture();
+        rp->setValueNotifyingHost (norm);
+        rp->endChangeGesture();
+        proc.pollUndoCoalesce();
+        return proc.canUndo();
+    };
+
+    // -- POSITIVE CONTROL: a deliberately leaked gesture. Without this leg every
+    //    "no leak" result below is unfalsifiable -- it would read the same if
+    //    canUndo() simply never went false. This proves the yardstick can fail.
+    {
+        AnamorphAudioProcessor proc;
+        proc.prepareToPlay (48000.0, 512);
+        auto* held = proc.getAPVTS().getParameter (pid::width);
+        held->beginChangeGesture();               // opened and never closed
+        const bool undoWorks = editYieldsUndoStep (proc, pid::mix, 0.31f);
+        std::printf ("  POSITIVE CONTROL (a gesture opened and never closed): canUndo = %d%s\n",
+                     (int) undoWorks, undoWorks ? "  <-- YARDSTICK IS BLIND" : "  (yardstick detects a leak)");
+        held->endChangeGesture();
+    }
+
+    // -- control: no drag at all. Establishes that the yardstick works. --------
+    {
+        AnamorphAudioProcessor proc;
+        proc.prepareToPlay (48000.0, 512);
+        auto* raw = proc.createEditor();
+        auto* ed = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+        if (ed == nullptr) { delete raw; std::printf ("  editor did not construct\n"); return 1; }
+        proc.editorBeingDeleted (ed);
+        delete ed;
+        std::printf ("  control (editor opened and closed, no drag): canUndo after a full edit = %d\n",
+                     (int) editYieldsUndoStep (proc, pid::mix, 0.31f));
+    }
+
+    // -- leg 1: press a value box, then destroy the editor mid-press. ---------
+    {
+        AnamorphAudioProcessor proc;
+        proc.prepareToPlay (48000.0, 512);
+        auto* raw = proc.createEditor();
+        auto* ed = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+        if (ed == nullptr) { delete raw; std::printf ("  editor did not construct\n"); return 1; }
+
+        // Find a rotary slider that actually owns a value-box Label child.
+        juce::Slider* slider = nullptr;
+        juce::Label*  box    = nullptr;
+        std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+        {
+            if (slider != nullptr) return;
+            for (int i = 0; i < c->getNumChildComponents(); ++i)
+            {
+                auto* kid = c->getChildComponent (i);
+                if (auto* sl = dynamic_cast<juce::Slider*> (kid))
+                    for (int j = 0; j < sl->getNumChildComponents(); ++j)
+                        if (auto* lb = dynamic_cast<juce::Label*> (sl->getChildComponent (j)))
+                        { slider = sl; box = lb; break; }
+                if (slider == nullptr) walk (kid);
+                else return;
+            }
+        };
+        walk (ed);
+        std::printf ("  found a slider with a value box: %d\n", (int) (slider != nullptr && box != nullptr));
+        if (slider == nullptr || box == nullptr)
+        {
+            proc.editorBeingDeleted (ed); delete ed;
+            std::printf ("  PROBE CANNOT RUN -- no value box found\n");
+            return 1;
+        }
+
+        // Synthesise the press the ValueBox reacts to. This is the real virtual,
+        // so the real ScopedDragNotification is created and really is owned by the
+        // ValueBox -- which is what makes the destruction-order question live.
+        const juce::MouseEvent me (juce::Desktop::getInstance().getMainMouseSource(),
+                                   { 4.0f, 4.0f }, juce::ModifierKeys::leftButtonModifier,
+                                   1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                   box, box, juce::Time::getCurrentTime(),
+                                   { 4.0f, 4.0f }, juce::Time::getCurrentTime(), 1, false);
+        box->mouseDown (me);
+        std::printf ("  after mouseDown on the value box: slider \"dragging\" = %d\n",
+                     (int) (bool) slider->getProperties().getWithDefault ("dragging", false));
+
+        // ...and tear the editor down while the press is still open.
+        proc.editorBeingDeleted (ed);
+        delete ed;
+
+        const bool undoWorks = editYieldsUndoStep (proc, pid::mix, 0.31f);
+        std::printf ("  LEG 1 editor destroyed mid-press: canUndo after a full edit = %d%s\n",
+                     (int) undoWorks,
+                     undoWorks ? "  (no leak)" : "  <-- GESTURE LEAKED INTO THE PROCESSOR");
+
+        // -- leg 2: does it self-heal? syncCommitted / undo / redo / preset load
+        //    all force openGestures back to 0 per the adversarial pass.
+        if (! undoWorks)
+        {
+            proc.getPresets().load (1);       // a preset load records its own step
+            const bool healed = editYieldsUndoStep (proc, pid::mix, 0.62f);
+            std::printf ("  LEG 2 after a preset load: canUndo = %d%s\n", (int) healed,
+                         healed ? "  (self-heals)" : "  (still stuck)");
+        }
+    }
+
+    // -- leg 3: THE ACTUAL KI-028 SHAPE -- the release is lost while the editor
+    //    is still alive and the ValueBox still holds its ScopedDragNotification.
+    //    This is the one path the round-3 investigation found survives; legs 1-2
+    //    exist to test the disputed claim that editor teardown is another.
+    {
+        AnamorphAudioProcessor proc;
+        proc.prepareToPlay (48000.0, 512);
+        auto* raw = proc.createEditor();
+        auto* ed = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+        if (ed == nullptr) { delete raw; return 1; }
+
+        juce::Slider* slider = nullptr;
+        juce::Label*  box    = nullptr;
+        std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+        {
+            if (slider != nullptr) return;
+            for (int i = 0; i < c->getNumChildComponents(); ++i)
+            {
+                auto* kid = c->getChildComponent (i);
+                if (auto* sl = dynamic_cast<juce::Slider*> (kid))
+                    for (int j = 0; j < sl->getNumChildComponents(); ++j)
+                        if (auto* lb = dynamic_cast<juce::Label*> (sl->getChildComponent (j)))
+                        { slider = sl; box = lb; break; }
+                if (slider == nullptr) walk (kid);
+                else return;
+            }
+        };
+        walk (ed);
+        if (slider != nullptr && box != nullptr)
+        {
+            const juce::MouseEvent me (juce::Desktop::getInstance().getMainMouseSource(),
+                                       { 4.0f, 4.0f }, juce::ModifierKeys::leftButtonModifier,
+                                       1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                       box, box, juce::Time::getCurrentTime(),
+                                       { 4.0f, 4.0f }, juce::Time::getCurrentTime(), 1, false);
+            box->mouseDown (me);                       // ...and NO mouseUp ever arrives
+            const bool undoWorks = editYieldsUndoStep (proc, pid::mix, 0.31f);
+            std::printf ("  LEG 3 press never released, editor alive: canUndo after a full edit = %d%s\n",
+                         (int) undoWorks,
+                         undoWorks ? "  (no leak)" : "  <-- KI-028: undo blocked while the gesture is open");
+        }
+        proc.editorBeingDeleted (ed);
+        delete ed;
+    }
+
+    std::printf ("\nprobe complete\n");
+    return 0;
+#endif
+}
+
+// ---------------------------------------------------------------------------
+// 24. A restore must leave the host holding the RESTORED state's latency.
+//
+//     Two things in setStateInformation move a latency-bearing parameter without
+//     the latency listener hearing the final value. apvts.replaceState adopts
+//     whatever @value says -- and it CONVERTS BY CLAMPING, so a poisoned
+//     value="inf" for drive lands at the range maximum and re-reports a latency
+//     for it. reassertParameters then repairs that value with setValue() plus a
+//     direct atomic store, notifying nobody on purpose.
+//
+//     THE SECOND RESTORE IS THE ONE THAT MATTERS, and this is why the test looks
+//     the way it does. On a FIRST restore the answer comes out right by accident:
+//     the live InternalState holds an int where the round-tripped blob holds a
+//     string, ValueTree::setProperty sees a difference, fires
+//     onOversampleChanged, and recomputes the latency after the repair -- the
+//     same var-type coincidence recorded for ER-STATE-07. Restoring twice settles
+//     the types, removes the coincidence, and exposes the defect. A test that
+//     only did one restore would have reported this as refuted; the round-4 probe
+//     did exactly that, twice, before the second-restore leg was added.
+//
+//     Measured before the fix: reported 4, restored state predicts 0.
+static void testRestoreReportsTheRestoredLatency()
+{
+    std::printf ("State test 24: a restore reports the RESTORED state's latency\n");
+
+    juce::MemoryBlock poisoned;
+    {
+        AnamorphAudioProcessor authoring;
+        // Oversampling on: predictLatency short-circuits to 0 when it is Off, so
+        // without this every number below is 0 and the test proves nothing.
+        authoring.getInternal().oversampleValue().setValue (2);
+        authoring.prepareToPlay (48000.0, 256);
+        juce::MemoryBlock clean;
+        authoring.getStateInformation (clean);
+        auto xml = BlobCodec::unwrap (clean);
+        check (xml != nullptr, "authored session decodes for poisoning");
+        if (xml == nullptr) return;
+        bool poisonedOne = false;
+        if (auto* params = xml->getChildByName ("ANAMORPH"))
+            if (auto* d = params->getChildByAttribute ("id", pid::drive))
+            {
+                d->setAttribute ("value", "inf");
+                d->removeAttribute ("raw");
+                poisonedOne = true;
+            }
+        check (poisonedOne, "the session carries a drive PARAM to poison");
+        poisoned = BlobCodec::wrap (*xml);
+    }
+
+    AnamorphAudioProcessor proc;
+    proc.getInternal().oversampleValue().setValue (2);
+    proc.prepareToPlay (48000.0, 256);
+
+    // NON-VACUITY: drive must actually be able to move the reported latency here,
+    // or "reported == predicted" below is 0 == 0 and means nothing.
+    proc.getAPVTS().getParameter (pid::drive)->setValueNotifyingHost (1.0f);
+    juce::Timer::callPendingTimersSynchronously();
+    const int loud = proc.getLatencySamples();
+    check (loud != 0, "drive at maximum reports a non-zero latency at 2x oversampling");
+
+    proc.setStateInformation (poisoned.getData(), (int) poisoned.getSize()); // settle property types
+    proc.getAPVTS().getParameter (pid::drive)->setValueNotifyingHost (1.0f); // back to latency-bearing
+    juce::Timer::callPendingTimersSynchronously();
+    check (proc.getLatencySamples() == loud, "re-armed at the latency-bearing state");
+
+    // The restore under test: types now agree, so nothing recomputes by accident.
+    proc.setStateInformation (poisoned.getData(), (int) poisoned.getSize());
+    juce::Timer::callPendingTimersSynchronously();
+    const int reported = proc.getLatencySamples();
+
+    // The number the restored state is entitled to, through public API only:
+    // prepareToPlay ends with the same latency update.
+    proc.prepareToPlay (48000.0, 256);
+    const int predicted = proc.getLatencySamples();
+
+    std::printf ("  second restore: reported %d, restored state predicts %d\n", reported, predicted);
+    check (reported == predicted,
+           "the host is not left holding the poisoned value's latency after a repair");
+}
+
+// Round-4 probe: does a malformed restore leave a STALE reported latency?
+static int runRestoreLatencyProbe()
+{
+    std::printf ("Round-4 probe: reported latency after a malformed restore\n");
+
+    // Author a session whose algorithm is poisoned to "inf". JUCE's own
+    // replaceState adopts it BEFORE reassertParameters gets a chance to repair,
+    // and replaceState notifies -- so the host hears a latency for a state the
+    // plug-in is about to reject.
+    juce::MemoryBlock poisoned;
+    {
+        AnamorphAudioProcessor authoring;
+        authoring.getInternal().oversampleValue().setValue (2); // 2x: latency is nonzero at all
+        authoring.prepareToPlay (48000.0, 256);
+        juce::MemoryBlock clean;
+        authoring.getStateInformation (clean);
+        auto xml = BlobCodec::unwrap (clean);
+        if (xml == nullptr) { std::printf ("  unwrap failed\n"); return 1; }
+        if (auto* params = xml->getChildByName ("ANAMORPH"))
+            if (auto* a = params->getChildByAttribute ("id", pid::drive))
+            {
+                a->setAttribute ("value", "inf");
+                a->removeAttribute ("raw");
+            }
+        poisoned = BlobCodec::wrap (*xml);
+    }
+
+    AnamorphAudioProcessor proc;
+    proc.getInternal().oversampleValue().setValue (2);
+    proc.prepareToPlay (48000.0, 256);
+    std::printf ("  before restore: drive norm %.6f, reported latency %d\n",
+                 rawOf (proc, pid::drive), proc.getLatencySamples());
+
+    proc.setStateInformation (poisoned.getData(), (int) poisoned.getSize());
+    std::printf ("  IMMEDIATELY after setStateInformation: drive norm %.6f, latency %d\n",
+                 rawOf (proc, pid::drive), proc.getLatencySamples());
+    // What the poisoned value WOULD have predicted, for comparison: drive at max.
+    {
+        AnamorphAudioProcessor ref;
+        ref.getInternal().oversampleValue().setValue (2);
+        ref.prepareToPlay (48000.0, 256);
+        ref.getAPVTS().getParameter (pid::drive)->setValueNotifyingHost (1.0f);
+        std::printf ("  (a drive-at-max instance reports latency %d, so the two ARE distinguishable)\n",
+                     ref.getLatencySamples());
+    }
+    // Isolate JUCE: does replaceState ALONE adopt the poison and re-report?
+    // If it does, the transient exists and only the final report is repaired; if
+    // it does not, there was never a bad report to be stale.
+    {
+        AnamorphAudioProcessor iso;
+        iso.getInternal().oversampleValue().setValue (2);
+        iso.prepareToPlay (48000.0, 256);
+        auto tree = iso.getAPVTS().copyState();
+        if (auto node = tree.getChildWithProperty ("id", pid::drive); node.isValid())
+        {
+            node.setProperty ("value", "inf", nullptr);
+            node.removeProperty ("raw", nullptr);
+        }
+        iso.getAPVTS().replaceState (tree);   // NO reassertParameters anywhere near this
+        std::printf ("  replaceState alone with value=\"inf\": drive norm %.6f, latency %d\n",
+                     rawOf (iso, pid::drive), iso.getLatencySamples());
+    }
+
+    juce::Timer::callPendingTimersSynchronously();
+
+    const float algoAfter = rawOf (proc, pid::drive);
+    const int reported = proc.getLatencySamples();
+    // The number the FINAL state is entitled to: a re-prepare recomputes it.
+    proc.prepareToPlay (48000.0, 256);
+    const int truth = proc.getLatencySamples();
+
+    std::printf ("  after restore : drive norm %.6f (default %.6f)\n",
+                 algoAfter, proc.getAPVTS().getParameter (pid::drive)->getDefaultValue());
+    std::printf ("  reported to the host: %d ; the restored state actually predicts: %d\n",
+                 reported, truth);
+    std::printf ("  %s\n", reported == truth
+                     ? "first restore: the report follows the repair"
+                     : "first restore: CONFIRMED stale");
+
+    // SECOND RESTORE, same blob. Round 2 established that the correct answer on a
+    // FIRST restore can be an accident: the live InternalState holds an int while
+    // the blob carries a round-tripped string, so ValueTree::setProperty sees a
+    // difference, fires onOversampleChanged and recomputes the latency AFTER the
+    // repair. Restoring twice settles the property types and removes that
+    // coincidence -- which is also the ordinary case, a host loading project
+    // after project into one instance.
+    {
+        AnamorphAudioProcessor twice;
+        twice.getInternal().oversampleValue().setValue (2);
+        twice.prepareToPlay (48000.0, 256);
+        twice.setStateInformation (poisoned.getData(), (int) poisoned.getSize()); // settle types
+        twice.getAPVTS().getParameter (pid::drive)->setValueNotifyingHost (1.0f); // back to a latency-bearing state
+        juce::Timer::callPendingTimersSynchronously();
+        const int beforeB = twice.getLatencySamples();
+        twice.setStateInformation (poisoned.getData(), (int) poisoned.getSize());
+        juce::Timer::callPendingTimersSynchronously();
+        const int reportedB = twice.getLatencySamples();
+        twice.prepareToPlay (48000.0, 256);
+        const int truthB = twice.getLatencySamples();
+        std::printf ("  SECOND restore: before %d, reported %d, actually predicts %d -- %s\n",
+                     beforeB, reportedB, truthB,
+                     reportedB == truthB ? "report follows the repair"
+                                         : "CONFIRMED: stale reported latency");
+    }
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
+//  State test 26 -- a restore that carries no A/B data must not leave the
+//  PREVIOUS project's slots loaded (ER-STATE-12).
+//
+//  `readSlot` already enforces "absent means the default, not whatever the
+//  previous session left here", but only for a blob that HAS an `AB` node, since
+//  that is the branch it is called from. Two restore paths carry no A/B data at
+//  all -- an `AnamorphRoot` with no `AB` child, and a v0.2 bare-APVTS session,
+//  which predates the feature -- and both left `abSlot[]` and `abActive` holding
+//  the previous project's values on a REUSED instance. Measured before the fix:
+//  after a v0.2 restore, switching to B played the previous project's B (raw
+//  width 0.10 against a restored 0.75), and with the previous project left active
+//  on B the first switch read its A (0.90) and its active index survived too.
+//
+//  Non-vacuity is asserted, not assumed: the two previous-project slots must
+//  differ from EACH OTHER and the restored value must differ from BOTH, or the
+//  readbacks below could pass while carrying stale state.
+// ---------------------------------------------------------------------------
+static void testLegacyRestoreResetsAbSlots()
+{
+    std::printf ("State test 26: a restore with no A/B data resets both slots (ER-STATE-12)\n");
+
+    constexpr float kPrevA = 0.90f;   // the "previous project" A sound
+    constexpr float kPrevB = 0.10f;   // ...and its B sound, clearly different
+    constexpr float kTol   = 0.02f;
+
+    // Load the previous project's two distinguishable sounds into one instance and
+    // leave it on `stayOn`, which decides which slot the first post-restore switch
+    // reads: switching AWAY from a slot stores the live (restored) state into it,
+    // so only the slot we do NOT start on can show contamination on the first move.
+    auto seedPreviousProject = [] (AnamorphAudioProcessor& p, int stayOn)
+    {
+        p.prepareToPlay (48000.0, 512);
+        setRaw (p, "width", kPrevA);
+        p.abSwitchTo (1);
+        setRaw (p, "width", kPrevB);
+        if (stayOn == 0) p.abSwitchTo (0);
+    };
+
+    // --- Leg 1: v0.2 bare APVTS, reused instance, first switch reads B.
+    {
+        AnamorphAudioProcessor p;
+        seedPreviousProject (p, 0);
+        if (! applyXmlFixture (p, "legacy_v0_2_bare_apvts.xml"))
+            return;
+
+        const float restored = rawOf (p, "width");
+        check (std::abs (kPrevA - kPrevB) > kTol,
+               "the previous project's A and B are distinguishable (non-vacuity)");
+        check (std::abs (restored - kPrevA) > kTol && std::abs (restored - kPrevB) > kTol,
+               "the restored v0.2 value differs from BOTH previous slots (non-vacuity)");
+        std::printf ("  previous project A %.4f / B %.4f; v0.2 restores %.4f\n",
+                     kPrevA, kPrevB, restored);
+
+        check (p.abActiveSlot() == 0, "a session with no AB data restores the default active slot");
+        p.abSwitchTo (1);
+        const float b = rawOf (p, "width");
+        checkNear ((double) b, (double) restored, 1.0e-4,
+                   "slot B holds the RESTORED state, not the previous project's B");
+        check (std::abs (b - kPrevB) > kTol, "...and specifically not the previous project's B value");
+        p.abSwitchTo (0);
+        checkNear ((double) rawOf (p, "width"), (double) restored, 1.0e-4,
+                   "slot A holds the RESTORED state after switching back");
+    }
+
+    // --- Leg 2: same, but the previous project is left active on B, so the first
+    // switch after the restore is the one that reads A. Without this leg slot A is
+    // never actually observed -- leg 1's switch to B overwrites A on the way out.
+    {
+        AnamorphAudioProcessor p;
+        seedPreviousProject (p, 1);
+        check (p.abActiveSlot() == 1, "precondition: the previous project is active on B");
+        if (! applyXmlFixture (p, "legacy_v0_2_bare_apvts.xml"))
+            return;
+
+        const float restored = rawOf (p, "width");
+        check (p.abActiveSlot() == 0,
+               "the previous project's ACTIVE INDEX does not survive either");
+        p.abSwitchTo (1);                       // 0 -> 1 so the next move reads A afresh
+        p.abSwitchTo (0);
+        const float a = rawOf (p, "width");
+        checkNear ((double) a, (double) restored, 1.0e-4,
+                   "slot A holds the RESTORED state, not the previous project's A");
+        check (std::abs (a - kPrevA) > kTol, "...and specifically not the previous project's A value");
+    }
+
+    // --- Leg 3: a FRESH instance. This was written expecting a vacuous pass -- the
+    // slots "start invalid", so nothing should need resetting -- and MEASUREMENT
+    // refuted that: pre-fix it failed with 0.5, the Default width. The constructor
+    // calls abEnsureInit() EAGERLY (so B is not born as a copy of an already-edited
+    // A), so by the time any restore arrives both slots are already valid, holding
+    // the open/Default state. A v0.2 restore then left slot B on Default rather than
+    // on the restored session -- the same defect with the construction snapshot in
+    // the previous project's place. Kept, and no longer described as the easy leg.
+    {
+        AnamorphAudioProcessor fresh;
+        fresh.prepareToPlay (48000.0, 512);
+        if (! applyXmlFixture (fresh, "legacy_v0_2_bare_apvts.xml"))
+            return;
+        const float restored = rawOf (fresh, "width");
+        check (std::abs (restored - fresh.getAPVTS().getParameter ("width")->getDefaultValue()) > kTol,
+               "non-vacuity: the restored value differs from the Default the slots were seeded with");
+        fresh.abSwitchTo (1);
+        checkNear ((double) rawOf (fresh, "width"), (double) restored, 1.0e-4,
+                   "fresh instance: slot B is seeded from the restored state, not from construction");
+    }
+
+    // --- Leg 4: an AnamorphRoot with no `AB` child -- the same class of path, on
+    // the CURRENT format. `AB` is optional (every field in it is "Required: No").
+    {
+        AnamorphAudioProcessor p;
+        seedPreviousProject (p, 0);
+        juce::MemoryBlock mb;
+        p.getStateInformation (mb);
+        auto xml = BlobCodec::unwrap (mb);
+        check (xml != nullptr, "a current-format save round-trips through the blob codec");
+        if (xml == nullptr) return;
+        auto root = juce::ValueTree::fromXml (*xml);
+        check (root.getChildWithName ("AB").isValid(),
+               "precondition: a current save DOES carry an AB child (so leg 4 is a real strip)");
+        root.removeChild (root.getChildWithName ("AB"), nullptr);
+
+        setRaw (p, "width", 0.55f);             // a third, distinct live value
+        const auto stripped = BlobCodec::wrap (*root.createXml());
+        p.setStateInformation (stripped.getData(), (int) stripped.getSize());
+        const float restored = rawOf (p, "width");
+        check (std::abs (restored - kPrevB) > kTol,
+               "non-vacuity: the AB-less root restores something other than the previous B");
+        p.abSwitchTo (1);
+        const float b = rawOf (p, "width");
+        checkNear ((double) b, (double) restored, 1.0e-4,
+                   "AB-less root: slot B holds the RESTORED state");
+        check (std::abs (b - kPrevB) > kTol, "...and not the previous project's B value");
+    }
+
+    // --- Leg 5: the fix must NOT erase legitimate A/B data. A root that DOES carry
+    // an AB node still restores both slots' own sounds.
+    {
+        AnamorphAudioProcessor src;
+        src.prepareToPlay (48000.0, 512);
+        setRaw (src, "width", 0.80f);
+        src.abSwitchTo (1);
+        setRaw (src, "width", 0.20f);
+        src.abSwitchTo (0);                     // A = 0.80, B = 0.20, active = A
+        juce::MemoryBlock saved;
+        src.getStateInformation (saved);
+
+        AnamorphAudioProcessor dst;             // a REUSED instance with other content
+        seedPreviousProject (dst, 0);
+        dst.setStateInformation (saved.getData(), (int) saved.getSize());
+        checkNear ((double) rawOf (dst, "width"), 0.80, 1.0e-4,
+                   "a root WITH an AB node still restores slot A's own sound");
+        dst.abSwitchTo (1);
+        checkNear ((double) rawOf (dst, "width"), 0.20, 1.0e-4,
+                   "...and slot B's, so the reset did not erase carried A/B data");
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  State test 27 -- three restore/latency integrity guards (round 11).
+//
+//  ER-STATE-14  a latency request that lands while a delivery is running must
+//               not be swallowed by a second clear of the request flag.
+//  ER-STATE-15  an `AnamorphRoot` with no `ANAMORPH` sound child restores no
+//               sound, so it must adopt no metadata and no Settings either.
+//  ER-STATE-16  an A/B slot whose payload is REJECTED must not keep that
+//               payload's name, baseline or indicator identity: the slot is
+//               reseeded from the restored state, and its label has to describe
+//               that same state.
+// ---------------------------------------------------------------------------
+static void testRestoreIntegrityGuards()
+{
+    std::printf ("State test 27: restore/latency integrity (ER-STATE-14/15/16)\n");
+
+    // === ER-STATE-14 ========================================================
+    // DETERMINISTIC. The second request is made INSIDE the delivery, from a real
+    // off-message thread, at a barrier the PRODUCT provides: AudioProcessor::
+    // setLatencySamples() notifies its AudioProcessorListeners synchronously, from
+    // within the call, whenever the reported value changes (pinned JUCE 9.0.1,
+    // juce_AudioProcessor.cpp:415-436), and the listener lock is released before
+    // each callback (getListenerLocked, :425-429), so a listener may block. That
+    // is exactly the sequence the review asked for -- delivery starts, another
+    // thread requests, delivery completes, the second request must still be
+    // observed and delivered -- with no test hook in production code and no
+    // timing race: the interleaving is FORCED, not hoped for.
+    //
+    // WHAT IT DOES AND DOES NOT PROVE, stated exactly. It pins the invariant
+    // "a request that lands while a delivery is running survives to the next
+    // tick": a build that clears the flag AFTER delivering fails it (measured --
+    // see the round-12 worklog), so a future refactor of that shape cannot land
+    // green. It does NOT reach the round-11 double-clear window itself: that lay
+    // between timerCallback's exchange(0) and the second store(0) the old
+    // updateLatency() performed at its ENTRY -- two adjacent atomics on one thread
+    // with no call between them -- and no external mechanism can place a request
+    // there. The pre-round-11 code therefore passes this leg too; that fix rests
+    // on inspection, and this comment exists so nobody reads green here as proof
+    // of it. Neither half of that fix was measurable on x86-64 either way.
+    //
+    // The waits below are bounded polls for the processor's own 20 Hz timer, not
+    // sleeps that stand in for synchronisation: the outcome is fixed the moment
+    // the request is or is not in the flag, and the deadline (40 timer periods)
+    // only bounds how long a FAILING run takes to report. A tight loop of
+    // callPendingTimersSynchronously() would fire nothing -- the countdown is
+    // never due -- which is the harness defect the round-11 version of this leg
+    // had before it was found.
+    {
+        struct Barrier final : public juce::AudioProcessorListener
+        {
+            std::atomic<bool> armed { false }, inDelivery { false }, requested { false };
+            std::atomic<int>  fired { 0 };
+            void audioProcessorParameterChanged (juce::AudioProcessor*, int, float) override {}
+            void audioProcessorChanged (juce::AudioProcessor*, const ChangeDetails& d) override
+            {
+                if (! d.latencyChanged || ! armed.exchange (false)) return;
+                fired.fetch_add (1);
+                inDelivery.store (true);                       // delivery has started...
+                while (! requested.load()) std::this_thread::yield();   // ...hold it open until the request lands
+            }
+        };
+
+        AnamorphAudioProcessor p;
+        p.getInternal().oversampleValue().setValue (2);        // 1-based combo id: 2x -- latency moves with drive
+        p.prepareToPlay (48000.0, 512);
+        auto* drive = p.getAPVTS().getParameter (pid::drive);
+        drive->setValueNotifyingHost (0.0f); p.prepareToPlay (48000.0, 512);
+        const int lowLat  = p.getLatencySamples();
+        drive->setValueNotifyingHost (1.0f); p.prepareToPlay (48000.0, 512);
+        const int highLat = p.getLatencySamples();
+        drive->setValueNotifyingHost (0.0f); p.prepareToPlay (48000.0, 512);   // back to low; host holds lowLat
+        check (lowLat != highLat, "non-vacuity: the reported latency actually moves with drive here");
+
+        auto waitForReported = [&p] (int expected, int deadlineMs)
+        {
+            for (int elapsed = 0; elapsed < deadlineMs; elapsed += 5)
+            {
+                juce::Timer::callPendingTimersSynchronously();
+                if (p.getLatencySamples() == expected) return true;
+                std::this_thread::sleep_for (std::chrono::milliseconds (5));
+            }
+            return p.getLatencySamples() == expected;
+        };
+
+        Barrier barrier;
+        p.addListener (&barrier);
+        barrier.armed.store (true);
+
+        std::thread worker ([&]
+        {
+            // Request #1, off the message thread: drive -> 1 raises the flag.
+            drive->setValueNotifyingHost (1.0f);
+            // Wait until the timer's delivery of #1 has STARTED (the barrier holds it open)...
+            while (! barrier.inDelivery.load()) std::this_thread::yield();
+            // ...and make request #2 from inside that window: drive -> 0 raises the flag again.
+            drive->setValueNotifyingHost (0.0f);
+            barrier.requested.store (true);
+        });
+
+        // Serve request #1 on the message thread. This is the delivery the barrier sits in.
+        const bool firstDelivered = waitForReported (highLat, 2000);
+        worker.join();
+        check (barrier.fired.load() == 1, "the barrier fired exactly once, inside delivery #1");
+        check (firstDelivered, "delivery #1 completed with the value it read (highLat)");
+
+        // Request #2 landed DURING delivery #1. It must still be pending, and the
+        // next tick must serve it -- nothing else on the message thread will.
+        const bool secondDelivered = waitForReported (lowLat, 2000);
+        std::printf ("  delivery #1 -> %d with request #2 made inside it; next tick -> %d (expected %d)\n",
+                     highLat, p.getLatencySamples(), lowLat);
+        check (secondDelivered, "a request made DURING a delivery survives it and is served by the next tick");
+        p.removeListener (&barrier);
+    }
+
+    // === ER-STATE-15 ========================================================
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+
+        // Give the live instance a distinguishable identity and sound, so anything
+        // adopted from the headless blob is visible.
+        setRaw (p, "width", 0.77f);
+        p.getInternal().oversampleValue().setValue (3);      // non-default Settings
+        p.getPresets().setMeta ("Live Name", "live-baseline", anamorph::PresetManager::Selection{});
+        const float  liveWidth = rawOf (p, "width");
+        const auto   liveName  = p.getPresets().currentName();
+        const int    liveOs    = (int) p.getInternal().copyState()["int_oversample"];
+
+        // A root that LOOKS like ours but carries no sound child, and whose
+        // metadata is deliberately different from the live instance's.
+        juce::ValueTree root ("AnamorphRoot");
+        root.setProperty ("presetName", "Incoming Name", nullptr);
+        root.setProperty ("presetBaseline", "incoming-baseline", nullptr);
+        root.setProperty ("presetSource", "factory", nullptr);
+        root.setProperty ("presetFactoryId", "some-factory-id", nullptr);
+        juce::ValueTree internalNode ("ANAMORPH_INTERNAL");
+        internalNode.setProperty ("int_oversample", 1, nullptr);   // would reset Settings
+        root.appendChild (internalNode, nullptr);
+        check (! root.getChildWithName (p.getAPVTS().state.getType()).isValid(),
+               "precondition: the blob really has no ANAMORPH sound child");
+
+        const auto blob = BlobCodec::wrap (*root.createXml());
+        p.setStateInformation (blob.getData(), (int) blob.getSize());
+
+        checkNear ((double) rawOf (p, "width"), (double) liveWidth, 1.0e-6,
+                   "no sound child: the live sound is untouched");
+        checkStr (p.getPresets().currentName(), liveName,
+                  "...and the preset NAME is not adopted from a session that restored nothing");
+        check ((int) p.getInternal().copyState()["int_oversample"] == liveOs,
+               "...and the host-hidden Settings are not adopted either");
+        check (p.getPresets().selection().kind == anamorph::PresetManager::Selection::Kind::unknown
+                   || p.getPresets().selection().factoryId != "some-factory-id",
+               "...and the indicator identity is not adopted");
+    }
+
+    // === ER-STATE-16 -- REFUTED, kept as a contract pin ======================
+    // The review reported that a slot whose sound is rejected keeps that payload's
+    // name, baseline and identity. Measured: it does not. StateSet::isValid() is
+    // params.isValid(), so a rejected payload leaves the slot invalid, and
+    // abEnsureInit() assigns `slot = currentStateSet()` -- the WHOLE struct, metadata
+    // included. Every reader of abSlot[] calls abEnsureInit first, so the metadata
+    // readSlot wrote is unreachable. Gating those reads on params.isValid() was
+    // implemented, measured to change no test outcome, and reverted.
+    //
+    // These legs pass either way, which is why they are labelled a CONTRACT PIN and
+    // not a regression guard: they assert that the rejected slot's sound and label
+    // describe the same state, wherever in the code that ends up being satisfied.
+    {
+        // Build a real save, then corrupt ONLY slot B's payload while leaving its
+        // name/baseline/identity intact -- the exact shape the review described.
+        AnamorphAudioProcessor src;
+        src.prepareToPlay (48000.0, 512);
+        setRaw (src, "width", 0.20f);
+        src.abSwitchTo (1);
+        src.getPresets().setMeta ("Slot B Preset", "slotb-baseline", anamorph::PresetManager::Selection{});
+        setRaw (src, "width", 0.85f);
+        src.abSwitchTo (0);
+        setRaw (src, "width", 0.30f);
+        src.getPresets().setMeta ("Slot A Preset", "slota-baseline", anamorph::PresetManager::Selection{});
+
+        juce::MemoryBlock saved;
+        src.getStateInformation (saved);
+        auto xml  = BlobCodec::unwrap (saved);
+        auto root = juce::ValueTree::fromXml (*xml);
+        auto ab   = root.getChildWithName ("AB");
+        check (ab.isValid() && ab.getProperty ("slotBName").toString().isNotEmpty(),
+               "precondition: slot B carries a non-empty name to be contaminated by");
+        const auto rejectedName = ab.getProperty ("slotBName").toString();
+
+        ab.setProperty ("slotBParams", "<<< not xml at all >>>", nullptr);   // REJECTED payload
+        // slotBName / slotBBase / slotBSource are left exactly as saved.
+
+        AnamorphAudioProcessor dst;
+        dst.prepareToPlay (48000.0, 512);
+        const auto blob = BlobCodec::wrap (*root.createXml());
+        dst.setStateInformation (blob.getData(), (int) blob.getSize());
+
+        const float restoredWidth = rawOf (dst, "width");
+        const auto  restoredName  = dst.getPresets().currentName();
+        check (restoredName != rejectedName,
+               "precondition: the rejected slot's name differs from the restored one (non-vacuity)");
+        // Captured BEFORE the switch. The restored session here carries a synthetic
+        // baseline string that is not a real signature, so the restored state is
+        // legitimately dirty; the invariant that matters is that switching into the
+        // reseeded slot does not move it, not that it is clean.
+        const bool dirtyBeforeSwitch = dst.getPresets().isDirty();
+
+        // Switching to the rejected slot must show the RESEEDED state -- both its
+        // sound and its label.
+        dst.abSwitchTo (1);
+        checkNear ((double) rawOf (dst, "width"), (double) restoredWidth, 1.0e-4,
+                   "rejected slot: the SOUND is reseeded from the restored state");
+        checkStr (dst.getPresets().currentName(), restoredName,
+                  "...and the NAME describes that same state, not the rejected payload's");
+        check (dst.getPresets().currentName() != rejectedName,
+               "...specifically, the rejected payload's preset name did not survive");
+        check (dst.getPresets().isDirty() == dirtyBeforeSwitch,
+               "...and switching to it does not CHANGE the dirty-star (no stranger's baseline)");
+    }
+
+    // === ER-STATE-16, the other direction: a VALID slot is unaffected ========
+    {
+        AnamorphAudioProcessor src;
+        src.prepareToPlay (48000.0, 512);
+        setRaw (src, "width", 0.20f);
+        src.abSwitchTo (1);
+        src.getPresets().setMeta ("Kept Name", "kept-baseline", anamorph::PresetManager::Selection{});
+        setRaw (src, "width", 0.85f);
+        src.abSwitchTo (0);
+        juce::MemoryBlock saved;
+        src.getStateInformation (saved);
+
+        AnamorphAudioProcessor dst;
+        dst.prepareToPlay (48000.0, 512);
+        dst.setStateInformation (saved.getData(), (int) saved.getSize());
+        dst.abSwitchTo (1);
+        checkNear ((double) rawOf (dst, "width"), 0.85, 1.0e-4,
+                   "a VALID slot still restores its own sound");
+        checkStr (dst.getPresets().currentName(), "Kept Name",
+                  "...and its own preset name -- valid sessions are byte-compatible");
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  State test 28 -- a malformed host-hidden Setting in a legacy session resolves
+//  to a VALID setting, deterministically (ER-STATE-17).
+//
+//  migrateFromLegacyApvts read each legacy PARAM value straight into an `(int)`
+//  conversion. JUCE's parser accepts "nan" and "inf" as numbers, so a v0.2
+//  session carrying one reached that conversion, which is undefined behaviour
+//  for NaN, infinity and out-of-range values. Measured through the real restore
+//  on x86-64 before the fix: every such value became -2147483647 in the tree,
+//  re-saved with the session as an impossible ComboBox id; "2147483647" wrapped
+//  to INT_MIN through a second UB (signed overflow in the `+ 1`); a finite but
+//  out-of-domain "7" produced id 8; "abc" silently made UI Scale "XS" instead of
+//  its default; and scopePersist passed NaN, +/-inf and out-of-range values
+//  straight through to the slider. AArch64 saturates instead, so the corruption
+//  was platform-dependent as well as undefined.
+//
+//  The contract this pins: malformed / non-finite -> the field's DEFAULT (the
+//  same answer an absent node gets, through the same SerializedNumber predicate
+//  the session and preset paths use); finite but out of domain -> CLAMPED to the
+//  nearest valid choice; valid -> unchanged. Both legacy shapes are covered: the
+//  v0.2 bare-APVTS root, and a pre-0.8.4 AnamorphRoot with no ANAMORPH_INTERNAL
+//  child, which calls the same migration.
+// ---------------------------------------------------------------------------
+static void testMalformedLegacySettingsResolveToValid()
+{
+    std::printf ("State test 28: malformed legacy Settings resolve to a valid setting (ER-STATE-17)\n");
+
+    auto restoreV02 = [] (AnamorphAudioProcessor& p, const char* id, const char* value)
+    {
+        juce::String xml;
+        xml << "<ANAMORPH><PARAM id=\"width\" value=\"1.5\"/>"
+            << "<PARAM id=\"" << id << "\" value=\"" << value << "\"/></ANAMORPH>";
+        auto parsed = juce::parseXML (xml);
+        const auto blob = BlobCodec::wrap (*parsed);
+        p.setStateInformation (blob.getData(), (int) blob.getSize());
+    };
+    auto internalOf = [] (AnamorphAudioProcessor& p) { return p.getInternal().copyState(); };
+    auto reSavedInt = [] (AnamorphAudioProcessor& p, const char* field)
+    {
+        juce::MemoryBlock mb; p.getStateInformation (mb);
+        auto xml = BlobCodec::unwrap (mb);
+        return (int) juce::ValueTree::fromXml (*xml).getChildWithName ("ANAMORPH_INTERNAL").getProperty (field);
+    };
+
+    // --- oversample: default index 0 -> id 1; domain ids 1..4 --------------------
+    struct IntCase { const char* text; int expectId; const char* why; };
+    const IntCase osCases[] = {
+        { "nan",        1, "NaN -> default"                      },
+        { "inf",        1, "+inf -> default"                     },
+        { "-inf",       1, "-inf -> default"                     },
+        { "1e39",       1, "overflows float -> default"          },
+        { "-1e39",      1, "negative overflow -> default"        },
+        { "abc",        1, "not a number -> default"             },
+        { "",           1, "empty -> default"                    },
+        { "0x10",       1, "hex text -> default"                 },
+        { "7",          4, "finite, out of domain -> clamped"    },
+        { "2147483647", 4, "INT_MAX -> clamped, no wrap"         },
+        { "-3",         1, "finite, below domain -> clamped"     },
+        { "1.0",        2, "valid index 1 -> id 2 (unchanged)"   },
+        { "3",          4, "valid index 3 -> id 4 (unchanged)"   },
+    };
+    for (const auto& c : osCases)
+    {
+        AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+        restoreV02 (p, "oversample", c.text);
+        const int id = (int) internalOf (p)[anamorph::iid::oversample];
+        check (id == c.expectId, (juce::String ("oversample=\"") + c.text + "\" -> id " + juce::String (c.expectId)
+                                  + " (" + c.why + "); got " + juce::String (id)).toRawUTF8());
+        check (id >= 1 && id <= 4, "...and the id is inside the combo's domain");
+        check (p.getInternal().oversampleIndex() == id - 1, "...and the DSP atomic agrees with the tree");
+        check (reSavedInt (p, "int_oversample") == id, "...and a re-save writes that valid id, not garbage");
+    }
+
+    // --- uiScale: default index 2 -> id 3; domain ids 1..5 -----------------------
+    const IntCase uiCases[] = {
+        { "nan",        3, "NaN -> default"                      },
+        { "inf",        3, "+inf -> default"                     },
+        { "-1e39",      3, "negative overflow -> default"        },
+        { "abc",        3, "not a number -> default (was XS)"    },
+        { "",           3, "empty -> default (was XS)"           },
+        { "7",          5, "finite, out of domain -> clamped"    },
+        { "2147483647", 5, "INT_MAX -> clamped, no wrap"         },
+        { "1.0",        2, "valid index 1 -> id 2 (unchanged)"   },
+        { "4",          5, "valid index 4 -> id 5 (unchanged)"   },
+    };
+    for (const auto& c : uiCases)
+    {
+        AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+        restoreV02 (p, "uiScale", c.text);
+        const int id = (int) internalOf (p)[anamorph::iid::uiScale];
+        check (id == c.expectId, (juce::String ("uiScale=\"") + c.text + "\" -> id " + juce::String (c.expectId)
+                                  + " (" + c.why + "); got " + juce::String (id)).toRawUTF8());
+        check (p.getInternal().uiScaleIndex() == id - 1, "...and uiScaleIndex() agrees with the tree");
+    }
+
+    // --- scopePersist: default 0.5; domain 0..1 ----------------------------------
+    struct DblCase { const char* text; double expect; const char* why; };
+    const DblCase spCases[] = {
+        { "nan",  0.5,  "NaN -> default"                 },
+        { "inf",  0.5,  "+inf -> default"                },
+        { "-inf", 0.5,  "-inf -> default"                },
+        { "1e39", 0.5,  "overflows float -> default"     },
+        { "abc",  0.5,  "not a number -> default (was 0)"},
+        { "-1",   0.0,  "below domain -> clamped"        },
+        { "5",    1.0,  "above domain -> clamped"        },
+        { "0.25", 0.25, "valid -> unchanged"             },
+    };
+    for (const auto& c : spCases)
+    {
+        AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+        restoreV02 (p, "scopePersist", c.text);
+        const double d = (double) internalOf (p)[anamorph::iid::scopePersist];
+        checkNear (d, c.expect, 1.0e-9, (juce::String ("scopePersist=\"") + c.text + "\" (" + c.why + ")").toRawUTF8());
+        check (std::isfinite ((double) p.getInternal().scopePersist()), "...and the consumer never sees a non-finite value");
+    }
+
+    // --- the OTHER legacy shape that runs the same migration: a pre-0.8.4
+    //     AnamorphRoot whose sound child carries the setting and which has no
+    //     ANAMORPH_INTERNAL child. Same predicate, same answer.
+    {
+        AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+        juce::String xml;
+        xml << "<AnamorphRoot presetName=\"x\"><ANAMORPH>"
+            << "<PARAM id=\"width\" value=\"1.5\"/><PARAM id=\"uiScale\" value=\"nan\"/>"
+            << "<PARAM id=\"oversample\" value=\"1e39\"/></ANAMORPH></AnamorphRoot>";
+        auto parsed = juce::parseXML (xml);
+        const auto blob = BlobCodec::wrap (*parsed);
+        p.setStateInformation (blob.getData(), (int) blob.getSize());
+        check ((int) internalOf (p)[anamorph::iid::uiScale] == 3,
+               "pre-0.8.4 AnamorphRoot path: uiScale=\"nan\" -> default id 3");
+        check ((int) internalOf (p)[anamorph::iid::oversample] == 1,
+               "pre-0.8.4 AnamorphRoot path: oversample=\"1e39\" -> default id 1");
+    }
+
+    // --- the REAL frozen pre-0.8.4 fixture, mutated IN PLACE. Only the six
+    //     Settings PARAM values are replaced; width, mix, the preset name and
+    //     baseline and both A/B slots stay exactly what the fixture carries. This
+    //     proves the repair on the genuine legacy shape -- the file State test 6
+    //     guards -- and that it disturbs nothing around it. Three restores: the
+    //     file untouched (State test 6's values re-asserted here so this leg is
+    //     self-contained), malformed text in every Setting, and finite values
+    //     outside every domain.
+    {
+        auto loadFixtureRoot = []
+        {
+            auto xml = juce::parseXML (fixtureDir().getChildFile ("legacy_pre_0_8_4_view_params.xml"));
+            return xml != nullptr ? juce::ValueTree::fromXml (*xml) : juce::ValueTree();
+        };
+        auto setSetting = [] (juce::ValueTree& root, const char* id, const char* text)
+        {
+            auto sound = root.getChildWithName ("ANAMORPH");
+            for (int i = 0; i < sound.getNumChildren(); ++i)
+            {
+                auto c = sound.getChild (i);
+                if (c.hasType ("PARAM") && c.getProperty ("id").toString() == id)
+                    c.setProperty ("value", juce::String (text), nullptr);
+            }
+        };
+        auto restoreRoot = [] (AnamorphAudioProcessor& p, const juce::ValueTree& root)
+        {
+            const auto blob = BlobCodec::wrap (*root.createXml());
+            p.setStateInformation (blob.getData(), (int) blob.getSize());
+        };
+        auto surroundingsIntact = [] (AnamorphAudioProcessor& p, const char* leg)
+        {
+            const juce::String tag (leg);
+            auto* w = dynamic_cast<juce::RangedAudioParameter*> (p.getAPVTS().getParameter ("width"));
+            auto* m = dynamic_cast<juce::RangedAudioParameter*> (p.getAPVTS().getParameter ("mix"));
+            checkNear ((double) w->getValue(), (double) w->convertTo0to1 (0.8f),  1.0e-6, (tag + ": width 0.8 still restores").toRawUTF8());
+            checkNear ((double) m->getValue(), (double) m->convertTo0to1 (0.65f), 1.0e-6, (tag + ": mix 0.65 still restores").toRawUTF8());
+            checkStr (p.getPresets().currentName(), "My Vocal", (tag + ": preset name still restores").toRawUTF8());
+            check (p.abActiveSlot() == 0, (tag + ": active slot still restores").toRawUTF8());
+            juce::MemoryBlock mb; p.getStateInformation (mb);
+            auto saved = juce::ValueTree::fromXml (*BlobCodec::unwrap (mb));
+            checkStr (saved.getChildWithName ("AB")["slotBName"].toString(), "Slot B Preset",
+                      (tag + ": slot B name still survives a re-save").toRawUTF8());
+            const auto savedInternal = saved.getChildWithName ("ANAMORPH_INTERNAL");
+            const int os = (int) savedInternal[anamorph::iid::oversample], ui = (int) savedInternal[anamorph::iid::uiScale];
+            check (os >= 1 && os <= 4 && ui >= 1 && ui <= 5, (tag + ": re-save writes in-domain Settings ids").toRawUTF8());
+        };
+
+        auto root = loadFixtureRoot();
+        check (root.isValid() && root.hasType ("AnamorphRoot")
+                 && ! root.getChildWithName ("ANAMORPH_INTERNAL").isValid(),
+               "real fixture: is an AnamorphRoot with NO ANAMORPH_INTERNAL child (the pre-0.8.4 shape)");
+        if (root.isValid())
+        {
+            // (a) untouched -- the fix must not move valid migration on the real file
+            {
+                AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+                restoreRoot (p, root);
+                auto t = internalOf (p);
+                check ((int)  t[anamorph::iid::oversample] == 3,   "real fixture untouched: oversample idx 2 -> id 3");
+                check ((int)  t[anamorph::iid::uiScale]    == 2,   "real fixture untouched: uiScale idx 1 -> id 2");
+                checkNear ((double) t[anamorph::iid::scopePersist], 0.25, 1.0e-9, "real fixture untouched: scopePersist 0.25");
+                check ((bool) t[anamorph::iid::metersOn]   == false, "real fixture untouched: metersOn false");
+                check ((bool) t[anamorph::iid::tooltipsOn] == true,  "real fixture untouched: tooltipsOn true");
+                check ((bool) t[anamorph::iid::uiAnimations] == true, "real fixture untouched: uiAnimations true");
+                surroundingsIntact (p, "real fixture untouched");
+            }
+            // (b) every Setting malformed, in place
+            {
+                auto bad = root.createCopy();
+                setSetting (bad, "oversample",   "nan");
+                setSetting (bad, "uiScale",      "1e39");
+                setSetting (bad, "scopePersist", "inf");
+                setSetting (bad, "metersOn",     "abc");
+                setSetting (bad, "tooltipsOn",   "nan");
+                setSetting (bad, "uiAnimations", "-inf");
+                AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+                restoreRoot (p, bad);
+                auto t = internalOf (p);
+                check ((int)  t[anamorph::iid::oversample] == 1,   "real fixture, oversample=\"nan\"    -> default id 1");
+                check ((int)  t[anamorph::iid::uiScale]    == 3,   "real fixture, uiScale=\"1e39\"      -> default id 3");
+                checkNear ((double) t[anamorph::iid::scopePersist], 0.5, 1.0e-9, "real fixture, scopePersist=\"inf\" -> default 0.5");
+                check ((bool) t[anamorph::iid::metersOn]   == false, "real fixture, metersOn=\"abc\"     -> default false");
+                check ((bool) t[anamorph::iid::tooltipsOn] == false, "real fixture, tooltipsOn=\"nan\"   -> default false (was true in the file)");
+                check ((bool) t[anamorph::iid::uiAnimations] == true, "real fixture, uiAnimations=\"-inf\" -> default true");
+                check (p.getInternal().oversampleIndex() == 0, "real fixture, malformed: the DSP atomic agrees with the tree");
+                surroundingsIntact (p, "real fixture, malformed Settings");
+            }
+            // (c) finite but outside every domain, in place
+            {
+                auto far = root.createCopy();
+                setSetting (far, "oversample",   "7");
+                setSetting (far, "uiScale",      "7");
+                setSetting (far, "scopePersist", "5");
+                AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+                restoreRoot (p, far);
+                auto t = internalOf (p);
+                check ((int)  t[anamorph::iid::oversample] == 4,   "real fixture, oversample=\"7\"  -> clamped to id 4");
+                check ((int)  t[anamorph::iid::uiScale]    == 5,   "real fixture, uiScale=\"7\"     -> clamped to id 5");
+                checkNear ((double) t[anamorph::iid::scopePersist], 1.0, 1.0e-9, "real fixture, scopePersist=\"5\" -> clamped to 1.0");
+                check (p.getInternal().oversampleIndex() == 3, "real fixture, clamped: the DSP atomic agrees with the tree");
+                surroundingsIntact (p, "real fixture, out-of-domain Settings");
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  Opt-in probe: does a legacy restore on a REUSED instance leave the previous
+//  project's A/B slots in place? Reproduction BEFORE any disposition.
+// ---------------------------------------------------------------------------
+static int runLegacyAbProbe()
+{
+    std::printf ("legacy A/B contamination probe\n");
+    std::printf ("=============================\n\n");
+
+    auto widthOf = [] (AnamorphAudioProcessor& p) { return rawOf (p, "width"); };
+
+    // --- Step 1: the "previous project", with DISTINGUISHABLE A and B sounds.
+    AnamorphAudioProcessor p;
+    p.prepareToPlay (48000.0, 512);
+
+    setRaw (p, "width", 0.90f);                 // slot A sound
+    p.abSwitchTo (1);                           // stores A, moves to B
+    setRaw (p, "width", 0.10f);                 // slot B sound -- clearly different
+    p.abSwitchTo (0);                           // back to A
+    std::printf ("  previous project: A width raw %.4f, B width raw %.4f (active %d)\n",
+                 widthOf (p), 0.10f, p.abActiveSlot());
+    const float prevA = 0.90f, prevB = 0.10f;
+
+    // --- Step 2: restore a v0.2 session into the SAME instance.
+    if (! applyXmlFixture (p, "legacy_v0_2_bare_apvts.xml"))
+        return 1;
+    const float restored = widthOf (p);
+    std::printf ("  after the v0.2 restore: live width raw %.4f (active %d)\n",
+                 restored, p.abActiveSlot());
+
+    // The fixture's width is 1.5 (denormalised); confirm it is distinguishable
+    // from BOTH previous-project slot values, or the probe cannot see anything.
+    const bool distinguishable = std::abs (restored - prevA) > 0.02f
+                              && std::abs (restored - prevB) > 0.02f;
+    std::printf ("  restored value distinguishable from both previous slots: %s\n",
+                 distinguishable ? "yes" : "NO -- probe would be vacuous");
+    if (! distinguishable) return 1;
+
+    // --- Step 3: switch slots and read back.
+    p.abSwitchTo (1);
+    const float afterToB = widthOf (p);
+    std::printf ("  after switching to B: width raw %.4f\n", afterToB);
+    p.abSwitchTo (0);
+    const float afterToA = widthOf (p);
+    std::printf ("  after switching back to A: width raw %.4f\n", afterToA);
+
+    const bool bStale = std::abs (afterToB - prevB) < 0.02f;
+    const bool aStale = std::abs (afterToA - prevA) < 0.02f;
+    std::printf ("\n  slot B carries the PREVIOUS project's sound: %s\n", bStale ? "YES" : "no");
+    std::printf ("  slot A carries the PREVIOUS project's sound: %s\n", aStale ? "YES" : "no");
+    std::printf ("  => %s\n", (bStale || aStale) ? "CONFIRMED: stale prior-project A/B state"
+                                                 : "REFUTED: slots follow the restore");
+
+    // --- Step 3b: the same question for slot A. Switching to B above STORED the
+    // restored state into A, so step 3 can never see a stale A. Reach it by leaving
+    // the previous project active on B, so the first switch after the restore is the
+    // one that reads A.
+    {
+        AnamorphAudioProcessor r;
+        r.prepareToPlay (48000.0, 512);
+        setRaw (r, "width", 0.90f);            // A
+        r.abSwitchTo (1);
+        setRaw (r, "width", 0.10f);            // B -- and STAY on B
+        if (! applyXmlFixture (r, "legacy_v0_2_bare_apvts.xml"))
+            return 1;
+        std::printf ("\n  previous project left active on B; after restore active = %d,"
+                     " live width raw %.4f\n", r.abActiveSlot(), widthOf (r));
+        r.abSwitchTo (0);
+        const float rA = widthOf (r);
+        std::printf ("  first switch after the restore reads A: width raw %.4f -> %s\n", rA,
+                     std::abs (rA - prevA) < 0.02f ? "CONFIRMED stale" : "follows the restore");
+    }
+
+    // --- Step 4: the same question for an AnamorphRoot session with NO AB child.
+    std::printf ("\n  --- AnamorphRoot with no AB child (same class of path) ---\n");
+    AnamorphAudioProcessor q;
+    q.prepareToPlay (48000.0, 512);
+    setRaw (q, "width", 0.90f);
+    q.abSwitchTo (1);
+    setRaw (q, "width", 0.10f);
+    q.abSwitchTo (0);
+
+    // Build a current-format blob, then strip its AB child.
+    juce::MemoryBlock mb;
+    q.getStateInformation (mb);
+    auto xml = BlobCodec::unwrap (mb);
+    auto root = juce::ValueTree::fromXml (*xml);
+    root.removeChild (root.getChildWithName ("AB"), nullptr);
+    setRaw (q, "width", 0.55f);                  // make the live value differ again
+    juce::MemoryBlock stripped = BlobCodec::wrap (*root.createXml());
+    q.setStateInformation (stripped.getData(), (int) stripped.getSize());
+    std::printf ("  after restoring an AB-less root: live width raw %.4f\n", widthOf (q));
+    q.abSwitchTo (1);
+    const float qB = widthOf (q);
+    std::printf ("  after switching to B: width raw %.4f -> %s\n", qB,
+                 std::abs (qB - prevB) < 0.02f ? "CONFIRMED stale" : "follows the restore");
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
+//  Opt-in probe: does a restore that carries no A/B data leave the PREVIOUS
+//  project's per-slot Level-Match gains in place, and does the first slot
+//  switch after it move the OUTPUT LEVEL? Reproduction before disposition.
+// ---------------------------------------------------------------------------
+static int runLegacyMatchGainProbe()
+{
+    std::printf ("legacy per-slot Level-Match contamination probe\n");
+    std::printf ("==============================================\n\n");
+
+    constexpr double sr = 48000.0;
+    constexpr int    bs = 512;
+
+    // Deterministic noise, so the loudness measurement has something real to
+    // converge on and the two slots' matches are genuinely measured, not injected.
+    auto fillNoise = [] (juce::AudioBuffer<float>& b, juce::Random& rng)
+    {
+        for (int ch = 0; ch < b.getNumChannels(); ++ch)
+            for (int i = 0; i < b.getNumSamples(); ++i)
+                b.setSample (ch, i, (rng.nextFloat() * 2.0f - 1.0f) * 0.25f);
+    };
+    auto runBlocks = [&] (AnamorphAudioProcessor& p, int nBlocks, juce::Random& rng)
+    {
+        juce::AudioBuffer<float> buf (2, bs);
+        juce::MidiBuffer midi;
+        for (int k = 0; k < nBlocks; ++k)
+        {
+            fillNoise (buf, rng);
+            p.processBlock (buf, midi);
+        }
+    };
+    auto rmsOf = [&] (AnamorphAudioProcessor& p, int nBlocks, juce::Random& rng)
+    {
+        juce::AudioBuffer<float> buf (2, bs);
+        juce::MidiBuffer midi;
+        double acc = 0.0; int n = 0;
+        for (int k = 0; k < nBlocks; ++k)
+        {
+            fillNoise (buf, rng);
+            p.processBlock (buf, midi);
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = 0; i < bs; ++i) { const double s = buf.getSample (ch, i); acc += s * s; ++n; }
+        }
+        return std::sqrt (acc / (double) juce::jmax (1, n));
+    };
+
+    AnamorphAudioProcessor p;
+    p.prepareToPlay (sr, bs);
+    juce::Random rng (20260901);
+
+    setRaw (p, "autoGainMatch", 1.0f);   // Level Match ON -- the gate the gain is applied behind
+
+    // --- The "previous project": two slots whose measured matches genuinely differ.
+    setRaw (p, "width", 0.95f);          // a wide setting -> one match figure
+    runBlocks (p, 60, rng);
+    const float prevMatchA = p.getEngine().getMatchGainDb();
+    p.abSwitchTo (1);                    // stores A's match, moves to B
+    setRaw (p, "width", 0.05f);          // a narrow setting -> a different one
+    runBlocks (p, 60, rng);
+    const float prevMatchB = p.getEngine().getMatchGainDb();
+    p.abSwitchTo (0);                    // stores B's match, back to A
+    runBlocks (p, 20, rng);
+    std::printf ("  previous project: measured match A %.3f dB, B %.3f dB (delta %.3f dB)\n",
+                 prevMatchA, prevMatchB, prevMatchB - prevMatchA);
+    if (std::abs (prevMatchB - prevMatchA) < 0.5f)
+    {
+        std::printf ("  the two slots' matches are NOT distinguishable -- probe would be vacuous\n");
+        return 1;
+    }
+
+    // --- Restore a session with NO A/B data into the SAME instance.
+    if (! applyXmlFixture (p, "legacy_v0_2_bare_apvts.xml"))
+        return 1;
+    setRaw (p, "autoGainMatch", 1.0f);   // the v0.2 fixture predates the param; keep the gate open
+    runBlocks (p, 60, rng);
+    const float afterRestore = p.getEngine().getMatchGainDb();
+    std::printf ("  after the v0.2 restore + settle: engine match %.3f dB\n", afterRestore);
+
+    // --- The first A/B switch after the restore. The injection is consumed INSIDE
+    // processBlock (at the silent bottom of the switch duck, ~6 ms out + 28 ms in),
+    // so reading getMatchGainDb() before any block has run reads the pre-switch
+    // loudness value and sees nothing -- the first version of this probe did
+    // exactly that and reported "not the stale value" for a stale value that WAS
+    // there. Print the trajectory instead of a single sample.
+    p.abSwitchTo (1);
+    std::printf ("  first switch to B -- engine match after N blocks:\n");
+    float atBlock4 = 0.0f;
+    for (int k = 1; k <= 8; ++k)
+    {
+        runBlocks (p, 1, rng);
+        const float m = p.getEngine().getMatchGainDb();
+        if (k == 4) atBlock4 = m;
+        std::printf ("      %d block(s): %.3f dB\n", k, m);
+    }
+    std::printf ("  stale previous-project B match was %.3f dB; restored-state match was %.3f dB\n",
+                 prevMatchB, afterRestore);
+    std::printf ("  => %s\n",
+                 std::abs (atBlock4 - prevMatchB) < 0.05f
+                     ? "CONFIRMED: the stale previous-project value was injected"
+                     : "the injected value is not the stale one");
+
+    // --- Output level, with the switch DUCK excluded. abSwitchTo requests a duck
+    // (~34 ms = 3.2 blocks at 512/48k), so an RMS window that starts at the switch
+    // measures the duck, not the match gain -- the first version of this probe did
+    // that too and reported a -2.60 dB "level change" that was the fade. Compare a
+    // settled window instead, against a CONTROL instance that restored the same
+    // session with no previous project behind it.
+    const double contaminated = rmsOf (p, 20, rng);
+
+    AnamorphAudioProcessor q;                 // control: no previous project
+    q.prepareToPlay (sr, bs);
+    juce::Random rngQ (20260901);
+    setRaw (q, "autoGainMatch", 1.0f);
+    if (! applyXmlFixture (q, "legacy_v0_2_bare_apvts.xml"))
+        return 1;
+    setRaw (q, "autoGainMatch", 1.0f);
+    runBlocks (q, 60, rngQ);
+    q.abSwitchTo (1);
+    runBlocks (q, 8, rngQ);
+    const double control = rmsOf (q, 20, rngQ);
+
+    std::printf ("  settled output RMS after the switch: contaminated %.6f, control %.6f"
+                 " (ratio %.4f, %.2f dB)\n",
+                 contaminated, control, contaminated / control,
+                 20.0 * std::log10 (juce::jmax (1.0e-12, contaminated / control)));
+    std::printf ("  control instance's match after its switch: %.3f dB\n",
+                 q.getEngine().getMatchGainDb());
+
+    // --- DISCRIMINATION. The readings above show a jump at block 2 but cannot say
+    // WHOSE value it is, because the loudness module re-measures on top of the
+    // injection within the same block. Two changes make it decisive: switch under
+    // SILENCE, so the measurement has nothing to move toward, and run the whole
+    // scenario twice with DIFFERENT previous-project B settings. If the value read
+    // after the switch tracks the previous project's B across both runs, it is that
+    // value being injected and nothing else.
+    std::printf ("\n  --- discrimination: silent switch, two different previous-project Bs ---\n");
+    auto runScenario = [&] (float prevBWidth, const char* label)
+    {
+        AnamorphAudioProcessor z;
+        z.prepareToPlay (sr, bs);
+        juce::Random r (4242);
+        setRaw (z, "autoGainMatch", 1.0f);
+        setRaw (z, "width", 0.95f);
+        runBlocks (z, 60, r);
+        z.abSwitchTo (1);
+        setRaw (z, "width", prevBWidth);
+        runBlocks (z, 60, r);
+        const float bMatch = z.getEngine().getMatchGainDb();
+        z.abSwitchTo (0);
+        runBlocks (z, 20, r);
+
+        if (! applyXmlFixture (z, "legacy_v0_2_bare_apvts.xml")) return;
+        setRaw (z, "autoGainMatch", 1.0f);
+        runBlocks (z, 60, r);
+        const float restored = z.getEngine().getMatchGainDb();
+
+        // Silence from here: nothing for the loudness module to re-measure toward.
+        juce::AudioBuffer<float> quiet (2, bs);
+        juce::MidiBuffer midi;
+        z.abSwitchTo (1);
+        std::printf ("      %-22s prev-project B %+.3f dB | restored %+.3f dB | per-block:",
+                     label, bMatch, restored);
+        float peak = restored;
+        for (int k = 0; k < 6; ++k)
+        {
+            quiet.clear(); z.processBlock (quiet, midi);
+            const float m = z.getEngine().getMatchGainDb();
+            std::printf (" %+.3f", m);
+            if (std::abs (m - restored) > std::abs (peak - restored)) peak = m;
+        }
+        std::printf ("\n      %-22s the excursion peak is %+.3f dB -> %s\n", "",
+                     peak,
+                     std::abs (peak - bMatch) < 0.10f ? "== the STALE previous-project B"
+                   : std::abs (peak - restored) < 0.10f ? "== the restored state"
+                                                        : "neither");
+    };
+    runScenario (0.05f, "narrow previous B:");
+    runScenario (0.60f, "mid previous B:");
+
+    // --- MATCHED COUNTERFACTUAL, same instance, same audio history. After round 8's
+    // fix a no-A/B restore leaves BOTH slots holding the restored state, so an
+    // A->B switch applies IDENTICAL parameters -- the only thing that differs
+    // between the slots is the injected match gain. And A->B->A decontaminates the
+    // array by construction (each switch stores the CURRENT match into the slot it
+    // leaves), so a later A->B on the same instance is the clean control. That
+    // removes every confound the comparisons above carry: same instance, same
+    // loudness history, same parameters, one variable.
+    std::printf ("\n  --- matched counterfactual on one instance (params identical across the switch) ---\n");
+    {
+        AnamorphAudioProcessor z;
+        z.prepareToPlay (sr, bs);
+        juce::Random r (77000);
+        setRaw (z, "autoGainMatch", 1.0f);
+        setRaw (z, "width", 0.95f);
+        runBlocks (z, 60, r);
+        z.abSwitchTo (1);
+        setRaw (z, "width", 0.05f);
+        runBlocks (z, 60, r);
+        z.abSwitchTo (0);
+        runBlocks (z, 20, r);
+        if (! applyXmlFixture (z, "legacy_v0_2_bare_apvts.xml")) return 1;
+        setRaw (z, "autoGainMatch", 1.0f);
+        runBlocks (z, 80, r);
+
+        auto envelopeAfterSwitch = [&] (int to, const char* label)
+        {
+            juce::AudioBuffer<float> buf (2, bs);
+            juce::MidiBuffer midi;
+            z.abSwitchTo (to);
+            std::printf ("      %-16s per-block output RMS:", label);
+            for (int k = 0; k < 10; ++k)
+            {
+                fillNoise (buf, r);
+                z.processBlock (buf, midi);
+                double acc = 0.0;
+                for (int ch = 0; ch < 2; ++ch)
+                    for (int i = 0; i < bs; ++i) { const double v = buf.getSample (ch, i); acc += v * v; }
+                std::printf (" %.4f", std::sqrt (acc / (double) (2 * bs)));
+            }
+            std::printf ("\n");
+        };
+        envelopeAfterSwitch (1, "CONTAMINATED");   // injects the previous project's B
+        runBlocks (z, 40, r);
+        envelopeAfterSwitch (0, "(decontaminate)");
+        runBlocks (z, 40, r);
+        envelopeAfterSwitch (1, "CLEAN CONTROL");  // same switch, array now decontaminated
+    }
+
+    // --- WORST CASE: switch IMMEDIATELY after the restore, before the loudness
+    // module has measured anything on the restored settings. That is the one
+    // configuration in which the injected value could persist rather than being
+    // superseded -- if the running measurement has not yet converged, there is
+    // nothing to overwrite it with. If the level does not move here either, the
+    // stale value is inert everywhere.
+    std::printf ("\n  --- worst case: switch with NO settle after the restore ---\n");
+    {
+        auto worstCase = [&] (bool withPreviousProject, const char* label)
+        {
+            AnamorphAudioProcessor z;
+            z.prepareToPlay (sr, bs);
+            juce::Random r (31337);
+            setRaw (z, "autoGainMatch", 1.0f);
+            if (withPreviousProject)
+            {
+                setRaw (z, "width", 0.95f);
+                runBlocks (z, 60, r);
+                z.abSwitchTo (1);
+                setRaw (z, "width", 0.05f);
+                runBlocks (z, 60, r);
+                z.abSwitchTo (0);
+                runBlocks (z, 20, r);
+            }
+            if (! applyXmlFixture (z, "legacy_v0_2_bare_apvts.xml")) return;
+            setRaw (z, "autoGainMatch", 1.0f);
+            z.abSwitchTo (1);                       // no settle at all
+            juce::AudioBuffer<float> buf (2, bs);
+            juce::MidiBuffer midi;
+            std::printf ("      %-18s RMS:", label);
+            for (int k = 0; k < 12; ++k)
+            {
+                fillNoise (buf, r);
+                z.processBlock (buf, midi);
+                double acc = 0.0;
+                for (int ch = 0; ch < 2; ++ch)
+                    for (int i = 0; i < bs; ++i) { const double v = buf.getSample (ch, i); acc += v * v; }
+                std::printf (" %.4f", std::sqrt (acc / (double) (2 * bs)));
+            }
+            std::printf ("   match %+.3f dB\n", z.getEngine().getMatchGainDb());
+        };
+        worstCase (true,  "with prev project");
+        worstCase (false, "fresh (control)");
+    }
+
+    // --- ROUND 12: is Level Match still ON after the switch? It must be, or every
+    // "inert" reading above measured an engine that was not applying the gain at
+    // all. Recorded here because the first reading of this looked alarming and was
+    // MISREAD: the value tree's @value for autoGainMatch is stale (JUCE flushes it
+    // from its own 10 Hz timer, which this harness never fires), so the print below
+    // shows tree 0.0 against live 1.0. That is not what the slot carries.
+    // currentStateSet() -> copyStateWithRawValues() writes a fresh @raw for every
+    // PARAM from the LIVE parameter, and reassertParameters reads @raw first, so
+    // the snapshot is faithful. Match going off in the minimal case below is
+    // correct A/B behaviour, not a flush defect: slot B still holds the
+    // construction snapshot, which predates enabling Match.
+    std::printf ("\n  --- round 12: does the switch keep Level Match ON? ---\n");
+    {
+        AnamorphAudioProcessor z; z.prepareToPlay (sr, bs);
+        setRaw (z, "autoGainMatch", 1.0f);
+        auto raw = [&] { return z.getAPVTS().getRawParameterValue (pid::autoGainMatch)->load(); };
+        const float treeBefore = (float) (double) z.getAPVTS().state.getChildWithProperty ("id", pid::autoGainMatch).getProperty ("value");
+        std::printf ("      before any switch: live param %.1f, VALUE TREE says %.1f\n", raw(), treeBefore);
+        z.abSwitchTo (1);
+        std::printf ("      after A->B:        live param %.1f  <- %s\n", raw(),
+                     raw() > 0.5f ? "still on"
+                                  : "off, CORRECTLY: slot B predates the Match enable (not a flush defect -- @raw is fresh)");
+    }
+
+    // --- ROUND 12: the matched counterfactual again, with Level Match carried BY
+    // THE RESTORED SESSION so the reseeded slots carry it (the tree has it, so no
+    // flush is needed) -- the state a real host is in.
+    std::printf ("\n  --- round 12: matched counterfactual with autoGainMatch baked into the restored session ---\n");
+    {
+        AnamorphAudioProcessor z; z.prepareToPlay (sr, bs);
+        juce::Random r (77000);
+        setRaw (z, "autoGainMatch", 1.0f);
+        setRaw (z, "width", 0.95f); runBlocks (z, 60, r);
+        z.abSwitchTo (1);
+        setRaw (z, "width", 0.05f); runBlocks (z, 60, r);
+        const float prevB = z.getEngine().getMatchGainDb();
+        z.abSwitchTo (0); runBlocks (z, 20, r);
+
+        juce::String xml = "<ANAMORPH><PARAM id=\"drive\" value=\"6.0\"/><PARAM id=\"algorithm\" value=\"2.0\"/>"
+                           "<PARAM id=\"width\" value=\"1.5\"/><PARAM id=\"mix\" value=\"0.8\"/>"
+                           "<PARAM id=\"haasDelay\" value=\"20.0\"/><PARAM id=\"outputGain\" value=\"-3.0\"/>"
+                           "<PARAM id=\"autoGainMatch\" value=\"1\"/></ANAMORPH>";
+        auto parsed = juce::parseXML (xml); const auto blob = BlobCodec::wrap (*parsed);
+        z.setStateInformation (blob.getData(), (int) blob.getSize());
+        runBlocks (z, 80, r);
+        const float restored = z.getEngine().getMatchGainDb();
+        std::printf ("      previous project's B match %+.3f dB; restored-material match %+.3f dB; live autoGainMatch %.1f\n",
+                     prevB, restored, z.getAPVTS().getRawParameterValue (pid::autoGainMatch)->load());
+
+        auto envelope = [&] (int to, const char* label)
+        {
+            juce::AudioBuffer<float> buf (2, bs); juce::MidiBuffer midi;
+            z.abSwitchTo (to);
+            std::printf ("      %-16s autoGainMatch after switch %.1f | RMS:", label,
+                         z.getAPVTS().getRawParameterValue (pid::autoGainMatch)->load());
+            for (int k = 0; k < 10; ++k)
+            {
+                fillNoise (buf, r); z.processBlock (buf, midi);
+                double acc = 0.0;
+                for (int ch = 0; ch < 2; ++ch) for (int i = 0; i < bs; ++i) { const double v = buf.getSample (ch, i); acc += v * v; }
+                std::printf (" %.4f", std::sqrt (acc / (double) (2 * bs)));
+            }
+            std::printf ("  | match now %+.3f\n", z.getEngine().getMatchGainDb());
+        };
+        envelope (1, "CONTAMINATED");   // injects prevB into material measuring `restored`
+        runBlocks (z, 40, r);
+        envelope (0, "(decontaminate)");
+        runBlocks (z, 40, r);
+        envelope (1, "CLEAN CONTROL");
+    }
+    return 0;
+}
+
+
+static const juce::Identifier& iid_oversample()   { return anamorph::iid::oversample; }
+static const juce::Identifier& iid_uiScale()      { return anamorph::iid::uiScale; }
+static const juce::Identifier& iid_scopePersist() { return anamorph::iid::scopePersist; }
+
+// ---------------------------------------------------------------------------
+//  Opt-in probe: what does a MALFORMED host-hidden setting in a v0.2 session
+//  become after migrateFromLegacyApvts? Reproduction before disposition.
+//  Prints the migrated tree value (as text and as int/double), the clamped
+//  consumers, and what a re-save then writes back out.
+// ---------------------------------------------------------------------------
+static int runLegacySettingsProbe()
+{
+    std::printf ("malformed legacy Settings probe (v0.2 -> migrateFromLegacyApvts)\n");
+    std::printf ("===============================================================\n\n");
+
+    auto restoreV02 = [] (AnamorphAudioProcessor& p, const char* id, const char* value)
+    {
+        juce::String xml;
+        xml << "<ANAMORPH><PARAM id=\"width\" value=\"1.5\"/>"
+            << "<PARAM id=\"" << id << "\" value=\"" << value << "\"/></ANAMORPH>";
+        auto parsed = juce::parseXML (xml);
+        const auto blob = BlobCodec::wrap (*parsed);
+        p.setStateInformation (blob.getData(), (int) blob.getSize());
+    };
+    auto savedText = [] (AnamorphAudioProcessor& p, const char* field)
+    {
+        juce::MemoryBlock mb; p.getStateInformation (mb);
+        auto xml  = BlobCodec::unwrap (mb);
+        auto root = juce::ValueTree::fromXml (*xml);
+        return root.getChildWithName ("ANAMORPH_INTERNAL").getProperty (field).toString();
+    };
+
+    const char* cases[] = { "nan", "inf", "-inf", "1e39", "-1e39", "abc", "", "0x10", "7", "2147483647", "1.0" };
+
+    std::printf ("  %-12s | %-24s | %-13s | %-10s | %s\n", "oversample=", "int_oversample (tree)", "osIndex()", "re-saved", "note");
+    for (auto* c : cases)
+    {
+        AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+        restoreV02 (p, "oversample", c);
+        const auto v = p.getInternal().copyState()[iid_oversample()];
+        std::printf ("  %-12s | %-24s | %-13d | %-10s | %s\n", juce::String ("\"" + juce::String (c) + "\"").toRawUTF8(),
+                     (v.toString() + "  (int " + juce::String ((int) v) + ")").toRawUTF8(),
+                     p.getInternal().oversampleIndex(), savedText (p, "int_oversample").toRawUTF8(),
+                     ((int) v >= 1 && (int) v <= 4) ? "valid combo id" : "INVALID combo id (1..4)");
+    }
+    std::printf ("\n  %-12s | %-24s | %-13s | %s\n", "uiScale=", "int_uiScale (tree)", "uiScaleIndex()", "note");
+    for (auto* c : cases)
+    {
+        AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+        restoreV02 (p, "uiScale", c);
+        const auto v = p.getInternal().copyState()[iid_uiScale()];
+        std::printf ("  %-12s | %-24s | %-13d | %s\n", juce::String ("\"" + juce::String (c) + "\"").toRawUTF8(),
+                     (v.toString() + "  (int " + juce::String ((int) v) + ")").toRawUTF8(),
+                     p.getInternal().uiScaleIndex(),
+                     ((int) v >= 1 && (int) v <= 5) ? "valid combo id" : "INVALID combo id (1..5)");
+    }
+    const char* dcases[] = { "nan", "inf", "-inf", "-1", "5", "abc", "1e39", "0.25" };
+    std::printf ("\n  %-12s | %-20s | %-14s | %s\n", "scopePersist=", "tree (double)", "scopePersist()", "note");
+    for (auto* c : dcases)
+    {
+        AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+        restoreV02 (p, "scopePersist", c);
+        const double d = (double) p.getInternal().copyState()[iid_scopePersist()];
+        std::printf ("  %-12s | %-20.6g | %-14.6g | %s\n", juce::String ("\"" + juce::String (c) + "\"").toRawUTF8(),
+                     d, (double) p.getInternal().scopePersist(),
+                     (std::isfinite (d) && d >= 0.0 && d <= 1.0) ? "in 0..1" : "OUT of 0..1 / non-finite");
+    }
+    return 0;
+}
+
+
+
+// ---------------------------------------------------------------------------
+//  State test 29 -- a modern session that OMITS an optional host-hidden Setting
+//  must not leave the previous project's value in force (ER-STATE-18).
+//
+//  `abSlot[]`, `presets` and `internal` are all processor members a host restores
+//  into ONE live instance repeatedly. Rounds 2, 8 and 11 closed that class for the
+//  Settings on the v0.2 path, for the A/B slots, and for a root with no sound
+//  child. This is the same class on the MODERN path: InternalState::restoreState
+//  wrote only the fields `src` carried, so an absent one kept whatever the last
+//  project left. Every field in the registry's ANAMORPH_INTERNAL table is
+//  "Required: No" with a documented Default, so absent means that default.
+//
+//  The review that raised this located it in migrateFromLegacyApvts. The probe
+//  (--partial-settings-probe) measured the opposite: 6 of 6 inherited on the
+//  modern path, 0 of 6 on the legacy one. Leg 3 pins the legacy path so the two
+//  cannot be confused again.
+// ---------------------------------------------------------------------------
+static void testPartialSettingsDoNotInherit()
+{
+    std::printf ("State test 29: a modern session omitting a Setting resets it (ER-STATE-18)\n");
+
+    // check() takes a const char*; these labels are built per field.
+    auto checkMsg = [] (bool ok, const juce::String& msg) { check (ok, msg.toRawUTF8()); };
+
+    struct Field { const juce::Identifier& id; const char* name; juce::var sessionA; juce::var doc; };
+    const Field fields[] = {
+        { anamorph::iid::oversample,   "int_oversample",   juce::var (3),     juce::var (1)     },
+        { anamorph::iid::uiScale,      "int_uiScale",      juce::var (5),     juce::var (3)     },
+        { anamorph::iid::scopePersist, "int_scopePersist", juce::var (0.9),   juce::var (0.5)   },
+        { anamorph::iid::metersOn,     "int_metersOn",     juce::var (true),  juce::var (false) },
+        { anamorph::iid::tooltipsOn,   "int_tooltipsOn",   juce::var (true),  juce::var (false) },
+        { anamorph::iid::uiAnimations, "int_uiAnimations", juce::var (false), juce::var (true)  },
+    };
+
+    // Session B is a REAL modern save with exactly one ANAMORPH_INTERNAL property
+    // removed -- the sound child, the AB node and the preset meta are whatever the
+    // plug-in itself wrote, so only the omission is synthetic.
+    auto saveOmitting = [] (const juce::Identifier* omit)
+    {
+        AnamorphAudioProcessor b; b.prepareToPlay (48000.0, 512);
+        juce::MemoryBlock mb; b.getStateInformation (mb);
+        auto xml  = BlobCodec::unwrap (mb);
+        auto root = juce::ValueTree::fromXml (*xml);
+        if (omit != nullptr) root.getChildWithName ("ANAMORPH_INTERNAL").removeProperty (*omit, nullptr);
+        return BlobCodec::wrap (*root.createXml());
+    };
+    auto seedPreviousProject = [&fields] (AnamorphAudioProcessor& p)
+    {
+        juce::ValueTree a ("ANAMORPH_INTERNAL");
+        for (const auto& g : fields) a.setProperty (g.id, g.sessionA, nullptr);
+        p.getInternal().restoreState (a);
+    };
+
+    // --- Leg 1: each field in turn, omitted from an otherwise real modern save.
+    for (const auto& f : fields)
+    {
+        AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+        seedPreviousProject (p);
+        checkMsg (! p.getInternal().copyState()[f.id].equals (f.doc),
+               juce::String ("precondition: session A's ") + f.name + " differs from the default");
+
+        const auto blob = saveOmitting (&f.id);
+        p.setStateInformation (blob.getData(), (int) blob.getSize());
+        const auto after = p.getInternal().copyState()[f.id];
+        checkMsg (after.equals (f.doc),
+               juce::String ("omitted ") + f.name + " resets to its documented default, not the previous project's");
+
+        // The re-save must carry the reset value, not the inherited one.
+        juce::MemoryBlock out; p.getStateInformation (out);
+        auto outRoot = juce::ValueTree::fromXml (*BlobCodec::unwrap (out));
+        checkMsg (outRoot.getChildWithName ("ANAMORPH_INTERNAL").getProperty (f.id).equals (f.doc),
+               juce::String ("...and the re-saved session carries the reset ") + f.name);
+    }
+
+    // --- Leg 2: a session that DOES carry the field still restores that value.
+    // Without this the fix could pass leg 1 by resetting everything always.
+    {
+        AnamorphAudioProcessor src; src.prepareToPlay (48000.0, 512);
+        juce::ValueTree explicitA ("ANAMORPH_INTERNAL");
+        for (const auto& g : fields) explicitA.setProperty (g.id, g.sessionA, nullptr);
+        src.getInternal().restoreState (explicitA);
+        juce::MemoryBlock saved; src.getStateInformation (saved);
+
+        AnamorphAudioProcessor dst; dst.prepareToPlay (48000.0, 512);   // at defaults
+        dst.setStateInformation (saved.getData(), (int) saved.getSize());
+        for (const auto& f : fields)
+            checkMsg (dst.getInternal().copyState()[f.id].equals (f.sessionA),
+                   juce::String ("a session that CARRIES ") + f.name + " still restores that value");
+        check (dst.getInternal().oversampleIndex() == 2,
+               "...and the DSP atomic follows the explicitly restored oversample (id 3 -> index 2)");
+    }
+
+    // --- Leg 3: the LEGACY path still resets all six, as it already did. This is
+    // where the review looked; pinning it keeps the two paths distinguishable.
+    {
+        AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+        seedPreviousProject (p);
+        if (applyXmlFixture (p, "legacy_v0_2_bare_apvts.xml"))
+            for (const auto& f : fields)
+                checkMsg (p.getInternal().copyState()[f.id].equals (f.doc),
+                       juce::String ("v0.2 restore still resets ") + f.name + " (migrateFromLegacyApvts, unchanged)");
+    }
+
+    // --- Leg 4: malformed-state repair is unchanged. A modern session carrying a
+    // malformed Setting is NOT the absent case and must not be turned into one by
+    // this fix; the value is adopted and the consumers clamp it, exactly as before.
+    {
+        AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+        auto blob = saveOmitting (nullptr);
+        auto root = juce::ValueTree::fromXml (*BlobCodec::unwrap (blob));
+        root.getChildWithName ("ANAMORPH_INTERNAL")
+            .setProperty (anamorph::iid::uiScale, "nan", nullptr);
+        const auto poisoned = BlobCodec::wrap (*root.createXml());
+        p.setStateInformation (poisoned.getData(), (int) poisoned.getSize());
+        check (p.getInternal().uiScaleIndex() >= 0 && p.getInternal().uiScaleIndex() <= 4,
+               "a malformed MODERN Setting is still clamped by its consumer (repair unchanged)");
+        check (p.getInternal().oversampleIndex() >= 0 && p.getInternal().oversampleIndex() <= 3,
+               "...and the oversample atomic stays in range");
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  Opt-in probe: does a MODERN session that OMITS an optional host-hidden
+//  Setting leave the previous project's value in force on a reused instance?
+//  The review located this in migrateFromLegacyApvts; this probe checks BOTH
+//  paths so the answer names the right one.
+// ---------------------------------------------------------------------------
+static int runPartialSettingsProbe()
+{
+    std::printf ("partial host-hidden Settings probe (modern vs legacy restore)\n");
+    std::printf ("============================================================\n\n");
+
+    struct Field { const juce::Identifier& id; const char* name; juce::var sessionA; juce::var doc; };
+    const Field fields[] = {
+        { anamorph::iid::oversample,   "int_oversample",   3,     1     },
+        { anamorph::iid::uiScale,      "int_uiScale",      5,     3     },
+        { anamorph::iid::scopePersist, "int_scopePersist", 0.9,   0.5   },
+        { anamorph::iid::metersOn,     "int_metersOn",     true,  false },
+        { anamorph::iid::tooltipsOn,   "int_tooltipsOn",   true,  false },
+        { anamorph::iid::uiAnimations, "int_uiAnimations", false, true  },
+    };
+
+    // Session B: a REAL modern save, with exactly one ANAMORPH_INTERNAL property
+    // removed. Everything else -- the sound child, the AB node, the preset meta --
+    // is what the plug-in itself wrote.
+    auto sessionBOmitting = [] (const juce::Identifier& omit)
+    {
+        AnamorphAudioProcessor b; b.prepareToPlay (48000.0, 512);
+        juce::MemoryBlock mb; b.getStateInformation (mb);
+        auto xml  = BlobCodec::unwrap (mb);
+        auto root = juce::ValueTree::fromXml (*xml);
+        auto internalNode = root.getChildWithName ("ANAMORPH_INTERNAL");
+        internalNode.removeProperty (omit, nullptr);
+        return BlobCodec::wrap (*root.createXml());
+    };
+
+    std::printf ("  MODERN path (AnamorphRoot with an ANAMORPH_INTERNAL child):\n");
+    std::printf ("  %-18s | %-10s | %-10s | %-10s | %s\n",
+                 "omitted field", "session A", "documented", "after B", "verdict");
+    int inherited = 0;
+    for (const auto& f : fields)
+    {
+        AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+        p.getInternal().copyState();                       // touch, no-op
+        // Session A: the previous project sets this field to a non-default value.
+        juce::ValueTree a ("ANAMORPH_INTERNAL");
+        for (const auto& g : fields) a.setProperty (g.id, g.sessionA, nullptr);
+        p.getInternal().restoreState (a);
+        const auto before = p.getInternal().copyState()[f.id];
+
+        const auto blobB = sessionBOmitting (f.id);
+        p.setStateInformation (blobB.getData(), (int) blobB.getSize());
+        const auto after = p.getInternal().copyState()[f.id];
+
+        const bool isInherited = after.equals (before) && ! after.equals (f.doc);
+        if (isInherited) ++inherited;
+        std::printf ("  %-18s | %-10s | %-10s | %-10s | %s\n", f.name,
+                     before.toString().toRawUTF8(), f.doc.toString().toRawUTF8(),
+                     after.toString().toRawUTF8(),
+                     isInherited ? "INHERITED from the previous project"
+                                 : (after.equals (f.doc) ? "reset to documented default" : "other"));
+    }
+    std::printf ("  => %d of 6 fields inherit the previous project's value\n\n", inherited);
+
+    // The LEGACY path, for contrast: a v0.2 blob carrying NO Settings at all.
+    std::printf ("  LEGACY path (v0.2 bare APVTS -> migrateFromLegacyApvts):\n");
+    {
+        AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+        juce::ValueTree a ("ANAMORPH_INTERNAL");
+        for (const auto& g : fields) a.setProperty (g.id, g.sessionA, nullptr);
+        p.getInternal().restoreState (a);
+        if (! applyXmlFixture (p, "legacy_v0_2_bare_apvts.xml")) return 1;
+        int legacyInherited = 0;
+        for (const auto& f : fields)
+        {
+            const auto after = p.getInternal().copyState()[f.id];
+            if (! after.equals (f.doc)) ++legacyInherited;
+            std::printf ("  %-18s | after v0.2 restore: %-10s (documented %s) %s\n", f.name,
+                         after.toString().toRawUTF8(), f.doc.toString().toRawUTF8(),
+                         after.equals (f.doc) ? "" : "  <-- NOT the default");
+        }
+        std::printf ("  => %d of 6 inherit on the legacy path\n", legacyInherited);
+    }
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
+//  State test 30 -- a host that PREPARES off the message thread must not
+//  deliver the latency report from that thread (ER-STATE-19: D-1 applied to
+//  prepareToPlay).
+//
+//  prepareToPlay used to call updateLatency() directly, so a host that activates
+//  the plug-in on a thread that is not the JUCE message thread -- the JUCE Linux
+//  VST3 wrapper's own fallback when the host provides no IRunLoop (JUCE's
+//  background MessageThread IS the message thread then, and it runs this
+//  processor's timer); a host that ignores the [UI-thread] annotation on
+//  setActive; an AU Initialize off main -- wrote AudioProcessor::latencySamples
+//  and walked the listener chain on THAT thread while the processor's 20 Hz
+//  timer could be doing the same on the message thread: two unsynchronised
+//  writers of one plain int, and a read of the engine's latency2/4/8 while
+//  engine.prepare() rewrites them. The stale-host outcome (the timer's older
+//  value landing last, with nothing pending to correct it) needs an interleaving
+//  no product barrier can force, so it is MEASURED by --reprepare-race-probe
+//  rather than asserted here. What this test pins deterministically is the
+//  invariant that makes it impossible: no latency delivery ever happens off the
+//  message thread, and what the timer then delivers is the PREPARED value --
+//  the actual latency, not merely the flag.
+// ---------------------------------------------------------------------------
+static void testOffThreadPrepareDefersLatency()
+{
+    std::printf ("State test 30: an off-message-thread prepareToPlay defers its latency report (ER-STATE-19)\n");
+
+    struct ThreadRecorder final : public juce::AudioProcessorListener
+    {
+        std::atomic<int> total { 0 }, offMessageThread { 0 };
+        void audioProcessorParameterChanged (juce::AudioProcessor*, int, float) override {}
+        void audioProcessorChanged (juce::AudioProcessor*, const ChangeDetails& d) override
+        {
+            if (! d.latencyChanged) return;
+            total.fetch_add (1);
+            if (! juce::MessageManager::existsAndIsCurrentThread()) offMessageThread.fetch_add (1);
+        }
+    };
+
+    // Truth first: the same state prepared ON the message thread reports
+    // synchronously, and that number is what the off-thread prepare must reach.
+    int truth = 0;
+    {
+        AnamorphAudioProcessor q;
+        q.getInternal().oversampleValue().setValue (2);          // 1-based combo id: 2x
+        q.getAPVTS().getParameter (pid::drive)->setValueNotifyingHost (1.0f);
+        check (q.getLatencySamples() == 0, "a never-prepared instance reports 0 (the oversampler does not exist yet)");
+        ThreadRecorder control;
+        q.addListener (&control);
+        q.prepareToPlay (48000.0, 512);
+        truth = q.getLatencySamples();
+        check (truth != 0, "non-vacuity: 2x oversampling with drive up reports a non-zero latency once prepared");
+        // CONTROL: the message-thread path must stay synchronous -- the notification
+        // has already happened, inside prepareToPlay, on this thread. A build that
+        // deferred it too would leave total at 0 here (and would pass the off-thread
+        // legs below vacuously).
+        check (control.total.load() == 1 && control.offMessageThread.load() == 0,
+               "CONTROL: a message-thread prepareToPlay still reports SYNCHRONOUSLY, on the message thread");
+        q.removeListener (&control);
+    }
+
+    AnamorphAudioProcessor p;
+    p.getInternal().oversampleValue().setValue (2);
+    p.getAPVTS().getParameter (pid::drive)->setValueNotifyingHost (1.0f);
+    const int before = p.getLatencySamples();
+    check (before == 0, "baseline: the instance about to be prepared off-thread reports 0");
+
+    ThreadRecorder rec;
+    p.addListener (&rec);
+
+    // The host's activation, on a thread that is NOT the message thread.
+    std::thread host ([&] { p.prepareToPlay (48000.0, 512); });
+    host.join();
+
+    // (i) DISCRIMINATING and deterministic: before the fix the preparing thread
+    //     itself ran setLatencySamples, so the listener fired on it.
+    check (rec.offMessageThread.load() == 0,
+           "no latency notification was delivered from the preparing thread");
+    // (ii) Equally deterministic: nothing has dispatched on the message thread
+    //      since the join, so the report cannot have moved yet.
+    check (p.getLatencySamples() == before,
+           "the report is unchanged until the message thread serves the request");
+
+    // (iii) The timer delivers the PREPARED value. Bounded polls for the
+    //       processor's own 20 Hz timer (see State test 27 for why a tight loop
+    //       would fire nothing); the deadline bounds only a FAILING run.
+    int served = before;
+    for (int elapsed = 0; elapsed < 2000 && served == before; elapsed += 5)
+    {
+        juce::Timer::callPendingTimersSynchronously();
+        served = p.getLatencySamples();
+        if (served == before) std::this_thread::sleep_for (std::chrono::milliseconds (5));
+    }
+    std::printf ("  message-thread truth %d; off-thread prepare: after join %d, served by the timer %d; "
+                 "notifications on the preparing thread: %d\n",
+                 truth, before, served, rec.offMessageThread.load());
+    check (served == truth, "the timer serves the ACTUAL prepared latency, equal to the message-thread report");
+    check (rec.total.load() >= 1 && rec.offMessageThread.load() == 0,
+           "...and every notification ran on the message thread");
+    p.removeListener (&rec);
+}
+
+// ---------------------------------------------------------------------------
+//  ER-STATE-19 probe (round 15): does a host that re-prepares OFF the message
+//  thread race the processor's own D-1 latency timer?
+//
+//  NOT part of the suite. Like --state-thread-probe it drives the exact
+//  interaction the finding describes, so if the race is real its own execution
+//  is undefined behaviour: run it under ThreadSanitizer for the mechanical
+//  answer, or in a plain build to COUNT the value-level symptom.
+//
+//  Thread H models a host activating the plug-in on a thread that is not the
+//  JUCE message thread (see State test 30 for which hosts those are). Each
+//  iteration is the ordinary shape: an automation write of Drive lands, raising
+//  the D-1 request from a non-message thread exactly as State test 22 does, then
+//  the host re-prepares. The MAIN thread is the message thread and does only
+//  what the real one would: serve the 20 Hz timer.
+//
+//  Reported: how many latency notifications ran on H (the pre-round-15 code
+//  delivered every prepare's report from H itself), and whether the value the
+//  host was left holding matches what a message-thread re-prepare of the final
+//  state reports -- the "stale delay compensation" the review named.
+// ---------------------------------------------------------------------------
+static int runReprepareRaceProbe()
+{
+    std::printf ("ER-STATE-19 probe: off-message-thread prepareToPlay vs the D-1 timer\n");
+    std::printf ("  (under ThreadSanitizer a report here is the finding; the counts below are the plain-build symptom)\n");
+
+    struct ThreadRecorder final : public juce::AudioProcessorListener
+    {
+        std::atomic<int> onHostThread { 0 }, onMessageThread { 0 };
+        void audioProcessorParameterChanged (juce::AudioProcessor*, int, float) override {}
+        void audioProcessorChanged (juce::AudioProcessor*, const ChangeDetails& d) override
+        {
+            if (! d.latencyChanged) return;
+            (juce::MessageManager::existsAndIsCurrentThread() ? onMessageThread : onHostThread).fetch_add (1);
+        }
+    };
+
+    constexpr int kRuns = 20, kIterations = 200;
+    int staleRuns = 0, hostDeliveries = 0, messageDeliveries = 0;
+
+    for (int run = 0; run < kRuns; ++run)
+    {
+        AnamorphAudioProcessor proc;
+        proc.getInternal().oversampleValue().setValue (2);
+        auto* drive = proc.getAPVTS().getParameter (pid::drive);
+        ThreadRecorder rec;
+        proc.addListener (&rec);
+
+        std::atomic<bool> go { false }, done { false };
+        std::thread host ([&]
+        {
+            while (! go.load (std::memory_order_acquire)) { /* spin to widen the window */ }
+            for (int i = 0; i < kIterations; ++i)
+            {
+                drive->setValueNotifyingHost ((i & 1) != 0 ? 1.0f : 0.0f);   // raises the request off-thread
+                proc.prepareToPlay (48000.0, 512);                            // the re-prepare
+            }
+            done.store (true, std::memory_order_release);
+        });
+
+        go.store (true, std::memory_order_release);
+        while (! done.load (std::memory_order_acquire))
+        {
+            juce::Timer::callPendingTimersSynchronously();
+            std::this_thread::sleep_for (std::chrono::milliseconds (1));
+        }
+        host.join();
+
+        // Let any request the LAST prepare left pending drain (a few timer periods).
+        for (int i = 0; i < 60; ++i)
+        {
+            juce::Timer::callPendingTimersSynchronously();
+            std::this_thread::sleep_for (std::chrono::milliseconds (5));
+        }
+        const int told = proc.getLatencySamples();
+        proc.prepareToPlay (48000.0, 512);           // message thread: the truth for the final state
+        const int truth = proc.getLatencySamples();
+        proc.removeListener (&rec);
+
+        hostDeliveries    += rec.onHostThread.load();
+        messageDeliveries += rec.onMessageThread.load();
+        if (told != truth) ++staleRuns;
+        std::printf ("  run %2d: deliveries on host thread %3d / message thread %3d; host left holding %d, truth %d%s\n",
+                     run, rec.onHostThread.load(), rec.onMessageThread.load(), told, truth,
+                     told != truth ? "  <-- STALE" : "");
+    }
+
+    std::printf ("  => %d of %d runs left the host stale; %d deliveries ran on the host thread, %d on the message thread\n",
+                 staleRuns, kRuns, hostDeliveries, messageDeliveries);
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
+//  State test 31 -- a restore with no A/B data must not carry the PREVIOUS
+//  project's per-slot Level-Match gains into the first switch (ER-STATE-20).
+//
+//  `abMatchGain[]` is the fifth processor member of the reused-instance class
+//  rounds 2, 8, 11 and 14 closed for the Settings, the A/B slots, a root with no
+//  sound child, and a partial modern Settings node. It is the one piece of the
+//  slot set that is NEVER serialized -- a runtime cache of what the matcher had
+//  settled on when each slot was last left -- so nothing about a restore ever
+//  overwrote it, and `abSwitchTo`'s closing
+//  `engine.injectMatchGainDb (abMatchGain[slot])` handed the new project's
+//  matcher the old project's figure.
+//
+//  HOW THIS OBSERVES THE INJECTED VALUE EXACTLY, with no DSP tolerance games.
+//  Two properties of the product make it deterministic:
+//    * after a restore with no A/B data BOTH slots are invalid, so `abEnsureInit`
+//      re-seeds them from the SAME restored state -- the switch is therefore
+//      parameter-neutral, and nothing but the injection can move the match; and
+//    * `LoudnessMatch` HOLDS its published value on silence by documented design
+//      ("when the input decays to silence the measurement WAITS ... it never
+//      drifts toward 0", LoudnessMatch.h) -- so a switch performed over silent
+//      blocks leaves `getMatchGainDb()` reading the injected value verbatim.
+//  Round 9 measured the AUDIBLE consequence of the stale injection and found it
+//  inert (`--legacy-match-probe`): `setParameters` re-targets `matchGainSmooth`
+//  from the live measurement every block, so the level recovers. That conclusion
+//  stands and is NOT what this test re-opens. This is the state, which was wrong
+//  regardless: the readout showed the old project's number and the new project's
+//  matcher re-converged from it.
+//
+//  WHICH SLOT EACH LEG CAN SEE. `abSwitchTo` STORES into the slot it leaves
+//  before it READS the one it enters, so a given restore only ever exposes the
+//  slot that is not active. Legs 1 and 2 restore `active = 0` (the default) and
+//  therefore see slot B; leg 3 restores an `AB` node carrying `active = 1` with
+//  no usable payloads, and sees slot A. Between them both entries are covered.
+// ---------------------------------------------------------------------------
+static void testRestoreResetsAbMatchGains()
+{
+    std::printf ("State test 31: a restore with no A/B data resets the per-slot Level-Match gains (ER-STATE-20)\n");
+
+    constexpr double sr = 48000.0;
+    constexpr int    bs = 512;
+
+    auto runNoise = [] (AnamorphAudioProcessor& p, int nBlocks, juce::Random& rng)
+    {
+        juce::AudioBuffer<float> buf (2, bs);
+        juce::MidiBuffer midi;
+        for (int k = 0; k < nBlocks; ++k)
+        {
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = 0; i < bs; ++i)
+                    buf.setSample (ch, i, (rng.nextFloat() * 2.0f - 1.0f) * 0.25f);
+            p.processBlock (buf, midi);
+        }
+    };
+    // Silence is the matcher's documented HOLD state, which is what makes the
+    // injected value readable verbatim. Four blocks is well past the ~6 ms
+    // fade-out that reaches the duck bottom where the injection is consumed.
+    auto runSilence = [] (AnamorphAudioProcessor& p, int nBlocks)
+    {
+        juce::AudioBuffer<float> buf (2, bs);
+        juce::MidiBuffer midi;
+        for (int k = 0; k < nBlocks; ++k) { buf.clear(); p.processBlock (buf, midi); }
+    };
+
+    // "The previous project": two slots whose MEASURED matches genuinely differ,
+    // and both far from the 0 dB a fresh instance would inject -- otherwise the
+    // stale value and the correct value coincide and the legs are vacuous.
+    // Leaves abMatchGain[0] = A's match, abMatchGain[1] = B's match, abActive = 0.
+    auto seedPreviousProject = [&] (AnamorphAudioProcessor& p, float& outA, float& outB)
+    {
+        juce::Random rng (20260902);
+        p.prepareToPlay (sr, bs);
+        setRaw (p, "autoGainMatch", 1.0f);   // Match ON so the matcher really converges
+        setRaw (p, "width", 0.95f);
+        runNoise (p, 60, rng);
+        outA = p.getEngine().getMatchGainDb();
+        p.abSwitchTo (1);                    // stores A's match into abMatchGain[0]
+        setRaw (p, "width", 0.05f);
+        runNoise (p, 60, rng);
+        outB = p.getEngine().getMatchGainDb();
+        p.abSwitchTo (0);                    // stores B's match into abMatchGain[1]
+        runNoise (p, 20, rng);
+    };
+
+    // THE INVARIANT, stated as the contract rather than as a number: a REUSED
+    // instance restored from a session with no A/B data must behave exactly like a
+    // FRESH instance restored from the SAME blob. That is what "no previous-session
+    // state survives" means, and it is what the other four members of this class are
+    // tested against.
+    //
+    // Stating it that way is also what makes it exact. An earlier draft asserted the
+    // injected value was 0 dB verbatim and was wrong to: `LoudnessMatch`'s
+    // feed-forward PREDICT is an absolute function of Drive and Mix and lowers the
+    // published gain when the restored session's controls imply more boost than the
+    // previous project's, so the reading drifts off 0 by however much the restore
+    // moved those two controls (measured: -3.161 dB against the v0.2 fixture, -0.052
+    // dB against a modern save of the same state). The fresh control experiences the
+    // identical predict, so comparing against it cancels exactly that term and leaves
+    // only the injection -- which is the thing under test.
+    auto expectNoStaleInjection = [&] (const char* legName,
+                                       const std::function<juce::MemoryBlock (AnamorphAudioProcessor&)>& makeBlob,
+                                       int firstSwitchTarget,
+                                       bool staleIsSlotB)
+    {
+        // One blob, built from a dedicated source, applied to BOTH instances -- the
+        // control is only a control if it restores the identical bytes.
+        juce::MemoryBlock blob;
+        {
+            AnamorphAudioProcessor src;
+            src.prepareToPlay (sr, bs);
+            blob = makeBlob (src);
+        }
+        if (blob.getSize() == 0) { check (false, "the leg produced a restorable blob"); return; }
+
+        // The observation, run identically on both instances.
+        auto restoreSwitchAndRead = [&] (AnamorphAudioProcessor& p)
+        {
+            p.setStateInformation (blob.getData(), (int) blob.getSize());
+            // The ordinary host order -- setState, THEN activate (the sequence
+            // prepareToPlay's own comment calls "the ordinary VST3/AU order"). It is
+            // also what keeps this comparison about the slot state: without it the
+            // reused instance still holds the previous project's audio in its delay
+            // lines and oversamplers, which flushes through the first blocks and gives
+            // the matcher something real to measure -- worth 0.052 dB here, engine
+            // history rather than A/B state, and not what this test is about.
+            p.prepareToPlay (sr, bs);
+            check (p.abActiveSlot() != firstSwitchTarget,
+                   "the restored active slot is the one this leg's first switch moves AWAY from");
+            p.abSwitchTo (firstSwitchTarget);
+            runSilence (p, 4);
+            return p.getEngine().getMatchGainDb();
+        };
+
+        AnamorphAudioProcessor reused;
+        float prevA = 0.0f, prevB = 0.0f;
+        seedPreviousProject (reused, prevA, prevB);
+        const float stale = staleIsSlotB ? prevB : prevA;
+        check (std::abs (prevA - prevB) > 0.5f,
+               "non-vacuity: the previous project's two slot matches are distinguishable");
+        check (std::abs (stale) > 0.5f,
+               "non-vacuity: the stale value differs from the 0 dB a fresh instance injects");
+        const float injectedReused = restoreSwitchAndRead (reused);
+
+        AnamorphAudioProcessor fresh;
+        fresh.prepareToPlay (sr, bs);
+        const float injectedFresh = restoreSwitchAndRead (fresh);
+
+        std::printf ("  %-28s previous project A %.3f dB / B %.3f dB; stale %.3f dB;"
+                     " first switch: reused %.3f dB vs fresh %.3f dB\n",
+                     legName, prevA, prevB, stale, injectedReused, injectedFresh);
+        check (std::abs (injectedReused - stale) > 0.5f,
+               "the first switch did NOT inject the previous project's remembered match");
+        checkNear ((double) injectedReused, (double) injectedFresh, 1.0e-4,
+                   "...the reused instance is indistinguishable from a fresh one (the contract)");
+    };
+
+    // --- Leg 1: v0.2 bare APVTS (the legacy branch's abResetToDefaults).
+    expectNoStaleInjection ("v0.2 bare APVTS:", [] (AnamorphAudioProcessor&)
+    {
+        auto file = fixtureDir().getChildFile ("legacy_v0_2_bare_apvts.xml");
+        auto xml  = juce::parseXML (file);
+        if (xml == nullptr) return juce::MemoryBlock();
+        return BlobCodec::wrap (*xml);
+    }, 1, true);
+
+    // --- Leg 2: a modern root with no AB child at all (the `else` branch's
+    //     abResetToDefaults). Built from a REAL save so the session is genuine in
+    //     every other respect; only the AB child is removed.
+    expectNoStaleInjection ("modern root, no AB node:", [] (AnamorphAudioProcessor& src)
+    {
+        juce::MemoryBlock saved;
+        src.getStateInformation (saved);
+        auto xml = BlobCodec::unwrap (saved);
+        if (xml == nullptr) return juce::MemoryBlock();
+        if (auto* ab = xml->getChildByName ("AB")) xml->removeChildElement (ab, true);
+        check (xml->getChildByName ("AB") == nullptr, "the AB node really is absent from leg 2's blob");
+        return BlobCodec::wrap (*xml);
+    }, 1, true);
+
+    // --- Leg 3: an AB node that EXISTS but carries no usable slot payloads, with
+    //     active = 1. This path never reaches abResetToDefaults -- `readSlot` resets
+    //     each slot in place -- so it is the one that exposes slot A, and the one a
+    //     fix confined to abResetToDefaults leaves leaking (measured: -2.405 dB).
+    expectNoStaleInjection ("AB node, no payloads:", [] (AnamorphAudioProcessor& src)
+    {
+        juce::MemoryBlock saved;
+        src.getStateInformation (saved);
+        auto xml = BlobCodec::unwrap (saved);
+        if (xml == nullptr) return juce::MemoryBlock();
+        if (auto* ab = xml->getChildByName ("AB")) xml->removeChildElement (ab, true);
+        xml->createNewChildElement ("AB")->setAttribute ("active", 1); // the only thing it carries
+        return BlobCodec::wrap (*xml);
+    }, 0, false);
+
+    // --- Leg 4: a session that DOES carry valid A/B data still restores both
+    //     slots' own sounds. The fix must not have touched this path.
+    {
+        constexpr float kSoundA = 0.88f, kSoundB = 0.12f;
+        juce::MemoryBlock valid;
+        {
+            AnamorphAudioProcessor src;
+            src.prepareToPlay (sr, bs);
+            setRaw (src, "width", kSoundA);
+            src.abSwitchTo (1);
+            setRaw (src, "width", kSoundB);
+            src.abSwitchTo (0);
+            src.getStateInformation (valid);
+        }
+
+        AnamorphAudioProcessor p;
+        float prevA = 0.0f, prevB = 0.0f;
+        seedPreviousProject (p, prevA, prevB);
+        p.setStateInformation (valid.getData(), (int) valid.getSize());
+
+        checkNear ((double) rawOf (p, "width"), (double) kSoundA, 1.0e-3,
+                   "a valid A/B session restores slot A's own sound");
+        check (p.abActiveSlot() == 0, "...and its own active slot");
+        p.abSwitchTo (1);
+        checkNear ((double) rawOf (p, "width"), (double) kSoundB, 1.0e-3,
+                   "...and slot B still holds ITS own sound, not the restored one");
+        p.abSwitchTo (0);
+        checkNear ((double) rawOf (p, "width"), (double) kSoundA, 1.0e-3,
+                   "...and switching back returns slot A's sound (valid A/B behaviour intact)");
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  Opt-in probe (round 16): what does the MODERN host-hidden Settings path do
+//  with a malformed value that is PRESENT?
+//
+//  MEASURES, ASSERTS NOTHING, returns 0 either way -- the same discipline as
+//  --latency-restore-probe. The question it answers is a review finding
+//  ("`restoreState` accepts present modern settings verbatim, unlike legacy
+//  migration"), and the point of a probe rather than a test is that a test would
+//  have to encode an expectation about recovery semantics that no document
+//  stated at the time (`SERIALIZATION_REGISTRY.md` has stated them since round
+//  18; this probe still reports rather than asserts).
+//
+//  Ingress, stated up front because it bounds everything below: the modern
+//  ANAMORPH_INTERNAL values are written by copyState() from a live tree whose only
+//  writers are the constructor's defaults table, restoreState (from a file),
+//  migrateFromLegacyApvts (clamped at source since ER-STATE-17) and the Settings
+//  widgets (whose ComboBox ids and Slider range are valid by construction). So a
+//  malformed MODERN value can only arrive from a hand-edited or corrupted file --
+//  it cannot be produced by the plug-in itself.
+// ---------------------------------------------------------------------------
+static int runModernSettingsProbe()
+{
+    std::printf ("modern host-hidden Settings validation probe (round 16; repaired under Policy B since round 18)\n");
+    std::printf ("======================================================\n\n");
+
+    // A genuine modern save, used as the carrier for every mutation below.
+    juce::MemoryBlock base;
+    {
+        AnamorphAudioProcessor src;
+        src.prepareToPlay (48000.0, 512);
+        src.getStateInformation (base);
+    }
+
+    struct Case { const char* field; const char* value; };
+    const Case cases[] = {
+        { "int_oversample",   "99"    }, { "int_oversample",   "-5"      },
+        { "int_oversample",   "abc"   }, { "int_oversample",   "nan"     },
+        { "int_oversample",   "inf"   }, { "int_oversample",   "2.7"     },
+        { "int_uiScale",      "99"    }, { "int_uiScale",      "0"       },
+        { "int_uiScale",      "abc"   },
+        { "int_scopePersist", "5.0"   }, { "int_scopePersist", "-1.0"    },
+        { "int_scopePersist", "nan"   }, { "int_scopePersist", "inf"     },
+        { "int_scopePersist", "abc"   }, { "int_scopePersist", "1e39"    },
+        { "int_metersOn",     "abc"   }, { "int_metersOn",     "2"       },
+        { "int_tooltipsOn",   "maybe" }, { "int_uiAnimations", "-1"      },
+    };
+
+    std::printf ("  %-18s %-8s | %-14s | %-9s %-9s %-11s | %-8s | %-8s | after editor\n",
+                 "field", "written", "tree after", "osIndex", "uiScale", "persist",
+                 "finite?", "resaved");
+    std::printf ("  %s\n", juce::String::repeatedString ("-", 122).toRawUTF8());
+
+    int nonFinite = 0, outOfDomainTree = 0, durable = 0;
+
+    for (const auto& c : cases)
+    {
+        auto xml = BlobCodec::unwrap (base);
+        if (xml == nullptr) { std::printf ("  (blob codec failed)\n"); return 1; }
+        auto* internal = xml->getChildByName ("ANAMORPH_INTERNAL");
+        if (internal == nullptr) { std::printf ("  (no ANAMORPH_INTERNAL node)\n"); return 1; }
+        internal->setAttribute (c.field, c.value);
+        auto mutated = BlobCodec::wrap (*xml);
+
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        p.setStateInformation (mutated.getData(), (int) mutated.getSize());
+
+        const auto  after   = p.getInternal().copyState()[juce::Identifier (c.field)];
+        const int   osIdx   = p.getInternal().oversampleIndex();
+        const int   uiIdx   = p.getInternal().uiScaleIndex();
+        const float persist = p.getInternal().scopePersist();
+
+        // Does the malformed value survive into the NEXT save? That is what makes
+        // a bad value durable state rather than a one-session display glitch.
+        juce::MemoryBlock resaved;
+        p.getStateInformation (resaved);
+        juce::String resavedValue = "(gone)";
+        if (auto rx = BlobCodec::unwrap (resaved))
+            if (auto* ri = rx->getChildByName ("ANAMORPH_INTERNAL"))
+                resavedValue = ri->getStringAttribute (c.field);
+
+        const bool finite = std::isfinite (persist);
+        if (! finite) ++nonFinite;
+        if (resavedValue == juce::String (c.value)) ++durable;
+        if (juce::String (c.field) == "int_oversample" || juce::String (c.field) == "int_uiScale")
+        {
+            const int domainMax = juce::String (c.field) == "int_oversample" ? 4 : 5;
+            const int treeId    = (int) after;
+            if (treeId < 1 || treeId > domainMax) ++outOfDomainTree;
+        }
+
+        // USER-VISIBILITY, which is the half a headless read cannot answer. The
+        // Settings widgets bind these values two-way, so opening the editor is
+        // itself a write path: a Slider constrains to its range and a ComboBox
+        // rejects an id it has no item for. Whether that REPAIRS the tree or just
+        // displays wrongly is the difference between "durable invalid state" and
+        // "one bad session", so it is measured rather than reasoned about.
+        juce::String afterEditor = "(not built)";
+       #if JUCE_LINUX || JUCE_BSD
+        if (auto* ed = p.createEditor())
+        {
+            afterEditor = p.getInternal().copyState()[juce::Identifier (c.field)].toString();
+            delete ed;
+        }
+       #endif
+
+        std::printf ("  %-18s %-8s | %-14s | %-9d %-9d %-11.4f | %-8s | %-8s | %s\n",
+                     c.field, c.value, after.toString().toRawUTF8(), osIdx, uiIdx,
+                     (double) persist, finite ? "yes" : "NO", resavedValue.toRawUTF8(),
+                     afterEditor.toRawUTF8());
+    }
+
+    // ---- Downstream of the ONE unclamped consumer (round 17) -----------------
+    // scopePersist is the only setting whose read applies no clamp, so it is the
+    // only one whose malformed value can travel. Model the real chain exactly as
+    // the editor builds it: a Slider with the editor's range (PluginEditor.cpp
+    // setRange(0,1,0.001)) bound two-way to the tree value (getValueObject().
+    // referTo(scopePersistValue())), then applyScopePersist()'s
+    // pow(getValue(), 0.737f), then Vectorscope::setPersistence's
+    // jlimit(0,1,...), then windowFrames()'s jmap -> (int).
+    //
+    // The last step is the one that matters: juce::jlimit returns its argument
+    // when NEITHER comparison is true, which is exactly what a NaN does, so a
+    // clamp that looks total is transparent to it -- and (int) of a non-finite
+    // float is UNDEFINED ([conv.fpint]), the same class round 12 fixed on the
+    // legacy path. This section therefore reports finiteness at each stage and
+    // does NOT perform the final conversion.
+    std::printf ("\n  downstream of scopePersist (the one unclamped read), modelling the real editor chain:\n");
+    std::printf ("    %-10s | %-12s | %-12s | %-12s | %s\n",
+                 "written", "slider value", "pow(v,.737)", "after jlimit", "jmap -> (int) would be");
+    std::printf ("    %s\n", juce::String::repeatedString ("-", 84).toRawUTF8());
+    int reachesUB = 0;
+    for (const char* v : { "0.25", "5.0", "-1.0", "nan", "inf", "1e39", "abc" })
+    {
+        juce::ValueTree t ("T");
+        t.setProperty ("p", juce::var (juce::String (v)), nullptr);
+        juce::Slider sl;
+        sl.setRange (0.0, 1.0, 0.001);                       // the editor's range
+        sl.getValueObject().referTo (t.getPropertyAsValue ("p", nullptr));
+
+        const double sliderV = sl.getValue();
+        const float  powed   = std::pow ((float) sliderV, 0.737f);
+        const float  limited = juce::jlimit (0.0f, 1.0f, powed);
+        const float  mapped  = juce::jmap (limited, 0.0f, 1.0f, 1200.0f, 8000.0f);
+        const bool   ub      = ! std::isfinite (mapped);
+        if (ub) ++reachesUB;
+        std::printf ("    %-10s | %-12.4f | %-12.4f | %-12.4f | %s\n", v, sliderV,
+                     (double) powed, (double) limited,
+                     ub ? "UNDEFINED (non-finite)" : "defined");
+    }
+    std::printf ("    => %d of 7 reach the (int) conversion non-finite\n", reachesUB);
+
+    std::printf ("\n  summary: %d case(s) left a NON-FINITE scope persistence;"
+                 " %d left an out-of-domain ComboBox id IN THE TREE; %d persisted"
+                 " the malformed text into the next save\n", nonFinite, outOfDomainTree, durable);
+    std::printf ("  (the DSP-facing reads are clamped at source: oversampleIndex via jlimit(0,3),\n"
+                 "   uiScaleIndex via jlimit(0,4) -- so neither can index out of range whatever\n"
+                 "   the tree holds. scopePersist() is an unclamped (float)(double) read.)\n");
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
+//  State test 32 -- a malformed `int_scopePersist` must not drive a NON-FINITE
+//  persistence into the vectorscope (ER-STATE-21, round 17).
+//
+//  This is the one place where round 16's survey of malformed MODERN Settings
+//  found something that travels. Five of the six settings are clamped at their
+//  read (`oversampleIndex`/`uiScaleIndex` through `jlimit`, the three booleans
+//  through a total `var`->`bool` coercion), so whatever the tree holds, the
+//  consumer sees a legal value. `scopePersist` is the exception, and its route
+//  ends at `Vectorscope::windowFrames()`, which evaluates `(int)` of a `jmap` --
+//  UNDEFINED for a non-finite float ([conv.fpint]).
+//
+//  TWO inputs arrive non-finite, and the second is the interesting one:
+//    * `"nan"` travels intact -- JUCE's number parser accepts it, the Value ->
+//      Slider binding does not reject it, and `jlimit` is transparent to it
+//      because NEITHER of its comparisons is true for a NaN; and
+//    * ANY NEGATIVE value, which is perfectly finite in the file, becomes a NaN
+//      before it arrives: the editor's `applyScopePersist()` computes
+//      `pow(value, 0.737f)` first, and a negative base with a fractional
+//      exponent is NaN.
+//  Neither is repaired by opening the editor (measured, round 16: the Slider's
+//  range constrains a too-HIGH value but writes nothing back for a negative or a
+//  NaN), and both survive into the next save.
+//
+//  WHAT THIS TEST DOES AND DOES NOT DECIDE. It pins only that the value reaching
+//  the scope is always finite -- a local correctness property of the consumer,
+//  true whatever the serialization contract says. When it was written that
+//  contract WAS open and the tree kept whatever the file said; round 18 settled
+//  it separately (the maintainer's Policy B -- a present-but-invalid Setting is
+//  repaired on restore and the repaired value persisted, State test 33), so a
+//  malformed value no longer reaches this consumer from an ordinary restore at
+//  all. The guard stays as the backstop that decision asks for, and this test
+//  stays discriminating because it drives `setPersistence` directly.
+// ---------------------------------------------------------------------------
+//  State test 36 -- a repair whose value happens to MATCH the live one must
+//  still reach the persisted state (ER-STATE-25).
+//
+//  State test 20 already pins "a repaired parameter reaches the saved state",
+//  but it poisons with `nan`, and NaN makes `applyNorm`'s gate
+//  `! (|norm - getValue()| <= 1e-6)` true on the comparison alone -- so it
+//  exercises the repair path and never the gate's other side. This test takes
+//  that other side: malformed text whose repair lands on the value the
+//  parameter ALREADY holds.
+//
+//  THE PRECONDITION IS ARITHMETIC, NOT A GUESS, and the test searches for a
+//  parameter that satisfies it rather than hard-coding one. `apvts.replaceState`
+//  runs first and pushes @value through JUCE's own parser, where unusable text
+//  reads as the denormalised 0; `applyNorm` then computes `norm` = the parameter
+//  DEFAULT, because SerializedNumber refuses the same text. So the gate is false
+//  -- and the tree write-back skipped -- exactly when
+//      convertTo0to1 (0) == getDefaultValue()
+//  which is true of every parameter whose range starts at its default (Drive
+//  0..24 dB default 0, Amount 0..1 default 0, ...).
+//
+//  WHAT MAKES IT A PERSISTENCE TEST RATHER THAN A VACUOUS ONE. "restore ->
+//  parameter == default" passes BEFORE the fix: the live value was never the
+//  problem. The assertions that matter are on the serialized artefact -- the
+//  live APVTS tree that copyState() reads, and the bytes getStateInformation
+//  actually emits.
+static void testDefaultValuedCorruptionIsRepairedInState()
+{
+    std::printf ("State test 36: a repair equal to the live value still reaches the saved state (ER-STATE-25)\n");
+
+    AnamorphAudioProcessor probe;
+    probe.prepareToPlay (48000.0, 256);
+
+    // Find a parameter for which malformed text and the default coincide.
+    juce::String victim;
+    for (auto* p : probe.getParameters())
+        if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p))
+            if (! pid::isViewParam (rp->paramID)
+                && std::abs (rp->convertTo0to1 (0.0f) - rp->getDefaultValue()) <= 1.0e-6f)
+            { victim = rp->paramID; break; }
+    check (victim.isNotEmpty(),
+           "a parameter exists whose default coincides with what malformed text normalises to");
+    if (victim.isEmpty()) return;
+    std::printf ("  victim parameter: %s (default normalised %.6f)\n", victim.toRawUTF8(),
+                 (double) probe.getAPVTS().getParameter (victim)->getDefaultValue());
+
+    const char* kPoison = "abc";   // unusable text: not a number in any reading
+
+    // Build a session whose victim PARAM carries the poison and no `raw`, so the
+    // `value` path is the one under test (the raw fallback keeps its own contract
+    // and is exercised by State tests 19/20 -- untouched here).
+    auto poisonSession = [&] (const juce::MemoryBlock& clean, const char* poison)
+    {
+        auto xml = BlobCodec::unwrap (clean);
+        check (xml != nullptr, "session decodes for poisoning");
+        bool done = false;
+        if (xml != nullptr)
+            if (auto* params = xml->getChildByName ("ANAMORPH"))
+                if (auto* n = params->getChildByAttribute ("id", victim))
+                { n->setAttribute ("value", poison); n->removeAttribute ("raw"); done = true; }
+        check (done, "the session carries the victim PARAM to poison");
+        return xml != nullptr ? BlobCodec::wrap (*xml) : juce::MemoryBlock();
+    };
+    // What a state blob says for the victim's @value, as TEXT -- the durable artefact.
+    auto savedText = [&] (const juce::MemoryBlock& blob)
+    {
+        auto xml = BlobCodec::unwrap (blob);
+        if (xml != nullptr)
+            if (auto* params = xml->getChildByName ("ANAMORPH"))
+                if (auto* n = params->getChildByAttribute ("id", victim))
+                    return n->getStringAttribute ("value");
+        return juce::String ("<missing>");
+    };
+
+    juce::MemoryBlock clean;
+    { AnamorphAudioProcessor authoring; authoring.prepareToPlay (48000.0, 256);
+      authoring.getStateInformation (clean); }
+
+    // ---- the core case, run TWICE so the corruption cannot survive one cycle
+    //      and return on the next (the repository's repeated-restore discipline) ----
+    juce::MemoryBlock resaved;
+    for (int cycle = 0; cycle < 2; ++cycle)
+    {
+        const auto poisoned = poisonSession (cycle == 0 ? clean : resaved, kPoison);
+        checkStr (savedText (poisoned), juce::String (kPoison),
+                  "the input session really does carry the malformed text");
+
+        AnamorphAudioProcessor proc;
+        proc.prepareToPlay (48000.0, 256);
+        proc.setStateInformation (poisoned.getData(), (int) poisoned.getSize());
+
+        auto* rp = proc.getAPVTS().getParameter (victim);
+        // (1) The LIVE value -- correct before the fix too, which is why it cannot
+        //     be the assertion this test rests on.
+        check (rp != nullptr && juce::approximatelyEqual (rp->getValue(), rp->getDefaultValue()),
+               "the live parameter holds the repaired value");
+
+        // (2) The LIVE TREE, which is what copyState() serialises from.
+        auto live = proc.getAPVTS().state.getChildWithProperty ("id", victim);
+        check (live.isValid(), "the live APVTS still carries the victim node");
+        const juce::String liveText = live.getProperty ("value").toString();
+        std::printf ("  cycle %d: live APVTS @value after restore = \"%s\"\n", cycle, liveText.toRawUTF8());
+        check (liveText != kPoison, "the malformed text is GONE from the live APVTS tree");
+        check (anamorph::looksLikePlainNumber (liveText.toRawUTF8()),
+               "...and what replaced it is a plain number");
+
+        // (3) The SAVED ARTEFACT -- the durable thing an older build would read.
+        proc.getStateInformation (resaved);
+        const juce::String outText = savedText (resaved);
+        std::printf ("  cycle %d: saved @value = \"%s\"\n", cycle, outText.toRawUTF8());
+        check (outText != kPoison, "the next save does NOT re-emit the malformed text");
+        check (anamorph::looksLikePlainNumber (outText.toRawUTF8()),
+               "...it emits a plain number");
+
+        // (4) Reloading that save reproduces the value and stays canonical.
+        AnamorphAudioProcessor back;
+        back.prepareToPlay (48000.0, 256);
+        back.setStateInformation (resaved.getData(), (int) resaved.getSize());
+        auto* rb = back.getAPVTS().getParameter (victim);
+        check (rb != nullptr && juce::approximatelyEqual (rb->getValue(), rp->getDefaultValue()),
+               "reloading the repaired save reads the same value back");
+        check (savedText (resaved) != kPoison, "and the malformed text does not reappear");
+    }
+
+    // ---- B. a GENUINELY valid value that happens to equal the default must not
+    //         be treated as a repair: its text stays exactly as written ----
+    {
+        auto* rp0 = probe.getAPVTS().getParameter (victim);
+        const juce::String canonical (rp0->convertFrom0to1 (rp0->getDefaultValue()), 6);
+        auto xml = BlobCodec::unwrap (clean);
+        bool done = false;
+        if (xml != nullptr)
+            if (auto* params = xml->getChildByName ("ANAMORPH"))
+                if (auto* n = params->getChildByAttribute ("id", victim))
+                { n->setAttribute ("value", canonical); n->removeAttribute ("raw"); done = true; }
+        check (done, "the control session carries the victim PARAM");
+        const auto validBlob = xml != nullptr ? BlobCodec::wrap (*xml) : juce::MemoryBlock();
+
+        AnamorphAudioProcessor proc;
+        proc.prepareToPlay (48000.0, 256);
+        proc.setStateInformation (validBlob.getData(), (int) validBlob.getSize());
+        auto live = proc.getAPVTS().state.getChildWithProperty ("id", victim);
+        std::printf ("  control: valid \"%s\" restored as \"%s\"\n", canonical.toRawUTF8(),
+                     live.getProperty ("value").toString().toRawUTF8());
+        checkStr (live.getProperty ("value").toString(), canonical,
+                  "a VALID value equal to the default is left exactly as written (no needless rewrite)");
+    }
+
+    // ---- B2. the CLAMP category, measured rather than assumed (round 27 asked
+    //          which categories share the defect): a USABLE `raw` outside 0..1 is
+    //          clamped, so the value the file spells is not the value in force.
+    {
+        auto* rp0 = probe.getAPVTS().getParameter (victim);
+        auto xml = BlobCodec::unwrap (clean);
+        if (xml != nullptr)
+            if (auto* params = xml->getChildByName ("ANAMORPH"))
+                if (auto* n = params->getChildByAttribute ("id", victim))
+                    n->setAttribute ("raw", "-7");     // usable, far below 0 -> clamps to 0 == default
+        const auto blob = xml != nullptr ? BlobCodec::wrap (*xml) : juce::MemoryBlock();
+        AnamorphAudioProcessor proc;
+        proc.prepareToPlay (48000.0, 256);
+        proc.setStateInformation (blob.getData(), (int) blob.getSize());
+        auto live = proc.getAPVTS().state.getChildWithProperty ("id", victim);
+        std::printf ("  clamp category: raw=\"-7\" -> live @raw \"%s\", normalised %.6f\n",
+                     live.getProperty ("raw").toString().toRawUTF8(),
+                     (double) proc.getAPVTS().getParameter (victim)->getValue());
+        check (std::abs (proc.getAPVTS().getParameter (victim)->getValue() - rp0->getDefaultValue()) <= 1.0e-6f,
+               "an out-of-range `raw` clamps to the value in force");
+        // ...and, being out of range, is corruption in its own right: the tree must
+        // not keep it just because the clamp landed on the value already loaded.
+        checkStr (live.getProperty ("raw").toString(), juce::String ("0.0"),
+                  "an out-of-range `raw` is rewritten canonically even when the value does not move");
+    }
+
+    // ---- C. the raw/value fallback contract is untouched: a bad `raw` beside a
+    //         valid `value` must still restore the VALUE, not the default ----
+    {
+        auto* rp0 = probe.getAPVTS().getParameter (victim);
+        const float target = rp0->convertFrom0to1 (0.75f);      // deliberately NOT the default
+        auto xml = BlobCodec::unwrap (clean);
+        bool done = false;
+        if (xml != nullptr)
+            if (auto* params = xml->getChildByName ("ANAMORPH"))
+                if (auto* n = params->getChildByAttribute ("id", victim))
+                { n->setAttribute ("value", juce::String (target, 6));
+                  n->setAttribute ("raw", "abc"); done = true; }
+        check (done, "the fallback session carries the victim PARAM");
+        const auto blob = xml != nullptr ? BlobCodec::wrap (*xml) : juce::MemoryBlock();
+
+        AnamorphAudioProcessor proc;
+        proc.prepareToPlay (48000.0, 256);
+        proc.setStateInformation (blob.getData(), (int) blob.getSize());
+        auto* rb = proc.getAPVTS().getParameter (victim);
+        // Expect what the PARAMETER makes of that plain value, not 0.75 itself: a
+        // choice/stepped victim snaps, and the claim here is "the value survived",
+        // not "no quantisation happened".
+        const float want = rp0->convertTo0to1 (target);
+        std::printf ("  raw/value fallback: bad raw + value=%.6f -> normalised %.6f (want %.6f)\n",
+                     (double) target, (double) rb->getValue(), (double) want);
+        check (std::abs (rb->getValue() - want) < 1.0e-3f,
+               "a malformed `raw` still falls back to the valid `value` (contract unchanged)");
+        check (std::abs (want - rp0->getDefaultValue()) > 1.0e-3f,
+               "non-vacuity: that fallback value is NOT the default, so the leg can fail");
+    }
+}
+// ---------------------------------------------------------------------------
+//  State test 35 -- a REJECTED preset load must have no audio side effect
+//  (ER-GUI-06).
+//
+//  Round 24 made a foreign preset a no-op for STATE. This is the other half:
+//  the editor raised the masking duck BEFORE asking the manager to load, so a
+//  load the manager then refused still dry-filled the next ~32 ms of audio --
+//  a duck masking a swap that never happened. Exactly the failure mode
+//  `AnamorphEngine::primeParameters` already documents for the activation case
+//  (ER-DSP-06 / Test 48), arriving here by a different route.
+//
+//  THE TEST DRIVES THE REAL EDITOR, because the defect was in the editor's
+//  ORDERING and nothing below it could see the bug: `presetPrev`/`presetNext`
+//  carry `setComponentID ("presetnav")` and are distinguished by their button
+//  text, so the child walk reaches the actual production `onClick`.
+//
+//  THE OBSERVABLE IS TEST 48's, for the same reason it was chosen there: with a
+//  MONO stimulus every trace of side energy in the output is the widener's own,
+//  so a duck's dry fill collapses it. Twin processors are driven identically and
+//  compared against each other rather than against a threshold -- the control
+//  says what the block WOULD have been.
+static void testRejectedPresetDoesNotDuck()
+{
+    std::printf ("State test 35: a rejected preset load causes no duck (ER-GUI-06)\n");
+
+    auto dir = anamorph::PresetManager::presetDirectory();
+    check (dir.createDirectory(), "preset directory available");
+    // Sorted by name after the factory block, so B is the row immediately after A.
+    auto validFile   = dir.getChildFile (juce::String ("__DuckHarnessA__") + anamorph::PresetManager::fileSuffix());
+    auto foreignFile = dir.getChildFile (juce::String ("__DuckHarnessB__") + anamorph::PresetManager::fileSuffix());
+
+    constexpr double sr = 48000.0;
+    constexpr int    block = 512;
+
+    // An ENGAGED widener on a mono stimulus: all output side energy is its own.
+    auto engage = [] (AnamorphAudioProcessor& p)
+    {
+        setPlain (p, pid::algorithm, 0.0f);   // Haas
+        setPlain (p, pid::amount,    1.0f);
+        setPlain (p, pid::width,     1.6f);
+        setPlain (p, pid::mix,       1.0f);
+    };
+    auto fill = [] (juce::AudioBuffer<float>& buf, std::mt19937& rng)
+    {
+        std::uniform_real_distribution<float> dist (-0.35f, 0.35f);
+        for (int i = 0; i < block; ++i)
+        { const float v = dist (rng); buf.setSample (0, i, v); buf.setSample (1, i, v); }
+    };
+    auto sideRms = [] (const juce::AudioBuffer<float>& buf)
+    {
+        double acc = 0.0;
+        for (int i = 0; i < block; ++i)
+        { const double d = (double) buf.getSample (0, i) - (double) buf.getSample (1, i); acc += d * d; }
+        return std::sqrt (acc / (double) block);
+    };
+
+    // Write the valid harness preset from a settled engaged instance, then the
+    // foreign one beside it.
+    {
+        AnamorphAudioProcessor seed;
+        seed.prepareToPlay (sr, block);
+        engage (seed);
+        auto xml = seed.getAPVTS().copyState().createXml();
+        check (xml != nullptr && validFile.replaceWithText (xml->toString()), "valid harness preset written");
+    }
+    check (foreignFile.replaceWithText ("<SomeOtherPluginPreset version=\"2\">\n"
+                                        "  <PARAM id=\"width\" value=\"0.05\"/>\n"
+                                        "</SomeOtherPluginPreset>\n"),
+           "foreign harness preset written");
+
+    // Find the two rows, and assert B really does follow A -- the whole point of
+    // the step(+1) below is that it targets the FOREIGN entry.
+    int idxValid = -1, idxForeign = -1;
+    {
+        AnamorphAudioProcessor probe;
+        probe.getPresets().refresh();
+        const auto& es = probe.getPresets().entries();
+        for (int i = 0; i < es.size(); ++i)
+        {
+            if (es[i].name == "__DuckHarnessA__") idxValid = i;
+            if (es[i].name == "__DuckHarnessB__") idxForeign = i;
+        }
+    }
+    check (idxValid >= 0 && idxForeign == idxValid + 1,
+           "the foreign harness row is listed immediately after the valid one");
+
+    // Reach the real editor's Next button by the id its production code sets.
+    auto findPresetNav = [] (juce::Component& root, const juce::String& text) -> juce::Button*
+    {
+        std::function<juce::Button* (juce::Component&)> walk = [&] (juce::Component& c) -> juce::Button*
+        {
+            for (int i = 0; i < c.getNumChildComponents(); ++i)
+            {
+                auto* kid = c.getChildComponent (i);
+                if (auto* b = dynamic_cast<juce::Button*> (kid))
+                    if (b->getComponentID() == "presetnav" && b->getButtonText() == text) return b;
+                if (kid != nullptr) if (auto* found = walk (*kid)) return found;
+            }
+            return nullptr;
+        };
+        return walk (root);
+    };
+
+    // One run: settle an engaged widener, optionally click "next preset" (which
+    // steps onto the FOREIGN row and is refused), then measure the next block.
+    auto run = [&] (bool clickNext, double& outSide, bool& outClicked)
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (sr, block);
+        engage (p);
+        p.getPresets().refresh();
+        p.getPresets().load (idxValid);          // a real, successful load: current row = A
+        outClicked = false;
+
+        std::mt19937 rng (24601);
+        juce::AudioBuffer<float> buf (2, block);
+        juce::MidiBuffer midi;
+        for (int nb = 0; nb < 60; ++nb) { fill (buf, rng); p.processBlock (buf, midi); }   // settle
+
+        if (clickNext)
+        {
+            std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor());
+            if (auto* nav = ed != nullptr ? findPresetNav (*ed, juce::String::charToString ((juce::juce_wchar) 0x203A))
+                                          : nullptr)
+                if (nav->onClick) { nav->onClick(); outClicked = true; }
+        }
+
+        fill (buf, rng);
+        p.processBlock (buf, midi);              // the block the duck would dry-fill
+        outSide = sideRms (buf);
+        return p.getPresets().currentName();
+    };
+
+    double sideRejected = 0.0, sideControl = 0.0;
+    bool clicked = false, unusedClicked = false;
+    const juce::String nameAfter  = run (true,  sideRejected, clicked);
+    const juce::String nameControl = run (false, sideControl,  unusedClicked);
+
+    check (clicked, "the editor's Next-preset button was found and its production onClick fired");
+    std::printf ("  side RMS after a REJECTED preset step: %.6f | control (no click): %.6f | ratio %.4f\n",
+                 sideRejected, sideControl, sideControl > 0.0 ? sideRejected / sideControl : 0.0);
+
+    check (sideControl > 1.0e-3, "non-vacuity: the control block really carries the widener's side energy");
+    // THE ASSERTION. A refused load must leave the audio exactly as the control's.
+    check (std::abs (sideRejected - sideControl) < 1.0e-9,
+           "a REJECTED preset step leaves the next audio block identical to no load at all");
+    // ...and Round 24's state contract still holds through the same click.
+    checkStr (nameAfter, nameControl, "a rejected preset step does not move the preset identity");
+
+    // The other half of the invariant: a SUCCESSFUL load must still duck. Without
+    // this, deleting the duck outright would pass everything above.
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (sr, block);
+        engage (p);
+        p.getPresets().refresh();
+        std::mt19937 rng (24601);
+        juce::AudioBuffer<float> buf (2, block);
+        juce::MidiBuffer midi;
+        for (int nb = 0; nb < 60; ++nb) { fill (buf, rng); p.processBlock (buf, midi); }
+        check (p.getPresets().loadFile (validFile), "the valid harness preset loads");
+        fill (buf, rng);
+        p.processBlock (buf, midi);
+        const double sideLoaded = sideRms (buf);
+        std::printf ("  side RMS after a SUCCESSFUL preset load: %.6f (control %.6f)\n", sideLoaded, sideControl);
+        check (sideLoaded < 0.5 * sideControl,
+               "a SUCCESSFUL preset load still opens its masking duck");
+    }
+
+    // A malformed file takes the same no-audio-side-effect path as a foreign one.
+    {
+        auto brokenFile = dir.getChildFile (juce::String ("__DuckHarnessC__") + anamorph::PresetManager::fileSuffix());
+        check (brokenFile.replaceWithText ("<ANAMORPH><PARAM id=\"width\" value="), "malformed harness preset written");
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (sr, block);
+        engage (p);
+        std::mt19937 rng (24601);
+        juce::AudioBuffer<float> buf (2, block);
+        juce::MidiBuffer midi;
+        for (int nb = 0; nb < 60; ++nb) { fill (buf, rng); p.processBlock (buf, midi); }
+        check (! p.getPresets().loadFile (brokenFile), "a malformed preset is still refused");
+        fill (buf, rng);
+        p.processBlock (buf, midi);
+        check (std::abs (sideRms (buf) - sideControl) < 1.0e-9,
+               "a malformed preset load leaves the next audio block untouched too");
+        check (brokenFile.deleteFile(), "malformed harness file removed");
+    }
+
+    check (validFile.deleteFile(),   "valid harness file removed");
+    check (foreignFile.deleteFile(), "foreign harness file removed");
+}
+// ---------------------------------------------------------------------------
+//  State test 34 -- a FOREIGN preset must never overwrite the current sound
+//  (ER-STATE-24).
+//
+//  The defect. `applySoundTree` walks the PROCESSOR's parameters and looks each
+//  one up in the tree by `getChildWithProperty("id", ...)`. With a foreign root
+//  no child matches ANY of them, so every parameter takes the
+//  "absent means default" branch that exists for a genuinely missing PARAM node
+//  -- and both loaders then reported success and replaced the sound with
+//  defaults. Neither loader checked the root type; only the value inside a
+//  matched child was ever validated.
+//
+//  The contract this test pins is not invented here: it is the one ER-STATE-02
+//  already settled for A/B slot payloads (`readSlot` accepts only
+//  `apvts.state.getType()`, and a foreign-typed tree is refused exactly like an
+//  unparsable one). A preset is the same question about the same kind of
+//  payload, so it gets the same answer -- `loadFile` returns false, `load` is a
+//  clean no-op, and the sound and the preset identity are both untouched.
+//
+//  WHY THE SENTINEL IS FIVE PARAMETERS AND NOT ONE. The failure mode IS "every
+//  parameter becomes its default", so a single-parameter probe could pass by
+//  accident whenever that one default happened to match. Every sentinel value
+//  below is asserted to differ from its own default before the foreign load, so
+//  a reset cannot hide.
+static void testForeignPresetDoesNotResetSound()
+{
+    std::printf ("State test 34: a foreign preset never overwrites the current sound (ER-STATE-24)\n");
+    AnamorphAudioProcessor p;
+    p.prepareToPlay (48000.0, 512);
+    auto& presets = p.getPresets();
+
+    // Five distinct, mutually independent, deliberately non-default values.
+    struct Sentinel { const char* id; float raw; };
+    const Sentinel sentinelA[] = {
+        { "drive",         0.31f }, { "width",     0.77f }, { "algorithm", 0.66f },
+        { "monoMakerFreq", 0.42f }, { "chorusRate", 0.58f }
+    };
+    const Sentinel sentinelB[] = {   // a SECOND, different sound for the repeat cycle
+        { "drive",         0.83f }, { "width",     0.19f }, { "algorithm", 0.33f },
+        { "monoMakerFreq", 0.91f }, { "chorusRate", 0.07f }
+    };
+
+    // The comparison is against what the parameters ACTUALLY HOLD after being
+    // set, captured immediately, not against the literals above: a stepped or
+    // skewed parameter quantises what setRaw stores (chorusRate moves by 3e-5
+    // here), and the claim under test is PRESERVATION, not equality with a
+    // literal. Captured values are compared EXACTLY -- a preserved parameter is
+    // not merely close to what it was, it is the same float.
+    float held[5] = {};
+    auto applySentinel = [&p, &held] (const Sentinel* s, int n)
+    {
+        for (int i = 0; i < n; ++i) setRaw (p, s[i].id, s[i].raw);
+        for (int i = 0; i < n; ++i) held[i] = rawOf (p, s[i].id);
+    };
+    auto sameAsSentinel = [&p, &held] (const Sentinel* s, int n)
+    {
+        for (int i = 0; i < n; ++i)
+            if (! juce::exactlyEqual (rawOf (p, s[i].id), held[i])) return false;
+        return true;
+    };
+    // NON-VACUITY: the sentinel must differ from the defaults, or "unchanged"
+    // and "reset to defaults" would be the same observation.
+    auto differsFromDefaults = [&p] (const Sentinel* s, int n)
+    {
+        int differing = 0;
+        for (int i = 0; i < n; ++i)
+            if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p.getAPVTS().getParameter (s[i].id)))
+                if (std::abs (rp->getDefaultValue() - s[i].raw) > 1.0e-3f) ++differing;
+        return differing;
+    };
+
+    applySentinel (sentinelA, 5);
+    check (differsFromDefaults (sentinelA, 5) == 5,
+           "non-vacuity: all five sentinel values differ from their parameter defaults");
+
+    auto dir = anamorph::PresetManager::presetDirectory();
+    check (dir.createDirectory(), "preset directory available");
+    const juce::String stem = "__AnamorphForeignHarness__";
+    auto foreignFile = dir.getChildFile (stem + anamorph::PresetManager::fileSuffix());
+    auto brokenFile  = dir.getChildFile (stem + "Broken" + anamorph::PresetManager::fileSuffix());
+    auto sparseFile  = dir.getChildFile (stem + "Sparse" + anamorph::PresetManager::fileSuffix());
+    auto goodFile    = dir.getChildFile (stem + "Good"   + anamorph::PresetManager::fileSuffix());
+
+    // A well-formed document from some OTHER plug-in: a foreign root, carrying
+    // children that LOOK like ours (same tag, same id attribute) so the rejection
+    // cannot be attributed to the children being unrecognisable.
+    const juce::String foreignXml =
+        "<SomeOtherPluginPreset version=\"2\">\n"
+        "  <PARAM id=\"width\" value=\"0.05\"/>\n"
+        "  <PARAM id=\"drive\" value=\"0.95\"/>\n"
+        "</SomeOtherPluginPreset>\n";
+    check (foreignFile.replaceWithText (foreignXml), "foreign-root preset written");
+    check (juce::parseXML (foreignXml) != nullptr,
+           "the foreign document really is VALID XML (the rejection is about the root, not the syntax)");
+
+    // ---- loader 1: loadFile (the OS chooser path) ----
+    {
+        // Printed so the failure mode is legible in the log rather than inferred
+        // from a boolean: the pre-fix build shows every value moving to its default.
+        std::printf ("  before foreign load:");
+        for (const auto& s : sentinelA) std::printf (" %s=%.4f", s.id, (double) rawOf (p, s.id));
+        std::printf ("\n");
+    }
+    const bool foreignAccepted = presets.loadFile (foreignFile);
+    {
+        std::printf ("  after  foreign load: loadFile returned %s |", foreignAccepted ? "TRUE" : "false");
+        for (const auto& s : sentinelA)
+        {
+            auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p.getAPVTS().getParameter (s.id));
+            std::printf (" %s=%.4f(default %.4f)", s.id, (double) rawOf (p, s.id),
+                         rp != nullptr ? (double) rp->getDefaultValue() : -1.0);
+        }
+        std::printf ("\n");
+    }
+    check (! foreignAccepted, "loadFile REJECTS a valid document with a foreign root");
+    check (sameAsSentinel (sentinelA, 5), "loadFile: the current sound is untouched by the foreign preset");
+    checkStr (presets.currentName(), presets.currentName(),
+              "loadFile: preset identity is not adopted from a rejected file");
+
+    // ---- loader 2: load(index) (the preset menu path) ----
+    presets.refresh();
+    int foreignIndex = -1;
+    for (int i = 0; i < presets.entries().size(); ++i)
+        if (presets.entries()[i].name == stem) foreignIndex = i;
+    check (foreignIndex >= 0, "the foreign file is listed by refresh() (the menu path really reaches it)");
+    const juce::String nameBefore = presets.currentName();
+    if (foreignIndex >= 0) presets.load (foreignIndex);
+    check (sameAsSentinel (sentinelA, 5), "load(index): the current sound is untouched by the foreign preset");
+    checkStr (presets.currentName(), nameBefore, "load(index): a rejected load does not move the preset identity");
+
+    // ---- the repeat cycle: the rule must hold from a SECOND state too ----
+    // The repository's state-mutation discipline: a guard that only survives one
+    // A->B transition is not a guard. Change the sound, reject again, re-check.
+    applySentinel (sentinelB, 5);
+    check (differsFromDefaults (sentinelB, 5) == 5, "second sentinel also differs from every default");
+    check (! presets.loadFile (foreignFile), "loadFile still rejects the foreign root from the second state");
+    if (foreignIndex >= 0) presets.load (foreignIndex);
+    check (sameAsSentinel (sentinelB, 5), "the second sound survives BOTH loaders unchanged");
+
+    // ---- malformed XML keeps its existing behaviour ----
+    check (brokenFile.replaceWithText ("<ANAMORPH><PARAM id=\"width\" value="), "malformed preset written");
+    check (! presets.loadFile (brokenFile), "loadFile still rejects unparsable XML (unchanged behaviour)");
+    check (sameAsSentinel (sentinelB, 5), "malformed XML leaves the sound untouched (unchanged behaviour)");
+
+    // ---- a VALID Anamorph root with missing parameters keeps the documented
+    //      "absent means default" behaviour: this fix must not have disabled it ----
+    auto* widthP = dynamic_cast<juce::RangedAudioParameter*> (p.getAPVTS().getParameter ("width"));
+    auto* driveP = dynamic_cast<juce::RangedAudioParameter*> (p.getAPVTS().getParameter ("drive"));
+    check (widthP != nullptr && driveP != nullptr, "width and drive resolve");
+    const juce::String sparseXml =
+        "<" + p.getAPVTS().state.getType().toString() + ">\n"
+        "  <PARAM id=\"width\" value=\"1.85\"/>\n"
+        "</" + p.getAPVTS().state.getType().toString() + ">\n";
+    check (sparseFile.replaceWithText (sparseXml), "sparse Anamorph preset written");
+    check (presets.loadFile (sparseFile), "a VALID Anamorph root still LOADS, however few params it carries");
+    if (widthP != nullptr)
+        check (std::abs (rawOf (p, "width") - widthP->convertTo0to1 (1.85f)) < 1.0e-4f,
+               "the one parameter the sparse preset carries is adopted");
+    if (driveP != nullptr)
+        check (std::abs (rawOf (p, "drive") - driveP->getDefaultValue()) < 1.0e-6f,
+               "a parameter ABSENT from a valid Anamorph preset still takes its default (unchanged)");
+
+    // ---- and a full, valid Anamorph preset still round-trips ----
+    // The expectation is captured AFTER the save rather than from the literals:
+    // the file carries PLAIN values, so a stepped parameter comes back on its own
+    // step (`algorithm` returns as 0.6666667 for a 0.66 request) -- the
+    // parameter's normal quantisation, which State test 8 owns and this leg has
+    // no business re-litigating. What this leg must show is only that the new
+    // root check did not start rejecting our own files.
+    applySentinel (sentinelA, 5);
+    {
+        auto xml = p.getAPVTS().copyState().createXml();
+        check (xml != nullptr && goodFile.replaceWithText (xml->toString()), "valid preset written");
+    }
+    float savedSound[5] = {};
+    {
+        // What a reload of that file settles on: load it once from the state it
+        // was saved in, and take the reading as the expectation for the reload
+        // from a DIFFERENT state below. Any discrepancy is then about the load,
+        // not about float text.
+        check (presets.loadFile (goodFile), "a valid Anamorph preset still loads successfully");
+        for (int i = 0; i < 5; ++i) savedSound[i] = rawOf (p, sentinelA[i].id);
+    }
+    applySentinel (sentinelB, 5);
+    check (presets.loadFile (goodFile), "...and loads again from a different current sound");
+    {
+        bool restored = true;
+        for (int i = 0; i < 5; ++i)
+            if (! juce::exactlyEqual (rawOf (p, sentinelA[i].id), savedSound[i])) restored = false;
+        check (restored, "...restoring exactly the sound the file carries, from either starting state");
+    }
+
+    check (foreignFile.deleteFile(), "foreign harness file removed");
+    check (brokenFile.deleteFile(),  "malformed harness file removed");
+    check (sparseFile.deleteFile(),  "sparse harness file removed");
+    check (goodFile.deleteFile(),    "valid harness file removed");
+    presets.refresh();
+}
+// ---------------------------------------------------------------------------
+static void testMalformedScopePersistStaysFinite()
+{
+    std::printf ("State test 32: a malformed scope persistence stays finite at the consumer (ER-STATE-21)\n");
+
+    // --- Leg 1: the consumer's own contract, on the real Vectorscope.
+    {
+        AnamorphAudioProcessor proc;
+        proc.prepareToPlay (48000.0, 512);
+        anamorph::gui::Vectorscope vs (proc.getEngine().getScopeBuffer());
+
+        const float nan = std::numeric_limits<float>::quiet_NaN();
+        const float inf = std::numeric_limits<float>::infinity();
+
+        vs.setPersistence (0.25f);
+        checkNear ((double) vs.getPersistence(), 0.25, 1.0e-6,
+                   "a legal persistence passes through unchanged");
+        vs.setPersistence (5.0f);
+        checkNear ((double) vs.getPersistence(), 1.0, 1.0e-6, "a too-high value clamps to 1");
+        vs.setPersistence (-1.0f);
+        checkNear ((double) vs.getPersistence(), 0.0, 1.0e-6, "a negative value clamps to 0");
+        vs.setPersistence (nan);
+        check (std::isfinite (vs.getPersistence()), "a NaN does NOT become the persistence");
+        vs.setPersistence (inf);
+        check (std::isfinite (vs.getPersistence()), "an infinity does NOT become the persistence");
+        vs.setPersistence (-inf);
+        check (std::isfinite (vs.getPersistence()), "a negative infinity does NOT become the persistence");
+    }
+
+    // --- Leg 2: end to end, through the REAL editor and a real malformed session.
+#if ! (JUCE_LINUX || JUCE_BSD)
+    std::printf ("  leg 2 SKIPPED off Linux -- headless editor construction is unverified there (KI-007)\n");
+#else
+    // A genuine modern save, with only this one field replaced.
+    juce::MemoryBlock base;
+    {
+        AnamorphAudioProcessor src;
+        src.prepareToPlay (48000.0, 512);
+        src.getStateInformation (base);
+    }
+
+    for (const char* bad : { "nan", "-1.0", "-0.5", "inf" })
+    {
+        auto xml = BlobCodec::unwrap (base);
+        if (xml == nullptr) { check (false, "the real save round-trips through the blob codec"); return; }
+        auto* internal = xml->getChildByName ("ANAMORPH_INTERNAL");
+        if (internal == nullptr) { check (false, "the save carries an ANAMORPH_INTERNAL node"); return; }
+        internal->setAttribute ("int_scopePersist", bad);
+        auto mutated = BlobCodec::wrap (*xml);
+
+        AnamorphAudioProcessor proc;
+        proc.prepareToPlay (48000.0, 512);
+        proc.setStateInformation (mutated.getData(), (int) mutated.getSize());
+
+        auto* raw = proc.createEditor();
+        auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+        check (ed != nullptr, "editor constructs over the malformed session");
+        if (ed == nullptr) { delete raw; return; }
+
+        // The scope is a direct child of the editor (addAndMakeVisible in the ctor).
+        anamorph::gui::Vectorscope* vs = nullptr;
+        for (int i = 0; i < ed->getNumChildComponents() && vs == nullptr; ++i)
+            vs = dynamic_cast<anamorph::gui::Vectorscope*> (ed->getChildComponent (i));
+        check (vs != nullptr, "the editor's vectorscope is reachable (non-vacuity)");
+
+        if (vs != nullptr)
+        {
+            const float p = vs->getPersistence();
+            std::printf ("  int_scopePersist=%-6s -> tree keeps %-6s, scope persistence %.4f\n", bad,
+                         proc.getInternal().copyState()["int_scopePersist"].toString().toRawUTF8(),
+                         (double) p);
+            check (std::isfinite (p),
+                   "a malformed persistence in the session leaves the scope FINITE");
+            check (p >= 0.0f && p <= 1.0f, "...and inside the documented 0..1 domain");
+        }
+        proc.editorBeingDeleted (ed);
+        delete ed;
+    }
+#endif
+}
+
+// ---------------------------------------------------------------------------
+//  State test 33 -- a modern Setting that is PRESENT but invalid is REPAIRED on
+//  restore, and the repaired value is what gets persisted (ER-STATE-21,
+//  maintainer decision of 2026-09-02, "Policy B").
+//
+//  Rounds 16 and 17 established the evidence and left the contract open: a
+//  present-but-invalid value was adopted verbatim, all nineteen malformed inputs
+//  survived into the next save, and the one unclamped consumer could be reached
+//  by a non-finite one (fixed at the consumer in round 17, which stays as the
+//  backstop). The maintainer then chose repair-at-restore-and-persist, and this
+//  test is that policy's contract:
+//
+//    * a VALID present value is preserved exactly -- the controls below are what
+//      stop a fix that merely resets everything to defaults from passing;
+//    * a finite OUT-OF-DOMAIN value clamps to the nearest valid one;
+//    * anything not usable as a number -- malformed text, non-finite -- becomes
+//      the field's documented default;
+//    * an ABSENT field keeps taking its documented default (ER-STATE-18), which
+//      the last leg pins so the two rules cannot be confused; and
+//    * the repaired value is written into the tree, so the NEXT SAVE carries it
+//      and a RELOAD of that save reads back the same thing.
+//
+//  The save leg is the one that makes this Policy B rather than Policy "clamp at
+//  the read": it asserts the malformed text is GONE from the persisted state.
+// ---------------------------------------------------------------------------
+static void testModernSettingsAreRepairedOnRestore()
+{
+    std::printf ("State test 33: present-but-invalid modern Settings are repaired and persisted (ER-STATE-21)\n");
+
+    // A genuine modern save, used as the carrier for every mutation.
+    juce::MemoryBlock base;
+    {
+        AnamorphAudioProcessor src;
+        src.prepareToPlay (48000.0, 512);
+        src.getStateInformation (base);
+    }
+
+    struct Case
+    {
+        const char* field;
+        const char* written;
+        double      expected;   // the repaired value, as a double (booleans: 0 / 1)
+        bool        valid;      // true = a valid present value, which must be PRESERVED
+    };
+    const Case cases[] = {
+        // int_oversample: ComboBox ids 1..4, default 1
+        { "int_oversample",   "2",     2.0,  true  },   // control: valid, preserved
+        { "int_oversample",   "4",     4.0,  true  },   // control: the domain's top
+        { "int_oversample",   "99",    4.0,  false },   // finite out of range -> nearest
+        { "int_oversample",   "-5",    1.0,  false },
+        { "int_oversample",   "0",     1.0,  false },
+        { "int_oversample",   "2.7",   2.0,  false },   // fractional id -> truncation after clamp
+        { "int_oversample",   "abc",   1.0,  false },   // malformed -> default
+        { "int_oversample",   "nan",   1.0,  false },   // non-finite -> default
+        { "int_oversample",   "inf",   1.0,  false },
+        // int_uiScale: ComboBox ids 1..5, default 3
+        { "int_uiScale",      "5",     5.0,  true  },   // control
+        { "int_uiScale",      "99",    5.0,  false },
+        { "int_uiScale",      "0",     1.0,  false },
+        { "int_uiScale",      "abc",   3.0,  false },
+        { "int_uiScale",      "-inf",  3.0,  false },
+        // int_scopePersist: 0..1, default 0.5
+        { "int_scopePersist", "0.25",  0.25, true  },   // control
+        { "int_scopePersist", "5.0",   1.0,  false },
+        { "int_scopePersist", "-1.0",  0.0,  false },
+        { "int_scopePersist", "nan",   0.5,  false },
+        { "int_scopePersist", "inf",   0.5,  false },
+        { "int_scopePersist", "1e39",  0.5,  false },   // finite as double, infinite as float
+        { "int_scopePersist", "abc",   0.5,  false },
+        // booleans
+        { "int_metersOn",     "1",     1.0,  true  },   // control
+        { "int_metersOn",     "0",     0.0,  true  },   // control
+        { "int_metersOn",     "abc",   0.0,  false },   // malformed -> default false
+        // A boolean has exactly two valid spellings, "0" and "1" -- the two this
+        // plug-in's own writer emits. Every other number is MALFORMED and takes the
+        // documented default; it does not get coerced to true (ER-STATE-22). The
+        // negative cases are the ones that used to silently ENABLE a setting.
+        { "int_metersOn",     "2",     0.0,  false },
+        { "int_metersOn",     "-1",    0.0,  false },
+        { "int_metersOn",     "-2",    0.0,  false },
+        { "int_metersOn",     "0.5",   0.0,  false },
+        { "int_tooltipsOn",   "1",     1.0,  true  },   // control
+        { "int_tooltipsOn",   "0",     0.0,  true  },   // control
+        { "int_tooltipsOn",   "maybe", 0.0,  false },
+        { "int_tooltipsOn",   "-1",    0.0,  false },
+        { "int_tooltipsOn",   "-0.5",  0.0,  false },
+        { "int_uiAnimations", "0",     0.0,  true  },   // control: OFF must survive
+        { "int_uiAnimations", "1",     1.0,  true  },   // control
+        { "int_uiAnimations", "abc",   1.0,  false },   // malformed -> default true
+        { "int_uiAnimations", "-1",    1.0,  false },   // ...and so does a negative
+        { "int_uiAnimations", "-2",    1.0,  false },
+        { "int_uiAnimations", "2",     1.0,  false }
+    };
+
+    auto internalTextOf = [] (const juce::MemoryBlock& blob, const char* field)
+    {
+        if (auto x = BlobCodec::unwrap (blob))
+            if (auto* n = x->getChildByName ("ANAMORPH_INTERNAL"))
+                return n->getStringAttribute (field);
+        return juce::String();
+    };
+
+    int repaired = 0, preserved = 0;
+    for (const auto& c : cases)
+    {
+        auto xml = BlobCodec::unwrap (base);
+        if (xml == nullptr) { check (false, "the carrier save round-trips through the blob codec"); return; }
+        auto* internal = xml->getChildByName ("ANAMORPH_INTERNAL");
+        if (internal == nullptr) { check (false, "the carrier save carries an ANAMORPH_INTERNAL node"); return; }
+        internal->setAttribute (c.field, c.written);
+        auto mutated = BlobCodec::wrap (*xml);
+
+        // (1) Restore: the LIVE value must be the repaired one.
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        p.setStateInformation (mutated.getData(), (int) mutated.getSize());
+        const double live = (double) p.getInternal().copyState()[juce::Identifier (c.field)];
+        checkNear (live, c.expected, 1.0e-6,
+                   c.valid ? "a VALID present value is preserved exactly"
+                           : "an invalid present value is repaired to its documented resolution");
+
+        // (2) Save: the malformed text must be GONE from the persisted state.
+        juce::MemoryBlock resaved;
+        p.getStateInformation (resaved);
+        const auto savedText = internalTextOf (resaved, c.field);
+        if (! c.valid)
+            check (savedText != juce::String (c.written),
+                   "...and the malformed text is NOT what the next save writes");
+
+        // (3) Reload: the same value comes back, so the repair is stable.
+        AnamorphAudioProcessor q;
+        q.prepareToPlay (48000.0, 512);
+        q.setStateInformation (resaved.getData(), (int) resaved.getSize());
+        const double reloaded = (double) q.getInternal().copyState()[juce::Identifier (c.field)];
+        checkNear (reloaded, c.expected, 1.0e-6,
+                   "...and a reload of that save reads back the same value");
+
+        if (c.valid) ++preserved; else ++repaired;
+        std::printf ("  %-18s %-6s -> live %-8.4g saved \"%s\"%s\n", c.field, c.written, live,
+                     savedText.toRawUTF8(), c.valid ? "   (valid, preserved)" : "");
+    }
+    std::printf ("  => %d invalid value(s) repaired, %d valid value(s) preserved\n", repaired, preserved);
+
+    // (4) ABSENT is a different rule and must stay different (ER-STATE-18): the
+    //     documented default, NOT a repair of something that is not there.
+    {
+        auto xml = BlobCodec::unwrap (base);
+        if (xml == nullptr) return;
+        auto* internal = xml->getChildByName ("ANAMORPH_INTERNAL");
+        if (internal == nullptr) return;
+        internal->removeAttribute ("int_uiScale");
+        auto stripped = BlobCodec::wrap (*xml);
+
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        p.getInternal().uiScaleValue().setValue (5);      // a distinguishable previous value
+        p.setStateInformation (stripped.getData(), (int) stripped.getSize());
+        checkNear ((double) p.getInternal().copyState()["int_uiScale"], 3.0, 1.0e-6,
+                   "an ABSENT field still takes its documented default, not the previous session's");
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  RISK-008 probe (round 18): what happens to a pending D-1 latency request when
+//  nothing is servicing the JUCE message queue?
+//
+//  SYNTHETIC, AND LABELLED AS SUCH. The CAUSE this models -- a Linux VST3 host
+//  that supplies its `IRunLoop` only through `IPlugFrame`, so JUCE detaches the
+//  event loop when the editor closes and never restarts its internal message
+//  thread -- is established by reading the pinned wrapper, not by running one:
+//  no Linux VST3 host is installed in this environment, and none was available to
+//  test. What this probe reproduces faithfully is the CONSEQUENCE of that state,
+//  which is the part the risk turns on: with the queue unserviced, does a request
+//  made off the message thread stay pending, and is it delivered when servicing
+//  resumes?
+//
+//  That consequence is exact rather than modelled, because `juce::Timer` delivers
+//  through the queue and nothing else: the timer thread POSTS a `CallTimersMessage`
+//  and the message thread runs the callbacks (pinned `juce_Timer.cpp`). A console
+//  harness never runs a dispatch loop, so "not pumping" here IS "queue unserviced"
+//  -- the same reason State tests 27, 30 and 31 have to pump explicitly to make
+//  the D-1 timer fire at all.
+//
+//  No sleep is used as proof of anything. The negative phase asserts a STATE (the
+//  reported latency has not moved) that cannot become true later without the
+//  queue being serviced; its deadline only bounds how long the phase runs.
+// ---------------------------------------------------------------------------
+static int runRisk008Probe()
+{
+    std::printf ("RISK-008 probe: a pending latency request against an UNSERVICED message queue\n");
+    std::printf ("  (synthetic: models the editor-closed state a run-loop detach leaves behind;\n");
+    std::printf ("   the wrapper lifecycle that produces it is established by code reading)\n\n");
+
+    AnamorphAudioProcessor p;
+    p.getInternal().oversampleValue().setValue (2);      // 2x: latency moves with drive
+    auto* drive = p.getAPVTS().getParameter (pid::drive);
+
+    drive->setValueNotifyingHost (0.0f);
+    p.prepareToPlay (48000.0, 512);
+    const int lowLat = p.getLatencySamples();
+    drive->setValueNotifyingHost (1.0f);
+    p.prepareToPlay (48000.0, 512);
+    const int highLat = p.getLatencySamples();
+    drive->setValueNotifyingHost (0.0f);
+    p.prepareToPlay (48000.0, 512);
+    std::printf ("  reported latency moves %d -> %d with drive (non-vacuity: %s)\n",
+                 lowLat, highLat, lowLat != highLat ? "yes" : "NO -- probe is vacuous");
+    if (lowLat == highLat) return 1;
+
+    const int before = p.getLatencySamples();
+
+    // The request, from a thread that is not the message thread -- the shape host
+    // automation of Drive takes under VST3 (KI-027), and the one D-1 defers.
+    const auto requestedAt = juce::Time::getMillisecondCounterHiRes();
+    std::thread worker ([&] { drive->setValueNotifyingHost (1.0f); });
+    worker.join();
+
+    // --- Phase A: queue UNSERVICED (the editor-closed state). ---------------
+    // Deliberately NOT pumping. Poll the observable only.
+    constexpr int kUnservicedMs = 1000;   // 20 timer periods
+    int delivered = -1;
+    for (int elapsed = 0; elapsed < kUnservicedMs; elapsed += 25)
+    {
+        if (p.getLatencySamples() != before) { delivered = elapsed; break; }
+        std::this_thread::sleep_for (std::chrono::milliseconds (25));
+    }
+    const bool stalledWhileUnserviced = (delivered < 0);
+    std::printf ("  phase A -- queue unserviced for %d ms (%d timer periods): reported latency %s\n",
+                 kUnservicedMs, kUnservicedMs / 50,
+                 stalledWhileUnserviced ? "UNCHANGED (request still pending)"
+                                        : "changed -- the request was served without servicing");
+
+    // --- Phase B: servicing resumes (the editor is reopened). ---------------
+    int servedAfterMs = -1;
+    for (int elapsed = 0; elapsed < 2000; elapsed += 5)
+    {
+        juce::Timer::callPendingTimersSynchronously();      // the run loop, restored
+        if (p.getLatencySamples() != before)
+        {
+            servedAfterMs = (int) (juce::Time::getMillisecondCounterHiRes() - requestedAt);
+            break;
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (5));
+    }
+
+    std::printf ("  phase B -- servicing resumed: reported latency %s%s\n",
+                 servedAfterMs >= 0 ? "delivered" : "STILL not delivered",
+                 servedAfterMs >= 0 ? "" : " (unexpected)");
+    if (servedAfterMs >= 0)
+        std::printf ("  request -> delivery: %d ms total, of which %d ms was the unserviced window\n",
+                     servedAfterMs, kUnservicedMs);
+    std::printf ("  now reported: %d (was %d, the settled state predicts %d)\n",
+                 p.getLatencySamples(), before, highLat);
+
+    std::printf ("\n  => %s\n", stalledWhileUnserviced && servedAfterMs >= 0
+                 ? "the request SURVIVES an unserviced window and is delivered when servicing resumes;\n"
+                   "     it is deferred, not dropped -- the host is stale for exactly that window"
+                 : "inconclusive -- see the phase lines above");
+    std::printf ("  EVIDENCE LIMIT: no real Linux VST3 host is available here, so this shows what a\n"
+                 "  detached run loop COSTS, not that any shipping host detaches one. The real-host\n"
+                 "  half is recorded separately (FUTURE_RISKS RISK-008): on Linux in REAPER the\n"
+                 "  latency updates with the editor both open and closed.\n");
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
+//  Restore fade-in probe (round 20): does a NON-DEFAULT restored session reach
+//  its settled sound from the first sample, or glide into it?
+//
+//  MEASURES, ASSERTS NOTHING. Drives the ordinary host order -- restore, THEN
+//  activate -- on a fresh instance, and prints the per-block deviation of the
+//  output from the input. A module that is already at its restored target
+//  deviates by the same amount in block 1 as in block 12; one that glides in
+//  from its default starts near zero and climbs.
+//
+//  WHAT THE RATIO DOES AND DOES NOT SEPARATE. Two different things hold block 1
+//  below the settled level, and this metric sees their sum:
+//    (a) a SMOOTHER gliding from the wrong start -- the ER-DSP-09 defect, fixed;
+//    (b) empty DELAY-LINE and FILTER history filling up -- not a defect at all.
+//        prepare() clears that history by contract, and Haas's own 28 ms line is
+//        longer than the 512-sample block this metric's first point covers.
+//  So the ratio RISES when the fix lands but does not reach 1.0, and a ratio
+//  below 1.0 here is not by itself evidence of a defect. Measured block1/block12,
+//  before -> after the four engine snapToTargets() calls: Haas 0.17 -> 0.72,
+//  Velvet 0.09 -> 0.18, Chorus 0.29 -> 0.68, Dimension-D 0.39 -> 0.90, Mono Maker
+//  0.35 -> 0.58. (Velvet moves least because its presence follower and sparse-tap
+//  history dominate its own first block; that settling is (b), and is unchanged.)
+//  The DISCRIMINATING instrument is DSP Test 49, which compares each module
+//  against a REFERENCE settled on the same targets and so cancels (b) exactly.
+//  This probe is the magnitude, in the product's own terms; the test is the rule.
+// ---------------------------------------------------------------------------
+static int runRestoreFadeProbe()
+{
+    std::printf ("restored-session fade-in probe (round 20)\n");
+    std::printf ("=========================================\n\n");
+
+    constexpr double sr = 48000.0;
+    constexpr int    bs = 512;
+    constexpr int    kBlocks = 12;
+
+    struct Case { const char* name; int algo; const char* extraId; float extraRaw; bool monoCase; };
+    const Case cases[] = {
+        { "Haas",        0, pid::haasDelay,     28.0f, false },
+        { "Velvet",      1, pid::velvetDensity,  0.9f, false },
+        { "Chorus",      2, pid::chorusDepth,    0.9f, false },
+        { "Dimension-D", 3, pid::chorusDepth,    0.9f, false },
+        // Downward, and only one octave: the crossover glides at 8 octaves/second,
+        // so 120 -> 60 completes in ~125 ms (about 12 blocks) and is visible here.
+        // A 90 Hz tone sits BELOW the default 120 (mono'd, little side energy) and
+        // ABOVE the restored 60 (stereo, full side energy), so a glide shows as
+        // side energy CLIMBING out of the first block instead of starting high.
+        { "Mono Maker",  0, pid::monoMakerFreq,  60.0f, true  },
+    };
+
+    for (const auto& c : cases)
+    {
+        // A real non-default session, saved by one instance...
+        juce::MemoryBlock blob;
+        {
+            AnamorphAudioProcessor src;
+            src.prepareToPlay (sr, bs);
+            setPlain (src, pid::algorithm, (float) c.algo);
+            setPlain (src, pid::mix, 1.0f);
+            setPlain (src, c.extraId, c.extraRaw);
+            // Mono Maker is an ADVANCED-mode control: `toEngine` only maps it when
+            // advancedMode is on, so without this the module never runs at all.
+            if (c.monoCase) { setPlain (src, pid::advancedMode, 1.0f);
+                              setPlain (src, pid::monoMakerOn, 1.0f); setPlain (src, pid::amount, 0.0f); }
+            else            { setPlain (src, pid::amount, 1.0f); }
+            src.getStateInformation (blob);
+        }
+
+        // ...restored into a FRESH one in the ordinary host order: state, then activate.
+        AnamorphAudioProcessor p;
+        p.setStateInformation (blob.getData(), (int) blob.getSize());
+        p.prepareToPlay (sr, bs);
+
+        std::printf ("  [restored: algorithm=%.0f amount=%.3f mix=%.3f %s=%.3f monoOn=%.0f]\n",
+                     plainOf (p, pid::algorithm), plainOf (p, pid::amount), plainOf (p, pid::mix),
+                     c.extraId, plainOf (p, c.extraId), plainOf (p, pid::monoMakerOn));
+
+        juce::Random rng (20260902);
+        juce::AudioBuffer<float> buf (2, bs), dry (2, bs);
+        juce::MidiBuffer midi;
+        std::printf ("  %-12s per-block %s:\n", c.name,
+                     c.monoCase ? "SIDE energy rms(L-R) (a widening crossover glide makes it fall)"
+                                : "deviation rms(out-in) (a fading effect makes it rise)");
+        double first = 0.0, last = 0.0;
+        for (int k = 1; k <= kBlocks; ++k)
+        {
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = 0; i < bs; ++i)
+                {
+                    // Decorrelated per channel so the Mono Maker case has real side energy,
+                    // with a low-frequency component the 120..400 Hz crossover moves over.
+                    const double t = (double) i / sr;
+                    const double toneHz = c.monoCase ? 90.0 : 220.0;
+                    const float v = (float) (0.30 * std::sin (2.0 * 3.14159265 * toneHz * t
+                                                              + (ch == 1 ? 1.1 : 0.0))
+                                           + (c.monoCase ? 0.0 : 0.15)
+                                             * (rng.nextFloat() * 2.0f - 1.0f));
+                    buf.setSample (ch, i, v);
+                    dry.setSample (ch, i, v);
+                }
+            p.processBlock (buf, midi);
+
+            double acc = 0.0;
+            int n = 0;
+            for (int i = 0; i < bs; ++i)
+            {
+                if (c.monoCase)
+                {
+                    const double d = (double) buf.getSample (0, i) - (double) buf.getSample (1, i);
+                    acc += d * d; ++n;
+                }
+                else
+                {
+                    // BOTH channels: Haas delays only one side by construction, so a
+                    // single-channel metric is blind to it.
+                    for (int ch = 0; ch < 2; ++ch)
+                    {
+                        const double d = (double) buf.getSample (ch, i) - (double) dry.getSample (ch, i);
+                        acc += d * d; ++n;
+                    }
+                }
+            }
+            const double v = std::sqrt (acc / (double) juce::jmax (1, n));
+            if (k == 1) first = v;
+            if (k == kBlocks) last = v;
+            std::printf ("      block %2d: %.6f\n", k, v);
+        }
+        const double ratio = last > 1.0e-9 ? first / last : 0.0;
+        std::printf ("    => block1 / block%d = %.4f  %s\n\n", kBlocks, ratio,
+                     ratio > 0.90 && ratio < 1.10
+                       ? "(first block already at the settled level)"
+                       : "(first block below settled -- smoother glide and/or history fill;\n"
+                         "       see the header: this metric does not separate the two)");
+    }
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
+//  ER-STATE-23 probe (round 20): does pairing RESTORE with PREPARE add any race
+//  beyond the four RISK-007/D-2 already records?
+//
+//  The review finding says the latency atomics "do not synchronize concurrent
+//  restore, prepare, A/B, preset, or engine state". They do not, and were never
+//  meant to -- they carry the latency REQUEST and nothing else. The real question
+//  is whether those other states race, and whether that is anything D-2 has not
+//  already recorded and deferred. This probe answers the one pairing D-2's scope
+//  does NOT mention: a host calling `setStateInformation` and `prepareToPlay`
+//  from two different threads while the editor tick reads.
+//
+//  Run under ThreadSanitizer. The verdict is the REPORT SET, compared against the
+//  four D-2 already measured (`--state-thread-probe`): abActive, the abUndo
+//  vector twice, and a juce::String refcount exchange. Anything else is new.
+//  Like its sibling, if the race is real this probe's own execution is undefined
+//  behaviour, which is why it is opt-in and never part of the suite.
+// ---------------------------------------------------------------------------
+static int runStatePrepareRaceProbe()
+{
+    std::printf ("ER-STATE-23 probe: restore + prepare + editor reads, three threads\n");
+    std::printf ("  (run under ThreadSanitizer; compare the report set against the four D-2 records)\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    proc.getPresets().load (1);
+    setRaw (proc, "width", 0.42f);
+    proc.pollUndoCoalesce();
+
+    juce::MemoryBlock blob;
+    proc.getStateInformation (blob);
+
+    constexpr int kIterations = 300;
+    std::atomic<bool> go { false };
+
+    // Host thread A: state calls off the main thread (the AU autosave shape).
+    std::thread stateThread ([&]
+    {
+        while (! go.load (std::memory_order_acquire)) { }
+        for (int i = 0; i < kIterations; ++i)
+        {
+            proc.setStateInformation (blob.getData(), (int) blob.getSize());
+            juce::MemoryBlock out;
+            proc.getStateInformation (out);
+        }
+    });
+
+    // Host thread B: activation off the main thread, alternating the spec so each
+    // call really re-prepares the engine rather than being a no-op.
+    std::thread prepareThread ([&]
+    {
+        while (! go.load (std::memory_order_acquire)) { }
+        for (int i = 0; i < kIterations; ++i)
+            proc.prepareToPlay ((i & 1) ? 44100.0 : 48000.0, (i & 1) ? 256 : 512);
+    });
+
+    go.store (true, std::memory_order_release);
+    for (int i = 0; i < kIterations; ++i)
+    {
+        auto& pm = proc.getPresets();
+        const juce::String liveName = pm.currentName();
+        const bool liveDirty = pm.isDirty();
+        proc.pollUndoCoalesce();
+        const bool u = proc.canUndo(), r = proc.canRedo();
+        const int  slot = proc.abActiveSlot();
+        if (liveName.isEmpty() && liveDirty && u && r && slot < 0)
+            std::printf ("  (unreachable, keeps the reads live)\n");
+    }
+
+    stateThread.join();
+    prepareThread.join();
+    std::printf ("  probe finished: %d restore + %d prepare iterations against %d editor ticks\n",
+                 kIterations, kIterations, kIterations);
+    std::printf ("  verdict comes from the sanitizer's report SET, not from this exit code\n");
+    return 0;
+}
+
 int main (int argc, char* argv[])
 {
     juce::ScopedJuceInitialiser_GUI juceInit; // MessageManager for APVTS/processor on this thread
+
+    if (argc > 1 && std::strcmp (argv[1], "--state-thread-probe") == 0)
+        return runStateThreadProbe();
+
+    if (argc > 1 && std::strcmp (argv[1], "--latency-restore-probe") == 0)
+        return runLatencyRestoreProbe();
+
+    if (argc > 1 && std::strcmp (argv[1], "--preset-semantics-probe") == 0)
+        return runPresetSemanticsProbe();
+
+    if (argc > 1 && std::strcmp (argv[1], "--valuebox-gesture-probe") == 0)
+        return runValueBoxGestureProbe();
+
+    if (argc > 1 && std::strcmp (argv[1], "--restore-latency-probe") == 0)
+        return runRestoreLatencyProbe();
+
+    if (argc > 1 && std::strcmp (argv[1], "--legacy-ab-probe") == 0)
+        return runLegacyAbProbe();
+
+    if (argc > 1 && std::strcmp (argv[1], "--legacy-match-probe") == 0)
+        return runLegacyMatchGainProbe();
+
+    if (argc > 1 && std::strcmp (argv[1], "--legacy-settings-probe") == 0)
+        return runLegacySettingsProbe();
+
+    if (argc > 1 && std::strcmp (argv[1], "--partial-settings-probe") == 0)
+        return runPartialSettingsProbe();
+
+    if (argc > 1 && std::strcmp (argv[1], "--reprepare-race-probe") == 0)
+        return runReprepareRaceProbe();
+
+    if (argc > 1 && std::strcmp (argv[1], "--modern-settings-probe") == 0)
+        return runModernSettingsProbe();
+
+    if (argc > 1 && std::strcmp (argv[1], "--risk008-probe") == 0)
+        return runRisk008Probe();
+
+    if (argc > 1 && std::strcmp (argv[1], "--restore-fade-probe") == 0)
+        return runRestoreFadeProbe();
+
+    if (argc > 1 && std::strcmp (argv[1], "--state-prepare-race-probe") == 0)
+        return runStatePrepareRaceProbe();
 
     const bool writeSnapshot = argc > 1 && std::strcmp (argv[1], "--write-snapshot") == 0;
 
@@ -1703,6 +6682,27 @@ int main (int argc, char* argv[])
     testFactoryPresetIdIntegrity();
     testPresetIndicatorIdentityAcrossRestore();
     testWrapperProcessBlockAudioPath();
+    testFirstActivationUsesRestoredState();
+    testNonFiniteParameterInStateIsRejected();
+    testValuelessParamMeansDefault();
+    testMalformedValuesRestoreDefaults();
+    testRepairReachesSavedState();
+    testAbandonedValueBoxGestureIsReclaimed();
+    testLatencyDeliveryIsDeferredOffMessageThread();
+    testPhysicalButtonQueryIgnoresCachedState();
+    testRestoreReportsTheRestoredLatency();
+    testCrossVersionFieldCapture();
+    testLegacyRestoreResetsAbSlots();
+    testRestoreIntegrityGuards();
+    testPartialSettingsDoNotInherit();
+    testOffThreadPrepareDefersLatency();
+    testRestoreResetsAbMatchGains();
+    testMalformedScopePersistStaysFinite();
+    testForeignPresetDoesNotResetSound();
+    testRejectedPresetDoesNotDuck();
+    testDefaultValuedCorruptionIsRepairedInState();
+    testModernSettingsAreRepairedOnRestore();
+    testMalformedLegacySettingsResolveToValid();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

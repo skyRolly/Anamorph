@@ -92,6 +92,16 @@ public:
     // it never hit this).
     void setScaleFactor (float newScale) override;
 
+    // Close any host change gesture a value box is still holding from a press
+    // whose release was never delivered (KI-028). Called from the release-outside
+    // reconcile on the editor timer, under the predicate that already decides a
+    // button is logically down but physically up. Public and separately callable
+    // so the sweep can be tested without synthesising OS-level button state --
+    // the predicate itself is pre-existing, shipped since v0.8.12. Its macOS
+    // limitation (KI-013) was closed in round 4: the predicate now reads the
+    // physical buttons through anamorph::gui::anyPhysicalMouseButtonDown().
+    void abortAbandonedDragGestures();
+
 private:
     using SliderAttachment   = juce::AudioProcessorValueTreeState::SliderAttachment;
     using ButtonAttachment   = juce::AudioProcessorValueTreeState::ButtonAttachment;

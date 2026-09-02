@@ -17,7 +17,8 @@
 // ============================================================================
 class AnamorphAudioProcessor : public juce::AudioProcessor,
                                private juce::AudioProcessorValueTreeState::Listener,
-                               private juce::AudioProcessorParameter::Listener // sound-param gestures (undo)
+                               private juce::AudioProcessorParameter::Listener, // sound-param gestures (undo)
+                               private juce::Timer // D-1: off-thread latency delivery (KI-027)
 {
 public:
     AnamorphAudioProcessor();
@@ -102,9 +103,45 @@ private:
     void parameterGestureChanged (int parameterIndex, bool gestureIsStarting) override;
     void updateLatency();
 
+    // The delivery half of updateLatency(), WITHOUT touching latencyUpdateRequest.
+    // Separated because clearing the flag twice for one delivery is what loses a
+    // concurrent request -- see timerCallback().
+    void deliverLatency();
+
+    // D-1 (KI-027), approved 2026-09-01. Route EVERY latency re-report through
+    // here rather than calling updateLatency() directly from a listener: under
+    // VST3 host automation of drive/algorithm, `parameterChanged` runs on the
+    // AUDIO thread, and setLatencySamples' notification chain takes locks and --
+    // on a real change -- allocates and write()s in the wrapper. On the message
+    // thread the update stays synchronous, so nothing about the common path
+    // changes; anywhere else it becomes a request the timer below consumes.
+    // prepareToPlay goes through here too (round 15, ER-STATE-19): a host that
+    // prepares off the message thread must not deliver from that thread either.
+    void requestLatencyUpdate();
+
+    // Consumes a deferred request at ~20 Hz on the message thread. The host can
+    // therefore learn about a latency change up to one interval (50 ms) after the
+    // parameter moved -- documented in LATENCY_MODEL.md, and acceptable because
+    // the alternative is a lock and an allocation on the audio thread.
+    void timerCallback() override;
+
+    // Set by requestLatencyUpdate() from a non-message thread; cleared by the
+    // timer and by updateLatency() itself (so a message-thread prepareToPlay,
+    // which supersedes any pending request, does not leave a stale one behind).
+    // Written with RELEASE off the message thread and consumed with ACQUIRE, so a
+    // consumed request also publishes the parameter write that raised it. Relaxed on
+    // both sides was measurably lossy -- see requestLatencyUpdate().
+    std::atomic<int> latencyUpdateRequest { 0 };
+
     // A/B helpers (preserve the shared view/Settings params across a slot apply)
     void abEnsureInit();
     void abApplySlot (int slot);
+
+    // The restore-side counterpart to abEnsureInit(): drop both slots and the
+    // active index back to their documented defaults, for a blob that carries no
+    // A/B data at all. See the definition for why this exists separately from
+    // readSlot's per-slot reset.
+    void abResetToDefaults() noexcept;
 
     // A complete "state set" (#6): the sound parameters PLUS the preset metadata
     // (base name + clean baseline signature) that determines the displayed name
@@ -173,7 +210,11 @@ private:
 
     StateSet abSlot[anamorph::kNumAbSlots]; // A = [0], B = [1]
     int abActive = 0;
-    float abMatchGain[anamorph::kNumAbSlots] = { 0.0f, 0.0f }; // remembered Level-Match per A/B slot (#23)
+    // Remembered Level-Match per A/B slot (#23). A runtime cache, never serialized --
+    // and therefore reset by abResetToDefaults() along with the slots themselves, or a
+    // restore with no A/B data would leak the previous project's gains into the first
+    // switch (ER-STATE-20). 0 dB is both the initialiser and the fresh-instance value.
+    float abMatchGain[anamorph::kNumAbSlots] = { 0.0f, 0.0f };
 
     juce::AudioProcessorValueTreeState apvts;
     ParamPointers params;

@@ -10,7 +10,7 @@ The VST3/Standalone wrapper (`: juce::AudioProcessor, private APVTS::Listener`).
 
 | Member | Signature | Responsibility |
 |---|---|---|
-| `prepareToPlay` | `void (double sampleRate, int samplesPerBlock)` | Prepares engine; sets initial params; reports latency. |
+| `prepareToPlay` | `void (double sampleRate, int samplesPerBlock)` | Prepares engine; sets initial params; requests the latency report (synchronous on the message thread, one 20 Hz tick otherwise — D-1). |
 | `processBlock` | `void (juce::AudioBuffer<float>&, juce::MidiBuffer&)` | Per-block: transport/seek detect → param snapshot → `engine.process`. |
 | `isBusesLayoutSupported` | `bool (const BusesLayout&) const` | Accepts stereo→stereo, mono→stereo only. |
 | `getStateInformation` / `setStateInformation` | `void (...)` | Full session save/recall (see `STATE_SERIALIZATION.md`). |
@@ -21,7 +21,7 @@ The VST3/Standalone wrapper (`: juce::AudioProcessor, private APVTS::Listener`).
 | `setSoloPreview` / `clearSoloPreview` | `void (int) / void ()` noexcept | Momentary solo audition (atomic, non-undoable). |
 | `abSwitchTo` / `abCopyToOther` / `abActiveSlot` | A/B API | A/B compare living in the processor (survives editor close). |
 
-Evidence [Verified]: src/PluginProcessor.h:20-79.
+Evidence [Verified]: src/PluginProcessor.h:20-80.
 
 ## `AnamorphEngine` — `src/dsp/AnamorphEngine.h`
 
@@ -29,7 +29,7 @@ Format-agnostic DSP orchestrator. Driven only by `EngineParameters`.
 
 | Member | Signature | Responsibility |
 |---|---|---|
-| `prepare` | `void (double sampleRate, int maxBlockSize)` | Allocates all buffers/oversamplers; resets. (Allocation happens here, never in `process`.) |
+| `prepare` | `void (double sampleRate, int maxBlockSize)` | Allocates all buffers/oversamplers; resets; **then snaps every smoothed value onto the current snapshot's targets** — the engine's own via `snapSmoothers()`, and each module's via its `snapToTargets()`, which the modules' own `prepare()` cannot do because it runs before the snapshot is pushed in (ER-DSP-09). A restored session therefore opens IN its sound instead of gliding into it. (Allocation happens here, never in `process`.) |
 | `reset` | `void ()` | Settles smoothers/crossfades; clears delay lines; re-latches OS engagement. |
 | `setParameters` | `void (const EngineParameters&) noexcept` | Adopts a snapshot; continuous live, discrete ducked. |
 | `setTransportPlaying` | `void (bool) noexcept` | Feeds transport edge (Velvet tail kill). |
@@ -40,7 +40,7 @@ Format-agnostic DSP orchestrator. Driven only by `EngineParameters`.
 | `injectMatchGainDb` | `void (float) noexcept` | A/B per-slot Level-Match restore (atomic). |
 | `requestDuck` | `void () noexcept` | Force a masking duck around a bulk param swap (atomic). |
 
-Evidence [Verified]: src/dsp/AnamorphEngine.h:45-93.
+Evidence [Verified]: src/dsp/AnamorphEngine.h:46-129.
 
 ## `ParamPointers` / layout — `src/PluginParameters.h`
 
@@ -65,7 +65,7 @@ Host-hidden session/view state (not in APVTS).
 | `migrateFromLegacyApvts` | `void (const juce::ValueTree&)` | One-time pre-0.8.4 migration (legacy APVTS → InternalState). |
 | `onOversampleChanged` | `std::function<void()>` | Fires on the message thread so the wrapper re-reports PDC. |
 
-Evidence [Verified]: src/InternalState.h:60-122.
+Evidence [Verified]: src/InternalState.h:165-280.
 
 ## `PresetManager` — `src/PresetManager.h`
 

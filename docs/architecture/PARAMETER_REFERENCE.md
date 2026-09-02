@@ -25,7 +25,7 @@ Evidence [Verified]: src/PluginParameters.cpp:246-297.
 | `msMode` | Treats the chain as M/S: Input is decoded Mid/Side→L/R; Balance/polarity act in the M/S domain. |
 | `solo` (M/S Solo) | Off / Mid / Side. Isolates Mid or Side **before** the widener (monitoring aid). |
 
-Evidence [Verified]: src/dsp/AnamorphEngine.cpp:392-440, :614-617.
+Evidence [Verified]: src/dsp/AnamorphEngine.cpp:437-485, :614-617.
 
 ## Effect / widening engine (always active)
 
@@ -41,7 +41,7 @@ Evidence [Verified]: src/dsp/AnamorphEngine.cpp:392-440, :614-617.
 | `dimMode` (Dim-D Style) | Dimension-D voicing: Subtle/Classic/Wide/Lush → engine modes 1..4. |
 | `width` | Global MS width: 0 = mono, 1.0 = identity, 2 = wide. |
 
-Evidence [Verified]: src/dsp/AnamorphEngine.cpp:331-389, :442-469, :648-653; src/PluginParameters.cpp:257.
+Evidence [Verified]: src/dsp/AnamorphEngine.cpp:376-434, :442-469, :648-653; src/PluginParameters.cpp:257.
 
 ## Multiband (Advanced)
 
@@ -55,7 +55,7 @@ Driven primarily by the drag-to-split `SpectrumImager` display.
 | `mbFreqLow/Mid/High` | The three crossover splits (band 1\|2, 2\|3, 3\|4). Log range 20..20 kHz; DSP re-orders + Nyquist-clamps. |
 | `mbWidthLow/Mid/HiMid/High` | Per-band MS width 0..2 (bands 1..4). |
 
-Evidence [Verified]: src/dsp/EngineParameters.h:67-81; src/dsp/AnamorphEngine.cpp:367-376.
+Evidence [Verified]: src/dsp/EngineParameters.h:67-81; src/dsp/AnamorphEngine.cpp:412-421.
 
 ## Mono Maker / Mix / Output (Advanced)
 
@@ -68,7 +68,7 @@ Evidence [Verified]: src/dsp/EngineParameters.h:67-81; src/dsp/AnamorphEngine.cp
 | `outputBalance` | Whole-plugin output balance (signed %). |
 | `autoGainMatch` (Level Match) | Real-time BS.1770 loudness match for fair A/B. "Apply" locks the measured gain into Output Gain. |
 
-Evidence [Verified]: src/dsp/AnamorphEngine.cpp:774-842; src/PluginProcessor.cpp:188-212 (`applyAutoGain`).
+Evidence [Verified]: src/dsp/AnamorphEngine.cpp:840-908; src/PluginProcessor.cpp:322-346 (`applyAutoGain`).
 
 ## Bypass / view
 
@@ -82,4 +82,4 @@ Evidence [Verified]: src/dsp/AnamorphEngine.cpp:774-842; src/PluginProcessor.cpp
 Oversampling (drives DSP + PDC), UI Scale (`int_uiScale`; labelled *Window Size* before 0.9.2 —
 display name only, the identifier is immutable), Scope Persistence, Tooltips, UI Animations,
 Show Meters. Two-way bound to the GUI via `juce::Value`; never automatable, never in
-A/B/Undo/presets. Evidence [Verified]: src/InternalState.h:10-39, :60-82.
+A/B/Undo/presets. Evidence [Verified]: src/InternalState.h:13-42, :60-82.

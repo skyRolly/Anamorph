@@ -118,36 +118,45 @@ function Invoke-Pluginval {
 # (audio/state/parameter/bus/automation) still run and still block. pluginval flag: --skip-gui-tests.
 $guiArgs = @("--skip-gui-tests")
 
-# Each pass gets up to $attempts tries against the REAL exit code (from WaitForExit above): exit 0 is
-# a pass; a small non-zero (1..255) is a real validation failure and fails the step immediately; a
-# null / negative / >=256 code is an abnormal termination (Win32 exception) and is retried, then still
-# fails after the retries. Because Invoke-Pluginval now WAITS, exactly one pluginval runs at a time --
-# no concurrent background instances, so the console output is no longer interleaved.
+# Verdicts against the REAL exit code (from WaitForExit above): exit 0 is a pass; a small non-zero
+# (1..255) is a real validation failure and fails the step immediately; a negative / >=256 code is an
+# abnormal termination of a LAUNCHED validator (a Win32 exception such as 0xC0000005) and ALSO fails
+# immediately -- Windows has no documented external flake to excuse (KI-007 was an exit-code
+# DETECTION problem, fixed by WaitForExit; the only recorded host-side flake is Linux/X11 XEmbed,
+# RISK-004, and the 2026-08-18 change deliberately stopped retrying crashes on macOS for the same
+# reason). Until 2026-08-31 this loop still gave every abnormal termination up to 3 tries per pass,
+# which the WaitForExit fix had left excusing exclusively GENUINE crashes: an intermittently crashing
+# plugin (~1-in-3) passed the full 6-pass Windows release gate ~80% of the time (ER-CI-01).
+# Only a $null code retries: Invoke-Pluginval yields $null solely when Process.Start itself fails
+# under ErrorActionPreference=Continue -- a launch/setup fault of the step, never a verdict about
+# the plugin, and the one case the original null-handling rationale actually covers.
 $pvArgs = @('--strictness-level', "$Strictness") + $modeArgs + $guiArgs + @('--validate', $vst3.FullName, '--timeout-ms', '600000')
 Write-Host "Validating $($vst3.FullName) at strictness $Strictness -- mode=$Mode ($passes consecutive pass(es) required); GUI tests skipped (see KI-007)"
-$attempts = 3
+$launchAttempts = 3
 for ($p = 1; $p -le $passes; $p++) {
     $passed = $false
-    for ($a = 1; $a -le $attempts; $a++) {
+    for ($a = 1; $a -le $launchAttempts; $a++) {
         $rc = Invoke-Pluginval -Exe $pv -PvArgs $pvArgs
         if ($rc -eq 0) {
-            Write-Host "pluginval: PASSED ($Mode pass $p/$passes) at strictness $Strictness (attempt $a/$attempts)"
+            Write-Host "pluginval: PASSED ($Mode pass $p/$passes) at strictness $Strictness"
             $passed = $true
             break
         }
-        # $null MUST be tested first: `$null -lt 0` and `$null -ge 256` are both $false, so without
-        # this a null code would fall through to the "real failure" branch and exit non-zero anyway,
-        # but treating null as a crash keeps the retry semantics symmetric with an abnormal exit.
-        $crashed = ($null -eq $rc) -or ($rc -lt 0) -or ($rc -ge 256)
-        if (-not $crashed) {
-            Write-Host "pluginval: FAILED ($Mode pass $p/$passes) at strictness $Strictness (exit $rc) -- real validation failure, not a crash."
-            exit $rc
+        # $null MUST be tested first: `$null -lt 0` and `$null -ge 256` are both $false, so a null
+        # code would otherwise fall through into the numeric branches.
+        if ($null -eq $rc) {
+            Write-Host "pluginval: did not launch ($Mode pass $p/$passes, no exit code). Launch retry $a/$launchAttempts."
+            continue
         }
-        $shown = if ($null -eq $rc) { 'none (abnormal termination)' } else { $rc }
-        Write-Host "pluginval: crashed ($Mode pass $p/$passes, exit $shown -- abnormal termination). Retry $a/$attempts."
+        if (($rc -lt 0) -or ($rc -ge 256)) {
+            Write-Host "pluginval: CRASHED ($Mode pass $p/$passes, exit $rc -- abnormal termination). A crash is a verdict, not a flake: failing immediately (no documented Windows flake; see RISK-004 scoping)."
+            exit 1
+        }
+        Write-Host "pluginval: FAILED ($Mode pass $p/$passes) at strictness $Strictness (exit $rc) -- real validation failure, not a crash."
+        exit $rc
     }
     if (-not $passed) {
-        Write-Host "pluginval: still crashing ($Mode pass $p/$passes) after $attempts attempts -- treating as a failure."
+        Write-Host "pluginval: could not be launched after $launchAttempts attempts -- setup failure."
         exit 1
     }
 }

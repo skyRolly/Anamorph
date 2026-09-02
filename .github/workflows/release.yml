@@ -68,10 +68,24 @@ jobs:
             echo "release tag: $TAG (commit ${GITHUB_SHA})"
 
             # The tag must be ANNOTATED (tagger + date = traceability metadata).
-            git fetch --force origin "refs/tags/${TAG}:refs/tags/${TAG}" >/dev/null 2>&1 || true
-            TYPE="$(git cat-file -t "refs/tags/${TAG}")"
+            # actions/checkout leaves a PEELED tag behind, so the real tag object has
+            # to be re-fetched before it can be typed. Whether that fetch SUCCEEDED is
+            # recorded rather than swallowed: a transient network failure used to be
+            # reported as "not an annotated tag", telling the maintainer to re-create a
+            # tag that was almost certainly correct (ER-CI-05, 2026-08-31). Still
+            # fail-closed -- both paths exit 1 -- but they now say different things.
+            if git fetch --force origin "refs/tags/${TAG}:refs/tags/${TAG}" >/dev/null 2>&1; then
+              FETCHED=1
+            else
+              FETCHED=0
+            fi
+            TYPE="$(git cat-file -t "refs/tags/${TAG}" 2>/dev/null || echo unknown)"
             if [ "$TYPE" != "tag" ]; then
-              echo "::error::release tag ${TAG} is ${TYPE}, not an annotated tag -- create it with: git tag -a ${TAG} -m 'Anamorph ${TAG_VERSION}'"
+              if [ "$FETCHED" = "0" ]; then
+                echo "::error::could not fetch the tag object for ${TAG} (git fetch failed), so its type could not be verified -- this is an infrastructure failure, NOT a verdict on the tag. Re-run the job; do not re-create the tag on the strength of this message."
+              else
+                echo "::error::release tag ${TAG} is ${TYPE}, not an annotated tag -- create it with: git tag -a ${TAG} -m 'Anamorph ${TAG_VERSION}'"
+              fi
               exit 1
             fi
 

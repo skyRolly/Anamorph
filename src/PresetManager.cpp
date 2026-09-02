@@ -1,5 +1,8 @@
 #include "PresetManager.h"
 
+#include "SerializedNumber.h"   // the shared malformed-value predicate (both restore paths)
+#include <cmath>   // std::isfinite -- the non-finite guards on the restore paths
+
 namespace anamorph
 {
 
@@ -184,6 +187,62 @@ void PresetManager::applyDefaults()
 
 // Apply the sound params stored in an APVTS-style tree (missing ones fall back
 // to their defaults, so older preset files stay loadable).
+namespace
+{
+    // Shared with AnamorphAudioProcessor::reassertParameters (session state) via
+    // anamorph::looksLikePlainNumber -- one predicate, two restore paths, so a
+    // malformed value cannot mean different things depending on where it came from.
+    // Returns false for "no usable value here", which every caller answers with the
+    // parameter default -- the same answer an absent node already gets, and the one
+    // SERIALIZATION_REGISTRY.md records.
+    bool readSerializedValue (const juce::var& prop, float& out)
+    {
+        if (prop.isVoid()) return false;
+        if (prop.isString())
+        {
+            const auto text = prop.toString().trim();   // tolerate a hand edit's spaces
+            if (! anamorph::looksLikePlainNumber (text.toRawUTF8())) return false;
+        }
+        const float v = (float) (double) prop;
+        if (! anamorph::isUsableSerializedValue (v)) return false;   // nan, +/-inf, 1e39
+        out = v;
+        return true;
+    }
+}
+
+// A preset file is accepted only when it is a well-formed document AND its root
+// is the type this plug-in writes (`apvts.state.getType()`, "ANAMORPH"). Both
+// conditions fail the same way -- an invalid tree -- because to a loader they are
+// the same event: this file is not one of ours.
+//
+// WHY THE CHECK CANNOT LIVE IN applySoundTree, which is where it looks like it
+// belongs (ER-STATE-24). That function resolves each parameter with
+// `getChildWithProperty ("id", ...)`, which searches by PROPERTY and does not
+// care what the root is called. Under a foreign root it therefore does two wrong
+// things at once, and only the second was reported: every parameter the document
+// lacks takes the "absent means default" branch written for a genuinely missing
+// PARAM node -- and every parameter it happens to NAME is ADOPTED. Measured on a
+// two-child `<SomeOtherPluginPreset>` against a non-default sound: `drive` and
+// `width` took the foreign file's values (0.95 and 0.05 plain), while
+// `algorithm`, `monoMakerFreq` and `chorusRate` were reset to their defaults --
+// and `loadFile` returned TRUE. So the distinction has to be made on the ROOT,
+// before any per-parameter fallback can reinterpret the document; making the
+// fallback "keep the current value" would have left a foreign preset ACCEPTED
+// and merely inert, which is a different and weaker contract.
+//
+// The rule is not invented here. ER-STATE-02 settled exactly this question for
+// A/B slot payloads -- `readSlot`'s `adoptIfAnamorph` accepts only
+// `apvts.state.getType()` and refuses a foreign-typed tree precisely as it
+// refuses an unparsable one -- and a preset is the same kind of payload asking
+// the same question, so it gets the same answer rather than a second one.
+juce::ValueTree PresetManager::parseSoundFile (const juce::File& f) const
+{
+    if (auto xml = juce::parseXML (f))
+        if (auto t = juce::ValueTree::fromXml (*xml); t.hasType (apvts.state.getType()))
+            return t;
+    return {};
+}
+
 void PresetManager::applySoundTree (const juce::ValueTree& state)
 {
     for (auto* p : apvts.processor.getParameters())
@@ -192,9 +251,32 @@ void PresetManager::applySoundTree (const juce::ValueTree& state)
             {
                 auto child = state.getChildWithProperty ("id", wid->paramID);
                 if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p))
-                    rp->setValueNotifyingHost (child.isValid()
-                        ? rp->convertTo0to1 ((float) (double) child.getProperty ("value"))
-                        : rp->getDefaultValue());
+                {
+                    // A preset file is user-editable text and `nan` parses, so the
+                    // value is only adopted when it is finite -- otherwise the
+                    // parameter default applies, exactly as it does for a missing
+                    // child. A non-finite parameter silences the plug-in for the
+                    // rest of the session (see reassertParameters for the full
+                    // mechanism); the session path is guarded there.
+                    //
+                    // The presence test is on the PROPERTY, not just the node: a
+                    // <PARAM id="width"/> that lost its value to a truncated write or
+                    // a hand edit reads back as var() -> 0.0 -> the range MINIMUM,
+                    // which for width (0..2, default 1) is a silent mono collapse.
+                    // "Absent means default" has to hold for a value-less node too --
+                    // the writer is apvts.copyState().createXml(), which always emits
+                    // `value`, so nothing this plug-in saves takes the new branch.
+                    // The guard runs on the INPUT, before convertTo0to1, because the
+                    // conversion clamps: an infinity arrives at a finiteness test
+                    // already laundered into a finite range ENDPOINT. anamorph::
+                    // SerializedNumber.h carries the measured table and the rule; the
+                    // session path applies the same predicate so the two cannot drift.
+                    float plain = 0.0f;
+                    const bool usable = readSerializedValue (child.getProperty ("value"), plain);
+                    const float fromFile = usable ? rp->convertTo0to1 (plain)
+                                                  : rp->getDefaultValue();
+                    rp->setValueNotifyingHost (fromFile);
+                }
             }
     resetSolo();
 }
@@ -207,7 +289,7 @@ void PresetManager::load (int index)
     // Resolve EVERYTHING that can fail BEFORE opening the undo bracket: a failure must be a
     // clean no-op, never an onAboutToLoad() with no matching onLoaded() (which would flush undo
     // coalescing yet record no step, leaving the undo timeline half-open). Mirrors loadFile().
-    std::unique_ptr<juce::XmlElement> userXml;
+    juce::ValueTree userSound;
     const Factory* factory = nullptr;
     if (e.isFactory)
     {
@@ -222,8 +304,10 @@ void PresetManager::load (int index)
     }
     else
     {
-        userXml = juce::parseXML (e.file);
-        if (userXml == nullptr) return;
+        // Unparsable OR foreign-rooted -> the same clean no-op, resolved here so
+        // it lands before onAboutToLoad() like every other failure (ER-STATE-24).
+        userSound = parseSoundFile (e.file);
+        if (! userSound.isValid()) return;
     }
 
     if (onAboutToLoad) onAboutToLoad(); // flush any settled edit so the pre-load state is the undo baseline
@@ -239,7 +323,7 @@ void PresetManager::load (int index)
     }
     else
     {
-        applySoundTree (juce::ValueTree::fromXml (*userXml));
+        applySoundTree (userSound);
     }
 
     current = e.name;
@@ -251,10 +335,13 @@ void PresetManager::load (int index)
 
 bool PresetManager::loadFile (const juce::File& f)
 {
-    auto xml = juce::parseXML (f);
-    if (xml == nullptr) return false;
+    // Unparsable OR foreign-rooted -> false, and nothing is touched: the chooser
+    // can point at any file on the machine, so this is the path a user is most
+    // likely to hand another plug-in's preset to (ER-STATE-24).
+    auto sound = parseSoundFile (f);
+    if (! sound.isValid()) return false;
     if (onAboutToLoad) onAboutToLoad(); // flush any settled edit so the pre-load state is the undo baseline
-    applySoundTree (juce::ValueTree::fromXml (*xml));
+    applySoundTree (sound);
     current = f.getFileNameWithoutExtension();
     // The chooser can point ANYWHERE, so the file is the identity whether or not it
     // lives in the preset folder; a file from outside simply matches no list row and

@@ -1,7 +1,11 @@
 # CodeQL analysis for Anamorph (C++23 / JUCE audio plugin).
 #
 # Languages analyzed:
-#   * c-cpp   -- src/ + tests/ (the only application code in the repo)
+#   * c-cpp   -- all of src/, plus tests/dsp_tests.cpp (the two targets built
+#               below). The other tests/ targets are not compiled here, so they
+#               are not analysed -- the earlier "src/ + tests/" over-stated it
+#               (ER-CI-06, 2026-08-31). Adding them is a scope decision, not a
+#               typo fix, so the comment is corrected rather than the target list.
 #   * actions -- .github/workflows/ (workflow security queries)
 #
 # c-cpp uses build-mode MANUAL, not "none": JUCE arrives via CMake
@@ -85,8 +89,15 @@ jobs:
             paths-ignore:
               - build
 
-      # c-cpp only. Same dependency set and configure flags as the Linux job
-      # in build.yml; ANAMORPH_BUILD_NUMBER is irrelevant to analysis.
+      # c-cpp only. Same SOURCES as the Linux job in build.yml, and the same
+      # configure flags -- but NOT the same toolchain, which the earlier wording
+      # implied: no compiler is selected here, so this builds with the runner's
+      # distribution g++, while the Linux job has shipped from the pinned Clang
+      # since ADR-0030. That is deliberate and left alone: CodeQL's C++ alert set
+      # comes from its own extractor, not from the compiler's diagnostics, and
+      # pinning a compiler here would be a Build System change (dependency set)
+      # for no analysis benefit. Corrected 2026-08-31 (ER-CI-03).
+      # ANAMORPH_BUILD_NUMBER is irrelevant to analysis.
       - name: Build for analysis (c-cpp manual build mode)
         if: matrix.build-mode == 'manual'
         shell: bash

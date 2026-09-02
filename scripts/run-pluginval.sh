@@ -159,10 +159,11 @@ esac
 #  flake to excuse it, which is the opposite of what a release gate is for. On
 #  macOS a crash is a crash and fails the pass immediately.
 #
-#  (Windows has its own script and its own, different retry: `run-pluginval.ps1`
-#  retries because a GUI-subsystem process can return a null `$LASTEXITCODE`,
-#  which is an exit-code DETECTION problem rather than a crash it is excusing.
-#  That rationale is unrelated to this one and is left alone.)
+#  (Windows has its own script, `run-pluginval.ps1`, which since 2026-08-31
+#  applies the same rule as macOS here: a real abnormal exit code of a LAUNCHED
+#  validator fails the pass immediately. Its retry loop covers only a $null
+#  exit code, which after the WaitForExit fix can mean nothing but "the process
+#  never launched" -- a setup fault, not a crash being excused. See ER-CI-01.)
 # ----------------------------------------------------------------------------
 case "$(uname -s)" in
     Linux) CRASH_RETRY_ATTEMPTS=3 ;;   # the XEmbed flake documented above

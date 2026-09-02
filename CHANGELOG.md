@@ -6,12 +6,324 @@ their **commit SHA + date** as the Evidence Source (per `docs/policies/CHANGELOG
 The annotated-tag convention and the tag-triggered release pipeline exist
 (`docs/procedures/RELEASE_PROCESS.md` §Tagging), but **no tag has been cut yet**: `[0.9.0]` was
 written as a release entry and then superseded before it was tagged, so the first annotated
-`vX.Y.Z` tag will be **v0.9.4** (0.9.0, 0.9.1, 0.9.2 and 0.9.3 were each written up and superseded
+`vX.Y.Z` tag will be **v0.9.6** (0.9.0 through 0.9.5 were each written up and superseded
 before tagging),
 and from that tag onward the tag is also a citable Evidence
 Source. Until then every entry cites a commit SHA or a PR. Entries for the
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
+
+## [0.9.6] — 2026-09-03
+### Fixed
+- **A damaged value in a project file is now cleaned out of the file even when it happens to read as
+  the setting you already had.** Opening a project with a damaged control value repairs it, and the
+  repair is written back so the next save cleans the file. But the write-back only happened when the
+  repair actually *changed* something on screen — and damaged text usually reads as zero, which for
+  any control whose range starts at its default (Drive, Amount, Channel Mode and others) *is* the
+  value already loaded. Nothing looked wrong, so nothing was rewritten, and the damaged text stayed
+  in the file through every later save — where an older version of the plug-in, which reads that
+  field rather than the newer one beside it, would still find it. The file is now cleaned whenever
+  the value it carries was damaged, whether or not the repair changes what you hear. Values that are
+  genuinely valid are left exactly as they were written. Regression coverage: State test 36.
+  Evidence: PR #134. [Verified]
+- **A preset the plug-in refuses no longer dips the audio.** Loading a preset briefly ducks the
+  sound so the change is never heard as a click — the right thing when a preset actually loads. But
+  the dip was set up the moment you *asked* for a preset, before the plug-in had looked at the file.
+  So a file it then refused — another plug-in's preset, or a corrupted one — still dipped the audio
+  for about 32 ms while loading nothing at all. Measured on an engaged widener: the stereo width
+  fell to 0.45 of its settled level for that moment. The dip now comes from the load itself, so it
+  happens when, and only when, a preset is really applied. Loading a real Anamorph preset is
+  unchanged and still ducks exactly as before. Regression coverage: State test 35.
+  Evidence: PR #134. [Verified]
+- **Loading a preset that is not an Anamorph preset no longer wipes your sound.** "Load Preset…"
+  and the preset menu both let you point them at any file on your machine. If that file was a valid
+  XML preset from *another* plug-in, it was treated as one of ours: any parameter whose name
+  happened to match took the other plug-in's value, every parameter it did not mention was reset to
+  its default, and the load reported success — so a foreign preset silently replaced the sound you
+  were working on, and the only way back was Undo. A preset file now has to actually be an Anamorph preset. Anything
+  else is refused before it can touch anything: the sound, the preset name and the menu tick all
+  stay exactly as they were, the same way a corrupted file has always been refused. Loading real
+  Anamorph presets is unchanged, including older ones that do not carry every parameter — those
+  still fill in the missing controls with their defaults, exactly as before. Regression coverage:
+  State test 34.
+  Evidence: PR #134. [Verified]
+- **At extreme levels the L/R balance meter no longer shows a lopsided signal as perfectly
+  centred.** The balance meter reads how the energy is split between left and right. It works from
+  the two channels' running energies added together, and above roughly 1.3e19 in sample value — far
+  beyond anything you would mix, but ordinary numbers to the plug-in, and reachable when Bypass is
+  passing a broken upstream signal through untouched — that addition ran out of range internally.
+  Each channel's own energy was still fine and the difference between them was still fine; only
+  their **sum** was not, and dividing by it collapsed the reading to **0 — dead centre** — for a
+  signal that was in fact heavily weighted to one side. Nothing sounded different; only the meter
+  lied, and it lied in the most misleading direction. When that addition does run out of range, the
+  split is now worked out at higher precision instead, so the meter reports the real split at any
+  level, and a genuinely centred signal still reads centred. Every reading at ordinary levels is
+  bit-for-bit identical to before, and the phase-correlation display and the existing recovery from
+  genuinely invalid audio are both unchanged. Regression coverage:
+  DSP test 51.
+  Evidence: PR #134. [Verified]
+- **Extremely loud but still-valid audio no longer makes the phase meter read the wrong thing.**
+  The correlation display shows how alike the two channels are: +1 for a mono signal, 0 for
+  unrelated channels, −1 for anti-phase. It works from the running energy of each channel, and
+  above roughly 4.3 billion in sample value — far above anything you would mix, but ordinary
+  numbers as far as the plug-in is concerned, and reachable when Bypass is passing a broken upstream
+  signal through untouched — the two energies multiplied together ran out of range internally,
+  though each of them on its own was still fine. The reading then collapsed to **0, "unrelated"** —
+  for a signal that was in fact perfectly mono — and an anti-phase signal read 0 instead of −1.
+  Nothing sounded different; only the meter lied, and it lied in the
+  most misleading direction. That multiplication is now worked out at higher precision when it runs
+  out of range, so the meter reads the same value at any level, which is what a correlation display
+  is supposed to do. Every reading at ordinary levels is bit-for-bit identical to before, and the
+  existing recovery from genuinely invalid audio is unchanged. Regression coverage: DSP test 50.
+  Evidence: PR #134. [Verified]
+- **A project no longer fades into its own effects when it opens.** Haas, Velvet Noise, Chorus /
+  Dimension-D and the Mono Maker crossover each glide their settings rather than jumping, so that
+  moving a control while the music plays never clicks. On a project *opening*, that glide was
+  starting from the wrong place: the effects were told the project's settings only after they had
+  already been set up, so the first fraction of a second played the previous settings sliding into
+  the saved ones instead of the saved ones outright. Measured over the first block against the
+  settled sound, the effects opened at 0.17 (Haas), 0.09 (Velvet Noise), 0.29 (Chorus), 0.39
+  (Dimension-D) and 0.35 (Mono Maker crossover) of where the project said they should be, arriving
+  over roughly the next 10–100 ms. Each of them now opens already at the saved setting. Moving a
+  control while playing still glides exactly as before — only the moment a project opens changed.
+  Regression coverage: DSP test 49, which includes a control proving live moves still glide.
+  Evidence: PR #134. [Verified]
+- **A damaged on/off Setting in a project file can no longer switch a feature on that the project
+  never asked for.** Three Settings are simple on/off switches (Show Meters, Tooltips, UI
+  Animations) and are written to the project as `0` or `1`. When the Settings repair described in
+  the next entry met a damaged value that still read as a number — `-1`, `-2`, `7` — it treated
+  anything other than zero as "on", so a corrupted file could turn a feature on, and the repair
+  then wrote that back as a genuine `1`. Only an exact `0` or `1` is now accepted; anything else
+  is damage and takes that switch's documented default (Show Meters off, Tooltips off, UI
+  Animations on), which is the same value the project would get if it did not carry the setting at
+  all. Valid `0`/`1` values are
+  preserved exactly as before. Regression coverage: State test 33.
+  Evidence: PR #134. [Verified]
+- **A damaged Settings value in a project file is now repaired when the project opens, and the
+  repaired value is what gets saved.** The six Settings (Oversampling, UI Scale, Scope Persistence,
+  Show Meters, Tooltips, UI Animations) are stored with the project. If one was damaged — hand-edited,
+  or corrupted in transit — to something outside its range, or to text that is not a number at all,
+  it used to be taken at face value and written straight back out on the next save, so the damage
+  stayed in the file and was re-interpreted every time the project opened. Each value is now brought
+  back into its valid range as the project loads: a number merely out of range moves to the nearest
+  valid setting, and anything unreadable falls back to that setting's documented default. What the
+  project saves next is the repaired value, so opening and re-saving cleans the file instead of
+  carrying the damage forward. Projects with valid settings are unaffected, and a project that simply
+  does not carry a setting still gets that setting's default exactly as before. Regression coverage:
+  State test 33.
+  Evidence: PR #134. [Verified]
+- **A damaged Scope Persistence value in a project file can no longer put the vectorscope's afterglow
+  into an undefined state.** The Settings panel's Scope Persistence is stored with the project as a
+  number from 0 to 1. A project whose stored value was damaged (hand-edited, or corrupted in
+  transit) to `nan`, or to any *negative* number, produced a not-a-number afterglow length inside
+  the vectorscope: negative values became one on the way in, because the display curve raises the
+  stored value to a fractional power. Neither was caught, because the clamp that should have caught
+  them is written in a way that a not-a-number slips straight through, and opening the Settings
+  panel did not repair either. The vectorscope now falls back to its default afterglow for any such
+  value, exactly as the meters already do for a damaged audio sample. Ordinary projects are
+  unaffected; the stored value is repaired separately, by the Settings repair described above.
+  Regression coverage: State test 32.
+  Evidence: PR #134. [Verified]
+- **Opening a project that has no A/B data no longer carries the previous project's Level Match
+  amount into the first A/B switch.** The amount Level Match had settled on is remembered per A/B
+  slot, so that switching between A and B does not make the level lurch while the matcher
+  re-converges. That memory is not stored in the project file — it describes the session you are
+  in — but it was also never cleared when a project was opened, and a host reuses one plug-in
+  instance across projects. Opening a project saved before A/B existed, or one whose A/B data is
+  missing, therefore left the previous project's figures in place, and the first A/B switch handed
+  them to the new project's matcher: the Level Match readout showed the old project's number and
+  the matcher re-converged from it. Measured on the real restore paths as −1.040 dB and −2.438 dB
+  where a freshly opened plug-in shows 0. The memory is now cleared with the slots themselves, so
+  opening a project leaves the plug-in in the state it would be in if you had just added it. A
+  project that does carry A/B data still restores both slots exactly as before. Regression
+  coverage: State test 31.
+  Evidence: PR #134. [Verified]
+- **A host that activates the plug-in on a background thread can no longer be told a stale
+  latency, and the plug-in no longer reads its own latency figures while they are being
+  rewritten.** Most hosts activate a plug-in on their main thread, and there nothing changes: the
+  reported latency still updates instantly. But JUCE's Linux VST3 wrapper services a plug-in's
+  messages from a background thread until the host registers its run loop — for the plug-in's
+  whole life if the host never does — and a few hosts activate plug-ins off their main thread
+  outright. In those, activation wrote the reported latency on the host's thread at the same time
+  as the plug-in's own 20 Hz latency timer could be writing it on the message thread, and that
+  timer could read the freshly prepared oversampling latencies mid-rewrite — two data races
+  ThreadSanitizer reports on the previous build, with a reachable ending in which the host is left
+  holding the older number and nothing pending corrects it. Activation now routes its report
+  through the same request mechanism host automation already uses (delivered on the message
+  thread, within one 50 ms tick when the activation was off-thread), and the engine publishes its
+  latency figures atomically. Regression coverage: State test 30; `AnamorphStateTests
+  --reprepare-race-probe` under ThreadSanitizer.
+  Evidence: PR #134. [Verified]
+- **A project that does not carry one of the Settings no longer inherits it from the project you
+  had open before.** The Settings panel (Oversampling, UI Scale, Scope Persistence, Show Meters,
+  Tooltips, UI Animations) is stored with the project. If a project file was missing one of those
+  — hand-edited, truncated, or written by a build that did not have that setting yet — opening it
+  left that one setting at whatever the *previous* project had set, because a host reuses one
+  plug-in instance across projects. The rest of the project loaded correctly, so the wrong value
+  was easy to miss, and it was written into the file on the next save. Each missing setting now
+  comes back at its documented default; a project that does carry the setting still restores it
+  exactly as before. Regression coverage: State test 29.
+  Evidence: PR #134. [Verified]
+- **A damaged setting in a very old project can no longer leave a Settings menu blank or spread
+  garbage into the project on the next save.** Projects saved by versions before 0.8.4 carry
+  Oversampling, UI Scale and Scope Persistence as ordinary parameters that are converted on load.
+  A damaged value there — "nan", "inf", a number too large to store, or text that is not a number
+  at all — went through a conversion with no defined result: on Intel it became an impossible
+  menu id (−2147483647) that the Oversampling or UI Scale menu could not display and that was
+  then written back into the project, while on Apple Silicon the same file produced different
+  values, and Scope Persistence accepted NaN or infinity outright. Such values now resolve to the
+  setting's default (a number outside the menu's range lands on the nearest valid choice), on
+  every platform, and a valid old project converts exactly as before.
+  Regression coverage: State test 28.
+  Evidence: PR #134. [Verified]
+- **A damaged project file can no longer relabel the sound you already had.** A project file that
+  claimed to be an Anamorph session but carried no sound data at all — truncated, hand-edited, or
+  written by a future version — restored nothing, yet the plug-in still took the file's preset name,
+  its highlighted preset row, its modified-marker and its Settings. The result described a session
+  that had never loaded, over a sound that had not changed. Such a file is now ignored completely,
+  which is what the plug-in already did for a file it did not recognise at all.
+  Regression coverage: State test 27.
+  Evidence: PR #134. [Verified]
+- **Loading an old session no longer leaves the wrong sound in the A and B slots.** When a session
+  that carries no A/B data was loaded, the A and B compare slots kept whatever was already in them
+  instead of the session being opened. On an instance the host had reused across projects that was
+  the *previous project's* A and B sounds; on a freshly inserted instance it was the plug-in's
+  opening Default. Either way the session's own sound loaded correctly and then pressing A or B
+  recalled something else. Affected sessions saved by v0.2 (which predates the A/B feature) and any
+  session whose A/B block is absent. Both slots and the active-slot marker now come back from the
+  session that was actually loaded; a session that does carry A/B data is unaffected and still
+  restores both slots as saved. Regression coverage: State test 26.
+  Evidence: PR #134. [Verified]
+- **Automating Drive or Widen Algorithm no longer does housekeeping on the audio thread.** When a
+  host automated either control, the plug-in re-reported its latency from whichever thread moved the
+  parameter — the audio thread, during playback. That report takes locks and, when the latency
+  actually changes, allocates memory and writes to a pipe: all things that can cause a dropout in a
+  realtime context. The report now happens on the plug-in's own message thread instead. Editing in
+  the UI, loading a preset and undoing are unchanged and still update instantly; only a change
+  arriving from elsewhere is handed over, and the host may learn of it up to 50 ms later.
+  Regression coverage: State test 22.
+  Evidence: PR #134. [Verified]
+- **A knob's number readout no longer breaks Undo when you release the mouse outside the plug-in
+  window — on all three platforms.** Pressing a value readout opens a host edit gesture that is
+  closed on release. When the release happened over the host or the desktop, the operating system
+  delivered it to nothing and the gesture stayed open — after which nothing you did became its own
+  Undo step until the gesture eventually closed. The editor's stuck-press reconcile now closes the
+  gesture as well as the visual press state; on macOS it also asks the operating system for the
+  *real* mouse-button state instead of a cached copy that such a release never updates, so the
+  reconcile is effective there too. That second half additionally closes a long-standing macOS
+  annoyance present since 0.8.12: a knob could stay visually "pressed" after a release outside the
+  window. Regression coverage: State tests 21 and 23 — 21 proves an unreleased press blocks Undo,
+  that the reconcile restores it, that a normal press/release is unaffected, and that the sweep can
+  run repeatedly without closing a gesture twice; 23 pins the macOS half.
+  Evidence: PR #134. [Verified]
+- **Reopening a damaged project no longer leaves the host compensating for the wrong delay.** When a
+  corrupted value was rejected on load, the control was repaired but the delay already reported to
+  the host was not — so the host kept aligning tracks for a setting the plug-in had discarded, until
+  the next reactivation. Measured with oversampling on: the host was told 4 samples for a state that
+  needs 0. Regression coverage: State test 24.
+  Evidence: PR #134. [Verified]
+- **A damaged value in a project or preset can no longer jam a control to the end of its range.**
+  Round 0.9.6's earlier fix rejected "not a number" but not the rest of the family: text that is not
+  a number at all ("abc", an empty value, "0x10") set the control to the BOTTOM of its range, and an
+  infinity — written as "inf", or as an ordinary-looking number too large to store, like 1e39 — set
+  it to the TOP. For Width that is a mono collapse and a hard-wide image respectively, from a file
+  that looks fine. The cause was that the check ran after the value had been fitted to the control's
+  range, and fitting clamps, so an infinity arrived already looking like a legitimate end-of-range
+  value. Damaged values are now identified before that, on both the project and preset paths, and
+  the control falls back to its default. Regression coverage: State test 19.
+  Evidence: PR #134. [Verified]
+- **Repairing a damaged project no longer leaves the damage in the file.** When a corrupted value
+  was rejected on load, the control was repaired but the project data was not, so the next save
+  wrote the bad value straight back out. This build reloaded such a file correctly anyway, so the
+  symptom was invisible here — but the file stayed damaged for anything else that reads it,
+  including older versions of the plug-in. The repair now reaches the saved data.
+  Regression coverage: State test 20.
+  Evidence: PR #134. [Verified]
+- **Switching A/B or loading a preset while playback is stopped no longer dims the first moment of
+  sound.** The short masking fade those switches use was left pending and then fired when playback
+  resumed — long after the change it was meant to mask had already been applied silently. Measured
+  on an engaged widener: the stereo image collapsed to 0.3 % of its settled width for the first
+  32 ms. Regression coverage: Test 48.
+  Evidence: PR #134. [Verified]
+- **A damaged project or preset file can no longer leave the plug-in permanently silent.** If a
+  saved value had been corrupted into "not a number" — by a hand edit, a bad transfer or a failing
+  disk — the plug-in adopted it, and from that point produced **no sound at all** for the rest of
+  the session, with the controls still showing plausible numbers. Worse, saving wrote the bad value
+  straight back out, so reopening the project reproduced the silence. Such a value is now rejected
+  on load and the affected control falls back to its default, exactly as it already did for a
+  setting the file does not contain at all — on both the project-state and preset-file paths.
+  Regression coverage: State test 17, which restores a poisoned session, then plays audio through
+  the real plug-in and requires it to be audible.
+  Evidence: PR #134. [Verified]
+- **A preset file with a truncated entry no longer silently zeroes that control.** If an entry in a
+  preset lost its saved number — a truncated write, a hand edit — the control was set to the
+  *bottom* of its range rather than left at its default. For Width, whose range runs 0–200 % around
+  a 100 % default, that collapsed the image to mono with nothing on screen to explain it. An entry
+  with no value now means "not in this file", which is what a missing entry already meant, and the
+  control keeps its default. Nothing the plug-in itself saves is affected — it always writes the
+  value. Regression coverage: State test 18.
+  Evidence: PR #134. [Verified]
+- **Inserting the plug-in, or opening a project, no longer dips the sound for the first moment.**
+  Every time the plug-in was activated — a fresh insert on a playing track, a project reload, a
+  sample-rate or buffer-size change — the audio faded down to near-silence and back over roughly
+  the first 35 ms before settling. Measured on a steady tone: the level fell to **0.4 % of normal**
+  and took about six blocks to recover. The cause was internal: the engine was set up *before* it
+  was told the current settings, so its first look at them registered as a settings change and
+  triggered the click-free mute that a real settings change is supposed to get. It is now told the
+  settings first, so it starts up already in the right state.
+  Evidence: PR #134. [Verified]
+- **A project reopened with non-default settings now plays at the right level from the first
+  sample.** Because of the same ordering problem, controls such as Output Gain started from their
+  default and slid to the saved value over the first ~20 ms — a session saved at −12 dB opened
+  about 2.4× too loud for that instant. Regression coverage for both halves is in the state suite
+  (State test 16), which measures the level of the first blocks against the settled level.
+  Evidence: PR #134. [Verified]
+- **Reopening a project no longer plays the first split-second with the wrong settings.** After
+  every host re-activation (a sample-rate or buffer-size change, or rendering with a fresh
+  instance), the first ~5–20 ms glided from built-in neutral values to the session's actual ones —
+  a Mix 0 session opened briefly wet, a −24 dB Output Gain opened briefly hot, an inverted
+  polarity ramped through positive. The engine now lands on the session's values from the very
+  first sample. Regression test: a Mix 0 session must be a bit-exact null from sample 0 after
+  re-activation (Test 44).
+  Evidence: PR #134. [Verified]
+- **A host that delivers a larger audio block than it promised can no longer crash the plug-in.**
+  The engine trusted the host's declared maximum block size absolutely; a block beyond it
+  overran internal buffers (a memory-corruption crash in the DAW). Oversized blocks are now
+  split internally into contract-sized slices — bit-identical audio for every host that keeps
+  its promise, correct audio instead of a crash for one that does not (Test 43).
+  Evidence: PR #134. [Verified]
+- **The correlation meter can no longer freeze for the rest of the session.** One non-finite
+  sample reaching the meter through the Bypass crossfade could latch the phase/balance pointers
+  permanently (the same defect class fixed for the level meters in 0.8.x, INC-004). The
+  correlation meter now self-heals the way the level meters do (Test 45).
+  Evidence: PR #134. [Verified]
+- **Loading a very old (0.2-era) session into an already-used plug-in instance now resets the
+  Settings panel.** Oversampling, UI Scale, Scope Persistence, Show Meters, Tooltips and UI
+  Animations are not stored in a session that old, and the load path never touched them — so they
+  silently kept the *previous* project's values. All six now reset to their defaults, matching what
+  a session from any later version already did. Regression coverage: State test 4, which sets those
+  values first so the check cannot pass by their never having moved.
+  Evidence: PR #134. [Verified]
+- **An A/B or preset switch no longer loses its remembered Level Match when the host changes sample
+  rate at that instant.** The short mute that masks an A/B, preset or Undo switch left an internal
+  flag set if the host re-initialised the plug-in while it was still fading — a sample-rate or
+  buffer-size change landing inside those ~30 ms. From then on the remembered Level Match trim for
+  that slot was silently dropped rather than applied, so the switch played at the wrong level for
+  the rest of the session. Measured: an injected −6 dB trim was adopted as 0.0 dB before the fix.
+  Regression coverage: Test 47.
+  Evidence: PR #134. [Verified]
+- **A corrupted A/B slot in a session file can no longer silently lose every setting on a later
+  save.** A slot payload that parsed but was not Anamorph data corrupted the internal state
+  container when applied; every save from then on wrote settings a fresh instance silently
+  skipped on load. Such a payload is now discarded and the slot re-seeded, exactly like an
+  unparsable one.
+  Evidence: PR #134. [Verified]
+- **Dragging a knob's number readout now registers with Undo and with host automation
+  recording.** The vertical drag on the value box changed the parameter without opening a host
+  change gesture, so it produced no Undo step and recorded outside touch/latch automation —
+  a third instance of the KI-010 class, now closed for the drag path (typed entry and the
+  imager's mouse wheel remain as recorded in KI-010).
+  Evidence: PR #134. [Verified]
 
 ## [0.9.5] — 2026-08-30
 ### Changed
@@ -1393,7 +1705,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 ## [0.8.5] — 2026-06-28
 ### Fixed
 - Linux editor crash under rapid open/close (OpenGL/X11 `XEmbedComponent` use-after-free): the
-  editor now renders CPU-side on Linux/BSD (visually identical). Evidence: commit `c924ff8`. [Partially Verified] / code [Verified] (`src/PluginEditor.cpp:246-256`).
+  editor now renders CPU-side on Linux/BSD (visually identical). Evidence: commit `c924ff8`. [Partially Verified] / code [Verified] (`src/PluginEditor.cpp:247-257`).
 
 ## [0.8.4] — 2026-06-27
 ### Changed

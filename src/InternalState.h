@@ -1,7 +1,10 @@
 #pragma once
 
 #include <juce_data_structures/juce_data_structures.h>
+#include "SerializedNumber.h"
+#include <array>
 #include <atomic>
+#include <cmath>
 #include <functional>
 
 namespace anamorph
@@ -41,15 +44,117 @@ namespace iid
 class InternalState : private juce::ValueTree::Listener
 {
 public:
+    // The six host-hidden Settings and their DOCUMENTED defaults, in one place.
+    // SERIALIZATION_REGISTRY.md's `ANAMORPH_INTERNAL` table is this list: every
+    // field is "Required: No" with a stated Default, which is the contract both
+    // the constructor (seed) and restoreState (absent -> default) implement. They
+    // were two separate hand-written lists until ER-STATE-18; keeping one is what
+    // stops them drifting into two different answers for "absent".
+    // The DOMAIN travels with the default, for the same reason the default lives
+    // here at all: "what this field may hold" and "what it means when it does not"
+    // are one contract, and two lists would drift (ER-STATE-18 merged the previous
+    // two). `choiceCount` is meaningful only for `comboId`.
+    enum class Kind { comboId, unitRange, boolean };
+    struct Setting
+    {
+        const juce::Identifier& id;
+        juce::var defaultValue;
+        Kind kind;
+        int  choiceCount;   // comboId: ids run 1..choiceCount
+    };
+
+    static const std::array<Setting, 6>& settings()
+    {
+        static const std::array<Setting, 6> table {{
+            { iid::oversample,   juce::var (1),     Kind::comboId,   4 },  // 1 == "Off (1x)"
+            { iid::uiScale,      juce::var (3),     Kind::comboId,   5 },  // 3 == "M"
+            { iid::scopePersist, juce::var (0.5),   Kind::unitRange, 0 },
+            { iid::metersOn,     juce::var (false), Kind::boolean,   0 },
+            { iid::tooltipsOn,   juce::var (false), Kind::boolean,   0 },
+            { iid::uiAnimations, juce::var (true),  Kind::boolean,   0 },
+        }};
+        return table;
+    }
+
+    // Is this stored property a number we can actually use, and if so what is it?
+    // The ONE predicate both restore paths ask -- the modern repair below and the
+    // legacy migration further down, which used to carry its own copy of exactly
+    // this logic. `SerializedNumber.h` states why the test is on the INPUT text
+    // rather than on the converted value, and why it is stricter than a general
+    // parser (it must refuse "inf" and "nan", which JUCE's own reader accepts).
+    // A property that is already a typed var -- an int, double or bool, as the
+    // defaults table and any live tree carry -- is usable as-is; only a STRING has
+    // to earn it.
+    static bool usableNumber (const juce::var& prop, double& out) noexcept
+    {
+        if (prop.isVoid()) return false;
+        if (prop.isString() && ! looksLikePlainNumber (prop.toString().trim().toRawUTF8()))
+            return false;                                   // "abc", "", "0x10", "inf", "nan"
+        const double v = (double) prop;
+        // Judged on the float narrowing, as the other paths judge it, so "1e39"
+        // (finite as a double, infinite as the float these values were) resolves
+        // the same way everywhere.
+        if (! isUsableSerializedValue ((float) v)) return false;
+        out = v;
+        return true;
+    }
+
+    // The maintainer-approved recovery for a value that is PRESENT but not valid
+    // (decision of 2026-09-02, "Policy B -- repair during restore and persist the
+    // repaired value"). Returns a value that is always inside the field's
+    // documented domain AND correctly typed, so what restoreState writes back is
+    // what a later save persists and a later reload reads unchanged.
+    //
+    //   * a valid present value is returned unchanged (an in-domain id, a 0..1
+    //     persistence, a real boolean);
+    //   * a finite out-of-domain number is CLAMPED to the nearest valid value --
+    //     and clamped in DOUBLE, before any integer conversion, so the conversion
+    //     is defined for every input that reaches it (the discipline ER-STATE-17
+    //     established on the legacy path, for the same [conv.fpint] reason);
+    //   * anything not usable as a number -- malformed text, non-finite, absent
+    //     type -- becomes the field's documented default.
+    //
+    // A fractional id resolves by truncation after the clamp (2.7 -> 2), which is
+    // what the ComboBox already did with it; the repair makes that durable rather
+    // than re-deciding it on every load.
+    static juce::var repairedValue (const Setting& s, const juce::var& stored)
+    {
+        if (s.kind == Kind::boolean && stored.isBool())
+            return stored;                                   // already a real boolean
+
+        double v = 0.0;
+        if (! usableNumber (stored, v))
+            return s.defaultValue;
+
+        switch (s.kind)
+        {
+            case Kind::comboId:   return juce::var ((int) juce::jlimit (1.0, (double) s.choiceCount, v));
+            case Kind::unitRange: return juce::var (juce::jlimit (0.0, 1.0, v));
+            // A boolean has exactly TWO valid serialized spellings, and they are the
+            // two this plug-in's own writer emits: `juce::var(bool)` reaches XML as
+            // "0" or "1". Anything else that happens to parse as a number is a
+            // MALFORMED value, not a truthy one, and takes the documented default --
+            // which is what the approved policy means by "do not allow arbitrary
+            // malformed numeric coercion to define durable state" (ER-STATE-22,
+            // round 20). Before this, the rule was `v != 0.0`, so a corrupted "-1"
+            // or "-2" silently ENABLED a setting the file never asked for, and the
+            // repair then persisted that as a real `true`. Note the asymmetry it
+            // produced: "0" is the only value that could not turn a setting on.
+            // `exactlyEqual` rather than `==`: the comparison IS the intent here
+            // (the domain is two exact values), and it is how this repository
+            // states that without widening the -Wfloat-equal gate.
+            case Kind::boolean:   if (juce::exactlyEqual (v, 0.0)) return juce::var (false);
+                                  if (juce::exactlyEqual (v, 1.0)) return juce::var (true);
+                                  return s.defaultValue;
+        }
+        return s.defaultValue;
+    }
+
     InternalState()
     {
         tree = juce::ValueTree ("ANAMORPH_INTERNAL");
-        tree.setProperty (iid::oversample,   1,    nullptr); // 1 == "Off (1x)"
-        tree.setProperty (iid::uiScale,      3,    nullptr); // 3 == "M"
-        tree.setProperty (iid::scopePersist, 0.5,  nullptr);
-        tree.setProperty (iid::metersOn,     false, nullptr);
-        tree.setProperty (iid::tooltipsOn,   false, nullptr);
-        tree.setProperty (iid::uiAnimations, true,  nullptr);
+        for (const auto& s : settings())
+            tree.setProperty (s.id, s.defaultValue, nullptr);
         tree.addListener (this);
         syncAtomics();
     }
@@ -92,9 +197,33 @@ public:
     void restoreState (const juce::ValueTree& src)
     {
         if (! src.isValid()) return;
-        for (auto id : { iid::oversample, iid::uiScale, iid::scopePersist,
-                         iid::metersOn, iid::tooltipsOn, iid::uiAnimations })
-            if (src.hasProperty (id)) tree.setProperty (id, src.getProperty (id), nullptr);
+
+        // EVERY field is written, present or not: an absent one takes its documented
+        // default (the registry's `ANAMORPH_INTERNAL` table), exactly as
+        // migrateFromLegacyApvts already does for the legacy shape. `tree` is a
+        // processor member and a host restores into ONE live instance repeatedly,
+        // so skipping an absent field does not mean "leave it alone" -- it means
+        // "keep the PREVIOUS project's value", which is not a state this session
+        // ever described. Measured before this loop wrote unconditionally
+        // (ER-STATE-18, --partial-settings-probe): a modern session omitting a
+        // single Setting inherited the previous project's value in 6 cases out of
+        // 6, while the legacy path inherited in 0 -- the reverse of where the
+        // review looked. A session that CARRIES the field is unaffected: it is
+        // written from `src` exactly as before.
+        // PRESENT values are REPAIRED to their domain rather than adopted verbatim,
+        // and the repaired value is what gets written -- so a later save persists it
+        // and a reload reads it back unchanged (the maintainer's Policy B, approved
+        // 2026-09-02, ER-STATE-21). Before it, a present-but-invalid value was kept
+        // exactly as the file spelled it: measured over nineteen malformed inputs,
+        // all nineteen survived into the next save, eight left an out-of-domain
+        // ComboBox id in the tree and three left a non-finite scope persistence.
+        // A VALID present value is returned unchanged by repairedValue(), so an
+        // ordinary session restores exactly as before.
+        for (const auto& s : settings())
+            tree.setProperty (s.id,
+                              src.hasProperty (s.id) ? repairedValue (s, src.getProperty (s.id))
+                                                     : s.defaultValue,
+                              nullptr);
         // (syncAtomics + onOversampleChanged run via the property-change callbacks above.)
     }
 
@@ -107,21 +236,50 @@ public:
     {
         if (! apvtsState.isValid()) return;
 
+        // A legacy PARAM value is used only when it is a USABLE serialized number --
+        // the same predicate the session and preset restore paths apply
+        // (SerializedNumber.h, ER-STATE-05): plain decimal text, finite after
+        // parsing. Anything else means the field's default, exactly as an absent
+        // node does. This is not cosmetic: JUCE's text parser accepts "nan" and
+        // "inf" as numbers, and the `(int)` conversion below of a NaN, an infinity
+        // or an out-of-range double is UNDEFINED BEHAVIOUR (C++ [conv.fpint]).
+        // Measured through the real v0.2 restore before this guard existed, on
+        // x86-64: every such value became -2147483647 in the tree -- an impossible
+        // ComboBox id, saved back out with the session on the next save -- and
+        // "2147483647" wrapped to INT_MIN through a second UB, signed overflow in
+        // the `+ 1`. On AArch64 the same inputs saturate differently (NaN -> 0,
+        // +overflow -> INT_MAX, which the `+ 1` then overflows), so the corruption
+        // was also platform-dependent. State test 28 pins every case.
+        // The predicate is `usableNumber` above -- ONE copy, shared with the modern
+        // repair, which is where this logic used to be duplicated verbatim. The
+        // behaviour is unchanged in every case State test 28 pins.
         auto legacy = [&apvtsState] (juce::StringRef id, double fallback) -> double
         {
             for (int i = 0; i < apvtsState.getNumChildren(); ++i)
             {
                 auto c = apvtsState.getChild (i);
                 if (c.hasType ("PARAM") && c.getProperty ("id").toString() == id)
-                    return (double) c.getProperty ("value", fallback);
+                {
+                    double v = 0.0;
+                    return usableNumber (c.getProperty ("value"), v) ? v : fallback;
+                }
             }
             return fallback;
         };
 
         // Choice params stored a 0-based index; the ComboBox IDs here are 1-based.
-        tree.setProperty (iid::oversample,   (int) legacy ("oversample", 0.0) + 1, nullptr);
-        tree.setProperty (iid::uiScale,      (int) legacy ("uiScale",    2.0) + 1, nullptr);
-        tree.setProperty (iid::scopePersist, legacy ("scopePersist", 0.5),         nullptr);
+        // Clamp into the combo's domain IN DOUBLE, before the integer conversion:
+        // the conversion is then of a value in [0, count-1], defined for every
+        // input this lambda can return, and the `+ 1` cannot overflow. A finite
+        // out-of-domain value ("7") lands on the nearest valid choice, which is
+        // what NormalisableRange does for an out-of-range parameter.
+        auto comboId = [] (double index0, int count) -> int
+        {
+            return (int) juce::jlimit (0.0, (double) (count - 1), index0) + 1;
+        };
+        tree.setProperty (iid::oversample,   comboId (legacy ("oversample", 0.0), 4), nullptr); // ids 1..4
+        tree.setProperty (iid::uiScale,      comboId (legacy ("uiScale",    2.0), 5), nullptr); // ids 1..5
+        tree.setProperty (iid::scopePersist, juce::jlimit (0.0, 1.0, legacy ("scopePersist", 0.5)), nullptr);
         tree.setProperty (iid::metersOn,     legacy ("metersOn",   0.0) > 0.5,     nullptr);
         tree.setProperty (iid::tooltipsOn,   legacy ("tooltipsOn", 0.0) > 0.5,     nullptr);
         tree.setProperty (iid::uiAnimations, legacy ("uiAnimations", 1.0) > 0.5,   nullptr);

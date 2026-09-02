@@ -18,15 +18,15 @@ This document is not legal advice.
 
 | Fact | Evidence |
 |---|---|
-| The embedded web browser is disabled and libcurl is not linked, for every target — the plug-in, both test binaries, and the three off-by-default developer executables (benchmark, DSP dump, fuzz harness) | `CMakeLists.txt:486-487` (`JUCE_WEB_BROWSER=0`, `JUCE_USE_CURL=0`), `:448-449`, `:490-491`, `:529-530`, `:569-570`, `:609-610` |
+| The embedded web browser is disabled and libcurl is not linked, for every target — the plug-in, both test binaries, and the three off-by-default developer executables (benchmark, DSP dump, fuzz harness) | `CMakeLists.txt:496-497` (`JUCE_WEB_BROWSER=0`, `JUCE_USE_CURL=0`), `:448-449`, `:490-491`, `:529-530`, `:569-570`, `:609-610` |
 | Nothing under `src/` opens a network connection, so JUCE's networking code is never referenced and the linker drops it | `CMakeLists.txt:317` (`-Wl,--gc-sections`), `:244` (`-Wl,-dead_strip`, Apple), `:124` (`/OPT:REF`, MSVC); the shipped binary contains **no** `WebInputStream` symbol |
-| JUCE's own usage reporting and splash screen are disabled | `CMakeLists.txt:489-490` (`JUCE_DISPLAY_SPLASH_SCREEN=0`, `JUCE_REPORT_APP_USAGE=0`) |
+| JUCE's own usage reporting and splash screen are disabled | `CMakeLists.txt:499-500` (`JUCE_DISPLAY_SPLASH_SCREEN=0`, `JUCE_REPORT_APP_USAGE=0`) |
 | No analytics, telemetry, crash-reporting or update-check code exists in `src/` | no such symbol appears anywhere under `src/` |
 
 ### The one link in the interface
 
 The About screen shows a clickable link to `https://www.rolly.tech`
-(`src/PluginEditor.h:465`). It is an ordinary hyperlink: **Anamorph never opens it by itself.** If
+(`src/PluginEditor.h:475`). It is an ordinary hyperlink: **Anamorph never opens it by itself.** If
 you click it, your operating system opens the address in your default web browser, and from that
 point the ordinary privacy behaviour of your browser and that website applies — outside Anamorph's
 control and outside this document's scope.
@@ -37,7 +37,7 @@ Anamorph writes three kinds of file, all local, all containing only plug-in sett
 
 | What | Where | When |
 |---|---|---|
-| **User presets** (`.anamorph`, XML) — sound-parameter values and a preset name you choose | your user application-data directory, under `RollyTech/Anamorph/Presets/` (Linux `~/.config/…`, macOS `~/Library/…` — JUCE's `userApplicationDataDirectory` is `~/Library`, without an `Application Support` segment — Windows `%APPDATA%\…`) — `src/PresetManager.cpp:54-55`, written at `:216-220` | the preset *file* only when you save a preset; the containing directory is also created the first time you open the **Load Preset** dialog (`src/PluginEditor.cpp:2027`, `dir.createDirectory()` in `showLoadPreset`) |
+| **User presets** (`.anamorph`, XML) — sound-parameter values and a preset name you choose | your user application-data directory, under `RollyTech/Anamorph/Presets/` (Linux `~/.config/…`, macOS `~/Library/…` — JUCE's `userApplicationDataDirectory` is `~/Library`, without an `Application Support` segment — Windows `%APPDATA%\…`) — `src/PresetManager.cpp:57-58`, written at `:216-220` | the preset *file* only when you save a preset; the containing directory is also created the first time you open the **Load Preset** dialog (`src/PluginEditor.cpp:2077`, `dir.createDirectory()` in `showLoadPreset`) |
 | **Session state** — the full parameter set, A/B slots and view settings, serialised as XML, plus the name of the preset you had selected and — since 0.9.2 — a reference to *which* preset that was, so reopening the project restores the checkmark (`src/PluginProcessor.cpp`, `getStateInformation`; encoded by `PresetManager::encodeSelection`) | inside **your host's** project/session file; Anamorph hands the data to the host, which decides where to store it | whenever the host saves its session |
 | **Standalone application settings** — audio-device selection, input-mute flag, last plug-in state, the window position, and the full path of the last state file you opened or saved from the Standalone's own Save/Load dialog | `Anamorph.settings`, written by JUCE's standard Standalone wrapper (Linux `~/.config/Anamorph.settings`, macOS `~/Library/Application Support/Anamorph.settings`, Windows in the user application-data folder) — `juce_audio_plugin_client_Standalone.cpp:71-82` in the pinned JUCE tree; the path entry is written at `juce_StandaloneFilterWindow.h:198` and read at `:187`, the window coordinates at `:752-753` | Standalone only; never when running as a plug-in |
 
@@ -48,7 +48,7 @@ of something you did:
   dialog;
 - the session's preset references — **three** of them: one for the preset you have selected and one
   for **each A/B slot**. The rule is one condition with two halves
-  (`PresetManager::encodeSelection`, `src/PresetManager.cpp:340-360`): a preset is recorded by its
+  (`PresetManager::encodeSelection`, `src/PresetManager.cpp:427-447`): a preset is recorded by its
   **file name** alone when it sits **directly in** your preset folder **and** its name cannot itself
   be mistaken for a path; **otherwise the full filesystem path is stored**. The file-name form is
   deliberate — it keeps the folder's location (and with it your account name) out of the saved

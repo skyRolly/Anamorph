@@ -27,7 +27,7 @@ plugin wrapper, APVTS, parameter IDs, or any host**. This is what makes an AU/AA
 near-zero-cost addition.
 
 Evidence [Verified]:
-- Source: src/dsp/AnamorphEngine.h:39-40 ("Knows nothing about JUCE's plugin wrapper / APVTS")
+- Source: src/dsp/AnamorphEngine.h:40-41 ("Knows nothing about JUCE's plugin wrapper / APVTS")
 - Source: src/dsp/EngineParameters.h:3-17 (POD decoupling rationale)
 - Source: CMakeLists.txt:395-406 (`AnamorphDSP` INTERFACE library, depends only on juce_dsp)
 
@@ -38,8 +38,8 @@ The wrapper reads the APVTS atomics once per block and fills an `EngineParameter
 parameter ID.
 
 Evidence [Verified]:
-- Source: src/PluginParameters.cpp:326-389 (`toEngine`)
-- Source: src/PluginProcessor.cpp:169-174 (per-block snapshot → `engine.setParameters` → `engine.process`)
+- Source: src/PluginParameters.cpp:326-406 (`toEngine`)
+- Source: src/PluginProcessor.cpp:303-308 (per-block snapshot → `engine.setParameters` → `engine.process`)
 
 ## 3. Module inventory
 
@@ -72,9 +72,9 @@ Evidence [Verified]:
 - **No worker/background threads** (FFT runs on the GUI thread).
 
 Evidence [Verified]:
-- Source: src/PluginEditor.cpp:278-292 (OpenGL platform gate)
+- Source: src/PluginEditor.cpp:279-293 (OpenGL platform gate)
 - Source: src/dsp/ScopeBuffer.h:8-18 (lock-free SPSC)
-- Source: src/PluginProcessor.cpp:119 (`juce::ScopedNoDenormals`)
+- Source: src/PluginProcessor.cpp:253 (`juce::ScopedNoDenormals`)
 
 ## 5. I/O layouts
 
@@ -83,7 +83,7 @@ Evidence [Verified]:
 - Output is **always stereo**. **mono → mono is Not Supported** (deliberately rejected).
 
 Evidence [Verified]:
-- Source: src/PluginProcessor.cpp:86-96 (`isBusesLayoutSupported`), :94-95 (mono→stereo upmix)
+- Source: src/PluginProcessor.cpp:115-125 (`isBusesLayoutSupported`), :94-95 (mono→stereo upmix)
 
 ## 6. Cross-references
 

@@ -3,7 +3,25 @@
 Potential technical risks. Each is evidence-based (constraint C7) — no invented risks. ADRs and
 postmortems may reference these IDs to close the loop. Severity: Low / Medium / High / Critical.
 
-Version-synced to **v0.9.4** (the JUCE 9.0.0 → 9.0.1 dependency upgrade, ADR-0026 — **no new
+**Round 19 (2026-09-02): RISK-008 gains its real-host evidence** — the maintainer ran the
+predicted-failure workflow on Linux in REAPER with the real Anamorph VST3 and the reported latency
+updated with the editor both open and closed, so the entry moves from "mechanism confirmed, no host
+tested" to **real-host validated for REAPER, with the host-specific residual explicitly unverified**.
+No production change; D-1 untouched. Prior:
+**Round 15 (2026-09-02): one new entry, RISK-008** — an inspection finding from the ER-STATE-19
+verification (a JUCE Linux VST3 wrapper behaviour, host prevalence unknown) — and RISK-007 gains a
+round-15 note recording that the same thread class reached `prepareToPlay`, is closed there, and
+that its pluginval argument is a VST3-only statement. Prior:
+Version-synced to **v0.9.6** (the round-1 engineering-review fixes — **one new entry, RISK-007**:
+the off-main-thread state-call exposure, found by the review's thread-safety lens and recorded
+here because the guard that would close it is itself an Architecture-Review-Gate item. The same
+sync corrects two pieces of drift per `DOCUMENTATION_LIFECYCLE_POLICY` C6: this header **was
+never synced for v0.9.5** — the A7 performance round changed no risk, which is exactly what a
+sync note should have said, and this note now says it — and RISK-003/RISK-004 below are updated:
+RISK-003's planned first tag is renumbered to the current release in preparation, and RISK-004's
+Windows analog is **fixed**, `run-pluginval.ps1` no longer retrying real crashes, so that risk
+is Linux-scoped again as its 2026-08-18 note intended).
+Prior sync: **v0.9.4** (the JUCE 9.0.0 → 9.0.1 dependency upgrade, ADR-0026 — **no new
 risk**: RISK-001 is the risk this change is an instance of, and its mitigation was executed in
 full (twin-dump bit-identity, both suites, pluginval strictness 10 in both modes, identical
 warning set); no source, no build dependency, no serialized state, parameter or DSP behaviour
@@ -18,7 +36,7 @@ jobs already use, its toolchain-drift exposure is the same shape as ADR-0027's M
 `docs/procedures/CI_CD.md`. The four `-Wimplicit-int-float-conversion` diagnostics that move
 surfaced are **fixed** — an explicit `(float)` cast per site, with the three translation units
 verified to compile to byte-identical machine code, so no risk attaches to them either.
-RISK-003's mitigation now names **v0.9.4** as the first
+RISK-003's mitigation now names the release in preparation as the first
 tag — v0.9.3 was written up but, like 0.9.0-0.9.2 before it, never cut). Prior sync: **v0.9.3** (six GUI interaction fixes plus an equal-width Widen row: the Multiband add-split preview line, the
 unified pop-up dismissal shield, pop-up lifetime across a hidden editor / background application,
 menu width, disabled menu items and the Tooltips on/off transition
@@ -60,6 +78,8 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 | RISK-004 | pluginval signal-only retry could mask a real future editor crash | Medium | Low |
 | RISK-005 | Manual-only audio/visual + host validation lets regressions ship green | Medium | Medium |
 | RISK-006 | Undeclared licensing: no `LICENSE`/EULA, and the commercial JUCE licence required by the closed-source model is not yet obtained | High | High (already true) |
+| RISK-007 | State calls on a non-main host thread race message-thread state (AU autosave; out-of-spec VST3 hosts) | Medium | Low |
+| RISK-008 | A Linux VST3 host that hands its `IRunLoop` over only through `IPlugFrame` leaves the plug-in's JUCE message queue unserviced while no editor is open (D-1 timer, APVTS value flush) | Medium | Low — real-host validated in REAPER; other Linux hosts unverified |
 
 ---
 
@@ -101,7 +121,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   for — the **instance count on a named machine** — because instruction counts cannot answer it and a
   shared runner is not a wall-clock datum. **This risk therefore stays open**, and the audit says so
   in its own §4.5 rather than claiming otherwise.
-- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:1267 (`soloMonitor.process`, always-on); src/dsp/MultibandWidth.cpp (glide + fade paths);
+- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:1333 (`soloMonitor.process`, always-on); src/dsp/MultibandWidth.cpp (glide + fade paths);
   Devin PR #50 review (efficiency note); `docs/architecture/PERFORMANCE_BUDGET.md` (TODOs);
   `worklogs/performance/PERF_AUDIT_v0.9.4_INVESTIGATION.md` §3.1, §4.5.
 - **Mitigation:** Formal profiling (PERFORMANCE_BUDGET numeric budgets remain TODO — the harness and
@@ -121,7 +141,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 - **Mitigation:** **Infrastructure shipped (RH-PR-8, v0.8.13 cycle):** annotated `vX.Y.Z` tag
   convention + tag-triggered `release.yml` (fail-closed tag⇄version⇄CHANGELOG validation →
   reused `build.yml` gates → draft GitHub Release with versioned artifacts + SHA-256 sums +
-  manifest). The risk **closes when the first release tag is cut** (planned: **v0.9.4** — 0.9.0, 0.9.1, 0.9.2 and 0.9.3 were each written up but never tagged); until
+  manifest). The risk **closes when the first release tag is cut** (planned: **v0.9.6** — 0.9.0 through 0.9.5 were each written up but never tagged); until
   then, cite commit SHAs. Historical entries keep SHA evidence permanently.
 
 ## RISK-004 — pluginval signal-only retry masking a real crash
@@ -132,8 +152,13 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 - **Likelihood (evidence-based):** Low, and **lower since 2026-08-18** — the retry is now scoped by
   `uname -s` to the platform its justification names, so macOS gets exactly one attempt and this risk
   no longer applies there at all. On Linux retries stay capped at 3 and a deterministic crash still
-  fails all attempts.
-- **Evidence [Verified]:** scripts/run-pluginval.sh:147-197 (`run_one_pass`; retry only on exit ≥128, cap 3).
+  fails all attempts. **Windows no longer carries an analog since 2026-08-31** (ER-CI-01): after
+  the KI-007 WaitForExit fix retired the null-exit-code detection problem, `run-pluginval.ps1`'s
+  3-attempt loop had been left excusing exclusively genuine Win32-exception crashes; it now fails
+  a real abnormal exit immediately and retries only a failed *launch* — so this risk is
+  Linux-scoped again, as the 2026-08-18 note intended.
+- **Evidence [Verified]:** scripts/run-pluginval.sh:147-198 (`run_one_pass`; retry only on exit ≥128, cap 3);
+  scripts/run-pluginval.ps1 (verdict block: crash → immediate failure, retry only on `$null`).
 - **Mitigation:** Investigate any repeated crash rather than trusting the pass; keep the cap; a real
   assertion (exit <128) already fails immediately with no retry.
 
@@ -180,3 +205,178 @@ mitigation. Do not invent risks to fill the template.
   closes when the commercial JUCE licence is obtained and a `LICENSE` (plus an EULA, if the
   product is sold) is added. Until then, cite this risk rather than assuming any particular
   terms.
+
+## RISK-007 — State calls on a non-main host thread (unguarded Anamorph-owned tail)
+- **Risk:** `getStateInformation`/`setStateInformation` mutate non-atomic message-thread-read
+  state with no lock or marshalling — `internal.restoreState`, `abSlot`/`abActive`/`abUndo`,
+  `presets.setMeta`/`adoptRestoredState`, `syncCommitted` (src/PluginProcessor.cpp:991-1246 read
+  side, :661-691 write side; the APVTS half is internally locked by JUCE). A host that calls
+  state functions off its UI thread while the editor's 24 Hz timer is running races
+  `juce::String`/`std::vector`/`ValueTree` state — torn-read UB, crash-class.
+- **Impact:** Crash or corrupted preset/undo metadata during a project recall or autosave in
+  such a host, with an editor open.
+- **Likelihood (evidence-based):** Low. On VST3 (the sole Windows/Linux format) the pinned SDK
+  annotates both `getState` and `setState` `[UI-thread]` (ivstcomponent.h:198-204) and JUCE
+  debug-asserts it for `setState`, so a race needs an out-of-spec host; JUCE hosting (and thus
+  pluginval, strictness 10) wraps restore in `MessageManagerLock`, so the release gate
+  structurally cannot produce the window. The genuinely unguarded exposure is the **macOS AU**
+  build, where no spec forbids off-main-thread `SaveState`/`RestoreState` (host autosave is the
+  real-world case) and the JUCE AU wrapper passes both straight through on the caller's thread.
+- **Evidence [Verified]:** engineering-review round 1 (ER-RT-03/ER-STATE-05, adversarially
+  verified against the pinned JUCE 9.0.1 and VST3 SDK trees);
+  `worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Round 1.
+  **MEASURED in round 2 (R2-2), and the races are real.** `AnamorphStateTests
+  --state-thread-probe` (tests/state_tests.cpp) drives the modelled interaction —
+  one thread calling `setStateInformation`/`getStateInformation`, the main thread
+  performing the editor tick's reads — under ThreadSanitizer. It reports **four
+  distinct data races**, exactly on the members round 1 predicted:
+  1. `abActive` — written by `setStateInformation` (src/PluginProcessor.cpp),
+     read by `canUndo()` (src/PluginProcessor.h);
+  2. and 3. the `abUndo` vector's internals — `UndoStacks::operator=`
+     (src/PluginProcessor.h) against the main thread's iteration/`empty()`;
+  4. a `juce::String` reference-count exchange (`juce::Atomic<char*>::exchange`)
+     — the PresetManager metadata assignment against `juce::String`'s copy
+     constructor on the reading thread.
+  So the *code* question is settled: IF a host makes these calls off the main
+  thread while an editor is open, this is undefined behaviour, not a theoretical
+  concern. What remains open is only the *host* question (see Likelihood).
+- **Mitigation:** Recorded here rather than fixed because any lock/hop guard is a
+  threading-model change — an Architecture Review Gate item needing maintainer sign-off
+  (decision **D-2**; the round-2 measurement above is the evidence it was waiting on)
+  (`docs/policies/THREADING_POLICY.md`; the communication tables there and in
+  `docs/architecture/THREAD_MODEL.md` deliberately omit state calls, which this entry now
+  documents as an assumption, not an oversight). Candidate fix if approved: a narrow mutex over
+  the state-set members, or `callAsync` marshalling of the metadata/undo tail. A TSan
+  two-thread harness is the cheapest next investigation.
+- **Round 15 (2026-09-02, ER-STATE-19):** the same off-message-thread class reached
+  `prepareToPlay`. Its latency report — `setLatencySamples` and the engine's `latency2/4/8` —
+  raced the processor's own D-1 timer with NO editor open, and on Linux it did not even need an
+  out-of-spec host: JUCE's VST3 wrapper services the plug-in's messages from its own thread until
+  the host registers an `IRunLoop`, for the plug-in's whole life if it never does. On macOS the
+  release gate itself reached it: pluginval calls an AU's `prepareToPlay` — and `setState` — on
+  its test thread, hopping to the message thread for VST3 only, so the "pluginval … structurally
+  cannot produce the window" argument above is a VST3 statement. For this entry's own state tail
+  the macOS gate goes further: pluginval's `BackgroundThreadStateTest` (`Source/tests/BasicTests.cpp`,
+  verified this round) holds the editor open on the message thread and calls `getStateInformation`
+  / `setStateInformation` from a background thread — on AU, with no hop, that is exactly the window
+  this entry describes, exercised on every green macOS run. Green because a data race is not a
+  crash and the gate does not run ThreadSanitizer; the Likelihood above is therefore about
+  shipping hosts, not about whether the window is ever produced. That instance is
+  **closed** (message-thread-only delivery through the D-1 request; relaxed atomics on the engine
+  figures; State test 30; `AnamorphStateTests --reprepare-race-probe` under TSan — two reports
+  before, silence after). The state-call tail this entry tracks is unchanged and still gated on
+  D-2; an off-message-thread prepare against an OPEN editor's reads of engine state is this
+  entry's exposure and is covered by it, not by round 15.
+- **Round 20 (2026-09-02, ER-STATE-23): re-raised, measured, and found to be entirely this entry —
+  no new bug, and no production change.** The finding was that the D-1 latency atomics "do not
+  synchronize concurrent restore, prepare, A/B, preset, or engine state". They do not, and were
+  never meant to: `latencyUpdateRequest` carries the latency REQUEST and nothing else, so reading
+  it as a general state barrier is a category error rather than a defect. The question worth
+  answering is what the underlying states actually do, and it splits three ways. **The restore /
+  A/B / preset tail is exactly what this entry already records** — the same four TSan reports, on
+  the same members, gated on the same D-2 decision. **The ENGINE's plain state does not race at
+  all**: `setStateInformation` never writes it, the A/B and preset paths reach the engine only
+  through atomics (`injectMatchGainDb`, `requestDuck`), and the two writers that remain —
+  `prepareToPlay` and `processBlock` — are mutually excluded by the host contract on VST3 and by
+  JUCE's own AU callback lock. **The one pairing D-2's recorded scope does not name** — restore on
+  one host thread, `prepareToPlay` on another, editor tick reading — was measured for this round
+  with a new probe (`AnamorphStateTests --state-prepare-race-probe` under TSan, three threads):
+  **the same four reports and no new ones.** Recorded as covered by the deferred D-2 decision.
+  Nothing was added to suppress the report — no mutex, no `callAsync`, no `AsyncUpdater`, no
+  state-architecture redesign — because doing so would pre-empt D-2, which is the maintainer's
+  call, and would silence the very evidence D-2 is waiting on.
+- **Round 21 (2026-09-02, ER-STATE-23 re-raised): re-measured on the current tree, same four
+  reports, still no production change.** The finding arrived again, at the same source line
+  (`setStateInformation`, `src/PluginProcessor.cpp:991`) and with the same wording plus one added
+  sentence — "the documented macOS AU race remains open" — which is this entry's own Likelihood
+  bullet restated, not new evidence. Two things were checked rather than assumed. First, the
+  concurrency surface has not moved: `src/PluginProcessor.cpp` and `src/PluginProcessor.h` are
+  unchanged since round 16, so the code the finding names is byte-identical to what round 20
+  measured. Second, the probes were re-run under ThreadSanitizer against the current build:
+  `--state-thread-probe` and `--state-prepare-race-probe` each report **the same four races and no
+  others**, and `--reprepare-race-probe` is **silent**, so ER-STATE-19/D-1 also remains closed. Each
+  report maps one-to-one onto a row already recorded above — `abActive`, written at
+  `src/PluginProcessor.cpp:1055`, against `canUndo()`; the `abUndo` vector's internals twice, via
+  `UndoStacks::operator=` (`src/PluginProcessor.h:184`) against the reader's iteration; and the
+  `juce::String` refcount exchange, `juce::String`'s copy constructor against the metadata
+  assignment. Nothing new, and again no mutex, `callAsync`, `AsyncUpdater` or state-architecture
+  change.
+
+## RISK-008 — A Linux VST3 host that provides its run loop only through `IPlugFrame` starves the plug-in's message queue while the editor is closed
+- **Risk:** the pinned JUCE Linux VST3 wrapper services the plug-in's JUCE messages — every
+  `juce::Timer`, `callAsync` and `AsyncUpdater` — from an internal background thread until the
+  host registers an `IRunLoop`, then stops that thread and attaches to the host's loop
+  (`juce_audio_plugin_client_VST3.cpp`, the `EventHandler` / `HostMessageThreadState` machinery).
+  The pinned SDK lets a conformant host hand the run loop over EITHER through the factory/host
+  context OR only through `IPlugFrame`. In the second kind of host JUCE registers the loop at
+  editor attach (`attached()`, `viewRunLoop.emplace`) and unregisters it at editor removal
+  (`removed()`, `viewRunLoop.reset()`), and nothing restarts the internal thread until the shared
+  `EventHandler` is destroyed at unload. Between an editor close and the next editor open, no
+  thread services the plug-in's message queue.
+- **Impact:** every JUCE-message consumer in the plug-in pauses with the editor closed in such a
+  host: the D-1 latency timer — an audio-thread latency request (Drive/Algorithm automation with
+  oversampling engaged) is then reported not within 50 ms but when the editor next opens — and
+  the APVTS's own value-flush timer. `prepareToPlay` is unaffected: the host's UI thread stays
+  the tagged message thread, so its report is synchronous. No crash and no undefined behaviour;
+  a stale host PDC until the editor reopens.
+- **Likelihood (evidence-based):** **Low, and no longer unknown.** The predicted failure was
+  looked for on a real Linux host and did not occur (the 2026-09-02 REAPER result below). It began
+  as a wrapper-behaviour finding verified by reading the pinned tree; a host that provides the run
+  loop through the host context is not exposed at all, and the one host actually tested shows the
+  behaviour the risk says would break. What remains unverified is every OTHER Linux VST3 host,
+  which this repository cannot establish from the inside.
+- **Evidence [Verified — wrapper only]:** engineering-review round 15 (raised by the host-contract
+  verification lens on ER-STATE-19 and confirmed against the pinned wrapper);
+  `worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Round 15.
+- **Investigated 2026-09-02 (round 18): the mechanism is CONFIRMED by code reading and its cost
+  MEASURED, but no host-visible failure was reproduced, because no Linux VST3 host was available to
+  test.** Classified **B — a confirmed technical risk with no demonstrated actionable user-visible
+  defect**; no production change. What the round established:
+  - **The lifecycle is exactly as filed.** `messageThread->stop()` runs from
+    `updateCurrentMessageThread()` when a host run loop is registered, and `messageThread->start()`
+    appears in exactly ONE place — the `EventHandler` destructor, which runs at unload. So an
+    editor close that unregisters the view's run loop leaves the fds attached to nothing and the
+    internal thread stopped, with nothing to restart it.
+  - **A stopped queue really does stop the timer.** `juce::Timer` delivers only by posting a
+    `CallTimersMessage` for the message thread to run (pinned `juce_Timer.cpp`), so with no
+    servicing there are no timer callbacks and the D-1 consumer cannot run.
+  - **The request is DEFERRED, not dropped** — a correction to this entry's original wording.
+    Measured (`AnamorphStateTests --risk008-probe`, synthetic and labelled as such): across a
+    1000 ms unserviced window (20 timer periods) the reported latency does not move, and 22 ms
+    after servicing resumes the pending request is delivered in full and the reported value is the
+    one the settled state predicts. The atomic request flag is what holds it, so the host is stale
+    for exactly the unserviced window rather than permanently.
+  - **Scope of the exposure.** Only requests raised OFF the message thread stall: host automation of
+    Drive/Algorithm with oversampling engaged, and an off-message-thread re-prepare. Anything on the
+    host UI thread is unaffected, because that thread stays tagged as the JUCE message thread after
+    the editor closes, so `requestLatencyUpdate()` still delivers synchronously there — which covers
+    state restore and any Settings-driven oversampling change.
+  - **Evidence limitation as it stood in round 18.** No shipping Linux VST3 host was available in
+    that environment, so round 18 could not say whether any host supplies `IRunLoop` only through
+    `IPlugFrame`, and it did not claim the issue was reachable in practice. **Superseded by the
+    real-host result below**, which supplies the missing half.
+- **REAL-HOST VALIDATION, 2026-09-02 (round 19) — performed by the maintainer, not by the review
+  harness.** On **Linux, in REAPER, with the real Anamorph VST3**, the reported latency **updates
+  successfully both with the Anamorph editor OPEN and with it CLOSED.** That is precisely the
+  observable this entry predicts would fail — an editor-closed latency update — and it did not
+  fail. This is manual real-host evidence and is recorded as such; it is a different KIND of
+  evidence from the synthetic probe above, which measures what an unserviced queue costs and never
+  claimed to show that any host produces one.
+  - **What it does NOT establish.** It does not show how REAPER supplies `Linux::IRunLoop`. The
+    repository contains no evidence on that point — every REAPER reference here concerns unrelated
+    matters (KI-009's preset-save focus, VST3 parameter listing, rescan instructions) — so whether
+    REAPER hands the loop over through the factory host context, through `IPlugFrame`, or by some
+    other route is **not established, and is not guessed at here**. A successful result is
+    consistent with REAPER simply not exhibiting the suspected lifecycle, and consistent with
+    other explanations this repository cannot distinguish between without evidence it does not
+    have. It also says nothing about any other Linux VST3 host.
+  - **Disposition: REAL-HOST VALIDATED FOR REAPER; NO ACTIONABLE DEFECT DEMONSTRATED; HOST-SPECIFIC
+    RISK REMAINS UNVERIFIED.** The entry stays recorded for the residual — a host using a different
+    `IPlugFrame`/`IRunLoop` lifecycle — and that residual does not justify a production change.
+- **Mitigation:** recorded, not fixed — any change (restarting the internal message thread on
+  unregister, or a host-independent delivery) is a threading-model change and an
+  Architecture-Review-Gate item, and D-1 is not reopened by this entry's existence — the REAPER
+  result is if anything evidence against needing one. The host census has its first data point and
+  REAPER passed; extending it to another Linux host is the only remaining step, and it is an
+  observation, not a code change: close the editor, automate Drive across the engage threshold with
+  oversampling on, and watch whether the host's PDC updates within 50 ms.

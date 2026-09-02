@@ -29,6 +29,11 @@ public:
     void prepare (double sampleRate, int maxBlockSize, unsigned seed = 0x1234abcdU);
     void reset();
 
+    // See HaasProcessor::snapToTargets -- same contract, same reason. prepare()
+    // below calls this at its end, so the two can never disagree about what
+    // "settled" means (ER-DSP-09).
+    void snapToTargets() noexcept { currentDensity = targetDensity; currentAmount = targetAmount; }
+
     void setDensity (float d) noexcept { targetDensity = d; }
     void setAmount  (float a) noexcept { targetAmount  = a; } // 0 = identity
 

@@ -26,9 +26,9 @@ this program must follow.
 | Installers | **Unsigned skeletons shipped (v0.9.0)**: Linux install script (inside the zip), Windows Inno Setup exe (component selection + dual-path destination page), macOS `.pkg` (component selection; every component non-relocatable since 0.9.3, so a re-install always writes its declared destination — INC-012) — built in CI from the validated staging dirs, published on releases next to the zips; system-wide on Windows/macOS, while the Linux script asks and defaults to a per-user install (`~/.vst3`) since 0.9.3; signing/notarization of them remain RH-PR-3/5 | [Verified] PACKAGING.md §Installers; build.yml packaging steps |
 | Update mechanism | None | [Verified] `src/` tree |
 | Crash reporting | None | [Verified] `src/` tree |
-| Version management | **Annotated `vX.Y.Z` tag convention adopted (RH-PR-8)**; no tag cut yet (first: **v0.9.4** — closes RISK-003 when practiced); version in `CMakeLists.txt` + About box; CI run number as build number | [Verified] RELEASE_PROCESS.md §Tagging |
+| Version management | **Annotated `vX.Y.Z` tag convention adopted (RH-PR-8)**; no tag cut yet (first: **v0.9.6** — closes RISK-003 when practiced); version in `CMakeLists.txt` + About box; CI run number as build number | [Verified] RELEASE_PROCESS.md §Tagging |
 | Release pipeline | `build.yml` (push/PR/dispatch/`workflow_call`; `contents: read`) + **tag-triggered `release.yml` skeleton (RH-PR-8)**: metadata validation → reused build gates → draft GitHub Release (versioned artifacts + SHA-256 + manifest; `contents: write` scoped to the draft-release job only; no signing secrets exist) | [Verified] CI_CD.md; release.yml |
-| QA gate | 39 DSP self-tests + A/B guard (202 checks) + the 15-test state-compatibility suite (920 checks) + pluginval strictness 10, deterministic + randomise ×3, blocking on 3 OSes; Level-5 manual audition | [Verified] TESTING_POLICY.md, CI_CD.md |
+| QA gate | 50 DSP self-tests + A/B guard (282 checks) + the 35-test state-compatibility suite (1506 checks) + pluginval strictness 10, deterministic + randomise ×3, blocking on 3 OSes; Level-5 manual audition — **performed against the final v0.9.6 build and PASSED** (recorded 2026-09-01, `procedures/LEVEL5_AUDITION.md`) | [Verified] TESTING_POLICY.md, CI_CD.md |
 | AAX / PACE | **Out of scope** (no Avid/PACE/iLok) — PACE licensing is therefore *not* an available protection option | [Verified] COMPATIBILITY_POLICY.md |
 
 ## 2. Release risk assessment
@@ -43,7 +43,7 @@ IDs are program-local (`RH-R*`); if any is accepted as a standing repository ris
 | RH-R3 | No Windows Authenticode → SmartScreen "unknown publisher" interstitials; some AV heuristics flag unsigned audio plugins | High |
 | RH-R4 | ~~Unstripped binaries with full symbol names~~ **Mitigated by RH-PR-2 (ADR-0021)**: shipped binaries stripped, RTTI typeinfo names the only accepted residue | ~~High~~ Closed |
 | RH-R5 | ~~No installers~~ **Unsigned installer skeletons shipped (v0.9.0)**: Linux install script inside the zip, Windows Inno Setup exe (stable AppId → upgrade path + uninstall entry; component selection), macOS .pkg (component selection) to the standard locations — system-wide on Windows/macOS; the Linux script defaults to a per-user install since 0.9.3. Residual = the installers are unsigned (RH-R2/R3 apply to them) | High → Low (residual folds into RH-R2/R3) |
-| RH-R6 | ~~No git tags / tag-triggered release pipeline~~ **Pipeline shipped by RH-PR-8** (tag convention + `release.yml`); residual = no tag cut yet — closes with the first release tag (**v0.9.4**), which makes shipped bytes attributable to a source state (RISK-003) | Medium → Low |
+| RH-R6 | ~~No git tags / tag-triggered release pipeline~~ **Pipeline shipped by RH-PR-8** (tag convention + `release.yml`); residual = no tag cut yet — closes with the first release tag (**v0.9.6**), which makes shipped bytes attributable to a source state (RISK-003) | Medium → Low |
 | RH-R7 | No update notification → shipped defects persist silently in the field | Medium |
 | RH-R8 | No crash reporting; ~~no retained debug symbols~~ **symbol retention shipped in RH-PR-2, and completed on macOS 2026-08-18** (per-run `Anamorph-<OS>-debug` artifacts: split `.debug`, PDB, dSYM). A full crash-reporter remains Phase-2 (§7) | Medium → **Low on all three platforms** |
 | RH-R9 | ~~`codesign ... \|\| true`~~ **Failure-visibility half fixed in RH-PR-2** (a sign/staging failure now fails the job); Developer ID signing itself is still RH-PR-3 | ~~Medium~~ Low |
@@ -297,7 +297,7 @@ Numbering continues after ADR-0015 [Verified: ADR_INDEX.md].
 | RH-PR-5 Windows signing (+installer) | **Installer skeleton shipped (v0.9.0)**: `packaging/windows/Anamorph.iss` builds `Anamorph-<version>-Windows-Installer.exe` in CI from the validated staging dir. Remaining: Authenticode signing of the binaries + this exe | new `packaging/windows/*` (landed), release.yml section (landed) | Cert service; ADR-0019 |
 | RH-PR-6 macOS installer | **Installer skeleton shipped (v0.9.0)**: `packaging/macos/build-pkg.sh` builds `Anamorph-<version>-macOS.pkg` (VST3/AU/app components) in CI. Remaining: RH-PR-3 signs + notarizes/staples this same package | `packaging/macos/*` (landed) | RH-PR-3 for signing |
 | RH-PR-7 Plugin/GUI license integration | **No — serialize with all other `src/` GUI/processor work** | `src/PluginProcessor.*`, `src/PluginEditor.*`, new `src/gui/AuthPanel.*` | RH-PR-4; a quiet window on PluginEditor |
-| RH-PR-8 Tags + release.yml | **Implemented — skeleton shipped (v0.8.13 cycle)**: annotated `vX.Y.Z` tag convention, tag-triggered `release.yml` (fail-closed tag⇄version⇄CHANGELOG validation → reused `build.yml` gates via `workflow_call` → draft GitHub Release with versioned artifacts + SHA-256 sums + manifest; `workflow_dispatch` rehearsal mode). Signing/notarization remain RH-PR-3/5; the unsigned installer skeletons (RH-PR-5b/6) shipped with v0.9.0; first tag cut at the **v0.9.4** release closes RISK-003/RH-R6 | `.github/workflows/release.yml` (new), `build.yml` (`workflow_call` trigger only), `docs/procedures/RELEASE_PROCESS.md` | RH-PR-2 (landed) |
+| RH-PR-8 Tags + release.yml | **Implemented — skeleton shipped (v0.8.13 cycle)**: annotated `vX.Y.Z` tag convention, tag-triggered `release.yml` (fail-closed tag⇄version⇄CHANGELOG validation → reused `build.yml` gates via `workflow_call` → draft GitHub Release with versioned artifacts + SHA-256 sums + manifest; `workflow_dispatch` rehearsal mode). Signing/notarization remain RH-PR-3/5; the unsigned installer skeletons (RH-PR-5b/6) shipped with v0.9.0; first tag cut at the **v0.9.6** release closes RISK-003/RH-R6 | `.github/workflows/release.yml` (new), `build.yml` (`workflow_call` trigger only), `docs/procedures/RELEASE_PROCESS.md` | RH-PR-2 (landed) |
 | RH-PR-9 Update check + QA matrix | After 4, 8 | `src/licensing/UpdateCheck.*`, editor hook, `RELEASE_COMPATIBILITY_CHECKLIST.md` | RH-PR-4/7/8 |
 | DSP changes (any) | **Do not parallelize with this program's `src/` PRs**; DSP-only PRs (e.g. the multiband allpass rework) stay parallel-safe vs licensing/CI work | `src/dsp/*` | Existing roadmap |
 
@@ -343,7 +343,8 @@ Numbering continues after ADR-0015 [Verified: ADR_INDEX.md].
 
 Recorded by the v0.9.0 release-hardening & commercial-readiness audit. Each was evaluated and
 **deliberately not implemented in the release PR** — the reason is part of the entry. None of them
-blocks the first release tag — which is now **v0.9.4**, not v0.9.0, v0.9.1, v0.9.2 or v0.9.3 (each was written up but never
+blocks the first release tag — which is now **v0.9.6**, none of v0.9.0 through v0.9.5 having been
+tagged (each was written up but never
 tagged). The two owner decisions block a
 *commercial* release.
 

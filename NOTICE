@@ -21,7 +21,7 @@ Framework
 --------------------------------------------------------------------------
 
 Anamorph is built with the JUCE framework (Raw Material Software Limited),
-pinned to JUCE 9.0.0 (commit f8f8864172464b9adf9eba6101e1f784838d1597).
+pinned to JUCE 9.0.1 (commit e18f7f506c0b96f2c738a0bcd7fe6467a5005ad8).
 The JUCE Framework modules are dual-licensed under the AGPLv3 and the
 commercial JUCE 9 licence. Anamorph is a closed-source commercial product,
 which cannot satisfy the AGPLv3 arm; obtaining the commercial JUCE licence
@@ -320,3 +320,23 @@ Copyright (C) 2002-2007, Marcelo E. Magallon <mmagallo[]debian org>
 Copyright (C) 2002, Lev Povalahev
 Copyright (C) 1999-2007  Brian Paul   All Rights Reserved.  (Mesa)
 Copyright (c) 2007 The Khronos Group Inc.
+
+--------------------------------------------------------------------------
+AudioUnitSDK (macOS Audio Unit builds only)
+--------------------------------------------------------------------------
+
+The macOS Audio Unit binary is built with Apple's AudioUnitSDK, vendored by
+JUCE (modules/juce_audio_plugin_client/AU/AudioUnitSDK).
+
+Copyright (C) 2000-2021 Apple Inc. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use
+this file except in compliance with the License. You may obtain a copy of the
+License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed
+under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
