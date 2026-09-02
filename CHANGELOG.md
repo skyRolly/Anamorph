@@ -15,6 +15,18 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 
 ## [0.9.6] — 2026-09-01
 ### Fixed
+- **Loading a preset that is not an Anamorph preset no longer wipes your sound.** "Load Preset…"
+  and the preset menu both accept any file you point them at. If that file was a valid XML preset
+  from *another* plug-in, it was treated as one of ours: any parameter whose name happened to match
+  took the other plug-in's value, every parameter it did not mention was reset to its default, and
+  the load reported success — so a foreign preset silently replaced the sound you were working on,
+  and the only way back was Undo. A preset file now has to actually be an Anamorph preset. Anything
+  else is refused before it can touch anything: the sound, the preset name and the menu tick all
+  stay exactly as they were, the same way a corrupted file has always been refused. Loading real
+  Anamorph presets is unchanged, including older ones that do not carry every parameter — those
+  still fill in the missing controls with their defaults, exactly as before. Regression coverage:
+  State test 34.
+  Evidence: PR #134. [Verified]
 - **At extreme levels the L/R balance meter no longer shows a lopsided signal as perfectly
   centred.** The balance meter reads how the energy is split between left and right. It works from
   the two channels' running energies added together, and above roughly 1.3e19 in sample value — far

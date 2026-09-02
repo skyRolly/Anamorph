@@ -30,7 +30,7 @@ Neither case may fall back to `presets.currentName()`: `presets` is a processor 
 reuses one instance across `setStateInformation` calls, so the live name is the **previous project's**
 — the same rule `readSlot` follows for the A/B slots. `adoptRestoredState` therefore assigns the name
 unconditionally, and only `setStateInformation` (which can see `hasProperty`) resolves absence.
-Source: src/PresetManager.h:103-108 (`defaultName`); src/PresetManager.cpp:365-376
+Source: src/PresetManager.h:103-108 (`defaultName`); src/PresetManager.cpp:403-414
 (`adoptRestoredState`).
 
 **A malformed legacy Setting resolves to a valid setting, deterministically** (2026-09-01, ER-STATE-17). Pre-0.8.4 sessions carry Oversampling, UI Scale and Scope Persistence as APVTS `PARAM`s that `InternalState::migrateFromLegacyApvts` converts. Each value now passes the same usability predicate as the session and preset paths (`SerializedNumber.h`: plain decimal text, finite after float narrowing) — anything else means the field's **default**, exactly as an absent node does — and the choice indices are clamped into the ComboBox domain (`oversample` ids 1..4, `uiScale` 1..5; `scopePersist` to 0..1) in double **before** the integer conversion, so that conversion is defined for every input and the `+ 1` cannot overflow. Before this the value went straight into `(int)`, which is undefined for NaN, ±inf and out-of-range doubles, and JUCE's parser accepts "nan"/"inf": measured on x86-64 every such value became −2147483647 in the tree and was written back out on the next save; "2147483647" wrapped to INT_MIN through a second UB; AArch64 saturated the same inputs differently. Valid legacy values convert exactly as before (State tests 5 and 6 unchanged); State test 28 pins 88 synthetic cases over both legacy shapes, plus 36 on the real frozen pre-0.8.4 fixture mutated in place with its surrounding session asserted intact (round 13). Source: src/InternalState.h:234-279.
@@ -92,7 +92,7 @@ fallback (rule 2 of `SESSION_COMPATIBILITY_POLICY.md`). A well-formed value that
 a removed factory id, a deleted or moved user preset — ticks **nothing**; it never falls back to a
 same-named preset. Source: src/PresetManager.h:54-76 (`Selection`), :78-94 (`SelectionFields`,
 `encodeSelection` / `decodeSelection`);
-src/PresetManager.cpp:382-435 (`encodeSelection` / `decodeSelection`);
+src/PresetManager.cpp:420-473 (`encodeSelection` / `decodeSelection`);
 src/PluginProcessor.cpp:866-887 (`writeSelection`/`readSelection`), :585 (root write),
 :594 / :598 (per-slot write), :638 (root read), :680 (per-slot read).
 
@@ -119,6 +119,34 @@ Evidence [Verified]: src/PluginProcessor.cpp (`getStateInformation` stamps `raw`
 `reassertParameters` prefers it).
 
 Source: src/PluginProcessor.cpp `getStateInformation` / `setStateInformation` / `reassertParameters`.
+
+### The user **preset file** carries this same tree, and its ROOT is the acceptance test
+
+A `.anamorph` preset file is `apvts.copyState().createXml()` — an `<ANAMORPH>` root with the same
+`PARAM` nodes. **A file whose root is anything else is not an Anamorph preset and is refused**, by
+both loaders, exactly as an unparsable file is (2026-09-02, ER-STATE-24). `PresetManager::loadFile`
+returns `false`, `PresetManager::load` is a clean no-op that never opens the undo bracket, and
+neither the sound nor the preset identity is touched.
+
+**Why the root and not the fields.** `applySoundTree` resolves each parameter with
+`getChildWithProperty ("id", …)`, which searches by PROPERTY and does not care what the root is
+called, so a foreign document did two wrong things at once. Every parameter it did not name took the
+"absent means default" branch written for a genuinely missing `PARAM` node — and every parameter it
+*did* name was **adopted**. Measured against a non-default sound with a two-child
+`<SomeOtherPluginPreset>`: `drive` and `width` took the foreign file's values (0.95 and 0.05 plain),
+`algorithm`, `monoMakerFreq` and `chorusRate` were reset to their defaults, and `loadFile` returned
+**true**. Making the per-parameter fallback keep the current value instead would have left the
+foreign file *accepted and merely inert*, which is a weaker contract than the one this registry
+states, so the test is on the root and it runs before any per-parameter fallback can see the
+document.
+
+This is the same rule the `AB` child already applies to a slot payload (ER-STATE-02: `readSlot`
+accepts only `apvts.state.getType()` and refuses a foreign-typed tree precisely as it refuses an
+unparsable one). **Unchanged by it:** a valid `<ANAMORPH>` root with genuinely missing `PARAM` nodes
+keeps the documented per-parameter default behaviour above, and a malformed value inside a matched
+node keeps its `SerializedNumber.h` fallback. State test 34 pins all three cases apart.
+
+Source: src/PresetManager.cpp `parseSoundFile` (the shared acceptance test), `load`, `loadFile`.
 
 ## `ANAMORPH_INTERNAL` child (InternalState)
 
@@ -292,7 +320,7 @@ An empty `slotABase` / `slotBBase` means **"no baseline was recorded"**, which i
 compare unequal to every possible `soundSig()`, so such a slot would read as permanently edited and
 the top bar would render a bare ` *` — a modified-marker against a preset the slot does not have
 (its name is empty by the same rule). Source: src/PresetManager.h:127-155 (`setMeta`);
-src/PresetManager.cpp:365-376 (`adoptRestoredState`, the root-side rule).
+src/PresetManager.cpp:403-414 (`adoptRestoredState`, the root-side rule).
 
 **◊** Pre-0.6.4 sessions stored params-only under `slotA`/`slotB`; `readSlot` migrates them.
 Evidence [Verified]: src/PluginProcessor.cpp:1056-1057 (the legacy-key fallback inside `readSlot`, :991-1078);

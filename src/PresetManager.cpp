@@ -210,6 +210,39 @@ namespace
     }
 }
 
+// A preset file is accepted only when it is a well-formed document AND its root
+// is the type this plug-in writes (`apvts.state.getType()`, "ANAMORPH"). Both
+// conditions fail the same way -- an invalid tree -- because to a loader they are
+// the same event: this file is not one of ours.
+//
+// WHY THE CHECK CANNOT LIVE IN applySoundTree, which is where it looks like it
+// belongs (ER-STATE-24). That function resolves each parameter with
+// `getChildWithProperty ("id", ...)`, which searches by PROPERTY and does not
+// care what the root is called. Under a foreign root it therefore does two wrong
+// things at once, and only the second was reported: every parameter the document
+// lacks takes the "absent means default" branch written for a genuinely missing
+// PARAM node -- and every parameter it happens to NAME is ADOPTED. Measured on a
+// two-child `<SomeOtherPluginPreset>` against a non-default sound: `drive` and
+// `width` took the foreign file's values (0.95 and 0.05 plain), while
+// `algorithm`, `monoMakerFreq` and `chorusRate` were reset to their defaults --
+// and `loadFile` returned TRUE. So the distinction has to be made on the ROOT,
+// before any per-parameter fallback can reinterpret the document; making the
+// fallback "keep the current value" would have left a foreign preset ACCEPTED
+// and merely inert, which is a different and weaker contract.
+//
+// The rule is not invented here. ER-STATE-02 settled exactly this question for
+// A/B slot payloads -- `readSlot`'s `adoptIfAnamorph` accepts only
+// `apvts.state.getType()` and refuses a foreign-typed tree precisely as it
+// refuses an unparsable one -- and a preset is the same kind of payload asking
+// the same question, so it gets the same answer rather than a second one.
+juce::ValueTree PresetManager::parseSoundFile (const juce::File& f) const
+{
+    if (auto xml = juce::parseXML (f))
+        if (auto t = juce::ValueTree::fromXml (*xml); t.hasType (apvts.state.getType()))
+            return t;
+    return {};
+}
+
 void PresetManager::applySoundTree (const juce::ValueTree& state)
 {
     for (auto* p : apvts.processor.getParameters())
@@ -256,7 +289,7 @@ void PresetManager::load (int index)
     // Resolve EVERYTHING that can fail BEFORE opening the undo bracket: a failure must be a
     // clean no-op, never an onAboutToLoad() with no matching onLoaded() (which would flush undo
     // coalescing yet record no step, leaving the undo timeline half-open). Mirrors loadFile().
-    std::unique_ptr<juce::XmlElement> userXml;
+    juce::ValueTree userSound;
     const Factory* factory = nullptr;
     if (e.isFactory)
     {
@@ -271,8 +304,10 @@ void PresetManager::load (int index)
     }
     else
     {
-        userXml = juce::parseXML (e.file);
-        if (userXml == nullptr) return;
+        // Unparsable OR foreign-rooted -> the same clean no-op, resolved here so
+        // it lands before onAboutToLoad() like every other failure (ER-STATE-24).
+        userSound = parseSoundFile (e.file);
+        if (! userSound.isValid()) return;
     }
 
     if (onAboutToLoad) onAboutToLoad(); // flush any settled edit so the pre-load state is the undo baseline
@@ -288,7 +323,7 @@ void PresetManager::load (int index)
     }
     else
     {
-        applySoundTree (juce::ValueTree::fromXml (*userXml));
+        applySoundTree (userSound);
     }
 
     current = e.name;
@@ -300,10 +335,13 @@ void PresetManager::load (int index)
 
 bool PresetManager::loadFile (const juce::File& f)
 {
-    auto xml = juce::parseXML (f);
-    if (xml == nullptr) return false;
+    // Unparsable OR foreign-rooted -> false, and nothing is touched: the chooser
+    // can point at any file on the machine, so this is the path a user is most
+    // likely to hand another plug-in's preset to (ER-STATE-24).
+    auto sound = parseSoundFile (f);
+    if (! sound.isValid()) return false;
     if (onAboutToLoad) onAboutToLoad(); // flush any settled edit so the pre-load state is the undo baseline
-    applySoundTree (juce::ValueTree::fromXml (*xml));
+    applySoundTree (sound);
     current = f.getFileNameWithoutExtension();
     // The chooser can point ANYWHERE, so the file is the identity whether or not it
     // lives in the preset folder; a file from outside simply matches no list row and

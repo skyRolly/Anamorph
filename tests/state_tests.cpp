@@ -5460,6 +5460,204 @@ static int runModernSettingsProbe()
 //  all. The guard stays as the backstop that decision asks for, and this test
 //  stays discriminating because it drives `setPersistence` directly.
 // ---------------------------------------------------------------------------
+//  State test 34 -- a FOREIGN preset must never overwrite the current sound
+//  (ER-STATE-24).
+//
+//  The defect. `applySoundTree` walks the PROCESSOR's parameters and looks each
+//  one up in the tree by `getChildWithProperty("id", ...)`. With a foreign root
+//  no child matches ANY of them, so every parameter takes the
+//  "absent means default" branch that exists for a genuinely missing PARAM node
+//  -- and both loaders then reported success and replaced the sound with
+//  defaults. Neither loader checked the root type; only the value inside a
+//  matched child was ever validated.
+//
+//  The contract this test pins is not invented here: it is the one ER-STATE-02
+//  already settled for A/B slot payloads (`readSlot` accepts only
+//  `apvts.state.getType()`, and a foreign-typed tree is refused exactly like an
+//  unparsable one). A preset is the same question about the same kind of
+//  payload, so it gets the same answer -- `loadFile` returns false, `load` is a
+//  clean no-op, and the sound and the preset identity are both untouched.
+//
+//  WHY THE SENTINEL IS FIVE PARAMETERS AND NOT ONE. The failure mode IS "every
+//  parameter becomes its default", so a single-parameter probe could pass by
+//  accident whenever that one default happened to match. Every sentinel value
+//  below is asserted to differ from its own default before the foreign load, so
+//  a reset cannot hide.
+static void testForeignPresetDoesNotResetSound()
+{
+    std::printf ("State test 34: a foreign preset never overwrites the current sound (ER-STATE-24)\n");
+    AnamorphAudioProcessor p;
+    p.prepareToPlay (48000.0, 512);
+    auto& presets = p.getPresets();
+
+    // Five distinct, mutually independent, deliberately non-default values.
+    struct Sentinel { const char* id; float raw; };
+    const Sentinel sentinelA[] = {
+        { "drive",         0.31f }, { "width",     0.77f }, { "algorithm", 0.66f },
+        { "monoMakerFreq", 0.42f }, { "chorusRate", 0.58f }
+    };
+    const Sentinel sentinelB[] = {   // a SECOND, different sound for the repeat cycle
+        { "drive",         0.83f }, { "width",     0.19f }, { "algorithm", 0.33f },
+        { "monoMakerFreq", 0.91f }, { "chorusRate", 0.07f }
+    };
+
+    // The comparison is against what the parameters ACTUALLY HOLD after being
+    // set, captured immediately, not against the literals above: a stepped or
+    // skewed parameter quantises what setRaw stores (chorusRate moves by 3e-5
+    // here), and the claim under test is PRESERVATION, not equality with a
+    // literal. Captured values are compared EXACTLY -- a preserved parameter is
+    // not merely close to what it was, it is the same float.
+    float held[5] = {};
+    auto applySentinel = [&p, &held] (const Sentinel* s, int n)
+    {
+        for (int i = 0; i < n; ++i) setRaw (p, s[i].id, s[i].raw);
+        for (int i = 0; i < n; ++i) held[i] = rawOf (p, s[i].id);
+    };
+    auto sameAsSentinel = [&p, &held] (const Sentinel* s, int n)
+    {
+        for (int i = 0; i < n; ++i)
+            if (! juce::exactlyEqual (rawOf (p, s[i].id), held[i])) return false;
+        return true;
+    };
+    // NON-VACUITY: the sentinel must differ from the defaults, or "unchanged"
+    // and "reset to defaults" would be the same observation.
+    auto differsFromDefaults = [&p] (const Sentinel* s, int n)
+    {
+        int differing = 0;
+        for (int i = 0; i < n; ++i)
+            if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p.getAPVTS().getParameter (s[i].id)))
+                if (std::abs (rp->getDefaultValue() - s[i].raw) > 1.0e-3f) ++differing;
+        return differing;
+    };
+
+    applySentinel (sentinelA, 5);
+    check (differsFromDefaults (sentinelA, 5) == 5,
+           "non-vacuity: all five sentinel values differ from their parameter defaults");
+
+    auto dir = anamorph::PresetManager::presetDirectory();
+    check (dir.createDirectory(), "preset directory available");
+    const juce::String stem = "__AnamorphForeignHarness__";
+    auto foreignFile = dir.getChildFile (stem + anamorph::PresetManager::fileSuffix());
+    auto brokenFile  = dir.getChildFile (stem + "Broken" + anamorph::PresetManager::fileSuffix());
+    auto sparseFile  = dir.getChildFile (stem + "Sparse" + anamorph::PresetManager::fileSuffix());
+    auto goodFile    = dir.getChildFile (stem + "Good"   + anamorph::PresetManager::fileSuffix());
+
+    // A well-formed document from some OTHER plug-in: a foreign root, carrying
+    // children that LOOK like ours (same tag, same id attribute) so the rejection
+    // cannot be attributed to the children being unrecognisable.
+    const juce::String foreignXml =
+        "<SomeOtherPluginPreset version=\"2\">\n"
+        "  <PARAM id=\"width\" value=\"0.05\"/>\n"
+        "  <PARAM id=\"drive\" value=\"0.95\"/>\n"
+        "</SomeOtherPluginPreset>\n";
+    check (foreignFile.replaceWithText (foreignXml), "foreign-root preset written");
+    check (juce::parseXML (foreignXml) != nullptr,
+           "the foreign document really is VALID XML (the rejection is about the root, not the syntax)");
+
+    // ---- loader 1: loadFile (the OS chooser path) ----
+    {
+        // Printed so the failure mode is legible in the log rather than inferred
+        // from a boolean: the pre-fix build shows every value moving to its default.
+        std::printf ("  before foreign load:");
+        for (const auto& s : sentinelA) std::printf (" %s=%.4f", s.id, (double) rawOf (p, s.id));
+        std::printf ("\n");
+    }
+    const bool foreignAccepted = presets.loadFile (foreignFile);
+    {
+        std::printf ("  after  foreign load: loadFile returned %s |", foreignAccepted ? "TRUE" : "false");
+        for (const auto& s : sentinelA)
+        {
+            auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p.getAPVTS().getParameter (s.id));
+            std::printf (" %s=%.4f(default %.4f)", s.id, (double) rawOf (p, s.id),
+                         rp != nullptr ? (double) rp->getDefaultValue() : -1.0);
+        }
+        std::printf ("\n");
+    }
+    check (! foreignAccepted, "loadFile REJECTS a valid document with a foreign root");
+    check (sameAsSentinel (sentinelA, 5), "loadFile: the current sound is untouched by the foreign preset");
+    checkStr (presets.currentName(), presets.currentName(),
+              "loadFile: preset identity is not adopted from a rejected file");
+
+    // ---- loader 2: load(index) (the preset menu path) ----
+    presets.refresh();
+    int foreignIndex = -1;
+    for (int i = 0; i < presets.entries().size(); ++i)
+        if (presets.entries()[i].name == stem) foreignIndex = i;
+    check (foreignIndex >= 0, "the foreign file is listed by refresh() (the menu path really reaches it)");
+    const juce::String nameBefore = presets.currentName();
+    if (foreignIndex >= 0) presets.load (foreignIndex);
+    check (sameAsSentinel (sentinelA, 5), "load(index): the current sound is untouched by the foreign preset");
+    checkStr (presets.currentName(), nameBefore, "load(index): a rejected load does not move the preset identity");
+
+    // ---- the repeat cycle: the rule must hold from a SECOND state too ----
+    // The repository's state-mutation discipline: a guard that only survives one
+    // A->B transition is not a guard. Change the sound, reject again, re-check.
+    applySentinel (sentinelB, 5);
+    check (differsFromDefaults (sentinelB, 5) == 5, "second sentinel also differs from every default");
+    check (! presets.loadFile (foreignFile), "loadFile still rejects the foreign root from the second state");
+    if (foreignIndex >= 0) presets.load (foreignIndex);
+    check (sameAsSentinel (sentinelB, 5), "the second sound survives BOTH loaders unchanged");
+
+    // ---- malformed XML keeps its existing behaviour ----
+    check (brokenFile.replaceWithText ("<ANAMORPH><PARAM id=\"width\" value="), "malformed preset written");
+    check (! presets.loadFile (brokenFile), "loadFile still rejects unparsable XML (unchanged behaviour)");
+    check (sameAsSentinel (sentinelB, 5), "malformed XML leaves the sound untouched (unchanged behaviour)");
+
+    // ---- a VALID Anamorph root with missing parameters keeps the documented
+    //      "absent means default" behaviour: this fix must not have disabled it ----
+    auto* widthP = dynamic_cast<juce::RangedAudioParameter*> (p.getAPVTS().getParameter ("width"));
+    auto* driveP = dynamic_cast<juce::RangedAudioParameter*> (p.getAPVTS().getParameter ("drive"));
+    check (widthP != nullptr && driveP != nullptr, "width and drive resolve");
+    const juce::String sparseXml =
+        "<" + p.getAPVTS().state.getType().toString() + ">\n"
+        "  <PARAM id=\"width\" value=\"1.85\"/>\n"
+        "</" + p.getAPVTS().state.getType().toString() + ">\n";
+    check (sparseFile.replaceWithText (sparseXml), "sparse Anamorph preset written");
+    check (presets.loadFile (sparseFile), "a VALID Anamorph root still LOADS, however few params it carries");
+    if (widthP != nullptr)
+        check (std::abs (rawOf (p, "width") - widthP->convertTo0to1 (1.85f)) < 1.0e-4f,
+               "the one parameter the sparse preset carries is adopted");
+    if (driveP != nullptr)
+        check (std::abs (rawOf (p, "drive") - driveP->getDefaultValue()) < 1.0e-6f,
+               "a parameter ABSENT from a valid Anamorph preset still takes its default (unchanged)");
+
+    // ---- and a full, valid Anamorph preset still round-trips ----
+    // The expectation is captured AFTER the save rather than from the literals:
+    // the file carries PLAIN values, so a stepped parameter comes back on its own
+    // step (`algorithm` returns as 0.6666667 for a 0.66 request) -- the
+    // parameter's normal quantisation, which State test 8 owns and this leg has
+    // no business re-litigating. What this leg must show is only that the new
+    // root check did not start rejecting our own files.
+    applySentinel (sentinelA, 5);
+    {
+        auto xml = p.getAPVTS().copyState().createXml();
+        check (xml != nullptr && goodFile.replaceWithText (xml->toString()), "valid preset written");
+    }
+    float savedSound[5] = {};
+    {
+        // What a reload of that file settles on: load it once from the state it
+        // was saved in, and take the reading as the expectation for the reload
+        // from a DIFFERENT state below. Any discrepancy is then about the load,
+        // not about float text.
+        check (presets.loadFile (goodFile), "a valid Anamorph preset still loads successfully");
+        for (int i = 0; i < 5; ++i) savedSound[i] = rawOf (p, sentinelA[i].id);
+    }
+    applySentinel (sentinelB, 5);
+    check (presets.loadFile (goodFile), "...and loads again from a different current sound");
+    {
+        bool restored = true;
+        for (int i = 0; i < 5; ++i)
+            if (! juce::exactlyEqual (rawOf (p, sentinelA[i].id), savedSound[i])) restored = false;
+        check (restored, "...restoring exactly the sound the file carries, from either starting state");
+    }
+
+    check (foreignFile.deleteFile(), "foreign harness file removed");
+    check (brokenFile.deleteFile(),  "malformed harness file removed");
+    check (sparseFile.deleteFile(),  "sparse harness file removed");
+    check (goodFile.deleteFile(),    "valid harness file removed");
+    presets.refresh();
+}
+// ---------------------------------------------------------------------------
 static void testMalformedScopePersistStaysFinite()
 {
     std::printf ("State test 32: a malformed scope persistence stays finite at the consumer (ER-STATE-21)\n");
@@ -6104,6 +6302,7 @@ int main (int argc, char* argv[])
     testOffThreadPrepareDefersLatency();
     testRestoreResetsAbMatchGains();
     testMalformedScopePersistStaysFinite();
+    testForeignPresetDoesNotResetSound();
     testModernSettingsAreRepairedOnRestore();
     testMalformedLegacySettingsResolveToValid();
     testTooltipSourceOfTruth();

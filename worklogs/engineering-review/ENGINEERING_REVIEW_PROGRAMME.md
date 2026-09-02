@@ -29,6 +29,107 @@ entries and CHANGELOG notes cite.
 
 ---
 
+## Round 24 — 2026-09-02 — a foreign preset was loaded as if it were ours
+
+One fix, closing the last actionable Review Bug. The finding was real, and the mechanism is one step
+worse than the review's wording.
+
+### ER-STATE-24 — FIXED — a valid preset from another plug-in replaced the current sound
+
+**Reproduced before any change**, against a five-parameter non-default sound, loading a well-formed
+`<SomeOtherPluginPreset>` carrying two `PARAM` children with *our* `id` spellings:
+
+```
+  before foreign load: drive=0.3100 width=0.7700 algorithm=0.6600 monoMakerFreq=0.4200 chorusRate=0.5800
+  after  foreign load: loadFile returned TRUE | drive=0.0396(default 0.0000) width=0.0250(default 0.5000)
+                       algorithm=0.3333(default 0.3333) monoMakerFreq=0.5000(default 0.5000)
+                       chorusRate=0.3832(default 0.3832)
+```
+
+**The review said "treats every missing parameter as its default". That is half of it.** `drive` and
+`width` did NOT become their defaults — they became **the foreign file's values** (0.95 and 0.05
+plain, i.e. 0.0396 and 0.0250 normalised). `applySoundTree` resolves each parameter with
+`getChildWithProperty ("id", …)`, which searches by PROPERTY and does not care what the root is
+called, so a foreign document does two wrong things at once: every parameter it *names* is adopted,
+and every parameter it does not name takes the "absent means default" branch written for a genuinely
+missing `PARAM` node. Both loaders then reported success. `loadFile` returned `true`; `load(index)`
+opened the undo bracket and adopted the file's identity.
+
+**Neither loader validated the root.** `load(int)` checked only `parseXML != nullptr`; `loadFile`
+the same. The only validation anywhere on the path was `readSerializedValue`, which guards the value
+*inside* a matched child — it never had the chance to ask whether the document was ours.
+
+**The contract, taken from the repository rather than invented.** ER-STATE-02 settled exactly this
+question for A/B slot payloads: `readSlot`'s `adoptIfAnamorph` accepts only `apvts.state.getType()`
+and refuses a foreign-typed tree *precisely as it refuses an unparsable one*. A preset file is the
+same kind of payload asking the same question, so it gets the same answer rather than a second one —
+no new API, no maintainer decision needed. Concretely: **`loadFile` returns `false`; `load(index)` is
+a clean no-op**; sound, preset name and menu tick all untouched.
+
+**One shared choke point, not two special cases.** Both loaders already did the same three steps —
+parse, check null, `applySoundTree` — so the acceptance test replaces the null check in one new
+private helper that both resolve through:
+
+```cpp
+juce::ValueTree PresetManager::parseSoundFile (const juce::File& f) const
+{
+    if (auto xml = juce::parseXML (f))
+        if (auto t = juce::ValueTree::fromXml (*xml); t.hasType (apvts.state.getType()))
+            return t;
+    return {};
+}
+```
+
+In `load(int)` it lands **before `onAboutToLoad()`**, which is where that function's own comment
+already requires every failure to be resolved ("a failure must be a clean no-op, never an
+`onAboutToLoad()` with no matching `onLoaded()`"). The rule cannot hold on one path and not the
+other, because there is now only one path.
+
+**Why the root and not the fallback (the boundary the round asked about).** Making the
+per-parameter fallback keep the current value instead would have left a foreign preset **accepted
+and merely inert** — the loader still reporting success, the identity still moving, and any future
+caller of `applySoundTree` still unprotected. The distinction had to be *foreign preset → rejected
+as foreign*. `applySoundTree` also cannot host the check: it looks parameters up by property, so it
+genuinely cannot tell a foreign tree from ours, and it returns `void` so it could not report the
+rejection to `loadFile`'s `bool` anyway. Its header now states the precondition instead of carrying
+a check that could never be reached.
+
+**Regression: State test 34, 29 checks, 6 of them failing against the pre-fix build.** The sentinel
+is **five** parameters, each asserted to differ from its own default — the failure mode *is*
+"everything becomes its default", so a one-parameter probe could pass by coincidence. Preservation
+is compared **exactly**, against what the parameters actually hold after being set rather than
+against the literals requested: a stepped parameter quantises what it stores (`chorusRate` moves by
+3e-5), and the claim under test is preservation, not equality with a literal. The foreign document
+deliberately carries children with our `id` spellings, so the rejection cannot be attributed to
+unrecognisable children. **Both loaders** are exercised — the chooser path and the menu path, the
+latter after a `refresh()` that is itself asserted to have listed the file — and the whole rule is
+re-run from a **second** distinct sound. Three legs guard what must not change: malformed XML keeps
+its existing rejection, a valid `<ANAMORPH>` root carrying one `PARAM` still adopts that one and
+still defaults the rest, and a full valid preset still round-trips from either starting state.
+
+### No new race class
+
+The change is a file parse and a type test on the message thread, inside a `const` helper with no
+shared state; `applySoundTree`'s behaviour for accepted trees is byte-identical. Nothing in the
+concurrency surface moved, so no probe was re-run and **no duplicate D-2 finding was filed**.
+**D-2 / RISK-007 stays deferred** with its four measured race classes unchanged.
+
+### A count correction, measured rather than carried
+
+The state suite's *test* count was one ahead in every document. Measured from `main`'s registered
+test functions: **32 at `HEAD`** while the documents said 33 — so State test 34's arrival makes the
+true figure **33**, not 34. Corrected in `TESTING.md`, `TESTING_POLICY.md`, `README.md`,
+`RELEASE_HARDENING_PLAN.md` and `HANDOVER.md`, with the counting method recorded beside it. The
+*check* count was never wrong: 1431 → **1460**.
+
+### Carried unchanged
+
+**RISK-008** — real-host validated for REAPER; host-specific residual unverified; no host test
+performed. **ER-DSP-10**, **ER-DSP-11**, **ER-STATE-21** all FIXED and untouched — in particular the
+foreign-root test is kept clear of ER-STATE-21's territory: this is about the ROOT, that is about
+malformed fields under a valid root, and State test 34 asserts them apart. **Drag recovery** REFUTED,
+**D-1** approved and implemented, the cross-file realtime-lint boundary unchanged.
+
 ## Round 23 — 2026-09-02 — the other overflow in the same class: an unequal pair read as dead centre
 
 One fix. It is in the same file and the same regime as round 21's, and it is a **different

@@ -441,6 +441,24 @@ exactly. It also performs the host's ordinary post-restore activation, without w
 instance's leftover audio in its delay lines flushes through and moves the reading 0.052 dB —
 engine history rather than A/B state.
 
+**State test 34 pins the preset loaders' acceptance test** (ER-STATE-24, round 24). A `.anamorph`
+file is an `<ANAMORPH>` root, and a document with any other root is refused by **both** loaders
+exactly as an unparsable one is — `loadFile` returns `false`, `load(index)` is a clean no-op, and
+neither the sound nor the preset identity moves. The test is built so a reset cannot hide: the
+sentinel is **five** parameters at values each asserted to differ from that parameter's own default
+(the failure mode *is* "everything becomes its default", so a one-parameter probe could pass by
+coincidence), and preservation is compared **exactly**, against what the parameters actually hold
+after being set rather than against the literals requested — a stepped parameter quantises what it
+stores, and the claim is preservation, not equality with a literal. The foreign document carries
+`PARAM` children with *our* `id` spellings, so the rejection cannot be attributed to unrecognisable
+children, and the log prints the before/after values so the failure mode is legible rather than
+inferred from a boolean. Both loaders are exercised — the OS-chooser path and the menu path, the
+latter after a `refresh()` that is asserted to have listed the file — and the whole rule is re-run
+from a **second** distinct sound, per the repository's repeated-state-mutation discipline. Three
+legs guard what must NOT change: malformed XML keeps its existing rejection, a valid `<ANAMORPH>`
+root with only one `PARAM` still adopts that one and still defaults the rest, and a full valid
+preset still round-trips. **6 of its 29 checks fail against the pre-fix build, 0 after.**
+
 `AnamorphStateTests --restore-fade-probe` is the tenth opt-in instrument and, like
 `--modern-settings-probe`, **measures and asserts nothing**. It drives the ordinary host order —
 restore a non-default session into a fresh instance, THEN activate — and prints each module's

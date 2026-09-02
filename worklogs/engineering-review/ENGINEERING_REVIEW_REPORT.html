@@ -82,14 +82,27 @@ ruled out, fixed, deferred — and what should happen next. A rendered <em>view<
 <code>ENGINEERING_REVIEW_PROGRAMME.md</code> beside it; the worklog is the source of truth a later
 round reconciles against.</p>
 <div class="meta">
-  <span>ROUNDS 1–23 · 2026-08-31 → 09-02</span>
+  <span>ROUNDS 1–24 · 2026-08-31 → 09-02</span>
   <span>TREE: main @ e8f4422 → v0.9.6</span>
-  <span>STATUS: the balance meter survives extreme-but-finite levels; ONE tag blocker left — KI-015</span>
+  <span>STATUS: last actionable Review Bug closed; D-2, RISK-008 and KI-015 remain open by decision</span>
   <span>NEXT: licence (KI-015), then tag v0.9.6</span>
 </div>
 
 <h2><span class="no">§1</span>Executive status</h2>
-<p class="lede"><strong>Round 23: the other overflow in the same class &mdash; and round 21's own note
+<p class="lede"><strong>Round 24: a preset from another plug-in was loaded as if it were ours &mdash; and
+the mechanism is one step worse than the finding said.</strong> Not merely "missing parameters become
+defaults": every parameter the foreign file <em>named</em> was <strong>adopted</strong>, because the
+lookup is by <code>id</code> property and does not care what the root is called. Both loaders reported
+success. This closes the last actionable Review Bug.</p>
+<div class="verdicts">
+  <div class="v"><div class="k">ER-STATE-24 &middot; FIXED at the root, not the fallback</div><p>Measured against a five-parameter non-default sound, loading a well-formed <code>&lt;SomeOtherPluginPreset&gt;</code>: <code>loadFile</code> returned <strong>TRUE</strong>, <code>drive</code> and <code>width</code> took the FOREIGN file's values (0.0396, 0.0250), and <code>algorithm</code>, <code>monoMakerFreq</code>, <code>chorusRate</code> were reset to their defaults. Making the fallback "keep the current value" would have left the file accepted and merely inert &mdash; a weaker contract. The test is on the ROOT, before any per-parameter fallback can see the document.</p></div>
+  <div class="v"><div class="k">The contract came from the repository</div><p>ER-STATE-02 already settled this for A/B slot payloads: <code>readSlot</code> accepts only <code>apvts.state.getType()</code> and refuses a foreign-typed tree precisely as it refuses an unparsable one. A preset is the same kind of payload asking the same question, so it gets the same answer &mdash; no new API, no maintainer decision. <code>loadFile</code> returns <code>false</code>; <code>load(index)</code> is a clean no-op; sound, name and menu tick untouched.</p></div>
+  <div class="v"><div class="k">One choke point, both loaders</div><p>Both already did parse &rarr; null-check &rarr; apply, so the acceptance test <em>replaces</em> the null check in one shared private helper, <code>parseSoundFile</code>. In <code>load(index)</code> it lands before <code>onAboutToLoad()</code> &mdash; where that function's own comment already requires every failure to resolve. The rule cannot hold on one path and not the other because there is now only one path.</p></div>
+  <div class="v"><div class="k">State test 34 &middot; 6 of 29 fail pre-fix</div><p>Five sentinel parameters, each asserted to differ from its own default (the failure mode IS "everything becomes default", so one parameter could pass by coincidence). Preservation compared EXACTLY against what the parameters actually hold, not the literals requested. The foreign file carries children with OUR <code>id</code> spellings. Both loaders, re-run from a second sound. Three legs guard what must not change: malformed XML, a sparse valid root, a full round-trip.</p></div>
+  <div class="v"><div class="k">A count corrected by measurement</div><p>The state suite's TEST count was one ahead in every document: <code>main</code> registered <strong>32</strong> at HEAD while the docs said 33, so the new test makes it <strong>33</strong>, not 34. Corrected in five documents with the counting method recorded. The CHECK count was never wrong: 1431 &rarr; <strong>1460</strong>.</p></div>
+</div>
+
+<p class="lede" style="margin-top:26px"><strong>Round 23: the other overflow in the same class &mdash; and round 21's own note
 about it was wrong.</strong> Same file, same regime, <em>different operation</em>: the phase meter divides
 by a <strong>product</strong>, the balance meter by a <strong>sum</strong>, and fixing the product did nothing
 for the sum. An unequal pair at extreme level published <strong>dead centre</strong>.</p>
@@ -561,6 +574,17 @@ evidence emerged to promote one. Ranking follows the programme's order — corre
   <li class="done">Drift sweep: CHANGELOG date, HANDOVER audition claim; history left intact</li>
   <li class="done">D-3 performed by the maintainer against the v0.9.6 build — <strong>PASSED</strong></li>
 </ul>
+<h3>Round 24</h3>
+<ul class="roadmap">
+  <li class="done">ER-STATE-24 FIXED — both preset loaders now refuse a document whose root is not <code>ANAMORPH</code>, exactly as they refuse an unparsable one</li>
+  <li class="done">Reproduced first, and the mechanism corrected: a foreign file's NAMED parameters were adopted, not just its missing ones defaulted; <code>loadFile</code> returned true</li>
+  <li class="done">Contract taken from ER-STATE-02's existing A/B slot rule rather than invented; no new preset API</li>
+  <li class="done">One shared <code>parseSoundFile</code> helper replaces the null check on both paths; in <code>load(index)</code> it resolves before the undo bracket opens</li>
+  <li class="done">State test 34 (29 checks) — five-parameter sentinel, exact preservation, both loaders, second-sound repeat, three no-change guards; 6 fail pre-fix</li>
+  <li class="done">State-suite test count corrected from a measured 32→33 (the docs had been one ahead); check count 1431 → 1460</li>
+  <li class="done">No new race class; D-2 / RISK-007 stays deferred with no duplicate finding; RISK-008 carried unchanged with no host test</li>
+</ul>
+
 <h3>Round 23</h3>
 <ul class="roadmap">
   <li class="done">ER-DSP-11 FIXED — the balance's <code>ll + rr</code> float ADD overflowed while both energies AND their difference stayed finite; only the sum is redone in double, only on that overflow</li>

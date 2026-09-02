@@ -7,7 +7,7 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.6 change set** (2026-09-01, matching the CHANGELOG heading) — the
-**engineering-review programme, rounds 1 through 23**, newest last in the body: round 1 (the
+**engineering-review programme, rounds 1 through 24**, newest last in the body: round 1 (the
 programme's first sweep: six engine/state/GUI fixes with Tests 43–46 and two state regressions,
 the engaged Test 2/38 matrices, the KI-027 and RISK-007 filings, the v0.9.6 renumbering sweep, the
 NOTICE pin + AudioUnitSDK section, the CI_CD job inventory, and the new
@@ -44,7 +44,10 @@ again found to be the deferred D-2 risk); and **round 22** (the `docs` CI gate, 
 this file that began with a pipe character, and the filtered-preflight habit that let it reach the
 push — both fixed, no production change); and **round 23** (the balance meter's own `ll + rr`
 overflow, a different operation from round 21's `ll * rr`, which published dead centre for a badly
-lopsided pair — fixed, with round 21's mistaken note about it corrected in place).
+lopsided pair — fixed, with round 21's mistaken note about it corrected in place); and **round 24**
+(a valid preset from another plug-in loaded as if it were ours — adopting what it named and
+defaulting the rest, with both loaders reporting success — closed by a root-type acceptance test
+shared by both loaders).
 **Header correction (round 7, 2026-09-01):** this line enumerated round 1 alone while the body
 carried six later rounds, and dated the change set 2026-08-31 while the CHANGELOG `[0.9.6]` heading
 had been re-dated to 2026-09-01 — the same drift the C6 correction below was written about,
@@ -7484,3 +7487,57 @@ boundary unchanged.
 adds 12). The state suite is unchanged at **33 tests / 1431 checks**. The `[0.9.6]` Fixed count is
 **29**. Measured, not inferred: `AnamorphTests` prints `282 checks, 0 failures` and
 `AnamorphStateTests` prints `1431 checks, 0 failure(s)`. [Verified]
+
+## Engineering-review programme, round 24 — the foreign-preset acceptance test (2026-09-02, still the 0.9.6 change set)
+
+**What the round is.** One fix, closing the last actionable Review Bug. Records:
+`worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Round 24.
+
+**ER-STATE-24 — a valid preset from another plug-in replaced the current sound.** Reproduced before
+any change, against a five-parameter non-default sound and a well-formed `<SomeOtherPluginPreset>`
+carrying two `PARAM` children with our own `id` spellings: `loadFile` returned **true**, `drive` and
+`width` took **the foreign file's values** (0.0396 and 0.0250 normalised, from 0.95 and 0.05 plain),
+and `algorithm`, `monoMakerFreq` and `chorusRate` were reset to their defaults. **The review's
+wording covered half the mechanism**: `applySoundTree` resolves each parameter with
+`getChildWithProperty ("id", …)`, which searches by property and ignores the root, so a foreign
+document both adopts what it names and defaults what it does not. Neither loader validated the root;
+the only validation on the path guarded the value *inside* a matched child.
+
+**The contract was taken from the repository, not invented.** ER-STATE-02 already settled the same
+question for A/B slot payloads — `readSlot`'s `adoptIfAnamorph` accepts only `apvts.state.getType()`
+and refuses a foreign-typed tree precisely as it refuses an unparsable one. Applied here:
+`loadFile` returns `false`, `load(index)` is a clean no-op, and sound, preset name and menu tick are
+all untouched. **No new preset API, and no maintainer decision was needed.**
+
+**One shared choke point.** Both loaders already did parse → null-check → apply, so the acceptance
+test *replaces* the null check inside one new private helper, `PresetManager::parseSoundFile`. In
+`load(int)` it resolves before `onAboutToLoad()`, which is where that function's own comment already
+requires every failure to land. The check cannot live in `applySoundTree`: that function looks
+parameters up by property and so genuinely cannot tell a foreign tree from ours, and it returns
+`void`, so it could not report the rejection to `loadFile`'s `bool`. Its declaration now states the
+precondition rather than carrying an unreachable second check.
+
+**Documents touched:** `CHANGELOG.md` (one Fixed entry), `docs/architecture/SERIALIZATION_REGISTRY.md`
+(the `ANAMORPH` section now records the preset file's root as its acceptance test, with the measured
+failure and the ER-STATE-02 precedent), `docs/procedures/TESTING.md` (State test 34 and the suite
+count), `docs/policies/TESTING_POLICY.md`, `README.md`,
+`docs/architecture/RELEASE_HARDENING_PLAN.md`, `docs/HANDOVER.md`, this file, the programme worklog
+and the dashboard. **Unchanged:** every other architecture document, all workflows, both warning
+baselines.
+
+**A count correction, measured rather than carried.** The state suite's *test* count was one ahead in
+every document. Counted from `main`'s registered test functions: **32 at `HEAD`** against a
+documented 33, so State test 34's arrival makes the true figure **33**, not 34 — corrected in five
+documents with the counting method recorded beside it in `HANDOVER.md`. The *check* count was never
+wrong.
+
+**No new race class.** The change is a file parse and a type test on the message thread, in a `const`
+helper with no shared state, and `applySoundTree`'s behaviour for accepted trees is byte-identical.
+No probe was re-run and **no duplicate D-2 finding was filed**; D-2 / RISK-007 stays deferred with
+its four measured race classes unchanged. RISK-008 keeps its real-host REAPER result and its
+host-specific residual; **no host test was performed**.
+
+**Counts.** The state suite is **33 tests / 1460 checks** (was 32 / 1431; State test 34 adds 29). The
+DSP suite is unchanged at **50 tests + the A/B clamp guard / 282 checks**. The `[0.9.6]` Fixed count
+is **30**. Measured, not inferred: `AnamorphStateTests` prints `1460 checks, 0 failure(s)` and
+`AnamorphTests` prints `282 checks, 0 failures`. [Verified]
