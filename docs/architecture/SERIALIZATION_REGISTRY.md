@@ -145,6 +145,46 @@ legacy, malformed). Source: src/InternalState.h:107-133.
 
 **‡** Sessions saved **before** 0.8.4 have no `ANAMORPH_INTERNAL` child; these values are
 recovered from the legacy APVTS PARAM nodes by `migrateFromLegacyApvts` (choice indices are
+**What a malformed value that is PRESENT means here is not yet specified, and the measurement says
+what that currently costs** (2026-09-02, ER-STATE-21). Every field above states a Default for its
+ABSENCE, settled in round 14; none states a rule for a value that is present but malformed, and
+`restoreState` adopts what the file says verbatim. Measured across nineteen malformed inputs
+(`AnamorphStateTests --modern-settings-probe`): no crash and no undefined conversion on the restore
+itself, and every DSP-facing read is clamped at its source, so nothing can leave the documented
+domain where the audio path reads it. What the file keeps is another matter: all nineteen survive
+into the next save, eight leave an out-of-domain ComboBox id in the tree, and three leave a
+non-finite `int_scopePersist`; opening the editor repairs only four. The ingress is bounded — the
+four writers of these values (the defaults table, `restoreState`, the clamped
+`migrateFromLegacyApvts`, and the Settings widgets) all produce legal values, so a malformed modern
+value can only come from a hand-edited or corrupted file. **One consequence of that was a real
+defect and is fixed** (round 17): `scopePersist` is the only setting whose read applies no clamp,
+and a `nan` or any NEGATIVE stored value reached `Vectorscope::windowFrames()`'s `(int)` conversion
+non-finite, which is undefined — the negative case because `applyScopePersist` raises the value to a
+fractional power first. `Vectorscope::setPersistence` now substitutes its default for any non-finite
+input (State test 32). **The contract question itself stays open**: choosing between "clamp at the
+read", "repair at restore as the legacy path does", and "adopt verbatim, since the consumers are
+safe" changes what a damaged file means and is a decision for the maintainer, not a lint.
+
+**What a malformed value that is PRESENT means here is not yet specified, and the measurement says
+what that currently costs** (2026-09-02, ER-STATE-21). Every field above states a Default for its
+ABSENCE, settled in round 14; none states a rule for a value that is present but malformed, and
+`restoreState` adopts what the file says verbatim. Measured across nineteen malformed inputs
+(`AnamorphStateTests --modern-settings-probe`): no crash and no undefined conversion on the restore
+itself, and every DSP-facing read is clamped at its source, so nothing can leave the documented
+domain where the audio path reads it. What the file keeps is another matter: all nineteen survive
+into the next save, eight leave an out-of-domain ComboBox id in the tree, and three leave a
+non-finite `int_scopePersist`; opening the editor repairs only four. The ingress is bounded — the
+four writers of these values (the defaults table, `restoreState`, the clamped
+`migrateFromLegacyApvts`, and the Settings widgets) all produce legal values, so a malformed modern
+value can only come from a hand-edited or corrupted file. **One consequence of that was a real
+defect and is fixed** (round 17): `scopePersist` is the only setting whose read applies no clamp,
+and a `nan` or any NEGATIVE stored value reached `Vectorscope::windowFrames()`'s `(int)` conversion
+non-finite, which is undefined — the negative case because `applyScopePersist` raises the value to a
+fractional power first. `Vectorscope::setPersistence` now substitutes its default for any non-finite
+input (State test 32). **The contract question itself stays open**: choosing between "clamp at the
+read", "repair at restore as the legacy path does", and "adopt verbatim, since the consumers are
+safe" changes what a damaged file means and is a decision for the maintainer, not a lint.
+
 0-based legacy → 1-based ComboBox). Evidence [Verified]: src/InternalState.h:140-197;
 [Partially Verified] introduced-0.8.4: CHANGELOG.md [0.8.4].
 

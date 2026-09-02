@@ -300,6 +300,19 @@ file. **No production code was changed on this evidence** (round 16, ER-STATE-21
 malformed *present* value should mean is a serialization-contract decision, and the registry's
 `ANAMORPH_INTERNAL` table currently states defaults for ABSENT only.
 
+**Round 17 followed the one unclamped consumer to its end, and found a defect there.** The probe
+gained a second table that models the real editor chain for `scopePersist` — Value to Slider, then
+`applyScopePersist`'s `pow(v, 0.737f)`, then `Vectorscope::setPersistence`'s `jlimit`, then
+`windowFrames()`'s `jmap` and its `(int)` conversion. Two of seven inputs arrive at that conversion
+non-finite: `"nan"`, which travels intact because `juce::jlimit` returns its argument when neither
+comparison is true; and any NEGATIVE value, which is finite in the file and becomes a NaN at the
+`pow`. `(int)` of a non-finite float is undefined, the same class round 12 closed on the legacy
+path. Fixed at the consumer, where the invariant is declared, and pinned by **State test 32**: a
+unit leg over the real `Vectorscope`, and an end-to-end leg that restores four malformed sessions,
+constructs the real editor and reads the persistence back off the scope component itself. **7 checks
+fail without the guard, 0 with it.** The contract question above is untouched by that fix and stays
+open.
+
 `AnamorphStateTests --legacy-match-probe` gained a companion in State test 31 rather than a new
 probe: the per-slot Level-Match memory (ER-STATE-20) is observed through the product's own
 behaviour. Two properties make that exact rather than a tolerance game — after a restore with no
@@ -312,7 +325,7 @@ exactly. It also performs the host's ordinary post-restore activation, without w
 instance's leftover audio in its delay lines flushes through and moves the reading 0.052 dB —
 engine history rather than A/B state.
 
-`tests/state_tests.cpp` (**31 tests**, own console target `AnamorphStateTests`) automates the
+`tests/state_tests.cpp` (**32 tests**, own console target `AnamorphStateTests`) automates the
 COMPATIBILITY policy family against the **real `AnamorphAudioProcessor`** (the target compiles
 the plugin sources; since 2026-08-21 it also constructs and destroys the real editor, headlessly
 and without ever showing it — no peer, no message loop, no interaction):

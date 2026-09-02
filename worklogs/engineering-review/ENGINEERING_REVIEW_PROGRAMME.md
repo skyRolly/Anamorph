@@ -29,6 +29,129 @@ entries and CHANGELOG notes cite.
 
 ---
 
+## Round 17 — 2026-09-02 — two investigations resolved: one defect at the end of the unclamped read, one finding refuted
+
+### ER-STATE-21 — SPLIT DISPOSITION: a concrete defect FIXED, the contract question DEFERRED
+
+Round 16 surveyed nineteen malformed MODERN Settings and found no crash, no undefined conversion on
+the restore path, and every DSP-facing read clamped at source, but also that the values are kept
+verbatim and survive into the next save. It closed with the contract question open. This round
+finished the job the survey started: it followed the values to their consumers.
+
+**The six settings, end to end.** Stored representation is always XML text, so every value arrives
+as a `juce::var` string and each consumer's own conversion is what decides the outcome.
+
+| setting | domain | default | consumer conversion | clamped at the read? | invalid value re-serialized? |
+|---|---|---|---|---|---|
+| `int_oversample` | ComboBox id 1..4 | 1 (Off) | `jlimit (0, 3, (int) v - 1)` → `osAtomic` | **yes** | yes, verbatim |
+| `int_uiScale` | ComboBox id 1..5 | 3 (M) | `jlimit (0, 4, (int) v - 1)` | **yes** | yes, verbatim |
+| `int_scopePersist` | double 0..1 | 0.5 | `(float) (double) v`, then the editor's Slider → `pow(v, 0.737f)` → `Vectorscope::setPersistence` | **no** | yes, verbatim |
+| `int_metersOn` | bool | false | `(bool) v` | total coercion | yes, verbatim |
+| `int_tooltipsOn` | bool | false | `(bool) v` | total coercion | yes, verbatim |
+| `int_uiAnimations` | bool | true | `(bool) v` + `animFloat` | total coercion | yes, verbatim |
+
+Five of six are safe by construction: two clamp at the read, three take a `var`→`bool` coercion that
+is total (every input maps to true or false). `scopePersist` is the exception, and it is the only one
+whose value can travel.
+
+**Following it produced a real defect.** The chain, as the editor actually builds it, is Value →
+`Slider` (range 0..1) → `applyScopePersist`'s `pow(value, 0.737f)` → `Vectorscope::setPersistence`'s
+`jlimit(0, 1, ...)` → `windowFrames()`'s `jmap` → **`(int)`**. That last conversion is UNDEFINED for
+a non-finite float ([conv.fpint]) — the same class round 12 closed on the legacy path — and two
+inputs reach it non-finite:
+
+| stored value | slider value | after `pow` | after `jlimit` | `(int)` conversion |
+|---|---|---|---|---|
+| `0.25` | 0.2500 | 0.3600 | 0.3600 | defined |
+| `5.0` | 1.0000 | 1.0000 | 1.0000 | defined (the Slider clamps a too-high value) |
+| `inf` | 1.0000 | 1.0000 | 1.0000 | defined (likewise) |
+| `abc` | 0.0000 | 0.0000 | 0.0000 | defined |
+| **`nan`** | nan | nan | **nan** | **UNDEFINED** |
+| **`-1.0`** | −1.0000 | **−nan** | **−nan** | **UNDEFINED** |
+
+Two things make this worth the round. First, `juce::jlimit` returns its argument when NEITHER
+comparison is true, which is exactly what a NaN does — so a clamp that reads as total is transparent
+to the one value that most needs clamping. Second, and less obvious: **a perfectly finite,
+in-the-file value becomes the non-finite one**. Any NEGATIVE persistence is raised to a fractional
+power on the way in, and `pow(-1.0f, 0.737f)` is NaN. So the defect does not need an exotic file;
+`-0.5` is enough, and round 16 measured that opening the editor does not repair a negative value.
+
+**Reproduced end to end, not modelled.** State test 32 leg 2 restores four malformed sessions into a
+real processor, constructs the REAL editor, finds the `Vectorscope` among its children and reads the
+persistence back off the component. Before the fix: `nan` → nan, `-1.0` → −nan, `-0.5` → −nan. After:
+0.6000 in each case, the member's own initialiser.
+
+**Fix, at the point where the invariant is declared.** `Vectorscope::setPersistence` promises "0..1"
+in its own comment and did not deliver it for a NaN; it now substitutes the default for any
+non-finite input. That is one line, local, and correct for every caller present and future, and it is
+the recovery the meters and the correlation display already apply to a non-finite sample (ADR-0009).
+A public `getPersistence()` was added alongside it so the guard is testable through the real editor
+rather than by inspection. **Deliberately NOT fixed at the restore**: sanitising in `restoreState`
+would be defining what a malformed present value MEANS, which is the contract question below, and
+the brief for this round forbids inventing that. The tree still keeps whatever the file said.
+
+**What stays open, precisely.** `SERIALIZATION_REGISTRY.md`'s `ANAMORPH_INTERNAL` table states a
+Default for each field's ABSENCE (settled in round 14) and no rule for a value that is present but
+malformed. Choosing between "clamp at the read", "repair at restore as the legacy path does" and
+"adopt verbatim, since the consumers are safe" changes what a damaged file means to every version
+that reads it, and it is a maintainer decision, not a lint. The registry now records the measurement
+and the open question rather than a rule this programme picked. **Disposition: the defect is FIXED;
+the contract question is DEFERRED with its evidence complete.**
+
+**Not a compatibility defect, on the evidence.** The durable invalid state does not break the
+compatibility promise: a session written by any version still loads in any other, the malformed value
+is confined to the field it was written in, and every consumer that could act on it now yields a
+value inside the documented domain. The residual risk is narrow and worth stating rather than
+implying: a FUTURE version that reads one of these fields more strictly, or that changes a ComboBox
+domain, would inherit whatever a damaged file carries — which is an argument for settling the
+contract question, not evidence of a defect today.
+
+### ER-GUI-05 — REFUTED — the direct-child sweep cannot strand a gesture, because a wrapper would prevent the gesture existing
+
+The finding: *"`abortAbandonedDragGestures` searches only direct children. Wrapping the value box
+later will silently strand host gestures again"* (`src/PluginEditor.cpp:1370`). The premise is
+backwards, and the code says so in three places.
+
+**The gesture owner is the value box, and it is the only one.** `anamorph::gui::DragGestureOwner` has
+exactly one implementer, `ValueBox` in `LookAndFeel.cpp`, created only by
+`AnamorphLookAndFeel::createSliderTextBox`.
+
+**Every value box is a direct child of its slider, by JUCE's construction, not ours.**
+`juce::Slider` does `valueBox.reset (lf.createSliderTextBox (owner)); owner.addAndMakeVisible
+(valueBox.get());` (pinned `juce_Slider.cpp:601-602`). The plug-in never parents it.
+
+**Every slider is registered.** Thirteen `Knob` members exist; twelve go through `setupRotary` and
+`scopePersistK` through the explicit list, and all thirteen reach `registerAnimated`. There is no
+slider outside the sweep, and `ABControl` — the one custom composite in the list — has no child
+components at all.
+
+**And the wrapper scenario fails safe, which is the actual answer.** `ValueBox` depends on
+`rotaryParent (getParentComponent())` in `mouseDown` (which OPENS the gesture), in `mouseDrag`, and in
+`abortDragGesture`. Wrap the value box and `getParentComponent()` stops being the slider, so
+`rotaryParent` returns null and **no gesture is ever opened** — there is nothing to strand. The
+failure would be loud (drag-to-edit and its undo step stop working) rather than silent, and it is
+already covered: State test 21 locates the box as a direct child of a slider and asserts "the press
+registers on the knob" before testing the reconcile, so a wrapper fails that test twice over.
+
+The traversal depth and the gesture's own precondition are therefore the same fact, and cannot
+diverge. **No production change**, per the brief's instruction not to generalise the traversal for a
+hypothetical wrapper. The existing comment at the sweep already states the relationship correctly
+("`animated` holds the SLIDER and the gesture lives one level down"), so no documentation was
+misstated and none is changed.
+
+Worth recording for completeness: `scopePersistK` is `LinearHorizontal`, and `rotaryParent` accepts
+only rotary styles, so its value box never opens a gesture at all. The sweep covers it regardless.
+
+### ER-RT-05 — implementation and documentation both verified, no change
+
+Verified on both sides this round rather than the documentation alone. Implementation: the walk is
+still same-file and transitive (the lint says so at its own `:618`, and three self-test cases pin it,
+including a two-hop transitive case); `AUDIO_FN` still carries both ER-RT-02 cross-file seeds,
+`setParameters` and `toEngine`, so neither documented hole has regressed. Runtime: 47 files scanned,
+0 violations, self-test 93 cases. Documentation was verified accurate in round 16, when the one
+inaccuracy found — `REPOSITORY_MAP.md` UNDERSTATING the reach with pre-closure seed-only phrasing —
+was corrected. Nothing further to change.
+
 ## Round 16 — 2026-09-02 — the previous project's A/B Level-Match gains survived a restore
 
 ### ER-STATE-20 — CONFIRMED and FIXED — and it leaked on a second path the finding did not name

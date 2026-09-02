@@ -15,6 +15,28 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 
 ## [0.9.6] — 2026-09-01
 ### Fixed
+- **A damaged Scope Persistence value in a project file can no longer put the vectorscope's afterglow
+  into an undefined state.** The Settings panel's Scope Persistence is stored with the project as a
+  number from 0 to 1. A project whose stored value was damaged (hand-edited, or corrupted in
+  transit) to `nan`, or to any *negative* number, produced a not-a-number afterglow length inside
+  the vectorscope: negative values became one on the way in, because the display curve raises the
+  stored value to a fractional power. Neither was caught, because the clamp that should have caught
+  them is written in a way that a not-a-number slips straight through, and opening the Settings
+  panel did not repair either. The vectorscope now falls back to its default afterglow for any such
+  value, exactly as the meters already do for a damaged audio sample. Ordinary projects are
+  unaffected, and the stored value itself is untouched. Regression coverage: State test 32.
+  Evidence: PR #134. [Verified]
+- **A damaged Scope Persistence value in a project file can no longer put the vectorscope's afterglow
+  into an undefined state.** The Settings panel's Scope Persistence is stored with the project as a
+  number from 0 to 1. A project whose stored value was damaged (hand-edited, or corrupted in
+  transit) to `nan`, or to any *negative* number, produced a not-a-number afterglow length inside
+  the vectorscope: negative values became one on the way in, because the display curve raises the
+  stored value to a fractional power. Neither was caught, because the clamp that should have caught
+  them is written in a way that a not-a-number slips straight through, and opening the Settings
+  panel did not repair either. The vectorscope now falls back to its default afterglow for any such
+  value, exactly as the meters already do for a damaged audio sample. Ordinary projects are
+  unaffected, and the stored value itself is untouched. Regression coverage: State test 32.
+  Evidence: PR #134. [Verified]
 - **Opening a project that has no A/B data no longer carries the previous project's Level Match
   amount into the first A/B switch.** The amount Level Match had settled on is remembered per A/B
   slot, so that switching between A and B does not make the level lurch while the matcher

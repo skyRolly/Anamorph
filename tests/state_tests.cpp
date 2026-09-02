@@ -53,6 +53,7 @@
 #include <random>
 #include <vector>
 #include <functional>
+#include <limits>
 
 namespace
 {
@@ -5360,6 +5361,46 @@ static int runModernSettingsProbe()
                      afterEditor.toRawUTF8());
     }
 
+    // ---- Downstream of the ONE unclamped consumer (round 17) -----------------
+    // scopePersist is the only setting whose read applies no clamp, so it is the
+    // only one whose malformed value can travel. Model the real chain exactly as
+    // the editor builds it: a Slider with the editor's range (PluginEditor.cpp
+    // setRange(0,1,0.001)) bound two-way to the tree value (getValueObject().
+    // referTo(scopePersistValue())), then applyScopePersist()'s
+    // pow(getValue(), 0.737f), then Vectorscope::setPersistence's
+    // jlimit(0,1,...), then windowFrames()'s jmap -> (int).
+    //
+    // The last step is the one that matters: juce::jlimit returns its argument
+    // when NEITHER comparison is true, which is exactly what a NaN does, so a
+    // clamp that looks total is transparent to it -- and (int) of a non-finite
+    // float is UNDEFINED ([conv.fpint]), the same class round 12 fixed on the
+    // legacy path. This section therefore reports finiteness at each stage and
+    // does NOT perform the final conversion.
+    std::printf ("\n  downstream of scopePersist (the one unclamped read), modelling the real editor chain:\n");
+    std::printf ("    %-10s | %-12s | %-12s | %-12s | %s\n",
+                 "written", "slider value", "pow(v,.737)", "after jlimit", "jmap -> (int) would be");
+    std::printf ("    %s\n", juce::String::repeatedString ("-", 84).toRawUTF8());
+    int reachesUB = 0;
+    for (const char* v : { "0.25", "5.0", "-1.0", "nan", "inf", "1e39", "abc" })
+    {
+        juce::ValueTree t ("T");
+        t.setProperty ("p", juce::var (juce::String (v)), nullptr);
+        juce::Slider sl;
+        sl.setRange (0.0, 1.0, 0.001);                       // the editor's range
+        sl.getValueObject().referTo (t.getPropertyAsValue ("p", nullptr));
+
+        const double sliderV = sl.getValue();
+        const float  powed   = std::pow ((float) sliderV, 0.737f);
+        const float  limited = juce::jlimit (0.0f, 1.0f, powed);
+        const float  mapped  = juce::jmap (limited, 0.0f, 1.0f, 1200.0f, 8000.0f);
+        const bool   ub      = ! std::isfinite (mapped);
+        if (ub) ++reachesUB;
+        std::printf ("    %-10s | %-12.4f | %-12.4f | %-12.4f | %s\n", v, sliderV,
+                     (double) powed, (double) limited,
+                     ub ? "UNDEFINED (non-finite)" : "defined");
+    }
+    std::printf ("    => %d of 7 reach the (int) conversion non-finite\n", reachesUB);
+
     std::printf ("\n  summary: %d case(s) left a NON-FINITE scope persistence;"
                  " %d left an out-of-domain ComboBox id IN THE TREE; %d persisted"
                  " the malformed text into the next save\n", nonFinite, outOfDomainTree, durable);
@@ -5367,6 +5408,117 @@ static int runModernSettingsProbe()
                  "   uiScaleIndex via jlimit(0,4) -- so neither can index out of range whatever\n"
                  "   the tree holds. scopePersist() is an unclamped (float)(double) read.)\n");
     return 0;
+}
+
+// ---------------------------------------------------------------------------
+//  State test 32 -- a malformed `int_scopePersist` must not drive a NON-FINITE
+//  persistence into the vectorscope (ER-STATE-21, round 17).
+//
+//  This is the one place where round 16's survey of malformed MODERN Settings
+//  found something that travels. Five of the six settings are clamped at their
+//  read (`oversampleIndex`/`uiScaleIndex` through `jlimit`, the three booleans
+//  through a total `var`->`bool` coercion), so whatever the tree holds, the
+//  consumer sees a legal value. `scopePersist` is the exception, and its route
+//  ends at `Vectorscope::windowFrames()`, which evaluates `(int)` of a `jmap` --
+//  UNDEFINED for a non-finite float ([conv.fpint]).
+//
+//  TWO inputs arrive non-finite, and the second is the interesting one:
+//    * `"nan"` travels intact -- JUCE's number parser accepts it, the Value ->
+//      Slider binding does not reject it, and `jlimit` is transparent to it
+//      because NEITHER of its comparisons is true for a NaN; and
+//    * ANY NEGATIVE value, which is perfectly finite in the file, becomes a NaN
+//      before it arrives: the editor's `applyScopePersist()` computes
+//      `pow(value, 0.737f)` first, and a negative base with a fractional
+//      exponent is NaN.
+//  Neither is repaired by opening the editor (measured, round 16: the Slider's
+//  range constrains a too-HIGH value but writes nothing back for a negative or a
+//  NaN), and both survive into the next save.
+//
+//  WHAT THIS DOES NOT DECIDE. The tree keeps whatever the file said; defining
+//  what a malformed PRESENT value should mean in `ANAMORPH_INTERNAL` is a
+//  serialization-contract question that remains open (ER-STATE-21's disposition).
+//  This test pins only that the value reaching the scope is always finite, which
+//  is a local correctness property of the consumer and true whatever that
+//  contract turns out to be.
+// ---------------------------------------------------------------------------
+static void testMalformedScopePersistStaysFinite()
+{
+    std::printf ("State test 32: a malformed scope persistence stays finite at the consumer (ER-STATE-21)\n");
+
+    // --- Leg 1: the consumer's own contract, on the real Vectorscope.
+    {
+        AnamorphAudioProcessor proc;
+        proc.prepareToPlay (48000.0, 512);
+        anamorph::gui::Vectorscope vs (proc.getEngine().getScopeBuffer());
+
+        const float nan = std::numeric_limits<float>::quiet_NaN();
+        const float inf = std::numeric_limits<float>::infinity();
+
+        vs.setPersistence (0.25f);
+        checkNear ((double) vs.getPersistence(), 0.25, 1.0e-6,
+                   "a legal persistence passes through unchanged");
+        vs.setPersistence (5.0f);
+        checkNear ((double) vs.getPersistence(), 1.0, 1.0e-6, "a too-high value clamps to 1");
+        vs.setPersistence (-1.0f);
+        checkNear ((double) vs.getPersistence(), 0.0, 1.0e-6, "a negative value clamps to 0");
+        vs.setPersistence (nan);
+        check (std::isfinite (vs.getPersistence()), "a NaN does NOT become the persistence");
+        vs.setPersistence (inf);
+        check (std::isfinite (vs.getPersistence()), "an infinity does NOT become the persistence");
+        vs.setPersistence (-inf);
+        check (std::isfinite (vs.getPersistence()), "a negative infinity does NOT become the persistence");
+    }
+
+    // --- Leg 2: end to end, through the REAL editor and a real malformed session.
+#if ! (JUCE_LINUX || JUCE_BSD)
+    std::printf ("  leg 2 SKIPPED off Linux -- headless editor construction is unverified there (KI-007)\n");
+#else
+    // A genuine modern save, with only this one field replaced.
+    juce::MemoryBlock base;
+    {
+        AnamorphAudioProcessor src;
+        src.prepareToPlay (48000.0, 512);
+        src.getStateInformation (base);
+    }
+
+    for (const char* bad : { "nan", "-1.0", "-0.5", "inf" })
+    {
+        auto xml = BlobCodec::unwrap (base);
+        if (xml == nullptr) { check (false, "the real save round-trips through the blob codec"); return; }
+        auto* internal = xml->getChildByName ("ANAMORPH_INTERNAL");
+        if (internal == nullptr) { check (false, "the save carries an ANAMORPH_INTERNAL node"); return; }
+        internal->setAttribute ("int_scopePersist", bad);
+        auto mutated = BlobCodec::wrap (*xml);
+
+        AnamorphAudioProcessor proc;
+        proc.prepareToPlay (48000.0, 512);
+        proc.setStateInformation (mutated.getData(), (int) mutated.getSize());
+
+        auto* raw = proc.createEditor();
+        auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+        check (ed != nullptr, "editor constructs over the malformed session");
+        if (ed == nullptr) { delete raw; return; }
+
+        // The scope is a direct child of the editor (addAndMakeVisible in the ctor).
+        anamorph::gui::Vectorscope* vs = nullptr;
+        for (int i = 0; i < ed->getNumChildComponents() && vs == nullptr; ++i)
+            vs = dynamic_cast<anamorph::gui::Vectorscope*> (ed->getChildComponent (i));
+        check (vs != nullptr, "the editor's vectorscope is reachable (non-vacuity)");
+
+        if (vs != nullptr)
+        {
+            const float p = vs->getPersistence();
+            std::printf ("  int_scopePersist=%-6s -> tree keeps %-6s, scope persistence %.4f\n", bad,
+                         proc.getInternal().copyState()["int_scopePersist"].toString().toRawUTF8(),
+                         (double) p);
+            check (std::isfinite (p),
+                   "a malformed persistence in the session leaves the scope FINITE");
+            check (p >= 0.0f && p <= 1.0f, "...and inside the documented 0..1 domain");
+        }
+        proc.editorBeingDeleted (ed);
+        delete ed;
+    }
+#endif
 }
 
 int main (int argc, char* argv[])
@@ -5445,6 +5597,7 @@ int main (int argc, char* argv[])
     testPartialSettingsDoNotInherit();
     testOffThreadPrepareDefersLatency();
     testRestoreResetsAbMatchGains();
+    testMalformedScopePersistStaysFinite();
     testMalformedLegacySettingsResolveToValid();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();

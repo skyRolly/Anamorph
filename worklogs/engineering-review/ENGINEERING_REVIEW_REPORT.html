@@ -82,14 +82,25 @@ ruled out, fixed, deferred — and what should happen next. A rendered <em>view<
 <code>ENGINEERING_REVIEW_PROGRAMME.md</code> beside it; the worklog is the source of truth a later
 round reconciles against.</p>
 <div class="meta">
-  <span>ROUNDS 1–16 · 2026-08-31 → 09-02</span>
+  <span>ROUNDS 1–17 · 2026-08-31 → 09-02</span>
   <span>TREE: main @ e8f4422 → v0.9.6</span>
-  <span>STATUS: ER-STATE-20 fixed; checklist 8/8; ONE tag blocker left — KI-015</span>
+  <span>STATUS: ER-STATE-21 defect fixed, contract deferred; checklist 8/8; ONE tag blocker left — KI-015</span>
   <span>NEXT: licence (KI-015), then tag v0.9.6</span>
 </div>
 
 <h2><span class="no">§1</span>Executive status</h2>
-<p class="lede"><strong>Round 16: the previous project's A/B Level-Match gains survived a restore, and
+<p class="lede"><strong>Round 17 finished the malformed-Settings survey by following the values to their
+consumers, and refuted the drag-recovery finding.</strong> Five of the six settings are safe by
+construction. The sixth travels, and at the end of its route sits an <code>(int)</code> conversion of a
+value a clamp had failed to catch.</p>
+<div class="verdicts">
+  <div class="v"><div class="k">ER-STATE-21 · defect FIXED, contract DEFERRED</div><p>A <code>nan</code> or any <strong>negative</strong> stored persistence reached <code>Vectorscope::windowFrames()</code>'s <code>(int)</code> conversion non-finite, which is undefined. Guarded at the consumer, where the "0..1" promise is declared. What a malformed <em>present</em> value should MEAN in the registry stays open: that changes what a damaged file means to every version, and is a maintainer decision.</p></div>
+  <div class="v"><div class="k">Two ways a clamp lied</div><p><code>juce::jlimit</code> returns its argument when neither comparison is true, which is exactly what a NaN does. And a perfectly finite <code>-0.5</code> in the file becomes a NaN before it arrives, because the display curve raises it to a fractional power first. Neither is repaired by opening the editor.</p></div>
+  <div class="v"><div class="k">State test 32 · 7 checks discriminating</div><p>A unit leg over the real <code>Vectorscope</code>, and an end-to-end leg that restores four malformed sessions, constructs the real editor and reads the persistence back off the scope component itself. Fails 7 without the guard, 0 with it.</p></div>
+  <div class="v"><div class="k">ER-GUI-05 · REFUTED</div><p>Wrapping the value box could not silently strand a gesture: <code>ValueBox</code> opens one only via <code>rotaryParent(getParentComponent())</code>, so a wrapper stops the gesture EXISTING. The failure would be loud, and State test 21 already fails twice over on it. All 13 sliders are registered and JUCE itself parents every value box directly. No change.</p></div>
+</div>
+
+<p class="lede" style="margin-top:26px"><strong>Round 16: the previous project's A/B Level-Match gains survived a restore, and
 leaked on one more path than the finding named.</strong> <code>abMatchGain[]</code> is the one part of an
 A/B slot that is never serialized — a runtime cache of what the matcher had settled on — so nothing on
 the restore path ever overwrote it. Measured on the real restore paths, the first switch injected the
@@ -478,6 +489,14 @@ evidence emerged to promote one. Ranking follows the programme's order — corre
   <li class="done">Drift sweep: CHANGELOG date, HANDOVER audition claim; history left intact</li>
   <li class="done">D-3 performed by the maintainer against the v0.9.6 build — <strong>PASSED</strong></li>
 </ul>
+<h3>Round 17</h3>
+<ul class="roadmap">
+  <li class="done">ER-STATE-21 — the one unclamped Setting followed to its consumer; non-finite persistence guarded at <code>Vectorscope::setPersistence</code>; State test 32 (7 checks discriminating)</li>
+  <li class="done">ER-STATE-21 contract question DEFERRED with complete evidence — the registry records the measurement and the open choice, not a rule this programme picked</li>
+  <li class="done">ER-GUI-05 REFUTED — a wrapper would prevent the gesture opening, not strand it; already covered by State test 21; no traversal change</li>
+  <li class="done">ER-RT-05 verified on BOTH sides this round: closure still same-file and transitive, both cross-file seeds present, lint and self-test clean</li>
+</ul>
+
 <h3>Round 16</h3>
 <ul class="roadmap">
   <li class="done">ER-STATE-20 — the unserialized per-slot Level-Match cache now resets with the slot, in both places a slot is reset</li>

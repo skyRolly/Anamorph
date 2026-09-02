@@ -1,6 +1,7 @@
 #pragma once
 
 #include <juce_gui_basics/juce_gui_basics.h>
+#include <cmath>
 #include "../dsp/ScopeBuffer.h"
 #include "FrameClock.h"
 
@@ -33,11 +34,33 @@ public:
     void lookAndFeelChanged() override { staticLayer = {}; }
 
     // 0..1: longer trails + slower fade.
+    //
+    // The finiteness guard is not defensive padding, it closes a reachable
+    // undefined conversion (ER-STATE-21, round 17). `juce::jlimit` returns its
+    // argument when NEITHER comparison is true, which is exactly what a NaN does,
+    // so the clamp on its own is transparent to one -- and `windowFrames()` below
+    // then evaluates `(int)` of it, which is UNDEFINED for a non-finite float
+    // ([conv.fpint]), the same class round 12 fixed on the legacy Settings path.
+    // Two inputs reach here non-finite, both from a hand-edited or corrupted
+    // session's `int_scopePersist`, which nothing on the restore path rejects and
+    // opening the editor does not repair:
+    //   * "nan" travels the whole way -- Value -> Slider -> pow -> here; and
+    //   * ANY NEGATIVE value arrives as a NaN, because the editor's
+    //     `applyScopePersist()` raises it to a fractional power first
+    //     (`pow(-1.0f, 0.737f)` is NaN), so a perfectly finite out-of-range value
+    //     becomes the non-finite one.
+    // Substituting the member's own initialiser is the recovery the meters and the
+    // correlation display already apply to a non-finite sample (ADR-0009): the
+    // control keeps working at its default rather than propagating the poison.
     void setPersistence (float p) noexcept
     {
-        persistence = juce::jlimit (0.0f, 1.0f, p);
+        persistence = std::isfinite (p) ? juce::jlimit (0.0f, 1.0f, p) : kDefaultPersistence;
         frameDirty = true; // window length + point alpha depend on persistence
     }
+
+    // The clamped, always-finite value in force. Exists so the guard above is
+    // testable through the real editor (State test 32) rather than by inspection.
+    float getPersistence() const noexcept { return persistence; }
 
 private:
     void tick(); // FrameClock callback (display-rate; no dt-dependent state here)
@@ -52,7 +75,9 @@ private:
     }
 
     anamorph::ScopeBuffer& scope;
-    float persistence = 0.6f;
+    // 0.6 is the remapped 50 % default (applyScopePersist's pow(0.5, 0.737)).
+    static constexpr float kDefaultPersistence = 0.6f;
+    float persistence = kDefaultPersistence;
 
     std::vector<float> bufL, bufR; // scratch read from the ring buffer
 

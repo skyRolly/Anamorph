@@ -29,7 +29,9 @@ project, confirmed and fixed on the opposite path from the one reported); and **
 off-message-thread re-prepare latency race confirmed under ThreadSanitizer and closed inside D-1,
 with one new risk recorded); and **round 16** (the previous project's per-slot A/B Level-Match gains
 surviving a restore, confirmed and fixed on two paths, with the modern-Settings validation question
-investigated and deliberately left to a contract decision).
+investigated and deliberately left to a contract decision); and **round 17** (that investigation
+finished at the consumers: one concrete undefined conversion fixed, the contract question deferred
+with complete evidence, and the drag-recovery finding refuted).
 **Header correction (round 7, 2026-09-01):** this line enumerated round 1 alone while the body
 carried six later rounds, and dated the change set 2026-08-31 while the CHANGELOG `[0.9.6]` heading
 had been re-dated to 2026-09-01 — the same drift the C6 correction below was written about,
@@ -7153,5 +7155,37 @@ ABSENCE — so it is filed rather than invented. Documented in `TESTING.md` and 
 
 **Counts.** The state suite is **31 tests / 1301 checks** (was 30 / 1278); the DSP suite is unchanged
 at 47 + the A/B clamp guard / 245. The `[0.9.6]` Fixed count is **23**. Swept through
+`TESTING_POLICY.md`, `TESTING.md`, `README.md`, `REPOSITORY_MAP.md`, `RELEASE_HARDENING_PLAN.md`
+and `HANDOVER.md`. [Verified]
+
+## Engineering-review programme, round 17 — malformed Settings followed to their consumers (2026-09-02, still the 0.9.6 change set)
+
+**What the round is.** Two investigations resolved. One produced a concrete defect with a minimal
+fix; the other is refuted. Records: `worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md`
+§Round 17.
+
+**Code change and its doc syncs (trigger map applied):**
+- `src/gui/Vectorscope.h` (`setPersistence` substitutes the default for a non-finite input, closing a
+  reachable `(int)`-of-NaN in `windowFrames()`; a `getPersistence()` accessor added so the guard is
+  testable through the real editor — ER-STATE-21) → CHANGELOG `[0.9.6]` (one Fixed entry; a damaged
+  stored value drove an undefined afterglow length), `docs/architecture/SERIALIZATION_REGISTRY.md`
+  (a new `ANAMORPH_INTERNAL` paragraph recording the malformed-value measurement, the fixed
+  consequence, and the still-open contract question), State test 32, `docs/procedures/TESTING.md`
+  (the probe's second table and the test), and the count sweep below. **No serialization change**,
+  and the stored value itself is untouched.
+
+**Why the fix is at the consumer and not at the restore.** Sanitising in `restoreState` would define
+what a malformed *present* value MEANS, which is the contract question the round was asked to
+resolve with evidence rather than invent. The guard sits where the "0..1" promise is declared, is
+correct for every caller, and leaves the contract decision to the maintainer.
+
+**Refuted, no change (ER-GUI-05).** The abandoned-gesture sweep's direct-child traversal cannot strand
+a gesture: `ValueBox` opens one only through `rotaryParent (getParentComponent())`, so a wrapper would
+stop the gesture existing rather than hide it, and State test 21 already asserts the press registers
+before testing the reconcile. All thirteen sliders are registered and JUCE parents every value box
+directly. Documentation was not misstated, so none changed.
+
+**Counts.** The state suite is **32 tests / 1323 checks** (was 31 / 1301); the DSP suite is unchanged
+at 47 + the A/B clamp guard / 245. The `[0.9.6]` Fixed count is **24**. Swept through
 `TESTING_POLICY.md`, `TESTING.md`, `README.md`, `REPOSITORY_MAP.md`, `RELEASE_HARDENING_PLAN.md`
 and `HANDOVER.md`. [Verified]
