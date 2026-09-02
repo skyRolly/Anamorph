@@ -82,14 +82,26 @@ ruled out, fixed, deferred — and what should happen next. A rendered <em>view<
 <code>ENGINEERING_REVIEW_PROGRAMME.md</code> beside it; the worklog is the source of truth a later
 round reconciles against.</p>
 <div class="meta">
-  <span>ROUNDS 1–25 · 2026-08-31 → 09-03</span>
+  <span>ROUNDS 1–26 · 2026-08-31 → 09-03</span>
   <span>TREE: main @ e8f4422 → v0.9.6</span>
-  <span>STATUS: last actionable Review Bug closed; D-2, RISK-008 and KI-015 remain open by decision</span>
+  <span>STATUS: a refused preset is now a full no-op, audio included; D-2, RISK-008 and KI-015 remain open by decision</span>
   <span>NEXT: licence (KI-015), then tag v0.9.6</span>
 </div>
 
 <h2><span class="no">§1</span>Executive status</h2>
-<p class="lede"><strong>Round 24: a preset from another plug-in was loaded as if it were ours &mdash; and
+<p class="lede"><strong>Round 26: the other half of round 24 &mdash; a preset the plug-in REFUSED still
+ducked the audio.</strong> Round 24 made a foreign preset a no-op for state. The editor was still raising
+the masking duck before asking the manager to load, so a file the manager then refused dry-filled ~32 ms
+to mask a swap that never happened.</p>
+<div class="verdicts">
+  <div class="v"><div class="k">ER-GUI-06 &middot; FIXED at the load-success boundary</div><p>Reproduced through the REAL editor's production <code>onClick</code>: an engaged widener's side energy fell to <strong>0.201786</strong> against a <strong>0.443549</strong> control &mdash; <strong>0.4549</strong> of settled &mdash; on a load that applied nothing. All three call sites raised the duck first; <code>load()</code> returns <code>void</code>, so the menu site could not even have checked.</p></div>
+  <div class="v"><div class="k">One line, three call sites</div><p><code>presets.onAboutToLoad = [this] { pollUndoCoalesce(); engine.requestDuck(); };</code> &mdash; the only point that is BOTH after every check that can refuse (missing factory id, unparsable file, and since ER-STATE-24 a foreign root) AND before the first <code>setValueNotifyingHost</code>. That second half is why the fix is not "duck after a successful load": raising it afterwards leaves a window where an audio block hears the swap unmasked.</p></div>
+  <div class="v"><div class="k">Why not a success flag on the callers</div><p>One boundary fixes the menu, <code>Load Preset…</code> AND the prev/next buttons via <code>step()</code> &mdash; which the finding did not name. The two loaders cannot drift apart because neither owns the decision any more, no validation is duplicated, no new mechanism is added, and every future caller inherits the invariant.</p></div>
+  <div class="v"><div class="k">State test 35 &middot; drives the real editor</div><p>The defect was in the editor's ORDERING, so nothing below it could see the bug: the buttons carry <code>setComponentID("presetnav")</code> and differ by text, so the child walk reaches the production handler. Test 48's observable &mdash; mono in, engaged widener, side energy &mdash; with twin processors compared to each other. BOTH directions asserted, so "delete the duck" cannot pass. <strong>2 of 16 fail pre-fix</strong>; after, the two numbers swap places exactly.</p></div>
+  <div class="v"><div class="k">Malformed files, and no new race</div><p>An unparsable document is refused at the identical point, so it reaches no duck either &mdash; the invariant covers ALL failed loads, and that falls out of the fix rather than needing a second case. <code>requestDuck</code> is a relaxed store moved between two message-thread functions: no new shared state, nothing for D-2.</p></div>
+</div>
+
+<p class="lede" style="margin-top:26px"><strong>Round 24: a preset from another plug-in was loaded as if it were ours &mdash; and
 the mechanism is one step worse than the finding said.</strong> Not merely "missing parameters become
 defaults": every parameter the foreign file <em>named</em> was <strong>adopted</strong>, because the
 lookup is by <code>id</code> property and does not care what the root is called. Both loaders reported
@@ -574,6 +586,15 @@ evidence emerged to promote one. Ranking follows the programme's order — corre
   <li class="done">Drift sweep: CHANGELOG date, HANDOVER audition claim; history left intact</li>
   <li class="done">D-3 performed by the maintainer against the v0.9.6 build — <strong>PASSED</strong></li>
 </ul>
+<h3>Round 26</h3>
+<ul class="roadmap">
+  <li class="done">ER-GUI-06 FIXED — the masking duck moved from the three editor call sites to the load path's own <code>onAboutToLoad</code> boundary</li>
+  <li class="done">Reproduced through the real editor's production <code>onClick</code>: side energy 0.201786 vs a 0.443549 control on a refused step</li>
+  <li class="done">State test 35 (16 checks) — real editor, Test 48's observable, twin processors, both directions asserted; 2 fail pre-fix</li>
+  <li class="done">Malformed files inherit the same no-audio-side-effect invariant; the successful-load duck is unchanged</li>
+  <li class="done">Round 24's state contract re-verified green through the same click; no new race class</li>
+</ul>
+
 <h3>Round 25</h3>
 <ul class="roadmap">
   <li class="done">Documentation only — <code>[0.9.6]</code> release date to <strong>2026-09-03</strong>; no source, test, workflow or baseline touched</li>

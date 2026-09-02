@@ -357,8 +357,11 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     presetPrev.setTooltip ("Previous preset");
     presetNext.setTooltip ("Next preset");
     presetName.setTooltip ("Presets"); // short, no period (#12)
-    presetPrev.onClick = [this] { processor.getEngine().requestDuck(); processor.getPresets().step (-1); knobSweepTime = 0.45; refreshPresetDisplay(); };
-    presetNext.onClick = [this] { processor.getEngine().requestDuck(); processor.getPresets().step (+1); knobSweepTime = 0.45; refreshPresetDisplay(); };
+    // No requestDuck() here: the load path raises it from onAboutToLoad, which fires only once a
+    // load has passed every check (ER-GUI-06). step() can land on a row whose file is unreadable
+    // or not ours, and ducking for that refusal masked nothing while dry-filling real audio.
+    presetPrev.onClick = [this] { processor.getPresets().step (-1); knobSweepTime = 0.45; refreshPresetDisplay(); };
+    presetNext.onClick = [this] { processor.getPresets().step (+1); knobSweepTime = 0.45; refreshPresetDisplay(); };
     presetName.onClick = [this] { showPresetMenu(); };
     addAndMakeVisible (presetPrev);
     addAndMakeVisible (presetNext);
@@ -2061,8 +2064,8 @@ void AnamorphAudioProcessorEditor::showPresetMenu()
             if (r == 0 || safeThis == nullptr) return;
             if (r == 10001) { safeThis->showSavePreset (true); return; }
             if (r == 10002) { safeThis->showLoadPreset(); return; }
-            safeThis->processor.getEngine().requestDuck();   // mask the level jump (#1, 0.6.4)
-            safeThis->processor.getPresets().load (r - 1);
+            safeThis->processor.getPresets().load (r - 1);   // the load path masks the level jump
+                                                             // itself, and only if it loads (ER-GUI-06)
             safeThis->knobSweepTime = 0.45; // sweep the knobs to the preset (#3)
             safeThis->refreshPresetDisplay();
         });
@@ -2087,7 +2090,9 @@ void AnamorphAudioProcessorEditor::showLoadPreset()
             const auto file = fc.getResult();
             if (file.existsAsFile())
             {
-                safeThis->processor.getEngine().requestDuck(); // mask the level jump (#1, 0.6.4)
+                // The chooser reaches any file on the machine, so this is the path most likely to
+                // be handed a foreign preset -- and the one where a duck for a refused load was
+                // most visible. The masking now comes from the load path itself (ER-GUI-06).
                 if (safeThis->processor.getPresets().loadFile (file))
                 {
                     safeThis->knobSweepTime = 0.45; // sweep the knobs to the preset (#3)

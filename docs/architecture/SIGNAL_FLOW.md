@@ -120,6 +120,18 @@ which is what it is for and what does not rot.
   still presents the ring at unity — bypass semantics untouched. Source:
   src/dsp/AnamorphEngine.cpp (`dryDuck`/`dryDuckGain`; gate at the ring fill, blend in the
   stage-5 output loop); guarded by `testForcedSwapNoDropout` (Test 26) and Test 30.
+- **Who raises a forced duck, and when** (2026-09-03, ER-GUI-06). A forced duck belongs to a swap
+  that is actually happening, so `requestDuck()` for a preset load is raised by the LOAD PATH —
+  the processor's `PresetManager::onAboutToLoad` hook — and not by the UI that asked for the load.
+  That hook is the only point that is both **after every check that can refuse** (a missing factory
+  id, an unparsable file, and since ER-STATE-24 a foreign root) and **before the first parameter
+  moves**, which is what the mask depends on. Until this was moved the editor raised it at the call
+  site, so a load the manager then REFUSED still dry-filled the next ~32 ms to mask a swap that had
+  not occurred — measured as an engaged widener's side energy at **0.4549 of the un-clicked
+  control's** (State test 35), the same "duck whose swap already happened" fault
+  `AnamorphEngine::primeParameters` documents for the activation route. Keeping the request in one
+  place also keeps the three call sites — the preset menu, `Load Preset…`, and the prev/next
+  buttons via `step()` — from drifting apart. **A successful load ducks exactly as before.**
 
 Any change to this order or these invariants requires an ADR and Architecture Review
 (`docs/policies/ADR_POLICY.md`, `docs/policies/ARCHITECTURE_REVIEW_GATE.md`).

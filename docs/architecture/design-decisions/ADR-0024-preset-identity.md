@@ -118,9 +118,9 @@ folder) are not disjoint.
   `:202-250` (`load`), `:252-266` (`loadFile`), `:278-314` (`saveUser`), `:316-327`
   (`adoptRestoredState`), `:333-386` (`encodeSelection`/`decodeSelection`)
 - `src/PluginProcessor.h:150-162` (`StateSet::selection`)
-- `src/PluginProcessor.cpp:43-54` (the hooks, incl. `onSaved`), `:243-259`
-  (`currentStateSet`/`applyStateSet`), `:417-449` (`commitPresetSwitchUndoStep`, incl. the
-  identity-moved guard on redo), `:550-571` (`writeSelection`/`readSelection`), `:652-693`
+- `src/PluginProcessor.cpp:56-67` (the hooks, incl. `onSaved`), `:256-272`
+  (`currentStateSet`/`applyStateSet`), `:430-462` (`commitPresetSwitchUndoStep`, incl. the
+  identity-moved guard on redo), `:563-584` (`writeSelection`/`readSelection`), `:665-706`
   (`readSlot`)
 - `tests/state_tests.cpp` — state tests 10, 11 and 12
 

@@ -87,7 +87,7 @@ carve-out is unavailable and condition 2 proper is unsatisfiable for it.
 - pre-0.6.4 A/B slots (params-only `slotA`/`slotB`).
 - pre-0.8.4 legacy APVTS view params (migrated to `InternalState`).
 
-Evidence [Verified]: src/PluginProcessor.cpp:926-1181 (`setStateInformation`: the AnamorphRoot read path, the pre-0.6.4 `readSlot` legacy-key fallback at :753-754, and the v0.2 else-branch at :762); src/InternalState.h:229-280.
+Evidence [Verified]: src/PluginProcessor.cpp:939-1194 (`setStateInformation`: the AnamorphRoot read path, the pre-0.6.4 `readSlot` legacy-key fallback at :753-754, and the v0.2 else-branch at :762); src/InternalState.h:229-280.
 
 ## Runtime compatibility: the x86-64 ISA floor
 

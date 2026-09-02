@@ -7,7 +7,7 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.6 change set** (2026-09-01, matching the CHANGELOG heading) — the
-**engineering-review programme, rounds 1 through 25**, newest last in the body: round 1 (the
+**engineering-review programme, rounds 1 through 26**, newest last in the body: round 1 (the
 programme's first sweep: six engine/state/GUI fixes with Tests 43–46 and two state regressions,
 the engaged Test 2/38 matrices, the KI-027 and RISK-007 filings, the v0.9.6 renumbering sweep, the
 NOTICE pin + AudioUnitSDK section, the CI_CD job inventory, and the new
@@ -48,7 +48,9 @@ lopsided pair — fixed, with round 21's mistaken note about it corrected in pla
 (a valid preset from another plug-in loaded as if it were ours — adopting what it named and
 defaulting the rest, with both loaders reporting success — closed by a root-type acceptance test
 shared by both loaders); and **round 25** (a minimal `[0.9.6]` Change Log correction pass — the
-release date, and five wording claims the current implementation contradicts).
+release date, and five wording claims the current implementation contradicts); and **round 26**
+(the audio half of round 24 — a preset the plug-in REFUSED still ducked the audio, because the
+editor raised the masking duck before the load could refuse).
 **Header correction (round 7, 2026-09-01):** this line enumerated round 1 alone while the body
 carried six later rounds, and dated the change set 2026-08-31 while the CHANGELOG `[0.9.6]` heading
 had been re-dated to 2026-09-01 — the same drift the C6 correction below was written about,
@@ -936,7 +938,7 @@ accounts for all four observed controls. The box is placed `h + 8` above the cur
 (`AnamorphLookAndFeel::getTooltipBounds`, `src/gui/LookAndFeel.cpp:885-894`), so its top edge is a
 **tip-dependent** offset above the pointer, and the Settings rows are at editor-local
 `oversampleBox` 274–297, `uiScaleBox` 331–354, `scopePersistK` 387–411, `tooltipsToggle` 423–449,
-`animToggle` 455–481 (`src/PluginEditor.cpp:2248-2273`). Taking each control's centre and
+`animToggle` 455–481 (`src/PluginEditor.cpp:2253-2278`). Taking each control's centre and
 subtracting `h + 8` for a two-line tip lands inside **Oversampling** from UI Scale, inside **UI
 Scale** from Vectorscope Persist, on or within a pixel or two of **Tooltips** from UI Animations,
 and — from Oversampling — on `settingsTitle` (221–241), a plain `juce::Label` that never had
@@ -1407,7 +1409,7 @@ document already uses for its five other source anchors.
 same untracked class" was a count of what that pass happened to look at, not a search — three more
 sat in `KNOWN_ISSUES.md` alone, and one of them is the worse kind. **KI-009's `focusSaveNameField`
 citation was mis-aimed, then mechanically carried.** At the merge base it read
-`src/PluginEditor.cpp:1603-1611`, which was the `rIn`/`rOut`/`rAct`/`rOn`/`rPos` easing block in
+`src/PluginEditor.cpp:1606-1614`, which was the `rIn`/`rOut`/`rAct`/`rOn`/`rPos` easing block in
 `stepMicroAnims` — not that function at all — and `--fix` moved it to `:1567-1575`, the same easing
 block after this change's insertions. Faithful, and still wrong. `focusSaveNameField` is at
 **`:1984-1992`**, and the two untracked references beside it were mis-aimed the same way: the
@@ -1446,7 +1448,7 @@ something these rounds created, and closing it is its own change.
 
 **A third review pass found the same carried-mistake class in `PRIVACY.md`, and this one needed a
 declaration.** The row saying the Presets folder is created when the **Load Preset** dialog opens
-cited `src/PluginEditor.cpp:1560` at the merge base — the S11 generation pre-gate comment inside
+cited `src/PluginEditor.cpp:1563` at the merge base — the S11 generation pre-gate comment inside
 `stepMicroAnims`, about 383 lines short of the `:1838` that `dir.createDirectory()` sat on there.
 `--fix` carried it to `:1524`, still the same comment. Corrected to **`:1916`**, and written the way
 the checker's own header says new citations should be — with the symbol spelled beside the number
@@ -1456,7 +1458,7 @@ half that survives the next shift.
 **Unlike the `KNOWN_ISSUES.md` five, this one is caught by the gate, which is why it is declared.**
 `PRIVACY.md` still has exactly one `src/PluginEditor.cpp` citation, so the pair IS compared, the
 re-aim reads as drift, and `--fix` **reverted the correction on the first run** — measured, not
-predicted. `("PRIVACY.md", "src/PluginEditor.cpp:2074"): "createDirectory"` is therefore added to
+predicted. `("PRIVACY.md", "src/PluginEditor.cpp:2077"): "createDirectory"` is therefore added to
 `DELIBERATE_REAIMS`. It is not an inert exemption: `verify_reaim_targets` resolves the anchor against
 the live file every run, and mutating the substring to a value the code does not contain makes the
 run fail with `::error::` and exit 2 — checked by doing it, then reverting. A declaration turns the
@@ -1533,7 +1535,7 @@ two that do not are `titleButton` and `aboutLink`, and neither can produce the r
     `false`. So the control has no hover visual at all, registered or not; the argument the review
     traces never reaches a pixel.
   * **`aboutLink` has a live fallback but cannot be occluded by a menu.** It is the *only* child of
-    `aboutBackdrop` (`src/PluginEditor.cpp:580`), so it is on screen only while the About overlay
+    `aboutBackdrop` (`src/PluginEditor.cpp:583`), so it is on screen only while the About overlay
     is. The editor's only menu-openers are `presetName.onClick` (`:350`) and the combo drop-downs —
     all of them outside that overlay and covered by it while it is up, with `Backdrop::mouseDown`
     eating the click. No pop-up menu can be open while `aboutLink` is visible.
@@ -7569,3 +7571,39 @@ Change Log — none is a fixed user-visible change, and the section carries no K
 
 **Counts.** Unchanged: DSP 50 tests + the A/B clamp guard / 282 checks, state 33 tests / 1460 checks,
 `[0.9.6]` Fixed count 30. [Verified]
+
+## Engineering-review programme, round 26 — a refused preset still ducked the audio (2026-09-03)
+
+**What the round is.** One fix, the audio half of round 24's state fix. Records:
+`worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Round 26.
+
+**ER-GUI-06 — the duck was raised by the caller, before the load could refuse.** Reproduced through
+the real editor's production `onClick`: an engaged widener on a mono stimulus, Next-preset clicked so
+`step(+1)` lands on a foreign-rooted row that `parseSoundFile` refuses — the next block's side RMS
+read **0.201786** against a **0.443549** un-clicked control, **0.4549** of settled, for a load that
+applied nothing. All three editor call sites raised `requestDuck()` before asking the manager to
+load, and `PresetManager::load` returns `void`, so the menu site could not have checked the outcome
+even in principle.
+
+**Fixed by moving the request to the load path's own success boundary** — the processor's
+`PresetManager::onAboutToLoad` hook, which is both after every check that can refuse and before the
+first `setValueNotifyingHost` — and deleting it from the three call sites. Raising it *after* a
+successful load was rejected as an alternative: it would leave a window in which an audio block hears
+the swapped parameters unmasked, weakening a guarantee this round was required to preserve.
+
+**Documents touched:** `CHANGELOG.md` (one Fixed entry), `docs/architecture/SIGNAL_FLOW.md` (the
+forced-bulk-swap bullet now states who raises a forced duck and when — the contract was implicit
+before, which is how it came to be wrong), `docs/procedures/TESTING.md` (State test 35 and the suite
+count), `docs/policies/TESTING_POLICY.md`, `README.md`,
+`docs/architecture/RELEASE_HARDENING_PLAN.md`, `docs/HANDOVER.md`, this file, the programme worklog
+and the dashboard. **Unchanged:** every other architecture document, all workflows, both baselines.
+
+**No new race class.** `requestDuck` is a relaxed atomic store moved between two message-thread
+functions; no new shared state and no new thread pairing, so nothing was added to D-2's scope and no
+duplicate finding was filed.
+
+**Counts.** The state suite is **34 tests / 1476 checks** (was 33 / 1460; State test 35 adds 16),
+counted from `main`'s registered test functions. The DSP suite is unchanged at **50 tests + the A/B
+clamp guard / 282 checks**. The `[0.9.6]` Fixed count is **31**. Measured, not inferred:
+`AnamorphStateTests` prints `1476 checks, 0 failure(s)` and `AnamorphTests` prints
+`282 checks, 0 failures`. [Verified]

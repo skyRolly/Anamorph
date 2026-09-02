@@ -5460,6 +5460,197 @@ static int runModernSettingsProbe()
 //  all. The guard stays as the backstop that decision asks for, and this test
 //  stays discriminating because it drives `setPersistence` directly.
 // ---------------------------------------------------------------------------
+//  State test 35 -- a REJECTED preset load must have no audio side effect
+//  (ER-GUI-06).
+//
+//  Round 24 made a foreign preset a no-op for STATE. This is the other half:
+//  the editor raised the masking duck BEFORE asking the manager to load, so a
+//  load the manager then refused still dry-filled the next ~32 ms of audio --
+//  a duck masking a swap that never happened. Exactly the failure mode
+//  `AnamorphEngine::primeParameters` already documents for the activation case
+//  (ER-DSP-06 / Test 48), arriving here by a different route.
+//
+//  THE TEST DRIVES THE REAL EDITOR, because the defect was in the editor's
+//  ORDERING and nothing below it could see the bug: `presetPrev`/`presetNext`
+//  carry `setComponentID ("presetnav")` and are distinguished by their button
+//  text, so the child walk reaches the actual production `onClick`.
+//
+//  THE OBSERVABLE IS TEST 48's, for the same reason it was chosen there: with a
+//  MONO stimulus every trace of side energy in the output is the widener's own,
+//  so a duck's dry fill collapses it. Twin processors are driven identically and
+//  compared against each other rather than against a threshold -- the control
+//  says what the block WOULD have been.
+static void testRejectedPresetDoesNotDuck()
+{
+    std::printf ("State test 35: a rejected preset load causes no duck (ER-GUI-06)\n");
+
+    auto dir = anamorph::PresetManager::presetDirectory();
+    check (dir.createDirectory(), "preset directory available");
+    // Sorted by name after the factory block, so B is the row immediately after A.
+    auto validFile   = dir.getChildFile (juce::String ("__DuckHarnessA__") + anamorph::PresetManager::fileSuffix());
+    auto foreignFile = dir.getChildFile (juce::String ("__DuckHarnessB__") + anamorph::PresetManager::fileSuffix());
+
+    constexpr double sr = 48000.0;
+    constexpr int    block = 512;
+
+    // An ENGAGED widener on a mono stimulus: all output side energy is its own.
+    auto engage = [] (AnamorphAudioProcessor& p)
+    {
+        setPlain (p, pid::algorithm, 0.0f);   // Haas
+        setPlain (p, pid::amount,    1.0f);
+        setPlain (p, pid::width,     1.6f);
+        setPlain (p, pid::mix,       1.0f);
+    };
+    auto fill = [] (juce::AudioBuffer<float>& buf, std::mt19937& rng)
+    {
+        std::uniform_real_distribution<float> dist (-0.35f, 0.35f);
+        for (int i = 0; i < block; ++i)
+        { const float v = dist (rng); buf.setSample (0, i, v); buf.setSample (1, i, v); }
+    };
+    auto sideRms = [] (const juce::AudioBuffer<float>& buf)
+    {
+        double acc = 0.0;
+        for (int i = 0; i < block; ++i)
+        { const double d = (double) buf.getSample (0, i) - (double) buf.getSample (1, i); acc += d * d; }
+        return std::sqrt (acc / (double) block);
+    };
+
+    // Write the valid harness preset from a settled engaged instance, then the
+    // foreign one beside it.
+    {
+        AnamorphAudioProcessor seed;
+        seed.prepareToPlay (sr, block);
+        engage (seed);
+        auto xml = seed.getAPVTS().copyState().createXml();
+        check (xml != nullptr && validFile.replaceWithText (xml->toString()), "valid harness preset written");
+    }
+    check (foreignFile.replaceWithText ("<SomeOtherPluginPreset version=\"2\">\n"
+                                        "  <PARAM id=\"width\" value=\"0.05\"/>\n"
+                                        "</SomeOtherPluginPreset>\n"),
+           "foreign harness preset written");
+
+    // Find the two rows, and assert B really does follow A -- the whole point of
+    // the step(+1) below is that it targets the FOREIGN entry.
+    int idxValid = -1, idxForeign = -1;
+    {
+        AnamorphAudioProcessor probe;
+        probe.getPresets().refresh();
+        const auto& es = probe.getPresets().entries();
+        for (int i = 0; i < es.size(); ++i)
+        {
+            if (es[i].name == "__DuckHarnessA__") idxValid = i;
+            if (es[i].name == "__DuckHarnessB__") idxForeign = i;
+        }
+    }
+    check (idxValid >= 0 && idxForeign == idxValid + 1,
+           "the foreign harness row is listed immediately after the valid one");
+
+    // Reach the real editor's Next button by the id its production code sets.
+    auto findPresetNav = [] (juce::Component& root, const juce::String& text) -> juce::Button*
+    {
+        std::function<juce::Button* (juce::Component&)> walk = [&] (juce::Component& c) -> juce::Button*
+        {
+            for (int i = 0; i < c.getNumChildComponents(); ++i)
+            {
+                auto* kid = c.getChildComponent (i);
+                if (auto* b = dynamic_cast<juce::Button*> (kid))
+                    if (b->getComponentID() == "presetnav" && b->getButtonText() == text) return b;
+                if (kid != nullptr) if (auto* found = walk (*kid)) return found;
+            }
+            return nullptr;
+        };
+        return walk (root);
+    };
+
+    // One run: settle an engaged widener, optionally click "next preset" (which
+    // steps onto the FOREIGN row and is refused), then measure the next block.
+    auto run = [&] (bool clickNext, double& outSide, bool& outClicked)
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (sr, block);
+        engage (p);
+        p.getPresets().refresh();
+        p.getPresets().load (idxValid);          // a real, successful load: current row = A
+        outClicked = false;
+
+        std::mt19937 rng (24601);
+        juce::AudioBuffer<float> buf (2, block);
+        juce::MidiBuffer midi;
+        for (int nb = 0; nb < 60; ++nb) { fill (buf, rng); p.processBlock (buf, midi); }   // settle
+
+        if (clickNext)
+        {
+            std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor());
+            if (auto* nav = ed != nullptr ? findPresetNav (*ed, juce::String::charToString ((juce::juce_wchar) 0x203A))
+                                          : nullptr)
+                if (nav->onClick) { nav->onClick(); outClicked = true; }
+        }
+
+        fill (buf, rng);
+        p.processBlock (buf, midi);              // the block the duck would dry-fill
+        outSide = sideRms (buf);
+        return p.getPresets().currentName();
+    };
+
+    double sideRejected = 0.0, sideControl = 0.0;
+    bool clicked = false, unusedClicked = false;
+    const juce::String nameAfter  = run (true,  sideRejected, clicked);
+    const juce::String nameControl = run (false, sideControl,  unusedClicked);
+
+    check (clicked, "the editor's Next-preset button was found and its production onClick fired");
+    std::printf ("  side RMS after a REJECTED preset step: %.6f | control (no click): %.6f | ratio %.4f\n",
+                 sideRejected, sideControl, sideControl > 0.0 ? sideRejected / sideControl : 0.0);
+
+    check (sideControl > 1.0e-3, "non-vacuity: the control block really carries the widener's side energy");
+    // THE ASSERTION. A refused load must leave the audio exactly as the control's.
+    check (std::abs (sideRejected - sideControl) < 1.0e-9,
+           "a REJECTED preset step leaves the next audio block identical to no load at all");
+    // ...and Round 24's state contract still holds through the same click.
+    checkStr (nameAfter, nameControl, "a rejected preset step does not move the preset identity");
+
+    // The other half of the invariant: a SUCCESSFUL load must still duck. Without
+    // this, deleting the duck outright would pass everything above.
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (sr, block);
+        engage (p);
+        p.getPresets().refresh();
+        std::mt19937 rng (24601);
+        juce::AudioBuffer<float> buf (2, block);
+        juce::MidiBuffer midi;
+        for (int nb = 0; nb < 60; ++nb) { fill (buf, rng); p.processBlock (buf, midi); }
+        check (p.getPresets().loadFile (validFile), "the valid harness preset loads");
+        fill (buf, rng);
+        p.processBlock (buf, midi);
+        const double sideLoaded = sideRms (buf);
+        std::printf ("  side RMS after a SUCCESSFUL preset load: %.6f (control %.6f)\n", sideLoaded, sideControl);
+        check (sideLoaded < 0.5 * sideControl,
+               "a SUCCESSFUL preset load still opens its masking duck");
+    }
+
+    // A malformed file takes the same no-audio-side-effect path as a foreign one.
+    {
+        auto brokenFile = dir.getChildFile (juce::String ("__DuckHarnessC__") + anamorph::PresetManager::fileSuffix());
+        check (brokenFile.replaceWithText ("<ANAMORPH><PARAM id=\"width\" value="), "malformed harness preset written");
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (sr, block);
+        engage (p);
+        std::mt19937 rng (24601);
+        juce::AudioBuffer<float> buf (2, block);
+        juce::MidiBuffer midi;
+        for (int nb = 0; nb < 60; ++nb) { fill (buf, rng); p.processBlock (buf, midi); }
+        check (! p.getPresets().loadFile (brokenFile), "a malformed preset is still refused");
+        fill (buf, rng);
+        p.processBlock (buf, midi);
+        check (std::abs (sideRms (buf) - sideControl) < 1.0e-9,
+               "a malformed preset load leaves the next audio block untouched too");
+        check (brokenFile.deleteFile(), "malformed harness file removed");
+    }
+
+    check (validFile.deleteFile(),   "valid harness file removed");
+    check (foreignFile.deleteFile(), "foreign harness file removed");
+}
+// ---------------------------------------------------------------------------
 //  State test 34 -- a FOREIGN preset must never overwrite the current sound
 //  (ER-STATE-24).
 //
@@ -6303,6 +6494,7 @@ int main (int argc, char* argv[])
     testRestoreResetsAbMatchGains();
     testMalformedScopePersistStaysFinite();
     testForeignPresetDoesNotResetSound();
+    testRejectedPresetDoesNotDuck();
     testModernSettingsAreRepairedOnRestore();
     testMalformedLegacySettingsResolveToValid();
     testTooltipSourceOfTruth();

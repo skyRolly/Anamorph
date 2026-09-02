@@ -441,6 +441,23 @@ exactly. It also performs the host's ordinary post-restore activation, without w
 instance's leftover audio in its delay lines flushes through and moves the reading 0.052 dB —
 engine history rather than A/B state.
 
+**State test 35 pins the other half of a refused load: it must have no AUDIO side effect**
+(ER-GUI-06, round 26). Round 24 made a foreign preset a no-op for STATE; the editor was still
+raising the masking duck *before* asking the manager to load, so a load the manager then refused
+still dry-filled the next ~32 ms. **The test drives the real editor**, because the defect was in the
+editor's ordering and nothing below it could see the bug: `presetPrev`/`presetNext` carry
+`setComponentID ("presetnav")` and differ by button text, so the child walk reaches the production
+`onClick`. The harness writes two preset files whose names put the foreign row immediately after a
+valid one — asserted, not assumed — loads the valid one so `currentIndex()` points at it, and then
+clicks Next so `step(+1)` lands on the foreign row and is refused. **The observable is Test 48's**:
+a MONO stimulus into an engaged widener, so every trace of side energy in the output is the
+widener's own and a duck's dry fill collapses it; twin processors are driven identically and
+compared to each other rather than to a threshold. **Both directions are asserted**, which is what
+stops "delete the duck" from passing: a refused step must leave the next block *identical* to the
+un-clicked control (to 1e-9), and a successful `loadFile` must still collapse it. A malformed file
+takes the same no-side-effect path. **2 of its 16 checks fail against the pre-fix build, 0 after** —
+measured side RMS 0.201786 against a 0.443549 control before, 0.443549 against 0.443549 after.
+
 **State test 34 pins the preset loaders' acceptance test** (ER-STATE-24, round 24). A `.anamorph`
 file is an `<ANAMORPH>` root, and a document with any other root is refused by **both** loaders
 exactly as an unparsable one is — `loadFile` returns `false`, `load(index)` is a clean no-op, and
@@ -483,7 +500,7 @@ twice, and a `juce::String` refcount exchange. Measured round 20: the same four 
 others, which is what classified ER-STATE-23 as already covered by D-2 rather than a new bug
 (`docs/FUTURE_RISKS.md` RISK-007).
 
-`tests/state_tests.cpp` (**33 tests**, own console target `AnamorphStateTests`) automates the
+`tests/state_tests.cpp` (**34 tests**, own console target `AnamorphStateTests`) automates the
 COMPATIBILITY policy family against the **real `AnamorphAudioProcessor`** (the target compiles
 the plugin sources; since 2026-08-21 it also constructs and destroys the real editor, headlessly
 and without ever showing it — no peer, no message loop, no interaction):

@@ -29,6 +29,92 @@ entries and CHANGELOG notes cite.
 
 ---
 
+## Round 26 — 2026-09-03 — a preset the plug-in refused still ducked the audio
+
+One fix, closing the last actionable Review Bug. It is the other half of round 24: that round made a
+refused preset a no-op for STATE, and this one makes it a no-op for AUDIO.
+
+### ER-GUI-06 — FIXED — the duck was raised by the caller, before the load could refuse
+
+**Reproduced before any change, through the REAL editor's production `onClick`.** An engaged widener
+on a mono stimulus, settled over 60 blocks, then the Next-preset button clicked so `step(+1)` lands
+on a foreign-rooted row that round 24's `parseSoundFile` refuses:
+
+| | side RMS of the next block |
+|---|---|
+| after a REFUSED preset step | **0.201786** |
+| control, identical run with no click | **0.443549** |
+| ratio | **0.4549** |
+
+The widener's stereo width fell to 45 % of its settled level for ~32 ms, on a load that applied
+nothing. Round 24's state contract held throughout — sound, preset name and menu tick all unchanged
+— which is precisely what made this the *audio* half of the same bug.
+
+**Root cause, and the exact order.** All three editor call sites raised the duck before asking the
+manager to load:
+
+```
+PluginEditor:360/361   requestDuck(); presets.step (±1);      -> step() calls load(index)
+PluginEditor:2064-65   requestDuck(); presets.load (r - 1);   -> load() returns void
+PluginEditor:2090-91   requestDuck(); if (presets.loadFile (file)) { ...knob sweep only... }
+```
+
+`load()` returns `void`, so the menu site could not have checked; the chooser site *did* check
+`loadFile`'s result, but only to decide whether to sweep the knobs — the duck was already
+unconditional. When `parseSoundFile` then refused, `duckRequest` stayed set and the next
+`processBlock` opened a forced duck with nothing to mask, dry-filling real audio. It is the same
+fault `AnamorphEngine::primeParameters` already documents in its own header for the activation
+route (ER-DSP-06 / Test 48) — "a duck whose swap already happened … masks nothing and merely
+dry-fills" — arriving here by a different path.
+
+**The fix: move the request to the load path's own success boundary, and delete it from the callers.**
+
+```cpp
+presets.onAboutToLoad = [this] { pollUndoCoalesce(); engine.requestDuck(); };
+```
+
+`onAboutToLoad` is the one point that is **both** after every check that can refuse — the missing
+factory id, the unparsable file, and since ER-STATE-24 the foreign root — **and** before the first
+`setValueNotifyingHost`. Both halves matter, and they are why the fix is not "duck after a
+successful load": raising it afterwards would leave a window in which an audio block hears the
+swapped parameters unmasked, weakening a guarantee the round explicitly protects.
+
+**Why this boundary rather than a success flag on the callers.** One line fixes **all three** call
+sites at once, including `step()`, which the finding did not name; the two loaders cannot drift
+apart because neither owns the decision any more; no validation is duplicated; no new mechanism and
+no new asynchrony is introduced; and every future caller of `load`/`loadFile` inherits the invariant
+instead of having to remember it. `onAboutToLoad` fires from nowhere else — `onSaved` is a separate
+hook, and a save must not duck.
+
+**Regression: State test 35, 16 checks, 2 failing pre-fix.** It drives the real editor, because the
+defect was in the editor's ordering and nothing below it could see the bug: `presetPrev`/`presetNext`
+carry `setComponentID ("presetnav")` and differ by button text, so the child walk reaches the actual
+production `onClick`. The harness writes two files whose names put the foreign row immediately after
+a valid one — **asserted, not assumed** — loads the valid one so `currentIndex()` points at it, then
+clicks Next. The observable is Test 48's, chosen for the same reason: a MONO stimulus into an engaged
+widener makes every trace of output side energy the widener's own, so a dry fill collapses it, and
+twin processors driven identically are compared to each other rather than to a threshold. **Both
+directions are asserted**, which is what stops "delete the duck" from passing: a refused step must
+leave the next block identical to the un-clicked control (to 1e-9), and a successful `loadFile` must
+still collapse it. Post-fix the two numbers swap places exactly — 0.443549 = 0.443549 on the refused
+path, 0.201786 against a 0.443549 control on the successful one.
+
+**Malformed files take the same invariant**, asserted in the same test: `parseSoundFile` refuses an
+unparsable document at the identical point, so it too reaches no duck. The round asked whether the
+no-side-effect rule should apply to all failed loads rather than foreign roots only — it does, and it
+falls out of the fix rather than needing a second case.
+
+**No new race class.** `requestDuck` is a relaxed atomic store, moved between two functions that both
+run on the message thread (`PresetManager`'s loaders are message-thread only by contract). No new
+shared state, no new thread pairing, nothing for D-2 to absorb.
+
+### Carried unchanged
+
+ER-STATE-24 (foreign-root rejection, `parseSoundFile`, identity preservation) **untouched and still
+green**; ER-DSP-10, ER-DSP-11, ER-STATE-21 FIXED and untouched; drag recovery REFUTED; D-1 approved
+and implemented; D-2 / RISK-007 deferred; RISK-008 real-host validated for REAPER with its
+host-specific residual, **no host test performed**; the cross-file realtime-lint boundary unchanged.
+
 ## Round 25 — 2026-09-03 — a minimal `[0.9.6]` Change Log correction pass
 
 **Documentation only. No source, test, workflow, CMake or baseline file changed.** The release date

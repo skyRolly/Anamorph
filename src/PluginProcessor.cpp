@@ -40,7 +40,20 @@ AnamorphAudioProcessor::AnamorphAudioProcessor()
     // A preset load opens NO gesture, so the gesture-gated coalescer would fold it into the baseline
     // without an undo step (host-automation path). Bracket every load: flush any settled edit first,
     // then record exactly ONE undo step for the switch, so a preset change is undoable (ADR-0008).
-    presets.onAboutToLoad = [this] { pollUndoCoalesce(); };
+    // ...and RAISE THE MASKING DUCK HERE, not at the call site (ER-GUI-06). This hook is the
+    // load path's own "it is definitely happening" boundary: PresetManager fires it after every
+    // check that can refuse -- the missing factory id, the unparsable file, and since ER-STATE-24
+    // the foreign root -- and BEFORE the first parameter moves. Both properties matter. The
+    // editor used to call requestDuck() before asking the manager to load, so a load the manager
+    // then REFUSED still left a request pending, and the next audio block dry-filled ~32 ms to
+    // mask a swap that never happened (measured: an engaged widener's side energy at 0.4549 of
+    // the control's, State test 35) -- the same "duck whose swap already happened" fault
+    // AnamorphEngine::primeParameters documents for the activation route. Moving the request in
+    // here rather than adding a success flag to the callers fixes all three call sites at once
+    // (the menu, Load Preset..., and the prev/next buttons via step()), cannot drift between the
+    // two loaders, and keeps the ordering the duck depends on: still raised before any
+    // setValueNotifyingHost, so the swap is still heard only at the silent bottom.
+    presets.onAboutToLoad = [this] { pollUndoCoalesce(); engine.requestDuck(); };
     presets.onLoaded      = [this] { commitPresetSwitchUndoStep(); };
     // A save changes no parameter, so nothing else would ever refresh `committed` off the
     // pre-save preset -- and the next undo would restore that stale name/identity/baseline.

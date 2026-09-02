@@ -15,6 +15,15 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 
 ## [0.9.6] — 2026-09-03
 ### Fixed
+- **A preset the plug-in refuses no longer dips the audio.** Loading a preset briefly ducks the
+  sound so the change is never heard as a click — the right thing when a preset actually loads. But
+  the dip was set up the moment you *asked* for a preset, before the plug-in had looked at the file.
+  So a file it then refused — another plug-in's preset, or a corrupted one — still dipped the audio
+  for about 32 ms while loading nothing at all. Measured on an engaged widener: the stereo width
+  fell to 0.45 of its settled level for that moment. The dip now comes from the load itself, so it
+  happens when, and only when, a preset is really applied. Loading a real Anamorph preset is
+  unchanged and still ducks exactly as before. Regression coverage: State test 35.
+  Evidence: PR #134. [Verified]
 - **Loading a preset that is not an Anamorph preset no longer wipes your sound.** "Load Preset…"
   and the preset menu both let you point them at any file on your machine. If that file was a valid
   XML preset from *another* plug-in, it was treated as one of ours: any parameter whose name
