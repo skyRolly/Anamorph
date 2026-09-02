@@ -27,7 +27,9 @@ pre-0.8.4 fixture, and compatibility-checklist items 5 and 7 recorded on the mai
 attestation, closing the gate); **round 14** (partial modern Settings inheriting the previous
 project, confirmed and fixed on the opposite path from the one reported); and **round 15** (the
 off-message-thread re-prepare latency race confirmed under ThreadSanitizer and closed inside D-1,
-with one new risk recorded).
+with one new risk recorded); and **round 16** (the previous project's per-slot A/B Level-Match gains
+surviving a restore, confirmed and fixed on two paths, with the modern-Settings validation question
+investigated and deliberately left to a contract decision).
 **Header correction (round 7, 2026-09-01):** this line enumerated round 1 alone while the body
 carried six later rounds, and dated the change set 2026-08-31 while the CHANGELOG `[0.9.6]` heading
 had been re-dated to 2026-09-01 — the same drift the C6 correction below was written about,
@@ -7118,3 +7120,38 @@ and does not touch the decision.
 at 47 + the A/B clamp guard / 245. The `[0.9.6]` Fixed count is **22**. Swept through
 `TESTING_POLICY.md`, `TESTING.md`, `README.md`, `REPOSITORY_MAP.md`, `RELEASE_HARDENING_PLAN.md`
 and `HANDOVER.md` (both rows this time). [Verified]
+
+## Engineering-review programme, round 16 — the previous project's A/B Level-Match gains (2026-09-02, still the 0.9.6 change set)
+
+**What the round is.** One confirmed session-isolation defect fixed on two paths, one investigation
+closed with evidence and no code change, and two record checks. Records:
+`worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Round 16.
+
+**Code change and its doc syncs (trigger map applied):**
+- `src/PluginProcessor.cpp/.h` (`abResetToDefaults()` and `readSlot` now reset `abMatchGain[]`
+  alongside the slot they reset — ER-STATE-20) → CHANGELOG `[0.9.6]` (one Fixed entry; the leak was
+  user-visible in the Level Match readout and in what the matcher re-converged from),
+  `docs/architecture/SERIALIZATION_REGISTRY.md` (a new paragraph in the `AB` section: the per-slot
+  match gain is part of the slot and resets with it, with the measured figures and the reason it is
+  the one field nothing overwrote), State test 31, `docs/procedures/TESTING.md` (the test's
+  observation method and the new probe), and the count sweep below. **No serialization field added,
+  removed or renamed** — the cache has never been in the format — and a session that carries valid
+  A/B data restores exactly as before.
+
+**Why the fix is in two places.** The finding named `abResetToDefaults`, which covers the two restore
+paths with no `AB` node. Tracing found a third: an `AB` node that exists but carries no usable slot
+payload resets its slots inside `readSlot` and never reaches that function. Confined to the named
+function the fix still leaked −2.405 dB on that path, which is also the only one that exposes slot A.
+
+**Investigation recorded, no production change (ER-STATE-21).** Malformed *modern* host-hidden
+Settings, 19 inputs measured through `--modern-settings-probe`: no crash, no undefined behaviour,
+and every DSP-facing read clamped at source. 19 of 19 persist into the next save, 8 leave an
+out-of-domain ComboBox id and 3 a non-finite scope persistence; opening the editor repairs 4.
+Ingress is a hand-edited or corrupted file only. What a malformed *present* value should mean is a
+serialization-contract decision the `ANAMORPH_INTERNAL` table does not state — it states defaults for
+ABSENCE — so it is filed rather than invented. Documented in `TESTING.md` and the worklog.
+
+**Counts.** The state suite is **31 tests / 1301 checks** (was 30 / 1278); the DSP suite is unchanged
+at 47 + the A/B clamp guard / 245. The `[0.9.6]` Fixed count is **23**. Swept through
+`TESTING_POLICY.md`, `TESTING.md`, `README.md`, `REPOSITORY_MAP.md`, `RELEASE_HARDENING_PLAN.md`
+and `HANDOVER.md`. [Verified]

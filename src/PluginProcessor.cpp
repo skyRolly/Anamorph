@@ -801,6 +801,31 @@ void AnamorphAudioProcessor::abResetToDefaults() noexcept
     for (auto& slot : abSlot)
         slot = {};
     abActive = 0;
+    // The remembered per-slot Level-Match gains are part of "the slot set", and they
+    // are the one piece of it that is NOT serialized (#23): they are a runtime cache
+    // of what the matcher had settled on when each slot was last left. Leaving them
+    // behind therefore leaked the PREVIOUS project's gains across a restore that
+    // reset everything around them, and the first A/B switch injected one --
+    // `abSwitchTo` ends with `engine.injectMatchGainDb (abMatchGain[slot])`, which
+    // at the silent bottom of the switch duck calls `loudness.setDisplayedGainDb`
+    // and snaps `matchGainSmooth`, so the new project's matcher re-converged from
+    // the old project's figure and the readout showed it (round 16, ER-STATE-20).
+    //
+    // 0.0f is not a chosen sentinel but the member's own initialiser, which is what
+    // makes this exactly the fresh-instance path: a never-switched instance injects
+    // 0 dB on its first switch too (0 dB clears the `> kNoInject` guard, so it is
+    // APPLIED as unity rather than skipped). A restore with no A/B data now leaves
+    // this instance in the state a fresh one would be in, which is the whole rule
+    // the four members above already follow.
+    //
+    // NOT a change to what a session carrying valid A/B data does: that path does
+    // not come through here, and there is nothing there to preserve either way --
+    // the cache has never been serialized, so a valid restore has always left the
+    // matcher to re-measure. Round 9 measured the AUDIBLE effect of an injected
+    // stale value and found it inert (`--legacy-match-probe`); that conclusion is
+    // unchanged and is not what this fixes. What this fixes is the state.
+    for (auto& g : abMatchGain)
+        g = 0.0f;
 }
 
 void AnamorphAudioProcessor::abApplySlot (int slot)
@@ -964,7 +989,8 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
             // an out-of-bounds access (anamorph::kNumAbSlots). Valid states (0/1) are unchanged.
             abActive = anamorph::clampAbSlotIndex ((int) ab.getProperty ("active", 0));
             auto readSlot = [&ab, expectedType = apvts.state.getType()]
-                            (StateSet& dst, const char* pk, const char* nk, const char* bk,
+                            (StateSet& dst, float& matchDst,
+                                   const char* pk, const char* nk, const char* bk,
                                    const char* sk, const char* fk, const char* uk,
                                    const char* legacyKey)
             {
@@ -987,6 +1013,27 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
                 // from the state that was just restored -- sound and metadata from one project.
                 //
                 dst = {};
+                // The slot's remembered Level-Match gain resets with it (round 16,
+                // ER-STATE-20). It is the one part of a slot that is never serialized --
+                // a runtime cache of what the matcher had settled on when the slot was
+                // last left -- so there is nothing here to overlay it with, and leaving
+                // it alone is what let the PREVIOUS project's figure survive into this
+                // session's first switch (`abSwitchTo` ends with
+                // `engine.injectMatchGainDb (abMatchGain[slot])`). It belongs on this
+                // side of the reset rather than only in abResetToDefaults() because an
+                // `AB` node that EXISTS but carries no usable payload never reaches that
+                // function -- and with `active` = 1 such a node exposes slot A, the one
+                // entry the first switch does not overwrite before reading. Measured:
+                // with the reset confined to abResetToDefaults, State test 31 leg 3
+                // still injected the previous project's -2.405 dB.
+                //
+                // Unconditional, like `dst = {}` above: a slot restored from a real
+                // payload has no remembered match in the file either, so 0 dB -- the
+                // member's initialiser, and what a fresh instance injects -- is the
+                // right answer for a valid slot too. That is exactly the rule the
+                // paragraph above states for the slot as a whole, applied to its last
+                // field, and it is what makes a reused instance match a fresh one.
+                matchDst = 0.0f;
                 // Accept a parsed payload only when it is an APVTS tree of the
                 // live type ("ANAMORPH"). A parsable-but-foreign-typed payload
                 // is corrupt state exactly like an unparsable one -- and worse
@@ -1029,9 +1076,9 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
                 dst.name      = ab.getProperty (nk).toString();
                 dst.baseline  = ab.getProperty (bk).toString();
             };
-            readSlot (abSlot[0], "slotAParams", "slotAName", "slotABase",
+            readSlot (abSlot[0], abMatchGain[0], "slotAParams", "slotAName", "slotABase",
                       "slotASource", "slotAFactoryId", "slotAUserFile", "slotA");
-            readSlot (abSlot[1], "slotBParams", "slotBName", "slotBBase",
+            readSlot (abSlot[1], abMatchGain[1], "slotBParams", "slotBName", "slotBBase",
                       "slotBSource", "slotBFactoryId", "slotBUserFile", "slotB");
         }
         else

@@ -82,14 +82,27 @@ ruled out, fixed, deferred — and what should happen next. A rendered <em>view<
 <code>ENGINEERING_REVIEW_PROGRAMME.md</code> beside it; the worklog is the source of truth a later
 round reconciles against.</p>
 <div class="meta">
-  <span>ROUNDS 1–15 · 2026-08-31 → 09-02</span>
+  <span>ROUNDS 1–16 · 2026-08-31 → 09-02</span>
   <span>TREE: main @ e8f4422 → v0.9.6</span>
-  <span>STATUS: ER-STATE-19 fixed; checklist 8/8; ONE tag blocker left — KI-015</span>
+  <span>STATUS: ER-STATE-20 fixed; checklist 8/8; ONE tag blocker left — KI-015</span>
   <span>NEXT: licence (KI-015), then tag v0.9.6</span>
 </div>
 
 <h2><span class="no">§1</span>Executive status</h2>
-<p class="lede"><strong>Round 15 confirmed the off-message-thread re-prepare race under ThreadSanitizer and
+<p class="lede"><strong>Round 16: the previous project's A/B Level-Match gains survived a restore, and
+leaked on one more path than the finding named.</strong> <code>abMatchGain[]</code> is the one part of an
+A/B slot that is never serialized — a runtime cache of what the matcher had settled on — so nothing on
+the restore path ever overwrote it. Measured on the real restore paths, the first switch injected the
+previous project's value <em>to the digit</em>: <strong>−1.040 dB for slot B, −2.438 dB for slot A,
+against the 0 dB a fresh instance injects.</strong></p>
+<div class="verdicts">
+  <div class="v"><div class="k">ER-STATE-20 · CONFIRMED → FIXED</div><p>The cache is slot state, so it now resets wherever a slot resets: <code>abResetToDefaults()</code> for the two paths with no <code>AB</code> node, and <code>readSlot</code> per slot for the path that has one. 0 dB is the member's own initialiser, which is what makes a reused instance behave exactly like a fresh one. No format change, and nothing masked downstream.</p></div>
+  <div class="v"><div class="k">A second path the finding did not name</div><p>An <code>AB</code> node that EXISTS but carries no usable payload never reaches <code>abResetToDefaults</code> — and with <code>active</code> = 1 it is the only path that exposes slot A, since the first switch overwrites the slot it leaves before reading the one it enters. A fix confined to the named function still injected −2.405 dB there.</p></div>
+  <div class="v"><div class="k">State test 31 · 6 checks discriminating</div><p>Three restore paths, each asserted both ways — not the stale value, AND indistinguishable from a fresh instance restored from the identical blob. Plus a leg proving a session that DOES carry valid A/B data still restores both slots' own sounds. Exact rather than tolerance-based: both slots reseed from the same state, so the switch is parameter-neutral, and the matcher holds its value on silence by documented design.</p></div>
+  <div class="v"><div class="k">ER-STATE-21 · investigated, no change</div><p>Malformed <em>modern</em> Settings: 19 cases measured — no crash, no undefined behaviour, every DSP-facing read clamped at source. But 19 of 19 persist into the next save and only 4 are repaired by opening the editor. Reachable only from a hand-edited file, and what a malformed <em>present</em> value should mean is a serialization-contract decision the registry does not yet state. Filed, not invented.</p></div>
+</div>
+
+<p class="lede" style="margin-top:26px"><strong>Round 15 confirmed the off-message-thread re-prepare race under ThreadSanitizer and
 closed it inside D-1.</strong> A host that activates the plug-in on a thread other than the JUCE message
 thread — JUCE's own Linux VST3 wrapper before a host run loop is registered, FL Studio's Patcher, and
 the repository's own macOS AU pluginval gate — wrote the reported latency on that thread while the
@@ -380,7 +393,7 @@ across rounds; evidence in full in the worklog and the cited files.</p>
 <p><strong>Defect (unchanged, re-verified):</strong> automation of Drive/Algorithm delivers the APVTS callback on the audio thread; when reported latency actually changes, the JUCE chain takes locks, allocates and <code>write()</code>s inside <code>processBlock</code>.</p>
 <p><strong>Round 2 narrows it.</strong> Oversampling is <em>not</em> a host parameter — it lives in <code>InternalState</code> and defaults to Off — so at factory defaults reported latency is identically 0 and the expensive branch is <strong>unreachable</strong> until a user selects 2x/4x/8x in Settings. The rate is bounded at one dispatch per parameter per block. The priority inversion is mitigated by <code>PTHREAD_PRIO_INHERIT</code> on Linux/macOS, but not on Windows.</p>
 <p><strong>Two candidates are refuted.</strong> The editor's 24 Hz poll is the only message-thread tick in <code>src/</code> and does not exist with the editor closed — a closed-editor render would never learn the new latency, which is worse than the defect. An <code>AsyncUpdater</code> reproduces the same <code>postMessage</code> (lock + possible reallocation + <code>write()</code>) on the audio thread.</p>
-<p><strong>What you are approving:</strong> keep the synchronous call when <code>MessageManager::existsAndIsCurrentThread()</code>, otherwise set one relaxed atomic flag consumed by a processor-owned ~20 Hz <code>juce::Timer</code>. Cost: the host learns a latency change up to one tick later. Gate: threading model + latency delivery.</p></div>
+<p><strong>What was approved:</strong> keep the synchronous call when <code>MessageManager::existsAndIsCurrentThread()</code>, otherwise set one relaxed atomic flag consumed by a processor-owned ~20 Hz <code>juce::Timer</code>. Cost: the host learns a latency change up to one tick later. Gate: threading model + latency delivery.</p></div>
 <div class="dec-card"><h3>D-2 — RISK-007: guard off-main-thread state calls, or accept as documented? <span class="chip c-open">DEFERRED r4 — no code change</span></h3>
 <p><strong>The measurement asked for in round 1 is done.</strong> <code>AnamorphStateTests --state-thread-probe</code> under ThreadSanitizer reports <strong>four data races</strong>: <code>abActive</code> (written by <code>setStateInformation</code>, read by <code>canUndo()</code>), the <code>abUndo</code> vector's internals twice, and a <code>juce::String</code> refcount exchange against a String copy. So if a host makes these calls off the main thread while an editor is open, this is undefined behaviour — not a theoretical concern.</p>
 <p><strong>What remains is only the host question:</strong> VST3 annotates both calls <code>[UI-thread]</code> and JUCE hosts lock around them, so the exposure is the macOS AU autosave path. Options unchanged: (a) accept and keep documented; (b) a narrow mutex over the state-set members; (c) <code>callAsync</code> marshalling of the metadata tail. (b) and (c) are threading-model changes.</p></div>
@@ -395,6 +408,10 @@ across rounds; evidence in full in the worklog and the cited files.</p>
 <p>The round shipped as <strong>v0.9.6</strong> (dated CHANGELOG section, renumbered first-tag references) per the repository's established pattern — every user-visible change set gets a version and no tag has ever been cut. Override if you want it folded differently; the 0.9.5 section's dated record was left untouched either way.</p></div>
 
 <h2><span class="no">§7</span>Roadmap</h2>
+<p class="dek"><strong>A frozen round-2 snapshot, kept as the record.</strong> Its "Gated" entries describe
+the state at the time of writing: D-1 was <strong>approved and implemented</strong> in round 4 and D-2
+<strong>deferred</strong> in round 4 (see §5), and the per-round lists in §8 carry the live status. Read
+this table as history, not as open work.</p>
 <div class="tblwrap"><table>
 <tr><th>Rank</th><th>Item</th><th>Class</th><th>Why / expected benefit</th><th>Cost</th><th>Risk</th></tr>
 <tr><td>1</td><td class="mono">KI-028 leaked value-box gesture</td><td>Correctness</td><td>Degrades undo after a lost release, and it is a residual of our own round-1 fix. Two candidate designs; round 3 picks one</td><td>S–M</td><td>Low; one design is inert on macOS for the KI-013 reason</td></tr>
@@ -461,6 +478,14 @@ evidence emerged to promote one. Ranking follows the programme's order — corre
   <li class="done">Drift sweep: CHANGELOG date, HANDOVER audition claim; history left intact</li>
   <li class="done">D-3 performed by the maintainer against the v0.9.6 build — <strong>PASSED</strong></li>
 </ul>
+<h3>Round 16</h3>
+<ul class="roadmap">
+  <li class="done">ER-STATE-20 — the unserialized per-slot Level-Match cache now resets with the slot, in both places a slot is reset</li>
+  <li class="done">State test 31 — three restore paths × (not-stale, matches-a-fresh-instance) + a valid-A/B control; 6 checks fail without the fix</li>
+  <li class="done">ER-STATE-21 — modern Settings validation measured across 19 malformed inputs; no crash, no UB, no audio exposure; recovery semantics filed as a contract decision, no code changed</li>
+  <li class="done">ER-RT-05 verified accurate for the seventh consecutive round; D-1 approval record verified correct; neither required a change</li>
+</ul>
+
 <h3>Round 15</h3>
 <ul class="roadmap">
   <li class="done">ER-STATE-19 — <code>prepareToPlay</code> routed through the D-1 request; <code>latency2/4/8</code> relaxed atomics; TSan two reports → silence</li>
@@ -548,10 +573,10 @@ evidence emerged to promote one. Ranking follows the programme's order — corre
   <li class="done">Every stale "blocked by D-3" statement superseded or marked closed</li>
   <li>Licence (KI-015) and the compatibility checklist — the two remaining tag blockers <em>(round 7: the checklist is now down to its two host-dependent boxes)</em></li>
   <li class="done">Worklog + this dashboard updated and committed</li>
-  <li>D-1 decided (surviving design)</li>
-  <li>D-2 decided — code half now measured</li>
-  <li>D-3 Level-5 audition for the shipping build</li>
-  <li>Round 3 executed per §7</li>
+  <li class="done">D-1 decided (surviving design) — <strong>approved and implemented in round 4</strong></li>
+  <li class="done">D-2 decided — <strong>deferred by the maintainer in round 4</strong>, code half measured</li>
+  <li class="done">D-3 Level-5 audition for the shipping build — <strong>PASSED</strong></li>
+  <li class="done">Round 3 executed per §7</li>
 </ul>
 
 <p class="small" style="margin-top:48px">Maintained by the engineering-review programme. Update rule:

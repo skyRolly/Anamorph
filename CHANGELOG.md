@@ -15,6 +15,20 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 
 ## [0.9.6] — 2026-09-01
 ### Fixed
+- **Opening a project that has no A/B data no longer carries the previous project's Level Match
+  amount into the first A/B switch.** The amount Level Match had settled on is remembered per A/B
+  slot, so that switching between A and B does not make the level lurch while the matcher
+  re-converges. That memory is not stored in the project file — it describes the session you are
+  in — but it was also never cleared when a project was opened, and a host reuses one plug-in
+  instance across projects. Opening a project saved before A/B existed, or one whose A/B data is
+  missing, therefore left the previous project's figures in place, and the first A/B switch handed
+  them to the new project's matcher: the Level Match readout showed the old project's number and
+  the matcher re-converged from it. Measured on the real restore paths as −1.040 dB and −2.438 dB
+  where a freshly opened plug-in shows 0. The memory is now cleared with the slots themselves, so
+  opening a project leaves the plug-in in the state it would be in if you had just added it. A
+  project that does carry A/B data still restores both slots exactly as before. Regression
+  coverage: State test 31.
+  Evidence: PR #134. [Verified]
 - **A host that activates the plug-in on a background thread can no longer be told a stale
   latency, and the plug-in no longer reads its own latency figures while they are being
   rewritten.** Most hosts activate a plug-in on their main thread, and there nothing changes: the

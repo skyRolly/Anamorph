@@ -277,7 +277,42 @@ State test 30 pins the invariant that closes the class deterministically instead
 the preparing thread, the report unchanged after the join, and the tick then serving the PREPARED
 value, equal to a message-thread prepare's.
 
-`tests/state_tests.cpp` (**30 tests**, own console target `AnamorphStateTests`) automates the
+`AnamorphStateTests --modern-settings-probe` is the eighth opt-in instrument, and like
+`--latency-restore-probe` it **measures and asserts nothing**: what it examines is the recovery
+semantics for a malformed MODERN host-hidden Setting, which no document currently states, so a probe
+that encoded an expectation would be legislating one. It writes nineteen malformed values — out of
+domain, non-numeric, `nan`, `inf`, `1e39`, coerced booleans — one at a time into a genuine modern
+save's `ANAMORPH_INTERNAL` node, restores each, and reports the tree value, every consumer, whether
+the next save persists it, and whether opening the real editor repairs it. Round 16's answer, in
+full: **no crash and no undefined behaviour on any of the nineteen** (the legacy path's undefined
+`(int)` conversion has no modern counterpart — `juce::var`→`int` on a string is a safe parse), and
+**every DSP-facing read is clamped at source** (`oversampleIndex` through `jlimit(0,3)`,
+`uiScaleIndex` through `jlimit(0,4)`), so nothing can index out of range whatever the tree holds.
+What the probe does show is that the value itself is kept verbatim: **19 of 19 persist into the next
+save**, eight leave an out-of-domain ComboBox id in the tree, and three leave a **non-finite** scope
+persistence — `scopePersist()` being the one consumer with no clamp at its read. Opening the editor
+repairs four of them (the Slider's range constrains a too-high or overflowing persistence; the
+ComboBox coerces a fractional id) and leaves the rest, including `nan`. The ingress is bounded and
+worth stating with the result: the modern values are written by the constructor's defaults table,
+`restoreState`, the clamped `migrateFromLegacyApvts`, and the Settings widgets — all of which
+produce valid values — so a malformed modern value can only arrive from a hand-edited or corrupted
+file. **No production code was changed on this evidence** (round 16, ER-STATE-21): defining what a
+malformed *present* value should mean is a serialization-contract decision, and the registry's
+`ANAMORPH_INTERNAL` table currently states defaults for ABSENT only.
+
+`AnamorphStateTests --legacy-match-probe` gained a companion in State test 31 rather than a new
+probe: the per-slot Level-Match memory (ER-STATE-20) is observed through the product's own
+behaviour. Two properties make that exact rather than a tolerance game — after a restore with no
+A/B data both slots are re-seeded from the SAME restored state, so the switch is parameter-neutral,
+and `LoudnessMatch` holds its published value on silence by documented design — so a switch
+performed over silent blocks leaves `getMatchGainDb()` reading the injected value verbatim. The
+test restores each blob into a reused instance AND a fresh one and requires them to agree, which is
+the state-isolation contract stated directly and cancels the matcher's feed-forward predict term
+exactly. It also performs the host's ordinary post-restore activation, without which the reused
+instance's leftover audio in its delay lines flushes through and moves the reading 0.052 dB —
+engine history rather than A/B state.
+
+`tests/state_tests.cpp` (**31 tests**, own console target `AnamorphStateTests`) automates the
 COMPATIBILITY policy family against the **real `AnamorphAudioProcessor`** (the target compiles
 the plugin sources; since 2026-08-21 it also constructs and destroys the real editor, headlessly
 and without ever showing it — no peer, no message loop, no interaction):

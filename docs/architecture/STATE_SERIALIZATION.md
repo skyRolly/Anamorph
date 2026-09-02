@@ -4,7 +4,7 @@ How session state is saved and restored. The field-level ledger is in
 `SERIALIZATION_REGISTRY.md`; binding rules are in
 `docs/policies/SESSION_COMPATIBILITY_POLICY.md`.
 
-Evidence [Verified]: src/PluginProcessor.cpp:864-894 (`getStateInformation`), :605-744
+Evidence [Verified]: src/PluginProcessor.cpp:889-919 (`getStateInformation`), :605-744
 (`setStateInformation`), :550-571 (the `writeSelection` / `readSelection` helpers);
 src/PresetManager.cpp:382-435 (`encodeSelection` / `decodeSelection`).
 
@@ -59,7 +59,7 @@ a factory id removed by a later version, a user preset deleted, renamed or moved
 rather than falling back to a same-named row. The field-level ledger, including the file-name vs
 absolute-path encoding rule, is in `SERIALIZATION_REGISTRY.md`.
 
-Evidence [Verified]: src/PluginProcessor.cpp:864-894 (`getStateInformation`).
+Evidence [Verified]: src/PluginProcessor.cpp:889-919 (`getStateInformation`).
 
 ## `getStateInformation` logic
 

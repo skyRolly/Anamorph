@@ -357,6 +357,11 @@ DELIBERATE_REAIMS = {
     # them moved again; the same symbols, re-derived by reading the spans
     # (deliverLatency+updateLatency now :149-173, setStateInformation :901-1134,
     # the legacyKey adoption :1009-1010, the ADR-0010 sites :512 and :647-650).
+    # 2026-09-02 (round 16): ER-STATE-20 added the per-slot match reset inside
+    # `readSlot`, growing it by its explanatory comment, so the spans below it moved
+    # again -- same symbols, re-derived by reading them: the legacyKey fallback is now
+    # :1056-1057, setStateInformation :926-1181, readSlot :991-1078. Each earlier
+    # transition keeps its own base key and gains one for the push predecessor.
     # Each earlier transition keeps its origin/main key and gains a HEAD~1 key,
     # since CI compares against the push predecessor. All retire on merge.
     # Round 15 also EDITED the engine's latency lines themselves (the three
@@ -421,16 +426,22 @@ DELIBERATE_REAIMS = {
      "CMakeLists.txt:14, 467-492"): "ANAMORPH_BUILD_NUMBER",
     ("docs/architecture/SERIALIZATION_REGISTRY.md",
      "src/PluginProcessor.cpp:688-692",
-     "src/PluginProcessor.cpp:1009-1010"): "legacyKey",
+     "src/PluginProcessor.cpp:1056-1057"): "legacyKey",
+    ("docs/architecture/SERIALIZATION_REGISTRY.md",
+     "src/PluginProcessor.cpp:1009-1010",
+     "src/PluginProcessor.cpp:1056-1057"): "legacyKey",
     ("docs/architecture/SERIALIZATION_REGISTRY.md",
      "src/PluginProcessor.cpp:986-987",
-     "src/PluginProcessor.cpp:1009-1010"): "legacyKey",
+     "src/PluginProcessor.cpp:1056-1057"): "legacyKey",
     ("docs/policies/COMPATIBILITY_POLICY.md",
      "src/PluginProcessor.cpp:327-396",
-     "src/PluginProcessor.cpp:901-1134"): "setStateInformation",
+     "src/PluginProcessor.cpp:926-1181"): "setStateInformation",
+    ("docs/policies/COMPATIBILITY_POLICY.md",
+     "src/PluginProcessor.cpp:901-1134",
+     "src/PluginProcessor.cpp:926-1181"): "setStateInformation",
     ("docs/policies/COMPATIBILITY_POLICY.md",
      "src/PluginProcessor.cpp:878-1111",
-     "src/PluginProcessor.cpp:901-1134"): "setStateInformation",
+     "src/PluginProcessor.cpp:926-1181"): "setStateInformation",
     # 2026-08-31 (round 2): prepareToPlay grew by the priming call, shifting every
     # line below it. RISK-007's read-side citation names setStateInformation, so it was
     # re-derived from that symbol rather than mapped mechanically -- the mechanical
@@ -445,10 +456,10 @@ DELIBERATE_REAIMS = {
      "src/PluginProcessor.cpp:512,647-650"): "setValueNotifyingHost",
     ("docs/architecture/SERIALIZATION_REGISTRY.md",
      "src/PluginProcessor.cpp:743-744",
-     "src/PluginProcessor.cpp:1009-1010"): "legacyKey",
+     "src/PluginProcessor.cpp:1056-1057"): "legacyKey",
     ("docs/policies/COMPATIBILITY_POLICY.md",
      "src/PluginProcessor.cpp:645-796",
-     "src/PluginProcessor.cpp:901-1134"): "setStateInformation",
+     "src/PluginProcessor.cpp:926-1181"): "setStateInformation",
     ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
      "src/PluginProcessor.cpp:318, 380-383",
      "src/PluginProcessor.cpp:512,647-650"): "setValueNotifyingHost",
@@ -459,11 +470,14 @@ DELIBERATE_REAIMS = {
      "src/PluginProcessor.cpp:311,345-348",
      "src/PluginProcessor.cpp:512,647-650"): "setValueNotifyingHost",
     ("docs/FUTURE_RISKS.md",
+     "src/PluginProcessor.cpp:901-1134",
+     "src/PluginProcessor.cpp:926-1181"): "setStateInformation",
+    ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:878-1111",
-     "src/PluginProcessor.cpp:901-1134"): "setStateInformation",
+     "src/PluginProcessor.cpp:926-1181"): "setStateInformation",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:610-749",
-     "src/PluginProcessor.cpp:901-1134"): "setStateInformation",
+     "src/PluginProcessor.cpp:926-1181"): "setStateInformation",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the

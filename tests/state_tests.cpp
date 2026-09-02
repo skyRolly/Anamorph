@@ -52,6 +52,7 @@
 #include <thread>
 #include <random>
 #include <vector>
+#include <functional>
 
 namespace
 {
@@ -5022,6 +5023,352 @@ static int runReprepareRaceProbe()
     return 0;
 }
 
+// ---------------------------------------------------------------------------
+//  State test 31 -- a restore with no A/B data must not carry the PREVIOUS
+//  project's per-slot Level-Match gains into the first switch (ER-STATE-20).
+//
+//  `abMatchGain[]` is the fifth processor member of the reused-instance class
+//  rounds 2, 8, 11 and 14 closed for the Settings, the A/B slots, a root with no
+//  sound child, and a partial modern Settings node. It is the one piece of the
+//  slot set that is NEVER serialized -- a runtime cache of what the matcher had
+//  settled on when each slot was last left -- so nothing about a restore ever
+//  overwrote it, and `abSwitchTo`'s closing
+//  `engine.injectMatchGainDb (abMatchGain[slot])` handed the new project's
+//  matcher the old project's figure.
+//
+//  HOW THIS OBSERVES THE INJECTED VALUE EXACTLY, with no DSP tolerance games.
+//  Two properties of the product make it deterministic:
+//    * after a restore with no A/B data BOTH slots are invalid, so `abEnsureInit`
+//      re-seeds them from the SAME restored state -- the switch is therefore
+//      parameter-neutral, and nothing but the injection can move the match; and
+//    * `LoudnessMatch` HOLDS its published value on silence by documented design
+//      ("when the input decays to silence the measurement WAITS ... it never
+//      drifts toward 0", LoudnessMatch.h) -- so a switch performed over silent
+//      blocks leaves `getMatchGainDb()` reading the injected value verbatim.
+//  Round 9 measured the AUDIBLE consequence of the stale injection and found it
+//  inert (`--legacy-match-probe`): `setParameters` re-targets `matchGainSmooth`
+//  from the live measurement every block, so the level recovers. That conclusion
+//  stands and is NOT what this test re-opens. This is the state, which was wrong
+//  regardless: the readout showed the old project's number and the new project's
+//  matcher re-converged from it.
+//
+//  WHICH SLOT EACH LEG CAN SEE. `abSwitchTo` STORES into the slot it leaves
+//  before it READS the one it enters, so a given restore only ever exposes the
+//  slot that is not active. Legs 1 and 2 restore `active = 0` (the default) and
+//  therefore see slot B; leg 3 restores an `AB` node carrying `active = 1` with
+//  no usable payloads, and sees slot A. Between them both entries are covered.
+// ---------------------------------------------------------------------------
+static void testRestoreResetsAbMatchGains()
+{
+    std::printf ("State test 31: a restore with no A/B data resets the per-slot Level-Match gains (ER-STATE-20)\n");
+
+    constexpr double sr = 48000.0;
+    constexpr int    bs = 512;
+
+    auto runNoise = [] (AnamorphAudioProcessor& p, int nBlocks, juce::Random& rng)
+    {
+        juce::AudioBuffer<float> buf (2, bs);
+        juce::MidiBuffer midi;
+        for (int k = 0; k < nBlocks; ++k)
+        {
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = 0; i < bs; ++i)
+                    buf.setSample (ch, i, (rng.nextFloat() * 2.0f - 1.0f) * 0.25f);
+            p.processBlock (buf, midi);
+        }
+    };
+    // Silence is the matcher's documented HOLD state, which is what makes the
+    // injected value readable verbatim. Four blocks is well past the ~6 ms
+    // fade-out that reaches the duck bottom where the injection is consumed.
+    auto runSilence = [] (AnamorphAudioProcessor& p, int nBlocks)
+    {
+        juce::AudioBuffer<float> buf (2, bs);
+        juce::MidiBuffer midi;
+        for (int k = 0; k < nBlocks; ++k) { buf.clear(); p.processBlock (buf, midi); }
+    };
+
+    // "The previous project": two slots whose MEASURED matches genuinely differ,
+    // and both far from the 0 dB a fresh instance would inject -- otherwise the
+    // stale value and the correct value coincide and the legs are vacuous.
+    // Leaves abMatchGain[0] = A's match, abMatchGain[1] = B's match, abActive = 0.
+    auto seedPreviousProject = [&] (AnamorphAudioProcessor& p, float& outA, float& outB)
+    {
+        juce::Random rng (20260902);
+        p.prepareToPlay (sr, bs);
+        setRaw (p, "autoGainMatch", 1.0f);   // Match ON so the matcher really converges
+        setRaw (p, "width", 0.95f);
+        runNoise (p, 60, rng);
+        outA = p.getEngine().getMatchGainDb();
+        p.abSwitchTo (1);                    // stores A's match into abMatchGain[0]
+        setRaw (p, "width", 0.05f);
+        runNoise (p, 60, rng);
+        outB = p.getEngine().getMatchGainDb();
+        p.abSwitchTo (0);                    // stores B's match into abMatchGain[1]
+        runNoise (p, 20, rng);
+    };
+
+    // THE INVARIANT, stated as the contract rather than as a number: a REUSED
+    // instance restored from a session with no A/B data must behave exactly like a
+    // FRESH instance restored from the SAME blob. That is what "no previous-session
+    // state survives" means, and it is what the other four members of this class are
+    // tested against.
+    //
+    // Stating it that way is also what makes it exact. An earlier draft asserted the
+    // injected value was 0 dB verbatim and was wrong to: `LoudnessMatch`'s
+    // feed-forward PREDICT is an absolute function of Drive and Mix and lowers the
+    // published gain when the restored session's controls imply more boost than the
+    // previous project's, so the reading drifts off 0 by however much the restore
+    // moved those two controls (measured: -3.161 dB against the v0.2 fixture, -0.052
+    // dB against a modern save of the same state). The fresh control experiences the
+    // identical predict, so comparing against it cancels exactly that term and leaves
+    // only the injection -- which is the thing under test.
+    auto expectNoStaleInjection = [&] (const char* legName,
+                                       const std::function<juce::MemoryBlock (AnamorphAudioProcessor&)>& makeBlob,
+                                       int firstSwitchTarget,
+                                       bool staleIsSlotB)
+    {
+        // One blob, built from a dedicated source, applied to BOTH instances -- the
+        // control is only a control if it restores the identical bytes.
+        juce::MemoryBlock blob;
+        {
+            AnamorphAudioProcessor src;
+            src.prepareToPlay (sr, bs);
+            blob = makeBlob (src);
+        }
+        if (blob.getSize() == 0) { check (false, "the leg produced a restorable blob"); return; }
+
+        // The observation, run identically on both instances.
+        auto restoreSwitchAndRead = [&] (AnamorphAudioProcessor& p)
+        {
+            p.setStateInformation (blob.getData(), (int) blob.getSize());
+            // The ordinary host order -- setState, THEN activate (the sequence
+            // prepareToPlay's own comment calls "the ordinary VST3/AU order"). It is
+            // also what keeps this comparison about the slot state: without it the
+            // reused instance still holds the previous project's audio in its delay
+            // lines and oversamplers, which flushes through the first blocks and gives
+            // the matcher something real to measure -- worth 0.052 dB here, engine
+            // history rather than A/B state, and not what this test is about.
+            p.prepareToPlay (sr, bs);
+            check (p.abActiveSlot() != firstSwitchTarget,
+                   "the restored active slot is the one this leg's first switch moves AWAY from");
+            p.abSwitchTo (firstSwitchTarget);
+            runSilence (p, 4);
+            return p.getEngine().getMatchGainDb();
+        };
+
+        AnamorphAudioProcessor reused;
+        float prevA = 0.0f, prevB = 0.0f;
+        seedPreviousProject (reused, prevA, prevB);
+        const float stale = staleIsSlotB ? prevB : prevA;
+        check (std::abs (prevA - prevB) > 0.5f,
+               "non-vacuity: the previous project's two slot matches are distinguishable");
+        check (std::abs (stale) > 0.5f,
+               "non-vacuity: the stale value differs from the 0 dB a fresh instance injects");
+        const float injectedReused = restoreSwitchAndRead (reused);
+
+        AnamorphAudioProcessor fresh;
+        fresh.prepareToPlay (sr, bs);
+        const float injectedFresh = restoreSwitchAndRead (fresh);
+
+        std::printf ("  %-28s previous project A %.3f dB / B %.3f dB; stale %.3f dB;"
+                     " first switch: reused %.3f dB vs fresh %.3f dB\n",
+                     legName, prevA, prevB, stale, injectedReused, injectedFresh);
+        check (std::abs (injectedReused - stale) > 0.5f,
+               "the first switch did NOT inject the previous project's remembered match");
+        checkNear ((double) injectedReused, (double) injectedFresh, 1.0e-4,
+                   "...the reused instance is indistinguishable from a fresh one (the contract)");
+    };
+
+    // --- Leg 1: v0.2 bare APVTS (the legacy branch's abResetToDefaults).
+    expectNoStaleInjection ("v0.2 bare APVTS:", [] (AnamorphAudioProcessor&)
+    {
+        auto file = fixtureDir().getChildFile ("legacy_v0_2_bare_apvts.xml");
+        auto xml  = juce::parseXML (file);
+        if (xml == nullptr) return juce::MemoryBlock();
+        return BlobCodec::wrap (*xml);
+    }, 1, true);
+
+    // --- Leg 2: a modern root with no AB child at all (the `else` branch's
+    //     abResetToDefaults). Built from a REAL save so the session is genuine in
+    //     every other respect; only the AB child is removed.
+    expectNoStaleInjection ("modern root, no AB node:", [] (AnamorphAudioProcessor& src)
+    {
+        juce::MemoryBlock saved;
+        src.getStateInformation (saved);
+        auto xml = BlobCodec::unwrap (saved);
+        if (xml == nullptr) return juce::MemoryBlock();
+        if (auto* ab = xml->getChildByName ("AB")) xml->removeChildElement (ab, true);
+        check (xml->getChildByName ("AB") == nullptr, "the AB node really is absent from leg 2's blob");
+        return BlobCodec::wrap (*xml);
+    }, 1, true);
+
+    // --- Leg 3: an AB node that EXISTS but carries no usable slot payloads, with
+    //     active = 1. This path never reaches abResetToDefaults -- `readSlot` resets
+    //     each slot in place -- so it is the one that exposes slot A, and the one a
+    //     fix confined to abResetToDefaults leaves leaking (measured: -2.405 dB).
+    expectNoStaleInjection ("AB node, no payloads:", [] (AnamorphAudioProcessor& src)
+    {
+        juce::MemoryBlock saved;
+        src.getStateInformation (saved);
+        auto xml = BlobCodec::unwrap (saved);
+        if (xml == nullptr) return juce::MemoryBlock();
+        if (auto* ab = xml->getChildByName ("AB")) xml->removeChildElement (ab, true);
+        xml->createNewChildElement ("AB")->setAttribute ("active", 1); // the only thing it carries
+        return BlobCodec::wrap (*xml);
+    }, 0, false);
+
+    // --- Leg 4: a session that DOES carry valid A/B data still restores both
+    //     slots' own sounds. The fix must not have touched this path.
+    {
+        constexpr float kSoundA = 0.88f, kSoundB = 0.12f;
+        juce::MemoryBlock valid;
+        {
+            AnamorphAudioProcessor src;
+            src.prepareToPlay (sr, bs);
+            setRaw (src, "width", kSoundA);
+            src.abSwitchTo (1);
+            setRaw (src, "width", kSoundB);
+            src.abSwitchTo (0);
+            src.getStateInformation (valid);
+        }
+
+        AnamorphAudioProcessor p;
+        float prevA = 0.0f, prevB = 0.0f;
+        seedPreviousProject (p, prevA, prevB);
+        p.setStateInformation (valid.getData(), (int) valid.getSize());
+
+        checkNear ((double) rawOf (p, "width"), (double) kSoundA, 1.0e-3,
+                   "a valid A/B session restores slot A's own sound");
+        check (p.abActiveSlot() == 0, "...and its own active slot");
+        p.abSwitchTo (1);
+        checkNear ((double) rawOf (p, "width"), (double) kSoundB, 1.0e-3,
+                   "...and slot B still holds ITS own sound, not the restored one");
+        p.abSwitchTo (0);
+        checkNear ((double) rawOf (p, "width"), (double) kSoundA, 1.0e-3,
+                   "...and switching back returns slot A's sound (valid A/B behaviour intact)");
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  Opt-in probe (round 16): what does the MODERN host-hidden Settings path do
+//  with a malformed value that is PRESENT?
+//
+//  MEASURES, ASSERTS NOTHING, returns 0 either way -- the same discipline as
+//  --latency-restore-probe. The question it answers is a review finding
+//  ("`restoreState` accepts present modern settings verbatim, unlike legacy
+//  migration"), and the point of a probe rather than a test is that a test would
+//  have to encode an expectation about recovery semantics that no document
+//  currently states.
+//
+//  Ingress, stated up front because it bounds everything below: the modern
+//  ANAMORPH_INTERNAL values are written by copyState() from a live tree whose only
+//  writers are the constructor's defaults table, restoreState (from a file),
+//  migrateFromLegacyApvts (clamped at source since ER-STATE-17) and the Settings
+//  widgets (whose ComboBox ids and Slider range are valid by construction). So a
+//  malformed MODERN value can only arrive from a hand-edited or corrupted file --
+//  it cannot be produced by the plug-in itself.
+// ---------------------------------------------------------------------------
+static int runModernSettingsProbe()
+{
+    std::printf ("modern host-hidden Settings validation probe (round 16)\n");
+    std::printf ("======================================================\n\n");
+
+    // A genuine modern save, used as the carrier for every mutation below.
+    juce::MemoryBlock base;
+    {
+        AnamorphAudioProcessor src;
+        src.prepareToPlay (48000.0, 512);
+        src.getStateInformation (base);
+    }
+
+    struct Case { const char* field; const char* value; };
+    const Case cases[] = {
+        { "int_oversample",   "99"    }, { "int_oversample",   "-5"      },
+        { "int_oversample",   "abc"   }, { "int_oversample",   "nan"     },
+        { "int_oversample",   "inf"   }, { "int_oversample",   "2.7"     },
+        { "int_uiScale",      "99"    }, { "int_uiScale",      "0"       },
+        { "int_uiScale",      "abc"   },
+        { "int_scopePersist", "5.0"   }, { "int_scopePersist", "-1.0"    },
+        { "int_scopePersist", "nan"   }, { "int_scopePersist", "inf"     },
+        { "int_scopePersist", "abc"   }, { "int_scopePersist", "1e39"    },
+        { "int_metersOn",     "abc"   }, { "int_metersOn",     "2"       },
+        { "int_tooltipsOn",   "maybe" }, { "int_uiAnimations", "-1"      },
+    };
+
+    std::printf ("  %-18s %-8s | %-14s | %-9s %-9s %-11s | %-8s | %-8s | after editor\n",
+                 "field", "written", "tree after", "osIndex", "uiScale", "persist",
+                 "finite?", "resaved");
+    std::printf ("  %s\n", juce::String::repeatedString ("-", 122).toRawUTF8());
+
+    int nonFinite = 0, outOfDomainTree = 0, durable = 0;
+
+    for (const auto& c : cases)
+    {
+        auto xml = BlobCodec::unwrap (base);
+        if (xml == nullptr) { std::printf ("  (blob codec failed)\n"); return 1; }
+        auto* internal = xml->getChildByName ("ANAMORPH_INTERNAL");
+        if (internal == nullptr) { std::printf ("  (no ANAMORPH_INTERNAL node)\n"); return 1; }
+        internal->setAttribute (c.field, c.value);
+        auto mutated = BlobCodec::wrap (*xml);
+
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        p.setStateInformation (mutated.getData(), (int) mutated.getSize());
+
+        const auto  after   = p.getInternal().copyState()[juce::Identifier (c.field)];
+        const int   osIdx   = p.getInternal().oversampleIndex();
+        const int   uiIdx   = p.getInternal().uiScaleIndex();
+        const float persist = p.getInternal().scopePersist();
+
+        // Does the malformed value survive into the NEXT save? That is what makes
+        // a bad value durable state rather than a one-session display glitch.
+        juce::MemoryBlock resaved;
+        p.getStateInformation (resaved);
+        juce::String resavedValue = "(gone)";
+        if (auto rx = BlobCodec::unwrap (resaved))
+            if (auto* ri = rx->getChildByName ("ANAMORPH_INTERNAL"))
+                resavedValue = ri->getStringAttribute (c.field);
+
+        const bool finite = std::isfinite (persist);
+        if (! finite) ++nonFinite;
+        if (resavedValue == juce::String (c.value)) ++durable;
+        if (juce::String (c.field) == "int_oversample" || juce::String (c.field) == "int_uiScale")
+        {
+            const int domainMax = juce::String (c.field) == "int_oversample" ? 4 : 5;
+            const int treeId    = (int) after;
+            if (treeId < 1 || treeId > domainMax) ++outOfDomainTree;
+        }
+
+        // USER-VISIBILITY, which is the half a headless read cannot answer. The
+        // Settings widgets bind these values two-way, so opening the editor is
+        // itself a write path: a Slider constrains to its range and a ComboBox
+        // rejects an id it has no item for. Whether that REPAIRS the tree or just
+        // displays wrongly is the difference between "durable invalid state" and
+        // "one bad session", so it is measured rather than reasoned about.
+        juce::String afterEditor = "(not built)";
+       #if JUCE_LINUX || JUCE_BSD
+        if (auto* ed = p.createEditor())
+        {
+            afterEditor = p.getInternal().copyState()[juce::Identifier (c.field)].toString();
+            delete ed;
+        }
+       #endif
+
+        std::printf ("  %-18s %-8s | %-14s | %-9d %-9d %-11.4f | %-8s | %-8s | %s\n",
+                     c.field, c.value, after.toString().toRawUTF8(), osIdx, uiIdx,
+                     (double) persist, finite ? "yes" : "NO", resavedValue.toRawUTF8(),
+                     afterEditor.toRawUTF8());
+    }
+
+    std::printf ("\n  summary: %d case(s) left a NON-FINITE scope persistence;"
+                 " %d left an out-of-domain ComboBox id IN THE TREE; %d persisted"
+                 " the malformed text into the next save\n", nonFinite, outOfDomainTree, durable);
+    std::printf ("  (the DSP-facing reads are clamped at source: oversampleIndex via jlimit(0,3),\n"
+                 "   uiScaleIndex via jlimit(0,4) -- so neither can index out of range whatever\n"
+                 "   the tree holds. scopePersist() is an unclamped (float)(double) read.)\n");
+    return 0;
+}
+
 int main (int argc, char* argv[])
 {
     juce::ScopedJuceInitialiser_GUI juceInit; // MessageManager for APVTS/processor on this thread
@@ -5055,6 +5402,9 @@ int main (int argc, char* argv[])
 
     if (argc > 1 && std::strcmp (argv[1], "--reprepare-race-probe") == 0)
         return runReprepareRaceProbe();
+
+    if (argc > 1 && std::strcmp (argv[1], "--modern-settings-probe") == 0)
+        return runModernSettingsProbe();
 
     const bool writeSnapshot = argc > 1 && std::strcmp (argv[1], "--write-snapshot") == 0;
 
@@ -5094,6 +5444,7 @@ int main (int argc, char* argv[])
     testRestoreIntegrityGuards();
     testPartialSettingsDoNotInherit();
     testOffThreadPrepareDefersLatency();
+    testRestoreResetsAbMatchGains();
     testMalformedLegacySettingsResolveToValid();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();

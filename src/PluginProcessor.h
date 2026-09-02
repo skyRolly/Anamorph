@@ -210,7 +210,11 @@ private:
 
     StateSet abSlot[anamorph::kNumAbSlots]; // A = [0], B = [1]
     int abActive = 0;
-    float abMatchGain[anamorph::kNumAbSlots] = { 0.0f, 0.0f }; // remembered Level-Match per A/B slot (#23)
+    // Remembered Level-Match per A/B slot (#23). A runtime cache, never serialized --
+    // and therefore reset by abResetToDefaults() along with the slots themselves, or a
+    // restore with no A/B data would leak the previous project's gains into the first
+    // switch (ER-STATE-20). 0 dB is both the initialiser and the fresh-instance value.
+    float abMatchGain[anamorph::kNumAbSlots] = { 0.0f, 0.0f };
 
     juce::AudioProcessorValueTreeState apvts;
     ParamPointers params;

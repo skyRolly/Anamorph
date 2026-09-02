@@ -29,6 +29,181 @@ entries and CHANGELOG notes cite.
 
 ---
 
+## Round 16 — 2026-09-02 — the previous project's A/B Level-Match gains survived a restore
+
+### ER-STATE-20 — CONFIRMED and FIXED — and it leaked on a second path the finding did not name
+
+The finding: *"after a restore without A/B data, `abResetToDefaults` retains the previous session's
+level-match gains. The first A/B switch can apply that stale gain"* (`src/PluginProcessor.cpp:799`).
+Confirmed exactly as filed, and one path wider.
+
+**The state, and why nothing overwrote it.** `abMatchGain[2]` is a processor member holding, per A/B
+slot, the gain the loudness matcher had settled on when that slot was last left. `abSwitchTo` stores
+into the slot it leaves and restores into the one it enters:
+
+```
+abSlot[abActive]    = currentStateSet();
+abMatchGain[abActive] = engine.getMatchGainDb();   // remember the slot being left
+abActive = slot; abApplySlot (slot);
+engine.injectMatchGainDb (abMatchGain[slot]);      // restore the slot being entered
+```
+
+It is the ONE part of a slot that is never serialized, which is precisely why it leaked: every other
+piece of slot state is written by the restore, so it is necessarily overwritten, while this one had
+no writer on the restore path at all. `abResetToDefaults()` reset `abSlot[]` and `abActive` and
+stopped there. A host restores into one live instance repeatedly, so the values simply stayed.
+
+**Reproduction, on the real paths.** State test 31 seeds a "previous project" whose two slots have
+genuinely MEASURED and distinguishable matches (Level Match on, width 0.95 then 0.05, 60 blocks of
+deterministic noise each): slot A −2.438 dB, slot B −1.040 dB. It then restores a session with no
+A/B data into that same instance and performs the first switch. Before the fix:
+
+| restore path | stale value | first switch injected | a fresh instance injects |
+|---|---|---|---|
+| v0.2 bare APVTS (`abResetToDefaults`) | −1.040 dB (slot B) | **−1.040 dB** | 0.000 dB |
+| modern root, no `AB` node (`abResetToDefaults`) | −1.040 dB (slot B) | **−1.040 dB** | 0.000 dB |
+| `AB` node present, no payloads, `active` = 1 (`readSlot`) | −2.438 dB (slot A) | **−2.438 dB** | 0.000 dB |
+
+Not approximately the stale value — the stale value, to the digit.
+
+**The second path, found by tracing rather than by the finding.** An `AB` node that EXISTS but
+carries no usable slot payload never reaches `abResetToDefaults`: `readSlot` resets each slot in
+place instead. That is still "a restore without A/B data" in substance — `readSlot`'s own rule is
+that an absent payload means the default — and it is the only path that exposes slot A, because
+`abActive` comes from the blob (so it can be 1) and the first switch overwrites the slot it leaves
+before reading the one it enters. Measured: with the reset confined to `abResetToDefaults`, that leg
+still injected −2.405 dB. Fixing only the named function would have left the wider half of the
+defect in place and a green test beside it.
+
+**Which entry is observable, stated precisely rather than overclaimed.** After a restore that sets
+`abActive` = 0, `abMatchGain[0]` is overwritten by the first switch before anything reads it, so
+only `abMatchGain[1]` is reachable there; the `active` = 1 path is what makes `abMatchGain[0]`
+reachable. Both are reset anyway — the cache is slot state, and which index is "the unread one" is a
+function of `abActive`, which the same code resets.
+
+**Fix.** Reset the cache wherever a slot is reset: in `abResetToDefaults()` for the two paths with no
+`AB` node, and in `readSlot` per slot for the path that has one. Both are unconditional, beside the
+`slot = {}` / `dst = {}` they belong to. 0.0f is the member's own initialiser, not a chosen
+sentinel, and 0 dB clears the engine's `> kNoInject` guard, so it is APPLIED as unity rather than
+skipped — which is exactly what a never-switched fresh instance injects. No serialization change,
+no format change, nothing masked downstream: the state itself is correct.
+
+**Not a re-opening of ER-STATE-13.** Round 9 measured the AUDIBLE consequence of an injected stale
+value and refuted it — `setParameters` re-targets `matchGainSmooth` from the live measurement every
+block, so the level recovers — and that conclusion is unchanged and was re-run this round
+(`--legacy-match-probe`, same verdict). What round 9 examined was the impact; what this round fixes
+is the state, which was wrong independently: the Level Match readout showed the previous project's
+number and the new project's matcher re-converged from it.
+
+**Regression coverage: State test 31**, four legs, deterministic. Three restore paths (the table
+above), each asserted two ways — the injected value is not the stale one, AND the reused instance is
+indistinguishable from a FRESH instance restored from the identical blob, which is the
+state-isolation contract stated directly. Plus a fourth leg proving a session that DOES carry valid
+A/B data still restores both slots' own sounds and its own active slot. **6 checks fail without the
+fix, 0 with it.**
+
+Two details of the harness are worth recording, because both were wrong in a first draft and the
+measurements are the reason:
+- **Asserting "injects exactly 0 dB" is not right, and the fresh-instance comparison is.**
+  `LoudnessMatch`'s feed-forward predict is an absolute function of Drive and Mix and lowers the
+  published gain when the restored session implies more boost, so the reading sits off 0 by however
+  much the restore moved those controls (−3.161 dB against the v0.2 fixture, −0.052 dB against a
+  modern save). The fresh control experiences the identical predict, so comparing against it cancels
+  that term and leaves only the injection.
+- **The test performs the host's ordinary post-restore activation** (setState, then `prepareToPlay`
+  — the sequence that function's own comment calls the ordinary VST3/AU order). Without it the
+  reused instance still holds the previous project's audio in its delay lines and oversamplers,
+  which flushes through the first blocks and moves the reading 0.052 dB. That residue is engine
+  history, not A/B state, and is not what this test is about.
+
+The observation itself is exact rather than a tolerance game, and for two product reasons: after a
+restore with no A/B data both slots are re-seeded from the SAME restored state, so the switch is
+parameter-neutral; and `LoudnessMatch` HOLDS its published value on silence by documented design
+("when the input decays to silence the measurement WAITS ... it never drifts toward 0"). A switch
+performed over silent blocks therefore leaves `getMatchGainDb()` reading the injected value verbatim.
+
+### ER-STATE-21 — INVESTIGATION ONLY — modern Settings validation: no defect actionable, evidence recorded
+
+The finding: *"`restoreState` accepts present modern settings verbatim, unlike legacy migration.
+Define recovery semantics before malformed persistence or coerced booleans become durable state"*
+(`src/InternalState.h:128`). Investigated with a new measure-only probe
+(`--modern-settings-probe`), nineteen malformed values written one at a time into a genuine modern
+save's `ANAMORPH_INTERNAL` node. **No production code changed.**
+
+**Ingress first, because it bounds everything else.** The modern values are written by exactly four
+things: the constructor's `settings()` defaults table, `restoreState` (from a file),
+`migrateFromLegacyApvts` (clamped at source since ER-STATE-17), and the Settings widgets, whose
+ComboBox ids and Slider range are valid by construction. A malformed MODERN value can therefore only
+arrive from a **hand-edited or corrupted file**; the plug-in cannot produce one.
+
+**What the nineteen cases actually do:**
+
+| question | answer |
+|---|---|
+| crash | **no**, 0 of 19 |
+| undefined behaviour | **no** — `juce::var`→`int` on a string is a safe parse, not the float cast that made the legacy path undefined in round 12 (ER-STATE-17). Round 14's reading is confirmed by measurement |
+| invalid *DSP-facing* state | **no** — `oversampleIndex()` clamps through `jlimit(0,3)` and `uiScaleIndex()` through `jlimit(0,4)` at the read, so neither can index out of range whatever the tree holds. Measured in range in all 19 |
+| invalid *stored* state | **yes** — 8 of 19 leave an out-of-domain ComboBox id in the tree, and 3 leave a **non-finite** scope persistence (`nan`, `inf`, `1e39`). `scopePersist()` is the one consumer with no clamp at its read |
+| durable across a save | **yes** — 19 of 19 persist verbatim into the next save |
+| repaired by opening the editor | **partly, and inconsistently** — 4 of 19. The Slider's range constrains a too-high or overflowing persistence (5.0 → 1.0, `inf` → 1.0, `1e39` → 1.0) and the ComboBox coerces a fractional id (2.7 → 2). A NEGATIVE persistence, `nan`, and every out-of-domain integer id survive with the editor open |
+
+**Disposition: no production change, on the brief's own terms and on the evidence.** There is no
+crash, no undefined behaviour, and no audio-path exposure — the three things that would make this
+actionable now. What remains is a stored value that is invalid and durable, reachable only from an
+edited file, and the question of what a malformed *present* value SHOULD mean is exactly the one the
+finding says to define: `SERIALIZATION_REGISTRY.md`'s `ANAMORPH_INTERNAL` table states a Default for
+each field's ABSENCE and says nothing about malformation, and the ABSENT rule was itself only settled
+in round 14 (ER-STATE-18). Choosing between "clamp at the read", "repair at restore like the legacy
+path" and "leave it, since the consumers are already safe" is a serialization-contract decision with
+a compatibility consequence, and inventing one from a probe is what the brief forbids and what this
+programme files rather than does. Recorded here and in `TESTING.md`; the one asymmetry a decision
+would most naturally start from is that `scopePersist()` is the sole unclamped consumer.
+
+### ER-RT-05 — the lint boundary is described accurately; one document UNDERSTATED it, corrected
+
+Seventh consecutive verification, and the first to find anything. No document anywhere claims
+automatic or cross-file discovery of audio-path callees — the boundary is stated verbatim in the four
+places that describe it (`REALTIME_AUDIO_POLICY.md` "That closure is same-file",
+`REALTIME_SAFETY_AUDIT.md` "the same-file transitive closure … not a whole-program one",
+`CI_CD.md` "every callee defined in the same file, transitively", and `build.yml`, which explicitly
+denies the cross-file reach and points at `-Wfunction-effects` for it). The lint's own header says the
+same. So the finding's concern — that the boundary is untracked — does not hold.
+
+What DID need correcting is the opposite error. `REPOSITORY_MAP.md` still described the lint with the
+pre-2026-08-18 seed-only phrasing: "scans the bodies of the functions `REALTIME_AUDIO_POLICY` binds",
+omitting both the transitive same-file closure and the two ER-RT-02 seeds (`setParameters`/`toEngine`).
+It **understated** the reach rather than overclaiming it, which is why six rounds of checking for
+overclaims never caught it. Corrected in place, with the boundary named. No lint change, no `AUDIO_FN`
+expansion, no redesign — exactly as the brief requires.
+
+One precision note about this round's own predecessors, recorded rather than acted on: rounds 8–15
+each reported that "ADR-0029 describes the same-file closure correctly". ADR-0029 is in fact **silent**
+on the closure — its scope paragraph is the pre-closure state ("7 scanned bodies to 35"; `CI_CD.md`
+records the closure taking 35 → 61). Silent is not wrong, and an ADR is a dated decision record that
+should not be retrofitted, so nothing is changed there; but the claim in those worklog entries was
+generous and this entry says so rather than repeating it an eighth time.
+
+### D-1 approval record — the normative record is correct; two stale spots in the RENDERED dashboard
+
+The `docs/`, `src/` and `tests/` record is accurate everywhere D-1 is described: KI-027's registry row
+and its detail banner, `THREADING_POLICY.md`, `LATENCY_MODEL.md`, both communication tables, the
+processor's own comments, and the round-4/12/15 worklog entries all say **approved by the maintainer
+and implemented**. Every surviving "awaiting sign-off" string sits inside struck-through row text or
+under a banner stating in terms that the language is historical. No re-approval is asked for and the
+threading architecture is untouched.
+
+Two genuinely stale spots were found, both in the rendered companion `ENGINEERING_REVIEW_REPORT.html`
+and both outside the scope earlier audits used (they checked four `docs/` locations and grepped for
+"awaiting"; these say "Gated" and live in frozen round-2 blocks):
+- **§7 Roadmap** carried `D-1 implementation (if approved) … Gated` with no round attribution, so a
+  reader met it as open work. The table is a round-2 snapshot; it now says so, and points at §5 and §8
+  for live status.
+- **§8** carried four unticked round-2 carry-overs — `D-1 decided`, `D-2 decided`, `D-3 Level-5
+  audition`, `Round 3 executed` — which, because rounds 7–16 were inserted above them, had drifted to
+  render under Round 6. All four are long since closed (D-1 approved r4, D-2 deferred r4, D-3 PASSED),
+  and they are now ticked with their outcomes named. One decision card's "What you are approving"
+  became "What was approved", matching the `APPROVED & IMPLEMENTED r4` chip beside it.
+
 ## Round 15 — 2026-09-02 — the off-message-thread re-prepare race: confirmed under ThreadSanitizer, closed inside D-1
 
 ### ER-STATE-19 — CONFIRMED and FIXED — a host that prepares off the message thread raced the plug-in's own latency timer
