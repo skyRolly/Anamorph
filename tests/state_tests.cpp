@@ -4829,6 +4829,199 @@ static int runPartialSettingsProbe()
     return 0;
 }
 
+// ---------------------------------------------------------------------------
+//  State test 30 -- a host that PREPARES off the message thread must not
+//  deliver the latency report from that thread (ER-STATE-19: D-1 applied to
+//  prepareToPlay).
+//
+//  prepareToPlay used to call updateLatency() directly, so a host that activates
+//  the plug-in on a thread that is not the JUCE message thread -- the JUCE Linux
+//  VST3 wrapper's own fallback when the host provides no IRunLoop (JUCE's
+//  background MessageThread IS the message thread then, and it runs this
+//  processor's timer); a host that ignores the [UI-thread] annotation on
+//  setActive; an AU Initialize off main -- wrote AudioProcessor::latencySamples
+//  and walked the listener chain on THAT thread while the processor's 20 Hz
+//  timer could be doing the same on the message thread: two unsynchronised
+//  writers of one plain int, and a read of the engine's latency2/4/8 while
+//  engine.prepare() rewrites them. The stale-host outcome (the timer's older
+//  value landing last, with nothing pending to correct it) needs an interleaving
+//  no product barrier can force, so it is MEASURED by --reprepare-race-probe
+//  rather than asserted here. What this test pins deterministically is the
+//  invariant that makes it impossible: no latency delivery ever happens off the
+//  message thread, and what the timer then delivers is the PREPARED value --
+//  the actual latency, not merely the flag.
+// ---------------------------------------------------------------------------
+static void testOffThreadPrepareDefersLatency()
+{
+    std::printf ("State test 30: an off-message-thread prepareToPlay defers its latency report (ER-STATE-19)\n");
+
+    struct ThreadRecorder final : public juce::AudioProcessorListener
+    {
+        std::atomic<int> total { 0 }, offMessageThread { 0 };
+        void audioProcessorParameterChanged (juce::AudioProcessor*, int, float) override {}
+        void audioProcessorChanged (juce::AudioProcessor*, const ChangeDetails& d) override
+        {
+            if (! d.latencyChanged) return;
+            total.fetch_add (1);
+            if (! juce::MessageManager::existsAndIsCurrentThread()) offMessageThread.fetch_add (1);
+        }
+    };
+
+    // Truth first: the same state prepared ON the message thread reports
+    // synchronously, and that number is what the off-thread prepare must reach.
+    int truth = 0;
+    {
+        AnamorphAudioProcessor q;
+        q.getInternal().oversampleValue().setValue (2);          // 1-based combo id: 2x
+        q.getAPVTS().getParameter (pid::drive)->setValueNotifyingHost (1.0f);
+        check (q.getLatencySamples() == 0, "a never-prepared instance reports 0 (the oversampler does not exist yet)");
+        ThreadRecorder control;
+        q.addListener (&control);
+        q.prepareToPlay (48000.0, 512);
+        truth = q.getLatencySamples();
+        check (truth != 0, "non-vacuity: 2x oversampling with drive up reports a non-zero latency once prepared");
+        // CONTROL: the message-thread path must stay synchronous -- the notification
+        // has already happened, inside prepareToPlay, on this thread. A build that
+        // deferred it too would leave total at 0 here (and would pass the off-thread
+        // legs below vacuously).
+        check (control.total.load() == 1 && control.offMessageThread.load() == 0,
+               "CONTROL: a message-thread prepareToPlay still reports SYNCHRONOUSLY, on the message thread");
+        q.removeListener (&control);
+    }
+
+    AnamorphAudioProcessor p;
+    p.getInternal().oversampleValue().setValue (2);
+    p.getAPVTS().getParameter (pid::drive)->setValueNotifyingHost (1.0f);
+    const int before = p.getLatencySamples();
+    check (before == 0, "baseline: the instance about to be prepared off-thread reports 0");
+
+    ThreadRecorder rec;
+    p.addListener (&rec);
+
+    // The host's activation, on a thread that is NOT the message thread.
+    std::thread host ([&] { p.prepareToPlay (48000.0, 512); });
+    host.join();
+
+    // (i) DISCRIMINATING and deterministic: before the fix the preparing thread
+    //     itself ran setLatencySamples, so the listener fired on it.
+    check (rec.offMessageThread.load() == 0,
+           "no latency notification was delivered from the preparing thread");
+    // (ii) Equally deterministic: nothing has dispatched on the message thread
+    //      since the join, so the report cannot have moved yet.
+    check (p.getLatencySamples() == before,
+           "the report is unchanged until the message thread serves the request");
+
+    // (iii) The timer delivers the PREPARED value. Bounded polls for the
+    //       processor's own 20 Hz timer (see State test 27 for why a tight loop
+    //       would fire nothing); the deadline bounds only a FAILING run.
+    int served = before;
+    for (int elapsed = 0; elapsed < 2000 && served == before; elapsed += 5)
+    {
+        juce::Timer::callPendingTimersSynchronously();
+        served = p.getLatencySamples();
+        if (served == before) std::this_thread::sleep_for (std::chrono::milliseconds (5));
+    }
+    std::printf ("  message-thread truth %d; off-thread prepare: after join %d, served by the timer %d; "
+                 "notifications on the preparing thread: %d\n",
+                 truth, before, served, rec.offMessageThread.load());
+    check (served == truth, "the timer serves the ACTUAL prepared latency, equal to the message-thread report");
+    check (rec.total.load() >= 1 && rec.offMessageThread.load() == 0,
+           "...and every notification ran on the message thread");
+    p.removeListener (&rec);
+}
+
+// ---------------------------------------------------------------------------
+//  ER-STATE-19 probe (round 15): does a host that re-prepares OFF the message
+//  thread race the processor's own D-1 latency timer?
+//
+//  NOT part of the suite. Like --state-thread-probe it drives the exact
+//  interaction the finding describes, so if the race is real its own execution
+//  is undefined behaviour: run it under ThreadSanitizer for the mechanical
+//  answer, or in a plain build to COUNT the value-level symptom.
+//
+//  Thread H models a host activating the plug-in on a thread that is not the
+//  JUCE message thread (see State test 30 for which hosts those are). Each
+//  iteration is the ordinary shape: an automation write of Drive lands, raising
+//  the D-1 request from a non-message thread exactly as State test 22 does, then
+//  the host re-prepares. The MAIN thread is the message thread and does only
+//  what the real one would: serve the 20 Hz timer.
+//
+//  Reported: how many latency notifications ran on H (the pre-round-15 code
+//  delivered every prepare's report from H itself), and whether the value the
+//  host was left holding matches what a message-thread re-prepare of the final
+//  state reports -- the "stale delay compensation" the review named.
+// ---------------------------------------------------------------------------
+static int runReprepareRaceProbe()
+{
+    std::printf ("ER-STATE-19 probe: off-message-thread prepareToPlay vs the D-1 timer\n");
+    std::printf ("  (under ThreadSanitizer a report here is the finding; the counts below are the plain-build symptom)\n");
+
+    struct ThreadRecorder final : public juce::AudioProcessorListener
+    {
+        std::atomic<int> onHostThread { 0 }, onMessageThread { 0 };
+        void audioProcessorParameterChanged (juce::AudioProcessor*, int, float) override {}
+        void audioProcessorChanged (juce::AudioProcessor*, const ChangeDetails& d) override
+        {
+            if (! d.latencyChanged) return;
+            (juce::MessageManager::existsAndIsCurrentThread() ? onMessageThread : onHostThread).fetch_add (1);
+        }
+    };
+
+    constexpr int kRuns = 20, kIterations = 200;
+    int staleRuns = 0, hostDeliveries = 0, messageDeliveries = 0;
+
+    for (int run = 0; run < kRuns; ++run)
+    {
+        AnamorphAudioProcessor proc;
+        proc.getInternal().oversampleValue().setValue (2);
+        auto* drive = proc.getAPVTS().getParameter (pid::drive);
+        ThreadRecorder rec;
+        proc.addListener (&rec);
+
+        std::atomic<bool> go { false }, done { false };
+        std::thread host ([&]
+        {
+            while (! go.load (std::memory_order_acquire)) { /* spin to widen the window */ }
+            for (int i = 0; i < kIterations; ++i)
+            {
+                drive->setValueNotifyingHost ((i & 1) != 0 ? 1.0f : 0.0f);   // raises the request off-thread
+                proc.prepareToPlay (48000.0, 512);                            // the re-prepare
+            }
+            done.store (true, std::memory_order_release);
+        });
+
+        go.store (true, std::memory_order_release);
+        while (! done.load (std::memory_order_acquire))
+        {
+            juce::Timer::callPendingTimersSynchronously();
+            std::this_thread::sleep_for (std::chrono::milliseconds (1));
+        }
+        host.join();
+
+        // Let any request the LAST prepare left pending drain (a few timer periods).
+        for (int i = 0; i < 60; ++i)
+        {
+            juce::Timer::callPendingTimersSynchronously();
+            std::this_thread::sleep_for (std::chrono::milliseconds (5));
+        }
+        const int told = proc.getLatencySamples();
+        proc.prepareToPlay (48000.0, 512);           // message thread: the truth for the final state
+        const int truth = proc.getLatencySamples();
+        proc.removeListener (&rec);
+
+        hostDeliveries    += rec.onHostThread.load();
+        messageDeliveries += rec.onMessageThread.load();
+        if (told != truth) ++staleRuns;
+        std::printf ("  run %2d: deliveries on host thread %3d / message thread %3d; host left holding %d, truth %d%s\n",
+                     run, rec.onHostThread.load(), rec.onMessageThread.load(), told, truth,
+                     told != truth ? "  <-- STALE" : "");
+    }
+
+    std::printf ("  => %d of %d runs left the host stale; %d deliveries ran on the host thread, %d on the message thread\n",
+                 staleRuns, kRuns, hostDeliveries, messageDeliveries);
+    return 0;
+}
+
 int main (int argc, char* argv[])
 {
     juce::ScopedJuceInitialiser_GUI juceInit; // MessageManager for APVTS/processor on this thread
@@ -4859,6 +5052,9 @@ int main (int argc, char* argv[])
 
     if (argc > 1 && std::strcmp (argv[1], "--partial-settings-probe") == 0)
         return runPartialSettingsProbe();
+
+    if (argc > 1 && std::strcmp (argv[1], "--reprepare-race-probe") == 0)
+        return runReprepareRaceProbe();
 
     const bool writeSnapshot = argc > 1 && std::strcmp (argv[1], "--write-snapshot") == 0;
 
@@ -4897,6 +5093,7 @@ int main (int argc, char* argv[])
     testLegacyRestoreResetsAbSlots();
     testRestoreIntegrityGuards();
     testPartialSettingsDoNotInherit();
+    testOffThreadPrepareDefersLatency();
     testMalformedLegacySettingsResolveToValid();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();

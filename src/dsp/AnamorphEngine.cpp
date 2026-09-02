@@ -51,9 +51,9 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
     os2->initProcessing ((size_t) maxBlock);
     os4->initProcessing ((size_t) maxBlock);
     os8->initProcessing ((size_t) maxBlock);
-    latency2 = (int) std::round (os2->getLatencyInSamples());
-    latency4 = (int) std::round (os4->getLatencyInSamples());
-    latency8 = (int) std::round (os8->getLatencyInSamples());
+    latency2.store ((int) std::round (os2->getLatencyInSamples()), std::memory_order_relaxed);
+    latency4.store ((int) std::round (os4->getLatencyInSamples()), std::memory_order_relaxed);
+    latency8.store ((int) std::round (os8->getLatencyInSamples()), std::memory_order_relaxed);
 
     // --- smoothers ---
     const double ramp = 0.02; // 20 ms
@@ -81,7 +81,9 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
     driveBlendSmooth.setCurrentAndTargetValue (0.0f);
 
     // --- dry-path delay (aligns dry to the wet OS latency) ---
-    const int maxLat = juce::jmax (latency2, latency4, latency8);
+    const int maxLat = juce::jmax (latency2.load (std::memory_order_relaxed),
+                                   latency4.load (std::memory_order_relaxed),
+                                   latency8.load (std::memory_order_relaxed));
     dryDelayBuffer.setSize (2, maxLat + maxBlock + 1);
     dryDelayBuffer.clear();
     dryDelayWrite = 0;
@@ -453,9 +455,9 @@ int AnamorphEngine::getLatencySamples() const noexcept
     if (! osEngaged) return 0;
     switch (p.oversample)
     {
-        case OversampleFactor::x2: return latency2;
-        case OversampleFactor::x4: return latency4;
-        case OversampleFactor::x8: return latency8;
+        case OversampleFactor::x2: return latency2.load (std::memory_order_relaxed);
+        case OversampleFactor::x4: return latency4.load (std::memory_order_relaxed);
+        case OversampleFactor::x8: return latency8.load (std::memory_order_relaxed);
         default:                   return 0;
     }
 }
@@ -466,9 +468,9 @@ int AnamorphEngine::predictLatency (const EngineParameters& e) const noexcept
     if (! (e.driveDb > 0.01f || isModAlgorithm (e.algorithm))) return 0;
     switch (e.oversample)
     {
-        case OversampleFactor::x2: return latency2;
-        case OversampleFactor::x4: return latency4;
-        case OversampleFactor::x8: return latency8;
+        case OversampleFactor::x2: return latency2.load (std::memory_order_relaxed);
+        case OversampleFactor::x4: return latency4.load (std::memory_order_relaxed);
+        case OversampleFactor::x8: return latency8.load (std::memory_order_relaxed);
         default:                   return 0;
     }
 }

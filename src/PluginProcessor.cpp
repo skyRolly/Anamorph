@@ -67,8 +67,8 @@ AnamorphAudioProcessor::AnamorphAudioProcessor()
     // D-1: the consumer for deferred latency requests. Owned by the PROCESSOR so
     // it runs with no editor open -- the reason the editor-polling candidate was
     // refuted. Guarded because a harness may construct the processor with no
-    // MessageManager; there, every caller is trivially "not the message thread",
-    // and prepareToPlay's own updateLatency() still clears any pending request.
+    // MessageManager; there, requestLatencyUpdate() delivers synchronously instead,
+    // because with no timer a stored request would never be served.
     if (juce::MessageManager::getInstanceWithoutCreating() != nullptr)
         startTimerHz (20);
 }
@@ -125,7 +125,25 @@ void AnamorphAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     engine.primeParameters (e);
     engine.prepare (sampleRate, samplesPerBlock);
     engine.setParameters (e);
-    updateLatency();
+
+    // Through D-1's request path, NOT updateLatency() directly (round 15,
+    // ER-STATE-19). On the message thread -- every in-spec VST3 activation, the
+    // standalone, pluginval -- this is the same synchronous delivery as before.
+    // But a host may prepare on some other thread: JUCE's own Linux VST3 wrapper
+    // services the plug-in's messages (this timer included) from a background
+    // thread until the host registers an IRunLoop, and never hands over if it
+    // never does; FL Studio's Patcher is known to ignore setActive's [UI-thread]
+    // annotation; nothing pins an AU Initialize to main. A direct call from
+    // such a thread wrote AudioProcessor::latencySamples and walked the listener
+    // chain concurrently with timerCallback() doing the same on the message
+    // thread, and let that tick read latency2/4/8 while engine.prepare() above
+    // was rewriting them -- two data races ThreadSanitizer reports on the
+    // pre-round-15 code (--reprepare-race-probe), with a reachable ending in
+    // which the timer's older number lands last and nothing is pending to
+    // correct it. Requesting instead makes the message thread the ONLY writer,
+    // and the release store below orders this prepare's latencies before the
+    // tick that reports them. State test 30.
+    requestLatencyUpdate();
 }
 
 void AnamorphAudioProcessor::deliverLatency()
@@ -145,8 +163,9 @@ void AnamorphAudioProcessor::deliverLatency()
 void AnamorphAudioProcessor::updateLatency()
 {
     // Clear FIRST, then deliver: this ordering is what makes a concurrent request
-    // survive rather than be lost. prepareToPlay also calls this directly, and the
-    // clear is right for it too -- a full re-prepare supersedes any pending request.
+    // survive rather than be lost. A message-thread prepareToPlay reaches here
+    // through requestLatencyUpdate(), and the clear is right for it too -- a full
+    // re-prepare supersedes any pending request.
     // ACQUIRE for the same reason timerCallback uses it: consuming a request must
     // also make the parameter write that raised it visible.
     latencyUpdateRequest.exchange (0, std::memory_order_acquire);
@@ -173,7 +192,11 @@ void AnamorphAudioProcessor::updateLatency()
 // audio thread does one relaxed atomic store and returns.
 void AnamorphAudioProcessor::requestLatencyUpdate()
 {
-    if (juce::MessageManager::existsAndIsCurrentThread())
+    // Synchronous on the message thread -- and when no MessageManager exists at
+    // all (a harness; see the constructor's timer guard), since then there is no
+    // timer to serve a request and a stored one would never be delivered.
+    if (juce::MessageManager::existsAndIsCurrentThread()
+        || juce::MessageManager::getInstanceWithoutCreating() == nullptr)
         updateLatency();
     else
         // RELEASE, not relaxed. The flag is not the payload -- the payload is the

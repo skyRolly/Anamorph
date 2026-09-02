@@ -84,7 +84,7 @@ required) · Fix · Why this fix · Prevention.
 
 ## INC-007 — Multiband Enable mute/dropout
 - **Date:** 2026-06-28 (`10fbfa0`) · **Affected version:** ≤0.8.5, fixed 0.8.6 · **Severity:** Medium
-- **Evidence [Partially Verified]:** CHANGELOG.md [0.8.6]. **[Verified]:** test `testMultibandEnableCrossfadeClickFree`; ADR-0004; src/dsp/AnamorphEngine.cpp:104-105, :513, :920-921 (`mbEnableBlend` crossfade).
+- **Evidence [Partially Verified]:** CHANGELOG.md [0.8.6]. **[Verified]:** test `testMultibandEnableCrossfadeClickFree`; ADR-0004; src/dsp/AnamorphEngine.cpp:106-107, :513, :920-921 (`mbEnableBlend` crossfade).
 
 - **Problem:** Toggling Multiband Enable briefly muted/dropped the output.
 - **Symptom:** A momentary dropout on enable/disable.
@@ -108,7 +108,7 @@ required) · Fix · Why this fix · Prevention.
 
 ## INC-009 — Band Solo + Multiband Enable click
 - **Date:** 2026-06-28 (`6a24b82`) · **Affected version:** 0.8.6, fixed 0.8.7 · **Severity:** Medium
-- **Evidence [Verified]:** CHANGELOG.md [0.8.7]; commit 6a24b82; test `testSoloMultibandEnableClickFree`; src/dsp/AnamorphEngine.cpp:1308 (`soloMonitor.process`, every block); ADR-0004.
+- **Evidence [Verified]:** CHANGELOG.md [0.8.7]; commit 6a24b82; test `testSoloMultibandEnableClickFree`; src/dsp/AnamorphEngine.cpp:1310 (`soloMonitor.process`, every block); ADR-0004.
 
 - **Problem:** With a Band Solo active, toggling Multiband Enable clicked on both edges (a regression introduced by INC-007's 0.8.6 change).
 - **Symptom:** An audible click (amplitude + phase step) on both enable and disable edges, only when a band was soloed.

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <juce_dsp/juce_dsp.h>
+#include <atomic>
 #include <memory>
 
 #include "EngineParameters.h"
@@ -167,7 +168,15 @@ private:
 
     // Oversamplers for 2x / 4x / 8x (orders 1 / 2 / 3). Off = bypass.
     std::unique_ptr<juce::dsp::Oversampling<float>> os2, os4, os8;
-    int latency2 = 0, latency4 = 0, latency8 = 0;
+    // Written by prepare() on the host's thread, read by predictLatency() on the
+    // message thread (the processor's D-1 latency timer) and by getLatencySamples()
+    // on the audio thread. Relaxed atomics: they carry no ordering of their own --
+    // the processor's release/acquire request flag orders a prepare's values before
+    // the tick that reports them -- but a plain int read while prepare() rewrites
+    // it is a data race, and a host that prepares off the message thread makes
+    // that overlap reachable (round 15, ER-STATE-19). A relaxed load is a plain
+    // load on every supported ISA, so the audio thread pays nothing.
+    std::atomic<int> latency2 { 0 }, latency4 { 0 }, latency8 { 0 };
 
     // Smoothed continuous controls (avoid zipper noise / clicks -- #1).
     juce::SmoothedValue<float> widthSmooth, mixSmooth, outGainSmooth, matchGainSmooth;

@@ -25,7 +25,7 @@ Evidence [Verified]: src/PluginParameters.cpp:246-297.
 | `msMode` | Treats the chain as M/S: Input is decoded Mid/Side→L/R; Balance/polarity act in the M/S domain. |
 | `solo` (M/S Solo) | Off / Mid / Side. Isolates Mid or Side **before** the widener (monitoring aid). |
 
-Evidence [Verified]: src/dsp/AnamorphEngine.cpp:412-460, :614-617.
+Evidence [Verified]: src/dsp/AnamorphEngine.cpp:414-462, :614-617.
 
 ## Effect / widening engine (always active)
 
@@ -41,7 +41,7 @@ Evidence [Verified]: src/dsp/AnamorphEngine.cpp:412-460, :614-617.
 | `dimMode` (Dim-D Style) | Dimension-D voicing: Subtle/Classic/Wide/Lush → engine modes 1..4. |
 | `width` | Global MS width: 0 = mono, 1.0 = identity, 2 = wide. |
 
-Evidence [Verified]: src/dsp/AnamorphEngine.cpp:351-409, :442-469, :648-653; src/PluginParameters.cpp:257.
+Evidence [Verified]: src/dsp/AnamorphEngine.cpp:353-411, :442-469, :648-653; src/PluginParameters.cpp:257.
 
 ## Multiband (Advanced)
 
@@ -55,7 +55,7 @@ Driven primarily by the drag-to-split `SpectrumImager` display.
 | `mbFreqLow/Mid/High` | The three crossover splits (band 1\|2, 2\|3, 3\|4). Log range 20..20 kHz; DSP re-orders + Nyquist-clamps. |
 | `mbWidthLow/Mid/HiMid/High` | Per-band MS width 0..2 (bands 1..4). |
 
-Evidence [Verified]: src/dsp/EngineParameters.h:67-81; src/dsp/AnamorphEngine.cpp:387-396.
+Evidence [Verified]: src/dsp/EngineParameters.h:67-81; src/dsp/AnamorphEngine.cpp:389-398.
 
 ## Mono Maker / Mix / Output (Advanced)
 
@@ -68,7 +68,7 @@ Evidence [Verified]: src/dsp/EngineParameters.h:67-81; src/dsp/AnamorphEngine.cp
 | `outputBalance` | Whole-plugin output balance (signed %). |
 | `autoGainMatch` (Level Match) | Real-time BS.1770 loudness match for fair A/B. "Apply" locks the measured gain into Output Gain. |
 
-Evidence [Verified]: src/dsp/AnamorphEngine.cpp:815-883; src/PluginProcessor.cpp:286-310 (`applyAutoGain`).
+Evidence [Verified]: src/dsp/AnamorphEngine.cpp:817-885; src/PluginProcessor.cpp:309-333 (`applyAutoGain`).
 
 ## Bypass / view
 

@@ -115,6 +115,8 @@ private:
     // on a real change -- allocates and write()s in the wrapper. On the message
     // thread the update stays synchronous, so nothing about the common path
     // changes; anywhere else it becomes a request the timer below consumes.
+    // prepareToPlay goes through here too (round 15, ER-STATE-19): a host that
+    // prepares off the message thread must not deliver from that thread either.
     void requestLatencyUpdate();
 
     // Consumes a deferred request at ~20 Hz on the message thread. The host can
@@ -124,8 +126,8 @@ private:
     void timerCallback() override;
 
     // Set by requestLatencyUpdate() from a non-message thread; cleared by the
-    // timer and by updateLatency() itself (so prepareToPlay's direct call, which
-    // supersedes any pending request, does not leave a stale one behind).
+    // timer and by updateLatency() itself (so a message-thread prepareToPlay,
+    // which supersedes any pending request, does not leave a stale one behind).
     // Written with RELEASE off the message thread and consumed with ACQUIRE, so a
     // consumed request also publishes the parameter write that raised it. Relaxed on
     // both sides was measurably lossy -- see requestLatencyUpdate().

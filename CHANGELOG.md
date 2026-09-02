@@ -15,6 +15,22 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 
 ## [0.9.6] — 2026-09-01
 ### Fixed
+- **A host that activates the plug-in on a background thread can no longer be told a stale
+  latency, and the plug-in no longer reads its own latency figures while they are being
+  rewritten.** Most hosts activate a plug-in on their main thread, and there nothing changes: the
+  reported latency still updates instantly. But JUCE's Linux VST3 wrapper services a plug-in's
+  messages from a background thread until the host registers its run loop — for the plug-in's
+  whole life if the host never does — and a few hosts activate plug-ins off their main thread
+  outright. In those, activation wrote the reported latency on the host's thread at the same time
+  as the plug-in's own 20 Hz latency timer could be writing it on the message thread, and that
+  timer could read the freshly prepared oversampling latencies mid-rewrite — two data races
+  ThreadSanitizer reports on the previous build, with a reachable ending in which the host is left
+  holding the older number and nothing pending corrects it. Activation now routes its report
+  through the same request mechanism host automation already uses (delivered on the message
+  thread, within one 50 ms tick when the activation was off-thread), and the engine publishes its
+  latency figures atomically. Regression coverage: State test 30; `AnamorphStateTests
+  --reprepare-race-probe` under ThreadSanitizer.
+  Evidence: PR #134. [Verified]
 - **A project that does not carry one of the Settings no longer inherits it from the project you
   had open before.** The Settings panel (Oversampling, UI Scale, Scope Persistence, Show Meters,
   Tooltips, UI Animations) is stored with the project. If a project file was missing one of those

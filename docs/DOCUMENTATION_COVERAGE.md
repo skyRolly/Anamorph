@@ -24,8 +24,10 @@ refutation, and a full audit of the [0.9.6] changelog); and **round 12** (undefi
 legacy-Settings conversion fixed, the latency regression test made deterministic, and ER-STATE-13
 re-run on AArch64 with no change); and **round 13** (ER-STATE-17 verified on the real frozen
 pre-0.8.4 fixture, and compatibility-checklist items 5 and 7 recorded on the maintainer's
-attestation, closing the gate); and **round 14** (partial modern Settings inheriting the previous
-project, confirmed and fixed on the opposite path from the one reported).
+attestation, closing the gate); **round 14** (partial modern Settings inheriting the previous
+project, confirmed and fixed on the opposite path from the one reported); and **round 15** (the
+off-message-thread re-prepare latency race confirmed under ThreadSanitizer and closed inside D-1,
+with one new risk recorded).
 **Header correction (round 7, 2026-09-01):** this line enumerated round 1 alone while the body
 carried six later rounds, and dated the change set 2026-08-31 while the CHANGELOG `[0.9.6]` heading
 had been re-dated to 2026-09-01 — the same drift the C6 correction below was written about,
@@ -383,7 +385,7 @@ Correlation 3.4 % vs 3.8 %. Two independent harnesses two rounds apart agreeing 
 
 **Two prices quoted for the first time, both maintainer decisions and neither reopened here.** A
 host-bypassed instance costs **101 % of an active one** (85.1M vs 84.0M Ir/s) because the Issue-2
-contract at `src/dsp/AnamorphEngine.cpp:831-837` keeps Measure + Predict running while bypassed, and
+contract at `src/dsp/AnamorphEngine.cpp:833-839` keeps Measure + Predict running while bypassed, and
 `loudness.process()` is handed the *processed* signal (`:1137`). And **59.3 % of the transparent idle
 floor is metering and loudness analysis**, running with Level Match off and with no editor in
 existence. W3-7 and W3-8 rejected gating those for reasons that still hold; what was missing was the
@@ -1874,10 +1876,10 @@ No other approval is claimed by this entry.
 
 **Test 38 never armed a parameter CHANGE.** The per-configuration `setParameters (p); reset();` ran
 *before* the block loop, and `reset()` flushes an in-flight duck straight to its target
-(`src/dsp/AnamorphEngine.cpp:150-157`) — so by the time the counters were armed the switch was over,
+(`src/dsp/AnamorphEngine.cpp:152-159`) — so by the time the counters were armed the switch was over,
 `switchState` was `Normal`, and the `setParameters (p)` inside the armed region hit the steady-state
 no-change gate every time. The whole structural half of a switch lives in the adopt block
-(`src/dsp/AnamorphEngine.cpp:725-800`: algorithm tails cleared, the three oversamplers and the
+(`src/dsp/AnamorphEngine.cpp:727-802`: algorithm tails cleared, the three oversamplers and the
 chorus reset on an oversampling-path change, the crossover cleared on a topology change) and it runs
 inside `process()`, at the silent bottom of the duck. So 3,840 armed calls proved the audio path
 allocation-free while nothing was changing, and `REALTIME_SAFETY_AUDIT.md` presented that gate as
@@ -1984,7 +1986,7 @@ architectural citation pointing at unrelated code, and one liveness claim that w
 
 **MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-19**, covering the two decisions in this round
 that the process asks a human to confirm: re-aiming ADR-0009's evidence to
-`src/dsp/AnamorphEngine.cpp:1310-1354` (a re-aim, not a re-anchor — the tool cannot compute it, so
+`src/dsp/AnamorphEngine.cpp:1312-1356` (a re-aim, not a re-anchor — the tool cannot compute it, so
 it is declared in `DELIBERATE_REAIMS` and its aim machine-checked against
 `Defensive NaN / Inf self-heal`), and restating the leaf-layer `-Werror=function-effects` gate's
 liveness evidence to name the mechanism the tree actually runs.
@@ -7072,3 +7074,47 @@ gate sign-off here; that is noted, not independently verified.
 at 47 + the A/B clamp guard / 245. The `[0.9.6]` Fixed count is **21**. Swept through
 `TESTING_POLICY.md`, `TESTING.md`, `README.md`, `REPOSITORY_MAP.md`, `RELEASE_HARDENING_PLAN.md`
 and `HANDOVER.md`. [Verified]
+
+## Engineering-review programme, round 15 — the off-message-thread re-prepare race (2026-09-02, still the 0.9.6 change set)
+
+**What the round is.** One concurrency defect confirmed under ThreadSanitizer and fixed inside the
+approved D-1 architecture; two investigation-only items verified with no change; one new risk
+recorded. Records: `worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Round 15.
+
+**Code change and its doc syncs (trigger map applied):**
+- `src/PluginProcessor.cpp/.h` (`prepareToPlay` calls `requestLatencyUpdate()` instead of
+  `updateLatency()`; `requestLatencyUpdate()` also delivers synchronously when no `MessageManager`
+  exists) and `src/dsp/AnamorphEngine.cpp/.h` (`latency2/4/8` become relaxed `std::atomic<int>`)
+  — ER-STATE-19 → CHANGELOG `[0.9.6]` (one Fixed entry; a host could be left holding a stale
+  latency), `docs/architecture/LATENCY_MODEL.md` (the D-1 section: which hosts prepare off the
+  message thread, what the race was, the 50 ms cost applied to activation),
+  `docs/policies/THREADING_POLICY.md` (the D-1 row added to the communication table; the round-15
+  extension; the atomic-usage rule for the flag and the engine figures; `prepareToPlay` added to
+  the host-call assumption), `docs/architecture/THREAD_MODEL.md` (the D-1 row — the table had never
+  carried it), `docs/KNOWN_ISSUES.md` (KI-027 banner and row), `docs/FUTURE_RISKS.md` (RISK-007
+  round-15 note narrowing the pluginval argument to VST3; **new RISK-008**),
+  `docs/architecture/API_REFERENCE.md` (`prepareToPlay` row), State test 30 and the
+  `--reprepare-race-probe` (`docs/procedures/TESTING.md`), and the count sweep below.
+  **No serialization change, no parameter change, no reported-latency VALUE change** — only the
+  thread on which one caller delivers it, which is the decision D-1 already made.
+
+**Threading-model note.** No new communication path and no new ordering: the flag and its
+release/acquire pair are D-1's, approved in round 4; `prepareToPlay` is one more producer on it,
+and `latency2/4/8` are the payload it publishes (relaxed, no ordering role). Recorded here because
+`THREADING_POLICY.md` says a new shared-state path or ordering is a gate item — this is neither,
+and the worklog says why.
+
+**Drift found and corrected:** the `THREAD_MODEL.md` and `THREADING_POLICY.md` communication tables
+omitted the D-1 path entirely; `HANDOVER.md`'s Test-Status row still read 28 / 1237 after round
+14's sweep claimed to have updated it; RISK-007's "pluginval structurally cannot produce the
+window" held for VST3 `setState` only.
+
+**Investigation-only items, both unchanged.** ER-RT-05: sixth consecutive verification; the new
+relaxed loads in `getLatencySamples()` are not a forbidden class and `prepare()` stays out of
+scope. D-1: the approval record is correct in all four places; this round extends the mechanism
+and does not touch the decision.
+
+**Counts.** The state suite is **30 tests / 1278 checks** (was 29 / 1270); the DSP suite is unchanged
+at 47 + the A/B clamp guard / 245. The `[0.9.6]` Fixed count is **22**. Swept through
+`TESTING_POLICY.md`, `TESTING.md`, `README.md`, `REPOSITORY_MAP.md`, `RELEASE_HARDENING_PLAN.md`
+and `HANDOVER.md` (both rows this time). [Verified]

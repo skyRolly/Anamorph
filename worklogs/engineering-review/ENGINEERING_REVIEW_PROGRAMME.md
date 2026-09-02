@@ -29,6 +29,199 @@ entries and CHANGELOG notes cite.
 
 ---
 
+## Round 15 — 2026-09-02 — the off-message-thread re-prepare race: confirmed under ThreadSanitizer, closed inside D-1
+
+### ER-STATE-19 — CONFIRMED and FIXED — a host that prepares off the message thread raced the plug-in's own latency timer
+
+The finding: *"when a host re-prepares off the message thread, `timerCallback` can concurrently
+read changing engine latency and report it; the host can retain stale delay compensation, and the
+unsynchronized reads invoke undefined behavior"* (`src/PluginProcessor.cpp:203`, pre-fix numbering;
+the line numbers in this section are the pre-fix ones the review cited unless marked otherwise).
+
+**The shared state, traced.** Two things, and the review named both correctly.
+1. `AnamorphEngine::latency2/4/8` — plain `int`s written by `engine.prepare()`
+   (`AnamorphEngine.cpp:54-56`) on whatever thread the host activates on, and read by
+   `predictLatency()` (`:463-473`) from `timerCallback → deliverLatency` on the message thread.
+2. `juce::AudioProcessor::latencySamples` — a plain `int` compared and assigned inside
+   `setLatencySamples` (pinned JUCE `juce_AudioProcessor.cpp:415-421`, no lock), reached from BOTH
+   threads: `prepareToPlay → updateLatency → deliverLatency` on the host's thread and
+   `timerCallback → deliverLatency` on the message thread. The listener walk after it
+   (`updateHostDisplay`, `:430-436`) takes the listener lock only to fetch each pointer and runs
+   the callback unlocked; the VST3 wrapper's `lastLatencySamples` sits behind it.
+
+The request FLAG (`latencyUpdateRequest`) is not the problem and was never in question: it is
+atomic, and its release/acquire pair is what D-1 and ER-STATE-14 pinned. The problem is the
+VALUE that flag publishes, and who else writes the host-facing number.
+
+**A real C++ data race, not a theoretical one — conditional on the thread.** The only
+happens-before edge on this path is that flag: `requestLatencyUpdate`'s release store paired with
+the `acquire` `exchange` in `timerCallback` / `updateLatency`. That edge orders the writes made
+BEFORE the store. A request raised before the host activates — `setStateInformation`'s
+unconditional trailing request (`:1110`), or an audio-thread automation write — is served by a
+tick that can land anywhere inside the host's `prepareToPlay`; `engine.prepare()`'s writes come
+AFTER that store, and `prepareToPlay`'s own `exchange(0, acquire)` (`:152`) is an acquire, not a
+release, and follows them anyway. Nothing else on the path locks: `engine.prepare` has no
+atomics, `setLatencySamples` has no lock, the APVTS listener locks are not on it. Two unordered
+accesses to a non-atomic object: a data race per [intro.races], undefined behaviour. Stated
+precisely: the tick has to land between that release store and the host's own `exchange`; if the
+host clears first, that tick does nothing and that run has no race.
+
+**The stale ending, exactly.** The tick reads `latency2` before the host's write — 0 on an
+instance never prepared, since the oversamplers do not exist yet; the host writes
+`latencySamples = N` and notifies; the tick's `setLatencySamples(0)` then compares against N,
+stores 0 and notifies; the flag is already 0 on both sides, so nothing corrects it until the next
+unrelated parameter move or re-prepare. Reachable — and narrower than the review's wording: the
+oversamplers' latencies do not depend on the sample rate, so every prepare after the first
+rewrites identical values and `setLatencySamples`' guard suppresses the notification. The
+observable stale PDC needs an instance's FIRST prepare and the tick preempted inside a few
+instructions; the undefined behaviour is on every off-thread prepare that overlaps a tick.
+
+**Which hosts prepare off the message thread — read from the pinned wrappers, not assumed.**
+- **VST3, in spec, desktop.** `setActive` is `[UI-thread & Setup Done]` (`ivstcomponent.h:190-196`)
+  and is the only caller of `prepareToPlay` (`juce_audio_plugin_client_VST3.cpp:2684-2716` via
+  `preparePlugin`, `:3772`; `setupProcessing` and `initialize` pass `CallPrepareToPlay::no`).
+  JUCE asserts the message thread for `setState` (`:2917-2921`) and NOT for `setActive`; the
+  `FLStudioDIYSpecificationEnforcementLock` (`:3618-3655`) exists because FL Studio's Patcher
+  does not honour that threading. On the host's UI thread — the thread JUCE tagged as its message
+  thread at instantiation — there is no race. That is the common case, and it is unchanged.
+- **VST3 on Linux, in spec.** JUCE services the plug-in's messages, this timer included, from its
+  own `detail::MessageThread` (`juce_LinuxMessageThread.h`) until the host registers an
+  `IRunLoop` (`:120-330`: *"Until then JUCE messages are serviced by a background thread internal
+  to the plugin"*). The pinned SDK lets a conformant host hand the run loop over through the
+  factory context — registered at `createInstance`, so the host thread is tagged from construction
+  — OR only through `IPlugFrame`, which JUCE registers at editor attach (`:1992`). In the second
+  kind of host the whole pre-editor phase — restore, then `setActive` — runs off the JUCE message
+  thread while that background thread ticks the timer; a host that never provides a run loop
+  stays there for the plug-in's life.
+- **AU under pluginval — the repository's own macOS release gate.** pluginval runs every test on a
+  `std::thread` (`Validator.cpp:244`) and hops to the message thread for `prepareToPlay` ONLY
+  for VST3 (`TestUtilities.h:198-206`, `callPrepareToPlayOnMessageThreadIfVST3`); for AU that
+  reaches `AudioUnitInitialize` on the test thread (`juce_AudioUnitPluginFormatImpl.h:1162`, no
+  lock) → the wrapper's `Initialize → prepareToPlay` (`AU_1.mm:225-236`), while the plug-in's
+  timer dispatches on the main run loop (`juce_MessageQueue_mac.h:48`). Its parameter and state
+  tests raise the flag from that same thread first. So the CI gate that has been green exercises
+  exactly this interleaving — with nothing to see, because a data race is not a crash and the gate
+  does not run a sanitizer. Verified against pluginval's current sources this round, not assumed.
+- **AU hosts** initialising, resetting (`AU_1.mm:258`) or toggling offline render (`:801-810`)
+  off main: no AU spec pins the thread — RISK-007's class.
+- **Standalone.** `AudioDeviceManager` starts the device on the message thread and the
+  CoreAudio/WASAPI restarts go through `AsyncUpdater`; `AudioProcessorPlayer` prepares under its
+  lock on that thread. No race.
+
+**Reproduced.** `AnamorphStateTests --reprepare-race-probe` (new, opt-in, the
+`--state-thread-probe` pattern): a non-message thread moves Drive — raising the flag exactly as
+State test 22 does — and re-prepares, 200 times × 20 instances, while the main thread serves the
+20 Hz timer. Pre-fix under ThreadSanitizer (`build-tsan`, clang-22): **two reports, both
+predicted** — `AnamorphEngine::prepare` writing `latency2` (`:54`) against `predictLatency`
+(`:469`) reading it from `timerCallback`, and `AudioProcessor::setLatencySamples` (`:417` read on
+the host thread against `:419` write on the message thread). Pre-fix plain build: **3,980 of
+4,000 deliveries ran on the host thread.** The stale ending was **not observed** in 4,000
+iterations (0 of 20 instances left the host wrong): it needs the tick's compare-and-store to
+straddle the host's, and only the first prepare can change the number — the probe reports counts
+and asserts nothing, so that limit is stated rather than papered over. Post-fix: 0 deliveries on
+the host thread, ThreadSanitizer silent over the probe and over the whole suite.
+
+**Root cause.** D-1 made `requestLatencyUpdate()` the one entry for every re-report and left
+`prepareToPlay` calling `updateLatency()` directly, on the silent assumption that activation is a
+message-thread call. `deliverLatency`'s own comment claimed *"message thread only, by
+construction"*; the construction had one gap, and the documents (`LATENCY_MODEL.md`,
+`THREADING_POLICY.md`) carried the assumption as a fact.
+
+**Fix — inside D-1, nothing new.** (1) `prepareToPlay` calls `requestLatencyUpdate()`: on the
+message thread that is the identical synchronous clear-then-deliver (byte-for-byte the previous
+sequence, so Wavelab's `setBusArrangements`-inside-`setLatencySamples` shape, JUCE
+`:2691-2696`, is untouched); anywhere else it is the existing release store, and the timer reports
+within one tick — so the message thread is the ONLY writer of `latencySamples`, and the flag's
+release/acquire pair now also orders a prepare's latencies before the tick that reports them.
+`requestLatencyUpdate()` additionally delivers synchronously when no `MessageManager` exists at
+all, because there is then no timer to serve a request — the constructor already guarded the
+timer on that condition; no in-tree harness needs it (`fuzz_state.cpp` creates one), it is there so
+the two guards agree. (2) `latency2/4/8` become relaxed `std::atomic<int>` at all ten use sites —
+the payload the flag publishes, with no ordering role of their own; a relaxed load is a plain load
+on x86-64 and AArch64, so `getLatencySamples()` on the audio thread pays nothing and
+`check-realtime.py` sees nothing new. (1) alone is measurably NOT enough — it closes the
+`latencySamples` race and leaves the `predictLatency`-vs-`prepare` one, which a tick serving an
+EARLIER request still reaches; (2) is what makes that overlap a race-free stale-or-new read that
+the prepare's own request then supersedes. No mutex, no `callAsync`, no `AsyncUpdater`, no editor
+polling; the processor-owned 20 Hz timer is unchanged; the reported VALUE is unchanged. Cost,
+stated: a host that activates off-thread now learns the activation latency up to 50 ms late,
+through the same `restartComponent(kLatencyChanged)` path automation already uses (JUCE
+`:1553-1557`; a re-prepare converges with no second restart, since equal values early-out).
+
+**Gate note — filed, not self-cleared.** `THREADING_POLICY.md` names "a new shared-state path or a
+new atomic ordering" as an Architecture-Review-Gate trigger. This change adds neither: the flag,
+its release/acquire pair and the message-thread consumer are D-1's, approved in round 4;
+`prepareToPlay` becomes one more producer on that flag, exactly as the brief specified; and
+`latency2/4/8` were ALREADY read across threads (that is the defect) — the atomics legalise an
+existing path under D-1's ordering rather than open one. The round's adversarial synthesis
+nonetheless asked that the maintainer confirm that reading rather than have it inferred, and this
+worklog records the request. The four hard-stop categories are untouched: no parameter change, no
+serialization change, no signal-order change, no reported-latency VALUE change.
+
+**Regression coverage: State test 30**, deterministic. A message-thread twin establishes the truth
+(4 samples at 2×, Drive up) and its control — the notification happens INSIDE `prepareToPlay`, on
+the message thread, exactly once, so a build that deferred the message-thread path too would fail
+here rather than pass the off-thread legs vacuously. A worker thread then prepares an instance
+reporting 0; a listener records the thread of every `latencyChanged` notification. Asserted: no
+notification from the preparing thread (pre-fix the worker itself delivered — the discriminating
+check); the report unchanged after the join (nothing has dispatched on the message thread yet —
+equally deterministic on both sides); then the tick serves the PREPARED value, non-zero and equal
+to the twin's — the actual latency, not the flag. **Fails 3 checks without the fix, 0 with it**,
+measured both ways. No test-side synchronisation was needed beyond the join and the existing
+bounded timer polls. ER-STATE-14's barrier leg (State test 27) is untouched and passes;
+`deliverLatency` still never touches the flag; `timerCallback` still clears exactly once; an
+off-thread prepare now performs no clear at all, only a store.
+
+**Adversarially verified**, three lenses and a synthesis, none refuting: the memory-model lens
+sharpened the two preconditions recorded above; the host-contract lens ADDED the two
+configurations that matter most — the CI-gated AU-under-pluginval run and the `IPlugFrame`-only
+Linux host — and found the pre-existing item below; the fix-regression lens measured that (1)
+alone is insufficient and that the message-thread path is byte-identical.
+
+### Reported drift, corrected while there
+- `THREAD_MODEL.md`'s and `THREADING_POLICY.md`'s communication tables never listed the D-1
+  request path at all, four rounds after it was approved and implemented; both now carry the row
+  (flag, orderings, producers, consumer).
+- `HANDOVER.md`'s Test-Status row still said "28-test … 1237 checks" — round 14's count sweep
+  claimed to have updated it and had not. Now 30 / 1278, with the round-14 and round-15 steps
+  spelled out.
+- `RISK-007`'s *"pluginval structurally cannot produce the window"* holds for VST3 `setState`
+  (JUCE hosting's `MessageManagerLock`) and not for AU. Worse for that entry: pluginval's
+  `BackgroundThreadStateTest` holds the editor open on the message thread and calls
+  `getStateInformation` / `setStateInformation` from a background thread — on AU, with no hop,
+  that IS RISK-007's window, exercised on every green macOS run. Narrowed in place; the entry's
+  Likelihood is now explicitly about shipping hosts, not about whether the window is produced.
+- `LATENCY_MODEL.md` and `THREADING_POLICY.md` had `prepareToPlay` on the message-thread side of
+  D-1 as a fact rather than an assumption; both now say which hosts break it and what happens then.
+
+### Newly identified, NOT acted on — RISK-008
+The host-contract lens found, and I verified in the wrapper, that a Linux VST3 host which provides
+its `IRunLoop` only through `IPlugFrame` leaves the plug-in's JUCE message queue unserviced once
+the editor closes: `attached()` registers the view's run loop (`:1992`), `removed()` unregisters
+it (`:2040`), and nothing restarts the internal `MessageThread` until the shared `EventHandler` is
+destroyed at unload (`:165-171`). Every JUCE-message consumer in the plug-in pauses until the
+editor reopens — the D-1 timer (an audio-thread latency request is then served not within 50 ms
+but when the editor next opens) and the APVTS's own value-flush timer. `prepareToPlay` is
+unaffected: the host UI thread stays the tagged message thread, so its delivery is synchronous.
+Whether any shipping host hands the run loop over only that way is not something this tree can
+establish; recorded as RISK-008 with the likelihood stated as unknown, not fixed — a fix is a
+threading-model change.
+
+### ER-RT-05 — verified accurate for the sixth consecutive round, no change
+`AUDIO_FN` is a manual registry and `check-realtime.py` says so; `REALTIME_AUDIO_POLICY`,
+`REALTIME_SAFETY_AUDIT`, `CI_CD` and ADR-0029 describe the same-file closure correctly, and none
+claims automatic cross-file discovery. Checked while here: `std::atomic` loads are not in the
+lint's forbidden classes, so `getLatencySamples()`'s new relaxed loads trip nothing, and
+`prepare()` is out of scope as before — the lint runs clean on the fixed tree.
+
+### D-1 approval record — correct, no change
+Four places, unchanged since round 12's correction: KI-027's row and banner, `THREADING_POLICY.md`'s
+rule, `LATENCY_MODEL.md`. This round EXTENDS D-1's mechanism to one more caller and records that
+in each of the four; it does not alter the decision, its approval, or its attribution (role-level,
+as before).
+
+---
+
 ## Round 14 — 2026-09-01 — partial modern Settings inherited the previous project: confirmed, and on the opposite path from the one reported
 
 ### ER-STATE-18 — CONFIRMED and FIXED — but not where the review looked

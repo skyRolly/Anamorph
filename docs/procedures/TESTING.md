@@ -262,7 +262,22 @@ legacy paths side by side — because the review that raised the finding located
 on the modern path, 0 of 6 on the legacy one**. Keep the two columns; they are what stops the two
 paths being confused again.
 
-`tests/state_tests.cpp` (**29 tests**, own console target `AnamorphStateTests`) automates the
+`AnamorphStateTests --reprepare-race-probe` is the seventh, and like `--state-thread-probe` it is
+built to run under ThreadSanitizer: a thread that is not the message thread moves Drive and then
+re-prepares the processor, 200 times over, while the main thread does only what the real message
+thread would — serve the processor's own 20 Hz latency timer. On the pre-round-15 code TSan names
+the two races the review predicted — `AnamorphEngine::prepare` writing `latency2` against
+`predictLatency` reading it from `timerCallback`, and `AudioProcessor::setLatencySamples` reached
+from both threads — and the plain build counts 3,980 of 4,000 deliveries running on the host's
+thread; after the fix both are zero and TSan is silent over the probe and the whole suite. The
+value-level symptom (the host left holding the older number) was **not observed** in 4,000
+iterations: it needs the timer's compare-and-store to straddle the host's, and only an instance's
+first prepare can change the number at all, so the probe reports the counts and asserts nothing.
+State test 30 pins the invariant that closes the class deterministically instead — no delivery from
+the preparing thread, the report unchanged after the join, and the tick then serving the PREPARED
+value, equal to a message-thread prepare's.
+
+`tests/state_tests.cpp` (**30 tests**, own console target `AnamorphStateTests`) automates the
 COMPATIBILITY policy family against the **real `AnamorphAudioProcessor`** (the target compiles
 the plugin sources; since 2026-08-21 it also constructs and destroys the real editor, headlessly
 and without ever showing it — no peer, no message loop, no interaction):

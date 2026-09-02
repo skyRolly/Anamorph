@@ -10,7 +10,7 @@ The VST3/Standalone wrapper (`: juce::AudioProcessor, private APVTS::Listener`).
 
 | Member | Signature | Responsibility |
 |---|---|---|
-| `prepareToPlay` | `void (double sampleRate, int samplesPerBlock)` | Prepares engine; sets initial params; reports latency. |
+| `prepareToPlay` | `void (double sampleRate, int samplesPerBlock)` | Prepares engine; sets initial params; requests the latency report (synchronous on the message thread, one 20 Hz tick otherwise — D-1). |
 | `processBlock` | `void (juce::AudioBuffer<float>&, juce::MidiBuffer&)` | Per-block: transport/seek detect → param snapshot → `engine.process`. |
 | `isBusesLayoutSupported` | `bool (const BusesLayout&) const` | Accepts stereo→stereo, mono→stereo only. |
 | `getStateInformation` / `setStateInformation` | `void (...)` | Full session save/recall (see `STATE_SERIALIZATION.md`). |
@@ -40,7 +40,7 @@ Format-agnostic DSP orchestrator. Driven only by `EngineParameters`.
 | `injectMatchGainDb` | `void (float) noexcept` | A/B per-slot Level-Match restore (atomic). |
 | `requestDuck` | `void () noexcept` | Force a masking duck around a bulk param swap (atomic). |
 
-Evidence [Verified]: src/dsp/AnamorphEngine.h:45-128.
+Evidence [Verified]: src/dsp/AnamorphEngine.h:46-129.
 
 ## `ParamPointers` / layout — `src/PluginParameters.h`
 
