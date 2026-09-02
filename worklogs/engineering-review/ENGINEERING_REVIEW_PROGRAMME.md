@@ -29,6 +29,127 @@ entries and CHANGELOG notes cite.
 
 ---
 
+## Round 18 — 2026-09-02 — the approved Settings recovery policy implemented; RISK-008 investigated and classified
+
+### ER-STATE-21 — CLOSED — Policy B implemented: repair on restore, persist the repaired value
+
+Rounds 16 and 17 gathered the evidence and refused to pick the rule; the maintainer picked it. The
+decision, recorded verbatim in `SERIALIZATION_REGISTRY.md`: **a present-but-invalid modern Setting is
+repaired during restore to a deterministic valid value, and the repaired value is retained in the
+persisted state.** Implemented this round.
+
+**The six settings, their domains and their resolutions.**
+
+| field | domain | default | valid present | finite out of domain | not usable as a number |
+|---|---|---|---|---|---|
+| `int_oversample` | ComboBox id 1..4 | 1 | preserved | clamp to nearest id | `1` |
+| `int_uiScale` | ComboBox id 1..5 | 3 | preserved | clamp to nearest id | `3` |
+| `int_scopePersist` | double 0..1 | 0.5 | preserved | clamp into 0..1 | `0.5` |
+| `int_metersOn` | bool | false | preserved | non-zero is `true` | `false` |
+| `int_tooltipsOn` | bool | false | preserved | non-zero is `true` | `false` |
+| `int_uiAnimations` | bool | true | preserved | non-zero is `true` | `true` |
+
+**Before.** `restoreState` wrote `src.getProperty(id)` through unchanged. Measured over nineteen
+malformed inputs: 19 of 19 survived into the next save, 8 left an out-of-domain ComboBox id in the
+tree and 3 left a non-finite `int_scopePersist`. The damage was durable and re-interpreted on every
+load.
+
+**Root cause.** The registry stated a Default for each field's ABSENCE (settled in round 14) and no
+rule at all for a value that is present but malformed, so the restore had nothing to apply and
+adopted what the file said. That gap is what the decision closes.
+
+**Implementation, at the narrowest layer.** Three changes, all in `src/InternalState.h`:
+1. The `settings()` table now carries the DOMAIN beside the default (`Kind` plus a choice count).
+   The two belong together for the same reason ER-STATE-18 merged the previous two lists: "what this
+   field may hold" and "what it means when it is not there" are one contract, and two lists drift.
+2. `usableNumber()` is the shared predicate — `SerializedNumber.h`'s `looksLikePlainNumber` plus
+   `isUsableSerializedValue`, applied to the input text rather than the converted value. The legacy
+   migration's own inline lambda, which was a verbatim copy of exactly this, now calls it. **One
+   copy, and State test 28's 49 discriminating checks prove the legacy behaviour is unchanged.**
+3. `repairedValue()` applies the table's rule and returns a correctly TYPED var, so the tree holds an
+   int / double / bool rather than the file's text and the next save writes the canonical spelling.
+   A ComboBox id is clamped in double BEFORE the integer conversion, so that conversion is defined
+   for every input reaching it — the discipline ER-STATE-17 established for the same `[conv.fpint]`
+   reason. `restoreState` writes `repairedValue(...)` for a present field and the documented default
+   for an absent one, which is the only line that changed in it.
+
+**Proof that the repaired value is what persists**, which is the half that makes this Policy B rather
+than "clamp at the read": State test 33 restores each mutated session, then SAVES, then asserts the
+malformed text is gone from the saved `ANAMORPH_INTERNAL` node, then RELOADS that save into a fresh
+instance and asserts the same value comes back. The probe's own table shows the same thing end to
+end — `99` → `4`, `-5` → `1`, `2.7` → `2`, `nan` → `0.5`, `maybe` → `0`, each with the resaved text
+matching the repaired value rather than the input.
+
+**Regression coverage: State test 33**, thirty cases over all six settings and every malformed class,
+each asserted three ways (live value, saved text, reload). **Eight of the thirty are valid-value
+controls** — including `int_uiAnimations = 0`, so a setting deliberately turned OFF must survive —
+which is what stops a fix that merely resets everything to defaults from passing. A final leg pins
+ABSENT as the separate rule it is. **62 checks fail against the pre-policy build, 0 after**, and the
+controls pass in both, which is what makes the 62 meaningful.
+
+**Nothing else moved.** No schema change, no property renamed, no `restoreState` redesign, legacy v0.2
+semantics unchanged (State test 28), partial-settings reset unchanged (State test 29), the
+byte-identical save/load/save round-trip unchanged (State test 3), and round 17's finiteness guard in
+`Vectorscope::setPersistence` kept as the defensive backstop the decision asks for.
+
+**Drift found and corrected while there:** the registry paragraph this round rewrote existed TWICE,
+duplicated by a round-17 edit batch that partially applied before failing an assertion and was then
+re-run. Collapsed to one.
+
+### RISK-008 — CLASS B: technical risk confirmed, no actionable user-visible defect demonstrated
+
+**The lifecycle, read from the pinned wrapper.** JUCE services a Linux VST3 plug-in's messages from
+its own `detail::MessageThread` until the host registers an `IRunLoop`. The pinned SDK lets a
+conformant host hand that over either through the factory host context or only through `IPlugFrame`,
+which JUCE registers at editor attach (`attached()` → `viewRunLoop.emplace`) and unregisters at
+editor removal (`removed()` → `viewRunLoop.reset()`). The decisive detail is the asymmetry:
+`messageThread->stop()` runs from `updateCurrentMessageThread()` the moment a host loop is
+registered, and `messageThread->start()` appears in **exactly one place in the whole wrapper — the
+`EventHandler` destructor**, which runs at unload. So after an editor close in such a host the fds
+are attached to nothing and the internal thread is stopped, with nothing to restart it.
+
+**Why that reaches D-1.** `juce::Timer` delivers only by posting a `CallTimersMessage` for the
+message thread to run (pinned `juce_Timer.cpp`). No servicing means no timer callbacks, so the
+processor-owned 20 Hz consumer cannot run and a stored request stays stored.
+
+**Measured, and it corrects the entry's original wording.** `--risk008-probe` (synthetic, labelled as
+such in its own output) makes an off-message-thread request and then withholds servicing: across a
+1000 ms window — 20 timer periods — the reported latency does not move; 22 ms after servicing
+resumes the request is delivered in full and the reported value is the one the settled state
+predicts. **The request is DEFERRED, not dropped**: the atomic flag holds it, so the host is stale
+for exactly the unserviced window rather than permanently. No sleep stands in for synchronisation —
+the negative phase asserts a state that cannot become true later without servicing, and its deadline
+only bounds the run.
+
+**Scope of the exposure, stated precisely.** Only requests raised OFF the message thread stall: host
+automation of Drive/Algorithm with oversampling engaged, and an off-message-thread re-prepare
+(ER-STATE-19's path). Anything on the host UI thread is unaffected, because that thread REMAINS
+tagged as the JUCE message thread after the editor closes — nothing resets `messageThreadId` — so
+`requestLatencyUpdate()` still delivers synchronously there. That covers state restore and any
+Settings-driven oversampling change, neither of which can stall.
+
+**Why this is class B and not class A.** The decision rule requires a reproducible real host-visible
+failure. **No Linux VST3 host is installed in this environment and none was obtainable**, so whether
+any shipping host supplies `IRunLoop` only through `IPlugFrame` remains unknown. What is established
+is the mechanism and its cost, not that the cost is ever paid. Recorded in `FUTURE_RISKS.md` with
+that limitation stated in terms; **no production change**, and the entry does not reopen D-1 —
+which stays approved, implemented and untouched. The next step is unchanged and is a host census, not
+a code change.
+
+### ER-RT-05 — verified on both sides, no change
+
+The walk is still same-file and transitive; `AUDIO_FN` still carries both ER-RT-02 cross-file seeds
+(`setParameters`, `toEngine`); 47 files scanned, 0 violations, self-test 93 cases. Documentation was
+verified accurate in round 16 and corrected there where it understated the reach. Eighth consecutive
+verification, nothing to change.
+
+### D-1 approval record — verified, no change
+
+Approved and implemented, recorded as such in KI-027's row and banner, `THREADING_POLICY.md`,
+`LATENCY_MODEL.md`, and the processor's own header and implementation comments. No document
+describes it as pending or gated. The repository cannot establish the real-world authority behind its
+own gate sign-off and this round does not claim to.
+
 ## Round 17 — 2026-09-02 — two investigations resolved: one defect at the end of the unclamped read, one finding refuted
 
 ### ER-STATE-21 — SPLIT DISPOSITION: a concrete defect FIXED, the contract question DEFERRED

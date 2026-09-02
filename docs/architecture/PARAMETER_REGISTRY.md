@@ -113,7 +113,7 @@ way to hide a parameter). Serialized in `ANAMORPH_INTERNAL`; never in A/B/Undo/p
   invariant in action, same shape as the `Haas Side` → `Haas Focus` rename above). Evidence
   [Verified]: src/PluginEditor.cpp:574; src/InternalState.h:37,:123.
 
-Evidence [Verified]: src/InternalState.h:34-75.
+Evidence [Verified]: src/InternalState.h:34-145.
 
 ## Deprecations / removals (history)
 
@@ -123,7 +123,7 @@ Evidence [Verified]: src/InternalState.h:34-75.
 
 This is the one precedent for a parameter-surface change. It was done **with a migration path**
 (the model the compatibility policy requires). Evidence [Partially Verified]: CHANGELOG.md [0.8.4];
-src/InternalState.h:112-197; src/PluginProcessor.cpp:602-605.
+src/InternalState.h:182-271; src/PluginProcessor.cpp:602-605.
 
 ## Introduced / Deprecated columns
 

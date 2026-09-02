@@ -50,19 +50,89 @@ public:
     // the constructor (seed) and restoreState (absent -> default) implement. They
     // were two separate hand-written lists until ER-STATE-18; keeping one is what
     // stops them drifting into two different answers for "absent".
-    struct Setting { const juce::Identifier& id; juce::var defaultValue; };
+    // The DOMAIN travels with the default, for the same reason the default lives
+    // here at all: "what this field may hold" and "what it means when it does not"
+    // are one contract, and two lists would drift (ER-STATE-18 merged the previous
+    // two). `choiceCount` is meaningful only for `comboId`.
+    enum class Kind { comboId, unitRange, boolean };
+    struct Setting
+    {
+        const juce::Identifier& id;
+        juce::var defaultValue;
+        Kind kind;
+        int  choiceCount;   // comboId: ids run 1..choiceCount
+    };
 
     static const std::array<Setting, 6>& settings()
     {
         static const std::array<Setting, 6> table {{
-            { iid::oversample,   juce::var (1)     },  // 1 == "Off (1x)"
-            { iid::uiScale,      juce::var (3)     },  // 3 == "M"
-            { iid::scopePersist, juce::var (0.5)   },
-            { iid::metersOn,     juce::var (false) },
-            { iid::tooltipsOn,   juce::var (false) },
-            { iid::uiAnimations, juce::var (true)  },
+            { iid::oversample,   juce::var (1),     Kind::comboId,   4 },  // 1 == "Off (1x)"
+            { iid::uiScale,      juce::var (3),     Kind::comboId,   5 },  // 3 == "M"
+            { iid::scopePersist, juce::var (0.5),   Kind::unitRange, 0 },
+            { iid::metersOn,     juce::var (false), Kind::boolean,   0 },
+            { iid::tooltipsOn,   juce::var (false), Kind::boolean,   0 },
+            { iid::uiAnimations, juce::var (true),  Kind::boolean,   0 },
         }};
         return table;
+    }
+
+    // Is this stored property a number we can actually use, and if so what is it?
+    // The ONE predicate both restore paths ask -- the modern repair below and the
+    // legacy migration further down, which used to carry its own copy of exactly
+    // this logic. `SerializedNumber.h` states why the test is on the INPUT text
+    // rather than on the converted value, and why it is stricter than a general
+    // parser (it must refuse "inf" and "nan", which JUCE's own reader accepts).
+    // A property that is already a typed var -- an int, double or bool, as the
+    // defaults table and any live tree carry -- is usable as-is; only a STRING has
+    // to earn it.
+    static bool usableNumber (const juce::var& prop, double& out) noexcept
+    {
+        if (prop.isVoid()) return false;
+        if (prop.isString() && ! looksLikePlainNumber (prop.toString().trim().toRawUTF8()))
+            return false;                                   // "abc", "", "0x10", "inf", "nan"
+        const double v = (double) prop;
+        // Judged on the float narrowing, as the other paths judge it, so "1e39"
+        // (finite as a double, infinite as the float these values were) resolves
+        // the same way everywhere.
+        if (! isUsableSerializedValue ((float) v)) return false;
+        out = v;
+        return true;
+    }
+
+    // The maintainer-approved recovery for a value that is PRESENT but not valid
+    // (decision of 2026-09-02, "Policy B -- repair during restore and persist the
+    // repaired value"). Returns a value that is always inside the field's
+    // documented domain AND correctly typed, so what restoreState writes back is
+    // what a later save persists and a later reload reads unchanged.
+    //
+    //   * a valid present value is returned unchanged (an in-domain id, a 0..1
+    //     persistence, a real boolean);
+    //   * a finite out-of-domain number is CLAMPED to the nearest valid value --
+    //     and clamped in DOUBLE, before any integer conversion, so the conversion
+    //     is defined for every input that reaches it (the discipline ER-STATE-17
+    //     established on the legacy path, for the same [conv.fpint] reason);
+    //   * anything not usable as a number -- malformed text, non-finite, absent
+    //     type -- becomes the field's documented default.
+    //
+    // A fractional id resolves by truncation after the clamp (2.7 -> 2), which is
+    // what the ComboBox already did with it; the repair makes that durable rather
+    // than re-deciding it on every load.
+    static juce::var repairedValue (const Setting& s, const juce::var& stored)
+    {
+        if (s.kind == Kind::boolean && stored.isBool())
+            return stored;                                   // already a real boolean
+
+        double v = 0.0;
+        if (! usableNumber (stored, v))
+            return s.defaultValue;
+
+        switch (s.kind)
+        {
+            case Kind::comboId:   return juce::var ((int) juce::jlimit (1.0, (double) s.choiceCount, v));
+            case Kind::unitRange: return juce::var (juce::jlimit (0.0, 1.0, v));
+            case Kind::boolean:   return juce::var (v != 0.0);
+        }
+        return s.defaultValue;
     }
 
     InternalState()
@@ -125,9 +195,19 @@ public:
         // 6, while the legacy path inherited in 0 -- the reverse of where the
         // review looked. A session that CARRIES the field is unaffected: it is
         // written from `src` exactly as before.
+        // PRESENT values are REPAIRED to their domain rather than adopted verbatim,
+        // and the repaired value is what gets written -- so a later save persists it
+        // and a reload reads it back unchanged (the maintainer's Policy B, approved
+        // 2026-09-02, ER-STATE-21). Before it, a present-but-invalid value was kept
+        // exactly as the file spelled it: measured over nineteen malformed inputs,
+        // all nineteen survived into the next save, eight left an out-of-domain
+        // ComboBox id in the tree and three left a non-finite scope persistence.
+        // A VALID present value is returned unchanged by repairedValue(), so an
+        // ordinary session restores exactly as before.
         for (const auto& s : settings())
             tree.setProperty (s.id,
-                              src.hasProperty (s.id) ? src.getProperty (s.id) : s.defaultValue,
+                              src.hasProperty (s.id) ? repairedValue (s, src.getProperty (s.id))
+                                                     : s.defaultValue,
                               nullptr);
         // (syncAtomics + onOversampleChanged run via the property-change callbacks above.)
     }
@@ -155,6 +235,9 @@ public:
         // the `+ 1`. On AArch64 the same inputs saturate differently (NaN -> 0,
         // +overflow -> INT_MAX, which the `+ 1` then overflows), so the corruption
         // was also platform-dependent. State test 28 pins every case.
+        // The predicate is `usableNumber` above -- ONE copy, shared with the modern
+        // repair, which is where this logic used to be duplicated verbatim. The
+        // behaviour is unchanged in every case State test 28 pins.
         auto legacy = [&apvtsState] (juce::StringRef id, double fallback) -> double
         {
             for (int i = 0; i < apvtsState.getNumChildren(); ++i)
@@ -162,17 +245,8 @@ public:
                 auto c = apvtsState.getChild (i);
                 if (c.hasType ("PARAM") && c.getProperty ("id").toString() == id)
                 {
-                    const auto prop = c.getProperty ("value");
-                    if (prop.isVoid()) return fallback;
-                    if (prop.isString()
-                         && ! looksLikePlainNumber (prop.toString().trim().toRawUTF8()))
-                        return fallback;                              // "abc", "", "0x10", "inf", "nan"
-                    const double v = (double) prop;
-                    // Usability is judged on the float narrowing, as the other two
-                    // paths judge it, so "1e39" (finite as a double, infinite as the
-                    // float these values were) resolves the same way everywhere.
-                    if (! isUsableSerializedValue ((float) v)) return fallback;
-                    return v;
+                    double v = 0.0;
+                    return usableNumber (c.getProperty ("value"), v) ? v : fallback;
                 }
             }
             return fallback;

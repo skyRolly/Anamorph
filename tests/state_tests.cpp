@@ -5271,7 +5271,7 @@ static void testRestoreResetsAbMatchGains()
 // ---------------------------------------------------------------------------
 static int runModernSettingsProbe()
 {
-    std::printf ("modern host-hidden Settings validation probe (round 16)\n");
+    std::printf ("modern host-hidden Settings validation probe (round 16; repaired under Policy B since round 18)\n");
     std::printf ("======================================================\n\n");
 
     // A genuine modern save, used as the carrier for every mutation below.
@@ -5521,6 +5521,256 @@ static void testMalformedScopePersistStaysFinite()
 #endif
 }
 
+// ---------------------------------------------------------------------------
+//  State test 33 -- a modern Setting that is PRESENT but invalid is REPAIRED on
+//  restore, and the repaired value is what gets persisted (ER-STATE-21,
+//  maintainer decision of 2026-09-02, "Policy B").
+//
+//  Rounds 16 and 17 established the evidence and left the contract open: a
+//  present-but-invalid value was adopted verbatim, all nineteen malformed inputs
+//  survived into the next save, and the one unclamped consumer could be reached
+//  by a non-finite one (fixed at the consumer in round 17, which stays as the
+//  backstop). The maintainer then chose repair-at-restore-and-persist, and this
+//  test is that policy's contract:
+//
+//    * a VALID present value is preserved exactly -- the controls below are what
+//      stop a fix that merely resets everything to defaults from passing;
+//    * a finite OUT-OF-DOMAIN value clamps to the nearest valid one;
+//    * anything not usable as a number -- malformed text, non-finite -- becomes
+//      the field's documented default;
+//    * an ABSENT field keeps taking its documented default (ER-STATE-18), which
+//      the last leg pins so the two rules cannot be confused; and
+//    * the repaired value is written into the tree, so the NEXT SAVE carries it
+//      and a RELOAD of that save reads back the same thing.
+//
+//  The save leg is the one that makes this Policy B rather than Policy "clamp at
+//  the read": it asserts the malformed text is GONE from the persisted state.
+// ---------------------------------------------------------------------------
+static void testModernSettingsAreRepairedOnRestore()
+{
+    std::printf ("State test 33: present-but-invalid modern Settings are repaired and persisted (ER-STATE-21)\n");
+
+    // A genuine modern save, used as the carrier for every mutation.
+    juce::MemoryBlock base;
+    {
+        AnamorphAudioProcessor src;
+        src.prepareToPlay (48000.0, 512);
+        src.getStateInformation (base);
+    }
+
+    struct Case
+    {
+        const char* field;
+        const char* written;
+        double      expected;   // the repaired value, as a double (booleans: 0 / 1)
+        bool        valid;      // true = a valid present value, which must be PRESERVED
+    };
+    const Case cases[] = {
+        // int_oversample: ComboBox ids 1..4, default 1
+        { "int_oversample",   "2",     2.0,  true  },   // control: valid, preserved
+        { "int_oversample",   "4",     4.0,  true  },   // control: the domain's top
+        { "int_oversample",   "99",    4.0,  false },   // finite out of range -> nearest
+        { "int_oversample",   "-5",    1.0,  false },
+        { "int_oversample",   "0",     1.0,  false },
+        { "int_oversample",   "2.7",   2.0,  false },   // fractional id -> truncation after clamp
+        { "int_oversample",   "abc",   1.0,  false },   // malformed -> default
+        { "int_oversample",   "nan",   1.0,  false },   // non-finite -> default
+        { "int_oversample",   "inf",   1.0,  false },
+        // int_uiScale: ComboBox ids 1..5, default 3
+        { "int_uiScale",      "5",     5.0,  true  },   // control
+        { "int_uiScale",      "99",    5.0,  false },
+        { "int_uiScale",      "0",     1.0,  false },
+        { "int_uiScale",      "abc",   3.0,  false },
+        { "int_uiScale",      "-inf",  3.0,  false },
+        // int_scopePersist: 0..1, default 0.5
+        { "int_scopePersist", "0.25",  0.25, true  },   // control
+        { "int_scopePersist", "5.0",   1.0,  false },
+        { "int_scopePersist", "-1.0",  0.0,  false },
+        { "int_scopePersist", "nan",   0.5,  false },
+        { "int_scopePersist", "inf",   0.5,  false },
+        { "int_scopePersist", "1e39",  0.5,  false },   // finite as double, infinite as float
+        { "int_scopePersist", "abc",   0.5,  false },
+        // booleans
+        { "int_metersOn",     "1",     1.0,  true  },   // control
+        { "int_metersOn",     "0",     0.0,  true  },   // control
+        { "int_metersOn",     "abc",   0.0,  false },   // malformed -> default false
+        { "int_metersOn",     "2",     1.0,  false },   // number-shaped -> non-zero is true
+        { "int_tooltipsOn",   "1",     1.0,  true  },   // control
+        { "int_tooltipsOn",   "maybe", 0.0,  false },
+        { "int_uiAnimations", "0",     0.0,  true  },   // control: OFF must survive
+        { "int_uiAnimations", "abc",   1.0,  false },   // malformed -> default true
+        { "int_uiAnimations", "-1",    1.0,  false },   // number-shaped -> non-zero is true
+    };
+
+    auto internalTextOf = [] (const juce::MemoryBlock& blob, const char* field)
+    {
+        if (auto x = BlobCodec::unwrap (blob))
+            if (auto* n = x->getChildByName ("ANAMORPH_INTERNAL"))
+                return n->getStringAttribute (field);
+        return juce::String();
+    };
+
+    int repaired = 0, preserved = 0;
+    for (const auto& c : cases)
+    {
+        auto xml = BlobCodec::unwrap (base);
+        if (xml == nullptr) { check (false, "the carrier save round-trips through the blob codec"); return; }
+        auto* internal = xml->getChildByName ("ANAMORPH_INTERNAL");
+        if (internal == nullptr) { check (false, "the carrier save carries an ANAMORPH_INTERNAL node"); return; }
+        internal->setAttribute (c.field, c.written);
+        auto mutated = BlobCodec::wrap (*xml);
+
+        // (1) Restore: the LIVE value must be the repaired one.
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        p.setStateInformation (mutated.getData(), (int) mutated.getSize());
+        const double live = (double) p.getInternal().copyState()[juce::Identifier (c.field)];
+        checkNear (live, c.expected, 1.0e-6,
+                   c.valid ? "a VALID present value is preserved exactly"
+                           : "an invalid present value is repaired to its documented resolution");
+
+        // (2) Save: the malformed text must be GONE from the persisted state.
+        juce::MemoryBlock resaved;
+        p.getStateInformation (resaved);
+        const auto savedText = internalTextOf (resaved, c.field);
+        if (! c.valid)
+            check (savedText != juce::String (c.written),
+                   "...and the malformed text is NOT what the next save writes");
+
+        // (3) Reload: the same value comes back, so the repair is stable.
+        AnamorphAudioProcessor q;
+        q.prepareToPlay (48000.0, 512);
+        q.setStateInformation (resaved.getData(), (int) resaved.getSize());
+        const double reloaded = (double) q.getInternal().copyState()[juce::Identifier (c.field)];
+        checkNear (reloaded, c.expected, 1.0e-6,
+                   "...and a reload of that save reads back the same value");
+
+        if (c.valid) ++preserved; else ++repaired;
+        std::printf ("  %-18s %-6s -> live %-8.4g saved \"%s\"%s\n", c.field, c.written, live,
+                     savedText.toRawUTF8(), c.valid ? "   (valid, preserved)" : "");
+    }
+    std::printf ("  => %d invalid value(s) repaired, %d valid value(s) preserved\n", repaired, preserved);
+
+    // (4) ABSENT is a different rule and must stay different (ER-STATE-18): the
+    //     documented default, NOT a repair of something that is not there.
+    {
+        auto xml = BlobCodec::unwrap (base);
+        if (xml == nullptr) return;
+        auto* internal = xml->getChildByName ("ANAMORPH_INTERNAL");
+        if (internal == nullptr) return;
+        internal->removeAttribute ("int_uiScale");
+        auto stripped = BlobCodec::wrap (*xml);
+
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        p.getInternal().uiScaleValue().setValue (5);      // a distinguishable previous value
+        p.setStateInformation (stripped.getData(), (int) stripped.getSize());
+        checkNear ((double) p.getInternal().copyState()["int_uiScale"], 3.0, 1.0e-6,
+                   "an ABSENT field still takes its documented default, not the previous session's");
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  RISK-008 probe (round 18): what happens to a pending D-1 latency request when
+//  nothing is servicing the JUCE message queue?
+//
+//  SYNTHETIC, AND LABELLED AS SUCH. The CAUSE this models -- a Linux VST3 host
+//  that supplies its `IRunLoop` only through `IPlugFrame`, so JUCE detaches the
+//  event loop when the editor closes and never restarts its internal message
+//  thread -- is established by reading the pinned wrapper, not by running one:
+//  no Linux VST3 host is installed in this environment, and none was available to
+//  test. What this probe reproduces faithfully is the CONSEQUENCE of that state,
+//  which is the part the risk turns on: with the queue unserviced, does a request
+//  made off the message thread stay pending, and is it delivered when servicing
+//  resumes?
+//
+//  That consequence is exact rather than modelled, because `juce::Timer` delivers
+//  through the queue and nothing else: the timer thread POSTS a `CallTimersMessage`
+//  and the message thread runs the callbacks (pinned `juce_Timer.cpp`). A console
+//  harness never runs a dispatch loop, so "not pumping" here IS "queue unserviced"
+//  -- the same reason State tests 27, 30 and 31 have to pump explicitly to make
+//  the D-1 timer fire at all.
+//
+//  No sleep is used as proof of anything. The negative phase asserts a STATE (the
+//  reported latency has not moved) that cannot become true later without the
+//  queue being serviced; its deadline only bounds how long the phase runs.
+// ---------------------------------------------------------------------------
+static int runRisk008Probe()
+{
+    std::printf ("RISK-008 probe: a pending latency request against an UNSERVICED message queue\n");
+    std::printf ("  (synthetic: models the editor-closed state a run-loop detach leaves behind;\n");
+    std::printf ("   the wrapper lifecycle that produces it is established by code reading)\n\n");
+
+    AnamorphAudioProcessor p;
+    p.getInternal().oversampleValue().setValue (2);      // 2x: latency moves with drive
+    auto* drive = p.getAPVTS().getParameter (pid::drive);
+
+    drive->setValueNotifyingHost (0.0f);
+    p.prepareToPlay (48000.0, 512);
+    const int lowLat = p.getLatencySamples();
+    drive->setValueNotifyingHost (1.0f);
+    p.prepareToPlay (48000.0, 512);
+    const int highLat = p.getLatencySamples();
+    drive->setValueNotifyingHost (0.0f);
+    p.prepareToPlay (48000.0, 512);
+    std::printf ("  reported latency moves %d -> %d with drive (non-vacuity: %s)\n",
+                 lowLat, highLat, lowLat != highLat ? "yes" : "NO -- probe is vacuous");
+    if (lowLat == highLat) return 1;
+
+    const int before = p.getLatencySamples();
+
+    // The request, from a thread that is not the message thread -- the shape host
+    // automation of Drive takes under VST3 (KI-027), and the one D-1 defers.
+    const auto requestedAt = juce::Time::getMillisecondCounterHiRes();
+    std::thread worker ([&] { drive->setValueNotifyingHost (1.0f); });
+    worker.join();
+
+    // --- Phase A: queue UNSERVICED (the editor-closed state). ---------------
+    // Deliberately NOT pumping. Poll the observable only.
+    constexpr int kUnservicedMs = 1000;   // 20 timer periods
+    int delivered = -1;
+    for (int elapsed = 0; elapsed < kUnservicedMs; elapsed += 25)
+    {
+        if (p.getLatencySamples() != before) { delivered = elapsed; break; }
+        std::this_thread::sleep_for (std::chrono::milliseconds (25));
+    }
+    const bool stalledWhileUnserviced = (delivered < 0);
+    std::printf ("  phase A -- queue unserviced for %d ms (%d timer periods): reported latency %s\n",
+                 kUnservicedMs, kUnservicedMs / 50,
+                 stalledWhileUnserviced ? "UNCHANGED (request still pending)"
+                                        : "changed -- the request was served without servicing");
+
+    // --- Phase B: servicing resumes (the editor is reopened). ---------------
+    int servedAfterMs = -1;
+    for (int elapsed = 0; elapsed < 2000; elapsed += 5)
+    {
+        juce::Timer::callPendingTimersSynchronously();      // the run loop, restored
+        if (p.getLatencySamples() != before)
+        {
+            servedAfterMs = (int) (juce::Time::getMillisecondCounterHiRes() - requestedAt);
+            break;
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (5));
+    }
+
+    std::printf ("  phase B -- servicing resumed: reported latency %s%s\n",
+                 servedAfterMs >= 0 ? "delivered" : "STILL not delivered",
+                 servedAfterMs >= 0 ? "" : " (unexpected)");
+    if (servedAfterMs >= 0)
+        std::printf ("  request -> delivery: %d ms total, of which %d ms was the unserviced window\n",
+                     servedAfterMs, kUnservicedMs);
+    std::printf ("  now reported: %d (was %d, the settled state predicts %d)\n",
+                 p.getLatencySamples(), before, highLat);
+
+    std::printf ("\n  => %s\n", stalledWhileUnserviced && servedAfterMs >= 0
+                 ? "the request SURVIVES an unserviced window and is delivered when servicing resumes;\n"
+                   "     it is deferred, not dropped -- the host is stale for exactly that window"
+                 : "inconclusive -- see the phase lines above");
+    std::printf ("  EVIDENCE LIMIT: no real Linux VST3 host was available here, so this shows what a\n"
+                 "  detached run loop COSTS, not that any shipping host detaches one.\n");
+    return 0;
+}
+
 int main (int argc, char* argv[])
 {
     juce::ScopedJuceInitialiser_GUI juceInit; // MessageManager for APVTS/processor on this thread
@@ -5557,6 +5807,9 @@ int main (int argc, char* argv[])
 
     if (argc > 1 && std::strcmp (argv[1], "--modern-settings-probe") == 0)
         return runModernSettingsProbe();
+
+    if (argc > 1 && std::strcmp (argv[1], "--risk008-probe") == 0)
+        return runRisk008Probe();
 
     const bool writeSnapshot = argc > 1 && std::strcmp (argv[1], "--write-snapshot") == 0;
 
@@ -5598,6 +5851,7 @@ int main (int argc, char* argv[])
     testOffThreadPrepareDefersLatency();
     testRestoreResetsAbMatchGains();
     testMalformedScopePersistStaysFinite();
+    testModernSettingsAreRepairedOnRestore();
     testMalformedLegacySettingsResolveToValid();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();

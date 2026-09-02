@@ -79,7 +79,7 @@ reads of engine state is RISK-007's exposure class and is recorded there, not cl
 
 Evidence [Verified]:
 - Source: src/dsp/ScopeBuffer.h:28-80; src/dsp/LevelMeters.h:125-198; src/dsp/Correlation.h:50-108;
-  src/PluginProcessor.cpp:59-77, 249; src/InternalState.h:87-92, 194-203
+  src/PluginProcessor.cpp:59-77, 249; src/InternalState.h:157-162, 268-277
 
 ## Enforcement
 

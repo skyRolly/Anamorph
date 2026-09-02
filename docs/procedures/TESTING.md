@@ -310,8 +310,29 @@ comparison is true; and any NEGATIVE value, which is finite in the file and beco
 path. Fixed at the consumer, where the invariant is declared, and pinned by **State test 32**: a
 unit leg over the real `Vectorscope`, and an end-to-end leg that restores four malformed sessions,
 constructs the real editor and reads the persistence back off the scope component itself. **7 checks
-fail without the guard, 0 with it.** The contract question above is untouched by that fix and stays
-open.
+fail without the guard, 0 with it.**
+
+**Round 18 implemented the maintainer's answer to the contract question** — Policy B, repair during
+restore and persist the repaired value. **State test 33** is that policy's contract: thirty cases
+across all six settings and every malformed class (out-of-domain, fractional id, non-numeric text,
+`nan`, `inf`, `1e39`, boolean-shaped junk), each asserted three ways — the live value is the repaired
+one, the malformed text is GONE from the next save, and reloading that save reads the same value
+back. **Eight of the thirty are valid-value controls**, which is what stops a fix that merely resets
+everything to defaults from passing, and a final leg pins ABSENT as a separate rule that still takes
+the documented default (ER-STATE-18). **62 checks fail against the pre-policy build, 0 after.** The
+probe above now shows the repaired behaviour rather than the verbatim one.
+
+`AnamorphStateTests --risk008-probe` is the ninth opt-in instrument and is **synthetic by
+construction, labelled as such in its own output**. It answers what a pending D-1 latency request
+costs when nothing is servicing the JUCE message queue — the state a Linux VST3 host leaves behind
+when it supplies `IRunLoop` only through `IPlugFrame` and the editor closes. The CAUSE is established
+by reading the pinned wrapper, not by running a host: none was available. The CONSEQUENCE is exact,
+because `juce::Timer` delivers only by posting a message for the message thread to run, so a console
+harness that does not pump IS an unserviced queue — the same reason State tests 27, 30 and 31 have to
+pump explicitly. Measured: across a 1000 ms unserviced window the reported latency does not move, and
+22 ms after servicing resumes the request is delivered in full. It **asserts nothing and returns 0**,
+and no sleep stands in for synchronisation: the negative phase asserts a state that cannot become
+true later without servicing, and its deadline only bounds the run.
 
 `AnamorphStateTests --legacy-match-probe` gained a companion in State test 31 rather than a new
 probe: the per-slot Level-Match memory (ER-STATE-20) is observed through the product's own
@@ -325,7 +346,7 @@ exactly. It also performs the host's ordinary post-restore activation, without w
 instance's leftover audio in its delay lines flushes through and moves the reading 0.052 dB —
 engine history rather than A/B state.
 
-`tests/state_tests.cpp` (**32 tests**, own console target `AnamorphStateTests`) automates the
+`tests/state_tests.cpp` (**33 tests**, own console target `AnamorphStateTests`) automates the
 COMPATIBILITY policy family against the **real `AnamorphAudioProcessor`** (the target compiles
 the plugin sources; since 2026-08-21 it also constructs and destroys the real editor, headlessly
 and without ever showing it — no peer, no message loop, no interaction):

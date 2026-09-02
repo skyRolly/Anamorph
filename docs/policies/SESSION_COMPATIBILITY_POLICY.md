@@ -27,7 +27,7 @@ These same checks are enforced at release time via the release compatibility che
 (`docs/procedures/RELEASE_COMPATIBILITY_CHECKLIST.md`).
 
 Evidence [Verified]: src/PluginProcessor.cpp:879-909 (write), :595-685 (read), :540-561
-(the identity helpers); src/InternalState.h:110-197.
+(the identity helpers); src/InternalState.h:180-271.
 
 ## Enforcement
 

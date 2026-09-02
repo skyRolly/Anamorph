@@ -15,6 +15,19 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 
 ## [0.9.6] — 2026-09-01
 ### Fixed
+- **A damaged Settings value in a project file is now repaired when the project opens, and the
+  repaired value is what gets saved.** The six Settings (Oversampling, UI Scale, Scope Persistence,
+  Show Meters, Tooltips, UI Animations) are stored with the project. If one was damaged — hand-edited,
+  or corrupted in transit — to something outside its range, or to text that is not a number at all,
+  it used to be taken at face value and written straight back out on the next save, so the damage
+  stayed in the file and was re-interpreted every time the project opened. Each value is now brought
+  back into its valid range as the project loads: a number merely out of range moves to the nearest
+  valid setting, and anything unreadable falls back to that setting's documented default. What the
+  project saves next is the repaired value, so opening and re-saving cleans the file instead of
+  carrying the damage forward. Projects with valid settings are unaffected, and a project that simply
+  does not carry a setting still gets that setting's default exactly as before. Regression coverage:
+  State test 33.
+  Evidence: PR #134. [Verified]
 - **A damaged Scope Persistence value in a project file can no longer put the vectorscope's afterglow
   into an undefined state.** The Settings panel's Scope Persistence is stored with the project as a
   number from 0 to 1. A project whose stored value was damaged (hand-edited, or corrupted in

@@ -214,7 +214,7 @@ session state, and is fully isolated from the pluginval state-restoration work.
   cannot judge GUI appearance (TESTING_POLICY Level 5), so a **Linux visual re-test by the maintainer**
   is needed to fully close this; until then it stays listed here rather than moved to POSTMORTEMS.
 - **Evidence:** src/gui/LookAndFeel.cpp `drawTooltip` (the alpha-gated corner fill); 0.8.7 Linux
-  feedback. Cosmetic, low-impact: tooltips are **off by default** (src/InternalState.h:57-64).
+  feedback. Cosmetic, low-impact: tooltips are **off by default** (src/InternalState.h:68-75).
 
 ## KI-007 — Windows CI: pluginval script did not wait for pluginval (garbled output + false pass/fail)
 The Windows pluginval step produced **interleaved/garbled console output** and reported both false

@@ -287,8 +287,36 @@ mitigation. Do not invent risks to fill the template.
 - **Evidence [Verified — wrapper only]:** engineering-review round 15 (raised by the host-contract
   verification lens on ER-STATE-19 and confirmed against the pinned wrapper);
   `worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Round 15.
+- **Investigated 2026-09-02 (round 18): the mechanism is CONFIRMED by code reading and its cost
+  MEASURED, but no host-visible failure was reproduced, because no Linux VST3 host was available to
+  test.** Classified **B — a confirmed technical risk with no demonstrated actionable user-visible
+  defect**; no production change. What the round established:
+  - **The lifecycle is exactly as filed.** `messageThread->stop()` runs from
+    `updateCurrentMessageThread()` when a host run loop is registered, and `messageThread->start()`
+    appears in exactly ONE place — the `EventHandler` destructor, which runs at unload. So an
+    editor close that unregisters the view's run loop leaves the fds attached to nothing and the
+    internal thread stopped, with nothing to restart it.
+  - **A stopped queue really does stop the timer.** `juce::Timer` delivers only by posting a
+    `CallTimersMessage` for the message thread to run (pinned `juce_Timer.cpp`), so with no
+    servicing there are no timer callbacks and the D-1 consumer cannot run.
+  - **The request is DEFERRED, not dropped** — a correction to this entry's original wording.
+    Measured (`AnamorphStateTests --risk008-probe`, synthetic and labelled as such): across a
+    1000 ms unserviced window (20 timer periods) the reported latency does not move, and 22 ms
+    after servicing resumes the pending request is delivered in full and the reported value is the
+    one the settled state predicts. The atomic request flag is what holds it, so the host is stale
+    for exactly the unserviced window rather than permanently.
+  - **Scope of the exposure.** Only requests raised OFF the message thread stall: host automation of
+    Drive/Algorithm with oversampling engaged, and an off-message-thread re-prepare. Anything on the
+    host UI thread is unaffected, because that thread stays tagged as the JUCE message thread after
+    the editor closes, so `requestLatencyUpdate()` still delivers synchronously there — which covers
+    state restore and any Settings-driven oversampling change.
+  - **Evidence limitation, stated plainly.** No shipping Linux VST3 host was available in the
+    environment, so whether any host supplies `IRunLoop` only through `IPlugFrame` remains unknown.
+    The likelihood above is therefore unchanged, and this entry does not claim the issue is
+    reachable in practice.
 - **Mitigation:** recorded, not fixed — any change (restarting the internal message thread on
   unregister, or a host-independent delivery) is a threading-model change and an
-  Architecture-Review-Gate item. The cheapest next step is a host census: in a candidate host,
-  close the editor, automate Drive across the engage threshold with oversampling on, and watch
-  whether the host's PDC updates within 50 ms.
+  Architecture-Review-Gate item, and D-1 is not reopened by this entry's existence. The cheapest next
+  step is unchanged and is a host census: in a candidate host, close the editor, automate Drive
+  across the engage threshold with oversampling on, and watch whether the host's PDC updates within
+  50 ms.

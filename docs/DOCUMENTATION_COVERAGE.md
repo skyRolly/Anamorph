@@ -31,7 +31,9 @@ with one new risk recorded); and **round 16** (the previous project's per-slot A
 surviving a restore, confirmed and fixed on two paths, with the modern-Settings validation question
 investigated and deliberately left to a contract decision); and **round 17** (that investigation
 finished at the consumers: one concrete undefined conversion fixed, the contract question deferred
-with complete evidence, and the drag-recovery finding refuted).
+with complete evidence, and the drag-recovery finding refuted); and **round 18** (the maintainer's
+recovery policy implemented and ER-STATE-21 closed, and RISK-008 investigated to a class-B
+classification).
 **Header correction (round 7, 2026-09-01):** this line enumerated round 1 alone while the body
 carried six later rounds, and dated the change set 2026-08-31 while the CHANGELOG `[0.9.6]` heading
 had been re-dated to 2026-09-01 — the same drift the C6 correction below was written about,
@@ -7187,5 +7189,40 @@ directly. Documentation was not misstated, so none changed.
 
 **Counts.** The state suite is **32 tests / 1323 checks** (was 31 / 1301); the DSP suite is unchanged
 at 47 + the A/B clamp guard / 245. The `[0.9.6]` Fixed count is **24**. Swept through
+`TESTING_POLICY.md`, `TESTING.md`, `README.md`, `REPOSITORY_MAP.md`, `RELEASE_HARDENING_PLAN.md`
+and `HANDOVER.md`. [Verified]
+
+## Engineering-review programme, round 18 — the approved Settings recovery policy (2026-09-02, still the 0.9.6 change set)
+
+**What the round is.** One maintainer-approved production change implemented and closed, and one risk
+investigated to a classification with no code change. Records:
+`worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Round 18.
+
+**Code change and its doc syncs (trigger map applied):**
+- `src/InternalState.h` (the `settings()` table carries each field's DOMAIN beside its default;
+  `usableNumber()` is the shared number predicate the legacy migration now also calls instead of its
+  own duplicate; `repairedValue()` resolves a present-but-invalid value and `restoreState` writes it
+  back — ER-STATE-21, "Policy B") → CHANGELOG `[0.9.6]` (one Fixed entry; a damaged setting is
+  repaired on open and the repair is what gets saved), `docs/architecture/SERIALIZATION_REGISTRY.md`
+  (the decision recorded verbatim with the per-field resolution table, replacing the open question —
+  and a duplicated paragraph from a round-17 partial edit collapsed), State test 33,
+  `docs/procedures/TESTING.md`, and the count sweep below. **No schema change, no property renamed**,
+  and a valid session restores exactly as before.
+
+**Why the repair is at restore and not at the reads.** That is the decision: the alternative
+("clamp at the read") leaves the damage in the file to be re-interpreted on every load. Round 17's
+finiteness guard at `Vectorscope::setPersistence` is kept as the defensive backstop the decision asks
+for, not removed.
+
+**RISK-008, class B, no production change.** The mechanism is confirmed from the pinned wrapper —
+`messageThread->start()` exists in exactly one place, the `EventHandler` destructor at unload, while
+`stop()` runs whenever a host run loop registers — and its cost is measured by a clearly-labelled
+synthetic probe: a request is deferred, not dropped, and the host is stale for exactly the unserviced
+window. No Linux VST3 host was obtainable, so no host-visible failure was demonstrated and the
+classification stops short of actionable. `docs/FUTURE_RISKS.md` records the evidence and the
+limitation; D-1 is untouched.
+
+**Counts.** The state suite is **33 tests / 1406 checks** (was 32 / 1323); the DSP suite is unchanged
+at 47 + the A/B clamp guard / 245. The `[0.9.6]` Fixed count is **25**. Swept through
 `TESTING_POLICY.md`, `TESTING.md`, `README.md`, `REPOSITORY_MAP.md`, `RELEASE_HARDENING_PLAN.md`
 and `HANDOVER.md`. [Verified]
