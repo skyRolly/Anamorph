@@ -279,7 +279,8 @@ value, equal to a message-thread prepare's.
 
 `AnamorphStateTests --modern-settings-probe` is the eighth opt-in instrument, and like
 `--latency-restore-probe` it **measures and asserts nothing**: what it examines is the recovery
-semantics for a malformed MODERN host-hidden Setting, which no document currently states, so a probe
+semantics for a malformed MODERN host-hidden Setting, which no document stated when it was written
+(`SERIALIZATION_REGISTRY.md` has stated them since round 18), so a probe
 that encoded an expectation would be legislating one. It writes nineteen malformed values — out of
 domain, non-numeric, `nan`, `inf`, `1e39`, coerced booleans — one at a time into a genuine modern
 save's `ANAMORPH_INTERNAL` node, restores each, and reports the tree value, every consumer, whether
@@ -326,7 +327,12 @@ probe above now shows the repaired behaviour rather than the verbatim one.
 construction, labelled as such in its own output**. It answers what a pending D-1 latency request
 costs when nothing is servicing the JUCE message queue — the state a Linux VST3 host leaves behind
 when it supplies `IRunLoop` only through `IPlugFrame` and the editor closes. The CAUSE is established
-by reading the pinned wrapper, not by running a host: none was available. The CONSEQUENCE is exact,
+by reading the pinned wrapper, not by running a host: none was available in the review
+environment. (The missing half arrived separately — the maintainer ran the predicted-failure
+workflow on Linux in REAPER with the real VST3, and the latency updated with the editor both open
+and closed; `docs/FUTURE_RISKS.md` RISK-008 carries that result and its limits. The probe is
+unchanged by it: what it measures is the COST of an unserviced queue, not whether a host produces
+one.) The CONSEQUENCE is exact,
 because `juce::Timer` delivers only by posting a message for the message thread to run, so a console
 harness that does not pump IS an unserviced queue — the same reason State tests 27, 30 and 31 have to
 pump explicitly. Measured: across a 1000 ms unserviced window the reported latency does not move, and

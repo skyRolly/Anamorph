@@ -15,9 +15,10 @@ exist with the editor closed; an `AsyncUpdater` reproduces the same `postMessage
 fixed a defect that was never filed here because it was found and fixed in the same round: a
 non-finite value in a session or preset (`value="nan"`) was adopted as parameter state and silenced
 the plug-in permanently. Round 1 **added one issue**: **KI-027**, the audio-thread latency re-report under host automation of Drive/Algorithm —
-a confirmed defect whose fix (deferring the notification off the audio thread) is a
-threading-model change gated on Architecture Review, so it is filed here rather than silently
-fixed; the same finding exposed drift between `docs/architecture/LATENCY_MODEL.md` ("the message
+a confirmed defect whose fix (deferring the notification off the audio thread) was a
+threading-model change gated on Architecture Review, so round 1 filed it here rather than silently
+fixing it — **that gate has since cleared: decision D-1 was approved by the maintainer and
+implemented in round 4**, as KI-027's RESOLVED banner below records; the same finding exposed drift between `docs/architecture/LATENCY_MODEL.md` ("the message
 thread updates PDC") and the actual JUCE listener dispatch, which the entry records. The round
 **removed none**, and its six fixed defects (the post-prepare glide, the oversized-block
 overrun, the correlation-meter NaN latch, the absent-PARAM restore leak, the wrong-typed A/B

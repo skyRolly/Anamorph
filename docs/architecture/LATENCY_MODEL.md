@@ -97,8 +97,9 @@ binary (requires running the plugin; not statically provable here).`
   audio thread; the VALUE reported is always the one the live state predicts, only its delivery is
   deferred. Regression coverage: State test 22. (RISK-008 records the one wrapper configuration —
   a Linux host handing its run loop over only through `IPlugFrame` — in which the message queue
-  itself is unserviced while the editor is closed, so the interval there is "until the editor
-  next opens".)
+  itself would be unserviced while the editor is closed, making the interval there "until the editor
+  next opens". That is a mechanism the pinned wrapper permits, not observed behaviour: the one real
+  Linux host tested, REAPER, updates the reported latency with the editor open AND closed.)
 - **A restore re-derives the report from the final state.** `setStateInformation` ends with a
   latency request because two things inside it can move a latency-bearing parameter without the
   listener hearing the final value: `apvts.replaceState` adopts a malformed `@value` by CLAMPING it

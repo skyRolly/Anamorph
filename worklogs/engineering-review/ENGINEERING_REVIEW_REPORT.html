@@ -82,14 +82,25 @@ ruled out, fixed, deferred — and what should happen next. A rendered <em>view<
 <code>ENGINEERING_REVIEW_PROGRAMME.md</code> beside it; the worklog is the source of truth a later
 round reconciles against.</p>
 <div class="meta">
-  <span>ROUNDS 1–18 · 2026-08-31 → 09-02</span>
+  <span>ROUNDS 1–19 · 2026-08-31 → 09-02</span>
   <span>TREE: main @ e8f4422 → v0.9.6</span>
-  <span>STATUS: ER-STATE-21 CLOSED (Policy B implemented); RISK-008 class B; ONE tag blocker left — KI-015</span>
+  <span>STATUS: RISK-008 real-host validated in REAPER; settled set audited; ONE tag blocker left — KI-015</span>
   <span>NEXT: licence (KI-015), then tag v0.9.6</span>
 </div>
 
 <h2><span class="no">§1</span>Executive status</h2>
-<p class="lede"><strong>Round 18 implemented the maintainer's recovery policy and classified RISK-008.</strong>
+<p class="lede"><strong>Round 19: RISK-008 gets the half the review harness could not supply.</strong> The
+maintainer ran the predicted-failure workflow on a real host — <strong>Linux, REAPER, the real Anamorph
+VST3 — and the reported latency updated with the editor both OPEN and CLOSED.</strong> That is exactly the
+observable this risk says would fail. No production code changed this round, and none was justified.</p>
+<div class="verdicts">
+  <div class="v"><div class="k">RISK-008 · real-host validated for REAPER</div><p>Final disposition: <strong>real-host validated for REAPER; no actionable defect demonstrated; host-specific risk remains unverified.</strong> Likelihood moves from Unknown to Low on that evidence. The entry stays recorded for the residual — a host using a different <code>IPlugFrame</code>/<code>IRunLoop</code> lifecycle — which does not justify a production change.</p></div>
+  <div class="v"><div class="k">Three kinds of evidence, kept apart</div><p>Code reading shows the lifecycle CAN leave the queue unserviced. The synthetic probe shows what that COSTS (deferred, not dropped; 22 ms after servicing resumes). The REAPER run shows the failure does not occur there. Collapsing the three is how a register entry starts overclaiming, so they are tabled separately.</p></div>
+  <div class="v"><div class="k">What REAPER does not settle</div><p>The repository has <em>no</em> evidence of how REAPER supplies <code>IRunLoop</code> — every REAPER reference in the tree is about something else — so the route is not established and not guessed at. One host is not every host, and no Linux-wide claim is made.</p></div>
+  <div class="v"><div class="k">Settled set audited</div><p>ER-STATE-21 FIXED, drag recovery REFUTED, the realtime-lint boundary verified for a ninth round, D-1 approved and implemented, D-2 deferred, KI-015 still the one blocker. Checked against the live documents rather than the worklog, which is historical by construction.</p></div>
+</div>
+
+<p class="lede" style="margin-top:26px"><strong>Round 18 implemented the maintainer's recovery policy and classified RISK-008.</strong>
 The contract rounds 16 and 17 refused to invent has been decided: a present-but-invalid Setting is
 <em>repaired</em> on restore and the repaired value is what the project saves. RISK-008's mechanism is
 confirmed and its cost measured, but no host was available to demonstrate it.</p>
@@ -500,6 +511,15 @@ evidence emerged to promote one. Ranking follows the programme's order — corre
   <li class="done">Drift sweep: CHANGELOG date, HANDOVER audition claim; history left intact</li>
   <li class="done">D-3 performed by the maintainer against the v0.9.6 build — <strong>PASSED</strong></li>
 </ul>
+<h3>Round 19</h3>
+<ul class="roadmap">
+  <li class="done">RISK-008 — maintainer's real-host run (Linux / REAPER / real VST3) recorded: latency updates with the editor open AND closed</li>
+  <li class="done">Disposition set to real-host validated for REAPER, no actionable defect, host-specific risk unverified; likelihood Unknown → Low</li>
+  <li class="done">Stale "no host tested / census pending" wording removed from the register, the testing procedure and the probe's own output</li>
+  <li class="done">Settled set audited against the live documents: ER-STATE-21 FIXED, drag recovery REFUTED, lint boundary verified, D-1 consistent, D-2 deferred</li>
+  <li class="done">No production change, and none justified</li>
+</ul>
+
 <h3>Round 18</h3>
 <ul class="roadmap">
   <li class="done">ER-STATE-21 CLOSED — Policy B implemented in <code>InternalState::restoreState</code>; domain joins the defaults table; number predicate shared with the legacy path</li>

@@ -3,6 +3,11 @@
 Potential technical risks. Each is evidence-based (constraint C7) — no invented risks. ADRs and
 postmortems may reference these IDs to close the loop. Severity: Low / Medium / High / Critical.
 
+**Round 19 (2026-09-02): RISK-008 gains its real-host evidence** — the maintainer ran the
+predicted-failure workflow on Linux in REAPER with the real Anamorph VST3 and the reported latency
+updated with the editor both open and closed, so the entry moves from "mechanism confirmed, no host
+tested" to **real-host validated for REAPER, with the host-specific residual explicitly unverified**.
+No production change; D-1 untouched. Prior:
 **Round 15 (2026-09-02): one new entry, RISK-008** — an inspection finding from the ER-STATE-19
 verification (a JUCE Linux VST3 wrapper behaviour, host prevalence unknown) — and RISK-007 gains a
 round-15 note recording that the same thread class reached `prepareToPlay`, is closed there, and
@@ -74,7 +79,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 | RISK-005 | Manual-only audio/visual + host validation lets regressions ship green | Medium | Medium |
 | RISK-006 | Undeclared licensing: no `LICENSE`/EULA, and the commercial JUCE licence required by the closed-source model is not yet obtained | High | High (already true) |
 | RISK-007 | State calls on a non-main host thread race message-thread state (AU autosave; out-of-spec VST3 hosts) | Medium | Low |
-| RISK-008 | A Linux VST3 host that hands its `IRunLoop` over only through `IPlugFrame` leaves the plug-in's JUCE message queue unserviced while no editor is open (D-1 timer, APVTS value flush) | Medium | Unknown (no host confirmed) |
+| RISK-008 | A Linux VST3 host that hands its `IRunLoop` over only through `IPlugFrame` leaves the plug-in's JUCE message queue unserviced while no editor is open (D-1 timer, APVTS value flush) | Medium | Low — real-host validated in REAPER; other Linux hosts unverified |
 
 ---
 
@@ -280,10 +285,12 @@ mitigation. Do not invent risks to fill the template.
   the APVTS's own value-flush timer. `prepareToPlay` is unaffected: the host's UI thread stays
   the tagged message thread, so its report is synchronous. No crash and no undefined behaviour;
   a stale host PDC until the editor reopens.
-- **Likelihood (evidence-based):** **Unknown.** A wrapper-behaviour finding, verified by reading
-  the pinned tree; which shipping Linux hosts — if any — provide the run loop only through
-  `IPlugFrame` is not something this repository can establish from the inside. A host that
-  provides it through the host context is not exposed.
+- **Likelihood (evidence-based):** **Low, and no longer unknown.** The predicted failure was
+  looked for on a real Linux host and did not occur (the 2026-09-02 REAPER result below). It began
+  as a wrapper-behaviour finding verified by reading the pinned tree; a host that provides the run
+  loop through the host context is not exposed at all, and the one host actually tested shows the
+  behaviour the risk says would break. What remains unverified is every OTHER Linux VST3 host,
+  which this repository cannot establish from the inside.
 - **Evidence [Verified — wrapper only]:** engineering-review round 15 (raised by the host-contract
   verification lens on ER-STATE-19 and confirmed against the pinned wrapper);
   `worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Round 15.
@@ -310,13 +317,32 @@ mitigation. Do not invent risks to fill the template.
     host UI thread is unaffected, because that thread stays tagged as the JUCE message thread after
     the editor closes, so `requestLatencyUpdate()` still delivers synchronously there — which covers
     state restore and any Settings-driven oversampling change.
-  - **Evidence limitation, stated plainly.** No shipping Linux VST3 host was available in the
-    environment, so whether any host supplies `IRunLoop` only through `IPlugFrame` remains unknown.
-    The likelihood above is therefore unchanged, and this entry does not claim the issue is
-    reachable in practice.
+  - **Evidence limitation as it stood in round 18.** No shipping Linux VST3 host was available in
+    that environment, so round 18 could not say whether any host supplies `IRunLoop` only through
+    `IPlugFrame`, and it did not claim the issue was reachable in practice. **Superseded by the
+    real-host result below**, which supplies the missing half.
+- **REAL-HOST VALIDATION, 2026-09-02 (round 19) — performed by the maintainer, not by the review
+  harness.** On **Linux, in REAPER, with the real Anamorph VST3**, the reported latency **updates
+  successfully both with the Anamorph editor OPEN and with it CLOSED.** That is precisely the
+  observable this entry predicts would fail — an editor-closed latency update — and it did not
+  fail. This is manual real-host evidence and is recorded as such; it is a different KIND of
+  evidence from the synthetic probe above, which measures what an unserviced queue costs and never
+  claimed to show that any host produces one.
+  - **What it does NOT establish.** It does not show how REAPER supplies `Linux::IRunLoop`. The
+    repository contains no evidence on that point — every REAPER reference here concerns unrelated
+    matters (KI-009's preset-save focus, VST3 parameter listing, rescan instructions) — so whether
+    REAPER hands the loop over through the factory host context, through `IPlugFrame`, or by some
+    other route is **not established, and is not guessed at here**. A successful result is
+    consistent with REAPER simply not exhibiting the suspected lifecycle, and consistent with
+    other explanations this repository cannot distinguish between without evidence it does not
+    have. It also says nothing about any other Linux VST3 host.
+  - **Disposition: REAL-HOST VALIDATED FOR REAPER; NO ACTIONABLE DEFECT DEMONSTRATED; HOST-SPECIFIC
+    RISK REMAINS UNVERIFIED.** The entry stays recorded for the residual — a host using a different
+    `IPlugFrame`/`IRunLoop` lifecycle — and that residual does not justify a production change.
 - **Mitigation:** recorded, not fixed — any change (restarting the internal message thread on
   unregister, or a host-independent delivery) is a threading-model change and an
-  Architecture-Review-Gate item, and D-1 is not reopened by this entry's existence. The cheapest next
-  step is unchanged and is a host census: in a candidate host, close the editor, automate Drive
-  across the engage threshold with oversampling on, and watch whether the host's PDC updates within
-  50 ms.
+  Architecture-Review-Gate item, and D-1 is not reopened by this entry's existence — the REAPER
+  result is if anything evidence against needing one. The host census has its first data point and
+  REAPER passed; extending it to another Linux host is the only remaining step, and it is an
+  observation, not a code change: close the editor, automate Drive across the engage threshold with
+  oversampling on, and watch whether the host's PDC updates within 50 ms.

@@ -29,6 +29,74 @@ entries and CHANGELOG notes cite.
 
 ---
 
+## Round 19 — 2026-09-02 — RISK-008 gets its real-host half; the settled set audited for consistency
+
+A disposition round. **No production code changed, and none was justified.**
+
+### RISK-008 — REAL-HOST VALIDATED FOR REAPER; NO ACTIONABLE DEFECT DEMONSTRATED; HOST-SPECIFIC RISK REMAINS UNVERIFIED
+
+Round 18 closed with the mechanism confirmed and its cost measured, and one half missing: no Linux
+VST3 host was available to the review environment, so nothing could be said about whether any
+shipping host produces the state the probe measures. **The maintainer supplied that half.**
+
+**The real-host result, recorded as manual real-host evidence.** On **Linux, in REAPER, with the
+real Anamorph VST3**, the reported latency **updates successfully with the Anamorph editor OPEN and
+with it CLOSED.** The editor-closed case is exactly the observable this risk predicts would fail,
+and it did not fail. This round performed no host testing of its own; the experiment was the
+maintainer's and is recorded as theirs.
+
+**The three kinds of evidence, kept apart deliberately**, because collapsing them is how a register
+entry starts overclaiming:
+
+| evidence | kind | what it establishes |
+|---|---|---|
+| the wrapper lifecycle (`messageThread->start()` in exactly one place, the `EventHandler` destructor at unload) | code reading, pinned tree | that an editor close in an `IPlugFrame`-only host CAN leave the queue unserviced |
+| `--risk008-probe` | synthetic, labelled as such | what an unserviced queue COSTS: the request is deferred, not dropped, and lands 22 ms after servicing resumes |
+| Linux + REAPER + real Anamorph VST3 | **manual real-host** | that the predicted failure does NOT occur in REAPER, editor open or closed |
+
+**What the REAPER result does not establish, stated rather than glossed.** It does not show how
+REAPER supplies `Linux::IRunLoop`. The repository contains no evidence on that point — checked this
+round: every REAPER reference in the tree concerns unrelated matters (KI-009's preset-save focus,
+VST3 parameter listing, rescan instructions, trademark attribution), and none touches the run-loop
+path. So whether REAPER hands the loop over through the factory host context, through `IPlugFrame`,
+or by another route is **not established here and is not guessed at**. A pass is consistent with
+REAPER simply not exhibiting the suspected lifecycle, and consistent with explanations this
+repository cannot distinguish between without evidence it does not have. It also says nothing about
+any other Linux VST3 host.
+
+**Disposition, and why it is not "disproved".** The predicted failure was looked for on a real host
+and did not occur, so the entry is no longer "mechanism confirmed, prevalence unknown" and no longer
+carries a pending host census. But one host is not every host, and the residual — a host using a
+different `IPlugFrame`/`IRunLoop` lifecycle — is real and unverified. Recorded as **real-host
+validated for REAPER, no actionable defect demonstrated, host-specific risk unverified**, with the
+likelihood moved from Unknown to **Low** on that evidence. **No production change**: the residual
+does not justify one, and the REAPER result is if anything evidence against needing one. D-1 is not
+reopened, and its architecture is untouched — message-thread changes synchronous, the atomic request
+off-thread, the processor-owned 20 Hz timer delivering on the message thread, no editor polling, no
+`AsyncUpdater`, no `callAsync`, no mutex.
+
+### Consistency audit of the settled set — four items, one correction
+
+Every settled item was checked against the LIVE documents (registries, policies, procedures,
+architecture, README, HANDOVER) rather than the worklog, which is historical by construction.
+
+- **ER-STATE-21 — FIXED.** Policy B implemented in `InternalState::restoreState`, repaired values
+  persisted, State test 33. The registry now records the decision and its per-field resolution table
+  in place of the open question it carried through rounds 16 and 17.
+- **ER-GUI-05 (drag recovery) — REFUTED.** No production change required; a wrapper would prevent the
+  gesture opening rather than strand it, and State test 21 already covers the direct-child
+  relationship. Not presented as open anywhere.
+- **Cross-file realtime lint — verified, unchanged.** The closure is same-file and transitive, the
+  cross-file seeds are an explicit manual registry, and the documents say so. Ninth consecutive
+  verification.
+- **D-1 — approved and implemented**, recorded consistently in KI-027's row and banner,
+  `THREADING_POLICY.md`, `LATENCY_MODEL.md`, and the processor's header and implementation comments.
+  The repository can verify its own record's internal consistency; it cannot establish the external
+  authority behind the sign-off, and does not claim to.
+- **RISK-007 / D-2 — deferred**, exactly as decided; no mutex, no `callAsync`, no state-architecture
+  change. **KI-015** remains the one release blocker, and it is a legal/licensing action, not an
+  engineering one.
+
 ## Round 18 — 2026-09-02 — the approved Settings recovery policy implemented; RISK-008 investigated and classified
 
 ### ER-STATE-21 — CLOSED — Policy B implemented: repair on restore, persist the repaired value

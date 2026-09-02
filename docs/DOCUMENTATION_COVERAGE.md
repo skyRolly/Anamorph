@@ -33,7 +33,9 @@ investigated and deliberately left to a contract decision); and **round 17** (th
 finished at the consumers: one concrete undefined conversion fixed, the contract question deferred
 with complete evidence, and the drag-recovery finding refuted); and **round 18** (the maintainer's
 recovery policy implemented and ER-STATE-21 closed, and RISK-008 investigated to a class-B
-classification).
+classification); and **round 19** (the maintainer's real-host REAPER result recorded against
+RISK-008, its disposition finalised, and the settled set audited for consistency — no production
+change).
 **Header correction (round 7, 2026-09-01):** this line enumerated round 1 alone while the body
 carried six later rounds, and dated the change set 2026-08-31 while the CHANGELOG `[0.9.6]` heading
 had been re-dated to 2026-09-01 — the same drift the C6 correction below was written about,
@@ -7226,3 +7228,35 @@ limitation; D-1 is untouched.
 at 47 + the A/B clamp guard / 245. The `[0.9.6]` Fixed count is **25**. Swept through
 `TESTING_POLICY.md`, `TESTING.md`, `README.md`, `REPOSITORY_MAP.md`, `RELEASE_HARDENING_PLAN.md`
 and `HANDOVER.md`. [Verified]
+
+## Engineering-review programme, round 19 — RISK-008's real-host half (2026-09-02, still the 0.9.6 change set)
+
+**What the round is.** A disposition and documentation round. **No production code changed, and none
+was justified.** Records: `worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Round 19.
+
+**Evidence recorded.** The maintainer ran the predicted-failure workflow on a real host — Linux,
+REAPER, the real Anamorph VST3 — and the reported latency updated with the Anamorph editor both open
+and closed. That is the observable RISK-008 predicts would fail with the editor closed. Recorded as
+manual real-host evidence and kept distinct from the round-18 synthetic probe, which measures the
+cost of an unserviced queue rather than whether any host produces one.
+
+**Documents touched:** `docs/FUTURE_RISKS.md` (the RISK-008 register row's likelihood moved from
+Unknown to Low; the likelihood bullet rewritten; the real-host result and its limits added; round
+18's "no host available" note marked superseded rather than deleted; the mitigation's pending host
+census replaced by its first data point; a round-19 line in the sync header),
+`docs/procedures/TESTING.md` (the probe's scope note now points at the real-host half),
+`tests/state_tests.cpp` (the probe's own printed EVIDENCE LIMIT line, a `printf` only — no test
+logic, no count change), the programme worklog and the dashboard.
+
+**Limitation recorded exactly, not glossed.** The repository contains no evidence of how REAPER
+supplies `Linux::IRunLoop`; every REAPER reference in the tree concerns unrelated matters. The route
+is therefore not established and not guessed at, and no Linux-wide claim is made — the residual is
+every other Linux VST3 host, and it does not justify a production change.
+
+**Settled set audited against the live documents** (registries, policies, procedures, architecture,
+README, HANDOVER — not the worklog, which is historical by construction): ER-STATE-21 FIXED, drag
+recovery REFUTED, the realtime-lint boundary accurate for a ninth consecutive round, D-1 approved and
+implemented, D-2 deferred, KI-015 still the single release blocker.
+
+**Counts.** Unchanged: the state suite is 33 tests / 1406 checks and the DSP suite 47 + the A/B clamp
+guard / 245. The `[0.9.6]` Fixed count is unchanged at 25 — nothing user-visible changed. [Verified]

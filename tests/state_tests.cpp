@@ -5259,7 +5259,8 @@ static void testRestoreResetsAbMatchGains()
 //  ("`restoreState` accepts present modern settings verbatim, unlike legacy
 //  migration"), and the point of a probe rather than a test is that a test would
 //  have to encode an expectation about recovery semantics that no document
-//  currently states.
+//  stated at the time (`SERIALIZATION_REGISTRY.md` has stated them since round
+//  18; this probe still reports rather than asserts).
 //
 //  Ingress, stated up front because it bounds everything below: the modern
 //  ANAMORPH_INTERNAL values are written by copyState() from a live tree whose only
@@ -5434,12 +5435,15 @@ static int runModernSettingsProbe()
 //  range constrains a too-HIGH value but writes nothing back for a negative or a
 //  NaN), and both survive into the next save.
 //
-//  WHAT THIS DOES NOT DECIDE. The tree keeps whatever the file said; defining
-//  what a malformed PRESENT value should mean in `ANAMORPH_INTERNAL` is a
-//  serialization-contract question that remains open (ER-STATE-21's disposition).
-//  This test pins only that the value reaching the scope is always finite, which
-//  is a local correctness property of the consumer and true whatever that
-//  contract turns out to be.
+//  WHAT THIS TEST DOES AND DOES NOT DECIDE. It pins only that the value reaching
+//  the scope is always finite -- a local correctness property of the consumer,
+//  true whatever the serialization contract says. When it was written that
+//  contract WAS open and the tree kept whatever the file said; round 18 settled
+//  it separately (the maintainer's Policy B -- a present-but-invalid Setting is
+//  repaired on restore and the repaired value persisted, State test 33), so a
+//  malformed value no longer reaches this consumer from an ordinary restore at
+//  all. The guard stays as the backstop that decision asks for, and this test
+//  stays discriminating because it drives `setPersistence` directly.
 // ---------------------------------------------------------------------------
 static void testMalformedScopePersistStaysFinite()
 {
@@ -5766,8 +5770,10 @@ static int runRisk008Probe()
                  ? "the request SURVIVES an unserviced window and is delivered when servicing resumes;\n"
                    "     it is deferred, not dropped -- the host is stale for exactly that window"
                  : "inconclusive -- see the phase lines above");
-    std::printf ("  EVIDENCE LIMIT: no real Linux VST3 host was available here, so this shows what a\n"
-                 "  detached run loop COSTS, not that any shipping host detaches one.\n");
+    std::printf ("  EVIDENCE LIMIT: no real Linux VST3 host is available here, so this shows what a\n"
+                 "  detached run loop COSTS, not that any shipping host detaches one. The real-host\n"
+                 "  half is recorded separately (FUTURE_RISKS RISK-008): on Linux in REAPER the\n"
+                 "  latency updates with the editor both open and closed.\n");
     return 0;
 }
 
