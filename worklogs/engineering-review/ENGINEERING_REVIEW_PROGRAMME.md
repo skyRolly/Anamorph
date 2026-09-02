@@ -29,6 +29,87 @@ entries and CHANGELOG notes cite.
 
 ---
 
+## Round 14 — 2026-09-01 — partial modern Settings inherited the previous project: confirmed, and on the opposite path from the one reported
+
+### ER-STATE-18 — CONFIRMED and FIXED — but not where the review looked
+
+The finding was *"when a modern session omits an optional setting, `migrateFromLegacyApvts` never
+resets it"*, filed against `src/PluginProcessor.cpp:1038` — the **v0.2 branch**. The brief asked
+whether this was real, a contradiction with the documented missing-node behaviour, or a confusion
+between the legacy and modern paths. Measurement answers all three at once, and the answer is the
+interesting kind: **the symptom is real, and the named mechanism is exactly backwards.**
+
+`--partial-settings-probe`, on a reused instance, one field omitted at a time from an otherwise
+real modern save:
+
+| omitted field | session A | documented default | after restoring B | |
+|---|---|---|---|---|
+| `int_oversample` | 3 | 1 | **3** | inherited |
+| `int_uiScale` | 5 | 3 | **5** | inherited |
+| `int_scopePersist` | 0.9 | 0.5 | **0.9** | inherited |
+| `int_metersOn` | true | false | **true** | inherited |
+| `int_tooltipsOn` | true | false | **true** | inherited |
+| `int_uiAnimations` | false | true | **false** | inherited |
+
+**Modern path: 6 of 6 inherited. Legacy path: 0 of 6.** `migrateFromLegacyApvts` — the function the
+finding names — has always written all six unconditionally; it is the one path that was already
+correct. The defect is in `InternalState::restoreState`, which wrote only the fields `src` carried.
+
+**Not a contradiction with "missing nodes use normalized defaults".** That informational item is
+about `applyNorm` inside `reassertParameters`, which covers APVTS **parameters**. The host-hidden
+Settings are a different subsystem with their own tree, and the two never shared this code.
+
+**Root cause and contract.** `SERIALIZATION_REGISTRY.md`'s `ANAMORPH_INTERNAL` table marks every
+field **"Required: No"** with a stated **Default**. That means the default is *applied* when the
+field is absent — but `restoreState` read "not required" as "skip". `tree` is a processor member and
+a host restores into one live instance repeatedly, so skipping an absent field means keeping the
+previous project's value, which the next save then writes out as if the session had always held it.
+This is the same state-isolation class rounds 2, 8 and 11 closed for the Settings on the v0.2 path
+(ER-STATE-08), the A/B slots (ER-STATE-12) and a root with no sound child (ER-STATE-15) — the fourth
+member, and the last of the four processor members that restore into a reused instance.
+
+**Fix.** `restoreState` now writes all six unconditionally, taking the field from `src` when present
+and the documented default when not. The six defaults, previously hand-written twice (constructor
+and — by omission — nowhere else), now live in one `settings()` table that the constructor seeds
+from and `restoreState` falls back to, so they cannot drift into two different answers for "absent".
+No serialization format change; a session that carries a field restores it exactly as before.
+
+**Regression coverage: State test 29**, four legs — each field omitted in turn from a real modern
+save (with the re-save asserted to carry the reset value, not the inherited one); a session that
+**explicitly carries** every field, which must still restore those values, so the fix cannot pass by
+resetting unconditionally; the **legacy** path, pinned so the two can never be confused again; and
+**malformed-state repair**, asserted unchanged — a malformed modern Setting is not the absent case
+and is still adopted and clamped by its consumer. **Verified discriminating: 12 checks fail without
+the fix, 0 with it.**
+
+Checked while there, and *not* changed: a malformed value on the MODERN path carries no undefined
+conversion. `syncAtomics` clamps through `jlimit`, and `juce::var`→`int` on a string is a safe parse,
+not the float cast that made the legacy path undefined in round 12. Recorded rather than acted on.
+
+### ER-RT-05 — verified accurate for the fifth consecutive round, no change
+
+`AUDIO_FN` is a manual registry and `check-realtime.py` says so; `REALTIME_AUDIO_POLICY`,
+`REALTIME_SAFETY_AUDIT`, `CI_CD` and ADR-0029 all describe the same-file closure correctly, and no
+document claims automatic cross-file discovery. Nothing to correct.
+
+### D-1 approval record — correct, no change
+
+The record says what it should, in four places: KI-027's registry row (**RESOLVED … decision D-1 —
+APPROVED by the maintainer and implemented**), the dated banner over its detail section,
+`THREADING_POLICY.md`'s rule, and `LATENCY_MODEL.md`. Round 12 corrected the two documents that had
+still said "awaiting sign-off"; nothing has regressed since. The only remaining "awaiting" strings
+sit inside the struck-through row text and inside the round-1/2 diagnosis under a banner that says
+in terms that the language is historical.
+
+One limit worth stating rather than glossing: the record attributes the approval to **"the
+maintainer"** — the role, not a named individual — which is the same convention every other gate
+sign-off in this repository uses (ADR-0024's serialization sign-off, the Level-5 audition, the
+Architecture Review clearances). Whether the person who gave it holds that authority is not
+something this repository can establish from the inside, and this round does not claim to have
+verified it.
+
+---
+
 ## Round 13 — 2026-09-01 — ER-STATE-17 verified on the real pre-0.8.4 fixture; the compatibility gate closes on attestation
 
 ### ER-STATE-17 — the fix verified against the genuine legacy file, not a synthetic shape

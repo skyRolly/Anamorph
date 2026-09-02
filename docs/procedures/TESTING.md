@@ -254,7 +254,15 @@ intact on every restore — so the guard runs on the genuine legacy file and not
 `AnamorphTests --match-inject-probe`, the engine-only half of the ER-STATE-13 question, written so
 it cross-builds with nothing but AnamorphDSP and runs under `qemu-aarch64-static`.
 
-`tests/state_tests.cpp` (**28 tests**, own console target `AnamorphStateTests`) automates the
+`AnamorphStateTests --partial-settings-probe` is the sixth opt-in instrument and the evidence
+behind State test 29. It asks whether a MODERN session that omits one host-hidden Setting leaves the
+previous project's value in force on a reused instance, and it deliberately reports the modern and
+legacy paths side by side — because the review that raised the finding located it in
+`migrateFromLegacyApvts`, and the measurement put it the other way round: **6 of 6 fields inherited
+on the modern path, 0 of 6 on the legacy one**. Keep the two columns; they are what stops the two
+paths being confused again.
+
+`tests/state_tests.cpp` (**29 tests**, own console target `AnamorphStateTests`) automates the
 COMPATIBILITY policy family against the **real `AnamorphAudioProcessor`** (the target compiles
 the plugin sources; since 2026-08-21 it also constructs and destroys the real editor, headlessly
 and without ever showing it — no peer, no message loop, no interaction):

@@ -24,7 +24,8 @@ refutation, and a full audit of the [0.9.6] changelog); and **round 12** (undefi
 legacy-Settings conversion fixed, the latency regression test made deterministic, and ER-STATE-13
 re-run on AArch64 with no change); and **round 13** (ER-STATE-17 verified on the real frozen
 pre-0.8.4 fixture, and compatibility-checklist items 5 and 7 recorded on the maintainer's
-attestation, closing the gate).
+attestation, closing the gate); and **round 14** (partial modern Settings inheriting the previous
+project, confirmed and fixed on the opposite path from the one reported).
 **Header correction (round 7, 2026-09-01):** this line enumerated round 1 alone while the body
 carried six later rounds, and dated the change set 2026-08-31 while the CHANGELOG `[0.9.6]` heading
 had been re-dated to 2026-09-01 — the same drift the C6 correction below was written about,
@@ -7030,3 +7031,44 @@ satisfied; the one remaining tag blocker is KI-015.
 unchanged at 47 + the A/B clamp guard / 245. Swept through `RELEASE_HARDENING_PLAN.md` and
 `HANDOVER.md`; the test count itself did not change, so the six documents that carry it were not
 touched. [Verified]
+
+
+## Engineering-review programme, round 14 — partial modern Settings inherited the previous project (2026-09-01, still the 0.9.6 change set)
+
+**What the round is.** One confirmed state-isolation defect fixed, and two investigation-only items
+verified with no change. Records: `worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md`
+§Round 14.
+
+**Code change and its doc syncs (trigger map applied):**
+- `src/InternalState.h` (`restoreState` writes all six host-hidden Settings unconditionally, absent
+  → the documented default; the six defaults consolidated into one `settings()` table the
+  constructor also seeds from — ER-STATE-18) → CHANGELOG `[0.9.6]` (one Fixed entry; the leak was
+  user-visible and persisted on the next save), `docs/architecture/SERIALIZATION_REGISTRY.md` (a new
+  paragraph stating that "Required: No" means the Default is APPLIED, with the 6-of-6 vs 0-of-6
+  measurement), State test 29, `docs/procedures/TESTING.md` (the probe), and the count sweep below.
+  **No serialization field added, removed or renamed**, and a session that carries a field restores
+  it exactly as before.
+
+**Where the finding was, versus where it was filed.** The review located it in
+`migrateFromLegacyApvts` (`PluginProcessor.cpp:1038`, the v0.2 branch). Measurement put it the other
+way round: the modern path inherited 6 of 6, the legacy path 0 of 6. The legacy function has always
+written all six unconditionally. Recorded in both the worklog and the probe's own output so the two
+paths cannot be confused again. It is also **not** a contradiction with the informational item
+"missing nodes use normalized defaults" — that covers `applyNorm` and APVTS parameters, a different
+subsystem.
+
+**Verified and NOT acted on:** a malformed value on the modern Settings path carries no undefined
+conversion (`syncAtomics` clamps through `jlimit`; `juce::var`→`int` on a string is a safe parse, not
+the float cast that made the legacy path undefined in round 12).
+
+**Investigation-only items, both unchanged.** ER-RT-05: the realtime-lint boundary is described
+correctly in all four documents and none claims automatic cross-file discovery — fifth consecutive
+round verified. D-1: the approval is recorded correctly in KI-027's row, its detail banner,
+`THREADING_POLICY.md` and `LATENCY_MODEL.md`; round 12 fixed the two that had been stale and nothing
+has regressed. The attribution is role-level ("the maintainer"), the same convention as every other
+gate sign-off here; that is noted, not independently verified.
+
+**Counts.** The state suite is **29 tests / 1270 checks** (was 28 / 1237); the DSP suite is unchanged
+at 47 + the A/B clamp guard / 245. The `[0.9.6]` Fixed count is **21**. Swept through
+`TESTING_POLICY.md`, `TESTING.md`, `README.md`, `REPOSITORY_MAP.md`, `RELEASE_HARDENING_PLAN.md`
+and `HANDOVER.md`. [Verified]

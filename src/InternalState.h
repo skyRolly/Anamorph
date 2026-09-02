@@ -2,6 +2,7 @@
 
 #include <juce_data_structures/juce_data_structures.h>
 #include "SerializedNumber.h"
+#include <array>
 #include <atomic>
 #include <cmath>
 #include <functional>
@@ -43,15 +44,32 @@ namespace iid
 class InternalState : private juce::ValueTree::Listener
 {
 public:
+    // The six host-hidden Settings and their DOCUMENTED defaults, in one place.
+    // SERIALIZATION_REGISTRY.md's `ANAMORPH_INTERNAL` table is this list: every
+    // field is "Required: No" with a stated Default, which is the contract both
+    // the constructor (seed) and restoreState (absent -> default) implement. They
+    // were two separate hand-written lists until ER-STATE-18; keeping one is what
+    // stops them drifting into two different answers for "absent".
+    struct Setting { const juce::Identifier& id; juce::var defaultValue; };
+
+    static const std::array<Setting, 6>& settings()
+    {
+        static const std::array<Setting, 6> table {{
+            { iid::oversample,   juce::var (1)     },  // 1 == "Off (1x)"
+            { iid::uiScale,      juce::var (3)     },  // 3 == "M"
+            { iid::scopePersist, juce::var (0.5)   },
+            { iid::metersOn,     juce::var (false) },
+            { iid::tooltipsOn,   juce::var (false) },
+            { iid::uiAnimations, juce::var (true)  },
+        }};
+        return table;
+    }
+
     InternalState()
     {
         tree = juce::ValueTree ("ANAMORPH_INTERNAL");
-        tree.setProperty (iid::oversample,   1,    nullptr); // 1 == "Off (1x)"
-        tree.setProperty (iid::uiScale,      3,    nullptr); // 3 == "M"
-        tree.setProperty (iid::scopePersist, 0.5,  nullptr);
-        tree.setProperty (iid::metersOn,     false, nullptr);
-        tree.setProperty (iid::tooltipsOn,   false, nullptr);
-        tree.setProperty (iid::uiAnimations, true,  nullptr);
+        for (const auto& s : settings())
+            tree.setProperty (s.id, s.defaultValue, nullptr);
         tree.addListener (this);
         syncAtomics();
     }
@@ -94,9 +112,23 @@ public:
     void restoreState (const juce::ValueTree& src)
     {
         if (! src.isValid()) return;
-        for (auto id : { iid::oversample, iid::uiScale, iid::scopePersist,
-                         iid::metersOn, iid::tooltipsOn, iid::uiAnimations })
-            if (src.hasProperty (id)) tree.setProperty (id, src.getProperty (id), nullptr);
+
+        // EVERY field is written, present or not: an absent one takes its documented
+        // default (the registry's `ANAMORPH_INTERNAL` table), exactly as
+        // migrateFromLegacyApvts already does for the legacy shape. `tree` is a
+        // processor member and a host restores into ONE live instance repeatedly,
+        // so skipping an absent field does not mean "leave it alone" -- it means
+        // "keep the PREVIOUS project's value", which is not a state this session
+        // ever described. Measured before this loop wrote unconditionally
+        // (ER-STATE-18, --partial-settings-probe): a modern session omitting a
+        // single Setting inherited the previous project's value in 6 cases out of
+        // 6, while the legacy path inherited in 0 -- the reverse of where the
+        // review looked. A session that CARRIES the field is unaffected: it is
+        // written from `src` exactly as before.
+        for (const auto& s : settings())
+            tree.setProperty (s.id,
+                              src.hasProperty (s.id) ? src.getProperty (s.id) : s.defaultValue,
+                              nullptr);
         // (syncAtomics + onOversampleChanged run via the property-change callbacks above.)
     }
 

@@ -364,15 +364,28 @@ DELIBERATE_REAIMS = {
     # (oversampleValue), :95 (restoreState's id loop), :100 (its trailing comment)
     # and :122 (the oversample setProperty in the migration) are now :62, :97, :102
     # and :159. All retire on merge.
+    # 2026-09-01 (round 14): the ER-STATE-18 settings() table replaced the
+    # constructor's six hand-written setProperty lines, so this anchor's target
+    # text no longer exists. Re-derived by symbol: the tooltips default is now the
+    # `iid::tooltipsOn` row of that table. Retires on merge.
+    ("docs/KNOWN_ISSUES.md",
+     "src/InternalState.h:51",
+     "src/InternalState.h:57-64"): "tooltipsOn",
+    ("docs/KNOWN_ISSUES.md",
+     "src/InternalState.h:53",
+     "src/InternalState.h:57-64"): "tooltipsOn",
     ("docs/architecture/API_REFERENCE.md",
      "src/InternalState.h:60-122",
-     "src/InternalState.h:62-159"): "oversampleValue",
+     "src/InternalState.h:80-191"): "oversampleValue",
     ("docs/architecture/PARAMETER_REGISTRY.md",
      "src/InternalState.h:95-122",
-     "src/InternalState.h:97-159"): "migrateFromLegacyApvts",
+     "src/InternalState.h:112-197"): "migrateFromLegacyApvts",
+    ("docs/architecture/PARAMETER_REGISTRY.md",
+     "src/InternalState.h:97-159",
+     "src/InternalState.h:112-197"): "migrateFromLegacyApvts",
     ("docs/policies/COMPATIBILITY_POLICY.md",
      "src/InternalState.h:100-122",
-     "src/InternalState.h:102-159"): "migrateFromLegacyApvts",
+     "src/InternalState.h:134-191"): "migrateFromLegacyApvts",
     ("docs/architecture/API_REFERENCE.md",
      "src/PluginProcessor.h:20-79",
      "src/PluginProcessor.h:20-80"): "AnamorphAudioProcessor",

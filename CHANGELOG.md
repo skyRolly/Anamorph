@@ -15,6 +15,16 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 
 ## [0.9.6] — 2026-09-01
 ### Fixed
+- **A project that does not carry one of the Settings no longer inherits it from the project you
+  had open before.** The Settings panel (Oversampling, UI Scale, Scope Persistence, Show Meters,
+  Tooltips, UI Animations) is stored with the project. If a project file was missing one of those
+  — hand-edited, truncated, or written by a build that did not have that setting yet — opening it
+  left that one setting at whatever the *previous* project had set, because a host reuses one
+  plug-in instance across projects. The rest of the project loaded correctly, so the wrong value
+  was easy to miss, and it was written into the file on the next save. Each missing setting now
+  comes back at its documented default; a project that does carry the setting still restores it
+  exactly as before. Regression coverage: State test 29.
+  Evidence: PR #134. [Verified]
 - **A damaged setting in a very old project can no longer leave a Settings menu blank or spread
   garbage into the project on the next save.** Projects saved by versions before 0.8.4 carry
   Oversampling, UI Scale and Scope Persistence as ordinary parameters that are converted on load.

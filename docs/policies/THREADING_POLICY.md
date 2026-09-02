@@ -63,7 +63,7 @@ is the format contract; on the **macOS AU** no spec forbids off-main-thread
 
 Evidence [Verified]:
 - Source: src/dsp/ScopeBuffer.h:28-80; src/dsp/LevelMeters.h:125-198; src/dsp/Correlation.h:50-108;
-  src/PluginProcessor.cpp:59-77, 226; src/InternalState.h:69-74, 162-171
+  src/PluginProcessor.cpp:59-77, 226; src/InternalState.h:87-92, 194-203
 
 ## Enforcement
 

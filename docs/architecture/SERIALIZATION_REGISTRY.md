@@ -10,7 +10,7 @@ Field-level ledger of everything written to session state. Companion to
 > is handled (a default), so older sessions still load.
 
 Evidence [Verified]: backward-compat paths at src/PluginProcessor.cpp:914-917 (pre-0.8.4 `migrateFromLegacyApvts`), :652-693 (pre-0.6.4 `readSlot`), :700-705 (v0.2 bare APVTS);
-src/InternalState.h:94-165.
+src/InternalState.h:112-197.
 
 ## `AnamorphRoot` properties
 
@@ -33,7 +33,7 @@ unconditionally, and only `setStateInformation` (which can see `hasProperty`) re
 Source: src/PresetManager.h:103-108 (`defaultName`); src/PresetManager.cpp:365-376
 (`adoptRestoredState`).
 
-**A malformed legacy Setting resolves to a valid setting, deterministically** (2026-09-01, ER-STATE-17). Pre-0.8.4 sessions carry Oversampling, UI Scale and Scope Persistence as APVTS `PARAM`s that `InternalState::migrateFromLegacyApvts` converts. Each value now passes the same usability predicate as the session and preset paths (`SerializedNumber.h`: plain decimal text, finite after float narrowing) — anything else means the field's **default**, exactly as an absent node does — and the choice indices are clamped into the ComboBox domain (`oversample` ids 1..4, `uiScale` 1..5; `scopePersist` to 0..1) in double **before** the integer conversion, so that conversion is defined for every input and the `+ 1` cannot overflow. Before this the value went straight into `(int)`, which is undefined for NaN, ±inf and out-of-range doubles, and JUCE's parser accepts "nan"/"inf": measured on x86-64 every such value became −2147483647 in the tree and was written back out on the next save; "2147483647" wrapped to INT_MIN through a second UB; AArch64 saturated the same inputs differently. Valid legacy values convert exactly as before (State tests 5 and 6 unchanged); State test 28 pins 88 synthetic cases over both legacy shapes, plus 36 on the real frozen pre-0.8.4 fixture mutated in place with its surrounding session asserted intact (round 13). Source: src/InternalState.h:107-158.
+**A malformed legacy Setting resolves to a valid setting, deterministically** (2026-09-01, ER-STATE-17). Pre-0.8.4 sessions carry Oversampling, UI Scale and Scope Persistence as APVTS `PARAM`s that `InternalState::migrateFromLegacyApvts` converts. Each value now passes the same usability predicate as the session and preset paths (`SerializedNumber.h`: plain decimal text, finite after float narrowing) — anything else means the field's **default**, exactly as an absent node does — and the choice indices are clamped into the ComboBox domain (`oversample` ids 1..4, `uiScale` 1..5; `scopePersist` to 0..1) in double **before** the integer conversion, so that conversion is defined for every input and the `+ 1` cannot overflow. Before this the value went straight into `(int)`, which is undefined for NaN, ±inf and out-of-range doubles, and JUCE's parser accepts "nan"/"inf": measured on x86-64 every such value became −2147483647 in the tree and was written back out on the next save; "2147483647" wrapped to INT_MIN through a second UB; AArch64 saturated the same inputs differently. Valid legacy values convert exactly as before (State tests 5 and 6 unchanged); State test 28 pins 88 synthetic cases over both legacy shapes, plus 36 on the real frozen pre-0.8.4 fixture mutated in place with its surrounding session asserted intact (round 13). Source: src/InternalState.h:139-190.
 
 **A recognised root with no sound child is not a restore either** (2026-09-01, ER-STATE-15). An
 `AnamorphRoot` whose `ANAMORPH` child is absent restores no parameter at all, so `setStateInformation`
@@ -131,9 +131,21 @@ Source: src/PluginProcessor.cpp `getStateInformation` / `setStateInformation` / 
 | `int_tooltipsOn` | bool | 0.8.4 | Yes ‡ | No | false |
 | `int_uiAnimations` | bool | 0.8.4 | Yes ‡ | No | true |
 
+**"Required: No" means the Default is APPLIED, not that the field is skipped** (2026-09-01,
+ER-STATE-18). `InternalState::restoreState` writes all six fields on every restore: one the node
+carries is taken from it, one it omits takes the Default column above. `tree` is a processor member
+and a host restores into ONE live instance repeatedly, so skipping an absent field does not mean
+"leave it alone" — it means "keep the PREVIOUS project's value", which is not a state the incoming
+session ever described, and which the next save then writes out as if it were. Measured before the
+loop wrote unconditionally (`--partial-settings-probe`): a modern session omitting a single Setting
+inherited the previous project's value in **6 cases out of 6**, while the pre-0.8.4/v0.2 path —
+`migrateFromLegacyApvts`, which has always written all six — inherited in **0**. A session that
+carries the field is unaffected. State test 29 pins all four cases (omitted, explicitly present,
+legacy, malformed). Source: src/InternalState.h:107-133.
+
 **‡** Sessions saved **before** 0.8.4 have no `ANAMORPH_INTERNAL` child; these values are
 recovered from the legacy APVTS PARAM nodes by `migrateFromLegacyApvts` (choice indices are
-0-based legacy → 1-based ComboBox). Evidence [Verified]: src/InternalState.h:108-165;
+0-based legacy → 1-based ComboBox). Evidence [Verified]: src/InternalState.h:140-197;
 [Partially Verified] introduced-0.8.4: CHANGELOG.md [0.8.4].
 
 ## `AB` child

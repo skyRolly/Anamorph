@@ -65,7 +65,7 @@ Host-hidden session/view state (not in APVTS).
 | `migrateFromLegacyApvts` | `void (const juce::ValueTree&)` | One-time pre-0.8.4 migration (legacy APVTS → InternalState). |
 | `onOversampleChanged` | `std::function<void()>` | Fires on the message thread so the wrapper re-reports PDC. |
 
-Evidence [Verified]: src/InternalState.h:62-159.
+Evidence [Verified]: src/InternalState.h:80-191.
 
 ## `PresetManager` — `src/PresetManager.h`
 

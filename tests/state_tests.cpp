@@ -4621,6 +4621,214 @@ static int runLegacySettingsProbe()
     return 0;
 }
 
+
+
+// ---------------------------------------------------------------------------
+//  State test 29 -- a modern session that OMITS an optional host-hidden Setting
+//  must not leave the previous project's value in force (ER-STATE-18).
+//
+//  `abSlot[]`, `presets` and `internal` are all processor members a host restores
+//  into ONE live instance repeatedly. Rounds 2, 8 and 11 closed that class for the
+//  Settings on the v0.2 path, for the A/B slots, and for a root with no sound
+//  child. This is the same class on the MODERN path: InternalState::restoreState
+//  wrote only the fields `src` carried, so an absent one kept whatever the last
+//  project left. Every field in the registry's ANAMORPH_INTERNAL table is
+//  "Required: No" with a documented Default, so absent means that default.
+//
+//  The review that raised this located it in migrateFromLegacyApvts. The probe
+//  (--partial-settings-probe) measured the opposite: 6 of 6 inherited on the
+//  modern path, 0 of 6 on the legacy one. Leg 3 pins the legacy path so the two
+//  cannot be confused again.
+// ---------------------------------------------------------------------------
+static void testPartialSettingsDoNotInherit()
+{
+    std::printf ("State test 29: a modern session omitting a Setting resets it (ER-STATE-18)\n");
+
+    // check() takes a const char*; these labels are built per field.
+    auto checkMsg = [] (bool ok, const juce::String& msg) { check (ok, msg.toRawUTF8()); };
+
+    struct Field { const juce::Identifier& id; const char* name; juce::var sessionA; juce::var doc; };
+    const Field fields[] = {
+        { anamorph::iid::oversample,   "int_oversample",   juce::var (3),     juce::var (1)     },
+        { anamorph::iid::uiScale,      "int_uiScale",      juce::var (5),     juce::var (3)     },
+        { anamorph::iid::scopePersist, "int_scopePersist", juce::var (0.9),   juce::var (0.5)   },
+        { anamorph::iid::metersOn,     "int_metersOn",     juce::var (true),  juce::var (false) },
+        { anamorph::iid::tooltipsOn,   "int_tooltipsOn",   juce::var (true),  juce::var (false) },
+        { anamorph::iid::uiAnimations, "int_uiAnimations", juce::var (false), juce::var (true)  },
+    };
+
+    // Session B is a REAL modern save with exactly one ANAMORPH_INTERNAL property
+    // removed -- the sound child, the AB node and the preset meta are whatever the
+    // plug-in itself wrote, so only the omission is synthetic.
+    auto saveOmitting = [] (const juce::Identifier* omit)
+    {
+        AnamorphAudioProcessor b; b.prepareToPlay (48000.0, 512);
+        juce::MemoryBlock mb; b.getStateInformation (mb);
+        auto xml  = BlobCodec::unwrap (mb);
+        auto root = juce::ValueTree::fromXml (*xml);
+        if (omit != nullptr) root.getChildWithName ("ANAMORPH_INTERNAL").removeProperty (*omit, nullptr);
+        return BlobCodec::wrap (*root.createXml());
+    };
+    auto seedPreviousProject = [&fields] (AnamorphAudioProcessor& p)
+    {
+        juce::ValueTree a ("ANAMORPH_INTERNAL");
+        for (const auto& g : fields) a.setProperty (g.id, g.sessionA, nullptr);
+        p.getInternal().restoreState (a);
+    };
+
+    // --- Leg 1: each field in turn, omitted from an otherwise real modern save.
+    for (const auto& f : fields)
+    {
+        AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+        seedPreviousProject (p);
+        checkMsg (! p.getInternal().copyState()[f.id].equals (f.doc),
+               juce::String ("precondition: session A's ") + f.name + " differs from the default");
+
+        const auto blob = saveOmitting (&f.id);
+        p.setStateInformation (blob.getData(), (int) blob.getSize());
+        const auto after = p.getInternal().copyState()[f.id];
+        checkMsg (after.equals (f.doc),
+               juce::String ("omitted ") + f.name + " resets to its documented default, not the previous project's");
+
+        // The re-save must carry the reset value, not the inherited one.
+        juce::MemoryBlock out; p.getStateInformation (out);
+        auto outRoot = juce::ValueTree::fromXml (*BlobCodec::unwrap (out));
+        checkMsg (outRoot.getChildWithName ("ANAMORPH_INTERNAL").getProperty (f.id).equals (f.doc),
+               juce::String ("...and the re-saved session carries the reset ") + f.name);
+    }
+
+    // --- Leg 2: a session that DOES carry the field still restores that value.
+    // Without this the fix could pass leg 1 by resetting everything always.
+    {
+        AnamorphAudioProcessor src; src.prepareToPlay (48000.0, 512);
+        juce::ValueTree explicitA ("ANAMORPH_INTERNAL");
+        for (const auto& g : fields) explicitA.setProperty (g.id, g.sessionA, nullptr);
+        src.getInternal().restoreState (explicitA);
+        juce::MemoryBlock saved; src.getStateInformation (saved);
+
+        AnamorphAudioProcessor dst; dst.prepareToPlay (48000.0, 512);   // at defaults
+        dst.setStateInformation (saved.getData(), (int) saved.getSize());
+        for (const auto& f : fields)
+            checkMsg (dst.getInternal().copyState()[f.id].equals (f.sessionA),
+                   juce::String ("a session that CARRIES ") + f.name + " still restores that value");
+        check (dst.getInternal().oversampleIndex() == 2,
+               "...and the DSP atomic follows the explicitly restored oversample (id 3 -> index 2)");
+    }
+
+    // --- Leg 3: the LEGACY path still resets all six, as it already did. This is
+    // where the review looked; pinning it keeps the two paths distinguishable.
+    {
+        AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+        seedPreviousProject (p);
+        if (applyXmlFixture (p, "legacy_v0_2_bare_apvts.xml"))
+            for (const auto& f : fields)
+                checkMsg (p.getInternal().copyState()[f.id].equals (f.doc),
+                       juce::String ("v0.2 restore still resets ") + f.name + " (migrateFromLegacyApvts, unchanged)");
+    }
+
+    // --- Leg 4: malformed-state repair is unchanged. A modern session carrying a
+    // malformed Setting is NOT the absent case and must not be turned into one by
+    // this fix; the value is adopted and the consumers clamp it, exactly as before.
+    {
+        AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+        auto blob = saveOmitting (nullptr);
+        auto root = juce::ValueTree::fromXml (*BlobCodec::unwrap (blob));
+        root.getChildWithName ("ANAMORPH_INTERNAL")
+            .setProperty (anamorph::iid::uiScale, "nan", nullptr);
+        const auto poisoned = BlobCodec::wrap (*root.createXml());
+        p.setStateInformation (poisoned.getData(), (int) poisoned.getSize());
+        check (p.getInternal().uiScaleIndex() >= 0 && p.getInternal().uiScaleIndex() <= 4,
+               "a malformed MODERN Setting is still clamped by its consumer (repair unchanged)");
+        check (p.getInternal().oversampleIndex() >= 0 && p.getInternal().oversampleIndex() <= 3,
+               "...and the oversample atomic stays in range");
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  Opt-in probe: does a MODERN session that OMITS an optional host-hidden
+//  Setting leave the previous project's value in force on a reused instance?
+//  The review located this in migrateFromLegacyApvts; this probe checks BOTH
+//  paths so the answer names the right one.
+// ---------------------------------------------------------------------------
+static int runPartialSettingsProbe()
+{
+    std::printf ("partial host-hidden Settings probe (modern vs legacy restore)\n");
+    std::printf ("============================================================\n\n");
+
+    struct Field { const juce::Identifier& id; const char* name; juce::var sessionA; juce::var doc; };
+    const Field fields[] = {
+        { anamorph::iid::oversample,   "int_oversample",   3,     1     },
+        { anamorph::iid::uiScale,      "int_uiScale",      5,     3     },
+        { anamorph::iid::scopePersist, "int_scopePersist", 0.9,   0.5   },
+        { anamorph::iid::metersOn,     "int_metersOn",     true,  false },
+        { anamorph::iid::tooltipsOn,   "int_tooltipsOn",   true,  false },
+        { anamorph::iid::uiAnimations, "int_uiAnimations", false, true  },
+    };
+
+    // Session B: a REAL modern save, with exactly one ANAMORPH_INTERNAL property
+    // removed. Everything else -- the sound child, the AB node, the preset meta --
+    // is what the plug-in itself wrote.
+    auto sessionBOmitting = [] (const juce::Identifier& omit)
+    {
+        AnamorphAudioProcessor b; b.prepareToPlay (48000.0, 512);
+        juce::MemoryBlock mb; b.getStateInformation (mb);
+        auto xml  = BlobCodec::unwrap (mb);
+        auto root = juce::ValueTree::fromXml (*xml);
+        auto internalNode = root.getChildWithName ("ANAMORPH_INTERNAL");
+        internalNode.removeProperty (omit, nullptr);
+        return BlobCodec::wrap (*root.createXml());
+    };
+
+    std::printf ("  MODERN path (AnamorphRoot with an ANAMORPH_INTERNAL child):\n");
+    std::printf ("  %-18s | %-10s | %-10s | %-10s | %s\n",
+                 "omitted field", "session A", "documented", "after B", "verdict");
+    int inherited = 0;
+    for (const auto& f : fields)
+    {
+        AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+        p.getInternal().copyState();                       // touch, no-op
+        // Session A: the previous project sets this field to a non-default value.
+        juce::ValueTree a ("ANAMORPH_INTERNAL");
+        for (const auto& g : fields) a.setProperty (g.id, g.sessionA, nullptr);
+        p.getInternal().restoreState (a);
+        const auto before = p.getInternal().copyState()[f.id];
+
+        const auto blobB = sessionBOmitting (f.id);
+        p.setStateInformation (blobB.getData(), (int) blobB.getSize());
+        const auto after = p.getInternal().copyState()[f.id];
+
+        const bool isInherited = after.equals (before) && ! after.equals (f.doc);
+        if (isInherited) ++inherited;
+        std::printf ("  %-18s | %-10s | %-10s | %-10s | %s\n", f.name,
+                     before.toString().toRawUTF8(), f.doc.toString().toRawUTF8(),
+                     after.toString().toRawUTF8(),
+                     isInherited ? "INHERITED from the previous project"
+                                 : (after.equals (f.doc) ? "reset to documented default" : "other"));
+    }
+    std::printf ("  => %d of 6 fields inherit the previous project's value\n\n", inherited);
+
+    // The LEGACY path, for contrast: a v0.2 blob carrying NO Settings at all.
+    std::printf ("  LEGACY path (v0.2 bare APVTS -> migrateFromLegacyApvts):\n");
+    {
+        AnamorphAudioProcessor p; p.prepareToPlay (48000.0, 512);
+        juce::ValueTree a ("ANAMORPH_INTERNAL");
+        for (const auto& g : fields) a.setProperty (g.id, g.sessionA, nullptr);
+        p.getInternal().restoreState (a);
+        if (! applyXmlFixture (p, "legacy_v0_2_bare_apvts.xml")) return 1;
+        int legacyInherited = 0;
+        for (const auto& f : fields)
+        {
+            const auto after = p.getInternal().copyState()[f.id];
+            if (! after.equals (f.doc)) ++legacyInherited;
+            std::printf ("  %-18s | after v0.2 restore: %-10s (documented %s) %s\n", f.name,
+                         after.toString().toRawUTF8(), f.doc.toString().toRawUTF8(),
+                         after.equals (f.doc) ? "" : "  <-- NOT the default");
+        }
+        std::printf ("  => %d of 6 inherit on the legacy path\n", legacyInherited);
+    }
+    return 0;
+}
+
 int main (int argc, char* argv[])
 {
     juce::ScopedJuceInitialiser_GUI juceInit; // MessageManager for APVTS/processor on this thread
@@ -4648,6 +4856,9 @@ int main (int argc, char* argv[])
 
     if (argc > 1 && std::strcmp (argv[1], "--legacy-settings-probe") == 0)
         return runLegacySettingsProbe();
+
+    if (argc > 1 && std::strcmp (argv[1], "--partial-settings-probe") == 0)
+        return runPartialSettingsProbe();
 
     const bool writeSnapshot = argc > 1 && std::strcmp (argv[1], "--write-snapshot") == 0;
 
@@ -4685,6 +4896,7 @@ int main (int argc, char* argv[])
     testCrossVersionFieldCapture();
     testLegacyRestoreResetsAbSlots();
     testRestoreIntegrityGuards();
+    testPartialSettingsDoNotInherit();
     testMalformedLegacySettingsResolveToValid();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
