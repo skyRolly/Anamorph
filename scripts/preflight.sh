@@ -33,6 +33,17 @@
 #  NOTE, never silently -- a preflight that quietly did less than the reader
 #  assumed is the defect class scripts/build.sh documents (its gate once
 #  "passed" by testing a stale binary).
+#
+#  THE EXIT STATUS IS THE RESULT, AND THIS SCRIPT FAILS FAST. `set -e` above
+#  means the FIRST failing checker ends the run, so a non-zero exit also means
+#  every stage after it did not run at all -- an early failure is not "one
+#  finding in an otherwise green preflight", it is an UNKNOWN result for
+#  everything below it. Read the exit status, not a filtered view of the
+#  output: piping this script through `grep` replaces its status with grep's
+#  and can hide a finding whose wording the pattern did not anticipate. That
+#  is not hypothetical -- it is exactly how round 21 reported a green preflight
+#  while `check-docs` (the SECOND command here) was failing on a line that
+#  began with a `|`, and the docs job went red on the push.
 # ============================================================================
 set -euo pipefail
 

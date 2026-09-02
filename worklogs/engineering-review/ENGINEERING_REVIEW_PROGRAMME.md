@@ -29,6 +29,106 @@ entries and CHANGELOG notes cite.
 
 ---
 
+## Round 22 — 2026-09-02 — the `docs` gate went red on a line that began with a pipe, and on a filtered preflight
+
+A CI round. **No production code changed, and none was justified.** One real documentation defect,
+one validation-procedure defect that let it through, and a settled-record sweep that found nothing
+to correct.
+
+### ER-CI-06 — FIXED — `check-docs` failed on a table fragment in `DOCUMENTATION_COVERAGE.md`
+
+**The exact failure**, `docs` job → step **"Lint documentation structure"**, run 33617522593, job
+100206715110, head `f42a1d8`:
+
+```
+docs/DOCUMENTATION_COVERAGE.md:7365: table fragment with no header/separator (1 pipe line(s))
+  -- a block was inserted mid-table, or the separator row is missing
+
+check-docs: 1 finding(s) across 117 file(s).
+##[error]Process completed with exit code 1.
+```
+
+**Repository content, not a stale run, not the environment.** It reproduces on a bare local
+checkout at exit 1, and the classification was checked rather than assumed:
+
+| candidate | ruled out by |
+|---|---|
+| stale / superseded run | the finding reproduces on the current tree, locally, today |
+| workflow or environment difference | the job runs `python3 scripts/check-docs.py` with no environment input; the same command fails identically here |
+| citation or count drift | the citation gate is a different checker and is clean on both bases |
+| the checker being wrong | it is right — see below |
+| a duplicate-run artifact | see the "two runs, one SHA" note below |
+
+**Root cause.** Round 21's entry in `DOCUMENTATION_COVERAGE.md` wrapped the absolute-value notation
+`|l| ≈ 1.3e19` onto the START of a line. In Markdown a line beginning with `|` is a table row, so
+that lone line is a table with no header and no separator — which is what the checker reports, and
+what a renderer would actually do with it. **The gate is correct and was not touched.** The prose
+was reflowed to say "an input magnitude of ≈ 1.3e19" instead, which removes the line-initial pipe
+without changing the claim. A repo-wide sweep for the same hazard
+(`grep -rn '^|[a-zA-Z]' --include='*.md'`) finds no other instance.
+
+### ER-CI-07 — the reason round 21 reported a green preflight while this was failing
+
+Worth its own entry, because the documentation defect above is trivial and this is not.
+
+`scripts/preflight.sh` is `set -euo pipefail` and `check-docs.py` is its **SECOND** command. So on
+the round-21 tree preflight aborted at that second command — meaning not only that the finding was
+real, but that **every later stage of that invocation never ran**: the portability lint, the
+realtime lint, the four warning-gate self-tests, the ABI floor, the citation gate against all three
+bases, and both suites. The round nonetheless reported "preflight green".
+
+**The mechanism was the reporting, not the script.** The round ran
+`./scripts/preflight.sh 2>&1 | grep -iE "FAIL|error|violation|drift|no longer point|::error" ; echo "PREFLIGHT-DONE"`.
+The finding's wording — "table fragment with no header/separator" — contains none of those tokens,
+so the filter printed nothing; the pipe replaced preflight's exit status with `grep`'s; and the
+trailing `echo` ran unconditionally. Three independent hatches, all opened by one habit. (The
+round's substance survived only by luck: the citation gate, the realtime lint, both warning gates
+and both suites were also run as separate direct commands, so their results in that report stand.
+The word "preflight" in it does not.)
+
+**Fixed where the next reader will meet it**, and by strengthening nothing away: a paragraph in
+`preflight.sh`'s own header — beside its existing "NO SILENT SKIPS" rule, which is the same
+argument — and a matching one in `CI_CD.md` §preflight, both stating that the script fails fast, so
+a non-zero exit means the stages after it are an UNKNOWN result rather than a green one, and that a
+filtered view of its output is not a result. **No check was weakened, no exclusion widened, no
+workflow changed.**
+
+### Two runs on one SHA — the thing that looks like flakiness and is not
+
+`f42a1d8` carries two `Build & Validate` runs three seconds apart: 33617522593 (**failure**) and
+33617526870 (**success**). They are not a retry and not a flake — the first is the `push` event and
+the second the `pull_request` event, and in the PR run **`docs` is skipped**, along with every job
+except `merge-check` (12 of 13 skipped; the run finished in four minutes against the push run's
+twenty). The workflow does that deliberately so a PR does not duplicate the whole matrix. **A green
+`pull_request` run therefore says nothing at all about `docs`** — which is exactly the misreading
+the round-21 report would have invited, and is recorded here so a later round does not make it.
+
+### Nothing was hidden behind the red gate
+
+Every other job in the failing run passed on the same commit: `source-lint`, `linux` (both suites,
+pluginval ×3 in both modes, the Clang warning gate, the ABI floor), `linux-lto-tests` (the GCC
+warning gate + LTO suites), `sanitizers` (ASan/UBSan + valgrind), `realtime` (RTSan), `fuzz`,
+`windows`, `windows-avx2-ab`, `macos`, `macos-intel`, `macos-crossslice`. The failure was confined
+to documentation structure, and no engineering defect was masked by it.
+
+### Settled-record sweep — nothing to correct
+
+Checked against the LIVE documents, and each was already right:
+
+| item | recorded state | verified |
+|---|---|---|
+| ER-DSP-10 | FIXED (round 21) | `DSP_ALGORITHMS.md`, `TESTING.md` Test 50, CHANGELOG |
+| ER-STATE-21 | FIXED, Policy B, repaired value persisted | `SERIALIZATION_REGISTRY.md`; the only other hits are dated round-16/17 history |
+| Drag recovery / ER-GUI-05 | REFUTED | no document presents it as open |
+| D-1 | APPROVED / IMPLEMENTED | `THREADING_POLICY.md`, `LATENCY_MODEL.md`, KI-027 |
+| D-2 / RISK-007 | DEFERRED, four measured races | `FUTURE_RISKS.md`, incl. round 21's re-measurement |
+| RISK-008 | real-host validated for REAPER; host-specific residual unverified | register row, Likelihood bullet, and the probe's own printed EVIDENCE LIMIT |
+
+The three surviving "no host available" strings are all **explicitly dated round-18 history** or
+scoped to the review harness ("no real Linux VST3 host is available *here*"), sitting beneath the
+round-19 real-host bullet that supersedes them — the disposition round 19 chose deliberately over
+deleting them. Not rewritten.
+
 ## Round 21 — 2026-09-02 — the phase meter's own arithmetic overflowed on extreme-but-finite audio
 
 One fix and one re-measurement. The fix is numerical, at the exact operation that overflows.

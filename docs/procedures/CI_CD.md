@@ -1285,6 +1285,15 @@ none does — never silently). Measured ~5 s on a built tree. It says out loud t
 cannot cover: the full Clang warning gate needs a clang build log, so only that lint's self-test
 runs locally.
 
+**Read its exit status, not a filtered view of its output.** The script is `set -euo pipefail`, so
+the FIRST failing checker ends the run and everything after it never executes — a non-zero exit is
+not "one finding in an otherwise green preflight", it is an *unknown* result for every later stage.
+Piping the run through `grep` substitutes grep's status for the script's and can swallow a finding
+whose wording the pattern did not anticipate. Recorded because it cost a red run (round 21,
+2026-09-02): `check-docs` — preflight's **second** command — was failing on a `DOCUMENTATION_COVERAGE`
+line that began with a `|` character, the filtered view showed nothing, the round reported a green
+preflight, and the `docs` job went red on the push.
+
 Then the build and the release gate:
 
 ```bash

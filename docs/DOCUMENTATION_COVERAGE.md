@@ -7,7 +7,7 @@ Coverage = how well the module/topic is documented. Confidence = strength of the
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.6 change set** (2026-09-01, matching the CHANGELOG heading) — the
-**engineering-review programme, rounds 1 through 21**, newest last in the body: round 1 (the
+**engineering-review programme, rounds 1 through 22**, newest last in the body: round 1 (the
 programme's first sweep: six engine/state/GUI fixes with Tests 43–46 and two state regressions,
 the engaged Test 2/38 matrices, the KI-027 and RISK-007 filings, the v0.9.6 renumbering sweep, the
 NOTICE pin + AudioUnitSDK section, the CI_CD job inventory, and the new
@@ -40,7 +40,9 @@ malformed numeric boolean switching a setting on — both fixed at their source,
 outside the latency fields classified as the already-deferred D-2 risk); and **round 21** (the phase
 meter's own `ll * rr` overflowing in float on extreme-but-finite audio, so a perfectly correlated
 signal read as fully decorrelated — fixed at that operation, with the state race re-measured and
-again found to be the deferred D-2 risk).
+again found to be the deferred D-2 risk); and **round 22** (the `docs` CI gate, red on a line of
+this file that began with a pipe character, and the filtered-preflight habit that let it reach the
+push — both fixed, no production change).
 **Header correction (round 7, 2026-09-01):** this line enumerated round 1 alone while the body
 carried six later rounds, and dated the change set 2026-08-31 while the CHANGELOG `[0.9.6]` heading
 had been re-dated to 2026-09-01 — the same drift the C6 correction below was written about,
@@ -7361,12 +7363,58 @@ denominator overflow — which is the distinction the defect lived in), `docs/pr
 `docs/HANDOVER.md` (counts and the version row), the programme worklog and the dashboard.
 
 **Inspected and left alone, recorded so it is not re-derived:** `balance` and `energy` are built from
-`llSlow + rrSlow` and `llFast + rrFast` — SUMS, not products — so they overflow only above
-|l| ≈ 1.3e19, three orders beyond the regime that breaks the phase reading, and there `energy = +Inf`
-still reads "playing" and `balance = 0` still reads "centred", which is correct for an equal-energy
-pair. No demonstrated defect; not changed.
+`llSlow + rrSlow` and `llFast + rrFast` — SUMS, not products — so they overflow only above an input
+magnitude of ≈ 1.3e19, three orders beyond the regime that breaks the phase reading, and there
+`energy = +Inf` still reads "playing" and `balance = 0` still reads "centred", which is correct for
+an equal-energy pair. No demonstrated defect; not changed.
 
 **Counts.** The DSP suite is **49 tests + the A/B clamp guard / 269 checks** (was 48 / 256; Test 50
 adds 13). The state suite is unchanged at **33 tests / 1431 checks**. The `[0.9.6]` Fixed count is
 **28**. Measured, not inferred: `AnamorphTests` prints `269 checks, 0 failures` and
 `AnamorphStateTests` prints `1431 checks, 0 failure(s)`. [Verified]
+
+## Engineering-review programme, round 22 — the `docs` gate, and the filtered preflight that hid it (2026-09-02, still the 0.9.6 change set)
+
+**What the round is.** A CI round. **No production code changed, and none was justified.** Records:
+`worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §Round 22.
+
+**ER-CI-06 — the `docs` job failed on this file.** Step "Lint documentation structure",
+`docs/DOCUMENTATION_COVERAGE.md:7365`: *"table fragment with no header/separator (1 pipe line(s))
+-- a block was inserted mid-table, or the separator row is missing"*, `check-docs: 1 finding(s)
+across 117 file(s)`, exit 1. Round 21's entry had wrapped the absolute-value notation for an input
+magnitude onto the START of a line, and a line beginning with a pipe character is a table row in
+Markdown — so the checker was right and a renderer would have mis-parsed it too. Reflowed to name
+the quantity in words instead. **The gate was not touched, no exclusion widened, no workflow
+changed**, and a repo-wide sweep found no second instance.
+
+**Classified with evidence, not by assumption.** It reproduces on a bare local checkout at exit 1,
+so it is repository content — not a stale run, not an environment difference, not citation drift,
+not a workflow fault. The passing `Build & Validate` run on the same commit is the `pull_request`
+event, in which `docs` is **skipped** together with eleven other jobs; only the `push` run executes
+the matrix, so a green PR run is not evidence about `docs`.
+
+**ER-CI-07 — why round 21 reported a green preflight while this was failing.** `scripts/preflight.sh`
+is `set -euo pipefail` and `check-docs.py` is its **second** command, so that invocation aborted
+there and every later stage — the portability and realtime lints, the four warning-gate self-tests,
+the ABI floor, the citation gate on all three bases, both suites — **never ran**. It read as green
+because the run was piped through a `grep` whose pattern could not match the finding's wording,
+which also replaced the script's exit status with grep's, under an unconditional trailing `echo`.
+The round-21 report's other validation lines stand, because those checks were also run as separate
+direct commands; its "preflight" line does not.
+
+**Documents touched:** this file (the round-21 reflow, and this entry), `scripts/preflight.sh` (a
+header paragraph beside its existing "NO SILENT SKIPS" rule: the script fails fast, so a non-zero
+exit means the stages below it are an unknown result, and a filtered view of its output is not a
+result), `docs/procedures/CI_CD.md` (the same rule in §preflight, with the run that cost it), the
+programme worklog and the dashboard. **No source file, no test, no workflow, no baseline.**
+
+**Settled-record sweep — nothing to correct.** ER-DSP-10 FIXED, ER-STATE-21 FIXED under Policy B,
+drag recovery REFUTED and presented as open nowhere, D-1 approved and implemented, D-2 / RISK-007
+deferred with round 21's re-measurement recorded, RISK-008 carrying its real-host REAPER result with
+the host-specific residual stated. The three surviving "no host available" strings are explicitly
+dated round-18 history or scoped to the review harness, sitting beneath the round-19 bullet that
+supersedes them — the disposition round 19 chose deliberately, and not rewritten here.
+
+**Counts.** Unchanged: the DSP suite is 49 tests + the A/B clamp guard / 269 checks and the state
+suite 33 tests / 1431 checks; the `[0.9.6]` Fixed count stays 28 — nothing user-visible changed.
+[Verified]
