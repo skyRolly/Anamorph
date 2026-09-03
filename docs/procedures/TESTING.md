@@ -943,9 +943,9 @@ See `CI_CD.md`. Evidence [Verified]: `.github/workflows/build.yml`.
 
 ## Raw scanner output (SARIF artifacts)
 
-Layer 1 of `TESTING_POLICY.md` (static analysis) runs two scanners in CI, and both publish their
-findings twice: to GitHub Code Scanning, and — since this change — as an Actions artifact carrying
-the scanner's own raw SARIF.
+Level 1 of `TESTING_POLICY.md` (static analysis) runs two SARIF-producing scanners in CI, and both
+publish their findings twice: to GitHub Code Scanning, and — since this change — as an Actions
+artifact carrying the scanner's own raw SARIF.
 
 | Analyzer | Workflow | Artifact | SARIF on the runner |
 |---|---|---|---|

@@ -1176,8 +1176,8 @@ Both scanners also publish their SARIF as Actions artifacts — `codeql-sarif-<l
 every audit context; Actions artifacts are. The artifact is strictly richer than the dashboard for
 CodeQL: `paths-ignore: build` filters the fetched JUCE tree out of the ALERTS, but those results
 remain in the raw SARIF. Note the name carries `github.sha`, which on a `pull_request` event is the
-merge commit, not the head commit. Neither analysis runs a second time — each new step consumes the
-file the Code Scanning upload beside it already consumed.
+merge commit, not the head commit. Neither analysis runs a second time — each new step reads the
+SARIF the scanner had already written.
 
 **The raw scanner SARIF is kept on the same `!cancelled()` principle** the artifact gating in
 §Pipeline uses — a report Code Scanning REJECTS is exactly when the raw SARIF is most worth having,
@@ -1185,12 +1185,11 @@ and a success gate would discard it precisely then. The two scanners need differ
 because they are shaped differently: `msvc.yml` produces and uploads in SEPARATE steps, so its
 artifact gates exactly on `steps.run-analysis.outcome == 'success'` and keeps
 `if-no-files-found: error` unconditionally. `codeql.yml`'s `analyze` does BOTH, so its own outcome
-cannot separate "no SARIF" from "SARIF written, upload refused": it gates on
-`outcome != 'skipped'` and downgrades
-`if-no-files-found` to `warn` when the analysis itself failed — deliberately avoiding the trap
-§Pipeline step 7 describes against the `-debug` uploads, where a second failure on a missing file
-buries the real error. `warn` never publishes an empty artifact; upload-artifact skips the upload
-when nothing matches.
+cannot separate "no SARIF" from "SARIF written, upload refused": it gates on `outcome != 'skipped'`
+and downgrades `if-no-files-found` to `warn` when the analysis itself failed — deliberately
+avoiding the trap §Pipeline step 7 describes against the `-debug` uploads, where a second failure
+on a missing file buries the real error. `warn` never publishes an empty artifact; upload-artifact
+skips the upload when nothing matches.
 
 Evidence [Verified]: `.github/workflows/codeql.yml`, `.github/workflows/msvc.yml`.
 

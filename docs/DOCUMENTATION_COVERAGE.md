@@ -7909,6 +7909,7 @@ than two).
 adds 32), counted from `main`'s registered test functions. The state suite is unchanged at **35
 tests / 1506 checks**. Measured, not inferred: `AnamorphTests` prints `396 checks, 0 failures` and
 `AnamorphStateTests` prints `1506 checks, 0 failure(s)`. [Verified]
+
 ## Scanner-SARIF artifacts — the raw report kept beside the Code Scanning upload (2026-09-03)
 
 Migrated from the sibling product **Anabasis**, PR #31 (`CI: persist the raw scanner SARIF as an
@@ -7947,7 +7948,7 @@ bullet list. The sibling's "Drift reported, not corrected" paragraph has no coun
 heading, so there was no drift to report.
 
 **`DOCUMENTATION_LIFECYCLE_POLICY.md` rows engaged:** **CI workflow** (`CI_CD.md`, `TESTING.md`).
-`TESTING_POLICY.md` is deliberately NOT edited — its Layer 1 row is conditioned on what a gate
+`TESTING_POLICY.md` is deliberately NOT edited — its Level 1 row is conditioned on what a gate
 REQUIRES, and the scanners still require exactly what they required of the code; only where their
 output is kept changed. `REPOSITORY_MAP.md` likewise: no script was added or removed.
 
@@ -7956,3 +7957,10 @@ output is kept changed. `REPOSITORY_MAP.md` likewise: no script was added or rem
 The steps themselves cannot be executed from a pull request that does not run on GitHub's runners,
 so their runtime behaviour is [Partially Verified] — inherited from the sibling, where the same
 steps are live. [Verified] for the file contents; [Partially Verified] for the runner behaviour.
+
+**Documents touched:** `.github/workflows/codeql.yml`, `.github/workflows/msvc.yml`,
+`docs/procedures/CI_CD.md` (the two §Security scanning table rows and one new `### Raw scanner
+SARIF artifacts` subsection), `docs/procedures/TESTING.md` (one new section), this file.
+**Unchanged:** every source file, both test suites and their counts, `CMakeLists.txt`, both warning
+baselines, `CHANGELOG.md` (no version bump — CI-only), `docs/policies/TESTING_POLICY.md`,
+`docs/REPOSITORY_MAP.md`, `.github/workflows/build.yml` and every action pin.
