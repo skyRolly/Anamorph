@@ -1068,6 +1068,32 @@ void AnamorphAudioProcessor::adoptPendingHostState()
 // committed baseline.
 void AnamorphAudioProcessor::adoptRestoreTail (const RestoreDecode& d)
 {
+    // SESSION COHERENCE (D-2 round 4, ADR-0036 §10). A restore handed over from a host
+    // thread applied its sound there, at decode time, and its metadata lands HERE. In
+    // between, this thread may have run an A/B switch, a Copy, an undo or a preset load
+    // that replaced the live parameters -- the message thread cannot see a restore whose
+    // decode has applied its sound but whose handoff is not in the cell yet, so it acts
+    // on the sound of a session it has not adopted. Without this, the tail would then
+    // stamp THIS restore's metadata over THAT action's sound: one saved session made of
+    // two. Re-installing the decode's own sound makes the adoption commit sound and
+    // metadata together, which is what "adopting a restore" has to mean.
+    //
+    // Both guards matter. `soundGen` unchanged means nothing has touched the parameters
+    // since the decode installed them, which is every ordinary restore -- re-installing
+    // would be a redundant burst of setValueNotifyingHost to no effect, so it is skipped.
+    // And the engine-config word's generation identifies the LATEST restore that has
+    // arrived: when a newer one has already published its sound, this older restore's
+    // adoption must not resurrect its own (ADR-0036 §8's rule, applied to the sound).
+    // An inline restore (generation 0) applied its sound on this thread with nothing
+    // able to run in between, so it never needs this.
+    if (d.generation != 0
+        && internal.engineConfigGeneration() == d.generation
+        && soundParamGen.load (std::memory_order_relaxed) != d.soundGen
+        && d.soundParams.isValid())
+    {
+        applySoundTree (d.soundParams);
+    }
+
     // The host-hidden Settings. A changed Oversampling fires InternalState's callback
     // -> requestLatencyUpdate(), synchronous on this thread; prepareToPlay re-asserts
     // it anyway. (The engine-config word was already published on the restoring
@@ -1203,6 +1229,10 @@ void AnamorphAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
         return;
     }
 
+    // See `offThreadStateCalls`: the host must not have another off-message-thread
+    // state call in flight. Counted, asserted in debug, never blocking.
+    const OffThreadStateCall serialized { *this };
+
     // Any other thread: the latest snapshot the message thread published, taken
     // into this side's own view -- unless a restore THIS side handed over is not
     // described by it yet, in which case the program to describe is that restore's,
@@ -1271,6 +1301,8 @@ bool AnamorphAudioProcessor::decodeRestore (const void* data, int sizeInBytes, R
         }
 
         applySoundTree (params);
+        d.soundParams = params;
+        d.soundGen    = soundParamGen.load (std::memory_order_relaxed);
 
         // The host-hidden Settings / view state (Oversampling, UI Scale, Persistence,
         // Tooltips, Animations, Show Meters), RESOLVED here and written by the message
@@ -1406,6 +1438,8 @@ bool AnamorphAudioProcessor::decodeRestore (const void* data, int sizeInBytes, R
     {
         auto legacy = juce::ValueTree::fromXml (*xml);
         applySoundTree (legacy);
+        d.soundParams = legacy;
+        d.soundGen    = soundParamGen.load (std::memory_order_relaxed);
 
         // A v0.2 session is older than 0.8.4, so it can only carry the host-hidden Settings the
         // way pre-0.8.4 sessions do: as APVTS params, or not at all. Same resolver the AnamorphRoot
@@ -1448,16 +1482,23 @@ bool AnamorphAudioProcessor::decodeRestore (const void* data, int sizeInBytes, R
 
 void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
-    RestoreDecode d;
-    if (! decodeRestore (data, sizeInBytes, d))
-        return;
-
     if (onMessageThreadOrNoMessageManager())
     {
-        // The owner's thread: a restore still pending from a host thread is adopted
-        // first, so the two land in the order they arrived; then this one, inline,
-        // exactly as every restore ran before D-2.
+        // The owner's thread. The pending restore is adopted BEFORE this one is decoded
+        // (D-2 round 4): the decode applies the new session's SOUND as it runs, and an
+        // adoption that followed it would publish the older session's metadata while the
+        // newer session's parameters were already live -- one snapshot describing two
+        // sessions. Draining first, the older restore is adopted whole against its own
+        // sound, and the new session's sound and metadata then land together. A blob
+        // that turns out not to be a restore still changes nothing of its own; the drain
+        // it triggered is an adoption this thread owed anyway and the 20 Hz timer would
+        // have run a moment later.
         adoptPendingHostState();
+
+        RestoreDecode d;
+        if (! decodeRestore (data, sizeInBytes, d))
+            return;
+
         {
             const juce::ScopedValueSetter<bool> adopting (adoptingRestore, true);
             adoptRestoreTail (d);
@@ -1466,6 +1507,14 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
     }
     else
     {
+        // See `offThreadStateCalls`: the host must not have another off-message-thread
+        // state call in flight. Counted, asserted in debug, never blocking.
+        const OffThreadStateCall serialized { *this };
+
+        RestoreDecode d;
+        if (! decodeRestore (data, sizeInBytes, d))
+            return;
+
         // Another thread (the macOS AU autosave shape, pluginval's AU background-
         // thread state test, an out-of-spec VST3 host): the sound is already applied
         // above. Two things happen HERE, synchronously, because a prepareToPlay that
@@ -1484,6 +1533,7 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
 
         auto* handoff = new RestoreDecode (d);
         handoff->generation = generation;
+        if (seams.beforeRestorePut) seams.beforeRestorePut();
         pendingRestore.put (handoff);   // frees an older restore the message thread never took
     }
 

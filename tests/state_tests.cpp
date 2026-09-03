@@ -7663,6 +7663,150 @@ static void testSettingsEditAfterRestoreArrivalSurvivesAdoption()
 }
 
 // ---------------------------------------------------------------------------
+//  State test 45 -- a message-thread action taken in the handoff window cannot
+//  leave the restore's metadata over that action's sound (D-2 round 4, review
+//  finding "concurrent actions vanish before handoff").
+//
+//  The window is real and this reproduces it exactly, through the seam the
+//  handoff exposes: an off-message-thread restore has applied its SOUND (the
+//  decode does that on the caller's thread, synchronously, so a prepareToPlay
+//  behind it primes the restored session) but has not yet reached
+//  `pendingRestore.put`. In that gap the message thread cannot see the restore
+//  at all -- every entry point drains the cell, and the cell is still empty --
+//  so an A/B switch runs: it stores the LIVE parameters (already the restore's
+//  sound) into the outgoing session's slot and applies the other slot, leaving
+//  the live sound that of a session the restore knows nothing about. The
+//  restore is then adopted.
+//
+//  The rule (ADR-0036 §10): adopting a restore installs its sound AND its
+//  metadata, so the adoption commits one session. The A/B switch is superseded
+//  -- it navigated the outgoing session, and a session restore replaces that
+//  session -- but it can never be left half-applied under the new metadata.
+//  Before the fix the adoption wrote metadata only, so the saved session was
+//  the restore's name, slots and identity around the A/B switch's sound.
+//  Covered for both mutators the window admits: the A/B switch and Copy-to-other.
+// ---------------------------------------------------------------------------
+static void testActionInHandoffWindowCannotSplitTheSession()
+{
+    std::printf ("State test 45: an action in the handoff window cannot split the restored session (D-2 r4)\n");
+
+    const auto P = d2::author ("D2-R4-P", 0.12f, 0.88f, 0, 1);   // the outgoing session
+    const auto R = d2::author ("D2-R4-R", 0.34f, 0.66f, 1, 2);   // the restore that arrives
+    check (P.blob != R.blob, "non-vacuity: the two sessions differ");
+
+    for (int mutator = 0; mutator < 2; ++mutator)   // 0 = A/B switch, 1 = Copy-to-other
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        d2::restoreFrom (p, P.blob);                 // inline: the outgoing session, whole
+        check (d2::View::of (p).matches (P), "the outgoing session is live before the restore arrives");
+
+        // The handoff window, held open on the restoring thread while the message
+        // thread acts: 1 = the restore's sound is applied and the cell is still
+        // empty; 2 = the message thread is done and the handoff may complete.
+        std::atomic<int> phase { 0 };
+        p.seams.beforeRestorePut = [&]
+        {
+            phase.store (1, std::memory_order_release);
+            for (int spins = 0; phase.load (std::memory_order_acquire) != 2 && spins < 4000000; ++spins)
+                std::this_thread::yield();
+        };
+        std::thread host ([&] { d2::restoreFrom (p, R.blob); });
+        for (int spins = 0; phase.load (std::memory_order_acquire) != 1 && spins < 4000000; ++spins)
+            std::this_thread::yield();
+        check (phase.load() == 1, "the restoring thread reached the handoff window and is waiting");
+
+        // Inside the window: the restore's sound is live, its metadata is not, and
+        // the cell is empty -- so this action cannot see the restore.
+        const float restoredWidth = R.active == 0 ? R.widthA : R.widthB;
+        checkNear ((double) rawOf (p, "width"), (double) restoredWidth, 1.0e-6,
+                   "in the window the restore's SOUND is already live");
+        check (d2::View::of (p).matches (P), "...while the message thread still owns the outgoing session's program");
+        if (mutator == 0) p.abSwitchTo (p.abActiveSlot() == 0 ? 1 : 0);
+        else              p.abCopyToOther();
+        // It ran against the outgoing session -- it could not see the restore, which is
+        // the whole point of the window. (A switch shows the other slot's own preset
+        // name, so the name is not the thing to assert here; the restore's identity is.)
+        check (p.getPresets().selection().factoryId != R.name && p.getPresets().currentName() != R.name,
+               "the action ran before the restore was visible to this thread");
+
+        phase.store (2, std::memory_order_release);
+        host.join();
+        p.seams.beforeRestorePut = nullptr;
+
+        p.pollUndoCoalesce();                        // the adoption
+
+        // One session, whole: the restore's metadata AND the restore's sound.
+        check (d2::View::of (p).matches (R), "after the adoption the restored program is visible");
+        checkNear ((double) rawOf (p, "width"), (double) restoredWidth, 1.0e-6,
+                   "...and the restored SOUND stands: the adoption re-installed it over the action's");
+        check (d2::saveOf (p) == R.blob,
+               "a save is byte-identical to the session restored: no metadata from one session over sound from another");
+        juce::MemoryBlock hostSave;
+        d2::offMessageThread ([&] { hostSave = d2::saveOf (p); });
+        check (hostSave == d2::saveOf (p), "...and a host-thread save agrees with the owner's");
+
+        // The A/B slots belong to the restored session too, not to the superseded action.
+        p.abSwitchTo (1 - p.abActiveSlot());
+        const float otherWidth = R.active == 0 ? R.widthB : R.widthA;
+        checkNear ((double) rawOf (p, "width"), (double) otherWidth, 1.0e-6,
+                   "the other slot holds the restored session's sound, not the superseded action's");
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  State test 46 -- an inline restore never publishes a pending restore's
+//  metadata against its own sound (D-2 round 4, review finding "inline restore
+//  exposes mixed sessions").
+//
+//  With a restore pending from a host thread, a restore that arrives ON the
+//  message thread used to decode first -- which applies the incoming session's
+//  sound -- and only then drain the pending one, whose tail published the OLDER
+//  session's metadata while the NEWER session's parameters were already live.
+//  The drain now runs first, so the pending restore is adopted against its own
+//  sound and the incoming session's sound and metadata land together after it.
+//  The seam fires inside the drain, which is the exact instant that used to be
+//  incoherent: the live sound there must be the PENDING session's.
+// ---------------------------------------------------------------------------
+static void testInlineRestoreAdoptsPendingAgainstItsOwnSound()
+{
+    std::printf ("State test 46: an inline restore adopts a pending one against its own sound (D-2 r4)\n");
+
+    const auto R1 = d2::author ("D2-R4-1", 0.21f, 0.79f, 0, 1);   // handed over from a host thread
+    const auto R2 = d2::author ("D2-R4-2", 0.43f, 0.57f, 1, 3);   // then restored inline
+    check (R1.blob != R2.blob, "non-vacuity: the two sessions differ");
+    const float w1 = R1.active == 0 ? R1.widthA : R1.widthB;
+    const float w2 = R2.active == 0 ? R2.widthA : R2.widthB;
+    check (! juce::exactlyEqual (w1, w2), "non-vacuity: their live sounds differ");
+
+    AnamorphAudioProcessor p;
+    p.prepareToPlay (48000.0, 512);
+
+    d2::offMessageThread ([&] { d2::restoreFrom (p, R1.blob); });   // R1 pending
+    checkNear ((double) rawOf (p, "width"), (double) w1, 1.0e-6, "R1's sound is live before the inline restore");
+
+    int seamRuns = 0;
+    double widthAtAdoption = -1.0;
+    p.seams.afterRestoreTake = [&]
+    {
+        ++seamRuns;
+        widthAtAdoption = (double) rawOf (p, "width");
+    };
+    d2::restoreFrom (p, R2.blob);      // inline, on this thread: drains R1 first, then applies R2
+    p.seams.afterRestoreTake = nullptr;
+    check (seamRuns == 1, "the inline restore drained the pending one exactly once");
+    checkNear (widthAtAdoption, (double) w1, 1.0e-6,
+               "the pending restore was adopted against ITS OWN sound: the incoming session had not been applied yet");
+
+    check (d2::View::of (p).matches (R2), "the inline session's program is live afterwards");
+    checkNear ((double) rawOf (p, "width"), (double) w2, 1.0e-6, "...and its sound");
+    check (d2::saveOf (p) == R2.blob, "a save is byte-identical to the session restored inline");
+    juce::MemoryBlock hostSave;
+    d2::offMessageThread ([&] { hostSave = d2::saveOf (p); });
+    check (hostSave == d2::saveOf (p), "a host-thread save agrees with the owner's");
+}
+
+// ---------------------------------------------------------------------------
 //  D-2 stress probe (contract F): every thread the model names, at once, under
 //  ThreadSanitizer. NOT part of the suite, like the other three TSan probes:
 //  on the pre-D-2 tree its execution IS the undefined behaviour it measures.
@@ -7898,6 +8042,8 @@ int main (int argc, char* argv[])
     testHostSaveNeverPairsRestoredSoundWithOlderProgram();
     testOlderRestoreCannotOverwriteNewerOversampling();
     testSettingsEditAfterRestoreArrivalSurvivesAdoption();
+    testActionInHandoffWindowCannotSplitTheSession();
+    testInlineRestoreAdoptsPendingAgainstItsOwnSound();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

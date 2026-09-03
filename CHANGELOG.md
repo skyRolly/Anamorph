@@ -98,7 +98,10 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   tests 42–43 reproducing each interleaving deterministically. A third pass closed the last
   reviewed window: a Settings change made in the moment between such a restore arriving and the
   plug-in adopting it used to be replaced by the older restore; it now stands, and only a restore
-  that arrives *after* the change replaces it (State test 44). [Verified]
+  that arrives *after* the change replaces it (State test 44). A fourth pass made the adoption
+  install the restored *sound* as well as its bookkeeping, so an A/B switch or Copy made in that
+  same brief moment can no longer leave a project labelled as one session while it sounds like
+  another (State tests 45–46). [Verified]
 
 ## [0.9.6] — 2026-09-03
 ### Fixed

@@ -676,7 +676,7 @@ so the same file measures the pre-fix tree with the same instruments:
   the drain; the owner then walks new history — undo, undo, redo, redo, a Copy undone on the other
   slot — while a host thread saves throughout, and every step lands exactly.
 
-**State tests 42–44 (rounds 2 and 3, the PR review's findings) reproduce a reviewed interleaving
+**State tests 42–46 (rounds 2, 3 and 4, the PR review's findings) reproduce a reviewed interleaving
 deterministically** rather than by timing, through the two seams `AnamorphAudioProcessor::seams`
 exposes for exactly that (empty in production: one null check each, on non-audio paths). Each was
 mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37's window check
@@ -703,13 +703,25 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   by R2, one after R2 survives both); an inline restore replaces every field. Every edit starts
   from a shown program it actually changes (a toggle can only flip what is shown). Mutation-tested:
   the adoption writing every field again fails it.
+- **45 (an action in the handoff window, round 4)** — the restoring thread is held at the
+  `beforeRestorePut` seam, where its SOUND is applied but its handoff is not in the cell, so the
+  message thread cannot see it; an A/B switch (then, in a second leg, a Copy-to-other) runs there
+  against the outgoing session; the handoff completes and the restore is adopted. The result must
+  be ONE session: the restored metadata, the restored sound, the restored slots, and a save
+  byte-identical to the session restored. Mutation-tested — with the adoption's sound re-install
+  removed the save carries the restore's identity over the action's sound (ADR-0036 §10).
+- **46 (an inline restore over a pending one, round 4)** — a restore handed over from a host
+  thread, then one arriving on the message thread. The `afterRestoreTake` seam fires inside the
+  drain and the live sound there must be the PENDING session's: the incoming session's decode has
+  not run yet, because the inline path drains first. Mutation-tested — decoding before the drain
+  adopts the pending restore against the incoming session's sound.
 
 State tests 22 and 27 were re-shaped in the same change: their off-thread requester used to be a
 `juce::Value` written from a worker, which after D-2 models nothing the plug-in does; both now drive
 the real `setStateInformation` from the worker, and 27 asserts the ORDER of reported values because
 the tick that adopts a restore delivers its latency from inside the adoption.
 
-`tests/state_tests.cpp` (**43 tests**, own console target `AnamorphStateTests`) automates the
+`tests/state_tests.cpp` (**45 tests**, own console target `AnamorphStateTests`) automates the
 COMPATIBILITY policy family against the **real `AnamorphAudioProcessor`** (the target compiles
 the plugin sources; since 2026-08-21 it also constructs and destroys the real editor, headlessly
 and without ever showing it — no peer, no message loop, no interaction):

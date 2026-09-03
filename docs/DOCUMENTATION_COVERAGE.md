@@ -8008,3 +8008,29 @@ inside the window, related code, evidence); `THREADING_POLICY.md` (the GUI → A
 
 **Drift.** None: the round-2 sentence in ADR-0036 §8 that described the edit yielding to the
 restore was the defect's description, not a decision, and is replaced by §9.
+
+## D-2 round 4 (2026-09-03) — session coherence at the handoff, and the two verification findings
+
+**Code changed:** `src/PluginProcessor.h` (`RestoreDecode::soundParams` / `soundGen`; the
+`beforeRestorePut` seam; `OffThreadStateCall` / `offThreadStateCalls`, the debug tripwire for the
+host-serialization contract; the Architecture Review Gate note on the ownership comment),
+`src/PluginProcessor.cpp` (the decode records the parameter tree it installed; the adoption
+re-installs it under two guards — nothing touched the sound since the decode, and this restore is
+still the latest arrival; the inline restore drains before it decodes; both off-message-thread
+branches take the tripwire), `tests/state_tests.cpp` (State tests 45–46, each mutation-tested).
+
+**Documents updated:** `ADR-0036` (a status block recording the gate as OPEN, decisions 10 and 11,
+the "a save describes one session" consequence, related code, evidence); `THREADING_POLICY.md` (the
+verified wrapper evidence in §Host state calls, the two D-2 rows); `THREAD_MODEL.md` (the restore
+handoff row); `API_REFERENCE.md` (`engineConfigGeneration`'s second reader); `TESTING.md` (tests 45
+and 46, 45 tests); `TESTING_POLICY.md`, `HANDOVER.md`, `README.md` (45 tests / 1866 checks);
+`CHANGELOG.md` (the `[0.9.7]` D-2 entry gains the fourth pass); the worklog (§10: the shared root
+cause, an interleaving table per finding, the gate procedure walked step by step, the wrapper
+evidence table, the ordering audit) and the dashboard.
+
+**Drift.** None. The round-3 statement that the adoption writes metadata only was accurate for that
+tree and is superseded by decision 10 rather than corrected.
+
+**Gate.** `ARCHITECTURE_REVIEW_GATE.md` is **not** discharged by this documentation and is not
+marked as such anywhere: a Thread Model change requires a human reviewer, and only the pull
+request's approval clears it.

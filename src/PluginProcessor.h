@@ -95,7 +95,7 @@ public:
     // message thread's take inside an adoption -- which is the only way to
     // reproduce a reviewed interleaving deterministically rather than by timing.
     // Installed and cleared on the main thread while no other thread can reach them.
-    struct Seams { std::function<void()> afterHostSaveTake, afterRestoreTake; };
+    struct Seams { std::function<void()> afterHostSaveTake, afterRestoreTake, beforeRestorePut; };
     Seams seams;
 
     // Auto-Gain "Apply": locks the measured loudness-match gain into Output Gain.
@@ -245,6 +245,16 @@ private:
     // ------------------------------------------------------------------------
     //  D-2 (RISK-007): the program-state ownership boundary. ADR-0036.
     //
+    //  ARCHITECTURE REVIEW GATE. This section is a Thread Model change -- new
+    //  cross-thread paths and new atomic ordering -- which
+    //  `docs/policies/ARCHITECTURE_REVIEW_GATE.md` gates and `AI_AGENT_POLICY.md`
+    //  makes an agent Hard Stop: "a passing build/test/pluginval does NOT clear a
+    //  Hard Stop -- only human review does". The decision is recorded as ADR-0036
+    //  and the evidence package is assembled (the ADR, the worklog's D-2 rounds,
+    //  State tests 37-46 and the four ThreadSanitizer probes), but the gate itself
+    //  is discharged by a human architecture reviewer approving the change, not by
+    //  anything in this file. Treat it as OPEN until that approval exists.
+    //
     //  THREADS. `M` is the JUCE message thread (the editor, this processor's timer,
     //  every in-spec VST3 host call). `H` is any other thread a host uses for
     //  getStateInformation / setStateInformation. The audio thread touches nothing
@@ -327,6 +337,15 @@ private:
         juce::ValueTree internalResolved;              // the six typed Settings values to write
         int abActive = 0;
         StateSet abSlot[anamorph::kNumAbSlots];        // invalid params = the documented default
+        // The SOUND this restore installed, kept so the adoption can re-install it
+        // (D-2 round 4, ADR-0036 §10): a message-thread action that changed the live
+        // parameters between the decode and the adoption would otherwise leave this
+        // restore's metadata over that action's sound. `soundGen` is `soundParamGen`
+        // as it stood immediately after the decode applied the sound, so the adoption
+        // can tell "nothing has touched the sound since" (the overwhelmingly common
+        // case, which re-installs nothing) from "something did".
+        juce::ValueTree soundParams;
+        juce::uint32    soundGen = 0;
     };
 
     // A single-object handoff cell. `put` publishes and frees whatever the other side
@@ -352,6 +371,30 @@ private:
     // a generation read at a different moment than the object it decides about.
     juce::uint32 hostRestoreGen    = 0;              // H only
     juce::uint32 adoptedGeneration = 0;              // M only
+    // The host-serialization contract, made detectable instead of merely assumed
+    // (D-2 round 4). The three members above this line that H owns -- `hostRestoreGen`
+    // and the two views -- are plain, which is correct exactly as long as the host
+    // never runs two OFF-MESSAGE-THREAD state calls at once. Every wrapper this
+    // repository builds relies on that already (ADR-0036 §11), so rather than adding
+    // synchronisation for a case the format forbids, the two off-thread branches
+    // count themselves in and a debug build asserts if a second one ever overlaps.
+    // Never blocks, never affects the result, and same-thread nesting cannot occur
+    // (no state call re-enters another off the message thread).
+    std::atomic<int> offThreadStateCalls { 0 };
+    struct OffThreadStateCall
+    {
+        explicit OffThreadStateCall (AnamorphAudioProcessor& p) : owner (p)
+        {
+            // A second concurrent off-message-thread state call would race this side's
+            // `hostRestoreGen` and its two views. No format this plug-in ships permits it
+            // (ADR-0036 §11); a host that does it is broken, and this is where it shows.
+            [[maybe_unused]] const auto inFlight = owner.offThreadStateCalls.fetch_add (1, std::memory_order_acq_rel);
+            jassert (inFlight == 0); // host issued overlapping off-thread getState/setState
+        }
+        ~OffThreadStateCall() { owner.offThreadStateCalls.fetch_sub (1, std::memory_order_acq_rel); }
+        AnamorphAudioProcessor& owner;
+        JUCE_DECLARE_NON_COPYABLE (OffThreadStateCall)
+    };
     bool adoptingRestore = false;                    // M: suppress per-field publishes inside an adoption
 
     // The APVTS root type, captured once at construction so no thread reads the live

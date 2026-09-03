@@ -315,6 +315,119 @@ window is visible to a host-thread save only after the adoption (≤ one timer p
 the whole tail has. **D-2 / RISK-007 — RESOLVED, round 3 closed; no actionable review issue
 remains.**
 
+### 10. Round 4 — session coherence, the handoff window, and the two verification findings (2026-09-03)
+
+Four review items: two ordering defects, one gate, one verification question. The two defects turn
+out to be one root cause with two faces, and neither is a ThreadSanitizer class.
+
+**The root cause both findings share.** A restore is two publications on two ownership tracks: its
+SOUND is installed by the decode on the calling thread (decision 2 — a `prepareToPlay` behind it
+must prime the restored session), its METADATA reaches the message thread through the cell. Between
+them there is a window the message thread cannot see into — from the decode installing the sound to
+`pendingRestore.put`, the cell is empty, so every entry point's drain finds nothing.
+
+**Finding 1 — inline restore exposes mixed sessions** (`setStateInformation`, the message-thread
+branch).
+
+| | |
+|---|---|
+| actors | H (a restore handed over earlier, R1 pending); M (a restore arriving inline, R2) |
+| old order | `decodeRestore(R2)` — installs R2's SOUND — then `adoptPendingHostState()` adopts R1 and publishes R1's metadata, then R2's tail publishes R2's |
+| window | from R2's decode to R2's tail: the snapshot says R1, the parameters say R2 |
+| observable | the intermediate publication describes R1's session against R2's live parameters; a save taken there mixes two sessions |
+| new order | the inline path **drains first**, so R1 is adopted against its own sound and R2's sound and metadata land together after it (State test 46 asserts the live sound at the adoption seam is R1's) |
+| reachability, stated honestly | the *saved* mixture additionally requires a `getStateInformation` running while that `setStateInformation` is mid-flight — two host state calls at once, which decision 11 establishes no supported wrapper permits. The reorder closes the window regardless, at no cost: it is one statement moved, and it makes the intermediate state coherent for every observer rather than only for contract-honouring ones |
+
+**Finding 2 — concurrent actions vanish before handoff** (`setStateInformation`, the host-thread
+branch, before `pendingRestore.put`). **This one is reachable without any host misbehaviour** — an
+editor action is not a host state call — and it is the more serious of the two.
+
+| | |
+|---|---|
+| actors | H (a restore R); M (the editor: an A/B switch, a Copy, an undo, a preset load) |
+| state | the live APVTS parameters; `pendingRestore`; the A/B slot set; the preset identity |
+| old order | H: decode installs R's SOUND → `++hostRestoreGen` → `publishEngineConfig` → build the view → allocate the handoff → `put`. M, anywhere in that span: drain (empty — R is not in the cell) → act |
+| window | decode-installs-sound → `put` |
+| observable | the action stores the parameters it finds — already R's sound — into the OUTGOING session's slot and applies another, so the live sound is then neither session's; R's adoption (metadata only, before this round) stamped R's name, identity and slots over it. **A saved session assembled from two**, and persistent: nothing later corrects it |
+| precedence decided | the action ran against the outgoing session, and a session restore replaces that session — so the action is **superseded**, exactly as an inline restore replaces everything. This is deliberately *not* decision 9's rule: the Settings are orthogonal preferences a session carries, whereas the A/B slots and the preset identity **are** the session. What is forbidden is not the supersession but the split |
+| new invariant | **adopting a restore installs its SOUND and its metadata together** (decision 10): the decode keeps the parameter tree it installed and the adoption re-installs it, guarded so an ordinary restore re-installs nothing (`soundParamGen` unchanged since the decode) and a superseded restore never resurrects its own sound (the engine word must still carry this restore's generation — decision 8's rule applied to the sound) |
+| why unrepresentable | after the adoption the sound, the slots and the identity all come from the one decode; there is no path by which the tail's metadata can end up over parameters the decode did not install |
+
+**Finding 3 — Architecture Review Gate.** `ARCHITECTURE_REVIEW_GATE.md` lists **Thread Model change
+— new thread, new cross-thread path, new atomic ordering**, and D-2 is exactly that;
+`AI_AGENT_POLICY.md` makes detecting one an agent **Hard Stop**, and states that a passing
+build/test/pluginval "does **not** clear a Hard Stop — only human review does". The gate's own
+procedure has four steps: the author flags it (done — the header comment, this worklog and the pull
+request all say so), **a human reviewer with DSP/audio context reviews it** (outstanding), an ADR
+records the decision (done — ADR-0036), and compatibility-affecting changes run the release
+checklist (the serialized format is unchanged, so nothing there is due). So the gate **cannot** be
+discharged from inside this repository and is **not** marked discharged: the maintainer instruction
+that opened the task authorised the *work*, not the review of its *result*. What this round does
+instead is assemble the package a reviewer needs — ADR-0036 with its eleven decisions and their
+rejected alternatives, these four D-2 rounds with an interleaving proof per finding, State tests
+37–46, and the four ThreadSanitizer probes in their own CI lane — and state the gate's status
+plainly in the ADR, the header and the pull request. **It remains OPEN.**
+
+**Finding 4 — host serialization, verified.** The question was whether `hostRestoreGen` and the two
+host-side views can be touched concurrently. They are read and written only by
+`getStateInformation` and `setStateInformation`, so the answer is entirely "does a host run two
+state calls at once". Read at the pinned JUCE 9.0.1, for every format `ANAMORPH_FORMATS` builds:
+
+| wrapper | save | restore | serialized by the wrapper? |
+|---|---|---|---|
+| VST3 (`juce_audio_plugin_client_VST3.cpp`) | `getState` → `getStateInformation` on the caller's thread | `setState` → `assertHostMessageThread()` then `setStateInformation` | **No.** In spec both are the UI thread (the SDK annotates them so, and JUCE asserts it for `setState`), which serializes them — but that is the *host* honouring the spec, not the wrapper enforcing it |
+| AU (`juce_audio_plugin_client_AU_1.mm`) | `SaveState` → `getStateInformation` | `RestoreState` → `setStateInformation` | **No.** Both are `MusicDeviceBase` overrides passing straight through on the caller's thread; neither takes `getCallbackLock()` (the wrapper takes it for `processBlock` and offline-mode changes only) nor a `MessageManagerLock`. Serialization is the host's, through the `kAudioUnitProperty_ClassInfo` mechanism |
+| Standalone (`Standalone/juce_StandaloneFilterWindow.h`) | `getStateInformation` | `setStateInformation` | Both on the message thread — serialized, trivially |
+
+**Disposition C.** No wrapper serializes save against restore for the plug-in, and none can: the
+guarantee belongs to the host, and JUCE's entire `AudioProcessor` state API already rests on it.
+Anamorph relies on **exactly** that and nothing stronger, which is now stated in
+`THREADING_POLICY.md` and ADR-0036 §11 rather than left implicit. Adding synchronisation for a case
+the formats forbid would be paying for a host bug on every save; instead the two off-message-thread
+branches count themselves in (`offThreadStateCalls`) and a debug build asserts if a second overlaps
+— a tripwire, never a lock, never blocking, with no effect on any result. **No real race, given the
+contract; the contract is now checkable.**
+
+**Related ordering audit.** The shape "older state applied after newer state, newer silently lost"
+was re-searched across the restore/save/action machinery. The A/B slots, the preset identity, the
+undo history and the committed baseline are all written by the tail and mutated on M only through
+entry points that drain first — the handoff window was their one exposure, and decision 10 closes
+its persistent half while the precedence above defines the rest. The Settings have their own rule
+(§9). The sound is now re-installed by the adoption, which is what made the family one bug rather
+than four. The engine-config word already refuses older generations (§8). The remaining two-phase
+read (a host save's snapshot then `copyState()`) is the recorded host-timing residual, unchanged.
+**No further actionable instance.**
+
+**What changed.** `src/PluginProcessor.h` — `RestoreDecode::soundParams` / `soundGen`, the
+`beforeRestorePut` seam, `OffThreadStateCall` and `offThreadStateCalls`, the gate note on the
+ownership comment. `src/PluginProcessor.cpp` — the decode records the tree it installed; the
+adoption re-installs it under two guards; the inline path drains before it decodes; both
+off-message-thread branches take the tripwire. `tests/state_tests.cpp` — State tests 45 and 46.
+Docs: ADR-0036 (status block with the gate OPEN, decisions 10 and 11, consequences, related code,
+evidence), `THREADING_POLICY`, `THREAD_MODEL`, `API_REFERENCE`, `TESTING`, `TESTING_POLICY`,
+`CHANGELOG`, `HANDOVER`, `README`, coverage, this section, the dashboard.
+
+**Validation.**
+
+| gate | result |
+|---|---|
+| State test 45 with the adoption's sound re-install removed | FAILS (2 checks: the save carries the restore's identity over the action's sound — 0.88 where the restored session says 0.66) |
+| State test 46 with the inline drain moved back after the decode | FAILS (3 checks: the pending restore is adopted against the incoming session's sound) |
+| State tests 37–46 on the tree | green; suite 1866 checks / 0 failures, 45 tests |
+| the four probes under TSan, after (round-4 tree) | silent in 10/10 runs each |
+| the state suite under TSan, after | 0 reports; 1866 checks, 0 failures |
+| the DSP suite | 396 checks, 0 failures (unchanged sources) |
+| `check-realtime.py` | 47 files, 0 violations |
+| `check-docs.py`, `check-citations.py` | clean; 398 anchors against origin/main AND against the round-3 commit; self-test 159 cases |
+| `preflight.sh` | exit 0 on the committed round-4 tree (all gates, both suites) |
+| first-party warnings | none in the touched files on gcc 13; none new on clang 18 (the pinned gates run in CI) |
+
+**Status.** D-2 / RISK-007 — the reported defects are closed and no actionable review issue remains.
+**The Architecture Review Gate is OPEN and requires human approval**, which is the one thing this
+work cannot supply for itself. Non-actionable residual, unchanged: a host save's snapshot and
+`copyState()` straddling a message-thread A/B switch (the host-timing class), and the ≤ 50 ms
+adoption latency for the metadata tail.
+
 ## ADR-0035 points 8-9 — 2026-09-03 — the blend that outlived its path (PR #135 final review)
 
 > *"When changing from an active Oversampling factor: 2x, 4x, 8x to Off, the `osBlend` transition can
